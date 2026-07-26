@@ -1,0 +1,22 @@
+From ae826362761aca9d1bdb065c156fecfcd2e9e132 Mon Sep 17 00:00:00 2001
+From: zeertzjq <zeertzjq@outlook.com>
+Date: Wed, 29 Oct 2025 10:17:30 +0800
+Subject: [PATCH] docs: regenerate lua.txt (#36376)
+
+---
+ runtime/doc/lua.txt | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/runtime/doc/lua.txt b/runtime/doc/lua.txt
+index 8f9078cdf..8b6a526be 100644
+--- a/runtime/doc/lua.txt
++++ b/runtime/doc/lua.txt
+@@ -2415,7 +2415,7 @@ vim.filetype.match({args})                              *vim.filetype.match()*
+         example, to set some filetype specific buffer variables). The function
+         accepts a buffer number as its only argument.
+         (`boolean?`) Return true if a match was found by falling back to a
+-        generic filetype (e.g. ".conf"). If true, the filetype
++        generic configuration file (i.e., ".conf"). If true, the filetype
+         should be set with `:setf FALLBACK conf`, which enables a later
+         |:setf| command to override the filetype. See `:help setf` for more
+         information.

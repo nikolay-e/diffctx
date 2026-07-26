@@ -1,0 +1,42 @@
+repo: spark
+base_commit: 74fa07c5702004ed2bcd83872687473122e13bab
+commit: c46d4caa59865e9b99e02f6adc79f49f9ebc8f7f
+patch_stored: true
+gold:
+  - path: sql/api/src/main/scala/org/apache/spark/sql/streaming/GroupState.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 100%-similarity rename target; the file content is unchanged but its new module location (sql/api instead of sql/core) is the entire point of the commit.
+  - path: connector/connect/common/src/main/scala/org/apache/spark/sql/streaming/GroupState.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: the duplicate Connect-side copy of GroupState that is deleted outright, replaced by the shared sql/api version.
+  - path: project/MimaExcludes.scala
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: adds MissingClassProblem exclusions for the four moved classes so binary-compatibility checks tolerate the module relocation.
+  - path: connector/connect/common/pom.xml
+    tier: essential
+    role: config
+    in_diff: false
+    rationale: declares `spark-connect-common`'s existing dependency on `spark-sql-api`, which is exactly why deleting the Connect-side duplicates and depending on the sql/api copy compiles without new dependency edges.
+  - path: sql/api/pom.xml
+    tier: helpful
+    role: config
+    in_diff: false
+    rationale: defines the `spark-sql-api` module that both sql/core (transitively via sql/catalyst) and connector/connect/common depend on, making it the natural shared home for the deduplicated classes.
+forbidden:
+  - path: connector/connect/client/jvm/src/main/scala/org/apache/spark/sql/KeyValueGroupedDataset.scala
+    reason: references GroupState/the with-state functions as a caller but is untouched by this pure move/dedup and adds no understanding of the relocation itself.
+  - path: connector/connect/client/jvm/src/test/scala/org/apache/spark/sql/connect/client/CheckConnectJvmClientCompatibility.scala
+    reason: a compatibility-check test that references these classes by name but is not modified by and not needed to understand this dedup commit.
+  - path: sql/catalyst/pom.xml
+    reason: also depends on spark-sql-api like connector/connect/common, but is one hop further removed (sql/core depends on catalyst, not on sql/api directly) and not the direct linkage for this move.
+nontrivial_gold_count: 2
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: []
+notes: 'Pure deduplication commit: moves four classes (SaveMode, FlatMapGroupsWithStateFunction, MapGroupsWithStateFunction, GroupState) that existed as byte-identical duplicates in sql/core and connector/connect into the shared sql/api module, deleting the Connect-side copies (100%-similarity renames plus straight deletions) and updating MimaExcludes for the resulting binary-compat exclusions. The nontrivial context is the build-graph reason the move is possible: connector/connect/common/pom.xml already depends on spark-sql-api, so relocating the shared classes there removes the duplication without adding a new dependency edge.'

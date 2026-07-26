@@ -99,13 +99,13 @@ jobs:
           assert n == 1, "pyproject.toml: [project].version not found"
           py.write_text(s, encoding="utf-8")
 
-          cargo = pathlib.Path("diffctx/Cargo.toml")
+          cargo = pathlib.Path("crates/diffctx-native/Cargo.toml")
           s = cargo.read_text(encoding="utf-8")
           s, n = re.subn(r'(?m)^version\s*=\s*"[^"]+"', f'version = "{ver}"', s, count=1)
           assert n == 1, "Cargo.toml: [package].version not found"
           cargo.write_text(s, encoding="utf-8")
 
-          lock = pathlib.Path("diffctx/Cargo.lock")
+          lock = pathlib.Path("Cargo.lock")
           s = lock.read_text(encoding="utf-8")
           s, n = re.subn(
               r'(\[\[package\]\]\nname = "diffctx"\nversion = ")[^"]+',
@@ -121,7 +121,7 @@ jobs:
           echo "pyproject.toml (version line):"
           grep -E '^version\s*=' pyproject.toml
           echo "Cargo.toml (version line):"
-          grep -E '^version\s*=' diffctx/Cargo.toml
+          grep -E '^version\s*=' crates/diffctx-native/Cargo.toml
 
       - name: Commit version bump (locally only, no push yet)
         id: commit_version
@@ -130,7 +130,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/diffctx/version.py pyproject.toml diffctx/Cargo.toml diffctx/Cargo.lock
+          git add src/diffctx/version.py pyproject.toml crates/diffctx-native/Cargo.toml Cargo.lock
           if ! git diff --staged --quiet; then
             git commit -m "Release version ${VERSION}"
           else
@@ -282,7 +282,7 @@ jobs:
 
       - name: Verify sdist contains Rust sources
         run: |
-          tar tzf ./repo/dist/*.tar.gz | grep -E 'diffctx/src/.*\.rs$' | head -5
+          tar tzf ./repo/dist/*.tar.gz | grep -E 'crates/diffctx-native/src/.*\.rs$' | head -5
           echo "OK: sdist contains Rust sources"
 
       - name: Upload sdist artifact
@@ -290,6 +290,108 @@ jobs:
         with:
           name: sdist
           path: ./repo/dist/*.tar.gz
+          retention-days: 1
+
+  build-binaries:
+    name: Build standalone binary (${{ matrix.target }})
+    needs: prepare-version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: tar.gz
+          - runner: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+            archive: tar.gz
+          - runner: macos-14
+            target: aarch64-apple-darwin
+            archive: tar.gz
+          - runner: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: zip
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Download git bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: git-repo-bundle
+
+      - name: Restore repository from bundle
+        shell: bash
+        env:
+          TAG_NAME: ${{ needs.prepare-version.outputs.tag_name }}
+        run: |
+          git clone repo.bundle repo
+          cd repo
+          git checkout "$TAG_NAME"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c  # stable
+        with:
+          toolchain: '1.92.0'
+
+      - name: Build release binary
+        working-directory: ./repo/crates/diffctx-native
+        run: cargo build --release --locked --bin diffctx
+
+      - name: Package binary (tar.gz)
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare-version.outputs.version }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          mkdir -p out
+          cp ./repo/target/release/diffctx out/
+          cp ./repo/LICENSE ./repo/README.md out/
+          tar -czf "diffctx-${VERSION}-${TARGET}.tar.gz" -C out .
+          ls -la ./*.tar.gz
+
+      - name: Package binary (zip)
+        if: matrix.archive == 'zip'
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare-version.outputs.version }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          mkdir -p out
+          cp ./repo/target/release/diffctx.exe out/
+          cp ./repo/LICENSE ./repo/README.md out/
+          7z a "diffctx-${VERSION}-${TARGET}.zip" ./out/*
+          ls -la ./*.zip
+
+      - name: Smoke - binary runs
+        shell: bash
+        working-directory: ./repo
+        run: |
+          BIN=./target/release/diffctx
+          if [ "${RUNNER_OS}" = "Windows" ]; then BIN="${BIN}.exe"; fi
+          "$BIN" --version
+          # Exit 4 is the empty-diff contract, a valid outcome for a release
+          # commit that carries no semantic context; only the output shape is
+          # asserted here.
+          smoke() {
+            set +e
+            "$BIN" . --diff HEAD~1..HEAD --no-content "$@"
+            rc=$?
+            set -e
+            [ "$rc" -eq 0 ] || [ "$rc" -eq 4 ]
+          }
+          smoke > "${RUNNER_TEMP}/smoke.yaml"
+          grep -q '^type: diff_context' "${RUNNER_TEMP}/smoke.yaml"
+          smoke -f json > "${RUNNER_TEMP}/smoke.json"
+          head -c 1 "${RUNNER_TEMP}/smoke.json" | grep -q '{'
+          echo "OK: standalone binary works"
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: binary-${{ matrix.target }}
+          path: |
+            ./*.tar.gz
+            ./*.zip
           retention-days: 1
 
   publish-to-pypi:
@@ -409,12 +511,13 @@ jobs:
 
   finalize-release:
     name: Push Release and Create GitHub Release
-    needs: [prepare-version, build-wheels, build-sdist, publish-to-pypi, smoke-pypi]
+    needs: [prepare-version, build-wheels, build-sdist, build-binaries, publish-to-pypi, smoke-pypi]
     if: |
       always() &&
       needs.prepare-version.result == 'success' &&
       needs.build-wheels.result == 'success' &&
       needs.build-sdist.result == 'success' &&
+      needs.build-binaries.result == 'success' &&
       (needs.publish-to-pypi.result == 'success' ||
        needs.publish-to-pypi.result == 'skipped') &&
       (needs.smoke-pypi.result == 'success' ||
@@ -469,17 +572,18 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
           path: ./artifacts
-          pattern: '@(wheel-*|sdist)'
+          pattern: '@(wheel-*|sdist|binary-*)'
           merge-multiple: true
 
       - name: Collect release assets
         run: |
           mkdir -p release-assets
-          find ./artifacts -type f \( -name '*.whl' -o -name '*.tar.gz' \) -exec cp {} release-assets/ \;
+          find ./artifacts -type f \( -name '*.whl' -o -name '*.tar.gz' -o -name '*.zip' \) \
+            -exec cp {} release-assets/ \;
           ls -la release-assets/
 
       - name: Create GitHub Release with wheel and sdist assets
-        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b  # v2
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228  # v2
         with:
           tag_name: ${{ needs.prepare-version.outputs.tag_name }}
           name: Release ${{ needs.prepare-version.outputs.version }}
@@ -487,3 +591,202 @@ jobs:
           prerelease: false
           generate_release_notes: true
           files: ./release-assets/*
+
+  publish-crate:
+    name: Publish crate to crates.io
+    needs: [prepare-version, finalize-release]
+    if: github.event.inputs.publish_to_pypi == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      # Dispatched, not called as a reusable workflow: the OIDC token of a
+      # reusable workflow carries the CALLER's filename, which crates.io
+      # trusted publishing rejects (it is configured for publish-crate.yml).
+      - name: Dispatch the crate publish workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.prepare-version.outputs.version }}
+          TAG_NAME: ${{ needs.prepare-version.outputs.tag_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh workflow run publish-crate.yml \
+            --repo "$REPO" --ref main \
+            -f version="$VERSION" -f ref="$TAG_NAME"
+
+      - name: Wait for the crate publish workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          sleep 15
+          RUN_ID=$(gh run list --repo "$REPO" --workflow publish-crate.yml \
+            --event workflow_dispatch --limit 1 --json databaseId --jq '.[0].databaseId')
+          echo "Watching run $RUN_ID"
+          gh run watch "$RUN_ID" --repo "$REPO" --exit-status --interval 20
+
+  build-image:
+    name: Build image (${{ matrix.platform }})
+    needs: [prepare-version, finalize-release]
+    if: github.event.inputs.publish_to_pypi == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            platform: linux/amd64
+            slug: amd64
+          - runner: ubuntu-22.04-arm
+            platform: linux/arm64
+            slug: arm64
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/diffctx
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          ref: ${{ needs.prepare-version.outputs.tag_name }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
+
+      - name: Login to ghcr
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0  # v4.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7.3.0
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          build-args: |
+            VERSION=${{ needs.prepare-version.outputs.version }}
+          outputs: >-
+            type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p digests
+          echo -n "" > "digests/${DIGEST#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: image-digest-${{ matrix.slug }}
+          path: digests/*
+          retention-days: 1
+
+  publish-image:
+    name: Publish container image manifest
+    needs: [prepare-version, build-image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          path: ./digests
+          pattern: image-digest-*
+          merge-multiple: true
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
+
+      - name: Login to ghcr
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0  # v4.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push manifest list
+        working-directory: ./digests
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/diffctx
+          VERSION: ${{ needs.prepare-version.outputs.version }}
+        run: |
+          # shellcheck disable=SC2046
+          docker buildx imagetools create \
+            -t "${IMAGE}:${VERSION}" \
+            -t "${IMAGE}:latest" \
+            $(printf "${IMAGE}@sha256:%s " *)
+
+      - name: Smoke - image runs
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/diffctx
+          VERSION: ${{ needs.prepare-version.outputs.version }}
+        run: |
+          docker run --rm "${IMAGE}:${VERSION}" --version
+          mkdir -p smoke && cd smoke
+          git init -q
+          git config user.email "smoke@test.local"
+          git config user.name "Smoke"
+          printf 'def add(a, b):\n    return a + b\n' > util.py
+          git add -A && git commit -q -m "initial"
+          printf 'def add(a, b):\n    return a + b\n\ndef sub(a, b):\n    return a - b\n' > util.py
+          git add -A && git commit -q -m "add sub"
+          docker run --rm -v "$PWD:/repo" "${IMAGE}:${VERSION}" . --diff HEAD~1..HEAD --no-content
+
+  update-packaging-manifests:
+    name: Refresh Scoop manifest and AUR PKGBUILD
+    needs: [prepare-version, finalize-release]
+    if: github.event.inputs.publish_to_pypi == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          ref: main
+          token: ${{ secrets.RELEASE_PUSH_TOKEN }}
+
+      - name: Download binary artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          path: ./release-binaries
+          pattern: binary-*
+          merge-multiple: true
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        with:
+          python-version: '3.12'
+
+      - name: Render manifests
+        env:
+          VERSION: ${{ needs.prepare-version.outputs.version }}
+        run: |
+          python scripts/render_packaging.py \
+            --version "$VERSION" \
+            --assets-dir ./release-binaries \
+            --scoop packaging/scoop/diffctx.json \
+            --pkgbuild packaging/aur/PKGBUILD \
+            --srcinfo packaging/aur/.SRCINFO \
+            --npm-checksums packaging/npm/checksums.json
+
+      - name: Commit and push
+        env:
+          VERSION: ${{ needs.prepare-version.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packaging/scoop/diffctx.json packaging/aur/PKGBUILD \
+            packaging/aur/.SRCINFO packaging/npm/checksums.json
+          if git diff --staged --quiet; then
+            echo "Manifests already current."
+            exit 0
+          fi
+          git commit -m "chore: packaging manifests for ${VERSION}"
+          git pull --rebase origin main
+          git push origin HEAD:main

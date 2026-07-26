@@ -1,0 +1,1195 @@
+From 79184f3aed1f94ca85887d2a1b92b60546fb5ef1 Mon Sep 17 00:00:00 2001
+From: Ferdinand Thiessen <opensource@fthiessen.de>
+Date: Tue, 26 Aug 2025 15:24:46 +0200
+Subject: [PATCH] feat(settings): migrate setup checks to Vue to prevent visual
+ issues
+
+Signed-off-by: Ferdinand Thiessen <opensource@fthiessen.de>
+---
+ apps/settings/css/settings.scss               | 100 -------
+ .../lib/Controller/CheckSetupController.php   |   6 +-
+ apps/settings/lib/Settings/Admin/Overview.php |  12 +
+ apps/settings/src/admin.js                    |  58 ----
+ .../SettingsSetupChecksList.vue               |  49 +++
+ .../SettingsSetupChecksListItem.vue           | 114 +++++++
+ apps/settings/src/main-admin-overview.ts      |  13 +
+ apps/settings/src/settings-types.ts           |  19 ++
+ .../src/views/AdminSettingsSetupChecks.vue    | 132 ++++++++
+ .../templates/settings/admin/overview.php     |  44 +--
+ .../Controller/CheckSetupControllerTest.php   |  54 +---
+ core/js/core.json                             |   1 -
+ core/js/setupchecks.js                        | 125 --------
+ core/js/tests/specs/setupchecksSpec.js        | 281 ------------------
+ webpack.modules.js                            |   1 +
+ 15 files changed, 347 insertions(+), 662 deletions(-)
+ create mode 100644 apps/settings/src/components/SettingsSetupChecks/SettingsSetupChecksList.vue
+ create mode 100644 apps/settings/src/components/SettingsSetupChecks/SettingsSetupChecksListItem.vue
+ create mode 100644 apps/settings/src/main-admin-overview.ts
+ create mode 100644 apps/settings/src/settings-types.ts
+ create mode 100644 apps/settings/src/views/AdminSettingsSetupChecks.vue
+ delete mode 100644 core/js/setupchecks.js
+ delete mode 100644 core/js/tests/specs/setupchecksSpec.js
+
+diff --git a/apps/settings/css/settings.scss b/apps/settings/css/settings.scss
+index 4c8d074e72..c4997a140a 100644
+--- a/apps/settings/css/settings.scss
++++ b/apps/settings/css/settings.scss
+@@ -625,39 +625,6 @@ table.grid td.date {
+ 	margin-top: 20px;
+ }
+ 
+-#security-warning-state-ok,
+-#security-warning-state-warning,
+-#security-warning-state-failure,
+-#security-warning-state-loading {
+-	span {
+-		vertical-align: middle;
+-
+-		&.message {
+-			padding: 12px;
+-		}
+-
+-		&.icon {
+-			width: 32px;
+-			height: 32px;
+-			background-position: center center;
+-			display: inline-block;
+-			border-radius: 50%;
+-		}
+-
+-		&.icon-checkmark-white {
+-			background-color: var(--color-border-success);
+-		}
+-
+-		&.icon-error-white {
+-			background-color: var(--color-warning-text);
+-		}
+-
+-		&.icon-close-white {
+-			background-color: var(--color-border-error);
+-		}
+-	}
+-}
+-
+ #shareAPI {
+ 	&.loading > div {
+ 		display: none;
+@@ -799,73 +766,6 @@ doesnotexist:-o-prefocus, .strengthify-wrapper {
+ 	font-family: Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+ }
+ 
+-#postsetupchecks {
+-	ul {
+-		margin-inline-start: 44px;
+-		list-style: disc;
+-
+-		li {
+-			margin: 10px 0;
+-		}
+-
+-		ul {
+-			list-style: circle;
+-		}
+-	}
+-
+-	.loading {
+-		height: 50px;
+-		background-position: left center;
+-	}
+-
+-	.errors, .errors a {
+-		color: var(--color-text-error);
+-	}
+-
+-	.warnings, .warnings a {
+-		color: var(--color-warning-text);
+-	}
+-
+-	.hint {
+-		margin: 20px 0;
+-	}
+-}
+-
+-#security-warning {
+-	a {
+-		text-decoration: underline;
+-	}
+-
+-	.extra-top-margin {
+-		margin-top: 12px;
+-	}
+-}
+-
+-.security-warning__heading {
+-	display: flex;
+-	flex-wrap: wrap;
+-	margin-bottom: calc(var(--default-grid-baseline) * 8);
+-
+-	> h2 {
+-		margin: 0;
+-		font-size: 20px;
+-		font-weight: bold;
+-	}
+-
+-	> a {
+-		width: 44px;
+-	}
+-}
+-
+-#admin-tips li {
+-	list-style: initial;
+-
+-	a {
+-		display: inline-block;
+-		padding: 3px 0;
+-	}
+-}
+-
+ #warning {
+ 	color: red;
+ }
+diff --git a/apps/settings/lib/Controller/CheckSetupController.php b/apps/settings/lib/Controller/CheckSetupController.php
+index 2a189a37ce..82a46bea4f 100644
+--- a/apps/settings/lib/Controller/CheckSetupController.php
++++ b/apps/settings/lib/Controller/CheckSetupController.php
+@@ -129,10 +129,6 @@ Raw output
+ 	 */
+ 	#[AuthorizedAdminSetting(settings: Overview::class)]
+ 	public function check() {
+-		return new DataResponse(
+-			[
+-				'generic' => $this->setupCheckManager->runAll(),
+-			]
+-		);
++		return new DataResponse($this->setupCheckManager->runAll());
+ 	}
+ }
+diff --git a/apps/settings/lib/Settings/Admin/Overview.php b/apps/settings/lib/Settings/Admin/Overview.php
+index 355200372f..67ef51b7d5 100644
+--- a/apps/settings/lib/Settings/Admin/Overview.php
++++ b/apps/settings/lib/Settings/Admin/Overview.php
+@@ -7,16 +7,21 @@
+ namespace OCA\Settings\Settings\Admin;
+ 
+ use OCP\AppFramework\Http\TemplateResponse;
++use OCP\AppFramework\Services\IInitialState;
+ use OCP\IConfig;
+ use OCP\IL10N;
++use OCP\IURLGenerator;
+ use OCP\ServerVersion;
+ use OCP\Settings\IDelegatedSettings;
++use OCP\Util;
+ 
+ class Overview implements IDelegatedSettings {
+ 	public function __construct(
+ 		private ServerVersion $serverVersion,
+ 		private IConfig $config,
+ 		private IL10N $l,
++		private IInitialState $initialState,
++		private IURLGenerator $urlGenerator,
+ 	) {
+ 	}
+ 
+@@ -24,6 +29,13 @@ class Overview implements IDelegatedSettings {
+ 	 * @return TemplateResponse
+ 	 */
+ 	public function getForm() {
++		Util::addScript('settings', 'vue-settings-admin-overview');
++		$this->initialState->provideInitialState('setup-checks-section', [
++			'sectionDocsUrl' => $this->urlGenerator->linkToDocs('admin-warnings'),
++			'installationGuidesDocsUrl' => $this->urlGenerator->linkToDocs('admin-install'),
++			'loggingSectionUrl' => $this->urlGenerator->linkToRoute('settings.AdminSettings.index', ['section' => 'logging']),
++		]);
++
+ 		$parameters = [
+ 			'checkForWorkingWellKnownSetup' => $this->config->getSystemValue('check_for_working_wellknown_setup', true),
+ 			'version' => $this->serverVersion->getHumanVersion(),
+diff --git a/apps/settings/src/admin.js b/apps/settings/src/admin.js
+index 66848162d2..3c654b74e7 100644
+--- a/apps/settings/src/admin.js
++++ b/apps/settings/src/admin.js
+@@ -92,62 +92,4 @@ window.addEventListener('DOMContentLoaded', () => {
+ 				OC.msg.finishedError('#sendtestmail_msg', error)
+ 			})
+ 	})
+-
+-	const setupChecks = () => {
+-		// run setup checks then gather error messages
+-		$.when(
+-			OC.SetupChecks.checkSetup(),
+-		).then((messages) => {
+-			const $el = $('#postsetupchecks')
+-			$('#security-warning-state-loading').addClass('hidden')
+-
+-			const $errorsEl = $el.find('.errors')
+-			const $warningsEl = $el.find('.warnings')
+-			const $infoEl = $el.find('.info')
+-
+-			for (let i = 0; i < messages.length; i++) {
+-				switch (messages[i].type) {
+-				case OC.SetupChecks.MESSAGE_TYPE_INFO:
+-					$infoEl.append('<li>' + messages[i].msg + '</li>')
+-					break
+-				case OC.SetupChecks.MESSAGE_TYPE_WARNING:
+-					$warningsEl.append('<li>' + messages[i].msg + '</li>')
+-					break
+-				case OC.SetupChecks.MESSAGE_TYPE_ERROR:
+-				default:
+-					$errorsEl.append('<li>' + messages[i].msg + '</li>')
+-				}
+-			}
+-
+-			let hasErrors = false
+-			let hasWarnings = false
+-
+-			if ($errorsEl.find('li').length > 0) {
+-				$errorsEl.removeClass('hidden')
+-				hasErrors = true
+-			}
+-			if ($warningsEl.find('li').length > 0) {
+-				$warningsEl.removeClass('hidden')
+-				hasWarnings = true
+-			}
+-			if ($infoEl.find('li').length > 0) {
+-				$infoEl.removeClass('hidden')
+-			}
+-
+-			if (hasErrors || hasWarnings) {
+-				$('#postsetupchecks-hint').removeClass('hidden')
+-				if (hasErrors) {
+-					$('#security-warning-state-failure').removeClass('hidden')
+-				} else {
+-					$('#security-warning-state-warning').removeClass('hidden')
+-				}
+-			} else {
+-				$('#security-warning-state-ok').removeClass('hidden')
+-			}
+-		})
+-	}
+-
+-	if (document.getElementById('security-warning') !== null) {
+-		setupChecks()
+-	}
+ })
+diff --git a/apps/settings/src/components/SettingsSetupChecks/SettingsSetupChecksList.vue b/apps/settings/src/components/SettingsSetupChecks/SettingsSetupChecksList.vue
+new file mode 100644
+index 0000000000..9fdb8c4695
+--- /dev/null
++++ b/apps/settings/src/components/SettingsSetupChecks/SettingsSetupChecksList.vue
+@@ -0,0 +1,49 @@
++<!--
++ - SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
++ - SPDX-License-Identifier: AGPL-3.0-or-later
++-->
++
++<script setup lang="ts">
++import type { ISetupCheck } from '../../settings-types.ts'
++
++import { t } from '@nextcloud/l10n'
++import { computed } from 'vue'
++import SettingsSetupChecksListItem from './SettingsSetupChecksListItem.vue'
++
++const props = defineProps<{
++	severity: 'info' | 'warning' | 'error'
++	setupChecks: ISetupCheck[]
++}>()
++
++const ariaLabel = computed(() => {
++	if (props.severity === 'error') {
++		return t('settings', 'Setup errors')
++	} else if (props.severity === 'warning') {
++		return t('settings', 'Setup warnings')
++	}
++	return t('settings', 'Setup recommendations')
++})
++
++const shownChecks = computed(() => props.setupChecks.filter(({ severity }) => severity === props.severity))
++</script>
++
++<template>
++	<ul class="settings-setup-checks-list" :aria-label="ariaLabel">
++		<SettingsSetupChecksListItem v-for="(setupCheck, index) in shownChecks"
++			:key="index"
++			class="settings-setup-checks-list__item"
++			:setup-check="setupCheck" />
++	</ul>
++</template>
++
++<style scope lang="scss">
++.settings-setup-checks-list {
++	&:not(:first-of-type) {
++		margin-top: calc(2 * var(--default-grid-baseline));
++	}
++
++	&__item:not(:last-of-type) {
++		margin-bottom: var(--default-grid-baseline);
++	}
++}
++</style>
+diff --git a/apps/settings/src/components/SettingsSetupChecks/SettingsSetupChecksListItem.vue b/apps/settings/src/components/SettingsSetupChecks/SettingsSetupChecksListItem.vue
+new file mode 100644
+index 0000000000..d1b123e00d
+--- /dev/null
++++ b/apps/settings/src/components/SettingsSetupChecks/SettingsSetupChecksListItem.vue
+@@ -0,0 +1,114 @@
++<!--
++ - SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
++ - SPDX-License-Identifier: AGPL-3.0-or-later
++-->
++
++<script setup lang="ts">
++import type { IRichObjectParameters, ISetupCheck } from '../../settings-types.ts'
++
++import { mdiAlert, mdiClose, mdiInformation } from '@mdi/js'
++import { computed } from 'vue'
++import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
++import escapeHTML from 'escape-html'
++
++const props = defineProps<{
++	setupCheck: ISetupCheck
++}>()
++
++const leadingIcon = computed(() => {
++	if (props.setupCheck.severity === 'error') {
++		return mdiClose
++	} else if (props.setupCheck.severity === 'warning') {
++		return mdiAlert
++	}
++	return mdiInformation
++})
++
++const descriptionHtml = computed(() => parseRichObject(props.setupCheck.description, props.setupCheck.descriptionParameters))
++
++/**
++ * Simplified RichObject parsing and replacing.
++ *
++ * @param message - The message that may contain rich objects
++ * @param parameters - The rich object parameters
++ */
++function parseRichObject(message: string, parameters?: IRichObjectParameters): string {
++	if (!parameters) {
++		return message
++	}
++
++	for (const [placeholder, parameter] of Object.entries(parameters)) {
++		let replacement: string
++		if (parameter.type === 'user') {
++			replacement = `@${escapeHTML(parameter.name)}`
++		} else if (parameter.type === 'file') {
++			replacement = escapeHTML(parameter.path || parameter.name)
++		} else if (parameter.type === 'highlight') {
++			if (parameter.link) {
++				replacement = '<a href="' + encodeURI(parameter.link) + '">' + escapeHTML(parameter.name) + '</a>'
++			} else {
++				replacement = '<em>' + escapeHTML(parameter.name) + '</em>'
++			}
++		} else {
++			replacement = escapeHTML(parameter.name)
++		}
++		message = message.replaceAll('{' + placeholder + '}', replacement)
++	}
++
++	return message
++}
++</script>
++
++<template>
++	<li class="settings-setup-checks-item"
++		:class="{
++			[`settings-setup-checks-item--${setupCheck.severity}`]: true,
++		}">
++		<NcIconSvgWrapper class="settings-setup-checks-item__icon" :path="leadingIcon" />
++		<div class="settings-setup-checks-item__wrapper">
++			<div class="settings-setup-checks-item__name">
++				{{ setupCheck.name }}
++			</div>
++			<!-- eslint-disable-next-line vue/no-v-html -->
++			<div class="settings-setup-checks-item__description" v-html="descriptionHtml" />
++		</div>
++	</li>
++</template>
++
++<style scope lang="scss">
++.settings-setup-checks-item {
++	border-radius: var(--border-radius-element);
++	display: flex;
++	align-items: start;
++	flex-direction: row;
++
++	&:hover {
++		background-color: var(--color-background-hover);
++	}
++
++	&__wrapper {
++		display: flex;
++		flex-direction: column;
++		// align with icon
++		padding-top: calc((var(--default-clickable-area) - 1lh) / 2);
++	}
++
++	&__description {
++		color: var(--color-text-maxcontrast);
++	}
++
++	&__icon {
++		border-radius: calc(var(--default-clickable-area) / 2);
++	}
++
++	&--error &__icon {
++		color: var(--color-element-error);
++	}
++	&--warning &__icon {
++		color: var(--color-element-warning);
++	}
++	&--info &__icon {
++		color: var(--color-element-info);
++	}
++}
++</style>
+diff --git a/apps/settings/src/main-admin-overview.ts b/apps/settings/src/main-admin-overview.ts
+new file mode 100644
+index 0000000000..423c7b6dca
+--- /dev/null
++++ b/apps/settings/src/main-admin-overview.ts
+@@ -0,0 +1,13 @@
++/*!
++ * SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
++ * SPDX-License-Identifier: AGPL-3.0-or-later
++ */
++
++import Vue from 'vue'
++import AdminSettingsSetupChecks from './views/AdminSettingsSetupChecks.vue'
++
++export default new Vue({
++	name: 'AdminSettingsSetupChecks',
++	el: '#vue-admin-settings-setup-checks',
++	render: (h) => h(AdminSettingsSetupChecks),
++})
+diff --git a/apps/settings/src/settings-types.ts b/apps/settings/src/settings-types.ts
+new file mode 100644
+index 0000000000..53cb321929
+--- /dev/null
++++ b/apps/settings/src/settings-types.ts
+@@ -0,0 +1,19 @@
++/*!
++ * SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
++ * SPDX-License-Identifier: AGPL-3.0-or-later
++ */
++
++export interface IRichObjectParameter {
++	[index: string]: string
++	type: string
++}
++
++export type IRichObjectParameters = Record<string, IRichObjectParameter>
++
++export interface ISetupCheck {
++	name: string
++	severity: 'success' | 'info' | 'warning' | 'error'
++	description: string
++	descriptionParameters: IRichObjectParameters
++	linkToDoc?: string
++}
+diff --git a/apps/settings/src/views/AdminSettingsSetupChecks.vue b/apps/settings/src/views/AdminSettingsSetupChecks.vue
+new file mode 100644
+index 0000000000..bcae6678d5
+--- /dev/null
++++ b/apps/settings/src/views/AdminSettingsSetupChecks.vue
+@@ -0,0 +1,132 @@
++<!--
++ - SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
++ - SPDX-License-Identifier: AGPL-3.0-or-later
++-->
++
++<script setup lang="ts">
++import type { ISetupCheck } from '../settings-types.ts'
++
++import { mdiCheck, mdiCloseCircleOutline, mdiReload } from '@mdi/js'
++import axios from '@nextcloud/axios'
++import { loadState } from '@nextcloud/initial-state'
++import { t } from '@nextcloud/l10n'
++import { generateUrl } from '@nextcloud/router'
++import { computed, onMounted, ref } from 'vue'
++import NcButton from '@nextcloud/vue/components/NcButton'
++import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
++import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
++import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
++import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
++import SettingsSetupChecksList from '../components/SettingsSetupChecks/SettingsSetupChecksList.vue'
++import logger from '../logger.ts'
++
++const {
++	sectionDocsUrl,
++	installationGuidesDocsUrl,
++	loggingSectionUrl,
++} = loadState<Record<string, string>>('settings', 'setup-checks-section')
++
++const adminDocsHtml = t('settings', 'Please double check the {linkStartInstallationGuides}installation guides{linkEnd}, and check for any errors or warnings in the {linkStartLog}log{linkEnd}.', {
++	linkEnd: ' ↗</a>',
++	linkStartInstallationGuides: `<a target="_blank" rel="noreferrer noopener" href="${installationGuidesDocsUrl}">`,
++	linkStartLog: `<a target="_blank" rel="noreferrer noopener" href="${loggingSectionUrl}">`,
++}, { escape: false })
++
++const footerHtml = t('settings', 'Check the security of your Nextcloud over {linkStart}our security scan{linkEnd}.', { linkStart: '<a target="_blank" rel="noreferrer noopener" href="https://scan.nextcloud.com">', linkEnd: ' ↗</a>' }, { escape: false })
++
++const loading = ref(true)
++const loadingFailed = ref(false)
++const setupChecks = ref<ISetupCheck[]>([])
++
++const allTestsOk = computed(() => setupChecks.value.length === 0)
++const hasErrors = computed(() => setupChecks.value.some(({ severity }) => severity === 'error'))
++const hasWarnings = computed(() => setupChecks.value.some(({ severity }) => severity === 'warning'))
++
++onMounted(loadSetupChecks)
++
++/**
++ * Load the setup checks from API.
++ */
++async function loadSetupChecks() {
++	try {
++		loading.value = true
++		loadingFailed.value = false
++
++		const { data } = await axios.get<Record<string, Record<string, ISetupCheck>>>(generateUrl('settings/ajax/checksetup'))
++		setupChecks.value = Object.values(data)
++			.map((mapping) => Object.values(mapping))
++			.flat()
++			.filter(({ severity }) => severity !== 'success')
++
++	} catch (error) {
++		loadingFailed.value = true
++		logger.error('Failed to load setup checks', { error })
++	} finally {
++		loading.value = false
++	}
++}
++</script>
++
++<template>
++	<NcSettingsSection id="security-warning"
++		:name="t('settings', 'Security & setup warnings')"
++		:description="t('settings', 'It is important for the security and performance of your instance that everything is configured correctly. To help you with that we are doing some automatic checks. Please see the linked documentation for more information.')"
++		:doc-url="sectionDocsUrl">
++		<NcEmptyContent v-if="loading" :name="t('settings', 'Checking your server …')">
++			<template #icon>
++				<NcLoadingIcon />
++			</template>
++		</NcEmptyContent>
++
++		<NcEmptyContent v-else-if="loadingFailed" :name="t('settings', 'Failed to run setup checks')">
++			<template #icon>
++				<NcIconSvgWrapper :path="mdiCloseCircleOutline" />
++			</template>
++			<template #action>
++				<NcButton variant="primary" @click="loadSetupChecks">
++					<template #icon>
++						<NcIconSvgWrapper :path="mdiReload" />
++					</template>
++					{{ t('settings', 'Try again') }}
++				</NcButton>
++			</template>
++		</NcEmptyContent>
++
++		<NcEmptyContent v-else-if="allTestsOk" :name="t('settings', 'All checks passed.')">
++			<template #icon>
++				<NcIconSvgWrapper :path="mdiCheck" />
++			</template>
++		</NcEmptyContent>
++
++		<template v-else>
++			<p v-if="hasErrors || hasWarnings" class="settings-security-warnings__result-hint">
++				{{ hasErrors
++					? t('settings', 'There are some errors regarding your setup.')
++					: t('settings', 'There are some warnings regarding your setup.')
++				}}
++			</p>
++
++			<SettingsSetupChecksList :setup-checks="setupChecks" severity="error" />
++			<SettingsSetupChecksList :setup-checks="setupChecks" severity="warning" />
++			<SettingsSetupChecksList :setup-checks="setupChecks" severity="info" />
++
++			<!-- eslint-disable-next-line vue/no-v-html -->
++			<p class="settings-security-warnings__hint" v-html="adminDocsHtml" />
++		</template>
++
++		<!-- eslint-disable-next-line vue/no-v-html -->
++		<p class="settings-security-warnings__footer" v-html="footerHtml" />
++	</NcSettingsSection>
++</template>
++
++<style scope lang="scss">
++.settings-security-warnings {
++	&__hint {
++		margin-top: calc(2 * var(--default-grid-baseline));
++	}
++
++	&__footer {
++		margin-top: calc(3 * var(--default-grid-baseline));
++	}
++}
++</style>
+diff --git a/apps/settings/templates/settings/admin/overview.php b/apps/settings/templates/settings/admin/overview.php
+index c2758305cf..52b10e9f50 100644
+--- a/apps/settings/templates/settings/admin/overview.php
++++ b/apps/settings/templates/settings/admin/overview.php
+@@ -10,49 +10,7 @@
+ 
+ ?>
+ 
+-<div id="security-warning" class="section">
+-	<div class="security-warning__heading">
+-		<h2><?php p($l->t('Security & setup warnings'));?></h2>
+-		<a 	target="_blank"
+-			rel="noreferrer"
+-			class="icon-info"
+-			title="<?php p($l->t('Open documentation'));?>"
+-			href="<?php p(link_to_docs('admin-warnings')); ?>"
+-			aria-label="<?php p($l->t('Open documentation')); ?>"></a>
+-	</div>
+-	<p class="settings-hint"><?php p($l->t('It\'s important for the security and performance of your instance that everything is configured correctly. To help you with that we are doing some automatic checks. Please see the linked documentation for more information.'));?></p>
+-
+-	<div id="security-warning-state-ok" class="hidden">
+-		<span class="icon icon-checkmark-white"></span><span class="message"><?php p($l->t('All checks passed.'));?></span>
+-	</div>
+-	<div id="security-warning-state-failure" class="hidden">
+-		<span class="icon icon-close-white"></span><span class="message"><?php p($l->t('There are some errors regarding your setup.'));?></span>
+-	</div>
+-	<div id="security-warning-state-warning" class="hidden">
+-		<span class="icon icon-error-white"></span><span class="message"><?php p($l->t('There are some warnings regarding your setup.'));?></span>
+-	</div>
+-	<div id="security-warning-state-loading">
+-		<span class="icon loading"></span><span class="message"><?php p($l->t('Checking for system and security issues.'));?></span>
+-	</div>
+-
+-	<div id="postsetupchecks" data-check-wellknown="<?php if ($_['checkForWorkingWellKnownSetup']) {
+-		p('true');
+-	} else {
+-		p('false');
+-	} ?>">
+-		<ul class="errors hidden"></ul>
+-		<ul class="warnings hidden"></ul>
+-		<ul class="info hidden"></ul>
+-	</div>
+-	<p id="postsetupchecks-hint" class="hidden">
+-		<?php print_unescaped($l->t('Please double check the <a target="_blank" rel="noreferrer noopener" href="%1$s">installation guides ↗</a>, and check for any errors or warnings in the <a href="%2$s">log</a>.', [link_to_docs('admin-install'), \OCP\Server::get(\OCP\IURLGenerator::class)->linkToRoute('settings.AdminSettings.index', ['section' => 'logging'])])); ?>
+-	</p>
+-
+-	<p class="extra-top-margin">
+-		<?php print_unescaped($l->t('Check the security of your Nextcloud over <a target="_blank" rel="noreferrer noopener" href="%s">our security scan ↗</a>.', ['https://scan.nextcloud.com']));?>
+-	</p>
+-
+-</div>
++<div id="vue-admin-settings-setup-checks"></div>
+ 
+ <div id="version" class="section">
+ 	<!-- should be the last part, so Updater can follow if enabled (it has no heading therefore). -->
+diff --git a/apps/settings/tests/Controller/CheckSetupControllerTest.php b/apps/settings/tests/Controller/CheckSetupControllerTest.php
+index a8e8926057..2eaedf5d4f 100644
+--- a/apps/settings/tests/Controller/CheckSetupControllerTest.php
++++ b/apps/settings/tests/Controller/CheckSetupControllerTest.php
+@@ -66,58 +66,14 @@ class CheckSetupControllerTest extends TestCase {
+ 	}
+ 
+ 	public function testCheck(): void {
+-		$this->config->expects($this->any())
+-			->method('getAppValue')
+-			->willReturnMap([
+-				['files_external', 'user_certificate_scan', '', '["a", "b"]'],
+-				['dav', 'needs_system_address_book_sync', 'no', 'no'],
+-			]);
+-		$this->config->expects($this->any())
+-			->method('getSystemValue')
+-			->willReturnMap([
+-				['connectivity_check_domains', ['www.nextcloud.com', 'www.startpage.com', 'www.eff.org', 'www.edri.org'], ['www.nextcloud.com', 'www.startpage.com', 'www.eff.org', 'www.edri.org']],
+-				['memcache.local', null, 'SomeProvider'],
+-				['has_internet_connection', true, true],
+-				['appstoreenabled', true, false],
+-			]);
+-
+-		$this->request->expects($this->never())
+-			->method('getHeader');
+-
+-		$this->urlGenerator->method('linkToDocs')
+-			->willReturnCallback(function (string $key): string {
+-				if ($key === 'admin-performance') {
+-					return 'http://docs.example.org/server/go.php?to=admin-performance';
+-				}
+-				if ($key === 'admin-security') {
+-					return 'https://docs.example.org/server/8.1/admin_manual/configuration_server/hardening.html';
+-				}
+-				if ($key === 'admin-reverse-proxy') {
+-					return 'reverse-proxy-doc-link';
+-				}
+-				if ($key === 'admin-code-integrity') {
+-					return 'http://docs.example.org/server/go.php?to=admin-code-integrity';
+-				}
+-				if ($key === 'admin-db-conversion') {
+-					return 'http://docs.example.org/server/go.php?to=admin-db-conversion';
+-				}
+-				return '';
+-			});
+-
+-		$this->urlGenerator->method('getAbsoluteURL')
+-			->willReturnCallback(function (string $url): string {
+-				if ($url === 'index.php/settings/admin') {
+-					return 'https://server/index.php/settings/admin';
+-				}
+-				if ($url === 'index.php') {
+-					return 'https://server/index.php';
+-				}
+-				return '';
+-			});
++		$this->setupCheckManager->expects(self::once())
++			->method('runAll')
++			->willReturn(['category' => [], 'other' => []]);
+ 
+ 		$expected = new DataResponse(
+ 			[
+-				'generic' => [],
++				'category' => [],
++				'other' => [],
+ 			]
+ 		);
+ 		$this->assertEquals($expected, $this->checkSetupController->check());
+diff --git a/core/js/core.json b/core/js/core.json
+index 457656fdd0..d4bc74aeb9 100644
+--- a/core/js/core.json
++++ b/core/js/core.json
+@@ -3,7 +3,6 @@
+ 		"core-common.js"
+ 	],
+ 	"modules": [
+-		"../core/js/setupchecks.js",
+ 		"../core/js/mimetype.js",
+ 		"../core/js/mimetypelist.js"
+ 	]
+diff --git a/core/js/setupchecks.js b/core/js/setupchecks.js
+deleted file mode 100644
+index fc4d4ff696..0000000000
+--- a/core/js/setupchecks.js
++++ /dev/null
+@@ -1,125 +0,0 @@
+-/**
+- * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+- * SPDX-FileCopyrightText: 2014-2016 ownCloud Inc.
+- * SPDX-License-Identifier: AGPL-3.0-or-later
+- */
+-
+-(function() {
+-	OC.SetupChecks = {
+-
+-		/* Message types */
+-		MESSAGE_TYPE_INFO:0,
+-		MESSAGE_TYPE_WARNING:1,
+-		MESSAGE_TYPE_ERROR:2,
+-
+-		/**
+-		 * Runs setup checks on the server side
+-		 *
+-		 * @return $.Deferred object resolved with an array of error messages
+-		 */
+-		checkSetup: function() {
+-			var deferred = $.Deferred();
+-			var afterCall = function(data, statusText, xhr) {
+-				var messages = [];
+-				if (xhr.status === 200 && data) {
+-					if (Object.keys(data.generic).length > 0) {
+-						Object.keys(data.generic).forEach(function(key){
+-							Object.keys(data.generic[key]).forEach(function(title){
+-								if (data.generic[key][title].severity != 'success') {
+-									data.generic[key][title].pass = false;
+-									OC.SetupChecks.addGenericSetupCheck(data.generic[key], title, messages);
+-								}
+-							});
+-						});
+-					}
+-				} else {
+-					messages.push({
+-						msg: t('core', 'Error occurred while checking server setup'),
+-						type: OC.SetupChecks.MESSAGE_TYPE_ERROR
+-					});
+-				}
+-				deferred.resolve(messages);
+-			};
+-
+-			$.ajax({
+-				type: 'GET',
+-				url: OC.generateUrl('settings/ajax/checksetup'),
+-				allowAuthErrors: true
+-			}).then(afterCall, afterCall);
+-			return deferred.promise();
+-		},
+-
+-		escapeHTML: function(text) {
+-			return text.toString()
+-				.split('&').join('&amp;')
+-				.split('<').join('&lt;')
+-				.split('>').join('&gt;')
+-				.split('"').join('&quot;')
+-				.split('\'').join('&#039;')
+-		},
+-
+-		/**
+-		* @param message      The message string containing placeholders.
+-		* @param parameters   An object with keys as placeholders and values as their replacements.
+-		*
+-		* @return The message with placeholders replaced by values.
+-		*/
+-		richToParsed: function (message, parameters) {
+-			for (var [placeholder, parameter] of Object.entries(parameters)) {
+-				var replacement;
+-				if (parameter.type === 'user') {
+-					replacement = '@' + this.escapeHTML(parameter.name);
+-				} else if (parameter.type === 'file') {
+-					replacement = this.escapeHTML(parameter.path) || this.escapeHTML(parameter.name);
+-				} else if (parameter.type === 'highlight') {
+-					replacement = '<a href="' + encodeURI(parameter.link) + '">' + this.escapeHTML(parameter.name) + '</a>';
+-				} else {
+-					replacement = this.escapeHTML(parameter.name);
+-				}
+-				message = message.replace('{' + placeholder + '}', replacement);
+-			}
+-
+-			return message;
+-		},
+-
+-		addGenericSetupCheck: function(data, check, messages) {
+-			var setupCheck = data[check] || { pass: true, description: '', severity: 'info', linkToDoc: null}
+-
+-			var type = OC.SetupChecks.MESSAGE_TYPE_INFO
+-			if (setupCheck.severity === 'warning') {
+-				type = OC.SetupChecks.MESSAGE_TYPE_WARNING
+-			} else if (setupCheck.severity === 'error') {
+-				type = OC.SetupChecks.MESSAGE_TYPE_ERROR
+-			}
+-
+-			var message = setupCheck.description;
+-			if (message) {
+-				message = this.escapeHTML(message)
+-			}
+-			if (setupCheck.descriptionParameters) {
+-				message = this.richToParsed(message, setupCheck.descriptionParameters);
+-			}
+-			if (setupCheck.linkToDoc) {
+-				message += ' ' + t('core', 'For more details see the {linkstart}documentation ↗{linkend}.')
+-					.replace('{linkstart}', '<a target="_blank" rel="noreferrer noopener" class="external" href="' + setupCheck.linkToDoc + '">')
+-					.replace('{linkend}', '</a>');
+-			}
+-			if (setupCheck.elements) {
+-				message += '<br><ul>'
+-				setupCheck.elements.forEach(function(element){
+-					message += '<li>';
+-					message += element
+-					message += '</li>';
+-				});
+-				message += '</ul>'
+-			}
+-
+-			if (!setupCheck.pass) {
+-				messages.push({
+-					msg: message,
+-					type: type,
+-				})
+-			}
+-		},
+-	};
+-})();
+diff --git a/core/js/tests/specs/setupchecksSpec.js b/core/js/tests/specs/setupchecksSpec.js
+deleted file mode 100644
+index 9f75ad501d..0000000000
+--- a/core/js/tests/specs/setupchecksSpec.js
++++ /dev/null
+@@ -1,281 +0,0 @@
+-/**
+- * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+- * SPDX-FileCopyrightText: 2015 ownCloud Inc.
+- * SPDX-License-Identifier: AGPL-3.0-or-later
+- */
+-
+-describe('OC.SetupChecks tests', function() {
+-	var suite = this;
+-	var protocolStub;
+-
+-	beforeEach( function(){
+-		protocolStub = sinon.stub(OC, 'getProtocol');
+-		suite.server = sinon.fakeServer.create();
+-	});
+-
+-	afterEach( function(){
+-		suite.server.restore();
+-		protocolStub.restore();
+-	});
+-
+-	describe('checkSetup', function() {
+-		it('should return an error if server has no internet connection', function(done) {
+-			var async = OC.SetupChecks.checkSetup();
+-
+-			suite.server.requests[0].respond(
+-				200,
+-				{
+-					'Content-Type': 'application/json'
+-				},
+-				JSON.stringify({
+-					generic: {
+-						network: {
+-							"Internet connectivity": {
+-								severity: "warning",
+-								description: 'This server has no working internet connection: Multiple endpoints could not be reached. This means that some of the features like mounting external storage, notifications about updates or installation of third-party apps will not work. Accessing files remotely and sending of notification emails might not work, either. Establish a connection from this server to the internet to enjoy all features.',
+-								linkToDoc: null
+-							}
+-						},
+-					},
+-				})
+-			);
+-
+-			async.done(function( data, s, x ){
+-				expect(data).toEqual([
+-					{
+-						msg: 'This server has no working internet connection: Multiple endpoints could not be reached. This means that some of the features like mounting external storage, notifications about updates or installation of third-party apps will not work. Accessing files remotely and sending of notification emails might not work, either. Establish a connection from this server to the internet to enjoy all features.',
+-						type: OC.SetupChecks.MESSAGE_TYPE_WARNING
+-					},
+-				]);
+-				done();
+-			});
+-		});
+-
+-		it('should return an error if server has no internet connection and data directory is not protected', function(done) {
+-			var async = OC.SetupChecks.checkSetup();
+-
+-			suite.server.requests[0].respond(
+-				200,
+-				{
+-					'Content-Type': 'application/json'
+-				},
+-				JSON.stringify({
+-					generic: {
+-						network: {
+-							"Internet connectivity": {
+-								severity: "warning",
+-								description: 'This server has no working internet connection: Multiple endpoints could not be reached. This means that some of the features like mounting external storage, notifications about updates or installation of third-party apps will not work. Accessing files remotely and sending of notification emails might not work, either. Establish a connection from this server to the internet to enjoy all features.',
+-								linkToDoc: null
+-							}
+-						},
+-					},
+-				})
+-			);
+-
+-			async.done(function( data, s, x ){
+-				expect(data).toEqual([
+-					{
+-						msg: 'This server has no working internet connection: Multiple endpoints could not be reached. This means that some of the features like mounting external storage, notifications about updates or installation of third-party apps will not work. Accessing files remotely and sending of notification emails might not work, either. Establish a connection from this server to the internet to enjoy all features.',
+-						type: OC.SetupChecks.MESSAGE_TYPE_WARNING
+-					},
+-				]);
+-				done();
+-			});
+-		});
+-
+-		it('should return an error if server has no internet connection and data directory is not protected and memcache is available', function(done) {
+-			var async = OC.SetupChecks.checkSetup();
+-
+-			suite.server.requests[0].respond(
+-				200,
+-				{
+-					'Content-Type': 'application/json',
+-				},
+-				JSON.stringify({
+-					generic: {
+-						network: {
+-							"Internet connectivity": {
+-								severity: "warning",
+-								description: 'This server has no working internet connection: Multiple endpoints could not be reached. This means that some of the features like mounting external storage, notifications about updates or installation of third-party apps will not work. Accessing files remotely and sending of notification emails might not work, either. Establish a connection from this server to the internet to enjoy all features.',
+-								linkToDoc: null
+-							}
+-						},
+-					},
+-				})
+-			);
+-
+-			async.done(function( data, s, x ){
+-				expect(data).toEqual([
+-				{
+-					msg: 'This server has no working internet connection: Multiple endpoints could not be reached. This means that some of the features like mounting external storage, notifications about updates or installation of third-party apps will not work. Accessing files remotely and sending of notification emails might not work, either. Establish a connection from this server to the internet to enjoy all features.',
+-					type: OC.SetupChecks.MESSAGE_TYPE_WARNING
+-				}
+-				]);
+-				done();
+-			});
+-		});
+-
+-		it('should return a warning if the memory limit is below the recommended value', function(done) {
+-			var async = OC.SetupChecks.checkSetup();
+-
+-			suite.server.requests[0].respond(
+-				200,
+-				{
+-					'Content-Type': 'application/json',
+-				},
+-				JSON.stringify({
+-					generic: {
+-						network: {
+-							"Internet connectivity": {
+-								severity: "success",
+-								description: null,
+-								linkToDoc: null
+-							}
+-						},
+-						php: {
+-							"Internet connectivity": {
+-								severity: "success",
+-								description: null,
+-								linkToDoc: null
+-							},
+-							"PHP memory limit": {
+-								severity: "error",
+-								description: "The PHP memory limit is below the recommended value of 512MB.",
+-								linkToDoc: null
+-							},
+-						},
+-					},
+-				})
+-			);
+-
+-			async.done(function( data, s, x ){
+-				expect(data).toEqual([{
+-					msg: 'The PHP memory limit is below the recommended value of 512MB.',
+-					type: OC.SetupChecks.MESSAGE_TYPE_ERROR
+-				}]);
+-				done();
+-			});
+-		});
+-
+-		it('should return an error if the response has no statuscode 200', function(done) {
+-			var async = OC.SetupChecks.checkSetup();
+-
+-			suite.server.requests[0].respond(
+-				500,
+-				{
+-					'Content-Type': 'application/json'
+-				},
+-				JSON.stringify({data: {serverHasInternetConnectionProblems: true}})
+-			);
+-
+-			async.done(function( data, s, x ){
+-				expect(data).toEqual([{
+-					msg: 'Error occurred while checking server setup',
+-					type: OC.SetupChecks.MESSAGE_TYPE_ERROR
+-				}]);
+-				done();
+-			});
+-		});
+-
+-		it('should return an error if the php version is no longer supported', function(done) {
+-			var async = OC.SetupChecks.checkSetup();
+-
+-			suite.server.requests[0].respond(
+-				200,
+-				{
+-					'Content-Type': 'application/json',
+-				},
+-				JSON.stringify({
+-					generic: {
+-						network: {
+-							"Internet connectivity": {
+-								severity: "success",
+-								description: null,
+-								linkToDoc: null
+-							}
+-						},
+-						security: {
+-							"Checking for PHP version": {
+-								severity: "warning",
+-								description: "You are currently running PHP 8.0.30. PHP 8.0 is now deprecated in Nextcloud 27. Nextcloud 28 may require at least PHP 8.1. Please upgrade to one of the officially supported PHP versions provided by the PHP Group as soon as possible.",
+-								linkToDoc: "https://secure.php.net/supported-versions.php"
+-							}
+-						},
+-					},
+-				})
+-			);
+-
+-			async.done(function( data, s, x ){
+-				expect(data).toEqual([{
+-					msg: 'You are currently running PHP 8.0.30. PHP 8.0 is now deprecated in Nextcloud 27. Nextcloud 28 may require at least PHP 8.1. Please upgrade to one of the officially supported PHP versions provided by the PHP Group as soon as possible. For more details see the <a target="_blank" rel="noreferrer noopener" class="external" href="https://secure.php.net/supported-versions.php">documentation ↗</a>.',
+-					type: OC.SetupChecks.MESSAGE_TYPE_WARNING
+-				}]);
+-				done();
+-			});
+-		});
+-
+-		it('should not return an error if the protocol is http and the server generates http links', function(done) {
+-			var async = OC.SetupChecks.checkSetup();
+-
+-			suite.server.requests[0].respond(
+-				200,
+-				{
+-					'Content-Type': 'application/json',
+-				},
+-				JSON.stringify({
+-					generic: {
+-						network: {
+-							"Internet connectivity": {
+-								severity: "success",
+-								description: null,
+-								linkToDoc: null
+-							}
+-						},
+-					},
+-				})
+-			);
+-
+-			async.done(function( data, s, x ){
+-				expect(data).toEqual([]);
+-				done();
+-			});
+-		});
+-
+-		it('should return an info if there is no default phone region', function(done) {
+-			var async = OC.SetupChecks.checkSetup();
+-
+-			suite.server.requests[0].respond(
+-				200,
+-				{
+-					'Content-Type': 'application/json',
+-				},
+-				JSON.stringify({
+-					generic: {
+-						network: {
+-							"Internet connectivity": {
+-								severity: "success",
+-								description: null,
+-								linkToDoc: null
+-							}
+-						},
+-						config: {
+-							"Checking for default phone region": {
+-								severity: "info",
+-								description: "Your installation has no default phone region set. This is required to validate phone numbers in the profile settings without a country code. To allow numbers without a country code, please add \"default_phone_region\" with the respective ISO 3166-1 code of the region to your config file.",
+-								linkToDoc: "https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2#Officially_assigned_code_elements"
+-							},
+-						},
+-					},
+-				})
+-			);
+-
+-			async.done(function( data, s, x ){
+-				expect(data).toEqual([{
+-					msg: 'Your installation has no default phone region set. This is required to validate phone numbers in the profile settings without a country code. To allow numbers without a country code, please add &quot;default_phone_region&quot; with the respective ISO 3166-1 code of the region to your config file. For more details see the <a target="_blank" rel="noreferrer noopener" class="external" href="https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2#Officially_assigned_code_elements">documentation ↗</a>.',
+-					type: OC.SetupChecks.MESSAGE_TYPE_INFO
+-				}]);
+-				done();
+-			});
+-		});
+-	});
+-});
+diff --git a/webpack.modules.js b/webpack.modules.js
+index 35e191e34d..c57cda6aad 100644
+--- a/webpack.modules.js
++++ b/webpack.modules.js
+@@ -82,6 +82,7 @@ module.exports = {
+ 	settings: {
+ 		apps: path.join(__dirname, 'apps/settings/src', 'apps.js'),
+ 		'legacy-admin': path.join(__dirname, 'apps/settings/src', 'admin.js'),
++		'vue-settings-admin-overview': path.join(__dirname, 'apps/settings/src', 'main-admin-overview.ts'),
+ 		'vue-settings-admin-basic-settings': path.join(__dirname, 'apps/settings/src', 'main-admin-basic-settings.js'),
+ 		'vue-settings-admin-ai': path.join(__dirname, 'apps/settings/src', 'main-admin-ai.js'),
+ 		'vue-settings-admin-delegation': path.join(__dirname, 'apps/settings/src', 'main-admin-delegation.js'),

@@ -1,0 +1,99 @@
+repo: plausible
+base_commit: 592dc8ed97409eaf6fb6613ff544e955f8cedfa1
+commit: a07aaa67eb4a81aa0b83d5737dc4a19d8e61bba7
+patch_stored: true
+gold:
+  - path: lib/plausible/teams.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds force_2fa_enabled?/1, enable_force_2fa/2 (emails non-enabling members) and disable_force_2fa/3 (password-gated), plus set_force_2fa/2 which writes the policy change through Repo.update_with_audit/3 — the core service logic of the feature.
+  - path: lib/plausible/teams/policy.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds the force_2fa boolean field, force_2fa_changeset/2, and includes :force_2fa in the Audit.Encoder @derive list so audit entries capture the flag.
+  - path: lib/plausible/teams/team.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: un-gates "embeds_one :policy, Plausible.Teams.Policy" from on_ee so Community Edition teams also get a policy embed, needed since force_2fa must work on CE too (per the commit's "Make team policy available to CE too").
+  - path: lib/plausible_web/plugs/require_account.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds maybe_force_2fa/1 and must_enable_2fa?/2, the actual enforcement gate that redirects any authenticated user without TOTP enabled to force_initiate_2fa_setup when their team's policy requires it.
+  - path: lib/plausible_web/controllers/settings_controller.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds enable_team_force_2fa/2 and disable_team_force_2fa/2 actions, restricted to [:owner] via the AuthorizeTeamAccess plug list.
+  - path: lib/plausible_web/controllers/auth_controller.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds force_initiate_2fa_setup/2 (the interstitial redirect target) and threads a forced? assign into initiate_2fa_setup/2 so the setup page can explain why the user landed there.
+  - path: lib/plausible_web/router.ex
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: registers the force-initiate 2FA route and the two settings routes (enable/disable team force_2fa) that the controllers and require_account.ex's redirect target depend on.
+  - path: lib/plausible_web/templates/settings/team_general.html.heex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds the owner-only "Force Two-Factor Authentication" tile with enable/disable forms (the disable path behind a password-confirmation modal), the primary UI for the feature.
+  - path: lib/plausible_web/templates/auth/force_initiate_2fa_setup.html.heex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new interstitial page that auto-submits a form to initiate_2fa_setup after 3 seconds, the page require_account.ex's maybe_force_2fa/1 redirects to.
+  - path: lib/plausible_web/templates/auth/initiate_2fa_setup.html.heex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds a forced?-conditional notice explaining the team-enforced redirect, and hides the "changed your mind" footer link when forced, so the user can't skip setup.
+  - path: lib/plausible/teams/memberships.ex
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: all/2 gains an exclude_guests? option, used by Teams.enable_force_2fa/2 to only email real team members (not guests, who aren't affected by the policy).
+  - path: lib/plausible_web/email.ex
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: adds force_2fa_enabled/3, the mailer function Teams.enable_force_2fa/2 calls for every affected member.
+  - path: test/plausible_web/plugs/require_account_plug_test.exs
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: new test file exercising RequireAccountPlug directly — enforcement redirect, the path-exception allowlist, and precedence over the unverified-account redirect.
+  - path: lib/plausible/audit/repo.ex
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: defines update_with_audit/3, called by Teams.set_force_2fa/2 to persist the policy change and write an audit entry named "force_2fa_enabled"/"force_2fa_disabled", the mechanism the audit-log tests assert against.
+forbidden:
+  - path: lib/plausible/auth/totp.ex
+    reason: TOTP.enabled?/1 is called from require_account.ex's must_enable_2fa?/2, but the TOTP module itself is untouched and its check is self-evident from the call site.
+  - path: lib/plausible_web/components/two_factor.ex
+    reason: TwoFactor.modal/1 is used by the new disable-2FA confirmation dialog in team_general.html.heex, but the component itself is a pre-existing generic modal, unmodified here.
+  - path: lib/plausible/teams/memberships/leave.ex
+    reason: sibling service module in the same teams/memberships context, similarly touches team membership enumeration, but unrelated to 2FA enforcement.
+  - path: lib/plausible_web/plugs/authorize_team_access.ex
+    reason: the plug enforcing [:owner] on the new settings actions, named in the diff's plug list, but its implementation is unchanged and not needed beyond what the plug arguments already convey.
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: >-
+  Adds a team-wide "force 2FA" policy: owners can require all members to
+  enable TOTP, which RequireAccountPlug enforces on every request (except a
+  small allowlist of 2FA-setup/team-select paths) by redirecting
+  non-compliant users to an auto-submitting interstitial, then to the normal
+  2FA setup flow with an explanatory notice. Enabling notifies all non-guest
+  members by email (except the enabler); disabling requires the owner's
+  password and is itself audit-logged. The Team.policy embed is un-gated
+  from EE-only so CE also gets it. string_indirection is true because
+  RequireAccountPlug's exception list matches raw conn.path_info segment
+  lists rather than named route references.

@@ -1,0 +1,64 @@
+repo: home-assistant
+base_commit: 411c2111e5f49320a8f30cfcc9206234ad6c6f55
+commit: 21e51b83d3ae7bd7d8ddac9e4d4ba04002f0f138
+patch_stored: true
+gold:
+  - path: homeassistant/components/google_health/__init__.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Entry-point setup/unload logic — defines GoogleHealthData, the GoogleHealthConfigEntry alias, and wires OAuth session + coordinators that the rest of the integration depends on.
+  - path: homeassistant/components/google_health/coordinator.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines GoogleHealthDataUpdateCoordinator/GoogleHealthActivityCoordinator/GoogleHealthBodyCoordinator that __init__.py instantiates and sensor.py subscribes to.
+  - path: homeassistant/components/google_health/config_flow.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines OAuth2FlowHandler, the config-flow entry point that creates the config entry consumed by __init__.py.
+  - path: homeassistant/components/google_health/sensor.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines GoogleHealthSensor/GoogleHealthSensorEntityDescription and ACTIVITY_SENSORS/BODY_SENSORS that turn coordinator data into entities — the user-visible payoff of the integration.
+  - path: homeassistant/components/google_health/manifest.json
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Declares domain, dependencies (application_credentials, http, webhook), iot_class and the google-health-api requirement that all other modules assume.
+  - path: homeassistant/helpers/config_entry_oauth2_flow.py
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines AbstractOAuth2FlowHandler, OAuth2Session, async_get_config_entry_implementation and ImplementationUnavailableError, the base OAuth machinery config_flow.py and __init__.py build on top of.
+  - path: homeassistant/helpers/update_coordinator.py
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Defines the DataUpdateCoordinator[_DataT] base class that GoogleHealthDataUpdateCoordinator subclasses for polling/error semantics.
+  - path: tests/components/google_health/test_init.py
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Exercises async_setup_entry's scope-gated coordinator creation (activity vs body) and auth-failure/communication-error paths, documenting the intended runtime behavior.
+forbidden:
+  - path: homeassistant/components/google_photos/__init__.py
+    reason: another Google OAuth2 cloud_polling integration with a similar shape, but not referenced by or required to understand google_health
+  - path: homeassistant/components/google_drive/__init__.py
+    reason: sibling Google OAuth2 integration (similarly named, same brand family) but unrelated code path
+  - path: homeassistant/components/google_mail/manifest.json
+    reason: adjacent CODEOWNERS/manifest entry touched only incidentally by alphabetical sorting nearby, not by dependency
+  - path: homeassistant/generated/integrations.json
+    reason: mechanically regenerated hassfest catalog entry — reflects the new integration but explains nothing about its logic
+nontrivial_gold_count: 2
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 31
+  description: 'New integration added whole: components/google_health/ + tests + requirements_all.txt
+    + .coveragerc/hassfest churn; must not pull neighbor integrations'
+notes: 'Whole-new-integration commit: google_health/ wires an OAuth2 config flow, two DataUpdateCoordinator subclasses, and sensor entities on top of the shared helpers/config_entry_oauth2_flow.py and helpers/update_coordinator.py base classes. string_indirection is true because DOMAIN="google_health" ties manifest.json, generated/config_flows.py, generated/integrations.json, brands/google.json and CODEOWNERS together purely by string key, and Platform/entity wiring goes through platform-name-string dispatch (entity_platform loading sensor.py by domain+platform string).'

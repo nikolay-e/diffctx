@@ -1,0 +1,87 @@
+repo: gitlab-foss
+base_commit: 4d2d812463256003ab943df90a9c603821078a69
+commit: 85609c117e2b96a786204069669c66d36d971733
+patch_stored: true
+gold:
+  - path: app/models/concerns/has_variable.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Defines the `enum variable_type: { env_var: 1, file: 2 }` shared by all four CI variable models, and updates `to_runner_variable` to include `file: file?` — the core of the feature."
+  - path: db/migrate/20190415030217_add_variable_type_to_ci_variables.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds the `variable_type` smallint column (default env_var=1) to `ci_variables`; representative of four near-identical migrations doing the same for ci_group_variables, ci_pipeline_variables, and ci_pipeline_schedule_variables.
+  - path: db/schema.rb
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Checked-in schema confirms all four `variable_type` columns landed on ci_variables, ci_group_variables, ci_pipeline_variables, and ci_pipeline_schedule_variables.
+  - path: app/helpers/ci_variables_helper.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds `ci_variable_type_options`, returning `[['Variable','env_var'],['File','file']]`, the string values that must exactly match `HasVariable`'s enum keys and are consumed by the new `<select>` in `_variable_row.html.haml`.
+  - path: app/views/ci/variables/_variable_row.html.haml
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds the `%select.js-ci-variable-input-variable-type` populated via `ci_variable_type_options`, the UI control for choosing env_var vs file.
+  - path: app/assets/javascripts/ci_variable_list/ci_variable_list.js
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: "Registers `variable_type` (selector `.js-ci-variable-input-variable-type`, default `'env_var'`) in the client-side row-input map, so the new select is read/serialized like the other variable fields."
+  - path: lib/api/entities.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: '`Variable` Grape entity adds `variable_type` to `expose`, the single point controlling API JSON output for all variable endpoints exercised by the spec changes.'
+  - path: app/controllers/projects/variables_controller.rb
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: Adds `variable_type` to the permitted strong-params list; representative of the same one-line change repeated in groups/variables_controller.rb, projects/pipelines_controller.rb, and projects/pipeline_schedules_controller.rb.
+  - path: lib/api/variables.rb
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: 'Accepts `optional :variable_type, ..., values: Ci::Variable.variable_types.keys` on create/update; representative of the same pattern in lib/api/group_variables.rb and lib/api/pipeline_schedules.rb.'
+  - path: spec/support/shared_examples/models/ci_variable_shared_examples.rb
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: New shared example `'CI variable'` (included by all four model specs) directly asserting `variable_types == { "env_var" => 1, "file" => 2 }`, the env_var default, `file?` behavior, and that `to_runner_variable` includes `:file`.
+  - path: app/models/concerns/maskable.rb
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: "Also defines `to_runner_variable` (`super.merge(masked: masked?)`) and is included after `HasVariable` in Ci::Variable/Ci::GroupVariable; its `super` call is what lets the new `file:` key from HasVariable survive the override chain instead of being clobbered — untouched by this commit but essential to verifying the new key actually reaches the runner payload."
+forbidden:
+  - path: app/models/ci/variable.rb
+    reason: just `include HasVariable` plus unrelated validations, not modified by this commit and adds no information beyond the include statement already implied by the concern
+  - path: lib/gitlab/ci/variables/collection/item.rb
+    reason: a different, unrelated `to_runner_variable` wrapper in the CI variable resolution pipeline, several layers downstream of the model change
+  - path: app/presenters/ci/build_presenter.rb
+    reason: calls `.map(&:to_runner_variable)` but is generic presentation plumbing untouched by and not needed to understand the type-column addition
+  - path: changelogs/unreleased/46806-typed-ci-variables.yml
+    reason: boilerplate changelog entry restating the commit subject
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 37
+  description: CI variables of type file — migration+schema+models+controllers+views+JS
+notes: >
+  Adds a `variable_type` enum (env_var/file) to all four CI variable models via the
+  shared `HasVariable` concern, exposed end-to-end: four identical migrations + schema,
+  a helper/view select control, JS row-input wiring, strong-params updates across four
+  controllers, and API entity/param changes across three endpoints. string_indirection
+  is true because the UI select's string option values ('env_var'/'file') from
+  `ci_variables_helper.rb` must match the `HasVariable` enum keys by name, not by static
+  reference. Gold includes the out-of-diff `Maskable#to_runner_variable`, whose `super`
+  chaining is what lets the new `file:` key survive the module include order in
+  Ci::Variable/Ci::GroupVariable.

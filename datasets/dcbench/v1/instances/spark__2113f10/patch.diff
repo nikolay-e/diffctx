@@ -1,0 +1,462 @@
+From 2113f109b8d73cb8deb404664f25bd51308ca809 Mon Sep 17 00:00:00 2001
+From: panbingkun <panbingkun@baidu.com>
+Date: Mon, 16 Sep 2024 16:33:44 +0800
+Subject: [PATCH] [SPARK-49611][SQL] Introduce TVF `collations()` & remove the
+ `SHOW COLLATIONS` command
+
+### What changes were proposed in this pull request?
+The pr aims to
+- introduce `TVF` `collations()`.
+- remove the `SHOW COLLATIONS` command.
+
+### Why are the changes needed?
+Based on cloud-fan's suggestion: https://github.com/apache/spark/pull/47364#issuecomment-2345183501
+I believe that after this, we can do many things based on it, such as `filtering` and `querying` based on `LANGUAGE` or `COUNTRY`, etc. eg:
+```sql
+SELECT * FROM collations() WHERE LANGUAGE like '%Chinese%';
+```
+
+### Does this PR introduce _any_ user-facing change?
+Yes, provide a new TVF `collations()` for end-users.
+
+### How was this patch tested?
+- Add new UT.
+- Pass GA.
+
+### Was this patch authored or co-authored using generative AI tooling?
+No.
+
+Closes #48087 from panbingkun/SPARK-49611.
+
+Lead-authored-by: panbingkun <panbingkun@baidu.com>
+Co-authored-by: panbingkun <pbk1982@gmail.com>
+Signed-off-by: Wenchen Fan <wenchen@databricks.com>
+---
+ docs/sql-ref-ansi-compliance.md               |  1 -
+ .../spark/sql/catalyst/parser/SqlBaseLexer.g4 |  1 -
+ .../sql/catalyst/parser/SqlBaseParser.g4      |  2 -
+ .../catalyst/analysis/FunctionRegistry.scala  |  1 +
+ .../sql/catalyst/catalog/SessionCatalog.scala | 15 +---
+ .../sql/catalyst/expressions/generators.scala | 44 ++++++++++-
+ .../ansi-sql-2016-reserved-keywords.txt       |  1 -
+ .../spark/sql/execution/SparkSqlParser.scala  | 12 ---
+ .../command/ShowCollationsCommand.scala       | 62 ---------------
+ .../sql-tests/results/ansi/keywords.sql.out   |  2 -
+ .../sql-tests/results/keywords.sql.out        |  1 -
+ .../org/apache/spark/sql/CollationSuite.scala | 79 +++++++++++++------
+ .../ThriftServerWithSparkContextSuite.scala   |  2 +-
+ 13 files changed, 101 insertions(+), 122 deletions(-)
+ delete mode 100644 sql/core/src/main/scala/org/apache/spark/sql/execution/command/ShowCollationsCommand.scala
+
+diff --git a/docs/sql-ref-ansi-compliance.md b/docs/sql-ref-ansi-compliance.md
+index 7987e5eb60..fff6906457 100644
+--- a/docs/sql-ref-ansi-compliance.md
++++ b/docs/sql-ref-ansi-compliance.md
+@@ -442,7 +442,6 @@ Below is a list of all the keywords in Spark SQL.
+ |CODEGEN|non-reserved|non-reserved|non-reserved|
+ |COLLATE|reserved|non-reserved|reserved|
+ |COLLATION|reserved|non-reserved|reserved|
+-|COLLATIONS|reserved|non-reserved|reserved|
+ |COLLECTION|non-reserved|non-reserved|non-reserved|
+ |COLUMN|reserved|non-reserved|reserved|
+ |COLUMNS|non-reserved|non-reserved|non-reserved|
+diff --git a/sql/api/src/main/antlr4/org/apache/spark/sql/catalyst/parser/SqlBaseLexer.g4 b/sql/api/src/main/antlr4/org/apache/spark/sql/catalyst/parser/SqlBaseLexer.g4
+index c82ee57a25..e704f9f58b 100644
+--- a/sql/api/src/main/antlr4/org/apache/spark/sql/catalyst/parser/SqlBaseLexer.g4
++++ b/sql/api/src/main/antlr4/org/apache/spark/sql/catalyst/parser/SqlBaseLexer.g4
+@@ -162,7 +162,6 @@ CLUSTERED: 'CLUSTERED';
+ CODEGEN: 'CODEGEN';
+ COLLATE: 'COLLATE';
+ COLLATION: 'COLLATION';
+-COLLATIONS: 'COLLATIONS';
+ COLLECTION: 'COLLECTION';
+ COLUMN: 'COLUMN';
+ COLUMNS: 'COLUMNS';
+diff --git a/sql/api/src/main/antlr4/org/apache/spark/sql/catalyst/parser/SqlBaseParser.g4 b/sql/api/src/main/antlr4/org/apache/spark/sql/catalyst/parser/SqlBaseParser.g4
+index 1840b68878..f13dde7734 100644
+--- a/sql/api/src/main/antlr4/org/apache/spark/sql/catalyst/parser/SqlBaseParser.g4
++++ b/sql/api/src/main/antlr4/org/apache/spark/sql/catalyst/parser/SqlBaseParser.g4
+@@ -268,7 +268,6 @@ statement
+     | SHOW PARTITIONS identifierReference partitionSpec?               #showPartitions
+     | SHOW identifier? FUNCTIONS ((FROM | IN) ns=identifierReference)?
+         (LIKE? (legacy=multipartIdentifier | pattern=stringLit))?      #showFunctions
+-    | SHOW COLLATIONS (LIKE? pattern=stringLit)?                       #showCollations
+     | SHOW CREATE TABLE identifierReference (AS SERDE)?                #showCreateTable
+     | SHOW CURRENT namespace                                           #showCurrentNamespace
+     | SHOW CATALOGS (LIKE? pattern=stringLit)?                            #showCatalogs
+@@ -1868,7 +1867,6 @@ nonReserved
+     | CODEGEN
+     | COLLATE
+     | COLLATION
+-    | COLLATIONS
+     | COLLECTION
+     | COLUMN
+     | COLUMNS
+diff --git a/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/FunctionRegistry.scala b/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/FunctionRegistry.scala
+index 75e1ab86f1..5a3c4b0ec8 100644
+--- a/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/FunctionRegistry.scala
++++ b/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/FunctionRegistry.scala
+@@ -1158,6 +1158,7 @@ object TableFunctionRegistry {
+     generator[PosExplode]("posexplode"),
+     generator[PosExplode]("posexplode_outer", outer = true),
+     generator[Stack]("stack"),
++    generator[Collations]("collations"),
+     generator[SQLKeywords]("sql_keywords"),
+     generator[VariantExplode]("variant_explode"),
+     generator[VariantExplode]("variant_explode_outer", outer = true)
+diff --git a/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/catalog/SessionCatalog.scala b/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/catalog/SessionCatalog.scala
+index 5c14e261fa..d3a6cb6ae2 100644
+--- a/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/catalog/SessionCatalog.scala
++++ b/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/catalog/SessionCatalog.scala
+@@ -24,7 +24,6 @@ import java.util.concurrent.TimeUnit
+ import javax.annotation.concurrent.GuardedBy
+ 
+ import scala.collection.mutable
+-import scala.jdk.CollectionConverters.CollectionHasAsScala
+ import scala.util.{Failure, Success, Try}
+ 
+ import com.google.common.cache.{Cache, CacheBuilder}
+@@ -40,8 +39,7 @@ import org.apache.spark.sql.catalyst.expressions.{Alias, Cast, Expression, Expre
+ import org.apache.spark.sql.catalyst.parser.{CatalystSqlParser, ParserInterface}
+ import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, Project, SubqueryAlias, View}
+ import org.apache.spark.sql.catalyst.trees.CurrentOrigin
+-import org.apache.spark.sql.catalyst.util.{CharVarcharUtils, CollationFactory, StringUtils}
+-import org.apache.spark.sql.catalyst.util.CollationFactory.CollationMeta
++import org.apache.spark.sql.catalyst.util.{CharVarcharUtils, StringUtils}
+ import org.apache.spark.sql.connector.catalog.CatalogManager
+ import org.apache.spark.sql.connector.catalog.CatalogManager.SESSION_CATALOG_NAME
+ import org.apache.spark.sql.errors.{QueryCompilationErrors, QueryExecutionErrors}
+@@ -1901,17 +1899,6 @@ class SessionCatalog(
+       .filter(isTemporaryFunction)
+   }
+ 
+-  /**
+-   * List all built-in collations with the given pattern.
+-   */
+-  def listCollations(pattern: Option[String]): Seq[CollationMeta] = {
+-    val collationIdentifiers = CollationFactory.listCollations().asScala.toSeq
+-    val filteredCollationNames = StringUtils.filterPattern(
+-      collationIdentifiers.map(_.getName), pattern.getOrElse("*")).toSet
+-    collationIdentifiers.filter(ident => filteredCollationNames.contains(ident.getName)).map(
+-      CollationFactory.loadCollationMeta)
+-  }
+-
+   // -----------------
+   // | Other methods |
+   // -----------------
+diff --git a/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/generators.scala b/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/generators.scala
+index 2cc88a25f4..dc58352a1b 100644
+--- a/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/generators.scala
++++ b/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/generators.scala
+@@ -18,6 +18,7 @@
+ package org.apache.spark.sql.catalyst.expressions
+ 
+ import scala.collection.mutable
++import scala.jdk.CollectionConverters.CollectionHasAsScala
+ 
+ import org.apache.spark.sql.Row
+ import org.apache.spark.sql.catalyst.{CatalystTypeConverters, InternalRow}
+@@ -28,7 +29,7 @@ import org.apache.spark.sql.catalyst.expressions.codegen._
+ import org.apache.spark.sql.catalyst.expressions.codegen.Block._
+ import org.apache.spark.sql.catalyst.plans.logical.{FunctionSignature, InputParameter}
+ import org.apache.spark.sql.catalyst.trees.TreePattern.{GENERATOR, TreePattern}
+-import org.apache.spark.sql.catalyst.util.{ArrayData, MapData}
++import org.apache.spark.sql.catalyst.util.{ArrayData, CollationFactory, MapData}
+ import org.apache.spark.sql.catalyst.util.SQLKeywordUtils._
+ import org.apache.spark.sql.errors.{QueryCompilationErrors, QueryExecutionErrors}
+ import org.apache.spark.sql.internal.SQLConf
+@@ -618,3 +619,44 @@ case class SQLKeywords() extends LeafExpression with Generator with CodegenFallb
+ 
+   override def prettyName: String = "sql_keywords"
+ }
++
++@ExpressionDescription(
++  usage = """_FUNC_() - Get all of the Spark SQL string collations""",
++  examples = """
++    Examples:
++      > SELECT * FROM _FUNC_() WHERE NAME = 'UTF8_BINARY';
++       SYSTEM  BUILTIN  UTF8_BINARY NULL  NULL  ACCENT_SENSITIVE  CASE_SENSITIVE  NO_PAD  NULL
++  """,
++  since = "4.0.0",
++  group = "generator_funcs")
++case class Collations() extends LeafExpression with Generator with CodegenFallback {
++  override def elementSchema: StructType = new StructType()
++    .add("CATALOG", StringType, nullable = false)
++    .add("SCHEMA", StringType, nullable = false)
++    .add("NAME", StringType, nullable = false)
++    .add("LANGUAGE", StringType)
++    .add("COUNTRY", StringType)
++    .add("ACCENT_SENSITIVITY", StringType, nullable = false)
++    .add("CASE_SENSITIVITY", StringType, nullable = false)
++    .add("PAD_ATTRIBUTE", StringType, nullable = false)
++    .add("ICU_VERSION", StringType)
++
++  override def eval(input: InternalRow): IterableOnce[InternalRow] = {
++    CollationFactory.listCollations().asScala.map(CollationFactory.loadCollationMeta).map { m =>
++      InternalRow(
++        UTF8String.fromString(m.catalog),
++        UTF8String.fromString(m.schema),
++        UTF8String.fromString(m.collationName),
++        UTF8String.fromString(m.language),
++        UTF8String.fromString(m.country),
++        UTF8String.fromString(
++          if (m.accentSensitivity) "ACCENT_SENSITIVE" else "ACCENT_INSENSITIVE"),
++        UTF8String.fromString(
++          if (m.caseSensitivity) "CASE_SENSITIVE" else "CASE_INSENSITIVE"),
++        UTF8String.fromString(m.padAttribute),
++        UTF8String.fromString(m.icuVersion))
++    }
++  }
++
++  override def prettyName: String = "collations"
++}
+diff --git a/sql/catalyst/src/test/resources/ansi-sql-2016-reserved-keywords.txt b/sql/catalyst/src/test/resources/ansi-sql-2016-reserved-keywords.txt
+index 452cf93052..46da60b789 100644
+--- a/sql/catalyst/src/test/resources/ansi-sql-2016-reserved-keywords.txt
++++ b/sql/catalyst/src/test/resources/ansi-sql-2016-reserved-keywords.txt
+@@ -48,7 +48,6 @@ CLOSE
+ COALESCE
+ COLLATE
+ COLLATION
+-COLLATIONS
+ COLLECT
+ COLUMN
+ COMMIT
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/SparkSqlParser.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/SparkSqlParser.scala
+index 640abaea58..a8261e5d98 100644
+--- a/sql/core/src/main/scala/org/apache/spark/sql/execution/SparkSqlParser.scala
++++ b/sql/core/src/main/scala/org/apache/spark/sql/execution/SparkSqlParser.scala
+@@ -1096,16 +1096,4 @@ class SparkSqlAstBuilder extends AstBuilder {
+       withIdentClause(ctx.identifierReference(), UnresolvedNamespace(_)),
+       cleanedProperties)
+   }
+-
+-  /**
+-   * Create a [[ShowCollationsCommand]] command.
+-   * Expected format:
+-   * {{{
+-   *   SHOW COLLATIONS (LIKE? pattern=stringLit)?;
+-   * }}}
+-   */
+-  override def visitShowCollations(ctx: ShowCollationsContext): LogicalPlan = withOrigin(ctx) {
+-    val pattern = Option(ctx.pattern).map(x => string(visitStringLit(x)))
+-    ShowCollationsCommand(pattern)
+-  }
+ }
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/command/ShowCollationsCommand.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/command/ShowCollationsCommand.scala
+deleted file mode 100644
+index 179a841b01..0000000000
+--- a/sql/core/src/main/scala/org/apache/spark/sql/execution/command/ShowCollationsCommand.scala
++++ /dev/null
+@@ -1,62 +0,0 @@
+-/*
+- * Licensed to the Apache Software Foundation (ASF) under one or more
+- * contributor license agreements.  See the NOTICE file distributed with
+- * this work for additional information regarding copyright ownership.
+- * The ASF licenses this file to You under the Apache License, Version 2.0
+- * (the "License"); you may not use this file except in compliance with
+- * the License.  You may obtain a copy of the License at
+- *
+- *    http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- */
+-
+-package org.apache.spark.sql.execution.command
+-
+-import org.apache.spark.sql.{Row, SparkSession}
+-import org.apache.spark.sql.catalyst.expressions.{Attribute, AttributeReference}
+-import org.apache.spark.sql.catalyst.util.CollationFactory.CollationMeta
+-import org.apache.spark.sql.types.StringType
+-
+-/**
+- * A command for `SHOW COLLATIONS`.
+- *
+- * The syntax of this command is:
+- * {{{
+- *    SHOW COLLATIONS (LIKE? pattern=stringLit)?;
+- * }}}
+- */
+-case class ShowCollationsCommand(pattern: Option[String]) extends LeafRunnableCommand {
+-
+-  override val output: Seq[Attribute] = Seq(
+-    AttributeReference("COLLATION_CATALOG", StringType, nullable = false)(),
+-    AttributeReference("COLLATION_SCHEMA", StringType, nullable = false)(),
+-    AttributeReference("COLLATION_NAME", StringType, nullable = false)(),
+-    AttributeReference("LANGUAGE", StringType)(),
+-    AttributeReference("COUNTRY", StringType)(),
+-    AttributeReference("ACCENT_SENSITIVITY", StringType, nullable = false)(),
+-    AttributeReference("CASE_SENSITIVITY", StringType, nullable = false)(),
+-    AttributeReference("PAD_ATTRIBUTE", StringType, nullable = false)(),
+-    AttributeReference("ICU_VERSION", StringType)())
+-
+-  override def run(sparkSession: SparkSession): Seq[Row] = {
+-    val systemCollations: Seq[CollationMeta] =
+-      sparkSession.sessionState.catalog.listCollations(pattern)
+-
+-    systemCollations.map(m => Row(
+-      m.catalog,
+-      m.schema,
+-      m.collationName,
+-      m.language,
+-      m.country,
+-      if (m.accentSensitivity) "ACCENT_SENSITIVE" else "ACCENT_INSENSITIVE",
+-      if (m.caseSensitivity) "CASE_SENSITIVE" else "CASE_INSENSITIVE",
+-      m.padAttribute,
+-      m.icuVersion
+-    ))
+-  }
+-}
+diff --git a/sql/core/src/test/resources/sql-tests/results/ansi/keywords.sql.out b/sql/core/src/test/resources/sql-tests/results/ansi/keywords.sql.out
+index b464427d37..6497a46c68 100644
+--- a/sql/core/src/test/resources/sql-tests/results/ansi/keywords.sql.out
++++ b/sql/core/src/test/resources/sql-tests/results/ansi/keywords.sql.out
+@@ -48,7 +48,6 @@ CLUSTERED	false
+ CODEGEN	false
+ COLLATE	true
+ COLLATION	true
+-COLLATIONS	true
+ COLLECTION	false
+ COLUMN	true
+ COLUMNS	false
+@@ -384,7 +383,6 @@ CAST
+ CHECK
+ COLLATE
+ COLLATION
+-COLLATIONS
+ COLUMN
+ CONSTRAINT
+ CREATE
+diff --git a/sql/core/src/test/resources/sql-tests/results/keywords.sql.out b/sql/core/src/test/resources/sql-tests/results/keywords.sql.out
+index 16436d7a72..0dfd62599a 100644
+--- a/sql/core/src/test/resources/sql-tests/results/keywords.sql.out
++++ b/sql/core/src/test/resources/sql-tests/results/keywords.sql.out
+@@ -48,7 +48,6 @@ CLUSTERED	false
+ CODEGEN	false
+ COLLATE	false
+ COLLATION	false
+-COLLATIONS	false
+ COLLECTION	false
+ COLUMN	false
+ COLUMNS	false
+diff --git a/sql/core/src/test/scala/org/apache/spark/sql/CollationSuite.scala b/sql/core/src/test/scala/org/apache/spark/sql/CollationSuite.scala
+index b25cddb807..489a990d3e 100644
+--- a/sql/core/src/test/scala/org/apache/spark/sql/CollationSuite.scala
++++ b/sql/core/src/test/scala/org/apache/spark/sql/CollationSuite.scala
+@@ -1625,38 +1625,38 @@ class CollationSuite extends DatasourceV2SQLBase with AdaptiveSparkPlanHelper {
+     }
+   }
+ 
+-  test("show collations") {
+-    assert(sql("SHOW COLLATIONS").collect().length >= 562)
++  test("TVF collations()") {
++    assert(sql("SELECT * FROM collations()").collect().length >= 562)
+ 
+     // verify that the output ordering is as expected (UTF8_BINARY, UTF8_LCASE, etc.)
+-    val df = sql("SHOW COLLATIONS").limit(10)
++    val df = sql("SELECT * FROM collations() limit 10")
+     checkAnswer(df,
+       Seq(Row("SYSTEM", "BUILTIN", "UTF8_BINARY", null, null,
+         "ACCENT_SENSITIVE", "CASE_SENSITIVE", "NO_PAD", null),
+-      Row("SYSTEM", "BUILTIN", "UTF8_LCASE", null, null,
+-        "ACCENT_SENSITIVE", "CASE_INSENSITIVE", "NO_PAD", null),
+-      Row("SYSTEM", "BUILTIN", "UNICODE", "", "",
+-        "ACCENT_SENSITIVE", "CASE_SENSITIVE", "NO_PAD", "75.1.0.0"),
+-      Row("SYSTEM", "BUILTIN", "UNICODE_AI", "", "",
+-        "ACCENT_SENSITIVE", "CASE_INSENSITIVE", "NO_PAD", "75.1.0.0"),
+-      Row("SYSTEM", "BUILTIN", "UNICODE_CI", "", "",
+-        "ACCENT_INSENSITIVE", "CASE_SENSITIVE", "NO_PAD", "75.1.0.0"),
+-     Row("SYSTEM", "BUILTIN", "UNICODE_CI_AI", "", "",
+-       "ACCENT_INSENSITIVE", "CASE_INSENSITIVE", "NO_PAD", "75.1.0.0"),
+-     Row("SYSTEM", "BUILTIN", "af", "Afrikaans", "",
+-       "ACCENT_SENSITIVE", "CASE_SENSITIVE", "NO_PAD", "75.1.0.0"),
+-     Row("SYSTEM", "BUILTIN", "af_AI", "Afrikaans", "",
+-       "ACCENT_SENSITIVE", "CASE_INSENSITIVE", "NO_PAD", "75.1.0.0"),
+-     Row("SYSTEM", "BUILTIN", "af_CI", "Afrikaans", "",
+-       "ACCENT_INSENSITIVE", "CASE_SENSITIVE", "NO_PAD", "75.1.0.0"),
+-     Row("SYSTEM", "BUILTIN", "af_CI_AI", "Afrikaans", "",
+-        "ACCENT_INSENSITIVE", "CASE_INSENSITIVE", "NO_PAD", "75.1.0.0")))
+-
+-    checkAnswer(sql("SHOW COLLATIONS LIKE '*UTF8_BINARY*'"),
++        Row("SYSTEM", "BUILTIN", "UTF8_LCASE", null, null,
++          "ACCENT_SENSITIVE", "CASE_INSENSITIVE", "NO_PAD", null),
++        Row("SYSTEM", "BUILTIN", "UNICODE", "", "",
++          "ACCENT_SENSITIVE", "CASE_SENSITIVE", "NO_PAD", "75.1.0.0"),
++        Row("SYSTEM", "BUILTIN", "UNICODE_AI", "", "",
++          "ACCENT_SENSITIVE", "CASE_INSENSITIVE", "NO_PAD", "75.1.0.0"),
++        Row("SYSTEM", "BUILTIN", "UNICODE_CI", "", "",
++          "ACCENT_INSENSITIVE", "CASE_SENSITIVE", "NO_PAD", "75.1.0.0"),
++        Row("SYSTEM", "BUILTIN", "UNICODE_CI_AI", "", "",
++          "ACCENT_INSENSITIVE", "CASE_INSENSITIVE", "NO_PAD", "75.1.0.0"),
++        Row("SYSTEM", "BUILTIN", "af", "Afrikaans", "",
++          "ACCENT_SENSITIVE", "CASE_SENSITIVE", "NO_PAD", "75.1.0.0"),
++        Row("SYSTEM", "BUILTIN", "af_AI", "Afrikaans", "",
++          "ACCENT_SENSITIVE", "CASE_INSENSITIVE", "NO_PAD", "75.1.0.0"),
++        Row("SYSTEM", "BUILTIN", "af_CI", "Afrikaans", "",
++          "ACCENT_INSENSITIVE", "CASE_SENSITIVE", "NO_PAD", "75.1.0.0"),
++        Row("SYSTEM", "BUILTIN", "af_CI_AI", "Afrikaans", "",
++          "ACCENT_INSENSITIVE", "CASE_INSENSITIVE", "NO_PAD", "75.1.0.0")))
++
++    checkAnswer(sql("SELECT * FROM collations() WHERE NAME LIKE '%UTF8_BINARY%'"),
+       Row("SYSTEM", "BUILTIN", "UTF8_BINARY", null, null,
+         "ACCENT_SENSITIVE", "CASE_SENSITIVE", "NO_PAD", null))
+ 
+-    checkAnswer(sql("SHOW COLLATIONS '*zh_Hant_HKG*'"),
++    checkAnswer(sql("SELECT * FROM collations() WHERE NAME LIKE '%zh_Hant_HKG%'"),
+       Seq(Row("SYSTEM", "BUILTIN", "zh_Hant_HKG", "Chinese", "Hong Kong SAR China",
+         "ACCENT_SENSITIVE", "CASE_SENSITIVE", "NO_PAD", "75.1.0.0"),
+         Row("SYSTEM", "BUILTIN", "zh_Hant_HKG_AI", "Chinese", "Hong Kong SAR China",
+@@ -1665,5 +1665,36 @@ class CollationSuite extends DatasourceV2SQLBase with AdaptiveSparkPlanHelper {
+           "ACCENT_INSENSITIVE", "CASE_SENSITIVE", "NO_PAD", "75.1.0.0"),
+         Row("SYSTEM", "BUILTIN", "zh_Hant_HKG_CI_AI", "Chinese", "Hong Kong SAR China",
+           "ACCENT_INSENSITIVE", "CASE_INSENSITIVE", "NO_PAD", "75.1.0.0")))
++
++    checkAnswer(sql("SELECT * FROM collations() WHERE COUNTRY = 'Singapore'"),
++      Seq(Row("SYSTEM", "BUILTIN", "zh_Hans_SGP", "Chinese", "Singapore",
++        "ACCENT_SENSITIVE", "CASE_SENSITIVE", "NO_PAD", "75.1.0.0"),
++        Row("SYSTEM", "BUILTIN", "zh_Hans_SGP_AI", "Chinese", "Singapore",
++          "ACCENT_SENSITIVE", "CASE_INSENSITIVE", "NO_PAD", "75.1.0.0"),
++        Row("SYSTEM", "BUILTIN", "zh_Hans_SGP_CI", "Chinese", "Singapore",
++          "ACCENT_INSENSITIVE", "CASE_SENSITIVE", "NO_PAD", "75.1.0.0"),
++        Row("SYSTEM", "BUILTIN", "zh_Hans_SGP_CI_AI", "Chinese", "Singapore",
++          "ACCENT_INSENSITIVE", "CASE_INSENSITIVE", "NO_PAD", "75.1.0.0")))
++
++    checkAnswer(sql("SELECT * FROM collations() WHERE LANGUAGE = 'English' " +
++      "and COUNTRY = 'United States'"),
++      Seq(Row("SYSTEM", "BUILTIN", "en_USA", "English", "United States",
++        "ACCENT_SENSITIVE", "CASE_SENSITIVE", "NO_PAD", "75.1.0.0"),
++        Row("SYSTEM", "BUILTIN", "en_USA_AI", "English", "United States",
++          "ACCENT_SENSITIVE", "CASE_INSENSITIVE", "NO_PAD", "75.1.0.0"),
++        Row("SYSTEM", "BUILTIN", "en_USA_CI", "English", "United States",
++          "ACCENT_INSENSITIVE", "CASE_SENSITIVE", "NO_PAD", "75.1.0.0"),
++        Row("SYSTEM", "BUILTIN", "en_USA_CI_AI", "English", "United States",
++          "ACCENT_INSENSITIVE", "CASE_INSENSITIVE", "NO_PAD", "75.1.0.0")))
++
++    checkAnswer(sql("SELECT NAME, LANGUAGE, ACCENT_SENSITIVITY, CASE_SENSITIVITY " +
++      "FROM collations() WHERE COUNTRY = 'United States'"),
++      Seq(Row("en_USA", "English", "ACCENT_SENSITIVE", "CASE_SENSITIVE"),
++        Row("en_USA_AI", "English", "ACCENT_SENSITIVE", "CASE_INSENSITIVE"),
++        Row("en_USA_CI", "English", "ACCENT_INSENSITIVE", "CASE_SENSITIVE"),
++        Row("en_USA_CI_AI", "English", "ACCENT_INSENSITIVE", "CASE_INSENSITIVE")))
++
++    checkAnswer(sql("SELECT NAME FROM collations() WHERE ICU_VERSION is null"),
++      Seq(Row("UTF8_BINARY"), Row("UTF8_LCASE")))
+   }
+ }
+diff --git a/sql/hive-thriftserver/src/test/scala/org/apache/spark/sql/hive/thriftserver/ThriftServerWithSparkContextSuite.scala b/sql/hive-thriftserver/src/test/scala/org/apache/spark/sql/hive/thriftserver/ThriftServerWithSparkContextSuite.scala
+index 5b8ee4ea97..4bc4116a23 100644
+--- a/sql/hive-thriftserver/src/test/scala/org/apache/spark/sql/hive/thriftserver/ThriftServerWithSparkContextSuite.scala
++++ b/sql/hive-thriftserver/src/test/scala/org/apache/spark/sql/hive/thriftserver/ThriftServerWithSparkContextSuite.scala
+@@ -214,7 +214,7 @@ trait ThriftServerWithSparkContextSuite extends SharedThriftServer {
+       val sessionHandle = client.openSession(user, "")
+       val infoValue = client.getInfo(sessionHandle, GetInfoType.CLI_ODBC_KEYWORDS)
+       // scalastyle:off line.size.limit
+-      assert(infoValue.getStringValue == "ADD,AFTER,ALL,ALTER,ALWAYS,ANALYZE,AND,ANTI,ANY,ANY_VALUE,ARCHIVE,ARRAY,AS,ASC,AT,AUTHORIZATION,BEGIN,BETWEEN,BIGINT,BINARY,BINDING,BOOLEAN,BOTH,BUCKET,BUCKETS,BY,BYTE,CACHE,CALLED,CASCADE,CASE,CAST,CATALOG,CATALOGS,CHANGE,CHAR,CHARACTER,CHECK,CLEAR,CLUSTER,CLUSTERED,CODEGEN,COLLATE,COLLATION,COLLATIONS,COLLECTION,COLUMN,COLUMNS,COMMENT,COMMIT,COMPACT,COMPACTIONS,COMPENSATION,COMPUTE,CONCATENATE,CONSTRAINT,CONTAINS,COST,CREATE,CROSS,CUBE,CURRENT,CURRENT_DATE,CURRENT_TIME,CURRENT_TIMESTAMP,CURRENT_USER,DATA,DATABASE,DATABASES,DATE,DATEADD,DATEDIFF,DATE_ADD,DATE_DIFF,DAY,DAYOFYEAR,DAYS,DBPROPERTIES,DEC,DECIMAL,DECLARE,DEFAULT,DEFINED,DEFINER,DELETE,DELIMITED,DESC,DESCRIBE,DETERMINISTIC,DFS,DIRECTORIES,DIRECTORY,DISTINCT,DISTRIBUTE,DIV,DO,DOUBLE,DROP,ELSE,END,ESCAPE,ESCAPED,EVOLUTION,EXCEPT,EXCHANGE,EXCLUDE,EXECUTE,EXISTS,EXPLAIN,EXPORT,EXTENDED,EXTERNAL,EXTRACT,FALSE,FETCH,FIELDS,FILEFORMAT,FILTER,FIRST,FLOAT,FOLLOWING,FOR,FOREIGN,FORMAT,FORMATTED,FROM,FULL,FUNCTION,FUNCTIONS,GENERATED,GLOBAL,GRANT,GROUP,GROUPING,HAVING,HOUR,HOURS,IDENTIFIER,IDENTITY,IF,IGNORE,ILIKE,IMMEDIATE,IMPORT,IN,INCLUDE,INCREMENT,INDEX,INDEXES,INNER,INPATH,INPUT,INPUTFORMAT,INSERT,INT,INTEGER,INTERSECT,INTERVAL,INTO,INVOKER,IS,ITEMS,ITERATE,JOIN,KEYS,LANGUAGE,LAST,LATERAL,LAZY,LEADING,LEAVE,LEFT,LIKE,LIMIT,LINES,LIST,LOAD,LOCAL,LOCATION,LOCK,LOCKS,LOGICAL,LONG,MACRO,MAP,MATCHED,MERGE,MICROSECOND,MICROSECONDS,MILLISECOND,MILLISECONDS,MINUS,MINUTE,MINUTES,MODIFIES,MONTH,MONTHS,MSCK,NAME,NAMESPACE,NAMESPACES,NANOSECOND,NANOSECONDS,NATURAL,NO,NONE,NOT,NULL,NULLS,NUMERIC,OF,OFFSET,ON,ONLY,OPTION,OPTIONS,OR,ORDER,OUT,OUTER,OUTPUTFORMAT,OVER,OVERLAPS,OVERLAY,OVERWRITE,PARTITION,PARTITIONED,PARTITIONS,PERCENT,PIVOT,PLACING,POSITION,PRECEDING,PRIMARY,PRINCIPALS,PROPERTIES,PURGE,QUARTER,QUERY,RANGE,READS,REAL,RECORDREADER,RECORDWRITER,RECOVER,REDUCE,REFERENCES,REFRESH,RENAME,REPAIR,REPEAT,REPEATABLE,REPLACE,RESET,RESPECT,RESTRICT,RETURN,RETURNS,REVOKE,RIGHT,ROLE,ROLES,ROLLBACK,ROLLUP,ROW,ROWS,SCHEMA,SCHEMAS,SECOND,SECONDS,SECURITY,SELECT,SEMI,SEPARATED,SERDE,SERDEPROPERTIES,SESSION_USER,SET,SETS,SHORT,SHOW,SINGLE,SKEWED,SMALLINT,SOME,SORT,SORTED,SOURCE,SPECIFIC,SQL,START,STATISTICS,STORED,STRATIFY,STRING,STRUCT,SUBSTR,SUBSTRING,SYNC,SYSTEM_TIME,SYSTEM_VERSION,TABLE,TABLES,TABLESAMPLE,TARGET,TBLPROPERTIES,TERMINATED,THEN,TIME,TIMEDIFF,TIMESTAMP,TIMESTAMPADD,TIMESTAMPDIFF,TIMESTAMP_LTZ,TIMESTAMP_NTZ,TINYINT,TO,TOUCH,TRAILING,TRANSACTION,TRANSACTIONS,TRANSFORM,TRIM,TRUE,TRUNCATE,TRY_CAST,TYPE,UNARCHIVE,UNBOUNDED,UNCACHE,UNION,UNIQUE,UNKNOWN,UNLOCK,UNPIVOT,UNSET,UNTIL,UPDATE,USE,USER,USING,VALUES,VAR,VARCHAR,VARIABLE,VARIANT,VERSION,VIEW,VIEWS,VOID,WEEK,WEEKS,WHEN,WHERE,WHILE,WINDOW,WITH,WITHIN,X,YEAR,YEARS,ZONE")
++      assert(infoValue.getStringValue == "ADD,AFTER,ALL,ALTER,ALWAYS,ANALYZE,AND,ANTI,ANY,ANY_VALUE,ARCHIVE,ARRAY,AS,ASC,AT,AUTHORIZATION,BEGIN,BETWEEN,BIGINT,BINARY,BINDING,BOOLEAN,BOTH,BUCKET,BUCKETS,BY,BYTE,CACHE,CALLED,CASCADE,CASE,CAST,CATALOG,CATALOGS,CHANGE,CHAR,CHARACTER,CHECK,CLEAR,CLUSTER,CLUSTERED,CODEGEN,COLLATE,COLLATION,COLLECTION,COLUMN,COLUMNS,COMMENT,COMMIT,COMPACT,COMPACTIONS,COMPENSATION,COMPUTE,CONCATENATE,CONSTRAINT,CONTAINS,COST,CREATE,CROSS,CUBE,CURRENT,CURRENT_DATE,CURRENT_TIME,CURRENT_TIMESTAMP,CURRENT_USER,DATA,DATABASE,DATABASES,DATE,DATEADD,DATEDIFF,DATE_ADD,DATE_DIFF,DAY,DAYOFYEAR,DAYS,DBPROPERTIES,DEC,DECIMAL,DECLARE,DEFAULT,DEFINED,DEFINER,DELETE,DELIMITED,DESC,DESCRIBE,DETERMINISTIC,DFS,DIRECTORIES,DIRECTORY,DISTINCT,DISTRIBUTE,DIV,DO,DOUBLE,DROP,ELSE,END,ESCAPE,ESCAPED,EVOLUTION,EXCEPT,EXCHANGE,EXCLUDE,EXECUTE,EXISTS,EXPLAIN,EXPORT,EXTENDED,EXTERNAL,EXTRACT,FALSE,FETCH,FIELDS,FILEFORMAT,FILTER,FIRST,FLOAT,FOLLOWING,FOR,FOREIGN,FORMAT,FORMATTED,FROM,FULL,FUNCTION,FUNCTIONS,GENERATED,GLOBAL,GRANT,GROUP,GROUPING,HAVING,HOUR,HOURS,IDENTIFIER,IDENTITY,IF,IGNORE,ILIKE,IMMEDIATE,IMPORT,IN,INCLUDE,INCREMENT,INDEX,INDEXES,INNER,INPATH,INPUT,INPUTFORMAT,INSERT,INT,INTEGER,INTERSECT,INTERVAL,INTO,INVOKER,IS,ITEMS,ITERATE,JOIN,KEYS,LANGUAGE,LAST,LATERAL,LAZY,LEADING,LEAVE,LEFT,LIKE,LIMIT,LINES,LIST,LOAD,LOCAL,LOCATION,LOCK,LOCKS,LOGICAL,LONG,MACRO,MAP,MATCHED,MERGE,MICROSECOND,MICROSECONDS,MILLISECOND,MILLISECONDS,MINUS,MINUTE,MINUTES,MODIFIES,MONTH,MONTHS,MSCK,NAME,NAMESPACE,NAMESPACES,NANOSECOND,NANOSECONDS,NATURAL,NO,NONE,NOT,NULL,NULLS,NUMERIC,OF,OFFSET,ON,ONLY,OPTION,OPTIONS,OR,ORDER,OUT,OUTER,OUTPUTFORMAT,OVER,OVERLAPS,OVERLAY,OVERWRITE,PARTITION,PARTITIONED,PARTITIONS,PERCENT,PIVOT,PLACING,POSITION,PRECEDING,PRIMARY,PRINCIPALS,PROPERTIES,PURGE,QUARTER,QUERY,RANGE,READS,REAL,RECORDREADER,RECORDWRITER,RECOVER,REDUCE,REFERENCES,REFRESH,RENAME,REPAIR,REPEAT,REPEATABLE,REPLACE,RESET,RESPECT,RESTRICT,RETURN,RETURNS,REVOKE,RIGHT,ROLE,ROLES,ROLLBACK,ROLLUP,ROW,ROWS,SCHEMA,SCHEMAS,SECOND,SECONDS,SECURITY,SELECT,SEMI,SEPARATED,SERDE,SERDEPROPERTIES,SESSION_USER,SET,SETS,SHORT,SHOW,SINGLE,SKEWED,SMALLINT,SOME,SORT,SORTED,SOURCE,SPECIFIC,SQL,START,STATISTICS,STORED,STRATIFY,STRING,STRUCT,SUBSTR,SUBSTRING,SYNC,SYSTEM_TIME,SYSTEM_VERSION,TABLE,TABLES,TABLESAMPLE,TARGET,TBLPROPERTIES,TERMINATED,THEN,TIME,TIMEDIFF,TIMESTAMP,TIMESTAMPADD,TIMESTAMPDIFF,TIMESTAMP_LTZ,TIMESTAMP_NTZ,TINYINT,TO,TOUCH,TRAILING,TRANSACTION,TRANSACTIONS,TRANSFORM,TRIM,TRUE,TRUNCATE,TRY_CAST,TYPE,UNARCHIVE,UNBOUNDED,UNCACHE,UNION,UNIQUE,UNKNOWN,UNLOCK,UNPIVOT,UNSET,UNTIL,UPDATE,USE,USER,USING,VALUES,VAR,VARCHAR,VARIABLE,VARIANT,VERSION,VIEW,VIEWS,VOID,WEEK,WEEKS,WHEN,WHERE,WHILE,WINDOW,WITH,WITHIN,X,YEAR,YEARS,ZONE")
+       // scalastyle:on line.size.limit
+     }
+   }

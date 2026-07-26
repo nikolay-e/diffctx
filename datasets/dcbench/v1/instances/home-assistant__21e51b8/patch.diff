@@ -1,0 +1,1955 @@
+From 21e51b83d3ae7bd7d8ddac9e4d4ba04002f0f138 Mon Sep 17 00:00:00 2001
+From: Allen Porter <allen.porter@gmail.com>
+Date: Tue, 7 Jul 2026 10:42:36 -0700
+Subject: [PATCH] Add Google Health integration (#175417)
+
+Co-authored-by: Joostlek <joostlek@outlook.com>
+---
+ .strict-typing                                |   1 +
+ CODEOWNERS                                    |   2 +
+ homeassistant/brands/google.json              |   1 +
+ .../components/google_health/__init__.py      |  88 ++++++
+ homeassistant/components/google_health/api.py |  42 +++
+ .../google_health/application_credentials.py  |  23 ++
+ .../components/google_health/config_flow.py   |  78 ++++++
+ .../components/google_health/const.py         |  17 ++
+ .../components/google_health/coordinator.py   | 176 ++++++++++++
+ .../components/google_health/icons.json       |  12 +
+ .../components/google_health/manifest.json    |  12 +
+ .../google_health/quality_scale.yaml          |  88 ++++++
+ .../components/google_health/sensor.py        | 138 ++++++++++
+ .../components/google_health/strings.json     |  55 ++++
+ .../generated/application_credentials.py      |   1 +
+ homeassistant/generated/config_flows.py       |   1 +
+ homeassistant/generated/integrations.json     |   6 +
+ mypy.ini                                      |  10 +
+ requirements_all.txt                          |   3 +
+ tests/components/google_health/__init__.py    |   1 +
+ tests/components/google_health/conftest.py    | 175 ++++++++++++
+ .../google_health/fixtures/distance.json      |  11 +
+ .../google_health/fixtures/identity.json      |   5 +
+ .../fixtures/resting_heart_rate.json          |  10 +
+ .../google_health/fixtures/steps.json         |  11 +
+ .../google_health/fixtures/userinfo.json      |   5 +
+ .../google_health/fixtures/weight.json        |  12 +
+ .../google_health/snapshots/test_sensor.ambr  | 225 +++++++++++++++
+ .../google_health/test_config_flow.py         | 256 ++++++++++++++++++
+ tests/components/google_health/test_init.py   | 153 +++++++++++
+ tests/components/google_health/test_sensor.py |  48 ++++
+ 31 files changed, 1666 insertions(+)
+ create mode 100644 homeassistant/components/google_health/__init__.py
+ create mode 100644 homeassistant/components/google_health/api.py
+ create mode 100644 homeassistant/components/google_health/application_credentials.py
+ create mode 100644 homeassistant/components/google_health/config_flow.py
+ create mode 100644 homeassistant/components/google_health/const.py
+ create mode 100644 homeassistant/components/google_health/coordinator.py
+ create mode 100644 homeassistant/components/google_health/icons.json
+ create mode 100644 homeassistant/components/google_health/manifest.json
+ create mode 100644 homeassistant/components/google_health/quality_scale.yaml
+ create mode 100644 homeassistant/components/google_health/sensor.py
+ create mode 100644 homeassistant/components/google_health/strings.json
+ create mode 100644 tests/components/google_health/__init__.py
+ create mode 100644 tests/components/google_health/conftest.py
+ create mode 100644 tests/components/google_health/fixtures/distance.json
+ create mode 100644 tests/components/google_health/fixtures/identity.json
+ create mode 100644 tests/components/google_health/fixtures/resting_heart_rate.json
+ create mode 100644 tests/components/google_health/fixtures/steps.json
+ create mode 100644 tests/components/google_health/fixtures/userinfo.json
+ create mode 100644 tests/components/google_health/fixtures/weight.json
+ create mode 100644 tests/components/google_health/snapshots/test_sensor.ambr
+ create mode 100644 tests/components/google_health/test_config_flow.py
+ create mode 100644 tests/components/google_health/test_init.py
+ create mode 100644 tests/components/google_health/test_sensor.py
+
+diff --git a/.strict-typing b/.strict-typing
+index 5b5f29e7ed..735fa9e436 100644
+--- a/.strict-typing
++++ b/.strict-typing
+@@ -242,6 +242,7 @@ homeassistant.components.google.*
+ homeassistant.components.google_assistant_sdk.*
+ homeassistant.components.google_cloud.*
+ homeassistant.components.google_drive.*
++homeassistant.components.google_health.*
+ homeassistant.components.google_photos.*
+ homeassistant.components.google_sheets.*
+ homeassistant.components.google_weather.*
+diff --git a/CODEOWNERS b/CODEOWNERS
+index 402b04d339..bc489bbe4f 100644
+--- a/CODEOWNERS
++++ b/CODEOWNERS
+@@ -675,6 +675,8 @@ CLAUDE.md @home-assistant/core
+ /tests/components/google_drive/ @tronikos
+ /homeassistant/components/google_generative_ai_conversation/ @tronikos @ivanlh
+ /tests/components/google_generative_ai_conversation/ @tronikos @ivanlh
++/homeassistant/components/google_health/ @allenporter
++/tests/components/google_health/ @allenporter
+ /homeassistant/components/google_mail/ @tkdrob
+ /tests/components/google_mail/ @tkdrob
+ /homeassistant/components/google_photos/ @allenporter
+diff --git a/homeassistant/brands/google.json b/homeassistant/brands/google.json
+index 117b7c6b63..4f3c62067a 100644
+--- a/homeassistant/brands/google.json
++++ b/homeassistant/brands/google.json
+@@ -8,6 +8,7 @@
+     "google_cloud",
+     "google_drive",
+     "google_generative_ai_conversation",
++    "google_health",
+     "google_mail",
+     "google_maps",
+     "google_photos",
+diff --git a/homeassistant/components/google_health/__init__.py b/homeassistant/components/google_health/__init__.py
+new file mode 100644
+index 0000000000..a389edc4bf
+--- /dev/null
++++ b/homeassistant/components/google_health/__init__.py
+@@ -0,0 +1,88 @@
++"""The Google Health integration."""
++
++from dataclasses import dataclass
++
++from google_health_api import GoogleHealthApi
++from google_health_api.const import HealthApiScope
++
++from homeassistant.config_entries import ConfigEntry
++from homeassistant.const import Platform
++from homeassistant.core import HomeAssistant
++from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
++from homeassistant.helpers import aiohttp_client
++from homeassistant.helpers.config_entry_oauth2_flow import (
++    ImplementationUnavailableError,
++    OAuth2Session,
++    async_get_config_entry_implementation,
++)
++
++from . import api
++from .const import DOMAIN
++from .coordinator import GoogleHealthActivityCoordinator, GoogleHealthBodyCoordinator
++
++_PLATFORMS: list[Platform] = [Platform.SENSOR]
++
++
++@dataclass
++class GoogleHealthData:
++    """Class to hold Google Health coordinators."""
++
++    activity_coordinator: GoogleHealthActivityCoordinator | None = None
++    body_coordinator: GoogleHealthBodyCoordinator | None = None
++
++
++type GoogleHealthConfigEntry = ConfigEntry[GoogleHealthData]
++
++
++async def async_setup_entry(
++    hass: HomeAssistant, entry: GoogleHealthConfigEntry
++) -> bool:
++    """Set up Google Health from a config entry."""
++    try:
++        implementation = await async_get_config_entry_implementation(hass, entry)
++    except ImplementationUnavailableError as err:
++        raise ConfigEntryNotReady(
++            translation_domain=DOMAIN,
++            translation_key="oauth_error",
++        ) from err
++
++    session = OAuth2Session(hass, entry, implementation)
++
++    scopes = session.token.get("scope", "").split()
++    if HealthApiScope.PROFILE_READ not in scopes:
++        raise ConfigEntryAuthFailed(
++            translation_domain=DOMAIN,
++            translation_key="missing_profile_scope",
++        )
++
++    auth = api.AsyncConfigEntryAuth(
++        aiohttp_client.async_get_clientsession(hass), session
++    )
++
++    api_client = GoogleHealthApi(auth)
++
++    activity_coordinator = None
++    if all(scope in scopes for scope in api_client.steps.required_read_scopes):
++        activity_coordinator = GoogleHealthActivityCoordinator(hass, entry, api_client)
++        await activity_coordinator.async_config_entry_first_refresh()
++
++    body_coordinator = None
++    if all(scope in scopes for scope in api_client.weight.required_read_scopes):
++        body_coordinator = GoogleHealthBodyCoordinator(hass, entry, api_client)
++        await body_coordinator.async_config_entry_first_refresh()
++
++    entry.runtime_data = GoogleHealthData(
++        activity_coordinator=activity_coordinator,
++        body_coordinator=body_coordinator,
++    )
++
++    await hass.config_entries.async_forward_entry_setups(entry, _PLATFORMS)
++
++    return True
++
++
++async def async_unload_entry(
++    hass: HomeAssistant, entry: GoogleHealthConfigEntry
++) -> bool:
++    """Unload a config entry."""
++    return await hass.config_entries.async_unload_platforms(entry, _PLATFORMS)
+diff --git a/homeassistant/components/google_health/api.py b/homeassistant/components/google_health/api.py
+new file mode 100644
+index 0000000000..02c3bcfd4b
+--- /dev/null
++++ b/homeassistant/components/google_health/api.py
+@@ -0,0 +1,42 @@
++"""API for Google Health bound to Home Assistant OAuth."""
++
++from typing import cast, override
++
++from aiohttp import ClientSession
++from google_health_api.auth import AbstractAuth
++
++from homeassistant.helpers import config_entry_oauth2_flow
++
++
++class AsyncConfigEntryAuth(AbstractAuth):
++    """Provide Google Health authentication tied to an OAuth2 based config entry."""
++
++    def __init__(
++        self,
++        websession: ClientSession,
++        oauth_session: config_entry_oauth2_flow.OAuth2Session,
++    ) -> None:
++        """Initialize Google Health auth."""
++        super().__init__(websession)
++        self._oauth_session = oauth_session
++
++    @override
++    async def async_get_access_token(self) -> str:
++        """Return a valid access token."""
++        await self._oauth_session.async_ensure_token_valid()
++
++        return cast(str, self._oauth_session.token["access_token"])
++
++
++class SimpleAuth(AbstractAuth):
++    """Temporary auth helper for the config flow."""
++
++    def __init__(self, websession: ClientSession, access_token: str) -> None:
++        """Initialize the auth helper."""
++        super().__init__(websession)
++        self._access_token = access_token
++
++    @override
++    async def async_get_access_token(self) -> str:
++        """Return the access token."""
++        return self._access_token
+diff --git a/homeassistant/components/google_health/application_credentials.py b/homeassistant/components/google_health/application_credentials.py
+new file mode 100644
+index 0000000000..732a13fece
+--- /dev/null
++++ b/homeassistant/components/google_health/application_credentials.py
+@@ -0,0 +1,23 @@
++"""Application credentials platform for the Google Health integration."""
++
++from homeassistant.components.application_credentials import AuthorizationServer
++from homeassistant.core import HomeAssistant
++
++from .const import OAUTH2_AUTHORIZE, OAUTH2_TOKEN
++
++
++async def async_get_authorization_server(hass: HomeAssistant) -> AuthorizationServer:
++    """Return authorization server."""
++    return AuthorizationServer(
++        authorize_url=OAUTH2_AUTHORIZE,
++        token_url=OAUTH2_TOKEN,
++    )
++
++
++async def async_get_description_placeholders(hass: HomeAssistant) -> dict[str, str]:
++    """Return description placeholders for the credentials dialog."""
++    return {
++        "oauth_consent_url": "https://console.cloud.google.com/apis/credentials/consent",
++        "more_info_url": "https://www.home-assistant.io/integrations/google_health/",
++        "oauth_creds_url": "https://console.cloud.google.com/apis/credentials",
++    }
+diff --git a/homeassistant/components/google_health/config_flow.py b/homeassistant/components/google_health/config_flow.py
+new file mode 100644
+index 0000000000..0eb1139b44
+--- /dev/null
++++ b/homeassistant/components/google_health/config_flow.py
+@@ -0,0 +1,78 @@
++"""Config flow for Google Health."""
++
++import logging
++from typing import Any, override
++
++from google_health_api import GoogleHealthApi
++from google_health_api.const import HealthApiScope
++from google_health_api.exceptions import GoogleHealthApiError
++
++from homeassistant.config_entries import ConfigFlowResult
++from homeassistant.const import CONF_ACCESS_TOKEN, CONF_TOKEN
++from homeassistant.helpers import aiohttp_client, config_entry_oauth2_flow
++
++from .api import SimpleAuth
++from .const import DEFAULT_TITLE, DOMAIN, OAUTH_SCOPES
++
++_LOGGER = logging.getLogger(__name__)
++
++
++class OAuth2FlowHandler(
++    config_entry_oauth2_flow.AbstractOAuth2FlowHandler, domain=DOMAIN
++):
++    """Config flow to handle Google Health OAuth2 authentication."""
++
++    DOMAIN = DOMAIN
++
++    @property
++    @override
++    def logger(self) -> logging.Logger:
++        """Return logger."""
++        return _LOGGER
++
++    @property
++    @override
++    def extra_authorize_data(self) -> dict[str, Any]:
++        """Extra data that needs to be appended to the authorize url."""
++        return {
++            "scope": " ".join(OAUTH_SCOPES),
++            "access_type": "offline",
++            "prompt": "consent",
++        }
++
++    @override
++    async def async_oauth_create_entry(self, data: dict[str, Any]) -> ConfigFlowResult:
++        scopes = data.get(CONF_TOKEN, {}).get("scope", "").split()
++        if HealthApiScope.PROFILE_READ not in scopes:
++            return self.async_abort(reason="missing_profile_scope")
++
++        access_token = data[CONF_TOKEN][CONF_ACCESS_TOKEN]
++        websession = aiohttp_client.async_get_clientsession(self.hass)
++        auth = SimpleAuth(websession, access_token)
++        api = GoogleHealthApi(auth)
++
++        try:
++            identity = await api.get_identity()
++        except GoogleHealthApiError as err:
++            _LOGGER.error("Error getting Google Health identity: %s", err)
++            return self.async_abort(reason="cannot_connect")
++
++        if not identity.health_user_id:
++            _LOGGER.error("Google Health identity has no health_user_id")
++            return self.async_abort(reason="cannot_connect")
++
++        await self.async_set_unique_id(identity.health_user_id)
++        self._abort_if_unique_id_configured()
++
++        display_name = None
++        if HealthApiScope.USERINFO_PROFILE in scopes or "profile" in scopes:
++            try:
++                userinfo = await api.get_user_info()
++                display_name = userinfo.given_name or userinfo.name
++            except Exception as err:  # pylint: disable=broad-except # noqa: BLE001
++                _LOGGER.warning("Error fetching user profile name: %s", err)
++
++        return self.async_create_entry(
++            title=display_name or DEFAULT_TITLE,
++            data=data,
++        )
+diff --git a/homeassistant/components/google_health/const.py b/homeassistant/components/google_health/const.py
+new file mode 100644
+index 0000000000..03243729ae
+--- /dev/null
++++ b/homeassistant/components/google_health/const.py
+@@ -0,0 +1,17 @@
++"""Constants for the Google Health integration."""
++
++from google_health_api.const import HealthApiScope
++
++DOMAIN = "google_health"
++
++OAUTH2_AUTHORIZE = "https://accounts.google.com/o/oauth2/v2/auth"
++OAUTH2_TOKEN = "https://oauth2.googleapis.com/token"
++
++DEFAULT_TITLE = "Google Health"
++
++OAUTH_SCOPES = [
++    HealthApiScope.ACTIVITY_READ,
++    HealthApiScope.PROFILE_READ,
++    HealthApiScope.MEASUREMENTS_READ,
++    HealthApiScope.USERINFO_PROFILE,
++]
+diff --git a/homeassistant/components/google_health/coordinator.py b/homeassistant/components/google_health/coordinator.py
+new file mode 100644
+index 0000000000..680bccb0e1
+--- /dev/null
++++ b/homeassistant/components/google_health/coordinator.py
+@@ -0,0 +1,176 @@
++"""Coordinators for Google Health."""
++
++from dataclasses import dataclass
++from datetime import timedelta
++import logging
++from typing import TYPE_CHECKING, override
++
++from google_health_api import GoogleHealthApi
++from google_health_api.exceptions import (
++    GoogleHealthApiError,
++    HealthApiForbiddenException,
++    HealthAuthException,
++)
++from google_health_api.model import (
++    DailyRestingHeartRate,
++    DistanceRollupValue,
++    StepsRollupValue,
++    Weight,
++)
++
++from homeassistant.core import HomeAssistant
++from homeassistant.exceptions import ConfigEntryAuthFailed
++from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
++
++from .const import DOMAIN
++
++if TYPE_CHECKING:
++    from . import GoogleHealthConfigEntry
++
++_LOGGER = logging.getLogger(__name__)
++
++POLLING_INTERVAL = timedelta(minutes=15)
++BODY_POLLING_INTERVAL = timedelta(hours=1)
++DEFAULT_PAGE_SIZE = 1
++
++
++@dataclass
++class GoogleHealthActivityData:
++    """Class to hold activity data."""
++
++    steps: StepsRollupValue | None = None
++    distance: DistanceRollupValue | None = None
++
++
++@dataclass
++class GoogleHealthBodyData:
++    """Class to hold body measurements."""
++
++    weight: Weight | None = None
++    resting_heart_rate: DailyRestingHeartRate | None = None
++
++
++class GoogleHealthDataUpdateCoordinator[_DataT](DataUpdateCoordinator[_DataT]):
++    """Base coordinator for Google Health API."""
++
++    def __init__(
++        self,
++        hass: HomeAssistant,
++        logger: logging.Logger,
++        name: str,
++        update_interval: timedelta,
++        entry: GoogleHealthConfigEntry,
++        api_client: GoogleHealthApi,
++    ) -> None:
++        """Initialize the coordinator."""
++        self.api = api_client
++        super().__init__(
++            hass,
++            logger,
++            name=name,
++            update_interval=update_interval,
++            config_entry=entry,
++        )
++
++    @override
++    async def _async_update_data(self) -> _DataT:
++        """Fetch data from API."""
++        try:
++            return await self._async_fetch_data()
++        except (HealthAuthException, HealthApiForbiddenException) as err:
++            raise ConfigEntryAuthFailed(
++                translation_domain=DOMAIN,
++                translation_key="auth_error",
++            ) from err
++        except GoogleHealthApiError as err:
++            raise UpdateFailed(
++                translation_domain=DOMAIN,
++                translation_key="communication_error",
++            ) from err
++
++    async def _async_fetch_data(self) -> _DataT:
++        """Fetch data from API."""
++        raise NotImplementedError
++
++
++class GoogleHealthActivityCoordinator(
++    GoogleHealthDataUpdateCoordinator[GoogleHealthActivityData]
++):
++    """Coordinator to fetch activity data from Google Health API."""
++
++    def __init__(
++        self,
++        hass: HomeAssistant,
++        entry: GoogleHealthConfigEntry,
++        api_client: GoogleHealthApi,
++    ) -> None:
++        """Initialize the coordinator."""
++        super().__init__(
++            hass,
++            _LOGGER,
++            name=f"{DOMAIN}_activity",
++            update_interval=POLLING_INTERVAL,
++            entry=entry,
++            api_client=api_client,
++        )
++
++    @override
++    async def _async_fetch_data(self) -> GoogleHealthActivityData:
++        """Fetch steps and distance rollup for today.
++
++        Queries the daily rollup endpoints using Home Assistant's local time zone
++        to aggregate step and distance counts over the current civil day. If no
++        data points exist for today yet, the API returns None, which the sensors
++        default to 0.
++        """
++        steps_rollup = await self.api.steps.today(self.hass.config.time_zone)
++        distance_rollup = await self.api.distance.today(self.hass.config.time_zone)
++
++        steps = steps_rollup.data if steps_rollup else None
++        distance = distance_rollup.data if distance_rollup else None
++
++        return GoogleHealthActivityData(steps=steps, distance=distance)
++
++
++class GoogleHealthBodyCoordinator(
++    GoogleHealthDataUpdateCoordinator[GoogleHealthBodyData]
++):
++    """Coordinator to fetch body measurements from Google Health API."""
++
++    def __init__(
++        self,
++        hass: HomeAssistant,
++        entry: GoogleHealthConfigEntry,
++        api_client: GoogleHealthApi,
++    ) -> None:
++        """Initialize the coordinator."""
++        super().__init__(
++            hass,
++            _LOGGER,
++            name=f"{DOMAIN}_body",
++            update_interval=BODY_POLLING_INTERVAL,
++            entry=entry,
++            api_client=api_client,
++        )
++
++    @override
++    async def _async_fetch_data(self) -> GoogleHealthBodyData:
++        """Fetch latest body weight and resting heart rate."""
++        # The Google Health API returns data points sorted by interval start time
++        # in descending order (newest first). Querying with page_size=1 and grabbing
++        # the first element is sufficient to fetch the most recent measurement.
++        weight_result = await self.api.weight.list(page_size=DEFAULT_PAGE_SIZE)
++        hr_result = await self.api.daily_resting_heart_rate.list(
++            page_size=DEFAULT_PAGE_SIZE
++        )
++
++        weight = (
++            weight_result.data_points[0].data if weight_result.data_points else None
++        )
++        resting_heart_rate = (
++            hr_result.data_points[0].data if hr_result.data_points else None
++        )
++
++        return GoogleHealthBodyData(
++            weight=weight, resting_heart_rate=resting_heart_rate
++        )
+diff --git a/homeassistant/components/google_health/icons.json b/homeassistant/components/google_health/icons.json
+new file mode 100644
+index 0000000000..2c15524eb0
+--- /dev/null
++++ b/homeassistant/components/google_health/icons.json
+@@ -0,0 +1,12 @@
++{
++  "entity": {
++    "sensor": {
++      "resting_heart_rate": {
++        "default": "mdi:heart-pulse"
++      },
++      "steps": {
++        "default": "mdi:walk"
++      }
++    }
++  }
++}
+diff --git a/homeassistant/components/google_health/manifest.json b/homeassistant/components/google_health/manifest.json
+new file mode 100644
+index 0000000000..52ce63008c
+--- /dev/null
++++ b/homeassistant/components/google_health/manifest.json
+@@ -0,0 +1,12 @@
++{
++  "domain": "google_health",
++  "name": "Google Health",
++  "codeowners": ["@allenporter"],
++  "config_flow": true,
++  "dependencies": ["application_credentials", "http", "webhook"],
++  "documentation": "https://www.home-assistant.io/integrations/google_health",
++  "integration_type": "service",
++  "iot_class": "cloud_polling",
++  "quality_scale": "bronze",
++  "requirements": ["google-health-api==0.5.1"]
++}
+diff --git a/homeassistant/components/google_health/quality_scale.yaml b/homeassistant/components/google_health/quality_scale.yaml
+new file mode 100644
+index 0000000000..95d9da564f
+--- /dev/null
++++ b/homeassistant/components/google_health/quality_scale.yaml
+@@ -0,0 +1,88 @@
++rules:
++  # Bronze
++  action-setup:
++    status: exempt
++    comment: This integration does not provide additional actions.
++  appropriate-polling: done
++  brands: done
++  common-modules: done
++  config-flow-test-coverage: done
++  config-flow: done
++  dependency-transparency: done
++  docs-actions:
++    status: exempt
++    comment: This integration does not provide additional actions.
++  docs-conditions:
++    status: exempt
++    comment: This integration does not have custom conditions.
++  docs-high-level-description: done
++  docs-installation-instructions: done
++  docs-removal-instructions: done
++  docs-triggers:
++    status: exempt
++    comment: This integration does not have custom triggers.
++  entity-event-setup:
++    status: exempt
++    comment: This integration does not subscribe to events.
++  entity-unique-id: done
++  has-entity-name: done
++  runtime-data: done
++  test-before-configure: done
++  test-before-setup: done
++  unique-config-entry: done
++
++  # Silver
++  action-exceptions:
++    status: exempt
++    comment: This integration does not provide additional actions.
++  config-entry-unloading: done
++  docs-configuration-parameters:
++    status: exempt
++    comment: No configuration parameters are available.
++  docs-installation-parameters: done
++  entity-unavailable: done
++  integration-owner: done
++  log-when-unavailable: done
++  parallel-updates: done
++  reauthentication-flow: todo
++  test-coverage: done
++
++  # Gold
++  devices: done
++  diagnostics: todo
++  discovery-update-info:
++    status: exempt
++    comment: This integration does not support discovery.
++  discovery:
++    status: exempt
++    comment: This integration does not support discovery.
++  docs-data-update: done
++  docs-examples: done
++  docs-known-limitations: done
++  docs-supported-devices: done
++  docs-supported-functions: done
++  docs-troubleshooting: done
++  docs-use-cases: done
++  dynamic-devices: todo
++  entity-category:
++    status: exempt
++    comment: All entities are user-facing primary sensors.
++  entity-device-class: done
++  entity-disabled-by-default:
++    status: exempt
++    comment: No entities need to be disabled by default.
++  entity-translations: done
++  exception-translations: done
++  icon-translations: done
++  reconfiguration-flow: todo
++  repair-issues:
++    status: exempt
++    comment: This integration does not raise repair issues.
++  stale-devices:
++    status: exempt
++    comment: This integration has a static device.
++
++  # Platinum
++  async-dependency: done
++  inject-websession: done
++  strict-typing: done
+diff --git a/homeassistant/components/google_health/sensor.py b/homeassistant/components/google_health/sensor.py
+new file mode 100644
+index 0000000000..f841058115
+--- /dev/null
++++ b/homeassistant/components/google_health/sensor.py
+@@ -0,0 +1,138 @@
++"""Sensor platform for the Google Health integration."""
++
++from collections.abc import Callable
++from dataclasses import dataclass
++from typing import Any, cast, override
++
++from homeassistant.components.sensor import (
++    SensorDeviceClass,
++    SensorEntity,
++    SensorEntityDescription,
++    SensorStateClass,
++)
++from homeassistant.const import UnitOfLength, UnitOfMass
++from homeassistant.core import HomeAssistant
++from homeassistant.helpers.device_registry import DeviceInfo
++from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
++from homeassistant.helpers.typing import StateType
++from homeassistant.helpers.update_coordinator import CoordinatorEntity
++
++from . import GoogleHealthConfigEntry
++from .const import DOMAIN
++from .coordinator import (
++    GoogleHealthActivityCoordinator,
++    GoogleHealthBodyCoordinator,
++    GoogleHealthDataUpdateCoordinator,
++)
++
++PARALLEL_UPDATES = 0
++
++
++@dataclass(frozen=True, kw_only=True)
++class GoogleHealthSensorEntityDescription[
++    _CoordinatorT: GoogleHealthDataUpdateCoordinator[Any],
++    _ValueT: StateType,
++](SensorEntityDescription):
++    """Class describing Google Health sensor entities."""
++
++    value_fn: Callable[[Any], _ValueT]
++
++
++ACTIVITY_SENSORS: list[
++    GoogleHealthSensorEntityDescription[GoogleHealthActivityCoordinator, Any]
++] = [
++    GoogleHealthSensorEntityDescription[GoogleHealthActivityCoordinator, int](
++        key="steps",
++        translation_key="steps",
++        state_class=SensorStateClass.TOTAL_INCREASING,
++        value_fn=lambda data: data.steps.count_sum if data and data.steps else 0,
++    ),
++    GoogleHealthSensorEntityDescription[GoogleHealthActivityCoordinator, float](
++        key="distance",
++        native_unit_of_measurement=UnitOfLength.METERS,
++        device_class=SensorDeviceClass.DISTANCE,
++        state_class=SensorStateClass.TOTAL_INCREASING,
++        value_fn=lambda data: (
++            data.distance.millimeters_sum / 1000.0 if data and data.distance else 0.0
++        ),
++    ),
++]
++
++BODY_SENSORS: list[
++    GoogleHealthSensorEntityDescription[GoogleHealthBodyCoordinator, Any]
++] = [
++    GoogleHealthSensorEntityDescription[GoogleHealthBodyCoordinator, float | None](
++        key="weight",
++        native_unit_of_measurement=UnitOfMass.KILOGRAMS,
++        device_class=SensorDeviceClass.WEIGHT,
++        state_class=SensorStateClass.MEASUREMENT,
++        value_fn=lambda data: (
++            data.weight.weight_grams / 1000.0 if data and data.weight else None
++        ),
++    ),
++    GoogleHealthSensorEntityDescription[GoogleHealthBodyCoordinator, int | None](
++        key="resting_heart_rate",
++        translation_key="resting_heart_rate",
++        native_unit_of_measurement="bpm",
++        state_class=SensorStateClass.MEASUREMENT,
++        value_fn=lambda data: (
++            data.resting_heart_rate.beats_per_minute
++            if data and data.resting_heart_rate
++            else None
++        ),
++    ),
++]
++
++
++async def async_setup_entry(
++    hass: HomeAssistant,
++    entry: GoogleHealthConfigEntry,
++    async_add_entities: AddConfigEntryEntitiesCallback,
++) -> None:
++    """Set up the Google Health sensor platform."""
++    data = entry.runtime_data
++
++    entities: list[SensorEntity] = []
++    if (activity_coordinator := data.activity_coordinator) is not None:
++        entities.extend(
++            GoogleHealthSensor(activity_coordinator, entry.entry_id, description)
++            for description in ACTIVITY_SENSORS
++        )
++    if (body_coordinator := data.body_coordinator) is not None:
++        entities.extend(
++            GoogleHealthSensor(body_coordinator, entry.entry_id, description)
++            for description in BODY_SENSORS
++        )
++
++    if entities:
++        async_add_entities(entities)
++
++
++class GoogleHealthSensor[_CoordinatorT: GoogleHealthDataUpdateCoordinator[Any]](
++    CoordinatorEntity[_CoordinatorT], SensorEntity
++):
++    """Generic Google Health sensor entity."""
++
++    _attr_has_entity_name = True
++    entity_description: GoogleHealthSensorEntityDescription[_CoordinatorT, Any]
++
++    def __init__(
++        self,
++        coordinator: _CoordinatorT,
++        entry_id: str,
++        description: GoogleHealthSensorEntityDescription[_CoordinatorT, Any],
++    ) -> None:
++        """Initialize the sensor."""
++        super().__init__(coordinator)
++        self.entity_description = description
++        self._attr_unique_id = f"{entry_id}_{description.key}"
++        self._attr_device_info = DeviceInfo(
++            identifiers={(DOMAIN, entry_id)},
++            manufacturer="Google",
++        )
++
++    @property
++    @override
++    def native_value(self) -> StateType:
++        """Return the state of the sensor."""
++        return cast(StateType, self.entity_description.value_fn(self.coordinator.data))
+diff --git a/homeassistant/components/google_health/strings.json b/homeassistant/components/google_health/strings.json
+new file mode 100644
+index 0000000000..08c5257344
+--- /dev/null
++++ b/homeassistant/components/google_health/strings.json
+@@ -0,0 +1,55 @@
++{
++  "application_credentials": {
++    "description": "Follow the [instructions]({more_info_url}) for [OAuth consent screen]({oauth_consent_url}) to give Home Assistant access to your Google Health data. You also need to create Application Credentials linked to your account:\n1. Go to [Credentials]({oauth_creds_url}) and select **Create Credentials**.\n1. From the drop-down list select **OAuth client ID**.\n1. Select **Web application** for the Application Type."
++  },
++  "config": {
++    "abort": {
++      "already_configured": "[%key:common::config_flow::abort::already_configured_account%]",
++      "already_in_progress": "[%key:common::config_flow::abort::already_in_progress%]",
++      "authorize_url_timeout": "[%key:common::config_flow::abort::oauth2_authorize_url_timeout%]",
++      "cannot_connect": "Failed to connect.",
++      "missing_configuration": "[%key:common::config_flow::abort::oauth2_missing_configuration%]",
++      "missing_profile_scope": "Missing required Google Health profile read permission.",
++      "no_url_available": "[%key:common::config_flow::abort::oauth2_no_url_available%]",
++      "oauth_error": "[%key:common::config_flow::abort::oauth2_error%]",
++      "oauth_failed": "[%key:common::config_flow::abort::oauth2_failed%]",
++      "oauth_implementation_unavailable": "[%key:common::config_flow::abort::oauth2_implementation_unavailable%]",
++      "oauth_timeout": "[%key:common::config_flow::abort::oauth2_timeout%]",
++      "oauth_unauthorized": "[%key:common::config_flow::abort::oauth2_unauthorized%]",
++      "user_rejected_authorize": "[%key:common::config_flow::abort::oauth2_user_rejected_authorize%]"
++    },
++    "create_entry": {
++      "default": "[%key:common::config_flow::create_entry::authenticated%]"
++    },
++    "step": {
++      "pick_implementation": {
++        "title": "[%key:common::config_flow::title::oauth2_pick_implementation%]"
++      }
++    }
++  },
++  "entity": {
++    "sensor": {
++      "resting_heart_rate": {
++        "name": "Resting heart rate"
++      },
++      "steps": {
++        "name": "Steps",
++        "unit_of_measurement": "steps"
++      }
++    }
++  },
++  "exceptions": {
++    "auth_error": {
++      "message": "Authentication or permission error talking to Google Health."
++    },
++    "communication_error": {
++      "message": "Error communicating with Google Health."
++    },
++    "missing_profile_scope": {
++      "message": "Missing required Google Health profile read permission."
++    },
++    "oauth_error": {
++      "message": "OAuth2 implementation temporarily unavailable."
++    }
++  }
++}
+diff --git a/homeassistant/generated/application_credentials.py b/homeassistant/generated/application_credentials.py
+index 06ebd9b263..06fe7da634 100644
+--- a/homeassistant/generated/application_credentials.py
++++ b/homeassistant/generated/application_credentials.py
+@@ -15,6 +15,7 @@ APPLICATION_CREDENTIALS = [
+     "google",
+     "google_assistant_sdk",
+     "google_drive",
++    "google_health",
+     "google_mail",
+     "google_photos",
+     "google_sheets",
+diff --git a/homeassistant/generated/config_flows.py b/homeassistant/generated/config_flows.py
+index 4d0256cc4f..e17d12b77e 100644
+--- a/homeassistant/generated/config_flows.py
++++ b/homeassistant/generated/config_flows.py
+@@ -284,6 +284,7 @@ FLOWS = {
+         "google_cloud",
+         "google_drive",
+         "google_generative_ai_conversation",
++        "google_health",
+         "google_mail",
+         "google_photos",
+         "google_sheets",
+diff --git a/homeassistant/generated/integrations.json b/homeassistant/generated/integrations.json
+index a9be4c9cf7..0fb73355ad 100644
+--- a/homeassistant/generated/integrations.json
++++ b/homeassistant/generated/integrations.json
+@@ -2554,6 +2554,12 @@
+           "iot_class": "cloud_polling",
+           "name": "Google Gemini"
+         },
++        "google_health": {
++          "integration_type": "service",
++          "config_flow": true,
++          "iot_class": "cloud_polling",
++          "name": "Google Health"
++        },
+         "google_mail": {
+           "integration_type": "service",
+           "config_flow": true,
+diff --git a/mypy.ini b/mypy.ini
+index a8fea92f78..1fbb8b1a49 100644
+--- a/mypy.ini
++++ b/mypy.ini
+@@ -2177,6 +2177,16 @@ disallow_untyped_defs = true
+ warn_return_any = true
+ warn_unreachable = true
+ 
++[mypy-homeassistant.components.google_health.*]
++check_untyped_defs = true
++disallow_incomplete_defs = true
++disallow_subclassing_any = true
++disallow_untyped_calls = true
++disallow_untyped_decorators = true
++disallow_untyped_defs = true
++warn_return_any = true
++warn_unreachable = true
++
+ [mypy-homeassistant.components.google_photos.*]
+ check_untyped_defs = true
+ disallow_incomplete_defs = true
+diff --git a/requirements_all.txt b/requirements_all.txt
+index 3dfcf2642c..cf70a636c4 100644
+--- a/requirements_all.txt
++++ b/requirements_all.txt
+@@ -1133,6 +1133,9 @@ google-cloud-texttospeech==2.25.1
+ # homeassistant.components.google_generative_ai_conversation
+ google-genai==1.59.0
+ 
++# homeassistant.components.google_health
++google-health-api==0.5.1
++
+ # homeassistant.components.google_travel_time
+ google-maps-routing==0.6.15
+ 
+diff --git a/tests/components/google_health/__init__.py b/tests/components/google_health/__init__.py
+new file mode 100644
+index 0000000000..8ab7166c02
+--- /dev/null
++++ b/tests/components/google_health/__init__.py
+@@ -0,0 +1 @@
++"""Tests for the Google Health integration."""
+diff --git a/tests/components/google_health/conftest.py b/tests/components/google_health/conftest.py
+new file mode 100644
+index 0000000000..275936e392
+--- /dev/null
++++ b/tests/components/google_health/conftest.py
+@@ -0,0 +1,175 @@
++"""Test fixtures for Google Health."""
++
++from collections.abc import Awaitable, Callable, Generator
++import time
++from typing import Any
++from unittest.mock import AsyncMock, patch
++
++from google_health_api.model import (
++    DAILY_RESTING_HEART_RATE,
++    WEIGHT,
++    DailyRollupDataPoint,
++    DataPoint,
++    DataType,
++    DistanceRollupValue,
++    Identity,
++    ListDataPointResult,
++    StepsRollupValue,
++    UserInfo,
++    _ListDataPointsModel,
++)
++import pytest
++
++from homeassistant.components.application_credentials import (
++    DOMAIN as APPLICATION_CREDENTIALS_DOMAIN,
++    ClientCredential,
++    async_import_client_credential,
++)
++from homeassistant.components.google_health.const import DOMAIN, OAUTH_SCOPES
++from homeassistant.core import HomeAssistant
++from homeassistant.setup import async_setup_component
++
++from tests.common import MockConfigEntry, load_json_object_fixture
++
++CLIENT_ID = "1234"
++CLIENT_SECRET = "5678"
++FAKE_ACCESS_TOKEN = "some-access-token"
++FAKE_REFRESH_TOKEN = "some-refresh-token"
++
++
++def _rollup_fixture(
++    filename: str, rollup_cls: type, field_name: str
++) -> DailyRollupDataPoint | None:
++    """Build the most recent daily rollup data point from a fixture."""
++    points = load_json_object_fixture(filename, DOMAIN)["rollupDataPoints"]
++    if not points:
++        return None
++    return DailyRollupDataPoint.from_api_dict(rollup_cls, field_name, points[0])
++
++
++def _list_fixture(filename: str, data_type: DataType) -> ListDataPointResult:
++    """Build a list data point result from a fixture."""
++    data_points = [
++        DataPoint.from_api_dict(data_type, item)
++        for item in load_json_object_fixture(filename, DOMAIN)["dataPoints"]
++    ]
++    return ListDataPointResult(_ListDataPointsModel(data_points=data_points))
++
++
++@pytest.fixture(name="expires_at")
++def mock_expires_at() -> int:
++    """Fixture to set the oauth token expiration time."""
++    return int(time.time() + 86400)
++
++
++@pytest.fixture
++def scopes() -> list[str]:
++    """Fixture with scopes to set up."""
++    return OAUTH_SCOPES
++
++
++@pytest.fixture(name="token_entry")
++def mock_token_entry(expires_at: int, scopes: list[str]) -> dict[str, Any]:
++    """Fixture for OAuth 'token' data for a ConfigEntry."""
++    return {
++        "access_token": FAKE_ACCESS_TOKEN,
++        "refresh_token": FAKE_REFRESH_TOKEN,
++        "scope": " ".join(scopes),
++        "token_type": "Bearer",
++        "expires_at": expires_at,
++    }
++
++
++@pytest.fixture(name="config_entry")
++def mock_config_entry(token_entry: dict[str, Any]) -> MockConfigEntry:
++    """Fixture for a config entry."""
++    return MockConfigEntry(
++        domain=DOMAIN,
++        title="Google Health",
++        unique_id="mock-health-user-id",
++        entry_id="01J0BC4QM2YBRP6H5G933CETT7",
++        data={
++            "auth_implementation": DOMAIN,
++            "token": token_entry,
++        },
++    )
++
++
++@pytest.fixture
++def mock_setup_entry() -> Generator[AsyncMock]:
++    """Override async_setup_entry."""
++    with patch(
++        "homeassistant.components.google_health.async_setup_entry", return_value=True
++    ) as mock_setup_entry:
++        yield mock_setup_entry
++
++
++@pytest.fixture
++def mock_google_health_client() -> Generator[AsyncMock]:
++    """Mock a Google Health client."""
++    with (
++        patch(
++            "homeassistant.components.google_health.GoogleHealthApi",
++            autospec=True,
++        ) as mock_client,
++        patch(
++            "homeassistant.components.google_health.config_flow.GoogleHealthApi",
++            new=mock_client,
++        ),
++    ):
++        client = mock_client.return_value
++        client.steps = AsyncMock()
++        client.steps.today.return_value = _rollup_fixture(
++            "steps.json", StepsRollupValue, "steps"
++        )
++        client.steps.required_read_scopes = [
++            "https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly"
++        ]
++        client.distance = AsyncMock()
++        client.distance.today.return_value = _rollup_fixture(
++            "distance.json", DistanceRollupValue, "distance"
++        )
++        client.weight = AsyncMock()
++        client.weight.list.return_value = _list_fixture("weight.json", WEIGHT)
++        client.weight.required_read_scopes = [
++            "https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly"
++        ]
++        client.daily_resting_heart_rate = AsyncMock()
++        client.daily_resting_heart_rate.list.return_value = _list_fixture(
++            "resting_heart_rate.json", DAILY_RESTING_HEART_RATE
++        )
++        client.get_identity.return_value = Identity.from_dict(
++            load_json_object_fixture("identity.json", DOMAIN)
++        )
++        client.get_user_info.return_value = UserInfo.from_dict(
++            load_json_object_fixture("userinfo.json", DOMAIN)
++        )
++        yield client
++
++
++@pytest.fixture
++async def setup_credentials(hass: HomeAssistant) -> None:
++    """Fixture to setup credentials."""
++    assert await async_setup_component(hass, APPLICATION_CREDENTIALS_DOMAIN, {})
++    await async_import_client_credential(
++        hass,
++        DOMAIN,
++        ClientCredential(CLIENT_ID, CLIENT_SECRET),
++    )
++
++
++@pytest.fixture(name="integration_setup")
++async def mock_integration_setup(
++    hass: HomeAssistant,
++    config_entry: MockConfigEntry,
++    setup_credentials: None,
++) -> Callable[[], Awaitable[bool]]:
++    """Fixture to set up the integration."""
++    config_entry.add_to_hass(hass)
++
++    async def run() -> bool:
++        result = await hass.config_entries.async_setup(config_entry.entry_id)
++        await hass.async_block_till_done()
++        return result
++
++    return run
+diff --git a/tests/components/google_health/fixtures/distance.json b/tests/components/google_health/fixtures/distance.json
+new file mode 100644
+index 0000000000..b8f1d4b3b1
+--- /dev/null
++++ b/tests/components/google_health/fixtures/distance.json
+@@ -0,0 +1,11 @@
++{
++  "rollupDataPoints": [
++    {
++      "distance": {
++        "millimetersSum": 5000000
++      },
++      "civilStartTime": { "date": { "year": 2026, "month": 6, "day": 28 } },
++      "civilEndTime": { "date": { "year": 2026, "month": 6, "day": 29 } }
++    }
++  ]
++}
+diff --git a/tests/components/google_health/fixtures/identity.json b/tests/components/google_health/fixtures/identity.json
+new file mode 100644
+index 0000000000..f4de595d72
+--- /dev/null
++++ b/tests/components/google_health/fixtures/identity.json
+@@ -0,0 +1,5 @@
++{
++  "name": "users/me/identity",
++  "healthUserId": "mock-health-user-id",
++  "legacyUserId": "mock-legacy-user-id"
++}
+diff --git a/tests/components/google_health/fixtures/resting_heart_rate.json b/tests/components/google_health/fixtures/resting_heart_rate.json
+new file mode 100644
+index 0000000000..37f7345f4b
+--- /dev/null
++++ b/tests/components/google_health/fixtures/resting_heart_rate.json
+@@ -0,0 +1,10 @@
++{
++  "dataPoints": [
++    {
++      "dailyRestingHeartRate": {
++        "beatsPerMinute": 65,
++        "date": { "year": 2026, "month": 6, "day": 29 }
++      }
++    }
++  ]
++}
+diff --git a/tests/components/google_health/fixtures/steps.json b/tests/components/google_health/fixtures/steps.json
+new file mode 100644
+index 0000000000..9a0a1e44ee
+--- /dev/null
++++ b/tests/components/google_health/fixtures/steps.json
+@@ -0,0 +1,11 @@
++{
++  "rollupDataPoints": [
++    {
++      "steps": {
++        "countSum": 10500
++      },
++      "civilStartTime": { "date": { "year": 2026, "month": 6, "day": 28 } },
++      "civilEndTime": { "date": { "year": 2026, "month": 6, "day": 29 } }
++    }
++  ]
++}
+diff --git a/tests/components/google_health/fixtures/userinfo.json b/tests/components/google_health/fixtures/userinfo.json
+new file mode 100644
+index 0000000000..20eab08c05
+--- /dev/null
++++ b/tests/components/google_health/fixtures/userinfo.json
+@@ -0,0 +1,5 @@
++{
++  "sub": "mock-sub",
++  "given_name": "Allen",
++  "name": "Allen Porter"
++}
+diff --git a/tests/components/google_health/fixtures/weight.json b/tests/components/google_health/fixtures/weight.json
+new file mode 100644
+index 0000000000..a651ae872b
+--- /dev/null
++++ b/tests/components/google_health/fixtures/weight.json
+@@ -0,0 +1,12 @@
++{
++  "dataPoints": [
++    {
++      "weight": {
++        "weightGrams": 80000.0,
++        "sampleTime": {
++          "physicalTime": "2026-06-29T00:00:00Z"
++        }
++      }
++    }
++  ]
++}
+diff --git a/tests/components/google_health/snapshots/test_sensor.ambr b/tests/components/google_health/snapshots/test_sensor.ambr
+new file mode 100644
+index 0000000000..b1973b10e0
+--- /dev/null
++++ b/tests/components/google_health/snapshots/test_sensor.ambr
+@@ -0,0 +1,225 @@
++# serializer version: 1
++# name: test_all_entities[sensor.google_health_distance-entry]
++  EntityRegistryEntrySnapshot({
++    'aliases': list([
++      None,
++    ]),
++    'area_id': None,
++    'capabilities': dict({
++      <SensorEntityCapabilityAttribute.STATE_CLASS: 'state_class'>: <SensorStateClass.TOTAL_INCREASING: 'total_increasing'>,
++    }),
++    'config_entry_id': <ANY>,
++    'config_subentry_id': <ANY>,
++    'device_class': None,
++    'device_id': <ANY>,
++    'disabled_by': None,
++    'domain': 'sensor',
++    'entity_category': None,
++    'entity_id': 'sensor.google_health_distance',
++    'has_entity_name': True,
++    'hidden_by': None,
++    'icon': None,
++    'id': <ANY>,
++    'labels': set({
++    }),
++    'name': None,
++    'object_id_base': 'Distance',
++    'options': dict({
++      'sensor': dict({
++        'suggested_display_precision': 2,
++      }),
++    }),
++    'original_device_class': <SensorDeviceClass.DISTANCE: 'distance'>,
++    'original_icon': None,
++    'original_name': 'Distance',
++    'platform': 'google_health',
++    'previous_unique_id': None,
++    'suggested_object_id': None,
++    'supported_features': 0,
++    'translation_key': None,
++    'unique_id': '01J0BC4QM2YBRP6H5G933CETT7_distance',
++    'unit_of_measurement': <UnitOfLength.METERS: 'm'>,
++  })
++# ---
++# name: test_all_entities[sensor.google_health_distance-state]
++  StateSnapshot({
++    'attributes': ReadOnlyDict({
++      <EntityStateAttribute.DEVICE_CLASS: 'device_class'>: 'distance',
++      <EntityStateAttribute.FRIENDLY_NAME: 'friendly_name'>: 'Google Health Distance',
++      <SensorEntityCapabilityAttribute.STATE_CLASS: 'state_class'>: <SensorStateClass.TOTAL_INCREASING: 'total_increasing'>,
++      <EntityStateAttribute.UNIT_OF_MEASUREMENT: 'unit_of_measurement'>: <UnitOfLength.METERS: 'm'>,
++    }),
++    'context': <ANY>,
++    'entity_id': 'sensor.google_health_distance',
++    'last_changed': <ANY>,
++    'last_reported': <ANY>,
++    'last_updated': <ANY>,
++    'state': '5000.0',
++  })
++# ---
++# name: test_all_entities[sensor.google_health_resting_heart_rate-entry]
++  EntityRegistryEntrySnapshot({
++    'aliases': list([
++      None,
++    ]),
++    'area_id': None,
++    'capabilities': dict({
++      <SensorEntityCapabilityAttribute.STATE_CLASS: 'state_class'>: <SensorStateClass.MEASUREMENT: 'measurement'>,
++    }),
++    'config_entry_id': <ANY>,
++    'config_subentry_id': <ANY>,
++    'device_class': None,
++    'device_id': <ANY>,
++    'disabled_by': None,
++    'domain': 'sensor',
++    'entity_category': None,
++    'entity_id': 'sensor.google_health_resting_heart_rate',
++    'has_entity_name': True,
++    'hidden_by': None,
++    'icon': None,
++    'id': <ANY>,
++    'labels': set({
++    }),
++    'name': None,
++    'object_id_base': 'Resting heart rate',
++    'options': dict({
++    }),
++    'original_device_class': None,
++    'original_icon': None,
++    'original_name': 'Resting heart rate',
++    'platform': 'google_health',
++    'previous_unique_id': None,
++    'suggested_object_id': None,
++    'supported_features': 0,
++    'translation_key': 'resting_heart_rate',
++    'unique_id': '01J0BC4QM2YBRP6H5G933CETT7_resting_heart_rate',
++    'unit_of_measurement': 'bpm',
++  })
++# ---
++# name: test_all_entities[sensor.google_health_resting_heart_rate-state]
++  StateSnapshot({
++    'attributes': ReadOnlyDict({
++      <EntityStateAttribute.FRIENDLY_NAME: 'friendly_name'>: 'Google Health Resting heart rate',
++      <SensorEntityCapabilityAttribute.STATE_CLASS: 'state_class'>: <SensorStateClass.MEASUREMENT: 'measurement'>,
++      <EntityStateAttribute.UNIT_OF_MEASUREMENT: 'unit_of_measurement'>: 'bpm',
++    }),
++    'context': <ANY>,
++    'entity_id': 'sensor.google_health_resting_heart_rate',
++    'last_changed': <ANY>,
++    'last_reported': <ANY>,
++    'last_updated': <ANY>,
++    'state': '65',
++  })
++# ---
++# name: test_all_entities[sensor.google_health_steps-entry]
++  EntityRegistryEntrySnapshot({
++    'aliases': list([
++      None,
++    ]),
++    'area_id': None,
++    'capabilities': dict({
++      <SensorEntityCapabilityAttribute.STATE_CLASS: 'state_class'>: <SensorStateClass.TOTAL_INCREASING: 'total_increasing'>,
++    }),
++    'config_entry_id': <ANY>,
++    'config_subentry_id': <ANY>,
++    'device_class': None,
++    'device_id': <ANY>,
++    'disabled_by': None,
++    'domain': 'sensor',
++    'entity_category': None,
++    'entity_id': 'sensor.google_health_steps',
++    'has_entity_name': True,
++    'hidden_by': None,
++    'icon': None,
++    'id': <ANY>,
++    'labels': set({
++    }),
++    'name': None,
++    'object_id_base': 'Steps',
++    'options': dict({
++    }),
++    'original_device_class': None,
++    'original_icon': None,
++    'original_name': 'Steps',
++    'platform': 'google_health',
++    'previous_unique_id': None,
++    'suggested_object_id': None,
++    'supported_features': 0,
++    'translation_key': 'steps',
++    'unique_id': '01J0BC4QM2YBRP6H5G933CETT7_steps',
++    'unit_of_measurement': 'steps',
++  })
++# ---
++# name: test_all_entities[sensor.google_health_steps-state]
++  StateSnapshot({
++    'attributes': ReadOnlyDict({
++      <EntityStateAttribute.FRIENDLY_NAME: 'friendly_name'>: 'Google Health Steps',
++      <SensorEntityCapabilityAttribute.STATE_CLASS: 'state_class'>: <SensorStateClass.TOTAL_INCREASING: 'total_increasing'>,
++      <EntityStateAttribute.UNIT_OF_MEASUREMENT: 'unit_of_measurement'>: 'steps',
++    }),
++    'context': <ANY>,
++    'entity_id': 'sensor.google_health_steps',
++    'last_changed': <ANY>,
++    'last_reported': <ANY>,
++    'last_updated': <ANY>,
++    'state': '10500',
++  })
++# ---
++# name: test_all_entities[sensor.google_health_weight-entry]
++  EntityRegistryEntrySnapshot({
++    'aliases': list([
++      None,
++    ]),
++    'area_id': None,
++    'capabilities': dict({
++      <SensorEntityCapabilityAttribute.STATE_CLASS: 'state_class'>: <SensorStateClass.MEASUREMENT: 'measurement'>,
++    }),
++    'config_entry_id': <ANY>,
++    'config_subentry_id': <ANY>,
++    'device_class': None,
++    'device_id': <ANY>,
++    'disabled_by': None,
++    'domain': 'sensor',
++    'entity_category': None,
++    'entity_id': 'sensor.google_health_weight',
++    'has_entity_name': True,
++    'hidden_by': None,
++    'icon': None,
++    'id': <ANY>,
++    'labels': set({
++    }),
++    'name': None,
++    'object_id_base': 'Weight',
++    'options': dict({
++      'sensor': dict({
++        'suggested_display_precision': 2,
++      }),
++    }),
++    'original_device_class': <SensorDeviceClass.WEIGHT: 'weight'>,
++    'original_icon': None,
++    'original_name': 'Weight',
++    'platform': 'google_health',
++    'previous_unique_id': None,
++    'suggested_object_id': None,
++    'supported_features': 0,
++    'translation_key': None,
++    'unique_id': '01J0BC4QM2YBRP6H5G933CETT7_weight',
++    'unit_of_measurement': <UnitOfMass.KILOGRAMS: 'kg'>,
++  })
++# ---
++# name: test_all_entities[sensor.google_health_weight-state]
++  StateSnapshot({
++    'attributes': ReadOnlyDict({
++      <EntityStateAttribute.DEVICE_CLASS: 'device_class'>: 'weight',
++      <EntityStateAttribute.FRIENDLY_NAME: 'friendly_name'>: 'Google Health Weight',
++      <SensorEntityCapabilityAttribute.STATE_CLASS: 'state_class'>: <SensorStateClass.MEASUREMENT: 'measurement'>,
++      <EntityStateAttribute.UNIT_OF_MEASUREMENT: 'unit_of_measurement'>: <UnitOfMass.KILOGRAMS: 'kg'>,
++    }),
++    'context': <ANY>,
++    'entity_id': 'sensor.google_health_weight',
++    'last_changed': <ANY>,
++    'last_reported': <ANY>,
++    'last_updated': <ANY>,
++    'state': '80.0',
++  })
++# ---
+diff --git a/tests/components/google_health/test_config_flow.py b/tests/components/google_health/test_config_flow.py
+new file mode 100644
+index 0000000000..3410f2f3a2
+--- /dev/null
++++ b/tests/components/google_health/test_config_flow.py
+@@ -0,0 +1,256 @@
++"""Test the Google Health config flow."""
++
++from unittest.mock import AsyncMock
++
++from google_health_api.exceptions import GoogleHealthApiError
++from google_health_api.model import Identity
++import pytest
++
++from homeassistant.components.google_health.const import (
++    DOMAIN,
++    OAUTH2_AUTHORIZE,
++    OAUTH2_TOKEN,
++    OAUTH_SCOPES,
++)
++from homeassistant.config_entries import SOURCE_USER
++from homeassistant.core import HomeAssistant
++from homeassistant.data_entry_flow import FlowResultType
++from homeassistant.helpers import config_entry_oauth2_flow
++
++from tests.test_util.aiohttp import AiohttpClientMocker
++from tests.typing import ClientSessionGenerator
++
++CLIENT_ID = "1234"
++CLIENT_SECRET = "5678"
++
++
++@pytest.mark.usefixtures(
++    "current_request_with_host",
++    "mock_setup_entry",
++    "setup_credentials",
++    "mock_google_health_client",
++)
++async def test_full_flow(
++    hass: HomeAssistant,
++    hass_client_no_auth: ClientSessionGenerator,
++    aioclient_mock: AiohttpClientMocker,
++) -> None:
++    """Check full flow."""
++    result = await hass.config_entries.flow.async_init(
++        DOMAIN, context={"source": SOURCE_USER}
++    )
++    state = config_entry_oauth2_flow._encode_jwt(
++        hass,
++        {
++            "flow_id": result["flow_id"],
++            "redirect_uri": "https://example.com/auth/external/callback",
++        },
++    )
++
++    assert result["url"] == (
++        f"{OAUTH2_AUTHORIZE}?response_type=code&client_id={CLIENT_ID}"
++        "&redirect_uri=https://example.com/auth/external/callback"
++        f"&state={state}"
++        "&scope=https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly"
++        "+https://www.googleapis.com/auth/googlehealth.profile.readonly"
++        "+https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly"
++        "+https://www.googleapis.com/auth/userinfo.profile"
++        "&access_type=offline"
++        "&prompt=consent"
++    )
++
++    client = await hass_client_no_auth()
++    resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
++    assert resp.status == 200
++    assert resp.headers["content-type"] == "text/html; charset=utf-8"
++
++    aioclient_mock.post(
++        OAUTH2_TOKEN,
++        json={
++            "refresh_token": "mock-refresh-token",
++            "access_token": "mock-access-token",
++            "type": "Bearer",
++            "expires_in": 60,
++            "scope": " ".join(OAUTH_SCOPES),
++        },
++    )
++
++    result = await hass.config_entries.flow.async_configure(result["flow_id"])
++
++    assert result["type"] is FlowResultType.CREATE_ENTRY
++    assert result["title"] == "Allen"
++    assert result["result"].unique_id == "mock-health-user-id"
++    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
++
++
++@pytest.mark.usefixtures(
++    "current_request_with_host", "mock_setup_entry", "setup_credentials"
++)
++async def test_config_flow_missing_profile_scope(
++    hass: HomeAssistant,
++    hass_client_no_auth: ClientSessionGenerator,
++    aioclient_mock: AiohttpClientMocker,
++) -> None:
++    """Test config flow aborts if profile read scope is missing from token."""
++    result = await hass.config_entries.flow.async_init(
++        DOMAIN, context={"source": SOURCE_USER}
++    )
++    assert result["type"] is FlowResultType.EXTERNAL_STEP
++
++    state = config_entry_oauth2_flow._encode_jwt(
++        hass,
++        {
++            "flow_id": result["flow_id"],
++            "redirect_uri": "https://example.com/auth/external/callback",
++        },
++    )
++
++    client = await hass_client_no_auth()
++    resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
++    assert resp.status == 200
++
++    # Return a token containing only the activity scope (missing profile scope)
++    aioclient_mock.post(
++        OAUTH2_TOKEN,
++        json={
++            "refresh_token": "mock-refresh-token",
++            "access_token": "mock-access-token",
++            "type": "Bearer",
++            "expires_in": 60,
++            "scope": "https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly",
++        },
++    )
++
++    result = await hass.config_entries.flow.async_configure(result["flow_id"])
++
++    assert result["type"] is FlowResultType.ABORT
++    assert result["reason"] == "missing_profile_scope"
++
++
++@pytest.mark.usefixtures(
++    "current_request_with_host", "mock_setup_entry", "setup_credentials"
++)
++async def test_config_flow_get_identity_error(
++    hass: HomeAssistant,
++    hass_client_no_auth: ClientSessionGenerator,
++    aioclient_mock: AiohttpClientMocker,
++    mock_google_health_client: AsyncMock,
++) -> None:
++    """Test config flow aborts if get_identity raises an API error."""
++    mock_google_health_client.get_identity.side_effect = GoogleHealthApiError
++
++    result = await hass.config_entries.flow.async_init(
++        DOMAIN, context={"source": SOURCE_USER}
++    )
++    state = config_entry_oauth2_flow._encode_jwt(
++        hass,
++        {
++            "flow_id": result["flow_id"],
++            "redirect_uri": "https://example.com/auth/external/callback",
++        },
++    )
++
++    client = await hass_client_no_auth()
++    await client.get(f"/auth/external/callback?code=abcd&state={state}")
++
++    aioclient_mock.post(
++        OAUTH2_TOKEN,
++        json={
++            "refresh_token": "mock-refresh-token",
++            "access_token": "mock-access-token",
++            "type": "Bearer",
++            "expires_in": 60,
++            "scope": " ".join(OAUTH_SCOPES),
++        },
++    )
++
++    result = await hass.config_entries.flow.async_configure(result["flow_id"])
++    assert result["type"] is FlowResultType.ABORT
++    assert result["reason"] == "cannot_connect"
++
++
++@pytest.mark.usefixtures(
++    "current_request_with_host", "mock_setup_entry", "setup_credentials"
++)
++async def test_config_flow_missing_health_user_id(
++    hass: HomeAssistant,
++    hass_client_no_auth: ClientSessionGenerator,
++    aioclient_mock: AiohttpClientMocker,
++    mock_google_health_client: AsyncMock,
++) -> None:
++    """Test config flow aborts if identity does not contain healthUserId."""
++    mock_google_health_client.get_identity.return_value = Identity(
++        name="users/me/identity", health_user_id=""
++    )
++
++    result = await hass.config_entries.flow.async_init(
++        DOMAIN, context={"source": SOURCE_USER}
++    )
++    state = config_entry_oauth2_flow._encode_jwt(
++        hass,
++        {
++            "flow_id": result["flow_id"],
++            "redirect_uri": "https://example.com/auth/external/callback",
++        },
++    )
++
++    client = await hass_client_no_auth()
++    await client.get(f"/auth/external/callback?code=abcd&state={state}")
++
++    aioclient_mock.post(
++        OAUTH2_TOKEN,
++        json={
++            "refresh_token": "mock-refresh-token",
++            "access_token": "mock-access-token",
++            "type": "Bearer",
++            "expires_in": 60,
++            "scope": " ".join(OAUTH_SCOPES),
++        },
++    )
++
++    result = await hass.config_entries.flow.async_configure(result["flow_id"])
++    assert result["type"] is FlowResultType.ABORT
++    assert result["reason"] == "cannot_connect"
++
++
++@pytest.mark.usefixtures(
++    "current_request_with_host", "mock_setup_entry", "setup_credentials"
++)
++async def test_config_flow_profile_name_error(
++    hass: HomeAssistant,
++    hass_client_no_auth: ClientSessionGenerator,
++    aioclient_mock: AiohttpClientMocker,
++    mock_google_health_client: AsyncMock,
++) -> None:
++    """Test flow completes with default title if fetching profile userinfo fails."""
++    mock_google_health_client.get_user_info.side_effect = GoogleHealthApiError
++
++    result = await hass.config_entries.flow.async_init(
++        DOMAIN, context={"source": SOURCE_USER}
++    )
++    state = config_entry_oauth2_flow._encode_jwt(
++        hass,
++        {
++            "flow_id": result["flow_id"],
++            "redirect_uri": "https://example.com/auth/external/callback",
++        },
++    )
++
++    client = await hass_client_no_auth()
++    await client.get(f"/auth/external/callback?code=abcd&state={state}")
++
++    aioclient_mock.post(
++        OAUTH2_TOKEN,
++        json={
++            "refresh_token": "mock-refresh-token",
++            "access_token": "mock-access-token",
++            "type": "Bearer",
++            "expires_in": 60,
++            "scope": " ".join(OAUTH_SCOPES),
++        },
++    )
++
++    result = await hass.config_entries.flow.async_configure(result["flow_id"])
++
++    assert result["type"] is FlowResultType.CREATE_ENTRY
++    assert result["title"] == "Google Health"
+diff --git a/tests/components/google_health/test_init.py b/tests/components/google_health/test_init.py
+new file mode 100644
+index 0000000000..ec80e866cf
+--- /dev/null
++++ b/tests/components/google_health/test_init.py
+@@ -0,0 +1,153 @@
++"""Tests for Google Health integration lifecycle (init/unloading)."""
++
++from collections.abc import Awaitable, Callable
++from unittest.mock import AsyncMock, patch
++
++from google_health_api.exceptions import (
++    GoogleHealthApiError,
++    HealthApiForbiddenException,
++)
++import pytest
++
++from homeassistant import config_entries
++from homeassistant.core import HomeAssistant
++from homeassistant.helpers.config_entry_oauth2_flow import (
++    ImplementationUnavailableError,
++)
++
++from tests.common import MockConfigEntry
++
++
++@pytest.mark.usefixtures("mock_google_health_client")
++async def test_setup_and_unload(
++    hass: HomeAssistant,
++    config_entry: MockConfigEntry,
++    integration_setup: Callable[[], Awaitable[bool]],
++) -> None:
++    """Test standard setup and unloading of the config entry."""
++    assert await integration_setup()
++    assert config_entry.state is config_entries.ConfigEntryState.LOADED
++
++    assert hass.states.get("sensor.google_health_steps") is not None
++    assert hass.states.get("sensor.google_health_distance") is not None
++    assert hass.states.get("sensor.google_health_weight") is not None
++    assert hass.states.get("sensor.google_health_resting_heart_rate") is not None
++
++    assert await hass.config_entries.async_unload(config_entry.entry_id)
++    await hass.async_block_till_done()
++    assert config_entry.state is config_entries.ConfigEntryState.NOT_LOADED
++
++
++async def test_setup_api_error(
++    hass: HomeAssistant,
++    config_entry: MockConfigEntry,
++    mock_google_health_client: AsyncMock,
++    integration_setup: Callable[[], Awaitable[bool]],
++) -> None:
++    """Test setup error retry handling when API fails."""
++    mock_google_health_client.steps.today.side_effect = GoogleHealthApiError
++
++    assert not await integration_setup()
++    assert config_entry.state is config_entries.ConfigEntryState.SETUP_RETRY
++
++
++async def test_setup_auth_error(
++    hass: HomeAssistant,
++    config_entry: MockConfigEntry,
++    mock_google_health_client: AsyncMock,
++    integration_setup: Callable[[], Awaitable[bool]],
++) -> None:
++    """Test setup error when API returns auth or forbidden errors."""
++    mock_google_health_client.steps.today.side_effect = HealthApiForbiddenException
++
++    assert not await integration_setup()
++    assert config_entry.state is config_entries.ConfigEntryState.SETUP_ERROR
++
++    flows = hass.config_entries.flow.async_progress()
++    assert len(flows) == 0
++
++
++@pytest.mark.usefixtures("mock_google_health_client")
++@pytest.mark.parametrize(
++    "scopes", ["https://www.googleapis.com/auth/health.activity_and_fitness.readonly"]
++)
++async def test_setup_missing_scopes(
++    hass: HomeAssistant,
++    config_entry: MockConfigEntry,
++    integration_setup: Callable[[], Awaitable[bool]],
++) -> None:
++    """Test setup fails if token has missing profile scope."""
++    assert not await integration_setup()
++    assert config_entry.state is config_entries.ConfigEntryState.SETUP_ERROR
++
++    flows = hass.config_entries.flow.async_progress()
++    assert len(flows) == 0
++
++
++@pytest.mark.usefixtures("mock_google_health_client")
++@pytest.mark.parametrize(
++    "scopes",
++    [
++        [
++            "https://www.googleapis.com/auth/googlehealth.profile.readonly",
++            "https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly",
++        ]
++    ],
++)
++async def test_setup_missing_activity_scope(
++    hass: HomeAssistant,
++    config_entry: MockConfigEntry,
++    integration_setup: Callable[[], Awaitable[bool]],
++) -> None:
++    """Test setup succeeds but steps sensor is not added if activity scope is missing."""
++    assert await integration_setup()
++    assert config_entry.state is config_entries.ConfigEntryState.LOADED
++
++    assert hass.states.get("sensor.google_health_steps") is None
++    assert hass.states.get("sensor.google_health_distance") is None
++
++    assert hass.states.get("sensor.google_health_weight") is not None
++    assert hass.states.get("sensor.google_health_resting_heart_rate") is not None
++
++
++@pytest.mark.usefixtures("mock_google_health_client")
++@pytest.mark.parametrize(
++    "scopes",
++    [
++        [
++            "https://www.googleapis.com/auth/googlehealth.profile.readonly",
++            "https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly",
++        ]
++    ],
++)
++async def test_setup_missing_measurements_scope(
++    hass: HomeAssistant,
++    config_entry: MockConfigEntry,
++    integration_setup: Callable[[], Awaitable[bool]],
++) -> None:
++    """Test setup succeeds but weight sensor is not added if measurements scope is missing."""
++    assert await integration_setup()
++    assert config_entry.state is config_entries.ConfigEntryState.LOADED
++
++    assert hass.states.get("sensor.google_health_weight") is None
++    assert hass.states.get("sensor.google_health_resting_heart_rate") is None
++
++    assert hass.states.get("sensor.google_health_steps") is not None
++    assert hass.states.get("sensor.google_health_distance") is not None
++
++
++async def test_setup_oauth_implementation_unavailable(
++    hass: HomeAssistant,
++    config_entry: MockConfigEntry,
++) -> None:
++    """Test that unavailable OAuth implementation raises ConfigEntryNotReady."""
++    config_entry.add_to_hass(hass)
++
++    with patch(
++        "homeassistant.components.google_health.async_get_config_entry_implementation",
++        side_effect=ImplementationUnavailableError,
++    ):
++        await hass.config_entries.async_setup(config_entry.entry_id)
++        await hass.async_block_till_done()
++
++    assert config_entry.state is config_entries.ConfigEntryState.SETUP_RETRY
+diff --git a/tests/components/google_health/test_sensor.py b/tests/components/google_health/test_sensor.py
+new file mode 100644
+index 0000000000..9e3b9b0f96
+--- /dev/null
++++ b/tests/components/google_health/test_sensor.py
+@@ -0,0 +1,48 @@
++"""Tests for Google Health sensor platform."""
++
++from collections.abc import Awaitable, Callable
++from unittest.mock import AsyncMock, patch
++
++import pytest
++from syrupy.assertion import SnapshotAssertion
++
++from homeassistant.const import Platform
++from homeassistant.core import HomeAssistant
++from homeassistant.helpers import entity_registry as er
++
++from tests.common import MockConfigEntry, snapshot_platform
++
++
++@pytest.mark.usefixtures("mock_google_health_client")
++async def test_all_entities(
++    hass: HomeAssistant,
++    snapshot: SnapshotAssertion,
++    entity_registry: er.EntityRegistry,
++    config_entry: MockConfigEntry,
++    integration_setup: Callable[[], Awaitable[bool]],
++) -> None:
++    """Test all sensor entities."""
++    with patch("homeassistant.components.google_health._PLATFORMS", [Platform.SENSOR]):
++        assert await integration_setup()
++
++    await snapshot_platform(hass, entity_registry, snapshot, config_entry.entry_id)
++
++
++async def test_sensor_empty_rollup(
++    hass: HomeAssistant,
++    mock_google_health_client: AsyncMock,
++    integration_setup: Callable[[], Awaitable[bool]],
++) -> None:
++    """Test steps and distance sensors when the rollup endpoint returns no data."""
++    mock_google_health_client.steps.today.return_value = None
++    mock_google_health_client.distance.today.return_value = None
++
++    assert await integration_setup()
++
++    steps_state = hass.states.get("sensor.google_health_steps")
++    assert steps_state is not None
++    assert steps_state.state == "0"
++
++    distance_state = hass.states.get("sensor.google_health_distance")
++    assert distance_state is not None
++    assert distance_state.state == "0.0"

@@ -1,0 +1,932 @@
+From 39656f782c23358759afd1374113bff337e7a464 Mon Sep 17 00:00:00 2001
+From: Adrian Gruntkowski <adrian.gruntkowski@gmail.com>
+Date: Thu, 26 Jun 2025 10:48:25 +0200
+Subject: [PATCH] Implement listing and revoking of SSO sessions from team
+ settings (#5529)
+
+* Refactor and unify logic for account and site settings sidebars
+
+* Implement listing and revoking of SSO sessions from team settings
+---
+ .../controllers/sso_controller.ex             |  22 ++
+ .../templates/sso/team_sessions.html.heex     |  36 ++++
+ lib/plausible/auth/user_sessions.ex           |  54 +++++
+ lib/plausible_web/components/layout.ex        |  88 ++++++++
+ lib/plausible_web/live/components/form.ex     |  35 ++--
+ lib/plausible_web/router.ex                   |   2 +
+ .../templates/layout/_settings_tab.html.heex  |  22 --
+ .../layout/_site_settings_tab.html.heex       |  22 --
+ .../templates/layout/settings.html.heex       |  28 +--
+ .../templates/layout/site_settings.html.heex  |  40 +---
+ lib/plausible_web/views/layout_view.ex        |  25 +--
+ test/plausible/auth/user_sessions_test.exs    | 193 ++++++++++++++++++
+ .../controllers/sso_controller_test.exs       |  93 ++++++++-
+ test/support/test_utils.ex                    |  11 +-
+ 14 files changed, 540 insertions(+), 131 deletions(-)
+ create mode 100644 extra/lib/plausible_web/templates/sso/team_sessions.html.heex
+ delete mode 100644 lib/plausible_web/templates/layout/_settings_tab.html.heex
+ delete mode 100644 lib/plausible_web/templates/layout/_site_settings_tab.html.heex
+
+diff --git a/extra/lib/plausible_web/controllers/sso_controller.ex b/extra/lib/plausible_web/controllers/sso_controller.ex
+index e650bc8fa..49772f92a 100644
+--- a/extra/lib/plausible_web/controllers/sso_controller.ex
++++ b/extra/lib/plausible_web/controllers/sso_controller.ex
+@@ -3,6 +3,7 @@ defmodule PlausibleWeb.SSOController do
+ 
+   require Logger
+ 
++  alias Plausible.Auth
+   alias Plausible.Auth.SSO
+   alias PlausibleWeb.LoginPreference
+ 
+@@ -11,6 +12,9 @@ defmodule PlausibleWeb.SSOController do
+   plug Plausible.Plugs.AuthorizeTeamAccess,
+        [:owner] when action in [:sso_settings]
+ 
++  plug Plausible.Plugs.AuthorizeTeamAccess,
++       [:owner, :admin] when action in [:team_sessions, :delete_session]
++
+   def login_form(conn, params) do
+     login_preference = LoginPreference.get(conn)
+     error = Phoenix.Flash.get(conn.assigns.flash, :login_error)
+@@ -90,6 +94,24 @@ defmodule PlausibleWeb.SSOController do
+     end
+   end
+ 
++  def team_sessions(conn, _params) do
++    sso_sessions = Auth.UserSessions.list_sso_for_team(conn.assigns.current_team)
++
++    render(conn, :team_sessions,
++      layout: {PlausibleWeb.LayoutView, :settings},
++      sso_sessions: sso_sessions
++    )
++  end
++
++  def delete_session(conn, %{"session_id" => session_id}) do
++    current_team = conn.assigns.current_team
++    Auth.UserSessions.revoke_sso_by_id(current_team, session_id)
++
++    conn
++    |> put_flash(:success, "Session logged out successfully")
++    |> redirect(to: Routes.sso_path(conn, :team_sessions))
++  end
++
+   defp saml_adapter() do
+     Application.fetch_env!(:plausible, :sso_saml_adapter)
+   end
+diff --git a/extra/lib/plausible_web/templates/sso/team_sessions.html.heex b/extra/lib/plausible_web/templates/sso/team_sessions.html.heex
+new file mode 100644
+index 000000000..c9a20bd73
+--- /dev/null
++++ b/extra/lib/plausible_web/templates/sso/team_sessions.html.heex
+@@ -0,0 +1,36 @@
++<.settings_tiles>
++  <.tile docs="sso-login-management">
++    <:title>
++      <a id="user-sessions">SSO Login Management</a>
++    </:title>
++    <:subtitle>
++      Review and log out Single Sign-On user sessions
++    </:subtitle>
++
++    <div :if={@sso_sessions == []} class="mt-4 dark:text-gray-100 text-center">
++      There are currently no active SSO sessions
++    </div>
++
++    <.table id="sso-sessions-list" rows={@sso_sessions}>
++      <:thead>
++        <.th>User</.th>
++        <.th hide_on_mobile>Device</.th>
++        <.th hide_on_mobile>Last seen</.th>
++        <.th invisible>Actions</.th>
++      </:thead>
++      <:tbody :let={session}>
++        <.td truncate max_width="max-w-40">{session.user.name}</.td>
++        <.td hide_on_mobile>{session.device}</.td>
++        <.td hide_on_mobile>{Plausible.Auth.UserSessions.last_used_humanize(session)}</.td>
++        <.td :if={@current_user_session.id == session.id} actions>Current session</.td>
++        <.td :if={@current_user_session.id != session.id} actions>
++          <.delete_button
++            href={Routes.sso_path(@conn, :delete_session, session.id)}
++            method="delete"
++            data-confirm="Are you sure you want to log out this session?"
++          />
++        </.td>
++      </:tbody>
++    </.table>
++  </.tile>
++</.settings_tiles>
+diff --git a/lib/plausible/auth/user_sessions.ex b/lib/plausible/auth/user_sessions.ex
+index 2a79f0696..76185c2ba 100644
+--- a/lib/plausible/auth/user_sessions.ex
++++ b/lib/plausible/auth/user_sessions.ex
+@@ -3,6 +3,8 @@ defmodule Plausible.Auth.UserSessions do
+   Functions for interacting with user sessions.
+   """
+ 
++  use Plausible
++
+   import Ecto.Query
+   alias Plausible.Auth
+   alias Plausible.Repo
+@@ -19,6 +21,58 @@ defmodule Plausible.Auth.UserSessions do
+     )
+   end
+ 
++  on_ee do
++    alias Plausible.Teams
++
++    @spec list_sso_for_team(Teams.Team.t(), NaiveDateTime.t()) :: [Auth.UserSession.t()]
++    def list_sso_for_team(team, now \\ NaiveDateTime.utc_now(:second)) do
++      user_ids =
++        Repo.all(
++          from t in Teams.Team,
++            inner_join: tm in assoc(t, :team_memberships),
++            inner_join: u in assoc(tm, :user),
++            where: t.id == ^team.id,
++            where: tm.role != :guest,
++            where: u.type == :sso,
++            select: u.id
++        )
++
++      Repo.all(
++        from us in Auth.UserSession,
++          inner_join: u in assoc(us, :user),
++          where: us.user_id in ^user_ids,
++          where: us.timeout_at >= ^now,
++          order_by: [desc: us.last_used_at, desc: us.id],
++          preload: [user: u]
++      )
++    end
++
++    @spec revoke_sso_by_id(Teams.Team.t(), pos_integer()) :: :ok
++    def revoke_sso_by_id(team, session_id) do
++      {_, tokens} =
++        Repo.delete_all(
++          from us in Auth.UserSession,
++            inner_join: u in assoc(us, :user),
++            inner_join: tm in assoc(u, :team_memberships),
++            where: u.type == :sso,
++            where: us.id == ^session_id,
++            where: tm.role != :guest,
++            where: tm.team_id == ^team.id,
++            select: us.token
++        )
++
++      case tokens do
++        [token] ->
++          disconnect_by_token(token)
++
++        _ ->
++          :pass
++      end
++
++      :ok
++    end
++  end
++
+   @spec last_used_humanize(Auth.UserSession.t(), NaiveDateTime.t()) :: String.t()
+   def last_used_humanize(user_session, now \\ NaiveDateTime.utc_now(:second)) do
+     diff = NaiveDateTime.diff(now, user_session.last_used_at, :hour)
+diff --git a/lib/plausible_web/components/layout.ex b/lib/plausible_web/components/layout.ex
+index 4ac2d23b5..ef37fa451 100644
+--- a/lib/plausible_web/components/layout.ex
++++ b/lib/plausible_web/components/layout.ex
+@@ -53,6 +53,94 @@ defmodule PlausibleWeb.Components.Layout do
+     """
+   end
+ 
++  attr(:selected_fn, :any, required: true)
++  attr(:prefix, :string, default: "")
++  attr(:options, :list, required: true)
++
++  def settings_sidebar(assigns) do
++    ~H"""
++    <.settings_top_tab
++      :for={%{key: key, value: value, icon: icon} <- @options}
++      selected_fn={@selected_fn}
++      prefix={@prefix}
++      icon={icon}
++      text={key}
++      value={value}
++    />
++    """
++  end
++
++  attr(:selected_fn, :any)
++  attr(:prefix, :string, default: "")
++  attr(:icon, :any, default: nil)
++  attr(:text, :string, required: true)
++  attr(:value, :any, default: nil)
++
++  defp settings_top_tab(assigns) do
++    ~H"""
++    <%= if is_binary(@value) do %>
++      <.settings_tab
++        selected_fn={@selected_fn}
++        prefix={@prefix}
++        icon={@icon}
++        text={@text}
++        value={@value}
++      />
++    <% else %>
++      <.settings_tab icon={@icon} text={@text} />
++
++      <div class="ml-6">
++        <.settings_tab
++          :for={%{key: key, value: value} <- @value}
++          selected_fn={@selected_fn}
++          prefix={@prefix}
++          icon={nil}
++          text={key}
++          value={value}
++          submenu?={true}
++        />
++      </div>
++    <% end %>
++    """
++  end
++
++  attr(:selected_fn, :any, default: nil)
++  attr(:prefix, :string, default: "")
++  attr(:value, :any, default: nil)
++  attr(:icon, :any, default: nil)
++  attr(:submenu?, :boolean, default: false)
++  attr(:text, :string, required: true)
++
++  defp settings_tab(assigns) do
++    current_tab? = assigns[:selected_fn] != nil and assigns.selected_fn.(assigns[:value])
++    assigns = assign(assigns, :current_tab?, current_tab?)
++
++    ~H"""
++    <a
++      href={@value && @prefix <> "/settings/" <> @value}
++      class={[
++        "text-sm flex items-center px-2 py-2 leading-5 font-medium rounded-md outline-none focus:outline-none transition ease-in-out duration-150",
++        @current_tab? &&
++          "text-gray-900 dark:text-gray-100 bg-gray-100 font-semibold dark:bg-gray-900 hover:text-gray-900 focus:bg-gray-200 dark:focus:bg-gray-800",
++        @value && not @current_tab? &&
++          "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 focus:text-gray-900 focus:bg-gray-50 dark:focus:text-gray-100 dark:focus:bg-gray-800",
++        !@value && "text-gray-600 dark:text-gray-400"
++      ]}
++    >
++      <PlausibleWeb.Components.Generic.dynamic_icon
++        :if={not @submenu? && @icon}
++        name={@icon}
++        class={["h-4 w-4 mr-2", @current_tab? && "stroke-2"]}
++      />
++      {@text}
++      <Heroicons.chevron_down
++        :if={is_nil(@value)}
++        class="h-3 w-3 ml-2 text-gray-400 dark:text-gray-500"
++      />
++    </a>
++    """
++  end
++
+   defp theme_preference(%{theme: theme}) when not is_nil(theme), do: theme
+ 
+   defp theme_preference(%{current_user: %Plausible.Auth.User{theme: theme}})
+diff --git a/lib/plausible_web/live/components/form.ex b/lib/plausible_web/live/components/form.ex
+index 7da02fc21..5b0d09392 100644
+--- a/lib/plausible_web/live/components/form.ex
++++ b/lib/plausible_web/live/components/form.ex
+@@ -427,26 +427,13 @@ defmodule PlausibleWeb.Live.Components.Form do
+   attr :selected_fn, :any, required: true
+ 
+   def mobile_nav_dropdown(%{options: options} = assigns) do
+-    options =
+-      Enum.reduce(options, Map.new(), fn
+-        {section, opts}, acc when is_list(opts) ->
+-          Map.put(acc, section, for(o <- opts, do: {o.key, o.value}))
+-
+-        {key, value}, _acc when is_binary(key) and is_binary(value) ->
+-          options
+-      end)
+-
+-    assigns = assign(assigns, :options, options)
++    assigns = assign(assigns, :options, flatten_options(options))
+ 
+     ~H"""
+     <.form for={@conn} class="lg:hidden py-4">
+       <.input
+         value={
+           @options
+-          |> Enum.flat_map(fn
+-            {_section, opts} when is_list(opts) -> opts
+-            {k, v} when is_binary(k) and is_binary(v) -> [{k, v}]
+-          end)
+           |> Enum.find_value(fn {_k, v} ->
+             apply(@selected_fn, [v]) && v
+           end)
+@@ -460,4 +447,24 @@ defmodule PlausibleWeb.Live.Components.Form do
+     </.form>
+     """
+   end
++
++  defp flatten_options(options, prefix \\ "") do
++    options
++    |> Enum.map(fn
++      {key, suboptions} when is_list(suboptions) ->
++        flatten_options(suboptions, prefix <> key <> ": ")
++
++      {key, value} when is_binary(value) ->
++        {prefix <> key, value}
++
++      %{value: value, key: key} when is_binary(value) ->
++        {prefix <> key, value}
++
++      %{value: submenu_items, key: parent_key} when is_list(submenu_items) ->
++        Enum.map(submenu_items, fn submenu_item ->
++          {"#{prefix}#{parent_key}: #{submenu_item.key}", submenu_item.value}
++        end)
++    end)
++    |> List.flatten()
++  end
+ end
+diff --git a/lib/plausible_web/router.ex b/lib/plausible_web/router.ex
+index 399b96a0f..e08517ca5 100644
+--- a/lib/plausible_web/router.ex
++++ b/lib/plausible_web/router.ex
+@@ -472,6 +472,8 @@ defmodule PlausibleWeb.Router do
+ 
+     on_ee do
+       get "/sso/general", SSOController, :sso_settings
++      get "/sso/sessions", SSOController, :team_sessions
++      delete "/sso/sessions/:session_id", SSOController, :delete_session
+     end
+ 
+     post "/team/invitations/:invitation_id/accept", InvitationController, :accept_invitation
+diff --git a/lib/plausible_web/templates/layout/_settings_tab.html.heex b/lib/plausible_web/templates/layout/_settings_tab.html.heex
+deleted file mode 100644
+index 44eaa112b..000000000
+--- a/lib/plausible_web/templates/layout/_settings_tab.html.heex
++++ /dev/null
+@@ -1,22 +0,0 @@
+-<a
+-  href={@this_tab && "/settings/" <> @this_tab}
+-  class={[
+-    "text-sm flex items-center px-2 py-2 leading-5 font-medium rounded-md outline-none focus:outline-none transition ease-in-out duration-150",
+-    is_current_tab(@conn, @this_tab) &&
+-      "text-gray-900 dark:text-gray-100 bg-gray-100 font-semibold dark:bg-gray-900 hover:text-gray-900 focus:bg-gray-200 dark:focus:bg-gray-800",
+-    @this_tab && not is_current_tab(@conn, @this_tab) &&
+-      "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 focus:text-gray-900 focus:bg-gray-50 dark:focus:text-gray-100 dark:focus:bg-gray-800",
+-    !@this_tab && "text-gray-600 dark:text-gray-400"
+-  ]}
+->
+-  <.dynamic_icon
+-    :if={not @submenu? && @icon}
+-    name={@icon}
+-    class={["h-4 w-4 mr-2", is_current_tab(@conn, @this_tab) && "stroke-2"]}
+-  />
+-  {@text}
+-  <Heroicons.chevron_down
+-    :if={is_nil(@this_tab)}
+-    class="h-3 w-3 ml-2 text-gray-400 dark:text-gray-500"
+-  />
+-</a>
+diff --git a/lib/plausible_web/templates/layout/_site_settings_tab.html.heex b/lib/plausible_web/templates/layout/_site_settings_tab.html.heex
+deleted file mode 100644
+index 146ed0622..000000000
+--- a/lib/plausible_web/templates/layout/_site_settings_tab.html.heex
++++ /dev/null
+@@ -1,22 +0,0 @@
+-<a
+-  href={@this_tab && "/" <> URI.encode_www_form(@site.domain) <> "/settings/" <> @this_tab}
+-  class={[
+-    "text-sm flex items-center px-2 py-2 leading-5 font-medium rounded-md outline-none focus:outline-none transition ease-in-out duration-150",
+-    is_current_tab(@conn, @this_tab) &&
+-      "text-gray-900 dark:text-gray-100 bg-gray-100 font-semibold dark:bg-gray-900 hover:text-gray-900 focus:bg-gray-200 dark:focus:bg-gray-800",
+-    @this_tab && not is_current_tab(@conn, @this_tab) &&
+-      "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 focus:text-gray-900 focus:bg-gray-50 dark:focus:text-gray-100 dark:focus:bg-gray-800",
+-    !@this_tab && "text-gray-600 dark:text-gray-400"
+-  ]}
+->
+-  <.dynamic_icon
+-    :if={not @submenu? && @icon}
+-    name={@icon}
+-    class={["h-4 w-4 mr-2", is_current_tab(@conn, @this_tab) && "stroke-2"]}
+-  />
+-  {@text}
+-  <Heroicons.chevron_down
+-    :if={is_nil(@this_tab)}
+-    class="h-3 w-3 ml-2 text-gray-400 dark:text-gray-500"
+-  />
+-</a>
+diff --git a/lib/plausible_web/templates/layout/settings.html.heex b/lib/plausible_web/templates/layout/settings.html.heex
+index a4b73791c..f71273eb2 100644
+--- a/lib/plausible_web/templates/layout/settings.html.heex
++++ b/lib/plausible_web/templates/layout/settings.html.heex
+@@ -19,18 +19,13 @@
+           href_base="/settings/"
+         />
+ 
+-        <div class="hidden lg:block py-4  top-0 sticky">
++        <div class="hidden lg:block py-4 top-0 sticky">
+           <h3 class="uppercase text-sm text-indigo-600 font-semibold">Account Settings</h3>
+           <p class="text-xs dark:text-gray-400 truncate">{@current_user.email}</p>
+-          <%= for %{key: key, value: value, icon: icon} <- options["Account Settings"]  do %>
+-            {render("_settings_tab.html",
+-              icon: icon,
+-              this_tab: value,
+-              text: key,
+-              conn: @conn,
+-              submenu?: false
+-            )}
+-          <% end %>
++          <Layout.settings_sidebar
++            selected_fn={&is_current_tab(@conn, &1)}
++            options={options["Account Settings"]}
++          />
+ 
+           <div :if={Plausible.Teams.setup?(@current_team)}>
+             <h3 class="uppercase text-sm text-indigo-600 font-semibold mt-6">Team Settings</h3>
+@@ -38,15 +33,10 @@
+               {Plausible.Teams.name(@current_team)}
+             </p>
+ 
+-            <%= for %{key: key, value: value, icon: icon} <- options["Team Settings"]  do %>
+-              {render("_settings_tab.html",
+-                icon: icon,
+-                this_tab: value,
+-                text: key,
+-                conn: @conn,
+-                submenu?: false
+-              )}
+-            <% end %>
++            <Layout.settings_sidebar
++              selected_fn={&is_current_tab(@conn, &1)}
++              options={options["Team Settings"]}
++            />
+           </div>
+         </div>
+       </div>
+diff --git a/lib/plausible_web/templates/layout/site_settings.html.heex b/lib/plausible_web/templates/layout/site_settings.html.heex
+index bb719bdc0..d6eb7a4c7 100644
+--- a/lib/plausible_web/templates/layout/site_settings.html.heex
++++ b/lib/plausible_web/templates/layout/site_settings.html.heex
+@@ -1,4 +1,5 @@
+ <%= render_layout "app.html", assigns do %>
++  <% options = site_settings_sidebar(@conn) %>
+   <div class="container pt-6">
+     <.styled_link
+       class="text-indigo-600 font-bold text-sm"
+@@ -13,7 +14,6 @@
+     </div>
+     <div class="lg:grid lg:grid-cols-12 lg:gap-x-5 lg:mt-4">
+       <div class="lg:col-span-3">
+-        <% options = flat_site_settings_options(@conn) %>
+         <.mobile_nav_dropdown
+           conn={@conn}
+           options={options}
+@@ -23,39 +23,11 @@
+         />
+ 
+         <div class="hidden lg:block py-4 sticky top-0" data-testid="site_settings_sidebar">
+-          <%= for %{key: key, value: value, icon: icon} <- site_settings_sidebar(@conn) do %>
+-            <%= if is_binary(value) do %>
+-              {render("_site_settings_tab.html",
+-                icon: icon,
+-                this_tab: value,
+-                text: key,
+-                site: @site,
+-                conn: @conn,
+-                submenu?: false
+-              )}
+-            <% else %>
+-              {render("_site_settings_tab.html",
+-                icon: icon,
+-                this_tab: nil,
+-                text: key,
+-                site: @site,
+-                conn: @conn,
+-                submenu?: false
+-              )}
+-              <div class="ml-6">
+-                <%= for %{key: key, value: val} <- value do %>
+-                  {render("_site_settings_tab.html",
+-                    icon: nil,
+-                    this_tab: val,
+-                    text: key,
+-                    site: @site,
+-                    conn: @conn,
+-                    submenu?: true
+-                  )}
+-                <% end %>
+-              </div>
+-            <% end %>
+-          <% end %>
++          <Layout.settings_sidebar
++            prefix={"/#{URI.encode_www_form(@site.domain)}"}
++            selected_fn={&is_current_tab(@conn, &1)}
++            options={options}
++          />
+         </div>
+       </div>
+ 
+diff --git a/lib/plausible_web/views/layout_view.ex b/lib/plausible_web/views/layout_view.ex
+index 649ebd548..2235e5646 100644
+--- a/lib/plausible_web/views/layout_view.ex
++++ b/lib/plausible_web/views/layout_view.ex
+@@ -4,6 +4,7 @@ defmodule PlausibleWeb.LayoutView do
+ 
+   alias Plausible.Teams
+   alias PlausibleWeb.Components.Billing.Notice
++  alias PlausibleWeb.Components.Layout
+ 
+   def plausible_url do
+     PlausibleWeb.Endpoint.url()
+@@ -80,21 +81,6 @@ defmodule PlausibleWeb.LayoutView do
+     |> Enum.reject(&is_nil/1)
+   end
+ 
+-  def flat_site_settings_options(conn) do
+-    conn
+-    |> site_settings_sidebar()
+-    |> Enum.map(fn
+-      %{value: value, key: key} when is_binary(value) ->
+-        {key, value}
+-
+-      %{value: submenu_items, key: parent_key} when is_list(submenu_items) ->
+-        Enum.map(submenu_items, fn submenu_item ->
+-          {"#{parent_key}: #{submenu_item.key}", submenu_item.value}
+-        end)
+-    end)
+-    |> List.flatten()
+-  end
+-
+   def account_settings_sidebar(conn) do
+     current_team = conn.assigns[:current_team]
+     current_team_role = conn.assigns[:current_team_role]
+@@ -138,7 +124,14 @@ defmodule PlausibleWeb.LayoutView do
+           if(
+             Plausible.sso_enabled?() and current_team_role == :owner and
+               Plausible.Billing.Feature.SSO.check_availability(current_team) == :ok,
+-            do: %{key: "Single Sign-On", value: "sso/general", icon: :cloud}
++            do: %{
++              key: "Single Sign-On",
++              icon: :cloud,
++              value: [
++                %{key: "Configuration", value: "sso/general"},
++                %{key: "Sessions", value: "sso/sessions"}
++              ]
++            }
+           ),
+           if(current_team_role == :owner,
+             do: %{key: "Danger Zone", value: "team/delete", icon: :exclamation_triangle}
+diff --git a/test/plausible/auth/user_sessions_test.exs b/test/plausible/auth/user_sessions_test.exs
+index 78de13222..000521a52 100644
+--- a/test/plausible/auth/user_sessions_test.exs
++++ b/test/plausible/auth/user_sessions_test.exs
+@@ -33,6 +33,199 @@ defmodule Plausible.Auth.UserSessionsTest do
+     end
+   end
+ 
++  on_ee do
++    describe "list_for_sso_team/1,2" do
++      test "lists only SSO member sessions for a given team" do
++        %{team: sso_team, site: site} =
++          setup_do(&create_user/1)
++          |> setup_do(&create_team/1)
++          |> setup_do(&create_site/1)
++          |> setup_do(&setup_sso/1)
++
++        %{team: _other_sso_team} =
++          %{domain: "example2.com"}
++          |> setup_do(&create_user/1)
++          |> setup_do(&create_team/1)
++          |> setup_do(&setup_sso/1)
++
++        %{team: _other_team, user: other_member} =
++          setup_do(&create_user/1)
++          |> setup_do(&create_team/1)
++
++        add_guest(site, user: other_member, role: :editor)
++        _other_member_session = Auth.UserSessions.create!(other_member, "Unknown")
++
++        %{user: sso_member} =
++          %{user: %{name: "Jerry Wane", email: "wane@example.com"}}
++          |> setup_do(&provision_sso_user/1)
++
++        now = NaiveDateTime.utc_now(:second)
++
++        sso_member_session =
++          insert_session(sso_member, "Unknown", NaiveDateTime.add(now, -1, :hour))
++
++        %{user: sso_member2} =
++          %{user: %{name: "Joan McGuire", email: "joan@example.com"}}
++          |> setup_do(&provision_sso_user/1)
++
++        sso_member2_session1 =
++          insert_session(sso_member2, "Unknown", NaiveDateTime.add(now, -2, :hour))
++
++        sso_member2_session2 = insert_session(sso_member2, "Unknown", now)
++
++        in_the_past = NaiveDateTime.add(NaiveDateTime.utc_now(:second), -1, :hour)
++
++        _sso_member2_session_past =
++          Auth.UserSessions.create!(sso_member2, "Unknown", timeout_at: in_the_past)
++
++        team = new_site().team
++        standard_member = add_member(team, role: :editor)
++        _standard_member_session = insert_session(standard_member, "Unknown", now)
++
++        %{user: other_sso_member} =
++          %{user: %{name: "Veronica Dogwright", email: "veronica@example2.com"}}
++          |> setup_do(&provision_sso_user/1)
++
++        _other_sso_member_session = insert_session(other_sso_member, "Unknown", now)
++
++        %{user: guest_sso_member} =
++          %{user: %{name: "Jimmy Felon", email: "jimmy@example2.com"}}
++          |> setup_do(&provision_sso_user/1)
++
++        add_guest(site, user: Repo.reload!(guest_sso_member), role: :viewer)
++
++        _guest_sso_member_session = insert_session(guest_sso_member, "Unknown", now)
++
++        assert [s1, s2, s3] = Auth.UserSessions.list_sso_for_team(sso_team)
++
++        assert s1.token == sso_member2_session2.token
++        assert s2.token == sso_member_session.token
++        assert s3.token == sso_member2_session1.token
++      end
++    end
++
++    describe "revoke_sso_by_id/2" do
++      test "deletes and disconnects user session" do
++        %{team: sso_team} =
++          setup_do(&create_user/1)
++          |> setup_do(&create_team/1)
++          |> setup_do(&setup_sso/1)
++
++        %{user: user} =
++          %{user: %{name: "Jerry Wane", email: "wane@example.com"}}
++          |> setup_do(&provision_sso_user/1)
++
++        now = NaiveDateTime.utc_now(:second)
++        active_session = insert_session(user, "Unknown", now)
++        another_session = insert_session(user, "Unknown", now)
++
++        live_socket_id = "user_sessions:" <> Base.url_encode64(active_session.token)
++        Phoenix.PubSub.subscribe(Plausible.PubSub, live_socket_id)
++
++        assert :ok = UserSessions.revoke_sso_by_id(sso_team, active_session.id)
++
++        assert [remaining_session] = Repo.preload(user, :sessions).sessions
++        assert_broadcast "disconnect", %{}
++        assert remaining_session.id == another_session.id
++        refute Repo.reload(active_session)
++        assert Repo.reload(another_session)
++      end
++
++      test "does not delete session of user on another team" do
++        %{team: sso_team} =
++          setup_do(&create_user/1)
++          |> setup_do(&create_team/1)
++          |> setup_do(&setup_sso/1)
++
++        %{team: _other_sso_team} =
++          %{domain: "example2.com"}
++          |> setup_do(&create_user/1)
++          |> setup_do(&create_team/1)
++          |> setup_do(&setup_sso/1)
++
++        %{user: user} =
++          %{user: %{name: "Jerry Wane", email: "wane@example.com"}}
++          |> setup_do(&provision_sso_user/1)
++
++        now = NaiveDateTime.utc_now(:second)
++
++        active_session = insert_session(user, "Unknown", now)
++
++        %{user: other_user} =
++          %{user: %{name: "Judy Wasteland", email: "judy@example2.com"}}
++          |> setup_do(&provision_sso_user/1)
++
++        other_session = insert_session(other_user, "Unknown", now)
++
++        assert :ok = UserSessions.revoke_sso_by_id(sso_team, other_session.id)
++
++        assert Repo.reload(active_session)
++        assert Repo.reload(other_session)
++      end
++
++      test "does not revoke session of standard user" do
++        %{team: sso_team} =
++          setup_do(&create_user/1)
++          |> setup_do(&create_team/1)
++          |> setup_do(&setup_sso/1)
++
++        user = add_member(sso_team, role: :editor)
++
++        now = NaiveDateTime.utc_now(:second)
++        active_session = insert_session(user, "Unknown", now)
++
++        assert :ok = UserSessions.revoke_sso_by_id(sso_team, active_session.id)
++
++        assert Repo.reload(active_session)
++      end
++
++      test "does not revoke session of a guest who happens to be SSO user" do
++        %{team: sso_team, site: site} =
++          setup_do(&create_user/1)
++          |> setup_do(&create_site/1)
++          |> setup_do(&create_team/1)
++          |> setup_do(&setup_sso/1)
++
++        %{team: _other_sso_team} =
++          %{domain: "example2.com"}
++          |> setup_do(&create_user/1)
++          |> setup_do(&create_team/1)
++          |> setup_do(&setup_sso/1)
++
++        %{user: user} =
++          %{user: %{name: "Judy Wasteland", email: "judy@example2.com"}}
++          |> setup_do(&provision_sso_user/1)
++
++        user = add_guest(site, user: Repo.reload!(user), role: :editor)
++
++        now = NaiveDateTime.utc_now(:second)
++        active_session = insert_session(user, "Unknown", now)
++
++        assert :ok = UserSessions.revoke_sso_by_id(sso_team, active_session.id)
++
++        assert Repo.reload(active_session)
++      end
++
++      test "executes gracefully when session does not exist" do
++        %{team: sso_team} =
++          setup_do(&create_user/1)
++          |> setup_do(&create_team/1)
++          |> setup_do(&setup_sso/1)
++
++        %{user: user} =
++          %{user: %{name: "Jerry Wane", email: "wane@example.com"}}
++          |> setup_do(&provision_sso_user/1)
++
++        now = NaiveDateTime.utc_now(:second)
++        active_session = insert_session(user, "Unknown", now)
++
++        Repo.delete!(active_session)
++
++        assert :ok = UserSessions.revoke_sso_by_id(sso_team, active_session.id)
++      end
++    end
++  end
++
+   describe "last_used_humanize/2" do
+     test "returns humanized relative time" do
+       user = insert(:user)
+diff --git a/test/plausible_web/controllers/sso_controller_test.exs b/test/plausible_web/controllers/sso_controller_test.exs
+index 5d6106fb4..1668c2a3d 100644
+--- a/test/plausible_web/controllers/sso_controller_test.exs
++++ b/test/plausible_web/controllers/sso_controller_test.exs
+@@ -8,18 +8,21 @@ defmodule PlausibleWeb.SSOControllerTest do
+     import Plausible.Teams.Test
+     import Plausible.Test.Support.HTML
+ 
++    alias Plausible.Auth
+     alias Plausible.Auth.SSO
+     alias Plausible.Repo
+ 
+     setup do
+-      team = new_site().team |> Plausible.Teams.complete_setup()
++      owner = new_user()
++      team = new_site(owner: owner).team |> Plausible.Teams.complete_setup()
+       integration = SSO.initiate_saml_integration(team)
+       domain = "example-#{Enum.random(1..10_000)}.com"
+ 
+       {:ok, sso_domain} = SSO.Domains.add(integration, domain)
+       sso_domain = SSO.Domains.verify(sso_domain, skip_checks?: true)
+ 
+-      {:ok, team: team, integration: integration, domain: domain, sso_domain: sso_domain}
++      {:ok,
++       owner: owner, team: team, integration: integration, domain: domain, sso_domain: sso_domain}
+     end
+ 
+     describe "settings item visibility" do
+@@ -351,5 +354,91 @@ defmodule PlausibleWeb.SSOControllerTest do
+         assert html =~ "with your email and password"
+       end
+     end
++
++    describe "team_sessions/2" do
++      setup %{conn: conn, team: team, owner: owner} do
++        %{conn: conn} =
++          %{conn: conn, user: owner}
++          |> setup_do(&log_in/1)
++
++        conn = set_current_team(conn, team)
++
++        {:ok, conn: conn}
++      end
++
++      test "lists SSO sessions", %{conn: conn, domain: domain} do
++        now = NaiveDateTime.utc_now(:second)
++
++        %{user: user1} =
++          %{user: %{name: "Frank Rubin", email: "frank@" <> domain}}
++          |> setup_do(&provision_sso_user/1)
++
++        Auth.UserSessions.create!(user1, "Device 1", now: NaiveDateTime.shift(now, hour: -3))
++
++        %{user: user2} =
++          %{user: %{name: "Grace Holmes", email: "grace@" <> domain}}
++          |> setup_do(&provision_sso_user/1)
++
++        Auth.UserSessions.create!(user2, "Device 2")
++        Auth.UserSessions.create!(user2, "Device 3", now: NaiveDateTime.shift(now, hour: -6))
++
++        %{user: user3} =
++          %{user: %{name: "Kate Loselet", email: "kate@" <> domain}}
++          |> setup_do(&provision_sso_user/1)
++
++        Auth.UserSessions.create!(user3, "Device 4", now: NaiveDateTime.shift(now, hour: -2))
++
++        conn = get(conn, Routes.sso_path(conn, :team_sessions))
++
++        assert html = html_response(conn, 200)
++
++        assert ["Grace Holmes", "Kate Loselet", "Frank Rubin", "Grace Holmes"] =
++                 find(html, "table#sso-sessions-list tr td:nth-of-type(1)")
++                 |> Enum.map(&Floki.text/1)
++                 |> Enum.map(&String.trim/1)
++
++        assert ["Device 2", "Device 4", "Device 1", "Device 3"] =
++                 find(html, "table#sso-sessions-list tr td:nth-of-type(2)")
++                 |> Enum.map(&Floki.text/1)
++                 |> Enum.map(&String.trim/1)
++      end
++
++      test "shows empty state when there are no sessions", %{conn: conn} do
++        conn = get(conn, Routes.sso_path(conn, :team_sessions))
++
++        assert html = html_response(conn, 200)
++
++        assert html =~ "There are currently no active SSO sessions"
++      end
++    end
++
++    describe "delete_session/2" do
++      setup %{conn: conn, team: team, owner: owner} do
++        %{conn: conn} =
++          %{conn: conn, user: owner}
++          |> setup_do(&log_in/1)
++
++        conn = set_current_team(conn, team)
++
++        {:ok, conn: conn}
++      end
++
++      test "revokes session and redirects back to sessions list", %{conn: conn, domain: domain} do
++        %{user: user} =
++          %{user: %{name: "Frank Rubin", email: "frank@" <> domain}}
++          |> setup_do(&provision_sso_user/1)
++
++        session = Auth.UserSessions.create!(user, "Unknown")
++
++        conn = delete(conn, Routes.sso_path(conn, :delete_session, session.id))
++
++        assert redirected_to(conn, 302) == Routes.sso_path(conn, :team_sessions)
++
++        assert Phoenix.Flash.get(conn.assigns.flash, :success) ==
++                 "Session logged out successfully"
++
++        refute Repo.reload(session)
++      end
++    end
+   end
+ end
+diff --git a/test/support/test_utils.ex b/test/support/test_utils.ex
+index 60c61904f..bd0a02644 100644
+--- a/test/support/test_utils.ex
++++ b/test/support/test_utils.ex
+@@ -35,6 +35,13 @@ defmodule Plausible.TestUtils do
+     end
+   end
+ 
++  def setup_do(context \\ %{}, step_fn) do
++    case step_fn.(context) do
++      {:ok, ctx} -> Map.merge(context, Map.new(ctx))
++      ctx -> Map.merge(context, Map.new(ctx))
++    end
++  end
++
+   def create_user(_) do
+     {:ok, user: Plausible.Teams.Test.new_user()}
+   end
+@@ -104,11 +111,11 @@ defmodule Plausible.TestUtils do
+   on_ee do
+     alias Plausible.Auth.SSO
+ 
+-    def setup_sso(%{team: team}) do
++    def setup_sso(%{team: team} = ctx) do
+       team = Plausible.Teams.complete_setup(team)
+       integration = SSO.initiate_saml_integration(team)
+ 
+-      {:ok, sso_domain} = SSO.Domains.add(integration, "example.com")
++      {:ok, sso_domain} = SSO.Domains.add(integration, ctx[:domain] || "example.com")
+       _sso_domain = SSO.Domains.verify(sso_domain, skip_checks?: true)
+ 
+       {:ok, team: team, sso_integration: integration, sso_domain: sso_domain}

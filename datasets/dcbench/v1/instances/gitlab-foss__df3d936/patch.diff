@@ -1,0 +1,436 @@
+From df3d9361e505db61de41b8e39516470d50c0e851 Mon Sep 17 00:00:00 2001
+From: Phil Hughes <me@iamphill.com>
+Date: Fri, 28 Jun 2019 13:36:18 +0100
+Subject: [PATCH] Use GraphQL API to fetch last commit data for tree
+
+---
+ app/assets/javascripts/lib/graphql.js         |   2 +-
+ .../repository/components/last_commit.vue     | 135 ++++++++++--------
+ app/assets/javascripts/repository/index.js    |  30 ++--
+ .../queries/pathLastCommit.query.graphql      |   6 +-
+ app/views/projects/_files.html.haml           |   4 +-
+ .../files/user_reads_pipeline_status_spec.rb  |   2 +
+ .../user_sees_last_commit_ci_status_spec.rb   |   4 +
+ .../__snapshots__/last_commit_spec.js.snap    |  16 +--
+ .../repository/components/last_commit_spec.js |  21 ++-
+ 9 files changed, 120 insertions(+), 100 deletions(-)
+
+diff --git a/app/assets/javascripts/lib/graphql.js b/app/assets/javascripts/lib/graphql.js
+index 5857f9e22a..c05db4a5c7 100644
+--- a/app/assets/javascripts/lib/graphql.js
++++ b/app/assets/javascripts/lib/graphql.js
+@@ -22,7 +22,7 @@ export default (resolvers = {}, config = {}) => {
+ 
+   return new ApolloClient({
+     link: ApolloLink.split(
+-      operation => operation.getContext().hasUpload,
++      operation => operation.getContext().hasUpload || operation.getContext().isSingleRequest,
+       createUploadLink(httpOptions),
+       new BatchHttpLink(httpOptions),
+     ),
+diff --git a/app/assets/javascripts/repository/components/last_commit.vue b/app/assets/javascripts/repository/components/last_commit.vue
+index f25cee9bb5..2649355606 100644
+--- a/app/assets/javascripts/repository/components/last_commit.vue
++++ b/app/assets/javascripts/repository/components/last_commit.vue
+@@ -1,10 +1,9 @@
+ <script>
+-import { GlTooltipDirective, GlLink, GlButton } from '@gitlab/ui';
++import { GlTooltipDirective, GlLink, GlButton, GlLoadingIcon } from '@gitlab/ui';
+ import { sprintf, s__ } from '~/locale';
+ import Icon from '../../vue_shared/components/icon.vue';
+ import UserAvatarLink from '../../vue_shared/components/user_avatar/user_avatar_link.vue';
+ import TimeagoTooltip from '../../vue_shared/components/time_ago_tooltip.vue';
+-import CommitPipelineStatus from '../../projects/tree/components/commit_pipeline_status_component.vue';
+ import CiIcon from '../../vue_shared/components/ci_icon.vue';
+ import ClipboardButton from '../../vue_shared/components/clipboard_button.vue';
+ import getRefMixin from '../mixins/get_ref';
+@@ -16,11 +15,11 @@ export default {
+     Icon,
+     UserAvatarLink,
+     TimeagoTooltip,
+-    CommitPipelineStatus,
+     ClipboardButton,
+     CiIcon,
+     GlLink,
+     GlButton,
++    GlLoadingIcon,
+   },
+   directives: {
+     GlTooltip: GlTooltipDirective,
+@@ -39,7 +38,10 @@ export default {
+           path: this.currentPath.replace(/^\//, ''),
+         };
+       },
+-      update: data => data.project.repository.tree.commit,
++      update: data => data.project.repository.tree.lastCommit,
++      context: {
++        isSingleRequest: true,
++      },
+     },
+   },
+   props: {
+@@ -59,14 +61,14 @@ export default {
+   computed: {
+     statusTitle() {
+       return sprintf(s__('Commits|Commit: %{commitText}'), {
+-        commitText: this.commit.pipeline.detailedStatus.text,
++        commitText: this.commit.latestPipeline.detailedStatus.text,
+       });
+     },
+     isLoading() {
+       return this.$apollo.queries.commit.loading;
+     },
+     showCommitId() {
+-      return this.commit.id.substr(0, 8);
++      return this.commit.sha.substr(0, 8);
+     },
+   },
+   methods: {
+@@ -78,68 +80,75 @@ export default {
+ </script>
+ 
+ <template>
+-  <div v-if="!isLoading" class="info-well d-none d-sm-flex project-last-commit commit p-3">
+-    <user-avatar-link
+-      v-if="commit.author"
+-      :link-href="commit.author.webUrl"
+-      :img-src="commit.author.avatarUrl"
+-      :img-size="40"
+-      class="avatar-cell"
+-    />
+-    <div class="commit-detail flex-list">
+-      <div class="commit-content qa-commit-content">
+-        <gl-link :href="commit.webUrl" class="commit-row-message item-title">
+-          {{ commit.title }}
+-        </gl-link>
+-        <gl-button
+-          v-if="commit.description"
+-          :class="{ open: showDescription }"
+-          :aria-label="__('Show commit description')"
+-          class="text-expander"
+-          @click="toggleShowDescription"
+-        >
+-          <icon name="ellipsis_h" />
+-        </gl-button>
+-        <div class="committer">
++  <div class="info-well d-none d-sm-flex project-last-commit commit p-3">
++    <gl-loading-icon v-if="isLoading" size="md" class="mx-auto" />
++    <template v-else>
++      <user-avatar-link
++        v-if="commit.author"
++        :link-href="commit.author.webUrl"
++        :img-src="commit.author.avatarUrl"
++        :img-size="40"
++        class="avatar-cell"
++      />
++      <div class="commit-detail flex-list">
++        <div class="commit-content qa-commit-content">
++          <gl-link :href="commit.webUrl" class="commit-row-message item-title">
++            {{ commit.title }}
++          </gl-link>
++          <gl-button
++            v-if="commit.description"
++            :class="{ open: showDescription }"
++            :aria-label="__('Show commit description')"
++            class="text-expander"
++            @click="toggleShowDescription"
++          >
++            <icon name="ellipsis_h" />
++          </gl-button>
++          <div class="committer">
++            <gl-link
++              v-if="commit.author"
++              :href="commit.author.webUrl"
++              class="commit-author-link js-user-link"
++            >
++              {{ commit.author.name }}
++            </gl-link>
++            authored
++            <timeago-tooltip :time="commit.authoredDate" tooltip-placement="bottom" />
++          </div>
++          <pre
++            v-if="commit.description"
++            v-show="showDescription"
++            class="commit-row-description append-bottom-8"
++          >
++            {{ commit.description }}
++          </pre>
++        </div>
++        <div class="commit-actions flex-row">
+           <gl-link
+-            v-if="commit.author"
+-            :href="commit.author.webUrl"
+-            class="commit-author-link js-user-link"
++            v-if="commit.latestPipeline"
++            v-gl-tooltip
++            :href="commit.latestPipeline.detailedStatus.detailsPath"
++            :title="statusTitle"
++            class="js-commit-pipeline"
+           >
+-            {{ commit.author.name }}
++            <ci-icon
++              :status="commit.latestPipeline.detailedStatus"
++              :size="24"
++              :aria-label="statusTitle"
++            />
+           </gl-link>
+-          authored
+-          <timeago-tooltip :time="commit.authoredDate" tooltip-placement="bottom" />
+-        </div>
+-        <pre
+-          v-if="commit.description"
+-          v-show="showDescription"
+-          class="commit-row-description append-bottom-8"
+-        >
+-          {{ commit.description }}
+-        </pre>
+-      </div>
+-      <div class="commit-actions flex-row">
+-        <gl-link
+-          v-if="commit.pipeline"
+-          v-gl-tooltip
+-          :href="commit.pipeline.detailedStatus.detailsPath"
+-          :title="statusTitle"
+-          class="js-commit-pipeline"
+-        >
+-          <ci-icon :status="commit.pipeline.detailedStatus" :size="24" :aria-label="statusTitle" />
+-        </gl-link>
+-        <div class="commit-sha-group d-flex">
+-          <div class="label label-monospace monospace">
+-            {{ showCommitId }}
++          <div class="commit-sha-group d-flex">
++            <div class="label label-monospace monospace">
++              {{ showCommitId }}
++            </div>
++            <clipboard-button
++              :text="commit.sha"
++              :title="__('Copy commit SHA to clipboard')"
++              tooltip-placement="bottom"
++            />
+           </div>
+-          <clipboard-button
+-            :text="commit.id"
+-            :title="__('Copy commit SHA to clipboard')"
+-            tooltip-placement="bottom"
+-          />
+         </div>
+       </div>
+-    </div>
++    </template>
+   </div>
+ </template>
+diff --git a/app/assets/javascripts/repository/index.js b/app/assets/javascripts/repository/index.js
+index 6280977b05..ea051eaa41 100644
+--- a/app/assets/javascripts/repository/index.js
++++ b/app/assets/javascripts/repository/index.js
+@@ -50,23 +50,19 @@ export default function setupVueRepositoryList() {
+     },
+   });
+ 
+-  const commitEl = document.getElementById('js-last-commit');
+-
+-  if (commitEl) {
+-    // eslint-disable-next-line no-new
+-    new Vue({
+-      el: commitEl,
+-      router,
+-      apolloProvider,
+-      render(h) {
+-        return h(LastCommit, {
+-          props: {
+-            currentPath: this.$route.params.pathMatch,
+-          },
+-        });
+-      },
+-    });
+-  }
++  // eslint-disable-next-line no-new
++  new Vue({
++    el: document.getElementById('js-last-commit'),
++    router,
++    apolloProvider,
++    render(h) {
++      return h(LastCommit, {
++        props: {
++          currentPath: this.$route.params.pathMatch,
++        },
++      });
++    },
++  });
+ 
+   return new Vue({
+     el,
+diff --git a/app/assets/javascripts/repository/queries/pathLastCommit.query.graphql b/app/assets/javascripts/repository/queries/pathLastCommit.query.graphql
+index 90901f54d5..3bdfd979fa 100644
+--- a/app/assets/javascripts/repository/queries/pathLastCommit.query.graphql
++++ b/app/assets/javascripts/repository/queries/pathLastCommit.query.graphql
+@@ -2,8 +2,8 @@ query pathLastCommit($projectPath: ID!, $path: String, $ref: String!) {
+   project(fullPath: $projectPath) {
+     repository {
+       tree(path: $path, ref: $ref) {
+-        commit {
+-          id
++        lastCommit {
++          sha
+           title
+           message
+           webUrl
+@@ -13,7 +13,7 @@ query pathLastCommit($projectPath: ID!, $path: String, $ref: String!) {
+             avatarUrl
+             webUrl
+           }
+-          pipeline {
++          latestPipeline {
+             detailedStatus {
+               detailsPath
+               icon
+diff --git a/app/views/projects/_files.html.haml b/app/views/projects/_files.html.haml
+index 2b0c398575..6763513f9a 100644
+--- a/app/views/projects/_files.html.haml
++++ b/app/views/projects/_files.html.haml
+@@ -9,7 +9,9 @@
+   .nav-block
+     = render 'projects/tree/tree_header', tree: @tree
+ 
+-  - if commit
++  - if vue_file_list_enabled?
++    #js-last-commit
++  - elsif commit
+     = render 'shared/commit_well', commit: commit, ref: ref, project: project
+ 
+   - if is_project_overview
+diff --git a/spec/features/projects/files/user_reads_pipeline_status_spec.rb b/spec/features/projects/files/user_reads_pipeline_status_spec.rb
+index ff0aa933a3..5bce96d9b8 100644
+--- a/spec/features/projects/files/user_reads_pipeline_status_spec.rb
++++ b/spec/features/projects/files/user_reads_pipeline_status_spec.rb
+@@ -7,6 +7,8 @@
+   let(:x110_pipeline) { create_pipeline('x1.1.0', 'failed') }
+ 
+   before do
++    stub_feature_flags(vue_file_list: false)
++
+     project.add_maintainer(user)
+ 
+     project.repository.add_tag(user, 'x1.1.0', 'v1.1.0')
+diff --git a/spec/features/projects/show/user_sees_last_commit_ci_status_spec.rb b/spec/features/projects/show/user_sees_last_commit_ci_status_spec.rb
+index e277bfb801..89ce4b5078 100644
+--- a/spec/features/projects/show/user_sees_last_commit_ci_status_spec.rb
++++ b/spec/features/projects/show/user_sees_last_commit_ci_status_spec.rb
+@@ -3,6 +3,10 @@
+ describe 'Projects > Show > User sees last commit CI status' do
+   set(:project) { create(:project, :repository, :public) }
+ 
++  before do
++    stub_feature_flags(vue_file_list: false)
++  end
++
+   it 'shows the project README', :js do
+     project.enable_ci
+     pipeline = create(:ci_pipeline, project: project, sha: project.commit.sha, ref: 'master')
+diff --git a/spec/frontend/repository/components/__snapshots__/last_commit_spec.js.snap b/spec/frontend/repository/components/__snapshots__/last_commit_spec.js.snap
+index 3ad6bfa9e5..cd8372a880 100644
+--- a/spec/frontend/repository/components/__snapshots__/last_commit_spec.js.snap
++++ b/spec/frontend/repository/components/__snapshots__/last_commit_spec.js.snap
+@@ -27,8 +27,8 @@ exports[`Repository last commit component renders commit widget 1`] = `
+         href="https://test.com/commit/123"
+       >
+         
+-        Commit title
+-      
++          Commit title
++        
+       </gllink-stub>
+        
+       <!---->
+@@ -41,12 +41,12 @@ exports[`Repository last commit component renders commit widget 1`] = `
+           href="https://test.com/test"
+         >
+           
+-          Test
+-        
++            Test
++          
+         </gllink-stub>
+         
+-        authored
+-        
++          authored
++          
+         <timeagotooltip-stub
+           cssclass=""
+           time="2019-01-01"
+@@ -81,8 +81,8 @@ exports[`Repository last commit component renders commit widget 1`] = `
+           class="label label-monospace monospace"
+         >
+           
+-          12345678
+-        
++            12345678
++          
+         </div>
+          
+         <clipboardbutton-stub
+diff --git a/spec/frontend/repository/components/last_commit_spec.js b/spec/frontend/repository/components/last_commit_spec.js
+index 972690a60f..14479f3c3a 100644
+--- a/spec/frontend/repository/components/last_commit_spec.js
++++ b/spec/frontend/repository/components/last_commit_spec.js
+@@ -1,4 +1,5 @@
+ import { shallowMount } from '@vue/test-utils';
++import { GlLoadingIcon } from '@gitlab/ui';
+ import LastCommit from '~/repository/components/last_commit.vue';
+ import UserAvatarLink from '~/vue_shared/components/user_avatar/user_avatar_link.vue';
+ 
+@@ -6,7 +7,7 @@ let vm;
+ 
+ function createCommitData(data = {}) {
+   return {
+-    id: '123456789',
++    sha: '123456789',
+     title: 'Commit title',
+     message: 'Commit message',
+     webUrl: 'https://test.com/commit/123',
+@@ -16,7 +17,7 @@ function createCommitData(data = {}) {
+       avatarUrl: 'https://test.com',
+       webUrl: 'https://test.com/test',
+     },
+-    pipeline: {
++    latestPipeline: {
+       detailedStatus: {
+         detailsPath: 'https://test.com/pipeline',
+         icon: 'failed',
+@@ -52,12 +53,12 @@ describe('Repository last commit component', () => {
+ 
+   it.each`
+     loading  | label
+-    ${true}  | ${'hides'}
+-    ${false} | ${'shows'}
+-  `('$label when $loading is true', ({ loading }) => {
++    ${true}  | ${'shows'}
++    ${false} | ${'hides'}
++  `('$label when loading icon $loading is true', ({ loading }) => {
+     factory(createCommitData(), loading);
+ 
+-    expect(vm.isEmpty()).toBe(loading);
++    expect(vm.find(GlLoadingIcon).exists()).toBe(loading);
+   });
+ 
+   it('renders commit widget', () => {
+@@ -73,11 +74,17 @@ describe('Repository last commit component', () => {
+   });
+ 
+   it('hides pipeline components when pipeline does not exist', () => {
+-    factory(createCommitData({ pipeline: null }));
++    factory(createCommitData({ latestPipeline: null }));
+ 
+     expect(vm.find('.js-commit-pipeline').exists()).toBe(false);
+   });
+ 
++  it('renders pipeline components', () => {
++    factory();
++
++    expect(vm.find('.js-commit-pipeline').exists()).toBe(true);
++  });
++
+   it('hides author component when author does not exist', () => {
+     factory(createCommitData({ author: null }));
+ 

@@ -1,0 +1,108 @@
+repo: firefox-ios
+base_commit: 75d99af1a90e82319aa9e053b9ca93d223c58741
+commit: d7c8fda485e921d48c7c3e68162c972b349a903d
+patch_stored: true
+gold:
+  - path: BrowserKit/Package.swift
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: >-
+      Declares the new .library(name: "TestKit", ...) / .target(name: "TestKit")
+      and adds "TestKit" to the dependencies arrays of SiteImageViewTests,
+      TabDataStoreTests, WebEngineTests, ToolbarKitTests and SummarizeKitTests
+      test targets, i.e. the SwiftPM birth of the package.
+  - path: BrowserKit/Sources/TestKit/XCTestExtension.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: >-
+      New file defining public extension XCTestCase with trackForMemoryLeaks,
+      unwrapAsync, assertAsyncThrows and assertAsyncThrowsEqual -- the
+      consolidated code that all the deleted per-target XCTestCaseExtension.swift
+      copies used to duplicate.
+  - path: firefox-ios/Client.xcodeproj/project.pbxproj
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: >-
+      Adds the XCSwiftPackageProductDependency TestKit and a matching
+      PBXBuildFile/Frameworks entry so the Xcode-native ClientTests target
+      (not itself an SPM package) can link the new local TestKit product,
+      mirroring what Package.swift does for the SPM test targets.
+  - path: firefox-ios/firefox-ios-tests/Tests/ClientTests/XCTestCaseExtensions.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: >-
+      Original Xcode-native predecessor that loses trackForMemoryLeaks,
+      unwrapAsync, assertAsyncThrows and assertAsyncThrowsEqual (moved verbatim
+      into TestKit/XCTestExtension.swift) while keeping unrelated helpers like
+      asAnyHashable.
+  - path: BrowserKit/Tests/WebEngineTests/XCTestCaseExtension.swift
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: >-
+      Representative deleted per-target duplicate (extension XCTestCase with
+      func trackForMemoryLeaks) showing the "before" state that
+      TestKit/XCTestExtension.swift consolidates; three near-identical siblings
+      in SiteImageViewTests, ToolbarKitTests and TabDataStoreTests were deleted
+      the same way.
+  - path: firefox-ios/firefox-ios-tests/Tests/ClientTests/BrowserViewControllerTests.swift
+    tier: helpful
+    role: caller
+    in_diff: false
+    rationale: >-
+      Calls trackForMemoryLeaks(...) and lives in the ClientTests target whose
+      own extension lost that method in this commit, yet the file is not
+      touched here and never gains "import TestKit" -- evidence that only one
+      of roughly 118 ClientTests callers (RemoteTabsPanelTests.swift) was
+      actually rewired, showing the true (incomplete) blast radius of the
+      relocation.
+  - path: BrowserKit/Tests/WebEngineTests/WKEngineTests.swift
+    tier: helpful
+    role: caller
+    in_diff: false
+    rationale: >-
+      Calls trackForMemoryLeaks(subject, file:, line:) inside the WebEngineTests
+      SPM target but, unlike the one touched file in that target
+      (EngineSessionScriptResponderTests.swift), is not given "import TestKit",
+      illustrating that the migration only updated a single representative
+      caller per test target rather than every caller.
+forbidden:
+  - path: firefox-ios/firefox-ios-tests/Tests/StorageTests/TestBrowserDB.swift
+    reason: >-
+      defines its own separate trackForMemoryLeaks(_:file:line:) in the
+      unrelated StorageTests Xcode target -- a sibling duplicate the diff does
+      not touch or consolidate into TestKit.
+  - path: BrowserKit/Tests/SiteImageViewTests/SiteImageHandlerTests.swift
+    reason: >-
+      same directory/target as the touched FaviconURLCacheTests.swift and also
+      calls trackForMemoryLeaks, but is redundant with the WKEngineTests.swift
+      caller example already covering this "untouched sibling caller" pattern.
+  - path: BrowserKit/README.md
+    reason: >-
+      generic three-line package README predating and unrelated to TestKit;
+      not updated by and not needed to understand this commit.
+nontrivial_gold_count: 2
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: []
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 15
+  description: New TestKit SwiftPM library, move XCTestExtension into it — package birth + source relocation
+notes: >-
+  Birth of a new local SwiftPM library TestKit (BrowserKit/Package.swift)
+  holding a single file, XCTestExtension.swift, that consolidates the
+  trackForMemoryLeaks/unwrapAsync/assertAsyncThrows/assertAsyncThrowsEqual
+  XCTestCase helpers previously duplicated verbatim across 4 BrowserKit test
+  targets and the main ClientTests Xcode target; project.pbxproj wires the
+  same product into the non-SPM ClientTests target. Only one representative
+  caller per target actually got "import TestKit" added, so the two
+  nontrivial-gold caller files were chosen to make that partial-migration
+  blast radius visible rather than to enumerate all affected callers (there
+  are well over a hundred in ClientTests alone). No selector/notification/
+  string-keyed DI is involved -- linkage is entirely via SwiftPM target
+  dependencies and Swift module imports, so string_indirection is false.

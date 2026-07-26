@@ -1,0 +1,1084 @@
+From e7ee84aad4237eaa16f2aba75b4d2c7860625c9d Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Kamil=20Trzci=C5=84ski?= <ayufan@ayufan.eu>
+Date: Thu, 1 Aug 2019 14:26:49 +0000
+Subject: [PATCH] Add support for DAG
+
+This implements the support for `needs:` keyword
+as part of GitLab CI. That makes some of the jobs
+to be run out of order.
+---
+ app/models/ci/build.rb                        | 18 +++-
+ app/models/ci/build_need.rb                   | 14 +++
+ app/models/ci/pipeline.rb                     |  4 +-
+ app/models/commit_status.rb                   |  8 +-
+ app/models/concerns/ci/metadatable.rb         |  1 +
+ app/services/ci/process_pipeline_service.rb   | 40 +++++++-
+ app/services/ci/retry_build_service.rb        |  2 +-
+ app/workers/all_queues.yml                    |  1 +
+ app/workers/build_process_worker.rb           | 16 ++++
+ changelogs/unreleased/implement-dag.yml       |  5 +
+ db/migrate/20190731084415_add_build_need.rb   | 20 ++++
+ db/schema.rb                                  |  9 +-
+ lib/gitlab/ci/config/entry/job.rb             | 20 +++-
+ lib/gitlab/ci/config/normalizer.rb            | 64 ++++++-------
+ lib/gitlab/ci/yaml_processor.rb               | 18 ++++
+ spec/factories/ci/build_need.rb               |  8 ++
+ spec/lib/gitlab/ci/config/entry/job_spec.rb   | 53 +++++++++++
+ spec/lib/gitlab/ci/config/normalizer_spec.rb  | 59 ++++++------
+ spec/lib/gitlab/ci/yaml_processor_spec.rb     | 80 ++++++++++++++++
+ spec/models/ci/build_need_spec.rb             | 13 +++
+ spec/models/ci/build_spec.rb                  | 69 +++++++++++++-
+ .../ci/process_pipeline_service_spec.rb       | 92 +++++++++++++++++++
+ spec/services/ci/retry_build_service_spec.rb  |  1 +
+ spec/workers/build_process_worker_spec.rb     | 26 ++++++
+ 24 files changed, 567 insertions(+), 74 deletions(-)
+ create mode 100644 app/models/ci/build_need.rb
+ create mode 100644 app/workers/build_process_worker.rb
+ create mode 100644 changelogs/unreleased/implement-dag.yml
+ create mode 100644 db/migrate/20190731084415_add_build_need.rb
+ create mode 100644 spec/factories/ci/build_need.rb
+ create mode 100644 spec/models/ci/build_need_spec.rb
+ create mode 100644 spec/workers/build_process_worker_spec.rb
+
+diff --git a/app/models/ci/build.rb b/app/models/ci/build.rb
+index 07813e03f3..dd2bfc42af 100644
+--- a/app/models/ci/build.rb
++++ b/app/models/ci/build.rb
+@@ -38,6 +38,7 @@ class Build < CommitStatus
+     has_one :deployment, as: :deployable, class_name: 'Deployment'
+     has_many :trace_sections, class_name: 'Ci::BuildTraceSection'
+     has_many :trace_chunks, class_name: 'Ci::BuildTraceChunk', foreign_key: :build_id
++    has_many :needs, class_name: 'Ci::BuildNeed', foreign_key: :build_id, inverse_of: :build
+ 
+     has_many :job_artifacts, class_name: 'Ci::JobArtifact', foreign_key: :job_id, dependent: :destroy, inverse_of: :job # rubocop:disable Cop/ActiveRecordDependent
+     has_many :job_variables, class_name: 'Ci::JobVariable', foreign_key: :job_id
+@@ -50,6 +51,7 @@ class Build < CommitStatus
+ 
+     accepts_nested_attributes_for :runner_session
+     accepts_nested_attributes_for :job_variables
++    accepts_nested_attributes_for :needs
+ 
+     delegate :url, to: :runner_session, prefix: true, allow_nil: true
+     delegate :terminal_specification, to: :runner_session, allow_nil: true
+@@ -713,11 +715,21 @@ def dependencies
+ 
+       depended_jobs = depends_on_builds
+ 
+-      return depended_jobs unless options[:dependencies].present?
++      # find all jobs that are dependent on
++      if options[:dependencies].present?
++        depended_jobs = depended_jobs.select do |job|
++          options[:dependencies].include?(job.name)
++        end
++      end
+ 
+-      depended_jobs.select do |job|
+-        options[:dependencies].include?(job.name)
++      # find all jobs that are needed by this one
++      if options[:needs].present?
++        depended_jobs = depended_jobs.select do |job|
++          options[:needs].include?(job.name)
++        end
+       end
++
++      depended_jobs
+     end
+ 
+     def empty_dependencies?
+diff --git a/app/models/ci/build_need.rb b/app/models/ci/build_need.rb
+new file mode 100644
+index 0000000000..6531dfd332
+--- /dev/null
++++ b/app/models/ci/build_need.rb
+@@ -0,0 +1,14 @@
++# frozen_string_literal: true
++
++module Ci
++  class BuildNeed < ApplicationRecord
++    extend Gitlab::Ci::Model
++
++    belongs_to :build, class_name: "Ci::Build", foreign_key: :build_id, inverse_of: :needs
++
++    validates :build, presence: true
++    validates :name, presence: true, length: { maximum: 128 }
++
++    scope :scoped_build, -> { where('ci_builds.id=ci_build_needs.build_id') }
++  end
++end
+diff --git a/app/models/ci/pipeline.rb b/app/models/ci/pipeline.rb
+index 1c76f40169..3515f0b83e 100644
+--- a/app/models/ci/pipeline.rb
++++ b/app/models/ci/pipeline.rb
+@@ -611,8 +611,8 @@ def notes
+     end
+ 
+     # rubocop: disable CodeReuse/ServiceClass
+-    def process!
+-      Ci::ProcessPipelineService.new(project, user).execute(self)
++    def process!(trigger_build_name = nil)
++      Ci::ProcessPipelineService.new(project, user).execute(self, trigger_build_name)
+     end
+     # rubocop: enable CodeReuse/ServiceClass
+ 
+diff --git a/app/models/commit_status.rb b/app/models/commit_status.rb
+index be6f3e9c5b..d7eb78db5b 100644
+--- a/app/models/commit_status.rb
++++ b/app/models/commit_status.rb
+@@ -43,6 +43,12 @@ class CommitStatus < ApplicationRecord
+   scope :after_stage, -> (index) { where('stage_idx > ?', index) }
+   scope :processables, -> { where(type: %w[Ci::Build Ci::Bridge]) }
+ 
++  scope :with_needs, -> (names = nil) do
++    needs = Ci::BuildNeed.scoped_build.select(1)
++    needs = needs.where(name: names) if names
++    where('EXISTS (?)', needs).preload(:needs)
++  end
++
+   # We use `CommitStatusEnums.failure_reasons` here so that EE can more easily
+   # extend this `Hash` with new values.
+   enum_with_nil failure_reason: ::CommitStatusEnums.failure_reasons
+@@ -116,7 +122,7 @@ class CommitStatus < ApplicationRecord
+       commit_status.run_after_commit do
+         if pipeline_id
+           if complete? || manual?
+-            PipelineProcessWorker.perform_async(pipeline_id)
++            BuildProcessWorker.perform_async(id)
+           else
+             PipelineUpdateWorker.perform_async(pipeline_id)
+           end
+diff --git a/app/models/concerns/ci/metadatable.rb b/app/models/concerns/ci/metadatable.rb
+index 9eed9492b3..304cc71e9d 100644
+--- a/app/models/concerns/ci/metadatable.rb
++++ b/app/models/concerns/ci/metadatable.rb
+@@ -29,6 +29,7 @@ def degenerated?
+     def degenerate!
+       self.class.transaction do
+         self.update!(options: nil, yaml_variables: nil)
++        self.needs.all.delete_all
+         self.metadata&.destroy
+       end
+     end
+diff --git a/app/services/ci/process_pipeline_service.rb b/app/services/ci/process_pipeline_service.rb
+index 207cc5017d..e46615bcf7 100644
+--- a/app/services/ci/process_pipeline_service.rb
++++ b/app/services/ci/process_pipeline_service.rb
+@@ -4,19 +4,23 @@ module Ci
+   class ProcessPipelineService < BaseService
+     attr_reader :pipeline
+ 
+-    def execute(pipeline)
++    def execute(pipeline, trigger_build_name = nil)
+       @pipeline = pipeline
+ 
+       update_retried
+ 
+-      new_builds =
++      success =
+         stage_indexes_of_created_processables.flat_map do |index|
+           process_stage(index)
+-        end
++        end.any?
++
++      # we evaluate dependent needs,
++      # only when the another job has finished
++      success = process_builds_with_needs(trigger_build_name) || success
+ 
+       @pipeline.update_status
+ 
+-      new_builds.any?
++      success
+     end
+ 
+     private
+@@ -36,12 +40,40 @@ def process_stage(index)
+       end
+     end
+ 
++    def process_builds_with_needs(trigger_build_name)
++      return false unless trigger_build_name
++      return false unless Feature.enabled?(:ci_dag_support, project)
++
++      created_processables
++        .with_needs(trigger_build_name)
++        .find_each
++        .map(&method(:process_build_with_needs))
++        .any?
++    end
++
++    def process_build_with_needs(build)
++      current_status = status_for_build_needs(build.needs.map(&:name))
++
++      return unless HasStatus::COMPLETED_STATUSES.include?(current_status)
++
++      Gitlab::OptimisticLocking.retry_lock(build) do |subject|
++        Ci::ProcessBuildService.new(project, @user)
++          .execute(subject, current_status)
++      end
++    end
++
+     # rubocop: disable CodeReuse/ActiveRecord
+     def status_for_prior_stages(index)
+       pipeline.builds.where('stage_idx < ?', index).latest.status || 'success'
+     end
+     # rubocop: enable CodeReuse/ActiveRecord
+ 
++    # rubocop: disable CodeReuse/ActiveRecord
++    def status_for_build_needs(needs)
++      pipeline.builds.where(name: needs).latest.status || 'success'
++    end
++    # rubocop: enable CodeReuse/ActiveRecord
++
+     # rubocop: disable CodeReuse/ActiveRecord
+     def stage_indexes_of_created_processables
+       created_processables.order(:stage_idx).pluck(Arel.sql('DISTINCT stage_idx'))
+diff --git a/app/services/ci/retry_build_service.rb b/app/services/ci/retry_build_service.rb
+index fab8a17984..338495ba03 100644
+--- a/app/services/ci/retry_build_service.rb
++++ b/app/services/ci/retry_build_service.rb
+@@ -5,7 +5,7 @@ class RetryBuildService < ::BaseService
+     CLONE_ACCESSORS = %i[pipeline project ref tag options name
+                          allow_failure stage stage_id stage_idx trigger_request
+                          yaml_variables when environment coverage_regex
+-                         description tag_list protected].freeze
++                         description tag_list protected needs].freeze
+ 
+     def execute(build)
+       reprocess!(build).tap do |new_build|
+diff --git a/app/workers/all_queues.yml b/app/workers/all_queues.yml
+index 991a177018..400becdd02 100644
+--- a/app/workers/all_queues.yml
++++ b/app/workers/all_queues.yml
+@@ -88,6 +88,7 @@
+ - pipeline_processing:ci_build_prepare
+ - pipeline_processing:build_queue
+ - pipeline_processing:build_success
++- pipeline_processing:build_process
+ - pipeline_processing:pipeline_process
+ - pipeline_processing:pipeline_success
+ - pipeline_processing:pipeline_update
+diff --git a/app/workers/build_process_worker.rb b/app/workers/build_process_worker.rb
+new file mode 100644
+index 0000000000..19e590ee1d
+--- /dev/null
++++ b/app/workers/build_process_worker.rb
+@@ -0,0 +1,16 @@
++# frozen_string_literal: true
++
++class BuildProcessWorker
++  include ApplicationWorker
++  include PipelineQueue
++
++  queue_namespace :pipeline_processing
++
++  # rubocop: disable CodeReuse/ActiveRecord
++  def perform(build_id)
++    CommitStatus.find_by(id: build_id).try do |build|
++      build.pipeline.process!(build.name)
++    end
++  end
++  # rubocop: enable CodeReuse/ActiveRecord
++end
+diff --git a/changelogs/unreleased/implement-dag.yml b/changelogs/unreleased/implement-dag.yml
+new file mode 100644
+index 0000000000..72f3f9a510
+--- /dev/null
++++ b/changelogs/unreleased/implement-dag.yml
+@@ -0,0 +1,5 @@
++---
++title: "Support creating DAGs in CI config through the `needs` key"
++merge_request: 31328
++author:
++type: added
+diff --git a/db/migrate/20190731084415_add_build_need.rb b/db/migrate/20190731084415_add_build_need.rb
+new file mode 100644
+index 0000000000..45b8abb480
+--- /dev/null
++++ b/db/migrate/20190731084415_add_build_need.rb
+@@ -0,0 +1,20 @@
++# frozen_string_literal: true
++
++# See http://doc.gitlab.com/ce/development/migration_style_guide.html
++# for more information on how to write migrations for GitLab.
++
++class AddBuildNeed < ActiveRecord::Migration[5.2]
++  include Gitlab::Database::MigrationHelpers
++
++  DOWNTIME = false
++
++  def change
++    create_table :ci_build_needs, id: :serial do |t|
++      t.integer :build_id, null: false
++      t.text :name, null: false
++
++      t.index [:build_id, :name], unique: true
++      t.foreign_key :ci_builds, column: :build_id, on_delete: :cascade
++    end
++  end
++end
+diff --git a/db/schema.rb b/db/schema.rb
+index 6f5fc6c65e..df2662b770 100644
+--- a/db/schema.rb
++++ b/db/schema.rb
+@@ -10,7 +10,7 @@
+ #
+ # It's strongly recommended that you check this file into your version control system.
+ 
+-ActiveRecord::Schema.define(version: 2019_07_29_090456) do
++ActiveRecord::Schema.define(version: 2019_07_31_084415) do
+ 
+   # These are extensions that must be enabled in order to support this database
+   enable_extension "pg_trgm"
+@@ -454,6 +454,12 @@
+     t.index ["namespace_id"], name: "index_chat_teams_on_namespace_id", unique: true
+   end
+ 
++  create_table "ci_build_needs", id: :serial, force: :cascade do |t|
++    t.integer "build_id", null: false
++    t.text "name", null: false
++    t.index ["build_id", "name"], name: "index_ci_build_needs_on_build_id_and_name", unique: true
++  end
++
+   create_table "ci_build_trace_chunks", force: :cascade do |t|
+     t.integer "build_id", null: false
+     t.integer "chunk_index", null: false
+@@ -3635,6 +3641,7 @@
+   add_foreign_key "boards", "namespaces", column: "group_id", on_delete: :cascade
+   add_foreign_key "boards", "projects", name: "fk_f15266b5f9", on_delete: :cascade
+   add_foreign_key "chat_teams", "namespaces", on_delete: :cascade
++  add_foreign_key "ci_build_needs", "ci_builds", column: "build_id", on_delete: :cascade
+   add_foreign_key "ci_build_trace_chunks", "ci_builds", column: "build_id", on_delete: :cascade
+   add_foreign_key "ci_build_trace_section_names", "projects", on_delete: :cascade
+   add_foreign_key "ci_build_trace_sections", "ci_build_trace_section_names", column: "section_name_id", name: "fk_264e112c66", on_delete: :cascade
+diff --git a/lib/gitlab/ci/config/entry/job.rb b/lib/gitlab/ci/config/entry/job.rb
+index 5ab795359b..2fd76bc369 100644
+--- a/lib/gitlab/ci/config/entry/job.rb
++++ b/lib/gitlab/ci/config/entry/job.rb
+@@ -13,7 +13,7 @@ class Job < ::Gitlab::Config::Entry::Node
+ 
+           ALLOWED_KEYS = %i[tags script only except type image services
+                             allow_failure type stage when start_in artifacts cache
+-                            dependencies before_script after_script variables
++                            dependencies needs before_script after_script variables
+                             environment coverage retry parallel extends].freeze
+ 
+           validations do
+@@ -34,11 +34,22 @@ class Job < ::Gitlab::Config::Entry::Node
+                              message: 'should be on_success, on_failure, ' \
+                                       'always, manual or delayed' }
+               validates :dependencies, array_of_strings: true
++              validates :needs, array_of_strings: true
+               validates :extends, array_of_strings_or_string: true
+             end
+ 
+             validates :start_in, duration: { limit: '1 day' }, if: :delayed?
+             validates :start_in, absence: true, unless: :delayed?
++
++            validate do
++              next unless dependencies.present?
++              next unless needs.present?
++
++              missing_needs = dependencies - needs
++              if missing_needs.any?
++                errors.add(:dependencies, "the #{missing_needs.join(", ")} should be part of needs")
++              end
++            end
+           end
+ 
+           entry :before_script, Entry::Script,
+@@ -95,10 +106,10 @@ class Job < ::Gitlab::Config::Entry::Node
+           helpers :before_script, :script, :stage, :type, :after_script,
+                   :cache, :image, :services, :only, :except, :variables,
+                   :artifacts, :environment, :coverage, :retry,
+-                  :parallel
++                  :parallel, :needs
+ 
+           attributes :script, :tags, :allow_failure, :when, :dependencies,
+-                     :retry, :parallel, :extends, :start_in
++                     :needs, :retry, :parallel, :extends, :start_in
+ 
+           def self.matching?(name, config)
+             !name.to_s.start_with?('.') &&
+@@ -178,7 +189,8 @@ def to_hash
+               parallel: parallel_defined? ? parallel_value.to_i : nil,
+               artifacts: artifacts_value,
+               after_script: after_script_value,
+-              ignore: ignored? }
++              ignore: ignored?,
++              needs: needs_defined? ? needs_value : nil }
+           end
+         end
+       end
+diff --git a/lib/gitlab/ci/config/normalizer.rb b/lib/gitlab/ci/config/normalizer.rb
+index 99356226ef..09f9bf5f69 100644
+--- a/lib/gitlab/ci/config/normalizer.rb
++++ b/lib/gitlab/ci/config/normalizer.rb
+@@ -4,61 +4,63 @@ module Gitlab
+   module Ci
+     class Config
+       class Normalizer
++        include Gitlab::Utils::StrongMemoize
++
+         def initialize(jobs_config)
+           @jobs_config = jobs_config
+         end
+ 
+         def normalize_jobs
+-          extract_parallelized_jobs!
+-          return @jobs_config if @parallelized_jobs.empty?
++          return @jobs_config if parallelized_jobs.empty?
++
++          expand_parallelize_jobs do |job_name, config|
++            if config[:dependencies]
++              config[:dependencies] = expand_names(config[:dependencies])
++            end
+ 
+-          parallelized_config = parallelize_jobs
+-          parallelize_dependencies(parallelized_config)
++            if config[:needs]
++              config[:needs] = expand_names(config[:needs])
++            end
++
++            config
++          end
+         end
+ 
+         private
+ 
+-        def extract_parallelized_jobs!
+-          @parallelized_jobs = {}
++        def expand_names(job_names)
++          return unless job_names
+ 
+-          @jobs_config.each do |job_name, config|
+-            if config[:parallel]
+-              @parallelized_jobs[job_name] = self.class.parallelize_job_names(job_name, config[:parallel])
+-            end
++          job_names.flat_map do |job_name|
++            parallelized_jobs[job_name.to_sym] || job_name
+           end
+-
+-          @parallelized_jobs
+         end
+ 
+-        def parallelize_jobs
+-          @jobs_config.each_with_object({}) do |(job_name, config), hash|
+-            if @parallelized_jobs.key?(job_name)
+-              @parallelized_jobs[job_name].each { |name, index| hash[name.to_sym] = config.merge(name: name, instance: index) }
+-            else
+-              hash[job_name] = config
+-            end
++        def parallelized_jobs
++          strong_memoize(:parallelized_jobs) do
++            @jobs_config.each_with_object({}) do |(job_name, config), hash|
++              next unless config[:parallel]
+ 
+-            hash
++              hash[job_name] = self.class.parallelize_job_names(job_name, config[:parallel])
++            end
+           end
+         end
+ 
+-        def parallelize_dependencies(parallelized_config)
+-          parallelized_job_names = @parallelized_jobs.keys.map(&:to_s)
+-          parallelized_config.each_with_object({}) do |(job_name, config), hash|
+-            if config[:dependencies] && (intersection = config[:dependencies] & parallelized_job_names).any?
+-              parallelized_deps = intersection.flat_map { |dep| @parallelized_jobs[dep.to_sym].map(&:first) }
+-              deps = config[:dependencies] - intersection + parallelized_deps
+-              hash[job_name] = config.merge(dependencies: deps)
++        def expand_parallelize_jobs
++          @jobs_config.each_with_object({}) do |(job_name, config), hash|
++            if parallelized_jobs.key?(job_name)
++              parallelized_jobs[job_name].each_with_index do |name, index|
++                hash[name.to_sym] =
++                  yield(name, config.merge(name: name, instance: index + 1))
++              end
+             else
+-              hash[job_name] = config
++              hash[job_name] = yield(job_name, config)
+             end
+-
+-            hash
+           end
+         end
+ 
+         def self.parallelize_job_names(name, total)
+-          Array.new(total) { |index| ["#{name} #{index + 1}/#{total}", index + 1] }
++          Array.new(total) { |index| "#{name} #{index + 1}/#{total}" }
+         end
+       end
+     end
+diff --git a/lib/gitlab/ci/yaml_processor.rb b/lib/gitlab/ci/yaml_processor.rb
+index a0bbf3c23a..998130e5bd 100644
+--- a/lib/gitlab/ci/yaml_processor.rb
++++ b/lib/gitlab/ci/yaml_processor.rb
+@@ -40,6 +40,7 @@ def build_attributes(name)
+           environment: job[:environment_name],
+           coverage_regex: job[:coverage],
+           yaml_variables: yaml_variables(name),
++          needs_attributes: job[:needs]&.map { |need| { name: need } },
+           options: {
+             image: job[:image],
+             services: job[:services],
+@@ -108,6 +109,7 @@ def initial_parsing
+ 
+           validate_job_stage!(name, job)
+           validate_job_dependencies!(name, job)
++          validate_job_needs!(name, job)
+           validate_job_environment!(name, job)
+         end
+       end
+@@ -152,6 +154,22 @@ def validate_job_dependencies!(name, job)
+         end
+       end
+ 
++      def validate_job_needs!(name, job)
++        return unless job[:needs]
++
++        stage_index = @stages.index(job[:stage])
++
++        job[:needs].each do |need|
++          raise ValidationError, "#{name} job: undefined need: #{need}" unless @jobs[need.to_sym]
++
++          needs_stage_index = @stages.index(@jobs[need.to_sym][:stage])
++
++          unless needs_stage_index.present? && needs_stage_index < stage_index
++            raise ValidationError, "#{name} job: need #{need} is not defined in prior stages"
++          end
++        end
++      end
++
+       def validate_job_environment!(name, job)
+         return unless job[:environment]
+         return unless job[:environment].is_a?(Hash)
+diff --git a/spec/factories/ci/build_need.rb b/spec/factories/ci/build_need.rb
+new file mode 100644
+index 0000000000..568aff45a9
+--- /dev/null
++++ b/spec/factories/ci/build_need.rb
+@@ -0,0 +1,8 @@
++# frozen_string_literal: true
++
++FactoryBot.define do
++  factory :ci_build_need, class: Ci::BuildNeed do
++    build factory: :ci_build
++    sequence(:name) { |n| "build_#{n}" }
++  end
++end
+diff --git a/spec/lib/gitlab/ci/config/entry/job_spec.rb b/spec/lib/gitlab/ci/config/entry/job_spec.rb
+index d5861d5dd0..800ef12220 100644
+--- a/spec/lib/gitlab/ci/config/entry/job_spec.rb
++++ b/spec/lib/gitlab/ci/config/entry/job_spec.rb
+@@ -86,6 +86,22 @@
+           it { expect(entry).to be_valid }
+         end
+       end
++
++      context 'when has needs' do
++        let(:config) do
++          { script: 'echo', needs: ['another-job'] }
++        end
++
++        it { expect(entry).to be_valid }
++
++        context 'when has dependencies' do
++          let(:config) do
++            { script: 'echo', dependencies: ['another-job'], needs: ['another-job'] }
++          end
++
++          it { expect(entry).to be_valid }
++        end
++      end
+     end
+ 
+     context 'when entry value is not correct' do
+@@ -223,6 +239,43 @@
+           expect(entry.errors).to include 'job start in must be blank'
+         end
+       end
++
++      context 'when has dependencies' do
++        context 'that are not a array of strings' do
++          let(:config) do
++            { script: 'echo', dependencies: 'build-job' }
++          end
++
++          it 'returns error about invalid type' do
++            expect(entry).not_to be_valid
++            expect(entry.errors).to include 'job dependencies should be an array of strings'
++          end
++        end
++      end
++
++      context 'when has needs' do
++        context 'that are not a array of strings' do
++          let(:config) do
++            { script: 'echo', needs: 'build-job' }
++          end
++
++          it 'returns error about invalid type' do
++            expect(entry).not_to be_valid
++            expect(entry.errors).to include 'job needs should be an array of strings'
++          end
++        end
++
++        context 'when have dependencies that are not subset of needs' do
++          let(:config) do
++            { script: 'echo', dependencies: ['another-job'], needs: ['build-job'] }
++          end
++
++          it 'returns error about invalid data' do
++            expect(entry).not_to be_valid
++            expect(entry.errors).to include 'job dependencies the another-job should be part of needs'
++          end
++        end
++      end
+     end
+   end
+ 
+diff --git a/spec/lib/gitlab/ci/config/normalizer_spec.rb b/spec/lib/gitlab/ci/config/normalizer_spec.rb
+index cd88017717..6b766cc37b 100644
+--- a/spec/lib/gitlab/ci/config/normalizer_spec.rb
++++ b/spec/lib/gitlab/ci/config/normalizer_spec.rb
+@@ -49,37 +49,44 @@
+       end
+     end
+ 
+-    context 'when jobs depend on parallelized jobs' do
+-      let(:config) { { job_name => job_config, other_job: { script: 'echo 1', dependencies: [job_name.to_s] } } }
+-
+-      it 'parallelizes dependencies' do
+-        job_names = ["rspec 1/5", "rspec 2/5", "rspec 3/5", "rspec 4/5", "rspec 5/5"]
+-
+-        expect(subject[:other_job][:dependencies]).to include(*job_names)
++    %i[dependencies needs].each do |context|
++      context "when job has #{context} on parallelized jobs" do
++        let(:config) do
++          {
++            job_name => job_config,
++            other_job: { script: 'echo 1', context => [job_name.to_s] }
++          }
++        end
++
++        it "parallelizes #{context}" do
++          job_names = ["rspec 1/5", "rspec 2/5", "rspec 3/5", "rspec 4/5", "rspec 5/5"]
++
++          expect(subject[:other_job][context]).to include(*job_names)
++        end
++
++        it "does not include original job name in #{context}" do
++          expect(subject[:other_job][context]).not_to include(job_name)
++        end
+       end
+ 
+-      it 'does not include original job name in dependencies' do
+-        expect(subject[:other_job][:dependencies]).not_to include(job_name)
+-      end
+-    end
++      context "when there are #{context} which are both parallelized and not" do
++        let(:config) do
++          {
++            job_name => job_config,
++            other_job: { script: 'echo 1' },
++            final_job: { script: 'echo 1', context => [job_name.to_s, "other_job"] }
++          }
++        end
+ 
+-    context 'when there are dependencies which are both parallelized and not' do
+-      let(:config) do
+-        {
+-          job_name => job_config,
+-          other_job: { script: 'echo 1' },
+-          final_job: { script: 'echo 1', dependencies: [job_name.to_s, "other_job"] }
+-        }
+-      end
+-
+-      it 'parallelizes dependencies' do
+-        job_names = ["rspec 1/5", "rspec 2/5", "rspec 3/5", "rspec 4/5", "rspec 5/5"]
++        it "parallelizes #{context}" do
++          job_names = ["rspec 1/5", "rspec 2/5", "rspec 3/5", "rspec 4/5", "rspec 5/5"]
+ 
+-        expect(subject[:final_job][:dependencies]).to include(*job_names)
+-      end
++          expect(subject[:final_job][context]).to include(*job_names)
++        end
+ 
+-      it 'includes the regular job in dependencies' do
+-        expect(subject[:final_job][:dependencies]).to include('other_job')
++        it "includes the regular job in #{context}" do
++          expect(subject[:final_job][context]).to include('other_job')
++        end
+       end
+     end
+   end
+diff --git a/spec/lib/gitlab/ci/yaml_processor_spec.rb b/spec/lib/gitlab/ci/yaml_processor_spec.rb
+index d3676ee03b..4ffa1fc9fd 100644
+--- a/spec/lib/gitlab/ci/yaml_processor_spec.rb
++++ b/spec/lib/gitlab/ci/yaml_processor_spec.rb
+@@ -1112,6 +1112,86 @@ module Ci
+         end
+       end
+ 
++      describe "Needs" do
++        let(:needs) { }
++        let(:dependencies) { }
++
++        let(:config) do
++          {
++            build1: { stage: 'build', script: 'test' },
++            build2: { stage: 'build', script: 'test' },
++            test1: { stage: 'test', script: 'test', needs: needs, dependencies: dependencies },
++            test2: { stage: 'test', script: 'test' },
++            deploy: { stage: 'test', script: 'test' }
++          }
++        end
++
++        subject { Gitlab::Ci::YamlProcessor.new(YAML.dump(config)) }
++
++        context 'no needs' do
++          it { expect { subject }.not_to raise_error }
++        end
++
++        context 'needs to builds' do
++          let(:needs) { %w(build1 build2) }
++
++          it "does create jobs with valid specification" do
++            expect(subject.builds.size).to eq(5)
++            expect(subject.builds[0]).to eq(
++              stage: "build",
++              stage_idx: 0,
++              name: "build1",
++              options: {
++                script: ["test"]
++              },
++              when: "on_success",
++              allow_failure: false,
++              yaml_variables: []
++            )
++            expect(subject.builds[2]).to eq(
++              stage: "test",
++              stage_idx: 1,
++              name: "test1",
++              options: {
++                script: ["test"]
++              },
++              needs_attributes: [
++                { name: "build1" },
++                { name: "build2" }
++              ],
++              when: "on_success",
++              allow_failure: false,
++              yaml_variables: []
++            )
++          end
++        end
++
++        context 'needs to builds defined as symbols' do
++          let(:needs) { [:build1, :build2] }
++
++          it { expect { subject }.not_to raise_error }
++        end
++
++        context 'undefined need' do
++          let(:needs) { ['undefined'] }
++
++          it { expect { subject }.to raise_error(Gitlab::Ci::YamlProcessor::ValidationError, 'test1 job: undefined need: undefined') }
++        end
++
++        context 'needs to deploy' do
++          let(:needs) { ['deploy'] }
++
++          it { expect { subject }.to raise_error(Gitlab::Ci::YamlProcessor::ValidationError, 'test1 job: need deploy is not defined in prior stages') }
++        end
++
++        context 'needs and dependencies that are mismatching' do
++          let(:needs) { %w(build1) }
++          let(:dependencies) { %w(build2) }
++
++          it { expect { subject }.to raise_error(Gitlab::Ci::YamlProcessor::ValidationError, 'jobs:test1 dependencies the build2 should be part of needs') }
++        end
++      end
++
+       describe "Hidden jobs" do
+         let(:config_processor) { Gitlab::Ci::YamlProcessor.new(config) }
+         subject { config_processor.stage_builds_attributes("test") }
+diff --git a/spec/models/ci/build_need_spec.rb b/spec/models/ci/build_need_spec.rb
+new file mode 100644
+index 0000000000..450dd550a8
+--- /dev/null
++++ b/spec/models/ci/build_need_spec.rb
+@@ -0,0 +1,13 @@
++# frozen_string_literal: true
++
++require 'spec_helper'
++
++describe Ci::BuildNeed, model: true do
++  let(:build_need) { build(:ci_build_need) }
++
++  it { is_expected.to belong_to(:build) }
++
++  it { is_expected.to validate_presence_of(:build) }
++  it { is_expected.to validate_presence_of(:name) }
++  it { is_expected.to validate_length_of(:name).is_at_most(128) }
++end
+diff --git a/spec/models/ci/build_spec.rb b/spec/models/ci/build_spec.rb
+index 17c7c05324..9369f393b5 100644
+--- a/spec/models/ci/build_spec.rb
++++ b/spec/models/ci/build_spec.rb
+@@ -19,7 +19,8 @@
+   it { is_expected.to belong_to(:runner) }
+   it { is_expected.to belong_to(:trigger_request) }
+   it { is_expected.to belong_to(:erased_by) }
+-  it { is_expected.to have_many(:trace_sections)}
++  it { is_expected.to have_many(:trace_sections) }
++  it { is_expected.to have_many(:needs) }
+   it { is_expected.to have_one(:deployment) }
+   it { is_expected.to have_one(:runner_session) }
+   it { is_expected.to have_many(:job_variables) }
+@@ -182,6 +183,30 @@
+     end
+   end
+ 
++  describe '.with_needs' do
++    let!(:build) { create(:ci_build) }
++    let!(:build_need_a) { create(:ci_build_need, build: build) }
++    let!(:build_need_b) { create(:ci_build_need, build: build) }
++
++    context 'when passing build name' do
++      subject { described_class.with_needs(build_need_a.name) }
++
++      it { is_expected.to contain_exactly(build) }
++    end
++
++    context 'when not passing any build name' do
++      subject { described_class.with_needs }
++
++      it { is_expected.to contain_exactly(build) }
++    end
++
++    context 'when not matching build name' do
++      subject { described_class.with_needs('undefined') }
++
++      it { is_expected.to be_empty }
++    end
++  end
++
+   describe '#enqueue' do
+     let(:build) { create(:ci_build, :created) }
+ 
+@@ -595,6 +620,46 @@
+       expect(staging.depends_on_builds.map(&:id))
+         .to contain_exactly(build.id, retried_rspec.id, rubocop_test.id)
+     end
++
++    describe '#dependencies' do
++      let(:dependencies) { }
++      let(:needs) { }
++
++      let!(:final) do
++        create(:ci_build,
++          pipeline: pipeline, name: 'final',
++          stage_idx: 3, stage: 'deploy', options: {
++            dependencies: dependencies,
++            needs: needs
++          }
++        )
++      end
++
++      subject { final.dependencies }
++
++      context 'when depedencies are defined' do
++        let(:dependencies) { %w(rspec staging) }
++
++        it { is_expected.to contain_exactly(rspec_test, staging) }
++      end
++
++      context 'when needs are defined' do
++        let(:needs) { %w(build rspec staging) }
++
++        it { is_expected.to contain_exactly(build, rspec_test, staging) }
++      end
++
++      context 'when needs and dependencies are defined' do
++        let(:dependencies) { %w(rspec staging) }
++        let(:needs) { %w(build rspec staging) }
++
++        it { is_expected.to contain_exactly(rspec_test, staging) }
++      end
++
++      context 'when nor dependencies or needs are defined' do
++        it { is_expected.to contain_exactly(build, rspec_test, rubocop_test, staging) }
++      end
++    end
+   end
+ 
+   describe '#triggered_by?' do
+@@ -3614,6 +3679,7 @@ def run_job_without_exception
+ 
+     before do
+       build.ensure_metadata
++      build.needs.create!(name: 'another-job')
+     end
+ 
+     it 'drops metadata' do
+@@ -3621,6 +3687,7 @@ def run_job_without_exception
+ 
+       expect(build.reload).to be_degenerated
+       expect(build.metadata).to be_nil
++      expect(build.needs).to be_empty
+     end
+   end
+ 
+diff --git a/spec/services/ci/process_pipeline_service_spec.rb b/spec/services/ci/process_pipeline_service_spec.rb
+index cadb519cce..77f108b6ab 100644
+--- a/spec/services/ci/process_pipeline_service_spec.rb
++++ b/spec/services/ci/process_pipeline_service_spec.rb
+@@ -700,6 +700,94 @@
+     end
+   end
+ 
++  context 'when pipeline with needs is created' do
++    let!(:linux_build) { create_build('linux:build', stage: 'build', stage_idx: 0) }
++    let!(:mac_build) { create_build('mac:build', stage: 'build', stage_idx: 0) }
++    let!(:linux_rspec) { create_build('linux:rspec', stage: 'test', stage_idx: 1) }
++    let!(:linux_rubocop) { create_build('linux:rubocop', stage: 'test', stage_idx: 1) }
++    let!(:mac_rspec) { create_build('mac:rspec', stage: 'test', stage_idx: 1) }
++    let!(:mac_rubocop) { create_build('mac:rubocop', stage: 'test', stage_idx: 1) }
++    let!(:deploy) { create_build('deploy', stage: 'deploy', stage_idx: 2) }
++
++    let!(:linux_rspec_on_build) { create(:ci_build_need, build: linux_rspec, name: 'linux:build') }
++    let!(:linux_rubocop_on_build) { create(:ci_build_need, build: linux_rubocop, name: 'linux:build') }
++
++    let!(:mac_rspec_on_build) { create(:ci_build_need, build: mac_rspec, name: 'mac:build') }
++    let!(:mac_rubocop_on_build) { create(:ci_build_need, build: mac_rubocop, name: 'mac:build') }
++
++    it 'when linux:* finishes first it runs it out of order' do
++      expect(process_pipeline).to be_truthy
++
++      expect(stages).to eq(%w(pending created created))
++      expect(builds.pending).to contain_exactly(linux_build, mac_build)
++
++      # we follow the single path of linux
++      linux_build.reset.success!
++
++      expect(stages).to eq(%w(running pending created))
++      expect(builds.success).to contain_exactly(linux_build)
++      expect(builds.pending).to contain_exactly(mac_build, linux_rspec, linux_rubocop)
++
++      linux_rspec.reset.success!
++
++      expect(stages).to eq(%w(running running created))
++      expect(builds.success).to contain_exactly(linux_build, linux_rspec)
++      expect(builds.pending).to contain_exactly(mac_build, linux_rubocop)
++
++      linux_rubocop.reset.success!
++
++      expect(stages).to eq(%w(running running created))
++      expect(builds.success).to contain_exactly(linux_build, linux_rspec, linux_rubocop)
++      expect(builds.pending).to contain_exactly(mac_build)
++
++      mac_build.reset.success!
++      mac_rspec.reset.success!
++      mac_rubocop.reset.success!
++
++      expect(stages).to eq(%w(success success pending))
++      expect(builds.success).to contain_exactly(
++        linux_build, linux_rspec, linux_rubocop, mac_build, mac_rspec, mac_rubocop)
++      expect(builds.pending).to contain_exactly(deploy)
++    end
++
++    context 'when feature ci_dag_support is disabled' do
++      before do
++        stub_feature_flags(ci_dag_support: false)
++      end
++
++      it 'when linux:build finishes first it follows stages' do
++        expect(process_pipeline).to be_truthy
++
++        expect(stages).to eq(%w(pending created created))
++        expect(builds.pending).to contain_exactly(linux_build, mac_build)
++
++        # we follow the single path of linux
++        linux_build.reset.success!
++
++        expect(stages).to eq(%w(running created created))
++        expect(builds.success).to contain_exactly(linux_build)
++        expect(builds.pending).to contain_exactly(mac_build)
++
++        mac_build.reset.success!
++
++        expect(stages).to eq(%w(success pending created))
++        expect(builds.success).to contain_exactly(linux_build, mac_build)
++        expect(builds.pending).to contain_exactly(
++          linux_rspec, linux_rubocop, mac_rspec, mac_rubocop)
++
++        linux_rspec.reset.success!
++        linux_rubocop.reset.success!
++        mac_rspec.reset.success!
++        mac_rubocop.reset.success!
++
++        expect(stages).to eq(%w(success success pending))
++        expect(builds.success).to contain_exactly(
++          linux_build, linux_rspec, linux_rubocop, mac_build, mac_rspec, mac_rubocop)
++        expect(builds.pending).to contain_exactly(deploy)
++      end
++    end
++  end
++
+   def process_pipeline
+     described_class.new(pipeline.project, user).execute(pipeline)
+   end
+@@ -712,6 +800,10 @@ def builds
+     all_builds.where.not(status: [:created, :skipped])
+   end
+ 
++  def stages
++    pipeline.reset.stages.map(&:status)
++  end
++
+   def builds_names
+     builds.pluck(:name)
+   end
+diff --git a/spec/services/ci/retry_build_service_spec.rb b/spec/services/ci/retry_build_service_spec.rb
+index 915288cd91..fe7c6fe470 100644
+--- a/spec/services/ci/retry_build_service_spec.rb
++++ b/spec/services/ci/retry_build_service_spec.rb
+@@ -67,6 +67,7 @@
+       end
+ 
+       create(:ci_job_variable, job: build)
++      create(:ci_build_need, build: build)
+ 
+       build.reload
+     end
+diff --git a/spec/workers/build_process_worker_spec.rb b/spec/workers/build_process_worker_spec.rb
+new file mode 100644
+index 0000000000..cceca40717
+--- /dev/null
++++ b/spec/workers/build_process_worker_spec.rb
+@@ -0,0 +1,26 @@
++# frozen_string_literal: true
++
++require 'spec_helper'
++
++describe BuildProcessWorker do
++  describe '#perform' do
++    context 'when build exists' do
++      let(:pipeline) { create(:ci_pipeline) }
++      let(:build) { create(:ci_build, pipeline: pipeline) }
++
++      it 'processes build' do
++        expect_any_instance_of(Ci::Pipeline).to receive(:process!)
++          .with(build.name)
++
++        described_class.new.perform(build.id)
++      end
++    end
++
++    context 'when build does not exist' do
++      it 'does not raise exception' do
++        expect { described_class.new.perform(123) }
++          .not_to raise_error
++      end
++    end
++  end
++end

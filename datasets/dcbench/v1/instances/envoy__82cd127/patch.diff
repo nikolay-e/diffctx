@@ -1,0 +1,971 @@
+From 82cd1270c98c5d0e31f0936d540bb535b3daa62e Mon Sep 17 00:00:00 2001
+From: Greg Greenway <ggreenway@apple.com>
+Date: Wed, 20 May 2026 14:01:37 -0700
+Subject: [PATCH] filter_state: remove StateType param from all
+ source/mobile/contrib (#45195)
+
+This is a follow-up to #44343
+
+Signed-off-by: Greg Greenway <ggreenway@apple.com>
+---
+ .../golang/filters/network/source/golang.cc   | 29 +++++++++----------
+ .../golang/filters/network/source/upstream.cc |  3 +-
+ .../filters/network/test/filter_test.cc       |  3 +-
+ .../filters/http/alpn/source/alpn_filter.cc   |  3 +-
+ .../peer_metadata/source/peer_metadata.cc     | 12 ++++----
+ .../source/metadata_exchange.cc               |  4 +--
+ .../peer_metadata/source/peer_metadata.cc     |  7 ++---
+ .../peer_metadata/test/peer_metadata_test.cc  |  1 -
+ .../http/network_configuration/filter.cc      |  4 +--
+ mobile/test/common/http/client_test.cc        |  3 --
+ source/common/http/conn_manager_impl.cc       |  4 +--
+ source/common/http/filter_manager.cc          |  1 -
+ .../listener_manager/active_tcp_socket.cc     |  1 -
+ .../common/quic/envoy_quic_client_session.cc  |  1 -
+ source/common/router/router.cc                |  7 ++---
+ source/common/tcp_proxy/tcp_proxy.cc          | 16 +++++-----
+ .../extensions/access_loggers/stats/stats.cc  |  6 ++--
+ .../reverse_tunnel_acceptor_extension.cc      |  2 --
+ .../reverse_tunnel_upstream_lifecycle.cc      |  2 --
+ source/extensions/common/wasm/context.cc      |  7 ++---
+ .../filters/http/cache/cache_filter.cc        |  3 +-
+ .../filters/http/composite/filter.cc          |  1 -
+ .../http/compressor/compressor_filter.cc      |  6 ++--
+ .../dynamic_forward_proxy/proxy_filter.cc     |  6 ++--
+ .../filters/http/dynamic_modules/abi_impl.cc  |  6 ++--
+ .../filters/http/ext_authz/ext_authz.cc       |  3 +-
+ .../filters/http/ext_proc/ext_proc.cc         |  1 -
+ .../http/grpc_stats/grpc_stats_filter.cc      |  1 -
+ .../http/local_ratelimit/local_ratelimit.cc   |  3 +-
+ .../extensions/filters/http/lua/wrappers.cc   |  1 -
+ .../extensions/filters/http/mcp/mcp_filter.cc |  2 +-
+ .../listener/dynamic_modules/abi_impl.cc      |  1 -
+ .../listener/original_dst/original_dst.cc     |  1 -
+ .../listener/proxy_protocol/proxy_protocol.cc |  3 --
+ .../network/dynamic_modules/abi_impl.cc       |  8 ++---
+ .../filters/network/ext_proc/ext_proc.cc      |  1 -
+ .../network/generic_proxy/router/upstream.cc  |  1 -
+ .../network/generic_proxy/router/upstream.h   |  1 -
+ .../filters/network/geoip/geoip_filter.cc     |  1 -
+ .../network/sni_cluster/sni_cluster.cc        |  2 +-
+ .../sni_dynamic_forward_proxy/proxy_filter.cc |  4 +--
+ .../extensions/filters/udp/udp_proxy/config.h |  7 ++---
+ .../redirect_policy/redirect_policy.cc        |  2 +-
+ .../save_processing_response.cc               |  3 +-
+ .../previous_routes/previous_routes.cc        |  1 -
+ .../override_host/load_balancer.cc            |  5 ++--
+ .../cert_validator/dynamic_modules/config.cc  |  1 -
+ test/coverage.yaml                            |  2 +-
+ 48 files changed, 70 insertions(+), 123 deletions(-)
+
+diff --git a/contrib/golang/filters/network/source/golang.cc b/contrib/golang/filters/network/source/golang.cc
+index 43c09309f..4a34f1b15 100644
+--- a/contrib/golang/filters/network/source/golang.cc
++++ b/contrib/golang/filters/network/source/golang.cc
+@@ -114,8 +114,8 @@ Network::FilterStatus Filter::onWrite(Buffer::Instance& data, bool end_stream) {
+   return Network::FilterStatus(ret);
+ }
+ 
+-CAPIStatus Filter::setFilterState(absl::string_view key, absl::string_view value, int state_type,
+-                                  int life_span, int stream_sharing) {
++CAPIStatus Filter::setFilterState(absl::string_view key, absl::string_view value,
++                                  int /*state_type*/, int life_span, int stream_sharing) {
+   // lock until this function return since it may running in a Go thread.
+   Thread::LockGuard lock(mutex_);
+   if (closed_) {
+@@ -126,26 +126,23 @@ CAPIStatus Filter::setFilterState(absl::string_view key, absl::string_view value
+   if (dispatcher_->isThreadSafe()) {
+     read_callbacks_->connection().streamInfo().filterState()->setData(
+         key, std::make_shared<Router::StringAccessorImpl>(value),
+-        static_cast<StreamInfo::FilterState::StateType>(state_type),
+         static_cast<StreamInfo::FilterState::LifeSpan>(life_span),
+         static_cast<StreamInfo::StreamSharingMayImpactPooling>(stream_sharing));
+   } else {
+     auto key_str = std::string(key);
+     auto filter_state = std::make_shared<Router::StringAccessorImpl>(value);
+     auto weak_ptr = weak_from_this();
+-    dispatcher_->post(
+-        [this, weak_ptr, key_str, filter_state, state_type, life_span, stream_sharing] {
+-          if (!weak_ptr.expired() && !closed_) {
+-            Thread::LockGuard lock(mutex_);
+-            read_callbacks_->connection().streamInfo().filterState()->setData(
+-                key_str, filter_state, static_cast<StreamInfo::FilterState::StateType>(state_type),
+-                static_cast<StreamInfo::FilterState::LifeSpan>(life_span),
+-                static_cast<StreamInfo::StreamSharingMayImpactPooling>(stream_sharing));
+-          } else {
+-            ENVOY_CONN_LOG(info, "golang filter has gone or destroyed in setStringFilterState",
+-                           read_callbacks_->connection());
+-          }
+-        });
++    dispatcher_->post([this, weak_ptr, key_str, filter_state, life_span, stream_sharing] {
++      if (!weak_ptr.expired() && !closed_) {
++        Thread::LockGuard lock(mutex_);
++        read_callbacks_->connection().streamInfo().filterState()->setData(
++            key_str, filter_state, static_cast<StreamInfo::FilterState::LifeSpan>(life_span),
++            static_cast<StreamInfo::StreamSharingMayImpactPooling>(stream_sharing));
++      } else {
++        ENVOY_CONN_LOG(info, "golang filter has gone or destroyed in setStringFilterState",
++                       read_callbacks_->connection());
++      }
++    });
+   }
+   return CAPIStatus::CAPIOK;
+ }
+diff --git a/contrib/golang/filters/network/source/upstream.cc b/contrib/golang/filters/network/source/upstream.cc
+index 5ca433d3e..1be1a68b6 100644
+--- a/contrib/golang/filters/network/source/upstream.cc
++++ b/contrib/golang/filters/network/source/upstream.cc
+@@ -65,8 +65,7 @@ UpstreamConn::UpstreamConn(std::string addr, Dso::NetworkFilterDsoPtr dynamic_li
+     throwEnvoyExceptionOrPanic(absl::StrCat("malformed IP address: ", addr));
+   }
+   stream_info_->filterState()->setData("envoy.network.transport_socket.original_dst_address",
+-                                       address, StreamInfo::FilterState::StateType::ReadOnly,
+-                                       StreamInfo::FilterState::LifeSpan::FilterChain,
++                                       address, StreamInfo::FilterState::LifeSpan::FilterChain,
+                                        StreamInfo::StreamSharingMayImpactPooling::None);
+ }
+ 
+diff --git a/contrib/golang/filters/network/test/filter_test.cc b/contrib/golang/filters/network/test/filter_test.cc
+index cde51bac8..c18b83ed5 100644
+--- a/contrib/golang/filters/network/test/filter_test.cc
++++ b/contrib/golang/filters/network/test/filter_test.cc
+@@ -89,8 +89,7 @@ TEST_F(FilterTest, FilterState) {
+   initialize();
+   EXPECT_CALL(*dso_.get(), envoyGoFilterOnDownstreamConnection(_, _, _, _));
+   filter_->onNewConnection();
+-  filter_->setFilterState("filterStateKey", "filterStateValue",
+-                          static_cast<int>(StreamInfo::FilterState::StateType::Mutable),
++  filter_->setFilterState("filterStateKey", "filterStateValue", 0 /* unused state_type */,
+                           static_cast<int>(StreamInfo::FilterState::LifeSpan::Connection),
+                           static_cast<int>(StreamInfo::StreamSharingMayImpactPooling::None));
+   GoString str;
+diff --git a/contrib/istio/filters/http/alpn/source/alpn_filter.cc b/contrib/istio/filters/http/alpn/source/alpn_filter.cc
+index 9358aeff3..66456713d 100644
+--- a/contrib/istio/filters/http/alpn/source/alpn_filter.cc
++++ b/contrib/istio/filters/http/alpn/source/alpn_filter.cc
+@@ -78,8 +78,7 @@ Http::FilterHeadersStatus AlpnFilter::decodeHeaders(Http::RequestHeaderMap&, boo
+     ENVOY_LOG(debug, "override with {} ALPNs", alpn_override.size());
+     decoder_callbacks_->streamInfo().filterState()->setData(
+         Network::ApplicationProtocols::key(),
+-        std::make_unique<Network::ApplicationProtocols>(alpn_override),
+-        Envoy::StreamInfo::FilterState::StateType::ReadOnly);
++        std::make_unique<Network::ApplicationProtocols>(alpn_override));
+   } else {
+     ENVOY_LOG(debug, "ALPN override is empty");
+   }
+diff --git a/contrib/istio/filters/http/peer_metadata/source/peer_metadata.cc b/contrib/istio/filters/http/peer_metadata/source/peer_metadata.cc
+index b80ad7a1d..a356549db 100644
+--- a/contrib/istio/filters/http/peer_metadata/source/peer_metadata.cc
++++ b/contrib/istio/filters/http/peer_metadata/source/peer_metadata.cc
+@@ -415,17 +415,17 @@ void FilterConfig::setFilterState(StreamInfo::StreamInfo& info, bool downstream,
+     auto pb = value.serializeAsProto();
+     auto cel_state = std::make_unique<CelState>(FilterConfig::peerInfoPrototype());
+     cel_state->setValue(absl::string_view(pb->SerializeAsString()));
+-    info.filterState()->setData(
+-        key, std::move(cel_state), StreamInfo::FilterState::StateType::Mutable,
+-        StreamInfo::FilterState::LifeSpan::FilterChain, sharedWithUpstream());
++    info.filterState()->setData(key, std::move(cel_state),
++                                StreamInfo::FilterState::LifeSpan::FilterChain,
++                                sharedWithUpstream());
+ 
+     // Also store WorkloadMetadataObject under a separate key for FIELD accessor support.
+     // WorkloadMetadataObject implements hasFieldSupport() + getField() for
+     // formatters using %FILTER_STATE(downstream_peer_obj:FIELD:fieldname)% syntax.
+     auto workload_metadata = std::make_unique<PeerInfo>(value);
+-    info.filterState()->setData(
+-        obj_key, std::move(workload_metadata), StreamInfo::FilterState::StateType::Mutable,
+-        StreamInfo::FilterState::LifeSpan::FilterChain, sharedWithUpstream());
++    info.filterState()->setData(obj_key, std::move(workload_metadata),
++                                StreamInfo::FilterState::LifeSpan::FilterChain,
++                                sharedWithUpstream());
+   } else {
+     ENVOY_LOG(debug, "Duplicate peer metadata, skipping");
+   }
+diff --git a/contrib/istio/filters/network/metadata_exchange/source/metadata_exchange.cc b/contrib/istio/filters/network/metadata_exchange/source/metadata_exchange.cc
+index 064aa6f67..67451d3d3 100644
+--- a/contrib/istio/filters/network/metadata_exchange/source/metadata_exchange.cc
++++ b/contrib/istio/filters/network/metadata_exchange/source/metadata_exchange.cc
+@@ -277,13 +277,11 @@ void MetadataExchangeFilter::updatePeer(const Istio::Common::WorkloadMetadataObj
+ 
+   auto& filter_state = *read_callbacks_->connection().streamInfo().filterState();
+   filter_state.setData(filter_state_key, std::move(peer_info),
+-                       StreamInfo::FilterState::StateType::Mutable,
+                        StreamInfo::FilterState::LifeSpan::Connection);
+ 
+   // Also store WorkloadMetadataObject for FIELD accessor and peerInfoRead() detection
+   auto workload_metadata = std::make_unique<Istio::Common::WorkloadMetadataObject>(value);
+   filter_state.setData(obj_key, std::move(workload_metadata),
+-                       StreamInfo::FilterState::StateType::Mutable,
+                        StreamInfo::FilterState::LifeSpan::Connection);
+ }
+ 
+@@ -361,7 +359,7 @@ void MetadataExchangeFilter::setMetadataNotFoundFilterState() {
+   }
+   read_callbacks_->connection().streamInfo().filterState()->setData(
+       Istio::Common::NoPeer, std::make_shared<StreamInfo::BoolAccessorImpl>(true),
+-      StreamInfo::FilterState::StateType::Mutable, StreamInfo::FilterState::LifeSpan::Connection);
++      StreamInfo::FilterState::LifeSpan::Connection);
+ }
+ 
+ } // namespace MetadataExchange
+diff --git a/contrib/istio/filters/network/peer_metadata/source/peer_metadata.cc b/contrib/istio/filters/network/peer_metadata/source/peer_metadata.cc
+index fc7908614..d98158ac0 100644
+--- a/contrib/istio/filters/network/peer_metadata/source/peer_metadata.cc
++++ b/contrib/istio/filters/network/peer_metadata/source/peer_metadata.cc
+@@ -106,7 +106,7 @@ void Filter::populateBaggage() {
+   ASSERT(read_callbacks_);
+   read_callbacks_->connection().streamInfo().filterState()->setData(
+       config_.baggage_key(), std::make_shared<Router::StringAccessorImpl>(baggage_),
+-      StreamInfo::FilterState::StateType::ReadOnly, StreamInfo::FilterState::LifeSpan::FilterChain);
++      StreamInfo::FilterState::LifeSpan::FilterChain);
+ }
+ 
+ bool Filter::disableDiscovery() const {
+@@ -340,8 +340,7 @@ void UpstreamFilter::populatePeerMetadata(const Istio::Common::WorkloadMetadataO
+   auto cel = std::make_shared<CelState>(peerInfoPrototype());
+   cel->setValue(absl::string_view(proto.SerializeAsString()));
+   callbacks_->connection().streamInfo().filterState()->setData(
+-      Istio::Common::UpstreamPeer, std::move(cel), StreamInfo::FilterState::StateType::ReadOnly,
+-      StreamInfo::FilterState::LifeSpan::Connection);
++      Istio::Common::UpstreamPeer, std::move(cel), StreamInfo::FilterState::LifeSpan::Connection);
+ }
+ 
+ void UpstreamFilter::populateNoPeerMetadata() {
+@@ -350,7 +349,7 @@ void UpstreamFilter::populateNoPeerMetadata() {
+ 
+   callbacks_->connection().streamInfo().filterState()->setData(
+       Istio::Common::NoPeer, std::make_shared<StreamInfo::BoolAccessorImpl>(true),
+-      StreamInfo::FilterState::StateType::ReadOnly, StreamInfo::FilterState::LifeSpan::Connection);
++      StreamInfo::FilterState::LifeSpan::Connection);
+ }
+ 
+ ConfigFactory::ConfigFactory()
+diff --git a/contrib/istio/filters/network/peer_metadata/test/peer_metadata_test.cc b/contrib/istio/filters/network/peer_metadata/test/peer_metadata_test.cc
+index 703fb1572..976c80dfc 100644
+--- a/contrib/istio/filters/network/peer_metadata/test/peer_metadata_test.cc
++++ b/contrib/istio/filters/network/peer_metadata/test/peer_metadata_test.cc
+@@ -92,7 +92,6 @@ public:
+         std::make_unique<Http::TestResponseHeaderMapImpl>(response_headers));
+     auto filter_state = stream_info_.filterState();
+     filter_state->setData(TcpProxy::TunnelResponseHeaders::key(), headers,
+-                          StreamInfo::FilterState::StateType::Mutable,
+                           StreamInfo::FilterState::LifeSpan::Connection);
+   }
+ 
+diff --git a/mobile/library/common/extensions/filters/http/network_configuration/filter.cc b/mobile/library/common/extensions/filters/http/network_configuration/filter.cc
+index b5c003750..a48ffb4a3 100644
+--- a/mobile/library/common/extensions/filters/http/network_configuration/filter.cc
++++ b/mobile/library/common/extensions/filters/http/network_configuration/filter.cc
+@@ -30,7 +30,7 @@ void NetworkConfigurationFilter::setDecoderFilterCallbacks(
+   decoder_callbacks_ = &callbacks;
+   decoder_callbacks_->streamInfo().filterState()->setData(
+       StreamInfo::ExtraStreamInfo::key(), std::move(new_extra_stream_info),
+-      StreamInfo::FilterState::StateType::Mutable, StreamInfo::FilterState::LifeSpan::Request);
++      StreamInfo::FilterState::LifeSpan::Request);
+ 
+   auto options = std::make_shared<Network::Socket::Options>();
+   connectivity_manager_->setInterfaceBindingEnabled(enable_interface_binding_);
+@@ -196,7 +196,7 @@ void NetworkConfigurationFilter::setInfo(absl::string_view authority,
+   decoder_callbacks_->streamInfo().filterState()->setData(
+       Network::Http11ProxyInfoFilterState::key(),
+       std::make_unique<Network::Http11ProxyInfoFilterState>(authority, address),
+-      StreamInfo::FilterState::StateType::ReadOnly, StreamInfo::FilterState::LifeSpan::FilterChain);
++      StreamInfo::FilterState::LifeSpan::FilterChain);
+ }
+ 
+ Http::FilterHeadersStatus NetworkConfigurationFilter::encodeHeaders(Http::ResponseHeaderMap&,
+diff --git a/mobile/test/common/http/client_test.cc b/mobile/test/common/http/client_test.cc
+index 404707a16..6ec2f79b8 100644
+--- a/mobile/test/common/http/client_test.cc
++++ b/mobile/test/common/http/client_test.cc
+@@ -1016,7 +1016,6 @@ TEST_P(ClientTest, SaveLatestStreamIntelPopulatesScone) {
+   scone_state->scone_max_kbps = 100;
+   scone_state->timestamp_ms = 12345;
+   stream_info_.filter_state_->setData(Quic::SconeStateKey, scone_state,
+-                                      StreamInfo::FilterState::StateType::Mutable,
+                                       StreamInfo::FilterState::LifeSpan::Connection);
+ 
+   auto stream_ptr = getDirectStream(stream_);
+@@ -1038,7 +1037,6 @@ TEST_P(ClientTest, SaveLatestStreamIntelPersistsScone) {
+   scone_state->scone_max_kbps = 100;
+   scone_state->timestamp_ms = 12345;
+   stream_info_.filter_state_->setData(Quic::SconeStateKey, scone_state,
+-                                      StreamInfo::FilterState::StateType::Mutable,
+                                       StreamInfo::FilterState::LifeSpan::Connection);
+ 
+   auto stream_ptr = getDirectStream(stream_);
+@@ -1073,7 +1071,6 @@ TEST_P(ClientTest, SaveLatestStreamIntelWithZeroSconeValue) {
+   scone_state->scone_max_kbps = 0;
+   scone_state->timestamp_ms = 12345;
+   stream_info_.filter_state_->setData(Quic::SconeStateKey, scone_state,
+-                                      StreamInfo::FilterState::StateType::Mutable,
+                                       StreamInfo::FilterState::LifeSpan::Connection);
+ 
+   auto stream_ptr = getDirectStream(stream_);
+diff --git a/source/common/http/conn_manager_impl.cc b/source/common/http/conn_manager_impl.cc
+index d6940a569..56e1658fa 100644
+--- a/source/common/http/conn_manager_impl.cc
++++ b/source/common/http/conn_manager_impl.cc
+@@ -201,7 +201,7 @@ void ConnectionManagerImpl::initializeReadFilterCallbacks(Network::ReadFilterCal
+         std::make_unique<Network::ProxyProtocolFilterState>(Network::ProxyProtocolData{
+             read_callbacks_->connection().connectionInfoProvider().remoteAddress(),
+             read_callbacks_->connection().connectionInfoProvider().localAddress()}),
+-        StreamInfo::FilterState::StateType::Mutable, StreamInfo::FilterState::LifeSpan::Connection);
++        StreamInfo::FilterState::LifeSpan::Connection);
+   }
+ 
+   if (config_->idleTimeout()) {
+@@ -1516,7 +1516,7 @@ void ConnectionManagerImpl::ActiveStream::decodeHeaders(RequestHeaderMapSharedPt
+     filter_manager_.streamInfo().filterState()->setData(
+         Router::OriginalConnectPort::key(),
+         std::make_unique<Router::OriginalConnectPort>(optional_port.value()),
+-        StreamInfo::FilterState::StateType::ReadOnly, StreamInfo::FilterState::LifeSpan::Request);
++        StreamInfo::FilterState::LifeSpan::Request);
+   }
+ 
+   if (!state_.is_internally_created_) { // Only sanitize headers on first pass.
+diff --git a/source/common/http/filter_manager.cc b/source/common/http/filter_manager.cc
+index 67b746f49..a041c9d09 100644
+--- a/source/common/http/filter_manager.cc
++++ b/source/common/http/filter_manager.cc
+@@ -381,7 +381,6 @@ void ActiveStreamFilterBase::sendLocalReply(
+     streamInfo().filterState()->setData(
+         LocalReplyFilterStateKey,
+         std::make_shared<LocalReplyOwnerObject>(filter_context_.config_name),
+-        StreamInfo::FilterState::StateType::ReadOnly,
+         StreamInfo::FilterState::LifeSpan::FilterChain);
+   }
+ 
+diff --git a/source/common/listener_manager/active_tcp_socket.cc b/source/common/listener_manager/active_tcp_socket.cc
+index a7a3bc2f8..09bd0804f 100644
+--- a/source/common/listener_manager/active_tcp_socket.cc
++++ b/source/common/listener_manager/active_tcp_socket.cc
+@@ -26,7 +26,6 @@ ActiveTcpSocket::ActiveTcpSocket(ActiveStreamListenerBase& listener,
+     stream_info_->filterState()->setData(
+         Network::DownstreamNetworkNamespace::key(),
+         std::make_unique<Network::DownstreamNetworkNamespace>(*network_namespace),
+-        StreamInfo::FilterState::StateType::ReadOnly,
+         StreamInfo::FilterState::LifeSpan::Connection);
+   }
+ 
+diff --git a/source/common/quic/envoy_quic_client_session.cc b/source/common/quic/envoy_quic_client_session.cc
+index 70948cf74..38ec93bdb 100644
+--- a/source/common/quic/envoy_quic_client_session.cc
++++ b/source/common/quic/envoy_quic_client_session.cc
+@@ -121,7 +121,6 @@ EnvoyQuicClientSession::EnvoyQuicClientSession(
+ #endif
+ 
+   streamInfo().filterState()->setData(SconeStateKey, std::make_shared<SconeState>(),
+-                                      StreamInfo::FilterState::StateType::Mutable,
+                                       StreamInfo::FilterState::LifeSpan::Connection);
+ }
+ 
+diff --git a/source/common/router/router.cc b/source/common/router/router.cc
+index 1554e048e..6764c6bc2 100644
+--- a/source/common/router/router.cc
++++ b/source/common/router/router.cc
+@@ -687,16 +687,14 @@ Http::FilterHeadersStatus Filter::decodeHeaders(Http::RequestHeaderMap& headers,
+     if (!parsed_authority.is_ip_address_ && upstream_http_protocol_options->auto_sni() &&
+         !filter_state->hasDataWithName(Network::UpstreamServerName::key())) {
+       filter_state->setData(Network::UpstreamServerName::key(),
+-                            std::make_unique<Network::UpstreamServerName>(parsed_authority.host_),
+-                            StreamInfo::FilterState::StateType::Mutable);
++                            std::make_unique<Network::UpstreamServerName>(parsed_authority.host_));
+     }
+ 
+     if (upstream_http_protocol_options->auto_san_validation() &&
+         !filter_state->hasDataWithName(Network::UpstreamSubjectAltNames::key())) {
+       filter_state->setData(Network::UpstreamSubjectAltNames::key(),
+                             std::make_unique<Network::UpstreamSubjectAltNames>(
+-                                std::vector<std::string>{std::string(parsed_authority.host_)}),
+-                            StreamInfo::FilterState::StateType::Mutable);
++                                std::vector<std::string>{std::string(parsed_authority.host_)}));
+     }
+   }
+ 
+@@ -2215,7 +2213,6 @@ bool Filter::convertRequestHeadersForInternalRedirect(
+     num_internal_redirect = state.get();
+ 
+     filter_state->setData(NumInternalRedirectsFilterStateName, std::move(state),
+-                          StreamInfo::FilterState::StateType::Mutable,
+                           StreamInfo::FilterState::LifeSpan::Request);
+   }
+ 
+diff --git a/source/common/tcp_proxy/tcp_proxy.cc b/source/common/tcp_proxy/tcp_proxy.cc
+index 7f2c4f5f9..213535dc2 100644
+--- a/source/common/tcp_proxy/tcp_proxy.cc
++++ b/source/common/tcp_proxy/tcp_proxy.cc
+@@ -715,7 +715,7 @@ Network::FilterStatus Filter::establishUpstreamConnection() {
+         std::make_shared<Network::ProxyProtocolFilterState>(Network::ProxyProtocolData{
+             downstream_connection.connectionInfoProvider().remoteAddress(),
+             downstream_connection.connectionInfoProvider().localAddress(), tlvs}),
+-        StreamInfo::FilterState::StateType::Mutable, StreamInfo::FilterState::LifeSpan::Connection);
++        StreamInfo::FilterState::LifeSpan::Connection);
+   } else if (config_->sharedConfig()->proxyProtocolTlvMergePolicy() !=
+              envoy::extensions::filters::network::tcp_proxy::v3::ADD_IF_ABSENT) {
+     // Existing state found and merge policy is not ADD_IF_ABSENT - merge TLVs.
+@@ -759,7 +759,7 @@ Network::FilterStatus Filter::establishUpstreamConnection() {
+         std::make_shared<Network::ProxyProtocolFilterState>(Network::ProxyProtocolDataWithVersion{
+             {existing_data.src_addr_, existing_data.dst_addr_, merged_tlvs},
+             existing_data.version_}),
+-        StreamInfo::FilterState::StateType::Mutable, StreamInfo::FilterState::LifeSpan::Connection);
++        StreamInfo::FilterState::LifeSpan::Connection);
+   }
+   // else: ADD_IF_ABSENT policy with existing state - keep existing state as-is.
+   transport_socket_options_ =
+@@ -1040,9 +1040,9 @@ void TunnelingConfigHelperImpl::propagateResponseHeaders(
+   if (!propagate_response_headers_) {
+     return;
+   }
+-  filter_state->setData(
+-      TunnelResponseHeaders::key(), std::make_shared<TunnelResponseHeaders>(std::move(headers)),
+-      StreamInfo::FilterState::StateType::Mutable, StreamInfo::FilterState::LifeSpan::Connection);
++  filter_state->setData(TunnelResponseHeaders::key(),
++                        std::make_shared<TunnelResponseHeaders>(std::move(headers)),
++                        StreamInfo::FilterState::LifeSpan::Connection);
+ }
+ 
+ void TunnelingConfigHelperImpl::propagateResponseTrailers(
+@@ -1051,9 +1051,9 @@ void TunnelingConfigHelperImpl::propagateResponseTrailers(
+   if (!propagate_response_trailers_) {
+     return;
+   }
+-  filter_state->setData(
+-      TunnelResponseTrailers::key(), std::make_shared<TunnelResponseTrailers>(std::move(trailers)),
+-      StreamInfo::FilterState::StateType::ReadOnly, StreamInfo::FilterState::LifeSpan::Connection);
++  filter_state->setData(TunnelResponseTrailers::key(),
++                        std::make_shared<TunnelResponseTrailers>(std::move(trailers)),
++                        StreamInfo::FilterState::LifeSpan::Connection);
+ }
+ 
+ void Filter::onConnectTimeout() {
+diff --git a/source/extensions/access_loggers/stats/stats.cc b/source/extensions/access_loggers/stats/stats.cc
+index d51513c7f..6b94be41a 100644
+--- a/source/extensions/access_loggers/stats/stats.cc
++++ b/source/extensions/access_loggers/stats/stats.cc
+@@ -462,9 +462,9 @@ void StatsAccessLog::emitLogForGauge(const Gauge& gauge, const Formatter::Contex
+     if (!filter_state.hasData<AccessLogState>(AccessLogState::key())) {
+       // TODO(TAOXUY): Create a new PR that adds test coverage around any corner cases of which
+       // level should be used, and adds this comment or an updated version.
+-      filter_state.setData(
+-          AccessLogState::key(), std::make_shared<AccessLogState>(shared_from_this()),
+-          StreamInfo::FilterState::StateType::Mutable, StreamInfo::FilterState::LifeSpan::Request);
++      filter_state.setData(AccessLogState::key(),
++                           std::make_shared<AccessLogState>(shared_from_this()),
++                           StreamInfo::FilterState::LifeSpan::Request);
+     }
+     auto* state = filter_state.getDataMutable<AccessLogState>(AccessLogState::key());
+ 
+diff --git a/source/extensions/bootstrap/reverse_tunnel/upstream_socket_interface/reverse_tunnel_acceptor_extension.cc b/source/extensions/bootstrap/reverse_tunnel/upstream_socket_interface/reverse_tunnel_acceptor_extension.cc
+index cf8c57876..136388afb 100644
+--- a/source/extensions/bootstrap/reverse_tunnel/upstream_socket_interface/reverse_tunnel_acceptor_extension.cc
++++ b/source/extensions/bootstrap/reverse_tunnel/upstream_socket_interface/reverse_tunnel_acceptor_extension.cc
+@@ -37,7 +37,6 @@ void maybeSetStringFilterState(StreamInfo::FilterState& filter_state, absl::stri
+   }
+ 
+   filter_state.setData(key, std::make_shared<Router::StringAccessorImpl>(value),
+-                       StreamInfo::FilterState::StateType::ReadOnly,
+                        StreamInfo::FilterState::LifeSpan::Connection);
+ }
+ 
+@@ -48,7 +47,6 @@ void maybeSetUint64FilterState(StreamInfo::FilterState& filter_state, absl::stri
+   }
+ 
+   filter_state.setData(key, std::make_shared<StreamInfo::UInt64AccessorImpl>(value),
+-                       StreamInfo::FilterState::StateType::ReadOnly,
+                        StreamInfo::FilterState::LifeSpan::Connection);
+ }
+ 
+diff --git a/source/extensions/bootstrap/reverse_tunnel/upstream_socket_interface/reverse_tunnel_upstream_lifecycle.cc b/source/extensions/bootstrap/reverse_tunnel/upstream_socket_interface/reverse_tunnel_upstream_lifecycle.cc
+index 671d4b7ca..abd9b63fd 100644
+--- a/source/extensions/bootstrap/reverse_tunnel/upstream_socket_interface/reverse_tunnel_upstream_lifecycle.cc
++++ b/source/extensions/bootstrap/reverse_tunnel/upstream_socket_interface/reverse_tunnel_upstream_lifecycle.cc
+@@ -46,7 +46,6 @@ void maybeSetStringFilterState(StreamInfo::FilterState& filter_state, absl::stri
+   }
+ 
+   filter_state.setData(key, std::make_shared<Router::StringAccessorImpl>(value),
+-                       StreamInfo::FilterState::StateType::ReadOnly,
+                        StreamInfo::FilterState::LifeSpan::Connection);
+ }
+ 
+@@ -57,7 +56,6 @@ void maybeSetUint64FilterState(StreamInfo::FilterState& filter_state, absl::stri
+   }
+ 
+   filter_state.setData(key, std::make_shared<StreamInfo::UInt64AccessorImpl>(value),
+-                       StreamInfo::FilterState::StateType::ReadOnly,
+                        StreamInfo::FilterState::LifeSpan::Connection);
+ }
+ 
+diff --git a/source/extensions/common/wasm/context.cc b/source/extensions/common/wasm/context.cc
+index 3fafdbda4..014c595d8 100644
+--- a/source/extensions/common/wasm/context.cc
++++ b/source/extensions/common/wasm/context.cc
+@@ -1098,9 +1098,7 @@ WasmResult Context::setProperty(std::string_view path, std::string_view value) {
+             : *it->second.get(); // NOLINT
+     auto state_ptr = std::make_unique<CelState>(prototype);
+     state = state_ptr.get();
+-    stream_info->filterState()->setData(key, std::move(state_ptr),
+-                                        StreamInfo::FilterState::StateType::Mutable,
+-                                        prototype.life_span_);
++    stream_info->filterState()->setData(key, std::move(state_ptr), prototype.life_span_);
+   }
+   if (!state->setValue(toAbslStringView(value))) {
+     return WasmResult::BadArgument;
+@@ -1126,8 +1124,7 @@ WasmResult Context::setEnvoyFilterState(std::string_view path, std::string_view
+     return WasmResult::NotFound;
+   }
+ 
+-  stream_info->filterState()->setData(path, std::move(object),
+-                                      StreamInfo::FilterState::StateType::Mutable, life_span);
++  stream_info->filterState()->setData(path, std::move(object), life_span);
+   return WasmResult::Ok;
+ }
+ 
+diff --git a/source/extensions/filters/http/cache/cache_filter.cc b/source/extensions/filters/http/cache/cache_filter.cc
+index 3c078d033..8b9c1c4ce 100644
+--- a/source/extensions/filters/http/cache/cache_filter.cc
++++ b/source/extensions/filters/http/cache/cache_filter.cc
+@@ -94,8 +94,7 @@ void CacheFilter::onStreamComplete() {
+   InsertStatus insert_status = insertStatus();
+   decoder_callbacks_->streamInfo().filterState()->setData(
+       CacheFilterLoggingInfo::FilterStateKey,
+-      std::make_shared<CacheFilterLoggingInfo>(lookup_status, insert_status),
+-      StreamInfo::FilterState::StateType::ReadOnly);
++      std::make_shared<CacheFilterLoggingInfo>(lookup_status, insert_status));
+ }
+ 
+ Http::FilterHeadersStatus CacheFilter::decodeHeaders(Http::RequestHeaderMap& headers,
+diff --git a/source/extensions/filters/http/composite/filter.cc b/source/extensions/filters/http/composite/filter.cc
+index 1ea21afc1..bb7ce8b4d 100644
+--- a/source/extensions/filters/http/composite/filter.cc
++++ b/source/extensions/filters/http/composite/filter.cc
+@@ -288,7 +288,6 @@ void Filter::updateFilterState(Http::StreamFilterCallbacks* callback,
+   } else {
+     callback->streamInfo().filterState()->setData(
+         MatchedActionsFilterStateKey, std::make_shared<MatchedActionInfo>(filter_name, action_name),
+-        StreamInfo::FilterState::StateType::Mutable,
+         StreamInfo::FilterState::LifeSpan::FilterChain);
+   }
+ }
+diff --git a/source/extensions/filters/http/compressor/compressor_filter.cc b/source/extensions/filters/http/compressor/compressor_filter.cc
+index ebb6e01dc..2811a5d42 100644
+--- a/source/extensions/filters/http/compressor/compressor_filter.cc
++++ b/source/extensions/filters/http/compressor/compressor_filter.cc
+@@ -317,8 +317,7 @@ void CompressorFilter::setDecoderFilterCallbacks(Http::StreamDecoderFilterCallba
+   } else {
+     auto registry_ptr = std::make_unique<CompressorRegistry>();
+     registry_ptr->filter_configs_.push_back(config_);
+-    filter_state->setData(key, std::move(registry_ptr),
+-                          StreamInfo::FilterState::StateType::Mutable);
++    filter_state->setData(key, std::move(registry_ptr));
+   }
+ }
+ 
+@@ -708,8 +707,7 @@ bool CompressorFilter::isAcceptEncodingAllowed(const Http::ResponseHeaderMap& he
+   // No cached decision found, so decide now.
+   std::unique_ptr<CompressorFilter::EncodingDecision> decision = chooseEncoding(headers);
+   bool result = shouldCompress(*decision);
+-  filter_state->setData(encoding_decision_key, std::move(decision),
+-                        StreamInfo::FilterState::StateType::ReadOnly);
++  filter_state->setData(encoding_decision_key, std::move(decision));
+   return result;
+ }
+ 
+diff --git a/source/extensions/filters/http/dynamic_forward_proxy/proxy_filter.cc b/source/extensions/filters/http/dynamic_forward_proxy/proxy_filter.cc
+index 374aebe35..6b99ad589 100644
+--- a/source/extensions/filters/http/dynamic_forward_proxy/proxy_filter.cc
++++ b/source/extensions/filters/http/dynamic_forward_proxy/proxy_filter.cc
+@@ -438,9 +438,9 @@ void ProxyFilter::addHostAddressToFilterState(
+   const Envoy::StreamInfo::FilterStateSharedPtr& filter_state =
+       decoder_callbacks_->streamInfo().filterState();
+ 
+-  filter_state->setData(
+-      StreamInfo::UpstreamAddress::key(), std::make_unique<StreamInfo::UpstreamAddress>(address),
+-      StreamInfo::FilterState::StateType::Mutable, StreamInfo::FilterState::LifeSpan::Request);
++  filter_state->setData(StreamInfo::UpstreamAddress::key(),
++                        std::make_unique<StreamInfo::UpstreamAddress>(address),
++                        StreamInfo::FilterState::LifeSpan::Request);
+ }
+ 
+ void ProxyFilter::onLoadClusterComplete() {
+diff --git a/source/extensions/filters/http/dynamic_modules/abi_impl.cc b/source/extensions/filters/http/dynamic_modules/abi_impl.cc
+index 0f5220fc9..b1ef8e060 100644
+--- a/source/extensions/filters/http/dynamic_modules/abi_impl.cc
++++ b/source/extensions/filters/http/dynamic_modules/abi_impl.cc
+@@ -1267,8 +1267,7 @@ bool envoy_dynamic_module_callback_http_set_filter_state_bytes(
+   absl::string_view key_view(key.ptr, key.length);
+   absl::string_view value_view(value.ptr, value.length);
+   stream_info->filterState()->setData(key_view,
+-                                      std::make_unique<Router::StringAccessorImpl>(value_view),
+-                                      StreamInfo::FilterState::StateType::ReadOnly);
++                                      std::make_unique<Router::StringAccessorImpl>(value_view));
+   return true;
+ }
+ 
+@@ -1324,8 +1323,7 @@ bool envoy_dynamic_module_callback_http_set_filter_state_typed(
+     return false;
+   }
+ 
+-  stream_info->filterState()->setData(key_view, std::move(object),
+-                                      StreamInfo::FilterState::StateType::Mutable);
++  stream_info->filterState()->setData(key_view, std::move(object));
+   return true;
+ }
+ 
+diff --git a/source/extensions/filters/http/ext_authz/ext_authz.cc b/source/extensions/filters/http/ext_authz/ext_authz.cc
+index f6b5ce114..1238513fe 100644
+--- a/source/extensions/filters/http/ext_authz/ext_authz.cc
++++ b/source/extensions/filters/http/ext_authz/ext_authz.cc
+@@ -292,7 +292,6 @@ void Filter::initiateCall(const Http::RequestHeaderMap& headers) {
+     if (!filter_state->hasData<ExtAuthzLoggingInfo>(decoder_callbacks_->filterConfigName())) {
+       filter_state->setData(decoder_callbacks_->filterConfigName(),
+                             std::make_shared<ExtAuthzLoggingInfo>(config_->filterMetadata()),
+-                            Envoy::StreamInfo::FilterState::StateType::Mutable,
+                             Envoy::StreamInfo::FilterState::LifeSpan::Request);
+ 
+       // This may return nullptr (if there's a value at this name whose type doesn't match or isn't
+@@ -1355,7 +1354,7 @@ void Filter::setShadowFilterState(Filters::Common::ExtAuthz::Response& response)
+   // already uses the filter's configured name as its FilterState key (with a different lifespan).
+   decoder_callbacks_->streamInfo().filterState()->setData(
+       absl::StrCat(decoder_callbacks_->filterConfigName(), ".shadow"), std::move(object),
+-      StreamInfo::FilterState::StateType::ReadOnly, StreamInfo::FilterState::LifeSpan::FilterChain);
++      StreamInfo::FilterState::LifeSpan::FilterChain);
+ }
+ 
+ } // namespace ExtAuthz
+diff --git a/source/extensions/filters/http/ext_proc/ext_proc.cc b/source/extensions/filters/http/ext_proc/ext_proc.cc
+index fcd478f4a..388843a4f 100644
+--- a/source/extensions/filters/http/ext_proc/ext_proc.cc
++++ b/source/extensions/filters/http/ext_proc/ext_proc.cc
+@@ -689,7 +689,6 @@ void Filter::setDecoderFilterCallbacks(Http::StreamDecoderFilterCallbacks& callb
+   if (!filter_state->hasData<ExtProcLoggingInfo>(callbacks.filterConfigName())) {
+     filter_state->setData(callbacks.filterConfigName(),
+                           std::make_shared<ExtProcLoggingInfo>(config_->filterMetadata()),
+-                          Envoy::StreamInfo::FilterState::StateType::Mutable,
+                           Envoy::StreamInfo::FilterState::LifeSpan::Request);
+   }
+   logging_info_ = filter_state->getDataMutable<ExtProcLoggingInfo>(callbacks.filterConfigName());
+diff --git a/source/extensions/filters/http/grpc_stats/grpc_stats_filter.cc b/source/extensions/filters/http/grpc_stats/grpc_stats_filter.cc
+index edd50159f..6daef6ba2 100644
+--- a/source/extensions/filters/http/grpc_stats/grpc_stats_filter.cc
++++ b/source/extensions/filters/http/grpc_stats/grpc_stats_filter.cc
+@@ -261,7 +261,6 @@ public:
+       filter_object_ = state.get();
+       decoder_callbacks_->streamInfo().filterState()->setData(
+           "envoy.filters.http.grpc_stats", std::move(state),
+-          StreamInfo::FilterState::StateType::Mutable,
+           StreamInfo::FilterState::LifeSpan::FilterChain);
+     }
+     if (connect_unary_) {
+diff --git a/source/extensions/filters/http/local_ratelimit/local_ratelimit.cc b/source/extensions/filters/http/local_ratelimit/local_ratelimit.cc
+index 41f0fc67c..42648c10f 100644
+--- a/source/extensions/filters/http/local_ratelimit/local_ratelimit.cc
++++ b/source/extensions/filters/http/local_ratelimit/local_ratelimit.cc
+@@ -247,8 +247,7 @@ Filters::Common::LocalRateLimit::LocalRateLimiterImpl& Filter::getPerConnectionR
+         used_config_->descriptors(), used_config_->consumeDefaultTokenBucket());
+ 
+     decoder_callbacks_->streamInfo().filterState()->setData(
+-        PerConnectionRateLimiter::key(), limiter, StreamInfo::FilterState::StateType::ReadOnly,
+-        StreamInfo::FilterState::LifeSpan::Connection);
++        PerConnectionRateLimiter::key(), limiter, StreamInfo::FilterState::LifeSpan::Connection);
+     return const_cast<Filters::Common::LocalRateLimit::LocalRateLimiterImpl&>(limiter->value());
+   }
+ 
+diff --git a/source/extensions/filters/http/lua/wrappers.cc b/source/extensions/filters/http/lua/wrappers.cc
+index 4b3211287..0cae89374 100644
+--- a/source/extensions/filters/http/lua/wrappers.cc
++++ b/source/extensions/filters/http/lua/wrappers.cc
+@@ -473,7 +473,6 @@ int FilterStateWrapper::luaSet(lua_State* state) {
+   }
+ 
+   streamInfo().filterState()->setData(object_key, std::move(object),
+-                                      StreamInfo::FilterState::StateType::ReadOnly,
+                                       StreamInfo::FilterState::LifeSpan::FilterChain,
+                                       StreamInfo::StreamSharingMayImpactPooling::None);
+   return 0;
+diff --git a/source/extensions/filters/http/mcp/mcp_filter.cc b/source/extensions/filters/http/mcp/mcp_filter.cc
+index 379a649ff..4e49c888c 100644
+--- a/source/extensions/filters/http/mcp/mcp_filter.cc
++++ b/source/extensions/filters/http/mcp/mcp_filter.cc
+@@ -387,7 +387,7 @@ Http::FilterDataStatus McpFilter::completeParsing() {
+           std::make_shared<FilterStateObject>(parser_->getMethod(), metadata, is_mcp_request_);
+       decoder_callbacks_->streamInfo().filterState()->setData(
+           std::string(FilterStateObject::FilterStateKey), std::move(filter_state_obj),
+-          StreamInfo::FilterState::StateType::ReadOnly, StreamInfo::FilterState::LifeSpan::Request,
++          StreamInfo::FilterState::LifeSpan::Request,
+           StreamInfo::StreamSharingMayImpactPooling::None);
+     }
+ 
+diff --git a/source/extensions/filters/listener/dynamic_modules/abi_impl.cc b/source/extensions/filters/listener/dynamic_modules/abi_impl.cc
+index fefae732d..bee0b5f5d 100644
+--- a/source/extensions/filters/listener/dynamic_modules/abi_impl.cc
++++ b/source/extensions/filters/listener/dynamic_modules/abi_impl.cc
+@@ -781,7 +781,6 @@ bool envoy_dynamic_module_callback_listener_filter_set_filter_state(
+ 
+   // TODO(wbpcode): check whether the key already exists and whether overwriting is allowed.
+   callbacks->filterState().setData(key_str, std::make_shared<Router::StringAccessorImpl>(value_str),
+-                                   StreamInfo::FilterState::StateType::ReadOnly,
+                                    StreamInfo::FilterState::LifeSpan::Connection);
+   return true;
+ }
+diff --git a/source/extensions/filters/listener/original_dst/original_dst.cc b/source/extensions/filters/listener/original_dst/original_dst.cc
+index 64dfcda42..e155e8871 100644
+--- a/source/extensions/filters/listener/original_dst/original_dst.cc
++++ b/source/extensions/filters/listener/original_dst/original_dst.cc
+@@ -55,7 +55,6 @@ Network::FilterStatus OriginalDstFilter::onAccept(Network::ListenerFilterCallbac
+           if (!has_options) {
+             filter_state.setData(Network::UpstreamSocketOptionsFilterState::key(),
+                                  std::make_unique<Network::UpstreamSocketOptionsFilterState>(),
+-                                 StreamInfo::FilterState::StateType::Mutable,
+                                  StreamInfo::FilterState::LifeSpan::Connection);
+           }
+           filter_state
+diff --git a/source/extensions/filters/listener/proxy_protocol/proxy_protocol.cc b/source/extensions/filters/listener/proxy_protocol/proxy_protocol.cc
+index 72caa90b6..3df2d4339 100644
+--- a/source/extensions/filters/listener/proxy_protocol/proxy_protocol.cc
++++ b/source/extensions/filters/listener/proxy_protocol/proxy_protocol.cc
+@@ -309,7 +309,6 @@ ReadOrParseState Filter::parseBuffer(Network::ListenerFilterBuffer& buffer) {
+               {socket.connectionInfoProvider().remoteAddress(),
+                socket.connectionInfoProvider().localAddress(), parsed_tlvs_},
+               absl::make_optional(header_version_)}),
+-          StreamInfo::FilterState::StateType::Mutable,
+           StreamInfo::FilterState::LifeSpan::Connection);
+     } else {
+       ENVOY_LOG(
+@@ -327,7 +326,6 @@ ReadOrParseState Filter::parseBuffer(Network::ListenerFilterBuffer& buffer) {
+               {proxy_protocol_header_.value().remote_address_,
+                proxy_protocol_header_.value().local_address_, parsed_tlvs_},
+               absl::make_optional(header_version_)}),
+-          StreamInfo::FilterState::StateType::Mutable,
+           StreamInfo::FilterState::LifeSpan::Connection);
+     }
+   }
+@@ -624,7 +622,6 @@ bool Filter::parseTlvs(const uint8_t* buf, size_t len) {
+           auto new_obj = std::make_unique<TlvFilterStateObject>();
+           tlv_filter_state_obj = new_obj.get();
+           cb_->filterState().setData(kFilterStateKey, std::move(new_obj),
+-                                     StreamInfo::FilterState::StateType::ReadOnly,
+                                      StreamInfo::FilterState::LifeSpan::Connection);
+           ENVOY_LOG(trace, "proxy_protocol: Created TLV FilterState object");
+         }
+diff --git a/source/extensions/filters/network/dynamic_modules/abi_impl.cc b/source/extensions/filters/network/dynamic_modules/abi_impl.cc
+index 24a97cdc8..7aa16f647 100644
+--- a/source/extensions/filters/network/dynamic_modules/abi_impl.cc
++++ b/source/extensions/filters/network/dynamic_modules/abi_impl.cc
+@@ -442,9 +442,9 @@ bool envoy_dynamic_module_callback_network_set_filter_state_bytes(
+   absl::string_view key_view(key.ptr, key.length);
+   absl::string_view value_view(value.ptr, value.length);
+ 
+-  stream_info.filterState()->setData(
+-      key_view, std::make_unique<Router::StringAccessorImpl>(value_view),
+-      StreamInfo::FilterState::StateType::Mutable, StreamInfo::FilterState::LifeSpan::Connection);
++  stream_info.filterState()->setData(key_view,
++                                     std::make_unique<Router::StringAccessorImpl>(value_view),
++                                     StreamInfo::FilterState::LifeSpan::Connection);
+   return true;
+ }
+ 
+@@ -493,7 +493,6 @@ bool envoy_dynamic_module_callback_network_set_filter_state_typed(
+   }
+ 
+   stream_info.filterState()->setData(key_view, std::move(object),
+-                                     StreamInfo::FilterState::StateType::Mutable,
+                                      StreamInfo::FilterState::LifeSpan::Connection);
+   return true;
+ }
+@@ -720,7 +719,6 @@ ensureUpstreamSocketOptionsFilterState(DynamicModuleNetworkFilter& filter) {
+   if (!has_options) {
+     filter_state.setData(Network::UpstreamSocketOptionsFilterState::key(),
+                          std::make_unique<Network::UpstreamSocketOptionsFilterState>(),
+-                         StreamInfo::FilterState::StateType::Mutable,
+                          StreamInfo::FilterState::LifeSpan::Connection);
+   }
+   return filter_state.getDataMutable<Network::UpstreamSocketOptionsFilterState>(
+diff --git a/source/extensions/filters/network/ext_proc/ext_proc.cc b/source/extensions/filters/network/ext_proc/ext_proc.cc
+index 5d130d826..b82b44763 100644
+--- a/source/extensions/filters/network/ext_proc/ext_proc.cc
++++ b/source/extensions/filters/network/ext_proc/ext_proc.cc
+@@ -110,7 +110,6 @@ void NetworkExtProcFilter::initializeLoggingInfo() {
+           NetworkFilterNames::get().NetworkExternalProcessor)) {
+     filter_state->setData(NetworkFilterNames::get().NetworkExternalProcessor,
+                           std::make_shared<NetworkExtProcLoggingInfo>(),
+-                          Envoy::StreamInfo::FilterState::StateType::Mutable,
+                           Envoy::StreamInfo::FilterState::LifeSpan::Connection);
+   }
+ 
+diff --git a/source/extensions/filters/network/generic_proxy/router/upstream.cc b/source/extensions/filters/network/generic_proxy/router/upstream.cc
+index 16b365dfe..c9e3e1e53 100644
+--- a/source/extensions/filters/network/generic_proxy/router/upstream.cc
++++ b/source/extensions/filters/network/generic_proxy/router/upstream.cc
+@@ -330,7 +330,6 @@ GenericUpstreamSharedPtr ProdGenericUpstreamFactory::createGenericUpstream(
+       bound_upstream = new_bound_upstream.get();
+       downstream_conn.streamInfo().filterState()->setData(
+           RouterFilterName, std::move(new_bound_upstream),
+-          StreamInfo::FilterState::StateType::Mutable,
+           StreamInfo::FilterState::LifeSpan::Connection);
+     }
+     return bound_upstream->shared_from_this();
+diff --git a/source/extensions/filters/network/generic_proxy/router/upstream.h b/source/extensions/filters/network/generic_proxy/router/upstream.h
+index e551596a2..9964d5aef 100644
+--- a/source/extensions/filters/network/generic_proxy/router/upstream.h
++++ b/source/extensions/filters/network/generic_proxy/router/upstream.h
+@@ -320,7 +320,6 @@ protected:
+       encoder_decoder = data.get();
+       connection.streamInfo().filterState()->setData(RouterFilterEncoderDecoderName,
+                                                      std::move(data),
+-                                                     StreamInfo::FilterState::StateType::Mutable,
+                                                      StreamInfo::FilterState::LifeSpan::Connection);
+     }
+     return encoder_decoder;
+diff --git a/source/extensions/filters/network/geoip/geoip_filter.cc b/source/extensions/filters/network/geoip/geoip_filter.cc
+index 8294bf485..1d9bf24e5 100644
+--- a/source/extensions/filters/network/geoip/geoip_filter.cc
++++ b/source/extensions/filters/network/geoip/geoip_filter.cc
+@@ -118,7 +118,6 @@ void GeoipFilter::onLookupComplete(Geolocation::LookupResult&& result) {
+   if (!geoip_info->empty()) {
+     read_callbacks_->connection().streamInfo().filterState()->setData(
+         std::string(GeoipFilterStateKey), std::move(geoip_info),
+-        StreamInfo::FilterState::StateType::ReadOnly,
+         StreamInfo::FilterState::LifeSpan::Connection);
+     ENVOY_LOG(debug, "geoip: stored data in filter state key '{}'", GeoipFilterStateKey);
+   }
+diff --git a/source/extensions/filters/network/sni_cluster/sni_cluster.cc b/source/extensions/filters/network/sni_cluster/sni_cluster.cc
+index 6fea2639d..b52827d35 100644
+--- a/source/extensions/filters/network/sni_cluster/sni_cluster.cc
++++ b/source/extensions/filters/network/sni_cluster/sni_cluster.cc
+@@ -21,7 +21,7 @@ Network::FilterStatus SniClusterFilter::onNewConnection() {
+     read_callbacks_->connection().streamInfo().filterState()->setData(
+         TcpProxy::PerConnectionCluster::key(),
+         std::make_unique<TcpProxy::PerConnectionCluster>(sni),
+-        StreamInfo::FilterState::StateType::Mutable, StreamInfo::FilterState::LifeSpan::Connection);
++        StreamInfo::FilterState::LifeSpan::Connection);
+   }
+ 
+   return Network::FilterStatus::Continue;
+diff --git a/source/extensions/filters/network/sni_dynamic_forward_proxy/proxy_filter.cc b/source/extensions/filters/network/sni_dynamic_forward_proxy/proxy_filter.cc
+index 7ca54837c..319d93bd8 100644
+--- a/source/extensions/filters/network/sni_dynamic_forward_proxy/proxy_filter.cc
++++ b/source/extensions/filters/network/sni_dynamic_forward_proxy/proxy_filter.cc
+@@ -75,7 +75,7 @@ Network::FilterStatus ProxyFilter::onNewConnection() {
+     port = config_->port();
+     read_callbacks_->connection().streamInfo().filterState()->setData(
+         "envoy.upstream.dynamic_port", std::make_shared<StreamInfo::UInt32AccessorImpl>(port),
+-        StreamInfo::FilterState::StateType::Mutable, StreamInfo::FilterState::LifeSpan::Connection);
++        StreamInfo::FilterState::LifeSpan::Connection);
+   }
+ 
+   auto result = config_->cache().loadDnsCacheEntry(host, port, false, *this);
+@@ -140,7 +140,7 @@ void ProxyFilter::addHostAddressToFilterState(
+ 
+   read_callbacks_->connection().streamInfo().filterState()->setData(
+       StreamInfo::UpstreamAddress::key(), std::move(address_obj),
+-      StreamInfo::FilterState::StateType::Mutable, StreamInfo::FilterState::LifeSpan::Connection);
++      StreamInfo::FilterState::LifeSpan::Connection);
+ }
+ 
+ } // namespace SniDynamicForwardProxy
+diff --git a/source/extensions/filters/udp/udp_proxy/config.h b/source/extensions/filters/udp/udp_proxy/config.h
+index 3657a2e2c..0bf81cfa2 100644
+--- a/source/extensions/filters/udp/udp_proxy/config.h
++++ b/source/extensions/filters/udp/udp_proxy/config.h
+@@ -74,9 +74,9 @@ public:
+       return;
+     }
+ 
+-    filter_state->setData(
+-        TunnelResponseHeaders::key(), std::make_shared<TunnelResponseHeaders>(std::move(headers)),
+-        StreamInfo::FilterState::StateType::Mutable, StreamInfo::FilterState::LifeSpan::Connection);
++    filter_state->setData(TunnelResponseHeaders::key(),
++                          std::make_shared<TunnelResponseHeaders>(std::move(headers)),
++                          StreamInfo::FilterState::LifeSpan::Connection);
+   }
+ 
+   void
+@@ -88,7 +88,6 @@ public:
+ 
+     filter_state->setData(TunnelResponseTrailers::key(),
+                           std::make_shared<TunnelResponseTrailers>(std::move(trailers)),
+-                          StreamInfo::FilterState::StateType::ReadOnly,
+                           StreamInfo::FilterState::LifeSpan::Connection);
+   }
+ 
+diff --git a/source/extensions/http/custom_response/redirect_policy/redirect_policy.cc b/source/extensions/http/custom_response/redirect_policy/redirect_policy.cc
+index 36fdb1785..37af18d5b 100644
+--- a/source/extensions/http/custom_response/redirect_policy/redirect_policy.cc
++++ b/source/extensions/http/custom_response/redirect_policy/redirect_policy.cc
+@@ -222,7 +222,7 @@ std::unique_ptr<ModifyRequestHeadersAction> RedirectPolicy::createModifyRequestH
+       "envoy.filters.http.custom_response",
+       std::make_shared<::Envoy::Extensions::HttpFilters::CustomResponse::CustomResponseFilterState>(
+           const_cast<RedirectPolicy*>(this)->shared_from_this(), original_response_code),
+-      StreamInfo::FilterState::StateType::ReadOnly, StreamInfo::FilterState::LifeSpan::Request);
++      StreamInfo::FilterState::LifeSpan::Request);
+   restore_original_headers.cancel();
+   decoder_callbacks->recreateStream(nullptr);
+ 
+diff --git a/source/extensions/http/ext_proc/response_processors/save_processing_response/save_processing_response.cc b/source/extensions/http/ext_proc/response_processors/save_processing_response/save_processing_response.cc
+index b4eb17103..2c46bb0ee 100644
+--- a/source/extensions/http/ext_proc/response_processors/save_processing_response/save_processing_response.cc
++++ b/source/extensions/http/ext_proc/response_processors/save_processing_response/save_processing_response.cc
+@@ -27,8 +27,7 @@ void SaveProcessingResponse::addToFilterState(
+   if (filter_state == nullptr) {
+     auto shared_filter_state = std::make_shared<SaveProcessingResponseFilterState>();
+     filter_state = shared_filter_state.get();
+-    stream_info.filterState()->setData(filter_state_name_, shared_filter_state,
+-                                       Envoy::StreamInfo::FilterState::StateType::Mutable);
++    stream_info.filterState()->setData(filter_state_name_, shared_filter_state);
+   }
+ 
+   filter_state->response.emplace(SaveProcessingResponseFilterState::Response{
+diff --git a/source/extensions/internal_redirect/previous_routes/previous_routes.cc b/source/extensions/internal_redirect/previous_routes/previous_routes.cc
+index a85031ffb..d0689bfd6 100644
+--- a/source/extensions/internal_redirect/previous_routes/previous_routes.cc
++++ b/source/extensions/internal_redirect/previous_routes/previous_routes.cc
+@@ -39,7 +39,6 @@ bool PreviousRoutesPredicate::acceptTargetRoute(StreamInfo::FilterState& filter_
+       absl::StrCat(PreviousRoutesPredicateStateNamePrefix, ".", current_route_name_);
+   if (!filter_state.hasData<PreviousRoutesPredicateState>(filter_state_name)) {
+     filter_state.setData(filter_state_name, std::make_unique<PreviousRoutesPredicateState>(),
+-                         StreamInfo::FilterState::StateType::Mutable,
+                          StreamInfo::FilterState::LifeSpan::Request);
+   }
+   auto predicate_state =
+diff --git a/source/extensions/load_balancing_policies/override_host/load_balancer.cc b/source/extensions/load_balancing_policies/override_host/load_balancer.cc
+index 059293361..1ca077594 100644
+--- a/source/extensions/load_balancing_policies/override_host/load_balancer.cc
++++ b/source/extensions/load_balancing_policies/override_host/load_balancer.cc
+@@ -166,9 +166,8 @@ OverrideHostLoadBalancer::LoadBalancerImpl::chooseHostInternal(LoadBalancerConte
+     auto state_ptr = std::make_shared<OverrideHostFilterState>(getSelectedHosts(context));
+     override_host_state = state_ptr.get();
+ 
+-    context->requestStreamInfo()->filterState()->setData(
+-        OverrideHostFilterState::kFilterStateKey, std::move(state_ptr),
+-        StreamInfo::FilterState::StateType::Mutable);
++    context->requestStreamInfo()->filterState()->setData(OverrideHostFilterState::kFilterStateKey,
++                                                         std::move(state_ptr));
+   }
+ 
+   if (override_host_state->empty()) {
+diff --git a/source/extensions/transport_sockets/tls/cert_validator/dynamic_modules/config.cc b/source/extensions/transport_sockets/tls/cert_validator/dynamic_modules/config.cc
+index b2cc327c6..1b6466e2e 100644
+--- a/source/extensions/transport_sockets/tls/cert_validator/dynamic_modules/config.cc
++++ b/source/extensions/transport_sockets/tls/cert_validator/dynamic_modules/config.cc
+@@ -42,7 +42,6 @@ bool envoy_dynamic_module_callback_cert_validator_set_filter_state(
+ 
+   config->current_callbacks_->connection().streamInfo().filterState()->setData(
+       key_str, std::make_shared<Envoy::Router::StringAccessorImpl>(value_str),
+-      Envoy::StreamInfo::FilterState::StateType::ReadOnly,
+       Envoy::StreamInfo::FilterState::LifeSpan::Connection);
+   return true;
+ }
+diff --git a/test/coverage.yaml b/test/coverage.yaml
+index 86382fcb9..7b1127eb6 100644
+--- a/test/coverage.yaml
++++ b/test/coverage.yaml
+@@ -64,7 +64,7 @@ directories:
+   source/extensions/internal_redirect: 86.2
+   source/extensions/internal_redirect/safe_cross_scheme: 81.3
+   source/extensions/internal_redirect/allow_listed_routes: 85.7
+-  source/extensions/internal_redirect/previous_routes: 89.3
++  source/extensions/internal_redirect/previous_routes: 88.9
+   source/extensions/load_balancing_policies/common: 96.4
+   source/extensions/load_balancing_policies/maglev: 95.2
+   source/extensions/load_balancing_policies/round_robin: 96.4

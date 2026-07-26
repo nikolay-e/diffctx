@@ -1,0 +1,1377 @@
+From bd40e490a68ef99299f12f586ec540317aeb73fb Mon Sep 17 00:00:00 2001
+From: Adam Rutkowski <hq@mtod.org>
+Date: Mon, 22 Jun 2026 17:18:25 +0200
+Subject: [PATCH] Pages report: breakdown by hostname (#6452)
+
+* Support additional pages breakdown by hostname ("URL" in user-facing terminology)
+
+* Optionally include hostname in external links
+
+* Configure page reports broken down by hostname
+
+* Support optional extra dimensions
+
+* Add react routes for hostname pages breakdowns
+
+* Allow explicit search dimension override
+
+In case of pages broken down by hostname, we still want to
+search through pages, regardless of the order supplied
+
+* Support multiple dimensions in breakdown index
+
+* Implement react logic/UI to support pages report additional breakdown
+
+* Add e2e tests
+
+* Format
+
+* Format e2e
+
+* Apply hostname+page filter on URL breakdown mode page click
+
+* Format
+
+* Make minor visual improvements
+
+- Add checkmark to selected option in popover menu
+- Improve spacing of popover and sizing of icons
+
+---------
+
+Co-authored-by: Sanne de Vries <sannedv@protonmail.com>
+---
+ .../dashboard/components/drilldown-link.tsx   |  23 +-
+ assets/js/dashboard/components/popover.tsx    |  10 +
+ assets/js/dashboard/hooks/use-query-api.ts    |   7 +-
+ .../nav-menu/dashboard-options-menu.tsx       |   4 +-
+ assets/js/dashboard/router.tsx                |  28 ++
+ assets/js/dashboard/stats/metrics.ts          |  22 +-
+ .../stats/modals/details-breakdown.tsx        |   7 +-
+ assets/js/dashboard/stats/more-link.js        |   2 +-
+ assets/js/dashboard/stats/pages/details.tsx   |  69 ++++-
+ assets/js/dashboard/stats/pages/index.tsx     | 240 +++++++++++++++---
+ .../stats/reports/index-breakdown.tsx         |   2 +-
+ .../dashboard/stats/reports/reports-config.ts |  73 ++++++
+ assets/js/dashboard/util/url.ts               |   7 +-
+ e2e/tests/dashboard/breakdowns.spec.ts        | 138 ++++++++++
+ lib/plausible/stats/query_builder.ex          |   5 +-
+ lib/plausible/stats/query_optimizer.ex        |  20 +-
+ lib/plausible/stats/sql/expression.ex         |   6 +
+ lib/plausible/stats/table_decider.ex          |   5 +-
+ .../api/stats_controller/pages_test.exs       | 201 +++++++++++++++
+ 19 files changed, 784 insertions(+), 85 deletions(-)
+
+diff --git a/assets/js/dashboard/components/drilldown-link.tsx b/assets/js/dashboard/components/drilldown-link.tsx
+index 43171ea0c..95295442f 100644
+--- a/assets/js/dashboard/components/drilldown-link.tsx
++++ b/assets/js/dashboard/components/drilldown-link.tsx
+@@ -13,6 +13,7 @@ export type FilterInfo = {
+   prefix: string
+   filter: Filter
+   labels?: FilterClauseLabels
++  extraFilters?: Array<{ prefix: string; filter: Filter }>
+ }
+ 
+ export function DrilldownLink({
+@@ -32,18 +33,32 @@ export function DrilldownLink({
+   const { dashboardState } = useDashboardStateContext()
+ 
+   if (filterInfo) {
+-    const { prefix, filter, labels } = filterInfo
+-    const newFilters = replaceFilterByPrefix(dashboardState, prefix, filter)
+-    const newLabels = cleanLabels(
++    const { prefix, filter, labels, extraFilters = [] } = filterInfo
++    let newFilters = replaceFilterByPrefix(dashboardState, prefix, filter)
++    let newLabels = cleanLabels(
+       newFilters,
+       dashboardState.labels,
+       filter[1],
+       labels
+     )
+ 
++    for (const ef of extraFilters) {
++      newFilters = replaceFilterByPrefix(
++        { ...dashboardState, filters: newFilters },
++        ef.prefix,
++        ef.filter
++      )
++      newLabels = cleanLabels(newFilters, newLabels, ef.filter[1], undefined)
++    }
++
++    const allFilters = [filter, ...extraFilters.map((ef) => ef.filter)]
++    const title = allFilters
++      .map((f) => plainFilterText({ ...dashboardState, labels: newLabels }, f))
++      .join(' and ')
++
+     return (
+       <AppNavigationLink
+-        title={`Add filter: ${plainFilterText({ ...dashboardState, labels: newLabels }, filter)}`}
++        title={`Add filter: ${title}`}
+         className={classNames(className, 'group')}
+         path={path}
+         onClick={onClick}
+diff --git a/assets/js/dashboard/components/popover.tsx b/assets/js/dashboard/components/popover.tsx
+index cbe076c96..ab1e2d415 100644
+--- a/assets/js/dashboard/components/popover.tsx
++++ b/assets/js/dashboard/components/popover.tsx
+@@ -1,5 +1,6 @@
+ import React, { RefObject } from 'react'
+ import classNames from 'classnames'
++import { CheckIcon } from '@heroicons/react/24/outline'
+ import { isModifierPressed, isTyping, Keybind } from '../keybinding'
+ import { TransitionClasses } from '@headlessui/react'
+ 
+@@ -79,6 +80,15 @@ export const popover = {
+   items
+ }
+ 
++export function SelectedCheckmark({ selected }: { selected: boolean }) {
++  if (!selected) {
++    return null
++  }
++  return (
++    <CheckIcon className="size-3.5 shrink-0 ml-2 stroke-2" aria-hidden="true" />
++  )
++}
++
+ /**
+  * Rendering this component captures the Escape key on targetRef.current, a PopoverButton,
+  * blurring the element on Escape, and stopping the event from propagating.
+diff --git a/assets/js/dashboard/hooks/use-query-api.ts b/assets/js/dashboard/hooks/use-query-api.ts
+index 3f2ded0d6..f2c914479 100644
+--- a/assets/js/dashboard/hooks/use-query-api.ts
++++ b/assets/js/dashboard/hooks/use-query-api.ts
+@@ -33,6 +33,7 @@ export type StatsReportQueryKey = [
+     dashboardState: DashboardState
+     reportParams: ReportParams
+     search?: string
++    searchDimension?: NonTimeDimension
+   }
+ ]
+ 
+@@ -169,12 +170,14 @@ export function useSearchAndPaginateQueryAPI(
+   return useInfiniteQuery({
+     queryKey: statsReportQueryKey,
+     queryFn: async ({ pageParam, queryKey }): Promise<QueryApiResponse> => {
+-      const { dashboardState, reportParams, search } = queryKey[1]
++      const { dashboardState, reportParams, search, searchDimension } =
++        queryKey[1]
+ 
+       let statsQuery = getStatsQuery(queryKey)
+ 
+       if (search && search !== '') {
+-        const searchBy = reportParams.dimensions[0]
++        const searchBy =
++          searchDimension ?? (reportParams.dimensions[0] as NonTimeDimension)
+         statsQuery = addDimensionSearchFilter(statsQuery, searchBy, search)
+       }
+ 
+diff --git a/assets/js/dashboard/nav-menu/dashboard-options-menu.tsx b/assets/js/dashboard/nav-menu/dashboard-options-menu.tsx
+index ac2041a93..8c640da21 100644
+--- a/assets/js/dashboard/nav-menu/dashboard-options-menu.tsx
++++ b/assets/js/dashboard/nav-menu/dashboard-options-menu.tsx
+@@ -138,7 +138,7 @@ function DashboardOptionsMenuItems() {
+           'justify-center'
+         )}
+       >
+-        <EllipsisVerticalIcon className="size-4" />
++        <EllipsisVerticalIcon className="-mx-px size-4.5" />
+       </Popover.Button>
+       <Transition
+         as="div"
+@@ -209,7 +209,7 @@ export function DashboardOptionsMenu() {
+           'justify-center'
+         )}
+       >
+-        <EllipsisVerticalIcon className="size-4" />
++        <EllipsisVerticalIcon className="-mx-px size-4.5" />
+       </button>
+     )
+   }
+diff --git a/assets/js/dashboard/router.tsx b/assets/js/dashboard/router.tsx
+index 1e8a1f10d..9b9f71ed6 100644
+--- a/assets/js/dashboard/router.tsx
++++ b/assets/js/dashboard/router.tsx
+@@ -102,16 +102,41 @@ export const topPagesRoute = {
+   element: <PagesDetails breakdownReportKey={BreakdownReportKey.pages} />
+ }
+ 
++export const topPagesWithHostnameRoute = {
++  path: BREAKDOWN_REPORTS.pagesWithHostname.detailsPath,
++  element: (
++    <PagesDetails breakdownReportKey={BreakdownReportKey.pagesWithHostname} />
++  )
++}
++
+ export const entryPagesRoute = {
+   path: BREAKDOWN_REPORTS.entryPages.detailsPath,
+   element: <PagesDetails breakdownReportKey={BreakdownReportKey.entryPages} />
+ }
+ 
++export const entryPagesWithHostnameRoute = {
++  path: BREAKDOWN_REPORTS.entryPagesWithHostname.detailsPath,
++  element: (
++    <PagesDetails
++      breakdownReportKey={BreakdownReportKey.entryPagesWithHostname}
++    />
++  )
++}
++
+ export const exitPagesRoute = {
+   path: BREAKDOWN_REPORTS.exitPages.detailsPath,
+   element: <PagesDetails breakdownReportKey={BreakdownReportKey.exitPages} />
+ }
+ 
++export const exitPagesWithHostnameRoute = {
++  path: BREAKDOWN_REPORTS.exitPagesWithHostname.detailsPath,
++  element: (
++    <PagesDetails
++      breakdownReportKey={BreakdownReportKey.exitPagesWithHostname}
++    />
++  )
++}
++
+ export const countriesRoute = {
+   path: BREAKDOWN_REPORTS.countries.detailsPath,
+   element: <LocationsDetails reportKey={BreakdownReportKey.countries} />
+@@ -218,8 +243,11 @@ export function createAppRouter(site: PlausibleSite) {
+           referrersGoogleRoute,
+           referrersDrilldownRoute,
+           topPagesRoute,
++          topPagesWithHostnameRoute,
+           entryPagesRoute,
++          entryPagesWithHostnameRoute,
+           exitPagesRoute,
++          exitPagesWithHostnameRoute,
+           countriesRoute,
+           regionsRoute,
+           citiesRoute,
+diff --git a/assets/js/dashboard/stats/metrics.ts b/assets/js/dashboard/stats/metrics.ts
+index 166f0f11c..84b955614 100644
+--- a/assets/js/dashboard/stats/metrics.ts
++++ b/assets/js/dashboard/stats/metrics.ts
+@@ -76,17 +76,19 @@ export const getBreakdownMetricLabel = (
+     dimensions: string[]
+   }
+ ): string => {
++  if (dimensions.includes('visit:entry_page')) {
++    return getEntryPagesBreakdownMetricLabel(metric, {
++      hasConversionGoalFilter,
++      isRealtime
++    })
++  }
++  if (dimensions.includes('visit:exit_page')) {
++    return getExitPagesBreakdownMetricLabel(metric, {
++      hasConversionGoalFilter,
++      isRealtime
++    })
++  }
+   switch (dimensions[0]) {
+-    case 'visit:entry_page':
+-      return getEntryPagesBreakdownMetricLabel(metric, {
+-        hasConversionGoalFilter,
+-        isRealtime
+-      })
+-    case 'visit:exit_page':
+-      return getExitPagesBreakdownMetricLabel(metric, {
+-        hasConversionGoalFilter,
+-        isRealtime
+-      })
+     case 'event:goal':
+       return getConversionsBreakdownMetricLabel(metric)
+     default: {
+diff --git a/assets/js/dashboard/stats/modals/details-breakdown.tsx b/assets/js/dashboard/stats/modals/details-breakdown.tsx
+index a8ecf96c5..390e0f69a 100644
+--- a/assets/js/dashboard/stats/modals/details-breakdown.tsx
++++ b/assets/js/dashboard/stats/modals/details-breakdown.tsx
+@@ -60,6 +60,7 @@ type DetailsBreakdownProps = SharedBreakdownReportProps & {
+   title: ReactNode
+   defaultOrderBy?: MetricOrderBy
+   searchEnabled?: boolean
++  searchDimension?: NonTimeDimension
+   onDataReady?: (data: PaginatedData) => void
+   DimensionElement: (props: DimensionCellProps) => ReactNode
+ }
+@@ -92,6 +93,7 @@ export function DetailsBreakdown({
+   defaultOrderBy = [] as MetricOrderBy,
+   DimensionElement,
+   searchEnabled = true,
++  searchDimension,
+   onDataReady,
+   bundlePercentageWithVisitors = true,
+   hideMetricsIfAllNull,
+@@ -132,7 +134,8 @@ export function DetailsBreakdown({
+         ],
+         alwaysOnFilters
+       },
+-      search
++      search,
++      searchDimension
+     }
+   ]
+ 
+@@ -271,7 +274,7 @@ export function DetailsBreakdown({
+       data={tableData}
+       columns={columns}
+       onSearch={searchEnabled ? setSearch : undefined}
+-      getRowKey={(row) => row.dimensions[0]}
++      getRowKey={(row) => row.dimensions.join(',')}
+     />
+   )
+ }
+diff --git a/assets/js/dashboard/stats/more-link.js b/assets/js/dashboard/stats/more-link.js
+index f85622aa0..88c30a00e 100644
+--- a/assets/js/dashboard/stats/more-link.js
++++ b/assets/js/dashboard/stats/more-link.js
+@@ -30,7 +30,7 @@ export default function MoreLink({ linkProps, state }) {
+   }, [])
+ 
+   const baseClassName =
+-    'relative flex mt-px text-gray-500 dark:text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors duration-150 before:absolute before:inset-[-8px] before:content-[" "]'
++    'relative flex mt-px rounded text-gray-500 dark:text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors duration-150 before:absolute before:inset-[-8px] before:content-[" "]'
+   const icon = detailsIcon()
+ 
+   if (state === MoreLinkState.HIDDEN) {
+diff --git a/assets/js/dashboard/stats/pages/details.tsx b/assets/js/dashboard/stats/pages/details.tsx
+index 0852e325f..5809b6815 100644
+--- a/assets/js/dashboard/stats/pages/details.tsx
++++ b/assets/js/dashboard/stats/pages/details.tsx
+@@ -1,5 +1,5 @@
+ import React from 'react'
+-import { revenueAvailable } from '../../dashboard-state'
++import { revenueAvailable, Filter } from '../../dashboard-state'
+ import { useDashboardStateContext } from '../../dashboard-state-context'
+ import { useSiteContext } from '../../site-context'
+ import {
+@@ -7,7 +7,7 @@ import {
+   hasEventFilters,
+   isRealTimeDashboard
+ } from '../../util/filters'
+-import { defaultGetFilterInfo } from '../breakdowns'
++import { defaultGetFilterInfo, GetFilterInfo } from '../breakdowns'
+ import {
+   BREAKDOWN_REPORTS,
+   BreakdownReportKey
+@@ -19,7 +19,56 @@ import {
+ } from '../modals/details-breakdown'
+ import Modal from '../modals/modal'
+ import { DetailsExternalLink } from './external-link'
+-import { externalLinkForPage } from '../../util/url'
++import { externalLinkForPage, trimURL } from '../../util/url'
++
++const MAX_DIMENSION_LENGTH = 70
++
++function makeHostnameDimensionElement(pageFilterKey: string) {
++  const getFilterInfo: GetFilterInfo = (_dim, row) => ({
++    prefix: 'hostname',
++    filter: ['is', 'hostname', [row.dimensions[0]]] as Filter,
++    extraFilters: [
++      {
++        prefix: pageFilterKey,
++        filter: ['is', pageFilterKey, [row.dimensions[1]]] as Filter
++      }
++    ]
++  })
++  return function HostnameDimensionElement(props: DimensionCellProps) {
++    const site = useSiteContext()
++    const hostname = props.row.dimensions[0]
++    const path = props.row.dimensions[1]
++
++    const displayValue = trimURL(
++      `https://${hostname}${path}`,
++      MAX_DIMENSION_LENGTH + 8
++    ).replace(/^https:\/\//, '')
++
++    return (
++      <DimensionCell
++        text={displayValue}
++        externalLink={
++          <DetailsExternalLink
++            href={externalLinkForPage(site, path, hostname)}
++            isActive={props.isActive}
++          />
++        }
++        getFilterInfo={getFilterInfo}
++        {...props}
++      />
++    )
++  }
++}
++
++const HOSTNAME_DIMENSION_ELEMENTS: Partial<
++  Record<BreakdownReportKey, (props: DimensionCellProps) => React.ReactNode>
++> = {
++  [BreakdownReportKey.pagesWithHostname]: makeHostnameDimensionElement('page'),
++  [BreakdownReportKey.entryPagesWithHostname]:
++    makeHostnameDimensionElement('entry_page'),
++  [BreakdownReportKey.exitPagesWithHostname]:
++    makeHostnameDimensionElement('exit_page')
++}
+ 
+ export function PagesDetails({
+   breakdownReportKey
+@@ -43,6 +92,9 @@ export function PagesDetails({
+     hasEventFilters: hasEventFilters(dashboardState)
+   })
+ 
++  const DimensionElement =
++    HOSTNAME_DIMENSION_ELEMENTS[breakdownReportKey] ?? PathDimensionElement
++
+   return (
+     <Modal>
+       <DetailsBreakdown
+@@ -52,20 +104,23 @@ export function PagesDetails({
+         metrics={metrics}
+         alwaysOnFilters={reportConfig.alwaysOnFilters}
+         defaultOrderBy={[['visitors', 'desc']]}
+-        DimensionElement={PagesDimensionElement}
++        searchDimension={reportConfig.searchDimension}
++        DimensionElement={DimensionElement}
+       />
+     </Modal>
+   )
+ }
+ 
+-const PagesDimensionElement = (props: DimensionCellProps) => {
++const PathDimensionElement = (props: DimensionCellProps) => {
+   const site = useSiteContext()
++  const path = props.row.dimensions[0]
++
+   return (
+     <DimensionCell
+-      text={props.row.dimensions[0]}
++      text={path}
+       externalLink={
+         <DetailsExternalLink
+-          href={externalLinkForPage(site, props.row.dimensions[0])}
++          href={externalLinkForPage(site, path)}
+           isActive={props.isActive}
+         />
+       }
+diff --git a/assets/js/dashboard/stats/pages/index.tsx b/assets/js/dashboard/stats/pages/index.tsx
+index e099f8455..c358f8718 100644
+--- a/assets/js/dashboard/stats/pages/index.tsx
++++ b/assets/js/dashboard/stats/pages/index.tsx
+@@ -1,4 +1,7 @@
+-import React, { useState } from 'react'
++import React, { useRef, useState } from 'react'
++import { Popover, Transition } from '@headlessui/react'
++import { EllipsisVerticalIcon } from '@heroicons/react/24/outline'
++import classNames from 'classnames'
+ 
+ import * as storage from '../../util/storage'
+ import {
+@@ -23,22 +26,59 @@ import {
+   IndexBreakdown,
+   DimensionCellWithBarProps
+ } from '../reports/index-breakdown'
+-import { defaultGetFilterInfo } from '../breakdowns'
++import { defaultGetFilterInfo, GetFilterInfo } from '../breakdowns'
++import { Filter } from '../../dashboard-state'
+ import { externalLinkForPage, trimURL } from '../../util/url'
+ import { IndexExternalLink } from './external-link'
++import {
++  popover,
++  BlurMenuButtonOnEscape,
++  SelectedCheckmark
++} from '../../components/popover'
+ 
+ const BAR_COLOR = 'bg-orange-50 group-hover/row:bg-orange-100'
+ const MAX_DIMENSION_LENGTH = 70
+ 
++type BreakdownMode = 'path' | 'hostname'
++type TabKey =
++  | BreakdownReportKey.pages
++  | BreakdownReportKey.entryPages
++  | BreakdownReportKey.exitPages
++
++const BREAKDOWN_MODE_OPTIONS: Array<{ value: BreakdownMode; label: string }> = [
++  { value: 'path', label: 'Path' },
++  { value: 'hostname', label: 'URL' } // URL is more suitable for user-facing label
++]
++
++function getReportKey(tab: TabKey, mode: BreakdownMode): BreakdownReportKey {
++  if (mode === 'hostname') {
++    switch (tab) {
++      case BreakdownReportKey.pages:
++        return BreakdownReportKey.pagesWithHostname
++      case BreakdownReportKey.entryPages:
++        return BreakdownReportKey.entryPagesWithHostname
++      case BreakdownReportKey.exitPages:
++        return BreakdownReportKey.exitPagesWithHostname
++    }
++  }
++  return tab
++}
++
+ export default function Pages() {
+   const { dashboardState } = useDashboardStateContext()
+   const site = useSiteContext()
+ 
+-  const storageKey = `pageTab__${site.domain}`
+-  const [tab, setTab] = useState<TabKey>(initTab(storage.getItem(storageKey)))
++  const tabStorageKey = `pageTab__${site.domain}`
++  const modeStorageKey = `pageBreakdownMode__${site.domain}`
++  const [tab, setTab] = useState<TabKey>(
++    initTab(storage.getItem(tabStorageKey))
++  )
++  const [breakdownMode, setBreakdownMode] = useState<BreakdownMode>(() =>
++    storage.getItem(modeStorageKey) === 'hostname' ? 'hostname' : 'path'
++  )
+   const [currentData, setCurrentData] = useState<QueryApiResponse | null>(null)
+ 
+-  const reportKey = getReportKey(tab)
++  const reportKey = getReportKey(tab, breakdownMode)
+   const reportConfig = BREAKDOWN_REPORTS[reportKey]
+ 
+   const metrics = reportConfig.getMetrics({
+@@ -46,29 +86,14 @@ export default function Pages() {
+     hasConversionGoalFilter: hasConversionGoalFilter(dashboardState)
+   })
+ 
+-  function switchTab(tab: TabKey) {
+-    storage.setItem(storageKey, tab)
+-    setTab(tab)
+-  }
+-
+-  function moreLinkProps() {
+-    return {
+-      path: reportConfig.detailsPath,
+-      search: (search: string) => search
+-    }
++  function switchTab(newTab: TabKey) {
++    storage.setItem(tabStorageKey, newTab)
++    setTab(newTab)
+   }
+ 
+-  function renderContent() {
+-    return (
+-      <IndexBreakdown
+-        metrics={metrics}
+-        dimensions={reportConfig.dimensions}
+-        dimensionLabel={reportConfig.dimensionLabel}
+-        alwaysOnFilters={reportConfig.alwaysOnFilters}
+-        DimensionElement={PagesDimensionCell}
+-        onDataReady={setCurrentData}
+-      />
+-    )
++  function selectBreakdownMode(mode: BreakdownMode) {
++    storage.setItem(modeStorageKey, mode)
++    setBreakdownMode(mode)
+   }
+ 
+   const moreLinkState = currentData
+@@ -77,6 +102,11 @@ export default function Pages() {
+       : MoreLinkState.HIDDEN
+     : MoreLinkState.LOADING
+ 
++  const DimensionElement =
++    breakdownMode === 'hostname'
++      ? HOSTNAME_DIMENSION_CELLS[tab]
++      : PathDimensionCell
++
+   return (
+     <ReportLayout testId="report-pages" className="overflow-x-hidden">
+       <ReportHeader>
+@@ -105,21 +135,111 @@ export default function Pages() {
+           </TabWrapper>
+           <ImportedWarningBubble queryApiResponse={currentData} />
+         </div>
+-        <MoreLink state={moreLinkState} linkProps={moreLinkProps()} />
++        <div className="flex items-start gap-x-3">
++          <MoreLink
++            state={moreLinkState}
++            linkProps={{
++              path: reportConfig.detailsPath,
++              search: (search: string) => search
++            }}
++          />
++          <PagesBreakdownMenu
++            breakdownMode={breakdownMode}
++            onSelect={selectBreakdownMode}
++          />
++        </div>
+       </ReportHeader>
+-      {renderContent()}
++      <IndexBreakdown
++        key={reportKey}
++        metrics={metrics}
++        dimensions={reportConfig.dimensions}
++        dimensionLabel={reportConfig.dimensionLabel}
++        alwaysOnFilters={reportConfig.alwaysOnFilters}
++        DimensionElement={DimensionElement}
++        onDataReady={setCurrentData}
++      />
+     </ReportLayout>
+   )
+ }
+ 
+-function PagesDimensionCell(props: DimensionCellWithBarProps) {
++function PagesBreakdownMenu({
++  breakdownMode,
++  onSelect
++}: {
++  breakdownMode: BreakdownMode
++  onSelect: (mode: BreakdownMode) => void
++}) {
++  const buttonRef = useRef<HTMLButtonElement>(null)
++
++  return (
++    <Popover className="relative">
++      {({ close }) => (
++        <>
++          <BlurMenuButtonOnEscape targetRef={buttonRef} />
++          <Popover.Button
++            ref={buttonRef}
++            className={classNames(
++              'relative flex rounded !text-gray-500 dark:!text-gray-400 hover:!text-gray-600 dark:hover:!text-gray-300 transition-colors duration-150 before:absolute before:inset-[-8px]',
++              popover.toggleButton.classNames.linkLike,
++              'justify-center'
++            )}
++            title="Breakdown options"
++            aria-label="Breakdown options"
++          >
++            <EllipsisVerticalIcon className="size-4.5" />
++          </Popover.Button>
++          <Transition
++            as="div"
++            {...popover.transition.props}
++            className={classNames(
++              popover.transition.classNames.right,
++              'mt-2 min-w-48'
++            )}
++          >
++            <Popover.Panel className={popover.panel.classNames.roundedSheet}>
++              <p className="uppercase text-xs font-medium text-gray-500 dark:text-gray-400 px-4 py-2.5 whitespace-nowrap">
++                Break down by
++              </p>
++              <div
++                data-testid="dropdown-items"
++                className="flex flex-col gap-y-0.5"
++              >
++                {BREAKDOWN_MODE_OPTIONS.map(({ value, label }) => (
++                  <button
++                    key={value}
++                    onClick={() => {
++                      onSelect(value)
++                      close()
++                    }}
++                    data-selected={value === breakdownMode}
++                    className={classNames(
++                      popover.items.classNames.navigationLink,
++                      popover.items.classNames.selectedOption,
++                      popover.items.classNames.hoverLink
++                    )}
++                  >
++                    {label}
++                    <SelectedCheckmark selected={value === breakdownMode} />
++                  </button>
++                ))}
++              </div>
++            </Popover.Panel>
++          </Transition>
++        </>
++      )}
++    </Popover>
++  )
++}
++
++function PathDimensionCell(props: DimensionCellWithBarProps) {
+   const site = useSiteContext()
+-  const externalUrl = externalLinkForPage(site, props.row.dimensions[0])
+-  const displayValue = trimURL(props.row.dimensions[0], MAX_DIMENSION_LENGTH)
++  const path = props.row.dimensions[0]
++  const externalUrl = externalLinkForPage(site, path)
++
+   return (
+     <DimensionCellWithBar
+       getFilterInfo={defaultGetFilterInfo}
+-      text={displayValue}
++      text={trimURL(path, MAX_DIMENSION_LENGTH)}
+       barClassName={BAR_COLOR}
+       externalLink={
+         externalUrl && (
+@@ -131,6 +251,53 @@ function PagesDimensionCell(props: DimensionCellWithBarProps) {
+   )
+ }
+ 
++function makeHostnameDimensionCell(pageFilterKey: string) {
++  const getFilterInfo: GetFilterInfo = (_dim, row) => ({
++    prefix: 'hostname',
++    filter: ['is', 'hostname', [row.dimensions[0]]] as Filter,
++    extraFilters: [
++      {
++        prefix: pageFilterKey,
++        filter: ['is', pageFilterKey, [row.dimensions[1]]] as Filter
++      }
++    ]
++  })
++  return function HostnameDimensionCell(props: DimensionCellWithBarProps) {
++    const site = useSiteContext()
++    const hostname = props.row.dimensions[0]
++    const path = props.row.dimensions[1]
++    const externalUrl = externalLinkForPage(site, path, hostname)
++
++    const displayValue = trimURL(
++      `https://${hostname}${path}`,
++      MAX_DIMENSION_LENGTH + 8
++    ).replace(/^https:\/\//, '')
++
++    return (
++      <DimensionCellWithBar
++        getFilterInfo={getFilterInfo}
++        text={displayValue}
++        barClassName={BAR_COLOR}
++        externalLink={
++          externalUrl && (
++            <IndexExternalLink href={externalUrl} isActive={props.isActive} />
++          )
++        }
++        {...props}
++      />
++    )
++  }
++}
++
++const HOSTNAME_DIMENSION_CELLS: Record<
++  TabKey,
++  (props: DimensionCellWithBarProps) => React.ReactNode
++> = {
++  [BreakdownReportKey.pages]: makeHostnameDimensionCell('page'),
++  [BreakdownReportKey.entryPages]: makeHostnameDimensionCell('entry_page'),
++  [BreakdownReportKey.exitPages]: makeHostnameDimensionCell('exit_page')
++}
++
+ const initTab = (storedTab: string): TabKey => {
+   switch (storedTab) {
+     case LegacyTabKey.entryPages:
+@@ -145,15 +312,6 @@ const initTab = (storedTab: string): TabKey => {
+   }
+ }
+ 
+-const getReportKey = (tab: TabKey): ReportKey => tab
+-
+-type TabKey =
+-  | BreakdownReportKey.pages
+-  | BreakdownReportKey.entryPages
+-  | BreakdownReportKey.exitPages
+-
+-type ReportKey = TabKey
+-
+ enum LegacyTabKey {
+   entryPages = 'entry-pages',
+   exitPages = 'exit-pages'
+diff --git a/assets/js/dashboard/stats/reports/index-breakdown.tsx b/assets/js/dashboard/stats/reports/index-breakdown.tsx
+index 2536e5c46..4625a7ec6 100644
+--- a/assets/js/dashboard/stats/reports/index-breakdown.tsx
++++ b/assets/js/dashboard/stats/reports/index-breakdown.tsx
+@@ -214,7 +214,7 @@ export function IndexBreakdown({
+       <IndexBreakdownRenderer<QueryResultRow>
+         {...apiState}
+         rows={apiState.data?.results?.slice(0, MAX_ITEMS) ?? []}
+-        getDimensionValue={(row) => row.dimensions[0]}
++        getDimensionValue={(row) => row.dimensions.join(',')}
+         isRealtimeSilentUpdate={isRealtimeSilentUpdate}
+         columns={columns}
+       />
+diff --git a/assets/js/dashboard/stats/reports/reports-config.ts b/assets/js/dashboard/stats/reports/reports-config.ts
+index a35de3788..7ef2be6c2 100644
+--- a/assets/js/dashboard/stats/reports/reports-config.ts
++++ b/assets/js/dashboard/stats/reports/reports-config.ts
+@@ -27,6 +27,7 @@ export type BreakdownReportConfig = {
+   detailsPath: string
+   dimensionLabel: string
+   alwaysOnFilters?: ApiFilter[]
++  searchDimension?: NonTimeDimension
+ }
+ 
+ export const COMMON_BREAKDOWN_METRICS_BY_CONTEXT: MetricsByContext = {
+@@ -92,8 +93,11 @@ function createGetMetricsFn(
+ 
+ export enum BreakdownReportKey {
+   'pages' = 'pages',
++  'pagesWithHostname' = 'pagesWithHostname',
+   'entryPages' = 'entryPages',
++  'entryPagesWithHostname' = 'entryPagesWithHostname',
+   'exitPages' = 'exitPages',
++  'exitPagesWithHostname' = 'exitPagesWithHostname',
+   'browsers' = 'browsers',
+   'browserVersions' = 'browserVersions',
+   'operatingSystems' = 'operatingSystems',
+@@ -141,6 +145,31 @@ export const BREAKDOWN_REPORTS: Record<
+     detailsPath: 'pages',
+     dimensionLabel: 'Page'
+   },
++  [BreakdownReportKey.pagesWithHostname]: {
++    dimensions: ['event:hostname', 'event:page'],
++    getMetrics: createGetMetricsFn({
++      ...COMMON_BREAKDOWN_METRICS_BY_CONTEXT,
++      defaultDetailedMetrics: [
++        'visitors',
++        'percentage',
++        'pageviews',
++        'bounce_rate',
++        'time_on_page',
++        'scroll_depth'
++      ],
++      defaultCsvMetrics: [
++        'visitors',
++        'pageviews',
++        'bounce_rate',
++        'time_on_page',
++        'scroll_depth'
++      ]
++    }),
++    detailsTitle: 'Top pages',
++    detailsPath: 'pages-with-hostname',
++    dimensionLabel: 'URL',
++    searchDimension: 'event:page'
++  },
+   [BreakdownReportKey.entryPages]: {
+     dimensions: ['visit:entry_page'],
+     getMetrics: createGetMetricsFn({
+@@ -159,6 +188,25 @@ export const BREAKDOWN_REPORTS: Record<
+     dimensionLabel: 'Entry page',
+     alwaysOnFilters: [['is_not', 'visit:entry_page', ['']]]
+   },
++  [BreakdownReportKey.entryPagesWithHostname]: {
++    dimensions: ['visit:entry_page_hostname', 'visit:entry_page'],
++    getMetrics: createGetMetricsFn({
++      ...COMMON_BREAKDOWN_METRICS_BY_CONTEXT,
++      defaultDetailedMetrics: [
++        'visitors',
++        'percentage',
++        'visits',
++        'bounce_rate',
++        'visit_duration'
++      ],
++      defaultCsvMetrics: ['visitors', 'visits', 'bounce_rate', 'visit_duration']
++    }),
++    detailsTitle: 'Entry pages',
++    detailsPath: 'entry-pages-with-hostname',
++    dimensionLabel: 'URL',
++    alwaysOnFilters: [['is_not', 'visit:entry_page', ['']]],
++    searchDimension: 'visit:entry_page'
++  },
+   [BreakdownReportKey.exitPages]: {
+     dimensions: ['visit:exit_page'],
+     getMetrics: (ctx) => {
+@@ -183,6 +231,31 @@ export const BREAKDOWN_REPORTS: Record<
+     dimensionLabel: 'Exit page',
+     alwaysOnFilters: [['is_not', 'visit:exit_page', ['']]]
+   },
++  [BreakdownReportKey.exitPagesWithHostname]: {
++    dimensions: ['visit:exit_page_hostname', 'visit:exit_page'],
++    getMetrics: (ctx) => {
++      const base = chooseMetrics(
++        {
++          ...COMMON_BREAKDOWN_METRICS_BY_CONTEXT,
++          defaultDetailedMetrics: [
++            'visitors',
++            'percentage',
++            'visits',
++            'exit_rate'
++          ],
++          defaultCsvMetrics: ['visitors', 'visits', 'exit_rate']
++        },
++        ctx
++      )
++
++      return ctx.hasEventFilters ? base.filter((m) => m !== 'exit_rate') : base
++    },
++    detailsTitle: 'Exit pages',
++    detailsPath: 'exit-pages-with-hostname',
++    dimensionLabel: 'URL',
++    alwaysOnFilters: [['is_not', 'visit:exit_page', ['']]],
++    searchDimension: 'visit:exit_page'
++  },
+   [BreakdownReportKey.browsers]: {
+     dimensions: ['visit:browser'],
+     getMetrics: createGetMetricsFn({
+diff --git a/assets/js/dashboard/util/url.ts b/assets/js/dashboard/util/url.ts
+index efd546265..91ed249f2 100644
+--- a/assets/js/dashboard/util/url.ts
++++ b/assets/js/dashboard/util/url.ts
+@@ -9,12 +9,15 @@ export function apiPath(
+ 
+ export function externalLinkForPage(
+   site: PlausibleSite,
+-  page: string
++  page: string,
++  hostname?: string
+ ): string | null {
++  if (hostname) {
++    return `https://${hostname}${page}`
++  }
+   if (site.isConsolidatedView) {
+     return null
+   }
+-
+   try {
+     const domainURL = new URL(`https://${site.domain}`)
+     return `https://${domainURL.host}${page}`
+diff --git a/e2e/tests/dashboard/breakdowns.spec.ts b/e2e/tests/dashboard/breakdowns.spec.ts
+index fdad984de..4b82412c8 100644
+--- a/e2e/tests/dashboard/breakdowns.spec.ts
++++ b/e2e/tests/dashboard/breakdowns.spec.ts
+@@ -901,6 +901,144 @@ test('pages breakdown with a pageview goal filter applied', async ({
+   })
+ })
+ 
++test('pages breakdown - URL mode', async ({ page, request }) => {
++  const { domain } = await setupSite({ page, request })
++
++  await populateStats({
++    request,
++    domain,
++    events: [
++      {
++        user_id: 1,
++        name: 'pageview',
++        hostname: 'blog.example.com',
++        pathname: '/post'
++      },
++      {
++        user_id: 1,
++        name: 'pageview',
++        hostname: 'blog.example.com',
++        pathname: '/post'
++      },
++      {
++        user_id: 2,
++        name: 'pageview',
++        hostname: 'blog.example.com',
++        pathname: '/post'
++      },
++      {
++        user_id: 3,
++        name: 'pageview',
++        hostname: 'docs.example.com',
++        pathname: '/api'
++      }
++    ]
++  })
++
++  await page.goto('/' + domain, { waitUntil: 'commit' })
++  const report = page.getByTestId('report-pages')
++
++  await test.step('switch to URL mode', async () => {
++    await report.getByRole('button', { name: 'Breakdown options' }).click()
++    await page.getByRole('button', { name: 'URL' }).click()
++  })
++
++  await test.step('top pages in URL mode', async () => {
++    await expect(tabButton(report, 'Top pages')).toHaveAttribute(
++      'data-active',
++      'true'
++    )
++
++    await expectHeaders(report, ['URL', 'Visitors'])
++    await expectRows(report, ['blog.example.com/post', 'docs.example.com/api'])
++    await expectMetricValues(report, 'blog.example.com/post', ['2', '66.7%'])
++    await expectMetricValues(report, 'docs.example.com/api', ['1', '33.3%'])
++  })
++
++  await test.step('clicking a URL mode row applies hostname and page filters', async () => {
++    await rowLink(report, 'blog.example.com/post').click()
++
++    await expect(
++      page.getByRole('button', {
++        name: 'Remove filter: Hostname is blog.example.com'
++      })
++    ).toBeVisible()
++    await expect(
++      page.getByRole('button', { name: 'Remove filter: Page is /post' })
++    ).toBeVisible()
++
++    await page
++      .getByRole('button', {
++        name: 'Remove filter: Hostname is blog.example.com'
++      })
++      .click()
++    await page
++      .getByRole('button', { name: 'Remove filter: Page is /post' })
++      .click()
++  })
++
++  await test.step('entry pages in URL mode', async () => {
++    await tabButton(report, 'Entry pages').click()
++
++    await expectHeaders(report, ['URL', 'Unique entrances'])
++    await expectRows(report, ['blog.example.com/post', 'docs.example.com/api'])
++    await expectMetricValues(report, 'blog.example.com/post', ['2', '66.7%'])
++    await expectMetricValues(report, 'docs.example.com/api', ['1', '33.3%'])
++  })
++
++  await test.step('entry pages modal in URL mode', async () => {
++    await detailsLink(report).click()
++
++    await expect(
++      modal(page).getByRole('heading', { name: 'Entry pages' })
++    ).toBeVisible()
++
++    await expectHeaders(modal(page), [
++      'URL',
++      /Unique entrances/,
++      /Total entrances/,
++      /Bounce rate/,
++      /Visit duration/
++    ])
++
++    await expectRows(modal(page), [
++      'blog.example.com/post',
++      'docs.example.com/api'
++    ])
++
++    await closeModalButton(page).click()
++  })
++
++  await test.step('exit pages in URL mode', async () => {
++    await tabButton(report, 'Exit pages').click()
++
++    await expectHeaders(report, ['URL', 'Unique exits'])
++    await expectRows(report, ['blog.example.com/post', 'docs.example.com/api'])
++  })
++
++  await test.step('exit pages modal in URL mode', async () => {
++    await detailsLink(report).click()
++
++    await expect(
++      modal(page).getByRole('heading', { name: 'Exit pages' })
++    ).toBeVisible()
++
++    await expectHeaders(modal(page), [
++      'URL',
++      /Unique exits/,
++      /Total exits/,
++      /Exit rate/
++    ])
++
++    await expectRows(modal(page), [
++      'blog.example.com/post',
++      'docs.example.com/api'
++    ])
++
++    await closeModalButton(page).click()
++  })
++})
++
+ test('locations breakdown', async ({ page, request }) => {
+   const { domain } = await setupSite({ page, request })
+ 
+diff --git a/lib/plausible/stats/query_builder.ex b/lib/plausible/stats/query_builder.ex
+index ddcdf7598..fb4101686 100644
+--- a/lib/plausible/stats/query_builder.ex
++++ b/lib/plausible/stats/query_builder.ex
+@@ -525,10 +525,13 @@ defmodule Plausible.Stats.QueryBuilder do
+   end
+ 
+   defp validate_metric(:exit_rate = metric, query) do
+-    case {query.dimensions, TableDecider.sessions_join_events?(query)} do
++    case {Enum.sort(query.dimensions), TableDecider.sessions_join_events?(query)} do
+       {["visit:exit_page"], false} ->
+         :ok
+ 
++      {["visit:exit_page", "visit:exit_page_hostname"], false} ->
++        :ok
++
+       {["visit:exit_page"], true} ->
+         {:error,
+          %QueryError{
+diff --git a/lib/plausible/stats/query_optimizer.ex b/lib/plausible/stats/query_optimizer.ex
+index 24b41402b..f72d01ed5 100644
+--- a/lib/plausible/stats/query_optimizer.ex
++++ b/lib/plausible/stats/query_optimizer.ex
+@@ -169,19 +169,19 @@ defmodule Plausible.Stats.QueryOptimizer do
+     }
+   end
+ 
++  @event_page_dim_renames %{
++    "event:page" => "visit:entry_page",
++    "event:hostname" => "visit:entry_page_hostname"
++  }
++
+   defp build_split_query(:sessions, metrics, query) do
+-    dimensions =
+-      query.dimensions
+-      |> Enum.map(fn
+-        "event:page" -> "visit:entry_page"
+-        dimension -> dimension
+-      end)
++    active_renames = Map.take(@event_page_dim_renames, query.dimensions)
++
++    dimensions = Enum.map(query.dimensions, &Map.get(active_renames, &1, &1))
+ 
+     filters =
+-      if "event:page" in query.dimensions do
+-        Filters.rename_dimensions_used_in_filter(query.filters, %{
+-          "event:page" => "visit:entry_page"
+-        })
++      if map_size(active_renames) > 0 do
++        Filters.rename_dimensions_used_in_filter(query.filters, active_renames)
+       else
+         query.filters
+       end
+diff --git a/lib/plausible/stats/sql/expression.ex b/lib/plausible/stats/sql/expression.ex
+index 221c1900d..a5c433f7d 100644
+--- a/lib/plausible/stats/sql/expression.ex
++++ b/lib/plausible/stats/sql/expression.ex
+@@ -184,9 +184,15 @@ defmodule Plausible.Stats.SQL.Expression do
+   def select_dimension(q, key, "visit:entry_page", _table, _query),
+     do: select_merge_as(q, [t], %{key => t.entry_page})
+ 
++  def select_dimension(q, key, "visit:entry_page_hostname", _table, _query),
++    do: select_merge_as(q, [t], %{key => t.hostname})
++
+   def select_dimension(q, key, "visit:exit_page", _table, _query),
+     do: select_merge_as(q, [t], %{key => t.exit_page})
+ 
++  def select_dimension(q, key, "visit:exit_page_hostname", _table, _query),
++    do: select_merge_as(q, [t], %{key => t.exit_page_hostname})
++
+   def select_dimension(q, key, "visit:utm_medium", _table, _query),
+     do: field_or_blank_value(q, key, t.utm_medium, @not_set)
+ 
+diff --git a/lib/plausible/stats/table_decider.ex b/lib/plausible/stats/table_decider.ex
+index dcce1d8f5..41422d1e5 100644
+--- a/lib/plausible/stats/table_decider.ex
++++ b/lib/plausible/stats/table_decider.ex
+@@ -51,8 +51,9 @@ defmodule Plausible.Stats.TableDecider do
+     conflicting_event_metrics = event_only_metrics -- @revenue_metrics
+ 
+     cond do
+-      # event:page is a special case handled in QueryOptimizer.split_sessions_query
+-      event_only_dimensions == ["event:page"] ->
++      # event:page (optionally with event:hostname) is a special case handled in QueryOptimizer.split_sessions_query
++      "event:page" in event_only_dimensions and
++          event_only_dimensions -- ["event:page", "event:hostname"] == [] ->
+         :ok
+ 
+       not empty?(session_only_metrics) and not empty?(event_only_dimensions) ->
+diff --git a/test/plausible_web/controllers/api/stats_controller/pages_test.exs b/test/plausible_web/controllers/api/stats_controller/pages_test.exs
+index 9b484bd45..fa7303cec 100644
+--- a/test/plausible_web/controllers/api/stats_controller/pages_test.exs
++++ b/test/plausible_web/controllers/api/stats_controller/pages_test.exs
+@@ -96,6 +96,70 @@ defmodule PlausibleWeb.Api.StatsController.PagesTest do
+              ]
+     end
+ 
++    test "returns top pages broken down by hostname and page", %{conn: conn, site: site} do
++      populate_stats(site, [
++        build(:pageview, pathname: "/docs", hostname: "main.example.com"),
++        build(:pageview, pathname: "/docs", hostname: "main.example.com"),
++        build(:pageview, pathname: "/docs", hostname: "secondary.example.com")
++      ])
++
++      response =
++        query_pages(conn, site,
++          date_range: "day",
++          dimensions: ["event:hostname", "event:page"],
++          metrics: ["visitors", "bounce_rate"]
++        )
++
++      assert response["results"] == [
++               %{"dimensions" => ["main.example.com", "/docs"], "metrics" => [2, 100]},
++               %{"dimensions" => ["secondary.example.com", "/docs"], "metrics" => [1, 100]}
++             ]
++    end
++
++    test "correctly computes bounce_rate when broken down by hostname and page",
++         %{conn: conn, site: site} do
++      populate_stats(site, [
++        # 1: 2 pageviews on primary (no bounce)
++        build(:pageview,
++          pathname: "/docs",
++          hostname: "main.example.com",
++          user_id: 1,
++          timestamp: ~N[2021-01-01 00:00:00]
++        ),
++        build(:pageview,
++          pathname: "/docs",
++          hostname: "main.example.com",
++          user_id: 1,
++          timestamp: ~N[2021-01-01 00:01:00]
++        ),
++        # 2: single pageview on primary (bounce)
++        build(:pageview,
++          pathname: "/docs",
++          hostname: "main.example.com",
++          user_id: 2,
++          timestamp: ~N[2021-01-01 00:00:00]
++        ),
++        # 3: single pageview on secondary (bounce)
++        build(:pageview,
++          pathname: "/docs",
++          hostname: "secondary.example.com",
++          user_id: 3,
++          timestamp: ~N[2021-01-01 00:00:00]
++        )
++      ])
++
++      response =
++        query_pages(conn, site,
++          dimensions: ["event:hostname", "event:page"],
++          metrics: ["visitors", "bounce_rate"]
++        )
++
++      assert response["results"] == [
++               %{"dimensions" => ["main.example.com", "/docs"], "metrics" => [2, 50]},
++               %{"dimensions" => ["secondary.example.com", "/docs"], "metrics" => [1, 100]}
++             ]
++    end
++
+     test "returns top pages with :is filter on custom pageview props", %{conn: conn, site: site} do
+       populate_stats(site, [
+         build(:pageview,
+@@ -2335,6 +2399,56 @@ defmodule PlausibleWeb.Api.StatsController.PagesTest do
+                %{"dimensions" => ["/aaa"], "metrics" => [1, 1, 100.0, 0, 11.11]}
+              ]
+     end
++
++    test "returns entry pages broken down by entry page hostname and page",
++         %{conn: conn, site: site} do
++      populate_stats(site, [
++        build(:pageview,
++          pathname: "/landing",
++          hostname: "blog.example.com",
++          user_id: 1,
++          timestamp: ~N[2021-01-01 00:00:00]
++        ),
++        build(:pageview,
++          pathname: "/about",
++          hostname: "blog.example.com",
++          user_id: 1,
++          timestamp: ~N[2021-01-01 00:05:00]
++        ),
++        build(:pageview,
++          pathname: "/landing",
++          hostname: "blog.example.com",
++          user_id: 2,
++          timestamp: ~N[2021-01-01 00:00:00]
++        ),
++        build(:pageview,
++          pathname: "/landing",
++          hostname: "www.example.com",
++          user_id: 3,
++          timestamp: ~N[2021-01-01 00:00:00]
++        )
++      ])
++
++      response =
++        query_pages(conn, site,
++          date_range: ["2021-01-01", "2021-01-01"],
++          dimensions: ["visit:entry_page_hostname", "visit:entry_page"],
++          metrics: ["visitors", "visits", "bounce_rate", "percentage"],
++          filters: [["is_not", "visit:entry_page", [""]]],
++          order_by: [["visitors", "desc"], ["visit:entry_page_hostname", "asc"]]
++        )
++
++      assert response["results"] == [
++               %{
++                 "dimensions" => ["blog.example.com", "/landing"],
++                 "metrics" => [2, 2, 50, 66.67]
++               },
++               %{
++                 "dimensions" => ["www.example.com", "/landing"],
++                 "metrics" => [1, 1, 100, 33.33]
++               }
++             ]
++    end
+   end
+ 
+   describe "GET /api/stats/:domain/exit-pages" do
+@@ -2677,6 +2791,93 @@ defmodule PlausibleWeb.Api.StatsController.PagesTest do
+       assert response["results"] == []
+     end
+ 
++    test "returns exit pages broken down by exit page hostname and page with exit_rate",
++         %{conn: conn, site: site} do
++      populate_stats(site, [
++        build(:pageview,
++          pathname: "/about",
++          hostname: "blog.example.com",
++          user_id: 1,
++          timestamp: ~N[2021-01-01 00:00:00]
++        ),
++        build(:pageview,
++          pathname: "/about",
++          hostname: "blog.example.com",
++          user_id: 2,
++          timestamp: ~N[2021-01-01 00:00:00]
++        ),
++        build(:pageview,
++          pathname: "/about",
++          hostname: "www.example.com",
++          user_id: 3,
++          timestamp: ~N[2021-01-01 00:00:00]
++        ),
++        build(:pageview,
++          pathname: "/docs",
++          hostname: "www.example.com",
++          user_id: 3,
++          timestamp: ~N[2021-01-01 00:05:00]
++        )
++      ])
++
++      response =
++        query_pages(conn, site,
++          date_range: ["2021-01-01", "2021-01-01"],
++          dimensions: ["visit:exit_page_hostname", "visit:exit_page"],
++          metrics: ["visitors", "visits", "exit_rate", "percentage"],
++          filters: [["is_not", "visit:exit_page", [""]]],
++          order_by: [["visitors", "desc"], ["visit:exit_page_hostname", "asc"]]
++        )
++
++      assert response["results"] == [
++               %{
++                 "dimensions" => ["blog.example.com", "/about"],
++                 "metrics" => [2, 2, 66.7, 66.67]
++               },
++               %{
++                 "dimensions" => ["www.example.com", "/docs"],
++                 "metrics" => [1, 1, 100.0, 33.33]
++               }
++             ]
++    end
++
++    test "exit_rate works with exit page hostname and page dimensions in either order",
++         %{conn: conn, site: site} do
++      populate_stats(site, [
++        build(:pageview,
++          pathname: "/about",
++          hostname: "blog.example.com",
++          user_id: 1,
++          timestamp: ~N[2021-01-01 00:00:00]
++        ),
++        build(:pageview,
++          pathname: "/about",
++          hostname: "blog.example.com",
++          user_id: 2,
++          timestamp: ~N[2021-01-01 00:00:00]
++        )
++      ])
++
++      for dimensions <- [
++            ["visit:exit_page_hostname", "visit:exit_page"],
++            ["visit:exit_page", "visit:exit_page_hostname"]
++          ] do
++        response =
++          query_pages(conn, site,
++            date_range: ["2021-01-01", "2021-01-01"],
++            dimensions: dimensions,
++            metrics: ["visitors", "exit_rate"],
++            filters: [["is_not", "visit:exit_page", [""]]]
++          )
++
++        assert response["results"] != [],
++               "expected results for dimensions #{inspect(dimensions)}"
++
++        assert Enum.all?(response["results"], fn r -> not is_nil(r["metrics"]) end),
++               "expected no errors for dimensions #{inspect(dimensions)}"
++      end
++    end
++
+     test "filter by :is_not exit_page with imported data", %{conn: conn, site: site} do
+       site_import = insert(:site_import, site: site)
+ 

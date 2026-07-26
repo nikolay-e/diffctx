@@ -1,0 +1,71 @@
+repo: spark
+base_commit: 813591faddb6a7cd2e50ac13cdfa98e6d0ce6ffa
+commit: 97241eb0cfc98f8911dc205d7a19f31a0eaad5fb
+patch_stored: true
+gold:
+  - path: python/pyspark/ml/util.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Destination for the `try_remote_intermediate_result`/`try_remote_attribute_relation`/`try_remote_fit`/`try_remote_transform_relation`/`try_remote_call`/`try_remote_del`/`try_remote_write`/`try_remote_read`/etc. decorators, merged in verbatim from the deleted `pyspark.ml.remote.util` — this is not a pure rename, the content lands in the pre-existing `pyspark.ml.util`, not in `pyspark.ml.connect.util`.
+  - path: python/pyspark/ml/remote/util.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Deleted file — shows the pre-move implementation and imports (`from pyspark.ml.remote.serialize import ...`, `from pyspark.ml.remote.proto import ...`) of every decorator that now lives in pyspark/ml/util.py, letting a reader diff the "before" against the "after".
+  - path: python/pyspark/ml/wrapper.py
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: "Real consumer whose import flips from `from pyspark.ml.remote.util import (try_remote_transform_relation, try_remote_call, try_remote_fit, ...)` to `from pyspark.ml.util import (...)`, confirming the merge destination."
+  - path: python/pyspark/ml/classification.py
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: "Second real consumer, `from pyspark.ml.remote.util import try_remote_attribute_relation` becomes `from pyspark.ml.util import try_remote_attribute_relation`."
+  - path: python/pyspark/ml/connect/util.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Gains `_extract_id_methods` (moved from `pyspark.ml.remote.util`) and an added `import pyspark.sql.connect.proto as pb2` — the other half of the split: this one helper stays in `pyspark.ml.connect.util` rather than merging into `pyspark.ml.util`, unlike the try_remote_* decorators."
+  - path: python/pyspark/ml/connect/readwrite.py
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: "Renamed from `pyspark.ml.remote.readwrite`; its internal import updates from `from pyspark.ml.remote.serialize import ...` to `from pyspark.ml.connect.serialize import ...`, the proto/serialize-module half of the rename (unlike util.py, these three files really are pure renames)."
+  - path: python/packaging/classic/setup.py
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Drops `"pyspark.ml.remote"` from the classic-distribution packaged-module string list, now that the package no longer exists.
+  - path: python/packaging/connect/setup.py
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Drops the same `"pyspark.ml.remote"` entry from the connect-distribution packaged-module string list.
+forbidden:
+  - path: python/pyspark/ml/remote/__init__.py
+    reason: deleted trivial license-header-only file with no content, carries no information about what moved where.
+  - path: python/pyspark/ml/connect/proto.py
+    reason: pure 100%-similarity rename from pyspark/ml/remote/proto.py, byte-identical content.
+  - path: python/pyspark/ml/connect/serialize.py
+    reason: pure 100%-similarity rename from pyspark/ml/remote/serialize.py, byte-identical content.
+nontrivial_gold_count: 0
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 14
+  description: Move pyspark.ml.remote to pyspark.ml.connect (pure Python package rename)
+notes: >-
+  Despite the curation label "pure package rename", this is actually a split: `proto.py`/
+  `serialize.py`/`readwrite.py` are pure renames from `pyspark.ml.remote` to
+  `pyspark.ml.connect`, but `remote/util.py`'s decorator functions
+  (`try_remote_fit`, `try_remote_call`, etc.) are merged into the pre-existing
+  `pyspark.ml.util`, while only `_extract_id_methods` moves into
+  `pyspark.ml.connect.util`. Verified via diff that `wrapper.py`/`classification.py`
+  (the two real callers of `try_remote_*`) both switch their import to `pyspark.ml.util`,
+  not `pyspark.ml.connect.util`, confirming the asymmetric destination.
+  string_indirection is true because `python/packaging/*/setup.py` list packaged
+  modules as dotted-path strings (`"pyspark.ml.remote"`), not static imports.

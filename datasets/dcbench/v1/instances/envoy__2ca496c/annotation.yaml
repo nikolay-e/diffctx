@@ -1,0 +1,48 @@
+repo: envoy
+base_commit: 42a484986204410a1ac4d81b52bcc1d55b972487
+commit: 2ca496cdbea1b2015829d33a50affa600e76200c
+patch_stored: true
+gold:
+  - path: bazel/repositories.bzl
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Central file defining every `external_http_archive(name=..., location_name=..., repo_mapping=...)` call being renamed to bzlmod-aligned names (e.g. zlib-ng, proto-converter, ocp-diag-core, hessian2-codec).
+  - path: bazel/repository_locations.bzl
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: REPOSITORY_LOCATIONS_SPEC dict whose keys (e.g. com_github_openhistogram_libcircllhist -> libcircllhist, com_github_envoyproxy_sqlparser -> sql-parser) are looked up via `location_name` in repositories.bzl and must stay in sync with the renames.
+  - path: api/bazel/envoy_http_archive.bzl
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines `envoy_http_archive(name, locations, location_name=None, **kwargs)` whose `location = locations[location_name or name]` line is the exact mechanism the patch exploits — new bzlmod `name` decoupled from the old `location_name` lookup key — required to understand why `location_name` params were added instead of just renaming dict keys everywhere.
+  - path: bazel/deps.yaml
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Dependency metadata keyed the same way as repository_locations.bzl (e.g. com_github_openhistogram_libcircllhist -> libcircllhist, com_google_protoprocessinglib project_name changed to "proto-processing"), renamed in lockstep for license/dependency reporting.
+  - path: source/common/stats/BUILD
+    tier: helpful
+    role: cochange
+    in_diff: true
+    rationale: Representative consumer showing the downstream pattern — target changes from `@com_github_openhistogram_libcircllhist//:libcircllhist` to bare `@libcircllhist` (default target under the new bzlmod-style repo name), illustrating the label-shape implication of the rename.
+forbidden:
+  - path: MODULE.bazel.lock
+    reason: auto-generated bzlmod lockfile of BCR module hashes (1675 lines) — confirms new names exist in the registry but defines no renaming logic itself
+  - path: CODEOWNERS
+    reason: generic ownership list, no reference to any renamed dependency
+  - path: bazel/README.md
+    reason: same bazel/ directory as changed files but only generic build/install instructions, no dependency-name content
+  - path: bazel/foreign_cc/BUILD
+    reason: bazel/ sibling directory but does not reference any of the renamed repos (io_hyperscan, io_vectorscan, zlib_ng, etc.)
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration, bm25, random]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 34
+  description: Bazel dependency rename to bzlmod names — 30 BUILD files across source/test/bazel/contrib
+notes: 'Mechanical rename of ~15 external Bazel repos (zlib_ng->zlib-ng, com_google_protoconverter->proto-converter, ocp->ocp-diag-core, etc.) to align workspace-mode names with their bzlmod/BCR module names, propagated to ~30 consumer BUILD files. Linkage is indirect: consumers reference deps by string label (@old_name// vs @new_name//), and repositories.bzl decouples the new `name` from the old REPOSITORY_LOCATIONS_SPEC key via a new `location_name` kwarg on external_http_archive/envoy_http_archive — hence string_indirection: true and envoy_http_archive.bzl as essential nontrivial context.'

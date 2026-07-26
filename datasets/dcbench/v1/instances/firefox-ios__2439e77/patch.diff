@@ -1,0 +1,322 @@
+From 2439e773b29a053a954fc506e321e7d693b43d1d Mon Sep 17 00:00:00 2001
+From: Litianu Razvan <litianu.razvan@gmail.com>
+Date: Thu, 18 Jun 2026 09:22:54 +0300
+Subject: [PATCH] Refactor FXIOS-16008 rename onboarding "modern" Swift
+ identifiers to "base" (OnboardingVariant.base,
+ OnboardingLaunchScreenViewController) (#34305)
+
+---
+ .../Models/OnboardingFlowViewModel.swift        |  2 +-
+ .../Models/OnboardingVariant.swift              |  6 ++++--
+ .../Models/TermsOfUseFlowViewModel.swift        |  2 +-
+ .../OnboardingKit/Preview/PreviewModel.swift    |  4 ++--
+ .../Views/LaunchScreen/LaunchScreenView.swift   |  2 +-
+ .../OnboardingVariantTests.swift                |  2 +-
+ firefox-ios/Client.xcodeproj/project.pbxproj    | 16 ++++++++--------
+ ... OnboardingLaunchScreenViewController.swift} |  8 ++++----
+ .../Coordinators/Scene/SceneCoordinator.swift   |  4 ++--
+ firefox-ios/Client/IntroScreenManager.swift     |  5 +++--
+ ...ardingLaunchScreenViewControllerTests.swift} | 17 ++++++++++-------
+ .../OnboardingServiceTests.swift                |  2 +-
+ 12 files changed, 38 insertions(+), 32 deletions(-)
+ rename firefox-ios/Client/Coordinators/LaunchView/{ModernLaunchScreenViewController.swift => OnboardingLaunchScreenViewController.swift} (95%)
+ rename firefox-ios/firefox-ios-tests/Tests/ClientTests/Coordinators/LaunchView/{ModernLaunchScreenViewControllerTests.swift => OnboardingLaunchScreenViewControllerTests.swift} (94%)
+
+diff --git a/BrowserKit/Sources/OnboardingKit/Models/OnboardingFlowViewModel.swift b/BrowserKit/Sources/OnboardingKit/Models/OnboardingFlowViewModel.swift
+index 431f0c138..0e6ab2046 100644
+--- a/BrowserKit/Sources/OnboardingKit/Models/OnboardingFlowViewModel.swift
++++ b/BrowserKit/Sources/OnboardingKit/Models/OnboardingFlowViewModel.swift
+@@ -42,7 +42,7 @@ public final class OnboardingFlowViewModel<ViewModel: OnboardingCardInfoModelPro
+     public init(
+         onboardingCards: [ViewModel],
+         skipText: String,
+-        variant: OnboardingVariant = .modern,
++        variant: OnboardingVariant = .base,
+         onActionTap: @MainActor @escaping (
+             ViewModel.OnboardingActionType,
+             String,
+diff --git a/BrowserKit/Sources/OnboardingKit/Models/OnboardingVariant.swift b/BrowserKit/Sources/OnboardingKit/Models/OnboardingVariant.swift
+index 94d54aca6..bd1d3c527 100644
+--- a/BrowserKit/Sources/OnboardingKit/Models/OnboardingVariant.swift
++++ b/BrowserKit/Sources/OnboardingKit/Models/OnboardingVariant.swift
+@@ -7,14 +7,16 @@ import Foundation
+ /// Enum representing the different onboarding variants available.
+ /// This mirrors the Nimbus OnboardingVariant configuration.
+ public enum OnboardingVariant: String, Sendable {
+-    case modern
++    /// rawValue stays "modern" to match the Nimbus `uiVariant` / Glean `onboarding_variant`
++    /// wire values; only the Swift identifier was renamed (FXIOS-16008).
++    case base = "modern"
+     case japan
+     case brandRefresh
+ 
+     /// Whether the UI for the Onboarding should be according to the brand refresh.
+     var shouldShowBrandRefreshUI: Bool {
+         switch self {
+-        case .modern:
++        case .base:
+             return false
+         case .brandRefresh, .japan:
+             return true
+diff --git a/BrowserKit/Sources/OnboardingKit/Models/TermsOfUseFlowViewModel.swift b/BrowserKit/Sources/OnboardingKit/Models/TermsOfUseFlowViewModel.swift
+index 803fd8daf..baf53a1b8 100644
+--- a/BrowserKit/Sources/OnboardingKit/Models/TermsOfUseFlowViewModel.swift
++++ b/BrowserKit/Sources/OnboardingKit/Models/TermsOfUseFlowViewModel.swift
+@@ -14,7 +14,7 @@ public final class TermsOfUseFlowViewModel<ViewModel: OnboardingCardInfoModelPro
+ 
+     public init(
+         configuration: ViewModel,
+-        variant: OnboardingVariant = .modern,
++        variant: OnboardingVariant = .base,
+         onTermsOfUseTap: @escaping () -> Void,
+         onPrivacyNoticeTap: @escaping () -> Void,
+         onManageSettingsTap: @escaping () -> Void = {},
+diff --git a/BrowserKit/Sources/OnboardingKit/Preview/PreviewModel.swift b/BrowserKit/Sources/OnboardingKit/Preview/PreviewModel.swift
+index bd962c4de..e5747d8d8 100644
+--- a/BrowserKit/Sources/OnboardingKit/Preview/PreviewModel.swift
++++ b/BrowserKit/Sources/OnboardingKit/Preview/PreviewModel.swift
+@@ -592,7 +592,7 @@ extension PreviewModel {
+         viewModel: OnboardingFlowViewModel(
+             onboardingCards: PreviewModel.modernFlow,
+             skipText: "Skip",
+-            variant: .modern,
++            variant: .base,
+             onActionTap: { _, _, _ in
+             },
+             onMultipleChoiceActionTap: { _, _ in },
+@@ -625,7 +625,7 @@ extension PreviewModel {
+     TermsOfUseView(
+         viewModel: TermsOfUseFlowViewModel(
+             configuration: PreviewModel.tos,
+-            variant: .modern,
++            variant: .base,
+             onTermsOfUseTap: {},
+             onPrivacyNoticeTap: {},
+             onManageSettingsTap: {},
+diff --git a/BrowserKit/Sources/OnboardingKit/Views/LaunchScreen/LaunchScreenView.swift b/BrowserKit/Sources/OnboardingKit/Views/LaunchScreen/LaunchScreenView.swift
+index d29dd8645..b6237ceb6 100644
+--- a/BrowserKit/Sources/OnboardingKit/Views/LaunchScreen/LaunchScreenView.swift
++++ b/BrowserKit/Sources/OnboardingKit/Views/LaunchScreen/LaunchScreenView.swift
+@@ -13,7 +13,7 @@ public struct LaunchScreenBackgroundView: View {
+     public init(
+         windowUUID: WindowUUID,
+         themeManager: ThemeManager,
+-        variant: OnboardingVariant = .modern
++        variant: OnboardingVariant = .base
+     ) {
+         self.windowUUID = windowUUID
+         self.themeManager = themeManager
+diff --git a/BrowserKit/Tests/OnboardingKitTests/OnboardingVariantTests.swift b/BrowserKit/Tests/OnboardingKitTests/OnboardingVariantTests.swift
+index 93eac8f9e..6fbf4da16 100644
+--- a/BrowserKit/Tests/OnboardingKitTests/OnboardingVariantTests.swift
++++ b/BrowserKit/Tests/OnboardingKitTests/OnboardingVariantTests.swift
+@@ -9,7 +9,7 @@ import Testing
+ struct OnboardingVariantTests {
+     @Test
+     func test_shouldShowBrandRefreshUI() {
+-        #expect(!OnboardingVariant.modern.shouldShowBrandRefreshUI)
++        #expect(!OnboardingVariant.base.shouldShowBrandRefreshUI)
+         #expect(OnboardingVariant.japan.shouldShowBrandRefreshUI)
+         #expect(OnboardingVariant.brandRefresh.shouldShowBrandRefreshUI)
+     }
+diff --git a/firefox-ios/Client.xcodeproj/project.pbxproj b/firefox-ios/Client.xcodeproj/project.pbxproj
+index 657716145..758e2b7cf 100644
+--- a/firefox-ios/Client.xcodeproj/project.pbxproj
++++ b/firefox-ios/Client.xcodeproj/project.pbxproj
+@@ -1316,7 +1316,7 @@
+ 		8AFCE50529DDF38300B1B253 /* LaunchScreenViewControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AFCE50429DDF38300B1B253 /* LaunchScreenViewControllerTests.swift */; };
+ 		8AFCE50729DE0CD500B1B253 /* LaunchCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AFCE50629DE0CD500B1B253 /* LaunchCoordinatorTests.swift */; };
+ 		8AFCE50929DE136300B1B253 /* MockLaunchFinishedLoadingDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AFCE50829DE136300B1B253 /* MockLaunchFinishedLoadingDelegate.swift */; };
+-		8C1588612E5F5D1800EDDC9C /* ModernLaunchScreenViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C1588602E5F5D1800EDDC9C /* ModernLaunchScreenViewController.swift */; };
++		8C1588612E5F5D1800EDDC9C /* OnboardingLaunchScreenViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C1588602E5F5D1800EDDC9C /* OnboardingLaunchScreenViewController.swift */; };
+ 		8C19532E2B85E7AE00761B20 /* SelfSizingHostingController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C19532D2B85E7AE00761B20 /* SelfSizingHostingController.swift */; };
+ 		8C1953302B85E7EC00761B20 /* AutofillFooterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C19532F2B85E7EC00761B20 /* AutofillFooterView.swift */; };
+ 		8C1953322B85EAB500761B20 /* AutofillHeaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C1953312B85EAB500761B20 /* AutofillHeaderView.swift */; };
+@@ -1333,7 +1333,7 @@
+ 		8C2937722BF79F0300146613 /* Address+Encodable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C29376F2BF79F0300146613 /* Address+Encodable.swift */; };
+ 		8C381F002EBE1C74009A54AA /* SiteImageView in Frameworks */ = {isa = PBXBuildFile; productRef = 8C381EFF2EBE1C74009A54AA /* SiteImageView */; };
+ 		8C381F022EBE1CC3009A54AA /* SiteImageView in Frameworks */ = {isa = PBXBuildFile; productRef = 8C381F012EBE1CC3009A54AA /* SiteImageView */; };
+-		8C3A17792E68390000341A01 /* ModernLaunchScreenViewControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C3A17782E68390000341A01 /* ModernLaunchScreenViewControllerTests.swift */; };
++		8C3A17792E68390000341A01 /* OnboardingLaunchScreenViewControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C3A17782E68390000341A01 /* OnboardingLaunchScreenViewControllerTests.swift */; };
+ 		8C3B0B8A2F72767000E2C370 /* TranslationLanguagePickerViewControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C3B0B892F72767000E2C370 /* TranslationLanguagePickerViewControllerTests.swift */; };
+ 		8C3B1A1B2F73C8D100E2C370 /* TranslationToggleCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C3B1A1A2F73C8D100E2C370 /* TranslationToggleCell.swift */; };
+ 		8C3B1A1D2F73C8E600E2C370 /* TranslationLanguageCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C3B1A1C2F73C8E600E2C370 /* TranslationLanguageCell.swift */; };
+@@ -9773,7 +9773,7 @@
+ 		8BF7415AADE68847B78B376B /* mr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = mr; path = mr.lproj/3DTouchActions.strings; sourceTree = "<group>"; };
+ 		8BFA4413BB71963DB0E69F82 /* ses */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ses; path = ses.lproj/AuthenticationManager.strings; sourceTree = "<group>"; };
+ 		8BFD47109E07F897D604AEBE /* uz */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = uz; path = uz.lproj/ClearPrivateData.strings; sourceTree = "<group>"; };
+-		8C1588602E5F5D1800EDDC9C /* ModernLaunchScreenViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModernLaunchScreenViewController.swift; sourceTree = "<group>"; };
++		8C1588602E5F5D1800EDDC9C /* OnboardingLaunchScreenViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingLaunchScreenViewController.swift; sourceTree = "<group>"; };
+ 		8C19532D2B85E7AE00761B20 /* SelfSizingHostingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelfSizingHostingController.swift; sourceTree = "<group>"; };
+ 		8C19532F2B85E7EC00761B20 /* AutofillFooterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutofillFooterView.swift; sourceTree = "<group>"; };
+ 		8C1953312B85EAB500761B20 /* AutofillHeaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutofillHeaderView.swift; sourceTree = "<group>"; };
+@@ -9789,7 +9789,7 @@
+ 		8C29376D2BF79F0200146613 /* EditAddressLocalization.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = EditAddressLocalization.swift; sourceTree = "<group>"; };
+ 		8C29376E2BF79F0300146613 /* EditAddressViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = EditAddressViewController.swift; sourceTree = "<group>"; };
+ 		8C29376F2BF79F0300146613 /* Address+Encodable.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = "Address+Encodable.swift"; sourceTree = "<group>"; };
+-		8C3A17782E68390000341A01 /* ModernLaunchScreenViewControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModernLaunchScreenViewControllerTests.swift; sourceTree = "<group>"; };
++		8C3A17782E68390000341A01 /* OnboardingLaunchScreenViewControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingLaunchScreenViewControllerTests.swift; sourceTree = "<group>"; };
+ 		8C3B0B892F72767000E2C370 /* TranslationLanguagePickerViewControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationLanguagePickerViewControllerTests.swift; sourceTree = "<group>"; };
+ 		8C3B1A1A2F73C8D100E2C370 /* TranslationToggleCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationToggleCell.swift; sourceTree = "<group>"; };
+ 		8C3B1A1C2F73C8E600E2C370 /* TranslationLanguageCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationLanguageCell.swift; sourceTree = "<group>"; };
+@@ -14785,7 +14785,7 @@
+ 				8A832A8F29DC96C50025D5DD /* LaunchScreenView.swift */,
+ 				8A69047F2B97BBAE00E30047 /* SplashScreenAnimation.swift */,
+ 				8A832A9329DC99BA0025D5DD /* LaunchScreenViewController.swift */,
+-				8C1588602E5F5D1800EDDC9C /* ModernLaunchScreenViewController.swift */,
++				8C1588602E5F5D1800EDDC9C /* OnboardingLaunchScreenViewController.swift */,
+ 				8A832A9129DC99790025D5DD /* LaunchScreenViewModel.swift */,
+ 			);
+ 			path = LaunchView;
+@@ -14796,7 +14796,7 @@
+ 			children = (
+ 				8AF10D8929D713F50086351D /* LaunchScreenViewModelTests.swift */,
+ 				8AFCE50429DDF38300B1B253 /* LaunchScreenViewControllerTests.swift */,
+-				8C3A17782E68390000341A01 /* ModernLaunchScreenViewControllerTests.swift */,
++				8C3A17782E68390000341A01 /* OnboardingLaunchScreenViewControllerTests.swift */,
+ 			);
+ 			path = LaunchView;
+ 			sourceTree = "<group>";
+@@ -19324,7 +19324,7 @@
+ 				8A4593C92BF7BECA002758DE /* MicrosurveyTableHeaderView.swift in Sources */,
+ 				8A93080B27C01AD60052167D /* SingleActionViewModel.swift in Sources */,
+ 				ABB184EB2CB807B300F0689D /* CertificatesModel.swift in Sources */,
+-				8C1588612E5F5D1800EDDC9C /* ModernLaunchScreenViewController.swift in Sources */,
++				8C1588612E5F5D1800EDDC9C /* OnboardingLaunchScreenViewController.swift in Sources */,
+ 				C714D2822E4549BB00FC02E6 /* ShortcutsLibraryAction.swift in Sources */,
+ 				219914052AF963F900153598 /* TabTrayAction.swift in Sources */,
+ 				5AA0CC662A4B8F6100014E2A /* PasswordManagerCoordinator.swift in Sources */,
+@@ -20328,7 +20328,7 @@
+ 				8AFCE50729DE0CD500B1B253 /* LaunchCoordinatorTests.swift in Sources */,
+ 				961D6B832995AF84001B9CF1 /* GeneralizedImageFetcherTests.swift in Sources */,
+ 				21ED80B32AF2E43A0065D4C7 /* TabDisplayDiffableDataSourceTests.swift in Sources */,
+-				8C3A17792E68390000341A01 /* ModernLaunchScreenViewControllerTests.swift in Sources */,
++				8C3A17792E68390000341A01 /* OnboardingLaunchScreenViewControllerTests.swift in Sources */,
+ 				C29B64872AD69D0200F3244B /* QRCodeCoordinatorTests.swift in Sources */,
+ 				8A4880802E68AF8400AD43D5 /* GleanHttpUploaderTests.swift in Sources */,
+ 				8CA4E80F2D22D2C7007207C1 /* GleanUsageReportingLifecycleObserverTest.swift in Sources */,
+diff --git a/firefox-ios/Client/Coordinators/LaunchView/ModernLaunchScreenViewController.swift b/firefox-ios/Client/Coordinators/LaunchView/OnboardingLaunchScreenViewController.swift
+similarity index 95%
+rename from firefox-ios/Client/Coordinators/LaunchView/ModernLaunchScreenViewController.swift
+rename to firefox-ios/Client/Coordinators/LaunchView/OnboardingLaunchScreenViewController.swift
+index 41011ec3e..e3eda7320 100644
+--- a/firefox-ios/Client/Coordinators/LaunchView/ModernLaunchScreenViewController.swift
++++ b/firefox-ios/Client/Coordinators/LaunchView/OnboardingLaunchScreenViewController.swift
+@@ -8,9 +8,9 @@ import UIKit
+ import SwiftUI
+ import OnboardingKit
+ 
+-class ModernLaunchScreenViewController: UIViewController,
+-                                        LaunchFinishedLoadingDelegate,
+-                                        Themeable {
++class OnboardingLaunchScreenViewController: UIViewController,
++                                           LaunchFinishedLoadingDelegate,
++                                           Themeable {
+     // MARK: - UX Constants
+     private enum UX {
+         static let fadeOutDuration: TimeInterval = 0.24
+@@ -55,7 +55,7 @@ class ModernLaunchScreenViewController: UIViewController,
+     init(
+         windowUUID: WindowUUID,
+         coordinator: LaunchFinishedLoadingDelegate,
+-        variant: OnboardingKit.OnboardingVariant = .modern,
++        variant: OnboardingKit.OnboardingVariant = .base,
+         viewModel: LaunchScreenViewModel? = nil,
+         themeManager: ThemeManager = AppContainer.shared.resolve(),
+         notificationCenter: NotificationProtocol = NotificationCenter.default
+diff --git a/firefox-ios/Client/Coordinators/Scene/SceneCoordinator.swift b/firefox-ios/Client/Coordinators/Scene/SceneCoordinator.swift
+index 960643361..6d747dfa1 100644
+--- a/firefox-ios/Client/Coordinators/Scene/SceneCoordinator.swift
++++ b/firefox-ios/Client/Coordinators/Scene/SceneCoordinator.swift
+@@ -57,7 +57,7 @@ class SceneCoordinator: BaseCoordinator,
+         if introManager.shouldShowIntroScreen {
+             // Show the launch screen for first-time users
+             let onboardingKitVariant = introManager.onboardingKitVariant
+-            launchScreenVC = ModernLaunchScreenViewController(
++            launchScreenVC = OnboardingLaunchScreenViewController(
+                 windowUUID: windowUUID,
+                 coordinator: self,
+                 variant: onboardingKitVariant
+@@ -164,7 +164,7 @@ class SceneCoordinator: BaseCoordinator,
+         remove(child: coordinator)
+         // TODO: FXIOS-13434 Refactor the `LaunchScreenViewModel` to enhance the presentation logic
+         // This workaround is needed since .overFullScreen presentation doesn't call UIViewController lifecycle methods.
+-        guard let launchScreenViewController = launchScreenViewController as? ModernLaunchScreenViewController else {
++        guard let launchScreenViewController = launchScreenViewController as? OnboardingLaunchScreenViewController else {
+             return
+         }
+         launchScreenViewController.loadNextLaunchType()
+diff --git a/firefox-ios/Client/IntroScreenManager.swift b/firefox-ios/Client/IntroScreenManager.swift
+index daa6fcaa1..648ade728 100644
+--- a/firefox-ios/Client/IntroScreenManager.swift
++++ b/firefox-ios/Client/IntroScreenManager.swift
+@@ -57,7 +57,8 @@ struct IntroScreenManager: FeatureFlaggable, IntroScreenManagerProtocol {
+         } else if isModernOnboardingEnabled && shouldUseBrandRefreshConfiguration {
+             return .brandRefresh
+         } else {
+-            // TODO: FXIOS-16008 Rename the "modern" variant to a non-time-relative name
++            // `.modern` is the Nimbus `uiVariant` / Glean `onboarding_variant` wire value and
++            // stays as-is; the OnboardingKit-side identifier is `.base` (FXIOS-16008).
+             return .modern
+         }
+     }
+@@ -65,6 +66,6 @@ struct IntroScreenManager: FeatureFlaggable, IntroScreenManagerProtocol {
+     /// Returns the OnboardingKit variant corresponding to the onboarding variant.
+     /// This avoids duplication of conversion logic across the codebase.
+     var onboardingKitVariant: OnboardingKit.OnboardingVariant {
+-        return OnboardingKit.OnboardingVariant(rawValue: onboardingVariant.rawValue) ?? .modern
++        return OnboardingKit.OnboardingVariant(rawValue: onboardingVariant.rawValue) ?? .base
+     }
+ }
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Coordinators/LaunchView/ModernLaunchScreenViewControllerTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Coordinators/LaunchView/OnboardingLaunchScreenViewControllerTests.swift
+similarity index 94%
+rename from firefox-ios/firefox-ios-tests/Tests/ClientTests/Coordinators/LaunchView/ModernLaunchScreenViewControllerTests.swift
+rename to firefox-ios/firefox-ios-tests/Tests/ClientTests/Coordinators/LaunchView/OnboardingLaunchScreenViewControllerTests.swift
+index b67264a98..59b65831d 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Coordinators/LaunchView/ModernLaunchScreenViewControllerTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Coordinators/LaunchView/OnboardingLaunchScreenViewControllerTests.swift
+@@ -6,9 +6,9 @@ import Common
+ import XCTest
+ @testable import Client
+ 
+-// MARK: - ModernLaunchScreenViewController Tests
++// MARK: - OnboardingLaunchScreenViewController Tests
+ @MainActor
+-final class ModernLaunchScreenViewControllerTests: XCTestCase {
++final class OnboardingLaunchScreenViewControllerTests: XCTestCase {
+     // MARK: - Test Properties
+     private var viewModel: MockLaunchScreenViewModel!
+     private var coordinatorDelegate: MockLaunchFinishedLoadingDelegate!
+@@ -256,11 +256,14 @@ final class ModernLaunchScreenViewControllerTests: XCTestCase {
+         XCTAssertEqual(coordinatorDelegate.launchWithTypeCalled, 1)
+     }
+ 
+-    private func createSubject(file: StaticString = #filePath,
+-                               line: UInt = #line) -> ModernLaunchScreenViewController {
+-        let subject = ModernLaunchScreenViewController(windowUUID: windowUUID,
+-                                                       coordinator: coordinatorDelegate,
+-                                                       viewModel: viewModel)
++    private func createSubject(
++        file: StaticString = #filePath,
++        line: UInt = #line
++    ) -> OnboardingLaunchScreenViewController {
++        let subject = OnboardingLaunchScreenViewController(
++            windowUUID: windowUUID,
++            coordinator: coordinatorDelegate,
++            viewModel: viewModel)
+         trackForMemoryLeaks(subject, file: file, line: line)
+         return subject
+     }
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/OnboardingTests/OnboardingServiceTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/OnboardingTests/OnboardingServiceTests.swift
+index f0997e3e6..582d50952 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/OnboardingTests/OnboardingServiceTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/OnboardingTests/OnboardingServiceTests.swift
+@@ -72,7 +72,7 @@ final class MockIntroScreenManager: IntroScreenManagerProtocol {
+     var shouldShowVideoIntro: Bool { return false }
+ 
+     var onboardingKitVariant: OnboardingKit.OnboardingVariant {
+-        return OnboardingKit.OnboardingVariant(rawValue: onboardingVariant.rawValue) ?? .modern
++        return OnboardingKit.OnboardingVariant(rawValue: onboardingVariant.rawValue) ?? .base
+     }
+ 
+     func didSeeIntroScreen() {

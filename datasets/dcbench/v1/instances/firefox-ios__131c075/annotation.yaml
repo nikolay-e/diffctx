@@ -1,0 +1,43 @@
+repo: firefox-ios
+base_commit: f8b31adb37f6b3911cdd289c9c77f88ae6ea4a95
+commit: 131c075ede1bc005244e68295fcc09d34ed420e9
+patch_stored: true
+gold:
+  - path: firefox-ios/Client/en-US.lproj/InfoPlist.strings
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds the source-of-truth localization comment and key/value pair `"App Icon" = "App Icon";` that l10n exports translate from.
+  - path: firefox-ios/Client/en.lproj/InfoPlist.strings
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: mirrors the same `"App Icon" = "App Icon";` key into the base en.lproj strings table alongside the other existing shortcut-item titles (New Tab, New Private Tab, Scan QR Code).
+forbidden:
+  - path: firefox-ios/Client/Info.plist
+    reason: defines the actual UIApplicationShortcutItems array (New Tab, New Private Tab) but at this commit has no App Icon entry yet — the shortcut item itself lands weeks later in FXIOS-11866 follow-up commits (be1e545f5/88f72d1fa), not here.
+  - path: firefox-ios/Client/Application/QuickActions.swift
+    reason: implements dynamic quick-action shortcut items (e.g. openLastBookmark) and shares the FXIOS-11866 ticket/theme, but is not touched or required to understand this pure string addition.
+  - path: firefox-ios/Client/fr.lproj/InfoPlist.strings
+    reason: sibling-locale strings table with the same key names, but translated locales are not regenerated in this commit and are irrelevant to understanding it.
+  - path: firefox-ios/Client/de.lproj/InfoPlist.strings
+    reason: another sibling-locale strings table, same reasoning — not touched, not needed.
+nontrivial_gold_count: 0
+string_indirection: true
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: []
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 2
+  description: Add "App Icon" string to InfoPlist.strings — minimal localization-only change
+notes: >-
+  Adds one new l10n key ("App Icon" = "App Icon") to the two source InfoPlist.strings
+  tables, with a comment describing it as a future Home-screen long-press "Quick
+  Actions" shortcut title. Verified via git log that the actual shortcut-item code
+  (Info.plist UIApplicationShortcutItems entry + QuickActions.swift wiring) lands in
+  later commits be1e545f5/88f72d1fa (2026-07-04, after this 2026-06-08 commit) and is
+  not present at the pinned commit, so no in-repo consumer exists yet to cite as
+  nontrivial context; treated as a genuine no-external-context localization change.
+  string_indirection: true because the key is looked up by the literal string "App
+  Icon" (NSLocalizedString-style / plist key lookup), not a static Swift reference.

@@ -1,0 +1,1816 @@
+From 301f1b73da68f23b17e0516e3e4969c56bf434a3 Mon Sep 17 00:00:00 2001
+From: iQQBot <tianshi8650@gmail.com>
+Date: Thu, 29 May 2025 01:32:00 +0800
+Subject: [PATCH] upgrade golang to 1.24.3 (#20846)
+
+* upgrade golang to 1.24.3
+
+* fix caddy
+
+* update go debug
+
+* fix non-constant format string in call to fmt Format method
+---
+ .devcontainer/Dockerfile                      |  2 +-
+ components/blobserve/go.mod                   |  7 ++---
+ components/common-go/go.mod                   |  6 +++--
+ components/content-service-api/go/go.mod      |  6 +++--
+ .../typescript/util/go.mod                    | 19 ++++++++------
+ .../typescript/util/go.sum                    | 26 +++++++++----------
+ components/content-service/go.mod             |  6 +++--
+ components/docker-up/go.mod                   |  6 +++--
+ components/ee/agent-smith/cmd/testbed/go.mod  |  6 ++++-
+ .../ee/agent-smith/cmd/testtarget/go.mod      |  6 ++++-
+ components/ee/agent-smith/go.mod              |  6 +++--
+ components/gitpod-cli/go.mod                  |  7 ++---
+ components/gitpod-db/go/go.mod                |  6 +++--
+ components/gitpod-protocol/go/go.mod          |  6 ++++-
+ components/ide-metrics-api/go.mod             |  6 ++++-
+ components/ide-metrics-api/go/go.mod          |  6 +++--
+ components/ide-metrics/go.mod                 |  6 +++--
+ components/ide-service-api/go/go.mod          |  6 +++--
+ components/ide-service/go.mod                 |  6 +++--
+ components/ide/code-desktop/status/go.mod     |  6 +++--
+ components/ide/code/codehelper/go.mod         |  6 +++--
+ components/ide/jetbrains/cli/go.mod           |  6 ++++-
+ components/ide/jetbrains/launcher/go.mod      |  6 +++--
+ components/image-builder-api/go.mod           |  6 ++++-
+ components/image-builder-api/go/go.mod        |  6 +++--
+ components/image-builder-bob/go.mod           |  6 +++--
+ components/image-builder-mk3/go.mod           |  6 +++--
+ components/local-app-api/go.mod               |  6 ++++-
+ components/local-app-api/go/go.mod            |  6 ++++-
+ components/local-app/go.mod                   |  6 +++--
+ components/local-app/go.sum                   |  9 +++----
+ .../local-app/pkg/selfupdate/selfupdate.go    |  2 +-
+ components/node-labeler/go.mod                |  6 +++--
+ components/openvsx-proxy/go.mod               |  6 +++--
+ components/proxy/Dockerfile                   |  6 ++---
+ components/proxy/plugins/analytics/go.mod     |  6 +++--
+ components/proxy/plugins/configcat/go.mod     |  6 +++--
+ components/proxy/plugins/corsorigin/go.mod    |  6 +++--
+ components/proxy/plugins/frontend_dev/go.mod  |  6 +++--
+ .../proxy/plugins/headlesslogdownload/go.mod  |  6 +++--
+ components/proxy/plugins/jsonselect/go.mod    |  6 +++--
+ components/proxy/plugins/logif/go.mod         |  6 +++--
+ .../proxy/plugins/secwebsocketkey/go.mod      |  6 +++--
+ components/proxy/plugins/sshtunnel/go.mod     |  6 +++--
+ .../proxy/plugins/workspacedownload/go.mod    |  6 +++--
+ components/public-api-server/go.mod           |  6 +++--
+ .../public-api-server/pkg/proxy/errors.go     | 26 +++++++++----------
+ components/public-api/go/go.mod               |  6 +++--
+ components/registry-facade-api/go.mod         |  6 ++++-
+ components/registry-facade-api/go/go.mod      |  6 ++++-
+ components/registry-facade/go.mod             |  6 +++--
+ components/scrubber/go.mod                    |  6 ++++-
+ components/server/go/go.mod                   |  6 ++++-
+ components/service-waiter/go.mod              |  6 +++--
+ components/spicedb/codegen/go.mod             |  6 ++++-
+ components/spicedb/go.mod                     |  6 ++++-
+ components/supervisor-api/go.mod              |  6 ++++-
+ components/supervisor-api/go/go.mod           |  6 ++++-
+ components/supervisor/cmd/init.go             |  2 +-
+ components/supervisor/go.mod                  |  6 +++--
+ components/usage-api/go/go.mod                |  6 +++--
+ components/usage/go.mod                       |  6 +++--
+ components/workspacekit/go.mod                |  6 +++--
+ components/ws-daemon-api/go.mod               |  6 ++++-
+ components/ws-daemon-api/go/go.mod            |  6 +++--
+ .../ws-daemon/cmd/content-initializer/main.go |  2 +-
+ components/ws-daemon/go.mod                   |  6 +++--
+ components/ws-daemon/nsinsider/go.mod         |  6 +++--
+ .../ws-daemon/pkg/controller/housekeeping.go  |  2 +-
+ .../seccomp-profile-installer/go.mod          |  6 ++++-
+ components/ws-manager-api/go.mod              |  6 ++++-
+ components/ws-manager-api/go/go.mod           |  6 +++--
+ components/ws-manager-bridge-api/go/go.mod    |  6 +++--
+ .../controllers/workspace_controller.go       |  2 +-
+ components/ws-manager-mk2/go.mod              |  6 +++--
+ .../ws-manager-mk2/service/imagespec.go       |  2 +-
+ components/ws-manager-mk2/service/manager.go  |  4 +--
+ components/ws-proxy/go.mod                    |  6 ++++-
+ components/ws-proxy/pkg/sshproxy/server.go    |  2 +-
+ dev/addlicense/go.mod                         |  6 ++++-
+ dev/blowtorch/go.mod                          |  6 +++--
+ dev/changelog/go.mod                          |  6 +++--
+ dev/gp-gcloud/go.mod                          |  6 +++--
+ dev/gpctl/go.mod                              |  6 +++--
+ dev/kubecdl/go.mod                            |  6 ++++-
+ dev/loadgen/go.mod                            |  6 +++--
+ dev/preview/previewctl/go.mod                 |  6 +++--
+ dev/rejector/go.mod                           |  6 ++++-
+ dev/rejector/go.sum                           | 12 +--------
+ dev/ssh-load-test/go.mod                      |  6 +++--
+ dev/version-manifest/go.mod                   |  6 ++++-
+ install/installer/cmd/mirror_repo.go          |  2 +-
+ install/installer/cmd/validate_cluster.go     |  2 +-
+ install/installer/go.mod                      |  6 +++--
+ install/installer/pkg/common/common.go        |  4 +--
+ install/preview/prettylog/go.mod              |  6 ++++-
+ operations/observability/mixins/go.mod        |  6 ++++-
+ test/go.mod                                   |  6 +++--
+ 98 files changed, 403 insertions(+), 205 deletions(-)
+
+diff --git a/.devcontainer/Dockerfile b/.devcontainer/Dockerfile
+index 4da52b8af..f055a9f5c 100644
+--- a/.devcontainer/Dockerfile
++++ b/.devcontainer/Dockerfile
+@@ -188,7 +188,7 @@ RUN curl -sSL "https://awscli.amazonaws.com/awscli-exe-linux-$(arch).zip" -o aws
+     ./aws/install --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli --update && \
+     rm -rf awscliv2.zip ./aws
+ 
+-ENV GO_VERSION=1.23.6
++ENV GO_VERSION=1.24.3
+ ENV GOPATH=/root/go-packages
+ ENV GOROOT=/root/go
+ ENV PATH=$GOROOT/bin:$GOPATH/bin:$PATH
+diff --git a/components/blobserve/go.mod b/components/blobserve/go.mod
+index a0dcb03ef..c8a0491f9 100644
+--- a/components/blobserve/go.mod
++++ b/components/blobserve/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/blobserve
+ 
+-go 1.23.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/containerd/containerd v1.6.36
+@@ -97,7 +99,6 @@ require (
+ 	github.com/mitchellh/go-homedir v1.1.0 // indirect
+ 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
+ 	github.com/moby/locker v1.0.1 // indirect
+-	github.com/moby/sys/mountinfo v0.7.1 // indirect
+ 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
+ 	github.com/modern-go/reflect2 v1.0.2 // indirect
+ 	github.com/mr-tron/base58 v1.2.0 // indirect
+diff --git a/components/common-go/go.mod b/components/common-go/go.mod
+index b48a322dc..049827be6 100644
+--- a/components/common-go/go.mod
++++ b/components/common-go/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/common-go
+ 
+-go 1.22.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/configcat/go-sdk/v7 v7.6.0
+diff --git a/components/content-service-api/go/go.mod b/components/content-service-api/go/go.mod
+index 2c95c751b..a79323daf 100644
+--- a/components/content-service-api/go/go.mod
++++ b/components/content-service-api/go/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/content-service/api
+ 
+-go 1.22.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/gitpod-io/gitpod/common-go v0.0.0-00010101000000-000000000000
+diff --git a/components/content-service-api/typescript/util/go.mod b/components/content-service-api/typescript/util/go.mod
+index 33bbd45bf..a44ace434 100644
+--- a/components/content-service-api/typescript/util/go.mod
++++ b/components/content-service-api/typescript/util/go.mod
+@@ -1,6 +1,10 @@
+ module github.com/gitpod-io/gitpod/content-service-api/util
+ 
+-go 1.22
++go 1.24
++
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ replace github.com/gitpod-io/gitpod/content-service/api => ../../go
+ 
+@@ -10,15 +14,14 @@ require (
+ )
+ 
+ require (
+-	github.com/golang/protobuf v1.5.4 // indirect
+ 	github.com/iancoleman/strcase v0.0.0-20180726023541-3605ed457bf7 // indirect
+ 	github.com/opencontainers/go-digest v1.0.0 // indirect
+ 	github.com/opencontainers/image-spec v1.0.2 // indirect
+-	golang.org/x/net v0.19.0 // indirect
+-	golang.org/x/sys v0.15.0 // indirect
+-	golang.org/x/text v0.14.0 // indirect
+-	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
++	golang.org/x/net v0.26.0 // indirect
++	golang.org/x/sys v0.21.0 // indirect
++	golang.org/x/text v0.16.0 // indirect
++	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
+ 	google.golang.org/genproto v0.0.0-20221118155620-16455021b5e6 // indirect
+-	google.golang.org/grpc v1.52.3 // indirect
+-	google.golang.org/protobuf v1.33.0 // indirect
++	google.golang.org/grpc v1.65.0 // indirect
++	google.golang.org/protobuf v1.34.2 // indirect
+ )
+diff --git a/components/content-service-api/typescript/util/go.sum b/components/content-service-api/typescript/util/go.sum
+index 6db800c8c..1900894f2 100644
+--- a/components/content-service-api/typescript/util/go.sum
++++ b/components/content-service-api/typescript/util/go.sum
+@@ -4,8 +4,6 @@ github.com/alecthomas/repr v0.0.0-20181024024818-d37bc2a10ba1 h1:GDQdwm/gAcJcLAK
+ github.com/alecthomas/repr v0.0.0-20181024024818-d37bc2a10ba1/go.mod h1:xTS7Pm1pD1mvyM075QCDSRqH6qRLXylzS24ZTpRiSzQ=
+ github.com/go-test/deep v1.0.1 h1:UQhStjbkDClarlmv0am7OXXO4/GaPdCGiUiMTvi28sg=
+ github.com/go-test/deep v1.0.1/go.mod h1:wGDj63lr65AM2AQyKZd/NYHGb0R+1RLqB8NKt3aSFNA=
+-github.com/golang/protobuf v1.5.4 h1:i7eJL8qZTpSEXOPTxNKhASYpMn+8e5Q6AdndVa1dWek=
+-github.com/golang/protobuf v1.5.4/go.mod h1:lnTiLA8Wa4RWRcIUkrtSVa5nRhsEGBg48fD6rSs7xps=
+ github.com/google/go-cmp v0.6.0 h1:ofyhxvXcZhMsU5ulbFiLKl/XBFqE1GSq7atu8tAmTRI=
+ github.com/google/go-cmp v0.6.0/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeNGIjoY=
+ github.com/iancoleman/strcase v0.0.0-20180726023541-3605ed457bf7 h1:ux/56T2xqZO/3cP1I2F86qpeoYPCOzk+KF/UH/Ar+lk=
+@@ -14,17 +12,17 @@ github.com/opencontainers/go-digest v1.0.0 h1:apOUWs51W5PlhuyGyz9FCeeBIOUDA/6nW8
+ github.com/opencontainers/go-digest v1.0.0/go.mod h1:0JzlMkj0TRzQZfJkVvzbP0HBR3IKzErnv2BNG4W4MAM=
+ github.com/opencontainers/image-spec v1.0.2 h1:9yCKha/T5XdGtO0q9Q9a6T5NUCsTn/DrBg0D7ufOcFM=
+ github.com/opencontainers/image-spec v1.0.2/go.mod h1:BtxoFyWECRxE4U/7sNtV5W15zMzWCbyJoFRP3s7yZA0=
+-golang.org/x/net v0.19.0 h1:zTwKpTd2XuCqf8huc7Fo2iSy+4RHPd10s4KzeTnVr1c=
+-golang.org/x/net v0.19.0/go.mod h1:CfAk/cbD4CthTvqiEl8NpboMuiuOYsAr/7NOjZJtv1U=
+-golang.org/x/sys v0.15.0 h1:h48lPFYpsTvQJZF4EKyI4aLHaev3CxivZmv7yZig9pc=
+-golang.org/x/sys v0.15.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
+-golang.org/x/text v0.14.0 h1:ScX5w1eTa3QqT8oi6+ziP7dTV1S2+ALU0bI+0zXKWiQ=
+-golang.org/x/text v0.14.0/go.mod h1:18ZOQIKpY8NJVqYksKHtTdi31H5itFRjB5/qKTNYzSU=
+-golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 h1:go1bK/D/BFZV2I8cIQd1NKEZ+0owSTG1fDTci4IqFcE=
+-golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
++golang.org/x/net v0.26.0 h1:soB7SVo0PWrY4vPW/+ay0jKDNScG2X9wFeYlXIvJsOQ=
++golang.org/x/net v0.26.0/go.mod h1:5YKkiSynbBIh3p6iOc/vibscux0x38BZDkn8sCUPxHE=
++golang.org/x/sys v0.21.0 h1:rF+pYz3DAGSQAxAu1CbC7catZg4ebC4UIeIhKxBZvws=
++golang.org/x/sys v0.21.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
++golang.org/x/text v0.16.0 h1:a94ExnEXNtEwYLGJSIUxnWoxoRz/ZcCsV63ROupILh4=
++golang.org/x/text v0.16.0/go.mod h1:GhwF1Be+LQoKShO3cGOHzqOgRrGaYc9AvblQOmPVHnI=
++golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 h1:H2TDz8ibqkAF6YGhCdN3jS9O0/s90v0rJh3X/OLHEUk=
++golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2/go.mod h1:K8+ghG5WaK9qNqU5K3HdILfMLy1f3aNYFI/wnl100a8=
+ google.golang.org/genproto v0.0.0-20221118155620-16455021b5e6 h1:a2S6M0+660BgMNl++4JPlcAO/CjkqYItDEZwkoDQK7c=
+ google.golang.org/genproto v0.0.0-20221118155620-16455021b5e6/go.mod h1:rZS5c/ZVYMaOGBfO68GWtjOw/eLaZM1X6iVtgjZ+EWg=
+-google.golang.org/grpc v1.52.3 h1:pf7sOysg4LdgBqduXveGKrcEwbStiK2rtfghdzlUYDQ=
+-google.golang.org/grpc v1.52.3/go.mod h1:pu6fVzoFb+NBYNAvQL08ic+lvB2IojljRYuun5vorUY=
+-google.golang.org/protobuf v1.33.0 h1:uNO2rsAINq/JlFpSdYEKIZ0uKD/R9cpdv0T+yoGwGmI=
+-google.golang.org/protobuf v1.33.0/go.mod h1:c6P6GXX6sHbq/GpV6MGZEdwhWPcYBgnhAHhKbcUYpos=
++google.golang.org/grpc v1.65.0 h1:bs/cUb4lp1G5iImFFd3u5ixQzweKizoZJAwBNLR42lc=
++google.golang.org/grpc v1.65.0/go.mod h1:WgYC2ypjlB0EiQi6wdKixMqukr6lBc0Vo+oOgjrM5ZQ=
++google.golang.org/protobuf v1.34.2 h1:6xV6lTsCfpGD21XK49h7MhtcApnLqkfYgPcdHftf6hg=
++google.golang.org/protobuf v1.34.2/go.mod h1:qYOHts0dSfpeUzUFpOMr/WGzszTmLH+DiWniOlNbLDw=
+diff --git a/components/content-service/go.mod b/components/content-service/go.mod
+index e5a00de9b..f2096953b 100644
+--- a/components/content-service/go.mod
++++ b/components/content-service/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/content-service
+ 
+-go 1.23.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	cloud.google.com/go/storage v1.39.1
+diff --git a/components/docker-up/go.mod b/components/docker-up/go.mod
+index df6215169..03eea9394 100644
+--- a/components/docker-up/go.mod
++++ b/components/docker-up/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/docker-up
+ 
+-go 1.22.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/opencontainers/runtime-spec v1.2.0
+diff --git a/components/ee/agent-smith/cmd/testbed/go.mod b/components/ee/agent-smith/cmd/testbed/go.mod
+index 3bfb96d44..659c9752a 100644
+--- a/components/ee/agent-smith/cmd/testbed/go.mod
++++ b/components/ee/agent-smith/cmd/testbed/go.mod
+@@ -1,3 +1,7 @@
+ module testbed
+ 
+-go 1.22
++go 1.24
++
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+diff --git a/components/ee/agent-smith/cmd/testtarget/go.mod b/components/ee/agent-smith/cmd/testtarget/go.mod
+index 9adcb1146..b9c7cf0df 100644
+--- a/components/ee/agent-smith/cmd/testtarget/go.mod
++++ b/components/ee/agent-smith/cmd/testtarget/go.mod
+@@ -1,3 +1,7 @@
+ module testtarget
+ 
+-go 1.22
++go 1.24
++
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+diff --git a/components/ee/agent-smith/go.mod b/components/ee/agent-smith/go.mod
+index db317e445..36c549a36 100644
+--- a/components/ee/agent-smith/go.mod
++++ b/components/ee/agent-smith/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/agent-smith
+ 
+-go 1.22.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/alecthomas/jsonschema v0.0.0-20210413112511-5c9c23bdc720
+diff --git a/components/gitpod-cli/go.mod b/components/gitpod-cli/go.mod
+index c6078dae2..96c54009b 100644
+--- a/components/gitpod-cli/go.mod
++++ b/components/gitpod-cli/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/gitpod-cli
+ 
+-go 1.23.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/bufbuild/connect-go v1.10.0
+@@ -51,7 +53,6 @@ require (
+ 	github.com/prometheus/client_golang v1.19.1 // indirect
+ 	github.com/prometheus/client_model v0.6.1 // indirect
+ 	github.com/prometheus/common v0.55.0 // indirect
+-	github.com/rogpeppe/go-internal v1.12.0 // indirect
+ 	golang.org/x/crypto v0.36.0 // indirect
+ 	golang.org/x/sys v0.31.0 // indirect
+ 	google.golang.org/genproto/googleapis/api v0.0.0-20240528184218-531527333157 // indirect
+diff --git a/components/gitpod-db/go/go.mod b/components/gitpod-db/go/go.mod
+index ac818aaf3..18d59a228 100644
+--- a/components/gitpod-db/go/go.mod
++++ b/components/gitpod-db/go/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/components/gitpod-db/go
+ 
+-go 1.22.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/gitpod-io/gitpod/common-go v0.0.0-00010101000000-000000000000
+diff --git a/components/gitpod-protocol/go/go.mod b/components/gitpod-protocol/go/go.mod
+index bd09152b5..0b0b0c021 100644
+--- a/components/gitpod-protocol/go/go.mod
++++ b/components/gitpod-protocol/go/go.mod
+@@ -1,6 +1,10 @@
+ module github.com/gitpod-io/gitpod/gitpod-protocol
+ 
+-go 1.22
++go 1.24
++
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/golang/mock v1.6.0
+diff --git a/components/ide-metrics-api/go.mod b/components/ide-metrics-api/go.mod
+index 418207470..9b6b5198b 100644
+--- a/components/ide-metrics-api/go.mod
++++ b/components/ide-metrics-api/go.mod
+@@ -1,3 +1,7 @@
+ module github.com/gitpod-io/generated_code_dependencies
+ 
+-go 1.22
++go 1.24
++
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+diff --git a/components/ide-metrics-api/go/go.mod b/components/ide-metrics-api/go/go.mod
+index 77c6594eb..5ddd15770 100644
+--- a/components/ide-metrics-api/go/go.mod
++++ b/components/ide-metrics-api/go/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/ide-metrics-api
+ 
+-go 1.22.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/gitpod-io/gitpod/common-go v0.0.0-00010101000000-000000000000
+diff --git a/components/ide-metrics/go.mod b/components/ide-metrics/go.mod
+index a4d40d1f6..662c21ab3 100644
+--- a/components/ide-metrics/go.mod
++++ b/components/ide-metrics/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/ide-metrics
+ 
+-go 1.22.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/gitpod-io/gitpod/common-go v0.0.0-00010101000000-000000000000
+diff --git a/components/ide-service-api/go/go.mod b/components/ide-service-api/go/go.mod
+index 2c789814b..155413cff 100644
+--- a/components/ide-service-api/go/go.mod
++++ b/components/ide-service-api/go/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/ide-service-api
+ 
+-go 1.22.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/gitpod-io/gitpod/common-go v0.0.0-00010101000000-000000000000
+diff --git a/components/ide-service/go.mod b/components/ide-service/go.mod
+index 4050ef5ed..14f905d35 100644
+--- a/components/ide-service/go.mod
++++ b/components/ide-service/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/ide-service
+ 
+-go 1.22.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/containerd/containerd v1.6.36
+diff --git a/components/ide/code-desktop/status/go.mod b/components/ide/code-desktop/status/go.mod
+index 275047a49..b1e4d9726 100644
+--- a/components/ide/code-desktop/status/go.mod
++++ b/components/ide/code-desktop/status/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/code-desktop/status
+ 
+-go 1.22.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/gitpod-io/gitpod/common-go v0.0.0-00010101000000-000000000000
+diff --git a/components/ide/code/codehelper/go.mod b/components/ide/code/codehelper/go.mod
+index 9af951876..b1efe90c7 100644
+--- a/components/ide/code/codehelper/go.mod
++++ b/components/ide/code/codehelper/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/code/codehelper
+ 
+-go 1.22.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/gitpod-io/gitpod/common-go v0.0.0-00010101000000-000000000000
+diff --git a/components/ide/jetbrains/cli/go.mod b/components/ide/jetbrains/cli/go.mod
+index e8d26f96a..57c5f08e5 100644
+--- a/components/ide/jetbrains/cli/go.mod
++++ b/components/ide/jetbrains/cli/go.mod
+@@ -1,6 +1,10 @@
+ module github.com/gitpod-io/gitpod/jetbrains/cli
+ 
+-go 1.22
++go 1.24
++
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require github.com/spf13/cobra v1.4.0
+ 
+diff --git a/components/ide/jetbrains/launcher/go.mod b/components/ide/jetbrains/launcher/go.mod
+index 93333cb47..3175241fe 100644
+--- a/components/ide/jetbrains/launcher/go.mod
++++ b/components/ide/jetbrains/launcher/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/jetbrains/launcher
+ 
+-go 1.22.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/gitpod-io/gitpod/common-go v0.0.0-00010101000000-000000000000
+diff --git a/components/image-builder-api/go.mod b/components/image-builder-api/go.mod
+index 418207470..9b6b5198b 100644
+--- a/components/image-builder-api/go.mod
++++ b/components/image-builder-api/go.mod
+@@ -1,3 +1,7 @@
+ module github.com/gitpod-io/generated_code_dependencies
+ 
+-go 1.22
++go 1.24
++
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+diff --git a/components/image-builder-api/go/go.mod b/components/image-builder-api/go/go.mod
+index b2c4e58c3..5fcd9844b 100644
+--- a/components/image-builder-api/go/go.mod
++++ b/components/image-builder-api/go/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/image-builder/api
+ 
+-go 1.22.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/gitpod-io/gitpod/common-go v0.0.0-00010101000000-000000000000
+diff --git a/components/image-builder-bob/go.mod b/components/image-builder-bob/go.mod
+index 73077b4a5..db3ee992e 100644
+--- a/components/image-builder-bob/go.mod
++++ b/components/image-builder-bob/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/image-builder/bob
+ 
+-go 1.23.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/containerd/console v1.0.3
+diff --git a/components/image-builder-mk3/go.mod b/components/image-builder-mk3/go.mod
+index 74cb64564..20554b736 100644
+--- a/components/image-builder-mk3/go.mod
++++ b/components/image-builder-mk3/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/image-builder
+ 
+-go 1.22.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/alecthomas/jsonschema v0.0.0-20210526225647-edb03dcab7bc
+diff --git a/components/local-app-api/go.mod b/components/local-app-api/go.mod
+index 418207470..9b6b5198b 100644
+--- a/components/local-app-api/go.mod
++++ b/components/local-app-api/go.mod
+@@ -1,3 +1,7 @@
+ module github.com/gitpod-io/generated_code_dependencies
+ 
+-go 1.22
++go 1.24
++
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+diff --git a/components/local-app-api/go/go.mod b/components/local-app-api/go/go.mod
+index e4f9574a8..3d4572e6c 100644
+--- a/components/local-app-api/go/go.mod
++++ b/components/local-app-api/go/go.mod
+@@ -1,6 +1,10 @@
+ module github.com/gitpod-io/gitpod/local-app/api
+ 
+-go 1.22
++go 1.24
++
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/gitpod-io/gitpod/supervisor/api v0.0.0-00010101000000-000000000000
+diff --git a/components/local-app/go.mod b/components/local-app/go.mod
+index 24dd91ac1..3c5f09d23 100644
+--- a/components/local-app/go.mod
++++ b/components/local-app/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/local-app
+ 
+-go 1.23.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/desertbit/timer v0.0.0-20180107155436-c41aec40b27f // indirect
+diff --git a/components/local-app/go.sum b/components/local-app/go.sum
+index 075c61eca..bf0c9226b 100644
+--- a/components/local-app/go.sum
++++ b/components/local-app/go.sum
+@@ -108,9 +108,8 @@ github.com/inconshreveable/mousetrap v1.1.0/go.mod h1:vpF70FUmC8bwa3OWnCshd2FqLf
+ github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 h1:BQSFePA1RWJOlocH6Fxy8MmwDt+yVQYULKfN0RoTN8A=
+ github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99/go.mod h1:1lJo3i6rXxKeerYnT8Nvf0QmHCRC1n8sfWVwXF2Frvo=
+ github.com/json-iterator/go v1.1.7/go.mod h1:KdQUCv79m/52Kvf8AW2vK1V8akMuk1QjK/uOdHXbAo4=
++github.com/json-iterator/go v1.1.9 h1:9yzud/Ht36ygwatGx56VwCZtlI/2AD15T1X2sjSuGns=
+ github.com/json-iterator/go v1.1.9/go.mod h1:KdQUCv79m/52Kvf8AW2vK1V8akMuk1QjK/uOdHXbAo4=
+-github.com/json-iterator/go v1.1.12 h1:PV8peI4a0ysnczrg+LtxykD8LfKY9ML6u2jnxaEnrnM=
+-github.com/json-iterator/go v1.1.12/go.mod h1:e30LSqwooZae/UwlEbR2852Gd8hjQvJoHmT4TnhNGBo=
+ github.com/kevinburke/ssh_config v1.2.0 h1:x584FjTGwHzMwvHx18PXxbBVzfnxogHaAReU4gf13a4=
+ github.com/kevinburke/ssh_config v1.2.0/go.mod h1:CT57kijsi8u/K/BOFA39wgDQJ9CxiF4nAY/ojJ6r6mM=
+ github.com/klauspost/compress v1.10.3/go.mod h1:aoV0uJVorq1K+umq18yTdKaF57EivdYsUV+/s2qKfXs=
+@@ -138,12 +137,10 @@ github.com/mattn/go-isatty v0.0.17 h1:BTarxUcIeDqL27Mc+vyvdWYSL28zpIhv3RoTdsLMPn
+ github.com/mattn/go-isatty v0.0.17/go.mod h1:kYGgaQfpe5nmfYZH+SKPsOc2e4SrIfOl2e/yFXSvRLM=
+ github.com/melbahja/goph v1.4.0 h1:z0PgDbBFe66lRYl3v5dGb9aFgPy0kotuQ37QOwSQFqs=
+ github.com/melbahja/goph v1.4.0/go.mod h1:uG+VfK2Dlhk+O32zFrRlc3kYKTlV6+BtvPWd/kK7U68=
++github.com/modern-go/concurrent v0.0.0-20180228061459-e0a39a4cb421 h1:ZqeYNhU3OHLH3mGKHDcjJRFFRrJa6eAM5H+CtDdOsPc=
+ github.com/modern-go/concurrent v0.0.0-20180228061459-e0a39a4cb421/go.mod h1:6dJC0mAP4ikYIbvyc7fijjWJddQyLn8Ig3JB5CqoB9Q=
+-github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd h1:TRLaZ9cD/w8PVh93nsPXa1VrQ6jlwL5oN8l14QlcNfg=
+-github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd/go.mod h1:6dJC0mAP4ikYIbvyc7fijjWJddQyLn8Ig3JB5CqoB9Q=
++github.com/modern-go/reflect2 v0.0.0-20180701023420-4b7aa43c6742 h1:Esafd1046DLDQ0W1YjYsBW+p8U2u7vzgW2SQVmlNazg=
+ github.com/modern-go/reflect2 v0.0.0-20180701023420-4b7aa43c6742/go.mod h1:bx2lNnkwVCuqBIxFjflWJWanXIb3RllmbCylyMrvgv0=
+-github.com/modern-go/reflect2 v1.0.2 h1:xBagoLtFs94CBntxluKeaWgTMpvLxC4ur3nMaC9Gz0M=
+-github.com/modern-go/reflect2 v1.0.2/go.mod h1:yWuevngMOJpCy52FWWMvUC8ws7m/LJsjYzDa0/r8luk=
+ github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f h1:KUppIJq7/+SVif2QVs3tOP0zanoHgBEVAwHxUSIzRqU=
+ github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f/go.mod h1:qRWi+5nqEBWmkhHvq77mSJWrCKwh8bxhgT7d/eI7P4U=
+ github.com/onsi/gomega v1.34.1 h1:EUMJIKUjM8sKjYbtxQI9A4z2o+rruxnzNvpknOXie6k=
+diff --git a/components/local-app/pkg/selfupdate/selfupdate.go b/components/local-app/pkg/selfupdate/selfupdate.go
+index 13cbac087..099b364de 100644
+--- a/components/local-app/pkg/selfupdate/selfupdate.go
++++ b/components/local-app/pkg/selfupdate/selfupdate.go
+@@ -136,7 +136,7 @@ func DownloadManifest(ctx context.Context, baseURL string) (res *Manifest, err e
+ 	defer resp.Body.Close()
+ 
+ 	if resp.StatusCode != http.StatusOK {
+-		return nil, fmt.Errorf(resp.Status)
++		return nil, fmt.Errorf("%s", resp.Status)
+ 	}
+ 
+ 	var mf Manifest
+diff --git a/components/node-labeler/go.mod b/components/node-labeler/go.mod
+index 068a4a1ed..fe3e9336d 100644
+--- a/components/node-labeler/go.mod
++++ b/components/node-labeler/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/node-labeler
+ 
+-go 1.22.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/aws/smithy-go v1.22.1
+diff --git a/components/openvsx-proxy/go.mod b/components/openvsx-proxy/go.mod
+index de1653dd2..1c5947589 100644
+--- a/components/openvsx-proxy/go.mod
++++ b/components/openvsx-proxy/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/openvsx-proxy
+ 
+-go 1.22.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/allegro/bigcache v1.2.1
+diff --git a/components/proxy/Dockerfile b/components/proxy/Dockerfile
+index 07727ba94..9730e46af 100644
+--- a/components/proxy/Dockerfile
++++ b/components/proxy/Dockerfile
+@@ -4,11 +4,11 @@
+ 
+ FROM caddy:2.7.6-builder AS withgo
+ 
+-RUN go install golang.org/dl/go1.23.1@latest && \
+-    go1.23.1 download && \
++RUN go install golang.org/dl/go1.24.3@latest && \
++    go1.24.3 download && \
+     rm -rf /usr/local/go && \
+     mv /go /usr/local/go && \
+-    mv /usr/local/go/bin/go1.23.1 /usr/local/go/bin/go
++    mv /usr/local/go/bin/go1.24.3 /usr/local/go/bin/go
+ 
+ FROM withgo AS builder
+ 
+diff --git a/components/proxy/plugins/analytics/go.mod b/components/proxy/plugins/analytics/go.mod
+index fd6359c22..8dc6fd06c 100644
+--- a/components/proxy/plugins/analytics/go.mod
++++ b/components/proxy/plugins/analytics/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/proxy/plugins/analytics
+ 
+-go 1.23.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/caddyserver/caddy/v2 v2.7.6
+diff --git a/components/proxy/plugins/configcat/go.mod b/components/proxy/plugins/configcat/go.mod
+index acb9b56c9..b2103990b 100644
+--- a/components/proxy/plugins/configcat/go.mod
++++ b/components/proxy/plugins/configcat/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/proxy/plugins/configcat
+ 
+-go 1.23.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/caddyserver/caddy/v2 v2.7.6
+diff --git a/components/proxy/plugins/corsorigin/go.mod b/components/proxy/plugins/corsorigin/go.mod
+index 194a1b6d0..0a8b3a0d9 100644
+--- a/components/proxy/plugins/corsorigin/go.mod
++++ b/components/proxy/plugins/corsorigin/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/proxy/plugins/corsorigin
+ 
+-go 1.23.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/caddyserver/caddy/v2 v2.7.6
+diff --git a/components/proxy/plugins/frontend_dev/go.mod b/components/proxy/plugins/frontend_dev/go.mod
+index f4cef77f2..f7c0110df 100644
+--- a/components/proxy/plugins/frontend_dev/go.mod
++++ b/components/proxy/plugins/frontend_dev/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/proxy/plugins/frontend_dev
+ 
+-go 1.23.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require github.com/caddyserver/caddy/v2 v2.7.6
+ 
+diff --git a/components/proxy/plugins/headlesslogdownload/go.mod b/components/proxy/plugins/headlesslogdownload/go.mod
+index 588a4d9d4..599d907dc 100644
+--- a/components/proxy/plugins/headlesslogdownload/go.mod
++++ b/components/proxy/plugins/headlesslogdownload/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/proxy/plugins/headlesslogdownload
+ 
+-go 1.23.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require github.com/caddyserver/caddy/v2 v2.7.6
+ 
+diff --git a/components/proxy/plugins/jsonselect/go.mod b/components/proxy/plugins/jsonselect/go.mod
+index dd35cd408..6301af4dc 100644
+--- a/components/proxy/plugins/jsonselect/go.mod
++++ b/components/proxy/plugins/jsonselect/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/proxy/plugins/jsonselect
+ 
+-go 1.23.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/buger/jsonparser v1.1.1
+diff --git a/components/proxy/plugins/logif/go.mod b/components/proxy/plugins/logif/go.mod
+index ef4d2c624..f177e908e 100644
+--- a/components/proxy/plugins/logif/go.mod
++++ b/components/proxy/plugins/logif/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/proxy/plugins/logif
+ 
+-go 1.23.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ replace github.com/gitpod-io/gitpod/proxy/plugins/jsonselect => ../jsonselect
+ 
+diff --git a/components/proxy/plugins/secwebsocketkey/go.mod b/components/proxy/plugins/secwebsocketkey/go.mod
+index 325675059..41ebde512 100644
+--- a/components/proxy/plugins/secwebsocketkey/go.mod
++++ b/components/proxy/plugins/secwebsocketkey/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/proxy/plugins/secwebsocketkey
+ 
+-go 1.23.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require github.com/caddyserver/caddy/v2 v2.7.6
+ 
+diff --git a/components/proxy/plugins/sshtunnel/go.mod b/components/proxy/plugins/sshtunnel/go.mod
+index a3155f05e..f44431100 100644
+--- a/components/proxy/plugins/sshtunnel/go.mod
++++ b/components/proxy/plugins/sshtunnel/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/proxy/plugins/sshtunnel
+ 
+-go 1.23.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/caddyserver/caddy/v2 v2.7.6
+diff --git a/components/proxy/plugins/workspacedownload/go.mod b/components/proxy/plugins/workspacedownload/go.mod
+index 3c44dceb5..96f9ea78f 100644
+--- a/components/proxy/plugins/workspacedownload/go.mod
++++ b/components/proxy/plugins/workspacedownload/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/proxy/plugins/workspacedownload
+ 
+-go 1.23.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require github.com/caddyserver/caddy/v2 v2.7.6
+ 
+diff --git a/components/public-api-server/go.mod b/components/public-api-server/go.mod
+index a9109a746..8ba0a9524 100644
+--- a/components/public-api-server/go.mod
++++ b/components/public-api-server/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/public-api-server
+ 
+-go 1.23.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/AdaLogics/go-fuzz-headers v0.0.0-20220708163326-82d177caec6e
+diff --git a/components/public-api-server/pkg/proxy/errors.go b/components/public-api-server/pkg/proxy/errors.go
+index 888f81d70..3f0fed270 100644
+--- a/components/public-api-server/pkg/proxy/errors.go
++++ b/components/public-api-server/pkg/proxy/errors.go
+@@ -30,41 +30,41 @@ func categorizeRPCError(err error) *connect.Error {
+ 	if rpcErr := new(jsonrpc2.Error); errors.As(err, &rpcErr) {
+ 		switch rpcErr.Code {
+ 		case 400:
+-			return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf(rpcErr.Message))
++			return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("%s", rpcErr.Message))
+ 		// components/gitpod-protocol/src/messaging/error.ts
+ 		case 401:
+-			return connect.NewError(connect.CodeUnauthenticated, fmt.Errorf(rpcErr.Message))
++			return connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("%s", rpcErr.Message))
+ 		// components/gitpod-protocol/src/messaging/error.ts
+ 		case 403:
+-			return connect.NewError(connect.CodePermissionDenied, fmt.Errorf(rpcErr.Message))
++			return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("%s", rpcErr.Message))
+ 		// components/gitpod-protocol/src/messaging/error.ts
+ 		case 404:
+-			return connect.NewError(connect.CodeNotFound, fmt.Errorf(rpcErr.Message))
++			return connect.NewError(connect.CodeNotFound, fmt.Errorf("%s", rpcErr.Message))
+ 		// components/gitpod-protocol/src/messaging/error.ts
+ 		case 409:
+-			return connect.NewError(connect.CodeAlreadyExists, fmt.Errorf(rpcErr.Message))
++			return connect.NewError(connect.CodeAlreadyExists, fmt.Errorf("%s", rpcErr.Message))
+ 		case 412:
+-			return connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(rpcErr.Message))
++			return connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("%s", rpcErr.Message))
+ 		case 429:
+-			return connect.NewError(connect.CodeResourceExhausted, fmt.Errorf(rpcErr.Message))
++			return connect.NewError(connect.CodeResourceExhausted, fmt.Errorf("%s", rpcErr.Message))
+ 		case 470:
+-			return connect.NewError(connect.CodePermissionDenied, fmt.Errorf(rpcErr.Message))
++			return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("%s", rpcErr.Message))
+ 		case -32603:
+-			return connect.NewError(connect.CodeInternal, fmt.Errorf(rpcErr.Message))
++			return connect.NewError(connect.CodeInternal, fmt.Errorf("%s", rpcErr.Message))
+ 		}
+ 		// components/gitpod-protocol/src/messaging/error.ts - user errors
+ 		if rpcErr.Code >= 400 && rpcErr.Code < 500 {
+-			return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf(rpcErr.Message))
++			return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("%s", rpcErr.Message))
+ 		}
+-		return connect.NewError(connect.CodeInternal, fmt.Errorf(rpcErr.Message))
++		return connect.NewError(connect.CodeInternal, fmt.Errorf("%s", rpcErr.Message))
+ 	}
+ 
+ 	if errors.Is(err, context.Canceled) {
+-		return connect.NewError(connect.CodeDeadlineExceeded, fmt.Errorf("Request timed out"))
++		return connect.NewError(connect.CodeDeadlineExceeded, fmt.Errorf("%s", "Request timed out"))
+ 	}
+ 
+ 	if handshakeErr := new(protocol.ErrBadHandshake); errors.As(err, &handshakeErr) {
+-		return connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("Failed to establish caller identity"))
++		return connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("%s", "Failed to establish caller identity"))
+ 	}
+ 
+ 	return connect.NewError(connect.CodeInternal, err)
+diff --git a/components/public-api/go/go.mod b/components/public-api/go/go.mod
+index c5f67f355..a11e89e97 100644
+--- a/components/public-api/go/go.mod
++++ b/components/public-api/go/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/components/public-api/go
+ 
+-go 1.22.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/bufbuild/connect-go v1.10.0
+diff --git a/components/registry-facade-api/go.mod b/components/registry-facade-api/go.mod
+index 418207470..9b6b5198b 100644
+--- a/components/registry-facade-api/go.mod
++++ b/components/registry-facade-api/go.mod
+@@ -1,3 +1,7 @@
+ module github.com/gitpod-io/generated_code_dependencies
+ 
+-go 1.22
++go 1.24
++
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+diff --git a/components/registry-facade-api/go/go.mod b/components/registry-facade-api/go/go.mod
+index 6868ebecf..4de438180 100644
+--- a/components/registry-facade-api/go/go.mod
++++ b/components/registry-facade-api/go/go.mod
+@@ -1,6 +1,10 @@
+ module github.com/gitpod-io/gitpod/registry-facade/api
+ 
+-go 1.22
++go 1.24
++
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
+diff --git a/components/registry-facade/go.mod b/components/registry-facade/go.mod
+index 767a461e3..4240971f4 100644
+--- a/components/registry-facade/go.mod
++++ b/components/registry-facade/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/registry-facade
+ 
+-go 1.23.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/alicebob/miniredis/v2 v2.32.1
+diff --git a/components/scrubber/go.mod b/components/scrubber/go.mod
+index 9841a2be1..aa5f589ff 100644
+--- a/components/scrubber/go.mod
++++ b/components/scrubber/go.mod
+@@ -1,6 +1,10 @@
+ module github.com/gitpod-io/gitpod/components/scrubber
+ 
+-go 1.22
++go 1.24
++
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/google/go-cmp v0.6.0
+diff --git a/components/server/go/go.mod b/components/server/go/go.mod
+index a12001db9..abb18d849 100644
+--- a/components/server/go/go.mod
++++ b/components/server/go/go.mod
+@@ -1,3 +1,7 @@
+ module github.com/gitpod-io/gitpod/server/go
+ 
+-go 1.22.2
++go 1.24
++
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+diff --git a/components/service-waiter/go.mod b/components/service-waiter/go.mod
+index 07d203b27..ffdc7e17f 100644
+--- a/components/service-waiter/go.mod
++++ b/components/service-waiter/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/service-waiter
+ 
+-go 1.22.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/gitpod-io/gitpod/common-go v0.0.0-00010101000000-000000000000
+diff --git a/components/spicedb/codegen/go.mod b/components/spicedb/codegen/go.mod
+index cc2dcdff4..57fb700b7 100644
+--- a/components/spicedb/codegen/go.mod
++++ b/components/spicedb/codegen/go.mod
+@@ -1,6 +1,10 @@
+ module github.com/gitpod-io/gitpod/components/spicedb/codegen
+ 
+-go 1.22
++go 1.24
++
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/authzed/spicedb v1.24.0
+diff --git a/components/spicedb/go.mod b/components/spicedb/go.mod
+index a7733ab0c..3b95157e5 100644
+--- a/components/spicedb/go.mod
++++ b/components/spicedb/go.mod
+@@ -1,5 +1,9 @@
+ module github.com/gitpod-io/gitpod/components/spicedb
+ 
+-go 1.22
++go 1.24
++
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require gopkg.in/yaml.v2 v2.4.0
+diff --git a/components/supervisor-api/go.mod b/components/supervisor-api/go.mod
+index 418207470..9b6b5198b 100644
+--- a/components/supervisor-api/go.mod
++++ b/components/supervisor-api/go.mod
+@@ -1,3 +1,7 @@
+ module github.com/gitpod-io/generated_code_dependencies
+ 
+-go 1.22
++go 1.24
++
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+diff --git a/components/supervisor-api/go/go.mod b/components/supervisor-api/go/go.mod
+index 7fd2da7ff..d9a4cc677 100644
+--- a/components/supervisor-api/go/go.mod
++++ b/components/supervisor-api/go/go.mod
+@@ -1,6 +1,10 @@
+ module github.com/gitpod-io/gitpod/supervisor/api
+ 
+-go 1.22
++go 1.24
++
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.11.3
+diff --git a/components/supervisor/cmd/init.go b/components/supervisor/cmd/init.go
+index 330e60bd1..0ebff416d 100644
+--- a/components/supervisor/cmd/init.go
++++ b/components/supervisor/cmd/init.go
+@@ -92,7 +92,7 @@ var initCmd = &cobra.Command{
+ 				if ignoreUnexpectedExitCode.Load() {
+ 					return
+ 				}
+-				log.WithError(fmt.Errorf(logs)).Fatal("supervisor run error with unexpected exit code")
++				log.WithError(fmt.Errorf("%s", logs)).Fatal("supervisor run error with unexpected exit code")
+ 			}
+ 		}
+ 		go func() {
+diff --git a/components/supervisor/go.mod b/components/supervisor/go.mod
+index 21af2b518..f6435cdf1 100644
+--- a/components/supervisor/go.mod
++++ b/components/supervisor/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/supervisor
+ 
+-go 1.23.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/Netflix/go-env v0.0.0-20220526054621-78278af1949d
+diff --git a/components/usage-api/go/go.mod b/components/usage-api/go/go.mod
+index b43694632..319703161 100644
+--- a/components/usage-api/go/go.mod
++++ b/components/usage-api/go/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/usage-api
+ 
+-go 1.22.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	google.golang.org/grpc v1.58.3
+diff --git a/components/usage/go.mod b/components/usage/go.mod
+index 44561bcef..c1791e0f3 100644
+--- a/components/usage/go.mod
++++ b/components/usage/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/usage
+ 
+-go 1.22.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/alicebob/miniredis/v2 v2.30.2
+diff --git a/components/workspacekit/go.mod b/components/workspacekit/go.mod
+index ec823d965..fe8d7f5b5 100644
+--- a/components/workspacekit/go.mod
++++ b/components/workspacekit/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/workspacekit
+ 
+-go 1.22.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ replace github.com/seccomp/libseccomp-golang => github.com/gitpod-io/libseccomp-golang v0.9.2-0.20220701021458-9bf1c833815b
+ 
+diff --git a/components/ws-daemon-api/go.mod b/components/ws-daemon-api/go.mod
+index 418207470..9b6b5198b 100644
+--- a/components/ws-daemon-api/go.mod
++++ b/components/ws-daemon-api/go.mod
+@@ -1,3 +1,7 @@
+ module github.com/gitpod-io/generated_code_dependencies
+ 
+-go 1.22
++go 1.24
++
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+diff --git a/components/ws-daemon-api/go/go.mod b/components/ws-daemon-api/go/go.mod
+index 1a52dc82c..b6a84903c 100644
+--- a/components/ws-daemon-api/go/go.mod
++++ b/components/ws-daemon-api/go/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/ws-daemon/api
+ 
+-go 1.22.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/fatih/gomodifytags v1.14.0
+diff --git a/components/ws-daemon/cmd/content-initializer/main.go b/components/ws-daemon/cmd/content-initializer/main.go
+index bf0648e69..cf786b01a 100644
+--- a/components/ws-daemon/cmd/content-initializer/main.go
++++ b/components/ws-daemon/cmd/content-initializer/main.go
+@@ -26,7 +26,7 @@ func main() {
+ 	err := content.RunInitializerChild(statsFd)
+ 	if err != nil {
+ 		errfd := os.NewFile(content.RUN_INITIALIZER_CHILD_ERROUT_FD, "errout")
+-		_, _ = fmt.Fprintf(errfd, err.Error())
++		_, _ = fmt.Fprintf(errfd, "%s", err.Error())
+ 
+ 		os.Exit(content.FAIL_CONTENT_INITIALIZER_EXIT_CODE)
+ 	}
+diff --git a/components/ws-daemon/go.mod b/components/ws-daemon/go.mod
+index 918b3a7bb..ddbcc22a2 100644
+--- a/components/ws-daemon/go.mod
++++ b/components/ws-daemon/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/ws-daemon
+ 
+-go 1.23.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/alecthomas/jsonschema v0.0.0-20190504002508-159cbd5dba26
+diff --git a/components/ws-daemon/nsinsider/go.mod b/components/ws-daemon/nsinsider/go.mod
+index 2427313f5..4b9d1cc23 100644
+--- a/components/ws-daemon/nsinsider/go.mod
++++ b/components/ws-daemon/nsinsider/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/ws-daemon/nsinsider
+ 
+-go 1.22.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/gitpod-io/gitpod/common-go v0.0.0-00010101000000-000000000000
+diff --git a/components/ws-daemon/pkg/controller/housekeeping.go b/components/ws-daemon/pkg/controller/housekeeping.go
+index 28bc87b58..bea73dd61 100644
+--- a/components/ws-daemon/pkg/controller/housekeeping.go
++++ b/components/ws-daemon/pkg/controller/housekeeping.go
+@@ -70,7 +70,7 @@ func (h *Housekeeping) doHousekeeping(ctx context.Context) (errs []error) {
+ 
+ 		var err error
+ 		if len(msgs) > 0 {
+-			err = fmt.Errorf(strings.Join(msgs, ". "))
++			err = fmt.Errorf("%s", strings.Join(msgs, ". "))
+ 		}
+ 		tracing.FinishSpan(span, &err)
+ 	}()
+diff --git a/components/ws-daemon/seccomp-profile-installer/go.mod b/components/ws-daemon/seccomp-profile-installer/go.mod
+index b7e02c7fe..a6e01fb60 100644
+--- a/components/ws-daemon/seccomp-profile-installer/go.mod
++++ b/components/ws-daemon/seccomp-profile-installer/go.mod
+@@ -1,6 +1,10 @@
+ module github.com/gitpod-io/gitpod/ws-daemon/seccomp-profile-installer
+ 
+-go 1.22
++go 1.24
++
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/containerd/containerd v1.6.36
+diff --git a/components/ws-manager-api/go.mod b/components/ws-manager-api/go.mod
+index 418207470..9b6b5198b 100644
+--- a/components/ws-manager-api/go.mod
++++ b/components/ws-manager-api/go.mod
+@@ -1,3 +1,7 @@
+ module github.com/gitpod-io/generated_code_dependencies
+ 
+-go 1.22
++go 1.24
++
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+diff --git a/components/ws-manager-api/go/go.mod b/components/ws-manager-api/go/go.mod
+index f70cc6b0b..ba739a478 100644
+--- a/components/ws-manager-api/go/go.mod
++++ b/components/ws-manager-api/go/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/ws-manager/api
+ 
+-go 1.22.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/gitpod-io/gitpod/common-go v0.0.0-00010101000000-000000000000
+diff --git a/components/ws-manager-bridge-api/go/go.mod b/components/ws-manager-bridge-api/go/go.mod
+index 588349a96..109b64bea 100644
+--- a/components/ws-manager-bridge-api/go/go.mod
++++ b/components/ws-manager-bridge-api/go/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/ws-manager-bridge/api
+ 
+-go 1.22.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	google.golang.org/grpc v1.58.3
+diff --git a/components/ws-manager-mk2/controllers/workspace_controller.go b/components/ws-manager-mk2/controllers/workspace_controller.go
+index 2e630e8d4..3577974f6 100644
+--- a/components/ws-manager-mk2/controllers/workspace_controller.go
++++ b/components/ws-manager-mk2/controllers/workspace_controller.go
+@@ -527,7 +527,7 @@ func (r *WorkspaceReconciler) deleteWorkspaceSecrets(ctx context.Context, ws *wo
+ 	}
+ 
+ 	if len(errs) != 0 {
+-		return fmt.Errorf(strings.Join(errs, ":"))
++		return fmt.Errorf("%s", strings.Join(errs, ":"))
+ 	}
+ 
+ 	return nil
+diff --git a/components/ws-manager-mk2/go.mod b/components/ws-manager-mk2/go.mod
+index 758f7efa1..b931ec204 100644
+--- a/components/ws-manager-mk2/go.mod
++++ b/components/ws-manager-mk2/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/ws-manager-mk2
+ 
+-go 1.22.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/aws/smithy-go v1.13.3
+diff --git a/components/ws-manager-mk2/service/imagespec.go b/components/ws-manager-mk2/service/imagespec.go
+index e2595d772..2c680b58f 100644
+--- a/components/ws-manager-mk2/service/imagespec.go
++++ b/components/ws-manager-mk2/service/imagespec.go
+@@ -32,7 +32,7 @@ func (is *WorkspaceImageSpecProvider) GetImageSpec(ctx context.Context, req *reg
+ 		return nil, status.Errorf(codes.NotFound, "not found")
+ 	}
+ 	if err != nil {
+-		return nil, status.Errorf(codes.Internal, err.Error())
++		return nil, status.Errorf(codes.Internal, "%s", err.Error())
+ 	}
+ 
+ 	return &regapi.GetImageSpecResponse{
+diff --git a/components/ws-manager-mk2/service/manager.go b/components/ws-manager-mk2/service/manager.go
+index 3e2431017..fe4e48680 100644
+--- a/components/ws-manager-mk2/service/manager.go
++++ b/components/ws-manager-mk2/service/manager.go
+@@ -195,7 +195,7 @@ func (wsm *WorkspaceManagerServer) StartWorkspace(ctx context.Context, req *wsma
+ 	storage, err := class.Container.Limits.StorageQuantity()
+ 	if err != nil {
+ 		msg := fmt.Sprintf("workspace class %s has invalid storage quantity: %v", class.Name, err)
+-		return nil, status.Errorf(codes.InvalidArgument, msg)
++		return nil, status.Errorf(codes.InvalidArgument, "%s", msg)
+ 	}
+ 
+ 	annotations := make(map[string]string)
+@@ -690,7 +690,7 @@ func (wsm *WorkspaceManagerServer) TakeSnapshot(ctx context.Context, req *wsmana
+ 		}
+ 
+ 		if sso.Status.Error != "" {
+-			return true, fmt.Errorf(sso.Status.Error)
++			return true, fmt.Errorf("%s", sso.Status.Error)
+ 		}
+ 
+ 		if sso.Status.URL != "" {
+diff --git a/components/ws-proxy/go.mod b/components/ws-proxy/go.mod
+index eca577c88..1f8554df3 100644
+--- a/components/ws-proxy/go.mod
++++ b/components/ws-proxy/go.mod
+@@ -1,6 +1,10 @@
+ module github.com/gitpod-io/gitpod/ws-proxy
+ 
+-go 1.22.2
++go 1.24
++
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/bombsimon/logrusr/v2 v2.0.1
+diff --git a/components/ws-proxy/pkg/sshproxy/server.go b/components/ws-proxy/pkg/sshproxy/server.go
+index ae600e58d..60f6cc443 100644
+--- a/components/ws-proxy/pkg/sshproxy/server.go
++++ b/components/ws-proxy/pkg/sshproxy/server.go
+@@ -600,7 +600,7 @@ func workspaceSSHUsername(ctx context.Context, workspaceIP string, workspacekitP
+ 	}
+ 
+ 	if resp.StatusCode != http.StatusOK {
+-		return "", fmt.Errorf(fmt.Sprintf("unexpected status: %v (%v)", string(result), resp.StatusCode))
++		return "", fmt.Errorf("unexpected status: %v (%v)", string(result), resp.StatusCode)
+ 	}
+ 
+ 	return string(result), nil
+diff --git a/dev/addlicense/go.mod b/dev/addlicense/go.mod
+index a9dc934c7..d1d0fbdde 100644
+--- a/dev/addlicense/go.mod
++++ b/dev/addlicense/go.mod
+@@ -1,5 +1,9 @@
+ module github.com/google/addlicense
+ 
+-go 1.22
++go 1.24
++
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
+diff --git a/dev/blowtorch/go.mod b/dev/blowtorch/go.mod
+index b945a182d..bc3592e9e 100644
+--- a/dev/blowtorch/go.mod
++++ b/dev/blowtorch/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/blowtorch
+ 
+-go 1.22.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/Pallinder/go-randomdata v1.2.0
+diff --git a/dev/changelog/go.mod b/dev/changelog/go.mod
+index 65cd90bd4..50f59446e 100644
+--- a/dev/changelog/go.mod
++++ b/dev/changelog/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/changelog
+ 
+-go 1.23.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/google/go-github/v38 v38.1.0
+diff --git a/dev/gp-gcloud/go.mod b/dev/gp-gcloud/go.mod
+index 2710c566f..6414256c5 100644
+--- a/dev/gp-gcloud/go.mod
++++ b/dev/gp-gcloud/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/gp-gcloud
+ 
+-go 1.23.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/gitpod-io/gitpod/common-go v0.0.0-00010101000000-000000000000
+diff --git a/dev/gpctl/go.mod b/dev/gpctl/go.mod
+index 7fcd0af30..6592e8ec0 100644
+--- a/dev/gpctl/go.mod
++++ b/dev/gpctl/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/gpctl
+ 
+-go 1.23.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/Masterminds/goutils v1.1.1 // indirect
+diff --git a/dev/kubecdl/go.mod b/dev/kubecdl/go.mod
+index 0d6ab4ed3..fa19916e5 100644
+--- a/dev/kubecdl/go.mod
++++ b/dev/kubecdl/go.mod
+@@ -1,6 +1,10 @@
+ module github.com/gitpod-io/gitpod/kubecdl
+ 
+-go 1.22
++go 1.24
++
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/sirupsen/logrus v1.9.3
+diff --git a/dev/loadgen/go.mod b/dev/loadgen/go.mod
+index 3aaee3b80..14fc0422d 100644
+--- a/dev/loadgen/go.mod
++++ b/dev/loadgen/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/loadgen
+ 
+-go 1.22.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/cheggaaa/pb/v3 v3.0.5
+diff --git a/dev/preview/previewctl/go.mod b/dev/preview/previewctl/go.mod
+index 606b5fd02..2779665bd 100644
+--- a/dev/preview/previewctl/go.mod
++++ b/dev/preview/previewctl/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/previewctl
+ 
+-go 1.23.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	cloud.google.com/go/storage v1.39.1
+diff --git a/dev/rejector/go.mod b/dev/rejector/go.mod
+index 01799e66f..2b9bffe35 100644
+--- a/dev/rejector/go.mod
++++ b/dev/rejector/go.mod
+@@ -1,6 +1,10 @@
+ module gitpod.io/rejector/v2
+ 
+-go 1.22.2
++go 1.24
++
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	k8s.io/api v0.31.8
+diff --git a/dev/rejector/go.sum b/dev/rejector/go.sum
+index 0327782e8..b76c5ae8b 100644
+--- a/dev/rejector/go.sum
++++ b/dev/rejector/go.sum
+@@ -134,20 +134,10 @@ gopkg.in/yaml.v2 v2.4.0/go.mod h1:RDklbk79AGWmwhnvt/jBztapEOGDOx6ZbXqjP6csGnQ=
+ gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
+ gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
+ gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
+-k8s.io/api v0.30.9 h1:yojLzwl7TBV3XusCHXvR2AnowQFVnL9Ui3/wAga3pv4=
+-k8s.io/api v0.30.9/go.mod h1:FGOLP66cj572P8rjO1H5x5+0vzmvf3bLc8pQlyQeBqk=
+-k8s.io/api v0.31.1 h1:Xe1hX/fPW3PXYYv8BlozYqw63ytA92snr96zMW9gWTU=
+-k8s.io/api v0.31.1/go.mod h1:sbN1g6eY6XVLeqNsZGLnI5FwVseTrZX7Fv3O26rhAaI=
+ k8s.io/api v0.31.8 h1:d5WuCZpFqpkQ7a4JuxSI0/IQuFWT+dUE3jeptRoZkto=
+ k8s.io/api v0.31.8/go.mod h1:Sq38Y1MdXkkp4thnHFYgErPgP0jhZ9sTOppFkt14YQ8=
+-k8s.io/apimachinery v0.30.9 h1:wDbY7vSPd3ALl5Fpw0yEiDyW5ozMyCpqsQ6anaCkpII=
+-k8s.io/apimachinery v0.30.9/go.mod h1:iexa2somDaxdnj7bha06bhb43Zpa6eWH8N8dbqVjTUc=
+-k8s.io/apimachinery v0.31.1 h1:mhcUBbj7KUjaVhyXILglcVjuS4nYXiwC+KKFBgIVy7U=
+-k8s.io/apimachinery v0.31.1/go.mod h1:rsPdaZJfTfLsNJSQzNHQvYoTmxhoOEofxtOsF3rtsMo=
++k8s.io/apimachinery v0.31.8 h1:zRA9bpuLwdVqODPrWaAT9eRVB4GuTYLSRLoO3XrzYUU=
+ k8s.io/apimachinery v0.31.8/go.mod h1:rsPdaZJfTfLsNJSQzNHQvYoTmxhoOEofxtOsF3rtsMo=
+-k8s.io/client-go v0.30.9/go.mod h1:JObO2rfBeqrWn45GNMNnDReUfa6lgP4p+RjRLPJMaE8=
+-k8s.io/client-go v0.31.1 h1:f0ugtWSbWpxHR7sjVpQwuvw9a3ZKLXX0u0itkFXufb0=
+-k8s.io/client-go v0.31.1/go.mod h1:sKI8871MJN2OyeqRlmA4W4KM9KBdBUpDLu/43eGemCg=
+ k8s.io/client-go v0.31.8 h1:sMlDa9W+2y3tHo0D+XYeovhOTww7lKiOTTqqyxABcM8=
+ k8s.io/client-go v0.31.8/go.mod h1:7g9whHSnLT2Eilwpw1Ozdl2vRr2zwwqO5RPBDDkT5xo=
+ k8s.io/klog/v2 v2.130.1 h1:n9Xl7H1Xvksem4KFG4PYbdQCQxqc/tTUyrgXaOhHSzk=
+diff --git a/dev/ssh-load-test/go.mod b/dev/ssh-load-test/go.mod
+index 9d0c16f60..d256e7515 100644
+--- a/dev/ssh-load-test/go.mod
++++ b/dev/ssh-load-test/go.mod
+@@ -1,8 +1,10 @@
+ module test
+ 
+-go 1.23.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/helloyi/go-sshclient v1.1.0
+diff --git a/dev/version-manifest/go.mod b/dev/version-manifest/go.mod
+index 5959cca0e..25ee8f70c 100644
+--- a/dev/version-manifest/go.mod
++++ b/dev/version-manifest/go.mod
+@@ -1,6 +1,10 @@
+ module github.com/gitpod-io/gitpod/version-manifest
+ 
+-go 1.22
++go 1.24
++
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/google/go-cmp v0.5.7
+diff --git a/install/installer/cmd/mirror_repo.go b/install/installer/cmd/mirror_repo.go
+index 216435869..da259520e 100644
+--- a/install/installer/cmd/mirror_repo.go
++++ b/install/installer/cmd/mirror_repo.go
+@@ -16,7 +16,7 @@ var mirrorRepoCmd = &cobra.Command{
+ 	Use:   "repo",
+ 	Short: "Get original image repo for this installer",
+ 	RunE: func(cmd *cobra.Command, args []string) error {
+-		fmt.Printf(config.GitpodContainerRegistry)
++		fmt.Print(config.GitpodContainerRegistry)
+ 		return nil
+ 	},
+ }
+diff --git a/install/installer/cmd/validate_cluster.go b/install/installer/cmd/validate_cluster.go
+index b8f05cbc5..987998fbe 100644
+--- a/install/installer/cmd/validate_cluster.go
++++ b/install/installer/cmd/validate_cluster.go
+@@ -84,7 +84,7 @@ var validateClusterCmd = &cobra.Command{
+ 			os.Exit(1)
+ 		}
+ 
+-		fmt.Printf(out)
++		fmt.Print(out)
+ 		return nil
+ 	},
+ }
+diff --git a/install/installer/go.mod b/install/installer/go.mod
+index ba2eaf4c0..2c0dc4b11 100644
+--- a/install/installer/go.mod
++++ b/install/installer/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/installer
+ 
+-go 1.23.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/Masterminds/semver v1.5.0
+diff --git a/install/installer/pkg/common/common.go b/install/installer/pkg/common/common.go
+index 08c6e135d..e8a89f465 100644
+--- a/install/installer/pkg/common/common.go
++++ b/install/installer/pkg/common/common.go
+@@ -122,11 +122,11 @@ func DefaultEnv(cfg *config.Config) []corev1.EnvVar {
+ 			}},
+ 			{Name: "KUBE_DOMAIN", Value: "svc.cluster.local"},
+ 			{Name: "LOG_LEVEL", Value: strings.ToLower(logLevel)},
+-			// TODO(gpl): This is our bandaid for https:://tldr.fail, until we upgrade from Go 1.23 to 1.24
++			// TODO(gpl): This is our bandaid for https:://tldr.fail
+ 			// See these issues for details:
+ 			//  - https://linear.app/gitpod/issue/CLC-1264/investigate-public-api-server-connectivity-issues-during-sso-login#comment-f2daa302
+ 			//  - https://linear.app/gitpod/issue/CLC-1067/go-upgrade-from-123x-to-124x-once-available for details
+-			{Name: "GODEBUG", Value: "tlskyber=0"},
++			{Name: "GODEBUG", Value: "tlsmlkem=0"},
+ 		},
+ 		ProxyEnv(cfg),
+ 	)
+diff --git a/install/preview/prettylog/go.mod b/install/preview/prettylog/go.mod
+index 383a4f04c..87a2577c8 100644
+--- a/install/preview/prettylog/go.mod
++++ b/install/preview/prettylog/go.mod
+@@ -1,6 +1,10 @@
+ module github.com/gitpod-io/gitpod/install/preview/prettylog
+ 
+-go 1.22
++go 1.24
++
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/gookit/color v1.5.0 // indirect
+diff --git a/operations/observability/mixins/go.mod b/operations/observability/mixins/go.mod
+index 799a1a0d5..77ae43e36 100644
+--- a/operations/observability/mixins/go.mod
++++ b/operations/observability/mixins/go.mod
+@@ -1,6 +1,10 @@
+ module gitpod-io/mixin-utils
+ 
+-go 1.15
++go 1.24
++
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751 // indirect
+diff --git a/test/go.mod b/test/go.mod
+index 730f80bfd..0632ee006 100644
+--- a/test/go.mod
++++ b/test/go.mod
+@@ -1,8 +1,10 @@
+ module github.com/gitpod-io/gitpod/test
+ 
+-go 1.23.0
++go 1.24
+ 
+-toolchain go1.23.3
++toolchain go1.24.3
++
++godebug tlsmlkem=0
+ 
+ require (
+ 	github.com/bufbuild/connect-go v1.10.0

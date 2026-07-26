@@ -1,0 +1,54 @@
+repo: kubernetes
+base_commit: a53a517022c59ad40c20ba09e8404489b6a81147
+commit: 4bdaf6cbbde9d7bda89ff734691fc3195a1ecbd5
+patch_stored: true
+gold:
+  - path: pkg/apis/core/types.go
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: 'the immediately preceding commit (this instance''s pinned base_commit, a53a517022c) adds NodeSystemInfo.Swap *NodeSwapStatus and the NodeSwapStatus struct here; every file in this commit''s diff is a mechanical codegen projection of that hand-written field addition.'
+  - path: staging/src/k8s.io/api/core/v1/types.go
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: 'the same base_commit adds the versioned Swap *NodeSwapStatus field with json/protobuf tags (protobuf,11,opt,name=swap) here; generated.proto, generated.pb.go, and the deepcopy/applyconfiguration/openapi files all regenerate from this exact struct tag.'
+  - path: staging/src/k8s.io/api/core/v1/generated.proto
+    tier: essential
+    role: cochange
+    in_diff: true
+    rationale: regenerated protobuf IDL adds `optional NodeSwapStatus swap = 11` matching the types.go tag, the most human-legible of the mechanical artifacts confirming the wire-format change.
+  - path: staging/src/k8s.io/api/core/v1/zz_generated.deepcopy.go
+    tier: helpful
+    role: cochange
+    in_diff: true
+    rationale: regenerated DeepCopyInto for NodeSystemInfo/NodeSwapStatus handles the new *NodeSwapStatus pointer field, mechanically required for API object copy correctness.
+  - path: staging/src/k8s.io/client-go/applyconfigurations/core/v1/nodeswapstatus.go
+    tier: helpful
+    role: cochange
+    in_diff: true
+    rationale: new generated applyconfiguration type for NodeSwapStatus, enabling server-side-apply/typed clients to set the Capacity field added in types.go.
+  - path: pkg/generated/openapi/zz_generated.openapi.go
+    tier: helpful
+    role: cochange
+    in_diff: true
+    rationale: regenerated OpenAPI schema entry documents the new NodeSystemInfo.swap property and NodeSwapStatus definition for API clients/docs.
+forbidden:
+  - path: staging/src/k8s.io/api/core/v1/generated.pb.go
+    reason: 2400-line mechanical protobuf marshal/unmarshal regen dominated by field-number renumbering noise; generated.proto already shows the same schema change more legibly
+  - path: staging/src/k8s.io/client-go/applyconfigurations/core/v1/nodesysteminfo.go
+    reason: mechanical builder-method addition (WithSwap) for the new field, redundant with nodeswapstatus.go for understanding the change
+  - path: pkg/apis/core/v1/zz_generated.conversion.go
+    reason: internal<->external type conversion boilerplate for the new field, mechanical and adds nothing beyond the two types.go files
+  - path: staging/src/k8s.io/api/core/v1/types_swagger_doc_generated.go
+    reason: auto-generated doc-comment string table duplicating the doc comment already present in types.go
+nontrivial_gold_count: 2
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 11
+  description: Auto-generated files from ./hack/update-codegen.sh only — small all-generated commit, minimal
+    viable noise case
+notes: This commit is purely `./hack/update-codegen.sh` output regenerating 11 derived artifacts after the immediately preceding hand-written commit (base_commit a53a517022c, "Add the Swap field to NodeSystemInfo") added NodeSystemInfo.Swap *NodeSwapStatus in pkg/apis/core/types.go and staging/.../core/v1/types.go; understanding this diff requires those two hand-written files even though neither appears in it, so both are essential nontrivial gold and the remaining forbidden entries are the most purely-mechanical of the 11 generated files.
+string_indirection: false

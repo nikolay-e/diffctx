@@ -1,0 +1,39 @@
+repo: kubernetes
+base_commit: 6bc0768c62b9dade91b22d1bfcc115edf1f0ccad
+commit: 1d4f88b1ee1c0073e0f789d539ba8bd1c61b0ca1
+patch_stored: false
+gold:
+  - path: go.mod
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: bumps `github.com/opencontainers/runc` v1.1.15 -> v1.2.1 and drops the now-unneeded `cilium/ebpf` and `seccomp/libseccomp-golang` indirect requires, the change this whole 187-file vendor tree churn exists to serve.
+  - path: hack/unwanted-dependencies.json
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: 'moves `github.com/opencontainers/runc` into the `golang.org/x/exp` unwanted-references allowlist (replacing `cilium/ebpf`), the exact workaround the commit message calls out: "due to an issue with go mod / go list, ... runc had to be added ... under x/exp. This is bogus...".'
+  - path: cmd/dependencyverifier/dependencyverifier.go
+    tier: helpful
+    role: caller
+    in_diff: false
+    rationale: the `hack/verify-*` tool that actually parses hack/unwanted-dependencies.json's UnwantedModules map and flags UnwantedReferences from `go mod graph` output — explains why the JSON entry the commit message calls "bogus" is nonetheless required for CI to pass.
+forbidden:
+  - path: go.sum
+    reason: mechanically regenerated checksum lockfile with no semantic content beyond mirroring go.mod
+  - path: go.work.sum
+    reason: mechanically regenerated workspace checksum lockfile, same content class as go.sum
+  - path: vendor/modules.txt
+    reason: mechanically regenerated vendor manifest listing every vendored package/version, no authored signal
+  - path: vendor/github.com/opencontainers/runc/libcontainer/user/user.go
+    reason: third-party vendored runc source (604 lines deleted) copied wholesale by `go mod vendor` — not k8s-authored change surface
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 187
+  description: 'vendor: bump runc to v1.2.1 — 183/187 vendor tree churn, essentially zero hand-written
+    signal'
+notes: 'Pure dependency-bump commit (no patch.diff stored; read via `git show` on the pinned commit). Only 4 of 187 changed files are hand-authored (go.mod, go.sum, go.work.sum, hack/unwanted-dependencies.json); the rest is the runc v1.2.1 vendor tree replacing v1.1.15, including deletion of files (libcontainer/user, userns_maps.c) that moved out of runc''s dependency surface. The commit message itself documents the one non-obvious linkage: the unwanted-dependencies.json workaround entry, matched to its consumer (dependencyverifier.go) by string module-path keys.'

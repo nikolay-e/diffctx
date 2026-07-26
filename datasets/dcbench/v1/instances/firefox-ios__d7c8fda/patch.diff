@@ -1,0 +1,499 @@
+From d7c8fda485e921d48c7c3e68162c972b349a903d Mon Sep 17 00:00:00 2001
+From: Zazza6464 <55580351+FilippoZazzeroni@users.noreply.github.com>
+Date: Thu, 29 Jan 2026 10:59:10 +0100
+Subject: [PATCH] Add [Unit Tests] FXIOS-14745 TestKit library and move
+ XCTestExtension to it (#31842)
+
+* Add TestKit library and move XCTestExtension to it
+
+* lint
+
+* Remove XCTestExtension in TabDataStoreTests and SiteImageViewTests and import TestKit
+
+* Removed unnecessary import
+
+---------
+
+Co-authored-by: Filippo Zazzeroni <fzazzeroni@mozilla.com>
+---
+ BrowserKit/Package.swift                      | 17 +++--
+ .../Sources/TestKit/XCTestExtension.swift     | 71 +++++++++++++++++++
+ .../FaviconURLCacheTests.swift                |  1 +
+ .../Resources/XCTestCaseExtension.swift       | 14 ----
+ .../FoundationModelsSummarizerTests.swift     |  1 +
+ .../Mocks/XCTest+TrackMemoryLeak.swift        | 33 ---------
+ .../TabDataStoreTests/TabDataStoreTests.swift |  1 +
+ .../XCTestCaseExtension.swift                 | 20 ------
+ .../BrowserAddressToolbarTests.swift          |  1 +
+ .../ToolbarKitTests/XCTestCaseExtension.swift | 14 ----
+ .../EngineSessionScriptResponderTests.swift   |  1 +
+ .../WebEngineTests/XCTestCaseExtension.swift  | 20 ------
+ firefox-ios/Client.xcodeproj/project.pbxproj  |  7 ++
+ .../Browser/RemoteTabsPanelTests.swift        |  1 +
+ .../ClientTests/XCTestCaseExtensions.swift    | 57 ---------------
+ 15 files changed, 96 insertions(+), 163 deletions(-)
+ create mode 100644 BrowserKit/Sources/TestKit/XCTestExtension.swift
+ delete mode 100644 BrowserKit/Tests/SiteImageViewTests/Resources/XCTestCaseExtension.swift
+ delete mode 100644 BrowserKit/Tests/SummarizeKitTests/Mocks/XCTest+TrackMemoryLeak.swift
+ delete mode 100644 BrowserKit/Tests/TabDataStoreTests/XCTestCaseExtension.swift
+ delete mode 100644 BrowserKit/Tests/ToolbarKitTests/XCTestCaseExtension.swift
+ delete mode 100644 BrowserKit/Tests/WebEngineTests/XCTestCaseExtension.swift
+
+diff --git a/BrowserKit/Package.swift b/BrowserKit/Package.swift
+index fc9946fe0..e145407a6 100644
+--- a/BrowserKit/Package.swift
++++ b/BrowserKit/Package.swift
+@@ -29,6 +29,8 @@ let package = Package(
+         .library(
+             name: "WebEngine",
+             targets: ["WebEngine"]),
++        .library(name: "TestKit",
++                 targets: ["TestKit"]),
+         .library(
+             name: "ToolbarKit",
+             targets: ["ToolbarKit"]),
+@@ -114,7 +116,11 @@ let package = Package(
+             ]),
+         .testTarget(
+             name: "SiteImageViewTests",
+-            dependencies: ["SiteImageView", .product(name: "GCDWebServers", package: "GCDWebServer")],
++            dependencies: [
++                "SiteImageView",
++                "TestKit",
++                .product(name: "GCDWebServers", package: "GCDWebServer")
++            ],
+             resources: [
+                 .copy("Resources/mozilla.ico"),
+                 .copy("Resources/inf-nan.svg"),
+@@ -145,7 +151,7 @@ let package = Package(
+             ]),
+         .testTarget(
+             name: "TabDataStoreTests",
+-            dependencies: ["TabDataStore"],
++            dependencies: ["TabDataStore", "TestKit"],
+             swiftSettings: [
+             ]
+         ),
+@@ -170,10 +176,11 @@ let package = Package(
+             ]),
+         .testTarget(
+             name: "WebEngineTests",
+-            dependencies: ["WebEngine"],
++            dependencies: ["WebEngine", "TestKit"],
+             swiftSettings: [
+             ]
+         ),
++        .target(name: "TestKit"),
+         .target(
+             name: "ToolbarKit",
+             dependencies: ["Common"],
+@@ -182,7 +189,7 @@ let package = Package(
+             ]),
+         .testTarget(
+             name: "ToolbarKitTests",
+-            dependencies: ["ToolbarKit"],
++            dependencies: ["ToolbarKit", "TestKit"],
+             swiftSettings: [
+         ]),
+         .target(
+@@ -209,7 +216,7 @@ let package = Package(
+             ]
+         ),
+         .testTarget(name: "SummarizeKitTests",
+-                    dependencies: ["SummarizeKit"],
++                    dependencies: ["SummarizeKit", "TestKit"],
+                     swiftSettings: [
+                         .unsafeFlags(["-enable-testing"]),
+                     ]),
+diff --git a/BrowserKit/Sources/TestKit/XCTestExtension.swift b/BrowserKit/Sources/TestKit/XCTestExtension.swift
+new file mode 100644
+index 000000000..08e474f3c
+--- /dev/null
++++ b/BrowserKit/Sources/TestKit/XCTestExtension.swift
+@@ -0,0 +1,71 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at http://mozilla.org/MPL/2.0/
++
++import XCTest
++
++public extension XCTestCase {
++    /// Tracks an object for memory leaks by asserting it's deallocated after the test completes.
++    @MainActor
++    func trackForMemoryLeaks(_ object: AnyObject?, file: StaticString = #filePath, line: UInt = #line) {
++        addTeardownBlock { [weak object] in
++            XCTAssertNil(object, "Memory leak detected in \(file):\(line)")
++        }
++    }
++
++    /// Unwraps un async method return optional value.
++    func unwrapAsync<T>(asyncMethod: () async throws -> T?,
++                        file: StaticString = #filePath,
++                        line: UInt = #line) async throws -> T {
++        let returnValue = try await asyncMethod()
++        return try XCTUnwrap(returnValue, file: file, line: line)
++    }
++
++    /// Asserts that an async throwing expression throws a specific error type.
++    ///
++    /// Usage:
++    /// ```swift
++    /// await assertAsyncThrows(ofType: NetworkError.self) {
++    ///     try await service.fetchData()
++    /// } verify: { error in
++    ///     XCTAssertEqual(error.code, 404)
++    /// }
++    /// ```
++    @MainActor
++    func assertAsyncThrows<E: Error, T>(
++        ofType expectedType: E.Type,
++        _ expression: () async throws -> T,
++        file: StaticString = #filePath,
++        line: UInt = #line,
++        verify: ((E) -> Void)? = nil
++    ) async {
++        do {
++            _ = try await expression()
++            XCTFail("Expected error \(expectedType), but no error thrown.", file: file, line: line)
++        } catch let error as E {
++            verify?(error)
++        } catch {
++            XCTFail("Expected error \(expectedType), but got \(error)", file: file, line: line)
++        }
++    }
++
++    /// Asserts that an async throwing methods throws the expected Equatable error type.
++    ///
++    /// Usage:
++    /// ```swift
++    /// await assertAsyncThrowsEqual(MyErrorCase.unknown) {
++    ///     try await service.fetchData()
++    /// }
++    /// ```
++    @MainActor
++    func assertAsyncThrowsEqual<E: Error & Equatable, T>(
++        _ expected: E,
++        _ expression: @MainActor () async throws -> T,
++        file: StaticString = #filePath,
++        line: UInt = #line
++    ) async {
++        await assertAsyncThrows(ofType: E.self, expression, file: file, line: line) { error in
++            XCTAssertEqual(error, expected, file: file, line: line)
++        }
++    }
++}
+diff --git a/BrowserKit/Tests/SiteImageViewTests/FaviconURLProcessing/FaviconURLCacheTests.swift b/BrowserKit/Tests/SiteImageViewTests/FaviconURLProcessing/FaviconURLCacheTests.swift
+index a94915cd2..a8aca78f1 100644
+--- a/BrowserKit/Tests/SiteImageViewTests/FaviconURLProcessing/FaviconURLCacheTests.swift
++++ b/BrowserKit/Tests/SiteImageViewTests/FaviconURLProcessing/FaviconURLCacheTests.swift
+@@ -3,6 +3,7 @@
+ // file, You can obtain one at http://mozilla.org/MPL/2.0/
+ 
+ import XCTest
++import TestKit
+ @testable import SiteImageView
+ 
+ @MainActor
+diff --git a/BrowserKit/Tests/SiteImageViewTests/Resources/XCTestCaseExtension.swift b/BrowserKit/Tests/SiteImageViewTests/Resources/XCTestCaseExtension.swift
+deleted file mode 100644
+index 449b09aeb..000000000
+--- a/BrowserKit/Tests/SiteImageViewTests/Resources/XCTestCaseExtension.swift
++++ /dev/null
+@@ -1,14 +0,0 @@
+-// This Source Code Form is subject to the terms of the Mozilla Public
+-// License, v. 2.0. If a copy of the MPL was not distributed with this
+-// file, You can obtain one at http://mozilla.org/MPL/2.0/
+-
+-import XCTest
+-
+-public extension XCTestCase {
+-    @MainActor
+-    func trackForMemoryLeaks(_ object: AnyObject?, file: StaticString = #filePath, line: UInt = #line) {
+-        addTeardownBlock { [weak object] in
+-            XCTAssertNil(object, "Memory leak detected in \(file):\(line)")
+-        }
+-    }
+-}
+diff --git a/BrowserKit/Tests/SummarizeKitTests/FoundationModelsSummarizerTests.swift b/BrowserKit/Tests/SummarizeKitTests/FoundationModelsSummarizerTests.swift
+index 21da5f5ba..47f295c92 100644
+--- a/BrowserKit/Tests/SummarizeKitTests/FoundationModelsSummarizerTests.swift
++++ b/BrowserKit/Tests/SummarizeKitTests/FoundationModelsSummarizerTests.swift
+@@ -5,6 +5,7 @@
+ @testable import SummarizeKit
+ import XCTest
+ import Common
++import TestKit
+ 
+ /// These compile-time checks ensure the app can still be built with pre–iOS 26 SDKs.
+ /// The `@available` attribute only guards *runtime execution*; it doesn’t prevent XCTest
+diff --git a/BrowserKit/Tests/SummarizeKitTests/Mocks/XCTest+TrackMemoryLeak.swift b/BrowserKit/Tests/SummarizeKitTests/Mocks/XCTest+TrackMemoryLeak.swift
+deleted file mode 100644
+index 21be4048f..000000000
+--- a/BrowserKit/Tests/SummarizeKitTests/Mocks/XCTest+TrackMemoryLeak.swift
++++ /dev/null
+@@ -1,33 +0,0 @@
+-// This Source Code Form is subject to the terms of the Mozilla Public
+-// License, v. 2.0. If a copy of the MPL was not distributed with this
+-// file, You can obtain one at http://mozilla.org/MPL/2.0/
+-
+-import Foundation
+-import XCTest
+-
+-public extension XCTestCase {
+-    @MainActor
+-    func trackForMemoryLeaks(_ object: AnyObject?, file: StaticString = #filePath, line: UInt = #line) {
+-        addTeardownBlock { [weak object] in
+-            XCTAssertNil(object, "Memory leak detected in \(file):\(line)")
+-        }
+-    }
+-
+-    @MainActor
+-    func assertAsyncThrows<E: Error, T>(
+-        ofType expectedType: E.Type,
+-        _ expression: () async throws -> T,
+-        file: StaticString = #filePath,
+-        line: UInt = #line,
+-        verify: ((E) -> Void)? = nil
+-    ) async {
+-        do {
+-            _ = try await expression()
+-            XCTFail("Expected error \(expectedType), but no error thrown.", file: file, line: line)
+-        } catch let error as E {
+-            verify?(error)
+-        } catch {
+-            XCTFail("Expected error \(expectedType), but got \(error)", file: file, line: line)
+-        }
+-    }
+-}
+diff --git a/BrowserKit/Tests/TabDataStoreTests/TabDataStoreTests.swift b/BrowserKit/Tests/TabDataStoreTests/TabDataStoreTests.swift
+index 31d01d945..aa0238129 100644
+--- a/BrowserKit/Tests/TabDataStoreTests/TabDataStoreTests.swift
++++ b/BrowserKit/Tests/TabDataStoreTests/TabDataStoreTests.swift
+@@ -3,6 +3,7 @@
+ // file, You can obtain one at http://mozilla.org/MPL/2.0/
+ 
+ import XCTest
++import TestKit
+ @testable import TabDataStore
+ 
+ final class TabDataStoreTests: XCTestCase, @unchecked Sendable {
+diff --git a/BrowserKit/Tests/TabDataStoreTests/XCTestCaseExtension.swift b/BrowserKit/Tests/TabDataStoreTests/XCTestCaseExtension.swift
+deleted file mode 100644
+index 9af3e94e6..000000000
+--- a/BrowserKit/Tests/TabDataStoreTests/XCTestCaseExtension.swift
++++ /dev/null
+@@ -1,20 +0,0 @@
+-// This Source Code Form is subject to the terms of the Mozilla Public
+-// License, v. 2.0. If a copy of the MPL was not distributed with this
+-// file, You can obtain one at http://mozilla.org/MPL/2.0/
+-
+-import Foundation
+-import XCTest
+-
+-extension XCTestCase {
+-    @MainActor
+-    func trackForMemoryLeaks(_ instance: AnyObject, file: StaticString = #filePath, line: UInt = #line) {
+-        addTeardownBlock { [weak instance] in
+-            XCTAssertNil(
+-                instance,
+-                "Instance should have been deallocated, potential memory leak.",
+-                file: file,
+-                line: line
+-            )
+-        }
+-    }
+-}
+diff --git a/BrowserKit/Tests/ToolbarKitTests/BrowserAddressToolbarTests.swift b/BrowserKit/Tests/ToolbarKitTests/BrowserAddressToolbarTests.swift
+index 3cc213bac..db4346b4a 100644
+--- a/BrowserKit/Tests/ToolbarKitTests/BrowserAddressToolbarTests.swift
++++ b/BrowserKit/Tests/ToolbarKitTests/BrowserAddressToolbarTests.swift
+@@ -3,6 +3,7 @@
+ // file, You can obtain one at http://mozilla.org/MPL/2.0/
+ 
+ import XCTest
++import TestKit
+ @testable import ToolbarKit
+ 
+ final class BrowserAddressToolbarTests: XCTestCase {
+diff --git a/BrowserKit/Tests/ToolbarKitTests/XCTestCaseExtension.swift b/BrowserKit/Tests/ToolbarKitTests/XCTestCaseExtension.swift
+deleted file mode 100644
+index 449b09aeb..000000000
+--- a/BrowserKit/Tests/ToolbarKitTests/XCTestCaseExtension.swift
++++ /dev/null
+@@ -1,14 +0,0 @@
+-// This Source Code Form is subject to the terms of the Mozilla Public
+-// License, v. 2.0. If a copy of the MPL was not distributed with this
+-// file, You can obtain one at http://mozilla.org/MPL/2.0/
+-
+-import XCTest
+-
+-public extension XCTestCase {
+-    @MainActor
+-    func trackForMemoryLeaks(_ object: AnyObject?, file: StaticString = #filePath, line: UInt = #line) {
+-        addTeardownBlock { [weak object] in
+-            XCTAssertNil(object, "Memory leak detected in \(file):\(line)")
+-        }
+-    }
+-}
+diff --git a/BrowserKit/Tests/WebEngineTests/EngineSessionScriptResponderTests.swift b/BrowserKit/Tests/WebEngineTests/EngineSessionScriptResponderTests.swift
+index 8b192cf37..6614957c7 100644
+--- a/BrowserKit/Tests/WebEngineTests/EngineSessionScriptResponderTests.swift
++++ b/BrowserKit/Tests/WebEngineTests/EngineSessionScriptResponderTests.swift
+@@ -3,6 +3,7 @@
+ // file, You can obtain one at http://mozilla.org/MPL/2.0/
+ 
+ import XCTest
++import TestKit
+ @testable import WebEngine
+ 
+ @MainActor
+diff --git a/BrowserKit/Tests/WebEngineTests/XCTestCaseExtension.swift b/BrowserKit/Tests/WebEngineTests/XCTestCaseExtension.swift
+deleted file mode 100644
+index 29a66c41a..000000000
+--- a/BrowserKit/Tests/WebEngineTests/XCTestCaseExtension.swift
++++ /dev/null
+@@ -1,20 +0,0 @@
+-// This Source Code Form is subject to the terms of the Mozilla Public
+-// License, v. 2.0. If a copy of the MPL was not distributed with this
+-// file, You can obtain one at http://mozilla.org/MPL/2.0/
+-
+-import Foundation
+-import XCTest
+-
+-extension XCTestCase {
+-    @MainActor
+-    func trackForMemoryLeaks(_ instance: AnyObject,
+-                             file: StaticString = #filePath,
+-                             line: UInt = #line) {
+-        addTeardownBlock { [weak instance] in
+-            XCTAssertNil(instance,
+-                         "Instance should have been deallocated, potential memory leak.",
+-                         file: file,
+-                         line: line)
+-        }
+-    }
+-}
+diff --git a/firefox-ios/Client.xcodeproj/project.pbxproj b/firefox-ios/Client.xcodeproj/project.pbxproj
+index 2874fb813..91eb54a94 100644
+--- a/firefox-ios/Client.xcodeproj/project.pbxproj
++++ b/firefox-ios/Client.xcodeproj/project.pbxproj
+@@ -1490,6 +1490,7 @@
+ 		C25020842ECDE75D0071506F /* MockTranslationsSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C25020832ECDE7550071506F /* MockTranslationsSchemeHandler.swift */; };
+ 		C2506C932A6A863600F2B76E /* HistoryCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2506C922A6A863600F2B76E /* HistoryCoordinator.swift */; };
+ 		C2506C952A6A8D2600F2B76E /* HistoryCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2506C942A6A8D2600F2B76E /* HistoryCoordinatorTests.swift */; };
++		C26B96D72F29188100D4B140 /* TestKit in Frameworks */ = {isa = PBXBuildFile; productRef = C26B96D62F29188100D4B140 /* TestKit */; };
+ 		C27EF6132EBA28E100BED719 /* LanguageDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = C27EF6122EBA28DB00BED719 /* LanguageDetector.swift */; };
+ 		C27EF6152EBA2EE500BED719 /* LanguageDetectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C27EF6142EBA2EDD00BED719 /* LanguageDetectorTests.swift */; };
+ 		C27EF61A2EBA364E00BED719 /* LanguageSampleSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = C27EF6192EBA364C00BED719 /* LanguageSampleSource.swift */; };
+@@ -11492,6 +11493,7 @@
+ 			isa = PBXFrameworksBuildPhase;
+ 			buildActionMask = 2147483647;
+ 			files = (
++				C26B96D72F29188100D4B140 /* TestKit in Frameworks */,
+ 				EDF567A02C8B51DC00FDB09D /* SiteImageView in Frameworks */,
+ 				43F93C2827A8683E009833D9 /* RustMozillaAppServices.framework in Frameworks */,
+ 				E5C2BA922EA9054E001E3DEF /* Shared in Frameworks */,
+@@ -16979,6 +16981,7 @@
+ 				EDF5679F2C8B51DC00FDB09D /* SiteImageView */,
+ 				EDF567A12C8B51E100FDB09D /* Kingfisher */,
+ 				0BCC26AC2CFF16220072CD5A /* Shared */,
++				C26B96D62F29188100D4B140 /* TestKit */,
+ 			);
+ 			productName = ClientTests;
+ 			productReference = F84B21D31A090F8100AAB793 /* ClientTests.xctest */;
+@@ -31715,6 +31718,10 @@
+ 			package = AB2AC6612BCFD0A200022AAB /* XCRemoteSwiftPackageReference "swift-certificates" */;
+ 			productName = X509;
+ 		};
++		C26B96D62F29188100D4B140 /* TestKit */ = {
++			isa = XCSwiftPackageProductDependency;
++			productName = TestKit;
++		};
+ 		D433852B27ABC8150069DD33 /* MappaMundi */ = {
+ 			isa = XCSwiftPackageProductDependency;
+ 			package = 43C6A47D27A0679300C79856 /* XCRemoteSwiftPackageReference "MappaMundi" */;
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Browser/RemoteTabsPanelTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Browser/RemoteTabsPanelTests.swift
+index 308a077f5..fe856a6e3 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Browser/RemoteTabsPanelTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Browser/RemoteTabsPanelTests.swift
+@@ -4,6 +4,7 @@
+ 
+ import XCTest
+ import Common
++import TestKit
+ 
+ @testable import Client
+ 
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/XCTestCaseExtensions.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/XCTestCaseExtensions.swift
+index c91781fca..d70b06ed4 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/XCTestCaseExtensions.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/XCTestCaseExtensions.swift
+@@ -14,30 +14,6 @@ extension XCTestCase {
+         XCTWaiter().wait(for: [expectation], timeout: timeout)
+     }
+ 
+-    @MainActor
+-    func trackForMemoryLeaks(_ instance: AnyObject, file: StaticString = #filePath, line: UInt = #line) {
+-        addTeardownBlock { [weak instance] in
+-            XCTAssertNil(
+-                instance,
+-                "Instance should have been deallocated, potential memory leak.",
+-                file: file,
+-                line: line
+-            )
+-        }
+-    }
+-
+-    /// Unwraps un async method return value.
+-    ///
+-    /// It is a wrapper of XCTUnwrap. Since is not possible to do ```XCTUnwrap(await asyncMethod())```
+-    ///
+-    /// it has to be done always in two steps, this method make it one line for users.
+-    func unwrapAsync<T>(asyncMethod: () async throws -> T?,
+-                        file: StaticString = #filePath,
+-                        line: UInt = #line) async throws -> T {
+-        let returnValue = try await asyncMethod()
+-        return try XCTUnwrap(returnValue, file: file, line: line)
+-    }
+-
+     /// Helper function to cast a value to `AnyHashable`.
+     func asAnyHashable<T>(_ value: T) -> AnyHashable? {
+         return value as? AnyHashable
+@@ -65,37 +41,4 @@ extension XCTestCase {
+         TelemetryWrapper.hasTelemetryOverride = false
+         DependencyHelperMock().reset()
+     }
+-
+-    // MARK: Error Handling
+-    /// Convenience method to simplify error checking in the test cases for non Equatable types.
+-    @MainActor
+-    func assertAsyncThrows<E: Error, T>(
+-        ofType expectedType: E.Type,
+-        _ expression: @MainActor () async throws -> T,
+-        file: StaticString = #filePath,
+-        line: UInt = #line,
+-        verify: (@MainActor (E) -> Void)? = nil
+-    ) async {
+-        do {
+-            _ = try await expression()
+-            XCTFail("Expected error \(expectedType), but no error thrown.", file: file, line: line)
+-        } catch let error as E {
+-            verify?(error)
+-        } catch {
+-            XCTFail("Expected error \(expectedType), but got \(error)", file: file, line: line)
+-        }
+-    }
+-
+-    /// Convenience method to simplify error checking in the test cases for Equatable types.
+-    @MainActor
+-    func assertAsyncThrowsEqual<E: Error & Equatable, T>(
+-        _ expected: E,
+-        _ expression: @MainActor () async throws -> T,
+-        file: StaticString = #filePath,
+-        line: UInt = #line
+-    ) async {
+-        await assertAsyncThrows(ofType: E.self, expression, file: file, line: line) { error in
+-            XCTAssertEqual(error, expected, file: file, line: line)
+-        }
+-    }
+ }

@@ -1,0 +1,61 @@
+repo: react-native
+base_commit: 7e85653c18621cd8b71a5da028bc328a0632df98
+commit: b365e26593112fee8824c53a2787679a29cbe9ab
+patch_stored: true
+gold:
+- path: packages/react-native/Package.swift
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/React/Fabric/Mounting/ComponentViews/View/RCTViewComponentView.mm
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactApple/RCTSwiftUI/RCTSwiftUI.podspec
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactApple/RCTSwiftUI/RCTSwiftUIContainerView.swift
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactApple/RCTSwiftUIWrapper/RCTSwiftUIContainerViewWrapper.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactApple/RCTSwiftUIWrapper/RCTSwiftUIContainerViewWrapper.m
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactApple/RCTSwiftUIWrapper/RCTSwiftUIWrapper.podspec
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/rn-tester/js/examples/Filter/FilterExample.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt
+- path: packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp
+- path: packages/rn-tester/Podfile.lock
+- path: packages/rn-tester/RNTesterPods.xcodeproj/project.pbxproj
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'ctx_files=35 vs git_files=32 is close, so the bloat here is not whole-tree pull-in but full-file
+  rendering of tiny diffs: diff.stat shows React-RCTFabric.podspec changed by exactly 1 line, yet ctx.md''s
+  head shows the entire ~150-line podspec rendered verbatim, and the same pattern (full-file dump for
+  a handful of changed lines) repeats across the ~13 generated feature-flag files. 48191 md_tokens for
+  a diff whose real payload (new SwiftUI wrapper + RCTViewComponentView.mm filter logic + example) is
+  a few hundred lines is severe token bloat; the Xcode project.pbxproj (178-line diff) and Podfile.lock
+  are pure build-tool bookkeeping that add no comprehension value and should be excluded or stat-only.'

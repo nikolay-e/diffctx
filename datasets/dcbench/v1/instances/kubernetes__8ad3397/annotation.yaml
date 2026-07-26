@@ -1,0 +1,64 @@
+repo: kubernetes
+base_commit: af37a0d7ac89a20dbb17a84432470c2a1007fd3e
+commit: 8ad339756cdb0a130ff9b60427785d6b09906ccd
+patch_stored: true
+gold:
+  - path: pkg/features/kube_features.go
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: SELinuxMount adds a {Version 1.37, Default true, PreRelease GA} entry, graduating it to GA and enabling it by default — the root change every other file in the diff reflects.
+  - path: pkg/apis/core/types.go
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: PodSecurityContext.SELinuxChangePolicy doc comment simplifies from "if gate enabled/disabled, behavior differs" to a flat "If not specified, MountOption is used" now that the gate defaults to true.
+  - path: staging/src/k8s.io/api/core/v1/types.go
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: the external/versioned counterpart of the same PodSecurityContext.SELinuxChangePolicy doc-comment simplification, source of truth for the regenerated swagger/openapi/applyconfiguration doc strings.
+  - path: test/compatibility_lifecycle/reference/versioned_feature_list.yaml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: adds the GA/default-true/1.37 versioned entry for SELinuxMount, mirroring the kube_features.go registration for the compatibility-lifecycle reference.
+  - path: pkg/volume/util/selinux.go
+    tier: essential
+    role: caller
+    in_diff: false
+    rationale: 'VolumeSupportsSELinuxMount short-circuits to `return true` when `utilfeature.DefaultFeatureGate.Enabled(features.SELinuxMount)` — with the gate now GA/default-true, this is the actual runtime switch that activates SELinux mount-option relabeling for essentially all PVs cluster-wide, with zero code change needed here.'
+  - path: pkg/api/pod/util.go
+    tier: essential
+    role: caller
+    in_diff: false
+    rationale: 'useOnlyRecursiveSELinuxChangePolicy returns false (i.e. "all policies allowed") whenever `features.SELinuxMount` is enabled; the gate defaulting to true here is exactly what the simplified PodSecurityContext doc comment in types.go now describes.'
+  - path: pkg/api/pod/util_test.go
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: TestDropSELinuxChangePolicy switches from a set-membership check to slices.Contains and now must explicitly pin an emulation version for cases that omit the gate, since it can no longer rely on SELinuxMount defaulting to off.
+  - path: pkg/kubelet/volumemanager/cache/desired_state_of_world_test.go
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: SELinux single/multi-pod volume-manager tests now explicitly disable features.SELinuxMount when a case doesn't request it, preserving pre-GA test coverage now that the gate defaults to true.
+forbidden:
+  - path: api/openapi-spec/swagger.json
+    reason: mechanical whole-cluster OpenAPI regen carrying only the same doc-string trim already visible in types.go
+  - path: pkg/generated/openapi/zz_generated.openapi.go
+    reason: mechanically regenerated embedded OpenAPI doc string, redundant with staging/.../core/v1/types.go for understanding the change
+  - path: staging/src/k8s.io/client-go/applyconfigurations/core/v1/podsecuritycontext.go
+    reason: generated apply-configuration builder doc-comment update, a mechanical byproduct of the types.go doc trim
+  - path: test/e2e/storage/csimock/csi_selinux_mount.go
+    reason: e2e CSI mock test that references the SELinuxMount gate by name but is untouched by and not needed to understand this specific GA-graduation commit
+nontrivial_gold_count: 2
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 15
+  description: 'Graduate SELinuxMount to GA: 7 hand-written gate/kubelet changes + 8 generated (openapi
+    json, proto) — graduation with mixed generated ripple'
+notes: Graduates SELinuxMount to GA (default true at 1.37), which simplifies the PodSecurityContext.SELinuxChangePolicy doc comment and updates two test suites that previously relied on the gate defaulting to off; the two nontrivial files (pkg/volume/util/selinux.go, pkg/api/pod/util.go) contain the actual gate-conditional runtime logic that the default flip silently reactivates without any source change in this commit.
+string_indirection: false

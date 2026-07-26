@@ -1,0 +1,45 @@
+repo: kubernetes
+base_commit: 5a450884b127f7b8e477d48cf3967a2a5eca9126
+commit: ee8c265d3508ac96665c86bd1590777c5fb3858d
+patch_stored: true
+gold:
+  - path: staging/src/k8s.io/kube-scheduler/framework/interface.go
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New file, the destination of the move — defines Code, the Success/Error/Unschedulable/... consts, and the Status type/methods that pkg/scheduler/framework/interface.go now imports as fwk.Code/fwk.Status instead of defining locally.
+  - path: pkg/scheduler/framework/interface.go
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Shrinks by 297 lines as Code/Status/NewStatus/AsStatus and friends are deleted and every local reference is rewritten to fwk.Code/fwk.Status, the origin side of the move.
+  - path: pkg/scheduler/framework/runtime/framework.go
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: Core plugin-invocation runtime rewrites its Status/Code handling (114 changed lines) to use the relocated fwk.Status/fwk.Code, representative of how every framework extension point call site had to change.
+  - path: pkg/scheduler/schedule_one.go
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: Main scheduling loop rewrites 100 lines of Status/Code usage to fwk.Status/fwk.Code, representative of the production (non-plugin) call sites affected by the move.
+  - path: staging/src/k8s.io/kube-scheduler/framework/cycle_state.go
+    tier: helpful
+    role: cochange
+    in_diff: false
+    rationale: Pre-existing file in the same k8s.io/kube-scheduler/framework staging package defining CycleState, evidence that fwk.CycleState was already relocated there in an earlier move this commit follows the same pattern for with Code/Status.
+forbidden:
+  - path: pkg/scheduler/framework/plugins/interpodaffinity/filtering_test.go
+    reason: one of dozens of mechanically rewritten plugin test files (220 changed lines), representative of the bulk rewiring already covered by runtime/framework.go and schedule_one.go
+  - path: pkg/scheduler/framework/plugins/volumebinding/volume_binding.go
+    reason: one plugin among ~30 rewired the same way, not distinct from the representative caller files already gold
+  - path: staging/src/k8s.io/kube-scheduler/framework/types.go
+    reason: pre-existing file in the destination package defining ActionType/QueueingHint, unrelated to the Code/Status move itself
+  - path: test/integration/scheduler/plugins/plugins_test.go
+    reason: integration test updated only for the renamed import, not needed to understand the type relocation
+nontrivial_gold_count: 1
+string_indirection: false
+no_nontrivial_context: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: 'Relocates the Code and Status types (and their Success/Error/Unschedulable consts, NewStatus/AsStatus helpers) from pkg/scheduler/framework to the new staging/src/k8s.io/kube-scheduler/framework/interface.go, then rewrites all ~64 in-tree call sites (plugins, runtime, schedule_one.go) to reference fwk.Code/fwk.Status. Purely mechanical type-move plus import rewiring, no behavior change; gold picks the two definition files plus two representative high-traffic call sites out of the wide diff, and the sibling cycle_state.go shows this follows an earlier CycleState relocation to the same package.'

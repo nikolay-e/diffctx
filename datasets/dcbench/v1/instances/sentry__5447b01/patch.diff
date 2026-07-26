@@ -1,0 +1,682 @@
+From 5447b015f270798b17bce3ad6a10abcaef6bc695 Mon Sep 17 00:00:00 2001
+From: Burak Yigit Kaya <byk@sentry.io>
+Date: Wed, 21 Jan 2026 16:02:03 +0000
+Subject: [PATCH] feat(oauth): Add UI for creating and viewing public OAuth
+ clients (#106654)
+
+## Summary
+
+Adds frontend UI support for creating and viewing public OAuth clients,
+building on the backend support added in #106451.
+
+<img width="1216" height="698" alt="image"
+src="https://github.com/user-attachments/assets/9477513f-1b1a-4d7c-9888-0efdb5b9260a"
+/>
+
+
+### Changes
+
+**Backend (`api_applications.py`):**
+- Accept `isPublic` parameter when creating new applications
+- When `isPublic=True`, create application with `client_secret=None`
+
+**Serializer:**
+- Add `is_public` field to `ApiApplicationSerializer` output
+
+**Frontend UI:**
+- Add client type selection modal when creating new applications (Public
+vs Confidential)
+- Show "Public Client" or "Confidential Client" tag on application
+details page
+- Hide client secret section for public clients (they don't have one)
+- Add info alert explaining public client behavior and security
+considerations
+
+### Screenshots
+
+_Client type selection when creating new application_
+
+_Public client details page showing no client secret_
+
+## Test Plan
+
+- Added frontend tests for new UI components
+- Added backend tests for `isPublic` parameter handling
+- Existing OAuth token tests cover the backend functionality
+
+Depends on #106451 (merged)
+Closes #99002
+
+---------
+
+Co-authored-by: getsantry[bot] <66042841+getsantry[bot]@users.noreply.github.com>
+---
+ .../api_application_rotate_secret.py          |   5 +
+ src/sentry/api/endpoints/api_applications.py  |   7 +-
+ .../api/serializers/models/apiapplication.py  |   1 +
+ static/app/types/user.tsx                     |   6 ++
+ .../account/apiApplications/details.spec.tsx  | 100 +++++++++++++++++-
+ .../account/apiApplications/details.tsx       |  76 ++++++++-----
+ .../account/apiApplications/index.spec.tsx    |  67 +++++++++++-
+ .../account/apiApplications/index.tsx         |  93 +++++++++++++++-
+ tests/acceptance/test_api.py                  |   2 +
+ tests/js/fixtures/apiApplication.ts           |   1 +
+ .../test_api_application_rotate_secrets.py    |  13 +++
+ .../api/endpoints/test_api_applications.py    |  26 +++++
+ 12 files changed, 362 insertions(+), 35 deletions(-)
+
+diff --git a/src/sentry/api/endpoints/api_application_rotate_secret.py b/src/sentry/api/endpoints/api_application_rotate_secret.py
+index 000c0a4029d..5dd2f189e7a 100644
+--- a/src/sentry/api/endpoints/api_application_rotate_secret.py
++++ b/src/sentry/api/endpoints/api_application_rotate_secret.py
+@@ -21,6 +21,11 @@ class ApiApplicationRotateSecretEndpoint(ApiApplicationEndpoint):
+     permission_classes = (SentryIsAuthenticated,)
+ 
+     def post(self, request: Request, application: ApiApplication) -> Response:
++        if application.is_public:
++            return Response(
++                {"detail": "Cannot rotate secret for public clients"},
++                status=400,
++            )
+         new_token = generate_token()
+         application.update(client_secret=new_token)
+         return Response(serialize({"clientSecret": new_token}))
+diff --git a/src/sentry/api/endpoints/api_applications.py b/src/sentry/api/endpoints/api_applications.py
+index 2d346afb54a..b14be1ad9e9 100644
+--- a/src/sentry/api/endpoints/api_applications.py
++++ b/src/sentry/api/endpoints/api_applications.py
+@@ -33,6 +33,11 @@ class ApiApplicationsEndpoint(Endpoint):
+         )
+ 
+     def post(self, request: Request) -> Response:
+-        app = ApiApplication.objects.create(owner_id=request.user.id)
++        is_public = request.data.get("isPublic", False)
++
++        if is_public:
++            app = ApiApplication.objects.create(owner_id=request.user.id, client_secret=None)
++        else:
++            app = ApiApplication.objects.create(owner_id=request.user.id)
+ 
+         return Response(serialize(app, request.user), status=201)
+diff --git a/src/sentry/api/serializers/models/apiapplication.py b/src/sentry/api/serializers/models/apiapplication.py
+index b4033d360a0..2bf28986633 100644
+--- a/src/sentry/api/serializers/models/apiapplication.py
++++ b/src/sentry/api/serializers/models/apiapplication.py
+@@ -14,6 +14,7 @@ class ApiApplicationSerializer(Serializer):
+             "id": obj.client_id,
+             "clientID": obj.client_id,
+             "clientSecret": obj.client_secret if is_secret_visible else None,
++            "isPublic": obj.is_public,
+             "name": obj.name,
+             "homepageUrl": obj.homepage_url,
+             "privacyUrl": obj.privacy_url,
+diff --git a/static/app/types/user.tsx b/static/app/types/user.tsx
+index 1d912f6b312..28c906366e8 100644
+--- a/static/app/types/user.tsx
++++ b/static/app/types/user.tsx
+@@ -99,6 +99,12 @@ export type ApiApplication = {
+   clientSecret: string | null;
+   homepageUrl: string | null;
+   id: string;
++  /**
++   * Whether this is a public client (no client_secret).
++   * Public clients are used for CLIs, native apps, and SPAs that
++   * cannot securely store a client secret (RFC 6749 §2.1).
++   */
++  isPublic: boolean;
+   name: string;
+   privacyUrl: string | null;
+   redirectUris: string[];
+diff --git a/static/app/views/settings/account/apiApplications/details.spec.tsx b/static/app/views/settings/account/apiApplications/details.spec.tsx
+index 0a012d428bd..083367bcf61 100644
+--- a/static/app/views/settings/account/apiApplications/details.spec.tsx
++++ b/static/app/views/settings/account/apiApplications/details.spec.tsx
+@@ -7,8 +7,8 @@ import {
+ 
+ import ApiApplicationDetails from 'sentry/views/settings/account/apiApplications/details';
+ 
+-describe('ApiApplications', () => {
+-  it('renders basic details for newly created App', async () => {
++describe('ApiApplicationDetails', () => {
++  it('renders basic details for confidential client', async () => {
+     MockApiClient.addMockResponse({
+       url: '/api-applications/abcd/',
+       body: {
+@@ -17,6 +17,7 @@ describe('ApiApplications', () => {
+         clientSecret: '1234',
+         homepageUrl: 'http://example.com/homepage',
+         id: 'abcd',
++        isPublic: false,
+         name: 'Example App Name',
+         privacyUrl: 'http://example.com/privacy',
+         redirectUris: ['http://example.com/redirect'],
+@@ -65,6 +66,7 @@ describe('ApiApplications', () => {
+         clientSecret: null,
+         homepageUrl: 'http://example.com/homepage',
+         id: 'abcd',
++        isPublic: false,
+         name: 'Example App Name',
+         privacyUrl: 'http://example.com/privacy',
+         redirectUris: ['http://example.com/redirect'],
+@@ -107,4 +109,98 @@ describe('ApiApplications', () => {
+ 
+     expect(rotateSecretApiCall).toHaveBeenCalledTimes(1);
+   });
++
++  it('renders public client without client secret section', async () => {
++    MockApiClient.addMockResponse({
++      url: '/api-applications/public-app/',
++      body: {
++        allowedOrigins: ['http://example.com'],
++        clientID: 'public-app',
++        clientSecret: null,
++        homepageUrl: 'http://example.com/homepage',
++        id: 'public-app',
++        isPublic: true,
++        name: 'Public CLI App',
++        privacyUrl: 'http://example.com/privacy',
++        redirectUris: ['http://example.com/redirect'],
++        termsUrl: ['http://example.com/terms'],
++      },
++    });
++
++    render(<ApiApplicationDetails />, {
++      initialRouterConfig: {
++        route: '/settings/account/api-applications/:appId/',
++        location: {
++          pathname: '/settings/account/api-applications/public-app/',
++        },
++      },
++    });
++
++    expect(
++      await screen.findByRole('heading', {name: 'Application Details'})
++    ).toBeInTheDocument();
++
++    // Should show public client tag
++    expect(screen.getByText('Public Client')).toBeInTheDocument();
++
++    // Should show info alert about public clients
++    expect(
++      screen.getByText(/This is a public client, designed for CLIs/)
++    ).toBeInTheDocument();
++
++    // Should NOT show client secret field
++    expect(screen.queryByLabelText('Client Secret')).not.toBeInTheDocument();
++
++    // Should NOT show rotate button
++    expect(
++      screen.queryByRole('button', {name: 'Rotate client secret'})
++    ).not.toBeInTheDocument();
++
++    // Should still show other fields
++    expect(screen.getByLabelText('Client ID')).toBeInTheDocument();
++    expect(screen.getByDisplayValue('public-app')).toBeInTheDocument();
++    expect(screen.getByDisplayValue('Public CLI App')).toBeInTheDocument();
++  });
++
++  it('renders confidential client with client secret section', async () => {
++    MockApiClient.addMockResponse({
++      url: '/api-applications/conf-app/',
++      body: {
++        allowedOrigins: ['http://example.com'],
++        clientID: 'conf-app',
++        clientSecret: 'secret123',
++        homepageUrl: 'http://example.com/homepage',
++        id: 'conf-app',
++        isPublic: false,
++        name: 'Confidential App',
++        privacyUrl: 'http://example.com/privacy',
++        redirectUris: ['http://example.com/redirect'],
++        termsUrl: ['http://example.com/terms'],
++      },
++    });
++
++    render(<ApiApplicationDetails />, {
++      initialRouterConfig: {
++        route: '/settings/account/api-applications/:appId/',
++        location: {
++          pathname: '/settings/account/api-applications/conf-app/',
++        },
++      },
++    });
++
++    expect(
++      await screen.findByRole('heading', {name: 'Application Details'})
++    ).toBeInTheDocument();
++
++    // Should show confidential client tag
++    expect(screen.getByText('Confidential Client')).toBeInTheDocument();
++
++    // Should show client secret field
++    expect(screen.getByLabelText('Client Secret')).toBeInTheDocument();
++
++    // Should NOT show info alert about public clients
++    expect(
++      screen.queryByText(/This is a public client, designed for CLIs/)
++    ).not.toBeInTheDocument();
++  });
+ });
+diff --git a/static/app/views/settings/account/apiApplications/details.tsx b/static/app/views/settings/account/apiApplications/details.tsx
+index 9fa26d05ad9..cdc7698e7d1 100644
+--- a/static/app/views/settings/account/apiApplications/details.tsx
++++ b/static/app/views/settings/account/apiApplications/details.tsx
+@@ -5,6 +5,7 @@ import {addErrorMessage} from 'sentry/actionCreators/indicator';
+ import {openModal} from 'sentry/actionCreators/modal';
+ import Confirm from 'sentry/components/confirm';
+ import {Alert} from 'sentry/components/core/alert';
++import {Tag} from 'sentry/components/core/badge/tag';
+ import {Button} from 'sentry/components/core/button';
+ import FieldGroup from 'sentry/components/forms/fieldGroup';
+ import Form from 'sentry/components/forms/form';
+@@ -98,7 +99,24 @@ function ApiApplicationsDetails() {
+ 
+   return (
+     <SentryDocumentTitle title={PAGE_TITLE}>
+-      <SettingsPageHeader title={PAGE_TITLE} />
++      <SettingsPageHeader
++        title={PAGE_TITLE}
++        subtitle={
++          <Tag variant={app.isPublic ? 'info' : 'muted'}>
++            {app.isPublic ? t('Public Client') : t('Confidential Client')}
++          </Tag>
++        }
++      />
++
++      {app.isPublic && (
++        <Alert.Container>
++          <Alert variant="info" showIcon>
++            {t(
++              'This is a public client, designed for CLIs, native apps, or SPAs. It uses PKCE, device authorization, and refresh token rotation for security instead of a client secret.'
++            )}
++          </Alert>
++        </Alert.Container>
++      )}
+ 
+       <Form
+         apiMethod="PUT"
+@@ -118,33 +136,35 @@ function ApiApplicationsDetails() {
+               {({value}: any) => <TextCopyInput>{value}</TextCopyInput>}
+             </FormField>
+ 
+-            <FormField
+-              name="clientSecret"
+-              label={t('Client Secret')}
+-              help={t(`Your secret is only available briefly after application creation. Make
+-                  sure to save this value!`)}
+-              flexibleControlStateSize
+-            >
+-              {({value}: any) =>
+-                value ? (
+-                  <TextCopyInput>{value}</TextCopyInput>
+-                ) : (
+-                  <ClientSecret>
+-                    <HiddenSecret>{t('hidden')}</HiddenSecret>
+-                    <Confirm
+-                      onConfirm={rotateClientSecret}
+-                      message={t(
+-                        'Are you sure you want to rotate the client secret? The current one will not be usable anymore, and this cannot be undone.'
+-                      )}
+-                    >
+-                      <Button size="xs" priority="danger">
+-                        {t('Rotate client secret')}
+-                      </Button>
+-                    </Confirm>
+-                  </ClientSecret>
+-                )
+-              }
+-            </FormField>
++            {!app.isPublic && (
++              <FormField
++                name="clientSecret"
++                label={t('Client Secret')}
++                help={t(`Your secret is only available briefly after application creation. Make
++                    sure to save this value!`)}
++                flexibleControlStateSize
++              >
++                {({value}: any) =>
++                  value ? (
++                    <TextCopyInput>{value}</TextCopyInput>
++                  ) : (
++                    <ClientSecret>
++                      <HiddenSecret>{t('hidden')}</HiddenSecret>
++                      <Confirm
++                        onConfirm={rotateClientSecret}
++                        message={t(
++                          'Are you sure you want to rotate the client secret? The current one will not be usable anymore, and this cannot be undone.'
++                        )}
++                      >
++                        <Button size="xs" priority="danger">
++                          {t('Rotate client secret')}
++                        </Button>
++                      </Confirm>
++                    </ClientSecret>
++                  )
++                }
++              </FormField>
++            )}
+ 
+             <FieldGroup label={t('Authorization URL')} flexibleControlStateSize>
+               <TextCopyInput>{`${urlPrefix}/oauth/authorize/`}</TextCopyInput>
+diff --git a/static/app/views/settings/account/apiApplications/index.spec.tsx b/static/app/views/settings/account/apiApplications/index.spec.tsx
+index 2d1a4c750d8..ddddc1ef3a7 100644
+--- a/static/app/views/settings/account/apiApplications/index.spec.tsx
++++ b/static/app/views/settings/account/apiApplications/index.spec.tsx
+@@ -64,7 +64,7 @@ describe('ApiApplications', () => {
+     (isDemoModeActive as jest.Mock).mockReset();
+   });
+ 
+-  it('creates application', async () => {
++  it('creates confidential application via modal', async () => {
+     MockApiClient.addMockResponse({
+       url: '/api-applications/',
+       body: [],
+@@ -73,18 +73,34 @@ describe('ApiApplications', () => {
+       url: '/api-applications/',
+       body: ApiApplicationFixture({
+         id: '234',
++        isPublic: false,
+       }),
+       method: 'POST',
+     });
+ 
+     const {router} = render(<ApiApplications />);
++    renderGlobalModal();
+     await waitForElementToBeRemoved(() => screen.queryByTestId('loading-indicator'));
+ 
+     await userEvent.click(screen.getByLabelText('Create New Application'));
+ 
++    // Modal should appear with client type selection
++    expect(
++      await screen.findByRole('heading', {name: 'Create New Application'})
++    ).toBeInTheDocument();
++    expect(screen.getByText('Confidential')).toBeInTheDocument();
++    expect(screen.getByText('Public')).toBeInTheDocument();
++
++    // Click confidential option and create (it's already selected by default)
++    await userEvent.click(screen.getByText('Confidential'));
++    await userEvent.click(screen.getByRole('button', {name: 'Create Application'}));
++
+     expect(createApplicationRequest).toHaveBeenCalledWith(
+       '/api-applications/',
+-      expect.objectContaining({method: 'POST'})
++      expect.objectContaining({
++        method: 'POST',
++        data: {isPublic: false},
++      })
+     );
+ 
+     await waitFor(() => {
+@@ -97,6 +113,53 @@ describe('ApiApplications', () => {
+     });
+   });
+ 
++  it('creates public application via modal', async () => {
++    MockApiClient.addMockResponse({
++      url: '/api-applications/',
++      body: [],
++    });
++    const createApplicationRequest = MockApiClient.addMockResponse({
++      url: '/api-applications/',
++      body: ApiApplicationFixture({
++        id: '345',
++        isPublic: true,
++      }),
++      method: 'POST',
++    });
++
++    const {router} = render(<ApiApplications />);
++    renderGlobalModal();
++    await waitForElementToBeRemoved(() => screen.queryByTestId('loading-indicator'));
++
++    await userEvent.click(screen.getByLabelText('Create New Application'));
++
++    // Modal should appear with client type selection
++    expect(
++      await screen.findByRole('heading', {name: 'Create New Application'})
++    ).toBeInTheDocument();
++
++    // Click public option and create
++    await userEvent.click(screen.getByText('Public'));
++    await userEvent.click(screen.getByRole('button', {name: 'Create Application'}));
++
++    expect(createApplicationRequest).toHaveBeenCalledWith(
++      '/api-applications/',
++      expect.objectContaining({
++        method: 'POST',
++        data: {isPublic: true},
++      })
++    );
++
++    await waitFor(() => {
++      expect(router.location).toEqual(
++        expect.objectContaining({
++          pathname: '/settings/account/api/applications/345/',
++          query: {},
++        })
++      );
++    });
++  });
++
+   it('deletes application', async () => {
+     const apiApp = ApiApplicationFixture({id: '123'});
+     MockApiClient.addMockResponse({
+diff --git a/static/app/views/settings/account/apiApplications/index.tsx b/static/app/views/settings/account/apiApplications/index.tsx
+index 14beba331d8..6e220d99d79 100644
+--- a/static/app/views/settings/account/apiApplications/index.tsx
++++ b/static/app/views/settings/account/apiApplications/index.tsx
+@@ -1,10 +1,15 @@
++import {useState} from 'react';
++
+ import {
+   addErrorMessage,
+   addLoadingMessage,
+   addSuccessMessage,
+ } from 'sentry/actionCreators/indicator';
++import {openModal, type ModalRenderProps} from 'sentry/actionCreators/modal';
+ import {Button} from 'sentry/components/core/button';
++import {ButtonBar} from 'sentry/components/core/button/buttonBar';
+ import EmptyMessage from 'sentry/components/emptyMessage';
++import RadioGroup from 'sentry/components/forms/controls/radioGroup';
+ import LoadingError from 'sentry/components/loadingError';
+ import LoadingIndicator from 'sentry/components/loadingIndicator';
+ import Panel from 'sentry/components/panels/panel';
+@@ -48,21 +53,37 @@ export default function ApiApplications() {
+     return <LoadingError onRetry={refetch} />;
+   }
+ 
+-  const handleCreateApplication = async () => {
++  const createApplication = async (isPublic: boolean) => {
+     addLoadingMessage();
+ 
+     try {
+       const app = await api.requestPromise(ENDPOINT, {
+         method: 'POST',
++        data: {isPublic},
+       });
+ 
+       addSuccessMessage(t('Created a new API Application'));
+       navigate(`${ROUTE_PREFIX}applications/${app.id}/`);
+     } catch {
+-      addErrorMessage(t('Unable to remove application. Please try again.'));
++      addErrorMessage(t('Unable to create application. Please try again.'));
+     }
+   };
+ 
++  const handleCreateApplication = () => {
++    openModal(({Body, Header, Footer, closeModal}) => (
++      <CreateApplicationModal
++        Body={Body}
++        Header={Header}
++        Footer={Footer}
++        closeModal={closeModal}
++        onSubmit={(isPublic: boolean) => {
++          closeModal();
++          createApplication(isPublic);
++        }}
++      />
++    ));
++  };
++
+   const handleRemoveApplication = (app: ApiApplication) => {
+     setApiQueryData<any>(queryClient, [ENDPOINT], (oldAppList: any) =>
+       oldAppList.filter((a: any) => a.id !== app.id)
+@@ -81,6 +102,7 @@ export default function ApiApplications() {
+             size="sm"
+             onClick={handleCreateApplication}
+             icon={<IconAdd />}
++            aria-label={t('Create New Application')}
+           >
+             {t('Create New Application')}
+           </Button>
+@@ -103,3 +125,70 @@ export default function ApiApplications() {
+     </SentryDocumentTitle>
+   );
+ }
++
++interface CreateApplicationModalProps {
++  Body: ModalRenderProps['Body'];
++  Footer: ModalRenderProps['Footer'];
++  Header: ModalRenderProps['Header'];
++  closeModal: ModalRenderProps['closeModal'];
++  onSubmit: (isPublic: boolean) => void;
++}
++
++function CreateApplicationModal({
++  Header,
++  Body,
++  Footer,
++  closeModal,
++  onSubmit,
++}: CreateApplicationModalProps) {
++  const [clientType, setClientType] = useState<'confidential' | 'public'>('confidential');
++
++  return (
++    <form
++      onSubmit={e => {
++        e.preventDefault();
++        onSubmit(clientType === 'public');
++      }}
++    >
++      <Header closeButton>
++        <h4>{t('Create New Application')}</h4>
++      </Header>
++      <Body>
++        <p>
++          {t(
++            'Choose the type of OAuth application based on how it will authenticate with Sentry.'
++          )}
++        </p>
++        <RadioGroup
++          label={t('Client Type')}
++          value={clientType}
++          onChange={value => setClientType(value)}
++          choices={[
++            [
++              'confidential',
++              t('Confidential'),
++              t(
++                'For server-side applications that can securely store a client secret. Uses client credentials for authentication.'
++              ),
++            ],
++            [
++              'public',
++              t('Public'),
++              t(
++                'For CLIs, native apps, or SPAs that cannot securely store secrets. Uses PKCE, device authorization, and refresh token rotation for security.'
++              ),
++            ],
++          ]}
++        />
++      </Body>
++      <Footer>
++        <ButtonBar gap="sm">
++          <Button onClick={closeModal}>{t('Cancel')}</Button>
++          <Button priority="primary" type="submit">
++            {t('Create Application')}
++          </Button>
++        </ButtonBar>
++      </Footer>
++    </form>
++  );
++}
+diff --git a/tests/acceptance/test_api.py b/tests/acceptance/test_api.py
+index 0f9bd2d5849..62c8004ef64 100644
+--- a/tests/acceptance/test_api.py
++++ b/tests/acceptance/test_api.py
+@@ -19,6 +19,8 @@ class ApiApplicationTest(AcceptanceTestCase):
+         self.browser.wait_until_not('[data-test-id="loading-indicator"]')
+ 
+         self.browser.click_when_visible('[aria-label="Create New Application"]')
++        self.browser.wait_until_test_id("modal-backdrop")
++        self.browser.click_when_visible('button[type="submit"]')
+         self.browser.wait_until_not('[data-test-id="loading-indicator"]')
+ 
+         self.browser.click('[href="/settings/account/api/applications/"]')
+diff --git a/tests/js/fixtures/apiApplication.ts b/tests/js/fixtures/apiApplication.ts
+index d68b1de561f..0701743e573 100644
+--- a/tests/js/fixtures/apiApplication.ts
++++ b/tests/js/fixtures/apiApplication.ts
+@@ -9,6 +9,7 @@ export function ApiApplicationFixture(
+     clientSecret: null,
+     homepageUrl: null,
+     id: '123',
++    isPublic: false,
+     name: 'Adjusted Shrimp',
+     privacyUrl: null,
+     redirectUris: [],
+diff --git a/tests/sentry/api/endpoints/test_api_application_rotate_secrets.py b/tests/sentry/api/endpoints/test_api_application_rotate_secrets.py
+index ed24ba45bfb..2856d31c19f 100644
+--- a/tests/sentry/api/endpoints/test_api_application_rotate_secrets.py
++++ b/tests/sentry/api/endpoints/test_api_application_rotate_secrets.py
+@@ -41,3 +41,16 @@ class ApiApplicationRotateSecretTest(APITestCase):
+         new_secret = response.data["clientSecret"]
+         assert len(new_secret) == len(old_secret)
+         assert new_secret != old_secret
++
++    def test_public_client_cannot_rotate_secret(self) -> None:
++        """
++        Tests that a public client (client_secret=None) cannot have its secret rotated.
++        """
++        self.login_as(self.user)
++        public_app = ApiApplication.objects.create(
++            owner=self.user, name="public-app", client_secret=None
++        )
++        path = reverse("sentry-api-0-api-application-rotate-secret", args=[public_app.client_id])
++        response = self.client.post(path)
++        assert response.status_code == 400
++        assert response.data["detail"] == "Cannot rotate secret for public clients"
+diff --git a/tests/sentry/api/endpoints/test_api_applications.py b/tests/sentry/api/endpoints/test_api_applications.py
+index 78208a9123f..ba21cfa6ae7 100644
+--- a/tests/sentry/api/endpoints/test_api_applications.py
++++ b/tests/sentry/api/endpoints/test_api_applications.py
+@@ -29,3 +29,29 @@ class ApiApplicationsCreateTest(APITestCase):
+         response = self.client.post(url, data={})
+         assert response.status_code == 201
+         assert ApiApplication.objects.get(client_id=response.data["id"], owner=self.user)
++
++    def test_create_confidential_client(self) -> None:
++        """Creating an app without isPublic flag creates a confidential client with secret."""
++        self.login_as(self.user)
++        url = reverse("sentry-api-0-api-applications")
++        response = self.client.post(url, data={"isPublic": False})
++        assert response.status_code == 201
++        assert response.data["isPublic"] is False
++
++        app = ApiApplication.objects.get(client_id=response.data["id"])
++        assert app.client_secret is not None
++        assert not app.is_public
++
++    def test_create_public_client(self) -> None:
++        """Creating an app with isPublic=True creates a public client without secret."""
++        self.login_as(self.user)
++        url = reverse("sentry-api-0-api-applications")
++        response = self.client.post(url, data={"isPublic": True})
++        assert response.status_code == 201
++        assert response.data["isPublic"] is True
++        # clientSecret should be None for public clients
++        assert response.data["clientSecret"] is None
++
++        app = ApiApplication.objects.get(client_id=response.data["id"])
++        assert app.client_secret is None
++        assert app.is_public

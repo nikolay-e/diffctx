@@ -1,0 +1,69 @@
+repo: react-native
+base_commit: dc7e9e2d83f5af3d2a970521af4fcc7f86d2168d
+commit: 37375d8aba0869531567426466478b0de9a1aea3
+patch_stored: true
+gold:
+- path: packages/react-native/ReactAndroid/src/main/jni/third-party/fast_float/CMakeLists.txt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/jni/third-party/folly/CMakeLists.txt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/gradle/libs.versions.toml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/scripts/cocoapods/codegen_utils.rb
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/scripts/cocoapods/helpers.rb
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/scripts/cocoapods/new_architecture.rb
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/scripts/cocoapods/utils.rb
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/scripts/react_native_pods.rb
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/third-party-podspecs/RCT-Folly.podspec
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/third-party-podspecs/fast_float.podspec
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/third-party-podspecs/fmt.podspec
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/rn-tester/Podfile.lock
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: packages/react-native/React/Base/RCTModuleMethod.mm
+- path: packages/react-native/React/Profiler/RCTProfile.h
+- path: packages/react-native/ReactCommon/cxxreact/Instance.cpp
+- path: packages/react-native/ReactCommon/cxxreact/JSBigString.cpp
+- path: packages/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.h
+- path: packages/rn-tester/js/examples/ActionSheetIOS/ActionSheetIOSExample.js
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 38 changed files (all podspecs/CMakeLists/cocoapods scripts referencing the Folly version string)
+  become 51 ctx_files; 13 extras are unrelated core-engine files (JSI/TurboModule/bridge internals) not
+  touched by this dependency bump. Noise ratio (~25%) is meaningfully lower than the other two react-native
+  over_dump cases, and the true changed-file set is intact, but 47.8k tokens for what is fundamentally
+  a one-string version bump replicated across podspecs is still disproportionate.

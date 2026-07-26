@@ -1,0 +1,50 @@
+repo: neovim
+base_commit: 08a1228f8243415d199f4a6c3adce8dc1b36b551
+commit: ce718e31f4495b178b4ae8600c5145ccf24252f8
+patch_stored: true
+gold:
+  - path: src/nvim/api/window.c
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: defines the new `nvim_win_resize(win, width, height, opts)` entrypoint (validates width/height, parses the `anchor` key into from_top/from_left booleans, calls win_setheight_win/win_setwidth_win), and removes the old nvim_win_set_height/nvim_win_set_width (moved to deprecated.c).
+  - path: src/nvim/window.c
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'the resize algorithm itself: win_setheight_win/frame_setheight and their width counterparts gain a `from_top`/`from_left` bool parameter that flips which neighboring frame (fr_next vs fr_prev) space is taken from first — the actual anchor mechanism nvim_win_resize exposes.'
+  - path: src/nvim/api/deprecated.c
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: nvim_win_set_height/nvim_win_set_width are relocated here as FUNC_API_DEPRECATED_SINCE(15) wrappers that call win_setheight_win(..., true)/win_setwidth_win(..., true), i.e. always anchor top/left — documenting the exact backward-compatible default nvim_win_resize must reproduce.
+  - path: src/nvim/api/keysets_defs.h
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds `typedef struct { OptionalKeys is_set__win_resize_; String anchor; } Dict(win_resize);`, the opts keyset nvim_win_resize's 4th parameter is typed against and that HAS_KEY(opts, win_resize, anchor) checks.
+  - path: test/functional/api/window_spec.lua
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: 251-line rewrite adding coverage for all four anchor values and the "must set at least one of height/width" / anchor-must-match-resized-dimension validation errors, pinning nvim_win_resize's exact edge-cases.
+  - path: runtime/lua/vim/_core/ui2/cmdline.lua
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: 'representative example of an in-tree consumer migrating from the now-deprecated `api.nvim_win_set_height(win, height)` to `api.nvim_win_resize(win, -1, height, {})`, the adoption pattern repeated in messages.lua/completion.lua/lsp/util.lua.'
+forbidden:
+  - path: src/nvim/api/win_config.c
+    reason: only updates two call sites of win_setwidth_win/win_setheight_win to pass the new trailing bool (always true/top-left), a mechanical ripple rather than part of the anchor mechanism's definition.
+  - path: runtime/doc/api.txt
+    reason: auto-generated help text mirroring nvim_win_resize's doc-comment already visible in src/nvim/api/window.c; adds no information beyond the source.
+  - path: runtime/lua/vim/lsp/completion.lua
+    reason: same nvim_win_set_height -> nvim_win_resize migration pattern already illustrated by cmdline.lua; redundant as a second example.
+  - path: test/functional/api/deprecated_spec.lua
+    reason: covers the deprecated nvim_win_set_height/set_width wrapper behavior specifically, secondary to understanding the new nvim_win_resize mechanism itself.
+nontrivial_gold_count: 0
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: 'Adds nvim_win_resize(win, width, height, {anchor}) letting callers choose which edge of a window stays fixed when resizing, implemented by threading a new from_top/from_left bool through win_setheight_win/win_setwidth_win and frame_setheight/frame_setwidth in window.c; nvim_win_set_height/set_width are deprecated and relocated to deprecated.c as thin from_top=true/from_left=true wrappers. Grepped the base commit for all remaining callers of the resized low-level functions (win_config.c, ex_docmd.c) and confirmed both are already updated within the 17-file diff, so the change is self-contained.'

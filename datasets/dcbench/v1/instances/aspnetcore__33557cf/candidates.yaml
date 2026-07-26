@@ -1,0 +1,81 @@
+generators:
+  cochange: 0
+  bm25: 15
+  graph: 0
+  random: 10
+candidates:
+- path: .azure/pipelines/benchmarks.yml
+  sources:
+  - random
+- path: .github/workflows/cswin32-update.md
+  sources:
+  - bm25
+- path: .github/workflows/issue-triage-agent.md
+  sources:
+  - bm25
+- path: .github/workflows/test-quarantine.md
+  sources:
+  - bm25
+- path: Directory.Build.props
+  sources:
+  - bm25
+- path: eng/common/tools.ps1
+  sources:
+  - bm25
+- path: eng/targets/ResolveReferences.targets
+  sources:
+  - bm25
+- path: src/Components/Components/src/IComponentPropertyActivator.cs
+  sources:
+  - random
+- path: src/Components/Components/src/Reflection/PropertyGetter.cs
+  sources:
+  - random
+- path: src/Components/Components/src/RenderTree/Renderer.cs
+  sources:
+  - bm25
+- path: src/Components/Endpoints/src/Forms/EndpointAntiforgeryStateProvider.cs
+  sources:
+  - random
+- path: src/Components/QuickGrid/Microsoft.AspNetCore.Components.QuickGrid/src/QuickGrid.razor.cs
+  sources:
+  - bm25
+- path: src/Components/Web.JS/src/Services/NavigationEnhancement.ts
+  sources:
+  - bm25
+- path: src/HealthChecks/Abstractions/src/Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions.csproj
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/HtmlGenerationWebSite/Views/CheckViewData/Components/CheckViewData___LackModel/Default.cshtml
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/RazorPagesWebSite/Pages/Shared/Components/ViewData/Default.cshtml
+  sources:
+  - random
+- path: src/OpenApi/test/Microsoft.AspNetCore.OpenApi.SourceGenerators.Tests/SnapshotTestHelper.cs
+  sources:
+  - bm25
+- path: src/ProjectTemplates/README.md
+  sources:
+  - bm25
+- path: src/ProjectTemplates/Shared/Project.cs
+  sources:
+  - bm25
+- path: src/ProjectTemplates/Web.ItemTemplates/Microsoft.DotNet.Web.ItemTemplates.csproj
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ProjectTemplates/EmptyWeb-FSharp.fsproj.in
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ProjectTemplates/content/Worker-FSharp/.template.config/localize/templatestrings.cs.json
+  sources:
+  - random
+- path: src/Servers/IIS/IntegrationTesting.IIS/src/IISExpressDeployer.cs
+  sources:
+  - bm25
+- path: src/SignalR/clients/csharp/Client.Core/src/HubConnection.cs
+  sources:
+  - bm25
+- path: src/Validation/test/Microsoft.Extensions.Validation.GeneratorTests/ValidationsGeneratorTestBase.cs
+  sources:
+  - bm25

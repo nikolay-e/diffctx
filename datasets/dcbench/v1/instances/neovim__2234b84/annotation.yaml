@@ -1,0 +1,70 @@
+repo: neovim
+base_commit: 21152f7905b5e2f472b1a745109f6316a7e5994d
+commit: 2234b84a1b85832667ad4a23fd5dee0bd1c92b72
+patch_stored: true
+gold:
+  - path: src/nvim/CMakeLists.txt
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: adds the new `doc` custom_target with add_custom_command rules for VIMDOC_FILES/GEN_EVAL_FILES, replacing the old standalone `api-metadata` target — this is the core of the change.
+  - path: Makefile
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: renames the catch-all cmake-forwarding rule's `api-metadata` phony target to `doc`, wiring `make doc` to the new cmake target.
+  - path: .github/workflows/api-docs.yml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: consumer of the change — collapses the old two-step `make api-metadata` + `python3 scripts/gen_vimdoc.py` CI invocation into a single `make doc`.
+  - path: scripts/gen_vimdoc.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: drops its own subprocess.call(['./scripts/gen_eval_files.lua']) invocation now that cmake's `doc` target depends on and runs gen_eval_files.lua directly.
+  - path: scripts/gen_eval_files.lua
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: replaces hardcoded 'build/api_metadata.mpack' / 'runtime/doc/api.mpack' literals with DEP_API_METADATA/DEP_API_DOC constants, matching the paths the new cmake add_custom_command passes as DEPENDS.
+  - path: CMakeLists.txt
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: excludes the generated runtime/lua/vim/_meta/*.lua files from the lintlua-luacheck/lintlua-stylua glob targets now that those files are produced by the new build-integrated generators.
+  - path: CONTRIBUTING.md
+    tier: helpful
+    role: doc
+    in_diff: true
+    rationale: updates the "Generating :help" section to say `make doc` instead of `./scripts/gen_vimdoc.py`, and documents the generator script roles.
+  - path: cmake/InstallHelpers.cmake
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: defines glob_wrapper(), the CONFIGURE_DEPENDS-aware file(GLOB) wrapper that src/nvim/CMakeLists.txt's new `glob_wrapper(API_SOURCES ...)` / `glob_wrapper(LUA_SOURCES ...)` calls rely on to auto-reconfigure when API/Lua sources are added or removed.
+forbidden:
+  - path: cmake/Util.cmake
+    reason: defines the unrelated add_glob_target() macro used by the pre-existing lintlua targets, not the glob_wrapper() the new doc target actually calls
+  - path: scripts/lua2dox.lua
+    reason: newly mentioned in the CONTRIBUTING.md prose as a helper gen_vimdoc.py uses, but it is unchanged and not part of the cmake wiring itself
+  - path: contrib/flake.nix
+    reason: references gen_vimdoc.py only in a doxygen-dependency comment; unrelated Nix packaging manifest, not touched or needed
+  - path: src/nvim/api/CMakeLists.txt
+    reason: does not exist in this repo — API C sources have no per-directory CMakeLists, so this plausible-looking path is a dead end
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: []
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 7
+  description: 'docs(generators): bake into cmake — build system + generator scripts'
+notes: >
+  Moves :help doc generation (gen_vimdoc.py + gen_eval_files.lua) from an ad-hoc
+  Makefile/CI two-step invocation into a proper cmake `doc` custom_target with
+  file-level DEPENDS/OUTPUT tracking, replacing the old `api-metadata` target.
+  gen_vimdoc.py no longer shells out to gen_eval_files.lua itself; cmake now
+  depends on both directly. The one nontrivial external file is
+  cmake/InstallHelpers.cmake, which defines the glob_wrapper() helper the new
+  target relies on for live source-list dependency tracking.

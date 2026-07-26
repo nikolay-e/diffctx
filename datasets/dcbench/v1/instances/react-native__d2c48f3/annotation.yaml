@@ -1,0 +1,44 @@
+repo: react-native
+base_commit: 513e9669e78a4bfd9b0380335c61f581343c4009
+commit: d2c48f3b1a2a15e9832ea3240c19aea5186ceb24
+patch_stored: true
+gold:
+- path: packages/react-native/Libraries/Components/View/ReactNativeStyleAttributes.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/Libraries/StyleSheet/StyleSheetTypes.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/React/Views/RCTViewManager.m
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: packages/react-native/Libraries/StyleSheet/StyleSheet.d.ts
+- path: packages/react-native/React/Views/UIView+React.m
+- path: packages/react-native/ReactCommon/react/featureflags/tests/ReactNativeFeatureFlagsTest.cpp
+- path: packages/react-native/src/private/featureflags/ReactNativeFeatureFlagsBase.js
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: The true diff removes one feature flag (enableAndroidMixBlendModeProp) and renames experimental_mixBlendMode
+  -> mixBlendMode across ~30 files; because the flag's numeric index is renumbered, ReactNativeFeatureFlagsAccessor.cpp
+  alone contributes ~48 tiny near-identical markFlagAsAccessed(N) decrement hunks, each rendered as a
+  full fragment with header+code block, driving md_tokens to 47.6k for a conceptually simple mechanical
+  cascade — real severe_bloat that a smarter renderer should collapse ('N other call-sites decremented
+  by 1'). Separately and more seriously, 3 files diffctx's own header lists as 'changed' (RCTViewManager.m,
+  StyleSheetTypes.js, src/private/featureflags/ReactNativeFeatureFlags.js) have NO fragment body in ctx.md
+  at all — instead the budget went to similarly-named but untouched companion files (UIView+React.m, StyleSheet.d.ts,
+  ReactNativeFeatureFlagsBase.js, plus an unrelated test file), a partial lost-change-signal bug hiding
+  inside an over_dump.

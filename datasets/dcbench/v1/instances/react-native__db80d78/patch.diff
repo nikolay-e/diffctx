@@ -1,0 +1,1116 @@
+From db80d78d7a3d61d5bd6871258513f778851059f5 Mon Sep 17 00:00:00 2001
+From: Nicola Corti <ncor@meta.com>
+Date: Fri, 16 Aug 2024 05:42:46 -0700
+Subject: [PATCH] Merge all the remaining .so libraries into libreactnative.so
+ (#46059)
+
+Summary:
+Pull Request resolved: https://github.com/facebook/react-native/pull/46059
+
+This merges all the remaining dynamic libraries into libreactnative.so.
+Sadly I couldn't split this in smaller diffs as all the libraries are connected with each other.
+
+I also had to introduce 2 other SOs: `libhermestooling.so` and `libjsctooling.so` which contains
+all the necessary libs used when loading either JSC or Hermes. They need to be isolated
+as RNGP will remove those libraries based on the library the user decides to pick.
+
+Changelog:
+[Android] [Breaking] - Merge all the remaining .so libraries into libreactnative.so
+
+Reviewed By: hezi
+
+Differential Revision: D61376496
+
+fbshipit-source-id: ab9e725b7acbebdfd8fa3ff36ad34d080044bf0e
+---
+ .../react/utils/NdkConfiguratorUtils.kt       |  33 +----
+ .../tasks/GenerateCodegenArtifactsTaskTest.kt |   2 +-
+ .../react/utils/NdkConfiguratorUtilsTest.kt   |  16 +--
+ .../ReactAndroid/build.gradle.kts             | 115 +++---------------
+ .../ReactAndroid/src/main/jni/CMakeLists.txt  |  53 +++++---
+ .../ReactAndroid/src/main/jni/OnLoad.cpp      |  12 --
+ .../jni/first-party/fbgloginit/CMakeLists.txt |   2 +-
+ .../main/jni/react/devsupport/CMakeLists.txt  |   6 +-
+ .../hermes/instrumentation/CMakeLists.txt     |  13 +-
+ .../react/hermes/reactexecutor/CMakeLists.txt |  11 +-
+ .../jni/react/hermes/reactexecutor/OnLoad.cpp |   1 -
+ .../jni/react/hermes/tooling/CMakeLists.txt   |  41 +++++++
+ .../src/main/jni/react/jni/CMakeLists.txt     |   4 +-
+ .../main/jni/react/jscexecutor/CMakeLists.txt |  13 +-
+ .../main/jni/react/jsctooling/CMakeLists.txt  |  34 ++++++
+ .../jni/react/newarchdefaults/CMakeLists.txt  |   2 -
+ .../jni/react/reactnativeblob/CMakeLists.txt  |   5 +-
+ .../react/runtime/hermes/jni/CMakeLists.txt   |   9 +-
+ .../jni/react/runtime/jsc/jni/CMakeLists.txt  |  13 +-
+ .../main/jni/react/turbomodule/CMakeLists.txt |   2 +-
+ .../ReactCommon/cxxreact/CMakeLists.txt       |   2 +-
+ .../hermes/executor/CMakeLists.txt            |   6 +-
+ .../hermes/inspector-modern/CMakeLists.txt    |   5 +-
+ .../ReactCommon/jsc/CMakeLists.txt            |   8 +-
+ .../ReactCommon/jsiexecutor/CMakeLists.txt    |   2 +-
+ .../jsinspector-modern/CMakeLists.txt         |   5 +-
+ .../react/performance/timeline/CMakeLists.txt |   2 +-
+ .../react/runtime/hermes/CMakeLists.txt       |   8 +-
+ .../reactperflogger/CMakeLists.txt            |   2 +-
+ .../com/facebook/soloader/MergedSoMapping.kt  |  66 ++++++++--
+ .../java/com/facebook/soloader/SoLoader.kt    |   1 -
+ 31 files changed, 261 insertions(+), 233 deletions(-)
+ delete mode 100644 packages/react-native/ReactAndroid/src/main/jni/OnLoad.cpp
+ create mode 100644 packages/react-native/ReactAndroid/src/main/jni/react/hermes/tooling/CMakeLists.txt
+ create mode 100644 packages/react-native/ReactAndroid/src/main/jni/react/jsctooling/CMakeLists.txt
+
+diff --git a/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/NdkConfiguratorUtils.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/NdkConfiguratorUtils.kt
+index 59220dc28df..86d40a0ebf0 100644
+--- a/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/NdkConfiguratorUtils.kt
++++ b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/NdkConfiguratorUtils.kt
+@@ -93,30 +93,9 @@ internal object NdkConfiguratorUtils {
+               "**/libfbjni.so",
+               // Those are prefab libraries we distribute via ReactAndroid
+               // Due to a bug in AGP, they fire a warning on console as both the JNI
+-              // and the prefab .so files gets considered. See more on:
+-              "**/libfabricjni.so",
+-              "**/libfolly_runtime.so",
+-              "**/libglog.so",
++              // and the prefab .so files gets considered.
++              "**/libreactnative.so",
+               "**/libjsi.so",
+-              "**/libmapbufferjni.so",
+-              "**/libreact_codegen_rncore.so",
+-              "**/libreact_debug.so",
+-              "**/libreact_nativemodule_core.so",
+-              "**/libreact_newarchdefaults.so",
+-              "**/libreact_cxxreactpackage.so",
+-              "**/libreact_render_componentregistry.so",
+-              "**/libreact_render_core.so",
+-              "**/libreact_render_debug.so",
+-              "**/libreact_render_graphics.so",
+-              "**/libreact_render_imagemanager.so",
+-              "**/libreact_render_mapbuffer.so",
+-              "**/libreact_utils.so",
+-              "**/librrc_image.so",
+-              "**/librrc_legacyviewmanagerinterop.so",
+-              "**/librrc_view.so",
+-              "**/libruntimeexecutor.so",
+-              "**/libturbomodulejsijni.so",
+-              "**/libyoga.so",
+               // AGP will give priority of libc++_shared coming from App modules.
+               "**/libc++_shared.so",
+           ))
+@@ -144,14 +123,14 @@ internal object NdkConfiguratorUtils {
+     val includes = mutableListOf<String>()
+     if (hermesEnabled) {
+       excludes.add("**/libjsc.so")
+-      excludes.add("**/libjscexecutor.so")
++      excludes.add("**/libjsctooling.so")
+       includes.add("**/libhermes.so")
+-      includes.add("**/libhermes_executor.so")
++      includes.add("**/libhermestooling.so")
+     } else {
+       excludes.add("**/libhermes.so")
+-      excludes.add("**/libhermes_executor.so")
++      excludes.add("**/libhermestooling.so")
+       includes.add("**/libjsc.so")
+-      includes.add("**/libjscexecutor.so")
++      includes.add("**/libjsctooling.so")
+     }
+     return excludes to includes
+   }
+diff --git a/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GenerateCodegenArtifactsTaskTest.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GenerateCodegenArtifactsTaskTest.kt
+index 3df107a53d6..a493e82a3bc 100644
+--- a/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GenerateCodegenArtifactsTaskTest.kt
++++ b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GenerateCodegenArtifactsTaskTest.kt
+@@ -11,7 +11,7 @@ import com.facebook.react.tests.*
+ import com.facebook.react.tests.createProject
+ import com.facebook.react.tests.createTestTask
+ import java.io.File
+-import org.assertj.Assert.assertThat
++import org.assertj.core.api.Assertions.assertThat
+ import org.junit.Rule
+ import org.junit.Test
+ import org.junit.rules.TemporaryFolder
+diff --git a/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/NdkConfiguratorUtilsTest.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/NdkConfiguratorUtilsTest.kt
+index 3b866b63d5e..bad4ce1fd44 100644
+--- a/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/NdkConfiguratorUtilsTest.kt
++++ b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/NdkConfiguratorUtilsTest.kt
+@@ -17,21 +17,21 @@ class NdkConfiguratorUtilsTest {
+   fun getPackagingOptionsForVariant_withHermesEnabled() {
+     val (excludes, includes) = getPackagingOptionsForVariant(hermesEnabled = true)
+ 
+-    assertThat(excludes).containsExactly("**/libjsc.so", "**/libjscexecutor.so")
+-    assertThat(includes).doesNotContain("**/libjsc.so", "**/libjscexecutor.so")
++    assertThat(excludes).containsExactly("**/libjsc.so", "**/libjsctooling.so")
++    assertThat(includes).doesNotContain("**/libjsc.so", "**/libjsctooling.so")
+ 
+-    assertThat(includes).containsExactly("**/libhermes.so", "**/libhermes_executor.so")
+-    assertThat(excludes).doesNotContain("**/libhermes.so", "**/libhermes_executor.so")
++    assertThat(includes).containsExactly("**/libhermes.so", "**/libhermestooling.so")
++    assertThat(excludes).doesNotContain("**/libhermes.so", "**/libhermestooling.so")
+   }
+ 
+   @Test
+   fun getPackagingOptionsForVariant_withHermesDisabled() {
+     val (excludes, includes) = getPackagingOptionsForVariant(hermesEnabled = false)
+ 
+-    assertThat(excludes).containsExactly("**/libhermes.so", "**/libhermes_executor.so")
+-    assertThat(includes).doesNotContain("**/libhermes.so", "**/libhermes_executor.so")
++    assertThat(excludes).containsExactly("**/libhermes.so", "**/libhermestooling.so")
++    assertThat(includes).doesNotContain("**/libhermes.so", "**/libhermestooling.so")
+ 
+-    assertThat(includes).containsExactly("**/libjsc.so", "**/libjscexecutor.so")
+-    assertThat(excludes).doesNotContain("**/libjsc.so", "**/libjscexecutor.so")
++    assertThat(includes).containsExactly("**/libjsc.so", "**/libjsctooling.so")
++    assertThat(excludes).doesNotContain("**/libjsc.so", "**/libjsctooling.so")
+   }
+ }
+diff --git a/packages/react-native/ReactAndroid/build.gradle.kts b/packages/react-native/ReactAndroid/build.gradle.kts
+index 3ba674d63bf..937b905b0c8 100644
+--- a/packages/react-native/ReactAndroid/build.gradle.kts
++++ b/packages/react-native/ReactAndroid/build.gradle.kts
+@@ -81,100 +81,29 @@ val preparePrefab by
+       input.set(
+           listOf(
+               PrefabPreprocessingEntry("jsi", Pair("../ReactCommon/jsi/", "")),
+-              PrefabPreprocessingEntry(
+-                  "folly_runtime",
+-                  listOf(
+-                      Pair(File(buildDir, "third-party-ndk/fmt/include/").absolutePath, ""),
+-                      Pair(File(buildDir, "third-party-ndk/folly/").absolutePath, ""),
+-                      Pair(File(buildDir, "third-party-ndk/boost/boost_1_83_0/").absolutePath, ""),
+-                      Pair(File(buildDir, "third-party-ndk/double-conversion/").absolutePath, ""),
+-                  )),
+-              PrefabPreprocessingEntry(
+-                  "react_nativemodule_core",
+-                  listOf(
+-                      Pair(File(buildDir, "third-party-ndk/boost/boost_1_83_0/").absolutePath, ""),
+-                      Pair(File(buildDir, "third-party-ndk/double-conversion/").absolutePath, ""),
+-                      Pair(File(buildDir, "third-party-ndk/fmt/include/").absolutePath, ""),
+-                      Pair(File(buildDir, "third-party-ndk/folly/").absolutePath, ""),
+-                      Pair(File(buildDir, "third-party-ndk/glog/exported/").absolutePath, ""),
+-                      Pair("../ReactCommon/callinvoker/", ""),
+-                      Pair("../ReactCommon/cxxreact/", "cxxreact/"),
+-                      Pair("../ReactCommon/react/bridging/", "react/bridging/"),
+-                      Pair("../ReactCommon/react/config/", "react/config/"),
+-                      Pair("../ReactCommon/react/nativemodule/core/", ""),
+-                      Pair("../ReactCommon/react/nativemodule/core/platform/android/", ""),
+-                      Pair(
+-                          "../ReactCommon/react/renderer/componentregistry/",
+-                          "react/renderer/componentregistry/"),
+-                      Pair(
+-                          "../ReactCommon/react/renderer/components/root/",
+-                          "react/renderer/components/root/"),
+-                      Pair("../ReactCommon/react/renderer/core/", "react/renderer/core/"),
+-                      Pair("../ReactCommon/react/renderer/debug/", "react/renderer/debug/"),
+-                      Pair(
+-                          "../ReactCommon/react/renderer/leakchecker/",
+-                          "react/renderer/leakchecker/"),
+-                      Pair("../ReactCommon/react/renderer/mapbuffer/", "react/renderer/mapbuffer/"),
+-                      Pair("../ReactCommon/react/renderer/mounting/", "react/renderer/mounting/"),
+-                      Pair(
+-                          "../ReactCommon/react/renderer/runtimescheduler/",
+-                          "react/renderer/runtimescheduler/"),
+-                      Pair("../ReactCommon/react/renderer/scheduler/", "react/renderer/scheduler/"),
+-                      Pair("../ReactCommon/react/renderer/telemetry/", "react/renderer/telemetry/"),
+-                      Pair("../ReactCommon/react/renderer/uimanager/", "react/renderer/uimanager/"),
+-                      Pair("../ReactCommon/react/debug/", "react/debug/"),
+-                      Pair("../ReactCommon/react/utils/", "react/utils/"),
+-                      Pair("src/main/jni/react/jni", "react/jni/"),
+-                      // From: react_cxxreactpackage
+-                      Pair("src/main/jni/react/runtime/cxxreactpackage", ""),
+-                  )),
+-              PrefabPreprocessingEntry(
+-                  "react_utils",
+-                  Pair("../ReactCommon/react/utils/", "react/utils/"),
+-              ),
+-              PrefabPreprocessingEntry(
+-                  "react_render_imagemanager",
+-                  listOf(
+-                      Pair(
+-                          "../ReactCommon/react/renderer/imagemanager/",
+-                          "react/renderer/imagemanager/"),
+-                      Pair("../ReactCommon/react/renderer/imagemanager/platform/cxx/", ""),
+-                  )),
+-              // These prefab targets are used by Expo & Reanimated
+-              PrefabPreprocessingEntry(
+-                  "hermes_executor",
+-                  // "hermes_executor" is statically linking against "hermes_executor_common"
+-                  // and "hermes_inspector_modern". Here we expose only the headers that we know are
+-                  // needed.
+-                  Pair("../ReactCommon/hermes/inspector-modern/", "hermes/inspector-modern/")),
+-              PrefabPreprocessingEntry(
+-                  "jscexecutor",
+-                  // "jscexecutor" is statically linking against "jscruntime"
+-                  // Here we expose only the headers that we know are needed.
+-                  Pair("../ReactCommon/jsc/", "jsc/")),
+-              PrefabPreprocessingEntry(
+-                  "reactnativejni",
+-                  listOf(
+-                      Pair("src/main/jni/react/jni", "react/jni/"),
+-                      Pair("../ReactCommon/cxxreact/", "cxxreact/"),
+-                  )),
+-              PrefabPreprocessingEntry(
+-                  "jsinspector",
+-                  Pair("../ReactCommon/jsinspector-modern/", "jsinspector-modern/"),
+-              ),
+               PrefabPreprocessingEntry(
+                   "reactnative",
+                   listOf(
++                      // hermes_executor
++                      // This prefab targets is used by Expo & Reanimated
++                      Pair("../ReactCommon/hermes/inspector-modern/", "hermes/inspector-modern/"),
++                      // jscexecutor
++                      Pair("../ReactCommon/jsc/", "jsc/"),
+                       // fabricjni
+                       Pair("src/main/jni/react/fabric", "react/fabric/"),
+                       // glog
+                       Pair(File(buildDir, "third-party-ndk/glog/exported/").absolutePath, ""),
++                      // jsiinpsector
++                      Pair("../ReactCommon/jsinspector-modern/", "jsinspector-modern/"),
+                       // mapbufferjni
+                       Pair("src/main/jni/react/mapbuffer", "react/mapbuffer/"),
+                       // turbomodulejsijni
+                       Pair("src/main/jni/react/turbomodule", ""),
+                       // react_codegen_rncore
+                       Pair(File(buildDir, "generated/source/codegen/jni/").absolutePath, ""),
++                      // reactnativejni
++                      Pair("src/main/jni/react/jni", "react/jni/"),
++                      Pair("../ReactCommon/cxxreact/", "cxxreact/"),
+                       // react_featureflags
+                       Pair("../ReactCommon/react/featureflags/", "react/featureflags/"),
+                       // react_render_animations
+@@ -567,23 +496,11 @@ android {
+             "-DANDROID_USE_LEGACY_TOOLCHAIN_FILE=ON")
+ 
+         targets(
+-            "jsijniprofiler",
+-            "reactnativeblob",
+-            "bridgeless",
+-            "rninstance",
+-            "hermesinstancejni",
+-            "jscinstance",
+-            "react_devsupportjni",
+-            // prefab targets
+-            "reactnativejni",
+-            "react_utils",
+-            "react_render_componentregistry",
+-            "react_render_dom",
++            "reactnative",
+             "jsi",
+-            "hermes_executor",
+-            "jscexecutor",
+-            "jsinspector",
+-            "reactnative")
++            "hermestooling",
++            "jsctooling",
++        )
+       }
+     }
+     ndk { abiFilters.addAll(reactNativeArchitectures()) }
+@@ -662,10 +579,6 @@ android {
+ 
+   prefab {
+     create("jsi") { headers = File(prefabHeadersDir, "jsi").absolutePath }
+-    create("reactnativejni") { headers = File(prefabHeadersDir, "reactnativejni").absolutePath }
+-    create("hermes_executor") { headers = File(prefabHeadersDir, "hermes_executor").absolutePath }
+-    create("jscexecutor") { headers = File(prefabHeadersDir, "jscexecutor").absolutePath }
+-    create("jsinspector") { headers = File(prefabHeadersDir, "jsinspector").absolutePath }
+     create("reactnative") { headers = File(prefabHeadersDir, "reactnative").absolutePath }
+   }
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt b/packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt
+index 672e4b1886e..03155b84204 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt
++++ b/packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt
+@@ -126,6 +126,7 @@ add_react_android_subdir(src/main/jni/first-party/jni-lib-merge)
+ add_react_android_subdir(src/main/jni/react/jni)
+ add_react_android_subdir(src/main/jni/react/reactperflogger)
+ add_react_android_subdir(src/main/jni/react/jscexecutor)
++add_react_android_subdir(src/main/jni/react/jsctooling)
+ add_react_android_subdir(src/main/jni/react/turbomodule)
+ add_react_android_subdir(src/main/jni/react/uimanager)
+ add_react_android_subdir(src/main/jni/react/mapbuffer)
+@@ -134,6 +135,7 @@ add_react_android_subdir(src/main/jni/react/fabric)
+ add_react_android_subdir(src/main/jni/react/featureflags)
+ add_react_android_subdir(src/main/jni/react/newarchdefaults)
+ add_react_android_subdir(src/main/jni/react/hermes/reactexecutor)
++add_react_android_subdir(src/main/jni/react/hermes/tooling)
+ add_react_android_subdir(src/main/jni/react/hermes/instrumentation/)
+ add_react_android_subdir(src/main/jni/react/runtime/cxxreactpackage)
+ add_react_android_subdir(src/main/jni/react/runtime/jni)
+@@ -150,21 +152,23 @@ include(${REACT_ANDROID_DIR}/src/main/jni/first-party/jni-lib-merge/SoMerging-ut
+ # This is needed in order to reduce the number of .so files that we ship in the final library
+ add_library(reactnative
+         SHARED
+-          OnLoad.cpp
+           $<TARGET_OBJECTS:bridgeless>
+           $<TARGET_OBJECTS:bridgelessnativeviewconfig>
+-          $<TARGET_OBJECTS:bridgelesshermes>
++          $<TARGET_OBJECTS:callinvokerholder>
+           $<TARGET_OBJECTS:fabricjni>
+-          $<TARGET_OBJECTS:hermes_inspector_modern>
+-          $<TARGET_OBJECTS:hermesinstancejni>
++          $<TARGET_OBJECTS:glog_init>
+           $<TARGET_OBJECTS:jni_lib_merge_glue>
+           $<TARGET_OBJECTS:jserrorhandler>
++          $<TARGET_OBJECTS:jsinspector>
++          $<TARGET_OBJECTS:jsireact>
+           $<TARGET_OBJECTS:logger>
+           $<TARGET_OBJECTS:mapbufferjni>
+           $<TARGET_OBJECTS:react_bridging>
+           $<TARGET_OBJECTS:react_codegen_rncore>
+           $<TARGET_OBJECTS:react_config>
++          $<TARGET_OBJECTS:react_cxxreact>
+           $<TARGET_OBJECTS:react_debug>
++          $<TARGET_OBJECTS:react_devsupportjni>
+           $<TARGET_OBJECTS:react_featureflags>
+           $<TARGET_OBJECTS:react_featureflagsjni>
+           $<TARGET_OBJECTS:react_nativemodule_core>
+@@ -174,6 +178,7 @@ add_library(reactnative
+           $<TARGET_OBJECTS:react_nativemodule_idlecallbacks>
+           $<TARGET_OBJECTS:react_nativemodule_microtasks>
+           $<TARGET_OBJECTS:react_newarchdefaults>
++          $<TARGET_OBJECTS:react_performance_timeline>
+           $<TARGET_OBJECTS:react_render_animations>
+           $<TARGET_OBJECTS:react_render_attributedstring>
+           $<TARGET_OBJECTS:react_render_componentregistry>
+@@ -188,12 +193,16 @@ add_library(reactnative
+           $<TARGET_OBJECTS:react_render_mapbuffer>
+           $<TARGET_OBJECTS:react_render_mounting>
+           $<TARGET_OBJECTS:react_render_observers_events>
++          $<TARGET_OBJECTS:react_render_runtimescheduler>
+           $<TARGET_OBJECTS:react_render_scheduler>
+           $<TARGET_OBJECTS:react_render_telemetry>
+           $<TARGET_OBJECTS:react_render_textlayoutmanager>
+           $<TARGET_OBJECTS:react_render_uimanager>
+           $<TARGET_OBJECTS:react_render_uimanager_consistency>
+           $<TARGET_OBJECTS:react_utils>
++          $<TARGET_OBJECTS:reactnativeblob>
++          $<TARGET_OBJECTS:reactnativejni>
++          $<TARGET_OBJECTS:reactperflogger>
+           $<TARGET_OBJECTS:rninstance>
+           $<TARGET_OBJECTS:rrc_image>
+           $<TARGET_OBJECTS:rrc_legacyviewmanagerinterop>
+@@ -213,31 +222,36 @@ add_library(reactnative
+ )
+ target_merge_so(reactnative)
+ 
+-target_link_libraries(reactnative PUBLIC
+-        double-conversion
+-        fbjni
+-        folly_runtime
+-        glog
+-        jsi
+-        log
+-        reactnativejni
+-        yoga
+-        hermes-engine::libhermes
++target_link_libraries(reactnative
++          PUBLIC
++            android
++            double-conversion
++            fb
++            fbjni
++            folly_runtime
++            glog
++            jsi
++            log
++            yogacore
+ )
++
+ target_include_directories(reactnative
+         PUBLIC
+         $<TARGET_PROPERTY:bridgeless,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:bridgelessnativeviewconfig,INTERFACE_INCLUDE_DIRECTORIES>
+-        $<TARGET_PROPERTY:bridgelesshermes,INTERFACE_INCLUDE_DIRECTORIES>
++        $<TARGET_PROPERTY:callinvokerholder,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:fabricjni,INTERFACE_INCLUDE_DIRECTORIES>
+-        $<TARGET_PROPERTY:hermes_inspector_modern,INTERFACE_INCLUDE_DIRECTORIES>
+-        $<TARGET_PROPERTY:hermesinstancejni,INTERFACE_INCLUDE_DIRECTORIES>
++        $<TARGET_PROPERTY:glog_init,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:jserrorhandler,INTERFACE_INCLUDE_DIRECTORIES>
++        $<TARGET_PROPERTY:jsinspector,INTERFACE_INCLUDE_DIRECTORIES>
++        $<TARGET_PROPERTY:jsireact,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:mapbufferjni,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_bridging,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_codegen_rncore,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_config,INTERFACE_INCLUDE_DIRECTORIES>
++        $<TARGET_PROPERTY:react_cxxreact,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_debug,INTERFACE_INCLUDE_DIRECTORIES>
++        $<TARGET_PROPERTY:react_devsupportjni,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_featureflags,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_featureflagsjni,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_nativemodule_core,INTERFACE_INCLUDE_DIRECTORIES>
+@@ -247,6 +261,7 @@ target_include_directories(reactnative
+         $<TARGET_PROPERTY:react_nativemodule_idlecallbacks,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_nativemodule_microtasks,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_newarchdefaults,INTERFACE_INCLUDE_DIRECTORIES>
++        $<TARGET_PROPERTY:react_performance_timeline,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_render_animations,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_render_attributedstring,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_render_componentregistry,INTERFACE_INCLUDE_DIRECTORIES>
+@@ -262,12 +277,16 @@ target_include_directories(reactnative
+         $<TARGET_PROPERTY:react_render_mapbuffer,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_render_mounting,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_render_observers_events,INTERFACE_INCLUDE_DIRECTORIES>
++        $<TARGET_PROPERTY:react_render_runtimescheduler,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_render_scheduler,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_render_telemetry,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_render_textlayoutmanager,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_render_uimanager,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_render_uimanager_consistency,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_utils,INTERFACE_INCLUDE_DIRECTORIES>
++        $<TARGET_PROPERTY:reactnativeblob,INTERFACE_INCLUDE_DIRECTORIES>
++        $<TARGET_PROPERTY:reactnativejni,INTERFACE_INCLUDE_DIRECTORIES>
++        $<TARGET_PROPERTY:reactperflogger,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:rninstance,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:rrc_image,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:rrc_legacyviewmanagerinterop,INTERFACE_INCLUDE_DIRECTORIES>
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/OnLoad.cpp b/packages/react-native/ReactAndroid/src/main/jni/OnLoad.cpp
+deleted file mode 100644
+index 520564e5606..00000000000
+--- a/packages/react-native/ReactAndroid/src/main/jni/OnLoad.cpp
++++ /dev/null
+@@ -1,12 +0,0 @@
+-/*
+- * Copyright (c) Meta Platforms, Inc. and affiliates.
+- *
+- * This source code is licensed under the MIT license found in the
+- * LICENSE file in the root directory of this source tree.
+- */
+-
+-#include <fbjni/fbjni.h>
+-
+-JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*) {
+-  return facebook::jni::initialize(vm, [] {});
+-}
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/first-party/fbgloginit/CMakeLists.txt b/packages/react-native/ReactAndroid/src/main/jni/first-party/fbgloginit/CMakeLists.txt
+index 194f607cc11..75a3d344d12 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/first-party/fbgloginit/CMakeLists.txt
++++ b/packages/react-native/ReactAndroid/src/main/jni/first-party/fbgloginit/CMakeLists.txt
+@@ -8,7 +8,7 @@ set(CMAKE_VERBOSE_MAKEFILE on)
+ 
+ add_compile_options(-fexceptions -fno-omit-frame-pointer)
+ 
+-add_library(glog_init STATIC glog_init.cpp)
++add_library(glog_init OBJECT glog_init.cpp)
+ 
+ target_include_directories(glog_init PUBLIC .)
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/devsupport/CMakeLists.txt b/packages/react-native/ReactAndroid/src/main/jni/react/devsupport/CMakeLists.txt
+index c2c6b29a744..b0476f1ff86 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/devsupport/CMakeLists.txt
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/devsupport/CMakeLists.txt
+@@ -8,9 +8,13 @@ set(CMAKE_VERBOSE_MAKEFILE on)
+ 
+ add_compile_options(-fexceptions -frtti -std=c++20 -Wall -DLOG_TAG=\"ReactNative\")
+ 
++include(${REACT_ANDROID_DIR}/src/main/jni/first-party/jni-lib-merge/SoMerging-utils.cmake)
++
+ file(GLOB react_devsupportjni_SRC CONFIGURE_DEPENDS *.cpp)
+ 
+-add_library(react_devsupportjni SHARED ${react_devsupportjni_SRC})
++add_library(react_devsupportjni OBJECT ${react_devsupportjni_SRC})
++
++target_merge_so(react_devsupportjni)
+ 
+ target_include_directories(react_devsupportjni PUBLIC .)
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/hermes/instrumentation/CMakeLists.txt b/packages/react-native/ReactAndroid/src/main/jni/react/hermes/instrumentation/CMakeLists.txt
+index 525d86ad721..e9067594f4c 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/hermes/instrumentation/CMakeLists.txt
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/hermes/instrumentation/CMakeLists.txt
+@@ -8,9 +8,11 @@ set(CMAKE_VERBOSE_MAKEFILE on)
+ 
+ file(GLOB_RECURSE jsijniprofiler_SRC CONFIGURE_DEPENDS *.cpp)
+ 
++include(${REACT_ANDROID_DIR}/src/main/jni/first-party/jni-lib-merge/SoMerging-utils.cmake)
++
+ add_library(
+         jsijniprofiler
+-        SHARED
++        OBJECT
+         ${jsijniprofiler_SRC}
+ )
+ target_compile_options(
+@@ -18,14 +20,13 @@ target_compile_options(
+         PRIVATE
+         -fexceptions
+ )
++target_merge_so(jsijniprofiler)
++
+ target_include_directories(jsijniprofiler PRIVATE .)
++
+ target_link_libraries(
+       jsijniprofiler
+-      fb
+-      fbjni
+-      jsireact
+-      folly_runtime
+       hermes-engine::libhermes
+       jsi
+-      reactnativejni
++      reactnative
+ )
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/hermes/reactexecutor/CMakeLists.txt b/packages/react-native/ReactAndroid/src/main/jni/react/hermes/reactexecutor/CMakeLists.txt
+index 0a7f253f63c..ab70319d7f3 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/hermes/reactexecutor/CMakeLists.txt
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/hermes/reactexecutor/CMakeLists.txt
+@@ -8,8 +8,10 @@ set(CMAKE_VERBOSE_MAKEFILE on)
+ 
+ file(GLOB_RECURSE hermes_executor_SRC CONFIGURE_DEPENDS *.cpp)
+ 
++include(${REACT_ANDROID_DIR}/src/main/jni/first-party/jni-lib-merge/SoMerging-utils.cmake)
++
+ add_library(hermes_executor
+-        SHARED
++        OBJECT
+         ${hermes_executor_SRC}
+ )
+ target_compile_options(
+@@ -19,15 +21,12 @@ target_compile_options(
+         -std=c++20
+         -fexceptions
+ )
++target_merge_so(hermes_executor)
+ target_include_directories(hermes_executor PRIVATE .)
+ target_link_libraries(
+         hermes_executor
+         hermes_executor_common
+-        jsireact
+-        fb
+-        fbjni
+-        folly_runtime
+         hermes-engine::libhermes
+         jsi
+-        reactnativejni
++        reactnative
+ )
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/hermes/reactexecutor/OnLoad.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/hermes/reactexecutor/OnLoad.cpp
+index 035b511e355..3ce0267a2e5 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/hermes/reactexecutor/OnLoad.cpp
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/hermes/reactexecutor/OnLoad.cpp
+@@ -5,7 +5,6 @@
+  * LICENSE file in the root directory of this source tree.
+  */
+ 
+-#include <../instrumentation/HermesMemoryDumper.h>
+ #include <HermesExecutorFactory.h>
+ #include <android/log.h>
+ #include <fbjni/fbjni.h>
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/hermes/tooling/CMakeLists.txt b/packages/react-native/ReactAndroid/src/main/jni/react/hermes/tooling/CMakeLists.txt
+new file mode 100644
+index 00000000000..5b54e346e62
+--- /dev/null
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/hermes/tooling/CMakeLists.txt
+@@ -0,0 +1,41 @@
++# Copyright (c) Meta Platforms, Inc. and affiliates.
++#
++# This source code is licensed under the MIT license found in the
++# LICENSE file in the root directory of this source tree.
++
++cmake_minimum_required(VERSION 3.13)
++set(CMAKE_VERBOSE_MAKEFILE on)
++
++include(${REACT_ANDROID_DIR}/src/main/jni/first-party/jni-lib-merge/SoMerging-utils.cmake)
++
++# hermestooling is a shared library where we merge all the hermes* related libraries.
++#
++# It acts as an 'umbrella' library and gets removed by RNGP (see `configureJsEnginePackagingOptions`)
++# Please note that this library gets removed for users that opt to use JSC as their JS engine.
++
++add_library(hermestooling
++        SHARED
++        $<TARGET_OBJECTS:bridgelesshermes>
++        $<TARGET_OBJECTS:hermes_executor>
++        $<TARGET_OBJECTS:hermes_executor_common>
++        $<TARGET_OBJECTS:hermes_inspector_modern>
++        $<TARGET_OBJECTS:hermesinstancejni>
++        $<TARGET_OBJECTS:jni_lib_merge_glue>
++        $<TARGET_OBJECTS:jsijniprofiler>
++)
++target_merge_so(hermestooling)
++target_link_libraries(hermestooling
++        PUBLIC
++        reactnative
++        jsi
++        hermes-engine::libhermes
++)
++target_include_directories(hermestooling
++        PUBLIC
++        $<TARGET_PROPERTY:bridgelesshermes,INTERFACE_INCLUDE_DIRECTORIES>
++        $<TARGET_PROPERTY:hermes_executor,INTERFACE_INCLUDE_DIRECTORIES>
++        $<TARGET_PROPERTY:hermes_executor_common,INTERFACE_INCLUDE_DIRECTORIES>
++        $<TARGET_PROPERTY:hermes_inspector_modern,INTERFACE_INCLUDE_DIRECTORIES>
++        $<TARGET_PROPERTY:hermesinstancejni,INTERFACE_INCLUDE_DIRECTORIES>
++        $<TARGET_PROPERTY:jsijniprofiler,INTERFACE_INCLUDE_DIRECTORIES>
++)
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/jni/CMakeLists.txt b/packages/react-native/ReactAndroid/src/main/jni/react/jni/CMakeLists.txt
+index e503374e7c5..a84e72dc30a 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/jni/CMakeLists.txt
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/jni/CMakeLists.txt
+@@ -17,12 +17,14 @@ add_compile_options(
+ ### reactnativejni ###
+ ######################
+ 
++include(${REACT_ANDROID_DIR}/src/main/jni/first-party/jni-lib-merge/SoMerging-utils.cmake)
+ 
+ add_library(
+         reactnativejni
+-        SHARED
++        OBJECT
+         ${reactnativejni_SRC}
+ )
++target_merge_so(reactnativejni)
+ 
+ # TODO This should not be ../../
+ target_include_directories(reactnativejni PUBLIC ../../)
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/jscexecutor/CMakeLists.txt b/packages/react-native/ReactAndroid/src/main/jni/react/jscexecutor/CMakeLists.txt
+index 67858803b3c..cbcd19bb8ef 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/jscexecutor/CMakeLists.txt
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/jscexecutor/CMakeLists.txt
+@@ -8,10 +8,13 @@ set(CMAKE_VERBOSE_MAKEFILE on)
+ 
+ add_compile_options(-fvisibility=hidden -fexceptions -frtti)
+ 
++include(${REACT_ANDROID_DIR}/src/main/jni/first-party/jni-lib-merge/SoMerging-utils.cmake)
++
+ file(GLOB jscexecutor_SRC CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
+-add_library(jscexecutor SHARED ${jscexecutor_SRC})
++add_library(jscexecutor OBJECT ${jscexecutor_SRC})
+ 
+ target_include_directories(jscexecutor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
++target_merge_so(jscexecutor)
+ 
+ # Patch from Expo: https://github.com/expo/react-native/blob/02714ab44d1e206fa80e81aef618e61017cccdc1/ReactAndroid/src/main/java/com/facebook/react/jscexecutor/CMakeLists.txt#L16-L25
+ # Explicitly link libgcc.a to prevent undefined `_Unwind_Resume` symbol and crash from throwing c++ exceptions even someone tries to catch the exceptions.
+@@ -26,11 +29,7 @@ else()
+ endif()
+ 
+ target_link_libraries(jscexecutor
+-        jsireact
+-        jscruntime
+         ${LIB_UNWIND}
+-        fb
+-        fbjni
+-        folly_runtime
++        jscruntime
+         jsi
+-        reactnativejni)
++        reactnative)
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/jsctooling/CMakeLists.txt b/packages/react-native/ReactAndroid/src/main/jni/react/jsctooling/CMakeLists.txt
+new file mode 100644
+index 00000000000..1b30b2aba81
+--- /dev/null
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/jsctooling/CMakeLists.txt
+@@ -0,0 +1,34 @@
++# Copyright (c) Meta Platforms, Inc. and affiliates.
++#
++# This source code is licensed under the MIT license found in the
++# LICENSE file in the root directory of this source tree.
++
++cmake_minimum_required(VERSION 3.13)
++set(CMAKE_VERBOSE_MAKEFILE on)
++
++include(${REACT_ANDROID_DIR}/src/main/jni/first-party/jni-lib-merge/SoMerging-utils.cmake)
++
++# jsctooling is a shared library where we merge all the jsc* related libraries.
++#
++# It acts as an 'umbrella' library and gets removed by RNGP (see `configureJsEnginePackagingOptions`)
++# Please note that this library gets removed for users that opt to use Hermes as their JS engine.
++
++add_library(jsctooling
++        SHARED
++        $<TARGET_OBJECTS:jni_lib_merge_glue>
++        $<TARGET_OBJECTS:jscinstance>
++        $<TARGET_OBJECTS:jscruntime>
++        $<TARGET_OBJECTS:jscexecutor>
++)
++target_merge_so(jsctooling)
++target_link_libraries(jsctooling
++        PUBLIC
++        reactnative
++        jsc
++)
++target_include_directories(jsctooling
++        PUBLIC
++        $<TARGET_PROPERTY:jscexecutor,INTERFACE_INCLUDE_DIRECTORIES>
++        $<TARGET_PROPERTY:jscruntime,INTERFACE_INCLUDE_DIRECTORIES>
++        $<TARGET_PROPERTY:jscinstance,INTERFACE_INCLUDE_DIRECTORIES>
++)
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/newarchdefaults/CMakeLists.txt b/packages/react-native/ReactAndroid/src/main/jni/react/newarchdefaults/CMakeLists.txt
+index 2952f17c605..451b1237ce8 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/newarchdefaults/CMakeLists.txt
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/newarchdefaults/CMakeLists.txt
+@@ -14,8 +14,6 @@ add_compile_options(-fexceptions
+         -Wall
+         -DLOG_TAG=\"ReactNative\")
+ 
+-add_link_options(-Wl,--defsym=JNI_OnLoad=JNI_OnLoad_Weak)
+-
+ file(GLOB react_newarchdefaults_SRC CONFIGURE_DEPENDS *.cpp)
+ 
+ add_library(react_newarchdefaults OBJECT ${react_newarchdefaults_SRC})
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/reactnativeblob/CMakeLists.txt b/packages/react-native/ReactAndroid/src/main/jni/react/reactnativeblob/CMakeLists.txt
+index d28871fdff6..60263ab1d87 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/reactnativeblob/CMakeLists.txt
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/reactnativeblob/CMakeLists.txt
+@@ -8,10 +8,13 @@ set(CMAKE_VERBOSE_MAKEFILE on)
+ 
+ add_compile_options(-fvisibility=hidden -fexceptions -frtti)
+ 
++include(${REACT_ANDROID_DIR}/src/main/jni/first-party/jni-lib-merge/SoMerging-utils.cmake)
++
+ file(GLOB reactnativeblob_SRC CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
+-add_library(reactnativeblob SHARED ${reactnativeblob_SRC})
++add_library(reactnativeblob OBJECT ${reactnativeblob_SRC})
+ 
+ target_include_directories(reactnativeblob PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
++target_merge_so(reactnativeblob)
+ 
+ target_link_libraries(reactnativeblob
+         jsireact
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/runtime/hermes/jni/CMakeLists.txt b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/hermes/jni/CMakeLists.txt
+index c89ffd2d3cd..1d8e0cf0a3e 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/runtime/hermes/jni/CMakeLists.txt
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/hermes/jni/CMakeLists.txt
+@@ -21,12 +21,13 @@ target_compile_options(
+         -std=c++20
+         -fexceptions
+ )
+-target_merge_so(hermesinstancejni)
++
+ target_include_directories(hermesinstancejni PRIVATE .)
+-target_link_libraries(
+-        hermesinstancejni
++target_merge_so(hermesinstancejni)
++
++target_link_libraries(hermesinstancejni
+         hermes-engine::libhermes
+-        rninstance
+         fbjni
+         bridgelesshermes
++        reactnative
+ )
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/runtime/jsc/jni/CMakeLists.txt b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/jsc/jni/CMakeLists.txt
+index 25186fdf67f..893b00a0d42 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/runtime/jsc/jni/CMakeLists.txt
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/jsc/jni/CMakeLists.txt
+@@ -8,16 +8,17 @@ set(CMAKE_VERBOSE_MAKEFILE on)
+ 
+ add_compile_options(-fvisibility=hidden -fexceptions -frtti)
+ 
++include(${REACT_ANDROID_DIR}/src/main/jni/first-party/jni-lib-merge/SoMerging-utils.cmake)
++
+ file(GLOB jscinstance_SRC CONFIGURE_DEPENDS "*.cpp")
+-add_library(jscinstance SHARED ${jscinstance_SRC})
++
++add_library(jscinstance OBJECT ${jscinstance_SRC})
+ 
+ target_include_directories(jscinstance PUBLIC .)
++target_merge_so(jscinstance)
+ 
+-target_link_libraries(
+-        jscinstance
+-        bridgeless
++target_link_libraries(jscinstance
+         jscruntime
+         fbjni
+-        reactnativejni
+-        jserrorhandler
++        reactnative
+ )
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/turbomodule/CMakeLists.txt b/packages/react-native/ReactAndroid/src/main/jni/react/turbomodule/CMakeLists.txt
+index fcab8ca6285..7b117afd85a 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/turbomodule/CMakeLists.txt
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/turbomodule/CMakeLists.txt
+@@ -19,7 +19,7 @@ add_compile_options(
+ # TODO This should be exported to its own folder hierarchy
+ add_library(
+         callinvokerholder
+-        STATIC
++        OBJECT
+         ReactCommon/CallInvokerHolder.cpp
+         ReactCommon/NativeMethodCallInvokerHolder.cpp
+ )
+diff --git a/packages/react-native/ReactCommon/cxxreact/CMakeLists.txt b/packages/react-native/ReactCommon/cxxreact/CMakeLists.txt
+index 3ebe171f11b..5bc9b63d2aa 100644
+--- a/packages/react-native/ReactCommon/cxxreact/CMakeLists.txt
++++ b/packages/react-native/ReactCommon/cxxreact/CMakeLists.txt
+@@ -14,7 +14,7 @@ add_compile_options(
+         -DLOG_TAG=\"ReactNative\")
+ 
+ file(GLOB react_cxxreact_SRC CONFIGURE_DEPENDS *.cpp)
+-add_library(react_cxxreact STATIC ${react_cxxreact_SRC})
++add_library(react_cxxreact OBJECT ${react_cxxreact_SRC})
+ 
+ target_include_directories(react_cxxreact PUBLIC ${REACT_COMMON_DIR})
+ 
+diff --git a/packages/react-native/ReactCommon/hermes/executor/CMakeLists.txt b/packages/react-native/ReactCommon/hermes/executor/CMakeLists.txt
+index 6c72e5d1b90..a52b9c3542a 100644
+--- a/packages/react-native/ReactCommon/hermes/executor/CMakeLists.txt
++++ b/packages/react-native/ReactCommon/hermes/executor/CMakeLists.txt
+@@ -11,15 +11,15 @@ add_compile_options(-std=c++20)
+ file(GLOB_RECURSE hermes_executor_SRC CONFIGURE_DEPENDS *.cpp)
+ add_library(
+         hermes_executor_common
+-        STATIC
++        OBJECT
+         ${hermes_executor_SRC}
+ )
+ target_include_directories(hermes_executor_common PUBLIC .)
+ target_link_libraries(hermes_executor_common
+-        jsireact
+         hermes-engine::libhermes
+-        jsi
+         hermes_inspector_modern
++        jsi
++        reactnative
+ )
+ 
+ if(${CMAKE_BUILD_TYPE} MATCHES Debug)
+diff --git a/packages/react-native/ReactCommon/hermes/inspector-modern/CMakeLists.txt b/packages/react-native/ReactCommon/hermes/inspector-modern/CMakeLists.txt
+index 7ef97b3706d..0e511126624 100644
+--- a/packages/react-native/ReactCommon/hermes/inspector-modern/CMakeLists.txt
++++ b/packages/react-native/ReactCommon/hermes/inspector-modern/CMakeLists.txt
+@@ -29,9 +29,6 @@ endif()
+ 
+ target_include_directories(hermes_inspector_modern PUBLIC ${REACT_COMMON_DIR})
+ target_link_libraries(hermes_inspector_modern
+-        jsinspector
+-        fb
+-        glog
+         hermes-engine::libhermes
+         jsi
+-        runtimeexecutor)
++        reactnative)
+diff --git a/packages/react-native/ReactCommon/jsc/CMakeLists.txt b/packages/react-native/ReactCommon/jsc/CMakeLists.txt
+index d71b289679b..32525e2a061 100644
+--- a/packages/react-native/ReactCommon/jsc/CMakeLists.txt
++++ b/packages/react-native/ReactCommon/jsc/CMakeLists.txt
+@@ -17,18 +17,20 @@ add_compile_options(
+         -Wno-unused-lambda-capture
+         -DLOG_TAG=\"ReactNative\")
+ 
++include(${REACT_ANDROID_DIR}/src/main/jni/first-party/jni-lib-merge/SoMerging-utils.cmake)
++
+ add_library(jscruntime
+-        STATIC
++        OBJECT
+         JSCRuntime.h
+         JSCRuntime.cpp)
+ 
+ target_include_directories(jscruntime PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
++target_merge_so(jscruntime)
+ 
+ target_link_libraries(jscruntime
+-        folly_runtime
+         jsc
+         jsi
+-        glog)
++        reactnative)
+ 
+ if(NOT ${CMAKE_BUILD_TYPE} MATCHES Debug)
+         target_compile_options(jscruntime PRIVATE -DNDEBUG)
+diff --git a/packages/react-native/ReactCommon/jsiexecutor/CMakeLists.txt b/packages/react-native/ReactCommon/jsiexecutor/CMakeLists.txt
+index 87bbf0c8f48..0ffa76b6ce8 100644
+--- a/packages/react-native/ReactCommon/jsiexecutor/CMakeLists.txt
++++ b/packages/react-native/ReactCommon/jsiexecutor/CMakeLists.txt
+@@ -13,7 +13,7 @@ add_compile_options(
+         -O3)
+ 
+ add_library(jsireact
+-        STATIC
++        OBJECT
+         jsireact/JSIExecutor.cpp
+         jsireact/JSINativeModules.cpp)
+ 
+diff --git a/packages/react-native/ReactCommon/jsinspector-modern/CMakeLists.txt b/packages/react-native/ReactCommon/jsinspector-modern/CMakeLists.txt
+index 73994bd2eca..89cda954188 100644
+--- a/packages/react-native/ReactCommon/jsinspector-modern/CMakeLists.txt
++++ b/packages/react-native/ReactCommon/jsinspector-modern/CMakeLists.txt
+@@ -10,11 +10,14 @@ add_compile_options(
+         -fexceptions
+         -std=c++20)
+ 
++include(${REACT_ANDROID_DIR}/src/main/jni/first-party/jni-lib-merge/SoMerging-utils.cmake)
++
+ file(GLOB jsinspector_SRC CONFIGURE_DEPENDS *.cpp)
+ # jsinspector contains singletons that hold app-global state (InspectorFlags, InspectorImpl).
+ # Placing it in a shared library makes the singletons safe to use from arbitrary shared libraries
+ # (even ones that don't depend on one another).
+-add_library(jsinspector SHARED ${jsinspector_SRC})
++add_library(jsinspector OBJECT ${jsinspector_SRC})
++target_merge_so(jsinspector)
+ 
+ target_include_directories(jsinspector PUBLIC ${REACT_COMMON_DIR})
+ 
+diff --git a/packages/react-native/ReactCommon/react/performance/timeline/CMakeLists.txt b/packages/react-native/ReactCommon/react/performance/timeline/CMakeLists.txt
+index b58b0924a37..2205b976ee7 100644
+--- a/packages/react-native/ReactCommon/react/performance/timeline/CMakeLists.txt
++++ b/packages/react-native/ReactCommon/react/performance/timeline/CMakeLists.txt
+@@ -15,7 +15,7 @@ add_compile_options(
+         -DLOG_TAG=\"ReactNative\")
+ 
+ file(GLOB react_performance_timeline_SRC CONFIGURE_DEPENDS *.cpp)
+-add_library(react_performance_timeline SHARED ${react_performance_timeline_SRC})
++add_library(react_performance_timeline OBJECT ${react_performance_timeline_SRC})
+ 
+ target_include_directories(react_performance_timeline PUBLIC ${REACT_COMMON_DIR})
+ target_link_libraries(react_performance_timeline
+diff --git a/packages/react-native/ReactCommon/react/runtime/hermes/CMakeLists.txt b/packages/react-native/ReactCommon/react/runtime/hermes/CMakeLists.txt
+index ba600340203..91ef2b5bc13 100644
+--- a/packages/react-native/ReactCommon/react/runtime/hermes/CMakeLists.txt
++++ b/packages/react-native/ReactCommon/react/runtime/hermes/CMakeLists.txt
+@@ -11,20 +11,18 @@ add_compile_options(-std=c++20)
+ file(GLOB_RECURSE bridgeless_hermes_SRC CONFIGURE_DEPENDS *.cpp)
+ add_library(
+         bridgelesshermes
+-        STATIC
++        OBJECT
+         ${bridgeless_hermes_SRC}
+ )
+ target_include_directories(bridgelesshermes PUBLIC .)
+ 
+ target_link_libraries(bridgelesshermes
+-        jsireact
+         hermes-engine::libhermes
++        hermes_executor_common
+         hermes_inspector_modern
+         jsi
+-        hermes_executor_common
+-        bridgeless
+-        react_featureflags
+         jsinspector
++        reactnative
+ )
+ 
+ if(${CMAKE_BUILD_TYPE} MATCHES Debug)
+diff --git a/packages/react-native/ReactCommon/reactperflogger/CMakeLists.txt b/packages/react-native/ReactCommon/reactperflogger/CMakeLists.txt
+index 8f3226861b5..fe1a317f088 100644
+--- a/packages/react-native/ReactCommon/reactperflogger/CMakeLists.txt
++++ b/packages/react-native/ReactCommon/reactperflogger/CMakeLists.txt
+@@ -17,7 +17,7 @@ add_compile_options(
+ file(GLOB reactperflogger_SRC CONFIGURE_DEPENDS
+         reactperflogger/*.cpp
+         fusebox/*.cpp)
+-add_library(reactperflogger STATIC ${reactperflogger_SRC})
++add_library(reactperflogger OBJECT ${reactperflogger_SRC})
+ 
+ target_include_directories(reactperflogger PUBLIC .)
+ 
+diff --git a/packages/react-native/sdks/ossonly-soloader/src/main/java/com/facebook/soloader/MergedSoMapping.kt b/packages/react-native/sdks/ossonly-soloader/src/main/java/com/facebook/soloader/MergedSoMapping.kt
+index 5ef3b9dfb37..33e17277e80 100644
+--- a/packages/react-native/sdks/ossonly-soloader/src/main/java/com/facebook/soloader/MergedSoMapping.kt
++++ b/packages/react-native/sdks/ossonly-soloader/src/main/java/com/facebook/soloader/MergedSoMapping.kt
+@@ -20,26 +20,52 @@ public object MergedSoMapping {
+ 
+   public fun mapLibName(input: String): String =
+       when (input) {
+-        "fabricjni" -> "reactnative"
+-        "hermesinstancejni" -> "reactnative"
+-        "mapbufferjni" -> "reactnative"
+-        "react_featureflagsjni" -> "reactnative"
+-        "react_newarchdefaults" -> "reactnative"
+-        "rninstance" -> "reactnative"
+-        "turbomodulejsijni" -> "reactnative"
+-        "uimanagerjni" -> "reactnative"
+-        "yoga" -> "reactnative"
++        "fabricjni",
++        "jsinspector",
++        "mapbufferjni",
++        "react_devsupportjni",
++        "react_featureflagsjni",
++        "react_newarchdefaults",
++        "reactnativeblob",
++        "reactnativejni",
++        "rninstance",
++        "turbomodulejsijni",
++        "uimanagerjni",
++        "yoga" -> {
++          "reactnative"
++        }
++        "hermes_executor",
++        "hermesinstancejni",
++        "jsijniprofiler" -> {
++          "hermestooling"
++        }
++        "jscexecutor",
++        "jscruntime",
++        "jscinstance" -> {
++          "jsctooling"
++        }
+         else -> input
+       }
+ 
+   public fun invokeJniOnload(libraryName: String): Unit {
+     when (libraryName) {
+       "fabricjni" -> libfabricjni_so()
++      "hermes_executor" -> libhermes_executor_so()
+       "hermesinstancejni" -> libhermesinstancejni_so()
++      "hermestooling" -> libhermestooling_so()
++      "jscexecutor" -> libjscexecutor_so()
++      "jscinstance" -> libjscinstance_so()
++      "jscruntime" -> libjscruntime_so()
++      "jsctooling" -> libjsctooling_so()
++      "jsijniprofiler" -> libjsijniprofiler_so()
++      "jsinspector" -> libjsinspector_so()
+       "mapbufferjni" -> libmapbufferjni_so()
++      "react_devsupportjni" -> libreact_devsupportjni_so()
+       "react_featureflagsjni" -> libreact_featureflagsjni_so()
+       "react_newarchdefaults" -> libreact_newarchdefaults_so()
+       "reactnative" -> libreactnative_so()
++      "reactnativeblob" -> libreactnativeblob_so()
++      "reactnativejni" -> libreactnativejni_so()
+       "rninstance" -> librninstance_so()
+       "turbomodulejsijni" -> libturbomodulejsijni_so()
+       "uimanagerjni" -> libuimanagerjni_so()
+@@ -49,16 +75,38 @@ public object MergedSoMapping {
+ 
+   public external fun libfabricjni_so(): Int
+ 
++  public external fun libhermes_executor_so(): Int
++
+   public external fun libhermesinstancejni_so(): Int
+ 
++  public external fun libhermestooling_so(): Int
++
++  public external fun libjscexecutor_so(): Int
++
++  public external fun libjscinstance_so(): Int
++
++  public external fun libjscruntime_so(): Int
++
++  public external fun libjsctooling_so(): Int
++
++  public external fun libjsijniprofiler_so(): Int
++
++  public external fun libjsinspector_so(): Int
++
+   public external fun libmapbufferjni_so(): Int
+ 
++  public external fun libreact_devsupportjni_so(): Int
++
+   public external fun libreact_featureflagsjni_so(): Int
+ 
+   public external fun libreact_newarchdefaults_so(): Int
+ 
+   public external fun libreactnative_so(): Int
+ 
++  public external fun libreactnativeblob_so(): Int
++
++  public external fun libreactnativejni_so(): Int
++
+   public external fun librninstance_so(): Int
+ 
+   public external fun libturbomodulejsijni_so(): Int
+diff --git a/packages/react-native/sdks/ossonly-soloader/src/main/java/com/facebook/soloader/SoLoader.kt b/packages/react-native/sdks/ossonly-soloader/src/main/java/com/facebook/soloader/SoLoader.kt
+index 6edd8329182..dfb33cb6135 100644
+--- a/packages/react-native/sdks/ossonly-soloader/src/main/java/com/facebook/soloader/SoLoader.kt
++++ b/packages/react-native/sdks/ossonly-soloader/src/main/java/com/facebook/soloader/SoLoader.kt
+@@ -24,7 +24,6 @@ public object SoLoader {
+ 
+   private fun mapLibName(input: String) = MergedSoMapping.mapLibName(input)
+ 
+-  @Suppress("UNUSED_PARAMETER")
+   private fun invokeJniOnload(libraryName: String) = MergedSoMapping.invokeJniOnload(libraryName)
+ 
+   @Deprecated("This method is a no-op and you should not be calling it")

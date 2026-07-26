@@ -1,0 +1,1252 @@
+From 9680004b58481b08b152e5183bcfe7a2b8892204 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=B4me=20Chilliet?= <come.chilliet@nextcloud.com>
+Date: Mon, 11 May 2026 15:16:05 +0200
+Subject: [PATCH] chore: Remove almost all uses of deprecated IServerContainer
+ in lib/private
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Côme Chilliet <come.chilliet@nextcloud.com>
+---
+ .../AppFramework/Bootstrap/Coordinator.php    | 12 +++---
+ lib/private/Calendar/Resource/Manager.php     |  6 +--
+ lib/private/Calendar/Room/Manager.php         |  6 +--
+ .../Resources/ProviderManager.php             |  6 +--
+ lib/private/Comments/ManagerFactory.php       | 20 ++--------
+ .../ContactsMenu/ActionProviderStore.php      |  4 +-
+ lib/private/Http/WellKnown/RequestManager.php |  4 +-
+ lib/private/LDAP/NullLDAPProviderFactory.php  |  4 +-
+ lib/private/Server.php                        | 20 ++--------
+ lib/private/Settings/Manager.php              |  4 +-
+ .../SpeechToText/SpeechToTextManager.php      |  4 +-
+ lib/private/SystemTag/ManagerFactory.php      |  4 +-
+ lib/private/Talk/Broker.php                   |  4 +-
+ lib/private/TaskProcessing/Manager.php        |  4 +-
+ lib/private/TextProcessing/Manager.php        |  4 +-
+ lib/private/TextToImage/Manager.php           |  4 +-
+ .../Translation/TranslationManager.php        |  4 +-
+ .../Bootstrap/CoordinatorTest.php             | 12 +++---
+ tests/lib/Calendar/Resource/ManagerTest.php   | 39 ++++++++-----------
+ tests/lib/Calendar/Room/ManagerTest.php       | 26 ++++++-------
+ .../Resources/ProviderManagerTest.php         | 12 +++---
+ tests/lib/Comments/FakeFactory.php            |  4 +-
+ .../ContactsMenu/ActionProviderStoreTest.php  | 12 ++----
+ .../lib/Http/WellKnown/RequestManagerTest.php | 19 +++------
+ tests/lib/InitialStateServiceTest.php         | 10 ++---
+ tests/lib/Settings/ManagerTest.php            | 33 ++++++----------
+ tests/lib/Share20/LegacyHooksTest.php         |  4 +-
+ tests/lib/Share20/ManagerTest.php             | 14 +++----
+ tests/lib/Talk/BrokerTest.php                 |  6 +--
+ .../lib/TaskProcessing/TaskProcessingTest.php |  6 +--
+ .../lib/TextProcessing/TextProcessingTest.php |  6 +--
+ 31 files changed, 130 insertions(+), 187 deletions(-)
+
+diff --git a/lib/private/AppFramework/Bootstrap/Coordinator.php b/lib/private/AppFramework/Bootstrap/Coordinator.php
+index a31dd6a05e..d68afcfe5d 100644
+--- a/lib/private/AppFramework/Bootstrap/Coordinator.php
++++ b/lib/private/AppFramework/Bootstrap/Coordinator.php
+@@ -19,8 +19,8 @@ use OCP\AppFramework\QueryException;
+ use OCP\Dashboard\IManager;
+ use OCP\Diagnostics\IEventLogger;
+ use OCP\EventDispatcher\IEventDispatcher;
+-use OCP\IServerContainer;
+ use Psr\Container\ContainerExceptionInterface;
++use Psr\Container\ContainerInterface;
+ use Psr\Log\LoggerInterface;
+ use Throwable;
+ use function class_exists;
+@@ -35,7 +35,7 @@ class Coordinator {
+ 	private array $bootedApps = [];
+ 
+ 	public function __construct(
+-		private IServerContainer $serverContainer,
++		private ContainerInterface $serverContainer,
+ 		private Registry $registry,
+ 		private IManager $dashboardManager,
+ 		private IEventDispatcher $eventDispatcher,
+@@ -99,7 +99,7 @@ class Coordinator {
+ 					$this->eventLogger->start("bootstrap:register_app:$appId:application", "Load `Application` instance for $appId");
+ 					try {
+ 						/** @var IBootstrap&App $application */
+-						$application = $this->serverContainer->query($applicationClassName);
++						$application = $this->serverContainer->get($applicationClassName);
+ 						$apps[$appId] = $application;
+ 					} catch (ContainerExceptionInterface $e) {
+ 						// Weird, but ok
+@@ -162,10 +162,8 @@ class Coordinator {
+ 		 */
+ 		$this->eventLogger->start('bootstrap:boot_app:' . $appId, "Call `Application::boot` for $appId");
+ 		try {
+-			/** @var App $application */
+-			$application = $this->serverContainer->query($applicationClassName);
+-			if ($application instanceof IBootstrap) {
+-				/** @var BootContext $context */
++			$application = $this->serverContainer->get($applicationClassName);
++			if ($application instanceof IBootstrap && $application instanceof App) {
+ 				$context = new BootContext($application->getContainer());
+ 				$application->boot($context);
+ 			}
+diff --git a/lib/private/Calendar/Resource/Manager.php b/lib/private/Calendar/Resource/Manager.php
+index 4c5154ddbb..ace6e5a219 100644
+--- a/lib/private/Calendar/Resource/Manager.php
++++ b/lib/private/Calendar/Resource/Manager.php
+@@ -13,7 +13,7 @@ use OC\Calendar\ResourcesRoomsUpdater;
+ use OCP\AppFramework\QueryException;
+ use OCP\Calendar\Resource\IBackend;
+ use OCP\Calendar\Resource\IManager;
+-use OCP\IServerContainer;
++use Psr\Container\ContainerInterface;
+ 
+ class Manager implements IManager {
+ 	private bool $bootstrapBackendsLoaded = false;
+@@ -29,7 +29,7 @@ class Manager implements IManager {
+ 
+ 	public function __construct(
+ 		private Coordinator $bootstrapCoordinator,
+-		private IServerContainer $server,
++		private ContainerInterface $container,
+ 		private ResourcesRoomsUpdater $updater,
+ 	) {
+ 	}
+@@ -84,7 +84,7 @@ class Manager implements IManager {
+ 				continue;
+ 			}
+ 
+-			$this->initializedBackends[$backend] = $this->server->query($backend);
++			$this->initializedBackends[$backend] = $this->container->get($backend);
+ 		}
+ 
+ 		return array_values($this->initializedBackends);
+diff --git a/lib/private/Calendar/Room/Manager.php b/lib/private/Calendar/Room/Manager.php
+index b19727054e..a31127068a 100644
+--- a/lib/private/Calendar/Room/Manager.php
++++ b/lib/private/Calendar/Room/Manager.php
+@@ -13,7 +13,7 @@ use OC\Calendar\ResourcesRoomsUpdater;
+ use OCP\AppFramework\QueryException;
+ use OCP\Calendar\Room\IBackend;
+ use OCP\Calendar\Room\IManager;
+-use OCP\IServerContainer;
++use Psr\Container\ContainerInterface;
+ 
+ class Manager implements IManager {
+ 	private bool $bootstrapBackendsLoaded = false;
+@@ -29,7 +29,7 @@ class Manager implements IManager {
+ 
+ 	public function __construct(
+ 		private Coordinator $bootstrapCoordinator,
+-		private IServerContainer $server,
++		private ContainerInterface $container,
+ 		private ResourcesRoomsUpdater $updater,
+ 	) {
+ 	}
+@@ -91,7 +91,7 @@ class Manager implements IManager {
+ 			 * The backend might have services injected that can't be build from the
+ 			 * server container.
+ 			 */
+-			$this->initializedBackends[$backend] = $this->server->query($backend);
++			$this->initializedBackends[$backend] = $this->container->get($backend);
+ 		}
+ 
+ 		return array_values($this->initializedBackends);
+diff --git a/lib/private/Collaboration/Resources/ProviderManager.php b/lib/private/Collaboration/Resources/ProviderManager.php
+index 72155cf7fa..839aef847e 100644
+--- a/lib/private/Collaboration/Resources/ProviderManager.php
++++ b/lib/private/Collaboration/Resources/ProviderManager.php
+@@ -11,7 +11,7 @@ namespace OC\Collaboration\Resources;
+ use OCP\AppFramework\QueryException;
+ use OCP\Collaboration\Resources\IProvider;
+ use OCP\Collaboration\Resources\IProviderManager;
+-use OCP\IServerContainer;
++use Psr\Container\ContainerInterface;
+ use Psr\Log\LoggerInterface;
+ 
+ class ProviderManager implements IProviderManager {
+@@ -22,7 +22,7 @@ class ProviderManager implements IProviderManager {
+ 	protected array $providerInstances = [];
+ 
+ 	public function __construct(
+-		protected IServerContainer $serverContainer,
++		protected ContainerInterface $serverContainer,
+ 		protected LoggerInterface $logger,
+ 	) {
+ 	}
+@@ -32,7 +32,7 @@ class ProviderManager implements IProviderManager {
+ 		if ($this->providers !== []) {
+ 			foreach ($this->providers as $provider) {
+ 				try {
+-					$this->providerInstances[] = $this->serverContainer->query($provider);
++					$this->providerInstances[] = $this->serverContainer->get($provider);
+ 				} catch (QueryException $e) {
+ 					$this->logger->error("Could not query resource provider $provider: " . $e->getMessage(), [
+ 						'exception' => $e,
+diff --git a/lib/private/Comments/ManagerFactory.php b/lib/private/Comments/ManagerFactory.php
+index 2fd21598e9..cef07216a2 100644
+--- a/lib/private/Comments/ManagerFactory.php
++++ b/lib/private/Comments/ManagerFactory.php
+@@ -11,30 +11,16 @@ namespace OC\Comments;
+ 
+ use OCP\Comments\ICommentsManager;
+ use OCP\Comments\ICommentsManagerFactory;
+-use OCP\IServerContainer;
++use Psr\Container\ContainerInterface;
+ 
+ class ManagerFactory implements ICommentsManagerFactory {
+-	/**
+-	 * Constructor for the comments manager factory
+-	 *
+-	 * @param IServerContainer $serverContainer server container
+-	 */
+ 	public function __construct(
+-		/**
+-		 * Server container
+-		 */
+-		private IServerContainer $serverContainer,
++		private ContainerInterface $serverContainer,
+ 	) {
+ 	}
+ 
+-	/**
+-	 * creates and returns an instance of the ICommentsManager
+-	 *
+-	 * @return ICommentsManager
+-	 * @since 9.0.0
+-	 */
+ 	#[\Override]
+-	public function getManager() {
++	public function getManager(): ICommentsManager {
+ 		return $this->serverContainer->get(Manager::class);
+ 	}
+ }
+diff --git a/lib/private/Contacts/ContactsMenu/ActionProviderStore.php b/lib/private/Contacts/ContactsMenu/ActionProviderStore.php
+index b760de03a0..4606c1cce1 100644
+--- a/lib/private/Contacts/ContactsMenu/ActionProviderStore.php
++++ b/lib/private/Contacts/ContactsMenu/ActionProviderStore.php
+@@ -17,13 +17,13 @@ use OC\Contacts\ContactsMenu\Providers\ProfileProvider;
+ use OCP\AppFramework\QueryException;
+ use OCP\Contacts\ContactsMenu\IBulkProvider;
+ use OCP\Contacts\ContactsMenu\IProvider;
+-use OCP\IServerContainer;
+ use OCP\IUser;
++use Psr\Container\ContainerInterface;
+ use Psr\Log\LoggerInterface;
+ 
+ class ActionProviderStore {
+ 	public function __construct(
+-		private IServerContainer $serverContainer,
++		private ContainerInterface $serverContainer,
+ 		private AppManager $appManager,
+ 		private LoggerInterface $logger,
+ 	) {
+diff --git a/lib/private/Http/WellKnown/RequestManager.php b/lib/private/Http/WellKnown/RequestManager.php
+index a79974089e..2f65471caa 100644
+--- a/lib/private/Http/WellKnown/RequestManager.php
++++ b/lib/private/Http/WellKnown/RequestManager.php
+@@ -16,7 +16,7 @@ use OCP\Http\WellKnown\IRequestContext;
+ use OCP\Http\WellKnown\IResponse;
+ use OCP\Http\WellKnown\JrdResponse;
+ use OCP\IRequest;
+-use OCP\IServerContainer;
++use Psr\Container\ContainerInterface;
+ use Psr\Log\LoggerInterface;
+ use RuntimeException;
+ use function array_reduce;
+@@ -24,7 +24,7 @@ use function array_reduce;
+ class RequestManager {
+ 	public function __construct(
+ 		private Coordinator $coordinator,
+-		private IServerContainer $container,
++		private ContainerInterface $container,
+ 		private LoggerInterface $logger,
+ 	) {
+ 	}
+diff --git a/lib/private/LDAP/NullLDAPProviderFactory.php b/lib/private/LDAP/NullLDAPProviderFactory.php
+index 5960e69a45..5ae1b0b4b6 100644
+--- a/lib/private/LDAP/NullLDAPProviderFactory.php
++++ b/lib/private/LDAP/NullLDAPProviderFactory.php
+@@ -8,11 +8,11 @@ declare(strict_types=1);
+  */
+ namespace OC\LDAP;
+ 
+-use OCP\IServerContainer;
+ use OCP\LDAP\ILDAPProviderFactory;
++use Psr\Container\ContainerInterface;
+ 
+ class NullLDAPProviderFactory implements ILDAPProviderFactory {
+-	public function __construct(IServerContainer $serverContainer) {
++	public function __construct(ContainerInterface $serverContainer) {
+ 	}
+ 
+ 	#[\Override]
+diff --git a/lib/private/Server.php b/lib/private/Server.php
+index c379932e93..a39d09fe3b 100644
+--- a/lib/private/Server.php
++++ b/lib/private/Server.php
+@@ -12,7 +12,6 @@ use OC\Accounts\AccountManager;
+ use OC\Activity\EventMerger;
+ use OC\App\AppManager;
+ use OC\App\AppStore\Bundles\BundleFetcher;
+-use OC\AppFramework\Bootstrap\Coordinator;
+ use OC\AppFramework\Http\Request;
+ use OC\AppFramework\Http\RequestId;
+ use OC\AppFramework\Services\AppConfig;
+@@ -102,8 +101,6 @@ use OC\OCM\OCMDiscoveryService;
+ use OC\OCS\CoreCapabilities;
+ use OC\OCS\DiscoveryService;
+ use OC\Preview\Db\PreviewMapper;
+-use OC\Preview\GeneratorHelper;
+-use OC\Preview\IMagickSupport;
+ use OC\Preview\MimeIconProvider;
+ use OC\Preview\Watcher;
+ use OC\Preview\WatcherConnector;
+@@ -316,6 +313,9 @@ class Server extends ServerContainer implements IServerContainer {
+ 		// To find out if we are running from CLI or not
+ 		$this->registerParameter('isCLI', \OC::$CLI);
+ 		$this->registerParameter('serverRoot', \OC::$SERVERROOT);
++		$this->registerService('userId', function (ContainerInterface $c): ?string {
++			return $c->get(ISession::class)->get('user_id');
++		});
+ 
+ 		$this->registerService(ContainerInterface::class, function (ContainerInterface $c) {
+ 			return $c;
+@@ -343,19 +343,7 @@ class Server extends ServerContainer implements IServerContainer {
+ 			return new View();
+ 		}, false);
+ 
+-		$this->registerService(IPreview::class, function (ContainerInterface $c) {
+-			return new PreviewManager(
+-				$c->get(IConfig::class),
+-				$c->get(IRootFolder::class),
+-				$c->get(IEventDispatcher::class),
+-				$c->get(GeneratorHelper::class),
+-				$c->get(ISession::class)->get('user_id'),
+-				$c->get(Coordinator::class),
+-				$c->get(IServerContainer::class),
+-				$c->get(IBinaryFinder::class),
+-				$c->get(IMagickSupport::class)
+-			);
+-		});
++		$this->registerAlias(IPreview::class, PreviewManager::class);
+ 		$this->registerAlias(IMimeIconProvider::class, MimeIconProvider::class);
+ 
+ 		$this->registerService(Watcher::class, function (ContainerInterface $c): Watcher {
+diff --git a/lib/private/Settings/Manager.php b/lib/private/Settings/Manager.php
+index d3314e54c7..34c097b9f3 100644
+--- a/lib/private/Settings/Manager.php
++++ b/lib/private/Settings/Manager.php
+@@ -12,7 +12,6 @@ use OCP\AppFramework\QueryException;
+ use OCP\Group\ISubAdmin;
+ use OCP\IGroupManager;
+ use OCP\IL10N;
+-use OCP\IServerContainer;
+ use OCP\IURLGenerator;
+ use OCP\IUser;
+ use OCP\L10N\IFactory;
+@@ -21,6 +20,7 @@ use OCP\Settings\IIconSection;
+ use OCP\Settings\IManager;
+ use OCP\Settings\ISettings;
+ use OCP\Settings\ISubAdminSettings;
++use Psr\Container\ContainerInterface;
+ use Psr\Log\LoggerInterface;
+ 
+ class Manager implements IManager {
+@@ -42,7 +42,7 @@ class Manager implements IManager {
+ 		private LoggerInterface $log,
+ 		private IFactory $l10nFactory,
+ 		private IURLGenerator $url,
+-		private IServerContainer $container,
++		private ContainerInterface $container,
+ 		private AuthorizedGroupMapper $mapper,
+ 		private IGroupManager $groupManager,
+ 		private ISubAdmin $subAdmin,
+diff --git a/lib/private/SpeechToText/SpeechToTextManager.php b/lib/private/SpeechToText/SpeechToTextManager.php
+index bf9da3709c..5126d756e2 100644
+--- a/lib/private/SpeechToText/SpeechToTextManager.php
++++ b/lib/private/SpeechToText/SpeechToTextManager.php
+@@ -17,7 +17,6 @@ use OCP\Files\File;
+ use OCP\Files\InvalidPathException;
+ use OCP\Files\NotFoundException;
+ use OCP\IConfig;
+-use OCP\IServerContainer;
+ use OCP\IUserSession;
+ use OCP\PreConditionNotMetException;
+ use OCP\SpeechToText\ISpeechToTextManager;
+@@ -28,6 +27,7 @@ use OCP\TaskProcessing\IManager as ITaskProcessingManager;
+ use OCP\TaskProcessing\Task;
+ use OCP\TaskProcessing\TaskTypes\AudioToText;
+ use Psr\Container\ContainerExceptionInterface;
++use Psr\Container\ContainerInterface;
+ use Psr\Container\NotFoundExceptionInterface;
+ use Psr\Log\LoggerInterface;
+ use RuntimeException;
+@@ -38,7 +38,7 @@ class SpeechToTextManager implements ISpeechToTextManager {
+ 	private ?array $providers = null;
+ 
+ 	public function __construct(
+-		private IServerContainer $serverContainer,
++		private ContainerInterface $serverContainer,
+ 		private Coordinator $coordinator,
+ 		private LoggerInterface $logger,
+ 		private IJobList $jobList,
+diff --git a/lib/private/SystemTag/ManagerFactory.php b/lib/private/SystemTag/ManagerFactory.php
+index 7f3e732ddf..4bc5c2ea34 100644
+--- a/lib/private/SystemTag/ManagerFactory.php
++++ b/lib/private/SystemTag/ManagerFactory.php
+@@ -12,11 +12,11 @@ use OCP\EventDispatcher\IEventDispatcher;
+ use OCP\IAppConfig;
+ use OCP\IDBConnection;
+ use OCP\IGroupManager;
+-use OCP\IServerContainer;
+ use OCP\IUserSession;
+ use OCP\SystemTag\ISystemTagManager;
+ use OCP\SystemTag\ISystemTagManagerFactory;
+ use OCP\SystemTag\ISystemTagObjectMapper;
++use Psr\Container\ContainerInterface;
+ 
+ /**
+  * Default factory class for system tag managers
+@@ -29,7 +29,7 @@ class ManagerFactory implements ISystemTagManagerFactory {
+ 	 * Constructor for the system tag manager factory
+ 	 */
+ 	public function __construct(
+-		private IServerContainer $serverContainer,
++		private ContainerInterface $serverContainer,
+ 	) {
+ 	}
+ 
+diff --git a/lib/private/Talk/Broker.php b/lib/private/Talk/Broker.php
+index fcaddaf574..0e961c92ef 100644
+--- a/lib/private/Talk/Broker.php
++++ b/lib/private/Talk/Broker.php
+@@ -10,12 +10,12 @@ declare(strict_types=1);
+ namespace OC\Talk;
+ 
+ use OC\AppFramework\Bootstrap\Coordinator;
+-use OCP\IServerContainer;
+ use OCP\Talk\Exceptions\NoBackendException;
+ use OCP\Talk\IBroker;
+ use OCP\Talk\IConversation;
+ use OCP\Talk\IConversationOptions;
+ use OCP\Talk\ITalkBackend;
++use Psr\Container\ContainerInterface;
+ use Psr\Log\LoggerInterface;
+ use RuntimeException;
+ use Throwable;
+@@ -27,7 +27,7 @@ class Broker implements IBroker {
+ 
+ 	public function __construct(
+ 		private Coordinator $coordinator,
+-		private IServerContainer $container,
++		private ContainerInterface $container,
+ 		private LoggerInterface $logger,
+ 	) {
+ 	}
+diff --git a/lib/private/TaskProcessing/Manager.php b/lib/private/TaskProcessing/Manager.php
+index 0d67a1d9f7..6821aee65a 100644
+--- a/lib/private/TaskProcessing/Manager.php
++++ b/lib/private/TaskProcessing/Manager.php
+@@ -38,7 +38,6 @@ use OCP\IAppConfig;
+ use OCP\ICache;
+ use OCP\ICacheFactory;
+ use OCP\IL10N;
+-use OCP\IServerContainer;
+ use OCP\IUserManager;
+ use OCP\IUserSession;
+ use OCP\L10N\IFactory;
+@@ -98,6 +97,7 @@ use OCP\TextProcessing\IProviderWithUserId;
+ use OCP\TextProcessing\SummaryTaskType;
+ use OCP\TextProcessing\TopicsTaskType;
+ use Psr\Container\ContainerExceptionInterface;
++use Psr\Container\ContainerInterface;
+ use Psr\Container\NotFoundExceptionInterface;
+ use Psr\Log\LoggerInterface;
+ 
+@@ -141,7 +141,7 @@ class Manager implements IManager {
+ 	public function __construct(
+ 		private IAppConfig $appConfig,
+ 		private Coordinator $coordinator,
+-		private IServerContainer $serverContainer,
++		private ContainerInterface $serverContainer,
+ 		private LoggerInterface $logger,
+ 		private TaskMapper $taskMapper,
+ 		private IJobList $jobList,
+diff --git a/lib/private/TextProcessing/Manager.php b/lib/private/TextProcessing/Manager.php
+index ea2f1d2a5d..15a6823d7e 100644
+--- a/lib/private/TextProcessing/Manager.php
++++ b/lib/private/TextProcessing/Manager.php
+@@ -18,7 +18,6 @@ use OCP\BackgroundJob\IJobList;
+ use OCP\Common\Exception\NotFoundException;
+ use OCP\DB\Exception;
+ use OCP\IConfig;
+-use OCP\IServerContainer;
+ use OCP\PreConditionNotMetException;
+ use OCP\TaskProcessing\IManager as TaskProcessingIManager;
+ use OCP\TaskProcessing\TaskTypes\TextToText;
+@@ -36,6 +35,7 @@ use OCP\TextProcessing\SummaryTaskType;
+ use OCP\TextProcessing\Task;
+ use OCP\TextProcessing\Task as OCPTask;
+ use OCP\TextProcessing\TopicsTaskType;
++use Psr\Container\ContainerInterface;
+ use Psr\Log\LoggerInterface;
+ use RuntimeException;
+ use Throwable;
+@@ -52,7 +52,7 @@ class Manager implements IManager {
+ 	];
+ 
+ 	public function __construct(
+-		private IServerContainer $serverContainer,
++		private ContainerInterface $serverContainer,
+ 		private Coordinator $coordinator,
+ 		private LoggerInterface $logger,
+ 		private IJobList $jobList,
+diff --git a/lib/private/TextToImage/Manager.php b/lib/private/TextToImage/Manager.php
+index 330b130f07..74094a597a 100644
+--- a/lib/private/TextToImage/Manager.php
++++ b/lib/private/TextToImage/Manager.php
+@@ -21,7 +21,6 @@ use OCP\Files\IAppData;
+ use OCP\Files\NotFoundException;
+ use OCP\Files\NotPermittedException;
+ use OCP\IConfig;
+-use OCP\IServerContainer;
+ use OCP\PreConditionNotMetException;
+ use OCP\TextToImage\Exception\TaskFailureException;
+ use OCP\TextToImage\Exception\TaskNotFoundException;
+@@ -29,6 +28,7 @@ use OCP\TextToImage\IManager;
+ use OCP\TextToImage\IProvider;
+ use OCP\TextToImage\IProviderWithUserId;
+ use OCP\TextToImage\Task;
++use Psr\Container\ContainerInterface;
+ use Psr\Log\LoggerInterface;
+ use RuntimeException;
+ use Throwable;
+@@ -39,7 +39,7 @@ class Manager implements IManager {
+ 	private IAppData $appData;
+ 
+ 	public function __construct(
+-		private IServerContainer $serverContainer,
++		private ContainerInterface $serverContainer,
+ 		private Coordinator $coordinator,
+ 		private LoggerInterface $logger,
+ 		private IJobList $jobList,
+diff --git a/lib/private/Translation/TranslationManager.php b/lib/private/Translation/TranslationManager.php
+index a4d7138531..5aecb1b8e0 100644
+--- a/lib/private/Translation/TranslationManager.php
++++ b/lib/private/Translation/TranslationManager.php
+@@ -13,7 +13,6 @@ namespace OC\Translation;
+ use InvalidArgumentException;
+ use OC\AppFramework\Bootstrap\Coordinator;
+ use OCP\IConfig;
+-use OCP\IServerContainer;
+ use OCP\IUserSession;
+ use OCP\PreConditionNotMetException;
+ use OCP\Translation\CouldNotTranslateException;
+@@ -23,6 +22,7 @@ use OCP\Translation\ITranslationProvider;
+ use OCP\Translation\ITranslationProviderWithId;
+ use OCP\Translation\ITranslationProviderWithUserId;
+ use Psr\Container\ContainerExceptionInterface;
++use Psr\Container\ContainerInterface;
+ use Psr\Container\NotFoundExceptionInterface;
+ use Psr\Log\LoggerInterface;
+ use RuntimeException;
+@@ -33,7 +33,7 @@ class TranslationManager implements ITranslationManager {
+ 	private ?array $providers = null;
+ 
+ 	public function __construct(
+-		private IServerContainer $serverContainer,
++		private ContainerInterface $serverContainer,
+ 		private Coordinator $coordinator,
+ 		private LoggerInterface $logger,
+ 		private IConfig $config,
+diff --git a/tests/lib/AppFramework/Bootstrap/CoordinatorTest.php b/tests/lib/AppFramework/Bootstrap/CoordinatorTest.php
+index 844858ab5f..e88d5afab3 100644
+--- a/tests/lib/AppFramework/Bootstrap/CoordinatorTest.php
++++ b/tests/lib/AppFramework/Bootstrap/CoordinatorTest.php
+@@ -21,14 +21,14 @@ use OCP\AppFramework\QueryException;
+ use OCP\Dashboard\IManager;
+ use OCP\Diagnostics\IEventLogger;
+ use OCP\EventDispatcher\IEventDispatcher;
+-use OCP\IServerContainer;
+ use PHPUnit\Framework\MockObject\MockObject;
++use Psr\Container\ContainerInterface;
+ use Psr\Log\LoggerInterface;
+ use Test\TestCase;
+ 
+ class CoordinatorTest extends TestCase {
+ 	private IAppManager&MockObject $appManager;
+-	private IServerContainer&MockObject $serverContainer;
++	private ContainerInterface&MockObject $serverContainer;
+ 	private Registry&MockObject $crashReporterRegistry;
+ 	private IManager&MockObject $dashboardManager;
+ 	private IEventDispatcher&MockObject $eventDispatcher;
+@@ -41,7 +41,7 @@ class CoordinatorTest extends TestCase {
+ 		parent::setUp();
+ 
+ 		$this->appManager = $this->createMock(IAppManager::class);
+-		$this->serverContainer = $this->createMock(IServerContainer::class);
++		$this->serverContainer = $this->createMock(ContainerInterface::class);
+ 		$this->crashReporterRegistry = $this->createMock(Registry::class);
+ 		$this->dashboardManager = $this->createMock(IManager::class);
+ 		$this->eventDispatcher = $this->createMock(IEventDispatcher::class);
+@@ -62,7 +62,7 @@ class CoordinatorTest extends TestCase {
+ 	public function testBootAppNotLoadable(): void {
+ 		$appId = 'settings';
+ 		$this->serverContainer->expects($this->once())
+-			->method('query')
++			->method('get')
+ 			->with(Application::class)
+ 			->willThrowException(new QueryException(''));
+ 		$this->logger->expects($this->once())
+@@ -75,7 +75,7 @@ class CoordinatorTest extends TestCase {
+ 		$appId = 'settings';
+ 		$mockApp = $this->createMock(Application::class);
+ 		$this->serverContainer->expects($this->once())
+-			->method('query')
++			->method('get')
+ 			->with(Application::class)
+ 			->willReturn($mockApp);
+ 
+@@ -98,7 +98,7 @@ class CoordinatorTest extends TestCase {
+ 			}
+ 		};
+ 		$this->serverContainer->expects($this->once())
+-			->method('query')
++			->method('get')
+ 			->with(Application::class)
+ 			->willReturn($mockApp);
+ 
+diff --git a/tests/lib/Calendar/Resource/ManagerTest.php b/tests/lib/Calendar/Resource/ManagerTest.php
+index 3c43884728..69964d14ae 100644
+--- a/tests/lib/Calendar/Resource/ManagerTest.php
++++ b/tests/lib/Calendar/Resource/ManagerTest.php
+@@ -15,29 +15,22 @@ use OC\AppFramework\Bootstrap\ServiceRegistration;
+ use OC\Calendar\Resource\Manager;
+ use OC\Calendar\ResourcesRoomsUpdater;
+ use OCP\Calendar\Resource\IBackend;
+-use OCP\IServerContainer;
+ use PHPUnit\Framework\MockObject\MockObject;
++use Psr\Container\ContainerInterface;
+ use Test\TestCase;
+ 
+ class ManagerTest extends TestCase {
+-	/** @var Coordinator|MockObject */
+-	private $coordinator;
+-
+-	/** @var IServerContainer|MockObject */
+-	private $server;
+-
+-	/** @var ResourcesRoomsUpdater|MockObject */
+-	private $resourcesRoomsUpdater;
+-
+-	/** @var Manager */
+-	private $manager;
++	private Coordinator&MockObject $coordinator;
++	private ContainerInterface&MockObject $server;
++	private ResourcesRoomsUpdater&MockObject $resourcesRoomsUpdater;
++	private Manager $manager;
+ 
+ 	#[\Override]
+ 	protected function setUp(): void {
+ 		parent::setUp();
+ 
+ 		$this->coordinator = $this->createMock(Coordinator::class);
+-		$this->server = $this->createMock(IServerContainer::class);
++		$this->server = $this->createMock(ContainerInterface::class);
+ 		$this->resourcesRoomsUpdater = $this->createMock(ResourcesRoomsUpdater::class);
+ 
+ 		$this->manager = new Manager(
+@@ -53,10 +46,10 @@ class ManagerTest extends TestCase {
+ 		$backend2 = $this->createMock(IBackend::class);
+ 		$backend2->method('getBackendIdentifier')->willReturn('backend_2');
+ 		$this->server->expects(self::exactly(2))
+-			->method('query')
++			->method('get')
+ 			->willReturnMap([
+-				['calendar_resource_backend1', true, $backend1,],
+-				['calendar_resource_backend2', true, $backend2,],
++				['calendar_resource_backend1', $backend1,],
++				['calendar_resource_backend2', $backend2,],
+ 			]);
+ 
+ 		$this->manager->registerBackend('calendar_resource_backend1');
+@@ -85,7 +78,7 @@ class ManagerTest extends TestCase {
+ 				new ServiceRegistration('calendar_resource_foo', $backendClass)
+ 			]);
+ 		$this->server->expects(self::once())
+-			->method('query')
++			->method('get')
+ 			->with($backendClass)
+ 			->willReturn($backend);
+ 
+@@ -98,10 +91,10 @@ class ManagerTest extends TestCase {
+ 		$backend2 = $this->createMock(IBackend::class);
+ 		$backend2->method('getBackendIdentifier')->willReturn('backend_2');
+ 		$this->server->expects(self::exactly(2))
+-			->method('query')
++			->method('get')
+ 			->willReturnMap([
+-				['calendar_resource_backend1', true, $backend1,],
+-				['calendar_resource_backend2', true, $backend2,],
++				['calendar_resource_backend1', $backend1,],
++				['calendar_resource_backend2', $backend2,],
+ 			]);
+ 
+ 		$this->manager->registerBackend('calendar_resource_backend1');
+@@ -117,10 +110,10 @@ class ManagerTest extends TestCase {
+ 		$backend2 = $this->createMock(IBackend::class);
+ 		$backend2->method('getBackendIdentifier')->willReturn('backend_2');
+ 		$this->server->expects(self::exactly(2))
+-			->method('query')
++			->method('get')
+ 			->willReturnMap([
+-				['calendar_resource_backend1', true, $backend1,],
+-				['calendar_resource_backend2', true, $backend2,],
++				['calendar_resource_backend1', $backend1,],
++				['calendar_resource_backend2', $backend2,],
+ 			]);
+ 
+ 		$this->manager->registerBackend('calendar_resource_backend1');
+diff --git a/tests/lib/Calendar/Room/ManagerTest.php b/tests/lib/Calendar/Room/ManagerTest.php
+index 808f74fd65..a678c58d0e 100644
+--- a/tests/lib/Calendar/Room/ManagerTest.php
++++ b/tests/lib/Calendar/Room/ManagerTest.php
+@@ -15,15 +15,15 @@ use OC\AppFramework\Bootstrap\ServiceRegistration;
+ use OC\Calendar\ResourcesRoomsUpdater;
+ use OC\Calendar\Room\Manager;
+ use OCP\Calendar\Room\IBackend;
+-use OCP\IServerContainer;
+ use PHPUnit\Framework\MockObject\MockObject;
++use Psr\Container\ContainerInterface;
+ use Test\TestCase;
+ 
+ class ManagerTest extends TestCase {
+ 	/** @var Coordinator|MockObject */
+ 	private $coordinator;
+ 
+-	/** @var IServerContainer|MockObject */
++	/** @var ContainerInterface|MockObject */
+ 	private $server;
+ 
+ 	/** @var ResourcesRoomsUpdater|MockObject */
+@@ -37,7 +37,7 @@ class ManagerTest extends TestCase {
+ 		parent::setUp();
+ 
+ 		$this->coordinator = $this->createMock(Coordinator::class);
+-		$this->server = $this->createMock(IServerContainer::class);
++		$this->server = $this->createMock(ContainerInterface::class);
+ 		$this->resourcesRoomsUpdater = $this->createMock(ResourcesRoomsUpdater::class);
+ 
+ 		$this->manager = new Manager(
+@@ -53,10 +53,10 @@ class ManagerTest extends TestCase {
+ 		$backend2 = $this->createMock(IBackend::class);
+ 		$backend2->method('getBackendIdentifier')->willReturn('backend_2');
+ 		$this->server->expects(self::exactly(2))
+-			->method('query')
++			->method('get')
+ 			->willReturnMap([
+-				['calendar_room_backend1', true, $backend1,],
+-				['calendar_room_backend2', true, $backend2,],
++				['calendar_room_backend1', $backend1,],
++				['calendar_room_backend2', $backend2,],
+ 			]);
+ 
+ 		$this->manager->registerBackend('calendar_room_backend1');
+@@ -87,7 +87,7 @@ class ManagerTest extends TestCase {
+ 				new ServiceRegistration('calendar_room_foo', $backendClass)
+ 			]);
+ 		$this->server->expects(self::once())
+-			->method('query')
++			->method('get')
+ 			->with($backendClass)
+ 			->willReturn($backend);
+ 
+@@ -100,10 +100,10 @@ class ManagerTest extends TestCase {
+ 		$backend2 = $this->createMock(IBackend::class);
+ 		$backend2->method('getBackendIdentifier')->willReturn('backend_2');
+ 		$this->server->expects(self::exactly(2))
+-			->method('query')
++			->method('get')
+ 			->willReturnMap([
+-				['calendar_room_backend1', true, $backend1,],
+-				['calendar_room_backend2', true, $backend2,],
++				['calendar_room_backend1', $backend1,],
++				['calendar_room_backend2', $backend2,],
+ 			]);
+ 
+ 		$this->manager->registerBackend('calendar_room_backend1');
+@@ -119,10 +119,10 @@ class ManagerTest extends TestCase {
+ 		$backend2 = $this->createMock(IBackend::class);
+ 		$backend2->method('getBackendIdentifier')->willReturn('backend_2');
+ 		$this->server->expects(self::exactly(2))
+-			->method('query')
++			->method('get')
+ 			->willReturnMap([
+-				['calendar_room_backend1', true, $backend1,],
+-				['calendar_room_backend2', true, $backend2,],
++				['calendar_room_backend1', $backend1,],
++				['calendar_room_backend2', $backend2,],
+ 			]);
+ 
+ 		$this->manager->registerBackend('calendar_room_backend1');
+diff --git a/tests/lib/Collaboration/Resources/ProviderManagerTest.php b/tests/lib/Collaboration/Resources/ProviderManagerTest.php
+index 15a3664714..f76906534d 100644
+--- a/tests/lib/Collaboration/Resources/ProviderManagerTest.php
++++ b/tests/lib/Collaboration/Resources/ProviderManagerTest.php
+@@ -12,12 +12,12 @@ use OC\Collaboration\Resources\ProviderManager;
+ use OCA\Files\Collaboration\Resources\ResourceProvider;
+ use OCP\AppFramework\QueryException;
+ use OCP\Collaboration\Resources\IProviderManager;
+-use OCP\IServerContainer;
++use Psr\Container\ContainerInterface;
+ use Psr\Log\LoggerInterface;
+ use Test\TestCase;
+ 
+ class ProviderManagerTest extends TestCase {
+-	/** @var IServerContainer */
++	/** @var ContainerInterface */
+ 	protected $serverContainer;
+ 	/** @var LoggerInterface */
+ 	protected $logger;
+@@ -28,7 +28,7 @@ class ProviderManagerTest extends TestCase {
+ 	protected function setUp(): void {
+ 		parent::setUp();
+ 
+-		$this->serverContainer = $this->createMock(IServerContainer::class);
++		$this->serverContainer = $this->createMock(ContainerInterface::class);
+ 		$this->logger = $this->createMock(LoggerInterface::class);
+ 
+ 		$this->providerManager = new class($this->serverContainer, $this->logger) extends ProviderManager {
+@@ -49,7 +49,7 @@ class ProviderManagerTest extends TestCase {
+ 
+ 	public function testGetResourceProvidersValidProvider(): void {
+ 		$this->serverContainer->expects($this->once())
+-			->method('query')
++			->method('get')
+ 			->with($this->equalTo(ResourceProvider::class))
+ 			->willReturn($this->createMock(ResourceProvider::class));
+ 
+@@ -62,7 +62,7 @@ class ProviderManagerTest extends TestCase {
+ 
+ 	public function testGetResourceProvidersInvalidProvider(): void {
+ 		$this->serverContainer->expects($this->once())
+-			->method('query')
++			->method('get')
+ 			->with($this->equalTo('InvalidResourceProvider'))
+ 			->willThrowException(new QueryException('A meaningful error message'));
+ 
+@@ -77,7 +77,7 @@ class ProviderManagerTest extends TestCase {
+ 
+ 	public function testGetResourceProvidersValidAndInvalidProvider(): void {
+ 		$this->serverContainer->expects($this->exactly(2))
+-			->method('query')
++			->method('get')
+ 			->willReturnCallback(function (string $service) {
+ 				if ($service === 'InvalidResourceProvider') {
+ 					throw new QueryException('A meaningful error message');
+diff --git a/tests/lib/Comments/FakeFactory.php b/tests/lib/Comments/FakeFactory.php
+index 572928b068..029d3461a2 100644
+--- a/tests/lib/Comments/FakeFactory.php
++++ b/tests/lib/Comments/FakeFactory.php
+@@ -8,13 +8,13 @@
+ namespace Test\Comments;
+ 
+ use OCP\Comments\ICommentsManagerFactory;
+-use OCP\IServerContainer;
++use Psr\Container\ContainerInterface;
+ 
+ /**
+  * Class FakeFactory
+  */
+ class FakeFactory implements ICommentsManagerFactory {
+-	public function __construct(IServerContainer $serverContainer) {
++	public function __construct(ContainerInterface $serverContainer) {
+ 	}
+ 
+ 	#[\Override]
+diff --git a/tests/lib/Contacts/ContactsMenu/ActionProviderStoreTest.php b/tests/lib/Contacts/ContactsMenu/ActionProviderStoreTest.php
+index 723e64ce7b..c31903dff1 100644
+--- a/tests/lib/Contacts/ContactsMenu/ActionProviderStoreTest.php
++++ b/tests/lib/Contacts/ContactsMenu/ActionProviderStoreTest.php
+@@ -15,26 +15,22 @@ use OC\Contacts\ContactsMenu\Providers\ProfileProvider;
+ use OCP\App\IAppManager;
+ use OCP\AppFramework\QueryException;
+ use OCP\Contacts\ContactsMenu\IProvider;
+-use OCP\IServerContainer;
+ use OCP\IUser;
+ use PHPUnit\Framework\MockObject\MockObject;
++use Psr\Container\ContainerInterface;
+ use Psr\Log\LoggerInterface;
+ use Test\TestCase;
+ 
+ class ActionProviderStoreTest extends TestCase {
+-	/** @var IServerContainer|MockObject */
+-	private $serverContainer;
+-
+-	/** @var IAppManager|MockObject */
+-	private $appManager;
+-
++	private ContainerInterface&MockObject $serverContainer;
++	private IAppManager&MockObject $appManager;
+ 	private ActionProviderStore $actionProviderStore;
+ 
+ 	#[\Override]
+ 	protected function setUp(): void {
+ 		parent::setUp();
+ 
+-		$this->serverContainer = $this->createMock(IServerContainer::class);
++		$this->serverContainer = $this->createMock(ContainerInterface::class);
+ 		$this->appManager = $this->createMock(AppManager::class);
+ 		$logger = $this->createMock(LoggerInterface::class);
+ 
+diff --git a/tests/lib/Http/WellKnown/RequestManagerTest.php b/tests/lib/Http/WellKnown/RequestManagerTest.php
+index 214c43dea6..fc6e721a61 100644
+--- a/tests/lib/Http/WellKnown/RequestManagerTest.php
++++ b/tests/lib/Http/WellKnown/RequestManagerTest.php
+@@ -19,32 +19,25 @@ use OCP\Http\WellKnown\IRequestContext;
+ use OCP\Http\WellKnown\IResponse;
+ use OCP\Http\WellKnown\JrdResponse;
+ use OCP\IRequest;
+-use OCP\IServerContainer;
+ use PHPUnit\Framework\MockObject\MockObject;
++use Psr\Container\ContainerInterface;
+ use Psr\Log\LoggerInterface;
+ use RuntimeException;
+ use Test\TestCase;
+ use function get_class;
+ 
+ class RequestManagerTest extends TestCase {
+-	/** @var Coordinator|MockObject */
+-	private $coordinator;
+-
+-	/** @var IServerContainer|MockObject */
+-	private $container;
+-
+-	/** @var MockObject|LoggerInterface */
+-	private $logger;
+-
+-	/** @var RequestManager */
+-	private $manager;
++	private Coordinator&MockObject $coordinator;
++	private ContainerInterface&MockObject $container;
++	private LoggerInterface&MockObject $logger;
++	private RequestManager $manager;
+ 
+ 	#[\Override]
+ 	protected function setUp(): void {
+ 		parent::setUp();
+ 
+ 		$this->coordinator = $this->createMock(Coordinator::class);
+-		$this->container = $this->createMock(IServerContainer::class);
++		$this->container = $this->createMock(ContainerInterface::class);
+ 		$this->logger = $this->createMock(LoggerInterface::class);
+ 
+ 		$this->manager = new RequestManager(
+diff --git a/tests/lib/InitialStateServiceTest.php b/tests/lib/InitialStateServiceTest.php
+index 2a74563f48..d183cd517f 100644
+--- a/tests/lib/InitialStateServiceTest.php
++++ b/tests/lib/InitialStateServiceTest.php
+@@ -12,17 +12,15 @@ namespace Test;
+ use JsonSerializable;
+ use OC\AppFramework\Bootstrap\Coordinator;
+ use OC\InitialStateService;
+-use OCP\IServerContainer;
+ use PHPUnit\Framework\MockObject\MockObject;
++use Psr\Container\ContainerInterface;
+ use Psr\Log\LoggerInterface;
+ use stdClass;
+ use function json_encode;
+ 
+ class InitialStateServiceTest extends TestCase {
+-	/** @var InitialStateService */
+-	private $service;
+-	/** @var MockObject|LoggerInterface|(LoggerInterface&MockObject) */
+-	protected $logger;
++	private InitialStateService $service;
++	protected LoggerInterface&MockObject $logger;
+ 
+ 	#[\Override]
+ 	protected function setUp(): void {
+@@ -33,7 +31,7 @@ class InitialStateServiceTest extends TestCase {
+ 		$this->service = new InitialStateService(
+ 			$this->logger,
+ 			$this->createMock(Coordinator::class),
+-			$this->createMock(IServerContainer::class)
++			$this->createMock(ContainerInterface::class)
+ 		);
+ 	}
+ 
+diff --git a/tests/lib/Settings/ManagerTest.php b/tests/lib/Settings/ManagerTest.php
+index 4aa866502e..2fe7838e71 100644
+--- a/tests/lib/Settings/ManagerTest.php
++++ b/tests/lib/Settings/ManagerTest.php
+@@ -11,38 +11,29 @@ use OC\Settings\AuthorizedGroupMapper;
+ use OC\Settings\Manager;
+ use OCA\WorkflowEngine\Settings\Section;
+ use OCP\Group\ISubAdmin;
+-use OCP\IDBConnection;
+ use OCP\IGroupManager;
+ use OCP\IL10N;
+-use OCP\IServerContainer;
+ use OCP\IURLGenerator;
+ use OCP\L10N\IFactory;
+ use OCP\Server;
+ use OCP\Settings\ISettings;
+ use OCP\Settings\ISubAdminSettings;
+ use PHPUnit\Framework\MockObject\MockObject;
++use Psr\Container\ContainerInterface;
+ use Psr\Log\LoggerInterface;
+ use Test\TestCase;
+ 
+ class ManagerTest extends TestCase {
+-	/** @var Manager|MockObject */
+-	private $manager;
+-	/** @var LoggerInterface|MockObject */
+-	private $logger;
+-	/** @var IDBConnection|MockObject */
+-	private $l10n;
+-	/** @var IFactory|MockObject */
+-	private $l10nFactory;
+-	/** @var IURLGenerator|MockObject */
+-	private $url;
+-	/** @var IServerContainer|MockObject */
+-	private $container;
+-	/** @var AuthorizedGroupMapper|MockObject */
+-	private $mapper;
+-	/** @var IGroupManager|MockObject */
+-	private $groupManager;
+-	/** @var ISubAdmin|MockObject */
+-	private $subAdmin;
++	private LoggerInterface&MockObject $logger;
++	private IL10N&MockObject $l10n;
++	private IFactory&MockObject $l10nFactory;
++	private IURLGenerator&MockObject $url;
++	private ContainerInterface&MockObject $container;
++	private AuthorizedGroupMapper&MockObject $mapper;
++	private IGroupManager&MockObject $groupManager;
++	private ISubAdmin&MockObject $subAdmin;
++
++	private Manager $manager;
+ 
+ 	#[\Override]
+ 	protected function setUp(): void {
+@@ -52,7 +43,7 @@ class ManagerTest extends TestCase {
+ 		$this->l10n = $this->createMock(IL10N::class);
+ 		$this->l10nFactory = $this->createMock(IFactory::class);
+ 		$this->url = $this->createMock(IURLGenerator::class);
+-		$this->container = $this->createMock(IServerContainer::class);
++		$this->container = $this->createMock(ContainerInterface::class);
+ 		$this->mapper = $this->createMock(AuthorizedGroupMapper::class);
+ 		$this->groupManager = $this->createMock(IGroupManager::class);
+ 		$this->subAdmin = $this->createMock(ISubAdmin::class);
+diff --git a/tests/lib/Share20/LegacyHooksTest.php b/tests/lib/Share20/LegacyHooksTest.php
+index b0e56e6903..5987cb9602 100644
+--- a/tests/lib/Share20/LegacyHooksTest.php
++++ b/tests/lib/Share20/LegacyHooksTest.php
+@@ -13,7 +13,6 @@ use OCP\Constants;
+ use OCP\EventDispatcher\IEventDispatcher;
+ use OCP\Files\Cache\ICacheEntry;
+ use OCP\Files\File;
+-use OCP\IServerContainer;
+ use OCP\Server;
+ use OCP\Share\Events\BeforeShareCreatedEvent;
+ use OCP\Share\Events\BeforeShareDeletedEvent;
+@@ -24,6 +23,7 @@ use OCP\Share\IManager as IShareManager;
+ use OCP\Share\IShare;
+ use OCP\Util;
+ use PHPUnit\Framework\Attributes\Group;
++use Psr\Container\ContainerInterface;
+ use Psr\Log\LoggerInterface;
+ use Test\TestCase;
+ 
+@@ -52,7 +52,7 @@ class LegacyHooksTest extends TestCase {
+ 
+ 		$symfonyDispatcher = new \Symfony\Component\EventDispatcher\EventDispatcher();
+ 		$logger = $this->createMock(LoggerInterface::class);
+-		$this->eventDispatcher = new EventDispatcher($symfonyDispatcher, Server::get(IServerContainer::class), $logger);
++		$this->eventDispatcher = new EventDispatcher($symfonyDispatcher, Server::get(ContainerInterface::class), $logger);
+ 		$this->hooks = new LegacyHooks($this->eventDispatcher);
+ 		$this->manager = Server::get(IShareManager::class);
+ 	}
+diff --git a/tests/lib/Share20/ManagerTest.php b/tests/lib/Share20/ManagerTest.php
+index be9e817e8f..059b7a4df3 100644
+--- a/tests/lib/Share20/ManagerTest.php
++++ b/tests/lib/Share20/ManagerTest.php
+@@ -40,7 +40,6 @@ use OCP\IDBConnection;
+ use OCP\IGroup;
+ use OCP\IGroupManager;
+ use OCP\IL10N;
+-use OCP\IServerContainer;
+ use OCP\IUser;
+ use OCP\IUserManager;
+ use OCP\IUserSession;
+@@ -66,6 +65,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
+ use PHPUnit\Framework\Attributes\Group;
+ use PHPUnit\Framework\MockObject\MockBuilder;
+ use PHPUnit\Framework\MockObject\MockObject;
++use Psr\Container\ContainerInterface;
+ use Psr\Log\LoggerInterface;
+ 
+ class DummyShareManagerListener {
+@@ -4775,7 +4775,7 @@ class ManagerTest extends \Test\TestCase {
+ 	}
+ 
+ 	public function testGetSharesInFolder(): void {
+-		$factory = new DummyFactory2($this->createMock(IServerContainer::class));
++		$factory = new DummyFactory2($this->createMock(ContainerInterface::class));
+ 
+ 		$manager = $this->createManager($factory);
+ 
+@@ -4822,7 +4822,7 @@ class ManagerTest extends \Test\TestCase {
+ 	}
+ 
+ 	public function testGetSharesInFolderOwnerless(): void {
+-		$factory = new DummyFactory2($this->createMock(IServerContainer::class));
++		$factory = new DummyFactory2($this->createMock(ContainerInterface::class));
+ 
+ 		$manager = $this->createManager($factory);
+ 
+@@ -4857,7 +4857,7 @@ class ManagerTest extends \Test\TestCase {
+ 
+ 
+ 	public function testGetAccessList(): void {
+-		$factory = new DummyFactory2($this->createMock(IServerContainer::class));
++		$factory = new DummyFactory2($this->createMock(ContainerInterface::class));
+ 
+ 		$manager = $this->createManager($factory);
+ 
+@@ -4956,7 +4956,7 @@ class ManagerTest extends \Test\TestCase {
+ 	}
+ 
+ 	public function testGetAccessListWithCurrentAccess(): void {
+-		$factory = new DummyFactory2($this->createMock(IServerContainer::class));
++		$factory = new DummyFactory2($this->createMock(ContainerInterface::class));
+ 
+ 		$manager = $this->createManager($factory);
+ 
+@@ -5064,7 +5064,7 @@ class ManagerTest extends \Test\TestCase {
+ 	}
+ 
+ 	public function testGetAllShares(): void {
+-		$factory = new DummyFactory2($this->createMock(IServerContainer::class));
++		$factory = new DummyFactory2($this->createMock(ContainerInterface::class));
+ 
+ 		$manager = $this->createManager($factory);
+ 
+@@ -5180,7 +5180,7 @@ class DummyFactory implements IProviderFactory {
+ 	/** @var IShareProvider */
+ 	protected $provider;
+ 
+-	public function __construct(IServerContainer $serverContainer) {
++	public function __construct(ContainerInterface $serverContainer) {
+ 	}
+ 
+ 	/**
+diff --git a/tests/lib/Talk/BrokerTest.php b/tests/lib/Talk/BrokerTest.php
+index f49aaef1ef..4bac7dd31b 100644
+--- a/tests/lib/Talk/BrokerTest.php
++++ b/tests/lib/Talk/BrokerTest.php
+@@ -14,10 +14,10 @@ use OC\AppFramework\Bootstrap\RegistrationContext;
+ use OC\AppFramework\Bootstrap\ServiceRegistration;
+ use OC\Talk\Broker;
+ use OCP\AppFramework\QueryException;
+-use OCP\IServerContainer;
+ use OCP\Talk\IConversationOptions;
+ use OCP\Talk\ITalkBackend;
+ use PHPUnit\Framework\Attributes\DataProvider;
++use Psr\Container\ContainerInterface;
+ use Psr\Log\LoggerInterface;
+ use RuntimeException;
+ use Test\TestCase;
+@@ -25,7 +25,7 @@ use Test\TestCase;
+ class BrokerTest extends TestCase {
+ 	private Coordinator $coordinator;
+ 
+-	private IServerContainer $container;
++	private ContainerInterface $container;
+ 
+ 	private LoggerInterface $logger;
+ 
+@@ -36,7 +36,7 @@ class BrokerTest extends TestCase {
+ 		parent::setUp();
+ 
+ 		$this->coordinator = $this->createMock(Coordinator::class);
+-		$this->container = $this->createMock(IServerContainer::class);
++		$this->container = $this->createMock(ContainerInterface::class);
+ 		$this->logger = $this->createMock(LoggerInterface::class);
+ 
+ 		$this->broker = new Broker(
+diff --git a/tests/lib/TaskProcessing/TaskProcessingTest.php b/tests/lib/TaskProcessing/TaskProcessingTest.php
+index a65e4d5e16..d557bcbed0 100644
+--- a/tests/lib/TaskProcessing/TaskProcessingTest.php
++++ b/tests/lib/TaskProcessing/TaskProcessingTest.php
+@@ -27,7 +27,6 @@ use OCP\IAppConfig;
+ use OCP\ICacheFactory;
+ use OCP\IConfig;
+ use OCP\IDBConnection;
+-use OCP\IServerContainer;
+ use OCP\IUser;
+ use OCP\IUserManager;
+ use OCP\IUserSession;
+@@ -56,6 +55,7 @@ use OCP\TaskProcessing\TaskTypes\TextToTextSummary;
+ use OCP\TextProcessing\SummaryTaskType;
+ use PHPUnit\Framework\Constraint\IsInstanceOf;
+ use PHPUnit\Framework\MockObject\MockObject;
++use Psr\Container\ContainerInterface;
+ use Psr\Log\LoggerInterface;
+ use Test\BackgroundJob\DummyJobList;
+ 
+@@ -765,7 +765,7 @@ class ConflictingExternalTaskType implements ITaskType {
+ #[\PHPUnit\Framework\Attributes\Group('DB')]
+ class TaskProcessingTest extends \Test\TestCase {
+ 	private Coordinator&MockObject $coordinator;
+-	private IServerContainer&MockObject $serverContainer;
++	private ContainerInterface&MockObject $serverContainer;
+ 	private IEventDispatcher&MockObject $eventDispatcher;
+ 	private IJobList&MockObject $jobList;
+ 	private IUserMountCache&MockObject $userMountCache;
+@@ -808,7 +808,7 @@ class TaskProcessingTest extends \Test\TestCase {
+ 			$userManager->createUser(self::TEST_USER, 'test');
+ 		}
+ 
+-		$this->serverContainer = $this->createMock(IServerContainer::class);
++		$this->serverContainer = $this->createMock(ContainerInterface::class);
+ 		$this->serverContainer->expects($this->any())->method('get')->willReturnCallback(function ($class) {
+ 			return $this->providers[$class];
+ 		});
+diff --git a/tests/lib/TextProcessing/TextProcessingTest.php b/tests/lib/TextProcessing/TextProcessingTest.php
+index 5d80174d7e..e54e4c6d60 100644
+--- a/tests/lib/TextProcessing/TextProcessingTest.php
++++ b/tests/lib/TextProcessing/TextProcessingTest.php
+@@ -22,7 +22,6 @@ use OCP\BackgroundJob\IJobList;
+ use OCP\Common\Exception\NotFoundException;
+ use OCP\EventDispatcher\IEventDispatcher;
+ use OCP\IConfig;
+-use OCP\IServerContainer;
+ use OCP\PreConditionNotMetException;
+ use OCP\Server;
+ use OCP\TextProcessing\Events\TaskFailedEvent;
+@@ -34,6 +33,7 @@ use OCP\TextProcessing\SummaryTaskType;
+ use OCP\TextProcessing\Task;
+ use OCP\TextProcessing\TopicsTaskType;
+ use PHPUnit\Framework\Constraint\IsInstanceOf;
++use Psr\Container\ContainerInterface;
+ use Psr\Log\LoggerInterface;
+ use Test\BackgroundJob\DummyJobList;
+ 
+@@ -102,7 +102,7 @@ class TextProcessingTest extends \Test\TestCase {
+ 	private IManager $manager;
+ 	private Coordinator $coordinator;
+ 	private array $providers;
+-	private IServerContainer $serverContainer;
++	private ContainerInterface $serverContainer;
+ 	private IEventDispatcher $eventDispatcher;
+ 	private RegistrationContext $registrationContext;
+ 	private \DateTimeImmutable $currentTime;
+@@ -120,7 +120,7 @@ class TextProcessingTest extends \Test\TestCase {
+ 			FreePromptProvider::class => new FreePromptProvider(),
+ 		];
+ 
+-		$this->serverContainer = $this->createMock(IServerContainer::class);
++		$this->serverContainer = $this->createMock(ContainerInterface::class);
+ 		$this->serverContainer->expects($this->any())->method('get')->willReturnCallback(function ($class) {
+ 			return $this->providers[$class];
+ 		});

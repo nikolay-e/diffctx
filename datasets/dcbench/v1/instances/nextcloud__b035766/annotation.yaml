@@ -1,0 +1,92 @@
+repo: nextcloud
+base_commit: bba96678826ba9b6726484ff05a1d7fd48cfa8b7
+commit: b0357663b96cf4a3a9bd34194466a4ce76e4f41d
+patch_stored: true
+gold:
+  - path: core/Migrations/Version33000Date20250819110529.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: defines the new 'previews'/'preview_locations' table layout (drops storage_id, adds old_file_id/location_id/source_mimetype/encrypted, new location table) that every other file adapts to
+  - path: lib/private/Preview/Db/Preview.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: entity drops storageId and gains oldFileId/locationId/bucketName/objectStoreName properties matching the new schema
+  - path: lib/private/Preview/Db/PreviewMapper.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds joinLocation()/getLocationId() to resolve the new preview_locations table and drops the storageId parameter from getByFileIds()/deleteByIds()
+  - path: lib/private/Preview/Storage/ObjectStorePreviewStorage.php
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: getObjectStoreForPreview() now persists the resolved bucket/object-store per-preview via PreviewMapper::getLocationId() instead of statically deriving it from config on every read, and migratePreview() just records the location instead of copying objects
+  - path: lib/private/Preview/Storage/LocalPreviewStorage.php
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: migratePreview() simplified to only rename in place / delete the legacy copy rather than physically moving files, matching the perf goal of the commit
+  - path: lib/private/Preview/Generator.php
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: savePreview() drops the setStorageId() call now that Preview no longer stores it, and preview matching switches to array_find over Preview::getCrop/getVersion
+  - path: core/BackgroundJobs/MovePreviewJob.php
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: migration job now calls setOldFileId() instead of setStorageId(), reflecting 'not moving the actual files, just updating the DB'
+  - path: lib/private/Files/Mount/ObjectStorePreviewCacheMountProvider.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: entire class deleted — the old per-bucket virtual-mount mechanism for locating object-store previews is superseded by ObjectStorePreviewStorage resolving bucket/location directly via PreviewMapper
+  - path: lib/private/Server.php
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: removes registerRootProvider(new ObjectStorePreviewCacheMountProvider(...)) now that the mount-provider mechanism is deleted
+  - path: lib/private/Files/ObjectStore/PrimaryObjectStoreConfig.php
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: getObjectStoreConfiguration()/resolveAlias() are the methods ObjectStorePreviewStorage now calls to resolve bucket config per preview
+  - path: tests/lib/Preview/PreviewMapperTest.php
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: new test coverage for PreviewMapper's location join / getLocationId() logic
+  - path: tests/lib/Preview/MovePreviewJobTest.php
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: new test coverage for the simplified (non-file-moving) migration job behavior
+forbidden:
+  - path: apps/files/lib/Command/ScanAppData.php
+    reason: unrelated guard against scanning the preview appdata folder bundled in the same commit, not part of the DB-layout refactor itself
+  - path: tests/lib/Files/Storage/Storage.php
+    reason: single unrelated assertion addition to a generic storage test trait, no connection to the preview schema change
+  - path: lib/composer/composer/autoload_classmap.php
+    reason: generated autoload map, mechanical byproduct of deleting/adding classes
+  - path: lib/composer/composer/LICENSE
+    reason: vendored composer license file noise, unrelated to the change
+nontrivial_gold_count: 0
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 19
+  description: preview migration + DB layout simplification — core/Migrations + lib/private/Preview +
+    autoload noise
+notes: >
+  Reworks the preview subsystem's DB layout: drops the per-row storage_id column in
+  favor of a shared preview_locations table (bucket/object-store resolved once and
+  referenced by id), and simplifies preview migration to just update DB rows instead of
+  physically copying/moving files, deleting the now-unneeded
+  ObjectStorePreviewCacheMountProvider virtual-mount mechanism entirely. All linkage
+  (schema, entity, mapper, the two storage backends, generator, and the migration job)
+  is contained within the diff via direct method/property references, no string-keyed
+  indirection.

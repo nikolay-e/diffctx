@@ -1,0 +1,49 @@
+repo: home-assistant
+base_commit: eed88e2c72357f7499a0770aa373128080c05e00
+commit: 3ba52a4d1f38e413d7e7d1c13ddb8475872d73aa
+patch_stored: true
+gold:
+  - path: homeassistant/components/rainbird/__init__.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines async_update_listener and wires it via entry.async_on_unload(entry.add_update_listener(async_update_listener)) in async_setup_entry.
+  - path: tests/components/rainbird/test_init.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: Adds test_options_listener, the covering test that asserts the new update listener triggers a reload via async_update_entry.
+  - path: homeassistant/config_entries.py
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines ConfigEntry.add_update_listener, async_on_unload, and async_reload, the three core-framework methods the new listener wiring relies on.
+  - path: tests/components/rainbird/conftest.py
+    tier: helpful
+    role: test
+    in_diff: false
+    rationale: Defines the config_entry fixture with options={ATTR_DURATION DEFAULT_TRIGGER_TIME_MINUTES} consumed by test_options_listener before it mutates options.
+  - path: homeassistant/components/rainbird/types.py
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Defines the RainbirdConfigEntry type alias used in async_update_listener's function signature.
+forbidden:
+  - path: homeassistant/components/rainbird/config_flow.py
+    reason: Defines the options UI form (RainBirdOptionsFlowHandler) but not the reload-listener wiring itself.
+  - path: homeassistant/components/rainbird/coordinator.py
+    reason: Data-fetch update coordinators, unrelated to the options-update reload mechanism.
+  - path: homeassistant/components/rainbird/services.py
+    reason: Registers rainbird domain services, unrelated to config entry reload on options change.
+  - path: homeassistant/components/rainbird/const.py
+    reason: Sibling constants module not referenced by the new listener code.
+nontrivial_gold_count: 3
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: []
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 2
+  description: 'Compact gem: Rain Bird options update listener — correct context is rainbird module tree
+    + config_entries helper only'
+notes: 'Adds a standard config-entry options-update-listener pattern to the Rain Bird integration, wiring async_update_listener to reload the entry; the linkage to add_update_listener/async_on_unload/async_reload is a direct (non-string) API call into homeassistant/config_entries.py.'

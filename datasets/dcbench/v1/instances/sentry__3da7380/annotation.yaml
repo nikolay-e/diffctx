@@ -1,0 +1,49 @@
+repo: sentry
+base_commit: 3d48986e0b17ef6d1de0ad1705e60a8ecf933c1d
+commit: 3da73801ae2c661074ab9d8046246ce6a59390e2
+patch_stored: true
+gold:
+- path: .github/ISSUE_TEMPLATE/flaky.yml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .github/actions/setup-sentry/action.yml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .github/labels.yml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .github/workflows/acceptance.yml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .github/workflows/frontend.yml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .github/workflows/visual-snapshots.yml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: tests/acceptance/test_teams_list.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: tests/js/setupFramework.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: yarn.lock
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: '309-file removal of the visual-snapshot testing pipeline: deletes visual-snapshots.yml wholesale,
+  strips VISUAL_SNAPSHOT_ENABLE/acceptance-dir plumbing from acceptance.yml, drops the ''Build CSS''+HTML-to-image
+  steps from frontend.yml and jest-balance.yml, and removes the corresponding label/issue-template entries.
+  Conceptually simple (mostly deletions of a well-scoped subsystem) yet the tool hung on it. yarn.lock''s
+  252-line dependency-removal diff is a case where showing the full lockfile diff would add little value
+  over naming which packages were dropped.'

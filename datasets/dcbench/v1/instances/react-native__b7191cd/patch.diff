@@ -1,0 +1,818 @@
+From b7191cde4e36d3d712affc8b714e7d6179642cbb Mon Sep 17 00:00:00 2001
+From: David Vacca <dvacca@meta.com>
+Date: Mon, 9 Oct 2023 19:24:19 -0700
+Subject: [PATCH] Move TurboModule from com.facebook.react.turbomodule ->
+ com.facebook.react.internal.turbomodule (#39682)
+
+Summary:
+Pull Request resolved: https://github.com/facebook/react-native/pull/39682
+
+Move TurboModule from com.facebook.react.turbomodule -> com.facebook.react.internal.turbomodule
+
+bypass-github-export-checks
+
+changelog: [internal] internal
+
+Reviewed By: RSNara
+
+Differential Revision: D49523696
+
+fbshipit-source-id: fee155f4fb7acf0f28f900c79f7aa38074bec0e6
+---
+ .../modules/GenerateModuleJavaSpec.js          |  2 +-
+ .../GenerateModuleJavaSpec-test.js.snap        | 18 +++++++++---------
+ .../ReactAndroid/proguard-rules.pro            |  2 +-
+ ...ReactPackageTurboModuleManagerDelegate.java |  2 +-
+ .../com/facebook/react/CoreModulesPackage.java |  2 +-
+ .../com/facebook/react/DebugCorePackage.java   |  2 +-
+ .../react/LazyTurboModuleManagerDelegate.java  |  2 +-
+ .../facebook/react/ReactInstanceManager.java   |  6 +++---
+ ...ReactPackageTurboModuleManagerDelegate.java |  4 ++--
+ .../react/bridge/CatalystInstance.java         |  4 ++--
+ .../react/bridge/CatalystInstanceImpl.java     |  6 +++---
+ .../react/bridge/JavaModuleWrapper.java        |  2 +-
+ .../facebook/react/bridge/ModuleHolder.java    |  2 +-
+ .../react/config/ReactFeatureFlags.java        |  4 ++--
+ .../{ => internal}/turbomodule/.clang-tidy     |  0
+ .../core/CallInvokerHolderImpl.java            |  4 ++--
+ .../NativeMethodCallInvokerHolderImpl.java     |  4 ++--
+ .../turbomodule/core/NativeModuleSoLoader.kt   |  2 +-
+ .../core/TurboModuleInteropUtils.java          |  4 ++--
+ .../turbomodule/core/TurboModuleManager.java   | 10 +++++-----
+ .../core/TurboModuleManagerDelegate.java       |  4 ++--
+ .../core/TurboModulePerfLogger.java            |  2 +-
+ .../core/interfaces/CallInvokerHolder.kt       |  2 +-
+ .../NativeMethodCallInvokerHolder.kt           |  2 +-
+ .../turbomodule/core/interfaces/TurboModule.kt |  2 +-
+ .../core/interfaces/TurboModuleRegistry.kt     |  2 +-
+ .../processing/ReactModuleSpecProcessor.java   |  4 ++--
+ .../react/modules/fresco/FrescoModule.java     |  2 +-
+ .../modules/systeminfo/AndroidInfoModule.java  |  2 +-
+ .../react/runtime/CoreReactPackage.java        |  2 +-
+ .../facebook/react/runtime/ReactInstance.java  |  8 ++++----
+ .../facebook/react/shell/MainReactPackage.java |  2 +-
+ .../ReactCommon/CallInvokerHolder.h            |  2 +-
+ .../NativeMethodCallInvokerHolder.h            |  2 +-
+ .../react/turbomodule/ReactCommon/OnLoad.cpp   |  2 +-
+ .../ReactCommon/TurboModuleManager.cpp         |  2 +-
+ .../ReactCommon/TurboModuleManager.h           |  2 +-
+ .../ReactCommon/TurboModuleManagerDelegate.h   |  2 +-
+ .../react/bridge/BaseJavaModuleTest.kt         |  2 +-
+ .../android/ReactCommon/JavaTurboModule.h      |  2 +-
+ .../android/NativeSampleTurboModuleSpec.java   |  2 +-
+ 41 files changed, 67 insertions(+), 67 deletions(-)
+ rename packages/react-native/ReactAndroid/src/main/java/com/facebook/react/{ => internal}/turbomodule/.clang-tidy (100%)
+ rename packages/react-native/ReactAndroid/src/main/java/com/facebook/react/{ => internal}/turbomodule/core/CallInvokerHolderImpl.java (85%)
+ rename packages/react-native/ReactAndroid/src/main/java/com/facebook/react/{ => internal}/turbomodule/core/NativeMethodCallInvokerHolderImpl.java (85%)
+ rename packages/react-native/ReactAndroid/src/main/java/com/facebook/react/{ => internal}/turbomodule/core/NativeModuleSoLoader.kt (90%)
+ rename packages/react-native/ReactAndroid/src/main/java/com/facebook/react/{ => internal}/turbomodule/core/TurboModuleInteropUtils.java (98%)
+ rename packages/react-native/ReactAndroid/src/main/java/com/facebook/react/{ => internal}/turbomodule/core/TurboModuleManager.java (97%)
+ rename packages/react-native/ReactAndroid/src/main/java/com/facebook/react/{ => internal}/turbomodule/core/TurboModuleManagerDelegate.java (93%)
+ rename packages/react-native/ReactAndroid/src/main/java/com/facebook/react/{ => internal}/turbomodule/core/TurboModulePerfLogger.java (98%)
+ rename packages/react-native/ReactAndroid/src/main/java/com/facebook/react/{ => internal}/turbomodule/core/interfaces/CallInvokerHolder.kt (90%)
+ rename packages/react-native/ReactAndroid/src/main/java/com/facebook/react/{ => internal}/turbomodule/core/interfaces/NativeMethodCallInvokerHolder.kt (84%)
+ rename packages/react-native/ReactAndroid/src/main/java/com/facebook/react/{ => internal}/turbomodule/core/interfaces/TurboModule.kt (89%)
+ rename packages/react-native/ReactAndroid/src/main/java/com/facebook/react/{ => internal}/turbomodule/core/interfaces/TurboModuleRegistry.kt (95%)
+
+diff --git a/packages/react-native-codegen/src/generators/modules/GenerateModuleJavaSpec.js b/packages/react-native-codegen/src/generators/modules/GenerateModuleJavaSpec.js
+index 02ccc266898..24fba85b697 100644
+--- a/packages/react-native-codegen/src/generators/modules/GenerateModuleJavaSpec.js
++++ b/packages/react-native-codegen/src/generators/modules/GenerateModuleJavaSpec.js
+@@ -467,7 +467,7 @@ module.exports = {
+         'com.facebook.react.bridge.ReactApplicationContext',
+         'com.facebook.react.bridge.ReactContextBaseJavaModule',
+         'com.facebook.react.bridge.ReactMethod',
+-        'com.facebook.react.turbomodule.core.interfaces.TurboModule',
++        'com.facebook.react.internal.turbomodule.core.interfaces.TurboModule',
+         'com.facebook.proguard.annotations.DoNotStrip',
+         'javax.annotation.Nonnull',
+       ]);
+diff --git a/packages/react-native-codegen/src/generators/modules/__tests__/__snapshots__/GenerateModuleJavaSpec-test.js.snap b/packages/react-native-codegen/src/generators/modules/__tests__/__snapshots__/GenerateModuleJavaSpec-test.js.snap
+index 875476d45ac..a03ec04f54d 100644
+--- a/packages/react-native-codegen/src/generators/modules/__tests__/__snapshots__/GenerateModuleJavaSpec-test.js.snap
++++ b/packages/react-native-codegen/src/generators/modules/__tests__/__snapshots__/GenerateModuleJavaSpec-test.js.snap
+@@ -20,7 +20,7 @@ import com.facebook.proguard.annotations.DoNotStrip;
+ import com.facebook.react.bridge.ReactApplicationContext;
+ import com.facebook.react.bridge.ReactContextBaseJavaModule;
+ import com.facebook.react.bridge.ReactMethod;
+-import com.facebook.react.turbomodule.core.interfaces.TurboModule;
++import com.facebook.react.internal.turbomodule.core.interfaces.TurboModule;
+ import javax.annotation.Nonnull;
+ 
+ public abstract class NativeSampleTurboModuleSpec extends ReactContextBaseJavaModule implements TurboModule {
+@@ -66,7 +66,7 @@ import com.facebook.react.bridge.ReadableArray;
+ import com.facebook.react.bridge.ReadableMap;
+ import com.facebook.react.bridge.WritableArray;
+ import com.facebook.react.bridge.WritableMap;
+-import com.facebook.react.turbomodule.core.interfaces.TurboModule;
++import com.facebook.react.internal.turbomodule.core.interfaces.TurboModule;
+ import javax.annotation.Nonnull;
+ import javax.annotation.Nullable;
+ 
+@@ -136,7 +136,7 @@ import com.facebook.proguard.annotations.DoNotStrip;
+ import com.facebook.react.bridge.ReactApplicationContext;
+ import com.facebook.react.bridge.ReactContextBaseJavaModule;
+ import com.facebook.react.bridge.ReactMethod;
+-import com.facebook.react.turbomodule.core.interfaces.TurboModule;
++import com.facebook.react.internal.turbomodule.core.interfaces.TurboModule;
+ import javax.annotation.Nonnull;
+ 
+ public abstract class NativeSampleTurboModuleSpec extends ReactContextBaseJavaModule implements TurboModule {
+@@ -178,7 +178,7 @@ import com.facebook.react.bridge.ReactApplicationContext;
+ import com.facebook.react.bridge.ReactContextBaseJavaModule;
+ import com.facebook.react.bridge.ReactMethod;
+ import com.facebook.react.bridge.ReadableMap;
+-import com.facebook.react.turbomodule.core.interfaces.TurboModule;
++import com.facebook.react.internal.turbomodule.core.interfaces.TurboModule;
+ import javax.annotation.Nonnull;
+ 
+ public abstract class AliasTurboModuleSpec extends ReactContextBaseJavaModule implements TurboModule {
+@@ -224,7 +224,7 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule;
+ import com.facebook.react.bridge.ReactMethod;
+ import com.facebook.react.bridge.ReadableArray;
+ import com.facebook.react.bridge.ReadableMap;
+-import com.facebook.react.turbomodule.core.interfaces.TurboModule;
++import com.facebook.react.internal.turbomodule.core.interfaces.TurboModule;
+ import javax.annotation.Nonnull;
+ 
+ public abstract class NativeCameraRollManagerSpec extends ReactContextBaseJavaModule implements TurboModule {
+@@ -272,7 +272,7 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule;
+ import com.facebook.react.bridge.ReactMethod;
+ import com.facebook.react.bridge.ReadableArray;
+ import com.facebook.react.bridge.ReadableMap;
+-import com.facebook.react.turbomodule.core.interfaces.TurboModule;
++import com.facebook.react.internal.turbomodule.core.interfaces.TurboModule;
+ import javax.annotation.Nonnull;
+ 
+ public abstract class NativeExceptionsManagerSpec extends ReactContextBaseJavaModule implements TurboModule {
+@@ -338,7 +338,7 @@ import com.facebook.react.bridge.ReadableMap;
+ import com.facebook.react.bridge.WritableArray;
+ import com.facebook.react.bridge.WritableMap;
+ import com.facebook.react.common.build.ReactBuildConfig;
+-import com.facebook.react.turbomodule.core.interfaces.TurboModule;
++import com.facebook.react.internal.turbomodule.core.interfaces.TurboModule;
+ import java.util.Arrays;
+ import java.util.HashSet;
+ import java.util.Map;
+@@ -462,7 +462,7 @@ import com.facebook.proguard.annotations.DoNotStrip;
+ import com.facebook.react.bridge.ReactApplicationContext;
+ import com.facebook.react.bridge.ReactContextBaseJavaModule;
+ import com.facebook.react.bridge.ReactMethod;
+-import com.facebook.react.turbomodule.core.interfaces.TurboModule;
++import com.facebook.react.internal.turbomodule.core.interfaces.TurboModule;
+ import javax.annotation.Nonnull;
+ 
+ public abstract class NativeSampleTurboModuleSpec extends ReactContextBaseJavaModule implements TurboModule {
+@@ -500,7 +500,7 @@ import com.facebook.proguard.annotations.DoNotStrip;
+ import com.facebook.react.bridge.ReactApplicationContext;
+ import com.facebook.react.bridge.ReactContextBaseJavaModule;
+ import com.facebook.react.bridge.ReactMethod;
+-import com.facebook.react.turbomodule.core.interfaces.TurboModule;
++import com.facebook.react.internal.turbomodule.core.interfaces.TurboModule;
+ import javax.annotation.Nonnull;
+ 
+ public abstract class NativeSampleTurboModule2Spec extends ReactContextBaseJavaModule implements TurboModule {
+diff --git a/packages/react-native/ReactAndroid/proguard-rules.pro b/packages/react-native/ReactAndroid/proguard-rules.pro
+index 7e65d791043..e169d03a66f 100644
+--- a/packages/react-native/ReactAndroid/proguard-rules.pro
++++ b/packages/react-native/ReactAndroid/proguard-rules.pro
+@@ -48,7 +48,7 @@
+ 
+ -dontwarn com.facebook.react.**
+ -keep,includedescriptorclasses class com.facebook.react.bridge.** { *; }
+--keep,includedescriptorclasses class com.facebook.react.turbomodule.core.** { *; }
++-keep,includedescriptorclasses class com.facebook.react.internal.turbomodule.core.** { *; }
+ 
+ # hermes
+ -keep class com.facebook.jni.** { *; }
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/CompositeReactPackageTurboModuleManagerDelegate.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/CompositeReactPackageTurboModuleManagerDelegate.java
+index 973fdf7cf5b..aebaa4cba4d 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/CompositeReactPackageTurboModuleManagerDelegate.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/CompositeReactPackageTurboModuleManagerDelegate.java
+@@ -11,7 +11,7 @@ import androidx.annotation.NonNull;
+ import com.facebook.jni.HybridData;
+ import com.facebook.proguard.annotations.DoNotStrip;
+ import com.facebook.react.bridge.ReactApplicationContext;
+-import com.facebook.react.turbomodule.core.TurboModuleManagerDelegate;
++import com.facebook.react.internal.turbomodule.core.TurboModuleManagerDelegate;
+ import java.util.ArrayList;
+ import java.util.Collections;
+ import java.util.List;
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/CoreModulesPackage.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/CoreModulesPackage.java
+index 5b3e5bb3c31..3f269bd2380 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/CoreModulesPackage.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/CoreModulesPackage.java
+@@ -17,6 +17,7 @@ import com.facebook.react.bridge.NativeModule;
+ import com.facebook.react.bridge.ReactApplicationContext;
+ import com.facebook.react.bridge.ReactMarker;
+ import com.facebook.react.devsupport.LogBoxModule;
++import com.facebook.react.internal.turbomodule.core.interfaces.TurboModule;
+ import com.facebook.react.module.annotations.ReactModule;
+ import com.facebook.react.module.annotations.ReactModuleList;
+ import com.facebook.react.module.model.ReactModuleInfo;
+@@ -30,7 +31,6 @@ import com.facebook.react.modules.debug.DevSettingsModule;
+ import com.facebook.react.modules.debug.SourceCodeModule;
+ import com.facebook.react.modules.deviceinfo.DeviceInfoModule;
+ import com.facebook.react.modules.systeminfo.AndroidInfoModule;
+-import com.facebook.react.turbomodule.core.interfaces.TurboModule;
+ import com.facebook.react.uimanager.UIManagerModule;
+ import com.facebook.react.uimanager.ViewManager;
+ import com.facebook.react.uimanager.ViewManagerResolver;
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/DebugCorePackage.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/DebugCorePackage.java
+index cc98ffd79b1..7381eb0ee1f 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/DebugCorePackage.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/DebugCorePackage.java
+@@ -12,11 +12,11 @@ import com.facebook.react.bridge.ModuleSpec;
+ import com.facebook.react.bridge.NativeModule;
+ import com.facebook.react.bridge.ReactApplicationContext;
+ import com.facebook.react.devsupport.JSCHeapCapture;
++import com.facebook.react.internal.turbomodule.core.interfaces.TurboModule;
+ import com.facebook.react.module.annotations.ReactModule;
+ import com.facebook.react.module.annotations.ReactModuleList;
+ import com.facebook.react.module.model.ReactModuleInfo;
+ import com.facebook.react.module.model.ReactModuleInfoProvider;
+-import com.facebook.react.turbomodule.core.interfaces.TurboModule;
+ import com.facebook.react.uimanager.UIManagerModule;
+ import com.facebook.react.uimanager.ViewManager;
+ import com.facebook.react.views.traceupdateoverlay.TraceUpdateOverlayManager;
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/LazyTurboModuleManagerDelegate.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/LazyTurboModuleManagerDelegate.java
+index a0d30017f6e..b38b61426c8 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/LazyTurboModuleManagerDelegate.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/LazyTurboModuleManagerDelegate.java
+@@ -11,7 +11,7 @@ import androidx.annotation.Nullable;
+ import com.facebook.react.bridge.NativeModule;
+ import com.facebook.react.bridge.ReactApplicationContext;
+ import com.facebook.react.common.annotations.UnstableReactNativeAPI;
+-import com.facebook.react.turbomodule.core.interfaces.TurboModule;
++import com.facebook.react.internal.turbomodule.core.interfaces.TurboModule;
+ import java.util.HashMap;
+ import java.util.List;
+ import java.util.Map;
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/ReactInstanceManager.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/ReactInstanceManager.java
+index 846335c30e2..0514faea9b6 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/ReactInstanceManager.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/ReactInstanceManager.java
+@@ -86,6 +86,9 @@ import com.facebook.react.devsupport.interfaces.DevLoadingViewManager;
+ import com.facebook.react.devsupport.interfaces.DevSupportManager;
+ import com.facebook.react.devsupport.interfaces.PackagerStatusCallback;
+ import com.facebook.react.devsupport.interfaces.RedBoxHandler;
++import com.facebook.react.internal.turbomodule.core.TurboModuleManager;
++import com.facebook.react.internal.turbomodule.core.TurboModuleManagerDelegate;
++import com.facebook.react.internal.turbomodule.core.interfaces.TurboModuleRegistry;
+ import com.facebook.react.modules.appearance.AppearanceModule;
+ import com.facebook.react.modules.appregistry.AppRegistry;
+ import com.facebook.react.modules.core.DefaultHardwareBackBtnHandler;
+@@ -94,9 +97,6 @@ import com.facebook.react.modules.core.ReactChoreographer;
+ import com.facebook.react.modules.debug.interfaces.DeveloperSettings;
+ import com.facebook.react.packagerconnection.RequestHandler;
+ import com.facebook.react.surface.ReactStage;
+-import com.facebook.react.turbomodule.core.TurboModuleManager;
+-import com.facebook.react.turbomodule.core.TurboModuleManagerDelegate;
+-import com.facebook.react.turbomodule.core.interfaces.TurboModuleRegistry;
+ import com.facebook.react.uimanager.DisplayMetricsHolder;
+ import com.facebook.react.uimanager.ReactRoot;
+ import com.facebook.react.uimanager.UIManagerHelper;
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/ReactPackageTurboModuleManagerDelegate.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/ReactPackageTurboModuleManagerDelegate.java
+index 905f016c0ef..ad99754892b 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/ReactPackageTurboModuleManagerDelegate.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/ReactPackageTurboModuleManagerDelegate.java
+@@ -14,10 +14,10 @@ import com.facebook.react.bridge.ModuleSpec;
+ import com.facebook.react.bridge.NativeModule;
+ import com.facebook.react.bridge.ReactApplicationContext;
+ import com.facebook.react.config.ReactFeatureFlags;
++import com.facebook.react.internal.turbomodule.core.TurboModuleManagerDelegate;
++import com.facebook.react.internal.turbomodule.core.interfaces.TurboModule;
+ import com.facebook.react.module.annotations.ReactModule;
+ import com.facebook.react.module.model.ReactModuleInfo;
+-import com.facebook.react.turbomodule.core.TurboModuleManagerDelegate;
+-import com.facebook.react.turbomodule.core.interfaces.TurboModule;
+ import java.util.ArrayList;
+ import java.util.HashMap;
+ import java.util.List;
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/bridge/CatalystInstance.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/bridge/CatalystInstance.java
+index 2623190edba..e138e6dfeac 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/bridge/CatalystInstance.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/bridge/CatalystInstance.java
+@@ -11,8 +11,8 @@ import androidx.annotation.Nullable;
+ import com.facebook.proguard.annotations.DoNotStrip;
+ import com.facebook.react.bridge.queue.ReactQueueConfiguration;
+ import com.facebook.react.common.annotations.VisibleForTesting;
+-import com.facebook.react.turbomodule.core.interfaces.CallInvokerHolder;
+-import com.facebook.react.turbomodule.core.interfaces.NativeMethodCallInvokerHolder;
++import com.facebook.react.internal.turbomodule.core.interfaces.CallInvokerHolder;
++import com.facebook.react.internal.turbomodule.core.interfaces.NativeMethodCallInvokerHolder;
+ import java.util.Collection;
+ import java.util.List;
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/bridge/CatalystInstanceImpl.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/bridge/CatalystInstanceImpl.java
+index 45895fcc7c3..b1e38b256d5 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/bridge/CatalystInstanceImpl.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/bridge/CatalystInstanceImpl.java
+@@ -26,10 +26,10 @@ import com.facebook.react.bridge.queue.ReactQueueConfigurationSpec;
+ import com.facebook.react.common.ReactConstants;
+ import com.facebook.react.common.annotations.VisibleForTesting;
+ import com.facebook.react.config.ReactFeatureFlags;
++import com.facebook.react.internal.turbomodule.core.CallInvokerHolderImpl;
++import com.facebook.react.internal.turbomodule.core.NativeMethodCallInvokerHolderImpl;
++import com.facebook.react.internal.turbomodule.core.interfaces.TurboModuleRegistry;
+ import com.facebook.react.module.annotations.ReactModule;
+-import com.facebook.react.turbomodule.core.CallInvokerHolderImpl;
+-import com.facebook.react.turbomodule.core.NativeMethodCallInvokerHolderImpl;
+-import com.facebook.react.turbomodule.core.interfaces.TurboModuleRegistry;
+ import com.facebook.systrace.Systrace;
+ import com.facebook.systrace.TraceListener;
+ import java.lang.ref.WeakReference;
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/bridge/JavaModuleWrapper.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/bridge/JavaModuleWrapper.java
+index 63b50e747e7..4f67c807271 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/bridge/JavaModuleWrapper.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/bridge/JavaModuleWrapper.java
+@@ -15,7 +15,7 @@ import static com.facebook.systrace.Systrace.TRACE_TAG_REACT_JAVA_BRIDGE;
+ 
+ import androidx.annotation.Nullable;
+ import com.facebook.proguard.annotations.DoNotStrip;
+-import com.facebook.react.turbomodule.core.interfaces.TurboModule;
++import com.facebook.react.internal.turbomodule.core.interfaces.TurboModule;
+ import com.facebook.systrace.Systrace;
+ import com.facebook.systrace.SystraceMessage;
+ import java.lang.reflect.Method;
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/bridge/ModuleHolder.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/bridge/ModuleHolder.java
+index 24e14e34000..731aa04fa3c 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/bridge/ModuleHolder.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/bridge/ModuleHolder.java
+@@ -19,8 +19,8 @@ import com.facebook.debug.holder.PrinterHolder;
+ import com.facebook.debug.tags.ReactDebugOverlayTags;
+ import com.facebook.infer.annotation.Assertions;
+ import com.facebook.proguard.annotations.DoNotStrip;
++import com.facebook.react.internal.turbomodule.core.interfaces.TurboModule;
+ import com.facebook.react.module.model.ReactModuleInfo;
+-import com.facebook.react.turbomodule.core.interfaces.TurboModule;
+ import com.facebook.systrace.SystraceMessage;
+ import java.util.concurrent.atomic.AtomicInteger;
+ import javax.inject.Provider;
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/config/ReactFeatureFlags.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/config/ReactFeatureFlags.java
+index 3a514917cc7..6b7d1f9d246 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/config/ReactFeatureFlags.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/config/ReactFeatureFlags.java
+@@ -20,8 +20,8 @@ import com.facebook.proguard.annotations.DoNotStripAny;
+ public class ReactFeatureFlags {
+   /**
+    * Should this application use TurboModules? If yes, then any module that inherits {@link
+-   * com.facebook.react.turbomodule.core.interfaces.TurboModule} will NOT be passed in to C++
+-   * CatalystInstanceImpl
++   * com.facebook.react.internal.turbomodule.core.interfaces.TurboModule} will NOT be passed in to
++   * C++ CatalystInstanceImpl
+    */
+   public static volatile boolean useTurboModules = false;
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/.clang-tidy b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/.clang-tidy
+similarity index 100%
+rename from packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/.clang-tidy
+rename to packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/.clang-tidy
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/CallInvokerHolderImpl.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/core/CallInvokerHolderImpl.java
+similarity index 85%
+rename from packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/CallInvokerHolderImpl.java
+rename to packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/core/CallInvokerHolderImpl.java
+index d1dd5f77261..b64055a04b1 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/CallInvokerHolderImpl.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/core/CallInvokerHolderImpl.java
+@@ -5,11 +5,11 @@
+  * LICENSE file in the root directory of this source tree.
+  */
+ 
+-package com.facebook.react.turbomodule.core;
++package com.facebook.react.internal.turbomodule.core;
+ 
+ import com.facebook.jni.HybridData;
+ import com.facebook.proguard.annotations.DoNotStrip;
+-import com.facebook.react.turbomodule.core.interfaces.CallInvokerHolder;
++import com.facebook.react.internal.turbomodule.core.interfaces.CallInvokerHolder;
+ 
+ /**
+  * JSCallInvoker is created at a different time/place (i.e: in CatalystInstance) than
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/NativeMethodCallInvokerHolderImpl.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/core/NativeMethodCallInvokerHolderImpl.java
+similarity index 85%
+rename from packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/NativeMethodCallInvokerHolderImpl.java
+rename to packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/core/NativeMethodCallInvokerHolderImpl.java
+index 4a0cbcc5a12..4fd3ee97eb7 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/NativeMethodCallInvokerHolderImpl.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/core/NativeMethodCallInvokerHolderImpl.java
+@@ -5,11 +5,11 @@
+  * LICENSE file in the root directory of this source tree.
+  */
+ 
+-package com.facebook.react.turbomodule.core;
++package com.facebook.react.internal.turbomodule.core;
+ 
+ import com.facebook.jni.HybridData;
+ import com.facebook.proguard.annotations.DoNotStrip;
+-import com.facebook.react.turbomodule.core.interfaces.NativeMethodCallInvokerHolder;
++import com.facebook.react.internal.turbomodule.core.interfaces.NativeMethodCallInvokerHolder;
+ 
+ /**
+  * NativeMethodCallInvokerHolder is created at a different time/place (i.e: in CatalystInstance)
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/NativeModuleSoLoader.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/core/NativeModuleSoLoader.kt
+similarity index 90%
+rename from packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/NativeModuleSoLoader.kt
+rename to packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/core/NativeModuleSoLoader.kt
+index 0c2221d13fa..4d6509f01e6 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/NativeModuleSoLoader.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/core/NativeModuleSoLoader.kt
+@@ -5,7 +5,7 @@
+  * LICENSE file in the root directory of this source tree.
+  */
+ 
+-package com.facebook.react.turbomodule.core
++package com.facebook.react.internal.turbomodule.core
+ 
+ import com.facebook.soloader.SoLoader
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/TurboModuleInteropUtils.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/core/TurboModuleInteropUtils.java
+similarity index 98%
+rename from packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/TurboModuleInteropUtils.java
+rename to packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/core/TurboModuleInteropUtils.java
+index 4c91fbca6e9..50ce80eb46a 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/TurboModuleInteropUtils.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/core/TurboModuleInteropUtils.java
+@@ -5,7 +5,7 @@
+  * LICENSE file in the root directory of this source tree.
+  */
+ 
+-package com.facebook.react.turbomodule.core;
++package com.facebook.react.internal.turbomodule.core;
+ 
+ import androidx.annotation.Nullable;
+ import com.facebook.proguard.annotations.DoNotStrip;
+@@ -18,7 +18,7 @@ import com.facebook.react.bridge.ReadableArray;
+ import com.facebook.react.bridge.ReadableMap;
+ import com.facebook.react.bridge.WritableArray;
+ import com.facebook.react.bridge.WritableMap;
+-import com.facebook.react.turbomodule.core.interfaces.TurboModule;
++import com.facebook.react.internal.turbomodule.core.interfaces.TurboModule;
+ import java.lang.reflect.Method;
+ import java.util.ArrayList;
+ import java.util.HashSet;
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/TurboModuleManager.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/core/TurboModuleManager.java
+similarity index 97%
+rename from packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/TurboModuleManager.java
+rename to packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/core/TurboModuleManager.java
+index 1d84c76e59a..aa22d1ec095 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/TurboModuleManager.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/core/TurboModuleManager.java
+@@ -5,7 +5,7 @@
+  * LICENSE file in the root directory of this source tree.
+  */
+ 
+-package com.facebook.react.turbomodule.core;
++package com.facebook.react.internal.turbomodule.core;
+ 
+ import androidx.annotation.GuardedBy;
+ import androidx.annotation.NonNull;
+@@ -20,10 +20,10 @@ import com.facebook.react.bridge.NativeModule;
+ import com.facebook.react.bridge.ReactNoCrashSoftException;
+ import com.facebook.react.bridge.ReactSoftExceptionLogger;
+ import com.facebook.react.bridge.RuntimeExecutor;
+-import com.facebook.react.turbomodule.core.interfaces.CallInvokerHolder;
+-import com.facebook.react.turbomodule.core.interfaces.NativeMethodCallInvokerHolder;
+-import com.facebook.react.turbomodule.core.interfaces.TurboModule;
+-import com.facebook.react.turbomodule.core.interfaces.TurboModuleRegistry;
++import com.facebook.react.internal.turbomodule.core.interfaces.CallInvokerHolder;
++import com.facebook.react.internal.turbomodule.core.interfaces.NativeMethodCallInvokerHolder;
++import com.facebook.react.internal.turbomodule.core.interfaces.TurboModule;
++import com.facebook.react.internal.turbomodule.core.interfaces.TurboModuleRegistry;
+ import java.util.ArrayList;
+ import java.util.Collection;
+ import java.util.HashMap;
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/TurboModuleManagerDelegate.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/core/TurboModuleManagerDelegate.java
+similarity index 93%
+rename from packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/TurboModuleManagerDelegate.java
+rename to packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/core/TurboModuleManagerDelegate.java
+index 38986df7d8a..fecd061bd4b 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/TurboModuleManagerDelegate.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/core/TurboModuleManagerDelegate.java
+@@ -5,13 +5,13 @@
+  * LICENSE file in the root directory of this source tree.
+  */
+ 
+-package com.facebook.react.turbomodule.core;
++package com.facebook.react.internal.turbomodule.core;
+ 
+ import androidx.annotation.Nullable;
+ import com.facebook.jni.HybridData;
+ import com.facebook.proguard.annotations.DoNotStrip;
+ import com.facebook.react.bridge.NativeModule;
+-import com.facebook.react.turbomodule.core.interfaces.TurboModule;
++import com.facebook.react.internal.turbomodule.core.interfaces.TurboModule;
+ import java.util.ArrayList;
+ import java.util.List;
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/TurboModulePerfLogger.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/core/TurboModulePerfLogger.java
+similarity index 98%
+rename from packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/TurboModulePerfLogger.java
+rename to packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/core/TurboModulePerfLogger.java
+index 18ff70c834a..e1c512cc3ea 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/TurboModulePerfLogger.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/core/TurboModulePerfLogger.java
+@@ -5,7 +5,7 @@
+  * LICENSE file in the root directory of this source tree.
+  */
+ 
+-package com.facebook.react.turbomodule.core;
++package com.facebook.react.internal.turbomodule.core;
+ 
+ import com.facebook.proguard.annotations.DoNotStrip;
+ import com.facebook.react.perflogger.NativeModulePerfLogger;
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/interfaces/CallInvokerHolder.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/core/interfaces/CallInvokerHolder.kt
+similarity index 90%
+rename from packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/interfaces/CallInvokerHolder.kt
+rename to packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/core/interfaces/CallInvokerHolder.kt
+index 12ac4792a01..3befd1b47a7 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/interfaces/CallInvokerHolder.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/core/interfaces/CallInvokerHolder.kt
+@@ -5,7 +5,7 @@
+  * LICENSE file in the root directory of this source tree.
+  */
+ 
+-package com.facebook.react.turbomodule.core.interfaces
++package com.facebook.react.internal.turbomodule.core.interfaces
+ /**
+  * JS CallInvoker is created by CatalystInstance.cpp, but used by TurboModuleManager.cpp. Both C++
+  * classes are instantiated at different times/places. Therefore, to pass the JS CallInvoker
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/interfaces/NativeMethodCallInvokerHolder.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/core/interfaces/NativeMethodCallInvokerHolder.kt
+similarity index 84%
+rename from packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/interfaces/NativeMethodCallInvokerHolder.kt
+rename to packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/core/interfaces/NativeMethodCallInvokerHolder.kt
+index 7d1a3cc4283..3f89a39d9c2 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/interfaces/NativeMethodCallInvokerHolder.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/core/interfaces/NativeMethodCallInvokerHolder.kt
+@@ -5,7 +5,7 @@
+  * LICENSE file in the root directory of this source tree.
+  */
+ 
+-package com.facebook.react.turbomodule.core.interfaces
++package com.facebook.react.internal.turbomodule.core.interfaces
+ /**
+  * This interface represents the opaque Java object that contains a pointer to and instance of
+  * NativeMethodCallInvoker.
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/interfaces/TurboModule.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/core/interfaces/TurboModule.kt
+similarity index 89%
+rename from packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/interfaces/TurboModule.kt
+rename to packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/core/interfaces/TurboModule.kt
+index d7c71226f4d..080effd5290 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/interfaces/TurboModule.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/core/interfaces/TurboModule.kt
+@@ -5,7 +5,7 @@
+  * LICENSE file in the root directory of this source tree.
+  */
+ 
+-package com.facebook.react.turbomodule.core.interfaces
++package com.facebook.react.internal.turbomodule.core.interfaces
+ /** All turbo modules should inherit from this interface */
+ interface TurboModule {
+   /** Initialize the TurboModule. */
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/interfaces/TurboModuleRegistry.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/core/interfaces/TurboModuleRegistry.kt
+similarity index 95%
+rename from packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/interfaces/TurboModuleRegistry.kt
+rename to packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/core/interfaces/TurboModuleRegistry.kt
+index 45eb8b11ccf..1e1897436f5 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/turbomodule/core/interfaces/TurboModuleRegistry.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/core/interfaces/TurboModuleRegistry.kt
+@@ -5,7 +5,7 @@
+  * LICENSE file in the root directory of this source tree.
+  */
+ 
+-package com.facebook.react.turbomodule.core.interfaces
++package com.facebook.react.internal.turbomodule.core.interfaces
+ 
+ import com.facebook.react.bridge.NativeModule
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/module/processing/ReactModuleSpecProcessor.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/module/processing/ReactModuleSpecProcessor.java
+index 4f85ff93250..969ea6ddb09 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/module/processing/ReactModuleSpecProcessor.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/module/processing/ReactModuleSpecProcessor.java
+@@ -161,13 +161,13 @@ public class ReactModuleSpecProcessor extends ProcessorBase {
+       builder.addStatement("$T map = new $T()", MAP_TYPE, INSTANTIATED_MAP_TYPE);
+ 
+       String turboModuleInterfaceCanonicalName =
+-          "com.facebook.react.turbomodule.core.interfaces.TurboModule";
++          "com.facebook.react.internal.turbomodule.core.interfaces.TurboModule";
+       TypeMirror turboModuleInterface =
+           mElements.getTypeElement(turboModuleInterfaceCanonicalName).asType();
+ 
+       if (turboModuleInterface == null) {
+         throw new RuntimeException(
+-            "com.facebook.react.turbomodule.core.interfaces.TurboModule interface not found.");
++            "com.facebook.react.internal.turbomodule.core.interfaces.TurboModule interface not found.");
+       }
+ 
+       for (String nativeModule : nativeModules) {
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/modules/fresco/FrescoModule.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/modules/fresco/FrescoModule.java
+index 3ac33b5d0e5..34f9fd7121b 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/modules/fresco/FrescoModule.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/modules/fresco/FrescoModule.java
+@@ -19,12 +19,12 @@ import com.facebook.react.bridge.ReactApplicationContext;
+ import com.facebook.react.bridge.ReactContext;
+ import com.facebook.react.bridge.ReactContextBaseJavaModule;
+ import com.facebook.react.common.ReactConstants;
++import com.facebook.react.internal.turbomodule.core.interfaces.TurboModule;
+ import com.facebook.react.module.annotations.ReactModule;
+ import com.facebook.react.modules.common.ModuleDataCleaner;
+ import com.facebook.react.modules.network.CookieJarContainer;
+ import com.facebook.react.modules.network.ForwardingCookieHandler;
+ import com.facebook.react.modules.network.OkHttpClientProvider;
+-import com.facebook.react.turbomodule.core.interfaces.TurboModule;
+ import java.util.HashSet;
+ import okhttp3.JavaNetCookieJar;
+ import okhttp3.OkHttpClient;
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/modules/systeminfo/AndroidInfoModule.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/modules/systeminfo/AndroidInfoModule.java
+index 3c283271487..b5b7f82b5cf 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/modules/systeminfo/AndroidInfoModule.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/modules/systeminfo/AndroidInfoModule.java
+@@ -18,8 +18,8 @@ import androidx.annotation.Nullable;
+ import com.facebook.fbreact.specs.NativePlatformConstantsAndroidSpec;
+ import com.facebook.react.bridge.ReactApplicationContext;
+ import com.facebook.react.common.build.ReactBuildConfig;
++import com.facebook.react.internal.turbomodule.core.interfaces.TurboModule;
+ import com.facebook.react.module.annotations.ReactModule;
+-import com.facebook.react.turbomodule.core.interfaces.TurboModule;
+ import java.util.HashMap;
+ import java.util.Map;
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/CoreReactPackage.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/CoreReactPackage.java
+index 5ed3e4aa8d1..a24f1f9e472 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/CoreReactPackage.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/CoreReactPackage.java
+@@ -13,6 +13,7 @@ import com.facebook.react.bridge.NativeModule;
+ import com.facebook.react.bridge.ReactApplicationContext;
+ import com.facebook.react.devsupport.LogBoxModule;
+ import com.facebook.react.devsupport.interfaces.DevSupportManager;
++import com.facebook.react.internal.turbomodule.core.interfaces.TurboModule;
+ import com.facebook.react.module.annotations.ReactModule;
+ import com.facebook.react.module.annotations.ReactModuleList;
+ import com.facebook.react.module.model.ReactModuleInfo;
+@@ -23,7 +24,6 @@ import com.facebook.react.modules.debug.DevSettingsModule;
+ import com.facebook.react.modules.debug.SourceCodeModule;
+ import com.facebook.react.modules.deviceinfo.DeviceInfoModule;
+ import com.facebook.react.modules.systeminfo.AndroidInfoModule;
+-import com.facebook.react.turbomodule.core.interfaces.TurboModule;
+ import java.util.HashMap;
+ import java.util.Map;
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/ReactInstance.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/ReactInstance.java
+index 8fd4d78c5b3..a9f01fda727 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/ReactInstance.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/ReactInstance.java
+@@ -44,13 +44,13 @@ import com.facebook.react.fabric.FabricUIManager;
+ import com.facebook.react.fabric.ReactNativeConfig;
+ import com.facebook.react.fabric.events.EventBeatManager;
+ import com.facebook.react.interfaces.exceptionmanager.ReactJsExceptionHandler;
++import com.facebook.react.internal.turbomodule.core.CallInvokerHolderImpl;
++import com.facebook.react.internal.turbomodule.core.NativeMethodCallInvokerHolderImpl;
++import com.facebook.react.internal.turbomodule.core.TurboModuleManager;
++import com.facebook.react.internal.turbomodule.core.TurboModuleManagerDelegate;
+ import com.facebook.react.module.annotations.ReactModule;
+ import com.facebook.react.modules.core.JavaTimerManager;
+ import com.facebook.react.modules.core.ReactChoreographer;
+-import com.facebook.react.turbomodule.core.CallInvokerHolderImpl;
+-import com.facebook.react.turbomodule.core.NativeMethodCallInvokerHolderImpl;
+-import com.facebook.react.turbomodule.core.TurboModuleManager;
+-import com.facebook.react.turbomodule.core.TurboModuleManagerDelegate;
+ import com.facebook.react.uimanager.ComponentNameResolver;
+ import com.facebook.react.uimanager.ComponentNameResolverManager;
+ import com.facebook.react.uimanager.DisplayMetricsHolder;
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/shell/MainReactPackage.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/shell/MainReactPackage.java
+index c6b95d08f55..729694dd9b5 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/shell/MainReactPackage.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/shell/MainReactPackage.java
+@@ -15,6 +15,7 @@ import com.facebook.react.animated.NativeAnimatedModule;
+ import com.facebook.react.bridge.ModuleSpec;
+ import com.facebook.react.bridge.NativeModule;
+ import com.facebook.react.bridge.ReactApplicationContext;
++import com.facebook.react.internal.turbomodule.core.interfaces.TurboModule;
+ import com.facebook.react.module.annotations.ReactModule;
+ import com.facebook.react.module.annotations.ReactModuleList;
+ import com.facebook.react.module.model.ReactModuleInfo;
+@@ -41,7 +42,6 @@ import com.facebook.react.modules.statusbar.StatusBarModule;
+ import com.facebook.react.modules.toast.ToastModule;
+ import com.facebook.react.modules.vibration.VibrationModule;
+ import com.facebook.react.modules.websocket.WebSocketModule;
+-import com.facebook.react.turbomodule.core.interfaces.TurboModule;
+ import com.facebook.react.uimanager.UIManagerModule;
+ import com.facebook.react.uimanager.ViewManager;
+ import com.facebook.react.views.drawer.ReactDrawerLayoutManager;
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/turbomodule/ReactCommon/CallInvokerHolder.h b/packages/react-native/ReactAndroid/src/main/jni/react/turbomodule/ReactCommon/CallInvokerHolder.h
+index 3e4b4f8f2a2..6ea72c9cf90 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/turbomodule/ReactCommon/CallInvokerHolder.h
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/turbomodule/ReactCommon/CallInvokerHolder.h
+@@ -16,7 +16,7 @@ namespace facebook::react {
+ class CallInvokerHolder : public jni::HybridClass<CallInvokerHolder> {
+  public:
+   static auto constexpr kJavaDescriptor =
+-      "Lcom/facebook/react/turbomodule/core/CallInvokerHolderImpl;";
++      "Lcom/facebook/react/internal/turbomodule/core/CallInvokerHolderImpl;";
+ 
+   static void registerNatives();
+   std::shared_ptr<CallInvoker> getCallInvoker();
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/turbomodule/ReactCommon/NativeMethodCallInvokerHolder.h b/packages/react-native/ReactAndroid/src/main/jni/react/turbomodule/ReactCommon/NativeMethodCallInvokerHolder.h
+index ef8fa3b5a42..9e464f0755f 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/turbomodule/ReactCommon/NativeMethodCallInvokerHolder.h
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/turbomodule/ReactCommon/NativeMethodCallInvokerHolder.h
+@@ -17,7 +17,7 @@ class NativeMethodCallInvokerHolder
+     : public jni::HybridClass<NativeMethodCallInvokerHolder> {
+  public:
+   static auto constexpr kJavaDescriptor =
+-      "Lcom/facebook/react/turbomodule/core/NativeMethodCallInvokerHolderImpl;";
++      "Lcom/facebook/react/internal/turbomodule/core/NativeMethodCallInvokerHolderImpl;";
+ 
+   static void registerNatives();
+   std::shared_ptr<NativeMethodCallInvoker> getNativeMethodCallInvoker();
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/turbomodule/ReactCommon/OnLoad.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/turbomodule/ReactCommon/OnLoad.cpp
+index 22ab89a5bc0..013e2ca94f0 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/turbomodule/ReactCommon/OnLoad.cpp
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/turbomodule/ReactCommon/OnLoad.cpp
+@@ -29,7 +29,7 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*) {
+     facebook::react::CompositeTurboModuleManagerDelegate::registerNatives();
+ 
+     facebook::jni::registerNatives(
+-        "com/facebook/react/turbomodule/core/TurboModulePerfLogger",
++        "com/facebook/react/internal/turbomodule/core/TurboModulePerfLogger",
+         {makeNativeMethod("jniEnableCppLogging", jniEnableCppLogging)});
+   });
+ }
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/turbomodule/ReactCommon/TurboModuleManager.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/turbomodule/ReactCommon/TurboModuleManager.cpp
+index f524d969c98..2958350eedf 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/turbomodule/ReactCommon/TurboModuleManager.cpp
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/turbomodule/ReactCommon/TurboModuleManager.cpp
+@@ -26,7 +26,7 @@ namespace {
+ class JMethodDescriptor : public jni::JavaClass<JMethodDescriptor> {
+  public:
+   static auto constexpr kJavaDescriptor =
+-      "Lcom/facebook/react/turbomodule/core/TurboModuleInteropUtils$MethodDescriptor;";
++      "Lcom/facebook/react/internal/turbomodule/core/TurboModuleInteropUtils$MethodDescriptor;";
+ 
+   JavaInteropTurboModule::MethodDescriptor toMethodDescriptor() {
+     return JavaInteropTurboModule::MethodDescriptor{
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/turbomodule/ReactCommon/TurboModuleManager.h b/packages/react-native/ReactAndroid/src/main/jni/react/turbomodule/ReactCommon/TurboModuleManager.h
+index 47c8711bb60..b2d7b5909d5 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/turbomodule/ReactCommon/TurboModuleManager.h
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/turbomodule/ReactCommon/TurboModuleManager.h
+@@ -26,7 +26,7 @@ namespace facebook::react {
+ class TurboModuleManager : public jni::HybridClass<TurboModuleManager> {
+  public:
+   static auto constexpr kJavaDescriptor =
+-      "Lcom/facebook/react/turbomodule/core/TurboModuleManager;";
++      "Lcom/facebook/react/internal/turbomodule/core/TurboModuleManager;";
+   static jni::local_ref<jhybriddata> initHybrid(
+       jni::alias_ref<jhybridobject> jThis,
+       jni::alias_ref<JRuntimeExecutor::javaobject> runtimeExecutor,
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/turbomodule/ReactCommon/TurboModuleManagerDelegate.h b/packages/react-native/ReactAndroid/src/main/jni/react/turbomodule/ReactCommon/TurboModuleManagerDelegate.h
+index 46fac66e2a9..0c387004da3 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/turbomodule/ReactCommon/TurboModuleManagerDelegate.h
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/turbomodule/ReactCommon/TurboModuleManagerDelegate.h
+@@ -19,7 +19,7 @@ class TurboModuleManagerDelegate
+     : public jni::HybridClass<TurboModuleManagerDelegate> {
+  public:
+   static auto constexpr kJavaDescriptor =
+-      "Lcom/facebook/react/turbomodule/core/TurboModuleManagerDelegate;";
++      "Lcom/facebook/react/internal/turbomodule/core/TurboModuleManagerDelegate;";
+ 
+   virtual std::shared_ptr<TurboModule> getTurboModule(
+       const std::string& name,
+diff --git a/packages/react-native/ReactAndroid/src/test/java/com/facebook/react/bridge/BaseJavaModuleTest.kt b/packages/react-native/ReactAndroid/src/test/java/com/facebook/react/bridge/BaseJavaModuleTest.kt
+index ac5e7892440..61fc74d0d3b 100644
+--- a/packages/react-native/ReactAndroid/src/test/java/com/facebook/react/bridge/BaseJavaModuleTest.kt
++++ b/packages/react-native/ReactAndroid/src/test/java/com/facebook/react/bridge/BaseJavaModuleTest.kt
+@@ -7,7 +7,7 @@
+ 
+ package com.facebook.react.bridge
+ 
+-import com.facebook.react.turbomodule.core.interfaces.TurboModule
++import com.facebook.react.internal.turbomodule.core.interfaces.TurboModule
+ import com.facebook.testutils.shadows.ShadowSoLoader
+ import org.junit.Before
+ import org.junit.Test
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/core/platform/android/ReactCommon/JavaTurboModule.h b/packages/react-native/ReactCommon/react/nativemodule/core/platform/android/ReactCommon/JavaTurboModule.h
+index bbfc4522d10..0e8ebd126dc 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/core/platform/android/ReactCommon/JavaTurboModule.h
++++ b/packages/react-native/ReactCommon/react/nativemodule/core/platform/android/ReactCommon/JavaTurboModule.h
+@@ -21,7 +21,7 @@ namespace facebook::react {
+ 
+ struct JTurboModule : jni::JavaClass<JTurboModule> {
+   static auto constexpr kJavaDescriptor =
+-      "Lcom/facebook/react/turbomodule/core/interfaces/TurboModule;";
++      "Lcom/facebook/react/internal/turbomodule/core/interfaces/TurboModule;";
+ };
+ 
+ class JSI_EXPORT JavaTurboModule : public TurboModule {
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/samples/platform/android/NativeSampleTurboModuleSpec.java b/packages/react-native/ReactCommon/react/nativemodule/samples/platform/android/NativeSampleTurboModuleSpec.java
+index 92d5687d7e7..6b05e380a21 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/samples/platform/android/NativeSampleTurboModuleSpec.java
++++ b/packages/react-native/ReactCommon/react/nativemodule/samples/platform/android/NativeSampleTurboModuleSpec.java
+@@ -19,7 +19,7 @@ import com.facebook.react.bridge.ReadableMap;
+ import com.facebook.react.bridge.WritableArray;
+ import com.facebook.react.bridge.WritableMap;
+ import com.facebook.react.common.build.ReactBuildConfig;
+-import com.facebook.react.turbomodule.core.interfaces.TurboModule;
++import com.facebook.react.internal.turbomodule.core.interfaces.TurboModule;
+ import java.util.Arrays;
+ import java.util.HashSet;
+ import java.util.Map;

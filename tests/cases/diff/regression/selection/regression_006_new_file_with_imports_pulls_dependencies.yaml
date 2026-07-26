@@ -1,0 +1,463 @@
+name: regression.selection.006_new_file_with_imports_pulls_dependencies
+tags:
+- lang:python
+- change:single_file
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/data/loader.py: |
+      from pathlib import Path
+      from typing import Any
+
+
+      def load_dataset(source_path: str, encoding: str = "utf-8") -> list[dict[str, Any]]:
+          path = Path(source_path)
+          if not path.exists():
+              raise FileNotFoundError(f"Dataset not found: {source_path}")
+          rows = []
+          with path.open("r", encoding=encoding) as fh:
+              headers = fh.readline().strip().split(",")
+              for line in fh:
+                  values = line.strip().split(",")
+                  rows.append(dict(zip(headers, values)))
+          return rows
+
+
+      def validate_schema(dataset: list[dict], required_columns: list[str]) -> bool:
+          if not dataset:
+              return False
+          actual_columns = set(dataset[0].keys())
+          missing = set(required_columns) - actual_columns
+          if missing:
+              raise ValueError(f"Missing columns: {missing}")
+          return True
+
+
+      def parse_csv_row(raw_line: str, delimiter: str = ",") -> list[str]:
+          parts = []
+          current = []
+          in_quotes = False
+          for char in raw_line:
+              if char == '"':
+                  in_quotes = not in_quotes
+              elif char == delimiter and not in_quotes:
+                  parts.append("".join(current).strip())
+                  current = []
+              else:
+                  current.append(char)
+          parts.append("".join(current).strip())
+          return parts
+    src/data/transform.py: |
+      from typing import Any
+
+
+      def normalize_values(records: list[dict[str, Any]], column: str) -> list[dict[str, Any]]:
+          raw_values = [float(r[column]) for r in records if column in r]
+          if not raw_values:
+              return records
+          min_val = min(raw_values)
+          max_val = max(raw_values)
+          spread = max_val - min_val
+          if spread == 0:
+              return records
+          result = []
+          for record in records:
+              updated = dict(record)
+              if column in updated:
+                  updated[column] = (float(updated[column]) - min_val) / spread
+              result.append(updated)
+          return result
+
+
+      def apply_filters(
+          records: list[dict[str, Any]],
+          filters: dict[str, Any],
+      ) -> list[dict[str, Any]]:
+          filtered = []
+          for record in records:
+              matches = True
+              for key, expected in filters.items():
+                  if record.get(key) != expected:
+                      matches = False
+                      break
+              if matches:
+                  filtered.append(record)
+          return filtered
+
+
+      def pivot_data(
+          records: list[dict[str, Any]],
+          group_by: str,
+          value_column: str,
+      ) -> dict[str, list[Any]]:
+          groups: dict[str, list[Any]] = {}
+          for record in records:
+              group_key = str(record.get(group_by, "unknown"))
+              if group_key not in groups:
+                  groups[group_key] = []
+              groups[group_key].append(record.get(value_column))
+          return groups
+    src/config/settings.py: |
+      REPORT_FORMAT = "pdf"
+      MAX_ROWS = 10000
+      DEFAULT_ENCODING = "utf-8"
+
+      SUPPORTED_FORMATS = ("pdf", "csv", "xlsx", "html")
+      DATE_FORMAT = "%Y-%m-%d"
+      DECIMAL_PRECISION = 4
+    src/auth/middleware.py: |
+      from typing import Any
+
+
+      class AuthMiddleware:
+          def __init__(self, secret_key: str):
+              self.secret_key = secret_key
+
+          def authenticate_request(self, request: dict[str, Any]) -> bool:
+              token = request.get("authorization", "")
+              if not token.startswith("Bearer "):
+                  return False
+              payload = token[len("Bearer "):]
+              return self._verify_token(payload)
+
+          def _verify_token(self, token: str) -> bool:
+              if len(token) < 16:
+                  return False
+              return token.startswith(self.secret_key[:8])
+
+          def refresh_session(self, session_id: str) -> dict[str, Any]:
+              return {
+                  "session_id": session_id,
+                  "renewed": True,
+                  "timeout": 3600,
+              }
+    src/cache/redis_client.py: |
+      from typing import Any
+
+
+      class RedisClient:
+          def __init__(self, host: str = "localhost", port: int = 6379):
+              self.host = host
+              self.port = port
+              self.connected = False
+
+          def connect(self) -> None:
+              self.connected = True
+
+          def get(self, key: str) -> Any:
+              return None
+
+          def set(self, key: str, value: Any, ttl: int = 300) -> bool:
+              return True
+
+          def delete(self, key: str) -> bool:
+              return True
+
+          def flush_all(self) -> None:
+              self.connected = False
+  changed_files:
+    src/data/loader.py: |
+      from pathlib import Path
+      from typing import Any
+
+
+      def load_dataset(source_path: str, encoding: str = "utf-8") -> list[dict[str, Any]]:
+          path = Path(source_path)
+          if not path.exists():
+              raise FileNotFoundError(f"Dataset not found: {source_path}")
+          rows = []
+          with path.open("r", encoding=encoding) as fh:
+              headers = fh.readline().strip().split(",")
+              for line in fh:
+                  values = line.strip().split(",")
+                  rows.append(dict(zip(headers, values)))
+          return rows
+
+
+      def validate_schema(dataset: list[dict], required_columns: list[str]) -> bool:
+          if not dataset:
+              return False
+          actual_columns = set(dataset[0].keys())
+          missing = set(required_columns) - actual_columns
+          if missing:
+              raise ValueError(f"Missing columns: {missing}")
+          return True
+
+
+      def parse_csv_row(raw_line: str, delimiter: str = ",") -> list[str]:
+          parts = []
+          current = []
+          in_quotes = False
+          for char in raw_line:
+              if char == '"':
+                  in_quotes = not in_quotes
+              elif char == delimiter and not in_quotes:
+                  parts.append("".join(current).strip())
+                  current = []
+              else:
+                  current.append(char)
+          parts.append("".join(current).strip())
+          return parts
+    src/data/transform.py: |
+      from typing import Any
+
+
+      def normalize_values(records: list[dict[str, Any]], column: str) -> list[dict[str, Any]]:
+          raw_values = [float(r[column]) for r in records if column in r]
+          if not raw_values:
+              return records
+          min_val = min(raw_values)
+          max_val = max(raw_values)
+          spread = max_val - min_val
+          if spread == 0:
+              return records
+          result = []
+          for record in records:
+              updated = dict(record)
+              if column in updated:
+                  updated[column] = (float(updated[column]) - min_val) / spread
+              result.append(updated)
+          return result
+
+
+      def apply_filters(
+          records: list[dict[str, Any]],
+          filters: dict[str, Any],
+      ) -> list[dict[str, Any]]:
+          filtered = []
+          for record in records:
+              matches = True
+              for key, expected in filters.items():
+                  if record.get(key) != expected:
+                      matches = False
+                      break
+              if matches:
+                  filtered.append(record)
+          return filtered
+
+
+      def pivot_data(
+          records: list[dict[str, Any]],
+          group_by: str,
+          value_column: str,
+      ) -> dict[str, list[Any]]:
+          groups: dict[str, list[Any]] = {}
+          for record in records:
+              group_key = str(record.get(group_by, "unknown"))
+              if group_key not in groups:
+                  groups[group_key] = []
+              groups[group_key].append(record.get(value_column))
+          return groups
+    src/config/settings.py: |
+      REPORT_FORMAT = "pdf"
+      MAX_ROWS = 10000
+      DEFAULT_ENCODING = "utf-8"
+
+      SUPPORTED_FORMATS = ("pdf", "csv", "xlsx", "html")
+      DATE_FORMAT = "%Y-%m-%d"
+      DECIMAL_PRECISION = 4
+    src/reporting/generator.py: |
+      from typing import Any
+
+      from src.data.loader import load_dataset, validate_schema
+      from src.data.transform import normalize_values, apply_filters
+      from src.config.settings import REPORT_FORMAT, MAX_ROWS
+
+
+      class ReportGenerator:
+          def __init__(self, source_path: str, output_format: str = REPORT_FORMAT):
+              self.source_path = source_path
+              self.output_format = output_format
+              self.max_rows = MAX_ROWS
+              self._dataset: list[dict[str, Any]] = []
+
+          def load_and_validate(self, required_columns: list[str]) -> None:
+              self._dataset = load_dataset(self.source_path)
+              validate_schema(self._dataset, required_columns)
+              if len(self._dataset) > self.max_rows:
+                  self._dataset = self._dataset[: self.max_rows]
+
+          def generate_summary(
+              self,
+              group_column: str,
+              value_column: str,
+              filters: dict[str, Any] | None = None,
+          ) -> dict[str, Any]:
+              working_set = self._dataset
+              if filters:
+                  working_set = apply_filters(working_set, filters)
+              normalized = normalize_values(working_set, value_column)
+              groups: dict[str, list[float]] = {}
+              for record in normalized:
+                  key = str(record.get(group_column, "other"))
+                  if key not in groups:
+                      groups[key] = []
+                  groups[key].append(float(record.get(value_column, 0)))
+              summary = {}
+              for key, values in groups.items():
+                  summary[key] = {
+                      "count": len(values),
+                      "total": round(sum(values), 4),
+                      "average": round(sum(values) / len(values), 4) if values else 0,
+                  }
+              return {"format": self.output_format, "groups": summary}
+
+          def export_rows(self, columns: list[str]) -> list[dict[str, Any]]:
+              exported = []
+              for record in self._dataset:
+                  row = {col: record.get(col) for col in columns if col in record}
+                  exported.append(row)
+              return exported
+
+          def row_count(self) -> int:
+              return len(self._dataset)
+    src/auth/middleware.py: |
+      from typing import Any
+
+
+      class AuthMiddleware:
+          def __init__(self, secret_key: str):
+              self.secret_key = secret_key
+
+          def authenticate_request(self, request: dict[str, Any]) -> bool:
+              token = request.get("authorization", "")
+              if not token.startswith("Bearer "):
+                  return False
+              payload = token[len("Bearer "):]
+              return self._verify_token(payload)
+
+          def _verify_token(self, token: str) -> bool:
+              if len(token) < 16:
+                  return False
+              return token.startswith(self.secret_key[:8])
+
+          def refresh_session(self, session_id: str) -> dict[str, Any]:
+              return {
+                  "session_id": session_id,
+                  "renewed": True,
+                  "timeout": 3600,
+              }
+    src/cache/redis_client.py: |
+      from typing import Any
+
+
+      class RedisClient:
+          def __init__(self, host: str = "localhost", port: int = 6379):
+              self.host = host
+              self.port = port
+              self.connected = False
+
+          def connect(self) -> None:
+              self.connected = True
+
+          def get(self, key: str) -> Any:
+              return None
+
+          def set(self, key: str, value: Any, ttl: int = 300) -> bool:
+              return True
+
+          def delete(self, key: str) -> bool:
+              return True
+
+          def flush_all(self) -> None:
+              self.connected = False
+  commit_message: Update files
+fragments:
+- id: generator_file
+  selector:
+    path: src/reporting/generator.py
+- id: req_global_0
+  selector:
+    anchor: class ReportGenerator
+- id: req_global_1
+  selector:
+    anchor: def generate_summary
+- id: req_global_2
+  selector:
+    anchor: load_dataset
+- id: req_global_3
+  selector:
+    anchor: normalize_values
+- id: loader_load_dataset
+  selector:
+    path: src/data/loader.py
+    anchor: def load_dataset
+- id: loader_validate_schema
+  selector:
+    path: src/data/loader.py
+    anchor: def validate_schema
+- id: transform_normalize
+  selector:
+    path: src/data/transform.py
+    anchor: def normalize_values
+- id: transform_apply_filters
+  selector:
+    path: src/data/transform.py
+    anchor: def apply_filters
+- id: settings_report_format
+  selector:
+    path: src/config/settings.py
+    anchor: REPORT_FORMAT
+- id: settings_max_rows
+  selector:
+    path: src/config/settings.py
+    anchor: MAX_ROWS
+- id: no_middleware
+  selector:
+    path: src/auth/middleware.py
+- id: no_redis_client
+  selector:
+    path: src/cache/redis_client.py
+- id: no_global_0
+  selector:
+    anchor: AuthMiddleware
+- id: no_global_1
+  selector:
+    anchor: authenticate_request
+- id: no_global_2
+  selector:
+    anchor: _verify_token
+- id: no_global_3
+  selector:
+    anchor: refresh_session
+- id: no_global_4
+  selector:
+    anchor: RedisClient
+- id: no_global_5
+  selector:
+    anchor: flush_all
+- id: no_loader_parse_csv
+  selector:
+    path: src/data/loader.py
+    anchor: def parse_csv_row
+- id: no_transform_pivot
+  selector:
+    path: src/data/transform.py
+    anchor: def pivot_data
+oracle:
+  required:
+  - generator_file
+  - req_global_0
+  - req_global_1
+  - req_global_2
+  - req_global_3
+  - loader_load_dataset
+  - loader_validate_schema
+  - transform_normalize
+  - transform_apply_filters
+  - settings_report_format
+  - settings_max_rows
+  allowed: []
+  forbidden:
+  - no_middleware
+  - no_redis_client
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_loader_parse_csv
+  - no_transform_pivot

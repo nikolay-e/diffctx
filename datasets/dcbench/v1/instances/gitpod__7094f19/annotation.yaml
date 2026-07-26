@@ -1,0 +1,82 @@
+repo: gitpod
+base_commit: 0f5a1323a3d90848335a2562b6a52fa13cb130d5
+commit: 7094f19ee81cbee597b463e181c3bd1ad7a6d8d5
+patch_stored: true
+gold:
+- path: components/dashboard/src/admin/TeamDetail.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/data/featureflag-query.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/data/organizations/members-query.ts:roleScore
+  tier: essential
+  role: unspecified
+  in_diff: false
+- path: components/dashboard/src/data/organizations/members-query.ts:useHasRolePermission
+  tier: essential
+  role: unspecified
+  in_diff: false
+- path: components/dashboard/src/menu/Menu.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/menu/OrganizationSelector.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/teams/Members.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/teams/OrgSettingsPage.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/public-api/gitpod/v1/organization.proto
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/authorization/authorizer.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/authorization/definitions.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/orgs/organization-service.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/spicedb/schema/schema.yaml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/gitpod-protocol/src/teams-projects-protocol.ts
+  tier: essential
+  role: unspecified
+  in_diff: false
+- path: test/tests/smoke-test/collaborator_test.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: components/public-api/go/**/*.pb.go
+- path: components/public-api/go/**/*_grpc.pb.go
+- path: components/public-api/typescript/src/**/*_pb.ts
+- path: components/spicedb/typescript/src/**
+nontrivial_gold_count: 3
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'status=hang: ctx.md/ctx.yaml are 0 bytes despite a real, understandable 177-file diff that adds
+  a full-stack ''collaborator'' role (SpiceDB schema, backend authorizer, TS hooks, UI menus, smoke test).
+  The diff is dominated by ~140 auto-generated protobuf/connect files each with a trivial ''2 +-'' version-stamp
+  change, which is exactly the kind of wide-but-shallow diff shape likely to trip an unbounded search/ranking
+  path. Complete tool failure: 0 comprehension delivered for a change a human could summarize from the
+  ~15 real files in should_include. This is a #70-class hang, and notably it occurs even though most of
+  the 177 files are near-noop diffs, suggesting the hang is triggered by file *count* more than by code
+  complexity.'

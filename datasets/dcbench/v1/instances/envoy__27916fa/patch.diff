@@ -1,0 +1,185 @@
+From 27916fa8fb986682f3d0dd5dfba6224c030bbcb8 Mon Sep 17 00:00:00 2001
+From: danzh <danzh2010@users.noreply.github.com>
+Date: Fri, 1 May 2026 10:37:36 -0400
+Subject: [PATCH] bootstrap: move listener manger protos (#44738)
+
+Commit Message: move `ListenerManager`, `ApiListenerManager` and
+`ValidationListenerManager` from listener.proto into bootstrap.proto
+
+Additional Description: these are not part of the xDS protocol, not
+published and only used in Envoy bootstrap proto. So moving them
+immediately is safe instead of marking them deprecated.
+
+Risk Level: high, might break existing bootstrap config
+Testing: existing tests pass
+Docs Changes: N
+Release Notes: N, these are marked with `#not-implemented-hide`
+Platform Specific Features: N
+
+---------
+
+Signed-off-by: Dan Zhang <danzh@google.com>
+Co-authored-by: Dan Zhang <danzh@google.com>
+---
+ api/envoy/config/bootstrap/v3/bootstrap.proto  | 18 ++++++++++++++++++
+ api/envoy/config/listener/v3/listener.proto    | 18 ------------------
+ mobile/library/cc/engine_builder.cc            |  3 ++-
+ .../api_listener_manager/BUILD                 |  1 +
+ .../api_listener_manager.h                     |  3 ++-
+ source/common/listener_manager/BUILD           |  1 +
+ .../listener_manager/listener_manager_impl.h   |  3 ++-
+ .../validation_listener_manager.h              |  2 +-
+ 8 files changed, 27 insertions(+), 22 deletions(-)
+
+diff --git a/api/envoy/config/bootstrap/v3/bootstrap.proto b/api/envoy/config/bootstrap/v3/bootstrap.proto
+index 2e7458525..f3fe408f7 100644
+--- a/api/envoy/config/bootstrap/v3/bootstrap.proto
++++ b/api/envoy/config/bootstrap/v3/bootstrap.proto
+@@ -813,3 +813,21 @@ message MemoryAllocatorManager {
+   // Defaults to ``104857600`` (100 MB).
+   uint64 max_unfreed_memory_bytes = 5;
+ }
++
++// A placeholder proto so that users can explicitly configure the standard
++// Listener Manager via the bootstrap's :ref:`listener_manager <envoy_v3_api_field_config.bootstrap.v3.Bootstrap.listener_manager>`.
++// [#not-implemented-hide:]
++message ListenerManager {
++}
++
++// A placeholder proto so that users can explicitly configure the standard
++// Validation Listener Manager via the bootstrap's :ref:`listener_manager <envoy_v3_api_field_config.bootstrap.v3.Bootstrap.listener_manager>`.
++// [#not-implemented-hide:]
++message ValidationListenerManager {
++}
++
++// A placeholder proto so that users can explicitly configure the API
++// Listener Manager via the bootstrap's :ref:`listener_manager <envoy_v3_api_field_config.bootstrap.v3.Bootstrap.listener_manager>`.
++// [#not-implemented-hide:]
++message ApiListenerManager {
++}
+diff --git a/api/envoy/config/listener/v3/listener.proto b/api/envoy/config/listener/v3/listener.proto
+index db297d93e..9bdbb12a6 100644
+--- a/api/envoy/config/listener/v3/listener.proto
++++ b/api/envoy/config/listener/v3/listener.proto
+@@ -448,21 +448,3 @@ message Listener {
+   // to explicitly configure TCP keepalive settings for individual additional addresses.
+   core.v3.TcpKeepalive tcp_keepalive = 37;
+ }
+-
+-// A placeholder proto so that users can explicitly configure the standard
+-// Listener Manager via the bootstrap's :ref:`listener_manager <envoy_v3_api_field_config.bootstrap.v3.Bootstrap.listener_manager>`.
+-// [#not-implemented-hide:]
+-message ListenerManager {
+-}
+-
+-// A placeholder proto so that users can explicitly configure the standard
+-// Validation Listener Manager via the bootstrap's :ref:`listener_manager <envoy_v3_api_field_config.bootstrap.v3.Bootstrap.listener_manager>`.
+-// [#not-implemented-hide:]
+-message ValidationListenerManager {
+-}
+-
+-// A placeholder proto so that users can explicitly configure the API
+-// Listener Manager via the bootstrap's :ref:`listener_manager <envoy_v3_api_field_config.bootstrap.v3.Bootstrap.listener_manager>`.
+-// [#not-implemented-hide:]
+-message ApiListenerManager {
+-}
+diff --git a/mobile/library/cc/engine_builder.cc b/mobile/library/cc/engine_builder.cc
+index 726e3c154..7fe8ce1a3 100644
+--- a/mobile/library/cc/engine_builder.cc
++++ b/mobile/library/cc/engine_builder.cc
+@@ -3,6 +3,7 @@
+ #include <stdint.h>
+ #include <sys/socket.h>
+ 
++#include "envoy/config/bootstrap/v3/bootstrap.pb.h"
+ #include "envoy/config/core/v3/socket_option.pb.h"
+ #include "envoy/config/metrics/v3/metrics_service.pb.h"
+ #include "envoy/extensions/compression/brotli/decompressor/v3/brotli.pb.h"
+@@ -1141,7 +1142,7 @@ std::unique_ptr<envoy::config::bootstrap::v3::Bootstrap> EngineBuilder::generate
+   }
+ #endif // ENVOY_MOBILE_XDS
+ 
+-  envoy::config::listener::v3::ApiListenerManager api;
++  envoy::config::bootstrap::v3::ApiListenerManager api;
+   auto* listener_manager = bootstrap->mutable_listener_manager();
+   listener_manager->mutable_typed_config()->PackFrom(api);
+   listener_manager->set_name("envoy.listener_manager_impl.api");
+diff --git a/mobile/library/common/extensions/listener_managers/api_listener_manager/BUILD b/mobile/library/common/extensions/listener_managers/api_listener_manager/BUILD
+index a6027931e..96514ed28 100644
+--- a/mobile/library/common/extensions/listener_managers/api_listener_manager/BUILD
++++ b/mobile/library/common/extensions/listener_managers/api_listener_manager/BUILD
+@@ -23,6 +23,7 @@ envoy_cc_extension(
+         "@envoy//envoy/server:listener_manager_interface",
+         "@envoy//source/extensions/api_listeners/default_api_listener:api_listener_lib",
+         "@envoy//source/server:listener_manager_factory_lib",
++        "@envoy_api//envoy/config/bootstrap/v3:pkg_cc_proto",
+         "@envoy_api//envoy/config/listener/v3:pkg_cc_proto",
+     ],
+ )
+diff --git a/mobile/library/common/extensions/listener_managers/api_listener_manager/api_listener_manager.h b/mobile/library/common/extensions/listener_managers/api_listener_manager/api_listener_manager.h
+index ddec0dd78..bffdbc877 100644
+--- a/mobile/library/common/extensions/listener_managers/api_listener_manager/api_listener_manager.h
++++ b/mobile/library/common/extensions/listener_managers/api_listener_manager/api_listener_manager.h
+@@ -2,6 +2,7 @@
+ 
+ #include <memory>
+ 
++#include "envoy/config/bootstrap/v3/bootstrap.pb.h"
+ #include "envoy/server/instance.h"
+ #include "envoy/server/listener_manager.h"
+ 
+@@ -62,7 +63,7 @@ public:
+   }
+   std::string name() const override { return "envoy.listener_manager_impl.api"; }
+   ProtobufTypes::MessagePtr createEmptyConfigProto() override {
+-    return std::make_unique<envoy::config::listener::v3::ApiListenerManager>();
++    return std::make_unique<envoy::config::bootstrap::v3::ApiListenerManager>();
+   }
+ };
+ 
+diff --git a/source/common/listener_manager/BUILD b/source/common/listener_manager/BUILD
+index ee20038b9..1e9288ef0 100644
+--- a/source/common/listener_manager/BUILD
++++ b/source/common/listener_manager/BUILD
+@@ -63,6 +63,7 @@ envoy_cc_library(
+         "//source/server:listener_manager_factory_lib",
+         "//source/server:transport_socket_config_lib",
+         "@envoy_api//envoy/admin/v3:pkg_cc_proto",
++        "@envoy_api//envoy/config/bootstrap/v3:pkg_cc_proto",
+         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+         "@envoy_api//envoy/config/listener/v3:pkg_cc_proto",
+         "@envoy_api//envoy/config/metrics/v3:pkg_cc_proto",
+diff --git a/source/common/listener_manager/listener_manager_impl.h b/source/common/listener_manager/listener_manager_impl.h
+index 6bd65b333..ce05eceb2 100644
+--- a/source/common/listener_manager/listener_manager_impl.h
++++ b/source/common/listener_manager/listener_manager_impl.h
+@@ -4,6 +4,7 @@
+ #include <set>
+ 
+ #include "envoy/admin/v3/config_dump.pb.h"
++#include "envoy/config/bootstrap/v3/bootstrap.pb.h"
+ #include "envoy/config/core/v3/address.pb.h"
+ #include "envoy/config/core/v3/base.pb.h"
+ #include "envoy/config/core/v3/config_source.pb.h"
+@@ -423,7 +424,7 @@ public:
+     return Config::ServerExtensionValues::get().DEFAULT_LISTENER;
+   }
+   ProtobufTypes::MessagePtr createEmptyConfigProto() override {
+-    return std::make_unique<envoy::config::listener::v3::ListenerManager>();
++    return std::make_unique<envoy::config::bootstrap::v3::ListenerManager>();
+   }
+ };
+ 
+diff --git a/source/extensions/listener_managers/validation_listener_manager/validation_listener_manager.h b/source/extensions/listener_managers/validation_listener_manager/validation_listener_manager.h
+index cb6bea988..7700e5206 100644
+--- a/source/extensions/listener_managers/validation_listener_manager/validation_listener_manager.h
++++ b/source/extensions/listener_managers/validation_listener_manager/validation_listener_manager.h
+@@ -85,7 +85,7 @@ public:
+     return Config::ServerExtensionValues::get().VALIDATION_LISTENER;
+   }
+   ProtobufTypes::MessagePtr createEmptyConfigProto() override {
+-    return std::make_unique<envoy::config::listener::v3::ValidationListenerManager>();
++    return std::make_unique<envoy::config::bootstrap::v3::ValidationListenerManager>();
+   }
+ };
+ 

@@ -1,0 +1,124 @@
+generators:
+  cochange: 15
+  bm25: 15
+  graph: 0
+  random: 10
+candidates:
+- path: .azure/pipelines/benchmarks.yml
+  sources:
+  - random
+- path: .github/workflows/issue-triage-agent.md
+  sources:
+  - bm25
+- path: .github/workflows/test-quarantine.md
+  sources:
+  - bm25
+- path: eng/Dependencies.props
+  sources:
+  - cochange
+- path: eng/Version.Details.props
+  sources:
+  - cochange
+- path: eng/Version.Details.xml
+  sources:
+  - cochange
+- path: eng/common/core-templates/steps/install-microbuild.yml
+  sources:
+  - cochange
+- path: eng/common/core-templates/steps/source-build.yml
+  sources:
+  - cochange
+- path: eng/common/tools.ps1
+  sources:
+  - cochange
+  - bm25
+- path: eng/common/tools.sh
+  sources:
+  - cochange
+- path: eng/tools/GenerateFiles/Directory.Build.targets.in
+  sources:
+  - cochange
+- path: global.json
+  sources:
+  - cochange
+- path: src/Components/Components/src/RenderTree/Renderer.cs
+  sources:
+  - bm25
+- path: src/Components/Components/src/Rendering/RenderBatchBuilder.cs
+  sources:
+  - random
+- path: src/Components/Components/src/Routing/Router.cs
+  sources:
+  - cochange
+- path: src/Components/Endpoints/src/FormMapping/Converters/CompiledComplexTypeConverter.cs
+  sources:
+  - random
+- path: src/Components/Endpoints/src/RazorComponentEndpointInvoker.cs
+  sources:
+  - bm25
+- path: src/Components/Endpoints/src/Rendering/EndpointHtmlRenderer.cs
+  sources:
+  - cochange
+- path: src/Components/Endpoints/src/Rendering/SSRRenderModeBoundary.cs
+  sources:
+  - bm25
+- path: src/Components/Web.JS/src/Boot.WebAssembly.Common.ts
+  sources:
+  - bm25
+- path: src/Components/Web.JS/src/GlobalExports.ts
+  sources:
+  - cochange
+- path: src/Components/Web.JS/src/Services/NavigationEnhancement.ts
+  sources:
+  - bm25
+- path: src/Components/Web.JS/src/Services/WebRootComponentManager.ts
+  sources:
+  - bm25
+- path: src/Components/WebAssembly/Authentication.Msal/src/Interop/rollup.config.mjs
+  sources:
+  - random
+- path: src/Components/WebAssembly/WebAssembly/src/Hosting/WebAssemblyHostBuilder.cs
+  sources:
+  - bm25
+- path: src/Components/benchmarkapps/Wasm.Performance/dockerfile
+  sources:
+  - cochange
+- path: src/Components/test/E2ETest/ServerRenderingTests/InteractivityTest.cs
+  sources:
+  - cochange
+- path: src/Components/test/E2ETest/ServerRenderingTests/StreamingRenderingTest.cs
+  sources:
+  - bm25
+- path: src/Mvc/Mvc.Razor.RuntimeCompilation/test/RuntimeCompilationFileProviderTest.cs
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/RazorPagesWebSite/Pages/Redirects/RedirectToSelf.cshtml
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/RoutingWebSite/RemoveControllerActionDescriptorProvider.cs
+  sources:
+  - random
+- path: src/ProjectTemplates/README.md
+  sources:
+  - bm25
+- path: src/ProjectTemplates/Shared/Project.cs
+  sources:
+  - bm25
+- path: src/ProjectTemplates/Web.ItemTemplates/Microsoft.DotNet.Web.ItemTemplates.csproj
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ProjectTemplates/EmptyWeb-FSharp.fsproj.in
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWeb-CSharp/.template.config/template.json
+  sources:
+  - cochange
+- path: src/ProjectTemplates/Web.ProjectTemplates/content/EmptyWeb-CSharp/.template.config/localize/templatestrings.ko.json
+  sources:
+  - random
+- path: src/Servers/IIS/IntegrationTesting.IIS/src/IISExpressDeployer.cs
+  sources:
+  - bm25
+- path: src/SignalR/clients/csharp/Client.Core/src/HubConnection.cs
+  sources:
+  - bm25

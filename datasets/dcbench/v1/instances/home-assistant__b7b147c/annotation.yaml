@@ -1,0 +1,37 @@
+repo: home-assistant
+base_commit: b26de0a46597b3d1a9f18b6c6b0e43f13d7d4df3
+commit: b7b147c09683ce67eb91eccb740901d4913e9c5f
+patch_stored: true
+gold:
+  - path: homeassistant/components/dnsip/config_flow.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: The single changed file - swaps the static DATA_SCHEMA for self.add_suggested_values_to_schema(DATA_SCHEMA, user_input or {}) when re-showing the user step form so previously entered values are pre-filled.
+  - path: homeassistant/data_entry_flow.py
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines FlowHandler.add_suggested_values_to_schema, the core helper method dnsip's config flow now calls instead of passing DATA_SCHEMA through unmodified.
+  - path: tests/components/dnsip/test_config_flow.py
+    tier: helpful
+    role: test
+    in_diff: false
+    rationale: 'Pre-existing tests test_form and test_form_with_additional_options assert result["data_schema"] == DATA_SCHEMA on the very user-step form output this patch modifies, directly covering the changed code path.'
+forbidden:
+  - path: homeassistant/components/dnsip/const.py
+    reason: Defines dnsip's config constants but is unrelated to the schema-suggestion mechanism being adopted.
+  - path: homeassistant/components/dnsip/__init__.py
+    reason: Integration setup/entry lifecycle, not involved in the config-flow form-rendering change.
+  - path: homeassistant/components/dnsip/sensor.py
+    reason: Sibling platform file in the same integration directory, unrelated to the config flow schema change.
+nontrivial_gold_count: 2
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: []
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 1
+  description: Single-file dnsip config flow tweak using core helper add_suggested_values_to_schema —
+    1-file change, cross-module dependency
+notes: 'One-line behavioral change: the dnsip config flow''s user step now pre-fills the form with previously submitted values via the core add_suggested_values_to_schema helper instead of always showing a blank DATA_SCHEMA. The only in-diff file is config_flow.py itself; understanding the change requires the cross-module helper definition in data_entry_flow.py, a direct (non-string) method call.'

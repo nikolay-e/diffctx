@@ -1,0 +1,63 @@
+repo: aspnetcore
+base_commit: 4b30be10dea772f6c398b68be1506db6b6acf7f2
+commit: f7bd408686ba9a4d35142f4ec81565b6f24b4bf7
+patch_stored: true
+gold:
+  - path: src/Components/WebAssembly/WebAssembly.Authentication/src/RemoteAuthenticatorViewCore.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: ProcessLogOut drops the obsolete SignOutManager fallback, changing the condition to rely solely on Navigation.HistoryEntryState != null && !ValidateSignOutRequestState() — this is the one real behavior change in the commit, not just a deletion.
+  - path: src/Components/WebAssembly/WebAssembly.Authentication/src/Services/SignOutSessionStateManager.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines the deleted SignOutSessionStateManager class (SetSignOutState/ValidateSignOutState) whose removal drives the RemoteAuthenticatorViewCore.ProcessLogOut logic change.
+  - path: src/Components/WebAssembly/WebAssembly.Authentication/src/Services/AccessTokenResult.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Removes the obsolete AccessTokenResult(status, token, redirectUrl) constructor and RedirectUrl property in favor of the already-existing InteractiveRequestUrl.
+  - path: src/Components/WebAssembly/WebAssembly.Authentication/src/Services/AccessTokenNotAvailableException.cs
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: Consumer of AccessTokenResult that swaps its use of the removed RedirectUrl for InteractiveRequestUrl, so the two files must be read together.
+  - path: src/Components/WebAssembly/WebAssembly.Authentication/test/RemoteAuthenticatorCoreTests.cs
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Deletes AuthenticationManager_Logout_RedirectsToFailureOnInvalidSignOutState and the TestSignOutSessionStateManager helper that exercised the now-removed HistoryEntryState==null fallback path in ProcessLogOut.
+  - path: src/Components/Components/src/NavigationManager.cs
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines the HistoryEntryState property whose null-ness is the sole remaining branch condition in the rewritten ProcessLogOut, so understanding the fix requires seeing where/how HistoryEntryState is set.
+  - path: src/Components/WebAssembly/WebAssembly.Authentication/src/NavigationManagerExtensions.cs
+    tier: helpful
+    role: doc
+    in_diff: false
+    rationale: Defines NavigateToLogout, the API the removed SignOutSessionStateManager's own [Obsolete] message pointed callers to as the replacement.
+  - path: src/Components/WebAssembly/WebAssembly.Authentication/src/PublicAPI.Shipped.txt
+    tier: helpful
+    role: config
+    in_diff: false
+    rationale: Lists SignOutSessionStateManager and AccessTokenResult's ctor/RedirectUrl as previously-shipped public API, explaining why PublicAPI.Unshipped.txt needs *REMOVED* baseline entries rather than a plain deletion.
+forbidden:
+  - path: src/Components/WebAssembly/WebAssembly.Authentication/src/Models/InteractiveRequestOptions.cs
+    reason: name-adjacent to InteractiveRequestUrl but an unrelated request DTO not touched or referenced by the diff
+  - path: src/Components/WebAssembly/WebAssembly.Authentication/src/RemoteAuthenticatorViewCore.Log.cs
+    reason: logging partial of the same class, but no log message references SignOutManager or RedirectUrl
+  - path: src/Components/WebAssembly/WebAssembly.Authentication/test/RemoteAuthenticationServiceTests.cs
+    reason: tests RemoteAuthenticationService overloads/InteractiveRequestUrl but not the sign-out fix or any deleted API
+  - path: src/Components/Components/src/Routing/Router.cs
+    reason: also in the diff (removes obsolete PreferExactMatches) but an independent, self-contained deletion unrelated to the sign-out fix
+nontrivial_gold_count: 3
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration, cochange, bm25, graph, random]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 20
+  description: Remove obsolete APIs from Components — 5 PublicAPI baselines touched
+notes: 'Bulk removal of [Obsolete] Blazor Components APIs across 5 assemblies (Router.PreferExactMatches, EditContext validation helpers, RemoteBrowserFileStreamOptions, WebEventCallbackFactoryEventArgsExtensions, WebRenderer.RendererId init, InternalCalls.InvokeJS, JSInteropMethods.NotifyLocationChanged, AccessTokenResult ctor/RedirectUrl, RemoteAuthenticationService ctor overload, SignOutSessionStateManager), each mirrored by a PublicAPI.Unshipped.txt *REMOVED* entry. Most removals are self-contained; the one real logic change is in RemoteAuthenticatorViewCore.ProcessLogOut, which drops the SignOutSessionStateManager fallback and relies solely on Navigation.HistoryEntryState, so gold focuses on that WebAssembly.Authentication sign-out cluster plus its NavigationManager/PublicAPI support rather than every mechanically-deleted member across all 20 files.'

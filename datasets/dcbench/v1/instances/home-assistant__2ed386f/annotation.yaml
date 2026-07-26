@@ -1,0 +1,47 @@
+repo: home-assistant
+base_commit: 672d2e332f26e21fa6e66dbe04267d5b90ac5251
+commit: 2ed386f9e64f059f356bdfe8900f48f785fc1b97
+patch_stored: true
+gold:
+  - path: homeassistant/helpers/entity_platform.py
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: 'Defines the raw ContextVar `current_platform` (line 694) and the new wrapper `async_get_current_platform()` (line 700) that raises RuntimeError instead of returning None — this is why every call site could drop its manual `assert platform is not None` / `assert platform` guard.'
+  - path: homeassistant/components/nuki/lock.py
+    tier: essential
+    role: cochange
+    in_diff: true
+    rationale: Representative call site — replaces `entity_platform.current_platform.get()` + `assert platform is not None` with the single `entity_platform.async_get_current_platform()` call, the canonical shape of this mechanical migration.
+  - path: homeassistant/components/zha/lock.py
+    tier: helpful
+    role: cochange
+    in_diff: true
+    rationale: Second representative call site showing the same assert-removal pattern via the module-qualified `entity_platform.async_get_current_platform()` form.
+  - path: homeassistant/components/verisure/camera.py
+    tier: helpful
+    role: cochange
+    in_diff: true
+    rationale: Representative call site using the direct (non-module-qualified) `from homeassistant.helpers.entity_platform import async_get_current_platform` import variant, showing the import-line edit half of the migration.
+  - path: homeassistant/components/advantage_air/climate.py
+    tier: helpful
+    role: cochange
+    in_diff: true
+    rationale: Simplest representative call site — plain one-line substitution with no accompanying assert to remove, illustrating the baseline pattern applied identically across ~65 files.
+forbidden:
+  - path: homeassistant/components/elgato/light.py
+    reason: already used entity_platform.async_get_current_platform() before this commit and is untouched by it — a false-positive trap, not part of this diff
+  - path: homeassistant/components/wled/light.py
+    reason: same as elgato/light.py — an early adopter of the new API left untouched by this migration commit
+  - path: homeassistant/components/august/lock.py
+    reason: another lock.py platform module, plausible by directory/filename pattern, but is not among the 69 files this commit touches
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 69
+  description: Migrate to async_get_current_platform everywhere — core helper API migration touching ~65
+    integrations at once
+notes: 'Bulk mechanical migration: every one of the 69 touched files replaces `entity_platform.current_platform.get()` (+ a manual None-assert) with the single call `entity_platform.async_get_current_platform()`, which internally raises RuntimeError instead of returning None (defined in homeassistant/helpers/entity_platform.py, not itself part of this diff). Picked 4 representative call sites covering the import-style and assert-removal variants rather than all 69 near-identical files, per the wide-diff guidance to select the semantic core.'

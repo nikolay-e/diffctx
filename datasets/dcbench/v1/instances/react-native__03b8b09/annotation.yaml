@@ -1,0 +1,73 @@
+repo: react-native
+base_commit: 352d4b1c83fd7e5697be35f474acb50a619d826b
+commit: 03b8b0997a4415de7ebc481c0f9e193c1c600288
+patch_stored: true
+gold:
+- path: packages/react-native/React/Base/RCTBridge.mm
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/React/DevSupport/RCTInspectorDevServerHelper.mm
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/devsupport/DevServerHelper.java
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/devsupport/InspectorFlags.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/jni/react/devsupport/JInspectorFlags.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/jsinspector-modern/InspectorFlags.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/jsinspector-modern/InspectorFlags.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: Global rename of a single boolean feature flag (inspectorEnableModernCDPRegistry/getEnableModernCDPRegistry
+  -> fuseboxEnabled/getFuseboxEnabled) touching 43 files with a tiny real diff (107+/113-, ~220 lines).
+  diffctx pulls ctx_files=60, 17 more files than were actually changed, and for at least one sampled file
+  (RCTBundleURLProvider.mm) dumps a 372-line full Objective-C @implementation class body just to show
+  a single one-line call-site rename, which is far more than needed. md_tokens=47417 for a ~220-line diff
+  is roughly 215 tokens per changed line — clear severe bloat, though the core renamed symbols and their
+  definitions do appear to be present, so recall should be reasonably high.

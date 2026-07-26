@@ -1,0 +1,716 @@
+From d717dd98507f6f97aff590be887fa9ed44994ed0 Mon Sep 17 00:00:00 2001
+From: Joas Schilling <coding@schilljs.com>
+Date: Fri, 23 May 2025 11:19:12 +0200
+Subject: [PATCH] feat(OCP): Consumable vs. Implementable public API
+
+Signed-off-by: Joas Schilling <coding@schilljs.com>
+---
+ build/psalm/OcpSinceChecker.php               | 92 ++++++++++++++++++-
+ lib/composer/composer/autoload_classmap.php   |  8 ++
+ lib/composer/composer/autoload_static.php     |  8 ++
+ lib/public/AppFramework/Attribute/ASince.php  | 34 +++++++
+ .../AppFramework/Attribute/Catchable.php      | 23 +++++
+ .../AppFramework/Attribute/Consumable.php     | 27 ++++++
+ .../AppFramework/Attribute/Dispatchable.php   | 23 +++++
+ .../Attribute/ExceptionalImplementable.php    | 38 ++++++++
+ .../AppFramework/Attribute/Implementable.php  | 27 ++++++
+ .../AppFramework/Attribute/Listenable.php     | 23 +++++
+ .../AppFramework/Attribute/Throwable.php      | 23 +++++
+ lib/public/Calendar/CalendarEventStatus.php   |  8 +-
+ .../AlreadyProcessedException.php             |  6 +-
+ lib/public/Notification/IAction.php           |  8 +-
+ lib/public/Notification/IApp.php              |  8 +-
+ lib/public/Notification/IDeferrableApp.php    |  8 +-
+ .../Notification/IDismissableNotifier.php     |  5 +-
+ lib/public/Notification/IManager.php          |  8 +-
+ lib/public/Notification/INotification.php     |  8 +-
+ lib/public/Notification/INotifier.php         |  8 +-
+ .../IncompleteNotificationException.php       |  5 +-
+ .../IncompleteParsedNotificationException.php |  5 +-
+ .../Notification/InvalidValueException.php    |  6 +-
+ .../UnknownNotificationException.php          |  6 +-
+ 24 files changed, 363 insertions(+), 52 deletions(-)
+ create mode 100644 lib/public/AppFramework/Attribute/ASince.php
+ create mode 100644 lib/public/AppFramework/Attribute/Catchable.php
+ create mode 100644 lib/public/AppFramework/Attribute/Consumable.php
+ create mode 100644 lib/public/AppFramework/Attribute/Dispatchable.php
+ create mode 100644 lib/public/AppFramework/Attribute/ExceptionalImplementable.php
+ create mode 100644 lib/public/AppFramework/Attribute/Implementable.php
+ create mode 100644 lib/public/AppFramework/Attribute/Listenable.php
+ create mode 100644 lib/public/AppFramework/Attribute/Throwable.php
+
+diff --git a/build/psalm/OcpSinceChecker.php b/build/psalm/OcpSinceChecker.php
+index 959e70e0c4..c533e94455 100644
+--- a/build/psalm/OcpSinceChecker.php
++++ b/build/psalm/OcpSinceChecker.php
+@@ -20,7 +20,18 @@ class OcpSinceChecker implements Psalm\Plugin\EventHandler\AfterClassLikeVisitIn
+ 		$classLike = $event->getStmt();
+ 		$statementsSource = $event->getStatementsSource();
+ 
+-		self::checkClassComment($classLike, $statementsSource);
++		if (!str_contains($statementsSource->getFilePath(), '/lib/public/')) {
++			return;
++		}
++
++		$isTesting = str_contains($statementsSource->getFilePath(), '/lib/public/Notification/')
++			|| str_contains($statementsSource->getFilePath(), 'CalendarEventStatus');
++
++		if ($isTesting) {
++			self::checkStatementAttributes($classLike, $statementsSource);
++		} else {
++			self::checkClassComment($classLike, $statementsSource);
++		}
+ 
+ 		foreach ($classLike->stmts as $stmt) {
+ 			if ($stmt instanceof ClassConst) {
+@@ -32,11 +43,64 @@ class OcpSinceChecker implements Psalm\Plugin\EventHandler\AfterClassLikeVisitIn
+ 			}
+ 
+ 			if ($stmt instanceof EnumCase) {
+-				self::checkStatementComment($stmt, $statementsSource, 'enum');
++				if ($isTesting) {
++					self::checkStatementAttributes($classLike, $statementsSource);
++				} else {
++					self::checkStatementComment($stmt, $statementsSource, 'enum');
++				}
+ 			}
+ 		}
+ 	}
+ 
++	private static function checkStatementAttributes(ClassLike $stmt, FileSource $statementsSource): void {
++		$hasAppFrameworkAttribute = false;
++		$mustBeConsumable = false;
++		$isConsumable = false;
++		foreach ($stmt->attrGroups as $attrGroup) {
++			foreach ($attrGroup->attrs as $attr) {
++				if (in_array($attr->name->getLast(), [
++					'Catchable',
++					'Consumable',
++					'Dispatchable',
++					'Implementable',
++					'Listenable',
++					'Throwable',
++				], true)) {
++					$hasAppFrameworkAttribute = true;
++					self::checkAttributeHasValidSinceVersion($attr, $statementsSource);
++				}
++				if (in_array($attr->name->getLast(), [
++					'Catchable',
++					'Consumable',
++					'Listenable',
++				], true)) {
++					$isConsumable = true;
++				}
++				if ($attr->name->getLast() === 'ExceptionalImplementable') {
++					$mustBeConsumable = true;
++				}
++			}
++		}
++
++		if ($mustBeConsumable && !$isConsumable) {
++			IssueBuffer::maybeAdd(
++				new InvalidDocblock(
++					'Attribute OCP\\AppFramework\\Attribute\\ExceptionalImplementable is only valid on classes that also have OCP\\AppFramework\\Attribute\\Consumable',
++					new CodeLocation($statementsSource, $stmt)
++				)
++			);
++		}
++
++		if (!$hasAppFrameworkAttribute) {
++			IssueBuffer::maybeAdd(
++				new InvalidDocblock(
++					'At least one of the OCP\\AppFramework\\Attribute attributes is required',
++					new CodeLocation($statementsSource, $stmt)
++				)
++			);
++		}
++	}
++
+ 	private static function checkClassComment(ClassLike $stmt, FileSource $statementsSource): void {
+ 		$docblock = $stmt->getDocComment();
+ 
+@@ -124,4 +188,28 @@ class OcpSinceChecker implements Psalm\Plugin\EventHandler\AfterClassLikeVisitIn
+ 			);
+ 		}
+ 	}
++
++	private static function checkAttributeHasValidSinceVersion(\PhpParser\Node\Attribute $stmt, FileSource $statementsSource): void {
++		foreach ($stmt->args as $arg) {
++			if ($arg->name?->name === 'since') {
++				if (!$arg->value instanceof \PhpParser\Node\Scalar\String_) {
++					IssueBuffer::maybeAdd(
++						new InvalidDocblock(
++							'Attribute since argument is not a valid version string',
++							new CodeLocation($statementsSource, $stmt)
++						)
++					);
++				} else {
++					if (!preg_match('/^[1-9][0-9]*(\.[0-9]+){0,3}$/', $arg->value->value)) {
++						IssueBuffer::maybeAdd(
++							new InvalidDocblock(
++								'Attribute since argument is not a valid version string',
++								new CodeLocation($statementsSource, $stmt)
++							)
++						);
++					}
++				}
++			}
++		}
++	}
+ }
+diff --git a/lib/composer/composer/autoload_classmap.php b/lib/composer/composer/autoload_classmap.php
+index aff727bedb..8d49119ad7 100644
+--- a/lib/composer/composer/autoload_classmap.php
++++ b/lib/composer/composer/autoload_classmap.php
+@@ -58,6 +58,14 @@ return array(
+     'OCP\\Activity\\ISetting' => $baseDir . '/lib/public/Activity/ISetting.php',
+     'OCP\\AppFramework\\ApiController' => $baseDir . '/lib/public/AppFramework/ApiController.php',
+     'OCP\\AppFramework\\App' => $baseDir . '/lib/public/AppFramework/App.php',
++    'OCP\\AppFramework\\Attribute\\ASince' => $baseDir . '/lib/public/AppFramework/Attribute/ASince.php',
++    'OCP\\AppFramework\\Attribute\\Catchable' => $baseDir . '/lib/public/AppFramework/Attribute/Catchable.php',
++    'OCP\\AppFramework\\Attribute\\Consumable' => $baseDir . '/lib/public/AppFramework/Attribute/Consumable.php',
++    'OCP\\AppFramework\\Attribute\\Dispatchable' => $baseDir . '/lib/public/AppFramework/Attribute/Dispatchable.php',
++    'OCP\\AppFramework\\Attribute\\ExceptionalImplementable' => $baseDir . '/lib/public/AppFramework/Attribute/ExceptionalImplementable.php',
++    'OCP\\AppFramework\\Attribute\\Implementable' => $baseDir . '/lib/public/AppFramework/Attribute/Implementable.php',
++    'OCP\\AppFramework\\Attribute\\Listenable' => $baseDir . '/lib/public/AppFramework/Attribute/Listenable.php',
++    'OCP\\AppFramework\\Attribute\\Throwable' => $baseDir . '/lib/public/AppFramework/Attribute/Throwable.php',
+     'OCP\\AppFramework\\AuthPublicShareController' => $baseDir . '/lib/public/AppFramework/AuthPublicShareController.php',
+     'OCP\\AppFramework\\Bootstrap\\IBootContext' => $baseDir . '/lib/public/AppFramework/Bootstrap/IBootContext.php',
+     'OCP\\AppFramework\\Bootstrap\\IBootstrap' => $baseDir . '/lib/public/AppFramework/Bootstrap/IBootstrap.php',
+diff --git a/lib/composer/composer/autoload_static.php b/lib/composer/composer/autoload_static.php
+index a73ce3c13d..1534985ff8 100644
+--- a/lib/composer/composer/autoload_static.php
++++ b/lib/composer/composer/autoload_static.php
+@@ -99,6 +99,14 @@ class ComposerStaticInit749170dad3f5e7f9ca158f5a9f04f6a2
+         'OCP\\Activity\\ISetting' => __DIR__ . '/../../..' . '/lib/public/Activity/ISetting.php',
+         'OCP\\AppFramework\\ApiController' => __DIR__ . '/../../..' . '/lib/public/AppFramework/ApiController.php',
+         'OCP\\AppFramework\\App' => __DIR__ . '/../../..' . '/lib/public/AppFramework/App.php',
++        'OCP\\AppFramework\\Attribute\\ASince' => __DIR__ . '/../../..' . '/lib/public/AppFramework/Attribute/ASince.php',
++        'OCP\\AppFramework\\Attribute\\Catchable' => __DIR__ . '/../../..' . '/lib/public/AppFramework/Attribute/Catchable.php',
++        'OCP\\AppFramework\\Attribute\\Consumable' => __DIR__ . '/../../..' . '/lib/public/AppFramework/Attribute/Consumable.php',
++        'OCP\\AppFramework\\Attribute\\Dispatchable' => __DIR__ . '/../../..' . '/lib/public/AppFramework/Attribute/Dispatchable.php',
++        'OCP\\AppFramework\\Attribute\\ExceptionalImplementable' => __DIR__ . '/../../..' . '/lib/public/AppFramework/Attribute/ExceptionalImplementable.php',
++        'OCP\\AppFramework\\Attribute\\Implementable' => __DIR__ . '/../../..' . '/lib/public/AppFramework/Attribute/Implementable.php',
++        'OCP\\AppFramework\\Attribute\\Listenable' => __DIR__ . '/../../..' . '/lib/public/AppFramework/Attribute/Listenable.php',
++        'OCP\\AppFramework\\Attribute\\Throwable' => __DIR__ . '/../../..' . '/lib/public/AppFramework/Attribute/Throwable.php',
+         'OCP\\AppFramework\\AuthPublicShareController' => __DIR__ . '/../../..' . '/lib/public/AppFramework/AuthPublicShareController.php',
+         'OCP\\AppFramework\\Bootstrap\\IBootContext' => __DIR__ . '/../../..' . '/lib/public/AppFramework/Bootstrap/IBootContext.php',
+         'OCP\\AppFramework\\Bootstrap\\IBootstrap' => __DIR__ . '/../../..' . '/lib/public/AppFramework/Bootstrap/IBootstrap.php',
+diff --git a/lib/public/AppFramework/Attribute/ASince.php b/lib/public/AppFramework/Attribute/ASince.php
+new file mode 100644
+index 0000000000..1e0c45348c
+--- /dev/null
++++ b/lib/public/AppFramework/Attribute/ASince.php
+@@ -0,0 +1,34 @@
++<?php
++
++declare(strict_types=1);
++
++/**
++ * SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
++ * SPDX-License-Identifier: AGPL-3.0-or-later
++ */
++
++namespace OCP\AppFramework\Attribute;
++
++use Attribute;
++
++/**
++ * Abstract base attribute to declare an API's stability.
++ *
++ * @since 32.0.0
++ */
++#[Consumable(since: '32.0.0')]
++abstract class ASince {
++	/**
++	 * @param string $since For shipped apps and server code such as core/ and lib/,
++	 *                      this should be the server version. For other apps it
++	 *                      should be the semantic app version.
++	 */
++	public function __construct(
++		protected string $since,
++	) {
++	}
++
++	public function getSince(): string {
++		return $this->since;
++	}
++}
+diff --git a/lib/public/AppFramework/Attribute/Catchable.php b/lib/public/AppFramework/Attribute/Catchable.php
+new file mode 100644
+index 0000000000..d45401550f
+--- /dev/null
++++ b/lib/public/AppFramework/Attribute/Catchable.php
+@@ -0,0 +1,23 @@
++<?php
++
++declare(strict_types=1);
++
++/**
++ * SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
++ * SPDX-License-Identifier: AGPL-3.0-or-later
++ */
++
++namespace OCP\AppFramework\Attribute;
++
++use Attribute;
++
++/**
++ * Attribute to declare that the exception is "catchable" by apps.
++ *
++ * @since 32.0.0
++ */
++#[Attribute(Attribute::TARGET_ALL | Attribute::IS_REPEATABLE)]
++#[Consumable(since: '32.0.0')]
++#[Implementable(since: '32.0.0')]
++class Catchable extends ASince {
++}
+diff --git a/lib/public/AppFramework/Attribute/Consumable.php b/lib/public/AppFramework/Attribute/Consumable.php
+new file mode 100644
+index 0000000000..2175bb0af8
+--- /dev/null
++++ b/lib/public/AppFramework/Attribute/Consumable.php
+@@ -0,0 +1,27 @@
++<?php
++
++declare(strict_types=1);
++
++/**
++ * SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
++ * SPDX-License-Identifier: AGPL-3.0-or-later
++ */
++
++namespace OCP\AppFramework\Attribute;
++
++use Attribute;
++
++/**
++ * Attribute to declare that the API stability is limited to "consuming" the
++ * class, interface, enum, etc. Apps are not allowed to implement or replace them.
++ *
++ * For events use @see \OCP\AppFramework\Attribute\Listenable
++ * For exceptions use @see \OCP\AppFramework\Attribute\Catchable
++ *
++ * @since 32.0.0
++ */
++#[Attribute(Attribute::TARGET_ALL | Attribute::IS_REPEATABLE)]
++#[Consumable(since: '32.0.0')]
++#[Implementable(since: '32.0.0')]
++class Consumable extends ASince {
++}
+diff --git a/lib/public/AppFramework/Attribute/Dispatchable.php b/lib/public/AppFramework/Attribute/Dispatchable.php
+new file mode 100644
+index 0000000000..ff703d4749
+--- /dev/null
++++ b/lib/public/AppFramework/Attribute/Dispatchable.php
+@@ -0,0 +1,23 @@
++<?php
++
++declare(strict_types=1);
++
++/**
++ * SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
++ * SPDX-License-Identifier: AGPL-3.0-or-later
++ */
++
++namespace OCP\AppFramework\Attribute;
++
++use Attribute;
++
++/**
++ * Attribute to declare that the event is "dispatchable" by apps.
++ *
++ * @since 32.0.0
++ */
++#[Attribute(Attribute::TARGET_ALL | Attribute::IS_REPEATABLE)]
++#[Consumable(since: '32.0.0')]
++#[Implementable(since: '32.0.0')]
++class Dispatchable extends ASince {
++}
+diff --git a/lib/public/AppFramework/Attribute/ExceptionalImplementable.php b/lib/public/AppFramework/Attribute/ExceptionalImplementable.php
+new file mode 100644
+index 0000000000..23e9f830d9
+--- /dev/null
++++ b/lib/public/AppFramework/Attribute/ExceptionalImplementable.php
+@@ -0,0 +1,38 @@
++<?php
++
++declare(strict_types=1);
++
++/**
++ * SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
++ * SPDX-License-Identifier: AGPL-3.0-or-later
++ */
++
++namespace OCP\AppFramework\Attribute;
++
++use Attribute;
++
++/**
++ * Attribute to declare that the API marked as Consumable/Listenable/Catchable
++ * has an exception and is Implementable/Dispatchable/Throwable by a dedicated
++ * app. Changes to such an API have to be communicated to the affected app maintainers.
++ *
++ * @since 32.0.0
++ */
++#[Attribute(Attribute::TARGET_ALL | Attribute::IS_REPEATABLE)]
++#[Consumable(since: '32.0.0')]
++#[Implementable(since: '32.0.0')]
++class ExceptionalImplementable {
++	public function __construct(
++		protected string $app,
++		protected ?string $class = null,
++	) {
++	}
++
++	public function getApp(): string {
++		return $this->app;
++	}
++
++	public function getClass(): ?string {
++		return $this->class;
++	}
++}
+diff --git a/lib/public/AppFramework/Attribute/Implementable.php b/lib/public/AppFramework/Attribute/Implementable.php
+new file mode 100644
+index 0000000000..40ce0e0cf0
+--- /dev/null
++++ b/lib/public/AppFramework/Attribute/Implementable.php
+@@ -0,0 +1,27 @@
++<?php
++
++declare(strict_types=1);
++
++/**
++ * SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
++ * SPDX-License-Identifier: AGPL-3.0-or-later
++ */
++
++namespace OCP\AppFramework\Attribute;
++
++use Attribute;
++
++/**
++ * Attribute to declare that the API stability is limited to "implementing" the
++ * class, interface, enum, etc.
++ *
++ * For events use @see \OCP\AppFramework\Attribute\Dispatchable
++ * For exceptions use @see \OCP\AppFramework\Attribute\Throwable
++ *
++ * @since 32.0.0
++ */
++#[Attribute(Attribute::TARGET_ALL | Attribute::IS_REPEATABLE)]
++#[Consumable(since: '32.0.0')]
++#[Implementable(since: '32.0.0')]
++class Implementable extends ASince {
++}
+diff --git a/lib/public/AppFramework/Attribute/Listenable.php b/lib/public/AppFramework/Attribute/Listenable.php
+new file mode 100644
+index 0000000000..98c2ca7869
+--- /dev/null
++++ b/lib/public/AppFramework/Attribute/Listenable.php
+@@ -0,0 +1,23 @@
++<?php
++
++declare(strict_types=1);
++
++/**
++ * SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
++ * SPDX-License-Identifier: AGPL-3.0-or-later
++ */
++
++namespace OCP\AppFramework\Attribute;
++
++use Attribute;
++
++/**
++ * Attribute to declare that the event is "listenable" by apps.
++ *
++ * @since 32.0.0
++ */
++#[Attribute(Attribute::TARGET_ALL | Attribute::IS_REPEATABLE)]
++#[Consumable(since: '32.0.0')]
++#[Implementable(since: '32.0.0')]
++class Listenable extends ASince {
++}
+diff --git a/lib/public/AppFramework/Attribute/Throwable.php b/lib/public/AppFramework/Attribute/Throwable.php
+new file mode 100644
+index 0000000000..2c763c76b4
+--- /dev/null
++++ b/lib/public/AppFramework/Attribute/Throwable.php
+@@ -0,0 +1,23 @@
++<?php
++
++declare(strict_types=1);
++
++/**
++ * SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
++ * SPDX-License-Identifier: AGPL-3.0-or-later
++ */
++
++namespace OCP\AppFramework\Attribute;
++
++use Attribute;
++
++/**
++ * Attribute to declare that the exception is "throwable" by apps.
++ *
++ * @since 32.0.0
++ */
++#[Attribute(Attribute::TARGET_ALL | Attribute::IS_REPEATABLE)]
++#[Consumable(since: '32.0.0')]
++#[Implementable(since: '32.0.0')]
++class Throwable extends ASince {
++}
+diff --git a/lib/public/Calendar/CalendarEventStatus.php b/lib/public/Calendar/CalendarEventStatus.php
+index 5e07054575..fd73515057 100644
+--- a/lib/public/Calendar/CalendarEventStatus.php
++++ b/lib/public/Calendar/CalendarEventStatus.php
+@@ -7,11 +7,9 @@ declare(strict_types=1);
+  */
+ namespace OCP\Calendar;
+ 
+-/**
+- * The status of a calendar event.
+- *
+- * @since 32.0.0
+- */
++use OCP\AppFramework\Attribute\Listenable;
++
++#[Listenable(since: '32.0.0')]
+ enum CalendarEventStatus: string {
+ 	case TENTATIVE = 'TENTATIVE';
+ 	case CONFIRMED = 'CONFIRMED';
+diff --git a/lib/public/Notification/AlreadyProcessedException.php b/lib/public/Notification/AlreadyProcessedException.php
+index 0e7458185f..162abd8186 100644
+--- a/lib/public/Notification/AlreadyProcessedException.php
++++ b/lib/public/Notification/AlreadyProcessedException.php
+@@ -8,9 +8,9 @@ declare(strict_types=1);
+  */
+ namespace OCP\Notification;
+ 
+-/**
+- * @since 17.0.0
+- */
++use OCP\AppFramework\Attribute\Throwable;
++
++#[Throwable(since: '17.0.0')]
+ class AlreadyProcessedException extends \RuntimeException {
+ 	/**
+ 	 * @since 17.0.0
+diff --git a/lib/public/Notification/IAction.php b/lib/public/Notification/IAction.php
+index f1cffa4907..722dac7282 100644
+--- a/lib/public/Notification/IAction.php
++++ b/lib/public/Notification/IAction.php
+@@ -8,11 +8,9 @@ declare(strict_types=1);
+  */
+ namespace OCP\Notification;
+ 
+-/**
+- * Interface IAction
+- *
+- * @since 9.0.0
+- */
++use OCP\AppFramework\Attribute\Consumable;
++
++#[Consumable(since: '9.0.0')]
+ interface IAction {
+ 	/**
+ 	 * @since 17.0.0
+diff --git a/lib/public/Notification/IApp.php b/lib/public/Notification/IApp.php
+index 1574ae8a09..37c352d44c 100644
+--- a/lib/public/Notification/IApp.php
++++ b/lib/public/Notification/IApp.php
+@@ -8,11 +8,9 @@ declare(strict_types=1);
+  */
+ namespace OCP\Notification;
+ 
+-/**
+- * Interface IApp
+- *
+- * @since 9.0.0
+- */
++use OCP\AppFramework\Attribute\Implementable;
++
++#[Implementable(since: '9.0.0')]
+ interface IApp {
+ 	/**
+ 	 * @param INotification $notification
+diff --git a/lib/public/Notification/IDeferrableApp.php b/lib/public/Notification/IDeferrableApp.php
+index 1820ed7ecd..00c7d691b1 100644
+--- a/lib/public/Notification/IDeferrableApp.php
++++ b/lib/public/Notification/IDeferrableApp.php
+@@ -8,11 +8,9 @@ declare(strict_types=1);
+  */
+ namespace OCP\Notification;
+ 
+-/**
+- * Interface IDeferrableApp
+- *
+- * @since 20.0.0
+- */
++use OCP\AppFramework\Attribute\Implementable;
++
++#[Implementable(since: '20.0.0')]
+ interface IDeferrableApp extends IApp {
+ 	/**
+ 	 * Start deferring notifications until `flush()` is called
+diff --git a/lib/public/Notification/IDismissableNotifier.php b/lib/public/Notification/IDismissableNotifier.php
+index 39f9658a8c..d2f649b45a 100644
+--- a/lib/public/Notification/IDismissableNotifier.php
++++ b/lib/public/Notification/IDismissableNotifier.php
+@@ -8,15 +8,16 @@ declare(strict_types=1);
+  */
+ namespace OCP\Notification;
+ 
++use OCP\AppFramework\Attribute\Implementable;
++
+ /**
+  * Interface INotifier classes should implement if they want to process notifications
+  * that are dismissed by the user.
+  *
+  * This can be useful if dismissing the notification will leave it in an incomplete
+  * state. The handler can choose to for example do some default action.
+- *
+- * @since 18.0.0
+  */
++#[Implementable(since: '18.0.0')]
+ interface IDismissableNotifier extends INotifier {
+ 	/**
+ 	 * @param INotification $notification
+diff --git a/lib/public/Notification/IManager.php b/lib/public/Notification/IManager.php
+index 96427ddff9..23664af17c 100644
+--- a/lib/public/Notification/IManager.php
++++ b/lib/public/Notification/IManager.php
+@@ -8,11 +8,9 @@ declare(strict_types=1);
+  */
+ namespace OCP\Notification;
+ 
+-/**
+- * Interface IManager
+- *
+- * @since 9.0.0
+- */
++use OCP\AppFramework\Attribute\Consumable;
++
++#[Consumable(since: '9.0.0')]
+ interface IManager extends IApp, INotifier {
+ 	/**
+ 	 * @param string $appClass The service must implement IApp, otherwise a
+diff --git a/lib/public/Notification/INotification.php b/lib/public/Notification/INotification.php
+index 7a1ee960b2..a740678376 100644
+--- a/lib/public/Notification/INotification.php
++++ b/lib/public/Notification/INotification.php
+@@ -8,11 +8,9 @@ declare(strict_types=1);
+  */
+ namespace OCP\Notification;
+ 
+-/**
+- * Interface INotification
+- *
+- * @since 9.0.0
+- */
++use OCP\AppFramework\Attribute\Consumable;
++
++#[Consumable(since: '9.0.0')]
+ interface INotification {
+ 	/**
+ 	 * @param string $app
+diff --git a/lib/public/Notification/INotifier.php b/lib/public/Notification/INotifier.php
+index 39a962b039..bdc7207216 100644
+--- a/lib/public/Notification/INotifier.php
++++ b/lib/public/Notification/INotifier.php
+@@ -8,11 +8,9 @@ declare(strict_types=1);
+  */
+ namespace OCP\Notification;
+ 
+-/**
+- * Interface INotifier
+- *
+- * @since 9.0.0
+- */
++use OCP\AppFramework\Attribute\Implementable;
++
++#[Implementable(since: '9.0.0')]
+ interface INotifier {
+ 	/**
+ 	 * Identifier of the notifier, only use [a-z0-9_]
+diff --git a/lib/public/Notification/IncompleteNotificationException.php b/lib/public/Notification/IncompleteNotificationException.php
+index f5ae525450..49d388ebee 100644
+--- a/lib/public/Notification/IncompleteNotificationException.php
++++ b/lib/public/Notification/IncompleteNotificationException.php
+@@ -9,6 +9,8 @@ declare(strict_types=1);
+ 
+ namespace OCP\Notification;
+ 
++use OCP\AppFramework\Attribute\Catchable;
++
+ /**
+  * Thrown when {@see \OCP\Notification\IManager::notify()} is called with a notification
+  * that does not have all required fields set:
+@@ -19,8 +21,7 @@ namespace OCP\Notification;
+  * - objectType
+  * - objectId
+  * - subject
+- *
+- * @since 30.0.0
+  */
++#[Catchable(since: '30.0.0')]
+ class IncompleteNotificationException extends \InvalidArgumentException {
+ }
+diff --git a/lib/public/Notification/IncompleteParsedNotificationException.php b/lib/public/Notification/IncompleteParsedNotificationException.php
+index b69967e278..c31ab129fd 100644
+--- a/lib/public/Notification/IncompleteParsedNotificationException.php
++++ b/lib/public/Notification/IncompleteParsedNotificationException.php
+@@ -9,6 +9,8 @@ declare(strict_types=1);
+ 
+ namespace OCP\Notification;
+ 
++use OCP\AppFramework\Attribute\Catchable;
++
+ /**
+  * Thrown when {@see \OCP\Notification\IManager::prepare()} is called with a notification
+  * that does not have all required fields set at the end of the manager or after a INotifier
+@@ -22,8 +24,7 @@ namespace OCP\Notification;
+  * - objectType
+  * - objectId
+  * - parsedSubject
+- *
+- * @since 30.0.0
+  */
++#[Catchable(since: '30.0.0')]
+ class IncompleteParsedNotificationException extends \InvalidArgumentException {
+ }
+diff --git a/lib/public/Notification/InvalidValueException.php b/lib/public/Notification/InvalidValueException.php
+index 05cf1a253b..ec52381ee3 100644
+--- a/lib/public/Notification/InvalidValueException.php
++++ b/lib/public/Notification/InvalidValueException.php
+@@ -9,9 +9,9 @@ declare(strict_types=1);
+ 
+ namespace OCP\Notification;
+ 
+-/**
+- * @since 30.0.0
+- */
++use OCP\AppFramework\Attribute\Catchable;
++
++#[Catchable(since: '30.0.0')]
+ class InvalidValueException extends \InvalidArgumentException {
+ 	/**
+ 	 * @since 30.0.0
+diff --git a/lib/public/Notification/UnknownNotificationException.php b/lib/public/Notification/UnknownNotificationException.php
+index 7e630c59dd..976d917959 100644
+--- a/lib/public/Notification/UnknownNotificationException.php
++++ b/lib/public/Notification/UnknownNotificationException.php
+@@ -9,8 +9,8 @@ declare(strict_types=1);
+ 
+ namespace OCP\Notification;
+ 
+-/**
+- * @since 30.0.0
+- */
++use OCP\AppFramework\Attribute\Throwable;
++
++#[Throwable(since: '30.0.0')]
+ class UnknownNotificationException extends \InvalidArgumentException {
+ }

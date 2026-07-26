@@ -1,0 +1,37 @@
+repo: home-assistant
+base_commit: c9d9730c4a26ae63c08f6bf9de18b003dd7a7310
+commit: d40eeee42293328fb793d1b1a1764b49d842c5d8
+patch_stored: true
+gold:
+  - path: homeassistant/core.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Deletes the deprecated `ConfigSource(enum.StrEnum, metaclass=EnumWithDeprecatedMembers, ...)` shim (all four members deprecated since 2025.11.0) and the now-unused EnumWithDeprecatedMembers import — the entire change.
+  - path: homeassistant/core_config.py
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines the real `ConfigSource(enum.StrEnum)` with the identical DEFAULT/DISCOVERED/STORAGE/YAML members that homeassistant.core.ConfigSource redirected to; confirms the removal drops only the deprecated alias, not functionality.
+  - path: homeassistant/helpers/deprecation.py
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Defines the EnumWithDeprecatedMembers metaclass (`__getattribute__` warns via a `name in deprecated` string-keyed dict) whose only use in core.py was ConfigSource, explaining why the import was dropped alongside the class.
+forbidden:
+  - path: homeassistant/components/media_player/const.py
+    reason: also uses the EnumWithDeprecatedMembers metaclass, but for an unrelated enum (MediaPlayerEntityFeature/state constants), untouched by and unaffected by this removal
+  - path: homeassistant/helpers/intent.py
+    reason: another EnumWithDeprecatedMembers user for unrelated intent-response enums, not affected by the ConfigSource removal
+  - path: homeassistant/config_entries.py
+    reason: name looks related ("Config...") but is an unrelated config-entries module with no ConfigSource usage
+nontrivial_gold_count: 2
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: []
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 1
+  description: Remove deprecated ConfigSource from homeassistant/core.py — core interface change; context
+    should be core consumers, not integrations
+notes: Tail end of a deprecation cycle — deletes the homeassistant.core.ConfigSource shim (deprecated since 2025.11.0 in favor of homeassistant.core_config.ConfigSource) now that no code in the repo still imports the old path; single-file mechanical removal but understanding it as safe requires seeing the real enum in core_config.py and the EnumWithDeprecatedMembers warning mechanism being retired for this class.

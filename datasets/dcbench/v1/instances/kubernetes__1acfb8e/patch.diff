@@ -1,0 +1,457 @@
+From 1acfb8e8fc0ecb4451e52916846fc170c5f4f496 Mon Sep 17 00:00:00 2001
+From: Patrick Ohly <patrick.ohly@intel.com>
+Date: Wed, 29 Apr 2026 11:59:19 +0200
+Subject: [PATCH] DRA: add DeviceTaintRule to v1 API
+
+---
+ pkg/api/testing/defaulting_test.go            |   2 +
+ .../default_storage_factory_builder.go        |   2 +-
+ .../devicetaintrule/storage/storage.go        |  17 +-
+ .../devicetaintrule/storage/storage_test.go   |   9 +-
+ .../resource/devicetaintrule/strategy.go      |  17 +-
+ .../resource/devicetaintrule/strategy_test.go |  15 ++
+ .../resource/rest/storage_resource.go         |  13 +-
+ .../src/k8s.io/api/resource/v1/register.go    |   2 +
+ staging/src/k8s.io/api/resource/v1/types.go   | 154 ++++++++++++++++++
+ .../client/client.go                          |  10 ++
+ test/integration/etcd/data.go                 |   9 +-
+ 11 files changed, 239 insertions(+), 11 deletions(-)
+
+diff --git a/pkg/api/testing/defaulting_test.go b/pkg/api/testing/defaulting_test.go
+index 968f7ba86c..c1280af814 100644
+--- a/pkg/api/testing/defaulting_test.go
++++ b/pkg/api/testing/defaulting_test.go
+@@ -160,6 +160,8 @@ func TestDefaulting(t *testing.T) {
+ 		{Group: "resource.k8s.io", Version: "v1beta2", Kind: "ResourceClaimTemplateList"}:                          {},
+ 		{Group: "resource.k8s.io", Version: "v1beta2", Kind: "ResourceSlice"}:                                      {},
+ 		{Group: "resource.k8s.io", Version: "v1beta2", Kind: "ResourceSliceList"}:                                  {},
++		{Group: "resource.k8s.io", Version: "v1", Kind: "DeviceTaintRule"}:                                         {},
++		{Group: "resource.k8s.io", Version: "v1", Kind: "DeviceTaintRuleList"}:                                     {},
+ 		{Group: "resource.k8s.io", Version: "v1", Kind: "ResourceClaim"}:                                           {},
+ 		{Group: "resource.k8s.io", Version: "v1", Kind: "ResourceClaimList"}:                                       {},
+ 		{Group: "resource.k8s.io", Version: "v1", Kind: "ResourceClaimTemplate"}:                                   {},
+diff --git a/pkg/kubeapiserver/default_storage_factory_builder.go b/pkg/kubeapiserver/default_storage_factory_builder.go
+index 13ba3356dd..72bcb0ae61 100644
+--- a/pkg/kubeapiserver/default_storage_factory_builder.go
++++ b/pkg/kubeapiserver/default_storage_factory_builder.go
+@@ -86,7 +86,7 @@ func NewStorageFactoryConfigEffectiveVersion(effectiveVersion basecompatibility.
+ 		certificates.Resource("clustertrustbundles").WithVersion("v1beta1"),
+ 		certificates.Resource("podcertificaterequests").WithVersion("v1beta1"),
+ 		storagemigration.Resource("storagemigrations").WithVersion("v1beta1"),
+-		resource.Resource("devicetaintrules").WithVersion("v1alpha3"),
++		resource.Resource("devicetaintrules").WithVersion("v1beta2"),
+ 		resource.Resource("resourcepoolstatusrequests").WithVersion("v1alpha3"),
+ 		scheduling.Resource("workloads").WithVersion("v1alpha3"),
+ 		scheduling.Resource("podgroups").WithVersion("v1alpha3"),
+diff --git a/pkg/registry/resource/devicetaintrule/storage/storage.go b/pkg/registry/resource/devicetaintrule/storage/storage.go
+index 9919426979..186def34c7 100644
+--- a/pkg/registry/resource/devicetaintrule/storage/storage.go
++++ b/pkg/registry/resource/devicetaintrule/storage/storage.go
+@@ -37,8 +37,19 @@ type REST struct {
+ 	*genericregistry.Store
+ }
+ 
+-// NewREST returns a RESTStorage object that will work against DeviceTaintRule.
+-func NewREST(optsGetter generic.RESTOptionsGetter) (*REST, *StatusREST, error) {
++// NewRESTv1 returns a RESTStorage object that will work against DeviceTaintRule
++// for the v1 API version.
++func NewRESTv1(optsGetter generic.RESTOptionsGetter) (*REST, *StatusREST, error) {
++	return newREST(optsGetter, false /* returnDeletedObject */)
++}
++
++// NewRESTLegacy returns a RESTStorage object that will work against DeviceTaintRule
++// for the API versions < v1.
++func NewRESTLegacy(optsGetter generic.RESTOptionsGetter) (*REST, *StatusREST, error) {
++	return newREST(optsGetter, true /* returnDeletedObject */)
++}
++
++func newREST(optsGetter generic.RESTOptionsGetter, returnDeletedObject bool) (*REST, *StatusREST, error) {
+ 	store := &genericregistry.Store{
+ 		NewFunc:                   func() runtime.Object { return &resource.DeviceTaintRule{} },
+ 		NewListFunc:               func() runtime.Object { return &resource.DeviceTaintRuleList{} },
+@@ -48,7 +59,7 @@ func NewREST(optsGetter generic.RESTOptionsGetter) (*REST, *StatusREST, error) {
+ 		CreateStrategy:      devicetaintrule.Strategy,
+ 		UpdateStrategy:      devicetaintrule.Strategy,
+ 		DeleteStrategy:      devicetaintrule.Strategy,
+-		ReturnDeletedObject: true,
++		ReturnDeletedObject: returnDeletedObject,
+ 		ResetFieldsStrategy: devicetaintrule.Strategy,
+ 
+ 		TableConvertor: printerstorage.TableConvertor{TableGenerator: printers.NewTableGenerator().With(printersinternal.AddHandlers)},
+diff --git a/pkg/registry/resource/devicetaintrule/storage/storage_test.go b/pkg/registry/resource/devicetaintrule/storage/storage_test.go
+index 4f5a17c0d7..63d1998f77 100644
+--- a/pkg/registry/resource/devicetaintrule/storage/storage_test.go
++++ b/pkg/registry/resource/devicetaintrule/storage/storage_test.go
+@@ -44,7 +44,7 @@ func newStorage(t *testing.T) (*REST, *StatusREST, *etcd3testing.EtcdTestServer)
+ 		DeleteCollectionWorkers: 1,
+ 		ResourcePrefix:          "devicetaintrules",
+ 	}
+-	deviceTaintStorage, statusStorage, err := NewREST(restOptions)
++	deviceTaintStorage, statusStorage, err := NewRESTv1(restOptions)
+ 	if err != nil {
+ 		t.Fatalf("unexpected error from REST storage: %v", err)
+ 	}
+@@ -158,12 +158,15 @@ func TestUpdateStatus(t *testing.T) {
+ 
+ 	key, _ := storage.KeyFunc(ctx, "foo")
+ 	deviceTaintStart := validNewDeviceTaint("foo")
+-	err := storage.Storage.Create(ctx, key, deviceTaintStart, nil, 0, false)
++	// v1 enforces ResourceVersion comparison on status update (see AllowUnconditionalUpdate),
++	// so we need the created object and its ResourceVersion.
++	var deviceTaintCreated resource.DeviceTaintRule
++	err := storage.Storage.Create(ctx, key, deviceTaintStart, &deviceTaintCreated, 0, false)
+ 	if err != nil {
+ 		t.Fatalf("Unexpected error: %v", err)
+ 	}
+ 
+-	deviceTaint := deviceTaintStart.DeepCopy()
++	deviceTaint := deviceTaintCreated.DeepCopy()
+ 	deviceTaint.Status.Conditions = []metav1.Condition{{
+ 		Type:               "EvicitionInProgress",
+ 		Status:             metav1.ConditionTrue,
+diff --git a/pkg/registry/resource/devicetaintrule/strategy.go b/pkg/registry/resource/devicetaintrule/strategy.go
+index 1404c8bf6a..001d87e455 100644
+--- a/pkg/registry/resource/devicetaintrule/strategy.go
++++ b/pkg/registry/resource/devicetaintrule/strategy.go
+@@ -24,6 +24,7 @@ import (
+ 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+ 	"k8s.io/apimachinery/pkg/runtime"
+ 	"k8s.io/apimachinery/pkg/util/validation/field"
++	"k8s.io/apiserver/pkg/endpoints/request"
+ 	"k8s.io/apiserver/pkg/registry/rest"
+ 	"k8s.io/apiserver/pkg/storage/names"
+ 	"k8s.io/kubernetes/pkg/api/legacyscheme"
+@@ -58,6 +59,9 @@ func (*deviceTaintRuleStrategy) GetResetFields() map[fieldpath.APIVersion]*field
+ 		"resource.k8s.io/v1beta2": fieldpath.NewSet(
+ 			fieldpath.MakePathOrDie("status"),
+ 		),
++		"resource.k8s.io/v1": fieldpath.NewSet(
++			fieldpath.MakePathOrDie("status"),
++		),
+ 	}
+ 
+ 	return fields
+@@ -123,7 +127,14 @@ func (*deviceTaintRuleStrategy) WarningsOnUpdate(ctx context.Context, obj, old r
+ }
+ 
+ func (*deviceTaintRuleStrategy) AllowUnconditionalUpdate(ctx context.Context) bool {
+-	return true
++	reqInfo, _ := request.RequestInfoFrom(ctx)
++	if reqInfo != nil && (reqInfo.APIVersion == "v1beta2" || reqInfo.APIVersion == "v1alpha3") {
++		// Historic behavior for all known old versions, cannot change that anymore.
++		return true
++	}
++	// Prevent unconditional updates for v1 and all other future versions.
++	// Better late than never...
++	return false
+ }
+ 
+ type deviceTaintRuleStatusStrategy struct {
+@@ -142,6 +153,10 @@ func (*deviceTaintRuleStatusStrategy) GetResetFields() map[fieldpath.APIVersion]
+ 			fieldpath.MakePathOrDie("metadata"),
+ 			fieldpath.MakePathOrDie("spec"),
+ 		),
++		"resource.k8s.io/v1": fieldpath.NewSet(
++			fieldpath.MakePathOrDie("metadata"),
++			fieldpath.MakePathOrDie("spec"),
++		),
+ 	}
+ 
+ 	return fields
+diff --git a/pkg/registry/resource/devicetaintrule/strategy_test.go b/pkg/registry/resource/devicetaintrule/strategy_test.go
+index 13c037b31e..ab4a6a39d8 100644
+--- a/pkg/registry/resource/devicetaintrule/strategy_test.go
++++ b/pkg/registry/resource/devicetaintrule/strategy_test.go
+@@ -82,6 +82,21 @@ func TestDeviceTaintRuleStrategy(t *testing.T) {
+ 	if Strategy.AllowCreateOnUpdate(context.Background()) {
+ 		t.Errorf("DeviceTaintRule should not allow create on update")
+ 	}
++	if Strategy.AllowUnconditionalUpdate(context.Background()) {
++		t.Errorf("DeviceTaintRule should not allow update without ResourceVersion when the APIVersion is unknown")
++	}
++	if Strategy.AllowUnconditionalUpdate(genericapirequest.WithRequestInfo(context.Background(), &genericapirequest.RequestInfo{APIVersion: "v1"})) {
++		t.Errorf("DeviceTaintRule should not allow update without ResourceVersion when the APIVersion is v1")
++	}
++	if Strategy.AllowUnconditionalUpdate(genericapirequest.WithRequestInfo(context.Background(), &genericapirequest.RequestInfo{APIVersion: "no-such-versison"})) {
++		t.Errorf("DeviceTaintRule should not allow update without ResourceVersion when the APIVersion is something unknown")
++	}
++	if !Strategy.AllowUnconditionalUpdate(genericapirequest.WithRequestInfo(context.Background(), &genericapirequest.RequestInfo{APIVersion: "v1beta2"})) {
++		t.Errorf("DeviceTaintRule should allow update without ResourceVersion when the APIVersion is v1beta2")
++	}
++	if !Strategy.AllowUnconditionalUpdate(genericapirequest.WithRequestInfo(context.Background(), &genericapirequest.RequestInfo{APIVersion: "v1alpha3"})) {
++		t.Errorf("DeviceTaintRule should allow update without ResourceVersion when the APIVersion is v1alpha2")
++	}
+ }
+ 
+ func TestDeviceTaintRuleStrategyCreate(t *testing.T) {
+diff --git a/pkg/registry/resource/rest/storage_resource.go b/pkg/registry/resource/rest/storage_resource.go
+index 5f90dbf3ff..abe7bcb5b2 100644
+--- a/pkg/registry/resource/rest/storage_resource.go
++++ b/pkg/registry/resource/rest/storage_resource.go
+@@ -89,6 +89,15 @@ func (p RESTStorageProvider) v1Storage(apiResourceConfigSource serverstorage.API
+ 		storage[resource] = deviceclassStorage
+ 	}
+ 
++	if resource := "devicetaintrules"; apiResourceConfigSource.ResourceEnabled(resourcev1.SchemeGroupVersion.WithResource(resource)) {
++		deviceTaintRuleStorage, deviceTaintRuleStatusStorage, err := devicetaintrulestore.NewRESTv1(restOptionsGetter)
++		if err != nil {
++			return nil, err
++		}
++		storage[resource] = deviceTaintRuleStorage
++		storage[resource+"/status"] = deviceTaintRuleStatusStorage
++	}
++
+ 	if resource := "resourceclaims"; apiResourceConfigSource.ResourceEnabled(resourcev1.SchemeGroupVersion.WithResource(resource)) {
+ 		resourceClaimStorage, resourceClaimStatusStorage, err := resourceclaimstore.NewREST(restOptionsGetter, nsClient, p.Authorizer)
+ 		if err != nil {
+@@ -121,7 +130,7 @@ func (p RESTStorageProvider) v1alpha3Storage(apiResourceConfigSource serverstora
+ 	storage := map[string]rest.Storage{}
+ 
+ 	if resource := "devicetaintrules"; apiResourceConfigSource.ResourceEnabled(resourcev1alpha3.SchemeGroupVersion.WithResource(resource)) {
+-		deviceTaintStorage, deviceTaintStatusStorage, err := devicetaintrulestore.NewREST(restOptionsGetter)
++		deviceTaintStorage, deviceTaintStatusStorage, err := devicetaintrulestore.NewRESTLegacy(restOptionsGetter)
+ 		if err != nil {
+ 			return nil, err
+ 		}
+@@ -192,7 +201,7 @@ func (p RESTStorageProvider) v1beta2Storage(apiResourceConfigSource serverstorag
+ 	}
+ 
+ 	if resource := "devicetaintrules"; apiResourceConfigSource.ResourceEnabled(resourcev1beta2.SchemeGroupVersion.WithResource(resource)) {
+-		deviceTaintRuleStorage, deviceTaintRuleStatusStorage, err := devicetaintrulestore.NewREST(restOptionsGetter)
++		deviceTaintRuleStorage, deviceTaintRuleStatusStorage, err := devicetaintrulestore.NewRESTLegacy(restOptionsGetter)
+ 		if err != nil {
+ 			return nil, err
+ 		}
+diff --git a/staging/src/k8s.io/api/resource/v1/register.go b/staging/src/k8s.io/api/resource/v1/register.go
+index dca6492256..c634e4c9af 100644
+--- a/staging/src/k8s.io/api/resource/v1/register.go
++++ b/staging/src/k8s.io/api/resource/v1/register.go
+@@ -46,6 +46,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
+ 	scheme.AddKnownTypes(SchemeGroupVersion,
+ 		&DeviceClass{},
+ 		&DeviceClassList{},
++		&DeviceTaintRule{},
++		&DeviceTaintRuleList{},
+ 		&ResourceClaim{},
+ 		&ResourceClaimList{},
+ 		&ResourceClaimTemplate{},
+diff --git a/staging/src/k8s.io/api/resource/v1/types.go b/staging/src/k8s.io/api/resource/v1/types.go
+index 5e0617cb3a..084cf8f3dd 100644
+--- a/staging/src/k8s.io/api/resource/v1/types.go
++++ b/staging/src/k8s.io/api/resource/v1/types.go
+@@ -860,6 +860,160 @@ const (
+ 	DeviceTaintEffectNoExecute DeviceTaintEffect = "NoExecute"
+ )
+ 
++// +genclient
++// +genclient:nonNamespaced
++// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
++// +k8s:prerelease-lifecycle-gen:introduced=1.37
++
++// DeviceTaintRule adds one taint to all devices which match the selector.
++// This has the same effect as if the taint was specified directly
++// in the ResourceSlice by the DRA driver.
++// +k8s:supportsSubresource="/status"
++type DeviceTaintRule struct {
++	metav1.TypeMeta `json:""`
++	// Standard object metadata
++	// +optional
++	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
++
++	// Spec specifies the selector and one taint.
++	//
++	// Changing the spec automatically increments the metadata.generation number.
++	// +required
++	Spec DeviceTaintRuleSpec `json:"spec" protobuf:"bytes,2,name=spec"`
++
++	// Status provides information about what was requested in the spec.
++	//
++	// +optional
++	Status DeviceTaintRuleStatus `json:"status,omitempty" protobuf:"bytes,3,opt,name=status"`
++}
++
++// DeviceTaintRuleSpec specifies the selector and one taint.
++type DeviceTaintRuleSpec struct {
++	// DeviceSelector defines which device(s) the taint is applied to.
++	// All selector criteria must be satisfied for a device to
++	// match. The empty selector matches all devices. Without
++	// a selector, no devices are matches.
++	//
++	// +optional
++	DeviceSelector *DeviceTaintSelector `json:"deviceSelector,omitempty" protobuf:"bytes,1,opt,name=deviceSelector"`
++
++	// The taint that gets applied to matching devices.
++	//
++	// +required
++	Taint DeviceTaint `json:"taint,omitempty" protobuf:"bytes,2,rep,name=taint"`
++}
++
++// DeviceTaintSelector defines which device(s) a DeviceTaintRule applies to.
++// The empty selector matches all devices. Without a selector, no devices
++// are matched.
++type DeviceTaintSelector struct {
++	// If DeviceClassName is set, the selectors defined there must be
++	// satisfied by a device to be selected. This field corresponds
++	// to class.metadata.name.
++	//
++	// +optional
++	//
++	// Tombstoned since 1.35 because it turned out that supporting this in all cases
++	// would depend on copying the device attributes into the ResourceClaim allocation
++	// result. Without that the eviction controller cannot evaluate these CEL expressions.
++	//
++	// DeviceClassName *string `json:"deviceClassName,omitempty" protobuf:"bytes,1,opt,name=deviceClassName"`
++
++	// If driver is set, only devices from that driver are selected.
++	// This fields corresponds to slice.spec.driver.
++	//
++	// +optional
++	Driver *string `json:"driver,omitempty" protobuf:"bytes,2,opt,name=driver"`
++
++	// If pool is set, only devices in that pool are selected.
++	//
++	// Also setting the driver name may be useful to avoid
++	// ambiguity when different drivers use the same pool name,
++	// but this is not required because selecting pools from
++	// different drivers may also be useful, for example when
++	// drivers with node-local devices use the node name as
++	// their pool name.
++	//
++	// +optional
++	Pool *string `json:"pool,omitempty" protobuf:"bytes,3,opt,name=pool"`
++
++	// If device is set, only devices with that name are selected.
++	// This field corresponds to slice.spec.devices[].name.
++	//
++	// Setting also driver and pool may be required to avoid ambiguity,
++	// but is not required.
++	//
++	// +optional
++	Device *string `json:"device,omitempty" protobuf:"bytes,4,opt,name=device"`
++
++	// Selectors contains the same selection criteria as a ResourceClaim.
++	// Currently, CEL expressions are supported. All of these selectors
++	// must be satisfied.
++	//
++	// +optional
++	// +listType=atomic
++	//
++	// Tombstoned since 1.35 because it turned out that supporting this in all cases
++	// would depend on copying the device attributes into the ResourceClaim allocation
++	// result. Without that the eviction controller cannot evaluate these CEL expressions.
++	//
++	// Selectors []DeviceSelector `json:"selectors,omitempty" protobuf:"bytes,5,rep,name=selectors"`
++}
++
++// DeviceTaintRuleStatus provides information about an on-going pod eviction.
++type DeviceTaintRuleStatus struct {
++	// Conditions provide information about the state of the DeviceTaintRule
++	// and the cluster at some point in time,
++	// in a machine-readable and human-readable format.
++	//
++	// The following condition is currently defined as part of this API, more may
++	// get added:
++	// - Type: EvictionInProgress
++	// - Status: True if there are currently pods which need to be evicted, False otherwise
++	//   (includes the effects which don't cause eviction).
++	// - Reason: not specified, may change
++	// - Message: includes information about number of pending pods and already evicted pods
++	//   in a human-readable format, updated periodically, may change
++	//
++	// For `effect: None`, the condition above gets set once for each change to
++	// the spec, with the message containing information about what would happen
++	// if the effect was `NoExecute`. This feedback can be used to decide whether
++	// changing the effect to `NoExecute` will work as intended. It only gets
++	// set once to avoid having to constantly update the status.
++	//
++	// Must have 8 or fewer entries.
++	//
++	// +optional
++	// +listType=map
++	// +listMapKey=type
++	// +patchStrategy=merge
++	// +patchMergeKey=type
++	// +k8s:alpha(since: "1.37")=+k8s:optional
++	// +k8s:alpha(since: "1.37")=+k8s:listType=map
++	// +k8s:alpha(since: "1.37")=+k8s:listMapKey=type
++	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
++}
++
++// DeviceTaintRuleStatusMaxConditions is the maximum number of conditions in DeviceTaintRuleStatus.
++const DeviceTaintRuleStatusMaxConditions = 8
++
++// DeviceTaintConditionEvictionInProgress is the publicly documented condition type for the DeviceTaintRuleStatus.
++const DeviceTaintConditionEvictionInProgress = "EvictionInProgress"
++
++// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
++// +k8s:prerelease-lifecycle-gen:introduced=1.37
++
++// DeviceTaintRuleList is a collection of DeviceTaintRules.
++type DeviceTaintRuleList struct {
++	metav1.TypeMeta `json:""`
++	// Standard list metadata
++	// +optional
++	metav1.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
++
++	// Items is the list of DeviceTaintRules.
++	Items []DeviceTaintRule `json:"items" protobuf:"bytes,2,rep,name=items"`
++}
++
+ // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+ // +k8s:prerelease-lifecycle-gen:introduced=1.34
+ 
+diff --git a/staging/src/k8s.io/dynamic-resource-allocation/client/client.go b/staging/src/k8s.io/dynamic-resource-allocation/client/client.go
+index e6c745cc0c..11e16795f3 100644
+--- a/staging/src/k8s.io/dynamic-resource-allocation/client/client.go
++++ b/staging/src/k8s.io/dynamic-resource-allocation/client/client.go
+@@ -80,6 +80,16 @@ func (c *Client) DeviceClasses() cgoresource.DeviceClassInterface {
+ 	)
+ }
+ 
++func (c *Client) DeviceTaintRules() cgoresource.DeviceTaintRuleInterface {
++	return newConvertingClient(c,
++		c.clientSet.ResourceV1().DeviceTaintRules(),
++		// DeviceTaintRules isn't in v1beta1 but newConvertingClient expects this.
++		// We can simply treat it like v1beta2.
++		c.clientSet.ResourceV1beta2().DeviceTaintRules(),
++		c.clientSet.ResourceV1beta2().DeviceTaintRules(),
++	)
++}
++
+ func (c *Client) ResourceClaims(namespace string) cgoresource.ResourceClaimInterface {
+ 	return newConvertingClient(c,
+ 		c.clientSet.ResourceV1().ResourceClaims(namespace),
+diff --git a/test/integration/etcd/data.go b/test/integration/etcd/data.go
+index 5b61ca3263..e10355aa93 100644
+--- a/test/integration/etcd/data.go
++++ b/test/integration/etcd/data.go
+@@ -655,6 +655,7 @@ func GetEtcdStorageDataForNamespaceServedAt(namespace string, v string, isEmulat
+ 			Stub:              `{"metadata": {"name": "taint1name"}, "spec": {"taint": {"key": "example.com/taintkey", "value": "taintvalue", "effect": "NoSchedule"}}}`,
+ 			MutatedStub:       `{"spec": {"taint": {"effect": "NoExecute"}}}`,
+ 			ExpectedEtcdPath:  "/registry/devicetaintrules/taint1name",
++			ExpectedGVK:       gvkP("resource.k8s.io", "v1beta2", "DeviceTaintRule"),
+ 			IntroducedVersion: "1.33",
+ 			RemovedVersion:    "1.39",
+ 		},
+@@ -720,7 +721,6 @@ func GetEtcdStorageDataForNamespaceServedAt(namespace string, v string, isEmulat
+ 			Stub:              `{"metadata": {"name": "taint2name"}, "spec": {"taint": {"key": "example.com/taintkey", "value": "taintvalue", "effect": "NoSchedule"}}}`,
+ 			MutatedStub:       `{"spec": {"taint": {"effect": "NoExecute"}}}`,
+ 			ExpectedEtcdPath:  "/registry/devicetaintrules/taint2name",
+-			ExpectedGVK:       gvkP("resource.k8s.io", "v1alpha3", "DeviceTaintRule"), // v1beta2 has higher priority, but to support downgrades v1alpha3 is picked automatically.
+ 			IntroducedVersion: "1.36",
+ 			RemovedVersion:    "1.42",
+ 		},
+@@ -759,6 +759,13 @@ func GetEtcdStorageDataForNamespaceServedAt(namespace string, v string, isEmulat
+ 			ExpectedGVK:       gvkP("resource.k8s.io", "v1", "DeviceClass"),
+ 			IntroducedVersion: "1.34",
+ 		},
++		gvr("resource.k8s.io", "v1", "devicetaintrules"): {
++			Stub:              `{"metadata": {"name": "taint4name"}, "spec": {"taint": {"key": "example.com/taintkey", "value": "taintvalue", "effect": "NoSchedule"}}}`,
++			MutatedStub:       `{"spec": {"taint": {"key": "example.com/taintkey", "value": "newtaintvalue", "effect": "NoSchedule"}}}`,
++			ExpectedEtcdPath:  "/registry/devicetaintrules/taint4name",
++			ExpectedGVK:       gvkP("resource.k8s.io", "v1beta2", "DeviceTaintRule"), // v1 has higher priority, but to support downgrades v1beta2 is picked manually in default_storage_factory_builder.go.
++			IntroducedVersion: "1.37",
++		},
+ 		gvr("resource.k8s.io", "v1", "resourceclaims"): {
+ 			Stub:              `{"metadata": {"name": "claim4name"}, "spec": {"devices": {"requests": [{"name": "req-0", "exactly": {"deviceClassName": "example-class", "allocationMode": "ExactCount", "count": 1}}]}}}`,
+ 			MutatedStub:       `{"spec": {"devices": {"requests": [{"name": "req-0", "exactly": {"deviceClassName": "other-class"}}]}}}`,

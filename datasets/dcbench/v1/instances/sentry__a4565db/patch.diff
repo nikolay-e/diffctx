@@ -1,0 +1,513 @@
+From a4565dbb95fc245d9294733613da8818a7417f07 Mon Sep 17 00:00:00 2001
+From: Nate Moore <natemoo-re@users.noreply.github.com>
+Date: Thu, 13 Nov 2025 13:41:22 -0600
+Subject: [PATCH] feat(ui2): new splash loader (#101654)
+
+Adds a new splash loader animation for UI2. With JS enabled, the
+animation loops infinitely.
+
+
+
+https://github.com/user-attachments/assets/cba0dbf9-378e-4203-8577-97fcf7690ad8
+
+
+- Updates `src/sentry/web/frontend/react_page.py` to expose
+`prefers_chonk_ui` flag
+- Adds `src/sentry/templates/sentry/partial/loader.html` with inlined
+SVG when `prefers_chonk_ui` is true, fallback to previous UI if false
+- Adds `src/sentry/static/sentry/images/splash-loader.svg` and
+`static/images/splash-loader.svg` which are the same files
+---
+ src/sentry/templates/sentry/base-react.html   |  13 +-
+ .../templates/sentry/partial/loader.html      | 144 ++++++++++++++++++
+ src/sentry/templatetags/sentry_helpers.py     |  17 ++-
+ src/sentry/web/frontend/react_page.py         |  10 ++
+ static/images/sentry-loader.svg               | Bin 1009 -> 0 bytes
+ static/index.ejs                              | 123 ++++++++++++++-
+ static/less/base.less                         |   4 +-
+ static/less/shared-components.less            |  53 +++++++
+ 8 files changed, 338 insertions(+), 26 deletions(-)
+ create mode 100644 src/sentry/templates/sentry/partial/loader.html
+ delete mode 100644 static/images/sentry-loader.svg
+
+diff --git a/src/sentry/templates/sentry/base-react.html b/src/sentry/templates/sentry/base-react.html
+index ab3e218318e..2e490fe0217 100644
+--- a/src/sentry/templates/sentry/base-react.html
++++ b/src/sentry/templates/sentry/base-react.html
+@@ -4,18 +4,7 @@
+ 
+ {% block body %}
+   <div id="blk_router">
+-    <div class="loading triangle">
+-      <div class="loading-mask"></div>
+-
+-      <div class="loading-indicator" data-test-id="loading-indicator">
+-        <img src="{% asset_url 'sentry' 'images/sentry-loader.svg' %}" />
+-      </div>
+-
+-      <div class="loading-message">
+-          <p>{% loading_message %}</p>
+-        <p><small>You may need to disable adblocking extensions to load Sentry.</small></p>
+-      </div>
+-    </div>
++    {% include "sentry/partial/loader.html" %}
+   </div>
+ {% endblock %}
+ 
+diff --git a/src/sentry/templates/sentry/partial/loader.html b/src/sentry/templates/sentry/partial/loader.html
+new file mode 100644
+index 00000000000..5b1c8bc0a37
+--- /dev/null
++++ b/src/sentry/templates/sentry/partial/loader.html
+@@ -0,0 +1,144 @@
++{% load sentry_assets sentry_helpers %}
++
++{% if prefers_chonk_ui %}
++<div class="splash-loader">
++  <div class="loading-mask"></div>
++
++  <div class="loading-indicator" data-test-id="loading-indicator">
++      <svg width="400" height="400" viewBox="0 0 400 400" fill="none" xmlns="http://www.w3.org/2000/svg">
++        <style>
++            :root {
++                --delay: 0ms;
++                --duration: 900ms;
++                --stagger: 50ms;
++            }
++            path {
++                stroke-dashoffset: 1150;
++                stroke-dasharray: 1150;
++                animation: draw calc(var(--duration) + (var(--i) * var(--stagger)) + (1.3s - var(--delay))) calc(var(--delay) + ((3 - var(--i)) * var(--stagger))) ease-out;
++            }
++            [data-index="0"] {
++                stroke: #F0369A;
++            }
++            [data-index="1"] {
++                stroke: #67C800;
++            }
++            [data-index="2"] {
++                stroke: #7553FF;
++            }
++            @keyframes draw {
++                0% {
++                    stroke-dashoffset: 1150;
++                }
++                40% {
++                    stroke-dashoffset: 0;
++                }
++                100% {
++                    stroke-dashoffset: -1150;
++                }
++            }
++        </style>
++        <script>
++            const host = document.currentScript.closest('svg');
++            host.addEventListener('animationend', (event) => {
++                event.target.style.animationName = 'none';
++                setTimeout(() => {
++                    event.target.style.animationName = '';
++                }, 0);
++            })
++        </script>
++        <defs>
++            <filter id="goo">
++                <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="blur" />
++                <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 34 -6" result="goo" />
++                <feComposite in="SourceGraphic" in2="goo" operator="atop"/>
++            </filter>
++        </defs>
++        <mask id="loader-mask" width="300" height="265" x="50" y="72" maskUnits="userSpaceOnUse" style="mask-type:alpha">
++            <path fill="#000" d="M223.687 85.56a28.02 28.02 0 0 0-24-13.559 28.02 28.02 0 0 0-24 13.559l-39.48 67.62a193.26 193.26 0 0 1 106.5 159.96h-27.72a166.07 166.07 0 0 0-92.76-136.32L85.687 240a95.52 95.52 0 0 1 55.38 73.02h-63.66a4.55 4.55 0 0 1-3.659-2.325 4.56 4.56 0 0 1-.06-4.335l17.64-30a64.4 64.4 0 0 0-20.16-11.4l-17.46 30a27.24 27.24 0 0 0 2.023 30.435 27.2 27.2 0 0 0 8.116 7.005 27.96 27.96 0 0 0 13.56 3.6h87.18a116.41 116.41 0 0 0-48-103.86l13.86-24a143.22 143.22 0 0 1 61.8 127.86h73.86a215.28 215.28 0 0 0-98.46-190.8l28.02-48a4.62 4.62 0 0 1 6.3-1.62c3.18 1.74 121.74 208.62 123.96 211.02a4.562 4.562 0 0 1-4.08 6.78h-28.56q.54 11.46 0 22.86h28.68a27.54 27.54 0 0 0 27.72-27.66 26.94 26.94 0 0 0-3.72-13.68z"/>
++        </mask>
++        <g id="root" mask="url(#loader-mask)" filter="url('#goo')">
++            <path stroke="#F0369A" stroke-width="4" d="M92.5 268.7 88 276.6 71.4 305v.1a8 8 0 000 7.2l.2.4a8 8 0 006 3.4h67.3l-.6-3.4A99 99 0 0097.2 242.5l-6.8-4 33.4-57.8 6.9 4a163 163 0 0181.6 128.8l.2 2.7h33.7L246 313A196 196 0 00147.8 155.7l-7-4L178.6 87v-.1a25 25 0 0133-9.1l.8.3a25 25 0 019 8.9h.1v.2L343.7 296.4a24 24 0 013.3 12v.4a24.5 24.5 0 01-24.6 24.4H291.5"/>
++            <g data-index="0" style="--delay:0s;" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
++                <path style="--i: 1;" d="m82.8 253.5-12.7 22-12.5 21.2-.2.3v.1l-.2.2v.3a24 24 0 00.3 22.4l.3.6A24 24 0 0076.4 332h87l-3.2-21.8A115 115 0 00112 233l17.6-30.4a147 147 0 0166.8 112l1.3 17.5h65.6l-1.3-20.2a212 212 0 00-99.3-165.8l29.6-50.8a9 9 0 013.3-3.1 9 9 0 0112.1 3.1l122.2 209.2h.1a8 8 0 011 4v.2a8.5 8.5 0 01-8.6 8.5h-38.9"/>
++                <path style="--i: 0;" d="M92.5 268.7 88 276.6 71.4 305v.1a8 8 0 000 7.2l.2.4a8 8 0 006 3.4h67.3l-.6-3.4A99 99 0 0097.2 242.5l-6.8-4 33.4-57.8 6.9 4a163 163 0 0181.6 128.8l.2 2.7h33.7L246 313A196 196 0 00147.8 155.7l-7-4L178.6 87v-.1a25 25 0 0133-9.1l.8.3a25 25 0 019 8.9h.1v.2L343.7 296.4a24 24 0 013.3 12v.4a24.5 24.5 0 01-24.6 24.4H291.5"/>
++                <path style="--i: 2;" d="M85.7 264.5l-8.7 15-12.5 21.3-.1.2-.1.3A15.6 15.6 0 0076.9 324h77.2l-1.8-12.6a107 107 0 00-51-75.8l25.5-44.1A155 155 0 01204.3 314l.8 10.1h49.7l-.8-11.7A204 204 0 00151.8 148.9l33.6-57.7a17 17 0 0129.2 0L336.8 300.4a16 16 0 012.2 8.2 16.5 16.5 0 01-16.6 16.6H291.5"/>
++            </g>
++            <g data-index="1" style="--delay:180ms;" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
++                <path style="--i: 2;" d="m82.8 253.5-12.7 22-12.5 21.2-.2.3v.1l-.2.2v.3a24 24 0 00.3 22.4l.3.6A24 24 0 0076.4 332h87l-3.2-21.8A115 115 0 00112 233l17.6-30.4a147 147 0 0166.8 112l1.3 17.5h65.6l-1.3-20.2a212 212 0 00-99.3-165.8l29.6-50.8a9 9 0 013.3-3.1 9 9 0 0112.1 3.1l122.2 209.2h.1a8 8 0 011 4v.2a8.5 8.5 0 01-8.6 8.5h-38.9"/>
++                <path style="--i: 0;" d="M92.5 268.7 88 276.6 71.4 305v.1a8 8 0 000 7.2l.2.4a8 8 0 006 3.4h67.3l-.6-3.4A99 99 0 0097.2 242.5l-6.8-4 33.4-57.8 6.9 4a163 163 0 0181.6 128.8l.2 2.7h33.7L246 313A196 196 0 00147.8 155.7l-7-4L178.6 87v-.1a25 25 0 0133-9.1l.8.3a25 25 0 019 8.9h.1v.2L343.7 296.4a24 24 0 013.3 12v.4a24.5 24.5 0 01-24.6 24.4H291.5"/>
++                <path style="--i: 1;" d="M85.7 264.5l-8.7 15-12.5 21.3-.1.2-.1.3A15.6 15.6 0 0076.9 324h77.2l-1.8-12.6a107 107 0 00-51-75.8l25.5-44.1A155 155 0 01204.3 314l.8 10.1h49.7l-.8-11.7A204 204 0 00151.8 148.9l33.6-57.7a17 17 0 0129.2 0L336.8 300.4a16 16 0 012.2 8.2 16.5 16.5 0 01-16.6 16.6H291.5"/>
++            </g>
++            <g data-index="2" style="--delay:400ms;" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
++                <path style="--i: 0;" d="m82.8 253.5-12.7 22-12.5 21.2-.2.3v.1l-.2.2v.3a24 24 0 00.3 22.4l.3.6A24 24 0 0076.4 332h87l-3.2-21.8A115 115 0 00112 233l17.6-30.4a147 147 0 0166.8 112l1.3 17.5h65.6l-1.3-20.2a212 212 0 00-99.3-165.8l29.6-50.8a9 9 0 013.3-3.1 9 9 0 0112.1 3.1l122.2 209.2h.1a8 8 0 011 4v.2a8.5 8.5 0 01-8.6 8.5h-38.9"/>
++                <path style="--i: 3;" d="M92.5 268.7 88 276.6 71.4 305v.1a8 8 0 000 7.2l.2.4a8 8 0 006 3.4h67.3l-.6-3.4A99 99 0 0097.2 242.5l-6.8-4 33.4-57.8 6.9 4a163 163 0 0181.6 128.8l.2 2.7h33.7L246 313A196 196 0 00147.8 155.7l-7-4L178.6 87v-.1a25 25 0 0133-9.1l.8.3a25 25 0 019 8.9h.1v.2L343.7 296.4a24 24 0 013.3 12v.4a24.5 24.5 0 01-24.6 24.4H291.5"/>
++                <path style="--i: 1;" d="M85.7 264.5l-8.7 15-12.5 21.3-.1.2-.1.3A15.6 15.6 0 0076.9 324h77.2l-1.8-12.6a107 107 0 00-51-75.8l25.5-44.1A155 155 0 01204.3 314l.8 10.1h49.7l-.8-11.7A204 204 0 00151.8 148.9l33.6-57.7a17 17 0 0129.2 0L336.8 300.4a16 16 0 012.2 8.2 16.5 16.5 0 01-16.6 16.6H291.5"/>
++            </g>
++        </g>
++    </svg>
++  </div>
++
++  <div class="loading-message">
++    <p>{% loading_message %}</p>
++    <p><small>You may need to disable adblocking extensions to load Sentry.</small></p>
++    <script>
++      function randomFrom(arr) {
++        return arr[Math.floor(Math.random() * arr.length)];
++      }
++      function randomBetween(min, max) {
++        return Math.floor(Math.random() * (max - min - 1) + min);
++      }
++      customElements.define('scraps-bleep', class extends HTMLElement {
++        constructor() {
++          super();
++          this.shapes = '◆●▴▪×'.split('');
++          this.chars = '@#$%&*!+'.split('');
++          this.length = this.textContent.trim().length;
++        }
++        random() {
++          const set = new Set();
++          let hasShape = false;
++          while (set.size < this.length) {
++            if (!hasShape && Math.random() > 0.75) {
++              set.add(randomFrom(this.shapes));
++              hasShape = true;
++            } else {
++              set.add(randomFrom(this.chars));
++            }
++          }
++          return Array.from(set.values()).join('');
++        }
++        shuffle() {
++          this.raf = requestAnimationFrame(() => {
++            this.textContent = this.random();
++            this.timeout = setTimeout(() => this.shuffle(), randomBetween(50, 250));
++          })
++        }
++        connectedCallback() {
++          this.shuffle();
++        }
++        disconnectedCallback() {
++          cancelAnimationFrame(this.raf);
++          clearTimeout(this.timeout);
++        }
++      })
++    </script>
++  </div>
++</div>
++
++{% else %}
++
++<div class="loading triangle">
++  <div class="loading-mask"></div>
++
++  <div class="loading-indicator" data-test-id="loading-indicator">
++      <img src="{% asset_url 'sentry' 'images/sentry-loader.svg' %}">
++  </div>
++
++  <div class="loading-message">
++    <p>{% loading_message %}</p>
++    <p><small>You may need to disable adblocking extensions to load Sentry.</small></p>
++  </div>
++</div>
++
++{% endif %}
+diff --git a/src/sentry/templatetags/sentry_helpers.py b/src/sentry/templatetags/sentry_helpers.py
+index cb359821779..d5764aa2101 100644
+--- a/src/sentry/templatetags/sentry_helpers.py
++++ b/src/sentry/templatetags/sentry_helpers.py
+@@ -9,6 +9,7 @@ from urllib.parse import quote, urlencode
+ from django import template
+ from django.template.defaultfilters import stringfilter
+ from django.utils import timezone as django_timezone
++from django.utils.safestring import mark_safe
+ from django.utils.translation import gettext as _
+ from packaging.version import parse as parse_version
+ 
+@@ -110,13 +111,17 @@ def org_url(organization, path, query=None, fragment=None) -> str:
+ @register.simple_tag
+ def loading_message():
+     options = [
+-        "Please wait while we load an obnoxious amount of JavaScript.",
+-        "Escaping node_modules gravity well.",
+-        "Parallelizing webpack builders.",
+-        "Awaiting solution to the halting problem.",
+-        "Collapsing wavefunctions.",
++        "Loading a <scraps-bleep>&#%!</scraps-bleep>-ton of JavaScript&hellip;",
++        "Escaping <code>node_modules</code> gravity well&hellip;",
++        "Parallelizing webpack builders&hellip;",
++        "Awaiting solution to the halting problem&hellip;",
++        "Collapsing wavefunctions&hellip;",
++        "Reticulating splines&hellip;",
++        "Making it make sense&hellip;",
++        "Deploying swarm of autonomous agents&hellip;",
++        "Installing <code>left-pad</code>&hellip;",
+     ]
+-    return random.choice(options)
++    return mark_safe(random.choice(options))
+ 
+ 
+ @register.simple_tag
+diff --git a/src/sentry/web/frontend/react_page.py b/src/sentry/web/frontend/react_page.py
+index a11780d8e21..696ac919e18 100644
+--- a/src/sentry/web/frontend/react_page.py
++++ b/src/sentry/web/frontend/react_page.py
+@@ -95,6 +95,15 @@ class ReactMixin:
+         ):
+             user_theme = f"theme-{react_config['user']['options']['theme']}"
+ 
++        prefers_chonk_ui = False
++        if features.has("organizations:chonk-ui", org_context):
++            if features.has("organizations:chonk-ui-enforce", org_context):
++                prefers_chonk_ui = True
++            elif react_config.get("user", None) and react_config["user"].get("options", {}).get(
++                "prefersChonkUI", False
++            ):
++                prefers_chonk_ui = react_config["user"]["options"]["prefersChonkUI"]
++
+         context = {
+             "CSRF_COOKIE_NAME": settings.CSRF_COOKIE_NAME,
+             "meta_tags": [
+@@ -109,6 +118,7 @@ class ReactMixin:
+             "org_context": org_context,
+             "react_config": react_config,
+             "user_theme": user_theme,
++            "prefers_chonk_ui": prefers_chonk_ui,
+         }
+ 
+         # Force a new CSRF token to be generated and set in user's
+diff --git a/static/images/sentry-loader.svg b/static/images/sentry-loader.svg
+deleted file mode 100644
+index d16a69d3aa669ea5d6e8271cc5d44e7dec4cf677..0000000000000000000000000000000000000000
+GIT binary patch
+literal 0
+HcmV?d00001
+
+literal 1009
+zcmaJ=+is&U5PjdTu&5%X5;g{dxg<pUD-Ia&me`T)G|5K%`wpbrZBun$@OaLd3une#
+z_u8Y&Vbrb;2Jeqm6rIm!a%RNXK1wL15ikODR;?fEpripBr0NI1*t@Os*HP|%zQ}85
+z#X&kWn%>}7<<x$Zx0J4K<|rEFuN9rrY!&kSgJ;vJ(MwzH$CF*t=PBj?!1xnL(&OcM
+z;@P)&KI7A4AMU914a(lU720*i9xB&}QLf`>WQ`YIu4ya#d*w$CDYFL_=c~}0|0HAl
+zp6*K{trh1RU80@0=0)OGxWROtlfGh<PK<#z>FV|srPH*H?lNy%*}2{JDExp_TL+^N
+zt<pW7H4hMoIo5$TS_bGX&D+$ncgLu-Y{an+tU2lSllzxZ`rQx74+Y97P6<Of;SG*S
+zju>GiLmbW&@gXiq(NG*yQeaL>40re>a7z*rqZn?CBq+lr;)LNCTnWliT+U!gio3;t
+zGe8udQ*j6`2*(V{;v^#(PE$17IaJK&<SCl*IGw`*PN2PvByd7Ugd;jK3N2;{$(tB_
+zkQY$|34zZCXtM~S-8Q=Gcybb5>HyTaF5kh*t`43)tGXy(2STfZ@XF|FS@3zDD0Qeg
+z?Nx*K^0$(9P0BK)A<0+>>!oz3wDK}s`12xu<>z^b31=aRlMuRvb^9B&xeu^<f(Q6!
+jKWxnAeO<A!s#m(o=n5vb`bZbnitD^z%U{Do-u?Ik{*gE<
+
+diff --git a/static/index.ejs b/static/index.ejs
+index f4da40ebd30..48fc13a2d79 100644
+--- a/static/index.ejs
++++ b/static/index.ejs
+@@ -44,16 +44,127 @@
+     <% } %>
+ 
+     <div id="blk_router">
+-      <div class="loading triangle">
++      <div class="splash-loader">
+         <div class="loading-mask"></div>
+         <div class="loading-indicator" data-test-id="loading-indicator">
+-          <img src="<%=require('sentry-images/sentry-loader.svg')%>" />
++            <svg width="400" height="400" viewBox="0 0 400 400" fill="none" xmlns="http://www.w3.org/2000/svg">
++              <style>
++                  :root {
++                      --delay: 0ms;
++                      --duration: 900ms;
++                      --stagger: 50ms;
++                  }
++                  path {
++                      stroke-dashoffset: 1150;
++                      stroke-dasharray: 1150;
++                      animation: draw calc(var(--duration) + (var(--i) * var(--stagger)) + (1.3s - var(--delay))) calc(var(--delay) + ((3 - var(--i)) * var(--stagger))) ease-out;
++                  }
++                  [data-index="0"] {
++                      stroke: #F0369A;
++                  }
++                  [data-index="1"] {
++                      stroke: #67C800;
++                  }
++                  [data-index="2"] {
++                      stroke: #7553FF;
++                  }
++                  @keyframes draw {
++                      0% {
++                          stroke-dashoffset: 1150;
++                      }
++                      40% {
++                          stroke-dashoffset: 0;
++                      }
++                      100% {
++                          stroke-dashoffset: -1150;
++                      }
++                  }
++              </style>
++              <script>
++                  const host = document.currentScript.closest('svg');
++                  host.addEventListener('animationend', (event) => {
++                      event.target.style.animationName = 'none';
++                      setTimeout(() => {
++                          event.target.style.animationName = '';
++                      }, 0);
++                  })
++              </script>
++              <defs>
++                  <filter id="goo">
++                      <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="blur" />
++                      <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 34 -6" result="goo" />
++                      <feComposite in="SourceGraphic" in2="goo" operator="atop"/>
++                  </filter>
++              </defs>
++              <mask id="loader-mask" width="300" height="265" x="50" y="72" maskUnits="userSpaceOnUse" style="mask-type:alpha">
++                  <path fill="#000" d="M223.687 85.56a28.02 28.02 0 0 0-24-13.559 28.02 28.02 0 0 0-24 13.559l-39.48 67.62a193.26 193.26 0 0 1 106.5 159.96h-27.72a166.07 166.07 0 0 0-92.76-136.32L85.687 240a95.52 95.52 0 0 1 55.38 73.02h-63.66a4.55 4.55 0 0 1-3.659-2.325 4.56 4.56 0 0 1-.06-4.335l17.64-30a64.4 64.4 0 0 0-20.16-11.4l-17.46 30a27.24 27.24 0 0 0 2.023 30.435 27.2 27.2 0 0 0 8.116 7.005 27.96 27.96 0 0 0 13.56 3.6h87.18a116.41 116.41 0 0 0-48-103.86l13.86-24a143.22 143.22 0 0 1 61.8 127.86h73.86a215.28 215.28 0 0 0-98.46-190.8l28.02-48a4.62 4.62 0 0 1 6.3-1.62c3.18 1.74 121.74 208.62 123.96 211.02a4.562 4.562 0 0 1-4.08 6.78h-28.56q.54 11.46 0 22.86h28.68a27.54 27.54 0 0 0 27.72-27.66 26.94 26.94 0 0 0-3.72-13.68z"/>
++              </mask>
++              <g id="root" mask="url(#loader-mask)">
++                  <path stroke="#F0369A" stroke-width="4" d="M92.5 268.7 88 276.6 71.4 305v.1a8 8 0 000 7.2l.2.4a8 8 0 006 3.4h67.3l-.6-3.4A99 99 0 0097.2 242.5l-6.8-4 33.4-57.8 6.9 4a163 163 0 0181.6 128.8l.2 2.7h33.7L246 313A196 196 0 00147.8 155.7l-7-4L178.6 87v-.1a25 25 0 0133-9.1l.8.3a25 25 0 019 8.9h.1v.2L343.7 296.4a24 24 0 013.3 12v.4a24.5 24.5 0 01-24.6 24.4H291.5"/>
++                  <g filter="url('#goo')" data-index="0" style="--delay:0s;" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
++                      <path style="--i: 1;" d="m82.8 253.5-12.7 22-12.5 21.2-.2.3v.1l-.2.2v.3a24 24 0 00.3 22.4l.3.6A24 24 0 0076.4 332h87l-3.2-21.8A115 115 0 00112 233l17.6-30.4a147 147 0 0166.8 112l1.3 17.5h65.6l-1.3-20.2a212 212 0 00-99.3-165.8l29.6-50.8a9 9 0 013.3-3.1 9 9 0 0112.1 3.1l122.2 209.2h.1a8 8 0 011 4v.2a8.5 8.5 0 01-8.6 8.5h-38.9"/>
++                      <path style="--i: 0;" d="M92.5 268.7 88 276.6 71.4 305v.1a8 8 0 000 7.2l.2.4a8 8 0 006 3.4h67.3l-.6-3.4A99 99 0 0097.2 242.5l-6.8-4 33.4-57.8 6.9 4a163 163 0 0181.6 128.8l.2 2.7h33.7L246 313A196 196 0 00147.8 155.7l-7-4L178.6 87v-.1a25 25 0 0133-9.1l.8.3a25 25 0 019 8.9h.1v.2L343.7 296.4a24 24 0 013.3 12v.4a24.5 24.5 0 01-24.6 24.4H291.5"/>
++                      <path style="--i: 2;" d="M85.7 264.5l-8.7 15-12.5 21.3-.1.2-.1.3A15.6 15.6 0 0076.9 324h77.2l-1.8-12.6a107 107 0 00-51-75.8l25.5-44.1A155 155 0 01204.3 314l.8 10.1h49.7l-.8-11.7A204 204 0 00151.8 148.9l33.6-57.7a17 17 0 0129.2 0L336.8 300.4a16 16 0 012.2 8.2 16.5 16.5 0 01-16.6 16.6H291.5"/>
++                  </g>
++                  <g filter="url('#goo')" data-index="1" style="--delay:180ms;" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
++                      <path style="--i: 2;" d="m82.8 253.5-12.7 22-12.5 21.2-.2.3v.1l-.2.2v.3a24 24 0 00.3 22.4l.3.6A24 24 0 0076.4 332h87l-3.2-21.8A115 115 0 00112 233l17.6-30.4a147 147 0 0166.8 112l1.3 17.5h65.6l-1.3-20.2a212 212 0 00-99.3-165.8l29.6-50.8a9 9 0 013.3-3.1 9 9 0 0112.1 3.1l122.2 209.2h.1a8 8 0 011 4v.2a8.5 8.5 0 01-8.6 8.5h-38.9"/>
++                      <path style="--i: 0;" d="M92.5 268.7 88 276.6 71.4 305v.1a8 8 0 000 7.2l.2.4a8 8 0 006 3.4h67.3l-.6-3.4A99 99 0 0097.2 242.5l-6.8-4 33.4-57.8 6.9 4a163 163 0 0181.6 128.8l.2 2.7h33.7L246 313A196 196 0 00147.8 155.7l-7-4L178.6 87v-.1a25 25 0 0133-9.1l.8.3a25 25 0 019 8.9h.1v.2L343.7 296.4a24 24 0 013.3 12v.4a24.5 24.5 0 01-24.6 24.4H291.5"/>
++                      <path style="--i: 1;" d="M85.7 264.5l-8.7 15-12.5 21.3-.1.2-.1.3A15.6 15.6 0 0076.9 324h77.2l-1.8-12.6a107 107 0 00-51-75.8l25.5-44.1A155 155 0 01204.3 314l.8 10.1h49.7l-.8-11.7A204 204 0 00151.8 148.9l33.6-57.7a17 17 0 0129.2 0L336.8 300.4a16 16 0 012.2 8.2 16.5 16.5 0 01-16.6 16.6H291.5"/>
++                  </g>
++                  <g filter="url('#goo')" data-index="2" style="--delay:800ms;" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
++                      <path style="--i: 0;" d="m82.8 253.5-12.7 22-12.5 21.2-.2.3v.1l-.2.2v.3a24 24 0 00.3 22.4l.3.6A24 24 0 0076.4 332h87l-3.2-21.8A115 115 0 00112 233l17.6-30.4a147 147 0 0166.8 112l1.3 17.5h65.6l-1.3-20.2a212 212 0 00-99.3-165.8l29.6-50.8a9 9 0 013.3-3.1 9 9 0 0112.1 3.1l122.2 209.2h.1a8 8 0 011 4v.2a8.5 8.5 0 01-8.6 8.5h-38.9"/>
++                      <path style="--i: 3;" d="M92.5 268.7 88 276.6 71.4 305v.1a8 8 0 000 7.2l.2.4a8 8 0 006 3.4h67.3l-.6-3.4A99 99 0 0097.2 242.5l-6.8-4 33.4-57.8 6.9 4a163 163 0 0181.6 128.8l.2 2.7h33.7L246 313A196 196 0 00147.8 155.7l-7-4L178.6 87v-.1a25 25 0 0133-9.1l.8.3a25 25 0 019 8.9h.1v.2L343.7 296.4a24 24 0 013.3 12v.4a24.5 24.5 0 01-24.6 24.4H291.5"/>
++                      <path style="--i: 1;" d="M85.7 264.5l-8.7 15-12.5 21.3-.1.2-.1.3A15.6 15.6 0 0076.9 324h77.2l-1.8-12.6a107 107 0 00-51-75.8l25.5-44.1A155 155 0 01204.3 314l.8 10.1h49.7l-.8-11.7A204 204 0 00151.8 148.9l33.6-57.7a17 17 0 0129.2 0L336.8 300.4a16 16 0 012.2 8.2 16.5 16.5 0 01-16.6 16.6H291.5"/>
++                  </g>
++              </g>
++          </svg>
+         </div>
++
+         <div class="loading-message">
+-          <p>Please wait while we load an obnoxious amount of JavaScript.</p>
+-          <p>
+-            <small>You may need to disable adblocking extensions to load Sentry.</small>
+-          </p>
++          <p>Loading a <scraps-grawlix>&#%!</scraps-grawlix>-ton of JavaScript&hellip;</p>
++          <p><small>You may need to disable adblocking extensions to load Sentry.</small></p>
++          <script>
++            function randomFrom(arr) {
++              return arr[Math.floor(Math.random() * arr.length)];
++            }
++            function randomBetween(min, max) {
++              return Math.floor(Math.random() * (max - min - 1) + min);
++            }
++            customElements.define('scraps-grawlix', class extends HTMLElement {
++              constructor() {
++                super();
++                this.shapes = '◆●▴▪×'.split('');
++                this.chars = '@#$%&*!+'.split('');
++                this.length = this.textContent.trim().length;
++              }
++              random() {
++                const set = new Set();
++                let hasShape = false;
++                while (set.size < this.length) {
++                  if (!hasShape && Math.random() > 0.75) {
++                    set.add(randomFrom(this.shapes));
++                    hasShape = true;
++                  } else {
++                    set.add(randomFrom(this.chars));
++                  }
++                }
++                return Array.from(set.values()).join('');
++              }
++              shuffle() {
++                this.raf = requestAnimationFrame(() => {
++                  this.textContent = this.random();
++                  this.timeout = setTimeout(() => this.shuffle(), randomBetween(50, 250));
++                })
++              }
++              connectedCallback() {
++                this.shuffle();
++              }
++              disconnectedCallback() {
++                cancelAnimationFrame(this.raf);
++                clearTimeout(this.timeout);
++              }
++            })
++          </script>
+         </div>
+       </div>
+     </div>
+diff --git a/static/less/base.less b/static/less/base.less
+index c5b7f38902d..7808ae3c68d 100644
+--- a/static/less/base.less
++++ b/static/less/base.less
+@@ -37,14 +37,14 @@ body.theme-dark {
+   // theme.tokens.background.primary
+   background: #241D2A;
+   // theme.tokens.content.primary
+-  color: #D6D0DC;
++  color: #F6F5FA;
+ }
+ body.theme-system {
+   @media (prefers-color-scheme: dark) {
+     // theme.tokens.background.primary
+     background: #241D2A;
+     // theme.content.primary
+-    color: #D6D0DC;
++    color: #F6F5FA;
+   }
+ }
+ 
+diff --git a/static/less/shared-components.less b/static/less/shared-components.less
+index 38196353528..4a1f53e98db 100644
+--- a/static/less/shared-components.less
++++ b/static/less/shared-components.less
+@@ -537,6 +537,59 @@ table.table.key-value {
+   }
+ }
+ 
++// UI2 loader
++.splash-loader {
++  position: absolute;
++  top: 50%;
++  left: 50%;
++  transform: translate(-50%, -50%);
++  margin: 0;
++  display: flex;
++  flex-direction: column;
++  align-items: center;
++  justify-content: center;
++
++  .loading-indicator {
++    height: 256px;
++    width: 256px;
++    display: flex;
++    align-items: center;
++    justify-content: center;
++
++    animation: none;
++    border: 0;
++    overflow: hidden;
++    border-radius: 0;
++  }
++
++  .loading-message {
++    font-family: @font-family-code;
++    text-align: center;
++  }
++}
++.splash-loader code {
++  margin: 0;
++  padding: 0;
++  border: none;
++  padding-inline: 0.3ch;
++  margin-inline: -0.15ch;
++  border-radius: 2px;
++  text-box-edge: text text;
++  text-box-trim: trim-both;
++
++  color: #C8007E;
++  background: color-mix(in oklab, currentColor, transparent 92%);
++}
++.theme-dark .splash-loader code {
++  color: #EA95B9;
++}
++.splash-loader small {
++  color: #6A6772;
++}
++.theme-dark .splash-loader small {
++  color: #B5B0BD;
++}
++
+ .theme-dark .loading.triangle .loading-indicator {
+   filter: invert(100%);
+   opacity: 0.8;

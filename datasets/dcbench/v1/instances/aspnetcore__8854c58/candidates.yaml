@@ -1,0 +1,124 @@
+generators:
+  cochange: 15
+  bm25: 15
+  graph: 0
+  random: 10
+candidates:
+- path: .azure/pipelines/quarantined-tests.yml
+  sources:
+  - random
+- path: .github/policies/resourceManagement.yml
+  sources:
+  - cochange
+- path: .github/workflows/cswin32-update.md
+  sources:
+  - bm25
+- path: .github/workflows/issue-triage-agent.md
+  sources:
+  - bm25
+- path: .github/workflows/test-quarantine.lock.yml
+  sources:
+  - bm25
+- path: .github/workflows/test-quarantine.md
+  sources:
+  - bm25
+- path: AspNetCore.slnx
+  sources:
+  - cochange
+- path: Directory.Build.props
+  sources:
+  - bm25
+- path: docs/UpdatingMajorVersionAndTFM.md
+  sources:
+  - bm25
+- path: eng/Version.Details.props
+  sources:
+  - cochange
+- path: eng/Version.Details.xml
+  sources:
+  - cochange
+- path: eng/build.ps1
+  sources:
+  - bm25
+- path: eng/common/build.ps1
+  sources:
+  - cochange
+- path: eng/common/build.sh
+  sources:
+  - cochange
+- path: eng/common/core-templates/steps/install-microbuild.yml
+  sources:
+  - cochange
+- path: eng/common/core-templates/steps/source-build.yml
+  sources:
+  - cochange
+- path: eng/common/tools.ps1
+  sources:
+  - cochange
+  - bm25
+- path: eng/common/tools.sh
+  sources:
+  - cochange
+- path: eng/targets/ResolveReferences.targets
+  sources:
+  - bm25
+- path: global.json
+  sources:
+  - cochange
+- path: src/Components/AGENTS.md
+  sources:
+  - bm25
+- path: src/Components/CustomElements/src/js/rollup.config.mjs
+  sources:
+  - random
+- path: src/Components/Endpoints/test/TempData/TempDataProviderServiceExtensionsTest.cs
+  sources:
+  - random
+- path: src/Components/Testing/testassets/TestApp.E2E.Tests/Tests/AsyncStateTests.cs
+  sources:
+  - random
+- path: src/Components/benchmarkapps/Wasm.Performance/dockerfile
+  sources:
+  - cochange
+- path: src/Components/test/testassets/Components.TestServer/RazorComponentEndpointsStartup.cs
+  sources:
+  - cochange
+- path: src/DefaultBuilder/src/WebApplicationBuilder.cs
+  sources:
+  - bm25
+- path: src/DefaultBuilder/test/Microsoft.AspNetCore.Tests/WebApplicationTests.cs
+  sources:
+  - bm25
+- path: src/HealthChecks/HealthChecks/src/HealthCheckService.cs
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/HtmlGenerationWebSite/Views/HtmlGeneration_Home/EmployeeList.cshtml
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/RazorPagesWebSite/Pages/CustomPrefix/Custom.cshtml
+  sources:
+  - random
+- path: src/ProjectTemplates/README.md
+  sources:
+  - bm25
+- path: src/ProjectTemplates/Shared/Project.cs
+  sources:
+  - bm25
+- path: src/ProjectTemplates/Web.ItemTemplates/content/RazorView/.template.config/template.json
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ProjectTemplates/BlazorWebWorker-CSharp.csproj.in
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ProjectTemplates/Microsoft.DotNet.Web.ProjectTemplates.csproj
+  sources:
+  - cochange
+- path: src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWeb-CSharp/.template.config/template.json
+  sources:
+  - cochange
+- path: src/ProjectTemplates/Web.ProjectTemplates/content/Worker-FSharp/.template.config/localize/templatestrings.zh-Hant.json
+  sources:
+  - random
+- path: src/Servers/IIS/IIS/test/Common.LongTests/StartupTests.cs
+  sources:
+  - bm25

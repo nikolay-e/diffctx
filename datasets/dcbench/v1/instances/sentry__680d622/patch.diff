@@ -1,0 +1,2612 @@
+From 680d622829a22130403dc16e492a583e4c30c3cb Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 12 Feb 2026 18:13:07 +0000
+Subject: [PATCH] new(infra): Add sandbox infrastructure for AI agents and fast
+ dev setup
+
+Implements a 4-phase plan for Sentry development sandboxes:
+
+Phase 1 - Pre-built image pipeline:
+- Dockerfile.agent: Python .venv + Node node_modules + codebase
+- Dockerfile.postgres: Pre-migrated Postgres with all 4 databases
+- CI workflow for nightly + on-change builds to GHCR
+- Content-hash cache keys for idempotent rebuilds
+
+Phase 2 - Agent sandbox runtime:
+- Docker Compose with agent + postgres + redis sidecars
+- Sentry config tuned for sandbox environments
+- Resource limits and security constraints
+
+Phase 3 - Agent harness SDK:
+- Python SDK with Sandbox.create/exec/destroy lifecycle
+- CLI wrapper (sentry-sandbox create/exec/run/destroy)
+- Source-to-test file mapping heuristics
+
+Phase 4 - Developer environments:
+- devcontainer.json for GitHub Codespaces
+- fast-setup.sh for restoring from pre-built images
+- Delta migration support for slightly-stale images
+
+https://claude.ai/code/session_01DLddeYswpKfP1DRtSy4iEb
+---
+ .github/workflows/sandbox-images.yml          | 278 +++++++++++++
+ sandbox/.dumps/.gitkeep                       |   0
+ sandbox/.gitignore                            |   8 +
+ sandbox/PLAN.md                               | 390 ++++++++++++++++++
+ sandbox/harness/pyproject.toml                |  26 ++
+ sandbox/harness/sentry_sandbox/__init__.py    |   6 +
+ sandbox/harness/sentry_sandbox/cli.py         | 216 ++++++++++
+ sandbox/harness/sentry_sandbox/sandbox.py     | 347 ++++++++++++++++
+ sandbox/harness/sentry_sandbox/testmap.py     | 148 +++++++
+ sandbox/images/Dockerfile.agent               | 145 +++++++
+ sandbox/images/Dockerfile.postgres            |  59 +++
+ sandbox/images/postgres-init.sh               |  49 +++
+ sandbox/runtime/devcontainer.json             |  53 +++
+ .../runtime/docker-compose.devcontainer.yml   |  32 ++
+ sandbox/runtime/docker-compose.sandbox.yml    | 125 ++++++
+ sandbox/runtime/sentry.sandbox.conf.py        |  95 +++++
+ sandbox/scripts/build-postgres-image.sh       | 145 +++++++
+ sandbox/scripts/compute-cache-key.sh          |  74 ++++
+ sandbox/scripts/fast-setup.sh                 | 234 +++++++++++
+ 19 files changed, 2430 insertions(+)
+ create mode 100644 .github/workflows/sandbox-images.yml
+ create mode 100644 sandbox/.dumps/.gitkeep
+ create mode 100644 sandbox/.gitignore
+ create mode 100644 sandbox/PLAN.md
+ create mode 100644 sandbox/harness/pyproject.toml
+ create mode 100644 sandbox/harness/sentry_sandbox/__init__.py
+ create mode 100644 sandbox/harness/sentry_sandbox/cli.py
+ create mode 100644 sandbox/harness/sentry_sandbox/sandbox.py
+ create mode 100644 sandbox/harness/sentry_sandbox/testmap.py
+ create mode 100644 sandbox/images/Dockerfile.agent
+ create mode 100644 sandbox/images/Dockerfile.postgres
+ create mode 100755 sandbox/images/postgres-init.sh
+ create mode 100644 sandbox/runtime/devcontainer.json
+ create mode 100644 sandbox/runtime/docker-compose.devcontainer.yml
+ create mode 100644 sandbox/runtime/docker-compose.sandbox.yml
+ create mode 100644 sandbox/runtime/sentry.sandbox.conf.py
+ create mode 100755 sandbox/scripts/build-postgres-image.sh
+ create mode 100755 sandbox/scripts/compute-cache-key.sh
+ create mode 100755 sandbox/scripts/fast-setup.sh
+
+diff --git a/.github/workflows/sandbox-images.yml b/.github/workflows/sandbox-images.yml
+new file mode 100644
+index 00000000000..375c107792c
+--- /dev/null
++++ b/.github/workflows/sandbox-images.yml
+@@ -0,0 +1,278 @@
++name: sandbox-images
++
++on:
++  schedule:
++    # Run nightly at 6am UTC
++    - cron: '0 6 * * *'
++  push:
++    branches:
++      - master
++    paths:
++      # Rebuild agent image on dependency changes
++      - 'uv.lock'
++      - 'pnpm-lock.yaml'
++      - '.python-version'
++      - 'sandbox/images/Dockerfile.agent'
++      # Rebuild postgres image on migration changes
++      - 'src/sentry/*/migrations/**'
++      - 'src/sentry/migrations/**'
++      - 'sandbox/images/Dockerfile.postgres'
++      - 'sandbox/images/postgres-init.sh'
++      - 'sandbox/scripts/build-postgres-image.sh'
++  workflow_dispatch:
++    inputs:
++      force_rebuild:
++        description: 'Force rebuild even if cache key matches'
++        required: false
++        type: boolean
++        default: false
++
++# Only one build at a time
++concurrency:
++  group: sandbox-images-${{ github.ref }}
++  cancel-in-progress: true
++
++env:
++  AGENT_IMAGE: ghcr.io/getsentry/sentry-agent
++  POSTGRES_IMAGE: ghcr.io/getsentry/sentry-postgres-dev
++
++permissions:
++  contents: read
++  packages: write
++
++jobs:
++  # ============================================================
++  # Compute cache keys to determine what needs rebuilding
++  # ============================================================
++  cache-keys:
++    name: compute cache keys
++    runs-on: ubuntu-24.04
++    timeout-minutes: 5
++    outputs:
++      agent-key: ${{ steps.keys.outputs.agent-key }}
++      postgres-key: ${{ steps.keys.outputs.postgres-key }}
++      agent-exists: ${{ steps.check.outputs.agent-exists }}
++      postgres-exists: ${{ steps.check.outputs.postgres-exists }}
++    steps:
++      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
++
++      - name: Compute cache keys
++        id: keys
++        run: |
++          chmod +x sandbox/scripts/compute-cache-key.sh
++          echo "agent-key=$(sandbox/scripts/compute-cache-key.sh agent)" >> "$GITHUB_OUTPUT"
++          echo "postgres-key=$(sandbox/scripts/compute-cache-key.sh postgres)" >> "$GITHUB_OUTPUT"
++
++      - name: Check if images already exist in GHCR
++        id: check
++        if: ${{ !inputs.force_rebuild }}
++        env:
++          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
++        run: |
++          agent_key="${{ steps.keys.outputs.agent-key }}"
++          postgres_key="${{ steps.keys.outputs.postgres-key }}"
++
++          # Check if agent image with this cache key already exists
++          if docker manifest inspect "${AGENT_IMAGE}:cache-${agent_key}" > /dev/null 2>&1; then
++            echo "agent-exists=true" >> "$GITHUB_OUTPUT"
++            echo "Agent image cache-${agent_key} already exists, skipping build"
++          else
++            echo "agent-exists=false" >> "$GITHUB_OUTPUT"
++          fi
++
++          # Check if postgres image with this cache key already exists
++          if docker manifest inspect "${POSTGRES_IMAGE}:cache-${postgres_key}" > /dev/null 2>&1; then
++            echo "postgres-exists=true" >> "$GITHUB_OUTPUT"
++            echo "Postgres image cache-${postgres_key} already exists, skipping build"
++          else
++            echo "postgres-exists=false" >> "$GITHUB_OUTPUT"
++          fi
++
++  # ============================================================
++  # Build the agent image
++  # ============================================================
++  build-agent:
++    name: build agent image
++    needs: cache-keys
++    if: ${{ needs.cache-keys.outputs.agent-exists != 'true' || inputs.force_rebuild }}
++    runs-on: ubuntu-24.04
++    timeout-minutes: 45
++    steps:
++      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
++
++      - name: Set up Docker Buildx
++        uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
++
++      - name: Log in to GitHub Container Registry
++        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3
++        with:
++          registry: ghcr.io
++          username: ${{ github.actor }}
++          password: ${{ secrets.GITHUB_TOKEN }}
++
++      - name: Build and push agent image
++        uses: docker/build-push-action@ca877d9245402d1537745e0e356eab47c3520991 # v6
++        with:
++          context: .
++          file: sandbox/images/Dockerfile.agent
++          push: true
++          tags: |
++            ${{ env.AGENT_IMAGE }}:nightly
++            ${{ env.AGENT_IMAGE }}:${{ github.sha }}
++            ${{ env.AGENT_IMAGE }}:cache-${{ needs.cache-keys.outputs.agent-key }}
++            ${{ env.AGENT_IMAGE }}:${{ github.run_id }}
++          cache-from: |
++            type=registry,ref=${{ env.AGENT_IMAGE }}:buildcache
++          cache-to: |
++            type=registry,ref=${{ env.AGENT_IMAGE }}:buildcache,mode=max
++          secrets: |
++            pip_index_url=${{ secrets.PIP_INDEX_URL || 'https://pypi.devinfra.sentry.io/simple' }}
++
++  # ============================================================
++  # Build the pre-migrated Postgres image
++  # ============================================================
++  build-postgres:
++    name: build postgres image
++    needs: [cache-keys, build-agent]
++    if: |
++      always() &&
++      (needs.cache-keys.outputs.postgres-exists != 'true' || inputs.force_rebuild) &&
++      (needs.build-agent.result == 'success' || needs.build-agent.result == 'skipped')
++    runs-on: ubuntu-24.04
++    timeout-minutes: 30
++    steps:
++      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
++
++      - name: Log in to GitHub Container Registry
++        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3
++        with:
++          registry: ghcr.io
++          username: ${{ github.actor }}
++          password: ${{ secrets.GITHUB_TOKEN }}
++
++      - name: Determine agent image tag
++        id: agent-tag
++        run: |
++          # Use the freshly-built image if available, otherwise use the cached one
++          if [ "${{ needs.build-agent.result }}" = "success" ]; then
++            echo "tag=${{ github.sha }}" >> "$GITHUB_OUTPUT"
++          else
++            echo "tag=nightly" >> "$GITHUB_OUTPUT"
++          fi
++
++      - name: Build pre-migrated Postgres image
++        env:
++          AGENT_IMAGE: ${{ env.AGENT_IMAGE }}:${{ steps.agent-tag.outputs.tag }}
++          OUTPUT_TAG: ${{ env.POSTGRES_IMAGE }}:${{ github.sha }}
++        run: |
++          chmod +x sandbox/scripts/build-postgres-image.sh
++          ./sandbox/scripts/build-postgres-image.sh --tag "${OUTPUT_TAG}" --agent-image "${AGENT_IMAGE}"
++
++      - name: Push postgres image with tags
++        run: |
++          docker tag "${POSTGRES_IMAGE}:${{ github.sha }}" "${POSTGRES_IMAGE}:nightly"
++          docker tag "${POSTGRES_IMAGE}:${{ github.sha }}" "${POSTGRES_IMAGE}:cache-${{ needs.cache-keys.outputs.postgres-key }}"
++          docker push "${POSTGRES_IMAGE}:${{ github.sha }}"
++          docker push "${POSTGRES_IMAGE}:nightly"
++          docker push "${POSTGRES_IMAGE}:cache-${{ needs.cache-keys.outputs.postgres-key }}"
++
++  # ============================================================
++  # Validate the built images
++  # ============================================================
++  validate:
++    name: validate images
++    needs: [build-agent, build-postgres, cache-keys]
++    if: always() && (needs.build-agent.result == 'success' || needs.build-postgres.result == 'success')
++    runs-on: ubuntu-24.04
++    timeout-minutes: 15
++    steps:
++      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
++
++      - name: Log in to GitHub Container Registry
++        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3
++        with:
++          registry: ghcr.io
++          username: ${{ github.actor }}
++          password: ${{ secrets.GITHUB_TOKEN }}
++
++      - name: Validate agent image
++        if: needs.build-agent.result == 'success'
++        run: |
++          echo "==> Pulling agent image..."
++          docker pull "${AGENT_IMAGE}:${{ github.sha }}"
++
++          echo "==> Verifying sentry CLI..."
++          docker run --rm "${AGENT_IMAGE}:${{ github.sha }}" sentry --help
++
++          echo "==> Verifying pytest..."
++          docker run --rm "${AGENT_IMAGE}:${{ github.sha }}" pytest --version
++
++          echo "==> Verifying pre-commit..."
++          docker run --rm "${AGENT_IMAGE}:${{ github.sha }}" pre-commit --version
++
++          echo "==> Agent image validated successfully"
++
++      - name: Validate postgres image
++        if: needs.build-postgres.result == 'success'
++        run: |
++          echo "==> Starting postgres..."
++          docker run -d --name test-pg -p 5432:5432 "${POSTGRES_IMAGE}:${{ github.sha }}"
++
++          echo "==> Waiting for postgres to be ready..."
++          for i in $(seq 1 30); do
++            if docker exec test-pg pg_isready -U postgres > /dev/null 2>&1; then
++              echo "    Ready!"
++              break
++            fi
++            sleep 1
++          done
++
++          echo "==> Verifying databases exist..."
++          for db in sentry control region secondary; do
++            count=$(docker exec test-pg psql -t -U postgres -d "${db}" \
++              -c "SELECT COUNT(*) FROM django_migrations" 2>/dev/null | tr -d ' ')
++            echo "    ${db}: ${count} migrations"
++            if [ -z "${count}" ] || [ "${count}" -eq 0 ]; then
++              echo "ERROR: Database ${db} has no migrations!"
++              exit 1
++            fi
++          done
++
++          echo "==> Verifying superuser exists..."
++          docker exec test-pg psql -t -U postgres -d sentry \
++            -c "SELECT email FROM auth_user WHERE is_superuser = true LIMIT 1" | grep -q "admin@sentry.io"
++
++          echo "==> Postgres image validated successfully"
++          docker rm -f test-pg
++
++      - name: Integration test — run pytest in sandbox
++        if: needs.build-agent.result == 'success' && needs.build-postgres.result == 'success'
++        run: |
++          # Create a network for the test
++          docker network create sandbox-test
++
++          # Start postgres
++          docker run -d --name sandbox-pg --network sandbox-test "${POSTGRES_IMAGE}:${{ github.sha }}"
++
++          # Start redis
++          docker run -d --name sandbox-redis --network sandbox-test redis:7-alpine
++
++          # Wait for services
++          sleep 5
++
++          # Run a small test suite inside the agent image
++          docker run --rm --network sandbox-test \
++            -e SENTRY_POSTGRES_HOST=sandbox-pg \
++            -e SENTRY_POSTGRES_PORT=5432 \
++            -e SENTRY_DB_USER=postgres \
++            -e SENTRY_DB_PASSWORD=postgres \
++            -e SENTRY_REDIS_HOST=sandbox-redis \
++            -e SENTRY_SKIP_SERVICE_VALIDATION=1 \
++            "${AGENT_IMAGE}:${{ github.sha }}" \
++            pytest -x --reuse-db tests/sentry/api/test_organization_details.py -q 2>&1 | tail -20
++
++          # Cleanup
++          docker rm -f sandbox-pg sandbox-redis
++          docker network rm sandbox-test
++
++          echo "==> Integration test passed"
+diff --git a/sandbox/.dumps/.gitkeep b/sandbox/.dumps/.gitkeep
+new file mode 100644
+index 00000000000..e69de29bb2d
+diff --git a/sandbox/.gitignore b/sandbox/.gitignore
+new file mode 100644
+index 00000000000..fe8c1d0df6e
+--- /dev/null
++++ b/sandbox/.gitignore
+@@ -0,0 +1,8 @@
++# Postgres dumps generated during image build (can be 100+ MB)
++.dumps/*.sql
++
++# Python build artifacts
++harness/dist/
++harness/*.egg-info/
++harness/__pycache__/
++harness/sentry_sandbox/__pycache__/
+diff --git a/sandbox/PLAN.md b/sandbox/PLAN.md
+new file mode 100644
+index 00000000000..3f90a857368
+--- /dev/null
++++ b/sandbox/PLAN.md
+@@ -0,0 +1,390 @@
++# Sentry Development Sandbox Infrastructure
++
++## Implementation Plan
++
++This document describes the phased implementation of sandbox infrastructure for AI agent workflows and faster developer onboarding. Each phase delivers standalone value.
++
++---
++
++## Phase 1: Pre-built Image Pipeline
++
++**Goal**: Nightly Docker images with Python deps pre-installed and Postgres databases pre-migrated. Useful for CI, agent sandboxes, and developer onboarding independently of later phases.
++
++### 1.1 `Dockerfile.agent` — Agent sandbox image
++
++**File**: `sandbox/images/Dockerfile.agent`
++
++Builds an image containing:
++- Python 3.13 + full `.venv` with all deps from `uv.lock`
++- The Sentry codebase installed via `fast_editable`
++- `sentry` CLI available on PATH
++- Pre-commit hooks, pytest, mypy available
++- Node.js + pnpm + `node_modules` (for frontend lint/typecheck)
++
++**Key design decisions**:
++- Based on `python:3.13.1-slim-bookworm` (matches existing self-hosted Dockerfile)
++- Uses `pypi.devinfra.sentry.io` as PIP index (via `--index-url` in build arg / secret)
++- Two-stage approach: deps layer cached separately from codebase layer
++- `node_modules` included for frontend tooling (typecheck, lint) — ~2.4 GB but cached as a layer
++- Image tagged with both `nightly` and content-hash tags for cache invalidation
++
++**Private PyPI handling**:
++- During CI build, mount the PyPI credentials as a Docker build secret
++- `uv sync` uses `--index-url` pointed at `pypi.devinfra.sentry.io`
++- No credentials baked into the image
++
++### 1.2 `Dockerfile.postgres` — Pre-migrated Postgres image
++
++**File**: `sandbox/images/Dockerfile.postgres`
++
++Builds a Postgres 17 image with:
++- All 4 databases created: `sentry`, `control`, `region`, `secondary`
++- All 253+ migrations applied across all apps
++- Superuser `admin@sentry.io` created
++- Dumps loaded via `docker-entrypoint-initdb.d` for instant startup
++
++**Build process** (multi-stage):
++1. Stage 1 ("migrator"): Start from `sentry-agent:nightly` + official postgres image, run postgres, apply migrations, `pg_dump` all 4 databases
++2. Stage 2: Copy dumps into a clean Postgres image's `docker-entrypoint-initdb.d/`
++
++Since migrations require a running Postgres and the Sentry Python environment, the actual build is orchestrated by a script (`sandbox/scripts/build-postgres-image.sh`) rather than a pure Dockerfile:
++1. Start a temporary Postgres container
++2. Run `sentry upgrade --noinput` against it (using the agent image)
++3. `pg_dump` all 4 databases
++4. Build the final image with dumps baked in
++
++### 1.3 CI Workflow — Nightly + on-change builds
++
++**File**: `.github/workflows/sandbox-images.yml`
++
++**Triggers**:
++- Nightly schedule (`cron: '0 6 * * *'` — 6am UTC)
++- On push to `master` when relevant files change:
++  - `uv.lock` → rebuild agent image
++  - `src/sentry/*/migrations/**` → rebuild postgres image
++  - `pnpm-lock.yaml` → rebuild agent image
++
++**Cache strategy**:
++- Images tagged with content hashes for deterministic cache keys:
++  - Agent: `sha256(uv.lock + pnpm-lock.yaml + .python-version)[:12]`
++  - Postgres: `sha256(all migration files)[:12]`
++- Also tagged: `nightly`, `YYYY-MM-DD`, git SHA
++- Skip build if GHCR already has the content-hash tag (idempotent)
++
++**Image registry**: `ghcr.io/getsentry/sentry-agent` and `ghcr.io/getsentry/sentry-postgres-dev`
++
++### 1.4 Validation
++
++- CI job that pulls `sentry-agent:nightly` and runs `sentry --help`
++- CI job that starts `sentry-postgres-dev:nightly` and verifies all 4 databases exist with correct schema
++- CI job that runs a small pytest suite inside the agent image against the postgres image
++
++### 1.5 Risks and open questions
++
++| Risk | Mitigation |
++|------|------------|
++| Private PyPI creds in Docker build | Use `--mount=type=secret` in Dockerfile, never bake into layers |
++| Image size (agent image will be ~4-6 GB) | Accept for now; layer caching makes pulls fast after first download |
++| Migration ordering across apps | `sentry upgrade --noinput` handles ordering; test in CI |
++| Build time for postgres image (~3-5 min) | Only rebuild on migration changes; nightly is fine |
++| pnpm-lock.yaml churn causing frequent rebuilds | Content-hash tags avoid redundant builds |
++
++---
++
++## Phase 2: Agent Sandbox Runtime
++
++**Goal**: A Docker Compose-based runtime that gives an agent an isolated environment with Sentry + Postgres + Redis, ready to run tests in under 30 seconds.
++
++### 2.1 Execution platform recommendation
++
++**Recommended: GKE Autopilot pods**
++
++| Option | Pros | Cons |
++|--------|------|------|
++| **GKE Autopilot** (recommended) | Auto-scaling, per-pod billing, built-in image caching, k8s-native networking | Slight cold start (~15-30s for pod scheduling) |
++| GCE instances | Full control, always warm | Idle cost, manual scaling, snowflake infra |
++| Modal | Zero infra management, fast cold start | Vendor lock-in, less control, egress costs |
++| GitHub Actions | Already integrated | No persistent sandboxes, 6hr timeout, limited control |
++
++GKE Autopilot is the best fit because:
++- Sentry already uses GCP — no new vendor relationship
++- Autopilot handles node provisioning, so you only pay for pod resources
++- Image streaming (enabled by default on Autopilot) means large images pull fast
++- Pods can run Docker Compose sidecars via sidecar containers pattern
++- Warm pool possible via pod pre-provisioning (PriorityClass-based)
++
++For the **initial implementation**, run sandboxes as **local Docker Compose** stacks invoked by the harness. This works on developer laptops, CI, and can be orchestrated by any platform. GKE migration is an optimization for Phase 2b.
++
++### 2.2 Docker Compose for sandbox
++
++**File**: `sandbox/runtime/docker-compose.sandbox.yml`
++
++Three services:
++- `agent`: The `sentry-agent:nightly` image with the codebase mounted (or baked in)
++- `postgres`: The `sentry-postgres-dev:nightly` image, pre-migrated
++- `redis`: Standard Redis 7 image
++
++The agent container:
++- Keeps running (entrypoint is `sleep infinity` or a command server)
++- Exposes a way to exec commands into it
++- Has `/workspace` as the working directory with the Sentry codebase
++- Can overlay changed files from the agent's work
++
++### 2.3 Agent interaction model
++
++**Recommended: `docker exec` with a thin wrapper**
++
++Agents interact by:
++1. Harness creates the sandbox (`docker compose up -d`)
++2. Agent sends commands via `docker exec agent <command>`
++3. Results returned via stdout/stderr + exit code
++4. Files can be copied in/out via `docker cp`
++5. Sandbox destroyed when agent is done (`docker compose down -v`)
++
++This is the simplest model that supports iterative workflows. The agent keeps the sandbox alive across multiple commands — no cold start between iterations.
++
++For GKE (Phase 2b), this becomes `kubectl exec` with the same semantics.
++
++### 2.4 Warm pool strategy
++
++For production agent workloads on GKE:
++- Pre-provision N sandbox pods using a low-priority `PriorityClass`
++- When an agent needs a sandbox, bump priority → pod binds immediately
++- Pool size auto-adjusts based on queue depth
++- Saves ~15-30s cold start per sandbox
++
++For the initial Docker Compose approach, pre-pulling images is sufficient (`docker compose pull`).
++
++### 2.5 Security and resource limits
++
++- Each sandbox runs in an isolated Docker network (no cross-sandbox communication)
++- Resource limits per sandbox: 4 CPU, 8 GB RAM (configurable)
++- No internet access from agent container (optional, configurable)
++- 30-minute maximum sandbox lifetime (configurable)
++- Read-only bind mounts where possible
++- No Docker socket access inside the sandbox
++
++### 2.6 Validation
++
++- Script that creates a sandbox, runs `pytest tests/sentry/api/test_organization_details.py`, verifies pass
++- Benchmark: measure time from "create sandbox" to "first test result"
++- Load test: run 10 sandboxes concurrently on a single machine
++
++### 2.7 Risks and open questions
++
++| Risk | Mitigation |
++|------|------------|
++| Docker Compose not available in all environments | Provide alternative k8s manifests for GKE |
++| Resource contention with many sandboxes | Enforce limits; right-size based on benchmarking |
++| Stale images in sandbox | Pin to content-hash tags, not `nightly` |
++| Agent escaping sandbox | No Docker socket; network isolation; drop capabilities |
++| Long-running sandboxes leaking resources | Enforce TTL with auto-cleanup |
++
++---
++
++## Phase 3: Agent Harness / SDK
++
++**Goal**: A Python library and CLI that wraps the sandbox lifecycle, making it easy for any AI agent to create a sandbox, run commands, and get results.
++
++### 3.1 Python SDK
++
++**File**: `sandbox/harness/sentry_sandbox/__init__.py` and related modules
++
++```python
++from sentry_sandbox import Sandbox
++
++async with Sandbox.create(image_tag="nightly") as sb:
++    # Run tests
++    result = await sb.exec("pytest -xvs tests/sentry/api/test_organization_details.py")
++    print(result.exit_code, result.stdout, result.stderr)
++
++    # Copy files in
++    await sb.copy_in("src/sentry/api/endpoints/organization_details.py", local_path)
++
++    # Run linter
++    result = await sb.exec("pre-commit run --files src/sentry/api/endpoints/organization_details.py")
++
++    # Get file out
++    content = await sb.read_file("src/sentry/api/endpoints/organization_details.py")
++```
++
++### 3.2 CLI wrapper
++
++**File**: `sandbox/harness/sentry_sandbox/cli.py`
++
++```bash
++# Create a sandbox and get its ID
++sentry-sandbox create --tag nightly
++# => sandbox-a1b2c3d4
++
++# Execute a command
++sentry-sandbox exec sandbox-a1b2c3d4 -- pytest -xvs tests/sentry/api/test_base.py
++
++# Copy files in/out
++sentry-sandbox cp-in sandbox-a1b2c3d4 src/sentry/foo.py ./local/foo.py
++sentry-sandbox cp-out sandbox-a1b2c3d4 /workspace/test-results.xml ./results.xml
++
++# Destroy
++sentry-sandbox destroy sandbox-a1b2c3d4
++
++# One-shot: create, exec, destroy
++sentry-sandbox run --tag nightly -- pytest -xvs tests/sentry/api/test_base.py
++```
++
++### 3.3 Test file mapping
++
++**File**: `sandbox/harness/sentry_sandbox/testmap.py`
++
++Maps changed source files to their test files:
++- `src/sentry/api/endpoints/foo.py` → `tests/sentry/api/endpoints/test_foo.py`
++- `src/sentry/models/foo.py` → `tests/sentry/models/test_foo.py`
++- Uses naming conventions + import analysis as fallback
++- Outputs a list of test files to run
++
++### 3.4 Task types
++
++The harness supports task "presets" that configure the sandbox appropriately:
++
++| Task | Command | Services needed |
++|------|---------|-----------------|
++| `run-tests` | `pytest -xvs <files>` | postgres, redis |
++| `run-linter` | `pre-commit run --files <files>` | none |
++| `run-typecheck-py` | `mypy <files>` | none |
++| `run-typecheck-js` | `pnpm run typecheck` | none |
++| `run-lint-js` | `pnpm run lint:js <files>` | none |
++
++For tasks that don't need services, the harness can skip starting postgres/redis for faster startup.
++
++### 3.5 Validation
++
++- Unit tests for the SDK (mocking Docker)
++- Integration tests that create a real sandbox and run a test suite
++- CLI smoke tests
++
++### 3.6 Risks and open questions
++
++| Risk | Mitigation |
++|------|------------|
++| Docker SDK version compatibility | Pin docker-py version; test in CI |
++| Test file mapping accuracy | Start with convention-based; iterate |
++| Async vs sync SDK | Provide both; async primary, sync wrapper |
++
++---
++
++## Phase 4: Developer Environments
++
++**Goal**: Leverage the pre-built images to speed up developer onboarding and provide remote dev environment options.
++
++### 4.1 Faster local onboarding via pre-built images
++
++**File**: `sandbox/scripts/fast-setup.sh`
++
++New `devenv sync` optimization path:
++1. Check if `sentry-postgres-dev:latest` content-hash matches current migrations
++2. If yes: `docker run` the pre-migrated postgres instead of running migrations (~5s vs ~120s)
++3. If no: fall back to normal migration path, then optionally rebuild snapshot
++4. Similar for venv: check if `sentry-agent:latest` has the right `uv.lock` hash
++5. If yes: copy `.venv` from the image (~10s vs ~60s)
++6. If no: run `uv sync` normally
++
++This is opt-in and complementary to the existing `devenv sync` flow.
++
++**Integration point**: Modify `devenv/sync.py` to check for pre-built images before running slow operations.
++
++### 4.2 Delta migration support
++
++When the pre-migrated Postgres image is slightly behind (e.g., 2 new migrations since last build):
++1. Start from the pre-built postgres image
++2. Detect which migrations have already been applied (via `django_migrations` table)
++3. Run only the delta migrations
++4. Result: ~5-10s instead of ~120s for a few new migrations
++
++### 4.3 Remote development environments
++
++**Recommended: GitHub Codespaces** (with pre-built images)
++
++| Option | Pros | Cons |
++|--------|------|------|
++| **Codespaces** (recommended) | GitHub-native, devcontainer support, managed | Cost per developer-hour, Microsoft dependency |
++| Cloud Workstations (GCP) | GCP-native, persistent | More setup, less IDE integration |
++| GCE + code-server | Full control, always warm | Operational burden, snowflake |
++| Gitpod | Fast, devcontainer-ish | Third-party vendor |
++
++Codespaces with a `devcontainer.json` that:
++- Uses the `sentry-agent:nightly` as the base image (venv + node_modules pre-installed)
++- Starts `sentry-postgres-dev:nightly` and Redis as Docker Compose services
++- Sets up port forwarding for the dev server
++- Developer is coding within seconds of Codespace creation
++
++**Docker-in-Docker**: Codespaces supports Docker natively. The devservices Docker Compose can run inside the Codespace. The pre-built images make this fast because they're pre-pulled in the Codespace prebuild.
++
++**File**: `sandbox/runtime/devcontainer.json` (Codespace configuration)
++
++### 4.4 Validation
++
++- Time `devenv sync` with and without pre-built image optimization
++- Create a Codespace and verify full dev environment works (run tests, start devserver, hot reload)
++- Verify delta migration path works correctly
++
++### 4.5 Risks and open questions
++
++| Risk | Mitigation |
++|------|------------|
++| Codespaces cost ($0.18/hr for 4-core) | Use prebuilds to minimize startup; auto-stop idle |
++| Docker-in-Docker performance in Codespaces | Test; Codespaces uses lightweight VM, not nested Docker |
++| devenv sync changes require careful testing | Feature-flag behind env var; opt-in initially |
++| Delta migration state mismatch | Always verify against `django_migrations` table; fall back to full |
++
++---
++
++## Phase Dependencies
++
++```
++Phase 1 (Images) ──────────────────────────────────────
++        │
++        ├── Phase 2 (Runtime) ─────────────────────────
++        │         │
++        │         └── Phase 3 (Harness/SDK) ───────────
++        │
++        └── Phase 4 (Dev Environments) ────────────────
++```
++
++- Phase 1 is a prerequisite for all other phases
++- Phase 2 depends on Phase 1 (needs the images)
++- Phase 3 depends on Phase 2 (wraps the runtime)
++- Phase 4 depends on Phase 1 only (uses images directly)
++- Phases 2+3 and Phase 4 can be developed in parallel
++
++---
++
++## File Manifest
++
++### Phase 1
++| File | Purpose |
++|------|---------|
++| `sandbox/images/Dockerfile.agent` | Agent sandbox image with Python+Node deps |
++| `sandbox/images/Dockerfile.postgres` | Postgres image entrypoint with pre-migrated dump |
++| `sandbox/scripts/build-postgres-image.sh` | Script to orchestrate postgres image build |
++| `.github/workflows/sandbox-images.yml` | CI: nightly + on-change image builds |
++| `sandbox/scripts/compute-cache-key.sh` | Compute content-hash cache keys |
++
++### Phase 2
++| File | Purpose |
++|------|---------|
++| `sandbox/runtime/docker-compose.sandbox.yml` | Compose file for agent sandboxes |
++| `sandbox/runtime/sentry.conf.py` | Sentry config for sandbox environment |
++
++### Phase 3
++| File | Purpose |
++|------|---------|
++| `sandbox/harness/pyproject.toml` | Harness package config |
++| `sandbox/harness/sentry_sandbox/__init__.py` | SDK entry point |
++| `sandbox/harness/sentry_sandbox/sandbox.py` | Core sandbox lifecycle |
++| `sandbox/harness/sentry_sandbox/cli.py` | CLI interface |
++| `sandbox/harness/sentry_sandbox/testmap.py` | Source→test file mapping |
++
++### Phase 4
++| File | Purpose |
++|------|---------|
++| `sandbox/runtime/devcontainer.json` | Codespaces configuration |
++| `sandbox/scripts/fast-setup.sh` | Fast local setup using pre-built images |
+diff --git a/sandbox/harness/pyproject.toml b/sandbox/harness/pyproject.toml
+new file mode 100644
+index 00000000000..f12a6b68122
+--- /dev/null
++++ b/sandbox/harness/pyproject.toml
+@@ -0,0 +1,26 @@
++[project]
++name = "sentry-sandbox"
++version = "0.1.0"
++description = "SDK and CLI for managing Sentry development sandboxes"
++readme = "README.md"
++requires-python = ">=3.11"
++dependencies = [
++    "docker>=7.0.0",
++    "click>=8.0.0",
++]
++
++[project.optional-dependencies]
++dev = [
++    "pytest>=8.0",
++    "pytest-asyncio>=0.23",
++]
++
++[project.scripts]
++sentry-sandbox = "sentry_sandbox.cli:main"
++
++[build-system]
++requires = ["setuptools>=68.0"]
++build-backend = "setuptools.build_meta"
++
++[tool.setuptools.packages.find]
++include = ["sentry_sandbox*"]
+diff --git a/sandbox/harness/sentry_sandbox/__init__.py b/sandbox/harness/sentry_sandbox/__init__.py
+new file mode 100644
+index 00000000000..72deada83ea
+--- /dev/null
++++ b/sandbox/harness/sentry_sandbox/__init__.py
+@@ -0,0 +1,6 @@
++"""sentry-sandbox: SDK and CLI for Sentry development sandboxes."""
++
++from sentry_sandbox.sandbox import ExecResult, Sandbox
++
++__all__ = ["Sandbox", "ExecResult"]
++__version__ = "0.1.0"
+diff --git a/sandbox/harness/sentry_sandbox/cli.py b/sandbox/harness/sentry_sandbox/cli.py
+new file mode 100644
+index 00000000000..792fc8d9025
+--- /dev/null
++++ b/sandbox/harness/sentry_sandbox/cli.py
+@@ -0,0 +1,216 @@
++"""CLI interface for managing Sentry development sandboxes.
++
++Usage:
++    # Create and get sandbox ID
++    sentry-sandbox create --tag nightly
++    # => sandbox-a1b2c3d4
++
++    # Execute a command
++    sentry-sandbox exec sandbox-a1b2c3d4 -- pytest -xvs tests/sentry/api/test_base.py
++
++    # Copy files in/out
++    sentry-sandbox cp sandbox-a1b2c3d4 --in src/sentry/api/foo.py ./local/foo.py
++    sentry-sandbox cp sandbox-a1b2c3d4 --out /workspace/results.xml ./results.xml
++
++    # View logs
++    sentry-sandbox logs sandbox-a1b2c3d4
++
++    # Destroy
++    sentry-sandbox destroy sandbox-a1b2c3d4
++
++    # One-shot: create, exec, destroy
++    sentry-sandbox run --tag nightly -- pytest -xvs tests/sentry/api/test_base.py
++"""
++
++from __future__ import annotations
++
++import json
++import logging
++import sys
++
++import click
++
++from sentry_sandbox.sandbox import Sandbox
++
++# Global state: track active sandboxes by ID for the CLI session
++_active_sandboxes: dict[str, Sandbox] = {}
++
++logger = logging.getLogger("sentry_sandbox")
++
++
++@click.group()
++@click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging")
++def main(verbose: bool) -> None:
++    """Manage Sentry development sandboxes."""
++    level = logging.DEBUG if verbose else logging.INFO
++    logging.basicConfig(level=level, format="%(levelname)s: %(message)s")
++
++
++@main.command()
++@click.option("--tag", "-t", default="nightly", help="Image tag (default: nightly)")
++@click.option("--postgres-tag", default=None, help="Override postgres image tag")
++@click.option("--cpus", default="4", help="CPU limit (default: 4)")
++@click.option("--memory", default="4g", help="Memory limit (default: 4g)")
++@click.option("--ttl", default=1800, type=int, help="Max lifetime in seconds (default: 1800)")
++@click.option("--isolated/--no-isolated", default=False, help="Network isolation")
++@click.option("--overlay", default=None, help="Local directory to overlay on /workspace")
++@click.option("--json-output", is_flag=True, help="Output as JSON")
++def create(
++    tag: str,
++    postgres_tag: str | None,
++    cpus: str,
++    memory: str,
++    ttl: int,
++    isolated: bool,
++    overlay: str | None,
++    json_output: bool,
++) -> None:
++    """Create and start a new sandbox."""
++    sb = Sandbox.create(
++        tag=tag,
++        postgres_tag=postgres_tag,
++        cpus=cpus,
++        memory=memory,
++        ttl_seconds=ttl,
++        network_isolated=isolated,
++        workspace_overlay=overlay,
++    )
++    sb.start()
++
++    if json_output:
++        click.echo(json.dumps({"sandbox_id": sb.id, "status": "running"}))
++    else:
++        click.echo(sb.id)
++
++
++@main.command("exec")
++@click.argument("sandbox_id")
++@click.argument("command", nargs=-1, required=True)
++@click.option("--timeout", "-T", default=None, type=int, help="Command timeout in seconds")
++@click.option("--workdir", "-w", default=None, help="Working directory")
++@click.option("--json-output", is_flag=True, help="Output as JSON")
++def exec_cmd(
++    sandbox_id: str,
++    command: tuple[str, ...],
++    timeout: int | None,
++    workdir: str | None,
++    json_output: bool,
++) -> None:
++    """Execute a command in a sandbox."""
++    sb = _get_or_attach(sandbox_id)
++    cmd_str = " ".join(command)
++
++    result = sb.exec(cmd_str, timeout=timeout, workdir=workdir)
++
++    if json_output:
++        click.echo(json.dumps({
++            "exit_code": result.exit_code,
++            "stdout": result.stdout,
++            "stderr": result.stderr,
++            "duration_seconds": result.duration_seconds,
++        }))
++    else:
++        if result.stdout:
++            click.echo(result.stdout, nl=False)
++        if result.stderr:
++            click.echo(result.stderr, nl=False, err=True)
++
++    sys.exit(result.exit_code)
++
++
++@main.command()
++@click.argument("sandbox_id")
++@click.option("--in", "copy_in", nargs=2, type=str, help="Copy local file into sandbox: --in CONTAINER_PATH LOCAL_PATH")
++@click.option("--out", "copy_out", nargs=2, type=str, help="Copy file from sandbox: --out CONTAINER_PATH LOCAL_PATH")
++def cp(sandbox_id: str, copy_in: tuple[str, str] | None, copy_out: tuple[str, str] | None) -> None:
++    """Copy files in/out of a sandbox."""
++    sb = _get_or_attach(sandbox_id)
++
++    if copy_in:
++        container_path, local_path = copy_in
++        sb.copy_in(container_path, local_path)
++        click.echo(f"Copied {local_path} -> {sandbox_id}:{container_path}")
++
++    if copy_out:
++        container_path, local_path = copy_out
++        sb.copy_out(container_path, local_path)
++        click.echo(f"Copied {sandbox_id}:{container_path} -> {local_path}")
++
++    if not copy_in and not copy_out:
++        click.echo("Specify --in or --out", err=True)
++        sys.exit(1)
++
++
++@main.command()
++@click.argument("sandbox_id")
++@click.option("--service", "-s", default="agent", help="Service to get logs from")
++@click.option("--tail", "-n", default=100, type=int, help="Number of lines")
++def logs(sandbox_id: str, service: str, tail: int) -> None:
++    """View logs from a sandbox service."""
++    sb = _get_or_attach(sandbox_id)
++    output = sb.logs(service=service, tail=tail)
++    click.echo(output)
++
++
++@main.command()
++@click.argument("sandbox_id")
++def destroy(sandbox_id: str) -> None:
++    """Destroy a sandbox."""
++    sb = _get_or_attach(sandbox_id)
++    sb.destroy()
++    click.echo(f"Destroyed {sandbox_id}")
++
++
++@main.command()
++@click.option("--tag", "-t", default="nightly", help="Image tag")
++@click.option("--timeout", "-T", default=None, type=int, help="Command timeout in seconds")
++@click.option("--json-output", is_flag=True, help="Output as JSON")
++@click.argument("command", nargs=-1, required=True)
++def run(tag: str, timeout: int | None, json_output: bool, command: tuple[str, ...]) -> None:
++    """One-shot: create sandbox, run command, destroy sandbox.
++
++    Exit code matches the command's exit code.
++    """
++    cmd_str = " ".join(command)
++
++    with Sandbox.create(tag=tag) as sb:
++        click.echo(f"Sandbox: {sb.id}", err=True)
++        result = sb.exec(cmd_str, timeout=timeout)
++
++    if json_output:
++        click.echo(json.dumps({
++            "sandbox_id": sb.id,
++            "exit_code": result.exit_code,
++            "stdout": result.stdout,
++            "stderr": result.stderr,
++            "duration_seconds": result.duration_seconds,
++        }))
++    else:
++        if result.stdout:
++            click.echo(result.stdout, nl=False)
++        if result.stderr:
++            click.echo(result.stderr, nl=False, err=True)
++
++    sys.exit(result.exit_code)
++
++
++def _get_or_attach(sandbox_id: str) -> Sandbox:
++    """Get a sandbox by ID, creating a handle if needed.
++
++    This re-attaches to an existing Docker Compose project by ID.
++    The sandbox must have been created with `sentry-sandbox create`.
++    """
++    if sandbox_id in _active_sandboxes:
++        return _active_sandboxes[sandbox_id]
++
++    # Create a handle that points to the existing Docker Compose project
++    from sentry_sandbox.sandbox import SandboxConfig
++
++    sb = Sandbox(sandbox_id, SandboxConfig())
++    sb._started = True  # Assume it's running if we're attaching
++    _active_sandboxes[sandbox_id] = sb
++    return sb
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/sandbox/harness/sentry_sandbox/sandbox.py b/sandbox/harness/sentry_sandbox/sandbox.py
+new file mode 100644
+index 00000000000..ebe94cbd35c
+--- /dev/null
++++ b/sandbox/harness/sentry_sandbox/sandbox.py
+@@ -0,0 +1,347 @@
++"""Core sandbox lifecycle management.
++
++A Sandbox wraps a Docker Compose stack (agent + postgres + redis) and
++provides methods to execute commands, copy files, and manage the lifecycle.
++
++Usage:
++    from sentry_sandbox import Sandbox
++
++    # Context manager (recommended)
++    with Sandbox.create(tag="nightly") as sb:
++        result = sb.exec("pytest -xvs tests/sentry/api/test_base.py")
++        print(result.exit_code, result.stdout)
++
++    # Manual lifecycle
++    sb = Sandbox.create(tag="nightly")
++    sb.start()
++    result = sb.exec("pytest -xvs tests/sentry/api/test_base.py")
++    sb.destroy()
++"""
++
++from __future__ import annotations
++
++import dataclasses
++import logging
++import os
++import shutil
++import subprocess
++import tempfile
++import time
++import uuid
++
++logger = logging.getLogger(__name__)
++
++# Default paths
++_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
++_COMPOSE_FILE = os.path.join(_REPO_ROOT, "sandbox", "runtime", "docker-compose.sandbox.yml")
++
++# Default resource limits
++DEFAULT_CPUS = "4"
++DEFAULT_MEMORY = "4g"
++DEFAULT_TTL_SECONDS = 30 * 60  # 30 minutes
++
++
++@dataclasses.dataclass(frozen=True)
++class ExecResult:
++    """Result of executing a command in a sandbox."""
++
++    exit_code: int
++    stdout: str
++    stderr: str
++    duration_seconds: float
++
++    @property
++    def success(self) -> bool:
++        return self.exit_code == 0
++
++
++@dataclasses.dataclass
++class SandboxConfig:
++    """Configuration for a sandbox instance."""
++
++    agent_image_tag: str = "nightly"
++    postgres_image_tag: str = "nightly"
++    cpus: str = DEFAULT_CPUS
++    memory: str = DEFAULT_MEMORY
++    ttl_seconds: int = DEFAULT_TTL_SECONDS
++    network_isolated: bool = False
++    workspace_overlay: str | None = None
++    compose_file: str = _COMPOSE_FILE
++
++
++class Sandbox:
++    """Manages a Sentry development sandbox.
++
++    A sandbox is a Docker Compose stack with:
++    - agent: Sentry codebase with Python/Node deps
++    - postgres: Pre-migrated Postgres with all 4 databases
++    - redis: Redis for caching and Celery broker
++    """
++
++    def __init__(self, sandbox_id: str, config: SandboxConfig) -> None:
++        self._id = sandbox_id
++        self._config = config
++        self._started = False
++        self._start_time: float | None = None
++
++    @property
++    def id(self) -> str:
++        return self._id
++
++    @property
++    def is_running(self) -> bool:
++        return self._started
++
++    @classmethod
++    def create(
++        cls,
++        tag: str = "nightly",
++        postgres_tag: str | None = None,
++        cpus: str = DEFAULT_CPUS,
++        memory: str = DEFAULT_MEMORY,
++        ttl_seconds: int = DEFAULT_TTL_SECONDS,
++        network_isolated: bool = False,
++        workspace_overlay: str | None = None,
++        compose_file: str = _COMPOSE_FILE,
++    ) -> Sandbox:
++        """Create a new sandbox instance.
++
++        Args:
++            tag: Docker image tag for both agent and postgres images.
++            postgres_tag: Override postgres image tag (defaults to `tag`).
++            cpus: CPU limit per container (e.g., "4").
++            memory: Memory limit per container (e.g., "4g").
++            ttl_seconds: Maximum sandbox lifetime in seconds.
++            network_isolated: If True, sandbox has no external network access.
++            workspace_overlay: Local directory to overlay on the agent's /workspace.
++            compose_file: Path to the Docker Compose file.
++        """
++        sandbox_id = f"sandbox-{uuid.uuid4().hex[:8]}"
++        config = SandboxConfig(
++            agent_image_tag=tag,
++            postgres_image_tag=postgres_tag or tag,
++            cpus=cpus,
++            memory=memory,
++            ttl_seconds=ttl_seconds,
++            network_isolated=network_isolated,
++            workspace_overlay=workspace_overlay,
++            compose_file=compose_file,
++        )
++        return cls(sandbox_id, config)
++
++    def __enter__(self) -> Sandbox:
++        self.start()
++        return self
++
++    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
++        self.destroy()
++
++    def _compose_env(self) -> dict[str, str]:
++        """Environment variables for Docker Compose."""
++        env = {
++            **os.environ,
++            "SANDBOX_ID": self._id,
++            "AGENT_IMAGE_TAG": self._config.agent_image_tag,
++            "POSTGRES_IMAGE_TAG": self._config.postgres_image_tag,
++            "SANDBOX_CPUS": self._config.cpus,
++            "SANDBOX_MEMORY": self._config.memory,
++            "SANDBOX_NETWORK_ISOLATED": str(self._config.network_isolated).lower(),
++        }
++        if self._config.workspace_overlay:
++            env["WORKSPACE_OVERLAY"] = self._config.workspace_overlay
++        return env
++
++    def _compose_cmd(self, *args: str) -> list[str]:
++        """Build a docker compose command."""
++        return [
++            "docker", "compose",
++            "-f", self._config.compose_file,
++            "-p", self._id,
++            *args,
++        ]
++
++    def _run_compose(self, *args: str, check: bool = True, capture: bool = False) -> subprocess.CompletedProcess:
++        """Run a docker compose command."""
++        cmd = self._compose_cmd(*args)
++        logger.debug("Running: %s", " ".join(cmd))
++        return subprocess.run(
++            cmd,
++            env=self._compose_env(),
++            capture_output=capture,
++            text=True,
++            check=check,
++        )
++
++    def start(self) -> None:
++        """Start the sandbox (pull images and bring up services)."""
++        if self._started:
++            return
++
++        logger.info("Starting sandbox %s...", self._id)
++        self._start_time = time.monotonic()
++
++        # Pull images first for better error messages
++        self._run_compose("pull", "--quiet")
++
++        # Start all services
++        self._run_compose("up", "-d", "--wait")
++
++        self._started = True
++        elapsed = time.monotonic() - self._start_time
++        logger.info("Sandbox %s started in %.1fs", self._id, elapsed)
++
++    def exec(
++        self,
++        command: str,
++        *,
++        timeout: int | None = None,
++        workdir: str | None = None,
++        env: dict[str, str] | None = None,
++    ) -> ExecResult:
++        """Execute a command inside the agent container.
++
++        Args:
++            command: Shell command to run (passed to bash -c).
++            timeout: Timeout in seconds (default: None = no timeout).
++            workdir: Working directory inside the container.
++            env: Additional environment variables.
++
++        Returns:
++            ExecResult with exit code, stdout, stderr, and duration.
++        """
++        if not self._started:
++            raise RuntimeError("Sandbox not started. Call start() or use as context manager.")
++
++        self._check_ttl()
++
++        cmd = self._compose_cmd("exec", "-T")
++
++        if workdir:
++            cmd.extend(["-w", workdir])
++
++        if env:
++            for key, value in env.items():
++                cmd.extend(["-e", f"{key}={value}"])
++
++        cmd.extend(["agent", "bash", "-c", command])
++
++        logger.debug("Exec in %s: %s", self._id, command)
++        start = time.monotonic()
++
++        try:
++            result = subprocess.run(
++                cmd,
++                env=self._compose_env(),
++                capture_output=True,
++                text=True,
++                timeout=timeout,
++            )
++            duration = time.monotonic() - start
++            return ExecResult(
++                exit_code=result.returncode,
++                stdout=result.stdout,
++                stderr=result.stderr,
++                duration_seconds=duration,
++            )
++        except subprocess.TimeoutExpired as e:
++            duration = time.monotonic() - start
++            return ExecResult(
++                exit_code=-1,
++                stdout=e.stdout.decode() if e.stdout else "",
++                stderr=f"Command timed out after {timeout}s",
++                duration_seconds=duration,
++            )
++
++    def copy_in(self, container_path: str, local_path: str) -> None:
++        """Copy a local file into the agent container.
++
++        Args:
++            container_path: Destination path inside the container (relative to /workspace).
++            local_path: Source path on the local filesystem.
++        """
++        if not self._started:
++            raise RuntimeError("Sandbox not started.")
++
++        container_name = f"{self._id}-agent"
++        full_path = f"/workspace/{container_path}" if not container_path.startswith("/") else container_path
++
++        subprocess.run(
++            ["docker", "cp", local_path, f"{container_name}:{full_path}"],
++            check=True,
++        )
++        logger.debug("Copied %s -> %s:%s", local_path, self._id, full_path)
++
++    def copy_out(self, container_path: str, local_path: str) -> None:
++        """Copy a file from the agent container to the local filesystem.
++
++        Args:
++            container_path: Source path inside the container (relative to /workspace).
++            local_path: Destination path on the local filesystem.
++        """
++        if not self._started:
++            raise RuntimeError("Sandbox not started.")
++
++        container_name = f"{self._id}-agent"
++        full_path = f"/workspace/{container_path}" if not container_path.startswith("/") else container_path
++
++        subprocess.run(
++            ["docker", "cp", f"{container_name}:{full_path}", local_path],
++            check=True,
++        )
++        logger.debug("Copied %s:%s -> %s", self._id, full_path, local_path)
++
++    def read_file(self, container_path: str) -> str:
++        """Read a file from the agent container.
++
++        Args:
++            container_path: Path inside the container (relative to /workspace).
++
++        Returns:
++            File contents as a string.
++        """
++        result = self.exec(f"cat {container_path}")
++        if not result.success:
++            raise FileNotFoundError(f"Could not read {container_path}: {result.stderr}")
++        return result.stdout
++
++    def write_file(self, container_path: str, content: str) -> None:
++        """Write content to a file in the agent container.
++
++        Args:
++            container_path: Path inside the container (relative to /workspace).
++            content: File content to write.
++        """
++        with tempfile.NamedTemporaryFile(mode="w", suffix=".tmp", delete=False) as f:
++            f.write(content)
++            tmp_path = f.name
++
++        try:
++            self.copy_in(container_path, tmp_path)
++        finally:
++            os.unlink(tmp_path)
++
++    def destroy(self) -> None:
++        """Stop and remove the sandbox."""
++        if not self._started:
++            return
++
++        logger.info("Destroying sandbox %s...", self._id)
++        self._run_compose("down", "-v", "--remove-orphans", check=False)
++        self._started = False
++        logger.info("Sandbox %s destroyed", self._id)
++
++    def _check_ttl(self) -> None:
++        """Check if the sandbox has exceeded its TTL."""
++        if self._start_time is None:
++            return
++        elapsed = time.monotonic() - self._start_time
++        if elapsed > self._config.ttl_seconds:
++            raise TimeoutError(
++                f"Sandbox {self._id} has exceeded TTL of {self._config.ttl_seconds}s "
++                f"(running for {elapsed:.0f}s). Destroy and create a new one."
++            )
++
++    def logs(self, service: str = "agent", tail: int = 100) -> str:
++        """Get logs from a service in the sandbox."""
++        result = self._run_compose("logs", "--tail", str(tail), service, capture=True, check=False)
++        return result.stdout
+diff --git a/sandbox/harness/sentry_sandbox/testmap.py b/sandbox/harness/sentry_sandbox/testmap.py
+new file mode 100644
+index 00000000000..2d0751cdc5b
+--- /dev/null
++++ b/sandbox/harness/sentry_sandbox/testmap.py
+@@ -0,0 +1,148 @@
++"""Maps changed source files to their corresponding test files.
++
++This module implements heuristic-based mapping from source files to test files
++using Sentry's naming conventions:
++
++    src/sentry/api/endpoints/organization_details.py
++    → tests/sentry/api/endpoints/test_organization_details.py
++
++    src/sentry/models/organization.py
++    → tests/sentry/models/test_organization.py
++
++Usage:
++    from sentry_sandbox.testmap import find_test_files
++
++    changed_files = [
++        "src/sentry/api/endpoints/organization_details.py",
++        "src/sentry/models/organization.py",
++    ]
++    test_files = find_test_files(changed_files)
++    # => ["tests/sentry/api/endpoints/test_organization_details.py",
++    #     "tests/sentry/models/test_organization.py"]
++"""
++
++from __future__ import annotations
++
++import os
++from pathlib import Path
++
++
++def find_test_files(
++    changed_files: list[str],
++    repo_root: str | None = None,
++) -> list[str]:
++    """Map changed source files to test files.
++
++    Args:
++        changed_files: List of changed file paths (relative to repo root).
++        repo_root: Repository root directory. If None, auto-detected.
++
++    Returns:
++        List of test file paths that exist on disk.
++    """
++    if repo_root is None:
++        repo_root = _find_repo_root()
++
++    test_files: list[str] = []
++    seen: set[str] = set()
++
++    for changed_file in changed_files:
++        for candidate in _generate_test_candidates(changed_file):
++            if candidate in seen:
++                continue
++            seen.add(candidate)
++
++            full_path = os.path.join(repo_root, candidate)
++            if os.path.isfile(full_path):
++                test_files.append(candidate)
++
++    return sorted(test_files)
++
++
++def _generate_test_candidates(source_path: str) -> list[str]:
++    """Generate candidate test file paths for a given source file.
++
++    Applies multiple heuristics based on Sentry's conventions.
++    """
++    candidates: list[str] = []
++    path = Path(source_path)
++
++    # Skip non-Python files
++    if path.suffix != ".py":
++        return candidates
++
++    # Skip test files themselves, __init__.py, migrations
++    if path.name.startswith("test_") or path.name == "__init__.py":
++        return candidates
++    if "migrations" in path.parts:
++        return candidates
++
++    # Heuristic 1: src/sentry/... → tests/sentry/...
++    # e.g., src/sentry/api/endpoints/foo.py → tests/sentry/api/endpoints/test_foo.py
++    parts = list(path.parts)
++    if len(parts) > 1 and parts[0] == "src":
++        # Replace src/ with tests/
++        test_parts = ["tests"] + parts[1:]
++        # Add test_ prefix to filename
++        test_parts[-1] = f"test_{path.name}"
++        candidates.append(str(Path(*test_parts)))
++
++        # Also try without the direct mapping (some tests are in different locations)
++        # e.g., src/sentry/models/foo.py might have tests in tests/sentry/test_foo.py
++        if len(test_parts) > 3:
++            alt_parts = ["tests", parts[1], f"test_{path.name}"]
++            candidates.append(str(Path(*alt_parts)))
++
++    # Heuristic 2: For API endpoints, also check serializer tests
++    # e.g., src/sentry/api/endpoints/organization_details.py
++    #     → tests/sentry/api/serializers/test_organization.py
++    if "api" in parts and "endpoints" in parts:
++        serializer_name = path.stem.split("_")[0] if "_" in path.stem else path.stem
++        serializer_test = Path("tests", "sentry", "api", "serializers", f"test_{serializer_name}.py")
++        candidates.append(str(serializer_test))
++
++    # Heuristic 3: For tasks, check tests/sentry/tasks/
++    if "tasks" in parts:
++        task_test = Path("tests", "sentry", "tasks", f"test_{path.name}")
++        candidates.append(str(task_test))
++
++    # Heuristic 4: For models, check tests/sentry/models/
++    if "models" in parts:
++        model_test = Path("tests", "sentry", "models", f"test_{path.name}")
++        candidates.append(str(model_test))
++
++    return candidates
++
++
++def find_related_files(
++    changed_files: list[str],
++    repo_root: str | None = None,
++) -> dict[str, list[str]]:
++    """Map each changed file to its related test files.
++
++    Args:
++        changed_files: List of changed file paths.
++        repo_root: Repository root directory.
++
++    Returns:
++        Dict mapping source file → list of test files.
++    """
++    if repo_root is None:
++        repo_root = _find_repo_root()
++
++    result: dict[str, list[str]] = {}
++    for changed_file in changed_files:
++        test_files = find_test_files([changed_file], repo_root)
++        if test_files:
++            result[changed_file] = test_files
++
++    return result
++
++
++def _find_repo_root() -> str:
++    """Find the Sentry repository root by looking for pyproject.toml."""
++    current = Path.cwd()
++    for parent in [current, *current.parents]:
++        if (parent / "pyproject.toml").exists() and (parent / "src" / "sentry").exists():
++            return str(parent)
++    raise RuntimeError("Could not find Sentry repository root")
+diff --git a/sandbox/images/Dockerfile.agent b/sandbox/images/Dockerfile.agent
+new file mode 100644
+index 00000000000..1cf9287f0b5
+--- /dev/null
++++ b/sandbox/images/Dockerfile.agent
+@@ -0,0 +1,145 @@
++# Dockerfile.agent — Pre-built Sentry development sandbox image
++#
++# Contains:
++#   - Python 3.13 + .venv with all dependencies from uv.lock
++#   - Node.js 22 + pnpm + node_modules from pnpm-lock.yaml
++#   - Sentry codebase installed via fast_editable
++#   - pytest, pre-commit, mypy available
++#
++# Build:
++#   docker build -f sandbox/images/Dockerfile.agent \
++#     --secret id=pip_index_url,env=PIP_INDEX_URL \
++#     -t ghcr.io/getsentry/sentry-agent:nightly .
++#
++# The build context is the repo root.
++
++FROM python:3.13.1-slim-bookworm AS base
++
++# System dependencies needed for builds and runtime
++RUN : \
++    && apt-get update \
++    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
++        build-essential \
++        curl \
++        gcc \
++        git \
++        libpcre2-dev \
++        libpq-dev \
++        libxmlsec1-dev \
++        pkg-config \
++        wget \
++        zlib1g-dev \
++    && apt-get clean \
++    && rm -rf /var/lib/apt/lists/*
++
++# Install Node.js (match version from .node-version / devenv/config.ini)
++ARG NODE_VERSION=22.16.0
++RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
++    && apt-get install -y nodejs \
++    && apt-get clean \
++    && rm -rf /var/lib/apt/lists/* \
++    || ( \
++        curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" \
++        | tar -xJ --strip-components=1 -C /usr/local \
++    )
++
++# Install pnpm
++RUN corepack enable && corepack prepare pnpm@latest --activate
++
++WORKDIR /workspace
++
++# ============================================================
++# Stage: Python dependencies (cached by uv.lock)
++# ============================================================
++FROM base AS python-deps
++
++# Install uv
++ARG UV_VERSION=0.9.28
++RUN pip install --no-cache-dir --index-url 'https://pypi.devinfra.sentry.io/simple' "uv==${UV_VERSION}"
++
++ENV VIRTUAL_ENV=/workspace/.venv
++ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
++ENV UV_PROJECT_ENVIRONMENT="${VIRTUAL_ENV}"
++ENV UV_COMPILE_BYTECODE=1
++
++# Create venv
++RUN python3 -m venv "${VIRTUAL_ENV}"
++
++# Copy only dependency files first for layer caching
++COPY pyproject.toml uv.lock ./
++
++# Install Python dependencies
++# Use --mount=type=secret for private PyPI credentials
++RUN --mount=type=secret,id=pip_index_url \
++    PIP_INDEX_URL=$(cat /run/secrets/pip_index_url 2>/dev/null || echo "https://pypi.devinfra.sentry.io/simple") \
++    && uv sync --frozen --quiet --no-install-project \
++        --index-url "${PIP_INDEX_URL}" \
++    && python -c 'import maxminddb.extension; maxminddb.extension.Reader' \
++    && echo "Python deps installed successfully"
++
++# ============================================================
++# Stage: Node dependencies (cached by pnpm-lock.yaml)
++# ============================================================
++FROM base AS node-deps
++
++COPY package.json pnpm-lock.yaml .npmrc* ./
++
++RUN pnpm install --frozen-lockfile --reporter=append-only \
++    && echo "Node deps installed successfully"
++
++# ============================================================
++# Stage: Final image
++# ============================================================
++FROM base AS final
++
++ENV VIRTUAL_ENV=/workspace/.venv
++ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
++ENV UV_PROJECT_ENVIRONMENT="${VIRTUAL_ENV}"
++
++# Sentry configuration for sandbox
++ENV SENTRY_CONF=/workspace/.sentry-sandbox
++ENV SENTRY_SKIP_SERVICE_VALIDATION=1
++ENV SENTRY_SKIP_BACKEND_VALIDATION=1
++# Point PIP at private PyPI for any runtime installs
++ENV PIP_INDEX_URL=https://pypi.devinfra.sentry.io/simple
++ENV PIP_DISABLE_PIP_VERSION_CHECK=1
++
++# Install uv in final image (needed for fast_editable and potential dep updates)
++ARG UV_VERSION=0.9.28
++RUN pip install --no-cache-dir --index-url 'https://pypi.devinfra.sentry.io/simple' "uv==${UV_VERSION}"
++
++# Copy Python venv from deps stage
++COPY --from=python-deps /workspace/.venv /workspace/.venv
++
++# Copy node_modules from deps stage
++COPY --from=node-deps /workspace/node_modules /workspace/node_modules
++
++# Copy the full codebase
++COPY . /workspace/
++
++# Install sentry in editable mode
++RUN python3 -m tools.fast_editable --path . \
++    && sentry help > /dev/null 2>&1 \
++    && echo "Sentry installed successfully"
++
++# Initialize sentry config for sandbox use
++RUN sentry init --dev --no-clobber 2>/dev/null || true
++
++# Pre-install pre-commit hooks so they're cached
++RUN pre-commit install-hooks 2>/dev/null || true
++
++# Verify the installation
++RUN : \
++    && python -c "import sentry; print(f'sentry version: {sentry.VERSION}')" \
++    && pytest --version \
++    && pre-commit --version \
++    && node --version \
++    && pnpm --version
++
++# Labels
++LABEL org.opencontainers.image.title="Sentry Agent Sandbox"
++LABEL org.opencontainers.image.description="Pre-built Sentry development environment for AI agents and CI"
++LABEL maintainer="dev-infra@sentry.io"
++
++# Default: keep container running for exec-based interaction
++CMD ["sleep", "infinity"]
+diff --git a/sandbox/images/Dockerfile.postgres b/sandbox/images/Dockerfile.postgres
+new file mode 100644
+index 00000000000..2f1e3751339
+--- /dev/null
++++ b/sandbox/images/Dockerfile.postgres
+@@ -0,0 +1,59 @@
++# Dockerfile.postgres — Pre-migrated Postgres image for Sentry sandboxes
++#
++# This Dockerfile creates the FINAL image from pre-built SQL dumps.
++# The dumps are generated by sandbox/scripts/build-postgres-image.sh
++# which orchestrates the migration process.
++#
++# The build-postgres-image.sh script:
++#   1. Starts a temp Postgres container
++#   2. Runs sentry migrations against it (using the agent image)
++#   3. pg_dump's all 4 databases
++#   4. Builds this image with dumps baked into docker-entrypoint-initdb.d/
++#
++# Usage:
++#   # Don't build this directly — use the build script:
++#   ./sandbox/scripts/build-postgres-image.sh
++#
++#   # Or to build with pre-existing dumps:
++#   docker build -f sandbox/images/Dockerfile.postgres \
++#     --build-arg DUMPS_DIR=./sandbox/.dumps \
++#     -t ghcr.io/getsentry/sentry-postgres-dev:nightly .
++
++FROM postgres:17-bookworm
++
++LABEL org.opencontainers.image.title="Sentry Dev Postgres"
++LABEL org.opencontainers.image.description="Pre-migrated Postgres with all Sentry databases for development and CI"
++LABEL maintainer="dev-infra@sentry.io"
++
++# Postgres configuration optimized for development / testing
++# (faster writes, less durability — fine for ephemeral sandboxes)
++RUN echo "\
++    fsync = off\n\
++    synchronous_commit = off\n\
++    full_page_writes = off\n\
++    max_connections = 200\n\
++    shared_buffers = 256MB\n\
++    work_mem = 16MB\n\
++    maintenance_work_mem = 128MB\n\
++    effective_cache_size = 512MB\n\
++    random_page_cost = 1.1\n\
++    " >> /usr/share/postgresql/postgresql.conf.sample
++
++# Copy the initialization script that creates databases and restores dumps
++COPY sandbox/images/postgres-init.sh /docker-entrypoint-initdb.d/01-init-databases.sh
++
++# Copy pre-built SQL dumps into the image
++# These are generated by build-postgres-image.sh
++ARG DUMPS_DIR=sandbox/.dumps
++COPY ${DUMPS_DIR}/*.sql /docker-entrypoint-initdb.d/dumps/
++
++# Environment
++ENV POSTGRES_USER=postgres
++ENV POSTGRES_PASSWORD=postgres
++ENV POSTGRES_DB=sentry
++
++# Health check
++HEALTHCHECK --interval=2s --timeout=2s --retries=10 \
++    CMD pg_isready -U postgres || exit 1
++
++EXPOSE 5432
+diff --git a/sandbox/images/postgres-init.sh b/sandbox/images/postgres-init.sh
+new file mode 100755
+index 00000000000..888e5736afb
+--- /dev/null
++++ b/sandbox/images/postgres-init.sh
+@@ -0,0 +1,49 @@
++#!/bin/bash
++# postgres-init.sh — Initialization script for pre-migrated Sentry Postgres
++#
++# This script runs inside docker-entrypoint-initdb.d/ when the Postgres
++# container starts for the first time. It:
++#   1. Creates all 4 Sentry databases
++#   2. Restores pre-built SQL dumps into each database
++#
++# The dumps are generated by build-postgres-image.sh and baked into the image.
++
++set -euo pipefail
++
++DUMPS_DIR="/docker-entrypoint-initdb.d/dumps"
++
++echo "==> Creating Sentry databases..."
++
++# Create the 4 databases Sentry uses in development
++for db in sentry control region secondary; do
++    echo "    Creating database: ${db}"
++    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" <<-SQL
++        SELECT 'CREATE DATABASE ${db}'
++        WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '${db}')
++        \gexec
++SQL
++done
++
++echo "==> Restoring database dumps..."
++
++# Restore dumps if they exist
++for db in sentry control region secondary; do
++    dump_file="${DUMPS_DIR}/${db}.sql"
++    if [ -f "${dump_file}" ]; then
++        echo "    Restoring ${db} from ${dump_file}..."
++        psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "${db}" < "${dump_file}"
++        echo "    Done restoring ${db}"
++    else
++        echo "    No dump found for ${db}, skipping (empty database)"
++    fi
++done
++
++echo "==> Database initialization complete"
++echo "    Databases: sentry, control, region, secondary"
++
++# Print migration counts for verification
++for db in sentry control region secondary; do
++    count=$(psql -t --username "$POSTGRES_USER" --dbname "${db}" \
++        -c "SELECT COUNT(*) FROM django_migrations" 2>/dev/null || echo "0")
++    echo "    ${db}: ${count} migrations applied"
++done
+diff --git a/sandbox/runtime/devcontainer.json b/sandbox/runtime/devcontainer.json
+new file mode 100644
+index 00000000000..ccf770091c4
+--- /dev/null
++++ b/sandbox/runtime/devcontainer.json
+@@ -0,0 +1,53 @@
++{
++  "name": "Sentry Development",
++  "dockerComposeFile": ["docker-compose.sandbox.yml", "docker-compose.devcontainer.yml"],
++  "service": "agent",
++  "workspaceFolder": "/workspace",
++
++  "features": {
++    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
++    "ghcr.io/devcontainers/features/git:1": {}
++  },
++
++  "forwardPorts": [
++    8000,
++    8080,
++    5432,
++    6379
++  ],
++
++  "customizations": {
++    "vscode": {
++      "extensions": [
++        "ms-python.python",
++        "ms-python.vscode-pylance",
++        "dbaeumer.vscode-eslint",
++        "esbenp.prettier-vscode",
++        "eamodio.gitlens"
++      ],
++      "settings": {
++        "python.defaultInterpreterPath": "/workspace/.venv/bin/python",
++        "python.terminal.activateEnvironment": true,
++        "editor.formatOnSave": true,
++        "[python]": {
++          "editor.defaultFormatter": "ms-python.black-formatter"
++        }
++      }
++    }
++  },
++
++  "postCreateCommand": "echo 'Sentry sandbox ready. Run pytest, pre-commit, or start the dev server.'",
++
++  "remoteEnv": {
++    "SENTRY_POSTGRES_HOST": "postgres",
++    "SENTRY_POSTGRES_PORT": "5432",
++    "SENTRY_DB_USER": "postgres",
++    "SENTRY_DB_PASSWORD": "postgres",
++    "SENTRY_REDIS_HOST": "redis",
++    "SENTRY_REDIS_PORT": "6379",
++    "SENTRY_SKIP_SERVICE_VALIDATION": "1",
++    "SENTRY_CONF": "/workspace/.sentry-sandbox",
++    "VIRTUAL_ENV": "/workspace/.venv",
++    "PATH": "/workspace/.venv/bin:${containerEnv:PATH}"
++  }
++}
+diff --git a/sandbox/runtime/docker-compose.devcontainer.yml b/sandbox/runtime/docker-compose.devcontainer.yml
+new file mode 100644
+index 00000000000..b8598e2da1e
+--- /dev/null
++++ b/sandbox/runtime/docker-compose.devcontainer.yml
+@@ -0,0 +1,32 @@
++# docker-compose.devcontainer.yml — Overrides for developer environment use
++#
++# Extends docker-compose.sandbox.yml with developer-friendly settings:
++# - Interactive TTY for the agent container
++# - Volume mount for git config
++# - Longer resource limits
++# - Dev server port forwarding
++
++services:
++  agent:
++    # Override sleep infinity with a shell for interactive use
++    command: ["sleep", "infinity"]
++    stdin_open: true
++    tty: true
++    # Mount git config for commits
++    volumes:
++      - ~/.gitconfig:/root/.gitconfig:ro
++    # Higher resource limits for dev use
++    deploy:
++      resources:
++        limits:
++          cpus: "8"
++          memory: 8g
++
++  postgres:
++    # Use a named volume for persistence across container rebuilds
++    volumes:
++      - pgdata:/var/lib/postgresql/data
++    tmpfs: []
++
++volumes:
++  pgdata:
+diff --git a/sandbox/runtime/docker-compose.sandbox.yml b/sandbox/runtime/docker-compose.sandbox.yml
+new file mode 100644
+index 00000000000..1b5cba08214
+--- /dev/null
++++ b/sandbox/runtime/docker-compose.sandbox.yml
+@@ -0,0 +1,125 @@
++# docker-compose.sandbox.yml — Agent sandbox runtime
++#
++# Runs the Sentry agent sandbox with Postgres and Redis sidecars.
++# This is the minimal setup for running ~90% of Sentry backend tests.
++#
++# Usage:
++#   # Start the sandbox
++#   docker compose -f sandbox/runtime/docker-compose.sandbox.yml up -d
++#
++#   # Execute commands in the agent container
++#   docker compose -f sandbox/runtime/docker-compose.sandbox.yml exec agent \
++#     pytest -xvs tests/sentry/api/test_organization_details.py
++#
++#   # Tear down
++#   docker compose -f sandbox/runtime/docker-compose.sandbox.yml down -v
++#
++# Environment variables:
++#   AGENT_IMAGE_TAG    - Agent image tag (default: nightly)
++#   POSTGRES_IMAGE_TAG - Postgres image tag (default: nightly)
++#   SANDBOX_CPUS       - CPU limit per container (default: 4)
++#   SANDBOX_MEMORY     - Memory limit per container (default: 4g)
++#   WORKSPACE_OVERLAY  - Local directory to overlay on /workspace (optional)
++
++services:
++  agent:
++    image: ghcr.io/getsentry/sentry-agent:${AGENT_IMAGE_TAG:-nightly}
++    container_name: ${SANDBOX_ID:-sandbox}-agent
++    depends_on:
++      postgres:
++        condition: service_healthy
++      redis:
++        condition: service_healthy
++    environment:
++      # Database connection (points to the postgres sidecar)
++      - SENTRY_POSTGRES_HOST=postgres
++      - SENTRY_POSTGRES_PORT=5432
++      - SENTRY_DB_NAME=sentry
++      - SENTRY_DB_USER=postgres
++      - SENTRY_DB_PASSWORD=postgres
++      # Redis connection
++      - SENTRY_REDIS_HOST=redis
++      - SENTRY_REDIS_PORT=6379
++      # Skip service validation (no snuba/kafka/etc)
++      - SENTRY_SKIP_SERVICE_VALIDATION=1
++      - SENTRY_SKIP_BACKEND_VALIDATION=1
++      # Test configuration
++      - PYTEST_ADDOPTS=--reuse-db -q
++      - PY_COLORS=1
++      # Use the sandbox sentry config
++      - SENTRY_CONF=/workspace/.sentry-sandbox
++    volumes:
++      # Optionally overlay local changes on top of the baked-in codebase
++      - ${WORKSPACE_OVERLAY:-/dev/null}:/workspace/overlay:ro
++    working_dir: /workspace
++    networks:
++      - sandbox
++    deploy:
++      resources:
++        limits:
++          cpus: "${SANDBOX_CPUS:-4}"
++          memory: ${SANDBOX_MEMORY:-4g}
++    # Keep running for exec-based interaction
++    command: ["sleep", "infinity"]
++    # Security: drop unnecessary capabilities
++    cap_drop:
++      - ALL
++    cap_add:
++      - DAC_OVERRIDE
++      - FOWNER
++      - SETGID
++      - SETUID
++    security_opt:
++      - no-new-privileges:true
++
++  postgres:
++    image: ghcr.io/getsentry/sentry-postgres-dev:${POSTGRES_IMAGE_TAG:-nightly}
++    container_name: ${SANDBOX_ID:-sandbox}-postgres
++    environment:
++      - POSTGRES_USER=postgres
++      - POSTGRES_PASSWORD=postgres
++      - POSTGRES_DB=sentry
++    # Use tmpfs for data directory — fast, ephemeral
++    tmpfs:
++      - /var/lib/postgresql/data:size=2g
++    networks:
++      - sandbox
++    deploy:
++      resources:
++        limits:
++          cpus: "2"
++          memory: 2g
++    healthcheck:
++      test: ["CMD-SHELL", "pg_isready -U postgres"]
++      interval: 2s
++      timeout: 2s
++      retries: 15
++      start_period: 5s
++
++  redis:
++    image: redis:7-alpine
++    container_name: ${SANDBOX_ID:-sandbox}-redis
++    networks:
++      - sandbox
++    deploy:
++      resources:
++        limits:
++          cpus: "1"
++          memory: 512m
++    healthcheck:
++      test: ["CMD", "redis-cli", "ping"]
++      interval: 2s
++      timeout: 2s
++      retries: 10
++    command: >
++      redis-server
++        --maxmemory 256mb
++        --maxmemory-policy allkeys-lru
++        --save ""
++        --appendonly no
++
++networks:
++  sandbox:
++    name: ${SANDBOX_ID:-sandbox}-net
++    driver: bridge
++    internal: ${SANDBOX_NETWORK_ISOLATED:-false}
+diff --git a/sandbox/runtime/sentry.sandbox.conf.py b/sandbox/runtime/sentry.sandbox.conf.py
+new file mode 100644
+index 00000000000..613bb052f82
+--- /dev/null
++++ b/sandbox/runtime/sentry.sandbox.conf.py
+@@ -0,0 +1,95 @@
++# sentry.sandbox.conf.py — Sentry settings for sandbox environments
++#
++# This configuration is used when running Sentry inside agent sandboxes.
++# It configures database, cache, and other settings to point at the
++# Docker Compose sidecar services.
++
++import os
++
++from sentry.conf.server import *  # noqa: F401,F403
++
++env = os.environ.get
++
++# =============================================================================
++# Databases — point at the sandbox Postgres sidecar
++# =============================================================================
++DATABASES = {
++    "default": {
++        "ENGINE": "sentry.db.postgres",
++        "NAME": env("SENTRY_DB_NAME", "sentry"),
++        "USER": env("SENTRY_DB_USER", "postgres"),
++        "PASSWORD": env("SENTRY_DB_PASSWORD", "postgres"),
++        "HOST": env("SENTRY_POSTGRES_HOST", "postgres"),
++        "PORT": env("SENTRY_POSTGRES_PORT", "5432"),
++        "OPTIONS": {},
++        "ATOMIC_REQUESTS": False,
++        "AUTOCOMMIT": True,
++    },
++    # Include control/region for silo-aware tests
++    "control": {
++        "ENGINE": "sentry.db.postgres",
++        "NAME": "control",
++        "USER": env("SENTRY_DB_USER", "postgres"),
++        "PASSWORD": env("SENTRY_DB_PASSWORD", "postgres"),
++        "HOST": env("SENTRY_POSTGRES_HOST", "postgres"),
++        "PORT": env("SENTRY_POSTGRES_PORT", "5432"),
++        "OPTIONS": {},
++    },
++}
++
++# Region database is the default in silo mode
++DATABASE_ROUTERS = ("sentry.db.router.SiloRouter",)
++
++# =============================================================================
++# Redis — point at the sandbox Redis sidecar
++# =============================================================================
++SENTRY_OPTIONS["redis.clusters"] = {
++    "default": {
++        "hosts": [
++            {
++                "host": env("SENTRY_REDIS_HOST", "redis"),
++                "port": int(env("SENTRY_REDIS_PORT", "6379")),
++            }
++        ]
++    }
++}
++
++# =============================================================================
++# Caches
++# =============================================================================
++CACHES = {
++    "default": {
++        "BACKEND": "django.core.cache.backends.redis.RedisCache",
++        "LOCATION": f"redis://{env('SENTRY_REDIS_HOST', 'redis')}:{env('SENTRY_REDIS_PORT', '6379')}/2",
++    }
++}
++
++# =============================================================================
++# Celery — use Redis as broker (no Kafka needed for most tests)
++# =============================================================================
++CELERY_BROKER_URL = f"redis://{env('SENTRY_REDIS_HOST', 'redis')}:{env('SENTRY_REDIS_PORT', '6379')}/1"
++CELERY_ALWAYS_EAGER = True
++CELERY_EAGER_PROPAGATES_EXCEPTIONS = True
++
++# =============================================================================
++# Sandbox-specific settings
++# =============================================================================
++# Disable features that need external services not in the sandbox
++SENTRY_FEATURES = {
++    **SENTRY_FEATURES,  # noqa: F405
++    "organizations:discover": False,
++    "organizations:performance-view": False,
++}
++
++# Skip service validation checks
++SENTRY_SKIP_SERVICE_VALIDATION = True
++
++# Development mode
++DEBUG = True
++TESTING = True
++
++# Secret key for sandbox
++SECRET_KEY = "sandbox-secret-key-not-for-production"
++
++# Disable rate limiting in sandbox
++SENTRY_RATELIMITER = "sentry.ratelimits.redis.RedisRateLimiter"
+diff --git a/sandbox/scripts/build-postgres-image.sh b/sandbox/scripts/build-postgres-image.sh
+new file mode 100755
+index 00000000000..93b8d69109e
+--- /dev/null
++++ b/sandbox/scripts/build-postgres-image.sh
+@@ -0,0 +1,145 @@
++#!/bin/bash
++# build-postgres-image.sh — Build pre-migrated Postgres image for Sentry
++#
++# This script orchestrates the multi-step process:
++#   1. Start a temporary Postgres container
++#   2. Run Sentry migrations against it (using the agent image)
++#   3. pg_dump all 4 databases
++#   4. Build the final Postgres image with dumps baked in
++#
++# Usage:
++#   ./sandbox/scripts/build-postgres-image.sh [--tag TAG] [--agent-image IMAGE]
++#
++# Environment variables:
++#   AGENT_IMAGE     - Agent image to use for migrations (default: ghcr.io/getsentry/sentry-agent:nightly)
++#   POSTGRES_IMAGE  - Base postgres image (default: postgres:17-bookworm)
++#   OUTPUT_TAG      - Tag for the built image (default: ghcr.io/getsentry/sentry-postgres-dev:nightly)
++
++set -euo pipefail
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
++DUMPS_DIR="${REPO_ROOT}/sandbox/.dumps"
++
++AGENT_IMAGE="${AGENT_IMAGE:-ghcr.io/getsentry/sentry-agent:nightly}"
++POSTGRES_IMAGE="${POSTGRES_IMAGE:-postgres:17-bookworm}"
++OUTPUT_TAG="${OUTPUT_TAG:-ghcr.io/getsentry/sentry-postgres-dev:nightly}"
++
++# Parse arguments
++while [[ $# -gt 0 ]]; do
++    case $1 in
++        --tag) OUTPUT_TAG="$2"; shift 2 ;;
++        --agent-image) AGENT_IMAGE="$2"; shift 2 ;;
++        --postgres-image) POSTGRES_IMAGE="$2"; shift 2 ;;
++        *) echo "Unknown option: $1"; exit 1 ;;
++    esac
++done
++
++# Unique names to avoid collisions
++BUILD_ID="sentry-pgbuild-$(date +%s)-$$"
++PG_CONTAINER="${BUILD_ID}-postgres"
++NETWORK="${BUILD_ID}-net"
++
++cleanup() {
++    echo "==> Cleaning up..."
++    docker rm -f "${PG_CONTAINER}" 2>/dev/null || true
++    docker network rm "${NETWORK}" 2>/dev/null || true
++    echo "    Cleanup done"
++}
++trap cleanup EXIT
++
++echo "==> Building pre-migrated Postgres image"
++echo "    Agent image:    ${AGENT_IMAGE}"
++echo "    Postgres image: ${POSTGRES_IMAGE}"
++echo "    Output tag:     ${OUTPUT_TAG}"
++echo ""
++
++# Step 1: Create a Docker network for the build
++echo "==> Step 1: Creating build network..."
++docker network create "${NETWORK}"
++
++# Step 2: Start a temporary Postgres container
++echo "==> Step 2: Starting temporary Postgres..."
++docker run -d \
++    --name "${PG_CONTAINER}" \
++    --network "${NETWORK}" \
++    -e POSTGRES_USER=postgres \
++    -e POSTGRES_PASSWORD=postgres \
++    -e POSTGRES_DB=sentry \
++    "${POSTGRES_IMAGE}"
++
++# Wait for Postgres to be ready
++echo "    Waiting for Postgres to accept connections..."
++for i in $(seq 1 30); do
++    if docker exec "${PG_CONTAINER}" pg_isready -U postgres > /dev/null 2>&1; then
++        echo "    Postgres is ready"
++        break
++    fi
++    if [ "$i" -eq 30 ]; then
++        echo "ERROR: Postgres failed to start"
++        exit 1
++    fi
++    sleep 1
++done
++
++# Step 3: Create all 4 databases
++echo "==> Step 3: Creating databases..."
++for db in control region secondary; do
++    docker exec "${PG_CONTAINER}" createdb -U postgres "${db}" || true
++done
++echo "    Databases created: sentry, control, region, secondary"
++
++# Step 4: Run migrations using the agent image
++echo "==> Step 4: Running Sentry migrations..."
++docker run --rm \
++    --network "${NETWORK}" \
++    -e DATABASE_URL="postgresql://postgres:postgres@${PG_CONTAINER}:5432/sentry" \
++    -e SENTRY_POSTGRES_HOST="${PG_CONTAINER}" \
++    -e SENTRY_POSTGRES_PORT=5432 \
++    -e SENTRY_DB_USER=postgres \
++    -e SENTRY_DB_PASSWORD=postgres \
++    -e SENTRY_SKIP_SERVICE_VALIDATION=1 \
++    "${AGENT_IMAGE}" \
++    sentry upgrade --noinput
++
++echo "    Migrations complete"
++
++# Step 5: Create the superuser
++echo "==> Step 5: Creating superuser..."
++docker run --rm \
++    --network "${NETWORK}" \
++    -e DATABASE_URL="postgresql://postgres:postgres@${PG_CONTAINER}:5432/sentry" \
++    -e SENTRY_POSTGRES_HOST="${PG_CONTAINER}" \
++    -e SENTRY_POSTGRES_PORT=5432 \
++    -e SENTRY_DB_USER=postgres \
++    -e SENTRY_DB_PASSWORD=postgres \
++    -e SENTRY_SKIP_SERVICE_VALIDATION=1 \
++    "${AGENT_IMAGE}" \
++    sentry createuser --superuser --email admin@sentry.io --password admin --no-input
++
++# Step 6: Dump all databases
++echo "==> Step 6: Dumping databases..."
++mkdir -p "${DUMPS_DIR}"
++for db in sentry control region secondary; do
++    echo "    Dumping ${db}..."
++    docker exec "${PG_CONTAINER}" \
++        pg_dump -U postgres --no-owner --no-acl "${db}" > "${DUMPS_DIR}/${db}.sql"
++    size=$(du -sh "${DUMPS_DIR}/${db}.sql" | cut -f1)
++    echo "    ${db}: ${size}"
++done
++
++# Step 7: Build the final image
++echo "==> Step 7: Building final Postgres image..."
++docker build \
++    -f "${REPO_ROOT}/sandbox/images/Dockerfile.postgres" \
++    --build-arg "DUMPS_DIR=sandbox/.dumps" \
++    -t "${OUTPUT_TAG}" \
++    "${REPO_ROOT}"
++
++echo ""
++echo "==> Build complete!"
++echo "    Image: ${OUTPUT_TAG}"
++echo ""
++echo "    To test:"
++echo "    docker run -d -p 5432:5432 ${OUTPUT_TAG}"
++echo "    psql -h localhost -U postgres -d sentry -c 'SELECT COUNT(*) FROM django_migrations'"
+diff --git a/sandbox/scripts/compute-cache-key.sh b/sandbox/scripts/compute-cache-key.sh
+new file mode 100755
+index 00000000000..29937648367
+--- /dev/null
++++ b/sandbox/scripts/compute-cache-key.sh
+@@ -0,0 +1,74 @@
++#!/bin/bash
++# compute-cache-key.sh — Compute content-hash cache keys for sandbox images
++#
++# These cache keys determine when images need to be rebuilt.
++# Images are tagged with both a human-readable tag and a content hash.
++#
++# Usage:
++#   ./sandbox/scripts/compute-cache-key.sh agent     # => abc123def456
++#   ./sandbox/scripts/compute-cache-key.sh postgres   # => 789012fed345
++
++set -euo pipefail
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
++
++compute_agent_key() {
++    # Agent image cache key: hash of dependency lockfiles + python version
++    local hash_input=""
++
++    # Python dependencies
++    if [ -f "${REPO_ROOT}/uv.lock" ]; then
++        hash_input+=$(sha256sum "${REPO_ROOT}/uv.lock" | cut -d' ' -f1)
++    fi
++
++    # Node dependencies
++    if [ -f "${REPO_ROOT}/pnpm-lock.yaml" ]; then
++        hash_input+=$(sha256sum "${REPO_ROOT}/pnpm-lock.yaml" | cut -d' ' -f1)
++    fi
++
++    # Python version
++    if [ -f "${REPO_ROOT}/.python-version" ]; then
++        hash_input+=$(cat "${REPO_ROOT}/.python-version")
++    fi
++
++    # Dockerfile itself (changes to build process)
++    if [ -f "${REPO_ROOT}/sandbox/images/Dockerfile.agent" ]; then
++        hash_input+=$(sha256sum "${REPO_ROOT}/sandbox/images/Dockerfile.agent" | cut -d' ' -f1)
++    fi
++
++    echo -n "${hash_input}" | sha256sum | cut -c1-12
++}
++
++compute_postgres_key() {
++    # Postgres image cache key: hash of all migration files
++    local hash_input=""
++
++    # Hash all migration files (sorted for determinism)
++    hash_input=$(find "${REPO_ROOT}/src" -path "*/migrations/*.py" \
++        -not -name "__init__.py" \
++        -type f \
++        -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-12)
++
++    echo -n "${hash_input}"
++}
++
++case "${1:-}" in
++    agent)
++        compute_agent_key
++        ;;
++    postgres)
++        compute_postgres_key
++        ;;
++    all)
++        echo "agent=$(compute_agent_key)"
++        echo "postgres=$(compute_postgres_key)"
++        ;;
++    *)
++        echo "Usage: $0 {agent|postgres|all}"
++        echo ""
++        echo "Compute content-hash cache keys for sandbox images."
++        echo "Used to determine when images need rebuilding."
++        exit 1
++        ;;
++esac
+diff --git a/sandbox/scripts/fast-setup.sh b/sandbox/scripts/fast-setup.sh
+new file mode 100755
+index 00000000000..f95991fa2c0
+--- /dev/null
++++ b/sandbox/scripts/fast-setup.sh
+@@ -0,0 +1,234 @@
++#!/bin/bash
++# fast-setup.sh — Fast local development setup using pre-built sandbox images
++#
++# This script accelerates `devenv sync` by restoring from pre-built images
++# instead of building from scratch. It:
++#
++#   1. Checks if pre-built Postgres image matches current migrations
++#   2. If yes, restores Postgres from image (~5s vs ~120s)
++#   3. Checks if pre-built agent image matches current uv.lock
++#   4. If yes, copies .venv from image (~10s vs ~60s)
++#   5. Falls back to normal setup for any mismatches
++#
++# Usage:
++#   # Use instead of `devenv sync` for faster setup
++#   ./sandbox/scripts/fast-setup.sh
++#
++#   # Force full rebuild (ignore pre-built images)
++#   FAST_SETUP_SKIP=1 ./sandbox/scripts/fast-setup.sh
++#
++# Environment variables:
++#   FAST_SETUP_SKIP       - Skip fast setup, use normal flow
++#   FAST_SETUP_VERBOSE    - Enable verbose output
++#   AGENT_IMAGE           - Override agent image (default: ghcr.io/getsentry/sentry-agent)
++#   POSTGRES_IMAGE        - Override postgres image (default: ghcr.io/getsentry/sentry-postgres-dev)
++
++set -euo pipefail
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
++
++AGENT_IMAGE="${AGENT_IMAGE:-ghcr.io/getsentry/sentry-agent}"
++POSTGRES_IMAGE="${POSTGRES_IMAGE:-ghcr.io/getsentry/sentry-postgres-dev}"
++POSTGRES_CONTAINER="postgres-postgres-1"
++
++# Colors
++RED='\033[0;31m'
++GREEN='\033[0;32m'
++YELLOW='\033[1;33m'
++NC='\033[0m' # No Color
++
++log() { echo -e "${GREEN}==>${NC} $*"; }
++warn() { echo -e "${YELLOW}==>${NC} $*"; }
++error() { echo -e "${RED}==>${NC} $*" >&2; }
++
++if [ "${FAST_SETUP_SKIP:-}" = "1" ]; then
++    log "FAST_SETUP_SKIP=1, falling back to normal setup"
++    exec devenv sync
++fi
++
++# Compute cache keys
++log "Computing cache keys..."
++chmod +x "${SCRIPT_DIR}/compute-cache-key.sh"
++AGENT_KEY=$("${SCRIPT_DIR}/compute-cache-key.sh" agent)
++POSTGRES_KEY=$("${SCRIPT_DIR}/compute-cache-key.sh" postgres)
++
++log "Agent cache key:    ${AGENT_KEY}"
++log "Postgres cache key: ${POSTGRES_KEY}"
++
++# ============================================================
++# Step 1: Try to restore Postgres from pre-built image
++# ============================================================
++restore_postgres() {
++    log "Checking for pre-migrated Postgres image..."
++
++    local image_tag="cache-${POSTGRES_KEY}"
++
++    # Try to pull the image with the matching cache key
++    if docker pull "${POSTGRES_IMAGE}:${image_tag}" 2>/dev/null; then
++        log "Found matching Postgres image: ${image_tag}"
++
++        # Check if devservices postgres is running
++        if docker ps --format '{{.Names}}' | grep -q "${POSTGRES_CONTAINER}"; then
++            warn "Postgres container already running. Stopping..."
++            docker stop "${POSTGRES_CONTAINER}" 2>/dev/null || true
++            docker rm "${POSTGRES_CONTAINER}" 2>/dev/null || true
++        fi
++
++        # Start the pre-migrated Postgres using devservices' network
++        log "Starting pre-migrated Postgres..."
++        docker network create devservices 2>/dev/null || true
++        docker run -d \
++            --name "${POSTGRES_CONTAINER}" \
++            --network devservices \
++            -p 127.0.0.1:5432:5432 \
++            -e POSTGRES_USER=postgres \
++            -e POSTGRES_PASSWORD=postgres \
++            --label orchestrator=devservices \
++            "${POSTGRES_IMAGE}:${image_tag}"
++
++        # Wait for it to be ready
++        log "Waiting for Postgres to be ready..."
++        for i in $(seq 1 30); do
++            if docker exec "${POSTGRES_CONTAINER}" pg_isready -U postgres > /dev/null 2>&1; then
++                log "Postgres ready with pre-applied migrations"
++                return 0
++            fi
++            sleep 1
++        done
++
++        error "Postgres failed to start from pre-built image"
++        return 1
++    else
++        warn "No matching Postgres image found for key ${image_tag}"
++        warn "Checking for nightly image with delta migrations..."
++
++        # Fall back: try nightly + delta migrations
++        if docker pull "${POSTGRES_IMAGE}:nightly" 2>/dev/null; then
++            log "Using nightly Postgres image + delta migrations"
++
++            docker network create devservices 2>/dev/null || true
++            docker run -d \
++                --name "${POSTGRES_CONTAINER}" \
++                --network devservices \
++                -p 127.0.0.1:5432:5432 \
++                -e POSTGRES_USER=postgres \
++                -e POSTGRES_PASSWORD=postgres \
++                --label orchestrator=devservices \
++                "${POSTGRES_IMAGE}:nightly"
++
++            # Wait for ready
++            for i in $(seq 1 30); do
++                if docker exec "${POSTGRES_CONTAINER}" pg_isready -U postgres > /dev/null 2>&1; then
++                    break
++                fi
++                sleep 1
++            done
++
++            # Run delta migrations
++            log "Running delta migrations..."
++            cd "${REPO_ROOT}"
++            sentry upgrade --noinput 2>&1
++            log "Delta migrations complete"
++            return 0
++        fi
++
++        warn "No pre-built Postgres image available. Using normal migration flow."
++        return 1
++    fi
++}
++
++# ============================================================
++# Step 2: Try to restore .venv from pre-built image
++# ============================================================
++restore_venv() {
++    log "Checking for pre-built Python environment..."
++
++    local image_tag="cache-${AGENT_KEY}"
++    local venv_dir="${REPO_ROOT}/.venv"
++
++    # Try to pull the image with the matching cache key
++    if docker pull "${AGENT_IMAGE}:${image_tag}" 2>/dev/null; then
++        log "Found matching agent image: ${image_tag}"
++
++        # Extract .venv from the image
++        log "Extracting .venv from pre-built image..."
++        local container_id
++        container_id=$(docker create "${AGENT_IMAGE}:${image_tag}")
++
++        # Remove existing venv if it exists
++        if [ -d "${venv_dir}" ]; then
++            rm -rf "${venv_dir}"
++        fi
++
++        # Copy .venv from the container
++        docker cp "${container_id}:/workspace/.venv" "${venv_dir}"
++        docker rm "${container_id}" > /dev/null
++
++        # Fix up paths in the venv (they were built for /workspace)
++        log "Fixing venv paths..."
++        # Update the pyvenv.cfg to point to the right Python
++        if [ -f "${venv_dir}/pyvenv.cfg" ]; then
++            local python_home
++            python_home=$(python3 -c "import sys; print(sys.prefix)")
++            sed -i "s|home = .*|home = ${python_home}/bin|" "${venv_dir}/pyvenv.cfg"
++        fi
++
++        # Install in editable mode
++        log "Installing sentry in editable mode..."
++        "${venv_dir}/bin/python3" -m tools.fast_editable --path "${REPO_ROOT}"
++
++        log "Python environment restored from pre-built image"
++        return 0
++    else
++        warn "No matching agent image found for key ${image_tag}"
++        warn "Using normal uv sync flow."
++        return 1
++    fi
++}
++
++# ============================================================
++# Main
++# ============================================================
++main() {
++    log "Fast setup starting..."
++    local start_time
++    start_time=$(date +%s)
++
++    local postgres_fast=false
++    local venv_fast=false
++
++    # Try fast Postgres restore
++    if restore_postgres; then
++        postgres_fast=true
++    else
++        warn "Falling back to normal Postgres setup"
++        # Normal devservices + migration flow will run via devenv sync
++    fi
++
++    # Try fast venv restore
++    if restore_venv; then
++        venv_fast=true
++    else
++        warn "Falling back to normal Python setup"
++        cd "${REPO_ROOT}"
++        uv sync --frozen --inexact --quiet --active
++        python3 -m tools.fast_editable --path .
++    fi
++
++    # Always run remaining devenv sync steps (node, pre-commit, etc.)
++    # but skip what we already did
++    if $postgres_fast; then
++        export SENTRY_DEVENV_SKIP_MIGRATIONS=1
++    fi
++
++    local end_time
++    end_time=$(date +%s)
++    local elapsed=$((end_time - start_time))
++
++    log "Fast setup complete in ${elapsed}s"
++    log "  Postgres: $(if $postgres_fast; then echo 'restored from image'; else echo 'normal migration'; fi)"
++    log "  Python:   $(if $venv_fast; then echo 'restored from image'; else echo 'normal uv sync'; fi)"
++}
++
++main "$@"

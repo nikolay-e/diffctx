@@ -1,0 +1,60 @@
+repo: gitpod
+base_commit: c7ef974409dcd757e376f7b90a6f67cb378801ff
+commit: 82d786e2bb98b759703cb98684d20619e3423c83
+patch_stored: true
+gold:
+- path: .werft/util/kubectl.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: chart/templates/ws-manager-configmap.yaml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: chart/templates/ws-manager-tlssecret.yaml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: chart/values.yaml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/common-go/kubernetes/kubernetes.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-manager-api/go/config/config.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-manager/pkg/manager/create.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: installer/pkg/common/constants.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: installer/pkg/components/components.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: installer/pkg/components/ws-manager/configmap.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: installer/pkg/components/ws-manager/tlssecret.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'status=hang, ctx.md is 0 bytes for a 147-file diff (mostly a whole-directory deletion of components/ee/ws-scheduler
+  plus ~15 downstream modified files: kubectl.ts, ws-manager configmap/tlssecret, installer components,
+  ~60 regenerated golden testdata files). This is not a deletion-only-diff-correctly-shows-deleted_files
+  case since real modified files exist (kubectl.ts, kubernetes.go, config.go, create.go) that a reader
+  would need; the tool produced literally nothing, so recall and precision are both zero by construction.
+  yaml was never attempted (rc_yaml=NA) so no comparison is possible.'

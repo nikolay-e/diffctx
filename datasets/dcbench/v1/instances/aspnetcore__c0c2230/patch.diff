@@ -1,0 +1,1092 @@
+From c0c2230799a3f876aa673a66bc008bf9b803acac Mon Sep 17 00:00:00 2001
+From: Daria Tiurina <dariatiurina@microsoft.com>
+Date: Tue, 19 May 2026 23:45:01 +0200
+Subject: [PATCH] SupplyParameterFromSession support for Blazor (#65184)
+
+---
+ ...orComponentsServiceCollectionExtensions.cs |   3 +
+ .../src/Rendering/EndpointHtmlRenderer.cs     |   7 +-
+ .../src/SessionCascadingValueSupplier.cs      | 181 +++++++++++++
+ .../SessionCascadingValueSupplierTest.cs      | 247 ++++++++++++++++++
+ .../test/Session/SessionSubscriptionTest.cs   | 164 ++++++++++++
+ .../Web/src/PublicAPI.Unshipped.txt           |   4 +
+ .../SupplyParameterFromSessionAttribute.cs    |  20 ++
+ ...SupplyParameterFromSessionAttributeTest.cs |  77 ++++++
+ ...pplyParameterFromSessionInteractiveTest.cs |  43 +++
+ .../Tests/TempDataSessionStorageTest.cs       |   1 +
+ .../test/testassets/BasicTestApp/Index.razor  |   1 +
+ ...upplyParameterFromSessionInteractive.razor |  12 +
+ .../Components.TestServer.csproj              |   1 +
+ ...omponentEndpointsNoInteractivityStartup.cs |  18 +-
+ .../SupplyParameterFromSessionComponent.razor | 100 +++++++
+ ...ameterFromSessionNavigationComponent.razor |  23 ++
+ 16 files changed, 897 insertions(+), 5 deletions(-)
+ create mode 100644 src/Components/Endpoints/src/SessionCascadingValueSupplier.cs
+ create mode 100644 src/Components/Endpoints/test/Session/SessionCascadingValueSupplierTest.cs
+ create mode 100644 src/Components/Endpoints/test/Session/SessionSubscriptionTest.cs
+ create mode 100644 src/Components/Web/src/SupplyParameterFromSessionAttribute.cs
+ create mode 100644 src/Components/test/E2ETest/Tests/SupplyParameterFromSessionAttributeTest.cs
+ create mode 100644 src/Components/test/E2ETest/Tests/SupplyParameterFromSessionInteractiveTest.cs
+ create mode 100644 src/Components/test/testassets/BasicTestApp/SupplyParameterFromSessionInteractive.razor
+ create mode 100644 src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/SupplyParameterFromSessionComponent.razor
+ create mode 100644 src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/SupplyParameterFromSessionNavigationComponent.razor
+
+diff --git a/src/Components/Endpoints/src/DependencyInjection/RazorComponentsServiceCollectionExtensions.cs b/src/Components/Endpoints/src/DependencyInjection/RazorComponentsServiceCollectionExtensions.cs
+index dd7b688040..2119368c9b 100644
+--- a/src/Components/Endpoints/src/DependencyInjection/RazorComponentsServiceCollectionExtensions.cs
++++ b/src/Components/Endpoints/src/DependencyInjection/RazorComponentsServiceCollectionExtensions.cs
+@@ -77,6 +77,9 @@ public static class RazorComponentsServiceCollectionExtensions
+         services.TryAddScoped<TempDataCascadingValueSupplier>();
+         services.TryAddCascadingValueSupplier<SupplyParameterFromTempDataAttribute>(
+             sp => sp.GetRequiredService<TempDataCascadingValueSupplier>().CreateSubscription);
++        services.TryAddScoped<SessionCascadingValueSupplier>();
++        services.TryAddCascadingValueSupplier<SupplyParameterFromSessionAttribute>(
++            sp => sp.GetRequiredService<SessionCascadingValueSupplier>().CreateSubscription);
+ 
+         services.TryAddScoped<ResourceCollectionProvider>();
+         RegisterPersistentComponentStateServiceCollectionExtensions.AddPersistentServiceRegistration<ResourceCollectionProvider>(services, RenderMode.InteractiveWebAssembly);
+diff --git a/src/Components/Endpoints/src/Rendering/EndpointHtmlRenderer.cs b/src/Components/Endpoints/src/Rendering/EndpointHtmlRenderer.cs
+index 075ea3bb98..62797ee22b 100644
+--- a/src/Components/Endpoints/src/Rendering/EndpointHtmlRenderer.cs
++++ b/src/Components/Endpoints/src/Rendering/EndpointHtmlRenderer.cs
+@@ -122,11 +122,16 @@ internal partial class EndpointHtmlRenderer : StaticHtmlRenderer, IComponentPrer
+             antiforgery.SetRequestContext(httpContext);
+         }
+ 
+-        if (httpContext.RequestServices.GetService<TempDataCascadingValueSupplier>() is {} tempDataSupplier)
++        if (httpContext.RequestServices.GetService<TempDataCascadingValueSupplier>() is { } tempDataSupplier)
+         {
+             tempDataSupplier.SetRequestContext(httpContext);
+         }
+ 
++        if (httpContext.RequestServices.GetService<SessionCascadingValueSupplier>() is { } sessionSupplier)
++        {
++            sessionSupplier.SetRequestContext(httpContext);
++        }
++
+         // It's important that this is initialized since a component might try to restore state during prerendering
+         // (which will obviously not work, but should not fail)
+         var componentApplicationLifetime = httpContext.RequestServices.GetRequiredService<ComponentStatePersistenceManager>();
+diff --git a/src/Components/Endpoints/src/SessionCascadingValueSupplier.cs b/src/Components/Endpoints/src/SessionCascadingValueSupplier.cs
+new file mode 100644
+index 0000000000..27db32a80e
+--- /dev/null
++++ b/src/Components/Endpoints/src/SessionCascadingValueSupplier.cs
+@@ -0,0 +1,181 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using System.Collections.Concurrent;
++using System.Reflection;
++using System.Text.Json;
++using Microsoft.AspNetCore.Components.Reflection;
++using Microsoft.AspNetCore.Components.Rendering;
++using Microsoft.AspNetCore.Components.Web;
++using Microsoft.AspNetCore.Http;
++using Microsoft.AspNetCore.Http.Features;
++using Microsoft.Extensions.Logging;
++
++namespace Microsoft.AspNetCore.Components.Endpoints;
++
++internal partial class SessionCascadingValueSupplier
++{
++    private static readonly ConcurrentDictionary<(Type, string), PropertyGetter> _propertyGetterCache = new();
++    private static readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
++    private HttpContext? _httpContext;
++    private bool _onStartingRegistered;
++    private readonly Dictionary<string, Func<object?>> _valueCallbacks = new(StringComparer.OrdinalIgnoreCase);
++    private readonly ILogger<SessionCascadingValueSupplier> _logger;
++
++    public SessionCascadingValueSupplier(ILogger<SessionCascadingValueSupplier> logger)
++    {
++        _logger = logger;
++    }
++
++    internal void SetRequestContext(HttpContext httpContext)
++    {
++        _httpContext = httpContext;
++    }
++
++    internal CascadingParameterSubscription CreateSubscription(
++        ComponentState componentState,
++        SupplyParameterFromSessionAttribute attribute,
++        CascadingParameterInfo parameterInfo)
++    {
++        if (!_onStartingRegistered && _httpContext is not null)
++        {
++            _onStartingRegistered = true;
++            _httpContext.Response.OnStarting(PersistAllValues);
++        }
++
++        var sessionKey = attribute.Name ?? parameterInfo.PropertyName;
++        var componentType = componentState.Component.GetType();
++        var getter = _propertyGetterCache.GetOrAdd((componentType, parameterInfo.PropertyName), PropertyGetterFactory);
++        Func<object?> valueGetter = () => getter.GetValue(componentState.Component);
++        RegisterValueCallback(sessionKey, valueGetter);
++        return new SessionSubscription(this, sessionKey, parameterInfo.PropertyType, valueGetter);
++    }
++
++    private static PropertyGetter PropertyGetterFactory((Type type, string propertyName) key)
++    {
++        var (type, propertyName) = key;
++        var propertyInfo = type.GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
++        if (propertyInfo is null)
++        {
++            throw new InvalidOperationException($"A property '{propertyName}' on component type '{type.FullName}' wasn't found.");
++        }
++        return new PropertyGetter(type, propertyInfo);
++    }
++
++    internal ISession? GetSession() => _httpContext?.Features.Get<ISessionFeature>()?.Session;
++
++    internal void RegisterValueCallback(string sessionKey, Func<object?> valueGetter)
++    {
++        if (!_valueCallbacks.TryAdd(sessionKey, valueGetter))
++        {
++            throw new InvalidOperationException($"A callback is already registered for the session key '{sessionKey}'. Multiple components cannot use the same session key for multiple [SupplyParameterFromSession] attributes.");
++        }
++    }
++
++    internal Task PersistAllValues()
++    {
++        if (_valueCallbacks.Count == 0)
++        {
++            return Task.CompletedTask;
++        }
++
++        var session = GetSession();
++        if (session is null)
++        {
++            return Task.CompletedTask;
++        }
++
++        foreach (var (key, valueGetter) in _valueCallbacks)
++        {
++            var sessionKey = key.ToLowerInvariant();
++            try
++            {
++                var value = valueGetter();
++                if (value is not null)
++                {
++                    var json = JsonSerializer.Serialize(value, value.GetType(), _jsonOptions);
++                    session.SetString(sessionKey, json);
++                }
++                else
++                {
++                    session.Remove(sessionKey);
++                }
++            }
++            catch (Exception ex)
++            {
++                Log.SessionPersistFail(_logger, ex);
++            }
++        }
++        return Task.CompletedTask;
++    }
++
++    internal void DeleteValueCallback(string sessionKey)
++    {
++        _valueCallbacks.Remove(sessionKey);
++    }
++
++    private static partial class Log
++    {
++        [LoggerMessage(1, LogLevel.Warning, "Persisting of the session element failed.", EventName = "SessionPersistFail")]
++        public static partial void SessionPersistFail(ILogger logger, Exception exception);
++
++        [LoggerMessage(2, LogLevel.Warning, "Deserialization of the element from session failed.", EventName = "SessionDeserializeFail")]
++        public static partial void SessionDeserializeFail(ILogger logger, Exception exception);
++    }
++
++    internal partial class SessionSubscription : CascadingParameterSubscription
++    {
++        private readonly SessionCascadingValueSupplier _owner;
++        private readonly string _sessionKey;
++        private readonly Type _propertyType;
++        private readonly Func<object?> _currentValueGetter;
++        private bool _delivered;
++
++        public SessionSubscription(
++            SessionCascadingValueSupplier owner,
++            string sessionKey,
++            Type propertyType,
++            Func<object?> currentValueGetter)
++        {
++            _owner = owner;
++            _sessionKey = sessionKey;
++            _propertyType = propertyType;
++            _currentValueGetter = currentValueGetter;
++        }
++
++        public override object? GetCurrentValue()
++        {
++            if (_delivered)
++            {
++                return _currentValueGetter();
++            }
++
++            _delivered = true;
++            var session = _owner.GetSession();
++            if (session is null)
++            {
++                return null;
++            }
++
++            try
++            {
++                var json = session.GetString(_sessionKey.ToLowerInvariant());
++                if (string.IsNullOrEmpty(json))
++                {
++                    return null;
++                }
++                return JsonSerializer.Deserialize(json, _propertyType, _jsonOptions);
++            }
++            catch (Exception ex)
++            {
++                Log.SessionDeserializeFail(_owner._logger, ex);
++                return null;
++            }
++        }
++
++        public override void Dispose()
++        {
++            _owner.DeleteValueCallback(_sessionKey);
++        }
++    }
++}
+diff --git a/src/Components/Endpoints/test/Session/SessionCascadingValueSupplierTest.cs b/src/Components/Endpoints/test/Session/SessionCascadingValueSupplierTest.cs
+new file mode 100644
+index 0000000000..1cde5ad394
+--- /dev/null
++++ b/src/Components/Endpoints/test/Session/SessionCascadingValueSupplierTest.cs
+@@ -0,0 +1,247 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++#nullable enable
++
++using Microsoft.AspNetCore.Http;
++using Microsoft.AspNetCore.Http.Features;
++using Microsoft.Extensions.Logging.Abstractions;
++
++namespace Microsoft.AspNetCore.Components.Endpoints;
++
++public class SessionCascadingValueSupplierTest
++{
++    private readonly SessionCascadingValueSupplier _supplier;
++
++    public SessionCascadingValueSupplierTest()
++    {
++        _supplier = new SessionCascadingValueSupplier(NullLogger<SessionCascadingValueSupplier>.Instance);
++    }
++
++    [Fact]
++    public async Task RegisterValueCallback_AddsCallback()
++    {
++        var callbackInvoked = false;
++        _supplier.RegisterValueCallback("key", () =>
++        {
++            callbackInvoked = true;
++            return "value";
++        });
++
++        var httpContext = CreateHttpContextWithSession();
++        _supplier.SetRequestContext(httpContext);
++        await _supplier.PersistAllValues();
++
++        Assert.True(callbackInvoked);
++    }
++
++    [Fact]
++    public void RegisterValueCallback_ThrowsForDuplicateKey()
++    {
++        _supplier.RegisterValueCallback("key", () => "value1");
++
++        var ex = Assert.Throws<InvalidOperationException>(() =>
++            _supplier.RegisterValueCallback("key", () => "value2"));
++
++        Assert.Contains("key", ex.Message);
++    }
++
++    [Fact]
++    public async Task PersistAllValues_SetsValueInSession()
++    {
++        _supplier.RegisterValueCallback("key", () => "persisted value");
++
++        var httpContext = CreateHttpContextWithSession();
++        _supplier.SetRequestContext(httpContext);
++        await _supplier.PersistAllValues();
++
++        Assert.Equal("\"persisted value\"", httpContext.Session.GetString("key"));
++    }
++
++    [Fact]
++    public async Task PersistAllValues_RemovesKey_WhenCallbackReturnsNull()
++    {
++        var httpContext = CreateHttpContextWithSession();
++        httpContext.Session.SetString("key", "\"existing\"");
++
++        _supplier.RegisterValueCallback("key", () => null);
++        _supplier.SetRequestContext(httpContext);
++        await _supplier.PersistAllValues();
++
++        Assert.Null(httpContext.Session.GetString("key"));
++    }
++
++    [Fact]
++    public async Task PersistAllValues_HandlesMultipleKeys()
++    {
++        _supplier.RegisterValueCallback("key1", () => "value1");
++        _supplier.RegisterValueCallback("key2", () => "value2");
++        _supplier.RegisterValueCallback("key3", () => "value3");
++
++        var httpContext = CreateHttpContextWithSession();
++        _supplier.SetRequestContext(httpContext);
++        await _supplier.PersistAllValues();
++
++        Assert.Equal("\"value1\"", httpContext.Session.GetString("key1"));
++        Assert.Equal("\"value2\"", httpContext.Session.GetString("key2"));
++        Assert.Equal("\"value3\"", httpContext.Session.GetString("key3"));
++    }
++
++    [Fact]
++    public async Task PersistAllValues_ContinuesOnCallbackException()
++    {
++        _supplier.RegisterValueCallback("key1", () => throw new InvalidOperationException("Test exception"));
++        _supplier.RegisterValueCallback("key2", () => "value2");
++
++        var httpContext = CreateHttpContextWithSession();
++        _supplier.SetRequestContext(httpContext);
++        await _supplier.PersistAllValues();
++
++        Assert.Null(httpContext.Session.GetString("key1"));
++        Assert.Equal("\"value2\"", httpContext.Session.GetString("key2"));
++    }
++
++    [Fact]
++    public async Task PersistAllValues_ContinuesOnSerializationException()
++    {
++        _supplier.RegisterValueCallback("key1", () => new IntPtr(42));
++        _supplier.RegisterValueCallback("key2", () => "value2");
++
++        var httpContext = CreateHttpContextWithSession();
++        _supplier.SetRequestContext(httpContext);
++        await _supplier.PersistAllValues();
++
++        Assert.Null(httpContext.Session.GetString("key1"));
++        Assert.Equal("\"value2\"", httpContext.Session.GetString("key2"));
++    }
++
++    [Fact]
++    public async Task PersistAllValues_LowercasesSessionKey()
++    {
++        _supplier.RegisterValueCallback("MyKey", () => "value");
++
++        var httpContext = CreateHttpContextWithSession();
++        _supplier.SetRequestContext(httpContext);
++        await _supplier.PersistAllValues();
++
++        Assert.Equal("\"value\"", httpContext.Session.GetString("mykey"));
++    }
++
++    [Fact]
++    public async Task PersistAllValues_NoOp_WhenSessionUnavailable()
++    {
++        _supplier.RegisterValueCallback("key", () => "value");
++
++        var httpContext = new DefaultHttpContext();
++        httpContext.Features.Set<IHttpResponseFeature>(new TestHttpResponseFeature());
++        _supplier.SetRequestContext(httpContext);
++
++        await _supplier.PersistAllValues();
++    }
++
++    [Fact]
++    public async Task DeleteCallbacks_RemovesCallbacksForKey()
++    {
++        var callbackInvoked = false;
++        _supplier.RegisterValueCallback("key", () =>
++        {
++            callbackInvoked = true;
++            return "value";
++        });
++
++        _supplier.DeleteValueCallback("key");
++
++        var httpContext = CreateHttpContextWithSession();
++        _supplier.SetRequestContext(httpContext);
++        await _supplier.PersistAllValues();
++
++        Assert.False(callbackInvoked);
++        Assert.Null(httpContext.Session.GetString("key"));
++    }
++
++    [Fact]
++    public async Task SetRequestContext_DoesNotRegisterOnStarting_UntilSubscriptionCreated()
++    {
++        _supplier.RegisterValueCallback("key", () => "value");
++
++        var httpContext = CreateHttpContextWithSession(out var responseFeature);
++        _supplier.SetRequestContext(httpContext);
++
++        // OnStarting has not been registered yet because no subscription was created
++        await responseFeature.FireOnStartingAsync();
++
++        Assert.Null(httpContext.Session.GetString("key"));
++    }
++
++    internal static DefaultHttpContext CreateHttpContextWithSession()
++    {
++        return CreateHttpContextWithSession(out _);
++    }
++
++    internal static DefaultHttpContext CreateHttpContextWithSession(out TestHttpResponseFeature responseFeature)
++    {
++        var httpContext = new DefaultHttpContext();
++        var session = new TestSession();
++        httpContext.Features.Set<ISessionFeature>(new TestSessionFeature(session));
++
++        responseFeature = new TestHttpResponseFeature();
++        httpContext.Features.Set<IHttpResponseFeature>(responseFeature);
++
++        return httpContext;
++    }
++
++    internal class TestSession : ISession
++    {
++        private readonly Dictionary<string, byte[]> _store = new();
++
++        public bool IsAvailable => true;
++        public string Id => "test-session";
++        public IEnumerable<string> Keys => _store.Keys;
++
++        public void Clear() => _store.Clear();
++        public Task CommitAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
++        public Task LoadAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
++        public void Remove(string key) => _store.Remove(key);
++        public void Set(string key, byte[] value) => _store[key] = value;
++        public bool TryGetValue(string key, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out byte[]? value) => _store.TryGetValue(key, out value);
++    }
++
++    internal class TestSessionFeature : ISessionFeature
++    {
++        public TestSessionFeature(ISession session)
++        {
++            Session = session;
++        }
++
++        public ISession Session { get; set; }
++    }
++
++    internal class TestHttpResponseFeature : IHttpResponseFeature
++    {
++        private readonly Stack<(Func<object, Task> Callback, object State)> _onStarting = new();
++
++        public int StatusCode { get; set; } = 200;
++        public string? ReasonPhrase { get; set; }
++        public IHeaderDictionary Headers { get; set; } = new HeaderDictionary();
++        public Stream Body { get; set; } = new MemoryStream();
++        public bool HasStarted { get; private set; }
++
++        public void OnCompleted(Func<object, Task> callback, object state)
++        {
++        }
++
++        public void OnStarting(Func<object, Task> callback, object state)
++        {
++            _onStarting.Push((callback, state));
++        }
++
++        public async Task FireOnStartingAsync()
++        {
++            foreach (var (callback, state) in _onStarting)
++            {
++                await callback(state);
++            }
++            HasStarted = true;
++        }
++    }
++}
+diff --git a/src/Components/Endpoints/test/Session/SessionSubscriptionTest.cs b/src/Components/Endpoints/test/Session/SessionSubscriptionTest.cs
+new file mode 100644
+index 0000000000..443b0bb3cf
+--- /dev/null
++++ b/src/Components/Endpoints/test/Session/SessionSubscriptionTest.cs
+@@ -0,0 +1,164 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++#nullable enable
++
++using Microsoft.AspNetCore.Components.Rendering;
++using Microsoft.AspNetCore.Components.Test.Helpers;
++using Microsoft.AspNetCore.Components.Web;
++using Microsoft.AspNetCore.Http;
++using Microsoft.Extensions.Logging.Abstractions;
++using static Microsoft.AspNetCore.Components.Endpoints.SessionCascadingValueSupplierTest;
++
++namespace Microsoft.AspNetCore.Components.Endpoints;
++
++public class SessionSubscriptionTest
++{
++    private readonly SessionCascadingValueSupplier _supplier;
++    private readonly TestComponent _component;
++
++    public SessionSubscriptionTest()
++    {
++        _supplier = new SessionCascadingValueSupplier(NullLogger<SessionCascadingValueSupplier>.Instance);
++        _component = new TestComponent();
++    }
++
++    private SessionCascadingValueSupplier.SessionSubscription CreateSubscription(string key, Type propertyType)
++    {
++        return new SessionCascadingValueSupplier.SessionSubscription(
++            _supplier,
++            key,
++            propertyType,
++            () => _component.Value);
++    }
++
++    [Fact]
++    public void GetValue_ReturnsNull_WhenHttpContextNotSet()
++    {
++        var subscription = CreateSubscription("key", typeof(string));
++
++        var result = subscription.GetCurrentValue();
++
++        Assert.Null(result);
++    }
++
++    [Fact]
++    public void GetValue_ReturnsNull_WhenKeyNotFound()
++    {
++        var httpContext = CreateHttpContextWithSession();
++        _supplier.SetRequestContext(httpContext);
++
++        var subscription = CreateSubscription("nonexistent", typeof(string));
++        var result = subscription.GetCurrentValue();
++
++        Assert.Null(result);
++    }
++
++    [Fact]
++    public void GetValue_ReturnsValue_WhenKeyExists()
++    {
++        var httpContext = CreateHttpContextWithSession();
++        httpContext.Session.SetString("mykey", "\"myvalue\"");
++        _supplier.SetRequestContext(httpContext);
++
++        var subscription = CreateSubscription("mykey", typeof(string));
++        var result = subscription.GetCurrentValue();
++
++        Assert.Equal("myvalue", result);
++    }
++
++    [Fact]
++    public void GetValue_LowercasesSessionKey()
++    {
++        var httpContext = CreateHttpContextWithSession();
++        httpContext.Session.SetString("mykey", "\"myvalue\"");
++        _supplier.SetRequestContext(httpContext);
++
++        var subscription = CreateSubscription("MyKey", typeof(string));
++        var result = subscription.GetCurrentValue();
++
++        Assert.Equal("myvalue", result);
++    }
++
++    [Fact]
++    public void GetValue_DeserializesEnum()
++    {
++        var httpContext = CreateHttpContextWithSession();
++        httpContext.Session.SetString("status", "2");
++        _supplier.SetRequestContext(httpContext);
++
++        var subscription = CreateSubscription("status", typeof(TestEnum?));
++        var result = subscription.GetCurrentValue();
++
++        Assert.IsType<TestEnum>(result);
++        Assert.Equal(TestEnum.Inactive, result);
++    }
++
++    [Fact]
++    public void GetValue_ReturnsNull_WhenDeserializationFails()
++    {
++        var httpContext = CreateHttpContextWithSession();
++        httpContext.Session.SetString("key", "not-valid-json-for-int");
++        _supplier.SetRequestContext(httpContext);
++
++        var subscription = CreateSubscription("key", typeof(int));
++        var result = subscription.GetCurrentValue();
++
++        Assert.Null(result);
++    }
++
++    [Fact]
++    public void GetCurrentValue_ReturnsComponentValue_OnSubsequentCalls()
++    {
++        var httpContext = CreateHttpContextWithSession();
++        httpContext.Session.SetString("key", "\"original\"");
++        _supplier.SetRequestContext(httpContext);
++
++        var subscription = CreateSubscription("key", typeof(string));
++        var firstResult = subscription.GetCurrentValue();
++
++        _component.Value = "modified";
++        var secondResult = subscription.GetCurrentValue();
++
++        Assert.Equal("original", firstResult);
++        Assert.Equal("modified", secondResult);
++    }
++
++    [Fact]
++    public async Task CreateSubscription_RegistersValueCallbackAndReturnsSubscription()
++    {
++        var httpContext = CreateHttpContextWithSession(out var responseFeature);
++        httpContext.Session.SetString(nameof(TestComponent.Value).ToLowerInvariant(), "\"from-session\"");
++        _supplier.SetRequestContext(httpContext);
++
++        var renderer = new TestRenderer();
++        var componentState = new ComponentState(renderer, 0, _component, null);
++        var attribute = new SupplyParameterFromSessionAttribute();
++        var parameterInfo = new CascadingParameterInfo(attribute, nameof(TestComponent.Value), typeof(string));
++
++        var subscription = _supplier.CreateSubscription(componentState, attribute, parameterInfo);
++
++        Assert.NotNull(subscription);
++        Assert.Equal("from-session", subscription.GetCurrentValue());
++
++        _component.Value = "updated";
++        await responseFeature.FireOnStartingAsync();
++        Assert.Equal("\"updated\"", httpContext.Session.GetString(nameof(TestComponent.Value).ToLowerInvariant()));
++    }
++
++    private class TestComponent : IComponent
++    {
++        public object? Value { get; set; }
++
++        public void Attach(RenderHandle renderHandle) { }
++
++        public Task SetParametersAsync(ParameterView parameters) => Task.CompletedTask;
++    }
++
++    public enum TestEnum
++    {
++        None = 0,
++        Active = 1,
++        Inactive = 2,
++    }
++}
+diff --git a/src/Components/Web/src/PublicAPI.Unshipped.txt b/src/Components/Web/src/PublicAPI.Unshipped.txt
+index 1f1a71e0b1..de81db69b1 100644
+--- a/src/Components/Web/src/PublicAPI.Unshipped.txt
++++ b/src/Components/Web/src/PublicAPI.Unshipped.txt
+@@ -80,6 +80,10 @@ Microsoft.AspNetCore.Components.Web.Media.MediaSource.MediaSource(byte[]! data,
+ Microsoft.AspNetCore.Components.Web.Media.MediaSource.MediaSource(System.IO.Stream! stream, string! mimeType, string! cacheKey) -> void
+ Microsoft.AspNetCore.Components.Web.Media.MediaSource.MimeType.get -> string!
+ Microsoft.AspNetCore.Components.Web.Media.MediaSource.Stream.get -> System.IO.Stream!
++Microsoft.AspNetCore.Components.Web.SupplyParameterFromSessionAttribute
++Microsoft.AspNetCore.Components.Web.SupplyParameterFromSessionAttribute.Name.get -> string?
++Microsoft.AspNetCore.Components.Web.SupplyParameterFromSessionAttribute.Name.set -> void
++Microsoft.AspNetCore.Components.Web.SupplyParameterFromSessionAttribute.SupplyParameterFromSessionAttribute() -> void
+ Microsoft.AspNetCore.Components.Web.Virtualization.Virtualize<TItem>.AnchorMode.get -> Microsoft.AspNetCore.Components.Web.Virtualization.VirtualizeAnchorMode
+ Microsoft.AspNetCore.Components.Web.Virtualization.Virtualize<TItem>.AnchorMode.set -> void
+ Microsoft.AspNetCore.Components.Web.Virtualization.Virtualize<TItem>.ItemComparer.get -> System.Collections.Generic.IEqualityComparer<TItem>!
+diff --git a/src/Components/Web/src/SupplyParameterFromSessionAttribute.cs b/src/Components/Web/src/SupplyParameterFromSessionAttribute.cs
+new file mode 100644
+index 0000000000..9456155604
+--- /dev/null
++++ b/src/Components/Web/src/SupplyParameterFromSessionAttribute.cs
+@@ -0,0 +1,20 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++namespace Microsoft.AspNetCore.Components.Web;
++
++/// <summary>
++/// Indicates that the value of the associated property should be supplied from
++/// the session with the specified name.
++/// </summary>
++[AttributeUsage(AttributeTargets.Property, AllowMultiple = false, Inherited = true)]
++public sealed class SupplyParameterFromSessionAttribute : CascadingParameterAttributeBase
++{
++    /// <summary>
++    /// Gets or sets the name of the session key. If not specified, the property name will be used.
++    /// </summary>
++    public string? Name { get; set; }
++
++    /// <inheritdoc />
++    internal override bool SingleDelivery => false;
++}
+diff --git a/src/Components/test/E2ETest/Tests/SupplyParameterFromSessionAttributeTest.cs b/src/Components/test/E2ETest/Tests/SupplyParameterFromSessionAttributeTest.cs
+new file mode 100644
+index 0000000000..b86f1de157
+--- /dev/null
++++ b/src/Components/test/E2ETest/Tests/SupplyParameterFromSessionAttributeTest.cs
+@@ -0,0 +1,77 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using System;
++using System.Collections.Generic;
++using System.Text;
++using Components.TestServer.RazorComponents;
++using Microsoft.AspNetCore.Components.E2ETest.Infrastructure;
++using Microsoft.AspNetCore.Components.E2ETest.Infrastructure.ServerFixtures;
++using Microsoft.AspNetCore.E2ETesting;
++using OpenQA.Selenium;
++using TestServer;
++using Xunit.Abstractions;
++
++namespace Microsoft.AspNetCore.Components.E2ETest.Tests;
++
++public class SupplyParameterFromSessionAttributeTest : ServerTestBase<BasicTestAppServerSiteFixture<RazorComponentEndpointsNoInteractivityStartup<App>>>
++{
++    public SupplyParameterFromSessionAttributeTest(BrowserFixture browserFixture, BasicTestAppServerSiteFixture<RazorComponentEndpointsNoInteractivityStartup<App>> serverFixture, ITestOutputHelper output) : base(browserFixture, serverFixture, output)
++    {
++    }
++
++    protected override void InitializeAsyncCore()
++    {
++        _serverFixture.AdditionalArguments.Add("--UseSession=true");
++        base.InitializeAsyncCore();
++    }
++
++    [Fact]
++    public void SupplyParameterCanReadFromSession()
++    {
++        Navigate($"{ServerPathBase}/supply-parameter-from-session");
++        Browser.Exists(By.Id("input-email")).SendKeys("email");
++        Browser.Exists(By.Id("set-email")).Click();
++        Browser.Equal("email", () => Browser.Exists(By.Id("text-email")).Text);
++    }
++
++    [Fact]
++    public void SupplyParameterNullWhenNoKeyInSession()
++    {
++        Navigate($"{ServerPathBase}/supply-parameter-from-session");
++        Browser.Exists(By.Id("input-email")).SendKeys("email");
++        Browser.Exists(By.Id("set-email")).Click();
++        Browser.Equal("email", () => Browser.Exists(By.Id("text-email")).Text);
++        Browser.Equal("", () => Browser.Exists(By.Id("text-null")).Text);
++    }
++
++    [Fact]
++    public void SupplyParameterWorksWithRedirect()
++    {
++        Navigate($"{ServerPathBase}/supply-parameter-from-session");
++        Browser.Exists(By.Id("input-email-redirect")).SendKeys("email");
++        Browser.Exists(By.Id("set-email-redirect")).Click();
++        Browser.Equal("email", () => Browser.Exists(By.Id("text-email")).Text);
++    }
++
++    [Fact]
++    public void SupplyParameterWorksWithComplexTypes()
++    {
++        Navigate($"{ServerPathBase}/supply-parameter-from-session");
++        Browser.Exists(By.Id("input-testclass-email")).SendKeys("email");
++        Browser.Exists(By.Id("input-testclass-age")).SendKeys("30");
++        Browser.Exists(By.Id("set-testclass-object")).Click();
++        Browser.Equal("email", () => Browser.Exists(By.Id("text-testclass-email")).Text);
++        Browser.Equal("30", () => Browser.Exists(By.Id("text-testclass-age")).Text);
++    }
++
++    [Fact]
++    public void SupplyParameterPersistThroughNavigationAndBack()
++    {
++        Navigate($"{ServerPathBase}/supply-parameter-from-session");
++        Browser.Exists(By.Id("input-number")).SendKeys("12345");
++        Browser.Exists(By.Id("set-number")).Click();
++        Browser.Exists(By.Id("redirect")).Click();
++        Browser.Equal("12345", () => Browser.Exists(By.Id("text-number")).Text);
++    }
++}
+diff --git a/src/Components/test/E2ETest/Tests/SupplyParameterFromSessionInteractiveTest.cs b/src/Components/test/E2ETest/Tests/SupplyParameterFromSessionInteractiveTest.cs
+new file mode 100644
+index 0000000000..bdf8d2bf6a
+--- /dev/null
++++ b/src/Components/test/E2ETest/Tests/SupplyParameterFromSessionInteractiveTest.cs
+@@ -0,0 +1,43 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using BasicTestApp;
++using Microsoft.AspNetCore.Components.E2ETest.Infrastructure;
++using Microsoft.AspNetCore.Components.E2ETest.Infrastructure.ServerFixtures;
++using Microsoft.AspNetCore.E2ETesting;
++using OpenQA.Selenium;
++using Xunit.Abstractions;
++
++namespace Microsoft.AspNetCore.Components.E2ETest.Tests;
++
++public class SupplyParameterFromInteractiveTest : ServerTestBase<ToggleExecutionModeServerFixture<Program>>
++{
++    public SupplyParameterFromInteractiveTest(
++        BrowserFixture browserFixture,
++        ToggleExecutionModeServerFixture<Program> serverFixture,
++        ITestOutputHelper output)
++        : base(browserFixture, serverFixture, output)
++    {
++    }
++
++    protected override void InitializeAsyncCore()
++    {
++        Navigate(ServerPathBase);
++    }
++
++    [Fact]
++    public void SupplyParameterFromSessionDoesNotWorkInInteractiveMode()
++    {
++        Browser.MountTestComponent<SupplyParameterFromSessionInteractive>();
++        Browser.Exists(By.TagName("h3"));
++        Browser.Equal("(empty)", () => Browser.Exists(By.Id("session-value")).Text);
++    }
++
++    [Fact]
++    public void SupplyParameterFromTempDataDoesNotWorkInInteractiveMode()
++    {
++        Browser.MountTestComponent<SupplyParameterFromSessionInteractive>();
++        Browser.Exists(By.TagName("h3"));
++        Browser.Equal("(empty)", () => Browser.Exists(By.Id("tempdata-value")).Text);
++    }
++}
+diff --git a/src/Components/test/E2ETest/Tests/TempDataSessionStorageTest.cs b/src/Components/test/E2ETest/Tests/TempDataSessionStorageTest.cs
+index 7f57116a0a..8f43213cca 100644
+--- a/src/Components/test/E2ETest/Tests/TempDataSessionStorageTest.cs
++++ b/src/Components/test/E2ETest/Tests/TempDataSessionStorageTest.cs
+@@ -27,6 +27,7 @@ public class TempDataSessionStorageTest : ServerTestBase<BasicTestAppServerSiteF
+     protected override void InitializeAsyncCore()
+     {
+         _serverFixture.AdditionalArguments.Add("--UseSessionStorageTempDataProvider=true");
++        _serverFixture.AdditionalArguments.Add("--UseSession=true");
+         Browser.Manage().Cookies.DeleteCookieNamed(SessionCookieName);
+         base.InitializeAsyncCore();
+     }
+diff --git a/src/Components/test/testassets/BasicTestApp/Index.razor b/src/Components/test/testassets/BasicTestApp/Index.razor
+index cd3597b2a9..d0d4c1e881 100644
+--- a/src/Components/test/testassets/BasicTestApp/Index.razor
++++ b/src/Components/test/testassets/BasicTestApp/Index.razor
+@@ -143,6 +143,7 @@
+         <option value="BasicTestApp.VirtualizationScrollBehavior">Virtualization scroll behavior</option>
+         <option value="BasicTestApp.VirtualizationChatListAsync">Virtualization chat list async</option>
+         <option value="BasicTestApp.VirtualizationHorizontalOverflow">Virtualization horizontal overflow</option>
++        <option value="BasicTestApp.SupplyParameterFromSessionInteractive">SupplyParameterFromSession interactive</option>
+         <option value="BasicTestApp.HotReload.RenderOnHotReload">Render on hot reload</option>
+         <option value="BasicTestApp.HotReloadTrimmingCheck">Hot reload trimming check</option>
+         <option value="BasicTestApp.MetricsTrimmingCheck">Metrics trimming check</option>
+diff --git a/src/Components/test/testassets/BasicTestApp/SupplyParameterFromSessionInteractive.razor b/src/Components/test/testassets/BasicTestApp/SupplyParameterFromSessionInteractive.razor
+new file mode 100644
+index 0000000000..ac7090cfef
+--- /dev/null
++++ b/src/Components/test/testassets/BasicTestApp/SupplyParameterFromSessionInteractive.razor
+@@ -0,0 +1,12 @@
++<h3>SupplyParameterFromSessionInteractive</h3>
++
++<p id="session-value">@SessionValue</p>
++<p id="tempdata-value">@TempDataValue</p>
++
++@code {
++    [SupplyParameterFromSession]
++    public string SessionValue { get; set; } = "(empty)";
++
++    [SupplyParameterFromTempData]
++    public string TempDataValue { get; set; } = "(empty)";
++}
+diff --git a/src/Components/test/testassets/Components.TestServer/Components.TestServer.csproj b/src/Components/test/testassets/Components.TestServer/Components.TestServer.csproj
+index ea51ba6665..55a687ff93 100644
+--- a/src/Components/test/testassets/Components.TestServer/Components.TestServer.csproj
++++ b/src/Components/test/testassets/Components.TestServer/Components.TestServer.csproj
+@@ -78,6 +78,7 @@
+     <Reference Include="Microsoft.AspNetCore.Razor.Runtime" />
+     <Reference Include="Microsoft.AspNetCore.Routing" />
+     <Reference Include="Microsoft.AspNetCore.Routing.Abstractions" />
++    <Reference Include="Microsoft.AspNetCore.Session" />
+     <Reference Include="Microsoft.AspNetCore.StaticAssets" />
+     <Reference Include="Microsoft.AspNetCore.StaticFiles" />
+     <Reference Include="Microsoft.AspNetCore.WebSockets" />
+diff --git a/src/Components/test/testassets/Components.TestServer/RazorComponentEndpointsNoInteractivityStartup.cs b/src/Components/test/testassets/Components.TestServer/RazorComponentEndpointsNoInteractivityStartup.cs
+index 429182d135..b66823b6f4 100644
+--- a/src/Components/test/testassets/Components.TestServer/RazorComponentEndpointsNoInteractivityStartup.cs
++++ b/src/Components/test/testassets/Components.TestServer/RazorComponentEndpointsNoInteractivityStartup.cs
+@@ -5,6 +5,7 @@ using System.Globalization;
+ using System.Reflection;
+ using System.Security.Claims;
+ using System.Web;
++
+ using Components.TestServer.RazorComponents;
+ using Components.TestServer.RazorComponents.Pages.Forms;
+ using Components.TestServer.Services;
+@@ -37,7 +38,7 @@ public class RazorComponentEndpointsNoInteractivityStartup<TRootComponent>
+         services.AddHttpContextAccessor();
+         services.AddCascadingAuthenticationState();
+ 
+-        if (Configuration.GetValue<bool>("UseSessionStorageTempDataProvider"))
++        if (Configuration.GetValue<bool>("UseSession"))
+         {
+             services.AddDistributedMemoryCache();
+             services.AddSession(options =>
+@@ -45,10 +46,14 @@ public class RazorComponentEndpointsNoInteractivityStartup<TRootComponent>
+                 options.Cookie.HttpOnly = true;
+                 options.Cookie.IsEssential = true;
+             });
+-            services.Configure<RazorComponentsServiceOptions>(options =>
++
++            if (Configuration.GetValue<bool>("UseSessionStorageTempDataProvider"))
+             {
+-                options.TempDataProviderType = TempDataProviderType.SessionStorage;
+-            });
++                services.Configure<RazorComponentsServiceOptions>(options =>
++                {
++                    options.TempDataProviderType = TempDataProviderType.SessionStorage;
++                });
++            }
+         }
+     }
+ 
+@@ -110,6 +115,11 @@ public class RazorComponentEndpointsNoInteractivityStartup<TRootComponent>
+                 });
+             });
+ 
++            if (Configuration.GetValue<bool>("UseSession"))
++            {
++                app.UseSession();
++            }
++
+             ConfigureSubdirPipeline(app, env);
+         });
+     }
+diff --git a/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/SupplyParameterFromSessionComponent.razor b/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/SupplyParameterFromSessionComponent.razor
+new file mode 100644
+index 0000000000..6f79adb27e
+--- /dev/null
++++ b/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/SupplyParameterFromSessionComponent.razor
+@@ -0,0 +1,100 @@
++﻿@page "/supply-parameter-from-session"
++@using Microsoft.AspNetCore.Components.Forms
++@inject NavigationManager NavigationManager
++
++<h3>SupplyParameterFromSessionComponent</h3>
++
++<p id="text-email">@Email</p>
++<p id="text-null">@NoElement</p>
++<p id="text-number">@Number</p>
++
++<p id="text-testclass-email">@TestClassObject?.Email</p>
++<p id="text-testclass-age">@TestClassObject?.Age</p>
++
++<form @onsubmit="SetEmail" @formname="set-email" method="post">
++    <AntiforgeryToken />
++    <input id="input-email" @bind="EmailInput" name="EmailInput"/>
++    <button type="submit" id="set-email">Set Email</button>
++</form>
++
++<form @onsubmit="SetNumber" @formname="set-number" method="post">
++    <AntiforgeryToken />
++    <input id="input-number" @bind="NumberInput" name="NumberInput" />
++    <button type="submit" id="set-number">Set Number</button>
++</form>
++
++<form @onsubmit="SetEmailWithRedirect" @formname="set-email-redirect" method="post">
++    <AntiforgeryToken />
++    <input id="input-email-redirect" @bind="EmailInput" name="EmailInput" />
++    <button type="submit" id="set-email-redirect">Set Email And Redirect</button>
++</form>
++
++<form @onsubmit="SetTestClassObject" @formname="set-testclass-object" method="post">
++    <AntiforgeryToken />
++    <input id="input-testclass-email" @bind="EmailInput" name="EmailInput" />
++    <input id="input-testclass-age" @bind="AgeInput" name="AgeInput" />
++    <button type="submit" id="set-testclass-object">Set TestClass Object</button>
++</form>
++
++@code {
++    [SupplyParameterFromSession]
++    public string? Email { get; set; }
++
++    [SupplyParameterFromSession]
++    public string? NoElement { get; set; }
++
++    [SupplyParameterFromSession]
++    public int? Number { get; set; }
++
++    [SupplyParameterFromForm]
++    public string? EmailInput { get; set; }
++
++    [SupplyParameterFromForm]
++    public int? NumberInput { get; set; }
++
++    [SupplyParameterFromForm]
++    public int? AgeInput { get; set; }
++
++    [SupplyParameterFromSession]
++    public TestClass? TestClassObject { get; set; }
++
++    void SetEmail()
++    {
++        Email = EmailInput;
++        EmailInput = string.Empty;
++        NavigationManager.NavigateTo("/subdir/supply-parameter-from-session", forceLoad: true);
++    }
++
++    void SetNumber()
++    {
++        Number = NumberInput;
++        NumberInput = null;
++        NavigationManager.NavigateTo("/subdir/supply-parameter-from-session/navigation", forceLoad: true);
++    }
++
++    void SetEmailWithRedirect()
++    {
++        Email = EmailInput;
++        EmailInput = string.Empty;
++        NavigationManager.NavigateTo("/subdir/supply-parameter-from-session/navigation", forceLoad: true);
++    }
++
++    void SetTestClassObject()
++    {
++        if (TestClassObject == null)
++        {
++            TestClassObject = new TestClass();
++        }
++        TestClassObject.Email = EmailInput;
++        TestClassObject.Age = AgeInput;
++        EmailInput = string.Empty;
++        AgeInput = null;
++        NavigationManager.NavigateTo("/subdir/supply-parameter-from-session", forceLoad: true);
++    }
++
++    public class TestClass
++    {
++        public string? Email { get; set; }
++        public int? Age { get; set; }
++    }
++}
+diff --git a/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/SupplyParameterFromSessionNavigationComponent.razor b/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/SupplyParameterFromSessionNavigationComponent.razor
+new file mode 100644
+index 0000000000..dfd2323010
+--- /dev/null
++++ b/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/SupplyParameterFromSessionNavigationComponent.razor
+@@ -0,0 +1,23 @@
++﻿@page "/supply-parameter-from-session/navigation"
++@using Microsoft.AspNetCore.Components.Forms
++@inject NavigationManager NavigationManager
++
++<h3>SupplyParameterFromSessionNavigationComponent</h3>
++
++<p id="text-email">@Email</p>
++
++<form @onsubmit="Redirect" @formname="redirect" method="post">
++    <AntiforgeryToken />
++    <button type="submit" id="redirect">Redirect</button>
++</form>
++
++@code {
++    [SupplyParameterFromSession]
++    public string? Email { get; set; }
++
++
++    void Redirect()
++    {
++        NavigationManager.NavigateTo("/subdir/supply-parameter-from-session");
++    }
++}

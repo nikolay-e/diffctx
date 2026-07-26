@@ -1,0 +1,2307 @@
+From 95ed8a6123024afd03227358ab4b165fdf87b270 Mon Sep 17 00:00:00 2001
+From: Pieter De Baets <pieterdb@meta.com>
+Date: Mon, 2 Jun 2025 08:47:05 -0700
+Subject: [PATCH] Merge all core codegen into FBReactNativeSpec (#50317)
+
+Summary:
+Pull Request resolved: https://github.com/facebook/react-native/pull/50317
+
+`rncore`, `FBReactNativeSpec` and `FBReactNativeComponentSpec` contain the same symbols, which leads to conflicts when we try to merge them into a single shared library. Cleanup the duplication and standardize on `FBReactNativeSpec` everywhere. I've left the Android OSS targets names as is, to avoid breaking deps.
+
+This aligns react-native's package.json with the codegen tooling supported across iOS and Android, which is a single target for all all type-derived codegen.
+
+Changelog: [Internal]
+
+Reviewed By: sammy-SC
+
+Differential Revision: D55037569
+
+fbshipit-source-id: dbf3c0a427c9d0df96e439b04e5b123cd1069c51
+---
+ .../generators/modules/GenerateModuleJniH.js  |  18 +-
+ .../RCTActivityIndicatorViewComponentView.mm  |   6 +-
+ .../RCTDebuggingOverlayComponentView.h        |   2 +-
+ .../RCTDebuggingOverlayComponentView.mm       |   8 +-
+ .../RCTInputAccessoryComponentView.mm         |   2 +-
+ .../Modal/RCTModalHostViewComponentView.mm    |   4 +-
+ .../RCTPullToRefreshViewComponentView.mm      |   8 +-
+ .../Switch/RCTSwitchComponentView.mm          |   8 +-
+ .../RCTUnimplementedNativeComponentView.mm    |   6 +-
+ .../RCTUnimplementedViewComponentView.mm      |   6 +-
+ .../React/React-RCTFBReactNativeSpec.podspec  |  40 ++-
+ .../React/React-RCTFabric.podspec             |   1 +
+ .../ReactAndroid/build.gradle.kts             |   4 +-
+ .../cmake-utils/default-app-setup/OnLoad.cpp  |   4 +-
+ .../react/fabric/CoreComponentsRegistry.cpp   |   2 +-
+ .../DefaultComponentsRegistry.cpp             |   2 +-
+ .../main/jni/react/newarchdefaults/rncore.h   |  20 ++
+ .../ReactCommon/React-Fabric.podspec          |  19 --
+ .../React-FabricComponents.podspec            |  63 ++---
+ .../ReactCommon/React-rncore.podspec          |  52 ----
+ .../ios/ReactCommon/RCTTurboModuleManager.mm  |   1 +
+ .../react/nativemodule/dom/NativeDOM.h        |   4 +-
+ .../NativeReactNativeFeatureFlags.h           |   6 +-
+ .../idlecallbacks/NativeIdleCallbacks.h       |   4 +-
+ .../microtasks/NativeMicrotasks.h             |   4 +-
+ .../inputaccessory/InputAccessoryShadowNode.h |   4 +-
+ .../modal/ModalHostViewShadowNode.h           |   4 +-
+ .../AndroidProgressBarMeasurementsManager.cpp |   1 +
+ .../AndroidProgressBarMeasurementsManager.h   |   3 +-
+ .../AndroidProgressBarShadowNode.h            |   4 +-
+ .../components/progressbar/conversions.h      |   2 +-
+ .../safeareaview/SafeAreaViewShadowNode.h     |   4 +-
+ .../androidswitch/AndroidSwitchShadowNode.h   |   4 +-
+ packages/react-native/package.json            |   9 +-
+ .../react-native/scripts/cocoapods/utils.rb   |   1 -
+ .../generate-artifacts-executor/constants.js  |  16 --
+ .../generateFBReactNativeSpecIOS.js           |  11 +-
+ .../generateNativeCode.js                     |  24 --
+ .../generateRNCoreComponentsIOS.js            |  39 ---
+ ...ativeReactNativeFeatureFlags.h-template.js |   4 +-
+ packages/react-native/scripts/prepack.js      |   4 -
+ .../react-native/scripts/react_native_pods.rb |   1 -
+ packages/rn-tester/Podfile.lock               | 250 +++++++++---------
+ .../RNTesterPods.xcodeproj/project.pbxproj    |  24 +-
+ .../xcshareddata/IDEWorkspaceChecks.plist     |   8 -
+ .../xcshareddata/WorkspaceSettings.xcsettings |   5 -
+ .../android/app/src/main/jni/OnLoad.cpp       |   4 +-
+ 47 files changed, 276 insertions(+), 444 deletions(-)
+ create mode 100644 packages/react-native/ReactAndroid/src/main/jni/react/newarchdefaults/rncore.h
+ delete mode 100644 packages/react-native/ReactCommon/React-rncore.podspec
+ delete mode 100644 packages/react-native/scripts/codegen/generate-artifacts-executor/generateRNCoreComponentsIOS.js
+ delete mode 100644 packages/rn-tester/RNTesterPods.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+ delete mode 100644 packages/rn-tester/RNTesterPods.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings
+
+diff --git a/packages/react-native-codegen/src/generators/modules/GenerateModuleJniH.js b/packages/react-native-codegen/src/generators/modules/GenerateModuleJniH.js
+index f62a16241df..0d0ee29bcff 100644
+--- a/packages/react-native-codegen/src/generators/modules/GenerateModuleJniH.js
++++ b/packages/react-native-codegen/src/generators/modules/GenerateModuleJniH.js
+@@ -63,7 +63,8 @@ std::shared_ptr<TurboModule> ${libraryName}_ModuleProvider(const std::string &mo
+ // Note: this CMakeLists.txt template includes dependencies for both NativeModule and components.
+ const CMakeListsTemplate = ({
+   libraryName,
+-}: $ReadOnly<{libraryName: string}>) => {
++  targetName,
++}: $ReadOnly<{libraryName: string, targetName: string}>) => {
+   return `# Copyright (c) Meta Platforms, Inc. and affiliates.
+ #
+ # This source code is licensed under the MIT license found in the
+@@ -75,27 +76,27 @@ set(CMAKE_VERBOSE_MAKEFILE on)
+ file(GLOB react_codegen_SRCS CONFIGURE_DEPENDS *.cpp react/renderer/components/${libraryName}/*.cpp)
+ 
+ add_library(
+-  react_codegen_${libraryName}
++  react_codegen_${targetName}
+   OBJECT
+   \${react_codegen_SRCS}
+ )
+ 
+-target_include_directories(react_codegen_${libraryName} PUBLIC . react/renderer/components/${libraryName})
++target_include_directories(react_codegen_${targetName} PUBLIC . react/renderer/components/${libraryName})
+ 
+ target_link_libraries(
+-  react_codegen_${libraryName}
++  react_codegen_${targetName}
+   fbjni
+   jsi
+   # We need to link different libraries based on whether we are building rncore or not, that's necessary
+   # because we want to break a circular dependency between react_codegen_rncore and reactnative
+   ${
+-    libraryName !== 'rncore'
++    targetName !== 'rncore'
+       ? 'reactnative'
+       : 'folly_runtime glog react_debug react_nativemodule_core react_renderer_componentregistry react_renderer_core react_renderer_debug react_renderer_graphics react_renderer_imagemanager react_renderer_mapbuffer react_utils rrc_image rrc_view turbomodulejsijni yoga'
+   }
+ )
+ 
+-target_compile_reactnative_options(react_codegen_${libraryName} PRIVATE)
++target_compile_reactnative_options(react_codegen_${targetName} PRIVATE)
+ `;
+ };
+ 
+@@ -125,9 +126,12 @@ module.exports = {
+       modules: modules,
+       libraryName: libraryName.replace(/-/g, '_'),
+     });
++    // Use rncore as target name for backwards compat
++    const targetName =
++      libraryName === 'FBReactNativeSpec' ? 'rncore' : libraryName;
+     return new Map([
+       [`jni/${fileName}`, replacedTemplate],
+-      ['jni/CMakeLists.txt', CMakeListsTemplate({libraryName: libraryName})],
++      ['jni/CMakeLists.txt', CMakeListsTemplate({libraryName, targetName})],
+     ]);
+   },
+ };
+diff --git a/packages/react-native/React/Fabric/Mounting/ComponentViews/ActivityIndicator/RCTActivityIndicatorViewComponentView.mm b/packages/react-native/React/Fabric/Mounting/ComponentViews/ActivityIndicator/RCTActivityIndicatorViewComponentView.mm
+index 4d0c75f282e..0797faa47e1 100644
+--- a/packages/react-native/React/Fabric/Mounting/ComponentViews/ActivityIndicator/RCTActivityIndicatorViewComponentView.mm
++++ b/packages/react-native/React/Fabric/Mounting/ComponentViews/ActivityIndicator/RCTActivityIndicatorViewComponentView.mm
+@@ -9,9 +9,9 @@
+ 
+ #import <React/RCTConversions.h>
+ 
+-#import <react/renderer/components/rncore/ComponentDescriptors.h>
+-#import <react/renderer/components/rncore/EventEmitters.h>
+-#import <react/renderer/components/rncore/Props.h>
++#import <react/renderer/components/FBReactNativeSpec/ComponentDescriptors.h>
++#import <react/renderer/components/FBReactNativeSpec/EventEmitters.h>
++#import <react/renderer/components/FBReactNativeSpec/Props.h>
+ 
+ #import "RCTFabricComponentsPlugins.h"
+ 
+diff --git a/packages/react-native/React/Fabric/Mounting/ComponentViews/DebuggingOverlay/RCTDebuggingOverlayComponentView.h b/packages/react-native/React/Fabric/Mounting/ComponentViews/DebuggingOverlay/RCTDebuggingOverlayComponentView.h
+index 9ee08512265..b1936c6901a 100644
+--- a/packages/react-native/React/Fabric/Mounting/ComponentViews/DebuggingOverlay/RCTDebuggingOverlayComponentView.h
++++ b/packages/react-native/React/Fabric/Mounting/ComponentViews/DebuggingOverlay/RCTDebuggingOverlayComponentView.h
+@@ -9,7 +9,7 @@
+ 
+ #import <React/RCTViewComponentView.h>
+ 
+-#import <react/renderer/components/rncore/RCTComponentViewHelpers.h>
++#import <react/renderer/components/FBReactNativeSpec/RCTComponentViewHelpers.h>
+ 
+ @interface RCTDebuggingOverlayComponentView : RCTViewComponentView <RCTDebuggingOverlayViewProtocol>
+ 
+diff --git a/packages/react-native/React/Fabric/Mounting/ComponentViews/DebuggingOverlay/RCTDebuggingOverlayComponentView.mm b/packages/react-native/React/Fabric/Mounting/ComponentViews/DebuggingOverlay/RCTDebuggingOverlayComponentView.mm
+index f1afbc5b847..c12a550a5ec 100644
+--- a/packages/react-native/React/Fabric/Mounting/ComponentViews/DebuggingOverlay/RCTDebuggingOverlayComponentView.mm
++++ b/packages/react-native/React/Fabric/Mounting/ComponentViews/DebuggingOverlay/RCTDebuggingOverlayComponentView.mm
+@@ -11,10 +11,10 @@
+ #import <React/RCTDefines.h>
+ #import <React/RCTLog.h>
+ 
+-#import <react/renderer/components/rncore/ComponentDescriptors.h>
+-#import <react/renderer/components/rncore/EventEmitters.h>
+-#import <react/renderer/components/rncore/Props.h>
+-#import <react/renderer/components/rncore/RCTComponentViewHelpers.h>
++#import <react/renderer/components/FBReactNativeSpec/ComponentDescriptors.h>
++#import <react/renderer/components/FBReactNativeSpec/EventEmitters.h>
++#import <react/renderer/components/FBReactNativeSpec/Props.h>
++#import <react/renderer/components/FBReactNativeSpec/RCTComponentViewHelpers.h>
+ 
+ #import "RCTFabricComponentsPlugins.h"
+ 
+diff --git a/packages/react-native/React/Fabric/Mounting/ComponentViews/InputAccessory/RCTInputAccessoryComponentView.mm b/packages/react-native/React/Fabric/Mounting/ComponentViews/InputAccessory/RCTInputAccessoryComponentView.mm
+index f152dabf3b9..9f1f29918a5 100644
+--- a/packages/react-native/React/Fabric/Mounting/ComponentViews/InputAccessory/RCTInputAccessoryComponentView.mm
++++ b/packages/react-native/React/Fabric/Mounting/ComponentViews/InputAccessory/RCTInputAccessoryComponentView.mm
+@@ -12,8 +12,8 @@
+ #import <React/RCTSurfaceTouchHandler.h>
+ #import <React/RCTUtils.h>
+ #import <React/UIView+React.h>
++#import <react/renderer/components/FBReactNativeSpec/Props.h>
+ #import <react/renderer/components/inputaccessory/InputAccessoryComponentDescriptor.h>
+-#import <react/renderer/components/rncore/Props.h>
+ #import "RCTInputAccessoryContentView.h"
+ 
+ #import "RCTFabricComponentsPlugins.h"
+diff --git a/packages/react-native/React/Fabric/Mounting/ComponentViews/Modal/RCTModalHostViewComponentView.mm b/packages/react-native/React/Fabric/Mounting/ComponentViews/Modal/RCTModalHostViewComponentView.mm
+index b53de29651c..a1f484dbad2 100644
+--- a/packages/react-native/React/Fabric/Mounting/ComponentViews/Modal/RCTModalHostViewComponentView.mm
++++ b/packages/react-native/React/Fabric/Mounting/ComponentViews/Modal/RCTModalHostViewComponentView.mm
+@@ -10,10 +10,10 @@
+ #import <React/RCTBridge+Private.h>
+ #import <React/RCTModalManager.h>
+ #import <React/UIView+React.h>
++#import <react/renderer/components/FBReactNativeSpec/EventEmitters.h>
++#import <react/renderer/components/FBReactNativeSpec/Props.h>
+ #import <react/renderer/components/modal/ModalHostViewComponentDescriptor.h>
+ #import <react/renderer/components/modal/ModalHostViewState.h>
+-#import <react/renderer/components/rncore/EventEmitters.h>
+-#import <react/renderer/components/rncore/Props.h>
+ 
+ #import "RCTConversions.h"
+ 
+diff --git a/packages/react-native/React/Fabric/Mounting/ComponentViews/ScrollView/RCTPullToRefreshViewComponentView.mm b/packages/react-native/React/Fabric/Mounting/ComponentViews/ScrollView/RCTPullToRefreshViewComponentView.mm
+index b2aaa854718..0d231bc8aa9 100644
+--- a/packages/react-native/React/Fabric/Mounting/ComponentViews/ScrollView/RCTPullToRefreshViewComponentView.mm
++++ b/packages/react-native/React/Fabric/Mounting/ComponentViews/ScrollView/RCTPullToRefreshViewComponentView.mm
+@@ -7,10 +7,10 @@
+ 
+ #import "RCTPullToRefreshViewComponentView.h"
+ 
+-#import <react/renderer/components/rncore/ComponentDescriptors.h>
+-#import <react/renderer/components/rncore/EventEmitters.h>
+-#import <react/renderer/components/rncore/Props.h>
+-#import <react/renderer/components/rncore/RCTComponentViewHelpers.h>
++#import <react/renderer/components/FBReactNativeSpec/ComponentDescriptors.h>
++#import <react/renderer/components/FBReactNativeSpec/EventEmitters.h>
++#import <react/renderer/components/FBReactNativeSpec/Props.h>
++#import <react/renderer/components/FBReactNativeSpec/RCTComponentViewHelpers.h>
+ 
+ #import <React/RCTConversions.h>
+ #import <React/RCTRefreshableProtocol.h>
+diff --git a/packages/react-native/React/Fabric/Mounting/ComponentViews/Switch/RCTSwitchComponentView.mm b/packages/react-native/React/Fabric/Mounting/ComponentViews/Switch/RCTSwitchComponentView.mm
+index 2e0e34047e4..552dd5def91 100644
+--- a/packages/react-native/React/Fabric/Mounting/ComponentViews/Switch/RCTSwitchComponentView.mm
++++ b/packages/react-native/React/Fabric/Mounting/ComponentViews/Switch/RCTSwitchComponentView.mm
+@@ -9,10 +9,10 @@
+ 
+ #import <React/RCTConversions.h>
+ 
+-#import <react/renderer/components/rncore/ComponentDescriptors.h>
+-#import <react/renderer/components/rncore/EventEmitters.h>
+-#import <react/renderer/components/rncore/Props.h>
+-#import <react/renderer/components/rncore/RCTComponentViewHelpers.h>
++#import <react/renderer/components/FBReactNativeSpec/ComponentDescriptors.h>
++#import <react/renderer/components/FBReactNativeSpec/EventEmitters.h>
++#import <react/renderer/components/FBReactNativeSpec/Props.h>
++#import <react/renderer/components/FBReactNativeSpec/RCTComponentViewHelpers.h>
+ 
+ #import "RCTFabricComponentsPlugins.h"
+ 
+diff --git a/packages/react-native/React/Fabric/Mounting/ComponentViews/UnimplementedComponent/RCTUnimplementedNativeComponentView.mm b/packages/react-native/React/Fabric/Mounting/ComponentViews/UnimplementedComponent/RCTUnimplementedNativeComponentView.mm
+index fe4c9f6a65b..df216faf152 100644
+--- a/packages/react-native/React/Fabric/Mounting/ComponentViews/UnimplementedComponent/RCTUnimplementedNativeComponentView.mm
++++ b/packages/react-native/React/Fabric/Mounting/ComponentViews/UnimplementedComponent/RCTUnimplementedNativeComponentView.mm
+@@ -7,9 +7,9 @@
+ 
+ #import "RCTUnimplementedNativeComponentView.h"
+ 
+-#import <react/renderer/components/rncore/ComponentDescriptors.h>
+-#import <react/renderer/components/rncore/EventEmitters.h>
+-#import <react/renderer/components/rncore/Props.h>
++#import <react/renderer/components/FBReactNativeSpec/ComponentDescriptors.h>
++#import <react/renderer/components/FBReactNativeSpec/EventEmitters.h>
++#import <react/renderer/components/FBReactNativeSpec/Props.h>
+ 
+ using namespace facebook::react;
+ 
+diff --git a/packages/react-native/React/Fabric/Mounting/ComponentViews/UnimplementedView/RCTUnimplementedViewComponentView.mm b/packages/react-native/React/Fabric/Mounting/ComponentViews/UnimplementedView/RCTUnimplementedViewComponentView.mm
+index b5185677875..148761650f4 100644
+--- a/packages/react-native/React/Fabric/Mounting/ComponentViews/UnimplementedView/RCTUnimplementedViewComponentView.mm
++++ b/packages/react-native/React/Fabric/Mounting/ComponentViews/UnimplementedView/RCTUnimplementedViewComponentView.mm
+@@ -7,9 +7,9 @@
+ 
+ #import "RCTUnimplementedViewComponentView.h"
+ 
+-#import <react/renderer/components/rncore/ComponentDescriptors.h>
+-#import <react/renderer/components/rncore/EventEmitters.h>
+-#import <react/renderer/components/rncore/Props.h>
++#import <react/renderer/components/FBReactNativeSpec/ComponentDescriptors.h>
++#import <react/renderer/components/FBReactNativeSpec/EventEmitters.h>
++#import <react/renderer/components/FBReactNativeSpec/Props.h>
+ 
+ #import <react/renderer/components/unimplementedview/UnimplementedViewComponentDescriptor.h>
+ #import <react/renderer/components/unimplementedview/UnimplementedViewShadowNode.h>
+diff --git a/packages/react-native/React/React-RCTFBReactNativeSpec.podspec b/packages/react-native/React/React-RCTFBReactNativeSpec.podspec
+index a2a9b3de916..c8650565278 100644
+--- a/packages/react-native/React/React-RCTFBReactNativeSpec.podspec
++++ b/packages/react-native/React/React-RCTFBReactNativeSpec.podspec
+@@ -19,8 +19,10 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-module_name = "FBReactNativeSpec"
+-header_dir = "FBReactNativeSpec"
++header_search_paths = [
++  "\"$(PODS_TARGET_SRCROOT)/FBReactNativeSpec\"",
++  "\"$(PODS_ROOT)/Headers/Private/Yoga\"",
++]
+ 
+ new_arch_flags = ENV['RCT_NEW_ARCH_ENABLED'] == '1' ? ' -DRCT_NEW_ARCH_ENABLED=1' : ''
+ 
+@@ -33,27 +35,49 @@ Pod::Spec.new do |s|
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+   s.platforms              = min_supported_versions
+   s.source                 = source
+-  s.source_files           = "FBReactNativeSpec/**/*.{c,h,m,mm,S,cpp}"
++  s.source_files           = "FBReactNativeSpec/**/*.{c,h,m,mm,cpp}"
++  s.exclude_files          = "FBReactNativeSpec/react/renderer/components",
+   s.compiler_flags         = new_arch_flags
+-  s.header_dir             = header_dir
+-  s.module_name            = module_name
++  s.header_dir             = 'FBReactNativeSpec'
+   s.pod_target_xcconfig    = {
+-    "OTHER_CFLAGS" => "$(inherited) " + new_arch_flags,
+-    "CLANG_CXX_LANGUAGE_STANDARD" => rct_cxx_language_standard()
++    "USE_HEADERMAP" => "NO",
++    "CLANG_CXX_LANGUAGE_STANDARD" => rct_cxx_language_standard(),
++    "HEADER_SEARCH_PATHS" => header_search_paths.join(' '),
+   }
+ 
++  if ENV['USE_FRAMEWORKS']
++    s.header_mappings_dir  = 'FBReactNativeSpec'
++    s.module_name          = 'React_RCTFBReactNativeSpec'
++  end
++
+   s.dependency "React-jsi"
+-  s.dependency "React-jsiexecutor"
+   s.dependency "RCTRequired"
+   s.dependency "RCTTypeSafety"
+   s.dependency "React-Core"
+   s.dependency "React-NativeModulesApple"
++
+   add_dependency(s, "ReactCommon", :subspec => "turbomodule/core", :additional_framework_paths => ["react/nativemodule/core"])
+   add_dependency(s, "ReactCommon", :subspec => "turbomodule/bridging", :additional_framework_paths => ["react/nativemodule/bridging"])
+ 
+   depend_on_js_engine(s)
+   add_rn_third_party_dependencies(s)
+ 
++  s.subspec "components" do |ss|
++    ss.source_files         = "FBReactNativeSpec/react/renderer/components/FBReactNativeSpec/**/*.{m,mm,cpp,h}"
++    ss.header_dir           = "react/renderer/components/FBReactNativeSpec"
++
++    add_dependency(ss, "React-featureflags")
++    add_dependency(ss, "React-debug")
++    add_dependency(ss, "React-rendererdebug")
++    add_dependency(ss, "React-utils")
++    add_dependency(ss, "React-graphics", :additional_framework_paths => ["react/renderer/graphics/platform/ios"])
++    add_dependency(ss, "React-Fabric", :additional_framework_paths => [
++      "react/renderer/components/view/platform/cxx",
++    ])
++
++    ss.dependency "Yoga"
++  end
++
+   s.script_phases = [
+     {
+       :name => '[RN]Check FBReactNativeSpec',
+diff --git a/packages/react-native/React/React-RCTFabric.podspec b/packages/react-native/React/React-RCTFabric.podspec
+index 989460cd806..e88fd1bd036 100644
+--- a/packages/react-native/React/React-RCTFabric.podspec
++++ b/packages/react-native/React/React-RCTFabric.podspec
+@@ -93,6 +93,7 @@ Pod::Spec.new do |s|
+   add_dependency(s, "React-jsinspectornetwork", :framework_name => 'jsinspector_modernnetwork')
+   add_dependency(s, "React-jsinspectortracing", :framework_name => 'jsinspector_moderntracing')
+   add_dependency(s, "React-renderercss")
++  add_dependency(s, "React-RCTFBReactNativeSpec")
+ 
+   depend_on_js_engine(s)
+   add_rn_third_party_dependencies(s)
+diff --git a/packages/react-native/ReactAndroid/build.gradle.kts b/packages/react-native/ReactAndroid/build.gradle.kts
+index 7bbb4db2898..f51bd730f50 100644
+--- a/packages/react-native/ReactAndroid/build.gradle.kts
++++ b/packages/react-native/ReactAndroid/build.gradle.kts
+@@ -691,9 +691,7 @@ dependencies {
+ }
+ 
+ react {
+-  // TODO: The library name is chosen for parity with Fabric components & iOS
+-  // This should be changed to a more generic name, e.g. `ReactCoreSpec`.
+-  libraryName = "rncore"
++  libraryName = "FBReactNativeSpec"
+   jsRootDir = file("../src")
+ }
+ 
+diff --git a/packages/react-native/ReactAndroid/cmake-utils/default-app-setup/OnLoad.cpp b/packages/react-native/ReactAndroid/cmake-utils/default-app-setup/OnLoad.cpp
+index 0e22d6dbd38..3e0915c8304 100644
+--- a/packages/react-native/ReactAndroid/cmake-utils/default-app-setup/OnLoad.cpp
++++ b/packages/react-native/ReactAndroid/cmake-utils/default-app-setup/OnLoad.cpp
+@@ -29,10 +29,10 @@
+ 
+ #include <DefaultComponentsRegistry.h>
+ #include <DefaultTurboModuleManagerDelegate.h>
++#include <FBReactNativeSpec.h>
+ #include <autolinking.h>
+ #include <fbjni/fbjni.h>
+ #include <react/renderer/componentregistry/ComponentDescriptorProviderRegistry.h>
+-#include <rncore.h>
+ 
+ #ifdef REACT_NATIVE_APP_CODEGEN_HEADER
+ #include REACT_NATIVE_APP_CODEGEN_HEADER
+@@ -99,7 +99,7 @@ std::shared_ptr<TurboModule> javaModuleProvider(
+ #endif
+ 
+   // We first try to look up core modules
+-  if (auto module = rncore_ModuleProvider(name, params)) {
++  if (auto module = FBReactNativeSpec_ModuleProvider(name, params)) {
+     return module;
+   }
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/fabric/CoreComponentsRegistry.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/fabric/CoreComponentsRegistry.cpp
+index 935d48ca024..6dcabecf3df 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/fabric/CoreComponentsRegistry.cpp
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/fabric/CoreComponentsRegistry.cpp
+@@ -10,12 +10,12 @@
+ #include <android/log.h>
+ 
+ #include <react/renderer/componentregistry/ComponentDescriptorRegistry.h>
++#include <react/renderer/components/FBReactNativeSpec/ComponentDescriptors.h>
+ #include <react/renderer/components/androidswitch/AndroidSwitchComponentDescriptor.h>
+ #include <react/renderer/components/androidtextinput/AndroidTextInputComponentDescriptor.h>
+ #include <react/renderer/components/image/ImageComponentDescriptor.h>
+ #include <react/renderer/components/modal/ModalHostViewComponentDescriptor.h>
+ #include <react/renderer/components/progressbar/AndroidProgressBarComponentDescriptor.h>
+-#include <react/renderer/components/rncore/ComponentDescriptors.h>
+ #include <react/renderer/components/safeareaview/SafeAreaViewComponentDescriptor.h>
+ #include <react/renderer/components/scrollview/AndroidHorizontalScrollContentViewComponentDescriptor.h>
+ #include <react/renderer/components/scrollview/ScrollViewComponentDescriptor.h>
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/newarchdefaults/DefaultComponentsRegistry.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/newarchdefaults/DefaultComponentsRegistry.cpp
+index 67716a95394..c9c66747bdc 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/newarchdefaults/DefaultComponentsRegistry.cpp
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/newarchdefaults/DefaultComponentsRegistry.cpp
+@@ -11,7 +11,7 @@
+ #include <fbjni/fbjni.h>
+ #include <react/debug/react_native_assert.h>
+ #include <react/renderer/componentregistry/ComponentDescriptorProviderRegistry.h>
+-#include <react/renderer/components/rncore/ComponentDescriptors.h>
++#include <react/renderer/components/FBReactNativeSpec/ComponentDescriptors.h>
+ 
+ namespace facebook::react {
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/newarchdefaults/rncore.h b/packages/react-native/ReactAndroid/src/main/jni/react/newarchdefaults/rncore.h
+new file mode 100644
+index 00000000000..8bc0f5f0ac4
+--- /dev/null
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/newarchdefaults/rncore.h
+@@ -0,0 +1,20 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++#include <FBReactNativeSpec.h>
++
++#warning \
++    "[DEPRECATION] `rncore.h` is deprecated and will be removed in the future. \
++    If this warning appears due to a library, please open an issue in that library, and ask for an update. \
++    Please, replace the `#include <rncore.h>` statements  with `#include <FBReactNativeSpec.h>` \
++    and update calls of `rncore_ModuleProvider` with `FBReactNativeSpec_ModuleProvider`."
++
++namespace facebook::react {
++
++constexpr auto rncore_ModuleProvider = FBReactNativeSpec_ModuleProvider;
++
++}
+diff --git a/packages/react-native/ReactCommon/React-Fabric.podspec b/packages/react-native/ReactCommon/React-Fabric.podspec
+index ae52b0ddcfb..e30e8e79357 100644
+--- a/packages/react-native/ReactCommon/React-Fabric.podspec
++++ b/packages/react-native/ReactCommon/React-Fabric.podspec
+@@ -123,7 +123,6 @@ Pod::Spec.new do |s|
+       sss.source_files         = "react/renderer/components/view/**/*.{m,mm,cpp,h}"
+       sss.exclude_files        = "react/renderer/components/view/tests", "react/renderer/components/view/platform/android", "react/renderer/components/view/platform/windows"
+       sss.header_dir           = "react/renderer/components/view"
+-      sss.pod_target_xcconfig  = { "HEADER_SEARCH_PATHS" => "\"$(PODS_ROOT)/Headers/Private/Yoga\"" }
+     end
+ 
+     ss.subspec "scrollview" do |sss|
+@@ -136,7 +135,6 @@ Pod::Spec.new do |s|
+       sss.source_files         = "react/renderer/components/legacyviewmanagerinterop/**/*.{m,mm,cpp,h}"
+       sss.exclude_files        = "react/renderer/components/legacyviewmanagerinterop/tests"
+       sss.header_dir           = "react/renderer/components/legacyviewmanagerinterop"
+-      sss.pod_target_xcconfig  = { "HEADER_SEARCH_PATHS" => "\"$(PODS_ROOT)/Headers/Private/React-Core\"" }
+     end
+   end
+ 
+@@ -209,21 +207,4 @@ Pod::Spec.new do |s|
+     ss.header_dir           = "react/renderer/leakchecker"
+     ss.pod_target_xcconfig  = { "GCC_WARN_PEDANTIC" => "YES" }
+   end
+-
+-  s.script_phases = [
+-    {
+-      :name => '[RN]Check rncore',
+-      :execution_position => :before_compile,
+-      :always_out_of_date => '1',
+-      :script => <<-EOS
+-echo "Checking whether Codegen has run..."
+-rncorePath="$REACT_NATIVE_PATH/ReactCommon/react/renderer/components/rncore"
+-
+-if [[ ! -d "$rncorePath" ]]; then
+-  echo 'error: Codegen did not run properly in your project. Please reinstall cocoapods with `bundle exec pod install`.'
+-  exit 1
+-fi
+-      EOS
+-    }
+-  ]
+ end
+diff --git a/packages/react-native/ReactCommon/React-FabricComponents.podspec b/packages/react-native/ReactCommon/React-FabricComponents.podspec
+index bb28fb0bf30..8e160327e20 100644
+--- a/packages/react-native/ReactCommon/React-FabricComponents.podspec
++++ b/packages/react-native/ReactCommon/React-FabricComponents.podspec
+@@ -18,24 +18,23 @@ end
+ 
+ react_native_path = ".."
+ 
+-Pod::Spec.new do |s|
+-
+-  header_search_path = [
+-    "\"$(PODS_TARGET_SRCROOT)/ReactCommon\"",
+-    "\"$(PODS_ROOT)/Headers/Private/Yoga\"",
+-    "\"$(PODS_TARGET_SRCROOT)\"",
++header_search_path = [
++  "\"$(PODS_TARGET_SRCROOT)/ReactCommon\"",
++  "\"$(PODS_ROOT)/Headers/Private/Yoga\"",
++  "\"$(PODS_TARGET_SRCROOT)\"",
++]
++
++if ENV['USE_FRAMEWORKS']
++  header_search_path = header_search_path + [
++    "\"$(PODS_TARGET_SRCROOT)/react/renderer/textlayoutmanager/platform/ios\"",
++    "\"$(PODS_TARGET_SRCROOT)/react/renderer/components/scrollview/platform/cxx\"",
++    "\"$(PODS_TARGET_SRCROOT)/react/renderer/components/textinput/platform/ios\"",
++    "\"$(PODS_TARGET_SRCROOT)/react/renderer/components/text/platform/cxx\"",
++    "\"$(PODS_TARGET_SRCROOT)/react/renderer/components/view/platform/cxx\"",
+   ]
++end
+ 
+-  if ENV['USE_FRAMEWORKS']
+-    header_search_path = header_search_path + [
+-      "\"$(PODS_TARGET_SRCROOT)/react/renderer/textlayoutmanager/platform/ios\"",
+-      "\"$(PODS_TARGET_SRCROOT)/react/renderer/components/scrollview/platform/cxx\"",
+-      "\"$(PODS_TARGET_SRCROOT)/react/renderer/components/textinput/platform/ios\"",
+-      "\"$(PODS_TARGET_SRCROOT)/react/renderer/components/text/platform/cxx\"",
+-      "\"$(PODS_TARGET_SRCROOT)/react/renderer/components/view/platform/cxx\"",
+-    ]
+-  end
+-
++Pod::Spec.new do |s|
+   s.name                   = "React-FabricComponents"
+   s.version                = version
+   s.summary                = "Fabric Components for React Native."
+@@ -45,8 +44,7 @@ Pod::Spec.new do |s|
+   s.platforms              = min_supported_versions
+   s.source                 = source
+   s.source_files           = "dummyFile.cpp"
+-  s.pod_target_xcconfig = { "USE_HEADERMAP" => "YES",
+-                            "CLANG_CXX_LANGUAGE_STANDARD" => rct_cxx_language_standard(),
++  s.pod_target_xcconfig = { "CLANG_CXX_LANGUAGE_STANDARD" => rct_cxx_language_standard(),
+                             "DEFINES_MODULE" => "YES",
+                             "HEADER_SEARCH_PATHS" => header_search_path.join(" "),
+                           }
+@@ -70,6 +68,7 @@ Pod::Spec.new do |s|
+   s.dependency "React-cxxreact"
+   s.dependency "Yoga"
+ 
++  add_dependency(s, "React-RCTFBReactNativeSpec")
+   add_dependency(s, "React-rendererdebug")
+   add_dependency(s, "React-graphics", :additional_framework_paths => ["react/renderer/graphics/platform/ios"])
+   add_dependency(s, "React-Fabric", :additional_framework_paths => [
+@@ -95,16 +94,10 @@ Pod::Spec.new do |s|
+       sss.header_dir           = "react/renderer/components/modal"
+     end
+ 
+-    ss.subspec "rncore" do |sss|
+-      sss.source_files         = "react/renderer/components/rncore/**/*.{m,mm,cpp,h}"
+-      sss.header_dir           = "react/renderer/components/rncore"
+-    end
+-
+     ss.subspec "safeareaview" do |sss|
+       sss.source_files         = "react/renderer/components/safeareaview/**/*.{m,mm,cpp,h}"
+       sss.exclude_files        = "react/renderer/components/safeareaview/tests"
+       sss.header_dir           = "react/renderer/components/safeareaview"
+-
+     end
+ 
+     ss.subspec "scrollview" do |sss|
+@@ -112,34 +105,29 @@ Pod::Spec.new do |s|
+                                  "react/renderer/components/scrollview/platform/cxx/**/*.{m,mm,cpp,h}"
+       sss.exclude_files        = "react/renderer/components/scrollview/tests"
+       sss.header_dir           = "react/renderer/components/scrollview"
+-
+     end
+ 
+     ss.subspec "text" do |sss|
+       sss.source_files         = "react/renderer/components/text/*.{m,mm,cpp,h}",
+                                  "react/renderer/components/text/platform/cxx/**/*.{m,mm,cpp,h}"
+       sss.header_dir           = "react/renderer/components/text"
+-
+     end
+ 
+     ss.subspec "iostextinput" do |sss|
+       sss.source_files         = "react/renderer/components/textinput/*.{m,mm,cpp,h}",
+                                  "react/renderer/components/textinput/platform/ios/**/*.{m,mm,cpp,h}"
+       sss.header_dir           = "react/renderer/components/iostextinput"
+-
+     end
+ 
+     ss.subspec "textinput" do |sss|
+       sss.source_files         = "react/renderer/components/textinput/*.{m,mm,cpp,h}"
+       sss.header_dir           = "react/renderer/components/textinput"
+-
+     end
+ 
+     ss.subspec "unimplementedview" do |sss|
+       sss.source_files         = "react/renderer/components/unimplementedview/**/*.{m,mm,cpp,h}"
+       sss.exclude_files        = "react/renderer/components/unimplementedview/tests"
+       sss.header_dir           = "react/renderer/components/unimplementedview"
+-
+     end
+   end
+ 
+@@ -152,21 +140,4 @@ Pod::Spec.new do |s|
+                               "react/renderer/textlayoutmanager/platform/cxx"
+     ss.header_dir           = "react/renderer/textlayoutmanager"
+   end
+-
+-  s.script_phases = [
+-    {
+-      :name => '[RN]Check rncore',
+-      :execution_position => :before_compile,
+-      :always_out_of_date => '1',
+-      :script => <<-EOS
+-echo "Checking whether Codegen has run..."
+-rncorePath="$REACT_NATIVE_PATH/ReactCommon/react/renderer/components/rncore"
+-
+-if [[ ! -d "$rncorePath" ]]; then
+-  echo 'error: Codegen did not run properly in your project. Please reinstall cocoapods with `bundle exec pod install`.'
+-  exit 1
+-fi
+-      EOS
+-    }
+-  ]
+ end
+diff --git a/packages/react-native/ReactCommon/React-rncore.podspec b/packages/react-native/ReactCommon/React-rncore.podspec
+deleted file mode 100644
+index fc194645d0f..00000000000
+--- a/packages/react-native/ReactCommon/React-rncore.podspec
++++ /dev/null
+@@ -1,52 +0,0 @@
+-# Copyright (c) Meta Platforms, Inc. and affiliates.
+-#
+-# This source code is licensed under the MIT license found in the
+-# LICENSE file in the root directory of this source tree.
+-
+-require "json"
+-
+-package = JSON.parse(File.read(File.join(__dir__, "..", "package.json")))
+-version = package['version']
+-
+-source = { :git => 'https://github.com/facebook/react-native.git' }
+-if version == '1000.0.0'
+-  # This is an unpublished version, use the latest commit hash of the react-native repo, which we’re presumably in.
+-  source[:commit] = `git rev-parse HEAD`.strip if system("git rev-parse --git-dir > /dev/null 2>&1")
+-else
+-  source[:tag] = "v#{version}"
+-end
+-
+-# We are using two different paths for react native because of the way how js_srcs_dir and output_dir options are used
+-# output_dir option usage was introduced in https://github.com/facebook/react-native/pull/36210
+-# React-rncore.podspec is the only podspec in the project that uses this option
+-# We should rethink this approach in T148704916
+-
+-# Relative path to react native from iOS project root (e.g. <ios-project-root>/../node_modules/react-native)
+-react_native_dependency_path = ENV['REACT_NATIVE_PATH']
+-# Relative path to react native from current podspec
+-react_native_sources_path = '..'
+-
+-header_search_paths = [
+-  "\"$(PODS_TARGET_SRCROOT)\"",
+-  "\"$(PODS_TARGET_SRCROOT)/ReactCommon\"",
+-]
+-
+-if ENV["USE_FRAMEWORKS"]
+-  create_header_search_path_for_frameworks("ReactCommon", :additional_framework_paths => ["react/nativemodule/core"], :include_base_folder => false)
+-    .each { |search_path| header_search_paths << "\"#{search_path}\"" }
+-end
+-
+-Pod::Spec.new do |s|
+-  s.name                   = "React-rncore"
+-  s.version                = version
+-  s.summary                = "Fabric for React Native."
+-  s.homepage               = "https://reactnative.dev/"
+-  s.license                = package["license"]
+-  s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = min_supported_versions
+-  s.source                 = source
+-  s.source_files           = "dummyFile.cpp"
+-  s.pod_target_xcconfig = { "USE_HEADERMAP" => "YES",
+-                            "HEADER_SEARCH_PATHS" => header_search_paths.join(' '),
+-                            "CLANG_CXX_LANGUAGE_STANDARD" => rct_cxx_language_standard() }
+-end
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModuleManager.mm b/packages/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModuleManager.mm
+index 51f4ac1bbbe..e21ea8730e4 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModuleManager.mm
++++ b/packages/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModuleManager.mm
+@@ -167,6 +167,7 @@ bool isTurboModuleInstance(id module)
+ {
+   return isTurboModuleClass([module class]);
+ }
++
+ } // namespace
+ 
+ // Fallback lookup since RCT class prefix is sometimes stripped in the existing NativeModule system.
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/dom/NativeDOM.h b/packages/react-native/ReactCommon/react/nativemodule/dom/NativeDOM.h
+index 0c1d71e316a..9669a8b64eb 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/dom/NativeDOM.h
++++ b/packages/react-native/ReactCommon/react/nativemodule/dom/NativeDOM.h
+@@ -9,9 +9,7 @@
+ 
+ #include <string>
+ 
+-#if __has_include("rncoreJSI.h") // Cmake headers on Android
+-#include "rncoreJSI.h"
+-#elif __has_include("FBReactNativeSpecJSI.h") // CocoaPod headers on Apple
++#if __has_include("FBReactNativeSpecJSI.h") // CocoaPod headers on Apple
+ #include "FBReactNativeSpecJSI.h"
+ #else
+ #include <FBReactNativeSpec/FBReactNativeSpecJSI.h>
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h
+index e12606d3491..43923b24698 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h
++++ b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<750cb2f00345cd1fd7ad82ed615e82bf>>
++ * @generated SignedSource<<e5edcad627082575d86380a16292fb2d>>
+  */
+ 
+ /**
+@@ -19,9 +19,7 @@
+ 
+ #pragma once
+ 
+-#if __has_include("rncoreJSI.h") // Cmake headers on Android
+-#include "rncoreJSI.h"
+-#elif __has_include("FBReactNativeSpecJSI.h") // CocoaPod headers on Apple
++#if __has_include("FBReactNativeSpecJSI.h") // CocoaPod headers on Apple
+ #include "FBReactNativeSpecJSI.h"
+ #else
+ #include <FBReactNativeSpec/FBReactNativeSpecJSI.h>
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/idlecallbacks/NativeIdleCallbacks.h b/packages/react-native/ReactCommon/react/nativemodule/idlecallbacks/NativeIdleCallbacks.h
+index 13b2228a7b0..5fe2c126db5 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/idlecallbacks/NativeIdleCallbacks.h
++++ b/packages/react-native/ReactCommon/react/nativemodule/idlecallbacks/NativeIdleCallbacks.h
+@@ -7,9 +7,7 @@
+ 
+ #pragma once
+ 
+-#if __has_include("rncoreJSI.h") // Cmake headers on Android
+-#include "rncoreJSI.h"
+-#elif __has_include("FBReactNativeSpecJSI.h") // CocoaPod headers on Apple
++#if __has_include("FBReactNativeSpecJSI.h") // CocoaPod headers on Apple
+ #include "FBReactNativeSpecJSI.h"
+ #else
+ #include <FBReactNativeSpec/FBReactNativeSpecJSI.h>
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/microtasks/NativeMicrotasks.h b/packages/react-native/ReactCommon/react/nativemodule/microtasks/NativeMicrotasks.h
+index 560b39bd0ef..44068b8c96f 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/microtasks/NativeMicrotasks.h
++++ b/packages/react-native/ReactCommon/react/nativemodule/microtasks/NativeMicrotasks.h
+@@ -7,9 +7,7 @@
+ 
+ #pragma once
+ 
+-#if __has_include("rncoreJSI.h") // Cmake headers on Android
+-#include "rncoreJSI.h"
+-#elif __has_include("FBReactNativeSpecJSI.h") // CocoaPod headers on Apple
++#if __has_include("FBReactNativeSpecJSI.h") // CocoaPod headers on Apple
+ #include "FBReactNativeSpecJSI.h"
+ #else
+ #include <FBReactNativeSpec/FBReactNativeSpecJSI.h>
+diff --git a/packages/react-native/ReactCommon/react/renderer/components/inputaccessory/InputAccessoryShadowNode.h b/packages/react-native/ReactCommon/react/renderer/components/inputaccessory/InputAccessoryShadowNode.h
+index ae0809cb57a..15cbea43434 100644
+--- a/packages/react-native/ReactCommon/react/renderer/components/inputaccessory/InputAccessoryShadowNode.h
++++ b/packages/react-native/ReactCommon/react/renderer/components/inputaccessory/InputAccessoryShadowNode.h
+@@ -7,9 +7,9 @@
+ 
+ #pragma once
+ 
++#include <react/renderer/components/FBReactNativeSpec/EventEmitters.h>
++#include <react/renderer/components/FBReactNativeSpec/Props.h>
+ #include <react/renderer/components/inputaccessory/InputAccessoryState.h>
+-#include <react/renderer/components/rncore/EventEmitters.h>
+-#include <react/renderer/components/rncore/Props.h>
+ #include <react/renderer/components/view/ConcreteViewShadowNode.h>
+ 
+ namespace facebook::react {
+diff --git a/packages/react-native/ReactCommon/react/renderer/components/modal/ModalHostViewShadowNode.h b/packages/react-native/ReactCommon/react/renderer/components/modal/ModalHostViewShadowNode.h
+index 448b836f46d..7a37ba1885f 100644
+--- a/packages/react-native/ReactCommon/react/renderer/components/modal/ModalHostViewShadowNode.h
++++ b/packages/react-native/ReactCommon/react/renderer/components/modal/ModalHostViewShadowNode.h
+@@ -7,9 +7,9 @@
+ 
+ #pragma once
+ 
++#include <react/renderer/components/FBReactNativeSpec/EventEmitters.h>
++#include <react/renderer/components/FBReactNativeSpec/Props.h>
+ #include <react/renderer/components/modal/ModalHostViewState.h>
+-#include <react/renderer/components/rncore/EventEmitters.h>
+-#include <react/renderer/components/rncore/Props.h>
+ #include <react/renderer/components/view/ConcreteViewShadowNode.h>
+ 
+ namespace facebook::react {
+diff --git a/packages/react-native/ReactCommon/react/renderer/components/progressbar/android/react/renderer/components/progressbar/AndroidProgressBarMeasurementsManager.cpp b/packages/react-native/ReactCommon/react/renderer/components/progressbar/android/react/renderer/components/progressbar/AndroidProgressBarMeasurementsManager.cpp
+index 740b43750e1..bcb664b081a 100644
+--- a/packages/react-native/ReactCommon/react/renderer/components/progressbar/android/react/renderer/components/progressbar/AndroidProgressBarMeasurementsManager.cpp
++++ b/packages/react-native/ReactCommon/react/renderer/components/progressbar/android/react/renderer/components/progressbar/AndroidProgressBarMeasurementsManager.cpp
+@@ -9,6 +9,7 @@
+ 
+ #include <fbjni/fbjni.h>
+ #include <react/jni/ReadableNativeMap.h>
++#include <react/renderer/components/progressbar/conversions.h>
+ #include <react/renderer/core/conversions.h>
+ 
+ using namespace facebook::jni;
+diff --git a/packages/react-native/ReactCommon/react/renderer/components/progressbar/android/react/renderer/components/progressbar/AndroidProgressBarMeasurementsManager.h b/packages/react-native/ReactCommon/react/renderer/components/progressbar/android/react/renderer/components/progressbar/AndroidProgressBarMeasurementsManager.h
+index 383a9f36ef8..12947972aba 100644
+--- a/packages/react-native/ReactCommon/react/renderer/components/progressbar/android/react/renderer/components/progressbar/AndroidProgressBarMeasurementsManager.h
++++ b/packages/react-native/ReactCommon/react/renderer/components/progressbar/android/react/renderer/components/progressbar/AndroidProgressBarMeasurementsManager.h
+@@ -7,8 +7,7 @@
+ 
+ #pragma once
+ 
+-#include <react/renderer/components/progressbar/conversions.h>
+-#include <react/renderer/components/rncore/Props.h>
++#include <react/renderer/components/FBReactNativeSpec/Props.h>
+ #include <react/renderer/core/ConcreteComponentDescriptor.h>
+ #include <react/renderer/core/LayoutConstraints.h>
+ #include <react/utils/ContextContainer.h>
+diff --git a/packages/react-native/ReactCommon/react/renderer/components/progressbar/android/react/renderer/components/progressbar/AndroidProgressBarShadowNode.h b/packages/react-native/ReactCommon/react/renderer/components/progressbar/android/react/renderer/components/progressbar/AndroidProgressBarShadowNode.h
+index cd061076cb2..7b28d992ba6 100644
+--- a/packages/react-native/ReactCommon/react/renderer/components/progressbar/android/react/renderer/components/progressbar/AndroidProgressBarShadowNode.h
++++ b/packages/react-native/ReactCommon/react/renderer/components/progressbar/android/react/renderer/components/progressbar/AndroidProgressBarShadowNode.h
+@@ -7,9 +7,9 @@
+ 
+ #pragma once
+ 
++#include <react/renderer/components/FBReactNativeSpec/EventEmitters.h>
++#include <react/renderer/components/FBReactNativeSpec/Props.h>
+ #include <react/renderer/components/progressbar/AndroidProgressBarMeasurementsManager.h>
+-#include <react/renderer/components/rncore/EventEmitters.h>
+-#include <react/renderer/components/rncore/Props.h>
+ #include <react/renderer/components/view/ConcreteViewShadowNode.h>
+ 
+ namespace facebook::react {
+diff --git a/packages/react-native/ReactCommon/react/renderer/components/progressbar/android/react/renderer/components/progressbar/conversions.h b/packages/react-native/ReactCommon/react/renderer/components/progressbar/android/react/renderer/components/progressbar/conversions.h
+index a8fc416c64a..8d636a7019f 100644
+--- a/packages/react-native/ReactCommon/react/renderer/components/progressbar/android/react/renderer/components/progressbar/conversions.h
++++ b/packages/react-native/ReactCommon/react/renderer/components/progressbar/android/react/renderer/components/progressbar/conversions.h
+@@ -8,7 +8,7 @@
+ #pragma once
+ 
+ #include <folly/dynamic.h>
+-#include <react/renderer/components/rncore/Props.h>
++#include <react/renderer/components/FBReactNativeSpec/Props.h>
+ #include <react/renderer/core/propsConversions.h>
+ 
+ namespace facebook::react {
+diff --git a/packages/react-native/ReactCommon/react/renderer/components/safeareaview/SafeAreaViewShadowNode.h b/packages/react-native/ReactCommon/react/renderer/components/safeareaview/SafeAreaViewShadowNode.h
+index 5a95f3b9dec..037db5cd492 100644
+--- a/packages/react-native/ReactCommon/react/renderer/components/safeareaview/SafeAreaViewShadowNode.h
++++ b/packages/react-native/ReactCommon/react/renderer/components/safeareaview/SafeAreaViewShadowNode.h
+@@ -7,8 +7,8 @@
+ 
+ #pragma once
+ 
+-#include <react/renderer/components/rncore/EventEmitters.h>
+-#include <react/renderer/components/rncore/Props.h>
++#include <react/renderer/components/FBReactNativeSpec/EventEmitters.h>
++#include <react/renderer/components/FBReactNativeSpec/Props.h>
+ #include <react/renderer/components/safeareaview/SafeAreaViewState.h>
+ #include <react/renderer/components/view/ConcreteViewShadowNode.h>
+ 
+diff --git a/packages/react-native/ReactCommon/react/renderer/components/switch/androidswitch/react/renderer/components/androidswitch/AndroidSwitchShadowNode.h b/packages/react-native/ReactCommon/react/renderer/components/switch/androidswitch/react/renderer/components/androidswitch/AndroidSwitchShadowNode.h
+index 1277c125f20..ffaffe54cde 100644
+--- a/packages/react-native/ReactCommon/react/renderer/components/switch/androidswitch/react/renderer/components/androidswitch/AndroidSwitchShadowNode.h
++++ b/packages/react-native/ReactCommon/react/renderer/components/switch/androidswitch/react/renderer/components/androidswitch/AndroidSwitchShadowNode.h
+@@ -9,8 +9,8 @@
+ 
+ #include "AndroidSwitchMeasurementsManager.h"
+ 
+-#include <react/renderer/components/rncore/EventEmitters.h>
+-#include <react/renderer/components/rncore/Props.h>
++#include <react/renderer/components/FBReactNativeSpec/EventEmitters.h>
++#include <react/renderer/components/FBReactNativeSpec/Props.h>
+ #include <react/renderer/components/view/ConcreteViewShadowNode.h>
+ 
+ namespace facebook::react {
+diff --git a/packages/react-native/package.json b/packages/react-native/package.json
+index be3cb79bfb0..dd9989830b2 100644
+--- a/packages/react-native/package.json
++++ b/packages/react-native/package.json
+@@ -197,7 +197,7 @@
+     "libraries": [
+       {
+         "name": "FBReactNativeSpec",
+-        "type": "modules",
++        "type": "all",
+         "ios": {
+           "modules": {
+             "AccessibilityManager": {
+@@ -222,13 +222,6 @@
+         },
+         "android": {},
+         "jsSrcsDir": "src"
+-      },
+-      {
+-        "name": "rncore",
+-        "type": "components",
+-        "ios": {},
+-        "android": {},
+-        "jsSrcsDir": "src"
+       }
+     ]
+   }
+diff --git a/packages/react-native/scripts/cocoapods/utils.rb b/packages/react-native/scripts/cocoapods/utils.rb
+index ad26fd24bf1..6f83a50d8df 100644
+--- a/packages/react-native/scripts/cocoapods/utils.rb
++++ b/packages/react-native/scripts/cocoapods/utils.rb
+@@ -643,7 +643,6 @@ class ReactNativePodsUtils
+             "React-logger",
+             "React-oscompat",
+             "React-perflogger",
+-            "React-rncore",
+             "React-runtimeexecutor",
+             "React-timing",
+             "ReactCommon",
+diff --git a/packages/react-native/scripts/codegen/generate-artifacts-executor/constants.js b/packages/react-native/scripts/codegen/generate-artifacts-executor/constants.js
+index 9a8b7c4a6dc..7f653a5ff60 100644
+--- a/packages/react-native/scripts/codegen/generate-artifacts-executor/constants.js
++++ b/packages/react-native/scripts/codegen/generate-artifacts-executor/constants.js
+@@ -30,23 +30,7 @@ const REACT_NATIVE_PACKAGE_ROOT_FOLDER = path.join(
+   ) /*:: as string */;
+ const CODEGEN_REPO_PATH = `${REACT_NATIVE_REPOSITORY_ROOT}/packages/react-native-codegen`;
+ 
+-const RNCORE_CONFIGS = {
+-  ios: path.join(
+-    REACT_NATIVE_PACKAGE_ROOT_FOLDER,
+-    'ReactCommon',
+-  ) /*:: as string */,
+-  android: path.join(
+-    REACT_NATIVE_PACKAGE_ROOT_FOLDER,
+-    'ReactAndroid',
+-    'build',
+-    'generated',
+-    'source',
+-    'codegen',
+-  ) /*:: as string */,
+-};
+-
+ const CORE_LIBRARIES_WITH_OUTPUT_FOLDER = {
+-    rncore: RNCORE_CONFIGS,
+     FBReactNativeSpec: {
+       ios: path.join(
+         REACT_NATIVE_PACKAGE_ROOT_FOLDER,
+diff --git a/packages/react-native/scripts/codegen/generate-artifacts-executor/generateFBReactNativeSpecIOS.js b/packages/react-native/scripts/codegen/generate-artifacts-executor/generateFBReactNativeSpecIOS.js
+index 70ceacf800c..58ab2b5d703 100644
+--- a/packages/react-native/scripts/codegen/generate-artifacts-executor/generateFBReactNativeSpecIOS.js
++++ b/packages/react-native/scripts/codegen/generate-artifacts-executor/generateFBReactNativeSpecIOS.js
+@@ -19,7 +19,7 @@ const {
+ } = require('./utils');
+ 
+ function generateFBReactNativeSpecIOS(projectRoot /*: string */) /*: void*/ {
+-  const ios = 'ios';
++  const platform = 'ios';
+   buildCodegenIfNeeded();
+   const pkgJson = readPkgJsonInDirectory(projectRoot);
+   const fbReactNativeSpecLib = findProjectRootLibraries(
+@@ -28,11 +28,14 @@ function generateFBReactNativeSpecIOS(projectRoot /*: string */) /*: void*/ {
+   ).filter(library => library.config.name === 'FBReactNativeSpec')[0];
+   if (!fbReactNativeSpecLib) {
+     throw new Error(
+-      "[Codegen] Can't find FBReactNativeSpec library. Failed to generate rncore artifacts",
++      "[Codegen] Can't find FBReactNativeSpec library. Failed to generate artifacts",
+     );
+   }
+-  const fbReactNativeSchemaInfo = generateSchemaInfo(fbReactNativeSpecLib, ios);
+-  generateCode('', fbReactNativeSchemaInfo, false, ios);
++  const fbReactNativeSchemaInfo = generateSchemaInfo(
++    fbReactNativeSpecLib,
++    platform,
++  );
++  generateCode('', fbReactNativeSchemaInfo, false, platform);
+ }
+ 
+ module.exports = {
+diff --git a/packages/react-native/scripts/codegen/generate-artifacts-executor/generateNativeCode.js b/packages/react-native/scripts/codegen/generate-artifacts-executor/generateNativeCode.js
+index daba7206e4f..239fbe3da1d 100644
+--- a/packages/react-native/scripts/codegen/generate-artifacts-executor/generateNativeCode.js
++++ b/packages/react-native/scripts/codegen/generate-artifacts-executor/generateNativeCode.js
+@@ -34,14 +34,6 @@ function generateCode(
+   includesGeneratedCode /*: boolean */,
+   platform /*: string */,
+ ) {
+-  if (shouldSkipGenerationForRncore(schemaInfo, platform)) {
+-    codegenLog(
+-      '[Codegen - rncore] Skipping iOS code generation for rncore as it has been generated already.',
+-      true,
+-    );
+-    return;
+-  }
+-
+   if (shouldSkipGenerationForFBReactNativeSpec(schemaInfo, platform)) {
+     codegenLog(
+       '[Codegen - FBReactNativeSpec] Skipping iOS code generation for FBReactNativeSpec as it has been generated already.',
+@@ -76,22 +68,6 @@ function generateCode(
+   codegenLog(`Generated artifacts: ${outputDir}`);
+ }
+ 
+-function shouldSkipGenerationForRncore(
+-  schemaInfo /*: $FlowFixMe */,
+-  platform /*: string */,
+-) {
+-  if (platform !== 'ios' || schemaInfo.library.config.name !== 'rncore') {
+-    return false;
+-  }
+-  const rncoreOutputPath = CORE_LIBRARIES_WITH_OUTPUT_FOLDER.rncore.ios;
+-  const rncoreAbsolutePath = path.resolve(rncoreOutputPath);
+-  return (
+-    rncoreAbsolutePath.includes('node_modules') &&
+-    fs.existsSync(rncoreAbsolutePath) &&
+-    fs.readdirSync(rncoreAbsolutePath).length > 0
+-  );
+-}
+-
+ function reactNativeCoreLibraryOutputPath(
+   libraryName /*: string */,
+   platform /*: string */,
+diff --git a/packages/react-native/scripts/codegen/generate-artifacts-executor/generateRNCoreComponentsIOS.js b/packages/react-native/scripts/codegen/generate-artifacts-executor/generateRNCoreComponentsIOS.js
+deleted file mode 100644
+index 908d4e10ac8..00000000000
+--- a/packages/react-native/scripts/codegen/generate-artifacts-executor/generateRNCoreComponentsIOS.js
++++ /dev/null
+@@ -1,39 +0,0 @@
+-/**
+- * Copyright (c) Meta Platforms, Inc. and affiliates.
+- *
+- * This source code is licensed under the MIT license found in the
+- * LICENSE file in the root directory of this source tree.
+- *
+- * @flow strict-local
+- * @format
+- */
+-
+-'use strict';
+-
+-const {generateCode} = require('./generateNativeCode');
+-const {generateSchemaInfo} = require('./generateSchemaInfos');
+-const {
+-  buildCodegenIfNeeded,
+-  findProjectRootLibraries,
+-  readPkgJsonInDirectory,
+-} = require('./utils');
+-
+-function generateRNCoreComponentsIOS(projectRoot /*: string */) /*: void*/ {
+-  const ios = 'ios';
+-  buildCodegenIfNeeded();
+-  const pkgJson = readPkgJsonInDirectory(projectRoot);
+-  const rncoreLib = findProjectRootLibraries(pkgJson, projectRoot).filter(
+-    library => library.config.name === 'rncore',
+-  )[0];
+-  if (!rncoreLib) {
+-    throw new Error(
+-      "[Codegen] Can't find rncore library. Failed to generate rncore artifacts",
+-    );
+-  }
+-  const rncoreSchemaInfo = generateSchemaInfo(rncoreLib, ios);
+-  generateCode('', rncoreSchemaInfo, false, ios);
+-}
+-
+-module.exports = {
+-  generateRNCoreComponentsIOS,
+-};
+diff --git a/packages/react-native/scripts/featureflags/templates/js/NativeReactNativeFeatureFlags.h-template.js b/packages/react-native/scripts/featureflags/templates/js/NativeReactNativeFeatureFlags.h-template.js
+index 997a3feb036..64f0f403b42 100644
+--- a/packages/react-native/scripts/featureflags/templates/js/NativeReactNativeFeatureFlags.h-template.js
++++ b/packages/react-native/scripts/featureflags/templates/js/NativeReactNativeFeatureFlags.h-template.js
+@@ -27,9 +27,7 @@ ${DO_NOT_MODIFY_COMMENT}
+ 
+ #pragma once
+ 
+-#if __has_include("rncoreJSI.h") // Cmake headers on Android
+-#include "rncoreJSI.h"
+-#elif __has_include("FBReactNativeSpecJSI.h") // CocoaPod headers on Apple
++#if __has_include("FBReactNativeSpecJSI.h") // CocoaPod headers on Apple
+ #include "FBReactNativeSpecJSI.h"
+ #else
+ #include <FBReactNativeSpec/FBReactNativeSpecJSI.h>
+diff --git a/packages/react-native/scripts/prepack.js b/packages/react-native/scripts/prepack.js
+index 55e5ab73813..a280365f428 100644
+--- a/packages/react-native/scripts/prepack.js
++++ b/packages/react-native/scripts/prepack.js
+@@ -11,15 +11,11 @@
+ const {
+   generateFBReactNativeSpecIOS,
+ } = require('./codegen/generate-artifacts-executor/generateFBReactNativeSpecIOS');
+-const {
+-  generateRNCoreComponentsIOS,
+-} = require('./codegen/generate-artifacts-executor/generateRNCoreComponentsIOS');
+ const fs = require('fs');
+ 
+ function main() {
+   console.info('[Prepack] Copying README.md');
+   fs.copyFileSync('../../README.md', './README.md');
+-  generateRNCoreComponentsIOS('.');
+   generateFBReactNativeSpecIOS('.');
+ }
+ 
+diff --git a/packages/react-native/scripts/react_native_pods.rb b/packages/react-native/scripts/react_native_pods.rb
+index 219827448b0..10a7da4d41c 100644
+--- a/packages/react-native/scripts/react_native_pods.rb
++++ b/packages/react-native/scripts/react_native_pods.rb
+@@ -125,7 +125,6 @@ def use_react_native! (
+   pod 'React-RCTText', :path => "#{prefix}/Libraries/Text"
+   pod 'React-RCTVibration', :path => "#{prefix}/Libraries/Vibration"
+   pod 'React-Core/RCTWebSocket', :path => "#{prefix}/"
+-  pod 'React-rncore', :path => "#{prefix}/ReactCommon"
+   pod 'React-cxxreact', :path => "#{prefix}/ReactCommon/cxxreact"
+   pod 'React-debug', :path => "#{prefix}/ReactCommon/react/debug"
+   pod 'React-utils', :path => "#{prefix}/ReactCommon/react/utils"
+diff --git a/packages/rn-tester/Podfile.lock b/packages/rn-tester/Podfile.lock
+index 03c0606ae22..2a568e1874e 100644
+--- a/packages/rn-tester/Podfile.lock
++++ b/packages/rn-tester/Podfile.lock
+@@ -32,7 +32,6 @@ PODS:
+     - React-Fabric
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-ImageManager
+     - React-jsi
+     - React-NativeModulesApple
+@@ -61,7 +60,6 @@ PODS:
+     - React-Fabric
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-ImageManager
+     - React-jsi
+     - React-NativeModulesApple
+@@ -91,7 +89,6 @@ PODS:
+     - React-Fabric
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-ImageManager
+     - React-jsi
+     - React-NativeModulesApple
+@@ -163,6 +160,7 @@ PODS:
+     - React-jsinspectorcdp
+     - React-jsitooling
+     - React-perflogger
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - SocketRocket
+@@ -187,6 +185,7 @@ PODS:
+     - React-jsinspectorcdp
+     - React-jsitooling
+     - React-perflogger
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - SocketRocket
+@@ -210,6 +209,7 @@ PODS:
+     - React-jsinspectorcdp
+     - React-jsitooling
+     - React-perflogger
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - SocketRocket
+@@ -235,6 +235,7 @@ PODS:
+     - React-jsinspectorcdp
+     - React-jsitooling
+     - React-perflogger
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - SocketRocket
+@@ -259,6 +260,7 @@ PODS:
+     - React-jsinspectorcdp
+     - React-jsitooling
+     - React-perflogger
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - SocketRocket
+@@ -283,6 +285,7 @@ PODS:
+     - React-jsinspectorcdp
+     - React-jsitooling
+     - React-perflogger
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - SocketRocket
+@@ -307,6 +310,7 @@ PODS:
+     - React-jsinspectorcdp
+     - React-jsitooling
+     - React-perflogger
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - SocketRocket
+@@ -331,6 +335,7 @@ PODS:
+     - React-jsinspectorcdp
+     - React-jsitooling
+     - React-perflogger
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - SocketRocket
+@@ -355,6 +360,7 @@ PODS:
+     - React-jsinspectorcdp
+     - React-jsitooling
+     - React-perflogger
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - SocketRocket
+@@ -379,6 +385,7 @@ PODS:
+     - React-jsinspectorcdp
+     - React-jsitooling
+     - React-perflogger
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - SocketRocket
+@@ -403,6 +410,7 @@ PODS:
+     - React-jsinspectorcdp
+     - React-jsitooling
+     - React-perflogger
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - SocketRocket
+@@ -427,6 +435,7 @@ PODS:
+     - React-jsinspectorcdp
+     - React-jsitooling
+     - React-perflogger
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - SocketRocket
+@@ -451,6 +460,7 @@ PODS:
+     - React-jsinspectorcdp
+     - React-jsitooling
+     - React-perflogger
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - SocketRocket
+@@ -475,6 +485,7 @@ PODS:
+     - React-jsinspectorcdp
+     - React-jsitooling
+     - React-perflogger
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - SocketRocket
+@@ -499,6 +510,7 @@ PODS:
+     - React-jsinspectorcdp
+     - React-jsitooling
+     - React-perflogger
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - SocketRocket
+@@ -521,6 +533,7 @@ PODS:
+     - React-RCTBlob
+     - React-RCTFBReactNativeSpec
+     - React-RCTImage (= 1000.0.0)
++    - React-runtimeexecutor
+     - ReactCommon
+     - SocketRocket
+   - React-cxxreact (1000.0.0):
+@@ -540,7 +553,7 @@ PODS:
+     - React-jsinspectortracing
+     - React-logger (= 1000.0.0)
+     - React-perflogger (= 1000.0.0)
+-    - React-runtimeexecutor (= 1000.0.0)
++    - React-runtimeexecutor
+     - React-timing (= 1000.0.0)
+     - SocketRocket
+   - React-debug (1000.0.0)
+@@ -555,7 +568,6 @@ PODS:
+     - RCT-Folly/Fabric
+     - React-domnativemodule
+     - React-featureflagsnativemodule
+-    - React-hermes
+     - React-idlecallbacksnativemodule
+     - React-jsi
+     - React-jsiexecutor
+@@ -574,10 +586,10 @@ PODS:
+     - React-Fabric
+     - React-FabricComponents
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-RCTFBReactNativeSpec
++    - React-runtimeexecutor
+     - ReactCommon/turbomodule/core
+     - SocketRocket
+     - Yoga
+@@ -613,11 +625,11 @@ PODS:
+     - React-Fabric/uimanager (= 1000.0.0)
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-logger
+     - React-rendererdebug
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - ReactCommon/turbomodule/core
+@@ -638,11 +650,11 @@ PODS:
+     - React-debug
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-logger
+     - React-rendererdebug
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - ReactCommon/turbomodule/core
+@@ -663,11 +675,11 @@ PODS:
+     - React-debug
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-logger
+     - React-rendererdebug
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - ReactCommon/turbomodule/core
+@@ -688,11 +700,11 @@ PODS:
+     - React-debug
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-logger
+     - React-rendererdebug
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - ReactCommon/turbomodule/core
+@@ -713,11 +725,11 @@ PODS:
+     - React-debug
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-logger
+     - React-rendererdebug
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - ReactCommon/turbomodule/core
+@@ -742,11 +754,11 @@ PODS:
+     - React-Fabric/components/view (= 1000.0.0)
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-logger
+     - React-rendererdebug
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - ReactCommon/turbomodule/core
+@@ -767,11 +779,11 @@ PODS:
+     - React-debug
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-logger
+     - React-rendererdebug
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - ReactCommon/turbomodule/core
+@@ -792,11 +804,11 @@ PODS:
+     - React-debug
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-logger
+     - React-rendererdebug
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - ReactCommon/turbomodule/core
+@@ -817,11 +829,11 @@ PODS:
+     - React-debug
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-logger
+     - React-rendererdebug
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - ReactCommon/turbomodule/core
+@@ -842,12 +854,12 @@ PODS:
+     - React-debug
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-logger
+     - React-renderercss
+     - React-rendererdebug
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - ReactCommon/turbomodule/core
+@@ -869,11 +881,11 @@ PODS:
+     - React-debug
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-logger
+     - React-rendererdebug
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - ReactCommon/turbomodule/core
+@@ -894,11 +906,11 @@ PODS:
+     - React-debug
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-logger
+     - React-rendererdebug
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - ReactCommon/turbomodule/core
+@@ -919,11 +931,11 @@ PODS:
+     - React-debug
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-logger
+     - React-rendererdebug
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - ReactCommon/turbomodule/core
+@@ -944,11 +956,11 @@ PODS:
+     - React-debug
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-logger
+     - React-rendererdebug
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - ReactCommon/turbomodule/core
+@@ -969,11 +981,11 @@ PODS:
+     - React-debug
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-logger
+     - React-rendererdebug
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - ReactCommon/turbomodule/core
+@@ -994,11 +1006,11 @@ PODS:
+     - React-debug
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-logger
+     - React-rendererdebug
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - ReactCommon/turbomodule/core
+@@ -1020,11 +1032,11 @@ PODS:
+     - React-Fabric/observers/events (= 1000.0.0)
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-logger
+     - React-rendererdebug
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - ReactCommon/turbomodule/core
+@@ -1045,11 +1057,11 @@ PODS:
+     - React-debug
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-logger
+     - React-rendererdebug
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - ReactCommon/turbomodule/core
+@@ -1071,12 +1083,12 @@ PODS:
+     - React-Fabric/observers/events
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-logger
+     - React-performancetimeline
+     - React-rendererdebug
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - ReactCommon/turbomodule/core
+@@ -1097,11 +1109,11 @@ PODS:
+     - React-debug
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-logger
+     - React-rendererdebug
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - ReactCommon/turbomodule/core
+@@ -1122,11 +1134,11 @@ PODS:
+     - React-debug
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-logger
+     - React-rendererdebug
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - ReactCommon/turbomodule/core
+@@ -1148,12 +1160,12 @@ PODS:
+     - React-Fabric/uimanager/consistency (= 1000.0.0)
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-logger
+     - React-rendererconsistency
+     - React-rendererdebug
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - ReactCommon/turbomodule/core
+@@ -1174,12 +1186,12 @@ PODS:
+     - React-debug
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-logger
+     - React-rendererconsistency
+     - React-rendererdebug
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - ReactCommon/turbomodule/core
+@@ -1203,10 +1215,10 @@ PODS:
+     - React-FabricComponents/textlayoutmanager (= 1000.0.0)
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-logger
++    - React-RCTFBReactNativeSpec
+     - React-rendererdebug
+     - React-runtimescheduler
+     - React-utils
+@@ -1231,7 +1243,6 @@ PODS:
+     - React-FabricComponents/components/inputaccessory (= 1000.0.0)
+     - React-FabricComponents/components/iostextinput (= 1000.0.0)
+     - React-FabricComponents/components/modal (= 1000.0.0)
+-    - React-FabricComponents/components/rncore (= 1000.0.0)
+     - React-FabricComponents/components/safeareaview (= 1000.0.0)
+     - React-FabricComponents/components/scrollview (= 1000.0.0)
+     - React-FabricComponents/components/text (= 1000.0.0)
+@@ -1239,10 +1250,10 @@ PODS:
+     - React-FabricComponents/components/unimplementedview (= 1000.0.0)
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-logger
++    - React-RCTFBReactNativeSpec
+     - React-rendererdebug
+     - React-runtimescheduler
+     - React-utils
+@@ -1266,10 +1277,10 @@ PODS:
+     - React-Fabric
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-logger
++    - React-RCTFBReactNativeSpec
+     - React-rendererdebug
+     - React-runtimescheduler
+     - React-utils
+@@ -1293,10 +1304,10 @@ PODS:
+     - React-Fabric
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-logger
++    - React-RCTFBReactNativeSpec
+     - React-rendererdebug
+     - React-runtimescheduler
+     - React-utils
+@@ -1320,37 +1331,10 @@ PODS:
+     - React-Fabric
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+-    - React-jsi
+-    - React-jsiexecutor
+-    - React-logger
+-    - React-rendererdebug
+-    - React-runtimescheduler
+-    - React-utils
+-    - ReactCommon/turbomodule/core
+-    - SocketRocket
+-    - Yoga
+-  - React-FabricComponents/components/rncore (1000.0.0):
+-    - boost
+-    - DoubleConversion
+-    - fast_float
+-    - fmt
+-    - glog
+-    - hermes-engine
+-    - RCT-Folly
+-    - RCT-Folly/Fabric
+-    - RCTRequired
+-    - RCTTypeSafety
+-    - React-Core
+-    - React-cxxreact
+-    - React-debug
+-    - React-Fabric
+-    - React-featureflags
+-    - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-logger
++    - React-RCTFBReactNativeSpec
+     - React-rendererdebug
+     - React-runtimescheduler
+     - React-utils
+@@ -1374,10 +1358,10 @@ PODS:
+     - React-Fabric
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-logger
++    - React-RCTFBReactNativeSpec
+     - React-rendererdebug
+     - React-runtimescheduler
+     - React-utils
+@@ -1401,10 +1385,10 @@ PODS:
+     - React-Fabric
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-logger
++    - React-RCTFBReactNativeSpec
+     - React-rendererdebug
+     - React-runtimescheduler
+     - React-utils
+@@ -1428,10 +1412,10 @@ PODS:
+     - React-Fabric
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-logger
++    - React-RCTFBReactNativeSpec
+     - React-rendererdebug
+     - React-runtimescheduler
+     - React-utils
+@@ -1455,10 +1439,10 @@ PODS:
+     - React-Fabric
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-logger
++    - React-RCTFBReactNativeSpec
+     - React-rendererdebug
+     - React-runtimescheduler
+     - React-utils
+@@ -1482,10 +1466,10 @@ PODS:
+     - React-Fabric
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-logger
++    - React-RCTFBReactNativeSpec
+     - React-rendererdebug
+     - React-runtimescheduler
+     - React-utils
+@@ -1509,10 +1493,10 @@ PODS:
+     - React-Fabric
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-logger
++    - React-RCTFBReactNativeSpec
+     - React-rendererdebug
+     - React-runtimescheduler
+     - React-utils
+@@ -1533,7 +1517,6 @@ PODS:
+     - React-Fabric
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-ImageManager
+     - React-jsi
+     - React-jsiexecutor (= 1000.0.0)
+@@ -1562,7 +1545,6 @@ PODS:
+     - RCT-Folly
+     - RCT-Folly/Fabric
+     - React-featureflags
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-RCTFBReactNativeSpec
+@@ -1577,7 +1559,6 @@ PODS:
+     - hermes-engine
+     - RCT-Folly
+     - RCT-Folly/Fabric
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-utils
+@@ -1609,10 +1590,10 @@ PODS:
+     - hermes-engine
+     - RCT-Folly
+     - RCT-Folly/Fabric
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-RCTFBReactNativeSpec
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - ReactCommon/turbomodule/core
+     - SocketRocket
+@@ -1671,6 +1652,7 @@ PODS:
+     - React-jsinspectorcdp
+     - React-jsinspectortracing
+     - React-perflogger (= 1000.0.0)
++    - React-runtimeexecutor
+     - SocketRocket
+   - React-jsinspector (1000.0.0):
+     - boost
+@@ -1687,7 +1669,7 @@ PODS:
+     - React-jsinspectornetwork
+     - React-jsinspectortracing
+     - React-perflogger (= 1000.0.0)
+-    - React-runtimeexecutor (= 1000.0.0)
++    - React-runtimeexecutor
+     - SocketRocket
+   - React-jsinspectorcdp (1000.0.0):
+     - boost
+@@ -1720,6 +1702,7 @@ PODS:
+     - RCT-Folly
+     - RCT-Folly/Fabric
+     - React-oscompat
++    - React-timing
+     - SocketRocket
+   - React-jsitooling (1000.0.0):
+     - boost
+@@ -1734,6 +1717,7 @@ PODS:
+     - React-jsinspector
+     - React-jsinspectorcdp
+     - React-jsinspectortracing
++    - React-runtimeexecutor
+     - SocketRocket
+   - React-jsitracing (1000.0.0):
+     - React-jsi
+@@ -1765,7 +1749,6 @@ PODS:
+     - hermes-engine
+     - RCT-Folly
+     - RCT-Folly/Fabric
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-RCTFBReactNativeSpec
+@@ -1784,7 +1767,6 @@ PODS:
+     - React-Core
+     - React-cxxreact
+     - React-featureflags
+-    - React-hermes
+     - React-jsi
+     - React-jsinspector
+     - React-jsinspectorcdp
+@@ -1862,6 +1844,7 @@ PODS:
+     - React-rendererdebug
+     - React-RuntimeApple
+     - React-RuntimeCore
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - ReactCommon
+@@ -1901,7 +1884,6 @@ PODS:
+     - React-FabricImage
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-ImageManager
+     - React-jsi
+     - React-jsinspector
+@@ -1910,11 +1892,13 @@ PODS:
+     - React-jsinspectortracing
+     - React-performancetimeline
+     - React-RCTAnimation
++    - React-RCTFBReactNativeSpec
+     - React-RCTImage
+     - React-RCTText
+     - React-rendererconsistency
+     - React-renderercss
+     - React-rendererdebug
++    - React-runtimeexecutor
+     - React-runtimescheduler
+     - React-utils
+     - SocketRocket
+@@ -1931,12 +1915,34 @@ PODS:
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+-    - React-hermes
+     - React-jsi
+-    - React-jsiexecutor
+     - React-NativeModulesApple
++    - React-RCTFBReactNativeSpec/components (= 1000.0.0)
+     - ReactCommon
+     - SocketRocket
++  - React-RCTFBReactNativeSpec/components (1000.0.0):
++    - boost
++    - DoubleConversion
++    - fast_float
++    - fmt
++    - glog
++    - hermes-engine
++    - RCT-Folly
++    - RCT-Folly/Fabric
++    - RCTRequired
++    - RCTTypeSafety
++    - React-Core
++    - React-debug
++    - React-Fabric
++    - React-featureflags
++    - React-graphics
++    - React-jsi
++    - React-NativeModulesApple
++    - React-rendererdebug
++    - React-utils
++    - ReactCommon
++    - SocketRocket
++    - Yoga
+   - React-RCTImage (1000.0.0):
+     - boost
+     - DoubleConversion
+@@ -1995,7 +2001,6 @@ PODS:
+     - RCT-Folly
+     - RCT-Folly/Fabric
+     - React-Core
+-    - React-hermes
+     - React-jsi
+     - React-jsinspector
+     - React-jsinspectorcdp
+@@ -2003,6 +2008,7 @@ PODS:
+     - React-jsitooling
+     - React-RuntimeApple
+     - React-RuntimeCore
++    - React-runtimeexecutor
+     - React-RuntimeHermes
+     - SocketRocket
+   - React-RCTSettings (1000.0.0):
+@@ -2064,7 +2070,6 @@ PODS:
+     - RCT-Folly/Fabric
+     - React-debug
+     - SocketRocket
+-  - React-rncore (1000.0.0)
+   - React-RuntimeApple (1000.0.0):
+     - boost
+     - DoubleConversion
+@@ -2106,7 +2111,6 @@ PODS:
+     - React-cxxreact
+     - React-Fabric
+     - React-featureflags
+-    - React-hermes
+     - React-jserrorhandler
+     - React-jsi
+     - React-jsiexecutor
+@@ -2137,6 +2141,7 @@ PODS:
+     - React-jsitooling
+     - React-jsitracing
+     - React-RuntimeCore
++    - React-runtimeexecutor
+     - React-utils
+     - SocketRocket
+   - React-runtimescheduler (1000.0.0):
+@@ -2152,7 +2157,6 @@ PODS:
+     - React-cxxreact
+     - React-debug
+     - React-featureflags
+-    - React-hermes
+     - React-jsi
+     - React-jsinspectortracing
+     - React-performancetimeline
+@@ -2173,7 +2177,6 @@ PODS:
+     - RCT-Folly
+     - RCT-Folly/Fabric
+     - React-debug
+-    - React-hermes
+     - React-jsi (= 1000.0.0)
+     - SocketRocket
+   - ReactAppDependencyProvider (1000.0.0):
+@@ -2195,7 +2198,6 @@ PODS:
+     - React-FabricImage
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-jsi
+     - React-jsiexecutor
+     - React-NativeModulesApple
+@@ -2226,7 +2228,6 @@ PODS:
+     - RCT-Folly/Fabric
+     - React-Core
+     - React-cxxreact
+-    - React-hermes
+     - React-jsi
+     - React-NativeModulesApple
+     - React-RCTFBReactNativeSpec
+@@ -2298,7 +2299,6 @@ PODS:
+     - React-Fabric
+     - React-featureflags
+     - React-graphics
+-    - React-hermes
+     - React-ImageManager
+     - React-jsi
+     - React-NativeModulesApple
+@@ -2382,7 +2382,6 @@ DEPENDENCIES:
+   - React-rendererconsistency (from `../react-native/ReactCommon/react/renderer/consistency`)
+   - React-renderercss (from `../react-native/ReactCommon/react/renderer/css`)
+   - React-rendererdebug (from `../react-native/ReactCommon/react/renderer/debug`)
+-  - React-rncore (from `../react-native/ReactCommon`)
+   - React-RuntimeApple (from `../react-native/ReactCommon/react/runtime/platform/ios`)
+   - React-RuntimeCore (from `../react-native/ReactCommon/react/runtime`)
+   - React-runtimeexecutor (from `../react-native/ReactCommon/runtimeexecutor`)
+@@ -2535,8 +2534,6 @@ EXTERNAL SOURCES:
+     :path: "../react-native/ReactCommon/react/renderer/css"
+   React-rendererdebug:
+     :path: "../react-native/ReactCommon/react/renderer/debug"
+-  React-rncore:
+-    :path: "../react-native/ReactCommon"
+   React-RuntimeApple:
+     :path: "../react-native/ReactCommon/react/runtime/platform/ios"
+   React-RuntimeCore:
+@@ -2571,59 +2568,59 @@ SPEC CHECKSUMS:
+   FBLazyVector: d3c2dd739a63c1a124e775df075dc7c517a719cb
+   fmt: a40bb5bd0294ea969aaaba240a927bd33d878cdd
+   glog: 5683914934d5b6e4240e497e0f4a3b42d1854183
+-  hermes-engine: 5a9adf9081befbac6b81bc0c81522430a7eb7da1
+-  MyNativeView: 649cc955b283053e5832e8d45c2a20597daa94cd
+-  NativeCxxModuleExample: d9bac8e847a427f0a40b0c9fb066ab102b3aefd0
++  hermes-engine: fd5605ca4043c8317548d649d0b64e5dafc2a124
++  MyNativeView: 9b03b64f5cd9220bf7ef49fcdfc468effe704fa0
++  NativeCxxModuleExample: 2897d5f3aee8a02dd201a3dd41fbc94ada1aac5e
+   OCMock: 589f2c84dacb1f5aaf6e4cec1f292551fe748e74
+-  OSSLibraryExample: 9264008f6ba6a068cb2db3765ffdf519c9c0f6a4
++  OSSLibraryExample: bf5b5a4238613dae3c536faff58f87528e6191cf
+   RCT-Folly: 846fda9475e61ec7bcbf8a3fe81edfcaeb090669
+   RCTDeprecation: 3808e36294137f9ee5668f4df2e73dc079cd1dcf
+   RCTRequired: a00614e2da5344c2cda3d287050b6cee00e21dc6
+   RCTTypeSafety: 459a16418c6b413060d35434ba3e83f5b0bd2651
+   React: 170a01a19ba2525ab7f11243e2df6b19bf268093
+   React-callinvoker: f08f425e4043cd1998a158b6e39a6aed1fd1d718
+-  React-Core: 798334ba9a8a5a97e84ab56b5565d6ed5ac09712
+-  React-CoreModules: 25e5ff9b077e8a3780672a9eae5197e54ce367e1
+-  React-cxxreact: 8a5de0fe0933c56fdf4c3548902d9525ea73322b
++  React-Core: d35c5cf69898fd026e5cd93a0454b1d42e999d3e
++  React-CoreModules: 3ce1d43f6cc37f43759ec543ce1c0010080f1de1
++  React-cxxreact: 3169b106af8f405e182d131d3a0844201e3252e2
+   React-debug: 195df38487d3f48a7af04deddeb4a5c6d4440416
+-  React-defaultsnativemodule: 47959b704240e39c6b401d3e3fe1da114b271ac6
+-  React-domnativemodule: b6dd0c3be3e4514052f68d0b5a94a8d06e0f14fd
+-  React-Fabric: 06175f348d6df210e7545ee513e38fe1709a6d82
+-  React-FabricComponents: ace73c8cc991f299d9b3aa9556cd5b6e86a8b8e6
+-  React-FabricImage: ff9dc6afafc92e0da3f3d33d96ec40317bb8ec10
++  React-defaultsnativemodule: 8afea5a4bd07addb523bf48489b8a684ea1bdff0
++  React-domnativemodule: 8a813559774e65bc800fe489bbb454cd546f21d7
++  React-Fabric: e9846203f11ab49be8b1329c76301bbd399ef2ad
++  React-FabricComponents: 032d6f01f1d6966633418c0fece18f698ddb7897
++  React-FabricImage: 264c9ce5241e43e25b94c8de55ac6c3c8a046472
+   React-featureflags: 595651ea13c63a9f77f06d9a1973b665b4a28b7e
+-  React-featureflagsnativemodule: f5f69151bc4c2945003fc502ebaecee7fda02c42
+-  React-graphics: 38cc9ba3336bd50960e6052648374f3591abc7a6
+-  React-hermes: 34666bbd8d6b585e290f000d4d31c2182ece8940
+-  React-idlecallbacksnativemodule: b66d99ffb2ff765e1bd952b6bc6bf4ba3d5204d3
++  React-featureflagsnativemodule: 06823479a2ee210cfa0e9c19447c2722a8d995f2
++  React-graphics: 1f99b9b5515eac389f0cf9c85b03abc366d6a933
++  React-hermes: 745eb45a6d0aae7e890d0aae0def54670bbd103c
++  React-idlecallbacksnativemodule: 4e65f183318b8a0fbabc481a4eafc0f0d62d1cbf
+   React-ImageManager: a6833445e17879933378b7c0ba45ee42115c14bc
+   React-jserrorhandler: bec134a192c50338193544404d45df24fb8a19ca
+   React-jsi: 4ad77650fb0ca4229569eb2532db7a87e3d12662
+-  React-jsiexecutor: 569425f7cd2c3e005a17e5211843e541c11d6916
+-  React-jsinspector: 885e8180e898f07e4d7df29e2681a89e69d736d3
++  React-jsiexecutor: fa5b80bdbe1ceffc33a892da20fc07b4dfa4df7a
++  React-jsinspector: 10b5dc4eef2a3d05b80be2114ed676496c5bf59c
+   React-jsinspectorcdp: 5fb266e5f23d3a2819ba848e9d4d0b6b00f95934
+   React-jsinspectornetwork: 1655a81f3fe14789df41e063bd56dd130cc3562a
+-  React-jsinspectortracing: 80e9418ac67630c76f15ef06534087037a822330
+-  React-jsitooling: 0c28fbc10441f8b63f4c6bf443cb36416500ce2b
++  React-jsinspectortracing: 5b0be488e06958a572e1badfe8509929ae1cc83b
++  React-jsitooling: 9e563b89f94cf4baf872fe47105d60ae83f4ce4d
+   React-jsitracing: ce443686f52538d1033ce7db1e7d643e866262f0
+   React-logger: 116c3ae5a9906671d157aa00882a5ee75a5a7ebc
+   React-Mapbuffer: fc937cfa41140d7724c559c3d16c50dd725361c8
+-  React-microtasksnativemodule: dd4dfd6306d8b42f5dab9ecb3bf04124e979a3da
+-  React-NativeModulesApple: d3aec3f4d3cb80507777e1feeba3bdc70f9504a0
++  React-microtasksnativemodule: 09899c7389250279bdcc5384f0281bb069979855
++  React-NativeModulesApple: d05b718ccd8b68c184e76dbc1efb63385197595b
+   React-oscompat: 7133e0e945cda067ae36b22502df663d73002864
+   React-perflogger: ada3cdf3dfc8b7cd1fabe3c91b672e23981611ab
+   React-performancetimeline: e7d5849d89ee39557dcd56dfb6e7b0d49003d925
+   React-RCTActionSheet: 1bf8cc8086ad1c15da3407dfb7bc9dd94dc7595d
+   React-RCTAnimation: 263593e66c89bf810604b1ace15dfa382a1ca2df
+-  React-RCTAppDelegate: 3d35d7226338009b22d1cf9621eaa827acb8fd1d
++  React-RCTAppDelegate: 3a99437ffa7460f85045de65f9bed6b1c47d5f09
+   React-RCTBlob: 7b76230c53fe87d305eeeb250b0aae031bb6cbae
+-  React-RCTFabric: a43fc393b6e505fd60a7fea43edbdcf609f33bf0
+-  React-RCTFBReactNativeSpec: 503491a0584dc29f03ef9f8ed366794604cd59ef
++  React-RCTFabric: 2fd2ef899c7219fd39fd61c39750510f88a81434
++  React-RCTFBReactNativeSpec: 4ed3b463eb26726b04ac65c73797207ecab5634c
+   React-RCTImage: de404b6b0ebe53976a97e3a0dee819c83e12977b
+   React-RCTLinking: 06742cfad41c506091403a414370743a4ed75af3
+   React-RCTNetwork: b4577eec0092c16d8996e415e4cac7a372d6d362
+   React-RCTPushNotification: ea11178d499696516e0ff9ae335edbe99b06f94b
+-  React-RCTRuntime: 07b41aed797e8d950ada851c6363ecf931335663
++  React-RCTRuntime: 925039e78fc530e0421c308ccc607f214f3c7be1
+   React-RCTSettings: d3c2dd305ec81f7faf42762ec598d57f07fd43be
+   React-RCTTest: 2db46eda60bc2228cb67622a580e8e86b00088d9
+   React-RCTText: e416825b80c530647040ef91d23ffd35ccc87981
+@@ -2631,22 +2628,21 @@ SPEC CHECKSUMS:
+   React-rendererconsistency: 777c894edc43dde01499189917ac54ee76ae6a6a
+   React-renderercss: a9cb6ba7f49a80dc4b4f7008bae1590d12f27049
+   React-rendererdebug: fea8bde927403a198742b2d940a5f1cd8230c0b4
+-  React-rncore: 4a81ce7b8e47448973a6b29c765b07e01715921e
+-  React-RuntimeApple: 97755a0b9f6adff1e1911ef4894cb0c5a9e40c77
+-  React-RuntimeCore: 6854e513a18b7b8980732f561679de6cab1b5b4d
+-  React-runtimeexecutor: fb2d342a477bb13f7128cceb711ee8311edce0c0
+-  React-RuntimeHermes: 90f09fae56f0b1f458927beb171177a157334fe6
+-  React-runtimescheduler: 0b50423a4c40db7d1d0c3cc6893b407bf7fb946c
++  React-RuntimeApple: 6a0c164a8855edb4987b90da2d4d8601302de72d
++  React-RuntimeCore: 6dec37113b759b76641bd028bfbbbec8cf923356
++  React-runtimeexecutor: a16a24b964e964afe833a652d703e1bb39f10dc9
++  React-RuntimeHermes: d4f661204d3061219a63951eb4efed4dcaf3f12f
++  React-runtimescheduler: ae44fe8b4170a9d59f62e8b7d7b060c179db739d
+   React-timing: 9d49179631e5e3c759e6e82d4c613c73da80a144
+-  React-utils: 3ea3fa757fec88afb26db14889fb4e7e8b5ca134
++  React-utils: 0944df8d553d66b27f486282c42a84a969fd2f6c
+   ReactAppDependencyProvider: 68f2d2cefd6c9b9f2865246be2bfe86ebd49238d
+-  ReactCodegen: 0c8d830ce35b1b48f8b674b0d00e532abc448470
++  ReactCodegen: 8fc4c8b6562a59409b5650e67f78719093d093bf
+   ReactCommon: a53973ab35d399560ace331ec9e2b26db0592cec
+-  ReactCommon-Samples: 3dd174c775b04ab7d59a1b3c1a832e04377c9538
+-  ScreenshotManager: 8687f6358b007230590842b03505606e905c3ce9
++  ReactCommon-Samples: dcc128cbf51ac38d2578791750d0a046d1b8a5e9
++  ScreenshotManager: 6ac0b11c7bbd5cf1abd9448fb3b856fe6fd65ff7
+   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
+-  Yoga: 59290f2ce3fc5c34797a21244288cad99b357b63
++  Yoga: c4e80f1c2235fa6236d71a49e5bb2ee74d987921
+ 
+ PODFILE CHECKSUM: 8591f96a513620a2a83a0b9a125ad3fa32ea1369
+ 
+-COCOAPODS: 1.16.2
++COCOAPODS: 1.15.2
+diff --git a/packages/rn-tester/RNTesterPods.xcodeproj/project.pbxproj b/packages/rn-tester/RNTesterPods.xcodeproj/project.pbxproj
+index cc7e611b300..4ceae9d500a 100644
+--- a/packages/rn-tester/RNTesterPods.xcodeproj/project.pbxproj
++++ b/packages/rn-tester/RNTesterPods.xcodeproj/project.pbxproj
+@@ -7,19 +7,19 @@
+ 	objects = {
+ 
+ /* Begin PBXBuildFile section */
+-		08E25EBE4A584CD7B70FBB1E /* libPods-RNTester.a in Frameworks */ = {isa = PBXBuildFile; fileRef = D74056A5352F0925816E50E0 /* libPods-RNTester.a */; };
+ 		0EA618032BE537D3001875EF /* RNTesterBundle.bundle in Resources */ = {isa = PBXBuildFile; fileRef = 0EA618022BE537D3001875EF /* RNTesterBundle.bundle */; };
+ 		13B07FC11A68108700A75B9A /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 13B07FB71A68108700A75B9A /* main.m */; };
+ 		2DDEF0101F84BF7B00DBDF73 /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2DDEF00F1F84BF7B00DBDF73 /* Images.xcassets */; };
++		3584606AB7F8ADF7A07A3E14 /* libPods-RNTesterIntegrationTests.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DF9F45393190A3F008764D08 /* libPods-RNTesterIntegrationTests.a */; };
+ 		383889DA23A7398900D06C3E /* RCTConvert_UIColorTests.m in Sources */ = {isa = PBXBuildFile; fileRef = 383889D923A7398900D06C3E /* RCTConvert_UIColorTests.m */; };
+ 		3D2AFAF51D646CF80089D1A3 /* legacy_image@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 3D2AFAF41D646CF80089D1A3 /* legacy_image@2x.png */; };
+ 		5C60EB1C226440DB0018C04F /* AppDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 5C60EB1B226440DB0018C04F /* AppDelegate.mm */; };
+ 		8145AE06241172D900A3F8DA /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 8145AE05241172D900A3F8DA /* LaunchScreen.storyboard */; };
+ 		832F45BB2A8A6E1F0097B4E6 /* SwiftTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 832F45BA2A8A6E1F0097B4E6 /* SwiftTest.swift */; };
++		A36E4394472D388C2F6BBABA /* libPods-RNTester.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 48A747D61749335D863001E9 /* libPods-RNTester.a */; };
+ 		A975CA6C2C05EADF0043F72A /* RCTNetworkTaskTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A975CA6B2C05EADE0043F72A /* RCTNetworkTaskTests.m */; };
+-		BEB82277FE76227A15DED9EF /* libPods-RNTesterIntegrationTests.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 77E101C7D8E22A8E70EE76DF /* libPods-RNTesterIntegrationTests.a */; };
++		BF2C34488C1E5FF62D331DD4 /* libPods-RNTesterUnitTests.a in Frameworks */ = {isa = PBXBuildFile; fileRef = E89C730A8F64BC35672D4D81 /* libPods-RNTesterUnitTests.a */; };
+ 		CD10C7A5290BD4EB0033E1ED /* RCTEventEmitterTests.m in Sources */ = {isa = PBXBuildFile; fileRef = CD10C7A4290BD4EB0033E1ED /* RCTEventEmitterTests.m */; };
+-		D626973C1F0D4ABDE2F9028A /* libPods-RNTesterUnitTests.a in Frameworks */ = {isa = PBXBuildFile; fileRef = D8DE57E3292D41E28251988A /* libPods-RNTesterUnitTests.a */; };
+ 		E62F11832A5C6580000BF1C8 /* FlexibleSizeExampleView.mm in Sources */ = {isa = PBXBuildFile; fileRef = 27F441E81BEBE5030039B79C /* FlexibleSizeExampleView.mm */; };
+ 		E62F11842A5C6584000BF1C8 /* UpdatePropertiesExampleView.mm in Sources */ = {isa = PBXBuildFile; fileRef = 272E6B3C1BEA849E001FCF37 /* UpdatePropertiesExampleView.mm */; };
+ 		E7C1241A22BEC44B00DA25C0 /* RNTesterIntegrationTests.m in Sources */ = {isa = PBXBuildFile; fileRef = E7C1241922BEC44B00DA25C0 /* RNTesterIntegrationTests.m */; };
+@@ -93,9 +93,9 @@
+ 		359825B9A5AE4A3F4AA612DD /* Pods-RNTesterUnitTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RNTesterUnitTests.debug.xcconfig"; path = "Target Support Files/Pods-RNTesterUnitTests/Pods-RNTesterUnitTests.debug.xcconfig"; sourceTree = "<group>"; };
+ 		383889D923A7398900D06C3E /* RCTConvert_UIColorTests.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = RCTConvert_UIColorTests.m; sourceTree = "<group>"; };
+ 		3D2AFAF41D646CF80089D1A3 /* legacy_image@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = "legacy_image@2x.png"; path = "RNTester/legacy_image@2x.png"; sourceTree = "<group>"; };
++		48A747D61749335D863001E9 /* libPods-RNTester.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-RNTester.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+ 		5C60EB1B226440DB0018C04F /* AppDelegate.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; name = AppDelegate.mm; path = RNTester/AppDelegate.mm; sourceTree = "<group>"; };
+ 		66C3087F2D5BF762FE9E6422 /* Pods-RNTesterIntegrationTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RNTesterIntegrationTests.debug.xcconfig"; path = "Target Support Files/Pods-RNTesterIntegrationTests/Pods-RNTesterIntegrationTests.debug.xcconfig"; sourceTree = "<group>"; };
+-		77E101C7D8E22A8E70EE76DF /* libPods-RNTesterIntegrationTests.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-RNTesterIntegrationTests.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+ 		7CDA7A212644C6BB8C0D00D8 /* Pods-RNTesterIntegrationTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RNTesterIntegrationTests.release.xcconfig"; path = "Target Support Files/Pods-RNTesterIntegrationTests/Pods-RNTesterIntegrationTests.release.xcconfig"; sourceTree = "<group>"; };
+ 		8145AE05241172D900A3F8DA /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = RNTester/LaunchScreen.storyboard; sourceTree = "<group>"; };
+ 		832F45BA2A8A6E1F0097B4E6 /* SwiftTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SwiftTest.swift; path = RNTester/SwiftTest.swift; sourceTree = "<group>"; };
+@@ -104,8 +104,7 @@
+ 		A975CA6B2C05EADE0043F72A /* RCTNetworkTaskTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = RCTNetworkTaskTests.m; sourceTree = "<group>"; };
+ 		AC474BFB29BBD4A1002BDAED /* RNTester.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; name = RNTester.xctestplan; path = RNTester/RNTester.xctestplan; sourceTree = "<group>"; };
+ 		CD10C7A4290BD4EB0033E1ED /* RCTEventEmitterTests.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = RCTEventEmitterTests.m; sourceTree = "<group>"; };
+-		D74056A5352F0925816E50E0 /* libPods-RNTester.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-RNTester.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+-		D8DE57E3292D41E28251988A /* libPods-RNTesterUnitTests.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-RNTesterUnitTests.a"; sourceTree = BUILT_PRODUCTS_DIR; };
++		DF9F45393190A3F008764D08 /* libPods-RNTesterIntegrationTests.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-RNTesterIntegrationTests.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+ 		E771AEEA22B44E3100EA1189 /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = RNTester/Info.plist; sourceTree = "<group>"; };
+ 		E7C1241922BEC44B00DA25C0 /* RNTesterIntegrationTests.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = RNTesterIntegrationTests.m; sourceTree = "<group>"; };
+ 		E7DB209F22B2BA84005AC45F /* RNTesterUnitTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RNTesterUnitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+@@ -167,6 +166,7 @@
+ 		E7DB215E22B2F3EC005AC45F /* RCTLoggingTests.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = RCTLoggingTests.m; sourceTree = "<group>"; };
+ 		E7DB215F22B2F3EC005AC45F /* RCTUIManagerScenarioTests.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = RCTUIManagerScenarioTests.m; sourceTree = "<group>"; };
+ 		E7DB218B22B41FCD005AC45F /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = XCTest.framework; sourceTree = DEVELOPER_DIR; };
++		E89C730A8F64BC35672D4D81 /* libPods-RNTesterUnitTests.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-RNTesterUnitTests.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+ 		F0D621C22BBB9E38005960AC /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+ /* End PBXFileReference section */
+ 
+@@ -175,7 +175,7 @@
+ 			isa = PBXFrameworksBuildPhase;
+ 			buildActionMask = 2147483647;
+ 			files = (
+-				08E25EBE4A584CD7B70FBB1E /* libPods-RNTester.a in Frameworks */,
++				A36E4394472D388C2F6BBABA /* libPods-RNTester.a in Frameworks */,
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 		};
+@@ -184,7 +184,7 @@
+ 			buildActionMask = 2147483647;
+ 			files = (
+ 				E7DB213122B2C649005AC45F /* JavaScriptCore.framework in Frameworks */,
+-				D626973C1F0D4ABDE2F9028A /* libPods-RNTesterUnitTests.a in Frameworks */,
++				BF2C34488C1E5FF62D331DD4 /* libPods-RNTesterUnitTests.a in Frameworks */,
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 		};
+@@ -194,7 +194,7 @@
+ 			files = (
+ 				E7DB218C22B41FCD005AC45F /* XCTest.framework in Frameworks */,
+ 				E7DB216722B2F69F005AC45F /* JavaScriptCore.framework in Frameworks */,
+-				BEB82277FE76227A15DED9EF /* libPods-RNTesterIntegrationTests.a in Frameworks */,
++				3584606AB7F8ADF7A07A3E14 /* libPods-RNTesterIntegrationTests.a in Frameworks */,
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 		};
+@@ -265,9 +265,9 @@
+ 				E7DB211822B2BD53005AC45F /* libReact-RCTText.a */,
+ 				E7DB211A22B2BD53005AC45F /* libReact-RCTVibration.a */,
+ 				E7DB212222B2BD53005AC45F /* libyoga.a */,
+-				D74056A5352F0925816E50E0 /* libPods-RNTester.a */,
+-				77E101C7D8E22A8E70EE76DF /* libPods-RNTesterIntegrationTests.a */,
+-				D8DE57E3292D41E28251988A /* libPods-RNTesterUnitTests.a */,
++				48A747D61749335D863001E9 /* libPods-RNTester.a */,
++				DF9F45393190A3F008764D08 /* libPods-RNTesterIntegrationTests.a */,
++				E89C730A8F64BC35672D4D81 /* libPods-RNTesterUnitTests.a */,
+ 			);
+ 			name = Frameworks;
+ 			sourceTree = "<group>";
+diff --git a/packages/rn-tester/RNTesterPods.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist b/packages/rn-tester/RNTesterPods.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+deleted file mode 100644
+index 18d981003d6..00000000000
+--- a/packages/rn-tester/RNTesterPods.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
++++ /dev/null
+@@ -1,8 +0,0 @@
+-<?xml version="1.0" encoding="UTF-8"?>
+-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+-<plist version="1.0">
+-<dict>
+-	<key>IDEDidComputeMac32BitWarning</key>
+-	<true/>
+-</dict>
+-</plist>
+diff --git a/packages/rn-tester/RNTesterPods.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings b/packages/rn-tester/RNTesterPods.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings
+deleted file mode 100644
+index 0c67376ebac..00000000000
+--- a/packages/rn-tester/RNTesterPods.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings
++++ /dev/null
+@@ -1,5 +0,0 @@
+-<?xml version="1.0" encoding="UTF-8"?>
+-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+-<plist version="1.0">
+-<dict/>
+-</plist>
+diff --git a/packages/rn-tester/android/app/src/main/jni/OnLoad.cpp b/packages/rn-tester/android/app/src/main/jni/OnLoad.cpp
+index 4c488722ca8..803d4bbc50c 100644
+--- a/packages/rn-tester/android/app/src/main/jni/OnLoad.cpp
++++ b/packages/rn-tester/android/app/src/main/jni/OnLoad.cpp
+@@ -7,12 +7,12 @@
+ 
+ #include <DefaultComponentsRegistry.h>
+ #include <DefaultTurboModuleManagerDelegate.h>
++#include <FBReactNativeSpec.h>
+ #include <NativeCxxModuleExample.h>
+ #include <ReactCommon/SampleTurboModuleJSIBindings.h>
+ #include <ReactCommon/SampleTurboModuleSpec.h>
+ #include <fbjni/fbjni.h>
+ #include <react/renderer/componentregistry/ComponentDescriptorProviderRegistry.h>
+-#include <rncore.h>
+ 
+ #ifdef REACT_NATIVE_APP_CODEGEN_HEADER
+ #include REACT_NATIVE_APP_CODEGEN_HEADER
+@@ -55,7 +55,7 @@ std::shared_ptr<TurboModule> javaModuleProvider(
+ #endif
+ 
+   // We first try to look up core modules
+-  if (auto module = rncore_ModuleProvider(name, params)) {
++  if (auto module = FBReactNativeSpec_ModuleProvider(name, params)) {
+     return module;
+   }
+ 

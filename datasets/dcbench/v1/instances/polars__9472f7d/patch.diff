@@ -1,0 +1,1274 @@
+From 9472f7d9300aa0faec6b883af25d82fffbc88571 Mon Sep 17 00:00:00 2001
+From: Kevin Patyk <74557243+Kevin-Patyk@users.noreply.github.com>
+Date: Tue, 16 Jun 2026 09:43:55 +0200
+Subject: [PATCH] feat: Add `Expr.is_sorted` (#26708)
+
+---
+ crates/polars-expr/src/dispatch/boolean.rs    |  15 +
+ crates/polars-ops/src/series/ops/various.rs   | 359 +++++++++++-------
+ crates/polars-plan/dsl-schema-hashes.json     |   2 +-
+ .../src/dsl/function_expr/boolean.rs          |   5 +
+ crates/polars-plan/src/dsl/mod.rs             |   7 +
+ .../src/plans/aexpr/function_expr/boolean.rs  |   6 +
+ .../plans/conversion/dsl_to_ir/functions.rs   |   7 +
+ .../src/plans/conversion/ir_to_dsl.rs         |   7 +
+ crates/polars-python/src/expr/general.rs      |   4 +
+ .../src/lazyframe/visitor/expr_nodes.rs       |   5 +
+ crates/polars-stream/src/nodes/is_sorted.rs   | 250 ++++++++++++
+ crates/polars-stream/src/nodes/mod.rs         |   1 +
+ crates/polars-stream/src/physical_plan/fmt.rs |   1 +
+ .../src/physical_plan/lower_expr.rs           |  33 ++
+ crates/polars-stream/src/physical_plan/mod.rs |   9 +-
+ .../src/physical_plan/to_graph.rs             |  13 +
+ py-polars/src/polars/_plr.pyi                 |   1 +
+ py-polars/src/polars/expr/expr.py             |  71 ++++
+ py-polars/tests/unit/expr/test_is_sorted.py   | 143 +++++++
+ 19 files changed, 804 insertions(+), 135 deletions(-)
+ create mode 100644 crates/polars-stream/src/nodes/is_sorted.rs
+ create mode 100644 py-polars/tests/unit/expr/test_is_sorted.py
+
+diff --git a/crates/polars-expr/src/dispatch/boolean.rs b/crates/polars-expr/src/dispatch/boolean.rs
+index 171db7b48..37fbb9bff 100644
+--- a/crates/polars-expr/src/dispatch/boolean.rs
++++ b/crates/polars-expr/src/dispatch/boolean.rs
+@@ -4,6 +4,7 @@ use std::sync::Arc;
+ use polars_core::error::PolarsResult;
+ use polars_core::prelude::{BooleanChunked, Column, DataType, IntoColumn, NamedFrom};
+ use polars_core::runtime::RAYON;
++use polars_ops::prelude::SeriesMethods;
+ use polars_plan::dsl::{ColumnsUdf, SpecialEq};
+ use polars_plan::plans::IRBooleanFunction;
+ use polars_utils::pl_str::PlSmallStr;
+@@ -41,6 +42,10 @@ pub fn function_expr_to_udf(func: IRBooleanFunction) -> SpecialEq<Arc<dyn Column
+             rel_tol,
+             nans_equal,
+         } => wrap!(is_close, abs_tol, rel_tol, nans_equal),
++        IsSorted {
++            descending,
++            nulls_last,
++        } => map!(is_sorted, descending, nulls_last),
+         Not => map!(not),
+         AllHorizontal => map_as_slice!(all_horizontal),
+         AnyHorizontal => map_as_slice!(any_horizontal),
+@@ -167,6 +172,16 @@ fn is_close(
+     .map(IntoColumn::into_column)
+ }
+ 
++fn is_sorted(
++    s: &Column,
++    descending: Option<bool>,
++    nulls_last: Option<bool>,
++) -> PolarsResult<Column> {
++    let series = s.as_materialized_series();
++    let result = series.is_sorted_any(descending, nulls_last)?;
++    Ok(Column::new(s.name().clone(), [result]))
++}
++
+ fn not(s: &Column) -> PolarsResult<Column> {
+     polars_ops::series::negate_bitwise(s.as_materialized_series()).map(Column::from)
+ }
+diff --git a/crates/polars-ops/src/series/ops/various.rs b/crates/polars-ops/src/series/ops/various.rs
+index 5d1f111f4..0b6aad5d9 100644
+--- a/crates/polars-ops/src/series/ops/various.rs
++++ b/crates/polars-ops/src/series/ops/various.rs
+@@ -27,7 +27,6 @@ pub trait SeriesMethods: SeriesSealed {
+             Duplicate: "using `value_counts` on a column/series named '{}' would lead to duplicate \
+             column names; change `name` to fix", name,
+         );
+-        // we need to sort here as well in case of `maintain_order` because duplicates behavior is undefined
+         let groups = s.group_tuples(parallel, sort)?;
+         let values = unsafe { s.agg_first(&groups) }
+             .with_name(s.name().clone())
+@@ -67,146 +66,169 @@ pub trait SeriesMethods: SeriesSealed {
+     }
+ 
+     fn ensure_sorted_arg(&self, operation: &str) -> PolarsResult<()> {
+-        polars_ensure!(self.is_sorted(Default::default())?, InvalidOperation: "argument in operation '{}' is not sorted, please sort the 'expr/series/column' first", operation);
++        polars_ensure!(
++            self.is_sorted(SortOptions::default())?,
++            InvalidOperation: "argument in operation '{}' is not sorted, please sort the 'expr/series/column' first",
++            operation
++        );
+         Ok(())
+     }
+ 
+-    /// Checks if a [`Series`] is sorted. Tries to fail fast.
++    /// Checks if a [`Series`] is sorted with concrete options. Tries to fail fast.
++    ///
++    /// For inference of `descending` / `nulls_last`, see [`Self::is_sorted_any`].
+     fn is_sorted(&self, options: SortOptions) -> PolarsResult<bool> {
++        is_sorted_impl(self.as_series(), options)
++    }
++
++    fn is_sorted_any(
++        &self,
++        descending: Option<bool>,
++        nulls_last: Option<bool>,
++    ) -> PolarsResult<bool> {
+         let s = self.as_series();
+-        let null_count = s.null_count();
+-
+-        // fast paths
+-        if (options.descending
+-            && (options.nulls_last || null_count == 0)
+-            && matches!(s.is_sorted_flag(), IsSorted::Descending))
+-            || (!options.descending
+-                && (!options.nulls_last || null_count == 0)
+-                && matches!(s.is_sorted_flag(), IsSorted::Ascending))
+-        {
+-            return Ok(true);
+-        }
++        let (descending, nulls_last) = resolve_sort_options(s, descending, nulls_last)?;
++        // When an option could not be inferred the series is trivially sorted along that axis
++        // (e.g. all non-null values equal, or no nulls), so any value works; default to `false`.
++        let options = SortOptions {
++            descending: descending.unwrap_or(false),
++            nulls_last: nulls_last.unwrap_or(false),
++            ..Default::default()
++        };
++        is_sorted_impl(s, options)
++    }
++}
+ 
+-        // for struct types we row-encode and recurse
+-        #[cfg(feature = "dtype-struct")]
+-        if matches!(s.dtype(), DataType::Struct(_)) {
+-            let encoded = _get_rows_encoded_ca(
+-                PlSmallStr::EMPTY,
+-                &[s.clone().into()],
+-                &[options.descending],
+-                &[options.nulls_last],
+-                false,
+-            )?;
+-            let options = SortOptions {
+-                descending: false,
+-                nulls_last: false,
+-                ..options
+-            };
+-            return encoded.into_series().is_sorted(options);
+-        }
++fn is_sorted_impl(s: &Series, options: SortOptions) -> PolarsResult<bool> {
++    let null_count = s.null_count();
+ 
+-        let s_len = s.len();
+-        if null_count == s_len {
+-            // All nulls is all equal
+-            return Ok(true);
+-        }
+-        // Check if nulls are in the right location.
+-        if null_count > 0 {
+-            // The slice triggers a fast null count
+-            if options.nulls_last {
+-                if s.slice((s_len - null_count) as i64, null_count)
+-                    .null_count()
+-                    != null_count
+-                {
+-                    return Ok(false);
+-                }
+-            } else if s.slice(0, null_count).null_count() != null_count {
++    if (options.descending
++        && (options.nulls_last || null_count == 0)
++        && matches!(s.is_sorted_flag(), IsSorted::Descending))
++        || (!options.descending
++            && (!options.nulls_last || null_count == 0)
++            && matches!(s.is_sorted_flag(), IsSorted::Ascending))
++    {
++        return Ok(true);
++    }
++
++    #[cfg(feature = "dtype-struct")]
++    if matches!(s.dtype(), DataType::Struct(_)) {
++        let encoded = _get_rows_encoded_ca(
++            PlSmallStr::EMPTY,
++            &[s.clone().into()],
++            &[options.descending],
++            &[options.nulls_last],
++            false,
++        )?;
++        let options = SortOptions {
++            descending: false,
++            nulls_last: false,
++            ..options
++        };
++        return is_sorted_impl(&encoded.into_series(), options);
++    }
++
++    let s_len = s.len();
++    if null_count == s_len {
++        // All nulls are equal.
++        return Ok(true);
++    }
++    // Check if nulls are in the right location.
++    if null_count > 0 {
++        if options.nulls_last {
++            if s.slice((s_len - null_count) as i64, null_count)
++                .null_count()
++                != null_count
++            {
+                 return Ok(false);
+             }
++        } else if s.slice(0, null_count).null_count() != null_count {
++            return Ok(false);
+         }
++    }
+ 
+-        if s.dtype().is_primitive_numeric() {
+-            with_match_physical_numeric_polars_type!(s.dtype(), |$T| {
+-                let ca: &ChunkedArray<$T> = s.as_ref().as_ref().as_ref();
+-                return Ok(is_sorted_ca_num::<$T>(ca, options))
+-            })
+-        }
++    if s.dtype().is_primitive_numeric() {
++        with_match_physical_numeric_polars_type!(s.dtype(), |$T| {
++            let ca: &ChunkedArray<$T> = s.as_ref().as_ref().as_ref();
++            return Ok(is_sorted_ca_num::<$T>(ca, options))
++        })
++    }
+ 
+-        // Logical non-primitive types (e.g. String, Categorical, List, …): take only the contiguous
+-        // non-null values (`non_null`). For ordinary `Categorical` use `iter_str` (below); otherwise
+-        // `to_physical_repr`, then
+-        // (1) for ordinary [`DataType::Categorical`], compare adjacent **decoded strings** (`iter_str`),
+-        // (2) reuse `is_sorted_ca_num` when the physical type is primitive numeric (temporal /
+-        //     Decimal, Enum-as-integer, …) after `to_physical_repr`;
+-        // (3) uses a dedicated kernel for boolean values,
+-        // (4) else scans string / binary values with `TotalOrd`,
+-        // (5) else fall back to pairwise `Series::lt_eq` / `gt_eq` (nested types, etc.).
+-        let non_null_len = s_len - null_count;
+-        if non_null_len <= 1 {
+-            return Ok(true);
+-        }
++    // Logical non-primitive types (e.g. String, Categorical, List, …): take only the contiguous
++    // non-null values (`non_null`). For ordinary `Categorical` use `iter_str` (below); otherwise
++    // `to_physical_repr`, then
++    // (1) for ordinary [`DataType::Categorical`], compare adjacent **decoded strings** (`iter_str`),
++    // (2) reuse `is_sorted_ca_num` when the physical type is primitive numeric (temporal /
++    //     Decimal, Enum-as-integer, …) after `to_physical_repr`;
++    // (3) uses a dedicated kernel for boolean values,
++    // (4) else scans string / binary values with `TotalOrd`,
++    // (5) else fall back to pairwise `Series::lt_eq` / `gt_eq` (nested types, etc.).
++    let non_null_len = s_len - null_count;
++    if non_null_len <= 1 {
++        return Ok(true);
++    }
+ 
+-        let offset = (!options.nulls_last as i64) * (null_count as i64);
+-        let non_null = s.slice(offset, non_null_len);
+-        debug_assert_eq!(
+-            non_null.null_count(),
+-            0,
+-            "internal error: `is_sorted` non-null slice contains nulls"
+-        );
++    let offset = (!options.nulls_last as i64) * (null_count as i64);
++    let non_null = s.slice(offset, non_null_len);
++    debug_assert_eq!(
++        non_null.null_count(),
++        0,
++        "internal error: `is_sorted` non-null slice contains nulls"
++    );
+ 
+-        #[cfg(feature = "dtype-categorical")]
+-        if matches!(non_null.dtype(), DataType::Categorical(_, _)) {
+-            return is_sorted_categorical_lexical_adjacent(&non_null, options);
+-        }
++    #[cfg(feature = "dtype-categorical")]
++    if matches!(non_null.dtype(), DataType::Categorical(_, _)) {
++        return is_sorted_categorical_lexical_adjacent(&non_null, options);
++    }
+ 
+-        let phys = non_null.to_physical_repr();
+-        let s_phys = phys.as_ref();
+-        if s_phys.dtype().is_primitive_numeric() {
+-            with_match_physical_numeric_polars_type!(s_phys.dtype(), |$T| {
+-                let ca: &ChunkedArray<$T> = s_phys.as_ref().as_ref().as_ref();
+-                return Ok(is_sorted_ca_num::<$T>(ca, options))
+-            })
+-        }
++    let phys = non_null.to_physical_repr();
++    let s_phys = phys.as_ref();
++    if s_phys.dtype().is_primitive_numeric() {
++        with_match_physical_numeric_polars_type!(s_phys.dtype(), |$T| {
++            let ca: &ChunkedArray<$T> = s_phys.as_ref().as_ref().as_ref();
++            return Ok(is_sorted_ca_num::<$T>(ca, options))
++        })
++    }
+ 
+-        match s_phys.dtype() {
+-            DataType::Boolean => {
+-                let ca = s_phys.bool()?;
+-                Ok(is_sorted_ca_bool(ca, options.descending))
+-            },
+-            DataType::String => {
+-                let ca = s_phys.str()?;
+-                Ok(is_sorted_adjacent_total_ord(
+-                    ca.no_null_iter(),
+-                    options.descending,
+-                ))
+-            },
+-            DataType::Binary => {
+-                let ca = s_phys.binary()?;
+-                Ok(is_sorted_adjacent_total_ord(
+-                    ca.no_null_iter(),
+-                    options.descending,
+-                ))
+-            },
+-            DataType::BinaryOffset => {
+-                let ca = s_phys.binary_offset()?;
+-                Ok(is_sorted_adjacent_total_ord(
+-                    ca.no_null_iter(),
+-                    options.descending,
+-                ))
+-            },
+-            _ => {
+-                // `non_null` excludes nulls already; compare `non_null[..-1]` with `non_null[1..]`.
+-                let cmp_len = non_null_len - 1;
+-                let s1 = non_null.slice(0, cmp_len);
+-                let s2 = non_null.slice(1, cmp_len);
+-                let cmp_op = if options.descending {
+-                    Series::gt_eq
+-                } else {
+-                    Series::lt_eq
+-                };
+-                Ok(cmp_op(&s1, &s2)?.all())
+-            },
+-        }
++    match s_phys.dtype() {
++        DataType::Boolean => {
++            let ca = s_phys.bool()?;
++            Ok(is_sorted_ca_bool(ca, options.descending))
++        },
++        DataType::String => {
++            let ca = s_phys.str()?;
++            Ok(is_sorted_adjacent_total_ord(
++                ca.no_null_iter(),
++                options.descending,
++            ))
++        },
++        DataType::Binary => {
++            let ca = s_phys.binary()?;
++            Ok(is_sorted_adjacent_total_ord(
++                ca.no_null_iter(),
++                options.descending,
++            ))
++        },
++        DataType::BinaryOffset => {
++            let ca = s_phys.binary_offset()?;
++            Ok(is_sorted_adjacent_total_ord(
++                ca.no_null_iter(),
++                options.descending,
++            ))
++        },
++        _ => {
++            // `non_null` excludes nulls already; compare `non_null[..-1]` with `non_null[1..]`.
++            let cmp_len = non_null_len - 1;
++            let s1 = non_null.slice(0, cmp_len);
++            let s2 = non_null.slice(1, cmp_len);
++            let cmp_op = if options.descending {
++                Series::gt_eq
++            } else {
++                Series::lt_eq
++            };
++            Ok(cmp_op(&s1, &s2)?.all())
++        },
+     }
+ }
+ 
+@@ -297,18 +319,92 @@ fn is_sorted_ca_bool(ca: &BooleanChunked, descending: bool) -> bool {
+     }
+ }
+ 
++/// Infers the `(descending, nulls_last)` sort options for `s`, honoring any provided hints.
++///
++/// Each returned value is `Some` when known — taken from the corresponding hint when given,
++/// otherwise inferred from the data — and `None` when it cannot be inferred from `s` alone:
++/// - `descending` is `None` when there are fewer than two distinct non-null values, so no direction
++///   is implied.
++/// - `nulls_last` is `None` when `s` has no nulls, is entirely null, or the nulls are interleaved
++///   (the last of which is not sorted under any placement and is rejected by the `is_sorted` check).
++///
++/// The two axes are independent, so callers can use whichever was determined even when the other
++/// could not be.
++pub fn resolve_sort_options(
++    s: &Series,
++    descending: Option<bool>,
++    nulls_last: Option<bool>,
++) -> PolarsResult<(Option<bool>, Option<bool>)> {
++    let nulls_last = match nulls_last {
++        Some(n) => Some(n),
++        None => infer_nulls_last(s),
++    };
++
++    let descending = match descending {
++        Some(d) => Some(d),
++        None => infer_descending(s, nulls_last.unwrap_or(false))?,
++    };
++
++    Ok((descending, nulls_last))
++}
++
++/// Infers null placement from `s`: `Some(true)` if all nulls sit at the tail, `Some(false)` if all
++/// sit at the head, and `None` if there are no nulls, `s` is entirely null, or the nulls are
++/// interleaved (the latter is not sorted under any placement; the `is_sorted` check rejects it).
++fn infer_nulls_last(s: &Series) -> Option<bool> {
++    let null_count = s.null_count();
++    let s_len = s.len();
++
++    if null_count == 0 || null_count == s_len {
++        return None;
++    }
++
++    if s.slice((s_len - null_count) as i64, null_count)
++        .null_count()
++        == null_count
++    {
++        Some(true)
++    } else if s.slice(0, null_count).null_count() == null_count {
++        Some(false)
++    } else {
++        None
++    }
++}
++
++fn infer_descending(s: &Series, nulls_last: bool) -> PolarsResult<Option<bool>> {
++    let null_count = s.null_count();
++    let non_null_len = s.len() - null_count;
++    if non_null_len < 2 {
++        return Ok(None);
++    }
++
++    let non_null_start = if nulls_last { 0 } else { null_count };
++    let non_null = s.slice(non_null_start as i64, non_null_len);
++
++    let a = non_null.slice(0, non_null_len - 1);
++    let b = non_null.slice(1, non_null_len - 1);
++
++    let lt = a.lt(&b)?;
++    let gt = a.gt(&b)?;
++
++    let lt_first = lt.iter().position(|v| v == Some(true));
++    let gt_first = gt.iter().position(|v| v == Some(true));
++
++    Ok(match (lt_first, gt_first) {
++        (None, None) => None,
++        (Some(_), None) => Some(false),
++        (None, Some(_)) => Some(true),
++        (Some(l), Some(g)) => Some(g < l),
++    })
++}
++
+ fn check_cmp<T: NumericNative, Cmp: Fn(&T, &T) -> bool>(
+     vals: &[T],
+     f: Cmp,
+     previous: &mut T,
+ ) -> bool {
+     let mut sorted = true;
+-
+-    // Outer loop so we can fail fast
+-    // Inner loop will auto vectorize
+     for c in vals.chunks(1024) {
+-        // don't early stop or branch
+-        // so it autovectorizes
+         for v in c {
+             sorted &= f(previous, v);
+             *previous = *v;
+@@ -320,7 +416,6 @@ fn check_cmp<T: NumericNative, Cmp: Fn(&T, &T) -> bool>(
+     sorted
+ }
+ 
+-// Assumes nulls last/first is already checked.
+ fn is_sorted_ca_num<T: PolarsNumericType>(ca: &ChunkedArray<T>, options: SortOptions) -> bool {
+     if let Ok(vals) = ca.cont_slice() {
+         let mut previous = vals[0];
+@@ -339,7 +434,6 @@ fn is_sorted_ca_num<T: PolarsNumericType>(ca: &ChunkedArray<T>, options: SortOpt
+         };
+         for arr in ca.downcast_iter() {
+             let vals = arr.values();
+-
+             let sorted = if options.descending {
+                 check_cmp(vals, |prev, c| prev.tot_ge(c), &mut previous)
+             } else {
+@@ -352,7 +446,6 @@ fn is_sorted_ca_num<T: PolarsNumericType>(ca: &ChunkedArray<T>, options: SortOpt
+         return true;
+     };
+ 
+-    // Slice off nulls and recurse.
+     let null_count = ca.null_count();
+     if options.nulls_last {
+         let ca = ca.slice(0, ca.len() - null_count);
+diff --git a/crates/polars-plan/dsl-schema-hashes.json b/crates/polars-plan/dsl-schema-hashes.json
+index 0b5386151..c9b96322f 100644
+--- a/crates/polars-plan/dsl-schema-hashes.json
++++ b/crates/polars-plan/dsl-schema-hashes.json
+@@ -10,7 +10,7 @@
+   "AsofStrategy": "777dd1236ad9111d4d0c5b537364eea2722a67f1771d1a49ee52869e15937830",
+   "BinaryFunction": "6def87cceb014b5519b7037b9838b097c91c7b34f51f2421dbf6ef2b3fd9de2b",
+   "BitwiseFunction": "e7c9312440629f0b299a5970d141db27fa53ed3ed8d39eb047f0f1861f96b62a",
+-  "BooleanFunction": "31844376d7570d7e7a0750820dc7730f43e4e0bb8601a689112426e9dc60c765",
++  "BooleanFunction": "d5c8d1f0f4322e348367373a9a4add93c4fdd86f8f1f82b4c6634606ed38a710",
+   "BrotliLevel": "87f82fead5f10583225fa4d288e6fd5967b40ffb90c8cbb8539bf1a98bce4a0c",
+   "BusinessFunction": "1b6cb07e9df7e6e7244dd5381ac9198dcd28de984891ee52e82c188dee06a5af",
+   "CallbackSinkType": "3dc3398a7ef7c9326bbfe995d459cc7bc0dc9c974e3151c376cf2b4e14c215cd",
+diff --git a/crates/polars-plan/src/dsl/function_expr/boolean.rs b/crates/polars-plan/src/dsl/function_expr/boolean.rs
+index 0b43c6a67..7e19e2ede 100644
+--- a/crates/polars-plan/src/dsl/function_expr/boolean.rs
++++ b/crates/polars-plan/src/dsl/function_expr/boolean.rs
+@@ -45,6 +45,10 @@ pub enum BooleanFunction {
+         rel_tol: TotalOrdWrap<f64>,
+         nans_equal: bool,
+     },
++    IsSorted {
++        descending: Option<bool>,
++        nulls_last: Option<bool>,
++    },
+     AllHorizontal,
+     AnyHorizontal,
+     // Also bitwise negate
+@@ -88,6 +92,7 @@ impl Display for BooleanFunction {
+             IsIn { .. } => "is_in",
+             #[cfg(feature = "is_close")]
+             IsClose { .. } => "is_close",
++            IsSorted { .. } => "is_sorted",
+             AnyHorizontal => "any_horizontal",
+             AllHorizontal => "all_horizontal",
+             Not => "not",
+diff --git a/crates/polars-plan/src/dsl/mod.rs b/crates/polars-plan/src/dsl/mod.rs
+index e28e9993e..72cb68d31 100644
+--- a/crates/polars-plan/src/dsl/mod.rs
++++ b/crates/polars-plan/src/dsl/mod.rs
+@@ -968,6 +968,13 @@ impl Expr {
+         )
+     }
+ 
++    pub fn is_sorted(self, descending: Option<bool>, nulls_last: Option<bool>) -> Self {
++        self.map_unary(BooleanFunction::IsSorted {
++            descending,
++            nulls_last,
++        })
++    }
++
+     /// Get the approximate count of unique values.
+     #[cfg(feature = "approx_unique")]
+     pub fn approx_n_unique(self) -> Self {
+diff --git a/crates/polars-plan/src/plans/aexpr/function_expr/boolean.rs b/crates/polars-plan/src/plans/aexpr/function_expr/boolean.rs
+index 5166e7e2c..ec3349abd 100644
+--- a/crates/polars-plan/src/plans/aexpr/function_expr/boolean.rs
++++ b/crates/polars-plan/src/plans/aexpr/function_expr/boolean.rs
+@@ -45,6 +45,10 @@ pub enum IRBooleanFunction {
+         rel_tol: TotalOrdWrap<f64>,
+         nans_equal: bool,
+     },
++    IsSorted {
++        descending: Option<bool>,
++        nulls_last: Option<bool>,
++    },
+     AllHorizontal,
+     AnyHorizontal,
+     // Also bitwise negate
+@@ -107,6 +111,7 @@ impl IRBooleanFunction {
+                     (SuperTypeFlags::default() & !SuperTypeFlags::ALLOW_PRIMITIVE_TO_STRING).into(),
+                 )
+                 .with_flags(|f| f | FunctionFlags::PRESERVES_NULL_ALL_INPUTS),
++            B::IsSorted { .. } => FunctionOptions::aggregation(),
+             B::AllHorizontal | B::AnyHorizontal => FunctionOptions::elementwise().with_flags(|f| {
+                 f | FunctionFlags::INPUT_WILDCARD_EXPANSION | FunctionFlags::ALLOW_EMPTY_INPUTS
+             }),
+@@ -153,6 +158,7 @@ impl Display for IRBooleanFunction {
+             IsIn { .. } => "is_in",
+             #[cfg(feature = "is_close")]
+             IsClose { .. } => "is_close",
++            IsSorted { .. } => "is_sorted",
+             AnyHorizontal => "any_horizontal",
+             AllHorizontal => "all_horizontal",
+             Not => "not",
+diff --git a/crates/polars-plan/src/plans/conversion/dsl_to_ir/functions.rs b/crates/polars-plan/src/plans/conversion/dsl_to_ir/functions.rs
+index 9810607bd..a42b2c7ba 100644
+--- a/crates/polars-plan/src/plans/conversion/dsl_to_ir/functions.rs
++++ b/crates/polars-plan/src/plans/conversion/dsl_to_ir/functions.rs
+@@ -468,6 +468,13 @@ pub(super) fn convert_functions(
+                     rel_tol,
+                     nans_equal,
+                 },
++                B::IsSorted {
++                    descending,
++                    nulls_last,
++                } => IB::IsSorted {
++                    descending,
++                    nulls_last,
++                },
+                 B::AllHorizontal => {
+                     let Some(fst) = e.first() else {
+                         return Ok((
+diff --git a/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs b/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs
+index 03e606432..580c50e64 100644
+--- a/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs
++++ b/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs
+@@ -698,6 +698,13 @@ pub fn ir_function_to_dsl(input: Vec<Expr>, function: IRFunctionExpr) -> Expr {
+                     rel_tol,
+                     nans_equal,
+                 },
++                IB::IsSorted {
++                    descending,
++                    nulls_last,
++                } => B::IsSorted {
++                    descending,
++                    nulls_last,
++                },
+                 IB::AllHorizontal => B::AllHorizontal,
+                 IB::AnyHorizontal => B::AnyHorizontal,
+                 IB::Not => B::Not,
+diff --git a/crates/polars-python/src/expr/general.rs b/crates/polars-python/src/expr/general.rs
+index 33111b9a8..ef525ca17 100644
+--- a/crates/polars-python/src/expr/general.rs
++++ b/crates/polars-python/src/expr/general.rs
+@@ -454,6 +454,10 @@ impl PyExpr {
+             .into()
+     }
+ 
++    fn is_sorted(&self, descending: Option<bool>, nulls_last: Option<bool>) -> Self {
++        self.inner.clone().is_sorted(descending, nulls_last).into()
++    }
++
+     #[cfg(feature = "approx_unique")]
+     fn approx_n_unique(&self) -> Self {
+         self.inner.clone().approx_n_unique().into()
+diff --git a/crates/polars-python/src/lazyframe/visitor/expr_nodes.rs b/crates/polars-python/src/lazyframe/visitor/expr_nodes.rs
+index 0a5ced6a0..120f99a20 100644
+--- a/crates/polars-python/src/lazyframe/visitor/expr_nodes.rs
++++ b/crates/polars-python/src/lazyframe/visitor/expr_nodes.rs
+@@ -206,6 +206,7 @@ pub enum PyBooleanFunction {
+     IsBetween,
+     IsIn,
+     IsClose,
++    IsSorted,
+     AllHorizontal,
+     AnyHorizontal,
+     Not,
+@@ -1177,6 +1178,10 @@ pub(crate) fn into_py(py: Python<'_>, expr: &AExpr) -> PyResult<Py<PyAny>> {
+                         nans_equal,
+                     } => (PyBooleanFunction::IsClose, abs_tol.0, rel_tol.0, nans_equal)
+                         .into_py_any(py),
++                    IRBooleanFunction::IsSorted {
++                        descending,
++                        nulls_last,
++                    } => (PyBooleanFunction::IsSorted, *descending, *nulls_last).into_py_any(py),
+                     IRBooleanFunction::AllHorizontal => {
+                         (PyBooleanFunction::AllHorizontal,).into_py_any(py)
+                     },
+diff --git a/crates/polars-stream/src/nodes/is_sorted.rs b/crates/polars-stream/src/nodes/is_sorted.rs
+new file mode 100644
+index 000000000..91db693f3
+--- /dev/null
++++ b/crates/polars-stream/src/nodes/is_sorted.rs
+@@ -0,0 +1,250 @@
++use std::sync::Arc;
++
++use polars_core::datatypes::AnyValue;
++use polars_core::prelude::{Column, PlSmallStr, Series, SortOptions};
++use polars_ops::prelude::SeriesMethods;
++use polars_ops::series::resolve_sort_options;
++use polars_utils::sort::reorder_cmp;
++
++use super::compute_node_prelude::*;
++use super::in_memory_source::InMemorySourceNode;
++use crate::nodes::ComputeNode;
++
++enum IsSortedState {
++    Sink {
++        is_sorted: bool,
++        /// Sort direction, once known: seeded from the hint, then fixed by the first distinct pair.
++        committed_descending: Option<bool>,
++        /// Null placement, once known: seeded from the hint, then fixed by the first null/non-null
++        /// transition.
++        committed_nulls_last: Option<bool>,
++        /// Last value of the previous morsel, for the cross-morsel boundary check.
++        last_value: Option<AnyValue<'static>>,
++    },
++    Source(InMemorySourceNode),
++    Done,
++}
++
++pub struct IsSortedNode {
++    state: IsSortedState,
++    output_name: PlSmallStr,
++}
++
++impl IsSortedNode {
++    pub fn new(
++        descending: Option<bool>,
++        nulls_last: Option<bool>,
++        output_name: PlSmallStr,
++    ) -> Self {
++        Self {
++            state: IsSortedState::Sink {
++                is_sorted: true,
++                committed_descending: descending,
++                committed_nulls_last: nulls_last,
++                last_value: None,
++            },
++            output_name,
++        }
++    }
++
++    #[allow(clippy::too_many_arguments)]
++    fn spawn_sink<'env, 's>(
++        is_sorted: &'env mut bool,
++        committed_descending: &'env mut Option<bool>,
++        committed_nulls_last: &'env mut Option<bool>,
++        last_value: &'env mut Option<AnyValue<'static>>,
++        scope: &'s TaskScope<'s, 'env>,
++        recv: RecvPort<'_>,
++        _state: &'s StreamingExecutionState,
++        join_handles: &mut Vec<JoinHandle<PolarsResult<()>>>,
++    ) {
++        let mut recv = recv.serial();
++        join_handles.push(scope.spawn_task(TaskPriority::High, async move {
++            while let Ok(morsel) = recv.recv().await {
++                if !*is_sorted {
++                    return Ok(());
++                }
++
++                let df = morsel.into_df();
++                if df.height() == 0 {
++                    continue;
++                }
++                assert_eq!(df.width(), 1);
++                let series = df[0].as_materialized_series();
++
++                if !process_morsel(
++                    series,
++                    committed_descending,
++                    committed_nulls_last,
++                    last_value,
++                )? {
++                    *is_sorted = false;
++                    return Ok(());
++                }
++            }
++            Ok(())
++        }))
++    }
++}
++
++/// Commits a newly observed value for an option axis. If the axis is not yet known it is fixed to
++/// `value`; if it is already known, a mismatch means the input is not sorted (returns `false`).
++fn observe(committed: &mut Option<bool>, value: bool) -> bool {
++    match committed {
++        None => {
++            *committed = Some(value);
++            true
++        },
++        Some(c) => *c == value,
++    }
++}
++
++/// Folds one morsel into the running sortedness check. Returns `false` as soon as the input is known
++/// to be unsorted. Inference is done with vectorized series operations; only the two morsel
++/// endpoints are inspected scalar-wise, so this stays `O(1)` per morsel in element lookups.
++fn process_morsel(
++    series: &Series,
++    committed_descending: &mut Option<bool>,
++    committed_nulls_last: &mut Option<bool>,
++    last_value: &mut Option<AnyValue<'static>>,
++) -> PolarsResult<bool> {
++    let first = series.get(0).unwrap();
++
++    // Reconcile the boundary with the previous morsel before inferring from this one.
++    if let Some(prev) = last_value.as_ref() {
++        match (prev.is_null(), first.is_null()) {
++            // A non-null followed by a null fixes nulls-last; a null followed by a non-null fixes
++            // nulls-first. A contradiction means the nulls are not all on one side.
++            (false, true) if !observe(committed_nulls_last, true) => return Ok(false),
++            (true, false) if !observe(committed_nulls_last, false) => return Ok(false),
++            _ => {},
++        }
++        // The first distinct non-null pair fixes the direction, even across a boundary.
++        if committed_descending.is_none() && !prev.is_null() && !first.is_null() && &first != prev {
++            *committed_descending = Some(&first < prev);
++        }
++    }
++
++    // Infer whatever this morsel reveals about the still-unknown axes (vectorized).
++    let (morsel_descending, morsel_nulls_last) =
++        resolve_sort_options(series, *committed_descending, *committed_nulls_last)?;
++    if committed_descending.is_none() {
++        *committed_descending = morsel_descending;
++    }
++    if committed_nulls_last.is_none() {
++        *committed_nulls_last = morsel_nulls_last;
++    }
++
++    // Unknown axes are trivially sorted along that axis, so default them to `false`. Any genuine
++    // violation (wrong direction, misplaced nulls) is caught by `is_sorted` / `boundary_ok`.
++    let opts = SortOptions {
++        descending: committed_descending.unwrap_or(false),
++        nulls_last: committed_nulls_last.unwrap_or(false),
++        ..Default::default()
++    };
++
++    if !series.is_sorted(opts)? {
++        return Ok(false);
++    }
++    if !boundary_ok(last_value.as_ref(), &first, opts) {
++        return Ok(false);
++    }
++
++    *last_value = Some(series.get(series.len() - 1).unwrap().into_static());
++    Ok(true)
++}
++
++fn boundary_ok(prev: Option<&AnyValue<'static>>, first: &AnyValue<'_>, opts: SortOptions) -> bool {
++    match prev {
++        None => true,
++        // The boundary is sorted iff `prev` orders before-or-equal to `first` under the resolved
++        // options. `reorder_cmp` handles both null placement and sort direction.
++        Some(prev) => reorder_cmp(prev, first, opts.descending, opts.nulls_last).is_le(),
++    }
++}
++
++impl ComputeNode for IsSortedNode {
++    fn name(&self) -> &str {
++        "is_sorted"
++    }
++
++    fn update_state(
++        &mut self,
++        recv: &mut [PortState],
++        send: &mut [PortState],
++        state: &StreamingExecutionState,
++    ) -> PolarsResult<()> {
++        assert!(recv.len() == 1 && send.len() == 1);
++
++        // If the output doesn't want any more data, transition to being done.
++        if send[0] == PortState::Done && !matches!(self.state, IsSortedState::Done) {
++            self.state = IsSortedState::Done;
++        }
++
++        // Once we know the answer (early `false`, or the input is exhausted),
++        // transition to emitting the single-row result.
++        if let IsSortedState::Sink { is_sorted, .. } = &self.state {
++            if !*is_sorted || recv[0] == PortState::Done {
++                let column = Column::new(self.output_name.clone(), &[*is_sorted]);
++                let df = unsafe { DataFrame::new_unchecked(1, vec![column]) };
++                let source = InMemorySourceNode::new(Arc::new(df), MorselSeq::default());
++                self.state = IsSortedState::Source(source);
++            }
++        }
++
++        match &mut self.state {
++            IsSortedState::Sink { .. } => {
++                send[0] = PortState::Blocked;
++                recv[0] = PortState::Ready;
++            },
++            IsSortedState::Source(source) => {
++                recv[0] = PortState::Done;
++                source.update_state(&mut [], send, state)?;
++            },
++            IsSortedState::Done => {
++                recv[0] = PortState::Done;
++                send[0] = PortState::Done;
++            },
++        }
++
++        Ok(())
++    }
++
++    fn spawn<'env, 's>(
++        &'env mut self,
++        scope: &'s TaskScope<'s, 'env>,
++        recv_ports: &mut [Option<RecvPort<'_>>],
++        send_ports: &mut [Option<SendPort<'_>>],
++        state: &'s StreamingExecutionState,
++        join_handles: &mut Vec<JoinHandle<PolarsResult<()>>>,
++    ) {
++        assert!(send_ports.len() == 1 && recv_ports.len() == 1);
++
++        match &mut self.state {
++            IsSortedState::Sink {
++                is_sorted,
++                committed_descending,
++                committed_nulls_last,
++                last_value,
++            } => {
++                assert!(send_ports[0].is_none());
++                let recv = recv_ports[0].take().unwrap();
++                Self::spawn_sink(
++                    is_sorted,
++                    committed_descending,
++                    committed_nulls_last,
++                    last_value,
++                    scope,
++                    recv,
++                    state,
++                    join_handles,
++                );
++            },
++            IsSortedState::Source(source) => {
++                assert!(recv_ports[0].is_none());
++                source.spawn(scope, &mut [], send_ports, state, join_handles);
++            },
++            IsSortedState::Done => unreachable!(),
++        }
++    }
++}
+diff --git a/crates/polars-stream/src/nodes/mod.rs b/crates/polars-stream/src/nodes/mod.rs
+index bd5023500..1637c29d1 100644
+--- a/crates/polars-stream/src/nodes/mod.rs
++++ b/crates/polars-stream/src/nodes/mod.rs
+@@ -23,6 +23,7 @@ pub mod io_sinks;
+ pub mod io_sources;
+ #[cfg(feature = "is_first_distinct")]
+ pub mod is_first_distinct;
++pub mod is_sorted;
+ pub mod joins;
+ pub mod map;
+ #[cfg(feature = "merge_sorted")]
+diff --git a/crates/polars-stream/src/physical_plan/fmt.rs b/crates/polars-stream/src/physical_plan/fmt.rs
+index f1da26dc6..842088da2 100644
+--- a/crates/polars-stream/src/physical_plan/fmt.rs
++++ b/crates/polars-stream/src/physical_plan/fmt.rs
+@@ -491,6 +491,7 @@ fn visualize_plan_rec(
+             if *is_peak_max { "peak_max" } else { "peak_min" }.to_owned(),
+             &[*input][..],
+         ),
++        PhysNodeKind::IsSorted { input, .. } => ("is_sorted".to_owned(), &[*input][..]),
+         PhysNodeKind::OrderedUnion { inputs } => ("ordered-union".to_string(), inputs.as_slice()),
+         PhysNodeKind::UnorderedUnion { inputs } => {
+             ("unordered-union".to_string(), inputs.as_slice())
+diff --git a/crates/polars-stream/src/physical_plan/lower_expr.rs b/crates/polars-stream/src/physical_plan/lower_expr.rs
+index 4fd6eefd1..cfc4bc652 100644
+--- a/crates/polars-stream/src/physical_plan/lower_expr.rs
++++ b/crates/polars-stream/src/physical_plan/lower_expr.rs
+@@ -1436,6 +1436,39 @@ fn lower_exprs_with_ctx(
+                 transformed_exprs.push(ctx.expr_arena.add(AExpr::Column(value_key.clone())));
+             },
+ 
++            AExpr::Function {
++                input: ref inner_exprs,
++                function:
++                    IRFunctionExpr::Boolean(IRBooleanFunction::IsSorted {
++                        descending,
++                        nulls_last,
++                    }),
++                options: _,
++            } => {
++                assert_eq!(inner_exprs.len(), 1);
++
++                let value_key = unique_column_name();
++
++                let input = build_select_stream_with_ctx(
++                    input,
++                    &[inner_exprs[0].with_alias(value_key.clone())],
++                    ctx,
++                )?;
++                let node_kind = PhysNodeKind::IsSorted {
++                    input,
++                    descending,
++                    nulls_last,
++                    output_name: value_key.clone(),
++                };
++
++                let output_schema = Schema::from_iter([(value_key.clone(), DataType::Boolean)]);
++                let node_key = ctx
++                    .phys_sm
++                    .insert(PhysNode::new(Arc::new(output_schema), node_kind));
++                input_streams.insert(PhysStream::first(node_key));
++                transformed_exprs.push(ctx.expr_arena.add(AExpr::Column(value_key.clone())));
++            },
++
+             // pl.row_index() maps to this.
+             #[cfg(feature = "range")]
+             AExpr::Function {
+diff --git a/crates/polars-stream/src/physical_plan/mod.rs b/crates/polars-stream/src/physical_plan/mod.rs
+index a9437f7d6..fb638e168 100644
+--- a/crates/polars-stream/src/physical_plan/mod.rs
++++ b/crates/polars-stream/src/physical_plan/mod.rs
+@@ -348,6 +348,12 @@ pub enum PhysNodeKind {
+         input: PhysStream,
+         is_peak_max: bool,
+     },
++    IsSorted {
++        input: PhysStream,
++        descending: Option<bool>,
++        nulls_last: Option<bool>,
++        output_name: PlSmallStr,
++    },
+ 
+     OrderedUnion {
+         inputs: Vec<PhysStream>,
+@@ -586,7 +592,8 @@ fn visit_node_inputs_mut(
+             | PhysNodeKind::Rle(input)
+             | PhysNodeKind::RleId(input)
+             | PhysNodeKind::SortedUnique { input, .. }
+-            | PhysNodeKind::PeakMinMax { input, .. } => {
++            | PhysNodeKind::PeakMinMax { input, .. }
++            | PhysNodeKind::IsSorted { input, .. } => {
+                 rec!(input.node);
+                 visit(input);
+             },
+diff --git a/crates/polars-stream/src/physical_plan/to_graph.rs b/crates/polars-stream/src/physical_plan/to_graph.rs
+index f0e89bbb1..47910b285 100644
+--- a/crates/polars-stream/src/physical_plan/to_graph.rs
++++ b/crates/polars-stream/src/physical_plan/to_graph.rs
+@@ -765,6 +765,19 @@ fn to_graph_rec<'a>(
+             )
+         },
+ 
++        IsSorted {
++            input,
++            descending,
++            nulls_last,
++            output_name,
++        } => {
++            let input_key = to_graph_rec(input.node, ctx)?;
++            ctx.graph.add_node(
++                nodes::is_sorted::IsSortedNode::new(*descending, *nulls_last, output_name.clone()),
++                [(input_key, input.port)],
++            )
++        },
++
+         OrderedUnion { inputs } => {
+             let input_keys = inputs
+                 .iter()
+diff --git a/py-polars/src/polars/_plr.pyi b/py-polars/src/polars/_plr.pyi
+index 1c235fec8..86c7dd575 100644
+--- a/py-polars/src/polars/_plr.pyi
++++ b/py-polars/src/polars/_plr.pyi
+@@ -1317,6 +1317,7 @@ class PyExpr:
+     def is_close(
+         self, other: PyExpr, abs_tol: float, rel_tol: float, nans_equal: bool
+     ) -> PyExpr: ...
++    def is_sorted(self, descending: bool | None, nulls_last: bool | None) -> PyExpr: ...
+     def approx_n_unique(self) -> PyExpr: ...
+     def is_first_distinct(self) -> PyExpr: ...
+     def is_last_distinct(self) -> PyExpr: ...
+diff --git a/py-polars/src/polars/expr/expr.py b/py-polars/src/polars/expr/expr.py
+index 35b87feb3..b347748ce 100644
+--- a/py-polars/src/polars/expr/expr.py
++++ b/py-polars/src/polars/expr/expr.py
+@@ -6664,6 +6664,77 @@ Consider using {self}.implode() instead"""
+             self._pyexpr.is_close(other_pyexpr, abs_tol, rel_tol, nans_equal)
+         )
+ 
++    def is_sorted(
++        self,
++        *,
++        descending: bool | None = False,
++        nulls_last: bool | None = False,
++    ) -> Expr:
++        """
++        Checks if an expression is sorted.
++
++        If `descending` and/or `nulls_last` are None, it will check `True` and `False`
++        for the unspecified option(s), and return `True` if the expression is sorted
++        under any combination of those settings.
++
++        Parameters
++        ----------
++        descending
++            Checks if the expression is sorted in descending order.
++            Defaults to False.
++        nulls_last
++            Consider null values as being ordered last when checking sortedness.
++            Defaults to False.
++
++        Returns
++        -------
++        Expr
++            Expression of data type :class:`Boolean`.
++
++        Examples
++        --------
++        Check if a column is sorted in ascending order.
++
++        >>> df = pl.DataFrame({"a": [1, 2, 3, 4]})
++        >>> df.select(pl.col("a").is_sorted())
++        shape: (1, 1)
++        ┌──────┐
++        │ a    │
++        │ ---  │
++        │ bool │
++        ╞══════╡
++        │ true │
++        └──────┘
++
++        Check if a column is sorted in descending order.
++
++        >>> df = pl.DataFrame({"a": [4, 3, 2, 1]})
++        >>> df.select(pl.col("a").is_sorted(descending=True))
++        shape: (1, 1)
++        ┌──────┐
++        │ a    │
++        │ ---  │
++        │ bool │
++        ╞══════╡
++        │ true │
++        └──────┘
++
++        Check if a column is sorted in either direction.
++
++        >>> df = pl.DataFrame({"a": [4, 3, 2, 1]})
++        >>> df.select(pl.col("a").is_sorted(descending=None))
++        shape: (1, 1)
++        ┌──────┐
++        │ a    │
++        │ ---  │
++        │ bool │
++        ╞══════╡
++        │ true │
++        └──────┘
++
++        """
++        return wrap_expr(self._pyexpr.is_sorted(descending, nulls_last))
++
+     def hash(
+         self,
+         seed: int = 0,
+diff --git a/py-polars/tests/unit/expr/test_is_sorted.py b/py-polars/tests/unit/expr/test_is_sorted.py
+new file mode 100644
+index 000000000..174866932
+--- /dev/null
++++ b/py-polars/tests/unit/expr/test_is_sorted.py
+@@ -0,0 +1,143 @@
++from __future__ import annotations
++
++import polars as pl
++from polars.testing import assert_frame_equal
++
++
++def test_is_sorted_ascending() -> None:
++    df = pl.DataFrame({"a": [1, 2, 3, 4]})
++    result = df.select(pl.col("a").is_sorted())
++    expected = pl.DataFrame({"a": [True]})
++    assert_frame_equal(result, expected)
++
++
++def test_is_sorted_descending() -> None:
++    df = pl.DataFrame({"a": [4, 3, 2, 1]})
++    result = df.select(pl.col("a").is_sorted(descending=True))
++    expected = pl.DataFrame({"a": [True]})
++    assert_frame_equal(result, expected)
++
++
++def test_is_sorted_unsorted() -> None:
++    df = pl.DataFrame({"a": [3, 1, 4, 2]})
++    result = df.select(pl.col("a").is_sorted())
++    expected = pl.DataFrame({"a": [False]})
++    assert_frame_equal(result, expected)
++
++
++def test_is_sorted_descending_none_accepts_either() -> None:
++    df = pl.DataFrame({"a": [4, 3, 2, 1]})
++    result = df.select(pl.col("a").is_sorted(descending=None))
++    expected = pl.DataFrame({"a": [True]})
++    assert_frame_equal(result, expected)
++
++
++def test_is_sorted_with_nulls_last() -> None:
++    df = pl.DataFrame({"a": [1, 2, 3, None]})
++    result = df.select(pl.col("a").is_sorted(nulls_last=True))
++    expected = pl.DataFrame({"a": [True]})
++    assert_frame_equal(result, expected)
++
++
++def test_is_sorted_empty() -> None:
++    df = pl.DataFrame({"a": []}, schema={"a": pl.Int64})
++    result = df.select(pl.col("a").is_sorted())
++    expected = pl.DataFrame({"a": [True]})
++    assert_frame_equal(result, expected)
++
++
++def test_is_sorted_single_element() -> None:
++    df = pl.DataFrame({"a": [42]})
++    result = df.select(pl.col("a").is_sorted())
++    expected = pl.DataFrame({"a": [True]})
++    assert_frame_equal(result, expected)
++
++
++def test_is_sorted_all_equal() -> None:
++    df = pl.DataFrame({"a": [5, 5, 5, 5]})
++    result = df.select(pl.col("a").is_sorted())
++    expected = pl.DataFrame({"a": [True]})
++    assert_frame_equal(result, expected)
++
++
++def test_is_sorted_all_null() -> None:
++    df = pl.DataFrame({"a": [None, None, None]}, schema={"a": pl.Int64})
++    result = df.select(pl.col("a").is_sorted())
++    expected = pl.DataFrame({"a": [True]})
++    assert_frame_equal(result, expected)
++
++
++def test_is_sorted_infer_ascending() -> None:
++    df = pl.DataFrame({"a": [1, 2, 3, 4]})
++    result = df.select(pl.col("a").is_sorted(descending=None, nulls_last=None))
++    expected = pl.DataFrame({"a": [True]})
++    assert_frame_equal(result, expected)
++
++
++def test_is_sorted_infer_descending() -> None:
++    df = pl.DataFrame({"a": [4, 3, 2, 1]})
++    result = df.select(pl.col("a").is_sorted(descending=None, nulls_last=None))
++    expected = pl.DataFrame({"a": [True]})
++    assert_frame_equal(result, expected)
++
++
++def test_is_sorted_infer_nulls_last() -> None:
++    df = pl.DataFrame({"a": [1, 2, 3, None]})
++    result = df.select(pl.col("a").is_sorted(descending=None, nulls_last=None))
++    expected = pl.DataFrame({"a": [True]})
++    assert_frame_equal(result, expected)
++
++
++def test_is_sorted_infer_nulls_first() -> None:
++    df = pl.DataFrame({"a": [None, 1, 2, 3]})
++    result = df.select(pl.col("a").is_sorted(descending=None, nulls_last=None))
++    expected = pl.DataFrame({"a": [True]})
++    assert_frame_equal(result, expected)
++
++
++def test_is_sorted_descending_with_nulls_first() -> None:
++    df = pl.DataFrame({"a": [None, 4, 3, 2, 1]})
++    result = df.select(pl.col("a").is_sorted(descending=True, nulls_last=False))
++    expected = pl.DataFrame({"a": [True]})
++    assert_frame_equal(result, expected)
++
++
++def test_is_sorted_nulls_interleaved() -> None:
++    df = pl.DataFrame({"a": [1, None, 2, None, 3]})
++    result = df.select(pl.col("a").is_sorted(descending=None, nulls_last=None))
++    expected = pl.DataFrame({"a": [False]})
++    assert_frame_equal(result, expected)
++
++
++def test_is_sorted_streaming_nulls_after_null_free_chunk() -> None:
++    s = pl.concat(
++        [pl.Series("a", [3, 2, 1]), pl.Series("a", [None, None], dtype=pl.Int64)],
++        rechunk=False,
++    )
++    assert s.n_chunks() == 2
++    result = (
++        pl.LazyFrame({"a": s})
++        .select(pl.col("a").is_sorted(descending=None, nulls_last=None))
++        .collect(engine="streaming")
++    )
++    expected = pl.DataFrame({"a": [True]})
++    assert_frame_equal(result, expected)
++
++
++def test_is_sorted_streaming_interleaved_across_chunks() -> None:
++    s = pl.concat(
++        [
++            pl.Series("a", [3, 2, 1]),
++            pl.Series("a", [None], dtype=pl.Int64),
++            pl.Series("a", [0]),
++        ],
++        rechunk=False,
++    )
++    assert s.n_chunks() == 3
++    result = (
++        pl.LazyFrame({"a": s})
++        .select(pl.col("a").is_sorted(descending=None, nulls_last=None))
++        .collect(engine="streaming")
++    )
++    expected = pl.DataFrame({"a": [False]})
++    assert_frame_equal(result, expected)

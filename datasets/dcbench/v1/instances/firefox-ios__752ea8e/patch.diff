@@ -1,0 +1,567 @@
+From 752ea8e16f36c402b3a9bd40996de738fc970bf8 Mon Sep 17 00:00:00 2001
+From: Bryan Munar <brymunar@gmail.com>
+Date: Fri, 1 Dec 2017 20:09:56 -0800
+Subject: [PATCH] [focus-ios]  Added 1Password, LastPass Support with Telemetry
+ https://github.com/mozilla-mobile/focus-ios/pull/751
+ (https://github.com/mozilla-mobile/focus-ios/pull/751)
+
+---
+ .../Blockzilla.xcodeproj/project.pbxproj      |  17 +++
+ .../Blockzilla/BrowserViewController.swift    |   5 +-
+ focus-ios/Blockzilla/Info.plist               |   1 +
+ .../Modules/WebView/WebViewController.swift   |  21 +++
+ focus-ios/Blockzilla/OpenUtils.swift          | 136 ++++++++++++------
+ ...om.mono0926.LicensePlist.latest_result.txt |   6 +-
+ .../com.mono0926.LicensePlist.plist           |   8 ++
+ .../onepassword-extension.plist               |  33 +++++
+ .../Blockzilla/ShareSheetActivities.swift     |  46 +++++-
+ .../Blockzilla/TelemetryIntegration.swift     |   2 +
+ focus-ios/Cartfile                            |   1 +
+ focus-ios/Cartfile.resolved                   |   5 +-
+ 12 files changed, 225 insertions(+), 56 deletions(-)
+ create mode 100644 focus-ios/Blockzilla/Settings.bundle/com.mono0926.LicensePlist/onepassword-extension.plist
+
+diff --git a/focus-ios/Blockzilla.xcodeproj/project.pbxproj b/focus-ios/Blockzilla.xcodeproj/project.pbxproj
+index 4c44afec7..f8bb09f09 100644
+--- a/focus-ios/Blockzilla.xcodeproj/project.pbxproj
++++ b/focus-ios/Blockzilla.xcodeproj/project.pbxproj
+@@ -37,6 +37,8 @@
+ 		746BD9281F75C45A00BE8DB9 /* DictionaryExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 746BD9271F75C45A00BE8DB9 /* DictionaryExtensions.swift */; };
+ 		746D78FB1F4E0095002EB522 /* ShareSheetActivities.swift in Sources */ = {isa = PBXBuildFile; fileRef = 746D78FA1F4E0095002EB522 /* ShareSheetActivities.swift */; };
+ 		747ADA181FC38EFC00970132 /* IntroViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 747ADA171FC38EFC00970132 /* IntroViewController.swift */; };
++		74DBF2D91FCF7BA800D8B2D6 /* OnePasswordExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 747ADA1D1FCE0B7B00970132 /* OnePasswordExtension.framework */; };
++		74DBF2DA1FCF7BA800D8B2D6 /* OnePasswordExtension.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 747ADA1D1FCE0B7B00970132 /* OnePasswordExtension.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+ 		A57245250F88CCA4993E55B2 /* CoreText.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F4C4943B406FCA9B74B4E186 /* CoreText.framework */; };
+ 		A89766DA1F57DCA9008183C5 /* (null) in Resources */ = {isa = PBXBuildFile; };
+ 		B3481A551FCF261900CA2EA6 /* AutocompleteCustomUrlViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3481A541FCF261900CA2EA6 /* AutocompleteCustomUrlViewController.swift */; };
+@@ -188,6 +190,17 @@
+ /* End PBXContainerItemProxy section */
+ 
+ /* Begin PBXCopyFilesBuildPhase section */
++		74DBF2DB1FCF7BA800D8B2D6 /* Embed Frameworks */ = {
++			isa = PBXCopyFilesBuildPhase;
++			buildActionMask = 2147483647;
++			dstPath = "";
++			dstSubfolderSpec = 10;
++			files = (
++				74DBF2DA1FCF7BA800D8B2D6 /* OnePasswordExtension.framework in Embed Frameworks */,
++			);
++			name = "Embed Frameworks";
++			runOnlyForDeploymentPostprocessing = 0;
++		};
+ 		E4BF2DF91BACE92400DA9D68 /* Embed App Extensions */ = {
+ 			isa = PBXCopyFilesBuildPhase;
+ 			buildActionMask = 2147483647;
+@@ -300,6 +313,7 @@
+ 		746BD9271F75C45A00BE8DB9 /* DictionaryExtensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictionaryExtensions.swift; sourceTree = "<group>"; };
+ 		746D78FA1F4E0095002EB522 /* ShareSheetActivities.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ShareSheetActivities.swift; sourceTree = "<group>"; };
+ 		747ADA171FC38EFC00970132 /* IntroViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntroViewController.swift; sourceTree = "<group>"; };
++		747ADA1D1FCE0B7B00970132 /* OnePasswordExtension.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OnePasswordExtension.framework; path = Carthage/Build/iOS/OnePasswordExtension.framework; sourceTree = "<group>"; };
+ 		74CC0ADA1FAD28DB00972A78 /* fi */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fi; path = fi.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+ 		74CC0ADB1FAD28DC00972A78 /* fi */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fi; path = fi.lproj/Localizable.strings; sourceTree = "<group>"; };
+ 		74CC0ADC1FAD28DD00972A78 /* fi */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fi; path = fi.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+@@ -709,6 +723,7 @@
+ 				2B36326E97D2E67E9C684B4B /* CoreTelephony.framework in Frameworks */,
+ 				D00A44111EB8F80A00DB0218 /* Telemetry.framework in Frameworks */,
+ 				2825C3665AB14081B262F767 /* SystemConfiguration.framework in Frameworks */,
++				74DBF2D91FCF7BA800D8B2D6 /* OnePasswordExtension.framework in Frameworks */,
+ 				34056D10515852F370C83A01 /* QuartzCore.framework in Frameworks */,
+ 				5AFDBB0CF3A9FBA175D2B693 /* AVFoundation.framework in Frameworks */,
+ 				2F2F84BCF076B21DE42D1F29 /* CoreMedia.framework in Frameworks */,
+@@ -887,6 +902,7 @@
+ 		D77FE464056F274978E025ED /* Frameworks */ = {
+ 			isa = PBXGroup;
+ 			children = (
++				747ADA1D1FCE0B7B00970132 /* OnePasswordExtension.framework */,
+ 				746BD91D1F758C0700BE8DB9 /* Sentry.framework */,
+ 				746BD91B1F758BEC00BE8DB9 /* Carthage */,
+ 				D3AAC28C1EAE8F5A005B7E8C /* AutocompleteTextField.framework */,
+@@ -1138,6 +1154,7 @@
+ 				E4BF2DF91BACE92400DA9D68 /* Embed App Extensions */,
+ 				D38D693F1C471AC7003EF211 /* Run Script (Carthage) */,
+ 				D02817331ECF37D900240CAA /* Run Script (Carthage - Focus Only) */,
++				74DBF2DB1FCF7BA800D8B2D6 /* Embed Frameworks */,
+ 			);
+ 			buildRules = (
+ 			);
+diff --git a/focus-ios/Blockzilla/BrowserViewController.swift b/focus-ios/Blockzilla/BrowserViewController.swift
+index 5e181536e..121d7d88f 100644
+--- a/focus-ios/Blockzilla/BrowserViewController.swift
++++ b/focus-ios/Blockzilla/BrowserViewController.swift
+@@ -571,8 +571,11 @@ extension BrowserViewController: BrowserToolsetDelegate {
+ 
+     func browserToolsetDidPressSend(_ browserToolset: BrowserToolset) {
+         guard let url = webViewController.url else { return }
++        
++        let shareExtensionHelper = OpenUtils(url: url, webViewController: webViewController)
++        let controller = shareExtensionHelper.buildShareViewController(url: url, title: webViewController.title, printFormatter: webViewController.printFormatter, anchor: browserToolset.sendButton)
+ 
+-        present(OpenUtils.buildShareViewController(url: url, title: webViewController.title, printFormatter: webViewController.printFormatter, anchor: browserToolset.sendButton), animated: true, completion: nil)
++        present(controller, animated: true, completion: nil)
+     }
+ 
+     func browserToolsetDidPressSettings(_ browserToolbar: BrowserToolset) {
+diff --git a/focus-ios/Blockzilla/Info.plist b/focus-ios/Blockzilla/Info.plist
+index 7900f0701..6a0a6d509 100644
+--- a/focus-ios/Blockzilla/Info.plist
++++ b/focus-ios/Blockzilla/Info.plist
+@@ -37,6 +37,7 @@
+ 	<false/>
+ 	<key>LSApplicationQueriesSchemes</key>
+ 	<array>
++		<string>org-appextension-feature-password-management</string>
+ 		<string>googlechromes</string>
+ 		<string>googlechrome</string>
+ 		<string>firefox</string>
+diff --git a/focus-ios/Blockzilla/Modules/WebView/WebViewController.swift b/focus-ios/Blockzilla/Modules/WebView/WebViewController.swift
+index 8abc7fdac..da617afc5 100644
+--- a/focus-ios/Blockzilla/Modules/WebView/WebViewController.swift
++++ b/focus-ios/Blockzilla/Modules/WebView/WebViewController.swift
+@@ -5,6 +5,7 @@
+ import UIKit
+ import WebKit
+ import Telemetry
++import OnePasswordExtension
+ 
+ protocol BrowserState {
+     var url: URL? { get }
+@@ -41,6 +42,7 @@ class WebViewController: UIViewController, WebController {
+     weak var delegate: WebControllerDelegate?
+ 
+     private var browserView = WKWebView()
++    var onePasswordExtensionItem: NSExtensionItem!
+     private var progressObserver: NSKeyValueObservation?
+     fileprivate var trackingProtecitonStatus = TrackingProtectionStatus.on(TrackingInformation()) {
+         didSet {
+@@ -233,3 +235,22 @@ extension WebViewController: WKScriptMessageHandler {
+     }
+ }
+ 
++extension WebViewController {
++    func createPasswordManagerExtensionItem() {
++        OnePasswordExtension.shared().createExtensionItem(forWebView: browserView, completion: {(extensionItem, error) -> Void in
++            if extensionItem == nil {
++                return
++            }
++            // Set the 1Password extension item property
++            self.onePasswordExtensionItem = extensionItem
++        })
++    }
++    
++    func fillPasswords(returnedItems: [AnyObject]) {
++        OnePasswordExtension.shared().fillReturnedItems(returnedItems, intoWebView: browserView, completion: { (success, returnedItemsError) -> Void in
++            if !success {
++                return
++            }
++        })
++    }
++}
+diff --git a/focus-ios/Blockzilla/OpenUtils.swift b/focus-ios/Blockzilla/OpenUtils.swift
+index 73d8b9be5..d5d58286d 100644
+--- a/focus-ios/Blockzilla/OpenUtils.swift
++++ b/focus-ios/Blockzilla/OpenUtils.swift
+@@ -4,59 +4,28 @@
+ 
+ import Foundation
+ import Telemetry
++import OnePasswordExtension
+ 
+-class OpenUtils {
+-    private static let app = UIApplication.shared
++class OpenUtils: NSObject {
++    private let app = UIApplication.shared
++    fileprivate let selectedURL: URL
++    fileprivate let browserFillIdentifier = "org.appextension.fill-browser-action"
++    fileprivate let webViewController: WebViewController
+ 
+-    private static var canOpenInFirefox: Bool {
++    init(url: URL, webViewController: WebViewController) {
++        self.selectedURL = url
++        self.webViewController = webViewController
++    }
++    
++    private var canOpenInFirefox: Bool {
+         return app.canOpenURL(URL(string: "firefox://")!)
+     }
+ 
+-    private static var canOpenInChrome: Bool {
++    private var canOpenInChrome: Bool {
+         return app.canOpenURL(URL(string: "googlechrome://")!)
+     }
+ 
+-    static func openInFirefox(url: URL) {
+-        guard let escaped = url.absoluteString.addingPercentEncoding(withAllowedCharacters: .urlQueryParameterAllowed),
+-              let firefoxURL = URL(string: "firefox://open-url?url=\(escaped)&private=true"),
+-              app.canOpenURL(firefoxURL) else {
+-            return
+-        }
+-
+-        Telemetry.default.recordEvent(category: TelemetryEventCategory.action, method: TelemetryEventMethod.open, object: TelemetryEventObject.menu, value: "firefox")
+-        app.open(firefoxURL, options: [:])
+-    }
+-
+-    static func openInChrome(url: URL) {
+-        // Code pulled from https://github.com/GoogleChrome/OpenInChrome
+-        // Replace the URL Scheme with the Chrome equivalent.
+-        var chromeScheme: String?
+-        if (url.scheme == "http") {
+-            chromeScheme = "googlechrome"
+-        } else if (url.scheme == "https") {
+-            chromeScheme = "googlechromes"
+-        }
+-
+-        // Proceed only if a valid Google Chrome URI Scheme is available.
+-        guard let scheme = chromeScheme,
+-              let rangeForScheme = url.absoluteString.range(of: ":"),
+-              let chromeURL = URL(string: scheme + url.absoluteString[rangeForScheme.lowerBound...]) else { return }
+-
+-        // Open the URL with Chrome.
+-        app.open(chromeURL, options: [:])
+-    }
+-
+-    static func openFirefoxInstall() {
+-        Telemetry.default.recordEvent(category: TelemetryEventCategory.action, method: TelemetryEventMethod.openAppStore, object: TelemetryEventObject.menu, value: "firefox")
+-        app.open(AppInfo.config.firefoxAppStoreURL, options: [:])
+-    }
+-
+-    static func openInSafari(url: URL) {
+-        Telemetry.default.recordEvent(category: TelemetryEventCategory.action, method: TelemetryEventMethod.open, object: TelemetryEventObject.menu, value: "default")
+-        app.open(url, options: [:])
+-    }
+-
+-    static func buildShareViewController(url: URL, title: String? = nil, printFormatter: UIPrintFormatter?, anchor: UIView) -> UIActivityViewController {
++    func buildShareViewController(url: URL, title: String? = nil, printFormatter: UIPrintFormatter?, anchor: UIView) -> UIActivityViewController {
+         var activities = [UIActivity]()
+         var activityItems: [Any] = [url]
+         if canOpenInFirefox {
+@@ -68,6 +37,8 @@ class OpenUtils {
+         }
+ 
+         activities.append(OpenInSafariActivity(url: url))
++        activityItems.append(self)
++
+         
+         if let printFormatter = printFormatter {
+             let printInfo = UIPrintInfo(dictionary: nil)
+@@ -83,13 +54,84 @@ class OpenUtils {
+         if let title = title {
+             activityItems.append(TitleActivityItemProvider(title: title))
+         }
+-        
++
+         let shareController = UIActivityViewController(activityItems: activityItems, applicationActivities: activities)
+ 
++        // This needs to be ready by the time the share menu has been displayed and
++        // activityViewController(activityViewController:, activityType:) is called,
++        // which is after the user taps the button. So a million cycles away.
++        findLoginExtensionItem()
++        
+         shareController.popoverPresentationController?.sourceView = anchor
+         shareController.popoverPresentationController?.sourceRect = anchor.bounds
+         shareController.popoverPresentationController?.permittedArrowDirections = .up
+-        
++        shareController.completionWithItemsHandler = { activityType, completed, returnedItems, activityError in
++            if !completed {
++                return
++            }
++            
++            // Bug 1392418 - When copying a url using the share extension there are 2 urls in the pasteboard.
++            // Make sure the pasteboard only has one url.
++            if let url = UIPasteboard.general.urls?.first {
++                UIPasteboard.general.urls = [url]
++            }
++            
++            if self.isPasswordManagerActivityType(activityType.map { $0.rawValue }) {
++                Telemetry.default.recordEvent(category: TelemetryEventCategory.action, method: TelemetryEventMethod.show, object: TelemetryEventObject.autofill)
++                if let logins = returnedItems {
++                    self.fillPasswords(returnedItems: logins as [AnyObject])
++                    Telemetry.default.recordEvent(category: TelemetryEventCategory.action, method: TelemetryEventMethod.click, object: TelemetryEventObject.autofill)
++                }
++            }
++        }
+         return shareController
+     }
+ }
++
++extension OpenUtils: UIActivityItemSource {
++    func activityViewControllerPlaceholderItem(_ activityViewController: UIActivityViewController) -> Any {
++        return selectedURL
++    }
++    
++    // IMPORTANT: This method needs Swift compiler optimization DISABLED to prevent a nasty
++    // crash from happening in release builds. It seems as though the check for `nil` may
++    // get removed by the optimizer which leads to a crash when that happens.
++    @_semantics("optimize.sil.never") func activityViewController(_ activityViewController: UIActivityViewController, itemForActivityType activityType: UIActivityType?) -> Any? {
++        // activityType actually is nil sometimes (in the simulator at least)
++        if activityType != nil && isPasswordManagerActivityType(activityType?.rawValue) {
++            return webViewController.onePasswordExtensionItem
++        } else {
++            return selectedURL
++        }
++    }
++    
++    func activityViewController(_ activityViewController: UIActivityViewController, dataTypeIdentifierForActivityType activityType: UIActivityType?) -> String {
++        if let type = activityType, isPasswordManagerActivityType(type.rawValue) {
++            return browserFillIdentifier
++        }
++        return activityType == nil ? browserFillIdentifier : kUTTypeURL as String
++    }
++}
++
++private extension OpenUtils {
++    func isPasswordManagerActivityType(_ activityType: String?) -> Bool {
++        // A 'password' substring covers the most cases, such as pwsafe and 1Password.
++        // com.agilebits.onepassword-ios.extension
++        // com.app77.ios.pwsafe2.find-login-action-password-actionExtension
++        // If your extension's bundle identifier does not contain "password", simply submit a pull request by adding your bundle identifier.
++        return (activityType?.range(of: "password") != nil)
++            || (activityType == "com.lastpass.ilastpass.LastPassExt")
++            || (activityType == "in.sinew.Walletx.WalletxExt")
++            || (activityType == "com.8bit.bitwarden.find-login-action-extension")
++        
++    }
++    
++    func findLoginExtensionItem() {
++        // Add 1Password to share sheet
++        webViewController.createPasswordManagerExtensionItem()
++    }
++    
++    func fillPasswords(returnedItems: [AnyObject]) {
++        webViewController.fillPasswords(returnedItems: returnedItems)
++    }
++}
+diff --git a/focus-ios/Blockzilla/Settings.bundle/com.mono0926.LicensePlist.latest_result.txt b/focus-ios/Blockzilla/Settings.bundle/com.mono0926.LicensePlist.latest_result.txt
+index 3f4a89ed9..e44f7524b 100644
+--- a/focus-ios/Blockzilla/Settings.bundle/com.mono0926.LicensePlist.latest_result.txt
++++ b/focus-ios/Blockzilla/Settings.bundle/com.mono0926.LicensePlist.latest_result.txt
+@@ -2,15 +2,17 @@ name: focus-ios, nameSpecified: Firefox Focus, owner: mozilla-mobile, version:
+ 
+ name: SCSiriWaveformView, nameSpecified: , owner: stefanceriu, version: 
+ 
++name: onepassword-extension, nameSpecified: , owner: AgileBits, version: 04f146a
++
+ name: SnapKit, nameSpecified: , owner: SnapKit, version: 4.0.0
+ 
+ name: ios_sdk, nameSpecified: Adjust, owner: adjust, version: v4.11.5
+ 
+-name: Fuzi, nameSpecified: , owner: cezheng, version: 5ba8c81
++name: Fuzi, nameSpecified: , owner: cezheng, version: 53e3f15
+ 
+ name: sentry-cocoa, nameSpecified: Sentry, owner: getsentry, version: 3.2.1
+ 
+-name: AutocompleteTextField, nameSpecified: , owner: mozilla-mobile, version: a815acf
++name: AutocompleteTextField, nameSpecified: , owner: mozilla-mobile, version: 1f5eb6f
+ 
+ name: telemetry-ios, nameSpecified: Telemetry, owner: mozilla-mobile, version: v1.0.6
+ 
+diff --git a/focus-ios/Blockzilla/Settings.bundle/com.mono0926.LicensePlist.plist b/focus-ios/Blockzilla/Settings.bundle/com.mono0926.LicensePlist.plist
+index 2b4da483f..9bfba7009 100644
+--- a/focus-ios/Blockzilla/Settings.bundle/com.mono0926.LicensePlist.plist
++++ b/focus-ios/Blockzilla/Settings.bundle/com.mono0926.LicensePlist.plist
+@@ -44,6 +44,14 @@
+ 			<key>Type</key>
+ 			<string>PSChildPaneSpecifier</string>
+ 		</dict>
++		<dict>
++			<key>File</key>
++			<string>com.mono0926.LicensePlist/onepassword-extension</string>
++			<key>Title</key>
++			<string>onepassword-extension</string>
++			<key>Type</key>
++			<string>PSChildPaneSpecifier</string>
++		</dict>
+ 		<dict>
+ 			<key>File</key>
+ 			<string>com.mono0926.LicensePlist/SCSiriWaveformView</string>
+diff --git a/focus-ios/Blockzilla/Settings.bundle/com.mono0926.LicensePlist/onepassword-extension.plist b/focus-ios/Blockzilla/Settings.bundle/com.mono0926.LicensePlist/onepassword-extension.plist
+new file mode 100644
+index 000000000..655b019f6
+--- /dev/null
++++ b/focus-ios/Blockzilla/Settings.bundle/com.mono0926.LicensePlist/onepassword-extension.plist
+@@ -0,0 +1,33 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
++<plist version="1.0">
++<dict>
++	<key>PreferenceSpecifiers</key>
++	<array>
++		<dict>
++			<key>FooterText</key>
++			<string>Copyright (c) 2014 AgileBits Inc.
++
++Permission is hereby granted, free of charge, to any person obtaining a copy
++of this software and associated documentation files (the "Software"), to deal
++in the Software without restriction, including without limitation the rights
++to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++copies of the Software, and to permit persons to whom the Software is
++furnished to do so, subject to the following conditions:
++
++The above copyright notice and this permission notice shall be included in all
++copies or substantial portions of the Software.
++
++THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++SOFTWARE.</string>
++			<key>Type</key>
++			<string>PSGroupSpecifier</string>
++		</dict>
++	</array>
++</dict>
++</plist>
+diff --git a/focus-ios/Blockzilla/ShareSheetActivities.swift b/focus-ios/Blockzilla/ShareSheetActivities.swift
+index a8ae43a27..d872916f4 100644
+--- a/focus-ios/Blockzilla/ShareSheetActivities.swift
++++ b/focus-ios/Blockzilla/ShareSheetActivities.swift
+@@ -3,9 +3,11 @@
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+ import Foundation
++import Telemetry
+ 
+ class OpenInFirefoxActivity: UIActivity {
+     fileprivate let url: URL
++    private let app = UIApplication.shared
+     
+     init(url: URL) {
+         self.url = url
+@@ -20,17 +22,29 @@ class OpenInFirefoxActivity: UIActivity {
+     }
+ 
+     override func perform() {
+-        OpenUtils.openInFirefox(url: url)
++        openInFirefox(url: url)
+         activityDidFinish(true)
+     }
+ 
+     override func canPerform(withActivityItems activityItems: [Any]) -> Bool {
+         return true
+     }
++
++    func openInFirefox(url: URL) {
++        guard let escaped = url.absoluteString.addingPercentEncoding(withAllowedCharacters: .urlQueryParameterAllowed),
++            let firefoxURL = URL(string: "firefox://open-url?url=\(escaped)&private=true"),
++            app.canOpenURL(firefoxURL) else {
++                return
++        }
++        
++        Telemetry.default.recordEvent(category: TelemetryEventCategory.action, method: TelemetryEventMethod.open, object: TelemetryEventObject.menu, value: "firefox")
++        app.open(firefoxURL, options: [:])
++    }
+ }
+ 
+ class OpenInSafariActivity: UIActivity {
+     fileprivate let url: URL
++    private let app = UIApplication.shared
+ 
+     init(url: URL) {
+         self.url = url
+@@ -45,17 +59,23 @@ class OpenInSafariActivity: UIActivity {
+     }
+ 
+     override func perform() {
+-        OpenUtils.openInSafari(url: url)
++        openInSafari(url: url)
+         activityDidFinish(true)
+     }
+ 
+     override func canPerform(withActivityItems activityItems: [Any]) -> Bool {
+         return true
+     }
++    
++    func openInSafari(url: URL) {
++        Telemetry.default.recordEvent(category: TelemetryEventCategory.action, method: TelemetryEventMethod.open, object: TelemetryEventObject.menu, value: "default")
++        app.open(url, options: [:])
++    }
+ }
+ 
+ class OpenInChromeActivity: UIActivity {
+     fileprivate let url: URL
++    private let app = UIApplication.shared
+ 
+     init(url: URL) {
+         self.url = url
+@@ -70,13 +90,32 @@ class OpenInChromeActivity: UIActivity {
+     }
+ 
+     override func perform() {
+-        OpenUtils.openInChrome(url: url)
++        openInChrome(url: url)
+         activityDidFinish(true)
+     }
+ 
+     override func canPerform(withActivityItems activityItems: [Any]) -> Bool {
+         return true
+     }
++    
++    func openInChrome(url: URL) {
++        // Code pulled from https://github.com/GoogleChrome/OpenInChrome
++        // Replace the URL Scheme with the Chrome equivalent.
++        var chromeScheme: String?
++        if (url.scheme == "http") {
++            chromeScheme = "googlechrome"
++        } else if (url.scheme == "https") {
++            chromeScheme = "googlechromes"
++        }
++        
++        // Proceed only if a valid Google Chrome URI Scheme is available.
++        guard let scheme = chromeScheme,
++            let rangeForScheme = url.absoluteString.range(of: ":"),
++            let chromeURL = URL(string: scheme + url.absoluteString[rangeForScheme.lowerBound...]) else { return }
++        
++        // Open the URL with Chrome.
++        app.open(chromeURL, options: [:])
++    }
+ }
+ 
+ /// This Activity Item Provider subclass does two things that are non-standard behaviour:
+@@ -106,4 +145,3 @@ class TitleActivityItemProvider: UIActivityItemProvider {
+         return placeholderItem as! String
+     }
+ }
+-
+diff --git a/focus-ios/Blockzilla/TelemetryIntegration.swift b/focus-ios/Blockzilla/TelemetryIntegration.swift
+index 35f75c3fe..8892db7b4 100644
+--- a/focus-ios/Blockzilla/TelemetryIntegration.swift
++++ b/focus-ios/Blockzilla/TelemetryIntegration.swift
+@@ -22,6 +22,7 @@ class TelemetryEventMethod {
+     public static let click = "click"
+     public static let change = "change"
+     public static let open = "open"
++    public static let show = "show"
+     public static let coinFlip = "coin_flip"
+     public static let skip = "onboarding_skipped"
+     public static let completed = "onboarding_completed"
+@@ -54,4 +55,5 @@ class TelemetryEventObject {
+     public static let trackingProtectionDrawer = "tracking_protection_drawer"
+     public static let trackingProtectionToggle = "tracking_protection_toggle"
+     public static let websiteLink = "website_link"
++    public static let autofill = "autofill"
+ }
+diff --git a/focus-ios/Cartfile b/focus-ios/Cartfile
+index 14953b94f..09ef5cf9d 100644
+--- a/focus-ios/Cartfile
++++ b/focus-ios/Cartfile
+@@ -5,3 +5,4 @@ github "cezheng/Fuzi" "master"
+ github "mozilla-mobile/AutocompleteTextField" "master"
+ github "mozilla-mobile/telemetry-ios" ~> 1.0.6
+ github "getsentry/sentry-cocoa" "3.2.1"
++github "AgileBits/onepassword-extension" "add-framework-support"
+diff --git a/focus-ios/Cartfile.resolved b/focus-ios/Cartfile.resolved
+index a40d0228d..0c3c96743 100644
+--- a/focus-ios/Cartfile.resolved
++++ b/focus-ios/Cartfile.resolved
+@@ -1,7 +1,8 @@
++github "AgileBits/onepassword-extension" "04f146abd3bd5e6f7ba8b18b916c55f3b3c85aed"
+ github "SnapKit/SnapKit" "4.0.0"
+ github "adjust/ios_sdk" "v4.11.5"
+-github "cezheng/Fuzi" "5ba8c81d90f6c2a973e88ebfcc95d24190d34641"
++github "cezheng/Fuzi" "53e3f150daf1c1a478077116833d1f5690525ea9"
+ github "getsentry/sentry-cocoa" "3.2.1"
+-github "mozilla-mobile/AutocompleteTextField" "158515b6418bda807d8ebc9de9df6073d5bde2bc"
++github "mozilla-mobile/AutocompleteTextField" "1f5eb6fda08611060cb310329a2e4ab5f56d83e5"
+ github "mozilla-mobile/telemetry-ios" "v1.0.6"
+ github "swisspol/GCDWebServer" "3.3.3"

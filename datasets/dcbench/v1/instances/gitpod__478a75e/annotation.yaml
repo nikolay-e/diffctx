@@ -1,0 +1,20 @@
+repo: gitpod
+base_commit: 3c4b6676ee2277872162b71ddcc4ef6e67046137
+commit: 478a75e744a642d9b764de37cfae655bc8b29dd5
+patch_stored: false
+gold:
+- path: components/BUILD.yaml
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'Total pipeline failure (#70 unbounded hang): 2397 files each carry an identical 1-line license-header
+  rename (License-AGPL.txt -> License.AGPL.txt), a mechanical find/replace with zero code semantics, yet
+  diffctx produced nothing (0 tokens, 0 fragments) after timing out. A correct tool could recognize the
+  repeated-pattern diff and summarize with one representative file; instead it appears to attempt full
+  per-file context resolution across the whole 2397-file blast radius and never returns. This is the canonical
+  ''ultimate stress test'' for scale, and it fails completely rather than degrading gracefully.'

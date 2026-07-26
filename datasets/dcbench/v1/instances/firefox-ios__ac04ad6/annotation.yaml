@@ -1,0 +1,62 @@
+repo: firefox-ios
+base_commit: ba097cf71a4b2be39c4a18ebdd8ae859c757d218
+commit: ac04ad68696527d50cfd408417504f65ebab42ce
+patch_stored: true
+gold:
+  - path: firefox-ios/Client/Application/ImageIdentifiers.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Removes the nested ImageIdentifiers.Onboarding.MultipleChoiceButtonImages.checkmarkEmpty/checkmarkFilled
+      constants and adds the new top-level radioButtonNotSelected/radioButtonSelected constants that both consumers switch to.
+  - path: firefox-ios/Client/Frontend/Microsurvey/Survey/View/MicrosurveyTableViewCell.swift
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: UX.Images.selected/notSelected switch from ImageIdentifiers.Onboarding.MultipleChoiceButtonImages.checkmarkFilled/checkmarkEmpty
+      to the new ImageIdentifiers.radioButtonSelected/radioButtonNotSelected constants.
+  - path: firefox-ios/Client/Frontend/Onboarding/Views/OnboardingMultipleChoiceButtonView.swift
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: Same UX.Images.selected/notSelected rewire as MicrosurveyTableViewCell, the second and last consumer
+      of the renamed image identifiers.
+  - path: firefox-ios/Client/Assets/Images.xcassets/radioButtonNotSelected.imageset/Contents.json
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Asset-catalog manifest whose "filename" key must equal "radioButtonNotSelected.pdf" so the string
+      ImageIdentifiers.radioButtonNotSelected resolves at runtime via UIImage(named:).
+  - path: firefox-ios/Client/Assets/Images.xcassets/radioButtonSelected.imageset/Contents.json
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Asset-catalog manifest whose "filename" key must equal "radioButtonSelected.pdf" so the string
+      ImageIdentifiers.radioButtonSelected resolves at runtime via UIImage(named:).
+forbidden:
+  - path: firefox-ios/Client/Nimbus/OnboardingFeatureLayer/NimbusOnboardingFeatureLayer.swift
+    reason: uses sibling ImageIdentifiers.Onboarding.MultipleChoiceButtonImages.themeSystem/themeDark/themeLight/toolbarTop/toolbarBottom
+      but never references checkmarkEmpty/checkmarkFilled or the new radioButton identifiers
+  - path: firefox-ios/Client/Frontend/Onboarding/Models/OnboardingMultipleChoiceButtonViewModel.swift
+    reason: backs OnboardingMultipleChoiceButtonView but only carries isSelected/info/a11yIDRoot state, no image identifier reference
+  - path: firefox-ios/Client/Frontend/Microsurvey/Survey/View/MicrosurveyTableView.swift
+    reason: same directory as the changed cell but contains no image-identifier references at all
+nontrivial_gold_count: 0
+string_indirection: true
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 12
+  description: Replace/rename Onboarding checkmark assets — asset catalogs + binary resources + Swift
+    references
+notes: 'Renames the onboarding checkbox image pair (onboardingCheckmarkEmpty/Filled -> radioButtonNotSelected/Selected),
+  moving the identifiers from ImageIdentifiers.Onboarding.MultipleChoiceButtonImages to top-level ImageIdentifiers
+  and relocating/renaming the matching .imageset asset-catalog folders. Both Swift consumers
+  (MicrosurveyTableViewCell, OnboardingMultipleChoiceButtonView) are updated in the same commit. Exhaustive git grep
+  at the pinned commit found no other consumers, no covering tests, and no project.pbxproj entries to update
+  (Images.xcassets is folder-referenced, not per-file) -- the change is fully self-contained in its own diff, so
+  no_nontrivial_context is set and gold is limited to the 5 diff files. string_indirection is true because the
+  Swift constant value must textually match the .imageset folder/filename for UIImage(named:) to resolve it; nothing
+  enforces that match at compile time.'

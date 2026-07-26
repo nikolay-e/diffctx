@@ -1,0 +1,101 @@
+repo: react-native
+base_commit: 49be01add1ac0f84bf34fff579a5d6588b334a22
+commit: e7ce4ff0bfdc469a40c3bd66edadaaf6c62e2ec3
+patch_stored: true
+gold:
+- path: packages/react-native/Libraries/Network/RCTInspectorNetworkReporter.mm
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/Package.swift
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/React/React-RCTFabric.podspec
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/jni/react/devsupport/JInspectorNetworkReporter.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/jsinspector-modern/NetworkIOAgent.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/jsinspector-modern/network/CdpNetwork.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/jsinspector-modern/network/CdpNetwork.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/jsinspector-modern/network/HttpUtils.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/jsinspector-modern/network/HttpUtils.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/jsinspector-modern/network/NetworkHandler.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/jsinspector-modern/network/NetworkHandler.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/networking/NetworkReporter.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/networking/NetworkReporter.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/networking/NetworkTypes.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/networking/React-networking.podspec
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: packages/react-native/Libraries/AppDelegate/RCTRootViewFactory.h
+- path: packages/react-native/Libraries/Image/RCTImageCache.h
+- path: packages/react-native/Libraries/Image/RCTImageLoaderProtocol.h
+- path: packages/react-native/Libraries/Image/RCTImageURLLoader.h
+- path: packages/react-native/React/Base/RCTAssert.h
+- path: packages/react-native/React/Base/RCTBridge+Private.h
+- path: packages/react-native/React/Base/RCTBridgeModule.h
+- path: packages/react-native/React/Base/RCTLog.h
+- path: packages/react-native/ReactCommon/jsinspector-modern/EmulationAgent.h
+- path: packages/react-native/ReactCommon/jsinspector-modern/HostAgent.h
+- path: packages/react-native/ReactCommon/jsinspector-modern/HostTarget.h
+- path: packages/react-native/ReactCommon/jsinspector-modern/InstanceAgent.cpp
+- path: packages/react-native/ReactCommon/jsinspector-modern/TracingAgent.h
+- path: packages/react-native/ReactCommon/react/performance/timeline/PerformanceObserver.h
+- path: packages/react-native/ReactCommon/react/renderer/animationbackend/AnimationChoreographer.h
+- path: packages/react-native/ReactCommon/react/renderer/mounting/ShadowViewMutation.h
+- path: packages/react-native/scripts/cocoapods/fabric.rb
+- path: packages/react-native/scripts/cocoapods/jsengine.rb
+- path: packages/react-native/scripts/cocoapods/runtime.rb
+- path: packages/react-native/scripts/ios-prebuild/headers-config.js
+- path: scripts/releases/ios-prebuild/configuration.js
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'Worst over-selection ratio of the three over_dump samples: 70 ctx_files against only 22 files
+  actually in the diff (3.2x), for a change that is mostly a mechanical relocation of NetworkReporter
+  out of jsinspector-modern into a new react/networking module (674 insertions/428 deletions). Dozens
+  of unrelated headers get pulled in purely by jsinspector-modern/ReactCommon co-location (RCTImageCache.h,
+  RCTAssert.h, HostAgent.h, TracingAgent.h, PerformanceObserver.h, ShadowViewMutation.h, cocoapods ruby
+  build scripts) with no textual or symbol connection to NetworkReporter/NetworkHandler. On top of the
+  file-count blowup, the sampled head shows the entire 628-line Package.swift dumped as one fragment to
+  represent a 13-line addition (one new `reactNetworking` target block) — same whole-file-chunk pattern
+  seen in the other over_dump cases. 47383 tokens for what a reader needs is maybe 15 real files at moderate
+  granularity.'

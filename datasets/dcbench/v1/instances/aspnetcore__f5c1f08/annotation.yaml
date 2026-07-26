@@ -1,0 +1,60 @@
+repo: aspnetcore
+base_commit: 62a87db986a597875d63a61eacf4518892fa9331
+commit: f5c1f0874ab567d10153604e8a257e2faabf181a
+patch_stored: true
+gold:
+  - path: src/Components/Web/src/EnvironmentBoundary.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines the new EnvironmentBoundary component class with Include/Exclude parameters and ShouldRenderContent logic that the whole change is about.
+  - path: src/Components/WebAssembly/WebAssembly/src/Hosting/WebAssemblyHostEnvironmentAdapter.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New internal IHostEnvironment adapter that lets EnvironmentBoundary (which injects IHostEnvironment) work in Blazor WebAssembly, wrapping IWebAssemblyHostEnvironment.Environment as EnvironmentName.
+  - path: src/Components/WebAssembly/WebAssembly/src/Hosting/WebAssemblyHostBuilder.cs
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: Registers Services.AddSingleton<IHostEnvironment>(sp => new WebAssemblyHostEnvironmentAdapter(...)) so the new adapter is actually wired into DI for WASM apps.
+  - path: src/Components/Web/test/EnvironmentBoundaryTest.cs
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Unit tests exercising ShouldRenderContent's Include/Exclude/case-insensitivity/null-environment behavior, the authoritative spec for the component's semantics.
+  - path: src/Mvc/Mvc.TagHelpers/src/EnvironmentTagHelper.cs
+    tier: essential
+    role: cochange
+    in_diff: false
+    rationale: EnvironmentBoundary's own XML doc says "similar to the environment tag helper in MVC" and the commit message says it aligns null-environment behavior with MVC — this file is the pre-existing analog whose Include/Exclude/case-insensitive-comma-split semantics were ported.
+  - path: src/Components/WebAssembly/WebAssembly/src/Hosting/IWebAssemblyHostEnvironment.cs
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines the Environment string property that WebAssemblyHostEnvironmentAdapter.EnvironmentName wraps via _webAssemblyHostEnvironment.Environment.
+forbidden:
+  - path: src/Components/Components/src/ComponentBase.cs
+    reason: EnvironmentBoundary derives from it but it is the generic, pre-existing component base class unrelated to environment-specific logic
+  - path: src/Components/Components/src/Routing/Router.cs
+    reason: bm25 keyword-overlap false positive; unrelated routing component with no link to EnvironmentBoundary
+  - path: src/Components/test/E2ETest/Tests/ErrorBoundaryTest.cs
+    reason: sibling "*Boundary" E2E test in the same directory but covers the unrelated ErrorBoundary feature
+  - path: src/Components/QuickGrid/Microsoft.AspNetCore.Components.QuickGrid/src/GridItemsProviderResult.cs
+    reason: graph-generator false positive; unrelated QuickGrid data feature with no dependency on EnvironmentBoundary
+nontrivial_gold_count: 2
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration, cochange, bm25, graph, random]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 9
+  description: Add built-in EnvironmentBoundary component — compact feature
+notes: >-
+  Adds a Blazor EnvironmentBoundary component that conditionally renders child
+  content based on IHostEnvironment.EnvironmentName (Include/Exclude lists),
+  plus a WebAssemblyHostEnvironmentAdapter so IHostEnvironment resolves in
+  WASM by wrapping IWebAssemblyHostEnvironment. The design and null-handling
+  semantics are explicitly modeled on MVC's EnvironmentTagHelper, which is
+  the key non-trivial external context. Static DI/type linkage throughout,
+  no string-based indirection.

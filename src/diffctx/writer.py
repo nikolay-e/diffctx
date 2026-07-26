@@ -29,10 +29,9 @@ _YAML_BASE_ESCAPE_MAP = {
     "\u2028": "\\u2028",
     "\u2029": "\\u2029",
 }
-_YAML_STRING_ESCAPE_MAP = _YAML_BASE_ESCAPE_MAP
 _YAML_CONTENT_ESCAPE_MAP = {**_YAML_BASE_ESCAPE_MAP, "\t": "\\t"}
 
-_YAML_STRING_ESCAPE_PATTERN = re.compile("[" + re.escape("".join(_YAML_STRING_ESCAPE_MAP)) + "]")
+_YAML_STRING_ESCAPE_PATTERN = re.compile("[" + re.escape("".join(_YAML_BASE_ESCAPE_MAP)) + "]")
 _YAML_CONTENT_ESCAPE_PATTERN = re.compile("[" + re.escape("".join(_YAML_CONTENT_ESCAPE_MAP)) + "]")
 
 _BACKTICK_RUN_PATTERN = re.compile(r"`+")
@@ -49,7 +48,7 @@ PLACEHOLDER_PATTERNS = [
 def _escape_yaml_string(s: str) -> str:
     if not _YAML_STRING_ESCAPE_PATTERN.search(s):
         return s
-    return _YAML_STRING_ESCAPE_PATTERN.sub(lambda m: _YAML_STRING_ESCAPE_MAP[m.group()], s)
+    return _YAML_STRING_ESCAPE_PATTERN.sub(lambda m: _YAML_BASE_ESCAPE_MAP[m.group()], s)
 
 
 def _escape_yaml_content(s: str) -> str:
@@ -126,7 +125,17 @@ def _write_yaml_fragment(file: TextIO, frag: dict[str, Any], indent: str = "") -
 
 
 def _has_diff_metadata(tree: dict[str, Any]) -> bool:
-    return bool(tree.get("fragments") or tree.get("deleted_files") or tree.get("renamed_files"))
+    # changed_files counts: a selection that came back empty still has to say
+    # which files the range touched, or the only actionable fact about the run
+    # is dropped and the reader is left with a name/type stub.
+    return bool(
+        tree.get("fragments")
+        or tree.get("deleted_files")
+        or tree.get("renamed_files")
+        or tree.get("changed_files")
+        or tree.get("commit_message")
+        or tree.get("lockfile_changes")
+    )
 
 
 def _write_yaml_path_list(file: TextIO, key: str, paths: list[Any]) -> None:
@@ -147,6 +156,8 @@ def _write_yaml_diff_metadata(file: TextIO, tree: dict[str, Any]) -> None:
         for pair in tree["renamed_files"]:
             file.write(f'  - from: "{_escape_yaml_string(str(pair.get("from", "")))}"\n')
             file.write(f'    to: "{_escape_yaml_string(str(pair.get("to", "")))}"\n')
+    if tree.get("lockfile_changes"):
+        _write_yaml_path_list(file, "lockfile_changes", tree["lockfile_changes"])
     if tree.get("fragments"):
         file.write(f"fragment_count: {len(tree['fragments'])}\n")
         file.write("fragments:\n")
@@ -240,6 +251,8 @@ def _write_tree_text_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
         file.write(f"  deleted files: {', '.join(str(p) for p in tree['deleted_files'])}\n")
     for pair in tree.get("renamed_files", []):
         file.write(f"  renamed: {pair.get('from', '')} -> {pair.get('to', '')}\n")
+    if tree.get("lockfile_changes"):
+        file.write(f"  lock files changed: {', '.join(str(p) for p in tree['lockfile_changes'])}\n")
     for frag in tree.get("fragments", []):
         _write_text_fragment(file, frag, "  ")
 
@@ -401,6 +414,11 @@ def _write_markdown_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
             old_p = _escape_md_inline_code(str(pair.get("from", "")))
             new_p = _escape_md_inline_code(str(pair.get("to", "")))
             file.write(f"- {old_p} \u2192 {new_p}\n")
+        file.write("\n")
+    if tree.get("lockfile_changes"):
+        file.write("**Lock files changed:**\n\n")
+        for path in tree["lockfile_changes"]:
+            file.write(f"- {_escape_md_inline_code(str(path))}\n")
         file.write("\n")
     for frag in tree["fragments"]:
         _write_markdown_fragment(file, frag)

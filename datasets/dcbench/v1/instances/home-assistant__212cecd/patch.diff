@@ -1,0 +1,45 @@
+From 212cecd955e04ab18e724938406bc77398fd3713 Mon Sep 17 00:00:00 2001
+From: Simone Chemelli <simone.chemelli@gmail.com>
+Date: Wed, 1 Jul 2026 08:42:59 +0200
+Subject: [PATCH] Improve typing for Mikrotik (#175213)
+
+---
+ homeassistant/components/mikrotik/config_flow.py | 11 +++--------
+ 1 file changed, 3 insertions(+), 8 deletions(-)
+
+diff --git a/homeassistant/components/mikrotik/config_flow.py b/homeassistant/components/mikrotik/config_flow.py
+index 1e2f98e4ea..13eac98cce 100644
+--- a/homeassistant/components/mikrotik/config_flow.py
++++ b/homeassistant/components/mikrotik/config_flow.py
+@@ -5,12 +5,7 @@ from typing import Any, override
+ 
+ import voluptuous as vol
+ 
+-from homeassistant.config_entries import (
+-    ConfigEntry,
+-    ConfigFlow,
+-    ConfigFlowResult,
+-    OptionsFlow,
+-)
++from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFlow
+ from homeassistant.const import (
+     CONF_HOST,
+     CONF_PASSWORD,
+@@ -29,7 +24,7 @@ from .const import (
+     DEFAULT_NAME,
+     DOMAIN,
+ )
+-from .coordinator import get_api
++from .coordinator import MikrotikConfigEntry, get_api
+ from .errors import CannotConnect, LoginError
+ 
+ 
+@@ -42,7 +37,7 @@ class MikrotikFlowHandler(ConfigFlow, domain=DOMAIN):
+     @callback
+     @override
+     def async_get_options_flow(
+-        config_entry: ConfigEntry,
++        config_entry: MikrotikConfigEntry,
+     ) -> MikrotikOptionsFlowHandler:
+         """Get the options flow for this handler."""
+         return MikrotikOptionsFlowHandler()

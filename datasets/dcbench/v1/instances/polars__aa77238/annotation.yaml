@@ -1,0 +1,79 @@
+repo: polars
+base_commit: 961f45f56a35b30f2faa98c429eb1dad6ef1db09
+commit: aa7723848399995e4d0aa600d7b2c485788edac7
+patch_stored: true
+gold:
+  - path: crates/polars-plan/src/dsl/cat.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: defines `CategoricalNameSpace::to`/`physical` DSL builders mapping to `CategoricalFunction::To`/`Physical`
+  - path: crates/polars-plan/src/dsl/function_expr/cat.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds `CategoricalFunction::To(DataTypeExpr, bool)` and `Physical` DSL-level variants
+  - path: crates/polars-plan/src/plans/aexpr/function_expr/cat.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds `IRCategoricalFunction::To`/`Physical` IR variants and their output-dtype resolution via `dt.cat_physical()`
+  - path: crates/polars-expr/src/dispatch/cat.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: implements `cat_to`/`cat_physical` execution dispatched from `IRCategoricalFunction::To`/`Physical`
+  - path: crates/polars-core/src/series/from.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds `Series::from_cats_and_dtype` that `cat_to` calls to build the categorical/enum series
+  - path: crates/polars-python/src/expr/categorical.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: PyO3 `cat_to`/`cat_physical` bindings exposing the Rust cat namespace methods across the FFI boundary
+  - path: py-polars/src/polars/expr/categorical.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds `ExprCatNameSpace.to`/`physical` Python methods calling `self._pyexpr.cat_to`/`cat_physical`
+  - path: py-polars/src/polars/series/categorical.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds `CatNameSpace.to`/`physical` with empty bodies, relying on `expr_dispatch` to auto-wire them to the matching `ExprCatNameSpace` methods
+  - path: py-polars/tests/unit/operations/namespaces/test_categorical.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: adds `test_cat_to_from_physical`, round-tripping `.cat.physical()`/`.cat.to()` for both Categorical and Enum
+  - path: py-polars/src/polars/series/utils.py
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: defines `expr_dispatch`/`call_expr`, the class-decorator mechanism (string name + signature lookup against `ExprCatNameSpace`) that gives the empty-bodied `CatNameSpace.to`/`physical` methods their real implementation
+forbidden:
+  - path: crates/polars-plan/src/dsl/datatype_expr.rs
+    reason: only derives `Eq` on unrelated DataTypeExpr enums for hashing needs elsewhere, no new cat.to/physical logic
+  - path: py-polars/docs/source/reference/expressions/categories.rst
+    reason: doc index listing, not needed to understand the implementation
+  - path: py-polars/docs/source/reference/series/categories.rst
+    reason: doc index listing, not needed to understand the implementation
+  - path: crates/polars-plan/dsl-schema-hashes.json
+    reason: auto-generated schema hash bump, mechanical byproduct of the enum change
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 17
+  description: Add Expr.cat.to and Expr.cat.physical — full FFI chain rs→pyi
+notes: >-
+  Adds Expr.cat.to (convert physical -> categorical/enum) and Expr.cat.physical
+  (extract physical codes) through the full Rust DSL -> IR -> dispatch -> PyO3 ->
+  Python chain. The Series-level Python methods are empty stubs whose real bodies
+  are injected at class-definition time by the `expr_dispatch` decorator, which
+  matches method names/signatures against ExprCatNameSpace by string/introspection
+  rather than a static call — hence string_indirection: true.

@@ -1,0 +1,807 @@
+From 25a14c313bfd9e18a0ea06a8a521ee28878c2045 Mon Sep 17 00:00:00 2001
+From: Jiaan Geng <beliefer@163.com>
+Date: Mon, 19 Jun 2023 13:28:40 +0800
+Subject: [PATCH] [SPARK-43929][SQL][PYTHON][CONNECT] Add date time functions
+ to Scala, Python and Connect API - part 1
+
+### What changes were proposed in this pull request?
+This PR want add date time functions to Scala, Python and Connect API. These functions show below.
+
+- dateadd
+- date_diff
+- date_from_unix_date
+- day
+
+The origin plan also contains the two function `date_part` and `datepart`. You can see this PR exclude them, since we can't get the data type for unresolved expressions. Please refer https://github.com/apache/spark/blob/b97ce8b9a99c570fc57dec967e7e9db3d115c1db/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/datetimeExpressions.scala#L2835 and https://github.com/apache/spark/blob/b97ce8b9a99c570fc57dec967e7e9db3d115c1db/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/datetimeExpressions.scala#L2922
+
+### Why are the changes needed?
+Add date time functions to Scala, Python and Connect API.
+
+### Does this PR introduce _any_ user-facing change?
+'No'.
+New feature.
+
+### How was this patch tested?
+New test cases.
+
+Closes #41636 from beliefer/SPARK-43929.
+
+Authored-by: Jiaan Geng <beliefer@163.com>
+Signed-off-by: Ruifeng Zheng <ruifengz@apache.org>
+---
+ .../org/apache/spark/sql/functions.scala      |  55 ++++++++
+ .../spark/sql/PlanGenerationTestSuite.scala   |  16 +++
+ .../function_date_diff.explain                |   2 +
+ .../function_date_from_unix_date.explain      |   2 +
+ .../explain-results/function_dateadd.explain  |   2 +
+ .../explain-results/function_day.explain      |   2 +
+ .../queries/function_date_diff.json           |  42 +++++++
+ .../queries/function_date_diff.proto.bin      | Bin 0 -> 158 bytes
+ .../queries/function_date_from_unix_date.json |  25 ++++
+ .../function_date_from_unix_date.proto.bin    | Bin 0 -> 132 bytes
+ .../query-tests/queries/function_dateadd.json |  29 +++++
+ .../queries/function_dateadd.proto.bin        | Bin 0 -> 127 bytes
+ .../query-tests/queries/function_day.json     |  25 ++++
+ .../queries/function_day.proto.bin            | Bin 0 -> 117 bytes
+ .../reference/pyspark.sql/functions.rst       |   4 +
+ python/pyspark/sql/connect/functions.py       |  29 +++++
+ python/pyspark/sql/functions.py               | 119 ++++++++++++++++++
+ .../org/apache/spark/sql/functions.scala      |  48 +++++++
+ .../spark/sql/DataFrameFunctionsSuite.scala   |   2 +-
+ .../apache/spark/sql/DateFunctionsSuite.scala |  37 +++++-
+ 20 files changed, 435 insertions(+), 4 deletions(-)
+ create mode 100644 connector/connect/common/src/test/resources/query-tests/explain-results/function_date_diff.explain
+ create mode 100644 connector/connect/common/src/test/resources/query-tests/explain-results/function_date_from_unix_date.explain
+ create mode 100644 connector/connect/common/src/test/resources/query-tests/explain-results/function_dateadd.explain
+ create mode 100644 connector/connect/common/src/test/resources/query-tests/explain-results/function_day.explain
+ create mode 100644 connector/connect/common/src/test/resources/query-tests/queries/function_date_diff.json
+ create mode 100644 connector/connect/common/src/test/resources/query-tests/queries/function_date_diff.proto.bin
+ create mode 100644 connector/connect/common/src/test/resources/query-tests/queries/function_date_from_unix_date.json
+ create mode 100644 connector/connect/common/src/test/resources/query-tests/queries/function_date_from_unix_date.proto.bin
+ create mode 100644 connector/connect/common/src/test/resources/query-tests/queries/function_dateadd.json
+ create mode 100644 connector/connect/common/src/test/resources/query-tests/queries/function_dateadd.proto.bin
+ create mode 100644 connector/connect/common/src/test/resources/query-tests/queries/function_day.json
+ create mode 100644 connector/connect/common/src/test/resources/query-tests/queries/function_day.proto.bin
+
+diff --git a/connector/connect/client/jvm/src/main/scala/org/apache/spark/sql/functions.scala b/connector/connect/client/jvm/src/main/scala/org/apache/spark/sql/functions.scala
+index 9c2a5b9618..206b7df209 100644
+--- a/connector/connect/client/jvm/src/main/scala/org/apache/spark/sql/functions.scala
++++ b/connector/connect/client/jvm/src/main/scala/org/apache/spark/sql/functions.scala
+@@ -4107,6 +4107,21 @@ object functions {
+    */
+   def date_add(start: Column, days: Column): Column = Column.fn("date_add", start, days)
+ 
++  /**
++   * Returns the date that is `days` days after `start`
++   *
++   * @param start
++   *   A date, timestamp or string. If a string, the data must be in a format that can be cast to
++   *   a date, such as `yyyy-MM-dd` or `yyyy-MM-dd HH:mm:ss.SSSS`
++   * @param days
++   *   A column of the number of days to add to `start`, can be negative to subtract days
++   * @return
++   *   A date, or null if `start` was a string that could not be cast to a date
++   * @group datetime_funcs
++   * @since 3.5.0
++   */
++  def dateadd(start: Column, days: Column): Column = Column.fn("dateadd", start, days)
++
+   /**
+    * Returns the date that is `days` days before `start`
+    *
+@@ -4161,6 +4176,37 @@ object functions {
+    */
+   def datediff(end: Column, start: Column): Column = Column.fn("datediff", end, start)
+ 
++  /**
++   * Returns the number of days from `start` to `end`.
++   *
++   * Only considers the date part of the input. For example:
++   * {{{
++   * dateddiff("2018-01-10 00:00:00", "2018-01-09 23:59:59")
++   * // returns 1
++   * }}}
++   *
++   * @param end
++   *   A date, timestamp or string. If a string, the data must be in a format that can be cast to
++   *   a date, such as `yyyy-MM-dd` or `yyyy-MM-dd HH:mm:ss.SSSS`
++   * @param start
++   *   A date, timestamp or string. If a string, the data must be in a format that can be cast to
++   *   a date, such as `yyyy-MM-dd` or `yyyy-MM-dd HH:mm:ss.SSSS`
++   * @return
++   *   An integer, or null if either `end` or `start` were strings that could not be cast to a
++   *   date. Negative if `end` is before `start`
++   * @group datetime_funcs
++   * @since 3.5.0
++   */
++  def date_diff(end: Column, start: Column): Column = Column.fn("date_diff", end, start)
++
++  /**
++   * Create date from the number of `days` since 1970-01-01.
++   *
++   * @group datetime_funcs
++   * @since 3.5.0
++   */
++  def date_from_unix_date(days: Column): Column = Column.fn("date_from_unix_date", days)
++
+   /**
+    * Extracts the year as an integer from a given date/timestamp/string.
+    * @return
+@@ -4207,6 +4253,15 @@ object functions {
+    */
+   def dayofmonth(e: Column): Column = Column.fn("dayofmonth", e)
+ 
++  /**
++   * Extracts the day of the month as an integer from a given date/timestamp/string.
++   * @return
++   *   An integer, or null if the input was a string that could not be cast to a date
++   * @group datetime_funcs
++   * @since 3.5.0
++   */
++  def day(e: Column): Column = Column.fn("day", e)
++
+   /**
+    * Extracts the day of the year as an integer from a given date/timestamp/string.
+    * @return
+diff --git a/connector/connect/client/jvm/src/test/scala/org/apache/spark/sql/PlanGenerationTestSuite.scala b/connector/connect/client/jvm/src/test/scala/org/apache/spark/sql/PlanGenerationTestSuite.scala
+index 7633cd7d0c..ca7797f6df 100644
+--- a/connector/connect/client/jvm/src/test/scala/org/apache/spark/sql/PlanGenerationTestSuite.scala
++++ b/connector/connect/client/jvm/src/test/scala/org/apache/spark/sql/PlanGenerationTestSuite.scala
+@@ -1921,6 +1921,10 @@ class PlanGenerationTestSuite
+     fn.date_add(fn.col("d"), 2)
+   }
+ 
++  temporalFunctionTest("dateadd") {
++    fn.dateadd(fn.col("d"), lit(2))
++  }
++
+   temporalFunctionTest("date_sub") {
+     fn.date_sub(fn.col("d"), 2)
+   }
+@@ -1929,6 +1933,14 @@ class PlanGenerationTestSuite
+     fn.datediff(fn.col("d"), fn.make_date(lit(2020), lit(10), lit(10)))
+   }
+ 
++  temporalFunctionTest("date_diff") {
++    fn.date_diff(fn.col("d"), fn.make_date(lit(2020), lit(10), lit(10)))
++  }
++
++  temporalFunctionTest("date_from_unix_date") {
++    fn.date_from_unix_date(lit(10))
++  }
++
+   temporalFunctionTest("year") {
+     fn.year(fn.col("d"))
+   }
+@@ -1949,6 +1961,10 @@ class PlanGenerationTestSuite
+     fn.dayofmonth(fn.col("d"))
+   }
+ 
++  temporalFunctionTest("day") {
++    fn.day(fn.col("d"))
++  }
++
+   temporalFunctionTest("dayofyear") {
+     fn.dayofyear(fn.col("d"))
+   }
+diff --git a/connector/connect/common/src/test/resources/query-tests/explain-results/function_date_diff.explain b/connector/connect/common/src/test/resources/query-tests/explain-results/function_date_diff.explain
+new file mode 100644
+index 0000000000..4b22dfe090
+--- /dev/null
++++ b/connector/connect/common/src/test/resources/query-tests/explain-results/function_date_diff.explain
+@@ -0,0 +1,2 @@
++Project [date_diff(d#0, make_date(2020, 10, 10, false)) AS date_diff(d, make_date(2020, 10, 10))#0]
+++- LocalRelation <empty>, [d#0, t#0, s#0, x#0L, wt#0]
+diff --git a/connector/connect/common/src/test/resources/query-tests/explain-results/function_date_from_unix_date.explain b/connector/connect/common/src/test/resources/query-tests/explain-results/function_date_from_unix_date.explain
+new file mode 100644
+index 0000000000..547b33063a
+--- /dev/null
++++ b/connector/connect/common/src/test/resources/query-tests/explain-results/function_date_from_unix_date.explain
+@@ -0,0 +1,2 @@
++Project [date_from_unix_date(10) AS date_from_unix_date(10)#0]
+++- LocalRelation <empty>, [d#0, t#0, s#0, x#0L, wt#0]
+diff --git a/connector/connect/common/src/test/resources/query-tests/explain-results/function_dateadd.explain b/connector/connect/common/src/test/resources/query-tests/explain-results/function_dateadd.explain
+new file mode 100644
+index 0000000000..66325085b9
+--- /dev/null
++++ b/connector/connect/common/src/test/resources/query-tests/explain-results/function_dateadd.explain
+@@ -0,0 +1,2 @@
++Project [date_add(d#0, 2) AS date_add(d, 2)#0]
+++- LocalRelation <empty>, [d#0, t#0, s#0, x#0L, wt#0]
+diff --git a/connector/connect/common/src/test/resources/query-tests/explain-results/function_day.explain b/connector/connect/common/src/test/resources/query-tests/explain-results/function_day.explain
+new file mode 100644
+index 0000000000..1ef75653dd
+--- /dev/null
++++ b/connector/connect/common/src/test/resources/query-tests/explain-results/function_day.explain
+@@ -0,0 +1,2 @@
++Project [day(d#0) AS day(d)#0]
+++- LocalRelation <empty>, [d#0, t#0, s#0, x#0L, wt#0]
+diff --git a/connector/connect/common/src/test/resources/query-tests/queries/function_date_diff.json b/connector/connect/common/src/test/resources/query-tests/queries/function_date_diff.json
+new file mode 100644
+index 0000000000..b6094ff873
+--- /dev/null
++++ b/connector/connect/common/src/test/resources/query-tests/queries/function_date_diff.json
+@@ -0,0 +1,42 @@
++{
++  "common": {
++    "planId": "1"
++  },
++  "project": {
++    "input": {
++      "common": {
++        "planId": "0"
++      },
++      "localRelation": {
++        "schema": "struct\u003cd:date,t:timestamp,s:string,x:bigint,wt:struct\u003cstart:timestamp,end:timestamp\u003e\u003e"
++      }
++    },
++    "expressions": [{
++      "unresolvedFunction": {
++        "functionName": "date_diff",
++        "arguments": [{
++          "unresolvedAttribute": {
++            "unparsedIdentifier": "d"
++          }
++        }, {
++          "unresolvedFunction": {
++            "functionName": "make_date",
++            "arguments": [{
++              "literal": {
++                "integer": 2020
++              }
++            }, {
++              "literal": {
++                "integer": 10
++              }
++            }, {
++              "literal": {
++                "integer": 10
++              }
++            }]
++          }
++        }]
++      }
++    }]
++  }
++}
+\ No newline at end of file
+diff --git a/connector/connect/common/src/test/resources/query-tests/queries/function_date_diff.proto.bin b/connector/connect/common/src/test/resources/query-tests/queries/function_date_diff.proto.bin
+new file mode 100644
+index 0000000000000000000000000000000000000000..5621af09474d8f60b6aada81e0a6c339b2b2dff8
+GIT binary patch
+literal 158
+zcmd;L5@3{?&d3$Z#U#KG6)qH7TvAk;Tw;@Am6BMJs#9WBl9`)YT#}eupi^uGl*`OZ
+z*Qu~d%1qD9E72)00SSSW1633ut4+;ILFlxzlQNSs;o=0D7@v}vmL|k1#LUH*BBUTC
+c$HkeOm<<#KN(r%YF&jML7h>UJGT?%c0D<5xRR910
+
+literal 0
+HcmV?d00001
+
+diff --git a/connector/connect/common/src/test/resources/query-tests/queries/function_date_from_unix_date.json b/connector/connect/common/src/test/resources/query-tests/queries/function_date_from_unix_date.json
+new file mode 100644
+index 0000000000..ada0747743
+--- /dev/null
++++ b/connector/connect/common/src/test/resources/query-tests/queries/function_date_from_unix_date.json
+@@ -0,0 +1,25 @@
++{
++  "common": {
++    "planId": "1"
++  },
++  "project": {
++    "input": {
++      "common": {
++        "planId": "0"
++      },
++      "localRelation": {
++        "schema": "struct\u003cd:date,t:timestamp,s:string,x:bigint,wt:struct\u003cstart:timestamp,end:timestamp\u003e\u003e"
++      }
++    },
++    "expressions": [{
++      "unresolvedFunction": {
++        "functionName": "date_from_unix_date",
++        "arguments": [{
++          "literal": {
++            "integer": 10
++          }
++        }]
++      }
++    }]
++  }
++}
+\ No newline at end of file
+diff --git a/connector/connect/common/src/test/resources/query-tests/queries/function_date_from_unix_date.proto.bin b/connector/connect/common/src/test/resources/query-tests/queries/function_date_from_unix_date.proto.bin
+new file mode 100644
+index 0000000000000000000000000000000000000000..5cbd76eda907436e86c96fd007d67f15ef57de76
+GIT binary patch
+literal 132
+zcmd;L5@3|7<BH{C5@3i57YZ#dDJo4au}QH?Ni0d#DX}Wa%uOvWNz5(KDYgR2W#*;p
+zR9Gctrf24r=#-a$gh0xHDvFTRrsky}blTZT$x2Cc34=_GPb<pLjW5m1tcVA3g;=<l
+G47dO<%PaT*
+
+literal 0
+HcmV?d00001
+
+diff --git a/connector/connect/common/src/test/resources/query-tests/queries/function_dateadd.json b/connector/connect/common/src/test/resources/query-tests/queries/function_dateadd.json
+new file mode 100644
+index 0000000000..2658c724d2
+--- /dev/null
++++ b/connector/connect/common/src/test/resources/query-tests/queries/function_dateadd.json
+@@ -0,0 +1,29 @@
++{
++  "common": {
++    "planId": "1"
++  },
++  "project": {
++    "input": {
++      "common": {
++        "planId": "0"
++      },
++      "localRelation": {
++        "schema": "struct\u003cd:date,t:timestamp,s:string,x:bigint,wt:struct\u003cstart:timestamp,end:timestamp\u003e\u003e"
++      }
++    },
++    "expressions": [{
++      "unresolvedFunction": {
++        "functionName": "dateadd",
++        "arguments": [{
++          "unresolvedAttribute": {
++            "unparsedIdentifier": "d"
++          }
++        }, {
++          "literal": {
++            "integer": 2
++          }
++        }]
++      }
++    }]
++  }
++}
+\ No newline at end of file
+diff --git a/connector/connect/common/src/test/resources/query-tests/queries/function_dateadd.proto.bin b/connector/connect/common/src/test/resources/query-tests/queries/function_dateadd.proto.bin
+new file mode 100644
+index 0000000000000000000000000000000000000000..e72a77f0e2394390783577a1f865a11d3d7fbe0c
+GIT binary patch
+literal 127
+zcmd;L5@3|7<cj5D5@3i57YZ#dDJo4au}QH?Ni0d#DX}Wa%uOvWNz5(KDYgR2W#*;p
+zR9Gctrf24r=#-a$gh0xHDvFTRrsky}blTZTNl1xtv4c!ZOi2-96=LRMOc7$?VlrR?
+E05B9MW&i*H
+
+literal 0
+HcmV?d00001
+
+diff --git a/connector/connect/common/src/test/resources/query-tests/queries/function_day.json b/connector/connect/common/src/test/resources/query-tests/queries/function_day.json
+new file mode 100644
+index 0000000000..c1e4b4d13f
+--- /dev/null
++++ b/connector/connect/common/src/test/resources/query-tests/queries/function_day.json
+@@ -0,0 +1,25 @@
++{
++  "common": {
++    "planId": "1"
++  },
++  "project": {
++    "input": {
++      "common": {
++        "planId": "0"
++      },
++      "localRelation": {
++        "schema": "struct\u003cd:date,t:timestamp,s:string,x:bigint,wt:struct\u003cstart:timestamp,end:timestamp\u003e\u003e"
++      }
++    },
++    "expressions": [{
++      "unresolvedFunction": {
++        "functionName": "day",
++        "arguments": [{
++          "unresolvedAttribute": {
++            "unparsedIdentifier": "d"
++          }
++        }]
++      }
++    }]
++  }
++}
+\ No newline at end of file
+diff --git a/connector/connect/common/src/test/resources/query-tests/queries/function_day.proto.bin b/connector/connect/common/src/test/resources/query-tests/queries/function_day.proto.bin
+new file mode 100644
+index 0000000000000000000000000000000000000000..e72a4a354c31d957cbc1389185e525ea4af9b811
+GIT binary patch
+literal 117
+zcmd;L5@3|d=ZfWG5@3i57YZ#dDJo4au}QH?Ni0d#DX}Wa%uOvWNz5(KDYgR2W#*;p
+wR9Gctrf24r=#-a$gh0xHDvFTRrsky}blTZT@k#M;F{dO}3b6_?b1|j>0GyR2X8-^I
+
+literal 0
+HcmV?d00001
+
+diff --git a/python/docs/source/reference/pyspark.sql/functions.rst b/python/docs/source/reference/pyspark.sql/functions.rst
+index 66b2ad149d..4ea15bd44b 100644
+--- a/python/docs/source/reference/pyspark.sql/functions.rst
++++ b/python/docs/source/reference/pyspark.sql/functions.rst
+@@ -121,10 +121,14 @@ Datetime Functions
+     current_timestamp
+     current_timezone
+     date_add
++    date_diff
+     date_format
++    date_from_unix_date
+     date_sub
+     date_trunc
++    dateadd
+     datediff
++    day
+     dayofmonth
+     dayofweek
+     dayofyear
+diff --git a/python/pyspark/sql/connect/functions.py b/python/pyspark/sql/connect/functions.py
+index 84a44baccd..6ca26191fc 100644
+--- a/python/pyspark/sql/connect/functions.py
++++ b/python/pyspark/sql/connect/functions.py
+@@ -2573,6 +2573,13 @@ def dayofmonth(col: "ColumnOrName") -> Column:
+ dayofmonth.__doc__ = pysparkfuncs.dayofmonth.__doc__
+ 
+ 
++def day(col: "ColumnOrName") -> Column:
++    return _invoke_function_over_columns("day", col)
++
++
++day.__doc__ = pysparkfuncs.day.__doc__
++
++
+ def dayofyear(col: "ColumnOrName") -> Column:
+     return _invoke_function_over_columns("dayofyear", col)
+ 
+@@ -2623,6 +2630,14 @@ def date_add(start: "ColumnOrName", days: Union["ColumnOrName", int]) -> Column:
+ date_add.__doc__ = pysparkfuncs.date_add.__doc__
+ 
+ 
++def dateadd(start: "ColumnOrName", days: Union["ColumnOrName", int]) -> Column:
++    days = lit(days) if isinstance(days, int) else days
++    return _invoke_function_over_columns("dateadd", start, days)
++
++
++dateadd.__doc__ = pysparkfuncs.dateadd.__doc__
++
++
+ def date_sub(start: "ColumnOrName", days: Union["ColumnOrName", int]) -> Column:
+     days = lit(days) if isinstance(days, int) else days
+     return _invoke_function_over_columns("date_sub", start, days)
+@@ -2638,6 +2653,20 @@ def datediff(end: "ColumnOrName", start: "ColumnOrName") -> Column:
+ datediff.__doc__ = pysparkfuncs.datediff.__doc__
+ 
+ 
++def date_diff(end: "ColumnOrName", start: "ColumnOrName") -> Column:
++    return _invoke_function_over_columns("date_diff", end, start)
++
++
++date_diff.__doc__ = pysparkfuncs.date_diff.__doc__
++
++
++def date_from_unix_date(days: "ColumnOrName") -> Column:
++    return _invoke_function_over_columns("date_from_unix_date", days)
++
++
++date_from_unix_date.__doc__ = pysparkfuncs.date_from_unix_date.__doc__
++
++
+ def add_months(start: "ColumnOrName", months: Union["ColumnOrName", int]) -> Column:
+     months = lit(months) if isinstance(months, int) else months
+     return _invoke_function_over_columns("add_months", start, months)
+diff --git a/python/pyspark/sql/functions.py b/python/pyspark/sql/functions.py
+index 0d8f69daab..d970fc0bb1 100644
+--- a/python/pyspark/sql/functions.py
++++ b/python/pyspark/sql/functions.py
+@@ -5798,6 +5798,32 @@ def dayofmonth(col: "ColumnOrName") -> Column:
+     return _invoke_function_over_columns("dayofmonth", col)
+ 
+ 
++@try_remote_functions
++def day(col: "ColumnOrName") -> Column:
++    """
++    Extract the day of the month of a given date/timestamp as integer.
++
++    .. versionadded:: 3.5.0
++
++    Parameters
++    ----------
++    col : :class:`~pyspark.sql.Column` or str
++        target date/timestamp column to work on.
++
++    Returns
++    -------
++    :class:`~pyspark.sql.Column`
++        day of the month for given date/timestamp as integer.
++
++    Examples
++    --------
++    >>> df = spark.createDataFrame([('2015-04-08',)], ['dt'])
++    >>> df.select(day('dt').alias('day')).collect()
++    [Row(day=8)]
++    """
++    return _invoke_function_over_columns("day", col)
++
++
+ @try_remote_functions
+ def dayofyear(col: "ColumnOrName") -> Column:
+     """
+@@ -6019,6 +6045,41 @@ def date_add(start: "ColumnOrName", days: Union["ColumnOrName", int]) -> Column:
+     return _invoke_function_over_columns("date_add", start, days)
+ 
+ 
++@try_remote_functions
++def dateadd(start: "ColumnOrName", days: Union["ColumnOrName", int]) -> Column:
++    """
++    Returns the date that is `days` days after `start`. If `days` is a negative value
++    then these amount of days will be deducted from `start`.
++
++    .. versionadded:: 3.5.0
++
++    Parameters
++    ----------
++    start : :class:`~pyspark.sql.Column` or str
++        date column to work on.
++    days : :class:`~pyspark.sql.Column` or str or int
++        how many days after the given date to calculate.
++        Accepts negative value as well to calculate backwards in time.
++
++    Returns
++    -------
++    :class:`~pyspark.sql.Column`
++        a date after/before given number of days.
++
++    Examples
++    --------
++    >>> df = spark.createDataFrame([('2015-04-08', 2,)], ['dt', 'add'])
++    >>> df.select(dateadd(df.dt, 1).alias('next_date')).collect()
++    [Row(next_date=datetime.date(2015, 4, 9))]
++    >>> df.select(dateadd(df.dt, df.add.cast('integer')).alias('next_date')).collect()
++    [Row(next_date=datetime.date(2015, 4, 10))]
++    >>> df.select(dateadd('dt', -1).alias('prev_date')).collect()
++    [Row(prev_date=datetime.date(2015, 4, 7))]
++    """
++    days = lit(days) if isinstance(days, int) else days
++    return _invoke_function_over_columns("dateadd", start, days)
++
++
+ @try_remote_functions
+ def date_sub(start: "ColumnOrName", days: Union["ColumnOrName", int]) -> Column:
+     """
+@@ -6088,6 +6149,64 @@ def datediff(end: "ColumnOrName", start: "ColumnOrName") -> Column:
+     return _invoke_function_over_columns("datediff", end, start)
+ 
+ 
++@try_remote_functions
++def date_diff(end: "ColumnOrName", start: "ColumnOrName") -> Column:
++    """
++    Returns the number of days from `start` to `end`.
++
++    .. versionadded:: 3.5.0
++
++    Parameters
++    ----------
++    end : :class:`~pyspark.sql.Column` or str
++        to date column to work on.
++    start : :class:`~pyspark.sql.Column` or str
++        from date column to work on.
++
++    Returns
++    -------
++    :class:`~pyspark.sql.Column`
++        difference in days between two dates.
++
++    Examples
++    --------
++    >>> df = spark.createDataFrame([('2015-04-08','2015-05-10')], ['d1', 'd2'])
++    >>> df.select(date_diff(df.d2, df.d1).alias('diff')).collect()
++    [Row(diff=32)]
++    """
++    return _invoke_function_over_columns("date_diff", end, start)
++
++
++@try_remote_functions
++def date_from_unix_date(days: "ColumnOrName") -> Column:
++    """
++    Create date from the number of `days` since 1970-01-01.
++
++    .. versionadded:: 3.5.0
++
++    Parameters
++    ----------
++    days : :class:`~pyspark.sql.Column` or str
++        the target column to work on.
++
++    Returns
++    -------
++    :class:`~pyspark.sql.Column`
++        the date from the number of days since 1970-01-01.
++
++    Examples
++    --------
++    >>> df = spark.range(1)
++    >>> df.select(date_from_unix_date(lit(1))).show()
++    +----------------------+
++    |date_from_unix_date(1)|
++    +----------------------+
++    |            1970-01-02|
++    +----------------------+
++    """
++    return _invoke_function_over_columns("date_from_unix_date", days)
++
++
+ @try_remote_functions
+ def add_months(start: "ColumnOrName", months: Union["ColumnOrName", int]) -> Column:
+     """
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/functions.scala b/sql/core/src/main/scala/org/apache/spark/sql/functions.scala
+index 81a57368a8..984a6dce87 100644
+--- a/sql/core/src/main/scala/org/apache/spark/sql/functions.scala
++++ b/sql/core/src/main/scala/org/apache/spark/sql/functions.scala
+@@ -4197,6 +4197,18 @@ object functions {
+    */
+   def date_add(start: Column, days: Column): Column = withExpr { DateAdd(start.expr, days.expr) }
+ 
++  /**
++   * Returns the date that is `days` days after `start`
++   *
++   * @param start A date, timestamp or string. If a string, the data must be in a format that
++   *              can be cast to a date, such as `yyyy-MM-dd` or `yyyy-MM-dd HH:mm:ss.SSSS`
++   * @param days  A column of the number of days to add to `start`, can be negative to subtract days
++   * @return A date, or null if `start` was a string that could not be cast to a date
++   * @group datetime_funcs
++   * @since 3.5.0
++   */
++  def dateadd(start: Column, days: Column): Column = date_add(start, days)
++
+   /**
+    * Returns the date that is `days` days before `start`
+    *
+@@ -4242,6 +4254,34 @@ object functions {
+    */
+   def datediff(end: Column, start: Column): Column = withExpr { DateDiff(end.expr, start.expr) }
+ 
++  /**
++   * Returns the number of days from `start` to `end`.
++   *
++   * Only considers the date part of the input. For example:
++   * {{{
++   * dateddiff("2018-01-10 00:00:00", "2018-01-09 23:59:59")
++   * // returns 1
++   * }}}
++   *
++   * @param end A date, timestamp or string. If a string, the data must be in a format that
++   *            can be cast to a date, such as `yyyy-MM-dd` or `yyyy-MM-dd HH:mm:ss.SSSS`
++   * @param start A date, timestamp or string. If a string, the data must be in a format that
++   *              can be cast to a date, such as `yyyy-MM-dd` or `yyyy-MM-dd HH:mm:ss.SSSS`
++   * @return An integer, or null if either `end` or `start` were strings that could not be cast to
++   *         a date. Negative if `end` is before `start`
++   * @group datetime_funcs
++   * @since 3.5.0
++   */
++  def date_diff(end: Column, start: Column): Column = datediff(end, start)
++
++  /**
++   * Create date from the number of `days` since 1970-01-01.
++   *
++   * @group datetime_funcs
++   * @since 3.5.0
++   */
++  def date_from_unix_date(days: Column): Column = withExpr { DateFromUnixDate(days.expr) }
++
+   /**
+    * Extracts the year as an integer from a given date/timestamp/string.
+    * @return An integer, or null if the input was a string that could not be cast to a date
+@@ -4283,6 +4323,14 @@ object functions {
+    */
+   def dayofmonth(e: Column): Column = withExpr { DayOfMonth(e.expr) }
+ 
++  /**
++   * Extracts the day of the month as an integer from a given date/timestamp/string.
++   * @return An integer, or null if the input was a string that could not be cast to a date
++   * @group datetime_funcs
++   * @since 3.5.0
++   */
++  def day(e: Column): Column = dayofmonth(e)
++
+   /**
+    * Extracts the day of the year as an integer from a given date/timestamp/string.
+    * @return An integer, or null if the input was a string that could not be cast to a date
+diff --git a/sql/core/src/test/scala/org/apache/spark/sql/DataFrameFunctionsSuite.scala b/sql/core/src/test/scala/org/apache/spark/sql/DataFrameFunctionsSuite.scala
+index 9b41720bf9..6a143c4230 100644
+--- a/sql/core/src/test/scala/org/apache/spark/sql/DataFrameFunctionsSuite.scala
++++ b/sql/core/src/test/scala/org/apache/spark/sql/DataFrameFunctionsSuite.scala
+@@ -78,7 +78,7 @@ class DataFrameFunctionsSuite extends QueryTest with SharedSparkSession {
+     val excludedSqlFunctions = Set(
+       "random",
+       "array_agg", "char_length", "character_length",
+-      "lcase", "ucase", "day", "cardinality", "sha",
++      "lcase", "ucase", "cardinality", "sha",
+       // aliases for existing functions
+       "reflect", "java_method" // Only needed in SQL
+     )
+diff --git a/sql/core/src/test/scala/org/apache/spark/sql/DateFunctionsSuite.scala b/sql/core/src/test/scala/org/apache/spark/sql/DateFunctionsSuite.scala
+index 94e1ee2366..8a50e93584 100644
+--- a/sql/core/src/test/scala/org/apache/spark/sql/DateFunctionsSuite.scala
++++ b/sql/core/src/test/scala/org/apache/spark/sql/DateFunctionsSuite.scala
+@@ -177,13 +177,17 @@ class DateFunctionsSuite extends QueryTest with SharedSparkSession {
+       Row(4, 4, 4))
+   }
+ 
+-  test("dayofmonth") {
++  test("dayofmonth & day") {
+     val df = Seq((d, sdfDate.format(d), ts)).toDF("a", "b", "c")
+ 
+     checkAnswer(
+       df.select(dayofmonth($"a"), dayofmonth($"b"), dayofmonth($"c")),
+       Row(8, 8, 8))
+ 
++    checkAnswer(
++      df.select(day($"a"), day($"b"), day($"c")),
++      Row(8, 8, 8))
++
+     checkAnswer(
+       df.selectExpr("day(a)", "day(b)", "dayofmonth(c)"),
+       Row(8, 8, 8))
+@@ -249,7 +253,7 @@ class DateFunctionsSuite extends QueryTest with SharedSparkSession {
+       Row(15, 15, 15))
+   }
+ 
+-  test("function date_add") {
++  test("function date_add & dateadd") {
+     val st1 = "2015-06-01 12:34:56"
+     val st2 = "2015-06-02 12:34:56"
+     val t1 = Timestamp.valueOf(st1)
+@@ -271,10 +275,25 @@ class DateFunctionsSuite extends QueryTest with SharedSparkSession {
+     checkAnswer(
+       df.select(date_add(col("ss"), 7)),
+       Seq(Row(Date.valueOf("2015-06-08")), Row(Date.valueOf("2015-06-09"))))
++    checkAnswer(
++      df.select(dateadd(col("d"), lit(1))),
++      Seq(Row(Date.valueOf("2015-06-02")), Row(Date.valueOf("2015-06-03"))))
++    checkAnswer(
++      df.select(dateadd(col("t"), lit(3))),
++      Seq(Row(Date.valueOf("2015-06-04")), Row(Date.valueOf("2015-06-05"))))
++    checkAnswer(
++      df.select(dateadd(col("s"), lit(5))),
++      Seq(Row(Date.valueOf("2015-06-06")), Row(Date.valueOf("2015-06-07"))))
++    checkAnswer(
++      df.select(dateadd(col("ss"), lit(7))),
++      Seq(Row(Date.valueOf("2015-06-08")), Row(Date.valueOf("2015-06-09"))))
+ 
+     checkAnswer(
+       df.withColumn("x", lit(1)).select(date_add(col("d"), col("x"))),
+       Seq(Row(Date.valueOf("2015-06-02")), Row(Date.valueOf("2015-06-03"))))
++    checkAnswer(
++      df.withColumn("x", lit(1)).select(dateadd(col("d"), col("x"))),
++      Seq(Row(Date.valueOf("2015-06-02")), Row(Date.valueOf("2015-06-03"))))
+ 
+     checkAnswer(df.selectExpr("DATE_ADD(null, 1)"), Seq(Row(null), Row(null)))
+     checkAnswer(
+@@ -893,7 +912,7 @@ class DateFunctionsSuite extends QueryTest with SharedSparkSession {
+     }
+   }
+ 
+-  test("datediff") {
++  test("datediff & date_diff") {
+     val df = Seq(
+       (Date.valueOf("2015-07-24"), Timestamp.valueOf("2015-07-24 01:00:00"),
+         "2015-07-23", "2015-07-23 03:00:00"),
+@@ -903,10 +922,22 @@ class DateFunctionsSuite extends QueryTest with SharedSparkSession {
+     checkAnswer(df.select(datediff(col("a"), col("b"))), Seq(Row(0), Row(0)))
+     checkAnswer(df.select(datediff(col("a"), col("c"))), Seq(Row(1), Row(1)))
+     checkAnswer(df.select(datediff(col("d"), col("b"))), Seq(Row(-1), Row(-1)))
++    checkAnswer(df.select(date_diff(col("a"), col("b"))), Seq(Row(0), Row(0)))
++    checkAnswer(df.select(date_diff(col("a"), col("c"))), Seq(Row(1), Row(1)))
++    checkAnswer(df.select(date_diff(col("d"), col("b"))), Seq(Row(-1), Row(-1)))
+     checkAnswer(df.selectExpr("datediff(a, d)"), Seq(Row(1), Row(1)))
+     checkAnswer(df.selectExpr("date_diff(a, d)"), Seq(Row(1), Row(1)))
+   }
+ 
++  test("date_from_unix_date") {
++    val df = spark.range(1).select(
++      date_from_unix_date(lit(1)).cast("string"),
++      date_from_unix_date(lit(20)).cast("string"),
++      date_from_unix_date(lit(300)).cast("string"))
++
++    checkAnswer(df, Seq(Row("1970-01-02", "1970-01-21", "1970-10-28")))
++  }
++
+   test("to_timestamp with microseconds precision") {
+     withSQLConf(SQLConf.DATETIME_JAVA8API_ENABLED.key -> "true") {
+       val timestamp = "1970-01-01T00:00:00.123456Z"

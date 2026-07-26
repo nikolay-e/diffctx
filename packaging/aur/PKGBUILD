@@ -1,0 +1,20 @@
+# Maintainer: Nikolay Eremeev <nikolay.eremeev@outlook.com>
+pkgname=diffctx-bin
+pkgver=1.12.1
+pkgrel=1
+pkgdesc="Selects the minimum code an LLM needs to review a git diff"
+arch=('x86_64' 'aarch64')
+url="https://github.com/nikolay-e/diffctx"
+license=('Apache-2.0')
+depends=('git' 'gcc-libs')
+provides=('diffctx')
+conflicts=('diffctx')
+source_x86_64=("https://github.com/nikolay-e/diffctx/releases/download/v1.12.1/diffctx-1.12.1-x86_64-unknown-linux-gnu.tar.gz")
+sha256sums_x86_64=('f37da41a6381497c15df881f35b8caf324d8ac5fa331118d2736537a246a71b1')
+source_aarch64=("https://github.com/nikolay-e/diffctx/releases/download/v1.12.1/diffctx-1.12.1-aarch64-unknown-linux-gnu.tar.gz")
+sha256sums_aarch64=('55610bfe7856f96a73e87451eddc1aa1a546b84ddc2778cf67738e2333f16f02')
+
+package() {
+    install -Dm755 diffctx "$pkgdir/usr/bin/diffctx"
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

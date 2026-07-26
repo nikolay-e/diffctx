@@ -1,0 +1,71 @@
+repo: aspnetcore
+base_commit: 86ea7a547bc96d5ed3068cfb7bac3cfdde85fc89
+commit: a751caa6d54351cfe3adb2a052753619f4e85162
+patch_stored: true
+gold:
+  - path: src/Components/Web.JS/src/Boot.Web.ts
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: adds initFormValidationIfNeeded()/Blazor.formValidation wiring that instantiates createValidationService() on demand when a form has [data-val="true"] fields, and calls scanRules() on the 'enhancedload' event.
+  - path: src/Components/Web.JS/src/Validation/ValidationService.ts
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: defines createValidationService(), the orchestration entry point imported by Boot.Web.ts that composes ErrorDisplay, EventManager, DomScanner and ValidationEngine.
+  - path: src/Components/Web.JS/src/Validation/DomScanner.ts
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: scans the DOM for validatableElementSelector (elements carrying data-val="true") and registers them with the ValidationEngine - the client-side counterpart of the server's data-val-* attribute emission.
+  - path: src/Components/Web.JS/src/Validation/ValidationEngine.ts
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: implements the validation state machine (ElementState, validateElement/validateForm) that CoreValidators and DomScanner operate on.
+  - path: src/Components/Web.JS/src/Validation/CoreValidators.ts
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: registerCoreValidators() maps rule-name strings (required, length, range, regex, email, url, phone, creditcard, equalto, fileextensions) to validator functions - these exact names are the data-val-<name> suffixes generated server-side by DefaultClientValidationService.AddAttributes.
+  - path: src/Components/Web/src/Forms/InputBase.cs
+    tier: essential
+    role: caller
+    in_diff: false
+    rationale: MergeClientValidationAttributes() (line ~396-404) fetches IClientValidationService.GetClientValidationAttributes(FieldIdentifier) and merges the data-val-* attributes into AdditionalAttributes so they end up on the rendered <input>, which DomScanner.ts's validatableElementSelector then finds.
+  - path: src/Components/Web/src/Forms/ValidationMessage.cs
+    tier: essential
+    role: caller
+    in_diff: false
+    rationale: RenderForClientValidation() emits data-valmsg-for and data-valmsg-replace attributes on the message <div> when an IClientValidationService is registered; ErrorDisplay.ts's findMessageElements (via DomUtils.ts) queries `[data-valmsg-for="<name>"]` to locate this exact element.
+  - path: src/Components/Forms/src/ClientValidation/DefaultClientValidationService.cs
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: ComputeAttributes()/AddAttributes() reflect over DataAnnotations ValidationAttribute subclasses (Required, StringLength, Range, RegularExpression, Compare, EmailAddress, Url, Phone, CreditCard, FileExtensions) and emit the exact data-val-<name>[-param] attribute vocabulary that CoreValidators.ts's registry keys and the individual Validators/*.ts files consume.
+  - path: src/Components/Forms/src/ClientValidation/IClientValidationAdapter.cs
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: extensibility hook checked in DefaultClientValidationService.AddAttributes' default branch, letting custom ValidationAttribute subclasses emit their own data-val-* rules consumed by the same JS registry mechanism.
+forbidden:
+  - path: src/Components/Web.JS/src/Rendering/Events/EventDelegator.ts
+    reason: unrelated DOM event-delegation system for component rendering, not the new Validation/EventManager.ts used by this feature.
+  - path: src/Components/Web.JS/src/Services/NavigationEnhancement.ts
+    reason: bm25 keyword overlap on "navigation/enhance" but does not dispatch or handle the 'enhancedload' event the validation wiring listens for - that dispatch is inside Boot.Web.ts itself.
+  - path: src/Components/Components/src/DefaultComponentPropertyActivator.cs
+    reason: unrelated component-property activation internals in a different subsystem; random distractor with no data-val/validation coupling.
+  - path: src/HealthChecks/HealthChecks/test/HealthReportTest.cs
+    reason: unrelated HealthChecks subsystem test, no relation to Blazor forms or client validation.
+nontrivial_gold_count: 4
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [bm25, random, agent-exploration]
+notes: >
+  Adds a new client-side validation JS/TS library (src/Components/Web.JS/src/Validation/*)
+  wired into Boot.Web.ts for SSR Blazor forms; it is activated on demand when a form has
+  data-val="true" fields. The nontrivial coupling is server-side: pre-existing C# code in
+  src/Components/Forms/src/ClientValidation and InputBase.cs/ValidationMessage.cs already
+  emits the data-val-*/data-valmsg-for HTML attribute vocabulary that this new JS scans and
+  binds to by string name - none of that C# is touched by this commit but it defines the
+  entire contract the new JS depends on.

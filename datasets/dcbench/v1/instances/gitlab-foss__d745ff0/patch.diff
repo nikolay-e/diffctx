@@ -1,0 +1,313 @@
+From d745ff0431130a760a7a59899c26410dc887f77a Mon Sep 17 00:00:00 2001
+From: Krasimir Angelov <kangelov@gitlab.com>
+Date: Tue, 2 Jul 2019 18:56:48 +0000
+Subject: [PATCH] Add username to deploy tokens
+
+This new attribute is optional and used when set instead of the default
+format `gitlab+deploy-token-#{id}`.
+
+Empty usernames will be saved as null in the database.
+
+Related to https://gitlab.com/gitlab-org/gitlab-ce/issues/50228.
+---
+ .../settings/repository_controller.rb         |  2 +-
+ app/models/deploy_token.rb                    | 14 +++++++-
+ app/services/deploy_tokens/create_service.rb  |  4 ++-
+ .../projects/deploy_tokens/_form.html.haml    |  5 +++
+ .../50228-deploy-tokens-custom-username.yml   |  5 +++
+ ...613044655_add_username_to_deploy_tokens.rb |  9 +++++
+ db/schema.rb                                  |  1 +
+ locale/gitlab.pot                             |  3 ++
+ .../settings/repository_controller_spec.rb    | 20 +++++++++++
+ .../settings/repository_settings_spec.rb      |  6 ++++
+ spec/lib/gitlab/auth_spec.rb                  |  9 +++++
+ spec/models/deploy_token_spec.rb              | 35 +++++++++++++++++--
+ .../deploy_tokens/create_service_spec.rb      | 16 +++++++++
+ 13 files changed, 124 insertions(+), 5 deletions(-)
+ create mode 100644 changelogs/unreleased/50228-deploy-tokens-custom-username.yml
+ create mode 100644 db/migrate/20190613044655_add_username_to_deploy_tokens.rb
+
+diff --git a/app/controllers/projects/settings/repository_controller.rb b/app/controllers/projects/settings/repository_controller.rb
+index ac3004d069..bc2ce15286 100644
+--- a/app/controllers/projects/settings/repository_controller.rb
++++ b/app/controllers/projects/settings/repository_controller.rb
+@@ -99,7 +99,7 @@ def define_deploy_token
+       end
+ 
+       def deploy_token_params
+-        params.require(:deploy_token).permit(:name, :expires_at, :read_repository, :read_registry)
++        params.require(:deploy_token).permit(:name, :expires_at, :read_repository, :read_registry, :username)
+       end
+     end
+   end
+diff --git a/app/models/deploy_token.rb b/app/models/deploy_token.rb
+index b0e570f52b..33f0be9163 100644
+--- a/app/models/deploy_token.rb
++++ b/app/models/deploy_token.rb
+@@ -16,6 +16,14 @@ class DeployToken < ApplicationRecord
+   has_many :projects, through: :project_deploy_tokens
+ 
+   validate :ensure_at_least_one_scope
++  validates :username,
++    length: { maximum: 255 },
++    allow_nil: true,
++    format: {
++      with: /\A[a-zA-Z0-9\.\+_-]+\z/,
++      message: "can contain only letters, digits, '_', '-', '+', and '.'"
++    }
++
+   before_save :ensure_token
+ 
+   accepts_nested_attributes_for :project_deploy_tokens
+@@ -39,7 +47,7 @@ def scopes
+   end
+ 
+   def username
+-    "gitlab+deploy-token-#{id}"
++    super || default_username
+   end
+ 
+   def has_access_to?(requested_project)
+@@ -75,4 +83,8 @@ def expired?
+   def ensure_at_least_one_scope
+     errors.add(:base, "Scopes can't be blank") unless read_repository || read_registry
+   end
++
++  def default_username
++    "gitlab+deploy-token-#{id}" if persisted?
++  end
+ end
+diff --git a/app/services/deploy_tokens/create_service.rb b/app/services/deploy_tokens/create_service.rb
+index dc0122002e..327a1dbf40 100644
+--- a/app/services/deploy_tokens/create_service.rb
++++ b/app/services/deploy_tokens/create_service.rb
+@@ -3,7 +3,9 @@
+ module DeployTokens
+   class CreateService < BaseService
+     def execute
+-      @project.deploy_tokens.create(params)
++      @project.deploy_tokens.create(params) do |deploy_token|
++        deploy_token.username = params[:username].presence
++      end
+     end
+   end
+ end
+diff --git a/app/views/projects/deploy_tokens/_form.html.haml b/app/views/projects/deploy_tokens/_form.html.haml
+index 5412fcbc9d..f846dbd376 100644
+--- a/app/views/projects/deploy_tokens/_form.html.haml
++++ b/app/views/projects/deploy_tokens/_form.html.haml
+@@ -12,6 +12,11 @@
+     = f.label :expires_at, class: 'label-bold'
+     = f.text_field :expires_at, class: 'datepicker form-control qa-deploy-token-expires-at', value: f.object.expires_at
+ 
++  .form-group
++    = f.label :username, class: 'label-bold'
++    = f.text_field :username, class: 'form-control qa-deploy-token-username'
++    .text-secondary= s_('DeployTokens|Default format is "gitlab+deploy-token-{n}". Enter custom username if you want to change it.')
++
+   .form-group
+     = f.label :scopes, class: 'label-bold'
+     %fieldset.form-group.form-check
+diff --git a/changelogs/unreleased/50228-deploy-tokens-custom-username.yml b/changelogs/unreleased/50228-deploy-tokens-custom-username.yml
+new file mode 100644
+index 0000000000..fdafa7b111
+--- /dev/null
++++ b/changelogs/unreleased/50228-deploy-tokens-custom-username.yml
+@@ -0,0 +1,5 @@
++---
++title: Allow custom username for deploy tokens
++merge_request: 29639
++author:
++type: added
+diff --git a/db/migrate/20190613044655_add_username_to_deploy_tokens.rb b/db/migrate/20190613044655_add_username_to_deploy_tokens.rb
+new file mode 100644
+index 0000000000..793553afe3
+--- /dev/null
++++ b/db/migrate/20190613044655_add_username_to_deploy_tokens.rb
+@@ -0,0 +1,9 @@
++# frozen_string_literal: true
++
++class AddUsernameToDeployTokens < ActiveRecord::Migration[5.1]
++  DOWNTIME = false
++
++  def change
++    add_column :deploy_tokens, :username, :string
++  end
++end
+diff --git a/db/schema.rb b/db/schema.rb
+index 7948f919c5..143f6c7127 100644
+--- a/db/schema.rb
++++ b/db/schema.rb
+@@ -1047,6 +1047,7 @@
+     t.datetime_with_timezone "created_at", null: false
+     t.string "name", null: false
+     t.string "token", null: false
++    t.string "username"
+     t.index ["token", "expires_at", "id"], name: "index_deploy_tokens_on_token_and_expires_at_and_id", where: "(revoked IS FALSE)", using: :btree
+     t.index ["token"], name: "index_deploy_tokens_on_token", unique: true, using: :btree
+   end
+diff --git a/locale/gitlab.pot b/locale/gitlab.pot
+index 60d4e199a9..72324674bb 100644
+--- a/locale/gitlab.pot
++++ b/locale/gitlab.pot
+@@ -3557,6 +3557,9 @@ msgstr ""
+ msgid "DeployTokens|Created"
+ msgstr ""
+ 
++msgid "DeployTokens|Default format is \"gitlab+deploy-token-{n}\". Enter custom username if you want to change it."
++msgstr ""
++
+ msgid "DeployTokens|Deploy Tokens"
+ msgstr ""
+ 
+diff --git a/spec/controllers/projects/settings/repository_controller_spec.rb b/spec/controllers/projects/settings/repository_controller_spec.rb
+index b34053fc99..7f67f67e77 100644
+--- a/spec/controllers/projects/settings/repository_controller_spec.rb
++++ b/spec/controllers/projects/settings/repository_controller_spec.rb
+@@ -32,4 +32,24 @@
+       expect(RepositoryCleanupWorker).to have_received(:perform_async).once
+     end
+   end
++
++  describe 'POST create_deploy_token' do
++    let(:deploy_token_params) do
++      {
++        name: 'deployer_token',
++        expires_at: 1.month.from_now.to_date.to_s,
++        username: 'deployer',
++        read_repository: '1'
++      }
++    end
++
++    subject(:create_deploy_token) { post :create_deploy_token, params: { namespace_id: project.namespace, project_id: project, deploy_token: deploy_token_params } }
++
++    it 'creates deploy token' do
++      expect { create_deploy_token }.to change { DeployToken.active.count }.by(1)
++
++      expect(response).to have_gitlab_http_status(200)
++      expect(response).to render_template(:show)
++    end
++  end
+ end
+diff --git a/spec/features/projects/settings/repository_settings_spec.rb b/spec/features/projects/settings/repository_settings_spec.rb
+index 8c7bc192c5..1edfee705c 100644
+--- a/spec/features/projects/settings/repository_settings_spec.rb
++++ b/spec/features/projects/settings/repository_settings_spec.rb
+@@ -112,11 +112,17 @@
+       it 'add a new deploy token' do
+         fill_in 'deploy_token_name', with: 'new_deploy_key'
+         fill_in 'deploy_token_expires_at', with: (Date.today + 1.month).to_s
++        fill_in 'deploy_token_username', with: 'deployer'
+         check 'deploy_token_read_repository'
+         check 'deploy_token_read_registry'
+         click_button 'Create deploy token'
+ 
+         expect(page).to have_content('Your new project deploy token has been created')
++
++        within('.created-deploy-token-container') do
++          expect(page).to have_selector("input[name='deploy-token-user'][value='deployer']")
++          expect(page).to have_selector("input[name='deploy-token'][readonly='readonly']")
++        end
+       end
+     end
+ 
+diff --git a/spec/lib/gitlab/auth_spec.rb b/spec/lib/gitlab/auth_spec.rb
+index 3b5ca7c950..d9c73cff01 100644
+--- a/spec/lib/gitlab/auth_spec.rb
++++ b/spec/lib/gitlab/auth_spec.rb
+@@ -309,6 +309,15 @@ def operation
+             .to eq(auth_success)
+         end
+ 
++        it 'succeeds when custom login and token are valid' do
++          deploy_token = create(:deploy_token, username: 'deployer', read_registry: false, projects: [project])
++          auth_success = Gitlab::Auth::Result.new(deploy_token, project, :deploy_token, [:download_code])
++
++          expect(gl_auth).to receive(:rate_limit!).with('ip', success: true, login: 'deployer')
++          expect(gl_auth.find_for_git_client('deployer', deploy_token.token, project: project, ip: 'ip'))
++            .to eq(auth_success)
++        end
++
+         it 'fails when login is not valid' do
+           expect(gl_auth).to receive(:rate_limit!).with('ip', success: false, login: 'random_login')
+           expect(gl_auth.find_for_git_client('random_login', deploy_token.token, project: project, ip: 'ip'))
+diff --git a/spec/models/deploy_token_spec.rb b/spec/models/deploy_token_spec.rb
+index 2fe82eaa77..8d951ab6f0 100644
+--- a/spec/models/deploy_token_spec.rb
++++ b/spec/models/deploy_token_spec.rb
+@@ -8,6 +8,15 @@
+   it { is_expected.to have_many :project_deploy_tokens }
+   it { is_expected.to have_many(:projects).through(:project_deploy_tokens) }
+ 
++  describe 'validations' do
++    let(:username_format_message) { "can contain only letters, digits, '_', '-', '+', and '.'" }
++
++    it { is_expected.to validate_length_of(:username).is_at_most(255) }
++    it { is_expected.to allow_value('GitLab+deploy_token-3.14').for(:username) }
++    it { is_expected.not_to allow_value('<script>').for(:username).with_message(username_format_message) }
++    it { is_expected.not_to allow_value('').for(:username).with_message(username_format_message) }
++  end
++
+   describe '#ensure_token' do
+     it 'ensures a token' do
+       deploy_token.token = nil
+@@ -87,8 +96,30 @@
+   end
+ 
+   describe '#username' do
+-    it 'returns a harcoded username' do
+-      expect(deploy_token.username).to eq("gitlab+deploy-token-#{deploy_token.id}")
++    context 'persisted records' do
++      it 'returns a default username if none is set' do
++        expect(deploy_token.username).to eq("gitlab+deploy-token-#{deploy_token.id}")
++      end
++
++      it 'returns the username provided if one is set' do
++        deploy_token = create(:deploy_token, username: 'deployer')
++
++        expect(deploy_token.username).to eq('deployer')
++      end
++    end
++
++    context 'new records' do
++      it 'returns nil if no username is set' do
++        deploy_token = build(:deploy_token)
++
++        expect(deploy_token.username).to be_nil
++      end
++
++      it 'returns the username provided if one is set' do
++        deploy_token = build(:deploy_token, username: 'deployer')
++
++        expect(deploy_token.username).to eq('deployer')
++      end
+     end
+   end
+ 
+diff --git a/spec/services/deploy_tokens/create_service_spec.rb b/spec/services/deploy_tokens/create_service_spec.rb
+index 886ffd4593..fbb66fe4cb 100644
+--- a/spec/services/deploy_tokens/create_service_spec.rb
++++ b/spec/services/deploy_tokens/create_service_spec.rb
+@@ -32,6 +32,22 @@
+       end
+     end
+ 
++    context 'when username is empty string' do
++      let(:deploy_token_params) { attributes_for(:deploy_token, username: '') }
++
++      it 'converts it to nil' do
++        expect(subject.read_attribute(:username)).to be_nil
++      end
++    end
++
++    context 'when username is provided' do
++      let(:deploy_token_params) { attributes_for(:deploy_token, username: 'deployer') }
++
++      it 'keeps the provided username' do
++        expect(subject.read_attribute(:username)).to eq('deployer')
++      end
++    end
++
+     context 'when the deploy token is invalid' do
+       let(:deploy_token_params) { attributes_for(:deploy_token, read_repository: false, read_registry: false) }
+ 

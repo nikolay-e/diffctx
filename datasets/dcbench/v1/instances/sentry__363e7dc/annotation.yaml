@@ -1,0 +1,70 @@
+repo: sentry
+base_commit: 89ffdc99b8cc5902e33a02e89a24ac3209f5a1c1
+commit: 363e7dcf356bb32f32fad20346fd33e0ecdcd6b0
+patch_stored: true
+gold:
+- path: src/sentry/migrations/1017_add_apidevicecode.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/models/apidevicecode.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/templates/sentry/oauth-device-authorize.html
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/templates/sentry/oauth-device-complete.html
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/templates/sentry/oauth-device.html
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/web/frontend/oauth_authorize.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/web/frontend/oauth_device.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/web/frontend/oauth_device_authorization.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/web/frontend/oauth_token.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/web/urls.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: tests/sentry/web/frontend/test_oauth_device.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: tests/sentry/web/frontend/test_oauth_device_authorization.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: tests/sentry/web/frontend/test_oauth_token.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: migrations_lockfile.txt (1-line mechanical pointer update)
+- path: static/app/data/controlsiloUrlPatterns.ts (3-line routing registration, trivial)
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'The cleanest counter-example in the sample: only 19 files, 1984 lines, a single well-scoped feature
+  (RFC 8628 device flow) with no dependency-graph noise or mechanical reformatting — and it still hangs
+  with zero output. This rules out ''large/messy diff'' as the sole explanation for #70 in this repo;
+  something about sentry''s tree-sitter parsing or symbol-graph construction appears to choke even on
+  modest, clean commits, which should be prioritized for root-cause debugging over the bigger stress-test
+  commits.'

@@ -1,7 +1,4 @@
 # tests/test_tokens.py
-import sys
-from io import StringIO
-
 from diffctx.tokens import TokenCountResult, count_tokens, print_token_summary
 
 
@@ -68,25 +65,13 @@ class TestCountTokens:
 
 
 class TestPrintTokenSummary:
-    def test_prints_to_stderr(self):
-        old_stderr = sys.stderr
-        sys.stderr = StringIO()
-        try:
-            print_token_summary("test text")
-            output = sys.stderr.getvalue()
-            assert "tokens" in output
-        finally:
-            sys.stderr = old_stderr
+    def test_prints_to_stderr(self, capsys):
+        print_token_summary("test text")
+        assert "tokens" in capsys.readouterr().err
 
-    def test_summary_format_exact(self):
-        old_stderr = sys.stderr
-        sys.stderr = StringIO()
-        try:
-            print_token_summary("hello world", encoding="o200k_base")
-            output = sys.stderr.getvalue()
-            assert "tokens" in output
-        finally:
-            sys.stderr = old_stderr
+    def test_summary_format_exact(self, capsys):
+        print_token_summary("hello world", encoding="o200k_base")
+        assert "tokens" in capsys.readouterr().err
 
 
 class TestTokenCountResult:

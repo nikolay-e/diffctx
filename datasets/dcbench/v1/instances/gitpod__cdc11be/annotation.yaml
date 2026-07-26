@@ -1,0 +1,95 @@
+repo: gitpod
+base_commit: 24eee38b3d1a0a4824cd7f04b33753c2cda942d7
+commit: cdc11bee8b2919f97f15233c57b9278699a5a457
+patch_stored: true
+gold:
+- path: install/gcp-terraform/environment/full/.gitignore
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: install/gcp-terraform/environment/full/README.md
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: install/gcp-terraform/environment/full/main.tf
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: install/gcp-terraform/environment/full/providers.tf
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: install/gcp-terraform/environment/full/values.static.yaml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: install/gcp-terraform/environment/full/values.terraform.yaml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: install/gcp-terraform/environment/full/values.yaml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: install/gcp-terraform/environment/full/variables.tf
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: install/gcp-terraform/modules/certmanager/templates/values.tpl
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: install/gcp-terraform/modules/database/main.tf
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: install/gcp-terraform/modules/dns/main.tf
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: install/gcp-terraform/modules/dns/variables.tf
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: install/gcp-terraform/modules/kubernetes/main.tf
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: install/gcp-terraform/modules/registry/main.tf
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: install/gcp-terraform/modules/registry/variables.tf
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: install/gcp-terraform/modules/storage/main.tf
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: install/gcp-terraform/modules/storage/variables.tf
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: components/blobserve/main.go
+- path: components/content-service/pkg/storage/gcloud.go
+- path: components/dashboard/src/start/OnaBanner.tsx
+- path: components/gitpod-cli/go.sum
+- path: dev/preview/previewctl/pkg/gcloud/config.go
+- path: install/installer/pkg/cluster/checks.go
+- path: test/tests/components/content-service/main_test.go
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'This is the one healthy sample: ctx_files (34) roughly tracks the 34 non-deleted changed files,
+  and the 27 purely-deleted installer/gitpod-module files are correctly reported as deleted_files with
+  no fragment dump (not a defect). However, a direct diff of ctx.md''s file headers against truth.diff''s
+  actual file list turns up 7 files that are NOT part of this commit at all — components/blobserve/main.go,
+  content-service/pkg/storage/gcloud.go, dashboard/src/start/OnaBanner.tsx, gitpod-cli/go.sum, previewctl/pkg/gcloud/config.go,
+  installer/pkg/cluster/checks.go, and a content-service test file — pulled in from unrelated components,
+  i.e. mild over-selection creeping in even on an ''ok'' run. Terraform module-block granularity (whole
+  module{} definitions) is a reasonable fragment size, so md_tokens=19112 vs yaml_tokens=20542 (markdown
+  ~7% leaner) is not egregious for a hierarchy-wide variable-threading refactor, but the unrelated 7 files
+  mean it''s not clean either.'

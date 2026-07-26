@@ -1,0 +1,59 @@
+repo: kubernetes
+base_commit: 1f2f433f76dbc28d1fd6602f96e6dd871893601b
+commit: 4e592f6c145bb322786aa77ff2d25d8fe370b893
+patch_stored: false
+gold:
+  - path: staging/src/k8s.io/api/resource/v1/register.go
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: SchemeGroupVersion.Version literal flips from "v1beta2" to "v1" — this is the crux of the API graduation, since that string drives the /apis/resource.k8s.io/<version>/ REST path.
+  - path: staging/src/k8s.io/api/resource/v1/types.go
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: package clause changes from `package v1beta2` to `package v1`; the canonical DeviceClass/ResourceClaim/ResourceSlice struct definitions now formally live in the v1 package that every generated file in this diff regenerates from.
+  - path: staging/src/k8s.io/client-go/kubernetes/scheme/register.go
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: adds `resourcev1 "k8s.io/api/resource/v1"` and `resourcev1.AddToScheme` to localSchemeBuilder, so the generated clientset actually recognizes and can serve/decode the new v1 group-version alongside the still-present v1beta2/v1beta1/v1alpha3.
+  - path: pkg/apis/resource/v1/register.go
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: internal API's SchemeGroupVersion also flips its Version string to "v1", keeping the internal<->external conversion path aligned with the external group-version bump in the staging register.go.
+  - path: api/api-rules/violation_exceptions.list
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: adds names_match exceptions for k8s.io/api/resource/v1,{DeviceAttribute,NetworkDeviceData} fields — required for the new v1 group to pass the API linter, evidence the rename isn't purely mechanical find/replace.
+  - path: hack/lib/init.sh
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: adds `resource.k8s.io/v1` to the enabled API-group list consumed by local-up-cluster/integration test harnesses, without which the new version wouldn't be reachable in a running test cluster.
+  - path: staging/src/k8s.io/api/resource/v1beta2/types.go
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: 'the pre-graduation v1beta2 struct definitions that base_commit (1f2f433f76d, "DRA API: verbatim copy v1beta2 -> v1") copied byte-for-byte into the v1 directory; this commit only flips package/import names on top of that copy, so it explains why v1/types.go is otherwise identical.'
+forbidden:
+  - path: staging/src/k8s.io/api/resource/v1/generated.pb.go
+    reason: 498-line mechanical protobuf marshal/unmarshal regen, a pure byproduct of the package rename already visible in the 4-line generated.proto diff
+  - path: api/openapi-spec/swagger.json
+    reason: 31067-line mechanical whole-cluster OpenAPI spec regen covering every API group, dwarfing the actual rename it reflects
+  - path: pkg/generated/openapi/zz_generated.openapi.go
+    reason: mechanically regenerated Go-embedded OpenAPI definitions for the new v1 types, redundant with types.go for understanding the change
+  - path: staging/src/k8s.io/client-go/applyconfigurations/resource/v1/resourceclaim.go
+    reason: one of ~40 near-identical applyconfiguration builder files mechanically updated for the new v1 import path; no more informative than any other sibling in that directory
+nontrivial_gold_count: 1
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 136
+  description: 'DRA API version rename s/v1beta2/v1/: mass rename with generated ripple, 121/136 generated/openapi/testdata
+    — flagship graduation-rename stress case'
+notes: This commit graduates the DRA (resource.k8s.io) API from v1beta2 to v1 by flipping package declarations, import paths, and SchemeGroupVersion strings from "v1beta2" to "v1" across ~15 hand-written files, then regenerating the other ~121 files (protobuf, deepcopy, conversion, openapi, applyconfigurations, informers, listers, typed clients, testdata) via ./hack/update-codegen.sh; the base_commit already performed a verbatim byte-copy of the v1beta2 sources into the v1 directory, so this diff is purely the rename layer on top of an unchanged type surface.
+string_indirection: true

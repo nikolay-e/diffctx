@@ -1,0 +1,645 @@
+From e80d19142bdb7b2856ef304f3a5ae05d22ba6532 Mon Sep 17 00:00:00 2001
+From: Will Hopkins <willothyh@gmail.com>
+Date: Fri, 19 Sep 2025 10:31:34 -0700
+Subject: [PATCH] feat(api): add nvim_open_tabpage
+
+Problem: no API function for opening a new tab page and returning its handle, or
+to open without entering.
+
+Solution: add nvim_open_tabpage.
+---
+ runtime/doc/api.txt                   |  18 ++
+ runtime/doc/news.txt                  |   1 +
+ runtime/lua/vim/_meta/api.lua         |  11 +
+ runtime/lua/vim/_meta/api_keysets.lua |   4 +
+ src/nvim/api/keysets_defs.h           |   6 +
+ src/nvim/api/tabpage.c                |  93 ++++++++
+ src/nvim/api/tabpage.h                |   1 +
+ src/nvim/window.c                     |  86 ++++++++
+ test/functional/api/tabpage_spec.lua  | 302 ++++++++++++++++++++++++++
+ 9 files changed, 522 insertions(+)
+
+diff --git a/runtime/doc/api.txt b/runtime/doc/api.txt
+index 381379241..4f023d6ab 100644
+--- a/runtime/doc/api.txt
++++ b/runtime/doc/api.txt
+@@ -3544,6 +3544,24 @@ nvim_set_option_value({name}, {value}, {opts})
+ ==============================================================================
+ Tabpage Functions                                                *api-tabpage*
+ 
++nvim_open_tabpage({buffer}, {config})                    *nvim_open_tabpage()*
++    Opens a new tabpage
++
++    Attributes: ~
++        Since: 0.12.0
++
++    Parameters: ~
++      • {buffer}  (`integer`) Buffer to open in the first window of the new
++                  tabpage. Use 0 for current buffer.
++      • {config}  (`vim.api.keyset.tabpage_config`) Configuration for the new
++                  tabpage. Keys:
++                  • enter: Whether to enter the new tabpage (default: true)
++                  • after: Position to insert tabpage (default: 0). 0 = after
++                    current, 1 = first, N = before Nth.
++
++    Return: ~
++        (`integer`) Tabpage handle of the created tabpage
++
+ nvim_tabpage_del_var({tabpage}, {name})               *nvim_tabpage_del_var()*
+     Removes a tab-scoped (t:) variable
+ 
+diff --git a/runtime/doc/news.txt b/runtime/doc/news.txt
+index e35f26680..a6c685d17 100644
+--- a/runtime/doc/news.txt
++++ b/runtime/doc/news.txt
+@@ -165,6 +165,7 @@ API
+ • |nvim_echo()| can create |Progress| messages
+ • |nvim_get_commands()| returns `preview` and `callback` as Lua functions if
+   they were so specified in `nvim_create_user_command()`.
++• |nvim_open_tabpage()| can open a new |tab-page|.
+ • |nvim_open_win()| floating windows can show a 'statusline'. Plugins can use
+   `style='minimal'` or `:setlocal statusline=` to hide the statusline.
+ • |nvim_win_set_config()| can move windows to other tab pages as floats.
+diff --git a/runtime/lua/vim/_meta/api.lua b/runtime/lua/vim/_meta/api.lua
+index 0510e2bef..6be9305d4 100644
+--- a/runtime/lua/vim/_meta/api.lua
++++ b/runtime/lua/vim/_meta/api.lua
+@@ -1673,6 +1673,17 @@ function vim.api.nvim_load_context(dict) end
+ --- @return any
+ function vim.api.nvim_notify(msg, log_level, opts) end
+ 
++--- Opens a new tabpage
++---
++--- @param buffer integer Buffer to open in the first window of the new tabpage.
++--- Use 0 for current buffer.
++--- @param config vim.api.keyset.tabpage_config Configuration for the new tabpage. Keys:
++--- - enter: Whether to enter the new tabpage (default: true)
++--- - after: Position to insert tabpage (default: 0).
++---          0 = after current, 1 = first, N = before Nth.
++--- @return integer # Tabpage handle of the created tabpage
++function vim.api.nvim_open_tabpage(buffer, config) end
++
+ --- Open a terminal instance in a buffer
+ ---
+ --- By default (and currently the only option) the terminal will not be
+diff --git a/runtime/lua/vim/_meta/api_keysets.lua b/runtime/lua/vim/_meta/api_keysets.lua
+index acbe5a76e..fb7728547 100644
+--- a/runtime/lua/vim/_meta/api_keysets.lua
++++ b/runtime/lua/vim/_meta/api_keysets.lua
+@@ -437,6 +437,10 @@ error('Cannot require a meta file')
+ --- @field scoped? boolean
+ --- @field _subpriority? integer
+ 
++--- @class vim.api.keyset.tabpage_config
++--- @field enter? boolean
++--- @field after? integer
++
+ --- @class vim.api.keyset.user_command
+ --- @field addr? any
+ --- @field bang? boolean
+diff --git a/src/nvim/api/keysets_defs.h b/src/nvim/api/keysets_defs.h
+index 90b95ff5c..419e38a97 100644
+--- a/src/nvim/api/keysets_defs.h
++++ b/src/nvim/api/keysets_defs.h
+@@ -142,6 +142,12 @@ typedef struct {
+   Integer _cmdline_offset;
+ } Dict(win_config);
+ 
++typedef struct {
++  OptionalKeys is_set__tabpage_config_;
++  Boolean enter;
++  Integer after;
++} Dict(tabpage_config);
++
+ typedef struct {
+   Boolean is_lua;
+   Boolean do_source;
+diff --git a/src/nvim/api/tabpage.c b/src/nvim/api/tabpage.c
+index f49b16643..fd40dd3ce 100644
+--- a/src/nvim/api/tabpage.c
++++ b/src/nvim/api/tabpage.c
+@@ -1,11 +1,15 @@
+ #include <stdbool.h>
+ #include <stdlib.h>
+ 
++#include "nvim/api/keysets_defs.h"
+ #include "nvim/api/private/defs.h"
++#include "nvim/api/private/dispatch.h"
+ #include "nvim/api/private/helpers.h"
+ #include "nvim/api/tabpage.h"
+ #include "nvim/api/vim.h"
++#include "nvim/buffer.h"
+ #include "nvim/buffer_defs.h"
++#include "nvim/errors.h"
+ #include "nvim/globals.h"
+ #include "nvim/memory_defs.h"
+ #include "nvim/types_defs.h"
+@@ -183,3 +187,92 @@ Boolean nvim_tabpage_is_valid(Tabpage tabpage)
+   api_clear_error(&stub);
+   return ret;
+ }
++
++/// Opens a new tabpage
++///
++/// @param buffer Buffer to open in the first window of the new tabpage.
++///               Use 0 for current buffer.
++/// @param config Configuration for the new tabpage. Keys:
++///   - enter: Whether to enter the new tabpage (default: true)
++///   - after: Position to insert tabpage (default: 0).
++///            0 = after current, 1 = first, N = before Nth.
++/// @param[out] err Error details, if any
++/// @return Tabpage handle of the created tabpage
++Tabpage nvim_open_tabpage(Buffer buffer, Dict(tabpage_config) *config, Error *err)
++  FUNC_API_SINCE(14)
++{
++#define HAS_KEY_X(d, key) HAS_KEY(d, tabpage_config, key)
++
++  // Validate and get the buffer
++  buf_T *buf = find_buffer_by_handle(buffer, err);
++  if (buf == NULL) {
++    return 0;
++  }
++
++  if (buf == cmdwin_buf) {
++    api_set_error(err, kErrorTypeException, "%s", e_cmdwin);
++    return 0;
++  }
++
++  bool enter = true;  // Default to entering the new tabpage
++  if (HAS_KEY_X(config, enter)) {
++    enter = config->enter;
++  }
++
++  int after = 0;  // Default to after current tabpage
++  if (HAS_KEY_X(config, after)) {
++    after = (int)config->after;
++
++    // Validate the after position
++    if (after < 0) {
++      api_set_error(err, kErrorTypeValidation, "Invalid 'after' position: %d", after);
++      return 0;
++    }
++
++    // Note: No validation for after > number of tabs since the underlying
++    // function handles this by appending at the end
++  }
++
++  tabpage_T *newtp;
++
++  if (enter) {
++    // Use the existing function if we want to enter the tabpage
++    if (win_new_tabpage(after, NULL) == OK) {
++      newtp = curtab;
++    } else {
++      api_set_error(err, kErrorTypeException, "Failed to create new tabpage");
++      return 0;
++    }
++  } else {
++    // Create tabpage without entering it
++    newtp = win_new_tabpage_noenter(after, err);
++    if (newtp == NULL) {
++      api_set_error(err, kErrorTypeException, "Failed to create new tabpage");
++      return 0;
++    }
++  }
++
++  // Set the buffer in the new window if different from current
++  if (newtp->tp_curwin->w_buffer != buf) {
++    TRY_WRAP(err, {
++      win_set_buf(newtp->tp_curwin, buf, err);
++    });
++    if (ERROR_SET(err)) {
++      return 0;
++    }
++  }
++
++  // Ensure tabpage wasn't immediately freed
++  if (find_tab_by_handle(newtp->handle, err) == NULL) {
++    api_clear_error(err);
++    api_set_error(err, kErrorTypeException, "Tabpage was closed immediately");
++    return 0;
++  }
++  if (!buf_valid(buf)) {
++    api_set_error(err, kErrorTypeException, "Buffer was deleted by autocmd");
++    return 0;
++  }
++
++  return newtp->handle;
++#undef HAS_KEY_X
++}
+diff --git a/src/nvim/api/tabpage.h b/src/nvim/api/tabpage.h
+index 68390853f..46fcb1c16 100644
+--- a/src/nvim/api/tabpage.h
++++ b/src/nvim/api/tabpage.h
+@@ -1,5 +1,6 @@
+ #pragma once
+ 
++#include "nvim/api/keysets_defs.h"  // IWYU pragma: keep
+ #include "nvim/api/private/defs.h"  // IWYU pragma: keep
+ 
+ #include "api/tabpage.h.generated.h"
+diff --git a/src/nvim/window.c b/src/nvim/window.c
+index e07ba21fe..52c7aa1ac 100644
+--- a/src/nvim/window.c
++++ b/src/nvim/window.c
+@@ -7827,3 +7827,89 @@ win_T *lastwin_nofloating(tabpage_T *tp)
+   }
+   return res;
+ }
++
++/// Create a new tabpage without switching to it.
++/// @param after Position in tabpage list (0 = after current, 1 = first)
++/// @param[out] err Error details, if any
++/// @return Handle of the created tabpage, or NULL on failure
++tabpage_T *win_new_tabpage_noenter(int after, Error *err)
++{
++  tabpage_T *old_curtab = curtab;
++
++  if (cmdwin_type != 0) {
++    api_set_error(err, kErrorTypeException, "%s", e_cmdwin);
++    return NULL;
++  }
++
++  tabpage_T *newtp = alloc_tabpage();
++  if (newtp == NULL) {
++    api_set_error(err, kErrorTypeException, "Failed to allocate new tabpage");
++    return NULL;
++  }
++
++  // Remember the current windows in this Tab page.
++  if (leave_tabpage(curbuf, true) == FAIL) {
++    xfree(newtp);
++    api_set_error(err, kErrorTypeException, "Failed to leave current tabpage");
++    return NULL;
++  }
++
++  // Copy localdir from current tabpage
++  newtp->tp_localdir = old_curtab->tp_localdir ? xstrdup(old_curtab->tp_localdir) : NULL;
++
++  // Switch to new tabpage to set it up
++  curtab = newtp;
++
++  // Create the initial window in the new tabpage
++  if (win_alloc_firstwin(old_curtab->tp_curwin) == OK) {
++    // Insert the new tabpage in the correct position
++    if (after == 1) {
++      // New tab page becomes the first one
++      newtp->tp_next = first_tabpage;
++      first_tabpage = newtp;
++    } else {
++      tabpage_T *tp = old_curtab;
++      if (after > 0) {
++        // Put new tab page before tab page "after"
++        int n = 2;
++        for (tp = first_tabpage; tp->tp_next != NULL && n < after; tp = tp->tp_next) {
++          n++;
++        }
++      }
++      newtp->tp_next = tp->tp_next;
++      tp->tp_next = newtp;
++    }
++
++    // Set up the tabpage structure properly
++    newtp->tp_firstwin = newtp->tp_lastwin = newtp->tp_curwin = curwin;
++    win_init_size();
++    firstwin->w_winrow = tabline_height();
++    firstwin->w_prev_winrow = firstwin->w_winrow;
++    win_comp_scroll(curwin);
++    newtp->tp_topframe = topframe;
++    last_status(false);
++
++    if (curbuf->terminal) {
++      terminal_check_size(curbuf->terminal);
++    }
++
++    redraw_all_later(UPD_NOT_VALID);
++    tabpage_check_windows(old_curtab);
++    lastused_tabpage = old_curtab;
++
++    // Fire autocmds for new window and tabpage
++    entering_window(curwin);
++    apply_autocmds(EVENT_WINNEW, NULL, NULL, false, curbuf);
++    apply_autocmds(EVENT_TABNEW, NULL, NULL, false, curbuf);
++
++    // Now switch back to the original tabpage
++    enter_tabpage(old_curtab, curbuf, true, true);
++
++    return newtp;
++  }
++
++  // Failed, get back the previous Tab page
++  enter_tabpage(old_curtab, curbuf, true, true);
++  api_set_error(err, kErrorTypeException, "Failed to create window in new tabpage");
++  return NULL;
++}
+diff --git a/test/functional/api/tabpage_spec.lua b/test/functional/api/tabpage_spec.lua
+index 74858475c..748e65204 100644
+--- a/test/functional/api/tabpage_spec.lua
++++ b/test/functional/api/tabpage_spec.lua
+@@ -173,4 +173,306 @@ describe('api/tabpage', function()
+       ok(not api.nvim_tabpage_is_valid(tab))
+     end)
+   end)
++
++  describe('open_tabpage', function()
++    it('works', function()
++      local tabs = api.nvim_list_tabpages()
++      eq(1, #tabs)
++      local curtab = api.nvim_get_current_tabpage()
++      local tab = api.nvim_open_tabpage(0, {
++        enter = false,
++      })
++      local newtabs = api.nvim_list_tabpages()
++      eq(2, #newtabs)
++      eq(tab, newtabs[2])
++      eq(curtab, api.nvim_get_current_tabpage())
++
++      local tab2 = api.nvim_open_tabpage(0, {
++        enter = true,
++      })
++      local newtabs2 = api.nvim_list_tabpages()
++      eq(3, #newtabs2)
++      eq({
++        tabs[1],
++        tab2, -- new tabs open after the current tab
++        tab,
++      }, newtabs2)
++      eq(tab2, newtabs2[2])
++      eq(tab, newtabs2[3])
++      eq(tab2, api.nvim_get_current_tabpage())
++    end)
++
++    it('respects the `after` option', function()
++      local tab1 = api.nvim_get_current_tabpage()
++      command('tabnew')
++      local tab2 = api.nvim_get_current_tabpage()
++      command('tabnew')
++      local tab3 = api.nvim_get_current_tabpage()
++
++      local newtabs = api.nvim_list_tabpages()
++      eq(3, #newtabs)
++      eq(newtabs, {
++        tab1,
++        tab2,
++        -- new_tab,
++        tab3,
++      })
++
++      local new_tab = api.nvim_open_tabpage(0, {
++        enter = false,
++        after = api.nvim_tabpage_get_number(tab2),
++      })
++
++      local newtabs2 = api.nvim_list_tabpages()
++      eq(4, #newtabs2)
++      eq({
++        tab1,
++        new_tab,
++        tab2,
++        tab3,
++      }, newtabs2)
++      eq(api.nvim_get_current_tabpage(), tab3)
++    end)
++
++    it('respects the `enter` argument', function()
++      eq(1, #api.nvim_list_tabpages())
++      local tab1 = api.nvim_get_current_tabpage()
++
++      local new_tab = api.nvim_open_tabpage(0, {
++        enter = false,
++      })
++
++      local newtabs = api.nvim_list_tabpages()
++      eq(2, #newtabs)
++      eq(newtabs, {
++        tab1,
++        new_tab,
++      })
++      eq(api.nvim_get_current_tabpage(), tab1)
++
++      local new_tab2 = api.nvim_open_tabpage(0, {
++        enter = true,
++      })
++      local newtabs2 = api.nvim_list_tabpages()
++      eq(3, #newtabs2)
++      eq(newtabs2, {
++        tab1,
++        new_tab2,
++        new_tab,
++      })
++
++      eq(api.nvim_get_current_tabpage(), new_tab2)
++    end)
++
++    it('applies `enter` autocmds in the context of the new tabpage', function()
++      api.nvim_create_autocmd('TabEnter', {
++        command = 'let g:entered_tab = nvim_get_current_tabpage()',
++      })
++
++      local new_tab = api.nvim_open_tabpage(0, {
++        enter = true,
++      })
++
++      local entered_tab = assert(tonumber(api.nvim_get_var('entered_tab')))
++
++      eq(new_tab, entered_tab)
++    end)
++
++    it('handles edge cases for positioning', function()
++      -- Start with 3 tabs
++      local tab1 = api.nvim_get_current_tabpage()
++      command('tabnew')
++      local tab2 = api.nvim_get_current_tabpage()
++      command('tabnew')
++      local tab3 = api.nvim_get_current_tabpage()
++
++      local initial_tabs = api.nvim_list_tabpages()
++      eq(3, #initial_tabs)
++      eq({ tab1, tab2, tab3 }, initial_tabs)
++
++      -- Test after=1: should become first tab
++      local first_tab = api.nvim_open_tabpage(0, {
++        enter = false,
++        after = 1,
++      })
++      local tabs_after_first = api.nvim_list_tabpages()
++      eq(4, #tabs_after_first)
++      eq({ first_tab, tab1, tab2, tab3 }, tabs_after_first)
++
++      -- Test after=0: should insert after current tab (tab3)
++      local explicit_after_current = api.nvim_open_tabpage(0, {
++        enter = false,
++        after = 0,
++      })
++      local tabs_after_current = api.nvim_list_tabpages()
++      eq(5, #tabs_after_current)
++      eq({ first_tab, tab1, tab2, tab3, explicit_after_current }, tabs_after_current)
++
++      -- Test inserting before a middle tab (before tab2, which is now position 3)
++      local before_middle = api.nvim_open_tabpage(0, {
++        enter = false,
++        after = 3,
++      })
++      local tabs_after_middle = api.nvim_list_tabpages()
++      eq(6, #tabs_after_middle)
++      eq({ first_tab, tab1, before_middle, tab2, tab3, explicit_after_current }, tabs_after_middle)
++
++      eq(api.nvim_get_current_tabpage(), tab3)
++
++      -- Test default behavior (after current)
++      local default_after_current = api.nvim_open_tabpage(0, {
++        enter = false,
++      })
++      local final_tabs = api.nvim_list_tabpages()
++      eq(7, #final_tabs)
++      eq({
++        first_tab,
++        tab1,
++        before_middle,
++        tab2,
++        tab3,
++        default_after_current,
++        explicit_after_current,
++      }, final_tabs)
++    end)
++
++    it('handles position beyond last tab', function()
++      -- Create a few tabs first
++      local tab1 = api.nvim_get_current_tabpage()
++      command('tabnew')
++      local tab2 = api.nvim_get_current_tabpage()
++      command('tabnew')
++      local tab3 = api.nvim_get_current_tabpage()
++
++      eq(3, #api.nvim_list_tabpages())
++      eq({ tab1, tab2, tab3 }, api.nvim_list_tabpages())
++
++      -- Test that requesting position beyond last tab still works
++      -- (should place it at the end)
++      local new_tab = api.nvim_open_tabpage(0, {
++        enter = false,
++        after = 10, -- Way beyond the last tab
++      })
++
++      local final_tabs = api.nvim_list_tabpages()
++      eq(4, #final_tabs)
++      -- Should append at the end
++      eq({ tab1, tab2, tab3, new_tab }, final_tabs)
++    end)
++
++    it('works with specific buffer', function()
++      local buf = api.nvim_create_buf(false, false)
++      api.nvim_buf_set_lines(buf, 0, -1, false, { 'test content' })
++
++      local original_tab = api.nvim_get_current_tabpage()
++      local original_buf = api.nvim_get_current_buf()
++
++      local new_tab = api.nvim_open_tabpage(buf, {
++        enter = true, -- Enter the tab to make testing easier
++      })
++
++      -- Check that new tab has the specified buffer
++      eq(new_tab, api.nvim_get_current_tabpage())
++      eq(buf, api.nvim_get_current_buf())
++      eq({ 'test content' }, api.nvim_buf_get_lines(buf, 0, -1, false))
++
++      -- Switch back and check original tab still has original buffer
++      api.nvim_set_current_tabpage(original_tab)
++      eq(original_buf, api.nvim_get_current_buf())
++    end)
++
++    it('validates buffer parameter', function()
++      -- Test invalid buffer
++      eq('Invalid buffer id: 999', pcall_err(api.nvim_open_tabpage, 999, {}))
++    end)
++
++    it('works with current buffer (0)', function()
++      local current_buf = api.nvim_get_current_buf()
++
++      local new_tab = api.nvim_open_tabpage(0, {
++        enter = false,
++      })
++
++      api.nvim_set_current_tabpage(new_tab)
++      eq(current_buf, api.nvim_get_current_buf())
++    end)
++
++    it('handles complex positioning scenarios', function()
++      -- Create 5 tabs total
++      local tabs = { api.nvim_get_current_tabpage() }
++      for i = 2, 5 do
++        command('tabnew')
++        tabs[i] = api.nvim_get_current_tabpage()
++      end
++
++      eq(5, #api.nvim_list_tabpages())
++
++      -- Go to middle tab (tab 3)
++      api.nvim_set_current_tabpage(tabs[3])
++
++      -- Insert after=0 (after current, which is tab 3)
++      local new_after_current = api.nvim_open_tabpage(0, {
++        enter = false,
++        after = 0,
++      })
++
++      local result_tabs = api.nvim_list_tabpages()
++      eq(6, #result_tabs)
++      eq({
++        tabs[1],
++        tabs[2],
++        tabs[3],
++        new_after_current,
++        tabs[4],
++        tabs[5],
++      }, result_tabs)
++
++      -- Insert at position 2 (before tab2, which becomes new position 2)
++      local new_at_pos2 = api.nvim_open_tabpage(0, {
++        enter = false,
++        after = 2,
++      })
++
++      local final_result = api.nvim_list_tabpages()
++      eq(7, #final_result)
++      eq({
++        tabs[1],
++        new_at_pos2,
++        tabs[2],
++        tabs[3],
++        new_after_current,
++        tabs[4],
++        tabs[5],
++      }, final_result)
++    end)
++
++    it('preserves tab order when entering new tabs', function()
++      local tab1 = api.nvim_get_current_tabpage()
++      command('tabnew')
++      local tab2 = api.nvim_get_current_tabpage()
++
++      -- Create new tab with enter=true, should insert after current (tab2)
++      local tab3 = api.nvim_open_tabpage(0, {
++        enter = true,
++        after = 0,
++      })
++
++      local tabs = api.nvim_list_tabpages()
++      eq(3, #tabs)
++      eq({ tab1, tab2, tab3 }, tabs)
++      eq(tab3, api.nvim_get_current_tabpage())
++
++      -- Create another with enter=true and specific position
++      api.nvim_set_current_tabpage(tab1)
++      local tab4 = api.nvim_open_tabpage(0, {
++        enter = true,
++        after = 1, -- Should become first tab
++      })
++
++      local final_tabs = api.nvim_list_tabpages()
++      eq(4, #final_tabs)
++      eq({ tab4, tab1, tab2, tab3 }, final_tabs)
++      eq(tab4, api.nvim_get_current_tabpage())
++    end)
++  end)
+ end)

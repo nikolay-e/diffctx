@@ -1,0 +1,351 @@
+From 9de15326dc8bccb2362f5c74c933dcba16273894 Mon Sep 17 00:00:00 2001
+From: Adrian Gruntkowski <adrian.gruntkowski@gmail.com>
+Date: Wed, 21 May 2025 11:53:12 +0200
+Subject: [PATCH] Introduce migration and schemas for SSO (#5411)
+
+* Add polymorphic_embed library
+
+* Add formatter rules for polymorphic_embed
+
+* Add new and extend existing schemas for SSO
+---
+ .formatter.exs                               |  2 +-
+ extra/lib/plausible/auth/sso/domain.ex       | 37 +++++++++++++
+ extra/lib/plausible/auth/sso/integration.ex  | 55 ++++++++++++++++++++
+ extra/lib/plausible/auth/sso/saml_config.ex  | 32 ++++++++++++
+ lib/plausible/auth/user.ex                   |  9 ++++
+ lib/plausible/teams/policy.ex                | 45 ++++++++++++++++
+ lib/plausible/teams/team.ex                  |  5 ++
+ mix.exs                                      |  1 +
+ mix.lock                                     |  2 +
+ test/plausible/auth/sso/integration_test.exs | 45 ++++++++++++++++
+ 10 files changed, 232 insertions(+), 1 deletion(-)
+ create mode 100644 extra/lib/plausible/auth/sso/domain.ex
+ create mode 100644 extra/lib/plausible/auth/sso/integration.ex
+ create mode 100644 extra/lib/plausible/auth/sso/saml_config.ex
+ create mode 100644 lib/plausible/teams/policy.ex
+ create mode 100644 test/plausible/auth/sso/integration_test.exs
+
+diff --git a/.formatter.exs b/.formatter.exs
+index b5b3ce612..06ece05b6 100644
+--- a/.formatter.exs
++++ b/.formatter.exs
+@@ -1,6 +1,6 @@
+ [
+   plugins: [Phoenix.LiveView.HTMLFormatter],
+-  import_deps: [:ecto, :ecto_sql, :phoenix],
++  import_deps: [:ecto, :ecto_sql, :phoenix, :polymorphic_embed],
+   subdirectories: ["priv/*/migrations"],
+   inputs: [
+     "*.{heex,ex,exs}",
+diff --git a/extra/lib/plausible/auth/sso/domain.ex b/extra/lib/plausible/auth/sso/domain.ex
+new file mode 100644
+index 000000000..7097b49f9
+--- /dev/null
++++ b/extra/lib/plausible/auth/sso/domain.ex
+@@ -0,0 +1,37 @@
++defmodule Plausible.Auth.SSO.Domain do
++  @moduledoc """
++  Once SSO integration is initiated, it's possible to start
++  allow-listing domains for it, in parallel with finalizing
++  the setup on IdP's end.
++
++  Each pending domain should be periodically checked for
++  validity by testing for presence of TXT record, meta tag
++  or URL. The moment whichever of them succeeds first, 
++  the domain is marked as validated with method and timestamp 
++  recorded.
++  """
++
++  use Ecto.Schema
++
++  import Ecto.Changeset
++
++  @type t() :: %__MODULE__{}
++
++  schema "sso_domains" do
++    field :identifier, Ecto.UUID
++    field :domain, :string
++    field :validated_via, Ecto.Enum, values: [:dns_txt, :url, :meta_tag]
++    field :last_validated_at, :naive_datetime
++    field :status, Ecto.Enum, values: [:pending, :validated], default: :pending
++
++    belongs_to :sso_integration, Plausible.Auth.SSO.Integration
++
++    timestamps()
++  end
++
++  def create_changeset(name) do
++    %__MODULE__{}
++    |> cast(%{name: name}, [:name])
++    |> validate_required(:name)
++  end
++end
+diff --git a/extra/lib/plausible/auth/sso/integration.ex b/extra/lib/plausible/auth/sso/integration.ex
+new file mode 100644
+index 000000000..72857c0a1
+--- /dev/null
++++ b/extra/lib/plausible/auth/sso/integration.ex
+@@ -0,0 +1,55 @@
++defmodule Plausible.Auth.SSO.Integration do
++  @moduledoc """
++  Instance of particular SSO integration for a given team.
++
++  Configuration is embedded and its type is dynamic, paving the
++  way for potentially supporting other SSO mechanisms in the future,
++  like OIDC.
++
++  The UUID identifier can be used to uniquely identify the integration
++  when configuring external services like IdPs.
++  """
++
++  use Ecto.Schema
++
++  import Ecto.Changeset
++  import PolymorphicEmbed
++
++  alias Plausible.Auth.SSO
++
++  @type t() :: %__MODULE__{}
++
++  schema "sso_integrations" do
++    field :identifier, Ecto.UUID
++
++    polymorphic_embeds_one :config,
++      types: [
++        saml: SSO.SAMLConfig
++      ],
++      on_type_not_found: :raise,
++      on_replace: :update
++
++    belongs_to :team, Plausible.Teams.Team
++    has_many :users, Plausible.Auth.User, foreign_key: :sso_integration_id
++
++    timestamps()
++  end
++
++  def init_changeset(team) do
++    params = %{config: %{__type__: :saml}}
++
++    %__MODULE__{}
++    |> cast(params, [])
++    |> put_change(:identifier, Ecto.UUID.generate())
++    |> cast_polymorphic_embed(:config)
++    |> put_assoc(:team, team)
++  end
++
++  def update_changeset(integration, config_params) do
++    params = %{config: Map.merge(%{__type__: :saml}, config_params)}
++
++    integration
++    |> cast(params, [])
++    |> cast_polymorphic_embed(:config)
++  end
++end
+diff --git a/extra/lib/plausible/auth/sso/saml_config.ex b/extra/lib/plausible/auth/sso/saml_config.ex
+new file mode 100644
+index 000000000..44db632b4
+--- /dev/null
++++ b/extra/lib/plausible/auth/sso/saml_config.ex
+@@ -0,0 +1,32 @@
++defmodule Plausible.Auth.SSO.SAMLConfig do
++  @moduledoc """
++  SAML SSO can be configured in two ways - by either providing IdP
++  metadata XML or inputting required data one by one.
++
++  If metadata is provided, the parameters are extracted but the
++  original metadata is preserved as well. This might be helpful
++  when updating configuration in the future to enable some other
++  feature like Single Logout without having to re-fetch metadata
++  from IdP again.
++  """
++
++  use Ecto.Schema
++
++  import Ecto.Changeset
++
++  @type t() :: %__MODULE__{}
++
++  @fields [:idp_signin_url, :idp_entity_id, :idp_cert_pem, :idp_metadata]
++
++  embedded_schema do
++    field :idp_signin_url, :string
++    field :idp_entity_id, :string
++    field :idp_cert_pem, :string
++    field :idp_metadata, :string
++  end
++
++  def changeset(struct, params) do
++    struct
++    |> cast(params, @fields)
++  end
++end
+diff --git a/lib/plausible/auth/user.ex b/lib/plausible/auth/user.ex
+index e1110a5dd..6f3cdda1b 100644
+--- a/lib/plausible/auth/user.ex
++++ b/lib/plausible/auth/user.ex
+@@ -40,6 +40,15 @@ defmodule Plausible.Auth.User do
+     field :totp_token, :string
+     field :totp_last_used_at, :naive_datetime
+ 
++    on_ee do
++      # Fields for SSO
++      field :type, Ecto.Enum, values: [:standard, :sso]
++      field :sso_identity_id, :string
++      field :last_sso_login, :naive_datetime
++
++      belongs_to :sso_integration, Plausible.Auth.SSO.Integration
++    end
++
+     has_many :sessions, Plausible.Auth.UserSession
+     has_many :team_memberships, Plausible.Teams.Membership
+     has_many :api_keys, Plausible.Auth.ApiKey
+diff --git a/lib/plausible/teams/policy.ex b/lib/plausible/teams/policy.ex
+new file mode 100644
+index 000000000..19d939e74
+--- /dev/null
++++ b/lib/plausible/teams/policy.ex
+@@ -0,0 +1,45 @@
++defmodule Plausible.Teams.Policy do
++  @moduledoc """
++  Team-wide policies.
++  """
++
++  use Ecto.Schema
++
++  import Ecto.Changeset
++
++  @sso_member_roles Plausible.Teams.Membership.roles() -- [:guest]
++
++  @update_fields [:sso_default_role, :sso_session_timeout_minutes]
++
++  embedded_schema do
++    # SSO options apply to all team's integrations, should there
++    # ever be more than one allowed at once.
++
++    # SSO enforcement can have one of 2 states: enforced for none
++    # or enforced for all but owners.
++    # The first state is useful in the initial phase of SSO setup
++    # when it's not yet confirmed to be fully operational.
++    # The second state is a good default for most, leaving
++    # escape hatch for cases where IdP starts failing.
++    field :force_sso, Ecto.Enum, values: [:none, :all_but_owners], default: :none
++
++    # Default role for newly provisioned SSO accounts.
++    field :sso_default_role, Ecto.Enum, values: @sso_member_roles, default: :viewer
++
++    # Default session timeout for SSO-enabled accounts. We might also
++    # consider accepting session timeout from assertion, if present.
++    field :sso_session_timeout_minutes, :integer, default: 360
++  end
++
++  def update_changeset(policy, params) do
++    policy
++    |> cast(params, @update_fields)
++    |> validate_required(@update_fields)
++  end
++
++  def force_sso_changeset(policy, mode) do
++    policy
++    |> cast(%{force_sso: mode}, [:force_sso])
++    |> validate_required(:force_sso)
++  end
++end
+diff --git a/lib/plausible/teams/team.ex b/lib/plausible/teams/team.ex
+index e152e3ae8..8ba1fa23e 100644
+--- a/lib/plausible/teams/team.ex
++++ b/lib/plausible/teams/team.ex
+@@ -38,6 +38,11 @@ defmodule Plausible.Teams.Team do
+     # Field for purely informational purposes in CRM context
+     field :notes, :string
+ 
++    on_ee do
++      # Embed for storing team-wide policies
++      embeds_one :policy, Plausible.Teams.Policy, on_replace: :update, defaults_to_struct: true
++    end
++
+     embeds_one :grace_period, Plausible.Teams.GracePeriod, on_replace: :update
+ 
+     has_many :sites, Plausible.Site
+diff --git a/mix.exs b/mix.exs
+index 46a2e98dc..912c513ac 100644
+--- a/mix.exs
++++ b/mix.exs
+@@ -115,6 +115,7 @@ defmodule Plausible.MixProject do
+       {:php_serializer, "~> 2.0"},
+       {:plug, "~> 1.13", override: true},
+       {:plug_cowboy, "~> 2.3"},
++      {:polymorphic_embed, "~> 5.0"},
+       {:postgrex, "~> 0.19.0"},
+       {:prom_ex, "~> 1.8"},
+       {:peep, "~> 3.4"},
+diff --git a/mix.lock b/mix.lock
+index 17b94d28a..8939903b6 100644
+--- a/mix.lock
++++ b/mix.lock
+@@ -1,5 +1,6 @@
+ %{
+   "acceptor_pool": {:hex, :acceptor_pool, "1.0.0", "43c20d2acae35f0c2bcd64f9d2bde267e459f0f3fd23dab26485bf518c281b21", [:rebar3], [], "hexpm", "0cbcd83fdc8b9ad2eee2067ef8b91a14858a5883cb7cd800e6fcd5803e158788"},
++  "attrs": {:hex, :attrs, "0.6.0", "25d738b47829f964a786ef73897d2550b66f3e7d1d7c49a83bc8fd81c71bed93", [:mix], [], "hexpm", "9c30ac15255c2ba8399263db55ba32c2f4e5ec267b654ce23df99168b405c82e"},
+   "bamboo": {:hex, :bamboo, "2.3.0", "d2392a2cabe91edf488553d3c70638b532e8db7b76b84b0a39e3dfe492ffd6fc", [:mix], [{:hackney, ">= 1.15.2", [hex: :hackney, repo: "hexpm", optional: false]}, {:jason, "~> 1.0", [hex: :jason, repo: "hexpm", optional: true]}, {:mime, "~> 1.4 or ~> 2.0", [hex: :mime, repo: "hexpm", optional: false]}, {:plug, "~> 1.0", [hex: :plug, repo: "hexpm", optional: false]}], "hexpm", "dd0037e68e108fd04d0e8773921512c940e35d981e097b5793543e3b2f9cd3f6"},
+   "bamboo_mua": {:hex, :bamboo_mua, "0.2.2", "c50cd41ef684155669e2d99d428fbb87e13797a80829a162b47d3c0a7f7e7ecd", [:mix], [{:bamboo, "~> 2.0", [hex: :bamboo, repo: "hexpm", optional: false]}, {:mail, "~> 0.3.0", [hex: :mail, repo: "hexpm", optional: false]}, {:mua, "~> 0.2.3", [hex: :mua, repo: "hexpm", optional: false]}], "hexpm", "5fe6e3676640578c6fe8f040b34dda8991ebef8566c0601a984eb4771b85b11f"},
+   "bamboo_postmark": {:git, "https://github.com/plausible/bamboo_postmark.git", "c6a773d1b7a4e5c9ec802ace64b5bb526504c25a", [branch: "main"]},
+@@ -129,6 +130,7 @@
+   "plug": {:hex, :plug, "1.16.1", "40c74619c12f82736d2214557dedec2e9762029b2438d6d175c5074c933edc9d", [:mix], [{:mime, "~> 1.0 or ~> 2.0", [hex: :mime, repo: "hexpm", optional: false]}, {:plug_crypto, "~> 1.1.1 or ~> 1.2 or ~> 2.0", [hex: :plug_crypto, repo: "hexpm", optional: false]}, {:telemetry, "~> 0.4.3 or ~> 1.0", [hex: :telemetry, repo: "hexpm", optional: false]}], "hexpm", "a13ff6b9006b03d7e33874945b2755253841b238c34071ed85b0e86057f8cddc"},
+   "plug_cowboy": {:hex, :plug_cowboy, "2.7.3", "1304d36752e8bdde213cea59ef424ca932910a91a07ef9f3874be709c4ddb94b", [:mix], [{:cowboy, "~> 2.7", [hex: :cowboy, repo: "hexpm", optional: false]}, {:cowboy_telemetry, "~> 0.3", [hex: :cowboy_telemetry, repo: "hexpm", optional: false]}, {:plug, "~> 1.14", [hex: :plug, repo: "hexpm", optional: false]}], "hexpm", "77c95524b2aa5364b247fa17089029e73b951ebc1adeef429361eab0bb55819d"},
+   "plug_crypto": {:hex, :plug_crypto, "1.2.5", "918772575e48e81e455818229bf719d4ab4181fcbf7f85b68a35620f78d89ced", [:mix], [], "hexpm", "26549a1d6345e2172eb1c233866756ae44a9609bd33ee6f99147ab3fd87fd842"},
++  "polymorphic_embed": {:hex, :polymorphic_embed, "5.0.3", "37444e0af941026a2c29b0539b6471bdd6737a6492a19264bf2bb0118e3ac242", [:mix], [{:attrs, "~> 0.6", [hex: :attrs, repo: "hexpm", optional: false]}, {:ecto, "~> 3.12", [hex: :ecto, repo: "hexpm", optional: false]}, {:jason, "~> 1.4", [hex: :jason, repo: "hexpm", optional: false]}, {:phoenix_html, "~> 4.1", [hex: :phoenix_html, repo: "hexpm", optional: true]}, {:phoenix_html_helpers, "~> 1.0", [hex: :phoenix_html_helpers, repo: "hexpm", optional: true]}, {:phoenix_live_view, "~> 0.20 or ~> 1.0", [hex: :phoenix_live_view, repo: "hexpm", optional: true]}], "hexpm", "2fed44f57abf0a0fc7642e0eb0807a55b65de1562712cc0620772cbbb80e49c1"},
+   "postgrex": {:hex, :postgrex, "0.19.3", "a0bda6e3bc75ec07fca5b0a89bffd242ca209a4822a9533e7d3e84ee80707e19", [:mix], [{:db_connection, "~> 2.1", [hex: :db_connection, repo: "hexpm", optional: false]}, {:decimal, "~> 1.5 or ~> 2.0", [hex: :decimal, repo: "hexpm", optional: false]}, {:jason, "~> 1.0", [hex: :jason, repo: "hexpm", optional: true]}, {:table, "~> 0.1.0", [hex: :table, repo: "hexpm", optional: true]}], "hexpm", "d31c28053655b78f47f948c85bb1cf86a9c1f8ead346ba1aa0d0df017fa05b61"},
+   "prom_ex": {:hex, :prom_ex, "1.11.0", "1f6d67f2dead92224cb4f59beb3e4d319257c5728d9638b4a5e8ceb51a4f9c7e", [:mix], [{:absinthe, ">= 1.7.0", [hex: :absinthe, repo: "hexpm", optional: true]}, {:broadway, ">= 1.1.0", [hex: :broadway, repo: "hexpm", optional: true]}, {:ecto, ">= 3.11.0", [hex: :ecto, repo: "hexpm", optional: true]}, {:finch, "~> 0.18", [hex: :finch, repo: "hexpm", optional: false]}, {:jason, "~> 1.4", [hex: :jason, repo: "hexpm", optional: false]}, {:oban, ">= 2.10.0", [hex: :oban, repo: "hexpm", optional: true]}, {:octo_fetch, "~> 0.4", [hex: :octo_fetch, repo: "hexpm", optional: false]}, {:peep, "~> 3.0", [hex: :peep, repo: "hexpm", optional: false]}, {:phoenix, ">= 1.7.0", [hex: :phoenix, repo: "hexpm", optional: true]}, {:phoenix_live_view, ">= 0.20.0", [hex: :phoenix_live_view, repo: "hexpm", optional: true]}, {:plug, ">= 1.16.0", [hex: :plug, repo: "hexpm", optional: true]}, {:plug_cowboy, ">= 2.6.0", [hex: :plug_cowboy, repo: "hexpm", optional: true]}, {:telemetry, ">= 1.0.0", [hex: :telemetry, repo: "hexpm", optional: false]}, {:telemetry_metrics, "~> 1.0", [hex: :telemetry_metrics, repo: "hexpm", optional: false]}, {:telemetry_metrics_prometheus_core, "~> 1.2", [hex: :telemetry_metrics_prometheus_core, repo: "hexpm", optional: false]}, {:telemetry_poller, "~> 1.1", [hex: :telemetry_poller, repo: "hexpm", optional: false]}], "hexpm", "76b074bc3730f0802978a7eb5c7091a65473eaaf07e99ec9e933138dcc327805"},
+   "public_suffix": {:git, "https://github.com/axelson/publicsuffix-elixir", "fa40c243d4b5d8598b90cff268bc4e33f3bb63f1", []},
+diff --git a/test/plausible/auth/sso/integration_test.exs b/test/plausible/auth/sso/integration_test.exs
+new file mode 100644
+index 000000000..b7988a18e
+--- /dev/null
++++ b/test/plausible/auth/sso/integration_test.exs
+@@ -0,0 +1,45 @@
++defmodule Plausible.Auth.SSO.IntegrationTest do
++  use Plausible.DataCase, async: true
++  use Plausible
++
++  on_ee do
++    use Plausible.Teams.Test
++
++    alias Plausible.Auth.SSO
++
++    describe "init_changeset/1" do
++      test "inits integration" do
++        team = new_site().team
++
++        assert %{valid?: true} = changeset = SSO.Integration.init_changeset(team)
++        assert {:ok, integration} = Repo.insert(changeset)
++        assert integration.team_id == team.id
++        assert is_binary(integration.identifier)
++        assert %SSO.SAMLConfig{} = integration.config
++      end
++    end
++
++    describe "update_changeset/2" do
++      test "updates config" do
++        team = new_site().team
++        integration = team |> SSO.Integration.init_changeset() |> Repo.insert!()
++
++        assert %{valid?: true} =
++                 changeset =
++                 SSO.Integration.update_changeset(integration, %{
++                   idp_signin_url: "https://example.com",
++                   idp_entity_id: "some_id",
++                   idp_cert_pem: "SOMECERT"
++                 })
++
++        assert {:ok, integration} = Repo.update(changeset)
++
++        assert %SSO.SAMLConfig{
++                 idp_signin_url: "https://example.com",
++                 idp_entity_id: "some_id",
++                 idp_cert_pem: "SOMECERT"
++               } = integration.config
++      end
++    end
++  end
++end

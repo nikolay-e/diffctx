@@ -1,0 +1,40 @@
+repo: home-assistant
+base_commit: 91aded447476902fa756a5b757809af2135443e7
+commit: 9dd1a59d50740a45166ba48674b7b4ef87fc41bf
+patch_stored: true
+gold:
+  - path: homeassistant/components/anthropic/config_flow.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Renames async_step_advanced to async_step_additional and the step_id="advanced" passed to async_show_form to "additional", the code side of the identifier that must match the strings.json key.
+  - path: homeassistant/components/anthropic/strings.json
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Renames the step.advanced translation keys (and internal [%key:...step::advanced::...%] cross-references) to step.additional, the localization side that must stay string-in-sync with the step_id used in config_flow.py.
+  - path: tests/components/anthropic/test_config_flow.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: Updates every assertion of options["step_id"] == "advanced" to "additional" and renames test_creating_ai_task_subentry_advanced, exercising the renamed step end-to-end.
+  - path: homeassistant/data_entry_flow.py
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: '_async_handle_step builds method = f"async_step_{step_id}" and calls getattr(flow, method) - the core framework mechanism that turns the step_id string into the async_step_advanced/async_step_additional method name, which is why the config_flow.py method name and the step_id string/strings.json key must all be renamed together.'
+forbidden:
+  - path: homeassistant/components/openai_conversation/config_flow.py
+    reason: Sibling conversation-integration config flow with its own unrelated async_step_advanced step, not touched by this Anthropic-only rename.
+  - path: homeassistant/components/habitica/config_flow.py
+    reason: Unrelated integration that happens to also define an async_step_advanced step; same naming coincidence, no connection to this change.
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: []
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 3
+  description: 'Rename "advanced" step to "additional" in Anthropic — config-flow step id: code identifier
+    ↔ strings.json key coupling'
+notes: 'Pure rename of the Anthropic conversation/AI-task config-subentry step from "advanced" to "additional", touching the async_step_* method, the step_id string, the strings.json translation keys, and the tests. The linkage is string-indirection: HA''s data_entry_flow dispatches steps via f"async_step_{step_id}" and looks up strings.json by the same step_id key, so the method name and the string must be kept in lockstep.'

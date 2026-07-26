@@ -1,0 +1,44 @@
+repo: react-native
+base_commit: bb9ed0e9061288e56796fe6fe6a69541c3e09c90
+commit: aefefdbbba21f26879f73f261a4ffa3b3a25a983
+patch_stored: true
+gold:
+- path: packages/react-native/React-Core.podspec
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/React/FBReactNativeSpec/FBReactNativeSpec.podspec
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/jni/third-party/folly/CMakeLists.txt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/React-Fabric.podspec
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/gradle/libs.versions.toml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/third-party-podspecs/RCT-Folly.podspec
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: packages/react-native/template/ios/HelloWorld.xcodeproj/project.pbxproj
+- path: packages/rn-tester/Podfile.lock
+- path: packages/rn-tester/RNTesterPods.xcodeproj/project.pbxproj
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: Mechanical version-string bump ('Bump Folly to 2023.08.07.00') across 51 files, most with a 2-4
+  line diff, but diffctx renders the ENTIRE file body for every touched podspec (e.g. a 133-line React-RCTAppDelegate.podspec
+  shown in full for what is likely a one-line version bump) plus a full 1417-line Podfile.lock dump —
+  driving md_tokens to 48k for a change whose real content is a single version constant. Worse, the canonical
+  definition file (third-party-podspecs/RCT-Folly.podspec, where the Folly version actually lives) is
+  MISSING from ctx, along with FBReactNativeSpec.podspec and React-Fabric.podspec, so recall on the most
+  important file is broken even while token count balloons on low-value generated lockfiles/pbxproj.

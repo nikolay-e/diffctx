@@ -1,0 +1,73 @@
+repo: nextcloud
+base_commit: b8ad6d091a6a4cfdf5becab0b8b6af833fc89a9b
+commit: 2bb8c72c471b58125deb1d30aa6cdc1cd91c56cc
+patch_stored: true
+gold:
+  - path: apps/files_sharing/lib/Controller/ShareAPIController.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: formatShare() computes 'is_trusted_server' via injected TrustedServers::isTrustedServer(), the backend core of the change
+  - path: apps/files_sharing/lib/Config/ConfigLexicon.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: defines SHOW_FEDERATED_TO_TRUSTED_AS_INTERNAL app-config key consumed by LoadSidebarListener and read by ConfigService.ts
+  - path: apps/files_sharing/src/services/ConfigService.ts
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds showFederatedSharesToTrustedServersAsInternal getter that SharingTab.vue and SharingInput.vue branch on
+  - path: apps/files_sharing/src/views/SharingTab.vue
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: buckets shares into shares vs externalShares using config.showFederatedSharesToTrustedServersAsInternal and share.isTrustedServer
+  - path: apps/files_sharing/src/components/SharingInput.vue
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: shouldAddRemoteTypes logic decides whether remote share types are offered based on the new trusted-server config flag
+  - path: apps/files_sharing/lib/Listener/LoadSidebarListener.php
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: provideInitialState('showFederatedSharesToTrustedServersAsInternal', ...) is the string-keyed bridge from ConfigLexicon to ConfigService.ts
+  - path: apps/files_sharing/src/models/Share.ts
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: defines Share.isTrustedServer getter reading _share.is_trusted_server, consumed by SharingTab.vue and SharingEntry.vue
+  - path: apps/files_sharing/tests/Controller/ShareAPIControllerTest.php
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: testFormatShareWithFederatedShare/...WithAtInUsername cover the new is_trusted_server computation including the '@' parsing edge case
+  - path: apps/federation/lib/TrustedServers.php
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: defines isTrustedServer(string $url):bool that ShareAPIController::formatShare() calls to populate is_trusted_server
+forbidden:
+  - path: apps/files_sharing/tests/ApiTest.php
+    reason: only touched to add a mock arg for the new constructor param, not substantive to the feature
+  - path: apps/files_sharing/src/views/SharingLinkList.vue
+    reason: reorders markup for the default-link-entry in the same commit but unrelated to the trusted-server toggle
+  - path: openapi.json
+    reason: generated API schema mirror of apps/files_sharing/openapi.json, adds no semantic understanding
+  - path: apps/files_sharing/src/components/SharingEntry.vue
+    reason: minor label-suppression tweak fully understandable from Share.ts's isTrustedServer getter alone
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 15
+  description: files_sharing trusted-server-shares toggle — PHP controller/capability + Vue UI coupling
+notes: >
+  Adds a per-instance "treat federated shares from trusted servers as internal" toggle:
+  backend resolves is_trusted_server via federation's TrustedServers::isTrustedServer(),
+  frontend buckets/labels shares accordingly. The initial-state handoff from
+  ConfigLexicon/LoadSidebarListener to ConfigService.ts runs through a string key
+  ('showFederatedSharesToTrustedServersAsInternal'), hence string_indirection.

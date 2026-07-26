@@ -1,0 +1,1562 @@
+From 6ba8b65e9f8d113c268e71eb6141896723ec6eae Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Rub=C3=A9n=20Norte?= <rubennorte@meta.com>
+Date: Tue, 10 Dec 2024 09:34:27 -0800
+Subject: [PATCH] Remove legacy ReactNativeConfig abstraction (#47247)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Summary:
+Pull Request resolved: https://github.com/facebook/react-native/pull/47247
+
+Changelog: [internal]
+
+Bye bye `ReactNativeConfig` 👋.
+
+All existing usages of the API have been cleaned up or migrated to `ReactNativeFeatureFlags`, so this is no longer needed.
+
+Reviewed By: GijsWeterings
+
+Differential Revision: D65062306
+
+fbshipit-source-id: 76afcd48ad72023b6dc2a90955ae2f03a1164cca
+---
+ .../AppDelegate/RCTRootViewFactory.mm         |   2 +-
+ .../AppDelegate/React-RCTAppDelegate.podspec  |   1 -
+ .../Fabric/Mounting/RCTMountingManager.mm     |   1 -
+ .../React/React-RCTFabric.podspec             |   1 -
+ .../ReactAndroid/api/ReactAndroid.api         |  16 +-
+ .../ReactAndroid/build.gradle.kts             |   1 -
+ .../defaults/DefaultReactHostDelegate.kt      |   7 -
+ .../react/defaults/DefaultReactNativeHost.kt  |   4 +-
+ .../react/fabric/EmptyReactNativeConfig.kt    |  28 ---
+ .../react/fabric/FabricUIManagerBinding.kt    |   9 +-
+ .../fabric/FabricUIManagerProviderImpl.java   |  13 +-
+ .../react/fabric/ReactNativeConfig.kt         |  26 ---
+ .../react/runtime/ReactHostDelegate.kt        |  10 -
+ .../facebook/react/runtime/ReactInstance.java |   3 +-
+ .../react/runtime/hermes/HermesInstance.kt    |  14 +-
+ .../ReactAndroid/src/main/jni/CMakeLists.txt  |   3 -
+ .../src/main/jni/react/fabric/CMakeLists.txt  |   1 -
+ .../react/fabric/FabricMountingManager.cpp    |   1 -
+ .../jni/react/fabric/FabricMountingManager.h  |   2 -
+ .../react/fabric/FabricUIManagerBinding.cpp   |  13 +-
+ .../jni/react/fabric/FabricUIManagerBinding.h |   5 +-
+ .../react/fabric/JEmptyReactNativeConfig.cpp  |  25 ---
+ .../react/fabric/JEmptyReactNativeConfig.h    |  30 ---
+ .../src/main/jni/react/fabric/OnLoad.cpp      |   2 -
+ .../react/fabric/ReactNativeConfigHolder.cpp  |  12 --
+ .../react/fabric/ReactNativeConfigHolder.h    |  30 ---
+ .../main/jni/react/mapbuffer/CMakeLists.txt   |   1 -
+ .../runtime/hermes/jni/JHermesInstance.cpp    |  10 +-
+ .../runtime/hermes/jni/JHermesInstance.h      |  10 +-
+ .../react/runtime/ReactHostDelegateTest.kt    |   5 +-
+ .../testutils/fakes/FakeReactNativeConfig.kt  |  13 --
+ .../ReactCommon/React-nativeconfig.podspec    |  36 ----
+ .../tests/ReactInstanceIntegrationTest.cpp    |   3 +-
+ .../ReactCommon/react/config/CMakeLists.txt   |  20 --
+ .../react/config/ReactNativeConfig.cpp        |  10 -
+ .../react/config/ReactNativeConfig.h          |  32 ----
+ .../react/renderer/animations/CMakeLists.txt  |   1 -
+ .../renderer/componentregistry/CMakeLists.txt |   1 -
+ .../components/view/ViewShadowNode.cpp        |   1 -
+ .../react/renderer/core/CMakeLists.txt        |   1 -
+ .../renderer/mounting/tests/MountingTest.cpp  |   9 -
+ .../tests/ShadowTreeLifeCycleTest.cpp         |   3 -
+ .../react/renderer/scheduler/CMakeLists.txt   |   1 -
+ .../textlayoutmanager/TextLayoutManager.h     |   1 -
+ .../react/renderer/uimanager/CMakeLists.txt   |   1 -
+ .../react/runtime/React-RuntimeHermes.podspec |   3 +-
+ .../react/runtime/hermes/HermesInstance.cpp   |   1 -
+ .../react/runtime/hermes/HermesInstance.h     |   2 -
+ .../ios/ReactCommon/RCTHermesInstance.h       |   6 +-
+ .../ios/ReactCommon/RCTHermesInstance.mm      |  21 +--
+ .../react/test_utils/shadowTreeGeneration.h   |   3 -
+ .../react-native/scripts/react_native_pods.rb |   1 -
+ packages/rn-tester/Podfile.lock               | 171 ++++++++++--------
+ 53 files changed, 122 insertions(+), 505 deletions(-)
+ delete mode 100644 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/EmptyReactNativeConfig.kt
+ delete mode 100644 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/ReactNativeConfig.kt
+ delete mode 100644 packages/react-native/ReactAndroid/src/main/jni/react/fabric/JEmptyReactNativeConfig.cpp
+ delete mode 100644 packages/react-native/ReactAndroid/src/main/jni/react/fabric/JEmptyReactNativeConfig.h
+ delete mode 100644 packages/react-native/ReactAndroid/src/main/jni/react/fabric/ReactNativeConfigHolder.cpp
+ delete mode 100644 packages/react-native/ReactAndroid/src/main/jni/react/fabric/ReactNativeConfigHolder.h
+ delete mode 100644 packages/react-native/ReactAndroid/src/test/java/com/facebook/testutils/fakes/FakeReactNativeConfig.kt
+ delete mode 100644 packages/react-native/ReactCommon/React-nativeconfig.podspec
+ delete mode 100644 packages/react-native/ReactCommon/react/config/CMakeLists.txt
+ delete mode 100644 packages/react-native/ReactCommon/react/config/ReactNativeConfig.cpp
+ delete mode 100644 packages/react-native/ReactCommon/react/config/ReactNativeConfig.h
+
+diff --git a/packages/react-native/Libraries/AppDelegate/RCTRootViewFactory.mm b/packages/react-native/Libraries/AppDelegate/RCTRootViewFactory.mm
+index d0f5379c919..5b3f575089b 100644
+--- a/packages/react-native/Libraries/AppDelegate/RCTRootViewFactory.mm
++++ b/packages/react-native/Libraries/AppDelegate/RCTRootViewFactory.mm
+@@ -264,7 +264,7 @@
+ - (std::shared_ptr<facebook::react::JSRuntimeFactory>)createJSRuntimeFactory
+ {
+ #if USE_HERMES
+-  return std::make_shared<facebook::react::RCTHermesInstance>(nullptr, nullptr, /* allocInOldGenBeforeTTI */ false);
++  return std::make_shared<facebook::react::RCTHermesInstance>(nullptr, /* allocInOldGenBeforeTTI */ false);
+ #else
+   return std::make_shared<facebook::react::RCTJscInstance>();
+ #endif
+diff --git a/packages/react-native/Libraries/AppDelegate/React-RCTAppDelegate.podspec b/packages/react-native/Libraries/AppDelegate/React-RCTAppDelegate.podspec
+index edaf73d1f06..057293412ad 100644
+--- a/packages/react-native/Libraries/AppDelegate/React-RCTAppDelegate.podspec
++++ b/packages/react-native/Libraries/AppDelegate/React-RCTAppDelegate.podspec
+@@ -73,7 +73,6 @@ Pod::Spec.new do |s|
+   s.dependency "React-RCTNetwork"
+   s.dependency "React-RCTImage"
+   s.dependency "React-CoreModules"
+-  s.dependency "React-nativeconfig"
+   s.dependency "React-RCTFBReactNativeSpec"
+   s.dependency "React-defaultsnativemodule"
+ 
+diff --git a/packages/react-native/React/Fabric/Mounting/RCTMountingManager.mm b/packages/react-native/React/Fabric/Mounting/RCTMountingManager.mm
+index 22cbb439c3c..ac9b058ab5c 100644
+--- a/packages/react-native/React/Fabric/Mounting/RCTMountingManager.mm
++++ b/packages/react-native/React/Fabric/Mounting/RCTMountingManager.mm
+@@ -15,7 +15,6 @@
+ #import <React/RCTLog.h>
+ #import <React/RCTUtils.h>
+ #import <cxxreact/SystraceSection.h>
+-#import <react/config/ReactNativeConfig.h>
+ #import <react/renderer/components/root/RootShadowNode.h>
+ #import <react/renderer/core/LayoutableShadowNode.h>
+ #import <react/renderer/core/RawProps.h>
+diff --git a/packages/react-native/React/React-RCTFabric.podspec b/packages/react-native/React/React-RCTFabric.podspec
+index c80fe3568ac..231bce0c8b8 100644
+--- a/packages/react-native/React/React-RCTFabric.podspec
++++ b/packages/react-native/React/React-RCTFabric.podspec
+@@ -85,7 +85,6 @@ Pod::Spec.new do |s|
+     "react/renderer/components/textinput/platform/ios",
+   ]);
+ 
+-  add_dependency(s, "React-nativeconfig")
+   add_dependency(s, "React-graphics", :additional_framework_paths => ["react/renderer/graphics/platform/ios"])
+   add_dependency(s, "React-ImageManager")
+   add_dependency(s, "React-featureflags")
+diff --git a/packages/react-native/ReactAndroid/api/ReactAndroid.api b/packages/react-native/ReactAndroid/api/ReactAndroid.api
+index 06a57bf8c12..0278abefc15 100644
+--- a/packages/react-native/ReactAndroid/api/ReactAndroid.api
++++ b/packages/react-native/ReactAndroid/api/ReactAndroid.api
+@@ -2585,10 +2585,6 @@ public class com/facebook/react/fabric/DevToolsReactPerfLogger$FabricCommitPoint
+ 	public fun toString ()Ljava/lang/String;
+ }
+ 
+-public final class com/facebook/react/fabric/EmptyReactNativeConfig : com/facebook/react/fabric/ReactNativeConfig {
+-	public fun <init> ()V
+-}
+-
+ public final class com/facebook/react/fabric/FabricSoLoader {
+ 	public static final field INSTANCE Lcom/facebook/react/fabric/FabricSoLoader;
+ 	public static final fun staticInit ()V
+@@ -2645,7 +2641,7 @@ public class com/facebook/react/fabric/FabricUIManager : com/facebook/react/brid
+ }
+ 
+ public class com/facebook/react/fabric/FabricUIManagerProviderImpl : com/facebook/react/bridge/UIManagerProvider {
+-	public fun <init> (Lcom/facebook/react/fabric/ComponentFactory;Lcom/facebook/react/fabric/ReactNativeConfig;Lcom/facebook/react/uimanager/ViewManagerRegistry;)V
++	public fun <init> (Lcom/facebook/react/fabric/ComponentFactory;Lcom/facebook/react/uimanager/ViewManagerRegistry;)V
+ 	public fun createUIManager (Lcom/facebook/react/bridge/ReactApplicationContext;)Lcom/facebook/react/bridge/UIManager;
+ }
+ 
+@@ -2656,14 +2652,6 @@ public abstract class com/facebook/react/fabric/GuardedFrameCallback : android/v
+ 	protected abstract fun doFrameGuarded (J)V
+ }
+ 
+-public abstract interface class com/facebook/react/fabric/ReactNativeConfig {
+-	public static final field Companion Lcom/facebook/react/fabric/ReactNativeConfig$Companion;
+-	public static final field DEFAULT_CONFIG Lcom/facebook/react/fabric/ReactNativeConfig;
+-}
+-
+-public final class com/facebook/react/fabric/ReactNativeConfig$Companion {
+-}
+-
+ public class com/facebook/react/fabric/StateWrapperImpl : com/facebook/jni/HybridClassBase, com/facebook/react/uimanager/StateWrapper {
+ 	public fun destroyState ()V
+ 	public fun getStateData ()Lcom/facebook/react/bridge/ReadableNativeMap;
+@@ -3841,7 +3829,7 @@ public abstract class com/facebook/react/runtime/cxxreactpackage/CxxReactPackage
+ public final class com/facebook/react/runtime/hermes/HermesInstance : com/facebook/react/runtime/JSRuntimeFactory {
+ 	public static final field Companion Lcom/facebook/react/runtime/hermes/HermesInstance$Companion;
+ 	public fun <init> ()V
+-	public fun <init> (Lcom/facebook/react/fabric/ReactNativeConfig;Z)V
++	public fun <init> (Z)V
+ }
+ 
+ public final class com/facebook/react/runtime/hermes/HermesInstance$Companion {
+diff --git a/packages/react-native/ReactAndroid/build.gradle.kts b/packages/react-native/ReactAndroid/build.gradle.kts
+index 11476c0354a..70233798f95 100644
+--- a/packages/react-native/ReactAndroid/build.gradle.kts
++++ b/packages/react-native/ReactAndroid/build.gradle.kts
+@@ -191,7 +191,6 @@ val preparePrefab by
+                       Pair("../ReactCommon/callinvoker/", ""),
+                       Pair("../ReactCommon/cxxreact/", "cxxreact/"),
+                       Pair("../ReactCommon/react/bridging/", "react/bridging/"),
+-                      Pair("../ReactCommon/react/config/", "react/config/"),
+                       Pair("../ReactCommon/react/nativemodule/core/", ""),
+                       Pair("../ReactCommon/react/nativemodule/core/platform/android/", ""),
+                       Pair(
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/defaults/DefaultReactHostDelegate.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/defaults/DefaultReactHostDelegate.kt
+index f2916d8c4bc..6f37120a46a 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/defaults/DefaultReactHostDelegate.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/defaults/DefaultReactHostDelegate.kt
+@@ -12,7 +12,6 @@ import com.facebook.react.ReactPackage
+ import com.facebook.react.ReactPackageTurboModuleManagerDelegate
+ import com.facebook.react.bridge.JSBundleLoader
+ import com.facebook.react.common.annotations.UnstableReactNativeAPI
+-import com.facebook.react.fabric.ReactNativeConfig
+ import com.facebook.react.runtime.BindingsInstaller
+ import com.facebook.react.runtime.JSRuntimeFactory
+ import com.facebook.react.runtime.ReactHostDelegate
+@@ -31,8 +30,6 @@ import com.facebook.react.runtime.hermes.HermesInstance
+  * @param jsRuntimeFactory Object that holds a native reference to the JS Runtime factory
+  * @param bindingsInstaller Object that holds a native C++ references that allow host applications
+  *   to install C++ objects into jsi::Runtime during the initialization of React Native
+- * @param reactNativeConfig ReactNative Configuration that allows to customize the behavior of
+- *   key/value pairs used by the framework to enable/disable experimental capabilities
+  * @param exceptionHandler Callback that can be used by React Native host applications to react to
+  *   exceptions thrown by the internals of React Native.
+  */
+@@ -44,12 +41,8 @@ public class DefaultReactHostDelegate(
+     override val reactPackages: List<ReactPackage> = emptyList(),
+     override val jsRuntimeFactory: JSRuntimeFactory = HermesInstance(),
+     override val bindingsInstaller: BindingsInstaller? = null,
+-    private val reactNativeConfig: ReactNativeConfig = ReactNativeConfig.DEFAULT_CONFIG,
+     private val exceptionHandler: (Exception) -> Unit = { throw it },
+     override val turboModuleManagerDelegateBuilder: ReactPackageTurboModuleManagerDelegate.Builder
+ ) : ReactHostDelegate {
+-
+-  override fun getReactNativeConfig(): ReactNativeConfig = reactNativeConfig
+-
+   override fun handleInstanceException(error: Exception): Unit = exceptionHandler(error)
+ }
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/defaults/DefaultReactNativeHost.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/defaults/DefaultReactNativeHost.kt
+index b85923b3f19..b816bad9ae6 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/defaults/DefaultReactNativeHost.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/defaults/DefaultReactNativeHost.kt
+@@ -18,7 +18,6 @@ import com.facebook.react.bridge.UIManagerProvider
+ import com.facebook.react.common.annotations.UnstableReactNativeAPI
+ import com.facebook.react.fabric.ComponentFactory
+ import com.facebook.react.fabric.FabricUIManagerProviderImpl
+-import com.facebook.react.fabric.ReactNativeConfig
+ import com.facebook.react.uimanager.ViewManagerRegistry
+ import com.facebook.react.uimanager.ViewManagerResolver
+ 
+@@ -63,8 +62,7 @@ protected constructor(
+                     reactInstanceManager.getOrCreateViewManagers(reactApplicationContext))
+               }
+ 
+-          FabricUIManagerProviderImpl(
+-                  componentFactory, ReactNativeConfig.DEFAULT_CONFIG, viewManagerRegistry)
++          FabricUIManagerProviderImpl(componentFactory, viewManagerRegistry)
+               .createUIManager(reactApplicationContext)
+         }
+       } else {
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/EmptyReactNativeConfig.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/EmptyReactNativeConfig.kt
+deleted file mode 100644
+index 3a0863a1c98..00000000000
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/EmptyReactNativeConfig.kt
++++ /dev/null
+@@ -1,28 +0,0 @@
+-/*
+- * Copyright (c) Meta Platforms, Inc. and affiliates.
+- *
+- * This source code is licensed under the MIT license found in the
+- * LICENSE file in the root directory of this source tree.
+- */
+-
+-package com.facebook.react.fabric
+-
+-import com.facebook.jni.HybridData
+-import com.facebook.proguard.annotations.DoNotStripAny
+-
+-/**
+- * An empty [ReactNativeConfig] that is backed by the C++ implementation where the defaults are
+- * stored.
+- */
+-@DoNotStripAny
+-public class EmptyReactNativeConfig : ReactNativeConfig {
+-  private val mHybridData: HybridData = initHybrid()
+-
+-  private external fun initHybrid(): HybridData
+-
+-  private companion object {
+-    init {
+-      FabricSoLoader.staticInit()
+-    }
+-  }
+-}
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/FabricUIManagerBinding.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/FabricUIManagerBinding.kt
+index 3bdcae44647..1607d1bda33 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/FabricUIManagerBinding.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/FabricUIManagerBinding.kt
+@@ -34,7 +34,6 @@ internal class FabricUIManagerBinding : HybridClassBase() {
+       uiManager: FabricUIManager,
+       eventBeatManager: EventBeatManager,
+       componentsRegistry: ComponentFactory,
+-      reactNativeConfig: Any
+   )
+ 
+   public external fun startSurface(surfaceId: Int, moduleName: String, initialProps: NativeMap)
+@@ -93,16 +92,10 @@ internal class FabricUIManagerBinding : HybridClassBase() {
+       fabricUIManager: FabricUIManager,
+       eventBeatManager: EventBeatManager,
+       componentFactory: ComponentFactory,
+-      reactNativeConfig: ReactNativeConfig
+   ) {
+     fabricUIManager.setBinding(this)
+     installFabricUIManager(
+-        runtimeExecutor,
+-        runtimeScheduler,
+-        fabricUIManager,
+-        eventBeatManager,
+-        componentFactory,
+-        reactNativeConfig)
++        runtimeExecutor, runtimeScheduler, fabricUIManager, eventBeatManager, componentFactory)
+     setPixelDensity(getDisplayMetricDensity())
+   }
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/FabricUIManagerProviderImpl.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/FabricUIManagerProviderImpl.java
+index e456226a030..e694c36f4aa 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/FabricUIManagerProviderImpl.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/FabricUIManagerProviderImpl.java
+@@ -22,15 +22,11 @@ import com.facebook.systrace.Systrace;
+ public class FabricUIManagerProviderImpl implements UIManagerProvider {
+ 
+   private final ComponentFactory mComponentFactory;
+-  private final ReactNativeConfig mConfig;
+   private final ViewManagerRegistry mViewManagerRegistry;
+ 
+   public FabricUIManagerProviderImpl(
+-      ComponentFactory componentFactory,
+-      ReactNativeConfig config,
+-      ViewManagerRegistry viewManagerRegistry) {
++      ComponentFactory componentFactory, ViewManagerRegistry viewManagerRegistry) {
+     mComponentFactory = componentFactory;
+-    mConfig = config;
+     mViewManagerRegistry = viewManagerRegistry;
+   }
+ 
+@@ -56,12 +52,7 @@ public class FabricUIManagerProviderImpl implements UIManagerProvider {
+ 
+     if (runtimeExecutor != null && runtimeScheduler != null) {
+       binding.register(
+-          runtimeExecutor,
+-          runtimeScheduler,
+-          fabricUIManager,
+-          eventBeatManager,
+-          mComponentFactory,
+-          mConfig);
++          runtimeExecutor, runtimeScheduler, fabricUIManager, eventBeatManager, mComponentFactory);
+     } else {
+       throw new IllegalStateException(
+           "Unable to register FabricUIManager with CatalystInstance, runtimeExecutor and"
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/ReactNativeConfig.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/ReactNativeConfig.kt
+deleted file mode 100644
+index fb3250297f6..00000000000
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/ReactNativeConfig.kt
++++ /dev/null
+@@ -1,26 +0,0 @@
+-/*
+- * Copyright (c) Meta Platforms, Inc. and affiliates.
+- *
+- * This source code is licensed under the MIT license found in the
+- * LICENSE file in the root directory of this source tree.
+- */
+-
+-package com.facebook.react.fabric
+-
+-import com.facebook.proguard.annotations.DoNotStrip
+-
+-/**
+- * ReactNative Configuration that allows to customize the behavior of key/value pairs used by the
+- * framework to enable/disable capabilities.
+- *
+- * The hosting app should provide an implementation of this interface to allow specific
+- * customization of single keys. An empty implementation is available as [EmptyReactNativeConfig].
+- *
+- * This is a wrapper for the ReactNativeConfig object in C++
+- */
+-@DoNotStrip
+-public interface ReactNativeConfig {
+-  public companion object {
+-    @JvmField public val DEFAULT_CONFIG: ReactNativeConfig = EmptyReactNativeConfig()
+-  }
+-}
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/ReactHostDelegate.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/ReactHostDelegate.kt
+index 1154b50c839..2708c8c7688 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/ReactHostDelegate.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/ReactHostDelegate.kt
+@@ -12,7 +12,6 @@ import com.facebook.react.ReactPackage
+ import com.facebook.react.ReactPackageTurboModuleManagerDelegate
+ import com.facebook.react.bridge.JSBundleLoader
+ import com.facebook.react.common.annotations.UnstableReactNativeAPI
+-import com.facebook.react.fabric.ReactNativeConfig
+ 
+ /**
+  * [ReactHostDelegate] is an interface that defines parameters required to initialize React Native.
+@@ -54,13 +53,4 @@ public interface ReactHostDelegate {
+    * the internals of React Native.
+    */
+   public fun handleInstanceException(error: Exception)
+-
+-  /**
+-   * ReactNative Configuration that allows to customize the behavior of key/value pairs used by the
+-   * framework to enable/disable experimental capabilities
+-   *
+-   * [moduleProvider] is a function that returns the Native Module with the name received as a
+-   * parameter.
+-   */
+-  public fun getReactNativeConfig(): ReactNativeConfig
+ }
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/ReactInstance.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/ReactInstance.java
+index 9e028e25c39..5c523cbfb46 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/ReactInstance.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/ReactInstance.java
+@@ -275,8 +275,7 @@ final class ReactInstance {
+         getRuntimeScheduler(),
+         mFabricUIManager,
+         eventBeatManager,
+-        componentFactory,
+-        delegate.getReactNativeConfig());
++        componentFactory);
+ 
+     // Initialize the FabricUIManager
+     mFabricUIManager.initialize();
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/hermes/HermesInstance.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/hermes/HermesInstance.kt
+index 7eb8544f82d..9d9877e677c 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/hermes/HermesInstance.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/hermes/HermesInstance.kt
+@@ -9,24 +9,18 @@ package com.facebook.react.runtime.hermes
+ 
+ import com.facebook.jni.HybridData
+ import com.facebook.jni.annotations.DoNotStrip
+-import com.facebook.react.fabric.ReactNativeConfig
+ import com.facebook.react.runtime.JSRuntimeFactory
+ import com.facebook.soloader.SoLoader
+ 
+-public class HermesInstance(
+-    reactNativeConfig: ReactNativeConfig?,
+-    allocInOldGenBeforeTTI: Boolean
+-) : JSRuntimeFactory(initHybrid(reactNativeConfig as Any?, allocInOldGenBeforeTTI)) {
++public class HermesInstance(allocInOldGenBeforeTTI: Boolean) :
++    JSRuntimeFactory(initHybrid(allocInOldGenBeforeTTI)) {
+ 
+-  public constructor() : this(null, false)
++  public constructor() : this(false)
+ 
+   public companion object {
+     @JvmStatic
+     @DoNotStrip
+-    protected external fun initHybrid(
+-        reactNativeConfig: Any?,
+-        allocInOldGenBeforeTTI: Boolean
+-    ): HybridData
++    protected external fun initHybrid(allocInOldGenBeforeTTI: Boolean): HybridData
+ 
+     init {
+       SoLoader.loadLibrary("hermesinstancejni")
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt b/packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt
+index eb1b6d9301a..c032fa7967b 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt
++++ b/packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt
+@@ -71,7 +71,6 @@ add_react_common_subdir(hermes/executor)
+ add_react_common_subdir(hermes/inspector-modern)
+ add_react_common_subdir(react/renderer/runtimescheduler)
+ add_react_common_subdir(react/debug)
+-add_react_common_subdir(react/config)
+ add_react_common_subdir(react/featureflags)
+ add_react_common_subdir(react/performance/timeline)
+ add_react_common_subdir(react/renderer/animations)
+@@ -168,7 +167,6 @@ add_library(reactnative
+           $<TARGET_OBJECTS:mapbufferjni>
+           $<TARGET_OBJECTS:react_bridging>
+           $<TARGET_OBJECTS:react_codegen_rncore>
+-          $<TARGET_OBJECTS:react_config>
+           $<TARGET_OBJECTS:react_cxxreact>
+           $<TARGET_OBJECTS:react_debug>
+           $<TARGET_OBJECTS:react_devsupportjni>
+@@ -252,7 +250,6 @@ target_include_directories(reactnative
+         $<TARGET_PROPERTY:mapbufferjni,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_bridging,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_codegen_rncore,INTERFACE_INCLUDE_DIRECTORIES>
+-        $<TARGET_PROPERTY:react_config,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_cxxreact,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_debug,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_devsupportjni,INTERFACE_INCLUDE_DIRECTORIES>
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/fabric/CMakeLists.txt b/packages/react-native/ReactAndroid/src/main/jni/react/fabric/CMakeLists.txt
+index 2e1b9845d37..fe5b9d5e659 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/fabric/CMakeLists.txt
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/fabric/CMakeLists.txt
+@@ -49,7 +49,6 @@ target_link_libraries(
+         react_render_uimanager_consistency
+         rrc_legacyviewmanagerinterop
+         react_utils
+-        react_config
+         reactnativejni
+         rrc_image
+         rrc_modal
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricMountingManager.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricMountingManager.cpp
+index f7f0bd996bf..f5a1d23cbb3 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricMountingManager.cpp
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricMountingManager.cpp
+@@ -31,7 +31,6 @@
+ namespace facebook::react {
+ 
+ FabricMountingManager::FabricMountingManager(
+-    std::shared_ptr<const ReactNativeConfig>& config,
+     jni::global_ref<JFabricUIManager::javaobject>& javaUIManager)
+     : javaUIManager_(javaUIManager) {}
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricMountingManager.h b/packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricMountingManager.h
+index 79859bcb97d..781489a5c86 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricMountingManager.h
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricMountingManager.h
+@@ -18,13 +18,11 @@
+ namespace facebook::react {
+ 
+ class MountingTransaction;
+-class ReactNativeConfig;
+ struct ShadowView;
+ 
+ class FabricMountingManager final {
+  public:
+   FabricMountingManager(
+-      std::shared_ptr<const ReactNativeConfig>& config,
+       jni::global_ref<JFabricUIManager::javaobject>& javaUIManager);
+   FabricMountingManager(const FabricMountingManager&) = delete;
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricUIManagerBinding.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricUIManagerBinding.cpp
+index ebe6f1dd7bc..80bbbd0805f 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricUIManagerBinding.cpp
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricUIManagerBinding.cpp
+@@ -12,7 +12,6 @@
+ #include "EventBeatManager.h"
+ #include "EventEmitterWrapper.h"
+ #include "FabricMountingManager.h"
+-#include "ReactNativeConfigHolder.h"
+ 
+ #include <cxxreact/SystraceSection.h>
+ #include <fbjni/fbjni.h>
+@@ -425,13 +424,9 @@ void FabricUIManagerBinding::installFabricUIManager(
+     jni::alias_ref<JRuntimeScheduler::javaobject> runtimeSchedulerHolder,
+     jni::alias_ref<JFabricUIManager::javaobject> javaUIManager,
+     EventBeatManager* eventBeatManager,
+-    ComponentFactory* componentsRegistry,
+-    jni::alias_ref<jobject> reactNativeConfig) {
++    ComponentFactory* componentsRegistry) {
+   SystraceSection s("FabricUIManagerBinding::installFabricUIManager");
+ 
+-  std::shared_ptr<const ReactNativeConfig> config =
+-      std::make_shared<const ReactNativeConfigHolder>(reactNativeConfig);
+-
+   enableFabricLogs_ = ReactNativeFeatureFlags::enableFabricLogs();
+ 
+   if (enableFabricLogs_) {
+@@ -444,7 +439,7 @@ void FabricUIManagerBinding::installFabricUIManager(
+ 
+   auto globalJavaUiManager = make_global(javaUIManager);
+   mountingManager_ =
+-      std::make_shared<FabricMountingManager>(config, globalJavaUiManager);
++      std::make_shared<FabricMountingManager>(globalJavaUiManager);
+ 
+   ContextContainer::Shared contextContainer =
+       std::make_shared<ContextContainer>();
+@@ -475,9 +470,6 @@ void FabricUIManagerBinding::installFabricUIManager(
+ 
+   contextContainer->insert("FabricUIManager", globalJavaUiManager);
+ 
+-  // Keep reference to config object and cache some feature flags here
+-  reactNativeConfig_ = config;
+-
+   auto toolbox = SchedulerToolbox{};
+   toolbox.contextContainer = contextContainer;
+   toolbox.componentRegistryFactory = componentsRegistry->buildRegistryFunction;
+@@ -506,7 +498,6 @@ void FabricUIManagerBinding::uninstallFabricUIManager() {
+   animationDriver_ = nullptr;
+   scheduler_ = nullptr;
+   mountingManager_ = nullptr;
+-  reactNativeConfig_ = nullptr;
+ }
+ 
+ std::shared_ptr<FabricMountingManager>
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricUIManagerBinding.h b/packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricUIManagerBinding.h
+index 817c256c4d7..2976dc72192 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricUIManagerBinding.h
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricUIManagerBinding.h
+@@ -32,7 +32,6 @@ class EventBeatManager;
+ class FabricMountingManager;
+ class Instance;
+ class LayoutAnimationDriver;
+-class ReactNativeConfig;
+ class Scheduler;
+ 
+ class FabricUIManagerBinding : public jni::HybridClass<FabricUIManagerBinding>,
+@@ -68,8 +67,7 @@ class FabricUIManagerBinding : public jni::HybridClass<FabricUIManagerBinding>,
+       jni::alias_ref<JRuntimeScheduler::javaobject> runtimeSchedulerHolder,
+       jni::alias_ref<JFabricUIManager::javaobject> javaUIManager,
+       EventBeatManager* eventBeatManager,
+-      ComponentFactory* componentsRegistry,
+-      jni::alias_ref<jobject> reactNativeConfig);
++      ComponentFactory* componentsRegistry);
+ 
+   void startSurface(
+       jint surfaceId,
+@@ -167,7 +165,6 @@ class FabricUIManagerBinding : public jni::HybridClass<FabricUIManagerBinding>,
+ 
+   float pointScaleFactor_ = 1;
+ 
+-  std::shared_ptr<const ReactNativeConfig> reactNativeConfig_{nullptr};
+   bool enableFabricLogs_{false};
+ };
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/fabric/JEmptyReactNativeConfig.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/fabric/JEmptyReactNativeConfig.cpp
+deleted file mode 100644
+index b5674438677..00000000000
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/fabric/JEmptyReactNativeConfig.cpp
++++ /dev/null
+@@ -1,25 +0,0 @@
+-/*
+- * Copyright (c) Meta Platforms, Inc. and affiliates.
+- *
+- * This source code is licensed under the MIT license found in the
+- * LICENSE file in the root directory of this source tree.
+- */
+-
+-#include "JEmptyReactNativeConfig.h"
+-#include <fbjni/fbjni.h>
+-#include <react/config/ReactNativeConfig.h>
+-
+-namespace facebook::react {
+-
+-jni::local_ref<JEmptyReactNativeConfig::jhybriddata>
+-JEmptyReactNativeConfig::initHybrid(jni::alias_ref<jclass>) {
+-  return makeCxxInstance();
+-}
+-
+-void JEmptyReactNativeConfig::registerNatives() {
+-  registerHybrid({
+-      makeNativeMethod("initHybrid", JEmptyReactNativeConfig::initHybrid),
+-  });
+-}
+-
+-} // namespace facebook::react
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/fabric/JEmptyReactNativeConfig.h b/packages/react-native/ReactAndroid/src/main/jni/react/fabric/JEmptyReactNativeConfig.h
+deleted file mode 100644
+index 4f6a25692b5..00000000000
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/fabric/JEmptyReactNativeConfig.h
++++ /dev/null
+@@ -1,30 +0,0 @@
+-/*
+- * Copyright (c) Meta Platforms, Inc. and affiliates.
+- *
+- * This source code is licensed under the MIT license found in the
+- * LICENSE file in the root directory of this source tree.
+- */
+-
+-#pragma once
+-
+-#include <fbjni/fbjni.h>
+-#include <react/config/ReactNativeConfig.h>
+-#include <react/jni/ReadableNativeMap.h>
+-#include <memory>
+-
+-namespace facebook::react {
+-
+-class JEmptyReactNativeConfig
+-    : public jni::HybridClass<JEmptyReactNativeConfig> {
+- public:
+-  constexpr static const char* const kJavaDescriptor =
+-      "Lcom/facebook/react/fabric/EmptyReactNativeConfig;";
+-
+-  static void registerNatives();
+-
+- private:
+-  static jni::local_ref<jhybriddata> initHybrid(jni::alias_ref<jclass>);
+-  const EmptyReactNativeConfig reactNativeConfig_ = EmptyReactNativeConfig();
+-};
+-
+-} // namespace facebook::react
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/fabric/OnLoad.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/fabric/OnLoad.cpp
+index 7ebee5641c7..064aec9141b 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/fabric/OnLoad.cpp
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/fabric/OnLoad.cpp
+@@ -11,7 +11,6 @@
+ #include "EventBeatManager.h"
+ #include "EventEmitterWrapper.h"
+ #include "FabricUIManagerBinding.h"
+-#include "JEmptyReactNativeConfig.h"
+ #include "StateWrapperImpl.h"
+ #include "SurfaceHandlerBinding.h"
+ 
+@@ -23,6 +22,5 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*) {
+     facebook::react::StateWrapperImpl::registerNatives();
+     facebook::react::ComponentFactory::registerNatives();
+     facebook::react::SurfaceHandlerBinding::registerNatives();
+-    facebook::react::JEmptyReactNativeConfig::registerNatives();
+   });
+ }
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/fabric/ReactNativeConfigHolder.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/fabric/ReactNativeConfigHolder.cpp
+deleted file mode 100644
+index 2e0bdc85125..00000000000
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/fabric/ReactNativeConfigHolder.cpp
++++ /dev/null
+@@ -1,12 +0,0 @@
+-/*
+- * Copyright (c) Meta Platforms, Inc. and affiliates.
+- *
+- * This source code is licensed under the MIT license found in the
+- * LICENSE file in the root directory of this source tree.
+- */
+-
+-#include "ReactNativeConfigHolder.h"
+-
+-#include <fbjni/fbjni.h>
+-
+-using namespace facebook::react;
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/fabric/ReactNativeConfigHolder.h b/packages/react-native/ReactAndroid/src/main/jni/react/fabric/ReactNativeConfigHolder.h
+deleted file mode 100644
+index d303ea93e9e..00000000000
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/fabric/ReactNativeConfigHolder.h
++++ /dev/null
+@@ -1,30 +0,0 @@
+-/*
+- * Copyright (c) Meta Platforms, Inc. and affiliates.
+- *
+- * This source code is licensed under the MIT license found in the
+- * LICENSE file in the root directory of this source tree.
+- */
+-
+-#pragma once
+-
+-#include <fbjni/fbjni.h>
+-#include <react/config/ReactNativeConfig.h>
+-#include <react/jni/ReadableNativeMap.h>
+-#include <memory>
+-
+-namespace facebook::react {
+-
+-/**
+- * Implementation of ReactNativeConfig that wraps a ReactNativeConfig Java
+- * object.
+- */
+-class ReactNativeConfigHolder : public ReactNativeConfig {
+- public:
+-  explicit ReactNativeConfigHolder(jni::alias_ref<jobject> reactNativeConfig)
+-      : reactNativeConfig_(make_global(reactNativeConfig)){};
+-
+- private:
+-  jni::global_ref<jobject> reactNativeConfig_;
+-};
+-
+-} // namespace facebook::react
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/mapbuffer/CMakeLists.txt b/packages/react-native/ReactAndroid/src/main/jni/react/mapbuffer/CMakeLists.txt
+index cb28dee202a..af2d9728c33 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/mapbuffer/CMakeLists.txt
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/mapbuffer/CMakeLists.txt
+@@ -33,6 +33,5 @@ target_link_libraries(mapbufferjni
+         react_debug
+         react_render_mapbuffer
+         react_utils
+-        react_config
+         yoga
+ )
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/runtime/hermes/jni/JHermesInstance.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/hermes/jni/JHermesInstance.cpp
+index b09f3b5a198..c9d828ac2fd 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/runtime/hermes/jni/JHermesInstance.cpp
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/hermes/jni/JHermesInstance.cpp
+@@ -8,19 +8,13 @@
+ #include "JHermesInstance.h"
+ 
+ #include <fbjni/fbjni.h>
+-#include <react/fabric/ReactNativeConfigHolder.h>
+ 
+ namespace facebook::react {
+ 
+ jni::local_ref<JHermesInstance::jhybriddata> JHermesInstance::initHybrid(
+     jni::alias_ref<jclass> /* unused */,
+-    jni::alias_ref<jobject> reactNativeConfig,
+     bool allocInOldGenBeforeTTI) {
+-  std::shared_ptr<const ReactNativeConfig> config = reactNativeConfig != nullptr
+-      ? std::make_shared<const ReactNativeConfigHolder>(reactNativeConfig)
+-      : nullptr;
+-
+-  return makeCxxInstance(config, allocInOldGenBeforeTTI);
++  return makeCxxInstance(allocInOldGenBeforeTTI);
+ }
+ 
+ void JHermesInstance::registerNatives() {
+@@ -32,7 +26,7 @@ void JHermesInstance::registerNatives() {
+ std::unique_ptr<JSRuntime> JHermesInstance::createJSRuntime(
+     std::shared_ptr<MessageQueueThread> msgQueueThread) noexcept {
+   return HermesInstance::createJSRuntime(
+-      reactNativeConfig_, nullptr, msgQueueThread, allocInOldGenBeforeTTI_);
++      nullptr, msgQueueThread, allocInOldGenBeforeTTI_);
+ }
+ 
+ } // namespace facebook::react
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/runtime/hermes/jni/JHermesInstance.h b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/hermes/jni/JHermesInstance.h
+index 4d5c44ff9bf..eb732d881be 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/runtime/hermes/jni/JHermesInstance.h
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/hermes/jni/JHermesInstance.h
+@@ -13,7 +13,6 @@
+ #include <fbjni/fbjni.h>
+ #include <jni.h>
+ #include <jsi/jsi.h>
+-#include <react/config/ReactNativeConfig.h>
+ #include <react/runtime/JSRuntimeFactory.h>
+ #include <react/runtime/hermes/HermesInstance.h>
+ #include "../../jni/JJSRuntimeFactory.h"
+@@ -28,16 +27,12 @@ class JHermesInstance
+ 
+   static jni::local_ref<jhybriddata> initHybrid(
+       jni::alias_ref<jclass> /* unused */,
+-      jni::alias_ref<jobject> reactNativeConfig,
+       bool allocInOldGenBeforeTTI);
+ 
+   static void registerNatives();
+ 
+-  JHermesInstance(
+-      std::shared_ptr<const ReactNativeConfig> reactNativeConfig,
+-      bool allocInOldGenBeforeTTI)
+-      : reactNativeConfig_(std::move(reactNativeConfig)),
+-        allocInOldGenBeforeTTI_(allocInOldGenBeforeTTI){};
++  JHermesInstance(bool allocInOldGenBeforeTTI)
++      : allocInOldGenBeforeTTI_(allocInOldGenBeforeTTI){};
+ 
+   std::unique_ptr<JSRuntime> createJSRuntime(
+       std::shared_ptr<MessageQueueThread> msgQueueThread) noexcept;
+@@ -47,7 +42,6 @@ class JHermesInstance
+  private:
+   friend HybridBase;
+ 
+-  std::shared_ptr<const ReactNativeConfig> reactNativeConfig_;
+   bool allocInOldGenBeforeTTI_;
+ };
+ 
+diff --git a/packages/react-native/ReactAndroid/src/test/java/com/facebook/react/runtime/ReactHostDelegateTest.kt b/packages/react-native/ReactAndroid/src/test/java/com/facebook/react/runtime/ReactHostDelegateTest.kt
+index b2b3b17184b..0407c0ae127 100644
+--- a/packages/react-native/ReactAndroid/src/test/java/com/facebook/react/runtime/ReactHostDelegateTest.kt
++++ b/packages/react-native/ReactAndroid/src/test/java/com/facebook/react/runtime/ReactHostDelegateTest.kt
+@@ -12,7 +12,6 @@ import com.facebook.react.bridge.JSBundleLoader
+ import com.facebook.react.common.annotations.UnstableReactNativeAPI
+ import com.facebook.react.defaults.DefaultReactHostDelegate
+ import com.facebook.react.runtime.hermes.HermesInstance
+-import com.facebook.testutils.fakes.FakeReactNativeConfig
+ import com.facebook.testutils.shadows.ShadowSoLoader
+ import org.assertj.core.api.Assertions.assertThat
+ import org.junit.Test
+@@ -37,14 +36,12 @@ class ReactHostDelegateTest {
+         Mockito.mock(ReactPackageTurboModuleManagerDelegate.Builder::class.java)
+     val hermesInstance: JSRuntimeFactory = Mockito.mock(HermesInstance::class.java)
+     val jsMainModulePathMocked = "mockedJSMainModulePath"
+-    val reactNativeConfig = FakeReactNativeConfig()
+     val delegate =
+         DefaultReactHostDelegate(
+             jsMainModulePath = jsMainModulePathMocked,
+             jsBundleLoader = jsBundleLoader,
+             jsRuntimeFactory = hermesInstance,
+-            turboModuleManagerDelegateBuilder = turboModuleManagerDelegateBuilderMock,
+-            reactNativeConfig = reactNativeConfig)
++            turboModuleManagerDelegateBuilder = turboModuleManagerDelegateBuilderMock)
+ 
+     assertThat(delegate.jsMainModulePath).isEqualTo(jsMainModulePathMocked)
+   }
+diff --git a/packages/react-native/ReactAndroid/src/test/java/com/facebook/testutils/fakes/FakeReactNativeConfig.kt b/packages/react-native/ReactAndroid/src/test/java/com/facebook/testutils/fakes/FakeReactNativeConfig.kt
+deleted file mode 100644
+index 9abc1d8f9bc..00000000000
+--- a/packages/react-native/ReactAndroid/src/test/java/com/facebook/testutils/fakes/FakeReactNativeConfig.kt
++++ /dev/null
+@@ -1,13 +0,0 @@
+-/*
+- * Copyright (c) Meta Platforms, Inc. and affiliates.
+- *
+- * This source code is licensed under the MIT license found in the
+- * LICENSE file in the root directory of this source tree.
+- */
+-
+-package com.facebook.testutils.fakes
+-
+-import com.facebook.react.fabric.ReactNativeConfig
+-
+-/** A fake [ReactNativeConfig] that returns default values for all methods without accessing JNI. */
+-class FakeReactNativeConfig : ReactNativeConfig {}
+diff --git a/packages/react-native/ReactCommon/React-nativeconfig.podspec b/packages/react-native/ReactCommon/React-nativeconfig.podspec
+deleted file mode 100644
+index ce06fe0586b..00000000000
+--- a/packages/react-native/ReactCommon/React-nativeconfig.podspec
++++ /dev/null
+@@ -1,36 +0,0 @@
+-# Copyright (c) Meta Platforms, Inc. and affiliates.
+-#
+-# This source code is licensed under the MIT license found in the
+-# LICENSE file in the root directory of this source tree.
+-
+-require "json"
+-
+-package = JSON.parse(File.read(File.join(__dir__, "..", "package.json")))
+-version = package['version']
+-
+-source = { :git => 'https://github.com/facebook/react-native.git' }
+-if version == '1000.0.0'
+-  # This is an unpublished version, use the latest commit hash of the react-native repo, which we’re presumably in.
+-  source[:commit] = `git rev-parse HEAD`.strip if system("git rev-parse --git-dir > /dev/null 2>&1")
+-else
+-  source[:tag] = "v#{version}"
+-end
+-
+-Pod::Spec.new do |s|
+-  s.name                   = "React-nativeconfig"
+-  s.version                = version
+-  s.summary                = "-"
+-  s.homepage               = "https://reactnative.dev/"
+-  s.license                = package["license"]
+-  s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = min_supported_versions
+-  s.source                 = source
+-  s.source_files           = "react/config/*.{m,mm,cpp,h}"
+-  s.header_dir             = "react/config"
+-  s.pod_target_xcconfig    = { "CLANG_CXX_LANGUAGE_STANDARD" => rct_cxx_language_standard() }
+-
+-  if ENV['USE_FRAMEWORKS']
+-    s.header_mappings_dir     = './'
+-    s.module_name             = 'React_nativeconfig'
+-  end
+-end
+diff --git a/packages/react-native/ReactCommon/jsinspector-modern/tests/ReactInstanceIntegrationTest.cpp b/packages/react-native/ReactCommon/jsinspector-modern/tests/ReactInstanceIntegrationTest.cpp
+index 42549ee8c8a..e26cd9e72f4 100644
+--- a/packages/react-native/ReactCommon/jsinspector-modern/tests/ReactInstanceIntegrationTest.cpp
++++ b/packages/react-native/ReactCommon/jsinspector-modern/tests/ReactInstanceIntegrationTest.cpp
+@@ -42,8 +42,7 @@ void ReactInstanceIntegrationTest::SetUp() {
+ 
+   auto jsRuntimeFactory = std::make_unique<react::HermesInstance>();
+   std::unique_ptr<react::JSRuntime> runtime_ =
+-      jsRuntimeFactory->createJSRuntime(
+-          nullptr, nullptr, messageQueueThread, false);
++      jsRuntimeFactory->createJSRuntime(nullptr, messageQueueThread, false);
+   jsi::Runtime* jsiRuntime = &runtime_->getRuntime();
+ 
+   // Error handler:
+diff --git a/packages/react-native/ReactCommon/react/config/CMakeLists.txt b/packages/react-native/ReactCommon/react/config/CMakeLists.txt
+deleted file mode 100644
+index 251587d2584..00000000000
+--- a/packages/react-native/ReactCommon/react/config/CMakeLists.txt
++++ /dev/null
+@@ -1,20 +0,0 @@
+-# Copyright (c) Meta Platforms, Inc. and affiliates.
+-#
+-# This source code is licensed under the MIT license found in the
+-# LICENSE file in the root directory of this source tree.
+-
+-cmake_minimum_required(VERSION 3.13)
+-set(CMAKE_VERBOSE_MAKEFILE on)
+-
+-add_compile_options(
+-        -fexceptions
+-        -frtti
+-        -std=c++20
+-        -Wall
+-        -Wpedantic
+-        -DLOG_TAG=\"Fabric\")
+-
+-file(GLOB react_config_SRC CONFIGURE_DEPENDS *.cpp)
+-add_library(react_config OBJECT ${react_config_SRC})
+-
+-target_include_directories(react_config PUBLIC ${REACT_COMMON_DIR})
+diff --git a/packages/react-native/ReactCommon/react/config/ReactNativeConfig.cpp b/packages/react-native/ReactCommon/react/config/ReactNativeConfig.cpp
+deleted file mode 100644
+index 148e78e2fda..00000000000
+--- a/packages/react-native/ReactCommon/react/config/ReactNativeConfig.cpp
++++ /dev/null
+@@ -1,10 +0,0 @@
+-/*
+- * Copyright (c) Meta Platforms, Inc. and affiliates.
+- *
+- * This source code is licensed under the MIT license found in the
+- * LICENSE file in the root directory of this source tree.
+- */
+-
+-#include "ReactNativeConfig.h"
+-
+-namespace facebook::react {} // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/react/config/ReactNativeConfig.h b/packages/react-native/ReactCommon/react/config/ReactNativeConfig.h
+deleted file mode 100644
+index f7d998d6c50..00000000000
+--- a/packages/react-native/ReactCommon/react/config/ReactNativeConfig.h
++++ /dev/null
+@@ -1,32 +0,0 @@
+-/*
+- * Copyright (c) Meta Platforms, Inc. and affiliates.
+- *
+- * This source code is licensed under the MIT license found in the
+- * LICENSE file in the root directory of this source tree.
+- */
+-
+-#pragma once
+-
+-#include <string>
+-
+-namespace facebook::react {
+-
+-/**
+- * ReactNative configuration as provided by the hosting app.
+- * Provide a sub-class implementation to allow app specific customization.
+- */
+-class ReactNativeConfig {
+- public:
+-  ReactNativeConfig() = default;
+-  virtual ~ReactNativeConfig() = default;
+-};
+-
+-/**
+- * Empty configuration that will provide hardcoded default values.
+- */
+-class EmptyReactNativeConfig : public ReactNativeConfig {
+- public:
+-  EmptyReactNativeConfig() = default;
+-};
+-
+-} // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/react/renderer/animations/CMakeLists.txt b/packages/react-native/ReactCommon/react/renderer/animations/CMakeLists.txt
+index a8d115021a9..d6f770ba21d 100644
+--- a/packages/react-native/ReactCommon/react/renderer/animations/CMakeLists.txt
++++ b/packages/react-native/ReactCommon/react/renderer/animations/CMakeLists.txt
+@@ -24,7 +24,6 @@ target_link_libraries(react_render_animations
+         glog
+         glog_init
+         jsi
+-        react_config
+         react_debug
+         react_render_componentregistry
+         react_render_core
+diff --git a/packages/react-native/ReactCommon/react/renderer/componentregistry/CMakeLists.txt b/packages/react-native/ReactCommon/react/renderer/componentregistry/CMakeLists.txt
+index 5ea2f55a490..ae69da2fe8e 100644
+--- a/packages/react-native/ReactCommon/react/renderer/componentregistry/CMakeLists.txt
++++ b/packages/react-native/ReactCommon/react/renderer/componentregistry/CMakeLists.txt
+@@ -23,7 +23,6 @@ target_link_libraries(react_render_componentregistry
+         folly_runtime
+         glog_init
+         jsi
+-        react_config
+         react_debug
+         react_render_core
+         react_render_debug
+diff --git a/packages/react-native/ReactCommon/react/renderer/components/view/ViewShadowNode.cpp b/packages/react-native/ReactCommon/react/renderer/components/view/ViewShadowNode.cpp
+index fab1969985d..bcc4ef045fc 100644
+--- a/packages/react-native/ReactCommon/react/renderer/components/view/ViewShadowNode.cpp
++++ b/packages/react-native/ReactCommon/react/renderer/components/view/ViewShadowNode.cpp
+@@ -6,7 +6,6 @@
+  */
+ 
+ #include "ViewShadowNode.h"
+-#include <react/config/ReactNativeConfig.h>
+ #include <react/renderer/components/view/HostPlatformViewTraitsInitializer.h>
+ #include <react/renderer/components/view/primitives.h>
+ 
+diff --git a/packages/react-native/ReactCommon/react/renderer/core/CMakeLists.txt b/packages/react-native/ReactCommon/react/renderer/core/CMakeLists.txt
+index 15454a44dec..8760857f68f 100644
+--- a/packages/react-native/ReactCommon/react/renderer/core/CMakeLists.txt
++++ b/packages/react-native/ReactCommon/react/renderer/core/CMakeLists.txt
+@@ -23,7 +23,6 @@ target_link_libraries(react_render_core
+         glog
+         jsi
+         logger
+-        react_config
+         react_debug
+         react_featureflags
+         react_render_debug
+diff --git a/packages/react-native/ReactCommon/react/renderer/mounting/tests/MountingTest.cpp b/packages/react-native/ReactCommon/react/renderer/mounting/tests/MountingTest.cpp
+index 7a7b71a3590..161edf17f09 100644
+--- a/packages/react-native/ReactCommon/react/renderer/mounting/tests/MountingTest.cpp
++++ b/packages/react-native/ReactCommon/react/renderer/mounting/tests/MountingTest.cpp
+@@ -32,9 +32,6 @@ static SharedViewProps nonFlattenedDefaultProps(
+   dynamic["accessible"] = true;
+ 
+   ContextContainer contextContainer;
+-  contextContainer.insert(
+-      "ReactNativeConfig", std::make_shared<EmptyReactNativeConfig>());
+-
+   PropsParserContext parserContext{-1, contextContainer};
+ 
+   return std::static_pointer_cast<const ViewProps>(
+@@ -74,9 +71,6 @@ TEST(MountingTest, testReorderingInstructionGeneration) {
+   auto eventDispatcher = EventDispatcher::Shared{};
+ 
+   auto contextContainer = std::make_shared<ContextContainer>();
+-  contextContainer->insert(
+-      "ReactNativeConfig", std::make_shared<EmptyReactNativeConfig>());
+-
+   auto componentDescriptorParameters =
+       ComponentDescriptorParameters{eventDispatcher, contextContainer, nullptr};
+   auto viewComponentDescriptor =
+@@ -372,9 +366,6 @@ TEST(MountingTest, testReorderingInstructionGeneration) {
+ TEST(MountingTest, testViewReparentingInstructionGeneration) {
+   auto eventDispatcher = EventDispatcher::Shared{};
+   auto contextContainer = std::make_shared<ContextContainer>();
+-  contextContainer->insert(
+-      "ReactNativeConfig", std::make_shared<EmptyReactNativeConfig>());
+-
+   auto componentDescriptorParameters =
+       ComponentDescriptorParameters{eventDispatcher, contextContainer, nullptr};
+   auto viewComponentDescriptor =
+diff --git a/packages/react-native/ReactCommon/react/renderer/mounting/tests/ShadowTreeLifeCycleTest.cpp b/packages/react-native/ReactCommon/react/renderer/mounting/tests/ShadowTreeLifeCycleTest.cpp
+index 55c2450b01b..be86af67be5 100644
+--- a/packages/react-native/ReactCommon/react/renderer/mounting/tests/ShadowTreeLifeCycleTest.cpp
++++ b/packages/react-native/ReactCommon/react/renderer/mounting/tests/ShadowTreeLifeCycleTest.cpp
+@@ -10,7 +10,6 @@
+ #include <glog/logging.h>
+ #include <gtest/gtest.h>
+ 
+-#include <react/config/ReactNativeConfig.h>
+ #include <react/renderer/components/root/RootComponentDescriptor.h>
+ #include <react/renderer/components/view/ViewComponentDescriptor.h>
+ #include <react/renderer/core/PropsParserContext.h>
+@@ -183,8 +182,6 @@ static void testShadowNodeTreeLifeCycleExtensiveFlatteningUnflattening(
+ 
+   auto eventDispatcher = EventDispatcher::Shared{};
+   auto contextContainer = std::make_shared<ContextContainer>();
+-  contextContainer->insert(
+-      "ReactNativeConfig", std::make_shared<EmptyReactNativeConfig>());
+ 
+   auto componentDescriptorParameters =
+       ComponentDescriptorParameters{eventDispatcher, contextContainer, nullptr};
+diff --git a/packages/react-native/ReactCommon/react/renderer/scheduler/CMakeLists.txt b/packages/react-native/ReactCommon/react/renderer/scheduler/CMakeLists.txt
+index 67aed63f794..0f68c342b22 100644
+--- a/packages/react-native/ReactCommon/react/renderer/scheduler/CMakeLists.txt
++++ b/packages/react-native/ReactCommon/react/renderer/scheduler/CMakeLists.txt
+@@ -23,7 +23,6 @@ target_link_libraries(react_render_scheduler
+         folly_runtime
+         glog
+         jsi
+-        react_config
+         react_debug
+         react_featureflags
+         react_performance_timeline
+diff --git a/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/android/react/renderer/textlayoutmanager/TextLayoutManager.h b/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/android/react/renderer/textlayoutmanager/TextLayoutManager.h
+index 398230bd2e2..7a34319bd5e 100644
+--- a/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/android/react/renderer/textlayoutmanager/TextLayoutManager.h
++++ b/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/android/react/renderer/textlayoutmanager/TextLayoutManager.h
+@@ -7,7 +7,6 @@
+ 
+ #pragma once
+ 
+-#include <react/config/ReactNativeConfig.h>
+ #include <react/renderer/attributedstring/AttributedString.h>
+ #include <react/renderer/attributedstring/AttributedStringBox.h>
+ #include <react/renderer/core/LayoutConstraints.h>
+diff --git a/packages/react-native/ReactCommon/react/renderer/uimanager/CMakeLists.txt b/packages/react-native/ReactCommon/react/renderer/uimanager/CMakeLists.txt
+index 73b20755444..28198bb9af8 100644
+--- a/packages/react-native/ReactCommon/react/renderer/uimanager/CMakeLists.txt
++++ b/packages/react-native/ReactCommon/react/renderer/uimanager/CMakeLists.txt
+@@ -24,7 +24,6 @@ target_link_libraries(react_render_uimanager
+         glog
+         folly_runtime
+         jsi
+-        react_config
+         react_cxxreact
+         react_debug
+         react_featureflags
+diff --git a/packages/react-native/ReactCommon/react/runtime/React-RuntimeHermes.podspec b/packages/react-native/ReactCommon/react/runtime/React-RuntimeHermes.podspec
+index f513fa32382..546cd082316 100644
+--- a/packages/react-native/ReactCommon/react/runtime/React-RuntimeHermes.podspec
++++ b/packages/react-native/ReactCommon/react/runtime/React-RuntimeHermes.podspec
+@@ -22,7 +22,7 @@ folly_version = folly_config[:version]
+ folly_dep_name = folly_config[:dep_name]
+ 
+ boost_config = get_boost_config()
+-boost_compiler_flags = boost_config[:compiler_flags] 
++boost_compiler_flags = boost_config[:compiler_flags]
+ 
+ Pod::Spec.new do |s|
+   s.name                   = "React-RuntimeHermes"
+@@ -47,7 +47,6 @@ Pod::Spec.new do |s|
+   end
+ 
+   s.dependency folly_dep_name, folly_version
+-  s.dependency "React-nativeconfig"
+   s.dependency "React-jsitracing"
+   s.dependency "React-jsi"
+   s.dependency "React-utils"
+diff --git a/packages/react-native/ReactCommon/react/runtime/hermes/HermesInstance.cpp b/packages/react-native/ReactCommon/react/runtime/hermes/HermesInstance.cpp
+index 52f95ca31cd..d12832d1cba 100644
+--- a/packages/react-native/ReactCommon/react/runtime/hermes/HermesInstance.cpp
++++ b/packages/react-native/ReactCommon/react/runtime/hermes/HermesInstance.cpp
+@@ -120,7 +120,6 @@ class HermesJSRuntime : public JSRuntime {
+ };
+ 
+ std::unique_ptr<JSRuntime> HermesInstance::createJSRuntime(
+-    std::shared_ptr<const ReactNativeConfig> reactNativeConfig,
+     std::shared_ptr<::hermes::vm::CrashManager> crashManager,
+     std::shared_ptr<MessageQueueThread> msgQueueThread,
+     bool allocInOldGenBeforeTTI) noexcept {
+diff --git a/packages/react-native/ReactCommon/react/runtime/hermes/HermesInstance.h b/packages/react-native/ReactCommon/react/runtime/hermes/HermesInstance.h
+index 5a97875d1da..92883314238 100644
+--- a/packages/react-native/ReactCommon/react/runtime/hermes/HermesInstance.h
++++ b/packages/react-native/ReactCommon/react/runtime/hermes/HermesInstance.h
+@@ -10,7 +10,6 @@
+ #include <cxxreact/MessageQueueThread.h>
+ #include <hermes/hermes.h>
+ #include <jsi/jsi.h>
+-#include <react/config/ReactNativeConfig.h>
+ #include <react/runtime/JSRuntimeFactory.h>
+ 
+ namespace facebook::react {
+@@ -18,7 +17,6 @@ namespace facebook::react {
+ class HermesInstance {
+  public:
+   static std::unique_ptr<JSRuntime> createJSRuntime(
+-      std::shared_ptr<const ReactNativeConfig> reactNativeConfig,
+       std::shared_ptr<::hermes::vm::CrashManager> crashManager,
+       std::shared_ptr<MessageQueueThread> msgQueueThread,
+       bool allocInOldGenBeforeTTI) noexcept;
+diff --git a/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTHermesInstance.h b/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTHermesInstance.h
+index 900d87b85bb..f686220e690 100644
+--- a/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTHermesInstance.h
++++ b/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTHermesInstance.h
+@@ -22,11 +22,8 @@ using CrashManagerProvider =
+ class RCTHermesInstance : public JSRuntimeFactory {
+  public:
+   RCTHermesInstance();
++  RCTHermesInstance(CrashManagerProvider crashManagerProvider);
+   RCTHermesInstance(
+-      std::shared_ptr<const ReactNativeConfig> reactNativeConfig,
+-      CrashManagerProvider crashManagerProvider);
+-  RCTHermesInstance(
+-      std::shared_ptr<const ReactNativeConfig> reactNativeConfig,
+       CrashManagerProvider crashManagerProvider,
+       bool allocInOldGenBeforeTTI);
+ 
+@@ -36,7 +33,6 @@ class RCTHermesInstance : public JSRuntimeFactory {
+   ~RCTHermesInstance(){};
+ 
+  private:
+-  std::shared_ptr<const ReactNativeConfig> _reactNativeConfig;
+   CrashManagerProvider _crashManagerProvider;
+   std::unique_ptr<HermesInstance> _hermesInstance;
+   bool _allocInOldGenBeforeTTI;
+diff --git a/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTHermesInstance.mm b/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTHermesInstance.mm
+index c33500093ee..58bce7f82d6 100644
+--- a/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTHermesInstance.mm
++++ b/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTHermesInstance.mm
+@@ -9,21 +9,15 @@
+ 
+ namespace facebook::react {
+ 
+-RCTHermesInstance::RCTHermesInstance() : RCTHermesInstance(nullptr, nullptr, false) {}
++RCTHermesInstance::RCTHermesInstance() : RCTHermesInstance(nullptr, false) {}
+ 
+-RCTHermesInstance::RCTHermesInstance(
+-    std::shared_ptr<const ReactNativeConfig> reactNativeConfig,
+-    CrashManagerProvider crashManagerProvider)
+-    : RCTHermesInstance(reactNativeConfig, std::move(crashManagerProvider), false)
++RCTHermesInstance::RCTHermesInstance(CrashManagerProvider crashManagerProvider)
++    : RCTHermesInstance(std::move(crashManagerProvider), false)
+ {
+ }
+ 
+-RCTHermesInstance::RCTHermesInstance(
+-    std::shared_ptr<const ReactNativeConfig> reactNativeConfig,
+-    CrashManagerProvider crashManagerProvider,
+-    bool allocInOldGenBeforeTTI)
+-    : _reactNativeConfig(std::move(reactNativeConfig)),
+-      _crashManagerProvider(std::move(crashManagerProvider)),
++RCTHermesInstance::RCTHermesInstance(CrashManagerProvider crashManagerProvider, bool allocInOldGenBeforeTTI)
++    : _crashManagerProvider(std::move(crashManagerProvider)),
+       _hermesInstance(std::make_unique<HermesInstance>()),
+       _allocInOldGenBeforeTTI(allocInOldGenBeforeTTI)
+ {
+@@ -33,10 +27,7 @@ std::unique_ptr<JSRuntime> RCTHermesInstance::createJSRuntime(
+     std::shared_ptr<MessageQueueThread> msgQueueThread) noexcept
+ {
+   return _hermesInstance->createJSRuntime(
+-      _reactNativeConfig,
+-      _crashManagerProvider ? _crashManagerProvider() : nullptr,
+-      std::move(msgQueueThread),
+-      _allocInOldGenBeforeTTI);
++      _crashManagerProvider ? _crashManagerProvider() : nullptr, std::move(msgQueueThread), _allocInOldGenBeforeTTI);
+ }
+ 
+ } // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/react/test_utils/shadowTreeGeneration.h b/packages/react-native/ReactCommon/react/test_utils/shadowTreeGeneration.h
+index ec5951b399e..9c5ec2e3fe7 100644
+--- a/packages/react-native/ReactCommon/react/test_utils/shadowTreeGeneration.h
++++ b/packages/react-native/ReactCommon/react/test_utils/shadowTreeGeneration.h
+@@ -14,7 +14,6 @@
+ #include <memory>
+ #include <random>
+ 
+-#include <react/config/ReactNativeConfig.h>
+ #include <react/renderer/core/PropsParserContext.h>
+ #include <react/renderer/mounting/Differentiator.h>
+ #include <react/renderer/mounting/stubs/stubs.h>
+@@ -245,8 +244,6 @@ static inline ShadowNode::Unshared messWithYogaStyles(
+   }
+ 
+   ContextContainer contextContainer;
+-  contextContainer.insert(
+-      "ReactNativeConfig", std::make_shared<EmptyReactNativeConfig>());
+ 
+   PropsParserContext parserContext{-1, contextContainer};
+ 
+diff --git a/packages/react-native/scripts/react_native_pods.rb b/packages/react-native/scripts/react_native_pods.rb
+index bc9cc30fb19..59cdd2bfdca 100644
+--- a/packages/react-native/scripts/react_native_pods.rb
++++ b/packages/react-native/scripts/react_native_pods.rb
+@@ -128,7 +128,6 @@ def use_react_native! (
+   pod 'React-defaultsnativemodule', :path => "#{prefix}/ReactCommon/react/nativemodule/defaults"
+   pod 'React-Mapbuffer', :path => "#{prefix}/ReactCommon"
+   pod 'React-jserrorhandler', :path => "#{prefix}/ReactCommon/jserrorhandler"
+-  pod 'React-nativeconfig', :path => "#{prefix}/ReactCommon"
+   pod 'RCTDeprecation', :path => "#{prefix}/ReactApple/Libraries/RCTFoundation/RCTDeprecation"
+   pod 'React-RCTFBReactNativeSpec', :path => "#{prefix}/React"
+ 
+diff --git a/packages/rn-tester/Podfile.lock b/packages/rn-tester/Podfile.lock
+index e28fd1c1fb9..f5e78684172 100644
+--- a/packages/rn-tester/Podfile.lock
++++ b/packages/rn-tester/Podfile.lock
+@@ -444,6 +444,7 @@ PODS:
+     - React-Fabric/componentregistry (= 1000.0.0)
+     - React-Fabric/componentregistrynative (= 1000.0.0)
+     - React-Fabric/components (= 1000.0.0)
++    - React-Fabric/consistency (= 1000.0.0)
+     - React-Fabric/core (= 1000.0.0)
+     - React-Fabric/dom (= 1000.0.0)
+     - React-Fabric/imagemanager (= 1000.0.0)
+@@ -635,6 +636,27 @@ PODS:
+     - React-utils
+     - ReactCommon/turbomodule/core
+     - Yoga
++  - React-Fabric/consistency (1000.0.0):
++    - DoubleConversion
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
++    - glog
++    - hermes-engine
++    - RCT-Folly/Fabric (= 2024.11.18.00)
++    - RCTRequired
++    - RCTTypeSafety
++    - React-Core
++    - React-cxxreact
++    - React-debug
++    - React-featureflags
++    - React-graphics
++    - React-jsi
++    - React-jsiexecutor
++    - React-logger
++    - React-rendererdebug
++    - React-runtimescheduler
++    - React-utils
++    - ReactCommon/turbomodule/core
+   - React-Fabric/core (1000.0.0):
+     - DoubleConversion
+     - fast_float (= 6.1.4)
+@@ -1200,7 +1222,8 @@ PODS:
+     - React-utils
+     - ReactCommon
+     - Yoga
+-  - React-featureflags (1000.0.0)
++  - React-featureflags (1000.0.0):
++    - RCT-Folly (= 2024.11.18.00)
+   - React-featureflagsnativemodule (1000.0.0):
+     - hermes-engine
+     - RCT-Folly
+@@ -1299,7 +1322,6 @@ PODS:
+     - React-jsiexecutor
+     - React-RCTFBReactNativeSpec
+     - ReactCommon/turbomodule/core
+-  - React-nativeconfig (1000.0.0)
+   - React-NativeModulesApple (1000.0.0):
+     - glog
+     - hermes-engine
+@@ -1341,7 +1363,6 @@ PODS:
+     - React-featureflags
+     - React-graphics
+     - React-hermes
+-    - React-nativeconfig
+     - React-NativeModulesApple
+     - React-RCTFabric
+     - React-RCTFBReactNativeSpec
+@@ -1382,7 +1403,6 @@ PODS:
+     - React-ImageManager
+     - React-jsi
+     - React-jsinspector
+-    - React-nativeconfig
+     - React-performancetimeline
+     - React-RCTImage
+     - React-RCTText
+@@ -1510,7 +1530,6 @@ PODS:
+     - React-jsi
+     - React-jsinspector
+     - React-jsitracing
+-    - React-nativeconfig
+     - React-RuntimeCore
+     - React-utils
+   - React-runtimescheduler (1000.0.0):
+@@ -1680,7 +1699,6 @@ DEPENDENCIES:
+   - React-logger (from `../react-native/ReactCommon/logger`)
+   - React-Mapbuffer (from `../react-native/ReactCommon`)
+   - React-microtasksnativemodule (from `../react-native/ReactCommon/react/nativemodule/microtasks`)
+-  - React-nativeconfig (from `../react-native/ReactCommon`)
+   - React-NativeModulesApple (from `../react-native/ReactCommon/react/nativemodule/core/platform/ios`)
+   - React-perflogger (from `../react-native/ReactCommon/reactperflogger`)
+   - React-performancetimeline (from `../react-native/ReactCommon/react/performance/timeline`)
+@@ -1800,8 +1818,6 @@ EXTERNAL SOURCES:
+     :path: "../react-native/ReactCommon"
+   React-microtasksnativemodule:
+     :path: "../react-native/ReactCommon/react/nativemodule/microtasks"
+-  React-nativeconfig:
+-    :path: "../react-native/ReactCommon"
+   React-NativeModulesApple:
+     :path: "../react-native/ReactCommon/react/nativemodule/core/platform/ios"
+   React-perflogger:
+@@ -1870,81 +1886,80 @@ EXTERNAL SOURCES:
+     :path: "../react-native/ReactCommon/yoga"
+ 
+ SPEC CHECKSUMS:
+-  boost: 1dca942403ed9342f98334bf4c3621f011aa7946
+-  DoubleConversion: fea03f2699887d960129cc54bba7e52542b6f953
++  boost: 7e761d76ca2ce687f7cc98e698152abd03a18f90
++  DoubleConversion: cb417026b2400c8f53ae97020b2be961b59470cb
+   fast_float: 06eeec4fe712a76acc9376682e4808b05ce978b6
+-  FBLazyVector: 233bbbd6d94380ddb5cc772168ecc1eb95f5926f
++  FBLazyVector: 3759e8c9e8e4e9e6a3cb29035da77b0e4de19c1c
+   fmt: a40bb5bd0294ea969aaaba240a927bd33d878cdd
+-  glog: c5d68082e772fa1c511173d6b30a9de2c05a69a2
+-  hermes-engine: 61847aa7d591ad993a8362d3ae1a70a212cb69b9
+-  MyNativeView: f8598d5f84e0369e85cc6d3abc18329ab99028a7
+-  NativeCxxModuleExample: 1c5f59bd3df26a333e6427e3faada3802ab84531
++  glog: eb93e2f488219332457c3c4eafd2738ddc7e80b8
++  hermes-engine: 799e616724e0c4d0465505d4d957be49327256f6
++  MyNativeView: d92d8827d14b7c296f84424a8aed94fad2c689f5
++  NativeCxxModuleExample: a9058817bb3f1776256d9def25c341fa1aa9cc07
+   OCMock: 589f2c84dacb1f5aaf6e4cec1f292551fe748e74
+-  OSSLibraryExample: 9e02824c11b3697106c0d236f9d1ffa8f40a7a93
+-  RCT-Folly: e78785aa9ba2ed998ea4151e314036f6c49e6d82
++  OSSLibraryExample: fb99bfb6f1033e5ac3cc1e382343e90676cc5a7a
++  RCT-Folly: 36fe2295e44b10d831836cc0d1daec5f8abcf809
+   RCTDeprecation: 3808e36294137f9ee5668f4df2e73dc079cd1dcf
+-  RCTRequired: 8a3fa8e58e67c14928d43b1ccc4c0021a4c5a34c
+-  RCTTypeSafety: 054798dcd47f4edcde879a3092fd085879cbec7b
+-  React: 2ec0751c8deb2c2bafc612d0ac95e412166479fd
+-  React-callinvoker: ecc39613c2b52bed8d76b586b4a7ca42396e3497
+-  React-Core: 71fdb5bb1dddd7ed190abb2b7fbfe8a0dd4d5c54
+-  React-CoreModules: a69692f0fb0af6ef8966888793aa481fbc5addf6
+-  React-cxxreact: 3833afa7b0f0313736c17e9503bf76259e8b20f1
+-  React-debug: 6cfd8c497854f323d4e3fd95e35681ec4b7efac8
+-  React-defaultsnativemodule: 6bc03987c24ad96589dc1d3563d01b42f96cc8da
+-  React-domnativemodule: 6d597466395d2851cd5d866cc29ec4d1fd4443eb
+-  React-Fabric: 4f7da3003c16bea1345962cba3ae2ce3adf948ed
+-  React-FabricComponents: 7da23bbbf165ae005f74056ad68d2fde53158637
+-  React-FabricImage: cfc28f360a020ccc74ac5c79e2e4cdf0f040fe58
+-  React-featureflags: 6823c907baebb5bc3c03cd97d27553876067e883
+-  React-featureflagsnativemodule: 381ae3c841eead57041a5ce6b290cd2aee6b9b97
+-  React-graphics: d1c87bd6df168c576d5327f71638b21cb8e1a070
+-  React-hermes: ac722d4064cb8bbf3b7b8c7cede09cffad870de6
+-  React-idlecallbacksnativemodule: b7a609259f2c7a0d73800b78058bf216f8af65c3
+-  React-ImageManager: 3c207cb9bee1c52bb4d2d358cf67f6619924c287
+-  React-jserrorhandler: 6877bd2c508523f8b0ff2e102a70252c4a0b9d96
+-  React-jsi: 8114d9d80abf272577ee3227f4439e8c8c2d69bb
+-  React-jsiexecutor: a8701edeed6f2010785c6266f7747ef312e73acd
+-  React-jsinspector: efe49ab334b6931edbb019aaca8bdac5c9231e67
+-  React-jsitracing: ea4feb262e5fb6bf3ea584434317ff7eed0dbd4a
+-  React-logger: cb336f0cae1c3e0cd66b898e3df662e3b4db2cda
+-  React-Mapbuffer: 65264d4762339289ecb7fc20ad4d9f0a30af71ea
+-  React-microtasksnativemodule: 61713413ae95f406366d2b2bb7a8cbf45b38563f
+-  React-nativeconfig: e08deb491878467c43bb593972c6d481fc152ad3
+-  React-NativeModulesApple: 96e90bbf402273e82ac317df1951da0902da6a00
+-  React-perflogger: 20e8a8205d35023c2883e74159e5e25f5fbd30f9
+-  React-performancetimeline: 788c0cd1ddadf12cc07602fc44a6559491bc2d27
+-  React-RCTActionSheet: 4467526cfce88a91a64ad852c85d068822de64c4
+-  React-RCTAnimation: d889c5b4ee8f46ca2ee7952c2a7b9a89e76bf6b5
+-  React-RCTAppDelegate: eb99d9c56c8c04284113ae26cdd0ef5e94996976
+-  React-RCTBlob: 3d3e49a34413231810b99b2869454ede1db7d06e
+-  React-RCTFabric: 49e4534ee3bc28e58f6da92b5704a314cb1bdf00
+-  React-RCTFBReactNativeSpec: f6c76d4abf8f1c282ac9c73a830f195c0677251f
+-  React-RCTImage: aee9469d5bbbe2d7e27cda7cf18403b5982cc8a5
+-  React-RCTLinking: 0919d28302019b83a2fc9571cb6f75c22250e7b2
+-  React-RCTNetwork: f5047d38f1fbc021bdbe6443ce4e15e769d7ce9d
+-  React-RCTPushNotification: 1e2be2f0e2bb1632d225cb744b2c6b5dfbbf8db1
+-  React-RCTSettings: 32a9c9ee9a408bf26fd80df809859ac7c83e6e43
+-  React-RCTTest: 7419dbe727949926a10914064eaec626888dc6da
+-  React-RCTText: 34008c55df00e9af10128341d1caa8b594f1c472
+-  React-RCTVibration: 39e50f432e718c432a68ced0e7af2c26e8f53fa2
+-  React-rendererconsistency: aeda09dd85c5f7952883006771d894f8d04e0251
+-  React-rendererdebug: a8c1d407e09453f1be76281a046dd6faaeae42a7
+-  React-rncore: c393e0d1d735b6107fdb117d392999f38d0f7c68
+-  React-RuntimeApple: a68b13819a45bd5c57da4114e8831cb0123a0e37
+-  React-RuntimeCore: 56aa3da3f152c3cc51672b77c122a6c9d68b50de
+-  React-runtimeexecutor: 1ff450cc5ee10955aab442aa9f7b9e1d222560de
+-  React-RuntimeHermes: 8a6e523232cb3db878762bb5e3ed0ff2c3b605b7
+-  React-runtimescheduler: 88fb954da86bfaaf1e7412fdf0affabec9cdbde6
+-  React-timing: caf5dac67791cb682cf7103285e7243a01ab80dd
+-  React-utils: 341c00d68ef0ef38327d3e53b9a5c6d0902e87a5
+-  ReactAppDependencyProvider: 9c0544ff408a38c9d7b40bfcde89abf6fb8570cd
+-  ReactCodegen: ec409149e76b3cc0c8d693d0ab80c8914e13cd29
+-  ReactCommon: d9cf469752d005d70a0381c31dce54dea28b4041
+-  ReactCommon-Samples: 4715fbfec2b9b1b37f4661cf68d9eea597ecb253
+-  ScreenshotManager: 0ec4bf5f0f11fd0498a1d453244da51fd514c418
++  RCTRequired: a933641ca6fde3f1df83faffea1fb1a47f486611
++  RCTTypeSafety: ec3718eb597b455bc3d7a915e0dd52dd8bd2f50f
++  React: b0b06b4dc903f8ca943a58c48d8dd1e64ace3f7e
++  React-callinvoker: 026440cd0fb12e265ecdbeb18b8a6c7f380cfebd
++  React-Core: 897eb9888c709ea120b0c67e00ef62f001defef7
++  React-CoreModules: a1321e5ab488df0ad5fd050a19e57652240aa682
++  React-cxxreact: 0ea83e99aa896065ba52c9ec79cd9d10f885a314
++  React-debug: 78c8534f6245a5edb93e822d9a3543b1b96f63cf
++  React-defaultsnativemodule: 860346dba8e196375e0fea2f2300ea05c5236c88
++  React-domnativemodule: e1e93fa41e8bb8fd8b22ddda7dd1452fb2153744
++  React-Fabric: 7c8cac645e118a6f9316e05cd93c4590ab12cd98
++  React-FabricComponents: 9e733e88dd1d334f2f738c71940caf6c741a3532
++  React-FabricImage: 71192b717b5d58db79e9b1b1f3eeee399817e4cd
++  React-featureflags: 22a03da90c0b86a64508fb4bf0e8eb7259dafd6d
++  React-featureflagsnativemodule: b05f475bf2b7997323aed414db2c84e853dea8d9
++  React-graphics: 6a94f6324a8312db3a6bad87ec0dd036c0bd9428
++  React-hermes: 70efe46379fb708eaa719a61cb5591f0fcd0ca8b
++  React-idlecallbacksnativemodule: 7fdd734408f9f7c8878cdb3ebafc7b10b209414b
++  React-ImageManager: 0353af78aa290d122c9366e553e3db8264eaa433
++  React-jserrorhandler: 1cf49be1bcc24f7630a3b699c8c454fa1b9a9748
++  React-jsi: 1660a01248b91c2403b5a3ec1d013c3cb94958b8
++  React-jsiexecutor: 32a18bf3cae907ccf2eae1940c5b42b13db58d51
++  React-jsinspector: b992f08dd32af058601f1daaceedd17b73e1b341
++  React-jsitracing: ed78bdbff7bd46d492472b14d4a37a7fbb51b748
++  React-logger: 93123a70da90737d19e2c5da6e1f7c680103966d
++  React-Mapbuffer: c93061aca5c8ae581372a4ea80f5473ce6897700
++  React-microtasksnativemodule: 13d59fbdc829080da9649da0ea068479b2db7c5e
++  React-NativeModulesApple: 68ac55f9cb04901bc64583e0778357c14f9d56af
++  React-perflogger: bae99cc60f7262f4b29433277e30b9bb4f9fc9ac
++  React-performancetimeline: 788a3857c58ad8c0de4fa9460a70a1f9649b868f
++  React-RCTActionSheet: c30325a69cf02b9502f9618f7acec1ddebb042fb
++  React-RCTAnimation: bb8c0b4fa53158eea176eceadd65e00f018aebf5
++  React-RCTAppDelegate: 8581af0c7230887a370723252cb05612ba3cbdfd
++  React-RCTBlob: f85f7821292a5f19a372477fcda918a6da0d3ac8
++  React-RCTFabric: 1c40ead18c964d25618b2634db5699639c21b4d4
++  React-RCTFBReactNativeSpec: b0258fa43190e40d64c07d50ec66e689c3f446c5
++  React-RCTImage: 39e7172de73ac40c68b233c793985ce5c2cdc763
++  React-RCTLinking: d46cab097c617a528a11c29525562d74baaf468d
++  React-RCTNetwork: ef70afd1280921c08f796aa0d5f1c21ca5600659
++  React-RCTPushNotification: 4f780e9dde72c3d97cfaaf79a6f52660fb93d950
++  React-RCTSettings: 23252b18a71e2671935b9503dff495765ee925dc
++  React-RCTTest: a3ce8c44f06c6a7aefc84e8ad11d8a5bc7af134f
++  React-RCTText: 7b9708b599620da4e2a1be7697f0af092c2031a2
++  React-RCTVibration: 7e2fed474dc101e7a68d36e613f0eaf683437849
++  React-rendererconsistency: 1ff7dc1301fc5978afa13d40e3907654846e5655
++  React-rendererdebug: 446fdc756a32f626c089097dac0ea978b2a39f10
++  React-rncore: 3a5ecf853c2174f3da08d4894e5dc47f62d6ab18
++  React-RuntimeApple: 9129e1de7e7b1dfd5c95f93279f38df261925e2c
++  React-RuntimeCore: c60996743078f045de8c45c1ad75d772284eb86e
++  React-runtimeexecutor: 6742dfdf36039ae6e94fb64aaa8dd9d32c3f95a2
++  React-RuntimeHermes: 517dc35c9b3c2861dcbd7019dfffc2230424a6ca
++  React-runtimescheduler: 3658b80e59f8f682dcbe4608d30220cb9697a62c
++  React-timing: 0c92e75d74f7e7df59687a0745da3d0680845bad
++  React-utils: c797d77c586252deab3e572743710c22c655088f
++  ReactAppDependencyProvider: cc1cbc1823eec5e843e48cfeb76baa92f8fad42c
++  ReactCodegen: 7cfa434acb2911bda43c92149ea7a6b7935bb696
++  ReactCommon: 4f2a4468ced08f31dd478dd80dd754988c014d36
++  ReactCommon-Samples: c7da84db3be5b6971950bbb9cf712ee1c5ec817b
++  ScreenshotManager: 6c5a166001490d34391f6d7c441409849544f730
+   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
+-  Yoga: 6888cef0a7eb78871e1a33237b9daaa7b87ed171
++  Yoga: 9feb096770ea557f18ea65ebe799d7d1f3bc4057
+ 
+ PODFILE CHECKSUM: 8591f96a513620a2a83a0b9a125ad3fa32ea1369
+ 

@@ -1,0 +1,87 @@
+repo: neovim
+base_commit: 8634bd46b26f28fa26950128b0cc585560bd6a9a
+commit: 34d808b73cbcb0a43636d826282193ab1ca8c148
+patch_stored: true
+gold:
+  - path: src/nvim/api/vim.c
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "nvim_eval_statusline() gains the `groups` array — computes `combine` (base group: scl_hl_id for STL_SIGNCOL, grpname for STL_FOLDCOL, dfltname otherwise) and stacks it under `grpname` in the returned Dict."
+  - path: src/nvim/statusline_defs.h
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds StlFlag typedef and the `item` field to stl_hlrec_t (used by api/vim.c to pick STL_SIGNCOL/STL_FOLDCOL combine logic) and splits statuscol_T's `use_cul`/`num_attr` fields out in favor of computed values.
+  - path: src/nvim/statusline.c
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: splits the generic `Highlight` stl_item type into `HighlightSign`/`HighlightFold` and records `sp->item = STL_SIGNCOL/STL_FOLDCOL`, which is what api/vim.c and drawline.c's draw_statuscol() now branch on.
+  - path: src/nvim/drawline.c
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: draw_sign()/draw_lnum_col()/draw_statuscol() are reworked to read wlv.sign_cul_attr/wlv.sign_num_attr and combine per-segment attrs (scl_attr/num_attr) instead of a single passed-in attr, mirroring the new C API's stacking; also un-statics use_cursor_line_highlight() for statusline.c to call.
+  - path: src/nvim/drawscreen.c
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: extracts the w_cursorline/foldinfo computation into the new win_update_cursorline(), which api/vim.c's nvim_eval_statusline() now calls too so it mimics the same cursorline-standout logic drawline.c uses.
+  - path: runtime/doc/api.txt
+    tier: essential
+    role: doc
+    in_diff: true
+    rationale: documents the new `groups` (array) key on nvim_eval_statusline()'s highlights return value and deprecates `group` in favor of it — the user-facing contract this whole patch adds.
+  - path: test/functional/api/vim_spec.lua
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: asserts the new `groups = {...}` stacking (e.g. `{ start = 6, group = 'ErrorMsg', groups = { 'CursorLineSign', 'ErrorMsg' } }`) for nvim_eval_statusline(), the primary coverage of the API change.
+  - path: test/functional/ui/statuscolumn_spec.lua
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: covers the other half of the feature — cursorline/sign numhl combination in the rendered 'statuscolumn' (new sign/cursorline attr ids 101-103, `sign define num1 numhl=Special` case).
+  - path: src/nvim/highlight.c
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: defines int hl_combine_attr(int char_attr, int prim_attr) — the actual attribute-stacking primitive that "combined highlighting" means; used throughout drawline.c/drawscreen.c but never redefined in this diff.
+  - path: src/nvim/highlight_defs.h
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: defines the HLF_CLN/HLF_CLS/HLF_CLF/HLF_FC/HLF_SC highlight-file-index enum values that drive which builtin group (CursorLineNr/CursorLineSign/CursorLineFold/FoldColumn/SignColumn) gets combined in api/vim.c and drawline.c.
+  - path: src/nvim/api/private/helpers.c
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: defines get_default_stl_hl(), which resolves the `dfltname`/base `combine` group (TabLineFill/WinBar(NC)/StatusLine(NC)/stc_hl_id-name) that nvim_eval_statusline()'s new stacking logic in api/vim.c depends on.
+forbidden:
+  - path: src/nvim/highlight_group.c
+    reason: implements highlight-group name<->id resolution (syn_id2name/syn_check_group) but this patch only changes which groups get combined and where, not group lookup itself
+  - path: src/nvim/statusline.h
+    reason: sibling header of statusline.c/statusline_defs.h with unrelated declarations; the actual new struct/enum fields all live in statusline_defs.h, not here
+  - path: test/functional/ui/fold_spec.lua
+    reason: exercises fold rendering generally and shares STL_FOLDCOL-adjacent code paths by name association, but is not touched and not needed to understand this highlight-stacking change
+  - path: src/nvim/option.c
+    reason: validates/handles 'cursorline','statuscolumn' option assignment, not the per-line highlight-combination logic this patch touches
+nontrivial_gold_count: 3
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: []
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 14
+  description: 'feat(api): combined highlights in nvim_eval_statusline() — C↔Lua boundary + docs'
+notes: >
+  Adds a `groups` (stacked-highlight) array to nvim_eval_statusline()'s
+  `highlights` return value and applies the same combined-highlight logic to
+  'statuscolumn' sign/numhl rendering, unifying logic previously duplicated
+  across api/vim.c, drawline.c and statusline.c (StlFlag/stl_hlrec_t.item is
+  the shared vocabulary). The three nontrivial (out-of-diff) files are the
+  primitives the new code depends on but doesn't redefine: hl_combine_attr()
+  (what "combine" means), the HLF_* highlight-file enum (which builtin groups
+  are combined), and get_default_stl_hl() (how the base/default group is
+  chosen).

@@ -1,0 +1,390 @@
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use rustc_hash::{FxHashMap, FxHashSet};
+
+use crate::config::selection::rescue;
+use crate::fragmentation::create_whole_file_fragment;
+use crate::git::CatFileBatch;
+use crate::graph::Graph;
+use crate::interval::IntervalIndex;
+use crate::types::{Fragment, FragmentId, FragmentKind};
+
+fn find_dangling_semantic_names(
+    selected: &[Fragment],
+    graph: &Graph,
+    frag_by_id: &FxHashMap<FragmentId, &Fragment>,
+    selected_ids: &FxHashSet<FragmentId>,
+) -> FxHashSet<String> {
+    let mut dangling = FxHashSet::default();
+    for frag in selected {
+        graph.for_each_forward_neighbor(&frag.id, |nbr_id, _w| {
+            if selected_ids.contains(nbr_id) {
+                return;
+            }
+            let cat = graph.edge_category(&frag.id, nbr_id);
+            if cat
+                .map(|c| c != crate::graph::EdgeCategory::Semantic)
+                .unwrap_or(true)
+            {
+                return;
+            }
+            if let Some(nbr_frag) = frag_by_id.get(nbr_id) {
+                if let Some(ref name) = nbr_frag.symbol_name {
+                    dangling.insert(name.to_lowercase());
+                }
+            }
+        });
+    }
+    dangling
+}
+
+fn pick_best_fragment<'a>(
+    candidates: &[&'a Fragment],
+    selected_ids: &FxHashSet<FragmentId>,
+) -> Option<&'a Fragment> {
+    let available: Vec<&&'a Fragment> = candidates
+        .iter()
+        .filter(|c| !selected_ids.contains(&c.id))
+        .collect();
+    let full = available.iter().find(|f| !f.kind.is_signature()).copied();
+    let sig = available.iter().find(|f| f.kind.is_signature()).copied();
+    full.or(sig).map(|f| *f)
+}
+
+fn change_coverage_rank(f: &Fragment, core_ids: &FxHashSet<FragmentId>) -> u8 {
+    if core_ids.contains(&f.id) {
+        return 0;
+    }
+    // An excerpt is cut from a core fragment around the diff hunk, so it always
+    // covers the change; a signature only does when it belongs to a core.
+    let is_core_stub = f.kind == FragmentKind::Excerpt
+        || (f.kind.is_signature()
+            && core_ids
+                .iter()
+                .any(|c| c.path == f.id.path && c.start_line == f.id.start_line));
+    if is_core_stub { 1 } else { 2 }
+}
+
+fn pick_smallest_fitting(
+    candidates: &[Fragment],
+    selected_ids: &FxHashSet<FragmentId>,
+    budget_left: u32,
+    core_ids: &FxHashSet<FragmentId>,
+) -> Option<Fragment> {
+    let mut sorted: Vec<&Fragment> = candidates.iter().collect();
+    // Prefer a fragment that actually covers the diff hunk (core_ids, i.e.
+    // what render.rs marks `role: "changed"`), then its signature stub, over
+    // an unrelated same-file fragment. Sorting by token_count alone picks
+    // whichever candidate is smallest regardless of relevance, which can
+    // silently hide the real change behind a tiny unrelated stub (#83).
+    sorted.sort_by_key(|f| (change_coverage_rank(f, core_ids), f.token_count));
+    for cand in &sorted {
+        if cand.token_count == 0 || selected_ids.contains(&cand.id) {
+            continue;
+        }
+        if cand.token_count <= budget_left {
+            return Some((*cand).clone());
+        }
+    }
+    // Nothing fits: the budget cap is a hard contract (cost(C) <= B). The
+    // changed file stays unrepresented and shows up downstream as
+    // changed-file retention < 1 rather than as a silent budget overrun.
+    None
+}
+
+pub fn coherence_post_pass(
+    selected: &mut Vec<Fragment>,
+    all_fragments: &[Fragment],
+    graph: &Graph,
+    budget: u32,
+) {
+    let selected_ids: FxHashSet<FragmentId> = selected.iter().map(|f| f.id.clone()).collect();
+    let mut interval_idx = IntervalIndex::new();
+    for f in selected.iter() {
+        interval_idx.add(f);
+    }
+    let used: u32 = selected.iter().map(|f| f.token_count).sum();
+    let mut remaining = budget.saturating_sub(used);
+
+    let mut name_to_frags: FxHashMap<String, Vec<&Fragment>> = FxHashMap::default();
+    for f in all_fragments {
+        if let Some(ref name) = f.symbol_name {
+            name_to_frags
+                .entry(name.to_lowercase())
+                .or_default()
+                .push(f);
+        }
+    }
+
+    let frag_by_id: FxHashMap<FragmentId, &Fragment> =
+        all_fragments.iter().map(|f| (f.id.clone(), f)).collect();
+    let dangling_names = find_dangling_semantic_names(selected, graph, &frag_by_id, &selected_ids);
+
+    let mut added_ids = selected_ids;
+    for name in &dangling_names {
+        let candidates = match name_to_frags.get(name) {
+            Some(c) => c,
+            None => continue,
+        };
+        let pick = match pick_best_fragment(candidates, &added_ids) {
+            Some(p) => p,
+            None => continue,
+        };
+        if pick.token_count <= remaining
+            && !added_ids.contains(&pick.id)
+            && !interval_idx.overlaps(pick)
+        {
+            selected.push(pick.clone());
+            added_ids.insert(pick.id.clone());
+            interval_idx.add(pick);
+            remaining = remaining.saturating_sub(pick.token_count);
+        }
+    }
+}
+
+fn compute_rescue_threshold(
+    all_fragments: &[Fragment],
+    rel_scores: &FxHashMap<FragmentId, f64>,
+    core_ids: &FxHashSet<FragmentId>,
+) -> f64 {
+    let mut context_scores: Vec<f64> = all_fragments
+        .iter()
+        .filter(|f| !core_ids.contains(&f.id))
+        .map(|f| rel_scores.get(&f.id).copied().unwrap_or(0.0))
+        .filter(|&s| s > 0.0)
+        .collect();
+    if context_scores.is_empty() {
+        return f64::INFINITY;
+    }
+    context_scores.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
+    let idx = (context_scores.len() as f64 * (1.0 - rescue().min_score_percentile)) as usize;
+    context_scores[idx.min(context_scores.len() - 1)]
+}
+
+pub fn rescue_nontrivial_context(
+    selected: &mut Vec<Fragment>,
+    all_fragments: &[Fragment],
+    rel_scores: &FxHashMap<FragmentId, f64>,
+    core_ids: &FxHashSet<FragmentId>,
+    budget: u32,
+) {
+    let used: u32 = selected.iter().map(|f| f.token_count).sum();
+    let remaining = budget.saturating_sub(used);
+    let rescue_budget = remaining.min((budget as f64 * rescue().budget_fraction) as u32);
+    if rescue_budget == 0 {
+        return;
+    }
+
+    let min_score = compute_rescue_threshold(all_fragments, rel_scores, core_ids);
+    if min_score == f64::INFINITY {
+        return;
+    }
+
+    let selected_ids: FxHashSet<FragmentId> = selected.iter().map(|f| f.id.clone()).collect();
+    let selected_paths: FxHashSet<Arc<str>> = selected.iter().map(|f| f.id.path.clone()).collect();
+    let changed_paths: FxHashSet<Arc<str>> = core_ids.iter().map(|fid| fid.path.clone()).collect();
+
+    let mut candidates: Vec<&Fragment> = all_fragments
+        .iter()
+        .filter(|f| {
+            !selected_ids.contains(&f.id)
+                && !core_ids.contains(&f.id)
+                && !changed_paths.contains(&f.id.path)
+                && !selected_paths.contains(&f.id.path)
+                && rel_scores.get(&f.id).copied().unwrap_or(0.0) >= min_score
+                && f.token_count <= rescue_budget
+        })
+        .collect();
+    candidates.sort_by(|a, b| {
+        let sa = rel_scores.get(&a.id).copied().unwrap_or(0.0);
+        let sb = rel_scores.get(&b.id).copied().unwrap_or(0.0);
+        sb.partial_cmp(&sa).unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let mut interval_idx = IntervalIndex::new();
+    for f in selected.iter() {
+        interval_idx.add(f);
+    }
+
+    let mut budget_used = 0u32;
+    for cand in candidates {
+        if budget_used + cand.token_count > rescue_budget {
+            continue;
+        }
+        if interval_idx.overlaps(cand) {
+            continue;
+        }
+        selected.push(cand.clone());
+        interval_idx.add(cand);
+        budget_used += cand.token_count;
+    }
+}
+
+pub fn ensure_changed_files_represented(
+    selected: &mut Vec<Fragment>,
+    all_fragments: &[Fragment],
+    changed_files: &[PathBuf],
+    remaining_budget: u32,
+    root_dir: &Path,
+    preferred_revs: &[String],
+    mut batch_reader: Option<&mut CatFileBatch>,
+    core_ids: &FxHashSet<FragmentId>,
+    core_excerpts: &FxHashMap<FragmentId, Fragment>,
+) {
+    let selected_paths: FxHashSet<String> = selected
+        .iter()
+        .map(|f| f.id.path.as_ref().to_string())
+        .collect();
+    let mut missing_paths: Vec<&PathBuf> = changed_files
+        .iter()
+        .filter(|p| !selected_paths.contains(&p.to_string_lossy().as_ref().to_string()))
+        .collect();
+    missing_paths.sort();
+
+    if missing_paths.is_empty() {
+        return;
+    }
+
+    let mut frags_by_path: FxHashMap<String, Vec<Fragment>> = FxHashMap::default();
+    for f in all_fragments.iter().chain(core_excerpts.values()) {
+        let path_str = f.id.path.as_ref().to_string();
+        if missing_paths
+            .iter()
+            .any(|p| p.to_string_lossy().as_ref() == path_str)
+        {
+            frags_by_path.entry(path_str).or_default().push(f.clone());
+        }
+    }
+
+    let mut budget_left = remaining_budget;
+    let mut selected_ids: FxHashSet<FragmentId> = selected.iter().map(|f| f.id.clone()).collect();
+    let mut interval_idx = IntervalIndex::new();
+    for f in selected.iter() {
+        interval_idx.add(f);
+    }
+
+    for path in missing_paths.iter().copied() {
+        let path_str = path.to_string_lossy().to_string();
+        let candidates = frags_by_path.get(&path_str).cloned().unwrap_or_default();
+        let candidates = if candidates.is_empty() {
+            match create_whole_file_fragment(
+                path,
+                root_dir,
+                preferred_revs,
+                batch_reader.as_deref_mut(),
+            ) {
+                Some(f) => vec![f],
+                None => continue,
+            }
+        } else {
+            candidates
+        };
+
+        if let Some(picked) =
+            pick_smallest_fitting(&candidates, &selected_ids, budget_left, core_ids)
+        {
+            if !interval_idx.overlaps(&picked) {
+                budget_left = budget_left.saturating_sub(picked.token_count);
+                selected_ids.insert(picked.id.clone());
+                interval_idx.add(&picked);
+                selected.push(picked);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn frag(
+        path: &str,
+        start: u32,
+        end: u32,
+        kind: crate::types::FragmentKind,
+        tokens: u32,
+    ) -> Fragment {
+        Fragment {
+            id: FragmentId::new(Arc::from(path), start, end),
+            kind,
+            content: Arc::from(format!("fragment {path}:{start}-{end}")),
+            identifiers: FxHashSet::default(),
+            token_count: tokens,
+            symbol_name: None,
+        }
+    }
+
+    /// Regression for #83: when a changed file has no selected fragment and
+    /// the postpass fallback must pick one, a same-file signature stub that
+    /// is merely *smaller* must not be preferred over a same-file fragment
+    /// that actually covers the diff hunk (core_ids), as long as the core
+    /// fragment also fits the remaining budget.
+    #[test]
+    fn ensure_changed_files_represented_prefers_core_fragment_when_it_fits() {
+        let core = frag("a.ts", 10, 20, crate::types::FragmentKind::Function, 60);
+        let stub = frag(
+            "a.ts",
+            10,
+            10,
+            crate::types::FragmentKind::FunctionSignature,
+            10,
+        );
+        let all_fragments = vec![core.clone(), stub.clone()];
+        let core_ids: FxHashSet<FragmentId> = std::iter::once(core.id.clone()).collect();
+        let changed_files = vec![PathBuf::from("a.ts")];
+        let mut selected: Vec<Fragment> = Vec::new();
+
+        ensure_changed_files_represented(
+            &mut selected,
+            &all_fragments,
+            &changed_files,
+            100,
+            Path::new("."),
+            &[],
+            None,
+            &core_ids,
+            &FxHashMap::default(),
+        );
+
+        assert_eq!(selected.len(), 1, "expected exactly one fallback fragment");
+        assert_eq!(
+            selected[0].id, core.id,
+            "fallback picked the signature stub instead of the fragment covering the actual diff hunk"
+        );
+    }
+
+    /// When the core fragment does NOT fit the remaining budget, falling
+    /// back to the smaller non-core stub is still the correct behavior
+    /// (some representation beats none).
+    #[test]
+    fn ensure_changed_files_represented_falls_back_to_stub_when_core_does_not_fit() {
+        let core = frag("a.ts", 10, 20, crate::types::FragmentKind::Function, 60);
+        let stub = frag(
+            "a.ts",
+            10,
+            10,
+            crate::types::FragmentKind::FunctionSignature,
+            10,
+        );
+        let all_fragments = vec![core.clone(), stub.clone()];
+        let core_ids: FxHashSet<FragmentId> = std::iter::once(core.id.clone()).collect();
+        let changed_files = vec![PathBuf::from("a.ts")];
+        let mut selected: Vec<Fragment> = Vec::new();
+
+        ensure_changed_files_represented(
+            &mut selected,
+            &all_fragments,
+            &changed_files,
+            15,
+            Path::new("."),
+            &[],
+            None,
+            &core_ids,
+            &FxHashMap::default(),
+        );
+
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0].id, stub.id);
+    }
+}

@@ -1,0 +1,469 @@
+From a9dc4eadf91c4d71aef1bf1ebe11b9212327d7e6 Mon Sep 17 00:00:00 2001
+From: Sanne de Vries <65487235+sanne-san@users.noreply.github.com>
+Date: Mon, 8 Jun 2026 12:22:27 +0200
+Subject: [PATCH] Remove the `/team/select` page (#6423)
+
+* Remove the `/team/select` page
+
+- Topbar dropdown now lists all teams (scrolls after ~5 to be sure, though no users have more than 5 teams yet)
+- Empty-state "Go to team sites" now has a dropdown button that routes directly instead of via a separate page
+- Deleted the route, controller, template, and related tests
+
+* Add changelog entry
+
+* Add moduledoc to RequireAccountPlug
+
+* Refine team switcher dropdown
+
+- Pin active team to the top to ensure it's always visible
+- Replace right border with check icon to highlight active team
+- Add max width to dropdown menu
+---
+ CHANGELOG.md                                  |  2 +
+ .../controllers/auth_controller.ex            | 46 -------------------
+ lib/plausible_web/live/auth_context.ex        |  9 +---
+ lib/plausible_web/live/sites.ex               | 26 ++++++++++-
+ lib/plausible_web/plugs/auth_plug.ex          |  5 --
+ lib/plausible_web/plugs/require_account.ex    |  5 +-
+ lib/plausible_web/router.ex                   |  2 -
+ .../templates/auth/select_team.html.heex      | 29 ------------
+ .../templates/layout/_header.html.heex        |  3 +-
+ lib/plausible_web/views/layout_view.ex        | 44 ++++++++++--------
+ .../controllers/auth_controller_test.exs      | 42 -----------------
+ test/plausible_web/live/sites_test.exs        |  7 ++-
+ .../plugs/require_account_plug_test.exs       |  3 +-
+ 13 files changed, 62 insertions(+), 161 deletions(-)
+ delete mode 100644 lib/plausible_web/templates/auth/select_team.html.heex
+
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 9f10e57af..b08756dde 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -18,6 +18,8 @@ All notable changes to this project will be documented in this file.
+ 
+ ### Removed
+ 
++- Removed the standalone team switcher page; team switching is now done from the topbar dropdown only
++
+ ### Changed
+ 
+ - Keybind hints are hidden on smaller screens
+diff --git a/lib/plausible_web/controllers/auth_controller.ex b/lib/plausible_web/controllers/auth_controller.ex
+index 73ab4d35d..49f4137c4 100644
+--- a/lib/plausible_web/controllers/auth_controller.ex
++++ b/lib/plausible_web/controllers/auth_controller.ex
+@@ -38,7 +38,6 @@ defmodule PlausibleWeb.AuthController do
+            :verify_2fa_setup,
+            :disable_2fa,
+            :generate_2fa_recovery_codes,
+-           :select_team,
+            :switch_team
+          ]
+   )
+@@ -61,51 +60,6 @@ defmodule PlausibleWeb.AuthController do
+     TwoFactor.Session.clear_2fa_user(conn)
+   end
+ 
+-  def select_team(conn, _params) do
+-    current_user = conn.assigns.current_user
+-    current_team = conn.assigns[:current_team]
+-
+-    owner_name_fn = fn owner ->
+-      if owner.id == current_user.id do
+-        "You"
+-      else
+-        owner.name
+-      end
+-    end
+-
+-    teams =
+-      current_user
+-      |> Teams.Users.teams()
+-      |> Enum.filter(& &1.setup_complete)
+-      |> Enum.map(fn team ->
+-        current_team? = current_team && team.id == current_team.id
+-
+-        owners =
+-          Enum.map_join(team.owners, ", ", &owner_name_fn.(&1))
+-
+-        many_owners? = length(team.owners) > 1
+-
+-        %{
+-          identifier: team.identifier,
+-          name: team.name,
+-          current?: current_team?,
+-          many_owners?: many_owners?,
+-          owners: owners
+-        }
+-      end)
+-
+-    case teams do
+-      [] ->
+-        redirect(conn, to: Routes.site_path(conn, :index))
+-
+-      [%{identifier: sole_team_identifier}] ->
+-        redirect(conn, to: Routes.site_path(conn, :index, __team: sole_team_identifier))
+-
+-      [_ | _] ->
+-        render(conn, "select_team.html", teams_selection: teams)
+-    end
+-  end
+-
+   def activate_form(conn, params) do
+     user = conn.assigns.current_user
+     flow = params["flow"] || PlausibleWeb.Flows.register()
+diff --git a/lib/plausible_web/live/auth_context.ex b/lib/plausible_web/live/auth_context.ex
+index cac8d7ff6..3a41a2478 100644
+--- a/lib/plausible_web/live/auth_context.ex
++++ b/lib/plausible_web/live/auth_context.ex
+@@ -87,16 +87,9 @@ defmodule PlausibleWeb.Live.AuthContext do
+ 
+         %{current_user: user} ->
+           user.team_memberships
++          |> Enum.filter(& &1.team.setup_complete)
+           |> Enum.sort_by(fn tm -> [tm.role != :owner, tm.team_id] end)
+           |> Enum.map(&Map.fetch!(&1, :team))
+-          |> Enum.take(3)
+-      end)
+-      |> assign_new(:teams_count, fn
+-        %{current_user: nil} -> 0
+-        %{current_user: user} -> length(user.team_memberships)
+-      end)
+-      |> assign_new(:more_teams?, fn context ->
+-        context.teams_count > 3
+       end)
+ 
+     {:cont, socket}
+diff --git a/lib/plausible_web/live/sites.ex b/lib/plausible_web/live/sites.ex
+index 44e139fb5..239595886 100644
+--- a/lib/plausible_web/live/sites.ex
++++ b/lib/plausible_web/live/sites.ex
+@@ -205,13 +205,35 @@ defmodule PlausibleWeb.Live.Sites do
+             <Heroicons.plus class="size-4" /> Add website
+           </.button_link>
+           <.button_link
+-            :if={not Teams.setup?(@current_team) and @has_sites?}
+-            href={Routes.auth_path(@socket, :select_team)}
++            :if={not Teams.setup?(@current_team) and @has_sites? and length(@teams) == 1}
++            href={Routes.site_path(@socket, :index, __team: hd(@teams).identifier)}
+             theme="secondary"
+             mt?={false}
+           >
+             Go to team sites
+           </.button_link>
++
++          <PrimaDropdown.dropdown
++            :if={not Teams.setup?(@current_team) and @has_sites? and length(@teams) > 1}
++            id="go-to-team-dropdown"
++          >
++            <PrimaDropdown.dropdown_trigger id="go-to-team-dropdown-trigger" theme="secondary">
++              Go to team sites <Heroicons.chevron_down mini class="size-4 mt-0.5" />
++            </PrimaDropdown.dropdown_trigger>
++
++            <PrimaDropdown.dropdown_menu id="go-to-team-dropdown-menu">
++              <div class="max-h-[200px] overflow-y-auto">
++                <PrimaDropdown.dropdown_item
++                  :for={team <- @teams}
++                  as={&link/1}
++                  id={"go-to-team-dropdown-menuitem-#{team.identifier}"}
++                  href={Routes.site_path(@socket, :index, __team: team.identifier)}
++                >
++                  {Teams.name(team)}
++                </PrimaDropdown.dropdown_item>
++              </div>
++            </PrimaDropdown.dropdown_menu>
++          </PrimaDropdown.dropdown>
+         </div>
+       </div>
+ 
+diff --git a/lib/plausible_web/plugs/auth_plug.ex b/lib/plausible_web/plugs/auth_plug.ex
+index 1f62c9c38..7d01dfb75 100644
+--- a/lib/plausible_web/plugs/auth_plug.ex
++++ b/lib/plausible_web/plugs/auth_plug.ex
+@@ -54,14 +54,11 @@ defmodule PlausibleWeb.AuthPlug do
+           |> Enum.find(%{}, &(&1.role == :owner and &1.team.setup_complete == false))
+           |> Map.get(:team)
+ 
+-        teams_count = length(user.team_memberships)
+-
+         teams =
+           user.team_memberships
+           |> Enum.filter(& &1.team.setup_complete)
+           |> Enum.sort_by(fn tm -> [tm.role != :owner, tm.team_id] end)
+           |> Enum.map(&Map.fetch!(&1, :team))
+-          |> Enum.take(3)
+ 
+         Plausible.OpenTelemetry.add_user_attributes(user)
+ 
+@@ -80,9 +77,7 @@ defmodule PlausibleWeb.AuthPlug do
+         |> assign(:my_team, my_team)
+         |> assign(:current_team, current_team || my_team)
+         |> assign(:current_team_role, current_team_role || (my_team && :owner))
+-        |> assign(:teams_count, teams_count)
+         |> assign(:teams, teams)
+-        |> assign(:more_teams?, teams_count > 3)
+ 
+       {:error, :session_expired, user_session} ->
+         assign(conn, :expired_session, user_session)
+diff --git a/lib/plausible_web/plugs/require_account.ex b/lib/plausible_web/plugs/require_account.ex
+index 53b7a88cb..7ab0a8359 100644
+--- a/lib/plausible_web/plugs/require_account.ex
++++ b/lib/plausible_web/plugs/require_account.ex
+@@ -1,4 +1,6 @@
+ defmodule PlausibleWeb.RequireAccountPlug do
++  @moduledoc false
++
+   alias PlausibleWeb.Router.Helpers, as: Routes
+   import Plug.Conn
+ 
+@@ -12,8 +14,7 @@ defmodule PlausibleWeb.RequireAccountPlug do
+   @force_2fa_exceptions [
+     ["2fa", "setup", "force-initiate"],
+     ["2fa", "setup", "initiate"],
+-    ["2fa", "setup", "verify"],
+-    ["team", "select"]
++    ["2fa", "setup", "verify"]
+   ]
+ 
+   def init(options) do
+diff --git a/lib/plausible_web/router.ex b/lib/plausible_web/router.ex
+index 572537e65..b1a6b609b 100644
+--- a/lib/plausible_web/router.ex
++++ b/lib/plausible_web/router.ex
+@@ -543,7 +543,6 @@ defmodule PlausibleWeb.Router do
+       get "/sso/notice", SSOController, :provision_notice
+       get "/sso/issue", SSOController, :provision_issue
+       get "/logout", AuthController, :logout
+-      get "/team/select", AuthController, :select_team
+     end
+ 
+     scope "/", PlausibleWeb do
+@@ -560,7 +559,6 @@ defmodule PlausibleWeb.Router do
+ 
+     on_ce do
+       get "/logout", AuthController, :logout
+-      get "/team/select", AuthController, :select_team
+     end
+ 
+     delete "/me", AuthController, :delete_me
+diff --git a/lib/plausible_web/templates/auth/select_team.html.heex b/lib/plausible_web/templates/auth/select_team.html.heex
+deleted file mode 100644
+index d2e571279..000000000
+--- a/lib/plausible_web/templates/auth/select_team.html.heex
++++ /dev/null
+@@ -1,29 +0,0 @@
+-<.focus_box>
+-  <:title>Switch Team</:title>
+-
+-  <:subtitle>Switch your current team.</:subtitle>
+-
+-  <div>
+-    <ul>
+-      <li
+-        :for={team <- @teams_selection}
+-        class={if team.current?, do: ["border-indigo-400 border-r-4 m-2"], else: ["m-2"]}
+-      >
+-        <.unstyled_link href={
+-          if team.current?,
+-            do: "#",
+-            else: Routes.site_path(@conn, :index, __team: team.identifier)
+-        }>
+-          <div class="hover:bg-indigo-100 dark:hover:bg-gray-700 p-4">
+-            <p class="truncate font-medium text-gray-900 dark:text-gray-100" role="none">
+-              {team.name}
+-            </p>
+-            <p class="text-xs text-gray-500 dark:text-gray-400">
+-              Owner{if team.many_owners?, do: "s"}: {team.owners}
+-            </p>
+-          </div>
+-        </.unstyled_link>
+-      </li>
+-    </ul>
+-  </div>
+-</.focus_box>
+diff --git a/lib/plausible_web/templates/layout/_header.html.heex b/lib/plausible_web/templates/layout/_header.html.heex
+index 58a0ec89f..18b6d12c9 100644
+--- a/lib/plausible_web/templates/layout/_header.html.heex
++++ b/lib/plausible_web/templates/layout/_header.html.heex
+@@ -76,7 +76,7 @@
+                       class="-my-0.5 w-7 rounded-full"
+                     />
+                   </:button>
+-                  <:menu>
++                  <:menu class="max-w-xs">
+                     <.dropdown_item>
+                       <div class="text-xs text-gray-500 dark:text-gray-400">Signed in as</div>
+                       <p class="truncate font-medium text-gray-900 dark:text-gray-100" role="none">
+@@ -88,7 +88,6 @@
+                       teams={@teams}
+                       my_team={@my_team}
+                       current_team={@current_team}
+-                      more_teams?={@more_teams?}
+                     />
+                     <.dropdown_divider />
+                     <.dropdown_item href={Routes.settings_path(@conn, :index)}>
+diff --git a/lib/plausible_web/views/layout_view.ex b/lib/plausible_web/views/layout_view.ex
+index d4e16b1ca..b67ab79cc 100644
+--- a/lib/plausible_web/views/layout_view.ex
++++ b/lib/plausible_web/views/layout_view.ex
+@@ -166,7 +166,6 @@ defmodule PlausibleWeb.LayoutView do
+   attr :teams, :list, required: true
+   attr :my_team, :any, default: nil
+   attr :current_team, :any, default: nil
+-  attr :more_teams?, :boolean, required: true
+ 
+   def team_switcher(assigns) do
+     teams = assigns[:teams]
+@@ -192,36 +191,41 @@ defmodule PlausibleWeb.LayoutView do
+         end
+ 
+       selected_id = current_team && current_team.id
++      {pinned_team, other_teams} = Enum.split_with(teams, &(&1.id == selected_id))
+ 
+       assigns =
+         assigns
+-        |> assign(:teams, teams)
+-        |> assign(:selected_id, selected_id)
++        |> assign(:pinned_team, List.first(pinned_team))
++        |> assign(:other_teams, other_teams)
+ 
+       ~H"""
+       <.dropdown_item>
+         <div class="text-xs text-gray-500 dark:text-gray-400">Teams</div>
+       </.dropdown_item>
+       <.dropdown_item
+-        :for={team <- @teams}
+-        href={Routes.site_path(@conn, :index, __team: team.identifier)}
++        :if={@pinned_team}
++        href={Routes.site_path(@conn, :index, __team: @pinned_team.identifier)}
+       >
+-        <p
+-          class={[
+-            if(team.id == @selected_id,
+-              do: "border-r-4 border-indigo-400 font-bold",
+-              else: "font-medium"
+-            ),
+-            "truncate text-gray-900 dark:text-gray-100 pr-4"
+-          ]}
+-          role="none"
+-        >
+-          {Teams.name(team)}
+-        </p>
+-      </.dropdown_item>
+-      <.dropdown_item :if={@more_teams?} href={Routes.auth_path(@conn, :select_team)}>
+-        Switch to Another Team
++        <div class="flex items-center justify-between gap-2" role="none">
++          <p class="font-semibold truncate min-w-0 text-gray-900 dark:text-gray-100">
++            {Teams.name(@pinned_team)}
++          </p>
++          <Heroicons.check class="size-4 shrink-0 stroke-2 text-gray-500 dark:text-gray-400" />
++        </div>
+       </.dropdown_item>
++      <div class="max-h-[200px] overflow-y-auto">
++        <.dropdown_item
++          :for={team <- @other_teams}
++          href={Routes.site_path(@conn, :index, __team: team.identifier)}
++        >
++          <p
++            class="font-medium truncate text-gray-900 dark:text-gray-100 pr-4"
++            role="none"
++          >
++            {Teams.name(team)}
++          </p>
++        </.dropdown_item>
++      </div>
+       """
+     else
+       ~H""
+diff --git a/test/plausible_web/controllers/auth_controller_test.exs b/test/plausible_web/controllers/auth_controller_test.exs
+index c85cf676f..c63e3f016 100644
+--- a/test/plausible_web/controllers/auth_controller_test.exs
++++ b/test/plausible_web/controllers/auth_controller_test.exs
+@@ -2095,48 +2095,6 @@ defmodule PlausibleWeb.AuthControllerTest do
+     end
+   end
+ 
+-  describe "GET /team/select" do
+-    setup [:create_user, :log_in]
+-
+-    test "redirects to /sites if no teams available", %{conn: conn} do
+-      conn = get(conn, Routes.auth_path(conn, :select_team))
+-      assert redirected_to(conn, 302) == Routes.site_path(conn, :index)
+-    end
+-
+-    test "redirects to /sites?__team if one team set up available", %{conn: conn, user: user} do
+-      new_site(owner: user)
+-      team = team_of(user)
+-      assert Plausible.Teams.complete_setup(team)
+-      conn = get(conn, Routes.auth_path(conn, :select_team))
+-      assert redirected_to(conn, 302) == Routes.site_path(conn, :index, __team: team.identifier)
+-    end
+-
+-    test "displays team switcher if >1 teams available", %{conn: conn, user: user} do
+-      t1 = new_site(owner: user).team
+-      t2 = new_site().team
+-
+-      add_member(t2, user: user, role: :viewer)
+-
+-      Plausible.Teams.complete_setup(t1)
+-      Plausible.Teams.complete_setup(t2)
+-
+-      conn = get(conn, Routes.auth_path(conn, :select_team))
+-      assert html = html_response(conn, 200)
+-
+-      assert text(html) =~ "Switch your current team"
+-
+-      assert element_exists?(
+-               html,
+-               ~s|a[href="#{Routes.site_path(conn, :index, __team: t1.identifier)}"]|
+-             )
+-
+-      assert element_exists?(
+-               html,
+-               ~s|a[href="#{Routes.site_path(conn, :index, __team: t2.identifier)}"]|
+-             )
+-    end
+-  end
+-
+   defp login_with_cookie(conn, email, password) do
+     conn
+     |> post(Routes.auth_path(conn, :login), %{
+diff --git a/test/plausible_web/live/sites_test.exs b/test/plausible_web/live/sites_test.exs
+index 8c546ba74..2df75c2f3 100644
+--- a/test/plausible_web/live/sites_test.exs
++++ b/test/plausible_web/live/sites_test.exs
+@@ -22,7 +22,7 @@ defmodule PlausibleWeb.Live.SitesTest do
+       conn: conn,
+       user: user
+     } do
+-      team2 = new_site().team
++      team2 = new_site().team |> Plausible.Teams.complete_setup()
+ 
+       add_member(team2, user: user, role: :admin)
+ 
+@@ -33,6 +33,11 @@ defmodule PlausibleWeb.Live.SitesTest do
+       refute text =~ "You don't have any sites yet"
+       assert text =~ "Add your first personal site"
+       assert text =~ "Go to team sites"
++
++      assert element_exists?(
++               html,
++               ~s|a[href="/sites?__team=#{team2.identifier}"]|
++             )
+     end
+ 
+     test "renders settings link when current team is set", %{user: user, conn: conn} do
+diff --git a/test/plausible_web/plugs/require_account_plug_test.exs b/test/plausible_web/plugs/require_account_plug_test.exs
+index 974af516c..cb9066b4c 100644
+--- a/test/plausible_web/plugs/require_account_plug_test.exs
++++ b/test/plausible_web/plugs/require_account_plug_test.exs
+@@ -56,8 +56,7 @@ defmodule PlausibleWeb.RequireAccountPlugTest do
+     @force_2fa_exceptions [
+       "/2fa/setup/force-initiate",
+       "/2fa/setup/initiate",
+-      "/2fa/setup/verify",
+-      "/team/select"
++      "/2fa/setup/verify"
+     ]
+ 
+     for path <- @force_2fa_exceptions do

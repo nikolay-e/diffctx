@@ -1,0 +1,88 @@
+repo: gitlab-foss
+base_commit: ac03f30cd938cd2c75d05cbc7adbde3f42666ab1
+commit: 83a8b779615c968af5afe15a1cbc6903d639f265
+patch_stored: true
+gold:
+  - path: app/graphql/resolvers/namespace_resolver.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New resolver backing the top-level `namespace` GraphQL query field, prepends `FullPathResolver` and calls `model_by_full_path(Namespace, full_path)`.
+  - path: app/graphql/resolvers/namespace_projects_resolver.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New resolver backing `NamespaceType#projects`, branching on `include_subgroups` between `namespace.projects` and `namespace.all_projects`.
+  - path: app/graphql/types/namespace_type.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds the `projects` field wired to `Resolvers::NamespaceProjectsResolver`, exposing nested projects on namespaces.
+  - path: app/graphql/types/query_type.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Mounts the new `namespace` field with `resolver: Resolvers::NamespaceResolver`, the entry point for the whole namespace-query feature."
+  - path: app/graphql/types/project_statistics_type.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New `ProjectStatistics` GraphQL type exposing storage_size/repository_size/lfs_objects_size/build_artifacts_size/packages_size/commit_count.
+  - path: app/graphql/types/project_type.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds the `statistics` field resolved via `Gitlab::Graphql::Loaders::BatchProjectStatisticsLoader.new(obj.id).find`, wiring ProjectStatisticsType onto Project.
+  - path: lib/gitlab/graphql/loaders/batch_project_statistics_loader.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New BatchLoader that batches `ProjectStatistics.for_project_ids` lookups, the N+1-avoidance mechanism behind `ProjectType#statistics`.
+  - path: app/models/project_statistics.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds the `for_project_ids` scope the batch loader queries against.
+  - path: app/graphql/resolvers/full_path_resolver.rb
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines `model_by_full_path`, the BatchLoader-based lookup that `NamespaceResolver#resolve` calls directly; this concern is prepended but not itself modified by the commit.
+  - path: app/models/namespace.rb
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: "Defines `all_projects` (`Project.inside_path(full_path)`) that `NamespaceProjectsResolver` calls when `include_subgroups: true`."
+  - path: spec/requests/api/graphql/namespace/projects_spec.rb
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: New end-to-end GraphQL request spec covering `namespace { projects }` for group and user namespaces, with/without subgroups.
+  - path: spec/requests/api/graphql/project/project_statistics_spec.rb
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: New end-to-end GraphQL request spec covering `project { statistics { ... } }` including public-project visibility.
+forbidden:
+  - path: app/graphql/resolvers/group_resolver.rb
+    reason: pre-existing sibling resolver with a similar FullPathResolver pattern, but untouched by this commit
+  - path: app/graphql/types/group_type.rb
+    reason: pre-existing sibling GraphQL type, untouched and not part of the namespace/statistics addition
+  - path: app/models/project.rb
+    reason: large generic Project model referenced indirectly everywhere, but no method on it is added or called by this change
+  - path: changelogs/unreleased/ac-graphql-stats.yml
+    reason: boilerplate changelog entry restating the commit subject, no additional signal
+nontrivial_gold_count: 2
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 21
+  description: Namespace/ProjectStatistics GraphQL types
+notes: >
+  Adds two related GraphQL capabilities: a top-level `namespace(fullPath)` query
+  exposing nested `projects` (with subgroup traversal), and a `statistics` field on
+  `Project` backed by a batch loader. Gold includes both out-of-diff definitions the new
+  resolvers call directly: `FullPathResolver#model_by_full_path` and
+  `Namespace#all_projects`.

@@ -1,0 +1,94 @@
+From b7f1171c08ea285599974f05d49ce250fc84460e Mon Sep 17 00:00:00 2001
+From: Joost Lekkerkerker <joostlek@outlook.com>
+Date: Sat, 28 Feb 2026 23:07:31 +0100
+Subject: [PATCH] Rename Overseerr integration to Seerr (#164060)
+
+---
+ homeassistant/components/overseerr/config_flow.py |  2 +-
+ homeassistant/components/overseerr/manifest.json  |  2 +-
+ homeassistant/components/overseerr/strings.json   | 10 +++++-----
+ homeassistant/generated/integrations.json         |  2 +-
+ tests/components/overseerr/test_config_flow.py    |  2 +-
+ 5 files changed, 9 insertions(+), 9 deletions(-)
+
+diff --git a/homeassistant/components/overseerr/config_flow.py b/homeassistant/components/overseerr/config_flow.py
+index 9a8bdd1676..e095f03354 100644
+--- a/homeassistant/components/overseerr/config_flow.py
++++ b/homeassistant/components/overseerr/config_flow.py
+@@ -69,7 +69,7 @@ class OverseerrConfigFlow(ConfigFlow, domain=DOMAIN):
+                 else:
+                     if self.source == SOURCE_USER:
+                         return self.async_create_entry(
+-                            title="Overseerr",
++                            title="Seerr",
+                             data={
+                                 CONF_HOST: host,
+                                 CONF_PORT: port,
+diff --git a/homeassistant/components/overseerr/manifest.json b/homeassistant/components/overseerr/manifest.json
+index c404cc3735..f6097427ee 100644
+--- a/homeassistant/components/overseerr/manifest.json
++++ b/homeassistant/components/overseerr/manifest.json
+@@ -1,6 +1,6 @@
+ {
+   "domain": "overseerr",
+-  "name": "Overseerr",
++  "name": "Seerr",
+   "after_dependencies": ["cloud"],
+   "codeowners": ["@joostlek", "@AmGarera"],
+   "config_flow": true,
+diff --git a/homeassistant/components/overseerr/strings.json b/homeassistant/components/overseerr/strings.json
+index 39ef4f7481..865a691896 100644
+--- a/homeassistant/components/overseerr/strings.json
++++ b/homeassistant/components/overseerr/strings.json
+@@ -25,8 +25,8 @@
+           "url": "[%key:common::config_flow::data::url%]"
+         },
+         "data_description": {
+-          "api_key": "The API key of the Overseerr instance.",
+-          "url": "The URL of the Overseerr instance."
++          "api_key": "The API key of the Seerr instance.",
++          "url": "The URL of the Seerr instance."
+         }
+       }
+     }
+@@ -137,11 +137,11 @@
+   },
+   "services": {
+     "get_requests": {
+-      "description": "Retrieves a list of media requests from Overseerr.",
++      "description": "Retrieves a list of media requests from Seerr.",
+       "fields": {
+         "config_entry_id": {
+-          "description": "The Overseerr instance to get requests from.",
+-          "name": "Overseerr instance"
++          "description": "The Seerr instance to get requests from.",
++          "name": "Seerr instance"
+         },
+         "requested_by": {
+           "description": "Filter the requests by the user ID that requested them.",
+diff --git a/homeassistant/generated/integrations.json b/homeassistant/generated/integrations.json
+index e3890c5187..207dc51728 100644
+--- a/homeassistant/generated/integrations.json
++++ b/homeassistant/generated/integrations.json
+@@ -5042,7 +5042,7 @@
+       "iot_class": "local_polling"
+     },
+     "overseerr": {
+-      "name": "Overseerr",
++      "name": "Seerr",
+       "integration_type": "service",
+       "config_flow": true,
+       "iot_class": "local_push"
+diff --git a/tests/components/overseerr/test_config_flow.py b/tests/components/overseerr/test_config_flow.py
+index 6a3b086a8e..98328d3536 100644
+--- a/tests/components/overseerr/test_config_flow.py
++++ b/tests/components/overseerr/test_config_flow.py
+@@ -54,7 +54,7 @@ async def test_full_flow(
+         {CONF_URL: "http://overseerr.test", CONF_API_KEY: "test-key"},
+     )
+     assert result["type"] is FlowResultType.CREATE_ENTRY
+-    assert result["title"] == "Overseerr"
++    assert result["title"] == "Seerr"
+     assert result["data"] == {
+         CONF_HOST: "overseerr.test",
+         CONF_PORT: 80,

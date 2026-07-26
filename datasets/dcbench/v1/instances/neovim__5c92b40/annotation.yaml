@@ -1,0 +1,59 @@
+repo: neovim
+base_commit: ead5683ff9994c0fbfc6c38e0911d9455777550b
+commit: 5c92b40b4b173c7d85106689fef811e41994abb0
+patch_stored: true
+gold:
+  - path: src/nvim/api/deprecated.c
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: gains the relocated write_msg()/nvim_out_write/nvim_err_write/nvim_err_writeln definitions with FUNC_API_DEPRECATED_SINCE(13), the semantic core of the change.
+  - path: src/nvim/api/vim.c
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: loses write_msg() and the three nvim_out/err_write(ln) functions that were moved out to deprecated.c.
+  - path: runtime/lua/vim/_editor.lua
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: vim.notify() is rewritten to call nvim_echo(chunks, true, {err=...}) instead of nvim_err_writeln/nvim_echo branching, the main consumer-facing behavior change.
+  - path: runtime/lua/vim/lsp/client.lua
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: err_message() switches from api.nvim_err_writeln(message) to vim.api.nvim_echo(chunks, true, {err=true}), an LSP-internal caller of the deprecated API.
+  - path: runtime/lua/vim/lsp/handlers.lua
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: window/showMessage handler replaces api.nvim_out_write(...) with api.nvim_echo({{message}}, true, {err=true}).
+  - path: runtime/doc/deprecated.txt
+    tier: helpful
+    role: doc
+    in_diff: true
+    rationale: records nvim_out_write()/nvim_err_write()/nvim_err_writeln() as newly deprecated with their nvim_echo() replacements, the user-facing deprecation notice.
+  - path: src/nvim/api/dispatch_deprecated.lua
+    tier: helpful
+    role: config
+    in_diff: false
+    rationale: pre-existing alias table (nvim_err_write -> vim_err_write etc.) that still routes these now-deprecated-but-still-live functions through the legacy dispatch mechanism; explains why the C functions keep working for old API-level clients.
+  - path: test/functional/api/vim_spec.lua
+    tier: helpful
+    role: test
+    in_diff: false
+    rationale: 'describe(''nvim_out_write''/''nvim_err_write'') blocks exercise the exact line-buffering and NUL-handling behavior of write_msg() that was relocated verbatim into deprecated.c.'
+forbidden:
+  - path: runtime/lua/vim/_meta/api.lua
+    reason: auto-generated stub file whose @deprecated annotations are a mechanical byproduct of gen_vimdoc, not a place to understand the behavior change.
+  - path: src/nvim/version.c
+    reason: defines NVIM_API_LEVEL/API_LEVEL_COMPAT but this commit does not touch or require bumping it (FUNC_API_DEPRECATED_SINCE(13) refers to an already-current level).
+  - path: test/functional/ui/messages_spec.lua
+    reason: broad UI messages test suite that incidentally references nvim_out_write but does not target the deprecation/relocation behavior itself.
+  - path: runtime/lua/vim/_defaults.lua
+    reason: only touches one unrelated nvim_err_writeln call site inside a Ctrl-\\ Ctrl-N mapping helper, peripheral to the core write_msg relocation.
+nontrivial_gold_count: 2
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: 'Moves write_msg()/nvim_out_write/nvim_err_write/nvim_err_writeln from vim.c to deprecated.c unchanged (marking FUNC_API_DEPRECATED_SINCE(13)) and migrates in-tree Lua callers (vim.notify, LSP err_message/showMessage handler) onto nvim_echo(). All essential files are already in the 9-file diff; nontrivial gold is the pre-existing dispatch_deprecated.lua alias table and the vim_spec.lua tests that pin write_msg semantics.'

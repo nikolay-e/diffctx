@@ -1,0 +1,2283 @@
+From 37375d8aba0869531567426466478b0de9a1aea3 Mon Sep 17 00:00:00 2001
+From: Alan Lee <alanlee2@meta.com>
+Date: Thu, 24 Oct 2024 10:10:19 -0700
+Subject: [PATCH] bump Folly to 2024.10.14.00 (#47033)
+
+Summary:
+Pull Request resolved: https://github.com/facebook/react-native/pull/47033
+
+Lastest Folly has updates to fix build errors with LLVM 19 which is also llikely needed for NDK 27
+
+- https://github.com/facebook/folly/commit/bf46c8a21ffa288d756cea2ad455b5f012c3231f
+
+- also add folly's new dependency fast_float
+- update fmt version
+
+Changelog:
+[General][Changed] - Bump Folly to 2024.10.14.00
+
+Reviewed By: NickGerleman
+
+Differential Revision: D64372125
+
+fbshipit-source-id: 1a88f1bc2af7bedce96437f2dba5b6e0fe9ea772
+---
+ .../AppDelegate/React-RCTAppDelegate.podspec  |   1 +
+ .../Libraries/Blob/React-RCTBlob.podspec      |   4 +-
+ packages/react-native/React-Core.podspec      |   5 +-
+ .../CoreModules/React-CoreModules.podspec     |   8 +-
+ .../React/React-RCTFabric.podspec             |   3 +-
+ .../react-native/React/third-party.xcconfig   |   2 +-
+ .../ReactAndroid/build.gradle.kts             |  25 +
+ .../ReactAndroid/src/main/jni/CMakeLists.txt  |   1 +
+ .../jni/third-party/fast_float/CMakeLists.txt |  13 +
+ .../main/jni/third-party/folly/CMakeLists.txt |  11 +-
+ .../ReactCommon/React-Fabric.podspec          |   5 +-
+ .../React-FabricComponents.podspec            |   6 +-
+ .../ReactCommon/React-FabricImage.podspec     |   6 +-
+ .../ReactCommon/ReactCommon.podspec           |   7 +-
+ .../cxxreact/React-cxxreact.podspec           |   7 +-
+ .../ReactCommon/hermes/React-hermes.podspec   |   5 +-
+ .../ReactCommon/jsi/React-jsi.podspec         |   7 +-
+ .../jsiexecutor/React-jsiexecutor.podspec     |   7 +-
+ .../React-jsinspector.podspec                 |   2 +-
+ .../ios/React-NativeModulesApple.podspec      |   4 +-
+ .../samples/ReactCommon-Samples.podspec       |   6 +-
+ .../debug/React-rendererdebug.podspec         |   4 +-
+ .../renderer/graphics/React-graphics.podspec  |   6 +-
+ .../platform/ios/React-ImageManager.podspec   |   1 +
+ .../reactperflogger/React-perflogger.podspec  |   1 +
+ .../react-native/gradle/libs.versions.toml    |   5 +-
+ .../cocoapods/__tests__/codegen_utils-test.rb |   3 +-
+ .../__tests__/new_architecture-test.rb        |  12 +-
+ .../scripts/cocoapods/__tests__/utils-test.rb |   2 +-
+ .../scripts/cocoapods/codegen_utils.rb        |   3 +-
+ .../react-native/scripts/cocoapods/helpers.rb |  14 +-
+ .../scripts/cocoapods/new_architecture.rb     |   1 +
+ .../react-native/scripts/cocoapods/utils.rb   |   2 +
+ .../react-native/scripts/react_native_pods.rb |  14 +
+ .../third-party-podspecs/RCT-Folly.podspec    |  23 +-
+ .../third-party-podspecs/fast_float.podspec   |  29 ++
+ .../third-party-podspecs/fmt.podspec          |   4 +-
+ packages/rn-tester/Podfile.lock               | 482 ++++++++++--------
+ 38 files changed, 463 insertions(+), 278 deletions(-)
+ create mode 100644 packages/react-native/ReactAndroid/src/main/jni/third-party/fast_float/CMakeLists.txt
+ create mode 100644 packages/react-native/third-party-podspecs/fast_float.podspec
+
+diff --git a/packages/react-native/Libraries/AppDelegate/React-RCTAppDelegate.podspec b/packages/react-native/Libraries/AppDelegate/React-RCTAppDelegate.podspec
+index e9e16bcbbe1..e29e1b25292 100644
+--- a/packages/react-native/Libraries/AppDelegate/React-RCTAppDelegate.podspec
++++ b/packages/react-native/Libraries/AppDelegate/React-RCTAppDelegate.podspec
+@@ -32,6 +32,7 @@ header_search_paths = [
+   "$(PODS_ROOT)/Headers/Private/React-Core",
+   "$(PODS_ROOT)/boost",
+   "$(PODS_ROOT)/DoubleConversion",
++  "$(PODS_ROOT)/fast_float/include",
+   "$(PODS_ROOT)/fmt/include",
+   "$(PODS_ROOT)/RCT-Folly",
+   "${PODS_ROOT}/Headers/Public/FlipperKit",
+diff --git a/packages/react-native/Libraries/Blob/React-RCTBlob.podspec b/packages/react-native/Libraries/Blob/React-RCTBlob.podspec
+index ad640869869..c592234ed13 100644
+--- a/packages/react-native/Libraries/Blob/React-RCTBlob.podspec
++++ b/packages/react-native/Libraries/Blob/React-RCTBlob.podspec
+@@ -24,6 +24,7 @@ header_search_paths = [
+   "\"$(PODS_ROOT)/RCT-Folly\"",
+   "\"$(PODS_ROOT)/boost\"",
+   "\"$(PODS_ROOT)/DoubleConversion\"",
++  "\"$(PODS_ROOT)/fast_float/include\"",
+   "\"$(PODS_ROOT)/fmt/include\"",
+   "\"${PODS_ROOT}/Headers/Public/ReactCodegen/react/renderer/components\"",
+ ]
+@@ -48,7 +49,8 @@ Pod::Spec.new do |s|
+                              }
+ 
+   s.dependency "DoubleConversion"
+-  s.dependency "fmt", "9.1.0"
++  s.dependency "fast_float", "6.1.4"
++  s.dependency "fmt", "11.0.2"
+   s.dependency "RCT-Folly", folly_version
+   s.dependency "React-jsi"
+   s.dependency "React-Core/RCTBlobHeaders"
+diff --git a/packages/react-native/React-Core.podspec b/packages/react-native/React-Core.podspec
+index 079075e8ed4..285793b8e1b 100644
+--- a/packages/react-native/React-Core.podspec
++++ b/packages/react-native/React-Core.podspec
+@@ -21,10 +21,10 @@ folly_compiler_flags = folly_config[:compiler_flags]
+ folly_version = folly_config[:version]
+ 
+ socket_rocket_config = get_socket_rocket_config()
+-socket_rocket_version = socket_rocket_config[:version] 
++socket_rocket_version = socket_rocket_config[:version]
+ 
+ boost_config = get_boost_config()
+-boost_compiler_flags = boost_config[:compiler_flags] 
++boost_compiler_flags = boost_config[:compiler_flags]
+ 
+ use_hermes = ENV['USE_HERMES'] == nil || ENV['USE_HERMES'] == '1'
+ use_hermes_flag = use_hermes ? "-DUSE_HERMES=1" : ""
+@@ -50,6 +50,7 @@ header_search_paths = [
+   "$(PODS_TARGET_SRCROOT)/ReactCommon",
+   "$(PODS_ROOT)/boost",
+   "$(PODS_ROOT)/DoubleConversion",
++  "$(PODS_ROOT)/fast_float/include",
+   "$(PODS_ROOT)/fmt/include",
+   "$(PODS_ROOT)/RCT-Folly",
+   "${PODS_ROOT}/Headers/Public/FlipperKit",
+diff --git a/packages/react-native/React/CoreModules/React-CoreModules.podspec b/packages/react-native/React/CoreModules/React-CoreModules.podspec
+index f85a2365f6e..43ef20bc2e9 100644
+--- a/packages/react-native/React/CoreModules/React-CoreModules.podspec
++++ b/packages/react-native/React/CoreModules/React-CoreModules.podspec
+@@ -21,13 +21,14 @@ folly_compiler_flags = folly_config[:compiler_flags]
+ folly_version = folly_config[:version]
+ 
+ socket_rocket_config = get_socket_rocket_config()
+-socket_rocket_version = socket_rocket_config[:version] 
++socket_rocket_version = socket_rocket_config[:version]
+ 
+ header_search_paths = [
+   "\"$(PODS_ROOT)/boost\"",
+   "\"$(PODS_TARGET_SRCROOT)/React/CoreModules\"",
+   "\"$(PODS_ROOT)/RCT-Folly\"",
+   "\"$(PODS_ROOT)/DoubleConversion\"",
++  "\"$(PODS_ROOT)/fast_float/include\"",
+   "\"$(PODS_ROOT)/fmt/include\"",
+   "\"${PODS_ROOT}/Headers/Public/ReactCodegen/react/renderer/components\"",
+ ]
+@@ -47,7 +48,7 @@ Pod::Spec.new do |s|
+ 
+   s.ios.exclude_files      = "PlatformStubs/**/*"
+   exclude_files            = ["RCTStatusBarManager.mm"]
+-  s.macos.exclude_files    = exclude_files 
++  s.macos.exclude_files    = exclude_files
+   s.visionos.exclude_files = exclude_files
+   s.tvos.exclude_files     = exclude_files
+ 
+@@ -59,7 +60,8 @@ Pod::Spec.new do |s|
+                              }
+   s.framework = "UIKit"
+   s.dependency "DoubleConversion"
+-  s.dependency "fmt", "9.1.0"
++  s.dependency "fast_float", "6.1.4"
++  s.dependency "fmt", "11.0.2"
+   s.dependency "RCT-Folly", folly_version
+   s.dependency "RCTTypeSafety", version
+   s.dependency "React-Core/CoreModulesHeaders", version
+diff --git a/packages/react-native/React/React-RCTFabric.podspec b/packages/react-native/React/React-RCTFabric.podspec
+index 1ba879da33c..c80fe3568ac 100644
+--- a/packages/react-native/React/React-RCTFabric.podspec
++++ b/packages/react-native/React/React-RCTFabric.podspec
+@@ -20,13 +20,14 @@ folly_config = get_folly_config()
+ folly_compiler_flags = folly_config[:compiler_flags]
+ folly_version = folly_config[:version]
+ boost_config = get_boost_config()
+-boost_compiler_flags = boost_config[:compiler_flags] 
++boost_compiler_flags = boost_config[:compiler_flags]
+ new_arch_flags = ENV['RCT_NEW_ARCH_ENABLED'] == '1' ? ' -DRCT_NEW_ARCH_ENABLED=1' : ''
+ 
+ header_search_paths = [
+   "\"$(PODS_TARGET_SRCROOT)/ReactCommon\"",
+   "\"$(PODS_ROOT)/boost\"",
+   "\"$(PODS_ROOT)/DoubleConversion\"",
++  "\"$(PODS_ROOT)/fast_float/include\"",
+   "\"$(PODS_ROOT)/fmt/include\"",
+   "\"$(PODS_ROOT)/RCT-Folly\"",
+   "\"$(PODS_ROOT)/Headers/Private/React-Core\"",
+diff --git a/packages/react-native/React/third-party.xcconfig b/packages/react-native/React/third-party.xcconfig
+index 273b6c53771..137c6a5da00 100644
+--- a/packages/react-native/React/third-party.xcconfig
++++ b/packages/react-native/React/third-party.xcconfig
+@@ -8,5 +8,5 @@
+ // LICENSE file in the root directory of this source tree.
+ //
+ 
+-HEADER_SEARCH_PATHS = $(SRCROOT)/../third-party/boost_1_83_0 $(SRCROOT)/../third-party/folly-2024.01.01.00 $(SRCROOT)/../third-party/glog-0.3.5/src
++HEADER_SEARCH_PATHS = $(SRCROOT)/../third-party/boost_1_83_0 $(SRCROOT)/../third-party/folly-2024.10.14.00 $(SRCROOT)/../third-party/glog-0.3.5/src
+ OTHER_CFLAGS = -DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1
+diff --git a/packages/react-native/ReactAndroid/build.gradle.kts b/packages/react-native/ReactAndroid/build.gradle.kts
+index 264bda8fce4..492072f567e 100644
+--- a/packages/react-native/ReactAndroid/build.gradle.kts
++++ b/packages/react-native/ReactAndroid/build.gradle.kts
+@@ -66,6 +66,7 @@ val prefabHeadersDir = project.file("$buildDir/prefab-headers")
+ // Native versions which are defined inside the version catalog (libs.versions.toml)
+ val BOOST_VERSION = libs.versions.boost.get()
+ val DOUBLE_CONVERSION_VERSION = libs.versions.doubleconversion.get()
++val FAST_FLOAT_VERSION = libs.versions.fastFloat.get()
+ val FMT_VERSION = libs.versions.fmt.get()
+ val FOLLY_VERSION = libs.versions.folly.get()
+ val GLOG_VERSION = libs.versions.glog.get()
+@@ -183,6 +184,7 @@ val preparePrefab by
+                       // react_nativemodule_core
+                       Pair(File(buildDir, "third-party-ndk/boost/boost_1_83_0/").absolutePath, ""),
+                       Pair(File(buildDir, "third-party-ndk/double-conversion/").absolutePath, ""),
++                      Pair(File(buildDir, "third-party-ndk/fast_float/include/").absolutePath, ""),
+                       Pair(File(buildDir, "third-party-ndk/fmt/include/").absolutePath, ""),
+                       Pair(File(buildDir, "third-party-ndk/folly/").absolutePath, ""),
+                       Pair(File(buildDir, "third-party-ndk/glog/exported/").absolutePath, ""),
+@@ -312,6 +314,28 @@ val prepareFolly by
+       into("$thirdPartyNdkDir/folly")
+     }
+ 
++val downloadFastFloat by
++    tasks.creating(Download::class) {
++      dependsOn(createNativeDepsDirectories)
++      src("https://github.com/fastfloat/fast_float/archive/v${FAST_FLOAT_VERSION}.tar.gz")
++      onlyIfModified(true)
++      overwrite(false)
++      retries(5)
++      quiet(true)
++      dest(File(downloadsDir, "fast_float-${FAST_FLOAT_VERSION}.tar.gz"))
++    }
++
++val prepareFastFloat by
++    tasks.registering(Copy::class) {
++      dependsOn(if (dependenciesPath != null) emptyList() else listOf(downloadFastFloat))
++      from(dependenciesPath ?: tarTree(downloadFastFloat.dest))
++      from("src/main/jni/third-party/fast_float/")
++      include("fast_float-${FAST_FLOAT_VERSION}/include/**/*", "CMakeLists.txt")
++      eachFile { this.path = this.path.removePrefix("fast_float-${FAST_FLOAT_VERSION}/") }
++      includeEmptyDirs = false
++      into("$thirdPartyNdkDir/fast_float")
++    }
++
+ val downloadFmt by
+     tasks.creating(Download::class) {
+       dependsOn(createNativeDepsDirectories)
+@@ -549,6 +573,7 @@ android {
+           "generateCodegenArtifactsFromSchema",
+           prepareBoost,
+           prepareDoubleConversion,
++          prepareFastFloat,
+           prepareFmt,
+           prepareFolly,
+           prepareGlog,
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt b/packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt
+index eeab0dc8713..c88061c5628 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt
++++ b/packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt
+@@ -49,6 +49,7 @@ add_library(fbjni ALIAS fbjni::fbjni)
+ add_react_third_party_ndk_subdir(glog)
+ add_react_third_party_ndk_subdir(boost)
+ add_react_third_party_ndk_subdir(double-conversion)
++add_react_third_party_ndk_subdir(fast_float)
+ add_react_third_party_ndk_subdir(fmt)
+ add_react_third_party_ndk_subdir(folly)
+ add_react_third_party_ndk_subdir(jsc)
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/third-party/fast_float/CMakeLists.txt b/packages/react-native/ReactAndroid/src/main/jni/third-party/fast_float/CMakeLists.txt
+new file mode 100644
+index 00000000000..1b9d34f9ba6
+--- /dev/null
++++ b/packages/react-native/ReactAndroid/src/main/jni/third-party/fast_float/CMakeLists.txt
+@@ -0,0 +1,13 @@
++# Copyright (c) Meta Platforms, Inc. and affiliates.
++#
++# This source code is licensed under the MIT license found in the
++# LICENSE file in the root directory of this source tree.
++
++cmake_minimum_required(VERSION 3.13)
++set(CMAKE_VERBOSE_MAKEFILE on)
++
++add_compile_options(-std=c++20 -fexceptions)
++
++add_library(fast_float INTERFACE)
++
++target_include_directories(fast_float INTERFACE include)
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/third-party/folly/CMakeLists.txt b/packages/react-native/ReactAndroid/src/main/jni/third-party/folly/CMakeLists.txt
+index 58040e3024c..f86871b32f6 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/third-party/folly/CMakeLists.txt
++++ b/packages/react-native/ReactAndroid/src/main/jni/third-party/folly/CMakeLists.txt
+@@ -26,11 +26,8 @@ SET(folly_FLAGS
+ SET(folly_runtime_SRC
+         folly/Conv.cpp
+         folly/Demangle.cpp
+-        folly/dynamic.cpp
+         folly/FileUtil.cpp
+         folly/Format.cpp
+-        folly/json_pointer.cpp
+-        folly/json.cpp
+         folly/ScopeGuard.cpp
+         folly/SharedMutex.cpp
+         folly/String.cpp
+@@ -42,6 +39,9 @@ SET(folly_runtime_SRC
+         folly/detail/SplitStringSimd.cpp
+         folly/detail/UniqueInstance.cpp
+         folly/hash/SpookyHashV2.cpp
++        folly/json/dynamic.cpp
++        folly/json/json_pointer.cpp
++        folly/json/json.cpp
+         folly/lang/CString.cpp
+         folly/lang/SafeAssert.cpp
+         folly/lang/ToAscii.cpp
+@@ -51,8 +51,7 @@ SET(folly_runtime_SRC
+         folly/synchronization/SanitizeThread.cpp
+         folly/synchronization/ParkingLot.cpp
+         folly/system/AtFork.cpp
+-        folly/system/ThreadId.cpp
+-        folly/system/ThreadName.cpp)
++        folly/system/ThreadId.cpp)
+ 
+ add_library(folly_runtime STATIC ${folly_runtime_SRC})
+ 
+@@ -67,4 +66,4 @@ target_compile_options(folly_runtime
+ target_compile_options(folly_runtime PUBLIC ${folly_FLAGS})
+ 
+ target_include_directories(folly_runtime PUBLIC .)
+-target_link_libraries(folly_runtime glog double-conversion boost fmt)
++target_link_libraries(folly_runtime glog double-conversion boost fmt fast_float)
+diff --git a/packages/react-native/ReactCommon/React-Fabric.podspec b/packages/react-native/ReactCommon/React-Fabric.podspec
+index 90952c98df5..bd71203db10 100644
+--- a/packages/react-native/ReactCommon/React-Fabric.podspec
++++ b/packages/react-native/ReactCommon/React-Fabric.podspec
+@@ -22,7 +22,7 @@ folly_version = folly_config[:version]
+ folly_dep_name = folly_config[:dep_name]
+ 
+ boost_config = get_boost_config()
+-boost_compiler_flags = boost_config[:compiler_flags] 
++boost_compiler_flags = boost_config[:compiler_flags]
+ react_native_path = ".."
+ 
+ Pod::Spec.new do |s|
+@@ -54,7 +54,8 @@ Pod::Spec.new do |s|
+   s.dependency "React-logger"
+   s.dependency "glog"
+   s.dependency "DoubleConversion"
+-  s.dependency "fmt", "9.1.0"
++  s.dependency "fast_float", "6.1.4"
++  s.dependency "fmt", "11.0.2"
+   s.dependency "React-Core"
+   s.dependency "React-debug"
+   s.dependency "React-featureflags"
+diff --git a/packages/react-native/ReactCommon/React-FabricComponents.podspec b/packages/react-native/ReactCommon/React-FabricComponents.podspec
+index 0681668f1e6..0ee54032135 100644
+--- a/packages/react-native/ReactCommon/React-FabricComponents.podspec
++++ b/packages/react-native/ReactCommon/React-FabricComponents.podspec
+@@ -22,7 +22,7 @@ folly_version = folly_config[:version]
+ folly_dep_name = folly_config[:dep_name]
+ 
+ boost_config = get_boost_config()
+-boost_compiler_flags = boost_config[:compiler_flags] 
++boost_compiler_flags = boost_config[:compiler_flags]
+ react_native_path = ".."
+ 
+ Pod::Spec.new do |s|
+@@ -34,6 +34,7 @@ Pod::Spec.new do |s|
+     "\"$(PODS_ROOT)/Headers/Private/Yoga\"",
+     "\"$(PODS_TARGET_SRCROOT)\"",
+     "\"$(PODS_ROOT)/DoubleConversion\"",
++    "\"$(PODS_ROOT)/fast_float/include\"",
+     "\"$(PODS_ROOT)/fmt/include\"",
+   ]
+ 
+@@ -75,7 +76,8 @@ Pod::Spec.new do |s|
+   s.dependency "React-logger"
+   s.dependency "glog"
+   s.dependency "DoubleConversion"
+-  s.dependency "fmt", "9.1.0"
++  s.dependency "fast_float", "6.1.4"
++  s.dependency "fmt", "11.0.2"
+   s.dependency "React-Core"
+   s.dependency "React-debug"
+   s.dependency "React-featureflags"
+diff --git a/packages/react-native/ReactCommon/React-FabricImage.podspec b/packages/react-native/ReactCommon/React-FabricImage.podspec
+index c6098086f1d..247662487cb 100644
+--- a/packages/react-native/ReactCommon/React-FabricImage.podspec
++++ b/packages/react-native/ReactCommon/React-FabricImage.podspec
+@@ -22,7 +22,7 @@ folly_version = folly_config[:version]
+ folly_dep_name = folly_config[:dep_name]
+ 
+ boost_config = get_boost_config()
+-boost_compiler_flags = boost_config[:compiler_flags] 
++boost_compiler_flags = boost_config[:compiler_flags]
+ react_native_path = ".."
+ 
+ header_search_path = [
+@@ -31,6 +31,7 @@ header_search_path = [
+   "\"$(PODS_ROOT)/RCT-Folly\"",
+   "\"$(PODS_ROOT)/Headers/Private/Yoga\"",
+   "\"$(PODS_ROOT)/DoubleConversion\"",
++  "\"$(PODS_ROOT)/fast_float/include\"",
+   "\"$(PODS_ROOT)/fmt/include\"",
+ ]
+ 
+@@ -75,7 +76,8 @@ Pod::Spec.new do |s|
+   s.dependency "React-logger"
+   s.dependency "glog"
+   s.dependency "DoubleConversion"
+-  s.dependency "fmt", "9.1.0"
++  s.dependency "fast_float", "6.1.4"
++  s.dependency "fmt", "11.0.2"
+   s.dependency "React-ImageManager"
+   s.dependency "React-utils"
+   s.dependency "Yoga"
+diff --git a/packages/react-native/ReactCommon/ReactCommon.podspec b/packages/react-native/ReactCommon/ReactCommon.podspec
+index fa0b905badb..a6020da9fa8 100644
+--- a/packages/react-native/ReactCommon/ReactCommon.podspec
++++ b/packages/react-native/ReactCommon/ReactCommon.podspec
+@@ -20,7 +20,7 @@ folly_config = get_folly_config()
+ folly_compiler_flags = folly_config[:compiler_flags]
+ folly_version = folly_config[:version]
+ boost_config = get_boost_config()
+-boost_compiler_flags = boost_config[:compiler_flags] 
++boost_compiler_flags = boost_config[:compiler_flags]
+ using_hermes = ENV['USE_HERMES'] == nil || ENV['USE_HERMES'] == "1"
+ 
+ Pod::Spec.new do |s|
+@@ -35,7 +35,7 @@ Pod::Spec.new do |s|
+   s.source                 = source
+   s.header_dir             = "ReactCommon" # Use global header_dir for all subspecs for use_frameworks! compatibility
+   s.compiler_flags         = folly_compiler_flags + ' ' + boost_compiler_flags
+-  s.pod_target_xcconfig    = { "HEADER_SEARCH_PATHS" => "\"$(PODS_ROOT)/boost\" \"$(PODS_ROOT)/RCT-Folly\" \"$(PODS_ROOT)/DoubleConversion\" \"$(PODS_ROOT)/fmt/include\" \"$(PODS_ROOT)/Headers/Private/React-Core\"",
++  s.pod_target_xcconfig    = { "HEADER_SEARCH_PATHS" => "\"$(PODS_ROOT)/boost\" \"$(PODS_ROOT)/RCT-Folly\" \"$(PODS_ROOT)/DoubleConversion\" \"$(PODS_ROOT)/fast_float/include\" \"$(PODS_ROOT)/fmt/include\" \"$(PODS_ROOT)/Headers/Private/React-Core\"",
+                                "USE_HEADERMAP" => "YES",
+                                "DEFINES_MODULE" => "YES",
+                                "CLANG_CXX_LANGUAGE_STANDARD" => rct_cxx_language_standard(),
+@@ -54,7 +54,8 @@ Pod::Spec.new do |s|
+     ss.dependency "RCT-Folly", folly_version
+     ss.dependency "React-logger", version
+     ss.dependency "DoubleConversion"
+-    ss.dependency "fmt", "9.1.0"
++    ss.dependency "fast_float", "6.1.4"
++    ss.dependency "fmt", "11.0.2"
+     ss.dependency "glog"
+     if using_hermes
+       ss.dependency "hermes-engine"
+diff --git a/packages/react-native/ReactCommon/cxxreact/React-cxxreact.podspec b/packages/react-native/ReactCommon/cxxreact/React-cxxreact.podspec
+index 6ee6c635cd7..2f05b75b714 100644
+--- a/packages/react-native/ReactCommon/cxxreact/React-cxxreact.podspec
++++ b/packages/react-native/ReactCommon/cxxreact/React-cxxreact.podspec
+@@ -21,7 +21,7 @@ folly_config = get_folly_config()
+ folly_compiler_flags = folly_config[:compiler_flags]
+ folly_version = folly_config[:version]
+ boost_config = get_boost_config()
+-boost_compiler_flags = boost_config[:compiler_flags] 
++boost_compiler_flags = boost_config[:compiler_flags]
+ 
+ Pod::Spec.new do |s|
+   s.name                   = "React-cxxreact"
+@@ -36,14 +36,15 @@ Pod::Spec.new do |s|
+   s.exclude_files          = "SampleCxxModule.*"
+   s.compiler_flags         = folly_compiler_flags + ' ' + boost_compiler_flags
+   s.pod_target_xcconfig    = {
+-    "HEADER_SEARCH_PATHS" => "\"$(PODS_ROOT)/boost\" \"$(PODS_ROOT)/RCT-Folly\" \"$(PODS_ROOT)/DoubleConversion\" \"$(PODS_ROOT)/fmt/include\" \"$(PODS_CONFIGURATION_BUILD_DIR)/React-debug/React_debug.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-runtimeexecutor/React_runtimeexecutor.framework/Headers\"",
++    "HEADER_SEARCH_PATHS" => "\"$(PODS_ROOT)/boost\" \"$(PODS_ROOT)/RCT-Folly\" \"$(PODS_ROOT)/DoubleConversion\" \"$(PODS_ROOT)/fas_float/include\" \"$(PODS_ROOT)/fmt/include\" \"$(PODS_CONFIGURATION_BUILD_DIR)/React-debug/React_debug.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-runtimeexecutor/React_runtimeexecutor.framework/Headers\"",
+     "CLANG_CXX_LANGUAGE_STANDARD" => rct_cxx_language_standard()
+   }
+   s.header_dir             = "cxxreact"
+ 
+   s.dependency "boost"
+   s.dependency "DoubleConversion"
+-  s.dependency "fmt", "9.1.0"
++  s.dependency "fast_float", "6.1.4"
++  s.dependency "fmt", "11.0.2"
+   s.dependency "RCT-Folly", folly_version
+   s.dependency "glog"
+   add_dependency(s, "React-jsinspector", :framework_name => 'jsinspector_modern')
+diff --git a/packages/react-native/ReactCommon/hermes/React-hermes.podspec b/packages/react-native/ReactCommon/hermes/React-hermes.podspec
+index 470fdafd02a..3a072cf9df0 100644
+--- a/packages/react-native/ReactCommon/hermes/React-hermes.podspec
++++ b/packages/react-native/ReactCommon/hermes/React-hermes.podspec
+@@ -21,7 +21,7 @@ folly_config = get_folly_config()
+ folly_compiler_flags = folly_config[:compiler_flags]
+ folly_version = folly_config[:version]
+ boost_config = get_boost_config()
+-boost_compiler_flags = boost_config[:compiler_flags] 
++boost_compiler_flags = boost_config[:compiler_flags]
+ 
+ Pod::Spec.new do |s|
+   s.name                   = "React-hermes"
+@@ -47,7 +47,8 @@ Pod::Spec.new do |s|
+   s.dependency "React-perflogger", version
+   s.dependency "RCT-Folly", folly_version
+   s.dependency "DoubleConversion"
+-  s.dependency "fmt", "9.1.0"
++  s.dependency "fast_float", "6.1.4"
++  s.dependency "fmt", "11.0.2"
+   s.dependency "glog"
+   s.dependency "hermes-engine"
+   s.dependency "React-jsi"
+diff --git a/packages/react-native/ReactCommon/jsi/React-jsi.podspec b/packages/react-native/ReactCommon/jsi/React-jsi.podspec
+index 818e0f6db91..9425d6761f4 100644
+--- a/packages/react-native/ReactCommon/jsi/React-jsi.podspec
++++ b/packages/react-native/ReactCommon/jsi/React-jsi.podspec
+@@ -24,7 +24,7 @@ folly_config = get_folly_config()
+ folly_compiler_flags = folly_config[:compiler_flags]
+ folly_version = folly_config[:version]
+ boost_config = get_boost_config()
+-boost_compiler_flags = boost_config[:compiler_flags] 
++boost_compiler_flags = boost_config[:compiler_flags]
+ 
+ Pod::Spec.new do |s|
+   s.name                   = "React-jsi"
+@@ -38,12 +38,13 @@ Pod::Spec.new do |s|
+ 
+   s.header_dir    = "jsi"
+   s.compiler_flags         = folly_compiler_flags + ' ' + boost_compiler_flags
+-  s.pod_target_xcconfig    = { "HEADER_SEARCH_PATHS" => "\"$(PODS_ROOT)/boost\" \"$(PODS_ROOT)/RCT-Folly\" \"$(PODS_ROOT)/DoubleConversion\" \"$(PODS_ROOT)/fmt/include\"",
++  s.pod_target_xcconfig    = { "HEADER_SEARCH_PATHS" => "\"$(PODS_ROOT)/boost\" \"$(PODS_ROOT)/RCT-Folly\" \"$(PODS_ROOT)/DoubleConversion\" \"$(PODS_ROOT)/fast_float/include\" \"$(PODS_ROOT)/fmt/include\"",
+                                "DEFINES_MODULE" => "YES" }
+ 
+   s.dependency "boost"
+   s.dependency "DoubleConversion"
+-  s.dependency "fmt", "9.1.0"
++  s.dependency "fast_float", "6.1.4"
++  s.dependency "fmt", "11.0.2"
+   s.dependency "RCT-Folly", folly_version
+   s.dependency "glog"
+ 
+diff --git a/packages/react-native/ReactCommon/jsiexecutor/React-jsiexecutor.podspec b/packages/react-native/ReactCommon/jsiexecutor/React-jsiexecutor.podspec
+index 1343607933a..17641842b98 100644
+--- a/packages/react-native/ReactCommon/jsiexecutor/React-jsiexecutor.podspec
++++ b/packages/react-native/ReactCommon/jsiexecutor/React-jsiexecutor.podspec
+@@ -20,7 +20,7 @@ folly_config = get_folly_config()
+ folly_compiler_flags = folly_config[:compiler_flags]
+ folly_version = folly_config[:version]
+ boost_config = get_boost_config()
+-boost_compiler_flags = boost_config[:compiler_flags] 
++boost_compiler_flags = boost_config[:compiler_flags]
+ 
+ Pod::Spec.new do |s|
+   s.name                   = "React-jsiexecutor"
+@@ -33,7 +33,7 @@ Pod::Spec.new do |s|
+   s.source                 = source
+   s.source_files         = "jsireact/*.{cpp,h}"
+   s.compiler_flags         = folly_compiler_flags + ' ' + boost_compiler_flags
+-  s.pod_target_xcconfig    = { "HEADER_SEARCH_PATHS" => "\"$(PODS_ROOT)/boost\" \"$(PODS_ROOT)/RCT-Folly\" \"$(PODS_ROOT)/DoubleConversion\" \"$(PODS_ROOT)/fmt/include\"",
++  s.pod_target_xcconfig    = { "HEADER_SEARCH_PATHS" => "\"$(PODS_ROOT)/boost\" \"$(PODS_ROOT)/RCT-Folly\" \"$(PODS_ROOT)/DoubleConversion\" \"$(PODS_ROOT)/fast_float/include\" \"$(PODS_ROOT)/fmt/include\"",
+                                "CLANG_CXX_LANGUAGE_STANDARD" => rct_cxx_language_standard() }
+   s.header_dir             = "jsireact"
+ 
+@@ -42,7 +42,8 @@ Pod::Spec.new do |s|
+   s.dependency "React-perflogger", version
+   s.dependency "RCT-Folly", folly_version
+   s.dependency "DoubleConversion"
+-  s.dependency "fmt", "9.1.0"
++  s.dependency "fast_float", "6.1.4"
++  s.dependency "fmt", "11.0.2"
+   s.dependency "glog"
+   add_dependency(s, "React-jsinspector", :framework_name => 'jsinspector_modern')
+ 
+diff --git a/packages/react-native/ReactCommon/jsinspector-modern/React-jsinspector.podspec b/packages/react-native/ReactCommon/jsinspector-modern/React-jsinspector.podspec
+index 2f61ed9934c..cd3dbb49970 100644
+--- a/packages/react-native/ReactCommon/jsinspector-modern/React-jsinspector.podspec
++++ b/packages/react-native/ReactCommon/jsinspector-modern/React-jsinspector.podspec
+@@ -37,7 +37,7 @@ Pod::Spec.new do |s|
+   s.header_dir             = 'jsinspector-modern'
+   s.compiler_flags         = folly_compiler_flags
+   s.pod_target_xcconfig    = {
+-                               "HEADER_SEARCH_PATHS" => "\"$(PODS_TARGET_SRCROOT)/..\" \"$(PODS_ROOT)/boost\" \"$(PODS_ROOT)/RCT-Folly\" \"$(PODS_ROOT)/DoubleConversion\" \"$(PODS_ROOT)/fmt/include\"",
++                               "HEADER_SEARCH_PATHS" => "\"$(PODS_TARGET_SRCROOT)/..\" \"$(PODS_ROOT)/boost\" \"$(PODS_ROOT)/RCT-Folly\" \"$(PODS_ROOT)/DoubleConversion\" \"$(PODS_ROOT)/fast_float/include\" \"$(PODS_ROOT)/fmt/include\"",
+                                "CLANG_CXX_LANGUAGE_STANDARD" => rct_cxx_language_standard(),
+                                "DEFINES_MODULE" => "YES"
+   }.merge!(use_frameworks ? {
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/core/platform/ios/React-NativeModulesApple.podspec b/packages/react-native/ReactCommon/react/nativemodule/core/platform/ios/React-NativeModulesApple.podspec
+index 28dfaa3473c..a89192878b1 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/core/platform/ios/React-NativeModulesApple.podspec
++++ b/packages/react-native/ReactCommon/react/nativemodule/core/platform/ios/React-NativeModulesApple.podspec
+@@ -21,7 +21,7 @@ folly_compiler_flags = folly_config[:compiler_flags]
+ folly_version = folly_config[:version]
+ 
+ boost_config = get_boost_config()
+-boost_compiler_flags = boost_config[:compiler_flags] 
++boost_compiler_flags = boost_config[:compiler_flags]
+ 
+ using_hermes = ENV['USE_HERMES'] == nil || ENV['USE_HERMES'] == "1"
+ 
+@@ -37,7 +37,7 @@ Pod::Spec.new do |s|
+     s.platforms              = min_supported_versions
+     s.source                 = source
+     s.compiler_flags         = folly_compiler_flags + ' ' + boost_compiler_flags
+-    s.pod_target_xcconfig    = { "HEADER_SEARCH_PATHS" => "\"$(PODS_ROOT)/boost\" \"$(PODS_ROOT)/RCT-Folly\" \"$(PODS_ROOT)/DoubleConversion\" \"$(PODS_ROOT)/fmt/include\" \"$(PODS_ROOT)/Headers/Private/React-Core\"",
++    s.pod_target_xcconfig    = { "HEADER_SEARCH_PATHS" => "\"$(PODS_ROOT)/boost\" \"$(PODS_ROOT)/RCT-Folly\" \"$(PODS_ROOT)/DoubleConversion\" \"$(PODS_ROOT)/fast_float/include\" \"$(PODS_ROOT)/fmt/include\" \"$(PODS_ROOT)/Headers/Private/React-Core\"",
+                                 "USE_HEADERMAP" => "YES",
+                                 "CLANG_CXX_LANGUAGE_STANDARD" => rct_cxx_language_standard(),
+                                 "GCC_WARN_PEDANTIC" => "YES" }
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/samples/ReactCommon-Samples.podspec b/packages/react-native/ReactCommon/react/nativemodule/samples/ReactCommon-Samples.podspec
+index a19e2dc1c8a..b6155cbb19d 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/samples/ReactCommon-Samples.podspec
++++ b/packages/react-native/ReactCommon/react/nativemodule/samples/ReactCommon-Samples.podspec
+@@ -21,13 +21,14 @@ folly_compiler_flags = folly_config[:compiler_flags]
+ folly_version = folly_config[:version]
+ 
+ boost_config = get_boost_config()
+-boost_compiler_flags = boost_config[:compiler_flags] 
++boost_compiler_flags = boost_config[:compiler_flags]
+ using_hermes = ENV['USE_HERMES'] == nil || ENV['USE_HERMES'] == "1"
+ 
+ header_search_paths = [
+   "\"$(PODS_ROOT)/boost\"",
+   "\"$(PODS_ROOT)/RCT-Folly\"",
+   "\"$(PODS_ROOT)/DoubleConversion\"",
++  "\"$(PODS_ROOT)/fast_float/include\"",
+   "\"$(PODS_ROOT)/fmt/include\"",
+   "\"$(PODS_ROOT)/Headers/Private/React-Core\"",
+ ]
+@@ -63,7 +64,8 @@ Pod::Spec.new do |s|
+ 
+   s.dependency "RCT-Folly"
+   s.dependency "DoubleConversion"
+-  s.dependency "fmt", "9.1.0"
++  s.dependency "fast_float", "6.1.4"
++  s.dependency "fmt", "11.0.2"
+   s.dependency "React-Core"
+   s.dependency "React-cxxreact"
+   s.dependency "React-jsi"
+diff --git a/packages/react-native/ReactCommon/react/renderer/debug/React-rendererdebug.podspec b/packages/react-native/ReactCommon/react/renderer/debug/React-rendererdebug.podspec
+index ab0fa4e44c6..52dc39c8740 100644
+--- a/packages/react-native/ReactCommon/react/renderer/debug/React-rendererdebug.podspec
++++ b/packages/react-native/ReactCommon/react/renderer/debug/React-rendererdebug.podspec
+@@ -24,6 +24,7 @@ header_search_paths = [
+     "\"$(PODS_ROOT)/RCT-Folly\"",
+     "\"$(PODS_ROOT)/boost\" \"$(PODS_ROOT)/RCT-Folly\"",
+     "\"$(PODS_ROOT)/DoubleConversion\"",
++    "\"$(PODS_ROOT)/fast_float/include\"",
+     "\"$(PODS_ROOT)/fmt/include\""
+ ]
+ 
+@@ -57,6 +58,7 @@ Pod::Spec.new do |s|
+ 
+   s.dependency "RCT-Folly", folly_version
+   s.dependency "DoubleConversion"
+-  s.dependency "fmt", "9.1.0"
++  s.dependency "fast_float", "6.1.4"
++  s.dependency "fmt", "11.0.2"
+   add_dependency(s, "React-debug")
+ end
+diff --git a/packages/react-native/ReactCommon/react/renderer/graphics/React-graphics.podspec b/packages/react-native/ReactCommon/react/renderer/graphics/React-graphics.podspec
+index 4a697a4f4cc..9548d69c19e 100644
+--- a/packages/react-native/ReactCommon/react/renderer/graphics/React-graphics.podspec
++++ b/packages/react-native/ReactCommon/react/renderer/graphics/React-graphics.podspec
+@@ -21,7 +21,7 @@ folly_compiler_flags = folly_config[:compiler_flags]
+ folly_version = folly_config[:version]
+ 
+ boost_config = get_boost_config()
+-boost_compiler_flags = boost_config[:compiler_flags] 
++boost_compiler_flags = boost_config[:compiler_flags]
+ 
+ Pod::Spec.new do |s|
+   source_files = "**/*.{m,mm,cpp,h}"
+@@ -30,6 +30,7 @@ Pod::Spec.new do |s|
+     "\"$(PODS_TARGET_SRCROOT)/../../../\"",
+     "\"$(PODS_ROOT)/RCT-Folly\"",
+     "\"$(PODS_ROOT)/DoubleConversion\"",
++    "\"$(PODS_ROOT)/fast_float/include\"",
+     "\"$(PODS_ROOT)/fmt/include\""
+   ]
+ 
+@@ -67,5 +68,6 @@ Pod::Spec.new do |s|
+   s.dependency "React-jsiexecutor"
+   s.dependency "React-utils"
+   s.dependency "DoubleConversion"
+-  s.dependency "fmt", "9.1.0"
++  s.dependency "fast_float", "6.1.4"
++  s.dependency "fmt", "11.0.2"
+ end
+diff --git a/packages/react-native/ReactCommon/react/renderer/imagemanager/platform/ios/React-ImageManager.podspec b/packages/react-native/ReactCommon/react/renderer/imagemanager/platform/ios/React-ImageManager.podspec
+index 377aa902a47..d4d14d52251 100644
+--- a/packages/react-native/ReactCommon/react/renderer/imagemanager/platform/ios/React-ImageManager.podspec
++++ b/packages/react-native/ReactCommon/react/renderer/imagemanager/platform/ios/React-ImageManager.podspec
+@@ -29,6 +29,7 @@ Pod::Spec.new do |s|
+     "\"$(PODS_TARGET_SRCROOT)\"",
+     "\"$(PODS_ROOT)/RCT-Folly\"",
+     "\"$(PODS_ROOT)/DoubleConversion\"",
++    "\"$(PODS_ROOT)/fast_float/include\"",
+     "\"$(PODS_ROOT)/fmt/include\"",
+   ].join(" ")
+ 
+diff --git a/packages/react-native/ReactCommon/reactperflogger/React-perflogger.podspec b/packages/react-native/ReactCommon/reactperflogger/React-perflogger.podspec
+index 66dfbf4712c..686454f975c 100644
+--- a/packages/react-native/ReactCommon/reactperflogger/React-perflogger.podspec
++++ b/packages/react-native/ReactCommon/reactperflogger/React-perflogger.podspec
+@@ -24,6 +24,7 @@ header_search_paths = [
+   "\"$(PODS_TARGET_SRCROOT)/..\"",
+   "\"$(PODS_ROOT)/RCT-Folly\"",
+   "\"$(PODS_ROOT)/DoubleConversion\"",
++  "\"$(PODS_ROOT)/fast_float/include\"",
+   "\"$(PODS_ROOT)/fmt/include\""
+ ]
+ 
+diff --git a/packages/react-native/gradle/libs.versions.toml b/packages/react-native/gradle/libs.versions.toml
+index 7896d2a1b20..b341960d732 100644
+--- a/packages/react-native/gradle/libs.versions.toml
++++ b/packages/react-native/gradle/libs.versions.toml
+@@ -35,8 +35,9 @@ yoga-proguard-annotations = "1.19.0"
+ # Native Dependencies
+ boost="1_83_0"
+ doubleconversion="1.1.6"
+-fmt="9.1.0"
+-folly="2024.01.01.00"
++fastFloat="6.1.4"
++fmt="11.0.2"
++folly="2024.10.14.00"
+ glog="0.3.5"
+ gtest="1.12.1"
+ 
+diff --git a/packages/react-native/scripts/cocoapods/__tests__/codegen_utils-test.rb b/packages/react-native/scripts/cocoapods/__tests__/codegen_utils-test.rb
+index 02137db8145..48317e23025 100644
+--- a/packages/react-native/scripts/cocoapods/__tests__/codegen_utils-test.rb
++++ b/packages/react-native/scripts/cocoapods/__tests__/codegen_utils-test.rb
+@@ -523,13 +523,12 @@ class CodegenUtilsTests < Test::Unit::TestCase
+                 "\"$(PODS_ROOT)/boost\"",
+                 "\"$(PODS_ROOT)/RCT-Folly\"",
+                 "\"$(PODS_ROOT)/DoubleConversion\"",
++                "\"$(PODS_ROOT)/fast_float/include\"",
+                 "\"$(PODS_ROOT)/fmt/include\"",
+                 "\"${PODS_ROOT}/Headers/Public/ReactCodegen/react/renderer/components\"",
+                 "\"$(PODS_ROOT)/Headers/Private/React-Fabric\"",
+                 "\"$(PODS_ROOT)/Headers/Private/React-RCTFabric\"",
+                 "\"$(PODS_ROOT)/Headers/Private/Yoga\"",
+-                "\"$(PODS_ROOT)/DoubleConversion\"",
+-                "\"$(PODS_ROOT)/fmt/include\"",
+                 "\"$(PODS_TARGET_SRCROOT)\"",
+             ].join(' ')
+           },
+diff --git a/packages/react-native/scripts/cocoapods/__tests__/new_architecture-test.rb b/packages/react-native/scripts/cocoapods/__tests__/new_architecture-test.rb
+index 328a705b8dc..677fe99d185 100644
+--- a/packages/react-native/scripts/cocoapods/__tests__/new_architecture-test.rb
++++ b/packages/react-native/scripts/cocoapods/__tests__/new_architecture-test.rb
+@@ -144,21 +144,21 @@ class NewArchitectureTests < Test::Unit::TestCase
+         spec = SpecMock.new
+ 
+         # Act
+-        NewArchitectureHelper.install_modules_dependencies(spec, true, '2024.01.01.00')
++        NewArchitectureHelper.install_modules_dependencies(spec, true, '2024.10.14.00')
+ 
+         # Assert
+         folly_config = Helpers::Constants.folly_config
+         folly_compiler_flags = folly_config[:compiler_flags]
+ 
+         assert_equal(spec.compiler_flags, "-DRCT_NEW_ARCH_ENABLED=1 #{NewArchitectureHelper.folly_compiler_flags}")
+-        assert_equal(spec.pod_target_xcconfig["HEADER_SEARCH_PATHS"], "\"$(PODS_ROOT)/boost\" \"$(PODS_ROOT)/Headers/Private/Yoga\" \"$(PODS_ROOT)/DoubleConversion\" \"$(PODS_ROOT)/fmt/include\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-graphics/React_graphics.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-graphics/React_graphics.framework/Headers/react/renderer/graphics/platform/ios\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-Fabric/React_Fabric.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-Fabric/React_Fabric.framework/Headers/react/renderer/components/view/platform/cxx\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-FabricImage/React_FabricImage.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/ReactCommon/ReactCommon.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/ReactCommon/ReactCommon.framework/Headers/react/nativemodule/core\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-NativeModulesApple/React_NativeModulesApple.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-RCTFabric/RCTFabric.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-utils/React_utils.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-featureflags/React_featureflags.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-debug/React_debug.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-ImageManager/React_ImageManager.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-rendererdebug/React_rendererdebug.framework/Headers\"")
++        assert_equal(spec.pod_target_xcconfig["HEADER_SEARCH_PATHS"], "\"$(PODS_ROOT)/boost\" \"$(PODS_ROOT)/Headers/Private/Yoga\" \"$(PODS_ROOT)/DoubleConversion\" \"$(PODS_ROOT)/fast_float/include\" \"$(PODS_ROOT)/fmt/include\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-graphics/React_graphics.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-graphics/React_graphics.framework/Headers/react/renderer/graphics/platform/ios\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-Fabric/React_Fabric.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-Fabric/React_Fabric.framework/Headers/react/renderer/components/view/platform/cxx\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-FabricImage/React_FabricImage.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/ReactCommon/ReactCommon.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/ReactCommon/ReactCommon.framework/Headers/react/nativemodule/core\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-NativeModulesApple/React_NativeModulesApple.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-RCTFabric/RCTFabric.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-utils/React_utils.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-featureflags/React_featureflags.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-debug/React_debug.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-ImageManager/React_ImageManager.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-rendererdebug/React_rendererdebug.framework/Headers\"")
+         assert_equal(spec.pod_target_xcconfig["CLANG_CXX_LANGUAGE_STANDARD"], "c++20")
+         assert_equal(spec.pod_target_xcconfig["OTHER_CPLUSPLUSFLAGS"], "$(inherited) -DRCT_NEW_ARCH_ENABLED=1 "+ folly_compiler_flags)
+         assert_equal(
+             spec.dependencies,
+             [
+                 { :dependency_name => "React-Core" },
+-                { :dependency_name => "RCT-Folly", "version"=>"2024.01.01.00" },
++                { :dependency_name => "RCT-Folly", "version"=>"2024.10.14.00" },
+                 { :dependency_name => "glog" },
+                 { :dependency_name => "React-RCTFabric" },
+                 { :dependency_name => "ReactCodegen" },
+@@ -190,17 +190,17 @@ class NewArchitectureTests < Test::Unit::TestCase
+         }
+ 
+         # Act
+-        NewArchitectureHelper.install_modules_dependencies(spec, false, '2024.01.01.00')
++        NewArchitectureHelper.install_modules_dependencies(spec, false, '2024.10.14.00')
+ 
+         # Assert
+         assert_equal(Helpers::Constants.folly_config[:compiler_flags], "#{NewArchitectureHelper.folly_compiler_flags}")
+-        assert_equal(spec.pod_target_xcconfig["HEADER_SEARCH_PATHS"], "#{other_flags} \"$(PODS_ROOT)/boost\" \"$(PODS_ROOT)/Headers/Private/Yoga\" \"$(PODS_ROOT)/DoubleConversion\" \"$(PODS_ROOT)/fmt/include\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-graphics/React_graphics.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-graphics/React_graphics.framework/Headers/react/renderer/graphics/platform/ios\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-Fabric/React_Fabric.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-Fabric/React_Fabric.framework/Headers/react/renderer/components/view/platform/cxx\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-FabricImage/React_FabricImage.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/ReactCommon/ReactCommon.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/ReactCommon/ReactCommon.framework/Headers/react/nativemodule/core\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-NativeModulesApple/React_NativeModulesApple.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-RCTFabric/RCTFabric.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-utils/React_utils.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-featureflags/React_featureflags.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-debug/React_debug.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-ImageManager/React_ImageManager.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-rendererdebug/React_rendererdebug.framework/Headers\"")
++        assert_equal(spec.pod_target_xcconfig["HEADER_SEARCH_PATHS"], "#{other_flags} \"$(PODS_ROOT)/boost\" \"$(PODS_ROOT)/Headers/Private/Yoga\" \"$(PODS_ROOT)/DoubleConversion\" \"$(PODS_ROOT)/fast_float/include\" \"$(PODS_ROOT)/fmt/include\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-graphics/React_graphics.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-graphics/React_graphics.framework/Headers/react/renderer/graphics/platform/ios\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-Fabric/React_Fabric.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-Fabric/React_Fabric.framework/Headers/react/renderer/components/view/platform/cxx\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-FabricImage/React_FabricImage.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/ReactCommon/ReactCommon.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/ReactCommon/ReactCommon.framework/Headers/react/nativemodule/core\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-NativeModulesApple/React_NativeModulesApple.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-RCTFabric/RCTFabric.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-utils/React_utils.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-featureflags/React_featureflags.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-debug/React_debug.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-ImageManager/React_ImageManager.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-rendererdebug/React_rendererdebug.framework/Headers\"")
+         assert_equal(spec.pod_target_xcconfig["CLANG_CXX_LANGUAGE_STANDARD"], "c++20")
+         assert_equal(
+             spec.dependencies,
+             [
+                 { :dependency_name => "React-Core" },
+-                { :dependency_name => "RCT-Folly", "version"=>"2024.01.01.00" },
++                { :dependency_name => "RCT-Folly", "version"=>"2024.10.14.00" },
+                 { :dependency_name => "glog" },
+                 { :dependency_name => "React-RCTFabric" },
+                 { :dependency_name => "ReactCodegen" },
+diff --git a/packages/react-native/scripts/cocoapods/__tests__/utils-test.rb b/packages/react-native/scripts/cocoapods/__tests__/utils-test.rb
+index 92c472f7929..4ddc0c60b80 100644
+--- a/packages/react-native/scripts/cocoapods/__tests__/utils-test.rb
++++ b/packages/react-native/scripts/cocoapods/__tests__/utils-test.rb
+@@ -800,7 +800,7 @@ class UtilsTests < Test::Unit::TestCase
+             if pod_name == "SecondTarget"
+                 target_installation_result.native_target.build_configurations.each do |config|
+                     received_search_path = config.build_settings["HEADER_SEARCH_PATHS"]
+-                    expected_Search_path = "$(inherited) \"$(PODS_ROOT)/RCT-Folly\" \"$(PODS_ROOT)/DoubleConversion\" \"$(PODS_ROOT)/fmt/include\" \"$(PODS_ROOT)/boost\" \"${PODS_CONFIGURATION_BUILD_DIR}/ReactCodegen/ReactCodegen.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/ReactCommon/ReactCommon.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/ReactCommon/ReactCommon.framework/Headers/react/nativemodule/core\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-RCTFabric/RCTFabric.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-Fabric/React_Fabric.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-Fabric/React_Fabric.framework/Headers/react/renderer/components/view/platform/cxx\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-FabricImage/React_FabricImage.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-Graphics/React_graphics.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-Graphics/React_graphics.framework/Headers/react/renderer/graphics/platform/ios\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-Fabric/React_Fabric.framework/Headers/react/renderer/imagemanager/platform/ios\""
++                    expected_Search_path = "$(inherited) \"$(PODS_ROOT)/RCT-Folly\" \"$(PODS_ROOT)/DoubleConversion\" \"$(PODS_ROOT)/fast_float/include\" \"$(PODS_ROOT)/fmt/include\" \"$(PODS_ROOT)/boost\" \"${PODS_CONFIGURATION_BUILD_DIR}/ReactCodegen/ReactCodegen.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/ReactCommon/ReactCommon.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/ReactCommon/ReactCommon.framework/Headers/react/nativemodule/core\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-RCTFabric/RCTFabric.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-Fabric/React_Fabric.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-Fabric/React_Fabric.framework/Headers/react/renderer/components/view/platform/cxx\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-FabricImage/React_FabricImage.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-Graphics/React_graphics.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-Graphics/React_graphics.framework/Headers/react/renderer/graphics/platform/ios\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-Fabric/React_Fabric.framework/Headers/react/renderer/imagemanager/platform/ios\""
+                     assert_equal(received_search_path, expected_Search_path)
+                 end
+             else
+diff --git a/packages/react-native/scripts/cocoapods/codegen_utils.rb b/packages/react-native/scripts/cocoapods/codegen_utils.rb
+index 3cb9bb1e6ef..3c2aca4f058 100644
+--- a/packages/react-native/scripts/cocoapods/codegen_utils.rb
++++ b/packages/react-native/scripts/cocoapods/codegen_utils.rb
+@@ -81,13 +81,12 @@ class CodegenUtils
+           "\"$(PODS_ROOT)/boost\"",
+           "\"$(PODS_ROOT)/RCT-Folly\"",
+           "\"$(PODS_ROOT)/DoubleConversion\"",
++          "\"$(PODS_ROOT)/fast_float/include\"",
+           "\"$(PODS_ROOT)/fmt/include\"",
+           "\"${PODS_ROOT}/Headers/Public/ReactCodegen/react/renderer/components\"",
+           "\"$(PODS_ROOT)/Headers/Private/React-Fabric\"",
+           "\"$(PODS_ROOT)/Headers/Private/React-RCTFabric\"",
+           "\"$(PODS_ROOT)/Headers/Private/Yoga\"",
+-          "\"$(PODS_ROOT)/DoubleConversion\"",
+-          "\"$(PODS_ROOT)/fmt/include\"",
+           "\"$(PODS_TARGET_SRCROOT)\"",
+         ]
+         framework_search_paths = []
+diff --git a/packages/react-native/scripts/cocoapods/helpers.rb b/packages/react-native/scripts/cocoapods/helpers.rb
+index 762d7226e83..35d56353881 100644
+--- a/packages/react-native/scripts/cocoapods/helpers.rb
++++ b/packages/react-native/scripts/cocoapods/helpers.rb
+@@ -47,12 +47,16 @@ module Helpers
+         }
+ 
+         @@folly_config = {
+-            :version => '2024.01.01.00',
++            :version => '2024.10.14.00',
+             :git => 'https://github.com/facebook/folly.git',
+             :compiler_flags => '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32',
+             :dep_name => 'RCT-Folly/Fabric'
+         }
+ 
++        @@fast_float_config = {
++            :git => "https://github.com/fastfloat/fast_float.git",
++        }
++
+         @@fmt_config = {
+             :git => "https://github.com/fmtlib/fmt.git",
+         }
+@@ -97,6 +101,14 @@ module Helpers
+            @@socket_rocket_config.update(new_socket_rocket_config)
+         end
+ 
++        def self.fast_float_config
++            return @@fast_float_config
++        end
++
++        def self.set_fast_float_config(new_fast_float_config)
++            @@fast_float_config.update(new_fast_float_config)
++        end
++
+         def self.fmt_config
+             return @@fmt_config
+         end
+diff --git a/packages/react-native/scripts/cocoapods/new_architecture.rb b/packages/react-native/scripts/cocoapods/new_architecture.rb
+index f866ef411a3..802f6416c76 100644
+--- a/packages/react-native/scripts/cocoapods/new_architecture.rb
++++ b/packages/react-native/scripts/cocoapods/new_architecture.rb
+@@ -83,6 +83,7 @@ class NewArchitectureHelper
+         header_search_paths = ["\"$(PODS_ROOT)/boost\" \"$(PODS_ROOT)/Headers/Private/Yoga\""]
+         if ENV['USE_FRAMEWORKS']
+             header_search_paths << "\"$(PODS_ROOT)/DoubleConversion\""
++            header_search_paths << "\"$(PODS_ROOT)/fast_float/include\""
+             header_search_paths << "\"$(PODS_ROOT)/fmt/include\""
+             ReactNativePodsUtils.create_header_search_path_for_frameworks("PODS_CONFIGURATION_BUILD_DIR", "React-graphics", "React_graphics", ["react/renderer/graphics/platform/ios"])
+                 .concat(ReactNativePodsUtils.create_header_search_path_for_frameworks("PODS_CONFIGURATION_BUILD_DIR", "React-Fabric", "React_Fabric", ["react/renderer/components/view/platform/cxx"]))
+diff --git a/packages/react-native/scripts/cocoapods/utils.rb b/packages/react-native/scripts/cocoapods/utils.rb
+index 510e084f600..07d866b438c 100644
+--- a/packages/react-native/scripts/cocoapods/utils.rb
++++ b/packages/react-native/scripts/cocoapods/utils.rb
+@@ -564,6 +564,7 @@ class ReactNativePodsUtils
+         ReactNativePodsUtils.update_header_paths_if_depends_on(target_installation_result, "RCT-Folly", [
+             "\"$(PODS_ROOT)/RCT-Folly\"",
+             "\"$(PODS_ROOT)/DoubleConversion\"",
++            "\"$(PODS_ROOT)/fast_float/include\"",
+             "\"$(PODS_ROOT)/fmt/include\"",
+             "\"$(PODS_ROOT)/boost\""
+         ])
+@@ -639,6 +640,7 @@ class ReactNativePodsUtils
+             "ReactCommon",
+             "Yoga",
+             "boost",
++            "fast_float",
+             "fmt",
+             "glog",
+             "hermes-engine",
+diff --git a/packages/react-native/scripts/react_native_pods.rb b/packages/react-native/scripts/react_native_pods.rb
+index 221635d4edd..14cb67b102d 100644
+--- a/packages/react-native/scripts/react_native_pods.rb
++++ b/packages/react-native/scripts/react_native_pods.rb
+@@ -156,6 +156,7 @@ def use_react_native! (
+   pod 'DoubleConversion', :podspec => "#{prefix}/third-party-podspecs/DoubleConversion.podspec"
+   pod 'glog', :podspec => "#{prefix}/third-party-podspecs/glog.podspec"
+   pod 'boost', :podspec => "#{prefix}/third-party-podspecs/boost.podspec"
++  pod 'fast_float', :podspec => "#{prefix}/third-party-podspecs/fast_float.podspec"
+   pod 'fmt', :podspec => "#{prefix}/third-party-podspecs/fmt.podspec"
+   pod 'RCT-Folly', :podspec => "#{prefix}/third-party-podspecs/RCT-Folly.podspec", :modular_headers => true
+ 
+@@ -280,6 +281,13 @@ def get_glog_config()
+   return Helpers::Constants.glog_config
+ end
+ 
++# This method returns an hash with the fast_float git url
++# that can be used to configure libraries.
++# @return an hash with the `:git` field.
++def get_fast_float_config()
++  return Helpers::Constants.fast_float_config
++end
++
+ # This method returns an hash with the fmt git url
+ # that can be used to configure libraries.
+ # @return an hash with the `:git` field.
+@@ -319,6 +327,12 @@ def set_glog_config(glog_config)
+    Helpers::Constants.set_glog_config(glog_config)
+ end
+ 
++# This method can be used to set the fast_float config
++# that can be used to configure libraries.
++def set_fast_float_config(fmt_config)
++  Helpers::Constants.set_fast_float_config(fast_float_config)
++end
++
+ # This method can be used to set the fmt config
+ # that can be used to configure libraries.
+ def set_fmt_config(fmt_config)
+diff --git a/packages/react-native/third-party-podspecs/RCT-Folly.podspec b/packages/react-native/third-party-podspecs/RCT-Folly.podspec
+index 40226c863cf..b3c60a50a9e 100644
+--- a/packages/react-native/third-party-podspecs/RCT-Folly.podspec
++++ b/packages/react-native/third-party-podspecs/RCT-Folly.podspec
+@@ -23,7 +23,8 @@ Pod::Spec.new do |spec|
+   spec.dependency 'boost'
+   spec.dependency 'DoubleConversion'
+   spec.dependency 'glog'
+-  spec.dependency "fmt", "9.1.0"
++  spec.dependency "fast_float", "6.1.4"
++  spec.dependency "fmt", "11.0.2"
+   spec.compiler_flags = folly_compiler_flags + ' -DFOLLY_HAVE_PTHREAD=1 -Wno-documentation -faligned-new'
+   spec.source_files = 'folly/String.cpp',
+                       'folly/Conv.cpp',
+@@ -34,18 +35,19 @@ Pod::Spec.new do |spec|
+                       'folly/lang/ToAscii.cpp',
+                       'folly/ScopeGuard.cpp',
+                       'folly/Unicode.cpp',
+-                      'folly/dynamic.cpp',
+-                      'folly/json.cpp',
+-                      'folly/json_pointer.cpp',
++                      'folly/json/dynamic.cpp',
++                      'folly/json/json.cpp',
++                      'folly/json/json_pointer.cpp',
+                       'folly/container/detail/F14Table.cpp',
+                       'folly/detail/Demangle.cpp',
+                       'folly/detail/FileUtilDetail.cpp',
+                       'folly/detail/SplitStringSimd.cpp',
++                      'folly/detail/StaticSingletonManager.cpp',
+                       'folly/detail/UniqueInstance.cpp',
+                       'folly/hash/SpookyHashV2.cpp',
+-                      'folly/lang/Assume.cpp',
+                       'folly/lang/CString.cpp',
+                       'folly/lang/Exception.cpp',
++                      'folly/memory/ReentrantAllocator.cpp',
+                       'folly/memory/detail/MallocImpl.cpp',
+                       'folly/net/NetOps.cpp',
+                       'folly/portability/SysUio.cpp',
+@@ -53,11 +55,15 @@ Pod::Spec.new do |spec|
+                       'folly/system/AtFork.cpp',
+                       'folly/system/ThreadId.cpp',
+                       'folly/*.h',
++                      'folly/algorithm/simd/*.h',
++                      'folly/algorithm/simd/detail/*.h',
++                      'folly/chrono/*.h',
+                       'folly/container/*.h',
+                       'folly/container/detail/*.h',
+                       'folly/detail/*.h',
+                       'folly/functional/*.h',
+                       'folly/hash/*.h',
++                      'folly/json/*.h',
+                       'folly/lang/*.h',
+                       'folly/memory/*.h',
+                       'folly/memory/detail/*.h',
+@@ -68,11 +74,15 @@ Pod::Spec.new do |spec|
+ 
+   # workaround for https://github.com/facebook/react-native/issues/14326
+   spec.preserve_paths = 'folly/*.h',
++                        'folly/algorithm/simd/*.h',
++                        'folly/algorithm/simd/detail/*.h',
++                        'folly/chrono/*.h',
+                         'folly/container/*.h',
+                         'folly/container/detail/*.h',
+                         'folly/detail/*.h',
+                         'folly/functional/*.h',
+                         'folly/hash/*.h',
++                        'folly/json/*.h',
+                         'folly/lang/*.h',
+                         'folly/memory/*.h',
+                         'folly/memory/detail/*.h',
+@@ -84,7 +94,7 @@ Pod::Spec.new do |spec|
+   spec.pod_target_xcconfig = { "USE_HEADERMAP" => "NO",
+                                "DEFINES_MODULE" => "YES",
+                                "CLANG_CXX_LANGUAGE_STANDARD" => rct_cxx_language_standard(),
+-                               "HEADER_SEARCH_PATHS" => "\"$(PODS_TARGET_SRCROOT)\" \"$(PODS_ROOT)/boost\" \"$(PODS_ROOT)/DoubleConversion\" \"$(PODS_ROOT)/fmt/include\"",
++                               "HEADER_SEARCH_PATHS" => "\"$(PODS_TARGET_SRCROOT)\" \"$(PODS_ROOT)/boost\" \"$(PODS_ROOT)/DoubleConversion\" \"$(PODS_ROOT)/fast_float/include\" \"$(PODS_ROOT)/fmt/include\"",
+                                # In dynamic framework (use_frameworks!) mode, ignore the unused and undefined boost symbols when generating the library.
+                                "OTHER_LDFLAGS" => "\"-Wl,-U,_jump_fcontext\" \"-Wl,-U,_make_fcontext\"",
+                                "GCC_WARN_INHIBIT_ALL_WARNINGS" => "YES" # Disable warnings because we don't control this library
+@@ -106,7 +116,6 @@ Pod::Spec.new do |spec|
+                           'folly/concurrency/CacheLocality.cpp',
+                           'folly/detail/Futex.cpp',
+                           'folly/synchronization/ParkingLot.cpp',
+-                          'folly/portability/Malloc.cpp',
+                           'folly/concurrency/CacheLocality.h',
+                           'folly/synchronization/*.h',
+                           'folly/system/ThreadId.h'
+diff --git a/packages/react-native/third-party-podspecs/fast_float.podspec b/packages/react-native/third-party-podspecs/fast_float.podspec
+new file mode 100644
+index 00000000000..8c89d9da18f
+--- /dev/null
++++ b/packages/react-native/third-party-podspecs/fast_float.podspec
+@@ -0,0 +1,29 @@
++# Copyright (c) Meta Platforms, Inc. and affiliates.
++#
++# This source code is licensed under the MIT license found in the
++# LICENSE file in the root directory of this source tree.
++
++fast_float_config = get_fast_float_config()
++fast_float_git_url = fast_float_config[:git]
++
++Pod::Spec.new do |spec|
++  spec.name = "fast_float"
++  spec.version = "6.1.4"
++  spec.license = { :type => "MIT" }
++  spec.homepage = "https://github.com/fastfloat/fast_float"
++  spec.summary = "{fast_float} is an open-source number parsing library for C++. The library provides fast header-only implementations."
++  spec.authors = "The fast_float contributors"
++  spec.source = {
++    :git => fast_float_git_url,
++    :tag => "v6.1.4"
++  }
++  spec.pod_target_xcconfig = {
++    "CLANG_CXX_LANGUAGE_STANDARD" => rct_cxx_language_standard(),
++    "GCC_WARN_INHIBIT_ALL_WARNINGS" => "YES" # Disable warnings because we don't control this library
++  }
++  spec.platforms = min_supported_versions
++  spec.libraries = "c++"
++  spec.public_header_files = "include/fast_float/*.h"
++  spec.header_mappings_dir = "include"
++  spec.source_files = ["include/fast_float/*.h"]
++end
+diff --git a/packages/react-native/third-party-podspecs/fmt.podspec b/packages/react-native/third-party-podspecs/fmt.podspec
+index c76b312e6b6..2f38990e226 100644
+--- a/packages/react-native/third-party-podspecs/fmt.podspec
++++ b/packages/react-native/third-party-podspecs/fmt.podspec
+@@ -8,14 +8,14 @@ fmt_git_url = fmt_config[:git]
+ 
+ Pod::Spec.new do |spec|
+   spec.name = "fmt"
+-  spec.version = "9.1.0"
++  spec.version = "11.0.2"
+   spec.license = { :type => "MIT" }
+   spec.homepage = "https://github.com/fmtlib/fmt"
+   spec.summary = "{fmt} is an open-source formatting library for C++. It can be used as a safe and fast alternative to (s)printf and iostreams."
+   spec.authors = "The fmt contributors"
+   spec.source = {
+     :git => fmt_git_url,
+-    :tag => "9.1.0"
++    :tag => "11.0.2"
+   }
+   spec.pod_target_xcconfig = {
+     "CLANG_CXX_LANGUAGE_STANDARD" => rct_cxx_language_standard(),
+diff --git a/packages/rn-tester/Podfile.lock b/packages/rn-tester/Podfile.lock
+index 6ecec1fbb45..1927f99fc35 100644
+--- a/packages/rn-tester/Podfile.lock
++++ b/packages/rn-tester/Podfile.lock
+@@ -1,8 +1,9 @@
+ PODS:
+   - boost (1.84.0)
+   - DoubleConversion (1.1.6)
++  - fast_float (6.1.4)
+   - FBLazyVector (1000.0.0)
+-  - fmt (9.1.0)
++  - fmt (11.0.2)
+   - glog (0.3.5)
+   - hermes-engine (1000.0.0):
+     - hermes-engine/cdp (= 1000.0.0)
+@@ -15,11 +16,11 @@ PODS:
+   - hermes-engine/inspector (1000.0.0)
+   - hermes-engine/inspector_chrome (1000.0.0)
+   - hermes-engine/Public (1000.0.0)
+-  - MyNativeView (0.76.0-main):
++  - MyNativeView (0.77.0-main):
+     - DoubleConversion
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -36,11 +37,11 @@ PODS:
+     - ReactCommon/turbomodule/bridging
+     - ReactCommon/turbomodule/core
+     - Yoga
+-  - NativeCxxModuleExample (0.76.0-main):
++  - NativeCxxModuleExample (0.77.0-main):
+     - DoubleConversion
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -58,11 +59,11 @@ PODS:
+     - ReactCommon/turbomodule/core
+     - Yoga
+   - OCMock (3.9.4)
+-  - OSSLibraryExample (0.76.0-main):
++  - OSSLibraryExample (0.77.0-main):
+     - DoubleConversion
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -79,21 +80,24 @@ PODS:
+     - ReactCommon/turbomodule/bridging
+     - ReactCommon/turbomodule/core
+     - Yoga
+-  - RCT-Folly (2024.01.01.00):
++  - RCT-Folly (2024.10.14.00):
+     - boost
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+-    - RCT-Folly/Default (= 2024.01.01.00)
+-  - RCT-Folly/Default (2024.01.01.00):
++    - RCT-Folly/Default (= 2024.10.14.00)
++  - RCT-Folly/Default (2024.10.14.00):
+     - boost
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+-  - RCT-Folly/Fabric (2024.01.01.00):
++  - RCT-Folly/Fabric (2024.10.14.00):
+     - boost
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+   - RCTDeprecation (1000.0.0)
+   - RCTRequired (1000.0.0)
+@@ -118,7 +122,7 @@ PODS:
+   - React-Core (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - RCTDeprecation
+     - React-Core/Default (= 1000.0.0)
+     - React-cxxreact
+@@ -135,7 +139,7 @@ PODS:
+   - React-Core/CoreModulesHeaders (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - RCTDeprecation
+     - React-Core/Default
+     - React-cxxreact
+@@ -152,7 +156,7 @@ PODS:
+   - React-Core/Default (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - RCTDeprecation
+     - React-cxxreact
+     - React-featureflags
+@@ -168,7 +172,7 @@ PODS:
+   - React-Core/DevSupport (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - RCTDeprecation
+     - React-Core/Default (= 1000.0.0)
+     - React-Core/RCTWebSocket (= 1000.0.0)
+@@ -186,7 +190,7 @@ PODS:
+   - React-Core/RCTActionSheetHeaders (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - RCTDeprecation
+     - React-Core/Default
+     - React-cxxreact
+@@ -203,7 +207,7 @@ PODS:
+   - React-Core/RCTAnimationHeaders (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - RCTDeprecation
+     - React-Core/Default
+     - React-cxxreact
+@@ -220,7 +224,7 @@ PODS:
+   - React-Core/RCTBlobHeaders (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - RCTDeprecation
+     - React-Core/Default
+     - React-cxxreact
+@@ -237,7 +241,7 @@ PODS:
+   - React-Core/RCTImageHeaders (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - RCTDeprecation
+     - React-Core/Default
+     - React-cxxreact
+@@ -254,7 +258,7 @@ PODS:
+   - React-Core/RCTLinkingHeaders (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - RCTDeprecation
+     - React-Core/Default
+     - React-cxxreact
+@@ -271,7 +275,7 @@ PODS:
+   - React-Core/RCTNetworkHeaders (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - RCTDeprecation
+     - React-Core/Default
+     - React-cxxreact
+@@ -288,7 +292,7 @@ PODS:
+   - React-Core/RCTPushNotificationHeaders (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - RCTDeprecation
+     - React-Core/Default
+     - React-cxxreact
+@@ -305,7 +309,7 @@ PODS:
+   - React-Core/RCTSettingsHeaders (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - RCTDeprecation
+     - React-Core/Default
+     - React-cxxreact
+@@ -322,7 +326,7 @@ PODS:
+   - React-Core/RCTTextHeaders (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - RCTDeprecation
+     - React-Core/Default
+     - React-cxxreact
+@@ -339,7 +343,7 @@ PODS:
+   - React-Core/RCTVibrationHeaders (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - RCTDeprecation
+     - React-Core/Default
+     - React-cxxreact
+@@ -356,7 +360,7 @@ PODS:
+   - React-Core/RCTWebSocket (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - RCTDeprecation
+     - React-Core/Default (= 1000.0.0)
+     - React-cxxreact
+@@ -372,8 +376,9 @@ PODS:
+     - Yoga
+   - React-CoreModules (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
+-    - RCT-Folly (= 2024.01.01.00)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
++    - RCT-Folly (= 2024.10.14.00)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Core/CoreModulesHeaders (= 1000.0.0)
+     - React-jsi (= 1000.0.0)
+@@ -387,10 +392,11 @@ PODS:
+   - React-cxxreact (1000.0.0):
+     - boost
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - React-callinvoker (= 1000.0.0)
+     - React-debug (= 1000.0.0)
+     - React-jsi (= 1000.0.0)
+@@ -404,7 +410,7 @@ PODS:
+     - DoubleConversion
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -429,7 +435,7 @@ PODS:
+     - DoubleConversion
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -449,10 +455,11 @@ PODS:
+     - Yoga
+   - React-Fabric (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -484,10 +491,11 @@ PODS:
+     - ReactCommon/turbomodule/core
+   - React-Fabric/animations (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -504,10 +512,11 @@ PODS:
+     - ReactCommon/turbomodule/core
+   - React-Fabric/attributedstring (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -524,10 +533,11 @@ PODS:
+     - ReactCommon/turbomodule/core
+   - React-Fabric/componentregistry (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -544,10 +554,11 @@ PODS:
+     - ReactCommon/turbomodule/core
+   - React-Fabric/componentregistrynative (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -564,10 +575,11 @@ PODS:
+     - ReactCommon/turbomodule/core
+   - React-Fabric/components (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -587,10 +599,11 @@ PODS:
+     - ReactCommon/turbomodule/core
+   - React-Fabric/components/legacyviewmanagerinterop (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -607,10 +620,11 @@ PODS:
+     - ReactCommon/turbomodule/core
+   - React-Fabric/components/root (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -627,10 +641,11 @@ PODS:
+     - ReactCommon/turbomodule/core
+   - React-Fabric/components/view (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -648,10 +663,11 @@ PODS:
+     - Yoga
+   - React-Fabric/core (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -668,10 +684,11 @@ PODS:
+     - ReactCommon/turbomodule/core
+   - React-Fabric/dom (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -688,10 +705,11 @@ PODS:
+     - ReactCommon/turbomodule/core
+   - React-Fabric/imagemanager (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -708,10 +726,11 @@ PODS:
+     - ReactCommon/turbomodule/core
+   - React-Fabric/leakchecker (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -728,10 +747,11 @@ PODS:
+     - ReactCommon/turbomodule/core
+   - React-Fabric/mounting (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -748,10 +768,11 @@ PODS:
+     - ReactCommon/turbomodule/core
+   - React-Fabric/observers (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -769,10 +790,11 @@ PODS:
+     - ReactCommon/turbomodule/core
+   - React-Fabric/observers/events (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -789,10 +811,11 @@ PODS:
+     - ReactCommon/turbomodule/core
+   - React-Fabric/scheduler (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -811,10 +834,11 @@ PODS:
+     - ReactCommon/turbomodule/core
+   - React-Fabric/telemetry (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -831,10 +855,11 @@ PODS:
+     - ReactCommon/turbomodule/core
+   - React-Fabric/templateprocessor (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -851,10 +876,11 @@ PODS:
+     - ReactCommon/turbomodule/core
+   - React-Fabric/uimanager (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -873,10 +899,11 @@ PODS:
+     - ReactCommon/turbomodule/core
+   - React-Fabric/uimanager/consistency (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -894,10 +921,11 @@ PODS:
+     - ReactCommon/turbomodule/core
+   - React-FabricComponents (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -919,10 +947,11 @@ PODS:
+     - Yoga
+   - React-FabricComponents/components (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -951,10 +980,11 @@ PODS:
+     - Yoga
+   - React-FabricComponents/components/inputaccessory (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -974,10 +1004,11 @@ PODS:
+     - Yoga
+   - React-FabricComponents/components/iostextinput (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -997,10 +1028,11 @@ PODS:
+     - Yoga
+   - React-FabricComponents/components/modal (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -1020,10 +1052,11 @@ PODS:
+     - Yoga
+   - React-FabricComponents/components/rncore (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -1043,10 +1076,11 @@ PODS:
+     - Yoga
+   - React-FabricComponents/components/safeareaview (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -1066,10 +1100,11 @@ PODS:
+     - Yoga
+   - React-FabricComponents/components/scrollview (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -1089,10 +1124,11 @@ PODS:
+     - Yoga
+   - React-FabricComponents/components/text (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -1112,10 +1148,11 @@ PODS:
+     - Yoga
+   - React-FabricComponents/components/textinput (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -1135,10 +1172,11 @@ PODS:
+     - Yoga
+   - React-FabricComponents/components/unimplementedview (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -1158,10 +1196,11 @@ PODS:
+     - Yoga
+   - React-FabricComponents/textlayoutmanager (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -1181,10 +1220,11 @@ PODS:
+     - Yoga
+   - React-FabricImage (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - RCTRequired (= 1000.0.0)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Fabric
+@@ -1202,7 +1242,7 @@ PODS:
+     - DoubleConversion
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -1221,18 +1261,20 @@ PODS:
+     - Yoga
+   - React-graphics (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - React-jsi
+     - React-jsiexecutor
+     - React-utils
+   - React-hermes (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - React-cxxreact (= 1000.0.0)
+     - React-jsi
+     - React-jsiexecutor (= 1000.0.0)
+@@ -1243,7 +1285,7 @@ PODS:
+     - DoubleConversion
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -1273,23 +1315,26 @@ PODS:
+   - React-jserrorhandler (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - React-cxxreact
+     - React-debug
+     - React-jsi
++    - ReactCommon/turbomodule/bridging
+   - React-jsi (1000.0.0):
+     - boost
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+   - React-jsiexecutor (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - React-cxxreact (= 1000.0.0)
+     - React-jsi (= 1000.0.0)
+     - React-jsinspector
+@@ -1298,7 +1343,7 @@ PODS:
+     - DoubleConversion
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - React-featureflags
+     - React-jsi
+     - React-perflogger (= 1000.0.0)
+@@ -1314,7 +1359,7 @@ PODS:
+     - DoubleConversion
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -1345,15 +1390,16 @@ PODS:
+     - ReactCommon/turbomodule/core
+   - React-perflogger (1000.0.0):
+     - DoubleConversion
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+   - React-performancetimeline (1000.0.0):
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - React-cxxreact
++    - React-featureflags
+     - React-timing
+   - React-RCTActionSheet (1000.0.0):
+     - React-Core/RCTActionSheetHeaders (= 1000.0.0)
+   - React-RCTAnimation (1000.0.0):
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - RCTTypeSafety
+     - React-Core/RCTAnimationHeaders
+     - React-jsi
+@@ -1361,7 +1407,7 @@ PODS:
+     - ReactCodegen
+     - ReactCommon
+   - React-RCTAppDelegate (1000.0.0):
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -1387,9 +1433,10 @@ PODS:
+     - ReactCommon
+   - React-RCTBlob (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - React-Core/RCTBlobHeaders
+     - React-Core/RCTWebSocket
+     - React-jsi
+@@ -1401,7 +1448,7 @@ PODS:
+   - React-RCTFabric (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - React-Core
+     - React-debug
+     - React-Fabric
+@@ -1422,7 +1469,7 @@ PODS:
+     - React-utils
+     - Yoga
+   - React-RCTImage (1000.0.0):
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - RCTTypeSafety
+     - React-Core/RCTImageHeaders
+     - React-jsi
+@@ -1438,7 +1485,7 @@ PODS:
+     - ReactCommon
+     - ReactCommon/turbomodule/core (= 1000.0.0)
+   - React-RCTNetwork (1000.0.0):
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - RCTTypeSafety
+     - React-Core/RCTNetworkHeaders
+     - React-jsi
+@@ -1453,7 +1500,7 @@ PODS:
+     - ReactCodegen
+     - ReactCommon
+   - React-RCTSettings (1000.0.0):
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - RCTTypeSafety
+     - React-Core/RCTSettingsHeaders
+     - React-jsi
+@@ -1461,7 +1508,7 @@ PODS:
+     - ReactCodegen
+     - ReactCommon
+   - React-RCTTest (1000.0.0):
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - React-Core (= 1000.0.0)
+     - React-CoreModules (= 1000.0.0)
+     - React-jsi (= 1000.0.0)
+@@ -1470,7 +1517,7 @@ PODS:
+     - React-Core/RCTTextHeaders (= 1000.0.0)
+     - Yoga
+   - React-RCTVibration (1000.0.0):
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - React-Core/RCTVibrationHeaders
+     - React-jsi
+     - React-NativeModulesApple
+@@ -1479,13 +1526,14 @@ PODS:
+   - React-rendererconsistency (1000.0.0)
+   - React-rendererdebug (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
+-    - RCT-Folly (= 2024.01.01.00)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
++    - RCT-Folly (= 2024.10.14.00)
+     - React-debug
+   - React-rncore (1000.0.0)
+   - React-RuntimeApple (1000.0.0):
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - React-callinvoker
+     - React-Core/Default
+     - React-CoreModules
+@@ -1505,7 +1553,7 @@ PODS:
+   - React-RuntimeCore (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - React-cxxreact
+     - React-featureflags
+     - React-jserrorhandler
+@@ -1520,7 +1568,7 @@ PODS:
+     - React-jsi (= 1000.0.0)
+   - React-RuntimeHermes (1000.0.0):
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2024.01.01.00)
++    - RCT-Folly/Fabric (= 2024.10.14.00)
+     - React-featureflags
+     - React-hermes
+     - React-jsi
+@@ -1532,7 +1580,7 @@ PODS:
+   - React-runtimescheduler (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - React-callinvoker
+     - React-cxxreact
+     - React-debug
+@@ -1548,7 +1596,7 @@ PODS:
+   - React-utils (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - React-debug
+     - React-jsi (= 1000.0.0)
+   - ReactCodegen (1000.0.0):
+@@ -1575,7 +1623,8 @@ PODS:
+     - ReactCommon/turbomodule (= 1000.0.0)
+   - ReactCommon-Samples (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - hermes-engine
+     - RCT-Folly
+     - React-Core
+@@ -1586,10 +1635,11 @@ PODS:
+     - ReactCommon
+   - ReactCommon/turbomodule (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - React-callinvoker (= 1000.0.0)
+     - React-cxxreact (= 1000.0.0)
+     - React-jsi (= 1000.0.0)
+@@ -1599,10 +1649,11 @@ PODS:
+     - ReactCommon/turbomodule/core (= 1000.0.0)
+   - ReactCommon/turbomodule/bridging (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - React-callinvoker (= 1000.0.0)
+     - React-cxxreact (= 1000.0.0)
+     - React-jsi (= 1000.0.0)
+@@ -1610,10 +1661,11 @@ PODS:
+     - React-perflogger (= 1000.0.0)
+   - ReactCommon/turbomodule/core (1000.0.0):
+     - DoubleConversion
+-    - fmt (= 9.1.0)
++    - fast_float (= 6.1.4)
++    - fmt (= 11.0.2)
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - React-callinvoker (= 1000.0.0)
+     - React-cxxreact (= 1000.0.0)
+     - React-debug (= 1000.0.0)
+@@ -1622,11 +1674,11 @@ PODS:
+     - React-logger (= 1000.0.0)
+     - React-perflogger (= 1000.0.0)
+     - React-utils (= 1000.0.0)
+-  - ScreenshotManager (0.76.0-main):
++  - ScreenshotManager (0.77.0-main):
+     - DoubleConversion
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2024.01.01.00)
++    - RCT-Folly (= 2024.10.14.00)
+     - RCTRequired
+     - RCTTypeSafety
+     - React-Core
+@@ -1649,6 +1701,7 @@ PODS:
+ DEPENDENCIES:
+   - boost (from `../react-native/third-party-podspecs/boost.podspec`)
+   - DoubleConversion (from `../react-native/third-party-podspecs/DoubleConversion.podspec`)
++  - fast_float (from `../react-native/third-party-podspecs/fast_float.podspec`)
+   - FBLazyVector (from `../react-native/Libraries/FBLazyVector`)
+   - fmt (from `../react-native/third-party-podspecs/fmt.podspec`)
+   - glog (from `../react-native/third-party-podspecs/glog.podspec`)
+@@ -1731,6 +1784,8 @@ EXTERNAL SOURCES:
+     :podspec: "../react-native/third-party-podspecs/boost.podspec"
+   DoubleConversion:
+     :podspec: "../react-native/third-party-podspecs/DoubleConversion.podspec"
++  fast_float:
++    :podspec: "../react-native/third-party-podspecs/fast_float.podspec"
+   FBLazyVector:
+     :path: "../react-native/Libraries/FBLazyVector"
+   fmt:
+@@ -1870,78 +1925,79 @@ EXTERNAL SOURCES:
+     :path: "../react-native/ReactCommon/yoga"
+ 
+ SPEC CHECKSUMS:
+-  boost: 1dca942403ed9342f98334bf4c3621f011aa7946
+-  DoubleConversion: f16ae600a246532c4020132d54af21d0ddb2a385
+-  FBLazyVector: c8715bd426ed93c57bb679b549e92f79a823212a
+-  fmt: 10c6e61f4be25dc963c36bd73fc7b1705fe975be
+-  glog: 08b301085f15bcbb6ff8632a8ebaf239aae04e6a
+-  hermes-engine: 18648a751649d9b6ac408579511554a4fbaaccc2
+-  MyNativeView: 32eb899a4fc31dbe7e93f356935a7fe56d42d74e
+-  NativeCxxModuleExample: 9621f63e90acef88ac37beac4fb841132ad18d86
++  boost: 7e761d76ca2ce687f7cc98e698152abd03a18f90
++  DoubleConversion: cb417026b2400c8f53ae97020b2be961b59470cb
++  fast_float: 06eeec4fe712a76acc9376682e4808b05ce978b6
++  FBLazyVector: d3c2dd739a63c1a124e775df075dc7c517a719cb
++  fmt: a40bb5bd0294ea969aaaba240a927bd33d878cdd
++  glog: eb93e2f488219332457c3c4eafd2738ddc7e80b8
++  hermes-engine: 0f8fb784efaddc3e98ce5b19a6cb1778be784ba1
++  MyNativeView: 8af68f7d37413c951b8444e32ec81747099f6959
++  NativeCxxModuleExample: 0666f3ce65aaba7fa125324ec9d193d0df44f052
+   OCMock: 589f2c84dacb1f5aaf6e4cec1f292551fe748e74
+-  OSSLibraryExample: 44a44517ba2b7e99be1ac345942e5c98e3f8d8da
+-  RCT-Folly: bf5c0376ffe4dd2cf438dcf86db385df9fdce648
++  OSSLibraryExample: 6d432836e53c8f04c0c19b98f3f9fd61e12d9f03
++  RCT-Folly: 63ea034480807f66007e6e02437b15358c03511e
+   RCTDeprecation: 3808e36294137f9ee5668f4df2e73dc079cd1dcf
+-  RCTRequired: 7a8e6a2c361700f9c645216e9991604757b1025c
+-  RCTTypeSafety: 27891ddab793e9f45bd427e0063985fa9d1a745c
+-  React: 0a852eb3a4778fa382bd4bec1d1102dc95c492ce
+-  React-callinvoker: 4857665c23ce7406d949bb95ce3a579620cd35f5
+-  React-Core: dab3d3b3713c207cf555cc54f613d72e5dda65dc
+-  React-CoreModules: 5d48f1d3a5f01341d5e34b401cf7b099a6834941
+-  React-cxxreact: cfad872bd295947124e9d3635b5dc2395037875f
+-  React-debug: 8cf17cbbe4db4489da08583fa1219292ab3add3b
+-  React-defaultsnativemodule: 8f585662fc9ea76ad1a6f2df50f245e126ea2c1f
+-  React-domnativemodule: 6d3248be46d2b94fa9b09e09a5981adb35ec135e
+-  React-Fabric: ea21b602bbfe90f63aadf01c069b7f1759d5e2c7
+-  React-FabricComponents: c69ec63ffe8b1bf773f85695939d8c21e77b3423
+-  React-FabricImage: fcbed58676da40e43f50970d4a3abf7014d4c97c
+-  React-featureflags: b8a4c60827c52e3e6b3d331c47964b91226da452
+-  React-featureflagsnativemodule: 12af419af8e7cc6e2212fa10d450ec6cc78e3c93
+-  React-graphics: c385ac155868a23b0dd4dace94228a0812dd3587
+-  React-hermes: bf8bec9c40d4756e74be3bb642dcc636ee0a3376
+-  React-idlecallbacksnativemodule: 01b2c90be61e39ea57c5ec8fb40223402f0408a3
+-  React-ImageManager: d09977cf41a8af909d776b92150d00066610253e
+-  React-jserrorhandler: bf2e4e3e6ea6c903c0dac85d6ef069bdf010073c
+-  React-jsi: ca82ba79ab3b28553f3c7cae5d3e6bd61bd0615c
+-  React-jsiexecutor: 0bce63803bd83219aa6f5d64ffdd504a407f8f76
+-  React-jsinspector: 51698143244af04db8fff1968b6eae92dbc29ef6
+-  React-jsitracing: 00126dc737136e1359deabbd064ad3e8d17e30a7
+-  React-logger: 7c9f94c18cab8076ed5ab70f4aeeeb1668c44c7d
+-  React-Mapbuffer: 5dcd028f06ec61a76e3d2e823033a9d33c948f9d
+-  React-microtasksnativemodule: d34bab40ed40aa735326940cfb4d5b1206761431
+-  React-nativeconfig: ede29a5b5c88ce9f6e6dfd41b5e6cab57059ebb5
+-  React-NativeModulesApple: 36bd93a8e4aded2cc32355a8f3df92b7e97d8edd
+-  React-perflogger: 932cd803362f3d58552daafd62bc9ff51ba58021
+-  React-performancetimeline: 0b4298173f00277c86e4cb5ee5a7c05d7bc8d4aa
+-  React-RCTActionSheet: 036a8aefa14fc19675e9e9f5006dc714bcb46684
+-  React-RCTAnimation: 0053c157cbbea286bc2db8835ef4f44b30508cc4
+-  React-RCTAppDelegate: 71c4f386c437618dcd5208ce6e8c754293594ad4
+-  React-RCTBlob: 037dd4857df7cee67f8f888a7bc50d2b4a92bca5
+-  React-RCTFabric: 02213d7cec2c67a050743a23892810e9c0c3f2fd
+-  React-RCTImage: 66449efc872f237ccb44a6a3bfd356989a587fe4
+-  React-RCTLinking: 16741487b0dc6801cfaa708e64c038a74e9a847d
+-  React-RCTNetwork: ff9babb55e055cff13673f16f3d4d538c64df90d
+-  React-RCTPushNotification: 03d115747b28a77ae375e0f63e188bf9a1d1d4be
+-  React-RCTSettings: 48fc69ff93298efee6611f6983180aafa438b47a
+-  React-RCTTest: 5f5e3cd632066b2b798917bd076ba539a30fe415
+-  React-RCTText: 11944100c500f4d315616c05ac547535c4dad9aa
+-  React-RCTVibration: 9fd4ce9cc2b7dd827dcec09eb502d07a1b076b76
+-  React-rendererconsistency: 546e5e6e2cd2452dceae8a1f649a8729459e1ef7
+-  React-rendererdebug: ba5a20926f8e0d8de547bad92c88e63910bce590
+-  React-rncore: 3a67b832671a341bb3418a8b89a8dc4425b62310
+-  React-RuntimeApple: 71457481a74e06a296448a8ac4a9700167a2d241
+-  React-RuntimeCore: bf9c9c863e710e4d2938d9bc542501b3cd07fc03
+-  React-runtimeexecutor: 5a4b1736b547811ebbf2f5db9e58c9184d6514cd
+-  React-RuntimeHermes: 3d83f329b54d2d6accaf7c9d28d6f519857b83b9
+-  React-runtimescheduler: 8786b1927836380c443d0fb39af3f10cf80ffd18
+-  React-timing: ff1ffa083a1901bf161f7d50950f08c7e07dca90
+-  React-utils: 31bd4a7e3141994194048105b704669d2190818c
+-  ReactCodegen: 65ce3f3e2bb238505f943941b1cf30b4f5ea9698
+-  ReactCommon: 2f7f1a6ac3607b43f524dd6997813075ac06dcfa
+-  ReactCommon-Samples: cb52d135304897c4aab596d514d6a44ab1e25b21
+-  ScreenshotManager: a3d9db14cd056df5e4a57c3fedee795393246790
++  RCTRequired: a00614e2da5344c2cda3d287050b6cee00e21dc6
++  RCTTypeSafety: 459a16418c6b413060d35434ba3e83f5b0bd2651
++  React: 170a01a19ba2525ab7f11243e2df6b19bf268093
++  React-callinvoker: f08f425e4043cd1998a158b6e39a6aed1fd1d718
++  React-Core: e14a20ce14bb220db6f15f99308bcb221ad860e1
++  React-CoreModules: 03b02c4f8312a22c1b3471e2e4061611f9f64b48
++  React-cxxreact: e5dc26540b34869bdafe544a2dc98c729e911004
++  React-debug: 195df38487d3f48a7af04deddeb4a5c6d4440416
++  React-defaultsnativemodule: 22482f110d58c88bbbd46da565b8102b5ce77819
++  React-domnativemodule: 34a9b69d9c6dc8aea1d8f9a71d6fd4bcb1d665f3
++  React-Fabric: e1e49a06ae12efbd1adac214862c0f919460b629
++  React-FabricComponents: c13525ccd846c2b9efb248a731c37637fd3558b6
++  React-FabricImage: 099a46c34a6f55abce3ee6c1d60ff4ee55c85504
++  React-featureflags: ac152b9e505abad006bee368edb0a4851fecaf5f
++  React-featureflagsnativemodule: 509a04bf4640de4ba4e5b95ffdf5554283cbfddd
++  React-graphics: cd09a3b0ea309e10c3bc93f01c606f95166b6ff5
++  React-hermes: f55ba975cf5358df190f8ade0afaeae543ffbeee
++  React-idlecallbacksnativemodule: 85f2b59c9650f5fc535f6a92e930ce76ce77cdbd
++  React-ImageManager: 575cefd6f3fe4a9998409eebe9c26eee9ed702f7
++  React-jserrorhandler: 99b9dd182461c88d4d02756498d991e9b7ca3248
++  React-jsi: 53d26399177921b2e4153b6b90fdea3b466b1f2b
++  React-jsiexecutor: 41546c370e8ae9ccc1f05b85504f539a04a0acca
++  React-jsinspector: 3bbe8e8f28c9d17f6313fcf317a085123363fef5
++  React-jsitracing: ef82947481b8bf7d49adbaacd8ae0e01028b8ddb
++  React-logger: b19e99fbaaf73d83adaca8917c133d1da71df8de
++  React-Mapbuffer: 11fabe7a2a035584622004cd476699897492927b
++  React-microtasksnativemodule: 2ba56dfb6dcc1b3a189333d7c57037b87c3bbd7e
++  React-nativeconfig: 8f2cb4bf2028acf616c4bdbef3aecb8312e84291
++  React-NativeModulesApple: 0596f545e307887fc7bcee2abf958190599934e1
++  React-perflogger: 35eb440e6a623c46f6c3b4b87eb7e3b07112138a
++  React-performancetimeline: 1d8884eae7282293cbba0293f5075adc227ff1c7
++  React-RCTActionSheet: 1bf8cc8086ad1c15da3407dfb7bc9dd94dc7595d
++  React-RCTAnimation: 8eb55e6604a163e6c50e0543dba49c2991d5559f
++  React-RCTAppDelegate: 067ff873f2cd24fa0fd35f08aca1c99b00f3fd57
++  React-RCTBlob: 38bc99ee05fa5111880b315c0e01079aa7a1c05c
++  React-RCTFabric: e544aea023b719c985580cccf709bd0295ad175a
++  React-RCTImage: 8fa6e8edc2f9a6622559bead27d1388f577fc4c0
++  React-RCTLinking: a70c4fb248b10bc1c8733ae94452232ab877887f
++  React-RCTNetwork: 4d52636c4d5e4633d62e42785e063ad8112f2eb6
++  React-RCTPushNotification: 08f04e05ff994f93d74c406b51500688ae6e5541
++  React-RCTSettings: dd24f3c15d36c217b2facced07ce05e3f7e38f9a
++  React-RCTTest: 4adb0bfe9f33775a7868d5a55efb2f4b68ff7378
++  React-RCTText: e5a08c3829b35f1db001c9cbdf1917936f5dbd25
++  React-RCTVibration: 5bcce0239c34658a48da8d33f618f67075ed3a9f
++  React-rendererconsistency: 777c894edc43dde01499189917ac54ee76ae6a6a
++  React-rendererdebug: dcdb0febb40c690f680b57100cac68ed7069bd76
++  React-rncore: 4a81ce7b8e47448973a6b29c765b07e01715921e
++  React-RuntimeApple: 40747a7b79ce3c63c9f83d619f31a2ae7da564ef
++  React-RuntimeCore: dc69373e13f9c7221557c8bf3d2547855184621f
++  React-runtimeexecutor: fb2d342a477bb13f7128cceb711ee8311edce0c0
++  React-RuntimeHermes: 1444afb801cbd255e42a9759bac04f9db69d6bcb
++  React-runtimescheduler: ea6d18da4a0926b2906f06b575c534a34043c0a8
++  React-timing: 9d49179631e5e3c759e6e82d4c613c73da80a144
++  React-utils: 3635133e3bd480e3898075afdc00e8d2676f3758
++  ReactCodegen: e69ed600668a956ea337bbcf701d26eb7e403792
++  ReactCommon: 691e7f9c04e1eceb968f8ee1f3501837d61b59fb
++  ReactCommon-Samples: 98c203dad7e21c39663450b8dae0c01a356e249f
++  ScreenshotManager: 0f4041b0b21840453d066283c50bb0186c7b513b
+   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
+-  Yoga: dcc37de9ded9760f3d5dc18865cc15a62bb4884b
++  Yoga: 922136ed5790378cd675c3611f6f2b8c67103803
+ 
+ PODFILE CHECKSUM: 8591f96a513620a2a83a0b9a125ad3fa32ea1369
+ 

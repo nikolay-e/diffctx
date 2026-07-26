@@ -1,0 +1,830 @@
+From 62e1110af51550b0def3a5eca32b7644f04c7cda Mon Sep 17 00:00:00 2001
+From: Arushi Kesarwani <arushikesarwani@meta.com>
+Date: Mon, 28 Aug 2023 17:46:27 -0700
+Subject: [PATCH] Bridgeless -> Runtime (#39099)
+
+Summary:
+Pull Request resolved: https://github.com/facebook/react-native/pull/39099
+
+Renaming `bridgeless` -> `runtime` in JNI & ReactCommon changes
+
+changelog: [General][Changed] - Renaming bridgeless to runtime
+
+Reviewed By: rshest
+
+Differential Revision: D48492107
+
+fbshipit-source-id: 0c2843848869b41623839c05d7ad4eb72c700dfb
+---
+ .../Libraries/AppDelegate/RCTAppDelegate.mm          |  2 +-
+ .../ReactAndroid/src/main/jni/CMakeLists.txt         | 12 ++++++------
+ .../{bridgeless => runtime}/hermes/jni/.clang-tidy   |  0
+ .../hermes/jni/CMakeLists.txt                        |  0
+ .../hermes/jni/JHermesInstance.cpp                   |  0
+ .../hermes/jni/JHermesInstance.h                     |  6 +++---
+ .../{bridgeless => runtime}/hermes/jni/OnLoad.cpp    |  0
+ .../react/{bridgeless => runtime}/jni/.clang-tidy    |  0
+ .../react/{bridgeless => runtime}/jni/CMakeLists.txt |  0
+ .../{bridgeless => runtime}/jni/JBindingsInstaller.h |  6 +++---
+ .../{bridgeless => runtime}/jni/JJSEngineInstance.h  |  4 ++--
+ .../{bridgeless => runtime}/jni/JJSTimerExecutor.cpp |  0
+ .../{bridgeless => runtime}/jni/JJSTimerExecutor.h   |  4 ++--
+ .../jni/JJavaTimerManager.cpp                        |  0
+ .../{bridgeless => runtime}/jni/JJavaTimerManager.h  |  0
+ .../jni/JReactExceptionManager.cpp                   |  0
+ .../jni/JReactExceptionManager.h                     |  0
+ .../{bridgeless => runtime}/jni/JReactInstance.cpp   |  4 ++--
+ .../{bridgeless => runtime}/jni/JReactInstance.h     |  8 ++++----
+ .../jni/JavaTimerRegistry.cpp                        |  0
+ .../{bridgeless => runtime}/jni/JavaTimerRegistry.h  |  2 +-
+ .../jni/react/{bridgeless => runtime}/jni/OnLoad.cpp |  0
+ .../{bridgeless => runtime}/jsc/jni/CMakeLists.txt   |  0
+ .../react/{bridgeless => runtime}/jsc/jni/OnLoad.cpp |  6 +++---
+ .../react/uimanager/UIConstantsProviderManager.cpp   |  2 +-
+ .../react/{bridgeless => runtime}/.clang-tidy        |  0
+ .../{bridgeless => runtime}/BindingsInstaller.h      |  2 +-
+ .../BridgelessJSCallInvoker.cpp                      |  0
+ .../BridgelessJSCallInvoker.h                        |  0
+ .../BridgelessNativeMethodCallInvoker.cpp            |  0
+ .../BridgelessNativeMethodCallInvoker.h              |  0
+ .../BufferedRuntimeExecutor.cpp                      |  0
+ .../BufferedRuntimeExecutor.h                        |  0
+ .../react/{bridgeless => runtime}/CMakeLists.txt     |  0
+ .../react/{bridgeless => runtime}/JSEngineInstance.h |  0
+ .../{bridgeless => runtime}/PlatformTimerRegistry.h  |  0
+ .../react/{bridgeless => runtime}/README.md          |  0
+ .../React-BridgelessCore.podspec                     |  2 +-
+ .../React-BridgelessHermes.podspec                   |  2 +-
+ .../react/{bridgeless => runtime}/ReactInstance.cpp  |  0
+ .../react/{bridgeless => runtime}/ReactInstance.h    |  4 ++--
+ .../react/{bridgeless => runtime}/TimerManager.cpp   |  0
+ .../react/{bridgeless => runtime}/TimerManager.h     |  0
+ .../{bridgeless => runtime}/hermes/CMakeLists.txt    |  0
+ .../hermes/HermesInstance.cpp                        |  0
+ .../{bridgeless => runtime}/hermes/HermesInstance.h  |  0
+ .../{bridgeless => runtime}/iostests/RCTHostTests.mm |  0
+ .../nativeviewconfig/CMakeLists.txt                  |  0
+ .../LegacyUIManagerConstantsProviderBinding.cpp      |  0
+ .../LegacyUIManagerConstantsProviderBinding.h        |  0
+ .../platform/ios/React-BridgelessApple.podspec       |  0
+ .../platform/ios/ReactCommon/ObjCTimerRegistry.h     |  4 ++--
+ .../platform/ios/ReactCommon/ObjCTimerRegistry.mm    |  0
+ .../ios/ReactCommon/RCTContextContainerHandling.h    |  0
+ .../platform/ios/ReactCommon/RCTHermesInstance.h     |  4 ++--
+ .../platform/ios/ReactCommon/RCTHermesInstance.mm    |  0
+ .../platform/ios/ReactCommon/RCTHost+Internal.h      |  0
+ .../platform/ios/ReactCommon/RCTHost.h               |  2 +-
+ .../platform/ios/ReactCommon/RCTHost.mm              |  0
+ .../platform/ios/ReactCommon/RCTInstance.h           |  4 ++--
+ .../platform/ios/ReactCommon/RCTInstance.mm          |  2 +-
+ .../platform/ios/ReactCommon/RCTJSThreadManager.h    |  0
+ .../platform/ios/ReactCommon/RCTJSThreadManager.mm   |  0
+ .../platform/ios/ReactCommon/RCTJscInstance.h        |  2 +-
+ .../platform/ios/ReactCommon/RCTJscInstance.mm       |  0
+ .../RCTLegacyUIManagerConstantsProvider.h            |  0
+ .../RCTLegacyUIManagerConstantsProvider.mm           |  2 +-
+ .../ios/ReactCommon/RCTPerformanceLoggerUtils.h      |  0
+ .../ios/ReactCommon/RCTPerformanceLoggerUtils.mm     |  0
+ .../tests/cxx/ReactInstanceTest.cpp                  |  2 +-
+ .../react-native/scripts/cocoapods/bridgeless.rb     |  6 +++---
+ 71 files changed, 47 insertions(+), 47 deletions(-)
+ rename packages/react-native/ReactAndroid/src/main/jni/react/{bridgeless => runtime}/hermes/jni/.clang-tidy (100%)
+ rename packages/react-native/ReactAndroid/src/main/jni/react/{bridgeless => runtime}/hermes/jni/CMakeLists.txt (100%)
+ rename packages/react-native/ReactAndroid/src/main/jni/react/{bridgeless => runtime}/hermes/jni/JHermesInstance.cpp (100%)
+ rename packages/react-native/ReactAndroid/src/main/jni/react/{bridgeless => runtime}/hermes/jni/JHermesInstance.h (82%)
+ rename packages/react-native/ReactAndroid/src/main/jni/react/{bridgeless => runtime}/hermes/jni/OnLoad.cpp (100%)
+ rename packages/react-native/ReactAndroid/src/main/jni/react/{bridgeless => runtime}/jni/.clang-tidy (100%)
+ rename packages/react-native/ReactAndroid/src/main/jni/react/{bridgeless => runtime}/jni/CMakeLists.txt (100%)
+ rename packages/react-native/ReactAndroid/src/main/jni/react/{bridgeless => runtime}/jni/JBindingsInstaller.h (79%)
+ rename packages/react-native/ReactAndroid/src/main/jni/react/{bridgeless => runtime}/jni/JJSEngineInstance.h (83%)
+ rename packages/react-native/ReactAndroid/src/main/jni/react/{bridgeless => runtime}/jni/JJSTimerExecutor.cpp (100%)
+ rename packages/react-native/ReactAndroid/src/main/jni/react/{bridgeless => runtime}/jni/JJSTimerExecutor.h (88%)
+ rename packages/react-native/ReactAndroid/src/main/jni/react/{bridgeless => runtime}/jni/JJavaTimerManager.cpp (100%)
+ rename packages/react-native/ReactAndroid/src/main/jni/react/{bridgeless => runtime}/jni/JJavaTimerManager.h (100%)
+ rename packages/react-native/ReactAndroid/src/main/jni/react/{bridgeless => runtime}/jni/JReactExceptionManager.cpp (100%)
+ rename packages/react-native/ReactAndroid/src/main/jni/react/{bridgeless => runtime}/jni/JReactExceptionManager.h (100%)
+ rename packages/react-native/ReactAndroid/src/main/jni/react/{bridgeless => runtime}/jni/JReactInstance.cpp (98%)
+ rename packages/react-native/ReactAndroid/src/main/jni/react/{bridgeless => runtime}/jni/JReactInstance.h (95%)
+ rename packages/react-native/ReactAndroid/src/main/jni/react/{bridgeless => runtime}/jni/JavaTimerRegistry.cpp (100%)
+ rename packages/react-native/ReactAndroid/src/main/jni/react/{bridgeless => runtime}/jni/JavaTimerRegistry.h (94%)
+ rename packages/react-native/ReactAndroid/src/main/jni/react/{bridgeless => runtime}/jni/OnLoad.cpp (100%)
+ rename packages/react-native/ReactAndroid/src/main/jni/react/{bridgeless => runtime}/jsc/jni/CMakeLists.txt (100%)
+ rename packages/react-native/ReactAndroid/src/main/jni/react/{bridgeless => runtime}/jsc/jni/OnLoad.cpp (87%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/.clang-tidy (100%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/BindingsInstaller.h (90%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/BridgelessJSCallInvoker.cpp (100%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/BridgelessJSCallInvoker.h (100%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/BridgelessNativeMethodCallInvoker.cpp (100%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/BridgelessNativeMethodCallInvoker.h (100%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/BufferedRuntimeExecutor.cpp (100%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/BufferedRuntimeExecutor.h (100%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/CMakeLists.txt (100%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/JSEngineInstance.h (100%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/PlatformTimerRegistry.h (100%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/README.md (100%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/React-BridgelessCore.podspec (98%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/React-BridgelessHermes.podspec (97%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/ReactInstance.cpp (100%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/ReactInstance.h (95%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/TimerManager.cpp (100%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/TimerManager.h (100%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/hermes/CMakeLists.txt (100%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/hermes/HermesInstance.cpp (100%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/hermes/HermesInstance.h (100%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/iostests/RCTHostTests.mm (100%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/nativeviewconfig/CMakeLists.txt (100%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/nativeviewconfig/LegacyUIManagerConstantsProviderBinding.cpp (100%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/nativeviewconfig/LegacyUIManagerConstantsProviderBinding.h (100%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/platform/ios/React-BridgelessApple.podspec (100%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/platform/ios/ReactCommon/ObjCTimerRegistry.h (90%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/platform/ios/ReactCommon/ObjCTimerRegistry.mm (100%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/platform/ios/ReactCommon/RCTContextContainerHandling.h (100%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/platform/ios/ReactCommon/RCTHermesInstance.h (91%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/platform/ios/ReactCommon/RCTHermesInstance.mm (100%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/platform/ios/ReactCommon/RCTHost+Internal.h (100%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/platform/ios/ReactCommon/RCTHost.h (97%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/platform/ios/ReactCommon/RCTHost.mm (100%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/platform/ios/ReactCommon/RCTInstance.h (96%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/platform/ios/ReactCommon/RCTInstance.mm (99%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/platform/ios/ReactCommon/RCTJSThreadManager.h (100%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/platform/ios/ReactCommon/RCTJSThreadManager.mm (100%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/platform/ios/ReactCommon/RCTJscInstance.h (91%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/platform/ios/ReactCommon/RCTJscInstance.mm (100%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/platform/ios/ReactCommon/RCTLegacyUIManagerConstantsProvider.h (100%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/platform/ios/ReactCommon/RCTLegacyUIManagerConstantsProvider.mm (94%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/platform/ios/ReactCommon/RCTPerformanceLoggerUtils.h (100%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/platform/ios/ReactCommon/RCTPerformanceLoggerUtils.mm (100%)
+ rename packages/react-native/ReactCommon/react/{bridgeless => runtime}/tests/cxx/ReactInstanceTest.cpp (99%)
+
+diff --git a/packages/react-native/Libraries/AppDelegate/RCTAppDelegate.mm b/packages/react-native/Libraries/AppDelegate/RCTAppDelegate.mm
+index 4e6eb89d591..7752feffbad 100644
+--- a/packages/react-native/Libraries/AppDelegate/RCTAppDelegate.mm
++++ b/packages/react-native/Libraries/AppDelegate/RCTAppDelegate.mm
+@@ -31,10 +31,10 @@
+ #import <ReactCommon/RCTHost+Internal.h>
+ #import <ReactCommon/RCTHost.h>
+ #import <ReactCommon/RCTTurboModuleManager.h>
+-#import <react/bridgeless/JSEngineInstance.h>
+ #import <react/config/ReactNativeConfig.h>
+ #import <react/renderer/runtimescheduler/RuntimeScheduler.h>
+ #import <react/renderer/runtimescheduler/RuntimeSchedulerCallInvoker.h>
++#import <react/runtime/JSEngineInstance.h>
+ 
+ static NSString *const kRNConcurrentRoot = @"concurrentRoot";
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt b/packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt
+index 5420b01e5b7..54613cd992a 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt
++++ b/packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt
+@@ -99,9 +99,9 @@ add_react_common_subdir(react/bridging)
+ add_react_common_subdir(react/renderer/mapbuffer)
+ add_react_common_subdir(react/nativemodule/core)
+ add_react_common_subdir(jserrorhandler)
+-add_react_common_subdir(react/bridgeless)
+-add_react_common_subdir(react/bridgeless/hermes)
+-add_react_common_subdir(react/bridgeless/nativeviewconfig)
++add_react_common_subdir(react/runtime)
++add_react_common_subdir(react/runtime/hermes)
++add_react_common_subdir(react/runtime/nativeviewconfig)
+ 
+ # ReactAndroid JNI targets
+ add_react_build_subdir(generated/source/codegen/jni)
+@@ -119,9 +119,9 @@ add_react_android_subdir(src/main/jni/react/fabric)
+ add_react_android_subdir(src/main/jni/react/newarchdefaults)
+ add_react_android_subdir(src/main/jni/react/hermes/reactexecutor)
+ add_react_android_subdir(src/main/jni/react/hermes/instrumentation/)
+-add_react_android_subdir(src/main/jni/react/bridgeless/jni)
+-add_react_android_subdir(src/main/jni/react/bridgeless/hermes/jni)
+-add_react_android_subdir(src/main/jni/react/bridgeless/jsc/jni)
++add_react_android_subdir(src/main/jni/react/runtime/jni)
++add_react_android_subdir(src/main/jni/react/runtime/hermes/jni)
++add_react_android_subdir(src/main/jni/react/runtime/jsc/jni)
+ 
+ # GTest dependencies
+ add_executable(reactnative_unittest
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/hermes/jni/.clang-tidy b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/hermes/jni/.clang-tidy
+similarity index 100%
+rename from packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/hermes/jni/.clang-tidy
+rename to packages/react-native/ReactAndroid/src/main/jni/react/runtime/hermes/jni/.clang-tidy
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/hermes/jni/CMakeLists.txt b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/hermes/jni/CMakeLists.txt
+similarity index 100%
+rename from packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/hermes/jni/CMakeLists.txt
+rename to packages/react-native/ReactAndroid/src/main/jni/react/runtime/hermes/jni/CMakeLists.txt
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/hermes/jni/JHermesInstance.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/hermes/jni/JHermesInstance.cpp
+similarity index 100%
+rename from packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/hermes/jni/JHermesInstance.cpp
+rename to packages/react-native/ReactAndroid/src/main/jni/react/runtime/hermes/jni/JHermesInstance.cpp
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/hermes/jni/JHermesInstance.h b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/hermes/jni/JHermesInstance.h
+similarity index 82%
+rename from packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/hermes/jni/JHermesInstance.h
+rename to packages/react-native/ReactAndroid/src/main/jni/react/runtime/hermes/jni/JHermesInstance.h
+index 2fbc73a45cd..fc93eea6190 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/hermes/jni/JHermesInstance.h
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/hermes/jni/JHermesInstance.h
+@@ -13,8 +13,8 @@
+ #include <fbjni/fbjni.h>
+ #include <jni.h>
+ #include <jsi/jsi.h>
+-#include <react/bridgeless/JSEngineInstance.h>
+-#include <react/bridgeless/hermes/HermesInstance.h>
++#include <react/runtime/JSEngineInstance.h>
++#include <react/runtime/hermes/HermesInstance.h>
+ #include "../../jni/JJSEngineInstance.h"
+ 
+ namespace facebook::react {
+@@ -23,7 +23,7 @@ class JHermesInstance
+     : public jni::HybridClass<JHermesInstance, JJSEngineInstance> {
+  public:
+   static constexpr auto kJavaDescriptor =
+-      "Lcom/facebook/react/bridgeless/hermes/HermesInstance;";
++      "Lcom/facebook/react/runtime/hermes/HermesInstance;";
+ 
+   static jni::local_ref<jhybriddata> initHybrid(jni::alias_ref<jhybridobject>);
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/hermes/jni/OnLoad.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/hermes/jni/OnLoad.cpp
+similarity index 100%
+rename from packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/hermes/jni/OnLoad.cpp
+rename to packages/react-native/ReactAndroid/src/main/jni/react/runtime/hermes/jni/OnLoad.cpp
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/.clang-tidy b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/.clang-tidy
+similarity index 100%
+rename from packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/.clang-tidy
+rename to packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/.clang-tidy
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/CMakeLists.txt b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/CMakeLists.txt
+similarity index 100%
+rename from packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/CMakeLists.txt
+rename to packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/CMakeLists.txt
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/JBindingsInstaller.h b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JBindingsInstaller.h
+similarity index 79%
+rename from packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/JBindingsInstaller.h
+rename to packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JBindingsInstaller.h
+index 1048f67b93f..fb83833f622 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/JBindingsInstaller.h
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JBindingsInstaller.h
+@@ -10,8 +10,8 @@
+ #include <fbjni/fbjni.h>
+ #include <jni.h>
+ #include <jsi/jsi.h>
+-#include <react/bridgeless/BindingsInstaller.h>
+-#include <react/bridgeless/ReactInstance.h>
++#include <react/runtime/BindingsInstaller.h>
++#include <react/runtime/ReactInstance.h>
+ 
+ namespace facebook {
+ namespace react {
+@@ -20,7 +20,7 @@ class JBindingsInstaller : public jni::HybridClass<JBindingsInstaller>,
+                            public BindingsInstaller {
+  public:
+   static constexpr auto kJavaDescriptor =
+-      "Lcom/facebook/react/bridgeless/BindingsInstaller;";
++      "Lcom/facebook/react/runtime/BindingsInstaller;";
+ 
+   ~JBindingsInstaller() {}
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/JJSEngineInstance.h b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JJSEngineInstance.h
+similarity index 83%
+rename from packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/JJSEngineInstance.h
+rename to packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JJSEngineInstance.h
+index 8d1463cb5cd..06619c451c6 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/JJSEngineInstance.h
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JJSEngineInstance.h
+@@ -9,7 +9,7 @@
+ 
+ #include <fbjni/fbjni.h>
+ #include <jni.h>
+-#include <react/bridgeless/JSEngineInstance.h>
++#include <react/runtime/JSEngineInstance.h>
+ 
+ namespace facebook::react {
+ 
+@@ -17,7 +17,7 @@ class JJSEngineInstance : public jni::HybridClass<JJSEngineInstance>,
+                           public JSEngineInstance {
+  public:
+   static auto constexpr kJavaDescriptor =
+-      "Lcom/facebook/react/bridgeless/JSEngineInstance;";
++      "Lcom/facebook/react/runtime/JSEngineInstance;";
+ 
+  private:
+   friend HybridBase;
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/JJSTimerExecutor.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JJSTimerExecutor.cpp
+similarity index 100%
+rename from packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/JJSTimerExecutor.cpp
+rename to packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JJSTimerExecutor.cpp
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/JJSTimerExecutor.h b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JJSTimerExecutor.h
+similarity index 88%
+rename from packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/JJSTimerExecutor.h
+rename to packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JJSTimerExecutor.h
+index 9436e71daad..650a46fad32 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/JJSTimerExecutor.h
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JJSTimerExecutor.h
+@@ -10,8 +10,8 @@
+ #include <ReactCommon/RuntimeExecutor.h>
+ #include <fbjni/fbjni.h>
+ #include <jni.h>
+-#include <react/bridgeless/TimerManager.h>
+ #include <react/jni/WritableNativeArray.h>
++#include <react/runtime/TimerManager.h>
+ 
+ namespace facebook::react {
+ 
+@@ -20,7 +20,7 @@ class JJSTimerExecutor : public jni::HybridClass<JJSTimerExecutor> {
+   JJSTimerExecutor() = default;
+ 
+   constexpr static auto kJavaDescriptor =
+-      "Lcom/facebook/react/bridgeless/JSTimerExecutor;";
++      "Lcom/facebook/react/runtime/JSTimerExecutor;";
+ 
+   static void registerNatives();
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/JJavaTimerManager.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JJavaTimerManager.cpp
+similarity index 100%
+rename from packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/JJavaTimerManager.cpp
+rename to packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JJavaTimerManager.cpp
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/JJavaTimerManager.h b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JJavaTimerManager.h
+similarity index 100%
+rename from packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/JJavaTimerManager.h
+rename to packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JJavaTimerManager.h
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/JReactExceptionManager.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JReactExceptionManager.cpp
+similarity index 100%
+rename from packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/JReactExceptionManager.cpp
+rename to packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JReactExceptionManager.cpp
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/JReactExceptionManager.h b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JReactExceptionManager.h
+similarity index 100%
+rename from packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/JReactExceptionManager.h
+rename to packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JReactExceptionManager.h
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/JReactInstance.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JReactInstance.cpp
+similarity index 98%
+rename from packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/JReactInstance.cpp
+rename to packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JReactInstance.cpp
+index e5d2f4c6d07..879def68d93 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/JReactInstance.cpp
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JReactInstance.cpp
+@@ -18,12 +18,12 @@
+ #include <jni.h>
+ #include <jsi/jsi.h>
+ #include <jsireact/JSIExecutor.h>
+-#include <react/bridgeless/BridgelessJSCallInvoker.h>
+-#include <react/bridgeless/BridgelessNativeMethodCallInvoker.h>
+ #include <react/common/mapbuffer/JReadableMapBuffer.h>
+ #include <react/jni/JRuntimeExecutor.h>
+ #include <react/jni/JSLogging.h>
+ #include <react/renderer/mapbuffer/MapBuffer.h>
++#include <react/runtime/BridgelessJSCallInvoker.h>
++#include <react/runtime/BridgelessNativeMethodCallInvoker.h>
+ #include "JavaTimerRegistry.h"
+ 
+ namespace facebook::react {
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/JReactInstance.h b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JReactInstance.h
+similarity index 95%
+rename from packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/JReactInstance.h
+rename to packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JReactInstance.h
+index 652dc7234f4..1e2f27dbb43 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/JReactInstance.h
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JReactInstance.h
+@@ -13,14 +13,14 @@
+ #include <fbjni/fbjni.h>
+ #include <jni.h>
+ #include <jsi/jsi.h>
+-#include <react/bridgeless/JSEngineInstance.h>
+-#include <react/bridgeless/PlatformTimerRegistry.h>
+-#include <react/bridgeless/ReactInstance.h>
+ #include <react/jni/JMessageQueueThread.h>
+ #include <react/jni/JRuntimeExecutor.h>
+ #include <react/jni/JRuntimeScheduler.h>
+ #include <react/jni/JSLoader.h>
+ #include <react/jni/ReadableNativeMap.h>
++#include <react/runtime/JSEngineInstance.h>
++#include <react/runtime/PlatformTimerRegistry.h>
++#include <react/runtime/ReactInstance.h>
+ 
+ #include "JBindingsInstaller.h"
+ #include "JJSEngineInstance.h"
+@@ -33,7 +33,7 @@ namespace facebook::react {
+ class JReactInstance : public jni::HybridClass<JReactInstance> {
+  public:
+   constexpr static auto kJavaDescriptor =
+-      "Lcom/facebook/react/bridgeless/ReactInstance;";
++      "Lcom/facebook/react/runtime/ReactInstance;";
+ 
+   static jni::local_ref<jhybriddata> initHybrid(
+       jni::alias_ref<jhybridobject>,
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/JavaTimerRegistry.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JavaTimerRegistry.cpp
+similarity index 100%
+rename from packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/JavaTimerRegistry.cpp
+rename to packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JavaTimerRegistry.cpp
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/JavaTimerRegistry.h b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JavaTimerRegistry.h
+similarity index 94%
+rename from packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/JavaTimerRegistry.h
+rename to packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JavaTimerRegistry.h
+index 943b9bc4835..06670e141b4 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/JavaTimerRegistry.h
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JavaTimerRegistry.h
+@@ -10,7 +10,7 @@
+ #include <memory>
+ 
+ #include <fbjni/fbjni.h>
+-#include <react/bridgeless/PlatformTimerRegistry.h>
++#include <react/runtime/PlatformTimerRegistry.h>
+ 
+ #include "JJavaTimerManager.h"
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/OnLoad.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/OnLoad.cpp
+similarity index 100%
+rename from packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jni/OnLoad.cpp
+rename to packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/OnLoad.cpp
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jsc/jni/CMakeLists.txt b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/jsc/jni/CMakeLists.txt
+similarity index 100%
+rename from packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jsc/jni/CMakeLists.txt
+rename to packages/react-native/ReactAndroid/src/main/jni/react/runtime/jsc/jni/CMakeLists.txt
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jsc/jni/OnLoad.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/jsc/jni/OnLoad.cpp
+similarity index 87%
+rename from packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jsc/jni/OnLoad.cpp
+rename to packages/react-native/ReactAndroid/src/main/jni/react/runtime/jsc/jni/OnLoad.cpp
+index 01c982e8c6b..62d26871d4a 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/bridgeless/jsc/jni/OnLoad.cpp
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/jsc/jni/OnLoad.cpp
+@@ -8,16 +8,16 @@
+ #include <fbjni/fbjni.h>
+ #include <jsc/JSCRuntime.h>
+ #include <jsi/jsi.h>
+-#include <react/bridgeless/JSEngineInstance.h>
+-#include <react/bridgeless/jni/JJSEngineInstance.h>
+ #include <react/jni/ReadableNativeMap.h>
++#include <react/runtime/JSEngineInstance.h>
++#include <react/runtime/jni/JJSEngineInstance.h>
+ 
+ namespace facebook::react {
+ 
+ class JSCInstance : public jni::HybridClass<JSCInstance, JJSEngineInstance> {
+  public:
+   static constexpr auto kJavaDescriptor =
+-      "Lcom/facebook/react/bridgeless/JSCInstance;";
++      "Lcom/facebook/react/runtime/JSCInstance;";
+ 
+   static jni::local_ref<jhybriddata> initHybrid(jni::alias_ref<jhybridobject>) {
+     return makeCxxInstance();
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/uimanager/UIConstantsProviderManager.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/uimanager/UIConstantsProviderManager.cpp
+index 42e8204a31b..c9ea6599e07 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/uimanager/UIConstantsProviderManager.cpp
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/uimanager/UIConstantsProviderManager.cpp
+@@ -12,7 +12,7 @@
+ #include <jsi/jsi.h>
+ #include <react/jni/NativeMap.h>
+ 
+-#include <react/bridgeless/nativeviewconfig/LegacyUIManagerConstantsProviderBinding.h>
++#include <react/runtime/nativeviewconfig/LegacyUIManagerConstantsProviderBinding.h>
+ #include "UIConstantsProviderManager.h"
+ 
+ namespace facebook::react {
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/.clang-tidy b/packages/react-native/ReactCommon/react/runtime/.clang-tidy
+similarity index 100%
+rename from packages/react-native/ReactCommon/react/bridgeless/.clang-tidy
+rename to packages/react-native/ReactCommon/react/runtime/.clang-tidy
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/BindingsInstaller.h b/packages/react-native/ReactCommon/react/runtime/BindingsInstaller.h
+similarity index 90%
+rename from packages/react-native/ReactCommon/react/bridgeless/BindingsInstaller.h
+rename to packages/react-native/ReactCommon/react/runtime/BindingsInstaller.h
+index fc3d889a553..2934685f0a3 100644
+--- a/packages/react-native/ReactCommon/react/bridgeless/BindingsInstaller.h
++++ b/packages/react-native/ReactCommon/react/runtime/BindingsInstaller.h
+@@ -7,7 +7,7 @@
+ 
+ #pragma once
+ 
+-#include <react/bridgeless/ReactInstance.h>
++#include <react/runtime/ReactInstance.h>
+ 
+ namespace facebook::react {
+ 
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/BridgelessJSCallInvoker.cpp b/packages/react-native/ReactCommon/react/runtime/BridgelessJSCallInvoker.cpp
+similarity index 100%
+rename from packages/react-native/ReactCommon/react/bridgeless/BridgelessJSCallInvoker.cpp
+rename to packages/react-native/ReactCommon/react/runtime/BridgelessJSCallInvoker.cpp
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/BridgelessJSCallInvoker.h b/packages/react-native/ReactCommon/react/runtime/BridgelessJSCallInvoker.h
+similarity index 100%
+rename from packages/react-native/ReactCommon/react/bridgeless/BridgelessJSCallInvoker.h
+rename to packages/react-native/ReactCommon/react/runtime/BridgelessJSCallInvoker.h
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/BridgelessNativeMethodCallInvoker.cpp b/packages/react-native/ReactCommon/react/runtime/BridgelessNativeMethodCallInvoker.cpp
+similarity index 100%
+rename from packages/react-native/ReactCommon/react/bridgeless/BridgelessNativeMethodCallInvoker.cpp
+rename to packages/react-native/ReactCommon/react/runtime/BridgelessNativeMethodCallInvoker.cpp
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/BridgelessNativeMethodCallInvoker.h b/packages/react-native/ReactCommon/react/runtime/BridgelessNativeMethodCallInvoker.h
+similarity index 100%
+rename from packages/react-native/ReactCommon/react/bridgeless/BridgelessNativeMethodCallInvoker.h
+rename to packages/react-native/ReactCommon/react/runtime/BridgelessNativeMethodCallInvoker.h
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/BufferedRuntimeExecutor.cpp b/packages/react-native/ReactCommon/react/runtime/BufferedRuntimeExecutor.cpp
+similarity index 100%
+rename from packages/react-native/ReactCommon/react/bridgeless/BufferedRuntimeExecutor.cpp
+rename to packages/react-native/ReactCommon/react/runtime/BufferedRuntimeExecutor.cpp
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/BufferedRuntimeExecutor.h b/packages/react-native/ReactCommon/react/runtime/BufferedRuntimeExecutor.h
+similarity index 100%
+rename from packages/react-native/ReactCommon/react/bridgeless/BufferedRuntimeExecutor.h
+rename to packages/react-native/ReactCommon/react/runtime/BufferedRuntimeExecutor.h
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/CMakeLists.txt b/packages/react-native/ReactCommon/react/runtime/CMakeLists.txt
+similarity index 100%
+rename from packages/react-native/ReactCommon/react/bridgeless/CMakeLists.txt
+rename to packages/react-native/ReactCommon/react/runtime/CMakeLists.txt
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/JSEngineInstance.h b/packages/react-native/ReactCommon/react/runtime/JSEngineInstance.h
+similarity index 100%
+rename from packages/react-native/ReactCommon/react/bridgeless/JSEngineInstance.h
+rename to packages/react-native/ReactCommon/react/runtime/JSEngineInstance.h
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/PlatformTimerRegistry.h b/packages/react-native/ReactCommon/react/runtime/PlatformTimerRegistry.h
+similarity index 100%
+rename from packages/react-native/ReactCommon/react/bridgeless/PlatformTimerRegistry.h
+rename to packages/react-native/ReactCommon/react/runtime/PlatformTimerRegistry.h
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/README.md b/packages/react-native/ReactCommon/react/runtime/README.md
+similarity index 100%
+rename from packages/react-native/ReactCommon/react/bridgeless/README.md
+rename to packages/react-native/ReactCommon/react/runtime/README.md
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/React-BridgelessCore.podspec b/packages/react-native/ReactCommon/react/runtime/React-BridgelessCore.podspec
+similarity index 98%
+rename from packages/react-native/ReactCommon/react/bridgeless/React-BridgelessCore.podspec
+rename to packages/react-native/ReactCommon/react/runtime/React-BridgelessCore.podspec
+index c9671006269..1a059e59dc7 100644
+--- a/packages/react-native/ReactCommon/react/bridgeless/React-BridgelessCore.podspec
++++ b/packages/react-native/ReactCommon/react/runtime/React-BridgelessCore.podspec
+@@ -32,7 +32,7 @@ Pod::Spec.new do |s|
+   s.source                 = source
+   s.source_files           = "*.{cpp,h}", "nativeviewconfig/*.{cpp,h}"
+   s.exclude_files          = "iostests/*", "tests/**/*.{cpp,h}"
+-  s.header_dir             = "react/bridgeless"
++  s.header_dir             = "react/runtime"
+   s.pod_target_xcconfig    = { "HEADER_SEARCH_PATHS" => "\"$(PODS_ROOT)/boost\" \"$(PODS_ROOT)/Headers/Private/React-Core\" \"${PODS_TARGET_SRCROOT}/../..\"",
+                                 "USE_HEADERMAP" => "YES",
+                                 "CLANG_CXX_LANGUAGE_STANDARD" => "c++17",
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/React-BridgelessHermes.podspec b/packages/react-native/ReactCommon/react/runtime/React-BridgelessHermes.podspec
+similarity index 97%
+rename from packages/react-native/ReactCommon/react/bridgeless/React-BridgelessHermes.podspec
+rename to packages/react-native/ReactCommon/react/runtime/React-BridgelessHermes.podspec
+index 134f5d1a345..3732ba387c2 100644
+--- a/packages/react-native/ReactCommon/react/bridgeless/React-BridgelessHermes.podspec
++++ b/packages/react-native/ReactCommon/react/runtime/React-BridgelessHermes.podspec
+@@ -31,7 +31,7 @@ Pod::Spec.new do |s|
+   s.platforms              = { :ios => min_ios_version_supported }
+   s.source                 = source
+   s.source_files           = "hermes/*.{cpp,h}"
+-  s.header_dir             = "react/bridgeless/hermes"
++  s.header_dir             = "react/runtime/hermes"
+   s.pod_target_xcconfig    = { "HEADER_SEARCH_PATHS" => "\"${PODS_TARGET_SRCROOT}/../..\" \"${PODS_TARGET_SRCROOT}/../../hermes/executor\"",
+                                 "USE_HEADERMAP" => "YES",
+                                 "CLANG_CXX_LANGUAGE_STANDARD" => "c++17",
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/ReactInstance.cpp b/packages/react-native/ReactCommon/react/runtime/ReactInstance.cpp
+similarity index 100%
+rename from packages/react-native/ReactCommon/react/bridgeless/ReactInstance.cpp
+rename to packages/react-native/ReactCommon/react/runtime/ReactInstance.cpp
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/ReactInstance.h b/packages/react-native/ReactCommon/react/runtime/ReactInstance.h
+similarity index 95%
+rename from packages/react-native/ReactCommon/react/bridgeless/ReactInstance.h
+rename to packages/react-native/ReactCommon/react/runtime/ReactInstance.h
+index 880c642a0ea..35de40cc9c0 100644
+--- a/packages/react-native/ReactCommon/react/bridgeless/ReactInstance.h
++++ b/packages/react-native/ReactCommon/react/runtime/ReactInstance.h
+@@ -12,9 +12,9 @@
+ #include <jserrorhandler/JsErrorHandler.h>
+ #include <jsi/jsi.h>
+ #include <jsireact/JSIExecutor.h>
+-#include <react/bridgeless/BufferedRuntimeExecutor.h>
+-#include <react/bridgeless/TimerManager.h>
+ #include <react/renderer/runtimescheduler/RuntimeScheduler.h>
++#include <react/runtime/BufferedRuntimeExecutor.h>
++#include <react/runtime/TimerManager.h>
+ 
+ namespace facebook::react {
+ 
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/TimerManager.cpp b/packages/react-native/ReactCommon/react/runtime/TimerManager.cpp
+similarity index 100%
+rename from packages/react-native/ReactCommon/react/bridgeless/TimerManager.cpp
+rename to packages/react-native/ReactCommon/react/runtime/TimerManager.cpp
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/TimerManager.h b/packages/react-native/ReactCommon/react/runtime/TimerManager.h
+similarity index 100%
+rename from packages/react-native/ReactCommon/react/bridgeless/TimerManager.h
+rename to packages/react-native/ReactCommon/react/runtime/TimerManager.h
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/hermes/CMakeLists.txt b/packages/react-native/ReactCommon/react/runtime/hermes/CMakeLists.txt
+similarity index 100%
+rename from packages/react-native/ReactCommon/react/bridgeless/hermes/CMakeLists.txt
+rename to packages/react-native/ReactCommon/react/runtime/hermes/CMakeLists.txt
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/hermes/HermesInstance.cpp b/packages/react-native/ReactCommon/react/runtime/hermes/HermesInstance.cpp
+similarity index 100%
+rename from packages/react-native/ReactCommon/react/bridgeless/hermes/HermesInstance.cpp
+rename to packages/react-native/ReactCommon/react/runtime/hermes/HermesInstance.cpp
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/hermes/HermesInstance.h b/packages/react-native/ReactCommon/react/runtime/hermes/HermesInstance.h
+similarity index 100%
+rename from packages/react-native/ReactCommon/react/bridgeless/hermes/HermesInstance.h
+rename to packages/react-native/ReactCommon/react/runtime/hermes/HermesInstance.h
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/iostests/RCTHostTests.mm b/packages/react-native/ReactCommon/react/runtime/iostests/RCTHostTests.mm
+similarity index 100%
+rename from packages/react-native/ReactCommon/react/bridgeless/iostests/RCTHostTests.mm
+rename to packages/react-native/ReactCommon/react/runtime/iostests/RCTHostTests.mm
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/nativeviewconfig/CMakeLists.txt b/packages/react-native/ReactCommon/react/runtime/nativeviewconfig/CMakeLists.txt
+similarity index 100%
+rename from packages/react-native/ReactCommon/react/bridgeless/nativeviewconfig/CMakeLists.txt
+rename to packages/react-native/ReactCommon/react/runtime/nativeviewconfig/CMakeLists.txt
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/nativeviewconfig/LegacyUIManagerConstantsProviderBinding.cpp b/packages/react-native/ReactCommon/react/runtime/nativeviewconfig/LegacyUIManagerConstantsProviderBinding.cpp
+similarity index 100%
+rename from packages/react-native/ReactCommon/react/bridgeless/nativeviewconfig/LegacyUIManagerConstantsProviderBinding.cpp
+rename to packages/react-native/ReactCommon/react/runtime/nativeviewconfig/LegacyUIManagerConstantsProviderBinding.cpp
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/nativeviewconfig/LegacyUIManagerConstantsProviderBinding.h b/packages/react-native/ReactCommon/react/runtime/nativeviewconfig/LegacyUIManagerConstantsProviderBinding.h
+similarity index 100%
+rename from packages/react-native/ReactCommon/react/bridgeless/nativeviewconfig/LegacyUIManagerConstantsProviderBinding.h
+rename to packages/react-native/ReactCommon/react/runtime/nativeviewconfig/LegacyUIManagerConstantsProviderBinding.h
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/platform/ios/React-BridgelessApple.podspec b/packages/react-native/ReactCommon/react/runtime/platform/ios/React-BridgelessApple.podspec
+similarity index 100%
+rename from packages/react-native/ReactCommon/react/bridgeless/platform/ios/React-BridgelessApple.podspec
+rename to packages/react-native/ReactCommon/react/runtime/platform/ios/React-BridgelessApple.podspec
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/ObjCTimerRegistry.h b/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/ObjCTimerRegistry.h
+similarity index 90%
+rename from packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/ObjCTimerRegistry.h
+rename to packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/ObjCTimerRegistry.h
+index b62d473e95b..091ac60b8db 100644
+--- a/packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/ObjCTimerRegistry.h
++++ b/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/ObjCTimerRegistry.h
+@@ -8,8 +8,8 @@
+ #import <UIKit/UIKit.h>
+ 
+ #import <React/RCTTiming.h>
+-#import <react/bridgeless/PlatformTimerRegistry.h>
+-#import <react/bridgeless/TimerManager.h>
++#import <react/runtime/PlatformTimerRegistry.h>
++#import <react/runtime/TimerManager.h>
+ 
+ @interface RCTJSTimerExecutor : NSObject <RCTTimingDelegate>
+ 
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/ObjCTimerRegistry.mm b/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/ObjCTimerRegistry.mm
+similarity index 100%
+rename from packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/ObjCTimerRegistry.mm
+rename to packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/ObjCTimerRegistry.mm
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTContextContainerHandling.h b/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTContextContainerHandling.h
+similarity index 100%
+rename from packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTContextContainerHandling.h
+rename to packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTContextContainerHandling.h
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTHermesInstance.h b/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTHermesInstance.h
+similarity index 91%
+rename from packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTHermesInstance.h
+rename to packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTHermesInstance.h
+index 5cd910a2a71..24047b56616 100644
+--- a/packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTHermesInstance.h
++++ b/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTHermesInstance.h
+@@ -9,8 +9,8 @@
+ 
+ #import <hermes/Public/CrashManager.h>
+ #import <jsi/jsi.h>
+-#import <react/bridgeless/JSEngineInstance.h>
+-#import <react/bridgeless/hermes/HermesInstance.h>
++#import <react/runtime/JSEngineInstance.h>
++#import <react/runtime/hermes/HermesInstance.h>
+ 
+ namespace facebook {
+ namespace react {
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTHermesInstance.mm b/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTHermesInstance.mm
+similarity index 100%
+rename from packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTHermesInstance.mm
+rename to packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTHermesInstance.mm
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTHost+Internal.h b/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTHost+Internal.h
+similarity index 100%
+rename from packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTHost+Internal.h
+rename to packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTHost+Internal.h
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTHost.h b/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTHost.h
+similarity index 97%
+rename from packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTHost.h
+rename to packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTHost.h
+index f083cd50042..2d57954823b 100644
+--- a/packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTHost.h
++++ b/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTHost.h
+@@ -8,8 +8,8 @@
+ #import <Foundation/Foundation.h>
+ 
+ #import <React/RCTDefines.h>
+-#import <react/bridgeless/JSEngineInstance.h>
+ #import <react/renderer/core/ReactPrimitives.h>
++#import <react/runtime/JSEngineInstance.h>
+ 
+ #import "RCTInstance.h"
+ 
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTHost.mm b/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTHost.mm
+similarity index 100%
+rename from packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTHost.mm
+rename to packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTHost.mm
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTInstance.h b/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTInstance.h
+similarity index 96%
+rename from packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTInstance.h
+rename to packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTInstance.h
+index bd7798627b0..be1bc2207c8 100644
+--- a/packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTInstance.h
++++ b/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTInstance.h
+@@ -8,9 +8,9 @@
+ #import <UIKit/UIKit.h>
+ 
+ #import <React/RCTDefines.h>
+-#import <react/bridgeless/JSEngineInstance.h>
+-#import <react/bridgeless/ReactInstance.h>
+ #import <react/renderer/mapbuffer/MapBuffer.h>
++#import <react/runtime/JSEngineInstance.h>
++#import <react/runtime/ReactInstance.h>
+ 
+ #import "RCTContextContainerHandling.h"
+ 
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTInstance.mm b/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTInstance.mm
+similarity index 99%
+rename from packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTInstance.mm
+rename to packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTInstance.mm
+index 0842d70c7ef..d1ad7178e65 100644
+--- a/packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTInstance.mm
++++ b/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTInstance.mm
+@@ -32,7 +32,7 @@
+ #import <ReactCommon/RuntimeExecutor.h>
+ #import <cxxreact/ReactMarker.h>
+ #import <jsireact/JSIExecutor.h>
+-#import <react/bridgeless/BridgelessJSCallInvoker.h>
++#import <react/runtime/BridgelessJSCallInvoker.h>
+ #import <react/utils/ContextContainer.h>
+ #import <react/utils/ManagedObjectWrapper.h>
+ 
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTJSThreadManager.h b/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTJSThreadManager.h
+similarity index 100%
+rename from packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTJSThreadManager.h
+rename to packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTJSThreadManager.h
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTJSThreadManager.mm b/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTJSThreadManager.mm
+similarity index 100%
+rename from packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTJSThreadManager.mm
+rename to packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTJSThreadManager.mm
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTJscInstance.h b/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTJscInstance.h
+similarity index 91%
+rename from packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTJscInstance.h
+rename to packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTJscInstance.h
+index 2a0246320e6..1a1e041c907 100644
+--- a/packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTJscInstance.h
++++ b/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTJscInstance.h
+@@ -6,7 +6,7 @@
+  */
+ 
+ #import <jsi/jsi.h>
+-#import <react/bridgeless/JSEngineInstance.h>
++#import <react/runtime/JSEngineInstance.h>
+ 
+ namespace facebook {
+ namespace react {
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTJscInstance.mm b/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTJscInstance.mm
+similarity index 100%
+rename from packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTJscInstance.mm
+rename to packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTJscInstance.mm
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTLegacyUIManagerConstantsProvider.h b/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTLegacyUIManagerConstantsProvider.h
+similarity index 100%
+rename from packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTLegacyUIManagerConstantsProvider.h
+rename to packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTLegacyUIManagerConstantsProvider.h
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTLegacyUIManagerConstantsProvider.mm b/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTLegacyUIManagerConstantsProvider.mm
+similarity index 94%
+rename from packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTLegacyUIManagerConstantsProvider.mm
+rename to packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTLegacyUIManagerConstantsProvider.mm
+index b156a127994..0d66d5c4416 100644
+--- a/packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTLegacyUIManagerConstantsProvider.mm
++++ b/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTLegacyUIManagerConstantsProvider.mm
+@@ -12,7 +12,7 @@
+ #import <React/RCTUIManager.h>
+ #import <React/RCTViewManager.h>
+ #import <ReactCommon/RCTTurboModule.h>
+-#import <react/bridgeless/nativeviewconfig/LegacyUIManagerConstantsProviderBinding.h>
++#import <react/runtime/nativeviewconfig/LegacyUIManagerConstantsProviderBinding.h>
+ 
+ namespace facebook::react {
+ namespace {
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTPerformanceLoggerUtils.h b/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTPerformanceLoggerUtils.h
+similarity index 100%
+rename from packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTPerformanceLoggerUtils.h
+rename to packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTPerformanceLoggerUtils.h
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTPerformanceLoggerUtils.mm b/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTPerformanceLoggerUtils.mm
+similarity index 100%
+rename from packages/react-native/ReactCommon/react/bridgeless/platform/ios/ReactCommon/RCTPerformanceLoggerUtils.mm
+rename to packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTPerformanceLoggerUtils.mm
+diff --git a/packages/react-native/ReactCommon/react/bridgeless/tests/cxx/ReactInstanceTest.cpp b/packages/react-native/ReactCommon/react/runtime/tests/cxx/ReactInstanceTest.cpp
+similarity index 99%
+rename from packages/react-native/ReactCommon/react/bridgeless/tests/cxx/ReactInstanceTest.cpp
+rename to packages/react-native/ReactCommon/react/runtime/tests/cxx/ReactInstanceTest.cpp
+index 2ef60862991..b80d573e872 100644
+--- a/packages/react-native/ReactCommon/react/bridgeless/tests/cxx/ReactInstanceTest.cpp
++++ b/packages/react-native/ReactCommon/react/runtime/tests/cxx/ReactInstanceTest.cpp
+@@ -14,8 +14,8 @@
+ #include <ReactCommon/RuntimeExecutor.h>
+ #include <hermes/hermes.h>
+ #include <jsi/jsi.h>
+-#include <react/bridgeless/ReactInstance.h>
+ #include <react/renderer/mapbuffer/MapBuffer.h>
++#include <react/runtime/ReactInstance.h>
+ 
+ using ::testing::_;
+ using ::testing::SaveArg;
+diff --git a/packages/react-native/scripts/cocoapods/bridgeless.rb b/packages/react-native/scripts/cocoapods/bridgeless.rb
+index efbc030da63..d082df594e3 100644
+--- a/packages/react-native/scripts/cocoapods/bridgeless.rb
++++ b/packages/react-native/scripts/cocoapods/bridgeless.rb
+@@ -10,9 +10,9 @@
+ def setup_bridgeless!(react_native_path: "../node_modules/react-native", use_hermes: true)
+     pod "React-jsitracing", :path => "#{react_native_path}/ReactCommon/hermes/executor/"
+     pod "React-runtimescheduler", :path => "#{react_native_path}/ReactCommon/react/renderer/runtimescheduler"
+-    pod 'React-BridgelessCore', :path => "#{react_native_path}/ReactCommon/react/bridgeless"
+-    pod 'React-BridgelessApple', :path => "#{react_native_path}/ReactCommon/react/bridgeless/platform/ios"
++    pod 'React-BridgelessCore', :path => "#{react_native_path}/ReactCommon/react/runtime"
++    pod 'React-BridgelessApple', :path => "#{react_native_path}/ReactCommon/react/runtime/platform/ios"
+     if use_hermes
+-        pod 'React-BridgelessHermes', :path => "#{react_native_path}/ReactCommon/react/bridgeless"
++        pod 'React-BridgelessHermes', :path => "#{react_native_path}/ReactCommon/react/runtime"
+     end
+ end

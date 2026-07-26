@@ -1,0 +1,46 @@
+From d40eeee42293328fb793d1b1a1764b49d842c5d8 Mon Sep 17 00:00:00 2001
+From: G Johansson <goran.johansson@shiftit.se>
+Date: Fri, 10 Oct 2025 18:23:13 +0200
+Subject: [PATCH] Remove deprecated ConfigSource from core (#154112)
+
+---
+ homeassistant/core.py | 19 -------------------
+ 1 file changed, 19 deletions(-)
+
+diff --git a/homeassistant/core.py b/homeassistant/core.py
+index 299a7d3230..ca2551bb5c 100644
+--- a/homeassistant/core.py
++++ b/homeassistant/core.py
+@@ -86,7 +86,6 @@ from .exceptions import (
+ )
+ from .helpers.deprecation import (
+     DeferredDeprecatedAlias,
+-    EnumWithDeprecatedMembers,
+     all_with_deprecated_constants,
+     check_if_deprecated_constant,
+     dir_with_deprecated_constants,
+@@ -135,24 +134,6 @@ type ServiceResponse = JsonObjectType | None
+ type EntityServiceResponse = dict[str, ServiceResponse]
+ 
+ 
+-class ConfigSource(
+-    enum.StrEnum,
+-    metaclass=EnumWithDeprecatedMembers,
+-    deprecated={
+-        "DEFAULT": ("core_config.ConfigSource.DEFAULT", "2025.11.0"),
+-        "DISCOVERED": ("core_config.ConfigSource.DISCOVERED", "2025.11.0"),
+-        "STORAGE": ("core_config.ConfigSource.STORAGE", "2025.11.0"),
+-        "YAML": ("core_config.ConfigSource.YAML", "2025.11.0"),
+-    },
+-):
+-    """Source of core configuration."""
+-
+-    DEFAULT = "default"
+-    DISCOVERED = "discovered"
+-    STORAGE = "storage"
+-    YAML = "yaml"
+-
+-
+ class EventStateEventData(TypedDict):
+     """Base class for EVENT_STATE_CHANGED and EVENT_STATE_REPORTED data."""
+ 

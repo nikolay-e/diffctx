@@ -1,0 +1,572 @@
+From 9458371a81d8df7858d044c3209c3cd332ed6a9c Mon Sep 17 00:00:00 2001
+From: Jonas <jonas.badalic@sentry.io>
+Date: Mon, 16 Jun 2025 14:59:14 -0400
+Subject: [PATCH] deps: bump node to v22.16.0 (#93080)
+
+---
+ .envrc                             |  3 +-
+ .github/CODEOWNERS                 |  2 +-
+ .github/workflows/acceptance.yml   |  4 +--
+ .github/workflows/backend.yml      |  2 +-
+ .github/workflows/frontend.yml     | 16 +++++------
+ .github/workflows/jest-balance.yml |  4 +--
+ .github/workflows/openapi-diff.yml |  2 +-
+ .github/workflows/openapi.yml      |  2 +-
+ .github/workflows/pre-commit.yml   |  4 +--
+ .github/workflows/self-hosted.yml  |  4 +--
+ .github/workflows/sync-labels.yml  |  2 +-
+ .node-version                      |  1 +
+ .volta.json                        |  5 ----
+ api-docs/.node-version             |  1 +
+ api-docs/.volta.json               |  5 ----
+ config/tsconfig.base.json          | 12 +-------
+ devenv/config.ini                  | 17 +++++------
+ devenv/sync.py                     |  4 +++
+ knip.config.ts                     |  2 ++
+ package.json                       | 13 ++++-----
+ rspack.config.ts                   | 46 +++++++++++++++++++-----------
+ 21 files changed, 75 insertions(+), 76 deletions(-)
+ create mode 100644 .node-version
+ delete mode 100644 .volta.json
+ create mode 100644 api-docs/.node-version
+ delete mode 100644 api-docs/.volta.json
+
+diff --git a/.envrc b/.envrc
+index 3bf15d599b9..a714501aad7 100644
+--- a/.envrc
++++ b/.envrc
+@@ -189,7 +189,8 @@ if [ "${SENTRY_DEVENV_SKIP_FRONTEND}" != "1" ]; then
+         die "You don't seem to have node installed. Please run devenv sync."
+     fi
+ 
+-    if ! node -pe "process.exit(Number(!(process.version == 'v' + require('./.volta.json').volta.node )))"; then
++    read -r node_version < .node-version
++    if [ "v${node_version}" != "$(node --version)" ]; then
+         die "Unexpected $(command -v node) version. Please run devenv sync."
+     fi
+ 
+diff --git a/.github/CODEOWNERS b/.github/CODEOWNERS
+index da444b108d2..c266ee49753 100644
+--- a/.github/CODEOWNERS
++++ b/.github/CODEOWNERS
+@@ -132,7 +132,7 @@ eslint.config.mjs                                        @getsentry/owners-js-bu
+ jest.config.ts                                           @getsentry/owners-js-build
+ tsconfig.*                                               @getsentry/owners-js-build
+ webpack.config.*                                         @getsentry/owners-js-build
+-.volta.json                                              @getsentry/owners-js-deps
++.node-version                                            @getsentry/owners-js-deps
+ package.json                                             @getsentry/owners-js-deps
+ pnpm-lock.yaml                                           @getsentry/owners-js-deps
+ 
+diff --git a/.github/workflows/acceptance.yml b/.github/workflows/acceptance.yml
+index 334dea4430e..6a213cc4e58 100644
+--- a/.github/workflows/acceptance.yml
++++ b/.github/workflows/acceptance.yml
+@@ -72,7 +72,7 @@ jobs:
+       - uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4
+         id: setup-node
+         with:
+-          node-version-file: '.volta.json'
++          node-version-file: '.node-version'
+ 
+       - uses: pnpm/action-setup@36de12bed180fa130ed56a35e7344f2fa7a820ab # v4
+ 
+@@ -93,7 +93,7 @@ jobs:
+         id: nodemodulescache
+         with:
+           path: node_modules
+-          key: ${{ runner.os }}-node-modules-${{ hashFiles('pnpm-lock.yaml', 'api-docs/pnpm-lock.yaml', '.volta.json') }}
++          key: ${{ runner.os }}-node-modules-${{ hashFiles('pnpm-lock.yaml', 'api-docs/pnpm-lock.yaml', '.node-version') }}
+ 
+       - name: Install Javascript Dependencies
+         if: steps.nodemodulescache.outputs.cache-hit != 'true'
+diff --git a/.github/workflows/backend.yml b/.github/workflows/backend.yml
+index 2203fba6356..a74e9cbf218 100644
+--- a/.github/workflows/backend.yml
++++ b/.github/workflows/backend.yml
+@@ -50,7 +50,7 @@ jobs:
+       - uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4
+         id: setup-node
+         with:
+-          node-version-file: '.volta.json'
++          node-version-file: '.node-version'
+ 
+       - uses: pnpm/action-setup@36de12bed180fa130ed56a35e7344f2fa7a820ab # v4
+ 
+diff --git a/.github/workflows/frontend.yml b/.github/workflows/frontend.yml
+index ffbca710df4..937ddcf48d4 100644
+--- a/.github/workflows/frontend.yml
++++ b/.github/workflows/frontend.yml
+@@ -50,7 +50,7 @@ jobs:
+       - uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4
+         id: setup-node
+         with:
+-          node-version-file: '.volta.json'
++          node-version-file: '.node-version'
+ 
+       - uses: pnpm/action-setup@36de12bed180fa130ed56a35e7344f2fa7a820ab # v4
+ 
+@@ -59,7 +59,7 @@ jobs:
+         id: nodemodulescache
+         with:
+           path: node_modules
+-          key: ${{ runner.os }}-node-modules-${{ hashFiles('pnpm-lock.yaml', 'api-docs/pnpm-lock.yaml', '.volta.json') }}
++          key: ${{ runner.os }}-node-modules-${{ hashFiles('pnpm-lock.yaml', 'api-docs/pnpm-lock.yaml', '.node-version') }}
+ 
+       - name: Install Javascript Dependencies
+         if: steps.nodemodulescache.outputs.cache-hit != 'true'
+@@ -86,7 +86,7 @@ jobs:
+       - uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4
+         id: setup-node
+         with:
+-          node-version-file: '.volta.json'
++          node-version-file: '.node-version'
+ 
+       - uses: pnpm/action-setup@36de12bed180fa130ed56a35e7344f2fa7a820ab # v4
+ 
+@@ -95,7 +95,7 @@ jobs:
+         id: nodemodulescache
+         with:
+           path: node_modules
+-          key: ${{ runner.os }}-node-modules-${{ hashFiles('pnpm-lock.yaml', 'api-docs/pnpm-lock.yaml', '.volta.json') }}
++          key: ${{ runner.os }}-node-modules-${{ hashFiles('pnpm-lock.yaml', 'api-docs/pnpm-lock.yaml', '.node-version') }}
+ 
+       - name: Install Javascript Dependencies
+         if: steps.nodemodulescache.outputs.cache-hit != 'true'
+@@ -122,7 +122,7 @@ jobs:
+       - uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4
+         id: setup-node
+         with:
+-          node-version-file: '.volta.json'
++          node-version-file: '.node-version'
+ 
+       - uses: pnpm/action-setup@36de12bed180fa130ed56a35e7344f2fa7a820ab # v4
+ 
+@@ -131,7 +131,7 @@ jobs:
+         id: nodemodulescache
+         with:
+           path: node_modules
+-          key: ${{ runner.os }}-node-modules-${{ hashFiles('pnpm-lock.yaml', 'api-docs/pnpm-lock.yaml', '.volta.json') }}
++          key: ${{ runner.os }}-node-modules-${{ hashFiles('pnpm-lock.yaml', 'api-docs/pnpm-lock.yaml', '.node-version') }}
+ 
+       - name: Install Javascript Dependencies
+         if: steps.nodemodulescache.outputs.cache-hit != 'true'
+@@ -175,7 +175,7 @@ jobs:
+       - uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4
+         id: setup-node
+         with:
+-          node-version-file: '.volta.json'
++          node-version-file: '.node-version'
+ 
+       - uses: pnpm/action-setup@36de12bed180fa130ed56a35e7344f2fa7a820ab # v4
+ 
+@@ -184,7 +184,7 @@ jobs:
+         id: nodemodulescache
+         with:
+           path: node_modules
+-          key: ${{ runner.os }}-node-modules-${{ hashFiles('pnpm-lock.yaml', 'api-docs/pnpm-lock.yaml', '.volta.json') }}
++          key: ${{ runner.os }}-node-modules-${{ hashFiles('pnpm-lock.yaml', 'api-docs/pnpm-lock.yaml', '.node-version') }}
+ 
+       - name: Install Javascript Dependencies
+         if: steps.nodemodulescache.outputs.cache-hit != 'true'
+diff --git a/.github/workflows/jest-balance.yml b/.github/workflows/jest-balance.yml
+index 38da114822d..9e35bf0d468 100644
+--- a/.github/workflows/jest-balance.yml
++++ b/.github/workflows/jest-balance.yml
+@@ -16,7 +16,7 @@ jobs:
+       - uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4
+         id: setup-node
+         with:
+-          node-version-file: '.volta.json'
++          node-version-file: '.node-version'
+ 
+       - uses: pnpm/action-setup@36de12bed180fa130ed56a35e7344f2fa7a820ab # v4
+ 
+@@ -25,7 +25,7 @@ jobs:
+         id: nodemodulescache
+         with:
+           path: node_modules
+-          key: ${{ runner.os }}-node-modules-${{ hashFiles('pnpm-lock.yaml', 'api-docs/pnpm-lock.yaml', '.volta.json') }}
++          key: ${{ runner.os }}-node-modules-${{ hashFiles('pnpm-lock.yaml', 'api-docs/pnpm-lock.yaml', '.node-version') }}
+ 
+       - name: Install Javascript Dependencies
+         if: steps.nodemodulescache.outputs.cache-hit != 'true'
+diff --git a/.github/workflows/openapi-diff.yml b/.github/workflows/openapi-diff.yml
+index d5a33a1e41c..4eb4c5da25e 100644
+--- a/.github/workflows/openapi-diff.yml
++++ b/.github/workflows/openapi-diff.yml
+@@ -44,7 +44,7 @@ jobs:
+       - uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4
+         id: setup-node
+         with:
+-          node-version-file: '.volta.json'
++          node-version-file: '.node-version'
+ 
+       - uses: pnpm/action-setup@36de12bed180fa130ed56a35e7344f2fa7a820ab # v4
+ 
+diff --git a/.github/workflows/openapi.yml b/.github/workflows/openapi.yml
+index 98405d156f3..4e673f899e1 100644
+--- a/.github/workflows/openapi.yml
++++ b/.github/workflows/openapi.yml
+@@ -48,7 +48,7 @@ jobs:
+         if: steps.changes.outputs.api_docs == 'true'
+         id: setup-node
+         with:
+-          node-version-file: '.volta.json'
++          node-version-file: '.node-version'
+ 
+       - uses: pnpm/action-setup@36de12bed180fa130ed56a35e7344f2fa7a820ab # v4
+ 
+diff --git a/.github/workflows/pre-commit.yml b/.github/workflows/pre-commit.yml
+index 9b9eee62a40..3ce055a4586 100644
+--- a/.github/workflows/pre-commit.yml
++++ b/.github/workflows/pre-commit.yml
+@@ -56,7 +56,7 @@ jobs:
+       - uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4
+         id: setup-node
+         with:
+-          node-version-file: '.volta.json'
++          node-version-file: '.node-version'
+ 
+       - uses: pnpm/action-setup@36de12bed180fa130ed56a35e7344f2fa7a820ab # v4
+ 
+@@ -65,7 +65,7 @@ jobs:
+         id: nodemodulescache
+         with:
+           path: node_modules
+-          key: ${{ runner.os }}-node-modules-${{ hashFiles('pnpm-lock.yaml', 'api-docs/pnpm-lock.yaml', '.volta.json') }}
++          key: ${{ runner.os }}-node-modules-${{ hashFiles('pnpm-lock.yaml', 'api-docs/pnpm-lock.yaml', '.node-version') }}
+ 
+       - name: Install Javascript Dependencies
+         if: steps.nodemodulescache.outputs.cache-hit != 'true'
+diff --git a/.github/workflows/self-hosted.yml b/.github/workflows/self-hosted.yml
+index 8203cf248c2..37b38344ab6 100644
+--- a/.github/workflows/self-hosted.yml
++++ b/.github/workflows/self-hosted.yml
+@@ -36,7 +36,7 @@ jobs:
+       - uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4
+         id: setup-node
+         with:
+-          node-version-file: '.volta.json'
++          node-version-file: '.node-version'
+ 
+       - uses: pnpm/action-setup@36de12bed180fa130ed56a35e7344f2fa7a820ab # v4
+ 
+@@ -63,7 +63,7 @@ jobs:
+         id: nodemodulescache
+         with:
+           path: node_modules
+-          key: ${{ runner.os }}-self-hosted-node-modules-${{ hashFiles('pnpm-lock.yaml', '.volta.json') }}
++          key: ${{ runner.os }}-self-hosted-node-modules-${{ hashFiles('pnpm-lock.yaml', '.node-version') }}
+ 
+       - name: Install Javascript Dependencies
+         if: steps.nodemodulescache.outputs.cache-hit != 'true'
+diff --git a/.github/workflows/sync-labels.yml b/.github/workflows/sync-labels.yml
+index fded89b5370..77c947a1faf 100644
+--- a/.github/workflows/sync-labels.yml
++++ b/.github/workflows/sync-labels.yml
+@@ -26,7 +26,7 @@ jobs:
+       - uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4
+         id: setup-node
+         with:
+-          node-version-file: '.volta.json'
++          node-version-file: '.node-version'
+ 
+       - uses: pnpm/action-setup@36de12bed180fa130ed56a35e7344f2fa7a820ab # v4
+ 
+diff --git a/.node-version b/.node-version
+new file mode 100644
+index 00000000000..5b540673a82
+--- /dev/null
++++ b/.node-version
+@@ -0,0 +1 @@
++22.16.0
+diff --git a/.volta.json b/.volta.json
+deleted file mode 100644
+index 9da4474a564..00000000000
+--- a/.volta.json
++++ /dev/null
+@@ -1,5 +0,0 @@
+-{
+-  "volta": {
+-    "node": "22.11.0"
+-  }
+-}
+diff --git a/api-docs/.node-version b/api-docs/.node-version
+new file mode 100644
+index 00000000000..5b540673a82
+--- /dev/null
++++ b/api-docs/.node-version
+@@ -0,0 +1 @@
++22.16.0
+diff --git a/api-docs/.volta.json b/api-docs/.volta.json
+deleted file mode 100644
+index 9da4474a564..00000000000
+--- a/api-docs/.volta.json
++++ /dev/null
+@@ -1,5 +0,0 @@
+-{
+-  "volta": {
+-    "node": "22.11.0"
+-  }
+-}
+diff --git a/config/tsconfig.base.json b/config/tsconfig.base.json
+index f0dd4427594..2c0595cf0fe 100644
+--- a/config/tsconfig.base.json
++++ b/config/tsconfig.base.json
+@@ -122,15 +122,5 @@
+     ]
+   },
+   "include": ["../static/app", "../static/gsApp", "../tests/js"],
+-  "exclude": ["../node_modules", "../**/*.benchmark.ts"],
+-  "ts-node": {
+-    "transpileOnly": true,
+-    "compilerOptions": {
+-      // TODO: We should be able to use "node16" on next major version of jest
+-      // https://github.com/jestjs/jest/pull/14739
+-      "module": "commonjs",
+-      // TODO: node10 will be deprecated in typescript 6.0
+-      "moduleResolution": "node10"
+-    }
+-  }
++  "exclude": ["../node_modules", "../**/*.benchmark.ts"]
+ }
+diff --git a/devenv/config.ini b/devenv/config.ini
+index 7f521da2f43..021c7def39d 100644
+--- a/devenv/config.ini
++++ b/devenv/config.ini
+@@ -31,15 +31,16 @@ linux_arm64 = https://github.com/indygreg/python-build-standalone/releases/downl
+ linux_arm64_sha256 = d37aef7bdf5c27f7d006918f7cedb31f4ba07c88f61baac4ffbe0bee6d4b5248
+ 
+ [node]
+-# upstream (https://nodejs.org/dist/) is not reliable enough so we've mirrored it to GCS
+-darwin_x86_64 = https://storage.googleapis.com/sentry-dev-infra-assets/node/node-v22.11.0-darwin-x64.tar.xz
+-darwin_x86_64_sha256 = ab28d1784625d151e3f608a9412a009118f376118ed842ae643f8c2efdfb0af6
+-darwin_arm64 = https://storage.googleapis.com/sentry-dev-infra-assets/node/node-v22.11.0-darwin-arm64.tar.xz
+-darwin_arm64_sha256 = c379a90c6aa605b74042a233ddcda4247b347ba5732007d280e44422cc8f9ecb
+-linux_x86_64 = https://storage.googleapis.com/sentry-dev-infra-assets/node/node-v22.11.0-linux-x64.tar.xz
+-linux_x86_64_sha256 = 83bf07dd343002a26211cf1fcd46a9d9534219aad42ee02847816940bf610a72
++# upstream (https://nodejs.org/dist/) is not reliable enough
++# ask someone in team-devinfra to upload for you
++darwin_x86_64 = https://storage.googleapis.com/sentry-dev-infra-assets/node/node-v22.16.0-darwin-x64.tar.xz
++darwin_x86_64_sha256 = 5c34638f2c0e3f3aaa7b3a94b58304765a169730da1896ebba8515ea4d987a9c
++darwin_arm64 = https://storage.googleapis.com/sentry-dev-infra-assets/node/node-v22.16.0-darwin-arm64.tar.xz
++darwin_arm64_sha256 = aaf7fc3c936f1b359bc312b63638e41f258689ac2303966ad932cda18c54ea00
++linux_x86_64 = https://storage.googleapis.com/sentry-dev-infra-assets/node/node-v22.16.0-linux-x64.tar.xz
++linux_x86_64_sha256 = f4cb75bb036f0d0eddf6b79d9596df1aaab9ddccd6a20bf489be5abe9467e84e
+ # used for autoupdate
+-version = v22.11.0
++version = v22.16.0
+ 
+ # kept here only for compatibility with older `devenv`
+ [python]
+diff --git a/devenv/sync.py b/devenv/sync.py
+index 8c2a7cf9bf1..b9ceb304574 100644
+--- a/devenv/sync.py
++++ b/devenv/sync.py
+@@ -220,6 +220,10 @@ Then, use it to run sync this one time.
+                 ),
+                 {
+                     "NODE_ENV": "development",
++                    # this ensures interactive prompts are answered by
++                    # the defaults (usually yes), useful for recreating
++                    # node_modules if configuration or node version changes
++                    "CI": "true",
+                 },
+             ),
+         ),
+diff --git a/knip.config.ts b/knip.config.ts
+index 0bc6f5a518f..5bbfad0edcf 100644
+--- a/knip.config.ts
++++ b/knip.config.ts
+@@ -4,6 +4,8 @@ import type {KnipConfig} from 'knip';
+ const productionEntryPoints = [
+   // the main entry points - app, gsAdmin & gsApp
+   'static/app/index.tsx',
++  // chartcuterie build script
++  'config/build-chartcuterie.ts',
+   // dynamic imports _not_ recognized by knip
+   'static/app/bootstrap/{index,initializeMain}.tsx',
+   'static/gsApp/initializeBundleMetrics.tsx',
+diff --git a/package.json b/package.json
+index 4537c9be5ec..45d784d7e8d 100644
+--- a/package.json
++++ b/package.json
+@@ -264,12 +264,12 @@
+     "build-deprecated-docs": "pnpm run install-api-docs && node --experimental-transform-types api-docs/index.ts api-docs/openapi.json tests/apidocs/openapi-deprecated.json",
+     "diff-docs": "pnpm run install-api-docs && node --experimental-transform-types api-docs/openapi-diff.ts",
+     "deref-api-docs": "node --experimental-transform-types api-docs/index.ts tests/apidocs/openapi-spectacular.json tests/apidocs/openapi-derefed.json",
+-    "build-chartcuterie-config": "node --experimental-strip-types config/build-chartcuterie.ts",
+-    "build-acceptance": "CODECOV_ENABLE_BA=false IS_ACCEPTANCE_TEST=1 NODE_ENV=production rspack",
+-    "build-production": "NODE_ENV=production rspack --mode production",
+-    "build": "NODE_OPTIONS=--max-old-space-size=4096 rspack",
++    "build-chartcuterie-config": "node --experimental-transform-types config/build-chartcuterie.ts",
++    "build-acceptance": "CODECOV_ENABLE_BA=false IS_ACCEPTANCE_TEST=1 NODE_ENV=production pnpm run build",
++    "build-production": "NODE_OPTIONS='--experimental-transform-types' NODE_ENV=production rspack --mode production --config ./rspack.config.ts",
++    "build": "NODE_OPTIONS='--max-old-space-size=4096 --experimental-transform-types' rspack --config ./rspack.config.ts",
+     "build-js-loader": "node --experimental-transform-types scripts/build-js-loader.ts",
+-    "build-js-po": "node --experimental-strip-types build-utils/ts-extract-gettext.ts",
++    "build-js-po": "node --experimental-transform-types build-utils/ts-extract-gettext.ts",
+     "validate-api-examples": "pnpm run --dir api-docs openapi-examples-validator ../tests/apidocs/openapi-derefed.json --no-additional-properties",
+     "mkcert-localhost": "mkcert -key-file config/localhost-key.pem -cert-file config/localhost.pem localhost 127.0.0.1 dev.getsentry.net *.dev.getsentry.net && mkcert -install",
+     "https-proxy": "caddy run --config - <<< '{\"apps\":{\"http\":{\"servers\":{\"srv0\":{\"listen\":[\":8003\"],\"routes\":[{\"handle\":[{\"handler\":\"reverse_proxy\",\"upstreams\":[{\"dial\":\"localhost:8000\"}]}]}],\"tls_connection_policies\":[{\"certificate_selection\":{\"any_tag\":[\"cert0\"]}}]}}},\"tls\":{\"certificates\":{\"load_files\":[{\"certificate\":\"./config/localhost.pem\",\"key\":\"./config/localhost-key.pem\",\"tags\":[\"cert0\"]}]}}}}'",
+@@ -296,9 +296,6 @@
+     ]
+   },
+   "packageManager": "pnpm@10.10.0",
+-  "volta": {
+-    "extends": ".volta.json"
+-  },
+   "prettier": {
+     "bracketSpacing": false,
+     "bracketSameLine": false,
+diff --git a/rspack.config.ts b/rspack.config.ts
+index 7597f0052a0..a2b3a498784 100644
+--- a/rspack.config.ts
++++ b/rspack.config.ts
+@@ -14,11 +14,13 @@ import {sentryWebpackPlugin} from '@sentry/webpack-plugin/webpack5';
+ import CompressionPlugin from 'compression-webpack-plugin';
+ import HtmlWebpackPlugin from 'html-webpack-plugin';
+ import fs from 'node:fs';
++import {createRequire} from 'node:module';
+ import path from 'node:path';
+ import {TsCheckerRspackPlugin} from 'ts-checker-rspack-plugin';
+ 
+-import LastBuiltPlugin from './build-utils/last-built-plugin';
+-import packageJson from './package.json';
++// @ts-expect-error: ts(5097) importing `.ts` extension is required for resolution, but not enabled until `allowImportingTsExtensions` is added to tsconfig
++import LastBuiltPlugin from './build-utils/last-built-plugin.ts';
++import packageJson from './package.json' with {type: 'json'};
+ 
+ const {env} = process;
+ 
+@@ -81,6 +83,8 @@ const DEPLOY_PREVIEW_CONFIG = IS_DEPLOY_PREVIEW && {
+   githubRepo: env.NOW_GITHUB_COMMIT_REPO,
+ };
+ 
++const require = createRequire(import.meta.url);
++
+ // When deploy previews are enabled always enable experimental SPA mode --
+ // deploy previews are served standalone. Otherwise fallback to the environment
+ // configuration.
+@@ -97,9 +101,9 @@ const ENABLE_CODECOV_BA = env.CODECOV_ENABLE_BA === 'true';
+ 
+ // this is the path to the django "sentry" app, we output the webpack build here to `dist`
+ // so that `django collectstatic` and so that we can serve the post-webpack bundles
+-const sentryDjangoAppPath = path.join(__dirname, 'src/sentry/static/sentry');
++const sentryDjangoAppPath = path.join(import.meta.dirname, 'src/sentry/static/sentry');
+ const distPath = path.join(sentryDjangoAppPath, 'dist');
+-const staticPrefix = path.join(__dirname, 'static');
++const staticPrefix = path.join(import.meta.dirname, 'static');
+ 
+ // Locale compilation and optimizations.
+ //
+@@ -115,7 +119,7 @@ const staticPrefix = path.join(__dirname, 'static');
+ // dependency list, so that our compiled bundle does not expect that *all*
+ // locale chunks must be loaded
+ const localeCatalogPath = path.join(
+-  __dirname,
++  import.meta.dirname,
+   'src',
+   'sentry',
+   'locale',
+@@ -295,7 +299,9 @@ const appConfig: Configuration = {
+       },
+       {
+         test: /\.pegjs$/,
+-        use: [{loader: path.resolve(__dirname, './build-utils/peggy-loader.ts')}],
++        use: [
++          {loader: path.resolve(import.meta.dirname, './build-utils/peggy-loader.ts')},
++        ],
+       },
+       {
+         test: /\.css/,
+@@ -341,7 +347,7 @@ const appConfig: Configuration = {
+      */
+     new rspack.ContextReplacementPlugin(
+       /sentry-locale$/,
+-      path.join(__dirname, 'src', 'sentry', 'locale', path.sep),
++      path.join(import.meta.dirname, 'src', 'sentry', 'locale', path.sep),
+       true,
+       new RegExp(`(${supportedLocales.join('|')})/.*\\.po$`)
+     ),
+@@ -385,7 +391,10 @@ const appConfig: Configuration = {
+       ? [
+           new TsCheckerRspackPlugin({
+             typescript: {
+-              configFile: path.resolve(__dirname, './config/tsconfig.build.json'),
++              configFile: path.resolve(
++                import.meta.dirname,
++                './config/tsconfig.build.json'
++              ),
+             },
+             devServer: false,
+           }),
+@@ -422,7 +431,10 @@ const appConfig: Configuration = {
+ 
+   resolveLoader: {
+     alias: {
+-      'type-loader': path.resolve(__dirname, 'static/app/stories/type-loader.ts'),
++      'type-loader': path.resolve(
++        import.meta.dirname,
++        'static/app/stories/type-loader.ts'
++      ),
+     },
+   },
+ 
+@@ -435,16 +447,16 @@ const appConfig: Configuration = {
+ 
+       getsentry: path.join(staticPrefix, 'gsApp'),
+       'getsentry-images': path.join(staticPrefix, 'images'),
+-      'getsentry-test': path.join(__dirname, 'tests', 'js', 'getsentry-test'),
++      'getsentry-test': path.join(import.meta.dirname, 'tests', 'js', 'getsentry-test'),
+       admin: path.join(staticPrefix, 'gsAdmin'),
+ 
+       // Aliasing this for getsentry's build, otherwise `less/select2` will not be able
+       // to be resolved
+       less: path.join(staticPrefix, 'less'),
+-      'sentry-test': path.join(__dirname, 'tests', 'js', 'sentry-test'),
+-      'sentry-locale': path.join(__dirname, 'src', 'sentry', 'locale'),
++      'sentry-test': path.join(import.meta.dirname, 'tests', 'js', 'sentry-test'),
++      'sentry-locale': path.join(import.meta.dirname, 'src', 'sentry', 'locale'),
+       'ios-device-list': path.join(
+-        __dirname,
++        import.meta.dirname,
+         'node_modules',
+         'ios-device-list',
+         'dist',
+@@ -503,14 +515,14 @@ const appConfig: Configuration = {
+ 
+ if (IS_TEST) {
+   (appConfig.resolve!.alias! as Record<string, string>)['sentry-fixture'] = path.join(
+-    __dirname,
++    import.meta.dirname,
+     'fixtures',
+     'js-stubs'
+   );
+ }
+ 
+ if (IS_ACCEPTANCE_TEST) {
+-  appConfig.plugins?.push(new LastBuiltPlugin({basePath: __dirname}));
++  appConfig.plugins?.push(new LastBuiltPlugin({basePath: import.meta.dirname}));
+ }
+ 
+ // Dev only! Hot module reloading
+@@ -654,7 +666,7 @@ if (IS_UI_DEV_ONLY) {
+   };
+ 
+   // Try and load certificates from mkcert if available. Use $ pnpm mkcert-localhost
+-  const certPath = path.join(__dirname, 'config');
++  const certPath = path.join(import.meta.dirname, 'config');
+   const httpsOptions = fs.existsSync(path.join(certPath, 'localhost.pem'))
+     ? {
+         key: fs.readFileSync(path.join(certPath, 'localhost-key.pem')),
+@@ -823,7 +835,7 @@ if (env.WEBPACK_CACHE_PATH) {
+     // https://rspack.dev/config/experiments#cachestorage
+     storage: {
+       type: 'filesystem',
+-      directory: path.join(__dirname, env.WEBPACK_CACHE_PATH),
++      directory: path.join(import.meta.dirname, env.WEBPACK_CACHE_PATH),
+     },
+   };
+ }

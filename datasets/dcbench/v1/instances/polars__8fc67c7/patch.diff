@@ -1,0 +1,2475 @@
+From 8fc67c7619a5c0860313892f0c426a16cdc22ffd Mon Sep 17 00:00:00 2001
+From: Orson Peters <orsonpeters@gmail.com>
+Date: Fri, 16 Jan 2026 16:53:15 +0100
+Subject: [PATCH] refactor(rust): Move Buffer and SharedStorage to
+ polars-buffer crate (#26113)
+
+---
+ .github/workflows/test-pyodide.yml            |   2 +-
+ Cargo.lock                                    |  23 +++
+ Cargo.toml                                    |   1 +
+ crates/polars-arrow/Cargo.toml                |   9 +-
+ .../polars-arrow/src/array/binary/builder.rs  |   2 +-
+ crates/polars-arrow/src/array/binary/mod.rs   |   4 +-
+ .../polars-arrow/src/array/binview/builder.rs |   2 +-
+ crates/polars-arrow/src/array/binview/ffi.rs  |   2 +-
+ crates/polars-arrow/src/array/binview/mod.rs  |  10 +-
+ .../polars-arrow/src/array/binview/mutable.rs |   2 +-
+ crates/polars-arrow/src/array/boolean/mod.rs  |   2 +-
+ .../src/array/fixed_size_binary/builder.rs    |   2 +-
+ .../src/array/fixed_size_binary/mod.rs        |   3 +-
+ crates/polars-arrow/src/array/iterator.rs     |  14 ++
+ crates/polars-arrow/src/array/mod.rs          |  15 +-
+ .../src/array/primitive/builder.rs            |   2 +-
+ .../src/array/primitive/iterator.rs           |   3 +-
+ .../polars-arrow/src/array/primitive/mod.rs   |   6 +-
+ crates/polars-arrow/src/array/union/mod.rs    |   2 +-
+ crates/polars-arrow/src/array/utf8/mod.rs     |   4 +-
+ crates/polars-arrow/src/bitmap/builder.rs     |   2 +-
+ crates/polars-arrow/src/bitmap/immutable.rs   |   2 +-
+ crates/polars-arrow/src/bitmap/mutable.rs     |   2 +-
+ crates/polars-arrow/src/buffer/iterator.rs    |  68 ---------
+ crates/polars-arrow/src/buffer/mod.rs         |   7 -
+ .../polars-arrow/src/compute/concatenate.rs   |   2 +-
+ crates/polars-arrow/src/ffi/array.rs          |  41 ++---
+ crates/polars-arrow/src/ffi/mmap.rs           |   3 +-
+ .../src/io/ipc/read/array/binary.rs           |   2 +-
+ .../src/io/ipc/read/array/binview.rs          |   2 +-
+ .../src/io/ipc/read/array/list.rs             |   2 +-
+ .../polars-arrow/src/io/ipc/read/array/map.rs |   2 +-
+ .../src/io/ipc/read/array/utf8.rs             |   2 +-
+ .../src/io/ipc/read/read_basic.rs             |   2 +-
+ .../src/legacy/array/default_arrays.rs        |   3 +-
+ crates/polars-arrow/src/legacy/array/mod.rs   |   1 +
+ .../polars-arrow/src/legacy/kernels/string.rs |   3 +-
+ crates/polars-arrow/src/lib.rs                |   2 -
+ crates/polars-arrow/src/offset.rs             |   2 +-
+ crates/polars-arrow/src/trusted_len.rs        |   2 +
+ crates/polars-buffer/Cargo.toml               |  26 ++++
+ crates/polars-buffer/LICENSE                  |   1 +
+ crates/polars-buffer/README.md                |   7 +
+ crates/polars-buffer/build.rs                 |   7 +
+ .../src/buffer.rs}                            | 144 +++++++++---------
+ crates/polars-buffer/src/lib.rs               |   5 +
+ .../src/storage.rs                            |  44 +++---
+ crates/polars-compute/Cargo.toml              |   1 +
+ crates/polars-compute/src/cast/binary_to.rs   |   2 +-
+ crates/polars-compute/src/cast/utf8_to.rs     |   2 +-
+ .../src/gather/generic_binary.rs              |   2 +-
+ .../polars-compute/src/if_then_else/view.rs   |   2 +-
+ crates/polars-compute/src/nan.rs              |   2 +-
+ .../polars-compute/src/rolling/nulls/mod.rs   |   2 +-
+ .../src/rolling/nulls/quantile.rs             |   2 +-
+ crates/polars-compute/src/size.rs             |   2 +-
+ crates/polars-core/Cargo.toml                 |   2 +
+ .../src/chunked_array/object/extension/mod.rs |   2 +-
+ .../src/chunked_array/object/mod.rs           |   2 +-
+ .../src/chunked_array/ops/bit_repr.rs         |   2 +-
+ .../src/chunked_array/ops/sort/mod.rs         |   4 +-
+ crates/polars-core/src/series/ops/null.rs     |   2 +-
+ crates/polars-expr/Cargo.toml                 |   1 +
+ crates/polars-expr/src/groups/binview.rs      |   2 +-
+ crates/polars-expr/src/hot_groups/binview.rs  |   2 +-
+ .../polars-expr/src/hot_groups/row_encoded.rs |   2 +-
+ crates/polars-expr/src/idx_table/binview.rs   |   2 +-
+ crates/polars-io/Cargo.toml                   |   9 +-
+ crates/polars-io/src/path_utils/mod.rs        |   2 +-
+ crates/polars-io/src/scan_lines.rs            |   2 +-
+ crates/polars-lazy/Cargo.toml                 |   2 +
+ crates/polars-lazy/src/scan/csv.rs            |   2 +-
+ .../polars-lazy/src/scan/file_list_reader.rs  |   2 +-
+ crates/polars-lazy/src/scan/ipc.rs            |   2 +-
+ crates/polars-lazy/src/scan/ndjson.rs         |   2 +-
+ crates/polars-lazy/src/scan/parquet.rs        |   2 +-
+ crates/polars-ops/Cargo.toml                  |  10 +-
+ .../src/chunked_array/gather/chunked.rs       |   2 +-
+ .../polars-ops/src/chunked_array/scatter.rs   |   4 +-
+ crates/polars-ops/src/chunked_array/top_k.rs  |   2 +-
+ crates/polars-parquet/Cargo.toml              |   3 +-
+ .../src/arrow/read/deserialize/binary/mod.rs  |   2 +-
+ .../read/deserialize/fixed_size_binary.rs     |   3 +-
+ .../src/arrow/write/dictionary.rs             |   2 +-
+ crates/polars-plan/Cargo.toml                 |   2 +
+ crates/polars-plan/dsl-schema-hashes.json     |   3 +-
+ crates/polars-plan/src/dsl/scan_sources.rs    |  24 ++-
+ .../src/plans/conversion/dsl_to_ir/scans.rs   |   2 +-
+ crates/polars-python/Cargo.toml               |  10 +-
+ crates/polars-python/src/series/buffers.rs    |   2 +-
+ .../polars-python/src/series/construction.rs  |   3 +-
+ crates/polars-row/Cargo.toml                  |   1 +
+ crates/polars-row/src/decode.rs               |   2 +-
+ crates/polars-stream/Cargo.toml               |   1 +
+ .../io_sinks2/components/partition_key.rs     |   2 +-
+ .../src/physical_plan/to_graph.rs             |   2 +-
+ crates/polars/Cargo.toml                      |   3 +-
+ .../polars/tests/it/arrow/array/binary/mod.rs |   2 +-
+ .../tests/it/arrow/array/binary/to_mutable.rs |   2 +-
+ .../tests/it/arrow/array/binview/mod.rs       |   2 +-
+ .../it/arrow/array/fixed_size_binary/mod.rs   |   2 +-
+ .../polars/tests/it/arrow/array/list/mod.rs   |   2 +-
+ .../tests/it/arrow/array/list/mutable.rs      |   2 +-
+ .../tests/it/arrow/array/primitive/mod.rs     |   2 +-
+ crates/polars/tests/it/arrow/array/union.rs   |   2 +-
+ .../polars/tests/it/arrow/array/utf8/mod.rs   |   2 +-
+ .../tests/it/arrow/array/utf8/to_mutable.rs   |   2 +-
+ .../polars/tests/it/arrow/buffer/immutable.rs |   2 +-
+ 108 files changed, 377 insertions(+), 291 deletions(-)
+ delete mode 100644 crates/polars-arrow/src/buffer/iterator.rs
+ delete mode 100644 crates/polars-arrow/src/buffer/mod.rs
+ create mode 100644 crates/polars-buffer/Cargo.toml
+ create mode 120000 crates/polars-buffer/LICENSE
+ create mode 100644 crates/polars-buffer/README.md
+ create mode 100644 crates/polars-buffer/build.rs
+ rename crates/{polars-arrow/src/buffer/immutable.rs => polars-buffer/src/buffer.rs} (84%)
+ create mode 100644 crates/polars-buffer/src/lib.rs
+ rename crates/{polars-arrow => polars-buffer}/src/storage.rs (95%)
+
+diff --git a/.github/workflows/test-pyodide.yml b/.github/workflows/test-pyodide.yml
+index 62b895ae2..1b8054d6b 100644
+--- a/.github/workflows/test-pyodide.yml
++++ b/.github/workflows/test-pyodide.yml
+@@ -43,7 +43,7 @@ jobs:
+           FEATURES: csv|ipc|ipc_streaming|parquet|async|scan_lines|json|extract_jsonpath|catalog|cloud|polars_cloud|tokio|clipboard|decompress|new_streaming
+         run: |
+           sed -i 's/serde_json = { workspace = true, optional = true }/serde_json = { workspace = true }/' crates/polars-python/Cargo.toml
+-          sed -i 's/"serde_json", //' crates/polars-python/Cargo.toml
++          sed -i 's/"serde_json",//' crates/polars-python/Cargo.toml
+           sed -E -i "/^  \"(${FEATURES})\",$/d" crates/polars-python/Cargo.toml py-polars/runtime/polars-runtime-32/Cargo.toml
+ 
+       - name: Setup emsdk
+diff --git a/Cargo.lock b/Cargo.lock
+index 45501deef..8ac612b18 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -2938,6 +2938,7 @@ dependencies = [
+  "getrandom 0.2.16",
+  "getrandom 0.3.4",
+  "polars-arrow",
++ "polars-buffer",
+  "polars-compute",
+  "polars-core",
+  "polars-error",
+@@ -2980,6 +2981,7 @@ dependencies = [
+  "num-traits",
+  "polars-arrow",
+  "polars-arrow-format",
++ "polars-buffer",
+  "polars-error",
+  "polars-schema",
+  "polars-utils",
+@@ -3007,6 +3009,16 @@ dependencies = [
+  "serde",
+ ]
+ 
++[[package]]
++name = "polars-buffer"
++version = "0.52.0"
++dependencies = [
++ "bytemuck",
++ "either",
++ "serde",
++ "version_check",
++]
++
+ [[package]]
+ name = "polars-compute"
+ version = "0.52.0"
+@@ -3023,6 +3035,7 @@ dependencies = [
+  "num-bigint",
+  "num-traits",
+  "polars-arrow",
++ "polars-buffer",
+  "polars-error",
+  "polars-utils",
+  "proptest",
+@@ -3055,6 +3068,7 @@ dependencies = [
+  "ndarray",
+  "num-traits",
+  "polars-arrow",
++ "polars-buffer",
+  "polars-compute",
+  "polars-core",
+  "polars-dtype",
+@@ -3142,6 +3156,7 @@ dependencies = [
+  "libloading",
+  "num-traits",
+  "polars-arrow",
++ "polars-buffer",
+  "polars-compute",
+  "polars-core",
+  "polars-io",
+@@ -3190,6 +3205,7 @@ dependencies = [
+  "object_store",
+  "percent-encoding",
+  "polars-arrow",
++ "polars-buffer",
+  "polars-compute",
+  "polars-core",
+  "polars-error",
+@@ -3246,6 +3262,7 @@ dependencies = [
+  "futures",
+  "memchr",
+  "polars-arrow",
++ "polars-buffer",
+  "polars-compute",
+  "polars-core",
+  "polars-expr",
+@@ -3305,6 +3322,7 @@ dependencies = [
+  "memchr",
+  "num-traits",
+  "polars-arrow",
++ "polars-buffer",
+  "polars-compute",
+  "polars-core",
+  "polars-error",
+@@ -3342,6 +3360,7 @@ dependencies = [
+  "lz4_flex",
+  "num-traits",
+  "polars-arrow",
++ "polars-buffer",
+  "polars-compute",
+  "polars-error",
+  "polars-parquet",
+@@ -3387,6 +3406,7 @@ dependencies = [
+  "num-traits",
+  "percent-encoding",
+  "polars-arrow",
++ "polars-buffer",
+  "polars-compute",
+  "polars-core",
+  "polars-error",
+@@ -3432,6 +3452,7 @@ dependencies = [
+  "parking_lot",
+  "polars",
+  "polars-arrow",
++ "polars-buffer",
+  "polars-compute",
+  "polars-core",
+  "polars-dtype",
+@@ -3463,6 +3484,7 @@ dependencies = [
+  "bitflags",
+  "bytemuck",
+  "polars-arrow",
++ "polars-buffer",
+  "polars-compute",
+  "polars-dtype",
+  "polars-error",
+@@ -3555,6 +3577,7 @@ dependencies = [
+  "percent-encoding",
+  "pin-project-lite",
+  "polars-arrow",
++ "polars-buffer",
+  "polars-compute",
+  "polars-core",
+  "polars-error",
+diff --git a/Cargo.toml b/Cargo.toml
+index 7eb2efaec..c43911cde 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -111,6 +111,7 @@ zmij = "1.0.0"
+ zstd = "0.13"
+ 
+ polars = { version = "0.52.0", path = "crates/polars", default-features = false }
++polars-buffer = { version = "0.52.0", path = "crates/polars-buffer", default-features = false }
+ polars-compute = { version = "0.52.0", path = "crates/polars-compute", default-features = false }
+ polars-core = { version = "0.52.0", path = "crates/polars-core", default-features = false }
+ polars-dtype = { version = "0.52.0", path = "crates/polars-dtype", default-features = false }
+diff --git a/crates/polars-arrow/Cargo.toml b/crates/polars-arrow/Cargo.toml
+index 2eac42f63..32da3aca8 100644
+--- a/crates/polars-arrow/Cargo.toml
++++ b/crates/polars-arrow/Cargo.toml
+@@ -23,6 +23,7 @@ either = { workspace = true }
+ half = { workspace = true, optional = false, features = ["num-traits", "bytemuck"] }
+ hashbrown = { workspace = true }
+ num-traits = { workspace = true }
++polars-buffer = { workspace = true }
+ polars-error = { workspace = true }
+ polars-schema = { workspace = true }
+ polars-utils = { workspace = true }
+@@ -115,7 +116,13 @@ compute = [
+   "compute_comparison",
+   "compute_temporal",
+ ]
+-serde = ["dep:serde", "polars-schema/serde", "polars-utils/serde", "half/serde"]
++serde = [
++  "dep:serde",
++  "polars-buffer/serde",
++  "polars-schema/serde",
++  "polars-utils/serde",
++  "half/serde",
++]
+ dsl-schema = ["dep:schemars", "polars-schema/dsl-schema", "polars-utils/dsl-schema"]
+ simd = []
+ 
+diff --git a/crates/polars-arrow/src/array/binary/builder.rs b/crates/polars-arrow/src/array/binary/builder.rs
+index 7c659635c..55a0ec2fb 100644
+--- a/crates/polars-arrow/src/array/binary/builder.rs
++++ b/crates/polars-arrow/src/array/binary/builder.rs
+@@ -1,9 +1,9 @@
++use polars_buffer::Buffer;
+ use polars_utils::IdxSize;
+ 
+ use crate::array::BinaryArray;
+ use crate::array::builder::{ShareStrategy, StaticArrayBuilder};
+ use crate::bitmap::OptBitmapBuilder;
+-use crate::buffer::Buffer;
+ use crate::datatypes::ArrowDataType;
+ use crate::offset::{Offset, Offsets, OffsetsBuffer};
+ 
+diff --git a/crates/polars-arrow/src/array/binary/mod.rs b/crates/polars-arrow/src/array/binary/mod.rs
+index bbabd8fa1..3889ec238 100644
+--- a/crates/polars-arrow/src/array/binary/mod.rs
++++ b/crates/polars-arrow/src/array/binary/mod.rs
+@@ -1,11 +1,11 @@
+ use either::Either;
++use polars_buffer::Buffer;
+ 
+ use super::specification::try_check_offsets_bounds;
+ use super::{Array, GenericBinaryArray, Splitable};
+ use crate::array::iterator::NonNullValuesIter;
+ use crate::bitmap::Bitmap;
+ use crate::bitmap::utils::{BitmapIter, ZipValidity};
+-use crate::buffer::Buffer;
+ use crate::datatypes::ArrowDataType;
+ use crate::offset::{Offset, Offsets, OffsetsBuffer};
+ use crate::trusted_len::TrustedLen;
+@@ -33,7 +33,7 @@ pub mod proptest;
+ /// ```
+ /// use polars_arrow::array::BinaryArray;
+ /// use polars_arrow::bitmap::Bitmap;
+-/// use polars_arrow::buffer::Buffer;
++/// use polars_buffer::Buffer;
+ ///
+ /// let array = BinaryArray::<i32>::from([Some([1, 2].as_ref()), None, Some([3].as_ref())]);
+ /// assert_eq!(array.value(0), &[1, 2]);
+diff --git a/crates/polars-arrow/src/array/binview/builder.rs b/crates/polars-arrow/src/array/binview/builder.rs
+index 1c4431250..f3e9cf7e3 100644
+--- a/crates/polars-arrow/src/array/binview/builder.rs
++++ b/crates/polars-arrow/src/array/binview/builder.rs
+@@ -2,6 +2,7 @@ use std::marker::PhantomData;
+ use std::sync::LazyLock;
+ 
+ use hashbrown::hash_map::Entry;
++use polars_buffer::Buffer;
+ use polars_utils::IdxSize;
+ use polars_utils::aliases::{InitHashMaps, PlHashMap};
+ 
+@@ -9,7 +10,6 @@ use crate::array::binview::{DEFAULT_BLOCK_SIZE, MAX_EXP_BLOCK_SIZE};
+ use crate::array::builder::{ShareStrategy, StaticArrayBuilder};
+ use crate::array::{Array, BinaryViewArrayGeneric, View, ViewType};
+ use crate::bitmap::OptBitmapBuilder;
+-use crate::buffer::Buffer;
+ use crate::datatypes::ArrowDataType;
+ use crate::pushable::Pushable;
+ 
+diff --git a/crates/polars-arrow/src/array/binview/ffi.rs b/crates/polars-arrow/src/array/binview/ffi.rs
+index b415d8265..c95d0524c 100644
+--- a/crates/polars-arrow/src/array/binview/ffi.rs
++++ b/crates/polars-arrow/src/array/binview/ffi.rs
+@@ -1,10 +1,10 @@
++use polars_buffer::Buffer;
+ use polars_error::PolarsResult;
+ 
+ use super::BinaryViewArrayGeneric;
+ use crate::array::binview::{View, ViewType};
+ use crate::array::{FromFfi, ToFfi};
+ use crate::bitmap::align;
+-use crate::buffer::Buffer;
+ use crate::ffi;
+ 
+ unsafe impl<T: ViewType + ?Sized> ToFfi for BinaryViewArrayGeneric<T> {
+diff --git a/crates/polars-arrow/src/array/binview/mod.rs b/crates/polars-arrow/src/array/binview/mod.rs
+index 464337f1a..5e2508c24 100644
+--- a/crates/polars-arrow/src/array/binview/mod.rs
++++ b/crates/polars-arrow/src/array/binview/mod.rs
+@@ -15,12 +15,12 @@ use std::any::Any;
+ use std::fmt::Debug;
+ use std::marker::PhantomData;
+ 
++use polars_buffer::Buffer;
+ use polars_error::*;
+ use polars_utils::relaxed_cell::RelaxedCell;
+ 
+ use crate::array::Array;
+ use crate::bitmap::Bitmap;
+-use crate::buffer::Buffer;
+ use crate::datatypes::ArrowDataType;
+ 
+ mod private {
+@@ -268,7 +268,7 @@ impl<T: ViewType + ?Sized> BinaryViewArrayGeneric<T> {
+     }
+ 
+     pub fn into_views(self) -> Vec<View> {
+-        self.views.make_mut()
++        self.views.to_vec()
+     }
+ 
+     pub fn into_inner(
+@@ -301,7 +301,7 @@ impl<T: ViewType + ?Sized> BinaryViewArrayGeneric<T> {
+         let arr = self.clone();
+         let (views, buffers, validity, total_bytes_len, total_buffer_len) = arr.into_inner();
+ 
+-        let mut views = views.make_mut();
++        let mut views = views.to_vec();
+         for v in views.iter_mut() {
+             let str_slice = T::from_bytes_unchecked(v.get_slice_unchecked(&buffers));
+             *v = update_view(*v, str_slice);
+@@ -324,7 +324,7 @@ impl<T: ViewType + ?Sized> BinaryViewArrayGeneric<T> {
+         if let Some(views) = self.views.get_mut_slice() {
+             f(views)
+         } else {
+-            let mut views = self.views.to_vec();
++            let mut views = self.views.as_slice().to_vec();
+             f(&mut views);
+             self.views = Buffer::from(views);
+         }
+@@ -554,7 +554,7 @@ impl<T: ViewType + ?Sized> BinaryViewArrayGeneric<T> {
+     }
+ 
+     pub fn make_mut(self) -> MutableBinaryViewArray<T> {
+-        let views = self.views.make_mut();
++        let views = self.views.to_vec();
+         let completed_buffers = self.buffers.to_vec();
+         let validity = self.validity.map(|bitmap| bitmap.make_mut());
+ 
+diff --git a/crates/polars-arrow/src/array/binview/mutable.rs b/crates/polars-arrow/src/array/binview/mutable.rs
+index 7dfcc17dc..a83f89e19 100644
+--- a/crates/polars-arrow/src/array/binview/mutable.rs
++++ b/crates/polars-arrow/src/array/binview/mutable.rs
+@@ -3,6 +3,7 @@ use std::fmt::{Debug, Formatter};
+ use std::ops::Deref;
+ 
+ use hashbrown::hash_map::Entry;
++use polars_buffer::Buffer;
+ use polars_error::PolarsResult;
+ use polars_utils::aliases::{InitHashMaps, PlHashMap};
+ 
+@@ -13,7 +14,6 @@ use crate::array::binview::{
+ };
+ use crate::array::{Array, MutableArray, TryExtend, TryPush, View};
+ use crate::bitmap::MutableBitmap;
+-use crate::buffer::Buffer;
+ use crate::datatypes::ArrowDataType;
+ use crate::legacy::trusted_len::TrustedLenPush;
+ use crate::trusted_len::TrustedLen;
+diff --git a/crates/polars-arrow/src/array/boolean/mod.rs b/crates/polars-arrow/src/array/boolean/mod.rs
+index 2316093ef..827eb9d69 100644
+--- a/crates/polars-arrow/src/array/boolean/mod.rs
++++ b/crates/polars-arrow/src/array/boolean/mod.rs
+@@ -34,7 +34,7 @@ pub mod proptest;
+ /// ```
+ /// use polars_arrow::array::BooleanArray;
+ /// use polars_arrow::bitmap::Bitmap;
+-/// use polars_arrow::buffer::Buffer;
++/// use polars_buffer::Buffer;
+ ///
+ /// let array = BooleanArray::from([Some(true), None, Some(false)]);
+ /// assert_eq!(array.value(0), true);
+diff --git a/crates/polars-arrow/src/array/fixed_size_binary/builder.rs b/crates/polars-arrow/src/array/fixed_size_binary/builder.rs
+index 5fc8035b6..908caf617 100644
+--- a/crates/polars-arrow/src/array/fixed_size_binary/builder.rs
++++ b/crates/polars-arrow/src/array/fixed_size_binary/builder.rs
+@@ -1,9 +1,9 @@
++use polars_buffer::Buffer;
+ use polars_utils::IdxSize;
+ 
+ use super::FixedSizeBinaryArray;
+ use crate::array::builder::{ShareStrategy, StaticArrayBuilder};
+ use crate::bitmap::OptBitmapBuilder;
+-use crate::buffer::Buffer;
+ use crate::datatypes::ArrowDataType;
+ use crate::pushable::Pushable;
+ 
+diff --git a/crates/polars-arrow/src/array/fixed_size_binary/mod.rs b/crates/polars-arrow/src/array/fixed_size_binary/mod.rs
+index 30ea258fd..c3e76fde6 100644
+--- a/crates/polars-arrow/src/array/fixed_size_binary/mod.rs
++++ b/crates/polars-arrow/src/array/fixed_size_binary/mod.rs
+@@ -1,6 +1,7 @@
++use polars_buffer::Buffer;
++
+ use super::{Array, Splitable};
+ use crate::bitmap::Bitmap;
+-use crate::buffer::Buffer;
+ use crate::datatypes::ArrowDataType;
+ 
+ mod builder;
+diff --git a/crates/polars-arrow/src/array/iterator.rs b/crates/polars-arrow/src/array/iterator.rs
+index 0b8bd1de8..c3395dba8 100644
+--- a/crates/polars-arrow/src/array/iterator.rs
++++ b/crates/polars-arrow/src/array/iterator.rs
+@@ -1,3 +1,5 @@
++use polars_buffer::Buffer;
++
+ use crate::bitmap::Bitmap;
+ use crate::bitmap::iterator::TrueIdxIter;
+ use crate::trusted_len::TrustedLen;
+@@ -20,6 +22,18 @@ pub unsafe trait ArrayAccessor<'a>: private::Sealed {
+     fn len(&self) -> usize;
+ }
+ 
++unsafe impl<'a, T: 'a> ArrayAccessor<'a> for Buffer<T> {
++    type Item = &'a T;
++
++    unsafe fn value_unchecked(&'a self, index: usize) -> Self::Item {
++        unsafe { self.get_unchecked(index) }
++    }
++
++    fn len(&self) -> usize {
++        Buffer::len(self)
++    }
++}
++
+ /// Iterator of values of an [`ArrayAccessor`].
+ #[derive(Debug, Clone)]
+ pub struct ArrayValuesIter<'a, A: ArrayAccessor<'a>> {
+diff --git a/crates/polars-arrow/src/array/mod.rs b/crates/polars-arrow/src/array/mod.rs
+index c18dd9abf..d5ed1bcf8 100644
+--- a/crates/polars-arrow/src/array/mod.rs
++++ b/crates/polars-arrow/src/array/mod.rs
+@@ -13,7 +13,7 @@
+ //!
+ //! All immutable arrays implement the trait object [`Array`] and that can be downcast
+ //! to a concrete struct based on [`PhysicalType`](crate::datatypes::PhysicalType) available from [`Array::dtype`].
+-//! All immutable arrays are backed by [`Buffer`](crate::buffer::Buffer) and thus cloning and slicing them is `O(1)`.
++//! All immutable arrays are backed by [`Buffer`](polars_buffer::Buffer) and thus cloning and slicing them is `O(1)`.
+ //!
+ //! Most arrays contain a [`MutableArray`] counterpart that is neither cloneable nor sliceable, but
+ //! can be operated in-place.
+@@ -60,6 +60,18 @@ pub trait Splitable: Sized {
+     unsafe fn _split_at_unchecked(&self, offset: usize) -> (Self, Self);
+ }
+ 
++impl<T> Splitable for Buffer<T> {
++    fn check_bound(&self, offset: usize) -> bool {
++        offset <= self.len()
++    }
++
++    unsafe fn _split_at_unchecked(&self, offset: usize) -> (Self, Self) {
++        let left = self.clone().sliced_unchecked(0, offset);
++        let right = self.clone().sliced_unchecked(offset, self.len() - offset);
++        (left, right)
++    }
++}
++
+ /// A trait representing an immutable Arrow array. Arrow arrays are trait objects
+ /// that are infallibly downcast to concrete types according to the [`Array::dtype`].
+ pub trait Array: Send + Sync + dyn_clone::DynClone + 'static {
+@@ -713,6 +725,7 @@ pub use iterator::ArrayValuesIter;
+ pub use list::{ListArray, ListArrayBuilder, ListValuesIter, MutableListArray};
+ pub use map::MapArray;
+ pub use null::{MutableNullArray, NullArray, NullArrayBuilder};
++use polars_buffer::Buffer;
+ use polars_error::PolarsResult;
+ pub use primitive::*;
+ pub use static_array::{ParameterFreeDtypeStaticArray, StaticArray};
+diff --git a/crates/polars-arrow/src/array/primitive/builder.rs b/crates/polars-arrow/src/array/primitive/builder.rs
+index 6561d020d..8520edaab 100644
+--- a/crates/polars-arrow/src/array/primitive/builder.rs
++++ b/crates/polars-arrow/src/array/primitive/builder.rs
+@@ -1,10 +1,10 @@
++use polars_buffer::Buffer;
+ use polars_utils::IdxSize;
+ use polars_utils::vec::PushUnchecked;
+ 
+ use super::PrimitiveArray;
+ use crate::array::builder::{ShareStrategy, StaticArrayBuilder};
+ use crate::bitmap::OptBitmapBuilder;
+-use crate::buffer::Buffer;
+ use crate::datatypes::ArrowDataType;
+ use crate::types::NativeType;
+ 
+diff --git a/crates/polars-arrow/src/array/primitive/iterator.rs b/crates/polars-arrow/src/array/primitive/iterator.rs
+index 5b811b0b0..a7027f1f9 100644
+--- a/crates/polars-arrow/src/array/primitive/iterator.rs
++++ b/crates/polars-arrow/src/array/primitive/iterator.rs
+@@ -2,7 +2,6 @@ use super::{MutablePrimitiveArray, PrimitiveArray};
+ use crate::array::{ArrayAccessor, MutableArray};
+ use crate::bitmap::IntoIter as BitmapIntoIter;
+ use crate::bitmap::utils::{BitmapIter, ZipValidity};
+-use crate::buffer::IntoIter;
+ use crate::types::NativeType;
+ 
+ unsafe impl<'a, T: NativeType> ArrayAccessor<'a> for [T] {
+@@ -21,7 +20,7 @@ unsafe impl<'a, T: NativeType> ArrayAccessor<'a> for [T] {
+ 
+ impl<T: NativeType> IntoIterator for PrimitiveArray<T> {
+     type Item = Option<T>;
+-    type IntoIter = ZipValidity<T, IntoIter<T>, BitmapIntoIter>;
++    type IntoIter = ZipValidity<T, polars_buffer::buffer::IntoIter<T>, BitmapIntoIter>;
+ 
+     #[inline]
+     fn into_iter(self) -> Self::IntoIter {
+diff --git a/crates/polars-arrow/src/array/primitive/mod.rs b/crates/polars-arrow/src/array/primitive/mod.rs
+index a2634828d..70f67e1d8 100644
+--- a/crates/polars-arrow/src/array/primitive/mod.rs
++++ b/crates/polars-arrow/src/array/primitive/mod.rs
+@@ -1,13 +1,13 @@
+ use std::ops::Range;
+ 
+ use either::Either;
++use polars_buffer::Buffer;
+ use polars_utils::float16::pf16;
+ 
+ use super::{Array, Splitable};
+ use crate::array::iterator::NonNullValuesIter;
+ use crate::bitmap::Bitmap;
+ use crate::bitmap::utils::{BitmapIter, ZipValidity};
+-use crate::buffer::Buffer;
+ use crate::datatypes::*;
+ use crate::trusted_len::TrustedLen;
+ use crate::types::{NativeType, days_ms, i256, months_days_ns};
+@@ -41,7 +41,7 @@ use polars_utils::slice::SliceAble;
+ /// ```
+ /// use polars_arrow::array::PrimitiveArray;
+ /// use polars_arrow::bitmap::Bitmap;
+-/// use polars_arrow::buffer::Buffer;
++/// use polars_buffer::Buffer;
+ ///
+ /// let array = PrimitiveArray::from([Some(1i32), None, Some(10)]);
+ /// assert_eq!(array.value(0), 1);
+@@ -305,7 +305,7 @@ impl<T: NativeType> PrimitiveArray<T> {
+         if let Some(slice) = self.values.get_mut_slice() {
+             f(slice)
+         } else {
+-            let mut values = self.values.to_vec();
++            let mut values = self.values.as_slice().to_vec();
+             f(&mut values);
+             self.values = Buffer::from(values);
+         }
+diff --git a/crates/polars-arrow/src/array/union/mod.rs b/crates/polars-arrow/src/array/union/mod.rs
+index 4c11d552d..0d405f2d9 100644
+--- a/crates/polars-arrow/src/array/union/mod.rs
++++ b/crates/polars-arrow/src/array/union/mod.rs
+@@ -1,8 +1,8 @@
++use polars_buffer::Buffer;
+ use polars_error::{PolarsResult, polars_bail, polars_err};
+ 
+ use super::{Array, Splitable, new_empty_array, new_null_array};
+ use crate::bitmap::Bitmap;
+-use crate::buffer::Buffer;
+ use crate::datatypes::{ArrowDataType, Field, UnionMode};
+ use crate::scalar::{Scalar, new_scalar};
+ 
+diff --git a/crates/polars-arrow/src/array/utf8/mod.rs b/crates/polars-arrow/src/array/utf8/mod.rs
+index 0f129662c..ffc9194cb 100644
+--- a/crates/polars-arrow/src/array/utf8/mod.rs
++++ b/crates/polars-arrow/src/array/utf8/mod.rs
+@@ -1,4 +1,5 @@
+ use either::Either;
++use polars_buffer::Buffer;
+ 
+ use super::specification::try_check_utf8;
+ use super::{Array, GenericBinaryArray, Splitable};
+@@ -6,7 +7,6 @@ use crate::array::BinaryArray;
+ use crate::array::iterator::NonNullValuesIter;
+ use crate::bitmap::Bitmap;
+ use crate::bitmap::utils::{BitmapIter, ZipValidity};
+-use crate::buffer::Buffer;
+ use crate::datatypes::ArrowDataType;
+ use crate::offset::{Offset, Offsets, OffsetsBuffer};
+ use crate::trusted_len::TrustedLen;
+@@ -36,7 +36,7 @@ impl<T: AsRef<str>> AsRef<[u8]> for StrAsBytes<T> {
+ /// # Example
+ /// ```
+ /// use polars_arrow::bitmap::Bitmap;
+-/// use polars_arrow::buffer::Buffer;
++/// use polars_buffer::Buffer;
+ /// use polars_arrow::array::Utf8Array;
+ /// # fn main() {
+ /// let array = Utf8Array::<i32>::from([Some("hi"), None, Some("there")]);
+diff --git a/crates/polars-arrow/src/bitmap/builder.rs b/crates/polars-arrow/src/bitmap/builder.rs
+index c2ae9aaaa..b2ceeb97e 100644
+--- a/crates/polars-arrow/src/bitmap/builder.rs
++++ b/crates/polars-arrow/src/bitmap/builder.rs
+@@ -1,10 +1,10 @@
+ #![allow(unsafe_op_in_unsafe_fn)]
++use polars_buffer::SharedStorage;
+ use polars_utils::IdxSize;
+ use polars_utils::slice::load_padded_le_u64;
+ 
+ use super::bitmask::BitMask;
+ use crate::bitmap::{Bitmap, MutableBitmap};
+-use crate::storage::SharedStorage;
+ use crate::trusted_len::TrustedLen;
+ 
+ /// Used to build bitmaps bool-by-bool in sequential order.
+diff --git a/crates/polars-arrow/src/bitmap/immutable.rs b/crates/polars-arrow/src/bitmap/immutable.rs
+index 3a0aa9c18..641077d4d 100644
+--- a/crates/polars-arrow/src/bitmap/immutable.rs
++++ b/crates/polars-arrow/src/bitmap/immutable.rs
+@@ -3,6 +3,7 @@ use std::ops::Deref;
+ use std::sync::LazyLock;
+ 
+ use either::Either;
++use polars_buffer::SharedStorage;
+ use polars_error::{PolarsResult, polars_bail};
+ use polars_utils::relaxed_cell::RelaxedCell;
+ 
+@@ -15,7 +16,6 @@ use crate::bitmap::iterator::{
+ };
+ use crate::bitmap::utils::bytes_for;
+ use crate::legacy::utils::FromTrustedLenIterator;
+-use crate::storage::SharedStorage;
+ use crate::trusted_len::TrustedLen;
+ 
+ const UNKNOWN_BIT_COUNT: u64 = u64::MAX;
+diff --git a/crates/polars-arrow/src/bitmap/mutable.rs b/crates/polars-arrow/src/bitmap/mutable.rs
+index 0f73e023b..24d462a06 100644
+--- a/crates/polars-arrow/src/bitmap/mutable.rs
++++ b/crates/polars-arrow/src/bitmap/mutable.rs
+@@ -1,6 +1,7 @@
+ #![allow(unsafe_op_in_unsafe_fn)]
+ use std::hint::unreachable_unchecked;
+ 
++use polars_buffer::SharedStorage;
+ use polars_error::{PolarsResult, polars_bail};
+ use polars_utils::vec::PushUnchecked;
+ 
+@@ -8,7 +9,6 @@ use super::bitmask::BitMask;
+ use super::utils::{BitChunk, BitChunks, BitChunksExactMut, BitmapIter, count_zeros, fmt};
+ use super::{Bitmap, intersects_with_mut};
+ use crate::bitmap::utils::{get_bit_unchecked, merge_reversed, set_bit_in_byte};
+-use crate::storage::SharedStorage;
+ use crate::trusted_len::TrustedLen;
+ 
+ /// A container of booleans. [`MutableBitmap`] is semantically equivalent
+diff --git a/crates/polars-arrow/src/buffer/iterator.rs b/crates/polars-arrow/src/buffer/iterator.rs
+deleted file mode 100644
+index 93511c480..000000000
+--- a/crates/polars-arrow/src/buffer/iterator.rs
++++ /dev/null
+@@ -1,68 +0,0 @@
+-use super::Buffer;
+-use crate::trusted_len::TrustedLen;
+-
+-/// This crates' equivalent of [`std::vec::IntoIter`] for [`Buffer`].
+-#[derive(Debug, Clone)]
+-pub struct IntoIter<T: Copy> {
+-    values: Buffer<T>,
+-    index: usize,
+-    end: usize,
+-}
+-
+-impl<T: Copy> IntoIter<T> {
+-    /// Creates a new [`Buffer`]
+-    #[inline]
+-    pub fn new(values: Buffer<T>) -> Self {
+-        let end = values.len();
+-        Self {
+-            values,
+-            index: 0,
+-            end,
+-        }
+-    }
+-}
+-
+-impl<T: Copy> Iterator for IntoIter<T> {
+-    type Item = T;
+-
+-    #[inline]
+-    fn next(&mut self) -> Option<Self::Item> {
+-        if self.index == self.end {
+-            return None;
+-        }
+-        let old = self.index;
+-        self.index += 1;
+-        Some(*unsafe { self.values.get_unchecked(old) })
+-    }
+-
+-    #[inline]
+-    fn size_hint(&self) -> (usize, Option<usize>) {
+-        (self.end - self.index, Some(self.end - self.index))
+-    }
+-
+-    #[inline]
+-    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+-        let new_index = self.index + n;
+-        if new_index > self.end {
+-            self.index = self.end;
+-            None
+-        } else {
+-            self.index = new_index;
+-            self.next()
+-        }
+-    }
+-}
+-
+-impl<T: Copy> DoubleEndedIterator for IntoIter<T> {
+-    #[inline]
+-    fn next_back(&mut self) -> Option<Self::Item> {
+-        if self.index == self.end {
+-            None
+-        } else {
+-            self.end -= 1;
+-            Some(*unsafe { self.values.get_unchecked(self.end) })
+-        }
+-    }
+-}
+-
+-unsafe impl<T: Copy> TrustedLen for IntoIter<T> {}
+diff --git a/crates/polars-arrow/src/buffer/mod.rs b/crates/polars-arrow/src/buffer/mod.rs
+deleted file mode 100644
+index 386545482..000000000
+--- a/crates/polars-arrow/src/buffer/mod.rs
++++ /dev/null
+@@ -1,7 +0,0 @@
+-//! Contains [`Buffer`], an immutable container for all Arrow physical types (e.g. i32, f64).
+-
+-mod immutable;
+-mod iterator;
+-
+-pub use immutable::Buffer;
+-pub(super) use iterator::IntoIter;
+diff --git a/crates/polars-arrow/src/compute/concatenate.rs b/crates/polars-arrow/src/compute/concatenate.rs
+index b89e11e93..646c84b62 100644
+--- a/crates/polars-arrow/src/compute/concatenate.rs
++++ b/crates/polars-arrow/src/compute/concatenate.rs
+@@ -1,4 +1,5 @@
+ use hashbrown::hash_map::Entry;
++use polars_buffer::Buffer;
+ use polars_error::{PolarsResult, polars_bail};
+ use polars_utils::aliases::{InitHashMaps, PlHashMap};
+ use polars_utils::itertools::Itertools;
+@@ -6,7 +7,6 @@ use polars_utils::vec::PushUnchecked;
+ 
+ use crate::array::*;
+ use crate::bitmap::{Bitmap, BitmapBuilder};
+-use crate::buffer::Buffer;
+ use crate::datatypes::PhysicalType;
+ use crate::offset::Offsets;
+ use crate::types::{NativeType, Offset};
+diff --git a/crates/polars-arrow/src/ffi/array.rs b/crates/polars-arrow/src/ffi/array.rs
+index a216f3a7d..7665b8a59 100644
+--- a/crates/polars-arrow/src/ffi/array.rs
++++ b/crates/polars-arrow/src/ffi/array.rs
+@@ -1,16 +1,15 @@
+ //! Contains functionality to load an ArrayData from the C Data Interface
+ use std::sync::Arc;
+ 
++use polars_buffer::{Buffer, SharedStorage};
+ use polars_error::{PolarsResult, polars_bail};
+ 
+ use super::ArrowArray;
+ use crate::array::*;
+ use crate::bitmap::Bitmap;
+ use crate::bitmap::utils::bytes_for;
+-use crate::buffer::Buffer;
+ use crate::datatypes::{ArrowDataType, PhysicalType};
+ use crate::ffi::schema::get_child;
+-use crate::storage::SharedStorage;
+ use crate::types::{NativeType, PrimitiveType, months_days_ns};
+ use crate::{ffi, match_integer_type, with_match_primitive_type_full};
+ 
+@@ -260,7 +259,8 @@ unsafe fn create_buffer_known_len<T: NativeType>(
+         return Ok(Buffer::new());
+     }
+     let ptr: *mut T = get_buffer_ptr(array, dtype, index)?;
+-    let storage = SharedStorage::from_internal_arrow_array(ptr, len, owner);
++    let slice = core::slice::from_raw_parts(ptr, len);
++    let storage = SharedStorage::from_slice_with_owner(slice, owner);
+     Ok(Buffer::from_storage(storage))
+ }
+ 
+@@ -275,9 +275,9 @@ unsafe fn create_buffer<T: NativeType>(
+     owner: InternalArrowArray,
+     index: usize,
+ ) -> PolarsResult<Buffer<T>> {
+-    let len = buffer_len(array, dtype, index)?;
++    let buf_len = buffer_len(array, dtype, index)?;
+ 
+-    if len == 0 {
++    if buf_len == 0 {
+         // Zero-length arrays might have invalid pointers for zero-length slices in Rust,
+         // so this is more than just an optimization.
+         return Ok(Buffer::new());
+@@ -285,18 +285,23 @@ unsafe fn create_buffer<T: NativeType>(
+ 
+     let offset = buffer_offset(array, dtype, index);
+     let ptr: *mut T = get_buffer_ptr(array, dtype, index)?;
++    let len = buf_len - offset;
+ 
+-    // We have to check alignment.
+-    // This is the zero-copy path.
+-    if ptr.align_offset(align_of::<T>()) == 0 {
+-        let storage = SharedStorage::from_internal_arrow_array(ptr, len, owner);
+-        Ok(Buffer::from_storage(storage).sliced(offset, len - offset))
+-    }
+-    // This is the path where alignment isn't correct.
+-    // We copy the data to a new vec
+-    else {
+-        let buf = std::slice::from_raw_parts(ptr, len - offset).to_vec();
+-        Ok(Buffer::from(buf))
++    // We have to check alignment, for zero-copy to be valid.
++    if ptr.is_aligned() {
++        let slice = core::slice::from_raw_parts(ptr.add(offset), len);
++        let storage = SharedStorage::from_slice_with_owner(slice, owner);
++        Ok(Buffer::from_storage(storage))
++    } else {
++        // Byte-wise copy for misaligned buffers.
++        let mut v = Vec::with_capacity(len);
++        core::ptr::copy_nonoverlapping(
++            ptr.add(offset).cast::<u8>(),
++            v.spare_capacity_mut().as_mut_ptr().cast::<u8>(),
++            len * size_of::<T>(),
++        );
++        v.set_len(len);
++        Ok(Buffer::from(v))
+     }
+ }
+ 
+@@ -323,10 +328,10 @@ unsafe fn create_bitmap(
+     let ptr = get_buffer_ptr(array, dtype, index)?;
+ 
+     // Pointer of u8 has alignment 1, so we don't have to check alignment.
+-
+     let offset: usize = array.offset.try_into().expect("offset to fit in `usize`");
+     let bytes_len = bytes_for(offset + len);
+-    let storage = SharedStorage::from_internal_arrow_array(ptr, bytes_len, owner);
++    let slice = core::slice::from_raw_parts(ptr, bytes_len);
++    let storage = SharedStorage::from_slice_with_owner(slice, owner);
+ 
+     let null_count = if is_validity {
+         Some(array.null_count())
+diff --git a/crates/polars-arrow/src/ffi/mmap.rs b/crates/polars-arrow/src/ffi/mmap.rs
+index 114fad6b8..fbe41f6e1 100644
+--- a/crates/polars-arrow/src/ffi/mmap.rs
++++ b/crates/polars-arrow/src/ffi/mmap.rs
+@@ -1,14 +1,13 @@
+ //! Functionality to mmap in-memory data regions.
+ use std::sync::Arc;
+ 
++use polars_buffer::{Buffer, SharedStorage};
+ use polars_error::{PolarsResult, polars_bail};
+ 
+ use super::{ArrowArray, InternalArrowArray};
+ use crate::array::{BooleanArray, FromFfi, PrimitiveArray};
+ use crate::bitmap::Bitmap;
+-use crate::buffer::Buffer;
+ use crate::datatypes::ArrowDataType;
+-use crate::storage::SharedStorage;
+ use crate::types::NativeType;
+ 
+ #[allow(dead_code)]
+diff --git a/crates/polars-arrow/src/io/ipc/read/array/binary.rs b/crates/polars-arrow/src/io/ipc/read/array/binary.rs
+index d54365025..e891c8ec8 100644
+--- a/crates/polars-arrow/src/io/ipc/read/array/binary.rs
++++ b/crates/polars-arrow/src/io/ipc/read/array/binary.rs
+@@ -1,12 +1,12 @@
+ use std::collections::VecDeque;
+ use std::io::{Read, Seek};
+ 
++use polars_buffer::Buffer;
+ use polars_error::{PolarsResult, polars_err};
+ 
+ use super::super::read_basic::*;
+ use super::super::{Compression, IpcBuffer, Node};
+ use crate::array::BinaryArray;
+-use crate::buffer::Buffer;
+ use crate::datatypes::ArrowDataType;
+ use crate::io::ipc::read::array::{try_get_array_length, try_get_field_node};
+ use crate::offset::Offset;
+diff --git a/crates/polars-arrow/src/io/ipc/read/array/binview.rs b/crates/polars-arrow/src/io/ipc/read/array/binview.rs
+index efc4c7650..eb0532e25 100644
+--- a/crates/polars-arrow/src/io/ipc/read/array/binview.rs
++++ b/crates/polars-arrow/src/io/ipc/read/array/binview.rs
+@@ -1,11 +1,11 @@
+ use std::io::{Read, Seek};
+ 
++use polars_buffer::Buffer;
+ use polars_error::polars_err;
+ 
+ use super::super::read_basic::*;
+ use super::*;
+ use crate::array::{ArrayRef, BinaryViewArrayGeneric, View, ViewType};
+-use crate::buffer::Buffer;
+ 
+ #[allow(clippy::too_many_arguments)]
+ pub fn read_binview<T: ViewType + ?Sized, R: Read + Seek>(
+diff --git a/crates/polars-arrow/src/io/ipc/read/array/list.rs b/crates/polars-arrow/src/io/ipc/read/array/list.rs
+index 2ef05109c..507fb2e32 100644
+--- a/crates/polars-arrow/src/io/ipc/read/array/list.rs
++++ b/crates/polars-arrow/src/io/ipc/read/array/list.rs
+@@ -1,6 +1,7 @@
+ use std::collections::VecDeque;
+ use std::io::{Read, Seek};
+ 
++use polars_buffer::Buffer;
+ use polars_error::{PolarsResult, polars_err};
+ 
+ use super::super::super::IpcField;
+@@ -8,7 +9,6 @@ use super::super::deserialize::{read, skip};
+ use super::super::read_basic::*;
+ use super::super::{Compression, Dictionaries, IpcBuffer, Node, Version};
+ use crate::array::ListArray;
+-use crate::buffer::Buffer;
+ use crate::datatypes::ArrowDataType;
+ use crate::io::ipc::read::array::{try_get_array_length, try_get_field_node};
+ use crate::offset::Offset;
+diff --git a/crates/polars-arrow/src/io/ipc/read/array/map.rs b/crates/polars-arrow/src/io/ipc/read/array/map.rs
+index a7ef9cd35..bb56e6818 100644
+--- a/crates/polars-arrow/src/io/ipc/read/array/map.rs
++++ b/crates/polars-arrow/src/io/ipc/read/array/map.rs
+@@ -1,6 +1,7 @@
+ use std::collections::VecDeque;
+ use std::io::{Read, Seek};
+ 
++use polars_buffer::Buffer;
+ use polars_error::{PolarsResult, polars_err};
+ 
+ use super::super::super::IpcField;
+@@ -8,7 +9,6 @@ use super::super::deserialize::{read, skip};
+ use super::super::read_basic::*;
+ use super::super::{Compression, Dictionaries, IpcBuffer, Node, Version};
+ use crate::array::MapArray;
+-use crate::buffer::Buffer;
+ use crate::datatypes::ArrowDataType;
+ use crate::io::ipc::read::array::{try_get_array_length, try_get_field_node};
+ 
+diff --git a/crates/polars-arrow/src/io/ipc/read/array/utf8.rs b/crates/polars-arrow/src/io/ipc/read/array/utf8.rs
+index 33f43baf7..4685ef478 100644
+--- a/crates/polars-arrow/src/io/ipc/read/array/utf8.rs
++++ b/crates/polars-arrow/src/io/ipc/read/array/utf8.rs
+@@ -1,11 +1,11 @@
+ use std::io::{Read, Seek};
+ 
++use polars_buffer::Buffer;
+ use polars_error::polars_err;
+ 
+ use super::super::read_basic::*;
+ use super::*;
+ use crate::array::Utf8Array;
+-use crate::buffer::Buffer;
+ use crate::offset::Offset;
+ 
+ #[allow(clippy::too_many_arguments)]
+diff --git a/crates/polars-arrow/src/io/ipc/read/read_basic.rs b/crates/polars-arrow/src/io/ipc/read/read_basic.rs
+index 81b817a70..e17d3b41a 100644
+--- a/crates/polars-arrow/src/io/ipc/read/read_basic.rs
++++ b/crates/polars-arrow/src/io/ipc/read/read_basic.rs
+@@ -1,13 +1,13 @@
+ use std::collections::VecDeque;
+ use std::io::{Read, Seek, SeekFrom};
+ 
++use polars_buffer::Buffer;
+ use polars_error::{PolarsResult, polars_bail, polars_ensure, polars_err};
+ 
+ use super::super::compression;
+ use super::super::endianness::is_native_little_endian;
+ use super::{Compression, IpcBuffer, Node, OutOfSpecKind};
+ use crate::bitmap::Bitmap;
+-use crate::buffer::Buffer;
+ use crate::types::NativeType;
+ 
+ fn read_swapped<T: NativeType, R: Read + Seek>(
+diff --git a/crates/polars-arrow/src/legacy/array/default_arrays.rs b/crates/polars-arrow/src/legacy/array/default_arrays.rs
+index 02dfd6600..fee189305 100644
+--- a/crates/polars-arrow/src/legacy/array/default_arrays.rs
++++ b/crates/polars-arrow/src/legacy/array/default_arrays.rs
+@@ -1,6 +1,7 @@
++use polars_buffer::Buffer;
++
+ use crate::array::{BinaryArray, BooleanArray, PrimitiveArray, Utf8Array};
+ use crate::bitmap::Bitmap;
+-use crate::buffer::Buffer;
+ use crate::datatypes::ArrowDataType;
+ use crate::offset::OffsetsBuffer;
+ use crate::types::NativeType;
+diff --git a/crates/polars-arrow/src/legacy/array/mod.rs b/crates/polars-arrow/src/legacy/array/mod.rs
+index 7f1358f92..5fe895aab 100644
+--- a/crates/polars-arrow/src/legacy/array/mod.rs
++++ b/crates/polars-arrow/src/legacy/array/mod.rs
+@@ -1,4 +1,5 @@
+ #![allow(unsafe_op_in_unsafe_fn)]
++
+ use crate::array::{
+     Array, BooleanArray, FixedSizeListArray, ListArray, MutableBinaryViewArray, PrimitiveArray,
+     StructArray, ViewType, new_null_array,
+diff --git a/crates/polars-arrow/src/legacy/kernels/string.rs b/crates/polars-arrow/src/legacy/kernels/string.rs
+index 473360503..212bc76af 100644
+--- a/crates/polars-arrow/src/legacy/kernels/string.rs
++++ b/crates/polars-arrow/src/legacy/kernels/string.rs
+@@ -1,5 +1,6 @@
++use polars_buffer::Buffer;
++
+ use crate::array::{Array, ArrayRef, UInt32Array, Utf8ViewArray};
+-use crate::buffer::Buffer;
+ use crate::datatypes::ArrowDataType;
+ use crate::legacy::trusted_len::TrustedLenPush;
+ 
+diff --git a/crates/polars-arrow/src/lib.rs b/crates/polars-arrow/src/lib.rs
+index 8c9b5c0d1..6730b8ade 100644
+--- a/crates/polars-arrow/src/lib.rs
++++ b/crates/polars-arrow/src/lib.rs
+@@ -18,7 +18,6 @@ extern crate core;
+ #[macro_use]
+ pub mod array;
+ pub mod bitmap;
+-pub mod buffer;
+ #[cfg(feature = "io_ipc")]
+ #[cfg_attr(docsrs, doc(cfg(feature = "io_ipc")))]
+ pub mod mmap;
+@@ -26,7 +25,6 @@ pub mod record_batch;
+ 
+ pub mod offset;
+ pub mod scalar;
+-pub mod storage;
+ pub mod trusted_len;
+ pub mod types;
+ 
+diff --git a/crates/polars-arrow/src/offset.rs b/crates/polars-arrow/src/offset.rs
+index 3ed7e09e5..c2e7983c6 100644
+--- a/crates/polars-arrow/src/offset.rs
++++ b/crates/polars-arrow/src/offset.rs
+@@ -3,10 +3,10 @@
+ use std::hint::unreachable_unchecked;
+ use std::ops::Deref;
+ 
++use polars_buffer::Buffer;
+ use polars_error::{PolarsError, PolarsResult, polars_bail, polars_err};
+ 
+ use crate::array::Splitable;
+-use crate::buffer::Buffer;
+ pub use crate::types::Offset;
+ 
+ /// A wrapper type of [`Vec<O>`] representing the invariants of Arrow's offsets.
+diff --git a/crates/polars-arrow/src/trusted_len.rs b/crates/polars-arrow/src/trusted_len.rs
+index 794f995ca..1d6edc75e 100644
+--- a/crates/polars-arrow/src/trusted_len.rs
++++ b/crates/polars-arrow/src/trusted_len.rs
+@@ -79,6 +79,8 @@ where
+ {
+ }
+ 
++unsafe impl<T: Copy> TrustedLen for polars_buffer::buffer::IntoIter<T> {}
++
+ unsafe impl<K, V> TrustedLen for hashbrown::hash_map::IntoIter<K, V> {}
+ 
+ #[derive(Clone)]
+diff --git a/crates/polars-buffer/Cargo.toml b/crates/polars-buffer/Cargo.toml
+new file mode 100644
+index 000000000..583fe693d
+--- /dev/null
++++ b/crates/polars-buffer/Cargo.toml
+@@ -0,0 +1,26 @@
++[package]
++name = "polars-buffer"
++version = { workspace = true }
++authors = { workspace = true }
++edition = { workspace = true }
++homepage = { workspace = true }
++license = { workspace = true }
++repository = { workspace = true }
++description = "Data buffers for the Polars DataFrame library"
++
++[dependencies]
++bytemuck = { workspace = true }
++either = { workspace = true }
++serde = { workspace = true, optional = true }
++
++[dev-dependencies]
++
++[build-dependencies]
++version_check = { workspace = true }
++
++[features]
++nightly = []
++serde = ["dep:serde"]
++
++[lints]
++workspace = true
+diff --git a/crates/polars-buffer/LICENSE b/crates/polars-buffer/LICENSE
+new file mode 120000
+index 000000000..30cff7403
+--- /dev/null
++++ b/crates/polars-buffer/LICENSE
+@@ -0,0 +1 @@
++../../LICENSE
+\ No newline at end of file
+diff --git a/crates/polars-buffer/README.md b/crates/polars-buffer/README.md
+new file mode 100644
+index 000000000..93c8f91c7
+--- /dev/null
++++ b/crates/polars-buffer/README.md
+@@ -0,0 +1,7 @@
++# polars-buffer
++
++`polars-buffer` is an **internal sub-crate** of the [Polars](https://crates.io/crates/polars)
++library, supplying an implementation of immutable buffers which can share underlying data.
++
++**Important Note**: This crate is **not intended for external usage**. Please refer to the main
++[Polars crate](https://crates.io/crates/polars) for intended usage.
+diff --git a/crates/polars-buffer/build.rs b/crates/polars-buffer/build.rs
+new file mode 100644
+index 000000000..3e4ab6462
+--- /dev/null
++++ b/crates/polars-buffer/build.rs
+@@ -0,0 +1,7 @@
++fn main() {
++    println!("cargo:rerun-if-changed=build.rs");
++    let channel = version_check::Channel::read().unwrap();
++    if channel.is_nightly() {
++        println!("cargo:rustc-cfg=feature=\"nightly\"");
++    }
++}
+diff --git a/crates/polars-arrow/src/buffer/immutable.rs b/crates/polars-buffer/src/buffer.rs
+similarity index 84%
+rename from crates/polars-arrow/src/buffer/immutable.rs
+rename to crates/polars-buffer/src/buffer.rs
+index b0b89ef12..70fb62457 100644
+--- a/crates/polars-arrow/src/buffer/immutable.rs
++++ b/crates/polars-buffer/src/buffer.rs
+@@ -4,8 +4,6 @@ use std::ops::Deref;
+ use bytemuck::{Pod, Zeroable};
+ use either::Either;
+ 
+-use super::IntoIter;
+-use crate::array::{ArrayAccessor, Splitable};
+ use crate::storage::SharedStorage;
+ 
+ /// [`Buffer`] is a contiguous memory region that can be shared across
+@@ -20,7 +18,7 @@ use crate::storage::SharedStorage;
+ ///
+ /// # Examples
+ /// ```
+-/// use polars_arrow::buffer::Buffer;
++/// use polars_buffer::Buffer;
+ ///
+ /// let mut buffer: Buffer<u32> = vec![1, 2, 3].into();
+ /// assert_eq!(buffer.as_ref(), [1, 2, 3].as_ref());
+@@ -145,7 +143,7 @@ impl<T> Buffer<T> {
+         }
+     }
+ 
+-    /// Returns the byte slice stored in this buffer
++    /// Returns the byte slice stored in this buffer.
+     #[inline]
+     pub fn as_slice(&self) -> &[T] {
+         // SAFETY:
+@@ -154,18 +152,6 @@ impl<T> Buffer<T> {
+         unsafe { std::slice::from_raw_parts(self.ptr, self.length) }
+     }
+ 
+-    /// Returns the byte slice stored in this buffer
+-    ///
+-    /// # Safety
+-    /// `index` must be smaller than `len`
+-    #[inline]
+-    pub(super) unsafe fn get_unchecked(&self, index: usize) -> &T {
+-        // SAFETY:
+-        // invariant of this function
+-        debug_assert!(index < self.length);
+-        unsafe { &*self.ptr.add(index) }
+-    }
+-
+     /// Returns a new [`Buffer`] that is a slice of this buffer starting at `offset`.
+     /// Doing so allows the same memory region to be shared between buffers.
+     /// # Panics
+@@ -219,7 +205,7 @@ impl<T> Buffer<T> {
+ 
+     /// Returns a pointer to the start of the storage underlying this buffer.
+     #[inline]
+-    pub(crate) fn storage_ptr(&self) -> *const T {
++    pub fn storage_ptr(&self) -> *const T {
+         self.storage.as_ptr()
+     }
+ 
+@@ -304,7 +290,7 @@ impl<T: Pod> Buffer<T> {
+ }
+ 
+ impl<T: Clone> Buffer<T> {
+-    pub fn make_mut(self) -> Vec<T> {
++    pub fn to_vec(self) -> Vec<T> {
+         match self.into_mut() {
+             Either::Right(v) => v,
+             Either::Left(same) => same.as_slice().to_vec(),
+@@ -348,52 +334,6 @@ impl<T> FromIterator<T> for Buffer<T> {
+     }
+ }
+ 
+-impl<T: Copy> IntoIterator for Buffer<T> {
+-    type Item = T;
+-
+-    type IntoIter = IntoIter<T>;
+-
+-    fn into_iter(self) -> Self::IntoIter {
+-        IntoIter::new(self)
+-    }
+-}
+-
+-unsafe impl<'a, T: 'a> ArrayAccessor<'a> for Buffer<T> {
+-    type Item = &'a T;
+-
+-    unsafe fn value_unchecked(&'a self, index: usize) -> Self::Item {
+-        unsafe { &*self.ptr.add(index) }
+-    }
+-
+-    fn len(&self) -> usize {
+-        Buffer::len(self)
+-    }
+-}
+-
+-impl<T> Splitable for Buffer<T> {
+-    #[inline(always)]
+-    fn check_bound(&self, offset: usize) -> bool {
+-        offset <= self.len()
+-    }
+-
+-    unsafe fn _split_at_unchecked(&self, offset: usize) -> (Self, Self) {
+-        let storage = &self.storage;
+-
+-        (
+-            Self {
+-                storage: storage.clone(),
+-                ptr: self.ptr,
+-                length: offset,
+-            },
+-            Self {
+-                storage: storage.clone(),
+-                ptr: self.ptr.wrapping_add(offset),
+-                length: self.length - offset,
+-            },
+-        )
+-    }
+-}
+-
+ #[cfg(feature = "serde")]
+ mod _serde_impl {
+     use serde::{Deserialize, Serialize};
+@@ -425,17 +365,77 @@ mod _serde_impl {
+     }
+ }
+ 
+-#[cfg(feature = "dsl-schema")]
+-impl<T: schemars::JsonSchema> schemars::JsonSchema for Buffer<T> {
+-    fn schema_name() -> std::borrow::Cow<'static, str> {
+-        <[T] as schemars::JsonSchema>::schema_name()
++impl<T: Copy> IntoIterator for Buffer<T> {
++    type Item = T;
++
++    type IntoIter = IntoIter<T>;
++
++    fn into_iter(self) -> Self::IntoIter {
++        IntoIter::new(self)
++    }
++}
++
++/// This crates' equivalent of [`std::vec::IntoIter`] for [`Buffer`].
++#[derive(Debug, Clone)]
++pub struct IntoIter<T: Copy> {
++    values: Buffer<T>,
++    index: usize,
++    end: usize,
++}
++
++impl<T: Copy> IntoIter<T> {
++    #[inline]
++    fn new(values: Buffer<T>) -> Self {
++        let end = values.len();
++        Self {
++            values,
++            index: 0,
++            end,
++        }
++    }
++}
++
++impl<T: Copy> Iterator for IntoIter<T> {
++    type Item = T;
++
++    #[inline]
++    fn next(&mut self) -> Option<Self::Item> {
++        if self.index == self.end {
++            return None;
++        }
++        let old = self.index;
++        self.index += 1;
++        Some(*unsafe { self.values.get_unchecked(old) })
++    }
++
++    #[inline]
++    fn size_hint(&self) -> (usize, Option<usize>) {
++        (self.end - self.index, Some(self.end - self.index))
+     }
+ 
+-    fn schema_id() -> std::borrow::Cow<'static, str> {
+-        <[T] as schemars::JsonSchema>::schema_id()
++    #[inline]
++    fn nth(&mut self, n: usize) -> Option<Self::Item> {
++        let new_index = self.index + n;
++        if new_index > self.end {
++            self.index = self.end;
++            None
++        } else {
++            self.index = new_index;
++            self.next()
++        }
+     }
++}
+ 
+-    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+-        <[T] as schemars::JsonSchema>::json_schema(generator)
++impl<T: Copy> DoubleEndedIterator for IntoIter<T> {
++    #[inline]
++    fn next_back(&mut self) -> Option<Self::Item> {
++        if self.index == self.end {
++            None
++        } else {
++            self.end -= 1;
++            Some(*unsafe { self.values.get_unchecked(self.end) })
++        }
+     }
+ }
++
++impl<T: Copy> ExactSizeIterator for IntoIter<T> {}
+diff --git a/crates/polars-buffer/src/lib.rs b/crates/polars-buffer/src/lib.rs
+new file mode 100644
+index 000000000..7690ae331
+--- /dev/null
++++ b/crates/polars-buffer/src/lib.rs
+@@ -0,0 +1,5 @@
++pub mod buffer;
++pub mod storage;
++
++pub use buffer::Buffer;
++pub use storage::SharedStorage;
+diff --git a/crates/polars-arrow/src/storage.rs b/crates/polars-buffer/src/storage.rs
+similarity index 95%
+rename from crates/polars-arrow/src/storage.rs
+rename to crates/polars-buffer/src/storage.rs
+index 8cdc9757f..e614b95bf 100644
+--- a/crates/polars-arrow/src/storage.rs
++++ b/crates/polars-buffer/src/storage.rs
+@@ -33,14 +33,11 @@ impl VecVTable {
+     }
+ }
+ 
+-use crate::ffi::InternalArrowArray;
+-
+ enum BackingStorage {
+     Vec {
+         original_capacity: usize, // Elements, not bytes.
+         vtable: &'static VecVTable,
+     },
+-    InternalArrowArray(InternalArrowArray),
+     ForeignOwner(Box<dyn Any + Send + 'static>),
+ 
+     /// Backed by some external method which we do not need to take care of,
+@@ -87,7 +84,6 @@ impl<T> SharedStorageInner<T> {
+ impl<T> Drop for SharedStorageInner<T> {
+     fn drop(&mut self) {
+         match core::mem::replace(&mut self.backing, BackingStorage::External) {
+-            BackingStorage::InternalArrowArray(a) => drop(a),
+             BackingStorage::ForeignOwner(o) => drop(o),
+             BackingStorage::Vec {
+                 original_capacity,
+@@ -178,27 +174,17 @@ impl<T> SharedStorage<T> {
+         }
+     }
+ 
+-    pub fn from_vec(v: Vec<T>) -> Self {
+-        Self {
+-            inner: NonNull::new(Box::into_raw(Box::new(SharedStorageInner::from_vec(v)))).unwrap(),
+-            phantom: PhantomData,
+-        }
+-    }
+-
+-    /// # Safety
+-    /// The range [ptr, ptr+len) needs to be valid while arr lives, and ptr
+-    /// must be aligned for T. ptr may not be null.
+-    pub unsafe fn from_internal_arrow_array(
+-        ptr: *const T,
+-        len: usize,
+-        arr: InternalArrowArray,
+-    ) -> Self {
+-        assert!(!ptr.is_null() && ptr.is_aligned());
++    pub fn from_owner<O: Send + AsRef<[T]> + 'static>(owner: O) -> Self {
++        let owner = Box::new(owner);
++        let slice: &[T] = (*owner).as_ref();
++        #[expect(clippy::manual_slice_size_calculation)]
++        let length_in_bytes = slice.len() * size_of::<T>();
++        let ptr = slice.as_ptr().cast_mut();
+         let inner = SharedStorageInner {
+             ref_count: AtomicU64::new(1),
+-            ptr: ptr.cast_mut(),
+-            length_in_bytes: len * size_of::<T>(),
+-            backing: BackingStorage::InternalArrowArray(arr),
++            ptr,
++            length_in_bytes,
++            backing: BackingStorage::ForeignOwner(owner),
+             phantom: PhantomData,
+         };
+         Self {
+@@ -207,6 +193,13 @@ impl<T> SharedStorage<T> {
+         }
+     }
+ 
++    pub fn from_vec(v: Vec<T>) -> Self {
++        Self {
++            inner: NonNull::new(Box::into_raw(Box::new(SharedStorageInner::from_vec(v)))).unwrap(),
++            phantom: PhantomData,
++        }
++    }
++
+     /// Leaks this SharedStorage such that it and its inner value is never
+     /// dropped. In return no refcounting needs to be performed.
+     ///
+@@ -259,6 +252,11 @@ impl<T> SharedStorage<T> {
+         self.inner().length_in_bytes / size_of::<T>()
+     }
+ 
++    #[inline(always)]
++    pub fn is_empty(&self) -> bool {
++        self.inner().length_in_bytes == 0
++    }
++
+     #[inline(always)]
+     pub fn as_ptr(&self) -> *const T {
+         self.inner().ptr
+diff --git a/crates/polars-compute/Cargo.toml b/crates/polars-compute/Cargo.toml
+index 294ce370e..b80a7b3d9 100644
+--- a/crates/polars-compute/Cargo.toml
++++ b/crates/polars-compute/Cargo.toml
+@@ -19,6 +19,7 @@ half = { workspace = true, optional = true, features = ["num-traits", "bytemuck"
+ hashbrown = { workspace = true }
+ itoa = { workspace = true, optional = true }
+ num-traits = { workspace = true }
++polars-buffer = { workspace = true }
+ polars-error = { workspace = true }
+ polars-utils = { workspace = true }
+ rand = { workspace = true }
+diff --git a/crates/polars-compute/src/cast/binary_to.rs b/crates/polars-compute/src/cast/binary_to.rs
+index 23f861a18..1e4c10dd0 100644
+--- a/crates/polars-compute/src/cast/binary_to.rs
++++ b/crates/polars-compute/src/cast/binary_to.rs
+@@ -1,9 +1,9 @@
+ use arrow::array::*;
+-use arrow::buffer::Buffer;
+ use arrow::datatypes::ArrowDataType;
+ use arrow::offset::{Offset, Offsets};
+ use arrow::types::NativeType;
+ use num_traits::AsPrimitive;
++use polars_buffer::Buffer;
+ use polars_error::PolarsResult;
+ #[cfg(feature = "dtype-f16")]
+ use polars_utils::float16::pf16;
+diff --git a/crates/polars-compute/src/cast/utf8_to.rs b/crates/polars-compute/src/cast/utf8_to.rs
+index a33fc0a7a..9794d0462 100644
+--- a/crates/polars-compute/src/cast/utf8_to.rs
++++ b/crates/polars-compute/src/cast/utf8_to.rs
+@@ -1,8 +1,8 @@
+ use arrow::array::*;
+-use arrow::buffer::Buffer;
+ use arrow::datatypes::ArrowDataType;
+ use arrow::offset::Offset;
+ use arrow::types::NativeType;
++use polars_buffer::Buffer;
+ use polars_error::PolarsResult;
+ use polars_utils::vec::PushUnchecked;
+ 
+diff --git a/crates/polars-compute/src/gather/generic_binary.rs b/crates/polars-compute/src/gather/generic_binary.rs
+index 652a30d3f..0b4c92643 100644
+--- a/crates/polars-compute/src/gather/generic_binary.rs
++++ b/crates/polars-compute/src/gather/generic_binary.rs
+@@ -1,7 +1,7 @@
+ use arrow::array::{GenericBinaryArray, PrimitiveArray};
+ use arrow::bitmap::{Bitmap, BitmapBuilder};
+-use arrow::buffer::Buffer;
+ use arrow::offset::{Offset, Offsets, OffsetsBuffer};
++use polars_buffer::Buffer;
+ use polars_utils::vec::{CapacityByFactor, PushUnchecked};
+ 
+ use super::Index;
+diff --git a/crates/polars-compute/src/if_then_else/view.rs b/crates/polars-compute/src/if_then_else/view.rs
+index 63d102ea9..f1438bed8 100644
+--- a/crates/polars-compute/src/if_then_else/view.rs
++++ b/crates/polars-compute/src/if_then_else/view.rs
+@@ -4,8 +4,8 @@ use std::sync::Arc;
+ 
+ use arrow::array::{Array, BinaryViewArray, MutablePlBinary, Utf8ViewArray, View};
+ use arrow::bitmap::Bitmap;
+-use arrow::buffer::Buffer;
+ use arrow::datatypes::ArrowDataType;
++use polars_buffer::Buffer;
+ use polars_utils::aliases::{InitHashMaps, PlHashSet};
+ 
+ use super::IfThenElseKernel;
+diff --git a/crates/polars-compute/src/nan.rs b/crates/polars-compute/src/nan.rs
+index 429918339..76b839041 100644
+--- a/crates/polars-compute/src/nan.rs
++++ b/crates/polars-compute/src/nan.rs
+@@ -1,7 +1,7 @@
+ #![allow(clippy::eq_op)] // We use x != x to detect NaN generically.
+ 
+ use arrow::bitmap::Bitmap;
+-use arrow::storage::SharedStorage;
++use polars_buffer::SharedStorage;
+ use polars_utils::float::IsFloat;
+ 
+ fn chunk_has_nan<T: PartialEq>(arr: &[T; 64]) -> bool {
+diff --git a/crates/polars-compute/src/rolling/nulls/mod.rs b/crates/polars-compute/src/rolling/nulls/mod.rs
+index 7704b602f..0c8dffcfc 100644
+--- a/crates/polars-compute/src/rolling/nulls/mod.rs
++++ b/crates/polars-compute/src/rolling/nulls/mod.rs
+@@ -100,8 +100,8 @@ where
+ #[cfg(test)]
+ mod test {
+     use arrow::array::{Array, Int32Array};
+-    use arrow::buffer::Buffer;
+     use arrow::datatypes::ArrowDataType;
++    use polars_buffer::Buffer;
+     use polars_utils::min_max::MaxIgnoreNan;
+ 
+     use super::*;
+diff --git a/crates/polars-compute/src/rolling/nulls/quantile.rs b/crates/polars-compute/src/rolling/nulls/quantile.rs
+index 454df0df8..633b04b67 100644
+--- a/crates/polars-compute/src/rolling/nulls/quantile.rs
++++ b/crates/polars-compute/src/rolling/nulls/quantile.rs
+@@ -171,8 +171,8 @@ where
+ 
+ #[cfg(test)]
+ mod test {
+-    use arrow::buffer::Buffer;
+     use arrow::datatypes::ArrowDataType;
++    use polars_buffer::Buffer;
+ 
+     use super::*;
+ 
+diff --git a/crates/polars-compute/src/size.rs b/crates/polars-compute/src/size.rs
+index 199a945e1..9b653c121 100644
+--- a/crates/polars-compute/src/size.rs
++++ b/crates/polars-compute/src/size.rs
+@@ -1,6 +1,6 @@
+ use arrow::array::{Array, ArrayRef, BinaryViewArray, UInt32Array};
+-use arrow::buffer::Buffer;
+ use arrow::datatypes::ArrowDataType;
++use polars_buffer::Buffer;
+ 
+ pub fn binary_size_bytes(array: &BinaryViewArray) -> ArrayRef {
+     let values: Buffer<_> = array.len_iter().collect();
+diff --git a/crates/polars-core/Cargo.toml b/crates/polars-core/Cargo.toml
+index 68a49fd7c..7a611ee2e 100644
+--- a/crates/polars-core/Cargo.toml
++++ b/crates/polars-core/Cargo.toml
+@@ -9,6 +9,7 @@ repository = { workspace = true }
+ description = "Core of the Polars DataFrame library"
+ 
+ [dependencies]
++polars-buffer = { workspace = true }
+ polars-compute = { workspace = true, features = ["gather"] }
+ polars-dtype = { workspace = true }
+ polars-error = { workspace = true }
+@@ -139,6 +140,7 @@ python = ["polars-error/python"]
+ serde = [
+   "dep:serde",
+   "bitflags/serde",
++  "polars-buffer/serde",
+   "polars-schema/serde",
+   "polars-utils/serde",
+   "polars-compute/serde",
+diff --git a/crates/polars-core/src/chunked_array/object/extension/mod.rs b/crates/polars-core/src/chunked_array/object/extension/mod.rs
+index 0f8eb7245..4203fe19e 100644
+--- a/crates/polars-core/src/chunked_array/object/extension/mod.rs
++++ b/crates/polars-core/src/chunked_array/object/extension/mod.rs
+@@ -6,8 +6,8 @@ use std::mem;
+ 
+ use arrow::array::FixedSizeBinaryArray;
+ use arrow::bitmap::BitmapBuilder;
+-use arrow::buffer::Buffer;
+ use arrow::datatypes::ExtensionType;
++use polars_buffer::Buffer;
+ use polars_extension::PolarsExtension;
+ use polars_utils::format_pl_smallstr;
+ use polars_utils::relaxed_cell::RelaxedCell;
+diff --git a/crates/polars-core/src/chunked_array/object/mod.rs b/crates/polars-core/src/chunked_array/object/mod.rs
+index 406321b05..a5bfcac4a 100644
+--- a/crates/polars-core/src/chunked_array/object/mod.rs
++++ b/crates/polars-core/src/chunked_array/object/mod.rs
+@@ -5,7 +5,7 @@ use std::hash::Hash;
+ 
+ use arrow::bitmap::Bitmap;
+ use arrow::bitmap::utils::{BitmapIter, ZipValidity};
+-use arrow::buffer::Buffer;
++use polars_buffer::Buffer;
+ use polars_utils::total_ord::TotalHash;
+ 
+ use crate::prelude::*;
+diff --git a/crates/polars-core/src/chunked_array/ops/bit_repr.rs b/crates/polars-core/src/chunked_array/ops/bit_repr.rs
+index 6a354787f..8219a212f 100644
+--- a/crates/polars-core/src/chunked_array/ops/bit_repr.rs
++++ b/crates/polars-core/src/chunked_array/ops/bit_repr.rs
+@@ -1,4 +1,4 @@
+-use arrow::buffer::Buffer;
++use polars_buffer::Buffer;
+ use polars_error::feature_gated;
+ 
+ use crate::prelude::*;
+diff --git a/crates/polars-core/src/chunked_array/ops/sort/mod.rs b/crates/polars-core/src/chunked_array/ops/sort/mod.rs
+index bf8e9e786..910eac12a 100644
+--- a/crates/polars-core/src/chunked_array/ops/sort/mod.rs
++++ b/crates/polars-core/src/chunked_array/ops/sort/mod.rs
+@@ -13,9 +13,9 @@ use std::cmp::Ordering;
+ pub(crate) use arg_sort::arg_sort_row_fmt;
+ pub(crate) use arg_sort_multiple::argsort_multiple_row_fmt;
+ use arrow::bitmap::{Bitmap, BitmapBuilder};
+-use arrow::buffer::Buffer;
+ use arrow::legacy::trusted_len::TrustedLenPush;
+ use compare_inner::NonNull;
++use polars_buffer::Buffer;
+ use rayon::prelude::*;
+ pub use slice::*;
+ 
+@@ -411,7 +411,7 @@ impl ChunkSort<BinaryType> for BinaryChunked {
+         let arr = ca.downcast_as_array().clone();
+ 
+         let (views, buffers, validity, total_bytes_len, total_buffer_len) = arr.into_inner();
+-        let mut views = views.make_mut();
++        let mut views = views.to_vec();
+ 
+         let (partitioned_part, validity) = partition_nulls(&mut views, validity, options);
+ 
+diff --git a/crates/polars-core/src/series/ops/null.rs b/crates/polars-core/src/series/ops/null.rs
+index 060cab8ea..fef81c9ed 100644
+--- a/crates/polars-core/src/series/ops/null.rs
++++ b/crates/polars-core/src/series/ops/null.rs
+@@ -1,6 +1,6 @@
+ use arrow::bitmap::Bitmap;
+-use arrow::buffer::Buffer;
+ use arrow::offset::OffsetsBuffer;
++use polars_buffer::Buffer;
+ 
+ #[cfg(feature = "object")]
+ use crate::chunked_array::object::registry::get_object_builder;
+diff --git a/crates/polars-expr/Cargo.toml b/crates/polars-expr/Cargo.toml
+index 2d16a6150..027dd0aa6 100644
+--- a/crates/polars-expr/Cargo.toml
++++ b/crates/polars-expr/Cargo.toml
+@@ -18,6 +18,7 @@ chrono-tz = { workspace = true, optional = true }
+ hashbrown = { workspace = true }
+ libloading = { workspace = true, optional = true }
+ num-traits = { workspace = true }
++polars-buffer = { workspace = true }
+ polars-compute = { workspace = true }
+ polars-core = { workspace = true, features = ["lazy", "zip_with", "random"] }
+ polars-io = { workspace = true, features = ["lazy"] }
+diff --git a/crates/polars-expr/src/groups/binview.rs b/crates/polars-expr/src/groups/binview.rs
+index c12d2b4a2..4ccab3a4f 100644
+--- a/crates/polars-expr/src/groups/binview.rs
++++ b/crates/polars-expr/src/groups/binview.rs
+@@ -1,6 +1,6 @@
+ use arrow::array::{Array, BinaryViewArrayGeneric, View, ViewType};
+ use arrow::bitmap::{Bitmap, MutableBitmap};
+-use arrow::buffer::Buffer;
++use polars_buffer::Buffer;
+ use polars_compute::binview_index_map::{BinaryViewIndexMap, Entry};
+ 
+ use super::*;
+diff --git a/crates/polars-expr/src/hot_groups/binview.rs b/crates/polars-expr/src/hot_groups/binview.rs
+index 5a4d4a084..71019baea 100644
+--- a/crates/polars-expr/src/hot_groups/binview.rs
++++ b/crates/polars-expr/src/hot_groups/binview.rs
+@@ -1,7 +1,7 @@
+ use arrow::array::builder::StaticArrayBuilder;
+ use arrow::array::{BinaryViewArrayGenericBuilder, PrimitiveArray, View};
+ use arrow::bitmap::MutableBitmap;
+-use arrow::buffer::Buffer;
++use polars_buffer::Buffer;
+ use polars_utils::vec::PushUnchecked;
+ 
+ use super::*;
+diff --git a/crates/polars-expr/src/hot_groups/row_encoded.rs b/crates/polars-expr/src/hot_groups/row_encoded.rs
+index b992fa38c..de0f698be 100644
+--- a/crates/polars-expr/src/hot_groups/row_encoded.rs
++++ b/crates/polars-expr/src/hot_groups/row_encoded.rs
+@@ -1,6 +1,6 @@
+ use arrow::array::{BinaryArray, PrimitiveArray};
+-use arrow::buffer::Buffer;
+ use arrow::offset::{Offsets, OffsetsBuffer};
++use polars_buffer::Buffer;
+ use polars_utils::vec::PushUnchecked;
+ 
+ use super::*;
+diff --git a/crates/polars-expr/src/idx_table/binview.rs b/crates/polars-expr/src/idx_table/binview.rs
+index c7a2c2212..92d2170a0 100644
+--- a/crates/polars-expr/src/idx_table/binview.rs
++++ b/crates/polars-expr/src/idx_table/binview.rs
+@@ -2,7 +2,7 @@
+ #![allow(unsafe_op_in_unsafe_fn)]
+ 
+ use arrow::array::{Array, View};
+-use arrow::buffer::Buffer;
++use polars_buffer::Buffer;
+ use polars_compute::binview_index_map::{BinaryViewIndexMap, Entry};
+ use polars_utils::idx_vec::UnitVec;
+ use polars_utils::itertools::Itertools;
+diff --git a/crates/polars-io/Cargo.toml b/crates/polars-io/Cargo.toml
+index a907f1d5c..de88dcc91 100644
+--- a/crates/polars-io/Cargo.toml
++++ b/crates/polars-io/Cargo.toml
+@@ -9,6 +9,7 @@ repository = { workspace = true }
+ description = "IO related logic for the Polars DataFrame library"
+ 
+ [dependencies]
++polars-buffer = { workspace = true }
+ polars-compute = { workspace = true }
+ polars-core = { workspace = true }
+ polars-error = { workspace = true }
+@@ -70,7 +71,13 @@ json = [
+   "csv",
+ ]
+ scan_lines = []
+-serde = ["dep:serde", "polars-core/serde-lazy", "polars-parquet/serde", "polars-utils/serde"]
++serde = [
++  "dep:serde",
++  "polars-buffer/serde",
++  "polars-core/serde-lazy",
++  "polars-parquet/serde",
++  "polars-utils/serde",
++]
+ dsl-schema = ["dep:schemars", "polars-core/dsl-schema", "polars-parquet/dsl-schema", "polars-utils/dsl-schema"]
+ # support for arrows ipc file parsing
+ ipc = ["arrow/io_ipc", "arrow/io_ipc_compression"]
+diff --git a/crates/polars-io/src/path_utils/mod.rs b/crates/polars-io/src/path_utils/mod.rs
+index f2a61d9f8..694bd5a5e 100644
+--- a/crates/polars-io/src/path_utils/mod.rs
++++ b/crates/polars-io/src/path_utils/mod.rs
+@@ -3,7 +3,7 @@ use std::collections::VecDeque;
+ use std::path::{Path, PathBuf};
+ use std::sync::LazyLock;
+ 
+-use arrow::buffer::Buffer;
++use polars_buffer::Buffer;
+ use polars_core::config;
+ use polars_core::error::{PolarsResult, polars_bail, to_compute_err};
+ use polars_utils::pl_path::{CloudScheme, PlRefPath};
+diff --git a/crates/polars-io/src/scan_lines.rs b/crates/polars-io/src/scan_lines.rs
+index 6be0aeeff..73cca75a5 100644
+--- a/crates/polars-io/src/scan_lines.rs
++++ b/crates/polars-io/src/scan_lines.rs
+@@ -81,7 +81,7 @@ fn split_lines_to_rows_impl(bytes: &[u8], max_buffer_size: usize) -> PolarsResul
+ 
+ #[cfg(test)]
+ mod tests {
+-    use arrow::buffer::Buffer;
++    use polars_buffer::Buffer;
+     use polars_error::PolarsError;
+ 
+     use crate::scan_lines::split_lines_to_rows_impl;
+diff --git a/crates/polars-lazy/Cargo.toml b/crates/polars-lazy/Cargo.toml
+index c063613c5..3a3263977 100644
+--- a/crates/polars-lazy/Cargo.toml
++++ b/crates/polars-lazy/Cargo.toml
+@@ -12,6 +12,7 @@ description = "Lazy query engine for the Polars DataFrame library"
+ arrow = { workspace = true }
+ chrono = { workspace = true }
+ futures = { workspace = true, optional = true }
++polars-buffer = { workspace = true }
+ polars-compute = { workspace = true }
+ polars-core = { workspace = true, features = ["lazy", "zip_with", "random"] }
+ polars-expr = { workspace = true }
+@@ -295,6 +296,7 @@ regex = ["polars-expr/regex"]
+ serde = [
+   "polars-plan/serde",
+   "arrow/serde",
++  "polars-buffer/serde",
+   "polars-core/serde-lazy",
+   "polars-time?/serde",
+   "polars-io/serde",
+diff --git a/crates/polars-lazy/src/scan/csv.rs b/crates/polars-lazy/src/scan/csv.rs
+index 4bff2b937..43598d122 100644
+--- a/crates/polars-lazy/src/scan/csv.rs
++++ b/crates/polars-lazy/src/scan/csv.rs
+@@ -1,5 +1,5 @@
+ #[cfg(feature = "csv")]
+-use arrow::buffer::Buffer;
++use polars_buffer::Buffer;
+ use polars_core::prelude::*;
+ use polars_io::cloud::CloudOptions;
+ use polars_io::csv::read::{
+diff --git a/crates/polars-lazy/src/scan/file_list_reader.rs b/crates/polars-lazy/src/scan/file_list_reader.rs
+index 0397d772d..744f05bb6 100644
+--- a/crates/polars-lazy/src/scan/file_list_reader.rs
++++ b/crates/polars-lazy/src/scan/file_list_reader.rs
+@@ -1,4 +1,4 @@
+-use arrow::buffer::Buffer;
++use polars_buffer::Buffer;
+ use polars_core::prelude::*;
+ use polars_io::RowIndex;
+ use polars_io::cloud::CloudOptions;
+diff --git a/crates/polars-lazy/src/scan/ipc.rs b/crates/polars-lazy/src/scan/ipc.rs
+index 4bb508a93..a5ecdb5f8 100644
+--- a/crates/polars-lazy/src/scan/ipc.rs
++++ b/crates/polars-lazy/src/scan/ipc.rs
+@@ -1,4 +1,4 @@
+-use arrow::buffer::Buffer;
++use polars_buffer::Buffer;
+ use polars_core::prelude::*;
+ use polars_io::ipc::IpcScanOptions;
+ use polars_utils::pl_path::PlRefPath;
+diff --git a/crates/polars-lazy/src/scan/ndjson.rs b/crates/polars-lazy/src/scan/ndjson.rs
+index bd27af374..794337174 100644
+--- a/crates/polars-lazy/src/scan/ndjson.rs
++++ b/crates/polars-lazy/src/scan/ndjson.rs
+@@ -1,6 +1,6 @@
+ use std::num::NonZeroUsize;
+ 
+-use arrow::buffer::Buffer;
++use polars_buffer::Buffer;
+ use polars_core::prelude::*;
+ use polars_io::cloud::CloudOptions;
+ use polars_io::{HiveOptions, RowIndex};
+diff --git a/crates/polars-lazy/src/scan/parquet.rs b/crates/polars-lazy/src/scan/parquet.rs
+index 9c54e84b6..bae100ec7 100644
+--- a/crates/polars-lazy/src/scan/parquet.rs
++++ b/crates/polars-lazy/src/scan/parquet.rs
+@@ -1,4 +1,4 @@
+-use arrow::buffer::Buffer;
++use polars_buffer::Buffer;
+ use polars_core::prelude::*;
+ use polars_io::cloud::CloudOptions;
+ use polars_io::parquet::read::ParallelStrategy;
+diff --git a/crates/polars-ops/Cargo.toml b/crates/polars-ops/Cargo.toml
+index f03ca06b9..caa92f374 100644
+--- a/crates/polars-ops/Cargo.toml
++++ b/crates/polars-ops/Cargo.toml
+@@ -9,6 +9,7 @@ repository = { workspace = true }
+ description = "More operations on Polars data structures"
+ 
+ [dependencies]
++polars-buffer = { workspace = true }
+ polars-compute = { workspace = true }
+ polars-core = { workspace = true, features = ["algorithm_group_by", "zip_with"] }
+ polars-error = { workspace = true }
+@@ -92,7 +93,14 @@ timezones = ["chrono", "chrono-tz", "polars-core/temporal", "polars-core/timezon
+ random = ["rand", "rand_distr"]
+ rank = ["rand"]
+ find_many = ["aho-corasick"]
+-serde = ["dep:serde", "polars-core/serde", "polars-utils/serde", "polars-schema/serde", "polars-compute/serde"]
++serde = [
++  "dep:serde",
++  "polars-buffer/serde",
++  "polars-core/serde",
++  "polars-utils/serde",
++  "polars-schema/serde",
++  "polars-compute/serde",
++]
+ dsl-schema = [
+   "dep:schemars",
+   "polars-core/dsl-schema",
+diff --git a/crates/polars-ops/src/chunked_array/gather/chunked.rs b/crates/polars-ops/src/chunked_array/gather/chunked.rs
+index eccb61949..c00b302d9 100644
+--- a/crates/polars-ops/src/chunked_array/gather/chunked.rs
++++ b/crates/polars-ops/src/chunked_array/gather/chunked.rs
+@@ -3,9 +3,9 @@ use std::fmt::Debug;
+ 
+ use arrow::array::{Array, BinaryViewArrayGeneric, View, ViewType};
+ use arrow::bitmap::BitmapBuilder;
+-use arrow::buffer::Buffer;
+ use arrow::legacy::trusted_len::TrustedLenPush;
+ use hashbrown::hash_map::Entry;
++use polars_buffer::Buffer;
+ use polars_core::prelude::gather::_update_gather_sorted_flag;
+ use polars_core::prelude::*;
+ use polars_core::series::IsSorted;
+diff --git a/crates/polars-ops/src/chunked_array/scatter.rs b/crates/polars-ops/src/chunked_array/scatter.rs
+index ed3ed7afc..cd6d54812 100644
+--- a/crates/polars-ops/src/chunked_array/scatter.rs
++++ b/crates/polars-ops/src/chunked_array/scatter.rs
+@@ -1,6 +1,6 @@
+ #![allow(unsafe_op_in_unsafe_fn)]
+ use arrow::array::{Array, BinaryViewArrayGeneric, BooleanArray, PrimitiveArray, View, ViewType};
+-use arrow::buffer::Buffer;
++use polars_buffer::Buffer;
+ use polars_core::prelude::*;
+ use polars_core::series::IsSorted;
+ use polars_core::utils::arrow::bitmap::MutableBitmap;
+@@ -178,7 +178,7 @@ unsafe fn scatter_binview_impl<'a, V, T: ViewType + ?Sized>(
+         }
+     }
+ 
+-    let mut buffers = Buffer::make_mut(core::mem::take(arr.data_buffers_mut()));
++    let mut buffers = Buffer::to_vec(core::mem::take(arr.data_buffers_mut()));
+     buffers.extend(new_buffers.into_iter().map(Buffer::from));
+     *arr.data_buffers_mut() = Buffer::from(buffers);
+ }
+diff --git a/crates/polars-ops/src/chunked_array/top_k.rs b/crates/polars-ops/src/chunked_array/top_k.rs
+index fd4002cbf..b2230a8db 100644
+--- a/crates/polars-ops/src/chunked_array/top_k.rs
++++ b/crates/polars-ops/src/chunked_array/top_k.rs
+@@ -75,7 +75,7 @@ where
+     nnca.rechunk_mut();
+     let chunk = nnca.downcast_into_iter().next().unwrap();
+     let (_, buffer, _) = chunk.into_inner();
+-    let mut vec = buffer.make_mut();
++    let mut vec = buffer.to_vec();
+ 
+     // Partition.
+     if k < vec.len() {
+diff --git a/crates/polars-parquet/Cargo.toml b/crates/polars-parquet/Cargo.toml
+index a11dcdada..11277857c 100644
+--- a/crates/polars-parquet/Cargo.toml
++++ b/crates/polars-parquet/Cargo.toml
+@@ -21,6 +21,7 @@ fallible-streaming-iterator = { workspace = true, optional = true }
+ futures = { workspace = true, optional = true }
+ hashbrown = { workspace = true }
+ num-traits = { workspace = true }
++polars-buffer = { workspace = true }
+ polars-compute = { workspace = true, features = ["approx_unique", "cast"] }
+ polars-error = { workspace = true }
+ polars-parquet-format = "0.1"
+@@ -68,7 +69,7 @@ lz4_flex = ["dep:lz4_flex"]
+ 
+ async = ["async-stream", "futures", "polars-parquet-format/async"]
+ bloom_filter = ["xxhash-rust"]
+-serde = ["dep:serde", "polars-utils/serde"]
++serde = ["dep:serde", "polars-buffer/serde", "polars-utils/serde"]
+ dsl-schema = ["dep:schemars"]
+ simd = ["polars-compute/simd"]
+ 
+diff --git a/crates/polars-parquet/src/arrow/read/deserialize/binary/mod.rs b/crates/polars-parquet/src/arrow/read/deserialize/binary/mod.rs
+index 4b3f5e049..e9e2579c2 100644
+--- a/crates/polars-parquet/src/arrow/read/deserialize/binary/mod.rs
++++ b/crates/polars-parquet/src/arrow/read/deserialize/binary/mod.rs
+@@ -1,8 +1,8 @@
+ use arrow::array::{Array, BinaryArray};
+ use arrow::bitmap::{Bitmap, BitmapBuilder};
+-use arrow::buffer::Buffer;
+ use arrow::datatypes::ArrowDataType;
+ use arrow::offset::OffsetsBuffer;
++use polars_buffer::Buffer;
+ use polars_compute::filter::filter_with_bitmap;
+ 
+ use super::utils::dict_indices_decoder;
+diff --git a/crates/polars-parquet/src/arrow/read/deserialize/fixed_size_binary.rs b/crates/polars-parquet/src/arrow/read/deserialize/fixed_size_binary.rs
+index 0345f05b3..4fe88697f 100644
+--- a/crates/polars-parquet/src/arrow/read/deserialize/fixed_size_binary.rs
++++ b/crates/polars-parquet/src/arrow/read/deserialize/fixed_size_binary.rs
+@@ -1,14 +1,13 @@
+ use arrow::array::{FixedSizeBinaryArray, Splitable};
+ use arrow::bitmap::{Bitmap, BitmapBuilder};
+-use arrow::buffer::Buffer;
+ use arrow::datatypes::ArrowDataType;
+ use arrow::pushable::Pushable;
+-use arrow::storage::SharedStorage;
+ use arrow::types::{
+     AlignedBytes, Bytes1Alignment1, Bytes2Alignment2, Bytes4Alignment4, Bytes8Alignment8,
+     Bytes12Alignment4, Bytes16Alignment16, Bytes32Alignment16,
+ };
+ use bytemuck::Zeroable;
++use polars_buffer::{Buffer, SharedStorage};
+ 
+ use super::Filter;
+ use super::dictionary_encoded::append_validity;
+diff --git a/crates/polars-parquet/src/arrow/write/dictionary.rs b/crates/polars-parquet/src/arrow/write/dictionary.rs
+index 7d99cc756..12d897313 100644
+--- a/crates/polars-parquet/src/arrow/write/dictionary.rs
++++ b/crates/polars-parquet/src/arrow/write/dictionary.rs
+@@ -2,11 +2,11 @@ use arrow::array::{
+     Array, BinaryViewArray, DictionaryArray, DictionaryKey, PrimitiveArray, Utf8ViewArray,
+ };
+ use arrow::bitmap::{Bitmap, MutableBitmap};
+-use arrow::buffer::Buffer;
+ use arrow::datatypes::{ArrowDataType, IntegerType, PhysicalType};
+ use arrow::legacy::utils::CustomIterTools;
+ use arrow::trusted_len::TrustMyLength;
+ use arrow::types::NativeType;
++use polars_buffer::Buffer;
+ use polars_compute::min_max::MinMaxKernel;
+ use polars_error::{PolarsResult, polars_bail};
+ use polars_utils::float16::pf16;
+diff --git a/crates/polars-plan/Cargo.toml b/crates/polars-plan/Cargo.toml
+index 54165e6a3..7c3503f3e 100644
+--- a/crates/polars-plan/Cargo.toml
++++ b/crates/polars-plan/Cargo.toml
+@@ -13,6 +13,7 @@ doctest = false
+ 
+ [dependencies]
+ libloading = { workspace = true, optional = true }
++polars-buffer = { workspace = true }
+ polars-compute = { workspace = true }
+ polars-core = { workspace = true, features = ["lazy", "zip_with", "random"] }
+ polars-error = { workspace = true }
+@@ -58,6 +59,7 @@ debugging = []
+ python = ["dep:pyo3", "polars-utils/python", "polars-ffi", "polars-core/object", "serde"]
+ serde = [
+   "dep:serde",
++  "polars-buffer/serde",
+   "polars-core/serde-lazy",
+   "polars-core/serde",
+   "polars-time/serde",
+diff --git a/crates/polars-plan/dsl-schema-hashes.json b/crates/polars-plan/dsl-schema-hashes.json
+index 4f4811882..c89317f9f 100644
+--- a/crates/polars-plan/dsl-schema-hashes.json
++++ b/crates/polars-plan/dsl-schema-hashes.json
+@@ -4,7 +4,6 @@
+   "AnyValue": "2e8929b09f136470ab8b3f200cd05b0e7c167162a3505c84ebd2a7e3da851403",
+   "ArrayDataTypeFunction": "c6089e74d6b54ea7576f21b0bf7d449d60f091243565d245188126f0cd7f1bf6",
+   "ArrayFunction": "b437b9e540cd4400da8a3a013000a7bbe4c48ee5de9e18e3da018362817b492f",
+-  "Array_of_PlRefPath": "d0fd54499026721ae588fc54aaee8ccd136cc54b98ec8a2bfe20ef82a073870f",
+   "AsOfOptions": "f61410edcacd7b460cec03b8178870f62e61d37e5d0042c1ccb29543cc24dc08",
+   "AsofStrategy": "777dd1236ad9111d4d0c5b537364eea2722a67f1771d1a49ee52869e15937830",
+   "BinaryFunction": "203d318c2c3925dcf23243e634c7e9e19f3a0106a741438e20d8af5a9dd3da60",
+@@ -142,7 +141,7 @@
+   "RowEncodingVariant": "39daa533b83365f08751fb3c22153aa8d3d82db1a2d4e94140abd354c09024b8",
+   "RowIndex": "898754038b0f35d4d3931886902c863e363a95e95ad240e59054ad11cd1a31d0",
+   "ScalarColumn": "65c63bb092a3f18c016032c68a7bb84b8582711e5d38b9ca70230a93153e769c",
+-  "ScanSources": "6ecc16645189309b3b33fe254c4a89270daefb87372e9d607d8c83e86fb22f90",
++  "ScanSources": "9f3da62612115b8c359d27b5bbfdba3f27c97aa0bc3e00bafceb805da8ed4fdc",
+   "Schema_for_DataType": "d8941ded8250aa7bbbaa72fb332b68f7cee01c080cd8862bb1c5a7d0a972c3e7",
+   "SearchSortedSide": "3976138cd5159a641e118a57aedcb079ef8b131b84fdcb102413eb8802a27403",
+   "Selector": "fcdb32f1c6ccb9f71a57afd77ba233a38888e736dc7b3e4562c54a20e9a0a290",
+diff --git a/crates/polars-plan/src/dsl/scan_sources.rs b/crates/polars-plan/src/dsl/scan_sources.rs
+index 70ecd0055..0445d3a40 100644
+--- a/crates/polars-plan/src/dsl/scan_sources.rs
++++ b/crates/polars-plan/src/dsl/scan_sources.rs
+@@ -2,7 +2,7 @@ use std::fmt::{Debug, Formatter};
+ use std::fs::File;
+ use std::sync::Arc;
+ 
+-use arrow::buffer::Buffer;
++use polars_buffer::Buffer;
+ use polars_core::error::{PolarsResult, feature_gated};
+ use polars_error::polars_err;
+ use polars_io::cloud::CloudOptions;
+@@ -14,9 +14,22 @@ use polars_io::{expand_paths, expand_paths_hive, expanded_from_single_directory}
+ use polars_utils::mmap::MemSlice;
+ use polars_utils::pl_path::PlRefPath;
+ use polars_utils::pl_str::PlSmallStr;
++#[cfg(feature = "serde")]
++use serde::{Deserialize, Deserializer, Serialize, Serializer};
+ 
+ use super::UnifiedScanArgs;
+ 
++#[cfg(feature = "serde")]
++fn serialize_paths<S: Serializer>(paths: &Buffer<PlRefPath>, s: S) -> Result<S::Ok, S::Error> {
++    paths.as_slice().serialize(s)
++}
++
++#[cfg(feature = "serde")]
++fn deserialize_paths<'de, D: Deserializer<'de>>(d: D) -> Result<Buffer<PlRefPath>, D::Error> {
++    let v: Vec<PlRefPath> = Deserialize::deserialize(d)?;
++    Ok(Buffer::from(v))
++}
++
+ /// Set of sources to scan from
+ ///
+ /// This can either be a list of paths to files, opened files or in-memory buffers. Mixing of
+@@ -25,8 +38,15 @@ use super::UnifiedScanArgs;
+ #[cfg_attr(feature = "dsl-schema", derive(schemars::JsonSchema))]
+ #[derive(Clone)]
+ pub enum ScanSources {
++    #[cfg_attr(
++        feature = "serde",
++        serde(
++            serialize_with = "serialize_paths",
++            deserialize_with = "deserialize_paths"
++        )
++    )]
++    #[cfg_attr(feature = "dsl-schema", schemars(with = "Vec<PlRefPath>"))]
+     Paths(Buffer<PlRefPath>),
+-
+     #[cfg_attr(any(feature = "serde", feature = "dsl-schema"), serde(skip))]
+     Files(Arc<[File]>),
+     #[cfg_attr(any(feature = "serde", feature = "dsl-schema"), serde(skip))]
+diff --git a/crates/polars-plan/src/plans/conversion/dsl_to_ir/scans.rs b/crates/polars-plan/src/plans/conversion/dsl_to_ir/scans.rs
+index 9402ad828..55fa12477 100644
+--- a/crates/polars-plan/src/plans/conversion/dsl_to_ir/scans.rs
++++ b/crates/polars-plan/src/plans/conversion/dsl_to_ir/scans.rs
+@@ -1,8 +1,8 @@
+ use std::io::BufReader;
+ use std::sync::LazyLock;
+ 
+-use arrow::buffer::Buffer;
+ use either::Either;
++use polars_buffer::Buffer;
+ use polars_io::RowIndex;
+ use polars_io::csv::read::streaming::read_until_start_and_infer_schema;
+ #[cfg(feature = "cloud")]
+diff --git a/crates/polars-python/Cargo.toml b/crates/polars-python/Cargo.toml
+index 83c92a62b..60e0e5260 100644
+--- a/crates/polars-python/Cargo.toml
++++ b/crates/polars-python/Cargo.toml
+@@ -9,6 +9,7 @@ repository = { workspace = true }
+ description = "Enable running Polars workloads in Python"
+ 
+ [dependencies]
++polars-buffer = { workspace = true }
+ polars-compute = { workspace = true }
+ polars-core = { workspace = true, features = ["python"] }
+ polars-dtype = { workspace = true }
+@@ -145,7 +146,14 @@ parquet = ["polars/parquet", "polars-parquet", "polars-mem-engine/parquet"]
+ ipc = ["polars/ipc", "polars-mem-engine/ipc"]
+ ipc_streaming = ["polars/ipc_streaming"]
+ is_in = ["polars/is_in"]
+-json = ["polars/serde", "serde_json", "polars/json", "polars-utils/serde", "polars-mem-engine/json"]
++json = [
++  "polars/serde",
++  "polars-buffer/serde",
++  "serde_json",
++  "polars/json",
++  "polars-utils/serde",
++  "polars-mem-engine/json",
++]
+ scan_lines = ["polars/scan_lines", "polars-mem-engine/scan_lines"]
+ trigonometry = ["polars/trigonometry"]
+ sign = ["polars/sign"]
+diff --git a/crates/polars-python/src/series/buffers.rs b/crates/polars-python/src/series/buffers.rs
+index 92f5e6cb1..98b1f75d8 100644
+--- a/crates/polars-python/src/series/buffers.rs
++++ b/crates/polars-python/src/series/buffers.rs
+@@ -14,10 +14,10 @@
+ 
+ use arrow::array::{Array, BooleanArray, PrimitiveArray, Utf8Array};
+ use arrow::bitmap::Bitmap;
+-use arrow::buffer::Buffer;
+ use arrow::offset::OffsetsBuffer;
+ use arrow::types::NativeType;
+ use polars::prelude::*;
++use polars_buffer::Buffer;
+ use polars_core::{with_match_physical_numeric_polars_type, with_match_physical_numeric_type};
+ use pyo3::exceptions::PyTypeError;
+ use pyo3::prelude::*;
+diff --git a/crates/polars-python/src/series/construction.rs b/crates/polars-python/src/series/construction.rs
+index af674bbbe..37879e8ff 100644
+--- a/crates/polars-python/src/series/construction.rs
++++ b/crates/polars-python/src/series/construction.rs
+@@ -2,12 +2,11 @@ use std::borrow::Cow;
+ 
+ use arrow::array::{Array, PrimitiveArray};
+ use arrow::bitmap::BitmapBuilder;
+-use arrow::buffer::Buffer;
+-use arrow::storage::SharedStorage;
+ use arrow::types::NativeType;
+ use num_traits::AsPrimitive;
+ use numpy::{Element, PyArray1, PyArrayMethods, PyUntypedArrayMethods};
+ use polars::prelude::*;
++use polars_buffer::{Buffer, SharedStorage};
+ use pyo3::exceptions::{PyTypeError, PyValueError};
+ use pyo3::prelude::*;
+ 
+diff --git a/crates/polars-row/Cargo.toml b/crates/polars-row/Cargo.toml
+index 2fa9c4ccb..0059dadcf 100644
+--- a/crates/polars-row/Cargo.toml
++++ b/crates/polars-row/Cargo.toml
+@@ -11,6 +11,7 @@ description = "Row encodings for the Polars DataFrame library"
+ [dependencies]
+ bitflags = { workspace = true }
+ bytemuck = { workspace = true }
++polars-buffer = { workspace = true }
+ polars-compute = { workspace = true, features = ["cast"] }
+ polars-dtype = { workspace = true }
+ polars-error = { workspace = true }
+diff --git a/crates/polars-row/src/decode.rs b/crates/polars-row/src/decode.rs
+index cb5b26a2b..6b1325907 100644
+--- a/crates/polars-row/src/decode.rs
++++ b/crates/polars-row/src/decode.rs
+@@ -1,9 +1,9 @@
+ #![allow(unsafe_op_in_unsafe_fn)]
+ use arrow::bitmap::{Bitmap, BitmapBuilder};
+-use arrow::buffer::Buffer;
+ use arrow::datatypes::ArrowDataType;
+ use arrow::offset::OffsetsBuffer;
+ use arrow::types::NativeType;
++use polars_buffer::Buffer;
+ use polars_dtype::categorical::CatNative;
+ 
+ use self::encode::fixed_size;
+diff --git a/crates/polars-stream/Cargo.toml b/crates/polars-stream/Cargo.toml
+index e3296ddc5..84dcffe93 100644
+--- a/crates/polars-stream/Cargo.toml
++++ b/crates/polars-stream/Cargo.toml
+@@ -36,6 +36,7 @@ tokio = { workspace = true, features = ["sync"] }
+ 
+ arrow = { workspace = true }
+ memchr = { workspace = true }
++polars-buffer = { workspace = true }
+ polars-compute = { workspace = true }
+ polars-core = { workspace = true, features = ["partition_by"] }
+ polars-error = { workspace = true }
+diff --git a/crates/polars-stream/src/nodes/io_sinks2/components/partition_key.rs b/crates/polars-stream/src/nodes/io_sinks2/components/partition_key.rs
+index 9725b6d8a..9fd3dbf43 100644
+--- a/crates/polars-stream/src/nodes/io_sinks2/components/partition_key.rs
++++ b/crates/polars-stream/src/nodes/io_sinks2/components/partition_key.rs
+@@ -1,6 +1,6 @@
+ use arrow::array::{BinaryViewArray, FixedSizeBinaryArray, PrimitiveArray};
+-use arrow::buffer::Buffer;
+ use arrow::datatypes::ArrowDataType;
++use polars_buffer::Buffer;
+ use polars_core::prelude::{Column, DataType, LargeBinaryArray};
+ use polars_core::with_match_physical_integer_type;
+ 
+diff --git a/crates/polars-stream/src/physical_plan/to_graph.rs b/crates/polars-stream/src/physical_plan/to_graph.rs
+index 7fb255121..0632babe2 100644
+--- a/crates/polars-stream/src/physical_plan/to_graph.rs
++++ b/crates/polars-stream/src/physical_plan/to_graph.rs
+@@ -1127,7 +1127,7 @@ fn to_graph_rec<'a>(
+ 
+         #[cfg(feature = "python")]
+         PythonScan { options } => {
+-            use arrow::buffer::Buffer;
++            use polars_buffer::Buffer;
+             use polars_plan::dsl::python_dsl::PythonScanSource as S;
+             use polars_plan::plans::PythonPredicate;
+             use polars_utils::relaxed_cell::RelaxedCell;
+diff --git a/crates/polars/Cargo.toml b/crates/polars/Cargo.toml
+index 7e12110bd..1640e7d1a 100644
+--- a/crates/polars/Cargo.toml
++++ b/crates/polars/Cargo.toml
+@@ -12,6 +12,7 @@ description = "DataFrame library based on Apache Arrow"
+ 
+ [dependencies]
+ arrow = { workspace = true }
++polars-buffer = { workspace = true }
+ polars-compute = { workspace = true }
+ polars-core = { workspace = true, features = ["algorithm_group_by"] }
+ polars-error = { workspace = true }
+@@ -74,7 +75,7 @@ default = [
+ ]
+ ndarray = ["polars-core/ndarray"]
+ # serde support for dataframes and series
+-serde = ["polars-core/serde", "polars-utils/serde"]
++serde = ["polars-buffer/serde", "polars-core/serde", "polars-utils/serde"]
+ serde-lazy = [
+   "polars-core/serde-lazy",
+   "polars-lazy?/serde",
+diff --git a/crates/polars/tests/it/arrow/array/binary/mod.rs b/crates/polars/tests/it/arrow/array/binary/mod.rs
+index 8f7e8d8f6..71ba86aac 100644
+--- a/crates/polars/tests/it/arrow/array/binary/mod.rs
++++ b/crates/polars/tests/it/arrow/array/binary/mod.rs
+@@ -1,8 +1,8 @@
+ use arrow::array::{Array, BinaryArray, Splitable};
+ use arrow::bitmap::Bitmap;
+-use arrow::buffer::Buffer;
+ use arrow::datatypes::ArrowDataType;
+ use arrow::offset::OffsetsBuffer;
++use polars_buffer::Buffer;
+ use polars_error::PolarsResult;
+ 
+ mod mutable;
+diff --git a/crates/polars/tests/it/arrow/array/binary/to_mutable.rs b/crates/polars/tests/it/arrow/array/binary/to_mutable.rs
+index 8f07d3a16..6ac9184fc 100644
+--- a/crates/polars/tests/it/arrow/array/binary/to_mutable.rs
++++ b/crates/polars/tests/it/arrow/array/binary/to_mutable.rs
+@@ -1,7 +1,7 @@
+ use arrow::array::BinaryArray;
+ use arrow::bitmap::Bitmap;
+-use arrow::buffer::Buffer;
+ use arrow::datatypes::ArrowDataType;
++use polars_buffer::Buffer;
+ 
+ #[test]
+ fn not_shared() {
+diff --git a/crates/polars/tests/it/arrow/array/binview/mod.rs b/crates/polars/tests/it/arrow/array/binview/mod.rs
+index ab6a21945..41f727d9e 100644
+--- a/crates/polars/tests/it/arrow/array/binview/mod.rs
++++ b/crates/polars/tests/it/arrow/array/binview/mod.rs
+@@ -1,6 +1,6 @@
+ use arrow::array::*;
+-use arrow::buffer::Buffer;
+ use arrow::datatypes::ArrowDataType;
++use polars_buffer::Buffer;
+ 
+ fn array() -> BinaryViewArrayGeneric<str> {
+     let datatype = ArrowDataType::Utf8View;
+diff --git a/crates/polars/tests/it/arrow/array/fixed_size_binary/mod.rs b/crates/polars/tests/it/arrow/array/fixed_size_binary/mod.rs
+index f1ad63349..207c5574c 100644
+--- a/crates/polars/tests/it/arrow/array/fixed_size_binary/mod.rs
++++ b/crates/polars/tests/it/arrow/array/fixed_size_binary/mod.rs
+@@ -1,7 +1,7 @@
+ use arrow::array::FixedSizeBinaryArray;
+ use arrow::bitmap::Bitmap;
+-use arrow::buffer::Buffer;
+ use arrow::datatypes::{ArrowDataType, ExtensionType};
++use polars_buffer::Buffer;
+ 
+ mod mutable;
+ 
+diff --git a/crates/polars/tests/it/arrow/array/list/mod.rs b/crates/polars/tests/it/arrow/array/list/mod.rs
+index 37ab5d0e7..657ea3557 100644
+--- a/crates/polars/tests/it/arrow/array/list/mod.rs
++++ b/crates/polars/tests/it/arrow/array/list/mod.rs
+@@ -1,6 +1,6 @@
+ use arrow::array::*;
+-use arrow::buffer::Buffer;
+ use arrow::datatypes::ArrowDataType;
++use polars_buffer::Buffer;
+ 
+ mod mutable;
+ 
+diff --git a/crates/polars/tests/it/arrow/array/list/mutable.rs b/crates/polars/tests/it/arrow/array/list/mutable.rs
+index 6b4c60e3b..074919db0 100644
+--- a/crates/polars/tests/it/arrow/array/list/mutable.rs
++++ b/crates/polars/tests/it/arrow/array/list/mutable.rs
+@@ -1,7 +1,7 @@
+ use arrow::array::*;
+ use arrow::bitmap::Bitmap;
+-use arrow::buffer::Buffer;
+ use arrow::datatypes::ArrowDataType;
++use polars_buffer::Buffer;
+ 
+ #[test]
+ fn basics() {
+diff --git a/crates/polars/tests/it/arrow/array/primitive/mod.rs b/crates/polars/tests/it/arrow/array/primitive/mod.rs
+index d0630c854..ef187690f 100644
+--- a/crates/polars/tests/it/arrow/array/primitive/mod.rs
++++ b/crates/polars/tests/it/arrow/array/primitive/mod.rs
+@@ -1,8 +1,8 @@
+ use arrow::array::*;
+ use arrow::bitmap::Bitmap;
+-use arrow::buffer::Buffer;
+ use arrow::datatypes::*;
+ use arrow::types::months_days_ns;
++use polars_buffer::Buffer;
+ 
+ mod fmt;
+ mod mutable;
+diff --git a/crates/polars/tests/it/arrow/array/union.rs b/crates/polars/tests/it/arrow/array/union.rs
+index 32d36b868..008fc38d1 100644
+--- a/crates/polars/tests/it/arrow/array/union.rs
++++ b/crates/polars/tests/it/arrow/array/union.rs
+@@ -1,7 +1,7 @@
+ use arrow::array::*;
+-use arrow::buffer::Buffer;
+ use arrow::datatypes::*;
+ use arrow::scalar::{PrimitiveScalar, Scalar, UnionScalar, Utf8Scalar, new_scalar};
++use polars_buffer::Buffer;
+ use polars_error::PolarsResult;
+ 
+ pub fn union_type(fields: Vec<Field>, ids: Option<Vec<i32>>, mode: UnionMode) -> ArrowDataType {
+diff --git a/crates/polars/tests/it/arrow/array/utf8/mod.rs b/crates/polars/tests/it/arrow/array/utf8/mod.rs
+index 89774dff4..edfb8b931 100644
+--- a/crates/polars/tests/it/arrow/array/utf8/mod.rs
++++ b/crates/polars/tests/it/arrow/array/utf8/mod.rs
+@@ -1,8 +1,8 @@
+ use arrow::array::*;
+ use arrow::bitmap::Bitmap;
+-use arrow::buffer::Buffer;
+ use arrow::datatypes::ArrowDataType;
+ use arrow::offset::OffsetsBuffer;
++use polars_buffer::Buffer;
+ use polars_error::PolarsResult;
+ 
+ mod mutable;
+diff --git a/crates/polars/tests/it/arrow/array/utf8/to_mutable.rs b/crates/polars/tests/it/arrow/array/utf8/to_mutable.rs
+index 5f2624368..a24b5ef9f 100644
+--- a/crates/polars/tests/it/arrow/array/utf8/to_mutable.rs
++++ b/crates/polars/tests/it/arrow/array/utf8/to_mutable.rs
+@@ -1,8 +1,8 @@
+ use arrow::array::Utf8Array;
+ use arrow::bitmap::Bitmap;
+-use arrow::buffer::Buffer;
+ use arrow::datatypes::ArrowDataType;
+ use arrow::offset::OffsetsBuffer;
++use polars_buffer::Buffer;
+ 
+ #[test]
+ fn not_shared() {
+diff --git a/crates/polars/tests/it/arrow/buffer/immutable.rs b/crates/polars/tests/it/arrow/buffer/immutable.rs
+index cc8742ba7..73d3e2c7f 100644
+--- a/crates/polars/tests/it/arrow/buffer/immutable.rs
++++ b/crates/polars/tests/it/arrow/buffer/immutable.rs
+@@ -1,4 +1,4 @@
+-use arrow::buffer::Buffer;
++use polars_buffer::Buffer;
+ 
+ #[test]
+ fn new() {

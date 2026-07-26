@@ -1,0 +1,33 @@
+repo: home-assistant
+base_commit: 4d1d6488e523e67461c9464869e3bec62de5838f
+commit: 212cecd955e04ab18e724938406bc77398fd3713
+patch_stored: true
+gold:
+  - path: homeassistant/components/mikrotik/config_flow.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Central diff file — narrows async_get_options_flow's config_entry param from ConfigEntry to MikrotikConfigEntry and drops the now-unused ConfigEntry/OptionsFlow.OptionsFlow generic imports.
+  - path: homeassistant/components/mikrotik/coordinator.py
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: "Defines `type MikrotikConfigEntry = ConfigEntry[MikrotikDataUpdateCoordinator]` (line 51), the type alias newly imported and used as the narrowed parameter type — cannot understand the change without seeing what MikrotikConfigEntry actually resolves to."
+forbidden:
+  - path: homeassistant/components/mikrotik/const.py
+    reason: sibling module in the same package but unrelated to the ConfigEntry typing change
+  - path: homeassistant/components/mikrotik/errors.py
+    reason: already imported unchanged (CannotConnect, LoginError) but irrelevant to the typing narrowing itself
+  - path: homeassistant/components/mikrotik/device_tracker.py
+    reason: same integration, similarly named, but does not touch config flow or ConfigEntry typing
+  - path: tests/components/mikrotik/test_config_flow.py
+    reason: covers MikrotikFlowHandler behavior but uses MockConfigEntry and is unaffected by a pure static-typing narrowing
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 1
+  description: Improve typing for Mikrotik — 1-file typing change inside 1 of ~2000 identical integrations
+notes: 'Pure typing-narrowing change: async_get_options_flow now takes MikrotikConfigEntry (a ConfigEntry[MikrotikDataUpdateCoordinator] alias from coordinator.py) instead of the bare ConfigEntry, letting the unused ConfigEntry import be dropped. No runtime/behavioral change, so no test file is gold.'

@@ -1,0 +1,1535 @@
+From 566dc7f3f30192650178ae34165ee52a76a31ff7 Mon Sep 17 00:00:00 2001
+From: Patrick Ohly <patrick.ohly@intel.com>
+Date: Fri, 20 Feb 2026 13:17:37 +0100
+Subject: [PATCH] DRA device taints: graduate to beta
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The fields become beta, enabled by default. DeviceTaintRule gets
+added to the v1beta2 API, but support for it must remain off by default
+because that API group is also off by default.
+
+The v1beta1 API is left unchanged. No-one should be using it
+anymore (deprecated in 1.33, could be removed now if it wasn't for
+reading old objects and version emulation).
+
+To achieve consistent validation, declarative validation must be enabled also
+for v1alpha3 (was already enabled for other versions). Otherwise,
+TestVersionedValidationByFuzzing fails:
+
+    --- FAIL: TestVersionedValidationByFuzzing (0.09s)
+        --- FAIL: TestVersionedValidationByFuzzing/resource.k8s.io/v1beta2,_Kind=DeviceTaintRule (0.00s)
+            validation_test.go:109: different error count (0 vs. 1)
+                resource.k8s.io/v1alpha3: <no errors>
+                resource.k8s.io/v1beta2: "spec.taint.effect: Unsupported value: \"幤HxÒQP¹¬永唂ȳ垞ş]嘨鶊\": supported values: \"NoExecute\", \"NoSchedule\", \"None\""
+            ...
+---
+ cmd/kube-controller-manager/app/core.go       |   2 +-
+ pkg/api/testing/defaulting_test.go            |   2 +
+ pkg/api/testing/validation_test.go            |   1 +
+ pkg/apis/resource/types.go                    |   8 +-
+ pkg/apis/resource/v1alpha3/doc.go             |   2 +
+ .../device_taint_eviction.go                  |  54 +++---
+ .../device_taint_eviction_test.go             |  92 +++++-----
+ pkg/features/kube_features.go                 |   2 +
+ .../resource/devicetaintrule/strategy.go      |   7 +
+ .../resource/rest/storage_resource.go         |   9 +
+ .../testdata/controller-role-bindings.yaml    |  16 ++
+ .../testdata/controller-roles.yaml            |  58 +++++++
+ staging/src/k8s.io/api/resource/v1/types.go   |   8 +-
+ .../src/k8s.io/api/resource/v1alpha3/types.go |   2 +
+ .../src/k8s.io/api/resource/v1beta1/types.go  |   8 +-
+ .../k8s.io/api/resource/v1beta2/register.go   |   2 +
+ .../src/k8s.io/api/resource/v1beta2/types.go  | 158 +++++++++++++++++-
+ test/e2e/dra/dra.go                           |  13 +-
+ .../deploy/example/devicetaintrule.yaml       |   2 +-
+ .../deploy/example/resourceclaim.yaml         |   5 +-
+ test/e2e/dra/utils/builder.go                 |   6 +
+ .../apiserver/apply/reset_fields_test.go      |   1 +
+ .../apiserver/apply/status_test.go            |   1 +
+ test/integration/dra/device_taints_test.go    | 113 +++++++++++--
+ test/integration/dra/dra_test.go              |  24 ++-
+ test/integration/etcd/data.go                 |   7 +
+ 26 files changed, 477 insertions(+), 126 deletions(-)
+
+diff --git a/cmd/kube-controller-manager/app/core.go b/cmd/kube-controller-manager/app/core.go
+index abed91a0c7..445d4957fd 100644
+--- a/cmd/kube-controller-manager/app/core.go
++++ b/cmd/kube-controller-manager/app/core.go
+@@ -271,7 +271,7 @@ func newDeviceTaintEvictionController(ctx context.Context, controllerContext Con
+ 		controllerContext.InformerFactory.Core().V1().Pods(),
+ 		controllerContext.InformerFactory.Resource().V1().ResourceClaims(),
+ 		controllerContext.InformerFactory.Resource().V1().ResourceSlices(),
+-		controllerContext.InformerFactory.Resource().V1alpha3().DeviceTaintRules(),
++		controllerContext.InformerFactory.Resource().V1beta2().DeviceTaintRules(),
+ 		controllerContext.InformerFactory.Resource().V1().DeviceClasses(),
+ 		controllerName,
+ 	)
+diff --git a/pkg/api/testing/defaulting_test.go b/pkg/api/testing/defaulting_test.go
+index 88b74d491a..4fb66b7111 100644
+--- a/pkg/api/testing/defaulting_test.go
++++ b/pkg/api/testing/defaulting_test.go
+@@ -152,6 +152,8 @@ func TestDefaulting(t *testing.T) {
+ 		{Group: "resource.k8s.io", Version: "v1beta1", Kind: "ResourceClaimTemplateList"}:                          {},
+ 		{Group: "resource.k8s.io", Version: "v1beta1", Kind: "ResourceSlice"}:                                      {},
+ 		{Group: "resource.k8s.io", Version: "v1beta1", Kind: "ResourceSliceList"}:                                  {},
++		{Group: "resource.k8s.io", Version: "v1beta2", Kind: "DeviceTaintRule"}:                                    {},
++		{Group: "resource.k8s.io", Version: "v1beta2", Kind: "DeviceTaintRuleList"}:                                {},
+ 		{Group: "resource.k8s.io", Version: "v1beta2", Kind: "ResourceClaim"}:                                      {},
+ 		{Group: "resource.k8s.io", Version: "v1beta2", Kind: "ResourceClaimList"}:                                  {},
+ 		{Group: "resource.k8s.io", Version: "v1beta2", Kind: "ResourceClaimTemplate"}:                              {},
+diff --git a/pkg/api/testing/validation_test.go b/pkg/api/testing/validation_test.go
+index 2910717c73..23ffa1d99f 100644
+--- a/pkg/api/testing/validation_test.go
++++ b/pkg/api/testing/validation_test.go
+@@ -41,6 +41,7 @@ func TestVersionedValidationByFuzzing(t *testing.T) {
+ 		{Group: "certificates.k8s.io", Version: "v1alpha1"},
+ 		{Group: "certificates.k8s.io", Version: "v1beta1"},
+ 		{Group: "resource.k8s.io", Version: "v1"},
++		{Group: "resource.k8s.io", Version: "v1alpha3"},
+ 		{Group: "resource.k8s.io", Version: "v1beta1"},
+ 		{Group: "resource.k8s.io", Version: "v1beta2"},
+ 		{Group: "storage.k8s.io", Version: "v1"},
+diff --git a/pkg/apis/resource/types.go b/pkg/apis/resource/types.go
+index f87a8963fd..b9936e73f2 100644
+--- a/pkg/apis/resource/types.go
++++ b/pkg/apis/resource/types.go
+@@ -348,7 +348,7 @@ type Device struct {
+ 	// any device in a ResourceSlice, then the maximum number of
+ 	// allowed devices per ResourceSlice is 64 instead of 128.
+ 	//
+-	// This is an alpha field and requires enabling the DRADeviceTaints
++	// This is a beta field and requires enabling the DRADeviceTaints
+ 	// feature gate.
+ 	//
+ 	// +optional
+@@ -914,7 +914,7 @@ type ExactDeviceRequest struct {
+ 	//
+ 	// The maximum number of tolerations is 16.
+ 	//
+-	// This is an alpha field and requires enabling the DRADeviceTaints
++	// This is a beta field and requires enabling the DRADeviceTaints
+ 	// feature gate.
+ 	//
+ 	// +optional
+@@ -1025,7 +1025,7 @@ type DeviceSubRequest struct {
+ 	//
+ 	// The maximum number of tolerations is 16.
+ 	//
+-	// This is an alpha field and requires enabling the DRADeviceTaints
++	// This is a beta field and requires enabling the DRADeviceTaints
+ 	// feature gate.
+ 	//
+ 	// +optional
+@@ -1546,7 +1546,7 @@ type DeviceRequestAllocationResult struct {
+ 	//
+ 	// The maximum number of tolerations is 16.
+ 	//
+-	// This is an alpha field and requires enabling the DRADeviceTaints
++	// This is a beta field and requires enabling the DRADeviceTaints
+ 	// feature gate.
+ 	//
+ 	// +optional
+diff --git a/pkg/apis/resource/v1alpha3/doc.go b/pkg/apis/resource/v1alpha3/doc.go
+index 2193bfc0b8..a839d4c6d7 100644
+--- a/pkg/apis/resource/v1alpha3/doc.go
++++ b/pkg/apis/resource/v1alpha3/doc.go
+@@ -18,6 +18,8 @@ limitations under the License.
+ // +k8s:conversion-gen-external-types=k8s.io/api/resource/v1alpha3
+ // +k8s:defaulter-gen=TypeMeta
+ // +k8s:defaulter-gen-input=k8s.io/api/resource/v1alpha3
++// +k8s:validation-gen=TypeMeta
++// +k8s:validation-gen-input=k8s.io/api/resource/v1alpha3
+ 
+ // Package v1alpha3 is the v1alpha3 version of the resource API.
+ package v1alpha3
+diff --git a/pkg/controller/devicetainteviction/device_taint_eviction.go b/pkg/controller/devicetainteviction/device_taint_eviction.go
+index 2b385efad9..25bafae89e 100644
+--- a/pkg/controller/devicetainteviction/device_taint_eviction.go
++++ b/pkg/controller/devicetainteviction/device_taint_eviction.go
+@@ -30,7 +30,7 @@ import (
+ 
+ 	v1 "k8s.io/api/core/v1"
+ 	resourceapi "k8s.io/api/resource/v1"
+-	resourcealpha "k8s.io/api/resource/v1alpha3"
++	resourcbeta "k8s.io/api/resource/v1beta2"
+ 	apiequality "k8s.io/apimachinery/pkg/api/equality"
+ 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+ 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+@@ -41,15 +41,15 @@ import (
+ 	"k8s.io/apimachinery/pkg/util/sets"
+ 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+ 	metav1ac "k8s.io/client-go/applyconfigurations/meta/v1"
+-	resourceac "k8s.io/client-go/applyconfigurations/resource/v1alpha3"
++	resourceac "k8s.io/client-go/applyconfigurations/resource/v1beta2"
+ 	coreinformers "k8s.io/client-go/informers/core/v1"
+ 	resourceinformers "k8s.io/client-go/informers/resource/v1"
+-	resourcealphainformers "k8s.io/client-go/informers/resource/v1alpha3"
++	resourcealphainformers "k8s.io/client-go/informers/resource/v1beta2"
+ 	clientset "k8s.io/client-go/kubernetes"
+ 	"k8s.io/client-go/kubernetes/scheme"
+ 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
+ 	corelisters "k8s.io/client-go/listers/core/v1"
+-	resourcealphalisters "k8s.io/client-go/listers/resource/v1alpha3"
++	resourcealphalisters "k8s.io/client-go/listers/resource/v1beta2"
+ 	"k8s.io/client-go/tools/cache"
+ 	"k8s.io/client-go/tools/record"
+ 	"k8s.io/client-go/util/workqueue"
+@@ -134,7 +134,7 @@ type Controller struct {
+ 	pools map[poolID]pool
+ 
+ 	// evictingRules tracks all DeviceTaintRules by name which cause pod eviction.
+-	evictingRules map[string]*resourcealpha.DeviceTaintRule
++	evictingRules map[string]*resourcbeta.DeviceTaintRule
+ 
+ 	// taintRuleStats tracks information about work that was done for a specific DeviceTaintRule instance.
+ 	//
+@@ -289,7 +289,7 @@ func (er evictionReason) String() string {
+ // trackedTaint augments a DeviceTaint with a pointer to its origin.
+ // rule and slice are mutually exclusive. Exactly one of them is always set.
+ type trackedTaint struct {
+-	rule  *resourcealpha.DeviceTaintRule
++	rule  *resourcbeta.DeviceTaintRule
+ 	slice sliceDeviceTaint
+ }
+ 
+@@ -372,7 +372,7 @@ type workItem struct {
+ 	ruleRef tainteviction.NamespacedObject
+ }
+ 
+-func workItemForRule(rule *resourcealpha.DeviceTaintRule) workItem {
++func workItemForRule(rule *resourcbeta.DeviceTaintRule) workItem {
+ 	return workItem{ruleRef: tainteviction.NamespacedObject{NamespacedName: types.NamespacedName{Name: rule.Name}, UID: rule.UID}}
+ }
+ 
+@@ -520,7 +520,7 @@ func (tc *Controller) maybeUpdateRuleStatus(ctx context.Context, ruleRef taintev
+ 
+ 	// Already set?
+ 	index := slices.IndexFunc(rule.Status.Conditions, func(condition metav1.Condition) bool {
+-		return condition.Type == resourcealpha.DeviceTaintConditionEvictionInProgress
++		return condition.Type == resourcbeta.DeviceTaintConditionEvictionInProgress
+ 	})
+ 
+ 	// LastTransitionTime gets bumped each time we make any change to the condition,
+@@ -546,7 +546,7 @@ func (tc *Controller) maybeUpdateRuleStatus(ctx context.Context, ruleRef taintev
+ 	// Checking all pods might be expensive. Only do it if really needed.
+ 	var numTaintedSliceDevices, numTaintedAllocatedDevices, numPendingPods, numPendingNamespaces int64
+ 	switch rule.Spec.Taint.Effect {
+-	case resourcealpha.DeviceTaintEffectNone:
++	case resourcbeta.DeviceTaintEffectNone:
+ 		// Temporarily change the effect from None to NoExecute to simulate.
+ 		// We pretend to do that through informer events. We hold the lock,
+ 		// so there is no race with real informer events or other goroutines.
+@@ -554,7 +554,7 @@ func (tc *Controller) maybeUpdateRuleStatus(ctx context.Context, ruleRef taintev
+ 		// To avoid having a lasting impact on the real controller instance
+ 		// we make a temporary copy.
+ 		ruleEvict := rule.DeepCopy()
+-		ruleEvict.Spec.Taint.Effect = resourcealpha.DeviceTaintEffectNoExecute
++		ruleEvict.Spec.Taint.Effect = resourcbeta.DeviceTaintEffectNoExecute
+ 		tc := &Controller{
+ 			logger:          klog.LoggerWithName(logger, "simulation"),
+ 			podLister:       tc.podLister,
+@@ -562,7 +562,7 @@ func (tc *Controller) maybeUpdateRuleStatus(ctx context.Context, ruleRef taintev
+ 			deletePodAt:     make(map[tainteviction.NamespacedObject]evictionAndReason),
+ 			allocatedClaims: maps.Clone(tc.allocatedClaims),
+ 			pools:           tc.pools,
+-			evictingRules:   make(map[string]*resourcealpha.DeviceTaintRule),
++			evictingRules:   make(map[string]*resourcbeta.DeviceTaintRule),
+ 			workqueue:       &NOPQueue[workItem]{},
+ 		}
+ 		defer tc.workqueue.ShutDown()
+@@ -570,7 +570,7 @@ func (tc *Controller) maybeUpdateRuleStatus(ctx context.Context, ruleRef taintev
+ 		tc.handleRuleChange(rule, ruleEvict)
+ 		numPendingPods, numPendingNamespaces, err = tc.countPendingPods(rule)
+ 		numTaintedSliceDevices, numTaintedAllocatedDevices = tc.countTaintedDevices(rule)
+-	case resourcealpha.DeviceTaintEffectNoExecute:
++	case resourcbeta.DeviceTaintEffectNoExecute:
+ 		numPendingPods, numPendingNamespaces, err = tc.countPendingPods(rule)
+ 	default:
+ 		err = nil
+@@ -581,14 +581,14 @@ func (tc *Controller) maybeUpdateRuleStatus(ctx context.Context, ruleRef taintev
+ 
+ 	// Some fields are tentative and get updated below.
+ 	newCondition := metav1.Condition{
+-		Type:               resourcealpha.DeviceTaintConditionEvictionInProgress,
++		Type:               resourcbeta.DeviceTaintConditionEvictionInProgress,
+ 		Status:             metav1.ConditionFalse,
+ 		Reason:             string("Effect" + rule.Spec.Taint.Effect),
+ 		ObservedGeneration: rule.Generation,
+ 		LastTransitionTime: existingCondition.LastTransitionTime, // To avoid a false "is different" in the comparison, gets updated later.
+ 	}
+ 	switch rule.Spec.Taint.Effect {
+-	case resourcealpha.DeviceTaintEffectNoExecute:
++	case resourcbeta.DeviceTaintEffectNoExecute:
+ 		switch {
+ 		case numPendingPods > 0:
+ 			newCondition.Reason = "PodsPendingEviction"
+@@ -608,7 +608,7 @@ func (tc *Controller) maybeUpdateRuleStatus(ctx context.Context, ruleRef taintev
+ 		default:
+ 			newCondition.Reason = "NotStarted"
+ 		}
+-	case resourcealpha.DeviceTaintEffectNone:
++	case resourcbeta.DeviceTaintEffectNone:
+ 		newCondition.Reason = "NoEffect"
+ 		if numTaintedSliceDevices == 1 {
+ 			newCondition.Message += "1 published device selected. "
+@@ -660,7 +660,7 @@ func (tc *Controller) maybeUpdateRuleStatus(ctx context.Context, ruleRef taintev
+ 			ObservedGeneration: &newCondition.ObservedGeneration,
+ 			LastTransitionTime: &newCondition.LastTransitionTime,
+ 		}))
+-		if _, err := tc.client.ResourceV1alpha3().DeviceTaintRules().ApplyStatus(ctx, ruleAC, metav1.ApplyOptions{FieldManager: tc.name, Force: true}); err != nil {
++		if _, err := tc.client.ResourceV1beta2().DeviceTaintRules().ApplyStatus(ctx, ruleAC, metav1.ApplyOptions{FieldManager: tc.name, Force: true}); err != nil {
+ 			return 0, fmt.Errorf("add condition to DeviceTaintRule status: %w", err)
+ 		}
+ 	}
+@@ -669,7 +669,7 @@ func (tc *Controller) maybeUpdateRuleStatus(ctx context.Context, ruleRef taintev
+ 	return 0, nil
+ }
+ 
+-func (tc *Controller) countPendingPods(rule *resourcealpha.DeviceTaintRule) (int64, int64, error) {
++func (tc *Controller) countPendingPods(rule *resourcbeta.DeviceTaintRule) (int64, int64, error) {
+ 	pods, err := tc.podLister.List(labels.Everything())
+ 	if err != nil {
+ 		return -1, -1, fmt.Errorf("list pod: %w", err)
+@@ -699,7 +699,7 @@ func (tc *Controller) countPendingPods(rule *resourcealpha.DeviceTaintRule) (int
+ 
+ // countTaintedDevices determines the number of devices in slices matching the rule and
+ // the number of allocated devices matching the rule.
+-func (tc *Controller) countTaintedDevices(rule *resourcealpha.DeviceTaintRule) (numTaintedSliceDevices int64, numTaintedAllocatedDevices int64) {
++func (tc *Controller) countTaintedDevices(rule *resourcbeta.DeviceTaintRule) (numTaintedSliceDevices int64, numTaintedAllocatedDevices int64) {
+ 	for poolID, pool := range tc.pools {
+ 		for _, slice := range pool.slices {
+ 			if slice.Spec.Pool.Generation != pool.maxGeneration {
+@@ -741,7 +741,7 @@ func New(c clientset.Interface, podInformer coreinformers.PodInformer, claimInfo
+ 		deletePodAt:     make(map[tainteviction.NamespacedObject]evictionAndReason),
+ 		allocatedClaims: make(map[types.NamespacedName]allocatedClaim),
+ 		pools:           make(map[poolID]pool),
+-		evictingRules:   make(map[string]*resourcealpha.DeviceTaintRule),
++		evictingRules:   make(map[string]*resourcbeta.DeviceTaintRule),
+ 		taintRuleStats:  make(map[types.UID]taintRuleStats),
+ 		// Instantiate all informers now to ensure that they get started.
+ 		haveSynced: []cache.DoneChecker{
+@@ -916,7 +916,7 @@ func (tc *Controller) Run(ctx context.Context, numWorkers int) error {
+ 	if tc.ruleInformer != nil {
+ 		ruleHandler, err := tc.ruleInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+ 			AddFunc: func(obj any) {
+-				rule, ok := obj.(*resourcealpha.DeviceTaintRule)
++				rule, ok := obj.(*resourcbeta.DeviceTaintRule)
+ 				if !ok {
+ 					logger.Error(nil, "Expected DeviceTaintRule", "actual", fmt.Sprintf("%T", obj))
+ 					return
+@@ -926,12 +926,12 @@ func (tc *Controller) Run(ctx context.Context, numWorkers int) error {
+ 				tc.handleRuleChange(nil, rule)
+ 			},
+ 			UpdateFunc: func(oldObj, newObj any) {
+-				oldRule, ok := oldObj.(*resourcealpha.DeviceTaintRule)
++				oldRule, ok := oldObj.(*resourcbeta.DeviceTaintRule)
+ 				if !ok {
+ 					logger.Error(nil, "Expected DeviceTaintRule", "actual", fmt.Sprintf("%T", oldObj))
+ 					return
+ 				}
+-				newRule, ok := newObj.(*resourcealpha.DeviceTaintRule)
++				newRule, ok := newObj.(*resourcbeta.DeviceTaintRule)
+ 				if !ok {
+ 					logger.Error(nil, "Expected DeviceTaintRule", "actual", fmt.Sprintf("%T", newObj))
+ 				}
+@@ -943,7 +943,7 @@ func (tc *Controller) Run(ctx context.Context, numWorkers int) error {
+ 				if tombstone, ok := obj.(cache.DeletedFinalStateUnknown); ok {
+ 					obj = tombstone.Obj
+ 				}
+-				rule, ok := obj.(*resourcealpha.DeviceTaintRule)
++				rule, ok := obj.(*resourcbeta.DeviceTaintRule)
+ 				if !ok {
+ 					logger.Error(nil, "Expected DeviceTaintRule", "actual", fmt.Sprintf("%T", obj))
+ 					return
+@@ -1270,7 +1270,7 @@ func (tc *Controller) allEvictingDeviceTaints(allocatedDevice resourceapi.Device
+ 	}
+ }
+ 
+-func ruleMatchesDevice(rule *resourcealpha.DeviceTaintRule, driverName, poolName, deviceName string) bool {
++func ruleMatchesDevice(rule *resourcbeta.DeviceTaintRule, driverName, poolName, deviceName string) bool {
+ 	selector := rule.Spec.DeviceSelector
+ 	if selector == nil {
+ 		return false
+@@ -1283,7 +1283,7 @@ func ruleMatchesDevice(rule *resourcealpha.DeviceTaintRule, driverName, poolName
+ 	return true
+ }
+ 
+-func (tc *Controller) handleRuleChange(oldRule, newRule *resourcealpha.DeviceTaintRule) {
++func (tc *Controller) handleRuleChange(oldRule, newRule *resourcbeta.DeviceTaintRule) {
+ 	rule := newRule
+ 	if rule == nil {
+ 		rule = oldRule
+@@ -1321,10 +1321,10 @@ func (tc *Controller) handleRuleChange(oldRule, newRule *resourcealpha.DeviceTai
+ 
+ 	// Rule spec changes should be rare. Simply do a brute-force re-evaluation of all allocated claims.
+ 	// Same with trying to avoid delete+add in evictingRules, the logic just becomes unnecessarily complex.
+-	if oldRule != nil && oldRule.Spec.Taint.Effect == resourcealpha.DeviceTaintEffectNoExecute {
++	if oldRule != nil && oldRule.Spec.Taint.Effect == resourcbeta.DeviceTaintEffectNoExecute {
+ 		delete(tc.evictingRules, oldRule.Name)
+ 	}
+-	if newRule != nil && newRule.Spec.Taint.Effect == resourcealpha.DeviceTaintEffectNoExecute {
++	if newRule != nil && newRule.Spec.Taint.Effect == resourcbeta.DeviceTaintEffectNoExecute {
+ 		tc.evictingRules[newRule.Name] = newRule
+ 	}
+ 	for name, oldAllocatedClaim := range tc.allocatedClaims {
+diff --git a/pkg/controller/devicetainteviction/device_taint_eviction_test.go b/pkg/controller/devicetainteviction/device_taint_eviction_test.go
+index c604942cd2..57b1092a94 100644
+--- a/pkg/controller/devicetainteviction/device_taint_eviction_test.go
++++ b/pkg/controller/devicetainteviction/device_taint_eviction_test.go
+@@ -37,7 +37,7 @@ import (
+ 
+ 	v1 "k8s.io/api/core/v1"
+ 	resourceapi "k8s.io/api/resource/v1"
+-	resourcealpha "k8s.io/api/resource/v1alpha3"
++	resourcebeta "k8s.io/api/resource/v1beta2"
+ 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+ 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+ 	"k8s.io/apimachinery/pkg/runtime"
+@@ -116,7 +116,7 @@ func setup(tCtx ktesting.TContext) *testContext {
+ 		informerFactory.Core().V1().Pods(),
+ 		informerFactory.Resource().V1().ResourceClaims(),
+ 		informerFactory.Resource().V1().ResourceSlices(),
+-		informerFactory.Resource().V1alpha3().DeviceTaintRules(),
++		informerFactory.Resource().V1beta2().DeviceTaintRules(),
+ 		informerFactory.Resource().V1().DeviceClasses(),
+ 		"device-taint-eviction",
+ 	)
+@@ -149,7 +149,7 @@ type state struct {
+ 	pods            []*v1.Pod
+ 	allocatedClaims []allocatedClaim
+ 	slices          []*resourceapi.ResourceSlice
+-	rules           []*resourcealpha.DeviceTaintRule
++	rules           []*resourcebeta.DeviceTaintRule
+ 	ruleStats       map[types.UID]taintRuleStats
+ 
+ 	// Pods might have been queued in the past and then not removed when removing from deletePodAt.
+@@ -162,7 +162,7 @@ type state struct {
+ // step describes a state after handling ready work items and how much to move time forward.
+ type step struct {
+ 	pods        []*v1.Pod
+-	rules       []*resourcealpha.DeviceTaintRule
++	rules       []*resourcebeta.DeviceTaintRule
+ 	ruleStats   map[types.UID]taintRuleStats
+ 	deletePodAt evictMap
+ 
+@@ -371,95 +371,95 @@ var (
+ 		slice.Spec.Pool.Generation++
+ 		return slice
+ 	}()
+-	ruleEvict = &resourcealpha.DeviceTaintRule{
++	ruleEvict = &resourcebeta.DeviceTaintRule{
+ 		ObjectMeta: metav1.ObjectMeta{
+ 			Name: "evict",
+ 			UID:  "1234",
+ 		},
+ 
+-		Spec: resourcealpha.DeviceTaintRuleSpec{
+-			DeviceSelector: &resourcealpha.DeviceTaintSelector{
++		Spec: resourcebeta.DeviceTaintRuleSpec{
++			DeviceSelector: &resourcebeta.DeviceTaintSelector{
+ 				Driver: ptr.To(driver),
+ 			},
+-			Taint: resourcealpha.DeviceTaint{
++			Taint: resourcebeta.DeviceTaint{
+ 				Key:       taint.Key,
+ 				Value:     taint.Value,
+-				Effect:    resourcealpha.DeviceTaintEffect(taint.Effect),
++				Effect:    resourcebeta.DeviceTaintEffect(taint.Effect),
+ 				TimeAdded: taint.TimeAdded,
+ 			},
+ 		},
+ 	}
+-	ruleEvictInstance1 = &resourcealpha.DeviceTaintRule{
++	ruleEvictInstance1 = &resourcebeta.DeviceTaintRule{
+ 		ObjectMeta: metav1.ObjectMeta{
+ 			Name: "evict-instance",
+ 			UID:  "1234",
+ 		},
+ 
+-		Spec: resourcealpha.DeviceTaintRuleSpec{
+-			DeviceSelector: &resourcealpha.DeviceTaintSelector{
++		Spec: resourcebeta.DeviceTaintRuleSpec{
++			DeviceSelector: &resourcebeta.DeviceTaintSelector{
+ 				Driver: ptr.To(driver),
+ 				Device: ptr.To("instance"),
+ 			},
+-			Taint: resourcealpha.DeviceTaint{
++			Taint: resourcebeta.DeviceTaint{
+ 				Key:       taint.Key,
+ 				Value:     taint.Value,
+-				Effect:    resourcealpha.DeviceTaintEffect(taint.Effect),
++				Effect:    resourcebeta.DeviceTaintEffect(taint.Effect),
+ 				TimeAdded: taintTime,
+ 			},
+ 		},
+ 	}
+ 	taintTimeLater          = metav1Time(taintTime.Add(40 * time.Second))
+-	ruleEvictInstance2Later = &resourcealpha.DeviceTaintRule{
++	ruleEvictInstance2Later = &resourcebeta.DeviceTaintRule{
+ 		ObjectMeta: metav1.ObjectMeta{
+ 			Name: "evict-instance-no-execute",
+ 			UID:  "5678",
+ 		},
+ 
+-		Spec: resourcealpha.DeviceTaintRuleSpec{
+-			DeviceSelector: &resourcealpha.DeviceTaintSelector{
++		Spec: resourcebeta.DeviceTaintRuleSpec{
++			DeviceSelector: &resourcebeta.DeviceTaintSelector{
+ 				Driver: ptr.To(driver),
+ 				Device: ptr.To("instance-no-execute"),
+ 			},
+-			Taint: resourcealpha.DeviceTaint{
++			Taint: resourcebeta.DeviceTaint{
+ 				Key:       taint.Key,
+ 				Value:     taint.Value,
+-				Effect:    resourcealpha.DeviceTaintEffect(taint.Effect),
++				Effect:    resourcebeta.DeviceTaintEffect(taint.Effect),
+ 				TimeAdded: taintTimeLater,
+ 			},
+ 		},
+ 	}
+-	ruleNone = &resourcealpha.DeviceTaintRule{
++	ruleNone = &resourcebeta.DeviceTaintRule{
+ 		ObjectMeta: metav1.ObjectMeta{
+ 			Name: "evict",
+ 			UID:  "1234",
+ 		},
+ 
+-		Spec: resourcealpha.DeviceTaintRuleSpec{
+-			DeviceSelector: &resourcealpha.DeviceTaintSelector{
++		Spec: resourcebeta.DeviceTaintRuleSpec{
++			DeviceSelector: &resourcebeta.DeviceTaintSelector{
+ 				Driver: ptr.To(driver),
+ 			},
+-			Taint: resourcealpha.DeviceTaint{
++			Taint: resourcebeta.DeviceTaint{
+ 				Key:       taint.Key,
+ 				Value:     taint.Value,
+-				Effect:    resourcealpha.DeviceTaintEffectNone,
++				Effect:    resourcebeta.DeviceTaintEffectNone,
+ 				TimeAdded: taint.TimeAdded,
+ 			},
+ 		},
+ 	}
+-	ruleEvictOther = &resourcealpha.DeviceTaintRule{
++	ruleEvictOther = &resourcebeta.DeviceTaintRule{
+ 		ObjectMeta: metav1.ObjectMeta{
+ 			Name: "evict-other",
+ 			UID:  "1234-other",
+ 		},
+ 
+-		Spec: resourcealpha.DeviceTaintRuleSpec{
+-			DeviceSelector: &resourcealpha.DeviceTaintSelector{
++		Spec: resourcebeta.DeviceTaintRuleSpec{
++			DeviceSelector: &resourcebeta.DeviceTaintSelector{
+ 				Device: ptr.To("instance"),
+ 			},
+-			Taint: resourcealpha.DeviceTaint{
++			Taint: resourcebeta.DeviceTaint{
+ 				Key:       taint.Key,
+ 				Value:     taint.Value,
+-				Effect:    resourcealpha.DeviceTaintEffect(taint.Effect),
++				Effect:    resourcebeta.DeviceTaintEffect(taint.Effect),
+ 				TimeAdded: taint.TimeAdded,
+ 			},
+ 		},
+@@ -672,7 +672,7 @@ func newEvictionTime(when *metav1.Time, args ...any) *evictionAndReason {
+ 		case *resourceapi.ResourceSlice:
+ 			reason = append(reason, trackedTaint{slice: sliceDeviceTaint{slice: obj, deviceName: args[i+1].(string), taintIndex: args[i+2].(int)}})
+ 			i += 3
+-		case *resourcealpha.DeviceTaintRule:
++		case *resourcebeta.DeviceTaintRule:
+ 			reason = append(reason, trackedTaint{rule: obj})
+ 			i++
+ 		default:
+@@ -698,7 +698,7 @@ func newWorkItem(obj metav1.Object) workItem {
+ 	ref := newObject(obj)
+ 	var item workItem
+ 	switch obj.(type) {
+-	case *resourcealpha.DeviceTaintRule:
++	case *resourcebeta.DeviceTaintRule:
+ 		item.ruleRef = ref
+ 	case *v1.Pod:
+ 		item.podRef = ref
+@@ -748,10 +748,10 @@ func listEvents(tCtx ktesting.TContext) []v1.Event {
+ 	return events.Items
+ }
+ 
+-func inProgress(rule *resourcealpha.DeviceTaintRule, status bool, reason, message string, when *metav1.Time) *resourcealpha.DeviceTaintRule {
++func inProgress(rule *resourcebeta.DeviceTaintRule, status bool, reason, message string, when *metav1.Time) *resourcebeta.DeviceTaintRule {
+ 	rule = rule.DeepCopy()
+ 	condition := metav1.Condition{
+-		Type:               resourcealpha.DeviceTaintConditionEvictionInProgress,
++		Type:               resourcebeta.DeviceTaintConditionEvictionInProgress,
+ 		Status:             metav1.ConditionFalse,
+ 		Reason:             reason,
+ 		Message:            message,
+@@ -1955,7 +1955,7 @@ func testHandlers(tContext *testContext, tc testCase) {
+ 		}
+ 		return false, nil, nil
+ 	})
+-	ruleStore := tContext.informerFactory.Resource().V1alpha3().DeviceTaintRules().Informer().GetStore()
++	ruleStore := tContext.informerFactory.Resource().V1beta2().DeviceTaintRules().Informer().GetStore()
+ 	for _, rule := range tc.initialState.rules {
+ 		tContext.ExpectNoError(ruleStore.Add(rule))
+ 		tContext.ExpectNoError(tContext.client.Tracker().Add(rule))
+@@ -2008,7 +2008,7 @@ func testHandlers(tContext *testContext, tc testCase) {
+ 		pods, err := tContext.client.CoreV1().Pods("").List(tContext, metav1.ListOptions{})
+ 		tContext.ExpectNoError(err, prefix+"list pods")
+ 		assertEqual(tContext, state.pods, trimPods(pods.Items), prefix+"pods after flushing work queue")
+-		rules, err := tContext.client.ResourceV1alpha3().DeviceTaintRules().List(tContext, metav1.ListOptions{})
++		rules, err := tContext.client.ResourceV1beta2().DeviceTaintRules().List(tContext, metav1.ListOptions{})
+ 		tContext.ExpectNoError(err, prefix+"list rules")
+ 		actualRules := trimRules(rules.Items)
+ 		assertEqual(tContext, state.rules, actualRules, prefix+"rules after flushing work queue")
+@@ -2077,16 +2077,16 @@ func applyEventPair(tContext *testContext, event any) {
+ 			tContext.ExpectNoError(tContext.client.Tracker().Add(obj))
+ 		}
+ 		tContext.handlePodChange(pair[0], pair[1])
+-	case [2]*resourcealpha.DeviceTaintRule:
+-		store := tContext.informerFactory.Resource().V1alpha3().DeviceTaintRules().Informer().GetStore()
++	case [2]*resourcebeta.DeviceTaintRule:
++		store := tContext.informerFactory.Resource().V1beta2().DeviceTaintRules().Informer().GetStore()
+ 		switch {
+ 		case pair[0] != nil && pair[1] != nil:
+ 			obj := pair[1].DeepCopy()
+ 			tContext.ExpectNoError(store.Update(obj))
+-			tContext.ExpectNoError(tContext.client.Tracker().Update(resourcealpha.SchemeGroupVersion.WithResource("devicetaintrules"), obj, pair[1].Namespace))
++			tContext.ExpectNoError(tContext.client.Tracker().Update(resourcebeta.SchemeGroupVersion.WithResource("devicetaintrules"), obj, pair[1].Namespace))
+ 		case pair[0] != nil:
+ 			tContext.ExpectNoError(store.Delete(pair[0]))
+-			tContext.ExpectNoError(tContext.client.Tracker().Delete(resourcealpha.SchemeGroupVersion.WithResource("devicetaintrules"), pair[0].Namespace, pair[0].Name))
++			tContext.ExpectNoError(tContext.client.Tracker().Delete(resourcebeta.SchemeGroupVersion.WithResource("devicetaintrules"), pair[0].Namespace, pair[0].Name))
+ 		default:
+ 			obj := pair[1].DeepCopy()
+ 			tContext.ExpectNoError(store.Add(obj))
+@@ -2107,7 +2107,7 @@ func trimPods(objs []v1.Pod) (trimmed []*v1.Pod) {
+ 	return trimmed
+ }
+ 
+-func trimRules(objs []resourcealpha.DeviceTaintRule) (trimmed []*resourcealpha.DeviceTaintRule) {
++func trimRules(objs []resourcebeta.DeviceTaintRule) (trimmed []*resourcebeta.DeviceTaintRule) {
+ 	for _, in := range objs {
+ 		out := in.DeepCopy()
+ 		out.ManagedFields = nil
+@@ -2124,7 +2124,7 @@ func newTestController(tCtx ktesting.TContext) *Controller {
+ 		informerFactory.Core().V1().Pods(),
+ 		informerFactory.Resource().V1().ResourceClaims(),
+ 		informerFactory.Resource().V1().ResourceSlices(),
+-		informerFactory.Resource().V1alpha3().DeviceTaintRules(),
++		informerFactory.Resource().V1beta2().DeviceTaintRules(),
+ 		informerFactory.Resource().V1().DeviceClasses(),
+ 		"device-taint-eviction",
+ 	)
+@@ -2436,11 +2436,11 @@ func synctestDeviceTaintRule(tCtx ktesting.TContext, toleration, slowDelete bool
+ 	time.Sleep(20 * time.Second)
+ 	updated := metav1.Now()
+ 	rule = rule.DeepCopy() // fake.NewClientset does not copy! Perhaps it should?!
+-	rule.Spec.Taint.Effect = resourcealpha.DeviceTaintEffectNoExecute
++	rule.Spec.Taint.Effect = resourcebeta.DeviceTaintEffectNoExecute
+ 	// The real apiserver is going to bump this automatically in 1.36,
+ 	// but in a unit test we have to do it manually.
+ 	rule.Spec.Taint.TimeAdded = &updated
+-	rule, err := tCtx.Client().ResourceV1alpha3().DeviceTaintRules().Update(tCtx, rule, metav1.UpdateOptions{})
++	rule, err := tCtx.Client().ResourceV1beta2().DeviceTaintRules().Update(tCtx, rule, metav1.UpdateOptions{})
+ 	tCtx.ExpectNoError(err, "update rule")
+ 
+ 	// Wait for eviction.
+@@ -2480,7 +2480,7 @@ func synctestDeviceTaintRule(tCtx ktesting.TContext, toleration, slowDelete bool
+ 	assertEqual(tCtx, map[types.UID]taintRuleStats{rule.UID: {numEvictedPods: 1}}, controller.taintRuleStats, "taint rule statistics should have counted the pod")
+ 
+ 	// Delete the rule and verify that we don't leak memory by still tracking it.
+-	err = tCtx.Client().ResourceV1alpha3().DeviceTaintRules().Delete(tCtx, rule.Name, metav1.DeleteOptions{})
++	err = tCtx.Client().ResourceV1beta2().DeviceTaintRules().Delete(tCtx, rule.Name, metav1.DeleteOptions{})
+ 	tCtx.ExpectNoError(err, "delete rule")
+ 	tCtx.Wait()
+ 	deleted := metav1.Now()
+@@ -2492,7 +2492,7 @@ func synctestDeviceTaintRule(tCtx ktesting.TContext, toleration, slowDelete bool
+ 	tCtx.ExpectNoError(testPodDeletionsMetrics(controller, slowDeleteDelay))
+ }
+ 
+-func check(tCtx ktesting.TContext, prefix string, expectRules []*resourcealpha.DeviceTaintRule, expectPods []*v1.Pod) {
++func check(tCtx ktesting.TContext, prefix string, expectRules []*resourcebeta.DeviceTaintRule, expectPods []*v1.Pod) {
+ 	tCtx.Helper()
+ 
+ 	opts := []cmp.Option{
+@@ -2507,7 +2507,7 @@ func check(tCtx ktesting.TContext, prefix string, expectRules []*resourcealpha.D
+ 	actualPods, err := tCtx.Client().CoreV1().Pods("").List(tCtx, metav1.ListOptions{})
+ 	tCtx.ExpectNoError(err, prefix+"list pods")
+ 	assertEqual(tCtx, expectPods, trimPods(actualPods.Items), prefix+"pods", opts...)
+-	rules, err := tCtx.Client().ResourceV1alpha3().DeviceTaintRules().List(tCtx, metav1.ListOptions{})
++	rules, err := tCtx.Client().ResourceV1beta2().DeviceTaintRules().List(tCtx, metav1.ListOptions{})
+ 	tCtx.ExpectNoError(err, prefix+"list rules")
+ 	assertEqual(tCtx, expectRules, trimRules(rules.Items), prefix+"rules", opts...)
+ }
+diff --git a/pkg/features/kube_features.go b/pkg/features/kube_features.go
+index ff1af01ec5..581a3af8ed 100644
+--- a/pkg/features/kube_features.go
++++ b/pkg/features/kube_features.go
+@@ -1254,10 +1254,12 @@ var defaultVersionedKubernetesFeatureGates = map[featuregate.Feature]featuregate
+ 
+ 	DRADeviceTaintRules: {
+ 		{Version: version.MustParse("1.35"), Default: false, PreRelease: featuregate.Alpha},
++		{Version: version.MustParse("1.36"), Default: false, PreRelease: featuregate.Beta}, // Depends on an off-by-default beta API.
+ 	},
+ 
+ 	DRADeviceTaints: {
+ 		{Version: version.MustParse("1.33"), Default: false, PreRelease: featuregate.Alpha},
++		{Version: version.MustParse("1.36"), Default: true, PreRelease: featuregate.Beta},
+ 	},
+ 
+ 	DRAExtendedResource: {
+diff --git a/pkg/registry/resource/devicetaintrule/strategy.go b/pkg/registry/resource/devicetaintrule/strategy.go
+index 1eb9e7b462..5be8912bd5 100644
+--- a/pkg/registry/resource/devicetaintrule/strategy.go
++++ b/pkg/registry/resource/devicetaintrule/strategy.go
+@@ -54,6 +54,9 @@ func (*deviceTaintRuleStrategy) GetResetFields() map[fieldpath.APIVersion]*field
+ 		"resource.k8s.io/v1alpha3": fieldpath.NewSet(
+ 			fieldpath.MakePathOrDie("status"),
+ 		),
++		"resource.k8s.io/v1beta2": fieldpath.NewSet(
++			fieldpath.MakePathOrDie("status"),
++		),
+ 	}
+ 
+ 	return fields
+@@ -134,6 +137,10 @@ func (*deviceTaintRuleStatusStrategy) GetResetFields() map[fieldpath.APIVersion]
+ 			fieldpath.MakePathOrDie("metadata"),
+ 			fieldpath.MakePathOrDie("spec"),
+ 		),
++		"resource.k8s.io/v1beta2": fieldpath.NewSet(
++			fieldpath.MakePathOrDie("metadata"),
++			fieldpath.MakePathOrDie("spec"),
++		),
+ 	}
+ 
+ 	return fields
+diff --git a/pkg/registry/resource/rest/storage_resource.go b/pkg/registry/resource/rest/storage_resource.go
+index f960b6a646..5152dc0d44 100644
+--- a/pkg/registry/resource/rest/storage_resource.go
++++ b/pkg/registry/resource/rest/storage_resource.go
+@@ -179,6 +179,15 @@ func (p RESTStorageProvider) v1beta2Storage(apiResourceConfigSource serverstorag
+ 		storage[resource] = deviceclassStorage
+ 	}
+ 
++	if resource := "devicetaintrules"; apiResourceConfigSource.ResourceEnabled(resourcev1beta2.SchemeGroupVersion.WithResource(resource)) {
++		deviceTaintRuleStorage, deviceTaintRuleStatusStorage, err := devicetaintrulestore.NewREST(restOptionsGetter)
++		if err != nil {
++			return nil, err
++		}
++		storage[resource] = deviceTaintRuleStorage
++		storage[resource+"/status"] = deviceTaintRuleStatusStorage
++	}
++
+ 	if resource := "resourceclaims"; apiResourceConfigSource.ResourceEnabled(resourcev1beta2.SchemeGroupVersion.WithResource(resource)) {
+ 		resourceClaimStorage, resourceClaimStatusStorage, err := resourceclaimstore.NewREST(restOptionsGetter, nsClient)
+ 		if err != nil {
+diff --git a/plugin/pkg/auth/authorizer/rbac/bootstrappolicy/testdata/controller-role-bindings.yaml b/plugin/pkg/auth/authorizer/rbac/bootstrappolicy/testdata/controller-role-bindings.yaml
+index 2b37923b82..cf1c49ba96 100644
+--- a/plugin/pkg/auth/authorizer/rbac/bootstrappolicy/testdata/controller-role-bindings.yaml
++++ b/plugin/pkg/auth/authorizer/rbac/bootstrappolicy/testdata/controller-role-bindings.yaml
+@@ -96,6 +96,22 @@ items:
+   - kind: ServiceAccount
+     name: deployment-controller
+     namespace: kube-system
++- apiVersion: rbac.authorization.k8s.io/v1
++  kind: ClusterRoleBinding
++  metadata:
++    annotations:
++      rbac.authorization.kubernetes.io/autoupdate: "true"
++    labels:
++      kubernetes.io/bootstrapping: rbac-defaults
++    name: system:controller:device-taint-eviction-controller
++  roleRef:
++    apiGroup: rbac.authorization.k8s.io
++    kind: ClusterRole
++    name: system:controller:device-taint-eviction-controller
++  subjects:
++  - kind: ServiceAccount
++    name: device-taint-eviction-controller
++    namespace: kube-system
+ - apiVersion: rbac.authorization.k8s.io/v1
+   kind: ClusterRoleBinding
+   metadata:
+diff --git a/plugin/pkg/auth/authorizer/rbac/bootstrappolicy/testdata/controller-roles.yaml b/plugin/pkg/auth/authorizer/rbac/bootstrappolicy/testdata/controller-roles.yaml
+index a32d9190aa..0726efef5f 100644
+--- a/plugin/pkg/auth/authorizer/rbac/bootstrappolicy/testdata/controller-roles.yaml
++++ b/plugin/pkg/auth/authorizer/rbac/bootstrappolicy/testdata/controller-roles.yaml
+@@ -352,6 +352,64 @@ items:
+     - create
+     - patch
+     - update
++- apiVersion: rbac.authorization.k8s.io/v1
++  kind: ClusterRole
++  metadata:
++    annotations:
++      rbac.authorization.kubernetes.io/autoupdate: "true"
++    labels:
++      kubernetes.io/bootstrapping: rbac-defaults
++    name: system:controller:device-taint-eviction-controller
++  rules:
++  - apiGroups:
++    - ""
++    resources:
++    - pods
++    verbs:
++    - delete
++    - get
++    - list
++    - watch
++  - apiGroups:
++    - ""
++    resources:
++    - pods/status
++    verbs:
++    - patch
++    - update
++  - apiGroups:
++    - resource.k8s.io
++    resources:
++    - resourceclaims
++    verbs:
++    - get
++    - list
++    - watch
++  - apiGroups:
++    - resource.k8s.io
++    resources:
++    - resourceslices
++    verbs:
++    - get
++    - list
++    - watch
++  - apiGroups:
++    - resource.k8s.io
++    resources:
++    - deviceclasses
++    verbs:
++    - get
++    - list
++    - watch
++  - apiGroups:
++    - ""
++    - events.k8s.io
++    resources:
++    - events
++    verbs:
++    - create
++    - patch
++    - update
+ - apiVersion: rbac.authorization.k8s.io/v1
+   kind: ClusterRole
+   metadata:
+diff --git a/staging/src/k8s.io/api/resource/v1/types.go b/staging/src/k8s.io/api/resource/v1/types.go
+index a19c8a2f65..58b906d5a8 100644
+--- a/staging/src/k8s.io/api/resource/v1/types.go
++++ b/staging/src/k8s.io/api/resource/v1/types.go
+@@ -366,7 +366,7 @@ type Device struct {
+ 	// any device in a ResourceSlice, then the maximum number of
+ 	// allowed devices per ResourceSlice is 64 instead of 128.
+ 	//
+-	// This is an alpha field and requires enabling the DRADeviceTaints
++	// This is a beta field and requires enabling the DRADeviceTaints
+ 	// feature gate.
+ 	//
+ 	// +optional
+@@ -974,7 +974,7 @@ type ExactDeviceRequest struct {
+ 	//
+ 	// The maximum number of tolerations is 16.
+ 	//
+-	// This is an alpha field and requires enabling the DRADeviceTaints
++	// This is a beta field and requires enabling the DRADeviceTaints
+ 	// feature gate.
+ 	//
+ 	// +optional
+@@ -1091,7 +1091,7 @@ type DeviceSubRequest struct {
+ 	//
+ 	// The maximum number of tolerations is 16.
+ 	//
+-	// This is an alpha field and requires enabling the DRADeviceTaints
++	// This is a beta field and requires enabling the DRADeviceTaints
+ 	// feature gate.
+ 	//
+ 	// +optional
+@@ -1655,7 +1655,7 @@ type DeviceRequestAllocationResult struct {
+ 	//
+ 	// The maximum number of tolerations is 16.
+ 	//
+-	// This is an alpha field and requires enabling the DRADeviceTaints
++	// This is a beta field and requires enabling the DRADeviceTaints
+ 	// feature gate.
+ 	//
+ 	// +optional
+diff --git a/staging/src/k8s.io/api/resource/v1alpha3/types.go b/staging/src/k8s.io/api/resource/v1alpha3/types.go
+index c7dd5315e1..b690c792e1 100644
+--- a/staging/src/k8s.io/api/resource/v1alpha3/types.go
++++ b/staging/src/k8s.io/api/resource/v1alpha3/types.go
+@@ -140,6 +140,7 @@ type DeviceTaint struct {
+ 	// Consumers must treat unknown effects like None.
+ 	//
+ 	// +required
++	// +k8s:required
+ 	Effect DeviceTaintEffect `json:"effect" protobuf:"bytes,3,name=effect,casttype=DeviceTaintEffect"`
+ 
+ 	// ^^^^
+@@ -178,6 +179,7 @@ type DeviceTaint struct {
+ }
+ 
+ // +enum
++// +k8s:enum
+ type DeviceTaintEffect string
+ 
+ const (
+diff --git a/staging/src/k8s.io/api/resource/v1beta1/types.go b/staging/src/k8s.io/api/resource/v1beta1/types.go
+index 8fbc0b802c..c912bd821d 100644
+--- a/staging/src/k8s.io/api/resource/v1beta1/types.go
++++ b/staging/src/k8s.io/api/resource/v1beta1/types.go
+@@ -386,7 +386,7 @@ type BasicDevice struct {
+ 	// any device in a ResourceSlice, then the maximum number of
+ 	// allowed devices per ResourceSlice is 64 instead of 128.
+ 	//
+-	// This is an alpha field and requires enabling the DRADeviceTaints
++	// This is a beta field and requires enabling the DRADeviceTaints
+ 	// feature gate.
+ 	//
+ 	// +optional
+@@ -992,7 +992,7 @@ type DeviceRequest struct {
+ 	// This field can only be set when deviceClassName is set and no subrequests
+ 	// are specified in the firstAvailable list.
+ 	//
+-	// This is an alpha field and requires enabling the DRADeviceTaints
++	// This is a beta field and requires enabling the DRADeviceTaints
+ 	// feature gate.
+ 	//
+ 	// +optional
+@@ -1110,7 +1110,7 @@ type DeviceSubRequest struct {
+ 	//
+ 	// The maximum number of tolerations is 16.
+ 	//
+-	// This is an alpha field and requires enabling the DRADeviceTaints
++	// This is a beta field and requires enabling the DRADeviceTaints
+ 	// feature gate.
+ 	//
+ 	// +optional
+@@ -1675,7 +1675,7 @@ type DeviceRequestAllocationResult struct {
+ 	//
+ 	// The maximum number of tolerations is 16.
+ 	//
+-	// This is an alpha field and requires enabling the DRADeviceTaints
++	// This is a beta field and requires enabling the DRADeviceTaints
+ 	// feature gate.
+ 	//
+ 	// +optional
+diff --git a/staging/src/k8s.io/api/resource/v1beta2/register.go b/staging/src/k8s.io/api/resource/v1beta2/register.go
+index 5e676a0549..d08534c9e0 100644
+--- a/staging/src/k8s.io/api/resource/v1beta2/register.go
++++ b/staging/src/k8s.io/api/resource/v1beta2/register.go
+@@ -46,6 +46,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
+ 	scheme.AddKnownTypes(SchemeGroupVersion,
+ 		&DeviceClass{},
+ 		&DeviceClassList{},
++		&DeviceTaintRule{},
++		&DeviceTaintRuleList{},
+ 		&ResourceClaim{},
+ 		&ResourceClaimList{},
+ 		&ResourceClaimTemplate{},
+diff --git a/staging/src/k8s.io/api/resource/v1beta2/types.go b/staging/src/k8s.io/api/resource/v1beta2/types.go
+index 7affe6820f..c2f7913178 100644
+--- a/staging/src/k8s.io/api/resource/v1beta2/types.go
++++ b/staging/src/k8s.io/api/resource/v1beta2/types.go
+@@ -369,7 +369,7 @@ type Device struct {
+ 	// any device in a ResourceSlice, then the maximum number of
+ 	// allowed devices per ResourceSlice is 64 instead of 128.
+ 	//
+-	// This is an alpha field and requires enabling the DRADeviceTaints
++	// This is a beta field and requires enabling the DRADeviceTaints
+ 	// feature gate.
+ 	//
+ 	// +optional
+@@ -728,6 +728,156 @@ const (
+ 	DeviceTaintEffectNoExecute DeviceTaintEffect = "NoExecute"
+ )
+ 
++// +genclient
++// +genclient:nonNamespaced
++// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
++// +k8s:prerelease-lifecycle-gen:introduced=1.36
++
++// DeviceTaintRule adds one taint to all devices which match the selector.
++// This has the same effect as if the taint was specified directly
++// in the ResourceSlice by the DRA driver.
++type DeviceTaintRule struct {
++	metav1.TypeMeta `json:",inline"`
++	// Standard object metadata
++	// +optional
++	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
++
++	// Spec specifies the selector and one taint.
++	//
++	// Changing the spec automatically increments the metadata.generation number.
++	// +required
++	Spec DeviceTaintRuleSpec `json:"spec" protobuf:"bytes,2,name=spec"`
++
++	// Status provides information about what was requested in the spec.
++	//
++	// +optional
++	Status DeviceTaintRuleStatus `json:"status,omitempty" protobuf:"bytes,3,opt,name=status"`
++}
++
++// DeviceTaintRuleSpec specifies the selector and one taint.
++type DeviceTaintRuleSpec struct {
++	// DeviceSelector defines which device(s) the taint is applied to.
++	// All selector criteria must be satisfied for a device to
++	// match. The empty selector matches all devices. Without
++	// a selector, no devices are matches.
++	//
++	// +optional
++	DeviceSelector *DeviceTaintSelector `json:"deviceSelector,omitempty" protobuf:"bytes,1,opt,name=deviceSelector"`
++
++	// The taint that gets applied to matching devices.
++	//
++	// +required
++	Taint DeviceTaint `json:"taint,omitempty" protobuf:"bytes,2,rep,name=taint"`
++}
++
++// DeviceTaintSelector defines which device(s) a DeviceTaintRule applies to.
++// The empty selector matches all devices. Without a selector, no devices
++// are matched.
++type DeviceTaintSelector struct {
++	// If DeviceClassName is set, the selectors defined there must be
++	// satisfied by a device to be selected. This field corresponds
++	// to class.metadata.name.
++	//
++	// +optional
++	//
++	// Tombstoned since 1.35 because it turned out that supporting this in all cases
++	// would depend on copying the device attributes into the ResourceClaim allocation
++	// result. Without that the eviction controller cannot evaluate these CEL expressions.
++	//
++	// DeviceClassName *string `json:"deviceClassName,omitempty" protobuf:"bytes,1,opt,name=deviceClassName"`
++
++	// If driver is set, only devices from that driver are selected.
++	// This fields corresponds to slice.spec.driver.
++	//
++	// +optional
++	Driver *string `json:"driver,omitempty" protobuf:"bytes,2,opt,name=driver"`
++
++	// If pool is set, only devices in that pool are selected.
++	//
++	// Also setting the driver name may be useful to avoid
++	// ambiguity when different drivers use the same pool name,
++	// but this is not required because selecting pools from
++	// different drivers may also be useful, for example when
++	// drivers with node-local devices use the node name as
++	// their pool name.
++	//
++	// +optional
++	Pool *string `json:"pool,omitempty" protobuf:"bytes,3,opt,name=pool"`
++
++	// If device is set, only devices with that name are selected.
++	// This field corresponds to slice.spec.devices[].name.
++	//
++	// Setting also driver and pool may be required to avoid ambiguity,
++	// but is not required.
++	//
++	// +optional
++	Device *string `json:"device,omitempty" protobuf:"bytes,4,opt,name=device"`
++
++	// Selectors contains the same selection criteria as a ResourceClaim.
++	// Currently, CEL expressions are supported. All of these selectors
++	// must be satisfied.
++	//
++	// +optional
++	// +listType=atomic
++	//
++	// Tombstoned since 1.35 because it turned out that supporting this in all cases
++	// would depend on copying the device attributes into the ResourceClaim allocation
++	// result. Without that the eviction controller cannot evaluate these CEL expressions.
++	//
++	// Selectors []DeviceSelector `json:"selectors,omitempty" protobuf:"bytes,5,rep,name=selectors"`
++}
++
++// DeviceTaintRuleStatus provides information about an on-going pod eviction.
++type DeviceTaintRuleStatus struct {
++	// Conditions provide information about the state of the DeviceTaintRule
++	// and the cluster at some point in time,
++	// in a machine-readable and human-readable format.
++	//
++	// The following condition is currently defined as part of this API, more may
++	// get added:
++	// - Type: EvictionInProgress
++	// - Status: True if there are currently pods which need to be evicted, False otherwise
++	//   (includes the effects which don't cause eviction).
++	// - Reason: not specified, may change
++	// - Message: includes information about number of pending pods and already evicted pods
++	//   in a human-readable format, updated periodically, may change
++	//
++	// For `effect: None`, the condition above gets set once for each change to
++	// the spec, with the message containing information about what would happen
++	// if the effect was `NoExecute`. This feedback can be used to decide whether
++	// changing the effect to `NoExecute` will work as intended. It only gets
++	// set once to avoid having to constantly update the status.
++	//
++	// Must have 8 or fewer entries.
++	//
++	// +optional
++	// +listType=map
++	// +listMapKey=type
++	// +patchStrategy=merge
++	// +patchMergeKey=type
++	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
++}
++
++// DeviceTaintRuleStatusMaxConditions is the maximum number of conditions in DeviceTaintRuleStatus.
++const DeviceTaintRuleStatusMaxConditions = 8
++
++// DeviceTaintConditionEvictionInProgress is the publicly documented condition type for the DeviceTaintRuleStatus.
++const DeviceTaintConditionEvictionInProgress = "EvictionInProgress"
++
++// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
++// +k8s:prerelease-lifecycle-gen:introduced=1.36
++
++// DeviceTaintRuleList is a collection of DeviceTaintRules.
++type DeviceTaintRuleList struct {
++	metav1.TypeMeta `json:",inline"`
++	// Standard list metadata
++	// +optional
++	metav1.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
++
++	// Items is the list of DeviceTaintRules.
++	Items []DeviceTaintRule `json:"items" protobuf:"bytes,2,rep,name=items"`
++}
++
+ // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+ // +k8s:prerelease-lifecycle-gen:introduced=1.33
+ 
+@@ -981,7 +1131,7 @@ type ExactDeviceRequest struct {
+ 	//
+ 	// The maximum number of tolerations is 16.
+ 	//
+-	// This is an alpha field and requires enabling the DRADeviceTaints
++	// This is a beta field and requires enabling the DRADeviceTaints
+ 	// feature gate.
+ 	//
+ 	// +optional
+@@ -1098,7 +1248,7 @@ type DeviceSubRequest struct {
+ 	//
+ 	// The maximum number of tolerations is 16.
+ 	//
+-	// This is an alpha field and requires enabling the DRADeviceTaints
++	// This is a beta field and requires enabling the DRADeviceTaints
+ 	// feature gate.
+ 	//
+ 	// +optional
+@@ -1663,7 +1813,7 @@ type DeviceRequestAllocationResult struct {
+ 	//
+ 	// The maximum number of tolerations is 16.
+ 	//
+-	// This is an alpha field and requires enabling the DRADeviceTaints
++	// This is a beta field and requires enabling the DRADeviceTaints
+ 	// feature gate.
+ 	//
+ 	// +optional
+diff --git a/test/e2e/dra/dra.go b/test/e2e/dra/dra.go
+index 6aeb45d2d8..b5159c9916 100644
+--- a/test/e2e/dra/dra.go
++++ b/test/e2e/dra/dra.go
+@@ -34,7 +34,6 @@ import (
+ 	appsv1 "k8s.io/api/apps/v1"
+ 	v1 "k8s.io/api/core/v1"
+ 	resourceapi "k8s.io/api/resource/v1"
+-	resourcealphaapi "k8s.io/api/resource/v1alpha3"
+ 	resourcev1beta1 "k8s.io/api/resource/v1beta1"
+ 	resourcev1beta2 "k8s.io/api/resource/v1beta2"
+ 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+@@ -2092,17 +2091,17 @@ var _ = framework.SIGDescribe("node")(framework.WithLabel("DRA"), func() {
+ 
+ 			// Now evict it.
+ 			ginkgo.By("Evicting pod...")
+-			taint := &resourcealphaapi.DeviceTaintRule{
++			taint := &resourcev1beta2.DeviceTaintRule{
+ 				ObjectMeta: metav1.ObjectMeta{
+ 					GenerateName: "device-taint-rule-" + f.UniqueName + "-",
+ 				},
+-				Spec: resourcealphaapi.DeviceTaintRuleSpec{
++				Spec: resourcev1beta2.DeviceTaintRuleSpec{
+ 					// All devices of the current driver instance.
+-					DeviceSelector: &resourcealphaapi.DeviceTaintSelector{
++					DeviceSelector: &resourcev1beta2.DeviceTaintSelector{
+ 						Driver: &driver.Name,
+ 					},
+-					Taint: resourcealphaapi.DeviceTaint{
+-						Effect: resourcealphaapi.DeviceTaintEffectNoExecute,
++					Taint: resourcev1beta2.DeviceTaint{
++						Effect: resourcev1beta2.DeviceTaintEffectNoExecute,
+ 						Key:    "test.example.com/evict",
+ 						Value:  "now",
+ 						// No TimeAdded, gets defaulted.
+@@ -2110,7 +2109,7 @@ var _ = framework.SIGDescribe("node")(framework.WithLabel("DRA"), func() {
+ 				},
+ 			}
+ 			createdTaint := b.Create(tCtx, taint)
+-			taint = createdTaint[0].(*resourcealphaapi.DeviceTaintRule)
++			taint = createdTaint[0].(*resourcev1beta2.DeviceTaintRule)
+ 			gomega.Expect(*taint).Should(gomega.HaveField("Spec.Taint.TimeAdded.Time", gomega.BeTemporally("~", time.Now(), time.Minute /* allow for some clock drift and delays */)))
+ 			framework.ExpectNoError(e2epod.WaitForPodTerminatingInNamespaceTimeout(ctx, f.ClientSet, pod.Name, f.Namespace.Name, f.Timeouts.PodStart))
+ 			pod, err := f.ClientSet.CoreV1().Pods(f.Namespace.Name).Get(ctx, pod.Name, metav1.GetOptions{})
+diff --git a/test/e2e/dra/test-driver/deploy/example/devicetaintrule.yaml b/test/e2e/dra/test-driver/deploy/example/devicetaintrule.yaml
+index 5826411926..4e393484d9 100644
+--- a/test/e2e/dra/test-driver/deploy/example/devicetaintrule.yaml
++++ b/test/e2e/dra/test-driver/deploy/example/devicetaintrule.yaml
+@@ -1,4 +1,4 @@
+-apiVersion: resource.k8s.io/v1alpha3
++apiVersion: resource.k8s.io/v1beta2
+ kind: DeviceTaintRule
+ metadata:
+   name: example
+diff --git a/test/e2e/dra/test-driver/deploy/example/resourceclaim.yaml b/test/e2e/dra/test-driver/deploy/example/resourceclaim.yaml
+index ec965e847e..5042717b46 100644
+--- a/test/e2e/dra/test-driver/deploy/example/resourceclaim.yaml
++++ b/test/e2e/dra/test-driver/deploy/example/resourceclaim.yaml
+@@ -1,4 +1,4 @@
+-apiVersion: resource.k8s.io/v1alpha3
++apiVersion: resource.k8s.io/v1
+ kind: ResourceClaim
+ metadata:
+   name: example
+@@ -7,4 +7,5 @@ spec:
+   devices:
+     requests:
+     - name: req-0
+-      deviceClassName: example
++      exactly:
++        deviceClassName: example
+diff --git a/test/e2e/dra/utils/builder.go b/test/e2e/dra/utils/builder.go
+index 0341ec844f..b25fe8e731 100644
+--- a/test/e2e/dra/utils/builder.go
++++ b/test/e2e/dra/utils/builder.go
+@@ -381,6 +381,12 @@ func (b *Builder) Create(tCtx ktesting.TContext, objs ...klog.KMetadata) []klog.
+ 				err := tCtx.Client().ResourceV1alpha3().DeviceTaintRules().Delete(tCtx, createdObj.GetName(), metav1.DeleteOptions{})
+ 				tCtx.ExpectNoError(err, "delete DeviceTaintRule")
+ 			})
++		case *resourcev1beta2.DeviceTaintRule:
++			createdObj, err = tCtx.Client().ResourceV1beta2().DeviceTaintRules().Create(tCtx, obj, metav1.CreateOptions{})
++			cleanupCtx(func(tCtx ktesting.TContext) {
++				err := tCtx.Client().ResourceV1beta2().DeviceTaintRules().Delete(tCtx, createdObj.GetName(), metav1.DeleteOptions{})
++				tCtx.ExpectNoError(err, "delete DeviceTaintRule")
++			})
+ 		case *appsv1.DaemonSet:
+ 			createdObj, err = tCtx.Client().AppsV1().DaemonSets(b.namespace).Create(tCtx, obj, metav1.CreateOptions{})
+ 			// Cleanup not really needed, but speeds up namespace shutdown.
+diff --git a/test/integration/apiserver/apply/reset_fields_test.go b/test/integration/apiserver/apply/reset_fields_test.go
+index f93dd6f51c..01079e09a7 100644
+--- a/test/integration/apiserver/apply/reset_fields_test.go
++++ b/test/integration/apiserver/apply/reset_fields_test.go
+@@ -159,6 +159,7 @@ var resetFieldsSpecData = map[schema.GroupVersionResource]string{
+ 	gvr("resource.k8s.io", "v1beta1", "resourceclaims"):                            `{"spec": {"devices": {"requests": [{"name": "req-0", "deviceClassName": "other-class"}]}}}`, // spec is immutable, but that doesn't matter for the test.
+ 	gvr("resource.k8s.io", "v1beta1", "resourceclaimtemplates"):                    `{"spec": {"spec": {"resourceClassName": "class2name"}}}`,
+ 	gvr("resource.k8s.io", "v1beta2", "deviceclasses"):                             `{"metadata": {"labels":{"a":"c"}}}`,
++	gvr("resource.k8s.io", "v1beta2", "devicetaintrules"):                          `{"metadata": {"labels":{"a":"c"}}}`,
+ 	gvr("resource.k8s.io", "v1beta2", "resourceclaims"):                            `{"spec": {"devices": {"requests": [{"name": "req-0", "exactly": {"deviceClassName": "other-class"}}]}}}`, // spec is immutable, but that doesn't matter for the test.
+ 	gvr("resource.k8s.io", "v1beta2", "resourceclaimtemplates"):                    `{"spec": {"spec": {"resourceClassName": "class2name"}}}`,
+ 	gvr("resource.k8s.io", "v1", "deviceclasses"):                                  `{"metadata": {"labels":{"a":"c"}}}`,
+diff --git a/test/integration/apiserver/apply/status_test.go b/test/integration/apiserver/apply/status_test.go
+index ba0e11337c..f0b0f4b232 100644
+--- a/test/integration/apiserver/apply/status_test.go
++++ b/test/integration/apiserver/apply/status_test.go
+@@ -60,6 +60,7 @@ var statusData = map[schema.GroupVersionResource]string{
+ 	gvr("policy", "v1beta1", "poddisruptionbudgets"):                `{"status": {"currentHealthy": 5}}`,
+ 	gvr("resource.k8s.io", "v1alpha3", "devicetaintrules"):          `{"status": {"conditions": [{"type": "EvictionInProgress", "status": "True", "reason: "PodsLeft", "message: "100 pods left", "lastTransitionTime": "2020-01-01T00:00:00Z"}]}}`,
+ 	gvr("resource.k8s.io", "v1beta1", "resourceclaims"):             `{"status": {"allocation": {"nodeSelector": {"nodeSelectorTerms": [{"matchExpressions": [{"key": "some-label", "operator": "In", "values": ["some-value"]}] }]}}}}`,
++	gvr("resource.k8s.io", "v1beta2", "devicetaintrules"):           `{"status": {"conditions": [{"type": "EvictionInProgress", "status": "True", "reason: "PodsLeft", "message: "100 pods left", "lastTransitionTime": "2020-01-01T00:00:00Z"}]}}`,
+ 	gvr("resource.k8s.io", "v1beta2", "resourceclaims"):             `{"status": {"allocation": {"nodeSelector": {"nodeSelectorTerms": [{"matchExpressions": [{"key": "some-label", "operator": "In", "values": ["some-value"]}] }]}}}}`,
+ 	gvr("resource.k8s.io", "v1", "resourceclaims"):                  `{"status": {"allocation": {"nodeSelector": {"nodeSelectorTerms": [{"matchExpressions": [{"key": "some-label", "operator": "In", "values": ["some-value"]}] }]}}}}`,
+ 	gvr("internal.apiserver.k8s.io", "v1alpha1", "storageversions"): `{"status": {"commonEncodingVersion":"v1","storageVersions":[{"apiServerID":"1","decodableVersions":["v1","v2"],"encodingVersion":"v1"}],"conditions":[{"type":"AllEncodingVersionsEqual","status":"True","lastTransitionTime":"2020-01-01T00:00:00Z","reason":"allEncodingVersionsEqual","message":"all encoding versions are set to v1"}]}}`,
+diff --git a/test/integration/dra/device_taints_test.go b/test/integration/dra/device_taints_test.go
+index e749758623..bd48d4a2a6 100644
+--- a/test/integration/dra/device_taints_test.go
++++ b/test/integration/dra/device_taints_test.go
+@@ -28,11 +28,12 @@ import (
+ 	v1 "k8s.io/api/core/v1"
+ 	resourceapi "k8s.io/api/resource/v1"
+ 	resourcealpha "k8s.io/api/resource/v1alpha3"
++	resourcebeta "k8s.io/api/resource/v1beta2"
+ 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+ 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+ 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+ 	"k8s.io/client-go/informers"
+-	resourcealphainformers "k8s.io/client-go/informers/resource/v1alpha3"
++	resourcebetainformers "k8s.io/client-go/informers/resource/v1beta2"
+ 	"k8s.io/client-go/tools/cache"
+ 	"k8s.io/kubernetes/pkg/controller/devicetainteviction"
+ 	"k8s.io/kubernetes/pkg/features"
+@@ -40,11 +41,19 @@ import (
+ 	"k8s.io/utils/ptr"
+ )
+ 
++type useRuleMode int
++
++const (
++	useNoRule = useRuleMode(iota)
++	useV1alpha3Rule
++	useV1beta2Rule
++)
++
+ // testEvictCluster simulates a cluster with many scheduled pods where each
+ // pod uses it's own ResourceClaim with one device. Then all those
+ // devices get tainted with a single DeviceTaintRule (causing eviction of all pods at once)
+ // or by updating the slices (more gradual).
+-func testEvictCluster(tCtx ktesting.TContext, useRule bool) {
++func testEvictCluster(tCtx ktesting.TContext, useRule useRuleMode) {
+ 	tCtx.Parallel()
+ 
+ 	var wg sync.WaitGroup
+@@ -129,9 +138,9 @@ func testEvictCluster(tCtx ktesting.TContext, useRule bool) {
+ 	// Create a new factory and sync it so that when the controller starts, it is up-to-date.
+ 	// This works as long as this is the only test running it.
+ 	informerFactory := informers.NewSharedInformerFactory(tCtx.Client(), 0)
+-	var ruleInformer resourcealphainformers.DeviceTaintRuleInformer
++	var ruleInformer resourcebetainformers.DeviceTaintRuleInformer
+ 	if utilfeature.DefaultFeatureGate.Enabled(features.DRADeviceTaintRules) {
+-		ruleInformer = informerFactory.Resource().V1alpha3().DeviceTaintRules()
++		ruleInformer = informerFactory.Resource().V1beta2().DeviceTaintRules()
+ 	}
+ 	controller := devicetainteviction.New(tCtx.Client(),
+ 		informerFactory.Core().V1().Pods(),
+@@ -181,11 +190,17 @@ func testEvictCluster(tCtx ktesting.TContext, useRule bool) {
+ 	})
+ 
+ 	ruleName := "rule-" + namespace
+-	getRule := func(tCtx ktesting.TContext) *resourcealpha.DeviceTaintRule {
++	getV1alpha3Rule := func(tCtx ktesting.TContext) *resourcealpha.DeviceTaintRule {
+ 		return must(tCtx, tCtx.Client().ResourceV1alpha3().DeviceTaintRules().Get, ruleName, metav1.GetOptions{})
+ 	}
++	getV1beta2Rule := func(tCtx ktesting.TContext) *resourcebeta.DeviceTaintRule {
++		return must(tCtx, tCtx.Client().ResourceV1beta2().DeviceTaintRules().Get, ruleName, metav1.GetOptions{})
++	}
++	var getRule any
+ 
+-	if useRule {
++	switch useRule {
++	case useV1alpha3Rule:
++		getRule = getV1alpha3Rule
+ 		// Evict through DeviceTaintRule.
+ 		//
+ 		// Let's also test some of the semantics around DeviceTaintRule.
+@@ -214,14 +229,14 @@ func testEvictCluster(tCtx ktesting.TContext, useRule bool) {
+ 			tCtx.ExpectNoError(err)
+ 		})
+ 
+-		tCtx.Eventually(getRule).
++		tCtx.Eventually(getV1alpha3Rule).
+ 			WithPolling(10 * time.Second).
+ 			Should(gomega.HaveField("Status.Conditions", gomega.ConsistOf(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
+ 				"Type":    gomega.Equal(resourcealpha.DeviceTaintConditionEvictionInProgress),
+ 				"Status":  gomega.Equal(metav1.ConditionFalse),
+ 				"Message": gomega.Equal(fmt.Sprintf("%[1]d published devices selected. %[1]d allocated devices selected. %[1]d pods would be evicted in 1 namespace if the effect was NoExecute. This information will not be updated again. Recreate the DeviceTaintRule to trigger an update.", numPods)),
+ 			}))))
+-		rule = getRule(tCtx)
++		rule = getV1alpha3Rule(tCtx)
+ 
+ 		var newTime *metav1.Time
+ 		for {
+@@ -237,7 +252,7 @@ func testEvictCluster(tCtx ktesting.TContext, useRule bool) {
+ 			tCtx.Error("our TimeAdded should have been stored")
+ 		}
+ 		tCtx.Expect(rule).To(gomega.HaveField("ObjectMeta.Generation", gomega.Equal(int64(2))))
+-		tCtx.Eventually(getRule).
++		tCtx.Eventually(getV1alpha3Rule).
+ 			WithPolling(10 * time.Second).
+ 			Should(gomega.HaveField("Status.Conditions", gomega.ConsistOf(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
+ 				"ObservedGeneration": gomega.Equal(rule.Generation),
+@@ -245,7 +260,7 @@ func testEvictCluster(tCtx ktesting.TContext, useRule bool) {
+ 				"Status":             gomega.Equal(metav1.ConditionFalse),
+ 				"Message":            gomega.Equal(fmt.Sprintf("%[1]d published devices selected. %[1]d allocated devices selected. %[1]d pods would be evicted in 1 namespace if the effect was NoExecute. This information will not be updated again. Recreate the DeviceTaintRule to trigger an update.", numPods)),
+ 			}))))
+-		rule = getRule(tCtx)
++		rule = getV1alpha3Rule(tCtx)
+ 
+ 		rule.Spec.Taint.Effect = resourcealpha.DeviceTaintEffectNoExecute
+ 		// Must roll over to next second, that's the resolution of TimeAdded.
+@@ -256,7 +271,79 @@ func testEvictCluster(tCtx ktesting.TContext, useRule bool) {
+ 		if newTime.Equal(rule.Spec.Taint.TimeAdded) {
+ 			tCtx.Error("TimeAdded should have been updated automatically")
+ 		}
+-	} else {
++	case useV1beta2Rule:
++		getRule = getV1beta2Rule
++		// Evict through DeviceTaintRule.
++		//
++		// Let's also test some of the semantics around DeviceTaintRule.
++		// We start with NoEffect, check the report, change TimeAdded manually,
++		// then turn on eviction.
++		rule := &resourcebeta.DeviceTaintRule{
++			ObjectMeta: metav1.ObjectMeta{
++				Name: ruleName,
++			},
++			Spec: resourcebeta.DeviceTaintRuleSpec{
++				DeviceSelector: &resourcebeta.DeviceTaintSelector{
++					Driver: &driverName,
++				},
++				Taint: resourcebeta.DeviceTaint{
++					Key:    "testing",
++					Effect: resourcebeta.DeviceTaintEffectNone,
++				},
++			},
++		}
++		must(tCtx, tCtx.Client().ResourceV1beta2().DeviceTaintRules().Create, rule, metav1.CreateOptions{})
++		tCtx.CleanupCtx(func(tCtx ktesting.TContext) {
++			err := tCtx.Client().ResourceV1beta2().DeviceTaintRules().Delete(tCtx, ruleName, metav1.DeleteOptions{})
++			if apierrors.IsNotFound(err) {
++				return
++			}
++			tCtx.ExpectNoError(err)
++		})
++
++		tCtx.Eventually(getV1beta2Rule).
++			WithPolling(10 * time.Second).
++			Should(gomega.HaveField("Status.Conditions", gomega.ConsistOf(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
++				"Type":    gomega.Equal(resourcebeta.DeviceTaintConditionEvictionInProgress),
++				"Status":  gomega.Equal(metav1.ConditionFalse),
++				"Message": gomega.Equal(fmt.Sprintf("%[1]d published devices selected. %[1]d allocated devices selected. %[1]d pods would be evicted in 1 namespace if the effect was NoExecute. This information will not be updated again. Recreate the DeviceTaintRule to trigger an update.", numPods)),
++			}))))
++		rule = getV1beta2Rule(tCtx)
++
++		var newTime *metav1.Time
++		for {
++			newTime = &metav1.Time{Time: time.Now().Truncate(time.Second)}
++			if !newTime.Equal(rule.Spec.Taint.TimeAdded) {
++				break
++			}
++			time.Sleep(10 * time.Millisecond)
++		}
++		rule.Spec.Taint.TimeAdded = newTime
++		rule = must(tCtx, tCtx.Client().ResourceV1beta2().DeviceTaintRules().Update, rule, metav1.UpdateOptions{})
++		if !newTime.Equal(rule.Spec.Taint.TimeAdded) {
++			tCtx.Error("our TimeAdded should have been stored")
++		}
++		tCtx.Expect(rule).To(gomega.HaveField("ObjectMeta.Generation", gomega.Equal(int64(2))))
++		tCtx.Eventually(getV1beta2Rule).
++			WithPolling(10 * time.Second).
++			Should(gomega.HaveField("Status.Conditions", gomega.ConsistOf(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
++				"ObservedGeneration": gomega.Equal(rule.Generation),
++				"Type":               gomega.Equal(resourcebeta.DeviceTaintConditionEvictionInProgress),
++				"Status":             gomega.Equal(metav1.ConditionFalse),
++				"Message":            gomega.Equal(fmt.Sprintf("%[1]d published devices selected. %[1]d allocated devices selected. %[1]d pods would be evicted in 1 namespace if the effect was NoExecute. This information will not be updated again. Recreate the DeviceTaintRule to trigger an update.", numPods)),
++			}))))
++		rule = getV1beta2Rule(tCtx)
++
++		rule.Spec.Taint.Effect = resourcebeta.DeviceTaintEffectNoExecute
++		// Must roll over to next second, that's the resolution of TimeAdded.
++		// We could rely on the delay for updating the status, but that
++		// could change.
++		time.Sleep(time.Second)
++		rule = must(tCtx, tCtx.Client().ResourceV1beta2().DeviceTaintRules().Update, rule, metav1.UpdateOptions{})
++		if newTime.Equal(rule.Spec.Taint.TimeAdded) {
++			tCtx.Error("TimeAdded should have been updated automatically")
++		}
++	case useNoRule:
+ 		// Evict by tainting each device.
+ 		for i, slice := range slices {
+ 			slice = slice.DeepCopy()
+@@ -269,6 +356,8 @@ func testEvictCluster(tCtx ktesting.TContext, useRule bool) {
+ 			}
+ 			slices[i] = must(tCtx, tCtx.Client().ResourceV1().ResourceSlices().Update, slice, metav1.UpdateOptions{})
+ 		}
++	default:
++		tCtx.Fatalf("unsupported useRule %d", useRule)
+ 	}
+ 
+ 	// Evict and wait for pods to be gone.
+@@ -284,7 +373,7 @@ func testEvictCluster(tCtx ktesting.TContext, useRule bool) {
+ 	duration := time.Since(start)
+ 	tCtx.Logf("Evicted %d pods in %s.", numPods, duration)
+ 
+-	if useRule {
++	if useRule != useNoRule {
+ 		// Check condition.
+ 		tCtx.Eventually(getRule).
+ 			WithPolling(10 * time.Second).
+diff --git a/test/integration/dra/dra_test.go b/test/integration/dra/dra_test.go
+index 7b8e49c5e5..e919c155e7 100644
+--- a/test/integration/dra/dra_test.go
++++ b/test/integration/dra/dra_test.go
+@@ -145,6 +145,7 @@ func TestDRA(t *testing.T) {
+ 			features: map[featuregate.Feature]bool{},
+ 			f: func(tCtx ktesting.TContext) {
+ 				tCtx.Run("Pod", func(tCtx ktesting.TContext) { testPod(tCtx, true) })
++				tCtx.Run("EvictClusterWithSlices", func(tCtx ktesting.TContext) { testEvictCluster(tCtx, useNoRule) })
+ 				// Number of devices per slice is chosen so that Filter takes a few seconds:
+ 				// without a timeout, the test doesn't run too long, but long enough that a short timeout triggers.
+ 				tCtx.Run("FilterTimeout", func(tCtx ktesting.TContext) { testFilterTimeout(tCtx, 20) })
+@@ -185,7 +186,7 @@ func TestDRA(t *testing.T) {
+ 			features: map[featuregate.Feature]bool{features.DynamicResourceAllocation: true},
+ 			f: func(tCtx ktesting.TContext) {
+ 				tCtx.Run("PublishResourceSlices", func(tCtx ktesting.TContext) {
+-					testPublishResourceSlices(tCtx, false, features.DRADeviceTaints, features.DRAPartitionableDevices, features.DRADeviceBindingConditions)
++					testPublishResourceSlices(tCtx, false, features.DRAPartitionableDevices, features.DRADeviceBindingConditions)
+ 				})
+ 			},
+ 		},
+@@ -194,19 +195,14 @@ func TestDRA(t *testing.T) {
+ 				resourceapi.SchemeGroupVersion:     false,
+ 				resourcev1beta2.SchemeGroupVersion: true,
+ 			},
+-			features: map[featuregate.Feature]bool{features.DynamicResourceAllocation: true},
+-			f: func(tCtx ktesting.TContext) {
+-				tCtx.Run("PublishResourceSlices", func(tCtx ktesting.TContext) {
+-					testPublishResourceSlices(tCtx, false, features.DRADeviceTaints, features.DRAPartitionableDevices, features.DRADeviceBindingConditions)
+-				})
+-			},
+-		},
+-		"slice-taints": {
+ 			features: map[featuregate.Feature]bool{
+-				features.DRADeviceTaints: true,
++				features.DynamicResourceAllocation: true,
++				features.DRADeviceTaintRules:       true,
+ 			},
+ 			f: func(tCtx ktesting.TContext) {
+-				tCtx.Run("EvictClusterWithSlices", func(tCtx ktesting.TContext) { testEvictCluster(tCtx, false) })
++				tCtx.Run("PublishResourceSlices", func(tCtx ktesting.TContext) {
++					testPublishResourceSlices(tCtx, false, features.DRAPartitionableDevices, features.DRADeviceBindingConditions)
++				})
+ 			},
+ 		},
+ 		"all": {
+@@ -222,7 +218,6 @@ func TestDRA(t *testing.T) {
+ 				features.DRAAdminAccess:               true,
+ 				features.DRADeviceBindingConditions:   true,
+ 				features.DRAConsumableCapacity:        true,
+-				features.DRADeviceTaints:              true,
+ 				features.DRADeviceTaintRules:          true,
+ 				features.DRAPartitionableDevices:      true,
+ 				features.DRAPrioritizedList:           true,
+@@ -244,8 +239,9 @@ func TestDRA(t *testing.T) {
+ 				tCtx.Run("ImplicitExtendedResource", func(tCtx ktesting.TContext) { testExtendedResource(tCtx, true, false) })
+ 				tCtx.Run("ResourceClaimDeviceStatus", func(tCtx ktesting.TContext) { testResourceClaimDeviceStatus(tCtx, true) })
+ 				tCtx.Run("MaxResourceSlice", testMaxResourceSlice)
+-				tCtx.Run("EvictClusterWithRule", func(tCtx ktesting.TContext) { testEvictCluster(tCtx, true) })
+-				tCtx.Run("EvictClusterWithSlices", func(tCtx ktesting.TContext) { testEvictCluster(tCtx, false) })
++				tCtx.Run("EvictClusterWithV1alpha3Rule", func(tCtx ktesting.TContext) { testEvictCluster(tCtx, useV1alpha3Rule) })
++				tCtx.Run("EvictClusterWithV1beta2Rule", func(tCtx ktesting.TContext) { testEvictCluster(tCtx, useV1beta2Rule) })
++				tCtx.Run("EvictClusterWithSlices", func(tCtx ktesting.TContext) { testEvictCluster(tCtx, useNoRule) })
+ 				tCtx.Run("InvalidResourceSlices", testInvalidResourceSlices)
+ 				// Number of devices per slice is chosen so that Filter takes a few seconds: The allocator
+ 				// in the experimental channel has an improvement that requires a higher number here than
+diff --git a/test/integration/etcd/data.go b/test/integration/etcd/data.go
+index 4f4252a292..e35b18324d 100644
+--- a/test/integration/etcd/data.go
++++ b/test/integration/etcd/data.go
+@@ -646,6 +646,13 @@ func GetEtcdStorageDataForNamespaceServedAt(namespace string, v string, isEmulat
+ 			IntroducedVersion: "1.33",
+ 			RemovedVersion:    "1.39",
+ 		},
++		gvr("resource.k8s.io", "v1beta2", "devicetaintrules"): {
++			Stub:              `{"metadata": {"name": "taint2name"}, "spec": {"taint": {"key": "example.com/taintkey", "value": "taintvalue", "effect": "NoSchedule"}}}`,
++			ExpectedEtcdPath:  "/registry/devicetaintrules/taint2name",
++			ExpectedGVK:       gvkP("resource.k8s.io", "v1alpha3", "DeviceTaintRule"), // v1beta2 has higher priority, but to support downgrades v1alpha3 is picked automatically.
++			IntroducedVersion: "1.36",
++			RemovedVersion:    "1.42",
++		},
+ 		gvr("resource.k8s.io", "v1beta2", "resourceclaims"): {
+ 			Stub:              `{"metadata": {"name": "claim3name"}, "spec": {"devices": {"requests": [{"name": "req-0", "exactly": {"deviceClassName": "example-class", "allocationMode": "ExactCount", "count": 1}}]}}}`,
+ 			ExpectedEtcdPath:  "/registry/resourceclaims/" + namespace + "/claim3name",

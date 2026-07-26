@@ -1,0 +1,1102 @@
+From c70ec74213f68d430573c3f31be8a94d3d53d4d5 Mon Sep 17 00:00:00 2001
+From: Alexander Beedie <alexander-beedie@users.noreply.github.com>
+Date: Mon, 23 Feb 2026 18:02:08 +0400
+Subject: [PATCH] feat: Add `truncate` Expression for numeric values (#26666)
+
+---
+ crates/polars-expr/src/dispatch/mod.rs        |   2 +
+ crates/polars-expr/src/dispatch/round.rs      |   4 +
+ crates/polars-ops/src/series/ops/round.rs     | 333 +++++++-----------
+ crates/polars-plan/dsl-schema-hashes.json     |   2 +-
+ .../polars-plan/src/dsl/function_expr/mod.rs  |   8 +
+ crates/polars-plan/src/dsl/mod.rs             |   6 +
+ .../src/plans/aexpr/function_expr/mod.rs      |  10 +-
+ .../src/plans/aexpr/function_expr/schema.rs   |   4 +-
+ .../plans/conversion/dsl_to_ir/functions.rs   |   2 +
+ .../src/plans/conversion/ir_to_dsl.rs         |   2 +
+ crates/polars-python/src/expr/general.rs      |   4 +
+ .../src/lazyframe/visitor/expr_nodes.rs       |   1 +
+ crates/polars-sql/src/functions.rs            |  28 +-
+ .../reference/expressions/modify_select.rst   |   1 +
+ .../source/reference/series/modify_select.rst |   1 +
+ .../source/reference/sql/functions/math.rst   |  36 +-
+ py-polars/src/polars/_plr.pyi                 |   1 +
+ py-polars/src/polars/expr/expr.py             |  76 +++-
+ py-polars/src/polars/series/series.py         |  38 ++
+ .../tests/unit/datatypes/test_decimal.py      |  34 ++
+ .../tests/unit/lazyframe/test_lazyframe.py    |  24 ++
+ py-polars/tests/unit/series/test_series.py    |  45 +++
+ py-polars/tests/unit/sql/test_numeric.py      |  25 ++
+ 23 files changed, 473 insertions(+), 214 deletions(-)
+
+diff --git a/crates/polars-expr/src/dispatch/mod.rs b/crates/polars-expr/src/dispatch/mod.rs
+index 3f68ad8ed..66c570b70 100644
+--- a/crates/polars-expr/src/dispatch/mod.rs
++++ b/crates/polars-expr/src/dispatch/mod.rs
+@@ -364,6 +364,8 @@ pub fn function_expr_to_udf(func: IRFunctionExpr) -> SpecialEq<Arc<dyn ColumnsUd
+         #[cfg(feature = "round_series")]
+         F::RoundSF { digits } => map!(round::round_sig_figs, digits),
+         #[cfg(feature = "round_series")]
++        F::Truncate { decimals } => map!(round::truncate, decimals),
++        #[cfg(feature = "round_series")]
+         F::Floor => map!(round::floor),
+         #[cfg(feature = "round_series")]
+         F::Ceil => map!(round::ceil),
+diff --git a/crates/polars-expr/src/dispatch/round.rs b/crates/polars-expr/src/dispatch/round.rs
+index d1e246259..6a9963932 100644
+--- a/crates/polars-expr/src/dispatch/round.rs
++++ b/crates/polars-expr/src/dispatch/round.rs
+@@ -12,6 +12,10 @@ pub(super) fn round_sig_figs(c: &Column, digits: i32) -> PolarsResult<Column> {
+     c.try_apply_unary_elementwise(|s| s.round_sig_figs(digits))
+ }
+ 
++pub(super) fn truncate(c: &Column, decimals: u32) -> PolarsResult<Column> {
++    c.try_apply_unary_elementwise(|s| s.truncate(decimals))
++}
++
+ pub(super) fn floor(c: &Column) -> PolarsResult<Column> {
+     c.try_apply_unary_elementwise(Series::floor)
+ }
+diff --git a/crates/polars-ops/src/series/ops/round.rs b/crates/polars-ops/src/series/ops/round.rs
+index 8370ee07f..4be3f07df 100644
+--- a/crates/polars-ops/src/series/ops/round.rs
++++ b/crates/polars-ops/src/series/ops/round.rs
+@@ -19,215 +19,121 @@ pub enum RoundMode {
+     HalfAwayFromZero,
+ }
+ 
++/// Apply the given rounding operation across f16/f32/f64 types.
++fn apply_float_rounding(
++    s: &Series,
++    decimals: u32,
++    f32_op: fn(f32) -> f32,
++    f64_op: fn(f64) -> f64,
++) -> Option<PolarsResult<Series>> {
++    #[cfg(feature = "dtype-f16")]
++    if let Ok(ca) = s.f16() {
++        return Some(if decimals == 0 {
++            let s = ca
++                .apply_values(|val| f32_op(f32::from(val)).into())
++                .into_series();
++            Ok(s)
++        } else if decimals >= 11 {
++            // More precise than smallest denormal.
++            Ok(s.clone())
++        } else {
++            let multiplier = 10.0_f32.powi(decimals as i32);
++            let s = ca
++                .apply_values(|val| {
++                    let val_f32: f32 = val.into();
++                    let ret: pf16 = (f32_op(val_f32 * multiplier) / multiplier).into();
++                    if ret.is_finite() {
++                        ret
++                    } else {
++                        // We return the original value which is correct both for overflows and non-finite inputs.
++                        val
++                    }
++                })
++                .into_series();
++            Ok(s)
++        });
++    }
++    if let Ok(ca) = s.f32() {
++        return Some(if decimals == 0 {
++            let s = ca.apply_values(f32_op).into_series();
++            Ok(s)
++        } else if decimals >= 47 {
++            // More precise than smallest denormal.
++            Ok(s.clone())
++        } else {
++            // Note we do the computation on f64 floats to not lose precision
++            // when the computation is done, we cast to f32
++            let multiplier = 10.0_f64.powi(decimals as i32);
++            let s = ca
++                .apply_values(|val| {
++                    let ret = (f64_op(val as f64 * multiplier) / multiplier) as f32;
++                    if ret.is_finite() {
++                        ret
++                    } else {
++                        // We return the original value which is correct both for overflows and non-finite inputs.
++                        val
++                    }
++                })
++                .into_series();
++            Ok(s)
++        });
++    }
++    if let Ok(ca) = s.f64() {
++        return Some(if decimals == 0 {
++            let s = ca.apply_values(f64_op).into_series();
++            Ok(s)
++        } else if decimals >= 326 {
++            // More precise than smallest denormal.
++            Ok(s.clone())
++        } else if decimals >= 300 {
++            // We're getting into unrepresentable territory for the multiplier
++            // here, split up the 10^n multiplier into 2^n and 5^n.
++            let mul2 = libm::scalbn(1.0, decimals as i32);
++            let invmul2 = 1.0 / mul2; // Still exact for any valid value of decimals.
++            let mul5 = 5.0_f64.powi(decimals as i32);
++            let s = ca
++                .apply_values(|val| {
++                    let ret = f64_op(val * mul2 * mul5) / mul5 * invmul2;
++                    if ret.is_finite() {
++                        ret
++                    } else {
++                        // We return the original value which is correct both for overflows and non-finite inputs.
++                        val
++                    }
++                })
++                .into_series();
++            Ok(s)
++        } else {
++            let multiplier = 10.0_f64.powi(decimals as i32);
++            let s = ca
++                .apply_values(|val| {
++                    let ret = f64_op(val * multiplier) / multiplier;
++                    if ret.is_finite() { ret } else { val }
++                })
++                .into_series();
++            Ok(s)
++        });
++    }
++    None
++}
++
+ pub trait RoundSeries: SeriesSealed {
+-    /// Round underlying floating point array to given decimal.
++    /// Round underlying floating point array to the given number of decimals.
+     fn round(&self, decimals: u32, mode: RoundMode) -> PolarsResult<Series> {
+         let s = self.as_series();
+ 
+-        #[cfg(feature = "dtype-f16")]
+-        if let Ok(ca) = s.f16() {
+-            match mode {
+-                RoundMode::HalfToEven => {
+-                    return if decimals == 0 {
+-                        let s = ca
+-                            .apply_values(|val| f32::from(val).round_ties_even().into())
+-                            .into_series();
+-                        Ok(s)
+-                    } else if decimals >= 11 {
+-                        // More precise than smallest denormal.
+-                        Ok(s.clone())
+-                    } else {
+-                        let multiplier = 10.0_f32.powi(decimals as i32);
+-                        let s = ca
+-                            .apply_values(|val| {
+-                                let val_f32: f32 = val.into();
+-                                let ret: pf16 =
+-                                    ((val_f32 * multiplier).round_ties_even() / multiplier).into();
+-                                if ret.is_finite() {
+-                                    ret
+-                                } else {
+-                                    // We return the original value which is correct both for overflows and non-finite inputs.
+-                                    val
+-                                }
+-                            })
+-                            .into_series();
+-                        Ok(s)
+-                    };
+-                },
+-                RoundMode::HalfAwayFromZero => {
+-                    return if decimals == 0 {
+-                        let s = ca
+-                            .apply_values(|val| f32::from(val).round().into())
+-                            .into_series();
+-                        Ok(s)
+-                    } else if decimals >= 11 {
+-                        // More precise than smallest denormal.
+-                        Ok(s.clone())
+-                    } else {
+-                        let multiplier = 10.0_f32.powi(decimals as i32);
+-                        let s = ca
+-                            .apply_values(|val| {
+-                                let val_f32: f32 = val.into();
+-                                let ret: pf16 =
+-                                    ((val_f32 * multiplier).round() / multiplier).into();
+-                                if ret.is_finite() {
+-                                    ret
+-                                } else {
+-                                    // We return the original value which is correct both for overflows and non-finite inputs.
+-                                    val
+-                                }
+-                            })
+-                            .into_series();
+-                        Ok(s)
+-                    };
+-                },
+-            }
+-        }
+-        if let Ok(ca) = s.f32() {
+-            match mode {
+-                RoundMode::HalfToEven => {
+-                    return if decimals == 0 {
+-                        let s = ca.apply_values(|val| val.round_ties_even()).into_series();
+-                        Ok(s)
+-                    } else if decimals >= 47 {
+-                        // More precise than smallest denormal.
+-                        Ok(s.clone())
+-                    } else {
+-                        // Note we do the computation on f64 floats to not lose precision
+-                        // when the computation is done, we cast to f32
+-                        let multiplier = 10.0_f64.powi(decimals as i32);
+-                        let s = ca
+-                            .apply_values(|val| {
+-                                let ret = ((val as f64 * multiplier).round_ties_even() / multiplier)
+-                                    as f32;
+-                                if ret.is_finite() {
+-                                    ret
+-                                } else {
+-                                    // We return the original value which is correct both for overflows and non-finite inputs.
+-                                    val
+-                                }
+-                            })
+-                            .into_series();
+-                        Ok(s)
+-                    };
+-                },
+-                RoundMode::HalfAwayFromZero => {
+-                    return if decimals == 0 {
+-                        let s = ca.apply_values(|val| val.round()).into_series();
+-                        Ok(s)
+-                    } else if decimals >= 47 {
+-                        // More precise than smallest denormal.
+-                        Ok(s.clone())
+-                    } else {
+-                        // Note we do the computation on f64 floats to not lose precision
+-                        // when the computation is done, we cast to f32
+-                        let multiplier = 10.0_f64.powi(decimals as i32);
+-                        let s = ca
+-                            .apply_values(|val| {
+-                                let ret = ((val as f64 * multiplier).round() / multiplier) as f32;
+-                                if ret.is_finite() {
+-                                    ret
+-                                } else {
+-                                    // We return the original value which is correct both for overflows and non-finite inputs.
+-                                    val
+-                                }
+-                            })
+-                            .into_series();
+-                        Ok(s)
+-                    };
+-                },
+-            }
+-        }
+-        if let Ok(ca) = s.f64() {
+-            match mode {
+-                RoundMode::HalfToEven => {
+-                    return if decimals == 0 {
+-                        let s = ca.apply_values(|val| val.round_ties_even()).into_series();
+-                        Ok(s)
+-                    } else if decimals >= 326 {
+-                        // More precise than smallest denormal.
+-                        Ok(s.clone())
+-                    } else if decimals >= 300 {
+-                        // We're getting into unrepresentable territory for the multiplier
+-                        // here, split up the 10^n multiplier into 2^n and 5^n.
+-                        let mul2 = libm::scalbn(1.0, decimals as i32);
+-                        let invmul2 = 1.0 / mul2; // Still exact for any valid value of decimals.
+-                        let mul5 = 5.0_f64.powi(decimals as i32);
+-                        let s = ca
+-                            .apply_values(|val| {
+-                                let ret = (val * mul2 * mul5).round_ties_even() / mul5 * invmul2;
+-                                if ret.is_finite() {
+-                                    ret
+-                                } else {
+-                                    // We return the original value which is correct both for overflows and non-finite inputs.
+-                                    val
+-                                }
+-                            })
+-                            .into_series();
+-                        Ok(s)
+-                    } else {
+-                        let multiplier = 10.0_f64.powi(decimals as i32);
+-                        let s = ca
+-                            .apply_values(|val| {
+-                                let ret = (val * multiplier).round_ties_even() / multiplier;
+-                                if ret.is_finite() {
+-                                    ret
+-                                } else {
+-                                    // We return the original value which is correct both for overflows and non-finite inputs.
+-                                    val
+-                                }
+-                            })
+-                            .into_series();
+-                        Ok(s)
+-                    };
+-                },
+-                RoundMode::HalfAwayFromZero => {
+-                    return if decimals == 0 {
+-                        let s = ca.apply_values(|val| val.round()).into_series();
+-                        Ok(s)
+-                    } else if decimals >= 326 {
+-                        // More precise than smallest denormal.
+-                        Ok(s.clone())
+-                    } else if decimals >= 300 {
+-                        // We're getting into unrepresentable territory for the multiplier
+-                        // here, split up the 10^n multiplier into 2^n and 5^n.
+-                        let mul2 = libm::scalbn(1.0, decimals as i32);
+-                        let invmul2 = 1.0 / mul2; // Still exact for any valid value of decimals.
+-                        let mul5 = 5.0_f64.powi(decimals as i32);
+-                        let s = ca
+-                            .apply_values(|val| {
+-                                let ret = (val * mul2 * mul5).round() / mul5 * invmul2;
+-                                if ret.is_finite() {
+-                                    ret
+-                                } else {
+-                                    // We return the original value which is correct both for overflows and non-finite inputs.
+-                                    val
+-                                }
+-                            })
+-                            .into_series();
+-                        Ok(s)
+-                    } else {
+-                        let multiplier = 10.0_f64.powi(decimals as i32);
+-                        let s = ca
+-                            .apply_values(|val| {
+-                                let ret = (val * multiplier).round() / multiplier;
+-                                if ret.is_finite() {
+-                                    ret
+-                                } else {
+-                                    // We return the original value which is correct both for overflows and non-finite inputs.
+-                                    val
+-                                }
+-                            })
+-                            .into_series();
+-                        Ok(s)
+-                    };
+-                },
+-            }
++        #[allow(clippy::type_complexity)]
++        let (f32_op, f64_op): (fn(f32) -> f32, fn(f64) -> f64) = match mode {
++            RoundMode::HalfToEven => (f32::round_ties_even, f64::round_ties_even),
++            RoundMode::HalfAwayFromZero => (f32::round, f64::round),
++        };
++
++        if let Some(result) = apply_float_rounding(s, decimals, f32_op, f64_op) {
++            return result;
+         }
+         #[cfg(feature = "dtype-decimal")]
+         if let Some(ca) = s.try_decimal() {
+             let scale = ca.scale() as u32;
+-
+             if scale <= decimals {
+                 return Ok(ca.clone().into_series());
+             }
+@@ -275,6 +181,7 @@ pub trait RoundSeries: SeriesSealed {
+         Ok(s.clone())
+     }
+ 
++    /// Round underlying floating point array to the given number of significant digits.
+     fn round_sig_figs(&self, digits: i32) -> PolarsResult<Series> {
+         let s = self.as_series();
+         polars_ensure!(digits >= 1, InvalidOperation: "digits must be an integer >= 1");
+@@ -342,6 +249,30 @@ pub trait RoundSeries: SeriesSealed {
+         });
+     }
+ 
++    /// Truncate underlying floating point array toward zero to the given number of decimals.
++    fn truncate(&self, decimals: u32) -> PolarsResult<Series> {
++        let s = self.as_series();
++        if let Some(result) = apply_float_rounding(s, decimals, f32::trunc, f64::trunc) {
++            return result;
++        }
++
++        #[cfg(feature = "dtype-decimal")]
++        if let Some(ca) = s.try_decimal() {
++            let scale = ca.scale() as u32;
++            if scale <= decimals {
++                return Ok(ca.clone().into_series());
++            }
++            let decimal_delta = scale - decimals;
++            let multiplier = 10i128.pow(decimal_delta);
++            let res = ca.physical().apply_values(|v| v - (v % multiplier));
++            return Ok(res
++                .into_decimal_unchecked(ca.precision(), scale as usize)
++                .into_series());
++        }
++        polars_ensure!(s.dtype().is_integer(), InvalidOperation: "truncate can only be used on numeric types" );
++        Ok(s.clone())
++    }
++
+     /// Floor underlying floating point array to the lowest integers smaller or equal to the float value.
+     fn floor(&self) -> PolarsResult<Series> {
+         let s = self.as_series();
+diff --git a/crates/polars-plan/dsl-schema-hashes.json b/crates/polars-plan/dsl-schema-hashes.json
+index 83c7ca665..c0e2a35a5 100644
+--- a/crates/polars-plan/dsl-schema-hashes.json
++++ b/crates/polars-plan/dsl-schema-hashes.json
+@@ -64,7 +64,7 @@
+   "FileSinkOptions": "edebcf5e3965add5e4fd1be14ca6bdddc55fa22e6e829dca04beb321de0c992c",
+   "FileWriteFormat": "1a685aba7dd5d6c0aefc99a9060d1b57f166ea44ef57ad0d0d0c565dbabda811",
+   "FillNullStrategy": "459a9a9702415f9ca9e5218bb573609a60291e73162c38fbc046c97feb1b7500",
+-  "FunctionExpr": "907ccf9c3b7c2f8718c16b5dbc65bade79a195c03bdad059b7b0e83cc04d246c",
++  "FunctionExpr": "227decd2662eef59839c5764c29b622e59a57cefcdf4c3b4f0841ede7bd46788",
+   "FunctionFlags": "54fd84a1b628c426b8d0f5e9bca174093e07da8992a9a9bb4c191d07133e0046",
+   "FunctionOptions": "0784524479a30a7d91b890b03feac9eca6c46d04f0a7c3f4a9a2d827c3e34b5e",
+   "GroupbyOptions": "0cda61fc19eb9866157ae4afeed3dc018294aaea5f02692b085885de771bfcdb",
+diff --git a/crates/polars-plan/src/dsl/function_expr/mod.rs b/crates/polars-plan/src/dsl/function_expr/mod.rs
+index 34b4ce2ab..632b41b32 100644
+--- a/crates/polars-plan/src/dsl/function_expr/mod.rs
++++ b/crates/polars-plan/src/dsl/function_expr/mod.rs
+@@ -255,6 +255,10 @@ pub enum FunctionExpr {
+         digits: i32,
+     },
+     #[cfg(feature = "round_series")]
++    Truncate {
++        decimals: u32,
++    },
++    #[cfg(feature = "round_series")]
+     Floor,
+     #[cfg(feature = "round_series")]
+     Ceil,
+@@ -584,6 +588,8 @@ impl Hash for FunctionExpr {
+             #[cfg(feature = "round_series")]
+             FunctionExpr::RoundSF { digits } => digits.hash(state),
+             #[cfg(feature = "round_series")]
++            Truncate { decimals } => decimals.hash(state),
++            #[cfg(feature = "round_series")]
+             FunctionExpr::Floor => {},
+             #[cfg(feature = "round_series")]
+             Ceil => {},
+@@ -817,6 +823,8 @@ impl Display for FunctionExpr {
+             #[cfg(feature = "round_series")]
+             RoundSF { .. } => "round_sig_figs",
+             #[cfg(feature = "round_series")]
++            Truncate { .. } => "truncate",
++            #[cfg(feature = "round_series")]
+             Floor => "floor",
+             #[cfg(feature = "round_series")]
+             Ceil => "ceil",
+diff --git a/crates/polars-plan/src/dsl/mod.rs b/crates/polars-plan/src/dsl/mod.rs
+index eac19b062..6c1cba301 100644
+--- a/crates/polars-plan/src/dsl/mod.rs
++++ b/crates/polars-plan/src/dsl/mod.rs
+@@ -712,6 +712,12 @@ impl Expr {
+         self.map_unary(FunctionExpr::RoundSF { digits })
+     }
+ 
++    /// Truncate underlying floating point array toward zero to given decimal.
++    #[cfg(feature = "round_series")]
++    pub fn truncate(self, decimals: u32) -> Self {
++        self.map_unary(FunctionExpr::Truncate { decimals })
++    }
++
+     /// Floor underlying floating point array to the lowest integers smaller or equal to the float value.
+     #[cfg(feature = "round_series")]
+     pub fn floor(self) -> Self {
+diff --git a/crates/polars-plan/src/plans/aexpr/function_expr/mod.rs b/crates/polars-plan/src/plans/aexpr/function_expr/mod.rs
+index a0f11b293..85bf3ba07 100644
+--- a/crates/polars-plan/src/plans/aexpr/function_expr/mod.rs
++++ b/crates/polars-plan/src/plans/aexpr/function_expr/mod.rs
+@@ -270,6 +270,10 @@ pub enum IRFunctionExpr {
+         digits: i32,
+     },
+     #[cfg(feature = "round_series")]
++    Truncate {
++        decimals: u32,
++    },
++    #[cfg(feature = "round_series")]
+     Floor,
+     #[cfg(feature = "round_series")]
+     Ceil,
+@@ -609,6 +613,8 @@ impl Hash for IRFunctionExpr {
+             #[cfg(feature = "round_series")]
+             IRFunctionExpr::RoundSF { digits } => digits.hash(state),
+             #[cfg(feature = "round_series")]
++            Truncate { decimals } => decimals.hash(state),
++            #[cfg(feature = "round_series")]
+             IRFunctionExpr::Floor => {},
+             #[cfg(feature = "round_series")]
+             Ceil => {},
+@@ -846,6 +852,8 @@ impl Display for IRFunctionExpr {
+             #[cfg(feature = "round_series")]
+             RoundSF { .. } => "round_sig_figs",
+             #[cfg(feature = "round_series")]
++            Truncate { .. } => "truncate",
++            #[cfg(feature = "round_series")]
+             Floor => "floor",
+             #[cfg(feature = "round_series")]
+             Ceil => "ceil",
+@@ -1163,7 +1171,7 @@ impl IRFunctionExpr {
+                 }
+             }),
+             #[cfg(feature = "round_series")]
+-            F::Round { .. } | F::RoundSF { .. } | F::Floor | F::Ceil => {
++            F::Round { .. } | F::RoundSF { .. } | F::Truncate { .. } | F::Floor | F::Ceil => {
+                 FunctionOptions::elementwise()
+             },
+             #[cfg(feature = "fused")]
+diff --git a/crates/polars-plan/src/plans/aexpr/function_expr/schema.rs b/crates/polars-plan/src/plans/aexpr/function_expr/schema.rs
+index 03cc84435..a6a002d89 100644
+--- a/crates/polars-plan/src/plans/aexpr/function_expr/schema.rs
++++ b/crates/polars-plan/src/plans/aexpr/function_expr/schema.rs
+@@ -287,7 +287,9 @@ impl IRFunctionExpr {
+             Log => mapper.log_dtype(),
+             Unique(_) => mapper.with_same_dtype(),
+             #[cfg(feature = "round_series")]
+-            Round { .. } | RoundSF { .. } | Floor | Ceil => mapper.with_same_dtype(),
++            Round { .. } | RoundSF { .. } | Truncate { .. } | Floor | Ceil => {
++                mapper.with_same_dtype()
++            },
+             #[cfg(feature = "fused")]
+             Fused(_) => mapper.map_to_supertype(),
+             ConcatExpr(_) => mapper.map_to_supertype(),
+diff --git a/crates/polars-plan/src/plans/conversion/dsl_to_ir/functions.rs b/crates/polars-plan/src/plans/conversion/dsl_to_ir/functions.rs
+index c7c21dc58..b9dff037f 100644
+--- a/crates/polars-plan/src/plans/conversion/dsl_to_ir/functions.rs
++++ b/crates/polars-plan/src/plans/conversion/dsl_to_ir/functions.rs
+@@ -879,6 +879,8 @@ pub(super) fn convert_functions(
+         #[cfg(feature = "round_series")]
+         F::RoundSF { digits } => I::RoundSF { digits },
+         #[cfg(feature = "round_series")]
++        F::Truncate { decimals } => I::Truncate { decimals },
++        #[cfg(feature = "round_series")]
+         F::Floor => I::Floor,
+         #[cfg(feature = "round_series")]
+         F::Ceil => I::Ceil,
+diff --git a/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs b/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs
+index f3cbdfccf..1b1b8b5ef 100644
+--- a/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs
++++ b/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs
+@@ -1010,6 +1010,8 @@ pub fn ir_function_to_dsl(input: Vec<Expr>, function: IRFunctionExpr) -> Expr {
+         #[cfg(feature = "round_series")]
+         IF::RoundSF { digits } => F::RoundSF { digits },
+         #[cfg(feature = "round_series")]
++        IF::Truncate { decimals } => F::Truncate { decimals },
++        #[cfg(feature = "round_series")]
+         IF::Floor => F::Floor,
+         #[cfg(feature = "round_series")]
+         IF::Ceil => F::Ceil,
+diff --git a/crates/polars-python/src/expr/general.rs b/crates/polars-python/src/expr/general.rs
+index 124c79207..5ae454742 100644
+--- a/crates/polars-python/src/expr/general.rs
++++ b/crates/polars-python/src/expr/general.rs
+@@ -498,6 +498,10 @@ impl PyExpr {
+         self.clone().inner.round_sig_figs(digits).into()
+     }
+ 
++    fn truncate(&self, decimals: u32) -> Self {
++        self.inner.clone().truncate(decimals).into()
++    }
++
+     fn floor(&self) -> Self {
+         self.inner.clone().floor().into()
+     }
+diff --git a/crates/polars-python/src/lazyframe/visitor/expr_nodes.rs b/crates/polars-python/src/lazyframe/visitor/expr_nodes.rs
+index dc83f8e1a..be226f553 100644
+--- a/crates/polars-python/src/lazyframe/visitor/expr_nodes.rs
++++ b/crates/polars-python/src/lazyframe/visitor/expr_nodes.rs
+@@ -1314,6 +1314,7 @@ pub(crate) fn into_py(py: Python<'_>, expr: &AExpr) -> PyResult<Py<PyAny>> {
+                     ("round", decimals, Into::<&str>::into(mode)).into_py_any(py)
+                 },
+                 IRFunctionExpr::RoundSF { digits } => ("round_sig_figs", digits).into_py_any(py),
++                IRFunctionExpr::Truncate { decimals } => ("truncate", decimals).into_py_any(py),
+                 IRFunctionExpr::Floor => ("floor",).into_py_any(py),
+                 IRFunctionExpr::Ceil => ("ceil",).into_py_any(py),
+                 IRFunctionExpr::Fused(_) => return Err(PyNotImplementedError::new_err("fused")),
+diff --git a/crates/polars-sql/src/functions.rs b/crates/polars-sql/src/functions.rs
+index e3d726ba0..4842a28a4 100644
+--- a/crates/polars-sql/src/functions.rs
++++ b/crates/polars-sql/src/functions.rs
+@@ -167,12 +167,18 @@ pub(crate) enum PolarsSQLFunctions {
+     /// ```
+     Cbrt,
+     /// SQL 'round' function.
+-    /// Round a number to `x` decimals (default: 0) away from zero.
++    /// Round a number to `n` decimals (default: 0) away from zero.
+     ///   .5 is rounded away from zero.
+     /// ```sql
+     /// SELECT ROUND(col1, 3) FROM df;
+     /// ```
+     Round,
++    /// SQL 'truncate' function.
++    /// Truncate a number toward zero to `n` decimals (default: 0).
++    /// ```sql
++    /// SELECT TRUNCATE(col1, 2) FROM df;
++    /// ```
++    Truncate,
+     /// SQL 'sign' function.
+     /// Returns the sign of the argument as -1, 0, or +1.
+     /// ```sql
+@@ -932,6 +938,7 @@ impl PolarsSQLFunctions {
+             "pi" => Self::Pi,
+             "pow" | "power" => Self::Pow,
+             "round" => Self::Round,
++            "trunc" | "truncate" => Self::Truncate,
+             "sign" => Self::Sign,
+             "sqrt" => Self::Sqrt,
+ 
+@@ -1128,7 +1135,7 @@ impl SQLFunctionVisitor<'_> {
+                         Ok(e.round(match decimals {
+                             Expr::Literal(LiteralValue::Dyn(DynLiteralValue::Int(n))) => {
+                                 if n >= 0 { n as u32 } else {
+-                                    polars_bail!(SQLInterface: "ROUND does not currently support negative decimals value ({})", args[1])
++                                    polars_bail!(SQLInterface: "ROUND does not support negative decimals value ({})", args[1])
+                                 }
+                             },
+                             _ => polars_bail!(SQLSyntax: "invalid value for ROUND decimals ({})", args[1]),
+@@ -1137,6 +1144,23 @@ impl SQLFunctionVisitor<'_> {
+                     _ => polars_bail!(SQLSyntax: "ROUND expects 1-2 arguments (found {})", args.len()),
+                 }
+             },
++            Truncate => {
++                let args = extract_args(function)?;
++                match args.len() {
++                    1 => self.visit_unary(|e| e.truncate(0)),
++                    2 => self.try_visit_binary(|e, decimals| {
++                        Ok(e.truncate(match decimals {
++                            Expr::Literal(LiteralValue::Dyn(DynLiteralValue::Int(n))) => {
++                                if n >= 0 { n as u32 } else {
++                                    polars_bail!(SQLInterface: "TRUNCATE does not support negative decimals value ({})", args[1])
++                                }
++                            },
++                            _ => polars_bail!(SQLSyntax: "invalid value for TRUNCATE decimals ({})", args[1]),
++                        }))
++                    }),
++                    _ => polars_bail!(SQLSyntax: "TRUNCATE expects 1-2 arguments (found {})", args.len()),
++                }
++            },
+             Sign => self.visit_unary(Expr::sign),
+             Sqrt => self.visit_unary(Expr::sqrt),
+ 
+diff --git a/py-polars/docs/source/reference/expressions/modify_select.rst b/py-polars/docs/source/reference/expressions/modify_select.rst
+index 0542f17a3..8eb3e0aeb 100644
+--- a/py-polars/docs/source/reference/expressions/modify_select.rst
++++ b/py-polars/docs/source/reference/expressions/modify_select.rst
+@@ -60,5 +60,6 @@ Manipulation/selection
+     Expr.to_physical
+     Expr.top_k
+     Expr.top_k_by
++    Expr.truncate
+     Expr.upper_bound
+     Expr.where
+diff --git a/py-polars/docs/source/reference/series/modify_select.rst b/py-polars/docs/source/reference/series/modify_select.rst
+index 73646637f..44c90476f 100644
+--- a/py-polars/docs/source/reference/series/modify_select.rst
++++ b/py-polars/docs/source/reference/series/modify_select.rst
+@@ -61,5 +61,6 @@ Manipulation/selection
+     Series.to_dummies
+     Series.top_k
+     Series.top_k_by
++    Series.truncate
+     Series.unique
+     Series.zip_with
+diff --git a/py-polars/docs/source/reference/sql/functions/math.rst b/py-polars/docs/source/reference/sql/functions/math.rst
+index 3d5d6e3e0..5f1d24353 100644
+--- a/py-polars/docs/source/reference/sql/functions/math.rst
++++ b/py-polars/docs/source/reference/sql/functions/math.rst
+@@ -36,11 +36,13 @@ Math
+    * - :ref:`POW <pow>`
+      - Returns the value to the power of the given exponent.
+    * - :ref:`ROUND <round>`
+-     - Round a number to `x` decimals (default: 0) away from zero.
++     - Round a number to `n` decimals (default: 0) away from zero.
+    * - :ref:`SIGN <sign>`
+      - Returns the sign of the argument as -1, 0, or +1.
+    * - :ref:`SQRT <sqrt>`
+      - Returns the square root (√) of a number.
++   * - :ref:`TRUNC <trunc>`
++     - Truncate a number toward zero to `n` decimals (default: 0).
+ 
+ .. _abs:
+ 
+@@ -405,7 +407,7 @@ Returns the value to the power of the given exponent.
+ 
+ ROUND
+ -----
+-Round a number to `x` decimals (default: 0) away from zero.
++Round a number to `n` decimals (default: 0) away from zero.
+ 
+ **Example:**
+ 
+@@ -479,3 +481,33 @@ Returns the square root (√) of a number.
+     # │ 4096  ┆ 64.0     │
+     # │ 65536 ┆ 256.0    │
+     # └───────┴──────────┘
++
++.. _trunc:
++
++TRUNC
++-----
++Truncate a number toward zero to `n` decimals (default: 0).
++
++.. admonition:: Aliases
++
++   `TRUNCATE`
++
++**Example:**
++
++.. code-block:: python
++
++    df = pl.DataFrame({"x": [1.5671, -2.999, 3.4569, -4.3218]})
++    df.sql("""
++      SELECT x, TRUNC(x) AS xt0, TRUNC(x, 2) AS xt2 FROM self
++    """)
++    # shape: (4, 3)
++    # ┌─────────┬──────┬───────┐
++    # │ x       ┆ xt0  ┆ xt2   │
++    # │ ---     ┆ ---  ┆ ---   │
++    # │ f64     ┆ f64  ┆ f64   │
++    # ╞═════════╪══════╪═══════╡
++    # │ 1.5671  ┆ 1.0  ┆ 1.56  │
++    # │ -2.999  ┆ -2.0 ┆ -2.99 │
++    # │ 3.4569  ┆ 3.0  ┆ 3.45  │
++    # │ -4.3218 ┆ -4.0 ┆ -4.32 │
++    # └─────────┴──────┴───────┘
+diff --git a/py-polars/src/polars/_plr.pyi b/py-polars/src/polars/_plr.pyi
+index fdaff4f8a..8e2a5da34 100644
+--- a/py-polars/src/polars/_plr.pyi
++++ b/py-polars/src/polars/_plr.pyi
+@@ -1301,6 +1301,7 @@ class PyExpr:
+     def rechunk(self) -> PyExpr: ...
+     def round(self, decimals: int, mode: Any) -> PyExpr: ...
+     def round_sig_figs(self, digits: int) -> PyExpr: ...
++    def truncate(self, decimals: int) -> PyExpr: ...
+     def floor(self) -> PyExpr: ...
+     def ceil(self) -> PyExpr: ...
+     def clip(self, min: PyExpr | None, max: PyExpr | None) -> PyExpr: ...
+diff --git a/py-polars/src/polars/expr/expr.py b/py-polars/src/polars/expr/expr.py
+index b5a5b0996..9668a5c18 100644
+--- a/py-polars/src/polars/expr/expr.py
++++ b/py-polars/src/polars/expr/expr.py
+@@ -1784,6 +1784,11 @@ class Expr:
+ 
+         Only works on floating point Series.
+ 
++        See Also
++        --------
++        ceil : Round up to the nearest integer value.
++        round : Round to the nearest integer.
++
+         Examples
+         --------
+         >>> df = pl.DataFrame({"a": [0.3, 0.5, 1.0, 1.1]})
+@@ -1808,6 +1813,11 @@ class Expr:
+ 
+         Only works on floating point Series.
+ 
++        See Also
++        --------
++        floor : Round down to the nearest integer.
++        round : Round to the nearest integer.
++
+         Examples
+         --------
+         >>> df = pl.DataFrame({"a": [0.3, 0.5, 1.0, 1.1]})
+@@ -1844,6 +1854,13 @@ class Expr:
+             * *half_away_from_zero*
+                 round to the nearest number away from zero
+ 
++        See Also
++        --------
++        ceil : Round up to the nearest integer.
++        floor : Round down to the nearest integer.
++        round_sig_figs : Round to a given number of significant figures.
++        truncate : Truncate to a given number of decimals.
++
+         Examples
+         --------
+         >>> df = pl.DataFrame({"a": [0.33, 0.52, 1.02, 1.17]})
+@@ -1898,6 +1915,13 @@ class Expr:
+         digits
+             Number of significant figures to round to.
+ 
++        See Also
++        --------
++        ceil : Round up to the nearest integer.
++        floor : Round down to the nearest integer.
++        round : Round to a given number of decimals.
++        truncate : Truncate to a given number of decimals.
++
+         Examples
+         --------
+         >>> df = pl.DataFrame({"a": [0.01234, 3.333, 1234.0]})
+@@ -1915,6 +1939,51 @@ class Expr:
+         """
+         return wrap_expr(self._pyexpr.round_sig_figs(digits))
+ 
++    def truncate(self, decimals: int = 0) -> Expr:
++        """
++        Truncate numeric data toward zero to `decimals` number of decimal places.
++
++        Parameters
++        ----------
++        decimals
++            Number of decimal places to truncate to.
++
++        Notes
++        -----
++        This method performs numeric truncation. For truncating temporal
++        data (dates/datetimes), use :func:`Expr.dt.truncate` instead.
++
++        See Also
++        --------
++        ceil : Round up to the nearest integer.
++        floor : Round down to the nearest integer.
++        round : Round to a given number of decimals.
++        round_sig_figs : Round to a given number of significant figures.
++
++        Examples
++        --------
++        >>> df = pl.DataFrame({"n": [-9.9999, 0.12345, 1.0251, 8.8765]})
++        >>> df.with_columns(
++        ...     t0=pl.col("n").truncate(0),
++        ...     t1=pl.col("n").truncate(1),
++        ...     t2=pl.col("n").truncate(2),
++        ...     t3=pl.col("n").truncate(3),
++        ...     t4=pl.col("n").truncate(4),
++        ... )
++        shape: (4, 6)
++        ┌─────────┬──────┬──────┬───────┬────────┬─────────┐
++        │ n       ┆ t0   ┆ t1   ┆ t2    ┆ t3     ┆ t4      │
++        │ ---     ┆ ---  ┆ ---  ┆ ---   ┆ ---    ┆ ---     │
++        │ f64     ┆ f64  ┆ f64  ┆ f64   ┆ f64    ┆ f64     │
++        ╞═════════╪══════╪══════╪═══════╪════════╪═════════╡
++        │ -9.9999 ┆ -9.0 ┆ -9.9 ┆ -9.99 ┆ -9.999 ┆ -9.9999 │
++        │ 0.12345 ┆ 0.0  ┆ 0.1  ┆ 0.12  ┆ 0.123  ┆ 0.1234  │
++        │ 1.0251  ┆ 1.0  ┆ 1.0  ┆ 1.02  ┆ 1.025  ┆ 1.025   │
++        │ 8.8765  ┆ 8.0  ┆ 8.8  ┆ 8.87  ┆ 8.876  ┆ 8.8765  │
++        └─────────┴──────┴──────┴───────┴────────┴─────────┘
++        """
++        return wrap_expr(self._pyexpr.truncate(decimals))
++
+     def dot(self, other: Expr | str_) -> Expr:
+         """
+         Compute the dot/inner product between two Expressions.
+@@ -1926,12 +1995,7 @@ class Expr:
+ 
+         Examples
+         --------
+-        >>> df = pl.DataFrame(
+-        ...     {
+-        ...         "a": [1, 3, 5],
+-        ...         "b": [2, 4, 6],
+-        ...     }
+-        ... )
++        >>> df = pl.DataFrame({"a": [1, 3, 5], "b": [2, 4, 6]})
+         >>> df.select(pl.col("a").dot(pl.col("b")))
+         shape: (1, 1)
+         ┌─────┐
+diff --git a/py-polars/src/polars/series/series.py b/py-polars/src/polars/series/series.py
+index bd11df7f6..6cb9b0342 100644
+--- a/py-polars/src/polars/series/series.py
++++ b/py-polars/src/polars/series/series.py
+@@ -5640,6 +5640,44 @@ class Series:
+         ]
+         """
+ 
++    def truncate(self, decimals: int = 0) -> Series:
++        """
++        Truncate numeric data toward zero to `decimals` number of decimal places.
++
++        Parameters
++        ----------
++        decimals
++            Number of decimal places to truncate to.
++
++        See Also
++        --------
++        round : Round to a given number of decimals.
++        floor : Round down to the nearest integer.
++        ceil : Round up to the nearest integer.
++
++        Examples
++        --------
++        >>> s = pl.Series("a", [1.12345, 2.56789, 3.901234])
++        >>> s.truncate(2)
++        shape: (3,)
++        Series: 'a' [f64]
++        [
++                1.12
++                2.56
++                3.9
++        ]
++
++        >>> s = pl.Series("a", [-1.78, 2.56, -3.99])
++        >>> s.truncate(0)
++        shape: (3,)
++        Series: 'a' [f64]
++        [
++                -1.0
++                2.0
++                -3.0
++        ]
++        """
++
+     def round(self, decimals: int = 0, mode: RoundMode = "half_to_even") -> Series:
+         """
+         Round underlying floating point data by `decimals` digits.
+diff --git a/py-polars/tests/unit/datatypes/test_decimal.py b/py-polars/tests/unit/datatypes/test_decimal.py
+index 6a1d21d26..3f1c94cb1 100644
+--- a/py-polars/tests/unit/datatypes/test_decimal.py
++++ b/py-polars/tests/unit/datatypes/test_decimal.py
+@@ -594,6 +594,40 @@ def test_decimal_round() -> None:
+         assert_series_equal(got_s, expected_s)
+ 
+ 
++@pytest.mark.parametrize(
++    ("decimals", "expected_values"),
++    [
++        (0, ["-3", "-2", "-1", "0", "0", "0", "1"]),
++        (1, ["-3.9", "-2.5", "-1.2", "0.0", "0.0", "0.1", "1.9"]),
++        (2, ["-3.99", "-2.50", "-1.23", "0.00", "0.00", "0.12", "1.99"]),
++        (3, ["-3.999", "-2.505", "-1.234", "0.000", "0.000", "0.123", "1.999"]),
++        (4, None),  # eg: `truncate(n)` for n >= scale should return the same value
++        (5, None),
++    ],
++)
++def test_decimal_truncate(decimals: int, expected_values: list[str] | None) -> None:
++    dtype = pl.Decimal(10, 4)
++    s = pl.Series(
++        "srs",
++        values=[
++            D("-3.9999"),
++            D("-2.5050"),
++            D("-1.2345"),
++            D("-0.0001"),
++            D("0.0001"),
++            D("0.1234"),
++            D("1.9999"),
++        ],
++        dtype=dtype,
++    )
++    expected_series = (
++        s
++        if (expected_values is None)
++        else pl.Series("srs", values=[D(v) for v in expected_values], dtype=dtype)
++    )
++    assert_series_equal(expected_series, s.truncate(decimals))
++
++
+ def test_decimal_arithmetic_schema() -> None:
+     q = pl.LazyFrame({"x": [1.0]}, schema={"x": pl.Decimal(15, 2)})
+ 
+diff --git a/py-polars/tests/unit/lazyframe/test_lazyframe.py b/py-polars/tests/unit/lazyframe/test_lazyframe.py
+index 5bff08e97..8e5d7fa4b 100644
+--- a/py-polars/tests/unit/lazyframe/test_lazyframe.py
++++ b/py-polars/tests/unit/lazyframe/test_lazyframe.py
+@@ -583,6 +583,30 @@ def test_round(n: float, ndigits: int, expected: float, dtype: pl.DataType) -> N
+     )
+ 
+ 
++@pytest.mark.parametrize(
++    ("n", "ndigits", "expected"),
++    [
++        (1.005, 2, 1.0),
++        (1835.665, 2, 1835.66),
++        (-1835.665, 2, -1835.66),
++        (2.49, 0, 2.0),
++        (123.45678, 2, 123.45),
++        (1254, 2, 1254.0),
++        (1254, 0, 1254.0),
++        (123.55, 0, 123.0),
++        (123.55, 1, 123.5),
++        (1.0e20, 2, 100000000000000000000.0),
++    ],
++)
++@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
++def test_truncate(n: float, ndigits: int, expected: float, dtype: pl.DataType) -> None:
++    ldf = pl.LazyFrame({"value": [n]}, schema_overrides={"value": dtype})
++    assert_series_equal(
++        ldf.select(pl.col("value").truncate(decimals=ndigits)).collect().to_series(),
++        pl.Series("value", [expected], dtype=dtype),
++    )
++
++
+ @pytest.mark.parametrize(
+     ("n", "ndigits", "expected1", "expected2"),
+     [
+diff --git a/py-polars/tests/unit/series/test_series.py b/py-polars/tests/unit/series/test_series.py
+index 03b25aacf..6b09822e6 100644
+--- a/py-polars/tests/unit/series/test_series.py
++++ b/py-polars/tests/unit/series/test_series.py
+@@ -1849,6 +1849,51 @@ def test_ceil() -> None:
+     assert_series_equal(s.ceil(), expected)
+ 
+ 
++def test_truncate() -> None:
++    a = pl.Series("f", [1.003, 2.003])
++    b = a.truncate(2)
++    assert b.to_list() == [1.00, 2.00]
++
++    b = a.truncate()
++    assert b.to_list() == [1.0, 2.0]
++
++
++def test_truncate_negative() -> None:
++    s = pl.Series("f", [-1.78, -2.56, -3.99])
++    assert s.truncate(1).to_list() == [-1.7, -2.5, -3.9]
++    assert s.truncate(0).to_list() == [-1.0, -2.0, -3.0]
++
++
++def test_truncate_int() -> None:
++    s = pl.Series([1, 2, 3])
++    assert_series_equal(s, s.truncate())
++
++
++def test_truncate_special_values() -> None:
++    # NaN values should remain NaN
++    s = pl.Series([1.5, float("nan"), 2.5])
++    result = s.truncate(1)
++    assert result[0] == 1.5
++    assert math.isnan(result[1])
++    assert result[2] == 2.5
++
++    # Inf values should remain inf
++    s = pl.Series([float("inf"), float("-inf"), 1.234])
++    result = s.truncate(2)
++    assert result[0] == float("inf")
++    assert result[1] == float("-inf")
++    assert result[2] == 1.23
++
++    # Null values should remain null
++    s = pl.Series("a", [1.234, None, 3.456], dtype=pl.Float64)
++    result = s.truncate(1)
++    assert result.to_list() == [1.2, None, 3.4]
++
++    # Empty series
++    s = pl.Series(dtype=pl.Float64)
++    assert_series_equal(s.truncate(2), s)
++
++
+ def test_duration_arithmetic() -> None:
+     # apply some basic duration math to series
+     s = pl.Series([datetime(2022, 1, 1, 10, 20, 30), datetime(2022, 1, 2, 20, 40, 50)])
+diff --git a/py-polars/tests/unit/sql/test_numeric.py b/py-polars/tests/unit/sql/test_numeric.py
+index 7e88d474d..4e254a720 100644
+--- a/py-polars/tests/unit/sql/test_numeric.py
++++ b/py-polars/tests/unit/sql/test_numeric.py
+@@ -125,6 +125,31 @@ def test_round_ndigits(decimals: int, expected: list[float]) -> None:
+         assert_series_equal(out["n"], pl.Series("n", values=expected))
+ 
+ 
++@pytest.mark.parametrize(
++    ("decimals", "expected"),
++    [
++        (0, [-8192.0, -3.0, -1.0, 2.0, 3.0, 8192.0]),
++        (1, [-8192.4, -3.9, -1.5, 2.4, 3.5, 8192.5]),
++        (2, [-8192.49, -3.95, -1.54, 2.45, 3.59, 8192.50]),
++        (3, [-8192.499, -3.955, -1.543, 2.456, 3.599, 8192.5001]),
++    ],
++)
++def test_truncate_ndigits(decimals: int, expected: list[float]) -> None:
++    df = pl.DataFrame(
++        {"n": [-8192.499, -3.9550, -1.54321, 2.45678, 3.59901, 8192.5001]},
++    )
++    with pl.SQLContext(df=df, eager=True) as ctx:
++        if decimals == 0:
++            out = ctx.execute("SELECT TRUNCATE(n) AS n FROM df")
++            assert_series_equal(out["n"], pl.Series("n", values=expected))
++
++        out = ctx.execute(f'SELECT TRUNCATE("n",{decimals}) AS n FROM df')
++        assert_series_equal(out["n"], pl.Series("n", values=expected))
++
++        out = ctx.execute(f'SELECT TRUNC("n",{decimals}) AS n FROM df')
++        assert_series_equal(out["n"], pl.Series("n", values=expected))
++
++
+ def test_round_ndigits_errors() -> None:
+     df = pl.DataFrame({"n": [99.999]})
+     with pl.SQLContext(df=df, eager=True) as ctx:

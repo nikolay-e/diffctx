@@ -1,0 +1,392 @@
+From 757cf20113591bc3c889788bf27ec453d9829b4d Mon Sep 17 00:00:00 2001
+From: Matt Quinn <matt.quinn@sentry.io>
+Date: Tue, 17 Feb 2026 17:26:15 -0500
+Subject: [PATCH] ref(performance): Rename otlp/ to eap/ and use consistent EAP
+ naming (#108385)
+
+---
+ .../performance/{otlp => eap}/overviewSpansTable.tsx |  8 ++++----
+ .../performance/{otlp => eap}/segmentSpansTable.tsx  | 12 ++++++------
+ static/app/views/performance/{otlp => eap}/types.tsx |  0
+ .../{otlp => eap}/useSegmentSpansQuery.tsx           |  0
+ .../{otlp => eap}/useTransactionSummaryEAP.tsx       |  2 +-
+ static/app/views/performance/{otlp => eap}/utils.tsx |  6 +++---
+ .../traceModels/traceTree.autogrouping.spec.tsx      |  6 +++---
+ .../performance/transactionSummary/pageLayout.tsx    |  8 ++++----
+ .../transactionSummary/transactionEvents/content.tsx | 12 ++++++------
+ .../transactionSummary/transactionEvents/utils.tsx   |  2 +-
+ .../transactionOverview/content.tsx                  |  6 +++---
+ .../transactionSummary/transactionOverview/index.tsx | 10 +++++-----
+ .../transactionSummary/transactionOverview/utils.tsx | 10 +++++-----
+ 13 files changed, 41 insertions(+), 41 deletions(-)
+ rename static/app/views/performance/{otlp => eap}/overviewSpansTable.tsx (96%)
+ rename static/app/views/performance/{otlp => eap}/segmentSpansTable.tsx (96%)
+ rename static/app/views/performance/{otlp => eap}/types.tsx (100%)
+ rename static/app/views/performance/{otlp => eap}/useSegmentSpansQuery.tsx (100%)
+ rename static/app/views/performance/{otlp => eap}/useTransactionSummaryEAP.tsx (77%)
+ rename static/app/views/performance/{otlp => eap}/utils.tsx (90%)
+
+diff --git a/static/app/views/performance/otlp/overviewSpansTable.tsx b/static/app/views/performance/eap/overviewSpansTable.tsx
+similarity index 96%
+rename from static/app/views/performance/otlp/overviewSpansTable.tsx
+rename to static/app/views/performance/eap/overviewSpansTable.tsx
+index c0225b3100e..af619171ff8 100644
+--- a/static/app/views/performance/otlp/overviewSpansTable.tsx
++++ b/static/app/views/performance/eap/overviewSpansTable.tsx
+@@ -23,14 +23,14 @@ import {renderHeadCell} from 'sentry/views/insights/common/components/tableCells
+ import {SpanIdCell} from 'sentry/views/insights/common/components/tableCells/spanIdCell';
+ import {useSpans} from 'sentry/views/insights/common/queries/useDiscover';
+ import {ModuleName} from 'sentry/views/insights/types';
+-import {TraceViewSources} from 'sentry/views/performance/newTraceDetails/traceHeader/breadcrumbs';
+ import {
+   SEGMENT_SPANS_COLUMN_ORDER,
+   type SegmentSpansColumn,
+   type SegmentSpansRow,
+-} from 'sentry/views/performance/otlp/types';
+-import {useSegmentSpansQuery} from 'sentry/views/performance/otlp/useSegmentSpansQuery';
+-import {SEGMENT_SPANS_CURSOR} from 'sentry/views/performance/otlp/utils';
++} from 'sentry/views/performance/eap/types';
++import {useSegmentSpansQuery} from 'sentry/views/performance/eap/useSegmentSpansQuery';
++import {SEGMENT_SPANS_CURSOR} from 'sentry/views/performance/eap/utils';
++import {TraceViewSources} from 'sentry/views/performance/newTraceDetails/traceHeader/breadcrumbs';
+ 
+ const LIMIT = 50;
+ 
+diff --git a/static/app/views/performance/otlp/segmentSpansTable.tsx b/static/app/views/performance/eap/segmentSpansTable.tsx
+similarity index 96%
+rename from static/app/views/performance/otlp/segmentSpansTable.tsx
+rename to static/app/views/performance/eap/segmentSpansTable.tsx
+index a9e2862b7b0..d57327fc6b1 100644
+--- a/static/app/views/performance/otlp/segmentSpansTable.tsx
++++ b/static/app/views/performance/eap/segmentSpansTable.tsx
+@@ -26,17 +26,17 @@ import useProjects from 'sentry/utils/useProjects';
+ import {renderHeadCell} from 'sentry/views/insights/common/components/tableCells/renderHeadCell';
+ import {SpanIdCell} from 'sentry/views/insights/common/components/tableCells/spanIdCell';
+ import {ModuleName, SpanFields} from 'sentry/views/insights/types';
+-import {TraceViewSources} from 'sentry/views/performance/newTraceDetails/traceHeader/breadcrumbs';
+ import {
+   SEGMENT_SPANS_COLUMN_ORDER,
+   type SegmentSpansColumn,
+   type SegmentSpansRow,
+-} from 'sentry/views/performance/otlp/types';
+-import {useSegmentSpansQuery} from 'sentry/views/performance/otlp/useSegmentSpansQuery';
++} from 'sentry/views/performance/eap/types';
++import {useSegmentSpansQuery} from 'sentry/views/performance/eap/useSegmentSpansQuery';
+ import {
+-  getOTelTransactionsListSort,
++  getEAPSegmentSpansListSort,
+   SEGMENT_SPANS_CURSOR,
+-} from 'sentry/views/performance/otlp/utils';
++} from 'sentry/views/performance/eap/utils';
++import {TraceViewSources} from 'sentry/views/performance/newTraceDetails/traceHeader/breadcrumbs';
+ import {TransactionFilterOptions} from 'sentry/views/performance/transactionSummary/utils';
+ 
+ const LIMIT = 5;
+@@ -65,7 +65,7 @@ export function SegmentSpansTable({
+ 
+   const projectSlug = projects.find(p => p.id === `${eventView.project}`)?.slug;
+   const spanCategory = decodeScalar(location.query?.[SpanFields.SPAN_CATEGORY]);
+-  const {selected, options} = getOTelTransactionsListSort(location, spanCategory);
++  const {selected, options} = getEAPSegmentSpansListSort(location, spanCategory);
+ 
+   const p95 = totalValues?.['p95()'] ?? 0;
+   const eventViewQuery = new MutableSearch('');
+diff --git a/static/app/views/performance/otlp/types.tsx b/static/app/views/performance/eap/types.tsx
+similarity index 100%
+rename from static/app/views/performance/otlp/types.tsx
+rename to static/app/views/performance/eap/types.tsx
+diff --git a/static/app/views/performance/otlp/useSegmentSpansQuery.tsx b/static/app/views/performance/eap/useSegmentSpansQuery.tsx
+similarity index 100%
+rename from static/app/views/performance/otlp/useSegmentSpansQuery.tsx
+rename to static/app/views/performance/eap/useSegmentSpansQuery.tsx
+diff --git a/static/app/views/performance/otlp/useTransactionSummaryEAP.tsx b/static/app/views/performance/eap/useTransactionSummaryEAP.tsx
+similarity index 77%
+rename from static/app/views/performance/otlp/useTransactionSummaryEAP.tsx
+rename to static/app/views/performance/eap/useTransactionSummaryEAP.tsx
+index ecfc44c8a41..73aa96e1819 100644
+--- a/static/app/views/performance/otlp/useTransactionSummaryEAP.tsx
++++ b/static/app/views/performance/eap/useTransactionSummaryEAP.tsx
+@@ -1,7 +1,7 @@
+ import useOrganization from 'sentry/utils/useOrganization';
+ 
+ /**
+- * Determines whether we should render the new EAP-based Transaction Summary Page. The EAP-based Transaction Summary page is also naturally OTel-friendly.
++ * Determines whether we should render the new EAP-based Transaction Summary Page.
+  */
+ export const useTransactionSummaryEAP = (): boolean => {
+   const organization = useOrganization();
+diff --git a/static/app/views/performance/otlp/utils.tsx b/static/app/views/performance/eap/utils.tsx
+similarity index 90%
+rename from static/app/views/performance/otlp/utils.tsx
+rename to static/app/views/performance/eap/utils.tsx
+index efd79307961..dd17ec8752a 100644
+--- a/static/app/views/performance/otlp/utils.tsx
++++ b/static/app/views/performance/eap/utils.tsx
+@@ -5,14 +5,14 @@ import {t} from 'sentry/locale';
+ import {decodeScalar} from 'sentry/utils/queryString';
+ import {TransactionFilterOptions} from 'sentry/views/performance/transactionSummary/utils';
+ 
+-export function getOTelTransactionsListSort(
++export function getEAPSegmentSpansListSort(
+   location: Location,
+   spanCategory?: string
+ ): {
+   options: DropdownOption[];
+   selected: DropdownOption;
+ } {
+-  const sortOptions = getOTelFilterOptions(spanCategory);
++  const sortOptions = getEAPFilterOptions(spanCategory);
+   const urlParam = decodeScalar(
+     location.query.showTransactions,
+     TransactionFilterOptions.SLOW
+@@ -21,7 +21,7 @@ export function getOTelTransactionsListSort(
+   return {selected: selectedSort, options: sortOptions};
+ }
+ 
+-function getOTelFilterOptions(spanCategory?: string): DropdownOption[] {
++function getEAPFilterOptions(spanCategory?: string): DropdownOption[] {
+   return [
+     {
+       sort: {kind: 'asc', field: 'span.duration'},
+diff --git a/static/app/views/performance/newTraceDetails/traceModels/traceTree.autogrouping.spec.tsx b/static/app/views/performance/newTraceDetails/traceModels/traceTree.autogrouping.spec.tsx
+index cb037e3602a..79d87f9c56a 100644
+--- a/static/app/views/performance/newTraceDetails/traceModels/traceTree.autogrouping.spec.tsx
++++ b/static/app/views/performance/newTraceDetails/traceModels/traceTree.autogrouping.spec.tsx
+@@ -729,7 +729,7 @@ describe('autogrouping', () => {
+       });
+ 
+       it('groups spans with the same op and name', () => {
+-        const OTELOrganization = OrganizationFixture();
++        const EAPOrganization = OrganizationFixture();
+ 
+         const tree = TraceTree.FromTrace(
+           makeEAPTrace([
+@@ -784,12 +784,12 @@ describe('autogrouping', () => {
+           ]),
+           {
+             ...traceMetadata,
+-            organization: OTELOrganization,
++            organization: EAPOrganization,
+           }
+         );
+ 
+         TraceTree.AutogroupSiblingSpanNodes(tree.root, {
+-          organization: OTELOrganization,
++          organization: EAPOrganization,
+         });
+         expect(tree.build().serialize()).toMatchSnapshot();
+       });
+diff --git a/static/app/views/performance/transactionSummary/pageLayout.tsx b/static/app/views/performance/transactionSummary/pageLayout.tsx
+index 8e519335b24..2374ff77b0d 100644
+--- a/static/app/views/performance/transactionSummary/pageLayout.tsx
++++ b/static/app/views/performance/transactionSummary/pageLayout.tsx
+@@ -35,7 +35,7 @@ import normalizeUrl from 'sentry/utils/url/normalizeUrl';
+ import {useDatePageFilterProps} from 'sentry/utils/useDatePageFilterProps';
+ import {useMaxPickableDays} from 'sentry/utils/useMaxPickableDays';
+ import useRouter from 'sentry/utils/useRouter';
+-import {useTransactionSummaryEAP} from 'sentry/views/performance/otlp/useTransactionSummaryEAP';
++import {useTransactionSummaryEAP} from 'sentry/views/performance/eap/useTransactionSummaryEAP';
+ import {TransactionSummaryContext} from 'sentry/views/performance/transactionSummary/transactionSummaryContext';
+ import {
+   getPerformanceBaseUrl,
+@@ -66,7 +66,7 @@ type Props = {
+   generateEventView: (props: {
+     location: Location;
+     organization: Organization;
+-    shouldUseOTelFriendlyUI: boolean;
++    shouldUseEAP: boolean;
+     theme: Theme;
+     transactionName: string;
+   }) => EventView;
+@@ -182,7 +182,7 @@ function PageLayout(props: Props) {
+     [getNewRoute, tab, organization, location, projects]
+   );
+ 
+-  const shouldUseOTelFriendlyUI = useTransactionSummaryEAP();
++  const shouldUseEAP = useTransactionSummaryEAP();
+ 
+   if (!defined(transactionName)) {
+     redirectToPerformanceHomepage(organization, location);
+@@ -193,7 +193,7 @@ function PageLayout(props: Props) {
+     location,
+     organization,
+     transactionName,
+-    shouldUseOTelFriendlyUI,
++    shouldUseEAP,
+     theme,
+   });
+ 
+diff --git a/static/app/views/performance/transactionSummary/transactionEvents/content.tsx b/static/app/views/performance/transactionSummary/transactionEvents/content.tsx
+index 2700cccfc66..656574e7d32 100644
+--- a/static/app/views/performance/transactionSummary/transactionEvents/content.tsx
++++ b/static/app/views/performance/transactionSummary/transactionEvents/content.tsx
+@@ -31,8 +31,8 @@ import {useNavigate} from 'sentry/utils/useNavigate';
+ import {useRoutes} from 'sentry/utils/useRoutes';
+ import {hasDatasetSelector} from 'sentry/views/dashboards/utils';
+ import {useDomainViewFilters} from 'sentry/views/insights/pages/useFilters';
+-import {OverviewSpansTable} from 'sentry/views/performance/otlp/overviewSpansTable';
+-import {useTransactionSummaryEAP} from 'sentry/views/performance/otlp/useTransactionSummaryEAP';
++import {OverviewSpansTable} from 'sentry/views/performance/eap/overviewSpansTable';
++import {useTransactionSummaryEAP} from 'sentry/views/performance/eap/useTransactionSummaryEAP';
+ import type {SpanOperationBreakdownFilter} from 'sentry/views/performance/transactionSummary/filter';
+ import Filter, {
+   filterToSearchConditions,
+@@ -173,9 +173,9 @@ function EventsContent(props: Props) {
+     webVital,
+   ]);
+ 
+-  const shouldUseOTelFriendlyUI = useTransactionSummaryEAP();
++  const shouldUseEAP = useTransactionSummaryEAP();
+ 
+-  const table = shouldUseOTelFriendlyUI ? (
++  const table = shouldUseEAP ? (
+     <OverviewSpansTable
+       eventView={eventView}
+       totalValues={null}
+@@ -247,7 +247,7 @@ function Search(props: Props) {
+   };
+ 
+   const projectIds = useMemo(() => eventView.project?.slice(), [eventView.project]);
+-  const shouldUseOTelFriendlyUI = useTransactionSummaryEAP();
++  const shouldUseEAP = useTransactionSummaryEAP();
+ 
+   const maxPickableDays = useMaxPickableDays({
+     dataCategories: [DataCategory.TRANSACTIONS],
+@@ -256,7 +256,7 @@ function Search(props: Props) {
+ 
+   return (
+     <FilterActions>
+-      {shouldUseOTelFriendlyUI ? (
++      {shouldUseEAP ? (
+         <SpanCategoryFilter segmentSpanName={transactionName} />
+       ) : (
+         <Filter
+diff --git a/static/app/views/performance/transactionSummary/transactionEvents/utils.tsx b/static/app/views/performance/transactionSummary/transactionEvents/utils.tsx
+index fcc382deaba..1732eb0ffdf 100644
+--- a/static/app/views/performance/transactionSummary/transactionEvents/utils.tsx
++++ b/static/app/views/performance/transactionSummary/transactionEvents/utils.tsx
+@@ -215,7 +215,7 @@ export function generateTransactionEventsEventView({
+ }: {
+   location: Location;
+   organization: Organization;
+-  shouldUseOTelFriendlyUI: boolean;
++  shouldUseEAP: boolean;
+   transactionName: string;
+ }): EventView {
+   const query = decodeScalar(location.query.query, '');
+diff --git a/static/app/views/performance/transactionSummary/transactionOverview/content.tsx b/static/app/views/performance/transactionSummary/transactionOverview/content.tsx
+index 10207b1da38..699e03130ca 100644
+--- a/static/app/views/performance/transactionSummary/transactionOverview/content.tsx
++++ b/static/app/views/performance/transactionSummary/transactionOverview/content.tsx
+@@ -45,7 +45,7 @@ import {updateQuery} from 'sentry/views/discover/table/cellAction';
+ import type {TableColumn} from 'sentry/views/discover/table/types';
+ import {useDomainViewFilters} from 'sentry/views/insights/pages/useFilters';
+ import {SpanFields} from 'sentry/views/insights/types';
+-import {SegmentSpansTable} from 'sentry/views/performance/otlp/segmentSpansTable';
++import {SegmentSpansTable} from 'sentry/views/performance/eap/segmentSpansTable';
+ import Filter, {
+   decodeFilterFromLocation,
+   filterToField,
+@@ -98,7 +98,7 @@ type Props = {
+ 
+ export const SEGMENT_SPANS_CURSOR_NAME = 'segmentSpansCursor';
+ 
+-function OTelSummaryContentInner({
++function EAPSummaryContentInner({
+   eventView,
+   location,
+   totalValues,
+@@ -812,4 +812,4 @@ const EAPChartsWidgetContainer = styled('div')`
+ 
+ export default withProjects(SummaryContent);
+ 
+-export const OTelSummaryContent = withProjects(OTelSummaryContentInner);
++export const EAPSummaryContent = withProjects(EAPSummaryContentInner);
+diff --git a/static/app/views/performance/transactionSummary/transactionOverview/index.tsx b/static/app/views/performance/transactionSummary/transactionOverview/index.tsx
+index 148189a55c2..a2e2d80c0f6 100644
+--- a/static/app/views/performance/transactionSummary/transactionOverview/index.tsx
++++ b/static/app/views/performance/transactionSummary/transactionOverview/index.tsx
+@@ -25,7 +25,7 @@ import useApi from 'sentry/utils/useApi';
+ import {useLocation} from 'sentry/utils/useLocation';
+ import {useNavigate} from 'sentry/utils/useNavigate';
+ import useOrganization from 'sentry/utils/useOrganization';
+-import {useTransactionSummaryEAP} from 'sentry/views/performance/otlp/useTransactionSummaryEAP';
++import {useTransactionSummaryEAP} from 'sentry/views/performance/eap/useTransactionSummaryEAP';
+ import {
+   decodeFilterFromLocation,
+   filterToLocationQuery,
+@@ -40,7 +40,7 @@ import {
+ import {addRoutePerformanceContext} from 'sentry/views/performance/utils';
+ 
+ import {ZOOM_END, ZOOM_START} from './latencyChart/utils';
+-import SummaryContent, {OTelSummaryContent} from './content';
++import SummaryContent, {EAPSummaryContent} from './content';
+ 
+ // Used to cast the totals request to numbers
+ // as string | number
+@@ -89,10 +89,10 @@ function EAPCardinalityLoadingWrapper() {
+     return <LoadingContainer isLoading />;
+   }
+ 
+-  return <OTelOverviewContentWrapper />;
++  return <EAPOverviewContentWrapper />;
+ }
+ 
+-function OTelOverviewContentWrapper() {
++function EAPOverviewContentWrapper() {
+   const {
+     organization,
+     eventView,
+@@ -174,7 +174,7 @@ function OTelOverviewContentWrapper() {
+   totals = {...totals, ...totalCountData};
+ 
+   return (
+-    <OTelSummaryContent
++    <EAPSummaryContent
+       location={location}
+       organization={organization}
+       eventView={eventView}
+diff --git a/static/app/views/performance/transactionSummary/transactionOverview/utils.tsx b/static/app/views/performance/transactionSummary/transactionOverview/utils.tsx
+index ad6c4a619e5..b820d4b8828 100644
+--- a/static/app/views/performance/transactionSummary/transactionOverview/utils.tsx
++++ b/static/app/views/performance/transactionSummary/transactionOverview/utils.tsx
+@@ -48,10 +48,10 @@ export function getTransactionMEPParamsIfApplicable(
+ export function generateTransactionOverviewEventView({
+   location,
+   transactionName,
+-  shouldUseOTelFriendlyUI,
++  shouldUseEAP,
+ }: {
+   location: Location;
+-  shouldUseOTelFriendlyUI: boolean;
++  shouldUseEAP: boolean;
+   transactionName: string;
+ }): EventView {
+   // Use the user supplied query but overwrite any transaction or event type
+@@ -60,7 +60,7 @@ export function generateTransactionOverviewEventView({
+   const query = decodeScalar(location.query.query, '');
+   const conditions = new MutableSearch(query);
+ 
+-  if (shouldUseOTelFriendlyUI) {
++  if (shouldUseEAP) {
+     conditions.setFilterValues('is_transaction', ['true']);
+     conditions.setFilterValues(
+       'transaction.method',
+@@ -78,7 +78,7 @@ export function generateTransactionOverviewEventView({
+     }
+   });
+ 
+-  const fields = shouldUseOTelFriendlyUI
++  const fields = shouldUseEAP
+     ? [
+         'id',
+         'user.email',
+@@ -99,7 +99,7 @@ export function generateTransactionOverviewEventView({
+       fields,
+       query: conditions.formatString(),
+       projects: [],
+-      dataset: shouldUseOTelFriendlyUI ? DiscoverDatasets.SPANS : undefined,
++      dataset: shouldUseEAP ? DiscoverDatasets.SPANS : undefined,
+     },
+     location
+   );

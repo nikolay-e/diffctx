@@ -1,0 +1,72 @@
+repo: gitpod
+base_commit: 956ee800cabf4173fd529747b3852a55a45db598
+commit: 301f1b73da68f23b17e0516e3e4969c56bf434a3
+patch_stored: true
+gold:
+- path: .devcontainer/Dockerfile
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/local-app/pkg/selfupdate/selfupdate.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/proxy/Dockerfile
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/public-api-server/pkg/proxy/errors.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/supervisor/cmd/init.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-daemon/cmd/content-initializer/main.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-daemon/pkg/controller/housekeeping.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-manager-mk2/controllers/workspace_controller.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-manager-mk2/service/imagespec.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-manager-mk2/service/manager.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-proxy/pkg/sshproxy/server.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: install/installer/cmd/mirror_repo.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: install/installer/cmd/validate_cluster.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: install/installer/pkg/common/common.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'Zero output for a 98-file, wide-shallow Go 1.24.3 toolchain bump: ctx.md, diff.numstat aside,
+  is completely empty (0 tokens, status=hang). The diff.stat shows this is mostly mechanical go.mod/go.sum
+  toolchain bumps but also contains ~14 real .go/Dockerfile files with actual code edits (e.g. errors.go,
+  workspace_controller.go, manager.go) that a reader genuinely needs — none of that surfaces. This is
+  the unbounded-hang failure mode (#70) on a case that isn''t even that semantically complex, just wide
+  (98 files); a correct tool should at minimum degrade to a file-list summary rather than produce nothing.'

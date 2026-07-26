@@ -1,0 +1,68 @@
+repo: polars
+base_commit: 5b3dea90d8101ab2dae6c2d1741f0c9fc07ddd99
+commit: 8fc67c7619a5c0860313892f0c426a16cdc22ffd
+patch_stored: true
+gold:
+  - path: crates/polars-buffer/Cargo.toml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: New crate manifest for polars-buffer with no dependency on polars-arrow — confirms the split direction (polars-arrow now depends on polars-buffer, not the reverse).
+  - path: crates/polars-buffer/src/lib.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New crate root `pub mod buffer; pub mod storage;` re-exporting Buffer and SharedStorage — the crate's public API surface.
+  - path: crates/polars-buffer/src/buffer.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Renamed from polars-arrow's buffer/immutable.rs but stripped of arrow-specific trait impls (Splitable, ArrayAccessor) that can no longer live here after the split; also absorbs IntoIter from the deleted buffer/iterator.rs and renames make_mut to to_vec.
+  - path: crates/polars-buffer/src/storage.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Renamed from polars-arrow's storage.rs but the InternalArrowArray-specific BackingStorage variant and SharedStorage::from_internal_arrow_array constructor are removed and replaced by a generic from_slice_with_owner/ForeignOwner mechanism — this is the actual dependency-inversion fix (polars-buffer can no longer reference polars-arrow's ffi::InternalArrowArray).
+  - path: crates/polars-arrow/src/array/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Re-implements `impl<T> Splitable for Buffer<T>` here in polars-arrow (which now depends on polars-buffer) since Rust's orphan rule no longer allows that impl to live in polars-buffer once Buffer became a foreign type there relative to the Splitable trait defined in polars-arrow.
+  - path: crates/polars-arrow/src/array/iterator.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Re-implements `unsafe impl<'a, T> ArrayAccessor<'a> for Buffer<T>` here for the same orphan-rule reason as array/mod.rs's Splitable impl.
+  - path: crates/polars-arrow/src/ffi/array.rs
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: FFI buffer-creation call sites rewritten from SharedStorage::from_internal_arrow_array(ptr, len, owner) to slice-based SharedStorage::from_slice_with_owner(slice, owner), the concrete adaptation to the new generic ownership API in storage.rs.
+  - path: crates/polars-arrow/src/lib.rs
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Removes `pub mod buffer;` and `pub mod storage;` from polars-arrow, confirming both modules were fully relocated to polars-buffer.
+  - path: crates/polars-arrow/Cargo.toml
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: polars-arrow's manifest gains a dependency on the new polars-buffer crate.
+forbidden:
+  - path: crates/polars-arrow/src/io/ipc/read/read_basic.rs
+    reason: mechanical import-path update only (crate::buffer::Buffer -> polars_buffer::Buffer), one of ~90 identical call sites adding no new understanding beyond the central split
+  - path: crates/polars-arrow/src/legacy/kernels/string.rs
+    reason: same mechanical import-path update pattern, redundant with the central gold files
+  - path: crates/polars-arrow/src/offset.rs
+    reason: same mechanical import-path update pattern (crate::buffer::Buffer -> polars_buffer::Buffer), not a distinct piece of the refactor
+  - path: crates/polars-arrow/src/compute/concatenate.rs
+    reason: same mechanical import-path update pattern, not needed beyond the central gold files
+nontrivial_gold_count: 0
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: []
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 110
+  description: Move Buffer/SharedStorage to polars-buffer crate — crate split stress
+notes: Unlike a purely mechanical crate split, this one required a real dependency-inversion fix — SharedStorage's InternalArrowArray-owning variant (which referenced polars-arrow's ffi module) was replaced by a generic from_slice_with_owner/ForeignOwner mechanism, and the Splitable/ArrayAccessor trait impls for Buffer had to move into polars-arrow (orphan-rule requirement) since polars-buffer can no longer depend on polars-arrow. ~90 of the 110 changed files are pure `crate::buffer::` / `crate::storage::` -> `polars_buffer::` import-path swaps.

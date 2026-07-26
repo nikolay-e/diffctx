@@ -1,0 +1,281 @@
+From 5b4cbbc39e6c2d14907aff068244160fa8ca58dc Mon Sep 17 00:00:00 2001
+From: Alice Ryhl <aliceryhl@google.com>
+Date: Thu, 2 Oct 2025 11:14:17 +0200
+Subject: [PATCH] tokio: raise MSRV to 1.71 (#7658)
+
+---
+ .github/workflows/ci.yml        |  2 +-
+ README.md                       |  5 +++--
+ tokio-macros/Cargo.toml         |  2 +-
+ tokio-stream/Cargo.toml         |  2 +-
+ tokio-stream/src/stream_map.rs  | 11 ++--------
+ tokio-test/Cargo.toml           |  2 +-
+ tokio-util/Cargo.toml           |  2 +-
+ tokio-util/src/task/join_map.rs | 36 ++++++++++-----------------------
+ tokio/Cargo.toml                |  2 +-
+ tokio/README.md                 |  5 +++--
+ tokio/src/loom/std/mod.rs       |  8 +-------
+ 11 files changed, 26 insertions(+), 51 deletions(-)
+
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 8d02857..7c6d59e 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -28,7 +28,7 @@ env:
+   # - tokio-util/Cargo.toml
+   # - tokio-test/Cargo.toml
+   # - tokio-stream/Cargo.toml
+-  rust_min: '1.70'
++  rust_min: '1.71'
+   # This excludes unstable features like io_uring,
+   # which require '--cfg tokio_unstable'.
+   TOKIO_STABLE_FEATURES: "full,test-util"
+diff --git a/README.md b/README.md
+index 902b3c9..6a1bdba 100644
+--- a/README.md
++++ b/README.md
+@@ -186,12 +186,13 @@ When updating this, also update:
+ 
+ Tokio will keep a rolling MSRV (minimum supported rust version) policy of **at
+ least** 6 months. When increasing the MSRV, the new Rust version must have been
+-released at least six months ago. The current MSRV is 1.70.
++released at least six months ago. The current MSRV is 1.71.
+ 
+ Note that the MSRV is not increased automatically, and only as part of a minor
+ release. The MSRV history for past minor releases can be found below:
+ 
+- * 1.39 to now  - Rust 1.70
++ * 1.48 to now  - Rust 1.71
++ * 1.39 to 1.47 - Rust 1.70
+  * 1.30 to 1.38 - Rust 1.63
+  * 1.27 to 1.29 - Rust 1.56
+  * 1.17 to 1.26 - Rust 1.49
+diff --git a/tokio-macros/Cargo.toml b/tokio-macros/Cargo.toml
+index 4f4a508..76a7d4a 100644
+--- a/tokio-macros/Cargo.toml
++++ b/tokio-macros/Cargo.toml
+@@ -6,7 +6,7 @@ name = "tokio-macros"
+ # - Create "tokio-macros-x.y.z" git tag.
+ version = "2.5.0"
+ edition = "2021"
+-rust-version = "1.70"
++rust-version = "1.71"
+ authors = ["Tokio Contributors <team@tokio.rs>"]
+ license = "MIT"
+ repository = "https://github.com/tokio-rs/tokio"
+diff --git a/tokio-stream/Cargo.toml b/tokio-stream/Cargo.toml
+index 547d7f5..534601b 100644
+--- a/tokio-stream/Cargo.toml
++++ b/tokio-stream/Cargo.toml
+@@ -6,7 +6,7 @@ name = "tokio-stream"
+ # - Create "tokio-stream-0.1.x" git tag.
+ version = "0.1.17"
+ edition = "2021"
+-rust-version = "1.70"
++rust-version = "1.71"
+ authors = ["Tokio Contributors <team@tokio.rs>"]
+ license = "MIT"
+ repository = "https://github.com/tokio-rs/tokio"
+diff --git a/tokio-stream/src/stream_map.rs b/tokio-stream/src/stream_map.rs
+index 49ccc92..1892e9b 100644
+--- a/tokio-stream/src/stream_map.rs
++++ b/tokio-stream/src/stream_map.rs
+@@ -734,22 +734,15 @@ mod rand {
+         #[cfg(not(loom))]
+         pub(crate) mod rand {
+             use std::collections::hash_map::RandomState;
+-            use std::hash::{BuildHasher, Hash, Hasher};
++            use std::hash::BuildHasher;
+             use std::sync::atomic::AtomicU32;
+             use std::sync::atomic::Ordering::Relaxed;
+ 
+             static COUNTER: AtomicU32 = AtomicU32::new(1);
+ 
+             pub(crate) fn seed() -> u64 {
+-                let rand_state = RandomState::new();
+-
+-                let mut hasher = rand_state.build_hasher();
+-
+                 // Hash some unique-ish data to generate some new state
+-                COUNTER.fetch_add(1, Relaxed).hash(&mut hasher);
+-
+-                // Get the seed
+-                hasher.finish()
++                RandomState::new().hash_one(COUNTER.fetch_add(1, Relaxed))
+             }
+         }
+ 
+diff --git a/tokio-test/Cargo.toml b/tokio-test/Cargo.toml
+index 5601a11..a3dcef0 100644
+--- a/tokio-test/Cargo.toml
++++ b/tokio-test/Cargo.toml
+@@ -6,7 +6,7 @@ name = "tokio-test"
+ # - Create "tokio-test-0.4.x" git tag.
+ version = "0.4.4"
+ edition = "2021"
+-rust-version = "1.70"
++rust-version = "1.71"
+ authors = ["Tokio Contributors <team@tokio.rs>"]
+ license = "MIT"
+ repository = "https://github.com/tokio-rs/tokio"
+diff --git a/tokio-util/Cargo.toml b/tokio-util/Cargo.toml
+index 29ea79e..1f0b174 100644
+--- a/tokio-util/Cargo.toml
++++ b/tokio-util/Cargo.toml
+@@ -6,7 +6,7 @@ name = "tokio-util"
+ # - Create "tokio-util-0.7.x" git tag.
+ version = "0.7.16"
+ edition = "2021"
+-rust-version = "1.70"
++rust-version = "1.71"
+ authors = ["Tokio Contributors <team@tokio.rs>"]
+ license = "MIT"
+ repository = "https://github.com/tokio-rs/tokio"
+diff --git a/tokio-util/src/task/join_map.rs b/tokio-util/src/task/join_map.rs
+index 3a5eccd..8a6143e 100644
+--- a/tokio-util/src/task/join_map.rs
++++ b/tokio-util/src/task/join_map.rs
+@@ -4,7 +4,7 @@ use std::borrow::Borrow;
+ use std::collections::hash_map::RandomState;
+ use std::fmt;
+ use std::future::Future;
+-use std::hash::{BuildHasher, Hash, Hasher};
++use std::hash::{BuildHasher, Hash};
+ use std::marker::PhantomData;
+ use tokio::runtime::Handle;
+ use tokio::task::{AbortHandle, Id, JoinError, JoinSet, LocalSet};
+@@ -391,13 +391,13 @@ where
+ 
+     fn insert(&mut self, mut key: K, mut abort: AbortHandle) {
+         let hash_builder = self.hashes_by_task.hasher();
+-        let hash = hash_one(hash_builder, &key);
++        let hash = hash_builder.hash_one(&key);
+         let id = abort.id();
+ 
+         // Insert the new key into the map of tasks by keys.
+         let entry =
+             self.tasks_by_key
+-                .entry(hash, |(k, _)| *k == key, |(k, _)| hash_one(hash_builder, k));
++                .entry(hash, |(k, _)| *k == key, |(k, _)| hash_builder.hash_one(k));
+         match entry {
+             Entry::Occupied(occ) => {
+                 // There was a previous task spawned with the same key! Cancel
+@@ -673,9 +673,9 @@ where
+     /// ```
+     #[inline]
+     pub fn reserve(&mut self, additional: usize) {
+-        let hash_builder = self.hashes_by_task.hasher();
+-        self.tasks_by_key
+-            .reserve(additional, |(k, _)| hash_one(hash_builder, k));
++        self.tasks_by_key.reserve(additional, |(k, _)| {
++            self.hashes_by_task.hasher().hash_one(k)
++        });
+         self.hashes_by_task.reserve(additional);
+     }
+ 
+@@ -701,9 +701,8 @@ where
+     #[inline]
+     pub fn shrink_to_fit(&mut self) {
+         self.hashes_by_task.shrink_to_fit();
+-        let hash_builder = self.hashes_by_task.hasher();
+         self.tasks_by_key
+-            .shrink_to_fit(|(k, _)| hash_one(hash_builder, k));
++            .shrink_to_fit(|(k, _)| self.hashes_by_task.hasher().hash_one(k));
+     }
+ 
+     /// Shrinks the capacity of the map with a lower limit. It will drop
+@@ -732,9 +731,9 @@ where
+     #[inline]
+     pub fn shrink_to(&mut self, min_capacity: usize) {
+         self.hashes_by_task.shrink_to(min_capacity);
+-        let hash_builder = self.hashes_by_task.hasher();
+-        self.tasks_by_key
+-            .shrink_to(min_capacity, |(k, _)| hash_one(hash_builder, k))
++        self.tasks_by_key.shrink_to(min_capacity, |(k, _)| {
++            self.hashes_by_task.hasher().hash_one(k)
++        })
+     }
+ 
+     /// Look up a task in the map by its key, returning the key and abort handle.
+@@ -743,8 +742,7 @@ where
+         Q: ?Sized + Hash + Eq,
+         K: Borrow<Q>,
+     {
+-        let hash_builder = self.hashes_by_task.hasher();
+-        let hash = hash_one(hash_builder, key);
++        let hash = self.hashes_by_task.hasher().hash_one(key);
+         self.tasks_by_key.find(hash, |(k, _)| k.borrow() == key)
+     }
+ 
+@@ -765,18 +763,6 @@ where
+     }
+ }
+ 
+-/// Returns the hash for a given key.
+-#[inline]
+-fn hash_one<S, Q>(hash_builder: &S, key: &Q) -> u64
+-where
+-    Q: ?Sized + Hash,
+-    S: BuildHasher,
+-{
+-    let mut hasher = hash_builder.build_hasher();
+-    key.hash(&mut hasher);
+-    hasher.finish()
+-}
+-
+ impl<K, V, S> JoinMap<K, V, S>
+ where
+     V: 'static,
+diff --git a/tokio/Cargo.toml b/tokio/Cargo.toml
+index 01daacd..9034764 100644
+--- a/tokio/Cargo.toml
++++ b/tokio/Cargo.toml
+@@ -8,7 +8,7 @@ name = "tokio"
+ # - Create "v1.x.y" git tag.
+ version = "1.47.1"
+ edition = "2021"
+-rust-version = "1.70"
++rust-version = "1.71"
+ authors = ["Tokio Contributors <team@tokio.rs>"]
+ license = "MIT"
+ readme = "README.md"
+diff --git a/tokio/README.md b/tokio/README.md
+index 902b3c9..6a1bdba 100644
+--- a/tokio/README.md
++++ b/tokio/README.md
+@@ -186,12 +186,13 @@ When updating this, also update:
+ 
+ Tokio will keep a rolling MSRV (minimum supported rust version) policy of **at
+ least** 6 months. When increasing the MSRV, the new Rust version must have been
+-released at least six months ago. The current MSRV is 1.70.
++released at least six months ago. The current MSRV is 1.71.
+ 
+ Note that the MSRV is not increased automatically, and only as part of a minor
+ release. The MSRV history for past minor releases can be found below:
+ 
+- * 1.39 to now  - Rust 1.70
++ * 1.48 to now  - Rust 1.71
++ * 1.39 to 1.47 - Rust 1.70
+  * 1.30 to 1.38 - Rust 1.63
+  * 1.27 to 1.29 - Rust 1.56
+  * 1.17 to 1.26 - Rust 1.49
+diff --git a/tokio/src/loom/std/mod.rs b/tokio/src/loom/std/mod.rs
+index 14e552a..d3556c9 100644
+--- a/tokio/src/loom/std/mod.rs
++++ b/tokio/src/loom/std/mod.rs
+@@ -39,14 +39,8 @@ pub(crate) mod rand {
+ 
+     pub(crate) fn seed() -> u64 {
+         let rand_state = RandomState::new();
+-
+-        let mut hasher = rand_state.build_hasher();
+-
+         // Hash some unique-ish data to generate some new state
+-        COUNTER.fetch_add(1, Relaxed).hash(&mut hasher);
+-
+-        // Get the seed
+-        hasher.finish()
++        rand_state.hash_one(COUNTER.fetch_add(1, Relaxed))
+     }
+ }
+ 

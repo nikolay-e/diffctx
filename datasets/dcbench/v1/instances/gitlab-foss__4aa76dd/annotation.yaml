@@ -1,0 +1,66 @@
+repo: gitlab-foss
+base_commit: d892e80bf0161b535389c91ccb53539e4f08d790
+commit: 4aa76dddecc048cef24963323afe59f1c120cb72
+patch_stored: true
+gold:
+  - path: lib/gitlab/database.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines `self.mysql?`/`self.postgresql?`/`self.human_adapter_name`, the exact predicates whose `mysql?` branch is removed and whose call sites are stripped across the other 60+ files in the diff.
+  - path: lib/gitlab/database/migration_helpers.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Largest behavioral rewrite in the patch — `add_concurrent_foreign_key`, `disable_statement_timeout`, `install_rename_triggers`, `replace_sql`, and `mysql_compatible_index_length` all drop their `Database.mysql?`/`Database.postgresql?` branches to become PostgreSQL-only.
+  - path: Gemfile
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Removes the `mysql2` and `peek-mysql2` gems, the dependency-level trigger that makes every `Gitlab::Database.mysql?` code path genuinely unreachable and therefore removable.
+  - path: app/models/concerns/routable.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "`find_by_full_path`/`where_full_path_in` lose their `Gitlab::Database.mysql?`-gated BINARY-cast and case-sensitive-vs-insensitive branches, collapsing to a single always-LOWER()-cast query — a real semantic simplification, not just deletion."
+  - path: config/initializers/active_record_data_types.rb
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Drops the `elsif Gitlab::Database.mysql?` branch that registered `MysqlDateTimeWithTimeZone`, leaving only the PostgreSQL `DateTimeWithTimeZone` OID type registration.
+  - path: lib/tasks/gitlab/setup.rake
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: "Removes `Rake::Task[\"add_limits_mysql\"].invoke`, the string-keyed Rake task lookup that was the sole caller of the deleted `lib/tasks/migrate/add_limits_mysql.rake` task (`task add_limits_mysql: :environment do`)."
+  - path: spec/lib/gitlab/database/migration_helpers_spec.rb
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Covering spec for `migration_helpers.rb` — its MySQL-branch examples (542 changed lines) are deleted alongside the corresponding `Database.mysql?` code paths, showing which behaviors were considered safe to drop.
+  - path: doc/development/verifying_database_capabilities.md
+    tier: helpful
+    role: doc
+    in_diff: false
+    rationale: Documents `Gitlab::Database.mysql?` as a supported public helper ("returns `true` if MySQL is being used") but is not updated by this commit, so it is now stale — a reader needs it to see the (no-longer-accurate) API contract the patch is unwinding.
+  - path: doc/update/mysql_to_postgresql.md
+    tier: helpful
+    role: doc
+    in_diff: false
+    rationale: States "Support for MySQL was removed in GitLab 12.1", giving the product-level rationale for why this cross-cutting dead-code removal happened.
+forbidden:
+  - path: lib/gitlab/database/grant.rb
+    reason: Has the same `Database.postgresql? ... else <MySQL SQL>` branching pattern being eliminated elsewhere but is untouched by this commit — a separate, still-pending cleanup, not needed to understand this diff.
+  - path: config/database.yml.postgresql
+    reason: Sibling of the deleted config/database.yml.mysql but untouched, since PostgreSQL-adapter configuration is unaffected by the removal.
+  - path: doc/administration/high_availability/database.md
+    reason: Same "database configuration" doc area but covers PostgreSQL HA/scaling, unrelated to the MySQL-removal change.
+nontrivial_gold_count: 2
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 63
+  description: Remove dead MySQL code — cross-cutting removal over models/lib/config/db
+notes: "Cross-cutting deletion of all `Gitlab::Database.mysql?`-gated code (gem, initializers, migration helpers, models, migrations, specs) now that MySQL support was dropped (GitLab 12.1); most needed context is already inside the 63-file diff itself, but two docs describing the removed API and the removal's product rationale were left stale and are the main nontrivial gold."

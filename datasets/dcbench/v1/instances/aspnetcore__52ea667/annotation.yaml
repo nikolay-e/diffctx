@@ -1,0 +1,83 @@
+repo: aspnetcore
+base_commit: d6f0d4b8b47ec7da4347b1a1574f7c922e853bc2
+commit: 52ea66758edf951e2dfd7f103d6868b8d8a0b73c
+patch_stored: true
+gold:
+  - path: src/Components/Components/src/PersistentState/PersistentValueProviderComponentSubscription.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New class implementing PersistProperty/RestoreProperty for [PersistentState]-decorated parameters, computing storage keys via PersistentStateValueProviderKeyResolver and gating restore via RestoreOptions/RestoreContext — this is the core runtime mechanism the whole feature adds.
+  - path: src/Components/Components/src/PersistentComponentState.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds RegisterOnRestoring, CurrentContext, and UpdateExistingState which let callbacks opt into scenario-based (initial/last-snapshot/value-update) restoration — the public API surface the new scenario filtering is built on.
+  - path: src/Components/Components/src/PersistentState/RestoreContext.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New sealed class defining the three restore scenarios (InitialValue, LastSnapshot, ValueUpdate) and ShouldRestore(RestoreOptions), the decision logic used everywhere else in the patch to decide whether a value should be restored.
+  - path: src/Components/Components/src/PersistentState/ComponentStatePersistenceManager.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: RestoreStateAsync(store, context) is extended to support re-entrant restores (ValueUpdate) by invoking _registeredRestoringCallbacks, and RegisterForPersistence is moved out of PauseAndPersistState — orchestrates the whole restore lifecycle the patch changes.
+  - path: src/Components/Server/src/Circuits/CircuitHost.cs
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: UpdateRootComponents now picks RestoreContext.InitialValue/LastSnapshot/ValueUpdate based on (isRestore, _isFirstUpdate) and calls ComponentStatePersistenceManager.RestoreStateAsync(store, context) — the server-side entry point wiring enhanced-navigation updates into the new scenario model.
+  - path: src/Components/Web.JS/src/Services/WebRootComponentManager.ts
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: refreshRootComponents gained a discoverNewState flag that, on enhanced-navigation completion, calls discoverServerPersistedState/discoverWebAssemblyPersistedState and forwards the discovered state string into updateServerRootComponents/updateWebAssemblyRootComponents — the client-side trigger for the new "receive value updates during enhanced navigation" scenario.
+  - path: src/Components/Web.JS/src/Services/ComponentDescriptorDiscovery.ts
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines discoverServerPersistedState and discoverWebAssemblyPersistedState (regex-matching HTML comments like "Blazor-Server-Component-State:...") which WebRootComponentManager.ts imports and calls to find persisted state during enhanced navigation; this file is not touched by the diff even though the new call sites depend entirely on it.
+  - path: src/Components/Components/src/PersistentState/PersistentStateValueProviderKeyResolver.cs
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: New static class computing the pseudo-unique per-property storage key (parent type + component type + property name + optional @key) used by PersistentValueProviderComponentSubscription.RestoreProperty/PersistProperty to look up state.
+  - path: src/Shared/Components/ProtectedPrerenderComponentApplicationStore.cs
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Defines internal interface IClearableStore (Clear()) that CircuitHost.UpdateRootComponents now takes instead of the concrete ProtectedPrerenderComponentApplicationStore type, and implements Clear() to replace the old store.ExistingState.Clear() call.
+  - path: src/Components/Components/src/PersistentStateAttribute.cs
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: Adds the public RestoreBehavior and AllowUpdates properties on [PersistentState] that application code sets to opt into the new SkipInitialValue/SkipLastSnapshot/receive-updates scenarios.
+  - path: src/Components/test/E2ETest/Tests/StatePersistenceTest.cs
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: New CanUpdateComponentsWithPersistedStateAndEnhancedNavUpdates E2E theory exercises server/wasm/auto render modes with and without streaming across an enhanced-navigation update, driving the enhanced-nav-update button and asserting the restored/updated state value shown on the page.
+forbidden:
+  - path: src/Components/Components/src/RenderTree/Renderer.cs
+    reason: general-purpose renderer base class, only used indirectly (e.g. GetComponentRenderMode) and unmodified by this patch
+  - path: src/Components/Components/src/ComponentBase.cs
+    reason: base component class unrelated to the persistence/restore mechanism being changed
+  - path: src/Components/Components/src/Routing/Router.cs
+    reason: routing logic, similarly named/located but has nothing to do with persisted state scenarios
+  - path: src/Components/Server/src/Circuits/RemoteRenderer.cs
+    reason: sibling Circuits class to the touched RemoteComponentState.cs, but itself untouched and not part of the new restore-scenario mechanism
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration, bm25, random]
+notes: >
+  Adds scenario-based filtering (RestoreContext: InitialValue/LastSnapshot/ValueUpdate,
+  RestoreOptions.RestoreBehavior/AllowUpdates) so [PersistentState] parameters can skip
+  restoring on startup/resume and can receive live updates pushed during enhanced
+  navigation, wiring it through ComponentStatePersistenceManager, CircuitHost, and the
+  Web.JS WebRootComponentManager/ComponentDescriptorDiscovery HTML-comment marker
+  protocol. Very wide diff (62 files); gold set picked as the semantic core plus the one
+  clearly load-bearing out-of-diff definition (ComponentDescriptorDiscovery.ts) rather than
+  every touched file (many touched files are trivial one-line signature/plumbing changes
+  or renames, e.g. WebAssemblyHost.cs, ComponentHub.cs, CircuitFactory.cs).

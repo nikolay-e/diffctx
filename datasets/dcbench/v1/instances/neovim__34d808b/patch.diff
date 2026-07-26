@@ -1,0 +1,1066 @@
+From 34d808b73cbcb0a43636d826282193ab1ca8c148 Mon Sep 17 00:00:00 2001
+From: Luuk van Baal <luukvbaal@gmail.com>
+Date: Thu, 16 Jan 2025 18:10:22 +0100
+Subject: [PATCH] feat(api): combined highlights in nvim_eval_statusline()
+
+Problem:  Combined highlighting was not applied to nvim_eval_statusline(),
+          and 'statuscolumn' sign segment/numhl highlights.
+Solution: Add an additional `groups` element to the return value of
+          `nvim_eval_statusline()->highlights`. This is an array of stacked
+          highlight groups (highest priority last). Also resolve combined
+          highlights for the 'statuscolumn' sign segment/numhl highlights.
+          Expose/synchronize some drawline.c logic that is now mimicked in
+          three different places.
+---
+ runtime/doc/api.txt                      |  5 +-
+ runtime/doc/news.txt                     |  6 +-
+ runtime/lua/vim/_meta/api.lua            |  4 +-
+ src/nvim/api/vim.c                       | 49 ++++++------
+ src/nvim/decoration.c                    |  6 +-
+ src/nvim/drawline.c                      | 66 ++++++++--------
+ src/nvim/drawscreen.c                    | 24 ++++--
+ src/nvim/option_vars.h                   | 44 +----------
+ src/nvim/statusline.c                    | 23 +++---
+ src/nvim/statusline_defs.h               | 65 +++++++++++++---
+ test/functional/api/vim_spec.lua         | 32 ++++----
+ test/functional/ui/float_spec.lua        | 41 +++++-----
+ test/functional/ui/sign_spec.lua         | 20 +----
+ test/functional/ui/statuscolumn_spec.lua | 95 ++++++++++++------------
+ 14 files changed, 244 insertions(+), 236 deletions(-)
+
+diff --git a/runtime/doc/api.txt b/runtime/doc/api.txt
+index b452db9f3..c5ade72f9 100644
+--- a/runtime/doc/api.txt
++++ b/runtime/doc/api.txt
+@@ -672,7 +672,10 @@ nvim_eval_statusline({str}, {opts})                   *nvim_eval_statusline()*
+           true. Each element of the array is a |Dict| with these keys:
+           • start: (number) Byte index (0-based) of first character that uses
+             the highlight.
+-          • group: (string) Name of highlight group.
++          • group: (string) Name of highlight group. May be removed in the
++            future, use `groups` instead.
++          • groups: (array) Names of stacked highlight groups (highest
++            priority last).
+ 
+ nvim_exec_lua({code}, {args})                                *nvim_exec_lua()*
+     Execute Lua code. Parameters (if any) are available as `...` inside the
+diff --git a/runtime/doc/news.txt b/runtime/doc/news.txt
+index 0f1ec01d1..099fc17c5 100644
+--- a/runtime/doc/news.txt
++++ b/runtime/doc/news.txt
+@@ -421,8 +421,10 @@ These existing features changed their behavior.
+   using the upgraded implementation.
+ 
+ • Custom highlights in 'rulerformat', 'statuscolumn', 'statusline', 'tabline',
+-  'winbar' and the number column (through |:sign-define| `numhl`) now combine
+-  with their respective highlight groups, as opposed to |hl-Normal|.
++  'winbar', and the sign/number column are stacked with their respective
++  highlight groups, as opposed to |hl-Normal|.
++  This is also reflected in the `highlights` from |nvim_eval_statusline()|,
++  with a new `groups` field containing an array of stacked highlight groups.
+ 
+ • |vim.on_key()| callbacks won't be invoked recursively when a callback itself
+   consumes input.
+diff --git a/runtime/lua/vim/_meta/api.lua b/runtime/lua/vim/_meta/api.lua
+index 2f9ab5b84..6d9a17ea2 100644
+--- a/runtime/lua/vim/_meta/api.lua
++++ b/runtime/lua/vim/_meta/api.lua
+@@ -1131,7 +1131,9 @@ function vim.api.nvim_eval(expr) end
+ ---               the "highlights" key in {opts} is true. Each element of the array is a
+ ---               |Dict| with these keys:
+ ---     - start: (number) Byte index (0-based) of first character that uses the highlight.
+----     - group: (string) Name of highlight group.
++---     - group: (string) Name of highlight group. May be removed in the future, use
++---     `groups` instead.
++---     - groups: (array) Names of stacked highlight groups (highest priority last).
+ function vim.api.nvim_eval_statusline(str, opts) end
+ 
+ --- @deprecated
+diff --git a/src/nvim/api/vim.c b/src/nvim/api/vim.c
+index 950c70026..c103a5603 100644
+--- a/src/nvim/api/vim.c
++++ b/src/nvim/api/vim.c
+@@ -28,6 +28,7 @@
+ #include "nvim/context.h"
+ #include "nvim/cursor.h"
+ #include "nvim/decoration.h"
++#include "nvim/drawline.h"
+ #include "nvim/drawscreen.h"
+ #include "nvim/errors.h"
+ #include "nvim/eval.h"
+@@ -1983,7 +1984,9 @@ Array nvim_get_mark(String name, Dict(empty) *opts, Arena *arena, Error *err)
+ ///                     the "highlights" key in {opts} is true. Each element of the array is a
+ ///                     |Dict| with these keys:
+ ///           - start: (number) Byte index (0-based) of first character that uses the highlight.
+-///           - group: (string) Name of highlight group.
++///           - group: (string) Name of highlight group. May be removed in the future, use
++///           `groups` instead.
++///           - groups: (array) Names of stacked highlight groups (highest priority last).
+ Dict nvim_eval_statusline(String str, Dict(eval_statusline) *opts, Arena *arena, Error *err)
+   FUNC_API_SINCE(8) FUNC_API_FAST
+ {
+@@ -2035,6 +2038,7 @@ Dict nvim_eval_statusline(String str, Dict(eval_statusline) *opts, Arena *arena,
+   });
+ 
+   int stc_hl_id = 0;
++  int scl_hl_id = 0;
+   statuscol_T statuscol = { 0 };
+   SignTextAttrs sattrs[SIGN_SHOW_MAX] = { 0 };
+ 
+@@ -2043,23 +2047,18 @@ Dict nvim_eval_statusline(String str, Dict(eval_statusline) *opts, Arena *arena,
+     int cul_id = 0;
+     int num_id = 0;
+     linenr_T lnum = statuscol_lnum;
++    foldinfo_T cursorline_fi = { 0 };
+     decor_redraw_signs(wp, wp->w_buffer, lnum - 1, sattrs, &line_id, &cul_id, &num_id);
+ 
+     statuscol.sattrs = sattrs;
+     statuscol.foldinfo = fold_info(wp, lnum);
+-    wp->w_cursorline = win_cursorline_standout(wp) ? wp->w_cursor.lnum : 0;
++    win_update_cursorline(wp, &cursorline_fi);
++    statuscol.sign_cul_id = use_cursor_line_highlight(wp, lnum) ? cul_id : 0;
++    scl_hl_id = use_cursor_line_highlight(wp, lnum) ? HLF_CLS : HLF_SC;
+ 
+-    if (wp->w_p_cul) {
+-      if (statuscol.foldinfo.fi_level != 0 && statuscol.foldinfo.fi_lines > 0) {
+-        wp->w_cursorline = statuscol.foldinfo.fi_lnum;
+-      }
+-      statuscol.use_cul = lnum == wp->w_cursorline && (wp->w_p_culopt_flags & kOptCuloptFlagNumber);
+-    }
+-
+-    statuscol.sign_cul_id = statuscol.use_cul ? cul_id : 0;
+     if (num_id) {
+       stc_hl_id = num_id;
+-    } else if (statuscol.use_cul) {
++    } else if (use_cursor_line_highlight(wp, lnum)) {
+       stc_hl_id = HLF_CLN;
+     } else if (wp->w_p_rnu) {
+       stc_hl_id = (lnum < wp->w_cursor.lnum ? HLF_LNA : HLF_LNB);
+@@ -2112,22 +2111,19 @@ Dict nvim_eval_statusline(String str, Dict(eval_statusline) *opts, Arena *arena,
+ 
+     // If first character doesn't have a defined highlight,
+     // add the default highlight at the beginning of the highlight list
++    const char *dfltname = get_default_stl_hl(opts->use_tabline ? NULL : wp,
++                                              opts->use_winbar, stc_hl_id);
+     if (hltab->start == NULL || (hltab->start - buf) != 0) {
+-      Dict hl_info = arena_dict(arena, 2);
+-      const char *grpname = get_default_stl_hl(opts->use_tabline ? NULL : wp,
+-                                               opts->use_winbar, stc_hl_id);
+-
++      Dict hl_info = arena_dict(arena, 3);
+       PUT_C(hl_info, "start", INTEGER_OBJ(0));
+-      PUT_C(hl_info, "group", CSTR_AS_OBJ(grpname));
+-
++      PUT_C(hl_info, "group", CSTR_AS_OBJ(dfltname));
++      Array groups = arena_array(arena, 1);
++      ADD_C(groups, CSTR_AS_OBJ(dfltname));
++      PUT_C(hl_info, "groups", ARRAY_OBJ(groups));
+       ADD_C(hl_values, DICT_OBJ(hl_info));
+     }
+ 
+     for (stl_hlrec_t *sp = hltab; sp->start != NULL; sp++) {
+-      Dict hl_info = arena_dict(arena, 2);
+-
+-      PUT_C(hl_info, "start", INTEGER_OBJ(sp->start - buf));
+-
+       const char *grpname;
+       if (sp->userhl == 0) {
+         grpname = get_default_stl_hl(opts->use_tabline ? NULL : wp, opts->use_winbar, stc_hl_id);
+@@ -2137,7 +2133,18 @@ Dict nvim_eval_statusline(String str, Dict(eval_statusline) *opts, Arena *arena,
+         snprintf(user_group, sizeof(user_group), "User%d", sp->userhl);
+         grpname = arena_memdupz(arena, user_group, strlen(user_group));
+       }
++
++      const char *combine = sp->item == STL_SIGNCOL ? syn_id2name(scl_hl_id)
++                                                    : sp->item == STL_FOLDCOL ? grpname : dfltname;
++      Dict hl_info = arena_dict(arena, 3);
++      PUT_C(hl_info, "start", INTEGER_OBJ(sp->start - buf));
+       PUT_C(hl_info, "group", CSTR_AS_OBJ(grpname));
++      Array groups = arena_array(arena, 1 + (combine != grpname));
++      if (combine != grpname) {
++        ADD_C(groups, CSTR_AS_OBJ(combine));
++      }
++      ADD_C(groups, CSTR_AS_OBJ(grpname));
++      PUT_C(hl_info, "groups", ARRAY_OBJ(groups));
+       ADD_C(hl_values, DICT_OBJ(hl_info));
+     }
+     PUT_C(result, "highlights", ARRAY_OBJ(hl_values));
+diff --git a/src/nvim/decoration.c b/src/nvim/decoration.c
+index a9f3ba0c3..149504f42 100644
+--- a/src/nvim/decoration.c
++++ b/src/nvim/decoration.c
+@@ -856,9 +856,9 @@ static const uint32_t sign_filter[4] = {[kMTMetaSignText] = kMTFilterSelect,
+ /// Return the sign attributes on the currently refreshed row.
+ ///
+ /// @param[out] sattrs Output array for sign text and texthl id
+-/// @param[out] line_attr Highest priority linehl id
+-/// @param[out] cul_attr Highest priority culhl id
+-/// @param[out] num_attr Highest priority numhl id
++/// @param[out] line_id Highest priority linehl id
++/// @param[out] cul_id Highest priority culhl id
++/// @param[out] num_id Highest priority numhl id
+ void decor_redraw_signs(win_T *wp, buf_T *buf, int row, SignTextAttrs sattrs[], int *line_id,
+                         int *cul_id, int *num_id)
+ {
+diff --git a/src/nvim/drawline.c b/src/nvim/drawline.c
+index d5273ff3d..74a766bd0 100644
+--- a/src/nvim/drawline.c
++++ b/src/nvim/drawline.c
+@@ -81,6 +81,8 @@ typedef struct {
+   int cul_attr;              ///< set when 'cursorline' active
+   int line_attr;             ///< attribute for the whole line
+   int line_attr_lowprio;     ///< low-priority attribute for the line
++  int sign_num_attr;         ///< line number attribute (sign numhl)
++  int sign_cul_attr;         ///< cursorline sign attribute (sign culhl)
+ 
+   int fromcol;               ///< start of inverting
+   int tocol;                 ///< end of inverting
+@@ -397,7 +399,7 @@ static void draw_col_fill(winlinevars_T *wlv, schar_T fillchar, int width, int a
+ }
+ 
+ /// Return true if CursorLineSign highlight is to be used.
+-static bool use_cursor_line_highlight(win_T *wp, linenr_T lnum)
++bool use_cursor_line_highlight(win_T *wp, linenr_T lnum)
+ {
+   return wp->w_p_cul
+          && lnum == wp->w_cursorline
+@@ -460,16 +462,15 @@ void fill_foldcolumn(win_T *wp, foldinfo_T foldinfo, linenr_T lnum, int attr, in
+ /// If "nrcol" is true, the sign is going to be displayed in the number column.
+ /// Otherwise the sign is going to be displayed in the sign column. If there is no
+ /// sign, draw blank cells instead.
+-static void draw_sign(bool nrcol, win_T *wp, winlinevars_T *wlv, int sign_idx, int sign_cul_attr)
++static void draw_sign(bool nrcol, win_T *wp, winlinevars_T *wlv, int sign_idx)
+ {
+   SignTextAttrs sattr = wlv->sattrs[sign_idx];
+   int scl_attr = win_hl_attr(wp, use_cursor_line_highlight(wp, wlv->lnum) ? HLF_CLS : HLF_SC);
+ 
+   if (sattr.text[0] && wlv->row == wlv->startrow + wlv->filler_lines && wlv->filler_todo <= 0) {
+-    int attr = (use_cursor_line_highlight(wp, wlv->lnum) && sign_cul_attr)
+-               ? sign_cul_attr : sattr.hl_id ? syn_id2attr(sattr.hl_id) : 0;
+-    attr = hl_combine_attr(scl_attr, attr);
+     int fill = nrcol ? number_width(wp) + 1 : SIGN_WIDTH;
++    int attr = wlv->sign_cul_attr ? wlv->sign_cul_attr : sattr.hl_id ? syn_id2attr(sattr.hl_id) : 0;
++    attr = hl_combine_attr(scl_attr, attr);
+     draw_col_fill(wlv, schar_from_ascii(' '), fill, attr);
+     int sign_pos = wlv->off - SIGN_WIDTH - (int)nrcol;
+     assert(sign_pos >= 0);
+@@ -544,7 +545,7 @@ static int get_line_number_attr(win_T *wp, winlinevars_T *wlv)
+ 
+ /// Display the absolute or relative line number.  After the first row fill with
+ /// blanks when the 'n' flag isn't in 'cpo'.
+-static void draw_lnum_col(win_T *wp, winlinevars_T *wlv, int sign_num_attr, int sign_cul_attr)
++static void draw_lnum_col(win_T *wp, winlinevars_T *wlv)
+ {
+   bool has_cpo_n = vim_strchr(p_cpo, CPO_NUMCOL) != NULL;
+ 
+@@ -557,12 +558,12 @@ static void draw_lnum_col(win_T *wp, winlinevars_T *wlv, int sign_num_attr, int
+     // then display the sign instead of the line number.
+     if (wp->w_minscwidth == SCL_NUM && wlv->sattrs[0].text[0]
+         && wlv->row == wlv->startrow + wlv->filler_lines && wlv->filler_todo <= 0) {
+-      draw_sign(true, wp, wlv, 0, sign_cul_attr);
++      draw_sign(true, wp, wlv, 0);
+     } else {
+       // Draw the line number (empty space after wrapping).
+       int width = number_width(wp) + 1;
+       int attr = hl_combine_attr(get_line_number_attr(wp, wlv),
+-                                 wlv->filler_todo <= 0 ? sign_num_attr : 0);
++                                 wlv->filler_todo <= 0 ? wlv->sign_num_attr : 0);
+       if (wlv->row == wlv->startrow + wlv->filler_lines
+           && (wp->w_skipcol == 0 || wlv->row > 0 || (wp->w_p_nu && wp->w_p_rnu))) {
+         char buf[32];
+@@ -631,22 +632,25 @@ static void draw_statuscol(win_T *wp, winlinevars_T *wlv, linenr_T lnum, int vir
+ 
+   char *p = buf;
+   char transbuf[MAXPATHL];
+-  int attr = stcp->num_attr;
+   size_t len = strlen(buf);
++  int scl_attr = win_hl_attr(wp, use_cursor_line_highlight(wp, wlv->lnum) ? HLF_CLS : HLF_SC);
++  int num_attr = hl_combine_attr(get_line_number_attr(wp, wlv),
++                                 wlv->filler_todo <= 0 ? wlv->sign_num_attr : 0);
++  int cur_attr = num_attr;
+ 
+   // Draw each segment with the specified highlighting.
+   for (stl_hlrec_t *sp = stcp->hlrec; sp->start != NULL; sp++) {
+     ptrdiff_t textlen = sp->start - p;
+     // Make all characters printable.
+     size_t translen = transstr_buf(p, textlen, transbuf, MAXPATHL, true);
+-    draw_col_buf(wp, wlv, transbuf, translen, attr, false);
++    draw_col_buf(wp, wlv, transbuf, translen, cur_attr, false);
++    int attr = sp->item == STL_SIGNCOL ? scl_attr : sp->item == STL_FOLDCOL ? 0 : num_attr;
++    cur_attr = hl_combine_attr(attr, sp->userhl < 0 ? syn_id2attr(-sp->userhl) : 0);
+     p = sp->start;
+-    int hl = sp->userhl;
+-    attr = hl < 0 ? hl_combine_attr(stcp->num_attr, syn_id2attr(-hl)) : stcp->num_attr;
+   }
+   size_t translen = transstr_buf(p, buf + len - p, transbuf, MAXPATHL, true);
+-  draw_col_buf(wp, wlv, transbuf, translen, attr, false);
+-  draw_col_fill(wlv, schar_from_ascii(' '), stcp->width - width, stcp->num_attr);
++  draw_col_buf(wp, wlv, transbuf, translen, num_attr, false);
++  draw_col_fill(wlv, schar_from_ascii(' '), stcp->width - width, num_attr);
+ }
+ 
+ static void handle_breakindent(win_T *wp, winlinevars_T *wlv)
+@@ -1201,11 +1205,10 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, int col_rows, s
+     area_highlighting = true;
+   }
+ 
+-  int line_attr = 0;
+-  int sign_cul_attr = 0;
+-  int sign_num_attr = 0;
++  int sign_line_attr = 0;
+   // TODO(bfredl, vigoux): line_attr should not take priority over decoration!
+-  decor_redraw_signs(wp, buf, wlv.lnum - 1, wlv.sattrs, &line_attr, &sign_cul_attr, &sign_num_attr);
++  decor_redraw_signs(wp, buf, wlv.lnum - 1, wlv.sattrs,
++                     &sign_line_attr, &wlv.sign_cul_attr, &wlv.sign_num_attr);
+ 
+   statuscol_T statuscol = { 0 };
+   if (*wp->w_p_stc != NUL) {
+@@ -1214,19 +1217,15 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, int col_rows, s
+     statuscol.sattrs = wlv.sattrs;
+     statuscol.foldinfo = foldinfo;
+     statuscol.width = win_col_off(wp) - (wp == cmdwin_win);
+-    statuscol.use_cul = use_cursor_line_highlight(wp, lnum);
+-    statuscol.sign_cul_id = statuscol.use_cul ? sign_cul_attr : 0;
+-    statuscol.num_attr = sign_num_attr > 0 ? syn_id2attr(sign_num_attr) : 0;
+-  } else {
+-    if (sign_cul_attr > 0) {
+-      sign_cul_attr = syn_id2attr(sign_cul_attr);
+-    }
+-    if (sign_num_attr > 0) {
+-      sign_num_attr = syn_id2attr(sign_num_attr);
+-    }
++    statuscol.sign_cul_id = use_cursor_line_highlight(wp, lnum) ? wlv.sign_cul_attr : 0;
++  } else if (wlv.sign_cul_attr > 0) {
++    wlv.sign_cul_attr = use_cursor_line_highlight(wp, lnum) ? syn_id2attr(wlv.sign_cul_attr) : 0;
+   }
+-  if (line_attr > 0) {
+-    wlv.line_attr = syn_id2attr(line_attr);
++  if (wlv.sign_num_attr > 0) {
++    wlv.sign_num_attr = syn_id2attr(wlv.sign_num_attr);
++  }
++  if (sign_line_attr > 0) {
++    wlv.line_attr = syn_id2attr(sign_line_attr);
+   }
+ 
+   // Highlight the current line in the quickfix window.
+@@ -1549,9 +1548,6 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, int col_rows, s
+         // skip columns
+       } else if (statuscol.draw) {
+         // Draw 'statuscolumn' if it is set.
+-        if (sign_num_attr == 0) {
+-          statuscol.num_attr = get_line_number_attr(wp, &wlv);
+-        }
+         const int v = (int)(ptr - line);
+         draw_statuscol(wp, &wlv, lnum, wlv.row - startrow - wlv.filler_lines, col_rows, &statuscol);
+         if (wp->w_redr_statuscol) {
+@@ -1568,10 +1564,10 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, int col_rows, s
+ 
+         // wp->w_scwidth is zero if signcol=number is used
+         for (int sign_idx = 0; sign_idx < wp->w_scwidth; sign_idx++) {
+-          draw_sign(false, wp, &wlv, sign_idx, sign_cul_attr);
++          draw_sign(false, wp, &wlv, sign_idx);
+         }
+ 
+-        draw_lnum_col(wp, &wlv, sign_num_attr, sign_cul_attr);
++        draw_lnum_col(wp, &wlv);
+       }
+ 
+       win_col_offset = wlv.off;
+diff --git a/src/nvim/drawscreen.c b/src/nvim/drawscreen.c
+index 7ebd4f286..66c9b2be2 100644
+--- a/src/nvim/drawscreen.c
++++ b/src/nvim/drawscreen.c
+@@ -2029,14 +2029,7 @@ static void win_update(win_T *wp)
+   }
+ 
+   foldinfo_T cursorline_fi = { 0 };
+-  wp->w_cursorline = win_cursorline_standout(wp) ? wp->w_cursor.lnum : 0;
+-  if (wp->w_p_cul) {
+-    // Make sure that the cursorline on a closed fold is redrawn
+-    cursorline_fi = fold_info(wp, wp->w_cursor.lnum);
+-    if (cursorline_fi.fi_level != 0 && cursorline_fi.fi_lines > 0) {
+-      wp->w_cursorline = cursorline_fi.fi_lnum;
+-    }
+-  }
++  win_update_cursorline(wp, &cursorline_fi);
+ 
+   win_check_ns_hl(wp);
+ 
+@@ -2862,3 +2855,18 @@ bool win_cursorline_standout(const win_T *wp)
+ {
+   return wp->w_p_cul || (wp->w_p_cole > 0 && !conceal_cursor_line(wp));
+ }
++
++/// Update w_cursorline, taking care to set it to the to the start of a closed fold.
++///
++/// @param[out] foldinfo foldinfo for the cursor line
++void win_update_cursorline(win_T *wp, foldinfo_T *foldinfo)
++{
++  wp->w_cursorline = win_cursorline_standout(wp) ? wp->w_cursor.lnum : 0;
++  if (wp->w_p_cul) {
++    // Make sure that the cursorline on a closed fold is redrawn
++    *foldinfo = fold_info(wp, wp->w_cursor.lnum);
++    if (foldinfo->fi_level != 0 && foldinfo->fi_lines > 0) {
++      wp->w_cursorline = foldinfo->fi_lnum;
++    }
++  }
++}
+diff --git a/src/nvim/option_vars.h b/src/nvim/option_vars.h
+index 9975e7870..340a12a32 100644
+--- a/src/nvim/option_vars.h
++++ b/src/nvim/option_vars.h
+@@ -3,6 +3,7 @@
+ #include "nvim/macros_defs.h"
+ #include "nvim/os/os_defs.h"
+ #include "nvim/sign_defs.h"
++#include "nvim/statusline_defs.h"
+ #include "nvim/types_defs.h"
+ 
+ #ifdef INCLUDE_GENERATED_DECLARATIONS
+@@ -212,49 +213,6 @@ enum {
+ #define COM_ALL         "nbsmexflrO"    // all flags for 'comments' option
+ #define COM_MAX_LEN     50              // maximum length of a part
+ 
+-/// 'statusline' option flags
+-enum {
+-  STL_FILEPATH        = 'f',  ///< Path of file in buffer.
+-  STL_FULLPATH        = 'F',  ///< Full path of file in buffer.
+-  STL_FILENAME        = 't',  ///< Last part (tail) of file path.
+-  STL_COLUMN          = 'c',  ///< Column og cursor.
+-  STL_VIRTCOL         = 'v',  ///< Virtual column.
+-  STL_VIRTCOL_ALT     = 'V',  ///< - with 'if different' display.
+-  STL_LINE            = 'l',  ///< Line number of cursor.
+-  STL_NUMLINES        = 'L',  ///< Number of lines in buffer.
+-  STL_BUFNO           = 'n',  ///< Current buffer number.
+-  STL_KEYMAP          = 'k',  ///< 'keymap' when active.
+-  STL_OFFSET          = 'o',  ///< Offset of character under cursor.
+-  STL_OFFSET_X        = 'O',  ///< - in hexadecimal.
+-  STL_BYTEVAL         = 'b',  ///< Byte value of character.
+-  STL_BYTEVAL_X       = 'B',  ///< - in hexadecimal.
+-  STL_ROFLAG          = 'r',  ///< Readonly flag.
+-  STL_ROFLAG_ALT      = 'R',  ///< - other display.
+-  STL_HELPFLAG        = 'h',  ///< Window is showing a help file.
+-  STL_HELPFLAG_ALT    = 'H',  ///< - other display.
+-  STL_FILETYPE        = 'y',  ///< 'filetype'.
+-  STL_FILETYPE_ALT    = 'Y',  ///< - other display.
+-  STL_PREVIEWFLAG     = 'w',  ///< Window is showing the preview buf.
+-  STL_PREVIEWFLAG_ALT = 'W',  ///< - other display.
+-  STL_MODIFIED        = 'm',  ///< Modified flag.
+-  STL_MODIFIED_ALT    = 'M',  ///< - other display.
+-  STL_QUICKFIX        = 'q',  ///< Quickfix window description.
+-  STL_PERCENTAGE      = 'p',  ///< Percentage through file.
+-  STL_ALTPERCENT      = 'P',  ///< Percentage as TOP BOT ALL or NN%.
+-  STL_ARGLISTSTAT     = 'a',  ///< Argument list status as (x of y).
+-  STL_PAGENUM         = 'N',  ///< Page number (when printing).
+-  STL_SHOWCMD         = 'S',  ///< 'showcmd' buffer
+-  STL_FOLDCOL         = 'C',  ///< Fold column for 'statuscolumn'
+-  STL_SIGNCOL         = 's',  ///< Sign column for 'statuscolumn'
+-  STL_VIM_EXPR        = '{',  ///< Start of expression to substitute.
+-  STL_SEPARATE        = '=',  ///< Separation between alignment sections.
+-  STL_TRUNCMARK       = '<',  ///< Truncation mark if line is too long.
+-  STL_USER_HL         = '*',  ///< Highlight from (User)1..9 or 0.
+-  STL_HIGHLIGHT       = '#',  ///< Highlight name.
+-  STL_TABPAGENR       = 'T',  ///< Tab page label nr.
+-  STL_TABCLOSENR      = 'X',  ///< Tab page close nr.
+-  STL_CLICK_FUNC      = '@',  ///< Click region start.
+-};
+ /// C string containing all 'statusline' option flags
+ #define STL_ALL ((char[]) { \
+     STL_FILEPATH, STL_FULLPATH, STL_FILENAME, STL_COLUMN, STL_VIRTCOL, \
+diff --git a/src/nvim/statusline.c b/src/nvim/statusline.c
+index b8515fa3e..f0437db1b 100644
+--- a/src/nvim/statusline.c
++++ b/src/nvim/statusline.c
+@@ -1633,12 +1633,12 @@ stcsign:
+         break;
+       }
+       foldsignitem = curitem;
++      lnum = (linenr_T)get_vim_var_nr(VV_LNUM);
+ 
+       if (fdc > 0) {
+         schar_T fold_buf[9];
+-        fill_foldcolumn(wp, stcp->foldinfo, (linenr_T)get_vim_var_nr(VV_LNUM),
+-                        0, fdc, NULL, fold_buf);
+-        stl_items[curitem].minwid = -(stcp->use_cul ? HLF_CLF : HLF_FC);
++        fill_foldcolumn(wp, stcp->foldinfo, lnum, 0, fdc, NULL, fold_buf);
++        stl_items[curitem].minwid = -(use_cursor_line_highlight(wp, lnum) ? HLF_CLF : HLF_FC);
+         size_t buflen = 0;
+         // TODO(bfredl): this is very backwards. we must support schar_T
+         // being used directly in 'statuscolumn'
+@@ -1651,18 +1651,18 @@ stcsign:
+       for (int i = 0; i < width; i++) {
+         stl_items[curitem].start = out_p + signlen;
+         if (fdc == 0) {
+-          if (stcp->sattrs[i].text[0] && get_vim_var_nr(VV_VIRTNUM) == 0) {
+-            SignTextAttrs sattrs = stcp->sattrs[i];
+-            signlen += describe_sign_text(buf_tmp + signlen, sattrs.text);
+-            stl_items[curitem].minwid = -(stcp->sign_cul_id ? stcp->sign_cul_id : sattrs.hl_id);
++          SignTextAttrs sattr = stcp->sattrs[i];
++          if (sattr.text[0] && get_vim_var_nr(VV_VIRTNUM) == 0) {
++            signlen += describe_sign_text(buf_tmp + signlen, sattr.text);
++            stl_items[curitem].minwid = -(stcp->sign_cul_id ? stcp->sign_cul_id : sattr.hl_id);
+           } else {
+             buf_tmp[signlen++] = ' ';
+             buf_tmp[signlen++] = ' ';
+             buf_tmp[signlen] = NUL;
+-            stl_items[curitem].minwid = -(stcp->use_cul ? HLF_CLS : HLF_SC);
++            stl_items[curitem].minwid = 0;
+           }
+         }
+-        stl_items[curitem++].type = Highlight;
++        stl_items[curitem++].type = fdc > 0 ? HighlightFold : HighlightSign;
+       }
+       str = buf_tmp;
+       break;
+@@ -2117,9 +2117,12 @@ stcsign:
+     *hltab = stl_hltab;
+     stl_hlrec_t *sp = stl_hltab;
+     for (int l = 0; l < itemcnt; l++) {
+-      if (stl_items[l].type == Highlight) {
++      if (stl_items[l].type == Highlight
++          || stl_items[l].type == HighlightFold || stl_items[l].type == HighlightSign) {
+         sp->start = stl_items[l].start;
+         sp->userhl = stl_items[l].minwid;
++        unsigned type = stl_items[l].type;
++        sp->item = type == HighlightSign ? STL_SIGNCOL : type == HighlightFold ? STL_FOLDCOL : 0;
+         sp++;
+       }
+     }
+diff --git a/src/nvim/statusline_defs.h b/src/nvim/statusline_defs.h
+index 118f4a257..f640d6315 100644
+--- a/src/nvim/statusline_defs.h
++++ b/src/nvim/statusline_defs.h
+@@ -5,6 +5,50 @@
+ #include "nvim/fold_defs.h"
+ #include "nvim/sign_defs.h"
+ 
++/// 'statusline' item flags
++typedef enum {
++  STL_FILEPATH        = 'f',  ///< Path of file in buffer.
++  STL_FULLPATH        = 'F',  ///< Full path of file in buffer.
++  STL_FILENAME        = 't',  ///< Last part (tail) of file path.
++  STL_COLUMN          = 'c',  ///< Column og cursor.
++  STL_VIRTCOL         = 'v',  ///< Virtual column.
++  STL_VIRTCOL_ALT     = 'V',  ///< - with 'if different' display.
++  STL_LINE            = 'l',  ///< Line number of cursor.
++  STL_NUMLINES        = 'L',  ///< Number of lines in buffer.
++  STL_BUFNO           = 'n',  ///< Current buffer number.
++  STL_KEYMAP          = 'k',  ///< 'keymap' when active.
++  STL_OFFSET          = 'o',  ///< Offset of character under cursor.
++  STL_OFFSET_X        = 'O',  ///< - in hexadecimal.
++  STL_BYTEVAL         = 'b',  ///< Byte value of character.
++  STL_BYTEVAL_X       = 'B',  ///< - in hexadecimal.
++  STL_ROFLAG          = 'r',  ///< Readonly flag.
++  STL_ROFLAG_ALT      = 'R',  ///< - other display.
++  STL_HELPFLAG        = 'h',  ///< Window is showing a help file.
++  STL_HELPFLAG_ALT    = 'H',  ///< - other display.
++  STL_FILETYPE        = 'y',  ///< 'filetype'.
++  STL_FILETYPE_ALT    = 'Y',  ///< - other display.
++  STL_PREVIEWFLAG     = 'w',  ///< Window is showing the preview buf.
++  STL_PREVIEWFLAG_ALT = 'W',  ///< - other display.
++  STL_MODIFIED        = 'm',  ///< Modified flag.
++  STL_MODIFIED_ALT    = 'M',  ///< - other display.
++  STL_QUICKFIX        = 'q',  ///< Quickfix window description.
++  STL_PERCENTAGE      = 'p',  ///< Percentage through file.
++  STL_ALTPERCENT      = 'P',  ///< Percentage as TOP BOT ALL or NN%.
++  STL_ARGLISTSTAT     = 'a',  ///< Argument list status as (x of y).
++  STL_PAGENUM         = 'N',  ///< Page number (when printing).
++  STL_SHOWCMD         = 'S',  ///< 'showcmd' buffer
++  STL_FOLDCOL         = 'C',  ///< Fold column for 'statuscolumn'
++  STL_SIGNCOL         = 's',  ///< Sign column for 'statuscolumn'
++  STL_VIM_EXPR        = '{',  ///< Start of expression to substitute.
++  STL_SEPARATE        = '=',  ///< Separation between alignment sections.
++  STL_TRUNCMARK       = '<',  ///< Truncation mark if line is too long.
++  STL_USER_HL         = '*',  ///< Highlight from (User)1..9 or 0.
++  STL_HIGHLIGHT       = '#',  ///< Highlight name.
++  STL_TABPAGENR       = 'T',  ///< Tab page label nr.
++  STL_TABCLOSENR      = 'X',  ///< Tab page close nr.
++  STL_CLICK_FUNC      = '@',  ///< Click region start.
++} StlFlag;
++
+ /// Status line click definition
+ typedef struct {
+   enum {
+@@ -26,27 +70,26 @@ typedef struct {
+ /// Used for highlighting in the status line.
+ typedef struct stl_hlrec stl_hlrec_t;
+ struct stl_hlrec {
+-  char *start;
+-  int userhl;                   // 0: no HL, 1-9: User HL, < 0 for syn ID
++  char *start;             ///< Where the item starts in the status line output buffer
++  int userhl;              ///< 0: no HL, 1-9: User HL, < 0 for syn ID
++  StlFlag item;            ///< Item flag belonging to highlight (used for 'statuscolumn')
+ };
+ 
+ /// Used for building the status line.
+ typedef struct stl_item stl_item_t;
+ struct stl_item {
+-  // Where the item starts in the status line output buffer
+-  char *start;
+-  // Function to run for ClickFunc items.
+-  char *cmd;
+-  // The minimum width of the item
+-  int minwid;
+-  // The maximum width of the item
+-  int maxwid;
++  char *start;             ///< Where the item starts in the status line output buffer
++  char *cmd;               ///< Function to run for ClickFunc items
++  int minwid;              ///< The minimum width of the item
++  int maxwid;              ///< The maximum width of the item
+   enum {
+     Normal,
+     Empty,
+     Group,
+     Separate,
+     Highlight,
++    HighlightSign,
++    HighlightFold,
+     TabPage,
+     ClickFunc,
+     Trunc,
+@@ -56,10 +99,8 @@ struct stl_item {
+ /// Struct to hold info for 'statuscolumn'
+ typedef struct {
+   int width;                           ///< width of the status column
+-  int num_attr;                        ///< default highlight attr
+   int sign_cul_id;                     ///< cursorline sign highlight id
+   bool draw;                           ///< whether to draw the statuscolumn
+-  bool use_cul;                        ///< whether to use cursorline attrs
+   stl_hlrec_t *hlrec;                  ///< highlight groups
+   foldinfo_T foldinfo;                 ///< fold information
+   SignTextAttrs *sattrs;               ///< sign attributes
+diff --git a/test/functional/api/vim_spec.lua b/test/functional/api/vim_spec.lua
+index 044213d83..dabe3a2c9 100644
+--- a/test/functional/api/vim_spec.lua
++++ b/test/functional/api/vim_spec.lua
+@@ -3993,8 +3993,8 @@ describe('API', function()
+             str = 'TextWithWarningHighlightTextWithUserHighlight',
+             width = 45,
+             highlights = {
+-              { start = 0, group = 'WarningMsg' },
+-              { start = 24, group = 'User1' },
++              { start = 0, group = 'WarningMsg', groups = { 'StatusLine', 'WarningMsg' } },
++              { start = 24, group = 'User1', groups = { 'StatusLine', 'User1' } },
+             },
+           },
+           api.nvim_eval_statusline(
+@@ -4009,7 +4009,7 @@ describe('API', function()
+           str = 'TextWithNoHighlight',
+           width = 19,
+           highlights = {
+-            { start = 0, group = 'StatusLine' },
++            { start = 0, group = 'StatusLine', groups = { 'StatusLine' } },
+           },
+         }, api.nvim_eval_statusline('TextWithNoHighlight', { highlights = true }))
+       end)
+@@ -4021,8 +4021,8 @@ describe('API', function()
+             str = 'TextWithNoHighlightTextWithWarningHighlight',
+             width = 43,
+             highlights = {
+-              { start = 0, group = 'StatusLineNC' },
+-              { start = 19, group = 'WarningMsg' },
++              { start = 0, group = 'StatusLineNC', groups = { 'StatusLineNC' } },
++              { start = 19, group = 'WarningMsg', groups = { 'StatusLineNC', 'WarningMsg' } },
+             },
+           },
+           api.nvim_eval_statusline(
+@@ -4038,8 +4038,8 @@ describe('API', function()
+             str = 'TextWithNoHighlightTextWithWarningHighlight',
+             width = 43,
+             highlights = {
+-              { start = 0, group = 'TabLineFill' },
+-              { start = 19, group = 'WarningMsg' },
++              { start = 0, group = 'TabLineFill', groups = { 'TabLineFill' } },
++              { start = 19, group = 'WarningMsg', groups = { 'TabLineFill', 'WarningMsg' } },
+             },
+           },
+           api.nvim_eval_statusline(
+@@ -4055,8 +4055,8 @@ describe('API', function()
+             str = 'TextWithNoHighlightTextWithWarningHighlight',
+             width = 43,
+             highlights = {
+-              { start = 0, group = 'WinBar' },
+-              { start = 19, group = 'WarningMsg' },
++              { start = 0, group = 'WinBar', groups = { 'WinBar' } },
++              { start = 19, group = 'WarningMsg', groups = { 'WinBar', 'WarningMsg' } },
+             },
+           },
+           api.nvim_eval_statusline(
+@@ -4083,11 +4083,11 @@ describe('API', function()
+           str = '││bbaa 4 ',
+           width = 9,
+           highlights = {
+-            { group = 'CursorLineFold', start = 0 },
+-            { group = 'Normal', start = 6 },
+-            { group = 'ErrorMsg', start = 6 },
+-            { group = 'IncSearch', start = 8 },
+-            { group = 'Normal', start = 10 },
++            { group = 'CursorLineFold', start = 0, groups = { 'CursorLineFold' } },
++            { group = 'Normal', start = 6, groups = { 'Normal' } },
++            { group = 'ErrorMsg', start = 6, groups = { 'CursorLineSign', 'ErrorMsg' } },
++            { group = 'IncSearch', start = 8, groups = { 'CursorLineSign', 'IncSearch' } },
++            { group = 'Normal', start = 10, groups = { 'Normal' } },
+           },
+         }, api.nvim_eval_statusline(
+           '%C%s%=%l ',
+@@ -4098,8 +4098,8 @@ describe('API', function()
+             str = '       3 ',
+             width = 9,
+             highlights = {
+-              { group = 'LineNr', start = 0 },
+-              { group = 'ErrorMsg', start = 8 },
++              { group = 'LineNr', start = 0, groups = { 'LineNr' } },
++              { group = 'ErrorMsg', start = 8, groups = { 'LineNr', 'ErrorMsg' } },
+             },
+           },
+           api.nvim_eval_statusline('%l%#ErrorMsg# ', { use_statuscol_lnum = 3, highlights = true })
+diff --git a/test/functional/ui/float_spec.lua b/test/functional/ui/float_spec.lua
+index ca26c46fc..27ab0feb9 100644
+--- a/test/functional/ui/float_spec.lua
++++ b/test/functional/ui/float_spec.lua
+@@ -1709,31 +1709,34 @@ describe('float window', function()
+       feed('ix<cr>y<cr><esc>gg')
+       api.nvim_open_win(0, false, {relative='editor', width=20, height=4, row=4, col=10, style='minimal'})
+       if multigrid then
+-        screen:expect{grid=[[
+-        ## grid 1
+-          [2:----------------------------------------]|*6
+-          [3:----------------------------------------]|
+-        ## grid 2
+-          {20:   1}{30:   }{22:^x}{21:                                }|
+-          {14:   2}{19:   }{22:y}                                |
+-          {14:   3}{19:   }{22: }                                |
+-          {0:~                                       }|*3
+-        ## grid 3
+-                                                  |
+-        ## grid 4
+-          {15:x                   }|
+-          {15:y                   }|
+-          {15:                    }|*2
+-        ]], float_pos={[4] = {1001, "NW", 1, 4, 10, true}}}
++        screen:expect({
++          grid = [[
++          ## grid 1
++            [2:----------------------------------------]|*6
++            [3:----------------------------------------]|
++          ## grid 2
++            {20:   1}{19:   }{22:^x}{21:                                }|
++            {14:   2}{19:   }{22:y}                                |
++            {14:   3}{19:   }{22: }                                |
++            {0:~                                       }|*3
++          ## grid 3
++                                                    |
++          ## grid 4
++            {15:x                   }|
++            {15:y                   }|
++            {15:                    }|*2
++          ]],
++          float_pos = { [4] = { 1001, "NW", 1, 4, 10, true, 50 } },
++        })
+       else
+-        screen:expect{grid=[[
+-          {20:   1}{30:   }{22:^x}{21:                                }|
++        screen:expect([[
++          {20:   1}{19:   }{22:^x}{21:                                }|
+           {14:   2}{19:   }{22:y}                                |
+           {14:   3}{19:   }{22: }  {15:x                   }          |
+           {0:~         }{15:y                   }{0:          }|
+           {0:~         }{15:                    }{0:          }|*2
+                                                   |
+-        ]]}
++        ]])
+       end
+     end)
+ 
+diff --git a/test/functional/ui/sign_spec.lua b/test/functional/ui/sign_spec.lua
+index bd3887b44..ff03d8697 100644
+--- a/test/functional/ui/sign_spec.lua
++++ b/test/functional/ui/sign_spec.lua
+@@ -18,8 +18,6 @@ describe('Signs', function()
+       [102] = { foreground = Screen.colors.Brown, background = Screen.colors.Yellow },
+       [103] = { background = Screen.colors.Yellow, reverse = true },
+       [104] = { reverse = true, foreground = Screen.colors.Grey100, background = Screen.colors.Red },
+-      [105] = { bold = true, background = Screen.colors.Red1, foreground = Screen.colors.Gray100 },
+-      [106] = { foreground = Screen.colors.Brown, reverse = true },
+     }
+   end)
+ 
+@@ -125,14 +123,7 @@ describe('Signs', function()
+       ]])
+       -- Check that 'statuscolumn' correctly applies numhl
+       exec('set statuscolumn=%s%=%l\\ ')
+-      screen:expect([[
+-        {102:>>}{8:  1 }a                                              |
+-        {7:  }{8:  2 }{9:b                                              }|
+-        {7:  }{13:  3 }c                                              |
+-        {101:>>}{13:  4 }{9:^                                               }|
+-        {1:~                                                    }|*9
+-                                                             |
+-      ]])
++      screen:expect_unchanged()
+     end)
+ 
+     it('highlights the cursorline sign with culhl', function()
+@@ -189,14 +180,7 @@ describe('Signs', function()
+ 
+       -- Check that 'statuscolumn' cursorline/signcolumn highlights are the same (#21726)
+       exec('set statuscolumn=%s')
+-      screen:expect([[
+-        {102:>>}a                                                  |
+-        {105:>>}^b                                                  |
+-        {102:>>}c                                                  |
+-        {106:  }                                                   |
+-        {1:~                                                    }|*9
+-                                                             |
+-      ]])
++      screen:expect_unchanged()
+     end)
+ 
+     it('multiple signs #9295', function()
+diff --git a/test/functional/ui/statuscolumn_spec.lua b/test/functional/ui/statuscolumn_spec.lua
+index ba60bab7e..220c573b1 100644
+--- a/test/functional/ui/statuscolumn_spec.lua
++++ b/test/functional/ui/statuscolumn_spec.lua
+@@ -232,17 +232,17 @@ describe('statuscolumn', function()
+   end)
+ 
+   it('works with wrapped lines, signs and folds', function()
+-    command([[set stc=%C%s%=%{v:virtnum?'':v:lnum}│\ ]])
+-    command("call setline(1,repeat([repeat('aaaaa',10)],16))")
+     screen:add_extra_attr_ids {
+       [100] = { foreground = Screen.colors.Red, background = Screen.colors.LightGray },
+-      [101] = {
+-        bold = true,
+-        background = Screen.colors.WebGray,
+-        foreground = Screen.colors.DarkBlue,
+-      },
++      [101] = { background = Screen.colors.Gray90, bold = true },
++      [102] = { foreground = Screen.colors.Brown, background = Screen.colors.Grey },
++      [103] = { bold = true, background = Screen.colors.Grey, foreground = Screen.colors.Blue1 },
+     }
+-    command('hi! CursorLine guifg=Red guibg=NONE')
++    command([[set cursorline stc=%C%s%=%{v:virtnum?'':v:lnum}│\ ]])
++    command("call setline(1,repeat([repeat('aaaaa',10)],16))")
++    command('hi! CursorLine gui=bold')
++    command('sign define num1 numhl=Special')
++    command('sign place 1 line=8 name=num1 buffer=1')
+     screen:expect([[
+       {8: 4│ }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {8:  │ }a                                                |
+@@ -252,8 +252,8 @@ describe('statuscolumn', function()
+       {8:  │ }a                                                |
+       {8: 7│ }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {8:  │ }a                                                |
+-      {8: 8│ }^aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+-      {8:  │ }a                                                |
++      {29: 8│ }{101:^aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
++      {29:  │ }{101:a                                                }|
+       {8: 9│ }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {8:  │ }a                                                |
+       {8:10│ }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa{1:@@@}|
+@@ -261,7 +261,8 @@ describe('statuscolumn', function()
+     ]])
+     command([[set stc=%C%s%=%l│\ ]])
+     screen:expect_unchanged()
+-    command('set signcolumn=auto:2 foldcolumn=auto')
++    command('hi! CursorLine guifg=Red guibg=NONE gui=NONE')
++    command('set nocursorline signcolumn=auto:2 foldcolumn=auto')
+     command('sign define piet1 text=>> texthl=LineNr')
+     command('sign define piet2 text=>! texthl=NonText')
+     command('sign place 1 line=4 name=piet1 buffer=1')
+@@ -269,11 +270,11 @@ describe('statuscolumn', function()
+     command('sign place 3 line=6 name=piet1 buffer=1')
+     command('sign place 4 line=6 name=piet2 buffer=1')
+     screen:expect([[
+-      {8:>>}{7:  }{8: 4│ }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
++      {102:>>}{7:  }{8: 4│ }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7:    }{8:  │ }aaaaa                                        |
+-      {1:>!}{7:  }{8: 5│ }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
++      {103:>!}{7:  }{8: 5│ }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7:    }{8:  │ }aaaaa                                        |
+-      {1:>!}{8:>> 6│ }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
++      {103:>!}{102:>>}{8: 6│ }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7:    }{8:  │ }aaaaa                                        |
+       {7:    }{8: 7│ }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7:    }{8:  │ }aaaaa                                        |
+@@ -288,11 +289,11 @@ describe('statuscolumn', function()
+     -- Check that alignment works properly with signs after %=
+     command([[set stc=%C%=%{v:virtnum?'':v:lnum}│%s\ ]])
+     screen:expect([[
+-      {7: }{8: 4│>>}{7:  }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
++      {7: }{8: 4│}{102:>>}{7:  }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7: }{8:  │}{7:    }{8: }aaaaaa                                      |
+-      {7: }{8: 5│}{1:>!}{7:  }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
++      {7: }{8: 5│}{103:>!}{7:  }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7: }{8:  │}{7:    }{8: }aaaaaa                                      |
+-      {7: }{8: 6│}{1:>!}{8:>> }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
++      {7: }{8: 6│}{103:>!}{102:>>}{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7: }{8:  │}{7:    }{8: }aaaaaa                                      |
+       {7: }{8: 7│}{7:    }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7: }{8:  │}{7:    }{8: }aaaaaa                                      |
+@@ -305,15 +306,15 @@ describe('statuscolumn', function()
+     ]])
+     command('set cursorline')
+     screen:expect([[
+-      {7: }{8: 4│>>}{7:  }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
++      {7: }{8: 4│}{102:>>}{7:  }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7: }{8:  │}{7:    }{8: }aaaaaa                                      |
+-      {7: }{8: 5│}{1:>!}{7:  }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
++      {7: }{8: 5│}{103:>!}{7:  }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7: }{8:  │}{7:    }{8: }aaaaaa                                      |
+-      {7: }{8: 6│}{1:>!}{8:>> }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
++      {7: }{8: 6│}{103:>!}{102:>>}{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7: }{8:  │}{7:    }{8: }aaaaaa                                      |
+       {7: }{8: 7│}{7:    }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7: }{8:  │}{7:    }{8: }aaaaaa                                      |
+-      {101:+}{15: 8│}{101:    }{15: }{100:^+--  1 line: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
++      {7:+}{15: 8│}{7:    }{15: }{100:^+--  1 line: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
+       {7: }{8: 9│}{7:    }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7: }{8:  │}{7:    }{8: }aaaaaa                                      |
+       {7: }{8:10│}{7:    }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+@@ -323,15 +324,15 @@ describe('statuscolumn', function()
+     -- v:lnum is the same value on wrapped lines
+     command([[set stc=%C%=%{v:lnum}│%s\ ]])
+     screen:expect([[
+-      {7: }{8: 4│>>}{7:  }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
++      {7: }{8: 4│}{102:>>}{7:  }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7: }{8: 4│}{7:    }{8: }aaaaaa                                      |
+-      {7: }{8: 5│}{1:>!}{7:  }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
++      {7: }{8: 5│}{103:>!}{7:  }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7: }{8: 5│}{7:    }{8: }aaaaaa                                      |
+-      {7: }{8: 6│}{1:>!}{8:>> }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
++      {7: }{8: 6│}{103:>!}{102:>>}{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7: }{8: 6│}{7:    }{8: }aaaaaa                                      |
+       {7: }{8: 7│}{7:    }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7: }{8: 7│}{7:    }{8: }aaaaaa                                      |
+-      {101:+}{15: 8│}{101:    }{15: }{100:^+--  1 line: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
++      {7:+}{15: 8│}{7:    }{15: }{100:^+--  1 line: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
+       {7: }{8: 9│}{7:    }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7: }{8: 9│}{7:    }{8: }aaaaaa                                      |
+       {7: }{8:10│}{7:    }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+@@ -341,15 +342,15 @@ describe('statuscolumn', function()
+     -- v:relnum is the same value on wrapped lines
+     command([[set stc=%C%=\ %{v:relnum}│%s\ ]])
+     screen:expect([[
+-      {7: }{8:  4│>>}{7:  }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
++      {7: }{8:  4│}{102:>>}{7:  }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7: }{8:  4│}{7:    }{8: }aaaaaaa                                    |
+-      {7: }{8:  3│}{1:>!}{7:  }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
++      {7: }{8:  3│}{103:>!}{7:  }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7: }{8:  3│}{7:    }{8: }aaaaaaa                                    |
+-      {7: }{8:  2│}{1:>!}{8:>> }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
++      {7: }{8:  2│}{103:>!}{102:>>}{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7: }{8:  2│}{7:    }{8: }aaaaaaa                                    |
+       {7: }{8:  1│}{7:    }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7: }{8:  1│}{7:    }{8: }aaaaaaa                                    |
+-      {101:+}{15:  0│}{101:    }{15: }{100:^+--  1 line: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
++      {7:+}{15:  0│}{7:    }{15: }{100:^+--  1 line: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
+       {7: }{8:  1│}{7:    }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7: }{8:  1│}{7:    }{8: }aaaaaaa                                    |
+       {7: }{8:  2│}{7:    }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+@@ -358,15 +359,15 @@ describe('statuscolumn', function()
+     ]])
+     command([[set stc=%C%=\ %{v:virtnum?'':v:relnum}│%s\ ]])
+     screen:expect([[
+-      {7: }{8:  4│>>}{7:  }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
++      {7: }{8:  4│}{102:>>}{7:  }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7: }{8:   │}{7:    }{8: }aaaaaaa                                    |
+-      {7: }{8:  3│}{1:>!}{7:  }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
++      {7: }{8:  3│}{103:>!}{7:  }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7: }{8:   │}{7:    }{8: }aaaaaaa                                    |
+-      {7: }{8:  2│}{1:>!}{8:>> }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
++      {7: }{8:  2│}{103:>!}{102:>>}{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7: }{8:   │}{7:    }{8: }aaaaaaa                                    |
+       {7: }{8:  1│}{7:    }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7: }{8:   │}{7:    }{8: }aaaaaaa                                    |
+-      {101:+}{15:  0│}{101:    }{15: }{100:^+--  1 line: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
++      {7:+}{15:  0│}{7:    }{15: }{100:^+--  1 line: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
+       {7: }{8:  1│}{7:    }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7: }{8:   │}{7:    }{8: }aaaaaaa                                    |
+       {7: }{8:  2│}{7:    }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+@@ -383,15 +384,15 @@ describe('statuscolumn', function()
+     command('sign place 10 line=6 name=piet2 buffer=1')
+     command('sign place 11 line=6 name=piet1 buffer=1')
+     screen:expect([[
+-      {7: }{8:  4│>>}{7:                }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
++      {7: }{8:  4│}{102:>>}{7:                }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7: }{8:   │}{7:                  }{8: }aaaaaaaaaaaaaaaaaaaaa        |
+-      {7: }{8:  3│}{1:>!}{7:                }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
++      {7: }{8:  3│}{103:>!}{7:                }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7: }{8:   │}{7:                  }{8: }aaaaaaaaaaaaaaaaaaaaa        |
+-      {7: }{8:  2│>>}{1:>!}{8:>>}{1:>!}{8:>>}{1:>!}{8:>>}{1:>!}{8:>> }aaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
++      {7: }{8:  2│}{102:>>}{103:>!}{102:>>}{103:>!}{102:>>}{103:>!}{102:>>}{103:>!}{102:>>}{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7: }{8:   │}{7:                  }{8: }aaaaaaaaaaaaaaaaaaaaa        |
+       {7: }{8:  1│}{7:                  }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7: }{8:   │}{7:                  }{8: }aaaaaaaaaaaaaaaaaaaaa        |
+-      {101:+}{15:  0│}{101:                  }{15: }{100:^+--  1 line: aaaaaaaaaaaaaaaa}|
++      {7:+}{15:  0│}{7:                  }{15: }{100:^+--  1 line: aaaaaaaaaaaaaaaa}|
+       {7: }{8:  1│}{7:                  }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7: }{8:   │}{7:                  }{8: }aaaaaaaaaaaaaaaaaaaaa        |
+       {7: }{8:  2│}{7:                  }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+@@ -402,11 +403,11 @@ describe('statuscolumn', function()
+     command('set cpoptions+=n')
+     feed('Hgjg0')
+     screen:expect([[
+-      {101: }{15:  0│>>}{101:                }{15: }{19:aaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
++      {7: }{15:  0│}{102:>>}{7:                }{15: }{19:aaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
+       {7:                   }{19:^aaaaaaaaaaaaaaaaaaaaa             }|
+-      {7: }{8:  3│}{1:>!}{7:                }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
++      {7: }{8:  3│}{103:>!}{7:                }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7:                   }aaaaaaaaaaaaaaaaaaaaa             |
+-      {7: }{8:  2│>>}{1:>!}{8:>>}{1:>!}{8:>>}{1:>!}{8:>>}{1:>!}{8:>> }aaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
++      {7: }{8:  2│}{102:>>}{103:>!}{102:>>}{103:>!}{102:>>}{103:>!}{102:>>}{103:>!}{102:>>}{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7:                   }aaaaaaaaaaaaaaaaaaaaa             |
+       {7: }{8:  1│}{7:                  }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7:                   }aaaaaaaaaaaaaaaaaaaaa             |
+@@ -421,11 +422,11 @@ describe('statuscolumn', function()
+     command('sign unplace 2')
+     feed('J2gjg0')
+     screen:expect([[
+-      {101: }{15:  0│>>}{101:                }{15: }{19:aaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
++      {7: }{15:  0│}{102:>>}{7:                }{15: }{19:aaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
+       {7:                   }     {19:aaaaaaaaaaaaaaaaaaaaa aaaaaaa}|
+       {7:                   }     {19:aaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
+       {7:                   }     {19:^aaaaaaaaaaaaaa               }|
+-      {7: }{8:  1│>>}{1:>!}{8:>>}{1:>!}{8:>>}{1:>!}{8:>>}{1:>!}{8:>> }aaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
++      {7: }{8:  1│}{102:>>}{103:>!}{102:>>}{103:>!}{102:>>}{103:>!}{102:>>}{103:>!}{102:>>}{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7:                   }     aaaaaaaaaaaaaaaaaaaaa        |
+       {7: }{8:  2│}{7:                  }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7:                   }     aaaaaaaaaaaaaaaaaaaaa        |
+@@ -439,11 +440,11 @@ describe('statuscolumn', function()
+     command('set nobreakindent')
+     feed('$g0')
+     screen:expect([[
+-      {101: }{15:  0│>>}{101:                }{15: }{19:aaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
++      {7: }{15:  0│}{102:>>}{7:                }{15: }{19:aaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
+       {7:                   }{19:aaaaaaaaaaaaaaaaaaaaa aaaaaaaaaaaa}|
+       {7:                   }{19:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
+       {7:                   }{19:^aaaa                              }|
+-      {7: }{8:  1│>>}{1:>!}{8:>>}{1:>!}{8:>>}{1:>!}{8:>>}{1:>!}{8:>> }aaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
++      {7: }{8:  1│}{102:>>}{103:>!}{102:>>}{103:>!}{102:>>}{103:>!}{102:>>}{103:>!}{102:>>}{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7:                   }aaaaaaaaaaaaaaaaaaaaa             |
+       {7: }{8:  2│}{7:                  }{8: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+       {7:                   }aaaaaaaaaaaaaaaaaaaaa             |
+@@ -465,11 +466,11 @@ describe('statuscolumn', function()
+     ]])
+     command('set foldcolumn=0 signcolumn=number stc=%l')
+     screen:expect([[
+-      {8:>>}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa |
++      {102:>>}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa |
+       {8: 5}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa |
+       {8:  }virt_line                                          |
+       {8:  }virt_line above                                    |
+-      {8:>>}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa |
++      {102:>>}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa |
+       {8: 7}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa |
+       {15: 8}{100:^+--  1 line: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
+       {8: 9}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa |
+@@ -585,7 +586,7 @@ describe('statuscolumn', function()
+     command([[set stc=%6s\ %l]])
+     exec_lua('vim.api.nvim_buf_set_extmark(0, ns, 7, 0, {sign_text = "𒀀"})')
+     screen:expect([[
+-      {8:    𒀀   8}^aaaaa                                       |
++      {8:    }{7:𒀀 }{8:  8}^aaaaa                                       |
+       {8:    }{7:  }{8:  9}aaaaa                                       |
+                                                            |
+     ]])

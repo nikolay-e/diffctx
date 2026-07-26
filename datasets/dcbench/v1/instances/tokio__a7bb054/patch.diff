@@ -1,0 +1,64 @@
+From a7bb054414acba8155c014ebb0636cc0a4d4cda8 Mon Sep 17 00:00:00 2001
+From: Timmy Xiao <34635512+tzx@users.noreply.github.com>
+Date: Tue, 21 Mar 2023 13:36:40 -0400
+Subject: [PATCH] tokio: update stream, util, test to 2021 edition (#5571)
+
+---
+ tokio-stream/Cargo.toml        | 2 +-
+ tokio-stream/src/stream_map.rs | 2 +-
+ tokio-test/Cargo.toml          | 2 +-
+ tokio-util/Cargo.toml          | 2 +-
+ 4 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/tokio-stream/Cargo.toml b/tokio-stream/Cargo.toml
+index 6711e29..42f68cd 100644
+--- a/tokio-stream/Cargo.toml
++++ b/tokio-stream/Cargo.toml
+@@ -5,7 +5,7 @@ name = "tokio-stream"
+ # - Update CHANGELOG.md.
+ # - Create "tokio-stream-0.1.x" git tag.
+ version = "0.1.12"
+-edition = "2018"
++edition = "2021"
+ rust-version = "1.56"
+ authors = ["Tokio Contributors <team@tokio.rs>"]
+ license = "MIT"
+diff --git a/tokio-stream/src/stream_map.rs b/tokio-stream/src/stream_map.rs
+index 2159804..ddd14d5 100644
+--- a/tokio-stream/src/stream_map.rs
++++ b/tokio-stream/src/stream_map.rs
+@@ -568,7 +568,7 @@ where
+     }
+ }
+ 
+-impl<K, V> std::iter::FromIterator<(K, V)> for StreamMap<K, V>
++impl<K, V> FromIterator<(K, V)> for StreamMap<K, V>
+ where
+     K: Hash + Eq,
+ {
+diff --git a/tokio-test/Cargo.toml b/tokio-test/Cargo.toml
+index 603a4b4..88cf0ea 100644
+--- a/tokio-test/Cargo.toml
++++ b/tokio-test/Cargo.toml
+@@ -5,7 +5,7 @@ name = "tokio-test"
+ # - Update CHANGELOG.md.
+ # - Create "tokio-test-0.4.x" git tag.
+ version = "0.4.2"
+-edition = "2018"
++edition = "2021"
+ rust-version = "1.56"
+ authors = ["Tokio Contributors <team@tokio.rs>"]
+ license = "MIT"
+diff --git a/tokio-util/Cargo.toml b/tokio-util/Cargo.toml
+index cf9f047..3f4c60e 100644
+--- a/tokio-util/Cargo.toml
++++ b/tokio-util/Cargo.toml
+@@ -5,7 +5,7 @@ name = "tokio-util"
+ # - Update CHANGELOG.md.
+ # - Create "tokio-util-0.7.x" git tag.
+ version = "0.7.7"
+-edition = "2018"
++edition = "2021"
+ rust-version = "1.56"
+ authors = ["Tokio Contributors <team@tokio.rs>"]
+ license = "MIT"

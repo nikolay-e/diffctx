@@ -1,0 +1,396 @@
+From 5c92b40b4b173c7d85106689fef811e41994abb0 Mon Sep 17 00:00:00 2001
+From: Luuk van Baal <luukvbaal@gmail.com>
+Date: Tue, 7 Jan 2025 16:38:29 +0100
+Subject: [PATCH] feat(api): deprecate nvim_out/err_write(ln)
+
+---
+ runtime/doc/api.txt              | 24 ----------
+ runtime/doc/deprecated.txt       |  3 ++
+ runtime/lua/vim/_defaults.lua    |  2 +-
+ runtime/lua/vim/_editor.lua      | 10 ++--
+ runtime/lua/vim/_meta/api.lua    | 19 +++-----
+ runtime/lua/vim/lsp/client.lua   |  6 +--
+ runtime/lua/vim/lsp/handlers.lua |  5 +-
+ src/nvim/api/deprecated.c        | 80 +++++++++++++++++++++++++++++++
+ src/nvim/api/vim.c               | 82 --------------------------------
+ 9 files changed, 98 insertions(+), 133 deletions(-)
+
+diff --git a/runtime/doc/api.txt b/runtime/doc/api.txt
+index 514479b8b..852037bb3 100644
+--- a/runtime/doc/api.txt
++++ b/runtime/doc/api.txt
+@@ -669,23 +669,6 @@ nvim_echo({chunks}, {history}, {opts})                           *nvim_echo()*
+                      will be redirected to the log_file and suppressed from
+                      direct output.
+ 
+-nvim_err_write({str})                                       *nvim_err_write()*
+-    Writes a message to the Vim error buffer. Does not append "\n", the
+-    message is buffered (won't display) until a linefeed is written.
+-
+-    Parameters: ~
+-      • {str}  Message
+-
+-nvim_err_writeln({str})                                   *nvim_err_writeln()*
+-    Writes a message to the Vim error buffer. Appends "\n", so the buffer is
+-    flushed (and displayed).
+-
+-    Parameters: ~
+-      • {str}  Message
+-
+-    See also: ~
+-      • nvim_err_write()
+-
+ nvim_eval_statusline({str}, {opts})                   *nvim_eval_statusline()*
+     Evaluates statusline string.
+ 
+@@ -1156,13 +1139,6 @@ nvim_open_term({buffer}, {opts})                            *nvim_open_term()*
+     Return: ~
+         Channel id, or 0 on error
+ 
+-nvim_out_write({str})                                       *nvim_out_write()*
+-    Writes a message to the Vim output buffer. Does not append "\n", the
+-    message is buffered (won't display) until a linefeed is written.
+-
+-    Parameters: ~
+-      • {str}  Message
+-
+ nvim_paste({data}, {crlf}, {phase})                             *nvim_paste()*
+     Pastes at cursor (in any mode), and sets "redo" so dot (|.|) will repeat
+     the input. UIs call this to implement "paste", but it's also intended for
+diff --git a/runtime/doc/deprecated.txt b/runtime/doc/deprecated.txt
+index ec98cc844..dbdb8f541 100644
+--- a/runtime/doc/deprecated.txt
++++ b/runtime/doc/deprecated.txt
+@@ -18,6 +18,9 @@ DEPRECATED IN 0.11					*deprecated-0.11*
+ API
+ • nvim_subscribe()	Plugins must maintain their own "multicast" channels list.
+ • nvim_unsubscribe()	Plugins must maintain their own "multicast" channels list.
++• nvim_out_write()	Use |nvim_echo()|.
++• nvim_err_write()	Use |nvim_echo()| with `{err=true}`.
++• nvim_err_writeln()	Use |nvim_echo()| with `{err=true}`.
+ 
+ DIAGNOSTICS
+ • *vim.diagnostic.goto_next()*	Use |vim.diagnostic.jump()| with `{count=1, float=true}` instead.
+diff --git a/runtime/lua/vim/_defaults.lua b/runtime/lua/vim/_defaults.lua
+index 4216a2acb..d71116117 100644
+--- a/runtime/lua/vim/_defaults.lua
++++ b/runtime/lua/vim/_defaults.lua
+@@ -224,7 +224,7 @@ do
+     local function cmd(opts)
+       local ok, err = pcall(vim.api.nvim_cmd, opts, {})
+       if not ok then
+-        vim.api.nvim_err_writeln(err:sub(#'Vim:' + 1))
++        vim.api.nvim_echo({ { err:sub(#'Vim:' + 1) } }, true, { err = true })
+       end
+     end
+ 
+diff --git a/runtime/lua/vim/_editor.lua b/runtime/lua/vim/_editor.lua
+index 44f17b3f8..66815a967 100644
+--- a/runtime/lua/vim/_editor.lua
++++ b/runtime/lua/vim/_editor.lua
+@@ -58,6 +58,7 @@ vim._extra = {
+ 
+ --- @private
+ vim.log = {
++  --- @enum vim.log.levels
+   levels = {
+     TRACE = 0,
+     DEBUG = 1,
+@@ -620,13 +621,8 @@ end
+ ---@param opts table|nil Optional parameters. Unused by default.
+ ---@diagnostic disable-next-line: unused-local
+ function vim.notify(msg, level, opts) -- luacheck: no unused args
+-  if level == vim.log.levels.ERROR then
+-    vim.api.nvim_err_writeln(msg)
+-  elseif level == vim.log.levels.WARN then
+-    vim.api.nvim_echo({ { msg, 'WarningMsg' } }, true, {})
+-  else
+-    vim.api.nvim_echo({ { msg } }, true, {})
+-  end
++  local chunks = { { msg, level == vim.log.levels.WARN and 'WarningMsg' or nil } }
++  vim.api.nvim_echo(chunks, true, { err = level == vim.log.levels.ERROR })
+ end
+ 
+ do
+diff --git a/runtime/lua/vim/_meta/api.lua b/runtime/lua/vim/_meta/api.lua
+index b0651efca..f6d8153c2 100644
+--- a/runtime/lua/vim/_meta/api.lua
++++ b/runtime/lua/vim/_meta/api.lua
+@@ -1111,17 +1111,12 @@ function vim.api.nvim_del_var(name) end
+ ---   redirected to the log_file and suppressed from direct output.
+ function vim.api.nvim_echo(chunks, history, opts) end
+ 
+---- Writes a message to the Vim error buffer. Does not append "\n", the
+---- message is buffered (won't display) until a linefeed is written.
+----
+---- @param str string Message
++--- @deprecated
++--- @param str string
+ function vim.api.nvim_err_write(str) end
+ 
+---- Writes a message to the Vim error buffer. Appends "\n", so the buffer is
+---- flushed (and displayed).
+----
+---- @see vim.api.nvim_err_write
+---- @param str string Message
++--- @deprecated
++--- @param str string
+ function vim.api.nvim_err_writeln(str) end
+ 
+ --- Evaluates a Vimscript `expression`. Dicts and Lists are recursively expanded.
+@@ -1861,10 +1856,8 @@ function vim.api.nvim_open_term(buffer, opts) end
+ --- @return integer # Window handle, or 0 on error
+ function vim.api.nvim_open_win(buffer, enter, config) end
+ 
+---- Writes a message to the Vim output buffer. Does not append "\n", the
+---- message is buffered (won't display) until a linefeed is written.
+----
+---- @param str string Message
++--- @deprecated
++--- @param str string
+ function vim.api.nvim_out_write(str) end
+ 
+ --- Parse command line.
+diff --git a/runtime/lua/vim/lsp/client.lua b/runtime/lua/vim/lsp/client.lua
+index 5d11312c7..a99363d3d 100644
+--- a/runtime/lua/vim/lsp/client.lua
++++ b/runtime/lua/vim/lsp/client.lua
+@@ -702,14 +702,14 @@ local wait_result_reason = { [-1] = 'timeout', [-2] = 'interrupted', [-3] = 'err
+ ---
+ --- @param ... string List to write to the buffer
+ local function err_message(...)
+-  local message = table.concat(vim.iter({ ... }):flatten():totable())
++  local chunks = { { table.concat({ ... }) } }
+   if vim.in_fast_event() then
+     vim.schedule(function()
+-      api.nvim_err_writeln(message)
++      vim.api.nvim_echo(chunks, true, { err = true })
+       api.nvim_command('redraw')
+     end)
+   else
+-    api.nvim_err_writeln(message)
++    vim.api.nvim_echo(chunks, true, { err = true })
+     api.nvim_command('redraw')
+   end
+ end
+diff --git a/runtime/lua/vim/lsp/handlers.lua b/runtime/lua/vim/lsp/handlers.lua
+index 1945040bd..3779c342e 100644
+--- a/runtime/lua/vim/lsp/handlers.lua
++++ b/runtime/lua/vim/lsp/handlers.lua
+@@ -582,9 +582,8 @@ NSC['window/showMessage'] = function(_, params, ctx)
+   if message_type == protocol.MessageType.Error then
+     err_message('LSP[', client_name, '] ', message)
+   else
+-    --- @type string
+-    local message_type_name = protocol.MessageType[message_type]
+-    api.nvim_out_write(string.format('LSP[%s][%s] %s\n', client_name, message_type_name, message))
++    message = ('LSP[%s][%s] %s\n'):format(client_name, protocol.MessageType[message_type], message)
++    api.nvim_echo({ { message } }, true, { err = true })
+   end
+   return params
+ end
+diff --git a/src/nvim/api/deprecated.c b/src/nvim/api/deprecated.c
+index d5eddb74d..406d5e7b4 100644
+--- a/src/nvim/api/deprecated.c
++++ b/src/nvim/api/deprecated.c
+@@ -21,9 +21,11 @@
+ #include "nvim/lua/executor.h"
+ #include "nvim/memory.h"
+ #include "nvim/memory_defs.h"
++#include "nvim/message.h"
+ #include "nvim/option.h"
+ #include "nvim/option_defs.h"
+ #include "nvim/pos_defs.h"
++#include "nvim/strings.h"
+ #include "nvim/types_defs.h"
+ 
+ #ifdef INCLUDE_GENERATED_DECLARATIONS
+@@ -812,3 +814,81 @@ void nvim_unsubscribe(uint64_t channel_id, String event)
+ {
+   // Does nothing. `rpcnotify(0,…)` broadcasts to all channels, there are no "subscriptions".
+ }
++
++enum { LINE_BUFFER_MIN_SIZE = 4096, };
++
++/// Writes a message to vim output or error buffer. The string is split
++/// and flushed after each newline. Incomplete lines are kept for writing
++/// later.
++///
++/// @param message  Message to write
++/// @param to_err   true: message is an error (uses `emsg` instead of `msg`)
++/// @param writeln  Append a trailing newline
++static void write_msg(String message, bool to_err, bool writeln)
++{
++  static StringBuilder out_line_buf = KV_INITIAL_VALUE;
++  static StringBuilder err_line_buf = KV_INITIAL_VALUE;
++  StringBuilder *line_buf = to_err ? &err_line_buf : &out_line_buf;
++
++#define PUSH_CHAR(c) \
++  if (kv_max(*line_buf) == 0) { \
++    kv_resize(*line_buf, LINE_BUFFER_MIN_SIZE); \
++  } \
++  if (c == NL) { \
++    kv_push(*line_buf, NUL); \
++    if (to_err) { \
++      emsg(line_buf->items); \
++    } else { \
++      msg(line_buf->items, 0); \
++    } \
++    if (msg_silent == 0) { \
++      msg_didout = true; \
++    } \
++    kv_drop(*line_buf, kv_size(*line_buf)); \
++    kv_resize(*line_buf, LINE_BUFFER_MIN_SIZE); \
++  } else if (c == NUL) { \
++    kv_push(*line_buf, NL); \
++  } else { \
++    kv_push(*line_buf, c); \
++  }
++
++  no_wait_return++;
++  for (uint32_t i = 0; i < message.size; i++) {
++    if (got_int) {
++      break;
++    }
++    PUSH_CHAR(message.data[i]);
++  }
++  if (writeln) {
++    PUSH_CHAR(NL);
++  }
++  no_wait_return--;
++  msg_end();
++}
++
++/// @deprecated
++///
++/// @param str Message
++void nvim_out_write(String str)
++  FUNC_API_SINCE(1) FUNC_API_DEPRECATED_SINCE(13)
++{
++  write_msg(str, false, false);
++}
++
++/// @deprecated
++///
++/// @param str Message
++void nvim_err_write(String str)
++  FUNC_API_SINCE(1) FUNC_API_DEPRECATED_SINCE(13)
++{
++  write_msg(str, true, false);
++}
++
++/// @deprecated
++///
++/// @param str Message
++void nvim_err_writeln(String str)
++  FUNC_API_SINCE(1) FUNC_API_DEPRECATED_SINCE(13)
++{
++  write_msg(str, true, true);
++}
+diff --git a/src/nvim/api/vim.c b/src/nvim/api/vim.c
+index f0848b7e0..ed9edb1be 100644
+--- a/src/nvim/api/vim.c
++++ b/src/nvim/api/vim.c
+@@ -86,8 +86,6 @@
+ #include "nvim/vim_defs.h"
+ #include "nvim/window.h"
+ 
+-#define LINE_BUFFER_MIN_SIZE 4096
+-
+ #ifdef INCLUDE_GENERATED_DECLARATIONS
+ # include "api/vim.c.generated.h"
+ #endif
+@@ -808,37 +806,6 @@ error:
+   hl_msg_free(hl_msg);
+ }
+ 
+-/// Writes a message to the Vim output buffer. Does not append "\n", the
+-/// message is buffered (won't display) until a linefeed is written.
+-///
+-/// @param str Message
+-void nvim_out_write(String str)
+-  FUNC_API_SINCE(1)
+-{
+-  write_msg(str, false, false);
+-}
+-
+-/// Writes a message to the Vim error buffer. Does not append "\n", the
+-/// message is buffered (won't display) until a linefeed is written.
+-///
+-/// @param str Message
+-void nvim_err_write(String str)
+-  FUNC_API_SINCE(1)
+-{
+-  write_msg(str, true, false);
+-}
+-
+-/// Writes a message to the Vim error buffer. Appends "\n", so the buffer is
+-/// flushed (and displayed).
+-///
+-/// @param str Message
+-/// @see nvim_err_write()
+-void nvim_err_writeln(String str)
+-  FUNC_API_SINCE(1)
+-{
+-  write_msg(str, true, true);
+-}
+-
+ /// Gets the current list of buffer handles
+ ///
+ /// Includes unlisted (unloaded/deleted) buffers, like `:ls!`.
+@@ -1664,55 +1631,6 @@ Array nvim_list_chans(Arena *arena)
+   return channel_all_info(arena);
+ }
+ 
+-/// Writes a message to vim output or error buffer. The string is split
+-/// and flushed after each newline. Incomplete lines are kept for writing
+-/// later.
+-///
+-/// @param message  Message to write
+-/// @param to_err   true: message is an error (uses `emsg` instead of `msg`)
+-/// @param writeln  Append a trailing newline
+-static void write_msg(String message, bool to_err, bool writeln)
+-{
+-  static StringBuilder out_line_buf = KV_INITIAL_VALUE;
+-  static StringBuilder err_line_buf = KV_INITIAL_VALUE;
+-  StringBuilder *line_buf = to_err ? &err_line_buf : &out_line_buf;
+-
+-#define PUSH_CHAR(c) \
+-  if (kv_max(*line_buf) == 0) { \
+-    kv_resize(*line_buf, LINE_BUFFER_MIN_SIZE); \
+-  } \
+-  if (c == NL) { \
+-    kv_push(*line_buf, NUL); \
+-    if (to_err) { \
+-      emsg(line_buf->items); \
+-    } else { \
+-      msg(line_buf->items, 0); \
+-    } \
+-    if (msg_silent == 0) { \
+-      msg_didout = true; \
+-    } \
+-    kv_drop(*line_buf, kv_size(*line_buf)); \
+-    kv_resize(*line_buf, LINE_BUFFER_MIN_SIZE); \
+-  } else if (c == NUL) { \
+-    kv_push(*line_buf, NL); \
+-  } else { \
+-    kv_push(*line_buf, c); \
+-  }
+-
+-  no_wait_return++;
+-  for (uint32_t i = 0; i < message.size; i++) {
+-    if (got_int) {
+-      break;
+-    }
+-    PUSH_CHAR(message.data[i]);
+-  }
+-  if (writeln) {
+-    PUSH_CHAR(NL);
+-  }
+-  no_wait_return--;
+-  msg_end();
+-}
+-
+ // Functions used for testing purposes
+ 
+ /// Returns object given as argument.

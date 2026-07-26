@@ -1,0 +1,77 @@
+repo: plausible
+base_commit: 1f9457992dfe3e14b7f43996496b555a5e3ce4e1
+commit: 359438a89971487f3860845e75b194e0decc646c
+patch_stored: true
+gold:
+  - path: lib/plausible/teams/memberships/leave.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new Plausible.Teams.Memberships.Leave module with leave/3, the core service that removes a membership, cleans up segments, deletes SSO users, and sends the notification email.
+  - path: lib/plausible_web/controllers/settings_controller.ex
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: adds leave_team/2 action that calls Teams.Memberships.Leave.leave/2 and maps its {:ok, _}/{:error, :only_one_owner}/{:error, :membership_not_found} results to flash+redirect.
+  - path: lib/plausible_web/router.ex
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: registers "post /team/leave, SettingsController, :leave_team", the route the new UI button and controller test hit.
+  - path: lib/plausible_web/templates/settings/team_general.html.heex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds the "Leave Team" tile and button_link posting to Routes.settings_path(@conn, :leave_team), the UI entry point for the feature.
+  - path: lib/plausible_web/email.ex
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: adds team_member_left/1, the mailer function invoked by Leave.send_team_member_left_email/1.
+  - path: lib/plausible_web/templates/email/team_member_left.html.heex
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: new email body template rendered by PlausibleWeb.Email.team_member_left/1.
+  - path: test/plausible/teams/memberships/leave_test.exs
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: covers Leave.leave/2 behavior including the only-owner guard, personal/site segment cleanup, and SSO-user deletion branch.
+  - path: lib/plausible/teams/memberships.ex
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: defines get_team_membership/2 and owners_count/1, both called directly in Leave.leave/3's "with" chain and check_owner_can_leave/2.
+  - path: lib/plausible/segments/segments.ex
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: defines after_user_removed_from_team/2, called inside Leave's Repo.transaction to null-out or delete the departing member's segments, exercised by leave_test.exs.
+  - path: lib/plausible/auth/auth.ex
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: defines delete_user/1, called by Leave.delete_membership!/1 for SSO-provisioned users so they are fully removed rather than just unlinked from the team.
+forbidden:
+  - path: lib/plausible/teams/memberships/remove.ex
+    reason: sibling service module for admin-driven member removal, similar name and directory but a distinct (owner-initiated, not self-initiated) code path.
+  - path: lib/plausible/teams/memberships/update_role.ex
+    reason: sibling module in the same directory for changing a member's role, unrelated to leaving the team.
+  - path: lib/plausible_web/templates/settings/danger_zone.html.heex
+    reason: only touched for an unrelated cosmetic button-label capitalization fix bundled into this commit, not part of the leave-team feature.
+  - path: lib/plausible/users.ex
+    reason: defines Users.type/1 used by Leave to detect :sso users, but is a one-line generic type-check helper that adds little beyond what leave.ex's call site already shows.
+nontrivial_gold_count: 3
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: >-
+  Adds a self-service "Leave Team" flow: a new Teams.Memberships.Leave
+  service (guards the last-owner case, deletes the membership, cleans up
+  owned segments, deletes SSO users, emails the departing member), a
+  controller action + route wired to a new settings-page button, and an
+  email template. string_indirection is true because the router binds the
+  "/team/leave" URL path string to the :leave_team controller action, which
+  templates then reference via the Routes.settings_path helper rather than a
+  static function reference.

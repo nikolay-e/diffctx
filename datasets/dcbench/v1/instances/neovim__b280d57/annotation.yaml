@@ -1,0 +1,44 @@
+repo: neovim
+base_commit: ae3eed53d6100598b6d26fe58e3e97541e03f3c1
+commit: b280d57db9845359186bfb5167e1559b6184f8d5
+patch_stored: true
+gold:
+  - path: runtime/lua/vim/provider/ruby.lua
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'new module holding the actual logic (M.require/M.call/M.detect/M.start), ported verbatim from the deleted Vimscript functions in provider/ruby.vim (provider#ruby#Detect/Call/Require body).'
+  - path: runtime/autoload/provider/ruby.vim
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: 'shrunk to thin Vimscript shims that call into the new Lua module via `v:lua.require''vim.provider.ruby''.require(a:host)` etc. — the Vimscript-to-Lua bridge this refactor introduces.'
+  - path: runtime/autoload/remote/host.vim
+    tier: essential
+    role: caller
+    in_diff: false
+    rationale: '`call remote#host#Register(''ruby'', ''*.rb'', function(''provider#ruby#Require''))` takes a Funcref to `provider#ruby#Require` by literal name — this is exactly why `provider#ruby#Require` (unlike the fully-deleted `provider#ruby#Detect`/`Prog`/private `s:detect()`) had to survive as a named Vimscript function rather than move entirely into Lua.'
+  - path: runtime/lua/vim/provider/perl.lua
+    tier: helpful
+    role: cochange
+    in_diff: true
+    rationale: sibling provider module already following the same M.detect/M.call/require('vim.provider.X') pattern (only touched here for an unrelated nvim_echo chunk-wrapping bugfix); the structural template this ruby rewrite mirrors.
+  - path: runtime/lua/provider/ruby/health.lua
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: ':checkhealth provider caller switches from `vim.fn[''provider#ruby#Detect'']()` to `require(''vim.provider.ruby'').detect()`, now calling the Lua module directly instead of routing through the Vimscript autoload function.'
+forbidden:
+  - path: runtime/autoload/provider/perl.vim
+    reason: a same-shaped but already-fully-Vimscript perl provider file (or already independently converted) not touched by and unrelated to this specific ruby-provider commit.
+  - path: runtime/autoload/provider/node.vim
+    reason: the node provider remains pure Vimscript and untouched; superficially similar file in the same directory but no relation to the ruby rewrite.
+  - path: test/functional/provider/provider_spec.lua
+    reason: broad provider-loading integration test suite that incidentally still references `provider#ruby#Call` in an assertion string, but is not itself updated by or required to understand this diff.
+  - path: runtime/lua/vim/provider/python.lua
+    reason: same nvim_echo chunk-wrapping bugfix as perl.lua applied incidentally in this commit, but python's provider is a distinct, unrelated rewrite (already Lua before this commit).
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: 'Moves the bulk of the ruby provider''s logic from Vimscript (runtime/autoload/provider/ruby.vim) into a new Lua module (runtime/lua/vim/provider/ruby.lua), leaving only thin `v:lua.require''vim.provider.ruby''...` shims in the .vim file. string_indirection is true both for the `v:lua.require''vim.provider.ruby''` Lua-module-by-name resolution and for host.vim''s `function(''provider#ruby#Require'')` Funcref-by-name registration, which is why that one function name had to be preserved verbatim in Vimscript.'

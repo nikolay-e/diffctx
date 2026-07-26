@@ -1,0 +1,6185 @@
+From 754422aa000f90c445962e7ecf9b6947ae843ee1 Mon Sep 17 00:00:00 2001
+From: Ferdinand Thiessen <opensource@fthiessen.de>
+Date: Fri, 12 Dec 2025 16:52:35 +0100
+Subject: [PATCH] refactor(theming): migrate to Typescript and Vue 3
+
+- migrate all components to Typescript
+- use script setup where feasible
+- migrate to Vue 3
+
+Signed-off-by: Ferdinand Thiessen <opensource@fthiessen.de>
+---
+ .../lib/Controller/ThemingController.php      |  35 +-
+ apps/theming/lib/Settings/Admin.php           |  34 +-
+ apps/theming/lib/Settings/Personal.php        |  10 +-
+ apps/theming/lib/Settings/PersonalSection.php |   6 +-
+ apps/theming/src/AdminTheming.vue             | 376 -----------------
+ apps/theming/src/UserTheming.vue              | 343 ----------------
+ apps/theming/src/admin-settings.js            |  16 -
+ .../src/components/AdminSectionAppMenu.vue    | 107 +++++
+ .../src/components/AdminSectionTheming.vue    |  69 ++++
+ .../AdminSectionThemingAdvanced.vue           | 136 +++++++
+ .../src/components/AppOrderSelector.vue       | 341 +++++++---------
+ .../components/AppOrderSelectorElement.vue    | 230 +++++------
+ .../src/components/BackgroundSettings.vue     | 358 ----------------
+ .../{ItemPreview.vue => ThemePreviewItem.vue} | 153 +++----
+ .../src/components/UserAppMenuSection.vue     | 196 ---------
+ .../src/components/UserPrimaryColor.vue       | 172 --------
+ .../src/components/UserSectionAppMenu.vue     | 167 ++++++++
+ .../src/components/UserSectionBackground.vue  | 306 ++++++++++++++
+ .../src/components/UserSectionHotkeys.vue     |  48 +++
+ .../components/UserSectionPrimaryColor.vue    | 166 ++++++++
+ .../src/components/admin/AppMenuSection.vue   | 132 ------
+ .../src/components/admin/CheckboxField.vue    |  91 -----
+ .../src/components/admin/ColorPickerField.vue | 215 ++++------
+ .../src/components/admin/FileInputField.vue   | 381 +++++++-----------
+ .../src/components/admin/TextField.vue        | 127 +++---
+ .../src/components/admin/shared/field.scss    |  15 -
+ .../src/composables/useAdminThemingValue.ts   | 111 +++++
+ apps/theming/src/mixins/admin/FieldMixin.js   |  49 ---
+ .../src/mixins/admin/TextValueMixin.js        |  96 -----
+ apps/theming/src/personal-settings.js         |  19 -
+ apps/theming/src/settings-admin.ts            |  13 +
+ apps/theming/src/settings-personal.ts         |  13 +
+ apps/theming/src/types.d.ts                   |  38 ++
+ apps/theming/src/utils/color.spec.ts          |  36 ++
+ apps/theming/src/utils/color.ts               |  45 +++
+ apps/theming/src/{ => utils}/logger.ts        |   0
+ .../refreshStyles.ts}                         |  11 +-
+ apps/theming/src/views/AdminTheming.vue       |  29 ++
+ apps/theming/src/views/UserTheming.vue        | 268 ++++++++++++
+ apps/theming/templates/settings-admin.php     |   2 +-
+ apps/theming/templates/settings-personal.php  |   2 +-
+ .../Controller/ThemingControllerTest.php      |  13 +-
+ apps/theming/tests/Settings/AdminTest.php     |   2 -
+ apps/theming/tests/Settings/PersonalTest.php  |   2 -
+ build/frontend-legacy/webpack.modules.cjs     |   4 -
+ .../apps/theming                              |   0
+ .../{vite.config.mts => vite.config.ts}       |   4 +
+ package-lock.json                             | 128 ++++--
+ package.json                                  |   3 +
+ 49 files changed, 2331 insertions(+), 2787 deletions(-)
+ delete mode 100644 apps/theming/src/AdminTheming.vue
+ delete mode 100644 apps/theming/src/UserTheming.vue
+ delete mode 100644 apps/theming/src/admin-settings.js
+ create mode 100644 apps/theming/src/components/AdminSectionAppMenu.vue
+ create mode 100644 apps/theming/src/components/AdminSectionTheming.vue
+ create mode 100644 apps/theming/src/components/AdminSectionThemingAdvanced.vue
+ delete mode 100644 apps/theming/src/components/BackgroundSettings.vue
+ rename apps/theming/src/components/{ItemPreview.vue => ThemePreviewItem.vue} (61%)
+ delete mode 100644 apps/theming/src/components/UserAppMenuSection.vue
+ delete mode 100644 apps/theming/src/components/UserPrimaryColor.vue
+ create mode 100644 apps/theming/src/components/UserSectionAppMenu.vue
+ create mode 100644 apps/theming/src/components/UserSectionBackground.vue
+ create mode 100644 apps/theming/src/components/UserSectionHotkeys.vue
+ create mode 100644 apps/theming/src/components/UserSectionPrimaryColor.vue
+ delete mode 100644 apps/theming/src/components/admin/AppMenuSection.vue
+ delete mode 100644 apps/theming/src/components/admin/CheckboxField.vue
+ delete mode 100644 apps/theming/src/components/admin/shared/field.scss
+ create mode 100644 apps/theming/src/composables/useAdminThemingValue.ts
+ delete mode 100644 apps/theming/src/mixins/admin/FieldMixin.js
+ delete mode 100644 apps/theming/src/mixins/admin/TextValueMixin.js
+ delete mode 100644 apps/theming/src/personal-settings.js
+ create mode 100644 apps/theming/src/settings-admin.ts
+ create mode 100644 apps/theming/src/settings-personal.ts
+ create mode 100644 apps/theming/src/types.d.ts
+ create mode 100644 apps/theming/src/utils/color.spec.ts
+ create mode 100644 apps/theming/src/utils/color.ts
+ rename apps/theming/src/{ => utils}/logger.ts (100%)
+ rename apps/theming/src/{helpers/refreshStyles.js => utils/refreshStyles.ts} (70%)
+ create mode 100644 apps/theming/src/views/AdminTheming.vue
+ create mode 100644 apps/theming/src/views/UserTheming.vue
+ rename build/{frontend-legacy => frontend}/apps/theming (100%)
+ rename build/frontend/{vite.config.mts => vite.config.ts} (95%)
+
+diff --git a/apps/theming/lib/Controller/ThemingController.php b/apps/theming/lib/Controller/ThemingController.php
+index 8bb9841ae5..1079079c57 100644
+--- a/apps/theming/lib/Controller/ThemingController.php
++++ b/apps/theming/lib/Controller/ThemingController.php
+@@ -81,10 +81,13 @@ class ThemingController extends Controller {
+ 				if (strlen($value) > 500) {
+ 					$error = $this->l10n->t('The given web address is too long');
+ 				}
+-				if (!$this->isValidUrl($value)) {
++				if ($value !== '' && !$this->isValidUrl($value)) {
+ 					$error = $this->l10n->t('The given web address is not a valid URL');
+ 				}
+ 				break;
++			case 'legalNoticeUrl':
++				$setting = 'imprintUrl';
++				// no break
+ 			case 'imprintUrl':
+ 				if (strlen($value) > 500) {
+ 					$error = $this->l10n->t('The given legal notice address is too long');
+@@ -93,6 +96,9 @@ class ThemingController extends Controller {
+ 					$error = $this->l10n->t('The given legal notice address is not a valid URL');
+ 				}
+ 				break;
++			case 'privacyPolicyUrl':
++				$setting = 'privacyUrl';
++				// no break
+ 			case 'privacyUrl':
+ 				if (strlen($value) > 500) {
+ 					$error = $this->l10n->t('The given privacy policy address is too long');
+@@ -106,30 +112,38 @@ class ThemingController extends Controller {
+ 					$error = $this->l10n->t('The given slogan is too long');
+ 				}
+ 				break;
++			case 'primaryColor':
++				$setting = 'primary_color';
++				// no break
+ 			case 'primary_color':
+ 				if (!preg_match('/^\#([0-9a-f]{3}|[0-9a-f]{6})$/i', $value)) {
+ 					$error = $this->l10n->t('The given color is invalid');
+-				} else {
+-					$this->appConfig->setAppValueString('primary_color', $value);
+-					$saved = true;
+ 				}
+ 				break;
++			case 'backgroundColor':
++				$setting = 'background_color';
++				// no break
+ 			case 'background_color':
+ 				if (!preg_match('/^\#([0-9a-f]{3}|[0-9a-f]{6})$/i', $value)) {
+ 					$error = $this->l10n->t('The given color is invalid');
+-				} else {
+-					$this->appConfig->setAppValueString('background_color', $value);
+-					$saved = true;
+ 				}
+ 				break;
++			case 'disableUserTheming':
+ 			case 'disable-user-theming':
+ 				if (!in_array($value, ['yes', 'true', 'no', 'false'])) {
+-					$error = $this->l10n->t('Disable-user-theming should be true or false');
++					$error = $this->l10n->t('%1$s should be true or false', ['disable-user-theming']);
+ 				} else {
+ 					$this->appConfig->setAppValueBool('disable-user-theming', $value === 'yes' || $value === 'true');
+ 					$saved = true;
+ 				}
+ 				break;
++			case 'backgroundMime':
++				if ($value !== 'backgroundColor') {
++					$error = $this->l10n->t('%1$s can only be set to %2$s through the API', ['backgroundMime', 'backgroundColor']);
++				}
++				break;
++			default:
++				$error = $this->l10n->t('Invalid setting key');
+ 		}
+ 		if ($error !== null) {
+ 			return new DataResponse([
+@@ -291,6 +305,11 @@ class ThemingController extends Controller {
+ 	 */
+ 	#[AuthorizedAdminSetting(settings: Admin::class)]
+ 	public function undo(string $setting): DataResponse {
++		$setting = match ($setting) {
++			'primaryColor' => 'primary_color',
++			'backgroundColor' => 'background_color',
++			default => $setting,
++		};
+ 		$value = $this->themingDefaults->undo($setting);
+ 
+ 		return new DataResponse(
+diff --git a/apps/theming/lib/Settings/Admin.php b/apps/theming/lib/Settings/Admin.php
+index 9fa0f2bb0e..518afe2318 100644
+--- a/apps/theming/lib/Settings/Admin.php
++++ b/apps/theming/lib/Settings/Admin.php
+@@ -23,7 +23,6 @@ use OCP\Util;
+ class Admin implements IDelegatedSettings {
+ 
+ 	public function __construct(
+-		private string $appName,
+ 		private IConfig $config,
+ 		private IL10N $l,
+ 		private ThemingDefaults $themingDefaults,
+@@ -38,11 +37,11 @@ class Admin implements IDelegatedSettings {
+ 	 * @return TemplateResponse
+ 	 */
+ 	public function getForm(): TemplateResponse {
+-		$themable = true;
++		$themeable = true;
+ 		$errorMessage = '';
+ 		$theme = $this->config->getSystemValue('theme', '');
+ 		if ($theme !== '') {
+-			$themable = false;
++			$themeable = false;
+ 			$errorMessage = $this->l->t('You are already using a custom theme. Theming app settings might be overwritten by that.');
+ 		}
+ 
+@@ -51,9 +50,17 @@ class Admin implements IDelegatedSettings {
+ 			return $carry;
+ 		}, []);
+ 
++		$this->initialState->provideInitialState('adminThemingInfo', [
++			'isThemeable' => $themeable,
++			'notThemeableErrorMessage' => $errorMessage,
++			'defaultBackgroundURL' => $this->urlGenerator->linkTo(Application::APP_ID, 'img/background/' . BackgroundService::DEFAULT_BACKGROUND_IMAGE),
++			'defaultBackgroundColor' => BackgroundService::DEFAULT_BACKGROUND_COLOR,
++			'docUrl' => $this->urlGenerator->linkToDocs('admin-theming'),
++			'docUrlIcons' => $this->urlGenerator->linkToDocs('admin-theming-icons'),
++			'canThemeIcons' => $this->imageManager->shouldReplaceIcons(),
++		]);
++
+ 		$this->initialState->provideInitialState('adminThemingParameters', [
+-			'isThemable' => $themable,
+-			'notThemableErrorMessage' => $errorMessage,
+ 			'name' => $this->themingDefaults->getEntity(),
+ 			'url' => $this->themingDefaults->getBaseUrl(),
+ 			'slogan' => $this->themingDefaults->getSlogan(),
+@@ -62,30 +69,25 @@ class Admin implements IDelegatedSettings {
+ 			'logoMime' => $this->config->getAppValue(Application::APP_ID, 'logoMime', ''),
+ 			'allowedMimeTypes' => $allowedMimeTypes,
+ 			'backgroundURL' => $this->imageManager->getImageUrl('background'),
+-			'defaultBackgroundURL' => $this->urlGenerator->linkTo(Application::APP_ID, 'img/background/' . BackgroundService::DEFAULT_BACKGROUND_IMAGE),
+-			'defaultBackgroundColor' => BackgroundService::DEFAULT_BACKGROUND_COLOR,
+ 			'backgroundMime' => $this->config->getAppValue(Application::APP_ID, 'backgroundMime', ''),
+ 			'logoheaderMime' => $this->config->getAppValue(Application::APP_ID, 'logoheaderMime', ''),
+ 			'faviconMime' => $this->config->getAppValue(Application::APP_ID, 'faviconMime', ''),
+ 			'legalNoticeUrl' => $this->themingDefaults->getImprintUrl(),
+ 			'privacyPolicyUrl' => $this->themingDefaults->getPrivacyUrl(),
+-			'docUrl' => $this->urlGenerator->linkToDocs('admin-theming'),
+-			'docUrlIcons' => $this->urlGenerator->linkToDocs('admin-theming-icons'),
+-			'canThemeIcons' => $this->imageManager->shouldReplaceIcons(),
+-			'userThemingDisabled' => $this->themingDefaults->isUserThemingDisabled(),
++			'disableUserTheming' => $this->themingDefaults->isUserThemingDisabled(),
+ 			'defaultApps' => $this->navigationManager->getDefaultEntryIds(),
+ 		]);
+ 
+-		Util::addScript($this->appName, 'admin-theming');
+-
+-		return new TemplateResponse($this->appName, 'settings-admin');
++		Util::addStyle(Application::APP_ID, 'settings-admin');
++		Util::addScript(Application::APP_ID, 'settings-admin');
++		return new TemplateResponse(Application::APP_ID, 'settings-admin');
+ 	}
+ 
+ 	/**
+ 	 * @return string the section ID, e.g. 'sharing'
+ 	 */
+ 	public function getSection(): string {
+-		return $this->appName;
++		return Application::APP_ID;
+ 	}
+ 
+ 	/**
+@@ -105,7 +107,7 @@ class Admin implements IDelegatedSettings {
+ 
+ 	public function getAuthorizedAppConfig(): array {
+ 		return [
+-			$this->appName => '/.*/',
++			Application::APP_ID => '/.*/',
+ 		];
+ 	}
+ }
+diff --git a/apps/theming/lib/Settings/Personal.php b/apps/theming/lib/Settings/Personal.php
+index f14deeb35f..fbe67531b3 100644
+--- a/apps/theming/lib/Settings/Personal.php
++++ b/apps/theming/lib/Settings/Personal.php
+@@ -6,6 +6,7 @@
+  */
+ namespace OCA\Theming\Settings;
+ 
++use OCA\Theming\AppInfo\Application;
+ use OCA\Theming\ITheme;
+ use OCA\Theming\Service\BackgroundService;
+ use OCA\Theming\Service\ThemesService;
+@@ -20,7 +21,6 @@ use OCP\Util;
+ class Personal implements ISettings {
+ 
+ 	public function __construct(
+-		protected string $appName,
+ 		private string $userId,
+ 		private IConfig $config,
+ 		private ThemesService $themesService,
+@@ -82,9 +82,9 @@ class Personal implements ISettings {
+ 			'enforcedDefaultApp' => $forcedDefaultEntry
+ 		]);
+ 
+-		Util::addScript($this->appName, 'personal-theming');
+-
+-		return new TemplateResponse($this->appName, 'settings-personal');
++		Util::addStyle(Application::APP_ID, 'settings-personal');
++		Util::addScript(Application::APP_ID, 'settings-personal');
++		return new TemplateResponse(Application::APP_ID, 'settings-personal');
+ 	}
+ 
+ 	/**
+@@ -92,7 +92,7 @@ class Personal implements ISettings {
+ 	 * @since 9.1
+ 	 */
+ 	public function getSection(): string {
+-		return $this->appName;
++		return Application::APP_ID;
+ 	}
+ 
+ 	/**
+diff --git a/apps/theming/lib/Settings/PersonalSection.php b/apps/theming/lib/Settings/PersonalSection.php
+index 0a9361d553..c8078bd157 100644
+--- a/apps/theming/lib/Settings/PersonalSection.php
++++ b/apps/theming/lib/Settings/PersonalSection.php
+@@ -6,6 +6,7 @@
+  */
+ namespace OCA\Theming\Settings;
+ 
++use OCA\Theming\AppInfo\Application;
+ use OCP\IL10N;
+ use OCP\IURLGenerator;
+ use OCP\Settings\IIconSection;
+@@ -20,7 +21,6 @@ class PersonalSection implements IIconSection {
+ 	 * @param IL10N $l
+ 	 */
+ 	public function __construct(
+-		protected string $appName,
+ 		private IURLGenerator $urlGenerator,
+ 		private IL10N $l,
+ 	) {
+@@ -34,7 +34,7 @@ class PersonalSection implements IIconSection {
+ 	 * @since 13.0.0
+ 	 */
+ 	public function getIcon() {
+-		return $this->urlGenerator->imagePath($this->appName, 'accessibility-dark.svg');
++		return $this->urlGenerator->imagePath(Application::APP_ID, 'accessibility-dark.svg');
+ 	}
+ 
+ 	/**
+@@ -45,7 +45,7 @@ class PersonalSection implements IIconSection {
+ 	 * @since 9.1
+ 	 */
+ 	public function getID() {
+-		return $this->appName;
++		return Application::APP_ID;
+ 	}
+ 
+ 	/**
+diff --git a/apps/theming/src/AdminTheming.vue b/apps/theming/src/AdminTheming.vue
+deleted file mode 100644
+index e813567ab4..0000000000
+--- a/apps/theming/src/AdminTheming.vue
++++ /dev/null
+@@ -1,376 +0,0 @@
+-<!--
+-  - SPDX-FileCopyrightText: 2022 Nextcloud GmbH and Nextcloud contributors
+-  - SPDX-License-Identifier: AGPL-3.0-or-later
+--->
+-
+-<template>
+-	<section>
+-		<NcSettingsSection
+-			:name="t('theming', 'Theming')"
+-			:description="t('theming', 'Theming makes it possible to easily customize the look and feel of your instance and supported clients. This will be visible for all users.')"
+-			:doc-url="docUrl"
+-			data-admin-theming-settings>
+-			<div class="admin-theming">
+-				<NcNoteCard
+-					v-if="!isThemable"
+-					type="error"
+-					:show-alert="true">
+-					<p>{{ notThemableErrorMessage }}</p>
+-				</NcNoteCard>
+-
+-				<!-- Name, web link, slogan... fields -->
+-				<TextField
+-					v-for="field in textFields"
+-					:key="field.name"
+-					:data-admin-theming-setting-field="field.name"
+-					:default-value="field.defaultValue"
+-					:display-name="field.displayName"
+-					:maxlength="field.maxlength"
+-					:name="field.name"
+-					:placeholder="field.placeholder"
+-					:type="field.type"
+-					:value.sync="field.value"
+-					@update:theming="refreshStyles" />
+-
+-				<!-- Primary color picker -->
+-				<ColorPickerField
+-					:name="primaryColorPickerField.name"
+-					:description="primaryColorPickerField.description"
+-					:default-value="primaryColorPickerField.defaultValue"
+-					:display-name="primaryColorPickerField.displayName"
+-					:value.sync="primaryColorPickerField.value"
+-					data-admin-theming-setting-primary-color
+-					@update:theming="refreshStyles" />
+-
+-				<!-- Background color picker -->
+-				<ColorPickerField
+-					name="background_color"
+-					:description="t('theming', 'Instead of a background image you can also configure a plain background color. If you use a background image changing this color will influence the color of the app menu icons.')"
+-					:default-value.sync="defaultBackgroundColor"
+-					:display-name="t('theming', 'Background color')"
+-					:value.sync="backgroundColor"
+-					data-admin-theming-setting-background-color
+-					@update:theming="refreshStyles" />
+-
+-				<!-- Default background picker -->
+-				<FileInputField
+-					:aria-label="t('theming', 'Upload new logo')"
+-					data-admin-theming-setting-file="logo"
+-					:display-name="t('theming', 'Logo')"
+-					mime-name="logoMime"
+-					:mime-value.sync="logoMime"
+-					name="logo"
+-					@update:theming="refreshStyles" />
+-
+-				<FileInputField
+-					:aria-label="t('theming', 'Upload new background and login image')"
+-					data-admin-theming-setting-file="background"
+-					:display-name="t('theming', 'Background and login image')"
+-					mime-name="backgroundMime"
+-					:mime-value.sync="backgroundMime"
+-					name="background"
+-					@uploaded="backgroundURL = $event"
+-					@update:theming="refreshStyles" />
+-
+-				<div class="admin-theming__preview" data-admin-theming-preview>
+-					<div class="admin-theming__preview-logo" data-admin-theming-preview-logo />
+-				</div>
+-			</div>
+-		</NcSettingsSection>
+-
+-		<NcSettingsSection :name="t('theming', 'Advanced options')">
+-			<div class="admin-theming-advanced">
+-				<TextField
+-					v-for="field in advancedTextFields"
+-					:key="field.name"
+-					:name="field.name"
+-					:value.sync="field.value"
+-					:default-value="field.defaultValue"
+-					:type="field.type"
+-					:display-name="field.displayName"
+-					:placeholder="field.placeholder"
+-					:maxlength="field.maxlength"
+-					@update:theming="refreshStyles" />
+-				<FileInputField
+-					v-for="field in advancedFileInputFields"
+-					:key="field.name"
+-					:name="field.name"
+-					:mime-name="field.mimeName"
+-					:mime-value.sync="field.mimeValue"
+-					:default-mime-value="field.defaultMimeValue"
+-					:display-name="field.displayName"
+-					:aria-label="field.ariaLabel"
+-					@update:theming="refreshStyles" />
+-				<CheckboxField
+-					:name="userThemingField.name"
+-					:value="userThemingField.value"
+-					:default-value="userThemingField.defaultValue"
+-					:display-name="userThemingField.displayName"
+-					:label="userThemingField.label"
+-					:description="userThemingField.description"
+-					data-admin-theming-setting-disable-user-theming
+-					@update:theming="refreshStyles" />
+-				<a
+-					v-if="!canThemeIcons"
+-					:href="docUrlIcons"
+-					rel="noreferrer noopener">
+-					<em>{{ t('theming', 'Install the ImageMagick PHP extension with support for SVG images to automatically generate favicons based on the uploaded logo and color.') }}</em>
+-				</a>
+-			</div>
+-		</NcSettingsSection>
+-		<AppMenuSection :default-apps.sync="defaultApps" />
+-	</section>
+-</template>
+-
+-<script>
+-import { loadState } from '@nextcloud/initial-state'
+-import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
+-import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
+-import AppMenuSection from './components/admin/AppMenuSection.vue'
+-import CheckboxField from './components/admin/CheckboxField.vue'
+-import ColorPickerField from './components/admin/ColorPickerField.vue'
+-import FileInputField from './components/admin/FileInputField.vue'
+-import TextField from './components/admin/TextField.vue'
+-import { refreshStyles } from './helpers/refreshStyles.js'
+-
+-const {
+-	defaultBackgroundURL,
+-
+-	backgroundMime,
+-	backgroundURL,
+-	backgroundColor,
+-	canThemeIcons,
+-	docUrl,
+-	docUrlIcons,
+-	faviconMime,
+-	isThemable,
+-	legalNoticeUrl,
+-	logoheaderMime,
+-	logoMime,
+-	name,
+-	notThemableErrorMessage,
+-	primaryColor,
+-	privacyPolicyUrl,
+-	slogan,
+-	url,
+-	userThemingDisabled,
+-	defaultApps,
+-} = loadState('theming', 'adminThemingParameters')
+-
+-const textFields = [
+-	{
+-		name: 'name',
+-		value: name,
+-		defaultValue: 'Nextcloud',
+-		type: 'text',
+-		displayName: t('theming', 'Name'),
+-		placeholder: t('theming', 'Name'),
+-		maxlength: 250,
+-	},
+-	{
+-		name: 'url',
+-		value: url,
+-		defaultValue: 'https://nextcloud.com',
+-		type: 'url',
+-		displayName: t('theming', 'Web link'),
+-		placeholder: 'https://…',
+-		maxlength: 500,
+-	},
+-	{
+-		name: 'slogan',
+-		value: slogan,
+-		defaultValue: t('theming', 'a safe home for all your data'),
+-		type: 'text',
+-		displayName: t('theming', 'Slogan'),
+-		placeholder: t('theming', 'Slogan'),
+-		maxlength: 500,
+-	},
+-]
+-
+-const primaryColorPickerField = {
+-	name: 'primary_color',
+-	value: primaryColor,
+-	defaultValue: '#0082c9',
+-	displayName: t('theming', 'Primary color'),
+-	description: t('theming', 'The primary color is used for highlighting elements like important buttons. It might get slightly adjusted depending on the current color schema.'),
+-}
+-
+-const advancedTextFields = [
+-	{
+-		name: 'imprintUrl',
+-		value: legalNoticeUrl,
+-		defaultValue: '',
+-		type: 'url',
+-		displayName: t('theming', 'Legal notice link'),
+-		placeholder: 'https://…',
+-		maxlength: 500,
+-	},
+-	{
+-		name: 'privacyUrl',
+-		value: privacyPolicyUrl,
+-		defaultValue: '',
+-		type: 'url',
+-		displayName: t('theming', 'Privacy policy link'),
+-		placeholder: 'https://…',
+-		maxlength: 500,
+-	},
+-]
+-
+-const advancedFileInputFields = [
+-	{
+-		name: 'logoheader',
+-		mimeName: 'logoheaderMime',
+-		mimeValue: logoheaderMime,
+-		defaultMimeValue: '',
+-		displayName: t('theming', 'Header logo'),
+-		ariaLabel: t('theming', 'Upload new header logo'),
+-	},
+-	{
+-		name: 'favicon',
+-		mimeName: 'faviconMime',
+-		mimeValue: faviconMime,
+-		defaultMimeValue: '',
+-		displayName: t('theming', 'Favicon'),
+-		ariaLabel: t('theming', 'Upload new favicon'),
+-	},
+-]
+-
+-const userThemingField = {
+-	name: 'disable-user-theming',
+-	value: userThemingDisabled,
+-	defaultValue: false,
+-	displayName: t('theming', 'User settings'),
+-	label: t('theming', 'Disable user theming'),
+-	description: t('theming', 'Although you can select and customize your instance, users can change their background and colors. If you want to enforce your customization, you can toggle this on.'),
+-}
+-
+-export default {
+-	name: 'AdminTheming',
+-
+-	components: {
+-		AppMenuSection,
+-		CheckboxField,
+-		ColorPickerField,
+-		FileInputField,
+-		NcNoteCard,
+-		NcSettingsSection,
+-		TextField,
+-	},
+-
+-	data() {
+-		return {
+-			backgroundMime,
+-			backgroundURL,
+-			backgroundColor,
+-			defaultBackgroundColor: '#0069c3',
+-
+-			logoMime,
+-
+-			textFields,
+-			primaryColorPickerField,
+-			advancedTextFields,
+-			advancedFileInputFields,
+-			userThemingField,
+-			defaultApps,
+-
+-			canThemeIcons,
+-			docUrl,
+-			docUrlIcons,
+-			isThemable,
+-			notThemableErrorMessage,
+-		}
+-	},
+-
+-	computed: {
+-		cssBackgroundImage() {
+-			if (this.backgroundURL) {
+-				return `url('${this.backgroundURL}')`
+-			}
+-			return 'unset'
+-		},
+-	},
+-
+-	watch: {
+-		backgroundMime() {
+-			if (this.backgroundMime === '') {
+-				// Reset URL to default value for preview
+-				this.backgroundURL = defaultBackgroundURL
+-			} else if (this.backgroundMime === 'backgroundColor') {
+-				// Reset URL to empty image when only color is configured
+-				this.backgroundURL = ''
+-			}
+-		},
+-
+-		async backgroundURL() {
+-			// When the background is changed we need to emulate the background color change
+-			if (this.backgroundURL !== '') {
+-				const color = await this.calculateDefaultBackground()
+-				this.defaultBackgroundColor = color
+-				this.backgroundColor = color
+-			}
+-		},
+-	},
+-
+-	async mounted() {
+-		if (this.backgroundURL) {
+-			this.defaultBackgroundColor = await this.calculateDefaultBackground()
+-		}
+-	},
+-
+-	methods: {
+-		refreshStyles,
+-
+-		/**
+-		 * Same as on server - if a user uploads an image the mean color will be set as the background color
+-		 */
+-		calculateDefaultBackground() {
+-			const toHex = (num) => `00${num.toString(16)}`.slice(-2)
+-
+-			return new Promise((resolve, reject) => {
+-				const img = new Image()
+-				img.src = this.backgroundURL
+-				img.onload = () => {
+-					const context = document.createElement('canvas').getContext('2d')
+-					context.imageSmoothingEnabled = true
+-					context.drawImage(img, 0, 0, 1, 1)
+-					resolve('#' + [...context.getImageData(0, 0, 1, 1).data.slice(0, 3)].map(toHex).join(''))
+-				}
+-				img.onerror = reject
+-			})
+-		},
+-	},
+-}
+-</script>
+-
+-<style lang="scss" scoped>
+-.admin-theming,
+-.admin-theming-advanced {
+-	display: flex;
+-	flex-direction: column;
+-	gap: 8px 0;
+-}
+-
+-.admin-theming {
+-	&__preview {
+-		width: 230px;
+-		height: 140px;
+-		background-size: cover;
+-		background-position: center;
+-		text-align: center;
+-		margin-top: 10px;
+-		background-color: v-bind('backgroundColor');
+-		background-image: v-bind('cssBackgroundImage');
+-
+-		&-logo {
+-			width: 20%;
+-			height: 20%;
+-			margin-top: 20px;
+-			display: inline-block;
+-			background-size: contain;
+-			background-position: center;
+-			background-repeat: no-repeat;
+-			background-image: var(--image-logo, url('../../../core/img/logo/logo.svg'));
+-		}
+-	}
+-}
+-</style>
+diff --git a/apps/theming/src/UserTheming.vue b/apps/theming/src/UserTheming.vue
+deleted file mode 100644
+index 3b8b2f0e62..0000000000
+--- a/apps/theming/src/UserTheming.vue
++++ /dev/null
+@@ -1,343 +0,0 @@
+-<!--
+-  - SPDX-FileCopyrightText: 2020 Nextcloud GmbH and Nextcloud contributors
+-  - SPDX-License-Identifier: AGPL-3.0-or-later
+--->
+-
+-<template>
+-	<section>
+-		<NcSettingsSection
+-			:name="t('theming', 'Appearance and accessibility settings')"
+-			class="theming">
+-			<!-- eslint-disable-next-line vue/no-v-html -->
+-			<p v-html="description" />
+-			<!-- eslint-disable-next-line vue/no-v-html -->
+-			<p v-html="descriptionDetail" />
+-
+-			<div class="theming__preview-list">
+-				<ItemPreview
+-					v-for="theme in themes"
+-					:key="theme.id"
+-					:enforced="theme.id === enforceTheme"
+-					:selected="selectedTheme.id === theme.id"
+-					:theme="theme"
+-					:unique="themes.length === 1"
+-					type="theme"
+-					@change="changeTheme" />
+-			</div>
+-
+-			<div class="theming__preview-list">
+-				<ItemPreview
+-					v-for="theme in fonts"
+-					:key="theme.id"
+-					:selected="theme.enabled"
+-					:theme="theme"
+-					:unique="fonts.length === 1"
+-					type="font"
+-					@change="changeFont" />
+-			</div>
+-
+-			<h3>{{ t('theming', 'Misc accessibility options') }}</h3>
+-			<NcCheckboxRadioSwitch
+-				type="checkbox"
+-				:model-value="enableBlurFilter === 'yes'"
+-				:indeterminate="enableBlurFilter === ''"
+-				@update:modelValue="changeEnableBlurFilter">
+-				{{ t('theming', 'Enable blur background filter (may increase GPU load)') }}
+-			</NcCheckboxRadioSwitch>
+-		</NcSettingsSection>
+-
+-		<NcSettingsSection
+-			:name="t('theming', 'Primary color')"
+-			:description="isUserThemingDisabled
+-				? t('theming', 'Customization has been disabled by your administrator')
+-				: t('theming', 'Set a primary color to highlight important elements. The color used for elements such as primary buttons might differ a bit as it gets adjusted to fulfill accessibility requirements.')">
+-			<UserPrimaryColor
+-				v-if="!isUserThemingDisabled"
+-				ref="primaryColor"
+-				@refresh-styles="refreshGlobalStyles" />
+-		</NcSettingsSection>
+-
+-		<NcSettingsSection
+-			class="background"
+-			:name="t('theming', 'Background and color')"
+-			:description="isUserThemingDisabled
+-				? t('theming', 'Customization has been disabled by your administrator')
+-				: t('theming', 'The background can be set to an image from the default set, a custom uploaded image, or a plain color.')">
+-			<BackgroundSettings
+-				v-if="!isUserThemingDisabled"
+-				class="background__grid"
+-				@update:background="refreshGlobalStyles" />
+-		</NcSettingsSection>
+-
+-		<NcSettingsSection
+-			:name="t('theming', 'Keyboard shortcuts')"
+-			:description="t('theming', 'In some cases keyboard shortcuts can interfere with accessibility tools. In order to allow focusing on your tool correctly you can disable all keyboard shortcuts here. This will also disable all available shortcuts in apps.')">
+-			<NcCheckboxRadioSwitch
+-				v-model="shortcutsDisabled"
+-				class="theming__preview-toggle"
+-				type="switch"
+-				@change="changeShortcutsDisabled">
+-				{{ t('theming', 'Disable all keyboard shortcuts') }}
+-			</NcCheckboxRadioSwitch>
+-		</NcSettingsSection>
+-
+-		<UserAppMenuSection />
+-	</section>
+-</template>
+-
+-<script>
+-import axios, { isAxiosError } from '@nextcloud/axios'
+-import { showError } from '@nextcloud/dialogs'
+-import { loadState } from '@nextcloud/initial-state'
+-import { generateOcsUrl } from '@nextcloud/router'
+-import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
+-import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
+-import BackgroundSettings from './components/BackgroundSettings.vue'
+-import ItemPreview from './components/ItemPreview.vue'
+-import UserAppMenuSection from './components/UserAppMenuSection.vue'
+-import UserPrimaryColor from './components/UserPrimaryColor.vue'
+-import { refreshStyles } from './helpers/refreshStyles.js'
+-import { logger } from './logger.js'
+-
+-const availableThemes = loadState('theming', 'themes', [])
+-const enforceTheme = loadState('theming', 'enforceTheme', '')
+-const shortcutsDisabled = loadState('theming', 'shortcutsDisabled', false)
+-const enableBlurFilter = loadState('theming', 'enableBlurFilter', '')
+-
+-const isUserThemingDisabled = loadState('theming', 'isUserThemingDisabled')
+-
+-export default {
+-	name: 'UserTheming',
+-
+-	components: {
+-		ItemPreview,
+-		NcCheckboxRadioSwitch,
+-		NcSettingsSection,
+-		BackgroundSettings,
+-		UserAppMenuSection,
+-		UserPrimaryColor,
+-	},
+-
+-	data() {
+-		return {
+-			availableThemes,
+-
+-			// Admin defined configs
+-			enforceTheme,
+-			shortcutsDisabled,
+-			isUserThemingDisabled,
+-
+-			enableBlurFilter,
+-		}
+-	},
+-
+-	computed: {
+-		themes() {
+-			return this.availableThemes.filter((theme) => theme.type === 1)
+-		},
+-
+-		fonts() {
+-			return this.availableThemes.filter((theme) => theme.type === 2)
+-		},
+-
+-		// Selected theme, fallback on first (default) if none
+-		selectedTheme() {
+-			return this.themes.find((theme) => theme.enabled === true) || this.themes[0]
+-		},
+-
+-		description() {
+-			return t(
+-				'theming',
+-				'Universal access is very important to us. We follow web standards and check to make everything usable also without mouse, and assistive software such as screenreaders. We aim to be compliant with the {linkstart}Web Content Accessibility Guidelines{linkend} 2.1 on AA level, with the high contrast theme even on AAA level.',
+-				{
+-					linkstart: '<a target="_blank" href="https://www.w3.org/WAI/standards-guidelines/wcag/" rel="noreferrer nofollow">',
+-					linkend: '</a>',
+-				},
+-				{
+-					escape: false,
+-				},
+-			)
+-		},
+-
+-		descriptionDetail() {
+-			return t(
+-				'theming',
+-				'If you find any issues, do not hesitate to report them on {issuetracker}our issue tracker{linkend}. And if you want to get involved, come join {designteam}our design team{linkend}!',
+-				{
+-					issuetracker: '<a target="_blank" href="https://github.com/nextcloud/server/issues/" rel="noreferrer nofollow">',
+-					designteam: '<a target="_blank" href="https://nextcloud.com/design" rel="noreferrer nofollow">',
+-					linkend: '</a>',
+-				},
+-				{
+-					escape: false,
+-				},
+-			)
+-		},
+-	},
+-
+-	watch: {
+-		shortcutsDisabled(newState) {
+-			this.changeShortcutsDisabled(newState)
+-		},
+-	},
+-
+-	methods: {
+-		// Refresh server-side generated theming CSS
+-		async refreshGlobalStyles() {
+-			await refreshStyles()
+-			this.$nextTick(() => this.$refs.primaryColor.reload())
+-		},
+-
+-		changeTheme({ enabled, id }) {
+-			// Reset selected and select new one
+-			this.themes.forEach((theme) => {
+-				if (theme.id === id && enabled) {
+-					theme.enabled = true
+-					return
+-				}
+-				theme.enabled = false
+-			})
+-
+-			this.updateBodyAttributes()
+-			this.selectItem(enabled, id)
+-		},
+-
+-		changeFont({ enabled, id }) {
+-			// Reset selected and select new one
+-			this.fonts.forEach((font) => {
+-				if (font.id === id && enabled) {
+-					font.enabled = true
+-					return
+-				}
+-				font.enabled = false
+-			})
+-
+-			this.updateBodyAttributes()
+-			this.selectItem(enabled, id)
+-		},
+-
+-		async changeShortcutsDisabled(newState) {
+-			if (newState) {
+-				await axios({
+-					url: generateOcsUrl('apps/provisioning_api/api/v1/config/users/{appId}/{configKey}', {
+-						appId: 'theming',
+-						configKey: 'shortcuts_disabled',
+-					}),
+-					data: {
+-						configValue: 'yes',
+-					},
+-					method: 'POST',
+-				})
+-			} else {
+-				await axios({
+-					url: generateOcsUrl('apps/provisioning_api/api/v1/config/users/{appId}/{configKey}', {
+-						appId: 'theming',
+-						configKey: 'shortcuts_disabled',
+-					}),
+-					method: 'DELETE',
+-				})
+-			}
+-		},
+-
+-		async changeEnableBlurFilter() {
+-			this.enableBlurFilter = this.enableBlurFilter === 'no' ? 'yes' : 'no'
+-			await axios({
+-				url: generateOcsUrl('apps/provisioning_api/api/v1/config/users/{appId}/{configKey}', {
+-					appId: 'theming',
+-					configKey: 'force_enable_blur_filter',
+-				}),
+-				data: {
+-					configValue: this.enableBlurFilter,
+-				},
+-				method: 'POST',
+-			})
+-			// Refresh the styles
+-			this.$emit('update:background')
+-		},
+-
+-		updateBodyAttributes() {
+-			const enabledThemesIDs = this.themes.filter((theme) => theme.enabled === true).map((theme) => theme.id)
+-			const enabledFontsIDs = this.fonts.filter((font) => font.enabled === true).map((font) => font.id)
+-
+-			this.themes.forEach((theme) => {
+-				document.body.toggleAttribute(`data-theme-${theme.id}`, theme.enabled)
+-			})
+-			this.fonts.forEach((font) => {
+-				document.body.toggleAttribute(`data-theme-${font.id}`, font.enabled)
+-			})
+-
+-			document.body.setAttribute('data-themes', [...enabledThemesIDs, ...enabledFontsIDs].join(','))
+-		},
+-
+-		/**
+-		 * Commit a change and force reload css
+-		 * Fetching the file again will trigger the server update
+-		 *
+-		 * @param {boolean} enabled the theme state
+-		 * @param {string} themeId the theme ID to change
+-		 */
+-		async selectItem(enabled, themeId) {
+-			try {
+-				if (enabled) {
+-					await axios({
+-						url: generateOcsUrl('apps/theming/api/v1/theme/{themeId}/enable', { themeId }),
+-						method: 'PUT',
+-					})
+-				} else {
+-					await axios({
+-						url: generateOcsUrl('apps/theming/api/v1/theme/{themeId}', { themeId }),
+-						method: 'DELETE',
+-					})
+-				}
+-			} catch (error) {
+-				logger.error('theming: Unable to apply setting.', { error })
+-				let message = t('theming', 'Unable to apply the setting.')
+-				if (isAxiosError(error) && error.response.data.ocs?.meta?.message) {
+-					message = `${error.response.data.ocs.meta.message}. ${message}`
+-				}
+-				showError(message)
+-			}
+-		},
+-	},
+-}
+-</script>
+-
+-<style lang="scss" scoped>
+-.theming {
+-	// Limit width of settings sections for readability
+-	p {
+-		max-width: 800px;
+-	}
+-
+-	// Proper highlight for links and focus feedback
+-	:deep(a) {
+-		font-weight: bold;
+-
+-		&:hover,
+-		&:focus {
+-			text-decoration: underline;
+-		}
+-	}
+-
+-	&__preview-list {
+-		--gap: 30px;
+-		display: grid;
+-		margin-top: var(--gap);
+-		column-gap: var(--gap);
+-		row-gap: var(--gap);
+-	}
+-}
+-
+-.background {
+-	&__grid {
+-		margin-top: 30px;
+-	}
+-}
+-
+-@media (max-width: 1440px) {
+-	.theming__preview-list {
+-		display: flex;
+-		flex-direction: column;
+-	}
+-}
+-</style>
+diff --git a/apps/theming/src/admin-settings.js b/apps/theming/src/admin-settings.js
+deleted file mode 100644
+index c3fd62f214..0000000000
+--- a/apps/theming/src/admin-settings.js
++++ /dev/null
+@@ -1,16 +0,0 @@
+-/**
+- * SPDX-FileCopyrightText: 2022 Nextcloud GmbH and Nextcloud contributors
+- * SPDX-License-Identifier: AGPL-3.0-or-later
+- */
+-import { getCSPNonce } from '@nextcloud/auth'
+-import Vue from 'vue'
+-import App from './AdminTheming.vue'
+-
+-__webpack_nonce__ = getCSPNonce()
+-
+-Vue.prototype.OC = OC
+-Vue.prototype.t = t
+-
+-const View = Vue.extend(App)
+-const theming = new View()
+-theming.$mount('#admin-theming')
+diff --git a/apps/theming/src/components/AdminSectionAppMenu.vue b/apps/theming/src/components/AdminSectionAppMenu.vue
+new file mode 100644
+index 0000000000..07d5c1daa4
+--- /dev/null
++++ b/apps/theming/src/components/AdminSectionAppMenu.vue
+@@ -0,0 +1,107 @@
++<!--
++  - SPDX-FileCopyrightText: 2023 Nextcloud GmbH and Nextcloud contributors
++  - SPDX-License-Identifier: AGPL-3.0-or-later
++-->
++
++<script setup lang="ts">
++import type { INavigationEntry } from '../../../../core/src/types/navigation.ts'
++import type { AdminThemingParameters } from '../types.d.ts'
++
++import axios from '@nextcloud/axios'
++import { showError } from '@nextcloud/dialogs'
++import { loadState } from '@nextcloud/initial-state'
++import { t } from '@nextcloud/l10n'
++import { generateUrl } from '@nextcloud/router'
++import { ref, useId, watch } from 'vue'
++import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
++import NcSelect from '@nextcloud/vue/components/NcSelect'
++import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
++import AppOrderSelector from './AppOrderSelector.vue'
++import { logger } from '../utils/logger.ts'
++
++const idGlobalDefaultApp = useId()
++const { defaultApps } = loadState<AdminThemingParameters>('theming', 'adminThemingParameters')
++
++/**
++ * All enabled apps which can be navigated
++ */
++const allApps = loadState<INavigationEntry[]>('core', 'apps')
++	.map(({ id, name, icon }) => ({ label: name, id, icon }))
++
++/**
++ * Currently selected app, wrapps the setter
++ */
++const selectedApps = ref(defaultApps.map((id) => allApps.find((app) => app.id === id)!).filter(Boolean))
++watch(selectedApps, async (value) => {
++	try {
++		await saveSetting('defaultApps', value.map((app) => app.id))
++	} catch (error) {
++		logger.error('Could not set global default apps', { error })
++		showError(t('theming', 'Could not set global default apps'))
++	}
++})
++
++const hasCustomDefaultApp = ref(defaultApps.length > 0)
++watch(hasCustomDefaultApp, (checked) => {
++	selectedApps.value = checked
++		? allApps.filter((app) => ['dashboard', 'files'].includes(app.id))
++		: []
++})
++
++/**
++ * @param key - The setting key
++ * @param value - The setting value
++ */
++async function saveSetting(key: string, value: unknown) {
++	const url = generateUrl('/apps/theming/ajax/updateAppMenu')
++	return await axios.put(url, {
++		setting: key,
++		value,
++	})
++}
++</script>
++
++<template>
++	<NcSettingsSection :name="t('theming', 'Navigation bar settings')">
++		<h3>{{ t('theming', 'Default app') }}</h3>
++		<p class="info-note">
++			{{ t('theming', 'The default app is the app that is e.g. opened after login or when the logo in the menu is clicked.') }}
++		</p>
++
++		<NcCheckboxRadioSwitch v-model="hasCustomDefaultApp" type="switch">
++			{{ t('theming', 'Use custom default app') }}
++		</NcCheckboxRadioSwitch>
++
++		<section v-if="hasCustomDefaultApp" :aria-labelledby="idGlobalDefaultApp">
++			<h4 :id="idGlobalDefaultApp">
++				{{ t('theming', 'Global default app') }}
++			</h4>
++			<NcSelect
++				v-model="selectedApps"
++				keep-open
++				multiple
++				:placeholder="t('theming', 'Global default apps')"
++				:options="allApps" />
++
++			<h5>{{ t('theming', 'Default app priority') }}</h5>
++			<p class="info-note">
++				{{ t('theming', 'If an app is not enabled for a user, the next app with lower priority is used.') }}
++			</p>
++			<AppOrderSelector v-model="selectedApps" />
++		</section>
++	</NcSettingsSection>
++</template>
++
++<style scoped lang="scss">
++h3, h4 {
++	font-weight: bold;
++}
++
++h4, h5 {
++	margin-block-start: 12px;
++}
++
++.info-note {
++	color: var(--color-text-maxcontrast);
++}
++</style>
+diff --git a/apps/theming/src/components/AdminSectionTheming.vue b/apps/theming/src/components/AdminSectionTheming.vue
+new file mode 100644
+index 0000000000..5bee9102c1
+--- /dev/null
++++ b/apps/theming/src/components/AdminSectionTheming.vue
+@@ -0,0 +1,69 @@
++<!--
++  - SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
++  - SPDX-License-Identifier: AGPL-3.0-or-later
++-->
++
++<script setup lang="ts">
++import type { AdminThemingInfo } from '../types.d.ts'
++
++import { loadState } from '@nextcloud/initial-state'
++import { t } from '@nextcloud/l10n'
++import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
++import TextField from './admin/TextField.vue'
++
++const ADMIN_INFO = loadState<AdminThemingInfo>('theming', 'adminThemingInfo')
++</script>
++
++<template>
++	<NcSettingsSection
++		:name="t('theming', 'Theming')"
++		:description="t('theming', 'Theming makes it possible to easily customize the look and feel of your instance and supported clients. This will be visible for all users.')"
++		:doc-url="ADMIN_INFO.docUrl"
++		data-admin-theming-settings>
++		<div :class="$style.adminSectionTheming">
++			<!-- Name, web link, slogan... fields -->
++			<TextField
++				name="name"
++				:label="t('theming', 'Name')"
++				default-value="Nextcloud"
++				maxlength="250" />
++			<TextField
++				name="url"
++				:label="t('theming', 'Web link')"
++				default-value="https://nextcloud.com"
++				placeholder="https://…"
++				type="url"
++				maxlength="500" />
++			<TextField
++				name="slogan"
++				:label="t('theming', 'Slogan')"
++				:default-value="t('settings', 'a safe home for all your data')"
++				maxlength="500" />
++			<hr>
++
++			<TextField
++				name="legalNoticeUrl"
++				:label="t('theming', 'Legal notice link')"
++				default-value=""
++				type="url"
++				placeholder="https://…"
++				maxlength="500" />
++			<TextField
++				name="privacyPolicyUrl"
++				:label="t('theming', 'Privacy policy link')"
++				default-value=""
++				type="url"
++				placeholder="https://…"
++				maxlength="500" />
++		</div>
++	</NcSettingsSection>
++</template>
++
++<style module>
++.adminSectionTheming {
++	max-width: 650px;
++	display: flex;
++	flex-direction: column;
++	gap: calc(2 * var(--default-grid-baseline));
++}
++</style>
+diff --git a/apps/theming/src/components/AdminSectionThemingAdvanced.vue b/apps/theming/src/components/AdminSectionThemingAdvanced.vue
+new file mode 100644
+index 0000000000..991ce65c99
+--- /dev/null
++++ b/apps/theming/src/components/AdminSectionThemingAdvanced.vue
+@@ -0,0 +1,136 @@
++<!--
++  - SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
++  - SPDX-License-Identifier: AGPL-3.0-or-later
++-->
++
++<script setup lang="ts">
++import type { AdminThemingInfo, AdminThemingParameters } from '../types.d.ts'
++
++import axios, { isAxiosError } from '@nextcloud/axios'
++import { showError } from '@nextcloud/dialogs'
++import { loadState } from '@nextcloud/initial-state'
++import { t } from '@nextcloud/l10n'
++import { generateUrl } from '@nextcloud/router'
++import { ref, watch } from 'vue'
++import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
++import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
++import ColorPickerField from './admin/ColorPickerField.vue'
++import FileInputField from './admin/FileInputField.vue'
++import { useAdminThemingValue } from '../composables/useAdminThemingValue.ts'
++import { logger } from '../utils/logger.ts'
++import { refreshStyles } from '../utils/refreshStyles.ts'
++
++const { defaultBackgroundColor } = loadState<AdminThemingInfo>('theming', 'adminThemingInfo')
++const adminThemingParameters = loadState<AdminThemingParameters>('theming', 'adminThemingParameters')
++
++const userThemingDisabled = ref(adminThemingParameters.disableUserTheming)
++const { isSaving } = useAdminThemingValue('disableUserTheming', userThemingDisabled, false)
++
++const isRemovingBackgroundImage = ref(false)
++const removeBackgroundImage = ref(adminThemingParameters.backgroundMime === 'backgroundColor')
++watch(removeBackgroundImage, toggleBackground)
++
++/**
++ * Remove the background image and set the background to backgroundColor
++ *
++ * @param value - Whether to remove the background image or restore it
++ */
++async function toggleBackground(value: boolean) {
++	isRemovingBackgroundImage.value = true
++	try {
++		if (value) {
++			await axios.post(generateUrl('/apps/theming/ajax/undoChanges'), {
++				setting: 'background',
++			})
++			await axios.post(generateUrl('/apps/theming/ajax/updateStylesheet'), {
++				setting: 'backgroundMime',
++				value: 'backgroundColor',
++			})
++		} else {
++			await axios.post(generateUrl('/apps/theming/ajax/undoChanges'), {
++				setting: 'backgroundMime',
++			})
++		}
++		await refreshStyles()
++	} catch (error) {
++		logger.error('Failed to remove background image', { error })
++		if (isAxiosError(error) && error.response?.data?.data?.message) {
++			showError(error.response.data.data.message)
++			return
++		}
++		throw error
++	} finally {
++		isRemovingBackgroundImage.value = false
++	}
++}
++</script>
++
++<template>
++	<NcSettingsSection :name="t('theming', 'Background and color')">
++		<div :class="$style.adminSectionThemingAdvanced">
++			<!-- primary color -->
++			<ColorPickerField
++				name="primaryColor"
++				:label="t('theming', 'Primary color')"
++				default-value="#00679e"
++				@updated="refreshStyles">
++				<template #description>
++					{{ t('theming', 'Set the default primary color, used to highlight important elements.') }}
++					{{ t('theming', 'The color used for elements such as primary buttons might differ a bit as it gets adjusted to fulfill accessibility requirements.') }}
++				</template>
++			</ColorPickerField>
++			<!-- background color -->
++			<ColorPickerField
++				name="backgroundColor"
++				:label="t('theming', 'Background color')"
++				:default-value="defaultBackgroundColor"
++				@updated="refreshStyles">
++				<template #description>
++					{{ t('theming', 'When no background image is set the background color will be used.') }}
++					{{ t('theming', 'Otherwise the background color is by default generated from the background image, but can be adjusted to fine tune the color of the navigation icons.') }}
++				</template>
++			</ColorPickerField>
++			<!-- background and logo -->
++			<NcCheckboxRadioSwitch
++				v-model="removeBackgroundImage"
++				type="switch"
++				:loading="isRemovingBackgroundImage"
++				:description="t('theming', 'Use a plain background color instead of a background image.')">
++				{{ t('theming', 'Remove background image') }}
++			</NcCheckboxRadioSwitch>
++			<FileInputField
++				name="background"
++				:disabled="removeBackgroundImage"
++				:label="t('theming', 'Background image')"
++				@updated="refreshStyles" />
++			<FileInputField
++				name="favicon"
++				:label="t('theming', 'Favicon')" />
++			<FileInputField
++				name="logo"
++				:label="t('theming', 'Logo')"
++				@updated="refreshStyles" />
++			<FileInputField
++				name="logoheader"
++				:label="t('theming', 'Navigation bar logo')"
++				@updated="refreshStyles" />
++			<hr>
++			<NcCheckboxRadioSwitch
++				v-model="userThemingDisabled"
++				type="switch"
++				:loading="isSaving"
++				:description="t('theming', 'Although you can select and customize your instance, users can change their background and colors. If you want to enforce your customization, you can toggle this on.')">
++				{{ t('theming', 'Disable user theming') }}
++			</NcCheckboxRadioSwitch>
++		</div>
++	</NcSettingsSection>
++</template>
++
++<style module>
++.adminSectionThemingAdvanced {
++	display: flex;
++	flex-direction: column;
++	gap: calc(2 * var(--default-grid-baseline));
++	max-width: 650px;
++}
++</style>
+diff --git a/apps/theming/src/components/AppOrderSelector.vue b/apps/theming/src/components/AppOrderSelector.vue
+index beff28172b..606f6db678 100644
+--- a/apps/theming/src/components/AppOrderSelector.vue
++++ b/apps/theming/src/components/AppOrderSelector.vue
+@@ -2,209 +2,170 @@
+   - SPDX-FileCopyrightText: 2023 Nextcloud GmbH and Nextcloud contributors
+   - SPDX-License-Identifier: AGPL-3.0-or-later
+ -->
+-<template>
+-	<Fragment>
+-		<div
+-			:id="statusInfoId"
+-			aria-live="polite"
+-			class="hidden-visually"
+-			role="status">
+-			{{ statusInfo }}
+-		</div>
+-		<ol ref="listElement" data-cy-app-order class="order-selector">
+-			<AppOrderSelectorElement
+-				v-for="app, index in appList"
+-				:key="`${app.id}${renderCount}`"
+-				ref="selectorElements"
+-				:app="app"
+-				:aria-details="ariaDetails"
+-				:aria-describedby="statusInfoId"
+-				:is-first="index === 0 || !!appList[index - 1].default"
+-				:is-last="index === value.length - 1"
+-				v-on="app.default
+-					? {}
+-					: {
+-						'move:up': () => moveUp(index),
+-						'move:down': () => moveDown(index),
+-						'update:focus': () => updateStatusInfo(index),
+-					}" />
+-		</ol>
+-	</Fragment>
+-</template>
+ 
+-<script lang="ts">
+-import type { PropType } from 'vue'
++<script setup lang="ts">
++import type { IApp } from './AppOrderSelectorElement.vue'
+ 
+-import { translate as t } from '@nextcloud/l10n'
++import { t } from '@nextcloud/l10n'
+ import { useSortable } from '@vueuse/integrations/useSortable'
+-import { computed, defineComponent, onUpdated, ref } from 'vue'
+-import { Fragment } from 'vue-frag'
++import { computed, onUpdated, ref } from 'vue'
+ import AppOrderSelectorElement from './AppOrderSelectorElement.vue'
+ 
+-export interface IApp {
+-	id: string // app id
+-	icon: string // path to the icon svg
+-	label: string // display name
+-	default?: boolean // force app as default app
+-	app?: string
+-}
+-
+-export default defineComponent({
+-	name: 'AppOrderSelector',
+-	components: {
+-		AppOrderSelectorElement,
+-		Fragment,
+-	},
+-
+-	props: {
+-		/**
+-		 * Details like status information that need to be forwarded to the interactive elements
+-		 */
+-		ariaDetails: {
+-			type: String,
+-			default: null,
+-		},
+-
+-		/**
+-		 * List of apps to reorder
+-		 */
+-		value: {
+-			type: Array as PropType<IApp[]>,
+-			required: true,
+-		},
+-	},
+-
+-	emits: {
+-		/**
+-		 * Update the apps list on reorder
+-		 *
+-		 * @param value The new value of the app list
+-		 */
+-		'update:value': (value: IApp[]) => Array.isArray(value),
+-	},
+-
+-	setup(props, { emit }) {
+-		/**
+-		 * The Element that contains the app list
+-		 */
+-		const listElement = ref<HTMLElement | null>(null)
+-
+-		/**
+-		 * Helper to force rerender the list in case of a invalid drag event
+-		 */
+-		const renderCount = ref(0)
+-
+-		/**
+-		 * The app list with setter that will ement the `update:value` event
+-		 */
+-		const appList = computed({
+-			get: () => props.value,
+-			// Ensure the sortable.js does not mess with the default attribute
+-			set: (list) => {
+-				const newValue = [...list].sort((a, b) => ((b.default ? 1 : 0) - (a.default ? 1 : 0)) || list.indexOf(a) - list.indexOf(b))
+-				if (newValue.some(({ id }, index) => id !== props.value[index].id)) {
+-					emit('update:value', newValue)
+-				} else {
+-					// forceUpdate as the DOM has changed because of a drag event, but the reactive state has not -> wrong state
+-					renderCount.value += 1
+-				}
+-			},
+-		})
+-
+-		/**
+-		 * Handle drag & drop sorting
+-		 */
+-		useSortable(listElement, appList, { filter: '.order-selector-element--disabled' })
+-
+-		/**
+-		 * Array of all AppOrderSelectorElement components used to for keeping the focus after button click
+-		 */
+-		const selectorElements = ref<InstanceType<typeof AppOrderSelectorElement>[]>([])
+-
+-		/**
+-		 * We use the updated hook here to verify all selector elements keep the focus on the last pressed button
+-		 * This is needed to be done in this component to make sure Sortable.JS has finished sorting the elements before focussing an element
+-		 */
+-		onUpdated(() => {
+-			selectorElements.value.forEach((element) => element.keepFocus())
+-		})
+-
+-		/**
+-		 * Handle element is moved up
+-		 *
+-		 * @param index The index of the element that is moved
+-		 */
+-		const moveUp = (index: number) => {
+-			const before = index > 1 ? props.value.slice(0, index - 1) : []
+-			// skip if not possible, because of default default app
+-			if (props.value[index - 1]?.default) {
+-				return
+-			}
+-
+-			const after = [props.value[index - 1]]
+-			if (index < props.value.length - 1) {
+-				after.push(...props.value.slice(index + 1))
+-			}
+-			emit('update:value', [...before, props.value[index], ...after])
+-		}
+-
+-		/**
+-		 * Handle element is moved down
+-		 *
+-		 * @param index The index of the element that is moved
+-		 */
+-		const moveDown = (index: number) => {
+-			const before = index > 0 ? props.value.slice(0, index) : []
+-			before.push(props.value[index + 1])
+-
+-			const after = index < (props.value.length - 2) ? props.value.slice(index + 2) : []
+-			emit('update:value', [...before, props.value[index], ...after])
+-		}
++defineOptions({
++	inheritAttrs: false,
++})
+ 
+-		/**
+-		 * Additional status information to show to screen reader users for accessibility
+-		 */
+-		const statusInfo = ref('')
+-
+-		/**
+-		 * ID to be used on the status info element
+-		 */
+-		const statusInfoId = `sorting-status-info-${(Math.random() + 1).toString(36).substring(7)}`
+-
+-		/**
+-		 * Update the status information for the currently selected app
+-		 *
+-		 * @param index Index of the app that is currently selected
+-		 */
+-		const updateStatusInfo = (index: number) => {
+-			statusInfo.value = t('theming', 'Current selected app: {app}, position {position} of {total}', {
+-				app: props.value[index].label,
+-				position: index + 1,
+-				total: props.value.length,
+-			})
++/**
++ * List of apps to reorder
++ */
++const modelValue = defineModel<IApp[]>({ required: true })
++
++defineProps<{
++	/**
++	 * Details like status information that need to be forwarded to the interactive elements
++	 */
++	ariaDetails: string
++}>()
++
++/**
++ * The Element that contains the app list
++ */
++const listElement = ref<HTMLElement | null>(null)
++
++/**
++ * Helper to force rerender the list in case of a invalid drag event
++ */
++const renderCount = ref(0)
++
++/**
++ * The app list with setter that will ement the `update:value` event
++ */
++const appList = computed({
++	get: () => modelValue.value,
++	// Ensure the sortable.js does not mess with the default attribute
++	set: (list) => {
++		const newValue = [...list]
++			.sort((a, b) => ((b.default ? 1 : 0) - (a.default ? 1 : 0)) || list.indexOf(a) - list.indexOf(b))
++
++		if (newValue.some(({ id }, index) => id !== modelValue.value.at(index)?.id)) {
++			modelValue.value = newValue
++		} else {
++			// forceUpdate as the DOM has changed because of a drag event, but the reactive state has not -> wrong state
++			renderCount.value += 1
+ 		}
++	},
++})
+ 
+-		return {
+-			appList,
+-			listElement,
++/**
++ * Handle drag & drop sorting
++ */
++useSortable(listElement, appList, { filter: '.order-selector-element--disabled' })
++
++/**
++ * Array of all AppOrderSelectorElement components used to for keeping the focus after button click
++ */
++const selectorElements = ref<InstanceType<typeof AppOrderSelectorElement>[]>([])
++
++/**
++ * We use the updated hook here to verify all selector elements keep the focus on the last pressed button
++ * This is needed to be done in this component to make sure Sortable.JS has finished sorting the elements before focussing an element
++ */
++onUpdated(() => {
++	selectorElements.value.forEach((element) => element.keepFocus())
++})
+ 
+-			moveDown,
+-			moveUp,
++/**
++ * Handle element is moved up
++ *
++ * @param index The index of the element that is moved
++ */
++function moveUp(index: number) {
++	const before = index > 1 ? modelValue.value.slice(0, index - 1) : []
++	// skip if not possible, because of default default app
++	if (modelValue.value[index - 1]?.default) {
++		return
++	}
++
++	const after = [modelValue.value[index - 1]!]
++	if (index < modelValue.value.length - 1) {
++		after.push(...modelValue.value.slice(index + 1))
++	}
++	modelValue.value = [...before, modelValue.value[index]!, ...after]
++}
+ 
+-			statusInfoId,
+-			statusInfo,
+-			updateStatusInfo,
++/**
++ * Handle element is moved down
++ *
++ * @param index The index of the element that is moved
++ */
++function moveDown(index: number) {
++	const before = index > 0 ? modelValue.value.slice(0, index) : []
++	before.push(modelValue.value[index + 1]!)
++
++	const after = index < (modelValue.value.length - 2) ? modelValue.value.slice(index + 2) : []
++	modelValue.value = [...before, modelValue.value[index]!, ...after]
++}
+ 
+-			renderCount,
+-			selectorElements,
+-		}
+-	},
+-})
++/**
++ * Additional status information to show to screen reader users for accessibility
++ */
++const statusInfo = ref('')
++
++/**
++ * ID to be used on the status info element
++ */
++const statusInfoId = `sorting-status-info-${(Math.random() + 1).toString(36).substring(7)}`
++
++/**
++ * Update the status information for the currently selected app
++ *
++ * @param index Index of the app that is currently selected
++ */
++function updateStatusInfo(index: number) {
++	const app = modelValue.value.at(index)!
++	statusInfo.value = t('theming', 'Current selected app: {app}, position {position} of {total}', {
++		app: app.label ?? app.id,
++		position: index + 1,
++		total: modelValue.value.length,
++	})
++}
+ </script>
+ 
+-<style scoped lang="scss">
+-.order-selector {
++<template>
++	<div
++		:id="statusInfoId"
++		aria-live="polite"
++		class="hidden-visually"
++		role="status">
++		{{ statusInfo }}
++	</div>
++	<ol
++		v-bind="$attrs"
++		ref="listElement"
++		:class="$style.appOrderSelector"
++		:aria-label="t('theming', 'Navigation bar app order')">
++		<AppOrderSelectorElement
++			v-for="app, index in appList"
++			:key="`${app.id}${renderCount}`"
++			ref="selectorElements"
++			:app="app"
++			:aria-details="ariaDetails"
++			:aria-describedby="statusInfoId"
++			:is-first="index === 0 || !!appList[index - 1]!.default"
++			:is-last="index === appList.length - 1"
++			v-on="app.default
++				? {}
++				: {
++					'move:up': () => moveUp(index),
++					'move:down': () => moveDown(index),
++					'update:focus': () => updateStatusInfo(index),
++				}" />
++	</ol>
++</template>
++
++<style module>
++.appOrderSelector {
+ 	width: max-content;
+-	min-width: 260px; // align with NcSelect
++	min-width: 260px; /* align with NcSelect */
+ }
+ </style>
+diff --git a/apps/theming/src/components/AppOrderSelectorElement.vue b/apps/theming/src/components/AppOrderSelectorElement.vue
+index 70857b2b5c..5dd43cf574 100644
+--- a/apps/theming/src/components/AppOrderSelectorElement.vue
++++ b/apps/theming/src/components/AppOrderSelectorElement.vue
+@@ -2,9 +2,103 @@
+   - SPDX-FileCopyrightText: 2023 Nextcloud GmbH and Nextcloud contributors
+   - SPDX-License-Identifier: AGPL-3.0-or-later
+ -->
++
++<script setup lang="ts">
++import { t } from '@nextcloud/l10n'
++import { nextTick, useTemplateRef } from 'vue'
++import NcButton from '@nextcloud/vue/components/NcButton'
++import IconArrowDown from 'vue-material-design-icons/ArrowDown.vue'
++import IconArrowUp from 'vue-material-design-icons/ArrowUp.vue'
++
++export interface IApp {
++	id: string // app id
++	icon: string // path to the icon svg
++	label?: string // display name
++	default?: boolean // for app as default app
++}
++
++const props = defineProps<{
++	/**
++	 * Needs to be forwarded to the buttons (as interactive elements)
++	 */
++	ariaDescribedby?: string
++	/**
++	 * Needs to be forwarded to the buttons (as interactive elements)
++	 */
++	ariaDetails?: string
++
++	/**
++	 * The app data to display
++	 */
++	app: IApp
++
++	/**
++	 * Is this the first element in the list
++	 */
++	isFirst?: boolean
++	/**
++	 * Is this the last element in the list
++	 */
++	isLast?: boolean
++}>()
++
++const emit = defineEmits<{
++	'move:up': []
++	'move:down': []
++	/**
++	 * We need this as Sortable.js removes all native focus event listeners
++	 */
++	'update:focus': []
++}>()
++
++defineExpose({ keepFocus })
++
++const buttonUpElement = useTemplateRef('buttonUp')
++const buttonDownElement = useTemplateRef('buttonDown')
++
++/**
++ * Used to decide if we need to trigger focus() an a button on update
++ */
++let needsFocus = 0
++
++/**
++ * Handle move up, ensure focus is kept on the button
++ */
++function moveUp() {
++	emit('move:up')
++	needsFocus = 1 // request focus on buttonUp
++}
++
++/**
++ * Handle move down, ensure focus is kept on the button
++ */
++function moveDown() {
++	emit('move:down')
++	needsFocus = -1 // request focus on buttonDown
++}
++
++/**
++ * Reset the focus on the last used button.
++ * If the button is now visible anymore (because this element is the first/last) then the opposite button is focussed
++ *
++ * This function is exposed to the "AppOrderSelector" component which triggers this when the list was successfully rerendered
++ */
++function keepFocus() {
++	if (needsFocus !== 0) {
++		// focus requested
++		if ((needsFocus === 1 || props.isLast) && !props.isFirst) {
++			// either requested to btn up and it is not the first, or it was requested to btn down but it is the last
++			nextTick(() => buttonUpElement.value!.$el.focus())
++		} else {
++			nextTick(() => buttonDownElement.value!.$el.focus())
++		}
++	}
++	needsFocus = 0
++}
++</script>
++
+ <template>
+ 	<li
+-		:data-cy-app-order-element="app.id"
+ 		class="order-selector-element"
+ 		:class="{
+ 			'order-selector-element--disabled': app.default,
+@@ -36,154 +130,36 @@
+ 				:aria-label="t('settings', 'Move up')"
+ 				:aria-describedby="ariaDescribedby"
+ 				:aria-details="ariaDetails"
+-				data-cy-app-order-button="up"
+ 				variant="tertiary-no-background"
+ 				@click="moveUp">
+ 				<template #icon>
+ 					<IconArrowUp :size="20" />
+ 				</template>
+ 			</NcButton>
+-			<div v-show="isFirst || !!app.default" aria-hidden="true" class="order-selector-element__placeholder" />
++			<div
++				v-show="isFirst || !!app.default"
++				aria-hidden="true"
++				class="order-selector-element__placeholder" />
+ 			<NcButton
+ 				v-show="!isLast && !app.default"
+ 				ref="buttonDown"
+ 				:aria-label="t('settings', 'Move down')"
+ 				:aria-describedby="ariaDescribedby"
+ 				:aria-details="ariaDetails"
+-				data-cy-app-order-button="down"
+ 				variant="tertiary-no-background"
+ 				@click="moveDown">
+ 				<template #icon>
+ 					<IconArrowDown :size="20" />
+ 				</template>
+ 			</NcButton>
+-			<div v-show="isLast || !!app.default" aria-hidden="true" class="order-selector-element__placeholder" />
++			<div
++				v-show="isLast || !!app.default"
++				aria-hidden="true"
++				class="order-selector-element__placeholder" />
+ 		</div>
+ 	</li>
+ </template>
+ 
+-<script lang="ts">
+-import type { PropType } from 'vue'
+-
+-import { translate as t } from '@nextcloud/l10n'
+-import { defineComponent, nextTick, ref } from 'vue'
+-import NcButton from '@nextcloud/vue/components/NcButton'
+-import IconArrowDown from 'vue-material-design-icons/ArrowDown.vue'
+-import IconArrowUp from 'vue-material-design-icons/ArrowUp.vue'
+-
+-interface IApp {
+-	id: string // app id
+-	icon: string // path to the icon svg
+-	label?: string // display name
+-	default?: boolean // for app as default app
+-}
+-
+-export default defineComponent({
+-	name: 'AppOrderSelectorElement',
+-	components: {
+-		IconArrowDown,
+-		IconArrowUp,
+-		NcButton,
+-	},
+-
+-	props: {
+-		/**
+-		 * Needs to be forwarded to the buttons (as interactive elements)
+-		 */
+-		ariaDescribedby: {
+-			type: String,
+-			default: null,
+-		},
+-
+-		ariaDetails: {
+-			type: String,
+-			default: null,
+-		},
+-
+-		app: {
+-			type: Object as PropType<IApp>,
+-			required: true,
+-		},
+-
+-		isFirst: {
+-			type: Boolean,
+-			default: false,
+-		},
+-
+-		isLast: {
+-			type: Boolean,
+-			default: false,
+-		},
+-	},
+-
+-	emits: {
+-		'move:up': () => true,
+-		'move:down': () => true,
+-		/**
+-		 * We need this as Sortable.js removes all native focus event listeners
+-		 */
+-		'update:focus': () => true,
+-	},
+-
+-	setup(props, { emit }) {
+-		const buttonUp = ref()
+-		const buttonDown = ref()
+-
+-		/**
+-		 * Used to decide if we need to trigger focus() an a button on update
+-		 */
+-		let needsFocus = 0
+-
+-		/**
+-		 * Handle move up, ensure focus is kept on the button
+-		 */
+-		const moveUp = () => {
+-			emit('move:up')
+-			needsFocus = 1 // request focus on buttonUp
+-		}
+-
+-		/**
+-		 * Handle move down, ensure focus is kept on the button
+-		 */
+-		const moveDown = () => {
+-			emit('move:down')
+-			needsFocus = -1 // request focus on buttonDown
+-		}
+-
+-		/**
+-		 * Reset the focus on the last used button.
+-		 * If the button is now visible anymore (because this element is the first/last) then the opposite button is focussed
+-		 *
+-		 * This function is exposed to the "AppOrderSelector" component which triggers this when the list was successfully rerendered
+-		 */
+-		const keepFocus = () => {
+-			if (needsFocus !== 0) {
+-				// focus requested
+-				if ((needsFocus === 1 || props.isLast) && !props.isFirst) {
+-					// either requested to btn up and it is not the first, or it was requested to btn down but it is the last
+-					nextTick(() => buttonUp.value.$el.focus())
+-				} else {
+-					nextTick(() => buttonDown.value.$el.focus())
+-				}
+-			}
+-			needsFocus = 0
+-		}
+-
+-		return {
+-			buttonUp,
+-			buttonDown,
+-
+-			moveUp,
+-			moveDown,
+-
+-			keepFocus,
+-
+-			t,
+-		}
+-	},
+-})
+-</script>
+-
+ <style lang="scss" scoped>
+ .order-selector-element {
+ 	// hide default styling
+diff --git a/apps/theming/src/components/BackgroundSettings.vue b/apps/theming/src/components/BackgroundSettings.vue
+deleted file mode 100644
+index 344576a671..0000000000
+--- a/apps/theming/src/components/BackgroundSettings.vue
++++ /dev/null
+@@ -1,358 +0,0 @@
+-<!--
+-  - SPDX-FileCopyrightText: 2020 Nextcloud GmbH and Nextcloud contributors
+-  - SPDX-License-Identifier: AGPL-3.0-or-later
+--->
+-
+-<template>
+-	<div class="background-selector" data-user-theming-background-settings>
+-		<!-- Custom background -->
+-		<button
+-			:aria-pressed="backgroundImage === 'custom'"
+-			class="background background__filepicker"
+-			:class="{
+-				'icon-loading': loading === 'custom',
+-				'background--active': backgroundImage === 'custom',
+-			}"
+-			data-user-theming-background-custom
+-			tabindex="0"
+-			@click="pickFile">
+-			{{ t('theming', 'Custom background') }}
+-			<ImageEdit v-if="backgroundImage !== 'custom'" :size="20" />
+-			<Check :size="44" />
+-		</button>
+-
+-		<!-- Custom color picker -->
+-		<NcColorPicker v-model="Theming.backgroundColor" @update:value="debouncePickColor">
+-			<button
+-				class="background background__color"
+-				:class="{
+-					'icon-loading': loading === 'color',
+-					'background--active': backgroundImage === 'color',
+-				}"
+-				:aria-pressed="backgroundImage === 'color'"
+-				:data-color="Theming.backgroundColor"
+-				:data-color-bright="invertTextColor(Theming.backgroundColor)"
+-				:style="{ backgroundColor: Theming.backgroundColor, '--border-color': Theming.backgroundColor }"
+-				data-user-theming-background-color
+-				tabindex="0"
+-				@click="backgroundImage !== 'color' && debouncePickColor(Theming.backgroundColor)">
+-				{{ t('theming', 'Plain background') /* TRANSLATORS: Background using a single color */ }}
+-				<ColorPalette v-if="backgroundImage !== 'color'" :size="20" />
+-				<Check :size="44" />
+-			</button>
+-		</NcColorPicker>
+-
+-		<!-- Default background -->
+-		<button
+-			:aria-pressed="backgroundImage === 'default'"
+-			class="background background__default"
+-			:class="{
+-				'icon-loading': loading === 'default',
+-				'background--active': backgroundImage === 'default',
+-			}"
+-			:data-color-bright="invertTextColor(Theming.defaultBackgroundColor)"
+-			:style="{ '--border-color': Theming.defaultBackgroundColor }"
+-			data-user-theming-background-default
+-			tabindex="0"
+-			@click="setDefault">
+-			{{ t('theming', 'Default background') }}
+-			<Check :size="44" />
+-		</button>
+-
+-		<!-- Background set selection -->
+-		<button
+-			v-for="shippedBackground in shippedBackgrounds"
+-			:key="shippedBackground.name"
+-			:title="shippedBackground.details.attribution"
+-			:aria-label="shippedBackground.details.description"
+-			:aria-pressed="backgroundImage === shippedBackground.name"
+-			class="background background__shipped"
+-			:class="{
+-				'icon-loading': loading === shippedBackground.name,
+-				'background--active': backgroundImage === shippedBackground.name,
+-			}"
+-			:data-color-bright="invertTextColor(shippedBackground.details.background_color)"
+-			:data-user-theming-background-shipped="shippedBackground.name"
+-			:style="{ backgroundImage: 'url(' + shippedBackground.preview + ')', '--border-color': shippedBackground.details.primary_color }"
+-			tabindex="0"
+-			@click="setShipped(shippedBackground.name)">
+-			<Check :size="44" />
+-		</button>
+-	</div>
+-</template>
+-
+-<script>
+-import axios from '@nextcloud/axios'
+-import { getFilePickerBuilder, showError } from '@nextcloud/dialogs'
+-import { loadState } from '@nextcloud/initial-state'
+-import { generateFilePath, generateUrl } from '@nextcloud/router'
+-import debounce from 'debounce'
+-import NcColorPicker from '@nextcloud/vue/components/NcColorPicker'
+-import Check from 'vue-material-design-icons/Check.vue'
+-import ImageEdit from 'vue-material-design-icons/ImageEdit.vue'
+-import ColorPalette from 'vue-material-design-icons/PaletteOutline.vue'
+-import { logger } from '../logger.ts'
+-
+-const shippedBackgroundList = loadState('theming', 'shippedBackgrounds')
+-const backgroundImage = loadState('theming', 'userBackgroundImage')
+-const {
+-	backgroundImage: defaultBackgroundImage,
+-	// backgroundColor: defaultBackgroundColor,
+-	backgroundMime: defaultBackgroundMime,
+-	defaultShippedBackground,
+-} = loadState('theming', 'themingDefaults')
+-
+-const prefixWithBaseUrl = (url) => generateFilePath('theming', '', 'img/background/') + url
+-
+-export default {
+-	name: 'BackgroundSettings',
+-
+-	components: {
+-		Check,
+-		ColorPalette,
+-		ImageEdit,
+-		NcColorPicker,
+-	},
+-
+-	data() {
+-		return {
+-			loading: false,
+-			Theming: loadState('theming', 'data', {}),
+-
+-			// User background image and color settings
+-			backgroundImage,
+-		}
+-	},
+-
+-	computed: {
+-		shippedBackgrounds() {
+-			return Object.keys(shippedBackgroundList)
+-				.filter((background) => {
+-					// If the admin did not changed the global background
+-					// let's hide the default background to not show it twice
+-					return background !== defaultShippedBackground || !this.isGlobalBackgroundDefault
+-				})
+-				.map((fileName) => {
+-					return {
+-						name: fileName,
+-						url: prefixWithBaseUrl(fileName),
+-						preview: prefixWithBaseUrl('preview/' + fileName),
+-						details: shippedBackgroundList[fileName],
+-					}
+-				})
+-		},
+-
+-		isGlobalBackgroundDefault() {
+-			return defaultBackgroundMime === ''
+-		},
+-
+-		isGlobalBackgroundDeleted() {
+-			return defaultBackgroundMime === 'backgroundColor'
+-		},
+-
+-		cssDefaultBackgroundImage() {
+-			return `url('${defaultBackgroundImage}')`
+-		},
+-	},
+-
+-	methods: {
+-		/**
+-		 * Do we need to invert the text if color is too bright?
+-		 *
+-		 * @param {string} color the hex color
+-		 */
+-		invertTextColor(color) {
+-			return this.calculateLuma(color) > 0.6
+-		},
+-
+-		/**
+-		 * Calculate luminance of provided hex color
+-		 *
+-		 * @param {string} color the hex color
+-		 */
+-		calculateLuma(color) {
+-			const [red, green, blue] = this.hexToRGB(color)
+-			return (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255
+-		},
+-
+-		/**
+-		 * Convert hex color to RGB
+-		 *
+-		 * @param {string} hex the hex color
+-		 */
+-		hexToRGB(hex) {
+-			const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
+-			return result
+-				? [parseInt(result[1], 16), parseInt(result[2], 16), parseInt(result[3], 16)]
+-				: null
+-		},
+-
+-		/**
+-		 * Update local state
+-		 *
+-		 * @param {object} data destructuring object
+-		 * @param {string} data.backgroundColor background color value
+-		 * @param {string} data.backgroundImage background image value
+-		 * @param {string} data.version cache buster number
+-		 * @see https://github.com/nextcloud/server/blob/c78bd45c64d9695724fc44fe8453a88824b85f2f/apps/theming/lib/Controller/UserThemeController.php#L187-L191
+-		 */
+-		async update(data) {
+-			// Update state
+-			this.backgroundImage = data.backgroundImage
+-			this.Theming.backgroundColor = data.backgroundColor
+-
+-			// Notify parent and reload style
+-			this.$emit('update:background')
+-			this.loading = false
+-		},
+-
+-		async setDefault() {
+-			this.loading = 'default'
+-			const result = await axios.post(generateUrl('/apps/theming/background/default'))
+-			this.update(result.data)
+-		},
+-
+-		async setShipped(shipped) {
+-			this.loading = shipped
+-			const result = await axios.post(generateUrl('/apps/theming/background/shipped'), { value: shipped })
+-			this.update(result.data)
+-		},
+-
+-		async setFile(path) {
+-			this.loading = 'custom'
+-			const result = await axios.post(generateUrl('/apps/theming/background/custom'), { value: path })
+-			this.update(result.data)
+-		},
+-
+-		async removeBackground() {
+-			this.loading = 'remove'
+-			const result = await axios.delete(generateUrl('/apps/theming/background/custom'))
+-			this.update(result.data)
+-		},
+-
+-		async pickColor(color) {
+-			this.loading = 'color'
+-			const { data } = await axios.post(generateUrl('/apps/theming/background/color'), { color: color || '#0082c9' })
+-			this.update(data)
+-		},
+-
+-		debouncePickColor: debounce(function(...args) {
+-			this.pickColor(...args)
+-		}, 1000),
+-
+-		pickFile() {
+-			const picker = getFilePickerBuilder(t('theming', 'Select a background from your files'))
+-				.allowDirectories(false)
+-				.setMimeTypeFilter(['image/png', 'image/gif', 'image/jpeg', 'image/svg+xml', 'image/svg'])
+-				.setMultiSelect(false)
+-				.addButton({
+-					id: 'select',
+-					label: t('theming', 'Select background'),
+-					callback: (nodes) => {
+-						this.applyFile(nodes[0]?.path)
+-					},
+-					variant: 'primary',
+-				})
+-				.build()
+-			picker.pick()
+-		},
+-
+-		async applyFile(path) {
+-			if (!path || typeof path !== 'string' || path.trim().length === 0 || path === '/') {
+-				logger.error('No valid background have been selected', { path })
+-				showError(t('theming', 'No background has been selected'))
+-				return
+-			}
+-
+-			this.loading = 'custom'
+-			this.setFile(path)
+-		},
+-	},
+-}
+-</script>
+-
+-<style scoped lang="scss">
+-.background-selector {
+-	display: flex;
+-	flex-wrap: wrap;
+-	justify-content: center;
+-
+-	.background-color {
+-		display: flex;
+-		justify-content: center;
+-		align-items: center;
+-		width: 176px;
+-		height: 96px;
+-		margin: 8px;
+-		border-radius: var(--border-radius-large);
+-		background-color: var(--color-primary);
+-	}
+-
+-	.background {
+-		overflow: hidden;
+-		width: 176px;
+-		height: 96px;
+-		margin: 8px;
+-		text-align: center;
+-		word-wrap: break-word;
+-		hyphens: auto;
+-		border: 2px solid var(--color-main-background);
+-		border-radius: var(--border-radius-large);
+-		background-position: center center;
+-		background-size: cover;
+-
+-		&__filepicker {
+-			background-color: var(--color-background-dark);
+-
+-			&.background--active {
+-				color: var(--color-background-plain-text);
+-				background-image: var(--image-background);
+-			}
+-		}
+-
+-		&__default {
+-			background-color: var(--color-background-plain);
+-			background-image: linear-gradient(to bottom, rgba(23, 23, 23, 0.5), rgba(23, 23, 23, 0.5)), v-bind(cssDefaultBackgroundImage);
+-		}
+-
+-		&__filepicker, &__default, &__color {
+-			border-color: var(--color-border);
+-		}
+-
+-		// Over a background image
+-		&__default,
+-		&__shipped {
+-			color: white;
+-		}
+-
+-		// Text and svg icon dark on bright background
+-		&[data-color-bright] {
+-			color: black;
+-		}
+-
+-		&--active,
+-		&:hover,
+-		&:focus {
+-			outline: 2px solid var(--color-main-text) !important;
+-			border-color: var(--color-main-background) !important;
+-		}
+-
+-		// Icon
+-		span {
+-			margin: 4px;
+-		}
+-
+-		.check-icon {
+-			display: none;
+-		}
+-
+-		&--active:not(.icon-loading) {
+-			.check-icon {
+-				// Show checkmark
+-				display: block !important;
+-			}
+-		}
+-	}
+-}
+-
+-</style>
+diff --git a/apps/theming/src/components/ItemPreview.vue b/apps/theming/src/components/ThemePreviewItem.vue
+similarity index 61%
+rename from apps/theming/src/components/ItemPreview.vue
+rename to apps/theming/src/components/ThemePreviewItem.vue
+index 63389c82a3..e27846d8d7 100644
+--- a/apps/theming/src/components/ItemPreview.vue
++++ b/apps/theming/src/components/ThemePreviewItem.vue
+@@ -2,6 +2,66 @@
+   - SPDX-FileCopyrightText: 2022 Nextcloud GmbH and Nextcloud contributors
+   - SPDX-License-Identifier: AGPL-3.0-or-later
+ -->
++
++<script setup lang="ts">
++import { t } from '@nextcloud/l10n'
++import { generateFilePath } from '@nextcloud/router'
++import { computed } from 'vue'
++import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
++
++export interface ITheme {
++	id: string
++	name: string
++	title: string
++	description: string
++	enableLabel: string
++	type: number // 1 = theme, 2 = font
++	enabled: boolean
++}
++
++const selected = defineModel<boolean>('selected', { required: true })
++const props = defineProps<{
++	enforced?: boolean
++	theme: ITheme
++	type: string
++	unique: boolean
++}>()
++
++const switchType = computed(() => props.unique ? 'switch' : 'radio')
++const name = computed(() => !props.unique ? props.type : null)
++const img = computed(() => generateFilePath('theming', 'img', props.theme.id + '.jpg'))
++
++const checked = computed({
++	get() {
++		return selected.value
++	},
++
++	set(checked) {
++		if (props.enforced) {
++			return
++		}
++		selected.value = props.unique ? checked : true
++	},
++})
++
++/**
++ * Handle toggle click
++ */
++function onToggle() {
++	if (props.enforced) {
++		return
++	}
++
++	if (switchType.value === 'radio') {
++		checked.value = true
++		return
++	}
++
++	// Invert state
++	checked.value = !checked.value
++}
++</script>
++
+ <template>
+ 	<div :class="'theming__preview--' + theme.id" class="theming__preview">
+ 		<div class="theming__preview-image" :style="{ backgroundImage: 'url(' + img + ')' }" @click="onToggle" />
+@@ -28,99 +88,6 @@
+ 	</div>
+ </template>
+ 
+-<script>
+-import { generateFilePath } from '@nextcloud/router'
+-import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
+-import { logger } from '../logger.ts'
+-
+-export default {
+-	name: 'ItemPreview',
+-	components: {
+-		NcCheckboxRadioSwitch,
+-	},
+-
+-	props: {
+-		enforced: {
+-			type: Boolean,
+-			default: false,
+-		},
+-
+-		selected: {
+-			type: Boolean,
+-			default: false,
+-		},
+-
+-		theme: {
+-			type: Object,
+-			required: true,
+-		},
+-
+-		type: {
+-			type: String,
+-			default: '',
+-		},
+-
+-		unique: {
+-			type: Boolean,
+-			default: false,
+-		},
+-	},
+-
+-	computed: {
+-		switchType() {
+-			return this.unique ? 'switch' : 'radio'
+-		},
+-
+-		name() {
+-			return !this.unique ? this.type : null
+-		},
+-
+-		img() {
+-			return generateFilePath('theming', 'img', this.theme.id + '.jpg')
+-		},
+-
+-		checked: {
+-			get() {
+-				return this.selected
+-			},
+-
+-			set(checked) {
+-				if (this.enforced) {
+-					return
+-				}
+-
+-				logger.debug('Changed theme', this.theme.id, checked)
+-
+-				// If this is a radio, we can only enable
+-				if (!this.unique) {
+-					this.$emit('change', { enabled: true, id: this.theme.id })
+-					return
+-				}
+-
+-				// If this is a switch, we can disable the theme
+-				this.$emit('change', { enabled: checked === true, id: this.theme.id })
+-			},
+-		},
+-	},
+-
+-	methods: {
+-		onToggle() {
+-			if (this.enforced) {
+-				return
+-			}
+-
+-			if (this.switchType === 'radio') {
+-				this.checked = true
+-				return
+-			}
+-
+-			// Invert state
+-			this.checked = !this.checked
+-		},
+-	},
+-}
+-</script>
+-
+ <style lang="scss" scoped>
+ @use 'sass:math';
+ 
+diff --git a/apps/theming/src/components/UserAppMenuSection.vue b/apps/theming/src/components/UserAppMenuSection.vue
+deleted file mode 100644
+index f84eee0b5c..0000000000
+--- a/apps/theming/src/components/UserAppMenuSection.vue
++++ /dev/null
+@@ -1,196 +0,0 @@
+-<!--
+-  - SPDX-FileCopyrightText: 2023 Nextcloud GmbH and Nextcloud contributors
+-  - SPDX-License-Identifier: AGPL-3.0-or-later
+--->
+-<template>
+-	<NcSettingsSection :name="t('theming', 'Navigation bar settings')">
+-		<p>
+-			{{ t('theming', 'You can configure the app order used for the navigation bar. The first entry will be the default app, opened after login or when clicking on the logo.') }}
+-		</p>
+-		<NcNoteCard v-if="enforcedDefaultApp" :id="elementIdEnforcedDefaultApp" type="info">
+-			{{ t('theming', 'The default app can not be changed because it was configured by the administrator.') }}
+-		</NcNoteCard>
+-		<NcNoteCard v-if="hasAppOrderChanged" :id="elementIdAppOrderChanged" type="info">
+-			{{ t('theming', 'The app order was changed, to see it in action you have to reload the page.') }}
+-		</NcNoteCard>
+-
+-		<AppOrderSelector
+-			class="user-app-menu-order"
+-			:aria-details="ariaDetailsAppOrder"
+-			:value="appOrder"
+-			@update:value="updateAppOrder" />
+-
+-		<NcButton
+-			data-test-id="btn-apporder-reset"
+-			:disabled="!hasCustomAppOrder"
+-			variant="tertiary"
+-			@click="resetAppOrder">
+-			<template #icon>
+-				<IconUndo :size="20" />
+-			</template>
+-			{{ t('theming', 'Reset default app order') }}
+-		</NcButton>
+-	</NcSettingsSection>
+-</template>
+-
+-<script lang="ts">
+-import type { INavigationEntry } from '../../../../core/src/types/navigation.d.ts'
+-import type { IApp } from './AppOrderSelector.vue'
+-
+-import axios from '@nextcloud/axios'
+-import { showError } from '@nextcloud/dialogs'
+-import { loadState } from '@nextcloud/initial-state'
+-import { translate as t } from '@nextcloud/l10n'
+-import { generateOcsUrl } from '@nextcloud/router'
+-import { computed, defineComponent, ref } from 'vue'
+-import NcButton from '@nextcloud/vue/components/NcButton'
+-import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
+-import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
+-import IconUndo from 'vue-material-design-icons/Undo.vue'
+-import AppOrderSelector from './AppOrderSelector.vue'
+-import { logger } from '../logger.ts'
+-
+-/** The app order user setting */
+-type IAppOrder = Record<string, { order: number, app?: string }>
+-
+-/** OCS responses */
+-interface IOCSResponse<T> {
+-	ocs: {
+-		meta: unknown
+-		data: T
+-	}
+-}
+-
+-export default defineComponent({
+-	name: 'UserAppMenuSection',
+-	components: {
+-		AppOrderSelector,
+-		IconUndo,
+-		NcButton,
+-		NcNoteCard,
+-		NcSettingsSection,
+-	},
+-
+-	setup() {
+-		const {
+-			/** The app order currently defined by the user */
+-			userAppOrder,
+-			/** The enforced default app set by the administrator (if any) */
+-			enforcedDefaultApp,
+-		} = loadState<{ userAppOrder: IAppOrder, enforcedDefaultApp: string }>('theming', 'navigationBar')
+-
+-		/**
+-		 * Array of all available apps, it is set by a core controller for the app menu, so it is always available
+-		 */
+-		const initialAppOrder = loadState<INavigationEntry[]>('core', 'apps')
+-			.filter(({ type }) => type === 'link')
+-			.map((app) => ({ ...app, label: app.name, default: app.default && app.id === enforcedDefaultApp }))
+-
+-		/**
+-		 * The current apporder (sorted by user)
+-		 */
+-		const appOrder = ref([...initialAppOrder])
+-
+-		/**
+-		 * Check if a custom app order is used or the default is shown
+-		 */
+-		const hasCustomAppOrder = ref(!Array.isArray(userAppOrder) || Object.values(userAppOrder).length > 0)
+-
+-		/**
+-		 * Track if the app order has changed, so the user can be informed to reload
+-		 */
+-		const hasAppOrderChanged = computed(() => initialAppOrder.some(({ id }, index) => id !== appOrder.value[index].id))
+-
+-		/** ID of the "app order has changed" NcNodeCard, used for the aria-details of the apporder */
+-		const elementIdAppOrderChanged = 'theming-apporder-changed-infocard'
+-
+-		/** ID of the "you can not change the default app" NcNodeCard, used for the aria-details of the apporder */
+-		const elementIdEnforcedDefaultApp = 'theming-apporder-changed-infocard'
+-
+-		/**
+-		 * The aria-details value of the app order selector
+-		 * contains the space separated list of element ids of NcNoteCards
+-		 */
+-		const ariaDetailsAppOrder = computed(() => (hasAppOrderChanged.value ? `${elementIdAppOrderChanged} ` : '') + (enforcedDefaultApp ? elementIdEnforcedDefaultApp : ''))
+-
+-		/**
+-		 * Update the app order, called when the user sorts entries
+-		 *
+-		 * @param value The new app order value
+-		 */
+-		const updateAppOrder = (value: IApp[]) => {
+-			const order: IAppOrder = {}
+-			value.forEach(({ app, id }, index) => {
+-				order[id] = { order: index, app }
+-			})
+-
+-			saveSetting('apporder', order)
+-				.then(() => {
+-					appOrder.value = value as never
+-					hasCustomAppOrder.value = true
+-				})
+-				.catch((error) => {
+-					logger.error('Could not set the app order', { error })
+-					showError(t('theming', 'Could not set the app order'))
+-				})
+-		}
+-
+-		/**
+-		 * Reset the app order to the default
+-		 */
+-		const resetAppOrder = async () => {
+-			try {
+-				await saveSetting('apporder', [])
+-				hasCustomAppOrder.value = false
+-
+-				// Reset our app order list
+-				const { data } = await axios.get<IOCSResponse<INavigationEntry[]>>(generateOcsUrl('/core/navigation/apps'), {
+-					headers: {
+-						'OCS-APIRequest': 'true',
+-					},
+-				})
+-				appOrder.value = data.ocs.data.map((app) => ({ ...app, label: app.name, default: app.default && app.app === enforcedDefaultApp }))
+-			} catch (error) {
+-				logger.error('Could not reset the app order', { error })
+-				showError(t('theming', 'Could not reset the app order'))
+-			}
+-		}
+-
+-		/**
+-		 * @param key
+-		 * @param value
+-		 */
+-		async function saveSetting(key: string, value: unknown) {
+-			const url = generateOcsUrl('apps/provisioning_api/api/v1/config/users/{appId}/{configKey}', {
+-				appId: 'core',
+-				configKey: key,
+-			})
+-			return await axios.post(url, {
+-				configValue: JSON.stringify(value),
+-			})
+-		}
+-
+-		return {
+-			appOrder,
+-			updateAppOrder,
+-			resetAppOrder,
+-
+-			enforcedDefaultApp,
+-			hasAppOrderChanged,
+-			hasCustomAppOrder,
+-
+-			ariaDetailsAppOrder,
+-			elementIdAppOrderChanged,
+-			elementIdEnforcedDefaultApp,
+-
+-			t,
+-		}
+-	},
+-})
+-</script>
+-
+-<style scoped lang="scss">
+-.user-app-menu-order {
+-	margin-block: 12px;
+-}
+-</style>
+diff --git a/apps/theming/src/components/UserPrimaryColor.vue b/apps/theming/src/components/UserPrimaryColor.vue
+deleted file mode 100644
+index d4d1d6230a..0000000000
+--- a/apps/theming/src/components/UserPrimaryColor.vue
++++ /dev/null
+@@ -1,172 +0,0 @@
+-<!--
+-  - SPDX-FileCopyrightText: 2024 Nextcloud GmbH and Nextcloud contributors
+-  - SPDX-License-Identifier: AGPL-3.0-or-later
+--->
+-<template>
+-	<div class="primary-color__wrapper">
+-		<NcColorPicker
+-			v-model="primaryColor"
+-			data-user-theming-primary-color
+-			@update:value="debouncedOnUpdate">
+-			<button
+-				ref="trigger"
+-				class="color-container primary-color__trigger"
+-				:style="{ 'background-color': primaryColor }"
+-				data-user-theming-primary-color-trigger>
+-				{{ t('theming', 'Primary color') }}
+-				<NcLoadingIcon v-if="loading" />
+-				<IconColorPalette v-else :size="20" />
+-			</button>
+-		</NcColorPicker>
+-		<NcButton variant="tertiary" :disabled="isdefaultPrimaryColor" @click="onReset">
+-			<template #icon>
+-				<IconUndo :size="20" />
+-			</template>
+-			{{ t('theming', 'Reset primary color') }}
+-		</NcButton>
+-	</div>
+-</template>
+-
+-<script lang="ts">
+-import axios from '@nextcloud/axios'
+-import { showError } from '@nextcloud/dialogs'
+-import { loadState } from '@nextcloud/initial-state'
+-import { translate as t } from '@nextcloud/l10n'
+-import { generateOcsUrl } from '@nextcloud/router'
+-import { colord } from 'colord'
+-import debounce from 'debounce'
+-import { defineComponent } from 'vue'
+-import NcButton from '@nextcloud/vue/components/NcButton'
+-import NcColorPicker from '@nextcloud/vue/components/NcColorPicker'
+-import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
+-import IconColorPalette from 'vue-material-design-icons/PaletteOutline.vue'
+-import IconUndo from 'vue-material-design-icons/UndoVariant.vue'
+-import { logger } from '../logger.ts'
+-
+-const { primaryColor, defaultPrimaryColor } = loadState('theming', 'data', { primaryColor: '#0082c9', defaultPrimaryColor: '#0082c9' })
+-
+-export default defineComponent({
+-	name: 'UserPrimaryColor',
+-
+-	components: {
+-		IconColorPalette,
+-		IconUndo,
+-		NcButton,
+-		NcColorPicker,
+-		NcLoadingIcon,
+-	},
+-
+-	emits: ['refresh-styles'],
+-
+-	data() {
+-		return {
+-			primaryColor,
+-			loading: false,
+-		}
+-	},
+-
+-	computed: {
+-		isdefaultPrimaryColor() {
+-			return colord(this.primaryColor).isEqual(colord(defaultPrimaryColor))
+-		},
+-
+-		debouncedOnUpdate() {
+-			return debounce(this.onUpdate, 1000)
+-		},
+-	},
+-
+-	methods: {
+-		t,
+-
+-		numberToHex(numeric: string) {
+-			const parsed = Number.parseInt(numeric)
+-			return parsed.toString(16).padStart(2, '0')
+-		},
+-
+-		/**
+-		 * Global styles are reloaded so we might need to update the current value
+-		 */
+-		reload() {
+-			const trigger = this.$refs.trigger as HTMLButtonElement
+-			let newColor = window.getComputedStyle(trigger).backgroundColor
+-			// sometimes the browser returns the color in the "rgb(255, 132, 234)" format
+-			const rgbMatch = newColor.replaceAll(/\s/g, '').match(/^rgba?\((\d+),(\d+),(\d+)/)
+-			if (rgbMatch) {
+-				newColor = `#${this.numberToHex(rgbMatch[1])}${this.numberToHex(rgbMatch[2])}${this.numberToHex(rgbMatch[3])}`
+-			}
+-			if (newColor.toLowerCase() !== this.primaryColor.toLowerCase()) {
+-				this.primaryColor = newColor
+-			}
+-		},
+-
+-		onReset() {
+-			this.primaryColor = defaultPrimaryColor
+-			this.onUpdate(null)
+-		},
+-
+-		async onUpdate(value: string | null) {
+-			this.loading = true
+-			const url = generateOcsUrl('apps/provisioning_api/api/v1/config/users/{appId}/{configKey}', {
+-				appId: 'theming',
+-				configKey: 'primary_color',
+-			})
+-			try {
+-				if (value) {
+-					await axios.post(url, {
+-						configValue: value,
+-					})
+-				} else {
+-					await axios.delete(url)
+-				}
+-				this.$emit('refresh-styles')
+-			} catch (error) {
+-				logger.error('Could not update primary color', { error })
+-				showError(t('theming', 'Could not set primary color'))
+-			}
+-			this.loading = false
+-		},
+-	},
+-})
+-</script>
+-
+-<style scoped lang="scss">
+-.primary-color {
+-	&__wrapper {
+-		display: flex;
+-		flex-direction: row;
+-		flex-wrap: wrap;
+-		gap: 12px;
+-	}
+-
+-	&__trigger {
+-		display: flex;
+-		flex-direction: column;
+-		align-items: center;
+-		justify-content: center;
+-		gap: 8px;
+-
+-		background-color: var(--color-primary);
+-		color: var(--color-primary-text);
+-		width: 350px;
+-		max-width: 100vw;
+-		height: 96px;
+-
+-		word-wrap: break-word;
+-		hyphens: auto;
+-
+-		border: 2px solid var(--color-main-background);
+-		border-radius: var(--border-radius-large);
+-
+-		&:active {
+-			background-color: var(--color-primary-hover) !important;
+-		}
+-
+-		&:hover,
+-		&:focus,
+-		&:focus-visible {
+-			border-color: var(--color-main-background) !important;
+-			outline: 2px solid var(--color-main-text) !important;
+-		}
+-	}
+-}
+-</style>
+diff --git a/apps/theming/src/components/UserSectionAppMenu.vue b/apps/theming/src/components/UserSectionAppMenu.vue
+new file mode 100644
+index 0000000000..47c3a12a14
+--- /dev/null
++++ b/apps/theming/src/components/UserSectionAppMenu.vue
+@@ -0,0 +1,167 @@
++<!--
++  - SPDX-FileCopyrightText: 2023 Nextcloud GmbH and Nextcloud contributors
++  - SPDX-License-Identifier: AGPL-3.0-or-later
++-->
++
++<script setup lang="ts">
++import type { INavigationEntry } from '../../../../core/src/types/navigation.d.ts'
++import type { IApp } from './AppOrderSelector.vue'
++
++import axios from '@nextcloud/axios'
++import { showError } from '@nextcloud/dialogs'
++import { loadState } from '@nextcloud/initial-state'
++import { t } from '@nextcloud/l10n'
++import { generateOcsUrl } from '@nextcloud/router'
++import { computed, ref } from 'vue'
++import NcButton from '@nextcloud/vue/components/NcButton'
++import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
++import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
++import IconUndo from 'vue-material-design-icons/Undo.vue'
++import AppOrderSelector from './AppOrderSelector.vue'
++import { logger } from '../utils/logger.ts'
++
++/** The app order user setting */
++type IAppOrder = Record<string, { order: number, app?: string }>
++
++/** OCS responses */
++interface IOCSResponse<T> {
++	ocs: {
++		meta: unknown
++		data: T
++	}
++}
++
++const {
++	/** The app order currently defined by the user */
++	userAppOrder,
++	/** The enforced default app set by the administrator (if any) */
++	enforcedDefaultApp,
++} = loadState<{ userAppOrder: IAppOrder, enforcedDefaultApp: string }>('theming', 'navigationBar')
++
++/**
++ * Array of all available apps, it is set by a core controller for the app menu, so it is always available
++ */
++const initialAppOrder = loadState<INavigationEntry[]>('core', 'apps')
++	.filter(({ type }) => type === 'link')
++	.map((app) => ({ ...app, label: app.name, default: app.default && app.id === enforcedDefaultApp }))
++
++/**
++ * The current apporder (sorted by user)
++ */
++const appOrder = ref([...initialAppOrder])
++
++/**
++ * Check if a custom app order is used or the default is shown
++ */
++const hasCustomAppOrder = ref(!Array.isArray(userAppOrder) || Object.values(userAppOrder).length > 0)
++
++/**
++ * Track if the app order has changed, so the user can be informed to reload
++ */
++const hasAppOrderChanged = computed(() => initialAppOrder.some(({ id }, index) => id !== appOrder.value[index]?.id))
++
++/** ID of the "app order has changed" NcNodeCard, used for the aria-details of the apporder */
++const elementIdAppOrderChanged = 'theming-apporder-changed-infocard'
++
++/** ID of the "you can not change the default app" NcNodeCard, used for the aria-details of the apporder */
++const elementIdEnforcedDefaultApp = 'theming-apporder-changed-infocard'
++
++/**
++ * The aria-details value of the app order selector
++ * contains the space separated list of element ids of NcNoteCards
++ */
++const ariaDetailsAppOrder = computed(() => (hasAppOrderChanged.value ? `${elementIdAppOrderChanged} ` : '') + (enforcedDefaultApp ? elementIdEnforcedDefaultApp : ''))
++
++/**
++ * Update the app order, called when the user sorts entries
++ *
++ * @param value The new app order value
++ */
++async function updateAppOrder(value: IApp[]) {
++	const order: IAppOrder = {}
++	value.forEach(({ app, id }, index) => {
++		order[id] = { order: index, app }
++	})
++
++	try {
++		await saveSetting('apporder', order)
++		appOrder.value = value as never
++		hasCustomAppOrder.value = true
++	} catch (error) {
++		logger.error('Could not set the app order', { error })
++		showError(t('theming', 'Could not set the app order'))
++	}
++}
++
++/**
++ * Reset the app order to the default
++ */
++async function resetAppOrder() {
++	try {
++		await saveSetting('apporder', [])
++		hasCustomAppOrder.value = false
++
++		// Reset our app order list
++		const { data } = await axios.get<IOCSResponse<INavigationEntry[]>>(generateOcsUrl('/core/navigation/apps'), {
++			headers: {
++				'OCS-APIRequest': 'true',
++			},
++		})
++		appOrder.value = data.ocs.data.map((app) => ({ ...app, label: app.name, default: app.default && app.app === enforcedDefaultApp }))
++	} catch (error) {
++		logger.error('Could not reset the app order', { error })
++		showError(t('theming', 'Could not reset the app order'))
++	}
++}
++
++/**
++ * @param key - The config key
++ * @param value - The config value
++ */
++async function saveSetting(key: string, value: unknown) {
++	const url = generateOcsUrl('apps/provisioning_api/api/v1/config/users/{appId}/{configKey}', {
++		appId: 'core',
++		configKey: key,
++	})
++	return await axios.post(url, {
++		configValue: JSON.stringify(value),
++	})
++}
++</script>
++
++<template>
++	<NcSettingsSection :name="t('theming', 'Navigation bar settings')">
++		<p>
++			{{ t('theming', 'You can configure the app order used for the navigation bar. The first entry will be the default app, opened after login or when clicking on the logo.') }}
++		</p>
++		<NcNoteCard v-if="enforcedDefaultApp" :id="elementIdEnforcedDefaultApp" type="info">
++			{{ t('theming', 'The default app can not be changed because it was configured by the administrator.') }}
++		</NcNoteCard>
++		<NcNoteCard v-if="hasAppOrderChanged" :id="elementIdAppOrderChanged" type="info">
++			{{ t('theming', 'The app order was changed, to see it in action you have to reload the page.') }}
++		</NcNoteCard>
++
++		<AppOrderSelector
++			:class="$style.userSectionAppMenu__selector"
++			:aria-details="ariaDetailsAppOrder"
++			:model-value="appOrder"
++			@update:model-value="updateAppOrder" />
++
++		<NcButton
++			data-test-id="btn-apporder-reset"
++			:disabled="!hasCustomAppOrder"
++			variant="tertiary"
++			@click="resetAppOrder">
++			<template #icon>
++				<IconUndo :size="20" />
++			</template>
++			{{ t('theming', 'Reset default app order') }}
++		</NcButton>
++	</NcSettingsSection>
++</template>
++
++<style module>
++.userSectionAppMenu__selector {
++	margin-block: 12px;
++}
++</style>
+diff --git a/apps/theming/src/components/UserSectionBackground.vue b/apps/theming/src/components/UserSectionBackground.vue
+new file mode 100644
+index 0000000000..68e82f246b
+--- /dev/null
++++ b/apps/theming/src/components/UserSectionBackground.vue
+@@ -0,0 +1,306 @@
++<!--
++  - SPDX-FileCopyrightText: 2020 Nextcloud GmbH and Nextcloud contributors
++  - SPDX-License-Identifier: AGPL-3.0-or-later
++-->
++
++<script setup lang="ts">
++import { mdiCheck, mdiImageEditOutline, mdiPaletteOutline, mdiUndo } from '@mdi/js'
++import axios from '@nextcloud/axios'
++import { getFilePickerBuilder } from '@nextcloud/dialogs'
++import { loadState } from '@nextcloud/initial-state'
++import { t } from '@nextcloud/l10n'
++import { generateFilePath, generateUrl } from '@nextcloud/router'
++import { ref } from 'vue'
++import NcColorPicker from '@nextcloud/vue/components/NcColorPicker'
++import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
++import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
++import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
++import { getTextColor } from '../utils/color.ts'
++
++interface IThemingDefaults {
++	backgroundImage: string
++	backgroundColor: string
++	backgroundMime: string
++	defaultShippedBackground: string
++}
++
++interface IThemingData {
++	backgroundImage: string
++	backgroundColor: string
++	backgroundMime: string
++}
++
++interface ShippedBackground {
++	attribution: string
++	description: string
++	attribution_url: string
++	dark_variant: string
++	background_color: string
++	primary_color: string
++}
++
++const emit = defineEmits<{
++	refreshStyles: []
++}>()
++
++const SHIPPED_BACKGROUNDS = loadState<Record<string, ShippedBackground>>('theming', 'shippedBackgrounds')
++const THEMING_DEFAULTS = loadState<IThemingDefaults>('theming', 'themingDefaults')
++const DEFAULT_BACKGROUND_IMAGE = `url('${THEMING_DEFAULTS.backgroundImage}')`
++
++const loading = ref<false | 'custom' | 'color' | 'default' | keyof typeof SHIPPED_BACKGROUNDS>(false)
++const currentTheming = ref(structuredClone(loadState<IThemingData>('theming', 'data')))
++const currentBackgroundImage = ref(loadState<string>('theming', 'userBackgroundImage'))
++
++const shippedBackgrounds = Object.keys(SHIPPED_BACKGROUNDS)
++	.filter((background) => {
++		// If the admin did not changed the global background
++		// let's hide the default background to not show it twice
++		return background !== THEMING_DEFAULTS.defaultShippedBackground
++			|| THEMING_DEFAULTS.backgroundMime !== ''
++	})
++	.map((fileName) => {
++		return {
++			name: fileName,
++			url: prefixWithBaseUrl(fileName),
++			preview: prefixWithBaseUrl('preview/' + fileName),
++			details: SHIPPED_BACKGROUNDS[fileName]!,
++		}
++	})
++
++/**
++ * Add the theming app prefix to the url
++ *
++ * @param url - The url to preix
++ */
++function prefixWithBaseUrl(url: string) {
++	return generateFilePath('theming', '', 'img/background/') + url
++}
++
++/**
++ * Update local state
++ *
++ * @param data - Destructuring object
++ * @param data.backgroundColor - Background color value
++ * @param data.backgroundImage - Background image value
++ * @param data.version - Cache buster number
++ * @see https://github.com/nextcloud/server/blob/c78bd45c64d9695724fc44fe8453a88824b85f2f/apps/theming/lib/Controller/UserThemeController.php#L187-L191
++ */
++async function update(data: { backgroundColor: string, backgroundImage: string, version: string }) {
++	// Update state
++	currentBackgroundImage.value = data.backgroundImage
++	currentTheming.value.backgroundColor = data.backgroundColor
++
++	// Notify parent and reload style
++	emit('refreshStyles')
++	loading.value = false
++}
++
++/**
++ * Set background to default
++ */
++async function setDefault() {
++	loading.value = 'default'
++	const result = await axios.post(generateUrl('/apps/theming/background/default'))
++	update(result.data)
++}
++
++/**
++ * Set background to a shipped background
++ *
++ * @param shipped - The shipped background name
++ */
++async function setShipped(shipped: string) {
++	loading.value = shipped
++	const result = await axios.post(generateUrl('/apps/theming/background/shipped'), { value: shipped })
++	update(result.data)
++}
++
++/**
++ * Set background to a Nextcloud file
++ *
++ * @param path - Path to the file
++ */
++async function setFile(path: string) {
++	loading.value = 'custom'
++	const result = await axios.post(generateUrl('/apps/theming/background/custom'), { value: path })
++	update(result.data)
++}
++
++/**
++ * Set a plain color as background
++ *
++ * @param color - The hex color
++ */
++async function pickColor(color?: string) {
++	if (!color) {
++		return
++	}
++
++	loading.value = 'color'
++	const { data } = await axios.post(generateUrl('/apps/theming/background/color'), { color: color || '#0082c9' })
++	update(data)
++}
++
++/**
++ * Open file picker to select a custom background
++ */
++async function pickFile() {
++	await getFilePickerBuilder(t('theming', 'Select a background from your files'))
++		.allowDirectories(false)
++		.setFilter((node) => node.mime.startsWith('image/'))
++		.setMultiSelect(false)
++		.addButton({
++			label: t('theming', 'Select background'),
++			callback: ([node]) => {
++				setFile(node!.path)
++			},
++			variant: 'primary',
++		})
++		.build()
++		.pick()
++}
++</script>
++
++<template>
++	<NcSettingsSection
++		class="background"
++		:name="t('theming', 'Background and color')"
++		:description="t('theming', 'The background can be set to an image from the default set, a custom uploaded image, or a plain color.')">
++		<fieldset>
++			<legend class="hidden-visually">
++				{{ t('theming', 'Background and color') }}
++			</legend>
++
++			<div :class="$style.backgroundSelect">
++				<!-- Custom background -->
++				<button
++					:aria-disabled="loading === 'custom'"
++					:aria-pressed="currentBackgroundImage === 'custom'"
++					:aria-label="t('theming', 'Custom background')"
++					:title="t('theming', 'Custom background')"
++					class="button-vue"
++					:class="[$style.backgroundSelect__entry, $style.backgroundSelect__entryFilePicker]"
++					@click="pickFile">
++					<NcLoadingIcon v-if="loading === 'custom'" />
++					<NcIconSvgWrapper v-else :path="currentBackgroundImage === 'custom' ? mdiCheck : mdiImageEditOutline" />
++				</button>
++
++				<!-- Custom color picker -->
++				<NcColorPicker v-model="currentTheming.backgroundColor" @submit="pickColor">
++					<button
++						class="button-vue"
++						:class="[$style.backgroundSelect__entry, $style.backgroundSelect__entryColor]"
++						:aria-disabled="loading === 'color'"
++						:aria-pressed="currentBackgroundImage === 'color'"
++						:aria-label="t('theming', 'Plain background') /* TRANSLATORS: Background using a single color */"
++						:title="t('theming', 'Plain background') /* TRANSLATORS: Background using a single color */"
++						:style="{
++							backgroundColor: currentTheming.backgroundColor,
++							'--color-content': getTextColor(currentTheming.backgroundColor),
++						}">
++						<NcLoadingIcon v-if="loading === 'color'" />
++						<NcIconSvgWrapper v-else :path="currentBackgroundImage === 'color' ? mdiCheck : mdiPaletteOutline" />
++					</button>
++				</NcColorPicker>
++
++				<!-- Default background -->
++				<button
++					class="button-vue"
++					:class="[$style.backgroundSelect__entry, $style.backgroundSelect__entryDefault]"
++					:aria-disabled="loading === 'default'"
++					:aria-pressed="currentBackgroundImage === 'default'"
++					:aria-label="t('theming', 'Default background')"
++					:title="t('theming', 'Default background')"
++					:style="{
++						'--color-content': getTextColor(THEMING_DEFAULTS.backgroundColor),
++					}"
++					@click="setDefault">
++					<NcLoadingIcon v-if="loading === 'default'" />
++					<NcIconSvgWrapper v-else :path="currentBackgroundImage === 'default' ? mdiCheck : mdiUndo" />
++				</button>
++			</div>
++
++			<!-- Background set selection -->
++			<fieldset :class="$style.backgroundSelect">
++				<label class="hidden-visually">
++					{{ t('theming', 'Default shipped background images') }}
++				</label>
++				<button
++					v-for="shippedBackground in shippedBackgrounds"
++					:key="shippedBackground.name"
++					:title="shippedBackground.details.attribution"
++					:aria-label="shippedBackground.details.description"
++					:aria-pressed="currentBackgroundImage === shippedBackground.name"
++					class="button-vue"
++					:class="$style.backgroundSelect__entry"
++					:style="{
++						backgroundImage: 'url(' + shippedBackground.preview + ')',
++					}"
++					tabindex="0"
++					@click="setShipped(shippedBackground.name)">
++					<NcIconSvgWrapper
++						v-if="currentBackgroundImage === shippedBackground.name"
++						:class="$style.backgroundSelect__entryIcon"
++						:path="mdiCheck" />
++				</button>
++			</fieldset>
++		</fieldset>
++	</NcSettingsSection>
++</template>
++
++<style module lang="css">
++.backgroundSelect {
++	display: flex;
++	flex-wrap: wrap;
++	justify-content: center;
++
++	.backgroundSelect__entry {
++		display: flex;
++		flex-direction: column;
++		justify-content: center;
++		align-items: center;
++		overflow: hidden;
++		height: 96px;
++		width: 168px;
++		margin: var(--default-grid-baseline);
++		text-align: center;
++		word-wrap: break-word;
++		hyphens: auto;
++		border: 2px solid var(--color-main-background);
++		border-radius: var(--border-radius-large);
++		background-position: center center;
++		background-size: cover;
++
++		--color-content: var(--color-background-plain-text);
++	}
++
++	.backgroundSelect__entry:hover,
++	.backgroundSelect__entry:focus {
++		outline: 2px solid var(--color-main-text) !important;
++		border-color: var(--color-main-background) !important;
++	}
++
++	.backgroundSelect__entry > *{
++		color: var(--color-content);
++		opacity: 1;
++	}
++
++	.backgroundSelect__entryColor {
++		background-color: var(--color-background-plain);
++	}
++
++	.backgroundSelect__entryFilePicker {
++		--color-content: var(--color-main-text);
++		background-color: var(--color-background-dark);
++	}
++
++	.backgroundSelect__entryFilePicker[aria-pressed="true"] {
++		--color-content: var(--color-background-plain-text);
++		background-image: var(--image-background);
++	}
++
++	.backgroundSelect__entryDefault {
++		background-image: linear-gradient(to bottom, rgba(23, 23, 23, 0.5), rgba(23, 23, 23, 0.5)), v-bind(DEFAULT_BACKGROUND_IMAGE);
++	}
++}
++</style>
+diff --git a/apps/theming/src/components/UserSectionHotkeys.vue b/apps/theming/src/components/UserSectionHotkeys.vue
+new file mode 100644
+index 0000000000..6b0cbdcbaa
+--- /dev/null
++++ b/apps/theming/src/components/UserSectionHotkeys.vue
+@@ -0,0 +1,48 @@
++<!--
++  - SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
++  - SPDX-License-Identifier: AGPL-3.0-or-later
++-->
++
++<script setup lang="ts">
++import axios from '@nextcloud/axios'
++import { loadState } from '@nextcloud/initial-state'
++import { t } from '@nextcloud/l10n'
++import { generateOcsUrl } from '@nextcloud/router'
++import { ref, watch } from 'vue'
++import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
++import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
++
++const shortcutsDisabled = ref(loadState('theming', 'shortcutsDisabled', false))
++watch(shortcutsDisabled, updateHotkeyState)
++
++/**
++ * Update the hotkey state on the server
++ */
++async function updateHotkeyState() {
++	const url = generateOcsUrl('apps/provisioning_api/api/v1/config/users/{appId}/{configKey}', {
++		appId: 'theming',
++		configKey: 'shortcuts_disabled',
++	})
++
++	if (shortcutsDisabled.value) {
++		await axios.post(url, {
++			configValue: 'yes',
++		})
++	} else {
++		await axios.delete(url)
++	}
++}
++</script>
++
++<template>
++	<NcSettingsSection
++		:name="t('theming', 'Keyboard shortcuts')"
++		:description="t('theming', 'In some cases keyboard shortcuts can interfere with accessibility tools. In order to allow focusing on your tool correctly you can disable all keyboard shortcuts here. This will also disable all available shortcuts in apps.')">
++		<NcCheckboxRadioSwitch
++			v-model="shortcutsDisabled"
++			class="theming__preview-toggle"
++			type="switch">
++			{{ t('theming', 'Disable all keyboard shortcuts') }}
++		</NcCheckboxRadioSwitch>
++	</NcSettingsSection>
++</template>
+diff --git a/apps/theming/src/components/UserSectionPrimaryColor.vue b/apps/theming/src/components/UserSectionPrimaryColor.vue
+new file mode 100644
+index 0000000000..88985d3829
+--- /dev/null
++++ b/apps/theming/src/components/UserSectionPrimaryColor.vue
+@@ -0,0 +1,166 @@
++<!--
++  - SPDX-FileCopyrightText: 2024 Nextcloud GmbH and Nextcloud contributors
++  - SPDX-License-Identifier: AGPL-3.0-or-later
++-->
++
++<script setup lang="ts">
++import axios from '@nextcloud/axios'
++import { showError } from '@nextcloud/dialogs'
++import { loadState } from '@nextcloud/initial-state'
++import { t } from '@nextcloud/l10n'
++import { generateOcsUrl } from '@nextcloud/router'
++import { colord } from 'colord'
++import debounce from 'debounce'
++import { computed, ref, useTemplateRef, watch } from 'vue'
++import NcButton from '@nextcloud/vue/components/NcButton'
++import NcColorPicker from '@nextcloud/vue/components/NcColorPicker'
++import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
++import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
++import IconColorPalette from 'vue-material-design-icons/PaletteOutline.vue'
++import IconUndo from 'vue-material-design-icons/UndoVariant.vue'
++import { logger } from '../utils/logger.ts'
++
++const emit = defineEmits<{
++	refreshStyles: []
++}>()
++
++defineExpose({ reload })
++
++const { primaryColor: initialPrimaryColor, defaultPrimaryColor } = loadState('theming', 'data', { primaryColor: '#0082c9', defaultPrimaryColor: '#0082c9' })
++
++const triggerElement = useTemplateRef('trigger')
++
++const loading = ref(false)
++const primaryColor = ref(initialPrimaryColor)
++watch(primaryColor, debounce((newColor) => {
++	onUpdate(newColor)
++}, 1000))
++
++const isDefaultPrimaryColor = computed(() => colord(primaryColor.value).isEqual(colord(defaultPrimaryColor)))
++
++/**
++ * Global styles are reloaded so we might need to update the current value
++ */
++function reload() {
++	let newColor = window.getComputedStyle(triggerElement.value!).backgroundColor
++	// sometimes the browser returns the color in the "rgb(255, 132, 234)" format
++	const rgbMatch = newColor.replaceAll(/\s/g, '').match(/^rgba?\((\d+),(\d+),(\d+)/)
++	if (rgbMatch) {
++		newColor = `#${numberToHex(rgbMatch[1]!)}${numberToHex(rgbMatch[2]!)}${numberToHex(rgbMatch[3]!)}`
++	}
++	if (newColor.toLowerCase() !== primaryColor.value.toLowerCase()) {
++		primaryColor.value = newColor
++	}
++}
++
++/**
++ * Reset primary color to default
++ */
++function onReset() {
++	primaryColor.value = defaultPrimaryColor
++	onUpdate(null)
++}
++
++/**
++ * Handle saving the new primary color on the server
++ *
++ * @param value - The new value
++ */
++async function onUpdate(value: string | null) {
++	loading.value = true
++	const url = generateOcsUrl('apps/provisioning_api/api/v1/config/users/{appId}/{configKey}', {
++		appId: 'theming',
++		configKey: 'primary_color',
++	})
++	try {
++		if (value) {
++			await axios.post(url, {
++				configValue: value,
++			})
++		} else {
++			await axios.delete(url)
++		}
++		emit('refreshStyles')
++	} catch (error) {
++		logger.error('Could not update primary color', { error })
++		showError(t('theming', 'Could not set primary color'))
++	}
++	loading.value = false
++}
++
++/**
++ * @param numeric - Numeric string to convert to hex
++ */
++function numberToHex(numeric: string): string {
++	const parsed = Number.parseInt(numeric)
++	return parsed.toString(16).padStart(2, '0')
++}
++</script>
++
++<template>
++	<NcSettingsSection
++		:name="t('theming', 'Primary color')"
++		:description="t('theming', 'Set a primary color to highlight important elements. The color used for elements such as primary buttons might differ a bit as it gets adjusted to fulfill accessibility requirements.')">
++		<div :class="$style.userPrimaryColor">
++			<NcColorPicker
++				v-model="primaryColor"
++				data-user-theming-primary-color>
++				<button
++					ref="trigger"
++					:class="$style.userPrimaryColor__trigger"
++					:style="{ 'background-color': primaryColor }"
++					data-user-theming-primary-color-trigger>
++					{{ t('theming', 'Primary color') }}
++					<NcLoadingIcon v-if="loading" />
++					<IconColorPalette v-else :size="20" />
++				</button>
++			</NcColorPicker>
++			<NcButton variant="tertiary" :disabled="isDefaultPrimaryColor" @click="onReset">
++				<template #icon>
++					<IconUndo :size="20" />
++				</template>
++				{{ t('theming', 'Reset primary color') }}
++			</NcButton>
++		</div>
++	</NcSettingsSection>
++</template>
++
++<style module lang="scss">
++.userPrimaryColor {
++	display: flex;
++	flex-direction: row;
++	flex-wrap: wrap;
++	gap: 12px;
++}
++
++.userPrimaryColor .userPrimaryColor__trigger {
++	display: flex;
++	flex-direction: column;
++	align-items: center;
++	justify-content: center;
++	gap: 8px;
++	margin: 0 !important;
++
++	background-color: var(--color-primary);
++	color: var(--color-primary-text);
++	height: 96px;
++	width: 168px;
++
++	word-wrap: break-word;
++	hyphens: auto;
++
++	border: 2px solid var(--color-main-background);
++	border-radius: var(--border-radius-large);
++
++	&:active {
++		background-color: var(--color-primary-hover) !important;
++	}
++
++	&:hover,
++	&:focus,
++	&:focus-visible {
++		border-color: var(--color-main-background) !important;
++		outline: 2px solid var(--color-main-text) !important;
++	}
++}
++</style>
+diff --git a/apps/theming/src/components/admin/AppMenuSection.vue b/apps/theming/src/components/admin/AppMenuSection.vue
+deleted file mode 100644
+index 46316e12a8..0000000000
+--- a/apps/theming/src/components/admin/AppMenuSection.vue
++++ /dev/null
+@@ -1,132 +0,0 @@
+-<!--
+-  - SPDX-FileCopyrightText: 2023 Nextcloud GmbH and Nextcloud contributors
+-  - SPDX-License-Identifier: AGPL-3.0-or-later
+--->
+-<template>
+-	<NcSettingsSection :name="t('theming', 'Navigation bar settings')">
+-		<h3>{{ t('theming', 'Default app') }}</h3>
+-		<p class="info-note">
+-			{{ t('theming', 'The default app is the app that is e.g. opened after login or when the logo in the menu is clicked.') }}
+-		</p>
+-
+-		<NcCheckboxRadioSwitch v-model="hasCustomDefaultApp" type="switch" data-cy-switch-default-app="">
+-			{{ t('theming', 'Use custom default app') }}
+-		</NcCheckboxRadioSwitch>
+-
+-		<template v-if="hasCustomDefaultApp">
+-			<h4>{{ t('theming', 'Global default app') }}</h4>
+-			<NcSelect
+-				v-model="selectedApps"
+-				keep-open
+-				:placeholder="t('theming', 'Global default apps')"
+-				:options="allApps"
+-				:multiple="true" />
+-			<h5>{{ t('theming', 'Default app priority') }}</h5>
+-			<p class="info-note">
+-				{{ t('theming', 'If an app is not enabled for a user, the next app with lower priority is used.') }}
+-			</p>
+-			<AppOrderSelector :value.sync="selectedApps" />
+-		</template>
+-	</NcSettingsSection>
+-</template>
+-
+-<script lang="ts">
+-import type { INavigationEntry } from '../../../../../core/src/types/navigation.ts'
+-
+-import axios from '@nextcloud/axios'
+-import { showError } from '@nextcloud/dialogs'
+-import { loadState } from '@nextcloud/initial-state'
+-import { translate as t } from '@nextcloud/l10n'
+-import { generateUrl } from '@nextcloud/router'
+-import { computed, defineComponent } from 'vue'
+-import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
+-import NcSelect from '@nextcloud/vue/components/NcSelect'
+-import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
+-import AppOrderSelector from '../AppOrderSelector.vue'
+-
+-export default defineComponent({
+-	name: 'AppMenuSection',
+-	components: {
+-		AppOrderSelector,
+-		NcCheckboxRadioSwitch,
+-		NcSelect,
+-		NcSettingsSection,
+-	},
+-
+-	props: {
+-		defaultApps: {
+-			type: Array,
+-			required: true,
+-		},
+-	},
+-
+-	emits: {
+-		'update:defaultApps': (value: string[]) => Array.isArray(value) && value.every((id) => typeof id === 'string'),
+-	},
+-
+-	setup(props, { emit }) {
+-		/**
+-		 * All enabled apps which can be navigated
+-		 */
+-		const allApps = loadState<INavigationEntry[]>('core', 'apps')
+-			.map(({ id, name, icon }) => ({ label: name, id, icon }))
+-
+-		/**
+-		 * Currently selected app, wrapps the setter
+-		 */
+-		const selectedApps = computed({
+-			get: () => props.defaultApps.map((id) => allApps.filter((app) => app.id === id)[0]),
+-			set(value) {
+-				saveSetting('defaultApps', value.map((app) => app.id))
+-					.then(() => emit('update:defaultApps', value.map((app) => app.id)))
+-					.catch(() => showError(t('theming', 'Could not set global default apps')))
+-			},
+-		})
+-
+-		const hasCustomDefaultApp = computed({
+-			get: () => props.defaultApps.length > 0,
+-			set: (checked: boolean) => {
+-				if (checked) {
+-					emit('update:defaultApps', ['dashboard', 'files'])
+-				} else {
+-					selectedApps.value = []
+-				}
+-			},
+-		})
+-
+-		/**
+-		 * @param key
+-		 * @param value
+-		 */
+-		async function saveSetting(key: string, value: unknown) {
+-			const url = generateUrl('/apps/theming/ajax/updateAppMenu')
+-			return await axios.put(url, {
+-				setting: key,
+-				value,
+-			})
+-		}
+-
+-		return {
+-			allApps,
+-			selectedApps,
+-			hasCustomDefaultApp,
+-
+-			t,
+-		}
+-	},
+-})
+-</script>
+-
+-<style scoped lang="scss">
+-h3, h4 {
+-	font-weight: bold;
+-}
+-
+-h4, h5 {
+-	margin-block-start: 12px;
+-}
+-
+-.info-note {
+-	color: var(--color-text-maxcontrast);
+-}
+-</style>
+diff --git a/apps/theming/src/components/admin/CheckboxField.vue b/apps/theming/src/components/admin/CheckboxField.vue
+deleted file mode 100644
+index d75fddfca3..0000000000
+--- a/apps/theming/src/components/admin/CheckboxField.vue
++++ /dev/null
+@@ -1,91 +0,0 @@
+-<!--
+-  - SPDX-FileCopyrightText: 2022 Nextcloud GmbH and Nextcloud contributors
+-  - SPDX-License-Identifier: AGPL-3.0-or-later
+--->
+-
+-<template>
+-	<div class="field">
+-		<label :for="id">{{ displayName }}</label>
+-		<div class="field__row">
+-			<NcCheckboxRadioSwitch
+-				:id="id"
+-				v-model="localValue"
+-				type="switch"
+-				@update:modelValue="save">
+-				{{ label }}
+-			</NcCheckboxRadioSwitch>
+-		</div>
+-
+-		<p class="field__description">
+-			{{ description }}
+-		</p>
+-
+-		<NcNoteCard
+-			v-if="errorMessage"
+-			type="error"
+-			:show-alert="true">
+-			<p>{{ errorMessage }}</p>
+-		</NcNoteCard>
+-	</div>
+-</template>
+-
+-<script>
+-import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
+-import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
+-import TextValueMixin from '../../mixins/admin/TextValueMixin.js'
+-
+-export default {
+-	name: 'CheckboxField',
+-
+-	components: {
+-		NcCheckboxRadioSwitch,
+-		NcNoteCard,
+-	},
+-
+-	mixins: [
+-		TextValueMixin,
+-	],
+-
+-	props: {
+-		name: {
+-			type: String,
+-			required: true,
+-		},
+-
+-		value: {
+-			type: Boolean,
+-			required: true,
+-		},
+-
+-		defaultValue: {
+-			type: Boolean,
+-			required: true,
+-		},
+-
+-		displayName: {
+-			type: String,
+-			required: true,
+-		},
+-
+-		label: {
+-			type: String,
+-			required: true,
+-		},
+-
+-		description: {
+-			type: String,
+-			required: true,
+-		},
+-	},
+-}
+-</script>
+-
+-<style lang="scss" scoped>
+-@use './shared/field' as *;
+-
+-.field {
+-	&__description {
+-		color: var(--color-text-maxcontrast);
+-	}
+-}
+-</style>
+diff --git a/apps/theming/src/components/admin/ColorPickerField.vue b/apps/theming/src/components/admin/ColorPickerField.vue
+index f4e0a9639f..89729e2348 100644
+--- a/apps/theming/src/components/admin/ColorPickerField.vue
++++ b/apps/theming/src/components/admin/ColorPickerField.vue
+@@ -3,164 +3,111 @@
+   - SPDX-License-Identifier: AGPL-3.0-or-later
+ -->
+ 
++<script setup lang="ts">
++import type { AdminThemingParameters } from '../../types.d.ts'
++
++import { mdiPaletteOutline, mdiUndo } from '@mdi/js'
++import { loadState } from '@nextcloud/initial-state'
++import { t } from '@nextcloud/l10n'
++import { computed, ref, toRef, useId, watch } from 'vue'
++import NcButton from '@nextcloud/vue/components/NcButton'
++import NcColorPicker from '@nextcloud/vue/components/NcColorPicker'
++import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
++import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
++import { useAdminThemingValue } from '../../composables/useAdminThemingValue.js'
++import { getTextColor } from '../../utils/color.ts'
++
++const props = defineProps<{
++	name: keyof AdminThemingParameters
++	label: string
++	defaultValue: string
++}>()
++
++const emit = defineEmits<{
++	updated: []
++}>()
++
++const id = useId()
++
++const modelValue = ref(loadState<AdminThemingParameters>('theming', 'adminThemingParameters')[props.name] as string)
++const previewColor = ref(modelValue.value)
++watch(modelValue, (v) => {
++	previewColor.value = v
++})
++
++const {
++	isSaving,
++	reset,
++} = useAdminThemingValue(() => props.name, modelValue, toRef(props, 'defaultValue'))
++watch(isSaving, (v) => !v && emit('updated'))
++
++const textColor = computed(() => getTextColor(previewColor.value))
++</script>
++
+ <template>
+-	<div class="field">
+-		<label :for="id">{{ displayName }}</label>
+-		<div class="field__row">
++	<div :class="$style.colorPickerField">
++		<div :class="$style.colorPickerField__row">
+ 			<NcColorPicker
+-				v-model="localValue"
+-				:advanced-fields="true"
+-				@update:value="debounceSave">
++				:id
++				v-model="previewColor"
++				advanced-fields
++				@submit="modelValue = $event!">
+ 				<NcButton
+-					:id="id"
+-					class="field__button"
++					:class="$style.colorPickerField__button"
++					size="large"
+ 					variant="primary"
+-					:aria-label="t('theming', 'Select a custom color')"
+-					data-admin-theming-setting-color-picker>
++					:style="{
++						'--color-primary-element': previewColor,
++						'--color-primary-element-text': textColor,
++						'--color-primary-element-hover': 'color-mix(in srgb, var(--color-primary-element) 70%, var(--color-primary-element-text))',
++					}">
+ 					<template #icon>
+-						<NcLoadingIcon
+-							v-if="loading"
+-							:appearance="calculatedTextColor === '#ffffff' ? 'light' : 'dark'"
+-							:size="20" />
+-						<Palette v-else :size="20" />
++						<NcLoadingIcon v-if="isSaving" :appearance="textColor === '#ffffff' ? 'light' : 'dark'" />
++						<NcIconSvgWrapper v-else :path="mdiPaletteOutline" />
+ 					</template>
+-					{{ value }}
++					{{ label }}
+ 				</NcButton>
+ 			</NcColorPicker>
+-			<div class="field__color-preview" data-admin-theming-setting-color />
+ 			<NcButton
+-				v-if="value !== defaultValue"
++				v-if="modelValue !== defaultValue"
+ 				variant="tertiary"
+ 				:aria-label="t('theming', 'Reset to default')"
+-				data-admin-theming-setting-color-reset
+-				@click="undo">
++				:title="t('theming', 'Reset to default')"
++				@click="reset">
+ 				<template #icon>
+-					<Undo :size="20" />
++					<NcIconSvgWrapper :path="mdiUndo" />
+ 				</template>
+ 			</NcButton>
+ 		</div>
+-		<div v-if="description" class="description">
+-			{{ description }}
+-		</div>
+-
+-		<NcNoteCard
+-			v-if="errorMessage"
+-			type="error"
+-			:show-alert="true">
+-			<p>{{ errorMessage }}</p>
+-		</NcNoteCard>
++		<p :class="$style.colorPickerField__description">
++			<slot name="description" />
++		</p>
+ 	</div>
+ </template>
+ 
+-<script>
+-import { colord } from 'colord'
+-import debounce from 'debounce'
+-import NcButton from '@nextcloud/vue/components/NcButton'
+-import NcColorPicker from '@nextcloud/vue/components/NcColorPicker'
+-import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
+-import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
+-import Palette from 'vue-material-design-icons/Palette.vue'
+-import Undo from 'vue-material-design-icons/UndoVariant.vue'
+-import TextValueMixin from '../../mixins/admin/TextValueMixin.js'
+-
+-export default {
+-	name: 'ColorPickerField',
+-
+-	components: {
+-		NcButton,
+-		NcColorPicker,
+-		NcLoadingIcon,
+-		NcNoteCard,
+-		Undo,
+-		Palette,
+-	},
+-
+-	mixins: [
+-		TextValueMixin,
+-	],
+-
+-	props: {
+-		name: {
+-			type: String,
+-			required: true,
+-		},
+-
+-		description: {
+-			type: String,
+-			default: '',
+-		},
+-
+-		value: {
+-			type: String,
+-			required: true,
+-		},
+-
+-		textColor: {
+-			type: String,
+-			default: null,
+-		},
+-
+-		defaultValue: {
+-			type: String,
+-			required: true,
+-		},
+-
+-		displayName: {
+-			type: String,
+-			required: true,
+-		},
+-	},
+-
+-	emits: ['update:theming'],
+-
+-	data() {
+-		return {
+-			loading: false,
+-		}
+-	},
+-
+-	computed: {
+-		calculatedTextColor() {
+-			const color = colord(this.value)
+-			return color.isLight() ? '#000000' : '#ffffff'
+-		},
+-
+-		usedTextColor() {
+-			if (this.textColor) {
+-				return this.textColor
+-			}
+-			return this.calculatedTextColor
+-		},
+-	},
++<style module>
++.colorPickerField {
++	display: flex;
++	flex-direction: column;
++}
+ 
+-	methods: {
+-		debounceSave: debounce(async function() {
+-			this.loading = true
+-			await this.save()
+-			this.$emit('update:theming')
+-			this.loading = false
+-		}, 200),
+-	},
++.colorPickerField__row {
++	display: flex;
++	flex-direction: row;
++	align-items: center;
++	gap: calc(1.5 * var(--default-grid-baseline));
+ }
+-</script>
+ 
+-<style lang="scss" scoped>
+-@use './shared/field' as *;
++.colorPickerField__button {
++	min-width: clamp(200px, 25vw, 300px) !important;
++}
+ 
+-.description {
++.colorPickerField__description {
+ 	color: var(--color-text-maxcontrast);
++	margin-block: calc(0.5 * var(--default-grid-baseline)) var(--default-grid-baseline);
+ }
+ 
+-.field {
+-	&__button {
+-		background-color: v-bind('value') !important;
+-		color: v-bind('usedTextColor') !important;
+-	}
+-
+-	&__color-preview {
+-		width: var(--default-clickable-area);
+-		border-radius: var(--border-radius-large);
+-		background-color: v-bind('value');
+-	}
++.colorPickerField__description:empty {
++	display: none;
+ }
+ </style>
+diff --git a/apps/theming/src/components/admin/FileInputField.vue b/apps/theming/src/components/admin/FileInputField.vue
+index 14dd882190..581b69570a 100644
+--- a/apps/theming/src/components/admin/FileInputField.vue
++++ b/apps/theming/src/components/admin/FileInputField.vue
+@@ -3,249 +3,170 @@
+   - SPDX-License-Identifier: AGPL-3.0-or-later
+ -->
+ 
+-<template>
+-	<div class="field">
+-		<label :for="id">{{ displayName }}</label>
+-		<div class="field__row">
+-			<NcButton
+-				:id="id"
+-				variant="secondary"
+-				:aria-label="ariaLabel"
+-				data-admin-theming-setting-file-picker
+-				@click="activateLocalFilePicker">
+-				<template #icon>
+-					<Upload :size="20" />
+-				</template>
+-				{{ t('theming', 'Upload') }}
+-			</NcButton>
+-			<NcButton
+-				v-if="showReset"
+-				variant="tertiary"
+-				:aria-label="t('theming', 'Reset to default')"
+-				data-admin-theming-setting-file-reset
+-				@click="undo">
+-				<template #icon>
+-					<Undo :size="20" />
+-				</template>
+-			</NcButton>
+-			<NcButton
+-				v-if="showRemove"
+-				variant="tertiary"
+-				:aria-label="t('theming', 'Remove background image')"
+-				data-admin-theming-setting-file-remove
+-				@click="removeBackground">
+-				<template #icon>
+-					<Delete :size="20" />
+-				</template>
+-			</NcButton>
+-			<NcLoadingIcon
+-				v-if="showLoading"
+-				class="field__loading-icon"
+-				:size="20" />
+-		</div>
+-
+-		<div
+-			v-if="(name === 'logoheader' || name === 'favicon') && mimeValue !== defaultMimeValue"
+-			class="field__preview"
+-			:class="{
+-				'field__preview--logoheader': name === 'logoheader',
+-				'field__preview--favicon': name === 'favicon',
+-			}" />
+-
+-		<NcNoteCard
+-			v-if="errorMessage"
+-			type="error"
+-			:show-alert="true">
+-			<p>{{ errorMessage }}</p>
+-		</NcNoteCard>
+-
+-		<input
+-			ref="input"
+-			:accept="acceptMime"
+-			type="file"
+-			@change="onChange">
+-	</div>
+-</template>
++<script setup lang="ts">
++import type { AdminThemingParameters } from '../../types.d.ts'
+ 
+-<script>
++import { mdiImageOutline, mdiUndo } from '@mdi/js'
+ import axios from '@nextcloud/axios'
++import { showError } from '@nextcloud/dialogs'
+ import { loadState } from '@nextcloud/initial-state'
++import { t } from '@nextcloud/l10n'
+ import { generateUrl } from '@nextcloud/router'
++import { computed, ref, useTemplateRef } from 'vue'
+ import NcButton from '@nextcloud/vue/components/NcButton'
++import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
+ import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
+-import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
+-import Delete from 'vue-material-design-icons/TrashCanOutline.vue'
+-import Upload from 'vue-material-design-icons/TrayArrowUp.vue'
+-import Undo from 'vue-material-design-icons/UndoVariant.vue'
+-import FieldMixin from '../../mixins/admin/FieldMixin.js'
+-
+-const {
+-	allowedMimeTypes,
+-} = loadState('theming', 'adminThemingParameters', {})
+-
+-export default {
+-	name: 'FileInputField',
+-
+-	components: {
+-		Delete,
+-		NcButton,
+-		NcLoadingIcon,
+-		NcNoteCard,
+-		Undo,
+-		Upload,
+-	},
+-
+-	mixins: [
+-		FieldMixin,
+-	],
+-
+-	props: {
+-		name: {
+-			type: String,
+-			required: true,
+-		},
+-
+-		mimeName: {
+-			type: String,
+-			required: true,
+-		},
+-
+-		mimeValue: {
+-			type: String,
+-			required: true,
+-		},
+-
+-		defaultMimeValue: {
+-			type: String,
+-			default: '',
+-		},
+-
+-		displayName: {
+-			type: String,
+-			required: true,
+-		},
+-
+-		ariaLabel: {
+-			type: String,
+-			required: true,
+-		},
+-	},
+-
+-	data() {
+-		return {
+-			showLoading: false,
+-			acceptMime: (allowedMimeTypes[this.name]
+-				|| ['image/jpeg', 'image/png', 'image/gif', 'image/webp']).join(','),
+-		}
+-	},
+-
+-	computed: {
+-		showReset() {
+-			return this.mimeValue !== this.defaultMimeValue
+-		},
+-
+-		showRemove() {
+-			if (this.name === 'background') {
+-				if (this.mimeValue.startsWith('image/')) {
+-					return true
+-				}
+-				if (this.mimeValue === this.defaultMimeValue) {
+-					return true
+-				}
+-			}
+-			return false
+-		},
+-	},
+-
+-	methods: {
+-		activateLocalFilePicker() {
+-			this.reset()
+-			// Set to null so that selecting the same file will trigger the change event
+-			this.$refs.input.value = null
+-			this.$refs.input.click()
+-		},
+-
+-		async onChange(e) {
+-			const file = e.target.files[0]
+-
+-			const formData = new FormData()
+-			formData.append('key', this.name)
+-			formData.append('image', file)
+-
+-			const url = generateUrl('/apps/theming/ajax/uploadImage')
+-			try {
+-				this.showLoading = true
+-				const { data } = await axios.post(url, formData)
+-				this.showLoading = false
+-				this.$emit('update:mime-value', file.type)
+-				this.$emit('uploaded', data.data.url)
+-				this.handleSuccess()
+-			} catch (e) {
+-				this.showLoading = false
+-				this.errorMessage = e.response.data.data?.message
+-			}
+-		},
+-
+-		async undo() {
+-			this.reset()
+-			const url = generateUrl('/apps/theming/ajax/undoChanges')
+-			try {
+-				await axios.post(url, {
+-					setting: this.mimeName,
+-				})
+-				this.$emit('update:mime-value', this.defaultMimeValue)
+-				this.handleSuccess()
+-			} catch (e) {
+-				this.errorMessage = e.response.data.data?.message
+-			}
+-		},
+-
+-		async removeBackground() {
+-			this.reset()
+-			const url = generateUrl('/apps/theming/ajax/updateStylesheet')
+-			try {
+-				await axios.post(url, {
+-					setting: this.mimeName,
+-					value: 'backgroundColor',
+-				})
+-				this.$emit('update:mime-value', 'backgroundColor')
+-				this.handleSuccess()
+-			} catch (e) {
+-				this.errorMessage = e.response.data.data?.message
+-			}
+-		},
+-	},
++
++const props = defineProps<{
++	name: string
++	label: string
++	disabled?: boolean
++}>()
++
++const emit = defineEmits<{
++	updated: []
++}>()
++
++const isSaving = ref(false)
++const mime = ref(loadState<AdminThemingParameters>('theming', 'adminThemingParameters')[props.name + 'Mime'] as string)
++
++const inputElement = useTemplateRef('input')
++
++const background = computed(() => {
++	const baseUrl = generateUrl('/apps/theming/image/{key}', { key: props.name })
++	return `url(${baseUrl}?v=${Date.now()}&m=${encodeURIComponent(mime.value)})`
++})
++
++/**
++ * Open the file picker dialog
++ */
++function pickFile() {
++	if (isSaving.value) {
++		return
++	}
++	inputElement.value!.files = null
++	inputElement.value!.click()
+ }
+-</script>
+ 
+-<style lang="scss" scoped>
+-@use './shared/field' as *;
++/**
++ * Handle file input change event
++ */
++async function onChange() {
++	if (!inputElement.value!.files?.[0]) {
++		return
++	}
+ 
+-.field {
+-	&__loading-icon {
+-		width: 44px;
+-		height: 44px;
++	const file = inputElement.value!.files[0]!
++	if (file.type && !file.type.startsWith('image/')) {
++		showError(t('theming', 'Non image file selected'))
++		return
+ 	}
+ 
+-	&__preview {
+-		width: 70px;
+-		height: 70px;
+-		background-size: contain;
+-		background-position: center;
+-		background-repeat: no-repeat;
+-		margin: 10px 0;
+-
+-		&--logoheader {
+-			background-image: var(--image-logoheader);
+-		}
+-
+-		&--favicon {
+-			background-image: var(--image-favicon);
+-		}
++	isSaving.value = true
++
++	const formData = new FormData()
++	formData.append('image', file)
++	formData.append('key', props.name)
++
++	try {
++		await axios.post(generateUrl('/apps/theming/ajax/uploadImage'), formData, {
++			headers: {
++				'Content-Type': 'multipart/form-data',
++			},
++		})
++		mime.value = file.type
++		emit('updated')
++	} finally {
++		isSaving.value = false
+ 	}
+ }
+ 
+-input[type="file"] {
+-	display: none;
++/**
++ * Reset the image to default
++ */
++async function resetToDefault() {
++	if (isSaving.value) {
++		return
++	}
++
++	isSaving.value = true
++	try {
++		await axios.post(generateUrl('/apps/theming/ajax/undoChanges'), {
++			setting: props.name,
++		})
++		mime.value = ''
++		emit('updated')
++	} finally {
++		isSaving.value = false
++	}
++}
++</script>
++
++<template>
++	<div :class="$style.fileInputField">
++		<NcButton
++			:class="$style.fileInputField__button"
++			alignment="start"
++			:disabled
++			size="large"
++			@click="pickFile">
++			<template #icon>
++				<NcLoadingIcon v-if="isSaving" />
++				<NcIconSvgWrapper v-else :path="mdiImageOutline" />
++			</template>
++			{{ label }}
++		</NcButton>
++
++		<div
++			v-if="mime.startsWith('image/')"
++			:class="$style.fileInputField__preview"
++			role="img"
++			:aria-label="t('theming', 'Preview of the selected image')" />
++
++		<NcButton
++			v-if="mime && !disabled"
++			:aria-label="t('theming', 'Reset to default')"
++			:title="t('theming', 'Reset to default')"
++			size="large"
++			variant="tertiary"
++			@click="resetToDefault">
++			<template #icon>
++				<NcIconSvgWrapper :path="mdiUndo" />
++			</template>
++		</NcButton>
++		<input
++			ref="input"
++			class="hidden-visually"
++			aria-hidden="true"
++			:disabled
++			type="file"
++			accept="image/*"
++			:name
++			@change="onChange">
++	</div>
++</template>
++
++<style module>
++.fileInputField {
++	display: flex;
++	flex-direction: row;
++	flex-wrap: wrap;
++	align-items: center;
++	gap: calc(1.5 * var(--default-grid-baseline));
++}
++
++.fileInputField__button {
++	min-width: clamp(200px, 25vw, 300px) !important;
++}
++
++.fileInputField__preview {
++	height: var(--clickable-area-large);
++	width: calc(var(--clickable-area-large) / 9 * 16);
++	background: v-bind('background');
++	background-size: contain;
++	background-repeat: no-repeat;
++	background-position: center;
++	border: 2px solid var(--color-border-maxcontrast);
++	border-radius: var(--border-radius-element);
+ }
+ </style>
+diff --git a/apps/theming/src/components/admin/TextField.vue b/apps/theming/src/components/admin/TextField.vue
+index 5546770043..4892916b2a 100644
+--- a/apps/theming/src/components/admin/TextField.vue
++++ b/apps/theming/src/components/admin/TextField.vue
+@@ -3,82 +3,59 @@
+   - SPDX-License-Identifier: AGPL-3.0-or-later
+ -->
+ 
+-<template>
+-	<div class="field">
+-		<NcTextField
+-			v-model="localValue"
+-			:label="displayName"
+-			:placeholder="placeholder"
+-			:type="type"
+-			:maxlength="maxlength"
+-			:spellcheck="false"
+-			:success="showSuccess"
+-			:error="Boolean(errorMessage)"
+-			:helper-text="errorMessage"
+-			:show-trailing-button="value !== defaultValue"
+-			trailing-button-icon="undo"
+-			@trailing-button-click="undo"
+-			@keydown.enter="save"
+-			@blur="save" />
+-	</div>
+-</template>
++<script setup lang="ts">
++import type { AdminThemingParameters } from '../../types.d.ts'
+ 
+-<script>
++import { loadState } from '@nextcloud/initial-state'
++import { watchDebounced } from '@vueuse/core'
++import { ref, toRef } from 'vue'
++import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
+ import NcTextField from '@nextcloud/vue/components/NcTextField'
+-import TextValueMixin from '../../mixins/admin/TextValueMixin.js'
+-
+-export default {
+-	name: 'TextField',
+-
+-	components: {
+-		NcTextField,
+-	},
+-
+-	mixins: [
+-		TextValueMixin,
+-	],
+-
+-	props: {
+-		name: {
+-			type: String,
+-			required: true,
+-		},
+-
+-		value: {
+-			type: String,
+-			required: true,
+-		},
+-
+-		defaultValue: {
+-			type: String,
+-			required: true,
+-		},
+-
+-		type: {
+-			type: String,
+-			required: true,
+-		},
+-
+-		displayName: {
+-			type: String,
+-			required: true,
+-		},
+-
+-		placeholder: {
+-			type: String,
+-			required: true,
+-		},
+-
+-		maxlength: {
+-			type: Number,
+-			required: true,
+-		},
+-	},
+-}
++import { useAdminThemingValue } from '../../composables/useAdminThemingValue.ts'
++
++const props = withDefaults(defineProps<{
++	name: keyof AdminThemingParameters
++	label: string
++	defaultValue: string
++	type?: 'text' | 'url'
++}>(), {
++	type: 'text',
++})
++
++const modelValue = ref(loadState<AdminThemingParameters>('theming', 'adminThemingParameters')[props.name].toString())
++
++const {
++	isSaving,
++	isSaved,
++	reset,
++} = useAdminThemingValue(toRef(() => props.name), modelValue, toRef(() => props.defaultValue))
++
++watchDebounced(modelValue, (value) => {
++	if (props.type === 'url' && value.includes('"')) {
++		try {
++			const url = new URL(value)
++			url.pathname = url.pathname.replaceAll(/"/g, '%22')
++			modelValue.value = url.href
++		} catch {
++			// invalid URL, do nothing
++			return
++		}
++	}
++}, { debounce: 600 })
+ </script>
+ 
+-<style lang="scss" scoped>
+-.field {
+-	max-width: 400px;
+-}
+-</style>
++<template>
++	<NcTextField
++		v-model="modelValue"
++		:label
++		:readonly="isSaving"
++		:success="isSaved"
++		:type
++		:show-trailing-button="modelValue !== defaultValue"
++		:trailing-button-icon="defaultValue ? 'undo' : 'close'"
++		@trailing-button-click="reset">
++		<template v-if="isSaving" #icon>
++			<NcLoadingIcon />
++		</template>
++	</NcTextField>
++</template>
+diff --git a/apps/theming/src/components/admin/shared/field.scss b/apps/theming/src/components/admin/shared/field.scss
+deleted file mode 100644
+index 2347f31f7c..0000000000
+--- a/apps/theming/src/components/admin/shared/field.scss
++++ /dev/null
+@@ -1,15 +0,0 @@
+-/*!
+- * SPDX-FileCopyrightText: 2022 Nextcloud GmbH and Nextcloud contributors
+- * SPDX-License-Identifier: AGPL-3.0-or-later
+- */
+-
+-.field {
+-	display: flex;
+-	flex-direction: column;
+-	gap: 4px 0;
+-
+-	&__row {
+-		display: flex;
+-		gap: 0 4px;
+-	}
+-}
+diff --git a/apps/theming/src/composables/useAdminThemingValue.ts b/apps/theming/src/composables/useAdminThemingValue.ts
+new file mode 100644
+index 0000000000..6c71836120
+--- /dev/null
++++ b/apps/theming/src/composables/useAdminThemingValue.ts
+@@ -0,0 +1,111 @@
++/*!
++ * SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
++ * SPDX-License-Identifier: AGPL-3.0-or-later
++ */
++
++import type { MaybeRef, MaybeRefOrGetter, Ref } from 'vue'
++
++import axios, { isAxiosError } from '@nextcloud/axios'
++import { showError } from '@nextcloud/dialogs'
++import { generateUrl } from '@nextcloud/router'
++import { watchDebounced } from '@vueuse/core'
++import { isReadonly, isRef, readonly, ref, toValue } from 'vue'
++import { logger } from '../utils/logger.ts'
++
++/**
++ * @param name - The property name
++ * @param modelValue - The model value
++ * @param defaultValue - The default value
++ */
++export function useAdminThemingValue<T>(name: MaybeRefOrGetter<string>, modelValue: Ref<T>, defaultValue: MaybeRef<T>) {
++	let resetted = false
++	const isSaving = ref(false)
++	const isSaved = ref(false)
++
++	watchDebounced(modelValue, async () => {
++		if (isSaving.value) {
++			return
++		}
++
++		if (resetted) {
++			resetted = false
++			return
++		}
++
++		isSaving.value = true
++		isSaved.value = false
++		try {
++			await setValue(toValue(name), toValue(modelValue))
++			isSaved.value = true
++			window.setTimeout(() => {
++				isSaved.value = false
++			}, 2000)
++		} finally {
++			isSaving.value = false
++		}
++	}, { debounce: 800, flush: 'sync' })
++
++	/**
++	 * Reset to default value
++	 */
++	async function reset() {
++		isSaving.value = true
++		isSaved.value = false
++		try {
++			const result = await resetValue(toValue(name))
++			if (result && isRef(defaultValue) && !isReadonly(defaultValue)) {
++				defaultValue.value = result as T
++			}
++			resetted = true
++			modelValue.value = toValue(defaultValue)
++		} finally {
++			isSaving.value = false
++		}
++	}
++
++	return {
++		isSaving: readonly(isSaving),
++		isSaved: readonly(isSaved),
++		reset,
++	}
++}
++
++/**
++ * @param setting - The setting name
++ * @param value - The setting value
++ */
++async function setValue(setting: string, value: unknown) {
++	const url = generateUrl('/apps/theming/ajax/updateStylesheet')
++	try {
++		await axios.post(url, {
++			setting,
++			value: String(value),
++		})
++	} catch (error) {
++		logger.error('Failed to save changes', { error, setting, value })
++		if (isAxiosError(error) && error.response?.data?.data?.message) {
++			showError(error.response.data.data.message)
++		}
++		throw error
++	}
++}
++
++/**
++ * Reset theming value for a given setting
++ *
++ * @param setting - The setting name
++ */
++async function resetValue(setting: string) {
++	const url = generateUrl('/apps/theming/ajax/undoChanges')
++	try {
++		const { data } = await axios.post<{ data: { value?: string } }>(url, { setting })
++		return data.data.value
++	} catch (error) {
++		logger.error('Failed to reset theming value', { error, setting })
++		if (isAxiosError(error) && error.response?.data?.data?.message) {
++			showError(error.response.data.data.message)
++			return false
++		}
++		throw error
++	}
++}
+diff --git a/apps/theming/src/mixins/admin/FieldMixin.js b/apps/theming/src/mixins/admin/FieldMixin.js
+deleted file mode 100644
+index e9a2d3c387..0000000000
+--- a/apps/theming/src/mixins/admin/FieldMixin.js
++++ /dev/null
+@@ -1,49 +0,0 @@
+-/**
+- * SPDX-FileCopyrightText: 2022 Nextcloud GmbH and Nextcloud contributors
+- * SPDX-License-Identifier: AGPL-3.0-or-later
+- */
+-
+-const styleRefreshFields = [
+-	'color',
+-	'logo',
+-	'background',
+-	'logoheader',
+-	'favicon',
+-	'disable-user-theming',
+-]
+-
+-export default {
+-	emits: [
+-		'update:theming',
+-	],
+-
+-	data() {
+-		return {
+-			showSuccess: false,
+-			errorMessage: '',
+-		}
+-	},
+-
+-	computed: {
+-		id() {
+-			return `admin-theming-${this.name}`
+-		},
+-	},
+-
+-	methods: {
+-		reset() {
+-			this.showSuccess = false
+-			this.errorMessage = ''
+-		},
+-
+-		handleSuccess() {
+-			this.showSuccess = true
+-			setTimeout(() => {
+-				this.showSuccess = false
+-			}, 2000)
+-			if (styleRefreshFields.includes(this.name)) {
+-				this.$emit('update:theming')
+-			}
+-		},
+-	},
+-}
+diff --git a/apps/theming/src/mixins/admin/TextValueMixin.js b/apps/theming/src/mixins/admin/TextValueMixin.js
+deleted file mode 100644
+index 0e83c1bd08..0000000000
+--- a/apps/theming/src/mixins/admin/TextValueMixin.js
++++ /dev/null
+@@ -1,96 +0,0 @@
+-/**
+- * SPDX-FileCopyrightText: 2022 Nextcloud GmbH and Nextcloud contributors
+- * SPDX-License-Identifier: AGPL-3.0-or-later
+- */
+-
+-import axios from '@nextcloud/axios'
+-import { generateUrl } from '@nextcloud/router'
+-import { logger } from '../../logger.ts'
+-import FieldMixin from './FieldMixin.js'
+-
+-export default {
+-	mixins: [
+-		FieldMixin,
+-	],
+-
+-	watch: {
+-		value(value) {
+-			this.localValue = value
+-		},
+-	},
+-
+-	data() {
+-		return {
+-			/** @type {string|boolean} */
+-			localValue: this.value,
+-		}
+-	},
+-
+-	computed: {
+-		valueToPost() {
+-			if (this.type === 'url') {
+-				// if this is already encoded just make sure there is no doublequote (HTML XSS)
+-				// otherwise simply URL encode
+-				return this.isUrlEncoded(this.localValue)
+-					? this.localValue.replaceAll('"', '%22')
+-					: encodeURI(this.localValue)
+-			}
+-			// Convert boolean to string as server expects string value
+-			if (typeof this.localValue === 'boolean') {
+-				return this.localValue ? 'yes' : 'no'
+-			}
+-			return this.localValue
+-		},
+-	},
+-
+-	methods: {
+-		/**
+-		 * Check if URL is percent-encoded
+-		 *
+-		 * @param {string} url The URL to check
+-		 * @return {boolean}
+-		 */
+-		isUrlEncoded(url) {
+-			try {
+-				return decodeURI(url) !== url
+-			} catch {
+-				return false
+-			}
+-		},
+-
+-		async save() {
+-			this.reset()
+-			const url = generateUrl('/apps/theming/ajax/updateStylesheet')
+-
+-			try {
+-				await axios.post(url, {
+-					setting: this.name,
+-					value: this.valueToPost,
+-				})
+-				this.$emit('update:value', this.localValue)
+-				this.handleSuccess()
+-			} catch (error) {
+-				logger.error('Failed to save changes', { error })
+-				this.errorMessage = error.response?.data.data?.message
+-			}
+-		},
+-
+-		async undo() {
+-			this.reset()
+-			const url = generateUrl('/apps/theming/ajax/undoChanges')
+-			try {
+-				const { data } = await axios.post(url, {
+-					setting: this.name,
+-				})
+-
+-				if (data.data.value) {
+-					this.$emit('update:defaultValue', data.data.value)
+-				}
+-				this.$emit('update:value', data.data.value || this.defaultValue)
+-				this.handleSuccess()
+-			} catch (e) {
+-				this.errorMessage = e.response.data.data?.message
+-			}
+-		},
+-	},
+-}
+diff --git a/apps/theming/src/personal-settings.js b/apps/theming/src/personal-settings.js
+deleted file mode 100644
+index fe81575233..0000000000
+--- a/apps/theming/src/personal-settings.js
++++ /dev/null
+@@ -1,19 +0,0 @@
+-/**
+- * SPDX-FileCopyrightText: 2018 Nextcloud GmbH and Nextcloud contributors
+- * SPDX-License-Identifier: AGPL-3.0-or-later
+- */
+-
+-import { getCSPNonce } from '@nextcloud/auth'
+-import Vue from 'vue'
+-import App from './UserTheming.vue'
+-import { refreshStyles } from './helpers/refreshStyles.js'
+-
+-__webpack_nonce__ = getCSPNonce()
+-
+-Vue.prototype.OC = OC
+-Vue.prototype.t = t
+-
+-const View = Vue.extend(App)
+-const theming = new View()
+-theming.$mount('#theming')
+-theming.$on('update:background', refreshStyles)
+diff --git a/apps/theming/src/settings-admin.ts b/apps/theming/src/settings-admin.ts
+new file mode 100644
+index 0000000000..ec7a87ac9d
+--- /dev/null
++++ b/apps/theming/src/settings-admin.ts
+@@ -0,0 +1,13 @@
++/*!
++ * SPDX-FileCopyrightText: 2022 Nextcloud GmbH and Nextcloud contributors
++ * SPDX-License-Identifier: AGPL-3.0-or-later
++ */
++
++import { createApp } from 'vue'
++import AdminTheming from './views/AdminTheming.vue'
++
++import 'vite/modulepreload-polyfill'
++
++const app = createApp(AdminTheming)
++app.config.idPrefix = 'settings'
++app.mount('#settings-admin-theming')
+diff --git a/apps/theming/src/settings-personal.ts b/apps/theming/src/settings-personal.ts
+new file mode 100644
+index 0000000000..bff8415c99
+--- /dev/null
++++ b/apps/theming/src/settings-personal.ts
+@@ -0,0 +1,13 @@
++/*!
++ * SPDX-FileCopyrightText: 2018 Nextcloud GmbH and Nextcloud contributors
++ * SPDX-License-Identifier: AGPL-3.0-or-later
++ */
++
++import { createApp } from 'vue'
++import UserTheming from './views/UserTheming.vue'
++
++import 'vite/modulepreload-polyfill'
++
++const app = createApp(UserTheming)
++app.config.idPrefix = 'settings'
++app.mount('#settings-personal-theming')
+diff --git a/apps/theming/src/types.d.ts b/apps/theming/src/types.d.ts
+new file mode 100644
+index 0000000000..1f52ace941
+--- /dev/null
++++ b/apps/theming/src/types.d.ts
+@@ -0,0 +1,38 @@
++/*!
++ * SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
++ * SPDX-License-Identifier: AGPL-3.0-or-later
++ */
++
++/**
++ * Modifiable parameters for the admin theming settings.
++ */
++export interface AdminThemingParameters {
++	backgroundMime: string
++	backgroundURL: string
++	backgroundColor: string
++	faviconMime: string
++	legalNoticeUrl: string
++	logoheaderMime: string
++	logoMime: string
++	name: string
++	primaryColor: string
++	privacyPolicyUrl: string
++	slogan: string
++	url: string
++	disableUserTheming: boolean
++	defaultApps: string[]
++}
++
++/**
++ * Admin theming information.
++ */
++export interface AdminThemingInfo {
++	isThemeable: boolean
++	canThemeIcons: boolean
++
++	notThemeableErrorMessage: string
++	defaultBackgroundURL: string
++	defaultBackgroundColor: string
++	docUrl: string
++	docUrlIcons: string
++}
+diff --git a/apps/theming/src/utils/color.spec.ts b/apps/theming/src/utils/color.spec.ts
+new file mode 100644
+index 0000000000..f72169b678
+--- /dev/null
++++ b/apps/theming/src/utils/color.spec.ts
+@@ -0,0 +1,36 @@
++/*!
++ * SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
++ * SPDX-License-Identifier: AGPL-3.0-or-later
++ */
++
++import { expect, test } from 'vitest'
++import { getTextColor } from './color.ts'
++
++test('getTextColor returns black for light backgrounds', () => {
++	expect(getTextColor('#FFFFFF')).toBe('#000000') // white background
++	expect(getTextColor('#DDDDDD')).toBe('#000000') // light gray background
++	expect(getTextColor('#FFFFAA')).toBe('#000000') // light yellow background
++})
++
++test('getTextColor returns white for dark backgrounds', () => {
++	expect(getTextColor('#000000')).toBe('#ffffff') // black background
++	expect(getTextColor('#333333')).toBe('#ffffff') // dark gray background
++	expect(getTextColor('#0000AA')).toBe('#ffffff') // dark blue background
++})
++
++test('getTextColor handles edge cases', () => {
++	expect(getTextColor('#808080')).toBe('#ffffff') // medium gray background
++	expect(getTextColor('#C0C0C0')).toBe('#000000') // silver background
++	expect(getTextColor('#404040')).toBe('#ffffff') // dark gray background
++})
++
++test('getTextColor handles shorthand hex colors', () => {
++	expect(getTextColor('#FFF')).toBe('#000000') // white background
++	expect(getTextColor('#000')).toBe('#ffffff') // black background
++	expect(getTextColor('#888')).toBe('#ffffff') // medium gray background
++})
++
++test('getTextColor handles invalid hex colors', () => {
++	expect(getTextColor('invalid')).toBe('#ffffff')
++	expect(getTextColor('#GG')).toBe('#ffffff')
++})
+diff --git a/apps/theming/src/utils/color.ts b/apps/theming/src/utils/color.ts
+new file mode 100644
+index 0000000000..4b060e9361
+--- /dev/null
++++ b/apps/theming/src/utils/color.ts
+@@ -0,0 +1,45 @@
++/*!
++ * SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
++ * SPDX-License-Identifier: AGPL-3.0-or-later
++ */
++
++/**
++ * Get the text color for a given background color
++ *
++ * @param color - The hex color
++ */
++export function getTextColor(color: string) {
++	return calculateLuma(color) > 0.6
++		? '#000000'
++		: '#ffffff'
++}
++
++/**
++ * Calculate luminance of provided hex color
++ *
++ * @param color - The hex color
++ */
++function calculateLuma(color: string) {
++	const [red, green, blue] = hexToRGB(color)
++	return (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255
++}
++
++/**
++ * Convert hex color to RGB
++ *
++ * @param hex - The hex color
++ */
++function hexToRGB(hex: string): [number, number, number] {
++	if (hex.length < 6) {
++		// handle shorthand hex colors like #FFF
++		const result = /^#?([a-f\d])([a-f\d])([a-f\d])/i.exec(hex)
++		if (result) {
++			hex = `#${result[1]!.repeat(2)}${result[2]!.repeat(2)}${result[3]!.repeat(2)}`
++		}
++	}
++
++	const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
++	return result
++		? [parseInt(result[1]!, 16), parseInt(result[2]!, 16), parseInt(result[3]!, 16)]
++		: [0, 0, 0]
++}
+diff --git a/apps/theming/src/logger.ts b/apps/theming/src/utils/logger.ts
+similarity index 100%
+rename from apps/theming/src/logger.ts
+rename to apps/theming/src/utils/logger.ts
+diff --git a/apps/theming/src/helpers/refreshStyles.js b/apps/theming/src/utils/refreshStyles.ts
+similarity index 70%
+rename from apps/theming/src/helpers/refreshStyles.js
+rename to apps/theming/src/utils/refreshStyles.ts
+index ba198be0a0..37db932181 100644
+--- a/apps/theming/src/helpers/refreshStyles.js
++++ b/apps/theming/src/utils/refreshStyles.ts
+@@ -1,4 +1,4 @@
+-/**
++/*!
+  * SPDX-FileCopyrightText: 2022 Nextcloud GmbH and Nextcloud contributors
+  * SPDX-License-Identifier: AGPL-3.0-or-later
+  */
+@@ -8,12 +8,13 @@
+  * This resolves when all themes are reloaded
+  */
+ export async function refreshStyles() {
+-	const themes = [...document.head.querySelectorAll('link.theme')]
+-	const promises = themes.map((theme) => new Promise((resolve) => {
++	const themes = [...document.head.querySelectorAll('link.theme')] as HTMLLinkElement[]
++	const promises = themes.map((theme) => new Promise<void>((resolve, reject) => {
+ 		const url = new URL(theme.href)
+-		url.searchParams.set('v', Date.now())
+-		const newTheme = theme.cloneNode()
++		url.searchParams.set('v', Date.now().toString())
++		const newTheme = theme.cloneNode() as HTMLLinkElement
+ 		newTheme.href = url.toString()
++		newTheme.onerror = reject
+ 		newTheme.onload = () => {
+ 			theme.remove()
+ 			resolve()
+diff --git a/apps/theming/src/views/AdminTheming.vue b/apps/theming/src/views/AdminTheming.vue
+new file mode 100644
+index 0000000000..c34f7e64f8
+--- /dev/null
++++ b/apps/theming/src/views/AdminTheming.vue
+@@ -0,0 +1,29 @@
++<!--
++  - SPDX-FileCopyrightText: 2022 Nextcloud GmbH and Nextcloud contributors
++  - SPDX-License-Identifier: AGPL-3.0-or-later
++-->
++
++<template>
++	<NcNoteCard
++		v-if="!isThemeable"
++		:text="notThemeableErrorMessage"
++		show-alert
++		type="error" />
++	<template v-else>
++		<AdminSectionTheming />
++		<AdminSectionThemingAdvanced />
++	</template>
++	<AdminSectionAppMenu />
++</template>
++
++<script setup lang="ts">
++import type { AdminThemingInfo } from '../types.d.ts'
++
++import { loadState } from '@nextcloud/initial-state'
++import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
++import AdminSectionAppMenu from '../components/AdminSectionAppMenu.vue'
++import AdminSectionTheming from '../components/AdminSectionTheming.vue'
++import AdminSectionThemingAdvanced from '../components/AdminSectionThemingAdvanced.vue'
++
++const { isThemeable, notThemeableErrorMessage } = loadState<AdminThemingInfo>('theming', 'adminThemingInfo')
++</script>
+diff --git a/apps/theming/src/views/UserTheming.vue b/apps/theming/src/views/UserTheming.vue
+new file mode 100644
+index 0000000000..96933ef901
+--- /dev/null
++++ b/apps/theming/src/views/UserTheming.vue
+@@ -0,0 +1,268 @@
++<!--
++  - SPDX-FileCopyrightText: 2020 Nextcloud GmbH and Nextcloud contributors
++  - SPDX-License-Identifier: AGPL-3.0-or-later
++-->
++
++<template>
++	<NcSettingsSection
++		:name="t('theming', 'Appearance and accessibility settings')"
++		class="theming">
++		<!-- eslint-disable-next-line vue/no-v-html -->
++		<p v-html="description" />
++		<!-- eslint-disable-next-line vue/no-v-html -->
++		<p v-html="descriptionDetail" />
++
++		<div class="theming__preview-list">
++			<ThemePreviewItem
++				v-for="theme in themes"
++				:key="theme.id"
++				:enforced="theme.id === enforceTheme"
++				:selected="selectedTheme.id === theme.id"
++				:theme="theme"
++				:unique="themes.length === 1"
++				type="theme"
++				@update:selected="changeTheme(theme.id, $event)" />
++		</div>
++
++		<div class="theming__preview-list">
++			<ThemePreviewItem
++				v-for="theme in fonts"
++				:key="theme.id"
++				:selected="theme.enabled"
++				:theme="theme"
++				:unique="fonts.length === 1"
++				type="font"
++				@update:selected="changeFont(theme.id, $event)" />
++		</div>
++
++		<h3>{{ t('theming', 'Misc accessibility options') }}</h3>
++		<NcCheckboxRadioSwitch
++			type="checkbox"
++			:model-value="enableBlurFilter === 'yes'"
++			:indeterminate="enableBlurFilter === ''"
++			@update:model-value="changeEnableBlurFilter">
++			{{ t('theming', 'Enable blur background filter (may increase GPU load)') }}
++		</NcCheckboxRadioSwitch>
++	</NcSettingsSection>
++
++	<NcNoteCard v-if="isUserThemingDisabled" type="info">
++		{{ t('theming', 'Customization has been disabled by your administrator') }}
++	</NcNoteCard>
++
++	<template v-else>
++		<UserSectionPrimaryColor ref="primaryColor" @refresh-styles="refreshGlobalStyles" />
++		<UserSectionBackground @refresh-styles="refreshGlobalStyles" />
++	</template>
++
++	<UserSectionHotkeys />
++	<UserSectionAppMenu />
++</template>
++
++<script setup lang="ts">
++import type { ITheme } from '../components/ThemePreviewItem.vue'
++
++import axios, { isAxiosError } from '@nextcloud/axios'
++import { showError } from '@nextcloud/dialogs'
++import { loadState } from '@nextcloud/initial-state'
++import { t } from '@nextcloud/l10n'
++import { generateOcsUrl } from '@nextcloud/router'
++import { computed, nextTick, ref, useTemplateRef } from 'vue'
++import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
++import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
++import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
++import ThemePreviewItem from '../components/ThemePreviewItem.vue'
++import UserSectionAppMenu from '../components/UserSectionAppMenu.vue'
++import UserSectionBackground from '../components/UserSectionBackground.vue'
++import UserSectionHotkeys from '../components/UserSectionHotkeys.vue'
++import UserSectionPrimaryColor from '../components/UserSectionPrimaryColor.vue'
++import { logger } from '../utils/logger.ts'
++import { refreshStyles } from '../utils/refreshStyles.js'
++
++const enforceTheme = loadState('theming', 'enforceTheme', '')
++const isUserThemingDisabled = loadState('theming', 'isUserThemingDisabled')
++
++const enableBlurFilter = ref(loadState('theming', 'enableBlurFilter', ''))
++
++const availableThemes = loadState<ITheme[]>('theming', 'themes', [])
++const themes = ref(availableThemes.filter((theme) => theme.type === 1))
++const fonts = ref(availableThemes.filter((theme) => theme.type === 2))
++const selectedTheme = computed(() => themes.value.find((theme) => theme.enabled)
++	|| themes.value[0]!)
++
++const primaryColorSection = useTemplateRef('primaryColor')
++
++const description = t(
++	'theming',
++	'Universal access is very important to us. We follow web standards and check to make everything usable also without mouse, and assistive software such as screenreaders. We aim to be compliant with the {linkstart}Web Content Accessibility Guidelines{linkend} 2.1 on AA level, with the high contrast theme even on AAA level.',
++	{
++		linkstart: '<a target="_blank" href="https://www.w3.org/WAI/standards-guidelines/wcag/" rel="noreferrer nofollow">',
++		linkend: '</a>',
++	},
++	{ escape: false },
++)
++
++const descriptionDetail = t(
++	'theming',
++	'If you find any issues, do not hesitate to report them on {issuetracker}our issue tracker{linkend}. And if you want to get involved, come join {designteam}our design team{linkend}!',
++	{
++		issuetracker: '<a target="_blank" href="https://github.com/nextcloud/server/issues/" rel="noreferrer nofollow">',
++		designteam: '<a target="_blank" href="https://nextcloud.com/design" rel="noreferrer nofollow">',
++		linkend: '</a>',
++	},
++	{ escape: false },
++)
++
++/**
++ * Refresh server-side generated theming CSS
++ */
++async function refreshGlobalStyles() {
++	await refreshStyles()
++	nextTick(() => primaryColorSection.value?.reload())
++}
++
++/**
++ * Handle theme change
++ *
++ * @param id - The theme ID to change
++ * @param enabled - The theme state
++ */
++function changeTheme(id: string, enabled: boolean) {
++	// Reset selected and select new one
++	themes.value.forEach((theme) => {
++		if (theme.id === id && enabled) {
++			theme.enabled = true
++			return
++		}
++		theme.enabled = false
++	})
++
++	updateBodyAttributes()
++	selectItem(enabled, id)
++}
++
++/**
++ * Handle font change
++ *
++ * @param id - The font ID to change
++ * @param enabled - The font state
++ */
++function changeFont(id: string, enabled: boolean) {
++	// Reset selected and select new one
++	fonts.value.forEach((font) => {
++		if (font.id === id && enabled) {
++			font.enabled = true
++			return
++		}
++		font.enabled = false
++	})
++
++	updateBodyAttributes()
++	selectItem(enabled, id)
++}
++
++/**
++ * Handle blur filter change
++ */
++async function changeEnableBlurFilter() {
++	enableBlurFilter.value = enableBlurFilter.value === 'no' ? 'yes' : 'no'
++	await axios({
++		url: generateOcsUrl('apps/provisioning_api/api/v1/config/users/{appId}/{configKey}', {
++			appId: 'theming',
++			configKey: 'force_enable_blur_filter',
++		}),
++		data: {
++			configValue: enableBlurFilter.value,
++		},
++		method: 'POST',
++	})
++	// Refresh the styles
++	refreshStyles()
++}
++
++/**
++ *
++ */
++function updateBodyAttributes() {
++	const enabledThemesIDs = themes.value.filter((theme) => theme.enabled === true).map((theme) => theme.id)
++	const enabledFontsIDs = fonts.value.filter((font) => font.enabled === true).map((font) => font.id)
++
++	themes.value.forEach((theme) => {
++		document.body.toggleAttribute(`data-theme-${theme.id}`, theme.enabled)
++	})
++	fonts.value.forEach((font) => {
++		document.body.toggleAttribute(`data-theme-${font.id}`, font.enabled)
++	})
++
++	document.body.setAttribute('data-themes', [...enabledThemesIDs, ...enabledFontsIDs].join(','))
++}
++
++/**
++ * Commit a change and force reload css
++ * Fetching the file again will trigger the server update
++ *
++ * @param enabled - The theme state
++ * @param themeId - The theme ID to change
++ */
++async function selectItem(enabled: boolean, themeId: string) {
++	try {
++		if (enabled) {
++			await axios({
++				url: generateOcsUrl('apps/theming/api/v1/theme/{themeId}/enable', { themeId }),
++				method: 'PUT',
++			})
++		} else {
++			await axios({
++				url: generateOcsUrl('apps/theming/api/v1/theme/{themeId}', { themeId }),
++				method: 'DELETE',
++			})
++		}
++	} catch (error) {
++		logger.error('theming: Unable to apply setting.', { error })
++		let message = t('theming', 'Unable to apply the setting.')
++		if (isAxiosError(error) && error.response?.data.ocs?.meta?.message) {
++			message = `${error.response.data.ocs.meta.message}. ${message}`
++		}
++		showError(message)
++	}
++}
++</script>
++
++<style lang="scss" scoped>
++.theming {
++	// Limit width of settings sections for readability
++	p {
++		max-width: 800px;
++	}
++
++	// Proper highlight for links and focus feedback
++	:deep(a) {
++		font-weight: bold;
++
++		&:hover,
++		&:focus {
++			text-decoration: underline;
++		}
++	}
++
++	&__preview-list {
++		--gap: 30px;
++		display: grid;
++		margin-top: var(--gap);
++		column-gap: var(--gap);
++		row-gap: var(--gap);
++	}
++}
++
++.background {
++	&__grid {
++		margin-top: 30px;
++	}
++}
++
++@media (max-width: 1440px) {
++	.theming__preview-list {
++		display: flex;
++		flex-direction: column;
++	}
++}
++</style>
+diff --git a/apps/theming/templates/settings-admin.php b/apps/theming/templates/settings-admin.php
+index 05bbd3684b..3f689304f2 100644
+--- a/apps/theming/templates/settings-admin.php
++++ b/apps/theming/templates/settings-admin.php
+@@ -5,4 +5,4 @@
+  */
+ ?>
+ 
+-<div id="admin-theming"></div>
++<div id="settings-admin-theming"></div>
+diff --git a/apps/theming/templates/settings-personal.php b/apps/theming/templates/settings-personal.php
+index 494a466c84..ba8fa04f90 100644
+--- a/apps/theming/templates/settings-personal.php
++++ b/apps/theming/templates/settings-personal.php
+@@ -6,4 +6,4 @@
+ 
+ ?>
+ 
+-<span id="theming"></span>
+\ No newline at end of file
++<span id="settings-personal-theming"></span>
+\ No newline at end of file
+diff --git a/apps/theming/tests/Controller/ThemingControllerTest.php b/apps/theming/tests/Controller/ThemingControllerTest.php
+index fb461f03a2..cfac9125c1 100644
+--- a/apps/theming/tests/Controller/ThemingControllerTest.php
++++ b/apps/theming/tests/Controller/ThemingControllerTest.php
+@@ -89,20 +89,21 @@ class ThemingControllerTest extends TestCase {
+ 			['name', str_repeat('a', 250), 'Saved'],
+ 			['url', 'https://nextcloud.com/' . str_repeat('a', 478), 'Saved'],
+ 			['slogan', str_repeat('a', 500), 'Saved'],
+-			['color', '#0082c9', 'Saved'],
+-			['color', '#0082C9', 'Saved'],
+-			['color', '#0082C9', 'Saved'],
++			['primaryColor', '#0082c9', 'Saved', 'primary_color'],
++			['primary_color', '#0082C9', 'Saved'],
++			['backgroundColor', '#0082C9', 'Saved', 'background_color'],
++			['background_color', '#0082C9', 'Saved'],
+ 			['imprintUrl', 'https://nextcloud.com/' . str_repeat('a', 478), 'Saved'],
+ 			['privacyUrl', 'https://nextcloud.com/' . str_repeat('a', 478), 'Saved'],
+ 		];
+ 	}
+ 
+ 	#[\PHPUnit\Framework\Attributes\DataProvider('dataUpdateStylesheetSuccess')]
+-	public function testUpdateStylesheetSuccess(string $setting, string $value, string $message): void {
++	public function testUpdateStylesheetSuccess(string $setting, string $value, string $message, ?string $realSetting = null): void {
+ 		$this->themingDefaults
+ 			->expects($this->once())
+ 			->method('set')
+-			->with($setting, $value);
++			->with($realSetting ?? $setting, $value);
+ 		$this->l10n
+ 			->expects($this->once())
+ 			->method('t')
+@@ -149,6 +150,8 @@ class ThemingControllerTest extends TestCase {
+ 			['background_color', '#0082Z9', 'The given color is invalid'],
+ 			['background_color', 'Nextcloud', 'The given color is invalid'],
+ 
++			['doesnotexist', 'value', 'Invalid setting key'],
++
+ 			...$urlTests,
+ 		];
+ 	}
+diff --git a/apps/theming/tests/Settings/AdminTest.php b/apps/theming/tests/Settings/AdminTest.php
+index 277b94900a..5a26657574 100644
+--- a/apps/theming/tests/Settings/AdminTest.php
++++ b/apps/theming/tests/Settings/AdminTest.php
+@@ -7,7 +7,6 @@ declare(strict_types=1);
+  */
+ namespace OCA\Theming\Tests\Settings;
+ 
+-use OCA\Theming\AppInfo\Application;
+ use OCA\Theming\ImageManager;
+ use OCA\Theming\Settings\Admin;
+ use OCA\Theming\ThemingDefaults;
+@@ -41,7 +40,6 @@ class AdminTest extends TestCase {
+ 		$this->navigationManager = $this->createMock(INavigationManager::class);
+ 
+ 		$this->admin = new Admin(
+-			Application::APP_ID,
+ 			$this->config,
+ 			$this->l10n,
+ 			$this->themingDefaults,
+diff --git a/apps/theming/tests/Settings/PersonalTest.php b/apps/theming/tests/Settings/PersonalTest.php
+index 6fe790ceee..6446464f02 100644
+--- a/apps/theming/tests/Settings/PersonalTest.php
++++ b/apps/theming/tests/Settings/PersonalTest.php
+@@ -7,7 +7,6 @@ declare(strict_types=1);
+  */
+ namespace OCA\Theming\Tests\Settings;
+ 
+-use OCA\Theming\AppInfo\Application;
+ use OCA\Theming\ImageManager;
+ use OCA\Theming\ITheme;
+ use OCA\Theming\Service\BackgroundService;
+@@ -60,7 +59,6 @@ class PersonalTest extends TestCase {
+ 			->willReturn($this->themes);
+ 
+ 		$this->admin = new Personal(
+-			Application::APP_ID,
+ 			'admin',
+ 			$this->config,
+ 			$this->themesService,
+diff --git a/build/frontend-legacy/webpack.modules.cjs b/build/frontend-legacy/webpack.modules.cjs
+index 61125c271b..cdc0f8e58b 100644
+--- a/build/frontend-legacy/webpack.modules.cjs
++++ b/build/frontend-legacy/webpack.modules.cjs
+@@ -79,10 +79,6 @@ module.exports = {
+ 		init: path.join(__dirname, 'apps/systemtags/src', 'init.ts'),
+ 		admin: path.join(__dirname, 'apps/systemtags/src', 'admin.ts'),
+ 	},
+-	theming: {
+-		'personal-theming': path.join(__dirname, 'apps/theming/src', 'personal-settings.js'),
+-		'admin-theming': path.join(__dirname, 'apps/theming/src', 'admin-settings.js'),
+-	},
+ 	updatenotification: {
+ 		init: path.join(__dirname, 'apps/updatenotification/src', 'init.ts'),
+ 		'view-changelog-page': path.join(__dirname, 'apps/updatenotification/src', 'view-changelog-page.ts'),
+diff --git a/build/frontend-legacy/apps/theming b/build/frontend/apps/theming
+similarity index 100%
+rename from build/frontend-legacy/apps/theming
+rename to build/frontend/apps/theming
+diff --git a/build/frontend/vite.config.mts b/build/frontend/vite.config.ts
+similarity index 95%
+rename from build/frontend/vite.config.mts
+rename to build/frontend/vite.config.ts
+index aec4990fc9..198081027a 100644
+--- a/build/frontend/vite.config.mts
++++ b/build/frontend/vite.config.ts
+@@ -32,6 +32,10 @@ const modules = {
+ 	sharebymail: {
+ 		'admin-settings': resolve(import.meta.dirname, 'apps/sharebymail/src', 'settings-admin.ts'),
+ 	},
++	theming: {
++		'settings-personal': resolve(import.meta.dirname, 'apps/theming/src', 'settings-personal.ts'),
++		'settings-admin': resolve(import.meta.dirname, 'apps/theming/src', 'settings-admin.ts'),
++	},
+ 	twofactor_backupcodes: {
+ 		'settings-personal': resolve(import.meta.dirname, 'apps/twofactor_backupcodes/src', 'settings-personal.ts'),
+ 	},
+diff --git a/package-lock.json b/package-lock.json
+index 9df2a9792a..091e7a8a97 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -10,6 +10,7 @@
+       "hasInstallScript": true,
+       "license": "AGPL-3.0-or-later",
+       "dependencies": {
++        "@mdi/js": "^7.4.47",
+         "@mdi/svg": "^7.4.47",
+         "@nextcloud/auth": "^2.5.3",
+         "@nextcloud/axios": "^2.5.2",
+@@ -28,8 +29,10 @@
+         "@nextcloud/sharing": "^0.3.0",
+         "@nextcloud/vue": "^9.3.1",
+         "@vueuse/core": "^14.1.0",
++        "@vueuse/integrations": "^14.1.0",
+         "debounce": "^3.0.0",
+         "pinia": "^3.0.4",
++        "sortablejs": "^1.15.6",
+         "vue": "^3.5.26",
+         "vuex": "^4.1.0",
+         "webdav": "^5.8.0"
+@@ -225,6 +228,7 @@
+       "integrity": "sha512-2BCOP7TN8M+gVDj7/ht3hsaO/B/n5oDbiAyyvnRlNOs+u1o+JWNYTQrmpuNp1/Wq2gcFrI01JAW+paEKDMx/CA==",
+       "dev": true,
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "@babel/code-frame": "^7.27.1",
+         "@babel/generator": "^7.28.3",
+@@ -534,6 +538,7 @@
+       "integrity": "sha512-eohl3hKTiVyD1ilYdw9T0OiB4hnjef89e3dMYKz+mVKDzj+5IteTseASUsOB+EU9Tf6VNTCjDePcP6wkDGmLKQ==",
+       "dev": true,
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "@keyv/serialize": "^1.1.1"
+       }
+@@ -663,6 +668,7 @@
+         }
+       ],
+       "license": "MIT",
++      "peer": true,
+       "engines": {
+         "node": ">=18"
+       },
+@@ -706,6 +712,7 @@
+         }
+       ],
+       "license": "MIT",
++      "peer": true,
+       "engines": {
+         "node": ">=18"
+       }
+@@ -2328,6 +2335,7 @@
+       "resolved": "https://registry.npmjs.org/@nextcloud/l10n/-/l10n-3.4.1.tgz",
+       "integrity": "sha512-aTFinTcKiK2gEXwLgutXekpZZ8/v/4QiC8C3QCLH5m0o+WtxsBC+fqV142ebC/rfDnzCLhY4ZtswSu8bFbZocg==",
+       "license": "GPL-3.0-or-later",
++      "peer": true,
+       "dependencies": {
+         "@nextcloud/router": "^3.0.1",
+         "@nextcloud/typings": "^1.9.1",
+@@ -2516,6 +2524,7 @@
+       "resolved": "https://registry.npmjs.org/@nextcloud/vue/-/vue-9.3.1.tgz",
+       "integrity": "sha512-zNit83SI7IPT5iT9QsYPCYNwBYvKEqzLvWKTeJemqg9MZ8JGIC3/jjENeXzDolrTN/PixHns5lOYVCejATE1ag==",
+       "license": "AGPL-3.0-or-later",
++      "peer": true,
+       "dependencies": {
+         "@ckpack/vue-color": "^1.6.0",
+         "@floating-ui/dom": "^1.7.4",
+@@ -3419,6 +3428,7 @@
+       "integrity": "sha512-PRA911Blj99jR5RMeTunVbNXMF6Lp4vZXnk5GQjcnUWUTsrXtekg/pnmFFI2u/I36Y/2bITGS30GZCXei6uNkA==",
+       "dev": true,
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "fast-deep-equal": "^3.1.3",
+         "json-schema-traverse": "^1.0.0",
+@@ -3598,6 +3608,7 @@
+       "integrity": "sha512-IeZF+8H0ns6prg4VrkhgL+yrvDXWDH2cKchrbh80ejG9dQgZWp10epHMbgRuQvgchLII/lfh6Xn3lu6+6L86Hw==",
+       "dev": true,
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "@eslint-community/eslint-utils": "^4.9.0",
+         "@typescript-eslint/types": "^8.46.1",
+@@ -4008,6 +4019,7 @@
+       "integrity": "sha512-jCzKdm/QK0Kg4V4IK/oMlRZlY+QOcdjv89U2NgKHZk1CYTj82/RVSx1mV/0gqCVMJ/DA+Zf/S4NBWNF8GQ+eqQ==",
+       "dev": true,
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "@typescript-eslint/scope-manager": "8.48.0",
+         "@typescript-eslint/types": "8.48.0",
+@@ -4458,6 +4470,7 @@
+       "resolved": "https://registry.npmjs.org/@vue/compiler-sfc/-/compiler-sfc-3.5.26.tgz",
+       "integrity": "sha512-egp69qDTSEZcf4bGOSsprUr4xI73wfrY5oRs6GSgXFTiHrWj4Y3X5Ydtip9QMqiCMCPVwLglB9GBxXtTadJ3mA==",
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "@babel/parser": "^7.28.5",
+         "@vue/compiler-core": "3.5.26",
+@@ -4697,6 +4710,72 @@
+         "vue": "^3.5.0"
+       }
+     },
++    "node_modules/@vueuse/integrations": {
++      "version": "14.1.0",
++      "resolved": "https://registry.npmjs.org/@vueuse/integrations/-/integrations-14.1.0.tgz",
++      "integrity": "sha512-eNQPdisnO9SvdydTIXnTE7c29yOsJBD/xkwEyQLdhDC/LKbqrFpXHb3uS//7NcIrQO3fWVuvMGp8dbK6mNEMCA==",
++      "license": "MIT",
++      "dependencies": {
++        "@vueuse/core": "14.1.0",
++        "@vueuse/shared": "14.1.0"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/antfu"
++      },
++      "peerDependencies": {
++        "async-validator": "^4",
++        "axios": "^1",
++        "change-case": "^5",
++        "drauu": "^0.4",
++        "focus-trap": "^7",
++        "fuse.js": "^7",
++        "idb-keyval": "^6",
++        "jwt-decode": "^4",
++        "nprogress": "^0.2",
++        "qrcode": "^1.5",
++        "sortablejs": "^1",
++        "universal-cookie": "^7 || ^8",
++        "vue": "^3.5.0"
++      },
++      "peerDependenciesMeta": {
++        "async-validator": {
++          "optional": true
++        },
++        "axios": {
++          "optional": true
++        },
++        "change-case": {
++          "optional": true
++        },
++        "drauu": {
++          "optional": true
++        },
++        "focus-trap": {
++          "optional": true
++        },
++        "fuse.js": {
++          "optional": true
++        },
++        "idb-keyval": {
++          "optional": true
++        },
++        "jwt-decode": {
++          "optional": true
++        },
++        "nprogress": {
++          "optional": true
++        },
++        "qrcode": {
++          "optional": true
++        },
++        "sortablejs": {
++          "optional": true
++        },
++        "universal-cookie": {
++          "optional": true
++        }
++      }
++    },
+     "node_modules/@vueuse/metadata": {
+       "version": "14.1.0",
+       "resolved": "https://registry.npmjs.org/@vueuse/metadata/-/metadata-14.1.0.tgz",
+@@ -4746,6 +4825,7 @@
+       "integrity": "sha512-NZyJarBfL7nWwIq+FDL6Zp/yHEhePMNnnJ0y3qfieCrmNvYct8uvtiV41UvlSe6apAfk0fY1FbWx+NwfmpvtTg==",
+       "dev": true,
+       "license": "MIT",
++      "peer": true,
+       "bin": {
+         "acorn": "bin/acorn"
+       },
+@@ -5521,6 +5601,7 @@
+         }
+       ],
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "baseline-browser-mapping": "^2.8.9",
+         "caniuse-lite": "^1.0.30001746",
+@@ -6485,6 +6566,7 @@
+       "dev": true,
+       "hasInstallScript": true,
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "@cypress/request": "^3.0.9",
+         "@cypress/xvfb": "^1.2.4",
+@@ -7187,7 +7269,6 @@
+       "integrity": "sha512-wIkAryiqt/nV5EQKqQpo3SToSOV9J0DnbJqwK7Wv/Trc92zIAYZ4FlMu+JPFW1DfGFt81ZTCGgDEabffXeLyJg==",
+       "dev": true,
+       "license": "MIT",
+-      "peer": true,
+       "dependencies": {
+         "domelementtype": "^2.3.0",
+         "domhandler": "^5.0.2",
+@@ -7203,7 +7284,6 @@
+       "integrity": "sha512-V0hjH4dGPh9Ao5p0MoRY6BVqtwCjhz6vI5LT8AJ55H+4g9/4vbHx1I54fS0XuclLhDHArPQCiMjDxjaL8fPxhw==",
+       "dev": true,
+       "license": "BSD-2-Clause",
+-      "peer": true,
+       "engines": {
+         "node": ">=0.12"
+       },
+@@ -7235,8 +7315,7 @@
+           "url": "https://github.com/sponsors/fb55"
+         }
+       ],
+-      "license": "BSD-2-Clause",
+-      "peer": true
++      "license": "BSD-2-Clause"
+     },
+     "node_modules/domhandler": {
+       "version": "5.0.3",
+@@ -7244,7 +7323,6 @@
+       "integrity": "sha512-cgwlv/1iFQiFnU96XXgROh8xTeetsnJiDsTc7TYCLFd9+/WNkIqPTxiM/8pSd8VIrhXGTf1Ny1q1hquVqDJB5w==",
+       "dev": true,
+       "license": "BSD-2-Clause",
+-      "peer": true,
+       "dependencies": {
+         "domelementtype": "^2.3.0"
+       },
+@@ -7270,7 +7348,6 @@
+       "integrity": "sha512-6kZKyUajlDuqlHKVX1w7gyslj9MPIXzIFiz/rGu35uC1wMi+kMhQwGhl4lt9unC9Vb9INnY9Z3/ZA3+FhASLaw==",
+       "dev": true,
+       "license": "BSD-2-Clause",
+-      "peer": true,
+       "dependencies": {
+         "dom-serializer": "^2.0.0",
+         "domelementtype": "^2.3.0",
+@@ -7457,6 +7534,7 @@
+       "integrity": "sha512-rRqJg/6gd538VHvR3PSrdRBb/1Vy2YfzHqzvbhGIQpDRKIa4FgV/54b5Q1xYSxOOwKvjXweS26E0Q+nAMwp2pQ==",
+       "dev": true,
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "ansi-colors": "^4.1.1",
+         "strip-ansi": "^6.0.1"
+@@ -7676,6 +7754,7 @@
+       "integrity": "sha512-LEyamqS7W5HB3ujJyvi0HQK/dtVINZvd5mAAp9eT5S/ujByGjiZLCzPcHVzuXbpJDJF/cxwHlfceVUDZ2lnSTw==",
+       "dev": true,
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "@eslint-community/eslint-utils": "^4.8.0",
+         "@eslint-community/regexpp": "^4.12.1",
+@@ -9320,7 +9399,6 @@
+         }
+       ],
+       "license": "MIT",
+-      "peer": true,
+       "dependencies": {
+         "domelementtype": "^2.3.0",
+         "domhandler": "^5.0.3",
+@@ -9334,7 +9412,6 @@
+       "integrity": "sha512-V0hjH4dGPh9Ao5p0MoRY6BVqtwCjhz6vI5LT8AJ55H+4g9/4vbHx1I54fS0XuclLhDHArPQCiMjDxjaL8fPxhw==",
+       "dev": true,
+       "license": "BSD-2-Clause",
+-      "peer": true,
+       "engines": {
+         "node": ">=0.12"
+       },
+@@ -12789,6 +12866,7 @@
+         }
+       ],
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "nanoid": "^3.3.11",
+         "picocolors": "^1.1.1",
+@@ -12804,7 +12882,6 @@
+       "integrity": "sha512-5mMeb1TgLWoRKxZ0Xh9RZDfwUUIqRrcxO2uXO+Ezl1N5lqpCiSU5Gk6+1kZediBfBHFtPCdopr2UZ2SgUsKcgQ==",
+       "dev": true,
+       "license": "MIT",
+-      "peer": true,
+       "dependencies": {
+         "htmlparser2": "^8.0.0",
+         "js-tokens": "^9.0.0",
+@@ -12820,16 +12897,14 @@
+       "resolved": "https://registry.npmjs.org/js-tokens/-/js-tokens-9.0.1.tgz",
+       "integrity": "sha512-mxa9E9ITFOt0ban3j6L5MpjwegGz6lBQmM1IJkWeBZGcMxto50+eWdjC/52xDbS2vy0k7vIMK0Fe2wfL9OQSpQ==",
+       "dev": true,
+-      "license": "MIT",
+-      "peer": true
++      "license": "MIT"
+     },
+     "node_modules/postcss-media-query-parser": {
+       "version": "0.2.3",
+       "resolved": "https://registry.npmjs.org/postcss-media-query-parser/-/postcss-media-query-parser-0.2.3.tgz",
+       "integrity": "sha512-3sOlxmbKcSHMjlUXQZKQ06jOswE7oVkXPxmZdoB1r5l0q6gTFTQSHxNxOrCccElbW7dxNytifNEo8qidX2Vsig==",
+       "dev": true,
+-      "license": "MIT",
+-      "peer": true
++      "license": "MIT"
+     },
+     "node_modules/postcss-resolve-nested-selector": {
+       "version": "0.1.6",
+@@ -12844,7 +12919,6 @@
+       "integrity": "sha512-FARHN8pwH+WiS2OPCxJI8FuRJpTVnn6ZNFiqAM2aeW2LwTHWWmWgIyKC6cUo0L8aeKiF/14MNvnpls6R2PBeMQ==",
+       "dev": true,
+       "license": "MIT",
+-      "peer": true,
+       "engines": {
+         "node": ">=12.0"
+       },
+@@ -12876,7 +12950,6 @@
+         }
+       ],
+       "license": "MIT",
+-      "peer": true,
+       "engines": {
+         "node": ">=12.0"
+       },
+@@ -13676,6 +13749,7 @@
+       "integrity": "sha512-3GuObel8h7Kqdjt0gxkEzaifHTqLVW56Y/bjN7PSQtkKr0w3V/QYSdt6QWYtd7A1xUtYQigtdUfgj1RvWVtorw==",
+       "dev": true,
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "@types/estree": "1.0.8"
+       },
+@@ -13880,6 +13954,7 @@
+       "integrity": "sha512-uf6HoO8fy6ClsrShvMgaKUn14f2EHQLQRtpsZZLeU/Mv0Q1K5P0+x2uvH6Cub39TVVbWNSrraUhDAoFph6vh0A==",
+       "dev": true,
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "chokidar": "^4.0.0",
+         "immutable": "^5.0.2",
+@@ -14296,6 +14371,13 @@
+         "node": ">=20"
+       }
+     },
++    "node_modules/sortablejs": {
++      "version": "1.15.6",
++      "resolved": "https://registry.npmjs.org/sortablejs/-/sortablejs-1.15.6.tgz",
++      "integrity": "sha512-aNfiuwMEpfBM/CN6LY0ibyhxPfPbyFeBTYJKCvzkJ2GkUpazIt3H+QIPAMHwqQ7tMKaHz1Qj+rJJCqljnf4p3A==",
++      "license": "MIT",
++      "peer": true
++    },
+     "node_modules/source-map": {
+       "version": "0.6.1",
+       "resolved": "https://registry.npmjs.org/source-map/-/source-map-0.6.1.tgz",
+@@ -14832,6 +14914,7 @@
+         }
+       ],
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "@csstools/css-parser-algorithms": "^3.0.5",
+         "@csstools/css-syntax-patches-for-csstree": "^1.0.19",
+@@ -14886,7 +14969,6 @@
+       "integrity": "sha512-IZv4IVESjKLumUGi+HWeb7skgO6/g4VMuAYrJdlqQFndgbj6WJAXPhaysvBiXefX79upBdQVumgYcdd17gCpjQ==",
+       "dev": true,
+       "license": "MIT",
+-      "peer": true,
+       "engines": {
+         "node": "^12 || >=14"
+       },
+@@ -14914,7 +14996,6 @@
+         }
+       ],
+       "license": "MIT",
+-      "peer": true,
+       "engines": {
+         "node": ">=18.12.0"
+       },
+@@ -14976,7 +15057,6 @@
+       "integrity": "sha512-UJUfBFIvXfly8WKIgmqfmkGKPilKB4L5j38JfsDd+OCg2GBdU0vGUV08Uw82tsRZzd4TbsUURVVNGeOhJVF7pA==",
+       "dev": true,
+       "license": "MIT",
+-      "peer": true,
+       "dependencies": {
+         "css-tree": "^3.0.1",
+         "is-plain-object": "^5.0.0",
+@@ -14999,16 +15079,14 @@
+       "resolved": "https://registry.npmjs.org/known-css-properties/-/known-css-properties-0.36.0.tgz",
+       "integrity": "sha512-A+9jP+IUmuQsNdsLdcg6Yt7voiMF/D4K83ew0OpJtpu+l34ef7LaohWV0Rc6KNvzw6ZDizkqfyB5JznZnzuKQA==",
+       "dev": true,
+-      "license": "MIT",
+-      "peer": true
++      "license": "MIT"
+     },
+     "node_modules/stylelint-scss/node_modules/mdn-data": {
+       "version": "2.24.0",
+       "resolved": "https://registry.npmjs.org/mdn-data/-/mdn-data-2.24.0.tgz",
+       "integrity": "sha512-i97fklrJl03tL1tdRVw0ZfLLvuDsdb6wxL+TrJ+PKkCbLrp2PCu2+OYdCKychIUm19nSM/35S6qz7pJpnXttoA==",
+       "dev": true,
+-      "license": "CC0-1.0",
+-      "peer": true
++      "license": "CC0-1.0"
+     },
+     "node_modules/stylelint-scss/node_modules/postcss-selector-parser": {
+       "version": "7.1.0",
+@@ -15016,7 +15094,6 @@
+       "integrity": "sha512-8sLjZwK0R+JlxlYcTuVnyT2v+htpdrjDOKuMcOVdYjt52Lh8hWRYpxBPoKx/Zg+bcjc3wx6fmQevMmUztS/ccA==",
+       "dev": true,
+       "license": "MIT",
+-      "peer": true,
+       "dependencies": {
+         "cssesc": "^3.0.0",
+         "util-deprecate": "^1.0.2"
+@@ -15133,6 +15210,7 @@
+       "integrity": "sha512-8sLjZwK0R+JlxlYcTuVnyT2v+htpdrjDOKuMcOVdYjt52Lh8hWRYpxBPoKx/Zg+bcjc3wx6fmQevMmUztS/ccA==",
+       "dev": true,
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "cssesc": "^3.0.0",
+         "util-deprecate": "^1.0.2"
+@@ -15780,6 +15858,7 @@
+       "integrity": "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==",
+       "devOptional": true,
+       "license": "Apache-2.0",
++      "peer": true,
+       "bin": {
+         "tsc": "bin/tsc",
+         "tsserver": "bin/tsserver"
+@@ -16147,6 +16226,7 @@
+       "integrity": "sha512-dZwN5L1VlUBewiP6H9s2+B3e3Jg96D0vzN+Ry73sOefebhYr9f94wwkMNN/9ouoU8pV1BqA1d1zGk8928cx0rg==",
+       "dev": true,
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "esbuild": "^0.27.0",
+         "fdir": "^6.5.0",
+@@ -16760,6 +16840,7 @@
+       "integrity": "sha512-E4t7DJ9pESL6E3I8nFjPa4xGUd3PmiWDLsDztS2qXSJWfHtbQnwAWylaBvSNY48I3vr8PTqIZlyK8TE3V3CA4Q==",
+       "dev": true,
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "@vitest/expect": "4.0.16",
+         "@vitest/mocker": "4.0.16",
+@@ -16851,6 +16932,7 @@
+       "resolved": "https://registry.npmjs.org/vue/-/vue-3.5.26.tgz",
+       "integrity": "sha512-SJ/NTccVyAoNUJmkM9KUqPcYlY+u8OVL1X5EW9RIs3ch5H2uERxyyIUI4MRxVCSOiEcupX9xNGde1tL9ZKpimA==",
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "@vue/compiler-dom": "3.5.26",
+         "@vue/compiler-sfc": "3.5.26",
+diff --git a/package.json b/package.json
+index c9e43a0f5f..3f13d2440e 100644
+--- a/package.json
++++ b/package.json
+@@ -39,6 +39,7 @@
+     "extends @nextcloud/browserslist-config"
+   ],
+   "dependencies": {
++    "@mdi/js": "^7.4.47",
+     "@mdi/svg": "^7.4.47",
+     "@nextcloud/auth": "^2.5.3",
+     "@nextcloud/axios": "^2.5.2",
+@@ -57,8 +58,10 @@
+     "@nextcloud/sharing": "^0.3.0",
+     "@nextcloud/vue": "^9.3.1",
+     "@vueuse/core": "^14.1.0",
++    "@vueuse/integrations": "^14.1.0",
+     "debounce": "^3.0.0",
+     "pinia": "^3.0.4",
++    "sortablejs": "^1.15.6",
+     "vue": "^3.5.26",
+     "vuex": "^4.1.0",
+     "webdav": "^5.8.0"

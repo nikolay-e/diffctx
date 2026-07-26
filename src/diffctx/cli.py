@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_MAX_FILE_BYTES = 256 * 1024  # 256 KB
 _DEFAULT_ALPHA = 0.60
 _DEFAULT_TAU = 0.12
-# Mirrors DEFAULT_PIPELINE_TIMEOUT_SECONDS in diffctx/src/config/limits.rs.
+# Mirrors DEFAULT_PIPELINE_TIMEOUT_SECONDS in crates/diffctx-native/src/config/limits.rs.
 _DEFAULT_TIMEOUT = 300
 
 
@@ -257,6 +257,17 @@ class ParsedArgs:
     extra_dirs: list[Path] | None = None
     extra_files: list[Path] | None = None
     no_explicit_paths: bool = False
+
+
+def main() -> None:
+    """Run the user-facing CLI.
+
+    Argument parsing lives in this module; orchestration remains an internal
+    application service so importing ``diffctx.cli`` stays lightweight.
+    """
+    from ._app import run
+
+    run()
 
 
 DEFAULT_IGNORES_HELP = """

@@ -1,0 +1,135 @@
+generators:
+  cochange: 0
+  bm25: 15
+  graph: 20
+  random: 10
+candidates:
+- path: src/Components/Components/src/ComponentBase.cs
+  sources:
+  - graph
+- path: src/Components/Components/src/IComponent.cs
+  sources:
+  - graph
+- path: src/Components/Components/src/NavigationManager.cs
+  sources:
+  - graph
+- path: src/Components/Components/src/RenderTree/RenderTreeDiffBuilder.cs
+  sources:
+  - graph
+- path: src/Components/Components/src/RenderTree/Renderer.cs
+  sources:
+  - bm25
+- path: src/Components/Components/src/Rendering/ComponentState.cs
+  sources:
+  - bm25
+- path: src/Components/Components/src/Routing/Router.cs
+  sources:
+  - bm25
+- path: src/Components/Components/test/Routing/RouterTest.cs
+  sources:
+  - bm25
+- path: src/Components/Endpoints/src/DependencyInjection/IComponentPrerenderer.cs
+  sources:
+  - graph
+- path: src/Components/Endpoints/src/DependencyInjection/InvokedRenderModes.cs
+  sources:
+  - graph
+- path: src/Components/Endpoints/src/DependencyInjection/ServerComponentInvocationSequence.cs
+  sources:
+  - graph
+- path: src/Components/Endpoints/src/DependencyInjection/ServerComponentSerializer.cs
+  sources:
+  - bm25
+  - graph
+- path: src/Components/Endpoints/src/DependencyInjection/WebAssemblyComponentSerializer.cs
+  sources:
+  - graph
+- path: src/Components/Endpoints/src/Results/RazorComponentResult.cs
+  sources:
+  - graph
+- path: src/Components/Endpoints/test/RazorComponentsServiceCollectionExtensionsTest.cs
+  sources:
+  - graph
+- path: src/Components/QuickGrid/Microsoft.AspNetCore.Components.QuickGrid/src/QuickGrid.razor.cs
+  sources:
+  - bm25
+- path: src/Components/Server/test/Circuits/CircuitHostTest.cs
+  sources:
+  - bm25
+- path: src/Components/Server/test/Circuits/ServerComponentDeserializerTest.cs
+  sources:
+  - graph
+- path: src/Components/Shared/test/TestRenderer.cs
+  sources:
+  - bm25
+- path: src/Components/Web/src/Virtualization/ItemsProviderDelegate.cs
+  sources:
+  - random
+- path: src/Components/Web/test/HtmlRendering/HtmlRendererTest.cs
+  sources:
+  - graph
+- path: src/Components/WebAssembly/WebAssembly/src/Hosting/WebAssemblyHost.cs
+  sources:
+  - bm25
+- path: src/Components/WebAssembly/WebAssembly/src/Hosting/WebAssemblyHostBuilder.cs
+  sources:
+  - bm25
+- path: src/Components/WebAssembly/WebAssembly/src/Rendering/WebAssemblyRenderer.cs
+  sources:
+  - bm25
+- path: src/Components/WebView/WebView/src/WebViewManager.cs
+  sources:
+  - bm25
+- path: src/DataProtection/Abstractions/src/IDataProtectionProvider.cs
+  sources:
+  - graph
+- path: src/Html.Abstractions/src/IHtmlAsyncContent.cs
+  sources:
+  - graph
+- path: src/Html.Abstractions/src/IHtmlContent.cs
+  sources:
+  - graph
+- path: src/Http/Routing/test/UnitTests/Matching/DfaMatcherConformanceTest.cs
+  sources:
+  - random
+- path: src/Http/Routing/test/testassets/RoutingWebSite/Properties/launchSettings.json
+  sources:
+  - random
+- path: src/JSInterop/Microsoft.JSInterop.JS/src/.eslintrc.json
+  sources:
+  - graph
+- path: src/JSInterop/Microsoft.JSInterop/src/IJSRuntime.cs
+  sources:
+  - graph
+- path: src/Middleware/Rewrite/test/PatternSegments/UrlEncodeSegmentTests.cs
+  sources:
+  - random
+- path: src/Mvc/Mvc.Razor/src/TagHelperComponentManager.cs
+  sources:
+  - random
+- path: src/Mvc/Mvc.TagHelpers/src/ComponentTagHelper.cs
+  sources:
+  - bm25
+  - graph
+- path: src/Mvc/Mvc.TagHelpers/src/PersistComponentStateTagHelper.cs
+  sources:
+  - bm25
+  - graph
+- path: src/Mvc/perf/Microbenchmarks/Microsoft.AspNetCore.Mvc/PreserveComponentStateBenchmark.cs
+  sources:
+  - bm25
+- path: src/Mvc/test/WebSites/RazorWebSite/Views/PartialViewEngine/ViewWithDataFromController.cshtml
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/VersioningWebSite/VersionPutAttribute.cs
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ItemTemplates/content/Protobuf/.template.config/dotnetcli.host.json
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ProjectTemplates/content/BlazorServerWeb-CSharp/.template.config/localize/templatestrings.tr.json
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ProjectTemplates/content/GrpcService-CSharp/appsettings.json
+  sources:
+  - random

@@ -1,0 +1,50 @@
+repo: neovim
+base_commit: b67fcd0488746b079a3b721ae4800af94cd126e1
+commit: ead5683ff9994c0fbfc6c38e0911d9455777550b
+patch_stored: true
+gold:
+  - path: src/nvim/message.c
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'largest diff (55 lines) and the core mechanism: msg_multihl() gains an `err` parameter that routes each chunk through emsg_multiline() instead of msg_multiline() when set, and a new `is_multihl` static flag is threaded through msg_keep()/msg_source() to suppress duplicate msg_start()/msg_end()/history calls while inside a multi-chunk echoerr; emsg_multiline() itself gains `kind`/`hl_id` parameters (previously hardcoded to "emsg"/HLF_E) so nvim_echo can pass "echoerr".'
+  - path: src/nvim/api/vim.c
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'nvim_echo() passes `opts->err` into parse_hl_msg() and picks `opts->err ? "echoerr" : history ? "echomsg" : "echo"` as the msg_multihl() kind, directly implementing "add err field ... that directly maps to :echoerr" from the commit message.'
+  - path: src/nvim/api/keysets_defs.h
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'adds `Boolean err;` to `Dict(echo_opts)`, the opts struct nvim_echo''s new `opts->err` field is typed against.'
+  - path: src/nvim/api/private/helpers.c
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'parse_hl_msg() gains an `is_err` parameter and defaults each chunk''s highlight to HLF_E when set (instead of 0/no-highlight) unless an explicit highlight group is given — this is why passing `err=true` with an unstyled chunk renders it in |hl-ErrorMsg| by default.'
+  - path: test/functional/api/vim_spec.lua
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: adds the "can print error message" screen test asserting nvim_echo({...}, false, {err=true}) triggers the press-ENTER prompt and renders chunks in error highlight, pinning the :echoerr-equivalent behavior.
+  - path: test/functional/ui/messages_spec.lua
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: 'asserts the ext_messages event for `nvim_echo(..., {err:1})` carries `kind = ''echoerr''`, the UI-facing contract of the new opts.err mapping.'
+forbidden:
+  - path: src/nvim/eval.c
+    reason: only a 3-line ripple updating the CMD_echoerr call site to the new emsg_multiline(s, kind, hl_id, multiline) signature; mechanical, not part of the feature's definition.
+  - path: src/nvim/ex_docmd.c
+    reason: only updates handle_did_throw()'s emsg_multiline() call to pass the new "emsg"/HLF_E arguments explicitly; a signature-change ripple, not central.
+  - path: src/nvim/lua/executor.c
+    reason: only adds a trailing `false` (not an error) to nlua_print_event's msg_multihl() call for print()/lua_print; unrelated to the err=true feature itself.
+  - path: runtime/doc/api.txt
+    reason: auto-generated help text mechanically mirroring the doc-comment already visible in src/nvim/api/vim.c; adds no information beyond the source.
+nontrivial_gold_count: 0
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: 'Adds an `err` field to nvim_echo()''s opts, making it emit `:echoerr`-equivalent output (kind="echoerr", HLF_E highlight, routed through emsg_multiline) as a Lua-callable alternative ahead of deprecating nvim_err_write(ln)() (done in the child commit 5c92b40b4b17, also in this benchmark). All emsg_multiline()/msg_multihl() call sites needing the new parameters are confirmed updated within the 13-file diff via grep at the base commit; semsg_multiline()''s own signature is unchanged so its many other callers elsewhere in the tree require no updates.'

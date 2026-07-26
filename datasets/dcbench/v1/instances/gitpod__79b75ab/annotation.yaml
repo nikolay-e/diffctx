@@ -1,0 +1,77 @@
+repo: gitpod
+base_commit: b99bffdd208910e5ab57835316d8353d7150abd9
+commit: 79b75ab4d5d979c927f1a3a77a128636cabce6a3
+patch_stored: true
+gold:
+- path: components/dashboard/src/admin/UserDetail.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/components/Alert.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/start/StartPage.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/start/VerifyModal.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-db/src/typeorm/entity/db-user.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-db/src/typeorm/migration/1661519441407-PhoneVerification.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-protocol/src/gitpod-service.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-protocol/src/messaging/error.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-protocol/src/protocol.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/ee/src/workspace/gitpod-server-impl.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/auth/rate-limiter.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/auth/verification-service.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/config.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/container-module.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/workspace/gitpod-server-impl.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: installer/pkg/components/server/cmd/testdata/render/*/output.golden (9 near-identical golden diffs
+    of rendered manifests, mechanically derived from the config.go change)
+- path: yarn.lock
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'status=hang on a 40-file, ~700-line full-stack feature addition (new phone-verification flow:
+  entity, migration, service, UI modal). This is a normal-sized feature commit that a working tool should
+  handle easily; zero output is a clear regression/timeout, not a scale excuse. The gold selection is
+  compact (~15 files) versus the 40 changed, since golden fixture files and yarn.lock are pure derivatives.'

@@ -1,0 +1,49 @@
+repo: polars
+base_commit: 0d4f999cb746d30285c9ed8f24f929995d78b4a2
+commit: d54df64dba1734ec4075151d221c5d797f8a0bf7
+patch_stored: true
+gold:
+  - path: crates/polars-plan/src/plans/aexpr/predicates/skip_batches.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds the missing `IRBooleanFunction::Not` arm to `aexpr_to_skip_batch_predicate_rec`, building `null_count(A) == LEN || min(A) == True` as the skip-predicate for `~col(A)` on a Boolean column
+  - path: py-polars/tests/unit/io/test_skip_batch_predicate.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: adds `test_not_bool`, exercising the new Not-on-Boolean skip-predicate across min/max/null_count/can_skip combinations via the file's `assert_skp_series` helper
+  - path: py-polars/tests/unit/io/test_delta.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: re-enables the previously-commented-out `~pl.col.bool` case (referencing GH issue #26290), the original regression this fix resolves
+  - path: crates/polars-mem-engine/src/scan_predicate/functions.rs
+    tier: helpful
+    role: caller
+    in_diff: false
+    rationale: calls `aexpr_to_skip_batch_predicate` to build the actual per-batch skip predicate used during real scans (parquet/IPC row-group pruning), showing why a wrong skip-predicate here silently drops valid rows rather than just returning a wrong stat
+forbidden:
+  - path: crates/polars-plan/src/plans/aexpr/predicates/mod.rs
+    reason: sibling predicates module (pushdown/other predicate machinery), unrelated to this specific skip_batches Not-on-Boolean fix
+  - path: crates/polars-python/src/expr/general.rs
+    reason: exposes `aexpr_to_skip_batch_predicate` only for an internal Python testing/debug hook, not part of the actual fix or its production call path
+  - path: crates/polars-plan/src/plans/aexpr/function_expr/boolean.rs
+    reason: defines the pre-existing `IRBooleanFunction::Not` variant itself, but is unchanged by this commit and adds no context beyond what skip_batches.rs already shows
+  - path: py-polars/tests/unit/io/test_parquet.py
+    reason: sibling io test file covering general parquet row-group skipping, but does not exercise this specific Boolean-negation bug
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 3
+  description: skip_batches bool-negation fix — Rust-only change, tests live on Python side
+notes: >-
+  Fixes skip_batches (statistics-based batch pruning) to correctly handle `~col(A)`
+  (IRBooleanFunction::Not) on a Boolean column with nulls, which previously fell
+  through to no skip-predicate at all (silent under-optimization, not incorrectness)
+  because no arm matched `Not`. Small self-contained 3-file diff: the fix, a new
+  targeted skip-predicate test, and re-enabling a previously-disabled delta-lake
+  regression test (#26290) that now passes.

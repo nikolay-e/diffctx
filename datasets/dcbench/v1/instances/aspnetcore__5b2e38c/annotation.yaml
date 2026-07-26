@@ -1,0 +1,75 @@
+repo: aspnetcore
+base_commit: f79b2ab1de5dd66c4ab79b225658b7266edab9ef
+commit: 5b2e38c422de9dc27a56efae195082e0776cf9a9
+patch_stored: true
+gold:
+  - path: src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/Extensions.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: defines BlazorClientExtensions.AddBlazorClientServiceDefaults, the single entry point the whole template exists to ship (OTel + service discovery + resilience wiring for WebAssemblyHostBuilder)
+  - path: src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/template.json
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: declares the 'hosted' template parameter whose value gates whether wwwroot/ (standalone JS initializer) is excluded, i.e. it is what selects between the two config-delivery mechanisms
+  - path: src/Components/Components/src/BrowserConfiguration/BrowserConfiguration.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: defines the BrowserConfiguration/WebAssemblyBrowserOptions model that flows server-to-client via the new DOM comment, referenced by ConfigureBrowser, the endpoint extensions, and the renderer
+  - path: src/Components/Endpoints/src/Rendering/EndpointHtmlRenderer.Streaming.cs
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: EmitBrowserConfigurationOnce replaces the removed WebAssemblySettingsEmitter call site, serializing HttpContext.GetBrowserConfiguration() into the '<!--Blazor-Configuration:...-->' comment that BlazorWasm.ServiceDefaults1.lib.module.js and hosted-mode clients read
+  - path: src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/wwwroot/BlazorWasm.ServiceDefaults1.lib.module.js
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: onRuntimeConfigLoaded is the standalone-mode counterpart that fetches '_blazor/_configuration' and injects environmentVariables into MonoConfig, the client-side half of the config-delivery split the 'hosted' parameter controls
+  - path: src/ProjectTemplates/test/Templates.Tests/BlazorWasmServiceDefaultsTemplateTest.cs
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: BlazorWasmServiceDefaultsTemplateAsync and BlazorWasmServiceDefaultsTemplate_HostedAsync exercise 'dotnet new blazor-wasm-servicedefaults' both without and with --hosted, covering both branches template.json defines
+  - path: src/Components/Endpoints/src/Builder/RazorComponentsEndpointConventionBuilderExtensions.cs
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: adds WithBrowserConfiguration(), the public API an app author uses to populate the BrowserConfiguration that the hosted-mode DOM comment carries to the client
+  - path: src/Components/Components/src/RegisterRenderingMetricsServiceCollectionExtensions.cs
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: defines ComponentsMetricsServiceCollectionExtensions.AddComponentsMetrics/AddComponentsTracing, called directly by the template's Extensions.cs but not itself touched by this commit
+  - path: src/Components/WebAssembly/WebAssembly/src/Hosting/WebAssemblyHostBuilder.cs
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: defines the WebAssemblyHostBuilder type extended by AddBlazorClientServiceDefaults, whose .Configuration/.Services/.Logging members the template's Extensions.cs relies on
+forbidden:
+  - path: src/Components/Components/src/RenderTree/Renderer.cs
+    reason: same Components area and surfaced by bm25, but this is the general component render-tree engine, unrelated to the new config DOM-comment mechanism
+  - path: src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWeb-CSharp/.template.config/template.json
+    reason: a sibling pre-existing Blazor project template with a similarly-named template.json, but not modified or referenced by this commit
+  - path: src/Components/WebAssembly/Authentication.Msal/src/Interop/rollup.config.mjs
+    reason: unrelated WebAssembly auth interop build config pulled in as a random distractor, no relation to service defaults or BrowserConfiguration
+  - path: src/SignalR/clients/csharp/Client.Core/src/HubConnection.cs
+    reason: unrelated SignalR client surfaced by bm25 keyword overlap only, not touched or referenced by this change
+nontrivial_gold_count: 2
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration, cochange, bm25]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 50
+  description: Add Blazor WebAssembly Service Defaults template — max extension diversity
+notes: >-
+  Adds a 'blazor-wasm-servicedefaults' dotnet template wiring OpenTelemetry/service
+  discovery/resilience into a Blazor WASM app, plus a new BrowserConfiguration model
+  that carries server config to the client via a DOM comment (hosted mode) or a
+  '_blazor/_configuration' fetch (standalone mode), replacing the old
+  WebAssemblySettingsEmitter header mechanism. string_indirection=true because the
+  standalone JS reads a magic '_blazor/_configuration' URL string and the hosted DOM
+  comment is parsed by prefix ('Blazor-Configuration:') rather than a static reference.

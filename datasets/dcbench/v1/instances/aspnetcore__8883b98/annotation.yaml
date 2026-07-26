@@ -1,0 +1,75 @@
+repo: aspnetcore
+base_commit: c3fa2bb74917b3b191623fe9202f26e952f9c7ba
+commit: 8883b98afedee35e8360db3f24ce8cd2e17217ad
+patch_stored: true
+gold:
+  - path: src/Components/Components/src/IPersistentComponentStateSerializer.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New internal non-generic interface (Persist/Restore over Type+object) that PersistentComponentStateSerializer<T> implements explicitly and that PersistentStateValueProvider stores/dispatches through via its _serializerCache.
+  - path: src/Components/Components/src/PersistentComponentStateSerializer.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New public abstract PersistentComponentStateSerializer<T> base class that app developers derive from (e.g. CustomIntSerializer) to register a custom serializer via DI; this is the actual extensibility surface the change adds.
+  - path: src/Components/Components/src/PersistentStateValueProvider.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Core wiring change - constructor now takes IServiceProvider, adds SerializerFactory/_serializerCache to resolve PersistentComponentStateSerializer<T> from DI and routes Persist/Restore through it instead of always using JSON, plus new PersistAsync<TValue>/TryTake<TValue> overloads for the imperative API.
+  - path: src/Components/Components/src/PersistentComponentState.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds PersistAsBytes(key, byte[]) and internal TryTakeBytes(key, out byte[]) used by PersistentStateValueProvider to store/retrieve raw custom-serialized bytes alongside the existing JSON path.
+  - path: src/Shared/PooledArrayBufferWriter.cs
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: The IBufferWriter<byte> implementation PersistentStateValueProvider allocates (`new PooledArrayBufferWriter<byte>()`) to capture bytes written by a custom serializer's Persist method before calling PersistAsBytes; now linked into Components.csproj for this purpose and got a nullability fix in the same commit.
+  - path: src/Components/Components/src/PersistentStateProviderServiceCollectionExtensions.cs
+    tier: helpful
+    role: config
+    in_diff: false
+    rationale: Registers PersistentStateValueProvider as a scoped ICascadingValueSupplier via services.TryAddEnumerable(...); this DI registration is why the new IServiceProvider constructor parameter is satisfied automatically by ActivatorUtilities without any code here needing to change, which is otherwise non-obvious from the diff alone.
+  - path: src/Components/Components/test/IPersistentComponentStateSerializerTests.cs
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: New unit tests exercising PersistAsync/TryTake with a custom TestStringSerializer (derived from PersistentComponentStateSerializer<string>), directly covering the new serializer extensibility surface.
+  - path: src/Components/test/testassets/TestContentPackage/CustomIntSerializer.cs
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Example PersistentComponentStateSerializer<int> implementation (prefixes ints with "CUSTOM:") registered via AddSingleton<PersistentComponentStateSerializer<int>, CustomIntSerializer>() and used by the E2E InteractivityTest/DeclarativePersistStateComponent scenarios added in this commit.
+  - path: src/Components/test/testassets/TestContentPackage/DeclarativePersistStateComponent.razor
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Test component adds a [PersistentState] public int CustomValue property, exercising the new custom-serializer code path end-to-end (rendered as "custom-@KeyName", asserted as "42" by InteractivityTest.cs).
+forbidden:
+  - path: src/Components/Components/src/PersistentState/ComponentStatePersistenceManager.cs
+    reason: same "PersistentState" naming and directory but governs app-level persist/restore lifecycle and PersistentServicesRegistry, not the per-property custom serializer resolution this change adds.
+  - path: src/Components/Components/src/PersistentState/PersistentServicesRegistry.cs
+    reason: handles a different indirection (restoring whole registered *services'* state across render-mode boundaries), unrelated to PersistentComponentStateSerializer<T> extensibility.
+  - path: src/Components/Components/src/RegisterPersistentComponentStateServiceCollectionExtensions.cs
+    reason: similarly-named DI extension but registers services for automatic state persistence via PersistentStateAttribute scanning, not the custom byte-serializer path touched here.
+  - path: src/Components/Components/src/ICascadingValueSupplier.cs
+    reason: interface PersistentStateValueProvider implements, but it is generic cascading-value plumbing that is untouched and not needed to understand the serializer extensibility change.
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration, bm25, graph]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 15
+  description: Add IPersistentComponentStateSerializer<T> extensibility interface
+notes: >-
+  Adds an extensibility point letting developers register a
+  PersistentComponentStateSerializer<T> (implementing internal
+  IPersistentComponentStateSerializer) via DI to override JSON serialization
+  for specific [PersistentState] property types; PersistentStateValueProvider
+  now resolves a per-type serializer from IServiceProvider and falls back to
+  JSON when none is registered. Type-keyed DI lookup (typeof(T) -> service),
+  not string-keyed, so string_indirection is false.

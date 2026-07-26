@@ -1,0 +1,1077 @@
+From 6d55c076e44d6e4462eae72c86cbbf0baf01a835 Mon Sep 17 00:00:00 2001
+From: puddly <32534428+puddly@users.noreply.github.com>
+Date: Thu, 9 Apr 2026 13:56:59 -0400
+Subject: [PATCH] List serial ports via USB integration helpers (A-P) (#167695)
+
+---
+ .../aurora_abb_powerone/config_flow.py        | 10 +-
+ .../aurora_abb_powerone/manifest.json         |  1 +
+ .../components/crownstone/config_flow.py      | 16 ++-
+ .../components/crownstone/helpers.py          |  9 +-
+ .../components/crownstone/manifest.json       |  5 +-
+ homeassistant/components/dsmr/config_flow.py  | 24 +----
+ homeassistant/components/dsmr/manifest.json   |  1 +
+ .../components/insteon/manifest.json          |  4 +-
+ homeassistant/components/insteon/utils.py     | 26 ++---
+ .../landisgyr_heat_meter/config_flow.py       | 27 ++---
+ .../components/modem_callerid/config_flow.py  | 30 +++---
+ requirements_all.txt                          |  1 -
+ requirements_test_all.txt                     |  1 -
+ .../aurora_abb_powerone/test_config_flow.py   | 26 +++--
+ .../components/crownstone/test_config_flow.py | 75 ++++++--------
+ tests/components/dsmr/test_config_flow.py     | 99 +++++++------------
+ .../landisgyr_heat_meter/test_config_flow.py  | 36 ++++---
+ tests/components/modem_callerid/__init__.py   | 20 ++--
+ .../modem_callerid/test_config_flow.py        | 27 +++--
+ 19 files changed, 195 insertions(+), 243 deletions(-)
+
+diff --git a/homeassistant/components/aurora_abb_powerone/config_flow.py b/homeassistant/components/aurora_abb_powerone/config_flow.py
+index 0b6e41257f..2be9782819 100644
+--- a/homeassistant/components/aurora_abb_powerone/config_flow.py
++++ b/homeassistant/components/aurora_abb_powerone/config_flow.py
+@@ -7,9 +7,9 @@ import logging
+ from typing import TYPE_CHECKING, Any
+ 
+ from aurorapy.client import AuroraError, AuroraSerialClient
+-import serial.tools.list_ports
+ import voluptuous as vol
+ 
++from homeassistant.components import usb
+ from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+ from homeassistant.const import ATTR_SERIAL_NUMBER, CONF_ADDRESS, CONF_PORT
+ from homeassistant.core import HomeAssistant
+@@ -57,9 +57,11 @@ def validate_and_connect(
+     return ret
+ 
+ 
+-def scan_comports() -> tuple[list[str] | None, str | None]:
++async def async_scan_comports(
++    hass: HomeAssistant,
++) -> tuple[list[str] | None, str | None]:
+     """Find and store available com ports for the GUI dropdown."""
+-    com_ports = serial.tools.list_ports.comports(include_links=True)
++    com_ports = await usb.async_scan_serial_ports(hass)
+     com_ports_list = []
+     for port in com_ports:
+         com_ports_list.append(port.device)
+@@ -87,7 +89,7 @@ class AuroraABBConfigFlow(ConfigFlow, domain=DOMAIN):
+ 
+         errors = {}
+         if self._com_ports_list is None:
+-            result = await self.hass.async_add_executor_job(scan_comports)
++            result = await async_scan_comports(self.hass)
+             self._com_ports_list, self._default_com_port = result
+             if self._default_com_port is None:
+                 return self.async_abort(reason="no_serial_ports")
+diff --git a/homeassistant/components/aurora_abb_powerone/manifest.json b/homeassistant/components/aurora_abb_powerone/manifest.json
+index 8d33cc95d4..04728cbb47 100644
+--- a/homeassistant/components/aurora_abb_powerone/manifest.json
++++ b/homeassistant/components/aurora_abb_powerone/manifest.json
+@@ -3,6 +3,7 @@
+   "name": "Aurora ABB PowerOne Solar PV",
+   "codeowners": ["@davet2001"],
+   "config_flow": true,
++  "dependencies": ["usb"],
+   "documentation": "https://www.home-assistant.io/integrations/aurora_abb_powerone",
+   "integration_type": "device",
+   "iot_class": "local_polling",
+diff --git a/homeassistant/components/crownstone/config_flow.py b/homeassistant/components/crownstone/config_flow.py
+index 5f5af4f51a..64baf7f49a 100644
+--- a/homeassistant/components/crownstone/config_flow.py
++++ b/homeassistant/components/crownstone/config_flow.py
+@@ -10,8 +10,6 @@ from crownstone_cloud.exceptions import (
+     CrownstoneAuthenticationError,
+     CrownstoneUnknownError,
+ )
+-import serial.tools.list_ports
+-from serial.tools.list_ports_common import ListPortInfo
+ import voluptuous as vol
+ 
+ from homeassistant.components import usb
+@@ -61,9 +59,11 @@ class BaseCrownstoneFlowHandler(ConfigEntryBaseFlow):
+         self, user_input: dict[str, Any] | None = None
+     ) -> ConfigFlowResult:
+         """Set up a Crownstone USB dongle."""
+-        list_of_ports = await self.hass.async_add_executor_job(
+-            serial.tools.list_ports.comports
+-        )
++        list_of_ports = [
++            p
++            for p in await usb.async_scan_serial_ports(self.hass)
++            if isinstance(p, usb.USBDevice)
++        ]
+         if self.flow_type == CONFIG_FLOW:
+             ports_as_string = list_ports_as_str(list_of_ports)
+         else:
+@@ -82,10 +82,8 @@ class BaseCrownstoneFlowHandler(ConfigEntryBaseFlow):
+                 else:
+                     index = ports_as_string.index(selection) - 1
+ 
+-                selected_port: ListPortInfo = list_of_ports[index]
+-                self.usb_path = await self.hass.async_add_executor_job(
+-                    usb.get_serial_by_id, selected_port.device
+-                )
++                selected_port = list_of_ports[index]
++                self.usb_path = selected_port.device
+                 return await self.async_step_usb_sphere_config()
+ 
+         return self.async_show_form(
+diff --git a/homeassistant/components/crownstone/helpers.py b/homeassistant/components/crownstone/helpers.py
+index 4da8bc8dbe..829cf7354d 100644
+--- a/homeassistant/components/crownstone/helpers.py
++++ b/homeassistant/components/crownstone/helpers.py
+@@ -5,15 +5,14 @@ from __future__ import annotations
+ from collections.abc import Sequence
+ import os
+ 
+-from serial.tools.list_ports_common import ListPortInfo
+-
+ from homeassistant.components import usb
++from homeassistant.components.usb import USBDevice
+ 
+ from .const import DONT_USE_USB, MANUAL_PATH, REFRESH_LIST
+ 
+ 
+ def list_ports_as_str(
+-    serial_ports: Sequence[ListPortInfo], no_usb_option: bool = True
++    serial_ports: Sequence[USBDevice], no_usb_option: bool = True
+ ) -> list[str]:
+     """Represent currently available serial ports as string.
+ 
+@@ -31,8 +30,8 @@ def list_ports_as_str(
+             port.serial_number,
+             port.manufacturer,
+             port.description,
+-            f"{hex(port.vid)[2:]:0>4}".upper() if port.vid else None,
+-            f"{hex(port.pid)[2:]:0>4}".upper() if port.pid else None,
++            port.vid,
++            port.pid,
+         )
+         for port in serial_ports
+     )
+diff --git a/homeassistant/components/crownstone/manifest.json b/homeassistant/components/crownstone/manifest.json
+index 6168d483ab..7eb3dbd31b 100644
+--- a/homeassistant/components/crownstone/manifest.json
++++ b/homeassistant/components/crownstone/manifest.json
+@@ -1,9 +1,9 @@
+ {
+   "domain": "crownstone",
+   "name": "Crownstone",
+-  "after_dependencies": ["usb"],
+   "codeowners": ["@Crownstone", "@RicArch97"],
+   "config_flow": true,
++  "dependencies": ["usb"],
+   "documentation": "https://www.home-assistant.io/integrations/crownstone",
+   "iot_class": "cloud_push",
+   "loggers": [
+@@ -15,7 +15,6 @@
+   "requirements": [
+     "crownstone-cloud==1.4.11",
+     "crownstone-sse==2.0.5",
+-    "crownstone-uart==2.1.0",
+-    "pyserial==3.5"
++    "crownstone-uart==2.1.0"
+   ]
+ }
+diff --git a/homeassistant/components/dsmr/config_flow.py b/homeassistant/components/dsmr/config_flow.py
+index 577def8b3e..fc34f0dd64 100644
+--- a/homeassistant/components/dsmr/config_flow.py
++++ b/homeassistant/components/dsmr/config_flow.py
+@@ -4,7 +4,6 @@ from __future__ import annotations
+ 
+ import asyncio
+ from functools import partial
+-import os
+ from typing import Any
+ 
+ from dsmr_parser import obis_references as obis_ref
+@@ -15,9 +14,9 @@ from dsmr_parser.clients.rfxtrx_protocol import (
+ )
+ from dsmr_parser.objects import DSMRObject
+ import serial
+-import serial.tools.list_ports
+ import voluptuous as vol
+ 
++from homeassistant.components import usb
+ from homeassistant.config_entries import (
+     ConfigEntry,
+     ConfigFlow,
+@@ -229,9 +228,7 @@ class DSMRFlowHandler(ConfigFlow, domain=DOMAIN):
+                 self._dsmr_version = user_input[CONF_DSMR_VERSION]
+                 return await self.async_step_setup_serial_manual_path()
+ 
+-            dev_path = await self.hass.async_add_executor_job(
+-                get_serial_by_id, user_selection
+-            )
++            dev_path = user_selection
+ 
+             validate_data = {
+                 CONF_PORT: dev_path,
+@@ -242,9 +239,10 @@ class DSMRFlowHandler(ConfigFlow, domain=DOMAIN):
+             if not errors:
+                 return self.async_create_entry(title=data[CONF_PORT], data=data)
+ 
+-        ports = await self.hass.async_add_executor_job(serial.tools.list_ports.comports)
++        ports = await usb.async_scan_serial_ports(self.hass)
+         list_of_ports = {
+-            port.device: f"{port}, s/n: {port.serial_number or 'n/a'}"
++            port.device: f"{port.device} - {port.description or 'n/a'}"
++            f", s/n: {port.serial_number or 'n/a'}"
+             + (f" - {port.manufacturer}" if port.manufacturer else "")
+             for port in ports
+         }
+@@ -335,18 +333,6 @@ class DSMROptionFlowHandler(OptionsFlow):
+         )
+ 
+ 
+-def get_serial_by_id(dev_path: str) -> str:
+-    """Return a /dev/serial/by-id match for given device if available."""
+-    by_id = "/dev/serial/by-id"
+-    if not os.path.isdir(by_id):
+-        return dev_path
+-
+-    for path in (entry.path for entry in os.scandir(by_id) if entry.is_symlink()):
+-        if os.path.realpath(path) == dev_path:
+-            return path
+-    return dev_path
+-
+-
+ class CannotConnect(HomeAssistantError):
+     """Error to indicate we cannot connect."""
+ 
+diff --git a/homeassistant/components/dsmr/manifest.json b/homeassistant/components/dsmr/manifest.json
+index 32366c5578..4dd031f1ac 100644
+--- a/homeassistant/components/dsmr/manifest.json
++++ b/homeassistant/components/dsmr/manifest.json
+@@ -3,6 +3,7 @@
+   "name": "DSMR Smart Meter",
+   "codeowners": ["@Robbie1221"],
+   "config_flow": true,
++  "dependencies": ["usb"],
+   "documentation": "https://www.home-assistant.io/integrations/dsmr",
+   "integration_type": "hub",
+   "iot_class": "local_push",
+diff --git a/homeassistant/components/insteon/manifest.json b/homeassistant/components/insteon/manifest.json
+index b1398326de..32dcdf38f0 100644
+--- a/homeassistant/components/insteon/manifest.json
++++ b/homeassistant/components/insteon/manifest.json
+@@ -1,10 +1,10 @@
+ {
+   "domain": "insteon",
+   "name": "Insteon",
+-  "after_dependencies": ["panel_custom", "usb"],
++  "after_dependencies": ["panel_custom"],
+   "codeowners": ["@teharris1"],
+   "config_flow": true,
+-  "dependencies": ["http", "websocket_api"],
++  "dependencies": ["http", "usb", "websocket_api"],
+   "dhcp": [
+     {
+       "macaddress": "000EF3*"
+diff --git a/homeassistant/components/insteon/utils.py b/homeassistant/components/insteon/utils.py
+index 5f48306754..229ed007d0 100644
+--- a/homeassistant/components/insteon/utils.py
++++ b/homeassistant/components/insteon/utils.py
+@@ -11,7 +11,6 @@ from pyinsteon.address import Address
+ from pyinsteon.constants import ALDBStatus, DeviceAction
+ from pyinsteon.device_types.device_base import Device
+ from pyinsteon.events import OFF_EVENT, OFF_FAST_EVENT, ON_EVENT, ON_FAST_EVENT, Event
+-from serial.tools import list_ports
+ 
+ from homeassistant.components import usb
+ from homeassistant.const import CONF_ADDRESS, Platform
+@@ -172,35 +171,22 @@ def async_add_insteon_devices(
+         )
+ 
+ 
+-def get_usb_ports() -> dict[str, str]:
++async def async_get_usb_ports(hass: HomeAssistant) -> dict[str, str]:
+     """Return a dict of USB ports and their friendly names."""
+-    ports = list_ports.comports()
+     port_descriptions = {}
+-    for port in ports:
+-        vid: str | None = None
+-        pid: str | None = None
+-        if port.vid is not None and port.pid is not None:
+-            usb_device = usb.usb_device_from_port(port)
+-            vid = usb_device.vid
+-            pid = usb_device.pid
+-        dev_path = usb.get_serial_by_id(port.device)
++    for port in await usb.async_scan_serial_ports(hass):
+         human_name = usb.human_readable_device_name(
+-            dev_path,
++            port.device,
+             port.serial_number,
+             port.manufacturer,
+             port.description,
+-            vid,
+-            pid,
++            port.vid if isinstance(port, usb.USBDevice) else None,
++            port.pid if isinstance(port, usb.USBDevice) else None,
+         )
+-        port_descriptions[dev_path] = human_name
++        port_descriptions[port.device] = human_name
+     return port_descriptions
+ 
+ 
+-async def async_get_usb_ports(hass: HomeAssistant) -> dict[str, str]:
+-    """Return a dict of USB ports and their friendly names."""
+-    return await hass.async_add_executor_job(get_usb_ports)
+-
+-
+ def compute_device_name(ha_device) -> str:
+     """Return the HA device name."""
+     return ha_device.name_by_user or ha_device.name
+diff --git a/homeassistant/components/landisgyr_heat_meter/config_flow.py b/homeassistant/components/landisgyr_heat_meter/config_flow.py
+index f7288b8a0c..3f573f7f1d 100644
+--- a/homeassistant/components/landisgyr_heat_meter/config_flow.py
++++ b/homeassistant/components/landisgyr_heat_meter/config_flow.py
+@@ -7,7 +7,6 @@ import logging
+ from typing import Any
+ 
+ import serial
+-from serial.tools import list_ports
+ import ultraheat_api
+ import voluptuous as vol
+ 
+@@ -45,9 +44,7 @@ class LandisgyrConfigFlow(ConfigFlow, domain=DOMAIN):
+             if user_input[CONF_DEVICE] == CONF_MANUAL_PATH:
+                 return await self.async_step_setup_serial_manual_path()
+ 
+-            dev_path = await self.hass.async_add_executor_job(
+-                usb.get_serial_by_id, user_input[CONF_DEVICE]
+-            )
++            dev_path = user_input[CONF_DEVICE]
+             _LOGGER.debug("Using this path : %s", dev_path)
+ 
+             try:
+@@ -118,23 +115,19 @@ class LandisgyrConfigFlow(ConfigFlow, domain=DOMAIN):
+ 
+ async def get_usb_ports(hass: HomeAssistant) -> dict[str, str]:
+     """Return a dict of USB ports and their friendly names."""
+-    ports = await hass.async_add_executor_job(list_ports.comports)
++    ports = await usb.async_scan_serial_ports(hass)
+     port_descriptions = {}
+     for port in ports:
+-        # this prevents an issue with usb_device_from_port
+-        # not working for ports without vid on RPi
+-        if port.vid:
+-            usb_device = usb.usb_device_from_port(port)
+-            dev_path = usb.get_serial_by_id(usb_device.device)
++        if isinstance(port, usb.USBDevice):
+             human_name = usb.human_readable_device_name(
+-                dev_path,
+-                usb_device.serial_number,
+-                usb_device.manufacturer,
+-                usb_device.description,
+-                usb_device.vid,
+-                usb_device.pid,
++                port.device,
++                port.serial_number,
++                port.manufacturer,
++                port.description,
++                port.vid,
++                port.pid,
+             )
+-            port_descriptions[dev_path] = human_name
++            port_descriptions[port.device] = human_name
+ 
+     return port_descriptions
+ 
+diff --git a/homeassistant/components/modem_callerid/config_flow.py b/homeassistant/components/modem_callerid/config_flow.py
+index 237fafa69d..8d9cae02a6 100644
+--- a/homeassistant/components/modem_callerid/config_flow.py
++++ b/homeassistant/components/modem_callerid/config_flow.py
+@@ -5,8 +5,6 @@ from __future__ import annotations
+ from typing import Any
+ 
+ from phone_modem import PhoneModem
+-import serial.tools.list_ports
+-from serial.tools.list_ports_common import ListPortInfo
+ import voluptuous as vol
+ 
+ from homeassistant.components import usb
+@@ -19,9 +17,11 @@ from .const import DEFAULT_NAME, DOMAIN, EXCEPTIONS
+ DATA_SCHEMA = vol.Schema({"name": str, "device": str})
+ 
+ 
+-def _generate_unique_id(port: ListPortInfo) -> str:
++def _generate_unique_id(port: usb.USBDevice | usb.SerialDevice) -> str:
+     """Generate unique id from usb attributes."""
+-    return f"{port.vid}:{port.pid}_{port.serial_number}_{port.manufacturer}_{port.description}"
++    vid = port.vid if isinstance(port, usb.USBDevice) else None
++    pid = port.pid if isinstance(port, usb.USBDevice) else None
++    return f"{vid}:{pid}_{port.serial_number}_{port.manufacturer}_{port.description}"
+ 
+ 
+ class PhoneModemFlowHandler(ConfigFlow, domain=DOMAIN):
+@@ -62,30 +62,28 @@ class PhoneModemFlowHandler(ConfigFlow, domain=DOMAIN):
+         errors: dict[str, str] | None = {}
+         if self._async_in_progress():
+             return self.async_abort(reason="already_in_progress")
+-        ports = await self.hass.async_add_executor_job(serial.tools.list_ports.comports)
++        ports = await usb.async_scan_serial_ports(self.hass)
+         existing_devices = [
+             entry.data[CONF_DEVICE] for entry in self._async_current_entries()
+         ]
+-        unused_ports = [
++        port_map = {
+             usb.human_readable_device_name(
+                 port.device,
+                 port.serial_number,
+                 port.manufacturer,
+                 port.description,
+-                port.vid,
+-                port.pid,
+-            )
++                port.vid if isinstance(port, usb.USBDevice) else None,
++                port.pid if isinstance(port, usb.USBDevice) else None,
++            ): port
+             for port in ports
+             if port.device not in existing_devices
+-        ]
+-        if not unused_ports:
++        }
++        if not port_map:
+             return self.async_abort(reason="no_devices_found")
+ 
+         if user_input is not None:
+-            port = ports[unused_ports.index(str(user_input.get(CONF_DEVICE)))]
+-            dev_path = await self.hass.async_add_executor_job(
+-                usb.get_serial_by_id, port.device
+-            )
++            port = port_map[user_input[CONF_DEVICE]]
++            dev_path = port.device
+             errors = await self.validate_device_errors(
+                 dev_path=dev_path, unique_id=_generate_unique_id(port)
+             )
+@@ -95,7 +93,7 @@ class PhoneModemFlowHandler(ConfigFlow, domain=DOMAIN):
+                     data={CONF_DEVICE: dev_path},
+                 )
+         user_input = user_input or {}
+-        schema = vol.Schema({vol.Required(CONF_DEVICE): vol.In(unused_ports)})
++        schema = vol.Schema({vol.Required(CONF_DEVICE): vol.In(list(port_map))})
+         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
+ 
+     async def validate_device_errors(
+diff --git a/requirements_all.txt b/requirements_all.txt
+index ccc1911931..404f62002d 100644
+--- a/requirements_all.txt
++++ b/requirements_all.txt
+@@ -2466,7 +2466,6 @@ pysenz==1.0.2
+ pyserial-asyncio-fast==0.16
+ 
+ # homeassistant.components.acer_projector
+-# homeassistant.components.crownstone
+ # homeassistant.components.route_b_smart_meter
+ # homeassistant.components.usb
+ # homeassistant.components.zwave_js
+diff --git a/requirements_test_all.txt b/requirements_test_all.txt
+index 3a46e84275..130a08060e 100644
+--- a/requirements_test_all.txt
++++ b/requirements_test_all.txt
+@@ -2107,7 +2107,6 @@ pysensibo==1.2.1
+ pysenz==1.0.2
+ 
+ # homeassistant.components.acer_projector
+-# homeassistant.components.crownstone
+ # homeassistant.components.route_b_smart_meter
+ # homeassistant.components.usb
+ # homeassistant.components.zwave_js
+diff --git a/tests/components/aurora_abb_powerone/test_config_flow.py b/tests/components/aurora_abb_powerone/test_config_flow.py
+index 9c27c14d63..0e33d971d2 100644
+--- a/tests/components/aurora_abb_powerone/test_config_flow.py
++++ b/tests/components/aurora_abb_powerone/test_config_flow.py
+@@ -3,7 +3,6 @@
+ from unittest.mock import patch
+ 
+ from aurorapy.client import AuroraError, AuroraTimeoutError
+-from serial.tools import list_ports_common
+ 
+ from homeassistant import config_entries, setup
+ from homeassistant.components.aurora_abb_powerone.const import (
+@@ -11,6 +10,7 @@ from homeassistant.components.aurora_abb_powerone.const import (
+     ATTR_MODEL,
+     DOMAIN,
+ )
++from homeassistant.components.usb import SerialDevice
+ from homeassistant.const import ATTR_SERIAL_NUMBER, CONF_ADDRESS, CONF_PORT
+ from homeassistant.core import HomeAssistant
+ from homeassistant.data_entry_flow import FlowResultType
+@@ -23,9 +23,16 @@ async def test_form(hass: HomeAssistant) -> None:
+     await setup.async_setup_component(hass, "persistent_notification", {})
+ 
+     fakecomports = []
+-    fakecomports.append(list_ports_common.ListPortInfo("/dev/ttyUSB7"))
++    fakecomports.append(
++        SerialDevice(
++            device="/dev/ttyUSB7",
++            serial_number=None,
++            manufacturer=None,
++            description=None,
++        )
++    )
+     with patch(
+-        "serial.tools.list_ports.comports",
++        "homeassistant.components.aurora_abb_powerone.config_flow.usb.async_scan_serial_ports",
+         return_value=fakecomports,
+     ):
+         result = await hass.config_entries.flow.async_init(
+@@ -85,7 +92,7 @@ async def test_form_no_comports(hass: HomeAssistant) -> None:
+ 
+     fakecomports = []
+     with patch(
+-        "serial.tools.list_ports.comports",
++        "homeassistant.components.aurora_abb_powerone.config_flow.usb.async_scan_serial_ports",
+         return_value=fakecomports,
+     ):
+         result = await hass.config_entries.flow.async_init(
+@@ -99,9 +106,16 @@ async def test_form_invalid_com_ports(hass: HomeAssistant) -> None:
+     """Test we display correct info when the comport is invalid.."""
+ 
+     fakecomports = []
+-    fakecomports.append(list_ports_common.ListPortInfo("/dev/ttyUSB7"))
++    fakecomports.append(
++        SerialDevice(
++            device="/dev/ttyUSB7",
++            serial_number=None,
++            manufacturer=None,
++            description=None,
++        )
++    )
+     with patch(
+-        "serial.tools.list_ports.comports",
++        "homeassistant.components.aurora_abb_powerone.config_flow.usb.async_scan_serial_ports",
+         return_value=fakecomports,
+     ):
+         result = await hass.config_entries.flow.async_init(
+diff --git a/tests/components/crownstone/test_config_flow.py b/tests/components/crownstone/test_config_flow.py
+index c3bb17cb6d..32f6a189de 100644
+--- a/tests/components/crownstone/test_config_flow.py
++++ b/tests/components/crownstone/test_config_flow.py
+@@ -11,7 +11,6 @@ from crownstone_cloud.exceptions import (
+     CrownstoneUnknownError,
+ )
+ import pytest
+-from serial.tools.list_ports_common import ListPortInfo
+ 
+ from homeassistant.components import usb
+ from homeassistant.components.crownstone.const import (
+@@ -24,6 +23,7 @@ from homeassistant.components.crownstone.const import (
+     DONT_USE_USB,
+     MANUAL_PATH,
+ )
++from homeassistant.components.usb import USBDevice
+ from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
+ from homeassistant.core import HomeAssistant
+ from homeassistant.data_entry_flow import FlowResultType
+@@ -44,34 +44,24 @@ def crownstone_setup() -> MockFixture:
+ 
+ @pytest.fixture(name="pyserial_comports")
+ def usb_comports() -> MockFixture:
+-    """Mock pyserial comports."""
++    """Mock scan_serial_ports."""
+     with patch(
+-        "serial.tools.list_ports.comports",
+-        MagicMock(return_value=[get_mocked_com_port()]),
++        "homeassistant.components.crownstone.config_flow.usb.async_scan_serial_ports",
++        AsyncMock(return_value=[get_mocked_com_port()]),
+     ) as comports_mock:
+         yield comports_mock
+ 
+ 
+ @pytest.fixture(name="pyserial_comports_none_types")
+ def usb_comports_none_types() -> MockFixture:
+-    """Mock pyserial comports."""
++    """Mock scan_serial_ports with none types."""
+     with patch(
+-        "serial.tools.list_ports.comports",
+-        MagicMock(return_value=[get_mocked_com_port_none_types()]),
++        "homeassistant.components.crownstone.config_flow.usb.async_scan_serial_ports",
++        AsyncMock(return_value=[get_mocked_com_port_none_types()]),
+     ) as comports_mock:
+         yield comports_mock
+ 
+ 
+-@pytest.fixture(name="usb_path")
+-def usb_path() -> MockFixture:
+-    """Mock usb serial path."""
+-    with patch(
+-        "homeassistant.components.usb.get_serial_by_id",
+-        return_value="/dev/serial/by-id/crownstone-usb",
+-    ) as usb_path_mock:
+-        yield usb_path_mock
+-
+-
+ def get_mocked_crownstone_entry_manager(mocked_cloud: MagicMock):
+     """Get a mocked CrownstoneEntryManager instance."""
+     mocked_entry_manager = MagicMock()
+@@ -102,30 +92,28 @@ def create_mocked_spheres(amount: int) -> dict[str, MagicMock]:
+     return spheres
+ 
+ 
+-def get_mocked_com_port():
++def get_mocked_com_port() -> USBDevice:
+     """Mock of a serial port."""
+-    port = ListPortInfo("/dev/ttyUSB1234")
+-    port.device = "/dev/ttyUSB1234"
+-    port.serial_number = "1234567"
+-    port.manufacturer = "crownstone"
+-    port.description = "crownstone dongle - crownstone dongle"
+-    port.vid = 1234
+-    port.pid = 5678
+-
+-    return port
++    return USBDevice(
++        device="/dev/ttyUSB1234",
++        vid="04D2",
++        pid="162E",
++        serial_number="1234567",
++        manufacturer="crownstone",
++        description="crownstone dongle - crownstone dongle",
++    )
+ 
+ 
+-def get_mocked_com_port_none_types():
++def get_mocked_com_port_none_types() -> USBDevice:
+     """Mock of a serial port with NoneTypes."""
+-    port = ListPortInfo("/dev/ttyUSB1234")
+-    port.device = "/dev/ttyUSB1234"
+-    port.serial_number = None
+-    port.manufacturer = None
+-    port.description = "crownstone dongle - crownstone dongle"
+-    port.vid = None
+-    port.pid = None
+-
+-    return port
++    return USBDevice(
++        device="/dev/ttyUSB1234",
++        vid="0000",
++        pid="0000",
++        serial_number=None,
++        manufacturer=None,
++        description="crownstone dongle - crownstone dongle",
++    )
+ 
+ 
+ def create_mocked_entry_data_conf(email: str, password: str):
+@@ -294,7 +282,6 @@ async def test_successful_login_no_usb(
+ async def test_successful_login_with_usb(
+     crownstone_setup: MockFixture,
+     pyserial_comports_none_types: MockFixture,
+-    usb_path: MockFixture,
+     hass: HomeAssistant,
+ ) -> None:
+     """Test flow with correct login and usb configuration."""
+@@ -303,7 +290,7 @@ async def test_successful_login_with_usb(
+         password="homeassistantisawesome",
+     )
+     entry_options_with_usb = create_mocked_entry_options_conf(
+-        usb_path="/dev/serial/by-id/crownstone-usb",
++        usb_path="/dev/ttyUSB1234",
+         usb_sphere="sphere_id_1",
+     )
+ 
+@@ -334,7 +321,6 @@ async def test_successful_login_with_usb(
+     assert result["type"] is FlowResultType.FORM
+     assert result["step_id"] == "usb_sphere_config"
+     assert pyserial_comports_none_types.call_count == 2
+-    assert usb_path.call_count == 1
+ 
+     # select a sphere
+     result = await hass.config_entries.flow.async_configure(
+@@ -391,7 +377,7 @@ async def test_successful_login_with_manual_usb_path(
+ 
+ 
+ async def test_options_flow_setup_usb(
+-    pyserial_comports: MockFixture, usb_path: MockFixture, hass: HomeAssistant
++    pyserial_comports: MockFixture, hass: HomeAssistant
+ ) -> None:
+     """Test options flow init."""
+     configured_entry_data = create_mocked_entry_data_conf(
+@@ -446,8 +432,8 @@ async def test_options_flow_setup_usb(
+         port.serial_number,
+         port.manufacturer,
+         port.description,
+-        f"{hex(port.vid)[2:]:0>4}".upper(),
+-        f"{hex(port.pid)[2:]:0>4}".upper(),
++        port.vid,
++        port.pid,
+     )
+ 
+     # select a port from the list
+@@ -457,7 +443,6 @@ async def test_options_flow_setup_usb(
+     assert result["type"] is FlowResultType.FORM
+     assert result["step_id"] == "usb_sphere_config"
+     assert pyserial_comports.call_count == 2
+-    assert usb_path.call_count == 1
+ 
+     # select a sphere
+     result = await hass.config_entries.options.async_configure(
+@@ -465,7 +450,7 @@ async def test_options_flow_setup_usb(
+     )
+     assert result["type"] is FlowResultType.CREATE_ENTRY
+     assert result["data"] == create_mocked_entry_options_conf(
+-        usb_path="/dev/serial/by-id/crownstone-usb", usb_sphere="sphere_id_1"
++        usb_path="/dev/ttyUSB1234", usb_sphere="sphere_id_1"
+     )
+ 
+ 
+diff --git a/tests/components/dsmr/test_config_flow.py b/tests/components/dsmr/test_config_flow.py
+index c6031781c6..bd9076b156 100644
+--- a/tests/components/dsmr/test_config_flow.py
++++ b/tests/components/dsmr/test_config_flow.py
+@@ -1,17 +1,15 @@
+ """Test the DSMR config flow."""
+ 
+ from itertools import chain, repeat
+-import os
+ from typing import Any
+-from unittest.mock import DEFAULT, AsyncMock, MagicMock, patch, sentinel
++from unittest.mock import DEFAULT, AsyncMock, MagicMock, patch
+ 
+ import pytest
+ import serial
+-import serial.tools.list_ports
+ 
+ from homeassistant import config_entries
+-from homeassistant.components.dsmr import config_flow
+ from homeassistant.components.dsmr.const import DOMAIN
++from homeassistant.components.usb import SerialDevice
+ from homeassistant.core import HomeAssistant
+ from homeassistant.data_entry_flow import FlowResultType
+ 
+@@ -21,15 +19,14 @@ SERIAL_DATA = {"serial_id": "12345678", "serial_id_gas": "123456789"}
+ SERIAL_DATA_SWEDEN = {"serial_id": None, "serial_id_gas": None}
+ 
+ 
+-def com_port():
++def com_port() -> SerialDevice:
+     """Mock of a serial port."""
+-    port = serial.tools.list_ports_common.ListPortInfo("/dev/ttyUSB1234")
+-    port.serial_number = "1234"
+-    port.manufacturer = "Virtual serial port"
+-    port.device = "/dev/ttyUSB1234"
+-    port.description = "Some serial port"
+-
+-    return port
++    return SerialDevice(
++        device="/dev/ttyUSB1234",
++        serial_number="1234",
++        manufacturer="Virtual serial port",
++        description="Some serial port",
++    )
+ 
+ 
+ async def test_setup_network(
+@@ -195,7 +192,10 @@ async def test_setup_network_rfxtrx(
+         ),
+     ],
+ )
+-@patch("serial.tools.list_ports.comports", return_value=[com_port()])
++@patch(
++    "homeassistant.components.dsmr.config_flow.usb.async_scan_serial_ports",
++    return_value=[com_port()],
++)
+ async def test_setup_serial(
+     com_mock,
+     hass: HomeAssistant,
+@@ -235,7 +235,10 @@ async def test_setup_serial(
+     assert result["data"] == entry_data
+ 
+ 
+-@patch("serial.tools.list_ports.comports", return_value=[com_port()])
++@patch(
++    "homeassistant.components.dsmr.config_flow.usb.async_scan_serial_ports",
++    return_value=[com_port()],
++)
+ async def test_setup_serial_rfxtrx(
+     com_mock,
+     hass: HomeAssistant,
+@@ -287,7 +290,10 @@ async def test_setup_serial_rfxtrx(
+     assert result["data"] == {**entry_data, **SERIAL_DATA}
+ 
+ 
+-@patch("serial.tools.list_ports.comports", return_value=[com_port()])
++@patch(
++    "homeassistant.components.dsmr.config_flow.usb.async_scan_serial_ports",
++    return_value=[com_port()],
++)
+ async def test_setup_serial_manual(
+     com_mock,
+     hass: HomeAssistant,
+@@ -337,7 +343,10 @@ async def test_setup_serial_manual(
+     assert result["data"] == {**entry_data, **SERIAL_DATA}
+ 
+ 
+-@patch("serial.tools.list_ports.comports", return_value=[com_port()])
++@patch(
++    "homeassistant.components.dsmr.config_flow.usb.async_scan_serial_ports",
++    return_value=[com_port()],
++)
+ async def test_setup_serial_fail(
+     com_mock,
+     hass: HomeAssistant,
+@@ -385,7 +394,10 @@ async def test_setup_serial_fail(
+     assert result["errors"] == {"base": "cannot_connect"}
+ 
+ 
+-@patch("serial.tools.list_ports.comports", return_value=[com_port()])
++@patch(
++    "homeassistant.components.dsmr.config_flow.usb.async_scan_serial_ports",
++    return_value=[com_port()],
++)
+ async def test_setup_serial_timeout(
+     com_mock,
+     hass: HomeAssistant,
+@@ -443,7 +455,10 @@ async def test_setup_serial_timeout(
+     assert result["errors"] == {"base": "cannot_communicate"}
+ 
+ 
+-@patch("serial.tools.list_ports.comports", return_value=[com_port()])
++@patch(
++    "homeassistant.components.dsmr.config_flow.usb.async_scan_serial_ports",
++    return_value=[com_port()],
++)
+ async def test_setup_serial_wrong_telegram(
+     com_mock,
+     hass: HomeAssistant,
+@@ -528,51 +543,3 @@ async def test_options_flow(hass: HomeAssistant) -> None:
+         await hass.async_block_till_done()
+ 
+     assert entry.options == {"time_between_update": 15}
+-
+-
+-def test_get_serial_by_id_no_dir() -> None:
+-    """Test serial by id conversion if there's no /dev/serial/by-id."""
+-    p1 = patch("os.path.isdir", MagicMock(return_value=False))
+-    p2 = patch("os.scandir")
+-    with p1 as is_dir_mock, p2 as scan_mock:
+-        res = config_flow.get_serial_by_id(sentinel.path)
+-        assert res is sentinel.path
+-        assert is_dir_mock.call_count == 1
+-        assert scan_mock.call_count == 0
+-
+-
+-def test_get_serial_by_id() -> None:
+-    """Test serial by id conversion."""
+-
+-    def _realpath(path):
+-        if path is sentinel.matched_link:
+-            return sentinel.path
+-        return sentinel.serial_link_path
+-
+-    with (
+-        patch("os.path.isdir", MagicMock(return_value=True)) as is_dir_mock,
+-        patch("os.scandir") as scan_mock,
+-        patch("os.path.realpath", side_effect=_realpath),
+-    ):
+-        res = config_flow.get_serial_by_id(sentinel.path)
+-        assert res is sentinel.path
+-        assert is_dir_mock.call_count == 1
+-        assert scan_mock.call_count == 1
+-
+-        entry1 = MagicMock(spec_set=os.DirEntry)
+-        entry1.is_symlink.return_value = True
+-        entry1.path = sentinel.some_path
+-
+-        entry2 = MagicMock(spec_set=os.DirEntry)
+-        entry2.is_symlink.return_value = False
+-        entry2.path = sentinel.other_path
+-
+-        entry3 = MagicMock(spec_set=os.DirEntry)
+-        entry3.is_symlink.return_value = True
+-        entry3.path = sentinel.matched_link
+-
+-        scan_mock.return_value = [entry1, entry2, entry3]
+-        res = config_flow.get_serial_by_id(sentinel.path)
+-        assert res is sentinel.matched_link
+-        assert is_dir_mock.call_count == 2
+-        assert scan_mock.call_count == 2
+diff --git a/tests/components/landisgyr_heat_meter/test_config_flow.py b/tests/components/landisgyr_heat_meter/test_config_flow.py
+index fe62d53071..0fdca6a507 100644
+--- a/tests/components/landisgyr_heat_meter/test_config_flow.py
++++ b/tests/components/landisgyr_heat_meter/test_config_flow.py
+@@ -5,10 +5,10 @@ from unittest.mock import patch
+ 
+ import pytest
+ import serial
+-import serial.tools.list_ports
+ 
+ from homeassistant import config_entries
+ from homeassistant.components.landisgyr_heat_meter import DOMAIN
++from homeassistant.components.usb import USBDevice
+ from homeassistant.core import HomeAssistant
+ from homeassistant.data_entry_flow import FlowResultType
+ 
+@@ -19,17 +19,16 @@ API_HEAT_METER_SERVICE = "homeassistant.components.landisgyr_heat_meter.config_f
+ pytestmark = pytest.mark.usefixtures("mock_setup_entry")
+ 
+ 
+-def mock_serial_port():
++def mock_serial_port() -> USBDevice:
+     """Mock of a serial port."""
+-    port = serial.tools.list_ports_common.ListPortInfo("/dev/ttyUSB1234")
+-    port.serial_number = "1234"
+-    port.manufacturer = "Virtual serial port"
+-    port.device = "/dev/ttyUSB1234"
+-    port.description = "Some serial port"
+-    port.pid = 9876
+-    port.vid = 5678
+-
+-    return port
++    return USBDevice(
++        device="/dev/ttyUSB1234",
++        vid="162E",
++        pid="269C",
++        serial_number="1234",
++        manufacturer="Virtual serial port",
++        description="Some serial port",
++    )
+ 
+ 
+ @dataclass
+@@ -75,7 +74,10 @@ async def test_manual_entry(mock_heat_meter, hass: HomeAssistant) -> None:
+ 
+ 
+ @patch(API_HEAT_METER_SERVICE)
+-@patch("serial.tools.list_ports.comports", return_value=[mock_serial_port()])
++@patch(
++    "homeassistant.components.landisgyr_heat_meter.config_flow.usb.async_scan_serial_ports",
++    return_value=[mock_serial_port()],
++)
+ async def test_list_entry(mock_port, mock_heat_meter, hass: HomeAssistant) -> None:
+     """Test select from list entry."""
+ 
+@@ -132,7 +134,10 @@ async def test_manual_entry_fail(mock_heat_meter, hass: HomeAssistant) -> None:
+ 
+ 
+ @patch(API_HEAT_METER_SERVICE)
+-@patch("serial.tools.list_ports.comports", return_value=[mock_serial_port()])
++@patch(
++    "homeassistant.components.landisgyr_heat_meter.config_flow.usb.async_scan_serial_ports",
++    return_value=[mock_serial_port()],
++)
+ async def test_list_entry_fail(mock_port, mock_heat_meter, hass: HomeAssistant) -> None:
+     """Test select from list entry fails."""
+ 
+@@ -155,7 +160,10 @@ async def test_list_entry_fail(mock_port, mock_heat_meter, hass: HomeAssistant)
+ 
+ 
+ @patch(API_HEAT_METER_SERVICE)
+-@patch("serial.tools.list_ports.comports", return_value=[mock_serial_port()])
++@patch(
++    "homeassistant.components.landisgyr_heat_meter.config_flow.usb.async_scan_serial_ports",
++    return_value=[mock_serial_port()],
++)
+ async def test_already_configured(
+     mock_port, mock_heat_meter, hass: HomeAssistant
+ ) -> None:
+diff --git a/tests/components/modem_callerid/__init__.py b/tests/components/modem_callerid/__init__.py
+index 419f5bc50f..045e664efd 100644
+--- a/tests/components/modem_callerid/__init__.py
++++ b/tests/components/modem_callerid/__init__.py
+@@ -3,7 +3,8 @@
+ from unittest.mock import patch
+ 
+ from phone_modem import DEFAULT_PORT
+-from serial.tools.list_ports_common import ListPortInfo
++
++from homeassistant.components.usb import USBDevice
+ 
+ 
+ def patch_init_modem():
+@@ -20,12 +21,13 @@ def patch_config_flow_modem():
+     )
+ 
+ 
+-def com_port():
++def com_port() -> USBDevice:
+     """Mock of a serial port."""
+-    port = ListPortInfo(DEFAULT_PORT)
+-    port.serial_number = "1234"
+-    port.manufacturer = "Virtual serial port"
+-    port.device = DEFAULT_PORT
+-    port.description = "Some serial port"
+-
+-    return port
++    return USBDevice(
++        device=DEFAULT_PORT,
++        vid="0572",
++        pid="1340",
++        serial_number="1234",
++        manufacturer="Virtual serial port",
++        description="Some serial port",
++    )
+diff --git a/tests/components/modem_callerid/test_config_flow.py b/tests/components/modem_callerid/test_config_flow.py
+index 280deadc73..f1ce5e742c 100644
+--- a/tests/components/modem_callerid/test_config_flow.py
++++ b/tests/components/modem_callerid/test_config_flow.py
+@@ -1,6 +1,6 @@
+ """Test Modem Caller ID config flow."""
+ 
+-from unittest.mock import MagicMock, patch
++from unittest.mock import AsyncMock, patch
+ 
+ import phone_modem
+ 
+@@ -30,7 +30,10 @@ def _patch_setup():
+     )
+ 
+ 
+-@patch("serial.tools.list_ports.comports", MagicMock(return_value=[com_port()]))
++@patch(
++    "homeassistant.components.modem_callerid.config_flow.usb.async_scan_serial_ports",
++    AsyncMock(return_value=[com_port()]),
++)
+ async def test_flow_usb(hass: HomeAssistant) -> None:
+     """Test usb discovery flow."""
+     with patch_config_flow_modem(), _patch_setup():
+@@ -50,7 +53,10 @@ async def test_flow_usb(hass: HomeAssistant) -> None:
+         assert result["data"] == {CONF_DEVICE: com_port().device}
+ 
+ 
+-@patch("serial.tools.list_ports.comports", MagicMock(return_value=[com_port()]))
++@patch(
++    "homeassistant.components.modem_callerid.config_flow.usb.async_scan_serial_ports",
++    AsyncMock(return_value=[com_port()]),
++)
+ async def test_flow_usb_cannot_connect(hass: HomeAssistant) -> None:
+     """Test usb flow connection error."""
+     with patch_config_flow_modem() as modemmock:
+@@ -62,7 +68,10 @@ async def test_flow_usb_cannot_connect(hass: HomeAssistant) -> None:
+         assert result["reason"] == "cannot_connect"
+ 
+ 
+-@patch("serial.tools.list_ports.comports", MagicMock(return_value=[com_port()]))
++@patch(
++    "homeassistant.components.modem_callerid.config_flow.usb.async_scan_serial_ports",
++    AsyncMock(return_value=[com_port()]),
++)
+ async def test_flow_user(hass: HomeAssistant) -> None:
+     """Test user initialized flow."""
+     port = com_port()
+@@ -92,7 +101,10 @@ async def test_flow_user(hass: HomeAssistant) -> None:
+         assert result["reason"] == "no_devices_found"
+ 
+ 
+-@patch("serial.tools.list_ports.comports", MagicMock(return_value=[com_port()]))
++@patch(
++    "homeassistant.components.modem_callerid.config_flow.usb.async_scan_serial_ports",
++    AsyncMock(return_value=[com_port()]),
++)
+ async def test_flow_user_error(hass: HomeAssistant) -> None:
+     """Test user initialized flow with unreachable device."""
+     port = com_port()
+@@ -122,7 +134,10 @@ async def test_flow_user_error(hass: HomeAssistant) -> None:
+         assert result["data"] == {CONF_DEVICE: port.device}
+ 
+ 
+-@patch("serial.tools.list_ports.comports", MagicMock())
++@patch(
++    "homeassistant.components.modem_callerid.config_flow.usb.async_scan_serial_ports",
++    AsyncMock(return_value=[]),
++)
+ async def test_flow_user_no_port_list(hass: HomeAssistant) -> None:
+     """Test user with no list of ports."""
+     with patch_config_flow_modem():

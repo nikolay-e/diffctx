@@ -1,0 +1,837 @@
+From eaee6b6bce0155bce1b7be00e704a23dd2ace54e Mon Sep 17 00:00:00 2001
+From: Patrick Ohly <patrick.ohly@intel.com>
+Date: Mon, 3 Nov 2025 16:41:23 +0100
+Subject: [PATCH] DRA device taints: add separate feature gate for rules
+
+Support for DeviceTaintRules depends on a significant amount of
+additional code:
+- ResourceSlice tracker is a NOP without it.
+- Additional informers and corresponding permissions in scheduler and controller.
+- Controller code for handling status.
+
+Not all users necessarily need DeviceTaintRules, so adding a second feature
+gate for that code makes it possible to limit the blast radius of bugs in that
+code without having to turn off device taints and tolerations entirely.
+---
+ .../device_taint_eviction.go                  | 110 ++++++++++--------
+ .../device_taint_eviction_test.go             |  18 ++-
+ pkg/features/kube_features.go                 |  12 ++
+ pkg/scheduler/eventhandlers_test.go           |  43 +++++--
+ .../dynamicresources/dynamicresources_test.go |  10 +-
+ pkg/scheduler/scheduler.go                    |   6 +-
+ .../rbac/bootstrappolicy/controller_policy.go |  36 +++---
+ .../authorizer/rbac/bootstrappolicy/policy.go |   2 +-
+ .../resourceslice/tracker/tracker.go          |  32 ++---
+ .../resourceslice/tracker/tracker_test.go     |  20 ++--
+ .../reference/versioned_feature_list.yaml     |   6 +
+ test/e2e/dra/dra.go                           |   2 +-
+ test/integration/dra/device_taints_test.go    |  65 ++++++++---
+ test/integration/dra/dra_test.go              |  12 +-
+ test/integration/scheduler_perf/dra.go        |   4 +-
+ 15 files changed, 246 insertions(+), 132 deletions(-)
+
+diff --git a/pkg/controller/devicetainteviction/device_taint_eviction.go b/pkg/controller/devicetainteviction/device_taint_eviction.go
+index 80b0c19c89..7622558cc5 100644
+--- a/pkg/controller/devicetainteviction/device_taint_eviction.go
++++ b/pkg/controller/devicetainteviction/device_taint_eviction.go
+@@ -39,6 +39,7 @@ import (
+ 	"k8s.io/apimachinery/pkg/util/diff"
+ 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+ 	"k8s.io/apimachinery/pkg/util/sets"
++	utilfeature "k8s.io/apiserver/pkg/util/feature"
+ 	metav1ac "k8s.io/client-go/applyconfigurations/meta/v1"
+ 	resourceac "k8s.io/client-go/applyconfigurations/resource/v1alpha3"
+ 	coreinformers "k8s.io/client-go/informers/core/v1"
+@@ -57,6 +58,7 @@ import (
+ 	apipod "k8s.io/kubernetes/pkg/api/v1/pod"
+ 	"k8s.io/kubernetes/pkg/controller/devicetainteviction/metrics"
+ 	"k8s.io/kubernetes/pkg/controller/tainteviction"
++	"k8s.io/kubernetes/pkg/features"
+ 	utilpod "k8s.io/kubernetes/pkg/util/pod"
+ )
+ 
+@@ -95,7 +97,7 @@ type Controller struct {
+ 	podLister     corelisters.PodLister
+ 	claimInformer resourceinformers.ResourceClaimInformer
+ 	sliceInformer resourceinformers.ResourceSliceInformer
+-	taintInformer resourcealphainformers.DeviceTaintRuleInformer
++	ruleInformer  resourcealphainformers.DeviceTaintRuleInformer
+ 	classInformer resourceinformers.DeviceClassInformer
+ 	ruleLister    resourcealphalisters.DeviceTaintRuleLister
+ 	haveSynced    []cache.InformerSynced
+@@ -713,7 +715,7 @@ func (tc *Controller) countTaintedDevices(rule *resourcealpha.DeviceTaintRule) (
+ 
+ // New creates a new Controller that will use passed clientset to communicate with the API server.
+ // Spawns no goroutines. That happens in Run.
+-func New(c clientset.Interface, podInformer coreinformers.PodInformer, claimInformer resourceinformers.ResourceClaimInformer, sliceInformer resourceinformers.ResourceSliceInformer, taintInformer resourcealphainformers.DeviceTaintRuleInformer, classInformer resourceinformers.DeviceClassInformer, controllerName string) *Controller {
++func New(c clientset.Interface, podInformer coreinformers.PodInformer, claimInformer resourceinformers.ResourceClaimInformer, sliceInformer resourceinformers.ResourceSliceInformer, ruleInformer resourcealphainformers.DeviceTaintRuleInformer, classInformer resourceinformers.DeviceClassInformer, controllerName string) *Controller {
+ 	metrics.Register() // It would be nicer to pass the controller name here, but that probably would break generating https://kubernetes.io/docs/reference/instrumentation/metrics.
+ 
+ 	tc := &Controller{
+@@ -724,9 +726,7 @@ func New(c clientset.Interface, podInformer coreinformers.PodInformer, claimInfo
+ 		podLister:       podInformer.Lister(),
+ 		claimInformer:   claimInformer,
+ 		sliceInformer:   sliceInformer,
+-		taintInformer:   taintInformer,
+ 		classInformer:   classInformer,
+-		ruleLister:      taintInformer.Lister(),
+ 		deletePodAt:     make(map[tainteviction.NamespacedObject]evictionAndReason),
+ 		allocatedClaims: make(map[types.NamespacedName]allocatedClaim),
+ 		pools:           make(map[poolID]pool),
+@@ -736,12 +736,20 @@ func New(c clientset.Interface, podInformer coreinformers.PodInformer, claimInfo
+ 			podInformer.Informer().HasSynced,
+ 			claimInformer.Informer().HasSynced,
+ 			sliceInformer.Informer().HasSynced,
+-			taintInformer.Informer().HasSynced,
+ 			classInformer.Informer().HasSynced,
+ 		},
+ 		metrics: metrics.Global,
+ 	}
+ 
++	// The informer for DeviceTaintRules only gets instantiated if the corresponding
++	// feature is enabled. If disabled, nothings is done with (eviction) or for (status)
++	// any DeviceTaintRule.
++	if utilfeature.DefaultFeatureGate.Enabled(features.DRADeviceTaintRules) {
++		tc.ruleInformer = ruleInformer
++		tc.ruleLister = ruleInformer.Lister()
++		tc.haveSynced = append(tc.haveSynced, ruleInformer.Informer().HasSynced)
++	}
++
+ 	return tc
+ }
+ 
+@@ -892,52 +900,54 @@ func (tc *Controller) Run(ctx context.Context, numWorkers int) error {
+ 	}()
+ 	tc.haveSynced = append(tc.haveSynced, podHandler.HasSynced)
+ 
+-	ruleHandler, err := tc.taintInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+-		AddFunc: func(obj any) {
+-			rule, ok := obj.(*resourcealpha.DeviceTaintRule)
+-			if !ok {
+-				logger.Error(nil, "Expected DeviceTaintRule", "actual", fmt.Sprintf("%T", obj))
+-				return
+-			}
+-			tc.mutex.Lock()
+-			defer tc.mutex.Unlock()
+-			tc.handleRuleChange(nil, rule)
+-		},
+-		UpdateFunc: func(oldObj, newObj any) {
+-			oldRule, ok := oldObj.(*resourcealpha.DeviceTaintRule)
+-			if !ok {
+-				logger.Error(nil, "Expected DeviceTaintRule", "actual", fmt.Sprintf("%T", oldObj))
+-				return
+-			}
+-			newRule, ok := newObj.(*resourcealpha.DeviceTaintRule)
+-			if !ok {
+-				logger.Error(nil, "Expected DeviceTaintRule", "actual", fmt.Sprintf("%T", newObj))
+-			}
+-			tc.mutex.Lock()
+-			defer tc.mutex.Unlock()
+-			tc.handleRuleChange(oldRule, newRule)
+-		},
+-		DeleteFunc: func(obj any) {
+-			if tombstone, ok := obj.(cache.DeletedFinalStateUnknown); ok {
+-				obj = tombstone.Obj
+-			}
+-			rule, ok := obj.(*resourcealpha.DeviceTaintRule)
+-			if !ok {
+-				logger.Error(nil, "Expected DeviceTaintRule", "actual", fmt.Sprintf("%T", obj))
+-				return
+-			}
+-			tc.mutex.Lock()
+-			defer tc.mutex.Unlock()
+-			tc.handleRuleChange(rule, nil)
+-		},
+-	})
+-	if err != nil {
+-		return fmt.Errorf("adding DeviceTaintRule event handler: %w", err)
++	if tc.ruleInformer != nil {
++		ruleHandler, err := tc.ruleInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
++			AddFunc: func(obj any) {
++				rule, ok := obj.(*resourcealpha.DeviceTaintRule)
++				if !ok {
++					logger.Error(nil, "Expected DeviceTaintRule", "actual", fmt.Sprintf("%T", obj))
++					return
++				}
++				tc.mutex.Lock()
++				defer tc.mutex.Unlock()
++				tc.handleRuleChange(nil, rule)
++			},
++			UpdateFunc: func(oldObj, newObj any) {
++				oldRule, ok := oldObj.(*resourcealpha.DeviceTaintRule)
++				if !ok {
++					logger.Error(nil, "Expected DeviceTaintRule", "actual", fmt.Sprintf("%T", oldObj))
++					return
++				}
++				newRule, ok := newObj.(*resourcealpha.DeviceTaintRule)
++				if !ok {
++					logger.Error(nil, "Expected DeviceTaintRule", "actual", fmt.Sprintf("%T", newObj))
++				}
++				tc.mutex.Lock()
++				defer tc.mutex.Unlock()
++				tc.handleRuleChange(oldRule, newRule)
++			},
++			DeleteFunc: func(obj any) {
++				if tombstone, ok := obj.(cache.DeletedFinalStateUnknown); ok {
++					obj = tombstone.Obj
++				}
++				rule, ok := obj.(*resourcealpha.DeviceTaintRule)
++				if !ok {
++					logger.Error(nil, "Expected DeviceTaintRule", "actual", fmt.Sprintf("%T", obj))
++					return
++				}
++				tc.mutex.Lock()
++				defer tc.mutex.Unlock()
++				tc.handleRuleChange(rule, nil)
++			},
++		})
++		if err != nil {
++			return fmt.Errorf("adding DeviceTaintRule event handler: %w", err)
++		}
++		defer func() {
++			_ = tc.ruleInformer.Informer().RemoveEventHandler(ruleHandler)
++		}()
++		tc.haveSynced = append(tc.haveSynced, ruleHandler.HasSynced)
+ 	}
+-	defer func() {
+-		_ = tc.taintInformer.Informer().RemoveEventHandler(ruleHandler)
+-	}()
+-	tc.haveSynced = append(tc.haveSynced, ruleHandler.HasSynced)
+ 
+ 	sliceHandler, err := tc.sliceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+ 		AddFunc: func(obj any) {
+diff --git a/pkg/controller/devicetainteviction/device_taint_eviction_test.go b/pkg/controller/devicetainteviction/device_taint_eviction_test.go
+index efda617d37..3549be58ab 100644
+--- a/pkg/controller/devicetainteviction/device_taint_eviction_test.go
++++ b/pkg/controller/devicetainteviction/device_taint_eviction_test.go
+@@ -36,7 +36,6 @@ import (
+ 	gomegatypes "github.com/onsi/gomega/types"
+ 	"github.com/stretchr/testify/assert"
+ 	"github.com/stretchr/testify/require"
+-	"k8s.io/apimachinery/pkg/watch"
+ 
+ 	v1 "k8s.io/api/core/v1"
+ 	resourceapi "k8s.io/api/resource/v1"
+@@ -45,14 +44,18 @@ import (
+ 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+ 	"k8s.io/apimachinery/pkg/runtime"
+ 	"k8s.io/apimachinery/pkg/types"
++	"k8s.io/apimachinery/pkg/watch"
++	utilfeature "k8s.io/apiserver/pkg/util/feature"
+ 	"k8s.io/client-go/informers"
+ 	"k8s.io/client-go/kubernetes/fake"
+ 	core "k8s.io/client-go/testing"
++	featuregatetesting "k8s.io/component-base/featuregate/testing"
+ 	metricstestutil "k8s.io/component-base/metrics/testutil"
+ 	"k8s.io/klog/v2"
+ 	"k8s.io/kubernetes/pkg/controller/devicetainteviction/metrics"
+ 	"k8s.io/kubernetes/pkg/controller/tainteviction"
+ 	controllertestutil "k8s.io/kubernetes/pkg/controller/testutil"
++	"k8s.io/kubernetes/pkg/features"
+ 	st "k8s.io/kubernetes/pkg/scheduler/testing"
+ 	"k8s.io/kubernetes/test/utils/ktesting"
+ 	"k8s.io/utils/ptr"
+@@ -84,6 +87,13 @@ func l[T any](items ...T) []T {
+ 
+ // setup creates a controller which is ready to have its handle* methods called.
+ func setup(tCtx ktesting.TContext) *testContext {
++	featuregatetesting.SetFeatureGatesDuringTest(tCtx, utilfeature.DefaultFeatureGate,
++		featuregatetesting.FeatureOverrides{
++			features.DRADeviceTaints:     true,
++			features.DRADeviceTaintRules: true,
++		},
++	)
++
+ 	fakeClientset := fake.NewClientset()
+ 	informerFactory := informers.NewSharedInformerFactory(fakeClientset, 0)
+ 	controller := New(fakeClientset,
+@@ -2083,6 +2093,12 @@ func newTestController(tCtx ktesting.TContext, clientSet *fake.Clientset) *Contr
+ 
+ 	informerFactory := informers.NewSharedInformerFactory(clientSet, 0)
+ 
++	featuregatetesting.SetFeatureGatesDuringTest(tCtx, utilfeature.DefaultFeatureGate,
++		featuregatetesting.FeatureOverrides{
++			features.DRADeviceTaints:     true,
++			features.DRADeviceTaintRules: true,
++		},
++	)
+ 	controller := New(tCtx.Client(),
+ 		informerFactory.Core().V1().Pods(),
+ 		informerFactory.Resource().V1().ResourceClaims(),
+diff --git a/pkg/features/kube_features.go b/pkg/features/kube_features.go
+index 531e1e1428..e045cc3f23 100644
+--- a/pkg/features/kube_features.go
++++ b/pkg/features/kube_features.go
+@@ -200,6 +200,12 @@ const (
+ 	// enabled.
+ 	DRADeviceBindingConditions featuregate.Feature = "DRADeviceBindingConditions"
+ 
++	// owner: @pohly
++	// kep: http://kep.k8s.io/5055
++	//
++	// DeviceTaintRules allow administrators to add taints to devices.
++	DRADeviceTaintRules featuregate.Feature = "DRADeviceTaintRules"
++
+ 	// owner: @pohly
+ 	// kep: http://kep.k8s.io/5055
+ 	//
+@@ -1152,6 +1158,10 @@ var defaultVersionedKubernetesFeatureGates = map[featuregate.Feature]featuregate
+ 		{Version: version.MustParse("1.34"), Default: false, PreRelease: featuregate.Alpha},
+ 	},
+ 
++	DRADeviceTaintRules: {
++		{Version: version.MustParse("1.35"), Default: false, PreRelease: featuregate.Alpha},
++	},
++
+ 	DRADeviceTaints: {
+ 		{Version: version.MustParse("1.33"), Default: false, PreRelease: featuregate.Alpha},
+ 	},
+@@ -2064,6 +2074,8 @@ var defaultKubernetesFeatureGateDependencies = map[featuregate.Feature][]feature
+ 
+ 	DRADeviceBindingConditions: {DynamicResourceAllocation, DRAResourceClaimDeviceStatus},
+ 
++	DRADeviceTaintRules: {DRADeviceTaints}, // DynamicResourceAllocation is indirect.
++
+ 	DRADeviceTaints: {DynamicResourceAllocation},
+ 
+ 	DRAExtendedResource: {DynamicResourceAllocation},
+diff --git a/pkg/scheduler/eventhandlers_test.go b/pkg/scheduler/eventhandlers_test.go
+index cb5db8f4c7..2ab43be121 100644
+--- a/pkg/scheduler/eventhandlers_test.go
++++ b/pkg/scheduler/eventhandlers_test.go
+@@ -441,6 +441,7 @@ func TestAddAllEventHandlers(t *testing.T) {
+ 		gvkMap                    map[fwk.EventResource]fwk.ActionType
+ 		enableDRA                 bool
+ 		enableDRADeviceTaints     bool
++		enableDRADeviceTaintRules bool
+ 		enableDRAExtendedResource bool
+ 		expectStaticInformers     map[reflect.Type]bool
+ 		expectDynamicInformers    map[schema.GroupVersionResource]bool
+@@ -488,7 +489,7 @@ func TestAddAllEventHandlers(t *testing.T) {
+ 			expectDynamicInformers: map[schema.GroupVersionResource]bool{},
+ 		},
+ 		{
+-			name: "all DRA events enabled",
++			name: "device taints partially enabled",
+ 			gvkMap: map[fwk.EventResource]fwk.ActionType{
+ 				fwk.ResourceClaim: fwk.Add,
+ 				fwk.ResourceSlice: fwk.Add,
+@@ -496,6 +497,26 @@ func TestAddAllEventHandlers(t *testing.T) {
+ 			},
+ 			enableDRA:             true,
+ 			enableDRADeviceTaints: true,
++			expectStaticInformers: map[reflect.Type]bool{
++				reflect.TypeOf(&v1.Pod{}):                    true,
++				reflect.TypeOf(&v1.Node{}):                   true,
++				reflect.TypeOf(&v1.Namespace{}):              true,
++				reflect.TypeOf(&resourceapi.ResourceClaim{}): true,
++				reflect.TypeOf(&resourceapi.ResourceSlice{}): true,
++				reflect.TypeOf(&resourceapi.DeviceClass{}):   true,
++			},
++			expectDynamicInformers: map[schema.GroupVersionResource]bool{},
++		},
++		{
++			name: "all DRA events enabled",
++			gvkMap: map[fwk.EventResource]fwk.ActionType{
++				fwk.ResourceClaim: fwk.Add,
++				fwk.ResourceSlice: fwk.Add,
++				fwk.DeviceClass:   fwk.Add,
++			},
++			enableDRA:                 true,
++			enableDRADeviceTaints:     true,
++			enableDRADeviceTaintRules: true,
+ 			expectStaticInformers: map[reflect.Type]bool{
+ 				reflect.TypeOf(&v1.Pod{}):                           true,
+ 				reflect.TypeOf(&v1.Node{}):                          true,
+@@ -584,14 +605,18 @@ func TestAddAllEventHandlers(t *testing.T) {
+ 
+ 	for _, tt := range tests {
+ 		t.Run(tt.name, func(t *testing.T) {
+-			if !tt.enableDRA {
+-				featuregatetesting.SetFeatureGateEmulationVersionDuringTest(t, utilfeature.DefaultFeatureGate, version.MustParse("1.34"))
+-			}
+-			featuregatetesting.SetFeatureGatesDuringTest(t, utilfeature.DefaultFeatureGate, featuregatetesting.FeatureOverrides{
++			overrides := featuregatetesting.FeatureOverrides{
+ 				features.DynamicResourceAllocation: tt.enableDRA,
+ 				features.DRADeviceTaints:           tt.enableDRADeviceTaints,
+ 				features.DRAExtendedResource:       tt.enableDRAExtendedResource,
+-			})
++			}
++			if !tt.enableDRA {
++				featuregatetesting.SetFeatureGateEmulationVersionDuringTest(t, utilfeature.DefaultFeatureGate, version.MustParse("1.34"))
++			} else {
++				// Making this depend on the emulated version avoids "cannot set feature gate DRADeviceTaintRules to false, feature is PreAlpha at emulated version 1.34".
++				overrides[features.DRADeviceTaintRules] = tt.enableDRADeviceTaintRules
++			}
++			featuregatetesting.SetFeatureGatesDuringTest(t, utilfeature.DefaultFeatureGate, overrides)
+ 
+ 			logger, ctx := ktesting.NewTestContext(t)
+ 			ctx, cancel := context.WithCancel(ctx)
+@@ -615,10 +640,10 @@ func TestAddAllEventHandlers(t *testing.T) {
+ 				resourceClaimCache = assumecache.NewAssumeCache(logger, resourceClaimInformer, "ResourceClaim", "", nil)
+ 				var err error
+ 				opts := resourceslicetracker.Options{
+-					EnableDeviceTaints: utilfeature.DefaultFeatureGate.Enabled(features.DRADeviceTaints),
+-					SliceInformer:      informerFactory.Resource().V1().ResourceSlices(),
++					EnableDeviceTaintRules: utilfeature.DefaultFeatureGate.Enabled(features.DRADeviceTaintRules),
++					SliceInformer:          informerFactory.Resource().V1().ResourceSlices(),
+ 				}
+-				if opts.EnableDeviceTaints {
++				if opts.EnableDeviceTaintRules {
+ 					opts.TaintInformer = informerFactory.Resource().V1alpha3().DeviceTaintRules()
+ 					opts.ClassInformer = informerFactory.Resource().V1().DeviceClasses()
+ 
+diff --git a/pkg/scheduler/framework/plugins/dynamicresources/dynamicresources_test.go b/pkg/scheduler/framework/plugins/dynamicresources/dynamicresources_test.go
+index d5b43af565..9968c28a46 100644
+--- a/pkg/scheduler/framework/plugins/dynamicresources/dynamicresources_test.go
++++ b/pkg/scheduler/framework/plugins/dynamicresources/dynamicresources_test.go
+@@ -2314,11 +2314,11 @@ func setup(t *testing.T, args *config.DynamicResourcesArgs, nodes []*v1.Node, cl
+ 
+ 	tc.informerFactory = informers.NewSharedInformerFactory(tc.client, 0)
+ 	resourceSliceTrackerOpts := resourceslicetracker.Options{
+-		EnableDeviceTaints: true,
+-		SliceInformer:      tc.informerFactory.Resource().V1().ResourceSlices(),
+-		TaintInformer:      tc.informerFactory.Resource().V1alpha3().DeviceTaintRules(),
+-		ClassInformer:      tc.informerFactory.Resource().V1().DeviceClasses(),
+-		KubeClient:         tc.client,
++		EnableDeviceTaintRules: true,
++		SliceInformer:          tc.informerFactory.Resource().V1().ResourceSlices(),
++		TaintInformer:          tc.informerFactory.Resource().V1alpha3().DeviceTaintRules(),
++		ClassInformer:          tc.informerFactory.Resource().V1().DeviceClasses(),
++		KubeClient:             tc.client,
+ 	}
+ 	resourceSliceTracker, err := resourceslicetracker.StartTracker(tCtx, resourceSliceTrackerOpts)
+ 	require.NoError(t, err, "couldn't start resource slice tracker")
+diff --git a/pkg/scheduler/scheduler.go b/pkg/scheduler/scheduler.go
+index d888306bc2..4f57494955 100644
+--- a/pkg/scheduler/scheduler.go
++++ b/pkg/scheduler/scheduler.go
+@@ -326,14 +326,14 @@ func New(ctx context.Context,
+ 		resourceClaimInformer := informerFactory.Resource().V1().ResourceClaims().Informer()
+ 		resourceClaimCache = assumecache.NewAssumeCache(logger, resourceClaimInformer, "ResourceClaim", "", nil)
+ 		resourceSliceTrackerOpts := resourceslicetracker.Options{
+-			EnableDeviceTaints:       feature.DefaultFeatureGate.Enabled(features.DRADeviceTaints),
++			EnableDeviceTaintRules:   feature.DefaultFeatureGate.Enabled(features.DRADeviceTaintRules),
+ 			EnableConsumableCapacity: feature.DefaultFeatureGate.Enabled(features.DRAConsumableCapacity),
+ 			SliceInformer:            informerFactory.Resource().V1().ResourceSlices(),
+ 			KubeClient:               client,
+ 		}
+-		// If device taints are disabled, the additional informers are not needed and
++		// If device taint rules are disabled, the additional informers are not needed and
+ 		// the tracker turns into a simple wrapper around the slice informer.
+-		if resourceSliceTrackerOpts.EnableDeviceTaints {
++		if resourceSliceTrackerOpts.EnableDeviceTaintRules {
+ 			resourceSliceTrackerOpts.TaintInformer = informerFactory.Resource().V1alpha3().DeviceTaintRules()
+ 			resourceSliceTrackerOpts.ClassInformer = informerFactory.Resource().V1().DeviceClasses()
+ 		}
+diff --git a/plugin/pkg/auth/authorizer/rbac/bootstrappolicy/controller_policy.go b/plugin/pkg/auth/authorizer/rbac/bootstrappolicy/controller_policy.go
+index 3ee1608c1f..2bc332f5d5 100644
+--- a/plugin/pkg/auth/authorizer/rbac/bootstrappolicy/controller_policy.go
++++ b/plugin/pkg/auth/authorizer/rbac/bootstrappolicy/controller_policy.go
+@@ -216,23 +216,31 @@ func buildControllerRoles() ([]rbacv1.ClusterRole, []rbacv1.ClusterRoleBinding)
+ 			},
+ 		})
+ 		if utilfeature.DefaultFeatureGate.Enabled(features.DRADeviceTaints) {
+-			addControllerRole(&controllerRoles, &controllerRoleBindings, rbacv1.ClusterRole{
+-				// Same name as in k8s.io/kubernetes/cmd/kube-controller-manager/names.
+-				ObjectMeta: metav1.ObjectMeta{Name: saRolePrefix + "device-taint-eviction-controller"},
+-				Rules: []rbacv1.PolicyRule{
+-					// Deletes pods to evict them.
+-					rbacv1helpers.NewRule("get", "list", "watch", "delete").Groups(legacyGroup).Resources("pods").RuleOrDie(),
+-					// Sets pod conditions.
+-					rbacv1helpers.NewRule("update", "patch").Groups(legacyGroup).Resources("pods/status").RuleOrDie(),
++			rules := []rbacv1.PolicyRule{
++				// Deletes pods to evict them.
++				rbacv1helpers.NewRule("get", "list", "watch", "delete").Groups(legacyGroup).Resources("pods").RuleOrDie(),
++				// Sets pod conditions.
++				rbacv1helpers.NewRule("update", "patch").Groups(legacyGroup).Resources("pods/status").RuleOrDie(),
++				// The rest is read-only.
++				rbacv1helpers.NewRule("get", "list", "watch").Groups(resourceGroup).Resources("resourceclaims").RuleOrDie(),
++				rbacv1helpers.NewRule("get", "list", "watch").Groups(resourceGroup).Resources("resourceslices").RuleOrDie(),
++				rbacv1helpers.NewRule("get", "list", "watch").Groups(resourceGroup).Resources("deviceclasses").RuleOrDie(),
++				eventsRule(),
++			}
++
++			if utilfeature.DefaultFeatureGate.Enabled(features.DRADeviceTaintRules) {
++				rules = append(rules,
+ 					// Sets DeviceTaintRule conditions.
+ 					rbacv1helpers.NewRule("update", "patch").Groups(resourceGroup).Resources("devicetaintrules/status").RuleOrDie(),
+-					// The rest is read-only.
+-					rbacv1helpers.NewRule("get", "list", "watch").Groups(resourceGroup).Resources("resourceclaims").RuleOrDie(),
+-					rbacv1helpers.NewRule("get", "list", "watch").Groups(resourceGroup).Resources("resourceslices").RuleOrDie(),
+-					rbacv1helpers.NewRule("get", "list", "watch").Groups(resourceGroup).Resources("deviceclasses").RuleOrDie(),
++					// Read-only for spec.
+ 					rbacv1helpers.NewRule("get", "list", "watch").Groups(resourceGroup).Resources("devicetaintrules").RuleOrDie(),
+-					eventsRule(),
+-				},
++				)
++			}
++
++			addControllerRole(&controllerRoles, &controllerRoleBindings, rbacv1.ClusterRole{
++				// Same name as in k8s.io/kubernetes/cmd/kube-controller-manager/names.
++				ObjectMeta: metav1.ObjectMeta{Name: saRolePrefix + "device-taint-eviction-controller"},
++				Rules:      rules,
+ 			})
+ 		}
+ 	}
+diff --git a/plugin/pkg/auth/authorizer/rbac/bootstrappolicy/policy.go b/plugin/pkg/auth/authorizer/rbac/bootstrappolicy/policy.go
+index 3b68d18260..cc879f432c 100644
+--- a/plugin/pkg/auth/authorizer/rbac/bootstrappolicy/policy.go
++++ b/plugin/pkg/auth/authorizer/rbac/bootstrappolicy/policy.go
+@@ -645,7 +645,7 @@ func ClusterRoles() []rbacv1.ClusterRole {
+ 				rbacv1helpers.NewRule("create", "delete").Groups(resourceGroup).Resources("resourceclaims").RuleOrDie(),
+ 			)
+ 		}
+-		if utilfeature.DefaultFeatureGate.Enabled(features.DRADeviceTaints) {
++		if utilfeature.DefaultFeatureGate.Enabled(features.DRADeviceTaintRules) {
+ 			kubeSchedulerRules = append(kubeSchedulerRules, rbacv1helpers.NewRule(Read...).Groups(resourceGroup).Resources("devicetaintrules").RuleOrDie())
+ 		}
+ 	}
+diff --git a/staging/src/k8s.io/dynamic-resource-allocation/resourceslice/tracker/tracker.go b/staging/src/k8s.io/dynamic-resource-allocation/resourceslice/tracker/tracker.go
+index 57dd0bf6a9..5ca9719b28 100644
+--- a/staging/src/k8s.io/dynamic-resource-allocation/resourceslice/tracker/tracker.go
++++ b/staging/src/k8s.io/dynamic-resource-allocation/resourceslice/tracker/tracker.go
+@@ -55,7 +55,7 @@ const (
+ // DeviceTaintRules applied. It is backed by informers to process
+ // potential changes to resolved ResourceSlices asynchronously.
+ type Tracker struct {
+-	enableDeviceTaints bool
++	enableDeviceTaintRules bool
+ 
+ 	resourceSliceLister   resourcelisters.ResourceSliceLister
+ 	resourceSlices        cache.SharedIndexInformer
+@@ -99,14 +99,14 @@ type Tracker struct {
+ 
+ // Options configure a [Tracker].
+ type Options struct {
+-	// EnableDeviceTaints controls whether DeviceTaintRules
++	// EnableDeviceTaintRules controls whether DeviceTaintRules
+ 	// will be reflected in ResourceSlices reported by the tracker.
+ 	//
+ 	// If false, then TaintInformer and ClassInformer
+ 	// are not needed. The tracker turns into
+ 	// a thin wrapper around the underlying
+ 	// SliceInformer, with no processing of its own.
+-	EnableDeviceTaints bool
++	EnableDeviceTaintRules bool
+ 	// EnableConsumableCapacity defines whether the CEL compiler supports the DRAConsumableCapacity feature.
+ 	EnableConsumableCapacity bool
+ 
+@@ -121,7 +121,7 @@ type Options struct {
+ 
+ // StartTracker creates and initializes informers for a new [Tracker].
+ func StartTracker(ctx context.Context, opts Options) (finalT *Tracker, finalErr error) {
+-	if !opts.EnableDeviceTaints {
++	if !opts.EnableDeviceTaintRules {
+ 		// Minimal wrapper. All public methods shortcut by calling the underlying informer.
+ 		return &Tracker{
+ 			resourceSliceLister: opts.SliceInformer.Lister(),
+@@ -148,14 +148,14 @@ func StartTracker(ctx context.Context, opts Options) (finalT *Tracker, finalErr
+ // newTracker is used in testing to construct a tracker without informer event handlers.
+ func newTracker(ctx context.Context, opts Options) (finalT *Tracker, finalErr error) {
+ 	t := &Tracker{
+-		enableDeviceTaints:    opts.EnableDeviceTaints,
+-		resourceSliceLister:   opts.SliceInformer.Lister(),
+-		resourceSlices:        opts.SliceInformer.Informer(),
+-		deviceTaints:          opts.TaintInformer.Informer(),
+-		deviceClasses:         opts.ClassInformer.Informer(),
+-		patchedResourceSlices: cache.NewStore(cache.MetaNamespaceKeyFunc),
+-		handleError:           utilruntime.HandleErrorWithContext,
+-		eventQueue:            *buffer.NewRing[func()](buffer.RingOptions{InitialSize: 0, NormalSize: 4}),
++		enableDeviceTaintRules: opts.EnableDeviceTaintRules,
++		resourceSliceLister:    opts.SliceInformer.Lister(),
++		resourceSlices:         opts.SliceInformer.Informer(),
++		deviceTaints:           opts.TaintInformer.Informer(),
++		deviceClasses:          opts.ClassInformer.Informer(),
++		patchedResourceSlices:  cache.NewStore(cache.MetaNamespaceKeyFunc),
++		handleError:            utilruntime.HandleErrorWithContext,
++		eventQueue:             *buffer.NewRing[func()](buffer.RingOptions{InitialSize: 0, NormalSize: 4}),
+ 	}
+ 	defer func() {
+ 		// If we don't return the tracker, stop the partially initialized instance.
+@@ -220,7 +220,7 @@ func (t *Tracker) initInformers(ctx context.Context) error {
+ // point is possible and will emit events with up-to-date ResourceSlice
+ // objects.
+ func (t *Tracker) HasSynced() bool {
+-	if !t.enableDeviceTaints {
++	if !t.enableDeviceTaintRules {
+ 		return t.resourceSlices.HasSynced()
+ 	}
+ 
+@@ -239,7 +239,7 @@ func (t *Tracker) HasSynced() bool {
+ 
+ // Stop ends all background activity and blocks until that shutdown is complete.
+ func (t *Tracker) Stop() {
+-	if !t.enableDeviceTaints {
++	if !t.enableDeviceTaintRules {
+ 		return
+ 	}
+ 
+@@ -254,7 +254,7 @@ func (t *Tracker) Stop() {
+ // ListPatchedResourceSlices returns all ResourceSlices in the cluster with
+ // modifications from DeviceTaints applied.
+ func (t *Tracker) ListPatchedResourceSlices() ([]*resourceapi.ResourceSlice, error) {
+-	if !t.enableDeviceTaints {
++	if !t.enableDeviceTaintRules {
+ 		return t.resourceSliceLister.List(labels.Everything())
+ 	}
+ 
+@@ -270,7 +270,7 @@ func (t *Tracker) ListPatchedResourceSlices() ([]*resourceapi.ResourceSlice, err
+ // All currently know ResourceSlices get delivered via Add events
+ // before this method returns.
+ func (t *Tracker) AddEventHandler(handler cache.ResourceEventHandler) (cache.ResourceEventHandlerRegistration, error) {
+-	if !t.enableDeviceTaints {
++	if !t.enableDeviceTaintRules {
+ 		return t.resourceSlices.AddEventHandler(handler)
+ 	}
+ 
+diff --git a/staging/src/k8s.io/dynamic-resource-allocation/resourceslice/tracker/tracker_test.go b/staging/src/k8s.io/dynamic-resource-allocation/resourceslice/tracker/tracker_test.go
+index d182e81abf..e9233c23f9 100644
+--- a/staging/src/k8s.io/dynamic-resource-allocation/resourceslice/tracker/tracker_test.go
++++ b/staging/src/k8s.io/dynamic-resource-allocation/resourceslice/tracker/tracker_test.go
+@@ -551,11 +551,11 @@ func TestListPatchedResourceSlices(t *testing.T) {
+ 		informerFactory := informers.NewSharedInformerFactoryWithOptions(kubeClient, 10*time.Minute)
+ 
+ 		opts := Options{
+-			EnableDeviceTaints: true,
+-			SliceInformer:      informerFactory.Resource().V1().ResourceSlices(),
+-			TaintInformer:      informerFactory.Resource().V1alpha3().DeviceTaintRules(),
+-			ClassInformer:      informerFactory.Resource().V1().DeviceClasses(),
+-			KubeClient:         kubeClient,
++			EnableDeviceTaintRules: true,
++			SliceInformer:          informerFactory.Resource().V1().ResourceSlices(),
++			TaintInformer:          informerFactory.Resource().V1alpha3().DeviceTaintRules(),
++			ClassInformer:          informerFactory.Resource().V1().DeviceClasses(),
++			KubeClient:             kubeClient,
+ 		}
+ 		tracker, err := newTracker(ctx, opts)
+ 		require.NoError(t, err)
+@@ -959,11 +959,11 @@ func BenchmarkEventHandlers(b *testing.B) {
+ 		kubeClient := fake.NewSimpleClientset()
+ 		informerFactory := informers.NewSharedInformerFactoryWithOptions(kubeClient, 10*time.Minute)
+ 		opts := Options{
+-			EnableDeviceTaints: true,
+-			SliceInformer:      informerFactory.Resource().V1().ResourceSlices(),
+-			TaintInformer:      informerFactory.Resource().V1alpha3().DeviceTaintRules(),
+-			ClassInformer:      informerFactory.Resource().V1().DeviceClasses(),
+-			KubeClient:         kubeClient,
++			EnableDeviceTaintRules: true,
++			SliceInformer:          informerFactory.Resource().V1().ResourceSlices(),
++			TaintInformer:          informerFactory.Resource().V1alpha3().DeviceTaintRules(),
++			ClassInformer:          informerFactory.Resource().V1().DeviceClasses(),
++			KubeClient:             kubeClient,
+ 		}
+ 		tracker, err := newTracker(ctx, opts)
+ 		require.NoError(b, err)
+diff --git a/test/compatibility_lifecycle/reference/versioned_feature_list.yaml b/test/compatibility_lifecycle/reference/versioned_feature_list.yaml
+index 1434d17e57..cab413c7d3 100644
+--- a/test/compatibility_lifecycle/reference/versioned_feature_list.yaml
++++ b/test/compatibility_lifecycle/reference/versioned_feature_list.yaml
+@@ -481,6 +481,12 @@
+     lockToDefault: false
+     preRelease: Alpha
+     version: "1.34"
++- name: DRADeviceTaintRules
++  versionedSpecs:
++  - default: false
++    lockToDefault: false
++    preRelease: Alpha
++    version: "1.35"
+ - name: DRADeviceTaints
+   versionedSpecs:
+   - default: false
+diff --git a/test/e2e/dra/dra.go b/test/e2e/dra/dra.go
+index e5f6c8e9ec..337e62ab31 100644
+--- a/test/e2e/dra/dra.go
++++ b/test/e2e/dra/dra.go
+@@ -1991,7 +1991,7 @@ var _ = framework.SIGDescribe("node")(framework.WithLabel("DRA"), func() {
+ 			b.TestPod(ctx, f, pod)
+ 		})
+ 
+-		f.It("DeviceTaintRule evicts pod", func(ctx context.Context) {
++		f.It("DeviceTaintRule evicts pod", f.WithFeatureGate(features.DRADeviceTaintRules), func(ctx context.Context) {
+ 			pod, template := b.PodInline()
+ 			template.Spec.Spec.Devices.Requests[0].Exactly.Tolerations = []resourceapi.DeviceToleration{{
+ 				Effect:   resourceapi.DeviceTaintEffectNoSchedule,
+diff --git a/test/integration/dra/device_taints_test.go b/test/integration/dra/device_taints_test.go
+index 48cb417b7b..b14027e4e0 100644
+--- a/test/integration/dra/device_taints_test.go
++++ b/test/integration/dra/device_taints_test.go
+@@ -30,18 +30,21 @@ import (
+ 	resourcealpha "k8s.io/api/resource/v1alpha3"
+ 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+ 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
++	utilfeature "k8s.io/apiserver/pkg/util/feature"
+ 	"k8s.io/client-go/informers"
++	resourcealphainformers "k8s.io/client-go/informers/resource/v1alpha3"
+ 	"k8s.io/client-go/tools/cache"
+ 	"k8s.io/kubernetes/pkg/controller/devicetainteviction"
++	"k8s.io/kubernetes/pkg/features"
+ 	"k8s.io/kubernetes/test/utils/ktesting"
+ 	"k8s.io/utils/ptr"
+ )
+ 
+ // testEvictCluster simulates a cluster with many scheduled pods where each
+ // pod uses it's own ResourceClaim with one device. Then all those
+-// devices get tainted with a single DeviceTaintRule, causing eviction of
+-// all pods at once.
+-func testEvictCluster(tCtx ktesting.TContext) {
++// devices get tainted with a single DeviceTaintRule (causing eviction of all pods at once)
++// or by updating the slices (more gradual).
++func testEvictCluster(tCtx ktesting.TContext, useRule bool) {
+ 	tCtx.Parallel()
+ 
+ 	var wg sync.WaitGroup
+@@ -58,6 +61,7 @@ func testEvictCluster(tCtx ktesting.TContext) {
+ 	driverName := "driver-" + namespace
+ 	poolName := "cluster"
+ 
++	var slices []*resourceapi.ResourceSlice
+ 	for i := range numSlices {
+ 		slice := &resourceapi.ResourceSlice{
+ 			ObjectMeta: metav1.ObjectMeta{
+@@ -77,7 +81,7 @@ func testEvictCluster(tCtx ktesting.TContext) {
+ 				Name: fmt.Sprintf("device-%d", i*devicesPerSlice+e),
+ 			})
+ 		}
+-		createSlice(tCtx, slice)
++		slices = append(slices, createSlice(tCtx, slice))
+ 	}
+ 
+ 	for i := range numPods {
+@@ -125,11 +129,15 @@ func testEvictCluster(tCtx ktesting.TContext) {
+ 	// Create a new factory and sync it so that when the controller starts, it is up-to-date.
+ 	// This works as long as this is the only test running it.
+ 	informerFactory := informers.NewSharedInformerFactory(tCtx.Client(), 0)
++	var ruleInformer resourcealphainformers.DeviceTaintRuleInformer
++	if utilfeature.DefaultFeatureGate.Enabled(features.DRADeviceTaintRules) {
++		ruleInformer = informerFactory.Resource().V1alpha3().DeviceTaintRules()
++	}
+ 	controller := devicetainteviction.New(tCtx.Client(),
+ 		informerFactory.Core().V1().Pods(),
+ 		informerFactory.Resource().V1().ResourceClaims(),
+ 		informerFactory.Resource().V1().ResourceSlices(),
+-		informerFactory.Resource().V1alpha3().DeviceTaintRules(),
++		ruleInformer,
+ 		informerFactory.Resource().V1().DeviceClasses(),
+ 		"device-taint-eviction",
+ 	)
+@@ -188,18 +196,35 @@ func testEvictCluster(tCtx ktesting.TContext) {
+ 		},
+ 	}
+ 
+-	must(tCtx, tCtx.Client().ResourceV1alpha3().DeviceTaintRules().Create, rule, metav1.CreateOptions{})
++	if useRule {
++		// Evict through DeviceTaintRule.
++		must(tCtx, tCtx.Client().ResourceV1alpha3().DeviceTaintRules().Create, rule, metav1.CreateOptions{})
++		tCtx.CleanupCtx(func(tCtx ktesting.TContext) {
++			err := tCtx.Client().ResourceV1alpha3().DeviceTaintRules().Delete(tCtx, ruleName, metav1.DeleteOptions{})
++			if apierrors.IsNotFound(err) {
++				return
++			}
++			tCtx.ExpectNoError(err)
++		})
++	} else {
++		// Evict by tainting each device.
++		for i, slice := range slices {
++			slice = slice.DeepCopy()
++			slice.Spec.Pool.Generation++
++			for i := range slice.Spec.Devices {
++				slice.Spec.Devices[i].Taints = []resourceapi.DeviceTaint{{
++					Key:    "testing",
++					Effect: resourceapi.DeviceTaintEffectNoExecute,
++				}}
++			}
++			slices[i] = must(tCtx, tCtx.Client().ResourceV1().ResourceSlices().Update, slice, metav1.UpdateOptions{})
++		}
++	}
++
+ 	getRule := func(tCtx ktesting.TContext) *resourcealpha.DeviceTaintRule {
+ 		rule = must(tCtx, tCtx.Client().ResourceV1alpha3().DeviceTaintRules().Get, ruleName, metav1.GetOptions{})
+ 		return rule
+ 	}
+-	tCtx.CleanupCtx(func(tCtx ktesting.TContext) {
+-		err := tCtx.Client().ResourceV1alpha3().DeviceTaintRules().Delete(tCtx, ruleName, metav1.DeleteOptions{})
+-		if apierrors.IsNotFound(err) {
+-			return
+-		}
+-		tCtx.ExpectNoError(err)
+-	})
+ 
+ 	// Evict and wait for pods to be gone.
+ 	start := time.Now()
+@@ -214,10 +239,12 @@ func testEvictCluster(tCtx ktesting.TContext) {
+ 	duration := time.Since(start)
+ 	tCtx.Logf("Evicted %d pods in %s.", numPods, duration)
+ 
+-	// Check condition.
+-	ktesting.Eventually(tCtx, getRule).WithPolling(10 * time.Second).Should(gomega.HaveField("Status.Conditions", gomega.ConsistOf(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
+-		"Type":    gomega.Equal(resourcealpha.DeviceTaintConditionEvictionInProgress),
+-		"Status":  gomega.Equal(metav1.ConditionFalse),
+-		"Message": gomega.Equal(fmt.Sprintf("%d pods evicted since starting the controller.", numPods)),
+-	}))))
++	if useRule {
++		// Check condition.
++		ktesting.Eventually(tCtx, getRule).WithPolling(10 * time.Second).Should(gomega.HaveField("Status.Conditions", gomega.ConsistOf(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
++			"Type":    gomega.Equal(resourcealpha.DeviceTaintConditionEvictionInProgress),
++			"Status":  gomega.Equal(metav1.ConditionFalse),
++			"Message": gomega.Equal(fmt.Sprintf("%d pods evicted since starting the controller.", numPods)),
++		}))))
++	}
+ }
+diff --git a/test/integration/dra/dra_test.go b/test/integration/dra/dra_test.go
+index bf98d1ef06..977177e877 100644
+--- a/test/integration/dra/dra_test.go
++++ b/test/integration/dra/dra_test.go
+@@ -192,6 +192,14 @@ func TestDRA(t *testing.T) {
+ 				})
+ 			},
+ 		},
++		"slice-taints": {
++			features: map[featuregate.Feature]bool{
++				features.DRADeviceTaints: true,
++			},
++			f: func(tCtx ktesting.TContext) {
++				tCtx.Run("EvictClusterWithSlices", func(tCtx ktesting.TContext) { testEvictCluster(tCtx, false) })
++			},
++		},
+ 		"all": {
+ 			apis: map[schema.GroupVersion]bool{
+ 				resourcev1beta1.SchemeGroupVersion:  true,
+@@ -206,6 +214,7 @@ func TestDRA(t *testing.T) {
+ 				features.DRADeviceBindingConditions:   true,
+ 				features.DRAConsumableCapacity:        true,
+ 				features.DRADeviceTaints:              true,
++				features.DRADeviceTaintRules:          true,
+ 				features.DRAPartitionableDevices:      true,
+ 				features.DRAPrioritizedList:           true,
+ 				features.DRAResourceClaimDeviceStatus: true,
+@@ -222,7 +231,8 @@ func TestDRA(t *testing.T) {
+ 				tCtx.Run("ExtendedResource", func(tCtx ktesting.TContext) { testExtendedResource(tCtx, true) })
+ 				tCtx.Run("ResourceClaimDeviceStatus", func(tCtx ktesting.TContext) { testResourceClaimDeviceStatus(tCtx, true) })
+ 				tCtx.Run("MaxResourceSlice", testMaxResourceSlice)
+-				tCtx.Run("EvictCluster", testEvictCluster)
++				tCtx.Run("EvictClusterWithRule", func(tCtx ktesting.TContext) { testEvictCluster(tCtx, true) })
++				tCtx.Run("EvictClusterWithSlices", func(tCtx ktesting.TContext) { testEvictCluster(tCtx, false) })
+ 			},
+ 		},
+ 	} {
+diff --git a/test/integration/scheduler_perf/dra.go b/test/integration/scheduler_perf/dra.go
+index b4d7a91c23..7dbc340993 100644
+--- a/test/integration/scheduler_perf/dra.go
++++ b/test/integration/scheduler_perf/dra.go
+@@ -286,12 +286,12 @@ func (op *allocResourceClaimsOp) run(tCtx ktesting.TContext) {
+ 	claimInformer := informerFactory.Resource().V1().ResourceClaims().Informer()
+ 	nodeLister := informerFactory.Core().V1().Nodes().Lister()
+ 	resourceSliceTrackerOpts := resourceslicetracker.Options{
+-		EnableDeviceTaints:       utilfeature.DefaultFeatureGate.Enabled(features.DRADeviceTaints),
++		EnableDeviceTaintRules:   utilfeature.DefaultFeatureGate.Enabled(features.DRADeviceTaintRules),
+ 		EnableConsumableCapacity: utilfeature.DefaultFeatureGate.Enabled(features.DRAConsumableCapacity),
+ 		SliceInformer:            informerFactory.Resource().V1().ResourceSlices(),
+ 		KubeClient:               tCtx.Client(),
+ 	}
+-	if resourceSliceTrackerOpts.EnableDeviceTaints {
++	if resourceSliceTrackerOpts.EnableDeviceTaintRules {
+ 		resourceSliceTrackerOpts.TaintInformer = informerFactory.Resource().V1alpha3().DeviceTaintRules()
+ 		resourceSliceTrackerOpts.ClassInformer = informerFactory.Resource().V1().DeviceClasses()
+ 	}

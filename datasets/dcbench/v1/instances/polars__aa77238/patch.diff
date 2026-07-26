@@ -1,0 +1,512 @@
+From aa7723848399995e4d0aa600d7b2c485788edac7 Mon Sep 17 00:00:00 2001
+From: Orson Peters <orsonpeters@gmail.com>
+Date: Thu, 2 Jul 2026 14:24:03 +0200
+Subject: [PATCH] feat: Add Expr.cat.to and Expr.cat.physical (#28096)
+
+---
+ crates/polars-core/src/datatypes/dtype.rs     | 11 +++++
+ crates/polars-core/src/series/from.rs         | 34 ++++++++++++++++
+ crates/polars-expr/src/dispatch/cat.rs        | 19 ++++++---
+ crates/polars-plan/dsl-schema-hashes.json     |  2 +-
+ crates/polars-plan/src/dsl/cat.rs             |  9 +++++
+ crates/polars-plan/src/dsl/datatype_expr.rs   |  8 ++--
+ .../polars-plan/src/dsl/function_expr/cat.rs  |  4 ++
+ .../src/plans/aexpr/function_expr/cat.rs      |  7 ++++
+ .../plans/conversion/dsl_to_ir/functions.rs   |  2 +
+ .../src/plans/conversion/ir_to_dsl.rs         |  2 +
+ crates/polars-python/src/expr/categorical.rs  |  9 +++++
+ .../reference/expressions/categories.rst      |  2 +
+ .../source/reference/series/categories.rst    |  2 +
+ py-polars/src/polars/_plr.pyi                 |  2 +
+ py-polars/src/polars/expr/categorical.py      | 40 +++++++++++++++++++
+ py-polars/src/polars/series/categorical.py    | 33 +++++++++++++++
+ .../operations/namespaces/test_categorical.py | 33 +++++++++++++++
+ 17 files changed, 209 insertions(+), 10 deletions(-)
+
+diff --git a/crates/polars-core/src/datatypes/dtype.rs b/crates/polars-core/src/datatypes/dtype.rs
+index 18fb66b12..b91436508 100644
+--- a/crates/polars-core/src/datatypes/dtype.rs
++++ b/crates/polars-core/src/datatypes/dtype.rs
+@@ -1596,6 +1596,17 @@ impl<'d, 'f> DtypeVisitor<'d, 'f> {
+     }
+ }
+ 
++#[cfg(feature = "dtype-categorical")]
++impl From<CategoricalPhysical> for DataType {
++    fn from(phys: CategoricalPhysical) -> DataType {
++        match phys {
++            CategoricalPhysical::U8 => DataType::UInt8,
++            CategoricalPhysical::U16 => DataType::UInt16,
++            CategoricalPhysical::U32 => DataType::UInt32,
++        }
++    }
++}
++
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+diff --git a/crates/polars-core/src/series/from.rs b/crates/polars-core/src/series/from.rs
+index 21ac858f3..eadb17af2 100644
+--- a/crates/polars-core/src/series/from.rs
++++ b/crates/polars-core/src/series/from.rs
+@@ -573,6 +573,40 @@ impl Series {
+             dt => polars_bail!(ComputeError: "cannot create series from {:?}", dt),
+         }
+     }
++
++    #[cfg(feature = "dtype-categorical")]
++    pub fn from_cats_and_dtype(
++        cats: &Series,
++        dtype: &DataType,
++        strict: bool,
++    ) -> PolarsResult<Series> {
++        let phys = dtype.cat_physical()?;
++        let phys_dtype = DataType::from(phys);
++        if cats.dtype() != &phys_dtype {
++            polars_bail!(
++                SchemaMismatch:
++                "cannot convert column of type {} to {} with physical type {}; \
++                column dtype must match the enum/categorical's physical type",
++                cats.dtype(), dtype, phys_dtype
++            )
++        }
++
++        let out = with_match_categorical_physical_type!(phys, |$C| {
++            // SAFETY: we are guarded by the type system.
++            type PhysCa = ChunkedArray<<$C as PolarsCategoricalType>::PolarsPhysical>;
++            let ca: &PhysCa = cats.as_ref().as_ref();
++            CategoricalChunked::<$C>::from_cats_and_dtype(ca.clone(), dtype.clone()).into_series()
++        });
++
++        if strict && out.null_count() != cats.null_count() {
++            polars_bail!(
++                ComputeError:
++                "found invalid category value when converting from physical to {dtype}",
++            );
++        }
++
++        Ok(out)
++    }
+ }
+ 
+ fn convert<F: Fn(&dyn Array) -> ArrayRef>(arr: &[ArrayRef], f: F) -> Vec<ArrayRef> {
+diff --git a/crates/polars-expr/src/dispatch/cat.rs b/crates/polars-expr/src/dispatch/cat.rs
+index 5322fa1ee..73a1bec0c 100644
+--- a/crates/polars-expr/src/dispatch/cat.rs
++++ b/crates/polars-expr/src/dispatch/cat.rs
+@@ -1,10 +1,8 @@
+ use std::sync::Arc;
+ 
+-use polars_core::error::PolarsResult;
+-use polars_core::prelude::{
+-    ChunkTakeUnchecked, ChunkedArray, Column, FalseT, IDX_DTYPE, IntoColumn, PolarsPhysicalType,
+-    StringChunked,
+-};
++use polars_core::datatypes::DataType;
++use polars_core::error::{PolarsResult, polars_ensure};
++use polars_core::prelude::*;
+ use polars_core::series::Series;
+ use polars_ops::prelude::BinaryNameSpaceImpl;
+ #[cfg(feature = "strings")]
+@@ -26,6 +24,8 @@ pub fn function_expr_to_udf(func: IRCategoricalFunction) -> SpecialEq<Arc<dyn Co
+         EndsWith(suffix) => map!(ends_with, suffix.as_str()),
+         #[cfg(feature = "strings")]
+         Slice(offset, length) => map!(slice, offset, length),
++        To(dtype, strict) => map!(cat_to, &dtype, strict),
++        Physical => map!(cat_physical),
+     }
+ }
+ 
+@@ -99,3 +99,12 @@ fn slice(c: &Column, offset: i64, length: Option<usize>) -> PolarsResult<Column>
+     let out = unsafe { result.take_unchecked(phys.idx().unwrap()) };
+     Ok(out.into_column())
+ }
++
++fn cat_to(s: &Column, dtype: &DataType, strict: bool) -> PolarsResult<Column> {
++    s.try_apply_unary_elementwise(|s| Series::from_cats_and_dtype(s, dtype, strict))
++}
++
++fn cat_physical(s: &Column) -> PolarsResult<Column> {
++    polars_ensure!(s.dtype().is_categorical() || s.dtype().is_enum(), SchemaMismatch: "cannot call `.cat.physical` on a column which isn't a Categorical or Enum type ({})", s.dtype());
++    Ok(s.apply_unary_elementwise(|s| s.to_physical_repr().into_owned()))
++}
+diff --git a/crates/polars-plan/dsl-schema-hashes.json b/crates/polars-plan/dsl-schema-hashes.json
+index a0d32c66f..1ca4e8065 100644
+--- a/crates/polars-plan/dsl-schema-hashes.json
++++ b/crates/polars-plan/dsl-schema-hashes.json
+@@ -16,7 +16,7 @@
+   "CallbackSinkType": "3dc3398a7ef7c9326bbfe995d459cc7bc0dc9c974e3151c376cf2b4e14c215cd",
+   "CastColumnsPolicy": "f1bda34aa256f119ee8398fdc785831cf157a1016b37b357ab2849294d1d8459",
+   "CastOptions": "33eacc5702ecb00e6292ea70fa7be75f1734e9b2b2e348e4140eb509a259bb32",
+-  "CategoricalFunction": "cadf1396af0afa8adc5db134e3f442b343fd3504a89ed4b254330407ac0ef2f8",
++  "CategoricalFunction": "3c2a82bfb56cc8ebcb92f7d72fc6adbf5c268ecf3ddffc3ec9421403052f1f3b",
+   "CategoricalPhysical": "7107ef2de35ebb480b9c69c20056f88ec3d2c2429e3dd3e5e08f2c70defd981b",
+   "ClosedInterval": "8cddc5ec69eb608bd920361aba3f048af98ba1f35558dbe9cdfde638043bc408",
+   "ClosedWindow": "20dacadcd82ed2d320b9be7d66902774d6353f64411fc229ad28739b7b8c4244",
+diff --git a/crates/polars-plan/src/dsl/cat.rs b/crates/polars-plan/src/dsl/cat.rs
+index 6cc65a308..a6e5b3630 100644
+--- a/crates/polars-plan/src/dsl/cat.rs
++++ b/crates/polars-plan/src/dsl/cat.rs
+@@ -32,4 +32,13 @@ impl CategoricalNameSpace {
+     pub fn slice(self, offset: i64, length: Option<usize>) -> Expr {
+         self.0.map_unary(CategoricalFunction::Slice(offset, length))
+     }
++
++    pub fn to(self, dtype: impl Into<DataTypeExpr>, strict: bool) -> Expr {
++        self.0
++            .map_unary(CategoricalFunction::To(dtype.into(), strict))
++    }
++
++    pub fn physical(self) -> Expr {
++        self.0.map_unary(CategoricalFunction::Physical)
++    }
+ }
+diff --git a/crates/polars-plan/src/dsl/datatype_expr.rs b/crates/polars-plan/src/dsl/datatype_expr.rs
+index 1592bbe7b..6c7d41a46 100644
+--- a/crates/polars-plan/src/dsl/datatype_expr.rs
++++ b/crates/polars-plan/src/dsl/datatype_expr.rs
+@@ -13,7 +13,7 @@ use super::{
+ use crate::frame::OptFlags;
+ use crate::plans::{ExprToIRContext, ToFieldContext, expand_expression, to_expr_ir};
+ 
+-#[derive(Clone, PartialEq, Hash)]
++#[derive(Clone, PartialEq, Eq, Hash)]
+ #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+ #[cfg_attr(feature = "dsl-schema", derive(schemars::JsonSchema))]
+ pub enum DataTypeExpr {
+@@ -38,7 +38,7 @@ pub enum DataTypeExpr {
+     SelfDtype,
+ }
+ 
+-#[derive(Clone, PartialEq, Hash)]
++#[derive(Clone, PartialEq, Eq, Hash)]
+ #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+ #[cfg_attr(feature = "dsl-schema", derive(schemars::JsonSchema))]
+ pub enum SequenceKind {
+@@ -46,7 +46,7 @@ pub enum SequenceKind {
+     Array,
+ }
+ 
+-#[derive(PartialEq, Clone, Hash)]
++#[derive(PartialEq, Eq, Clone, Hash)]
+ #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+ #[cfg_attr(feature = "dsl-schema", derive(schemars::JsonSchema))]
+ pub enum IntDataTypeExpr {
+@@ -54,7 +54,7 @@ pub enum IntDataTypeExpr {
+     ToSigned,
+ }
+ 
+-#[derive(PartialEq, Clone, Hash)]
++#[derive(PartialEq, Eq, Clone, Hash)]
+ #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+ #[cfg_attr(feature = "dsl-schema", derive(schemars::JsonSchema))]
+ pub enum StructDataTypeExpr {
+diff --git a/crates/polars-plan/src/dsl/function_expr/cat.rs b/crates/polars-plan/src/dsl/function_expr/cat.rs
+index d0d5be375..086d66303 100644
+--- a/crates/polars-plan/src/dsl/function_expr/cat.rs
++++ b/crates/polars-plan/src/dsl/function_expr/cat.rs
+@@ -15,6 +15,8 @@ pub enum CategoricalFunction {
+     EndsWith(String),
+     #[cfg(feature = "strings")]
+     Slice(i64, Option<usize>),
++    To(DataTypeExpr, bool),
++    Physical,
+ }
+ 
+ impl Display for CategoricalFunction {
+@@ -32,6 +34,8 @@ impl Display for CategoricalFunction {
+             EndsWith(_) => "ends_with",
+             #[cfg(feature = "strings")]
+             Slice(_, _) => "slice",
++            To(_, _) => "to",
++            Physical => "physical",
+         };
+         write!(f, "cat.{s}")
+     }
+diff --git a/crates/polars-plan/src/plans/aexpr/function_expr/cat.rs b/crates/polars-plan/src/plans/aexpr/function_expr/cat.rs
+index 1916dff8a..74c10c01f 100644
+--- a/crates/polars-plan/src/plans/aexpr/function_expr/cat.rs
++++ b/crates/polars-plan/src/plans/aexpr/function_expr/cat.rs
+@@ -14,6 +14,8 @@ pub enum IRCategoricalFunction {
+     EndsWith(String),
+     #[cfg(feature = "strings")]
+     Slice(i64, Option<usize>),
++    To(DataType, bool),
++    Physical,
+ }
+ 
+ impl IRCategoricalFunction {
+@@ -31,6 +33,8 @@ impl IRCategoricalFunction {
+             EndsWith(_) => mapper.with_dtype(DataType::Boolean),
+             #[cfg(feature = "strings")]
+             Slice(_, _) => mapper.with_dtype(DataType::String),
++            To(dt, _strict) => mapper.with_dtype(dt.clone()),
++            Physical => mapper.try_map_dtype(|dt| Ok(DataType::from(dt.cat_physical()?))),
+         }
+     }
+ 
+@@ -42,6 +46,7 @@ impl IRCategoricalFunction {
+             C::LenBytes | C::LenChars | C::StartsWith(_) | C::EndsWith(_) | C::Slice(_, _) => {
+                 FunctionOptions::elementwise()
+             },
++            C::To(_, _) | C::Physical => FunctionOptions::elementwise(),
+         }
+     }
+ }
+@@ -61,6 +66,8 @@ impl Display for IRCategoricalFunction {
+             EndsWith(_) => "ends_with",
+             #[cfg(feature = "strings")]
+             Slice(_, _) => "slice",
++            To(_, _) => "to",
++            Physical => "physical",
+         };
+         write!(f, "cat.{s}")
+     }
+diff --git a/crates/polars-plan/src/plans/conversion/dsl_to_ir/functions.rs b/crates/polars-plan/src/plans/conversion/dsl_to_ir/functions.rs
+index a42b2c7ba..410b2eb1d 100644
+--- a/crates/polars-plan/src/plans/conversion/dsl_to_ir/functions.rs
++++ b/crates/polars-plan/src/plans/conversion/dsl_to_ir/functions.rs
+@@ -110,6 +110,8 @@ pub(super) fn convert_functions(
+                 C::EndsWith(v) => IC::EndsWith(v),
+                 #[cfg(feature = "strings")]
+                 C::Slice(s, e) => IC::Slice(s, e),
++                C::To(dt, strict) => IC::To(dt.into_datatype(ctx.schema)?, strict),
++                C::Physical => IC::Physical,
+             })
+         },
+         #[cfg(feature = "dtype-extension")]
+diff --git a/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs b/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs
+index 580c50e64..971b6ec9b 100644
+--- a/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs
++++ b/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs
+@@ -370,6 +370,8 @@ pub fn ir_function_to_dsl(input: Vec<Expr>, function: IRFunctionExpr) -> Expr {
+                 IC::EndsWith(v) => C::EndsWith(v),
+                 #[cfg(feature = "strings")]
+                 IC::Slice(s, l) => C::Slice(s, l),
++                IC::To(dt, strict) => C::To(DataTypeExpr::Literal(dt), strict),
++                IC::Physical => C::Physical,
+             })
+         },
+         #[cfg(feature = "dtype-extension")]
+diff --git a/crates/polars-python/src/expr/categorical.rs b/crates/polars-python/src/expr/categorical.rs
+index 09cd94b67..78dd468e2 100644
+--- a/crates/polars-python/src/expr/categorical.rs
++++ b/crates/polars-python/src/expr/categorical.rs
+@@ -1,6 +1,7 @@
+ use pyo3::prelude::*;
+ 
+ use crate::PyExpr;
++use crate::expr::datatype::PyDataTypeExpr;
+ 
+ #[pymethods]
+ impl PyExpr {
+@@ -28,4 +29,12 @@ impl PyExpr {
+     fn cat_slice(&self, offset: i64, length: Option<usize>) -> Self {
+         self.inner.clone().cat().slice(offset, length).into()
+     }
++
++    fn cat_to(&self, dtype: PyDataTypeExpr, strict: bool) -> Self {
++        self.inner.clone().cat().to(dtype.inner, strict).into()
++    }
++
++    fn cat_physical(&self) -> Self {
++        self.inner.clone().cat().physical().into()
++    }
+ }
+diff --git a/py-polars/docs/source/reference/expressions/categories.rst b/py-polars/docs/source/reference/expressions/categories.rst
+index a437704f6..547ddb0b3 100644
+--- a/py-polars/docs/source/reference/expressions/categories.rst
++++ b/py-polars/docs/source/reference/expressions/categories.rst
+@@ -14,3 +14,5 @@ The following methods are available under the `expr.cat` attribute.
+     Expr.cat.len_bytes
+     Expr.cat.len_chars
+     Expr.cat.starts_with
++    Expr.cat.physical
++    Expr.cat.to
+\ No newline at end of file
+diff --git a/py-polars/docs/source/reference/series/categories.rst b/py-polars/docs/source/reference/series/categories.rst
+index 46db6491f..cbe76459b 100644
+--- a/py-polars/docs/source/reference/series/categories.rst
++++ b/py-polars/docs/source/reference/series/categories.rst
+@@ -17,3 +17,5 @@ The following methods are available under the `Series.cat` attribute.
+     Series.cat.starts_with
+     Series.cat.to_local
+     Series.cat.uses_lexical_ordering
++    Series.cat.physical
++    Series.cat.to
+\ No newline at end of file
+diff --git a/py-polars/src/polars/_plr.pyi b/py-polars/src/polars/_plr.pyi
+index e75dee406..5d4201701 100644
+--- a/py-polars/src/polars/_plr.pyi
++++ b/py-polars/src/polars/_plr.pyi
+@@ -1532,6 +1532,8 @@ class PyExpr:
+     def cat_starts_with(self, prefix: str) -> PyExpr: ...
+     def cat_ends_with(self, suffix: str) -> PyExpr: ...
+     def cat_slice(self, offset: int, length: int | None = None) -> PyExpr: ...
++    def cat_to(self, dtype: PyDataTypeExpr, strict: bool) -> PyExpr: ...
++    def cat_physical(self) -> PyExpr: ...
+ 
+     # datetime
+     def dt_add_business_days(
+diff --git a/py-polars/src/polars/expr/categorical.py b/py-polars/src/polars/expr/categorical.py
+index 1cf36e62d..cb5a3b9a7 100644
+--- a/py-polars/src/polars/expr/categorical.py
++++ b/py-polars/src/polars/expr/categorical.py
+@@ -2,11 +2,17 @@ from __future__ import annotations
+ 
+ from typing import TYPE_CHECKING
+ 
++from polars._utils.unstable import unstable
+ from polars._utils.various import qualified_type_name
+ from polars._utils.wrap import wrap_expr
++from polars.datatypes import parse_into_datatype_expr
+ 
+ if TYPE_CHECKING:
++    import polars._reexport as pl
+     from polars import Expr
++    from polars._typing import (
++        PolarsDataType,
++    )
+ 
+ 
+ class ExprCatNameSpace:
+@@ -304,3 +310,37 @@ class ExprCatNameSpace:
+         └─────────────┴───────┘
+         """
+         return wrap_expr(self._pyexpr.cat_slice(offset, length))
++
++    @unstable()
++    def to(
++        self, dtype: PolarsDataType | pl.DataTypeExpr, *, strict: bool = True
++    ) -> Expr:
++        """
++        Convert to a categorical or enum `dtype`.
++
++        The input must be of the physical type of the categorical or enum dtype.
++
++        Parameters
++        ----------
++        dtype
++            The target categorical or enum dtype.
++        strict
++            Whether to panic when encountering an illegal category.
++
++        .. warning::
++            This functionality is currently considered **unstable**. It may be
++            changed at any point without it being considered a breaking change.
++        """
++        py_dtype = parse_into_datatype_expr(dtype)._pydatatype_expr
++        return wrap_expr(self._pyexpr.cat_to(py_dtype, strict))
++
++    @unstable()
++    def physical(self) -> Expr:
++        """
++        Get the physical values of a categorical or enum data type.
++
++        .. warning::
++            This functionality is currently considered **unstable**. It may be
++            changed at any point without it being considered a breaking change.
++        """
++        return wrap_expr(self._pyexpr.cat_physical())
+diff --git a/py-polars/src/polars/series/categorical.py b/py-polars/src/polars/series/categorical.py
+index 6321380b8..4b8deb0db 100644
+--- a/py-polars/src/polars/series/categorical.py
++++ b/py-polars/src/polars/series/categorical.py
+@@ -3,12 +3,16 @@ from __future__ import annotations
+ from typing import TYPE_CHECKING
+ 
+ from polars._utils.deprecation import deprecated
++from polars._utils.unstable import unstable
+ from polars._utils.wrap import wrap_s
+ from polars.series.utils import expr_dispatch
+ 
+ if TYPE_CHECKING:
+     from polars import Series
+     from polars._plr import PySeries
++    from polars._typing import (
++        PolarsDataType,
++    )
+ 
+ 
+ @expr_dispatch
+@@ -249,3 +253,32 @@ class CatNameSpace:
+             "onf"
+         ]
+         """
++
++    @unstable()
++    def to(self, dtype: PolarsDataType, *, strict: bool = True) -> Series:
++        """
++        Create a Series with a categorical or enum `dtype`.
++
++        The input series must be the physical type of the categorical or enum dtype.
++
++        Parameters
++        ----------
++        dtype
++            The target categorical or enum dtype.
++        strict
++            Whether to panic when encountering an illegal category.
++
++        .. warning::
++            This functionality is currently considered **unstable**. It may be
++            changed at any point without it being considered a breaking change.
++        """
++
++    @unstable()
++    def physical(self) -> Series:
++        """
++        Get the physical values of a Series with a categorical or enum data type.
++
++        .. warning::
++            This functionality is currently considered **unstable**. It may be
++            changed at any point without it being considered a breaking change.
++        """
+diff --git a/py-polars/tests/unit/operations/namespaces/test_categorical.py b/py-polars/tests/unit/operations/namespaces/test_categorical.py
+index 353d14c34..baa95fece 100644
+--- a/py-polars/tests/unit/operations/namespaces/test_categorical.py
++++ b/py-polars/tests/unit/operations/namespaces/test_categorical.py
+@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
+ import pytest
+ 
+ import polars as pl
++from polars.exceptions import ComputeError, SchemaError
+ from polars.testing import assert_frame_equal, assert_series_equal
+ 
+ if TYPE_CHECKING:
+@@ -250,3 +251,35 @@ def test_cat_order_flag_csv_read_23823() -> None:
+         schema_overrides={"colx": pl.Categorical},
+     )
+     assert_frame_equal(expected, lf.sort("colx", descending=False).collect())
++
++
++@pytest.mark.parametrize("cat_kind", ["enum", "cat"])
++def test_cat_to_from_physical(cat_kind: str) -> None:
++    values = ["foobar", "barfoo", "foobar", "x", None]
++
++    if cat_kind == "cat":
++        categories = pl.Categories.random()
++        dtype: pl.DataType = pl.Categorical(categories)
++        _dummy = pl.Series(values, dtype=dtype)
++        cats = [categories[s] for s in values if s is not None]
++        phys: type[pl.UInt32 | pl.UInt8] = pl.UInt32
++    else:
++        dtype = pl.Enum(sorted({x for x in values if x is not None}))
++        cats = [1, 0, 1, 2]
++        phys = pl.UInt8
++
++    df = pl.DataFrame({"a": pl.Series(values, dtype=dtype)})
++
++    assert_series_equal(
++        df["a"].cat.physical(), pl.Series("a", cats + [None], dtype=phys)
++    )
++
++    assert_series_equal(
++        pl.Series("a", cats + [4], dtype=phys).cat.to(dtype, strict=False), df["a"]
++    )
++
++    with pytest.raises(ComputeError):
++        pl.Series(cats + [4], dtype=phys).cat.to(dtype)
++
++    with pytest.raises(SchemaError):
++        pl.Series(cats + [4], dtype=pl.UInt16).cat.to(dtype)

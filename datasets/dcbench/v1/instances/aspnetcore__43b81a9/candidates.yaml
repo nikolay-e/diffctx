@@ -1,0 +1,84 @@
+generators:
+  cochange: 0
+  bm25: 15
+  graph: 1
+  random: 10
+candidates:
+- path: .github/ISSUE_TEMPLATE/config.yml
+  sources:
+  - random
+- path: src/Components/Components/src/ComponentBase.cs
+  sources:
+  - bm25
+- path: src/Components/Components/src/RenderTree/RenderTreeDiffBuilder.cs
+  sources:
+  - bm25
+- path: src/Components/Components/src/RenderTree/Renderer.cs
+  sources:
+  - bm25
+- path: src/Components/Components/src/Rendering/ComponentState.cs
+  sources:
+  - bm25
+- path: src/Components/Components/src/Rendering/RenderTreeBuilder.cs
+  sources:
+  - bm25
+- path: src/Components/Components/src/Routing/Router.cs
+  sources:
+  - bm25
+- path: src/Components/Endpoints/src/FormMapping/Converters/DictionaryAdapters/ImmutableDictionaryBufferAdapter.cs
+  sources:
+  - random
+- path: src/Components/QuickGrid/Microsoft.AspNetCore.Components.QuickGrid/src/QuickGrid.razor.cs
+  sources:
+  - bm25
+- path: src/Components/Server/src/Circuits/CircuitHost.cs
+  sources:
+  - bm25
+- path: src/Components/Server/src/Circuits/RemoteRenderer.cs
+  sources:
+  - bm25
+- path: src/Components/Web.JS/src/Services/NavigationEnhancement.ts
+  sources:
+  - bm25
+- path: src/Components/Web/src/Virtualization/Virtualize.cs
+  sources:
+  - bm25
+- path: src/Components/WebAssembly/Authentication.Msal/src/ILLink.Descriptors.xml
+  sources:
+  - random
+- path: src/Components/WebAssembly/WebAssembly/src/Hosting/RegisteredComponentsInterop.cs
+  sources:
+  - random
+- path: src/Components/test/E2ETest/ServerRenderingTests/StreamingRenderingTest.cs
+  sources:
+  - bm25
+- path: src/Components/test/E2ETest/Tests/ComponentRenderingTestBase.cs
+  sources:
+  - bm25
+- path: src/Components/test/E2ETest/Tests/VirtualizationTest.cs
+  sources:
+  - bm25
+- path: src/Components/test/testassets/BasicTestApp/RouterTest/NavLinkNotIgnoreQueryOrFragmentString.cs
+  sources:
+  - graph
+- path: src/Mvc/README.md
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/ControllersFromServicesClassLibrary/EmployeeRecords.cs
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/RazorPagesWebSite/Pages/PropertyBinding/_ViewImports.cshtml
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ItemTemplates/content/ApiController/ValueController.cs
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ProjectTemplates/content/StarterWeb-CSharp/Views/Home/Privacy.cshtml
+  sources:
+  - random
+- path: src/Razor/Razor.Runtime/test/Runtime/TagHelpers/TagHelperExecutionContextTest.cs
+  sources:
+  - random
+- path: src/SignalR/clients/csharp/Client.Core/src/HubConnection.cs
+  sources:
+  - bm25

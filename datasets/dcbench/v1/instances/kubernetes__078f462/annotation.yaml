@@ -1,0 +1,69 @@
+repo: kubernetes
+base_commit: 963927467697fe4defb99b5430fd3f743d989e5b
+commit: 078f462a955bb06cbf8de3e0d6fe2e190cf14e49
+patch_stored: true
+gold:
+  - path: staging/src/k8s.io/api/scheduling/v1alpha1/types.go
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: defines the versioned Workload, WorkloadSpec, PodGroup and GangSchedulingPolicy structs (types.go:82,114,194) that all 106 regenerated files (deepcopy, conversion, openapi, protobuf, clients) encode.
+  - path: pkg/apis/scheduling/types.go
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: defines the internal (unversioned) Workload/WorkloadSpec/WorkloadList structs (types.go:97,114,129) that pkg/apis/scheduling/zz_generated.deepcopy.go and zz_generated.conversion.go are generated from.
+  - path: staging/src/k8s.io/api/core/v1/types.go
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: defines PodSpec.WorkloadRef *WorkloadReference and the WorkloadReference struct itself (types.go:4445,4459-ish) guarded by `+featureGate=GenericWorkload`, which drives the regenerated core/v1 deepcopy/conversion/openapi entries.
+  - path: pkg/apis/core/types.go
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: defines the internal PodSpec.WorkloadRef field and WorkloadReference struct (types.go:3891-4003) mirrored by the regenerated pkg/apis/core zz_generated.deepcopy.go entries.
+  - path: pkg/features/kube_features.go
+    tier: essential
+    role: config
+    in_diff: false
+    rationale: registers the GenericWorkload feature gate (kube_features.go:338, PreRelease entry at 1294) that gates the new WorkloadRef field and the Workload API surface being generated here.
+  - path: pkg/registry/scheduling/rest/storage_scheduling.go
+    tier: helpful
+    role: caller
+    in_diff: false
+    rationale: only registers the Workload REST storage (and its generated clients/listers) when features.GenericWorkload is enabled, showing how the generated API surface is actually wired into the apiserver.
+  - path: pkg/api/pod/util.go
+    tier: helpful
+    role: caller
+    in_diff: false
+    rationale: drops/validates Pod.Spec.WorkloadRef based on the GenericWorkload feature gate (util.go:1776), the hand-written consumer of the WorkloadReference type these generated files encode.
+  - path: api/openapi-spec/v3/apis__scheduling.k8s.io__v1alpha1_openapi.json
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: the new OpenAPI v3 schema for the scheduling.k8s.io/v1alpha1 Workload API (added wholesale, ~3033 lines) is the single generated artifact that most fully documents the new type surface being introduced.
+  - path: staging/src/k8s.io/client-go/kubernetes/typed/scheduling/v1alpha1/workload.go
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: the generated typed CRUD client for the new Workload resource, representing the primary client-go surface added by this regeneration.
+forbidden:
+  - path: staging/src/k8s.io/api/scheduling/v1alpha1/types_swagger_doc_generated.go
+    reason: purely generated doc-comment strings mirroring types.go, adds no information beyond the hand-written type
+  - path: pkg/apis/scheduling/v1alpha1/zz_generated.conversion.go
+    reason: mechanical internal<->versioned conversion function, fully derivable from the two types.go files
+  - path: staging/src/k8s.io/api/testdata/HEAD/scheduling.k8s.io.v1alpha1.Workload.json
+    reason: golden serialization fixture for roundtrip tests, not needed to understand the API shape or intent
+  - path: staging/src/k8s.io/client-go/applyconfigurations/scheduling/v1alpha1/workload.go
+    reason: generated server-side-apply configuration builder, redundant with the typed client already included
+nontrivial_gold_count: 7
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 106
+  description: 'Workload API + Pod WorkloadReference generated files: 102/106 generated (openapi json/yaml/pb,
+    clientsets) dwarfing the type change'
+notes: 'This commit is a pure `hack/update-codegen.sh` regeneration (commit message: "Workload API and Pod WorkloadReference generated files") — every one of its 106 changed files is mechanically generated; the hand-written Workload/WorkloadReference type definitions and the GenericWorkload feature gate that drive it were introduced in an earlier commit and are pulled in here as external gold. Feature-gate lookup (features.GenericWorkload string) links the type to the storage/validation gating, hence string_indirection: true.'

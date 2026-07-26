@@ -1,0 +1,66 @@
+repo: gitlab-foss
+base_commit: 9e0302cca79b40ed118d1334be7e9abf00c432eb
+commit: e46d4bf4da3ee207043c85524df238475e47d650
+patch_stored: true
+gold:
+  - path: app/services/git/base_hooks_service.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New shared base class defining execute/push_data/create_events/create_pipelines/execute_project_hooks and the commits/hook_name template methods that BranchHooksService and TagHooksService now implement.
+  - path: app/services/git/branch_hooks_service.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New Git::BranchHooksService < Git::BaseHooksService moving all branch-specific hook logic (commits, branch_create/update/remove_hooks, gpg signature enqueue) out of BranchPushService.
+  - path: app/services/git/tag_hooks_service.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New Git::TagHooksService < Git::BaseHooksService moving tag-specific push-data building (tag/tag_commit/event_message) out of TagPushService.
+  - path: app/services/git/branch_push_service.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Stripped down to delegate execute_related_hooks to BranchHooksService.new(project, current_user, params).execute, keeping only merge-request/mirror/housekeeping/environment concerns.
+  - path: app/services/git/tag_push_service.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Stripped down to delegate to TagHooksService.new(project, current_user, params).execute instead of building push data and firing hooks/pipelines itself.
+  - path: app/models/gpg_signature.rb
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: Adds GpgSignature.unsigned_commit_shas(commit_shas), extracted from the inline SQL previously in BranchPushService#update_signatures and now called from BranchHooksService#enqueue_update_gpg_signatures.
+  - path: app/services/delete_branch_service.rb
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: Drops the unused build_push_data method now that branch deletion push-data/hooks are handled uniformly through the git-hook-driven BranchPushService/BranchHooksService path.
+  - path: app/workers/post_receive.rb
+    tier: essential
+    role: caller
+    in_diff: false
+    rationale: "Constructs Git::TagPushService.new(project, user, oldrev:, newrev:, ref:, push_options:).execute and the equivalent for BranchPushService; this is the origin of the params[:oldrev]/params[:newrev]/params[:ref] keys every new hooks service reads."
+  - path: lib/gitlab/data_builder/push.rb
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Defines Push.build(project, user, oldrev, newrev, ref, commits, message, commits_count:, push_options:), the exact positional/keyword signature BaseHooksService#push_data now calls uniformly for both branches and tags.
+forbidden:
+  - path: app/services/base_service.rb
+    reason: generic superclass used by hundreds of services; only its project/current_user/params accessors matter here and those are already visible at each call site
+  - path: app/workers/create_gpg_signature_worker.rb
+    reason: async worker enqueued via perform_async; its own implementation isn't needed to follow the synchronous service-layer extraction
+  - path: app/models/repository.rb
+    reason: huge model providing after_push_commit/after_create_branch/etc.; only the fact that these methods exist matters, not their internals
+nontrivial_gold_count: 2
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 14
+  description: Extract Git::{Base,Tag,Branch}HooksService — service extraction
+notes: 'Extracts the shared push-hook logic (events, pipelines, project hooks, cache invalidation, push-data building) out of Git::BranchPushService and Git::TagPushService into a new Git::BaseHooksService, with branch/tag-specific behavior in BranchHooksService/TagHooksService; AfterBranchDeleteService is deleted and its stop_environments logic inlined into BranchPushService. All linkage is static Ruby inheritance/method calls; no string-based indirection.'

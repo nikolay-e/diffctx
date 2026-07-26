@@ -1,0 +1,59 @@
+repo: tokio
+base_commit: ad6f6189529b1067bd4628d1c62abf9a3a64281e
+commit: d1f1499f630c34c1d319acdc2cc86d7a1008c4b4
+patch_stored: true
+gold:
+  - path: tokio/Cargo.toml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: 'introduces `taskdump = ["dep:backtrace"]` as a real Cargo feature and makes the `backtrace` dependency `optional = true`, replacing the old `[target.''cfg(tokio_taskdump)''.dependencies]` block that unconditionally pulled in backtrace whenever the RUSTFLAGS cfg was set.'
+  - path: tokio/src/macros/cfg.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: '`cfg_taskdump!`/`cfg_not_taskdump!` predicates change `tokio_taskdump` (an out-of-band `--cfg` flag) to `feature = "taskdump"` — the central macro definition every taskdump-gated call site keys off.'
+  - path: tokio/src/runtime/task/mod.rs
+    tier: essential
+    role: cochange
+    in_diff: true
+    rationale: '`Task::trace_task`-style taskdump-only method gated by `#[cfg(all(tokio_unstable, tokio_taskdump, ...))]` is updated to `feature = "taskdump"`, matching the macro rename.'
+  - path: tokio/src/runtime/task/state.rs
+    tier: essential
+    role: cochange
+    in_diff: true
+    rationale: taskdump-only State method (used to check if a task is eligible for tracing) re-gated from `tokio_taskdump` to `feature = "taskdump"`.
+  - path: tokio/src/runtime/handle.rs
+    tier: essential
+    role: cochange
+    in_diff: true
+    rationale: '`Handle::dump()`''s public unstable API is re-gated behind `feature = "taskdump"` instead of the removed `tokio_taskdump` cfg flag.'
+  - path: examples/dump.rs
+    tier: helpful
+    role: doc
+    in_diff: true
+    rationale: 'the taskdump example''s build instructions/attributes switch from `--cfg tokio_taskdump` to `--features taskdump`, the user-facing demonstration of the new activation method.'
+  - path: Cargo.toml
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: 'workspace lint config drops the now-unused `cfg(tokio_taskdump)` entry from `unexpected_cfgs`, mirroring the same cleanup done for `tokio_uring` in the prior io-uring feature migration (#7621).'
+forbidden:
+  - path: .github/workflows/ci.yml
+    reason: CI job env vars updated mechanically to pass `--features taskdump` instead of `--cfg tokio_taskdump`; not needed to understand the feature-flag design
+  - path: .cirrus.yml
+    reason: Cirrus CI config, only touched for the same mechanical RUSTFLAGS/feature-name substitution as ci.yml
+  - path: tokio/tests/dump.rs
+    reason: covering test updated only to build with `--features taskdump` instead of the removed cfg flag, not informative about the flag redesign itself
+  - path: tokio/src/sync/notify.rs
+    reason: touched only for a mechanical cfg-predicate substitution identical in shape to task/state.rs, not independently informative
+nontrivial_gold_count: 0
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 24
+  description: 'tokio: use cargo feature for taskdump instead of cfg — cfg→feature migration across runtime
+    internals'
+notes: 'Companion migration to #7621 (io-uring): replaces the ad hoc `--cfg tokio_taskdump` RUSTFLAGS convention with a real (still tokio_unstable-gated) Cargo feature `taskdump`, so the backtrace dependency becomes optional and activated via `--features taskdump` instead of out-of-band RUSTFLAGS. The rename touches every `tokio_taskdump` cfg predicate across runtime/task, runtime/scheduler, sync::notify, and task::local — all mechanical once macros/cfg.rs and Cargo.toml are understood; all needed context is within the diff.'

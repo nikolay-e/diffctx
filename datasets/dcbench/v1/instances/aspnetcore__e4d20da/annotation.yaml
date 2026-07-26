@@ -1,0 +1,68 @@
+repo: aspnetcore
+base_commit: c18e93a9a2e2949e1a9c880da16abf0837aa978f
+commit: e4d20daaa5c2dc81abcd26081bcbf7da7fcd3f5e
+patch_stored: true
+gold:
+  - path: src/Components/Components/src/PersistentStateAttribute.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Renamed (from SupplyParameterFromPersistentComponentStateAttribute.cs) definition of PersistentStateAttribute, the core symbol of the API-review rename.
+  - path: src/Components/Components/src/PersistentStateValueProvider.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Renamed provider whose CanSupplyValue checks `parameterInfo.Attribute is PersistentStateAttribute` and whose namespace moved to Microsoft.AspNetCore.Components.Infrastructure as part of the same review pass.
+  - path: src/Components/Components/src/PersistentState/PersistentServicesRegistry.cs
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: Reflection-based consumer that scans property CustomAttributes for `PersistentStateAttribute` (updated from the old attribute type) to decide which properties get persisted state injected.
+  - path: src/Components/Components/src/PublicAPI.Unshipped.txt
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Roslyn PublicAPI analyzer baseline updated to declare the new public surface (PersistentStateAttribute, Infrastructure.PersistentStateProviderServiceCollectionExtensions) replacing the old names; a rename without this edit fails CI.
+  - path: src/Components/Web.JS/src/Boot.Server.Common.ts
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines the renamed global functions `Blazor.pauseCircuit`/`Blazor.resumeCircuit` (previously `Blazor.pause`/`Blazor.resume`), the JS half of this API-review rename.
+  - path: src/Components/Web.JS/src/GlobalExports.ts
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: IBlazor interface declares the renamed `pauseCircuit?`/`resumeCircuit?` members that Boot.Server.Common.ts implements and callers type-check against.
+  - path: src/Components/test/E2ETest/ServerExecutionTests/ServerResumeTests.cs
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: E2E test drives the rename through `javascript.ExecuteScript("Blazor.pauseCircuit()")` — a raw string executed in-browser, the string-indirection call site that would silently no-op if the rename were incomplete.
+  - path: src/Components/Web.JS/src/Platform/Circuits/CircuitManager.ts
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Defines the `pause()`/`resume()` methods that Boot.Server.Common.ts's Blazor.pauseCircuit/resumeCircuit delegate to via `circuit.pause()`/`circuit.resume()`, and itself invokes the SignalR hub by string name (`this._connection.invoke('PauseCircuit')`, and 'ResumeCircuit'), explaining the "Circuit" suffix chosen for the renamed globals.
+  - path: src/Components/Server/src/ComponentHub.cs
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Server-side SignalR hub methods `PauseCircuit`/`ResumeCircuit`, invoked by string name from CircuitManager.ts (`invoke('PauseCircuit')`/'ResumeCircuit'); these pre-existing names are the naming precedent the client-side Blazor.pause/resume rename aligns with.
+forbidden:
+  - path: src/Components/Components/src/PersistentComponentState.cs
+    reason: name-similar state container class but its API is untouched by this rename; not required to understand the attribute/provider renaming.
+  - path: src/Components/Components/src/CascadingParameterState.cs
+    reason: generic cascading-parameter machinery in the same directory, unrelated to the specific PersistentState attribute rename.
+  - path: src/Components/Web.JS/src/Platform/Circuits/CircuitStartOptions.ts
+    reason: sibling file with pause-related fields (isClientPause/remotePause) but does not define or call the renamed Blazor.pauseCircuit/resumeCircuit globals.
+  - path: src/Components/Server/src/Circuits/CircuitPersistenceManager.cs
+    reason: defines similarly-named PauseCircuitAsync/ResumeCircuitAsync methods but these are a distinct internal C# API untouched by and unrelated to the JS-facing Blazor.pause/resume rename.
+nontrivial_gold_count: 2
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 28
+  description: 'API-review rename: pause/resume methods + PersistentState attribute across cs/ts/js'
+notes: 'Commit performs a pure mechanical rename in two independent halves: (1) C# SupplyParameterFromPersistentComponentState* -> PersistentState* (attribute, provider, namespace move to Components.Infrastructure, PublicAPI baseline), and (2) JS/TS Blazor.pause/resume -> Blazor.pauseCircuit/resumeCircuit, exercised in a browser via a raw ExecuteScript string in ServerResumeTests.cs. string_indirection=true because both the E2E test invocation and CircuitManager.ts SignalR calls (PauseCircuit/ResumeCircuit by name) rely on string-based dispatch rather than static references.'

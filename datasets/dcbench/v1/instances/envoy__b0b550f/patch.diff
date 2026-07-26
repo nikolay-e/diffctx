@@ -1,0 +1,2227 @@
+From b0b550f2a19d8db5859701a61096fc21dffd8ea0 Mon Sep 17 00:00:00 2001
+From: code <wbphub@gmail.com>
+Date: Wed, 9 Apr 2025 05:03:51 +0800
+Subject: [PATCH] context: move the secret manager and ssl context manager to
+ server context (#39027)
+
+Both secret manager and ssl context manager are server wide resource and
+should be accessed by server factory context.
+
+This provides a unified way to access all server wide resources. See
+https://github.com/envoyproxy/envoy/issues/26476 for more detail for why
+we do this.
+
+And after this PR is merged, we can use GenericFactoryContext to replace
+TransportSocketFactoryContext.
+
+Signed-off-by: wangbaiping(wbpcode) <wbphub@gmail.com>
+---
+ .../private_key_providers/test/config_test.cc |  8 +--
+ .../private_key_providers/test/config_test.cc |  8 +--
+ .../private_key_providers/test/ops_test.cc    |  4 +-
+ contrib/sxg/filters/http/test/filter_test.cc  |  6 ++-
+ envoy/server/factory_context.h                | 10 ++++
+ envoy/server/transport_socket_config.h        | 18 -------
+ mobile/test/common/integration/BUILD          |  2 +-
+ mobile/test/common/integration/test_server.cc |  2 +-
+ mobile/test/common/integration/test_server.h  |  2 +-
+ .../common/listener_manager/listener_impl.cc  |  3 +-
+ .../quic_client_transport_socket_factory.cc   |  3 +-
+ .../quic_server_transport_socket_factory.cc   |  3 +-
+ source/common/secret/sds_api.cc               |  8 +--
+ .../common/ssl/tls_certificate_config_impl.cc |  3 +-
+ source/common/tls/context_config_impl.cc      | 34 +++++++-----
+ .../common/tls/server_context_config_impl.cc  | 18 ++++---
+ .../upstream/prod_cluster_info_factory.cc     |  3 +-
+ source/common/upstream/upstream_impl.cc       | 50 +++++++++--------
+ source/extensions/clusters/eds/eds.cc         |  6 ++-
+ source/extensions/clusters/eds/leds.cc        |  8 +--
+ .../quic_lb/quic_lb.cc                        |  3 +-
+ .../tls/downstream_config.cc                  |  4 +-
+ .../transport_sockets/tls/upstream_config.cc  |  3 +-
+ source/server/server.h                        |  4 +-
+ source/server/transport_socket_config_impl.h  | 14 ++---
+ test/common/grpc/BUILD                        |  2 +-
+ .../grpc_client_integration_test_harness.h    |  2 +-
+ test/common/http/BUILD                        |  2 +-
+ test/common/http/conn_pool_grid_test.cc       |  6 +--
+ test/common/http/http3/BUILD                  |  2 +-
+ test/common/http/http3/conn_pool_test.cc      |  4 +-
+ test/common/quic/BUILD                        |  4 +-
+ .../client_connection_factory_impl_test.cc    |  5 +-
+ .../quic_transport_socket_factory_test.cc     |  9 ++--
+ test/common/secret/BUILD                      |  4 +-
+ test/common/secret/sds_api_test.cc            |  2 +-
+ .../common/secret/secret_manager_impl_test.cc | 19 +++----
+ test/common/tls/BUILD                         |  2 +-
+ test/common/tls/context_impl_test.cc          | 48 ++++++++++-------
+ test/common/tls/handshaker_factory_test.cc    | 17 +++---
+ test/common/tls/ssl_certs_test.h              |  2 +-
+ test/common/tls/ssl_socket_test.cc            | 13 +++--
+ .../tls/tls_certificate_selector_test.cc      |  3 +-
+ test/common/upstream/BUILD                    |  2 +-
+ test/common/upstream/hds_test.cc              |  8 +--
+ .../upstream/transport_socket_matcher_test.cc |  2 +-
+ test/extensions/clusters/eds/leds_test.cc     |  3 +-
+ .../filters/http/oauth2/filter_test.cc        |  6 ++-
+ .../http/credential_injector/oauth2/BUILD     |  2 +-
+ .../credential_injector/oauth2/config_test.cc |  1 -
+ .../quic_lb/quic_lb_test.cc                   | 49 ++++++++---------
+ test/extensions/transport_sockets/alts/BUILD  |  2 +-
+ .../alts/alts_integration_test.cc             |  2 +-
+ .../transport_sockets/alts/config_test.cc     |  2 +-
+ .../upstream_starttls_integration_test.cc     |  6 +--
+ .../transport_sockets/tcp_stats/BUILD         |  2 +-
+ .../tcp_stats/tcp_stats_test.cc               |  4 +-
+ test/integration/BUILD                        |  6 +--
+ test/integration/base_integration_test.cc     |  3 +-
+ test/integration/base_integration_test.h      |  2 +-
+ test/integration/quic_http_integration_test.h |  3 +-
+ test/integration/ssl_utility.cc               |  5 +-
+ test/integration/utility.cc                   |  5 +-
+ test/integration/xfcc_integration_test.h      |  2 +-
+ test/mocks/server/BUILD                       | 17 +-----
+ test/mocks/server/factory_context.h           |  1 -
+ test/mocks/server/instance.cc                 |  4 ++
+ test/mocks/server/instance.h                  |  1 -
+ test/mocks/server/mocks.h                     |  1 -
+ test/mocks/server/server_factory_context.cc   | 23 ++++++++
+ test/mocks/server/server_factory_context.h    | 30 +++++++++++
+ .../transport_socket_factory_context.cc       | 40 --------------
+ .../server/transport_socket_factory_context.h | 53 -------------------
+ 73 files changed, 319 insertions(+), 341 deletions(-)
+ delete mode 100644 test/mocks/server/transport_socket_factory_context.cc
+ delete mode 100644 test/mocks/server/transport_socket_factory_context.h
+
+diff --git a/contrib/cryptomb/private_key_providers/test/config_test.cc b/contrib/cryptomb/private_key_providers/test/config_test.cc
+index 1c0b5d18c..5d9d6dea0 100644
+--- a/contrib/cryptomb/private_key_providers/test/config_test.cc
++++ b/contrib/cryptomb/private_key_providers/test/config_test.cc
+@@ -5,7 +5,7 @@
+ 
+ #include "test/common/stats/stat_test_utility.h"
+ #include "test/mocks/common.h"
+-#include "test/mocks/server/transport_socket_factory_context.h"
++#include "test/mocks/server/factory_context.h"
+ #include "test/mocks/ssl/mocks.h"
+ #include "test/mocks/thread_local/mocks.h"
+ #include "test/test_common/environment.h"
+@@ -37,7 +37,8 @@ public:
+   CryptoMbConfigTest() : api_(Api::createApiForTest(store_, time_system_)) {
+     ON_CALL(factory_context_.server_context_, api()).WillByDefault(ReturnRef(*api_));
+     ON_CALL(factory_context_.server_context_, threadLocal()).WillByDefault(ReturnRef(tls_));
+-    ON_CALL(factory_context_, sslContextManager()).WillByDefault(ReturnRef(context_manager_));
++    ON_CALL(factory_context_.server_context_, sslContextManager())
++        .WillByDefault(ReturnRef(context_manager_));
+     ON_CALL(context_manager_, privateKeyMethodManager())
+         .WillByDefault(ReturnRef(private_key_method_manager_));
+   }
+@@ -48,7 +49,8 @@ public:
+     Registry::InjectFactory<Ssl::PrivateKeyMethodProviderInstanceFactory>
+         cryptomb_private_key_method_factory(cryptomb_factory);
+ 
+-    return factory_context_.sslContextManager()
++    return factory_context_.serverFactoryContext()
++        .sslContextManager()
+         .privateKeyMethodManager()
+         .createPrivateKeyMethodProvider(parsePrivateKeyProviderFromV3Yaml(yaml), factory_context_);
+   }
+diff --git a/contrib/qat/private_key_providers/test/config_test.cc b/contrib/qat/private_key_providers/test/config_test.cc
+index d6e2304d0..1f7c1f782 100644
+--- a/contrib/qat/private_key_providers/test/config_test.cc
++++ b/contrib/qat/private_key_providers/test/config_test.cc
+@@ -5,7 +5,7 @@
+ 
+ #include "test/common/stats/stat_test_utility.h"
+ #include "test/mocks/common.h"
+-#include "test/mocks/server/transport_socket_factory_context.h"
++#include "test/mocks/server/server_factory_context.h"
+ #include "test/mocks/ssl/mocks.h"
+ #include "test/mocks/thread_local/mocks.h"
+ #include "test/test_common/environment.h"
+@@ -50,7 +50,8 @@ public:
+       : api_(Api::createApiForTest(store_, time_system_)),
+         libqat_(std::make_shared<FakeLibQatCryptoImpl>()), fsm_(libqat_) {
+     ON_CALL(factory_context_.server_context_, api()).WillByDefault(ReturnRef(*api_));
+-    ON_CALL(factory_context_, sslContextManager()).WillByDefault(ReturnRef(context_manager_));
++    ON_CALL(factory_context_.server_context_, sslContextManager())
++        .WillByDefault(ReturnRef(context_manager_));
+     ON_CALL(context_manager_, privateKeyMethodManager())
+         .WillByDefault(ReturnRef(private_key_method_manager_));
+     ON_CALL(factory_context_.server_context_, singletonManager()).WillByDefault(ReturnRef(fsm_));
+@@ -61,7 +62,8 @@ public:
+     Registry::InjectFactory<Ssl::PrivateKeyMethodProviderInstanceFactory>
+         qat_private_key_method_factory(qat_factory);
+ 
+-    return factory_context_.sslContextManager()
++    return factory_context_.serverFactoryContext()
++        .sslContextManager()
+         .privateKeyMethodManager()
+         .createPrivateKeyMethodProvider(parsePrivateKeyProviderFromV3Yaml(yaml), factory_context_);
+   }
+diff --git a/contrib/qat/private_key_providers/test/ops_test.cc b/contrib/qat/private_key_providers/test/ops_test.cc
+index aff141095..345685407 100644
+--- a/contrib/qat/private_key_providers/test/ops_test.cc
++++ b/contrib/qat/private_key_providers/test/ops_test.cc
+@@ -6,7 +6,7 @@
+ #include "source/common/tls/private_key/private_key_manager_impl.h"
+ 
+ #include "test/common/stats/stat_test_utility.h"
+-#include "test/mocks/server/transport_socket_factory_context.h"
++#include "test/mocks/server/server_factory_context.h"
+ #include "test/test_common/environment.h"
+ #include "test/test_common/simulated_time_system.h"
+ #include "test/test_common/utility.h"
+@@ -110,7 +110,7 @@ protected:
+     rsa_ = EVP_PKEY_get0_RSA(pkey_.get());
+     libqat_->setRsaKey(rsa_);
+   }
+-  bssl::UniquePtr<EVP_PKEY> pkey_{};
++  bssl::UniquePtr<EVP_PKEY> pkey_;
+   RSA* rsa_{};
+ };
+ 
+diff --git a/contrib/sxg/filters/http/test/filter_test.cc b/contrib/sxg/filters/http/test/filter_test.cc
+index dcea7b44a..79ddd68f0 100644
+--- a/contrib/sxg/filters/http/test/filter_test.cc
++++ b/contrib/sxg/filters/http/test/filter_test.cc
+@@ -375,10 +375,12 @@ TEST_F(FilterTest, SdsDynamicGenericSecret) {
+ 
+   auto certificate_secret_provider = secret_manager.findOrCreateGenericSecretProvider(
+       config_source, "certificate", secret_context, init_manager);
+-  auto certificate_callback = secret_context.cluster_manager_.subscription_factory_.callbacks_;
++  auto certificate_callback =
++      secret_context.server_context_.cluster_manager_.subscription_factory_.callbacks_;
+   auto private_key_secret_provider = secret_manager.findOrCreateGenericSecretProvider(
+       config_source, "private_key", secret_context, init_manager);
+-  auto private_key_callback = secret_context.cluster_manager_.subscription_factory_.callbacks_;
++  auto private_key_callback =
++      secret_context.server_context_.cluster_manager_.subscription_factory_.callbacks_;
+ 
+   NiceMock<ThreadLocal::MockInstance> tls;
+   SDSSecretReader secret_reader(std::move(certificate_secret_provider),
+diff --git a/envoy/server/factory_context.h b/envoy/server/factory_context.h
+index 5cb6eb3d7..dd2dcee07 100644
+--- a/envoy/server/factory_context.h
++++ b/envoy/server/factory_context.h
+@@ -229,6 +229,16 @@ public:
+    * @return whether external healthchecks are currently failed or not.
+    */
+   virtual bool healthCheckFailed() const PURE;
++
++  /**
++   * @return Ssl::ContextManager& the SSL context manager.
++   */
++  virtual Ssl::ContextManager& sslContextManager() PURE;
++
++  /**
++   * Return the instance of secret manager.
++   */
++  virtual Secret::SecretManager& secretManager() PURE;
+ };
+ 
+ // ServerFactoryContextInstance is a thread local singleton that provides access to the
+diff --git a/envoy/server/transport_socket_config.h b/envoy/server/transport_socket_config.h
+index 9bf86418d..73097867f 100644
+--- a/envoy/server/transport_socket_config.h
++++ b/envoy/server/transport_socket_config.h
+@@ -34,35 +34,17 @@ public:
+    */
+   virtual ServerFactoryContext& serverFactoryContext() PURE;
+ 
+-  /**
+-   * @return Upstream::ClusterManager& singleton for use by the entire server.
+-   * TODO(wbpcode): clusterManager() of ServerFactoryContext still be invalid when loading
+-   * static cluster. So we need to provide an cluster manager reference here.
+-   * This could be removed after https://github.com/envoyproxy/envoy/issues/26653 is resolved.
+-   */
+-  virtual Upstream::ClusterManager& clusterManager() PURE;
+-
+   /**
+    * @return ProtobufMessage::ValidationVisitor& validation visitor for cluster configuration
+    * messages.
+    */
+   virtual ProtobufMessage::ValidationVisitor& messageValidationVisitor() PURE;
+ 
+-  /**
+-   * @return Ssl::ContextManager& the SSL context manager.
+-   */
+-  virtual Ssl::ContextManager& sslContextManager() PURE;
+-
+   /**
+    * @return Stats::Scope& the transport socket's stats scope.
+    */
+   virtual Stats::Scope& statsScope() PURE;
+ 
+-  /**
+-   * Return the instance of secret manager.
+-   */
+-  virtual Secret::SecretManager& secretManager() PURE;
+-
+   /**
+    * @return the init manager of the particular context.
+    */
+diff --git a/mobile/test/common/integration/BUILD b/mobile/test/common/integration/BUILD
+index 47a8feb38..3d4d52068 100644
+--- a/mobile/test/common/integration/BUILD
++++ b/mobile/test/common/integration/BUILD
+@@ -77,8 +77,8 @@ envoy_cc_test_library(
+         "@envoy//source/exe:process_wide_lib",
+         "@envoy//test/integration:autonomous_upstream_lib",
+         "@envoy//test/integration:utility_lib",
++        "@envoy//test/mocks/server:factory_context_mocks",
+         "@envoy//test/mocks/server:server_factory_context_mocks",
+-        "@envoy//test/mocks/server:transport_socket_factory_context_mocks",
+         "@envoy//test/test_common:environment_lib",
+         "@envoy_build_config//:extension_registry",
+     ] + envoy_select_signal_trace(
+diff --git a/mobile/test/common/integration/test_server.cc b/mobile/test/common/integration/test_server.cc
+index a65f09ebf..90da3a8f1 100644
+--- a/mobile/test/common/integration/test_server.cc
++++ b/mobile/test/common/integration/test_server.cc
+@@ -136,7 +136,7 @@ TestServer::TestServer()
+   ON_CALL(factory_context_.server_context_, api()).WillByDefault(testing::ReturnRef(*api_));
+   ON_CALL(factory_context_, statsScope())
+       .WillByDefault(testing::ReturnRef(*stats_store_.rootScope()));
+-  ON_CALL(factory_context_, sslContextManager())
++  ON_CALL(factory_context_.server_context_, sslContextManager())
+       .WillByDefault(testing::ReturnRef(context_manager_));
+ 
+   Envoy::ExtensionRegistry::registerFactories();
+diff --git a/mobile/test/common/integration/test_server.h b/mobile/test/common/integration/test_server.h
+index ecfa6f54d..d6f4d0670 100644
+--- a/mobile/test/common/integration/test_server.h
++++ b/mobile/test/common/integration/test_server.h
+@@ -9,7 +9,7 @@
+ #include "envoy/extensions/transport_sockets/quic/v3/quic_transport.pb.h"
+ #include "test/integration/autonomous_upstream.h"
+ #include "test/mocks/server/server_factory_context.h"
+-#include "test/mocks/server/transport_socket_factory_context.h"
++#include "test/mocks/server/server_factory_context.h"
+ #include "test/integration/server.h"
+ 
+ #include "tools/cpp/runfiles/runfiles.h"
+diff --git a/source/common/listener_manager/listener_impl.cc b/source/common/listener_manager/listener_impl.cc
+index 6c5040d61..874400935 100644
+--- a/source/common/listener_manager/listener_impl.cc
++++ b/source/common/listener_manager/listener_impl.cc
+@@ -335,8 +335,7 @@ ListenerImpl::ListenerImpl(const envoy::config::listener::v3::Listener& config,
+                           }),
+       transport_factory_context_(
+           std::make_shared<Server::Configuration::TransportSocketFactoryContextImpl>(
+-              parent_.server_.serverFactoryContext(), parent_.server_.sslContextManager(),
+-              listenerScope(), parent_.server_.clusterManager(), validation_visitor_)),
++              parent_.server_.serverFactoryContext(), listenerScope(), validation_visitor_)),
+       quic_stat_names_(parent_.quicStatNames()),
+       missing_listener_config_stats_({ALL_MISSING_LISTENER_CONFIG_STATS(
+           POOL_COUNTER(listener_factory_context_->listenerScope()))}) {
+diff --git a/source/common/quic/quic_client_transport_socket_factory.cc b/source/common/quic/quic_client_transport_socket_factory.cc
+index 454c3c6c0..b4a8520f9 100644
+--- a/source/common/quic/quic_client_transport_socket_factory.cc
++++ b/source/common/quic/quic_client_transport_socket_factory.cc
+@@ -47,7 +47,8 @@ QuicClientTransportSocketFactory::QuicClientTransportSocketFactory(
+     : QuicTransportSocketFactoryBase(factory_context.statsScope(), "client"),
+       tls_slot_(factory_context.serverFactoryContext().threadLocal()) {
+   auto factory_or_error = Extensions::TransportSockets::Tls::ClientSslSocketFactory::create(
+-      std::move(config), factory_context.sslContextManager(), factory_context.statsScope());
++      std::move(config), factory_context.serverFactoryContext().sslContextManager(),
++      factory_context.statsScope());
+   SET_AND_RETURN_IF_NOT_OK(factory_or_error.status(), creation_status);
+   fallback_factory_ = std::move(*factory_or_error);
+   tls_slot_.set([](Event::Dispatcher&) { return std::make_shared<ThreadLocalQuicConfig>(); });
+diff --git a/source/common/quic/quic_server_transport_socket_factory.cc b/source/common/quic/quic_server_transport_socket_factory.cc
+index a9981254c..4b3c128bf 100644
+--- a/source/common/quic/quic_server_transport_socket_factory.cc
++++ b/source/common/quic/quic_server_transport_socket_factory.cc
+@@ -31,7 +31,8 @@ QuicServerTransportSocketConfigFactory::createTransportSocketFactory(
+ 
+   auto factory_or_error = QuicServerTransportSocketFactory::create(
+       PROTOBUF_GET_WRAPPED_OR_DEFAULT(quic_transport, enable_early_data, true),
+-      context.statsScope(), std::move(server_config), context.sslContextManager(), server_names);
++      context.statsScope(), std::move(server_config),
++      context.serverFactoryContext().sslContextManager(), server_names);
+   RETURN_IF_NOT_OK(factory_or_error.status());
+   (*factory_or_error)->initialize();
+   return std::move(*factory_or_error);
+diff --git a/source/common/secret/sds_api.cc b/source/common/secret/sds_api.cc
+index 4059fb536..85490f487 100644
+--- a/source/common/secret/sds_api.cc
++++ b/source/common/secret/sds_api.cc
+@@ -233,7 +233,7 @@ TlsCertificateSdsApiSharedPtr TlsCertificateSdsApi::create(
+   THROW_IF_NOT_OK(
+       Config::Utility::checkLocalInfo("TlsCertificateSdsApi", server_context.localInfo()));
+   return std::make_shared<TlsCertificateSdsApi>(
+-      sds_config, sds_config_name, secret_provider_context.clusterManager().subscriptionFactory(),
++      sds_config, sds_config_name, server_context.clusterManager().subscriptionFactory(),
+       server_context.mainThreadDispatcher().timeSource(),
+       secret_provider_context.messageValidationVisitor(), server_context.serverScope().store(),
+       destructor_cb, server_context.mainThreadDispatcher(), server_context.api());
+@@ -298,7 +298,7 @@ CertificateValidationContextSdsApiSharedPtr CertificateValidationContextSdsApi::
+   THROW_IF_NOT_OK(Config::Utility::checkLocalInfo("CertificateValidationContextSdsApi",
+                                                   server_context.localInfo()));
+   return std::make_shared<CertificateValidationContextSdsApi>(
+-      sds_config, sds_config_name, secret_provider_context.clusterManager().subscriptionFactory(),
++      sds_config, sds_config_name, server_context.clusterManager().subscriptionFactory(),
+       server_context.mainThreadDispatcher().timeSource(),
+       secret_provider_context.messageValidationVisitor(), server_context.serverScope().store(),
+       destructor_cb, server_context.mainThreadDispatcher(), server_context.api());
+@@ -372,7 +372,7 @@ TlsSessionTicketKeysSdsApiSharedPtr TlsSessionTicketKeysSdsApi::create(
+   THROW_IF_NOT_OK(
+       Config::Utility::checkLocalInfo("TlsSessionTicketKeysSdsApi", server_context.localInfo()));
+   return std::make_shared<TlsSessionTicketKeysSdsApi>(
+-      sds_config, sds_config_name, secret_provider_context.clusterManager().subscriptionFactory(),
++      sds_config, sds_config_name, server_context.clusterManager().subscriptionFactory(),
+       server_context.mainThreadDispatcher().timeSource(),
+       secret_provider_context.messageValidationVisitor(), server_context.serverScope().store(),
+       destructor_cb, server_context.mainThreadDispatcher(), server_context.api());
+@@ -410,7 +410,7 @@ GenericSecretSdsApiSharedPtr GenericSecretSdsApi::create(
+   THROW_IF_NOT_OK(
+       Config::Utility::checkLocalInfo("GenericSecretSdsApi", server_context.localInfo()));
+   return std::make_shared<GenericSecretSdsApi>(
+-      sds_config, sds_config_name, secret_provider_context.clusterManager().subscriptionFactory(),
++      sds_config, sds_config_name, server_context.clusterManager().subscriptionFactory(),
+       server_context.mainThreadDispatcher().timeSource(),
+       secret_provider_context.messageValidationVisitor(), server_context.serverScope().store(),
+       destructor_cb, server_context.mainThreadDispatcher(), server_context.api());
+diff --git a/source/common/ssl/tls_certificate_config_impl.cc b/source/common/ssl/tls_certificate_config_impl.cc
+index 24393f420..40f5f37d9 100644
+--- a/source/common/ssl/tls_certificate_config_impl.cc
++++ b/source/common/ssl/tls_certificate_config_impl.cc
+@@ -94,7 +94,8 @@ TlsCertificateConfigImpl::TlsCertificateConfigImpl(
+   } else {
+     if (config.has_private_key_provider()) {
+       private_key_method_ =
+-          factory_context.sslContextManager()
++          factory_context.serverFactoryContext()
++              .sslContextManager()
+               .privateKeyMethodManager()
+               .createPrivateKeyMethodProvider(config.private_key_provider(), factory_context);
+       if (private_key_method_ == nullptr ||
+diff --git a/source/common/tls/context_config_impl.cc b/source/common/tls/context_config_impl.cc
+index 7616607c1..aa90f2610 100644
+--- a/source/common/tls/context_config_impl.cc
++++ b/source/common/tls/context_config_impl.cc
+@@ -36,7 +36,8 @@ std::vector<Secret::TlsCertificateConfigProviderSharedPtr> getTlsCertificateConf
+         continue;
+       }
+       providers.push_back(
+-          factory_context.secretManager().createInlineTlsCertificateProvider(tls_certificate));
++          factory_context.serverFactoryContext().secretManager().createInlineTlsCertificateProvider(
++              tls_certificate));
+     }
+     return providers;
+   }
+@@ -44,13 +45,16 @@ std::vector<Secret::TlsCertificateConfigProviderSharedPtr> getTlsCertificateConf
+     for (const auto& sds_secret_config : config.tls_certificate_sds_secret_configs()) {
+       if (sds_secret_config.has_sds_config()) {
+         // Fetch dynamic secret.
+-        providers.push_back(factory_context.secretManager().findOrCreateTlsCertificateProvider(
+-            sds_secret_config.sds_config(), sds_secret_config.name(), factory_context,
+-            factory_context.initManager()));
++        providers.push_back(factory_context.serverFactoryContext()
++                                .secretManager()
++                                .findOrCreateTlsCertificateProvider(
++                                    sds_secret_config.sds_config(), sds_secret_config.name(),
++                                    factory_context, factory_context.initManager()));
+       } else {
+         // Load static secret.
+-        auto secret_provider = factory_context.secretManager().findStaticTlsCertificateProvider(
+-            sds_secret_config.name());
++        auto secret_provider =
++            factory_context.serverFactoryContext().secretManager().findStaticTlsCertificateProvider(
++                sds_secret_config.name());
+         if (!secret_provider) {
+           creation_status = absl::InvalidArgumentError(
+               fmt::format("Unknown static secret: {}", sds_secret_config.name()));
+@@ -70,14 +74,17 @@ Secret::CertificateValidationContextConfigProviderSharedPtr getProviderFromSds(
+     absl::Status& creation_status) {
+   if (sds_secret_config.has_sds_config()) {
+     // Fetch dynamic secret.
+-    return factory_context.secretManager().findOrCreateCertificateValidationContextProvider(
+-        sds_secret_config.sds_config(), sds_secret_config.name(), factory_context,
+-        factory_context.initManager());
++    return factory_context.serverFactoryContext()
++        .secretManager()
++        .findOrCreateCertificateValidationContextProvider(sds_secret_config.sds_config(),
++                                                          sds_secret_config.name(), factory_context,
++                                                          factory_context.initManager());
+   } else {
+     // Load static secret.
+     auto secret_provider =
+-        factory_context.secretManager().findStaticCertificateValidationContextProvider(
+-            sds_secret_config.name());
++        factory_context.serverFactoryContext()
++            .secretManager()
++            .findStaticCertificateValidationContextProvider(sds_secret_config.name());
+     if (secret_provider) {
+       return secret_provider;
+     }
+@@ -97,8 +104,9 @@ getCertificateValidationContextConfigProvider(
+   switch (config.validation_context_type_case()) {
+   case envoy::extensions::transport_sockets::tls::v3::CommonTlsContext::ValidationContextTypeCase::
+       kValidationContext:
+-    return factory_context.secretManager().createInlineCertificateValidationContextProvider(
+-        config.validation_context());
++    return factory_context.serverFactoryContext()
++        .secretManager()
++        .createInlineCertificateValidationContextProvider(config.validation_context());
+   case envoy::extensions::transport_sockets::tls::v3::CommonTlsContext::ValidationContextTypeCase::
+       kValidationContextSdsSecretConfig:
+     return getProviderFromSds(factory_context, config.validation_context_sds_secret_config(),
+diff --git a/source/common/tls/server_context_config_impl.cc b/source/common/tls/server_context_config_impl.cc
+index 49eef1470..fafcef999 100644
+--- a/source/common/tls/server_context_config_impl.cc
++++ b/source/common/tls/server_context_config_impl.cc
+@@ -32,21 +32,25 @@ Secret::TlsSessionTicketKeysConfigProviderSharedPtr getTlsSessionTicketKeysConfi
+   switch (config.session_ticket_keys_type_case()) {
+   case envoy::extensions::transport_sockets::tls::v3::DownstreamTlsContext::
+       SessionTicketKeysTypeCase::kSessionTicketKeys:
+-    return factory_context.secretManager().createInlineTlsSessionTicketKeysProvider(
+-        config.session_ticket_keys());
++    return factory_context.serverFactoryContext()
++        .secretManager()
++        .createInlineTlsSessionTicketKeysProvider(config.session_ticket_keys());
+   case envoy::extensions::transport_sockets::tls::v3::DownstreamTlsContext::
+       SessionTicketKeysTypeCase::kSessionTicketKeysSdsSecretConfig: {
+     const auto& sds_secret_config = config.session_ticket_keys_sds_secret_config();
+     if (sds_secret_config.has_sds_config()) {
+       // Fetch dynamic secret.
+-      return factory_context.secretManager().findOrCreateTlsSessionTicketKeysContextProvider(
+-          sds_secret_config.sds_config(), sds_secret_config.name(), factory_context,
+-          factory_context.initManager());
++      return factory_context.serverFactoryContext()
++          .secretManager()
++          .findOrCreateTlsSessionTicketKeysContextProvider(
++              sds_secret_config.sds_config(), sds_secret_config.name(), factory_context,
++              factory_context.initManager());
+     } else {
+       // Load static secret.
+       auto secret_provider =
+-          factory_context.secretManager().findStaticTlsSessionTicketKeysContextProvider(
+-              sds_secret_config.name());
++          factory_context.serverFactoryContext()
++              .secretManager()
++              .findStaticTlsSessionTicketKeysContextProvider(sds_secret_config.name());
+       if (secret_provider) {
+         return secret_provider;
+       }
+diff --git a/source/common/upstream/prod_cluster_info_factory.cc b/source/common/upstream/prod_cluster_info_factory.cc
+index eac3d76e4..62603bf8b 100644
+--- a/source/common/upstream/prod_cluster_info_factory.cc
++++ b/source/common/upstream/prod_cluster_info_factory.cc
+@@ -16,8 +16,7 @@ ProdClusterInfoFactory::createClusterInfo(const CreateClusterInfoParams& params)
+       params.stats_.createScope(fmt::format("cluster.{}.", params.cluster_.name()));
+ 
+   Envoy::Server::Configuration::TransportSocketFactoryContextImpl factory_context(
+-      params.server_context_, params.ssl_context_manager_, *scope,
+-      params.server_context_.clusterManager(), params.server_context_.messageValidationVisitor());
++      params.server_context_, *scope, params.server_context_.messageValidationVisitor());
+ 
+   // TODO(JimmyCYJ): Support SDS for HDS cluster.
+   Network::UpstreamTransportSocketFactoryPtr socket_factory = THROW_OR_RETURN_VALUE(
+diff --git a/source/common/upstream/upstream_impl.cc b/source/common/upstream/upstream_impl.cc
+index 6339c4101..95e0debcd 100644
+--- a/source/common/upstream/upstream_impl.cc
++++ b/source/common/upstream/upstream_impl.cc
+@@ -1179,25 +1179,32 @@ ClusterInfoImpl::ClusterInfoImpl(
+       peekahead_ratio_(PROTOBUF_GET_WRAPPED_OR_DEFAULT(config.preconnect_policy(),
+                                                        predictive_preconnect_ratio, 0)),
+       socket_matcher_(std::move(socket_matcher)), stats_scope_(std::move(stats_scope)),
+-      traffic_stats_(generateStats(stats_scope_,
+-                                   factory_context.clusterManager().clusterStatNames(),
+-                                   server_context.statsConfig().enableDeferredCreationStats())),
+-      config_update_stats_(factory_context.clusterManager().clusterConfigUpdateStatNames(),
+-                           *stats_scope_),
+-      lb_stats_(factory_context.clusterManager().clusterLbStatNames(), *stats_scope_),
+-      endpoint_stats_(factory_context.clusterManager().clusterEndpointStatNames(), *stats_scope_),
++      traffic_stats_(generateStats(
++          stats_scope_, factory_context.serverFactoryContext().clusterManager().clusterStatNames(),
++          server_context.statsConfig().enableDeferredCreationStats())),
++      config_update_stats_(
++          factory_context.serverFactoryContext().clusterManager().clusterConfigUpdateStatNames(),
++          *stats_scope_),
++      lb_stats_(factory_context.serverFactoryContext().clusterManager().clusterLbStatNames(),
++                *stats_scope_),
++      endpoint_stats_(
++          factory_context.serverFactoryContext().clusterManager().clusterEndpointStatNames(),
++          *stats_scope_),
+       load_report_stats_store_(stats_scope_->symbolTable()),
+-      load_report_stats_(
+-          generateLoadReportStats(*load_report_stats_store_.rootScope(),
+-                                  factory_context.clusterManager().clusterLoadReportStatNames())),
+-      optional_cluster_stats_((config.has_track_cluster_stats() || config.track_timeout_budgets())
+-                                  ? std::make_unique<OptionalClusterStats>(
+-                                        config, *stats_scope_, factory_context.clusterManager())
+-                                  : nullptr),
++      load_report_stats_(generateLoadReportStats(
++          *load_report_stats_store_.rootScope(),
++          factory_context.serverFactoryContext().clusterManager().clusterLoadReportStatNames())),
++      optional_cluster_stats_(
++          (config.has_track_cluster_stats() || config.track_timeout_budgets())
++              ? std::make_unique<OptionalClusterStats>(
++                    config, *stats_scope_, factory_context.serverFactoryContext().clusterManager())
++              : nullptr),
+       features_(ClusterInfoImpl::HttpProtocolOptionsConfigImpl::parseFeatures(
+           config, *http_protocol_options_)),
+       resource_managers_(config, runtime, name_, *stats_scope_,
+-                         factory_context.clusterManager().clusterCircuitBreakersStatNames()),
++                         factory_context.serverFactoryContext()
++                             .clusterManager()
++                             .clusterCircuitBreakersStatNames()),
+       maintenance_mode_runtime_key_(absl::StrCat("upstream.maintenance_mode.", name_)),
+       upstream_local_address_selector_(
+           THROW_OR_RETURN_VALUE(createUpstreamLocalAddressSelector(config, bind_config),
+@@ -1213,7 +1220,8 @@ ClusterInfoImpl::ClusterInfoImpl(
+                           ? std::make_unique<ClusterTypedMetadata>(config.metadata())
+                           : nullptr),
+       common_lb_config_(
+-          factory_context.clusterManager().getCommonLbConfigPtr(config.common_lb_config())),
++          factory_context.serverFactoryContext().clusterManager().getCommonLbConfigPtr(
++              config.common_lb_config())),
+       cluster_type_(config.has_cluster_type()
+                         ? std::make_unique<envoy::config::cluster::v3::Cluster::CustomClusterType>(
+                               config.cluster_type())
+@@ -1389,8 +1397,8 @@ ClusterInfoImpl::ClusterInfoImpl(
+       filter_factories_.push_back(
+           network_filter_config_provider_manager_->createDynamicFilterConfigProvider(
+               proto_config.config_discovery(), proto_config.name(), server_context,
+-              upstream_context_, factory_context.clusterManager(), is_terminal, "network",
+-              nullptr));
++              upstream_context_, factory_context.serverFactoryContext().clusterManager(),
++              is_terminal, "network", nullptr));
+       continue;
+     }
+ 
+@@ -1421,7 +1429,8 @@ ClusterInfoImpl::ClusterInfoImpl(
+       Http::FilterChainHelper<Server::Configuration::UpstreamFactoryContext,
+                               Server::Configuration::UpstreamHttpFilterConfigFactory>
+           helper(*http_filter_config_provider_manager_, upstream_context_.serverFactoryContext(),
+-                 factory_context.clusterManager(), upstream_context_, prefix);
++                 factory_context.serverFactoryContext().clusterManager(), upstream_context_,
++                 prefix);
+       SET_AND_RETURN_IF_NOT_OK(helper.processFilters(http_protocol_options_->http_filters_,
+                                                      "upstream http", "upstream http",
+                                                      http_filter_factories_),
+@@ -1589,8 +1598,7 @@ ClusterImplBase::ClusterImplBase(const envoy::config::cluster::v3::Cluster& clus
+   auto stats_scope = generateStatsScope(cluster, server_context.serverScope().store());
+   transport_factory_context_ =
+       std::make_unique<Server::Configuration::TransportSocketFactoryContextImpl>(
+-          server_context, cluster_context.sslContextManager(), *stats_scope,
+-          cluster_context.clusterManager(), cluster_context.messageValidationVisitor());
++          server_context, *stats_scope, cluster_context.messageValidationVisitor());
+   transport_factory_context_->setInitManager(init_manager_);
+ 
+   auto socket_factory_or_error = createTransportSocketFactory(cluster, *transport_factory_context_);
+diff --git a/source/extensions/clusters/eds/eds.cc b/source/extensions/clusters/eds/eds.cc
+index ea193381c..58ffc6252 100644
+--- a/source/extensions/clusters/eds/eds.cc
++++ b/source/extensions/clusters/eds/eds.cc
+@@ -246,9 +246,11 @@ EdsClusterImpl::onConfigUpdate(const std::vector<Config::DecodedResourceRef>& re
+ 
+   // Pause LEDS messages until the EDS config is finished processing.
+   Config::ScopedResume maybe_resume_leds;
+-  if (transport_factory_context_->clusterManager().adsMux()) {
++  if (transport_factory_context_->serverFactoryContext().clusterManager().adsMux()) {
+     const auto type_url = Config::getTypeUrl<envoy::config::endpoint::v3::LbEndpoint>();
+-    maybe_resume_leds = transport_factory_context_->clusterManager().adsMux()->pause(type_url);
++    maybe_resume_leds =
++        transport_factory_context_->serverFactoryContext().clusterManager().adsMux()->pause(
++            type_url);
+   }
+ 
+   update(cluster_load_assignment);
+diff --git a/source/extensions/clusters/eds/leds.cc b/source/extensions/clusters/eds/leds.cc
+index a3e5310b3..8da48ef67 100644
+--- a/source/extensions/clusters/eds/leds.cc
++++ b/source/extensions/clusters/eds/leds.cc
+@@ -25,9 +25,11 @@ LedsSubscription::LedsSubscription(
+       xds::core::v3::ResourceLocator);
+   const auto resource_name = getResourceName();
+   subscription_ = THROW_OR_RETURN_VALUE(
+-      factory_context.clusterManager().subscriptionFactory().collectionSubscriptionFromUrl(
+-          leds_resource_locator, leds_config.leds_config(), resource_name, *stats_scope_, *this,
+-          resource_decoder_),
++      factory_context.serverFactoryContext()
++          .clusterManager()
++          .subscriptionFactory()
++          .collectionSubscriptionFromUrl(leds_resource_locator, leds_config.leds_config(),
++                                         resource_name, *stats_scope_, *this, resource_decoder_),
+       Config::SubscriptionPtr);
+   subscription_->start({});
+ }
+diff --git a/source/extensions/quic/connection_id_generator/quic_lb/quic_lb.cc b/source/extensions/quic/connection_id_generator/quic_lb/quic_lb.cc
+index e75613bcf..ad3ee1191 100644
+--- a/source/extensions/quic/connection_id_generator/quic_lb/quic_lb.cc
++++ b/source/extensions/quic/connection_id_generator/quic_lb/quic_lb.cc
+@@ -129,7 +129,8 @@ Secret::GenericSecretConfigProviderSharedPtr secretsProvider(
+     const envoy::extensions::transport_sockets::tls::v3::SdsSecretConfig& config,
+     Server::Configuration::TransportSocketFactoryContext& transport_socket_factory_context,
+     Init::Manager& init_manager) {
+-  Secret::SecretManager& secret_manager = transport_socket_factory_context.secretManager();
++  Secret::SecretManager& secret_manager =
++      transport_socket_factory_context.serverFactoryContext().secretManager();
+   if (config.has_sds_config()) {
+     return secret_manager.findOrCreateGenericSecretProvider(
+         config.sds_config(), config.name(), transport_socket_factory_context, init_manager);
+diff --git a/source/extensions/transport_sockets/tls/downstream_config.cc b/source/extensions/transport_sockets/tls/downstream_config.cc
+index 0821dc9db..2b289f39b 100644
+--- a/source/extensions/transport_sockets/tls/downstream_config.cc
++++ b/source/extensions/transport_sockets/tls/downstream_config.cc
+@@ -24,8 +24,8 @@ DownstreamSslSocketFactory::createTransportSocketFactory(
+           context, false);
+   RETURN_IF_NOT_OK(server_config_or_error.status());
+   return ServerSslSocketFactory::create(std::move(server_config_or_error.value()),
+-                                        context.sslContextManager(), context.statsScope(),
+-                                        server_names);
++                                        context.serverFactoryContext().sslContextManager(),
++                                        context.statsScope(), server_names);
+ }
+ 
+ ProtobufTypes::MessagePtr DownstreamSslSocketFactory::createEmptyConfigProto() {
+diff --git a/source/extensions/transport_sockets/tls/upstream_config.cc b/source/extensions/transport_sockets/tls/upstream_config.cc
+index 9f228fed0..0d8530e94 100644
+--- a/source/extensions/transport_sockets/tls/upstream_config.cc
++++ b/source/extensions/transport_sockets/tls/upstream_config.cc
+@@ -24,7 +24,8 @@ UpstreamSslSocketFactory::createTransportSocketFactory(
+           context);
+   RETURN_IF_NOT_OK(client_config_or_error.status());
+   return ClientSslSocketFactory::create(std::move(client_config_or_error.value()),
+-                                        context.sslContextManager(), context.statsScope());
++                                        context.serverFactoryContext().sslContextManager(),
++                                        context.statsScope());
+ }
+ 
+ ProtobufTypes::MessagePtr UpstreamSslSocketFactory::createEmptyConfigProto() {
+diff --git a/source/server/server.h b/source/server/server.h
+index 107a40020..cdc06d088 100644
+--- a/source/server/server.h
++++ b/source/server/server.h
+@@ -212,11 +212,11 @@ public:
+   OverloadManager& overloadManager() override { return server_.overloadManager(); }
+   OverloadManager& nullOverloadManager() override { return server_.nullOverloadManager(); }
+   bool healthCheckFailed() const override { return server_.healthCheckFailed(); }
++  Ssl::ContextManager& sslContextManager() override { return server_.sslContextManager(); }
++  Secret::SecretManager& secretManager() override { return server_.secretManager(); }
+ 
+   // Configuration::TransportSocketFactoryContext
+   ServerFactoryContext& serverFactoryContext() override { return *this; }
+-  Ssl::ContextManager& sslContextManager() override { return server_.sslContextManager(); }
+-  Secret::SecretManager& secretManager() override { return server_.secretManager(); }
+   Stats::Scope& statsScope() override { return *server_scope_; }
+   Init::Manager& initManager() override { return server_.initManager(); }
+   ProtobufMessage::ValidationVisitor& messageValidationVisitor() override {
+diff --git a/source/server/transport_socket_config_impl.h b/source/server/transport_socket_config_impl.h
+index 87f9aaeac..64537ef3f 100644
+--- a/source/server/transport_socket_config_impl.h
++++ b/source/server/transport_socket_config_impl.h
+@@ -13,11 +13,10 @@ namespace Configuration {
+ class TransportSocketFactoryContextImpl : public TransportSocketFactoryContext {
+ public:
+   TransportSocketFactoryContextImpl(Server::Configuration::ServerFactoryContext& server_context,
+-                                    Ssl::ContextManager& context_manager, Stats::Scope& stats_scope,
+-                                    Upstream::ClusterManager& cm,
++                                    Stats::Scope& stats_scope,
+                                     ProtobufMessage::ValidationVisitor& validation_visitor)
+-      : server_context_(server_context), context_manager_(context_manager),
+-        stats_scope_(stats_scope), cluster_manager_(cm), validation_visitor_(validation_visitor) {}
++      : server_context_(server_context), stats_scope_(stats_scope),
++        validation_visitor_(validation_visitor) {}
+ 
+   /**
+    * Pass an init manager to register dynamic secret provider.
+@@ -27,15 +26,10 @@ public:
+ 
+   // TransportSocketFactoryContext
+   ServerFactoryContext& serverFactoryContext() override { return server_context_; }
+-  Upstream::ClusterManager& clusterManager() override { return cluster_manager_; }
+   ProtobufMessage::ValidationVisitor& messageValidationVisitor() override {
+     return validation_visitor_;
+   }
+-  Ssl::ContextManager& sslContextManager() override { return context_manager_; }
+   Stats::Scope& statsScope() override { return stats_scope_; }
+-  Secret::SecretManager& secretManager() override {
+-    return clusterManager().clusterManagerFactory().secretManager();
+-  }
+   Init::Manager& initManager() override {
+     ASSERT(init_manager_ != nullptr);
+     return *init_manager_;
+@@ -43,9 +37,7 @@ public:
+ 
+ private:
+   Server::Configuration::ServerFactoryContext& server_context_;
+-  Ssl::ContextManager& context_manager_;
+   Stats::Scope& stats_scope_;
+-  Upstream::ClusterManager& cluster_manager_;
+   ProtobufMessage::ValidationVisitor& validation_visitor_;
+ 
+   Init::Manager* init_manager_{};
+diff --git a/test/common/grpc/BUILD b/test/common/grpc/BUILD
+index b9795f73d..ab1fa6b97 100644
+--- a/test/common/grpc/BUILD
++++ b/test/common/grpc/BUILD
+@@ -170,7 +170,7 @@ envoy_cc_test_library(
+         "//source/common/router:context_lib",
+         "//test/integration:integration_lib",
+         "//test/mocks/local_info:local_info_mocks",
+-        "//test/mocks/server:transport_socket_factory_context_mocks",
++        "//test/mocks/server:factory_context_mocks",
+         "//test/mocks/upstream:cluster_info_mocks",
+         "//test/mocks/upstream:cluster_manager_mocks",
+         "//test/mocks/upstream:host_mocks",
+diff --git a/test/common/grpc/grpc_client_integration_test_harness.h b/test/common/grpc/grpc_client_integration_test_harness.h
+index 5cf419c76..db3da0bc6 100644
+--- a/test/common/grpc/grpc_client_integration_test_harness.h
++++ b/test/common/grpc/grpc_client_integration_test_harness.h
+@@ -35,7 +35,7 @@
+ #include "test/integration/fake_upstream.h"
+ #include "test/mocks/grpc/mocks.h"
+ #include "test/mocks/local_info/mocks.h"
+-#include "test/mocks/server/transport_socket_factory_context.h"
++#include "test/mocks/server/server_factory_context.h"
+ #include "test/mocks/tracing/mocks.h"
+ #include "test/mocks/upstream/host.h"
+ #include "test/mocks/upstream/cluster_info.h"
+diff --git a/test/common/http/BUILD b/test/common/http/BUILD
+index aac63462a..0a4fd0d4c 100644
+--- a/test/common/http/BUILD
++++ b/test/common/http/BUILD
+@@ -533,7 +533,7 @@ envoy_cc_test(
+         "//test/mocks/router:router_mocks",
+         "//test/mocks/runtime:runtime_mocks",
+         "//test/mocks/stats:stats_mocks",
+-        "//test/mocks/server:transport_socket_factory_context_mocks",
++        "//test/mocks/server:factory_context_mocks",
+         "//test/test_common:threadsafe_singleton_injector_lib",
+         "//test/test_common:test_runtime_lib",
+         "//source/common/quic:quic_client_factory_lib",
+diff --git a/test/common/http/conn_pool_grid_test.cc b/test/common/http/conn_pool_grid_test.cc
+index 4a794b514..f1bac3a58 100644
+--- a/test/common/http/conn_pool_grid_test.cc
++++ b/test/common/http/conn_pool_grid_test.cc
+@@ -14,7 +14,7 @@
+ #include "test/mocks/http/stream_decoder.h"
+ #include "test/mocks/http/stream_encoder.h"
+ #include "test/mocks/network/connection.h"
+-#include "test/mocks/server/transport_socket_factory_context.h"
++#include "test/mocks/server/server_factory_context.h"
+ #include "test/mocks/ssl/mocks.h"
+ #include "test/mocks/upstream/cluster_info.h"
+ #include "test/test_common/simulated_time_system.h"
+@@ -232,7 +232,7 @@ public:
+   PersistentQuicInfoPtr quic_connection_persistent_info_;
+   NiceMock<Envoy::ConnectionPool::MockCancellable> cancel_;
+   std::shared_ptr<Upstream::HostImpl> host_;
+-  Upstream::HostDescriptionImpl::AddressVector address_list_{};
++  Upstream::HostDescriptionImpl::AddressVector address_list_;
+ 
+   NiceMock<ConnPoolCallbacks> callbacks_;
+   NiceMock<MockResponseDecoder> decoder_;
+@@ -1677,7 +1677,7 @@ TEST_F(ConnectivityGridTest, ConnectionCloseDuringAysnConnect) {
+   // Set the cluster up to have a quic transport socket.
+   Envoy::Ssl::ClientContextConfigPtr config(new NiceMock<Ssl::MockClientContextConfig>());
+   Ssl::ClientContextSharedPtr ssl_context(new Ssl::MockClientContext());
+-  EXPECT_CALL(factory_context_.context_manager_, createSslClientContext(_, _))
++  EXPECT_CALL(factory_context_.server_context_.ssl_context_manager_, createSslClientContext(_, _))
+       .WillOnce(Return(ssl_context));
+   auto factory =
+       *Quic::QuicClientTransportSocketFactory::create(std::move(config), factory_context_);
+diff --git a/test/common/http/http3/BUILD b/test/common/http/http3/BUILD
+index 2757a275a..4e881a4c9 100644
+--- a/test/common/http/http3/BUILD
++++ b/test/common/http/http3/BUILD
+@@ -27,7 +27,7 @@ envoy_cc_test(
+         "//test/mocks/http:http_mocks",
+         "//test/mocks/network:network_mocks",
+         "//test/mocks/runtime:runtime_mocks",
+-        "//test/mocks/server:transport_socket_factory_context_mocks",
++        "//test/mocks/server:factory_context_mocks",
+         "//test/mocks/upstream:cluster_info_mocks",
+         "//test/mocks/upstream:transport_socket_match_mocks",
+     ]),
+diff --git a/test/common/http/http3/conn_pool_test.cc b/test/common/http/http3/conn_pool_test.cc
+index 548aa197f..d21f9a106 100644
+--- a/test/common/http/http3/conn_pool_test.cc
++++ b/test/common/http/http3/conn_pool_test.cc
+@@ -9,7 +9,7 @@
+ #include "test/common/upstream/utility.h"
+ #include "test/mocks/common.h"
+ #include "test/mocks/event/mocks.h"
+-#include "test/mocks/server/transport_socket_factory_context.h"
++#include "test/mocks/server/server_factory_context.h"
+ #include "test/mocks/ssl/mocks.h"
+ #include "test/mocks/upstream/cluster_info.h"
+ #include "test/mocks/upstream/host.h"
+@@ -41,7 +41,7 @@ class Http3ConnPoolImplTest : public Event::TestUsingSimulatedTime, public testi
+ public:
+   Http3ConnPoolImplTest() {
+     ON_CALL(context_.server_context_, threadLocal()).WillByDefault(ReturnRef(thread_local_));
+-    EXPECT_CALL(context_.context_manager_, createSslClientContext(_, _))
++    EXPECT_CALL(context_.server_context_.ssl_context_manager_, createSslClientContext(_, _))
+         .WillRepeatedly(Return(ssl_context_));
+     factory_ = *Quic::QuicClientTransportSocketFactory::create(
+         std::unique_ptr<Envoy::Ssl::ClientContextConfig>(
+diff --git a/test/common/quic/BUILD b/test/common/quic/BUILD
+index af77cc244..91fc850d2 100644
+--- a/test/common/quic/BUILD
++++ b/test/common/quic/BUILD
+@@ -320,7 +320,7 @@ envoy_cc_test(
+         "//test/mocks/http:http_server_properties_cache_mocks",
+         "//test/mocks/network:network_mocks",
+         "//test/mocks/runtime:runtime_mocks",
+-        "//test/mocks/server:transport_socket_factory_context_mocks",
++        "//test/mocks/server:factory_context_mocks",
+         "//test/mocks/upstream:cluster_info_mocks",
+         "//test/mocks/upstream:transport_socket_match_mocks",
+         "//test/test_common:test_runtime_lib",
+@@ -397,7 +397,7 @@ envoy_cc_test(
+         "//source/common/quic:quic_server_transport_socket_factory_lib",
+         "//source/common/quic:quic_transport_socket_factory_lib",
+         "//source/common/tls:context_config_lib",
+-        "//test/mocks/server:transport_socket_factory_context_mocks",
++        "//test/mocks/server:factory_context_mocks",
+         "//test/mocks/ssl:ssl_mocks",
+         "//test/test_common:environment_lib",
+         "//test/test_common:utility_lib",
+diff --git a/test/common/quic/client_connection_factory_impl_test.cc b/test/common/quic/client_connection_factory_impl_test.cc
+index 3cdf3ef6c..9db7e00a2 100644
+--- a/test/common/quic/client_connection_factory_impl_test.cc
++++ b/test/common/quic/client_connection_factory_impl_test.cc
+@@ -7,7 +7,7 @@
+ #include "test/mocks/common.h"
+ #include "test/mocks/event/mocks.h"
+ #include "test/mocks/http/http_server_properties_cache.h"
+-#include "test/mocks/server/transport_socket_factory_context.h"
++#include "test/mocks/server/server_factory_context.h"
+ #include "test/mocks/ssl/mocks.h"
+ #include "test/mocks/upstream/cluster_info.h"
+ #include "test/mocks/upstream/host.h"
+@@ -66,7 +66,8 @@ protected:
+     test_address_ = *Network::Utility::resolveUrl(absl::StrCat(
+         "tcp://", Network::Test::getLoopbackAddressUrlString(GetParam()), ":", PEER_PORT));
+     Ssl::ClientContextSharedPtr context{new Ssl::MockClientContext()};
+-    EXPECT_CALL(context_.context_manager_, createSslClientContext(_, _)).WillOnce(Return(context));
++    EXPECT_CALL(context_.server_context_.ssl_context_manager_, createSslClientContext(_, _))
++        .WillOnce(Return(context));
+     factory_ = *Quic::QuicClientTransportSocketFactory::create(
+         std::unique_ptr<Envoy::Ssl::ClientContextConfig>(
+             new NiceMock<Ssl::MockClientContextConfig>),
+diff --git a/test/common/quic/quic_transport_socket_factory_test.cc b/test/common/quic/quic_transport_socket_factory_test.cc
+index d0cac7915..bf1d3f683 100644
+--- a/test/common/quic/quic_transport_socket_factory_test.cc
++++ b/test/common/quic/quic_transport_socket_factory_test.cc
+@@ -1,7 +1,7 @@
+ #include "source/common/quic/quic_client_transport_socket_factory.h"
+ #include "source/common/quic/quic_server_transport_socket_factory.h"
+ 
+-#include "test/mocks/server/transport_socket_factory_context.h"
++#include "test/mocks/server/server_factory_context.h"
+ #include "test/mocks/ssl/mocks.h"
+ #include "test/test_common/environment.h"
+ #include "test/test_common/utility.h"
+@@ -117,7 +117,8 @@ class QuicClientTransportSocketFactoryTest : public testing::Test {
+ public:
+   QuicClientTransportSocketFactoryTest() {
+     ON_CALL(context_.server_context_, threadLocal()).WillByDefault(ReturnRef(thread_local_));
+-    EXPECT_CALL(context_.context_manager_, createSslClientContext(_, _)).WillOnce(Return(nullptr));
++    EXPECT_CALL(context_.server_context_.ssl_context_manager_, createSslClientContext(_, _))
++        .WillOnce(Return(nullptr));
+     EXPECT_CALL(*context_config_, setSecretUpdateCallback(_))
+         .WillOnce(testing::SaveArg<0>(&update_callback_));
+     factory_ = *Quic::QuicClientTransportSocketFactory::create(
+@@ -145,14 +146,14 @@ TEST_F(QuicClientTransportSocketFactoryTest, GetCryptoConfig) {
+   EXPECT_EQ(nullptr, factory_->getCryptoConfig());
+ 
+   Ssl::ClientContextSharedPtr ssl_context1{new Ssl::MockClientContext()};
+-  EXPECT_CALL(context_.context_manager_, createSslClientContext(_, _))
++  EXPECT_CALL(context_.server_context_.ssl_context_manager_, createSslClientContext(_, _))
+       .WillOnce(Return(ssl_context1));
+   update_callback_();
+   std::shared_ptr<quic::QuicCryptoClientConfig> crypto_config1 = factory_->getCryptoConfig();
+   EXPECT_NE(nullptr, crypto_config1);
+ 
+   Ssl::ClientContextSharedPtr ssl_context2{new Ssl::MockClientContext()};
+-  EXPECT_CALL(context_.context_manager_, createSslClientContext(_, _))
++  EXPECT_CALL(context_.server_context_.ssl_context_manager_, createSslClientContext(_, _))
+       .WillOnce(Return(ssl_context2));
+   update_callback_();
+   std::shared_ptr<quic::QuicCryptoClientConfig> crypto_config2 = factory_->getCryptoConfig();
+diff --git a/test/common/secret/BUILD b/test/common/secret/BUILD
+index 4f81096d0..baa0f1d3e 100644
+--- a/test/common/secret/BUILD
++++ b/test/common/secret/BUILD
+@@ -29,8 +29,8 @@ envoy_cc_test(
+         "//source/common/ssl:tls_certificate_config_impl_lib",
+         "//test/mocks/matcher:matcher_mocks",
+         "//test/mocks/server:config_tracker_mocks",
++        "//test/mocks/server:factory_context_mocks",
+         "//test/mocks/server:instance_mocks",
+-        "//test/mocks/server:transport_socket_factory_context_mocks",
+         "//test/test_common:environment_lib",
+         "//test/test_common:registry_lib",
+         "//test/test_common:simulated_time_system_lib",
+@@ -61,7 +61,7 @@ envoy_cc_test(
+         "//test/mocks/init:init_mocks",
+         "//test/mocks/protobuf:protobuf_mocks",
+         "//test/mocks/secret:secret_mocks",
+-        "//test/mocks/server:transport_socket_factory_context_mocks",
++        "//test/mocks/server:factory_context_mocks",
+         "//test/test_common:environment_lib",
+         "//test/test_common:logging_lib",
+         "//test/test_common:registry_lib",
+diff --git a/test/common/secret/sds_api_test.cc b/test/common/secret/sds_api_test.cc
+index 6ec27b135..0ad500132 100644
+--- a/test/common/secret/sds_api_test.cc
++++ b/test/common/secret/sds_api_test.cc
+@@ -20,7 +20,7 @@
+ #include "test/mocks/init/mocks.h"
+ #include "test/mocks/protobuf/mocks.h"
+ #include "test/mocks/secret/mocks.h"
+-#include "test/mocks/server/transport_socket_factory_context.h"
++#include "test/mocks/server/server_factory_context.h"
+ #include "test/test_common/environment.h"
+ #include "test/test_common/logging.h"
+ #include "test/test_common/utility.h"
+diff --git a/test/common/secret/secret_manager_impl_test.cc b/test/common/secret/secret_manager_impl_test.cc
+index 7a338e621..27ee9d44a 100644
+--- a/test/common/secret/secret_manager_impl_test.cc
++++ b/test/common/secret/secret_manager_impl_test.cc
+@@ -19,7 +19,7 @@
+ #include "test/mocks/matcher/mocks.h"
+ #include "test/mocks/server/config_tracker.h"
+ #include "test/mocks/server/instance.h"
+-#include "test/mocks/server/transport_socket_factory_context.h"
++#include "test/mocks/server/server_factory_context.h"
+ #include "test/test_common/environment.h"
+ #include "test/test_common/simulated_time_system.h"
+ #include "test/test_common/utility.h"
+@@ -380,7 +380,7 @@ tls_certificate:
+   TestUtility::loadFromYaml(TestEnvironment::substitute(yaml), typed_secret);
+   const auto decoded_resources = TestUtility::decodeResources({typed_secret});
+   init_target_handle->initialize(init_watcher);
+-  EXPECT_TRUE(secret_context.cluster_manager_.subscription_factory_.callbacks_
++  EXPECT_TRUE(secret_context.server_context_.cluster_manager_.subscription_factory_.callbacks_
+                   ->onConfigUpdate(decoded_resources.refvec_, "")
+                   .ok());
+   testing::NiceMock<Server::Configuration::MockTransportSocketFactoryContext> ctx;
+@@ -430,7 +430,7 @@ generic_secret:
+   TestUtility::loadFromYaml(TestEnvironment::substitute(yaml), typed_secret);
+   const auto decoded_resources = TestUtility::decodeResources({typed_secret});
+   init_target_handle->initialize(init_watcher);
+-  EXPECT_TRUE(secret_context.cluster_manager_.subscription_factory_.callbacks_
++  EXPECT_TRUE(secret_context.server_context_.cluster_manager_.subscription_factory_.callbacks_
+                   ->onConfigUpdate(decoded_resources.refvec_, "")
+                   .ok());
+ 
+@@ -479,7 +479,7 @@ tls_certificate:
+   TestUtility::loadFromYaml(TestEnvironment::substitute(yaml), typed_secret);
+   const auto decoded_resources = TestUtility::decodeResources({typed_secret});
+   init_target_handle->initialize(init_watcher);
+-  EXPECT_TRUE(secret_context.cluster_manager_.subscription_factory_.callbacks_
++  EXPECT_TRUE(secret_context.server_context_.cluster_manager_.subscription_factory_.callbacks_
+                   ->onConfigUpdate(decoded_resources.refvec_, "keycert-v1")
+                   .ok());
+   testing::NiceMock<Server::Configuration::MockTransportSocketFactoryContext> ctx;
+@@ -527,7 +527,7 @@ validation_context:
+   const auto decoded_resources_2 = TestUtility::decodeResources({typed_secret});
+ 
+   init_target_handle->initialize(init_watcher);
+-  EXPECT_TRUE(secret_context.cluster_manager_.subscription_factory_.callbacks_
++  EXPECT_TRUE(secret_context.server_context_.cluster_manager_.subscription_factory_.callbacks_
+                   ->onConfigUpdate(decoded_resources_2.refvec_, "validation-context-v1")
+                   .ok());
+   auto cert_validation_context = Ssl::CertificateValidationContextConfigImpl::create(
+@@ -583,7 +583,7 @@ session_ticket_keys:
+   const auto decoded_resources_3 = TestUtility::decodeResources({typed_secret});
+ 
+   init_target_handle->initialize(init_watcher);
+-  EXPECT_TRUE(secret_context.cluster_manager_.subscription_factory_.callbacks_
++  EXPECT_TRUE(secret_context.server_context_.cluster_manager_.subscription_factory_.callbacks_
+                   ->onConfigUpdate(decoded_resources_3.refvec_, "stek-context-v1")
+                   .ok());
+   EXPECT_EQ(stek_secret_provider->secret()->keys()[1].inline_string(), "DUMMY_INLINE_STRING");
+@@ -648,7 +648,7 @@ generic_secret:
+   TestUtility::loadFromYaml(TestEnvironment::substitute(generic_secret_yaml), typed_secret);
+   const auto decoded_resources_4 = TestUtility::decodeResources({typed_secret});
+   init_target_handle->initialize(init_watcher);
+-  EXPECT_TRUE(secret_context.cluster_manager_.subscription_factory_.callbacks_
++  EXPECT_TRUE(secret_context.server_context_.cluster_manager_.subscription_factory_.callbacks_
+                   ->onConfigUpdate(decoded_resources_4.refvec_, "signing-key-v1")
+                   .ok());
+ 
+@@ -1107,7 +1107,7 @@ tls_certificate:
+   EXPECT_FALSE(typed_secret.tls_certificate().has_private_key());
+   const auto decoded_resources = TestUtility::decodeResources({typed_secret});
+   init_target_handle->initialize(init_watcher);
+-  EXPECT_TRUE(secret_context.cluster_manager_.subscription_factory_.callbacks_
++  EXPECT_TRUE(secret_context.server_context_.cluster_manager_.subscription_factory_.callbacks_
+                   ->onConfigUpdate(decoded_resources.refvec_, "")
+                   .ok());
+   EXPECT_TRUE(secret_provider->secret()->has_private_key_provider());
+@@ -1122,7 +1122,8 @@ tls_certificate:
+       .WillRepeatedly(Return(nullptr));
+   EXPECT_CALL(ssl_context_manager, privateKeyMethodManager())
+       .WillRepeatedly(ReturnRef(private_key_method_manager));
+-  EXPECT_CALL(ctx, sslContextManager()).WillRepeatedly(ReturnRef(ssl_context_manager));
++  EXPECT_CALL(ctx.server_context_, sslContextManager())
++      .WillRepeatedly(ReturnRef(ssl_context_manager));
+   EXPECT_EQ(Ssl::TlsCertificateConfigImpl::create(*secret_provider->secret(), ctx, *api_)
+                 .status()
+                 .message(),
+diff --git a/test/common/tls/BUILD b/test/common/tls/BUILD
+index 61df7fba7..5692d8eda 100644
+--- a/test/common/tls/BUILD
++++ b/test/common/tls/BUILD
+@@ -163,7 +163,7 @@ envoy_cc_test(
+         "//test/mocks/local_info:local_info_mocks",
+         "//test/mocks/runtime:runtime_mocks",
+         "//test/mocks/secret:secret_mocks",
+-        "//test/mocks/server:transport_socket_factory_context_mocks",
++        "//test/mocks/server:factory_context_mocks",
+         "//test/mocks/ssl:ssl_mocks",
+         "//test/test_common:environment_lib",
+         "//test/test_common:simulated_time_system_lib",
+diff --git a/test/common/tls/context_impl_test.cc b/test/common/tls/context_impl_test.cc
+index 7385b3caa..1bc628df8 100644
+--- a/test/common/tls/context_impl_test.cc
++++ b/test/common/tls/context_impl_test.cc
+@@ -25,7 +25,7 @@
+ #include "test/mocks/init/mocks.h"
+ #include "test/mocks/local_info/mocks.h"
+ #include "test/mocks/secret/mocks.h"
+-#include "test/mocks/server/transport_socket_factory_context.h"
++#include "test/mocks/server/server_factory_context.h"
+ #include "test/mocks/ssl/mocks.h"
+ #include "test/test_common/environment.h"
+ #include "test/test_common/simulated_time_system.h"
+@@ -1033,7 +1033,8 @@ TEST_F(SslServerContextImplTicketTest, TicketKeySdsNotReady) {
+   EXPECT_CALL(factory_context_.server_context_, mainThreadDispatcher())
+       .WillRepeatedly(ReturnRef(dispatcher));
+   // EXPECT_CALL(factory_context_, random()).WillOnce(ReturnRef(random));
+-  EXPECT_CALL(factory_context_, clusterManager()).WillOnce(ReturnRef(cluster_manager));
++  EXPECT_CALL(factory_context_.server_context_, clusterManager())
++      .WillOnce(ReturnRef(cluster_manager));
+   EXPECT_CALL(factory_context_, initManager()).WillRepeatedly(ReturnRef(init_manager));
+   auto* sds_secret_configs = tls_context.mutable_session_ticket_keys_sds_secret_config();
+   sds_secret_configs->set_name("abc.com");
+@@ -1063,7 +1064,7 @@ session_ticket_keys:
+ )EOF";
+ 
+   TestUtility::loadFromYaml(TestEnvironment::substitute(yaml), secret_config);
+-  EXPECT_TRUE(factory_context_.secretManager().addStaticSecret(secret_config).ok());
++  EXPECT_TRUE(factory_context_.server_context_.secretManager().addStaticSecret(secret_config).ok());
+ 
+   envoy::extensions::transport_sockets::tls::v3::DownstreamTlsContext tls_context;
+   envoy::extensions::transport_sockets::tls::v3::TlsCertificate* server_cert =
+@@ -1625,7 +1626,7 @@ tls_certificate:
+       ->Add()
+       ->set_name("abc.com");
+ 
+-  EXPECT_TRUE(factory_context_.secretManager().addStaticSecret(secret_config).ok());
++  EXPECT_TRUE(factory_context_.server_context_.secretManager().addStaticSecret(secret_config).ok());
+   auto client_context_config = *ClientContextConfigImpl::create(tls_context, factory_context_);
+ 
+   const std::string cert_pem = "{{ test_rundir }}/test/common/tls/test_data/selfsigned_cert.pem";
+@@ -1659,7 +1660,7 @@ TEST_F(ClientContextConfigImplTest, PasswordProtectedTlsCertificates) {
+       ->Add()
+       ->set_name("abc.com");
+ 
+-  EXPECT_TRUE(factory_context_.secretManager().addStaticSecret(secret_config).ok());
++  EXPECT_TRUE(factory_context_.server_context_.secretManager().addStaticSecret(secret_config).ok());
+   auto client_context_config = *ClientContextConfigImpl::create(tls_context, factory_context_);
+ 
+   const std::string cert_pem = "{{ test_rundir "
+@@ -1696,7 +1697,7 @@ TEST_F(ClientContextConfigImplTest, PasswordProtectedPkcs12) {
+       ->Add()
+       ->set_name("abc.com");
+ 
+-  EXPECT_TRUE(factory_context_.secretManager().addStaticSecret(secret_config).ok());
++  EXPECT_TRUE(factory_context_.server_context_.secretManager().addStaticSecret(secret_config).ok());
+   auto client_context_config = *ClientContextConfigImpl::create(tls_context, factory_context_);
+ 
+   const std::string cert_p12 = "{{ test_rundir "
+@@ -1728,7 +1729,7 @@ TEST_F(ClientContextConfigImplTest, PasswordWrongPkcs12) {
+       ->Add()
+       ->set_name("abc.com");
+ 
+-  EXPECT_TRUE(factory_context_.secretManager().addStaticSecret(secret_config).ok());
++  EXPECT_TRUE(factory_context_.server_context_.secretManager().addStaticSecret(secret_config).ok());
+   auto client_context_config = *ClientContextConfigImpl::create(tls_context, factory_context_);
+ 
+   Stats::IsolatedStoreImpl store;
+@@ -1757,7 +1758,7 @@ TEST_F(ClientContextConfigImplTest, PasswordNotSuppliedPkcs12) {
+       ->Add()
+       ->set_name("abc.com");
+ 
+-  EXPECT_TRUE(factory_context_.secretManager().addStaticSecret(secret_config).ok());
++  EXPECT_TRUE(factory_context_.server_context_.secretManager().addStaticSecret(secret_config).ok());
+   auto client_context_config = *ClientContextConfigImpl::create(tls_context, factory_context_);
+ 
+   Stats::IsolatedStoreImpl store;
+@@ -1789,7 +1790,7 @@ TEST_F(ClientContextConfigImplTest, PasswordNotSuppliedTlsCertificates) {
+       ->Add()
+       ->set_name("abc.com");
+ 
+-  EXPECT_TRUE(factory_context_.secretManager().addStaticSecret(secret_config).ok());
++  EXPECT_TRUE(factory_context_.server_context_.secretManager().addStaticSecret(secret_config).ok());
+   auto client_context_config = *ClientContextConfigImpl::create(tls_context, factory_context_);
+ 
+   Stats::IsolatedStoreImpl store;
+@@ -1814,7 +1815,9 @@ TEST_F(ClientContextConfigImplTest, StaticCertificateValidationContext) {
+   )EOF";
+   TestUtility::loadFromYaml(TestEnvironment::substitute(tls_certificate_yaml),
+                             tls_certificate_secret_config);
+-  EXPECT_TRUE(factory_context_.secretManager().addStaticSecret(tls_certificate_secret_config).ok());
++  EXPECT_TRUE(factory_context_.server_context_.secretManager()
++                  .addStaticSecret(tls_certificate_secret_config)
++                  .ok());
+   envoy::extensions::transport_sockets::tls::v3::Secret
+       certificate_validation_context_secret_config;
+   const std::string certificate_validation_context_yaml = R"EOF(
+@@ -1825,7 +1828,7 @@ TEST_F(ClientContextConfigImplTest, StaticCertificateValidationContext) {
+   )EOF";
+   TestUtility::loadFromYaml(TestEnvironment::substitute(certificate_validation_context_yaml),
+                             certificate_validation_context_secret_config);
+-  EXPECT_TRUE(factory_context_.secretManager()
++  EXPECT_TRUE(factory_context_.server_context_.secretManager()
+                   .addStaticSecret(certificate_validation_context_secret_config)
+                   .ok());
+ 
+@@ -1860,7 +1863,7 @@ tls_certificate:
+ 
+   TestUtility::loadFromYaml(TestEnvironment::substitute(yaml), secret_config);
+ 
+-  EXPECT_TRUE(factory_context_.secretManager().addStaticSecret(secret_config).ok());
++  EXPECT_TRUE(factory_context_.server_context_.secretManager().addStaticSecret(secret_config).ok());
+ 
+   envoy::extensions::transport_sockets::tls::v3::UpstreamTlsContext tls_context;
+   tls_context.mutable_common_tls_context()
+@@ -1886,7 +1889,9 @@ TEST_F(ClientContextConfigImplTest, MissingStaticCertificateValidationContext) {
+     )EOF";
+   TestUtility::loadFromYaml(TestEnvironment::substitute(tls_certificate_yaml),
+                             tls_certificate_secret_config);
+-  EXPECT_TRUE(factory_context_.secretManager().addStaticSecret(tls_certificate_secret_config).ok());
++  EXPECT_TRUE(factory_context_.server_context_.secretManager()
++                  .addStaticSecret(tls_certificate_secret_config)
++                  .ok());
+   envoy::extensions::transport_sockets::tls::v3::Secret
+       certificate_validation_context_secret_config;
+   const std::string certificate_validation_context_yaml = R"EOF(
+@@ -1897,7 +1902,7 @@ TEST_F(ClientContextConfigImplTest, MissingStaticCertificateValidationContext) {
+     )EOF";
+   TestUtility::loadFromYaml(TestEnvironment::substitute(certificate_validation_context_yaml),
+                             certificate_validation_context_secret_config);
+-  EXPECT_TRUE(factory_context_.secretManager()
++  EXPECT_TRUE(factory_context_.server_context_.secretManager()
+                   .addStaticSecret(certificate_validation_context_secret_config)
+                   .ok());
+ 
+@@ -2105,7 +2110,8 @@ TEST_F(ServerContextConfigImplTest, PrivateKeyMethodLoadFailureNoProvider) {
+   envoy::extensions::transport_sockets::tls::v3::DownstreamTlsContext tls_context;
+   NiceMock<Ssl::MockContextManager> context_manager;
+   NiceMock<Ssl::MockPrivateKeyMethodManager> private_key_method_manager;
+-  EXPECT_CALL(factory_context_, sslContextManager()).WillOnce(ReturnRef(context_manager));
++  EXPECT_CALL(factory_context_.server_context_, sslContextManager())
++      .WillOnce(ReturnRef(context_manager));
+   EXPECT_CALL(context_manager, privateKeyMethodManager())
+       .WillOnce(ReturnRef(private_key_method_manager));
+   const std::string tls_context_yaml = R"EOF(
+@@ -2130,7 +2136,8 @@ TEST_F(ServerContextConfigImplTest, PrivateKeyMethodLoadFailureNoProviderFallbac
+   envoy::extensions::transport_sockets::tls::v3::DownstreamTlsContext tls_context;
+   NiceMock<Ssl::MockContextManager> context_manager;
+   NiceMock<Ssl::MockPrivateKeyMethodManager> private_key_method_manager;
+-  EXPECT_CALL(factory_context_, sslContextManager()).WillOnce(ReturnRef(context_manager));
++  EXPECT_CALL(factory_context_.server_context_, sslContextManager())
++      .WillOnce(ReturnRef(context_manager));
+   EXPECT_CALL(context_manager, privateKeyMethodManager())
+       .WillOnce(ReturnRef(private_key_method_manager));
+   const std::string tls_context_yaml = R"EOF(
+@@ -2161,7 +2168,8 @@ TEST_F(ServerContextConfigImplTest, PrivateKeyMethodLoadFailureNoMethod) {
+   auto private_key_method_provider_ptr =
+       std::make_shared<NiceMock<Ssl::MockPrivateKeyMethodProvider>>();
+   ContextManagerImpl manager(server_factory_context_);
+-  EXPECT_CALL(factory_context_, sslContextManager()).WillOnce(ReturnRef(context_manager));
++  EXPECT_CALL(factory_context_.server_context_, sslContextManager())
++      .WillOnce(ReturnRef(context_manager));
+   EXPECT_CALL(context_manager, privateKeyMethodManager())
+       .WillOnce(ReturnRef(private_key_method_manager));
+   EXPECT_CALL(private_key_method_manager, createPrivateKeyMethodProvider(_, _))
+@@ -2196,7 +2204,8 @@ TEST_F(ServerContextConfigImplTest, PrivateKeyMethodLoadSuccess) {
+   NiceMock<Ssl::MockPrivateKeyMethodManager> private_key_method_manager;
+   auto private_key_method_provider_ptr =
+       std::make_shared<NiceMock<Ssl::MockPrivateKeyMethodProvider>>();
+-  EXPECT_CALL(factory_context_, sslContextManager()).WillOnce(ReturnRef(context_manager));
++  EXPECT_CALL(factory_context_.server_context_, sslContextManager())
++      .WillOnce(ReturnRef(context_manager));
+   EXPECT_CALL(context_manager, privateKeyMethodManager())
+       .WillOnce(ReturnRef(private_key_method_manager));
+   EXPECT_CALL(private_key_method_manager, createPrivateKeyMethodProvider(_, _))
+@@ -2225,7 +2234,8 @@ TEST_F(ServerContextConfigImplTest, PrivateKeyMethodFallback) {
+   NiceMock<Ssl::MockPrivateKeyMethodManager> private_key_method_manager;
+   auto private_key_method_provider_ptr =
+       std::make_shared<NiceMock<Ssl::MockPrivateKeyMethodProvider>>();
+-  EXPECT_CALL(factory_context_, sslContextManager()).WillOnce(ReturnRef(context_manager));
++  EXPECT_CALL(factory_context_.server_context_, sslContextManager())
++      .WillOnce(ReturnRef(context_manager));
+   EXPECT_CALL(context_manager, privateKeyMethodManager())
+       .WillOnce(ReturnRef(private_key_method_manager));
+   EXPECT_CALL(private_key_method_manager, createPrivateKeyMethodProvider(_, _))
+diff --git a/test/common/tls/handshaker_factory_test.cc b/test/common/tls/handshaker_factory_test.cc
+index 72b49a505..151562f81 100644
+--- a/test/common/tls/handshaker_factory_test.cc
++++ b/test/common/tls/handshaker_factory_test.cc
+@@ -13,7 +13,7 @@
+ 
+ #include "test/common/tls/ssl_test_utility.h"
+ #include "test/mocks/network/connection.h"
+-#include "test/mocks/server/transport_socket_factory_context.h"
++#include "test/mocks/server/server_factory_context.h"
+ #include "test/test_common/registry.h"
+ 
+ #include "gmock/gmock.h"
+@@ -123,7 +123,7 @@ TEST_F(HandshakerFactoryTest, SetMockFunctionCb) {
+       static_cast<Envoy::ProcessObject&>(custom_process_object_for_test));
+ 
+   NiceMock<Server::Configuration::MockTransportSocketFactoryContext> mock_factory_ctx;
+-  EXPECT_CALL(mock_factory_ctx.api_, processContext())
++  EXPECT_CALL(mock_factory_ctx.server_context_.api_, processContext())
+       .WillRepeatedly(Return(std::reference_wrapper<Envoy::ProcessContext>(*process_context_impl)));
+ 
+   auto socket_factory = *Extensions::TransportSockets::Tls::ClientSslSocketFactory::create(
+@@ -149,7 +149,7 @@ TEST_F(HandshakerFactoryTest, SetSpecificSslCtxOption) {
+       static_cast<Envoy::ProcessObject&>(custom_process_object_for_test));
+ 
+   NiceMock<Server::Configuration::MockTransportSocketFactoryContext> mock_factory_ctx;
+-  EXPECT_CALL(mock_factory_ctx.api_, processContext())
++  EXPECT_CALL(mock_factory_ctx.server_context_.api_, processContext())
+       .WillRepeatedly(Return(std::reference_wrapper<Envoy::ProcessContext>(*process_context_impl)));
+ 
+   auto socket_factory = *Extensions::TransportSockets::Tls::ClientSslSocketFactory::create(
+@@ -175,7 +175,7 @@ TEST_F(HandshakerFactoryTest, HandshakerContextProvidesObjectsFromParentContext)
+       static_cast<Envoy::ProcessObject&>(custom_process_object_for_test));
+ 
+   NiceMock<Server::Configuration::MockTransportSocketFactoryContext> mock_factory_ctx;
+-  EXPECT_CALL(mock_factory_ctx.api_, processContext())
++  EXPECT_CALL(mock_factory_ctx.server_context_.api_, processContext())
+       .WillRepeatedly(Return(std::reference_wrapper<Envoy::ProcessContext>(*process_context_impl)));
+ 
+   MockFunction<HandshakerFactoryImplForTest::CreateHandshakerHook> mock_factory_cb;
+@@ -185,9 +185,10 @@ TEST_F(HandshakerFactoryTest, HandshakerContextProvidesObjectsFromParentContext)
+       .WillOnce(WithArg<1>([&](Ssl::HandshakerFactoryContext& context) {
+         // Check that the objects available via the context are the same ones
+         // provided to the parent context.
+-        EXPECT_THAT(context.api(), Ref(mock_factory_ctx.api_));
+-        EXPECT_THAT(context.options(), Ref(mock_factory_ctx.options_));
+-        EXPECT_THAT(context.lifecycleNotifier(), Ref(mock_factory_ctx.lifecycle_notifier_));
++        EXPECT_THAT(context.api(), Ref(mock_factory_ctx.server_context_.api_));
++        EXPECT_THAT(context.options(), Ref(mock_factory_ctx.server_context_.options_));
++        EXPECT_THAT(context.lifecycleNotifier(),
++                    Ref(mock_factory_ctx.server_context_.lifecycle_notifier_));
+       }));
+ 
+   auto socket_factory = *Extensions::TransportSockets::Tls::ClientSslSocketFactory::create(
+@@ -285,7 +286,7 @@ TEST_F(HandshakerFactoryDownstreamTest, ServerHandshakerProvidesCertificates) {
+       static_cast<Envoy::ProcessObject&>(custom_process_object_for_test));
+ 
+   NiceMock<Server::Configuration::MockTransportSocketFactoryContext> mock_factory_ctx;
+-  EXPECT_CALL(mock_factory_ctx.api_, processContext())
++  EXPECT_CALL(mock_factory_ctx.server_context_.api_, processContext())
+       .WillRepeatedly(Return(std::reference_wrapper<Envoy::ProcessContext>(*process_context_impl)));
+ 
+   auto server_context_config = *Extensions::TransportSockets::Tls::ServerContextConfigImpl::create(
+diff --git a/test/common/tls/ssl_certs_test.h b/test/common/tls/ssl_certs_test.h
+index fca49c721..60acfe3a5 100644
+--- a/test/common/tls/ssl_certs_test.h
++++ b/test/common/tls/ssl_certs_test.h
+@@ -1,6 +1,6 @@
+ #pragma once
+ 
+-#include "test/mocks/server/transport_socket_factory_context.h"
++#include "test/mocks/server/server_factory_context.h"
+ #include "test/test_common/environment.h"
+ #include "test/test_common/simulated_time_system.h"
+ 
+diff --git a/test/common/tls/ssl_socket_test.cc b/test/common/tls/ssl_socket_test.cc
+index 2bb034c59..3e300a321 100644
+--- a/test/common/tls/ssl_socket_test.cc
++++ b/test/common/tls/ssl_socket_test.cc
+@@ -51,7 +51,6 @@
+ #include "test/mocks/runtime/mocks.h"
+ #include "test/mocks/secret/mocks.h"
+ #include "test/mocks/server/server_factory_context.h"
+-#include "test/mocks/server/transport_socket_factory_context.h"
+ #include "test/mocks/ssl/mocks.h"
+ #include "test/mocks/stats/mocks.h"
+ #include "test/test_common/environment.h"
+@@ -462,7 +461,7 @@ void testUtil(const TestUtilOptions& options) {
+       test_private_key_method_factory(test_factory);
+   PrivateKeyMethodManagerImpl private_key_method_manager;
+   if (options.expectedPrivateKeyMethod()) {
+-    EXPECT_CALL(transport_socket_factory_context, sslContextManager())
++    EXPECT_CALL(transport_socket_factory_context.server_context_, sslContextManager())
+         .WillOnce(ReturnRef(context_manager))
+         .WillRepeatedly(ReturnRef(context_manager));
+     EXPECT_CALL(context_manager, privateKeyMethodManager())
+@@ -955,7 +954,7 @@ void testUtilV2(const TestUtilOptionsV2& options) {
+ 
+   auto factory_or_error = ServerSslSocketFactory::create(
+       std::move(server_cfg), manager, *server_stats_store.rootScope(), server_names);
+-  THROW_IF_NOT_OK(factory_or_error.status());
++  THROW_IF_NOT_OK_REF(factory_or_error.status());
+   auto server_ssl_socket_factory = std::move(*factory_or_error);
+ 
+   Event::DispatcherPtr dispatcher(server_api->allocateDispatcher("test_thread"));
+@@ -978,7 +977,7 @@ void testUtilV2(const TestUtilOptionsV2& options) {
+       *ClientContextConfigImpl::create(options.clientCtxProto(), client_factory_context);
+   auto client_factory_or_error = ClientSslSocketFactory::create(std::move(client_cfg), manager,
+                                                                 *client_stats_store.rootScope());
+-  THROW_IF_NOT_OK(client_factory_or_error.status());
++  THROW_IF_NOT_OK_REF(client_factory_or_error.status());
+   auto client_ssl_socket_factory = std::move(*client_factory_or_error);
+   Network::ClientConnectionPtr client_connection = dispatcher->createClientConnection(
+       socket->connectionInfoProvider().localAddress(), Network::Address::InstanceConstSharedPtr(),
+@@ -1150,9 +1149,9 @@ void updateFilterChain(
+ }
+ 
+ struct OptionalServerConfig {
+-  absl::optional<std::string> cert_hash{};
+-  absl::optional<std::string> trusted_ca{};
+-  absl::optional<bool> allow_expired_cert{};
++  absl::optional<std::string> cert_hash;
++  absl::optional<std::string> trusted_ca;
++  absl::optional<bool> allow_expired_cert;
+ };
+ 
+ void configureServerAndExpiredClientCertificate(
+diff --git a/test/common/tls/tls_certificate_selector_test.cc b/test/common/tls/tls_certificate_selector_test.cc
+index 8dd36697c..a3caf5b2b 100644
+--- a/test/common/tls/tls_certificate_selector_test.cc
++++ b/test/common/tls/tls_certificate_selector_test.cc
+@@ -50,7 +50,6 @@
+ #include "test/mocks/runtime/mocks.h"
+ #include "test/mocks/secret/mocks.h"
+ #include "test/mocks/server/server_factory_context.h"
+-#include "test/mocks/server/transport_socket_factory_context.h"
+ #include "test/mocks/ssl/mocks.h"
+ #include "test/mocks/stats/mocks.h"
+ #include "test/test_common/environment.h"
+@@ -142,7 +141,7 @@ public:
+     }
+     if (for_quic) {
+       creation_status = absl::InvalidArgumentError("does not supported for quic");
+-      return Ssl::TlsCertificateSelectorFactory();
++      return {};
+     }
+     return [&config, this](const Ssl::ServerContextConfig&,
+                            Ssl::TlsCertificateSelectorContext& selector_ctx) {
+diff --git a/test/common/upstream/BUILD b/test/common/upstream/BUILD
+index aedb54d19..5563bf89f 100644
+--- a/test/common/upstream/BUILD
++++ b/test/common/upstream/BUILD
+@@ -434,7 +434,7 @@ envoy_cc_test(
+         "//source/server:transport_socket_config_lib",
+         "//test/mocks:common_lib",
+         "//test/mocks/network:network_mocks",
+-        "//test/mocks/server:transport_socket_factory_context_mocks",
++        "//test/mocks/server:factory_context_mocks",
+         "//test/test_common:registry_lib",
+         "//test/test_common:utility_lib",
+         "@envoy_api//envoy/config/cluster/v3:pkg_cc_proto",
+diff --git a/test/common/upstream/hds_test.cc b/test/common/upstream/hds_test.cc
+index 3e99bf81b..2a30969a7 100644
+--- a/test/common/upstream/hds_test.cc
++++ b/test/common/upstream/hds_test.cc
+@@ -622,9 +622,7 @@ TEST_F(HdsTest, TestSocketContext) {
+         Envoy::Stats::ScopeSharedPtr scope =
+             params.stats_.createScope(fmt::format("cluster.{}.", params.cluster_.name()));
+         Envoy::Server::Configuration::TransportSocketFactoryContextImpl factory_context(
+-            params.server_context_, params.ssl_context_manager_, *scope,
+-            params.server_context_.clusterManager(),
+-            params.server_context_.messageValidationVisitor());
++            params.server_context_, *scope, params.server_context_.messageValidationVisitor());
+ 
+         // Create a mock socket_factory for the scope of this unit test.
+         std::unique_ptr<Envoy::Network::UpstreamTransportSocketFactory> socket_factory =
+@@ -1113,9 +1111,7 @@ TEST_F(HdsTest, TestUpdateSocketContext) {
+         Envoy::Stats::ScopeSharedPtr scope =
+             params.stats_.createScope(fmt::format("cluster.{}.", params.cluster_.name()));
+         Envoy::Server::Configuration::TransportSocketFactoryContextImpl factory_context(
+-            params.server_context_, params.ssl_context_manager_, *scope,
+-            params.server_context_.clusterManager(),
+-            params.server_context_.messageValidationVisitor());
++            params.server_context_, *scope, params.server_context_.messageValidationVisitor());
+ 
+         // Create a mock socket_factory for the scope of this unit test.
+         std::unique_ptr<Envoy::Network::UpstreamTransportSocketFactory> socket_factory =
+diff --git a/test/common/upstream/transport_socket_matcher_test.cc b/test/common/upstream/transport_socket_matcher_test.cc
+index aef375f2b..ea1d3ba79 100644
+--- a/test/common/upstream/transport_socket_matcher_test.cc
++++ b/test/common/upstream/transport_socket_matcher_test.cc
+@@ -15,7 +15,7 @@
+ #include "source/server/transport_socket_config_impl.h"
+ 
+ #include "test/mocks/network/mocks.h"
+-#include "test/mocks/server/transport_socket_factory_context.h"
++#include "test/mocks/server/server_factory_context.h"
+ #include "test/test_common/registry.h"
+ #include "test/test_common/utility.h"
+ 
+diff --git a/test/extensions/clusters/eds/leds_test.cc b/test/extensions/clusters/eds/leds_test.cc
+index d0f4d714e..b31deabd3 100644
+--- a/test/extensions/clusters/eds/leds_test.cc
++++ b/test/extensions/clusters/eds/leds_test.cc
+@@ -89,8 +89,7 @@ public:
+ 
+     cluster_scope_ = stats_.createScope("cluster.xds_cluster.");
+     Envoy::Server::Configuration::TransportSocketFactoryContextImpl factory_context(
+-        server_context_, ssl_context_manager_, *cluster_scope_, server_context_.cluster_manager_,
+-        validation_visitor_);
++        server_context_, *cluster_scope_, validation_visitor_);
+ 
+     // Setup LEDS subscription.
+     EXPECT_CALL(server_context_.cluster_manager_.subscription_factory_,
+diff --git a/test/extensions/filters/http/oauth2/filter_test.cc b/test/extensions/filters/http/oauth2/filter_test.cc
+index 12508104a..15989f08d 100644
+--- a/test/extensions/filters/http/oauth2/filter_test.cc
++++ b/test/extensions/filters/http/oauth2/filter_test.cc
+@@ -314,10 +314,12 @@ TEST_F(OAuth2Test, SdsDynamicGenericSecret) {
+ 
+   auto client_secret_provider = secret_manager.findOrCreateGenericSecretProvider(
+       config_source, "client", secret_context, init_manager);
+-  auto client_callback = secret_context.cluster_manager_.subscription_factory_.callbacks_;
++  auto client_callback =
++      secret_context.server_context_.cluster_manager_.subscription_factory_.callbacks_;
+   auto token_secret_provider = secret_manager.findOrCreateGenericSecretProvider(
+       config_source, "token", secret_context, init_manager);
+-  auto token_callback = secret_context.cluster_manager_.subscription_factory_.callbacks_;
++  auto token_callback =
++      secret_context.server_context_.cluster_manager_.subscription_factory_.callbacks_;
+ 
+   NiceMock<ThreadLocal::MockInstance> tls;
+   SDSSecretReader secret_reader(std::move(client_secret_provider), std::move(token_secret_provider),
+diff --git a/test/extensions/http/credential_injector/oauth2/BUILD b/test/extensions/http/credential_injector/oauth2/BUILD
+index e0e89a7f6..1587961fd 100644
+--- a/test/extensions/http/credential_injector/oauth2/BUILD
++++ b/test/extensions/http/credential_injector/oauth2/BUILD
+@@ -31,9 +31,9 @@ envoy_extension_cc_test(
+         "//source/extensions/http/injected_credentials/common:secret_reader_lib",
+         "//source/extensions/http/injected_credentials/oauth2:token_provider_lib",
+         "//test/mocks/event:event_mocks",
++        "//test/mocks/server:factory_context_mocks",
+         "//test/mocks/server:server_factory_context_mocks",
+         "//test/mocks/server:server_mocks",
+-        "//test/mocks/server:transport_socket_factory_context_mocks",
+         "//test/mocks/thread_local:thread_local_mocks",
+     ],
+ )
+diff --git a/test/extensions/http/credential_injector/oauth2/config_test.cc b/test/extensions/http/credential_injector/oauth2/config_test.cc
+index d7e2c08bd..38533bccf 100644
+--- a/test/extensions/http/credential_injector/oauth2/config_test.cc
++++ b/test/extensions/http/credential_injector/oauth2/config_test.cc
+@@ -1,7 +1,6 @@
+ #include "source/extensions/http/injected_credentials/oauth2/config.h"
+ 
+ #include "test/mocks/server/server_factory_context.h"
+-#include "test/mocks/server/transport_socket_factory_context.h"
+ 
+ #include "gtest/gtest.h"
+ 
+diff --git a/test/extensions/quic/connection_id_generator/quic_lb/quic_lb_test.cc b/test/extensions/quic/connection_id_generator/quic_lb/quic_lb_test.cc
+index 954dd7d5e..71433353f 100644
+--- a/test/extensions/quic/connection_id_generator/quic_lb/quic_lb_test.cc
++++ b/test/extensions/quic/connection_id_generator/quic_lb/quic_lb_test.cc
+@@ -62,8 +62,8 @@ TEST(QuicLbTest, InvalidConfig) {
+   envoy::extensions::transport_sockets::tls::v3::Secret encryption_parameters;
+   encryption_parameters.set_name(kSecretName);
+   encryption_parameters.mutable_generic_secret();
+-  auto status = factory_context.transport_socket_factory_context_.secretManager().addStaticSecret(
+-      encryption_parameters);
++  auto status = factory_context.transport_socket_factory_context_.server_context_.secretManager()
++                    .addStaticSecret(encryption_parameters);
+   EXPECT_TRUE(status.ok());
+   factory_or_status = Factory::create(cfg, factory_context);
+   EXPECT_EQ(factory_or_status.status().message(), "Missing 'encryption_key'");
+@@ -73,9 +73,9 @@ TEST(QuicLbTest, InvalidConfig) {
+   envoy::config::core::v3::DataSource key;
+   key.set_inline_string("bad");
+   secrets["encryption_key"] = key;
+-  factory_context.transport_socket_factory_context_.resetSecretManager();
+-  status = factory_context.transport_socket_factory_context_.secretManager().addStaticSecret(
+-      encryption_parameters);
++  factory_context.transport_socket_factory_context_.server_context_.resetSecretManager();
++  status = factory_context.transport_socket_factory_context_.server_context_.secretManager()
++               .addStaticSecret(encryption_parameters);
+   EXPECT_TRUE(status.ok());
+   factory_or_status = Factory::create(cfg, factory_context);
+   EXPECT_EQ(factory_or_status.status().message(),
+@@ -84,9 +84,9 @@ TEST(QuicLbTest, InvalidConfig) {
+   // Missing version.
+   key.set_inline_string("0123456789abcdef");
+   secrets["encryption_key"] = key;
+-  factory_context.transport_socket_factory_context_.resetSecretManager();
+-  status = factory_context.transport_socket_factory_context_.secretManager().addStaticSecret(
+-      encryption_parameters);
++  factory_context.transport_socket_factory_context_.server_context_.resetSecretManager();
++  status = factory_context.transport_socket_factory_context_.server_context_.secretManager()
++               .addStaticSecret(encryption_parameters);
+   EXPECT_TRUE(status.ok());
+   factory_or_status = Factory::create(cfg, factory_context);
+   EXPECT_EQ(factory_or_status.status().message(), "Missing 'configuration_version'");
+@@ -97,9 +97,9 @@ TEST(QuicLbTest, InvalidConfig) {
+   version_bytes.resize(2);
+   version.set_inline_bytes(version_bytes);
+   secrets["configuration_version"] = version;
+-  factory_context.transport_socket_factory_context_.resetSecretManager();
+-  status = factory_context.transport_socket_factory_context_.secretManager().addStaticSecret(
+-      encryption_parameters);
++  factory_context.transport_socket_factory_context_.server_context_.resetSecretManager();
++  status = factory_context.transport_socket_factory_context_.server_context_.secretManager()
++               .addStaticSecret(encryption_parameters);
+   EXPECT_TRUE(status.ok());
+   factory_or_status = Factory::create(cfg, factory_context);
+   EXPECT_EQ(factory_or_status.status().message(),
+@@ -110,9 +110,9 @@ TEST(QuicLbTest, InvalidConfig) {
+   version_bytes.data()[0] = 7;
+   version.set_inline_bytes(version_bytes);
+   secrets["configuration_version"] = version;
+-  factory_context.transport_socket_factory_context_.resetSecretManager();
+-  status = factory_context.transport_socket_factory_context_.secretManager().addStaticSecret(
+-      encryption_parameters);
++  factory_context.transport_socket_factory_context_.server_context_.resetSecretManager();
++  status = factory_context.transport_socket_factory_context_.server_context_.secretManager()
++               .addStaticSecret(encryption_parameters);
+   EXPECT_TRUE(status.ok());
+   factory_or_status = Factory::create(cfg, factory_context);
+   EXPECT_EQ(factory_or_status.status().message(),
+@@ -122,9 +122,9 @@ TEST(QuicLbTest, InvalidConfig) {
+   version_bytes.data()[0] = 6;
+   version.set_inline_bytes(version_bytes);
+   secrets["configuration_version"] = version;
+-  factory_context.transport_socket_factory_context_.resetSecretManager();
+-  status = factory_context.transport_socket_factory_context_.secretManager().addStaticSecret(
+-      encryption_parameters);
++  factory_context.transport_socket_factory_context_.server_context_.resetSecretManager();
++  status = factory_context.transport_socket_factory_context_.server_context_.secretManager()
++               .addStaticSecret(encryption_parameters);
+   EXPECT_TRUE(status.ok());
+   factory_or_status = Factory::create(cfg, factory_context);
+   EXPECT_TRUE(factory_or_status.ok());
+@@ -171,8 +171,8 @@ TEST(QuicLbTest, Unencrypted) {
+ 
+   testing::NiceMock<Server::Configuration::MockFactoryContext> factory_context;
+ 
+-  auto status = factory_context.transport_socket_factory_context_.secretManager().addStaticSecret(
+-      encryptionParamaters(0));
++  auto status = factory_context.transport_socket_factory_context_.server_context_.secretManager()
++                    .addStaticSecret(encryptionParamaters(0));
+   absl::StatusOr<std::unique_ptr<Factory>> factory_or_status =
+       Factory::create(cfg, factory_context);
+   auto generator = createTypedIdGenerator(*factory_or_status.value());
+@@ -198,8 +198,8 @@ TEST(QuicLbTest, TooLong) {
+ 
+   testing::NiceMock<Server::Configuration::MockFactoryContext> factory_context;
+ 
+-  auto status = factory_context.transport_socket_factory_context_.secretManager().addStaticSecret(
+-      encryptionParamaters(0));
++  auto status = factory_context.transport_socket_factory_context_.server_context_.secretManager()
++                    .addStaticSecret(encryptionParamaters(0));
+   absl::StatusOr<std::unique_ptr<Factory>> factory_or_status =
+       Factory::create(cfg, factory_context);
+   auto generator = createTypedIdGenerator(*factory_or_status.value());
+@@ -217,8 +217,8 @@ TEST(QuicLbTest, WorkerSelector) {
+ 
+   testing::NiceMock<Server::Configuration::MockFactoryContext> factory_context;
+ 
+-  auto status = factory_context.transport_socket_factory_context_.secretManager().addStaticSecret(
+-      encryptionParamaters(0));
++  auto status = factory_context.transport_socket_factory_context_.server_context_.secretManager()
++                    .addStaticSecret(encryptionParamaters(0));
+   absl::StatusOr<std::unique_ptr<Factory>> factory_or_status =
+       Factory::create(cfg, factory_context);
+   constexpr uint32_t concurrency = 8;
+@@ -291,7 +291,8 @@ TEST(QuicLbTest, EmptySecretCallback) {
+   testing::NiceMock<Server::Configuration::MockFactoryContext> factory_context;
+   auto secret_mgr_unique = std::make_unique<Secret::MockSecretManager>();
+   Secret::MockSecretManager* secret_manager = secret_mgr_unique.get();
+-  factory_context.transport_socket_factory_context_.secret_manager_ = std::move(secret_mgr_unique);
++  factory_context.transport_socket_factory_context_.server_context_.secret_manager_ =
++      std::move(secret_mgr_unique);
+   auto secret_provider = std::make_shared<Secret::MockGenericSecretConfigProvider>();
+ 
+   EXPECT_CALL(*secret_manager, findOrCreateGenericSecretProvider(_, _, _, _))
+diff --git a/test/extensions/transport_sockets/alts/BUILD b/test/extensions/transport_sockets/alts/BUILD
+index 5d4108d6a..944db420d 100644
+--- a/test/extensions/transport_sockets/alts/BUILD
++++ b/test/extensions/transport_sockets/alts/BUILD
+@@ -23,7 +23,7 @@ envoy_extension_cc_test(
+         "//source/extensions/transport_sockets/alts:tsi_socket",
+         "//test/mocks/event:event_mocks",
+         "//test/mocks/network:network_mocks",
+-        "//test/mocks/server:transport_socket_factory_context_mocks",
++        "//test/mocks/server:factory_context_mocks",
+     ],
+ )
+ 
+diff --git a/test/extensions/transport_sockets/alts/alts_integration_test.cc b/test/extensions/transport_sockets/alts/alts_integration_test.cc
+index e05a39ae1..d6142b10e 100644
+--- a/test/extensions/transport_sockets/alts/alts_integration_test.cc
++++ b/test/extensions/transport_sockets/alts/alts_integration_test.cc
+@@ -27,7 +27,7 @@
+ #include "test/integration/integration.h"
+ #include "test/integration/server.h"
+ #include "test/integration/utility.h"
+-#include "test/mocks/server/transport_socket_factory_context.h"
++#include "test/mocks/server/server_factory_context.h"
+ 
+ #include "test/test_common/network_utility.h"
+ #include "test/test_common/status_utility.h"
+diff --git a/test/extensions/transport_sockets/alts/config_test.cc b/test/extensions/transport_sockets/alts/config_test.cc
+index e7b4030c2..2e98dbc56 100644
+--- a/test/extensions/transport_sockets/alts/config_test.cc
++++ b/test/extensions/transport_sockets/alts/config_test.cc
+@@ -2,7 +2,7 @@
+ #include "source/common/singleton/manager_impl.h"
+ #include "source/extensions/transport_sockets/alts/config.h"
+ 
+-#include "test/mocks/server/transport_socket_factory_context.h"
++#include "test/mocks/server/server_factory_context.h"
+ 
+ #include "gmock/gmock.h"
+ #include "gtest/gtest.h"
+diff --git a/test/extensions/transport_sockets/starttls/upstream_starttls_integration_test.cc b/test/extensions/transport_sockets/starttls/upstream_starttls_integration_test.cc
+index 765fc1fb1..df1354a3a 100644
+--- a/test/extensions/transport_sockets/starttls/upstream_starttls_integration_test.cc
++++ b/test/extensions/transport_sockets/starttls/upstream_starttls_integration_test.cc
+@@ -89,7 +89,7 @@ public:
+       read_callbacks_ = &callbacks;
+     }
+ 
+-    std::weak_ptr<StartTlsSwitchFilter> parent_{};
++    std::weak_ptr<StartTlsSwitchFilter> parent_;
+     Network::ReadFilterCallbacks* read_callbacks_{};
+   };
+ 
+@@ -118,10 +118,10 @@ private:
+                        Network::ConnectionCallbacks* upstream_callbacks)
+       : upstream_connection_cb_(upstream_callbacks), cluster_manager_(cluster_manager) {}
+ 
+-  std::weak_ptr<StartTlsSwitchFilter> self_{};
++  std::weak_ptr<StartTlsSwitchFilter> self_;
+   Network::ReadFilterCallbacks* read_callbacks_{};
+   Network::WriteFilterCallbacks* write_callbacks_{};
+-  Network::ClientConnectionPtr upstream_connection_{};
++  Network::ClientConnectionPtr upstream_connection_;
+   Network::ConnectionCallbacks* upstream_connection_cb_;
+   Upstream::ClusterManager& cluster_manager_;
+ };
+diff --git a/test/extensions/transport_sockets/tcp_stats/BUILD b/test/extensions/transport_sockets/tcp_stats/BUILD
+index 0e6858bd3..8bc853e5d 100644
+--- a/test/extensions/transport_sockets/tcp_stats/BUILD
++++ b/test/extensions/transport_sockets/tcp_stats/BUILD
+@@ -24,7 +24,7 @@ envoy_extension_cc_test(
+         "//test/mocks/network:io_handle_mocks",
+         "//test/mocks/network:network_mocks",
+         "//test/mocks/network:transport_socket_mocks",
+-        "//test/mocks/server:transport_socket_factory_context_mocks",
++        "//test/mocks/server:factory_context_mocks",
+         "@envoy_api//envoy/extensions/transport_sockets/raw_buffer/v3:pkg_cc_proto",
+         "@envoy_api//envoy/extensions/transport_sockets/tcp_stats/v3:pkg_cc_proto",
+     ],
+diff --git a/test/extensions/transport_sockets/tcp_stats/tcp_stats_test.cc b/test/extensions/transport_sockets/tcp_stats/tcp_stats_test.cc
+index a4c0b485a..ff16e4ea7 100644
+--- a/test/extensions/transport_sockets/tcp_stats/tcp_stats_test.cc
++++ b/test/extensions/transport_sockets/tcp_stats/tcp_stats_test.cc
+@@ -11,7 +11,7 @@
+ #include "test/mocks/network/io_handle.h"
+ #include "test/mocks/network/mocks.h"
+ #include "test/mocks/network/transport_socket.h"
+-#include "test/mocks/server/transport_socket_factory_context.h"
++#include "test/mocks/server/server_factory_context.h"
+ 
+ #include "gmock/gmock.h"
+ #include "gtest/gtest.h"
+@@ -278,7 +278,7 @@ TEST_F(TcpStatsSocketFactoryTest, ImplementsSecureTransportCallInnerFactory) {
+ #include "envoy/extensions/transport_sockets/raw_buffer/v3/raw_buffer.pb.h"
+ #include "envoy/extensions/transport_sockets/tcp_stats/v3/tcp_stats.pb.h"
+ 
+-#include "test/mocks/server/transport_socket_factory_context.h"
++#include "test/mocks/server/server_factory_context.h"
+ 
+ #include "gmock/gmock.h"
+ #include "gtest/gtest.h"
+diff --git a/test/integration/BUILD b/test/integration/BUILD
+index 71cf7c030..7fa04fe20 100644
+--- a/test/integration/BUILD
++++ b/test/integration/BUILD
+@@ -1240,7 +1240,7 @@ envoy_cc_test_library(
+         "//test/common/grpc:grpc_client_integration_lib",
+         "//test/config:utility_lib",
+         "//test/mocks/buffer:buffer_mocks",
+-        "//test/mocks/server:transport_socket_factory_context_mocks",
++        "//test/mocks/server:factory_context_mocks",
+         "//test/test_common:environment_lib",
+         "//test/test_common:network_utility_lib",
+         "//test/test_common:simulated_time_system_lib",
+@@ -1325,8 +1325,8 @@ envoy_cc_test_library(
+         "//test/mocks:common_lib",
+         "//test/mocks/event:event_mocks",
+         "//test/mocks/runtime:runtime_mocks",
++        "//test/mocks/server:factory_context_mocks",
+         "//test/mocks/server:instance_mocks",
+-        "//test/mocks/server:transport_socket_factory_context_mocks",
+         "//test/mocks/upstream:cluster_info_mocks",
+         "//test/test_common:environment_lib",
+         "//test/test_common:network_utility_lib",
+@@ -2193,7 +2193,7 @@ envoy_cc_test(
+         ":http_integration_lib",
+         "//source/common/http:header_map_lib",
+         "//source/extensions/transport_sockets/tls:config",
+-        "//test/mocks/server:transport_socket_factory_context_mocks",
++        "//test/mocks/server:factory_context_mocks",
+         "//test/test_common:utility_lib",
+         "@envoy_api//envoy/config/bootstrap/v3:pkg_cc_proto",
+         "@envoy_api//envoy/extensions/filters/network/http_connection_manager/v3:pkg_cc_proto",
+diff --git a/test/integration/base_integration_test.cc b/test/integration/base_integration_test.cc
+index 557e67989..3741ae20c 100644
+--- a/test/integration/base_integration_test.cc
++++ b/test/integration/base_integration_test.cc
+@@ -74,7 +74,8 @@ BaseIntegrationTest::BaseIntegrationTest(const InstanceConstSharedPtrFn& upstrea
+       }));
+   ON_CALL(factory_context_.server_context_, api()).WillByDefault(ReturnRef(*api_));
+   ON_CALL(factory_context_, statsScope()).WillByDefault(ReturnRef(*stats_store_.rootScope()));
+-  ON_CALL(factory_context_, sslContextManager()).WillByDefault(ReturnRef(context_manager_));
++  ON_CALL(factory_context_.server_context_, sslContextManager())
++      .WillByDefault(ReturnRef(context_manager_));
+   ON_CALL(factory_context_.server_context_, threadLocal()).WillByDefault(ReturnRef(thread_local_));
+ 
+ #ifndef ENVOY_ADMIN_FUNCTIONALITY
+diff --git a/test/integration/base_integration_test.h b/test/integration/base_integration_test.h
+index a1b571699..64ba788d0 100644
+--- a/test/integration/base_integration_test.h
++++ b/test/integration/base_integration_test.h
+@@ -19,7 +19,7 @@
+ #include "test/integration/server.h"
+ #include "test/integration/utility.h"
+ #include "test/mocks/buffer/mocks.h"
+-#include "test/mocks/server/transport_socket_factory_context.h"
++#include "test/mocks/server/server_factory_context.h"
+ #include "test/test_common/environment.h"
+ #include "test/test_common/test_time.h"
+ #include "test/test_common/utility.h"
+diff --git a/test/integration/quic_http_integration_test.h b/test/integration/quic_http_integration_test.h
+index 6bca21a76..eeef67884 100644
+--- a/test/integration/quic_http_integration_test.h
++++ b/test/integration/quic_http_integration_test.h
+@@ -336,7 +336,8 @@ public:
+     NiceMock<Server::Configuration::MockTransportSocketFactoryContext> context;
+     ON_CALL(context.server_context_, api()).WillByDefault(testing::ReturnRef(*api_));
+     ON_CALL(context, statsScope()).WillByDefault(testing::ReturnRef(stats_scope_));
+-    ON_CALL(context, sslContextManager()).WillByDefault(testing::ReturnRef(context_manager_));
++    ON_CALL(context.server_context_, sslContextManager())
++        .WillByDefault(testing::ReturnRef(context_manager_));
+     ON_CALL(context.server_context_, threadLocal())
+         .WillByDefault(testing::ReturnRef(thread_local_));
+     envoy::extensions::transport_sockets::quic::v3::QuicUpstreamTransport
+diff --git a/test/integration/ssl_utility.cc b/test/integration/ssl_utility.cc
+index 082edc9e0..82a9516ab 100644
+--- a/test/integration/ssl_utility.cc
++++ b/test/integration/ssl_utility.cc
+@@ -12,7 +12,7 @@
+ 
+ #include "test/config/utility.h"
+ #include "test/integration/server.h"
+-#include "test/mocks/server/transport_socket_factory_context.h"
++#include "test/mocks/server/server_factory_context.h"
+ #include "test/test_common/environment.h"
+ #include "test/test_common/network_utility.h"
+ 
+@@ -144,7 +144,8 @@ createUpstreamSslContext(ContextManager& context_manager, Api::Api& api, bool us
+   quic_config.mutable_downstream_tls_context()->MergeFrom(tls_context);
+   ON_CALL(mock_factory_ctx, statsScope())
+       .WillByDefault(ReturnRef(*upstream_stats_store->rootScope()));
+-  ON_CALL(mock_factory_ctx, sslContextManager()).WillByDefault(ReturnRef(context_manager));
++  ON_CALL(mock_factory_ctx.server_context_, sslContextManager())
++      .WillByDefault(ReturnRef(context_manager));
+ 
+   std::vector<std::string> server_names;
+   auto& config_factory = Config::Utility::getAndCheckFactoryByName<
+diff --git a/test/integration/utility.cc b/test/integration/utility.cc
+index 0cf478c4e..ca2cd0104 100644
+--- a/test/integration/utility.cc
++++ b/test/integration/utility.cc
+@@ -36,7 +36,7 @@
+ #endif
+ #include "test/mocks/common.h"
+ #include "test/mocks/server/instance.h"
+-#include "test/mocks/server/transport_socket_factory_context.h"
++#include "test/mocks/server/server_factory_context.h"
+ #include "test/mocks/stats/mocks.h"
+ #include "test/mocks/upstream/cluster_info.h"
+ #include "test/test_common/environment.h"
+@@ -148,7 +148,8 @@ IntegrationUtil::createQuicUpstreamTransportSocketFactory(Api::Api& api, Stats::
+   NiceMock<Server::Configuration::MockTransportSocketFactoryContext> context;
+   ON_CALL(context.server_context_, api()).WillByDefault(testing::ReturnRef(api));
+   ON_CALL(context, statsScope()).WillByDefault(testing::ReturnRef(*store.rootScope()));
+-  ON_CALL(context, sslContextManager()).WillByDefault(testing::ReturnRef(context_manager));
++  ON_CALL(context.server_context_, sslContextManager())
++      .WillByDefault(testing::ReturnRef(context_manager));
+   ON_CALL(context.server_context_, threadLocal()).WillByDefault(testing::ReturnRef(threadlocal));
+   envoy::extensions::transport_sockets::quic::v3::QuicUpstreamTransport
+       quic_transport_socket_config;
+diff --git a/test/integration/xfcc_integration_test.h b/test/integration/xfcc_integration_test.h
+index c787eaa69..a6387535d 100644
+--- a/test/integration/xfcc_integration_test.h
++++ b/test/integration/xfcc_integration_test.h
+@@ -8,7 +8,7 @@
+ #include "test/config/integration/certs/clientcert_hash.h"
+ #include "test/integration/http_integration.h"
+ #include "test/integration/server.h"
+-#include "test/mocks/server/transport_socket_factory_context.h"
++#include "test/mocks/server/server_factory_context.h"
+ 
+ #include "absl/strings/ascii.h"
+ #include "absl/strings/str_replace.h"
+diff --git a/test/mocks/server/BUILD b/test/mocks/server/BUILD
+index 8c8f1d562..d27310389 100644
+--- a/test/mocks/server/BUILD
++++ b/test/mocks/server/BUILD
+@@ -185,8 +185,8 @@ envoy_cc_mock(
+     rbe_pool = "6gig",
+     deps = [
+         ":server_factory_context_mocks",
+-        ":transport_socket_factory_context_mocks",
+         "//envoy/server:instance_interface",
++        "//source/common/secret:secret_manager_impl_lib",
+     ],
+ )
+ 
+@@ -233,6 +233,7 @@ envoy_cc_mock(
+         "//test/mocks/router:router_mocks",
+         "//test/mocks/runtime:runtime_mocks",
+         "//test/mocks/secret:secret_mocks",
++        "//test/mocks/ssl:ssl_mocks",
+         "//test/mocks/thread_local:thread_local_mocks",
+         "//test/mocks/tracing:tracing_mocks",
+         "//test/mocks/upstream:cluster_manager_mocks",
+@@ -253,19 +254,6 @@ envoy_cc_mock(
+     ],
+ )
+ 
+-envoy_cc_mock(
+-    name = "transport_socket_factory_context_mocks",
+-    srcs = ["transport_socket_factory_context.cc"],
+-    hdrs = ["transport_socket_factory_context.h"],
+-    rbe_pool = "6gig",
+-    deps = [
+-        ":server_factory_context_mocks",
+-        "//envoy/server:tracer_config_interface",
+-        "//source/common/secret:secret_manager_impl_lib",
+-        "//test/mocks/access_log:access_log_mocks",
+-    ],
+-)
+-
+ envoy_cc_mock(
+     name = "listener_factory_context_mocks",
+     srcs = ["listener_factory_context.cc"],
+@@ -358,7 +346,6 @@ envoy_cc_mock(
+         ":server_lifecycle_notifier_mocks",
+         ":tracer_factory_context_mocks",
+         ":tracer_factory_mocks",
+-        ":transport_socket_factory_context_mocks",
+         ":watch_dog_mocks",
+         ":worker_factory_mocks",
+         ":worker_mocks",
+diff --git a/test/mocks/server/factory_context.h b/test/mocks/server/factory_context.h
+index 3d273cd89..dfbdef772 100644
+--- a/test/mocks/server/factory_context.h
++++ b/test/mocks/server/factory_context.h
+@@ -11,7 +11,6 @@
+ #include "instance.h"
+ #include "overload_manager.h"
+ #include "server_lifecycle_notifier.h"
+-#include "transport_socket_factory_context.h"
+ 
+ namespace Envoy {
+ namespace Server {
+diff --git a/test/mocks/server/instance.cc b/test/mocks/server/instance.cc
+index 461fcd610..1cb9694a1 100644
+--- a/test/mocks/server/instance.cc
++++ b/test/mocks/server/instance.cc
+@@ -1,5 +1,6 @@
+ #include "test/mocks/server/instance.h"
+ 
++#include "source/common/secret/secret_manager_impl.h"
+ #include "source/common/singleton/manager_impl.h"
+ 
+ #include "gmock/gmock.h"
+@@ -56,6 +57,9 @@ MockInstance::MockInstance()
+   ON_CALL(*this, transportSocketFactoryContext())
+       .WillByDefault(ReturnRef(*transport_socket_factory_context_));
+   ON_CALL(*this, enableReusePortDefault()).WillByDefault(Return(true));
++
++  ON_CALL(*server_factory_context_, sslContextManager())
++      .WillByDefault(ReturnRef(ssl_context_manager_));
+ }
+ 
+ MockInstance::~MockInstance() = default;
+diff --git a/test/mocks/server/instance.h b/test/mocks/server/instance.h
+index 33853b2d9..b67724bed 100644
+--- a/test/mocks/server/instance.h
++++ b/test/mocks/server/instance.h
+@@ -5,7 +5,6 @@
+ #include "test/mocks/config/xds_manager.h"
+ #include "test/mocks/http/http_server_properties_cache.h"
+ #include "test/mocks/server/server_factory_context.h"
+-#include "test/mocks/server/transport_socket_factory_context.h"
+ 
+ #include "gmock/gmock.h"
+ 
+diff --git a/test/mocks/server/mocks.h b/test/mocks/server/mocks.h
+index 731d4c227..f5fc14eb0 100644
+--- a/test/mocks/server/mocks.h
++++ b/test/mocks/server/mocks.h
+@@ -23,7 +23,6 @@
+ #include "server_lifecycle_notifier.h"
+ #include "tracer_factory.h"
+ #include "tracer_factory_context.h"
+-#include "transport_socket_factory_context.h"
+ #include "watch_dog.h"
+ #include "worker.h"
+ #include "worker_factory.h"
+diff --git a/test/mocks/server/server_factory_context.cc b/test/mocks/server/server_factory_context.cc
+index 25a9bf28a..3f23ef6c1 100644
+--- a/test/mocks/server/server_factory_context.cc
++++ b/test/mocks/server/server_factory_context.cc
+@@ -1,5 +1,7 @@
+ #include "test/mocks/server/server_factory_context.h"
+ 
++#include "source/common/secret/secret_manager_impl.h"
++
+ namespace Envoy {
+ namespace Server {
+ namespace Configuration {
+@@ -10,6 +12,8 @@ using ::testing::ReturnRef;
+ MockServerFactoryContext::MockServerFactoryContext()
+     : singleton_manager_(new Singleton::ManagerImpl()), http_context_(store_.symbolTable()),
+       grpc_context_(store_.symbolTable()), router_context_(store_.symbolTable()) {
++  resetSecretManager();
++
+   ON_CALL(*this, clusterManager()).WillByDefault(ReturnRef(cluster_manager_));
+   ON_CALL(*this, xdsManager()).WillByDefault(ReturnRef(xds_manager_));
+   ON_CALL(*this, httpServerPropertiesCacheManager())
+@@ -38,9 +42,18 @@ MockServerFactoryContext::MockServerFactoryContext()
+   ON_CALL(*this, options()).WillByDefault(ReturnRef(options_));
+   ON_CALL(*this, overloadManager()).WillByDefault(ReturnRef(overload_manager_));
+   ON_CALL(*this, nullOverloadManager()).WillByDefault(ReturnRef(null_overload_manager_));
++  ON_CALL(*this, secretManager()).WillByDefault(testing::Invoke([this]() -> Secret::SecretManager& {
++    return *secret_manager_;
++  }));
++  ON_CALL(*this, sslContextManager()).WillByDefault(ReturnRef(ssl_context_manager_));
+ }
+ MockServerFactoryContext::~MockServerFactoryContext() = default;
+ 
++void MockServerFactoryContext::resetSecretManager() {
++  config_tracker_.config_tracker_callbacks_.clear();
++  secret_manager_ = std::make_unique<Secret::SecretManagerImpl>(config_tracker_);
++}
++
+ MockStatsConfig::MockStatsConfig() = default;
+ MockStatsConfig::~MockStatsConfig() = default;
+ 
+@@ -54,6 +67,16 @@ MockGenericFactoryContext::MockGenericFactoryContext() {
+       .WillByDefault(ReturnRef(ProtobufMessage::getStrictValidationVisitor()));
+ }
+ 
++MockTransportSocketFactoryContext::MockTransportSocketFactoryContext() {
++  ON_CALL(*this, serverFactoryContext()).WillByDefault(ReturnRef(server_context_));
++  ON_CALL(*this, statsScope()).WillByDefault(ReturnRef(*store_.rootScope()));
++  ON_CALL(*this, initManager()).WillByDefault(ReturnRef(init_manager_));
++  ON_CALL(*this, messageValidationVisitor())
++      .WillByDefault(ReturnRef(ProtobufMessage::getStrictValidationVisitor()));
++}
++
++MockTransportSocketFactoryContext::~MockTransportSocketFactoryContext() = default;
++
+ } // namespace Configuration
+ } // namespace Server
+ } // namespace Envoy
+diff --git a/test/mocks/server/server_factory_context.h b/test/mocks/server/server_factory_context.h
+index 0aab44a2f..dfdd6d37a 100644
+--- a/test/mocks/server/server_factory_context.h
++++ b/test/mocks/server/server_factory_context.h
+@@ -28,6 +28,7 @@
+ #include "test/mocks/server/options.h"
+ #include "test/mocks/server/overload_manager.h"
+ #include "test/mocks/server/server_lifecycle_notifier.h"
++#include "test/mocks/ssl/mocks.h"
+ #include "test/mocks/stats/mocks.h"
+ #include "test/mocks/thread_local/mocks.h"
+ #include "test/mocks/tracing/mocks.h"
+@@ -77,6 +78,8 @@ public:
+   MOCK_METHOD(Api::Api&, api, ());
+   MOCK_METHOD(TransportSocketFactoryContext&, getTransportSocketFactoryContext, (),
+               (const, override));
++  MOCK_METHOD(Secret::SecretManager&, secretManager, ());
++  MOCK_METHOD(Ssl::ContextManager&, sslContextManager, ());
+   Http::Context& httpContext() override { return http_context_; }
+   Grpc::Context& grpcContext() override { return grpc_context_; }
+   Router::Context& routerContext() override { return router_context_; }
+@@ -93,6 +96,10 @@ public:
+   MOCK_METHOD(bool, shouldBypassOverloadManager, (), (const));
+   MOCK_METHOD(bool, healthCheckFailed, (), (const));
+ 
++  // Useful for when a test needs to change a static secret, which normally cannot be changed or
++  // re-added after it is set. This creates a new secret manager and deletes the old one.
++  void resetSecretManager();
++
+   testing::NiceMock<Config::MockXdsManager> xds_manager_;
+   testing::NiceMock<Upstream::MockClusterManager> cluster_manager_;
+   testing::NiceMock<Event::MockDispatcher> dispatcher_;
+@@ -121,6 +128,12 @@ public:
+   envoy::config::bootstrap::v3::Bootstrap bootstrap_;
+   testing::NiceMock<MockOptions> options_;
+   Regex::GoogleReEngine regex_engine_;
++
++  // Secret manager.
++  testing::NiceMock<MockConfigTracker> config_tracker_;
++  std::unique_ptr<Secret::SecretManager> secret_manager_;
++  // SSL context manager.
++  testing::NiceMock<Ssl::MockContextManager> ssl_context_manager_;
+ };
+ 
+ class MockGenericFactoryContext : public GenericFactoryContext {
+@@ -138,6 +151,21 @@ public:
+   testing::NiceMock<Init::MockManager> init_manager_;
+ };
+ 
++class MockTransportSocketFactoryContext : public TransportSocketFactoryContext {
++public:
++  MockTransportSocketFactoryContext();
++  ~MockTransportSocketFactoryContext() override;
++
++  MOCK_METHOD(ServerFactoryContext&, serverFactoryContext, ());
++  MOCK_METHOD(ProtobufMessage::ValidationVisitor&, messageValidationVisitor, ());
++  MOCK_METHOD(Stats::Scope&, statsScope, ());
++  MOCK_METHOD(Init::Manager&, initManager, ());
++
++  testing::NiceMock<MockServerFactoryContext> server_context_;
++  testing::NiceMock<Stats::MockIsolatedStatsStore> store_;
++  testing::NiceMock<Init::MockManager> init_manager_;
++};
++
+ // Stateless mock ServerFactoryContext for cases where it needs to be used concurrently in different
+ // threads. Global state in the MockServerFactoryContext causes thread safety issues in this case.
+ class StatelessMockServerFactoryContext : public virtual ServerFactoryContext {
+@@ -180,6 +208,8 @@ public:
+   MOCK_METHOD(OverloadManager&, nullOverloadManager, ());
+   MOCK_METHOD(bool, shouldBypassOverloadManager, (), (const));
+   MOCK_METHOD(bool, healthCheckFailed, (), (const));
++  MOCK_METHOD(Secret::SecretManager&, secretManager, ());
++  MOCK_METHOD(Ssl::ContextManager&, sslContextManager, ());
+ };
+ 
+ } // namespace Configuration
+diff --git a/test/mocks/server/transport_socket_factory_context.cc b/test/mocks/server/transport_socket_factory_context.cc
+deleted file mode 100644
+index dc4ab7be3..000000000
+--- a/test/mocks/server/transport_socket_factory_context.cc
++++ /dev/null
+@@ -1,40 +0,0 @@
+-#include "test/mocks/server/transport_socket_factory_context.h"
+-
+-#include <string>
+-
+-#include "gmock/gmock.h"
+-#include "gtest/gtest.h"
+-
+-namespace Envoy {
+-namespace Server {
+-namespace Configuration {
+-
+-using ::testing::ReturnRef;
+-
+-MockTransportSocketFactoryContext::MockTransportSocketFactoryContext() {
+-  resetSecretManager();
+-  ON_CALL(*this, serverFactoryContext()).WillByDefault(ReturnRef(server_context_));
+-  ON_CALL(*this, clusterManager()).WillByDefault(ReturnRef(cluster_manager_));
+-  ON_CALL(*this, messageValidationVisitor())
+-      .WillByDefault(ReturnRef(ProtobufMessage::getStrictValidationVisitor()));
+-  ON_CALL(*this, sslContextManager()).WillByDefault(ReturnRef(context_manager_));
+-  ON_CALL(*this, statsScope()).WillByDefault(ReturnRef(*store_.rootScope()));
+-
+-  ON_CALL(server_context_, serverScope()).WillByDefault(ReturnRef(*store_.rootScope()));
+-  ON_CALL(server_context_, api()).WillByDefault(ReturnRef(api_));
+-  ON_CALL(server_context_, options()).WillByDefault(ReturnRef(options_));
+-  ON_CALL(server_context_, accessLogManager()).WillByDefault(ReturnRef(access_log_manager_));
+-  ON_CALL(server_context_, singletonManager()).WillByDefault(ReturnRef(singleton_manager_));
+-  ON_CALL(server_context_, lifecycleNotifier()).WillByDefault(ReturnRef(lifecycle_notifier_));
+-}
+-
+-MockTransportSocketFactoryContext::~MockTransportSocketFactoryContext() = default;
+-
+-void MockTransportSocketFactoryContext::resetSecretManager() {
+-  config_tracker_.config_tracker_callbacks_.clear();
+-  secret_manager_ = std::make_unique<Secret::SecretManagerImpl>(config_tracker_);
+-}
+-
+-} // namespace Configuration
+-} // namespace Server
+-} // namespace Envoy
+diff --git a/test/mocks/server/transport_socket_factory_context.h b/test/mocks/server/transport_socket_factory_context.h
+deleted file mode 100644
+index badf8ce33..000000000
+--- a/test/mocks/server/transport_socket_factory_context.h
++++ /dev/null
+@@ -1,53 +0,0 @@
+-#pragma once
+-
+-#include "envoy/server/transport_socket_config.h"
+-
+-#include "source/common/secret/secret_manager_impl.h"
+-
+-#include "test/mocks/access_log/mocks.h"
+-#include "test/mocks/api/mocks.h"
+-#include "test/mocks/server/options.h"
+-#include "test/mocks/server/server_factory_context.h"
+-#include "test/mocks/ssl/mocks.h"
+-#include "test/mocks/stats/mocks.h"
+-#include "test/mocks/upstream/cluster_manager.h"
+-
+-#include "gmock/gmock.h"
+-
+-namespace Envoy {
+-namespace Server {
+-namespace Configuration {
+-
+-class MockTransportSocketFactoryContext : public TransportSocketFactoryContext {
+-public:
+-  MockTransportSocketFactoryContext();
+-  ~MockTransportSocketFactoryContext() override;
+-
+-  Secret::SecretManager& secretManager() override { return *(secret_manager_); }
+-
+-  MOCK_METHOD(ServerFactoryContext&, serverFactoryContext, ());
+-  MOCK_METHOD(Upstream::ClusterManager&, clusterManager, ());
+-  MOCK_METHOD(ProtobufMessage::ValidationVisitor&, messageValidationVisitor, ());
+-  MOCK_METHOD(Ssl::ContextManager&, sslContextManager, ());
+-  MOCK_METHOD(Stats::Scope&, statsScope, ());
+-  MOCK_METHOD(Init::Manager&, initManager, ());
+-
+-  // Useful for when a test needs to change a static secret, which normally cannot be changed or
+-  // re-added after it is set. This creates a new secret manager and deletes the old one.
+-  void resetSecretManager();
+-
+-  testing::NiceMock<StatelessMockServerFactoryContext> server_context_;
+-  testing::NiceMock<Upstream::MockClusterManager> cluster_manager_;
+-  testing::NiceMock<Api::MockApi> api_;
+-  testing::NiceMock<MockConfigTracker> config_tracker_;
+-  testing::NiceMock<Ssl::MockContextManager> context_manager_;
+-  testing::NiceMock<Stats::MockIsolatedStatsStore> store_;
+-  testing::NiceMock<Server::MockOptions> options_;
+-  std::unique_ptr<Secret::SecretManager> secret_manager_;
+-  testing::NiceMock<AccessLog::MockAccessLogManager> access_log_manager_;
+-  testing::NiceMock<Envoy::Server::MockServerLifecycleNotifier> lifecycle_notifier_;
+-  Singleton::ManagerImpl singleton_manager_;
+-};
+-} // namespace Configuration
+-} // namespace Server
+-} // namespace Envoy

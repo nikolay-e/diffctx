@@ -1,0 +1,198 @@
+From af6c87a045f413f2ce41d89db55663653a2dca67 Mon Sep 17 00:00:00 2001
+From: Taiki Endo <te316e89@gmail.com>
+Date: Mon, 12 Jun 2023 02:21:50 +0900
+Subject: [PATCH] chore: upgrade remaining 2018 edition crates to 2021 edition
+ (#5788)
+
+---
+ .github/workflows/ci.yml                 | 4 ++--
+ CONTRIBUTING.md                          | 8 ++++----
+ benches/Cargo.toml                       | 2 +-
+ examples/Cargo.toml                      | 2 +-
+ examples/tinyhttp.rs                     | 2 +-
+ stress-test/Cargo.toml                   | 2 +-
+ tests-build/Cargo.toml                   | 2 +-
+ tests-integration/Cargo.toml             | 2 +-
+ tests-integration/tests/process_stdio.rs | 1 -
+ tokio-macros/Cargo.toml                  | 2 +-
+ tokio-stream/fuzz/Cargo.toml             | 2 +-
+ tokio/fuzz/Cargo.toml                    | 2 +-
+ 12 files changed, 15 insertions(+), 16 deletions(-)
+
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 51635a9..582e379 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -495,8 +495,8 @@ jobs:
+       - name: "rustfmt --check"
+         # Workaround for rust-lang/cargo#7732
+         run: |
+-          if ! rustfmt --check --edition 2018 $(git ls-files '*.rs'); then
+-            printf "Please run \`rustfmt --edition 2018 \$(git ls-files '*.rs')\` to fix rustfmt errors.\nSee CONTRIBUTING.md for more details.\n" >&2
++          if ! rustfmt --check --edition 2021 $(git ls-files '*.rs'); then
++            printf "Please run \`rustfmt --edition 2021 \$(git ls-files '*.rs')\` to fix rustfmt errors.\nSee CONTRIBUTING.md for more details.\n" >&2
+             exit 1
+           fi
+ 
+diff --git a/CONTRIBUTING.md b/CONTRIBUTING.md
+index affa70f..57a3bb3 100644
+--- a/CONTRIBUTING.md
++++ b/CONTRIBUTING.md
+@@ -173,10 +173,10 @@ command below instead:
+ 
+ ```
+ # Mac or Linux
+-rustfmt --check --edition 2018 $(git ls-files '*.rs')
++rustfmt --check --edition 2021 $(git ls-files '*.rs')
+ 
+ # Powershell
+-Get-ChildItem . -Filter "*.rs" -Recurse | foreach { rustfmt --check --edition 2018 $_.FullName }
++Get-ChildItem . -Filter "*.rs" -Recurse | foreach { rustfmt --check --edition 2021 $_.FullName }
+ ```
+ The `--check` argument prints the things that need to be fixed. If you remove
+ it, `rustfmt` will update your files locally instead.
+@@ -230,7 +230,7 @@ integration tests in the crate and follow the style.
+ 
+ Some of our crates include a set of fuzz tests, this will be marked by a
+ directory `fuzz`. It is a good idea to run fuzz tests after each change.
+-To get started with fuzz testing you'll need to install 
++To get started with fuzz testing you'll need to install
+ [cargo-fuzz](https://github.com/rust-fuzz/cargo-fuzz).
+ 
+ `cargo install cargo-fuzz`
+@@ -678,4 +678,4 @@ When releasing a new version of a crate, follow these steps:
+ [unit-tests]: https://doc.rust-lang.org/rust-by-example/testing/unit_testing.html
+ [integration-tests]: https://doc.rust-lang.org/rust-by-example/testing/integration_testing.html
+ [documentation-tests]: https://doc.rust-lang.org/rust-by-example/testing/doc_testing.html
+-[conditional-compilation]: https://doc.rust-lang.org/reference/conditional-compilation.html
+\ No newline at end of file
++[conditional-compilation]: https://doc.rust-lang.org/reference/conditional-compilation.html
+diff --git a/benches/Cargo.toml b/benches/Cargo.toml
+index fdbf50c..47a8304 100644
+--- a/benches/Cargo.toml
++++ b/benches/Cargo.toml
+@@ -2,7 +2,7 @@
+ name = "benches"
+ version = "0.0.0"
+ publish = false
+-edition = "2018"
++edition = "2021"
+ 
+ [features]
+ test-util = ["tokio/test-util"]
+diff --git a/examples/Cargo.toml b/examples/Cargo.toml
+index f8592c5..a244fcc 100644
+--- a/examples/Cargo.toml
++++ b/examples/Cargo.toml
+@@ -2,7 +2,7 @@
+ name = "examples"
+ version = "0.0.0"
+ publish = false
+-edition = "2018"
++edition = "2021"
+ 
+ # If you copy one of the examples into a new project, you should be using
+ # [dependencies] instead, and delete the **path**.
+diff --git a/examples/tinyhttp.rs b/examples/tinyhttp.rs
+index 44534c6..8c6184f 100644
+--- a/examples/tinyhttp.rs
++++ b/examples/tinyhttp.rs
+@@ -18,7 +18,7 @@ use futures::SinkExt;
+ use http::{header::HeaderValue, Request, Response, StatusCode};
+ #[macro_use]
+ extern crate serde_derive;
+-use std::{convert::TryFrom, env, error::Error, fmt, io};
++use std::{env, error::Error, fmt, io};
+ use tokio::net::{TcpListener, TcpStream};
+ use tokio_stream::StreamExt;
+ use tokio_util::codec::{Decoder, Encoder, Framed};
+diff --git a/stress-test/Cargo.toml b/stress-test/Cargo.toml
+index e142561..ee7431f 100644
+--- a/stress-test/Cargo.toml
++++ b/stress-test/Cargo.toml
+@@ -2,7 +2,7 @@
+ name = "stress-test"
+ version = "0.1.0"
+ authors = ["Tokio Contributors <team@tokio.rs>"]
+-edition = "2018"
++edition = "2021"
+ publish = false
+ 
+ # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+diff --git a/tests-build/Cargo.toml b/tests-build/Cargo.toml
+index 299af0c..251399c 100644
+--- a/tests-build/Cargo.toml
++++ b/tests-build/Cargo.toml
+@@ -2,7 +2,7 @@
+ name = "tests-build"
+ version = "0.1.0"
+ authors = ["Tokio Contributors <team@tokio.rs>"]
+-edition = "2018"
++edition = "2021"
+ publish = false
+ 
+ [features]
+diff --git a/tests-integration/Cargo.toml b/tests-integration/Cargo.toml
+index 5daeed0..76b9956 100644
+--- a/tests-integration/Cargo.toml
++++ b/tests-integration/Cargo.toml
+@@ -2,7 +2,7 @@
+ name = "tests-integration"
+ version = "0.1.0"
+ authors = ["Tokio Contributors <team@tokio.rs>"]
+-edition = "2018"
++edition = "2021"
+ publish = false
+ 
+ [[bin]]
+diff --git a/tests-integration/tests/process_stdio.rs b/tests-integration/tests/process_stdio.rs
+index 3ccb690..526fd9c 100644
+--- a/tests-integration/tests/process_stdio.rs
++++ b/tests-integration/tests/process_stdio.rs
+@@ -7,7 +7,6 @@ use tokio::process::{Child, Command};
+ use tokio_test::assert_ok;
+ 
+ use futures::future::{self, FutureExt};
+-use std::convert::TryInto;
+ use std::env;
+ use std::io;
+ use std::process::{ExitStatus, Stdio};
+diff --git a/tokio-macros/Cargo.toml b/tokio-macros/Cargo.toml
+index 4ca789d..a028931 100644
+--- a/tokio-macros/Cargo.toml
++++ b/tokio-macros/Cargo.toml
+@@ -5,7 +5,7 @@ name = "tokio-macros"
+ # - Update CHANGELOG.md.
+ # - Create "tokio-macros-1.x.y" git tag.
+ version = "2.1.0"
+-edition = "2018"
++edition = "2021"
+ rust-version = "1.56"
+ authors = ["Tokio Contributors <team@tokio.rs>"]
+ license = "MIT"
+diff --git a/tokio-stream/fuzz/Cargo.toml b/tokio-stream/fuzz/Cargo.toml
+index e1003ee..4a713b1 100644
+--- a/tokio-stream/fuzz/Cargo.toml
++++ b/tokio-stream/fuzz/Cargo.toml
+@@ -2,7 +2,7 @@
+ name = "tokio-stream-fuzz"
+ version = "0.0.0"
+ publish = false
+-edition = "2018"
++edition = "2021"
+ 
+ [package.metadata]
+ cargo-fuzz = true
+diff --git a/tokio/fuzz/Cargo.toml b/tokio/fuzz/Cargo.toml
+index 4b47d7b..be05dc7 100644
+--- a/tokio/fuzz/Cargo.toml
++++ b/tokio/fuzz/Cargo.toml
+@@ -2,7 +2,7 @@
+ name = "tokio-fuzz"
+ version = "0.0.0"
+ publish = false
+-edition = "2018"
++edition = "2021"
+ 
+ [package.metadata]
+ cargo-fuzz = true

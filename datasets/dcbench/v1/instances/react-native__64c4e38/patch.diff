@@ -1,0 +1,1379 @@
+From 64c4e385cb0fbce264d77623b0da4ced65507c04 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Rub=C3=A9n=20Norte?= <rubennorte@meta.com>
+Date: Thu, 18 Jul 2024 05:08:58 -0700
+Subject: [PATCH] Implement Long Tasks API for PerformanceObserver (#45473)
+
+Summary:
+Pull Request resolved: https://github.com/facebook/react-native/pull/45473
+
+This is a basic implementation of the Long Tasks API (https://w3c.github.io/longtasks/).
+
+It detects and reports long tasks when using the Event Loop (in the modern RuntimeScheduler) when a new feature flag for this purpose is enabled.
+
+This doesn't include attribution information at the moment.
+
+Changelog: [internal]
+
+Reviewed By: sammy-SC
+
+Differential Revision: D55491870
+
+fbshipit-source-id: e1ccad9cc6a35073b31230a8cf3a4660ab9a043d
+---
+ .../featureflags/ReactNativeFeatureFlags.kt   |  8 ++-
+ .../ReactNativeFeatureFlagsCxxAccessor.kt     | 12 +++-
+ .../ReactNativeFeatureFlagsCxxInterop.kt      |  4 +-
+ .../ReactNativeFeatureFlagsDefaults.kt        |  4 +-
+ .../ReactNativeFeatureFlagsLocalAccessor.kt   | 13 +++-
+ .../ReactNativeFeatureFlagsProvider.kt        |  4 +-
+ .../JReactNativeFeatureFlagsCxxInterop.cpp    | 16 ++++-
+ .../JReactNativeFeatureFlagsCxxInterop.h      |  5 +-
+ .../featureflags/ReactNativeFeatureFlags.cpp  |  6 +-
+ .../featureflags/ReactNativeFeatureFlags.h    |  7 +-
+ .../ReactNativeFeatureFlagsAccessor.cpp       | 64 +++++++++++-------
+ .../ReactNativeFeatureFlagsAccessor.h         |  6 +-
+ .../ReactNativeFeatureFlagsDefaults.h         |  6 +-
+ .../ReactNativeFeatureFlagsProvider.h         |  3 +-
+ .../NativeReactNativeFeatureFlags.cpp         |  7 +-
+ .../NativeReactNativeFeatureFlags.h           |  4 +-
+ .../NativePerformanceObserver.cpp             |  9 ++-
+ .../timeline/PerformanceEntryReporter.cpp     | 10 +++
+ .../timeline/PerformanceEntryReporter.h       |  7 +-
+ .../renderer/runtimescheduler/CMakeLists.txt  |  2 +
+ .../React-runtimescheduler.podspec            |  2 +
+ .../runtimescheduler/RuntimeScheduler.cpp     |  6 ++
+ .../runtimescheduler/RuntimeScheduler.h       |  5 ++
+ .../RuntimeScheduler_Legacy.cpp               |  5 ++
+ .../RuntimeScheduler_Legacy.h                 |  3 +
+ .../RuntimeScheduler_Modern.cpp               | 31 ++++++++-
+ .../RuntimeScheduler_Modern.h                 | 10 +++
+ .../tests/RuntimeSchedulerTest.cpp            | 66 +++++++++++++++++++
+ .../ReactCommon/react/runtime/CMakeLists.txt  |  1 +
+ .../react/runtime/React-RuntimeCore.podspec   |  1 +
+ .../react/runtime/ReactInstance.cpp           |  4 ++
+ .../ReactNativeFeatureFlags.config.js         |  5 ++
+ .../featureflags/ReactNativeFeatureFlags.js   |  7 +-
+ .../specs/NativeReactNativeFeatureFlags.js    |  3 +-
+ .../webapis/performance/PerformanceEntry.js   |  2 +-
+ .../performance/RawPerformanceEntry.js        |  5 ++
+ .../Performance/PerformanceApiExample.js      | 62 ++++++++++++++---
+ 37 files changed, 360 insertions(+), 55 deletions(-)
+
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt
+index 5ea74ae63e1..4d3932fc3dc 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<2dda5cec029bcd7bb62e428f4b4557f5>>
++ * @generated SignedSource<<3fa1a97be20aa80ef7a1e1595bee0dac>>
+  */
+ 
+ /**
+@@ -82,6 +82,12 @@ public object ReactNativeFeatureFlags {
+   @JvmStatic
+   public fun enableGranularShadowTreeStateReconciliation(): Boolean = accessor.enableGranularShadowTreeStateReconciliation()
+ 
++  /**
++   * Enables the reporting of long tasks through `PerformanceObserver`. Only works if the event loop is enabled.
++   */
++  @JvmStatic
++  public fun enableLongTaskAPI(): Boolean = accessor.enableLongTaskAPI()
++
+   /**
+    * Enables the use of microtasks in Hermes (scheduling) and RuntimeScheduler (execution).
+    */
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt
+index 55653f44df5..6c5f44ced84 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<125b4c5029a2f7f3d10ecd6f5382c46c>>
++ * @generated SignedSource<<89b4a679d8121ece9291dd55c46567ad>>
+  */
+ 
+ /**
+@@ -29,6 +29,7 @@ public class ReactNativeFeatureFlagsCxxAccessor : ReactNativeFeatureFlagsAccesso
+   private var enableAlignItemsBaselineOnFabricIOSCache: Boolean? = null
+   private var enableCleanTextInputYogaNodeCache: Boolean? = null
+   private var enableGranularShadowTreeStateReconciliationCache: Boolean? = null
++  private var enableLongTaskAPICache: Boolean? = null
+   private var enableMicrotasksCache: Boolean? = null
+   private var enablePropsUpdateReconciliationAndroidCache: Boolean? = null
+   private var enableSynchronousStateUpdatesCache: Boolean? = null
+@@ -133,6 +134,15 @@ public class ReactNativeFeatureFlagsCxxAccessor : ReactNativeFeatureFlagsAccesso
+     return cached
+   }
+ 
++  override fun enableLongTaskAPI(): Boolean {
++    var cached = enableLongTaskAPICache
++    if (cached == null) {
++      cached = ReactNativeFeatureFlagsCxxInterop.enableLongTaskAPI()
++      enableLongTaskAPICache = cached
++    }
++    return cached
++  }
++
+   override fun enableMicrotasks(): Boolean {
+     var cached = enableMicrotasksCache
+     if (cached == null) {
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt
+index 548cdbd76c9..c371dd0a3c8 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<15d521183f0efa93c87155890d88cf72>>
++ * @generated SignedSource<<98bd8f4b2b262ac3e75897da515706f5>>
+  */
+ 
+ /**
+@@ -46,6 +46,8 @@ public object ReactNativeFeatureFlagsCxxInterop {
+ 
+   @DoNotStrip @JvmStatic public external fun enableGranularShadowTreeStateReconciliation(): Boolean
+ 
++  @DoNotStrip @JvmStatic public external fun enableLongTaskAPI(): Boolean
++
+   @DoNotStrip @JvmStatic public external fun enableMicrotasks(): Boolean
+ 
+   @DoNotStrip @JvmStatic public external fun enablePropsUpdateReconciliationAndroid(): Boolean
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt
+index c251d476e2c..d5b910ea1d1 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<b1b7c96550acfde22c054d90fd691b49>>
++ * @generated SignedSource<<a42ecd51ef7f12eb8758dbd029a2d67b>>
+  */
+ 
+ /**
+@@ -41,6 +41,8 @@ public open class ReactNativeFeatureFlagsDefaults : ReactNativeFeatureFlagsProvi
+ 
+   override fun enableGranularShadowTreeStateReconciliation(): Boolean = false
+ 
++  override fun enableLongTaskAPI(): Boolean = false
++
+   override fun enableMicrotasks(): Boolean = false
+ 
+   override fun enablePropsUpdateReconciliationAndroid(): Boolean = false
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt
+index a75971522e7..2de5f3a7d44 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<0b90fde158e97c4cad711c3ab832f067>>
++ * @generated SignedSource<<96ed168a0e80e78d1d6f96374f045eca>>
+  */
+ 
+ /**
+@@ -33,6 +33,7 @@ public class ReactNativeFeatureFlagsLocalAccessor : ReactNativeFeatureFlagsAcces
+   private var enableAlignItemsBaselineOnFabricIOSCache: Boolean? = null
+   private var enableCleanTextInputYogaNodeCache: Boolean? = null
+   private var enableGranularShadowTreeStateReconciliationCache: Boolean? = null
++  private var enableLongTaskAPICache: Boolean? = null
+   private var enableMicrotasksCache: Boolean? = null
+   private var enablePropsUpdateReconciliationAndroidCache: Boolean? = null
+   private var enableSynchronousStateUpdatesCache: Boolean? = null
+@@ -146,6 +147,16 @@ public class ReactNativeFeatureFlagsLocalAccessor : ReactNativeFeatureFlagsAcces
+     return cached
+   }
+ 
++  override fun enableLongTaskAPI(): Boolean {
++    var cached = enableLongTaskAPICache
++    if (cached == null) {
++      cached = currentProvider.enableLongTaskAPI()
++      accessedFeatureFlags.add("enableLongTaskAPI")
++      enableLongTaskAPICache = cached
++    }
++    return cached
++  }
++
+   override fun enableMicrotasks(): Boolean {
+     var cached = enableMicrotasksCache
+     if (cached == null) {
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt
+index a9ed3b088ed..9e73803e3fd 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<55fa16b3333fb8e2820a078c68850f91>>
++ * @generated SignedSource<<13469640e36f5985531f872b28ff0c30>>
+  */
+ 
+ /**
+@@ -41,6 +41,8 @@ public interface ReactNativeFeatureFlagsProvider {
+ 
+   @DoNotStrip public fun enableGranularShadowTreeStateReconciliation(): Boolean
+ 
++  @DoNotStrip public fun enableLongTaskAPI(): Boolean
++
+   @DoNotStrip public fun enableMicrotasks(): Boolean
+ 
+   @DoNotStrip public fun enablePropsUpdateReconciliationAndroid(): Boolean
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp
+index 25dc5d54ae3..46d1431650d 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<0be20439a937a322afa27a9c935a98ad>>
++ * @generated SignedSource<<8efce8efb9cc312512b8736ed0073b30>>
+  */
+ 
+ /**
+@@ -93,6 +93,12 @@ class ReactNativeFeatureFlagsProviderHolder
+     return method(javaProvider_);
+   }
+ 
++  bool enableLongTaskAPI() override {
++    static const auto method =
++        getReactNativeFeatureFlagsProviderJavaClass()->getMethod<jboolean()>("enableLongTaskAPI");
++    return method(javaProvider_);
++  }
++
+   bool enableMicrotasks() override {
+     static const auto method =
+         getReactNativeFeatureFlagsProviderJavaClass()->getMethod<jboolean()>("enableMicrotasks");
+@@ -274,6 +280,11 @@ bool JReactNativeFeatureFlagsCxxInterop::enableGranularShadowTreeStateReconcilia
+   return ReactNativeFeatureFlags::enableGranularShadowTreeStateReconciliation();
+ }
+ 
++bool JReactNativeFeatureFlagsCxxInterop::enableLongTaskAPI(
++    facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop> /*unused*/) {
++  return ReactNativeFeatureFlags::enableLongTaskAPI();
++}
++
+ bool JReactNativeFeatureFlagsCxxInterop::enableMicrotasks(
+     facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop> /*unused*/) {
+   return ReactNativeFeatureFlags::enableMicrotasks();
+@@ -428,6 +439,9 @@ void JReactNativeFeatureFlagsCxxInterop::registerNatives() {
+       makeNativeMethod(
+         "enableGranularShadowTreeStateReconciliation",
+         JReactNativeFeatureFlagsCxxInterop::enableGranularShadowTreeStateReconciliation),
++      makeNativeMethod(
++        "enableLongTaskAPI",
++        JReactNativeFeatureFlagsCxxInterop::enableLongTaskAPI),
+       makeNativeMethod(
+         "enableMicrotasks",
+         JReactNativeFeatureFlagsCxxInterop::enableMicrotasks),
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h
+index bd890fdbbc7..7f180c57cd2 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<5771674cf23f066fb2c7a493441e9967>>
++ * @generated SignedSource<<d7599e61abcedfa8a7f3270f2b0cd9ef>>
+  */
+ 
+ /**
+@@ -57,6 +57,9 @@ class JReactNativeFeatureFlagsCxxInterop
+   static bool enableGranularShadowTreeStateReconciliation(
+     facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop>);
+ 
++  static bool enableLongTaskAPI(
++    facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop>);
++
+   static bool enableMicrotasks(
+     facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop>);
+ 
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp
+index 22034069e7c..22b75fdcd4e 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<0f673fbed5f3cce13f7a42a8817ed404>>
++ * @generated SignedSource<<ce0749b4f2ccf11b420cb9762012c02b>>
+  */
+ 
+ /**
+@@ -57,6 +57,10 @@ bool ReactNativeFeatureFlags::enableGranularShadowTreeStateReconciliation() {
+   return getAccessor().enableGranularShadowTreeStateReconciliation();
+ }
+ 
++bool ReactNativeFeatureFlags::enableLongTaskAPI() {
++  return getAccessor().enableLongTaskAPI();
++}
++
+ bool ReactNativeFeatureFlags::enableMicrotasks() {
+   return getAccessor().enableMicrotasks();
+ }
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h
+index 47350ccbed9..a869cf31413 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<f9c32a7245be31e900aa51f2b93a61d4>>
++ * @generated SignedSource<<5b0c518e45a5c98814c8151870aed591>>
+  */
+ 
+ /**
+@@ -82,6 +82,11 @@ class ReactNativeFeatureFlags {
+    */
+   RN_EXPORT static bool enableGranularShadowTreeStateReconciliation();
+ 
++  /**
++   * Enables the reporting of long tasks through `PerformanceObserver`. Only works if the event loop is enabled.
++   */
++  RN_EXPORT static bool enableLongTaskAPI();
++
+   /**
+    * Enables the use of microtasks in Hermes (scheduling) and RuntimeScheduler (execution).
+    */
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp
+index ed6456c75fb..baddfd65fee 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<1ee6db4bee3b22c31d5f70785ea9e91a>>
++ * @generated SignedSource<<18ca9d8ecd307861ff00736d18c517f4>>
+  */
+ 
+ /**
+@@ -191,6 +191,24 @@ bool ReactNativeFeatureFlagsAccessor::enableGranularShadowTreeStateReconciliatio
+   return flagValue.value();
+ }
+ 
++bool ReactNativeFeatureFlagsAccessor::enableLongTaskAPI() {
++  auto flagValue = enableLongTaskAPI_.load();
++
++  if (!flagValue.has_value()) {
++    // This block is not exclusive but it is not necessary.
++    // If multiple threads try to initialize the feature flag, we would only
++    // be accessing the provider multiple times but the end state of this
++    // instance and the returned flag value would be the same.
++
++    markFlagAsAccessed(9, "enableLongTaskAPI");
++
++    flagValue = currentProvider_->enableLongTaskAPI();
++    enableLongTaskAPI_ = flagValue;
++  }
++
++  return flagValue.value();
++}
++
+ bool ReactNativeFeatureFlagsAccessor::enableMicrotasks() {
+   auto flagValue = enableMicrotasks_.load();
+ 
+@@ -200,7 +218,7 @@ bool ReactNativeFeatureFlagsAccessor::enableMicrotasks() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(9, "enableMicrotasks");
++    markFlagAsAccessed(10, "enableMicrotasks");
+ 
+     flagValue = currentProvider_->enableMicrotasks();
+     enableMicrotasks_ = flagValue;
+@@ -218,7 +236,7 @@ bool ReactNativeFeatureFlagsAccessor::enablePropsUpdateReconciliationAndroid() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(10, "enablePropsUpdateReconciliationAndroid");
++    markFlagAsAccessed(11, "enablePropsUpdateReconciliationAndroid");
+ 
+     flagValue = currentProvider_->enablePropsUpdateReconciliationAndroid();
+     enablePropsUpdateReconciliationAndroid_ = flagValue;
+@@ -236,7 +254,7 @@ bool ReactNativeFeatureFlagsAccessor::enableSynchronousStateUpdates() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(11, "enableSynchronousStateUpdates");
++    markFlagAsAccessed(12, "enableSynchronousStateUpdates");
+ 
+     flagValue = currentProvider_->enableSynchronousStateUpdates();
+     enableSynchronousStateUpdates_ = flagValue;
+@@ -254,7 +272,7 @@ bool ReactNativeFeatureFlagsAccessor::enableUIConsistency() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(12, "enableUIConsistency");
++    markFlagAsAccessed(13, "enableUIConsistency");
+ 
+     flagValue = currentProvider_->enableUIConsistency();
+     enableUIConsistency_ = flagValue;
+@@ -272,7 +290,7 @@ bool ReactNativeFeatureFlagsAccessor::fetchImagesInViewPreallocation() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(13, "fetchImagesInViewPreallocation");
++    markFlagAsAccessed(14, "fetchImagesInViewPreallocation");
+ 
+     flagValue = currentProvider_->fetchImagesInViewPreallocation();
+     fetchImagesInViewPreallocation_ = flagValue;
+@@ -290,7 +308,7 @@ bool ReactNativeFeatureFlagsAccessor::fixIncorrectScrollViewStateUpdateOnAndroid
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(14, "fixIncorrectScrollViewStateUpdateOnAndroid");
++    markFlagAsAccessed(15, "fixIncorrectScrollViewStateUpdateOnAndroid");
+ 
+     flagValue = currentProvider_->fixIncorrectScrollViewStateUpdateOnAndroid();
+     fixIncorrectScrollViewStateUpdateOnAndroid_ = flagValue;
+@@ -308,7 +326,7 @@ bool ReactNativeFeatureFlagsAccessor::fixMappingOfEventPrioritiesBetweenFabricAn
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(15, "fixMappingOfEventPrioritiesBetweenFabricAndReact");
++    markFlagAsAccessed(16, "fixMappingOfEventPrioritiesBetweenFabricAndReact");
+ 
+     flagValue = currentProvider_->fixMappingOfEventPrioritiesBetweenFabricAndReact();
+     fixMappingOfEventPrioritiesBetweenFabricAndReact_ = flagValue;
+@@ -326,7 +344,7 @@ bool ReactNativeFeatureFlagsAccessor::fixMissedFabricStateUpdatesOnAndroid() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(16, "fixMissedFabricStateUpdatesOnAndroid");
++    markFlagAsAccessed(17, "fixMissedFabricStateUpdatesOnAndroid");
+ 
+     flagValue = currentProvider_->fixMissedFabricStateUpdatesOnAndroid();
+     fixMissedFabricStateUpdatesOnAndroid_ = flagValue;
+@@ -344,7 +362,7 @@ bool ReactNativeFeatureFlagsAccessor::forceBatchingMountItemsOnAndroid() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(17, "forceBatchingMountItemsOnAndroid");
++    markFlagAsAccessed(18, "forceBatchingMountItemsOnAndroid");
+ 
+     flagValue = currentProvider_->forceBatchingMountItemsOnAndroid();
+     forceBatchingMountItemsOnAndroid_ = flagValue;
+@@ -362,7 +380,7 @@ bool ReactNativeFeatureFlagsAccessor::fuseboxEnabledDebug() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(18, "fuseboxEnabledDebug");
++    markFlagAsAccessed(19, "fuseboxEnabledDebug");
+ 
+     flagValue = currentProvider_->fuseboxEnabledDebug();
+     fuseboxEnabledDebug_ = flagValue;
+@@ -380,7 +398,7 @@ bool ReactNativeFeatureFlagsAccessor::fuseboxEnabledRelease() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(19, "fuseboxEnabledRelease");
++    markFlagAsAccessed(20, "fuseboxEnabledRelease");
+ 
+     flagValue = currentProvider_->fuseboxEnabledRelease();
+     fuseboxEnabledRelease_ = flagValue;
+@@ -398,7 +416,7 @@ bool ReactNativeFeatureFlagsAccessor::initEagerTurboModulesOnNativeModulesQueueA
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(20, "initEagerTurboModulesOnNativeModulesQueueAndroid");
++    markFlagAsAccessed(21, "initEagerTurboModulesOnNativeModulesQueueAndroid");
+ 
+     flagValue = currentProvider_->initEagerTurboModulesOnNativeModulesQueueAndroid();
+     initEagerTurboModulesOnNativeModulesQueueAndroid_ = flagValue;
+@@ -416,7 +434,7 @@ bool ReactNativeFeatureFlagsAccessor::lazyAnimationCallbacks() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(21, "lazyAnimationCallbacks");
++    markFlagAsAccessed(22, "lazyAnimationCallbacks");
+ 
+     flagValue = currentProvider_->lazyAnimationCallbacks();
+     lazyAnimationCallbacks_ = flagValue;
+@@ -434,7 +452,7 @@ bool ReactNativeFeatureFlagsAccessor::loadVectorDrawablesOnImages() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(22, "loadVectorDrawablesOnImages");
++    markFlagAsAccessed(23, "loadVectorDrawablesOnImages");
+ 
+     flagValue = currentProvider_->loadVectorDrawablesOnImages();
+     loadVectorDrawablesOnImages_ = flagValue;
+@@ -452,7 +470,7 @@ bool ReactNativeFeatureFlagsAccessor::setAndroidLayoutDirection() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(23, "setAndroidLayoutDirection");
++    markFlagAsAccessed(24, "setAndroidLayoutDirection");
+ 
+     flagValue = currentProvider_->setAndroidLayoutDirection();
+     setAndroidLayoutDirection_ = flagValue;
+@@ -470,7 +488,7 @@ bool ReactNativeFeatureFlagsAccessor::useImmediateExecutorInAndroidBridgeless()
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(24, "useImmediateExecutorInAndroidBridgeless");
++    markFlagAsAccessed(25, "useImmediateExecutorInAndroidBridgeless");
+ 
+     flagValue = currentProvider_->useImmediateExecutorInAndroidBridgeless();
+     useImmediateExecutorInAndroidBridgeless_ = flagValue;
+@@ -488,7 +506,7 @@ bool ReactNativeFeatureFlagsAccessor::useModernRuntimeScheduler() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(25, "useModernRuntimeScheduler");
++    markFlagAsAccessed(26, "useModernRuntimeScheduler");
+ 
+     flagValue = currentProvider_->useModernRuntimeScheduler();
+     useModernRuntimeScheduler_ = flagValue;
+@@ -506,7 +524,7 @@ bool ReactNativeFeatureFlagsAccessor::useNativeViewConfigsInBridgelessMode() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(26, "useNativeViewConfigsInBridgelessMode");
++    markFlagAsAccessed(27, "useNativeViewConfigsInBridgelessMode");
+ 
+     flagValue = currentProvider_->useNativeViewConfigsInBridgelessMode();
+     useNativeViewConfigsInBridgelessMode_ = flagValue;
+@@ -524,7 +542,7 @@ bool ReactNativeFeatureFlagsAccessor::useNewReactImageViewBackgroundDrawing() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(27, "useNewReactImageViewBackgroundDrawing");
++    markFlagAsAccessed(28, "useNewReactImageViewBackgroundDrawing");
+ 
+     flagValue = currentProvider_->useNewReactImageViewBackgroundDrawing();
+     useNewReactImageViewBackgroundDrawing_ = flagValue;
+@@ -542,7 +560,7 @@ bool ReactNativeFeatureFlagsAccessor::useRuntimeShadowNodeReferenceUpdate() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(28, "useRuntimeShadowNodeReferenceUpdate");
++    markFlagAsAccessed(29, "useRuntimeShadowNodeReferenceUpdate");
+ 
+     flagValue = currentProvider_->useRuntimeShadowNodeReferenceUpdate();
+     useRuntimeShadowNodeReferenceUpdate_ = flagValue;
+@@ -560,7 +578,7 @@ bool ReactNativeFeatureFlagsAccessor::useRuntimeShadowNodeReferenceUpdateOnLayou
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(29, "useRuntimeShadowNodeReferenceUpdateOnLayout");
++    markFlagAsAccessed(30, "useRuntimeShadowNodeReferenceUpdateOnLayout");
+ 
+     flagValue = currentProvider_->useRuntimeShadowNodeReferenceUpdateOnLayout();
+     useRuntimeShadowNodeReferenceUpdateOnLayout_ = flagValue;
+@@ -578,7 +596,7 @@ bool ReactNativeFeatureFlagsAccessor::useStateAlignmentMechanism() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(30, "useStateAlignmentMechanism");
++    markFlagAsAccessed(31, "useStateAlignmentMechanism");
+ 
+     flagValue = currentProvider_->useStateAlignmentMechanism();
+     useStateAlignmentMechanism_ = flagValue;
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h
+index 54fb1b5856a..8d03c541454 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<6c2bca1240818fc2c13b76943f9954d7>>
++ * @generated SignedSource<<6f05e241733069ee1bacf671365d8390>>
+  */
+ 
+ /**
+@@ -40,6 +40,7 @@ class ReactNativeFeatureFlagsAccessor {
+   bool enableAlignItemsBaselineOnFabricIOS();
+   bool enableCleanTextInputYogaNode();
+   bool enableGranularShadowTreeStateReconciliation();
++  bool enableLongTaskAPI();
+   bool enableMicrotasks();
+   bool enablePropsUpdateReconciliationAndroid();
+   bool enableSynchronousStateUpdates();
+@@ -72,7 +73,7 @@ class ReactNativeFeatureFlagsAccessor {
+   std::unique_ptr<ReactNativeFeatureFlagsProvider> currentProvider_;
+   bool wasOverridden_;
+ 
+-  std::array<std::atomic<const char*>, 31> accessedFeatureFlags_;
++  std::array<std::atomic<const char*>, 32> accessedFeatureFlags_;
+ 
+   std::atomic<std::optional<bool>> commonTestFlag_;
+   std::atomic<std::optional<bool>> allowCollapsableChildren_;
+@@ -83,6 +84,7 @@ class ReactNativeFeatureFlagsAccessor {
+   std::atomic<std::optional<bool>> enableAlignItemsBaselineOnFabricIOS_;
+   std::atomic<std::optional<bool>> enableCleanTextInputYogaNode_;
+   std::atomic<std::optional<bool>> enableGranularShadowTreeStateReconciliation_;
++  std::atomic<std::optional<bool>> enableLongTaskAPI_;
+   std::atomic<std::optional<bool>> enableMicrotasks_;
+   std::atomic<std::optional<bool>> enablePropsUpdateReconciliationAndroid_;
+   std::atomic<std::optional<bool>> enableSynchronousStateUpdates_;
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h
+index 75a1f0a67fe..08fd5e08631 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<ebec2a3e1d7ef46a365a1a401c1e35be>>
++ * @generated SignedSource<<c6b9aaa642199af1c7669d78054b061d>>
+  */
+ 
+ /**
+@@ -63,6 +63,10 @@ class ReactNativeFeatureFlagsDefaults : public ReactNativeFeatureFlagsProvider {
+     return false;
+   }
+ 
++  bool enableLongTaskAPI() override {
++    return false;
++  }
++
+   bool enableMicrotasks() override {
+     return false;
+   }
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h
+index 313aecdb297..215a3992df4 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<b44437e700a8290b8376ba3ba438b219>>
++ * @generated SignedSource<<21fa85ad4854cc37f3699a3adcb15813>>
+  */
+ 
+ /**
+@@ -34,6 +34,7 @@ class ReactNativeFeatureFlagsProvider {
+   virtual bool enableAlignItemsBaselineOnFabricIOS() = 0;
+   virtual bool enableCleanTextInputYogaNode() = 0;
+   virtual bool enableGranularShadowTreeStateReconciliation() = 0;
++  virtual bool enableLongTaskAPI() = 0;
+   virtual bool enableMicrotasks() = 0;
+   virtual bool enablePropsUpdateReconciliationAndroid() = 0;
+   virtual bool enableSynchronousStateUpdates() = 0;
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp
+index 59d57f081af..16997bb5f42 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp
++++ b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<8458b6146882bfab11157e94eaaf9967>>
++ * @generated SignedSource<<8240a36100c3657e90d6388afdcf26e8>>
+  */
+ 
+ /**
+@@ -82,6 +82,11 @@ bool NativeReactNativeFeatureFlags::enableGranularShadowTreeStateReconciliation(
+   return ReactNativeFeatureFlags::enableGranularShadowTreeStateReconciliation();
+ }
+ 
++bool NativeReactNativeFeatureFlags::enableLongTaskAPI(
++    jsi::Runtime& /*runtime*/) {
++  return ReactNativeFeatureFlags::enableLongTaskAPI();
++}
++
+ bool NativeReactNativeFeatureFlags::enableMicrotasks(
+     jsi::Runtime& /*runtime*/) {
+   return ReactNativeFeatureFlags::enableMicrotasks();
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h
+index f22e5be46c2..4c5d6ddca1b 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h
++++ b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<aba10d883579d14504ffed720e44cb2a>>
++ * @generated SignedSource<<36ba8783cdd7ccb5d745dffb978d13ec>>
+  */
+ 
+ /**
+@@ -53,6 +53,8 @@ class NativeReactNativeFeatureFlags
+ 
+   bool enableGranularShadowTreeStateReconciliation(jsi::Runtime& runtime);
+ 
++  bool enableLongTaskAPI(jsi::Runtime& runtime);
++
+   bool enableMicrotasks(jsi::Runtime& runtime);
+ 
+   bool enablePropsUpdateReconciliationAndroid(jsi::Runtime& runtime);
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/webperformance/NativePerformanceObserver.cpp b/packages/react-native/ReactCommon/react/nativemodule/webperformance/NativePerformanceObserver.cpp
+index b84c961c282..6ec448ad426 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/webperformance/NativePerformanceObserver.cpp
++++ b/packages/react-native/ReactCommon/react/nativemodule/webperformance/NativePerformanceObserver.cpp
+@@ -9,6 +9,7 @@
+ 
+ #include "NativePerformanceObserver.h"
+ 
++#include <react/featureflags/ReactNativeFeatureFlags.h>
+ #include <react/performance/timeline/PerformanceEntryReporter.h>
+ #include <react/renderer/uimanager/UIManagerBinding.h>
+ #include <react/utils/CoreFeatures.h>
+@@ -113,11 +114,17 @@ std::vector<PerformanceEntry> NativePerformanceObserver::getEntries(
+ std::vector<PerformanceEntryType>
+ NativePerformanceObserver::getSupportedPerformanceEntryTypes(
+     jsi::Runtime& /*rt*/) {
+-  return {
++  std::vector supportedEntries = {
+       PerformanceEntryType::MARK,
+       PerformanceEntryType::MEASURE,
+       PerformanceEntryType::EVENT,
+   };
++
++  if (ReactNativeFeatureFlags::enableLongTaskAPI()) {
++    supportedEntries.push_back(PerformanceEntryType::LONGTASK);
++  }
++
++  return supportedEntries;
+ }
+ 
+ } // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/react/performance/timeline/PerformanceEntryReporter.cpp b/packages/react-native/ReactCommon/react/performance/timeline/PerformanceEntryReporter.cpp
+index 33fa784d72b..7559022beab 100644
+--- a/packages/react-native/ReactCommon/react/performance/timeline/PerformanceEntryReporter.cpp
++++ b/packages/react-native/ReactCommon/react/performance/timeline/PerformanceEntryReporter.cpp
+@@ -287,6 +287,16 @@ void PerformanceEntryReporter::logEventEntry(
+        .interactionId = interactionId});
+ }
+ 
++void PerformanceEntryReporter::logLongTaskEntry(
++    DOMHighResTimeStamp startTime,
++    DOMHighResTimeStamp duration) {
++  logEntry(
++      {.name = std::string{"self"},
++       .entryType = PerformanceEntryType::LONGTASK,
++       .startTime = startTime,
++       .duration = duration});
++}
++
+ void PerformanceEntryReporter::scheduleFlushBuffer() {
+   if (callback_) {
+     callback_();
+diff --git a/packages/react-native/ReactCommon/react/performance/timeline/PerformanceEntryReporter.h b/packages/react-native/ReactCommon/react/performance/timeline/PerformanceEntryReporter.h
+index 7a4d313fb1b..1f2615270f9 100644
+--- a/packages/react-native/ReactCommon/react/performance/timeline/PerformanceEntryReporter.h
++++ b/packages/react-native/ReactCommon/react/performance/timeline/PerformanceEntryReporter.h
+@@ -28,7 +28,8 @@ enum class PerformanceEntryType {
+   MARK = 1,
+   MEASURE = 2,
+   EVENT = 3,
+-  _NEXT = 4,
++  LONGTASK = 4,
++  _NEXT = 5,
+ };
+ 
+ struct PerformanceEntry {
+@@ -80,6 +81,8 @@ struct PerformanceEntryBuffer {
+ constexpr size_t NUM_PERFORMANCE_ENTRY_TYPES =
+     (size_t)PerformanceEntryType::_NEXT - 1; // Valid types start from 1.
+ 
++constexpr DOMHighResTimeStamp LONG_TASK_DURATION_THRESHOLD_MS = 50.0;
++
+ class PerformanceEntryReporter {
+  public:
+   PerformanceEntryReporter();
+@@ -157,6 +160,8 @@ class PerformanceEntryReporter {
+       double processingEnd,
+       uint32_t interactionId);
+ 
++  void logLongTaskEntry(double startTime, double duration);
++
+   const std::unordered_map<std::string, uint32_t>& getEventCounts() const {
+     return eventCounts_;
+   }
+diff --git a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/CMakeLists.txt b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/CMakeLists.txt
+index 9149d39eeab..ec62d4df3ca 100644
+--- a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/CMakeLists.txt
++++ b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/CMakeLists.txt
+@@ -23,8 +23,10 @@ target_link_libraries(react_render_runtimescheduler
+         callinvoker
+         jsi
+         react_debug
++        react_performance_timeline
+         react_render_consistency
+         react_render_debug
++        react_timing
+         react_utils
+         react_featureflags
+         runtimeexecutor)
+diff --git a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/React-runtimescheduler.podspec b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/React-runtimescheduler.podspec
+index 3fbd814fb03..fa814337022 100644
+--- a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/React-runtimescheduler.podspec
++++ b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/React-runtimescheduler.podspec
+@@ -57,9 +57,11 @@ Pod::Spec.new do |s|
+   s.dependency "React-rendererdebug"
+   s.dependency "React-utils"
+   s.dependency "React-featureflags"
++  s.dependency "React-timing"
+   s.dependency "glog"
+   s.dependency "RCT-Folly", folly_version
+   s.dependency "React-jsi"
++  s.dependency "React-performancetimeline"
+   s.dependency "React-rendererconsistency"
+   add_dependency(s, "React-debug")
+ 
+diff --git a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler.cpp b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler.cpp
+index b34467b2b47..24c9f617f02 100644
+--- a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler.cpp
++++ b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler.cpp
+@@ -102,4 +102,10 @@ void RuntimeScheduler::setShadowTreeRevisionConsistencyManager(
+       shadowTreeRevisionConsistencyManager);
+ }
+ 
++void RuntimeScheduler::setPerformanceEntryReporter(
++    PerformanceEntryReporter* performanceEntryReporter) {
++  return runtimeSchedulerImpl_->setPerformanceEntryReporter(
++      performanceEntryReporter);
++}
++
+ } // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler.h b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler.h
+index 277f171d48c..6cd772e447d 100644
+--- a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler.h
++++ b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler.h
+@@ -8,6 +8,7 @@
+ #pragma once
+ 
+ #include <ReactCommon/RuntimeExecutor.h>
++#include <react/performance/timeline/PerformanceEntryReporter.h>
+ #include <react/renderer/consistency/ShadowTreeRevisionConsistencyManager.h>
+ #include <react/renderer/runtimescheduler/RuntimeSchedulerClock.h>
+ #include <react/renderer/runtimescheduler/SchedulerPriorityUtils.h>
+@@ -48,6 +49,8 @@ class RuntimeSchedulerBase {
+       RuntimeSchedulerRenderingUpdate&& renderingUpdate) = 0;
+   virtual void setShadowTreeRevisionConsistencyManager(
+       ShadowTreeRevisionConsistencyManager* provider) = 0;
++  virtual void setPerformanceEntryReporter(
++      PerformanceEntryReporter* reporter) = 0;
+ };
+ 
+ // This is a proxy for RuntimeScheduler implementation, which will be selected
+@@ -154,6 +157,8 @@ class RuntimeScheduler final : RuntimeSchedulerBase {
+       ShadowTreeRevisionConsistencyManager*
+           shadowTreeRevisionConsistencyManager) override;
+ 
++  void setPerformanceEntryReporter(PerformanceEntryReporter* reporter) override;
++
+  private:
+   // Actual implementation, stored as a unique pointer to simplify memory
+   // management.
+diff --git a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Legacy.cpp b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Legacy.cpp
+index 4683a2c2945..5129d416a4f 100644
+--- a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Legacy.cpp
++++ b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Legacy.cpp
+@@ -188,6 +188,11 @@ void RuntimeScheduler_Legacy::setShadowTreeRevisionConsistencyManager(
+   shadowTreeRevisionConsistencyManager_ = shadowTreeRevisionConsistencyManager;
+ }
+ 
++void RuntimeScheduler_Legacy::setPerformanceEntryReporter(
++    PerformanceEntryReporter* /*performanceEntryReporter*/) {
++  // No-op in the legacy scheduler
++}
++
+ #pragma mark - Private
+ 
+ void RuntimeScheduler_Legacy::scheduleWorkLoopIfNecessary() {
+diff --git a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Legacy.h b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Legacy.h
+index 7ecc15a47a2..abd7a13a287 100644
+--- a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Legacy.h
++++ b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Legacy.h
+@@ -127,6 +127,9 @@ class RuntimeScheduler_Legacy final : public RuntimeSchedulerBase {
+       ShadowTreeRevisionConsistencyManager*
+           shadowTreeRevisionConsistencyManager) override;
+ 
++  void setPerformanceEntryReporter(
++      PerformanceEntryReporter* performanceEntryReporter) override;
++
+  private:
+   std::priority_queue<
+       std::shared_ptr<Task>,
+diff --git a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Modern.cpp b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Modern.cpp
+index 6684f62c7e2..2969fb3de6b 100644
+--- a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Modern.cpp
++++ b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Modern.cpp
+@@ -12,6 +12,7 @@
+ #include <cxxreact/SystraceSection.h>
+ #include <react/featureflags/ReactNativeFeatureFlags.h>
+ #include <react/renderer/consistency/ScopedShadowTreeRevisionLock.h>
++#include <react/timing/primitives.h>
+ #include <react/utils/OnScopeExit.h>
+ #include <utility>
+ 
+@@ -217,6 +218,11 @@ void RuntimeScheduler_Modern::setShadowTreeRevisionConsistencyManager(
+   shadowTreeRevisionConsistencyManager_ = shadowTreeRevisionConsistencyManager;
+ }
+ 
++void RuntimeScheduler_Modern::setPerformanceEntryReporter(
++    PerformanceEntryReporter* performanceEntryReporter) {
++  performanceEntryReporter_ = performanceEntryReporter;
++}
++
+ #pragma mark - Private
+ 
+ void RuntimeScheduler_Modern::scheduleTask(std::shared_ptr<Task> task) {
+@@ -300,7 +306,7 @@ std::shared_ptr<Task> RuntimeScheduler_Modern::selectTask(
+ void RuntimeScheduler_Modern::runEventLoopTick(
+     jsi::Runtime& runtime,
+     Task& task,
+-    RuntimeSchedulerTimePoint currentTime) {
++    RuntimeSchedulerTimePoint taskStartTime) {
+   SystraceSection s("RuntimeScheduler::runEventLoopTick");
+ 
+   currentTask_ = &task;
+@@ -310,7 +316,7 @@ void RuntimeScheduler_Modern::runEventLoopTick(
+     ScopedShadowTreeRevisionLock revisionLock(
+         shadowTreeRevisionConsistencyManager_);
+ 
+-    auto didUserCallbackTimeout = task.expirationTime <= currentTime;
++    auto didUserCallbackTimeout = task.expirationTime <= taskStartTime;
+     executeTask(runtime, task, didUserCallbackTimeout);
+ 
+     if (ReactNativeFeatureFlags::enableMicrotasks()) {
+@@ -322,6 +328,11 @@ void RuntimeScheduler_Modern::runEventLoopTick(
+       // "Update the rendering" step.
+       updateRendering();
+     }
++
++    if (ReactNativeFeatureFlags::enableLongTaskAPI()) {
++      auto taskEndTime = now_();
++      reportLongTasks(task, taskStartTime, taskEndTime);
++    }
+   }
+ 
+   currentTask_ = nullptr;
+@@ -408,4 +419,20 @@ void RuntimeScheduler_Modern::performMicrotaskCheckpoint(
+   }
+ }
+ 
++void RuntimeScheduler_Modern::reportLongTasks(
++    const Task& /*task*/,
++    RuntimeSchedulerTimePoint startTime,
++    RuntimeSchedulerTimePoint endTime) {
++  auto reporter = performanceEntryReporter_;
++  if (reporter == nullptr) {
++    return;
++  }
++
++  auto durationMs = chronoToDOMHighResTimeStamp(endTime - startTime);
++  if (durationMs >= LONG_TASK_DURATION_THRESHOLD_MS) {
++    auto startTimeMs = chronoToDOMHighResTimeStamp(startTime);
++    reporter->logLongTaskEntry(startTimeMs, durationMs);
++  }
++}
++
+ } // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Modern.h b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Modern.h
+index 90f5d81a033..67c01a25365 100644
+--- a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Modern.h
++++ b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Modern.h
+@@ -144,6 +144,9 @@ class RuntimeScheduler_Modern final : public RuntimeSchedulerBase {
+       ShadowTreeRevisionConsistencyManager*
+           shadowTreeRevisionConsistencyManager) override;
+ 
++  void setPerformanceEntryReporter(
++      PerformanceEntryReporter* performanceEntryReporter) override;
++
+  private:
+   std::atomic<uint_fast8_t> syncTaskRequests_{0};
+ 
+@@ -193,6 +196,11 @@ class RuntimeScheduler_Modern final : public RuntimeSchedulerBase {
+   bool performingMicrotaskCheckpoint_{false};
+   void performMicrotaskCheckpoint(jsi::Runtime& runtime);
+ 
++  void reportLongTasks(
++      const Task& task,
++      RuntimeSchedulerTimePoint startTime,
++      RuntimeSchedulerTimePoint endTime);
++
+   /*
+    * Returns a time point representing the current point in time. May be called
+    * from multiple threads.
+@@ -208,6 +216,8 @@ class RuntimeScheduler_Modern final : public RuntimeSchedulerBase {
+   std::queue<RuntimeSchedulerRenderingUpdate> pendingRenderingUpdates_;
+   ShadowTreeRevisionConsistencyManager* shadowTreeRevisionConsistencyManager_{
+       nullptr};
++
++  PerformanceEntryReporter* performanceEntryReporter_{nullptr};
+ };
+ 
+ } // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/tests/RuntimeSchedulerTest.cpp b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/tests/RuntimeSchedulerTest.cpp
+index 27bf5852ecd..9aa37a14283 100644
+--- a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/tests/RuntimeSchedulerTest.cpp
++++ b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/tests/RuntimeSchedulerTest.cpp
+@@ -10,6 +10,7 @@
+ #include <jsi/jsi.h>
+ #include <react/featureflags/ReactNativeFeatureFlags.h>
+ #include <react/featureflags/ReactNativeFeatureFlagsDefaults.h>
++#include <react/performance/timeline/PerformanceEntryReporter.h>
+ #include <react/renderer/runtimescheduler/RuntimeScheduler.h>
+ #include <memory>
+ #include <semaphore>
+@@ -42,6 +43,10 @@ class RuntimeSchedulerTestFeatureFlags
+     return forcedBatchRenderingUpdatesInEventLoop;
+   }
+ 
++  bool enableLongTaskAPI() override {
++    return true;
++  }
++
+  private:
+   bool useModernRuntimeScheduler_;
+ };
+@@ -77,12 +82,19 @@ class RuntimeSchedulerTest : public testing::TestWithParam<bool> {
+       return stubClock_->getNow();
+     };
+ 
++    performanceEntryReporter_ = PerformanceEntryReporter::getInstance().get();
++
++    performanceEntryReporter_->startReporting(PerformanceEntryType::LONGTASK);
++
+     runtimeScheduler_ =
+         std::make_unique<RuntimeScheduler>(runtimeExecutor, stubNow);
++
++    runtimeScheduler_->setPerformanceEntryReporter(performanceEntryReporter_);
+   }
+ 
+   void TearDown() override {
+     ReactNativeFeatureFlags::dangerouslyReset();
++    performanceEntryReporter_->popPendingEntries();
+   }
+ 
+   jsi::Function createHostFunctionFromLambda(
+@@ -109,6 +121,7 @@ class RuntimeSchedulerTest : public testing::TestWithParam<bool> {
+   std::unique_ptr<StubQueue> stubQueue_;
+   std::unique_ptr<RuntimeScheduler> runtimeScheduler_;
+   std::shared_ptr<StubErrorUtils> stubErrorUtils_;
++  PerformanceEntryReporter* performanceEntryReporter_{};
+ };
+ 
+ TEST_P(RuntimeSchedulerTest, now) {
+@@ -1166,6 +1179,59 @@ TEST_P(RuntimeSchedulerTest, errorInTaskShouldNotStopMicrotasks) {
+   EXPECT_EQ(stubErrorUtils_->getReportFatalCallCount(), 1);
+ }
+ 
++TEST_P(RuntimeSchedulerTest, reportsLongTasks) {
++  // Only for modern runtime scheduler
++  if (!GetParam()) {
++    return;
++  }
++
++  bool didRunTask1 = false;
++  stubClock_->setTimePoint(10ms);
++
++  auto callback1 = createHostFunctionFromLambda([&](bool /* unused */) {
++    didRunTask1 = true;
++
++    stubClock_->advanceTimeBy(10ms);
++
++    return jsi::Value::undefined();
++  });
++
++  runtimeScheduler_->scheduleTask(
++      SchedulerPriority::NormalPriority, std::move(callback1));
++
++  stubQueue_->tick();
++
++  EXPECT_EQ(didRunTask1, 1);
++  EXPECT_EQ(stubQueue_->size(), 0);
++  auto pendingEntries = performanceEntryReporter_->popPendingEntries();
++  EXPECT_EQ(pendingEntries.entries.size(), 0);
++
++  bool didRunTask2 = false;
++  stubClock_->setTimePoint(100ms);
++
++  auto callback2 = createHostFunctionFromLambda([&](bool /* unused */) {
++    didRunTask2 = true;
++
++    stubClock_->advanceTimeBy(50ms);
++
++    return jsi::Value::undefined();
++  });
++
++  runtimeScheduler_->scheduleTask(
++      SchedulerPriority::NormalPriority, std::move(callback2));
++
++  stubQueue_->tick();
++
++  EXPECT_EQ(didRunTask2, 1);
++  EXPECT_EQ(stubQueue_->size(), 0);
++  pendingEntries = performanceEntryReporter_->popPendingEntries();
++  EXPECT_EQ(pendingEntries.entries.size(), 1);
++  EXPECT_EQ(
++      pendingEntries.entries[0].entryType, PerformanceEntryType::LONGTASK);
++  EXPECT_EQ(pendingEntries.entries[0].startTime, 100);
++  EXPECT_EQ(pendingEntries.entries[0].duration, 50);
++}
++
+ INSTANTIATE_TEST_SUITE_P(
+     UseModernRuntimeScheduler,
+     RuntimeSchedulerTest,
+diff --git a/packages/react-native/ReactCommon/react/runtime/CMakeLists.txt b/packages/react-native/ReactCommon/react/runtime/CMakeLists.txt
+index 3a440e009b0..08a0e7e86ef 100644
+--- a/packages/react-native/ReactCommon/react/runtime/CMakeLists.txt
++++ b/packages/react-native/ReactCommon/react/runtime/CMakeLists.txt
+@@ -38,5 +38,6 @@ target_link_libraries(
+         react_utils
+         jsinspector
+         react_featureflags
++        react_performance_timeline
+         react_utils
+ )
+diff --git a/packages/react-native/ReactCommon/react/runtime/React-RuntimeCore.podspec b/packages/react-native/ReactCommon/react/runtime/React-RuntimeCore.podspec
+index 6308397bdef..f247f8b834d 100644
+--- a/packages/react-native/ReactCommon/react/runtime/React-RuntimeCore.podspec
++++ b/packages/react-native/ReactCommon/react/runtime/React-RuntimeCore.podspec
+@@ -53,6 +53,7 @@ Pod::Spec.new do |s|
+   s.dependency "glog"
+   s.dependency "React-jsi"
+   s.dependency "React-jserrorhandler"
++  s.dependency "React-performancetimeline"
+   s.dependency "React-runtimescheduler"
+   s.dependency "React-utils"
+   s.dependency "React-featureflags"
+diff --git a/packages/react-native/ReactCommon/react/runtime/ReactInstance.cpp b/packages/react-native/ReactCommon/react/runtime/ReactInstance.cpp
+index 0b8128c586f..b305ada5813 100644
+--- a/packages/react-native/ReactCommon/react/runtime/ReactInstance.cpp
++++ b/packages/react-native/ReactCommon/react/runtime/ReactInstance.cpp
+@@ -119,6 +119,10 @@ ReactInstance::ReactInstance(
+   }
+ 
+   runtimeScheduler_ = std::make_shared<RuntimeScheduler>(runtimeExecutor);
++  runtimeScheduler_->setPerformanceEntryReporter(
++      // FIXME: Move creation of PerformanceEntryReporter to here and guarantee
++      // that its lifetime is the same as the runtime.
++      PerformanceEntryReporter::getInstance().get());
+ 
+   bufferedRuntimeExecutor_ = std::make_shared<BufferedRuntimeExecutor>(
+       [runtimeScheduler = runtimeScheduler_.get()](
+diff --git a/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js b/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
+index 407d2d6b1b1..2288e9e215d 100644
+--- a/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
++++ b/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
+@@ -78,6 +78,11 @@ const definitions: FeatureFlagDefinitions = {
+       description:
+         'When enabled, the renderer would only fail commits when they propagate state and the last commit that updated state changed before committing.',
+     },
++    enableLongTaskAPI: {
++      defaultValue: false,
++      description:
++        'Enables the reporting of long tasks through `PerformanceObserver`. Only works if the event loop is enabled.',
++    },
+     enableMicrotasks: {
+       defaultValue: false,
+       description:
+diff --git a/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js b/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js
+index 72b4dfedcd0..04d890884d7 100644
+--- a/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js
++++ b/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<412289b5c998b3ae03d8b842704523ba>>
++ * @generated SignedSource<<7421319910b210753a1eddcf079aa151>>
+  * @flow strict-local
+  */
+ 
+@@ -52,6 +52,7 @@ export type ReactNativeFeatureFlags = {
+   enableAlignItemsBaselineOnFabricIOS: Getter<boolean>,
+   enableCleanTextInputYogaNode: Getter<boolean>,
+   enableGranularShadowTreeStateReconciliation: Getter<boolean>,
++  enableLongTaskAPI: Getter<boolean>,
+   enableMicrotasks: Getter<boolean>,
+   enablePropsUpdateReconciliationAndroid: Getter<boolean>,
+   enableSynchronousStateUpdates: Getter<boolean>,
+@@ -167,6 +168,10 @@ export const enableCleanTextInputYogaNode: Getter<boolean> = createNativeFlagGet
+  * When enabled, the renderer would only fail commits when they propagate state and the last commit that updated state changed before committing.
+  */
+ export const enableGranularShadowTreeStateReconciliation: Getter<boolean> = createNativeFlagGetter('enableGranularShadowTreeStateReconciliation', false);
++/**
++ * Enables the reporting of long tasks through `PerformanceObserver`. Only works if the event loop is enabled.
++ */
++export const enableLongTaskAPI: Getter<boolean> = createNativeFlagGetter('enableLongTaskAPI', false);
+ /**
+  * Enables the use of microtasks in Hermes (scheduling) and RuntimeScheduler (execution).
+  */
+diff --git a/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js b/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js
+index 54c1b385663..cf0e63335d3 100644
+--- a/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js
++++ b/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<19718453dfde482545a2313ca74a96ce>>
++ * @generated SignedSource<<29f4ec3c941708dc99dd38adac52d6dc>>
+  * @flow strict-local
+  */
+ 
+@@ -32,6 +32,7 @@ export interface Spec extends TurboModule {
+   +enableAlignItemsBaselineOnFabricIOS?: () => boolean;
+   +enableCleanTextInputYogaNode?: () => boolean;
+   +enableGranularShadowTreeStateReconciliation?: () => boolean;
++  +enableLongTaskAPI?: () => boolean;
+   +enableMicrotasks?: () => boolean;
+   +enablePropsUpdateReconciliationAndroid?: () => boolean;
+   +enableSynchronousStateUpdates?: () => boolean;
+diff --git a/packages/react-native/src/private/webapis/performance/PerformanceEntry.js b/packages/react-native/src/private/webapis/performance/PerformanceEntry.js
+index 9c855422af8..62c0b022665 100644
+--- a/packages/react-native/src/private/webapis/performance/PerformanceEntry.js
++++ b/packages/react-native/src/private/webapis/performance/PerformanceEntry.js
+@@ -9,7 +9,7 @@
+  */
+ 
+ export type HighResTimeStamp = number;
+-export type PerformanceEntryType = 'mark' | 'measure' | 'event';
++export type PerformanceEntryType = 'mark' | 'measure' | 'event' | 'longtask';
+ 
+ export type PerformanceEntryJSON = {
+   name: string,
+diff --git a/packages/react-native/src/private/webapis/performance/RawPerformanceEntry.js b/packages/react-native/src/private/webapis/performance/RawPerformanceEntry.js
+index c840ec77eef..861a0fd6580 100644
+--- a/packages/react-native/src/private/webapis/performance/RawPerformanceEntry.js
++++ b/packages/react-native/src/private/webapis/performance/RawPerformanceEntry.js
+@@ -21,6 +21,7 @@ export const RawPerformanceEntryTypeValues = {
+   MARK: 1,
+   MEASURE: 2,
+   EVENT: 3,
++  LONGTASK: 4,
+ };
+ 
+ export function rawToPerformanceEntry(
+@@ -55,6 +56,8 @@ export function rawToPerformanceEntryType(
+       return 'measure';
+     case RawPerformanceEntryTypeValues.EVENT:
+       return 'event';
++    case RawPerformanceEntryTypeValues.LONGTASK:
++      return 'longtask';
+     default:
+       throw new TypeError(
+         `rawToPerformanceEntryType: unexpected performance entry type received: ${type}`,
+@@ -72,6 +75,8 @@ export function performanceEntryTypeToRaw(
+       return RawPerformanceEntryTypeValues.MEASURE;
+     case 'event':
+       return RawPerformanceEntryTypeValues.EVENT;
++    case 'longtask':
++      return RawPerformanceEntryTypeValues.LONGTASK;
+     default:
+       // Verify exhaustive check with Flow
+       (type: empty);
+diff --git a/packages/rn-tester/js/examples/Performance/PerformanceApiExample.js b/packages/rn-tester/js/examples/Performance/PerformanceApiExample.js
+index 609d721b2b2..da5a0dae16e 100644
+--- a/packages/rn-tester/js/examples/Performance/PerformanceApiExample.js
++++ b/packages/rn-tester/js/examples/Performance/PerformanceApiExample.js
+@@ -9,6 +9,7 @@
+  * @oncall react_native
+  */
+ 
++import type {RNTesterModuleExample} from '../../types/RNTesterTypes';
+ import type MemoryInfo from 'react-native/src/private/webapis/performance/MemoryInfo';
+ import type ReactNativeStartupTiming from 'react-native/src/private/webapis/performance/ReactNativeStartupTiming';
+ 
+@@ -203,6 +204,41 @@ function PerformanceObserverEventTimingExample(): React.Node {
+   );
+ }
+ 
++function PerformanceObserverLongtaskExample(): React.Node {
++  const theme = useContext(RNTesterThemeContext);
++
++  const [entries, setEntries] = useState<$ReadOnlyArray<PerformanceEntry>>([]);
++
++  useEffect(() => {
++    const observer = new PerformanceObserver(list => {
++      setEntries(list.getEntries());
++    });
++
++    observer.observe({entryTypes: ['longtask']});
++
++    return () => observer.disconnect();
++  }, []);
++
++  const onPress = useCallback(() => {
++    // Wait 1s to force a long task
++    busyWait(1000);
++  }, []);
++
++  return (
++    <View style={styles.container}>
++      <Button onPress={onPress} title="Click to force a long task" />
++      <View>
++        {entries.map((entry, index) => (
++          <Text style={{color: theme.LabelColor}} key={index}>
++            Long task {entry.name}: {entry.startTime} -{' '}
++            {entry.startTime + entry.duration} ({entry.duration}ms)
++          </Text>
++        ))}
++      </View>
++    </View>
++  );
++}
++
+ function busyWait(ms: number): void {
+   const end = performance.now() + ms;
+   while (performance.now() < end) {}
+@@ -214,32 +250,40 @@ const styles = StyleSheet.create({
+   },
+ });
+ 
+-exports.title = 'Performance API Examples';
+-exports.category = 'Basic';
+-exports.description = 'Shows the performance API provided in React Native';
+-exports.examples = [
++export const title = 'Performance API Examples';
++export const category = 'Basic';
++export const description = 'Shows the performance API provided in React Native';
++export const examples: Array<RNTesterModuleExample> = ([
+   {
+     title: 'performance.memory',
+-    render: function (): React.Element<typeof MemoryExample> {
++    render: (): React.Node => {
+       return <MemoryExample />;
+     },
+   },
+   {
+     title: 'performance.reactNativeStartupTiming',
+-    render: function (): React.Element<typeof StartupTimingExample> {
++    render: (): React.Node => {
+       return <StartupTimingExample />;
+     },
+   },
+   {
+     title: 'PerformanceObserver (marks and measures)',
+-    render: function (): React.Element<typeof StartupTimingExample> {
++    render: (): React.Node => {
+       return <PerformanceObserverUserTimingExample />;
+     },
+   },
+   {
+     title: 'PerformanceObserver (events)',
+-    render: function (): React.Element<typeof StartupTimingExample> {
++    render: (): React.Node => {
+       return <PerformanceObserverEventTimingExample />;
+     },
+   },
+-];
++  PerformanceObserver.supportedEntryTypes.includes('longtask')
++    ? {
++        title: 'PerformanceObserver (long tasks)',
++        render: (): React.Node => {
++          return <PerformanceObserverLongtaskExample />;
++        },
++      }
++    : null,
++]: Array<?RNTesterModuleExample>).filter(Boolean);

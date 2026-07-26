@@ -1,0 +1,40 @@
+repo: sentry
+base_commit: c0994ec41e9973a9f3853266598e6a2f8ef5b650
+commit: a4565dbb95fc245d9294733613da8818a7417f07
+patch_stored: true
+gold:
+- path: src/sentry/templates/sentry/base-react.html
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/templates/sentry/partial/loader.html
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/templatetags/sentry_helpers.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/web/frontend/react_page.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/index.ejs
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/less/shared-components.less
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: Smallest diff in the whole batch (8 files, 338 insertions/26 deletions) yet still hangs, proving
+  the hang failure mode is not purely a file-count/size problem. truth.diff shows the new loader.html
+  contains a large inline SVG with long single-line path/style/script content (animated splash logo) —
+  likely a parser/tokenizer pathology on very long non-code lines rather than a scaling problem. This
+  is the most concerning hang because it shows the bug can trigger on genuinely small, easy-to-summarize
+  commits with no defensible reason for zero output.

@@ -1,0 +1,4562 @@
+From a2fe7fbe3cdcd6550cd4207e0a90115b17dc8ccf Mon Sep 17 00:00:00 2001
+From: Rohit Agrawal <rohit.agrawal@databricks.com>
+Date: Fri, 27 Mar 2026 16:04:13 +0100
+Subject: [PATCH] dynamic_modules: add a new extension for tracing (#44024)
+
+## Description
+
+This PR adds a new Dynamic Modules extension for Tracing.
+
+---
+
+**Commit Message:** dynamic_modules: add a new extension for tracing
+**Additional Description:** Added a new Dynamic Modules extension for
+Tracing.
+**Risk Level:** Low
+**Testing:** Added Tests
+**Docs Changes:** Added
+**Release Notes:** Added
+
+---------
+
+Signed-off-by: Rohit Agrawal <rohit.agrawal@databricks.com>
+---
+ CODEOWNERS                                    |   1 +
+ api/BUILD                                     |   1 +
+ .../tracers/dynamic_modules/v3/BUILD          |  12 +
+ .../dynamic_modules/v3/dynamic_modules.proto  |  71 ++
+ api/versioning/BUILD                          |   1 +
+ changelogs/current.yaml                       |   5 +
+ docs/root/api-v3/config/trace/trace.rst       |   1 +
+ .../advanced/dynamic_modules.rst              |   1 +
+ source/extensions/dynamic_modules/abi/abi.h   | 463 +++++++++
+ source/extensions/dynamic_modules/abi_impl.cc | 108 ++
+ .../dynamic_modules/sdk/rust/src/lib.rs       |  21 +
+ .../dynamic_modules/sdk/rust/src/tracer.rs    | 968 ++++++++++++++++++
+ source/extensions/extensions_build_config.bzl |   1 +
+ source/extensions/extensions_metadata.yaml    |   7 +
+ .../extensions/tracers/dynamic_modules/BUILD  |  47 +
+ .../tracers/dynamic_modules/abi_impl.cc       | 328 ++++++
+ .../tracers/dynamic_modules/config.cc         |  71 ++
+ .../tracers/dynamic_modules/config.h          |  26 +
+ .../tracers/dynamic_modules/tracer_config.cc  | 244 +++++
+ .../tracers/dynamic_modules/tracer_config.h   | 334 ++++++
+ .../dynamic_modules/abi_impl_test.cc          |  31 +
+ .../dynamic_modules/test_data/c/BUILD         |   7 +
+ .../test_data/c/tracer_config_fail.c          | 131 +++
+ .../test_data/c/tracer_no_op.c                | 136 +++
+ .../test_data/c/tracer_with_values.c          | 148 +++
+ test/extensions/tracers/dynamic_modules/BUILD |  62 ++
+ .../tracers/dynamic_modules/abi_impl_test.cc  | 525 ++++++++++
+ .../tracers/dynamic_modules/config_test.cc    | 156 +++
+ .../tracers/dynamic_modules/tracer_test.cc    | 316 ++++++
+ 29 files changed, 4223 insertions(+)
+ create mode 100644 api/envoy/extensions/tracers/dynamic_modules/v3/BUILD
+ create mode 100644 api/envoy/extensions/tracers/dynamic_modules/v3/dynamic_modules.proto
+ create mode 100644 source/extensions/dynamic_modules/sdk/rust/src/tracer.rs
+ create mode 100644 source/extensions/tracers/dynamic_modules/BUILD
+ create mode 100644 source/extensions/tracers/dynamic_modules/abi_impl.cc
+ create mode 100644 source/extensions/tracers/dynamic_modules/config.cc
+ create mode 100644 source/extensions/tracers/dynamic_modules/config.h
+ create mode 100644 source/extensions/tracers/dynamic_modules/tracer_config.cc
+ create mode 100644 source/extensions/tracers/dynamic_modules/tracer_config.h
+ create mode 100644 test/extensions/dynamic_modules/test_data/c/tracer_config_fail.c
+ create mode 100644 test/extensions/dynamic_modules/test_data/c/tracer_no_op.c
+ create mode 100644 test/extensions/dynamic_modules/test_data/c/tracer_with_values.c
+ create mode 100644 test/extensions/tracers/dynamic_modules/BUILD
+ create mode 100644 test/extensions/tracers/dynamic_modules/abi_impl_test.cc
+ create mode 100644 test/extensions/tracers/dynamic_modules/config_test.cc
+ create mode 100644 test/extensions/tracers/dynamic_modules/tracer_test.cc
+
+diff --git a/CODEOWNERS b/CODEOWNERS
+index ea0baee82..33d8959d1 100644
+--- a/CODEOWNERS
++++ b/CODEOWNERS
+@@ -426,6 +426,7 @@ extensions/upstreams/tcp @ggreenway @mattklein123
+ /*/extensions/matching/http/dynamic_modules @agrawroh @mathetake @wbpcode
+ /*/extensions/transport_sockets/tls/cert_validator/dynamic_modules @agrawroh @mathetake @wbpcode
+ /*/extensions/upstreams/http/dynamic_modules @agrawroh @mathetake @wbpcode
++/*/extensions/tracers/dynamic_modules @agrawroh @mathetake @wbpcode
+ # Linux network namespace override
+ /*/extensions/local_address_selectors/filter_state_override @tonya11en @kyessenov
+ 
+diff --git a/api/BUILD b/api/BUILD
+index 0d01e3dc6..4ae181df6 100644
+--- a/api/BUILD
++++ b/api/BUILD
+@@ -400,6 +400,7 @@ proto_library(
+         "//envoy/extensions/stat_sinks/open_telemetry/v3:pkg",
+         "//envoy/extensions/stat_sinks/wasm/v3:pkg",
+         "//envoy/extensions/string_matcher/lua/v3:pkg",
++        "//envoy/extensions/tracers/dynamic_modules/v3:pkg",
+         "//envoy/extensions/tracers/fluentd/v3:pkg",
+         "//envoy/extensions/tracers/opentelemetry/resource_detectors/v3:pkg",
+         "//envoy/extensions/tracers/opentelemetry/samplers/v3:pkg",
+diff --git a/api/envoy/extensions/tracers/dynamic_modules/v3/BUILD b/api/envoy/extensions/tracers/dynamic_modules/v3/BUILD
+new file mode 100644
+index 000000000..3a5a07e20
+--- /dev/null
++++ b/api/envoy/extensions/tracers/dynamic_modules/v3/BUILD
+@@ -0,0 +1,12 @@
++# DO NOT EDIT. This file is generated by tools/proto_format/proto_sync.py.
++
++load("@envoy_api//bazel:api_build_system.bzl", "api_proto_package")
++
++licenses(["notice"])  # Apache 2
++
++api_proto_package(
++    deps = [
++        "//envoy/extensions/dynamic_modules/v3:pkg",
++        "@xds//udpa/annotations:pkg",
++    ],
++)
+diff --git a/api/envoy/extensions/tracers/dynamic_modules/v3/dynamic_modules.proto b/api/envoy/extensions/tracers/dynamic_modules/v3/dynamic_modules.proto
+new file mode 100644
+index 000000000..2c1d4cff1
+--- /dev/null
++++ b/api/envoy/extensions/tracers/dynamic_modules/v3/dynamic_modules.proto
+@@ -0,0 +1,71 @@
++syntax = "proto3";
++
++package envoy.extensions.tracers.dynamic_modules.v3;
++
++import "envoy/extensions/dynamic_modules/v3/dynamic_modules.proto";
++
++import "google/protobuf/any.proto";
++
++import "udpa/annotations/status.proto";
++import "validate/validate.proto";
++
++option java_package = "io.envoyproxy.envoy.extensions.tracers.dynamic_modules.v3";
++option java_outer_classname = "DynamicModulesProto";
++option java_multiple_files = true;
++option go_package = "github.com/envoyproxy/go-control-plane/envoy/extensions/tracers/dynamic_modules/v3;dynamic_modulesv3";
++option (udpa.annotations.file_status).package_version_status = ACTIVE;
++
++// [#protodoc-title: Dynamic Modules Tracer]
++// [#extension: envoy.tracers.dynamic_modules]
++
++// Configuration for the Dynamic Modules Tracer. This tracer allows loading shared object
++// files via ``dlopen`` to implement custom distributed tracing backends.
++//
++// A module can be loaded by multiple tracer configurations; the module is loaded only once
++// and shared across multiple tracer instances.
++//
++// The tracer receives trace context from incoming requests and can inject trace context into
++// outgoing requests for propagation. It supports the full span lifecycle: creation, tagging,
++// logging, child spans, and reporting.
++message DynamicModuleTracer {
++  // Specifies the shared-object level configuration. This field is required.
++  envoy.extensions.dynamic_modules.v3.DynamicModuleConfig dynamic_module_config = 1
++      [(validate.rules).message = {required: true}];
++
++  // The name for this tracer configuration. If not specified, defaults to an empty string.
++  //
++  // This can be used to distinguish between different tracer implementations inside a dynamic
++  // module. For example, a module can have completely different tracer implementations (e.g.,
++  // Zipkin-compatible, OpenTelemetry-compatible). When Envoy receives this configuration, it
++  // passes the ``tracer_name`` to the dynamic module's tracer config init function together with
++  // the ``tracer_config``. That way a module can decide which in-module tracer implementation to
++  // use based on the name at load time.
++  string tracer_name = 2;
++
++  // The configuration for the tracer chosen by ``tracer_name``. If not specified, an empty
++  // configuration is passed to the module.
++  //
++  // This is passed to the module's tracer initialization function. Together with the
++  // ``tracer_name``, the module can decide which in-module tracer implementation to use and
++  // fine-tune the behavior of the tracer.
++  //
++  // ``google.protobuf.Struct`` is serialized as JSON before passing it to the module.
++  // ``google.protobuf.BytesValue`` and ``google.protobuf.StringValue`` are passed directly
++  // without the wrapper.
++  //
++  // .. code-block:: yaml
++  //
++  //  # Passing a JSON struct configuration
++  //  tracer_config:
++  //    "@type": "type.googleapis.com/google.protobuf.Struct"
++  //    value:
++  //      endpoint: "http://tracing-backend:9411/api/v2/spans"
++  //      sample_rate: 0.1
++  //
++  //  # Passing a simple string configuration
++  //  tracer_config:
++  //    "@type": "type.googleapis.com/google.protobuf.StringValue"
++  //    value: "http://tracing-backend:9411"
++  //
++  google.protobuf.Any tracer_config = 3;
++}
+diff --git a/api/versioning/BUILD b/api/versioning/BUILD
+index ac41190d2..ffdbd2881 100644
+--- a/api/versioning/BUILD
++++ b/api/versioning/BUILD
+@@ -340,6 +340,7 @@ proto_library(
+         "//envoy/extensions/stat_sinks/open_telemetry/v3:pkg",
+         "//envoy/extensions/stat_sinks/wasm/v3:pkg",
+         "//envoy/extensions/string_matcher/lua/v3:pkg",
++        "//envoy/extensions/tracers/dynamic_modules/v3:pkg",
+         "//envoy/extensions/tracers/fluentd/v3:pkg",
+         "//envoy/extensions/tracers/opentelemetry/resource_detectors/v3:pkg",
+         "//envoy/extensions/tracers/opentelemetry/samplers/v3:pkg",
+diff --git a/changelogs/current.yaml b/changelogs/current.yaml
+index bc0b3255b..39a21f96b 100644
+--- a/changelogs/current.yaml
++++ b/changelogs/current.yaml
+@@ -324,6 +324,11 @@ new_features:
+     operators to configure the timer interval (``timer_interval``, minimum 1s, default 10s) and
+     the memory release threshold (``max_unfreed_memory_bytes``, default 100MB) passed to
+     ``tcmalloc::MallocExtension::ReleaseMemoryToSystem()``.
++- area: dynamic_modules
++  change: |
++    Added :ref:`tracer <envoy_v3_api_msg_extensions.tracers.dynamic_modules.v3.DynamicModuleTracer>`
++    support for dynamic modules, enabling custom distributed tracing backends to be implemented
++    in dynamic modules.
+ - area: dynamic_modules
+   change: |
+     Added upstream HTTP TCP bridge extension for dynamic modules. This enables modules to transform
+diff --git a/docs/root/api-v3/config/trace/trace.rst b/docs/root/api-v3/config/trace/trace.rst
+index 8fcf7d65e..15f1668f6 100644
+--- a/docs/root/api-v3/config/trace/trace.rst
++++ b/docs/root/api-v3/config/trace/trace.rst
+@@ -14,4 +14,5 @@ HTTP tracers
+   v3/*
+   opentelemetry/resource_detectors
+   opentelemetry/samplers
++  ../../extensions/tracers/dynamic_modules/v3/*
+   ../../extensions/tracers/fluentd/v3/*
+diff --git a/docs/root/intro/arch_overview/advanced/dynamic_modules.rst b/docs/root/intro/arch_overview/advanced/dynamic_modules.rst
+index d55c7e758..9abc621c7 100644
+--- a/docs/root/intro/arch_overview/advanced/dynamic_modules.rst
++++ b/docs/root/intro/arch_overview/advanced/dynamic_modules.rst
+@@ -33,6 +33,7 @@ Currently, dynamic modules are supported at the following extension points:
+ * As a :ref:`TLS certificate validator <envoy_v3_api_msg_extensions.transport_sockets.tls.cert_validator.dynamic_modules.v3.DynamicModuleCertValidatorConfig>`.
+ * As a :ref:`load balancing policy <envoy_v3_api_msg_extensions.load_balancing_policies.dynamic_modules.v3.DynamicModulesLoadBalancerConfig>`.
+ * As an :ref:`upstream HTTP TCP bridge <envoy_v3_api_msg_extensions.upstreams.http.dynamic_modules.v3.Config>`.
++* As a :ref:`tracer <envoy_v3_api_msg_extensions.tracers.dynamic_modules.v3.DynamicModuleTracer>`.
+ 
+ There are a few design goals for the dynamic modules:
+ 
+diff --git a/source/extensions/dynamic_modules/abi/abi.h b/source/extensions/dynamic_modules/abi/abi.h
+index 6d5716a7b..03a9a6942 100644
+--- a/source/extensions/dynamic_modules/abi/abi.h
++++ b/source/extensions/dynamic_modules/abi/abi.h
+@@ -10878,6 +10878,469 @@ void envoy_dynamic_module_callback_upstream_http_tcp_bridge_send_response_traile
+     envoy_dynamic_module_type_upstream_http_tcp_bridge_envoy_ptr bridge_envoy_ptr,
+     envoy_dynamic_module_type_module_http_header* trailers_vector, size_t trailers_vector_size);
+ 
++// =============================================================================
++// ================================== Tracer ===================================
++// =============================================================================
++//
++// This extension enables custom distributed tracing via dynamic modules.
++// It implements the Tracing::Driver and Tracing::Span interfaces, allowing
++// modules to create spans, propagate trace context, set tags, log events,
++// and report traces to arbitrary backends.
++//
++// The module receives trace context (headers) from incoming requests during
++// span creation and can inject trace context into outgoing requests for
++// propagation. The module controls all span lifecycle operations.
++
++// =============================================================================
++// Tracer Types
++// =============================================================================
++
++/**
++ * envoy_dynamic_module_type_tracer_config_envoy_ptr is a pointer to the
++ * DynamicModuleTracerConfig object in Envoy. This is passed to the module during config creation.
++ *
++ * OWNERSHIP: Envoy owns this object.
++ */
++typedef void* envoy_dynamic_module_type_tracer_config_envoy_ptr;
++
++/**
++ * envoy_dynamic_module_type_tracer_config_module_ptr is a pointer to the
++ * in-module tracer configuration created and owned by the module.
++ *
++ * OWNERSHIP: Module owns this pointer.
++ */
++typedef const void* envoy_dynamic_module_type_tracer_config_module_ptr;
++
++/**
++ * envoy_dynamic_module_type_tracer_span_envoy_ptr is a pointer to the
++ * DynamicModuleSpan object in Envoy. This is used as context for trace context
++ * access callbacks during startSpan and injectContext.
++ *
++ * OWNERSHIP: Envoy owns this object.
++ */
++typedef void* envoy_dynamic_module_type_tracer_span_envoy_ptr;
++
++/**
++ * envoy_dynamic_module_type_tracer_span_module_ptr is a pointer to the
++ * in-module span instance created and owned by the module.
++ *
++ * OWNERSHIP: Module owns this pointer.
++ */
++typedef const void* envoy_dynamic_module_type_tracer_span_module_ptr;
++
++/**
++ * envoy_dynamic_module_type_trace_reason corresponds to Envoy's Tracing::Reason enum.
++ */
++typedef enum envoy_dynamic_module_type_trace_reason {
++  envoy_dynamic_module_type_trace_reason_NotTraceable,
++  envoy_dynamic_module_type_trace_reason_HealthCheck,
++  envoy_dynamic_module_type_trace_reason_Sampling,
++  envoy_dynamic_module_type_trace_reason_ServiceForced,
++  envoy_dynamic_module_type_trace_reason_ClientForced,
++} envoy_dynamic_module_type_trace_reason;
++
++// =============================================================================
++// Tracer Event Hooks
++// =============================================================================
++
++/**
++ * envoy_dynamic_module_on_tracer_config_new is called by the main thread when the tracer
++ * configuration is loaded. The function returns a module-side config pointer for the given name
++ * and config.
++ *
++ * @param config_envoy_ptr is the pointer to the DynamicModuleTracerConfig object.
++ * @param name is the tracer name owned by Envoy.
++ * @param config is the configuration for the module owned by Envoy.
++ * @return envoy_dynamic_module_type_tracer_config_module_ptr is the pointer to the in-module
++ * tracer configuration. Returning nullptr indicates a failure to initialize the module.
++ * When it fails, the tracer configuration will be rejected.
++ */
++envoy_dynamic_module_type_tracer_config_module_ptr envoy_dynamic_module_on_tracer_config_new(
++    envoy_dynamic_module_type_tracer_config_envoy_ptr config_envoy_ptr,
++    envoy_dynamic_module_type_envoy_buffer name, envoy_dynamic_module_type_envoy_buffer config);
++
++/**
++ * envoy_dynamic_module_on_tracer_config_destroy is called when the tracer configuration is
++ * destroyed in Envoy. The module should release any resources associated with the corresponding
++ * in-module tracer configuration.
++ *
++ * @param config_module_ptr is a pointer to the in-module tracer configuration whose corresponding
++ * Envoy tracer configuration is being destroyed.
++ */
++void envoy_dynamic_module_on_tracer_config_destroy(
++    envoy_dynamic_module_type_tracer_config_module_ptr config_module_ptr);
++
++/**
++ * envoy_dynamic_module_on_tracer_start_span is called when a new span needs to be started
++ * for an incoming request. During this call, the module can use trace context callbacks
++ * (get/set/remove) on span_envoy_ptr to read incoming propagation headers.
++ *
++ * @param config_module_ptr is the pointer to the in-module tracer configuration.
++ * @param span_envoy_ptr is the pointer to the DynamicModuleSpan object in Envoy. This is used
++ * as context for trace context callbacks.
++ * @param operation_name is the operation name for this span.
++ * @param traced is true if this request should be traced based on Envoy's sampling decision.
++ * @param reason is the reason for the tracing decision.
++ * @return envoy_dynamic_module_type_tracer_span_module_ptr is the pointer to the in-module
++ * span instance. Returning nullptr results in a NullSpan being used.
++ */
++envoy_dynamic_module_type_tracer_span_module_ptr envoy_dynamic_module_on_tracer_start_span(
++    envoy_dynamic_module_type_tracer_config_module_ptr config_module_ptr,
++    envoy_dynamic_module_type_tracer_span_envoy_ptr span_envoy_ptr,
++    envoy_dynamic_module_type_envoy_buffer operation_name, bool traced,
++    envoy_dynamic_module_type_trace_reason reason);
++
++/**
++ * envoy_dynamic_module_on_tracer_span_set_operation is called to update the span's operation name.
++ *
++ * @param span_module_ptr is the pointer to the in-module span instance.
++ * @param operation is the new operation name.
++ */
++void envoy_dynamic_module_on_tracer_span_set_operation(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr,
++    envoy_dynamic_module_type_envoy_buffer operation);
++
++/**
++ * envoy_dynamic_module_on_tracer_span_set_tag is called to set a tag on the span.
++ *
++ * @param span_module_ptr is the pointer to the in-module span instance.
++ * @param key is the tag key.
++ * @param value is the tag value.
++ */
++void envoy_dynamic_module_on_tracer_span_set_tag(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr,
++    envoy_dynamic_module_type_envoy_buffer key, envoy_dynamic_module_type_envoy_buffer value);
++
++/**
++ * envoy_dynamic_module_on_tracer_span_log is called to record a log event on the span.
++ *
++ * @param span_module_ptr is the pointer to the in-module span instance.
++ * @param timestamp_ns is the event timestamp in nanoseconds since epoch.
++ * @param event is the event description.
++ */
++void envoy_dynamic_module_on_tracer_span_log(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr, int64_t timestamp_ns,
++    envoy_dynamic_module_type_envoy_buffer event);
++
++/**
++ * envoy_dynamic_module_on_tracer_span_finish is called to finish the span and report it.
++ *
++ * @param span_module_ptr is the pointer to the in-module span instance.
++ */
++void envoy_dynamic_module_on_tracer_span_finish(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr);
++
++/**
++ * envoy_dynamic_module_on_tracer_span_inject_context is called when Envoy needs to propagate
++ * trace context to an upstream request. During this call, the module can use trace context
++ * callbacks (get/set/remove) on span_envoy_ptr to write propagation headers.
++ *
++ * @param span_module_ptr is the pointer to the in-module span instance.
++ * @param span_envoy_ptr is the pointer to the DynamicModuleSpan object with the outgoing
++ * trace context set. The module should use set/remove callbacks on this pointer.
++ */
++void envoy_dynamic_module_on_tracer_span_inject_context(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr,
++    envoy_dynamic_module_type_tracer_span_envoy_ptr span_envoy_ptr);
++
++/**
++ * envoy_dynamic_module_on_tracer_span_spawn_child is called to create a child span from the
++ * current span.
++ *
++ * @param span_module_ptr is the pointer to the parent in-module span instance.
++ * @param name is the operation name for the child span.
++ * @param start_time_ns is the start time in nanoseconds since epoch.
++ * @return envoy_dynamic_module_type_tracer_span_module_ptr is the pointer to the child in-module
++ * span instance. Returning nullptr results in a NullSpan being used for the child.
++ */
++envoy_dynamic_module_type_tracer_span_module_ptr envoy_dynamic_module_on_tracer_span_spawn_child(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr,
++    envoy_dynamic_module_type_envoy_buffer name, int64_t start_time_ns);
++
++/**
++ * envoy_dynamic_module_on_tracer_span_set_sampled is called to override the sampling decision.
++ *
++ * @param span_module_ptr is the pointer to the in-module span instance.
++ * @param sampled is true if the span should be sampled/reported.
++ */
++void envoy_dynamic_module_on_tracer_span_set_sampled(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr, bool sampled);
++
++/**
++ * envoy_dynamic_module_on_tracer_span_use_local_decision is called to query whether the span
++ * uses Envoy's local sampling decision or its own.
++ *
++ * @param span_module_ptr is the pointer to the in-module span instance.
++ * @return true if Envoy's sampling decision is used, false if the module has its own.
++ */
++bool envoy_dynamic_module_on_tracer_span_use_local_decision(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr);
++
++/**
++ * envoy_dynamic_module_on_tracer_span_get_baggage is called to retrieve a baggage value by key.
++ *
++ * @param span_module_ptr is the pointer to the in-module span instance.
++ * @param key is the baggage key.
++ * @param value_out is the output buffer where the baggage value will be stored.
++ * @return true if the baggage key was found, false otherwise.
++ */
++bool envoy_dynamic_module_on_tracer_span_get_baggage(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr,
++    envoy_dynamic_module_type_envoy_buffer key, envoy_dynamic_module_type_module_buffer* value_out);
++
++/**
++ * envoy_dynamic_module_on_tracer_span_set_baggage is called to set a baggage key/value pair.
++ *
++ * @param span_module_ptr is the pointer to the in-module span instance.
++ * @param key is the baggage key.
++ * @param value is the baggage value.
++ */
++void envoy_dynamic_module_on_tracer_span_set_baggage(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr,
++    envoy_dynamic_module_type_envoy_buffer key, envoy_dynamic_module_type_envoy_buffer value);
++
++/**
++ * envoy_dynamic_module_on_tracer_span_get_trace_id is called to retrieve the trace ID.
++ *
++ * @param span_module_ptr is the pointer to the in-module span instance.
++ * @param value_out is the output buffer where the trace ID will be stored. The module must
++ * ensure the underlying memory remains valid until the span is destroyed.
++ * @return true if a trace ID is available, false otherwise.
++ */
++bool envoy_dynamic_module_on_tracer_span_get_trace_id(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr,
++    envoy_dynamic_module_type_module_buffer* value_out);
++
++/**
++ * envoy_dynamic_module_on_tracer_span_get_span_id is called to retrieve the span ID.
++ *
++ * @param span_module_ptr is the pointer to the in-module span instance.
++ * @param value_out is the output buffer where the span ID will be stored. The module must
++ * ensure the underlying memory remains valid until the span is destroyed.
++ * @return true if a span ID is available, false otherwise.
++ */
++bool envoy_dynamic_module_on_tracer_span_get_span_id(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr,
++    envoy_dynamic_module_type_module_buffer* value_out);
++
++/**
++ * envoy_dynamic_module_on_tracer_span_destroy is called when the span is being destroyed.
++ * The module should release any resources associated with the span.
++ *
++ * @param span_module_ptr is the pointer to the in-module span instance.
++ */
++void envoy_dynamic_module_on_tracer_span_destroy(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr);
++
++// =============================================================================
++// Tracer Callbacks
++// =============================================================================
++
++/**
++ * envoy_dynamic_module_callback_tracer_get_trace_context_value is called by the module to get
++ * a trace context header value by key. This operates on the currently active trace context
++ * (incoming during startSpan, outgoing during injectContext).
++ *
++ * @param span_envoy_ptr is the pointer to the DynamicModuleSpan object.
++ * @param key is the header key to look up.
++ * @param value_out is the buffer where the header value will be stored.
++ * @return true if the header was found, false otherwise.
++ */
++bool envoy_dynamic_module_callback_tracer_get_trace_context_value(
++    envoy_dynamic_module_type_tracer_span_envoy_ptr span_envoy_ptr,
++    envoy_dynamic_module_type_module_buffer key, envoy_dynamic_module_type_envoy_buffer* value_out);
++
++/**
++ * envoy_dynamic_module_callback_tracer_set_trace_context_value is called by the module to set
++ * a trace context header. This is typically used during injectContext to write propagation headers.
++ *
++ * @param span_envoy_ptr is the pointer to the DynamicModuleSpan object.
++ * @param key is the header key to set.
++ * @param value is the header value to set.
++ */
++void envoy_dynamic_module_callback_tracer_set_trace_context_value(
++    envoy_dynamic_module_type_tracer_span_envoy_ptr span_envoy_ptr,
++    envoy_dynamic_module_type_module_buffer key, envoy_dynamic_module_type_module_buffer value);
++
++/**
++ * envoy_dynamic_module_callback_tracer_remove_trace_context_value is called by the module to
++ * remove a trace context header.
++ *
++ * @param span_envoy_ptr is the pointer to the DynamicModuleSpan object.
++ * @param key is the header key to remove.
++ */
++void envoy_dynamic_module_callback_tracer_remove_trace_context_value(
++    envoy_dynamic_module_type_tracer_span_envoy_ptr span_envoy_ptr,
++    envoy_dynamic_module_type_module_buffer key);
++
++/**
++ * envoy_dynamic_module_callback_tracer_get_trace_context_protocol is called by the module to
++ * get the protocol of the traceable stream (e.g., "HTTP/1.1", "HTTP/2").
++ *
++ * @param span_envoy_ptr is the pointer to the DynamicModuleSpan object.
++ * @param value_out is the buffer where the protocol string will be stored.
++ * @return true if the protocol is available, false otherwise.
++ */
++bool envoy_dynamic_module_callback_tracer_get_trace_context_protocol(
++    envoy_dynamic_module_type_tracer_span_envoy_ptr span_envoy_ptr,
++    envoy_dynamic_module_type_envoy_buffer* value_out);
++
++/**
++ * envoy_dynamic_module_callback_tracer_get_trace_context_host is called by the module to get
++ * the host of the traceable stream.
++ *
++ * @param span_envoy_ptr is the pointer to the DynamicModuleSpan object.
++ * @param value_out is the buffer where the host string will be stored.
++ * @return true if the host is available, false otherwise.
++ */
++bool envoy_dynamic_module_callback_tracer_get_trace_context_host(
++    envoy_dynamic_module_type_tracer_span_envoy_ptr span_envoy_ptr,
++    envoy_dynamic_module_type_envoy_buffer* value_out);
++
++/**
++ * envoy_dynamic_module_callback_tracer_get_trace_context_path is called by the module to get
++ * the path of the traceable stream.
++ *
++ * @param span_envoy_ptr is the pointer to the DynamicModuleSpan object.
++ * @param value_out is the buffer where the path string will be stored.
++ * @return true if the path is available, false otherwise.
++ */
++bool envoy_dynamic_module_callback_tracer_get_trace_context_path(
++    envoy_dynamic_module_type_tracer_span_envoy_ptr span_envoy_ptr,
++    envoy_dynamic_module_type_envoy_buffer* value_out);
++
++/**
++ * envoy_dynamic_module_callback_tracer_get_trace_context_method is called by the module to get
++ * the method of the traceable stream.
++ *
++ * @param span_envoy_ptr is the pointer to the DynamicModuleSpan object.
++ * @param value_out is the buffer where the method string will be stored.
++ * @return true if the method is available, false otherwise.
++ */
++bool envoy_dynamic_module_callback_tracer_get_trace_context_method(
++    envoy_dynamic_module_type_tracer_span_envoy_ptr span_envoy_ptr,
++    envoy_dynamic_module_type_envoy_buffer* value_out);
++
++/**
++ * envoy_dynamic_module_callback_tracer_define_counter is called by the module during
++ * initialization to create a template for generating Stats::Counters with the given name and
++ * labels during the lifecycle of the module.
++ *
++ * @param config_envoy_ptr is the pointer to the DynamicModuleTracerConfig object.
++ * @param name is the name of the counter to be defined.
++ * @param label_names is the labels of the counter to be defined.
++ * NOTE: label names could be null if the label_names_length is 0.
++ * @param label_names_length is the length of the label_names.
++ * NOTE: label_names_length could be 0 if there are no labels.
++ * @param counter_id_ptr where the opaque ID that represents a unique metric will be stored. This
++ * can be passed to envoy_dynamic_module_callback_tracer_increment_counter together with
++ * config_envoy_ptr.
++ * @return the result of the operation.
++ */
++envoy_dynamic_module_type_metrics_result envoy_dynamic_module_callback_tracer_define_counter(
++    envoy_dynamic_module_type_tracer_config_envoy_ptr config_envoy_ptr,
++    envoy_dynamic_module_type_module_buffer name,
++    envoy_dynamic_module_type_module_buffer* label_names, size_t label_names_length,
++    size_t* counter_id_ptr);
++
++/**
++ * envoy_dynamic_module_callback_tracer_define_gauge is called by the module during
++ * initialization to create a template for generating Stats::Gauges with the given name and
++ * labels during the lifecycle of the module.
++ *
++ * @param config_envoy_ptr is the pointer to the DynamicModuleTracerConfig object.
++ * @param name is the name of the gauge to be defined.
++ * @param label_names is the labels of the gauge to be defined.
++ * NOTE: label names could be null if the label_names_length is 0.
++ * @param label_names_length is the length of the label_names.
++ * NOTE: label_names_length could be 0 if there are no labels.
++ * @param gauge_id_ptr where the opaque ID that represents a unique metric will be stored.
++ * @return the result of the operation.
++ */
++envoy_dynamic_module_type_metrics_result envoy_dynamic_module_callback_tracer_define_gauge(
++    envoy_dynamic_module_type_tracer_config_envoy_ptr config_envoy_ptr,
++    envoy_dynamic_module_type_module_buffer name,
++    envoy_dynamic_module_type_module_buffer* label_names, size_t label_names_length,
++    size_t* gauge_id_ptr);
++
++/**
++ * envoy_dynamic_module_callback_tracer_define_histogram is called by the module during
++ * initialization to create a template for generating Stats::Histograms with the given name and
++ * labels during the lifecycle of the module.
++ *
++ * @param config_envoy_ptr is the pointer to the DynamicModuleTracerConfig object.
++ * @param name is the name of the histogram to be defined.
++ * @param label_names is the labels of the histogram to be defined.
++ * NOTE: label names could be null if the label_names_length is 0.
++ * @param label_names_length is the length of the label_names.
++ * NOTE: label_names_length could be 0 if there are no labels.
++ * @param histogram_id_ptr where the opaque ID that represents a unique metric will be stored.
++ * @return the result of the operation.
++ */
++envoy_dynamic_module_type_metrics_result envoy_dynamic_module_callback_tracer_define_histogram(
++    envoy_dynamic_module_type_tracer_config_envoy_ptr config_envoy_ptr,
++    envoy_dynamic_module_type_module_buffer name,
++    envoy_dynamic_module_type_module_buffer* label_names, size_t label_names_length,
++    size_t* histogram_id_ptr);
++
++/**
++ * envoy_dynamic_module_callback_tracer_increment_counter is called by the module to increment
++ * a previously defined counter.
++ *
++ * @param config_envoy_ptr is the pointer to the DynamicModuleTracerConfig object.
++ * @param id is the ID of the counter previously defined using the config.
++ * @param label_values is the values of the labels to be incremented.
++ * NOTE: label_values could be null if the label_values_length is 0.
++ * @param label_values_length is the length of the label_values.
++ * NOTE: label_values_length could be 0 if there are no labels. **THE LENGTH MUST MATCH THE
++ * LABEL NAMES DEFINED DURING COUNTER DEFINITION.**
++ * @param value is the value to increment the counter by.
++ * @return the result of the operation.
++ */
++envoy_dynamic_module_type_metrics_result envoy_dynamic_module_callback_tracer_increment_counter(
++    envoy_dynamic_module_type_tracer_config_envoy_ptr config_envoy_ptr, size_t id,
++    envoy_dynamic_module_type_module_buffer* label_values, size_t label_values_length,
++    uint64_t value);
++
++/**
++ * envoy_dynamic_module_callback_tracer_record_histogram_value is called by the module to
++ * record a value for a previously defined histogram.
++ *
++ * @param config_envoy_ptr is the pointer to the DynamicModuleTracerConfig object.
++ * @param id is the ID of the histogram previously defined using the config.
++ * @param label_values is the values of the labels to be recorded.
++ * NOTE: label_values could be null if the label_values_length is 0.
++ * @param label_values_length is the length of the label_values.
++ * NOTE: label_values_length could be 0 if there are no labels. **THE LENGTH MUST MATCH THE
++ * LABEL NAMES DEFINED DURING HISTOGRAM DEFINITION.**
++ * @param value is the value to record.
++ * @return the result of the operation.
++ */
++envoy_dynamic_module_type_metrics_result
++envoy_dynamic_module_callback_tracer_record_histogram_value(
++    envoy_dynamic_module_type_tracer_config_envoy_ptr config_envoy_ptr, size_t id,
++    envoy_dynamic_module_type_module_buffer* label_values, size_t label_values_length,
++    uint64_t value);
++
++/**
++ * envoy_dynamic_module_callback_tracer_set_gauge is called by the module to set the value of
++ * a previously defined gauge.
++ *
++ * @param config_envoy_ptr is the pointer to the DynamicModuleTracerConfig object.
++ * @param id is the ID of the gauge previously defined using the config.
++ * @param label_values is the values of the labels.
++ * NOTE: label_values could be null if the label_values_length is 0.
++ * @param label_values_length is the length of the label_values.
++ * NOTE: label_values_length could be 0 if there are no labels. **THE LENGTH MUST MATCH THE
++ * LABEL NAMES DEFINED DURING GAUGE DEFINITION.**
++ * @param value is the value to set the gauge to.
++ * @return the result of the operation.
++ */
++envoy_dynamic_module_type_metrics_result envoy_dynamic_module_callback_tracer_set_gauge(
++    envoy_dynamic_module_type_tracer_config_envoy_ptr config_envoy_ptr, size_t id,
++    envoy_dynamic_module_type_module_buffer* label_values, size_t label_values_length,
++    uint64_t value);
++
+ // =============================================================================
+ // ================================ DNS Resolver ===============================
+ // =============================================================================
+diff --git a/source/extensions/dynamic_modules/abi_impl.cc b/source/extensions/dynamic_modules/abi_impl.cc
+index 9b9db08af..05043377c 100644
+--- a/source/extensions/dynamic_modules/abi_impl.cc
++++ b/source/extensions/dynamic_modules/abi_impl.cc
+@@ -3038,6 +3038,114 @@ envoy_dynamic_module_callback_upstream_http_tcp_bridge_send_response_trailers(
+                "not implemented in this context");
+ }
+ 
++// ---------------------- Tracer callbacks ------------------------
++// These are weak symbols that provide default stub implementations. The actual implementations
++// are provided in the tracer abi_impl.cc when the tracer extension is used.
++
++__attribute__((weak)) bool envoy_dynamic_module_callback_tracer_get_trace_context_value(
++    envoy_dynamic_module_type_tracer_span_envoy_ptr, envoy_dynamic_module_type_module_buffer,
++    envoy_dynamic_module_type_envoy_buffer*) {
++  IS_ENVOY_BUG("envoy_dynamic_module_callback_tracer_get_trace_context_value: "
++               "not implemented in this context");
++  return false;
++}
++
++__attribute__((weak)) void envoy_dynamic_module_callback_tracer_set_trace_context_value(
++    envoy_dynamic_module_type_tracer_span_envoy_ptr, envoy_dynamic_module_type_module_buffer,
++    envoy_dynamic_module_type_module_buffer) {
++  IS_ENVOY_BUG("envoy_dynamic_module_callback_tracer_set_trace_context_value: "
++               "not implemented in this context");
++}
++
++__attribute__((weak)) void envoy_dynamic_module_callback_tracer_remove_trace_context_value(
++    envoy_dynamic_module_type_tracer_span_envoy_ptr, envoy_dynamic_module_type_module_buffer) {
++  IS_ENVOY_BUG("envoy_dynamic_module_callback_tracer_remove_trace_context_value: "
++               "not implemented in this context");
++}
++
++__attribute__((weak)) bool envoy_dynamic_module_callback_tracer_get_trace_context_protocol(
++    envoy_dynamic_module_type_tracer_span_envoy_ptr, envoy_dynamic_module_type_envoy_buffer*) {
++  IS_ENVOY_BUG("envoy_dynamic_module_callback_tracer_get_trace_context_protocol: "
++               "not implemented in this context");
++  return false;
++}
++
++__attribute__((weak)) bool envoy_dynamic_module_callback_tracer_get_trace_context_host(
++    envoy_dynamic_module_type_tracer_span_envoy_ptr, envoy_dynamic_module_type_envoy_buffer*) {
++  IS_ENVOY_BUG("envoy_dynamic_module_callback_tracer_get_trace_context_host: "
++               "not implemented in this context");
++  return false;
++}
++
++__attribute__((weak)) bool envoy_dynamic_module_callback_tracer_get_trace_context_path(
++    envoy_dynamic_module_type_tracer_span_envoy_ptr, envoy_dynamic_module_type_envoy_buffer*) {
++  IS_ENVOY_BUG("envoy_dynamic_module_callback_tracer_get_trace_context_path: "
++               "not implemented in this context");
++  return false;
++}
++
++__attribute__((weak)) bool envoy_dynamic_module_callback_tracer_get_trace_context_method(
++    envoy_dynamic_module_type_tracer_span_envoy_ptr, envoy_dynamic_module_type_envoy_buffer*) {
++  IS_ENVOY_BUG("envoy_dynamic_module_callback_tracer_get_trace_context_method: "
++               "not implemented in this context");
++  return false;
++}
++
++__attribute__((weak)) envoy_dynamic_module_type_metrics_result
++envoy_dynamic_module_callback_tracer_define_counter(
++    envoy_dynamic_module_type_tracer_config_envoy_ptr, envoy_dynamic_module_type_module_buffer,
++    envoy_dynamic_module_type_module_buffer*, size_t, size_t*) {
++  IS_ENVOY_BUG("envoy_dynamic_module_callback_tracer_define_counter: "
++               "not implemented in this context");
++  return envoy_dynamic_module_type_metrics_result_MetricNotFound;
++}
++
++__attribute__((weak)) envoy_dynamic_module_type_metrics_result
++envoy_dynamic_module_callback_tracer_define_gauge(envoy_dynamic_module_type_tracer_config_envoy_ptr,
++                                                  envoy_dynamic_module_type_module_buffer,
++                                                  envoy_dynamic_module_type_module_buffer*, size_t,
++                                                  size_t*) {
++  IS_ENVOY_BUG("envoy_dynamic_module_callback_tracer_define_gauge: "
++               "not implemented in this context");
++  return envoy_dynamic_module_type_metrics_result_MetricNotFound;
++}
++
++__attribute__((weak)) envoy_dynamic_module_type_metrics_result
++envoy_dynamic_module_callback_tracer_define_histogram(
++    envoy_dynamic_module_type_tracer_config_envoy_ptr, envoy_dynamic_module_type_module_buffer,
++    envoy_dynamic_module_type_module_buffer*, size_t, size_t*) {
++  IS_ENVOY_BUG("envoy_dynamic_module_callback_tracer_define_histogram: "
++               "not implemented in this context");
++  return envoy_dynamic_module_type_metrics_result_MetricNotFound;
++}
++
++__attribute__((weak)) envoy_dynamic_module_type_metrics_result
++envoy_dynamic_module_callback_tracer_increment_counter(
++    envoy_dynamic_module_type_tracer_config_envoy_ptr, size_t,
++    envoy_dynamic_module_type_module_buffer*, size_t, uint64_t) {
++  IS_ENVOY_BUG("envoy_dynamic_module_callback_tracer_increment_counter: "
++               "not implemented in this context");
++  return envoy_dynamic_module_type_metrics_result_MetricNotFound;
++}
++
++__attribute__((weak)) envoy_dynamic_module_type_metrics_result
++envoy_dynamic_module_callback_tracer_record_histogram_value(
++    envoy_dynamic_module_type_tracer_config_envoy_ptr, size_t,
++    envoy_dynamic_module_type_module_buffer*, size_t, uint64_t) {
++  IS_ENVOY_BUG("envoy_dynamic_module_callback_tracer_record_histogram_value: "
++               "not implemented in this context");
++  return envoy_dynamic_module_type_metrics_result_MetricNotFound;
++}
++
++__attribute__((weak)) envoy_dynamic_module_type_metrics_result
++envoy_dynamic_module_callback_tracer_set_gauge(envoy_dynamic_module_type_tracer_config_envoy_ptr,
++                                               size_t, envoy_dynamic_module_type_module_buffer*,
++                                               size_t, uint64_t) {
++  IS_ENVOY_BUG("envoy_dynamic_module_callback_tracer_set_gauge: "
++               "not implemented in this context");
++  return envoy_dynamic_module_type_metrics_result_MetricNotFound;
++}
++
+ __attribute__((weak)) bool envoy_dynamic_module_callback_http_add_dynamic_metadata_list_number(
+     envoy_dynamic_module_type_http_filter_envoy_ptr, envoy_dynamic_module_type_module_buffer,
+     envoy_dynamic_module_type_module_buffer, double) {
+diff --git a/source/extensions/dynamic_modules/sdk/rust/src/lib.rs b/source/extensions/dynamic_modules/sdk/rust/src/lib.rs
+index f68c5c83d..d49fa73cb 100644
+--- a/source/extensions/dynamic_modules/sdk/rust/src/lib.rs
++++ b/source/extensions/dynamic_modules/sdk/rust/src/lib.rs
+@@ -16,6 +16,7 @@ pub mod listener;
+ pub mod load_balancer;
+ pub mod matcher;
+ pub mod network;
++pub mod tracer;
+ pub mod udp_listener;
+ pub mod upstream_http_tcp_bridge;
+ pub mod utility;
+@@ -29,6 +30,7 @@ pub use http::*;
+ pub use listener::*;
+ pub use load_balancer::*;
+ pub use network::*;
++pub use tracer::*;
+ pub use udp_listener::*;
+ pub use upstream_http_tcp_bridge::*;
+ pub use utility::*;
+@@ -538,6 +540,7 @@ macro_rules! declare_network_filter_init_functions {
+ /// - `cert_validator:` — [`NewCertValidatorConfigFunction`] for TLS certificate validators
+ /// - `upstream_http_tcp_bridge:` — [`NewUpstreamHttpTcpBridgeConfigFunction`] for upstream HTTP TCP
+ ///   bridges
++/// - `tracer:` — [`NewTracerConfigFunction`] for tracers
+ /// - `dns_resolver:` — [`NewDnsResolverConfigFunction`] for DNS resolvers
+ ///
+ /// # Examples
+@@ -601,6 +604,10 @@ macro_rules! declare_all_init_functions {
+     envoy_proxy_dynamic_modules_rust_sdk::NEW_UPSTREAM_HTTP_TCP_BRIDGE_CONFIG_FUNCTION
+       .get_or_init(|| $fn);
+   };
++  (@register tracer : $fn:expr) => {
++    envoy_proxy_dynamic_modules_rust_sdk::NEW_TRACER_CONFIG_FUNCTION
++      .get_or_init(|| $fn);
++  };
+   (@register dns_resolver : $fn:expr) => {
+     envoy_proxy_dynamic_modules_rust_sdk::NEW_DNS_RESOLVER_CONFIG_FUNCTION
+       .get_or_init(|| $fn);
+@@ -1110,6 +1117,20 @@ pub static NEW_UPSTREAM_HTTP_TCP_BRIDGE_CONFIG_FUNCTION: OnceLock<
+   NewUpstreamHttpTcpBridgeConfigFunction,
+ > = OnceLock::new();
+ 
++// =================================================================================================
++// Tracer Dynamic Module Support
++// =================================================================================================
++
++/// The type of the factory function that creates a new tracer configuration.
++///
++/// The `ctx` provides access to metrics definition and update APIs. Metrics should be defined
++/// during configuration creation and the context stored for runtime metric updates.
++pub type NewTracerConfigFunction =
++  fn(ctx: TracerConfigContext, name: &str, config: &[u8]) -> Option<Box<dyn TracerConfig>>;
++
++/// Global storage for the tracer config factory function.
++pub static NEW_TRACER_CONFIG_FUNCTION: OnceLock<NewTracerConfigFunction> = OnceLock::new();
++
+ // =================================================================================================
+ // DNS Resolver Dynamic Module Support
+ // =================================================================================================
+diff --git a/source/extensions/dynamic_modules/sdk/rust/src/tracer.rs b/source/extensions/dynamic_modules/sdk/rust/src/tracer.rs
+new file mode 100644
+index 000000000..574e2d3fb
+--- /dev/null
++++ b/source/extensions/dynamic_modules/sdk/rust/src/tracer.rs
+@@ -0,0 +1,968 @@
++use crate::{
++  abi,
++  bytes_to_module_buffer,
++  str_to_module_buffer,
++  wrap_into_c_void_ptr,
++  NEW_TRACER_CONFIG_FUNCTION,
++};
++use std::ffi::c_void;
++
++// -----------------------------------------------------------------------------
++// Metrics Support
++// -----------------------------------------------------------------------------
++
++/// Handle for a counter metric without labels defined by the tracer module.
++#[derive(Debug, Clone, Copy)]
++pub struct TracerCounterHandle {
++  id: usize,
++}
++
++/// Handle for a labeled counter metric defined by the tracer module.
++#[derive(Debug, Clone, Copy)]
++pub struct TracerCounterVecHandle {
++  id: usize,
++}
++
++/// Handle for a gauge metric without labels defined by the tracer module.
++#[derive(Debug, Clone, Copy)]
++pub struct TracerGaugeHandle {
++  id: usize,
++}
++
++/// Handle for a labeled gauge metric defined by the tracer module.
++#[derive(Debug, Clone, Copy)]
++pub struct TracerGaugeVecHandle {
++  id: usize,
++}
++
++/// Handle for a histogram metric without labels defined by the tracer module.
++#[derive(Debug, Clone, Copy)]
++pub struct TracerHistogramHandle {
++  id: usize,
++}
++
++/// Handle for a labeled histogram metric defined by the tracer module.
++#[derive(Debug, Clone, Copy)]
++pub struct TracerHistogramVecHandle {
++  id: usize,
++}
++
++/// Provides access to metrics operations for the tracer module.
++///
++/// This is passed to the tracer config factory function to allow defining metrics
++/// during configuration. The context should be stored in the tracer config and used
++/// to update metric values during span operations.
++pub struct TracerConfigContext {
++  envoy_ptr: *mut c_void,
++}
++
++// SAFETY: The envoy_ptr points to Envoy's DynamicModuleTracerConfig which is thread-safe.
++// The metrics callbacks are designed to be called from any thread.
++unsafe impl Send for TracerConfigContext {}
++unsafe impl Sync for TracerConfigContext {}
++
++impl TracerConfigContext {
++  /// Define a counter metric.
++  ///
++  /// Returns a handle that can be used to increment the counter later.
++  pub fn define_counter(
++    &self,
++    name: &str,
++  ) -> Result<TracerCounterHandle, abi::envoy_dynamic_module_type_metrics_result> {
++    let mut id: usize = 0;
++    Result::from(unsafe {
++      abi::envoy_dynamic_module_callback_tracer_define_counter(
++        self.envoy_ptr,
++        str_to_module_buffer(name),
++        std::ptr::null_mut(),
++        0,
++        &mut id,
++      )
++    })?;
++    Ok(TracerCounterHandle { id })
++  }
++
++  /// Define a labeled counter metric.
++  ///
++  /// Returns a handle that can be used with `increment_counter_vec` together with label values.
++  pub fn define_counter_vec(
++    &self,
++    name: &str,
++    labels: &[&str],
++  ) -> Result<TracerCounterVecHandle, abi::envoy_dynamic_module_type_metrics_result> {
++    let label_bufs: Vec<_> = labels.iter().map(|l| str_to_module_buffer(l)).collect();
++    let mut id: usize = 0;
++    Result::from(unsafe {
++      abi::envoy_dynamic_module_callback_tracer_define_counter(
++        self.envoy_ptr,
++        str_to_module_buffer(name),
++        label_bufs.as_ptr() as *mut _,
++        label_bufs.len(),
++        &mut id,
++      )
++    })?;
++    Ok(TracerCounterVecHandle { id })
++  }
++
++  /// Define a gauge metric.
++  ///
++  /// Returns a handle that can be used to set the gauge later.
++  pub fn define_gauge(
++    &self,
++    name: &str,
++  ) -> Result<TracerGaugeHandle, abi::envoy_dynamic_module_type_metrics_result> {
++    let mut id: usize = 0;
++    Result::from(unsafe {
++      abi::envoy_dynamic_module_callback_tracer_define_gauge(
++        self.envoy_ptr,
++        str_to_module_buffer(name),
++        std::ptr::null_mut(),
++        0,
++        &mut id,
++      )
++    })?;
++    Ok(TracerGaugeHandle { id })
++  }
++
++  /// Define a labeled gauge metric.
++  ///
++  /// Returns a handle that can be used with `set_gauge_vec` together with label values.
++  pub fn define_gauge_vec(
++    &self,
++    name: &str,
++    labels: &[&str],
++  ) -> Result<TracerGaugeVecHandle, abi::envoy_dynamic_module_type_metrics_result> {
++    let label_bufs: Vec<_> = labels.iter().map(|l| str_to_module_buffer(l)).collect();
++    let mut id: usize = 0;
++    Result::from(unsafe {
++      abi::envoy_dynamic_module_callback_tracer_define_gauge(
++        self.envoy_ptr,
++        str_to_module_buffer(name),
++        label_bufs.as_ptr() as *mut _,
++        label_bufs.len(),
++        &mut id,
++      )
++    })?;
++    Ok(TracerGaugeVecHandle { id })
++  }
++
++  /// Define a histogram metric.
++  ///
++  /// Returns a handle that can be used to record histogram values later.
++  pub fn define_histogram(
++    &self,
++    name: &str,
++  ) -> Result<TracerHistogramHandle, abi::envoy_dynamic_module_type_metrics_result> {
++    let mut id: usize = 0;
++    Result::from(unsafe {
++      abi::envoy_dynamic_module_callback_tracer_define_histogram(
++        self.envoy_ptr,
++        str_to_module_buffer(name),
++        std::ptr::null_mut(),
++        0,
++        &mut id,
++      )
++    })?;
++    Ok(TracerHistogramHandle { id })
++  }
++
++  /// Define a labeled histogram metric.
++  ///
++  /// Returns a handle that can be used with `record_histogram_vec` together with label values.
++  pub fn define_histogram_vec(
++    &self,
++    name: &str,
++    labels: &[&str],
++  ) -> Result<TracerHistogramVecHandle, abi::envoy_dynamic_module_type_metrics_result> {
++    let label_bufs: Vec<_> = labels.iter().map(|l| str_to_module_buffer(l)).collect();
++    let mut id: usize = 0;
++    Result::from(unsafe {
++      abi::envoy_dynamic_module_callback_tracer_define_histogram(
++        self.envoy_ptr,
++        str_to_module_buffer(name),
++        label_bufs.as_ptr() as *mut _,
++        label_bufs.len(),
++        &mut id,
++      )
++    })?;
++    Ok(TracerHistogramVecHandle { id })
++  }
++
++  /// Increment a counter by the given value.
++  pub fn increment_counter(
++    &self,
++    handle: TracerCounterHandle,
++    value: u64,
++  ) -> Result<(), abi::envoy_dynamic_module_type_metrics_result> {
++    Result::from(unsafe {
++      abi::envoy_dynamic_module_callback_tracer_increment_counter(
++        self.envoy_ptr,
++        handle.id,
++        std::ptr::null_mut(),
++        0,
++        value,
++      )
++    })
++  }
++
++  /// Increment a labeled counter by the given value.
++  pub fn increment_counter_vec(
++    &self,
++    handle: TracerCounterVecHandle,
++    labels: &[&str],
++    value: u64,
++  ) -> Result<(), abi::envoy_dynamic_module_type_metrics_result> {
++    let label_bufs: Vec<_> = labels.iter().map(|l| str_to_module_buffer(l)).collect();
++    Result::from(unsafe {
++      abi::envoy_dynamic_module_callback_tracer_increment_counter(
++        self.envoy_ptr,
++        handle.id,
++        label_bufs.as_ptr() as *mut _,
++        label_bufs.len(),
++        value,
++      )
++    })
++  }
++
++  /// Set a gauge to the given value.
++  pub fn set_gauge(
++    &self,
++    handle: TracerGaugeHandle,
++    value: u64,
++  ) -> Result<(), abi::envoy_dynamic_module_type_metrics_result> {
++    Result::from(unsafe {
++      abi::envoy_dynamic_module_callback_tracer_set_gauge(
++        self.envoy_ptr,
++        handle.id,
++        std::ptr::null_mut(),
++        0,
++        value,
++      )
++    })
++  }
++
++  /// Set a labeled gauge to the given value.
++  pub fn set_gauge_vec(
++    &self,
++    handle: TracerGaugeVecHandle,
++    labels: &[&str],
++    value: u64,
++  ) -> Result<(), abi::envoy_dynamic_module_type_metrics_result> {
++    let label_bufs: Vec<_> = labels.iter().map(|l| str_to_module_buffer(l)).collect();
++    Result::from(unsafe {
++      abi::envoy_dynamic_module_callback_tracer_set_gauge(
++        self.envoy_ptr,
++        handle.id,
++        label_bufs.as_ptr() as *mut _,
++        label_bufs.len(),
++        value,
++      )
++    })
++  }
++
++  /// Record a value in a histogram.
++  pub fn record_histogram(
++    &self,
++    handle: TracerHistogramHandle,
++    value: u64,
++  ) -> Result<(), abi::envoy_dynamic_module_type_metrics_result> {
++    Result::from(unsafe {
++      abi::envoy_dynamic_module_callback_tracer_record_histogram_value(
++        self.envoy_ptr,
++        handle.id,
++        std::ptr::null_mut(),
++        0,
++        value,
++      )
++    })
++  }
++
++  /// Record a value in a labeled histogram.
++  pub fn record_histogram_vec(
++    &self,
++    handle: TracerHistogramVecHandle,
++    labels: &[&str],
++    value: u64,
++  ) -> Result<(), abi::envoy_dynamic_module_type_metrics_result> {
++    let label_bufs: Vec<_> = labels.iter().map(|l| str_to_module_buffer(l)).collect();
++    Result::from(unsafe {
++      abi::envoy_dynamic_module_callback_tracer_record_histogram_value(
++        self.envoy_ptr,
++        handle.id,
++        label_bufs.as_ptr() as *mut _,
++        label_bufs.len(),
++        value,
++      )
++    })
++  }
++}
++
++// -----------------------------------------------------------------------------
++// Tracer Traits
++// -----------------------------------------------------------------------------
++
++/// The module-side tracer configuration.
++///
++/// This trait must be implemented by the module to handle tracer configuration.
++/// The object is created when the corresponding Envoy tracer config is loaded, and
++/// it is dropped when the corresponding Envoy config is destroyed.
++///
++/// Implementations must be `Send + Sync` since they may be accessed from multiple threads.
++pub trait TracerConfig: Send + Sync {
++  /// Create a new span for an incoming request.
++  ///
++  /// Called when Envoy needs to start tracing a new request. The module can read
++  /// incoming trace context headers via `envoy_span` and return a span instance
++  /// that will handle the trace lifecycle.
++  ///
++  /// # Arguments
++  /// * `envoy_span` - The Envoy span context for trace context access.
++  /// * `operation_name` - The operation name for this span.
++  /// * `traced` - Whether Envoy decided this request should be traced.
++  /// * `reason` - The reason for the tracing decision.
++  fn start_span(
++    &self,
++    envoy_span: &dyn EnvoyTracerSpan,
++    operation_name: &str,
++    traced: bool,
++    reason: TraceReason,
++  ) -> Option<Box<dyn TracerSpan>>;
++}
++
++/// The module-side span instance.
++///
++/// This trait must be implemented by the module to handle span lifecycle operations.
++/// One instance is created per traced request.
++pub trait TracerSpan: Send {
++  /// Set the operation name for this span.
++  fn set_operation(&mut self, operation: &str);
++
++  /// Set a tag on this span.
++  fn set_tag(&mut self, key: &str, value: &str);
++
++  /// Record a log event on this span.
++  fn log(&mut self, timestamp_ns: i64, event: &str);
++
++  /// Finish this span and report it.
++  fn finish(&mut self);
++
++  /// Inject trace context into outgoing request headers for propagation.
++  ///
++  /// The module should use `envoy_span` to set propagation headers (e.g., traceparent).
++  fn inject_context(&mut self, envoy_span: &dyn EnvoyTracerSpan);
++
++  /// Create a child span from this span.
++  fn spawn_child(&mut self, name: &str, start_time_ns: i64) -> Option<Box<dyn TracerSpan>>;
++
++  /// Override the sampling decision for this span.
++  fn set_sampled(&mut self, sampled: bool);
++
++  /// Whether this span uses Envoy's local sampling decision.
++  fn use_local_decision(&self) -> bool {
++    true
++  }
++
++  /// Get a baggage value by key.
++  fn get_baggage(&self, _key: &str) -> Option<String> {
++    None
++  }
++
++  /// Set a baggage key/value pair.
++  fn set_baggage(&mut self, _key: &str, _value: &str) {}
++
++  /// Get the trace ID for this span.
++  fn get_trace_id(&self) -> Option<String> {
++    None
++  }
++
++  /// Get the span ID for this span.
++  fn get_span_id(&self) -> Option<String> {
++    None
++  }
++}
++
++/// The tracing decision reason.
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub enum TraceReason {
++  NotTraceable,
++  HealthCheck,
++  Sampling,
++  ServiceForced,
++  ClientForced,
++}
++
++impl From<abi::envoy_dynamic_module_type_trace_reason> for TraceReason {
++  fn from(reason: abi::envoy_dynamic_module_type_trace_reason) -> Self {
++    match reason {
++      abi::envoy_dynamic_module_type_trace_reason::NotTraceable => TraceReason::NotTraceable,
++      abi::envoy_dynamic_module_type_trace_reason::HealthCheck => TraceReason::HealthCheck,
++      abi::envoy_dynamic_module_type_trace_reason::Sampling => TraceReason::Sampling,
++      abi::envoy_dynamic_module_type_trace_reason::ServiceForced => TraceReason::ServiceForced,
++      abi::envoy_dynamic_module_type_trace_reason::ClientForced => TraceReason::ClientForced,
++    }
++  }
++}
++
++/// Envoy-side trace context operations available to the module.
++pub trait EnvoyTracerSpan: Send {
++  /// Get a trace context header value by key.
++  fn get_context_value(&self, key: &str) -> Option<Vec<u8>>;
++
++  /// Set a trace context header value.
++  fn set_context_value(&self, key: &str, value: &[u8]);
++
++  /// Remove a trace context header.
++  fn remove_context_value(&self, key: &str);
++
++  /// Get the protocol of the traceable stream (e.g., "HTTP/1.1").
++  fn get_protocol(&self) -> Option<Vec<u8>>;
++
++  /// Get the host of the traceable stream.
++  fn get_host(&self) -> Option<Vec<u8>>;
++
++  /// Get the path of the traceable stream.
++  fn get_path(&self) -> Option<Vec<u8>>;
++
++  /// Get the method of the traceable stream.
++  fn get_method(&self) -> Option<Vec<u8>>;
++}
++
++struct EnvoyTracerSpanImpl {
++  raw: abi::envoy_dynamic_module_type_tracer_span_envoy_ptr,
++}
++
++unsafe impl Send for EnvoyTracerSpanImpl {}
++
++impl EnvoyTracerSpanImpl {
++  fn new(raw: abi::envoy_dynamic_module_type_tracer_span_envoy_ptr) -> Self {
++    Self { raw }
++  }
++
++  fn get_string_value(
++    &self,
++    getter: unsafe extern "C" fn(
++      abi::envoy_dynamic_module_type_tracer_span_envoy_ptr,
++      *mut abi::envoy_dynamic_module_type_envoy_buffer,
++    ) -> bool,
++  ) -> Option<Vec<u8>> {
++    let mut result = abi::envoy_dynamic_module_type_envoy_buffer {
++      ptr: std::ptr::null_mut(),
++      length: 0,
++    };
++    let found = unsafe { getter(self.raw, &mut result) };
++    if found && !result.ptr.is_null() {
++      let slice = unsafe { std::slice::from_raw_parts(result.ptr as *const u8, result.length) };
++      Some(slice.to_vec())
++    } else {
++      None
++    }
++  }
++}
++
++impl EnvoyTracerSpan for EnvoyTracerSpanImpl {
++  fn get_context_value(&self, key: &str) -> Option<Vec<u8>> {
++    let key_buf = str_to_module_buffer(key);
++    let mut result = abi::envoy_dynamic_module_type_envoy_buffer {
++      ptr: std::ptr::null_mut(),
++      length: 0,
++    };
++    let found = unsafe {
++      abi::envoy_dynamic_module_callback_tracer_get_trace_context_value(
++        self.raw,
++        key_buf,
++        &mut result,
++      )
++    };
++    if found && !result.ptr.is_null() {
++      let slice = unsafe { std::slice::from_raw_parts(result.ptr as *const u8, result.length) };
++      Some(slice.to_vec())
++    } else {
++      None
++    }
++  }
++
++  fn set_context_value(&self, key: &str, value: &[u8]) {
++    let key_buf = str_to_module_buffer(key);
++    let val_buf = bytes_to_module_buffer(value);
++    unsafe {
++      abi::envoy_dynamic_module_callback_tracer_set_trace_context_value(self.raw, key_buf, val_buf);
++    }
++  }
++
++  fn remove_context_value(&self, key: &str) {
++    let key_buf = str_to_module_buffer(key);
++    unsafe {
++      abi::envoy_dynamic_module_callback_tracer_remove_trace_context_value(self.raw, key_buf);
++    }
++  }
++
++  fn get_protocol(&self) -> Option<Vec<u8>> {
++    self.get_string_value(abi::envoy_dynamic_module_callback_tracer_get_trace_context_protocol)
++  }
++
++  fn get_host(&self) -> Option<Vec<u8>> {
++    self.get_string_value(abi::envoy_dynamic_module_callback_tracer_get_trace_context_host)
++  }
++
++  fn get_path(&self) -> Option<Vec<u8>> {
++    self.get_string_value(abi::envoy_dynamic_module_callback_tracer_get_trace_context_path)
++  }
++
++  fn get_method(&self) -> Option<Vec<u8>> {
++    self.get_string_value(abi::envoy_dynamic_module_callback_tracer_get_trace_context_method)
++  }
++}
++
++// -----------------------------------------------------------------------------
++// Span Wrapper
++// -----------------------------------------------------------------------------
++
++/// Internal wrapper around a `Box<dyn TracerSpan>` that holds scratch storage for values
++/// returned to C++ via module_buffer pointers. The C++ side copies the data immediately,
++/// and the scratch string is freed when the wrapper (and thus the span) is destroyed.
++struct SpanWrapper {
++  inner: Box<dyn TracerSpan>,
++  /// Scratch buffer for the last value returned by get_baggage, get_trace_id, or get_span_id.
++  /// Kept alive so the pointer returned via module_buffer remains valid until the C++ side
++  /// copies it.
++  scratch: String,
++}
++
++impl SpanWrapper {
++  fn new(inner: Box<dyn TracerSpan>) -> Self {
++    Self {
++      inner,
++      scratch: String::new(),
++    }
++  }
++
++  /// Store `val` in the scratch buffer and write a module_buffer pointing to it.
++  fn write_scratch_to_out(
++    &mut self,
++    val: String,
++    value_out: *mut abi::envoy_dynamic_module_type_module_buffer,
++  ) {
++    self.scratch = val;
++    unsafe {
++      (*value_out).ptr = self.scratch.as_ptr() as *const _;
++      (*value_out).length = self.scratch.len();
++    }
++  }
++}
++
++// -----------------------------------------------------------------------------
++// Panic-safe FFI helper
++// -----------------------------------------------------------------------------
++
++/// Decode an envoy_buffer into a `&str` without UTF-8 validation.
++///
++/// # Safety
++///
++/// The buffer must contain valid UTF-8 data and the pointer must be valid for the given length.
++unsafe fn envoy_buffer_to_str(buf: abi::envoy_dynamic_module_type_envoy_buffer) -> &'static str {
++  unsafe {
++    std::str::from_utf8_unchecked(std::slice::from_raw_parts(buf.ptr as *const _, buf.length))
++  }
++}
++
++// -----------------------------------------------------------------------------
++// Tracer Event Hook Implementations
++// -----------------------------------------------------------------------------
++
++/// # Safety
++///
++/// This is an FFI function called by Envoy. All pointer arguments must be valid as guaranteed
++/// by the Envoy dynamic module ABI.
++#[no_mangle]
++pub unsafe extern "C" fn envoy_dynamic_module_on_tracer_config_new(
++  config_envoy_ptr: abi::envoy_dynamic_module_type_tracer_config_envoy_ptr,
++  name: abi::envoy_dynamic_module_type_envoy_buffer,
++  config: abi::envoy_dynamic_module_type_envoy_buffer,
++) -> abi::envoy_dynamic_module_type_tracer_config_module_ptr {
++  let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
++    let name_str = unsafe { envoy_buffer_to_str(name) };
++    let config_slice = unsafe { std::slice::from_raw_parts(config.ptr as *const _, config.length) };
++    let ctx = TracerConfigContext {
++      envoy_ptr: config_envoy_ptr,
++    };
++    let new_config_fn = NEW_TRACER_CONFIG_FUNCTION
++      .get()
++      .expect("NEW_TRACER_CONFIG_FUNCTION must be set");
++    match new_config_fn(ctx, name_str, config_slice) {
++      Some(config) => wrap_into_c_void_ptr!(config),
++      None => std::ptr::null(),
++    }
++  }));
++  match result {
++    Ok(ptr) => ptr,
++    Err(panic) => {
++      crate::envoy_log_error!(
++        "on_tracer_config_new: caught panic: {}",
++        crate::panic_payload_to_string(panic)
++      );
++      std::ptr::null()
++    },
++  }
++}
++
++/// # Safety
++///
++/// This is an FFI function called by Envoy. All pointer arguments must be valid as guaranteed
++/// by the Envoy dynamic module ABI.
++#[no_mangle]
++pub unsafe extern "C" fn envoy_dynamic_module_on_tracer_config_destroy(
++  config_module_ptr: abi::envoy_dynamic_module_type_tracer_config_module_ptr,
++) {
++  let config = config_module_ptr as *mut *mut dyn TracerConfig;
++  unsafe {
++    let _outer = Box::from_raw(config);
++    let _inner = Box::from_raw(*config);
++  }
++}
++
++/// # Safety
++///
++/// This is an FFI function called by Envoy. All pointer arguments must be valid as guaranteed
++/// by the Envoy dynamic module ABI.
++#[no_mangle]
++pub unsafe extern "C" fn envoy_dynamic_module_on_tracer_start_span(
++  config_module_ptr: abi::envoy_dynamic_module_type_tracer_config_module_ptr,
++  span_envoy_ptr: abi::envoy_dynamic_module_type_tracer_span_envoy_ptr,
++  operation_name: abi::envoy_dynamic_module_type_envoy_buffer,
++  traced: bool,
++  reason: abi::envoy_dynamic_module_type_trace_reason,
++) -> abi::envoy_dynamic_module_type_tracer_span_module_ptr {
++  let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
++    let config = config_module_ptr as *const *const dyn TracerConfig;
++    let config = unsafe { &**config };
++    let envoy_span = EnvoyTracerSpanImpl::new(span_envoy_ptr);
++    let op_name = unsafe { envoy_buffer_to_str(operation_name) };
++    match config.start_span(&envoy_span, op_name, traced, reason.into()) {
++      Some(span) => {
++        let wrapper = SpanWrapper::new(span);
++        wrap_into_c_void_ptr!(wrapper)
++      },
++      None => std::ptr::null(),
++    }
++  }));
++  match result {
++    Ok(ptr) => ptr,
++    Err(panic) => {
++      crate::envoy_log_error!(
++        "on_tracer_start_span: caught panic: {}",
++        crate::panic_payload_to_string(panic)
++      );
++      std::ptr::null()
++    },
++  }
++}
++
++/// # Safety
++///
++/// This is an FFI function called by Envoy. All pointer arguments must be valid as guaranteed
++/// by the Envoy dynamic module ABI.
++#[no_mangle]
++pub unsafe extern "C" fn envoy_dynamic_module_on_tracer_span_set_operation(
++  span_module_ptr: abi::envoy_dynamic_module_type_tracer_span_module_ptr,
++  operation: abi::envoy_dynamic_module_type_envoy_buffer,
++) {
++  let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
++    let wrapper = unsafe { &mut *(span_module_ptr as *mut SpanWrapper) };
++    let op = unsafe { envoy_buffer_to_str(operation) };
++    wrapper.inner.set_operation(op);
++  }));
++}
++
++/// # Safety
++///
++/// This is an FFI function called by Envoy. All pointer arguments must be valid as guaranteed
++/// by the Envoy dynamic module ABI.
++#[no_mangle]
++pub unsafe extern "C" fn envoy_dynamic_module_on_tracer_span_set_tag(
++  span_module_ptr: abi::envoy_dynamic_module_type_tracer_span_module_ptr,
++  key: abi::envoy_dynamic_module_type_envoy_buffer,
++  value: abi::envoy_dynamic_module_type_envoy_buffer,
++) {
++  let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
++    let wrapper = unsafe { &mut *(span_module_ptr as *mut SpanWrapper) };
++    let k = unsafe { envoy_buffer_to_str(key) };
++    let v = unsafe { envoy_buffer_to_str(value) };
++    wrapper.inner.set_tag(k, v);
++  }));
++}
++
++/// # Safety
++///
++/// This is an FFI function called by Envoy. All pointer arguments must be valid as guaranteed
++/// by the Envoy dynamic module ABI.
++#[no_mangle]
++pub unsafe extern "C" fn envoy_dynamic_module_on_tracer_span_log(
++  span_module_ptr: abi::envoy_dynamic_module_type_tracer_span_module_ptr,
++  timestamp_ns: i64,
++  event: abi::envoy_dynamic_module_type_envoy_buffer,
++) {
++  let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
++    let wrapper = unsafe { &mut *(span_module_ptr as *mut SpanWrapper) };
++    let e = unsafe { envoy_buffer_to_str(event) };
++    wrapper.inner.log(timestamp_ns, e);
++  }));
++}
++
++/// # Safety
++///
++/// This is an FFI function called by Envoy. All pointer arguments must be valid as guaranteed
++/// by the Envoy dynamic module ABI.
++#[no_mangle]
++pub unsafe extern "C" fn envoy_dynamic_module_on_tracer_span_finish(
++  span_module_ptr: abi::envoy_dynamic_module_type_tracer_span_module_ptr,
++) {
++  let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
++    let wrapper = unsafe { &mut *(span_module_ptr as *mut SpanWrapper) };
++    wrapper.inner.finish();
++  }));
++}
++
++/// # Safety
++///
++/// This is an FFI function called by Envoy. All pointer arguments must be valid as guaranteed
++/// by the Envoy dynamic module ABI.
++#[no_mangle]
++pub unsafe extern "C" fn envoy_dynamic_module_on_tracer_span_inject_context(
++  span_module_ptr: abi::envoy_dynamic_module_type_tracer_span_module_ptr,
++  span_envoy_ptr: abi::envoy_dynamic_module_type_tracer_span_envoy_ptr,
++) {
++  let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
++    let wrapper = unsafe { &mut *(span_module_ptr as *mut SpanWrapper) };
++    let envoy_span = EnvoyTracerSpanImpl::new(span_envoy_ptr);
++    wrapper.inner.inject_context(&envoy_span);
++  }));
++}
++
++/// # Safety
++///
++/// This is an FFI function called by Envoy. All pointer arguments must be valid as guaranteed
++/// by the Envoy dynamic module ABI.
++#[no_mangle]
++pub unsafe extern "C" fn envoy_dynamic_module_on_tracer_span_spawn_child(
++  span_module_ptr: abi::envoy_dynamic_module_type_tracer_span_module_ptr,
++  name: abi::envoy_dynamic_module_type_envoy_buffer,
++  start_time_ns: i64,
++) -> abi::envoy_dynamic_module_type_tracer_span_module_ptr {
++  let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
++    let wrapper = unsafe { &mut *(span_module_ptr as *mut SpanWrapper) };
++    let n = unsafe { envoy_buffer_to_str(name) };
++    match wrapper.inner.spawn_child(n, start_time_ns) {
++      Some(child) => {
++        let child_wrapper = SpanWrapper::new(child);
++        wrap_into_c_void_ptr!(child_wrapper)
++      },
++      None => std::ptr::null(),
++    }
++  }));
++  match result {
++    Ok(ptr) => ptr,
++    Err(panic) => {
++      crate::envoy_log_error!(
++        "on_tracer_span_spawn_child: caught panic: {}",
++        crate::panic_payload_to_string(panic)
++      );
++      std::ptr::null()
++    },
++  }
++}
++
++/// # Safety
++///
++/// This is an FFI function called by Envoy. All pointer arguments must be valid as guaranteed
++/// by the Envoy dynamic module ABI.
++#[no_mangle]
++pub unsafe extern "C" fn envoy_dynamic_module_on_tracer_span_set_sampled(
++  span_module_ptr: abi::envoy_dynamic_module_type_tracer_span_module_ptr,
++  sampled: bool,
++) {
++  let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
++    let wrapper = unsafe { &mut *(span_module_ptr as *mut SpanWrapper) };
++    wrapper.inner.set_sampled(sampled);
++  }));
++}
++
++/// # Safety
++///
++/// This is an FFI function called by Envoy. All pointer arguments must be valid as guaranteed
++/// by the Envoy dynamic module ABI.
++#[no_mangle]
++pub unsafe extern "C" fn envoy_dynamic_module_on_tracer_span_use_local_decision(
++  span_module_ptr: abi::envoy_dynamic_module_type_tracer_span_module_ptr,
++) -> bool {
++  let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
++    let wrapper = unsafe { &*(span_module_ptr as *const SpanWrapper) };
++    wrapper.inner.use_local_decision()
++  }));
++  result.unwrap_or(true)
++}
++
++/// # Safety
++///
++/// This is an FFI function called by Envoy. All pointer arguments must be valid as guaranteed
++/// by the Envoy dynamic module ABI.
++#[no_mangle]
++pub unsafe extern "C" fn envoy_dynamic_module_on_tracer_span_get_baggage(
++  span_module_ptr: abi::envoy_dynamic_module_type_tracer_span_module_ptr,
++  key: abi::envoy_dynamic_module_type_envoy_buffer,
++  value_out: *mut abi::envoy_dynamic_module_type_module_buffer,
++) -> bool {
++  let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
++    let wrapper = unsafe { &mut *(span_module_ptr as *mut SpanWrapper) };
++    let k = unsafe { envoy_buffer_to_str(key) };
++    match wrapper.inner.get_baggage(k) {
++      Some(val) => {
++        wrapper.write_scratch_to_out(val, value_out);
++        true
++      },
++      None => {
++        unsafe {
++          (*value_out).ptr = std::ptr::null();
++          (*value_out).length = 0;
++        }
++        false
++      },
++    }
++  }));
++  match result {
++    Ok(found) => found,
++    Err(_) => {
++      unsafe {
++        (*value_out).ptr = std::ptr::null();
++        (*value_out).length = 0;
++      }
++      false
++    },
++  }
++}
++
++/// # Safety
++///
++/// This is an FFI function called by Envoy. All pointer arguments must be valid as guaranteed
++/// by the Envoy dynamic module ABI.
++#[no_mangle]
++pub unsafe extern "C" fn envoy_dynamic_module_on_tracer_span_set_baggage(
++  span_module_ptr: abi::envoy_dynamic_module_type_tracer_span_module_ptr,
++  key: abi::envoy_dynamic_module_type_envoy_buffer,
++  value: abi::envoy_dynamic_module_type_envoy_buffer,
++) {
++  let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
++    let wrapper = unsafe { &mut *(span_module_ptr as *mut SpanWrapper) };
++    let k = unsafe { envoy_buffer_to_str(key) };
++    let v = unsafe { envoy_buffer_to_str(value) };
++    wrapper.inner.set_baggage(k, v);
++  }));
++}
++
++/// # Safety
++///
++/// This is an FFI function called by Envoy. All pointer arguments must be valid as guaranteed
++/// by the Envoy dynamic module ABI.
++#[no_mangle]
++pub unsafe extern "C" fn envoy_dynamic_module_on_tracer_span_get_trace_id(
++  span_module_ptr: abi::envoy_dynamic_module_type_tracer_span_module_ptr,
++  value_out: *mut abi::envoy_dynamic_module_type_module_buffer,
++) -> bool {
++  let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
++    let wrapper = unsafe { &mut *(span_module_ptr as *mut SpanWrapper) };
++    match wrapper.inner.get_trace_id() {
++      Some(val) => {
++        wrapper.write_scratch_to_out(val, value_out);
++        true
++      },
++      None => {
++        unsafe {
++          (*value_out).ptr = std::ptr::null();
++          (*value_out).length = 0;
++        }
++        false
++      },
++    }
++  }));
++  match result {
++    Ok(found) => found,
++    Err(_) => {
++      unsafe {
++        (*value_out).ptr = std::ptr::null();
++        (*value_out).length = 0;
++      }
++      false
++    },
++  }
++}
++
++/// # Safety
++///
++/// This is an FFI function called by Envoy. All pointer arguments must be valid as guaranteed
++/// by the Envoy dynamic module ABI.
++#[no_mangle]
++pub unsafe extern "C" fn envoy_dynamic_module_on_tracer_span_get_span_id(
++  span_module_ptr: abi::envoy_dynamic_module_type_tracer_span_module_ptr,
++  value_out: *mut abi::envoy_dynamic_module_type_module_buffer,
++) -> bool {
++  let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
++    let wrapper = unsafe { &mut *(span_module_ptr as *mut SpanWrapper) };
++    match wrapper.inner.get_span_id() {
++      Some(val) => {
++        wrapper.write_scratch_to_out(val, value_out);
++        true
++      },
++      None => {
++        unsafe {
++          (*value_out).ptr = std::ptr::null();
++          (*value_out).length = 0;
++        }
++        false
++      },
++    }
++  }));
++  match result {
++    Ok(found) => found,
++    Err(_) => {
++      unsafe {
++        (*value_out).ptr = std::ptr::null();
++        (*value_out).length = 0;
++      }
++      false
++    },
++  }
++}
++
++/// # Safety
++///
++/// This is an FFI function called by Envoy. All pointer arguments must be valid as guaranteed
++/// by the Envoy dynamic module ABI.
++#[no_mangle]
++pub unsafe extern "C" fn envoy_dynamic_module_on_tracer_span_destroy(
++  span_module_ptr: abi::envoy_dynamic_module_type_tracer_span_module_ptr,
++) {
++  let wrapper = span_module_ptr as *mut SpanWrapper;
++  unsafe {
++    let _ = Box::from_raw(wrapper);
++  }
++}
++
++/// Declare the init functions for the tracer dynamic module.
++///
++/// The first argument is the program init function with [`ProgramInitFunction`] type.
++/// The second argument is the factory function with [`NewTracerConfigFunction`] type.
++#[macro_export]
++macro_rules! declare_tracer_init_functions {
++  ($f:ident, $new_tracer_config_fn:expr) => {
++    #[no_mangle]
++    pub extern "C" fn envoy_dynamic_module_on_program_init() -> *const ::std::os::raw::c_char {
++      envoy_proxy_dynamic_modules_rust_sdk::NEW_TRACER_CONFIG_FUNCTION
++        .get_or_init(|| $new_tracer_config_fn);
++      if ($f()) {
++        envoy_proxy_dynamic_modules_rust_sdk::abi::envoy_dynamic_modules_abi_version.as_ptr()
++          as *const ::std::os::raw::c_char
++      } else {
++        ::std::ptr::null()
++      }
++    }
++  };
++}
+diff --git a/source/extensions/extensions_build_config.bzl b/source/extensions/extensions_build_config.bzl
+index 48588f88c..5173e48a5 100644
+--- a/source/extensions/extensions_build_config.bzl
++++ b/source/extensions/extensions_build_config.bzl
+@@ -326,6 +326,7 @@ EXTENSIONS = {
+     "envoy.tracers.skywalking":                         "//source/extensions/tracers/skywalking:config",
+     "envoy.tracers.opentelemetry":                      "//source/extensions/tracers/opentelemetry:config",
+     "envoy.tracers.fluentd":                            "//source/extensions/tracers/fluentd:config",
++    "envoy.tracers.dynamic_modules":                    "//source/extensions/tracers/dynamic_modules:config",
+ 
+     #
+     # OpenTelemetry Resource Detectors
+diff --git a/source/extensions/extensions_metadata.yaml b/source/extensions/extensions_metadata.yaml
+index 1d340be70..b3b34aefd 100644
+--- a/source/extensions/extensions_metadata.yaml
++++ b/source/extensions/extensions_metadata.yaml
+@@ -1492,6 +1492,13 @@ envoy.tls.cert_validator.spiffe:
+   - envoy.tls.cert_validator
+   security_posture: requires_trusted_downstream_and_upstream
+   status: alpha
++envoy.tracers.dynamic_modules:
++  categories:
++  - envoy.tracers
++  security_posture: requires_trusted_downstream_and_upstream
++  status: alpha
++  type_urls:
++  - envoy.extensions.tracers.dynamic_modules.v3.DynamicModuleTracer
+ envoy.tracers.fluentd:
+   categories:
+   - envoy.tracers
+diff --git a/source/extensions/tracers/dynamic_modules/BUILD b/source/extensions/tracers/dynamic_modules/BUILD
+new file mode 100644
+index 000000000..021c03b15
+--- /dev/null
++++ b/source/extensions/tracers/dynamic_modules/BUILD
+@@ -0,0 +1,47 @@
++load(
++    "//bazel:envoy_build_system.bzl",
++    "envoy_cc_extension",
++    "envoy_cc_library",
++    "envoy_extension_package",
++)
++
++licenses(["notice"])  # Apache 2
++
++envoy_extension_package()
++
++envoy_cc_library(
++    name = "tracer_config_lib",
++    srcs = ["tracer_config.cc"],
++    hdrs = ["tracer_config.h"],
++    deps = [
++        "//source/common/common:assert_lib",
++        "//source/common/config:utility_lib",
++        "//source/common/tracing:null_span_lib",
++        "//source/extensions/dynamic_modules:dynamic_modules_lib",
++    ],
++)
++
++envoy_cc_library(
++    name = "abi_impl",
++    srcs = ["abi_impl.cc"],
++    deps = [
++        ":tracer_config_lib",
++        "//source/extensions/dynamic_modules:abi_impl",
++        "//source/extensions/dynamic_modules:dynamic_modules_lib",
++    ],
++    alwayslink = True,
++)
++
++envoy_cc_extension(
++    name = "config",
++    srcs = ["config.cc"],
++    hdrs = ["config.h"],
++    deps = [
++        ":abi_impl",
++        ":tracer_config_lib",
++        "//envoy/server:tracer_config_interface",
++        "//source/common/config:utility_lib",
++        "//source/common/protobuf:utility_lib",
++        "@envoy_api//envoy/extensions/tracers/dynamic_modules/v3:pkg_cc_proto",
++    ],
++)
+diff --git a/source/extensions/tracers/dynamic_modules/abi_impl.cc b/source/extensions/tracers/dynamic_modules/abi_impl.cc
+new file mode 100644
+index 000000000..771006c09
+--- /dev/null
++++ b/source/extensions/tracers/dynamic_modules/abi_impl.cc
+@@ -0,0 +1,328 @@
++// NOLINT(namespace-envoy)
++
++#include "source/extensions/dynamic_modules/abi/abi.h"
++#include "source/extensions/tracers/dynamic_modules/tracer_config.h"
++
++namespace {
++
++Envoy::Extensions::Tracers::DynamicModules::DynamicModuleSpan*
++getSpan(envoy_dynamic_module_type_tracer_span_envoy_ptr span_envoy_ptr) {
++  return static_cast<Envoy::Extensions::Tracers::DynamicModules::DynamicModuleSpan*>(
++      span_envoy_ptr);
++}
++
++Envoy::Extensions::Tracers::DynamicModules::DynamicModuleTracerConfig*
++getConfig(envoy_dynamic_module_type_tracer_config_envoy_ptr config_envoy_ptr) {
++  return static_cast<Envoy::Extensions::Tracers::DynamicModules::DynamicModuleTracerConfig*>(
++      config_envoy_ptr);
++}
++
++} // namespace
++
++extern "C" {
++
++// ----------------------- Trace Context Operations ---------------------------
++
++bool envoy_dynamic_module_callback_tracer_get_trace_context_value(
++    envoy_dynamic_module_type_tracer_span_envoy_ptr span_envoy_ptr,
++    envoy_dynamic_module_type_module_buffer key,
++    envoy_dynamic_module_type_envoy_buffer* value_out) {
++  auto* span = getSpan(span_envoy_ptr);
++  auto* ctx = span->traceContext();
++  if (ctx == nullptr) {
++    *value_out = {.ptr = nullptr, .length = 0};
++    return false;
++  }
++  absl::string_view key_view(key.ptr, key.length);
++  auto result = ctx->get(key_view);
++  if (!result.has_value()) {
++    *value_out = {.ptr = nullptr, .length = 0};
++    return false;
++  }
++  *value_out = {.ptr = const_cast<char*>(result.value().data()), .length = result.value().size()};
++  return true;
++}
++
++void envoy_dynamic_module_callback_tracer_set_trace_context_value(
++    envoy_dynamic_module_type_tracer_span_envoy_ptr span_envoy_ptr,
++    envoy_dynamic_module_type_module_buffer key, envoy_dynamic_module_type_module_buffer value) {
++  auto* span = getSpan(span_envoy_ptr);
++  auto* ctx = span->traceContext();
++  if (ctx == nullptr) {
++    return;
++  }
++  ctx->set(absl::string_view(key.ptr, key.length), absl::string_view(value.ptr, value.length));
++}
++
++void envoy_dynamic_module_callback_tracer_remove_trace_context_value(
++    envoy_dynamic_module_type_tracer_span_envoy_ptr span_envoy_ptr,
++    envoy_dynamic_module_type_module_buffer key) {
++  auto* span = getSpan(span_envoy_ptr);
++  auto* ctx = span->traceContext();
++  if (ctx == nullptr) {
++    return;
++  }
++  ctx->remove(absl::string_view(key.ptr, key.length));
++}
++
++bool envoy_dynamic_module_callback_tracer_get_trace_context_protocol(
++    envoy_dynamic_module_type_tracer_span_envoy_ptr span_envoy_ptr,
++    envoy_dynamic_module_type_envoy_buffer* value_out) {
++  auto* span = getSpan(span_envoy_ptr);
++  auto* ctx = span->traceContext();
++  if (ctx == nullptr) {
++    *value_out = {.ptr = nullptr, .length = 0};
++    return false;
++  }
++  auto protocol = ctx->protocol();
++  if (protocol.empty()) {
++    *value_out = {.ptr = nullptr, .length = 0};
++    return false;
++  }
++  *value_out = {.ptr = const_cast<char*>(protocol.data()), .length = protocol.size()};
++  return true;
++}
++
++bool envoy_dynamic_module_callback_tracer_get_trace_context_host(
++    envoy_dynamic_module_type_tracer_span_envoy_ptr span_envoy_ptr,
++    envoy_dynamic_module_type_envoy_buffer* value_out) {
++  auto* span = getSpan(span_envoy_ptr);
++  auto* ctx = span->traceContext();
++  if (ctx == nullptr) {
++    *value_out = {.ptr = nullptr, .length = 0};
++    return false;
++  }
++  auto host = ctx->host();
++  if (host.empty()) {
++    *value_out = {.ptr = nullptr, .length = 0};
++    return false;
++  }
++  *value_out = {.ptr = const_cast<char*>(host.data()), .length = host.size()};
++  return true;
++}
++
++bool envoy_dynamic_module_callback_tracer_get_trace_context_path(
++    envoy_dynamic_module_type_tracer_span_envoy_ptr span_envoy_ptr,
++    envoy_dynamic_module_type_envoy_buffer* value_out) {
++  auto* span = getSpan(span_envoy_ptr);
++  auto* ctx = span->traceContext();
++  if (ctx == nullptr) {
++    *value_out = {.ptr = nullptr, .length = 0};
++    return false;
++  }
++  auto path = ctx->path();
++  if (path.empty()) {
++    *value_out = {.ptr = nullptr, .length = 0};
++    return false;
++  }
++  *value_out = {.ptr = const_cast<char*>(path.data()), .length = path.size()};
++  return true;
++}
++
++bool envoy_dynamic_module_callback_tracer_get_trace_context_method(
++    envoy_dynamic_module_type_tracer_span_envoy_ptr span_envoy_ptr,
++    envoy_dynamic_module_type_envoy_buffer* value_out) {
++  auto* span = getSpan(span_envoy_ptr);
++  auto* ctx = span->traceContext();
++  if (ctx == nullptr) {
++    *value_out = {.ptr = nullptr, .length = 0};
++    return false;
++  }
++  auto method = ctx->method();
++  if (method.empty()) {
++    *value_out = {.ptr = nullptr, .length = 0};
++    return false;
++  }
++  *value_out = {.ptr = const_cast<char*>(method.data()), .length = method.size()};
++  return true;
++}
++
++// ----------------------- Metrics Operations ----------------------------------
++
++static Envoy::Stats::StatNameTagVector buildTagsForTracerMetric(
++    Envoy::Extensions::Tracers::DynamicModules::DynamicModuleTracerConfig& config,
++    const Envoy::Stats::StatNameVec& label_names,
++    envoy_dynamic_module_type_module_buffer* label_values, size_t label_values_length) {
++  ASSERT(label_values_length == label_names.size());
++  Envoy::Stats::StatNameTagVector tags;
++  tags.reserve(label_values_length);
++  for (size_t i = 0; i < label_values_length; i++) {
++    absl::string_view label_value_view(label_values[i].ptr, label_values[i].length);
++    auto label_value = config.stat_name_pool_.add(label_value_view);
++    tags.push_back(Envoy::Stats::StatNameTag(label_names[i], label_value));
++  }
++  return tags;
++}
++
++envoy_dynamic_module_type_metrics_result envoy_dynamic_module_callback_tracer_define_counter(
++    envoy_dynamic_module_type_tracer_config_envoy_ptr config_envoy_ptr,
++    envoy_dynamic_module_type_module_buffer name,
++    envoy_dynamic_module_type_module_buffer* label_names, size_t label_names_length,
++    size_t* counter_id_ptr) {
++  auto* config = getConfig(config_envoy_ptr);
++  absl::string_view name_view(name.ptr, name.length);
++  auto stat_name = config->stat_name_pool_.add(name_view);
++
++  if (label_names_length == 0) {
++    auto& counter = config->stats_scope_->counterFromStatName(stat_name);
++    *counter_id_ptr = config->addCounter(
++        Envoy::Extensions::Tracers::DynamicModules::DynamicModuleTracerConfig::ModuleCounterHandle(
++            counter));
++    return envoy_dynamic_module_type_metrics_result_Success;
++  }
++
++  Envoy::Stats::StatNameVec label_names_vec;
++  for (size_t i = 0; i < label_names_length; i++) {
++    absl::string_view label_name_view(label_names[i].ptr, label_names[i].length);
++    label_names_vec.push_back(config->stat_name_pool_.add(label_name_view));
++  }
++  *counter_id_ptr = config->addCounterVec(
++      Envoy::Extensions::Tracers::DynamicModules::DynamicModuleTracerConfig::ModuleCounterVecHandle(
++          stat_name, label_names_vec));
++  return envoy_dynamic_module_type_metrics_result_Success;
++}
++
++envoy_dynamic_module_type_metrics_result envoy_dynamic_module_callback_tracer_define_gauge(
++    envoy_dynamic_module_type_tracer_config_envoy_ptr config_envoy_ptr,
++    envoy_dynamic_module_type_module_buffer name,
++    envoy_dynamic_module_type_module_buffer* label_names, size_t label_names_length,
++    size_t* gauge_id_ptr) {
++  auto* config = getConfig(config_envoy_ptr);
++  absl::string_view name_view(name.ptr, name.length);
++  auto stat_name = config->stat_name_pool_.add(name_view);
++  auto import_mode = Envoy::Stats::Gauge::ImportMode::NeverImport;
++
++  if (label_names_length == 0) {
++    auto& gauge = config->stats_scope_->gaugeFromStatName(stat_name, import_mode);
++    *gauge_id_ptr = config->addGauge(
++        Envoy::Extensions::Tracers::DynamicModules::DynamicModuleTracerConfig::ModuleGaugeHandle(
++            gauge));
++    return envoy_dynamic_module_type_metrics_result_Success;
++  }
++
++  Envoy::Stats::StatNameVec label_names_vec;
++  for (size_t i = 0; i < label_names_length; i++) {
++    absl::string_view label_name_view(label_names[i].ptr, label_names[i].length);
++    label_names_vec.push_back(config->stat_name_pool_.add(label_name_view));
++  }
++  *gauge_id_ptr = config->addGaugeVec(
++      Envoy::Extensions::Tracers::DynamicModules::DynamicModuleTracerConfig::ModuleGaugeVecHandle(
++          stat_name, label_names_vec, import_mode));
++  return envoy_dynamic_module_type_metrics_result_Success;
++}
++
++envoy_dynamic_module_type_metrics_result envoy_dynamic_module_callback_tracer_define_histogram(
++    envoy_dynamic_module_type_tracer_config_envoy_ptr config_envoy_ptr,
++    envoy_dynamic_module_type_module_buffer name,
++    envoy_dynamic_module_type_module_buffer* label_names, size_t label_names_length,
++    size_t* histogram_id_ptr) {
++  auto* config = getConfig(config_envoy_ptr);
++  absl::string_view name_view(name.ptr, name.length);
++  auto stat_name = config->stat_name_pool_.add(name_view);
++  auto unit = Envoy::Stats::Histogram::Unit::Unspecified;
++
++  if (label_names_length == 0) {
++    auto& histogram = config->stats_scope_->histogramFromStatName(stat_name, unit);
++    *histogram_id_ptr =
++        config->addHistogram(Envoy::Extensions::Tracers::DynamicModules::DynamicModuleTracerConfig::
++                                 ModuleHistogramHandle(histogram));
++    return envoy_dynamic_module_type_metrics_result_Success;
++  }
++
++  Envoy::Stats::StatNameVec label_names_vec;
++  for (size_t i = 0; i < label_names_length; i++) {
++    absl::string_view label_name_view(label_names[i].ptr, label_names[i].length);
++    label_names_vec.push_back(config->stat_name_pool_.add(label_name_view));
++  }
++  *histogram_id_ptr = config->addHistogramVec(
++      Envoy::Extensions::Tracers::DynamicModules::DynamicModuleTracerConfig::
++          ModuleHistogramVecHandle(stat_name, label_names_vec, unit));
++  return envoy_dynamic_module_type_metrics_result_Success;
++}
++
++envoy_dynamic_module_type_metrics_result envoy_dynamic_module_callback_tracer_increment_counter(
++    envoy_dynamic_module_type_tracer_config_envoy_ptr config_envoy_ptr, size_t id,
++    envoy_dynamic_module_type_module_buffer* label_values, size_t label_values_length,
++    uint64_t value) {
++  auto* config = getConfig(config_envoy_ptr);
++
++  if (label_values_length == 0) {
++    auto counter = config->getCounterById(id);
++    if (!counter.has_value()) {
++      return envoy_dynamic_module_type_metrics_result_MetricNotFound;
++    }
++    counter->add(value);
++    return envoy_dynamic_module_type_metrics_result_Success;
++  }
++
++  auto counter = config->getCounterVecById(id);
++  if (!counter.has_value()) {
++    return envoy_dynamic_module_type_metrics_result_MetricNotFound;
++  }
++  if (label_values_length != counter->getLabelNames().size()) {
++    return envoy_dynamic_module_type_metrics_result_InvalidLabels;
++  }
++  auto tags = buildTagsForTracerMetric(*config, counter->getLabelNames(), label_values,
++                                       label_values_length);
++  counter->add(*config->stats_scope_, tags, value);
++  return envoy_dynamic_module_type_metrics_result_Success;
++}
++
++envoy_dynamic_module_type_metrics_result
++envoy_dynamic_module_callback_tracer_record_histogram_value(
++    envoy_dynamic_module_type_tracer_config_envoy_ptr config_envoy_ptr, size_t id,
++    envoy_dynamic_module_type_module_buffer* label_values, size_t label_values_length,
++    uint64_t value) {
++  auto* config = getConfig(config_envoy_ptr);
++
++  if (label_values_length == 0) {
++    auto histogram = config->getHistogramById(id);
++    if (!histogram.has_value()) {
++      return envoy_dynamic_module_type_metrics_result_MetricNotFound;
++    }
++    histogram->recordValue(value);
++    return envoy_dynamic_module_type_metrics_result_Success;
++  }
++
++  auto histogram = config->getHistogramVecById(id);
++  if (!histogram.has_value()) {
++    return envoy_dynamic_module_type_metrics_result_MetricNotFound;
++  }
++  if (label_values_length != histogram->getLabelNames().size()) {
++    return envoy_dynamic_module_type_metrics_result_InvalidLabels;
++  }
++  auto tags = buildTagsForTracerMetric(*config, histogram->getLabelNames(), label_values,
++                                       label_values_length);
++  histogram->recordValue(*config->stats_scope_, tags, value);
++  return envoy_dynamic_module_type_metrics_result_Success;
++}
++
++envoy_dynamic_module_type_metrics_result envoy_dynamic_module_callback_tracer_set_gauge(
++    envoy_dynamic_module_type_tracer_config_envoy_ptr config_envoy_ptr, size_t id,
++    envoy_dynamic_module_type_module_buffer* label_values, size_t label_values_length,
++    uint64_t value) {
++  auto* config = getConfig(config_envoy_ptr);
++
++  if (label_values_length == 0) {
++    auto gauge = config->getGaugeById(id);
++    if (!gauge.has_value()) {
++      return envoy_dynamic_module_type_metrics_result_MetricNotFound;
++    }
++    gauge->set(value);
++    return envoy_dynamic_module_type_metrics_result_Success;
++  }
++
++  auto gauge = config->getGaugeVecById(id);
++  if (!gauge.has_value()) {
++    return envoy_dynamic_module_type_metrics_result_MetricNotFound;
++  }
++  if (label_values_length != gauge->getLabelNames().size()) {
++    return envoy_dynamic_module_type_metrics_result_InvalidLabels;
++  }
++  auto tags =
++      buildTagsForTracerMetric(*config, gauge->getLabelNames(), label_values, label_values_length);
++  gauge->set(*config->stats_scope_, tags, value);
++  return envoy_dynamic_module_type_metrics_result_Success;
++}
++
++} // extern "C"
+diff --git a/source/extensions/tracers/dynamic_modules/config.cc b/source/extensions/tracers/dynamic_modules/config.cc
+new file mode 100644
+index 000000000..eb28cab37
+--- /dev/null
++++ b/source/extensions/tracers/dynamic_modules/config.cc
+@@ -0,0 +1,71 @@
++#include "source/extensions/tracers/dynamic_modules/config.h"
++
++#include "envoy/extensions/tracers/dynamic_modules/v3/dynamic_modules.pb.validate.h"
++
++#include "source/common/config/utility.h"
++#include "source/common/protobuf/utility.h"
++#include "source/common/runtime/runtime_features.h"
++#include "source/extensions/tracers/dynamic_modules/tracer_config.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace Tracers {
++namespace DynamicModules {
++
++Tracing::DriverSharedPtr DynamicModuleTracerFactory::createTracerDriver(
++    const Protobuf::Message& config, Server::Configuration::TracerFactoryContext& context) {
++  const auto& proto_config = MessageUtil::downcastAndValidate<
++      const envoy::extensions::tracers::dynamic_modules::v3::DynamicModuleTracer&>(
++      config, context.messageValidationVisitor());
++
++  const auto& module_config = proto_config.dynamic_module_config();
++  auto dynamic_module_or_error = Extensions::DynamicModules::newDynamicModuleByName(
++      module_config.name(), module_config.do_not_close(), module_config.load_globally());
++
++  if (!dynamic_module_or_error.ok()) {
++    throw EnvoyException("Failed to load dynamic module: " +
++                         std::string(dynamic_module_or_error.status().message()));
++  }
++
++  std::string tracer_config_str;
++  if (proto_config.has_tracer_config()) {
++    auto config_or_error = MessageUtil::knownAnyToBytes(proto_config.tracer_config());
++    if (!config_or_error.ok()) {
++      throw EnvoyException("Failed to parse tracer config: " +
++                           std::string(config_or_error.status().message()));
++    }
++    tracer_config_str = std::move(config_or_error.value());
++  }
++
++  const std::string metrics_namespace = module_config.metrics_namespace().empty()
++                                            ? std::string(DefaultMetricsNamespace)
++                                            : module_config.metrics_namespace();
++
++  auto tracer_config = newDynamicModuleTracerConfig(
++      proto_config.tracer_name(), tracer_config_str, metrics_namespace,
++      std::move(dynamic_module_or_error.value()), context.serverFactoryContext().scope());
++
++  if (!tracer_config.ok()) {
++    throw EnvoyException("Failed to create tracer config: " +
++                         std::string(tracer_config.status().message()));
++  }
++
++  if (Runtime::runtimeFeatureEnabled(
++          "envoy.reloadable_features.dynamic_modules_strip_custom_stat_prefix")) {
++    context.serverFactoryContext().api().customStatNamespaces().registerStatNamespace(
++        metrics_namespace);
++  }
++
++  return std::make_shared<DynamicModuleDriver>(std::move(tracer_config.value()));
++}
++
++ProtobufTypes::MessagePtr DynamicModuleTracerFactory::createEmptyConfigProto() {
++  return std::make_unique<envoy::extensions::tracers::dynamic_modules::v3::DynamicModuleTracer>();
++}
++
++REGISTER_FACTORY(DynamicModuleTracerFactory, Server::Configuration::TracerFactory);
++
++} // namespace DynamicModules
++} // namespace Tracers
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/source/extensions/tracers/dynamic_modules/config.h b/source/extensions/tracers/dynamic_modules/config.h
+new file mode 100644
+index 000000000..6fd98b409
+--- /dev/null
++++ b/source/extensions/tracers/dynamic_modules/config.h
+@@ -0,0 +1,26 @@
++#pragma once
++
++#include "envoy/server/tracer_config.h"
++
++#include "source/extensions/tracers/dynamic_modules/tracer_config.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace Tracers {
++namespace DynamicModules {
++
++class DynamicModuleTracerFactory : public Server::Configuration::TracerFactory {
++public:
++  Tracing::DriverSharedPtr
++  createTracerDriver(const Protobuf::Message& config,
++                     Server::Configuration::TracerFactoryContext& context) override;
++
++  ProtobufTypes::MessagePtr createEmptyConfigProto() override;
++
++  std::string name() const override { return "envoy.tracers.dynamic_modules"; }
++};
++
++} // namespace DynamicModules
++} // namespace Tracers
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/source/extensions/tracers/dynamic_modules/tracer_config.cc b/source/extensions/tracers/dynamic_modules/tracer_config.cc
+new file mode 100644
+index 000000000..1074f2d78
+--- /dev/null
++++ b/source/extensions/tracers/dynamic_modules/tracer_config.cc
+@@ -0,0 +1,244 @@
++#include "source/extensions/tracers/dynamic_modules/tracer_config.h"
++
++#include "source/common/common/assert.h"
++#include "source/common/tracing/null_span_impl.h"
++
++#include "absl/strings/str_cat.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace Tracers {
++namespace DynamicModules {
++
++namespace {
++
++envoy_dynamic_module_type_trace_reason toAbiReason(Tracing::Reason reason) {
++  switch (reason) {
++  case Tracing::Reason::NotTraceable:
++    return envoy_dynamic_module_type_trace_reason_NotTraceable;
++  case Tracing::Reason::HealthCheck:
++    return envoy_dynamic_module_type_trace_reason_HealthCheck;
++  case Tracing::Reason::Sampling:
++    return envoy_dynamic_module_type_trace_reason_Sampling;
++  case Tracing::Reason::ServiceForced:
++    return envoy_dynamic_module_type_trace_reason_ServiceForced;
++  case Tracing::Reason::ClientForced:
++    return envoy_dynamic_module_type_trace_reason_ClientForced;
++  }
++  return envoy_dynamic_module_type_trace_reason_NotTraceable;
++}
++
++} // namespace
++
++// =============================================================================
++// DynamicModuleTracerConfig
++// =============================================================================
++
++DynamicModuleTracerConfig::DynamicModuleTracerConfig(
++    const absl::string_view tracer_name, const absl::string_view tracer_config,
++    const absl::string_view metrics_namespace,
++    Extensions::DynamicModules::DynamicModulePtr dynamic_module, Stats::Scope& stats_scope)
++    : stats_scope_(stats_scope.createScope(absl::StrCat(metrics_namespace, "."))),
++      stat_name_pool_(stats_scope_->symbolTable()), tracer_name_(tracer_name),
++      tracer_config_(tracer_config), dynamic_module_(std::move(dynamic_module)) {}
++
++DynamicModuleTracerConfig::~DynamicModuleTracerConfig() {
++  if (in_module_config_ != nullptr && on_config_destroy_ != nullptr) {
++    on_config_destroy_(in_module_config_);
++  }
++}
++
++absl::StatusOr<DynamicModuleTracerConfigSharedPtr> newDynamicModuleTracerConfig(
++    const absl::string_view tracer_name, const absl::string_view tracer_config,
++    const absl::string_view metrics_namespace,
++    Extensions::DynamicModules::DynamicModulePtr dynamic_module, Stats::Scope& stats_scope) {
++  ASSERT_IS_MAIN_OR_TEST_THREAD();
++
++  auto config = std::make_shared<DynamicModuleTracerConfig>(
++      tracer_name, tracer_config, metrics_namespace, std::move(dynamic_module), stats_scope);
++
++#define RESOLVE_OR_RETURN(field, symbol)                                                           \
++  {                                                                                                \
++    auto result = config->dynamic_module_->getFunctionPointer<decltype(config->field)>(symbol);    \
++    RETURN_IF_NOT_OK_REF(result.status());                                                         \
++    config->field = result.value();                                                                \
++  }
++
++  // Resolve required config symbols.
++  auto on_config_new = config->dynamic_module_->getFunctionPointer<OnTracerConfigNewType>(
++      "envoy_dynamic_module_on_tracer_config_new");
++  RETURN_IF_NOT_OK_REF(on_config_new.status());
++
++  RESOLVE_OR_RETURN(on_config_destroy_, "envoy_dynamic_module_on_tracer_config_destroy");
++
++  // Resolve required span symbols.
++  RESOLVE_OR_RETURN(on_start_span_, "envoy_dynamic_module_on_tracer_start_span");
++  RESOLVE_OR_RETURN(on_span_set_operation_, "envoy_dynamic_module_on_tracer_span_set_operation");
++  RESOLVE_OR_RETURN(on_span_set_tag_, "envoy_dynamic_module_on_tracer_span_set_tag");
++  RESOLVE_OR_RETURN(on_span_log_, "envoy_dynamic_module_on_tracer_span_log");
++  RESOLVE_OR_RETURN(on_span_finish_, "envoy_dynamic_module_on_tracer_span_finish");
++  RESOLVE_OR_RETURN(on_span_inject_context_, "envoy_dynamic_module_on_tracer_span_inject_context");
++  RESOLVE_OR_RETURN(on_span_spawn_child_, "envoy_dynamic_module_on_tracer_span_spawn_child");
++  RESOLVE_OR_RETURN(on_span_set_sampled_, "envoy_dynamic_module_on_tracer_span_set_sampled");
++  RESOLVE_OR_RETURN(on_span_use_local_decision_,
++                    "envoy_dynamic_module_on_tracer_span_use_local_decision");
++  RESOLVE_OR_RETURN(on_span_get_baggage_, "envoy_dynamic_module_on_tracer_span_get_baggage");
++  RESOLVE_OR_RETURN(on_span_set_baggage_, "envoy_dynamic_module_on_tracer_span_set_baggage");
++  RESOLVE_OR_RETURN(on_span_get_trace_id_, "envoy_dynamic_module_on_tracer_span_get_trace_id");
++  RESOLVE_OR_RETURN(on_span_get_span_id_, "envoy_dynamic_module_on_tracer_span_get_span_id");
++  RESOLVE_OR_RETURN(on_span_destroy_, "envoy_dynamic_module_on_tracer_span_destroy");
++
++#undef RESOLVE_OR_RETURN
++
++  // Create the in-module configuration.
++  envoy_dynamic_module_type_envoy_buffer name_buf = {.ptr = config->tracer_name_.data(),
++                                                     .length = config->tracer_name_.size()};
++  envoy_dynamic_module_type_envoy_buffer config_buf = {.ptr = config->tracer_config_.data(),
++                                                       .length = config->tracer_config_.size()};
++  config->in_module_config_ =
++      (*on_config_new.value())(static_cast<void*>(config.get()), name_buf, config_buf);
++
++  if (config->in_module_config_ == nullptr) {
++    return absl::InvalidArgumentError("Failed to initialize dynamic module tracer config");
++  }
++  return config;
++}
++
++// =============================================================================
++// DynamicModuleSpan
++// =============================================================================
++
++DynamicModuleSpan::DynamicModuleSpan(
++    DynamicModuleTracerConfigSharedPtr config,
++    envoy_dynamic_module_type_tracer_span_module_ptr in_module_span,
++    Tracing::TraceContext* trace_context)
++    : config_(std::move(config)), in_module_span_(in_module_span), trace_context_(trace_context) {}
++
++DynamicModuleSpan::~DynamicModuleSpan() {
++  if (in_module_span_ != nullptr && config_->on_span_destroy_ != nullptr) {
++    config_->on_span_destroy_(in_module_span_);
++  }
++}
++
++void DynamicModuleSpan::setOperation(absl::string_view operation) {
++  envoy_dynamic_module_type_envoy_buffer op_buf = {.ptr = const_cast<char*>(operation.data()),
++                                                   .length = operation.size()};
++  config_->on_span_set_operation_(in_module_span_, op_buf);
++}
++
++void DynamicModuleSpan::setTag(absl::string_view name, absl::string_view value) {
++  envoy_dynamic_module_type_envoy_buffer key_buf = {.ptr = const_cast<char*>(name.data()),
++                                                    .length = name.size()};
++  envoy_dynamic_module_type_envoy_buffer val_buf = {.ptr = const_cast<char*>(value.data()),
++                                                    .length = value.size()};
++  config_->on_span_set_tag_(in_module_span_, key_buf, val_buf);
++}
++
++void DynamicModuleSpan::log(SystemTime timestamp, const std::string& event) {
++  const int64_t timestamp_ns =
++      std::chrono::duration_cast<std::chrono::nanoseconds>(timestamp.time_since_epoch()).count();
++  envoy_dynamic_module_type_envoy_buffer event_buf = {.ptr = const_cast<char*>(event.data()),
++                                                      .length = event.size()};
++  config_->on_span_log_(in_module_span_, timestamp_ns, event_buf);
++}
++
++void DynamicModuleSpan::finishSpan() { config_->on_span_finish_(in_module_span_); }
++
++void DynamicModuleSpan::injectContext(Tracing::TraceContext& trace_context,
++                                      const Tracing::UpstreamContext&) {
++  // Temporarily set the trace context to the outgoing one for callback access.
++  Tracing::TraceContext* prev = trace_context_;
++  trace_context_ = &trace_context;
++  config_->on_span_inject_context_(in_module_span_, static_cast<void*>(this));
++  trace_context_ = prev;
++}
++
++Tracing::SpanPtr DynamicModuleSpan::spawnChild(const Tracing::Config&, const std::string& name,
++                                               SystemTime start_time) {
++  const int64_t start_time_ns =
++      std::chrono::duration_cast<std::chrono::nanoseconds>(start_time.time_since_epoch()).count();
++  envoy_dynamic_module_type_envoy_buffer name_buf = {.ptr = const_cast<char*>(name.data()),
++                                                     .length = name.size()};
++  auto child_module_span = config_->on_span_spawn_child_(in_module_span_, name_buf, start_time_ns);
++  if (child_module_span == nullptr) {
++    return std::make_unique<Tracing::NullSpan>();
++  }
++  return std::make_unique<DynamicModuleSpan>(config_, child_module_span, trace_context_);
++}
++
++void DynamicModuleSpan::setSampled(bool sampled) {
++  config_->on_span_set_sampled_(in_module_span_, sampled);
++}
++
++bool DynamicModuleSpan::useLocalDecision() const {
++  return config_->on_span_use_local_decision_(in_module_span_);
++}
++
++std::string DynamicModuleSpan::getBaggage(absl::string_view key) {
++  envoy_dynamic_module_type_envoy_buffer key_buf = {.ptr = const_cast<char*>(key.data()),
++                                                    .length = key.size()};
++  envoy_dynamic_module_type_module_buffer value_out = {.ptr = nullptr, .length = 0};
++  if (config_->on_span_get_baggage_(in_module_span_, key_buf, &value_out) &&
++      value_out.ptr != nullptr) {
++    return std::string(value_out.ptr, value_out.length);
++  }
++  return {};
++}
++
++void DynamicModuleSpan::setBaggage(absl::string_view key, absl::string_view value) {
++  envoy_dynamic_module_type_envoy_buffer key_buf = {.ptr = const_cast<char*>(key.data()),
++                                                    .length = key.size()};
++  envoy_dynamic_module_type_envoy_buffer val_buf = {.ptr = const_cast<char*>(value.data()),
++                                                    .length = value.size()};
++  config_->on_span_set_baggage_(in_module_span_, key_buf, val_buf);
++}
++
++std::string DynamicModuleSpan::getTraceId() const {
++  envoy_dynamic_module_type_module_buffer value_out = {.ptr = nullptr, .length = 0};
++  if (config_->on_span_get_trace_id_(in_module_span_, &value_out) && value_out.ptr != nullptr) {
++    return std::string(value_out.ptr, value_out.length);
++  }
++  return {};
++}
++
++std::string DynamicModuleSpan::getSpanId() const {
++  envoy_dynamic_module_type_module_buffer value_out = {.ptr = nullptr, .length = 0};
++  if (config_->on_span_get_span_id_(in_module_span_, &value_out) && value_out.ptr != nullptr) {
++    return std::string(value_out.ptr, value_out.length);
++  }
++  return {};
++}
++
++// =============================================================================
++// DynamicModuleDriver
++// =============================================================================
++
++DynamicModuleDriver::DynamicModuleDriver(DynamicModuleTracerConfigSharedPtr config)
++    : config_(std::move(config)) {}
++
++Tracing::SpanPtr DynamicModuleDriver::startSpan(const Tracing::Config&,
++                                                Tracing::TraceContext& trace_context,
++                                                const StreamInfo::StreamInfo&,
++                                                const std::string& operation_name,
++                                                Tracing::Decision tracing_decision) {
++  // Create a temporary span wrapper so the module can access trace context via callbacks.
++  auto span = std::make_unique<DynamicModuleSpan>(config_, nullptr, &trace_context);
++
++  envoy_dynamic_module_type_envoy_buffer op_buf = {.ptr = const_cast<char*>(operation_name.data()),
++                                                   .length = operation_name.size()};
++
++  auto in_module_span =
++      config_->on_start_span_(config_->in_module_config_, static_cast<void*>(span.get()), op_buf,
++                              tracing_decision.traced, toAbiReason(tracing_decision.reason));
++  if (in_module_span == nullptr) {
++    return std::make_unique<Tracing::NullSpan>();
++  }
++
++  span->in_module_span_ = in_module_span;
++  return span;
++}
++
++} // namespace DynamicModules
++} // namespace Tracers
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/source/extensions/tracers/dynamic_modules/tracer_config.h b/source/extensions/tracers/dynamic_modules/tracer_config.h
+new file mode 100644
+index 000000000..ab609336e
+--- /dev/null
++++ b/source/extensions/tracers/dynamic_modules/tracer_config.h
+@@ -0,0 +1,334 @@
++#pragma once
++
++#include "envoy/common/optref.h"
++#include "envoy/stats/scope.h"
++#include "envoy/stats/stats.h"
++#include "envoy/tracing/trace_driver.h"
++
++#include "source/common/common/statusor.h"
++#include "source/common/stats/utility.h"
++#include "source/extensions/dynamic_modules/abi/abi.h"
++#include "source/extensions/dynamic_modules/dynamic_modules.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace Tracers {
++namespace DynamicModules {
++
++// Type aliases for function pointers resolved from the module.
++using OnTracerConfigNewType = decltype(&envoy_dynamic_module_on_tracer_config_new);
++using OnTracerConfigDestroyType = decltype(&envoy_dynamic_module_on_tracer_config_destroy);
++using OnTracerStartSpanType = decltype(&envoy_dynamic_module_on_tracer_start_span);
++using OnTracerSpanSetOperationType = decltype(&envoy_dynamic_module_on_tracer_span_set_operation);
++using OnTracerSpanSetTagType = decltype(&envoy_dynamic_module_on_tracer_span_set_tag);
++using OnTracerSpanLogType = decltype(&envoy_dynamic_module_on_tracer_span_log);
++using OnTracerSpanFinishType = decltype(&envoy_dynamic_module_on_tracer_span_finish);
++using OnTracerSpanInjectContextType = decltype(&envoy_dynamic_module_on_tracer_span_inject_context);
++using OnTracerSpanSpawnChildType = decltype(&envoy_dynamic_module_on_tracer_span_spawn_child);
++using OnTracerSpanSetSampledType = decltype(&envoy_dynamic_module_on_tracer_span_set_sampled);
++using OnTracerSpanUseLocalDecisionType =
++    decltype(&envoy_dynamic_module_on_tracer_span_use_local_decision);
++using OnTracerSpanGetBaggageType = decltype(&envoy_dynamic_module_on_tracer_span_get_baggage);
++using OnTracerSpanSetBaggageType = decltype(&envoy_dynamic_module_on_tracer_span_set_baggage);
++using OnTracerSpanGetTraceIdType = decltype(&envoy_dynamic_module_on_tracer_span_get_trace_id);
++using OnTracerSpanGetSpanIdType = decltype(&envoy_dynamic_module_on_tracer_span_get_span_id);
++using OnTracerSpanDestroyType = decltype(&envoy_dynamic_module_on_tracer_span_destroy);
++
++// The default custom stat namespace which prepends all user-defined metrics.
++// This can be overridden via the ``metrics_namespace`` field in ``DynamicModuleConfig``.
++constexpr absl::string_view DefaultMetricsNamespace = "dynamicmodulescustom";
++
++/**
++ * Configuration for dynamic module tracers. This resolves and holds the symbols used for
++ * tracing. Multiple driver/span instances may share this config.
++ *
++ * Note: Symbol resolution and in-module config creation are done in the factory function
++ * newDynamicModuleTracerConfig() to provide graceful error handling. The constructor
++ * only initializes basic members.
++ */
++class DynamicModuleTracerConfig {
++public:
++  DynamicModuleTracerConfig(const absl::string_view tracer_name,
++                            const absl::string_view tracer_config,
++                            const absl::string_view metrics_namespace,
++                            Extensions::DynamicModules::DynamicModulePtr dynamic_module,
++                            Stats::Scope& stats_scope);
++
++  ~DynamicModuleTracerConfig();
++
++  // The corresponding in-module configuration.
++  envoy_dynamic_module_type_tracer_config_module_ptr in_module_config_{nullptr};
++
++  // Function pointers for the module. All required ones are resolved during
++  // newDynamicModuleTracerConfig() and guaranteed non-nullptr after that.
++  OnTracerConfigDestroyType on_config_destroy_{nullptr};
++  OnTracerStartSpanType on_start_span_{nullptr};
++  OnTracerSpanSetOperationType on_span_set_operation_{nullptr};
++  OnTracerSpanSetTagType on_span_set_tag_{nullptr};
++  OnTracerSpanLogType on_span_log_{nullptr};
++  OnTracerSpanFinishType on_span_finish_{nullptr};
++  OnTracerSpanInjectContextType on_span_inject_context_{nullptr};
++  OnTracerSpanSpawnChildType on_span_spawn_child_{nullptr};
++  OnTracerSpanSetSampledType on_span_set_sampled_{nullptr};
++  OnTracerSpanUseLocalDecisionType on_span_use_local_decision_{nullptr};
++  OnTracerSpanGetBaggageType on_span_get_baggage_{nullptr};
++  OnTracerSpanSetBaggageType on_span_set_baggage_{nullptr};
++  OnTracerSpanGetTraceIdType on_span_get_trace_id_{nullptr};
++  OnTracerSpanGetSpanIdType on_span_get_span_id_{nullptr};
++  OnTracerSpanDestroyType on_span_destroy_{nullptr};
++
++  // ----------------------------- Metrics Support -----------------------------
++
++  class ModuleCounterHandle {
++  public:
++    ModuleCounterHandle(Stats::Counter& counter) : counter_(counter) {}
++    void add(uint64_t value) const { counter_.add(value); }
++
++  private:
++    Stats::Counter& counter_;
++  };
++
++  class ModuleCounterVecHandle {
++  public:
++    ModuleCounterVecHandle(Stats::StatName name, Stats::StatNameVec label_names)
++        : name_(name), label_names_(label_names) {}
++
++    const Stats::StatNameVec& getLabelNames() const { return label_names_; }
++    void add(Stats::Scope& scope, Stats::StatNameTagVectorOptConstRef tags, uint64_t amount) const {
++      ASSERT(tags.has_value());
++      Stats::Utility::counterFromElements(scope, {name_}, tags).add(amount);
++    }
++
++  private:
++    Stats::StatName name_;
++    Stats::StatNameVec label_names_;
++  };
++
++  class ModuleGaugeHandle {
++  public:
++    ModuleGaugeHandle(Stats::Gauge& gauge) : gauge_(gauge) {}
++    void add(uint64_t value) const { gauge_.add(value); }
++    void sub(uint64_t value) const { gauge_.sub(value); }
++    void set(uint64_t value) const { gauge_.set(value); }
++
++  private:
++    Stats::Gauge& gauge_;
++  };
++
++  class ModuleGaugeVecHandle {
++  public:
++    ModuleGaugeVecHandle(Stats::StatName name, Stats::StatNameVec label_names,
++                         Stats::Gauge::ImportMode import_mode)
++        : name_(name), label_names_(label_names), import_mode_(import_mode) {}
++
++    const Stats::StatNameVec& getLabelNames() const { return label_names_; }
++
++    void set(Stats::Scope& scope, Stats::StatNameTagVectorOptConstRef tags, uint64_t amount) const {
++      ASSERT(tags.has_value());
++      Stats::Utility::gaugeFromElements(scope, {name_}, import_mode_, tags).set(amount);
++    }
++
++  private:
++    Stats::StatName name_;
++    Stats::StatNameVec label_names_;
++    Stats::Gauge::ImportMode import_mode_;
++  };
++
++  class ModuleHistogramHandle {
++  public:
++    ModuleHistogramHandle(Stats::Histogram& histogram) : histogram_(histogram) {}
++    void recordValue(uint64_t value) const { histogram_.recordValue(value); }
++
++  private:
++    Stats::Histogram& histogram_;
++  };
++
++  class ModuleHistogramVecHandle {
++  public:
++    ModuleHistogramVecHandle(Stats::StatName name, Stats::StatNameVec label_names,
++                             Stats::Histogram::Unit unit)
++        : name_(name), label_names_(label_names), unit_(unit) {}
++
++    const Stats::StatNameVec& getLabelNames() const { return label_names_; }
++
++    void recordValue(Stats::Scope& scope, Stats::StatNameTagVectorOptConstRef tags,
++                     uint64_t value) const {
++      ASSERT(tags.has_value());
++      Stats::Utility::histogramFromElements(scope, {name_}, unit_, tags).recordValue(value);
++    }
++
++  private:
++    Stats::StatName name_;
++    Stats::StatNameVec label_names_;
++    Stats::Histogram::Unit unit_;
++  };
++
++  size_t addCounter(ModuleCounterHandle&& counter) {
++    counters_.push_back(std::move(counter));
++    return counters_.size();
++  }
++
++  size_t addCounterVec(ModuleCounterVecHandle&& counter_vec) {
++    counter_vecs_.push_back(std::move(counter_vec));
++    return counter_vecs_.size();
++  }
++
++  size_t addGauge(ModuleGaugeHandle&& gauge) {
++    gauges_.push_back(std::move(gauge));
++    return gauges_.size();
++  }
++
++  size_t addGaugeVec(ModuleGaugeVecHandle&& gauge_vec) {
++    gauge_vecs_.push_back(std::move(gauge_vec));
++    return gauge_vecs_.size();
++  }
++
++  size_t addHistogram(ModuleHistogramHandle&& histogram) {
++    histograms_.push_back(std::move(histogram));
++    return histograms_.size();
++  }
++
++  size_t addHistogramVec(ModuleHistogramVecHandle&& histogram_vec) {
++    histogram_vecs_.push_back(std::move(histogram_vec));
++    return histogram_vecs_.size();
++  }
++
++  OptRef<const ModuleCounterHandle> getCounterById(size_t id) const {
++    if (id == 0 || id > counters_.size()) {
++      return {};
++    }
++    return counters_[id - 1];
++  }
++
++  OptRef<const ModuleCounterVecHandle> getCounterVecById(size_t id) const {
++    if (id == 0 || id > counter_vecs_.size()) {
++      return {};
++    }
++    return counter_vecs_[id - 1];
++  }
++
++  OptRef<const ModuleGaugeHandle> getGaugeById(size_t id) const {
++    if (id == 0 || id > gauges_.size()) {
++      return {};
++    }
++    return gauges_[id - 1];
++  }
++
++  OptRef<const ModuleGaugeVecHandle> getGaugeVecById(size_t id) const {
++    if (id == 0 || id > gauge_vecs_.size()) {
++      return {};
++    }
++    return gauge_vecs_[id - 1];
++  }
++
++  OptRef<const ModuleHistogramHandle> getHistogramById(size_t id) const {
++    if (id == 0 || id > histograms_.size()) {
++      return {};
++    }
++    return histograms_[id - 1];
++  }
++
++  OptRef<const ModuleHistogramVecHandle> getHistogramVecById(size_t id) const {
++    if (id == 0 || id > histogram_vecs_.size()) {
++      return {};
++    }
++    return histogram_vecs_[id - 1];
++  }
++
++  const Stats::ScopeSharedPtr stats_scope_;
++  Stats::StatNamePool stat_name_pool_;
++
++private:
++  friend absl::StatusOr<std::shared_ptr<DynamicModuleTracerConfig>> newDynamicModuleTracerConfig(
++      const absl::string_view tracer_name, const absl::string_view tracer_config,
++      const absl::string_view metrics_namespace,
++      Extensions::DynamicModules::DynamicModulePtr dynamic_module, Stats::Scope& stats_scope);
++
++  const std::string tracer_name_;
++  const std::string tracer_config_;
++  Extensions::DynamicModules::DynamicModulePtr dynamic_module_;
++  std::vector<ModuleCounterHandle> counters_;
++  std::vector<ModuleCounterVecHandle> counter_vecs_;
++  std::vector<ModuleGaugeHandle> gauges_;
++  std::vector<ModuleGaugeVecHandle> gauge_vecs_;
++  std::vector<ModuleHistogramHandle> histograms_;
++  std::vector<ModuleHistogramVecHandle> histogram_vecs_;
++};
++
++using DynamicModuleTracerConfigSharedPtr = std::shared_ptr<DynamicModuleTracerConfig>;
++
++/**
++ * Creates a new DynamicModuleTracerConfig for the given configuration.
++ * @param tracer_name the name of the tracer.
++ * @param tracer_config the configuration bytes for the tracer.
++ * @param metrics_namespace the namespace prefix for metrics emitted by this module.
++ * @param dynamic_module the dynamic module to use.
++ * @param stats_scope the stats scope for metrics.
++ * @return a shared pointer to the new config object or an error if symbol resolution failed.
++ */
++absl::StatusOr<DynamicModuleTracerConfigSharedPtr> newDynamicModuleTracerConfig(
++    const absl::string_view tracer_name, const absl::string_view tracer_config,
++    const absl::string_view metrics_namespace,
++    Extensions::DynamicModules::DynamicModulePtr dynamic_module, Stats::Scope& stats_scope);
++
++/**
++ * DynamicModuleSpan wraps an in-module span and implements the Tracing::Span interface.
++ * It holds a mutable TraceContext* that is updated to point to the currently active trace
++ * context during startSpan (incoming) and injectContext (outgoing).
++ */
++class DynamicModuleSpan : public Tracing::Span {
++public:
++  DynamicModuleSpan(DynamicModuleTracerConfigSharedPtr config,
++                    envoy_dynamic_module_type_tracer_span_module_ptr in_module_span,
++                    Tracing::TraceContext* trace_context);
++  ~DynamicModuleSpan() override;
++
++  // Tracing::Span interface.
++  void setOperation(absl::string_view operation) override;
++  void setTag(absl::string_view name, absl::string_view value) override;
++  void log(SystemTime timestamp, const std::string& event) override;
++  void finishSpan() override;
++  void injectContext(Tracing::TraceContext& trace_context,
++                     const Tracing::UpstreamContext& upstream) override;
++  Tracing::SpanPtr spawnChild(const Tracing::Config& config, const std::string& name,
++                              SystemTime start_time) override;
++  void setSampled(bool sampled) override;
++  bool useLocalDecision() const override;
++  std::string getBaggage(absl::string_view key) override;
++  void setBaggage(absl::string_view key, absl::string_view value) override;
++  std::string getTraceId() const override;
++  std::string getSpanId() const override;
++
++  // Returns the currently active trace context for callback implementations.
++  Tracing::TraceContext* traceContext() { return trace_context_; }
++
++private:
++  friend class DynamicModuleDriver;
++
++  DynamicModuleTracerConfigSharedPtr config_;
++  envoy_dynamic_module_type_tracer_span_module_ptr in_module_span_;
++  Tracing::TraceContext* trace_context_;
++};
++
++/**
++ * DynamicModuleDriver implements the Tracing::Driver interface and delegates span creation
++ * to the dynamic module.
++ */
++class DynamicModuleDriver : public Tracing::Driver {
++public:
++  explicit DynamicModuleDriver(DynamicModuleTracerConfigSharedPtr config);
++
++  // Tracing::Driver interface.
++  Tracing::SpanPtr startSpan(const Tracing::Config& config, Tracing::TraceContext& trace_context,
++                             const StreamInfo::StreamInfo& stream_info,
++                             const std::string& operation_name,
++                             Tracing::Decision tracing_decision) override;
++
++private:
++  DynamicModuleTracerConfigSharedPtr config_;
++};
++
++} // namespace DynamicModules
++} // namespace Tracers
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/test/extensions/dynamic_modules/abi_impl_test.cc b/test/extensions/dynamic_modules/abi_impl_test.cc
+index fe13da2d6..73447362f 100644
+--- a/test/extensions/dynamic_modules/abi_impl_test.cc
++++ b/test/extensions/dynamic_modules/abi_impl_test.cc
+@@ -1117,6 +1117,37 @@ WEAK_STUB(HttpGetMetadataListBool, envoy_dynamic_module_callback_http_get_metada
+                                        nullptr, envoy_dynamic_module_type_metadata_source_Dynamic,
+                                        {nullptr, 0}, {nullptr, 0}, 0, nullptr))
+ 
++WEAK_STUB(TracerGetTraceContextValue,
++          envoy_dynamic_module_callback_tracer_get_trace_context_value(nullptr, {nullptr, 0},
++                                                                       nullptr))
++WEAK_STUB(TracerSetTraceContextValue,
++          envoy_dynamic_module_callback_tracer_set_trace_context_value(nullptr, {nullptr, 0},
++                                                                       {nullptr, 0}))
++WEAK_STUB(TracerRemoveTraceContextValue,
++          envoy_dynamic_module_callback_tracer_remove_trace_context_value(nullptr, {nullptr, 0}))
++WEAK_STUB(TracerGetTraceContextProtocol,
++          envoy_dynamic_module_callback_tracer_get_trace_context_protocol(nullptr, nullptr))
++WEAK_STUB(TracerGetTraceContextHost,
++          envoy_dynamic_module_callback_tracer_get_trace_context_host(nullptr, nullptr))
++WEAK_STUB(TracerGetTraceContextPath,
++          envoy_dynamic_module_callback_tracer_get_trace_context_path(nullptr, nullptr))
++WEAK_STUB(TracerGetTraceContextMethod,
++          envoy_dynamic_module_callback_tracer_get_trace_context_method(nullptr, nullptr))
++WEAK_STUB(TracerDefineCounter,
++          envoy_dynamic_module_callback_tracer_define_counter(nullptr, {nullptr, 0}, nullptr, 0,
++                                                              nullptr))
++WEAK_STUB(TracerDefineGauge,
++          envoy_dynamic_module_callback_tracer_define_gauge(nullptr, {nullptr, 0}, nullptr, 0,
++                                                            nullptr))
++WEAK_STUB(TracerDefineHistogram,
++          envoy_dynamic_module_callback_tracer_define_histogram(nullptr, {nullptr, 0}, nullptr, 0,
++                                                                nullptr))
++WEAK_STUB(TracerIncrementCounter,
++          envoy_dynamic_module_callback_tracer_increment_counter(nullptr, 0, nullptr, 0, 0))
++WEAK_STUB(TracerRecordHistogramValue,
++          envoy_dynamic_module_callback_tracer_record_histogram_value(nullptr, 0, nullptr, 0, 0))
++WEAK_STUB(TracerSetGauge, envoy_dynamic_module_callback_tracer_set_gauge(nullptr, 0, nullptr, 0, 0))
++
+ WEAK_STUB(DnsResolveComplete,
+           envoy_dynamic_module_callback_dns_resolve_complete(
+               nullptr, 0, envoy_dynamic_module_type_dns_resolution_status_Completed, {nullptr, 0},
+diff --git a/test/extensions/dynamic_modules/test_data/c/BUILD b/test/extensions/dynamic_modules/test_data/c/BUILD
+index 90f8a9e46..7a6c2cd00 100644
+--- a/test/extensions/dynamic_modules/test_data/c/BUILD
++++ b/test/extensions/dynamic_modules/test_data/c/BUILD
+@@ -13,6 +13,7 @@ package(default_visibility = [
+     "//test/extensions/dynamic_modules/udp:__pkg__",
+     "//test/extensions/load_balancing_policies/dynamic_modules:__pkg__",
+     "//test/extensions/matching/input_matchers/dynamic_modules:__pkg__",
++    "//test/extensions/tracers/dynamic_modules:__pkg__",
+     "//test/extensions/transport_sockets/tls/cert_validator/dynamic_modules:__pkg__",
+     "//test/extensions/upstreams/http/dynamic_modules:__pkg__",
+ ])
+@@ -202,3 +203,9 @@ test_program(name = "upstream_bridge_abi_edge_cases")
+ test_program(name = "upstream_bridge_headers_end_stream")
+ 
+ test_program(name = "upstream_bridge_headers_end_stream_no_body")
++
++test_program(name = "tracer_no_op")
++
++test_program(name = "tracer_config_fail")
++
++test_program(name = "tracer_with_values")
+diff --git a/test/extensions/dynamic_modules/test_data/c/tracer_config_fail.c b/test/extensions/dynamic_modules/test_data/c/tracer_config_fail.c
+new file mode 100644
+index 000000000..3ef9896f4
+--- /dev/null
++++ b/test/extensions/dynamic_modules/test_data/c/tracer_config_fail.c
+@@ -0,0 +1,131 @@
++#include "source/extensions/dynamic_modules/abi/abi.h"
++
++envoy_dynamic_module_type_abi_version_module_ptr envoy_dynamic_module_on_program_init(void) {
++  return envoy_dynamic_modules_abi_version;
++}
++
++envoy_dynamic_module_type_tracer_config_module_ptr envoy_dynamic_module_on_tracer_config_new(
++    envoy_dynamic_module_type_tracer_config_envoy_ptr config_envoy_ptr,
++    envoy_dynamic_module_type_envoy_buffer name, envoy_dynamic_module_type_envoy_buffer config) {
++  (void)config_envoy_ptr;
++  (void)name;
++  (void)config;
++  return NULL;
++}
++
++void envoy_dynamic_module_on_tracer_config_destroy(
++    envoy_dynamic_module_type_tracer_config_module_ptr config_module_ptr) {
++  (void)config_module_ptr;
++}
++
++envoy_dynamic_module_type_tracer_span_module_ptr envoy_dynamic_module_on_tracer_start_span(
++    envoy_dynamic_module_type_tracer_config_module_ptr config_module_ptr,
++    envoy_dynamic_module_type_tracer_span_envoy_ptr span_envoy_ptr,
++    envoy_dynamic_module_type_envoy_buffer operation_name, bool traced,
++    envoy_dynamic_module_type_trace_reason reason) {
++  (void)config_module_ptr;
++  (void)span_envoy_ptr;
++  (void)operation_name;
++  (void)traced;
++  (void)reason;
++  return NULL;
++}
++
++void envoy_dynamic_module_on_tracer_span_set_operation(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr,
++    envoy_dynamic_module_type_envoy_buffer operation) {
++  (void)span_module_ptr;
++  (void)operation;
++}
++
++void envoy_dynamic_module_on_tracer_span_set_tag(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr,
++    envoy_dynamic_module_type_envoy_buffer key, envoy_dynamic_module_type_envoy_buffer value) {
++  (void)span_module_ptr;
++  (void)key;
++  (void)value;
++}
++
++void envoy_dynamic_module_on_tracer_span_log(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr, int64_t timestamp_ns,
++    envoy_dynamic_module_type_envoy_buffer event) {
++  (void)span_module_ptr;
++  (void)timestamp_ns;
++  (void)event;
++}
++
++void envoy_dynamic_module_on_tracer_span_finish(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr) {
++  (void)span_module_ptr;
++}
++
++void envoy_dynamic_module_on_tracer_span_inject_context(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr,
++    envoy_dynamic_module_type_tracer_span_envoy_ptr span_envoy_ptr) {
++  (void)span_module_ptr;
++  (void)span_envoy_ptr;
++}
++
++envoy_dynamic_module_type_tracer_span_module_ptr
++envoy_dynamic_module_on_tracer_span_spawn_child(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr,
++    envoy_dynamic_module_type_envoy_buffer name, int64_t start_time_ns) {
++  (void)span_module_ptr;
++  (void)name;
++  (void)start_time_ns;
++  return NULL;
++}
++
++void envoy_dynamic_module_on_tracer_span_set_sampled(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr, bool sampled) {
++  (void)span_module_ptr;
++  (void)sampled;
++}
++
++bool envoy_dynamic_module_on_tracer_span_use_local_decision(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr) {
++  (void)span_module_ptr;
++  return true;
++}
++
++bool envoy_dynamic_module_on_tracer_span_get_baggage(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr,
++    envoy_dynamic_module_type_envoy_buffer key,
++    envoy_dynamic_module_type_module_buffer* value_out) {
++  (void)span_module_ptr;
++  (void)key;
++  value_out->ptr = NULL;
++  value_out->length = 0;
++  return false;
++}
++
++void envoy_dynamic_module_on_tracer_span_set_baggage(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr,
++    envoy_dynamic_module_type_envoy_buffer key, envoy_dynamic_module_type_envoy_buffer value) {
++  (void)span_module_ptr;
++  (void)key;
++  (void)value;
++}
++
++bool envoy_dynamic_module_on_tracer_span_get_trace_id(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr,
++    envoy_dynamic_module_type_module_buffer* value_out) {
++  (void)span_module_ptr;
++  value_out->ptr = NULL;
++  value_out->length = 0;
++  return false;
++}
++
++bool envoy_dynamic_module_on_tracer_span_get_span_id(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr,
++    envoy_dynamic_module_type_module_buffer* value_out) {
++  (void)span_module_ptr;
++  value_out->ptr = NULL;
++  value_out->length = 0;
++  return false;
++}
++
++void envoy_dynamic_module_on_tracer_span_destroy(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr) {
++  (void)span_module_ptr;
++}
+diff --git a/test/extensions/dynamic_modules/test_data/c/tracer_no_op.c b/test/extensions/dynamic_modules/test_data/c/tracer_no_op.c
+new file mode 100644
+index 000000000..d2edeedd3
+--- /dev/null
++++ b/test/extensions/dynamic_modules/test_data/c/tracer_no_op.c
+@@ -0,0 +1,136 @@
++#include <string.h>
++
++#include "source/extensions/dynamic_modules/abi/abi.h"
++
++envoy_dynamic_module_type_abi_version_module_ptr envoy_dynamic_module_on_program_init(void) {
++  return envoy_dynamic_modules_abi_version;
++}
++
++envoy_dynamic_module_type_tracer_config_module_ptr envoy_dynamic_module_on_tracer_config_new(
++    envoy_dynamic_module_type_tracer_config_envoy_ptr config_envoy_ptr,
++    envoy_dynamic_module_type_envoy_buffer name, envoy_dynamic_module_type_envoy_buffer config) {
++  (void)config_envoy_ptr;
++  (void)name;
++  (void)config;
++  static int config_dummy = 0;
++  return &config_dummy;
++}
++
++void envoy_dynamic_module_on_tracer_config_destroy(
++    envoy_dynamic_module_type_tracer_config_module_ptr config_module_ptr) {
++  (void)config_module_ptr;
++}
++
++envoy_dynamic_module_type_tracer_span_module_ptr envoy_dynamic_module_on_tracer_start_span(
++    envoy_dynamic_module_type_tracer_config_module_ptr config_module_ptr,
++    envoy_dynamic_module_type_tracer_span_envoy_ptr span_envoy_ptr,
++    envoy_dynamic_module_type_envoy_buffer operation_name, bool traced,
++    envoy_dynamic_module_type_trace_reason reason) {
++  (void)config_module_ptr;
++  (void)span_envoy_ptr;
++  (void)operation_name;
++  (void)traced;
++  (void)reason;
++  static int span_dummy = 0;
++  return &span_dummy;
++}
++
++void envoy_dynamic_module_on_tracer_span_set_operation(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr,
++    envoy_dynamic_module_type_envoy_buffer operation) {
++  (void)span_module_ptr;
++  (void)operation;
++}
++
++void envoy_dynamic_module_on_tracer_span_set_tag(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr,
++    envoy_dynamic_module_type_envoy_buffer key, envoy_dynamic_module_type_envoy_buffer value) {
++  (void)span_module_ptr;
++  (void)key;
++  (void)value;
++}
++
++void envoy_dynamic_module_on_tracer_span_log(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr, int64_t timestamp_ns,
++    envoy_dynamic_module_type_envoy_buffer event) {
++  (void)span_module_ptr;
++  (void)timestamp_ns;
++  (void)event;
++}
++
++void envoy_dynamic_module_on_tracer_span_finish(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr) {
++  (void)span_module_ptr;
++}
++
++void envoy_dynamic_module_on_tracer_span_inject_context(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr,
++    envoy_dynamic_module_type_tracer_span_envoy_ptr span_envoy_ptr) {
++  (void)span_module_ptr;
++  (void)span_envoy_ptr;
++}
++
++envoy_dynamic_module_type_tracer_span_module_ptr
++envoy_dynamic_module_on_tracer_span_spawn_child(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr,
++    envoy_dynamic_module_type_envoy_buffer name, int64_t start_time_ns) {
++  (void)span_module_ptr;
++  (void)name;
++  (void)start_time_ns;
++  static int child_dummy = 0;
++  return &child_dummy;
++}
++
++void envoy_dynamic_module_on_tracer_span_set_sampled(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr, bool sampled) {
++  (void)span_module_ptr;
++  (void)sampled;
++}
++
++bool envoy_dynamic_module_on_tracer_span_use_local_decision(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr) {
++  (void)span_module_ptr;
++  return true;
++}
++
++bool envoy_dynamic_module_on_tracer_span_get_baggage(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr,
++    envoy_dynamic_module_type_envoy_buffer key,
++    envoy_dynamic_module_type_module_buffer* value_out) {
++  (void)span_module_ptr;
++  (void)key;
++  value_out->ptr = NULL;
++  value_out->length = 0;
++  return false;
++}
++
++void envoy_dynamic_module_on_tracer_span_set_baggage(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr,
++    envoy_dynamic_module_type_envoy_buffer key, envoy_dynamic_module_type_envoy_buffer value) {
++  (void)span_module_ptr;
++  (void)key;
++  (void)value;
++}
++
++bool envoy_dynamic_module_on_tracer_span_get_trace_id(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr,
++    envoy_dynamic_module_type_module_buffer* value_out) {
++  (void)span_module_ptr;
++  value_out->ptr = NULL;
++  value_out->length = 0;
++  return false;
++}
++
++bool envoy_dynamic_module_on_tracer_span_get_span_id(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr,
++    envoy_dynamic_module_type_module_buffer* value_out) {
++  (void)span_module_ptr;
++  value_out->ptr = NULL;
++  value_out->length = 0;
++  return false;
++}
++
++void envoy_dynamic_module_on_tracer_span_destroy(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr) {
++  (void)span_module_ptr;
++}
+diff --git a/test/extensions/dynamic_modules/test_data/c/tracer_with_values.c b/test/extensions/dynamic_modules/test_data/c/tracer_with_values.c
+new file mode 100644
+index 000000000..26af7bba7
+--- /dev/null
++++ b/test/extensions/dynamic_modules/test_data/c/tracer_with_values.c
+@@ -0,0 +1,148 @@
++#include <string.h>
++
++#include "source/extensions/dynamic_modules/abi/abi.h"
++
++static const char* test_trace_id = "abc123trace";
++static const char* test_span_id = "def456span";
++static const char* test_baggage_key = "test_key";
++static const char* test_baggage_value = "test_baggage_value";
++
++envoy_dynamic_module_type_abi_version_module_ptr envoy_dynamic_module_on_program_init(void) {
++  return envoy_dynamic_modules_abi_version;
++}
++
++envoy_dynamic_module_type_tracer_config_module_ptr envoy_dynamic_module_on_tracer_config_new(
++    envoy_dynamic_module_type_tracer_config_envoy_ptr config_envoy_ptr,
++    envoy_dynamic_module_type_envoy_buffer name, envoy_dynamic_module_type_envoy_buffer config) {
++  (void)config_envoy_ptr;
++  (void)name;
++  (void)config;
++  static int config_dummy = 0;
++  return &config_dummy;
++}
++
++void envoy_dynamic_module_on_tracer_config_destroy(
++    envoy_dynamic_module_type_tracer_config_module_ptr config_module_ptr) {
++  (void)config_module_ptr;
++}
++
++envoy_dynamic_module_type_tracer_span_module_ptr envoy_dynamic_module_on_tracer_start_span(
++    envoy_dynamic_module_type_tracer_config_module_ptr config_module_ptr,
++    envoy_dynamic_module_type_tracer_span_envoy_ptr span_envoy_ptr,
++    envoy_dynamic_module_type_envoy_buffer operation_name, bool traced,
++    envoy_dynamic_module_type_trace_reason reason) {
++  (void)config_module_ptr;
++  (void)span_envoy_ptr;
++  (void)traced;
++  (void)reason;
++  // Return NULL when the operation name is "null_span" to test the null path.
++  if (operation_name.length == 9 && memcmp(operation_name.ptr, "null_span", 9) == 0) {
++    return NULL;
++  }
++  static int span_dummy = 0;
++  return &span_dummy;
++}
++
++void envoy_dynamic_module_on_tracer_span_set_operation(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr,
++    envoy_dynamic_module_type_envoy_buffer operation) {
++  (void)span_module_ptr;
++  (void)operation;
++}
++
++void envoy_dynamic_module_on_tracer_span_set_tag(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr,
++    envoy_dynamic_module_type_envoy_buffer key, envoy_dynamic_module_type_envoy_buffer value) {
++  (void)span_module_ptr;
++  (void)key;
++  (void)value;
++}
++
++void envoy_dynamic_module_on_tracer_span_log(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr, int64_t timestamp_ns,
++    envoy_dynamic_module_type_envoy_buffer event) {
++  (void)span_module_ptr;
++  (void)timestamp_ns;
++  (void)event;
++}
++
++void envoy_dynamic_module_on_tracer_span_finish(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr) {
++  (void)span_module_ptr;
++}
++
++void envoy_dynamic_module_on_tracer_span_inject_context(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr,
++    envoy_dynamic_module_type_tracer_span_envoy_ptr span_envoy_ptr) {
++  (void)span_module_ptr;
++  (void)span_envoy_ptr;
++}
++
++envoy_dynamic_module_type_tracer_span_module_ptr
++envoy_dynamic_module_on_tracer_span_spawn_child(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr,
++    envoy_dynamic_module_type_envoy_buffer name, int64_t start_time_ns) {
++  (void)span_module_ptr;
++  (void)name;
++  (void)start_time_ns;
++  return NULL;
++}
++
++void envoy_dynamic_module_on_tracer_span_set_sampled(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr, bool sampled) {
++  (void)span_module_ptr;
++  (void)sampled;
++}
++
++bool envoy_dynamic_module_on_tracer_span_use_local_decision(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr) {
++  (void)span_module_ptr;
++  return true;
++}
++
++bool envoy_dynamic_module_on_tracer_span_get_baggage(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr,
++    envoy_dynamic_module_type_envoy_buffer key,
++    envoy_dynamic_module_type_module_buffer* value_out) {
++  (void)span_module_ptr;
++  if (key.length == strlen(test_baggage_key) &&
++      memcmp(key.ptr, test_baggage_key, key.length) == 0) {
++    value_out->ptr = test_baggage_value;
++    value_out->length = strlen(test_baggage_value);
++    return true;
++  }
++  value_out->ptr = NULL;
++  value_out->length = 0;
++  return false;
++}
++
++void envoy_dynamic_module_on_tracer_span_set_baggage(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr,
++    envoy_dynamic_module_type_envoy_buffer key, envoy_dynamic_module_type_envoy_buffer value) {
++  (void)span_module_ptr;
++  (void)key;
++  (void)value;
++}
++
++bool envoy_dynamic_module_on_tracer_span_get_trace_id(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr,
++    envoy_dynamic_module_type_module_buffer* value_out) {
++  (void)span_module_ptr;
++  value_out->ptr = test_trace_id;
++  value_out->length = strlen(test_trace_id);
++  return true;
++}
++
++bool envoy_dynamic_module_on_tracer_span_get_span_id(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr,
++    envoy_dynamic_module_type_module_buffer* value_out) {
++  (void)span_module_ptr;
++  value_out->ptr = test_span_id;
++  value_out->length = strlen(test_span_id);
++  return true;
++}
++
++void envoy_dynamic_module_on_tracer_span_destroy(
++    envoy_dynamic_module_type_tracer_span_module_ptr span_module_ptr) {
++  (void)span_module_ptr;
++}
+diff --git a/test/extensions/tracers/dynamic_modules/BUILD b/test/extensions/tracers/dynamic_modules/BUILD
+new file mode 100644
+index 000000000..4bd3b256e
+--- /dev/null
++++ b/test/extensions/tracers/dynamic_modules/BUILD
+@@ -0,0 +1,62 @@
++load(
++    "//bazel:envoy_build_system.bzl",
++    "envoy_cc_test",
++    "envoy_package",
++)
++
++licenses(["notice"])  # Apache 2
++
++envoy_package()
++
++envoy_cc_test(
++    name = "config_test",
++    srcs = ["config_test.cc"],
++    data = [
++        "//test/extensions/dynamic_modules/test_data/c:no_op",
++        "//test/extensions/dynamic_modules/test_data/c:tracer_config_fail",
++        "//test/extensions/dynamic_modules/test_data/c:tracer_no_op",
++    ],
++    deps = [
++        "//source/common/stats:custom_stat_namespaces_lib",
++        "//source/extensions/tracers/dynamic_modules:config",
++        "//test/mocks/server:tracer_factory_context_mocks",
++        "//test/test_common:environment_lib",
++        "//test/test_common:test_runtime_lib",
++        "//test/test_common:utility_lib",
++        "@envoy_api//envoy/extensions/tracers/dynamic_modules/v3:pkg_cc_proto",
++    ],
++)
++
++envoy_cc_test(
++    name = "tracer_test",
++    srcs = ["tracer_test.cc"],
++    data = [
++        "//test/extensions/dynamic_modules/test_data/c:no_op",
++        "//test/extensions/dynamic_modules/test_data/c:tracer_config_fail",
++        "//test/extensions/dynamic_modules/test_data/c:tracer_no_op",
++        "//test/extensions/dynamic_modules/test_data/c:tracer_with_values",
++    ],
++    deps = [
++        "//source/extensions/tracers/dynamic_modules:tracer_config_lib",
++        "//test/mocks/stream_info:stream_info_mocks",
++        "//test/mocks/tracing:tracing_mocks",
++        "//test/test_common:environment_lib",
++        "//test/test_common:utility_lib",
++    ],
++)
++
++envoy_cc_test(
++    name = "abi_impl_test",
++    srcs = ["abi_impl_test.cc"],
++    data = [
++        "//test/extensions/dynamic_modules/test_data/c:tracer_no_op",
++    ],
++    deps = [
++        "//source/extensions/tracers/dynamic_modules:abi_impl",
++        "//source/extensions/tracers/dynamic_modules:tracer_config_lib",
++        "//test/mocks/stream_info:stream_info_mocks",
++        "//test/mocks/tracing:tracing_mocks",
++        "//test/test_common:environment_lib",
++        "//test/test_common:utility_lib",
++    ],
++)
+diff --git a/test/extensions/tracers/dynamic_modules/abi_impl_test.cc b/test/extensions/tracers/dynamic_modules/abi_impl_test.cc
+new file mode 100644
+index 000000000..34be20646
+--- /dev/null
++++ b/test/extensions/tracers/dynamic_modules/abi_impl_test.cc
+@@ -0,0 +1,525 @@
++#include "source/extensions/dynamic_modules/abi/abi.h"
++#include "source/extensions/tracers/dynamic_modules/tracer_config.h"
++
++#include "test/mocks/stream_info/mocks.h"
++#include "test/mocks/tracing/mocks.h"
++#include "test/test_common/environment.h"
++#include "test/test_common/utility.h"
++
++#include "gmock/gmock.h"
++#include "gtest/gtest.h"
++
++using testing::NiceMock;
++
++namespace Envoy {
++namespace Extensions {
++namespace Tracers {
++namespace DynamicModules {
++namespace {
++
++void setTestModulesSearchPath() {
++  TestEnvironment::setEnvVar(
++      "ENVOY_DYNAMIC_MODULES_SEARCH_PATH",
++      TestEnvironment::substitute("{{ test_rundir }}/test/extensions/dynamic_modules/test_data/c"),
++      1);
++}
++
++class AbiImplTest : public ::testing::Test {
++public:
++  AbiImplTest() {
++    setTestModulesSearchPath();
++    auto module =
++        Envoy::Extensions::DynamicModules::newDynamicModuleByName("tracer_no_op", false, false);
++    EXPECT_TRUE(module.ok());
++    auto config_or = newDynamicModuleTracerConfig("test_tracer", "", "test_ns",
++                                                  std::move(module.value()), *store_.rootScope());
++    EXPECT_TRUE(config_or.ok());
++    config_ = config_or.value();
++    driver_ = std::make_shared<DynamicModuleDriver>(config_);
++  }
++
++  Tracing::SpanPtr createSpan() {
++    Tracing::TestTraceContextImpl trace_context{};
++    NiceMock<StreamInfo::MockStreamInfo> stream_info;
++    NiceMock<Tracing::MockConfig> tracing_config;
++    Tracing::Decision decision{Tracing::Reason::Sampling, true};
++    return driver_->startSpan(tracing_config, trace_context, stream_info, "test_operation",
++                              decision);
++  }
++
++  Stats::IsolatedStoreImpl store_;
++  DynamicModuleTracerConfigSharedPtr config_;
++  std::shared_ptr<DynamicModuleDriver> driver_;
++};
++
++// =============================================================================
++// Null trace context tests. These exercise the defensive ctx == nullptr branches.
++// =============================================================================
++
++TEST_F(AbiImplTest, GetTraceContextValueNullContext) {
++  DynamicModuleSpan span(
++      config_, reinterpret_cast<envoy_dynamic_module_type_tracer_span_module_ptr>(uintptr_t(1)),
++      nullptr);
++  envoy_dynamic_module_type_module_buffer key = {.ptr = "traceparent", .length = 11};
++  envoy_dynamic_module_type_envoy_buffer value_out = {.ptr = nullptr, .length = 0};
++  EXPECT_FALSE(envoy_dynamic_module_callback_tracer_get_trace_context_value(
++      static_cast<void*>(&span), key, &value_out));
++  EXPECT_EQ(value_out.ptr, nullptr);
++}
++
++TEST_F(AbiImplTest, SetTraceContextValueNullContext) {
++  DynamicModuleSpan span(
++      config_, reinterpret_cast<envoy_dynamic_module_type_tracer_span_module_ptr>(uintptr_t(1)),
++      nullptr);
++  envoy_dynamic_module_type_module_buffer key = {.ptr = "traceparent", .length = 11};
++  envoy_dynamic_module_type_module_buffer value = {.ptr = "value", .length = 5};
++  envoy_dynamic_module_callback_tracer_set_trace_context_value(static_cast<void*>(&span), key,
++                                                               value);
++}
++
++TEST_F(AbiImplTest, RemoveTraceContextValueNullContext) {
++  DynamicModuleSpan span(
++      config_, reinterpret_cast<envoy_dynamic_module_type_tracer_span_module_ptr>(uintptr_t(1)),
++      nullptr);
++  envoy_dynamic_module_type_module_buffer key = {.ptr = "traceparent", .length = 11};
++  envoy_dynamic_module_callback_tracer_remove_trace_context_value(static_cast<void*>(&span), key);
++}
++
++TEST_F(AbiImplTest, GetTraceContextProtocolNullContext) {
++  DynamicModuleSpan span(
++      config_, reinterpret_cast<envoy_dynamic_module_type_tracer_span_module_ptr>(uintptr_t(1)),
++      nullptr);
++  envoy_dynamic_module_type_envoy_buffer value_out = {.ptr = nullptr, .length = 0};
++  EXPECT_FALSE(envoy_dynamic_module_callback_tracer_get_trace_context_protocol(
++      static_cast<void*>(&span), &value_out));
++  EXPECT_EQ(value_out.ptr, nullptr);
++}
++
++TEST_F(AbiImplTest, GetTraceContextHostNullContext) {
++  DynamicModuleSpan span(
++      config_, reinterpret_cast<envoy_dynamic_module_type_tracer_span_module_ptr>(uintptr_t(1)),
++      nullptr);
++  envoy_dynamic_module_type_envoy_buffer value_out = {.ptr = nullptr, .length = 0};
++  EXPECT_FALSE(envoy_dynamic_module_callback_tracer_get_trace_context_host(
++      static_cast<void*>(&span), &value_out));
++  EXPECT_EQ(value_out.ptr, nullptr);
++}
++
++TEST_F(AbiImplTest, GetTraceContextPathNullContext) {
++  DynamicModuleSpan span(
++      config_, reinterpret_cast<envoy_dynamic_module_type_tracer_span_module_ptr>(uintptr_t(1)),
++      nullptr);
++  envoy_dynamic_module_type_envoy_buffer value_out = {.ptr = nullptr, .length = 0};
++  EXPECT_FALSE(envoy_dynamic_module_callback_tracer_get_trace_context_path(
++      static_cast<void*>(&span), &value_out));
++  EXPECT_EQ(value_out.ptr, nullptr);
++}
++
++TEST_F(AbiImplTest, GetTraceContextMethodNullContext) {
++  DynamicModuleSpan span(
++      config_, reinterpret_cast<envoy_dynamic_module_type_tracer_span_module_ptr>(uintptr_t(1)),
++      nullptr);
++  envoy_dynamic_module_type_envoy_buffer value_out = {.ptr = nullptr, .length = 0};
++  EXPECT_FALSE(envoy_dynamic_module_callback_tracer_get_trace_context_method(
++      static_cast<void*>(&span), &value_out));
++  EXPECT_EQ(value_out.ptr, nullptr);
++}
++
++// =============================================================================
++// Empty value tests for host, path, and method.
++// =============================================================================
++
++TEST_F(AbiImplTest, GetTraceContextHostEmpty) {
++  Tracing::TestTraceContextImpl trace_context{};
++  NiceMock<StreamInfo::MockStreamInfo> stream_info;
++  NiceMock<Tracing::MockConfig> tracing_config;
++  Tracing::Decision decision{Tracing::Reason::Sampling, true};
++
++  auto span =
++      driver_->startSpan(tracing_config, trace_context, stream_info, "test_operation", decision);
++  auto* dyn_span = dynamic_cast<DynamicModuleSpan*>(span.get());
++  ASSERT_NE(dyn_span, nullptr);
++
++  envoy_dynamic_module_type_envoy_buffer value_out = {.ptr = nullptr, .length = 0};
++  EXPECT_FALSE(envoy_dynamic_module_callback_tracer_get_trace_context_host(
++      static_cast<void*>(dyn_span), &value_out));
++}
++
++TEST_F(AbiImplTest, GetTraceContextPathEmpty) {
++  Tracing::TestTraceContextImpl trace_context{};
++  NiceMock<StreamInfo::MockStreamInfo> stream_info;
++  NiceMock<Tracing::MockConfig> tracing_config;
++  Tracing::Decision decision{Tracing::Reason::Sampling, true};
++
++  auto span =
++      driver_->startSpan(tracing_config, trace_context, stream_info, "test_operation", decision);
++  auto* dyn_span = dynamic_cast<DynamicModuleSpan*>(span.get());
++  ASSERT_NE(dyn_span, nullptr);
++
++  envoy_dynamic_module_type_envoy_buffer value_out = {.ptr = nullptr, .length = 0};
++  EXPECT_FALSE(envoy_dynamic_module_callback_tracer_get_trace_context_path(
++      static_cast<void*>(dyn_span), &value_out));
++}
++
++TEST_F(AbiImplTest, GetTraceContextMethodEmpty) {
++  Tracing::TestTraceContextImpl trace_context{};
++  NiceMock<StreamInfo::MockStreamInfo> stream_info;
++  NiceMock<Tracing::MockConfig> tracing_config;
++  Tracing::Decision decision{Tracing::Reason::Sampling, true};
++
++  auto span =
++      driver_->startSpan(tracing_config, trace_context, stream_info, "test_operation", decision);
++  auto* dyn_span = dynamic_cast<DynamicModuleSpan*>(span.get());
++  ASSERT_NE(dyn_span, nullptr);
++
++  envoy_dynamic_module_type_envoy_buffer value_out = {.ptr = nullptr, .length = 0};
++  EXPECT_FALSE(envoy_dynamic_module_callback_tracer_get_trace_context_method(
++      static_cast<void*>(dyn_span), &value_out));
++}
++
++// =============================================================================
++// Trace context value tests with non-null context.
++// =============================================================================
++
++TEST_F(AbiImplTest, GetTraceContextValue) {
++  Tracing::TestTraceContextImpl trace_context{{"traceparent", "test-value"}};
++  NiceMock<StreamInfo::MockStreamInfo> stream_info;
++  NiceMock<Tracing::MockConfig> tracing_config;
++  Tracing::Decision decision{Tracing::Reason::Sampling, true};
++
++  auto span =
++      driver_->startSpan(tracing_config, trace_context, stream_info, "test_operation", decision);
++  auto* dyn_span = dynamic_cast<DynamicModuleSpan*>(span.get());
++  ASSERT_NE(dyn_span, nullptr);
++
++  envoy_dynamic_module_type_module_buffer key = {.ptr = "traceparent", .length = 11};
++  envoy_dynamic_module_type_envoy_buffer value_out = {.ptr = nullptr, .length = 0};
++  EXPECT_TRUE(envoy_dynamic_module_callback_tracer_get_trace_context_value(
++      static_cast<void*>(dyn_span), key, &value_out));
++  EXPECT_EQ(std::string(value_out.ptr, value_out.length), "test-value");
++}
++
++TEST_F(AbiImplTest, GetTraceContextValueNotFound) {
++  Tracing::TestTraceContextImpl trace_context{};
++  NiceMock<StreamInfo::MockStreamInfo> stream_info;
++  NiceMock<Tracing::MockConfig> tracing_config;
++  Tracing::Decision decision{Tracing::Reason::Sampling, true};
++
++  auto span =
++      driver_->startSpan(tracing_config, trace_context, stream_info, "test_operation", decision);
++  auto* dyn_span = dynamic_cast<DynamicModuleSpan*>(span.get());
++  ASSERT_NE(dyn_span, nullptr);
++
++  envoy_dynamic_module_type_module_buffer key = {.ptr = "nonexistent", .length = 11};
++  envoy_dynamic_module_type_envoy_buffer value_out = {.ptr = nullptr, .length = 0};
++  EXPECT_FALSE(envoy_dynamic_module_callback_tracer_get_trace_context_value(
++      static_cast<void*>(dyn_span), key, &value_out));
++}
++
++TEST_F(AbiImplTest, SetTraceContextValue) {
++  Tracing::TestTraceContextImpl trace_context{};
++  NiceMock<StreamInfo::MockStreamInfo> stream_info;
++  NiceMock<Tracing::MockConfig> tracing_config;
++  Tracing::Decision decision{Tracing::Reason::Sampling, true};
++
++  auto span =
++      driver_->startSpan(tracing_config, trace_context, stream_info, "test_operation", decision);
++  auto* dyn_span = dynamic_cast<DynamicModuleSpan*>(span.get());
++  ASSERT_NE(dyn_span, nullptr);
++
++  envoy_dynamic_module_type_module_buffer key = {.ptr = "traceparent", .length = 11};
++  envoy_dynamic_module_type_module_buffer value = {.ptr = "new-value", .length = 9};
++  envoy_dynamic_module_callback_tracer_set_trace_context_value(static_cast<void*>(dyn_span), key,
++                                                               value);
++
++  auto result = trace_context.get("traceparent");
++  EXPECT_TRUE(result.has_value());
++  EXPECT_EQ(result.value(), "new-value");
++}
++
++TEST_F(AbiImplTest, RemoveTraceContextValue) {
++  Tracing::TestTraceContextImpl trace_context{{"traceparent", "test-value"}};
++  NiceMock<StreamInfo::MockStreamInfo> stream_info;
++  NiceMock<Tracing::MockConfig> tracing_config;
++  Tracing::Decision decision{Tracing::Reason::Sampling, true};
++
++  auto span =
++      driver_->startSpan(tracing_config, trace_context, stream_info, "test_operation", decision);
++  auto* dyn_span = dynamic_cast<DynamicModuleSpan*>(span.get());
++  ASSERT_NE(dyn_span, nullptr);
++
++  envoy_dynamic_module_type_module_buffer key = {.ptr = "traceparent", .length = 11};
++  envoy_dynamic_module_callback_tracer_remove_trace_context_value(static_cast<void*>(dyn_span),
++                                                                  key);
++
++  auto result = trace_context.get("traceparent");
++  EXPECT_FALSE(result.has_value());
++}
++
++TEST_F(AbiImplTest, GetTraceContextProtocolEmpty) {
++  Tracing::TestTraceContextImpl trace_context{};
++  NiceMock<StreamInfo::MockStreamInfo> stream_info;
++  NiceMock<Tracing::MockConfig> tracing_config;
++  Tracing::Decision decision{Tracing::Reason::Sampling, true};
++
++  auto span =
++      driver_->startSpan(tracing_config, trace_context, stream_info, "test_operation", decision);
++  auto* dyn_span = dynamic_cast<DynamicModuleSpan*>(span.get());
++  ASSERT_NE(dyn_span, nullptr);
++
++  envoy_dynamic_module_type_envoy_buffer value_out = {.ptr = nullptr, .length = 0};
++  EXPECT_FALSE(envoy_dynamic_module_callback_tracer_get_trace_context_protocol(
++      static_cast<void*>(dyn_span), &value_out));
++}
++
++TEST_F(AbiImplTest, GetTraceContextProtocol) {
++  Tracing::TestTraceContextImpl trace_context{{":protocol", "HTTP/1.1"}};
++  NiceMock<StreamInfo::MockStreamInfo> stream_info;
++  NiceMock<Tracing::MockConfig> tracing_config;
++  Tracing::Decision decision{Tracing::Reason::Sampling, true};
++
++  auto span =
++      driver_->startSpan(tracing_config, trace_context, stream_info, "test_operation", decision);
++  auto* dyn_span = dynamic_cast<DynamicModuleSpan*>(span.get());
++  ASSERT_NE(dyn_span, nullptr);
++
++  envoy_dynamic_module_type_envoy_buffer value_out = {.ptr = nullptr, .length = 0};
++  EXPECT_TRUE(envoy_dynamic_module_callback_tracer_get_trace_context_protocol(
++      static_cast<void*>(dyn_span), &value_out));
++  EXPECT_EQ(std::string(value_out.ptr, value_out.length), "HTTP/1.1");
++}
++
++TEST_F(AbiImplTest, GetTraceContextHost) {
++  Tracing::TestTraceContextImpl trace_context{{":authority", "example.com"}};
++  NiceMock<StreamInfo::MockStreamInfo> stream_info;
++  NiceMock<Tracing::MockConfig> tracing_config;
++  Tracing::Decision decision{Tracing::Reason::Sampling, true};
++
++  auto span =
++      driver_->startSpan(tracing_config, trace_context, stream_info, "test_operation", decision);
++  auto* dyn_span = dynamic_cast<DynamicModuleSpan*>(span.get());
++  ASSERT_NE(dyn_span, nullptr);
++
++  envoy_dynamic_module_type_envoy_buffer value_out = {.ptr = nullptr, .length = 0};
++  EXPECT_TRUE(envoy_dynamic_module_callback_tracer_get_trace_context_host(
++      static_cast<void*>(dyn_span), &value_out));
++  EXPECT_EQ(std::string(value_out.ptr, value_out.length), "example.com");
++}
++
++TEST_F(AbiImplTest, GetTraceContextPath) {
++  Tracing::TestTraceContextImpl trace_context{{":path", "/api/v1/test"}};
++  NiceMock<StreamInfo::MockStreamInfo> stream_info;
++  NiceMock<Tracing::MockConfig> tracing_config;
++  Tracing::Decision decision{Tracing::Reason::Sampling, true};
++
++  auto span =
++      driver_->startSpan(tracing_config, trace_context, stream_info, "test_operation", decision);
++  auto* dyn_span = dynamic_cast<DynamicModuleSpan*>(span.get());
++  ASSERT_NE(dyn_span, nullptr);
++
++  envoy_dynamic_module_type_envoy_buffer value_out = {.ptr = nullptr, .length = 0};
++  EXPECT_TRUE(envoy_dynamic_module_callback_tracer_get_trace_context_path(
++      static_cast<void*>(dyn_span), &value_out));
++  EXPECT_EQ(std::string(value_out.ptr, value_out.length), "/api/v1/test");
++}
++
++TEST_F(AbiImplTest, GetTraceContextMethod) {
++  Tracing::TestTraceContextImpl trace_context{{":method", "POST"}};
++  NiceMock<StreamInfo::MockStreamInfo> stream_info;
++  NiceMock<Tracing::MockConfig> tracing_config;
++  Tracing::Decision decision{Tracing::Reason::Sampling, true};
++
++  auto span =
++      driver_->startSpan(tracing_config, trace_context, stream_info, "test_operation", decision);
++  auto* dyn_span = dynamic_cast<DynamicModuleSpan*>(span.get());
++  ASSERT_NE(dyn_span, nullptr);
++
++  envoy_dynamic_module_type_envoy_buffer value_out = {.ptr = nullptr, .length = 0};
++  EXPECT_TRUE(envoy_dynamic_module_callback_tracer_get_trace_context_method(
++      static_cast<void*>(dyn_span), &value_out));
++  EXPECT_EQ(std::string(value_out.ptr, value_out.length), "POST");
++}
++
++// =============================================================================
++// Metrics Tests
++// =============================================================================
++
++TEST_F(AbiImplTest, DefineAndIncrementCounter) {
++  envoy_dynamic_module_type_module_buffer name = {.ptr = "test_counter", .length = 12};
++  size_t counter_id = 0;
++  auto define_result = envoy_dynamic_module_callback_tracer_define_counter(
++      static_cast<void*>(config_.get()), name, nullptr, 0, &counter_id);
++  EXPECT_EQ(define_result, envoy_dynamic_module_type_metrics_result_Success);
++  EXPECT_GT(counter_id, 0u);
++
++  auto result = envoy_dynamic_module_callback_tracer_increment_counter(
++      static_cast<void*>(config_.get()), counter_id, nullptr, 0, 5);
++  EXPECT_EQ(result, envoy_dynamic_module_type_metrics_result_Success);
++}
++
++TEST_F(AbiImplTest, IncrementCounterInvalidId) {
++  auto result = envoy_dynamic_module_callback_tracer_increment_counter(
++      static_cast<void*>(config_.get()), 999, nullptr, 0, 1);
++  EXPECT_EQ(result, envoy_dynamic_module_type_metrics_result_MetricNotFound);
++}
++
++TEST_F(AbiImplTest, DefineAndSetGauge) {
++  envoy_dynamic_module_type_module_buffer name = {.ptr = "test_gauge", .length = 10};
++  size_t gauge_id = 0;
++  auto define_result = envoy_dynamic_module_callback_tracer_define_gauge(
++      static_cast<void*>(config_.get()), name, nullptr, 0, &gauge_id);
++  EXPECT_EQ(define_result, envoy_dynamic_module_type_metrics_result_Success);
++  EXPECT_GT(gauge_id, 0u);
++
++  auto result = envoy_dynamic_module_callback_tracer_set_gauge(static_cast<void*>(config_.get()),
++                                                               gauge_id, nullptr, 0, 42);
++  EXPECT_EQ(result, envoy_dynamic_module_type_metrics_result_Success);
++}
++
++TEST_F(AbiImplTest, SetGaugeInvalidId) {
++  auto result = envoy_dynamic_module_callback_tracer_set_gauge(static_cast<void*>(config_.get()),
++                                                               999, nullptr, 0, 1);
++  EXPECT_EQ(result, envoy_dynamic_module_type_metrics_result_MetricNotFound);
++}
++
++TEST_F(AbiImplTest, DefineAndRecordHistogram) {
++  envoy_dynamic_module_type_module_buffer name = {.ptr = "test_histogram", .length = 14};
++  size_t histogram_id = 0;
++  auto define_result = envoy_dynamic_module_callback_tracer_define_histogram(
++      static_cast<void*>(config_.get()), name, nullptr, 0, &histogram_id);
++  EXPECT_EQ(define_result, envoy_dynamic_module_type_metrics_result_Success);
++  EXPECT_GT(histogram_id, 0u);
++
++  auto result = envoy_dynamic_module_callback_tracer_record_histogram_value(
++      static_cast<void*>(config_.get()), histogram_id, nullptr, 0, 100);
++  EXPECT_EQ(result, envoy_dynamic_module_type_metrics_result_Success);
++}
++
++TEST_F(AbiImplTest, RecordHistogramInvalidId) {
++  auto result = envoy_dynamic_module_callback_tracer_record_histogram_value(
++      static_cast<void*>(config_.get()), 999, nullptr, 0, 1);
++  EXPECT_EQ(result, envoy_dynamic_module_type_metrics_result_MetricNotFound);
++}
++
++TEST_F(AbiImplTest, DefineAndIncrementCounterVec) {
++  envoy_dynamic_module_type_module_buffer name = {.ptr = "test_counter_vec", .length = 16};
++  envoy_dynamic_module_type_module_buffer label_names[] = {{.ptr = "method", .length = 6},
++                                                           {.ptr = "status", .length = 6}};
++  size_t counter_id = 0;
++  auto define_result = envoy_dynamic_module_callback_tracer_define_counter(
++      static_cast<void*>(config_.get()), name, label_names, 2, &counter_id);
++  EXPECT_EQ(define_result, envoy_dynamic_module_type_metrics_result_Success);
++  EXPECT_GT(counter_id, 0u);
++
++  envoy_dynamic_module_type_module_buffer label_values[] = {{.ptr = "GET", .length = 3},
++                                                            {.ptr = "200", .length = 3}};
++  auto result = envoy_dynamic_module_callback_tracer_increment_counter(
++      static_cast<void*>(config_.get()), counter_id, label_values, 2, 10);
++  EXPECT_EQ(result, envoy_dynamic_module_type_metrics_result_Success);
++}
++
++TEST_F(AbiImplTest, IncrementCounterVecInvalidLabels) {
++  envoy_dynamic_module_type_module_buffer name = {.ptr = "test_counter_vec2", .length = 17};
++  envoy_dynamic_module_type_module_buffer label_names[] = {{.ptr = "method", .length = 6}};
++  size_t counter_id = 0;
++  auto define_result = envoy_dynamic_module_callback_tracer_define_counter(
++      static_cast<void*>(config_.get()), name, label_names, 1, &counter_id);
++  EXPECT_EQ(define_result, envoy_dynamic_module_type_metrics_result_Success);
++
++  // Wrong number of label values.
++  envoy_dynamic_module_type_module_buffer label_values[] = {{.ptr = "GET", .length = 3},
++                                                            {.ptr = "200", .length = 3}};
++  auto result = envoy_dynamic_module_callback_tracer_increment_counter(
++      static_cast<void*>(config_.get()), counter_id, label_values, 2, 1);
++  EXPECT_EQ(result, envoy_dynamic_module_type_metrics_result_InvalidLabels);
++}
++
++TEST_F(AbiImplTest, DefineAndSetGaugeVec) {
++  envoy_dynamic_module_type_module_buffer name = {.ptr = "test_gauge_vec", .length = 14};
++  envoy_dynamic_module_type_module_buffer label_names[] = {{.ptr = "host", .length = 4}};
++  size_t gauge_id = 0;
++  auto define_result = envoy_dynamic_module_callback_tracer_define_gauge(
++      static_cast<void*>(config_.get()), name, label_names, 1, &gauge_id);
++  EXPECT_EQ(define_result, envoy_dynamic_module_type_metrics_result_Success);
++  EXPECT_GT(gauge_id, 0u);
++
++  envoy_dynamic_module_type_module_buffer label_values[] = {{.ptr = "example.com", .length = 11}};
++  auto result = envoy_dynamic_module_callback_tracer_set_gauge(static_cast<void*>(config_.get()),
++                                                               gauge_id, label_values, 1, 99);
++  EXPECT_EQ(result, envoy_dynamic_module_type_metrics_result_Success);
++}
++
++TEST_F(AbiImplTest, DefineAndRecordHistogramVec) {
++  envoy_dynamic_module_type_module_buffer name = {.ptr = "test_hist_vec", .length = 13};
++  envoy_dynamic_module_type_module_buffer label_names[] = {{.ptr = "path", .length = 4}};
++  size_t histogram_id = 0;
++  auto define_result = envoy_dynamic_module_callback_tracer_define_histogram(
++      static_cast<void*>(config_.get()), name, label_names, 1, &histogram_id);
++  EXPECT_EQ(define_result, envoy_dynamic_module_type_metrics_result_Success);
++  EXPECT_GT(histogram_id, 0u);
++
++  envoy_dynamic_module_type_module_buffer label_values[] = {{.ptr = "/api", .length = 4}};
++  auto result = envoy_dynamic_module_callback_tracer_record_histogram_value(
++      static_cast<void*>(config_.get()), histogram_id, label_values, 1, 250);
++  EXPECT_EQ(result, envoy_dynamic_module_type_metrics_result_Success);
++}
++
++TEST_F(AbiImplTest, SetGaugeVecInvalidLabels) {
++  envoy_dynamic_module_type_module_buffer name = {.ptr = "test_gauge_vec2", .length = 15};
++  envoy_dynamic_module_type_module_buffer label_names[] = {{.ptr = "host", .length = 4}};
++  size_t gauge_id = 0;
++  auto define_result = envoy_dynamic_module_callback_tracer_define_gauge(
++      static_cast<void*>(config_.get()), name, label_names, 1, &gauge_id);
++  EXPECT_EQ(define_result, envoy_dynamic_module_type_metrics_result_Success);
++
++  // Wrong number of label values.
++  envoy_dynamic_module_type_module_buffer label_values[] = {{.ptr = "a", .length = 1},
++                                                            {.ptr = "b", .length = 1}};
++  auto result = envoy_dynamic_module_callback_tracer_set_gauge(static_cast<void*>(config_.get()),
++                                                               gauge_id, label_values, 2, 1);
++  EXPECT_EQ(result, envoy_dynamic_module_type_metrics_result_InvalidLabels);
++}
++
++TEST_F(AbiImplTest, RecordHistogramVecInvalidLabels) {
++  envoy_dynamic_module_type_module_buffer name = {.ptr = "test_hist_vec2", .length = 14};
++  envoy_dynamic_module_type_module_buffer label_names[] = {{.ptr = "path", .length = 4}};
++  size_t histogram_id = 0;
++  auto define_result = envoy_dynamic_module_callback_tracer_define_histogram(
++      static_cast<void*>(config_.get()), name, label_names, 1, &histogram_id);
++  EXPECT_EQ(define_result, envoy_dynamic_module_type_metrics_result_Success);
++
++  // Wrong number of label values.
++  envoy_dynamic_module_type_module_buffer label_values[] = {{.ptr = "a", .length = 1},
++                                                            {.ptr = "b", .length = 1}};
++  auto result = envoy_dynamic_module_callback_tracer_record_histogram_value(
++      static_cast<void*>(config_.get()), histogram_id, label_values, 2, 1);
++  EXPECT_EQ(result, envoy_dynamic_module_type_metrics_result_InvalidLabels);
++}
++
++TEST_F(AbiImplTest, IncrementCounterVecNotFound) {
++  // Try to use a non-existent vec ID.
++  envoy_dynamic_module_type_module_buffer label_values[] = {{.ptr = "v", .length = 1}};
++  auto result = envoy_dynamic_module_callback_tracer_increment_counter(
++      static_cast<void*>(config_.get()), 999, label_values, 1, 1);
++  EXPECT_EQ(result, envoy_dynamic_module_type_metrics_result_MetricNotFound);
++}
++
++TEST_F(AbiImplTest, SetGaugeVecNotFound) {
++  envoy_dynamic_module_type_module_buffer label_values[] = {{.ptr = "v", .length = 1}};
++  auto result = envoy_dynamic_module_callback_tracer_set_gauge(static_cast<void*>(config_.get()),
++                                                               999, label_values, 1, 1);
++  EXPECT_EQ(result, envoy_dynamic_module_type_metrics_result_MetricNotFound);
++}
++
++TEST_F(AbiImplTest, RecordHistogramVecNotFound) {
++  envoy_dynamic_module_type_module_buffer label_values[] = {{.ptr = "v", .length = 1}};
++  auto result = envoy_dynamic_module_callback_tracer_record_histogram_value(
++      static_cast<void*>(config_.get()), 999, label_values, 1, 1);
++  EXPECT_EQ(result, envoy_dynamic_module_type_metrics_result_MetricNotFound);
++}
++
++} // namespace
++} // namespace DynamicModules
++} // namespace Tracers
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/test/extensions/tracers/dynamic_modules/config_test.cc b/test/extensions/tracers/dynamic_modules/config_test.cc
+new file mode 100644
+index 000000000..deb6fb7a1
+--- /dev/null
++++ b/test/extensions/tracers/dynamic_modules/config_test.cc
+@@ -0,0 +1,156 @@
++#include "envoy/extensions/tracers/dynamic_modules/v3/dynamic_modules.pb.h"
++
++#include "source/common/protobuf/protobuf.h"
++#include "source/common/stats/custom_stat_namespaces_impl.h"
++#include "source/extensions/tracers/dynamic_modules/config.h"
++
++#include "test/mocks/server/tracer_factory_context.h"
++#include "test/test_common/environment.h"
++#include "test/test_common/test_runtime.h"
++#include "test/test_common/utility.h"
++
++#include "gmock/gmock.h"
++#include "gtest/gtest.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace Tracers {
++namespace DynamicModules {
++namespace {
++
++class DynamicModuleTracerFactoryTest : public ::testing::Test {
++public:
++  DynamicModuleTracerFactoryTest() {
++    TestEnvironment::setEnvVar("ENVOY_DYNAMIC_MODULES_SEARCH_PATH",
++                               TestEnvironment::substitute(
++                                   "{{ test_rundir }}/test/extensions/dynamic_modules/test_data/c"),
++                               1);
++  }
++
++  NiceMock<Server::Configuration::MockTracerFactoryContext> context_;
++};
++
++TEST_F(DynamicModuleTracerFactoryTest, FactoryName) {
++  DynamicModuleTracerFactory factory;
++  EXPECT_EQ(factory.name(), "envoy.tracers.dynamic_modules");
++}
++
++TEST_F(DynamicModuleTracerFactoryTest, CreateEmptyConfigProto) {
++  DynamicModuleTracerFactory factory;
++  auto proto = factory.createEmptyConfigProto();
++  EXPECT_NE(proto, nullptr);
++}
++
++TEST_F(DynamicModuleTracerFactoryTest, CreateTracerDriverSuccess) {
++  DynamicModuleTracerFactory factory;
++
++  ::envoy::extensions::tracers::dynamic_modules::v3::DynamicModuleTracer proto_config;
++  proto_config.mutable_dynamic_module_config()->set_name("tracer_no_op");
++  proto_config.set_tracer_name("test_tracer");
++
++  auto driver = factory.createTracerDriver(proto_config, context_);
++  EXPECT_NE(driver, nullptr);
++}
++
++TEST_F(DynamicModuleTracerFactoryTest, CreateTracerDriverModuleNotFound) {
++  DynamicModuleTracerFactory factory;
++
++  ::envoy::extensions::tracers::dynamic_modules::v3::DynamicModuleTracer proto_config;
++  proto_config.mutable_dynamic_module_config()->set_name("nonexistent_module");
++  proto_config.set_tracer_name("test_tracer");
++
++  EXPECT_THROW_WITH_REGEX(factory.createTracerDriver(proto_config, context_), EnvoyException,
++                          "Failed to load dynamic module");
++}
++
++TEST_F(DynamicModuleTracerFactoryTest, CreateTracerDriverMissingSymbols) {
++  DynamicModuleTracerFactory factory;
++
++  ::envoy::extensions::tracers::dynamic_modules::v3::DynamicModuleTracer proto_config;
++  proto_config.mutable_dynamic_module_config()->set_name("no_op");
++  proto_config.set_tracer_name("test_tracer");
++
++  EXPECT_THROW_WITH_REGEX(factory.createTracerDriver(proto_config, context_), EnvoyException,
++                          "Failed to create tracer config");
++}
++
++TEST_F(DynamicModuleTracerFactoryTest, CreateTracerDriverConfigInitFails) {
++  DynamicModuleTracerFactory factory;
++
++  ::envoy::extensions::tracers::dynamic_modules::v3::DynamicModuleTracer proto_config;
++  proto_config.mutable_dynamic_module_config()->set_name("tracer_config_fail");
++  proto_config.set_tracer_name("test_tracer");
++
++  EXPECT_THROW_WITH_REGEX(factory.createTracerDriver(proto_config, context_), EnvoyException,
++                          "Failed to create tracer config");
++}
++
++TEST_F(DynamicModuleTracerFactoryTest, CreateTracerDriverWithTracerConfig) {
++  DynamicModuleTracerFactory factory;
++
++  ::envoy::extensions::tracers::dynamic_modules::v3::DynamicModuleTracer proto_config;
++  proto_config.mutable_dynamic_module_config()->set_name("tracer_no_op");
++  proto_config.set_tracer_name("test_tracer");
++
++  Protobuf::StringValue string_value;
++  string_value.set_value("test_config_payload");
++  proto_config.mutable_tracer_config()->PackFrom(string_value);
++
++  auto driver = factory.createTracerDriver(proto_config, context_);
++  EXPECT_NE(driver, nullptr);
++}
++
++TEST_F(DynamicModuleTracerFactoryTest, CreateTracerDriverWithInvalidTracerConfig) {
++  DynamicModuleTracerFactory factory;
++
++  ::envoy::extensions::tracers::dynamic_modules::v3::DynamicModuleTracer proto_config;
++  proto_config.mutable_dynamic_module_config()->set_name("tracer_no_op");
++  proto_config.set_tracer_name("test_tracer");
++
++  auto* any = proto_config.mutable_tracer_config();
++  any->set_type_url("type.googleapis.com/google.protobuf.StringValue");
++  any->set_value("invalid_binary_data_that_cannot_be_unpacked_as_string_value");
++
++  EXPECT_THROW_WITH_REGEX(factory.createTracerDriver(proto_config, context_), EnvoyException,
++                          "Failed to parse tracer config");
++}
++
++TEST_F(DynamicModuleTracerFactoryTest, CreateTracerDriverWithCustomMetricsNamespace) {
++  DynamicModuleTracerFactory factory;
++
++  ::envoy::extensions::tracers::dynamic_modules::v3::DynamicModuleTracer proto_config;
++  proto_config.mutable_dynamic_module_config()->set_name("tracer_no_op");
++  proto_config.mutable_dynamic_module_config()->set_metrics_namespace("custom_ns");
++  proto_config.set_tracer_name("test_tracer");
++
++  auto driver = factory.createTracerDriver(proto_config, context_);
++  EXPECT_NE(driver, nullptr);
++}
++
++TEST_F(DynamicModuleTracerFactoryTest, RegisterStatNamespaceWithRuntimeGuard) {
++  TestScopedRuntime scoped_runtime;
++  scoped_runtime.mergeValues(
++      {{"envoy.reloadable_features.dynamic_modules_strip_custom_stat_prefix", "true"}});
++
++  Stats::CustomStatNamespacesImpl custom_stat_namespaces;
++  ON_CALL(context_.server_factory_context_.api_, customStatNamespaces())
++      .WillByDefault(testing::ReturnRef(custom_stat_namespaces));
++
++  DynamicModuleTracerFactory factory;
++
++  ::envoy::extensions::tracers::dynamic_modules::v3::DynamicModuleTracer proto_config;
++  proto_config.mutable_dynamic_module_config()->set_name("tracer_no_op");
++  proto_config.mutable_dynamic_module_config()->set_metrics_namespace("my_custom_namespace");
++  proto_config.set_tracer_name("test_tracer");
++
++  auto driver = factory.createTracerDriver(proto_config, context_);
++  EXPECT_NE(driver, nullptr);
++
++  EXPECT_TRUE(custom_stat_namespaces.registered("my_custom_namespace"));
++}
++
++} // namespace
++} // namespace DynamicModules
++} // namespace Tracers
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/test/extensions/tracers/dynamic_modules/tracer_test.cc b/test/extensions/tracers/dynamic_modules/tracer_test.cc
+new file mode 100644
+index 000000000..1141c42ac
+--- /dev/null
++++ b/test/extensions/tracers/dynamic_modules/tracer_test.cc
+@@ -0,0 +1,316 @@
++#include "source/common/stats/isolated_store_impl.h"
++#include "source/extensions/tracers/dynamic_modules/tracer_config.h"
++
++#include "test/mocks/stream_info/mocks.h"
++#include "test/mocks/tracing/mocks.h"
++#include "test/test_common/environment.h"
++#include "test/test_common/utility.h"
++
++#include "gmock/gmock.h"
++#include "gtest/gtest.h"
++
++using testing::_;
++using testing::NiceMock;
++
++namespace Envoy {
++namespace Extensions {
++namespace Tracers {
++namespace DynamicModules {
++namespace {
++
++void setTestModulesSearchPath() {
++  TestEnvironment::setEnvVar(
++      "ENVOY_DYNAMIC_MODULES_SEARCH_PATH",
++      TestEnvironment::substitute("{{ test_rundir }}/test/extensions/dynamic_modules/test_data/c"),
++      1);
++}
++
++DynamicModuleTracerConfigSharedPtr createTracerConfig(const std::string& module_name,
++                                                      Stats::Scope& scope) {
++  auto module =
++      Envoy::Extensions::DynamicModules::newDynamicModuleByName(module_name, false, false);
++  EXPECT_TRUE(module.ok());
++  auto config_or =
++      newDynamicModuleTracerConfig("test_tracer", "", "test_ns", std::move(module.value()), scope);
++  EXPECT_TRUE(config_or.ok());
++  return config_or.value();
++}
++
++// =============================================================================
++// DynamicModuleTracerConfig tests.
++// =============================================================================
++
++class TracerConfigTest : public ::testing::Test {
++public:
++  TracerConfigTest() { setTestModulesSearchPath(); }
++};
++
++TEST_F(TracerConfigTest, CreateSuccess) {
++  auto module =
++      Envoy::Extensions::DynamicModules::newDynamicModuleByName("tracer_no_op", false, false);
++  ASSERT_TRUE(module.ok());
++
++  Stats::IsolatedStoreImpl store;
++  auto config = newDynamicModuleTracerConfig("test_tracer", "test_config", "test_ns",
++                                             std::move(module.value()), *store.rootScope());
++  ASSERT_TRUE(config.ok());
++  EXPECT_NE(config.value()->in_module_config_, nullptr);
++}
++
++TEST_F(TracerConfigTest, CreateFailMissingSymbol) {
++  auto module = Envoy::Extensions::DynamicModules::newDynamicModuleByName("no_op", false, false);
++  ASSERT_TRUE(module.ok());
++
++  Stats::IsolatedStoreImpl store;
++  auto config = newDynamicModuleTracerConfig("test_tracer", "", "test_ns",
++                                             std::move(module.value()), *store.rootScope());
++  ASSERT_FALSE(config.ok());
++}
++
++TEST_F(TracerConfigTest, CreateFailConfigInitReturnsNull) {
++  auto module =
++      Envoy::Extensions::DynamicModules::newDynamicModuleByName("tracer_config_fail", false, false);
++  ASSERT_TRUE(module.ok());
++
++  Stats::IsolatedStoreImpl store;
++  auto config = newDynamicModuleTracerConfig("test_tracer", "", "test_ns",
++                                             std::move(module.value()), *store.rootScope());
++  ASSERT_FALSE(config.ok());
++  EXPECT_EQ(config.status().message(), "Failed to initialize dynamic module tracer config");
++}
++
++// =============================================================================
++// DynamicModuleDriver tests.
++// =============================================================================
++
++class DriverTest : public ::testing::Test {
++public:
++  DriverTest() {
++    setTestModulesSearchPath();
++    config_ = createTracerConfig("tracer_no_op", *store_.rootScope());
++    driver_ = std::make_shared<DynamicModuleDriver>(config_);
++  }
++
++  Stats::IsolatedStoreImpl store_;
++  DynamicModuleTracerConfigSharedPtr config_;
++  std::shared_ptr<DynamicModuleDriver> driver_;
++  NiceMock<Tracing::MockConfig> tracing_config_;
++  NiceMock<StreamInfo::MockStreamInfo> stream_info_;
++};
++
++TEST_F(DriverTest, StartSpanSuccess) {
++  Tracing::TestTraceContextImpl trace_context{};
++  Tracing::Decision decision{Tracing::Reason::Sampling, true};
++
++  auto span =
++      driver_->startSpan(tracing_config_, trace_context, stream_info_, "test_operation", decision);
++  EXPECT_NE(span, nullptr);
++}
++
++TEST_F(DriverTest, SpanSetOperation) {
++  Tracing::TestTraceContextImpl trace_context{};
++  Tracing::Decision decision{Tracing::Reason::Sampling, true};
++
++  auto span =
++      driver_->startSpan(tracing_config_, trace_context, stream_info_, "test_operation", decision);
++  span->setOperation("new_operation");
++}
++
++TEST_F(DriverTest, SpanSetTag) {
++  Tracing::TestTraceContextImpl trace_context{};
++  Tracing::Decision decision{Tracing::Reason::Sampling, true};
++
++  auto span =
++      driver_->startSpan(tracing_config_, trace_context, stream_info_, "test_operation", decision);
++  span->setTag("component", "proxy");
++}
++
++TEST_F(DriverTest, SpanLog) {
++  Tracing::TestTraceContextImpl trace_context{};
++  Tracing::Decision decision{Tracing::Reason::Sampling, true};
++
++  auto span =
++      driver_->startSpan(tracing_config_, trace_context, stream_info_, "test_operation", decision);
++  span->log(SystemTime{}, "test_event");
++}
++
++TEST_F(DriverTest, SpanFinish) {
++  Tracing::TestTraceContextImpl trace_context{};
++  Tracing::Decision decision{Tracing::Reason::Sampling, true};
++
++  auto span =
++      driver_->startSpan(tracing_config_, trace_context, stream_info_, "test_operation", decision);
++  span->finishSpan();
++}
++
++TEST_F(DriverTest, SpanInjectContext) {
++  Tracing::TestTraceContextImpl trace_context{};
++  Tracing::Decision decision{Tracing::Reason::Sampling, true};
++
++  auto span =
++      driver_->startSpan(tracing_config_, trace_context, stream_info_, "test_operation", decision);
++  Tracing::TestTraceContextImpl outgoing_context{};
++  span->injectContext(outgoing_context, Tracing::UpstreamContext{});
++}
++
++TEST_F(DriverTest, SpanSpawnChild) {
++  Tracing::TestTraceContextImpl trace_context{};
++  Tracing::Decision decision{Tracing::Reason::Sampling, true};
++
++  auto span =
++      driver_->startSpan(tracing_config_, trace_context, stream_info_, "test_operation", decision);
++  auto child = span->spawnChild(tracing_config_, "child_operation", SystemTime{});
++  EXPECT_NE(child, nullptr);
++}
++
++TEST_F(DriverTest, SpanSetSampled) {
++  Tracing::TestTraceContextImpl trace_context{};
++  Tracing::Decision decision{Tracing::Reason::Sampling, true};
++
++  auto span =
++      driver_->startSpan(tracing_config_, trace_context, stream_info_, "test_operation", decision);
++  span->setSampled(false);
++}
++
++TEST_F(DriverTest, SpanUseLocalDecision) {
++  Tracing::TestTraceContextImpl trace_context{};
++  Tracing::Decision decision{Tracing::Reason::Sampling, true};
++
++  auto span =
++      driver_->startSpan(tracing_config_, trace_context, stream_info_, "test_operation", decision);
++  EXPECT_TRUE(span->useLocalDecision());
++}
++
++TEST_F(DriverTest, SpanBaggage) {
++  Tracing::TestTraceContextImpl trace_context{};
++  Tracing::Decision decision{Tracing::Reason::Sampling, true};
++
++  auto span =
++      driver_->startSpan(tracing_config_, trace_context, stream_info_, "test_operation", decision);
++  span->setBaggage("key", "value");
++  auto baggage = span->getBaggage("key");
++  EXPECT_TRUE(baggage.empty());
++}
++
++TEST_F(DriverTest, SpanGetTraceId) {
++  Tracing::TestTraceContextImpl trace_context{};
++  Tracing::Decision decision{Tracing::Reason::Sampling, true};
++
++  auto span =
++      driver_->startSpan(tracing_config_, trace_context, stream_info_, "test_operation", decision);
++  auto trace_id = span->getTraceId();
++  EXPECT_TRUE(trace_id.empty());
++}
++
++TEST_F(DriverTest, SpanGetSpanId) {
++  Tracing::TestTraceContextImpl trace_context{};
++  Tracing::Decision decision{Tracing::Reason::Sampling, true};
++
++  auto span =
++      driver_->startSpan(tracing_config_, trace_context, stream_info_, "test_operation", decision);
++  auto span_id = span->getSpanId();
++  EXPECT_TRUE(span_id.empty());
++}
++
++// =============================================================================
++// Tests using the tracer_with_values module for edge case coverage.
++// =============================================================================
++
++class DriverWithValuesTest : public ::testing::Test {
++public:
++  DriverWithValuesTest() {
++    setTestModulesSearchPath();
++    config_ = createTracerConfig("tracer_with_values", *store_.rootScope());
++    driver_ = std::make_shared<DynamicModuleDriver>(config_);
++  }
++
++  Stats::IsolatedStoreImpl store_;
++  DynamicModuleTracerConfigSharedPtr config_;
++  std::shared_ptr<DynamicModuleDriver> driver_;
++  NiceMock<Tracing::MockConfig> tracing_config_;
++  NiceMock<StreamInfo::MockStreamInfo> stream_info_;
++};
++
++TEST_F(DriverWithValuesTest, StartSpanReturnsNullSpan) {
++  Tracing::TestTraceContextImpl trace_context{};
++  Tracing::Decision decision{Tracing::Reason::Sampling, true};
++
++  auto span =
++      driver_->startSpan(tracing_config_, trace_context, stream_info_, "null_span", decision);
++  EXPECT_NE(span, nullptr);
++  // The returned span should be a NullSpan since the module returned nullptr.
++  span->finishSpan();
++}
++
++TEST_F(DriverWithValuesTest, SpawnChildReturnsNullSpan) {
++  Tracing::TestTraceContextImpl trace_context{};
++  Tracing::Decision decision{Tracing::Reason::Sampling, true};
++
++  auto span =
++      driver_->startSpan(tracing_config_, trace_context, stream_info_, "test_operation", decision);
++  auto child = span->spawnChild(tracing_config_, "child_operation", SystemTime{});
++  EXPECT_NE(child, nullptr);
++  // The returned child should be a NullSpan since the module returned nullptr.
++  child->finishSpan();
++}
++
++TEST_F(DriverWithValuesTest, GetBaggageReturnsValue) {
++  Tracing::TestTraceContextImpl trace_context{};
++  Tracing::Decision decision{Tracing::Reason::Sampling, true};
++
++  auto span =
++      driver_->startSpan(tracing_config_, trace_context, stream_info_, "test_operation", decision);
++  auto baggage = span->getBaggage("test_key");
++  EXPECT_EQ(baggage, "test_baggage_value");
++}
++
++TEST_F(DriverWithValuesTest, GetBaggageReturnsEmptyForUnknownKey) {
++  Tracing::TestTraceContextImpl trace_context{};
++  Tracing::Decision decision{Tracing::Reason::Sampling, true};
++
++  auto span =
++      driver_->startSpan(tracing_config_, trace_context, stream_info_, "test_operation", decision);
++  auto baggage = span->getBaggage("unknown_key");
++  EXPECT_TRUE(baggage.empty());
++}
++
++TEST_F(DriverWithValuesTest, GetTraceIdReturnsValue) {
++  Tracing::TestTraceContextImpl trace_context{};
++  Tracing::Decision decision{Tracing::Reason::Sampling, true};
++
++  auto span =
++      driver_->startSpan(tracing_config_, trace_context, stream_info_, "test_operation", decision);
++  auto trace_id = span->getTraceId();
++  EXPECT_EQ(trace_id, "abc123trace");
++}
++
++TEST_F(DriverWithValuesTest, GetSpanIdReturnsValue) {
++  Tracing::TestTraceContextImpl trace_context{};
++  Tracing::Decision decision{Tracing::Reason::Sampling, true};
++
++  auto span =
++      driver_->startSpan(tracing_config_, trace_context, stream_info_, "test_operation", decision);
++  auto span_id = span->getSpanId();
++  EXPECT_EQ(span_id, "def456span");
++}
++
++TEST_F(DriverTest, AllTraceReasons) {
++  Tracing::TestTraceContextImpl trace_context{};
++
++  const std::vector<Tracing::Reason> reasons = {
++      Tracing::Reason::NotTraceable, Tracing::Reason::HealthCheck, Tracing::Reason::Sampling,
++      Tracing::Reason::ServiceForced, Tracing::Reason::ClientForced};
++
++  for (auto reason : reasons) {
++    Tracing::Decision decision{reason, true};
++    auto span = driver_->startSpan(tracing_config_, trace_context, stream_info_, "test_operation",
++                                   decision);
++    EXPECT_NE(span, nullptr);
++  }
++}
++
++} // namespace
++} // namespace DynamicModules
++} // namespace Tracers
++} // namespace Extensions
++} // namespace Envoy

@@ -1,0 +1,31 @@
+repo: home-assistant
+base_commit: 38adfbf1a39758a02e97693e6ab7388e4b86a06c
+commit: ff3a8019361e0f8f148d51c8de6299542ee59408
+patch_stored: true
+gold:
+  - path: homeassistant/components/abode/__init__.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Representative hunk of the sweep — inserts a single blank line between the module docstring and the following `from __future__ import annotations`, the exact one-line pattern repeated identically across all 655 files.
+  - path: homeassistant/components/accuweather/const.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: A second, unrelated-domain instance of the identical single blank-line insertion, confirming the change has no per-file logic and is purely a style-linter fix (module-docstring spacing, e.g. the ruff/pydocstyle D211/D212-adjacent rule).
+forbidden:
+  - path: homeassistant/components/zwave_js/climate.py
+    reason: has the exact same docstring-then-import pattern that would need the identical fix, but "z" falls outside this commit's [a-d] alphabetic batch and remains untouched
+  - path: homeassistant/components/abode/alarm_control_panel.py
+    reason: same integration directory as the gold __init__.py and touched by the same commit, but is just one more of the 653 mechanically-identical, non-central hunks
+nontrivial_gold_count: 0
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: []
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 655
+  description: Add empty line after module docstring [a-d] — 655-file zero-semantic formatting sweep;
+    selector should pull almost nothing
+notes: Pure whitespace-only formatting sweep (inserts one blank line after the module docstring in 655 files, integrations alphabetically a-d) with zero semantic or behavioral content and no cross-file linkage — no_nontrivial_context is set; two representative hunks stand in for the other 653 byte-identical edits.

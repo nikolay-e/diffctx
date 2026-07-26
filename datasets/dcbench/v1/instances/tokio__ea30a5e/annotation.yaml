@@ -1,0 +1,43 @@
+repo: tokio
+base_commit: 0cf95f067347bca820099dcec1e457bbe993390b
+commit: ea30a5ea5eee1b3970052f19e8a8b16d0a5c29f4
+patch_stored: true
+gold:
+  - path: tokio/src/runtime/time/entry.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines the TimerShared::registered_when AtomicU64 field (renamed from cached_when) and its accessors registered_when()/set_registered_when()/sync_when() on TimerShared and TimerHandle, the symbol every other changed file consumes.
+  - path: tokio/src/runtime/time/wheel/level.rs
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: Level::add_entry/remove_entry call item.registered_when() to compute slot_for(...) — a direct caller of the renamed accessor whose slot-indexing behavior is otherwise unaffected.
+  - path: tokio/src/runtime/time/wheel/mod.rs
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: Wheel::remove/poll call item.registered_when() (and assert against it) to decide whether an entry is in the pending list or a wheel slot — the other direct caller of the renamed accessor.
+forbidden:
+  - path: tokio/src/runtime/time/mod.rs
+    reason: the timer Driver in the same time/ directory, but does not reference cached_when/registered_when at all
+  - path: tokio/src/runtime/time/handle.rs
+    reason: Handle for the time driver, sibling module, unrelated to the TimerShared field being renamed
+  - path: tokio/src/runtime/time/tests/mod.rs
+    reason: timer driver test module in the same directory tree, but contains no reference to cached_when/registered_when
+  - path: tokio/src/runtime/time/source.rs
+    reason: clock source abstraction for the timer, similarly-named/located but unrelated to the renamed field
+nontrivial_gold_count: 0
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: []
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 3
+  description: 'time: rename `cached_when` to `registered_when` — compact rename inside timer wheel internals'
+notes: Pure mechanical rename of a private (pub(super)/pub(crate)) field and its accessor methods from
+  cached_when to registered_when, plus doc-comment clarifications, confined entirely to the three files
+  in the diff (verified via repo-wide grep — no other file references either name).
+  no_nontrivial_context is true because every definition and every call site of the renamed symbol is
+  already inside the diff.

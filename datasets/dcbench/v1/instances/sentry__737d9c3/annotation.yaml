@@ -1,0 +1,58 @@
+repo: sentry
+base_commit: 09dab6d378dcb304805ce72c0c65c3365960ed82
+commit: 737d9c3d11b2fb4257a70b4a6553afcad62cd279
+patch_stored: true
+gold:
+- path: fixtures/search-syntax/explicit_boolean_tag.json
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/api/event_search.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/components/searchSyntax/grammar.pegjs
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/components/searchSyntax/mutableSearch.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/components/searchSyntax/parser.spec.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/components/searchSyntax/parser.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/components/searchSyntax/renderer.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/components/searchSyntax/utils.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/utils/fields/index.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: tests/sentry/api/test_event_search.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 0-byte ctx.md/md.err, rc_md=142 on the smallest commit in this whole sample (11 files, 147 insertions/7
+  deletions — adding an explicit `tags[key,boolean]` search-syntax key across a Python PEG grammar rule,
+  a TS/JS PEG.js grammar mirror, a TokenConverter, and their tests/fixtures). Nothing about size or file
+  count explains a hang here; this is the strongest evidence in the set that the hang is not proportional
+  to diff size and instead points to a fixed-cost bottleneck (e.g. one specific file type/parser choking,
+  or per-run full-repo setup cost on the sentry checkout) rather than the diff-selection algorithm itself.
+  Every one of the 11 files is small and directly load-bearing for understanding the change, so the correct-output
+  bar here was low and still wasn't cleared.

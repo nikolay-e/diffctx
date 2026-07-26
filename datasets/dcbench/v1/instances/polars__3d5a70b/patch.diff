@@ -1,0 +1,3262 @@
+From 3d5a70be8de4968cbf1c33bb6cb76fbcb822f3ec Mon Sep 17 00:00:00 2001
+From: Orson Peters <orsonpeters@gmail.com>
+Date: Fri, 15 May 2026 21:15:37 +0200
+Subject: [PATCH] refactor(rust): Move async executor and primitives to
+ polars-async (#27629)
+
+---
+ Cargo.lock                                    | 25 ++++--
+ Cargo.toml                                    |  1 +
+ crates/polars-async/Cargo.toml                | 29 ++++++
+ crates/polars-async/LICENSE                   | 20 +++++
+ crates/polars-async/README.md                 |  9 ++
+ .../src/executor}/mod.rs                      |  6 +-
+ .../src/executor}/park_group.rs               |  0
+ .../src/executor}/task.rs                     |  0
+ crates/polars-async/src/lib.rs                |  2 +
+ .../src/primitives}/connector.rs              |  0
+ .../src/primitives}/distributor_channel.rs    |  0
+ .../src/primitives}/linearizer.rs             |  0
+ .../src/primitives}/mod.rs                    |  1 -
+ .../src/primitives}/oneshot_channel.rs        |  2 +-
+ .../src/primitives}/opt_spawned_future.rs     |  2 +-
+ .../src/primitives}/task_parker.rs            |  0
+ .../src/primitives}/wait_group.rs             |  0
+ crates/polars-core/Cargo.toml                 |  1 +
+ crates/polars-core/src/runtime.rs             |  7 +-
+ crates/polars-stream/Cargo.toml               |  9 +-
+ .../src/async_primitives/morsel_linearizer.rs | 34 -------
+ crates/polars-stream/src/execute.rs           |  6 +-
+ crates/polars-stream/src/lib.rs               |  2 -
+ crates/polars-stream/src/metrics.rs           |  2 +-
+ crates/polars-stream/src/morsel.rs            | 33 ++++++-
+ .../polars-stream/src/nodes/backward_fill.rs  |  4 +-
+ .../polars-stream/src/nodes/callback_sink.rs  |  2 +-
+ crates/polars-stream/src/nodes/cum_agg.rs     |  2 +-
+ .../src/nodes/dynamic_group_by.rs             |  6 +-
+ crates/polars-stream/src/nodes/ewm.rs         |  2 +-
+ .../polars-stream/src/nodes/forward_fill.rs   |  4 +-
+ .../polars-stream/src/nodes/gather_every.rs   |  4 +-
+ crates/polars-stream/src/nodes/group_by.rs    |  4 +-
+ .../src/nodes/in_memory_source.rs             |  3 +-
+ crates/polars-stream/src/nodes/interpolate.rs |  4 +-
+ .../nodes/io_sinks/components/file_sink.rs    |  8 +-
+ .../components/morsel_resize_pipeline.rs      |  2 +-
+ .../nodes/io_sinks/components/par_utils.rs    |  5 +-
+ .../components/partition_distributor.rs       |  6 +-
+ .../components/partition_morsel_sender.rs     |  4 +-
+ .../components/partition_sink_starter.rs      |  6 +-
+ .../nodes/io_sinks/components/partitioner.rs  |  2 +-
+ .../components/partitioner_pipeline.rs        | 18 ++--
+ .../polars-stream/src/nodes/io_sinks/mod.rs   | 12 +--
+ .../pipeline_initialization/partition_by.rs   | 72 +++++++--------
+ .../pipeline_initialization/single_file.rs    | 16 ++--
+ .../nodes/io_sinks/writers/csv/io_writer.rs   |  4 +-
+ .../src/nodes/io_sinks/writers/csv/mod.rs     | 12 +--
+ .../io_sinks/writers/csv/morsel_serializer.rs |  8 +-
+ .../src/nodes/io_sinks/writers/interface.rs   |  6 +-
+ .../src/nodes/io_sinks/writers/ipc/mod.rs     | 40 ++++-----
+ .../writers/ipc/record_batch_encoder.rs       | 13 ++-
+ .../io_sinks/writers/ndjson/io_writer.rs      |  4 +-
+ .../src/nodes/io_sinks/writers/ndjson/mod.rs  | 12 +--
+ .../writers/ndjson/morsel_serializer.rs       |  8 +-
+ .../io_sinks/writers/parquet/io_writer.rs     |  7 +-
+ .../src/nodes/io_sinks/writers/parquet/mod.rs | 12 +--
+ .../writers/parquet/row_group_encoder.rs      | 15 ++--
+ .../src/nodes/io_sources/batch.rs             |  2 +-
+ .../src/nodes/io_sources/csv/builder.rs       |  2 +-
+ .../nodes/io_sources/csv/line_batch_source.rs |  2 +-
+ .../src/nodes/io_sources/csv/mod.rs           |  8 +-
+ .../src/nodes/io_sources/ipc/builder.rs       |  2 +-
+ .../src/nodes/io_sources/ipc/mod.rs           | 10 +--
+ .../io_sources/ipc/record_batch_data_fetch.rs |  4 +-
+ .../src/nodes/io_sources/lines.rs             |  2 +-
+ .../multi_scan/components/bridge.rs           |  3 +-
+ .../multi_scan/components/row_deletions.rs    | 10 +--
+ .../multi_scan/functions/resolve_slice.rs     |  4 +-
+ .../src/nodes/io_sources/multi_scan/mod.rs    | 14 +--
+ .../multi_scan/pipeline/initialization.rs     | 33 ++++---
+ .../io_sources/multi_scan/pipeline/models.rs  |  6 +-
+ .../pipeline/tasks/attach_reader_to_bridge.rs |  6 +-
+ .../multi_scan/pipeline/tasks/bridge.rs       | 11 +--
+ .../pipeline/tasks/post_apply_extra_ops.rs    | 13 ++-
+ .../pipeline/tasks/reader_starter.rs          |  8 +-
+ .../multi_scan/reader_interface/mod.rs        |  4 +-
+ .../multi_scan/reader_interface/output.rs     |  8 +-
+ .../src/nodes/io_sources/ndjson/builder.rs    |  2 +-
+ .../ndjson/line_batch_distributor.rs          |  2 +-
+ .../io_sources/ndjson/line_batch_processor.rs |  4 +-
+ .../src/nodes/io_sources/ndjson/mod.rs        | 10 +--
+ .../io_sources/ndjson/negative_slice_pass.rs  | 88 ++++++++-----------
+ .../io_sources/ndjson/row_index_limit_pass.rs |  2 +-
+ .../src/nodes/io_sources/parquet/builder.rs   |  2 +-
+ .../src/nodes/io_sources/parquet/init.rs      |  6 +-
+ .../src/nodes/io_sources/parquet/mod.rs       | 10 +--
+ .../io_sources/parquet/row_group_decode.rs    |  4 +-
+ .../nodes/io_sources/parquet/statistics.rs    |  4 +-
+ .../io_sources/shared/chunk_data_fetch.rs     |  2 +-
+ .../src/nodes/joins/asof_join.rs              |  6 +-
+ .../src/nodes/joins/equi_join.rs              |  8 +-
+ .../src/nodes/joins/merge_join.rs             |  6 +-
+ crates/polars-stream/src/nodes/joins/mod.rs   |  4 +-
+ .../src/nodes/joins/range_join.rs             |  4 +-
+ .../src/nodes/joins/semi_anti_join.rs         |  4 +-
+ .../polars-stream/src/nodes/merge_sorted.rs   |  4 +-
+ crates/polars-stream/src/nodes/mod.rs         |  2 +-
+ crates/polars-stream/src/nodes/multiplexer.rs |  2 +-
+ crates/polars-stream/src/nodes/peak_minmax.rs |  4 +-
+ crates/polars-stream/src/nodes/repeat.rs      |  2 +-
+ crates/polars-stream/src/nodes/rle.rs         |  2 +-
+ crates/polars-stream/src/nodes/rle_id.rs      |  2 +-
+ .../src/nodes/rolling_group_by.rs             |  6 +-
+ crates/polars-stream/src/nodes/shift.rs       |  2 +-
+ .../src/nodes/sorted_group_by.rs              |  6 +-
+ .../polars-stream/src/nodes/sorted_unique.rs  |  6 +-
+ .../polars-stream/src/nodes/with_row_index.rs |  4 +-
+ crates/polars-stream/src/nodes/zip.rs         |  2 +-
+ .../src/physical_plan/lower_ir.rs             |  2 +-
+ crates/polars-stream/src/pipe.rs              | 10 +--
+ crates/polars-stream/src/skeleton.rs          |  2 +-
+ 112 files changed, 468 insertions(+), 428 deletions(-)
+ create mode 100644 crates/polars-async/Cargo.toml
+ create mode 100644 crates/polars-async/LICENSE
+ create mode 100644 crates/polars-async/README.md
+ rename crates/{polars-stream/src/async_executor => polars-async/src/executor}/mod.rs (99%)
+ rename crates/{polars-stream/src/async_executor => polars-async/src/executor}/park_group.rs (100%)
+ rename crates/{polars-stream/src/async_executor => polars-async/src/executor}/task.rs (100%)
+ create mode 100644 crates/polars-async/src/lib.rs
+ rename crates/{polars-stream/src/async_primitives => polars-async/src/primitives}/connector.rs (100%)
+ rename crates/{polars-stream/src/async_primitives => polars-async/src/primitives}/distributor_channel.rs (100%)
+ rename crates/{polars-stream/src/async_primitives => polars-async/src/primitives}/linearizer.rs (100%)
+ rename crates/{polars-stream/src/async_primitives => polars-async/src/primitives}/mod.rs (85%)
+ rename crates/{polars-stream/src/async_primitives => polars-async/src/primitives}/oneshot_channel.rs (93%)
+ rename crates/{polars-stream/src/async_primitives => polars-async/src/primitives}/opt_spawned_future.rs (97%)
+ rename crates/{polars-stream/src/async_primitives => polars-async/src/primitives}/task_parker.rs (100%)
+ rename crates/{polars-stream/src/async_primitives => polars-async/src/primitives}/wait_group.rs (100%)
+ delete mode 100644 crates/polars-stream/src/async_primitives/morsel_linearizer.rs
+
+diff --git a/Cargo.lock b/Cargo.lock
+index ab41b12a9..e842c894a 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -2976,6 +2976,23 @@ dependencies = [
+  "serde",
+ ]
+ 
++[[package]]
++name = "polars-async"
++version = "0.53.0"
++dependencies = [
++ "atomic-waker",
++ "crossbeam-channel",
++ "crossbeam-deque",
++ "crossbeam-utils",
++ "parking_lot",
++ "pin-project-lite",
++ "polars-error",
++ "polars-utils",
++ "rand 0.9.2",
++ "slotmap",
++ "tokio",
++]
++
+ [[package]]
+ name = "polars-buffer"
+ version = "0.53.0"
+@@ -3044,6 +3061,7 @@ dependencies = [
+  "ndarray",
+  "num-traits",
+  "polars-arrow",
++ "polars-async",
+  "polars-buffer",
+  "polars-compute",
+  "polars-config",
+@@ -3562,22 +3580,18 @@ version = "0.53.0"
+ dependencies = [
+  "async-channel",
+  "async-trait",
+- "atomic-waker",
+  "bitflags",
+  "bytes",
+  "chrono-tz",
+  "crossbeam-channel",
+- "crossbeam-deque",
+  "crossbeam-queue",
+- "crossbeam-utils",
+  "futures",
+  "memchr",
+- "memmap2",
+  "num-traits",
+  "parking_lot",
+  "percent-encoding",
+- "pin-project-lite",
+  "polars-arrow",
++ "polars-async",
+  "polars-buffer",
+  "polars-compute",
+  "polars-config",
+@@ -3594,7 +3608,6 @@ dependencies = [
+  "polars-time",
+  "polars-utils",
+  "pyo3",
+- "rand 0.9.2",
+  "rayon",
+  "recursive",
+  "schemars",
+diff --git a/Cargo.toml b/Cargo.toml
+index 248205d9b..fc8c00cd4 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -112,6 +112,7 @@ zmij = "1.0.0"
+ zstd = "0.13"
+ 
+ polars = { version = "0.53.0", path = "crates/polars", default-features = false }
++polars-async = { version = "0.53.0", path = "crates/polars-async", default-features = false }
+ polars-buffer = { version = "0.53.0", path = "crates/polars-buffer", default-features = false }
+ polars-compute = { version = "0.53.0", path = "crates/polars-compute", default-features = false }
+ polars-config = { version = "0.53.0", path = "crates/polars-config", default-features = false }
+diff --git a/crates/polars-async/Cargo.toml b/crates/polars-async/Cargo.toml
+new file mode 100644
+index 000000000..341d08606
+--- /dev/null
++++ b/crates/polars-async/Cargo.toml
+@@ -0,0 +1,29 @@
++[package]
++name = "polars-async"
++version.workspace = true
++authors.workspace = true
++edition.workspace = true
++homepage.workspace = true
++license.workspace = true
++repository.workspace = true
++description = "Async runtime and utilities of the Polars project."
++
++[dependencies]
++atomic-waker = { workspace = true }
++crossbeam-channel = { workspace = true }
++crossbeam-deque = { workspace = true }
++crossbeam-utils = { workspace = true }
++parking_lot = { workspace = true }
++pin-project-lite = { workspace = true }
++rand = { workspace = true }
++slotmap = { workspace = true }
++tokio = { workspace = true }
++
++polars-error = { workspace = true }
++polars-utils = { workspace = true }
++
++[features]
++default = []
++
++[lints]
++workspace = true
+diff --git a/crates/polars-async/LICENSE b/crates/polars-async/LICENSE
+new file mode 100644
+index 000000000..33b09bbb6
+--- /dev/null
++++ b/crates/polars-async/LICENSE
+@@ -0,0 +1,20 @@
++Copyright (c) 2025 Ritchie Vink
++Copyright (c) 2024 (Some portions) NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++
++Permission is hereby granted, free of charge, to any person obtaining a copy
++of this software and associated documentation files (the "Software"), to deal
++in the Software without restriction, including without limitation the rights
++to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++copies of the Software, and to permit persons to whom the Software is
++furnished to do so, subject to the following conditions:
++
++The above copyright notice and this permission notice shall be included in all
++copies or substantial portions of the Software.
++
++THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++SOFTWARE.
+diff --git a/crates/polars-async/README.md b/crates/polars-async/README.md
+new file mode 100644
+index 000000000..3223c3c31
+--- /dev/null
++++ b/crates/polars-async/README.md
+@@ -0,0 +1,9 @@
++# polars-async
++
++Async runtime and utilities of the Polars project.
++
++`polars-async` is an **internal sub-crate** of the [Polars](https://crates.io/crates/polars)
++library.
++
++**Important Note**: This crate is **not intended for external usage**. Please refer to the main
++[Polars crate](https://crates.io/crates/polars) for intended usage.
+diff --git a/crates/polars-stream/src/async_executor/mod.rs b/crates/polars-async/src/executor/mod.rs
+similarity index 99%
+rename from crates/polars-stream/src/async_executor/mod.rs
+rename to crates/polars-async/src/executor/mod.rs
+index b35d56e51..f0b7af829 100644
+--- a/crates/polars-stream/src/async_executor/mod.rs
++++ b/crates/polars-async/src/executor/mod.rs
+@@ -18,7 +18,6 @@ use crossbeam_deque::{Injector, Steal, Stealer, Worker as WorkQueue};
+ use crossbeam_utils::CachePadded;
+ use park_group::ParkGroup;
+ use parking_lot::Mutex;
+-use polars_core::runtime::ALLOW_RAYON_THREADS;
+ use polars_utils::relaxed_cell::RelaxedCell;
+ use polars_utils::with_drop::WithDrop;
+ use rand::rngs::SmallRng;
+@@ -26,6 +25,10 @@ use rand::{Rng, SeedableRng};
+ use slotmap::SlotMap;
+ use task::{Cancellable, DynTask, Runnable};
+ 
++thread_local! {
++    pub static ALLOW_RAYON_THREADS: Cell<bool> = const { Cell::new(true) };
++}
++
+ static NUM_EXECUTOR_THREADS: RelaxedCell<usize> = RelaxedCell::new_usize(0);
+ pub fn set_num_threads(t: usize) {
+     NUM_EXECUTOR_THREADS.store(t);
+@@ -558,7 +561,6 @@ where
+ /// over this thread's task execution duties.
+ ///
+ /// Simply directly calls f() if this thread is not an async executor thread.
+-#[expect(unused)]
+ pub fn block_in_place<R, F: FnOnce() -> R>(f: F) -> R {
+     let thread_id = TLS_THREAD_ID.replace(usize::MAX);
+     if thread_id == usize::MAX {
+diff --git a/crates/polars-stream/src/async_executor/park_group.rs b/crates/polars-async/src/executor/park_group.rs
+similarity index 100%
+rename from crates/polars-stream/src/async_executor/park_group.rs
+rename to crates/polars-async/src/executor/park_group.rs
+diff --git a/crates/polars-stream/src/async_executor/task.rs b/crates/polars-async/src/executor/task.rs
+similarity index 100%
+rename from crates/polars-stream/src/async_executor/task.rs
+rename to crates/polars-async/src/executor/task.rs
+diff --git a/crates/polars-async/src/lib.rs b/crates/polars-async/src/lib.rs
+new file mode 100644
+index 000000000..d13684b49
+--- /dev/null
++++ b/crates/polars-async/src/lib.rs
+@@ -0,0 +1,2 @@
++pub mod executor;
++pub mod primitives;
+diff --git a/crates/polars-stream/src/async_primitives/connector.rs b/crates/polars-async/src/primitives/connector.rs
+similarity index 100%
+rename from crates/polars-stream/src/async_primitives/connector.rs
+rename to crates/polars-async/src/primitives/connector.rs
+diff --git a/crates/polars-stream/src/async_primitives/distributor_channel.rs b/crates/polars-async/src/primitives/distributor_channel.rs
+similarity index 100%
+rename from crates/polars-stream/src/async_primitives/distributor_channel.rs
+rename to crates/polars-async/src/primitives/distributor_channel.rs
+diff --git a/crates/polars-stream/src/async_primitives/linearizer.rs b/crates/polars-async/src/primitives/linearizer.rs
+similarity index 100%
+rename from crates/polars-stream/src/async_primitives/linearizer.rs
+rename to crates/polars-async/src/primitives/linearizer.rs
+diff --git a/crates/polars-stream/src/async_primitives/mod.rs b/crates/polars-async/src/primitives/mod.rs
+similarity index 85%
+rename from crates/polars-stream/src/async_primitives/mod.rs
+rename to crates/polars-async/src/primitives/mod.rs
+index c26cd1e2b..2c97f751e 100644
+--- a/crates/polars-stream/src/async_primitives/mod.rs
++++ b/crates/polars-async/src/primitives/mod.rs
+@@ -1,7 +1,6 @@
+ pub mod connector;
+ pub mod distributor_channel;
+ pub mod linearizer;
+-pub mod morsel_linearizer;
+ pub mod oneshot_channel;
+ pub mod opt_spawned_future;
+ pub mod task_parker;
+diff --git a/crates/polars-stream/src/async_primitives/oneshot_channel.rs b/crates/polars-async/src/primitives/oneshot_channel.rs
+similarity index 93%
+rename from crates/polars-stream/src/async_primitives/oneshot_channel.rs
+rename to crates/polars-async/src/primitives/oneshot_channel.rs
+index f2a76dcff..d80ea8272 100644
+--- a/crates/polars-stream/src/async_primitives/oneshot_channel.rs
++++ b/crates/polars-async/src/primitives/oneshot_channel.rs
+@@ -1,4 +1,4 @@
+-use crate::async_primitives::connector;
++use crate::primitives::connector;
+ 
+ pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
+     let (tx, rx) = connector::connector();
+diff --git a/crates/polars-stream/src/async_primitives/opt_spawned_future.rs b/crates/polars-async/src/primitives/opt_spawned_future.rs
+similarity index 97%
+rename from crates/polars-stream/src/async_primitives/opt_spawned_future.rs
+rename to crates/polars-async/src/primitives/opt_spawned_future.rs
+index 25aade45c..6c706bef4 100644
+--- a/crates/polars-stream/src/async_primitives/opt_spawned_future.rs
++++ b/crates/polars-async/src/primitives/opt_spawned_future.rs
+@@ -1,7 +1,7 @@
+ use pin_project_lite::pin_project;
+ use polars_utils::{UnitVec, unitvec};
+ 
+-use crate::async_executor::{AbortOnDropHandle, TaskPriority, spawn};
++use crate::executor::{AbortOnDropHandle, TaskPriority, spawn};
+ 
+ pin_project! {
+     /// Represents a future that may either be local or spawned.
+diff --git a/crates/polars-stream/src/async_primitives/task_parker.rs b/crates/polars-async/src/primitives/task_parker.rs
+similarity index 100%
+rename from crates/polars-stream/src/async_primitives/task_parker.rs
+rename to crates/polars-async/src/primitives/task_parker.rs
+diff --git a/crates/polars-stream/src/async_primitives/wait_group.rs b/crates/polars-async/src/primitives/wait_group.rs
+similarity index 100%
+rename from crates/polars-stream/src/async_primitives/wait_group.rs
+rename to crates/polars-async/src/primitives/wait_group.rs
+diff --git a/crates/polars-core/Cargo.toml b/crates/polars-core/Cargo.toml
+index c9b27cddd..ea45f6d78 100644
+--- a/crates/polars-core/Cargo.toml
++++ b/crates/polars-core/Cargo.toml
+@@ -9,6 +9,7 @@ repository = { workspace = true }
+ description = "Core of the Polars DataFrame library"
+ 
+ [dependencies]
++polars-async = { workspace = true }
+ polars-buffer = { workspace = true }
+ polars-compute = { workspace = true, features = ["gather"] }
+ polars-config = { workspace = true }
+diff --git a/crates/polars-core/src/runtime.rs b/crates/polars-core/src/runtime.rs
+index 9ef71c2d1..e6d93540c 100644
+--- a/crates/polars-core/src/runtime.rs
++++ b/crates/polars-core/src/runtime.rs
+@@ -1,4 +1,4 @@
+-use std::cell::{Cell, RefCell};
++use std::cell::RefCell;
+ use std::panic::{AssertUnwindSafe, catch_unwind};
+ use std::sync::LazyLock;
+ use std::sync::mpsc::{TryRecvError, sync_channel};
+@@ -12,7 +12,6 @@ pub struct RAYON;
+ // Thread locals to allow disabling threading for specific threads.
+ #[cfg(any(target_os = "emscripten", not(target_family = "wasm")))]
+ thread_local! {
+-    pub static ALLOW_RAYON_THREADS: Cell<bool> = const { Cell::new(true) };
+     static NOOP_POOL: RefCell<ThreadPool> = RefCell::new(
+         ThreadPoolBuilder::new()
+             .use_current_thread()
+@@ -139,7 +138,9 @@ impl RAYON {
+         OP: FnOnce(&ThreadPool) -> R + Send,
+         R: Send,
+     {
+-        if ALLOW_RAYON_THREADS.get() || THREAD_POOL.current_thread_index().is_some() {
++        if polars_async::executor::ALLOW_RAYON_THREADS.get()
++            || THREAD_POOL.current_thread_index().is_some()
++        {
+             op(&THREAD_POOL)
+         } else {
+             NOOP_POOL.with(|v| op(&v.borrow()))
+diff --git a/crates/polars-stream/Cargo.toml b/crates/polars-stream/Cargo.toml
+index 0fc809ea8..ccd7b8fd6 100644
+--- a/crates/polars-stream/Cargo.toml
++++ b/crates/polars-stream/Cargo.toml
+@@ -11,22 +11,17 @@ description = "Private crate for the streaming execution engine for the Polars D
+ [dependencies]
+ async-channel = { workspace = true }
+ async-trait = { workspace = true }
+-atomic-waker = { workspace = true }
+ bitflags = { workspace = true }
+ bytes = { workspace = true }
+ chrono-tz = { workspace = true }
+ crossbeam-channel = { workspace = true }
+-crossbeam-deque = { workspace = true }
+ crossbeam-queue = { workspace = true }
+-crossbeam-utils = { workspace = true }
+ futures = { workspace = true }
+-memmap = { workspace = true }
++memchr = { workspace = true }
+ num-traits = { workspace = true }
+ parking_lot = { workspace = true }
+ percent-encoding = { workspace = true }
+-pin-project-lite = { workspace = true }
+ pyo3 = { workspace = true, optional = true }
+-rand = { workspace = true }
+ rayon = { workspace = true }
+ recursive = { workspace = true }
+ schemars = { workspace = true, optional = true }
+@@ -37,7 +32,7 @@ tokio = { workspace = true, features = ["sync"] }
+ uuid = { workspace = true }
+ 
+ arrow = { workspace = true }
+-memchr = { workspace = true }
++polars-async = { workspace = true }
+ polars-buffer = { workspace = true }
+ polars-compute = { workspace = true }
+ polars-config = { workspace = true }
+diff --git a/crates/polars-stream/src/async_primitives/morsel_linearizer.rs b/crates/polars-stream/src/async_primitives/morsel_linearizer.rs
+deleted file mode 100644
+index 32de34c75..000000000
+--- a/crates/polars-stream/src/async_primitives/morsel_linearizer.rs
++++ /dev/null
+@@ -1,34 +0,0 @@
+-//! Saves us from typing `Priority<Reverse<...` everywhere.
+-use std::cmp::Reverse;
+-
+-use polars_utils::priority::Priority;
+-
+-use super::linearizer::{Inserter, Linearizer};
+-use crate::morsel::{Morsel, MorselSeq};
+-
+-pub struct MorselLinearizer(Linearizer<Priority<Reverse<MorselSeq>, Morsel>>);
+-pub struct MorselInserter(Inserter<Priority<Reverse<MorselSeq>, Morsel>>);
+-
+-impl MorselLinearizer {
+-    pub fn new(num_inserters: usize, buffer_size: usize) -> (Self, Vec<MorselInserter>) {
+-        let (lin, inserters) = Linearizer::new(num_inserters, buffer_size);
+-
+-        (
+-            MorselLinearizer(lin),
+-            inserters.into_iter().map(MorselInserter).collect(),
+-        )
+-    }
+-
+-    pub async fn get(&mut self) -> Option<Morsel> {
+-        self.0.get().await.map(|x| x.1)
+-    }
+-}
+-
+-impl MorselInserter {
+-    pub async fn insert(&mut self, morsel: Morsel) -> Result<(), Morsel> {
+-        self.0
+-            .insert(Priority(Reverse(morsel.seq()), morsel))
+-            .await
+-            .map_err(|Priority(_, v)| v)
+-    }
+-}
+diff --git a/crates/polars-stream/src/execute.rs b/crates/polars-stream/src/execute.rs
+index c99e88793..c8370b1f3 100644
+--- a/crates/polars-stream/src/execute.rs
++++ b/crates/polars-stream/src/execute.rs
+@@ -2,6 +2,7 @@ use std::sync::Arc;
+ 
+ use crossbeam_channel::Sender;
+ use parking_lot::Mutex;
++use polars_async::executor;
+ use polars_core::frame::DataFrame;
+ use polars_core::runtime::{ASYNC, RAYON};
+ use polars_error::PolarsResult;
+@@ -12,7 +13,6 @@ use polars_utils::reuse_vec::reuse_vec;
+ use slotmap::{SecondaryMap, SparseSecondaryMap};
+ use tokio::task::JoinHandle;
+ 
+-use crate::async_executor;
+ use crate::graph::{Graph, GraphNode, GraphNodeKey, LogicalPipeKey, PortState};
+ use crate::metrics::{GraphMetrics, NodeMetricsRegistrator};
+ use crate::pipe::PhysicalPipe;
+@@ -183,7 +183,7 @@ fn run_subgraph(
+         }
+     }
+ 
+-    async_executor::task_scope(|scope| {
++    executor::task_scope(|scope| {
+         // Using SlotMap::iter_mut we can get simultaneous mutable references. By storing them and
+         // removing the references from the secondary map as we do our topological sort we ensure
+         // they are unique.
+@@ -304,7 +304,7 @@ pub fn execute_graph(
+ ) -> PolarsResult<SparseSecondaryMap<GraphNodeKey, DataFrame>> {
+     // Get the number of threads from the rayon thread-pool as that respects our config.
+     let num_pipelines = RAYON.current_num_threads();
+-    async_executor::set_num_threads(num_pipelines);
++    executor::set_num_threads(num_pipelines);
+ 
+     let (query_tasks_send, query_tasks_recv) = crossbeam_channel::unbounded();
+     let (subphase_tasks_send, subphase_tasks_recv) = crossbeam_channel::unbounded();
+diff --git a/crates/polars-stream/src/lib.rs b/crates/polars-stream/src/lib.rs
+index 842bb91a8..fed1d3735 100644
+--- a/crates/polars-stream/src/lib.rs
++++ b/crates/polars-stream/src/lib.rs
+@@ -1,5 +1,3 @@
+-mod async_executor;
+-mod async_primitives;
+ mod dispatch;
+ mod skeleton;
+ 
+diff --git a/crates/polars-stream/src/metrics.rs b/crates/polars-stream/src/metrics.rs
+index 1264a3c4f..b26ec9ad2 100644
+--- a/crates/polars-stream/src/metrics.rs
++++ b/crates/polars-stream/src/metrics.rs
+@@ -1,11 +1,11 @@
+ use std::sync::Arc;
+ use std::time::Duration;
+ 
++use polars_async::executor::TaskMetrics;
+ pub use polars_io::metrics::{IOMetrics, OptIOMetrics};
+ use slotmap::{SecondaryMap, SlotMap};
+ 
+ use crate::LogicalPipe;
+-use crate::async_executor::TaskMetrics;
+ use crate::graph::{GraphNodeKey, LogicalPipeKey};
+ use crate::pipe::PipeMetrics;
+ 
+diff --git a/crates/polars-stream/src/morsel.rs b/crates/polars-stream/src/morsel.rs
+index 6ea1cf809..2d9718e62 100644
+--- a/crates/polars-stream/src/morsel.rs
++++ b/crates/polars-stream/src/morsel.rs
+@@ -1,11 +1,13 @@
++use std::cmp::Reverse;
+ use std::future::Future;
+ use std::sync::Arc;
+ 
++use polars_async::primitives::linearizer::{Inserter, Linearizer};
++use polars_async::primitives::wait_group::WaitToken;
+ use polars_core::frame::DataFrame;
++use polars_utils::priority::Priority;
+ use polars_utils::relaxed_cell::RelaxedCell;
+ 
+-use crate::async_primitives::wait_group::WaitToken;
+-
+ pub fn get_ideal_morsel_size() -> usize {
+     polars_config::config().ideal_morsel_size() as usize
+ }
+@@ -166,3 +168,30 @@ impl Morsel {
+         core::mem::replace(&mut self.source_token, new_token)
+     }
+ }
++
++pub struct MorselLinearizer(Linearizer<Priority<Reverse<MorselSeq>, Morsel>>);
++pub struct MorselInserter(Inserter<Priority<Reverse<MorselSeq>, Morsel>>);
++
++impl MorselLinearizer {
++    pub fn new(num_inserters: usize, buffer_size: usize) -> (Self, Vec<MorselInserter>) {
++        let (lin, inserters) = Linearizer::new(num_inserters, buffer_size);
++
++        (
++            MorselLinearizer(lin),
++            inserters.into_iter().map(MorselInserter).collect(),
++        )
++    }
++
++    pub async fn get(&mut self) -> Option<Morsel> {
++        self.0.get().await.map(|x| x.1)
++    }
++}
++
++impl MorselInserter {
++    pub async fn insert(&mut self, morsel: Morsel) -> Result<(), Morsel> {
++        self.0
++            .insert(Priority(Reverse(morsel.seq()), morsel))
++            .await
++            .map_err(|Priority(_, v)| v)
++    }
++}
+diff --git a/crates/polars-stream/src/nodes/backward_fill.rs b/crates/polars-stream/src/nodes/backward_fill.rs
+index 9f8ffd3c6..f6cb3ae74 100644
+--- a/crates/polars-stream/src/nodes/backward_fill.rs
++++ b/crates/polars-stream/src/nodes/backward_fill.rs
+@@ -1,3 +1,5 @@
++use polars_async::primitives::distributor_channel::distributor_channel;
++use polars_async::primitives::wait_group::WaitGroup;
+ use polars_core::prelude::{Column, DataType, FillNullStrategy};
+ use polars_error::PolarsResult;
+ use polars_utils::IdxSize;
+@@ -5,8 +7,6 @@ use polars_utils::pl_str::PlSmallStr;
+ 
+ use super::compute_node_prelude::*;
+ use crate::DEFAULT_DISTRIBUTOR_BUFFER_SIZE;
+-use crate::async_primitives::distributor_channel::distributor_channel;
+-use crate::async_primitives::wait_group::WaitGroup;
+ use crate::morsel::{MorselSeq, SourceToken, get_ideal_morsel_size};
+ 
+ pub struct BackwardFillNode {
+diff --git a/crates/polars-stream/src/nodes/callback_sink.rs b/crates/polars-stream/src/nodes/callback_sink.rs
+index 8d91dd6f4..486117918 100644
+--- a/crates/polars-stream/src/nodes/callback_sink.rs
++++ b/crates/polars-stream/src/nodes/callback_sink.rs
+@@ -1,11 +1,11 @@
+ use std::num::NonZeroUsize;
+ 
++use polars_async::executor::{JoinHandle, TaskPriority, TaskScope};
+ use polars_core::frame::DataFrame;
+ use polars_core::runtime::ASYNC;
+ use polars_error::PolarsResult;
+ use polars_plan::prelude::PlanCallback;
+ 
+-use crate::async_executor::{JoinHandle, TaskPriority, TaskScope};
+ use crate::execute::StreamingExecutionState;
+ use crate::graph::PortState;
+ use crate::nodes::ComputeNode;
+diff --git a/crates/polars-stream/src/nodes/cum_agg.rs b/crates/polars-stream/src/nodes/cum_agg.rs
+index 5c48442f4..27ce837bb 100644
+--- a/crates/polars-stream/src/nodes/cum_agg.rs
++++ b/crates/polars-stream/src/nodes/cum_agg.rs
+@@ -1,3 +1,4 @@
++use polars_async::executor::{JoinHandle, TaskPriority, TaskScope};
+ use polars_core::prelude::{AnyValue, IntoColumn};
+ use polars_core::utils::last_non_null;
+ use polars_error::PolarsResult;
+@@ -7,7 +8,6 @@ use polars_ops::series::{
+ };
+ 
+ use super::ComputeNode;
+-use crate::async_executor::{JoinHandle, TaskPriority, TaskScope};
+ use crate::execute::StreamingExecutionState;
+ use crate::graph::PortState;
+ use crate::pipe::{RecvPort, SendPort};
+diff --git a/crates/polars-stream/src/nodes/dynamic_group_by.rs b/crates/polars-stream/src/nodes/dynamic_group_by.rs
+index 8cd621ffe..759306637 100644
+--- a/crates/polars-stream/src/nodes/dynamic_group_by.rs
++++ b/crates/polars-stream/src/nodes/dynamic_group_by.rs
+@@ -1,6 +1,9 @@
+ use std::sync::Arc;
+ 
+ use arrow::legacy::time_zone::Tz;
++use polars_async::executor::{JoinHandle, TaskPriority, TaskScope};
++use polars_async::primitives::distributor_channel::distributor_channel;
++use polars_async::primitives::wait_group::WaitGroup;
+ use polars_core::frame::DataFrame;
+ use polars_core::prelude::{Column, DataType, GroupsType, Int64Chunked, IntoColumn, TimeUnit};
+ use polars_core::schema::Schema;
+@@ -14,9 +17,6 @@ use polars_utils::pl_str::PlSmallStr;
+ 
+ use super::ComputeNode;
+ use crate::DEFAULT_DISTRIBUTOR_BUFFER_SIZE;
+-use crate::async_executor::{JoinHandle, TaskPriority, TaskScope};
+-use crate::async_primitives::distributor_channel::distributor_channel;
+-use crate::async_primitives::wait_group::WaitGroup;
+ use crate::execute::StreamingExecutionState;
+ use crate::expression::StreamExpr;
+ use crate::graph::PortState;
+diff --git a/crates/polars-stream/src/nodes/ewm.rs b/crates/polars-stream/src/nodes/ewm.rs
+index 0ed6520a6..2ac93aa3c 100644
+--- a/crates/polars-stream/src/nodes/ewm.rs
++++ b/crates/polars-stream/src/nodes/ewm.rs
+@@ -1,10 +1,10 @@
++use polars_async::executor::{JoinHandle, TaskPriority, TaskScope};
+ use polars_compute::ewm::EwmStateUpdate;
+ use polars_core::prelude::IntoColumn;
+ use polars_core::series::Series;
+ use polars_error::PolarsResult;
+ 
+ use super::ComputeNode;
+-use crate::async_executor::{JoinHandle, TaskPriority, TaskScope};
+ use crate::execute::StreamingExecutionState;
+ use crate::graph::PortState;
+ use crate::pipe::{RecvPort, SendPort};
+diff --git a/crates/polars-stream/src/nodes/forward_fill.rs b/crates/polars-stream/src/nodes/forward_fill.rs
+index ff2ca4e85..ee5462b83 100644
+--- a/crates/polars-stream/src/nodes/forward_fill.rs
++++ b/crates/polars-stream/src/nodes/forward_fill.rs
+@@ -1,3 +1,5 @@
++use polars_async::primitives::distributor_channel::distributor_channel;
++use polars_async::primitives::wait_group::WaitGroup;
+ use polars_core::prelude::{AnyValue, Column, DataType, FillNullStrategy, Scalar};
+ use polars_error::PolarsResult;
+ use polars_utils::IdxSize;
+@@ -5,8 +7,6 @@ use polars_utils::pl_str::PlSmallStr;
+ 
+ use super::compute_node_prelude::*;
+ use crate::DEFAULT_DISTRIBUTOR_BUFFER_SIZE;
+-use crate::async_primitives::distributor_channel::distributor_channel;
+-use crate::async_primitives::wait_group::WaitGroup;
+ 
+ pub struct ForwardFillNode {
+     dtype: DataType,
+diff --git a/crates/polars-stream/src/nodes/gather_every.rs b/crates/polars-stream/src/nodes/gather_every.rs
+index 5780f7c75..754162198 100644
+--- a/crates/polars-stream/src/nodes/gather_every.rs
++++ b/crates/polars-stream/src/nodes/gather_every.rs
+@@ -1,9 +1,9 @@
++use polars_async::primitives::distributor_channel::distributor_channel;
++use polars_async::primitives::wait_group::WaitGroup;
+ use polars_error::polars_ensure;
+ 
+ use super::compute_node_prelude::*;
+ use crate::DEFAULT_DISTRIBUTOR_BUFFER_SIZE;
+-use crate::async_primitives::distributor_channel::distributor_channel;
+-use crate::async_primitives::wait_group::WaitGroup;
+ 
+ pub struct GatherEveryNode {
+     n: usize,
+diff --git a/crates/polars-stream/src/nodes/group_by.rs b/crates/polars-stream/src/nodes/group_by.rs
+index c9740cc58..adb6bcc09 100644
+--- a/crates/polars-stream/src/nodes/group_by.rs
++++ b/crates/polars-stream/src/nodes/group_by.rs
+@@ -1,5 +1,6 @@
+ use std::sync::Arc;
+ 
++use polars_async::executor;
+ use polars_core::prelude::{IntoColumn, PlHashSet, PlRandomState};
+ use polars_core::runtime::{ASYNC, RAYON};
+ use polars_core::schema::Schema;
+@@ -20,7 +21,6 @@ use rayon::prelude::*;
+ use tokio::sync::mpsc::{Receiver, channel};
+ 
+ use super::compute_node_prelude::*;
+-use crate::async_executor;
+ use crate::expression::StreamExpr;
+ use crate::morsel::get_ideal_morsel_size;
+ use crate::nodes::in_memory_source::InMemorySourceNode;
+@@ -306,7 +306,7 @@ impl GroupBySinkState {
+         let grouped_reductions_template = &self.grouped_reductions;
+         let grouped_reduction_cols = &self.grouped_reduction_cols;
+ 
+-        async_executor::task_scope(|s| {
++        executor::task_scope(|s| {
+             // Wrap in outer Arc to move to each thread, performing the
+             // expensive clone on that thread.
+             let arc_morsels_per_local = Arc::new(morsels_per_local);
+diff --git a/crates/polars-stream/src/nodes/in_memory_source.rs b/crates/polars-stream/src/nodes/in_memory_source.rs
+index 9b90601f3..aeba6aeab 100644
+--- a/crates/polars-stream/src/nodes/in_memory_source.rs
++++ b/crates/polars-stream/src/nodes/in_memory_source.rs
+@@ -1,8 +1,9 @@
+ use std::sync::Arc;
+ use std::sync::atomic::{AtomicU64, Ordering};
+ 
++use polars_async::primitives::wait_group::WaitGroup;
++
+ use super::compute_node_prelude::*;
+-use crate::async_primitives::wait_group::WaitGroup;
+ use crate::morsel::{MorselSeq, SourceToken, get_ideal_morsel_size};
+ 
+ #[derive(Debug)]
+diff --git a/crates/polars-stream/src/nodes/interpolate.rs b/crates/polars-stream/src/nodes/interpolate.rs
+index 5388a6d5a..be4224a7d 100644
+--- a/crates/polars-stream/src/nodes/interpolate.rs
++++ b/crates/polars-stream/src/nodes/interpolate.rs
+@@ -1,3 +1,5 @@
++use polars_async::primitives::distributor_channel::distributor_channel;
++use polars_async::primitives::wait_group::WaitGroup;
+ use polars_core::prelude::{AnyValue, Column, DataType, IntoColumn};
+ use polars_core::scalar::Scalar;
+ use polars_error::PolarsResult;
+@@ -7,8 +9,6 @@ use polars_utils::pl_str::PlSmallStr;
+ 
+ use super::compute_node_prelude::*;
+ use crate::DEFAULT_DISTRIBUTOR_BUFFER_SIZE;
+-use crate::async_primitives::distributor_channel::distributor_channel;
+-use crate::async_primitives::wait_group::WaitGroup;
+ use crate::morsel::{MorselSeq, SourceToken, get_ideal_morsel_size};
+ 
+ pub struct InterpolateNode {
+diff --git a/crates/polars-stream/src/nodes/io_sinks/components/file_sink.rs b/crates/polars-stream/src/nodes/io_sinks/components/file_sink.rs
+index 96bb9b426..733489dce 100644
+--- a/crates/polars-stream/src/nodes/io_sinks/components/file_sink.rs
++++ b/crates/polars-stream/src/nodes/io_sinks/components/file_sink.rs
+@@ -1,7 +1,7 @@
++use polars_async::executor;
++use polars_async::primitives::connector;
+ use polars_error::PolarsResult;
+ 
+-use crate::async_executor;
+-use crate::async_primitives::connector;
+ use crate::nodes::io_sinks::components::sink_morsel::SinkMorsel;
+ use crate::nodes::io_sinks::components::size::RowCountAndSize;
+ 
+@@ -10,12 +10,12 @@ pub type FileSinkPermit = tokio::sync::OwnedSemaphorePermit;
+ pub struct FileSinkTaskData {
+     pub morsel_tx: connector::Sender<SinkMorsel>,
+     pub start_position: RowCountAndSize,
+-    pub task_handle: async_executor::JoinHandle<PolarsResult<FileSinkPermit>>,
++    pub task_handle: executor::JoinHandle<PolarsResult<FileSinkPermit>>,
+ }
+ 
+ impl FileSinkTaskData {
+     /// Signals to the writer to close, and returns its task handle.
+-    pub fn close(self) -> async_executor::JoinHandle<PolarsResult<FileSinkPermit>> {
++    pub fn close(self) -> executor::JoinHandle<PolarsResult<FileSinkPermit>> {
+         self.task_handle
+     }
+ }
+diff --git a/crates/polars-stream/src/nodes/io_sinks/components/morsel_resize_pipeline.rs b/crates/polars-stream/src/nodes/io_sinks/components/morsel_resize_pipeline.rs
+index efcd07f59..75dcc4631 100644
+--- a/crates/polars-stream/src/nodes/io_sinks/components/morsel_resize_pipeline.rs
++++ b/crates/polars-stream/src/nodes/io_sinks/components/morsel_resize_pipeline.rs
+@@ -1,10 +1,10 @@
+ use std::sync::Arc;
+ 
++use polars_async::primitives::connector;
+ use polars_core::frame::DataFrame;
+ use polars_error::PolarsResult;
+ use polars_utils::IdxSize;
+ 
+-use crate::async_primitives::connector;
+ use crate::morsel::Morsel;
+ use crate::nodes::io_sinks::components::sink_morsel::SinkMorsel;
+ use crate::nodes::io_sinks::components::size::{RowCountAndSize, TakeableRowsProvider};
+diff --git a/crates/polars-stream/src/nodes/io_sinks/components/par_utils.rs b/crates/polars-stream/src/nodes/io_sinks/components/par_utils.rs
+index 726f95754..d583c91f4 100644
+--- a/crates/polars-stream/src/nodes/io_sinks/components/par_utils.rs
++++ b/crates/polars-stream/src/nodes/io_sinks/components/par_utils.rs
+@@ -1,8 +1,7 @@
++use polars_async::executor::TaskPriority;
++use polars_async::primitives::opt_spawned_future::parallelize_first_to_local;
+ use polars_core::prelude::Column;
+ 
+-use crate::async_executor::TaskPriority;
+-use crate::async_primitives::opt_spawned_future::parallelize_first_to_local;
+-
+ /// Parallel rechunk of each column over the computational async executor.
+ pub async fn rechunk_par(columns: &mut [Column]) {
+     for fut in parallelize_first_to_local(
+diff --git a/crates/polars-stream/src/nodes/io_sinks/components/partition_distributor.rs b/crates/polars-stream/src/nodes/io_sinks/components/partition_distributor.rs
+index 79044e525..a0d604d54 100644
+--- a/crates/polars-stream/src/nodes/io_sinks/components/partition_distributor.rs
++++ b/crates/polars-stream/src/nodes/io_sinks/components/partition_distributor.rs
+@@ -1,13 +1,13 @@
+ use std::collections::VecDeque;
+ use std::sync::Arc;
+ 
++use polars_async::executor::{self, TaskPriority};
+ use polars_core::prelude::{InitHashMaps, PlHashSet, PlIndexMap};
+ use polars_error::PolarsResult;
+ use polars_plan::dsl::file_provider::FileProviderArgs;
+ use polars_utils::IdxSize;
+ use polars_utils::pl_str::PlSmallStr;
+ 
+-use crate::async_executor::{self, TaskPriority};
+ use crate::nodes::io_sinks::components::error_capture::{ErrorCapture, ErrorHandle};
+ use crate::nodes::io_sinks::components::file_sink::FileSinkPermit;
+ use crate::nodes::io_sinks::components::partition_key::PartitionKey;
+@@ -20,7 +20,7 @@ use crate::nodes::io_sinks::components::size::RowCountAndSize;
+ pub struct PartitionDistributor {
+     pub node_name: PlSmallStr,
+     pub partitioned_dfs_rx: tokio::sync::mpsc::Receiver<
+-        async_executor::AbortOnDropHandle<PolarsResult<PartitionedDataFrames>>,
++        executor::AbortOnDropHandle<PolarsResult<PartitionedDataFrames>>,
+     >,
+     pub partition_morsel_sender: PartitionMorselSender,
+     pub error_capture: ErrorCapture,
+@@ -278,7 +278,7 @@ impl PartitionDistributor {
+             total_sink_opens = total_sink_opens.saturating_add(partition.num_sink_opens);
+ 
+             if let Some(file_sink_task_data) = partition.file_sink_task_data.take() {
+-                async_executor::spawn(
++                executor::spawn(
+                     TaskPriority::Low,
+                     error_capture
+                         .clone()
+diff --git a/crates/polars-stream/src/nodes/io_sinks/components/partition_morsel_sender.rs b/crates/polars-stream/src/nodes/io_sinks/components/partition_morsel_sender.rs
+index da155dd2f..92370881a 100644
+--- a/crates/polars-stream/src/nodes/io_sinks/components/partition_morsel_sender.rs
++++ b/crates/polars-stream/src/nodes/io_sinks/components/partition_morsel_sender.rs
+@@ -1,11 +1,11 @@
+ use std::sync::Arc;
+ 
++use polars_async::executor::{self, TaskPriority};
+ use polars_core::frame::DataFrame;
+ use polars_error::PolarsResult;
+ use polars_plan::dsl::file_provider::FileProviderArgs;
+ use polars_utils::IdxSize;
+ 
+-use crate::async_executor::{self, TaskPriority};
+ use crate::nodes::io_sinks::components::error_capture::ErrorCapture;
+ use crate::nodes::io_sinks::components::file_sink::FileSinkPermit;
+ use crate::nodes::io_sinks::components::hstack_columns::HStackColumns;
+@@ -110,7 +110,7 @@ impl PartitionMorselSender {
+ 
+                 let file_permit: FileSinkPermit =
+                     if let Ok(permit) = self.open_sinks_semaphore.clone().try_acquire_owned() {
+-                        async_executor::spawn(
++                        executor::spawn(
+                             TaskPriority::Low,
+                             self.error_capture.clone().wrap_future(handle),
+                         );
+diff --git a/crates/polars-stream/src/nodes/io_sinks/components/partition_sink_starter.rs b/crates/polars-stream/src/nodes/io_sinks/components/partition_sink_starter.rs
+index 2be0ae718..ebedbdfcc 100644
+--- a/crates/polars-stream/src/nodes/io_sinks/components/partition_sink_starter.rs
++++ b/crates/polars-stream/src/nodes/io_sinks/components/partition_sink_starter.rs
+@@ -1,13 +1,13 @@
+ use std::num::NonZeroUsize;
+ use std::sync::Arc;
+ 
++use polars_async::executor;
++use polars_async::primitives::connector;
+ use polars_core::runtime::ASYNC;
+ use polars_error::PolarsResult;
+ use polars_io::utils::sync_on_close::SyncOnCloseType;
+ use polars_plan::dsl::file_provider::FileProviderArgs;
+ 
+-use crate::async_executor;
+-use crate::async_primitives::connector;
+ use crate::nodes::TaskPriority;
+ use crate::nodes::io_sinks::components::file_provider::FileProvider;
+ use crate::nodes::io_sinks::components::file_sink::{FileSinkPermit, FileSinkTaskData};
+@@ -43,7 +43,7 @@ impl PartitionSinkStarter {
+             self.num_pipelines_per_sink,
+         )?;
+ 
+-        let task_handle = async_executor::spawn(TaskPriority::High, async move {
++        let task_handle = executor::spawn(TaskPriority::High, async move {
+             writer_handle.await?;
+             Ok(file_permit)
+         });
+diff --git a/crates/polars-stream/src/nodes/io_sinks/components/partitioner.rs b/crates/polars-stream/src/nodes/io_sinks/components/partitioner.rs
+index 28456162f..670fdedaa 100644
+--- a/crates/polars-stream/src/nodes/io_sinks/components/partitioner.rs
++++ b/crates/polars-stream/src/nodes/io_sinks/components/partitioner.rs
+@@ -1,5 +1,6 @@
+ use std::borrow::Cow;
+ 
++use polars_async::primitives::wait_group::WaitToken;
+ use polars_core::frame::DataFrame;
+ use polars_core::prelude::row_encode::_get_rows_encoded_ca_unordered;
+ use polars_core::prelude::{BinaryOffsetChunked, Column, IntoGroupsType};
+@@ -8,7 +9,6 @@ use polars_expr::hash_keys::{HashKeysVariant, hash_keys_variant_for_dtype};
+ use polars_expr::state::ExecutionState;
+ use polars_utils::pl_str::PlSmallStr;
+ 
+-use crate::async_primitives::wait_group::WaitToken;
+ use crate::expression::StreamExpr;
+ use crate::morsel::Morsel;
+ use crate::nodes::io_sinks::components::exclude_keys_projection::ExcludeKeysProjection;
+diff --git a/crates/polars-stream/src/nodes/io_sinks/components/partitioner_pipeline.rs b/crates/polars-stream/src/nodes/io_sinks/components/partitioner_pipeline.rs
+index cc2ad0afd..bd29d7453 100644
+--- a/crates/polars-stream/src/nodes/io_sinks/components/partitioner_pipeline.rs
++++ b/crates/polars-stream/src/nodes/io_sinks/components/partitioner_pipeline.rs
+@@ -1,10 +1,10 @@
+ use std::sync::Arc;
+ 
++use polars_async::executor::{self, TaskPriority};
++use polars_async::primitives::connector;
+ use polars_error::PolarsResult;
+ use polars_expr::state::ExecutionState;
+ 
+-use crate::async_executor::{self, TaskPriority};
+-use crate::async_primitives::connector;
+ use crate::morsel::Morsel;
+ use crate::nodes::io_sinks::components::partitioner::{PartitionedDataFrames, Partitioner};
+ 
+@@ -12,9 +12,8 @@ pub struct PartitionerPipeline {
+     pub morsel_rx: connector::Receiver<Morsel>,
+     pub partitioner: Arc<Partitioner>,
+     pub inflight_morsel_semaphore: Arc<tokio::sync::Semaphore>,
+-    pub partitioned_dfs_tx: tokio::sync::mpsc::Sender<
+-        async_executor::AbortOnDropHandle<PolarsResult<PartitionedDataFrames>>,
+-    >,
++    pub partitioned_dfs_tx:
++        tokio::sync::mpsc::Sender<executor::AbortOnDropHandle<PolarsResult<PartitionedDataFrames>>>,
+     pub in_memory_exec_state: Arc<ExecutionState>,
+ }
+ 
+@@ -42,13 +41,14 @@ impl PartitionerPipeline {
+             let in_memory_exec_state = Arc::clone(&in_memory_exec_state);
+ 
+             if partitioned_dfs_tx
+-                .send(async_executor::AbortOnDropHandle::new(
+-                    async_executor::spawn(TaskPriority::Low, async move {
++                .send(executor::AbortOnDropHandle::new(executor::spawn(
++                    TaskPriority::Low,
++                    async move {
+                         partitioner
+                             .partition_morsel(morsel, in_memory_exec_state.as_ref())
+                             .await
+-                    }),
+-                ))
++                    },
++                )))
+                 .await
+                 .is_err()
+             {
+diff --git a/crates/polars-stream/src/nodes/io_sinks/mod.rs b/crates/polars-stream/src/nodes/io_sinks/mod.rs
+index 69f87499f..3cd04945a 100644
+--- a/crates/polars-stream/src/nodes/io_sinks/mod.rs
++++ b/crates/polars-stream/src/nodes/io_sinks/mod.rs
+@@ -1,5 +1,7 @@
+ use std::sync::Arc;
+ 
++use polars_async::executor::{self, AbortOnDropHandle};
++use polars_async::primitives::connector;
+ use polars_core::frame::DataFrame;
+ use polars_core::runtime::ASYNC;
+ use polars_error::{PolarsResult, polars_ensure};
+@@ -8,8 +10,6 @@ use polars_utils::format_pl_smallstr;
+ use polars_utils::pl_str::PlSmallStr;
+ 
+ use super::{ComputeNode, PortState};
+-use crate::async_executor;
+-use crate::async_primitives::connector;
+ use crate::execute::StreamingExecutionState;
+ use crate::metrics::NodeMetricsRegistrator;
+ use crate::morsel::{Morsel, MorselSeq, SourceToken};
+@@ -119,11 +119,11 @@ impl ComputeNode for IOSinkNode {
+ 
+     fn spawn<'env, 's>(
+         &'env mut self,
+-        scope: &'s crate::async_executor::TaskScope<'s, 'env>,
++        scope: &'s executor::TaskScope<'s, 'env>,
+         recv_ports: &mut [Option<crate::pipe::RecvPort<'_>>],
+         send_ports: &mut [Option<crate::pipe::SendPort<'_>>],
+         execution_state: &'s StreamingExecutionState,
+-        join_handles: &mut Vec<crate::async_executor::JoinHandle<polars_error::PolarsResult<()>>>,
++        join_handles: &mut Vec<executor::JoinHandle<polars_error::PolarsResult<()>>>,
+     ) {
+         assert_eq!(recv_ports.len(), 1);
+         assert!(send_ports.is_empty());
+@@ -185,7 +185,7 @@ enum IOSinkNodeState {
+     Initialized {
+         phase_channel_tx: connector::Sender<PortReceiver>,
+         /// Join handle for all background tasks.
+-        task_handle: async_executor::AbortOnDropHandle<PolarsResult<()>>,
++        task_handle: AbortOnDropHandle<PolarsResult<()>>,
+         io_metrics: Option<Arc<IOMetrics>>,
+     },
+ 
+@@ -221,7 +221,7 @@ impl IOSinkNodeState {
+             SourceToken::default(),
+         ));
+ 
+-        async_executor::spawn(TaskPriority::High, async move {
++        executor::spawn(TaskPriority::High, async move {
+             let mut morsel_seq: u64 = 1;
+ 
+             while let Ok(mut phase_rx) = phase_channel_rx.recv().await {
+diff --git a/crates/polars-stream/src/nodes/io_sinks/pipeline_initialization/partition_by.rs b/crates/polars-stream/src/nodes/io_sinks/pipeline_initialization/partition_by.rs
+index ef38660a4..2c0449d89 100644
+--- a/crates/polars-stream/src/nodes/io_sinks/pipeline_initialization/partition_by.rs
++++ b/crates/polars-stream/src/nodes/io_sinks/pipeline_initialization/partition_by.rs
+@@ -1,13 +1,13 @@
+ use std::num::NonZeroUsize;
+ use std::sync::Arc;
+ 
++use polars_async::executor::{self, TaskPriority};
++use polars_async::primitives::connector;
+ use polars_error::PolarsResult;
+ use polars_io::metrics::IOMetrics;
+ use polars_plan::dsl::UnifiedSinkArgs;
+ use polars_utils::pl_str::PlSmallStr;
+ 
+-use crate::async_executor::{self, TaskPriority};
+-use crate::async_primitives::connector;
+ use crate::execute::StreamingExecutionState;
+ use crate::morsel::Morsel;
+ use crate::nodes::io_sinks::components::error_capture::ErrorCapture;
+@@ -31,7 +31,7 @@ pub fn start_partition_sink_pipeline(
+     config: IOSinkNodeConfig,
+     execution_state: &StreamingExecutionState,
+     io_metrics: Option<Arc<IOMetrics>>,
+-) -> PolarsResult<async_executor::AbortOnDropHandle<PolarsResult<()>>> {
++) -> PolarsResult<executor::AbortOnDropHandle<PolarsResult<()>>> {
+     let num_pipelines: NonZeroUsize = execution_state.num_pipelines.try_into().unwrap();
+ 
+     let inflight_morsel_limit = config.inflight_morsel_limit(num_pipelines);
+@@ -138,7 +138,7 @@ pub fn start_partition_sink_pipeline(
+         Arc::new(tokio::sync::Semaphore::new(inflight_morsel_limit.get()));
+     let no_partition_keys = matches!(partitioner, Partitioner::FileSize);
+ 
+-    let partitioner_handle = async_executor::AbortOnDropHandle::new(async_executor::spawn(
++    let partitioner_handle = executor::AbortOnDropHandle::new(executor::spawn(
+         TaskPriority::High,
+         PartitionerPipeline {
+             morsel_rx,
+@@ -171,42 +171,38 @@ pub fn start_partition_sink_pipeline(
+         error_capture: error_capture.clone(),
+     };
+ 
+-    let partition_distributor_handle =
+-        async_executor::AbortOnDropHandle::new(async_executor::spawn(
+-            TaskPriority::High,
+-            PartitionDistributor {
+-                node_name: node_name.clone(),
+-                partitioned_dfs_rx,
+-                partition_morsel_sender,
+-                error_capture,
+-                error_handle,
+-                max_open_sinks,
+-                open_sinks_semaphore,
+-                partition_sink_starter,
+-                no_partition_keys,
+-                verbose,
+-            }
+-            .run(),
+-        ));
+-
+-    let handle = async_executor::AbortOnDropHandle::new(async_executor::spawn(
+-        TaskPriority::Low,
+-        async move {
+-            partitioner_handle.await;
+-            partition_distributor_handle.await?;
+-
+-            if let Some(sinked_paths_callback) = sinked_paths_callback {
+-                if verbose {
+-                    eprintln!("{node_name}: Call sinked path info callback");
+-                }
+-
+-                call_sinked_paths_callback(sinked_paths_callback, sinked_path_info_list.unwrap())
+-                    .await?;
++    let partition_distributor_handle = executor::AbortOnDropHandle::new(executor::spawn(
++        TaskPriority::High,
++        PartitionDistributor {
++            node_name: node_name.clone(),
++            partitioned_dfs_rx,
++            partition_morsel_sender,
++            error_capture,
++            error_handle,
++            max_open_sinks,
++            open_sinks_semaphore,
++            partition_sink_starter,
++            no_partition_keys,
++            verbose,
++        }
++        .run(),
++    ));
++
++    let handle = executor::AbortOnDropHandle::new(executor::spawn(TaskPriority::Low, async move {
++        partitioner_handle.await;
++        partition_distributor_handle.await?;
++
++        if let Some(sinked_paths_callback) = sinked_paths_callback {
++            if verbose {
++                eprintln!("{node_name}: Call sinked path info callback");
+             }
+ 
+-            Ok(())
+-        },
+-    ));
++            call_sinked_paths_callback(sinked_paths_callback, sinked_path_info_list.unwrap())
++                .await?;
++        }
++
++        Ok(())
++    }));
+ 
+     Ok(handle)
+ }
+diff --git a/crates/polars-stream/src/nodes/io_sinks/pipeline_initialization/single_file.rs b/crates/polars-stream/src/nodes/io_sinks/pipeline_initialization/single_file.rs
+index 83f916a56..b8c0bbf9c 100644
+--- a/crates/polars-stream/src/nodes/io_sinks/pipeline_initialization/single_file.rs
++++ b/crates/polars-stream/src/nodes/io_sinks/pipeline_initialization/single_file.rs
+@@ -1,6 +1,8 @@
+ use std::num::NonZeroUsize;
+ use std::sync::Arc;
+ 
++use polars_async::executor::{self, TaskPriority};
++use polars_async::primitives::connector;
+ use polars_core::frame::DataFrame;
+ use polars_core::runtime::ASYNC;
+ use polars_error::PolarsResult;
+@@ -9,8 +11,6 @@ use polars_plan::dsl::sink::SinkedPathInfo;
+ use polars_plan::dsl::{SinkTarget, UnifiedSinkArgs};
+ use polars_utils::pl_str::PlSmallStr;
+ 
+-use crate::async_executor::{self, TaskPriority};
+-use crate::async_primitives::connector;
+ use crate::execute::StreamingExecutionState;
+ use crate::morsel::Morsel;
+ use crate::nodes::io_sinks::components::morsel_resize_pipeline::MorselResizePipeline;
+@@ -28,7 +28,7 @@ pub fn start_single_file_sink_pipeline(
+     config: IOSinkNodeConfig,
+     execution_state: &StreamingExecutionState,
+     io_metrics: Option<Arc<IOMetrics>>,
+-) -> PolarsResult<async_executor::AbortOnDropHandle<PolarsResult<()>>> {
++) -> PolarsResult<executor::AbortOnDropHandle<PolarsResult<()>>> {
+     let num_pipelines: NonZeroUsize = execution_state.num_pipelines.try_into().unwrap();
+ 
+     let inflight_morsel_limit = config.inflight_morsel_limit(num_pipelines);
+@@ -128,14 +128,13 @@ pub fn start_single_file_sink_pipeline(
+         morsel_tx: writer_tx,
+     };
+ 
+-    let resize_pipeline_handle = async_executor::AbortOnDropHandle::new(async_executor::spawn(
++    let resize_pipeline_handle = executor::AbortOnDropHandle::new(executor::spawn(
+         TaskPriority::High,
+         resize_pipeline.run(),
+     ));
+ 
+-    let handle = async_executor::AbortOnDropHandle::new(async_executor::spawn(
+-        TaskPriority::High,
+-        async move {
++    let handle =
++        executor::AbortOnDropHandle::new(executor::spawn(TaskPriority::High, async move {
+             writer_handle.await?;
+             let sent_size = resize_pipeline_handle.await?;
+ 
+@@ -153,8 +152,7 @@ pub fn start_single_file_sink_pipeline(
+             }
+ 
+             Ok(())
+-        },
+-    ));
++        }));
+ 
+     Ok(handle)
+ }
+diff --git a/crates/polars-stream/src/nodes/io_sinks/writers/csv/io_writer.rs b/crates/polars-stream/src/nodes/io_sinks/writers/csv/io_writer.rs
+index 8b1082b10..407f21ea0 100644
+--- a/crates/polars-stream/src/nodes/io_sinks/writers/csv/io_writer.rs
++++ b/crates/polars-stream/src/nodes/io_sinks/writers/csv/io_writer.rs
+@@ -1,5 +1,6 @@
+ use std::sync::Arc;
+ 
++use polars_async::executor;
+ use polars_core::schema::SchemaRef;
+ use polars_error::PolarsResult;
+ use polars_io::prelude::{CsvWriterOptions, ExternalCompression, UTF8_BOM, csv_header};
+@@ -7,7 +8,6 @@ use polars_io::utils::compression::CompressedWriter;
+ use polars_io::utils::file::{AsyncDynWriteable, AsyncWriteable};
+ use tokio::io::AsyncWriteExt as _;
+ 
+-use crate::async_executor;
+ use crate::nodes::io_sinks::components::sink_morsel::SinkMorselPermit;
+ use crate::nodes::io_sinks::writers::csv::morsel_serializer::MorselSerializer;
+ use crate::nodes::io_sinks::writers::interface::FileOpenTaskHandle;
+@@ -15,7 +15,7 @@ use crate::nodes::io_sinks::writers::interface::FileOpenTaskHandle;
+ pub struct IOWriter {
+     pub file: FileOpenTaskHandle,
+     pub filled_serializer_rx: tokio::sync::mpsc::Receiver<(
+-        async_executor::AbortOnDropHandle<PolarsResult<MorselSerializer>>,
++        executor::AbortOnDropHandle<PolarsResult<MorselSerializer>>,
+         SinkMorselPermit,
+     )>,
+     pub reuse_serializer_tx: tokio::sync::mpsc::Sender<MorselSerializer>,
+diff --git a/crates/polars-stream/src/nodes/io_sinks/writers/csv/mod.rs b/crates/polars-stream/src/nodes/io_sinks/writers/csv/mod.rs
+index 0a259afed..f11625a43 100644
+--- a/crates/polars-stream/src/nodes/io_sinks/writers/csv/mod.rs
++++ b/crates/polars-stream/src/nodes/io_sinks/writers/csv/mod.rs
+@@ -1,5 +1,7 @@
+ use std::sync::Arc;
+ 
++use polars_async::executor::{self, TaskPriority};
++use polars_async::primitives::connector;
+ use polars_core::config;
+ use polars_core::runtime::ASYNC;
+ use polars_core::schema::SchemaRef;
+@@ -7,8 +9,6 @@ use polars_error::PolarsResult;
+ use polars_io::prelude::{CsvSerializer, CsvWriterOptions};
+ use polars_utils::index::NonZeroIdxSize;
+ 
+-use crate::async_executor::{self, TaskPriority};
+-use crate::async_primitives::connector;
+ use crate::nodes::io_sinks::components::sink_morsel::{SinkMorsel, SinkMorselPermit};
+ use crate::nodes::io_sinks::components::size::{
+     NonZeroRowCountAndSize, RowCountAndSize, TakeableRowsProvider,
+@@ -94,9 +94,9 @@ impl FileWriterStarter for CsvWriterStarter {
+         morsel_rx: connector::Receiver<SinkMorsel>,
+         file: FileOpenTaskHandle,
+         num_pipelines: std::num::NonZeroUsize,
+-    ) -> PolarsResult<async_executor::JoinHandle<PolarsResult<()>>> {
++    ) -> PolarsResult<executor::JoinHandle<PolarsResult<()>>> {
+         let (filled_serializer_tx, filled_serializer_rx) = tokio::sync::mpsc::channel::<(
+-            async_executor::AbortOnDropHandle<PolarsResult<morsel_serializer::MorselSerializer>>,
++            executor::AbortOnDropHandle<PolarsResult<morsel_serializer::MorselSerializer>>,
+             SinkMorselPermit,
+         )>(num_pipelines.get());
+ 
+@@ -120,7 +120,7 @@ impl FileWriterStarter for CsvWriterStarter {
+         let base_csv_serializer = { self.base_serializer.lock().unwrap().clone() };
+         let base_allocation_size = self.initialized_state().base_allocation_size;
+ 
+-        let serializer_handle = async_executor::spawn(
++        let serializer_handle = executor::spawn(
+             TaskPriority::High,
+             morsel_serializer::MorselSerializerPipeline {
+                 morsel_rx,
+@@ -133,7 +133,7 @@ impl FileWriterStarter for CsvWriterStarter {
+             .run(),
+         );
+ 
+-        Ok(async_executor::spawn(TaskPriority::Low, async move {
++        Ok(executor::spawn(TaskPriority::Low, async move {
+             io_handle.await.unwrap()?;
+             serializer_handle.await;
+             Ok(())
+diff --git a/crates/polars-stream/src/nodes/io_sinks/writers/csv/morsel_serializer.rs b/crates/polars-stream/src/nodes/io_sinks/writers/csv/morsel_serializer.rs
+index 6e50025b8..9f14f81f2 100644
+--- a/crates/polars-stream/src/nodes/io_sinks/writers/csv/morsel_serializer.rs
++++ b/crates/polars-stream/src/nodes/io_sinks/writers/csv/morsel_serializer.rs
+@@ -1,16 +1,16 @@
++use polars_async::executor::{self, TaskPriority};
++use polars_async::primitives::connector;
+ use polars_core::frame::DataFrame;
+ use polars_error::{PolarsResult, polars_bail};
+ use polars_io::prelude::CsvSerializer;
+ 
+-use crate::async_executor::{self, TaskPriority};
+-use crate::async_primitives::connector;
+ use crate::nodes::io_sinks::components::par_utils::rechunk_par;
+ use crate::nodes::io_sinks::components::sink_morsel::{SinkMorsel, SinkMorselPermit};
+ 
+ pub struct MorselSerializerPipeline {
+     pub morsel_rx: connector::Receiver<SinkMorsel>,
+     pub filled_serializer_tx: tokio::sync::mpsc::Sender<(
+-        async_executor::AbortOnDropHandle<PolarsResult<MorselSerializer>>,
++        executor::AbortOnDropHandle<PolarsResult<MorselSerializer>>,
+         SinkMorselPermit,
+     )>,
+     pub reuse_serializer_rx: tokio::sync::mpsc::Receiver<MorselSerializer>,
+@@ -51,7 +51,7 @@ impl MorselSerializerPipeline {
+ 
+             let (df, morsel_permit) = morsel.into_inner();
+ 
+-            let handle = async_executor::AbortOnDropHandle::new(async_executor::spawn(
++            let handle = executor::AbortOnDropHandle::new(executor::spawn(
+                 TaskPriority::High,
+                 morsel_serializer.serialize_morsel(df),
+             ));
+diff --git a/crates/polars-stream/src/nodes/io_sinks/writers/interface.rs b/crates/polars-stream/src/nodes/io_sinks/writers/interface.rs
+index fc352707e..529dd669c 100644
+--- a/crates/polars-stream/src/nodes/io_sinks/writers/interface.rs
++++ b/crates/polars-stream/src/nodes/io_sinks/writers/interface.rs
+@@ -1,6 +1,8 @@
+ use std::num::{NonZeroU64, NonZeroUsize};
+ 
+ use futures::FutureExt;
++use polars_async::executor;
++use polars_async::primitives::connector;
+ use polars_error::PolarsResult;
+ use polars_io::utils::file::Writeable;
+ use polars_io::utils::sync_on_close::SyncOnCloseType;
+@@ -8,8 +10,6 @@ use polars_utils::IdxSize;
+ use polars_utils::index::NonZeroIdxSize;
+ use polars_utils::pl_str::PlSmallStr;
+ 
+-use crate::async_executor;
+-use crate::async_primitives::connector;
+ use crate::nodes::io_sinks::components::sink_morsel::SinkMorsel;
+ use crate::nodes::io_sinks::components::size::TakeableRowsProvider;
+ use crate::utils::tokio_handle_ext;
+@@ -28,7 +28,7 @@ pub trait FileWriterStarter: Send + Sync + 'static {
+         morsel_rx: connector::Receiver<SinkMorsel>,
+         file: FileOpenTaskHandle,
+         num_pipelines: NonZeroUsize,
+-    ) -> PolarsResult<async_executor::JoinHandle<PolarsResult<()>>>;
++    ) -> PolarsResult<executor::JoinHandle<PolarsResult<()>>>;
+ }
+ 
+ pub struct FileOpenTaskHandle {
+diff --git a/crates/polars-stream/src/nodes/io_sinks/writers/ipc/mod.rs b/crates/polars-stream/src/nodes/io_sinks/writers/ipc/mod.rs
+index 11b38ef45..b1f300263 100644
+--- a/crates/polars-stream/src/nodes/io_sinks/writers/ipc/mod.rs
++++ b/crates/polars-stream/src/nodes/io_sinks/writers/ipc/mod.rs
+@@ -1,5 +1,7 @@
+ use std::sync::Arc;
+ 
++use polars_async::executor::{self, TaskPriority};
++use polars_async::primitives::connector;
+ use polars_core::config;
+ use polars_core::runtime::ASYNC;
+ use polars_core::schema::SchemaRef;
+@@ -9,8 +11,6 @@ use polars_io::ipc::IpcWriterOptions;
+ use polars_utils::IdxSize;
+ use polars_utils::index::NonZeroIdxSize;
+ 
+-use crate::async_executor::{self, TaskPriority};
+-use crate::async_primitives::connector;
+ use crate::nodes::io_sinks::components::sink_morsel::{SinkMorsel, SinkMorselPermit};
+ use crate::nodes::io_sinks::components::size::{
+     NonZeroRowCountAndSize, RowCountAndSize, TakeableRowsProvider,
+@@ -32,10 +32,7 @@ pub struct IpcWriterStarter {
+ }
+ 
+ enum IpcBatch {
+-    Record(
+-        async_executor::AbortOnDropHandle<EncodedData>,
+-        SinkMorselPermit,
+-    ),
++    Record(executor::AbortOnDropHandle<EncodedData>, SinkMorselPermit),
+     Dictionary(EncodedData),
+ }
+ 
+@@ -75,7 +72,7 @@ impl FileWriterStarter for IpcWriterStarter {
+         morsel_rx: connector::Receiver<SinkMorsel>,
+         file: FileOpenTaskHandle,
+         num_pipelines: std::num::NonZeroUsize,
+-    ) -> PolarsResult<async_executor::JoinHandle<PolarsResult<()>>> {
++    ) -> PolarsResult<executor::JoinHandle<PolarsResult<()>>> {
+         let file_schema = Arc::clone(&self.schema);
+         let options = Arc::clone(&self.options);
+         let compression = self.options.compression.map(|x| x.into());
+@@ -89,7 +86,7 @@ impl FileWriterStarter for IpcWriterStarter {
+             )
+         }
+ 
+-        let handle = async_executor::spawn(TaskPriority::High, async move {
++        let handle = executor::spawn(TaskPriority::High, async move {
+             let (ipc_batch_tx, ipc_batch_rx) =
+                 tokio::sync::mpsc::channel::<IpcBatch>(num_pipelines.get());
+ 
+@@ -111,20 +108,19 @@ impl FileWriterStarter for IpcWriterStarter {
+                 ),
+             );
+ 
+-            let record_batch_encoder_handle =
+-                async_executor::AbortOnDropHandle::new(async_executor::spawn(
+-                    TaskPriority::High,
+-                    record_batch_encoder::RecordBatchEncoder {
+-                        morsel_rx,
+-                        ipc_batch_tx,
+-                        arrow_converters,
+-                        compat_level,
+-                        dictionary_id_offsets,
+-                        write_options: WriteOptions { compression },
+-                        write_statistics_flags,
+-                    }
+-                    .run(),
+-                ));
++            let record_batch_encoder_handle = executor::AbortOnDropHandle::new(executor::spawn(
++                TaskPriority::High,
++                record_batch_encoder::RecordBatchEncoder {
++                    morsel_rx,
++                    ipc_batch_tx,
++                    arrow_converters,
++                    compat_level,
++                    dictionary_id_offsets,
++                    write_options: WriteOptions { compression },
++                    write_statistics_flags,
++                }
++                .run(),
++            ));
+ 
+             record_batch_encoder_handle.await?;
+             io_handle.await.unwrap()?;
+diff --git a/crates/polars-stream/src/nodes/io_sinks/writers/ipc/record_batch_encoder.rs b/crates/polars-stream/src/nodes/io_sinks/writers/ipc/record_batch_encoder.rs
+index b4f61eb10..8466a2506 100644
+--- a/crates/polars-stream/src/nodes/io_sinks/writers/ipc/record_batch_encoder.rs
++++ b/crates/polars-stream/src/nodes/io_sinks/writers/ipc/record_batch_encoder.rs
+@@ -4,6 +4,9 @@ use std::sync::Arc;
+ use arrow::array::Array;
+ use arrow::datatypes::Field as ArrowField;
+ use arrow::io::ipc::write::encode_dictionary_values;
++use polars_async::executor::{self, TaskPriority};
++use polars_async::primitives::connector;
++use polars_async::primitives::opt_spawned_future::parallelize_first_to_local;
+ use polars_core::prelude::CompatLevel;
+ use polars_core::series::arrow_export::ToArrowConverter;
+ use polars_core::utils::arrow;
+@@ -13,9 +16,6 @@ use polars_core::utils::arrow::io::ipc::write::{
+ use polars_error::PolarsResult;
+ use polars_utils::concat_vec::ConcatVec as _;
+ 
+-use crate::async_executor::{self, TaskPriority};
+-use crate::async_primitives::connector;
+-use crate::async_primitives::opt_spawned_future::parallelize_first_to_local;
+ use crate::nodes::io_sinks::components::sink_morsel::SinkMorsel;
+ use crate::nodes::io_sinks::writers::interface::IPC_RW_RECORD_BATCH_FLAGS_KEY;
+ use crate::nodes::io_sinks::writers::ipc::IpcBatch;
+@@ -119,8 +119,8 @@ impl RecordBatchEncoder {
+                 }),
+             );
+ 
+-            let array_combine_handle = async_executor::AbortOnDropHandle::new(
+-                async_executor::spawn(TaskPriority::High, async move {
++            let array_combine_handle =
++                executor::AbortOnDropHandle::new(executor::spawn(TaskPriority::High, async move {
+                     let mut buffers: Vec<arrow::io::ipc::format::ipc::Buffer> = vec![];
+                     let mut buffer_offset: i64 = 0;
+ 
+@@ -165,8 +165,7 @@ impl RecordBatchEncoder {
+                     );
+ 
+                     encoded_data
+-                }),
+-            );
++                }));
+ 
+             if ipc_batch_tx
+                 .send(IpcBatch::Record(array_combine_handle, permit))
+diff --git a/crates/polars-stream/src/nodes/io_sinks/writers/ndjson/io_writer.rs b/crates/polars-stream/src/nodes/io_sinks/writers/ndjson/io_writer.rs
+index 11c286faa..76ab445e0 100644
+--- a/crates/polars-stream/src/nodes/io_sinks/writers/ndjson/io_writer.rs
++++ b/crates/polars-stream/src/nodes/io_sinks/writers/ndjson/io_writer.rs
+@@ -1,3 +1,4 @@
++use polars_async::executor;
+ use polars_error::PolarsResult;
+ use polars_io::ExternalCompression;
+ use polars_io::ndjson::NDJsonWriterOptions;
+@@ -5,7 +6,6 @@ use polars_io::utils::compression::CompressedWriter;
+ use polars_io::utils::file::{AsyncDynWriteable, AsyncWriteable};
+ use tokio::io::AsyncWriteExt as _;
+ 
+-use crate::async_executor;
+ use crate::nodes::io_sinks::components::sink_morsel::SinkMorselPermit;
+ use crate::nodes::io_sinks::writers::interface::FileOpenTaskHandle;
+ use crate::nodes::io_sinks::writers::ndjson::morsel_serializer::MorselSerializer;
+@@ -13,7 +13,7 @@ use crate::nodes::io_sinks::writers::ndjson::morsel_serializer::MorselSerializer
+ pub struct IOWriter {
+     pub file: FileOpenTaskHandle,
+     pub filled_serializer_rx: tokio::sync::mpsc::Receiver<(
+-        async_executor::AbortOnDropHandle<PolarsResult<MorselSerializer>>,
++        executor::AbortOnDropHandle<PolarsResult<MorselSerializer>>,
+         SinkMorselPermit,
+     )>,
+     pub reuse_serializer_tx: tokio::sync::mpsc::Sender<MorselSerializer>,
+diff --git a/crates/polars-stream/src/nodes/io_sinks/writers/ndjson/mod.rs b/crates/polars-stream/src/nodes/io_sinks/writers/ndjson/mod.rs
+index 5744b958c..84095d57c 100644
+--- a/crates/polars-stream/src/nodes/io_sinks/writers/ndjson/mod.rs
++++ b/crates/polars-stream/src/nodes/io_sinks/writers/ndjson/mod.rs
+@@ -1,3 +1,5 @@
++use polars_async::executor::{self, TaskPriority};
++use polars_async::primitives::connector;
+ use polars_core::config;
+ use polars_core::runtime::ASYNC;
+ use polars_core::schema::SchemaRef;
+@@ -6,8 +8,6 @@ use polars_io::ndjson::NDJsonWriterOptions;
+ use polars_utils::IdxSize;
+ use polars_utils::index::NonZeroIdxSize;
+ 
+-use crate::async_executor::{self, TaskPriority};
+-use crate::async_primitives::connector;
+ use crate::morsel::get_ideal_morsel_size;
+ use crate::nodes::io_sinks::components::sink_morsel::{SinkMorsel, SinkMorselPermit};
+ use crate::nodes::io_sinks::components::size::{
+@@ -93,9 +93,9 @@ impl FileWriterStarter for NDJsonWriterStarter {
+         morsel_rx: connector::Receiver<SinkMorsel>,
+         file: FileOpenTaskHandle,
+         num_pipelines: std::num::NonZeroUsize,
+-    ) -> PolarsResult<async_executor::JoinHandle<PolarsResult<()>>> {
++    ) -> PolarsResult<executor::JoinHandle<PolarsResult<()>>> {
+         let (filled_serializer_tx, filled_serializer_rx) = tokio::sync::mpsc::channel::<(
+-            async_executor::AbortOnDropHandle<PolarsResult<morsel_serializer::MorselSerializer>>,
++            executor::AbortOnDropHandle<PolarsResult<morsel_serializer::MorselSerializer>>,
+             SinkMorselPermit,
+         )>(num_pipelines.get());
+ 
+@@ -117,7 +117,7 @@ impl FileWriterStarter for NDJsonWriterStarter {
+ 
+         let base_allocation_size = self.initialized_state().base_allocation_size;
+ 
+-        let serializer_handle = async_executor::spawn(
++        let serializer_handle = executor::spawn(
+             TaskPriority::High,
+             morsel_serializer::MorselSerializerPipeline {
+                 morsel_rx,
+@@ -129,7 +129,7 @@ impl FileWriterStarter for NDJsonWriterStarter {
+             .run(),
+         );
+ 
+-        Ok(async_executor::spawn(TaskPriority::Low, async move {
++        Ok(executor::spawn(TaskPriority::Low, async move {
+             io_handle.await.unwrap()?;
+             serializer_handle.await;
+             Ok(())
+diff --git a/crates/polars-stream/src/nodes/io_sinks/writers/ndjson/morsel_serializer.rs b/crates/polars-stream/src/nodes/io_sinks/writers/ndjson/morsel_serializer.rs
+index f45a15376..c227b4d83 100644
+--- a/crates/polars-stream/src/nodes/io_sinks/writers/ndjson/morsel_serializer.rs
++++ b/crates/polars-stream/src/nodes/io_sinks/writers/ndjson/morsel_serializer.rs
+@@ -1,18 +1,18 @@
+ use arrow::array::{Array, StructArray};
+ use arrow::datatypes::{ArrowDataType, Field as ArrowField};
++use polars_async::executor::{self, TaskPriority};
++use polars_async::primitives::connector;
+ use polars_core::frame::DataFrame;
+ use polars_core::prelude::CompatLevel;
+ use polars_error::PolarsResult;
+ 
+-use crate::async_executor::{self, TaskPriority};
+-use crate::async_primitives::connector;
+ use crate::nodes::io_sinks::components::par_utils::rechunk_par;
+ use crate::nodes::io_sinks::components::sink_morsel::{SinkMorsel, SinkMorselPermit};
+ 
+ pub struct MorselSerializerPipeline {
+     pub morsel_rx: connector::Receiver<SinkMorsel>,
+     pub filled_serializer_tx: tokio::sync::mpsc::Sender<(
+-        async_executor::AbortOnDropHandle<PolarsResult<MorselSerializer>>,
++        executor::AbortOnDropHandle<PolarsResult<MorselSerializer>>,
+         SinkMorselPermit,
+     )>,
+     pub reuse_serializer_rx: tokio::sync::mpsc::Receiver<MorselSerializer>,
+@@ -50,7 +50,7 @@ impl MorselSerializerPipeline {
+ 
+             let (df, morsel_permit) = morsel.into_inner();
+ 
+-            let handle = async_executor::AbortOnDropHandle::new(async_executor::spawn(
++            let handle = executor::AbortOnDropHandle::new(executor::spawn(
+                 TaskPriority::High,
+                 morsel_serializer.serialize_morsel(df),
+             ));
+diff --git a/crates/polars-stream/src/nodes/io_sinks/writers/parquet/io_writer.rs b/crates/polars-stream/src/nodes/io_sinks/writers/parquet/io_writer.rs
+index 8ae458155..f3bd93c28 100644
+--- a/crates/polars-stream/src/nodes/io_sinks/writers/parquet/io_writer.rs
++++ b/crates/polars-stream/src/nodes/io_sinks/writers/parquet/io_writer.rs
+@@ -1,21 +1,20 @@
+ use std::sync::Arc;
+ 
+ use arrow::datatypes::ArrowSchemaRef;
++use polars_async::executor::{self};
+ use polars_buffer::Buffer;
+ use polars_error::PolarsResult;
+ use polars_io::parquet::write::BatchedWriter;
+ use polars_io::prelude::KeyValueMetadata;
+ use polars_parquet::write::{Encoding, FileWriter, SchemaDescriptor, WriteOptions};
+ 
+-use crate::async_executor::{self};
+ use crate::nodes::io_sinks::writers::interface::FileOpenTaskHandle;
+ use crate::nodes::io_sinks::writers::parquet::EncodedRowGroup;
+ 
+ pub struct IOWriter {
+     pub file: FileOpenTaskHandle,
+-    pub encoded_row_group_rx: tokio::sync::mpsc::Receiver<
+-        async_executor::AbortOnDropHandle<PolarsResult<EncodedRowGroup>>,
+-    >,
++    pub encoded_row_group_rx:
++        tokio::sync::mpsc::Receiver<executor::AbortOnDropHandle<PolarsResult<EncodedRowGroup>>>,
+     pub arrow_schema: ArrowSchemaRef,
+     pub schema_descriptor: Arc<SchemaDescriptor>,
+     pub write_options: WriteOptions,
+diff --git a/crates/polars-stream/src/nodes/io_sinks/writers/parquet/mod.rs b/crates/polars-stream/src/nodes/io_sinks/writers/parquet/mod.rs
+index ca8374ac4..b3529350b 100644
+--- a/crates/polars-stream/src/nodes/io_sinks/writers/parquet/mod.rs
++++ b/crates/polars-stream/src/nodes/io_sinks/writers/parquet/mod.rs
+@@ -1,6 +1,8 @@
+ use std::sync::Arc;
+ 
+ use arrow::datatypes::ArrowSchemaRef;
++use polars_async::executor::{self, TaskPriority};
++use polars_async::primitives::connector;
+ use polars_buffer::Buffer;
+ use polars_core::runtime::ASYNC;
+ use polars_error::PolarsResult;
+@@ -11,8 +13,6 @@ use polars_parquet::write::{
+ use polars_utils::IdxSize;
+ use polars_utils::index::NonZeroIdxSize;
+ 
+-use crate::async_executor::{self, TaskPriority};
+-use crate::async_primitives::connector;
+ use crate::nodes::io_sinks::components::sink_morsel::{SinkMorsel, SinkMorselPermit};
+ use crate::nodes::io_sinks::components::size::{
+     NonZeroRowCountAndSize, RowCountAndSize, TakeableRowsProvider,
+@@ -80,7 +80,7 @@ impl FileWriterStarter for ParquetWriterStarter {
+         morsel_rx: connector::Receiver<SinkMorsel>,
+         file: FileOpenTaskHandle,
+         num_pipelines: std::num::NonZeroUsize,
+-    ) -> PolarsResult<async_executor::JoinHandle<PolarsResult<()>>> {
++    ) -> PolarsResult<executor::JoinHandle<PolarsResult<()>>> {
+         let InitializedState {
+             encodings,
+             schema_descriptor,
+@@ -101,7 +101,7 @@ impl FileWriterStarter for ParquetWriterStarter {
+         };
+ 
+         let (encoded_row_group_tx, encoded_row_group_rx) = tokio::sync::mpsc::channel::<
+-            async_executor::AbortOnDropHandle<PolarsResult<EncodedRowGroup>>,
++            executor::AbortOnDropHandle<PolarsResult<EncodedRowGroup>>,
+         >(num_pipelines.get());
+ 
+         let key_value_metadata = self.options.key_value_metadata.clone();
+@@ -132,7 +132,7 @@ impl FileWriterStarter for ParquetWriterStarter {
+         );
+ 
+         let arrow_schema = Arc::clone(&self.arrow_schema);
+-        let compute_handle = async_executor::AbortOnDropHandle::new(async_executor::spawn(
++        let compute_handle = executor::AbortOnDropHandle::new(executor::spawn(
+             TaskPriority::High,
+             row_group_encoder::RowGroupEncoder {
+                 morsel_rx,
+@@ -146,7 +146,7 @@ impl FileWriterStarter for ParquetWriterStarter {
+             .run(),
+         ));
+ 
+-        Ok(async_executor::spawn(TaskPriority::Low, async move {
++        Ok(executor::spawn(TaskPriority::Low, async move {
+             compute_handle.await?;
+             io_handle.await.unwrap()?;
+             Ok(())
+diff --git a/crates/polars-stream/src/nodes/io_sinks/writers/parquet/row_group_encoder.rs b/crates/polars-stream/src/nodes/io_sinks/writers/parquet/row_group_encoder.rs
+index ba8178de2..ca0646bb4 100644
+--- a/crates/polars-stream/src/nodes/io_sinks/writers/parquet/row_group_encoder.rs
++++ b/crates/polars-stream/src/nodes/io_sinks/writers/parquet/row_group_encoder.rs
+@@ -2,6 +2,9 @@ use std::borrow::Cow;
+ use std::sync::Arc;
+ 
+ use arrow::datatypes::ArrowSchemaRef;
++use polars_async::executor::{self, TaskPriority};
++use polars_async::primitives::connector;
++use polars_async::primitives::opt_spawned_future::parallelize_first_to_local;
+ use polars_buffer::Buffer;
+ use polars_error::PolarsResult;
+ use polars_parquet::parquet::error::ParquetResult;
+@@ -11,16 +14,13 @@ use polars_parquet::write::{
+ };
+ use polars_utils::UnitVec;
+ 
+-use crate::async_executor::{self, TaskPriority};
+-use crate::async_primitives::connector;
+-use crate::async_primitives::opt_spawned_future::parallelize_first_to_local;
+ use crate::nodes::io_sinks::components::sink_morsel::SinkMorsel;
+ use crate::nodes::io_sinks::writers::parquet::EncodedRowGroup;
+ 
+ pub struct RowGroupEncoder {
+     pub morsel_rx: connector::Receiver<SinkMorsel>,
+     pub encoded_row_group_tx:
+-        tokio::sync::mpsc::Sender<async_executor::AbortOnDropHandle<PolarsResult<EncodedRowGroup>>>,
++        tokio::sync::mpsc::Sender<executor::AbortOnDropHandle<PolarsResult<EncodedRowGroup>>>,
+     /// Note: We assume it is checked in IR that this will match the schema of incoming morsels.
+     pub arrow_schema: ArrowSchemaRef,
+     pub schema_descriptor: Arc<SchemaDescriptor>,
+@@ -46,8 +46,8 @@ impl RowGroupEncoder {
+             let schema_descriptor = Arc::clone(&schema_descriptor);
+             let encodings = Buffer::clone(&encodings);
+ 
+-            let row_group_encode_handle = async_executor::AbortOnDropHandle::new(
+-                async_executor::spawn(TaskPriority::High, async move {
++            let row_group_encode_handle =
++                executor::AbortOnDropHandle::new(executor::spawn(TaskPriority::High, async move {
+                     let (df, morsel_permit) = morsel.into_inner();
+                     let num_rows = df.height();
+ 
+@@ -108,8 +108,7 @@ impl RowGroupEncoder {
+                         data,
+                         morsel_permit,
+                     })
+-                }),
+-            );
++                }));
+ 
+             if encoded_row_group_tx
+                 .send(row_group_encode_handle)
+diff --git a/crates/polars-stream/src/nodes/io_sources/batch.rs b/crates/polars-stream/src/nodes/io_sources/batch.rs
+index 273e7ef82..badc69227 100644
+--- a/crates/polars-stream/src/nodes/io_sources/batch.rs
++++ b/crates/polars-stream/src/nodes/io_sources/batch.rs
+@@ -1,13 +1,13 @@
+ //! Reads batches from a `dyn Fn`
+ 
+ use async_trait::async_trait;
++use polars_async::executor::{JoinHandle, TaskPriority, spawn};
+ use polars_core::frame::DataFrame;
+ use polars_core::schema::SchemaRef;
+ use polars_error::{PolarsResult, polars_err};
+ use polars_utils::IdxSize;
+ use polars_utils::pl_str::PlSmallStr;
+ 
+-use crate::async_executor::{JoinHandle, TaskPriority, spawn};
+ use crate::execute::StreamingExecutionState;
+ use crate::morsel::{Morsel, MorselSeq, SourceToken};
+ use crate::nodes::io_sources::multi_scan::reader_interface::output::{
+diff --git a/crates/polars-stream/src/nodes/io_sources/csv/builder.rs b/crates/polars-stream/src/nodes/io_sources/csv/builder.rs
+index e4af33026..7da09003b 100644
+--- a/crates/polars-stream/src/nodes/io_sources/csv/builder.rs
++++ b/crates/polars-stream/src/nodes/io_sources/csv/builder.rs
+@@ -1,6 +1,7 @@
+ use std::num::NonZeroUsize;
+ use std::sync::Arc;
+ 
++use polars_async::primitives::wait_group::WaitGroup;
+ use polars_core::config;
+ use polars_io::cloud::CloudOptions;
+ #[cfg(feature = "csv")]
+@@ -10,7 +11,6 @@ use polars_plan::dsl::ScanSource;
+ use polars_utils::relaxed_cell::RelaxedCell;
+ 
+ use super::{CsvFileReader, DynByteSourceBuilder};
+-use crate::async_primitives::wait_group::WaitGroup;
+ use crate::nodes::io_sources::multi_scan::reader_interface::FileReader;
+ use crate::nodes::io_sources::multi_scan::reader_interface::builder::FileReaderBuilder;
+ use crate::nodes::io_sources::multi_scan::reader_interface::capabilities::ReaderCapabilities;
+diff --git a/crates/polars-stream/src/nodes/io_sources/csv/line_batch_source.rs b/crates/polars-stream/src/nodes/io_sources/csv/line_batch_source.rs
+index 0c1c5cb68..964d9da33 100644
+--- a/crates/polars-stream/src/nodes/io_sources/csv/line_batch_source.rs
++++ b/crates/polars-stream/src/nodes/io_sources/csv/line_batch_source.rs
+@@ -1,5 +1,6 @@
+ use std::ops::Range;
+ 
++use polars_async::primitives::distributor_channel::{self};
+ use polars_buffer::Buffer;
+ use polars_core::runtime::ASYNC;
+ use polars_error::PolarsResult;
+@@ -11,7 +12,6 @@ use polars_utils::mem::prefetch::prefetch_l2;
+ use polars_utils::slice_enum::Slice;
+ 
+ use super::{NO_SLICE, SLICE_ENDED};
+-use crate::async_primitives::distributor_channel::{self};
+ use crate::nodes::MorselSeq;
+ use crate::utils::tokio_handle_ext;
+ 
+diff --git a/crates/polars-stream/src/nodes/io_sources/csv/mod.rs b/crates/polars-stream/src/nodes/io_sources/csv/mod.rs
+index f18b0ce55..262f26761 100644
+--- a/crates/polars-stream/src/nodes/io_sources/csv/mod.rs
++++ b/crates/polars-stream/src/nodes/io_sources/csv/mod.rs
+@@ -11,6 +11,10 @@ use async_trait::async_trait;
+ use chunk_reader::ChunkReader;
+ use futures::FutureExt;
+ use line_batch_source::{LineBatch, LineBatchSource};
++use polars_async::executor::{AbortOnDropHandle, spawn};
++use polars_async::primitives::distributor_channel::distributor_channel;
++use polars_async::primitives::oneshot_channel;
++use polars_async::primitives::wait_group::{WaitGroup, WaitToken};
+ use polars_core::runtime::ASYNC;
+ use polars_error::{PolarsResult, polars_err};
+ use polars_io::cloud::CloudOptions;
+@@ -30,10 +34,6 @@ use super::multi_scan::reader_interface::output::FileReaderOutputRecv;
+ use super::multi_scan::reader_interface::{BeginReadArgs, FileReader, FileReaderCallbacks};
+ use super::shared::chunk_data_fetch::ChunkDataFetcher;
+ use crate::DEFAULT_DISTRIBUTOR_BUFFER_SIZE;
+-use crate::async_executor::{AbortOnDropHandle, spawn};
+-use crate::async_primitives::distributor_channel::distributor_channel;
+-use crate::async_primitives::oneshot_channel;
+-use crate::async_primitives::wait_group::{WaitGroup, WaitToken};
+ use crate::morsel::SourceToken;
+ use crate::nodes::TaskPriority;
+ use crate::nodes::compute_node_prelude::*;
+diff --git a/crates/polars-stream/src/nodes/io_sources/ipc/builder.rs b/crates/polars-stream/src/nodes/io_sources/ipc/builder.rs
+index be0bbdef1..9c0f22f44 100644
+--- a/crates/polars-stream/src/nodes/io_sources/ipc/builder.rs
++++ b/crates/polars-stream/src/nodes/io_sources/ipc/builder.rs
+@@ -2,6 +2,7 @@ use std::num::NonZeroUsize;
+ use std::sync::Arc;
+ 
+ use arrow::io::ipc::read::FileMetadata;
++use polars_async::primitives::wait_group::WaitGroup;
+ use polars_core::config;
+ use polars_io::cloud::CloudOptions;
+ use polars_io::ipc::IpcScanOptions;
+@@ -9,7 +10,6 @@ use polars_plan::dsl::ScanSource;
+ use polars_utils::relaxed_cell::RelaxedCell;
+ 
+ use super::{DynByteSourceBuilder, IpcFileReader};
+-use crate::async_primitives::wait_group::WaitGroup;
+ #[cfg(feature = "ipc")]
+ use crate::metrics::IOMetrics;
+ use crate::nodes::io_sources::multi_scan::reader_interface::FileReader;
+diff --git a/crates/polars-stream/src/nodes/io_sources/ipc/mod.rs b/crates/polars-stream/src/nodes/io_sources/ipc/mod.rs
+index 48fa60c94..acf0af0b9 100644
+--- a/crates/polars-stream/src/nodes/io_sources/ipc/mod.rs
++++ b/crates/polars-stream/src/nodes/io_sources/ipc/mod.rs
+@@ -4,6 +4,8 @@ use std::sync::Arc;
+ 
+ use arrow::io::ipc::read::{Dictionaries, read_dictionary_block};
+ use async_trait::async_trait;
++use polars_async::executor::{self, JoinHandle, TaskPriority};
++use polars_async::primitives::wait_group::{WaitGroup, WaitToken};
+ use polars_core::prelude::DataType;
+ use polars_core::runtime::ASYNC;
+ use polars_core::schema::{Schema, SchemaExt};
+@@ -27,8 +29,6 @@ use record_batch_decode::RecordBatchDecoder;
+ 
+ use super::multi_scan::reader_interface::BeginReadArgs;
+ use super::multi_scan::reader_interface::output::FileReaderOutputRecv;
+-use crate::async_executor::{self, JoinHandle, TaskPriority};
+-use crate::async_primitives::wait_group::{WaitGroup, WaitToken};
+ use crate::metrics::OptIOMetrics;
+ use crate::morsel::{Morsel, MorselSeq, SourceToken, get_ideal_morsel_size};
+ use crate::nodes::io_sources::ipc::metadata::read_ipc_metadata_bytes;
+@@ -389,7 +389,7 @@ impl FileReader for IpcFileReader {
+                     SplitSlicePosition::Before => continue,
+                     SplitSlicePosition::Overlapping(rows_offset, rows_len) => {
+                         let record_batch_decoder = record_batch_decoder.clone();
+-                        let decode_fut = async_executor::spawn(TaskPriority::High, async move {
++                        let decode_fut = executor::spawn(TaskPriority::High, async move {
+                             record_batch_decoder
+                                 .record_batch_data_to_df(record_batch_data, rows_offset, rows_len)
+                                 .await
+@@ -411,7 +411,7 @@ impl FileReader for IpcFileReader {
+         //
+         // `last_morsel_pipelines` is precomputed at the multi-scan layer so the split budget is
+         // shared across files in the scan.
+-        let distribute_task = async_executor::spawn(TaskPriority::High, async move {
++        let distribute_task = executor::spawn(TaskPriority::High, async move {
+             let mut morsel_seq = MorselSeq::default();
+             // Note: We don't use this (it is handled by the bridge). But morsels require a source token.
+             let source_token = SourceToken::new();
+@@ -494,7 +494,7 @@ impl FileReader for IpcFileReader {
+ 
+         Ok((
+             morsel_recv,
+-            async_executor::spawn(TaskPriority::Low, async move { handle.await.unwrap() }),
++            executor::spawn(TaskPriority::Low, async move { handle.await.unwrap() }),
+         ))
+     }
+ }
+diff --git a/crates/polars-stream/src/nodes/io_sources/ipc/record_batch_data_fetch.rs b/crates/polars-stream/src/nodes/io_sources/ipc/record_batch_data_fetch.rs
+index bc5a75973..60bb27924 100644
+--- a/crates/polars-stream/src/nodes/io_sources/ipc/record_batch_data_fetch.rs
++++ b/crates/polars-stream/src/nodes/io_sources/ipc/record_batch_data_fetch.rs
+@@ -1,6 +1,8 @@
+ use std::io::Cursor;
+ use std::sync::Arc;
+ 
++use polars_async::primitives::oneshot_channel;
++use polars_async::primitives::wait_group::{WaitGroup, WaitToken};
+ use polars_buffer::Buffer;
+ use polars_core::runtime::ASYNC;
+ use polars_core::utils::arrow::io::ipc::read::{
+@@ -13,8 +15,6 @@ use polars_utils::relaxed_cell::RelaxedCell;
+ use tokio::sync::mpsc::Sender;
+ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+ 
+-use crate::async_primitives::oneshot_channel;
+-use crate::async_primitives::wait_group::{WaitGroup, WaitToken};
+ use crate::nodes::io_sources::ipc::ROW_COUNT_OVERFLOW_ERR;
+ use crate::utils::tokio_handle_ext;
+ 
+diff --git a/crates/polars-stream/src/nodes/io_sources/lines.rs b/crates/polars-stream/src/nodes/io_sources/lines.rs
+index deab55cb9..5d9f7beeb 100644
+--- a/crates/polars-stream/src/nodes/io_sources/lines.rs
++++ b/crates/polars-stream/src/nodes/io_sources/lines.rs
+@@ -1,6 +1,7 @@
+ use std::num::NonZeroUsize;
+ use std::sync::Arc;
+ 
++use polars_async::primitives::wait_group::WaitGroup;
+ use polars_core::config;
+ use polars_io::cloud::CloudOptions;
+ use polars_io::metrics::IOMetrics;
+@@ -8,7 +9,6 @@ use polars_io::utils::byte_source::DynByteSourceBuilder;
+ use polars_plan::dsl::ScanSource;
+ use polars_utils::relaxed_cell::RelaxedCell;
+ 
+-use crate::async_primitives::wait_group::WaitGroup;
+ use crate::nodes::io_sources::multi_scan::reader_interface::FileReader;
+ use crate::nodes::io_sources::multi_scan::reader_interface::builder::FileReaderBuilder;
+ use crate::nodes::io_sources::multi_scan::reader_interface::capabilities::ReaderCapabilities;
+diff --git a/crates/polars-stream/src/nodes/io_sources/multi_scan/components/bridge.rs b/crates/polars-stream/src/nodes/io_sources/multi_scan/components/bridge.rs
+index e49557c71..d084fb2bc 100644
+--- a/crates/polars-stream/src/nodes/io_sources/multi_scan/components/bridge.rs
++++ b/crates/polars-stream/src/nodes/io_sources/multi_scan/components/bridge.rs
+@@ -1,5 +1,4 @@
+-use crate::async_primitives::morsel_linearizer::MorselLinearizer;
+-use crate::morsel::Morsel;
++use crate::morsel::{Morsel, MorselLinearizer};
+ use crate::nodes::io_sources::multi_scan::reader_interface::output::FileReaderOutputRecv;
+ 
+ #[derive(Copy, Clone)]
+diff --git a/crates/polars-stream/src/nodes/io_sources/multi_scan/components/row_deletions.rs b/crates/polars-stream/src/nodes/io_sources/multi_scan/components/row_deletions.rs
+index febd2bc43..78ff7745b 100644
+--- a/crates/polars-stream/src/nodes/io_sources/multi_scan/components/row_deletions.rs
++++ b/crates/polars-stream/src/nodes/io_sources/multi_scan/components/row_deletions.rs
+@@ -5,6 +5,7 @@ use arrow::array::ListArray;
+ use arrow::array::{Array, BooleanArray};
+ use arrow::bitmap::bitmask::BitMask;
+ use arrow::bitmap::{Bitmap, MutableBitmap};
++use polars_async::executor::{self, AbortOnDropHandle, TaskPriority};
+ use polars_buffer::Buffer;
+ use polars_core::frame::DataFrame;
+ use polars_core::prelude::{BooleanChunked, ChunkAgg, DataType, NamedFrom, PlIndexMap};
+@@ -22,7 +23,6 @@ use polars_utils::pl_str::PlSmallStr;
+ use polars_utils::relaxed_cell::RelaxedCell;
+ use polars_utils::slice_enum::Slice;
+ 
+-use crate::async_executor::{self, AbortOnDropHandle, TaskPriority};
+ use crate::metrics::IOMetrics;
+ use crate::nodes::io_sources::multi_scan::reader_interface::builder::FileReaderBuilder;
+ use crate::nodes::io_sources::multi_scan::reader_interface::{BeginReadArgs, FileReaderCallbacks};
+@@ -149,7 +149,7 @@ impl DeletionFilesProvider {
+                             )
+                         }
+ 
+-                        AbortOnDropHandle::new(async_executor::spawn(
++                        AbortOnDropHandle::new(executor::spawn(
+                             TaskPriority::Low,
+                             async move {
+                                 reader.initialize().await?;
+@@ -167,7 +167,7 @@ impl DeletionFilesProvider {
+                 //
+                 // This does mean deletion file loads are tied to `NUM_READERS_PRE_INIT`, but this
+                 // should be fine as the size of the data should not be too big.
+-                let handle = AbortOnDropHandle::new(async_executor::spawn(
++                let handle = AbortOnDropHandle::new(executor::spawn(
+                     TaskPriority::Low,
+                     async move {
+                         let handles = file_readers
+@@ -191,7 +191,7 @@ impl DeletionFilesProvider {
+                                     },
+                                 };
+ 
+-                                AbortOnDropHandle::new(async_executor::spawn(
++                                AbortOnDropHandle::new(executor::spawn(
+                                     TaskPriority::Low,
+                                     async move {
+                                         let mut reader = init_fut.await?;
+@@ -293,7 +293,7 @@ impl DeletionFilesProvider {
+                 let selected_paths = selected_paths.clone();
+ 
+                 let handle =
+-                    AbortOnDropHandle::new(async_executor::spawn(TaskPriority::Low, async move {
++                    AbortOnDropHandle::new(executor::spawn(TaskPriority::Low, async move {
+                         let deletion_vectors = cache
+                             .get_or_try_init(|| async {
+                                 let provider = provider.clone();
+diff --git a/crates/polars-stream/src/nodes/io_sources/multi_scan/functions/resolve_slice.rs b/crates/polars-stream/src/nodes/io_sources/multi_scan/functions/resolve_slice.rs
+index 547356ef7..5d535c713 100644
+--- a/crates/polars-stream/src/nodes/io_sources/multi_scan/functions/resolve_slice.rs
++++ b/crates/polars-stream/src/nodes/io_sources/multi_scan/functions/resolve_slice.rs
+@@ -3,13 +3,13 @@ use std::sync::Arc;
+ 
+ use components::row_deletions::DeletionFilesProvider;
+ use futures::StreamExt;
++use polars_async::executor::{self, AbortOnDropHandle, TaskPriority};
+ use polars_core::prelude::{InitHashMaps, PlHashMap};
+ use polars_error::PolarsResult;
+ use polars_io::metrics::IOMetrics;
+ use polars_utils::row_counter::RowCounter;
+ use polars_utils::slice_enum::Slice;
+ 
+-use crate::async_executor::{self, AbortOnDropHandle, TaskPriority};
+ use crate::execute::StreamingExecutionState;
+ use crate::nodes::io_sources::multi_scan::pipeline::models::ResolvedSliceInfo;
+ use crate::nodes::io_sources::multi_scan::{MultiScanConfig, components};
+@@ -118,7 +118,7 @@ async fn resolve_negative_slice(
+                     Ok(reader)
+                 });
+ 
+-            AbortOnDropHandle::new(async_executor::spawn(TaskPriority::Low, async move {
++            AbortOnDropHandle::new(executor::spawn(TaskPriority::Low, async move {
+                 let mut reader = reader?;
+ 
+                 if verbose {
+diff --git a/crates/polars-stream/src/nodes/io_sources/multi_scan/mod.rs b/crates/polars-stream/src/nodes/io_sources/multi_scan/mod.rs
+index a76422bca..908697f3f 100644
+--- a/crates/polars-stream/src/nodes/io_sources/multi_scan/mod.rs
++++ b/crates/polars-stream/src/nodes/io_sources/multi_scan/mod.rs
+@@ -7,15 +7,15 @@ pub mod reader_interface;
+ use std::sync::{Arc, Mutex};
+ 
+ use pipeline::initialization::initialize_multi_scan_pipeline;
++use polars_async::executor::{self, AbortOnDropHandle, TaskPriority};
++use polars_async::primitives::connector;
++use polars_async::primitives::wait_group::{WaitGroup, WaitToken};
+ use polars_core::runtime::ASYNC;
+ use polars_error::PolarsResult;
+ use polars_io::metrics::IOMetrics;
+ use polars_utils::format_pl_smallstr;
+ use polars_utils::pl_str::PlSmallStr;
+ 
+-use crate::async_executor::{self, AbortOnDropHandle, TaskPriority};
+-use crate::async_primitives::connector;
+-use crate::async_primitives::wait_group::{WaitGroup, WaitToken};
+ use crate::execute::StreamingExecutionState;
+ use crate::graph::PortState;
+ use crate::metrics::NodeMetricsRegistrator;
+@@ -75,7 +75,7 @@ impl ComputeNode for MultiScan {
+         } else {
+             // Refresh first - in case there is an error we end here instead of ending when we go
+             // into spawn.
+-            async_executor::task_scope(|s| {
++            executor::task_scope(|s| {
+                 ASYNC.block_on(s.spawn_task(TaskPriority::High, self.state.refresh(self.verbose)))
+             })?;
+ 
+@@ -90,11 +90,11 @@ impl ComputeNode for MultiScan {
+ 
+     fn spawn<'env, 's>(
+         &'env mut self,
+-        scope: &'s crate::async_executor::TaskScope<'s, 'env>,
++        scope: &'s executor::TaskScope<'s, 'env>,
+         recv_ports: &mut [Option<crate::pipe::RecvPort<'_>>],
+         send_ports: &mut [Option<crate::pipe::SendPort<'_>>],
+         state: &'s StreamingExecutionState,
+-        join_handles: &mut Vec<crate::async_executor::JoinHandle<polars_error::PolarsResult<()>>>,
++        join_handles: &mut Vec<executor::JoinHandle<polars_error::PolarsResult<()>>>,
+     ) {
+         assert!(recv_ports.is_empty() && send_ports.len() == 1);
+ 
+@@ -125,7 +125,7 @@ impl ComputeNode for MultiScan {
+                     wait_group,
+                     ..
+                 } => {
+-                    use crate::async_primitives::connector::SendError;
++                    use polars_async::primitives::connector::SendError;
+ 
+                     match phase_channel_tx.try_send((phase_morsel_tx, wait_group.token())) {
+                         Ok(_) => wait_group.wait().await,
+diff --git a/crates/polars-stream/src/nodes/io_sources/multi_scan/pipeline/initialization.rs b/crates/polars-stream/src/nodes/io_sources/multi_scan/pipeline/initialization.rs
+index 67ae37586..d09e3855d 100644
+--- a/crates/polars-stream/src/nodes/io_sources/multi_scan/pipeline/initialization.rs
++++ b/crates/polars-stream/src/nodes/io_sources/multi_scan/pipeline/initialization.rs
+@@ -2,6 +2,8 @@ use std::collections::VecDeque;
+ use std::sync::{Arc, Mutex};
+ 
+ use futures::StreamExt;
++use polars_async::executor::{self, AbortOnDropHandle, TaskPriority};
++use polars_async::primitives::connector::{self};
+ use polars_core::prelude::PlHashMap;
+ use polars_core::runtime::ASYNC;
+ use polars_error::PolarsResult;
+@@ -11,8 +13,6 @@ use polars_plan::dsl::PredicateFileSkip;
+ use polars_utils::row_counter::RowCounter;
+ use polars_utils::slice_enum::Slice;
+ 
+-use crate::async_executor::{self, AbortOnDropHandle, TaskPriority};
+-use crate::async_primitives::connector::{self};
+ use crate::execute::StreamingExecutionState;
+ use crate::nodes::io_sources::multi_scan::components::bridge::{BridgeRecvPort, BridgeState};
+ use crate::nodes::io_sources::multi_scan::components::row_deletions::{
+@@ -61,18 +61,17 @@ pub fn initialize_multi_scan_pipeline(
+ 
+     let (bridge_handle, bridge_recv_port_tx, phase_channel_tx) = spawn_bridge(bridge_state.clone());
+ 
+-    let task_handle =
+-        AbortOnDropHandle::new(async_executor::spawn(TaskPriority::Low, async move {
+-            finish_initialize_multi_scan_pipeline(
+-                config,
+-                bridge_recv_port_tx,
+-                execution_state,
+-                io_metrics,
+-            )
+-            .await?;
+-            bridge_handle.await;
+-            Ok(())
+-        }));
++    let task_handle = AbortOnDropHandle::new(executor::spawn(TaskPriority::Low, async move {
++        finish_initialize_multi_scan_pipeline(
++            config,
++            bridge_recv_port_tx,
++            execution_state,
++            io_metrics,
++        )
++        .await?;
++        bridge_handle.await;
++        Ok(())
++    }));
+ 
+     InitializedPipelineState {
+         task_handle,
+@@ -351,7 +350,7 @@ async fn finish_initialize_multi_scan_pipeline(
+                 let maybe_initialized = initialized_readers.pop_front();
+                 let scan_source = sources.get(scan_source_idx).unwrap().into_owned();
+ 
+-                AbortOnDropHandle::new(async_executor::spawn(TaskPriority::Low, async move {
++                AbortOnDropHandle::new(executor::spawn(TaskPriority::Low, async move {
+                     let (scan_source, reader, n_rows_in_file) = async {
+                         if verbose {
+                             eprintln!("[MultiScan]: Initialize source {scan_source_idx}");
+@@ -425,7 +424,7 @@ async fn finish_initialize_multi_scan_pipeline(
+     let (started_reader_tx, started_reader_rx) =
+         tokio::sync::mpsc::channel(max_concurrent_scans.max(2) - 1);
+ 
+-    let reader_starter_handle = AbortOnDropHandle::new(async_executor::spawn(
++    let reader_starter_handle = AbortOnDropHandle::new(executor::spawn(
+         TaskPriority::Low,
+         ReaderStarter {
+             reader_capabilities,
+@@ -454,7 +453,7 @@ async fn finish_initialize_multi_scan_pipeline(
+         .run(),
+     ));
+ 
+-    let attach_to_bridge_handle = AbortOnDropHandle::new(async_executor::spawn(
++    let attach_to_bridge_handle = AbortOnDropHandle::new(executor::spawn(
+         TaskPriority::Low,
+         AttachReaderToBridge {
+             started_reader_rx,
+diff --git a/crates/polars-stream/src/nodes/io_sources/multi_scan/pipeline/models.rs b/crates/polars-stream/src/nodes/io_sources/multi_scan/pipeline/models.rs
+index 66180a289..bdb58347f 100644
+--- a/crates/polars-stream/src/nodes/io_sources/multi_scan/pipeline/models.rs
++++ b/crates/polars-stream/src/nodes/io_sources/multi_scan/pipeline/models.rs
+@@ -3,6 +3,9 @@ use std::collections::VecDeque;
+ use std::sync::{Arc, Mutex};
+ 
+ use components::row_deletions::ExternalFilterMask;
++use polars_async::executor::AbortOnDropHandle;
++use polars_async::primitives::connector;
++use polars_async::primitives::wait_group::WaitToken;
+ use polars_core::prelude::PlHashMap;
+ use polars_core::schema::SchemaRef;
+ use polars_error::PolarsResult;
+@@ -14,9 +17,6 @@ use polars_utils::pl_str::PlSmallStr;
+ use polars_utils::row_counter::RowCounter;
+ use polars_utils::slice_enum::Slice;
+ 
+-use crate::async_executor::AbortOnDropHandle;
+-use crate::async_primitives::connector;
+-use crate::async_primitives::wait_group::WaitToken;
+ use crate::nodes::io_sources::multi_scan::components;
+ use crate::nodes::io_sources::multi_scan::components::bridge::{BridgeRecvPort, BridgeState};
+ use crate::nodes::io_sources::multi_scan::components::forbid_extra_columns::ForbidExtraColumns;
+diff --git a/crates/polars-stream/src/nodes/io_sources/multi_scan/pipeline/tasks/attach_reader_to_bridge.rs b/crates/polars-stream/src/nodes/io_sources/multi_scan/pipeline/tasks/attach_reader_to_bridge.rs
+index 485b316f3..7f0832da2 100644
+--- a/crates/polars-stream/src/nodes/io_sources/multi_scan/pipeline/tasks/attach_reader_to_bridge.rs
++++ b/crates/polars-stream/src/nodes/io_sources/multi_scan/pipeline/tasks/attach_reader_to_bridge.rs
+@@ -1,8 +1,8 @@
++use polars_async::executor::AbortOnDropHandle;
++use polars_async::primitives::connector;
++use polars_async::primitives::wait_group::WaitToken;
+ use polars_error::PolarsResult;
+ 
+-use crate::async_executor::AbortOnDropHandle;
+-use crate::async_primitives::connector;
+-use crate::async_primitives::wait_group::WaitToken;
+ use crate::nodes::io_sources::multi_scan::components::bridge::BridgeRecvPort;
+ use crate::nodes::io_sources::multi_scan::pipeline::models::StartedReaderState;
+ 
+diff --git a/crates/polars-stream/src/nodes/io_sources/multi_scan/pipeline/tasks/bridge.rs b/crates/polars-stream/src/nodes/io_sources/multi_scan/pipeline/tasks/bridge.rs
+index 2799233ea..c128649b1 100644
+--- a/crates/polars-stream/src/nodes/io_sources/multi_scan/pipeline/tasks/bridge.rs
++++ b/crates/polars-stream/src/nodes/io_sources/multi_scan/pipeline/tasks/bridge.rs
+@@ -1,9 +1,10 @@
+ use std::sync::{Arc, Mutex};
+ 
+-use crate::async_executor;
+-use crate::async_executor::{JoinHandle, TaskPriority};
+-use crate::async_primitives::connector;
+-use crate::async_primitives::wait_group::WaitToken;
++use polars_async::executor;
++use polars_async::executor::{JoinHandle, TaskPriority};
++use polars_async::primitives::connector;
++use polars_async::primitives::wait_group::WaitToken;
++
+ use crate::morsel::{MorselSeq, SourceToken};
+ use crate::nodes::io_sources::multi_scan::components::bridge::{
+     BridgeRecvPort, BridgeState, StopReason,
+@@ -22,7 +23,7 @@ pub fn spawn_bridge(
+     let (incoming_tx, incoming) = connector::connector();
+     let (outgoing_tx, outgoing) = connector::connector();
+ 
+-    let handle = async_executor::spawn(
++    let handle = executor::spawn(
+         TaskPriority::Low,
+         Bridge {
+             incoming,
+diff --git a/crates/polars-stream/src/nodes/io_sources/multi_scan/pipeline/tasks/post_apply_extra_ops.rs b/crates/polars-stream/src/nodes/io_sources/multi_scan/pipeline/tasks/post_apply_extra_ops.rs
+index 510b3602b..dba5687e4 100644
+--- a/crates/polars-stream/src/nodes/io_sources/multi_scan/pipeline/tasks/post_apply_extra_ops.rs
++++ b/crates/polars-stream/src/nodes/io_sources/multi_scan/pipeline/tasks/post_apply_extra_ops.rs
+@@ -1,14 +1,13 @@
+ use std::sync::Arc;
+ 
++use polars_async::executor::{self, AbortOnDropHandle, TaskPriority};
++use polars_async::primitives::distributor_channel::distributor_channel;
+ use polars_error::PolarsResult;
+ use polars_utils::relaxed_cell::RelaxedCell;
+ use polars_utils::row_counter::RowCounter;
+ use polars_utils::slice_enum::Slice;
+ 
+-use crate::async_executor::{self, AbortOnDropHandle, TaskPriority};
+-use crate::async_primitives::distributor_channel::distributor_channel;
+-use crate::async_primitives::morsel_linearizer::MorselLinearizer;
+-use crate::morsel::Morsel;
++use crate::morsel::{Morsel, MorselLinearizer};
+ use crate::nodes::io_sources::multi_scan::components::apply_extra_ops::ApplyExtraOps;
+ use crate::nodes::io_sources::multi_scan::reader_interface::output::FileReaderOutputRecv;
+ 
+@@ -41,7 +40,7 @@ impl PostApplyExtraOps {
+         // Distributor
+         {
+             let ops_applier = ops_applier.clone();
+-            async_executor::spawn(TaskPriority::Low, async move {
++            executor::spawn(TaskPriority::Low, async move {
+                 // Position tracking
+                 let mut row_counter: RowCounter = first_morsel_position;
+ 
+@@ -123,7 +122,7 @@ impl PostApplyExtraOps {
+                 let rows_before = rows_before.clone();
+                 let rows_after = rows_after.clone();
+ 
+-                AbortOnDropHandle::new(async_executor::spawn(TaskPriority::Low, async move {
++                AbortOnDropHandle::new(executor::spawn(TaskPriority::Low, async move {
+                     while let Ok((mut morsel, row_offset)) = morsel_rx.recv().await {
+                         rows_before.fetch_add(morsel.df().height() as u64);
+                         ops_applier.apply_to_df(morsel.df_mut(), row_offset)?;
+@@ -138,7 +137,7 @@ impl PostApplyExtraOps {
+             })
+             .collect::<Vec<_>>();
+ 
+-        let handle = AbortOnDropHandle::new(async_executor::spawn(TaskPriority::Low, async move {
++        let handle = AbortOnDropHandle::new(executor::spawn(TaskPriority::Low, async move {
+             for handle in worker_handles {
+                 handle.await?;
+             }
+diff --git a/crates/polars-stream/src/nodes/io_sources/multi_scan/pipeline/tasks/reader_starter.rs b/crates/polars-stream/src/nodes/io_sources/multi_scan/pipeline/tasks/reader_starter.rs
+index f87350b71..1242ad962 100644
+--- a/crates/polars-stream/src/nodes/io_sources/multi_scan/pipeline/tasks/reader_starter.rs
++++ b/crates/polars-stream/src/nodes/io_sources/multi_scan/pipeline/tasks/reader_starter.rs
+@@ -4,6 +4,9 @@ use components::bridge::BridgeRecvPort;
+ use components::row_deletions::{ExternalFilterMask, RowDeletionsInit};
+ use futures::StreamExt;
+ use futures::stream::BoxStream;
++use polars_async::executor::{self, AbortOnDropHandle, TaskPriority};
++use polars_async::primitives::oneshot_channel;
++use polars_async::primitives::wait_group::{WaitGroup, WaitToken};
+ use polars_core::config::verbose_print_sensitive;
+ use polars_core::prelude::{AnyValue, DataType};
+ use polars_core::scalar::Scalar;
+@@ -15,9 +18,6 @@ use polars_utils::IdxSize;
+ use polars_utils::row_counter::RowCounter;
+ use polars_utils::slice_enum::Slice;
+ 
+-use crate::async_executor::{self, AbortOnDropHandle, TaskPriority};
+-use crate::async_primitives::oneshot_channel;
+-use crate::async_primitives::wait_group::{WaitGroup, WaitToken};
+ use crate::nodes::io_sources::multi_scan::components;
+ use crate::nodes::io_sources::multi_scan::components::apply_extra_ops::ApplyExtraOps;
+ use crate::nodes::io_sources::multi_scan::components::errors::missing_column_err;
+@@ -337,7 +337,7 @@ impl ReaderStarter {
+                 external_filter_mask: external_filter_mask.clone(),
+             };
+ 
+-            let reader_start_task_handle = AbortOnDropHandle::new(async_executor::spawn(
++            let reader_start_task_handle = AbortOnDropHandle::new(executor::spawn(
+                 TaskPriority::Low,
+                 start_reader_impl(constant_args.clone(), start_args_this_file),
+             ));
+diff --git a/crates/polars-stream/src/nodes/io_sources/multi_scan/reader_interface/mod.rs b/crates/polars-stream/src/nodes/io_sources/multi_scan/reader_interface/mod.rs
+index dfec2cd09..576061477 100644
+--- a/crates/polars-stream/src/nodes/io_sources/multi_scan/reader_interface/mod.rs
++++ b/crates/polars-stream/src/nodes/io_sources/multi_scan/reader_interface/mod.rs
+@@ -7,6 +7,8 @@ pub mod output;
+ use arrow::datatypes::ArrowSchemaRef;
+ use async_trait::async_trait;
+ use output::FileReaderOutputRecv;
++use polars_async::executor::JoinHandle;
++use polars_async::primitives::oneshot_channel;
+ use polars_core::schema::SchemaRef;
+ use polars_error::PolarsResult;
+ use polars_io::RowIndex;
+@@ -15,8 +17,6 @@ use polars_plan::dsl::CastColumnsPolicy;
+ use polars_utils::IdxSize;
+ use polars_utils::slice_enum::Slice;
+ 
+-use crate::async_executor::JoinHandle;
+-use crate::async_primitives::oneshot_channel;
+ pub use crate::nodes::io_sources::multi_scan::components::projection::Projection;
+ 
+ /// Interface to read a single file
+diff --git a/crates/polars-stream/src/nodes/io_sources/multi_scan/reader_interface/output.rs b/crates/polars-stream/src/nodes/io_sources/multi_scan/reader_interface/output.rs
+index 5df6eb1f6..5a412aef8 100644
+--- a/crates/polars-stream/src/nodes/io_sources/multi_scan/reader_interface/output.rs
++++ b/crates/polars-stream/src/nodes/io_sources/multi_scan/reader_interface/output.rs
+@@ -1,7 +1,7 @@
+-use crate::async_primitives::connector;
+-use crate::async_primitives::morsel_linearizer::{MorselInserter, MorselLinearizer};
+-use crate::async_primitives::wait_group::WaitGroup;
+-use crate::morsel::Morsel;
++use polars_async::primitives::connector;
++use polars_async::primitives::wait_group::WaitGroup;
++
++use crate::morsel::{Morsel, MorselInserter, MorselLinearizer};
+ 
+ /// This is just a generic enum that can receive from either single or multiple senders.
+ pub enum FileReaderOutputRecv {
+diff --git a/crates/polars-stream/src/nodes/io_sources/ndjson/builder.rs b/crates/polars-stream/src/nodes/io_sources/ndjson/builder.rs
+index c6f745d14..0955e9171 100644
+--- a/crates/polars-stream/src/nodes/io_sources/ndjson/builder.rs
++++ b/crates/polars-stream/src/nodes/io_sources/ndjson/builder.rs
+@@ -1,6 +1,7 @@
+ use std::num::NonZeroUsize;
+ use std::sync::Arc;
+ 
++use polars_async::primitives::wait_group::WaitGroup;
+ use polars_core::config;
+ use polars_io::cloud::CloudOptions;
+ #[cfg(feature = "json")]
+@@ -9,7 +10,6 @@ use polars_plan::dsl::{NDJsonReadOptions, ScanSource};
+ use polars_utils::relaxed_cell::RelaxedCell;
+ 
+ use super::{DynByteSourceBuilder, FileReader, NDJsonFileReader};
+-use crate::async_primitives::wait_group::WaitGroup;
+ use crate::nodes::io_sources::multi_scan::reader_interface::builder::FileReaderBuilder;
+ use crate::nodes::io_sources::multi_scan::reader_interface::capabilities::ReaderCapabilities;
+ use crate::nodes::io_sources::ndjson::chunk_reader::ChunkReaderBuilder;
+diff --git a/crates/polars-stream/src/nodes/io_sources/ndjson/line_batch_distributor.rs b/crates/polars-stream/src/nodes/io_sources/ndjson/line_batch_distributor.rs
+index 898a73f8d..373f9a67e 100644
+--- a/crates/polars-stream/src/nodes/io_sources/ndjson/line_batch_distributor.rs
++++ b/crates/polars-stream/src/nodes/io_sources/ndjson/line_batch_distributor.rs
+@@ -1,6 +1,7 @@
+ use std::cmp;
+ use std::num::NonZeroUsize;
+ 
++use polars_async::primitives::distributor_channel;
+ use polars_buffer::Buffer;
+ use polars_core::runtime::ASYNC;
+ use polars_error::PolarsResult;
+@@ -9,7 +10,6 @@ use polars_io::utils::stream_buf_reader::ReaderSource;
+ use polars_utils::mem::prefetch::prefetch_l2;
+ 
+ use super::line_batch_processor::LineBatch;
+-use crate::async_primitives::distributor_channel;
+ use crate::utils::tokio_handle_ext;
+ 
+ const LF: u8 = b'\n';
+diff --git a/crates/polars-stream/src/nodes/io_sources/ndjson/line_batch_processor.rs b/crates/polars-stream/src/nodes/io_sources/ndjson/line_batch_processor.rs
+index 387343121..ffb7178ab 100644
+--- a/crates/polars-stream/src/nodes/io_sources/ndjson/line_batch_processor.rs
++++ b/crates/polars-stream/src/nodes/io_sources/ndjson/line_batch_processor.rs
+@@ -1,12 +1,12 @@
+ use std::cmp::Reverse;
+ 
++use polars_async::primitives::distributor_channel;
++use polars_async::primitives::linearizer::Inserter;
+ use polars_buffer::Buffer;
+ use polars_error::PolarsResult;
+ use polars_utils::priority::Priority;
+ 
+ use super::chunk_reader::ChunkReader;
+-use crate::async_primitives::distributor_channel;
+-use crate::async_primitives::linearizer::Inserter;
+ use crate::morsel::SourceToken;
+ use crate::nodes::MorselSeq;
+ use crate::nodes::compute_node_prelude::*;
+diff --git a/crates/polars-stream/src/nodes/io_sources/ndjson/mod.rs b/crates/polars-stream/src/nodes/io_sources/ndjson/mod.rs
+index 4de2be749..a36a21e66 100644
+--- a/crates/polars-stream/src/nodes/io_sources/ndjson/mod.rs
++++ b/crates/polars-stream/src/nodes/io_sources/ndjson/mod.rs
+@@ -9,6 +9,11 @@ use std::sync::Arc;
+ use async_trait::async_trait;
+ use line_batch_processor::{LineBatchProcessor, LineBatchProcessorOutputPort};
+ use negative_slice_pass::MorselStreamReverser;
++use polars_async::executor::{AbortOnDropHandle, spawn};
++use polars_async::primitives::distributor_channel::distributor_channel;
++use polars_async::primitives::linearizer::Linearizer;
++use polars_async::primitives::oneshot_channel;
++use polars_async::primitives::wait_group::{WaitGroup, WaitToken};
+ use polars_core::runtime::ASYNC;
+ use polars_error::{PolarsResult, polars_bail, polars_err};
+ use polars_io::cloud::CloudOptions;
+@@ -26,11 +31,6 @@ use row_index_limit_pass::ApplyRowIndexOrLimit;
+ use super::multi_scan::reader_interface::output::FileReaderOutputRecv;
+ use super::multi_scan::reader_interface::{BeginReadArgs, FileReader, FileReaderCallbacks};
+ use super::shared::chunk_data_fetch::ChunkDataFetcher;
+-use crate::async_executor::{AbortOnDropHandle, spawn};
+-use crate::async_primitives::distributor_channel::distributor_channel;
+-use crate::async_primitives::linearizer::Linearizer;
+-use crate::async_primitives::oneshot_channel;
+-use crate::async_primitives::wait_group::{WaitGroup, WaitToken};
+ use crate::morsel::SourceToken;
+ use crate::nodes::compute_node_prelude::*;
+ use crate::nodes::io_sources::multi_scan::reader_interface::Projection;
+diff --git a/crates/polars-stream/src/nodes/io_sources/ndjson/negative_slice_pass.rs b/crates/polars-stream/src/nodes/io_sources/ndjson/negative_slice_pass.rs
+index 4b38b6a36..590ae9481 100644
+--- a/crates/polars-stream/src/nodes/io_sources/ndjson/negative_slice_pass.rs
++++ b/crates/polars-stream/src/nodes/io_sources/ndjson/negative_slice_pass.rs
+@@ -2,6 +2,9 @@ use std::cmp::Reverse;
+ use std::sync::Arc;
+ use std::sync::atomic::AtomicUsize;
+ 
++use polars_async::executor::{self, AbortOnDropHandle, TaskPriority};
++use polars_async::primitives::linearizer::Linearizer;
++use polars_async::primitives::oneshot_channel;
+ use polars_core::frame::DataFrame;
+ use polars_core::utils::accumulate_dataframes_vertical_unchecked;
+ use polars_error::{PolarsResult, polars_bail};
+@@ -9,10 +12,6 @@ use polars_io::RowIndex;
+ use polars_utils::IdxSize;
+ use polars_utils::priority::Priority;
+ 
+-use crate::async_executor;
+-use crate::async_executor::AbortOnDropHandle;
+-use crate::async_primitives::linearizer::Linearizer;
+-use crate::async_primitives::oneshot_channel;
+ use crate::morsel::{Morsel, MorselSeq, SourceToken, get_ideal_morsel_size};
+ use crate::nodes::io_sources::multi_scan::reader_interface::output::FileReaderOutputSend;
+ 
+@@ -176,55 +175,46 @@ impl MorselStreamReverser {
+                 let chunk_idx_arc = chunk_idx_arc.clone();
+                 let combined_df = combined_df.clone();
+                 let row_index = row_index.clone();
+-                AbortOnDropHandle::new(async_executor::spawn(
+-                    async_executor::TaskPriority::Low,
+-                    async move {
+-                        loop {
+-                            let chunk_idx =
+-                                chunk_idx_arc.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+-
+-                            if chunk_idx >= n_chunks {
+-                                break;
+-                            }
+-
+-                            let row_offset = chunk_idx.saturating_mul(chunk_size);
+-                            let mut df =
+-                                combined_df.slice(row_offset.try_into().unwrap(), chunk_size);
+-
+-                            assert!(df.height() > 0); // If we did our calculations properly
+-
+-                            if let Some(row_index) = row_index.clone() {
+-                                let offset = row_index.offset.saturating_add(
+-                                    IdxSize::try_from(row_offset).unwrap_or(IdxSize::MAX),
+-                                );
+-
+-                                if offset.checked_add(df.height() as IdxSize).is_none() {
+-                                    polars_bail!(
+-                                        ComputeError:
+-                                        "row_index with offset {} overflows at {} rows",
+-                                        row_index.offset, row_offset.saturating_add(df.height())
+-                                    )
+-                                };
+-
+-                                unsafe {
+-                                    df.with_row_index_mut(row_index.name.clone(), Some(offset))
+-                                };
+-                            }
+-
+-                            let morsel = Morsel::new(
+-                                df,
+-                                MorselSeq::new(chunk_idx as u64),
+-                                SourceToken::new(),
++                AbortOnDropHandle::new(executor::spawn(TaskPriority::Low, async move {
++                    loop {
++                        let chunk_idx =
++                            chunk_idx_arc.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++
++                        if chunk_idx >= n_chunks {
++                            break;
++                        }
++
++                        let row_offset = chunk_idx.saturating_mul(chunk_size);
++                        let mut df = combined_df.slice(row_offset.try_into().unwrap(), chunk_size);
++
++                        assert!(df.height() > 0); // If we did our calculations properly
++
++                        if let Some(row_index) = row_index.clone() {
++                            let offset = row_index.offset.saturating_add(
++                                IdxSize::try_from(row_offset).unwrap_or(IdxSize::MAX),
+                             );
+ 
+-                            if morsel_tx.send_morsel(morsel).await.is_err() {
+-                                break;
+-                            }
++                            if offset.checked_add(df.height() as IdxSize).is_none() {
++                                polars_bail!(
++                                    ComputeError:
++                                    "row_index with offset {} overflows at {} rows",
++                                    row_index.offset, row_offset.saturating_add(df.height())
++                                )
++                            };
++
++                            unsafe { df.with_row_index_mut(row_index.name.clone(), Some(offset)) };
++                        }
++
++                        let morsel =
++                            Morsel::new(df, MorselSeq::new(chunk_idx as u64), SourceToken::new());
++
++                        if morsel_tx.send_morsel(morsel).await.is_err() {
++                            break;
+                         }
++                    }
+ 
+-                        Ok(())
+-                    },
+-                ))
++                    Ok(())
++                }))
+             })
+             .collect::<Vec<_>>();
+ 
+diff --git a/crates/polars-stream/src/nodes/io_sources/ndjson/row_index_limit_pass.rs b/crates/polars-stream/src/nodes/io_sources/ndjson/row_index_limit_pass.rs
+index b4d271d19..a53d7b6a7 100644
+--- a/crates/polars-stream/src/nodes/io_sources/ndjson/row_index_limit_pass.rs
++++ b/crates/polars-stream/src/nodes/io_sources/ndjson/row_index_limit_pass.rs
+@@ -1,12 +1,12 @@
+ use std::cmp::Reverse;
+ 
++use polars_async::primitives::linearizer::Linearizer;
+ use polars_core::frame::DataFrame;
+ use polars_error::{PolarsResult, polars_bail};
+ use polars_io::RowIndex;
+ use polars_utils::IdxSize;
+ use polars_utils::priority::Priority;
+ 
+-use crate::async_primitives::linearizer::Linearizer;
+ use crate::morsel::{Morsel, MorselSeq, SourceToken};
+ use crate::nodes::io_sources::multi_scan::reader_interface::output::FileReaderOutputSend;
+ 
+diff --git a/crates/polars-stream/src/nodes/io_sources/parquet/builder.rs b/crates/polars-stream/src/nodes/io_sources/parquet/builder.rs
+index 272faa094..2c42435a7 100644
+--- a/crates/polars-stream/src/nodes/io_sources/parquet/builder.rs
++++ b/crates/polars-stream/src/nodes/io_sources/parquet/builder.rs
+@@ -1,6 +1,7 @@
+ use std::num::NonZeroUsize;
+ use std::sync::Arc;
+ 
++use polars_async::primitives::wait_group::WaitGroup;
+ use polars_core::config;
+ use polars_io::cloud::CloudOptions;
+ use polars_io::prelude::{FileMetadata, ParallelStrategy, ParquetOptions};
+@@ -9,7 +10,6 @@ use polars_plan::dsl::ScanSource;
+ use polars_utils::relaxed_cell::RelaxedCell;
+ 
+ use super::{FileReader, ParquetFileReader};
+-use crate::async_primitives::wait_group::WaitGroup;
+ use crate::metrics::{IOMetrics, OptIOMetrics};
+ use crate::nodes::io_sources::multi_scan::reader_interface::builder::FileReaderBuilder;
+ use crate::nodes::io_sources::multi_scan::reader_interface::capabilities::ReaderCapabilities;
+diff --git a/crates/polars-stream/src/nodes/io_sources/parquet/init.rs b/crates/polars-stream/src/nodes/io_sources/parquet/init.rs
+index c15e8a44b..da53c40e7 100644
+--- a/crates/polars-stream/src/nodes/io_sources/parquet/init.rs
++++ b/crates/polars-stream/src/nodes/io_sources/parquet/init.rs
+@@ -1,5 +1,6 @@
+ use std::sync::Arc;
+ 
++use polars_async::executor;
+ use polars_core::frame::DataFrame;
+ use polars_core::runtime::ASYNC;
+ use polars_error::{PolarsResult, polars_ensure};
+@@ -10,7 +11,6 @@ use polars_utils::IdxSize;
+ use super::row_group_data_fetch::RowGroupDataFetcher;
+ use super::row_group_decode::RowGroupDecoder;
+ use super::{AsyncTaskData, ParquetReadImpl};
+-use crate::async_executor;
+ use crate::morsel::{Morsel, SourceToken, get_ideal_morsel_size};
+ use crate::nodes::io_sources::multi_scan::reader_interface::output::FileReaderOutputSend;
+ use crate::nodes::io_sources::parquet::projection::ArrowFieldProjection;
+@@ -171,7 +171,7 @@ impl ParquetReadImpl {
+             while let Some((prefetch_task, permit)) = prefetch_recv.recv().await {
+                 let row_group_data = prefetch_task.await.unwrap()?;
+                 let row_group_decoder = row_group_decoder.clone();
+-                let decode_fut = async_executor::spawn(TaskPriority::High, async move {
++                let decode_fut = executor::spawn(TaskPriority::High, async move {
+                     row_group_decoder.row_group_data_to_df(row_group_data).await
+                 });
+                 if decode_send.send((decode_fut, permit)).await.is_err() {
+@@ -188,7 +188,7 @@ impl ParquetReadImpl {
+         // is shared across files in the scan.
+         let last_morsel_pipelines = self.config.last_morsel_pipelines;
+         let disable_morsel_split = self.disable_morsel_split;
+-        let distribute_task = async_executor::spawn(TaskPriority::High, async move {
++        let distribute_task = executor::spawn(TaskPriority::High, async move {
+             let mut morsel_seq = MorselSeq::default();
+             // Note: We don't use this (it is handled by the bridge). But morsels require a source token.
+             let source_token = SourceToken::new();
+diff --git a/crates/polars-stream/src/nodes/io_sources/parquet/mod.rs b/crates/polars-stream/src/nodes/io_sources/parquet/mod.rs
+index 8294b9804..2229e63a9 100644
+--- a/crates/polars-stream/src/nodes/io_sources/parquet/mod.rs
++++ b/crates/polars-stream/src/nodes/io_sources/parquet/mod.rs
+@@ -2,6 +2,8 @@ use std::sync::Arc;
+ 
+ use arrow::datatypes::ArrowSchemaRef;
+ use async_trait::async_trait;
++use polars_async::executor::{self};
++use polars_async::primitives::wait_group::{WaitGroup, WaitToken};
+ use polars_core::prelude::ArrowSchema;
+ use polars_core::runtime::ASYNC;
+ use polars_core::schema::{Schema, SchemaExt, SchemaRef};
+@@ -21,8 +23,6 @@ use super::multi_scan::reader_interface::output::{FileReaderOutputRecv, FileRead
+ use super::multi_scan::reader_interface::{
+     BeginReadArgs, FileReader, FileReaderCallbacks, calc_row_position_after_slice,
+ };
+-use crate::async_executor::{self};
+-use crate::async_primitives::wait_group::{WaitGroup, WaitToken};
+ use crate::metrics::OptIOMetrics;
+ use crate::morsel::SourceToken;
+ use crate::nodes::compute_node_prelude::*;
+@@ -255,7 +255,7 @@ impl FileReader for ParquetFileReader {
+ 
+             return Ok((
+                 rx,
+-                async_executor::spawn(TaskPriority::Low, std::future::ready(Ok(()))),
++                executor::spawn(TaskPriority::Low, std::future::ready(Ok(()))),
+             ));
+         }
+ 
+@@ -292,7 +292,7 @@ impl FileReader for ParquetFileReader {
+         if let Some(single_morsel_height) = single_morsel_height {
+             let (mut tx, rx) = FileReaderOutputSend::new_serial();
+ 
+-            let handle = async_executor::spawn(TaskPriority::Low, async move {
++            let handle = executor::spawn(TaskPriority::Low, async move {
+                 let _ = tx
+                     .send_morsel(Morsel::new(
+                         DataFrame::empty_with_height(single_morsel_height),
+@@ -357,7 +357,7 @@ impl FileReader for ParquetFileReader {
+ 
+         Ok((
+             output_recv,
+-            async_executor::spawn(TaskPriority::Low, async move { handle.await.unwrap() }),
++            executor::spawn(TaskPriority::Low, async move { handle.await.unwrap() }),
+         ))
+     }
+ 
+diff --git a/crates/polars-stream/src/nodes/io_sources/parquet/row_group_decode.rs b/crates/polars-stream/src/nodes/io_sources/parquet/row_group_decode.rs
+index 49cac32cc..15a889d57 100644
+--- a/crates/polars-stream/src/nodes/io_sources/parquet/row_group_decode.rs
++++ b/crates/polars-stream/src/nodes/io_sources/parquet/row_group_decode.rs
+@@ -1,5 +1,7 @@
+ use std::sync::Arc;
+ 
++use polars_async::executor::TaskPriority;
++use polars_async::primitives::opt_spawned_future::parallelize_first_to_local;
+ use polars_core::frame::DataFrame;
+ use polars_core::prelude::{ArrowField, BooleanChunked, ChunkFilter, Column, DataType, IntoColumn};
+ use polars_core::series::Series;
+@@ -16,8 +18,6 @@ use polars_utils::pl_str::PlSmallStr;
+ use polars_utils::{IdxSize, UnitVec};
+ 
+ use super::row_group_data_fetch::RowGroupData;
+-use crate::async_executor::TaskPriority;
+-use crate::async_primitives::opt_spawned_future::parallelize_first_to_local;
+ use crate::nodes::io_sources::parquet::projection::ArrowFieldProjection;
+ 
+ /// Turns row group data into DataFrames.
+diff --git a/crates/polars-stream/src/nodes/io_sources/parquet/statistics.rs b/crates/polars-stream/src/nodes/io_sources/parquet/statistics.rs
+index 9e3fd81df..75d08895d 100644
+--- a/crates/polars-stream/src/nodes/io_sources/parquet/statistics.rs
++++ b/crates/polars-stream/src/nodes/io_sources/parquet/statistics.rs
+@@ -3,6 +3,7 @@ use std::ops::Range;
+ use arrow::array::{MutablePrimitiveArray, PrimitiveArray};
+ use arrow::bitmap::Bitmap;
+ use arrow::pushable::Pushable;
++use polars_async::executor::{self, TaskPriority};
+ use polars_core::prelude::*;
+ use polars_io::RowIndex;
+ use polars_io::predicates::ScanIOPredicate;
+@@ -11,7 +12,6 @@ use polars_parquet::read::RowGroupMetadata;
+ use polars_parquet::read::statistics::{ArrowColumnStatisticsArrays, deserialize_all};
+ use polars_utils::format_pl_smallstr;
+ 
+-use crate::async_executor::{self, TaskPriority};
+ use crate::nodes::io_sources::parquet::projection::ArrowFieldProjection;
+ 
+ struct StatisticsColumns {
+@@ -105,7 +105,7 @@ pub(super) async fn calculate_row_group_pred_pushdown_skip_mask(
+ 
+     // Note: We are spawning here onto the computational async runtime because the caller is being run
+     // on a tokio async thread.
+-    let skip_row_group_mask = async_executor::spawn(TaskPriority::High, async move {
++    let skip_row_group_mask = executor::spawn(TaskPriority::High, async move {
+         let row_groups_slice = &metadata.row_groups[row_group_slice.clone()];
+ 
+         if let Some(ri) = &mut row_index {
+diff --git a/crates/polars-stream/src/nodes/io_sources/shared/chunk_data_fetch.rs b/crates/polars-stream/src/nodes/io_sources/shared/chunk_data_fetch.rs
+index 6e5415a3b..aab86f6b1 100644
+--- a/crates/polars-stream/src/nodes/io_sources/shared/chunk_data_fetch.rs
++++ b/crates/polars-stream/src/nodes/io_sources/shared/chunk_data_fetch.rs
+@@ -1,5 +1,6 @@
+ use std::sync::Arc;
+ 
++use polars_async::primitives::wait_group::WaitToken;
+ use polars_buffer::Buffer;
+ use polars_core::runtime::ASYNC;
+ use polars_error::PolarsResult;
+@@ -7,7 +8,6 @@ use polars_io::utils::byte_source::{ByteSource, DynByteSource};
+ use tokio::sync::mpsc::Sender;
+ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+ 
+-use crate::async_primitives::wait_group::WaitToken;
+ use crate::utils::tokio_handle_ext;
+ 
+ pub(crate) struct ChunkDataFetcher {
+diff --git a/crates/polars-stream/src/nodes/joins/asof_join.rs b/crates/polars-stream/src/nodes/joins/asof_join.rs
+index 9fe375312..18015cc31 100644
+--- a/crates/polars-stream/src/nodes/joins/asof_join.rs
++++ b/crates/polars-stream/src/nodes/joins/asof_join.rs
+@@ -2,6 +2,9 @@ use std::cmp::Ordering;
+ use std::collections::VecDeque;
+ 
+ use AsofStrategy::*;
++use polars_async::executor::{JoinHandle, TaskPriority, TaskScope};
++use polars_async::primitives::distributor_channel as dc;
++use polars_async::primitives::wait_group::WaitGroup;
+ use polars_core::prelude::row_encode::_get_rows_encoded_ca;
+ use polars_core::prelude::*;
+ use polars_core::utils::{Container, accumulate_dataframes_vertical_unchecked};
+@@ -15,9 +18,6 @@ use polars_utils::scratch_vec::ScratchVec;
+ use polars_utils::sort::reorder_cmp;
+ 
+ use crate::DEFAULT_DISTRIBUTOR_BUFFER_SIZE;
+-use crate::async_executor::{JoinHandle, TaskPriority, TaskScope};
+-use crate::async_primitives::distributor_channel as dc;
+-use crate::async_primitives::wait_group::WaitGroup;
+ use crate::execute::StreamingExecutionState;
+ use crate::graph::PortState;
+ use crate::morsel::{Morsel, MorselSeq, SourceToken};
+diff --git a/crates/polars-stream/src/nodes/joins/equi_join.rs b/crates/polars-stream/src/nodes/joins/equi_join.rs
+index affce3e8e..337809467 100644
+--- a/crates/polars-stream/src/nodes/joins/equi_join.rs
++++ b/crates/polars-stream/src/nodes/joins/equi_join.rs
+@@ -4,6 +4,8 @@ use std::sync::Arc;
+ use std::sync::atomic::{AtomicU64, Ordering};
+ 
+ use arrow::array::builder::ShareStrategy;
++use polars_async::executor;
++use polars_async::primitives::wait_group::WaitGroup;
+ use polars_core::config;
+ use polars_core::frame::builder::DataFrameBuilder;
+ use polars_core::prelude::*;
+@@ -25,8 +27,6 @@ use polars_utils::{IdxSize, format_pl_smallstr};
+ use rayon::prelude::*;
+ 
+ use super::{BufferedStream, LOPSIDED_SAMPLE_FACTOR};
+-use crate::async_executor;
+-use crate::async_primitives::wait_group::WaitGroup;
+ use crate::expression::StreamExpr;
+ use crate::morsel::{SourceToken, get_ideal_morsel_size};
+ use crate::nodes::compute_node_prelude::*;
+@@ -398,7 +398,7 @@ impl SampleState {
+ 
+         // Simulate the sample build morsels flowing into the build side.
+         if !sampled_build_morsels.is_empty() {
+-            crate::async_executor::task_scope(|scope| {
++            executor::task_scope(|scope| {
+                 let mut join_handles = Vec::new();
+                 let receivers = sampled_build_morsels
+                     .reinsert(state.num_pipelines, None, scope, &mut join_handles)
+@@ -641,7 +641,7 @@ impl BuildState {
+         let local_builders = &self.local_builders;
+         let probe_tables: SparseInitVec<ProbeTable> = SparseInitVec::with_capacity(num_partitions);
+ 
+-        async_executor::task_scope(|s| {
++        executor::task_scope(|s| {
+             // Wrap in outer Arc to move to each thread, performing the
+             // expensive clone on that thread.
+             let arc_morsels_per_local_builder = Arc::new(morsels_per_local_builder);
+diff --git a/crates/polars-stream/src/nodes/joins/merge_join.rs b/crates/polars-stream/src/nodes/joins/merge_join.rs
+index 160942e2d..afcf8eb87 100644
+--- a/crates/polars-stream/src/nodes/joins/merge_join.rs
++++ b/crates/polars-stream/src/nodes/joins/merge_join.rs
+@@ -1,6 +1,9 @@
+ use std::cmp::Ordering;
+ use std::ops::RangeBounds;
+ 
++use polars_async::executor::{JoinHandle, TaskPriority, TaskScope};
++use polars_async::primitives::distributor_channel::{self, distributor_channel};
++use polars_async::primitives::wait_group::WaitGroup;
+ use polars_core::frame::builder::DataFrameBuilder;
+ use polars_core::prelude::*;
+ use polars_core::runtime::RAYON;
+@@ -11,9 +14,6 @@ use polars_utils::sort::reorder_cmp;
+ use rayon::slice::ParallelSliceMut;
+ 
+ use crate::DEFAULT_DISTRIBUTOR_BUFFER_SIZE;
+-use crate::async_executor::{JoinHandle, TaskPriority, TaskScope};
+-use crate::async_primitives::distributor_channel::{self, distributor_channel};
+-use crate::async_primitives::wait_group::WaitGroup;
+ use crate::execute::StreamingExecutionState;
+ use crate::graph::PortState;
+ use crate::morsel::{Morsel, MorselSeq, SourceToken, get_ideal_morsel_size};
+diff --git a/crates/polars-stream/src/nodes/joins/mod.rs b/crates/polars-stream/src/nodes/joins/mod.rs
+index 8dc4e4176..7f8f8eaa6 100644
+--- a/crates/polars-stream/src/nodes/joins/mod.rs
++++ b/crates/polars-stream/src/nodes/joins/mod.rs
+@@ -1,14 +1,14 @@
+ use std::sync::Arc;
+ 
+ use crossbeam_queue::ArrayQueue;
++use polars_async::executor::{JoinHandle, TaskPriority, TaskScope};
++use polars_async::primitives::wait_group::WaitGroup;
+ use polars_core::runtime::RAYON;
+ use polars_error::PolarsResult;
+ use polars_ooc::{MostRecentSpillContext, SpillFrame};
+ use polars_utils::itertools::Itertools;
+ use rayon::prelude::*;
+ 
+-use crate::async_executor::{JoinHandle, TaskPriority, TaskScope};
+-use crate::async_primitives::wait_group::WaitGroup;
+ use crate::morsel::{Morsel, MorselSeq, SourceToken};
+ use crate::pipe::{PortReceiver, RecvPort, port_channel};
+ 
+diff --git a/crates/polars-stream/src/nodes/joins/range_join.rs b/crates/polars-stream/src/nodes/joins/range_join.rs
+index 4c7d6b4db..4c13213c9 100644
+--- a/crates/polars-stream/src/nodes/joins/range_join.rs
++++ b/crates/polars-stream/src/nodes/joins/range_join.rs
+@@ -2,13 +2,13 @@ use std::mem;
+ use std::ops::BitAnd;
+ 
+ use arrow::array::builder::ShareStrategy;
++use polars_async::executor::{JoinHandle, TaskPriority, TaskScope};
++use polars_async::primitives::wait_group::{WaitGroup, WaitToken};
+ use polars_core::frame::builder::DataFrameBuilder;
+ use polars_core::prelude::*;
+ use polars_ops::frame::{_finish_join, IEJoinOptions, InequalityOperator, JoinArgs, JoinBuildSide};
+ use polars_ops::series::{SearchSortedSide, search_sorted};
+ 
+-use crate::async_executor::{JoinHandle, TaskPriority, TaskScope};
+-use crate::async_primitives::wait_group::{WaitGroup, WaitToken};
+ use crate::execute::StreamingExecutionState;
+ use crate::graph::PortState;
+ use crate::morsel::{Morsel, MorselSeq, SourceToken, get_ideal_morsel_size};
+diff --git a/crates/polars-stream/src/nodes/joins/semi_anti_join.rs b/crates/polars-stream/src/nodes/joins/semi_anti_join.rs
+index d5c8bc4a5..5c06e068a 100644
+--- a/crates/polars-stream/src/nodes/joins/semi_anti_join.rs
++++ b/crates/polars-stream/src/nodes/joins/semi_anti_join.rs
+@@ -2,6 +2,7 @@ use std::sync::Arc;
+ 
+ use arrow::array::BooleanArray;
+ use arrow::bitmap::BitmapBuilder;
++use polars_async::executor;
+ use polars_core::prelude::*;
+ use polars_core::runtime::ASYNC;
+ use polars_core::schema::Schema;
+@@ -14,7 +15,6 @@ use polars_utils::hashing::HashPartitioner;
+ use polars_utils::itertools::Itertools;
+ use polars_utils::sparse_init_vec::SparseInitVec;
+ 
+-use crate::async_executor;
+ use crate::expression::StreamExpr;
+ use crate::nodes::compute_node_prelude::*;
+ 
+@@ -176,7 +176,7 @@ impl BuildState {
+         let groupers: SparseInitVec<Box<dyn Grouper>> =
+             SparseInitVec::with_capacity(num_partitions);
+ 
+-        async_executor::task_scope(|s| {
++        executor::task_scope(|s| {
+             // Wrap in outer Arc to move to each thread, performing the
+             // expensive clone on that thread.
+             let arc_keys_per_local_builder = Arc::new(keys_per_local_builder);
+diff --git a/crates/polars-stream/src/nodes/merge_sorted.rs b/crates/polars-stream/src/nodes/merge_sorted.rs
+index c499eb35e..e4ce861e2 100644
+--- a/crates/polars-stream/src/nodes/merge_sorted.rs
++++ b/crates/polars-stream/src/nodes/merge_sorted.rs
+@@ -1,11 +1,11 @@
+ use std::collections::VecDeque;
+ 
++use polars_async::primitives::distributor_channel::distributor_channel;
++use polars_async::primitives::wait_group::WaitGroup;
+ use polars_core::prelude::ChunkCompareIneq;
+ use polars_ops::frame::_merge_sorted_dfs;
+ 
+ use crate::DEFAULT_DISTRIBUTOR_BUFFER_SIZE;
+-use crate::async_primitives::distributor_channel::distributor_channel;
+-use crate::async_primitives::wait_group::WaitGroup;
+ use crate::morsel::{SourceToken, get_ideal_morsel_size};
+ use crate::nodes::compute_node_prelude::*;
+ 
+diff --git a/crates/polars-stream/src/nodes/mod.rs b/crates/polars-stream/src/nodes/mod.rs
+index 7fdec10ed..bd5023500 100644
+--- a/crates/polars-stream/src/nodes/mod.rs
++++ b/crates/polars-stream/src/nodes/mod.rs
+@@ -56,12 +56,12 @@ pub mod zip;
+ 
+ /// The imports you'll always need for implementing a ComputeNode.
+ mod compute_node_prelude {
++    pub use polars_async::executor::{JoinHandle, TaskPriority, TaskScope};
+     pub use polars_core::frame::DataFrame;
+     pub use polars_error::PolarsResult;
+     pub use polars_expr::state::ExecutionState;
+ 
+     pub use super::ComputeNode;
+-    pub use crate::async_executor::{JoinHandle, TaskPriority, TaskScope};
+     pub use crate::execute::StreamingExecutionState;
+     pub use crate::graph::PortState;
+     pub use crate::morsel::{Morsel, MorselSeq};
+diff --git a/crates/polars-stream/src/nodes/multiplexer.rs b/crates/polars-stream/src/nodes/multiplexer.rs
+index c813bf1d2..2271c76c5 100644
+--- a/crates/polars-stream/src/nodes/multiplexer.rs
++++ b/crates/polars-stream/src/nodes/multiplexer.rs
+@@ -1,11 +1,11 @@
+ use std::collections::VecDeque;
+ use std::sync::Arc;
+ 
++use polars_async::primitives::wait_group::WaitGroup;
+ use polars_ooc::{MostRecentSpillContext, SpillFrame};
+ use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
+ 
+ use super::compute_node_prelude::*;
+-use crate::async_primitives::wait_group::WaitGroup;
+ use crate::morsel::SourceToken;
+ 
+ enum BufferedStream {
+diff --git a/crates/polars-stream/src/nodes/peak_minmax.rs b/crates/polars-stream/src/nodes/peak_minmax.rs
+index 599ffae3f..9c4af4c4d 100644
+--- a/crates/polars-stream/src/nodes/peak_minmax.rs
++++ b/crates/polars-stream/src/nodes/peak_minmax.rs
+@@ -1,11 +1,11 @@
++use polars_async::executor::{JoinHandle, TaskPriority, TaskScope};
++use polars_async::primitives::wait_group::WaitGroup;
+ use polars_core::frame::DataFrame;
+ use polars_core::prelude::{AnyValue, Column, IntoColumn};
+ use polars_error::PolarsResult;
+ use polars_ops::prelude::peaks;
+ 
+ use super::ComputeNode;
+-use crate::async_executor::{JoinHandle, TaskPriority, TaskScope};
+-use crate::async_primitives::wait_group::WaitGroup;
+ use crate::execute::StreamingExecutionState;
+ use crate::graph::PortState;
+ use crate::morsel::{Morsel, MorselSeq, SourceToken};
+diff --git a/crates/polars-stream/src/nodes/repeat.rs b/crates/polars-stream/src/nodes/repeat.rs
+index 3035f0d9e..8487eb824 100644
+--- a/crates/polars-stream/src/nodes/repeat.rs
++++ b/crates/polars-stream/src/nodes/repeat.rs
+@@ -1,9 +1,9 @@
+ use std::sync::Arc;
+ 
++use polars_async::primitives::wait_group::WaitGroup;
+ use polars_core::schema::Schema;
+ 
+ use super::compute_node_prelude::*;
+-use crate::async_primitives::wait_group::WaitGroup;
+ use crate::morsel::{SourceToken, get_ideal_morsel_size};
+ use crate::nodes::in_memory_sink::InMemorySinkNode;
+ pub enum RepeatNode {
+diff --git a/crates/polars-stream/src/nodes/rle.rs b/crates/polars-stream/src/nodes/rle.rs
+index b30fa376b..13c17fdf3 100644
+--- a/crates/polars-stream/src/nodes/rle.rs
++++ b/crates/polars-stream/src/nodes/rle.rs
+@@ -1,4 +1,5 @@
+ use arrow::array::builder::ShareStrategy;
++use polars_async::executor::{JoinHandle, TaskPriority, TaskScope};
+ use polars_core::frame::DataFrame;
+ use polars_core::prelude::{
+     AnyValue, DataType, Field, IDX_DTYPE, IntoColumn, NamedFrom, StructChunked,
+@@ -12,7 +13,6 @@ use polars_utils::IdxSize;
+ use polars_utils::pl_str::PlSmallStr;
+ 
+ use super::ComputeNode;
+-use crate::async_executor::{JoinHandle, TaskPriority, TaskScope};
+ use crate::execute::StreamingExecutionState;
+ use crate::graph::PortState;
+ use crate::morsel::{Morsel, MorselSeq, SourceToken};
+diff --git a/crates/polars-stream/src/nodes/rle_id.rs b/crates/polars-stream/src/nodes/rle_id.rs
+index 0618f7d4f..d05910a41 100644
+--- a/crates/polars-stream/src/nodes/rle_id.rs
++++ b/crates/polars-stream/src/nodes/rle_id.rs
+@@ -1,3 +1,4 @@
++use polars_async::executor::{JoinHandle, TaskPriority, TaskScope};
+ use polars_core::frame::DataFrame;
+ use polars_core::prelude::{AnyValue, Column, DataType};
+ use polars_core::scalar::Scalar;
+@@ -5,7 +6,6 @@ use polars_error::PolarsResult;
+ use polars_utils::IdxSize;
+ 
+ use super::ComputeNode;
+-use crate::async_executor::{JoinHandle, TaskPriority, TaskScope};
+ use crate::execute::StreamingExecutionState;
+ use crate::graph::PortState;
+ use crate::pipe::{RecvPort, SendPort};
+diff --git a/crates/polars-stream/src/nodes/rolling_group_by.rs b/crates/polars-stream/src/nodes/rolling_group_by.rs
+index 6936ce9ed..492fd3dd9 100644
+--- a/crates/polars-stream/src/nodes/rolling_group_by.rs
++++ b/crates/polars-stream/src/nodes/rolling_group_by.rs
+@@ -1,6 +1,9 @@
+ use std::sync::Arc;
+ 
+ use chrono_tz::Tz;
++use polars_async::executor::{JoinHandle, TaskPriority, TaskScope};
++use polars_async::primitives::distributor_channel::distributor_channel;
++use polars_async::primitives::wait_group::WaitGroup;
+ use polars_core::frame::DataFrame;
+ use polars_core::prelude::{Column, DataType, GroupsType, TimeUnit};
+ use polars_core::schema::Schema;
+@@ -14,9 +17,6 @@ use polars_utils::pl_str::PlSmallStr;
+ 
+ use super::ComputeNode;
+ use crate::DEFAULT_DISTRIBUTOR_BUFFER_SIZE;
+-use crate::async_executor::{JoinHandle, TaskPriority, TaskScope};
+-use crate::async_primitives::distributor_channel::distributor_channel;
+-use crate::async_primitives::wait_group::WaitGroup;
+ use crate::execute::StreamingExecutionState;
+ use crate::expression::StreamExpr;
+ use crate::graph::PortState;
+diff --git a/crates/polars-stream/src/nodes/shift.rs b/crates/polars-stream/src/nodes/shift.rs
+index 5bb8f357a..f4350baf8 100644
+--- a/crates/polars-stream/src/nodes/shift.rs
++++ b/crates/polars-stream/src/nodes/shift.rs
+@@ -1,12 +1,12 @@
+ use std::collections::VecDeque;
+ use std::sync::Arc;
+ 
++use polars_async::primitives::wait_group::WaitGroup;
+ use polars_core::prelude::*;
+ use polars_core::schema::Schema;
+ use polars_ooc::{MostRecentSpillContext, SpillFrame};
+ 
+ use super::compute_node_prelude::*;
+-use crate::async_primitives::wait_group::WaitGroup;
+ use crate::morsel::{SourceToken, get_ideal_morsel_size};
+ use crate::nodes::in_memory_sink::InMemorySinkNode;
+ use crate::pipe::PortReceiver;
+diff --git a/crates/polars-stream/src/nodes/sorted_group_by.rs b/crates/polars-stream/src/nodes/sorted_group_by.rs
+index f2a246da9..76c34784f 100644
+--- a/crates/polars-stream/src/nodes/sorted_group_by.rs
++++ b/crates/polars-stream/src/nodes/sorted_group_by.rs
+@@ -1,5 +1,8 @@
+ use std::sync::Arc;
+ 
++use polars_async::executor::{JoinHandle, TaskPriority, TaskScope};
++use polars_async::primitives::distributor_channel::distributor_channel;
++use polars_async::primitives::wait_group::WaitGroup;
+ use polars_core::frame::DataFrame;
+ use polars_core::prelude::GroupsType;
+ use polars_core::schema::Schema;
+@@ -12,9 +15,6 @@ use polars_utils::pl_str::PlSmallStr;
+ 
+ use super::ComputeNode;
+ use crate::DEFAULT_DISTRIBUTOR_BUFFER_SIZE;
+-use crate::async_executor::{JoinHandle, TaskPriority, TaskScope};
+-use crate::async_primitives::distributor_channel::distributor_channel;
+-use crate::async_primitives::wait_group::WaitGroup;
+ use crate::execute::StreamingExecutionState;
+ use crate::expression::StreamExpr;
+ use crate::graph::PortState;
+diff --git a/crates/polars-stream/src/nodes/sorted_unique.rs b/crates/polars-stream/src/nodes/sorted_unique.rs
+index 495d334dd..2bf6ab34c 100644
+--- a/crates/polars-stream/src/nodes/sorted_unique.rs
++++ b/crates/polars-stream/src/nodes/sorted_unique.rs
+@@ -1,4 +1,7 @@
+ use arrow::bitmap::BitmapBuilder;
++use polars_async::executor::{JoinHandle, TaskPriority, TaskScope};
++use polars_async::primitives::distributor_channel::distributor_channel;
++use polars_async::primitives::wait_group::WaitGroup;
+ use polars_core::frame::DataFrame;
+ use polars_core::prelude::row_encode::encode_rows_unordered;
+ use polars_core::prelude::{AnyValue, BooleanChunked, Column, IntoColumn};
+@@ -9,9 +12,6 @@ use polars_utils::pl_str::PlSmallStr;
+ 
+ use super::ComputeNode;
+ use crate::DEFAULT_DISTRIBUTOR_BUFFER_SIZE;
+-use crate::async_executor::{JoinHandle, TaskPriority, TaskScope};
+-use crate::async_primitives::distributor_channel::distributor_channel;
+-use crate::async_primitives::wait_group::WaitGroup;
+ use crate::execute::StreamingExecutionState;
+ use crate::graph::PortState;
+ use crate::pipe::{RecvPort, SendPort};
+diff --git a/crates/polars-stream/src/nodes/with_row_index.rs b/crates/polars-stream/src/nodes/with_row_index.rs
+index 622bf5764..ecb055478 100644
+--- a/crates/polars-stream/src/nodes/with_row_index.rs
++++ b/crates/polars-stream/src/nodes/with_row_index.rs
+@@ -1,11 +1,11 @@
++use polars_async::primitives::distributor_channel::distributor_channel;
++use polars_async::primitives::wait_group::WaitGroup;
+ use polars_core::prelude::*;
+ use polars_core::utils::Container;
+ use polars_utils::pl_str::PlSmallStr;
+ 
+ use super::compute_node_prelude::*;
+ use crate::DEFAULT_DISTRIBUTOR_BUFFER_SIZE;
+-use crate::async_primitives::distributor_channel::distributor_channel;
+-use crate::async_primitives::wait_group::WaitGroup;
+ 
+ pub struct WithRowIndexNode {
+     name: PlSmallStr,
+diff --git a/crates/polars-stream/src/nodes/zip.rs b/crates/polars-stream/src/nodes/zip.rs
+index 0e4887674..5c4a3c2b5 100644
+--- a/crates/polars-stream/src/nodes/zip.rs
++++ b/crates/polars-stream/src/nodes/zip.rs
+@@ -1,6 +1,7 @@
+ use std::collections::VecDeque;
+ use std::sync::Arc;
+ 
++use polars_async::primitives::wait_group::WaitToken;
+ use polars_core::functions::concat_df_horizontal;
+ use polars_core::prelude::{Column, IntoColumn};
+ use polars_core::schema::Schema;
+@@ -11,7 +12,6 @@ use polars_utils::itertools::Itertools;
+ 
+ use super::compute_node_prelude::*;
+ use crate::DEFAULT_ZIP_HEAD_BUFFER_SIZE;
+-use crate::async_primitives::wait_group::WaitToken;
+ use crate::morsel::SourceToken;
+ use crate::physical_plan::ZipBehavior;
+ 
+diff --git a/crates/polars-stream/src/physical_plan/lower_ir.rs b/crates/polars-stream/src/physical_plan/lower_ir.rs
+index 79cbb96f3..733781c3b 100644
+--- a/crates/polars-stream/src/physical_plan/lower_ir.rs
++++ b/crates/polars-stream/src/physical_plan/lower_ir.rs
+@@ -3,9 +3,9 @@ use std::sync::Arc;
+ use arrow::array::{MutableBinaryViewArray, Utf8ViewArray};
+ use arrow::datatypes::ArrowDataType;
+ use parking_lot::Mutex;
++use polars_async::executor::ALLOW_RAYON_THREADS;
+ use polars_core::frame::{DataFrame, UniqueKeepStrategy};
+ use polars_core::prelude::{DataType, IntoColumn, PlHashMap, PlHashSet};
+-use polars_core::runtime::ALLOW_RAYON_THREADS;
+ use polars_core::scalar::Scalar;
+ use polars_core::schema::Schema;
+ use polars_core::series::Series;
+diff --git a/crates/polars-stream/src/pipe.rs b/crates/polars-stream/src/pipe.rs
+index a9e2da140..5bb8ee446 100644
+--- a/crates/polars-stream/src/pipe.rs
++++ b/crates/polars-stream/src/pipe.rs
+@@ -2,15 +2,15 @@ use std::cmp::Reverse;
+ use std::sync::Arc;
+ 
+ use parking_lot::Mutex;
++use polars_async::executor::{JoinHandle, TaskPriority, TaskScope};
++use polars_async::primitives::connector::{ReceiverExt, SenderExt, connector_with};
++use polars_async::primitives::distributor_channel::distributor_channel;
++use polars_async::primitives::linearizer::Linearizer;
++use polars_async::primitives::wait_group::WaitGroup;
+ use polars_error::PolarsResult;
+ use polars_utils::priority::Priority;
+ use polars_utils::relaxed_cell::RelaxedCell;
+ 
+-use crate::async_executor::{JoinHandle, TaskPriority, TaskScope};
+-use crate::async_primitives::connector::{ReceiverExt, SenderExt, connector_with};
+-use crate::async_primitives::distributor_channel::distributor_channel;
+-use crate::async_primitives::linearizer::Linearizer;
+-use crate::async_primitives::wait_group::WaitGroup;
+ use crate::graph::LogicalPipeKey;
+ use crate::metrics::GraphMetrics;
+ use crate::morsel::{Morsel, MorselSeq};
+diff --git a/crates/polars-stream/src/skeleton.rs b/crates/polars-stream/src/skeleton.rs
+index 7fcd6d297..6d458e956 100644
+--- a/crates/polars-stream/src/skeleton.rs
++++ b/crates/polars-stream/src/skeleton.rs
+@@ -127,7 +127,7 @@ impl StreamingQuery {
+         let metrics = if std::env::var("POLARS_TRACK_METRICS").as_deref() == Ok("1")
+             || std::env::var("POLARS_LOG_METRICS").as_deref() == Ok("1")
+         {
+-            crate::async_executor::track_task_metrics(true);
++            polars_async::executor::track_task_metrics(true);
+             Some(Arc::default())
+         } else {
+             None

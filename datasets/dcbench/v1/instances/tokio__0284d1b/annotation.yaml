@@ -1,0 +1,49 @@
+repo: tokio
+base_commit: 710bc8071ea030f0ad98817414997beab2420ad2
+commit: 0284d1b5c8ea5aff5b30c254200fb0a46c21d67c
+patch_stored: true
+gold:
+  - path: tokio/src/macros/select.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: select! macro body now calls poll_budget_available(cx) via std::task::ready! before polling branches — the core behavioral change.
+  - path: tokio/src/macros/support.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: defines the poll_budget_available(cx) shim (cfg_coop! forwarding to coop::poll_budget_available, cfg_not_coop! stub returning Ready) that select.rs calls.
+  - path: tokio/src/task/coop/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: defines coop::poll_budget_available and has_budget_remaining, and renames defer to register_waker to reflect its new dual use by poll_proceed and poll_budget_available.
+  - path: tokio/tests/macros_select.rs
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: select_is_budget_aware test exercises the new behavior by looping consume_budget() branches until the budget (128) is exhausted and asserting select! then returns Pending.
+  - path: tokio/src/runtime/context.rs
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: defines context::defer(waker), called from the renamed register_waker in coop/mod.rs — registers the waker with the scheduler for a deferred wake instead of an immediate one.
+forbidden:
+  - path: tokio/src/macros/join.rs
+    reason: sibling combinator macro, not made budget-aware by this patch
+  - path: tokio/src/macros/try_join.rs
+    reason: sibling combinator macro, not made budget-aware by this patch
+  - path: tokio/src/task/coop/unconstrained.rs
+    reason: same coop directory but implements the opposite feature (opting a future OUT of budget checks)
+  - path: tokio/src/task/coop/consume_budget.rs
+    reason: pre-existing budget-consuming future used only by the new test, not itself modified
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 4
+  description: 'macros: make `select!` budget-aware — declarative macro + coop module coupling 2 hops
+    away'
+notes: 'select! macro is made coop-budget-aware: it now polls for budget availability before polling branches, so a budget-exhausted select! yields instead of spinning. All 4 diff files form a tight call chain (select.rs -> support.rs -> coop/mod.rs) plus a covering test; context.rs is genuinely outside the diff but needed to understand what register_waker (renamed from defer) actually does.'

@@ -1,0 +1,58 @@
+repo: aspnetcore
+base_commit: 6b15190a3fe57dbc3dd784600faa7f717fb5f3ad
+commit: 926090b68eb970725c891bbf5aa3ac3ad0559be4
+patch_stored: true
+gold:
+  - path: src/Hosting/Hosting/src/WebHostBuilder.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Defines `public class WebHostBuilder : IWebHostBuilder` and is the single symbol the patch decorates with `[Obsolete(\"...\", DiagnosticId = \"ASPDEPR004\")]` — every other file in the diff exists only to react to this attribute."
+  - path: src/DefaultBuilder/src/WebHost.cs
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: "`WebHost.CreateDefaultBuilder` — the most widely used entry point in the framework — does `var builder = new WebHostBuilder();` internally, so it needed `#pragma warning disable ASPDEPR004` to keep compiling; shows the obsoletion reaches into first-party framework code, not just tests."
+  - path: src/Hosting/TestHost/test/TestServerTests.cs
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: "Largest rewritten file (494 lines) demonstrating the dominant migration pattern in this sweep: replacing `new TestServer(new WebHostBuilder()...)` with `new HostBuilder().ConfigureWebHost(wb => wb.UseTestServer()....).Build()` to avoid triggering ASPDEPR004."
+  - path: src/Hosting/Hosting/test/WebHostBuilderTests.cs
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: "Tests WebHostBuilder itself, so it cannot migrate away from it; instead wraps `new WebHostBuilder()` calls in `#pragma warning disable/restore ASPDEPR004`, illustrating the alternative (suppress-in-place) strategy used where the obsolete type is the thing under test."
+  - path: src/Hosting/TestHost/src/WebHostBuilderExtensions.cs
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: "Defines the `UseTestServer(this IWebHostBuilder builder, ...)` extension method that every migrated test in this patch now calls inside `ConfigureWebHost(...)` instead of constructing `TestServer` from a `WebHostBuilder` directly."
+  - path: src/Hosting/TestHost/src/HostBuilderTestServerExtensions.cs
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: "Defines `GetTestServer(this IHost host)`, the method every migrated test calls after `host.Build()`/`host.StartAsync()` to retrieve the `TestServer` — the other half of the HostBuilder-based replacement pattern for the obsoleted `new TestServer(webHostBuilder)` constructor."
+  - path: src/Hosting/TestHost/src/TestServer.cs
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: "Defines `public TestServer(IWebHostBuilder builder)`, the constructor overload that would now emit ASPDEPR004 when called with `new WebHostBuilder()`; explains precisely why so many TestHost tests were rewritten to go through `HostBuilder`/`GetTestServer` instead of calling this constructor directly."
+forbidden:
+  - path: src/DefaultBuilder/test/Microsoft.AspNetCore.Tests/WebApplicationTests.cs
+    reason: tests the unrelated, already-modern WebApplicationBuilder/WebApplication API surface and never references WebHostBuilder
+  - path: src/Servers/Kestrel/Kestrel/src/WebHostBuilderKestrelExtensions.cs
+    reason: extension methods target the IWebHostBuilder interface (unaffected), not the obsoleted concrete WebHostBuilder class — only its *test* file needed pragma changes, not this source file
+  - path: src/Middleware/HttpOverrides/src/ForwardedHeadersOptions.cs
+    reason: uses the same [Obsolete(..., DiagnosticId=\"ASPDEPRxxx\")] convention but for an unrelated prior deprecation (KnownNetworks, ASPDEPR005) — a naming-pattern lookalike, not linked to this change
+  - path: src/Hosting/TestHost/src/HttpContextBuilder.cs
+    reason: graph-candidate sibling in the same TestHost/src directory as the gold extension files, but its API is unchanged by this patch and it never constructs a WebHostBuilder
+nontrivial_gold_count: 3
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration, bm25, graph, random]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 21
+  description: Mark WebHostBuilder class as obsolete — cross-project cs-only sweep
+notes: "Adds [Obsolete(DiagnosticId=\"ASPDEPR004\")] to WebHostBuilder (part of an established ASPDEPR00x deprecation-attribute convention already used elsewhere in the repo for other APIs) and then updates ~20 dependent files: framework code that constructs WebHostBuilder internally gets #pragma suppression, while most TestHost-based tests are rewritten to use HostBuilder+ConfigureWebHost+UseTestServer+GetTestServer instead of `new TestServer(new WebHostBuilder())`, which is the pattern shown by the three 'helpful' definition files."

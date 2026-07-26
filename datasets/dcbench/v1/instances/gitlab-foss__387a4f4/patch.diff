@@ -1,0 +1,1120 @@
+From 387a4f4b2cc9cffe2a21ef1060fe35c60d1ac769 Mon Sep 17 00:00:00 2001
+From: Shinya Maeda <shinya@gitlab.com>
+Date: Fri, 22 Mar 2019 19:38:45 +0700
+Subject: [PATCH] Remove legacy artifact related code
+
+We've already migrated all the legacy artifacts to the new realm,
+which is ci_job_artifacts table.
+It's time to remove the old code base that is no longer used.
+---
+ app/models/ci/build.rb                        |  64 ++++----
+ app/models/concerns/artifact_migratable.rb    |  58 -------
+ app/uploaders/legacy_artifact_uploader.rb     |  27 ----
+ .../remove-legacy-artifacts-related-code.yml  |   5 +
+ lib/api/helpers.rb                            |   2 +-
+ .../projects/jobs_controller_spec.rb          |   4 +-
+ spec/factories/ci/builds.rb                   |  11 --
+ spec/factories/ci/job_artifacts.rb            |  18 ++-
+ spec/features/commits_spec.rb                 |   6 +-
+ .../user_sees_mini_pipeline_graph_spec.rb     |   6 +-
+ .../projects/jobs/permissions_spec.rb         |   2 +-
+ .../projects/jobs/user_browses_job_spec.rb    |   4 +-
+ spec/features/projects/jobs_spec.rb           |  10 +-
+ spec/features/projects/pages_spec.rb          |  15 +-
+ spec/migrations/migrate_old_artifacts_spec.rb |   4 -
+ spec/models/ci/build_spec.rb                  | 146 +-----------------
+ spec/requests/api/jobs_spec.rb                |   4 +-
+ spec/requests/api/runner_spec.rb              |  10 +-
+ spec/services/ci/retry_build_service_spec.rb  |   5 +-
+ .../projects/update_pages_service_spec.rb     |  59 +------
+ .../gitlab/artifacts/migrate_rake_spec.rb     |  55 -------
+ .../legacy_artifact_uploader_spec.rb          |  61 --------
+ .../background_move_worker_spec.rb            |  34 ----
+ ...re_build_instance_artifacts_worker_spec.rb |   6 +-
+ 24 files changed, 94 insertions(+), 522 deletions(-)
+ delete mode 100644 app/models/concerns/artifact_migratable.rb
+ delete mode 100644 app/uploaders/legacy_artifact_uploader.rb
+ create mode 100644 changelogs/unreleased/remove-legacy-artifacts-related-code.yml
+ delete mode 100644 spec/uploaders/legacy_artifact_uploader_spec.rb
+
+diff --git a/app/models/ci/build.rb b/app/models/ci/build.rb
+index 56786fae6e..f743fca423 100644
+--- a/app/models/ci/build.rb
++++ b/app/models/ci/build.rb
+@@ -2,7 +2,6 @@
+ 
+ module Ci
+   class Build < CommitStatus
+-    prepend ArtifactMigratable
+     include Ci::Processable
+     include Ci::Metadatable
+     include Ci::Contextable
+@@ -21,6 +20,11 @@ class Build < CommitStatus
+     BuildArchivedError = Class.new(StandardError)
+ 
+     ignore_column :commands
++    ignore_column :artifacts_file
++    ignore_column :artifacts_metadata
++    ignore_column :artifacts_file_store
++    ignore_column :artifacts_metadata_store
++    ignore_column :artifacts_size
+ 
+     belongs_to :project, inverse_of: :builds
+     belongs_to :runner
+@@ -83,13 +87,7 @@ def persisted_environment
+     scope :unstarted, ->() { where(runner_id: nil) }
+     scope :ignore_failures, ->() { where(allow_failure: false) }
+     scope :with_artifacts_archive, ->() do
+-      if Feature.enabled?(:ci_enable_legacy_artifacts)
+-        where('(artifacts_file IS NOT NULL AND artifacts_file <> ?) OR EXISTS (?)',
+-          '', Ci::JobArtifact.select(1).where('ci_builds.id = ci_job_artifacts.job_id').archive)
+-      else
+-        where('EXISTS (?)',
+-          Ci::JobArtifact.select(1).where('ci_builds.id = ci_job_artifacts.job_id').archive)
+-      end
++      where('EXISTS (?)', Ci::JobArtifact.select(1).where('ci_builds.id = ci_job_artifacts.job_id').archive)
+     end
+ 
+     scope :with_existing_job_artifacts, ->(query) do
+@@ -111,8 +109,8 @@ def persisted_environment
+ 
+     scope :eager_load_job_artifacts, -> { includes(:job_artifacts) }
+ 
+-    scope :with_artifacts_stored_locally, -> { with_artifacts_archive.where(artifacts_file_store: [nil, LegacyArtifactUploader::Store::LOCAL]) }
+-    scope :with_archived_trace_stored_locally, -> { with_archived_trace.where(artifacts_file_store: [nil, LegacyArtifactUploader::Store::LOCAL]) }
++    scope :with_artifacts_stored_locally, -> { with_existing_job_artifacts(Ci::JobArtifact.archive.with_files_stored_locally) }
++    scope :with_archived_trace_stored_locally, -> { with_existing_job_artifacts(Ci::JobArtifact.trace.with_files_stored_locally) }
+     scope :with_artifacts_not_expired, ->() { with_artifacts_archive.where('artifacts_expire_at IS NULL OR artifacts_expire_at > ?', Time.now) }
+     scope :with_expired_artifacts, ->() { with_artifacts_archive.where('artifacts_expire_at < ?', Time.now) }
+     scope :last_month, ->() { where('created_at > ?', Date.today - 1.month) }
+@@ -142,16 +140,10 @@ def persisted_environment
+ 
+     scope :queued_before, ->(time) { where(arel_table[:queued_at].lt(time)) }
+ 
+-    ##
+-    # TODO: Remove these mounters when we remove :ci_enable_legacy_artifacts feature flag
+-    mount_uploader :legacy_artifacts_file, LegacyArtifactUploader, mount_on: :artifacts_file
+-    mount_uploader :legacy_artifacts_metadata, LegacyArtifactUploader, mount_on: :artifacts_metadata
+-
+     acts_as_taggable
+ 
+     add_authentication_token_field :token, encrypted: :optional
+ 
+-    before_save :update_artifacts_size, if: :artifacts_file_changed?
+     before_save :ensure_token
+     before_destroy { unscoped_project }
+ 
+@@ -159,8 +151,6 @@ def persisted_environment
+       run_after_commit { BuildHooksWorker.perform_async(build.id) }
+     end
+ 
+-    update_project_statistics stat: :build_artifacts_size, attribute: :artifacts_size
+-
+     class << self
+       # This is needed for url_for to work,
+       # as the controller is JobsController
+@@ -542,6 +532,26 @@ def has_trace?
+       trace.exist?
+     end
+ 
++    def artifacts_file
++      job_artifacts_archive&.file
++    end
++
++    def artifacts_size
++      job_artifacts_archive&.size
++    end
++
++    def artifacts_metadata
++      job_artifacts_metadata&.file
++    end
++
++    def artifacts?
++      !artifacts_expired? && artifacts_file&.exists?
++    end
++
++    def artifacts_metadata?
++      artifacts? && artifacts_metadata&.exists?
++    end
++
+     def has_job_artifacts?
+       job_artifacts.any?
+     end
+@@ -610,14 +620,12 @@ def artifacts_metadata_entry(path, **options)
+     # and use that for `ExpireBuildInstanceArtifactsWorker`?
+     def erase_erasable_artifacts!
+       job_artifacts.erasable.destroy_all # rubocop: disable DestroyAll
+-      erase_old_artifacts!
+     end
+ 
+     def erase(opts = {})
+       return false unless erasable?
+ 
+       job_artifacts.destroy_all # rubocop: disable DestroyAll
+-      erase_old_artifacts!
+       erase_trace!
+       update_erased!(opts[:erased_by])
+     end
+@@ -655,10 +663,7 @@ def keep_artifacts!
+     end
+ 
+     def artifacts_file_for_type(type)
+-      file = job_artifacts.find_by(file_type: Ci::JobArtifact.file_types[type])&.file
+-      # TODO: to be removed once legacy artifacts is removed
+-      file ||= legacy_artifacts_file if type == :archive
+-      file
++      job_artifacts.find_by(file_type: Ci::JobArtifact.file_types[type])&.file
+     end
+ 
+     def coverage_regex
+@@ -784,13 +789,6 @@ def deployment_status
+ 
+     private
+ 
+-    def erase_old_artifacts!
+-      # TODO: To be removed once we get rid of ci_enable_legacy_artifacts feature flag
+-      remove_artifacts_file!
+-      remove_artifacts_metadata!
+-      save
+-    end
+-
+     def successful_deployment_status
+       if deployment&.last?
+         :last
+@@ -812,10 +810,6 @@ def job_artifacts_for_types(report_types)
+       job_artifacts.select { |artifact| artifact.file_type.in?(report_types) }
+     end
+ 
+-    def update_artifacts_size
+-      self.artifacts_size = legacy_artifacts_file&.size
+-    end
+-
+     def erase_trace!
+       trace.erase!
+     end
+diff --git a/app/models/concerns/artifact_migratable.rb b/app/models/concerns/artifact_migratable.rb
+deleted file mode 100644
+index 7c9f579b48..0000000000
+--- a/app/models/concerns/artifact_migratable.rb
++++ /dev/null
+@@ -1,58 +0,0 @@
+-# frozen_string_literal: true
+-
+-# Adapter class to unify the interface between mounted uploaders and the
+-# Ci::Artifact model
+-# Meant to be prepended so the interface can stay the same
+-module ArtifactMigratable
+-  def artifacts_file
+-    job_artifacts_archive&.file || legacy_artifacts_file
+-  end
+-
+-  def artifacts_metadata
+-    job_artifacts_metadata&.file || legacy_artifacts_metadata
+-  end
+-
+-  def artifacts?
+-    !artifacts_expired? && artifacts_file&.exists?
+-  end
+-
+-  def artifacts_metadata?
+-    artifacts? && artifacts_metadata.exists?
+-  end
+-
+-  def artifacts_file_changed?
+-    job_artifacts_archive&.file_changed? || attribute_changed?(:artifacts_file)
+-  end
+-
+-  def remove_artifacts_file!
+-    if job_artifacts_archive
+-      job_artifacts_archive.destroy
+-    else
+-      remove_legacy_artifacts_file!
+-    end
+-  end
+-
+-  def remove_artifacts_metadata!
+-    if job_artifacts_metadata
+-      job_artifacts_metadata.destroy
+-    else
+-      remove_legacy_artifacts_metadata!
+-    end
+-  end
+-
+-  def artifacts_size
+-    read_attribute(:artifacts_size).to_i + job_artifacts.sum(:size).to_i
+-  end
+-
+-  def legacy_artifacts_file
+-    return unless Feature.enabled?(:ci_enable_legacy_artifacts)
+-
+-    super
+-  end
+-
+-  def legacy_artifacts_metadata
+-    return unless Feature.enabled?(:ci_enable_legacy_artifacts)
+-
+-    super
+-  end
+-end
+diff --git a/app/uploaders/legacy_artifact_uploader.rb b/app/uploaders/legacy_artifact_uploader.rb
+deleted file mode 100644
+index fac3c3dcb8..0000000000
+--- a/app/uploaders/legacy_artifact_uploader.rb
++++ /dev/null
+@@ -1,27 +0,0 @@
+-# frozen_string_literal: true
+-
+-##
+-# TODO: Remove this uploader when we remove :ci_enable_legacy_artifacts feature flag
+-# See https://gitlab.com/gitlab-org/gitlab-ce/issues/58595
+-class LegacyArtifactUploader < GitlabUploader
+-  extend Workhorse::UploadPath
+-  include ObjectStorage::Concern
+-
+-  ObjectNotReadyError = Class.new(StandardError)
+-
+-  storage_options Gitlab.config.artifacts
+-
+-  alias_method :upload, :model
+-
+-  def store_dir
+-    dynamic_segment
+-  end
+-
+-  private
+-
+-  def dynamic_segment
+-    raise ObjectNotReadyError, 'Build is not ready' unless model.id
+-
+-    File.join(model.created_at.utc.strftime('%Y_%m'), model.project_id.to_s, model.id.to_s)
+-  end
+-end
+diff --git a/changelogs/unreleased/remove-legacy-artifacts-related-code.yml b/changelogs/unreleased/remove-legacy-artifacts-related-code.yml
+new file mode 100644
+index 0000000000..acde65af2d
+--- /dev/null
++++ b/changelogs/unreleased/remove-legacy-artifacts-related-code.yml
+@@ -0,0 +1,5 @@
++---
++title: Remove legacy artifact related code
++merge_request: 26475
++author:
++type: other
+diff --git a/lib/api/helpers.rb b/lib/api/helpers.rb
+index 7e4539d041..00bcf6b055 100644
+--- a/lib/api/helpers.rb
++++ b/lib/api/helpers.rb
+@@ -445,7 +445,7 @@ def present_disk_file!(path, filename, content_type = 'application/octet-stream'
+     end
+ 
+     def present_carrierwave_file!(file, supports_direct_download: true)
+-      return not_found! unless file.exists?
++      return not_found! unless file&.exists?
+ 
+       if file.file_storage?
+         present_disk_file!(file.path, file.filename)
+diff --git a/spec/controllers/projects/jobs_controller_spec.rb b/spec/controllers/projects/jobs_controller_spec.rb
+index 9ef00fff3b..490e984149 100644
+--- a/spec/controllers/projects/jobs_controller_spec.rb
++++ b/spec/controllers/projects/jobs_controller_spec.rb
+@@ -841,8 +841,8 @@ def post_unschedule
+       end
+ 
+       it 'erases artifacts' do
+-        expect(job.artifacts_file.exists?).to be_falsey
+-        expect(job.artifacts_metadata.exists?).to be_falsey
++        expect(job.artifacts_file.present?).to be_falsey
++        expect(job.artifacts_metadata.present?).to be_falsey
+       end
+ 
+       it 'erases trace' do
+diff --git a/spec/factories/ci/builds.rb b/spec/factories/ci/builds.rb
+index f8c494c159..a473136b57 100644
+--- a/spec/factories/ci/builds.rb
++++ b/spec/factories/ci/builds.rb
+@@ -248,17 +248,6 @@
+       runner factory: :ci_runner
+     end
+ 
+-    trait :legacy_artifacts do
+-      after(:create) do |build, _|
+-        build.update!(
+-          legacy_artifacts_file: fixture_file_upload(
+-            Rails.root.join('spec/fixtures/ci_build_artifacts.zip'), 'application/zip'),
+-          legacy_artifacts_metadata: fixture_file_upload(
+-            Rails.root.join('spec/fixtures/ci_build_artifacts_metadata.gz'), 'application/x-gzip')
+-        )
+-      end
+-    end
+-
+     trait :artifacts do
+       after(:create) do |build|
+         create(:ci_job_artifact, :archive, job: build, expire_at: build.artifacts_expire_at)
+diff --git a/spec/factories/ci/job_artifacts.rb b/spec/factories/ci/job_artifacts.rb
+index 2c76c22ba6..542fa9775c 100644
+--- a/spec/factories/ci/job_artifacts.rb
++++ b/spec/factories/ci/job_artifacts.rb
+@@ -45,9 +45,12 @@
+       file_type :archive
+       file_format :zip
+ 
+-      after(:build) do |artifact, _|
+-        artifact.file = fixture_file_upload(
+-          Rails.root.join('spec/fixtures/ci_build_artifacts.zip'), 'application/zip')
++      transient do
++        file { fixture_file_upload(Rails.root.join('spec/fixtures/ci_build_artifacts.zip'), 'application/zip') }
++      end
++
++      after(:build) do |artifact, evaluator|
++        artifact.file = evaluator.file
+       end
+     end
+ 
+@@ -61,9 +64,12 @@
+       file_type :metadata
+       file_format :gzip
+ 
+-      after(:build) do |artifact, _|
+-        artifact.file = fixture_file_upload(
+-          Rails.root.join('spec/fixtures/ci_build_artifacts_metadata.gz'), 'application/x-gzip')
++      transient do
++        file { fixture_file_upload(Rails.root.join('spec/fixtures/ci_build_artifacts_metadata.gz'), 'application/x-gzip') }
++      end
++
++      after(:build) do |artifact, evaluator|
++        artifact.file = evaluator.file
+       end
+     end
+ 
+diff --git a/spec/features/commits_spec.rb b/spec/features/commits_spec.rb
+index 5c6c1c4fd1..2adeb37c98 100644
+--- a/spec/features/commits_spec.rb
++++ b/spec/features/commits_spec.rb
+@@ -89,7 +89,7 @@
+ 
+         context 'Download artifacts' do
+           before do
+-            build.update(legacy_artifacts_file: artifacts_file)
++            create(:ci_job_artifact, :archive, file: artifacts_file, job: build)
+           end
+ 
+           it do
+@@ -119,7 +119,7 @@
+       context "when logged as reporter" do
+         before do
+           project.add_reporter(user)
+-          build.update(legacy_artifacts_file: artifacts_file)
++          create(:ci_job_artifact, :archive, file: artifacts_file, job: build)
+           visit pipeline_path(pipeline)
+         end
+ 
+@@ -141,7 +141,7 @@
+           project.update(
+             visibility_level: Gitlab::VisibilityLevel::INTERNAL,
+             public_builds: false)
+-          build.update(legacy_artifacts_file: artifacts_file)
++          create(:ci_job_artifact, :archive, file: artifacts_file, job: build)
+           visit pipeline_path(pipeline)
+         end
+ 
+diff --git a/spec/features/merge_request/user_sees_mini_pipeline_graph_spec.rb b/spec/features/merge_request/user_sees_mini_pipeline_graph_spec.rb
+index 5188dc3625..dd8900a369 100644
+--- a/spec/features/merge_request/user_sees_mini_pipeline_graph_spec.rb
++++ b/spec/features/merge_request/user_sees_mini_pipeline_graph_spec.rb
+@@ -27,7 +27,8 @@ def visit_merge_request(format: :html, serializer: nil)
+     let(:artifacts_file2) { fixture_file_upload(File.join('spec/fixtures/dk.png'), 'image/png') }
+ 
+     before do
+-      create(:ci_build, :success, :trace_artifact, pipeline: pipeline, legacy_artifacts_file: artifacts_file1)
++      job = create(:ci_build, :success, :trace_artifact, pipeline: pipeline)
++      create(:ci_job_artifact, :archive, file: artifacts_file1, job: job)
+       create(:ci_build, :manual, pipeline: pipeline, when: 'manual')
+     end
+ 
+@@ -35,7 +36,8 @@ def visit_merge_request(format: :html, serializer: nil)
+     xit 'avoids repeated database queries' do
+       before = ActiveRecord::QueryRecorder.new { visit_merge_request(format: :json, serializer: 'widget') }
+ 
+-      create(:ci_build, :success, :trace_artifact, pipeline: pipeline, legacy_artifacts_file: artifacts_file2)
++      job = create(:ci_build, :success, :trace_artifact, pipeline: pipeline)
++      create(:ci_job_artifact, :archive, file: artifacts_file2, job: job)
+       create(:ci_build, :manual, pipeline: pipeline, when: 'manual')
+ 
+       after = ActiveRecord::QueryRecorder.new { visit_merge_request(format: :json, serializer: 'widget') }
+diff --git a/spec/features/projects/jobs/permissions_spec.rb b/spec/features/projects/jobs/permissions_spec.rb
+index 6ce37297a7..b5e711997a 100644
+--- a/spec/features/projects/jobs/permissions_spec.rb
++++ b/spec/features/projects/jobs/permissions_spec.rb
+@@ -90,7 +90,7 @@
+       before do
+         archive = fixture_file_upload('spec/fixtures/ci_build_artifacts.zip')
+ 
+-        job.update(legacy_artifacts_file: archive)
++        create(:ci_job_artifact, :archive, file: archive, job: job)
+       end
+ 
+       context 'when public access for jobs is disabled' do
+diff --git a/spec/features/projects/jobs/user_browses_job_spec.rb b/spec/features/projects/jobs/user_browses_job_spec.rb
+index 908c616f2f..54b462da87 100644
+--- a/spec/features/projects/jobs/user_browses_job_spec.rb
++++ b/spec/features/projects/jobs/user_browses_job_spec.rb
+@@ -28,8 +28,8 @@
+ 
+     expect(page).to have_no_css('.artifacts')
+     expect(build).not_to have_trace
+-    expect(build.artifacts_file.exists?).to be_falsy
+-    expect(build.artifacts_metadata.exists?).to be_falsy
++    expect(build.artifacts_file.present?).to be_falsy
++    expect(build.artifacts_metadata.present?).to be_falsy
+ 
+     expect(page).to have_content('Job has been erased')
+   end
+diff --git a/spec/features/projects/jobs_spec.rb b/spec/features/projects/jobs_spec.rb
+index 77ea613b28..d0878c4088 100644
+--- a/spec/features/projects/jobs_spec.rb
++++ b/spec/features/projects/jobs_spec.rb
+@@ -314,7 +314,7 @@
+ 
+     context "Download artifacts", :js do
+       before do
+-        job.update(legacy_artifacts_file: artifacts_file)
++        create(:ci_job_artifact, :archive, file: artifacts_file, job: job)
+         visit project_job_path(project, job)
+       end
+ 
+@@ -338,8 +338,8 @@
+ 
+     context 'Artifacts expire date', :js do
+       before do
+-        job.update(legacy_artifacts_file: artifacts_file,
+-                   artifacts_expire_at: expire_at)
++        create(:ci_job_artifact, :archive, file: artifacts_file, expire_at: expire_at, job: job)
++        job.update!(artifacts_expire_at: expire_at)
+ 
+         visit project_job_path(project, job)
+       end
+@@ -981,7 +981,7 @@
+ 
+   describe "GET /:project/jobs/:id/download", :js do
+     before do
+-      job.update(legacy_artifacts_file: artifacts_file)
++      create(:ci_job_artifact, :archive, file: artifacts_file, job: job)
+       visit project_job_path(project, job)
+ 
+       click_link 'Download'
+@@ -989,7 +989,7 @@
+ 
+     context "Build from other project" do
+       before do
+-        job2.update(legacy_artifacts_file: artifacts_file)
++        create(:ci_job_artifact, :archive, file: artifacts_file, job: job2)
+       end
+ 
+       it do
+diff --git a/spec/features/projects/pages_spec.rb b/spec/features/projects/pages_spec.rb
+index f564ae34f1..be05c74efd 100644
+--- a/spec/features/projects/pages_spec.rb
++++ b/spec/features/projects/pages_spec.rb
+@@ -287,10 +287,17 @@
+           :ci_build,
+           project: project,
+           pipeline: pipeline,
+-          ref: 'HEAD',
+-          legacy_artifacts_file: fixture_file_upload(File.join('spec/fixtures/pages.zip')),
+-          legacy_artifacts_metadata: fixture_file_upload(File.join('spec/fixtures/pages.zip.meta'))
+-        )
++          ref: 'HEAD')
++      end
++
++      let!(:artifact) do
++        create(:ci_job_artifact, :archive,
++               file: fixture_file_upload(File.join('spec/fixtures/pages.zip')), job: ci_build)
++      end
++
++      let!(:metadata) do
++        create(:ci_job_artifact, :metadata,
++               file: fixture_file_upload(File.join('spec/fixtures/pages.zip.meta')), job: ci_build)
+       end
+ 
+       before do
+diff --git a/spec/migrations/migrate_old_artifacts_spec.rb b/spec/migrations/migrate_old_artifacts_spec.rb
+index 79e2151450..bc826d9147 100644
+--- a/spec/migrations/migrate_old_artifacts_spec.rb
++++ b/spec/migrations/migrate_old_artifacts_spec.rb
+@@ -45,10 +45,6 @@
+       expect(build_with_legacy_artifacts.artifacts?).to be_falsey
+     end
+ 
+-    it "legacy artifacts are set" do
+-      expect(build_with_legacy_artifacts.legacy_artifacts_file_identifier).not_to be_nil
+-    end
+-
+     describe '#min_id' do
+       subject { migration.send(:min_id) }
+ 
+diff --git a/spec/models/ci/build_spec.rb b/spec/models/ci/build_spec.rb
+index 32eef9e0e0..89d18abee2 100644
+--- a/spec/models/ci/build_spec.rb
++++ b/spec/models/ci/build_spec.rb
+@@ -30,12 +30,6 @@
+   it { is_expected.to delegate_method(:legacy_detached_merge_request_pipeline?).to(:pipeline) }
+   it { is_expected.to include_module(Ci::PipelineDelegator) }
+ 
+-  it { is_expected.to be_a(ArtifactMigratable) }
+-
+-  it_behaves_like 'UpdateProjectStatistics' do
+-    subject { FactoryBot.build(:ci_build, pipeline: pipeline, artifacts_size: 23) }
+-  end
+-
+   describe 'associations' do
+     it 'has a bidirectional relationship with projects' do
+       expect(described_class.reflect_on_association(:project).has_inverse?).to eq(:builds)
+@@ -116,24 +110,6 @@
+       end
+     end
+ 
+-    context 'when job has a legacy archive' do
+-      let!(:job) { create(:ci_build, :legacy_artifacts) }
+-
+-      it 'returns the job' do
+-        is_expected.to include(job)
+-      end
+-
+-      context 'when ci_enable_legacy_artifacts feature flag is disabled' do
+-        before do
+-          stub_feature_flags(ci_enable_legacy_artifacts: false)
+-        end
+-
+-        it 'does not return the job' do
+-          is_expected.not_to include(job)
+-        end
+-      end
+-    end
+-
+     context 'when job has a job artifact archive' do
+       let!(:job) { create(:ci_build, :artifacts) }
+ 
+@@ -464,51 +440,11 @@
+         end
+       end
+     end
+-
+-    context 'when legacy artifacts are used' do
+-      let(:build) { create(:ci_build, :legacy_artifacts) }
+-
+-      subject { build.artifacts? }
+-
+-      context 'is expired' do
+-        let(:build) { create(:ci_build, :legacy_artifacts, :expired) }
+-
+-        it { is_expected.to be_falsy }
+-      end
+-
+-      context 'artifacts archive does not exist' do
+-        let(:build) { create(:ci_build) }
+-
+-        it { is_expected.to be_falsy }
+-      end
+-
+-      context 'artifacts archive exists' do
+-        let(:build) { create(:ci_build, :legacy_artifacts) }
+-
+-        it { is_expected.to be_truthy }
+-
+-        context 'when ci_enable_legacy_artifacts feature flag is disabled' do
+-          before do
+-            stub_feature_flags(ci_enable_legacy_artifacts: false)
+-          end
+-
+-          it { is_expected.to be_falsy }
+-        end
+-      end
+-    end
+   end
+ 
+   describe '#browsable_artifacts?' do
+     subject { build.browsable_artifacts? }
+ 
+-    context 'artifacts metadata does not exist' do
+-      before do
+-        build.update(legacy_artifacts_metadata: nil)
+-      end
+-
+-      it { is_expected.to be_falsy }
+-    end
+-
+     context 'artifacts metadata does exists' do
+       let(:build) { create(:ci_build, :artifacts) }
+ 
+@@ -764,12 +700,6 @@
+ 
+       it { is_expected.to be_truthy }
+     end
+-
+-    context 'when build does not have job artifacts' do
+-      let(:build) { create(:ci_build, :legacy_artifacts) }
+-
+-      it { is_expected.to be_falsy }
+-    end
+   end
+ 
+   describe '#has_old_trace?' do
+@@ -1096,11 +1026,11 @@
+   describe 'erasable build' do
+     shared_examples 'erasable' do
+       it 'removes artifact file' do
+-        expect(build.artifacts_file.exists?).to be_falsy
++        expect(build.artifacts_file.present?).to be_falsy
+       end
+ 
+       it 'removes artifact metadata file' do
+-        expect(build.artifacts_metadata.exists?).to be_falsy
++        expect(build.artifacts_metadata.present?).to be_falsy
+       end
+ 
+       it 'removes all job_artifacts' do
+@@ -1192,7 +1122,7 @@
+           let!(:build) { create(:ci_build, :success, :artifacts) }
+ 
+           before do
+-            build.remove_artifacts_metadata!
++            build.erase_erasable_artifacts!
+           end
+ 
+           describe '#erase' do
+@@ -1203,76 +1133,6 @@
+         end
+       end
+     end
+-
+-    context 'old artifacts' do
+-      context 'build is erasable' do
+-        context 'new artifacts' do
+-          let!(:build) { create(:ci_build, :trace_artifact, :success, :legacy_artifacts) }
+-
+-          describe '#erase' do
+-            before do
+-              build.erase(erased_by: erased_by)
+-            end
+-
+-            context 'erased by user' do
+-              let!(:erased_by) { create(:user, username: 'eraser') }
+-
+-              include_examples 'erasable'
+-
+-              it 'records user who erased a build' do
+-                expect(build.erased_by).to eq erased_by
+-              end
+-            end
+-
+-            context 'erased by system' do
+-              let(:erased_by) { nil }
+-
+-              include_examples 'erasable'
+-
+-              it 'does not set user who erased a build' do
+-                expect(build.erased_by).to be_nil
+-              end
+-            end
+-          end
+-
+-          describe '#erasable?' do
+-            subject { build.erasable? }
+-            it { is_expected.to be_truthy }
+-          end
+-
+-          describe '#erased?' do
+-            let!(:build) { create(:ci_build, :trace_artifact, :success, :legacy_artifacts) }
+-            subject { build.erased? }
+-
+-            context 'job has not been erased' do
+-              it { is_expected.to be_falsey }
+-            end
+-
+-            context 'job has been erased' do
+-              before do
+-                build.erase
+-              end
+-
+-              it { is_expected.to be_truthy }
+-            end
+-          end
+-
+-          context 'metadata and build trace are not available' do
+-            let!(:build) { create(:ci_build, :success, :legacy_artifacts) }
+-
+-            before do
+-              build.remove_artifacts_metadata!
+-            end
+-
+-            describe '#erase' do
+-              it 'does not raise error' do
+-                expect { build.erase }.not_to raise_error
+-              end
+-            end
+-          end
+-        end
+-      end
+-    end
+   end
+ 
+   describe '#erase_erasable_artifacts!' do
+diff --git a/spec/requests/api/jobs_spec.rb b/spec/requests/api/jobs_spec.rb
+index 4346291349..7208cec357 100644
+--- a/spec/requests/api/jobs_spec.rb
++++ b/spec/requests/api/jobs_spec.rb
+@@ -913,8 +913,8 @@ def get_artifact_file(artifact_path, ref = pipeline.ref, job_name = job.name)
+         expect(response).to have_gitlab_http_status(201)
+         expect(job.job_artifacts.count).to eq(0)
+         expect(job.trace.exist?).to be_falsy
+-        expect(job.artifacts_file.exists?).to be_falsy
+-        expect(job.artifacts_metadata.exists?).to be_falsy
++        expect(job.artifacts_file.present?).to be_falsy
++        expect(job.artifacts_metadata.present?).to be_falsy
+         expect(job.has_job_artifacts?).to be_falsy
+       end
+ 
+diff --git a/spec/requests/api/runner_spec.rb b/spec/requests/api/runner_spec.rb
+index 4006e697a4..3202050ac2 100644
+--- a/spec/requests/api/runner_spec.rb
++++ b/spec/requests/api/runner_spec.rb
+@@ -1632,8 +1632,8 @@ def authorize_artifacts_with_token_in_headers(params = {}, request_headers = hea
+             let!(:metadata) { file_upload2 }
+             let!(:metadata_sha256) { Digest::SHA256.file(metadata.path).hexdigest }
+ 
+-            let(:stored_artifacts_file) { job.reload.artifacts_file.file }
+-            let(:stored_metadata_file) { job.reload.artifacts_metadata.file }
++            let(:stored_artifacts_file) { job.reload.artifacts_file }
++            let(:stored_metadata_file) { job.reload.artifacts_metadata }
+             let(:stored_artifacts_size) { job.reload.artifacts_size }
+             let(:stored_artifacts_sha256) { job.reload.job_artifacts_archive.file_sha256 }
+             let(:stored_metadata_sha256) { job.reload.job_artifacts_metadata.file_sha256 }
+@@ -1654,9 +1654,9 @@ def authorize_artifacts_with_token_in_headers(params = {}, request_headers = hea
+ 
+               it 'stores artifacts and artifacts metadata' do
+                 expect(response).to have_gitlab_http_status(201)
+-                expect(stored_artifacts_file.original_filename).to eq(artifacts.original_filename)
+-                expect(stored_metadata_file.original_filename).to eq(metadata.original_filename)
+-                expect(stored_artifacts_size).to eq(72821)
++                expect(stored_artifacts_file.filename).to eq(artifacts.original_filename)
++                expect(stored_metadata_file.filename).to eq(metadata.original_filename)
++                expect(stored_artifacts_size).to eq(artifacts.size)
+                 expect(stored_artifacts_sha256).to eq(artifacts_sha256)
+                 expect(stored_metadata_sha256).to eq(metadata_sha256)
+               end
+diff --git a/spec/services/ci/retry_build_service_spec.rb b/spec/services/ci/retry_build_service_spec.rb
+index df2376384c..e9a2640072 100644
+--- a/spec/services/ci/retry_build_service_spec.rb
++++ b/spec/services/ci/retry_build_service_spec.rb
+@@ -23,7 +23,7 @@
+ 
+   REJECT_ACCESSORS =
+     %i[id status user token token_encrypted coverage trace runner
+-       artifacts_expire_at artifacts_file artifacts_metadata artifacts_size
++       artifacts_expire_at
+        created_at updated_at started_at finished_at queued_at erased_by
+        erased_at auto_canceled_by job_artifacts job_artifacts_archive
+        job_artifacts_metadata job_artifacts_trace job_artifacts_junit
+@@ -38,7 +38,8 @@
+        runner_id tag_taggings taggings tags trigger_request_id
+        user_id auto_canceled_by_id retried failure_reason
+        sourced_pipelines artifacts_file_store artifacts_metadata_store
+-       metadata runner_session trace_chunks].freeze
++       metadata runner_session trace_chunks
++       artifacts_file artifacts_metadata artifacts_size].freeze
+ 
+   shared_examples 'build duplication' do
+     let(:another_pipeline) { create(:ci_empty_pipeline, project: project) }
+diff --git a/spec/services/projects/update_pages_service_spec.rb b/spec/services/projects/update_pages_service_spec.rb
+index 7c91f0bbe6..b597717c34 100644
+--- a/spec/services/projects/update_pages_service_spec.rb
++++ b/spec/services/projects/update_pages_service_spec.rb
+@@ -27,59 +27,6 @@
+     it { is_expected.not_to match(Gitlab::PathRegex.namespace_format_regex) }
+   end
+ 
+-  context 'legacy artifacts' do
+-    before do
+-      build.update(legacy_artifacts_file: file)
+-      build.update(legacy_artifacts_metadata: metadata)
+-    end
+-
+-    describe 'pages artifacts' do
+-      it "doesn't delete artifacts after deploying" do
+-        expect(execute).to eq(:success)
+-
+-        expect(build.reload.artifacts?).to eq(true)
+-      end
+-    end
+-
+-    it 'succeeds' do
+-      expect(project.pages_deployed?).to be_falsey
+-      expect(execute).to eq(:success)
+-      expect(project.pages_deployed?).to be_truthy
+-
+-      # Check that all expected files are extracted
+-      %w[index.html zero .hidden/file].each do |filename|
+-        expect(File.exist?(File.join(project.public_pages_path, filename))).to be_truthy
+-      end
+-    end
+-
+-    it 'limits pages size' do
+-      stub_application_setting(max_pages_size: 1)
+-      expect(execute).not_to eq(:success)
+-    end
+-
+-    it 'removes pages after destroy' do
+-      expect(PagesWorker).to receive(:perform_in)
+-      expect(project.pages_deployed?).to be_falsey
+-      expect(execute).to eq(:success)
+-      expect(project.pages_deployed?).to be_truthy
+-      project.destroy
+-      expect(project.pages_deployed?).to be_falsey
+-    end
+-
+-    it 'fails if sha on branch is not latest' do
+-      build.update(ref: 'feature')
+-
+-      expect(execute).not_to eq(:success)
+-    end
+-
+-    it 'fails for empty file fails' do
+-      build.update(legacy_artifacts_file: empty_file)
+-
+-      expect { execute }
+-        .to raise_error(Projects::UpdatePagesService::FailedToExtractError)
+-    end
+-  end
+-
+   context 'for new artifacts' do
+     context "for a valid job" do
+       before do
+@@ -207,7 +154,7 @@
+   end
+ 
+   it 'fails for invalid archive' do
+-    build.update(legacy_artifacts_file: invalid_file)
++    create(:ci_job_artifact, :archive, file: invalid_file, job: build)
+     expect(execute).not_to eq(:success)
+   end
+ 
+@@ -218,8 +165,8 @@
+       file = fixture_file_upload('spec/fixtures/pages.zip')
+       metafile = fixture_file_upload('spec/fixtures/pages.zip.meta')
+ 
+-      build.update(legacy_artifacts_file: file)
+-      build.update(legacy_artifacts_metadata: metafile)
++      create(:ci_job_artifact, :archive, file: file, job: build)
++      create(:ci_job_artifact, :metadata, file: metafile, job: build)
+ 
+       allow(build).to receive(:artifacts_metadata_entry)
+         .and_return(metadata)
+diff --git a/spec/tasks/gitlab/artifacts/migrate_rake_spec.rb b/spec/tasks/gitlab/artifacts/migrate_rake_spec.rb
+index 8544fb62b5..be69c10d7c 100644
+--- a/spec/tasks/gitlab/artifacts/migrate_rake_spec.rb
++++ b/spec/tasks/gitlab/artifacts/migrate_rake_spec.rb
+@@ -13,61 +13,6 @@
+ 
+   subject { run_rake_task('gitlab:artifacts:migrate') }
+ 
+-  context 'legacy artifacts' do
+-    describe 'migrate' do
+-      let!(:build) { create(:ci_build, :legacy_artifacts, artifacts_file_store: store, artifacts_metadata_store: store) }
+-
+-      context 'when local storage is used' do
+-        let(:store) { ObjectStorage::Store::LOCAL }
+-
+-        context 'and job does not have file store defined' do
+-          let(:object_storage_enabled) { true }
+-          let(:store) { nil }
+-
+-          it "migrates file to remote storage" do
+-            subject
+-
+-            expect(build.reload.artifacts_file_store).to eq(ObjectStorage::Store::REMOTE)
+-            expect(build.reload.artifacts_metadata_store).to eq(ObjectStorage::Store::REMOTE)
+-          end
+-        end
+-
+-        context 'and remote storage is defined' do
+-          let(:object_storage_enabled) { true }
+-
+-          it "migrates file to remote storage" do
+-            subject
+-
+-            expect(build.reload.artifacts_file_store).to eq(ObjectStorage::Store::REMOTE)
+-            expect(build.reload.artifacts_metadata_store).to eq(ObjectStorage::Store::REMOTE)
+-          end
+-        end
+-
+-        context 'and remote storage is not defined' do
+-          it "fails to migrate to remote storage" do
+-            subject
+-
+-            expect(build.reload.artifacts_file_store).to eq(ObjectStorage::Store::LOCAL)
+-            expect(build.reload.artifacts_metadata_store).to eq(ObjectStorage::Store::LOCAL)
+-          end
+-        end
+-      end
+-
+-      context 'when remote storage is used' do
+-        let(:object_storage_enabled) { true }
+-
+-        let(:store) { ObjectStorage::Store::REMOTE }
+-
+-        it "file stays on remote storage" do
+-          subject
+-
+-          expect(build.reload.artifacts_file_store).to eq(ObjectStorage::Store::REMOTE)
+-          expect(build.reload.artifacts_metadata_store).to eq(ObjectStorage::Store::REMOTE)
+-        end
+-      end
+-    end
+-  end
+-
+   context 'job artifacts' do
+     let!(:artifact) { create(:ci_job_artifact, :archive, file_store: store) }
+ 
+diff --git a/spec/uploaders/legacy_artifact_uploader_spec.rb b/spec/uploaders/legacy_artifact_uploader_spec.rb
+deleted file mode 100644
+index 0589563b50..0000000000
+--- a/spec/uploaders/legacy_artifact_uploader_spec.rb
++++ /dev/null
+@@ -1,61 +0,0 @@
+-require 'rails_helper'
+-
+-describe LegacyArtifactUploader do
+-  let(:store) { described_class::Store::LOCAL }
+-  let(:job) { create(:ci_build, artifacts_file_store: store) }
+-  let(:uploader) { described_class.new(job, :legacy_artifacts_file) }
+-  let(:local_path) { described_class.root }
+-
+-  subject { uploader }
+-
+-  # TODO: move to Workhorse::UploadPath
+-  describe '.workhorse_upload_path' do
+-    subject { described_class.workhorse_upload_path }
+-
+-    it { is_expected.to start_with(local_path) }
+-    it { is_expected.to end_with('tmp/uploads') }
+-  end
+-
+-  it_behaves_like "builds correct paths",
+-                  store_dir: %r[\d{4}_\d{1,2}/\d+/\d+\z],
+-                  cache_dir: %r[artifacts/tmp/cache],
+-                  work_dir: %r[artifacts/tmp/work]
+-
+-  context 'object store is remote' do
+-    before do
+-      stub_artifacts_object_storage
+-    end
+-
+-    include_context 'with storage', described_class::Store::REMOTE
+-
+-    it_behaves_like "builds correct paths",
+-                    store_dir: %r[\d{4}_\d{1,2}/\d+/\d+\z]
+-  end
+-
+-  describe '#filename' do
+-    # we need to use uploader, as this makes to use mounter
+-    # which initialises uploader.file object
+-    let(:uploader) { job.artifacts_file }
+-
+-    subject { uploader.filename }
+-
+-    it { is_expected.to be_nil }
+-  end
+-
+-  context 'file is stored in valid path' do
+-    let(:file) do
+-      fixture_file_upload('spec/fixtures/ci_build_artifacts.zip', 'application/zip')
+-    end
+-
+-    before do
+-      uploader.store!(file)
+-    end
+-
+-    subject { uploader.file.path }
+-
+-    it { is_expected.to start_with("#{uploader.root}") }
+-    it { is_expected.to include("/#{job.created_at.utc.strftime('%Y_%m')}/") }
+-    it { is_expected.to include("/#{job.project_id}/") }
+-    it { is_expected.to end_with("ci_build_artifacts.zip") }
+-  end
+-end
+diff --git a/spec/uploaders/workers/object_storage/background_move_worker_spec.rb b/spec/uploaders/workers/object_storage/background_move_worker_spec.rb
+index 95813d15e5..cc8970d2ba 100644
+--- a/spec/uploaders/workers/object_storage/background_move_worker_spec.rb
++++ b/spec/uploaders/workers/object_storage/background_move_worker_spec.rb
+@@ -48,40 +48,6 @@ def perform
+     end
+   end
+ 
+-  context 'for legacy artifacts' do
+-    let(:build) { create(:ci_build, :legacy_artifacts) }
+-    let(:uploader_class) { LegacyArtifactUploader }
+-    let(:subject_class) { Ci::Build }
+-    let(:file_field) { :artifacts_file }
+-    let(:subject_id) { build.id }
+-
+-    context 'when local storage is used' do
+-      let(:store) { local }
+-
+-      context 'and remote storage is defined' do
+-        before do
+-          stub_artifacts_object_storage(background_upload: true)
+-        end
+-
+-        it "migrates file to remote storage" do
+-          perform
+-
+-          expect(build.reload.artifacts_file_store).to eq(remote)
+-        end
+-
+-        context 'for artifacts_metadata' do
+-          let(:file_field) { :artifacts_metadata }
+-
+-          it 'migrates metadata to remote storage' do
+-            perform
+-
+-            expect(build.reload.artifacts_metadata_store).to eq(remote)
+-          end
+-        end
+-      end
+-    end
+-  end
+-
+   context 'for job artifacts' do
+     let(:artifact) { create(:ci_job_artifact, :archive) }
+     let(:uploader_class) { JobArtifactUploader }
+diff --git a/spec/workers/expire_build_instance_artifacts_worker_spec.rb b/spec/workers/expire_build_instance_artifacts_worker_spec.rb
+index bdb5a3801d..39f676f105 100644
+--- a/spec/workers/expire_build_instance_artifacts_worker_spec.rb
++++ b/spec/workers/expire_build_instance_artifacts_worker_spec.rb
+@@ -21,7 +21,7 @@
+         end
+ 
+         it 'does remove files' do
+-          expect(build.reload.artifacts_file.exists?).to be_falsey
++          expect(build.reload.artifacts_file.present?).to be_falsey
+         end
+ 
+         it 'does remove the job artifact record' do
+@@ -40,7 +40,7 @@
+       end
+ 
+       it 'does not remove files' do
+-        expect(build.reload.artifacts_file.exists?).to be_truthy
++        expect(build.reload.artifacts_file.present?).to be_truthy
+       end
+ 
+       it 'does not remove the job artifact record' do
+@@ -56,7 +56,7 @@
+       end
+ 
+       it 'does not remove files' do
+-        expect(build.reload.artifacts_file.exists?).to be_truthy
++        expect(build.reload.artifacts_file.present?).to be_truthy
+       end
+ 
+       it 'does not remove the job artifact record' do

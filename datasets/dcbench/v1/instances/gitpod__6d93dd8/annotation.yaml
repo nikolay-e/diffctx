@@ -1,0 +1,54 @@
+repo: gitpod
+base_commit: 9a03c99bd7aaf0e812baf7f68999d5018d3ac4bb
+commit: 6d93dd8348129dc112e2f219cc4059a19224a0cc
+patch_stored: true
+gold:
+- path: chart/templates/ws-daemon-daemonset.yaml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: chart/templates/ws-daemon-tlssecret.yaml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: chart/values.yaml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/BUILD.yaml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/storage/commons.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-daemon/cmd/root.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-daemon/pkg/syncd/service.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-manager/pkg/manager/manager.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-manager/pkg/manager/monitor.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: components/ws-manager/pkg/manager/testdata/*.golden (dozens of identical string-substitution golden
+    fixtures)
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'status=hang with md_tokens=0/ctx_files=0 despite a non-empty, fully readable 142-file diff — pure
+  git-mv rename plus string substitution (ws-sync to ws-daemon) across YAML/Go/TS. This is issue #70 (unbounded
+  hang) on a moderate-size, mechanically simple rename; the truth.diff itself is trivial to summarize
+  (git detects renames with high similarity index for most files), so there is no algorithmic excuse for
+  non-termination here. Complete loss of signal: 0/0 changed_frags though diff.stat shows 214 insertions/208
+  deletions.'

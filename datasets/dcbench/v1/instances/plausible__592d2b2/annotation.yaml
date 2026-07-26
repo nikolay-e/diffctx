@@ -1,0 +1,94 @@
+repo: plausible
+base_commit: 842c40ab07f5e4abaeb7ff5e826e2bc035308dfb
+commit: 592d2b26a6f3a219be905428eb52afe03b17b6e2
+patch_stored: true
+gold:
+  - path: lib/plausible_web/live/subscription_settings.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new PlausibleWeb.Live.SubscriptionSettings LiveView; mount/3 carries over the exact data-loading logic removed from SettingsController.subscription/2, and render/1 is the deleted subscription.html.heex template turned into a ~H sigil.
+  - path: lib/plausible_web/controllers/settings_controller.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: deletes subscription/2 and get_consolidated_view_domain/1, whose logic was moved verbatim into the new LiveView's mount/3 and consolidated_view_domain/1.
+  - path: lib/plausible_web/templates/settings/subscription.html.heex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: deleted template whose full markup was carried over into SubscriptionSettings.render/1, replacing @conn-based helpers with LiveView assigns.
+  - path: lib/plausible_web/router.ex
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: replaces "get /billing/subscription, SettingsController, :subscription" with a live_session :settings block rendering the SubscriptionSettings LiveView through the new PlausibleWeb.Plugs.CurrentPath pipeline.
+  - path: lib/plausible_web/components/billing/helpers.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new module holding present_plan_name/1, present_subscription_status/1, trial_button_label/1 etc., extracted from SettingsView so the LiveView (which has no @conn-based view helpers) can import them.
+  - path: lib/plausible_web/live/settings_context.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new on_mount hook (wired via live_session in router.ex) that assigns :current_path via a handle_params hook and sets the shared settings layout for every settings LiveView.
+  - path: lib/plausible_web/plugs/current_path.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new plug added to the /settings pipeline that assigns :current_path from conn.request_path so the non-LiveView settings pages have the same assign the LiveView gets from SettingsContext.
+  - path: lib/plausible_web/views/layout_view.ex
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: account_settings_sidebar/1 now takes assigns instead of conn, and a new is_current_tab/2 clause matches on a path string instead of a %Plug.Conn{}, so the shared sidebar works for both controller- and LiveView-rendered settings pages.
+  - path: lib/plausible_web/templates/layout/settings.html.heex
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: switches account_settings_sidebar(@conn) to account_settings_sidebar(assigns) and is_current_tab(@conn, ...) to is_current_tab(@current_path, ...), the layout change that lets the LiveView (which has no @conn) render inside it.
+  - path: lib/plausible_web/views/settings_view.ex
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: shows the view helpers (present_plan_name, format_invoices, etc.) being deleted from here as they move to Components.Billing.Helpers.
+  - path: lib/plausible_web/live/components/form.ex
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: relaxes mobile_nav_dropdown's :conn attr from required Plug.Conn to an optional :map so the shared settings sidebar component still works when rendered from a LiveView with no real conn.
+  - path: extra/lib/plausible_web/live/customer_support/team.ex
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: updates its call from SettingsView.present_subscription_status/1 to Components.Billing.Helpers.present_subscription_status/1, a real caller depending on the extracted-helpers move.
+  - path: test/plausible_web/controllers/settings_controller_test.exs
+    tier: essential
+    role: test
+    in_diff: false
+    rationale: pre-existing "GET /billing/subscription" tests call Routes.settings_path(conn, :subscription) via plain HTTP get/2; left unmodified by this commit, they now exercise the new live/4 route's disconnected-mount HTTP render, making them the (unchanged) behavioral-equivalence coverage for the refactor.
+forbidden:
+  - path: lib/plausible_web/controllers/billing_controller.ex
+    reason: choose_plan action referenced via Routes.billing_path/2 in the new LiveView template, but the controller itself is untouched and out of scope for this refactor.
+  - path: lib/plausible_web/views/billing_view.ex
+    reason: present_currency/1 is called from the template, but this pre-existing view module is not modified or central to the controller-to-LiveView move.
+  - path: lib/plausible_web/components/billing/billing.ex
+    reason: only loses an unused `require`; the actual usage_progress_bar/render_monthly_pageview_usage components it defines are consumed unchanged by the new LiveView.
+  - path: lib/plausible_web/components/generic.ex
+    reason: defines generic settings_tiles/tile/table primitives reused verbatim in the moved template; pre-existing and not part of this commit's logic.
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: >-
+  Pure refactor (no UX change): moves the /settings/billing/subscription page
+  from a SettingsController action + template into a SubscriptionSettings
+  LiveView rendered directly from the router, extracts its view helpers into
+  Components.Billing.Helpers so they work without @conn, and adds a
+  CurrentPath plug plus a SettingsContext on_mount hook so the shared
+  settings sidebar/layout can work for both conn-based and LiveView-based
+  pages via a path string instead of a %Plug.Conn{}. string_indirection is
+  true because is_current_tab/2 now matches sidebar entries against
+  @current_path with String.ends_with?/2, a string comparison rather than a
+  static reference.

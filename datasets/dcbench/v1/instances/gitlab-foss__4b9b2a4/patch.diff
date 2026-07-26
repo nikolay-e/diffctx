@@ -1,0 +1,999 @@
+From 4b9b2a43d02fc5154f780ade7fe76c02420fff15 Mon Sep 17 00:00:00 2001
+From: Luke Duncalfe <lduncalfe@eml.cc>
+Date: Fri, 21 Jun 2019 16:45:27 +1200
+Subject: [PATCH] GraphQL mutations for add, remove and toggle emoji
+
+Adding new `AddAwardEmoji`, `RemoveAwardEmoji` and `ToggleAwardEmoji`
+GraphQL mutations.
+
+Adding new `#authorized_find_with_pre_checks!` and (unused, but for
+completeness `#authorized_find_with_post_checks!`) authorization
+methods. These allow us to perform an authorized find, and run our own
+additional checks before or after the authorization runs.
+
+https://gitlab.com/gitlab-org/gitlab-ce/issues/62826
+---
+ app/graphql/mutations/.keep                   |   0
+ app/graphql/mutations/award_emojis/add.rb     |  25 +++
+ app/graphql/mutations/award_emojis/base.rb    |  41 +++++
+ app/graphql/mutations/award_emojis/remove.rb  |  33 ++++
+ app/graphql/mutations/award_emojis/toggle.rb  |  40 +++++
+ app/graphql/mutations/base_mutation.rb        |   7 +
+ .../types/award_emojis/award_emoji_type.rb    |  46 ++++++
+ app/graphql/types/mutation_type.rb            |   3 +
+ app/models/snippet.rb                         |   4 +
+ app/policies/award_emoji_policy.rb            |  11 ++
+ app/presenters/award_emoji_presenter.rb       |  27 ++++
+ .../62826-graphql-emoji-mutations.yml         |   5 +
+ lib/gitlab/graphql/copy_field_description.rb  |  21 +++
+ lib/gitlab/graphql/errors.rb                  |   1 +
+ spec/factories/award_emoji.rb                 |   2 +-
+ .../award_emojis/award_emoji_type_spec.rb     |  11 ++
+ .../authorize/authorize_resource_spec.rb      |   2 +-
+ .../graphql/copy_field_description_spec.rb    |  21 +++
+ spec/policies/award_emoji_policy_spec.rb      |  54 +++++++
+ spec/presenters/award_emoji_presenter_spec.rb |  36 +++++
+ .../mutations/award_emojis/add_spec.rb        | 100 ++++++++++++
+ .../mutations/award_emojis/remove_spec.rb     |  80 ++++++++++
+ .../mutations/award_emojis/toggle_spec.rb     | 142 ++++++++++++++++++
+ spec/support/helpers/graphql_helpers.rb       |   5 +-
+ .../graphql/mutation_shared_examples.rb       |  34 +++++
+ 25 files changed, 745 insertions(+), 6 deletions(-)
+ delete mode 100644 app/graphql/mutations/.keep
+ create mode 100644 app/graphql/mutations/award_emojis/add.rb
+ create mode 100644 app/graphql/mutations/award_emojis/base.rb
+ create mode 100644 app/graphql/mutations/award_emojis/remove.rb
+ create mode 100644 app/graphql/mutations/award_emojis/toggle.rb
+ create mode 100644 app/graphql/types/award_emojis/award_emoji_type.rb
+ create mode 100644 app/policies/award_emoji_policy.rb
+ create mode 100644 app/presenters/award_emoji_presenter.rb
+ create mode 100644 changelogs/unreleased/62826-graphql-emoji-mutations.yml
+ create mode 100644 lib/gitlab/graphql/copy_field_description.rb
+ create mode 100644 spec/graphql/types/award_emojis/award_emoji_type_spec.rb
+ create mode 100644 spec/lib/gitlab/graphql/copy_field_description_spec.rb
+ create mode 100644 spec/policies/award_emoji_policy_spec.rb
+ create mode 100644 spec/presenters/award_emoji_presenter_spec.rb
+ create mode 100644 spec/requests/api/graphql/mutations/award_emojis/add_spec.rb
+ create mode 100644 spec/requests/api/graphql/mutations/award_emojis/remove_spec.rb
+ create mode 100644 spec/requests/api/graphql/mutations/award_emojis/toggle_spec.rb
+ create mode 100644 spec/support/shared_examples/graphql/mutation_shared_examples.rb
+
+diff --git a/app/graphql/mutations/.keep b/app/graphql/mutations/.keep
+deleted file mode 100644
+index e69de29bb2..0000000000
+diff --git a/app/graphql/mutations/award_emojis/add.rb b/app/graphql/mutations/award_emojis/add.rb
+new file mode 100644
+index 0000000000..8e050dd6d2
+--- /dev/null
++++ b/app/graphql/mutations/award_emojis/add.rb
+@@ -0,0 +1,25 @@
++# frozen_string_literal: true
++
++module Mutations
++  module AwardEmojis
++    class Add < Base
++      graphql_name 'AddAwardEmoji'
++
++      def resolve(args)
++        awardable = authorized_find!(id: args[:awardable_id])
++
++        check_object_is_awardable!(awardable)
++
++        # TODO this will be handled by AwardEmoji::AddService
++        # See https://gitlab.com/gitlab-org/gitlab-ce/issues/63372 and
++        # https://gitlab.com/gitlab-org/gitlab-ce/merge_requests/29782
++        award = awardable.create_award_emoji(args[:name], current_user)
++
++        {
++          award_emoji: (award if award.persisted?),
++          errors: errors_on_object(award)
++        }
++      end
++    end
++  end
++end
+diff --git a/app/graphql/mutations/award_emojis/base.rb b/app/graphql/mutations/award_emojis/base.rb
+new file mode 100644
+index 0000000000..d868db84f9
+--- /dev/null
++++ b/app/graphql/mutations/award_emojis/base.rb
+@@ -0,0 +1,41 @@
++# frozen_string_literal: true
++
++module Mutations
++  module AwardEmojis
++    class Base < BaseMutation
++      include Gitlab::Graphql::Authorize::AuthorizeResource
++
++      authorize :award_emoji
++
++      argument :awardable_id,
++               GraphQL::ID_TYPE,
++               required: true,
++               description: 'The global id of the awardable resource'
++
++      argument :name,
++               GraphQL::STRING_TYPE,
++               required: true,
++               description: copy_field_description(Types::AwardEmojis::AwardEmojiType, :name)
++
++      field :award_emoji,
++            Types::AwardEmojis::AwardEmojiType,
++            null: true,
++            description: 'The award emoji after mutation'
++
++      private
++
++      def find_object(id:)
++        GitlabSchema.object_from_id(id)
++      end
++
++      # Called by mutations methods after performing an authorization check
++      # of an awardable object.
++      def check_object_is_awardable!(object)
++        unless object.is_a?(Awardable) && object.emoji_awardable?
++          raise Gitlab::Graphql::Errors::ResourceNotAvailable,
++                'Cannot award emoji to this resource'
++        end
++      end
++    end
++  end
++end
+diff --git a/app/graphql/mutations/award_emojis/remove.rb b/app/graphql/mutations/award_emojis/remove.rb
+new file mode 100644
+index 0000000000..3ba85e445b
+--- /dev/null
++++ b/app/graphql/mutations/award_emojis/remove.rb
+@@ -0,0 +1,33 @@
++# frozen_string_literal: true
++
++module Mutations
++  module AwardEmojis
++    class Remove < Base
++      graphql_name 'RemoveAwardEmoji'
++
++      def resolve(args)
++        awardable = authorized_find!(id: args[:awardable_id])
++
++        check_object_is_awardable!(awardable)
++
++        # TODO this check can be removed once AwardEmoji services are available.
++        # See https://gitlab.com/gitlab-org/gitlab-ce/issues/63372 and
++        # https://gitlab.com/gitlab-org/gitlab-ce/merge_requests/29782
++        unless awardable.awarded_emoji?(args[:name], current_user)
++          raise Gitlab::Graphql::Errors::ResourceNotAvailable,
++                'You have not awarded emoji of type name to the awardable'
++        end
++
++        # TODO this will be handled by AwardEmoji::DestroyService
++        # See https://gitlab.com/gitlab-org/gitlab-ce/issues/63372 and
++        # https://gitlab.com/gitlab-org/gitlab-ce/merge_requests/29782
++        awardable.remove_award_emoji(args[:name], current_user)
++
++        {
++          # Mutation response is always a `nil` award_emoji
++          errors: []
++        }
++      end
++    end
++  end
++end
+diff --git a/app/graphql/mutations/award_emojis/toggle.rb b/app/graphql/mutations/award_emojis/toggle.rb
+new file mode 100644
+index 0000000000..c03902e803
+--- /dev/null
++++ b/app/graphql/mutations/award_emojis/toggle.rb
+@@ -0,0 +1,40 @@
++# frozen_string_literal: true
++
++module Mutations
++  module AwardEmojis
++    class Toggle < Base
++      graphql_name 'ToggleAwardEmoji'
++
++      field :toggledOn,
++            GraphQL::BOOLEAN_TYPE,
++            null: false,
++            description: 'True when the emoji was awarded, false when it was removed'
++
++      def resolve(args)
++        awardable = authorized_find!(id: args[:awardable_id])
++
++        check_object_is_awardable!(awardable)
++
++        # TODO this will be handled by AwardEmoji::ToggleService
++        # See https://gitlab.com/gitlab-org/gitlab-ce/issues/63372 and
++        # https://gitlab.com/gitlab-org/gitlab-ce/merge_requests/29782
++        award = awardable.toggle_award_emoji(args[:name], current_user)
++
++        # Destroy returns a collection :(
++        award = award.first if award.is_a?(Array)
++
++        errors = errors_on_object(award)
++
++        toggled_on = awardable.awarded_emoji?(args[:name], current_user)
++
++        {
++          # For consistency with the AwardEmojis::Remove mutation, only return
++          # the AwardEmoji if it was created and not destroyed
++          award_emoji: (award if toggled_on),
++          errors: errors,
++          toggled_on: toggled_on
++        }
++      end
++    end
++  end
++end
+diff --git a/app/graphql/mutations/base_mutation.rb b/app/graphql/mutations/base_mutation.rb
+index eb03dfe162..08d2a1f18a 100644
+--- a/app/graphql/mutations/base_mutation.rb
++++ b/app/graphql/mutations/base_mutation.rb
+@@ -2,6 +2,8 @@
+ 
+ module Mutations
+   class BaseMutation < GraphQL::Schema::RelayClassicMutation
++    prepend Gitlab::Graphql::CopyFieldDescription
++
+     field :errors, [GraphQL::STRING_TYPE],
+           null: false,
+           description: "Reasons why the mutation failed."
+@@ -9,5 +11,10 @@ class BaseMutation < GraphQL::Schema::RelayClassicMutation
+     def current_user
+       context[:current_user]
+     end
++
++    # Returns Array of errors on an ActiveRecord object
++    def errors_on_object(record)
++      record.errors.full_messages
++    end
+   end
+ end
+diff --git a/app/graphql/types/award_emojis/award_emoji_type.rb b/app/graphql/types/award_emojis/award_emoji_type.rb
+new file mode 100644
+index 0000000000..8daf699a11
+--- /dev/null
++++ b/app/graphql/types/award_emojis/award_emoji_type.rb
+@@ -0,0 +1,46 @@
++# frozen_string_literal: true
++
++module Types
++  module AwardEmojis
++    class AwardEmojiType < BaseObject
++      graphql_name 'AwardEmoji'
++
++      authorize :read_emoji
++
++      present_using AwardEmojiPresenter
++
++      field :name,
++            GraphQL::STRING_TYPE,
++            null: false,
++            description: 'The emoji name'
++
++      field :description,
++            GraphQL::STRING_TYPE,
++            null: false,
++            description: 'The emoji description'
++
++      field :unicode,
++            GraphQL::STRING_TYPE,
++            null: false,
++            description: 'The emoji in unicode'
++
++      field :emoji,
++            GraphQL::STRING_TYPE,
++            null: false,
++            description: 'The emoji as an icon'
++
++      field :unicode_version,
++            GraphQL::STRING_TYPE,
++            null: false,
++            description: 'The unicode version for this emoji'
++
++      field :user,
++            Types::UserType,
++            null: false,
++            description: 'The user who awarded the emoji',
++            resolve: -> (award_emoji, _args, _context) {
++              Gitlab::Graphql::Loaders::BatchModelLoader.new(User, award_emoji.user_id).find
++            }
++    end
++  end
++end
+diff --git a/app/graphql/types/mutation_type.rb b/app/graphql/types/mutation_type.rb
+index 2b4ef29929..6ef1d816b7 100644
+--- a/app/graphql/types/mutation_type.rb
++++ b/app/graphql/types/mutation_type.rb
+@@ -6,6 +6,9 @@ class MutationType < BaseObject
+ 
+     graphql_name "Mutation"
+ 
++    mount_mutation Mutations::AwardEmojis::Add
++    mount_mutation Mutations::AwardEmojis::Remove
++    mount_mutation Mutations::AwardEmojis::Toggle
+     mount_mutation Mutations::MergeRequests::SetWip
+   end
+ end
+diff --git a/app/models/snippet.rb b/app/models/snippet.rb
+index f4fdac2558..0093145734 100644
+--- a/app/models/snippet.rb
++++ b/app/models/snippet.rb
+@@ -194,6 +194,10 @@ def spammable_entity_type
+     'snippet'
+   end
+ 
++  def to_ability_name
++    model_name.singular
++  end
++
+   class << self
+     # Searches for snippets with a matching title or file name.
+     #
+diff --git a/app/policies/award_emoji_policy.rb b/app/policies/award_emoji_policy.rb
+new file mode 100644
+index 0000000000..21e382e24b
+--- /dev/null
++++ b/app/policies/award_emoji_policy.rb
+@@ -0,0 +1,11 @@
++# frozen_string_literal: true
++
++class AwardEmojiPolicy < BasePolicy
++  delegate { @subject.awardable if DeclarativePolicy.has_policy?(@subject.awardable) }
++
++  condition(:can_read_awardable) do
++    can?(:"read_#{@subject.awardable.to_ability_name}")
++  end
++
++  rule { can_read_awardable }.enable :read_emoji
++end
+diff --git a/app/presenters/award_emoji_presenter.rb b/app/presenters/award_emoji_presenter.rb
+new file mode 100644
+index 0000000000..98713855d3
+--- /dev/null
++++ b/app/presenters/award_emoji_presenter.rb
+@@ -0,0 +1,27 @@
++# frozen_string_literal: true
++
++class AwardEmojiPresenter < Gitlab::View::Presenter::Delegated
++  presents :award_emoji
++
++  def description
++    as_emoji['description']
++  end
++
++  def unicode
++    as_emoji['unicode']
++  end
++
++  def emoji
++    as_emoji['moji']
++  end
++
++  def unicode_version
++    Gitlab::Emoji.emoji_unicode_version(award_emoji.name)
++  end
++
++  private
++
++  def as_emoji
++    @emoji ||= Gitlab::Emoji.emojis[award_emoji.name] || {}
++  end
++end
+diff --git a/changelogs/unreleased/62826-graphql-emoji-mutations.yml b/changelogs/unreleased/62826-graphql-emoji-mutations.yml
+new file mode 100644
+index 0000000000..0c0aaedf84
+--- /dev/null
++++ b/changelogs/unreleased/62826-graphql-emoji-mutations.yml
+@@ -0,0 +1,5 @@
++---
++title: GraphQL mutations for add, remove and toggle emoji
++merge_request: 29919
++author:
++type: added
+diff --git a/lib/gitlab/graphql/copy_field_description.rb b/lib/gitlab/graphql/copy_field_description.rb
+new file mode 100644
+index 0000000000..edd73083ff
+--- /dev/null
++++ b/lib/gitlab/graphql/copy_field_description.rb
+@@ -0,0 +1,21 @@
++# frozen_string_literal: true
++
++module Gitlab
++  module Graphql
++    module CopyFieldDescription
++      extend ActiveSupport::Concern
++
++      class_methods do
++        # Returns the `description` for property of field `field_name` on type.
++        # This can be used to ensure, for example, that mutation argument descriptions
++        # are always identical to the corresponding query field descriptions.
++        #
++        # E.g.:
++        #   argument :name, GraphQL::STRING_TYPE, description: copy_field_description(Types::UserType, :name)
++        def copy_field_description(type, field_name)
++          type.fields[field_name.to_s.camelize(:lower)].description
++        end
++      end
++    end
++  end
++end
+diff --git a/lib/gitlab/graphql/errors.rb b/lib/gitlab/graphql/errors.rb
+index fe74549e32..40b90310e8 100644
+--- a/lib/gitlab/graphql/errors.rb
++++ b/lib/gitlab/graphql/errors.rb
+@@ -6,6 +6,7 @@ module Errors
+       BaseError = Class.new(GraphQL::ExecutionError)
+       ArgumentError = Class.new(BaseError)
+       ResourceNotAvailable = Class.new(BaseError)
++      MutationError = Class.new(BaseError)
+     end
+   end
+ end
+diff --git a/spec/factories/award_emoji.rb b/spec/factories/award_emoji.rb
+index d37e2bf511..43753fa650 100644
+--- a/spec/factories/award_emoji.rb
++++ b/spec/factories/award_emoji.rb
+@@ -5,7 +5,7 @@
+     awardable factory: :issue
+ 
+     after(:create) do |award, evaluator|
+-      award.awardable.project.add_guest(evaluator.user)
++      award.awardable.project&.add_guest(evaluator.user)
+     end
+ 
+     trait :upvote
+diff --git a/spec/graphql/types/award_emojis/award_emoji_type_spec.rb b/spec/graphql/types/award_emojis/award_emoji_type_spec.rb
+new file mode 100644
+index 0000000000..5663a3d719
+--- /dev/null
++++ b/spec/graphql/types/award_emojis/award_emoji_type_spec.rb
+@@ -0,0 +1,11 @@
++# frozen_string_literal: true
++
++require 'spec_helper'
++
++describe GitlabSchema.types['AwardEmoji'] do
++  it { expect(described_class.graphql_name).to eq('AwardEmoji') }
++
++  it { is_expected.to require_graphql_authorizations(:read_emoji) }
++
++  it { expect(described_class).to have_graphql_fields(:description, :unicode_version, :emoji, :name, :unicode, :user) }
++end
+diff --git a/spec/lib/gitlab/graphql/authorize/authorize_resource_spec.rb b/spec/lib/gitlab/graphql/authorize/authorize_resource_spec.rb
+index 20842f5501..50138d272c 100644
+--- a/spec/lib/gitlab/graphql/authorize/authorize_resource_spec.rb
++++ b/spec/lib/gitlab/graphql/authorize/authorize_resource_spec.rb
+@@ -67,7 +67,7 @@ def current_user
+     end
+ 
+     describe '#authorize!' do
+-      it 'does not raise an error' do
++      it 'raises an error' do
+         expect { loading_resource.authorize!(project) }.to raise_error(Gitlab::Graphql::Errors::ResourceNotAvailable)
+       end
+     end
+diff --git a/spec/lib/gitlab/graphql/copy_field_description_spec.rb b/spec/lib/gitlab/graphql/copy_field_description_spec.rb
+new file mode 100644
+index 0000000000..e7462c5b95
+--- /dev/null
++++ b/spec/lib/gitlab/graphql/copy_field_description_spec.rb
+@@ -0,0 +1,21 @@
++# frozen_string_literal: true
++
++require 'spec_helper'
++
++describe Gitlab::Graphql::CopyFieldDescription do
++  subject { Class.new.include(described_class) }
++
++  describe '.copy_field_description' do
++    let(:type) do
++      Class.new(Types::BaseObject) do
++        graphql_name "TestType"
++
++        field :field_name, GraphQL::STRING_TYPE, null: true, description: 'Foo'
++      end
++    end
++
++    it 'returns the correct description' do
++      expect(subject.copy_field_description(type, :field_name)).to eq('Foo')
++    end
++  end
++end
+diff --git a/spec/policies/award_emoji_policy_spec.rb b/spec/policies/award_emoji_policy_spec.rb
+new file mode 100644
+index 0000000000..2e3693c58d
+--- /dev/null
++++ b/spec/policies/award_emoji_policy_spec.rb
+@@ -0,0 +1,54 @@
++# frozen_string_literal: true
++
++require 'spec_helper'
++
++describe AwardEmojiPolicy do
++  let(:user) { create(:user) }
++  let(:award_emoji) { create(:award_emoji, awardable: awardable) }
++
++  subject { described_class.new(user, award_emoji) }
++
++  shared_examples 'when the user can read the awardable' do
++    context do
++      let(:project) { create(:project, :public) }
++
++      it { expect_allowed(:read_emoji) }
++    end
++  end
++
++  shared_examples 'when the user cannot read the awardable' do
++    context do
++      let(:project) { create(:project, :private) }
++
++      it { expect_disallowed(:read_emoji) }
++    end
++  end
++
++  context 'when the awardable is an issue' do
++    let(:awardable) { create(:issue, project: project) }
++
++    include_examples 'when the user can read the awardable'
++    include_examples 'when the user cannot read the awardable'
++  end
++
++  context 'when the awardable is a merge request' do
++    let(:awardable) { create(:merge_request, source_project: project) }
++
++    include_examples 'when the user can read the awardable'
++    include_examples 'when the user cannot read the awardable'
++  end
++
++  context 'when the awardable is a note' do
++    let(:awardable) { create(:note_on_merge_request, project: project) }
++
++    include_examples 'when the user can read the awardable'
++    include_examples 'when the user cannot read the awardable'
++  end
++
++  context 'when the awardable is a snippet' do
++    let(:awardable) { create(:project_snippet, :public, project: project) }
++
++    include_examples 'when the user can read the awardable'
++    include_examples 'when the user cannot read the awardable'
++  end
++end
+diff --git a/spec/presenters/award_emoji_presenter_spec.rb b/spec/presenters/award_emoji_presenter_spec.rb
+new file mode 100644
+index 0000000000..e2ada2a3c9
+--- /dev/null
++++ b/spec/presenters/award_emoji_presenter_spec.rb
+@@ -0,0 +1,36 @@
++# frozen_string_literal: true
++
++require 'spec_helper'
++
++describe AwardEmojiPresenter do
++  let(:emoji_name) { 'thumbsup' }
++  let(:award_emoji) { build(:award_emoji, name: emoji_name) }
++  let(:presenter) { described_class.new(award_emoji) }
++
++  describe '#description' do
++    it { expect(presenter.description).to eq Gitlab::Emoji.emojis[emoji_name]['description'] }
++  end
++
++  describe '#unicode' do
++    it { expect(presenter.unicode).to eq Gitlab::Emoji.emojis[emoji_name]['unicode'] }
++  end
++
++  describe '#unicode_version' do
++    it { expect(presenter.unicode_version).to eq Gitlab::Emoji.emoji_unicode_version(emoji_name) }
++  end
++
++  describe '#emoji' do
++    it { expect(presenter.emoji).to eq Gitlab::Emoji.emojis[emoji_name]['moji'] }
++  end
++
++  describe 'when presenting an award emoji with an invalid name' do
++    let(:emoji_name) { 'invalid-name' }
++
++    it 'returns nil for all properties' do
++      expect(presenter.description).to be_nil
++      expect(presenter.emoji).to be_nil
++      expect(presenter.unicode).to be_nil
++      expect(presenter.unicode_version).to be_nil
++    end
++  end
++end
+diff --git a/spec/requests/api/graphql/mutations/award_emojis/add_spec.rb b/spec/requests/api/graphql/mutations/award_emojis/add_spec.rb
+new file mode 100644
+index 0000000000..3982125a38
+--- /dev/null
++++ b/spec/requests/api/graphql/mutations/award_emojis/add_spec.rb
+@@ -0,0 +1,100 @@
++# frozen_string_literal: true
++
++require 'spec_helper'
++
++describe 'Adding an AwardEmoji' do
++  include GraphqlHelpers
++
++  let(:current_user) { create(:user) }
++  let(:awardable) { create(:note) }
++  let(:project) { awardable.project }
++  let(:emoji_name) { 'thumbsup' }
++  let(:mutation) do
++    variables = {
++      awardable_id: GitlabSchema.id_from_object(awardable).to_s,
++      name: emoji_name
++    }
++
++    graphql_mutation(:add_award_emoji, variables)
++  end
++
++  def mutation_response
++    graphql_mutation_response(:add_award_emoji)
++  end
++
++  shared_examples 'a mutation that does not create an AwardEmoji' do
++    it do
++      expect do
++        post_graphql_mutation(mutation, current_user: current_user)
++      end.not_to change { AwardEmoji.count }
++    end
++  end
++
++  context 'when the user does not have permission' do
++    it_behaves_like 'a mutation that does not create an AwardEmoji'
++
++    it_behaves_like 'a mutation that returns top-level errors',
++                    errors: ['The resource that you are attempting to access does not exist or you don\'t have permission to perform this action']
++  end
++
++  context 'when the user has permission' do
++    before do
++      project.add_developer(current_user)
++    end
++
++    context 'when the given awardable is not an Awardable' do
++      let(:awardable) { create(:label) }
++
++      it_behaves_like 'a mutation that does not create an AwardEmoji'
++
++      it_behaves_like 'a mutation that returns top-level errors',
++                      errors: ['Cannot award emoji to this resource']
++    end
++
++    context 'when the given awardable is an Awardable but still cannot be awarded an emoji' do
++      let(:awardable) { create(:system_note) }
++
++      it_behaves_like 'a mutation that does not create an AwardEmoji'
++
++      it_behaves_like 'a mutation that returns top-level errors',
++                      errors: ['Cannot award emoji to this resource']
++    end
++
++    context 'when the given awardable an Awardable' do
++      it 'creates an emoji' do
++        expect do
++          post_graphql_mutation(mutation, current_user: current_user)
++        end.to change { AwardEmoji.count }.by(1)
++      end
++
++      it 'returns the emoji' do
++        post_graphql_mutation(mutation, current_user: current_user)
++
++        expect(mutation_response['awardEmoji']['name']).to eq(emoji_name)
++      end
++
++      context 'when there were active record validation errors' do
++        before do
++          expect_next_instance_of(AwardEmoji) do |award|
++            expect(award).to receive(:valid?).at_least(:once).and_return(false)
++            expect(award).to receive_message_chain(
++              :errors,
++              :full_messages
++            ).and_return(['Error 1', 'Error 2'])
++          end
++        end
++
++        it_behaves_like 'a mutation that does not create an AwardEmoji'
++
++        it_behaves_like 'a mutation that returns errors in the response', errors: ['Error 1', 'Error 2']
++
++        it 'returns an empty awardEmoji' do
++          post_graphql_mutation(mutation, current_user: current_user)
++
++          expect(mutation_response).to have_key('awardEmoji')
++          expect(mutation_response['awardEmoji']).to be_nil
++        end
++      end
++    end
++  end
++end
+diff --git a/spec/requests/api/graphql/mutations/award_emojis/remove_spec.rb b/spec/requests/api/graphql/mutations/award_emojis/remove_spec.rb
+new file mode 100644
+index 0000000000..c78f0c7ca2
+--- /dev/null
++++ b/spec/requests/api/graphql/mutations/award_emojis/remove_spec.rb
+@@ -0,0 +1,80 @@
++# frozen_string_literal: true
++
++require 'spec_helper'
++
++describe 'Removing an AwardEmoji' do
++  include GraphqlHelpers
++
++  let(:current_user) { create(:user) }
++  let(:awardable) { create(:note) }
++  let(:project) { awardable.project }
++  let(:emoji_name) { 'thumbsup' }
++  let(:input) { { awardable_id: GitlabSchema.id_from_object(awardable).to_s, name: emoji_name } }
++
++  let(:mutation) do
++    graphql_mutation(:remove_award_emoji, input)
++  end
++
++  def mutation_response
++    graphql_mutation_response(:remove_award_emoji)
++  end
++
++  def create_award_emoji(user)
++    create(:award_emoji, name: emoji_name, awardable: awardable, user: user )
++  end
++
++  shared_examples 'a mutation that does not destroy an AwardEmoji' do
++    it do
++      expect do
++        post_graphql_mutation(mutation, current_user: current_user)
++      end.not_to change { AwardEmoji.count }
++    end
++  end
++
++  shared_examples 'a mutation that does not authorize the user' do
++    it_behaves_like 'a mutation that does not destroy an AwardEmoji'
++
++    it_behaves_like 'a mutation that returns top-level errors',
++                    errors: ['The resource that you are attempting to access does not exist or you don\'t have permission to perform this action']
++  end
++
++  context 'when the current_user does not own the award emoji' do
++    let!(:award_emoji) { create_award_emoji(create(:user)) }
++
++    it_behaves_like 'a mutation that does not authorize the user'
++  end
++
++  context 'when the current_user owns the award emoji' do
++    let!(:award_emoji) { create_award_emoji(current_user) }
++
++    context 'when the given awardable is not an Awardable' do
++      let(:awardable) { create(:label) }
++
++      it_behaves_like 'a mutation that does not destroy an AwardEmoji'
++
++      it_behaves_like 'a mutation that returns top-level errors',
++                      errors: ['Cannot award emoji to this resource']
++    end
++
++    context 'when the given awardable is an Awardable' do
++      it 'removes the emoji' do
++        expect do
++          post_graphql_mutation(mutation, current_user: current_user)
++        end.to change { AwardEmoji.count }.by(-1)
++      end
++
++      it 'returns no errors' do
++        post_graphql_mutation(mutation, current_user: current_user)
++
++        expect(graphql_errors).to be_nil
++      end
++
++      it 'returns an empty awardEmoji' do
++        post_graphql_mutation(mutation, current_user: current_user)
++
++        expect(mutation_response).to have_key('awardEmoji')
++        expect(mutation_response['awardEmoji']).to be_nil
++      end
++    end
++  end
++end
+diff --git a/spec/requests/api/graphql/mutations/award_emojis/toggle_spec.rb b/spec/requests/api/graphql/mutations/award_emojis/toggle_spec.rb
+new file mode 100644
+index 0000000000..31145730f1
+--- /dev/null
++++ b/spec/requests/api/graphql/mutations/award_emojis/toggle_spec.rb
+@@ -0,0 +1,142 @@
++# frozen_string_literal: true
++
++require 'spec_helper'
++
++describe 'Toggling an AwardEmoji' do
++  include GraphqlHelpers
++
++  let(:current_user) { create(:user) }
++  let(:awardable) { create(:note) }
++  let(:project) { awardable.project }
++  let(:emoji_name) { 'thumbsup' }
++  let(:mutation) do
++    variables = {
++      awardable_id: GitlabSchema.id_from_object(awardable).to_s,
++      name: emoji_name
++    }
++
++    graphql_mutation(:toggle_award_emoji, variables)
++  end
++
++  def mutation_response
++    graphql_mutation_response(:toggle_award_emoji)
++  end
++
++  shared_examples 'a mutation that does not create or destroy an AwardEmoji' do
++    it do
++      expect do
++        post_graphql_mutation(mutation, current_user: current_user)
++      end.not_to change { AwardEmoji.count }
++    end
++  end
++
++  def create_award_emoji(user)
++    create(:award_emoji, name: emoji_name, awardable: awardable, user: user )
++  end
++
++  context 'when the user has permission' do
++    before do
++      project.add_developer(current_user)
++    end
++
++    context 'when the given awardable is not an Awardable' do
++      let(:awardable) { create(:label) }
++
++      it_behaves_like 'a mutation that does not create or destroy an AwardEmoji'
++
++      it_behaves_like 'a mutation that returns top-level errors',
++                      errors: ['Cannot award emoji to this resource']
++    end
++
++    context 'when the given awardable is an Awardable but still cannot be awarded an emoji' do
++      let(:awardable) { create(:system_note) }
++
++      it_behaves_like 'a mutation that does not create or destroy an AwardEmoji'
++
++      it_behaves_like 'a mutation that returns top-level errors',
++                      errors: ['Cannot award emoji to this resource']
++    end
++
++    context 'when the given awardable is an Awardable' do
++      context 'when no emoji has been awarded by the current_user yet' do
++        # Create an award emoji for another user. This therefore tests that
++        # toggling is correctly scoped to the user's emoji only.
++        let!(:award_emoji) { create_award_emoji(create(:user)) }
++
++        it 'creates an emoji' do
++          expect do
++            post_graphql_mutation(mutation, current_user: current_user)
++          end.to change { AwardEmoji.count }.by(1)
++        end
++
++        it 'returns the emoji' do
++          post_graphql_mutation(mutation, current_user: current_user)
++
++          expect(mutation_response['awardEmoji']['name']).to eq(emoji_name)
++        end
++
++        it 'returns toggledOn as true' do
++          post_graphql_mutation(mutation, current_user: current_user)
++
++          expect(mutation_response['toggledOn']).to eq(true)
++        end
++
++        context 'when there were active record validation errors' do
++          before do
++            expect_next_instance_of(AwardEmoji) do |award|
++              expect(award).to receive(:valid?).at_least(:once).and_return(false)
++              expect(award).to receive_message_chain(:errors, :full_messages).and_return(['Error 1', 'Error 2'])
++            end
++          end
++
++          it_behaves_like 'a mutation that does not create or destroy an AwardEmoji'
++
++          it_behaves_like 'a mutation that returns errors in the response', errors: ['Error 1', 'Error 2']
++
++          it 'returns an empty awardEmoji' do
++            post_graphql_mutation(mutation, current_user: current_user)
++
++            expect(mutation_response).to have_key('awardEmoji')
++            expect(mutation_response['awardEmoji']).to be_nil
++          end
++        end
++      end
++
++      context 'when an emoji has been awarded by the current_user' do
++        let!(:award_emoji) { create_award_emoji(current_user) }
++
++        it 'removes the emoji' do
++          expect do
++            post_graphql_mutation(mutation, current_user: current_user)
++          end.to change { AwardEmoji.count }.by(-1)
++        end
++
++        it 'returns no errors' do
++          post_graphql_mutation(mutation, current_user: current_user)
++
++          expect(graphql_errors).to be_nil
++        end
++
++        it 'returns an empty awardEmoji' do
++          post_graphql_mutation(mutation, current_user: current_user)
++
++          expect(mutation_response).to have_key('awardEmoji')
++          expect(mutation_response['awardEmoji']).to be_nil
++        end
++
++        it 'returns toggledOn as false' do
++          post_graphql_mutation(mutation, current_user: current_user)
++
++          expect(mutation_response['toggledOn']).to eq(false)
++        end
++      end
++    end
++  end
++
++  context 'when the user does not have permission' do
++    it_behaves_like 'a mutation that does not create or destroy an AwardEmoji'
++
++    it_behaves_like 'a mutation that returns top-level errors',
++                    errors: ['The resource that you are attempting to access does not exist or you don\'t have permission to perform this action']
++  end
++end
+diff --git a/spec/support/helpers/graphql_helpers.rb b/spec/support/helpers/graphql_helpers.rb
+index bcf6669f37..1a09d48f4c 100644
+--- a/spec/support/helpers/graphql_helpers.rb
++++ b/spec/support/helpers/graphql_helpers.rb
+@@ -4,10 +4,7 @@ module GraphqlHelpers
+   # makes an underscored string look like a fieldname
+   # "merge_request" => "mergeRequest"
+   def self.fieldnamerize(underscored_field_name)
+-    graphql_field_name = underscored_field_name.to_s.camelize
+-    graphql_field_name[0] = graphql_field_name[0].downcase
+-
+-    graphql_field_name
++    underscored_field_name.to_s.camelize(:lower)
+   end
+ 
+   # Run a loader's named resolver
+diff --git a/spec/support/shared_examples/graphql/mutation_shared_examples.rb b/spec/support/shared_examples/graphql/mutation_shared_examples.rb
+new file mode 100644
+index 0000000000..022d41c0bd
+--- /dev/null
++++ b/spec/support/shared_examples/graphql/mutation_shared_examples.rb
+@@ -0,0 +1,34 @@
++# frozen_string_literal: true
++
++# Shared example for expecting top-level errors.
++# See https://graphql-ruby.org/mutations/mutation_errors#raising-errors
++#
++#   { errors: [] }
++#
++# There must be a method or let called `mutation` defined that executes
++# the mutation.
++RSpec.shared_examples 'a mutation that returns top-level errors' do |errors:|
++  it do
++    post_graphql_mutation(mutation, current_user: current_user)
++
++    error_messages = graphql_errors.map { |e| e['message'] }
++
++    expect(error_messages).to eq(errors)
++  end
++end
++
++# Shared example for expecting schema-level errors.
++# See https://graphql-ruby.org/mutations/mutation_errors#errors-as-data
++#
++#   { data: { mutationName: { errors: [] } } }
++#
++# There must be:
++# - a method or let called `mutation` defined that executes the mutation
++# - a `mutation_response` method defined that returns the data of the mutation response.
++RSpec.shared_examples 'a mutation that returns errors in the response' do |errors:|
++  it do
++    post_graphql_mutation(mutation, current_user: current_user)
++
++    expect(mutation_response['errors']).to eq(errors)
++  end
++end

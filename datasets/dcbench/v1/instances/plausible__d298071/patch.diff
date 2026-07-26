@@ -1,0 +1,1395 @@
+From d298071482d08508e6add785dc92bc67d10ebcff Mon Sep 17 00:00:00 2001
+From: Adrian Gruntkowski <adrian.gruntkowski@gmail.com>
+Date: Mon, 13 Apr 2026 14:26:40 +0200
+Subject: [PATCH] Implement basics of funnel exploration logic along with UI
+ prototype (#6242)
+
+* Implement basics of exploration logic
+
+* Add simplistic search capability
+
+* Implement calculation of dropoff as a number and a percentage
+
+* Support querying for the first step
+
+* Expose exploration via internal API
+
+* Only allow superadmins to query exploration API for now
+
+* Hook up a very basic UI adapted from earlier prototype
+
+* Change the approach to gating access to exploration in UI
+
+* Fix exploration funnel length condition
+
+* Add primitive filtering support
+
+* Revise tests for exploration slightly
+
+* Ensure filter input is populated on reveal and simplify debounce logic
+
+* Remove unreachable case clause
+
+* Fix tests
+
+* Add tests for exploration available flag
+
+* Address credo complaints
+
+* Remove unused JS import
+
+* Move exploration logic outside extra
+
+* Run one of the tests on EE only
+
+* Run tests reyling in superadmin guard on EE only
+
+* Refactor `percentage` helper and extract it to `Plausible.Stats.Util`
+---
+ assets/js/dashboard/site-context.test.tsx     |   2 +
+ assets/js/dashboard/site-context.tsx          |   2 +
+ assets/js/dashboard/stats/behaviours/index.js |  15 ++
+ .../stats/behaviours/modes-context.tsx        |  10 +-
+ assets/js/dashboard/stats/exploration.js      | 216 ++++++++++++++++
+ assets/test-utils/app-context-providers.tsx   |   1 +
+ extra/lib/plausible/stats/funnel.ex           |  21 +-
+ lib/plausible/stats/exploration.ex            | 244 ++++++++++++++++++
+ lib/plausible/stats/util.ex                   |  20 ++
+ .../controllers/api/stats_controller.ex       | 135 +++++++---
+ .../controllers/stats_controller.ex           |  12 +-
+ lib/plausible_web/router.ex                   |   3 +
+ .../templates/stats/stats.html.heex           |   3 +-
+ test/plausible/stats/exploration_test.exs     | 201 +++++++++++++++
+ .../api/stats_controller/exploration_test.exs | 135 ++++++++++
+ .../controllers/stats_controller_test.exs     |  18 ++
+ 16 files changed, 972 insertions(+), 66 deletions(-)
+ create mode 100644 assets/js/dashboard/stats/exploration.js
+ create mode 100644 lib/plausible/stats/exploration.ex
+ create mode 100644 test/plausible/stats/exploration_test.exs
+ create mode 100644 test/plausible_web/controllers/api/stats_controller/exploration_test.exs
+
+diff --git a/assets/js/dashboard/site-context.test.tsx b/assets/js/dashboard/site-context.test.tsx
+index 183ec47b7..d8329a395 100644
+--- a/assets/js/dashboard/site-context.test.tsx
++++ b/assets/js/dashboard/site-context.test.tsx
+@@ -15,6 +15,7 @@ describe('parseSiteFromDataset', () => {
+       data-funnels-opted-out="false"
+       data-props-opted-out="false"
+       data-funnels-available="true"
++      data-exploration-available="false"
+       data-site-segments-available="true"
+       data-props-available="true"
+       data-revenue-goals='[{"currency":"USD","display_name":"Purchase"}]'
+@@ -43,6 +44,7 @@ describe('parseSiteFromDataset', () => {
+     propsOptedOut: false,
+     funnelsAvailable: true,
+     propsAvailable: true,
++    explorationAvailable: false,
+     siteSegmentsAvailable: true,
+     revenueGoals: [{ currency: 'USD', display_name: 'Purchase' }],
+     funnels: [{ id: 1, name: 'From homepage to login', steps_count: 3 }],
+diff --git a/assets/js/dashboard/site-context.tsx b/assets/js/dashboard/site-context.tsx
+index ac6213b21..ada56d7a8 100644
+--- a/assets/js/dashboard/site-context.tsx
++++ b/assets/js/dashboard/site-context.tsx
+@@ -8,6 +8,7 @@ export function parseSiteFromDataset(dataset: DOMStringMap): PlausibleSite {
+     hasProps: dataset.hasProps === 'true',
+     funnelsAvailable: dataset.funnelsAvailable === 'true',
+     propsAvailable: dataset.propsAvailable === 'true',
++    explorationAvailable: dataset.explorationAvailable === 'true',
+     siteSegmentsAvailable: dataset.siteSegmentsAvailable === 'true',
+     conversionsOptedOut: dataset.conversionsOptedOut === 'true',
+     funnelsOptedOut: dataset.funnelsOptedOut === 'true',
+@@ -36,6 +37,7 @@ export const siteContextDefaultValue = {
+   hasGoals: false,
+   hasProps: false,
+   funnelsAvailable: false,
++  explorationAvailable: false,
+   propsAvailable: false,
+   siteSegmentsAvailable: false,
+   conversionsOptedOut: false,
+diff --git a/assets/js/dashboard/stats/behaviours/index.js b/assets/js/dashboard/stats/behaviours/index.js
+index 0ca81e0b1..60e15a606 100644
+--- a/assets/js/dashboard/stats/behaviours/index.js
++++ b/assets/js/dashboard/stats/behaviours/index.js
+@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
+ import * as storage from '../../util/storage'
+ import ImportedQueryUnsupportedWarning from '../imported-query-unsupported-warning'
+ import Properties from './props'
++import { FunnelExploration } from '../exploration'
+ import { FeatureSetupNotice } from '../../components/notice'
+ import {
+   hasConversionGoalFilter,
+@@ -290,6 +291,10 @@ function Behaviours({ importedDataInView, setMode, mode }) {
+     }
+   }
+ 
++  function renderExploration() {
++    return <FunnelExploration />
++  }
++
+   function renderFunnels() {
+     if (Funnel === null) {
+       return featureUnavailable()
+@@ -380,6 +385,8 @@ function Behaviours({ importedDataInView, setMode, mode }) {
+         return renderProps()
+       case Mode.FUNNELS:
+         return renderFunnels()
++      case Mode.EXPLORATION:
++        return renderExploration()
+     }
+   }
+ 
+@@ -518,6 +525,14 @@ function Behaviours({ importedDataInView, setMode, mode }) {
+                   Funnels
+                 </TabButton>
+               ))}
++            {!site.isConsolidatedView && site.explorationAvailable && (
++              <TabButton
++                active={mode === Mode.EXPLORATION}
++                onClick={setTabFactory(Mode.EXPLORATION)}
++              >
++                Exploration
++              </TabButton>
++            )}
+           </TabWrapper>
+           {isRealtime() && <Pill className="-mt-1">last 30min</Pill>}
+           {renderImportedQueryUnsupportedWarning()}
+diff --git a/assets/js/dashboard/stats/behaviours/modes-context.tsx b/assets/js/dashboard/stats/behaviours/modes-context.tsx
+index 5daf6c93f..de7452fe4 100644
+--- a/assets/js/dashboard/stats/behaviours/modes-context.tsx
++++ b/assets/js/dashboard/stats/behaviours/modes-context.tsx
+@@ -5,7 +5,8 @@ import { UserContextValue, useUserContext } from '../../user-context'
+ export enum Mode {
+   CONVERSIONS = 'conversions',
+   PROPS = 'props',
+-  FUNNELS = 'funnels'
++  FUNNELS = 'funnels',
++  EXPLORATION = 'exploration'
+ }
+ 
+ export const MODES = {
+@@ -23,6 +24,11 @@ export const MODES = {
+     title: 'Funnels',
+     isAvailableKey: `${Mode.FUNNELS}Available`,
+     optedOutKey: `${Mode.FUNNELS}OptedOut`
++  },
++  [Mode.EXPLORATION]: {
++    title: 'Exploration',
++    isAvailableKey: null, // always available
++    optedOutKey: null
+   }
+ } as const
+ 
+@@ -48,7 +54,7 @@ function getInitiallyAvailableModes({
+ }): Mode[] {
+   return Object.entries(MODES)
+     .filter(([_, { isAvailableKey, optedOutKey }]) => {
+-      const isOptedOut = site[optedOutKey]
++      const isOptedOut = optedOutKey ? site[optedOutKey] : false
+       const isAvailable = isAvailableKey ? site[isAvailableKey] : true
+ 
+       // If the feature is not supported by the site owner's subscription,
+diff --git a/assets/js/dashboard/stats/exploration.js b/assets/js/dashboard/stats/exploration.js
+new file mode 100644
+index 000000000..1b60e755f
+--- /dev/null
++++ b/assets/js/dashboard/stats/exploration.js
+@@ -0,0 +1,216 @@
++import React, { useState, useEffect } from 'react'
++import * as api from '../api'
++import * as url from '../util/url'
++import { useDebounce } from '../custom-hooks'
++import { useSiteContext } from '../site-context'
++import { useDashboardStateContext } from '../dashboard-state-context'
++import { numberShortFormatter } from '../util/number-formatter'
++
++const PAGE_FILTER_KEYS = ['page', 'entry_page', 'exit_page']
++
++function fetchColumnData(site, dashboardState, steps, filter) {
++  // Page filters only apply to the first step — strip them for subsequent columns
++  const stateToUse =
++    steps.length > 0
++      ? {
++          ...dashboardState,
++          filters: dashboardState.filters.filter(
++            ([_op, key]) => !PAGE_FILTER_KEYS.includes(key)
++          )
++        }
++      : dashboardState
++
++  const journey = []
++  if (steps.length > 0) {
++    for (const s of steps) {
++      journey.push({ name: s.name, pathname: s.pathname })
++    }
++  }
++
++  return api.get(url.apiPath(site, '/exploration/next'), stateToUse, {
++    journey: JSON.stringify(journey),
++    search_term: filter
++  })
++}
++
++function ExplorationColumn({
++  header,
++  steps,
++  selected,
++  onSelect,
++  dashboardState
++}) {
++  const site = useSiteContext()
++  const [loading, setLoading] = useState(steps !== null)
++  const [results, setResults] = useState([])
++  const [filter, setFilter] = useState('')
++
++  const debouncedOnSearchInputChange = useDebounce((event) =>
++    setFilter(event.target.value)
++  )
++
++  useEffect(() => {
++    if (steps === null) {
++      setFilter('')
++      setResults([])
++      setLoading(false)
++      return
++    }
++
++    setLoading(true)
++    setResults([])
++
++    fetchColumnData(site, dashboardState, steps, filter)
++      .then((response) => {
++        setResults(response || [])
++      })
++      .catch(() => {
++        setResults([])
++      })
++      .finally(() => {
++        setLoading(false)
++      })
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, [dashboardState, steps, filter])
++
++  const maxVisitors = results.length > 0 ? results[0].visitors : 1
++
++  return (
++    <div className="flex-1 min-w-0 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
++      <div className="px-4 py-3 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
++        <span className="text-xs font-bold tracking-wide text-gray-500 dark:text-gray-400 uppercase">
++          {header}
++        </span>
++        {!selected && steps !== null && (
++          <input
++            data-testid="search-input"
++            type="text"
++            defaultValue={filter}
++            placeholder="Search"
++            onChange={debouncedOnSearchInputChange}
++            className="peer w-32 text-sm dark:text-gray-100 block border-gray-300 dark:border-gray-750 rounded-md dark:bg-gray-750 dark:placeholder:text-gray-400 focus:outline-none focus:ring-3 focus:ring-indigo-500/20 dark:focus:ring-indigo-500/25 focus:border-indigo-500"
++          />
++        )}
++        {selected && (
++          <button
++            onClick={() => onSelect(null)}
++            className="text-xs text-indigo-500 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-200"
++          >
++            Clear
++          </button>
++        )}
++      </div>
++
++      {loading ? (
++        <div className="flex items-center justify-center h-48">
++          <div className="mx-auto loading pt-4">
++            <div></div>
++          </div>
++        </div>
++      ) : results.length === 0 ? (
++        <div className="flex items-center justify-center h-48 text-sm text-gray-400 dark:text-gray-500">
++          {steps === null ? 'Select an event to continue' : 'No data'}
++        </div>
++      ) : (
++        <ul className="divide-y divide-gray-100 dark:divide-gray-700">
++          {(selected
++            ? results.filter(
++                ({ step }) =>
++                  step.name === selected.name &&
++                  step.pathname === selected.pathname
++              )
++            : results.slice(0, 10)
++          ).map(({ step, visitors }) => {
++            const label = `${step.name} ${step.pathname}`
++            const pct = Math.round((visitors / maxVisitors) * 100)
++            const isSelected =
++              !!selected &&
++              step.name === selected.name &&
++              step.pathname === selected.pathname
++
++            return (
++              <li key={label}>
++                <button
++                  className={`w-full text-left px-4 py-2 text-sm transition-colors focus:outline-none ${
++                    isSelected
++                      ? 'bg-indigo-50 dark:bg-indigo-900/30'
++                      : 'hover:bg-gray-50 dark:hover:bg-gray-800'
++                  }`}
++                  onClick={() => onSelect(isSelected ? null : step)}
++                >
++                  <div className="flex items-center justify-between mb-1">
++                    <span
++                      className={`truncate font-medium ${
++                        isSelected
++                          ? 'text-indigo-700 dark:text-indigo-300'
++                          : 'text-gray-800 dark:text-gray-200'
++                      }`}
++                      title={label}
++                    >
++                      {label}
++                    </span>
++                    <span className="ml-2 shrink-0 text-gray-500 dark:text-gray-400 tabular-nums">
++                      {numberShortFormatter(visitors)}
++                    </span>
++                  </div>
++                  <div className="h-1 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
++                    <div
++                      className={`h-full rounded-full ${
++                        isSelected
++                          ? 'bg-indigo-500'
++                          : 'bg-indigo-300 dark:bg-indigo-600'
++                      }`}
++                      style={{ width: `${pct}%` }}
++                    />
++                  </div>
++                </button>
++              </li>
++            )
++          })}
++        </ul>
++      )}
++    </div>
++  )
++}
++
++function columnHeader(index) {
++  if (index === 0) return 'Start'
++  return `${index} step${index === 1 ? '' : 's'} after`
++}
++
++export function FunnelExploration() {
++  const { dashboardState } = useDashboardStateContext()
++  const [steps, setSteps] = useState([])
++
++  function handleSelect(columnIndex, selected) {
++    if (selected === null) {
++      setSteps(steps.slice(0, columnIndex))
++    } else {
++      setSteps([...steps.slice(0, columnIndex), selected])
++    }
++  }
++
++  const numColumns = Math.max(steps.length + 1, 3)
++
++  return (
++    <div className="p-4">
++      <h4 className="mt-2 mb-4 text-base font-semibold dark:text-gray-100">
++        Explore user journeys
++      </h4>
++      <div className="flex gap-3">
++        {Array.from({ length: numColumns }, (_, i) => (
++          <ExplorationColumn
++            key={i}
++            header={columnHeader(i)}
++            steps={steps.length >= i ? steps.slice(0, i) : null}
++            selected={steps[i] || null}
++            onSelect={(selected) => handleSelect(i, selected)}
++            dashboardState={dashboardState}
++          />
++        ))}
++      </div>
++    </div>
++  )
++}
++
++export default FunnelExploration
+diff --git a/assets/test-utils/app-context-providers.tsx b/assets/test-utils/app-context-providers.tsx
+index d6f2564d8..c0287a14d 100644
+--- a/assets/test-utils/app-context-providers.tsx
++++ b/assets/test-utils/app-context-providers.tsx
+@@ -29,6 +29,7 @@ export const DEFAULT_SITE: PlausibleSite = {
+   hasGoals: false,
+   hasProps: false,
+   funnelsAvailable: false,
++  explorationAvailable: false,
+   propsAvailable: false,
+   siteSegmentsAvailable: false,
+   conversionsOptedOut: false,
+diff --git a/extra/lib/plausible/stats/funnel.ex b/extra/lib/plausible/stats/funnel.ex
+index 7629dd595..81883944e 100644
+--- a/extra/lib/plausible/stats/funnel.ex
++++ b/extra/lib/plausible/stats/funnel.ex
+@@ -11,6 +11,7 @@ defmodule Plausible.Stats.Funnel do
+ 
+   import Ecto.Query
+   import Plausible.Stats.SQL.Fragments
++  import Plausible.Stats.Util, only: [percentage: 2]
+ 
+   alias Plausible.ClickhouseRepo
+   alias Plausible.Stats.{Base, Query}
+@@ -167,24 +168,4 @@ defmodule Plausible.Stats.Funnel do
+     |> elem(2)
+     |> Enum.reverse()
+   end
+-
+-  defp percentage(x, y) when x in [0, nil] or y in [0, nil] do
+-    "0"
+-  end
+-
+-  defp percentage(x, y) do
+-    result =
+-      x
+-      |> Decimal.div(y)
+-      |> Decimal.mult(100)
+-      |> Decimal.round(2)
+-      |> Decimal.to_string()
+-
+-    case result do
+-      <<compact::binary-size(1), ".00">> -> compact
+-      <<compact::binary-size(2), ".00">> -> compact
+-      <<compact::binary-size(3), ".00">> -> compact
+-      decimal -> decimal
+-    end
+-  end
+ end
+diff --git a/lib/plausible/stats/exploration.ex b/lib/plausible/stats/exploration.ex
+new file mode 100644
+index 000000000..84ceaf1ae
+--- /dev/null
++++ b/lib/plausible/stats/exploration.ex
+@@ -0,0 +1,244 @@
++defmodule Plausible.Stats.Exploration do
++  @moduledoc """
++  Query logic for user journey exploration.
++  """
++
++  defmodule Journey.Step do
++    @moduledoc false
++
++    @type t() :: %__MODULE__{}
++
++    @derive {Jason.Encoder, only: [:name, :pathname]}
++    defstruct [:name, :pathname]
++  end
++
++  import Ecto.Query
++  import Plausible.Stats.SQL.Fragments
++  import Plausible.Stats.Util, only: [percentage: 2]
++
++  alias Plausible.ClickhouseRepo
++  alias Plausible.Stats.Base
++  alias Plausible.Stats.Query
++
++  @type journey() :: [Journey.Step.t()]
++
++  @type next_step() :: %{
++          step: Journey.Step.t(),
++          visitors: pos_integer()
++        }
++
++  @type funnel_step() :: %{
++          step: Journey.Step.t(),
++          visitors: non_neg_integer(),
++          dropoff: non_neg_integer(),
++          dropoff_percentage: String.t()
++        }
++
++  @spec next_steps(Query.t(), journey(), String.t()) ::
++          {:ok, [next_step()]}
++  def next_steps(query, journey, search_term \\ "")
++
++  def next_steps(query, [], search_term) do
++    query
++    |> Base.base_event_query()
++    |> next_steps_first_query(search_term)
++    |> ClickhouseRepo.all()
++    |> then(&{:ok, &1})
++  end
++
++  def next_steps(query, journey, search_term) do
++    query
++    |> Base.base_event_query()
++    |> next_steps_query(journey, search_term)
++    |> ClickhouseRepo.all()
++    |> then(&{:ok, &1})
++  end
++
++  @spec journey_funnel(Query.t(), journey()) ::
++          {:ok, [funnel_step()]} | {:error, :empty_journey}
++  def journey_funnel(_query, []), do: {:error, :empty_journey}
++
++  def journey_funnel(query, journey) do
++    query
++    |> Base.base_event_query()
++    |> journey_funnel_query(journey)
++    |> ClickhouseRepo.all()
++    |> to_funnel(journey)
++    |> then(&{:ok, &1})
++  end
++
++  defp next_steps_first_query(query, search_term) do
++    q_steps = steps_query(query, 1)
++
++    from(s in subquery(q_steps),
++      where: selected_as(:next_name) != "",
++      select: %{
++        step: %Journey.Step{
++          name: selected_as(s.name1, :next_name),
++          pathname: selected_as(s.pathname1, :next_pathname)
++        },
++        visitors: selected_as(scale_sample(fragment("uniq(?)", s.user_id)), :count)
++      },
++      group_by: [selected_as(:next_name), selected_as(:next_pathname)],
++      order_by: [
++        desc: selected_as(:count),
++        asc: selected_as(:next_pathname),
++        asc: selected_as(:next_name)
++      ],
++      limit: 10
++    )
++    |> maybe_search(search_term)
++  end
++
++  defp next_steps_query(query, steps, search_term) do
++    next_step_idx = length(steps) + 1
++    q_steps = steps_query(query, next_step_idx)
++
++    next_name = :"name#{next_step_idx}"
++    next_pathname = :"pathname#{next_step_idx}"
++
++    q_next =
++      from(s in subquery(q_steps),
++        # avoid cycling back to the beginning of the exploration
++        where:
++          selected_as(:next_name) != "" and
++            (selected_as(:next_name) != s.name1 or selected_as(:next_pathname) != s.pathname1),
++        select: %{
++          step: %Journey.Step{
++            name: selected_as(field(s, ^next_name), :next_name),
++            pathname: selected_as(field(s, ^next_pathname), :next_pathname)
++          },
++          visitors: selected_as(scale_sample(fragment("uniq(?)", s.user_id)), :count)
++        },
++        group_by: [selected_as(:next_name), selected_as(:next_pathname)],
++        order_by: [
++          desc: selected_as(:count),
++          asc: selected_as(:next_pathname),
++          asc: selected_as(:next_name)
++        ],
++        limit: 10
++      )
++      |> maybe_search(search_term)
++
++    steps
++    |> Enum.with_index()
++    |> Enum.reduce(q_next, fn {step, idx}, q ->
++      name = :"name#{idx + 1}"
++      pathname = :"pathname#{idx + 1}"
++
++      from(s in q,
++        where: field(s, ^name) == ^step.name and field(s, ^pathname) == ^step.pathname
++      )
++    end)
++  end
++
++  defp journey_funnel_query(query, steps) do
++    q_steps = steps_query(query, length(steps))
++
++    [first_step | steps] = steps
++
++    q_funnel =
++      from(s in subquery(q_steps),
++        where: s.name1 == ^first_step.name and s.pathname1 == ^first_step.pathname,
++        select: %{
++          1 => scale_sample(fragment("uniq(?)", s.user_id))
++        }
++      )
++
++    steps
++    |> Enum.with_index()
++    |> Enum.reduce(q_funnel, fn {_step, idx}, q ->
++      current_steps = Enum.take(steps, idx + 1)
++
++      step_conditions =
++        current_steps
++        |> Enum.with_index()
++        |> Enum.reduce(dynamic(true), fn {step, idx}, acc ->
++          step_condition = step_condition(step, idx + 2)
++          dynamic([q], fragment("? and ?", ^acc, ^step_condition))
++        end)
++
++      step_count =
++        dynamic([e], scale_sample(fragment("uniqIf(?, ?)", e.user_id, ^step_conditions)))
++
++      from(e in q, select_merge: ^%{(idx + 2) => step_count})
++    end)
++  end
++
++  defp steps_query(query, steps) when is_integer(steps) do
++    q_steps =
++      from(e in query,
++        windows: [step_window: [partition_by: e.user_id, order_by: e.timestamp]],
++        select: %{
++          user_id: e.user_id,
++          _sample_factor: e._sample_factor,
++          name1: e.name,
++          pathname1: e.pathname
++        },
++        where: e.name != "engagement",
++        order_by: e.timestamp
++      )
++
++    if steps > 1 do
++      Enum.reduce(1..(steps - 1), q_steps, fn idx, q ->
++        from(e in q,
++          select_merge: %{
++            ^:"name#{idx + 1}" => lead(e.name, ^idx) |> over(:step_window),
++            ^:"pathname#{idx + 1}" => lead(e.pathname, ^idx) |> over(:step_window)
++          }
++        )
++      end)
++    else
++      q_steps
++    end
++  end
++
++  defp step_condition(step, count) do
++    dynamic(
++      [s],
++      field(s, ^:"name#{count}") == ^step.name and
++        field(s, ^:"pathname#{count}") == ^step.pathname
++    )
++  end
++
++  defp maybe_search(query, search_term) do
++    case String.trim(search_term) do
++      term when byte_size(term) > 2 ->
++        from(s in query,
++          where:
++            ilike(selected_as(:next_name), ^"%#{term}%") or
++              ilike(selected_as(:next_pathname), ^"%#{term}%")
++        )
++
++      _ ->
++        query
++    end
++  end
++
++  defp to_funnel([result], journey) do
++    journey
++    |> Enum.with_index()
++    |> Enum.reduce(%{funnel: [], visitors_at_previous: nil}, fn {step, idx}, acc ->
++      current_visitors = Map.get(result, idx + 1, 0)
++
++      dropoff =
++        if acc.visitors_at_previous, do: acc.visitors_at_previous - current_visitors, else: 0
++
++      dropoff_percentage = percentage(dropoff, acc.visitors_at_previous)
++
++      funnel = [
++        %{
++          step: step,
++          visitors: current_visitors,
++          dropoff: dropoff,
++          dropoff_percentage: dropoff_percentage
++        }
++        | acc.funnel
++      ]
++
++      %{acc | funnel: funnel, visitors_at_previous: current_visitors}
++    end)
++    |> Map.fetch!(:funnel)
++    |> Enum.reverse()
++  end
++end
+diff --git a/lib/plausible/stats/util.ex b/lib/plausible/stats/util.ex
+index cc02386db..e866fdc3e 100644
+--- a/lib/plausible/stats/util.ex
++++ b/lib/plausible/stats/util.ex
+@@ -29,4 +29,24 @@ defmodule Plausible.Stats.Util do
+     index = Enum.find_index(query.dimensions, &(&1 == dimension))
+     :"dim#{index}"
+   end
++
++  def percentage(x, y) when is_integer(x) and x > 0 and is_integer(y) and y > 0 do
++    result =
++      x
++      |> Decimal.div(y)
++      |> Decimal.mult(100)
++      |> Decimal.round(2)
++      |> Decimal.to_string()
++
++    case result do
++      <<compact::binary-size(1), ".00">> -> compact
++      <<compact::binary-size(2), ".00">> -> compact
++      <<compact::binary-size(3), ".00">> -> compact
++      decimal -> decimal
++    end
++  end
++
++  def percentage(_x, _y) do
++    "0"
++  end
+ end
+diff --git a/lib/plausible_web/controllers/api/stats_controller.ex b/lib/plausible_web/controllers/api/stats_controller.ex
+index 68b8e22d6..4711d1182 100644
+--- a/lib/plausible_web/controllers/api/stats_controller.ex
++++ b/lib/plausible_web/controllers/api/stats_controller.ex
+@@ -9,6 +9,7 @@ defmodule PlausibleWeb.Api.StatsController do
+   alias Plausible.Stats.{
+     Query,
+     Comparisons,
++    Exploration,
+     Filters,
+     Time,
+     TableDecider,
+@@ -25,6 +26,8 @@ defmodule PlausibleWeb.Api.StatsController do
+   @revenue_metrics on_ee(do: Plausible.Stats.Goal.Revenue.revenue_metrics(), else: [])
+   @not_set "(not set)"
+ 
++  plug PlausibleWeb.SuperAdminOnlyPlug when action in [:exploration_next, :exploration_funnel]
++
+   plug(:date_validation_plug when action not in [:query])
+   plug(:validate_required_filters_plug when action not in [:current_visitors])
+ 
+@@ -332,6 +335,54 @@ defmodule PlausibleWeb.Api.StatsController do
+     end
+   end
+ 
++  def exploration_next(conn, %{"journey" => steps} = params) do
++    site = conn.assigns.site
++    search_term = params["search_term"] || ""
++
++    with {:ok, journey} <- parse_journey(steps),
++         query = Query.from(site, params, debug_metadata: debug_metadata(conn)),
++         {:ok, next_steps} <- Exploration.next_steps(query, journey, search_term) do
++      json(conn, next_steps)
++    else
++      _ ->
++        bad_request(conn, "There was an error with your request")
++    end
++  end
++
++  def exploration_funnel(conn, %{"journey" => steps} = params) do
++    site = conn.assigns.site
++
++    with {:ok, journey} <- parse_journey(steps),
++         query = Query.from(site, params, debug_metadata: debug_metadata(conn)),
++         {:ok, funnel} <- Exploration.journey_funnel(query, journey) do
++      json(conn, funnel)
++    else
++      {:error, :empty_journey} ->
++        bad_request(
++          conn,
++          "We are unable to show funnels when journey is empty",
++          %{
++            level: :normal
++          }
++        )
++    end
++  end
++
++  defp parse_journey(input) when is_binary(input) do
++    input
++    |> Jason.decode!()
++    |> Enum.map(&parse_journey_step/1)
++    |> Enum.reject(&is_nil/1)
++    |> then(&{:ok, &1})
++  end
++
++  defp parse_journey_step(%{"name" => name, "pathname" => pathname}) do
++    %Exploration.Journey.Step{
++      name: name,
++      pathname: pathname
++    }
++  end
++
+   on_ee do
+     def funnel(conn, %{"id" => funnel_id} = params) do
+       site = Plausible.Repo.preload(conn.assigns.site, :team)
+@@ -839,51 +890,55 @@ defmodule PlausibleWeb.Api.StatsController do
+       results
+       |> transform_keys(%{country: :code})
+ 
+-    if params["csv"] do
+-      countries =
+-        countries
+-        |> Enum.map(fn country ->
+-          country_info = get_country(country[:code])
+-          Map.put(country, :name, country_info.name)
+-        end)
++    countries_response(conn, query, meta, countries, !!params["csv"])
++  end
+ 
+-      if toplevel_goal_filter?(query) do
+-        countries
+-        |> transform_keys(%{visitors: :conversions})
+-        |> to_csv([:name, :conversions, :conversion_rate])
+-      else
+-        countries |> to_csv([:name, :visitors])
+-      end
+-    else
+-      countries =
+-        Enum.map(countries, fn row ->
+-          country = get_country(row[:code])
+-
+-          if country do
+-            Map.merge(row, %{
+-              name: country.name,
+-              flag: country.flag,
+-              alpha_3: country.alpha_3,
+-              code: country.alpha_2
+-            })
+-          else
+-            Map.merge(row, %{
+-              name: row[:code],
+-              flag: "",
+-              alpha_3: "",
+-              code: ""
+-            })
+-          end
+-        end)
++  defp countries_response(_conn, query, _meta, countries, true = _csv?) do
++    countries =
++      countries
++      |> Enum.map(fn country ->
++        country_info = get_country(country[:code])
++        Map.put(country, :name, country_info.name)
++      end)
+ 
+-      json(conn, %{
+-        results: countries,
+-        meta: Stats.Breakdown.formatted_date_ranges(query),
+-        skip_imported_reason: meta[:imports_skip_reason]
+-      })
++    if toplevel_goal_filter?(query) do
++      countries
++      |> transform_keys(%{visitors: :conversions})
++      |> to_csv([:name, :conversions, :conversion_rate])
++    else
++      countries |> to_csv([:name, :visitors])
+     end
+   end
+ 
++  defp countries_response(conn, query, meta, countries, _csv?) do
++    countries =
++      Enum.map(countries, fn row ->
++        country = get_country(row[:code])
++
++        if country do
++          Map.merge(row, %{
++            name: country.name,
++            flag: country.flag,
++            alpha_3: country.alpha_3,
++            code: country.alpha_2
++          })
++        else
++          Map.merge(row, %{
++            name: row[:code],
++            flag: "",
++            alpha_3: "",
++            code: ""
++          })
++        end
++      end)
++
++    json(conn, %{
++      results: countries,
++      meta: Stats.Breakdown.formatted_date_ranges(query),
++      skip_imported_reason: meta[:imports_skip_reason]
++    })
++  end
++
+   def regions(conn, params) do
+     site = conn.assigns[:site]
+     params = Map.put(params, "property", "visit:region")
+diff --git a/lib/plausible_web/controllers/stats_controller.ex b/lib/plausible_web/controllers/stats_controller.ex
+index d2c7b43f5..92bb86fc2 100644
+--- a/lib/plausible_web/controllers/stats_controller.ex
++++ b/lib/plausible_web/controllers/stats_controller.ex
+@@ -63,6 +63,8 @@ defmodule PlausibleWeb.StatsController do
+ 
+     consolidated_view? = Plausible.Sites.consolidated?(site)
+ 
++    exploration_available? = Plausible.Auth.is_super_admin?(current_user)
++
+     consolidated_view_available? =
+       on_ee(do: Plausible.ConsolidatedView.ok_to_display?(site.team), else: false)
+ 
+@@ -94,12 +96,13 @@ defmodule PlausibleWeb.StatsController do
+           title: title(conn, site),
+           demo: demo,
+           flags: flags,
+-          is_dbip: is_dbip(),
++          dbip?: dbip?(),
+           segments: segments,
+           load_dashboard_js: true,
+           hide_footer?: if(ce?() || demo, do: false, else: site_role != :public),
+           consolidated_view?: consolidated_view?,
+           consolidated_view_available?: consolidated_view_available?,
++          exploration_available?: exploration_available?,
+           team_identifier: team_identifier,
+           limited_to_segment_id: nil
+         )
+@@ -471,6 +474,8 @@ defmodule PlausibleWeb.StatsController do
+ 
+         flags = get_flags(current_user, shared_link.site)
+ 
++        exploration_available? = Plausible.Auth.is_super_admin?(current_user)
++
+         limited_to_segment_id =
+           if Plausible.Site.SharedLink.limited_to_segment?(shared_link) do
+             shared_link.segment.id
+@@ -520,13 +525,14 @@ defmodule PlausibleWeb.StatsController do
+           background: conn.params["background"],
+           theme: conn.params["theme"],
+           flags: flags,
+-          is_dbip: is_dbip(),
++          dbip?: dbip?(),
+           segments: segments,
+           load_dashboard_js: true,
+           hide_footer?: if(ce?(), do: embedded?, else: embedded? || site_role != :public),
+           # no shared links for consolidated views
+           consolidated_view?: false,
+           consolidated_view_available?: false,
++          exploration_available?: exploration_available?,
+           team_identifier: team_identifier,
+           limited_to_segment_id: limited_to_segment_id
+         )
+@@ -546,7 +552,7 @@ defmodule PlausibleWeb.StatsController do
+       end)
+       |> Map.new()
+ 
+-  defp is_dbip() do
++  defp dbip?() do
+     on_ee do
+       false
+     else
+diff --git a/lib/plausible_web/router.ex b/lib/plausible_web/router.ex
+index b7ce2e788..d353f2838 100644
+--- a/lib/plausible_web/router.ex
++++ b/lib/plausible_web/router.ex
+@@ -282,6 +282,9 @@ defmodule PlausibleWeb.Router do
+         get "/:domain/funnels/:id", StatsController, :funnel
+       end
+ 
++      get "/:domain/exploration/next", StatsController, :exploration_next
++      get "/:domain/exploration/funnel", StatsController, :exploration_funnel
++
+       scope private: %{allow_consolidated_views: true} do
+         post "/:domain/query", StatsController, :query
+         get "/:domain/current-visitors", StatsController, :current_visitors
+diff --git a/lib/plausible_web/templates/stats/stats.html.heex b/lib/plausible_web/templates/stats/stats.html.heex
+index 04d1e8d36..8a30d8cb7 100644
+--- a/lib/plausible_web/templates/stats/stats.html.heex
++++ b/lib/plausible_web/templates/stats/stats.html.heex
+@@ -39,7 +39,7 @@
+     data-shared-link-auth={assigns[:shared_link_auth]}
+     data-embedded={to_string(@conn.assigns[:embedded])}
+     data-background={@conn.assigns[:background]}
+-    data-is-dbip={to_string(@is_dbip)}
++    data-is-dbip={to_string(@dbip?)}
+     data-current-user-role={@site_role}
+     data-current-user-id={
+       if user = @conn.assigns[:current_user], do: user.id, else: Jason.encode!(nil)
+@@ -51,6 +51,7 @@
+     }
+     data-is-consolidated-view={Jason.encode!(@consolidated_view?)}
+     data-consolidated-view-available={Jason.encode!(@consolidated_view_available?)}
++    data-exploration-available={Jason.encode!(@exploration_available?)}
+     data-team-identifier={@team_identifier}
+     data-limited-to-segment-id={Jason.encode!(@limited_to_segment_id)}
+   >
+diff --git a/test/plausible/stats/exploration_test.exs b/test/plausible/stats/exploration_test.exs
+new file mode 100644
+index 000000000..897651723
+--- /dev/null
++++ b/test/plausible/stats/exploration_test.exs
+@@ -0,0 +1,201 @@
++defmodule Plausible.Stats.ExplorationTest do
++  use Plausible.DataCase
++
++  alias Plausible.Stats.Exploration
++  alias Plausible.Stats.QueryBuilder
++
++  setup do
++    site = new_site()
++
++    now = DateTime.utc_now()
++
++    populate_stats(site, [
++      build(:pageview,
++        user_id: 123,
++        pathname: "/home",
++        browser: "Chrome",
++        timestamp: DateTime.shift(now, minute: -300)
++      ),
++      build(:pageview,
++        user_id: 123,
++        pathname: "/login",
++        browser: "Chrome",
++        timestamp: DateTime.shift(now, minute: -270)
++      ),
++      build(:pageview,
++        user_id: 123,
++        pathname: "/home",
++        browser: "Chrome",
++        timestamp: DateTime.shift(now, minute: -30)
++      ),
++      build(:pageview,
++        user_id: 123,
++        pathname: "/login",
++        browser: "Chrome",
++        timestamp: DateTime.shift(now, minute: -25)
++      ),
++      build(:pageview,
++        user_id: 123,
++        pathname: "/logout",
++        browser: "Chrome",
++        timestamp: DateTime.shift(now, minute: -20)
++      ),
++      build(:pageview,
++        user_id: 124,
++        pathname: "/home",
++        browser: "Firefox",
++        timestamp: DateTime.shift(now, minute: -30)
++      ),
++      build(:pageview,
++        user_id: 124,
++        pathname: "/login",
++        browser: "Firefox",
++        timestamp: DateTime.shift(now, minute: -25)
++      ),
++      build(:pageview,
++        user_id: 124,
++        pathname: "/docs",
++        browser: "Firefox",
++        timestamp: DateTime.shift(now, minute: -20)
++      ),
++      build(:pageview,
++        user_id: 124,
++        pathname: "/logout",
++        browser: "Firefox",
++        timestamp: DateTime.shift(now, minute: -15)
++      )
++    ])
++
++    {:ok, site: site}
++  end
++
++  describe "journey_funnel" do
++    test "queries 3-step journey", %{site: site} do
++      query = QueryBuilder.build!(site, input_date_range: :all)
++
++      journey = [
++        %Exploration.Journey.Step{name: "pageview", pathname: "/home"},
++        %Exploration.Journey.Step{name: "pageview", pathname: "/login"},
++        %Exploration.Journey.Step{name: "pageview", pathname: "/logout"}
++      ]
++
++      assert {:ok, [step1, step2, step3]} = Exploration.journey_funnel(query, journey)
++
++      assert step1.step.pathname == "/home"
++      assert step1.visitors == 2
++      assert step1.dropoff == 0
++      assert step1.dropoff_percentage == "0"
++      assert step2.step.pathname == "/login"
++      assert step2.visitors == 2
++      assert step2.dropoff == 0
++      assert step2.dropoff_percentage == "0"
++      assert step3.step.pathname == "/logout"
++      assert step3.visitors == 1
++      assert step3.dropoff == 1
++      assert step3.dropoff_percentage == "50"
++    end
++
++    test "respects filters in the query", %{site: site} do
++      query =
++        QueryBuilder.build!(site,
++          input_date_range: :all,
++          filters: [[:is, "visit:browser", ["Firefox"]]]
++        )
++
++      journey = [
++        %Exploration.Journey.Step{name: "pageview", pathname: "/home"},
++        %Exploration.Journey.Step{name: "pageview", pathname: "/login"},
++        %Exploration.Journey.Step{name: "pageview", pathname: "/logout"}
++      ]
++
++      assert {:ok, [step1, step2, step3]} = Exploration.journey_funnel(query, journey)
++
++      assert step1.step.pathname == "/home"
++      assert step1.visitors == 1
++      assert step1.dropoff == 0
++      assert step1.dropoff_percentage == "0"
++      assert step2.step.pathname == "/login"
++      assert step2.visitors == 1
++      assert step2.dropoff == 0
++      assert step2.dropoff_percentage == "0"
++      assert step3.step.pathname == "/logout"
++      assert step3.visitors == 0
++      assert step3.dropoff == 1
++      assert step3.dropoff_percentage == "100"
++    end
++
++    test "returns error on empty journey", %{site: site} do
++      query = QueryBuilder.build!(site, input_date_range: :all)
++
++      assert {:error, :empty_journey} = Exploration.journey_funnel(query, [])
++    end
++  end
++
++  describe "next_steps" do
++    test "suggests the next step for a 2-step journey", %{site: site} do
++      query = QueryBuilder.build!(site, input_date_range: :all)
++
++      journey = [
++        %Exploration.Journey.Step{name: "pageview", pathname: "/home"},
++        %Exploration.Journey.Step{name: "pageview", pathname: "/login"}
++      ]
++
++      assert {:ok, [next_step1, next_step2]} = Exploration.next_steps(query, journey)
++
++      assert next_step1.step.pathname == "/docs"
++      assert next_step1.visitors == 1
++      assert next_step2.step.pathname == "/logout"
++      assert next_step2.visitors == 1
++    end
++
++    test "suggests the first step in the journey", %{site: site} do
++      query = QueryBuilder.build!(site, input_date_range: :all)
++
++      assert {:ok, [next_step1, next_step2, next_step3, next_step4]} =
++               Exploration.next_steps(query, [])
++
++      assert next_step1.step.pathname == "/home"
++      assert next_step1.visitors == 2
++      assert next_step2.step.pathname == "/login"
++      assert next_step2.visitors == 2
++      assert next_step3.step.pathname == "/logout"
++      assert next_step3.visitors == 2
++      assert next_step4.step.pathname == "/docs"
++      assert next_step4.visitors == 1
++    end
++
++    test "respects filters in the query", %{site: site} do
++      query =
++        QueryBuilder.build!(site,
++          input_date_range: :all,
++          filters: [[:is, "visit:browser", ["Firefox"]]]
++        )
++
++      assert {:ok, [next_step1, next_step2, next_step3, next_step4]} =
++               Exploration.next_steps(query, [])
++
++      assert next_step1.step.pathname == "/docs"
++      assert next_step1.visitors == 1
++      assert next_step2.step.pathname == "/home"
++      assert next_step2.visitors == 1
++      assert next_step3.step.pathname == "/login"
++      assert next_step3.visitors == 1
++      assert next_step4.step.pathname == "/logout"
++      assert next_step4.visitors == 1
++    end
++
++    test "allows to filter the next step suggestions", %{site: site} do
++      query = QueryBuilder.build!(site, input_date_range: :all)
++
++      journey = [
++        %Exploration.Journey.Step{name: "pageview", pathname: "/home"},
++        %Exploration.Journey.Step{name: "pageview", pathname: "/login"}
++      ]
++
++      assert {:ok, [next_step]} = Exploration.next_steps(query, journey, "doc")
++
++      assert next_step.step.pathname == "/docs"
++      assert next_step.visitors == 1
++    end
++  end
++end
+diff --git a/test/plausible_web/controllers/api/stats_controller/exploration_test.exs b/test/plausible_web/controllers/api/stats_controller/exploration_test.exs
+new file mode 100644
+index 000000000..0b7b71edf
+--- /dev/null
++++ b/test/plausible_web/controllers/api/stats_controller/exploration_test.exs
+@@ -0,0 +1,135 @@
++defmodule PlausibleWeb.Api.StatsController.ExplorationTest do
++  use PlausibleWeb.ConnCase, async: false
++  use Plausible
++
++  on_ee do
++    setup [:create_user, :log_in, :create_site]
++
++    setup %{user: user, site: site} do
++      patch_env(:super_admin_user_ids, [user.id])
++
++      now = DateTime.utc_now()
++
++      populate_stats(site, [
++        build(:pageview,
++          user_id: 123,
++          pathname: "/home",
++          timestamp: DateTime.shift(now, minute: -300)
++        ),
++        build(:pageview,
++          user_id: 123,
++          pathname: "/login",
++          timestamp: DateTime.shift(now, minute: -270)
++        ),
++        build(:pageview,
++          user_id: 123,
++          pathname: "/home",
++          timestamp: DateTime.shift(now, minute: -30)
++        ),
++        build(:pageview,
++          user_id: 123,
++          pathname: "/login",
++          timestamp: DateTime.shift(now, minute: -25)
++        ),
++        build(:pageview,
++          user_id: 123,
++          pathname: "/logout",
++          timestamp: DateTime.shift(now, minute: -20)
++        ),
++        build(:pageview,
++          user_id: 124,
++          pathname: "/home",
++          timestamp: DateTime.shift(now, minute: -30)
++        ),
++        build(:pageview,
++          user_id: 124,
++          pathname: "/login",
++          timestamp: DateTime.shift(now, minute: -25)
++        ),
++        build(:pageview,
++          user_id: 124,
++          pathname: "/docs",
++          timestamp: DateTime.shift(now, minute: -20)
++        ),
++        build(:pageview,
++          user_id: 124,
++          pathname: "/logout",
++          timestamp: DateTime.shift(now, minute: -15)
++        )
++      ])
++
++      {:ok, site: site}
++    end
++
++    describe "exploration_next/2" do
++      test "it works", %{conn: conn, site: site} do
++        journey =
++          Jason.encode!([
++            %{name: "pageview", pathname: "/home"},
++            %{name: "pageview", pathname: "/login"}
++          ])
++
++        resp =
++          conn
++          |> get("/api/stats/#{site.domain}/exploration/next/?journey=#{journey}&period=24h")
++          |> json_response(200)
++
++        assert [next_step1, next_step2] = resp
++        assert next_step1["step"]["pathname"] == "/docs"
++        assert next_step1["visitors"] == 1
++        assert next_step2["step"]["pathname"] == "/logout"
++        assert next_step2["visitors"] == 1
++      end
++
++      test "it filters", %{conn: conn, site: site} do
++        journey =
++          Jason.encode!([
++            %{name: "pageview", pathname: "/home"},
++            %{name: "pageview", pathname: "/login"}
++          ])
++
++        resp =
++          conn
++          |> get(
++            "/api/stats/#{site.domain}/exploration/next/?journey=#{journey}&search_term=doc&period=24h"
++          )
++          |> json_response(200)
++
++        assert [next_step] = resp
++        assert next_step["step"]["pathname"] == "/docs"
++        assert next_step["visitors"] == 1
++      end
++    end
++
++    describe "exploration_funnel/2" do
++      test "it works", %{conn: conn, site: site} do
++        journey =
++          Jason.encode!([
++            %{name: "pageview", pathname: "/home"},
++            %{name: "pageview", pathname: "/login"},
++            %{name: "pageview", pathname: "/logout"}
++          ])
++
++        resp =
++          conn
++          |> get("/api/stats/#{site.domain}/exploration/funnel/?journey=#{journey}&period=24h")
++          |> json_response(200)
++
++        assert [step1, step2, step3] = resp
++
++        assert step1["step"]["pathname"] == "/home"
++        assert step1["visitors"] == 2
++        assert step1["dropoff"] == 0
++        assert step1["dropoff_percentage"] == "0"
++        assert step2["step"]["pathname"] == "/login"
++        assert step2["visitors"] == 2
++        assert step2["dropoff"] == 0
++        assert step2["dropoff_percentage"] == "0"
++        assert step3["step"]["pathname"] == "/logout"
++        assert step3["visitors"] == 1
++        assert step3["dropoff"] == 1
++        assert step3["dropoff_percentage"] == "50"
++      end
++    end
++  end
++end
+diff --git a/test/plausible_web/controllers/stats_controller_test.exs b/test/plausible_web/controllers/stats_controller_test.exs
+index 504ee6ca2..6ba76a4e3 100644
+--- a/test/plausible_web/controllers/stats_controller_test.exs
++++ b/test/plausible_web/controllers/stats_controller_test.exs
+@@ -22,6 +22,7 @@ defmodule PlausibleWeb.StatsControllerTest do
+       assert text_of_attr(resp, @react_container, "data-props-available") == "true"
+       assert text_of_attr(resp, @react_container, "data-site-segments-available") == "true"
+       assert text_of_attr(resp, @react_container, "data-funnels-available") == "true"
++      assert text_of_attr(resp, @react_container, "data-exploration-available") == "false"
+       assert text_of_attr(resp, @react_container, "data-has-props") == "false"
+       assert text_of_attr(resp, @react_container, "data-logged-in") == "false"
+       assert text_of_attr(resp, @react_container, "data-current-user-role") == "public"
+@@ -147,6 +148,23 @@ defmodule PlausibleWeb.StatsControllerTest do
+       assert text_of_attr(resp, @react_container, "data-logged-in") == "true"
+     end
+ 
++    test "non-superadmin can't see exploration funnel UI", %{conn: conn, site: site} do
++      populate_stats(site, [build(:pageview)])
++      conn = get(conn, "/" <> site.domain)
++      resp = html_response(conn, 200)
++      assert text_of_attr(resp, @react_container, "data-exploration-available") == "false"
++    end
++
++    on_ee do
++      test "superadmin can see exploration funnel UI", %{conn: conn, site: site, user: user} do
++        patch_env(:super_admin_user_ids, [user.id])
++        populate_stats(site, [build(:pageview)])
++        conn = get(conn, "/" <> site.domain)
++        resp = html_response(conn, 200)
++        assert text_of_attr(resp, @react_container, "data-exploration-available") == "true"
++      end
++    end
++
+     on_ee do
+       test "first view of a consolidated dashboard sets stats_start_date and native_stats_start_at according to native_stats_start_at of the earliest team site",
+            %{

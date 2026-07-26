@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # stable
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # stable
         with:
           toolchain: "1.92.0"
 
@@ -37,12 +37,12 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            diffctx/target
-          key: cargo-${{ runner.os }}-${{ hashFiles('diffctx/Cargo.lock') }}
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-
 
       - name: Run full yaml_cases suite and gate on pass count
-        working-directory: diffctx
+        working-directory: crates/diffctx-native
         run: |
           set -o pipefail
           cargo test --release --test yaml_cases 2>&1 | tee full_eval.log || true

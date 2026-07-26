@@ -1,0 +1,1010 @@
+From 03b8b0997a4415de7ebc481c0f9e193c1c600288 Mon Sep 17 00:00:00 2001
+From: Alex Hunt <huntie@meta.com>
+Date: Mon, 27 May 2024 09:27:47 -0700
+Subject: [PATCH] Rename jsinspector-modern feature flag to fuseboxEnabled
+ (#44661)
+
+Summary:
+Pull Request resolved: https://github.com/facebook/react-native/pull/44661
+
+Changelog: [Internal]
+
+Reviewed By: cipolleschi
+
+Differential Revision: D57730920
+
+fbshipit-source-id: 4761f7e8c2189ff5bfd5fa24891bba20c3750da8
+---
+ packages/react-native/React/Base/RCTBridge.mm      |  4 ++--
+ .../React/Base/RCTBundleURLProvider.mm             |  2 +-
+ .../DevSupport/RCTInspectorDevServerHelper.mm      | 13 ++++++-------
+ .../react-native/ReactAndroid/api/ReactAndroid.api |  2 +-
+ .../com/facebook/react/ReactInstanceManager.java   |  2 +-
+ .../facebook/react/devsupport/DevServerHelper.java |  8 +++-----
+ .../react/devsupport/DevSupportManagerBase.java    |  2 +-
+ .../facebook/react/devsupport/InspectorFlags.kt    |  2 +-
+ .../featureflags/ReactNativeFeatureFlags.kt        |  6 +++---
+ .../ReactNativeFeatureFlagsCxxAccessor.kt          | 12 ++++++------
+ .../ReactNativeFeatureFlagsCxxInterop.kt           |  4 ++--
+ .../ReactNativeFeatureFlagsDefaults.kt             |  4 ++--
+ .../ReactNativeFeatureFlagsLocalAccessor.kt        | 14 +++++++-------
+ .../ReactNativeFeatureFlagsProvider.kt             |  4 ++--
+ .../com/facebook/react/runtime/ReactHostImpl.java  |  2 +-
+ .../main/jni/react/devsupport/JInspectorFlags.cpp  |  8 +++-----
+ .../main/jni/react/devsupport/JInspectorFlags.h    |  2 +-
+ .../JReactNativeFeatureFlagsCxxInterop.cpp         | 14 +++++++-------
+ .../JReactNativeFeatureFlagsCxxInterop.h           |  4 ++--
+ .../jni/ReactInstanceManagerInspectorTarget.cpp    |  2 +-
+ .../runtime/jni/JReactHostInspectorTarget.cpp      |  2 +-
+ .../hermes/executor/HermesExecutorFactory.cpp      |  3 +--
+ .../jsinspector-modern/InspectorFlags.cpp          |  8 ++++----
+ .../jsinspector-modern/InspectorFlags.h            |  4 ++--
+ .../tests/ReactInstanceIntegrationTest.cpp         | 10 +++++-----
+ .../tests/ReactInstanceIntegrationTest.h           |  2 +-
+ .../JsiIntegrationTestGenericEngineAdapter.cpp     |  2 +-
+ .../JsiIntegrationTestHermesEngineAdapter.cpp      |  2 +-
+ .../tests/utils/InspectorFlagOverridesGuard.cpp    |  6 +++---
+ .../tests/utils/InspectorFlagOverridesGuard.h      |  2 +-
+ .../react/featureflags/ReactNativeFeatureFlags.cpp |  6 +++---
+ .../react/featureflags/ReactNativeFeatureFlags.h   |  6 +++---
+ .../ReactNativeFeatureFlagsAccessor.cpp            | 12 ++++++------
+ .../featureflags/ReactNativeFeatureFlagsAccessor.h |  6 +++---
+ .../featureflags/ReactNativeFeatureFlagsDefaults.h |  4 ++--
+ .../featureflags/ReactNativeFeatureFlagsProvider.h |  4 ++--
+ .../featureflags/NativeReactNativeFeatureFlags.cpp |  6 +++---
+ .../featureflags/NativeReactNativeFeatureFlags.h   |  4 ++--
+ .../react/runtime/hermes/HermesInstance.cpp        |  2 +-
+ .../runtime/platform/ios/ReactCommon/RCTHost.mm    |  2 +-
+ .../featureflags/ReactNativeFeatureFlags.config.js |  4 ++--
+ .../featureflags/ReactNativeFeatureFlags.js        |  8 ++++----
+ .../specs/NativeReactNativeFeatureFlags.js         |  4 ++--
+ 43 files changed, 107 insertions(+), 113 deletions(-)
+
+diff --git a/packages/react-native/React/Base/RCTBridge.mm b/packages/react-native/React/Base/RCTBridge.mm
+index 05660f1e809..b736e3d8784 100644
+--- a/packages/react-native/React/Base/RCTBridge.mm
++++ b/packages/react-native/React/Base/RCTBridge.mm
+@@ -327,7 +327,7 @@ RCT_NOT_IMPLEMENTED(-(instancetype)init)
+ {
+ #if RCT_ENABLE_INSPECTOR
+   auto &inspectorFlags = facebook::react::jsinspector_modern::InspectorFlags::getInstance();
+-  if (!inspectorFlags.getEnableModernCDPRegistry()) {
++  if (!inspectorFlags.getFuseboxEnabled()) {
+     // Disable debugger to resume the JsVM & avoid thread locks while reloading
+     [RCTInspectorDevServerHelper disableDebugger];
+   }
+@@ -440,7 +440,7 @@ RCT_NOT_IMPLEMENTED(-(instancetype)init)
+   [_performanceLogger markStartForTag:RCTPLTTI];
+ 
+   auto &inspectorFlags = facebook::react::jsinspector_modern::InspectorFlags::getInstance();
+-  if (inspectorFlags.getEnableModernCDPRegistry() && !_inspectorPageId.has_value()) {
++  if (inspectorFlags.getFuseboxEnabled() && !_inspectorPageId.has_value()) {
+     _inspectorTarget =
+         facebook::react::jsinspector_modern::HostTarget::create(*_inspectorHostDelegate, [](auto callback) {
+           RCTExecuteOnMainQueue(^{
+diff --git a/packages/react-native/React/Base/RCTBundleURLProvider.mm b/packages/react-native/React/Base/RCTBundleURLProvider.mm
+index d5aa66b9963..8c32440fc7f 100644
+--- a/packages/react-native/React/Base/RCTBundleURLProvider.mm
++++ b/packages/react-native/React/Base/RCTBundleURLProvider.mm
+@@ -284,7 +284,7 @@ static NSURL *serverRootWithHostPort(NSString *hostPort, NSString *scheme)
+     [[NSURLQueryItem alloc] initWithName:@"runModule" value:runModule ? @"true" : @"false"],
+   ];
+   auto &inspectorFlags = facebook::react::jsinspector_modern::InspectorFlags::getInstance();
+-  if (inspectorFlags.getEnableModernCDPRegistry()) {
++  if (inspectorFlags.getFuseboxEnabled()) {
+     queryItems = [queryItems arrayByAddingObject:[[NSURLQueryItem alloc] initWithName:@"excludeSource" value:@"true"]];
+     queryItems = [queryItems arrayByAddingObject:[[NSURLQueryItem alloc] initWithName:@"sourcePaths"
+                                                                                 value:@"url-server"]];
+diff --git a/packages/react-native/React/DevSupport/RCTInspectorDevServerHelper.mm b/packages/react-native/React/DevSupport/RCTInspectorDevServerHelper.mm
+index 5eca6c83642..764bad96807 100644
+--- a/packages/react-native/React/DevSupport/RCTInspectorDevServerHelper.mm
++++ b/packages/react-native/React/DevSupport/RCTInspectorDevServerHelper.mm
+@@ -85,11 +85,10 @@ static NSString *getInspectorDeviceId()
+ 
+   auto &inspectorFlags = facebook::react::jsinspector_modern::InspectorFlags::getInstance();
+ 
+-  NSString *rawDeviceId =
+-      [NSString stringWithFormat:@"apple-%@-%@-%s",
+-                                 identifierForVendor,
+-                                 bundleId,
+-                                 inspectorFlags.getEnableModernCDPRegistry() ? "fusebox" : "legacy"];
++  NSString *rawDeviceId = [NSString stringWithFormat:@"apple-%@-%@-%s",
++                                                     identifierForVendor,
++                                                     bundleId,
++                                                     inspectorFlags.getFuseboxEnabled() ? "fusebox" : "legacy"];
+ 
+   return getSHA256(rawDeviceId);
+ }
+@@ -163,7 +162,7 @@ static void sendEventToAllConnections(NSString *event)
+ + (void)disableDebugger
+ {
+   auto &inspectorFlags = facebook::react::jsinspector_modern::InspectorFlags::getInstance();
+-  if (!inspectorFlags.getEnableModernCDPRegistry()) {
++  if (!inspectorFlags.getFuseboxEnabled()) {
+     sendEventToAllConnections(kDebuggerMsgDisable);
+   }
+ }
+@@ -182,7 +181,7 @@ static void sendEventToAllConnections(NSString *event)
+   NSString *key = [inspectorURL absoluteString];
+   id<RCTInspectorPackagerConnectionProtocol> connection = socketConnections[key];
+   if (!connection || !connection.isConnected) {
+-    if (facebook::react::jsinspector_modern::InspectorFlags::getInstance().getEnableModernCDPRegistry()) {
++    if (facebook::react::jsinspector_modern::InspectorFlags::getInstance().getFuseboxEnabled()) {
+       connection = [[RCTCxxInspectorPackagerConnection alloc] initWithURL:inspectorURL];
+     } else {
+       // TODO(T190163403): Remove legacy RCTInspectorPackagerConnection
+diff --git a/packages/react-native/ReactAndroid/api/ReactAndroid.api b/packages/react-native/ReactAndroid/api/ReactAndroid.api
+index 6531adbcd6a..6cf82dcbf16 100644
+--- a/packages/react-native/ReactAndroid/api/ReactAndroid.api
++++ b/packages/react-native/ReactAndroid/api/ReactAndroid.api
+@@ -2182,7 +2182,7 @@ public abstract interface class com/facebook/react/devsupport/HMRClient : com/fa
+ 
+ public final class com/facebook/react/devsupport/InspectorFlags {
+ 	public static final field INSTANCE Lcom/facebook/react/devsupport/InspectorFlags;
+-	public static final fun getEnableModernCDPRegistry ()Z
++	public static final fun getFuseboxEnabled ()Z
+ }
+ 
+ public class com/facebook/react/devsupport/InspectorPackagerConnection : com/facebook/react/devsupport/IInspectorPackagerConnection {
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/ReactInstanceManager.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/ReactInstanceManager.java
+index 369efe1b406..ea77bef5731 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/ReactInstanceManager.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/ReactInstanceManager.java
+@@ -1508,7 +1508,7 @@ public class ReactInstanceManager {
+   }
+ 
+   private @Nullable ReactInstanceManagerInspectorTarget getOrCreateInspectorTarget() {
+-    if (mInspectorTarget == null && InspectorFlags.getEnableModernCDPRegistry()) {
++    if (mInspectorTarget == null && InspectorFlags.getFuseboxEnabled()) {
+ 
+       mInspectorTarget =
+           new ReactInstanceManagerInspectorTarget(
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/devsupport/DevServerHelper.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/devsupport/DevServerHelper.java
+index a404f3de35c..dcb4dcca585 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/devsupport/DevServerHelper.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/devsupport/DevServerHelper.java
+@@ -210,7 +210,7 @@ public class DevServerHelper {
+     new AsyncTask<Void, Void, Void>() {
+       @Override
+       protected Void doInBackground(Void... params) {
+-        if (InspectorFlags.getEnableModernCDPRegistry()) {
++        if (InspectorFlags.getFuseboxEnabled()) {
+           mInspectorPackagerConnection =
+               new CxxInspectorPackagerConnection(getInspectorDeviceUrl(), mPackageName);
+         } else {
+@@ -310,7 +310,7 @@ public class DevServerHelper {
+             "android-%s-%s-%s",
+             packageName,
+             androidId,
+-            InspectorFlags.getEnableModernCDPRegistry() ? "fusebox" : "legacy");
++            InspectorFlags.getFuseboxEnabled() ? "fusebox" : "legacy");
+ 
+     return getSHA256(rawDeviceId);
+   }
+@@ -394,9 +394,7 @@ public class DevServerHelper {
+             mPackageName,
+             modulesOnly ? "true" : "false",
+             runModule ? "true" : "false")
+-        + (InspectorFlags.getEnableModernCDPRegistry()
+-            ? "&excludeSource=true&sourcePaths=url-server"
+-            : "");
++        + (InspectorFlags.getFuseboxEnabled() ? "&excludeSource=true&sourcePaths=url-server" : "");
+   }
+ 
+   private String createBundleURL(String mainModuleID, BundleType type) {
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/devsupport/DevSupportManagerBase.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/devsupport/DevSupportManagerBase.java
+index ebf9bdef1e3..15184779f68 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/devsupport/DevSupportManagerBase.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/devsupport/DevSupportManagerBase.java
+@@ -1073,7 +1073,7 @@ public abstract class DevSupportManagerBase implements DevSupportManager {
+ 
+             @Override
+             public void onPackagerReloadCommand() {
+-              if (!InspectorFlags.getEnableModernCDPRegistry()) {
++              if (!InspectorFlags.getFuseboxEnabled()) {
+                 // Disable debugger to resume the JsVM & avoid thread locks while reloading
+                 mDevServerHelper.disableDebugger();
+               }
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/devsupport/InspectorFlags.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/devsupport/InspectorFlags.kt
+index 5b15990e3d2..3f0cea6132c 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/devsupport/InspectorFlags.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/devsupport/InspectorFlags.kt
+@@ -16,5 +16,5 @@ public object InspectorFlags {
+     DevSupportSoLoader.staticInit()
+   }
+ 
+-  @DoNotStrip @JvmStatic public external fun getEnableModernCDPRegistry(): Boolean
++  @DoNotStrip @JvmStatic public external fun getFuseboxEnabled(): Boolean
+ }
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt
+index 13f4712cdb6..72c0be384f7 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<53200319e16c1f14028d9cb8a2c87078>>
++ * @generated SignedSource<<66b25d6d12959ea3378e8b8dbbae037e>>
+  */
+ 
+ /**
+@@ -107,10 +107,10 @@ public object ReactNativeFeatureFlags {
+   public fun forceBatchingMountItemsOnAndroid(): Boolean = accessor.forceBatchingMountItemsOnAndroid()
+ 
+   /**
+-   * Flag determining if the modern CDP backend should be enabled. This flag is global and should not be changed across React Host lifetimes.
++   * Flag determining if the React Native DevTools (Fusebox) CDP backend should be enabled. This flag is global and should not be changed across React Host lifetimes.
+    */
+   @JvmStatic
+-  public fun inspectorEnableModernCDPRegistry(): Boolean = accessor.inspectorEnableModernCDPRegistry()
++  public fun fuseboxEnabled(): Boolean = accessor.fuseboxEnabled()
+ 
+   /**
+    * Only enqueue Choreographer calls if there is an ongoing animation, instead of enqueueing every frame.
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt
+index 8da3e904dcb..81b379165d3 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<54a79c6e6f4946c4c36692fbc19b927a>>
++ * @generated SignedSource<<86c1725630e3dadfb97ca9bccd618dd7>>
+  */
+ 
+ /**
+@@ -33,7 +33,7 @@ public class ReactNativeFeatureFlagsCxxAccessor : ReactNativeFeatureFlagsAccesso
+   private var enableUIConsistencyCache: Boolean? = null
+   private var fixStoppedSurfaceRemoveDeleteTreeUIFrameCallbackLeakCache: Boolean? = null
+   private var forceBatchingMountItemsOnAndroidCache: Boolean? = null
+-  private var inspectorEnableModernCDPRegistryCache: Boolean? = null
++  private var fuseboxEnabledCache: Boolean? = null
+   private var lazyAnimationCallbacksCache: Boolean? = null
+   private var preventDoubleTextMeasureCache: Boolean? = null
+   private var setAndroidLayoutDirectionCache: Boolean? = null
+@@ -158,11 +158,11 @@ public class ReactNativeFeatureFlagsCxxAccessor : ReactNativeFeatureFlagsAccesso
+     return cached
+   }
+ 
+-  override fun inspectorEnableModernCDPRegistry(): Boolean {
+-    var cached = inspectorEnableModernCDPRegistryCache
++  override fun fuseboxEnabled(): Boolean {
++    var cached = fuseboxEnabledCache
+     if (cached == null) {
+-      cached = ReactNativeFeatureFlagsCxxInterop.inspectorEnableModernCDPRegistry()
+-      inspectorEnableModernCDPRegistryCache = cached
++      cached = ReactNativeFeatureFlagsCxxInterop.fuseboxEnabled()
++      fuseboxEnabledCache = cached
+     }
+     return cached
+   }
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt
+index dada724b1cd..cb9345980e2 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<4eee31ea22fc4116e9070f714dc59daf>>
++ * @generated SignedSource<<f251cc21200e36fa883205666c4f38d9>>
+  */
+ 
+ /**
+@@ -54,7 +54,7 @@ public object ReactNativeFeatureFlagsCxxInterop {
+ 
+   @DoNotStrip @JvmStatic public external fun forceBatchingMountItemsOnAndroid(): Boolean
+ 
+-  @DoNotStrip @JvmStatic public external fun inspectorEnableModernCDPRegistry(): Boolean
++  @DoNotStrip @JvmStatic public external fun fuseboxEnabled(): Boolean
+ 
+   @DoNotStrip @JvmStatic public external fun lazyAnimationCallbacks(): Boolean
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt
+index 16bf8256b2b..98d5817db29 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<f29998f04860c4af0eb027b2e660c4b4>>
++ * @generated SignedSource<<a85930c3a00dfa8e1008403ecd828357>>
+  */
+ 
+ /**
+@@ -49,7 +49,7 @@ public open class ReactNativeFeatureFlagsDefaults : ReactNativeFeatureFlagsProvi
+ 
+   override fun forceBatchingMountItemsOnAndroid(): Boolean = false
+ 
+-  override fun inspectorEnableModernCDPRegistry(): Boolean = false
++  override fun fuseboxEnabled(): Boolean = false
+ 
+   override fun lazyAnimationCallbacks(): Boolean = false
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt
+index 86d327d978b..4254e8b474d 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<a2706af43bfe0803eab9a70d24cd79c9>>
++ * @generated SignedSource<<28e42dd2ab3adbf71e828037a8314f3a>>
+  */
+ 
+ /**
+@@ -37,7 +37,7 @@ public class ReactNativeFeatureFlagsLocalAccessor : ReactNativeFeatureFlagsAcces
+   private var enableUIConsistencyCache: Boolean? = null
+   private var fixStoppedSurfaceRemoveDeleteTreeUIFrameCallbackLeakCache: Boolean? = null
+   private var forceBatchingMountItemsOnAndroidCache: Boolean? = null
+-  private var inspectorEnableModernCDPRegistryCache: Boolean? = null
++  private var fuseboxEnabledCache: Boolean? = null
+   private var lazyAnimationCallbacksCache: Boolean? = null
+   private var preventDoubleTextMeasureCache: Boolean? = null
+   private var setAndroidLayoutDirectionCache: Boolean? = null
+@@ -175,12 +175,12 @@ public class ReactNativeFeatureFlagsLocalAccessor : ReactNativeFeatureFlagsAcces
+     return cached
+   }
+ 
+-  override fun inspectorEnableModernCDPRegistry(): Boolean {
+-    var cached = inspectorEnableModernCDPRegistryCache
++  override fun fuseboxEnabled(): Boolean {
++    var cached = fuseboxEnabledCache
+     if (cached == null) {
+-      cached = currentProvider.inspectorEnableModernCDPRegistry()
+-      accessedFeatureFlags.add("inspectorEnableModernCDPRegistry")
+-      inspectorEnableModernCDPRegistryCache = cached
++      cached = currentProvider.fuseboxEnabled()
++      accessedFeatureFlags.add("fuseboxEnabled")
++      fuseboxEnabledCache = cached
+     }
+     return cached
+   }
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt
+index a32276ed395..eeec4230d23 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<fff46073d92efbec147cd2f1dad110cb>>
++ * @generated SignedSource<<500cd1ff0d3ddbaff62d99f6d9e79e5b>>
+  */
+ 
+ /**
+@@ -49,7 +49,7 @@ public interface ReactNativeFeatureFlagsProvider {
+ 
+   @DoNotStrip public fun forceBatchingMountItemsOnAndroid(): Boolean
+ 
+-  @DoNotStrip public fun inspectorEnableModernCDPRegistry(): Boolean
++  @DoNotStrip public fun fuseboxEnabled(): Boolean
+ 
+   @DoNotStrip public fun lazyAnimationCallbacks(): Boolean
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/ReactHostImpl.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/ReactHostImpl.java
+index fe9a91d4be6..67aa1aac94e 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/ReactHostImpl.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/ReactHostImpl.java
+@@ -1665,7 +1665,7 @@ public class ReactHostImpl implements ReactHost {
+   }
+ 
+   private @Nullable ReactHostInspectorTarget getOrCreateReactHostInspectorTarget() {
+-    if (mReactHostInspectorTarget == null && InspectorFlags.getEnableModernCDPRegistry()) {
++    if (mReactHostInspectorTarget == null && InspectorFlags.getFuseboxEnabled()) {
+       mReactHostInspectorTarget = new ReactHostInspectorTarget(this);
+     }
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/devsupport/JInspectorFlags.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/devsupport/JInspectorFlags.cpp
+index 4a1468e4499..ac3752574ad 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/devsupport/JInspectorFlags.cpp
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/devsupport/JInspectorFlags.cpp
+@@ -11,16 +11,14 @@
+ 
+ namespace facebook::react::jsinspector_modern {
+ 
+-bool JInspectorFlags::getEnableModernCDPRegistry(jni::alias_ref<jclass>) {
++bool JInspectorFlags::getFuseboxEnabled(jni::alias_ref<jclass> /*unused*/) {
+   auto& inspectorFlags = InspectorFlags::getInstance();
+-  return inspectorFlags.getEnableModernCDPRegistry();
++  return inspectorFlags.getFuseboxEnabled();
+ }
+ 
+ void JInspectorFlags::registerNatives() {
+   javaClassLocal()->registerNatives({
+-      makeNativeMethod(
+-          "getEnableModernCDPRegistry",
+-          JInspectorFlags::getEnableModernCDPRegistry),
++      makeNativeMethod("getFuseboxEnabled", JInspectorFlags::getFuseboxEnabled),
+   });
+ }
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/devsupport/JInspectorFlags.h b/packages/react-native/ReactAndroid/src/main/jni/react/devsupport/JInspectorFlags.h
+index a1241ac4728..ebce26a0d5b 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/devsupport/JInspectorFlags.h
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/devsupport/JInspectorFlags.h
+@@ -19,7 +19,7 @@ class JInspectorFlags : public jni::JavaClass<JInspectorFlags> {
+   static constexpr auto kJavaDescriptor =
+       "Lcom/facebook/react/devsupport/InspectorFlags;";
+ 
+-  static bool getEnableModernCDPRegistry(jni::alias_ref<jclass>);
++  static bool getFuseboxEnabled(jni::alias_ref<jclass>);
+ 
+   static void registerNatives();
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp
+index af73ae240c4..327f276b587 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<f2a88e318efcf92bf7cd2b07e3ed5faf>>
++ * @generated SignedSource<<37494761b0096640cde5094a2f3ba6ee>>
+  */
+ 
+ /**
+@@ -117,9 +117,9 @@ class ReactNativeFeatureFlagsProviderHolder
+     return method(javaProvider_);
+   }
+ 
+-  bool inspectorEnableModernCDPRegistry() override {
++  bool fuseboxEnabled() override {
+     static const auto method =
+-        getReactNativeFeatureFlagsProviderJavaClass()->getMethod<jboolean()>("inspectorEnableModernCDPRegistry");
++        getReactNativeFeatureFlagsProviderJavaClass()->getMethod<jboolean()>("fuseboxEnabled");
+     return method(javaProvider_);
+   }
+ 
+@@ -228,9 +228,9 @@ bool JReactNativeFeatureFlagsCxxInterop::forceBatchingMountItemsOnAndroid(
+   return ReactNativeFeatureFlags::forceBatchingMountItemsOnAndroid();
+ }
+ 
+-bool JReactNativeFeatureFlagsCxxInterop::inspectorEnableModernCDPRegistry(
++bool JReactNativeFeatureFlagsCxxInterop::fuseboxEnabled(
+     facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop> /*unused*/) {
+-  return ReactNativeFeatureFlags::inspectorEnableModernCDPRegistry();
++  return ReactNativeFeatureFlags::fuseboxEnabled();
+ }
+ 
+ bool JReactNativeFeatureFlagsCxxInterop::lazyAnimationCallbacks(
+@@ -320,8 +320,8 @@ void JReactNativeFeatureFlagsCxxInterop::registerNatives() {
+         "forceBatchingMountItemsOnAndroid",
+         JReactNativeFeatureFlagsCxxInterop::forceBatchingMountItemsOnAndroid),
+       makeNativeMethod(
+-        "inspectorEnableModernCDPRegistry",
+-        JReactNativeFeatureFlagsCxxInterop::inspectorEnableModernCDPRegistry),
++        "fuseboxEnabled",
++        JReactNativeFeatureFlagsCxxInterop::fuseboxEnabled),
+       makeNativeMethod(
+         "lazyAnimationCallbacks",
+         JReactNativeFeatureFlagsCxxInterop::lazyAnimationCallbacks),
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h
+index dea29ba7ec9..8102f46f067 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<48f683554e70183664d5a1bf6a7ab328>>
++ * @generated SignedSource<<ddf6ea7126754a1f10e06eb9ac4fb276>>
+  */
+ 
+ /**
+@@ -69,7 +69,7 @@ class JReactNativeFeatureFlagsCxxInterop
+   static bool forceBatchingMountItemsOnAndroid(
+     facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop>);
+ 
+-  static bool inspectorEnableModernCDPRegistry(
++  static bool fuseboxEnabled(
+     facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop>);
+ 
+   static bool lazyAnimationCallbacks(
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/jni/ReactInstanceManagerInspectorTarget.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/jni/ReactInstanceManagerInspectorTarget.cpp
+index 11889710318..323b0e0d426 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/jni/ReactInstanceManagerInspectorTarget.cpp
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/jni/ReactInstanceManagerInspectorTarget.cpp
+@@ -38,7 +38,7 @@ ReactInstanceManagerInspectorTarget::ReactInstanceManagerInspectorTarget(
+     : delegate_(make_global(delegate)) {
+   auto& inspectorFlags = InspectorFlags::getInstance();
+ 
+-  if (inspectorFlags.getEnableModernCDPRegistry()) {
++  if (inspectorFlags.getFuseboxEnabled()) {
+     inspectorTarget_ = HostTarget::create(
+         *this,
+         [javaExecutor =
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JReactHostInspectorTarget.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JReactHostInspectorTarget.cpp
+index 170baac926f..ff3c8c4bc83 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JReactHostInspectorTarget.cpp
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JReactHostInspectorTarget.cpp
+@@ -20,7 +20,7 @@ JReactHostInspectorTarget::JReactHostInspectorTarget(
+     : javaReactHostImpl_(make_global(reactHostImpl)),
+       javaExecutor_(make_global(executor)) {
+   auto& inspectorFlags = InspectorFlags::getInstance();
+-  if (inspectorFlags.getEnableModernCDPRegistry()) {
++  if (inspectorFlags.getFuseboxEnabled()) {
+     inspectorTarget_ = HostTarget::create(
+         *this,
+         [javaExecutor =
+diff --git a/packages/react-native/ReactCommon/hermes/executor/HermesExecutorFactory.cpp b/packages/react-native/ReactCommon/hermes/executor/HermesExecutorFactory.cpp
+index e7c8886fa07..a1aac841fdc 100644
+--- a/packages/react-native/ReactCommon/hermes/executor/HermesExecutorFactory.cpp
++++ b/packages/react-native/ReactCommon/hermes/executor/HermesExecutorFactory.cpp
+@@ -203,8 +203,7 @@ std::unique_ptr<JSExecutor> HermesExecutorFactory::createJSExecutor(
+ 
+   HermesRuntime& hermesRuntimeRef = *hermesRuntime;
+   auto& inspectorFlags = jsinspector_modern::InspectorFlags::getInstance();
+-  bool enableDebugger =
+-      !inspectorFlags.getEnableModernCDPRegistry() && enableDebugger_;
++  bool enableDebugger = !inspectorFlags.getFuseboxEnabled() && enableDebugger_;
+   auto decoratedRuntime = std::make_shared<DecoratedRuntime>(
+       std::move(hermesRuntime),
+       hermesRuntimeRef,
+diff --git a/packages/react-native/ReactCommon/jsinspector-modern/InspectorFlags.cpp b/packages/react-native/ReactCommon/jsinspector-modern/InspectorFlags.cpp
+index 2de05ff71ec..874966698f2 100644
+--- a/packages/react-native/ReactCommon/jsinspector-modern/InspectorFlags.cpp
++++ b/packages/react-native/ReactCommon/jsinspector-modern/InspectorFlags.cpp
+@@ -17,8 +17,8 @@ InspectorFlags& InspectorFlags::getInstance() {
+   return instance;
+ }
+ 
+-bool InspectorFlags::getEnableModernCDPRegistry() const {
+-  return loadFlagsAndAssertUnchanged().enableModernCDPRegistry;
++bool InspectorFlags::getFuseboxEnabled() const {
++  return loadFlagsAndAssertUnchanged().fuseboxEnabled;
+ }
+ 
+ void InspectorFlags::dangerouslyResetFlags() {
+@@ -28,11 +28,11 @@ void InspectorFlags::dangerouslyResetFlags() {
+ const InspectorFlags::Values& InspectorFlags::loadFlagsAndAssertUnchanged()
+     const {
+   InspectorFlags::Values newValues = {
+-      .enableModernCDPRegistry =
++      .fuseboxEnabled =
+ #ifdef REACT_NATIVE_FORCE_ENABLE_FUSEBOX
+           true,
+ #elif defined(HERMES_ENABLE_DEBUGGER)
+-          ReactNativeFeatureFlags::inspectorEnableModernCDPRegistry(),
++          ReactNativeFeatureFlags::fuseboxEnabled(),
+ #else
+           false,
+ #endif
+diff --git a/packages/react-native/ReactCommon/jsinspector-modern/InspectorFlags.h b/packages/react-native/ReactCommon/jsinspector-modern/InspectorFlags.h
+index 670ab1a0915..38f243fb40f 100644
+--- a/packages/react-native/ReactCommon/jsinspector-modern/InspectorFlags.h
++++ b/packages/react-native/ReactCommon/jsinspector-modern/InspectorFlags.h
+@@ -22,7 +22,7 @@ class InspectorFlags {
+   /**
+    * Flag determining if the modern CDP backend should be enabled.
+    */
+-  bool getEnableModernCDPRegistry() const;
++  bool getFuseboxEnabled() const;
+ 
+   /**
+    * Reset flags to their upstream values. The caller must ensure any resources
+@@ -32,7 +32,7 @@ class InspectorFlags {
+ 
+  private:
+   struct Values {
+-    bool enableModernCDPRegistry;
++    bool fuseboxEnabled;
+     bool operator==(const Values&) const = default;
+   };
+ 
+diff --git a/packages/react-native/ReactCommon/jsinspector-modern/tests/ReactInstanceIntegrationTest.cpp b/packages/react-native/ReactCommon/jsinspector-modern/tests/ReactInstanceIntegrationTest.cpp
+index 6fe559c5b7a..a24a6478dac 100644
+--- a/packages/react-native/ReactCommon/jsinspector-modern/tests/ReactInstanceIntegrationTest.cpp
++++ b/packages/react-native/ReactCommon/jsinspector-modern/tests/ReactInstanceIntegrationTest.cpp
+@@ -62,7 +62,7 @@ void ReactInstanceIntegrationTest::SetUp() {
+ 
+   std::shared_ptr<HostTarget> hostTargetIfModernCDP = nullptr;
+ 
+-  if (InspectorFlags::getInstance().getEnableModernCDPRegistry()) {
++  if (InspectorFlags::getInstance().getFuseboxEnabled()) {
+     VoidExecutor inspectorExecutor = [this](auto callback) {
+       immediateExecutor_.add(callback);
+     };
+@@ -131,7 +131,7 @@ void ReactInstanceIntegrationTest::TearDown() {
+   clientToVM_.reset();
+ 
+   if (pageId_.has_value() &&
+-      InspectorFlags::getInstance().getEnableModernCDPRegistry()) {
++      InspectorFlags::getInstance().getFuseboxEnabled()) {
+     // Under modern CDP, clean up the page we added in SetUp and destroy
+     // resources owned by HostTarget.
+     getInspectorInstance().removePage(pageId_.value());
+@@ -235,8 +235,8 @@ INSTANTIATE_TEST_SUITE_P(
+     ReactInstanceVaryingInspectorFlags,
+     ReactInstanceIntegrationTestWithFlags,
+     ::testing::Values(
+-        InspectorFlagOverrides{.enableModernCDPRegistry = false},
+-        InspectorFlagOverrides{.enableModernCDPRegistry = false},
+-        InspectorFlagOverrides{.enableModernCDPRegistry = true}));
++        InspectorFlagOverrides{.fuseboxEnabled = false},
++        InspectorFlagOverrides{.fuseboxEnabled = false},
++        InspectorFlagOverrides{.fuseboxEnabled = true}));
+ 
+ } // namespace facebook::react::jsinspector_modern
+diff --git a/packages/react-native/ReactCommon/jsinspector-modern/tests/ReactInstanceIntegrationTest.h b/packages/react-native/ReactCommon/jsinspector-modern/tests/ReactInstanceIntegrationTest.h
+index 59d5c3942aa..d33bce09a08 100644
+--- a/packages/react-native/ReactCommon/jsinspector-modern/tests/ReactInstanceIntegrationTest.h
++++ b/packages/react-native/ReactCommon/jsinspector-modern/tests/ReactInstanceIntegrationTest.h
+@@ -25,7 +25,7 @@ namespace facebook::react::jsinspector_modern {
+ using namespace ::testing;
+ 
+ struct FeatureFlags {
+-  const bool enableModernCDPRegistry = true;
++  const bool fuseboxEnabled = true;
+ };
+ 
+ class ReactInstanceIntegrationTest : public Test {
+diff --git a/packages/react-native/ReactCommon/jsinspector-modern/tests/engines/JsiIntegrationTestGenericEngineAdapter.cpp b/packages/react-native/ReactCommon/jsinspector-modern/tests/engines/JsiIntegrationTestGenericEngineAdapter.cpp
+index f46c98fab83..f706cd6eaca 100644
+--- a/packages/react-native/ReactCommon/jsinspector-modern/tests/engines/JsiIntegrationTestGenericEngineAdapter.cpp
++++ b/packages/react-native/ReactCommon/jsinspector-modern/tests/engines/JsiIntegrationTestGenericEngineAdapter.cpp
+@@ -23,7 +23,7 @@ JsiIntegrationTestGenericEngineAdapter::JsiIntegrationTestGenericEngineAdapter(
+ 
+ /* static */ InspectorFlagOverrides
+ JsiIntegrationTestGenericEngineAdapter::getInspectorFlagOverrides() noexcept {
+-  return {.enableModernCDPRegistry = true};
++  return {.fuseboxEnabled = true};
+ }
+ 
+ RuntimeTargetDelegate&
+diff --git a/packages/react-native/ReactCommon/jsinspector-modern/tests/engines/JsiIntegrationTestHermesEngineAdapter.cpp b/packages/react-native/ReactCommon/jsinspector-modern/tests/engines/JsiIntegrationTestHermesEngineAdapter.cpp
+index 9720e927ff0..03bf222a3cc 100644
+--- a/packages/react-native/ReactCommon/jsinspector-modern/tests/engines/JsiIntegrationTestHermesEngineAdapter.cpp
++++ b/packages/react-native/ReactCommon/jsinspector-modern/tests/engines/JsiIntegrationTestHermesEngineAdapter.cpp
+@@ -22,7 +22,7 @@ JsiIntegrationTestHermesEngineAdapter::JsiIntegrationTestHermesEngineAdapter(
+ /* static */ InspectorFlagOverrides
+ JsiIntegrationTestHermesEngineAdapter::getInspectorFlagOverrides() noexcept {
+   return {
+-      .enableModernCDPRegistry = true,
++      .fuseboxEnabled = true,
+   };
+ }
+ 
+diff --git a/packages/react-native/ReactCommon/jsinspector-modern/tests/utils/InspectorFlagOverridesGuard.cpp b/packages/react-native/ReactCommon/jsinspector-modern/tests/utils/InspectorFlagOverridesGuard.cpp
+index 87ee8da20ff..4bf962b8cef 100644
+--- a/packages/react-native/ReactCommon/jsinspector-modern/tests/utils/InspectorFlagOverridesGuard.cpp
++++ b/packages/react-native/ReactCommon/jsinspector-modern/tests/utils/InspectorFlagOverridesGuard.cpp
+@@ -26,9 +26,9 @@ class ReactNativeFeatureFlagsOverrides
+       const InspectorFlagOverrides& overrides)
+       : overrides_(overrides) {}
+ 
+-  bool inspectorEnableModernCDPRegistry() override {
+-    return overrides_.enableModernCDPRegistry.value_or(
+-        ReactNativeFeatureFlagsDefaults::inspectorEnableModernCDPRegistry());
++  bool fuseboxEnabled() override {
++    return overrides_.fuseboxEnabled.value_or(
++        ReactNativeFeatureFlagsDefaults::fuseboxEnabled());
+   }
+ 
+  private:
+diff --git a/packages/react-native/ReactCommon/jsinspector-modern/tests/utils/InspectorFlagOverridesGuard.h b/packages/react-native/ReactCommon/jsinspector-modern/tests/utils/InspectorFlagOverridesGuard.h
+index 915ba597d99..ea4671063b3 100644
+--- a/packages/react-native/ReactCommon/jsinspector-modern/tests/utils/InspectorFlagOverridesGuard.h
++++ b/packages/react-native/ReactCommon/jsinspector-modern/tests/utils/InspectorFlagOverridesGuard.h
+@@ -19,7 +19,7 @@ namespace facebook::react::jsinspector_modern {
+ struct InspectorFlagOverrides {
+   // NOTE: Keep these entries in sync with ReactNativeFeatureFlagsOverrides in
+   // the implementation file.
+-  std::optional<bool> enableModernCDPRegistry;
++  std::optional<bool> fuseboxEnabled;
+ };
+ 
+ /**
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp
+index 72fe7b38b2b..efc64a2c4ae 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<4445b86f8e66d2ec2b1cdbd2d99a551e>>
++ * @generated SignedSource<<a84c2654be6bc46c82c5dd466cdcf3b0>>
+  */
+ 
+ /**
+@@ -73,8 +73,8 @@ bool ReactNativeFeatureFlags::forceBatchingMountItemsOnAndroid() {
+   return getAccessor().forceBatchingMountItemsOnAndroid();
+ }
+ 
+-bool ReactNativeFeatureFlags::inspectorEnableModernCDPRegistry() {
+-  return getAccessor().inspectorEnableModernCDPRegistry();
++bool ReactNativeFeatureFlags::fuseboxEnabled() {
++  return getAccessor().fuseboxEnabled();
+ }
+ 
+ bool ReactNativeFeatureFlags::lazyAnimationCallbacks() {
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h
+index bdd590639b9..75a0bada49d 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<afcccd6ebe0986b3c4585298d1dc41a2>>
++ * @generated SignedSource<<abfe4f0adc936917b3d505bb5b84382b>>
+  */
+ 
+ /**
+@@ -103,9 +103,9 @@ class ReactNativeFeatureFlags {
+   RN_EXPORT static bool forceBatchingMountItemsOnAndroid();
+ 
+   /**
+-   * Flag determining if the modern CDP backend should be enabled. This flag is global and should not be changed across React Host lifetimes.
++   * Flag determining if the React Native DevTools (Fusebox) CDP backend should be enabled. This flag is global and should not be changed across React Host lifetimes.
+    */
+-  RN_EXPORT static bool inspectorEnableModernCDPRegistry();
++  RN_EXPORT static bool fuseboxEnabled();
+ 
+   /**
+    * Only enqueue Choreographer calls if there is an ongoing animation, instead of enqueueing every frame.
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp
+index ca6e5c0ca6a..c458896d09b 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<a1e228f62a883630e427d5984cc9fba0>>
++ * @generated SignedSource<<08b1bb44603924e62d8e887c93ce2ea2>>
+  */
+ 
+ /**
+@@ -263,8 +263,8 @@ bool ReactNativeFeatureFlagsAccessor::forceBatchingMountItemsOnAndroid() {
+   return flagValue.value();
+ }
+ 
+-bool ReactNativeFeatureFlagsAccessor::inspectorEnableModernCDPRegistry() {
+-  auto flagValue = inspectorEnableModernCDPRegistry_.load();
++bool ReactNativeFeatureFlagsAccessor::fuseboxEnabled() {
++  auto flagValue = fuseboxEnabled_.load();
+ 
+   if (!flagValue.has_value()) {
+     // This block is not exclusive but it is not necessary.
+@@ -272,10 +272,10 @@ bool ReactNativeFeatureFlagsAccessor::inspectorEnableModernCDPRegistry() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(13, "inspectorEnableModernCDPRegistry");
++    markFlagAsAccessed(13, "fuseboxEnabled");
+ 
+-    flagValue = currentProvider_->inspectorEnableModernCDPRegistry();
+-    inspectorEnableModernCDPRegistry_ = flagValue;
++    flagValue = currentProvider_->fuseboxEnabled();
++    fuseboxEnabled_ = flagValue;
+   }
+ 
+   return flagValue.value();
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h
+index 30821ac9028..98687a03d2c 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<fcfe3b796552cf37e27790af0d424802>>
++ * @generated SignedSource<<e05adbe3f6ea91121c0bf5a46c9cd5c5>>
+  */
+ 
+ /**
+@@ -44,7 +44,7 @@ class ReactNativeFeatureFlagsAccessor {
+   bool enableUIConsistency();
+   bool fixStoppedSurfaceRemoveDeleteTreeUIFrameCallbackLeak();
+   bool forceBatchingMountItemsOnAndroid();
+-  bool inspectorEnableModernCDPRegistry();
++  bool fuseboxEnabled();
+   bool lazyAnimationCallbacks();
+   bool preventDoubleTextMeasure();
+   bool setAndroidLayoutDirection();
+@@ -76,7 +76,7 @@ class ReactNativeFeatureFlagsAccessor {
+   std::atomic<std::optional<bool>> enableUIConsistency_;
+   std::atomic<std::optional<bool>> fixStoppedSurfaceRemoveDeleteTreeUIFrameCallbackLeak_;
+   std::atomic<std::optional<bool>> forceBatchingMountItemsOnAndroid_;
+-  std::atomic<std::optional<bool>> inspectorEnableModernCDPRegistry_;
++  std::atomic<std::optional<bool>> fuseboxEnabled_;
+   std::atomic<std::optional<bool>> lazyAnimationCallbacks_;
+   std::atomic<std::optional<bool>> preventDoubleTextMeasure_;
+   std::atomic<std::optional<bool>> setAndroidLayoutDirection_;
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h
+index 79048e264b2..57bee65967e 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<d106a5f9684bbeb5add66a57623956be>>
++ * @generated SignedSource<<030a36407880de0362dbabcf604eed87>>
+  */
+ 
+ /**
+@@ -79,7 +79,7 @@ class ReactNativeFeatureFlagsDefaults : public ReactNativeFeatureFlagsProvider {
+     return false;
+   }
+ 
+-  bool inspectorEnableModernCDPRegistry() override {
++  bool fuseboxEnabled() override {
+     return false;
+   }
+ 
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h
+index 68bf1e995a5..7e36d33d4a6 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<c9172b168942d85d3b04221574a60430>>
++ * @generated SignedSource<<fe06fc281a85c7f2addc043cfc8ba0cc>>
+  */
+ 
+ /**
+@@ -38,7 +38,7 @@ class ReactNativeFeatureFlagsProvider {
+   virtual bool enableUIConsistency() = 0;
+   virtual bool fixStoppedSurfaceRemoveDeleteTreeUIFrameCallbackLeak() = 0;
+   virtual bool forceBatchingMountItemsOnAndroid() = 0;
+-  virtual bool inspectorEnableModernCDPRegistry() = 0;
++  virtual bool fuseboxEnabled() = 0;
+   virtual bool lazyAnimationCallbacks() = 0;
+   virtual bool preventDoubleTextMeasure() = 0;
+   virtual bool setAndroidLayoutDirection() = 0;
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp
+index 581db9be73c..ed8ce3fe825 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp
++++ b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<8b16e85f68631df0af57e9dc3366c022>>
++ * @generated SignedSource<<4cdbf1ace25da2cac7fae22053a6aac4>>
+  */
+ 
+ /**
+@@ -102,9 +102,9 @@ bool NativeReactNativeFeatureFlags::forceBatchingMountItemsOnAndroid(
+   return ReactNativeFeatureFlags::forceBatchingMountItemsOnAndroid();
+ }
+ 
+-bool NativeReactNativeFeatureFlags::inspectorEnableModernCDPRegistry(
++bool NativeReactNativeFeatureFlags::fuseboxEnabled(
+     jsi::Runtime& /*runtime*/) {
+-  return ReactNativeFeatureFlags::inspectorEnableModernCDPRegistry();
++  return ReactNativeFeatureFlags::fuseboxEnabled();
+ }
+ 
+ bool NativeReactNativeFeatureFlags::lazyAnimationCallbacks(
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h
+index 2d8c84db6c3..65dedea7d2c 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h
++++ b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<f366fc75beee206eb044e5be1a974c59>>
++ * @generated SignedSource<<960d94901a0cca61c54ea64c7da7e27a>>
+  */
+ 
+ /**
+@@ -61,7 +61,7 @@ class NativeReactNativeFeatureFlags
+ 
+   bool forceBatchingMountItemsOnAndroid(jsi::Runtime& runtime);
+ 
+-  bool inspectorEnableModernCDPRegistry(jsi::Runtime& runtime);
++  bool fuseboxEnabled(jsi::Runtime& runtime);
+ 
+   bool lazyAnimationCallbacks(jsi::Runtime& runtime);
+ 
+diff --git a/packages/react-native/ReactCommon/react/runtime/hermes/HermesInstance.cpp b/packages/react-native/ReactCommon/react/runtime/hermes/HermesInstance.cpp
+index b5ddd1eab15..25f877a401e 100644
+--- a/packages/react-native/ReactCommon/react/runtime/hermes/HermesInstance.cpp
++++ b/packages/react-native/ReactCommon/react/runtime/hermes/HermesInstance.cpp
+@@ -150,7 +150,7 @@ std::unique_ptr<JSRuntime> HermesInstance::createJSRuntime(
+ 
+ #ifdef HERMES_ENABLE_DEBUGGER
+   auto& inspectorFlags = jsinspector_modern::InspectorFlags::getInstance();
+-  if (!inspectorFlags.getEnableModernCDPRegistry()) {
++  if (!inspectorFlags.getFuseboxEnabled()) {
+     std::unique_ptr<DecoratedRuntime> decoratedRuntime =
+         std::make_unique<DecoratedRuntime>(
+             std::move(hermesRuntime), msgQueueThread);
+diff --git a/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTHost.mm b/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTHost.mm
+index add74db26c7..893f0d4dd0d 100644
+--- a/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTHost.mm
++++ b/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTHost.mm
+@@ -215,7 +215,7 @@ class RCTHostHostTargetDelegate : public facebook::react::jsinspector_modern::Ho
+     [self _setBundleURL:_bundleURLProvider()];
+   }
+   auto &inspectorFlags = jsinspector_modern::InspectorFlags::getInstance();
+-  if (inspectorFlags.getEnableModernCDPRegistry() && !_inspectorPageId.has_value()) {
++  if (inspectorFlags.getFuseboxEnabled() && !_inspectorPageId.has_value()) {
+     _inspectorTarget =
+         facebook::react::jsinspector_modern::HostTarget::create(*_inspectorHostDelegate, [](auto callback) {
+           RCTExecuteOnMainQueue(^{
+diff --git a/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js b/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
+index d52a49c6c17..57d0f366fc9 100644
+--- a/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
++++ b/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
+@@ -98,10 +98,10 @@ const definitions: FeatureFlagDefinitions = {
+       description:
+         'Forces the mounting layer on Android to always batch mount items instead of dispatching them immediately. This might fix some crashes related to synchronous state updates, where some views dispatch state updates during mount.',
+     },
+-    inspectorEnableModernCDPRegistry: {
++    fuseboxEnabled: {
+       defaultValue: false,
+       description:
+-        'Flag determining if the modern CDP backend should be enabled. This flag is global and should not be changed across React Host lifetimes.',
++        'Flag determining if the React Native DevTools (Fusebox) CDP backend should be enabled. This flag is global and should not be changed across React Host lifetimes.',
+     },
+     lazyAnimationCallbacks: {
+       defaultValue: false,
+diff --git a/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js b/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js
+index 1b27e6b2c45..df545a8cbcc 100644
+--- a/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js
++++ b/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<6b04d73d4a2525022a2e81334656cc86>>
++ * @generated SignedSource<<601651c6e8770ced4872a2d939a28a78>>
+  * @flow strict-local
+  */
+ 
+@@ -53,7 +53,7 @@ export type ReactNativeFeatureFlags = {
+   enableUIConsistency: Getter<boolean>,
+   fixStoppedSurfaceRemoveDeleteTreeUIFrameCallbackLeak: Getter<boolean>,
+   forceBatchingMountItemsOnAndroid: Getter<boolean>,
+-  inspectorEnableModernCDPRegistry: Getter<boolean>,
++  fuseboxEnabled: Getter<boolean>,
+   lazyAnimationCallbacks: Getter<boolean>,
+   preventDoubleTextMeasure: Getter<boolean>,
+   setAndroidLayoutDirection: Getter<boolean>,
+@@ -155,9 +155,9 @@ export const fixStoppedSurfaceRemoveDeleteTreeUIFrameCallbackLeak: Getter<boolea
+  */
+ export const forceBatchingMountItemsOnAndroid: Getter<boolean> = createNativeFlagGetter('forceBatchingMountItemsOnAndroid', false);
+ /**
+- * Flag determining if the modern CDP backend should be enabled. This flag is global and should not be changed across React Host lifetimes.
++ * Flag determining if the React Native DevTools (Fusebox) CDP backend should be enabled. This flag is global and should not be changed across React Host lifetimes.
+  */
+-export const inspectorEnableModernCDPRegistry: Getter<boolean> = createNativeFlagGetter('inspectorEnableModernCDPRegistry', false);
++export const fuseboxEnabled: Getter<boolean> = createNativeFlagGetter('fuseboxEnabled', false);
+ /**
+  * Only enqueue Choreographer calls if there is an ongoing animation, instead of enqueueing every frame.
+  */
+diff --git a/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js b/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js
+index 3ce0ea77f00..f11ff0056e0 100644
+--- a/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js
++++ b/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<148aa848925eead93c7197236c51eaba>>
++ * @generated SignedSource<<9b6a65c3d49849807a6cb61895a31d85>>
+  * @flow strict-local
+  */
+ 
+@@ -36,7 +36,7 @@ export interface Spec extends TurboModule {
+   +enableUIConsistency?: () => boolean;
+   +fixStoppedSurfaceRemoveDeleteTreeUIFrameCallbackLeak?: () => boolean;
+   +forceBatchingMountItemsOnAndroid?: () => boolean;
+-  +inspectorEnableModernCDPRegistry?: () => boolean;
++  +fuseboxEnabled?: () => boolean;
+   +lazyAnimationCallbacks?: () => boolean;
+   +preventDoubleTextMeasure?: () => boolean;
+   +setAndroidLayoutDirection?: () => boolean;

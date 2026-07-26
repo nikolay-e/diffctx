@@ -1,0 +1,45 @@
+repo: kubernetes
+base_commit: b8a17e1ce8464f729464f73d78c38181ef67b352
+commit: d43dc1abd85d5fe0913aad5af99cbe922b62dd02
+patch_stored: false
+gold:
+  - path: staging/src/k8s.io/apimachinery/pkg/apis/meta/v1/types.go
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Hand-written ListMeta.ShardInfo and ListOptions.ShardSelector fields (plus new ShardInfo struct) added in parent commit b8a17e1; because ListMeta is embedded in every *List type across every API group, this single definition is why the "make update" regen in this commit cascades into generated.pb.go/proto/deepcopy/openapi for dozens of unrelated groups (apps, batch, autoscaling, certificates, etc.).
+  - path: staging/src/k8s.io/apimachinery/pkg/sharding/types.go
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines the shard-selector CEL types/parsing (shardRange) referenced by ListOptions.ShardSelector, the mechanism the KEP-5866 sharding feature relies on and whose supporting code this regen keeps consistent with.
+  - path: staging/src/k8s.io/apiserver/pkg/features/kube_features.go
+    tier: essential
+    role: config
+    in_diff: false
+    rationale: Defines the ShardedListAndWatch feature gate referenced by the +featureGate=ShardedListAndWatch doc comment on ListMeta.ShardInfo; this gate's presence is what test/compatibility_lifecycle/reference/feature_list.md and versioned_feature_list.yaml (touched in this commit) are auto-generated from.
+  - path: staging/src/k8s.io/apimachinery/pkg/apis/meta/internalversion/types.go
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Internal-version mirror of ListOptions with ShardSelector, source of the regenerated meta/internalversion/zz_generated.conversion.go in this commit.
+  - path: pkg/features/kube_features.go
+    tier: helpful
+    role: config
+    in_diff: false
+    rationale: Registers genericfeatures.ShardedListAndWatch into the kube-apiserver feature gate map, part of the hand-written chain from the API field to the generated compatibility-lifecycle tracking files this commit updates.
+forbidden:
+  - path: api/openapi-spec/swagger.json
+    reason: aggregated OpenAPI spec is a downstream mechanical artifact of meta/v1/types.go, not itself explanatory
+  - path: api/openapi-spec/v3/apis__apps__v1_openapi.json
+    reason: one of dozens of per-group OpenAPI files that changed only because they embed ListMeta, not because apps/v1 itself changed
+  - path: staging/src/k8s.io/apimachinery/pkg/apis/meta/v1/generated.pb.go
+    reason: generated protobuf marshaling code, mechanical output of meta/v1/types.go which is already gold
+  - path: test/compatibility_lifecycle/reference/versioned_feature_list.yaml
+    reason: auto-generated feature-gate version table, redundant with feature_list.md and not itself explanatory
+nontrivial_gold_count: 5
+string_indirection: false
+no_nontrivial_context: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: 'Pure "make update" regeneration commit ("generated: regenerate proto, openapi, deepcopy, conversion, and testdata") with zero hand-written diff lines. All 70 touched files are generated fallout of the hand-written KEP-5866 UID-based sharding change (ListMeta.ShardInfo / ListOptions.ShardSelector) in immediate parent commit b8a17e1; because ListMeta is embedded in every list type, the regen cascades across dozens of unrelated API groups. Gold points entirely to the hand-written type/gate sources outside the diff.'

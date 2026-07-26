@@ -5,7 +5,7 @@ requires = [ "maturin>=1.10,<1.15" ]
 
 [project]
 name = "diffctx"
-version = "1.11.0"
+version = "1.12.1"
 description = "Export codebase structure and contents for AI/LLM context"
 readme = "README.md"
 keywords = [
@@ -77,9 +77,6 @@ optional-dependencies.dev = [
   "tiktoken>=0.9,<1.0",
   "types-pyyaml>=6.0,<7.0",
 ]
-optional-dependencies.diffctx = [
-  "numpy>=1.24,<3.0",
-]
 optional-dependencies.full = [
   "charset-normalizer>=3.0,<4.0",
   "diffctx[tree-sitter]",
@@ -111,15 +108,15 @@ urls.Changelog = "https://github.com/nikolay-e/diffctx/releases"
 urls.Homepage = "https://github.com/nikolay-e/diffctx"
 urls.Issues = "https://github.com/nikolay-e/diffctx/issues"
 urls.Repository = "https://github.com/nikolay-e/diffctx"
-scripts.diffctx = "diffctx.main:main"
-scripts.diffctx-mcp = "diffctx.mcp.__main__:main"
+scripts.diffctx = "diffctx.cli:main"
+scripts.diffctx-mcp = "diffctx.mcp.server:main"
 
 [tool.maturin]
 python-source = "src"
 module-name = "diffctx._diffctx"
-manifest-path = "diffctx/Cargo.toml"
+manifest-path = "crates/diffctx-native/Cargo.toml"
 features = [ "pyo3/extension-module", "python" ]
-# Single-source the wheel version from diffctx/Cargo.toml [package].version.
+# Single-source the wheel version from crates/diffctx-native/Cargo.toml [package].version.
 # Maturin >= 1.8 reads the Cargo manifest version when `[project].dynamic`
 # contains "version" and the explicit `[project].version` line is removed
 # (PEP 621). On the next release, replace `version = "..."` in [project] with
@@ -129,9 +126,10 @@ include = [
   { path = "LICENSE", format = "sdist" },
   { path = "README.md", format = "sdist" },
   { path = "CHANGELOG.md", format = "sdist" },
-  { path = "diffctx/Cargo.toml", format = "sdist" },
-  { path = "diffctx/Cargo.lock", format = "sdist" },
-  { path = "diffctx/src/**/*", format = "sdist" },
+  { path = "Cargo.toml", format = "sdist" },
+  { path = "Cargo.lock", format = "sdist" },
+  { path = "crates/diffctx-native/Cargo.toml", format = "sdist" },
+  { path = "crates/diffctx-native/src/**/*", format = "sdist" },
   { path = "rust-toolchain.toml", format = "sdist" },
 ]
 
@@ -222,7 +220,6 @@ module = [
   "spacy.cli",
   "spacy.cli.download",
   "spacy.language",
-  "numpy",
   "mcp",
   "mcp.server",
   "mcp.server.fastmcp",
@@ -230,9 +227,6 @@ module = [
   "diffctx._diffctx",
   "_diffctx",
   "pathspec",
-  "diffctx.diffctx.edges",
-  "diffctx.diffctx.edges.*",
-  "diffctx.diffctx.embeddings",
   "charset_normalizer",
   "datasets",
 ]
@@ -242,7 +236,6 @@ ignore_missing_imports = true
 module = [
   "diffctx.ignore",
   "diffctx.tree",
-  "diffctx.diffctx.universe",
 ]
 disable_error_code = [ "type-arg" ]
 
@@ -264,6 +257,7 @@ name = "CLI should not import writer directly"
 type = "forbidden"
 source_modules = [ "diffctx.cli" ]
 forbidden_modules = [ "diffctx.writer" ]
+allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
 id = "no-tree-cli"
@@ -274,9 +268,9 @@ forbidden_modules = [ "diffctx.cli" ]
 
 [[tool.importlinter.contracts]]
 id = "no-diffctx-writer"
-name = "Diffctx should not import writer"
+name = "Native adapters should not import writer"
 type = "forbidden"
-source_modules = [ "diffctx.diffctx" ]
+source_modules = [ "diffctx._native" ]
 forbidden_modules = [ "diffctx.writer" ]
 
 [[tool.importlinter.contracts]]
@@ -284,7 +278,7 @@ id = "no-mcp-cli"
 name = "MCP server must not import CLI"
 type = "forbidden"
 source_modules = [ "diffctx.mcp" ]
-forbidden_modules = [ "diffctx.cli", "diffctx.main" ]
+forbidden_modules = [ "diffctx.cli", "diffctx._app" ]
 
 [[tool.importlinter.contracts]]
 id = "no-writer-cli"
@@ -299,11 +293,3 @@ name = "Tree building should not import writer"
 type = "forbidden"
 source_modules = [ "diffctx.tree" ]
 forbidden_modules = [ "diffctx.writer" ]
-
-[tool.mutmut]
-paths_to_mutate = [ "src/diffctx/" ]
-tests_dir = [ "tests/" ]
-do_not_mutate = [
-  "src/diffctx/diffctx/parsers/__init__.py",
-  "src/diffctx/diffctx/stopwords.py",
-]

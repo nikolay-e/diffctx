@@ -1,0 +1,81 @@
+repo: aspnetcore
+base_commit: 1230defa7fc114fc11813b528d39bce74a672946
+commit: 4a634b98b0812515a31f7c7702d134943c0aab4d
+patch_stored: true
+gold:
+  - path: src/Components/Forms/src/EditContext.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines the new OnValidationRequestedAsync event, ValidateAsync, AddValidationTask, and the field/form IsValidationPending/IsValidationFaulted queries — the core of the async validation pipeline.
+  - path: src/Components/Forms/src/EditContextDataAnnotationsExtensions.cs
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: The built-in DataAnnotations validator is rewired from OnValidationRequested to OnValidationRequestedAsync and calls EditContext.AddValidationTask per field via ValidationOptions.TryGetValidatablePropertyInfo — the primary consumer proving the new EditContext API is usable end to end.
+  - path: src/Components/Forms/src/FieldState.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds PendingValidationTask, PendingValidationCts, and IsValidationFaulted per field — the storage EditContext.AddValidationTask/IsValidationPending/IsValidationFaulted read and write.
+  - path: src/Components/Forms/src/ValidationRequestedEventArgs.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds the CancellationToken property and constructor that EditContext.ValidateAsync passes to OnValidationRequestedAsync handlers.
+  - path: src/Components/Web/src/Forms/EditForm.cs
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: Form submission switches from `_editContext.Validate()` to `await _editContext.ValidateAsync()`, the concrete end-user trigger for the new async pipeline.
+  - path: src/Components/Web/src/Forms/FieldCssClassProvider.cs
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: GetFieldCssClass now calls the new EditContext.IsValidationPending/IsValidationFaulted and emits "pending"/"faulted" CSS classes, the visible UI payoff of the field-level async state.
+  - path: src/Validation/src/ValidationOptions.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds TryGetValidatablePropertyInfo(type, propertyName, ...), the lookup EditContextDataAnnotationsExtensions uses to find a field's ValidatablePropertyInfo for async per-field validation.
+  - path: src/Validation/src/ValidatableTypeInfo.cs
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: Adds internal FindMember and SuperTypes used by ValidationOptions.TryGetValidatablePropertyInfo to resolve a property, including inherited ones.
+  - path: src/Components/Web/src/Forms/Mapping/EditContextFormMappingExtensions.cs
+    tier: helpful
+    role: caller
+    in_diff: false
+    rationale: Existing subscriber to the legacy synchronous OnValidationRequested event, left unmodified by this commit — demonstrates why EditContext.cs's new XML docs explicitly say that event "remains supported for existing sync validators" instead of being replaced.
+  - path: src/Validation/src/ValidatablePropertyInfo.cs
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Defines the ValidateAsync(object?, ValidateContext, CancellationToken) signature that EditContextDataAnnotationsExtensions.ValidateFieldAsync awaits per field; this pre-existing async contract is what makes the new per-field async path possible.
+forbidden:
+  - path: src/Components/Web/src/Forms/InputBase.cs
+    reason: same Forms directory and reads EditContext field state, but never calls AddValidationTask/IsValidationPending/IsValidationFaulted — untouched by this change.
+  - path: src/Components/Components/src/ComponentBase.cs
+    reason: bm25 hit on generic "component"/"async" terms; no reference to EditContext or validation at all.
+  - path: src/Components/Web/src/Virtualization/Virtualize.cs
+    reason: bm25 hit on "async"/component lifecycle terms; unrelated to forms or validation.
+  - path: src/Components/Server/src/Circuits/CircuitHost.cs
+    reason: bm25 hit on async/cancellation-token vocabulary; SignalR circuit lifecycle, not the validation pipeline.
+nontrivial_gold_count: 2
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration, candidates]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 17
+  description: Add async form validation in Blazor — impl+2 PublicAPI baselines
+notes: 'Adds EditContext.ValidateAsync/OnValidationRequestedAsync/AddValidationTask
+  so Blazor forms can run async validators (DB lookups, remote calls) per field and
+  per form, tracked via FieldState and surfaced as pending/faulted CSS classes;
+  wires the built-in DataAnnotations validator through the new ValidationOptions.TryGetValidatablePropertyInfo
+  lookup while keeping the old synchronous OnValidationRequested event alive for
+  existing subscribers like EditContextFormMappingExtensions. Wide 17-file commit
+  (impl + tests + PublicAPI baselines); gold focuses on the EditContext/FieldState/ValidationOptions
+  core plus the two real external consumers, excluding the ~8 in-diff test files
+  which are covering tests rather than context needed to understand the change.'

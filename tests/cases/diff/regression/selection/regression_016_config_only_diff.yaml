@@ -1,0 +1,213 @@
+name: regression.selection.016_config_only_diff
+tags:
+- lang:python
+- change:multi_file
+- change:config
+- context:same_file
+- distance:0hop
+- difficulty:easy
+repo:
+  initial_files:
+    pyproject.toml: |
+      [project]
+      name = "myapp"
+      version = "1.0.0"
+      requires-python = ">=3.10"
+      dependencies = [
+          "flask>=2.0",
+          "sqlalchemy>=2.0",
+      ]
+
+      [project.optional-dependencies]
+      dev = ["pytest", "ruff"]
+    .pre-commit-config.yaml: |
+      repos:
+        - repo: https://github.com/pre-commit/pre-commit-hooks
+          rev: v4.5.0
+          hooks:
+            - id: trailing-whitespace
+            - id: end-of-file-fixer
+    src/core/engine.py: |
+      from typing import Dict, List, Optional
+
+      class ProcessingEngine:
+          def __init__(self, config: Dict):
+              self.config = config
+              self.batch_size = config.get("batch_size", 100)
+
+          def process_batch(self, items: List[Dict]) -> List[Dict]:
+              results = []
+              for i in range(0, len(items), self.batch_size):
+                  batch = items[i:i + self.batch_size]
+                  processed = [self._transform(item) for item in batch]
+                  results.extend(processed)
+              return results
+
+          def _transform(self, item: Dict) -> Dict:
+              return {k: v for k, v in item.items() if v is not None}
+
+          def validate_input(self, data: Dict) -> Optional[str]:
+              required = self.config.get("required_fields", [])
+              for field in required:
+                  if field not in data:
+                      return f"Missing required field: {field}"
+              return None
+    src/api/handlers.py: |
+      from flask import Flask, jsonify, request
+
+      def register_handlers(app: Flask):
+          @app.route("/api/process", methods=["POST"])
+          def process():
+              data = request.get_json()
+              if not data:
+                  return jsonify({"error": "No data provided"}), 400
+              return jsonify({"status": "processed", "items": len(data)})
+
+          @app.route("/api/status")
+          def status():
+              return jsonify({"status": "running", "version": "1.0.0"})
+
+          @app.errorhandler(404)
+          def not_found(error):
+              return jsonify({"error": "Not found"}), 404
+
+          @app.errorhandler(500)
+          def server_error(error):
+              return jsonify({"error": "Internal server error"}), 500
+    Makefile: ".PHONY: install test lint format clean\n\ninstall:\n\tpip install -e \".[dev]\"\n\ntest:\n\tpytest --tb=short\n\
+      \nlint:\n\truff check src/\n\nformat:\n\truff format src/\n\nclean:\n\tfind . -name '__pycache__' -type d -exec rm -rf\
+      \ {} +\n\tfind . -name '*.pyc' -delete\n"
+  changed_files:
+    pyproject.toml: |
+      [project]
+      name = "myapp"
+      version = "1.1.0"
+      requires-python = ">=3.11"
+      dependencies = [
+          "flask>=3.0",
+          "sqlalchemy>=2.0",
+          "pydantic>=2.0",
+      ]
+
+      [project.optional-dependencies]
+      dev = ["pytest", "ruff", "mypy"]
+
+      [tool.ruff]
+      line-length = 120
+      target-version = "py311"
+    .pre-commit-config.yaml: |
+      repos:
+        - repo: https://github.com/pre-commit/pre-commit-hooks
+          rev: v5.0.0
+          hooks:
+            - id: trailing-whitespace
+            - id: end-of-file-fixer
+            - id: check-yaml
+        - repo: https://github.com/astral-sh/ruff-pre-commit
+          rev: v0.8.0
+          hooks:
+            - id: ruff
+              args: [--fix]
+            - id: ruff-format
+    src/core/engine.py: |
+      from typing import Dict, List, Optional
+
+      class ProcessingEngine:
+          def __init__(self, config: Dict):
+              self.config = config
+              self.batch_size = config.get("batch_size", 100)
+
+          def process_batch(self, items: List[Dict]) -> List[Dict]:
+              results = []
+              for i in range(0, len(items), self.batch_size):
+                  batch = items[i:i + self.batch_size]
+                  processed = [self._transform(item) for item in batch]
+                  results.extend(processed)
+              return results
+
+          def _transform(self, item: Dict) -> Dict:
+              return {k: v for k, v in item.items() if v is not None}
+
+          def validate_input(self, data: Dict) -> Optional[str]:
+              required = self.config.get("required_fields", [])
+              for field in required:
+                  if field not in data:
+                      return f"Missing required field: {field}"
+              return None
+    src/api/handlers.py: |
+      from flask import Flask, jsonify, request
+
+      def register_handlers(app: Flask):
+          @app.route("/api/process", methods=["POST"])
+          def process():
+              data = request.get_json()
+              if not data:
+                  return jsonify({"error": "No data provided"}), 400
+              return jsonify({"status": "processed", "items": len(data)})
+
+          @app.route("/api/status")
+          def status():
+              return jsonify({"status": "running", "version": "1.0.0"})
+
+          @app.errorhandler(404)
+          def not_found(error):
+              return jsonify({"error": "Not found"}), 404
+
+          @app.errorhandler(500)
+          def server_error(error):
+              return jsonify({"error": "Internal server error"}), 500
+    Makefile: ".PHONY: install test lint format clean\n\ninstall:\n\tpip install -e \".[dev]\"\n\ntest:\n\tpytest --tb=short\n\
+      \nlint:\n\truff check src/\n\nformat:\n\truff format src/\n\nclean:\n\tfind . -name '__pycache__' -type d -exec rm -rf\
+      \ {} +\n\tfind . -name '*.pyc' -delete\n"
+  commit_message: Update files
+fragments:
+- id: pyproject
+  selector:
+    path: pyproject.toml
+    anchor: version = "1.1.0"
+- id: pre_commit_config
+  selector:
+    path: .pre-commit-config.yaml
+    anchor: ruff-pre-commit
+- id: no_engine
+  selector:
+    path: src/core/engine.py
+- id: no_handlers
+  selector:
+    path: src/api/handlers.py
+- id: no_makefile
+  selector:
+    path: Makefile
+- id: no_global_0
+  selector:
+    anchor: ProcessingEngine
+- id: no_global_1
+  selector:
+    anchor: process_batch
+- id: no_global_2
+  selector:
+    anchor: validate_input
+- id: no_global_3
+  selector:
+    anchor: register_handlers
+- id: no_global_4
+  selector:
+    anchor: server_error
+- id: no_global_5
+  selector:
+    anchor: .PHONY
+oracle:
+  required:
+  - pyproject
+  - pre_commit_config
+  allowed: []
+  forbidden:
+  - no_engine
+  - no_handlers
+  - no_makefile
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

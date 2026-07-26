@@ -1,0 +1,34 @@
+{
+  "name": "diffctx",
+  "version": "0.0.0-placeholder",
+  "description": "Selects the minimum code an LLM needs to review a git diff",
+  "keywords": [
+    "git",
+    "diff",
+    "llm",
+    "code-review",
+    "context"
+  ],
+  "homepage": "https://github.com/nikolay-e/diffctx",
+  "bugs": "https://github.com/nikolay-e/diffctx/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nikolay-e/diffctx.git"
+  },
+  "license": "Apache-2.0",
+  "author": "Nikolay Eremeev",
+  "bin": {
+    "diffctx": "bin/diffctx.js"
+  },
+  "files": [
+    "bin/diffctx.js",
+    "install.js",
+    "checksums.json"
+  ],
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,89 @@
+repo: gitpod
+base_commit: 74efee5b04ac98805ef181bb224940bdde5ea865
+commit: 55b486ee5fd22c27161da611e5a0ade568d5b431
+patch_stored: true
+gold:
+- path: components/dashboard/src/components/forms/TextInputField.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/data/organizations/update-org-settings-mutation.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/start/StartWorkspace.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/teams/TeamPolicies.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/teams/policies/MaxParallelWorkspaces.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/workspaces/CreateWorkspacePage.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-db/src/typeorm/entity/db-team-settings.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-db/src/typeorm/migration/1734079239772-AddOrgSettingsMaxParallelWorkspaces.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-db/src/typeorm/team-db-impl.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-protocol/src/gitpod-service.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-protocol/src/teams-projects-protocol.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/public-api/gitpod/v1/organization.proto
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/api/organization-service-api.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/billing/entitlement-service-ubp.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/billing/entitlement-service.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/container-module.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/orgs/organization-service.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/workspace/workspace-service.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'meta.tsv shows ctx_files=52 against git_files=27 — nearly double the files actually touched by
+  the diff are rendered, the textbook over-selection signature (issue #65). The head of ctx.md we read
+  does contain genuinely relevant files (TextInputField.tsx''s new NumberInput, OrgMemberPermissionsOptions.tsx
+  key-prop fixes) rendered as full function bodies for tiny one-line diffs, which is itself wasteful.
+  md_tokens (47k) for a 1180+/630- diff across 27 files is roughly 27 tokens per changed line, well above
+  a healthy ratio. Recall of the actually-changed files looks solid from the sample; the problem is exclusively
+  precision/over-inclusion.'

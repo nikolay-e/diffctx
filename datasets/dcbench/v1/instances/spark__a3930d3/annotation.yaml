@@ -1,0 +1,59 @@
+repo: spark
+base_commit: 361b9d6f16316cbcd247f89ea9889a1e3c69fe89
+commit: a3930d3166570858c21aa0eb7179b8c19b9ca2bf
+patch_stored: true
+gold:
+  - path: sql/api/src/main/scala/org/apache/spark/sql/catalog/interface.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: renames the public `case class CatalogTablePartition` to `TablePartition` and deletes the `CachedTable` case class, the core data-model edit of this PR.
+  - path: sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/catalog/interface.scala
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: defines the internal `case class CatalogTablePartition` (catalyst package) whose name clash with the public API class is the stated motivation for the rename; not touched by the patch but required to understand "why".
+  - path: sql/api/src/main/scala/org/apache/spark/sql/catalog/Catalog.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: removes the abstract `listCachedTables()` method and updates `listPartitions` to return `TablePartition`, the public API surface being changed.
+  - path: sql/api/src/main/antlr4/org/apache/spark/sql/catalyst/parser/SqlBaseParser.g4
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: removes the `SHOW CACHED TABLES` grammar rule (`SHOW CACHED TABLES` alternative) and `CACHED` keyword token, eliminating the SQL syntax being dropped.
+  - path: sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/parser/AstBuilder.scala
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: removes the `visitShowCachedTables`-style rule handling that built the logical plan for the deleted grammar production.
+  - path: sql/connect/common/src/main/protobuf/spark/connect/catalog.proto
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: removes the `ListCachedTables` message and renames `CatalogTablePartition` fields, the Connect wire-protocol side of the rename/removal.
+  - path: python/pyspark/sql/catalog.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: renames `CatalogTablePartition` to `TablePartition` NamedTuple and deletes `CachedTable`/`listCachedTables`, the Python parity half of the change.
+  - path: sql/core/src/main/scala/org/apache/spark/sql/classic/Catalog.scala
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: implements `Catalog.listCachedTables`/`listPartitions` for the classic (non-Connect) execution path, showing the concrete removal/rename in the actual runtime.
+forbidden:
+  - path: sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/catalog/ExternalCatalog.scala
+    reason: heavy user of the internal (unrenamed) `CatalogTablePartition`, but not touched or needed to understand the public API rename itself.
+  - path: sql/hive/src/main/scala/org/apache/spark/sql/hive/HiveExternalCatalog.scala
+    reason: implements the internal partition catalog with the same clashing class name but is untouched and irrelevant to this PR's scope.
+  - path: docs/sql-ref-syntax-aux-show-columns.md
+    reason: sibling SHOW-statement doc page in the same directory, not touched, unrelated to SHOW CACHED TABLES removal.
+  - path: sql/core/src/main/scala/org/apache/spark/sql/execution/command/ShowTablesCommand.scala
+    reason: PR description floats adding an `isCached` column to SHOW TABLES as future work, but this command is not modified in this patch.
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: []
+notes: 'Follow-up PR renaming public API class CatalogTablePartition->TablePartition (Scala+Python) to resolve a name clash with the internal catalyst class of the same name, and removing the non-standard SHOW CACHED TABLES SQL command plus listCachedTables()/CachedTable across grammar, AstBuilder, Connect proto, classic/Connect Catalog impls, docs and tests. Wide 38-file diff is mostly mechanical parity edits across layers (grammar/AST/proto/Python/docs/tests); picked the semantic core across each layer rather than every touched file. The one genuine external-context file is the untouched catalyst-internal interface.scala whose CatalogTablePartition class is the reason for the rename.'

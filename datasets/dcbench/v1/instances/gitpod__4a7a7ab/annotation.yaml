@@ -1,0 +1,37 @@
+repo: gitpod
+base_commit: c874f479e7dd283a1fc351171ea154512000356e
+commit: 4a7a7ab699aa1bc37e41ac06f39823648e6230d6
+patch_stored: true
+gold:
+- path: components/blobserve/pkg/blobserve/refstore.go:resolveRef
+  tier: essential
+  role: unspecified
+  in_diff: false
+- path: components/image-builder-bob/README.md
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/node-labeler/cmd/run.go:Reconcile
+  tier: essential
+  role: unspecified
+  in_diff: false
+- path: components/registry-facade-api/ (whole dir, deleted)
+  tier: essential
+  role: unspecified
+  in_diff: false
+- path: components/registry-facade/ (whole dir, deleted)
+  tier: essential
+  role: unspecified
+  in_diff: false
+forbidden: []
+nontrivial_gold_count: 4
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'Confirmed hang: ctx.md and md.err are both empty (0 bytes), meta.tsv shows changed_frags=0/total_frags=0
+  despite a 95-file, non-trivial diff. This is not a deletion-only diff (issue would be fine then) — it
+  contains real logic edits (refstore.go''s resolveRef body is gutted to return nil,nil; node-labeler/cmd/run.go
+  removes a branch) alongside wholesale deletion of the registry-facade component, including one binary
+  file (example-layer.tar.gz, ''Bin 162 -> 0 bytes''). The binary diff entry is a strong hang-trigger
+  candidate given diffctx''s stated git-diff-based pipeline. Zero output means zero comprehension regardless
+  of format.'

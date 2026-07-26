@@ -114,7 +114,7 @@ class TestClipboardWarnings:
         monkeypatch.setattr("diffctx.clipboard.detect_clipboard_command", lambda: None)
         monkeypatch.chdir(temp_project)
         monkeypatch.setattr("sys.argv", ["diffctx", ".", "-c"])
-        from diffctx.main import main
+        from diffctx.cli import main
 
         main()
         captured = capsys.readouterr()

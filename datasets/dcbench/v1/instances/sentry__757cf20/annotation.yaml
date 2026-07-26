@@ -1,0 +1,60 @@
+repo: sentry
+base_commit: 66ce5a03488ee89b3250d0ef6cd030460398f592
+commit: 757cf20113591bc3c889788bf27ec453d9829b4d
+patch_stored: true
+gold:
+- path: static/app/views/performance/eap/overviewSpansTable.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/views/performance/eap/segmentSpansTable.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/views/performance/eap/useTransactionSummaryEAP.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/views/performance/eap/utils.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/views/performance/newTraceDetails/traceModels/traceTree.autogrouping.spec.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/views/performance/transactionSummary/pageLayout.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/views/performance/transactionSummary/transactionEvents/content.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/views/performance/transactionSummary/transactionEvents/utils.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/views/performance/transactionSummary/transactionOverview/content.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/views/performance/transactionSummary/transactionOverview/index.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/views/performance/transactionSummary/transactionOverview/utils.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: Smallest and simplest diff in the whole batch (13 files, 364-line truth.diff, a directory rename
+  otlp->eap plus a handful of symbol renames like getOTelTransactionsListSort->getEAPSegmentSpansListSort
+  and OTelSummaryContent->EAPSummaryContent) still hangs with zero output. There is no plausible scale
+  justification here — this is the strongest signal in the corpus that the hang is a genuine algorithmic
+  bug (e.g. pathological behavior on renamed-file diffs) rather than a scale/timeout tradeoff, since even
+  a trivial rename-heavy diff triggers it.

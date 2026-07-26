@@ -1,0 +1,81 @@
+generators:
+  cochange: 0
+  bm25: 15
+  graph: 0
+  random: 10
+candidates:
+- path: CODEOWNERS
+  sources:
+  - bm25
+- path: MODULE.bazel.lock
+  sources:
+  - bm25
+- path: api/envoy/extensions/health_check/event_sinks/file/v3/BUILD
+  sources:
+  - random
+- path: api/envoy/extensions/rate_limit_descriptors/expr/v3/expr.proto
+  sources:
+  - random
+- path: bazel/README.md
+  sources:
+  - bm25
+- path: bazel/foreign_cc/BUILD
+  sources:
+  - bm25
+- path: changelogs/1.30.0.yaml
+  sources:
+  - bm25
+- path: changelogs/1.37.0.yaml
+  sources:
+  - bm25
+- path: mobile/library/java/org/chromium/net/ThreadStatsUid.java
+  sources:
+  - random
+- path: source/common/common/BUILD
+  sources:
+  - bm25
+- path: source/common/grpc/BUILD
+  sources:
+  - bm25
+- path: source/common/http/BUILD
+  sources:
+  - bm25
+- path: source/extensions/access_loggers/open_telemetry/BUILD
+  sources:
+  - bm25
+- path: source/extensions/extensions_build_config.bzl
+  sources:
+  - bm25
+- path: test/common/http/utility_corpus/extract_host_path_from_uri_0
+  sources:
+  - random
+- path: test/common/router/string_accessor_impl_test.cc
+  sources:
+  - random
+- path: test/common/tls/test_data/spiffe_san_cert.cfg
+  sources:
+  - random
+- path: test/extensions/access_loggers/open_telemetry/BUILD
+  sources:
+  - bm25
+- path: test/extensions/filters/http/ext_proc/test_processing_request_modifier.cc
+  sources:
+  - random
+- path: test/extensions/filters/http/on_demand/on_demand_integration_test.cc
+  sources:
+  - random
+- path: test/extensions/filters/http/proto_api_scrubber/BUILD
+  sources:
+  - bm25
+- path: test/extensions/filters/network/thrift_proxy/header_transport_impl_test.cc
+  sources:
+  - random
+- path: test/integration/BUILD
+  sources:
+  - bm25
+- path: test/mocks/local_reply/mocks.h
+  sources:
+  - random
+- path: tools/code_format/config.yaml
+  sources:
+  - bm25

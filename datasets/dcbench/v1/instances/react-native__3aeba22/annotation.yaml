@@ -1,0 +1,68 @@
+repo: react-native
+base_commit: 50ce8c77a74f2f2574030db04dc88c6092e68ba8
+commit: 3aeba22ddabd7ae5d8242fb91edfd8012b85a1da
+patch_stored: true
+gold:
+- path: packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp:enableIntersectionObserverEventLoopIntegration
+  tier: essential
+  role: unspecified
+  in_diff: false
+- path: packages/react-native/ReactCommon/react/nativemodule/intersectionobserver/NativeIntersectionObserver.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/observers/intersection/IntersectionObserverManager.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/observers/intersection/IntersectionObserverManager.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeSchedulerIntersectionObserverDelegate.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Modern.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/src/private/webapis/intersectionobserver/__tests__/IntersectionObserver-itest.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: packages/react-native/Libraries/Network/RCTNetworking.mm
+- path: packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricMountingManager.cpp
+- path: packages/react-native/ReactCommon/cxxreact/JSExecutor.h
+- path: packages/react-native/ReactCommon/jsi/jsi/jsi.h
+- path: packages/react-native/ReactCommon/react/featureflags/tests/ReactNativeFeatureFlagsTest.cpp
+- path: packages/react-native/ReactCommon/react/renderer/components/root/RootShadowNode.h
+- path: packages/react-native/ReactCommon/react/renderer/core/EventBeat.h
+- path: packages/react-native/ReactCommon/react/renderer/css/CSSFilter.h
+- path: packages/react-native/scripts/featureflags/generateCommonCxxModules.js
+- path: packages/rn-tester/RNTesterUnitTests/RCTNativeAnimatedNodesManagerTests.m
+nontrivial_gold_count: 1
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'Less severe file-count over-selection than the other two over_dump samples here (45 ctx_files
+  vs 35 real diff files, 10 extras like RCTNetworking.mm, JSExecutor.h, jsi.h, CSSFilter.h that have no
+  real bearing on IntersectionObserver/event-loop integration). The dominant bloat driver instead is fragment
+  granularity: the sampled head shows the entire ~200-line ReactNativeFeatureFlags.kt file dumped as a
+  single ''_chunk_'' fragment to show a 6-line addition (one new flag accessor plus its doc comment) —
+  the same whole-file-chunk pattern repeats across every one of the ~13 boilerplate feature-flag-plumbing
+  files this diff touches (each just adds one flag to a long alphabetical list), which is most of the
+  47389 tokens. A tighter tool would slice just the touched flag block in each of those files.'

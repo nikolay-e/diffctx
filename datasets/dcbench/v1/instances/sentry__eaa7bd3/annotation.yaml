@@ -1,0 +1,40 @@
+repo: sentry
+base_commit: 4ad7e547a41617476c226726006c8599e2190c17
+commit: eaa7bd3dfd2df4baf38e3b34286f1ac10fe9b2f7
+patch_stored: true
+gold:
+- path: src/sentry/grouping/enhancer/__init__.py:get_hint_for_frame
+  tier: essential
+  role: unspecified
+  in_diff: false
+- path: src/sentry/grouping/strategies/newstyle.py:_single_stacktrace_variant
+  tier: essential
+  role: unspecified
+  in_diff: false
+- path: src/sentry/stacktraces/processing.py:normalize_stacktraces_for_grouping
+  tier: essential
+  role: unspecified
+  in_diff: false
+- path: tests/sentry/grouping/test_enhancer.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: tests/sentry/stacktraces/test_in_app_normalization.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: tests/sentry/grouping/snapshots/test_grouphash_metadata/test_metadata_from_variants/newstyle@2019_05_08/*.pysnap
+- path: tests/sentry/grouping/snapshots/test_grouphash_metadata/test_metadata_from_variants/newstyle@2023_01_11/*.pysnap
+- path: tests/sentry/grouping/snapshots/test_metadata_from_variants/legacy@2019_03_12/*.pysnap
+nontrivial_gold_count: 3
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 0-byte ctx.md/md.err, rc_md=142 (SIGALRM). Of 203 changed files, only 3 source files carry the
+  real logic change (a new client_in_app hint precedence rule spanning the enhancer, the newstyle strategy,
+  and stacktrace normalization) plus 2 test files; the other ~198 files are auto-generated .pysnap snapshot
+  fixtures that mechanically reflect the new '(marked in-app by the client)' hint text and should not
+  need per-file fragmenting to understand the change — they are consequences, not causes. This is exactly
+  the kind of large-file-count-but-small-real-diff commit a comprehension-per-token-optimized tool should
+  collapse aggressively, and instead it produced nothing at all.

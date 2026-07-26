@@ -1,0 +1,79 @@
+repo: polars
+base_commit: 6186b33de95d7b80af647998d99604b05395116a
+commit: a7d6cb74bd2478261f8f3e1393f9f390c1e30016
+patch_stored: true
+gold:
+  - path: crates/polars-plan/src/dsl/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: defines `Expr::is_empty(self, ignore_nulls)` DSL builder that maps to `BooleanFunction::IsEmpty`
+  - path: crates/polars-plan/src/dsl/function_expr/boolean.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: defines the new `BooleanFunction::IsEmpty { ignore_nulls }` DSL variant and its Display string
+  - path: crates/polars-expr/src/dispatch/boolean.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: implements the non-grouped `is_empty` UDF dispatched for `IRBooleanFunction::IsEmpty`
+  - path: crates/polars-expr/src/reduce/is_empty.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new `IsEmptyReduce` GroupedReduction implementing the per-group is_empty aggregation logic
+  - path: crates/polars-expr/src/reduce/convert.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: wires `IsEmptyReduce::new(ignore_nulls)` into `into_reduction` for `IRBooleanFunction::IsEmpty` and switches `AExpr::Len` to `CountReduce::new(true)`
+  - path: crates/polars-python/src/expr/general.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: PyO3 `PyExpr::is_empty` binding that exposes the Rust `Expr::is_empty` across the FFI boundary
+  - path: py-polars/src/polars/expr/expr.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds the public `Expr.is_empty(*, ignore_nulls=False)` Python wrapper calling `self._pyexpr.is_empty(ignore_nulls)`
+  - path: py-polars/src/polars/series/series.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: changes `Series.is_empty` signature to accept `ignore_nulls` and delegates to `self._s.is_empty(ignore_nulls=...)` with an unstable-warning gate
+  - path: py-polars/tests/unit/operations/aggregation/test_aggregations.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: parametrizes `is_empty`/`is_empty_ignore_nulls` (grouped and ungrouped) into the in-memory vs streaming engine parity test
+  - path: crates/polars-expr/src/reduce/count.rs
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: defines `CountReduce` that `reduce/convert.rs` now instantiates as `CountReduce::new(true)` in place of the deleted `LenReduce`, needed to understand the `AExpr::Len` reduction-path change bundled in this commit
+forbidden:
+  - path: crates/polars-expr/src/expressions/len.rs
+    reason: new sibling file but only mechanically extracts the existing Len physical-expr eval code, unrelated to IsEmpty semantics
+  - path: crates/polars-expr/src/reduce/len.rs
+    reason: deleted file superseded by CountReduce; its old counting logic is not needed to understand is_empty
+  - path: crates/polars-stream/src/physical_plan/lower_expr.rs
+    reason: only extends an existing match arm to also accept IsEmpty for streaming-engine lowering, no new logic
+  - path: crates/polars-arrow/src/bitmap/mutable.rs
+    reason: adds generic `or_pos`/`and_pos` bitmap helpers used internally by IsEmptyReduce but not specific to is_empty semantics
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 36
+  description: Add Expr.is_empty — expression added in polars-plan, exposed via py-polars
+notes: >-
+  Adds Expr.is_empty(ignore_nulls) end-to-end: new BooleanFunction/IRBooleanFunction
+  variant, dispatch + GroupedReduction impls, PyO3 binding, Python Expr/Series wrappers,
+  and a streaming/in-memory parity test; the commit also opportunistically refactors
+  Len/Count physical-expr and reduction code (CountExpr/LenExpr split, LenReduce ->
+  CountReduce) which is why the diff touches 36 files even though the semantic core
+  of the new feature is under a dozen files.

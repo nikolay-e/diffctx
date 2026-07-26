@@ -1,0 +1,3199 @@
+From 81752fc9edeae5687244fb272c031ae4d9387135 Mon Sep 17 00:00:00 2001
+From: Ferdinand Thiessen <opensource@fthiessen.de>
+Date: Tue, 28 Apr 2026 18:38:16 +0200
+Subject: [PATCH] chore(ocp): add `Override` attribute to all OCP classes
+
+Signed-off-by: Ferdinand Thiessen <opensource@fthiessen.de>
+---
+ lib/public/Activity/ActivitySettings.php      |  7 +++++++
+ .../AppFramework/Http/DataDisplayResponse.php |  1 +
+ .../Http/DataDownloadResponse.php             |  1 +
+ .../AppFramework/Http/FileDisplayResponse.php |  1 +
+ lib/public/AppFramework/Http/JSONResponse.php |  1 +
+ .../AppFramework/Http/StreamResponse.php      |  1 +
+ .../Http/Template/PublicTemplateResponse.php  |  1 +
+ .../Http/Template/SimpleMenuAction.php        |  5 +++++
+ .../AppFramework/Http/TemplateResponse.php    |  1 +
+ .../AppFramework/Http/TextPlainResponse.php   |  1 +
+ .../Http/TooManyRequestsResponse.php          |  1 +
+ lib/public/AppFramework/Http/ZipResponse.php  |  1 +
+ lib/public/AppFramework/OCSController.php     |  1 +
+ .../Services/InitialStateProvider.php         |  1 +
+ lib/public/BackgroundJob/QueuedJob.php        |  1 +
+ lib/public/BackgroundJob/TimedJob.php         |  1 +
+ lib/public/Cache/CappedMemoryCache.php        | 10 +++++++++
+ .../Events/AbstractCalendarObjectEvent.php    |  1 +
+ .../Events/CalendarObjectMovedEvent.php       |  1 +
+ .../ADiscoverableReferenceProvider.php        |  1 +
+ .../Collaboration/Reference/IReference.php    |  1 +
+ .../Reference/LinkReferenceProvider.php       |  6 ++++++
+ .../Collaboration/Reference/Reference.php     | 18 ++++++++++++++++
+ lib/public/Dashboard/Model/WidgetItem.php     |  1 +
+ lib/public/Dashboard/Model/WidgetItems.php    |  1 +
+ .../DataCollector/AbstractDataCollector.php   |  3 +++
+ lib/public/Diagnostics/IQueryLogger.php       |  2 ++
+ lib/public/DirectEditing/ATemplate.php        |  1 +
+ lib/public/EventDispatcher/Event.php          |  1 +
+ lib/public/EventDispatcher/GenericEvent.php   |  5 +++++
+ lib/public/Files/Cache/AbstractCacheEvent.php |  5 +++++
+ .../Conversion/ConversionMimeProvider.php     |  1 +
+ .../Files/Events/Node/AbstractNodeEvent.php   |  1 +
+ .../Files/Events/Node/AbstractNodesEvent.php  |  1 +
+ lib/public/Files/File.php                     |  3 +++
+ lib/public/Files/Folder.php                   |  1 +
+ lib/public/Files/Node.php                     | 13 ++++++++++++
+ lib/public/Files/SimpleFS/InMemoryFile.php    | 11 ++++++++++
+ lib/public/Files/Template/Field.php           |  1 +
+ .../Files/Template/Fields/CheckBoxField.php   |  2 ++
+ .../Files/Template/Fields/RichTextField.php   |  2 ++
+ lib/public/Files/Template/Template.php        |  1 +
+ .../Files/Template/TemplateFileCreator.php    |  1 +
+ lib/public/Group/Backend/ABackend.php         |  3 +++
+ lib/public/Http/Client/IClient.php            |  1 +
+ lib/public/Http/WellKnown/GenericResponse.php |  1 +
+ lib/public/Http/WellKnown/JrdResponse.php     |  1 +
+ lib/public/IContainer.php                     |  1 +
+ lib/public/IStreamImage.php                   |  1 +
+ lib/public/L10N/ILanguageIterator.php         |  4 ++++
+ lib/public/Mail/Provider/Address.php          |  4 ++++
+ lib/public/Mail/Provider/Attachment.php       |  8 +++++++
+ lib/public/Mail/Provider/Message.php          | 21 +++++++++++++++++++
+ lib/public/Migration/Attributes/AddColumn.php |  1 +
+ lib/public/Migration/Attributes/AddIndex.php  |  1 +
+ .../Attributes/ColumnMigrationAttribute.php   |  2 ++
+ .../Migration/Attributes/CreateTable.php      |  1 +
+ .../Migration/Attributes/DataCleansing.php    |  1 +
+ .../Migration/Attributes/DropColumn.php       |  1 +
+ lib/public/Migration/Attributes/DropIndex.php |  1 +
+ lib/public/Migration/Attributes/DropTable.php |  1 +
+ .../Attributes/GenericMigrationAttribute.php  |  2 ++
+ .../Attributes/IndexMigrationAttribute.php    |  2 ++
+ .../Attributes/MigrationAttribute.php         |  1 +
+ .../Migration/Attributes/ModifyColumn.php     |  1 +
+ .../Attributes/TableMigrationAttribute.php    |  2 ++
+ lib/public/Migration/BigIntMigration.php      |  1 +
+ lib/public/OCM/IOCMProvider.php               |  1 +
+ lib/public/OCM/IOCMResource.php               |  1 +
+ lib/public/SabrePluginException.php           |  1 +
+ lib/public/Search/IFilterCollection.php       |  1 +
+ lib/public/Search/SearchResult.php            |  1 +
+ lib/public/Search/SearchResultEntry.php       |  1 +
+ .../Security/Signature/Model/Signatory.php    |  1 +
+ lib/public/SetupCheck/SetupResult.php         |  1 +
+ lib/public/SystemTag/MapperEvent.php          |  1 +
+ lib/public/SystemTag/TagAssignedEvent.php     |  1 +
+ lib/public/SystemTag/TagUnassignedEvent.php   |  1 +
+ .../ISynchronousWatermarkingProvider.php      |  1 +
+ lib/public/TaskProcessing/ShapeDescriptor.php |  1 +
+ lib/public/TaskProcessing/ShapeEnumValue.php  |  1 +
+ lib/public/TaskProcessing/Task.php            |  1 +
+ .../TaskTypes/AnalyzeImages.php               |  5 +++++
+ .../TaskTypes/AudioToAudioChat.php            |  5 +++++
+ .../TaskProcessing/TaskTypes/AudioToText.php  |  5 +++++
+ .../ContextAgentAudioInteraction.php          |  5 +++++
+ .../TaskTypes/ContextAgentInteraction.php     |  5 +++++
+ .../TaskProcessing/TaskTypes/ContextWrite.php |  5 +++++
+ .../TaskTypes/GenerateEmoji.php               |  5 +++++
+ ...ImageToTextOpticalCharacterRecognition.php |  5 +++++
+ .../TaskProcessing/TaskTypes/TextToImage.php  |  5 +++++
+ .../TaskProcessing/TaskTypes/TextToSpeech.php |  5 +++++
+ .../TaskProcessing/TaskTypes/TextToText.php   |  5 +++++
+ .../TaskTypes/TextToTextChangeTone.php        |  5 +++++
+ .../TaskTypes/TextToTextChat.php              |  5 +++++
+ .../TaskTypes/TextToTextChatWithTools.php     |  5 +++++
+ .../TaskTypes/TextToTextFormalization.php     |  5 +++++
+ .../TaskTypes/TextToTextHeadline.php          |  5 +++++
+ .../TaskTypes/TextToTextProofread.php         |  5 +++++
+ .../TaskTypes/TextToTextReformulation.php     |  5 +++++
+ .../TaskTypes/TextToTextSimplification.php    |  5 +++++
+ .../TaskTypes/TextToTextSummary.php           |  5 +++++
+ .../TaskTypes/TextToTextTopics.php            |  5 +++++
+ .../TaskTypes/TextToTextTranslate.php         |  5 +++++
+ lib/public/Teams/Team.php                     |  1 +
+ lib/public/Teams/TeamResource.php             |  1 +
+ .../TextProcessing/FreePromptTaskType.php     |  2 ++
+ .../TextProcessing/HeadlineTaskType.php       |  2 ++
+ lib/public/TextProcessing/SummaryTaskType.php |  2 ++
+ lib/public/TextProcessing/Task.php            |  1 +
+ lib/public/TextProcessing/TopicsTaskType.php  |  2 ++
+ lib/public/TextToImage/Task.php               |  1 +
+ lib/public/Translation/LanguageTuple.php      |  1 +
+ lib/public/User/Backend/ABackend.php          |  1 +
+ .../Backend/ILimitAwareCountUsersBackend.php  |  1 +
+ lib/public/User/IOutOfOfficeData.php          |  1 +
+ .../WorkflowEngine/GenericEntityEvent.php     |  2 ++
+ 117 files changed, 327 insertions(+)
+
+diff --git a/lib/public/Activity/ActivitySettings.php b/lib/public/Activity/ActivitySettings.php
+index fa187164e1..132be7501f 100644
+--- a/lib/public/Activity/ActivitySettings.php
++++ b/lib/public/Activity/ActivitySettings.php
+@@ -16,12 +16,14 @@ abstract class ActivitySettings implements ISetting {
+ 	 * @return string Lowercase a-z and underscore only identifier
+ 	 * @since 20.0.0
+ 	 */
++	#[\Override]
+ 	abstract public function getIdentifier();
+ 
+ 	/**
+ 	 * @return string A translated string
+ 	 * @since 20.0.0
+ 	 */
++	#[\Override]
+ 	abstract public function getName();
+ 
+ 	/**
+@@ -42,12 +44,14 @@ abstract class ActivitySettings implements ISetting {
+ 	 *             priority values. It is required to return a value between 0 and 100.
+ 	 * @since 20.0.0
+ 	 */
++	#[\Override]
+ 	abstract public function getPriority();
+ 
+ 	/**
+ 	 * @return bool True when the option can be changed for the mail
+ 	 * @since 20.0.0
+ 	 */
++	#[\Override]
+ 	public function canChangeMail() {
+ 		return true;
+ 	}
+@@ -64,6 +68,7 @@ abstract class ActivitySettings implements ISetting {
+ 	 * @return bool Whether or not an activity email should be send by default
+ 	 * @since 20.0.0
+ 	 */
++	#[\Override]
+ 	public function isDefaultEnabledMail() {
+ 		return false;
+ 	}
+@@ -82,6 +87,7 @@ abstract class ActivitySettings implements ISetting {
+ 	 * @return bool
+ 	 * @since 20.0.0
+ 	 */
++	#[\Override]
+ 	public function canChangeStream() {
+ 		return false;
+ 	}
+@@ -92,6 +98,7 @@ abstract class ActivitySettings implements ISetting {
+ 	 * @return bool
+ 	 * @since 20.0.0
+ 	 */
++	#[\Override]
+ 	public function isDefaultEnabledStream() {
+ 		return true;
+ 	}
+diff --git a/lib/public/AppFramework/Http/DataDisplayResponse.php b/lib/public/AppFramework/Http/DataDisplayResponse.php
+index 9a91b9f841..6141659eb3 100644
+--- a/lib/public/AppFramework/Http/DataDisplayResponse.php
++++ b/lib/public/AppFramework/Http/DataDisplayResponse.php
+@@ -43,6 +43,7 @@ class DataDisplayResponse extends Response {
+ 	 * @return string
+ 	 * @since 8.1.0
+ 	 */
++	#[\Override]
+ 	public function render() {
+ 		return $this->data;
+ 	}
+diff --git a/lib/public/AppFramework/Http/DataDownloadResponse.php b/lib/public/AppFramework/Http/DataDownloadResponse.php
+index fe87cfd0c9..de4706f2c1 100644
+--- a/lib/public/AppFramework/Http/DataDownloadResponse.php
++++ b/lib/public/AppFramework/Http/DataDownloadResponse.php
+@@ -50,6 +50,7 @@ class DataDownloadResponse extends DownloadResponse {
+ 	 * @return string
+ 	 * @since 8.0.0
+ 	 */
++	#[\Override]
+ 	public function render() {
+ 		return $this->data;
+ 	}
+diff --git a/lib/public/AppFramework/Http/FileDisplayResponse.php b/lib/public/AppFramework/Http/FileDisplayResponse.php
+index 87dd895f7a..a22f540a90 100644
+--- a/lib/public/AppFramework/Http/FileDisplayResponse.php
++++ b/lib/public/AppFramework/Http/FileDisplayResponse.php
+@@ -45,6 +45,7 @@ class FileDisplayResponse extends Response implements ICallbackResponse {
+ 	 * @param IOutput $output
+ 	 * @since 11.0.0
+ 	 */
++	#[\Override]
+ 	public function callback(IOutput $output) {
+ 		if ($output->getHttpResponseCode() !== Http::STATUS_NOT_MODIFIED) {
+ 			$file = $this->file instanceof File
+diff --git a/lib/public/AppFramework/Http/JSONResponse.php b/lib/public/AppFramework/Http/JSONResponse.php
+index 03ae3ae61c..68e29c3f96 100644
+--- a/lib/public/AppFramework/Http/JSONResponse.php
++++ b/lib/public/AppFramework/Http/JSONResponse.php
+@@ -62,6 +62,7 @@ class JSONResponse extends Response {
+ 	 * @psalm-taint-escape has_quotes
+ 	 * @psalm-taint-escape html
+ 	 */
++	#[\Override]
+ 	public function render() {
+ 		return json_encode($this->data, JSON_HEX_TAG | JSON_THROW_ON_ERROR | $this->encodeFlags, 2048);
+ 	}
+diff --git a/lib/public/AppFramework/Http/StreamResponse.php b/lib/public/AppFramework/Http/StreamResponse.php
+index a7cf61298b..a6d122eb66 100644
+--- a/lib/public/AppFramework/Http/StreamResponse.php
++++ b/lib/public/AppFramework/Http/StreamResponse.php
+@@ -40,6 +40,7 @@ class StreamResponse extends Response implements ICallbackResponse {
+ 	 * @param IOutput $output a small wrapper that handles output
+ 	 * @since 8.1.0
+ 	 */
++	#[\Override]
+ 	public function callback(IOutput $output) {
+ 		// handle caching
+ 		if ($output->getHttpResponseCode() !== Http::STATUS_NOT_MODIFIED) {
+diff --git a/lib/public/AppFramework/Http/Template/PublicTemplateResponse.php b/lib/public/AppFramework/Http/Template/PublicTemplateResponse.php
+index 4fb0a09efe..14adeb27d0 100644
+--- a/lib/public/AppFramework/Http/Template/PublicTemplateResponse.php
++++ b/lib/public/AppFramework/Http/Template/PublicTemplateResponse.php
+@@ -166,6 +166,7 @@ class PublicTemplateResponse extends TemplateResponse {
+ 	 * @return string
+ 	 * @since 14.0.0
+ 	 */
++	#[\Override]
+ 	public function render(): string {
+ 		$params = array_merge($this->getParams(), [
+ 			'template' => $this,
+diff --git a/lib/public/AppFramework/Http/Template/SimpleMenuAction.php b/lib/public/AppFramework/Http/Template/SimpleMenuAction.php
+index 03cb9b4c7e..5339ef2483 100644
+--- a/lib/public/AppFramework/Http/Template/SimpleMenuAction.php
++++ b/lib/public/AppFramework/Http/Template/SimpleMenuAction.php
+@@ -54,6 +54,7 @@ class SimpleMenuAction implements IMenuAction {
+ 	 * @return string
+ 	 * @since 14.0.0
+ 	 */
++	#[\Override]
+ 	public function getId(): string {
+ 		return $this->id;
+ 	}
+@@ -62,6 +63,7 @@ class SimpleMenuAction implements IMenuAction {
+ 	 * @return string
+ 	 * @since 14.0.0
+ 	 */
++	#[\Override]
+ 	public function getLabel(): string {
+ 		return $this->label;
+ 	}
+@@ -80,6 +82,7 @@ class SimpleMenuAction implements IMenuAction {
+ 	 * @return string
+ 	 * @since 14.0.0
+ 	 */
++	#[\Override]
+ 	public function getLink(): string {
+ 		return $this->link;
+ 	}
+@@ -88,6 +91,7 @@ class SimpleMenuAction implements IMenuAction {
+ 	 * @return int
+ 	 * @since 14.0.0
+ 	 */
++	#[\Override]
+ 	public function getPriority(): int {
+ 		return $this->priority;
+ 	}
+@@ -99,6 +103,7 @@ class SimpleMenuAction implements IMenuAction {
+ 	 * @return string
+ 	 * @since 14.0.0
+ 	 */
++	#[\Override]
+ 	public function render(): string {
+ 		return '';
+ 	}
+diff --git a/lib/public/AppFramework/Http/TemplateResponse.php b/lib/public/AppFramework/Http/TemplateResponse.php
+index a1a39d92e0..b1cee3fd8b 100644
+--- a/lib/public/AppFramework/Http/TemplateResponse.php
++++ b/lib/public/AppFramework/Http/TemplateResponse.php
+@@ -171,6 +171,7 @@ class TemplateResponse extends Response {
+ 	 * @return string the rendered html
+ 	 * @since 6.0.0
+ 	 */
++	#[\Override]
+ 	public function render() {
+ 		$renderAs = self::RENDER_AS_USER;
+ 		if ($this->renderAs === 'blank') {
+diff --git a/lib/public/AppFramework/Http/TextPlainResponse.php b/lib/public/AppFramework/Http/TextPlainResponse.php
+index 52c6b6b6f2..f0bc873dee 100644
+--- a/lib/public/AppFramework/Http/TextPlainResponse.php
++++ b/lib/public/AppFramework/Http/TextPlainResponse.php
+@@ -41,6 +41,7 @@ class TextPlainResponse extends Response {
+ 	 * @since 22.0.0
+ 	 * @throws \Exception If data could not get encoded
+ 	 */
++	#[\Override]
+ 	public function render() : string {
+ 		return $this->text;
+ 	}
+diff --git a/lib/public/AppFramework/Http/TooManyRequestsResponse.php b/lib/public/AppFramework/Http/TooManyRequestsResponse.php
+index d18d6543ee..41687e5d9c 100644
+--- a/lib/public/AppFramework/Http/TooManyRequestsResponse.php
++++ b/lib/public/AppFramework/Http/TooManyRequestsResponse.php
+@@ -34,6 +34,7 @@ class TooManyRequestsResponse extends Response {
+ 	 * @return string
+ 	 * @since 19.0.0
+ 	 */
++	#[\Override]
+ 	public function render() {
+ 		$template = Server::get(ITemplateManager::class)->getTemplate('core', '429', TemplateResponse::RENDER_AS_BLANK);
+ 		return $template->fetchPage();
+diff --git a/lib/public/AppFramework/Http/ZipResponse.php b/lib/public/AppFramework/Http/ZipResponse.php
+index 128fb1b7f7..85b1cbe18a 100644
+--- a/lib/public/AppFramework/Http/ZipResponse.php
++++ b/lib/public/AppFramework/Http/ZipResponse.php
+@@ -58,6 +58,7 @@ class ZipResponse extends Response implements ICallbackResponse {
+ 	/**
+ 	 * @since 15.0.0
+ 	 */
++	#[\Override]
+ 	public function callback(IOutput $output) {
+ 		$size = 0;
+ 		$files = count($this->resources);
+diff --git a/lib/public/AppFramework/OCSController.php b/lib/public/AppFramework/OCSController.php
+index 7cde2a7e42..b7c2531665 100644
+--- a/lib/public/AppFramework/OCSController.php
++++ b/lib/public/AppFramework/OCSController.php
+@@ -87,6 +87,7 @@ abstract class OCSController extends ApiController {
+ 	 * @return Response
+ 	 * @since 9.1.0
+ 	 */
++	#[\Override]
+ 	public function buildResponse($response, $format = 'xml') {
+ 		return parent::buildResponse($response, $format);
+ 	}
+diff --git a/lib/public/AppFramework/Services/InitialStateProvider.php b/lib/public/AppFramework/Services/InitialStateProvider.php
+index d1607bc226..a7e061ed7c 100644
+--- a/lib/public/AppFramework/Services/InitialStateProvider.php
++++ b/lib/public/AppFramework/Services/InitialStateProvider.php
+@@ -26,6 +26,7 @@ abstract class InitialStateProvider implements \JsonSerializable {
+ 	 * @since 21.0.0
+ 	 * @return mixed
+ 	 */
++	#[\Override]
+ 	#[\ReturnTypeWillChange]
+ 	final public function jsonSerialize() {
+ 		return $this->getData();
+diff --git a/lib/public/BackgroundJob/QueuedJob.php b/lib/public/BackgroundJob/QueuedJob.php
+index ca988daf07..0b86d6909b 100644
+--- a/lib/public/BackgroundJob/QueuedJob.php
++++ b/lib/public/BackgroundJob/QueuedJob.php
+@@ -21,6 +21,7 @@ abstract class QueuedJob extends Job {
+ 	 *
+ 	 * @since 25.0.0
+ 	 */
++	#[\Override]
+ 	final public function start(IJobList $jobList): void {
+ 		if ($this->id) {
+ 			$jobList->removeById($this->id);
+diff --git a/lib/public/BackgroundJob/TimedJob.php b/lib/public/BackgroundJob/TimedJob.php
+index 1205f43992..ab5e09e01c 100644
+--- a/lib/public/BackgroundJob/TimedJob.php
++++ b/lib/public/BackgroundJob/TimedJob.php
+@@ -77,6 +77,7 @@ abstract class TimedJob extends Job {
+ 	 *
+ 	 * @since 25.0.0
+ 	 */
++	#[\Override]
+ 	final public function start(IJobList $jobList): void {
+ 		if (($this->time->getTime() - $this->lastRun) > $this->interval) {
+ 			if ($this->interval >= 12 * 60 * 60 && $this->isTimeSensitive()) {
+diff --git a/lib/public/Cache/CappedMemoryCache.php b/lib/public/Cache/CappedMemoryCache.php
+index 20d42cfe70..cbffece2c0 100644
+--- a/lib/public/Cache/CappedMemoryCache.php
++++ b/lib/public/Cache/CappedMemoryCache.php
+@@ -35,6 +35,7 @@ class CappedMemoryCache implements ICache, \ArrayAccess {
+ 	 * @inheritdoc
+ 	 * @since 25.0.0
+ 	 */
++	#[\Override]
+ 	public function hasKey($key): bool {
+ 		return isset($this->cache[$key]);
+ 	}
+@@ -43,6 +44,7 @@ class CappedMemoryCache implements ICache, \ArrayAccess {
+ 	 * @return ?T
+ 	 * @since 25.0.0
+ 	 */
++	#[\Override]
+ 	public function get($key) {
+ 		return $this->cache[$key] ?? null;
+ 	}
+@@ -55,6 +57,7 @@ class CappedMemoryCache implements ICache, \ArrayAccess {
+ 	 * @since 25.0.0
+ 	 * @return bool
+ 	 */
++	#[\Override]
+ 	public function set($key, $value, $ttl = 0): bool {
+ 		if (is_null($key)) {
+ 			$this->cache[] = $value;
+@@ -68,6 +71,7 @@ class CappedMemoryCache implements ICache, \ArrayAccess {
+ 	/**
+ 	 * @since 25.0.0
+ 	 */
++	#[\Override]
+ 	public function remove($key): bool {
+ 		unset($this->cache[$key]);
+ 		return true;
+@@ -77,6 +81,7 @@ class CappedMemoryCache implements ICache, \ArrayAccess {
+ 	 * @inheritdoc
+ 	 * @since 25.0.0
+ 	 */
++	#[\Override]
+ 	public function clear($prefix = ''): bool {
+ 		$this->cache = [];
+ 		return true;
+@@ -85,6 +90,7 @@ class CappedMemoryCache implements ICache, \ArrayAccess {
+ 	/**
+ 	 * @since 25.0.0
+ 	 */
++	#[\Override]
+ 	public function offsetExists($offset): bool {
+ 		return $this->hasKey($offset);
+ 	}
+@@ -94,6 +100,7 @@ class CappedMemoryCache implements ICache, \ArrayAccess {
+ 	 * @return T
+ 	 * @since 25.0.0
+ 	 */
++	#[\Override]
+ 	#[\ReturnTypeWillChange]
+ 	public function &offsetGet($offset) {
+ 		return $this->cache[$offset];
+@@ -105,6 +112,7 @@ class CappedMemoryCache implements ICache, \ArrayAccess {
+ 	 * @param T $value
+ 	 * @since 25.0.0
+ 	 */
++	#[\Override]
+ 	public function offsetSet($offset, $value): void {
+ 		$this->set($offset, $value);
+ 	}
+@@ -113,6 +121,7 @@ class CappedMemoryCache implements ICache, \ArrayAccess {
+ 	 * @inheritdoc
+ 	 * @since 25.0.0
+ 	 */
++	#[\Override]
+ 	public function offsetUnset($offset): void {
+ 		$this->remove($offset);
+ 	}
+@@ -141,6 +150,7 @@ class CappedMemoryCache implements ICache, \ArrayAccess {
+ 	 * @inheritdoc
+ 	 * @since 25.0.0
+ 	 */
++	#[\Override]
+ 	public static function isAvailable(): bool {
+ 		return true;
+ 	}
+diff --git a/lib/public/Calendar/Events/AbstractCalendarObjectEvent.php b/lib/public/Calendar/Events/AbstractCalendarObjectEvent.php
+index 111ed096f7..f500aa9c64 100644
+--- a/lib/public/Calendar/Events/AbstractCalendarObjectEvent.php
++++ b/lib/public/Calendar/Events/AbstractCalendarObjectEvent.php
+@@ -68,6 +68,7 @@ abstract class AbstractCalendarObjectEvent extends Event implements IWebhookComp
+ 	 * @return array
+ 	 * @since 32.0.0
+ 	 */
++	#[\Override]
+ 	public function getWebhookSerializable(): array {
+ 		return [
+ 			'calendarId' => $this->getCalendarId(),
+diff --git a/lib/public/Calendar/Events/CalendarObjectMovedEvent.php b/lib/public/Calendar/Events/CalendarObjectMovedEvent.php
+index 1c7df0e1ed..e678f7c506 100644
+--- a/lib/public/Calendar/Events/CalendarObjectMovedEvent.php
++++ b/lib/public/Calendar/Events/CalendarObjectMovedEvent.php
+@@ -90,6 +90,7 @@ class CalendarObjectMovedEvent extends Event implements IWebhookCompatibleEvent
+ 	 * @return array
+ 	 * @since 32.0.0
+ 	 */
++	#[\Override]
+ 	public function getWebhookSerializable(): array {
+ 		return [
+ 			'sourceCalendarId' => $this->getSourceCalendarId(),
+diff --git a/lib/public/Collaboration/Reference/ADiscoverableReferenceProvider.php b/lib/public/Collaboration/Reference/ADiscoverableReferenceProvider.php
+index 582f51beea..4f5c7e708f 100644
+--- a/lib/public/Collaboration/Reference/ADiscoverableReferenceProvider.php
++++ b/lib/public/Collaboration/Reference/ADiscoverableReferenceProvider.php
+@@ -17,6 +17,7 @@ abstract class ADiscoverableReferenceProvider implements IDiscoverableReferenceP
+ 	/**
+ 	 * @since 26.0.0
+ 	 */
++	#[\Override]
+ 	public function jsonSerialize(): array {
+ 		$json = [
+ 			'id' => $this->getId(),
+diff --git a/lib/public/Collaboration/Reference/IReference.php b/lib/public/Collaboration/Reference/IReference.php
+index eaa82c323b..c0c326962a 100644
+--- a/lib/public/Collaboration/Reference/IReference.php
++++ b/lib/public/Collaboration/Reference/IReference.php
+@@ -116,5 +116,6 @@ interface IReference extends JsonSerializable {
+ 	 *
+ 	 * @since 25.0.0
+ 	 */
++	#[\Override]
+ 	public function jsonSerialize(): array;
+ }
+diff --git a/lib/public/Collaboration/Reference/LinkReferenceProvider.php b/lib/public/Collaboration/Reference/LinkReferenceProvider.php
+index 5dc71b3291..ab42513f17 100644
+--- a/lib/public/Collaboration/Reference/LinkReferenceProvider.php
++++ b/lib/public/Collaboration/Reference/LinkReferenceProvider.php
+@@ -64,6 +64,7 @@ class LinkReferenceProvider implements IReferenceProvider, IPublicReferenceProvi
+ 	 * @inheritDoc
+ 	 * @since 29.0.0
+ 	 */
++	#[\Override]
+ 	public function matchReference(string $referenceText): bool {
+ 		if ($this->systemConfig->getValue('reference_opengraph', true) !== true) {
+ 			return false;
+@@ -76,6 +77,7 @@ class LinkReferenceProvider implements IReferenceProvider, IPublicReferenceProvi
+ 	 * @inheritDoc
+ 	 * @since 29.0.0
+ 	 */
++	#[\Override]
+ 	public function resolveReference(string $referenceText): ?IReference {
+ 		if ($this->matchReference($referenceText)) {
+ 			$reference = new Reference($referenceText);
+@@ -90,6 +92,7 @@ class LinkReferenceProvider implements IReferenceProvider, IPublicReferenceProvi
+ 	 * @inheritDoc
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function resolveReferencePublic(string $referenceText, string $sharingToken): ?IReference {
+ 		return $this->resolveReference($referenceText);
+ 	}
+@@ -211,6 +214,7 @@ class LinkReferenceProvider implements IReferenceProvider, IPublicReferenceProvi
+ 	 * @inheritDoc
+ 	 * @since 29.0.0
+ 	 */
++	#[\Override]
+ 	public function getCachePrefix(string $referenceId): string {
+ 		return $referenceId;
+ 	}
+@@ -219,6 +223,7 @@ class LinkReferenceProvider implements IReferenceProvider, IPublicReferenceProvi
+ 	 * @inheritDoc
+ 	 * @since 29.0.0
+ 	 */
++	#[\Override]
+ 	public function getCacheKey(string $referenceId): ?string {
+ 		return null;
+ 	}
+@@ -227,6 +232,7 @@ class LinkReferenceProvider implements IReferenceProvider, IPublicReferenceProvi
+ 	 * @inheritDoc
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getCacheKeyPublic(string $referenceId, string $sharingToken): ?string {
+ 		return null;
+ 	}
+diff --git a/lib/public/Collaboration/Reference/Reference.php b/lib/public/Collaboration/Reference/Reference.php
+index 3698ae419b..3b6f7ce27f 100644
+--- a/lib/public/Collaboration/Reference/Reference.php
++++ b/lib/public/Collaboration/Reference/Reference.php
+@@ -38,6 +38,7 @@ class Reference implements IReference {
+ 	 * @inheritdoc
+ 	 * @since 25.0.0
+ 	 */
++	#[\Override]
+ 	public function getId(): string {
+ 		return $this->reference;
+ 	}
+@@ -46,6 +47,7 @@ class Reference implements IReference {
+ 	 * @inheritdoc
+ 	 * @since 25.0.0
+ 	 */
++	#[\Override]
+ 	public function setAccessible(bool $accessible): void {
+ 		$this->accessible = $accessible;
+ 	}
+@@ -54,6 +56,7 @@ class Reference implements IReference {
+ 	 * @inheritdoc
+ 	 * @since 25.0.0
+ 	 */
++	#[\Override]
+ 	public function getAccessible(): bool {
+ 		return $this->accessible;
+ 	}
+@@ -62,6 +65,7 @@ class Reference implements IReference {
+ 	 * @inheritdoc
+ 	 * @since 25.0.0
+ 	 */
++	#[\Override]
+ 	public function setTitle(string $title): void {
+ 		$this->title = $title;
+ 	}
+@@ -70,6 +74,7 @@ class Reference implements IReference {
+ 	 * @inheritdoc
+ 	 * @since 25.0.0
+ 	 */
++	#[\Override]
+ 	public function getTitle(): string {
+ 		return $this->title ?? $this->reference;
+ 	}
+@@ -78,6 +83,7 @@ class Reference implements IReference {
+ 	 * @inheritdoc
+ 	 * @since 25.0.0
+ 	 */
++	#[\Override]
+ 	public function setDescription(?string $description): void {
+ 		$this->description = $description;
+ 	}
+@@ -86,6 +92,7 @@ class Reference implements IReference {
+ 	 * @inheritdoc
+ 	 * @since 25.0.0
+ 	 */
++	#[\Override]
+ 	public function getDescription(): ?string {
+ 		return $this->description;
+ 	}
+@@ -94,6 +101,7 @@ class Reference implements IReference {
+ 	 * @inheritdoc
+ 	 * @since 25.0.0
+ 	 */
++	#[\Override]
+ 	public function setImageUrl(?string $imageUrl): void {
+ 		$this->imageUrl = $imageUrl;
+ 	}
+@@ -102,6 +110,7 @@ class Reference implements IReference {
+ 	 * @inheritdoc
+ 	 * @since 25.0.0
+ 	 */
++	#[\Override]
+ 	public function getImageUrl(): ?string {
+ 		return $this->imageUrl;
+ 	}
+@@ -110,6 +119,7 @@ class Reference implements IReference {
+ 	 * @inheritdoc
+ 	 * @since 25.0.0
+ 	 */
++	#[\Override]
+ 	public function setImageContentType(?string $contentType): void {
+ 		$this->contentType = $contentType;
+ 	}
+@@ -118,6 +128,7 @@ class Reference implements IReference {
+ 	 * @inheritdoc
+ 	 * @since 25.0.0
+ 	 */
++	#[\Override]
+ 	public function getImageContentType(): ?string {
+ 		return $this->contentType;
+ 	}
+@@ -126,6 +137,7 @@ class Reference implements IReference {
+ 	 * @inheritdoc
+ 	 * @since 25.0.0
+ 	 */
++	#[\Override]
+ 	public function setUrl(?string $url): void {
+ 		$this->url = $url;
+ 	}
+@@ -134,6 +146,7 @@ class Reference implements IReference {
+ 	 * @inheritdoc
+ 	 * @since 25.0.0
+ 	 */
++	#[\Override]
+ 	public function getUrl(): string {
+ 		return $this->url ?? $this->reference;
+ 	}
+@@ -142,6 +155,7 @@ class Reference implements IReference {
+ 	 * @inheritdoc
+ 	 * @since 25.0.0
+ 	 */
++	#[\Override]
+ 	public function setRichObject(string $type, ?array $richObject): void {
+ 		$this->richObjectType = $type;
+ 		$this->richObject = $richObject;
+@@ -151,6 +165,7 @@ class Reference implements IReference {
+ 	 * @inheritdoc
+ 	 * @since 25.0.0
+ 	 */
++	#[\Override]
+ 	public function getRichObjectType(): string {
+ 		if ($this->richObjectType === null) {
+ 			return 'open-graph';
+@@ -163,6 +178,7 @@ class Reference implements IReference {
+ 	 * @since 25.0.0
+ 	 * @return array<string, mixed>
+ 	 */
++	#[\Override]
+ 	public function getRichObject(): array {
+ 		if ($this->richObject === null) {
+ 			return $this->getOpenGraphObject();
+@@ -175,6 +191,7 @@ class Reference implements IReference {
+ 	 * @since 25.0.0
+ 	 * @return OpenGraphObject
+ 	 */
++	#[\Override]
+ 	public function getOpenGraphObject(): array {
+ 		return [
+ 			'id' => $this->getId(),
+@@ -226,6 +243,7 @@ class Reference implements IReference {
+ 	 * @since 25.0.0
+ 	 * @return array{richObjectType: string, richObject: array<string, mixed>, openGraphObject: OpenGraphObject, accessible: bool}
+ 	 */
++	#[\Override]
+ 	public function jsonSerialize(): array {
+ 		return [
+ 			'richObjectType' => $this->getRichObjectType(),
+diff --git a/lib/public/Dashboard/Model/WidgetItem.php b/lib/public/Dashboard/Model/WidgetItem.php
+index 680daf1b11..f010614b7e 100644
+--- a/lib/public/Dashboard/Model/WidgetItem.php
++++ b/lib/public/Dashboard/Model/WidgetItem.php
+@@ -143,6 +143,7 @@ final class WidgetItem implements JsonSerializable {
+ 	 *      sinceId: string,
+ 	 *  }
+ 	 */
++	#[\Override]
+ 	public function jsonSerialize(): array {
+ 		return [
+ 			'subtitle' => $this->getSubtitle(),
+diff --git a/lib/public/Dashboard/Model/WidgetItems.php b/lib/public/Dashboard/Model/WidgetItems.php
+index 8749117596..80ceaf9fc9 100644
+--- a/lib/public/Dashboard/Model/WidgetItems.php
++++ b/lib/public/Dashboard/Model/WidgetItems.php
+@@ -68,6 +68,7 @@ class WidgetItems implements JsonSerializable {
+ 	/**
+ 	 * @since 27.1.0
+ 	 */
++	#[\Override]
+ 	public function jsonSerialize(): array {
+ 		$items = array_map(static function (WidgetItem $item) {
+ 			return $item->jsonSerialize();
+diff --git a/lib/public/DataCollector/AbstractDataCollector.php b/lib/public/DataCollector/AbstractDataCollector.php
+index ffb3cbe7b7..1f252f7cf7 100644
+--- a/lib/public/DataCollector/AbstractDataCollector.php
++++ b/lib/public/DataCollector/AbstractDataCollector.php
+@@ -24,6 +24,7 @@ abstract class AbstractDataCollector implements IDataCollector, \JsonSerializabl
+ 	/**
+ 	 * @since 24.0.0
+ 	 */
++	#[\Override]
+ 	public function getName(): string {
+ 		return static::class;
+ 	}
+@@ -34,6 +35,7 @@ abstract class AbstractDataCollector implements IDataCollector, \JsonSerializabl
+ 	 * additional cleaning.
+ 	 * @since 24.0.0
+ 	 */
++	#[\Override]
+ 	public function reset(): void {
+ 		$this->data = [];
+ 	}
+@@ -62,6 +64,7 @@ abstract class AbstractDataCollector implements IDataCollector, \JsonSerializabl
+ 	/**
+ 	 * @since 24.0.0
+ 	 */
++	#[\Override]
+ 	#[\ReturnTypeWillChange]
+ 	public function jsonSerialize() {
+ 		return $this->data;
+diff --git a/lib/public/Diagnostics/IQueryLogger.php b/lib/public/Diagnostics/IQueryLogger.php
+index 07c999023d..a1b42fd7d3 100644
+--- a/lib/public/Diagnostics/IQueryLogger.php
++++ b/lib/public/Diagnostics/IQueryLogger.php
+@@ -25,6 +25,7 @@ interface IQueryLogger extends SQLLogger {
+ 	 * @param array|null $types
+ 	 * @since 8.0.0
+ 	 */
++	#[\Override]
+ 	public function startQuery($sql, ?array $params = null, ?array $types = null);
+ 
+ 	/**
+@@ -34,6 +35,7 @@ interface IQueryLogger extends SQLLogger {
+ 	 * @return void
+ 	 * @since 8.0.0
+ 	 */
++	#[\Override]
+ 	public function stopQuery();
+ 
+ 	/**
+diff --git a/lib/public/DirectEditing/ATemplate.php b/lib/public/DirectEditing/ATemplate.php
+index a70488d8e8..b08c39fe6f 100644
+--- a/lib/public/DirectEditing/ATemplate.php
++++ b/lib/public/DirectEditing/ATemplate.php
+@@ -41,6 +41,7 @@ abstract class ATemplate implements JsonSerializable {
+ 	/**
+ 	 * @since 18.0.0
+ 	 */
++	#[\Override]
+ 	public function jsonSerialize(): array {
+ 		return [
+ 			'id' => $this->getId(),
+diff --git a/lib/public/EventDispatcher/Event.php b/lib/public/EventDispatcher/Event.php
+index f8d2e659f2..1d6fc66a4c 100644
+--- a/lib/public/EventDispatcher/Event.php
++++ b/lib/public/EventDispatcher/Event.php
+@@ -62,6 +62,7 @@ class Event implements StoppableEventInterface {
+ 	 * @since 22.0.0
+ 	 * @see \Psr\EventDispatcher\StoppableEventInterface
+ 	 */
++	#[\Override]
+ 	public function isPropagationStopped(): bool {
+ 		return $this->propagationStopped;
+ 	}
+diff --git a/lib/public/EventDispatcher/GenericEvent.php b/lib/public/EventDispatcher/GenericEvent.php
+index 7e646c4d6a..2d69c79faf 100644
+--- a/lib/public/EventDispatcher/GenericEvent.php
++++ b/lib/public/EventDispatcher/GenericEvent.php
+@@ -119,6 +119,7 @@ class GenericEvent extends Event implements ArrayAccess, IteratorAggregate {
+ 	 * @since 18.0.0
+ 	 * @deprecated 22.0.0
+ 	 */
++	#[\Override]
+ 	public function getIterator(): Traversable {
+ 		return new ArrayIterator($this->arguments);
+ 	}
+@@ -130,6 +131,7 @@ class GenericEvent extends Event implements ArrayAccess, IteratorAggregate {
+ 	 * @since 18.0.0
+ 	 * @deprecated 22.0.0
+ 	 */
++	#[\Override]
+ 	public function offsetExists($offset): bool {
+ 		return $this->hasArgument($offset);
+ 	}
+@@ -142,6 +144,7 @@ class GenericEvent extends Event implements ArrayAccess, IteratorAggregate {
+ 	 * @deprecated 22.0.0
+ 	 * @return mixed
+ 	 */
++	#[\Override]
+ 	#[\ReturnTypeWillChange]
+ 	public function offsetGet($offset) {
+ 		return $this->arguments[$offset];
+@@ -154,6 +157,7 @@ class GenericEvent extends Event implements ArrayAccess, IteratorAggregate {
+ 	 * @since 18.0.0
+ 	 * @deprecated 22.0.0
+ 	 */
++	#[\Override]
+ 	public function offsetSet($offset, $value): void {
+ 		$this->setArgument($offset, $value);
+ 	}
+@@ -165,6 +169,7 @@ class GenericEvent extends Event implements ArrayAccess, IteratorAggregate {
+ 	 * @since 18.0.0
+ 	 * @deprecated 22.0.0
+ 	 */
++	#[\Override]
+ 	public function offsetUnset($offset): void {
+ 		if ($this->hasArgument($offset)) {
+ 			unset($this->arguments[$offset]);
+diff --git a/lib/public/Files/Cache/AbstractCacheEvent.php b/lib/public/Files/Cache/AbstractCacheEvent.php
+index b2f01b2e47..678332c907 100644
+--- a/lib/public/Files/Cache/AbstractCacheEvent.php
++++ b/lib/public/Files/Cache/AbstractCacheEvent.php
+@@ -37,6 +37,7 @@ class AbstractCacheEvent extends Event implements ICacheEvent {
+ 	 * @return IStorage
+ 	 * @since 22.0.0
+ 	 */
++	#[\Override]
+ 	public function getStorage(): IStorage {
+ 		return $this->storage;
+ 	}
+@@ -45,6 +46,7 @@ class AbstractCacheEvent extends Event implements ICacheEvent {
+ 	 * @return string
+ 	 * @since 22.0.0
+ 	 */
++	#[\Override]
+ 	public function getPath(): string {
+ 		return $this->path;
+ 	}
+@@ -53,6 +55,7 @@ class AbstractCacheEvent extends Event implements ICacheEvent {
+ 	 * @param string $path
+ 	 * @since 22.0.0
+ 	 */
++	#[\Override]
+ 	public function setPath(string $path): void {
+ 		$this->path = $path;
+ 	}
+@@ -61,6 +64,7 @@ class AbstractCacheEvent extends Event implements ICacheEvent {
+ 	 * @return int
+ 	 * @since 22.0.0
+ 	 */
++	#[\Override]
+ 	public function getFileId(): int {
+ 		return $this->fileId;
+ 	}
+@@ -69,6 +73,7 @@ class AbstractCacheEvent extends Event implements ICacheEvent {
+ 	 * @return int
+ 	 * @since 22.0.0
+ 	 */
++	#[\Override]
+ 	public function getStorageId(): int {
+ 		return $this->storageId;
+ 	}
+diff --git a/lib/public/Files/Conversion/ConversionMimeProvider.php b/lib/public/Files/Conversion/ConversionMimeProvider.php
+index 0daf4a1064..11f45a52cf 100644
+--- a/lib/public/Files/Conversion/ConversionMimeProvider.php
++++ b/lib/public/Files/Conversion/ConversionMimeProvider.php
+@@ -55,6 +55,7 @@ class ConversionMimeProvider implements JsonSerializable {
+ 	 *
+ 	 * @since 31.0.0
+ 	 */
++	#[\Override]
+ 	public function jsonSerialize(): array {
+ 		return [
+ 			'from' => $this->from,
+diff --git a/lib/public/Files/Events/Node/AbstractNodeEvent.php b/lib/public/Files/Events/Node/AbstractNodeEvent.php
+index 7afb71277f..06259051f9 100644
+--- a/lib/public/Files/Events/Node/AbstractNodeEvent.php
++++ b/lib/public/Files/Events/Node/AbstractNodeEvent.php
+@@ -35,6 +35,7 @@ abstract class AbstractNodeEvent extends Event implements IWebhookCompatibleEven
+ 	/**
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getWebhookSerializable(): array {
+ 		return [
+ 			'node' => JsonSerializer::serializeFileInfo($this->node),
+diff --git a/lib/public/Files/Events/Node/AbstractNodesEvent.php b/lib/public/Files/Events/Node/AbstractNodesEvent.php
+index 8fa8795d1d..1569b58cfc 100644
+--- a/lib/public/Files/Events/Node/AbstractNodesEvent.php
++++ b/lib/public/Files/Events/Node/AbstractNodesEvent.php
+@@ -43,6 +43,7 @@ abstract class AbstractNodesEvent extends Event implements IWebhookCompatibleEve
+ 	/**
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getWebhookSerializable(): array {
+ 		return [
+ 			'source' => JsonSerializer::serializeFileInfo($this->source),
+diff --git a/lib/public/Files/File.php b/lib/public/Files/File.php
+index 67b7a7d0d2..8c57951a4c 100644
+--- a/lib/public/Files/File.php
++++ b/lib/public/Files/File.php
+@@ -47,6 +47,7 @@ interface File extends Node {
+ 	 *
+ 	 * @since 6.0.0
+ 	 */
++	#[\Override]
+ 	public function getMimeType(): string;
+ 
+ 	/**
+@@ -79,6 +80,7 @@ interface File extends Node {
+ 	 * @throws InvalidPathException
+ 	 * @throws NotFoundException
+ 	 */
++	#[\Override]
+ 	public function getChecksum();
+ 
+ 	/**
+@@ -87,5 +89,6 @@ interface File extends Node {
+ 	 * @return string
+ 	 * @since 15.0.0
+ 	 */
++	#[\Override]
+ 	public function getExtension(): string;
+ }
+diff --git a/lib/public/Files/Folder.php b/lib/public/Files/Folder.php
+index 9ed1957e8c..ef8880636c 100644
+--- a/lib/public/Files/Folder.php
++++ b/lib/public/Files/Folder.php
+@@ -190,6 +190,7 @@ interface Folder extends Node {
+ 	 * @return bool
+ 	 * @since 6.0.0
+ 	 */
++	#[\Override]
+ 	public function isCreatable();
+ 
+ 	/**
+diff --git a/lib/public/Files/Node.php b/lib/public/Files/Node.php
+index edef0a6157..b3b0ffb5c0 100644
+--- a/lib/public/Files/Node.php
++++ b/lib/public/Files/Node.php
+@@ -72,6 +72,7 @@ interface Node extends FileInfo {
+ 	 * @throws NotFoundException
+ 	 * @since 6.0.0
+ 	 */
++	#[\Override]
+ 	public function getStorage();
+ 
+ 	/**
+@@ -80,6 +81,7 @@ interface Node extends FileInfo {
+ 	 * @return string
+ 	 * @since 6.0.0
+ 	 */
++	#[\Override]
+ 	public function getPath();
+ 
+ 	/**
+@@ -88,6 +90,7 @@ interface Node extends FileInfo {
+ 	 * @return string
+ 	 * @since 6.0.0
+ 	 */
++	#[\Override]
+ 	public function getInternalPath();
+ 
+ 	/**
+@@ -98,6 +101,7 @@ interface Node extends FileInfo {
+ 	 * @throws NotFoundException
+ 	 * @since 6.0.0
+ 	 */
++	#[\Override]
+ 	public function getId();
+ 
+ 	/**
+@@ -119,6 +123,7 @@ interface Node extends FileInfo {
+ 	 * @throws NotFoundException
+ 	 * @since 6.0.0
+ 	 */
++	#[\Override]
+ 	public function getMTime();
+ 
+ 	/**
+@@ -130,6 +135,7 @@ interface Node extends FileInfo {
+ 	 * @throws NotFoundException
+ 	 * @since 6.0.0
+ 	 */
++	#[\Override]
+ 	public function getSize($includeMounts = true);
+ 
+ 	/**
+@@ -142,6 +148,7 @@ interface Node extends FileInfo {
+ 	 * @throws NotFoundException
+ 	 * @since 6.0.0
+ 	 */
++	#[\Override]
+ 	public function getEtag();
+ 
+ 
+@@ -158,6 +165,7 @@ interface Node extends FileInfo {
+ 	 * @throws NotFoundException
+ 	 * @since 6.0.0 - namespace of constants has changed in 8.0.0
+ 	 */
++	#[\Override]
+ 	public function getPermissions();
+ 
+ 	/**
+@@ -168,6 +176,7 @@ interface Node extends FileInfo {
+ 	 * @throws NotFoundException
+ 	 * @since 6.0.0
+ 	 */
++	#[\Override]
+ 	public function isReadable();
+ 
+ 	/**
+@@ -178,6 +187,7 @@ interface Node extends FileInfo {
+ 	 * @throws NotFoundException
+ 	 * @since 6.0.0
+ 	 */
++	#[\Override]
+ 	public function isUpdateable();
+ 
+ 	/**
+@@ -188,6 +198,7 @@ interface Node extends FileInfo {
+ 	 * @throws NotFoundException
+ 	 * @since 6.0.0
+ 	 */
++	#[\Override]
+ 	public function isDeletable();
+ 
+ 	/**
+@@ -198,6 +209,7 @@ interface Node extends FileInfo {
+ 	 * @throws NotFoundException
+ 	 * @since 6.0.0
+ 	 */
++	#[\Override]
+ 	public function isShareable();
+ 
+ 	/**
+@@ -214,6 +226,7 @@ interface Node extends FileInfo {
+ 	 * @return string
+ 	 * @since 6.0.0
+ 	 */
++	#[\Override]
+ 	public function getName();
+ 
+ 	/**
+diff --git a/lib/public/Files/SimpleFS/InMemoryFile.php b/lib/public/Files/SimpleFS/InMemoryFile.php
+index d5a0fa160c..b8bfbabbf6 100644
+--- a/lib/public/Files/SimpleFS/InMemoryFile.php
++++ b/lib/public/Files/SimpleFS/InMemoryFile.php
+@@ -42,6 +42,7 @@ class InMemoryFile implements ISimpleFile {
+ 	 * @inheritdoc
+ 	 * @since 16.0.0
+ 	 */
++	#[\Override]
+ 	public function getName(): string {
+ 		return $this->name;
+ 	}
+@@ -50,6 +51,7 @@ class InMemoryFile implements ISimpleFile {
+ 	 * @inheritdoc
+ 	 * @since 16.0.0
+ 	 */
++	#[\Override]
+ 	public function getSize(): int|float {
+ 		return strlen($this->contents);
+ 	}
+@@ -58,6 +60,7 @@ class InMemoryFile implements ISimpleFile {
+ 	 * @inheritdoc
+ 	 * @since 16.0.0
+ 	 */
++	#[\Override]
+ 	public function getETag(): string {
+ 		return '';
+ 	}
+@@ -66,6 +69,7 @@ class InMemoryFile implements ISimpleFile {
+ 	 * @inheritdoc
+ 	 * @since 16.0.0
+ 	 */
++	#[\Override]
+ 	public function getMTime(): int {
+ 		return time();
+ 	}
+@@ -74,6 +78,7 @@ class InMemoryFile implements ISimpleFile {
+ 	 * @inheritdoc
+ 	 * @since 16.0.0
+ 	 */
++	#[\Override]
+ 	public function getContent(): string {
+ 		return $this->contents;
+ 	}
+@@ -82,6 +87,7 @@ class InMemoryFile implements ISimpleFile {
+ 	 * @inheritdoc
+ 	 * @since 16.0.0
+ 	 */
++	#[\Override]
+ 	public function putContent($data): void {
+ 		$this->contents = $data;
+ 	}
+@@ -91,6 +97,7 @@ class InMemoryFile implements ISimpleFile {
+ 	 *
+ 	 * @since 16.0.0
+ 	 */
++	#[\Override]
+ 	public function delete(): void {
+ 		// unimplemented for in memory files
+ 	}
+@@ -99,6 +106,7 @@ class InMemoryFile implements ISimpleFile {
+ 	 * @inheritdoc
+ 	 * @since 16.0.0
+ 	 */
++	#[\Override]
+ 	public function getMimeType(): string {
+ 		$fileInfo = new \finfo(FILEINFO_MIME_TYPE);
+ 		return $fileInfo->buffer($this->contents);
+@@ -108,6 +116,7 @@ class InMemoryFile implements ISimpleFile {
+ 	 * @inheritDoc
+ 	 * @since 24.0.0
+ 	 */
++	#[\Override]
+ 	public function getExtension(): string {
+ 		return \pathinfo($this->name, PATHINFO_EXTENSION);
+ 	}
+@@ -117,6 +126,7 @@ class InMemoryFile implements ISimpleFile {
+ 	 * @since 16.0.0
+ 	 * @since 34.0.0 - return in-memory stream of contents
+ 	 */
++	#[\Override]
+ 	public function read() {
+ 		$stream = fopen('php://memory', 'r+');
+ 		fwrite($stream, $this->contents);
+@@ -130,6 +140,7 @@ class InMemoryFile implements ISimpleFile {
+ 	 * @throws NotPermittedException
+ 	 * @since 16.0.0
+ 	 */
++	#[\Override]
+ 	public function write() {
+ 		throw new NotPermittedException(
+ 			'Stream writing is unsupported for in memory files'
+diff --git a/lib/public/Files/Template/Field.php b/lib/public/Files/Template/Field.php
+index e047e83a29..7ac80207ec 100644
+--- a/lib/public/Files/Template/Field.php
++++ b/lib/public/Files/Template/Field.php
+@@ -43,6 +43,7 @@ abstract class Field implements \JsonSerializable {
+ 	 * }
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function jsonSerialize(): array {
+ 		return [
+ 			'index' => $this->index,
+diff --git a/lib/public/Files/Template/Fields/CheckBoxField.php b/lib/public/Files/Template/Fields/CheckBoxField.php
+index 6fab3ce66a..076391b822 100644
+--- a/lib/public/Files/Template/Fields/CheckBoxField.php
++++ b/lib/public/Files/Template/Fields/CheckBoxField.php
+@@ -28,6 +28,7 @@ class CheckBoxField extends Field {
+ 	/**
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function setValue(mixed $value): void {
+ 		if (!is_bool($value)) {
+ 			throw new \Exception('Invalid value for checkbox field type');
+@@ -48,6 +49,7 @@ class CheckBoxField extends Field {
+ 	 * }
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function jsonSerialize(): array {
+ 		$jsonProperties = parent::jsonSerialize();
+ 
+diff --git a/lib/public/Files/Template/Fields/RichTextField.php b/lib/public/Files/Template/Fields/RichTextField.php
+index 93ead68747..901305cb72 100644
+--- a/lib/public/Files/Template/Fields/RichTextField.php
++++ b/lib/public/Files/Template/Fields/RichTextField.php
+@@ -28,6 +28,7 @@ class RichTextField extends Field {
+ 	/**
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function setValue(mixed $value): void {
+ 		if (!is_string($value)) {
+ 			throw new \Exception('Invalid value for rich-text field type');
+@@ -48,6 +49,7 @@ class RichTextField extends Field {
+ 	 * }
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function jsonSerialize(): array {
+ 		$jsonProperties = parent::jsonSerialize();
+ 
+diff --git a/lib/public/Files/Template/Template.php b/lib/public/Files/Template/Template.php
+index 7f01c2afa4..4d838a6d4a 100644
+--- a/lib/public/Files/Template/Template.php
++++ b/lib/public/Files/Template/Template.php
+@@ -84,6 +84,7 @@ final class Template implements \JsonSerializable {
+ 	 * }
+ 	 * @since 21.0.0
+ 	 */
++	#[\Override]
+ 	public function jsonSerialize(): array {
+ 		return [
+ 			'templateType' => $this->templateType,
+diff --git a/lib/public/Files/Template/TemplateFileCreator.php b/lib/public/Files/Template/TemplateFileCreator.php
+index 809bd3d0bc..eb5c79600e 100644
+--- a/lib/public/Files/Template/TemplateFileCreator.php
++++ b/lib/public/Files/Template/TemplateFileCreator.php
+@@ -123,6 +123,7 @@ final class TemplateFileCreator implements \JsonSerializable {
+ 	 * @since 21.0.0
+ 	 * @return array{app: string, label: string, extension: string, iconClass: ?string, iconSvgInline: ?string, mimetypes: list<string>, ratio: ?float, actionLabel: string}
+ 	 */
++	#[\Override]
+ 	public function jsonSerialize(): array {
+ 		return [
+ 			'app' => $this->appId,
+diff --git a/lib/public/Group/Backend/ABackend.php b/lib/public/Group/Backend/ABackend.php
+index 95af1b85d9..37605d58a5 100644
+--- a/lib/public/Group/Backend/ABackend.php
++++ b/lib/public/Group/Backend/ABackend.php
+@@ -21,6 +21,7 @@ abstract class ABackend implements GroupInterface, IBatchMethodsBackend {
+ 	 * @param int $actions The action to check for
+ 	 * @return bool
+ 	 */
++	#[\Override]
+ 	public function implementsActions($actions): bool {
+ 		$implements = 0;
+ 
+@@ -52,6 +53,7 @@ abstract class ABackend implements GroupInterface, IBatchMethodsBackend {
+ 	/**
+ 	 * @since 28.0.0
+ 	 */
++	#[\Override]
+ 	public function groupsExists(array $gids): array {
+ 		return array_values(array_filter(
+ 			$gids,
+@@ -62,6 +64,7 @@ abstract class ABackend implements GroupInterface, IBatchMethodsBackend {
+ 	/**
+ 	 * @since 28.0.0
+ 	 */
++	#[\Override]
+ 	public function getGroupsDetails(array $gids): array {
+ 		if (!($this instanceof IGroupDetailsBackend || $this->implementsActions(GroupInterface::GROUP_DETAILS))) {
+ 			throw new \Exception('Should not have been called');
+diff --git a/lib/public/Http/Client/IClient.php b/lib/public/Http/Client/IClient.php
+index 3f96c80c29..db675b277c 100644
+--- a/lib/public/Http/Client/IClient.php
++++ b/lib/public/Http/Client/IClient.php
+@@ -282,6 +282,7 @@ interface IClient extends ClientInterface {
+ 	 * @throws \Psr\Http\Client\ClientExceptionInterface If an error happens while processing the request.
+ 	 * @since 34.0.0
+ 	 */
++	#[\Override]
+ 	public function sendRequest(RequestInterface $request): ResponseInterface;
+ 
+ 	/**
+diff --git a/lib/public/Http/WellKnown/GenericResponse.php b/lib/public/Http/WellKnown/GenericResponse.php
+index c5279f075c..99a238d72e 100644
+--- a/lib/public/Http/WellKnown/GenericResponse.php
++++ b/lib/public/Http/WellKnown/GenericResponse.php
+@@ -27,6 +27,7 @@ final class GenericResponse implements IResponse {
+ 	/**
+ 	 * @since 21.0.0
+ 	 */
++	#[\Override]
+ 	public function toHttpResponse(): Response {
+ 		return $this->response;
+ 	}
+diff --git a/lib/public/Http/WellKnown/JrdResponse.php b/lib/public/Http/WellKnown/JrdResponse.php
+index 21ad948d14..d7eb3dfdf2 100644
+--- a/lib/public/Http/WellKnown/JrdResponse.php
++++ b/lib/public/Http/WellKnown/JrdResponse.php
+@@ -128,6 +128,7 @@ final class JrdResponse implements IResponse {
+ 	/**
+ 	 * @since 21.0.0
+ 	 */
++	#[\Override]
+ 	public function toHttpResponse(): Response {
+ 		return new JSONResponse(array_filter([
+ 			'subject' => $this->subject,
+diff --git a/lib/public/IContainer.php b/lib/public/IContainer.php
+index 9f8a38ca2f..0f91a9990d 100644
+--- a/lib/public/IContainer.php
++++ b/lib/public/IContainer.php
+@@ -36,6 +36,7 @@ interface IContainer extends ContainerInterface {
+ 	 * @return ($id is class-string<T> ? T : mixed) Entry.
+ 	 * @since 34.0.0
+ 	 */
++	#[\Override]
+ 	public function get(string $id);
+ 
+ 	/**
+diff --git a/lib/public/IStreamImage.php b/lib/public/IStreamImage.php
+index 5363e0fcbc..79b718fc29 100644
+--- a/lib/public/IStreamImage.php
++++ b/lib/public/IStreamImage.php
+@@ -14,5 +14,6 @@ interface IStreamImage extends IImage {
+ 	 * @since 24.0.0
+ 	 * @return false|resource Returns the image resource if any
+ 	 */
++	#[\Override]
+ 	public function resource();
+ }
+diff --git a/lib/public/L10N/ILanguageIterator.php b/lib/public/L10N/ILanguageIterator.php
+index 27f850d423..f327923c7a 100644
+--- a/lib/public/L10N/ILanguageIterator.php
++++ b/lib/public/L10N/ILanguageIterator.php
+@@ -30,6 +30,7 @@ interface ILanguageIterator extends \Iterator {
+ 	 *
+ 	 * @since 14.0.0
+ 	 */
++	#[\Override]
+ 	public function current(): string;
+ 
+ 	/**
+@@ -37,6 +38,7 @@ interface ILanguageIterator extends \Iterator {
+ 	 *
+ 	 * @since 14.0.0
+ 	 */
++	#[\Override]
+ 	public function next(): void;
+ 
+ 	/**
+@@ -44,6 +46,7 @@ interface ILanguageIterator extends \Iterator {
+ 	 *
+ 	 * @since 14.0.0
+ 	 */
++	#[\Override]
+ 	public function key(): int;
+ 
+ 	/**
+@@ -51,5 +54,6 @@ interface ILanguageIterator extends \Iterator {
+ 	 *
+ 	 * @since 14.0.0
+ 	 */
++	#[\Override]
+ 	public function valid(): bool;
+ }
+diff --git a/lib/public/Mail/Provider/Address.php b/lib/public/Mail/Provider/Address.php
+index 751fb99d93..7051335410 100644
+--- a/lib/public/Mail/Provider/Address.php
++++ b/lib/public/Mail/Provider/Address.php
+@@ -41,6 +41,7 @@ class Address implements \OCP\Mail\Provider\IAddress {
+ 	 *
+ 	 * @return self return this object for command chaining
+ 	 */
++	#[\Override]
+ 	public function setAddress(string $value): self {
+ 		$this->address = $value;
+ 		return $this;
+@@ -53,6 +54,7 @@ class Address implements \OCP\Mail\Provider\IAddress {
+ 	 *
+ 	 * @return string|null returns the mail address or null if one is not set
+ 	 */
++	#[\Override]
+ 	public function getAddress(): ?string {
+ 		return $this->address;
+ 	}
+@@ -66,6 +68,7 @@ class Address implements \OCP\Mail\Provider\IAddress {
+ 	 *
+ 	 * @return self return this object for command chaining
+ 	 */
++	#[\Override]
+ 	public function setLabel(string $value): self {
+ 		$this->label = $value;
+ 		return $this;
+@@ -78,6 +81,7 @@ class Address implements \OCP\Mail\Provider\IAddress {
+ 	 *
+ 	 * @return string|null returns the mail address label/name or null if one is not set
+ 	 */
++	#[\Override]
+ 	public function getLabel(): ?string {
+ 		return $this->label;
+ 	}
+diff --git a/lib/public/Mail/Provider/Attachment.php b/lib/public/Mail/Provider/Attachment.php
+index af7340a3cc..8b8b2b9cac 100644
+--- a/lib/public/Mail/Provider/Attachment.php
++++ b/lib/public/Mail/Provider/Attachment.php
+@@ -45,6 +45,7 @@ class Attachment implements \OCP\Mail\Provider\IAttachment {
+ 	 *
+ 	 * @return self return this object for command chaining
+ 	 */
++	#[\Override]
+ 	public function setName(string $value): self {
+ 		$this->name = $value;
+ 		return $this;
+@@ -57,6 +58,7 @@ class Attachment implements \OCP\Mail\Provider\IAttachment {
+ 	 *
+ 	 * @return string | null returns the attachment file name or null if not set
+ 	 */
++	#[\Override]
+ 	public function getName(): ?string {
+ 		return $this->name;
+ 	}
+@@ -70,6 +72,7 @@ class Attachment implements \OCP\Mail\Provider\IAttachment {
+ 	 *
+ 	 * @return self return this object for command chaining
+ 	 */
++	#[\Override]
+ 	public function setType(string $value): self {
+ 		$this->type = $value;
+ 		return $this;
+@@ -82,6 +85,7 @@ class Attachment implements \OCP\Mail\Provider\IAttachment {
+ 	 *
+ 	 * @return string | null returns the attachment mime type or null if not set
+ 	 */
++	#[\Override]
+ 	public function getType(): ?string {
+ 		return $this->type;
+ 	}
+@@ -95,6 +99,7 @@ class Attachment implements \OCP\Mail\Provider\IAttachment {
+ 	 *
+ 	 * @return self return this object for command chaining
+ 	 */
++	#[\Override]
+ 	public function setContents(string $value): self {
+ 		$this->contents = $value;
+ 		return $this;
+@@ -107,6 +112,7 @@ class Attachment implements \OCP\Mail\Provider\IAttachment {
+ 	 *
+ 	 * @return string | null returns the attachment contents or null if not set
+ 	 */
++	#[\Override]
+ 	public function getContents(): ?string {
+ 		return $this->contents;
+ 	}
+@@ -120,6 +126,7 @@ class Attachment implements \OCP\Mail\Provider\IAttachment {
+ 	 *
+ 	 * @return self return this object for command chaining
+ 	 */
++	#[\Override]
+ 	public function setEmbedded(bool $value): self {
+ 		$this->embedded = $value;
+ 		return $this;
+@@ -132,6 +139,7 @@ class Attachment implements \OCP\Mail\Provider\IAttachment {
+ 	 *
+ 	 * @return bool embedded status of the attachment
+ 	 */
++	#[\Override]
+ 	public function getEmbedded(): bool {
+ 		return $this->embedded;
+ 	}
+diff --git a/lib/public/Mail/Provider/Message.php b/lib/public/Mail/Provider/Message.php
+index f7a21c05ed..4251450bf8 100644
+--- a/lib/public/Mail/Provider/Message.php
++++ b/lib/public/Mail/Provider/Message.php
+@@ -37,6 +37,7 @@ class Message implements \OCP\Mail\Provider\IMessage {
+ 	 *
+ 	 * @return string id of this message
+ 	 */
++	#[\Override]
+ 	public function id(): string {
+ 		// return id of message
+ 		return (isset($this->data['id'])) ? $this->data['id'] : '';
+@@ -51,6 +52,7 @@ class Message implements \OCP\Mail\Provider\IMessage {
+ 	 *
+ 	 * @return self return this object for command chaining
+ 	 */
++	#[\Override]
+ 	public function setFrom(IAddress $value): self {
+ 		// create or update field in data store with value
+ 		$this->data['from'] = $value;
+@@ -65,6 +67,7 @@ class Message implements \OCP\Mail\Provider\IMessage {
+ 	 *
+ 	 * @return IAddress|null sender's mail address object
+ 	 */
++	#[\Override]
+ 	public function getFrom(): ?IAddress {
+ 		// evaluate if data store field exists and return value(s) or null otherwise
+ 		return (isset($this->data['from'])) ? $this->data['from'] : null;
+@@ -79,6 +82,7 @@ class Message implements \OCP\Mail\Provider\IMessage {
+ 	 *
+ 	 * @return self return this object for command chaining
+ 	 */
++	#[\Override]
+ 	public function setReplyTo(IAddress $value): self {
+ 		// create or update field in data store with value
+ 		$this->data['replyTo'] = $value;
+@@ -93,6 +97,7 @@ class Message implements \OCP\Mail\Provider\IMessage {
+ 	 *
+ 	 * @return IAddress|null sender's reply to mail address object
+ 	 */
++	#[\Override]
+ 	public function getReplyTo(): ?IAddress {
+ 		// evaluate if data store field exists and return value(s) or null otherwise
+ 		return (isset($this->data['replyTo'])) ? $this->data['replyTo'] : null;
+@@ -107,6 +112,7 @@ class Message implements \OCP\Mail\Provider\IMessage {
+ 	 *
+ 	 * @return self return this object for command chaining
+ 	 */
++	#[\Override]
+ 	public function setTo(IAddress ...$value): self {
+ 		// create or update field in data store with value
+ 		$this->data['to'] = $value;
+@@ -121,6 +127,7 @@ class Message implements \OCP\Mail\Provider\IMessage {
+ 	 *
+ 	 * @return array<int,IAddress> collection of all recipient mail address objects
+ 	 */
++	#[\Override]
+ 	public function getTo(): array {
+ 		// evaluate if data store field exists and return value(s) or empty collection
+ 		return (isset($this->data['to'])) ? $this->data['to'] : [];
+@@ -135,6 +142,7 @@ class Message implements \OCP\Mail\Provider\IMessage {
+ 	 *
+ 	 * @return self return this object for command chaining
+ 	 */
++	#[\Override]
+ 	public function setCc(IAddress ...$value): self {
+ 		// create or update field in data store with value
+ 		$this->data['cc'] = $value;
+@@ -149,6 +157,7 @@ class Message implements \OCP\Mail\Provider\IMessage {
+ 	 *
+ 	 * @return array<int,IAddress> collection of all copied recipient mail address objects
+ 	 */
++	#[\Override]
+ 	public function getCc(): array {
+ 		// evaluate if data store field exists and return value(s) or empty collection
+ 		return (isset($this->data['cc'])) ? $this->data['cc'] : [];
+@@ -163,6 +172,7 @@ class Message implements \OCP\Mail\Provider\IMessage {
+ 	 *
+ 	 * @return self return this object for command chaining
+ 	 */
++	#[\Override]
+ 	public function setBcc(IAddress ...$value): self {
+ 		// create or update field in data store with value
+ 		$this->data['bcc'] = $value;
+@@ -177,6 +187,7 @@ class Message implements \OCP\Mail\Provider\IMessage {
+ 	 *
+ 	 * @return array<int,IAddress> collection of all blind copied recipient mail address objects
+ 	 */
++	#[\Override]
+ 	public function getBcc(): array {
+ 		// evaluate if data store field exists and return value(s) or empty collection
+ 		return (isset($this->data['bcc'])) ? $this->data['bcc'] : [];
+@@ -191,6 +202,7 @@ class Message implements \OCP\Mail\Provider\IMessage {
+ 	 *
+ 	 * @return self return this object for command chaining
+ 	 */
++	#[\Override]
+ 	public function setSubject(string $value): self {
+ 		// create or update field in data store with value
+ 		$this->data['subject'] = $value;
+@@ -205,6 +217,7 @@ class Message implements \OCP\Mail\Provider\IMessage {
+ 	 *
+ 	 * @return string|null subject of message or null if one is not set
+ 	 */
++	#[\Override]
+ 	public function getSubject(): ?string {
+ 		// evaluate if data store field exists and return value(s) or null otherwise
+ 		return (isset($this->data['subject'])) ? $this->data['subject'] : null;
+@@ -220,6 +233,7 @@ class Message implements \OCP\Mail\Provider\IMessage {
+ 	 *
+ 	 * @return self return this object for command chaining
+ 	 */
++	#[\Override]
+ 	public function setBody(string $value, bool $html = false): self {
+ 		// evaluate html flag and create or update appropriate field in data store with value
+ 		if ($html) {
+@@ -240,6 +254,7 @@ class Message implements \OCP\Mail\Provider\IMessage {
+ 	 *
+ 	 * @return string|null html/plain body of this message or null if one is not set
+ 	 */
++	#[\Override]
+ 	public function getBody(): ?string {
+ 		// evaluate if data store field(s) exists and return value
+ 		if (isset($this->data['bodyHtml'])) {
+@@ -260,6 +275,7 @@ class Message implements \OCP\Mail\Provider\IMessage {
+ 	 *
+ 	 * @return self return this object for command chaining
+ 	 */
++	#[\Override]
+ 	public function setBodyHtml(string $value): self {
+ 		// create or update field in data store with value
+ 		$this->data['bodyHtml'] = $value;
+@@ -274,6 +290,7 @@ class Message implements \OCP\Mail\Provider\IMessage {
+ 	 *
+ 	 * @return string|null html body of this message or null if one is not set
+ 	 */
++	#[\Override]
+ 	public function getBodyHtml(): ?string {
+ 		// evaluate if data store field exists and return value(s) or null otherwise
+ 		return (isset($this->data['bodyHtml'])) ? $this->data['bodyHtml'] : null;
+@@ -288,6 +305,7 @@ class Message implements \OCP\Mail\Provider\IMessage {
+ 	 *
+ 	 * @return self return this object for command chaining
+ 	 */
++	#[\Override]
+ 	public function setBodyPlain(string $value): self {
+ 		// create or update field in data store with value
+ 		$this->data['bodyPlain'] = $value;
+@@ -302,6 +320,7 @@ class Message implements \OCP\Mail\Provider\IMessage {
+ 	 *
+ 	 * @return string|null plain text body of this message or null if one is not set
+ 	 */
++	#[\Override]
+ 	public function getBodyPlain(): ?string {
+ 		// evaluate if data store field exists and return value(s) or null otherwise
+ 		return (isset($this->data['bodyPlain'])) ? $this->data['bodyPlain'] : null;
+@@ -316,6 +335,7 @@ class Message implements \OCP\Mail\Provider\IMessage {
+ 	 *
+ 	 * @return self return this object for command chaining
+ 	 */
++	#[\Override]
+ 	public function setAttachments(IAttachment ...$value): self {
+ 		// create or update field in data store with value
+ 		$this->data['attachments'] = $value;
+@@ -330,6 +350,7 @@ class Message implements \OCP\Mail\Provider\IMessage {
+ 	 *
+ 	 * @return array<int,IAttachment> collection of all mail attachment objects
+ 	 */
++	#[\Override]
+ 	public function getAttachments(): array {
+ 		// evaluate if data store field exists and return value(s) or null otherwise
+ 		return (isset($this->data['attachments'])) ? $this->data['attachments'] : [];
+diff --git a/lib/public/Migration/Attributes/AddColumn.php b/lib/public/Migration/Attributes/AddColumn.php
+index e371ec81d1..ba9cd45ef4 100644
+--- a/lib/public/Migration/Attributes/AddColumn.php
++++ b/lib/public/Migration/Attributes/AddColumn.php
+@@ -21,6 +21,7 @@ class AddColumn extends ColumnMigrationAttribute {
+ 	 * @return string
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function definition(): string {
+ 		$type = is_null($this->getType()) ? '' : ' (' . $this->getType()->value . ')';
+ 		return empty($this->getName())
+diff --git a/lib/public/Migration/Attributes/AddIndex.php b/lib/public/Migration/Attributes/AddIndex.php
+index 86b5a89c38..698eaa53a7 100644
+--- a/lib/public/Migration/Attributes/AddIndex.php
++++ b/lib/public/Migration/Attributes/AddIndex.php
+@@ -21,6 +21,7 @@ class AddIndex extends IndexMigrationAttribute {
+ 	 * @return string
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function definition(): string {
+ 		$type = is_null($this->getType()) ? '' : ' (' . $this->getType()->value . ')';
+ 		return 'Addition of a new index' . $type . ' to table \'' . $this->getTable() . '\'';
+diff --git a/lib/public/Migration/Attributes/ColumnMigrationAttribute.php b/lib/public/Migration/Attributes/ColumnMigrationAttribute.php
+index d3f4aa05ad..fa2b9544f9 100644
+--- a/lib/public/Migration/Attributes/ColumnMigrationAttribute.php
++++ b/lib/public/Migration/Attributes/ColumnMigrationAttribute.php
+@@ -77,6 +77,7 @@ class ColumnMigrationAttribute extends MigrationAttribute {
+ 	 * @return $this
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function import(array $data): self {
+ 		parent::import($data);
+ 		$this->setName($data['name'] ?? '');
+@@ -88,6 +89,7 @@ class ColumnMigrationAttribute extends MigrationAttribute {
+ 	 * @return array
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function jsonSerialize(): array {
+ 		return array_merge(
+ 			parent::jsonSerialize(),
+diff --git a/lib/public/Migration/Attributes/CreateTable.php b/lib/public/Migration/Attributes/CreateTable.php
+index c774b0aff5..df759b123c 100644
+--- a/lib/public/Migration/Attributes/CreateTable.php
++++ b/lib/public/Migration/Attributes/CreateTable.php
+@@ -21,6 +21,7 @@ class CreateTable extends TableMigrationAttribute {
+ 	 * @return string
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function definition(): string {
+ 		$definition = 'Creation of new table \'' . $this->getTable() . '\'';
+ 		$definition .= empty($this->getColumns()) ? '' : ' with columns ' . implode(', ', $this->getColumns());
+diff --git a/lib/public/Migration/Attributes/DataCleansing.php b/lib/public/Migration/Attributes/DataCleansing.php
+index 6215c8b026..cc4af24c43 100644
+--- a/lib/public/Migration/Attributes/DataCleansing.php
++++ b/lib/public/Migration/Attributes/DataCleansing.php
+@@ -21,6 +21,7 @@ class DataCleansing extends DataMigrationAttribute {
+ 	 * @return string
+ 	 * @since 32.0.0
+ 	 */
++	#[\Override]
+ 	public function definition(): string {
+ 		return 'Cleansing data from table \'' . $this->getTable() . '\'';
+ 	}
+diff --git a/lib/public/Migration/Attributes/DropColumn.php b/lib/public/Migration/Attributes/DropColumn.php
+index 4d0568a0a4..e18fe34f62 100644
+--- a/lib/public/Migration/Attributes/DropColumn.php
++++ b/lib/public/Migration/Attributes/DropColumn.php
+@@ -21,6 +21,7 @@ class DropColumn extends ColumnMigrationAttribute {
+ 	 * @return string
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function definition(): string {
+ 		return empty($this->getName())
+ 			? 'Deletion of a column from table \'' . $this->getTable() . '\''
+diff --git a/lib/public/Migration/Attributes/DropIndex.php b/lib/public/Migration/Attributes/DropIndex.php
+index 39bdd64ced..3da7daf327 100644
+--- a/lib/public/Migration/Attributes/DropIndex.php
++++ b/lib/public/Migration/Attributes/DropIndex.php
+@@ -21,6 +21,7 @@ class DropIndex extends IndexMigrationAttribute {
+ 	 * @return string
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function definition(): string {
+ 		return 'Deletion of an index from table \'' . $this->getTable() . '\'';
+ 	}
+diff --git a/lib/public/Migration/Attributes/DropTable.php b/lib/public/Migration/Attributes/DropTable.php
+index ad18d07c8e..cbd79a5209 100644
+--- a/lib/public/Migration/Attributes/DropTable.php
++++ b/lib/public/Migration/Attributes/DropTable.php
+@@ -21,6 +21,7 @@ class DropTable extends TableMigrationAttribute {
+ 	 * @return string
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function definition(): string {
+ 		return 'Deletion of table \'' . $this->getTable() . '\'';
+ 	}
+diff --git a/lib/public/Migration/Attributes/GenericMigrationAttribute.php b/lib/public/Migration/Attributes/GenericMigrationAttribute.php
+index 870182b039..f57ad7fac0 100644
+--- a/lib/public/Migration/Attributes/GenericMigrationAttribute.php
++++ b/lib/public/Migration/Attributes/GenericMigrationAttribute.php
+@@ -34,6 +34,7 @@ class GenericMigrationAttribute extends MigrationAttribute {
+ 	 * @return string
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function definition(): string {
+ 		return json_encode($this->jsonSerialize(), JSON_UNESCAPED_SLASHES);
+ 	}
+@@ -42,6 +43,7 @@ class GenericMigrationAttribute extends MigrationAttribute {
+ 	 * @return array
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function jsonSerialize(): array {
+ 		return $this->details;
+ 	}
+diff --git a/lib/public/Migration/Attributes/IndexMigrationAttribute.php b/lib/public/Migration/Attributes/IndexMigrationAttribute.php
+index 31b9e2da27..b640a900f3 100644
+--- a/lib/public/Migration/Attributes/IndexMigrationAttribute.php
++++ b/lib/public/Migration/Attributes/IndexMigrationAttribute.php
+@@ -56,6 +56,7 @@ class IndexMigrationAttribute extends MigrationAttribute {
+ 	 * @return $this
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function import(array $data): self {
+ 		parent::import($data);
+ 		$this->setType(IndexType::tryFrom($data['type'] ?? ''));
+@@ -66,6 +67,7 @@ class IndexMigrationAttribute extends MigrationAttribute {
+ 	 * @return array
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function jsonSerialize(): array {
+ 		return array_merge(
+ 			parent::jsonSerialize(),
+diff --git a/lib/public/Migration/Attributes/MigrationAttribute.php b/lib/public/Migration/Attributes/MigrationAttribute.php
+index 4df46e7a2f..84bce466be 100644
+--- a/lib/public/Migration/Attributes/MigrationAttribute.php
++++ b/lib/public/Migration/Attributes/MigrationAttribute.php
+@@ -106,6 +106,7 @@ class MigrationAttribute implements JsonSerializable {
+ 	 * @return array
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function jsonSerialize(): array {
+ 		return [
+ 			'class' => get_class($this),
+diff --git a/lib/public/Migration/Attributes/ModifyColumn.php b/lib/public/Migration/Attributes/ModifyColumn.php
+index f34c29db74..840a3db93a 100644
+--- a/lib/public/Migration/Attributes/ModifyColumn.php
++++ b/lib/public/Migration/Attributes/ModifyColumn.php
+@@ -21,6 +21,7 @@ class ModifyColumn extends ColumnMigrationAttribute {
+ 	 * @return string
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function definition(): string {
+ 		$type = is_null($this->getType()) ? '' : ' to ' . $this->getType()->value;
+ 		return empty($this->getName())
+diff --git a/lib/public/Migration/Attributes/TableMigrationAttribute.php b/lib/public/Migration/Attributes/TableMigrationAttribute.php
+index aede981c10..4b11a75137 100644
+--- a/lib/public/Migration/Attributes/TableMigrationAttribute.php
++++ b/lib/public/Migration/Attributes/TableMigrationAttribute.php
+@@ -56,6 +56,7 @@ class TableMigrationAttribute extends MigrationAttribute {
+ 	 * @return $this
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function import(array $data): self {
+ 		parent::import($data);
+ 		$this->setColumns($data['columns'] ?? []);
+@@ -66,6 +67,7 @@ class TableMigrationAttribute extends MigrationAttribute {
+ 	 * @return array
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function jsonSerialize(): array {
+ 		return array_merge(
+ 			parent::jsonSerialize(),
+diff --git a/lib/public/Migration/BigIntMigration.php b/lib/public/Migration/BigIntMigration.php
+index a2fda697cb..c16a9ded8c 100644
+--- a/lib/public/Migration/BigIntMigration.php
++++ b/lib/public/Migration/BigIntMigration.php
+@@ -28,6 +28,7 @@ abstract class BigIntMigration extends SimpleMigrationStep {
+ 	 * @return null|ISchemaWrapper
+ 	 * @since 13.0.0
+ 	 */
++	#[\Override]
+ 	public function changeSchema(IOutput $output, \Closure $schemaClosure, array $options) {
+ 		/** @var ISchemaWrapper $schema */
+ 		$schema = $schemaClosure();
+diff --git a/lib/public/OCM/IOCMProvider.php b/lib/public/OCM/IOCMProvider.php
+index 83f2871d5c..4896a050bd 100644
+--- a/lib/public/OCM/IOCMProvider.php
++++ b/lib/public/OCM/IOCMProvider.php
+@@ -217,5 +217,6 @@ interface IOCMProvider extends JsonSerializable {
+ 	 * }
+ 	 * @since 28.0.0
+ 	 */
++	#[\Override]
+ 	public function jsonSerialize(): array;
+ }
+diff --git a/lib/public/OCM/IOCMResource.php b/lib/public/OCM/IOCMResource.php
+index 60bf701e8e..84a8aed862 100644
+--- a/lib/public/OCM/IOCMResource.php
++++ b/lib/public/OCM/IOCMResource.php
+@@ -90,5 +90,6 @@ interface IOCMResource extends JsonSerializable {
+ 	 * }
+ 	 * @since 28.0.0
+ 	 */
++	#[\Override]
+ 	public function jsonSerialize(): array;
+ }
+diff --git a/lib/public/SabrePluginException.php b/lib/public/SabrePluginException.php
+index 8b5b0dfba0..82847e9602 100644
+--- a/lib/public/SabrePluginException.php
++++ b/lib/public/SabrePluginException.php
+@@ -19,6 +19,7 @@ class SabrePluginException extends Exception {
+ 	 * @return int
+ 	 * @since 8.2.0
+ 	 */
++	#[\Override]
+ 	public function getHTTPCode() {
+ 		return $this->code;
+ 	}
+diff --git a/lib/public/Search/IFilterCollection.php b/lib/public/Search/IFilterCollection.php
+index f68092d169..a28578a6d3 100644
+--- a/lib/public/Search/IFilterCollection.php
++++ b/lib/public/Search/IFilterCollection.php
+@@ -35,6 +35,7 @@ interface IFilterCollection extends IteratorAggregate {
+ 	 *
+ 	 * @since 28.0.0
+ 	 */
++	#[\Override]
+ 	public function getIterator(): \Traversable;
+ 
+ 	/**
+diff --git a/lib/public/Search/SearchResult.php b/lib/public/Search/SearchResult.php
+index 2504ffd01e..1168dca43e 100644
+--- a/lib/public/Search/SearchResult.php
++++ b/lib/public/Search/SearchResult.php
+@@ -83,6 +83,7 @@ final class SearchResult implements JsonSerializable {
+ 	 *
+ 	 * @since 20.0.0
+ 	 */
++	#[\Override]
+ 	public function jsonSerialize(): array {
+ 		return [
+ 			'name' => $this->name,
+diff --git a/lib/public/Search/SearchResultEntry.php b/lib/public/Search/SearchResultEntry.php
+index b28cda3ea0..cfa6ae52d0 100644
+--- a/lib/public/Search/SearchResultEntry.php
++++ b/lib/public/Search/SearchResultEntry.php
+@@ -110,6 +110,7 @@ class SearchResultEntry implements JsonSerializable {
+ 	 *
+ 	 * @since 20.0.0
+ 	 */
++	#[\Override]
+ 	public function jsonSerialize(): array {
+ 		return [
+ 			'thumbnailUrl' => $this->thumbnailUrl,
+diff --git a/lib/public/Security/Signature/Model/Signatory.php b/lib/public/Security/Signature/Model/Signatory.php
+index 6ab1133c22..563dadce56 100644
+--- a/lib/public/Security/Signature/Model/Signatory.php
++++ b/lib/public/Security/Signature/Model/Signatory.php
+@@ -169,6 +169,7 @@ class Signatory extends Entity implements JsonSerializable {
+ 	 * @return array
+ 	 * @since 33.0.0
+ 	 */
++	#[\Override]
+ 	public function jsonSerialize(): array {
+ 		return [
+ 			'keyId' => $this->getKeyId(),
+diff --git a/lib/public/SetupCheck/SetupResult.php b/lib/public/SetupCheck/SetupResult.php
+index 7d64b83808..1188a32105 100644
+--- a/lib/public/SetupCheck/SetupResult.php
++++ b/lib/public/SetupCheck/SetupResult.php
+@@ -176,6 +176,7 @@ class SetupResult implements \JsonSerializable {
+ 	 *
+ 	 * @since 28.0.0
+ 	 */
++	#[\Override]
+ 	public function jsonSerialize(): array {
+ 		return [
+ 			'name' => $this->name,
+diff --git a/lib/public/SystemTag/MapperEvent.php b/lib/public/SystemTag/MapperEvent.php
+index 821d1b5dc5..8647ece01b 100644
+--- a/lib/public/SystemTag/MapperEvent.php
++++ b/lib/public/SystemTag/MapperEvent.php
+@@ -90,6 +90,7 @@ class MapperEvent extends Event implements IWebhookCompatibleEvent {
+ 	 * @return array
+ 	 * @since 32.0.0
+ 	 */
++	#[\Override]
+ 	public function getWebhookSerializable(): array {
+ 		return [
+ 			'eventType' => $this->getEvent(),
+diff --git a/lib/public/SystemTag/TagAssignedEvent.php b/lib/public/SystemTag/TagAssignedEvent.php
+index 596e30fe0b..50503a6cbd 100644
+--- a/lib/public/SystemTag/TagAssignedEvent.php
++++ b/lib/public/SystemTag/TagAssignedEvent.php
+@@ -63,6 +63,7 @@ class TagAssignedEvent extends Event implements IWebhookCompatibleEvent {
+ 	 * @return array{objectType: string, objectIds: list<string>, tagIds: list<int>}
+ 	 * @since 32.0.0
+ 	 */
++	#[\Override]
+ 	public function getWebhookSerializable(): array {
+ 		return [
+ 			'objectType' => $this->getObjectType(),
+diff --git a/lib/public/SystemTag/TagUnassignedEvent.php b/lib/public/SystemTag/TagUnassignedEvent.php
+index 8d7fbd4a93..5ed085ba87 100644
+--- a/lib/public/SystemTag/TagUnassignedEvent.php
++++ b/lib/public/SystemTag/TagUnassignedEvent.php
+@@ -63,6 +63,7 @@ class TagUnassignedEvent extends Event implements IWebhookCompatibleEvent {
+ 	 * @return array{objectType: string, objectIds: list<string>, tagIds: list<int>}
+ 	 * @since 32.0.0
+ 	 */
++	#[\Override]
+ 	public function getWebhookSerializable(): array {
+ 		return [
+ 			'objectType' => $this->getObjectType(),
+diff --git a/lib/public/TaskProcessing/ISynchronousWatermarkingProvider.php b/lib/public/TaskProcessing/ISynchronousWatermarkingProvider.php
+index 97f283022b..05b7c07ec6 100644
+--- a/lib/public/TaskProcessing/ISynchronousWatermarkingProvider.php
++++ b/lib/public/TaskProcessing/ISynchronousWatermarkingProvider.php
+@@ -31,5 +31,6 @@ interface ISynchronousWatermarkingProvider extends ISynchronousProvider {
+ 	 * @throws ProcessingException
+ 	 * @since 33.0.0
+ 	 */
++	#[\Override]
+ 	public function process(?string $userId, array $input, callable $reportProgress, bool $includeWatermark = true): array;
+ }
+diff --git a/lib/public/TaskProcessing/ShapeDescriptor.php b/lib/public/TaskProcessing/ShapeDescriptor.php
+index 19e57c8a91..6cdb511e50 100644
+--- a/lib/public/TaskProcessing/ShapeDescriptor.php
++++ b/lib/public/TaskProcessing/ShapeDescriptor.php
+@@ -52,6 +52,7 @@ class ShapeDescriptor implements \JsonSerializable {
+ 	 * @return array{name: string, description: string, type: "Number"|"Text"|"Audio"|"Image"|"Video"|"File"|"Enum"|"ListOfNumbers"|"ListOfTexts"|"ListOfImages"|"ListOfAudios"|"ListOfVideos"|"ListOfFiles"}
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function jsonSerialize(): array {
+ 		/** @var "Number"|"Text"|"Audio"|"Image"|"Video"|"File"|"Enum"|"ListOfNumbers"|"ListOfTexts"|"ListOfImages"|"ListOfAudios"|"ListOfVideos"|"ListOfFiles" $type */
+ 		$type = $this->getShapeType()->name;
+diff --git a/lib/public/TaskProcessing/ShapeEnumValue.php b/lib/public/TaskProcessing/ShapeEnumValue.php
+index bc50052430..5afffecd2e 100644
+--- a/lib/public/TaskProcessing/ShapeEnumValue.php
++++ b/lib/public/TaskProcessing/ShapeEnumValue.php
+@@ -42,6 +42,7 @@ class ShapeEnumValue implements \JsonSerializable {
+ 	 * @return array{name: string, value: string}
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function jsonSerialize(): array {
+ 		return [
+ 			'name' => $this->getName(),
+diff --git a/lib/public/TaskProcessing/Task.php b/lib/public/TaskProcessing/Task.php
+index f0096c42a7..72edc9a17c 100644
+--- a/lib/public/TaskProcessing/Task.php
++++ b/lib/public/TaskProcessing/Task.php
+@@ -298,6 +298,7 @@ final class Task implements \JsonSerializable {
+ 	 * @psalm-return array{id: int, lastUpdated: int, type: string, status: 'STATUS_CANCELLED'|'STATUS_FAILED'|'STATUS_SUCCESSFUL'|'STATUS_RUNNING'|'STATUS_SCHEDULED'|'STATUS_UNKNOWN', userId: ?string, appId: string, input: array<string, list<numeric|string>|numeric|string>, output: ?array<string, list<numeric|string>|numeric|string>, customId: ?string, completionExpectedAt: ?int, progress: ?float, scheduledAt: ?int, startedAt: ?int, endedAt: ?int, allowCleanup: bool, includeWatermark: bool, userFacingErrorMessage: ?string}
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	final public function jsonSerialize(): array {
+ 		return [
+ 			'id' => (int)$this->getId(),
+diff --git a/lib/public/TaskProcessing/TaskTypes/AnalyzeImages.php b/lib/public/TaskProcessing/TaskTypes/AnalyzeImages.php
+index 462016c5c1..97f7ffabf2 100644
+--- a/lib/public/TaskProcessing/TaskTypes/AnalyzeImages.php
++++ b/lib/public/TaskProcessing/TaskTypes/AnalyzeImages.php
+@@ -41,6 +41,7 @@ class AnalyzeImages implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 32.0.0
+ 	 */
++	#[\Override]
+ 	public function getName(): string {
+ 		return $this->l->t('Analyze images');
+ 	}
+@@ -49,6 +50,7 @@ class AnalyzeImages implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 32.0.0
+ 	 */
++	#[\Override]
+ 	public function getDescription(): string {
+ 		return $this->l->t('Ask a question about the given images.');
+ 	}
+@@ -57,6 +59,7 @@ class AnalyzeImages implements ITaskType {
+ 	 * @return string
+ 	 * @since 32.0.0
+ 	 */
++	#[\Override]
+ 	public function getId(): string {
+ 		return self::ID;
+ 	}
+@@ -65,6 +68,7 @@ class AnalyzeImages implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 32.0.0
+ 	 */
++	#[\Override]
+ 	public function getInputShape(): array {
+ 		return [
+ 			'images' => new ShapeDescriptor(
+@@ -84,6 +88,7 @@ class AnalyzeImages implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 32.0.0
+ 	 */
++	#[\Override]
+ 	public function getOutputShape(): array {
+ 		return [
+ 			'output' => new ShapeDescriptor(
+diff --git a/lib/public/TaskProcessing/TaskTypes/AudioToAudioChat.php b/lib/public/TaskProcessing/TaskTypes/AudioToAudioChat.php
+index 0613a2d07d..4cee999740 100644
+--- a/lib/public/TaskProcessing/TaskTypes/AudioToAudioChat.php
++++ b/lib/public/TaskProcessing/TaskTypes/AudioToAudioChat.php
+@@ -42,6 +42,7 @@ class AudioToAudioChat implements IInternalTaskType {
+ 	 * @inheritDoc
+ 	 * @since 32.0.0
+ 	 */
++	#[\Override]
+ 	public function getName(): string {
+ 		return $this->l->t('Audio chat');
+ 	}
+@@ -50,6 +51,7 @@ class AudioToAudioChat implements IInternalTaskType {
+ 	 * @inheritDoc
+ 	 * @since 32.0.0
+ 	 */
++	#[\Override]
+ 	public function getDescription(): string {
+ 		return $this->l->t('Voice chat with the assistant');
+ 	}
+@@ -58,6 +60,7 @@ class AudioToAudioChat implements IInternalTaskType {
+ 	 * @return string
+ 	 * @since 32.0.0
+ 	 */
++	#[\Override]
+ 	public function getId(): string {
+ 		return self::ID;
+ 	}
+@@ -66,6 +69,7 @@ class AudioToAudioChat implements IInternalTaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 32.0.0
+ 	 */
++	#[\Override]
+ 	public function getInputShape(): array {
+ 		return [
+ 			'system_prompt' => new ShapeDescriptor(
+@@ -90,6 +94,7 @@ class AudioToAudioChat implements IInternalTaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 32.0.0
+ 	 */
++	#[\Override]
+ 	public function getOutputShape(): array {
+ 		return [
+ 			'input_transcript' => new ShapeDescriptor(
+diff --git a/lib/public/TaskProcessing/TaskTypes/AudioToText.php b/lib/public/TaskProcessing/TaskTypes/AudioToText.php
+index 1982d4c9d2..438fd52a9d 100644
+--- a/lib/public/TaskProcessing/TaskTypes/AudioToText.php
++++ b/lib/public/TaskProcessing/TaskTypes/AudioToText.php
+@@ -42,6 +42,7 @@ class AudioToText implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getName(): string {
+ 		return $this->l->t('Transcribe audio');
+ 	}
+@@ -50,6 +51,7 @@ class AudioToText implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getDescription(): string {
+ 		return $this->l->t('Transcribe the things said in an audio');
+ 	}
+@@ -58,6 +60,7 @@ class AudioToText implements ITaskType {
+ 	 * @return string
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getId(): string {
+ 		return self::ID;
+ 	}
+@@ -66,6 +69,7 @@ class AudioToText implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getInputShape(): array {
+ 		return [
+ 			'input' => new ShapeDescriptor(
+@@ -80,6 +84,7 @@ class AudioToText implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getOutputShape(): array {
+ 		return [
+ 			'output' => new ShapeDescriptor(
+diff --git a/lib/public/TaskProcessing/TaskTypes/ContextAgentAudioInteraction.php b/lib/public/TaskProcessing/TaskTypes/ContextAgentAudioInteraction.php
+index b668ea2480..a7059e2fd1 100644
+--- a/lib/public/TaskProcessing/TaskTypes/ContextAgentAudioInteraction.php
++++ b/lib/public/TaskProcessing/TaskTypes/ContextAgentAudioInteraction.php
+@@ -38,6 +38,7 @@ class ContextAgentAudioInteraction implements IInternalTaskType {
+ 	 * @inheritDoc
+ 	 * @since 32.0.0
+ 	 */
++	#[\Override]
+ 	public function getName(): string {
+ 		return 'ContextAgent audio'; // We do not translate this
+ 	}
+@@ -46,6 +47,7 @@ class ContextAgentAudioInteraction implements IInternalTaskType {
+ 	 * @inheritDoc
+ 	 * @since 32.0.0
+ 	 */
++	#[\Override]
+ 	public function getDescription(): string {
+ 		return $this->l->t('Chat by voice with an agent');
+ 	}
+@@ -54,6 +56,7 @@ class ContextAgentAudioInteraction implements IInternalTaskType {
+ 	 * @return string
+ 	 * @since 32.0.0
+ 	 */
++	#[\Override]
+ 	public function getId(): string {
+ 		return self::ID;
+ 	}
+@@ -62,6 +65,7 @@ class ContextAgentAudioInteraction implements IInternalTaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 32.0.0
+ 	 */
++	#[\Override]
+ 	public function getInputShape(): array {
+ 		return [
+ 			'input' => new ShapeDescriptor(
+@@ -86,6 +90,7 @@ class ContextAgentAudioInteraction implements IInternalTaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 32.0.0
+ 	 */
++	#[\Override]
+ 	public function getOutputShape(): array {
+ 		return [
+ 			'input_transcript' => new ShapeDescriptor(
+diff --git a/lib/public/TaskProcessing/TaskTypes/ContextAgentInteraction.php b/lib/public/TaskProcessing/TaskTypes/ContextAgentInteraction.php
+index 6cb126e189..4ffca7126c 100644
+--- a/lib/public/TaskProcessing/TaskTypes/ContextAgentInteraction.php
++++ b/lib/public/TaskProcessing/TaskTypes/ContextAgentInteraction.php
+@@ -38,6 +38,7 @@ class ContextAgentInteraction implements IInternalTaskType {
+ 	 * @inheritDoc
+ 	 * @since 31.0.0
+ 	 */
++	#[\Override]
+ 	public function getName(): string {
+ 		return 'ContextAgent'; // We do not translate this
+ 	}
+@@ -46,6 +47,7 @@ class ContextAgentInteraction implements IInternalTaskType {
+ 	 * @inheritDoc
+ 	 * @since 31.0.0
+ 	 */
++	#[\Override]
+ 	public function getDescription(): string {
+ 		return $this->l->t('Chat with an agent');
+ 	}
+@@ -54,6 +56,7 @@ class ContextAgentInteraction implements IInternalTaskType {
+ 	 * @return string
+ 	 * @since 31.0.0
+ 	 */
++	#[\Override]
+ 	public function getId(): string {
+ 		return self::ID;
+ 	}
+@@ -62,6 +65,7 @@ class ContextAgentInteraction implements IInternalTaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 31.0.0
+ 	 */
++	#[\Override]
+ 	public function getInputShape(): array {
+ 		return [
+ 			'input' => new ShapeDescriptor(
+@@ -86,6 +90,7 @@ class ContextAgentInteraction implements IInternalTaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 31.0.0
+ 	 */
++	#[\Override]
+ 	public function getOutputShape(): array {
+ 		return [
+ 			'output' => new ShapeDescriptor(
+diff --git a/lib/public/TaskProcessing/TaskTypes/ContextWrite.php b/lib/public/TaskProcessing/TaskTypes/ContextWrite.php
+index fd5c6a8f58..3634168a6b 100644
+--- a/lib/public/TaskProcessing/TaskTypes/ContextWrite.php
++++ b/lib/public/TaskProcessing/TaskTypes/ContextWrite.php
+@@ -42,6 +42,7 @@ class ContextWrite implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getName(): string {
+ 		return $this->l->t('Context write');
+ 	}
+@@ -50,6 +51,7 @@ class ContextWrite implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getDescription(): string {
+ 		return $this->l->t('Writes text in a given style based on the provided source material.');
+ 	}
+@@ -58,6 +60,7 @@ class ContextWrite implements ITaskType {
+ 	 * @return string
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getId(): string {
+ 		return self::ID;
+ 	}
+@@ -66,6 +69,7 @@ class ContextWrite implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getInputShape(): array {
+ 		return [
+ 			'style_input' => new ShapeDescriptor(
+@@ -85,6 +89,7 @@ class ContextWrite implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getOutputShape(): array {
+ 		return [
+ 			'output' => new ShapeDescriptor(
+diff --git a/lib/public/TaskProcessing/TaskTypes/GenerateEmoji.php b/lib/public/TaskProcessing/TaskTypes/GenerateEmoji.php
+index 2cb22b3b45..56a0017e2e 100644
+--- a/lib/public/TaskProcessing/TaskTypes/GenerateEmoji.php
++++ b/lib/public/TaskProcessing/TaskTypes/GenerateEmoji.php
+@@ -42,6 +42,7 @@ class GenerateEmoji implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getName(): string {
+ 		return $this->l->t('Emoji generator');
+ 	}
+@@ -50,6 +51,7 @@ class GenerateEmoji implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getDescription(): string {
+ 		return $this->l->t('Takes text and generates a representative emoji for it.');
+ 	}
+@@ -58,6 +60,7 @@ class GenerateEmoji implements ITaskType {
+ 	 * @return string
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getId(): string {
+ 		return self::ID;
+ 	}
+@@ -66,6 +69,7 @@ class GenerateEmoji implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getInputShape(): array {
+ 		return [
+ 			'input' => new ShapeDescriptor(
+@@ -80,6 +84,7 @@ class GenerateEmoji implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getOutputShape(): array {
+ 		return [
+ 			'output' => new ShapeDescriptor(
+diff --git a/lib/public/TaskProcessing/TaskTypes/ImageToTextOpticalCharacterRecognition.php b/lib/public/TaskProcessing/TaskTypes/ImageToTextOpticalCharacterRecognition.php
+index 6438afd6a5..d342879b8e 100644
+--- a/lib/public/TaskProcessing/TaskTypes/ImageToTextOpticalCharacterRecognition.php
++++ b/lib/public/TaskProcessing/TaskTypes/ImageToTextOpticalCharacterRecognition.php
+@@ -40,6 +40,7 @@ class ImageToTextOpticalCharacterRecognition implements ITaskType {
+ 	/**
+ 	 * @since 33.0.0
+ 	 */
++	#[\Override]
+ 	public function getName(): string {
+ 		return $this->l->t('Optical character recognition');
+ 	}
+@@ -47,6 +48,7 @@ class ImageToTextOpticalCharacterRecognition implements ITaskType {
+ 	/**
+ 	 * @since 33.0.0
+ 	 */
++	#[\Override]
+ 	public function getDescription(): string {
+ 		return $this->l->t('Extract text from files like images or PDFs');
+ 	}
+@@ -54,6 +56,7 @@ class ImageToTextOpticalCharacterRecognition implements ITaskType {
+ 	/**
+ 	 * @since 33.0.0
+ 	 */
++	#[\Override]
+ 	public function getId(): string {
+ 		return self::ID;
+ 	}
+@@ -62,6 +65,7 @@ class ImageToTextOpticalCharacterRecognition implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 33.0.0
+ 	 */
++	#[\Override]
+ 	public function getInputShape(): array {
+ 		return [
+ 			'input' => new ShapeDescriptor(
+@@ -76,6 +80,7 @@ class ImageToTextOpticalCharacterRecognition implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 33.0.0
+ 	 */
++	#[\Override]
+ 	public function getOutputShape(): array {
+ 		return [
+ 			'output' => new ShapeDescriptor(
+diff --git a/lib/public/TaskProcessing/TaskTypes/TextToImage.php b/lib/public/TaskProcessing/TaskTypes/TextToImage.php
+index ed956d244a..b5db195a47 100644
+--- a/lib/public/TaskProcessing/TaskTypes/TextToImage.php
++++ b/lib/public/TaskProcessing/TaskTypes/TextToImage.php
+@@ -42,6 +42,7 @@ class TextToImage implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getName(): string {
+ 		return $this->l->t('Generate image');
+ 	}
+@@ -50,6 +51,7 @@ class TextToImage implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getDescription(): string {
+ 		return $this->l->t('Generate an image from a text prompt');
+ 	}
+@@ -58,6 +60,7 @@ class TextToImage implements ITaskType {
+ 	 * @return string
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getId(): string {
+ 		return self::ID;
+ 	}
+@@ -66,6 +69,7 @@ class TextToImage implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getInputShape(): array {
+ 		return [
+ 			'input' => new ShapeDescriptor(
+@@ -85,6 +89,7 @@ class TextToImage implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getOutputShape(): array {
+ 		return [
+ 			'images' => new ShapeDescriptor(
+diff --git a/lib/public/TaskProcessing/TaskTypes/TextToSpeech.php b/lib/public/TaskProcessing/TaskTypes/TextToSpeech.php
+index ce35be32a6..bb5f3db96e 100644
+--- a/lib/public/TaskProcessing/TaskTypes/TextToSpeech.php
++++ b/lib/public/TaskProcessing/TaskTypes/TextToSpeech.php
+@@ -42,6 +42,7 @@ class TextToSpeech implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 32.0.0
+ 	 */
++	#[\Override]
+ 	public function getName(): string {
+ 		return $this->l->t('Generate speech');
+ 	}
+@@ -50,6 +51,7 @@ class TextToSpeech implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 32.0.0
+ 	 */
++	#[\Override]
+ 	public function getDescription(): string {
+ 		return $this->l->t('Generate speech from a transcript');
+ 	}
+@@ -58,6 +60,7 @@ class TextToSpeech implements ITaskType {
+ 	 * @return string
+ 	 * @since 32.0.0
+ 	 */
++	#[\Override]
+ 	public function getId(): string {
+ 		return self::ID;
+ 	}
+@@ -66,6 +69,7 @@ class TextToSpeech implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 32.0.0
+ 	 */
++	#[\Override]
+ 	public function getInputShape(): array {
+ 		return [
+ 			'input' => new ShapeDescriptor(
+@@ -80,6 +84,7 @@ class TextToSpeech implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 32.0.0
+ 	 */
++	#[\Override]
+ 	public function getOutputShape(): array {
+ 		return [
+ 			'speech' => new ShapeDescriptor(
+diff --git a/lib/public/TaskProcessing/TaskTypes/TextToText.php b/lib/public/TaskProcessing/TaskTypes/TextToText.php
+index c39d435688..639e99d0ce 100644
+--- a/lib/public/TaskProcessing/TaskTypes/TextToText.php
++++ b/lib/public/TaskProcessing/TaskTypes/TextToText.php
+@@ -42,6 +42,7 @@ class TextToText implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getName(): string {
+ 		return $this->l->t('Free text to text prompt');
+ 	}
+@@ -50,6 +51,7 @@ class TextToText implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getDescription(): string {
+ 		return $this->l->t('Runs an arbitrary prompt through a language model that returns a reply');
+ 	}
+@@ -58,6 +60,7 @@ class TextToText implements ITaskType {
+ 	 * @return string
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getId(): string {
+ 		return self::ID;
+ 	}
+@@ -66,6 +69,7 @@ class TextToText implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getInputShape(): array {
+ 		return [
+ 			'input' => new ShapeDescriptor(
+@@ -80,6 +84,7 @@ class TextToText implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getOutputShape(): array {
+ 		return [
+ 			'output' => new ShapeDescriptor(
+diff --git a/lib/public/TaskProcessing/TaskTypes/TextToTextChangeTone.php b/lib/public/TaskProcessing/TaskTypes/TextToTextChangeTone.php
+index 0ea4575a18..ef4b0f2ea0 100644
+--- a/lib/public/TaskProcessing/TaskTypes/TextToTextChangeTone.php
++++ b/lib/public/TaskProcessing/TaskTypes/TextToTextChangeTone.php
+@@ -38,6 +38,7 @@ class TextToTextChangeTone implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 31.0.0
+ 	 */
++	#[\Override]
+ 	public function getName(): string {
+ 		return $this->l->t('Change Tone');
+ 	}
+@@ -46,6 +47,7 @@ class TextToTextChangeTone implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 31.0.0
+ 	 */
++	#[\Override]
+ 	public function getDescription(): string {
+ 		return $this->l->t('Change the tone of a piece of text.');
+ 	}
+@@ -54,6 +56,7 @@ class TextToTextChangeTone implements ITaskType {
+ 	 * @return string
+ 	 * @since 31.0.0
+ 	 */
++	#[\Override]
+ 	public function getId(): string {
+ 		return self::ID;
+ 	}
+@@ -62,6 +65,7 @@ class TextToTextChangeTone implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 31.0.0
+ 	 */
++	#[\Override]
+ 	public function getInputShape(): array {
+ 		return [
+ 			'input' => new ShapeDescriptor(
+@@ -81,6 +85,7 @@ class TextToTextChangeTone implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 31.0.0
+ 	 */
++	#[\Override]
+ 	public function getOutputShape(): array {
+ 		return [
+ 			'output' => new ShapeDescriptor(
+diff --git a/lib/public/TaskProcessing/TaskTypes/TextToTextChat.php b/lib/public/TaskProcessing/TaskTypes/TextToTextChat.php
+index 9cf1e7ef3c..9af9283a7a 100644
+--- a/lib/public/TaskProcessing/TaskTypes/TextToTextChat.php
++++ b/lib/public/TaskProcessing/TaskTypes/TextToTextChat.php
+@@ -42,6 +42,7 @@ class TextToTextChat implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getName(): string {
+ 		return $this->l->t('Chat');
+ 	}
+@@ -50,6 +51,7 @@ class TextToTextChat implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getDescription(): string {
+ 		return $this->l->t('Chat with the assistant');
+ 	}
+@@ -58,6 +60,7 @@ class TextToTextChat implements ITaskType {
+ 	 * @return string
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getId(): string {
+ 		return self::ID;
+ 	}
+@@ -66,6 +69,7 @@ class TextToTextChat implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getInputShape(): array {
+ 		return [
+ 			'system_prompt' => new ShapeDescriptor(
+@@ -90,6 +94,7 @@ class TextToTextChat implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getOutputShape(): array {
+ 		return [
+ 			'output' => new ShapeDescriptor(
+diff --git a/lib/public/TaskProcessing/TaskTypes/TextToTextChatWithTools.php b/lib/public/TaskProcessing/TaskTypes/TextToTextChatWithTools.php
+index 3e470bf23a..bc18a954bb 100644
+--- a/lib/public/TaskProcessing/TaskTypes/TextToTextChatWithTools.php
++++ b/lib/public/TaskProcessing/TaskTypes/TextToTextChatWithTools.php
+@@ -38,6 +38,7 @@ class TextToTextChatWithTools implements IInternalTaskType {
+ 	 * @inheritDoc
+ 	 * @since 31.0.0
+ 	 */
++	#[\Override]
+ 	public function getName(): string {
+ 		// TRANSLATORS Tool calling, also known as function calling, is a structured way to give LLMs the ability to make requests back to the application that called it. You define the tools you want to make available to the model, and the model will make tool requests to your app as necessary to fulfill the prompts you give it.
+ 		return $this->l->t('Chat with tools');
+@@ -47,6 +48,7 @@ class TextToTextChatWithTools implements IInternalTaskType {
+ 	 * @inheritDoc
+ 	 * @since 31.0.0
+ 	 */
++	#[\Override]
+ 	public function getDescription(): string {
+ 		// TRANSLATORS Tool calling, also known as function calling, is a structured way to give LLMs the ability to make requests back to the application that called it. You define the tools you want to make available to the model, and the model will make tool requests to your app as necessary to fulfill the prompts you give it.
+ 		return $this->l->t('Chat with the language model with tool calling support.');
+@@ -56,6 +58,7 @@ class TextToTextChatWithTools implements IInternalTaskType {
+ 	 * @return string
+ 	 * @since 31.0.0
+ 	 */
++	#[\Override]
+ 	public function getId(): string {
+ 		return self::ID;
+ 	}
+@@ -64,6 +67,7 @@ class TextToTextChatWithTools implements IInternalTaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 31.0.0
+ 	 */
++	#[\Override]
+ 	public function getInputShape(): array {
+ 		return [
+ 			'system_prompt' => new ShapeDescriptor(
+@@ -100,6 +104,7 @@ class TextToTextChatWithTools implements IInternalTaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 31.0.0
+ 	 */
++	#[\Override]
+ 	public function getOutputShape(): array {
+ 		return [
+ 			'output' => new ShapeDescriptor(
+diff --git a/lib/public/TaskProcessing/TaskTypes/TextToTextFormalization.php b/lib/public/TaskProcessing/TaskTypes/TextToTextFormalization.php
+index 70e38f78c0..2502d0ef4a 100644
+--- a/lib/public/TaskProcessing/TaskTypes/TextToTextFormalization.php
++++ b/lib/public/TaskProcessing/TaskTypes/TextToTextFormalization.php
+@@ -42,6 +42,7 @@ class TextToTextFormalization implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getName(): string {
+ 		return $this->l->t('Formalize text');
+ 	}
+@@ -50,6 +51,7 @@ class TextToTextFormalization implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getDescription(): string {
+ 		return $this->l->t('Takes a text and makes it sound more formal');
+ 	}
+@@ -58,6 +60,7 @@ class TextToTextFormalization implements ITaskType {
+ 	 * @return string
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getId(): string {
+ 		return self::ID;
+ 	}
+@@ -66,6 +69,7 @@ class TextToTextFormalization implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getInputShape(): array {
+ 		return [
+ 			'input' => new ShapeDescriptor(
+@@ -80,6 +84,7 @@ class TextToTextFormalization implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getOutputShape(): array {
+ 		return [
+ 			'output' => new ShapeDescriptor(
+diff --git a/lib/public/TaskProcessing/TaskTypes/TextToTextHeadline.php b/lib/public/TaskProcessing/TaskTypes/TextToTextHeadline.php
+index dde4ea0304..6dbe165486 100644
+--- a/lib/public/TaskProcessing/TaskTypes/TextToTextHeadline.php
++++ b/lib/public/TaskProcessing/TaskTypes/TextToTextHeadline.php
+@@ -42,6 +42,7 @@ class TextToTextHeadline implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getName(): string {
+ 		return $this->l->t('Generate a headline');
+ 	}
+@@ -50,6 +51,7 @@ class TextToTextHeadline implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getDescription(): string {
+ 		return $this->l->t('Generates a possible headline for a text.');
+ 	}
+@@ -58,6 +60,7 @@ class TextToTextHeadline implements ITaskType {
+ 	 * @return string
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getId(): string {
+ 		return self::ID;
+ 	}
+@@ -66,6 +69,7 @@ class TextToTextHeadline implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getInputShape(): array {
+ 		return [
+ 			'input' => new ShapeDescriptor(
+@@ -80,6 +84,7 @@ class TextToTextHeadline implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getOutputShape(): array {
+ 		return [
+ 			'output' => new ShapeDescriptor(
+diff --git a/lib/public/TaskProcessing/TaskTypes/TextToTextProofread.php b/lib/public/TaskProcessing/TaskTypes/TextToTextProofread.php
+index 508794490b..14c08710f8 100644
+--- a/lib/public/TaskProcessing/TaskTypes/TextToTextProofread.php
++++ b/lib/public/TaskProcessing/TaskTypes/TextToTextProofread.php
+@@ -41,6 +41,7 @@ class TextToTextProofread implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 31.0.0
+ 	 */
++	#[\Override]
+ 	public function getName(): string {
+ 		return $this->l->t('Proofread');
+ 	}
+@@ -49,6 +50,7 @@ class TextToTextProofread implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 31.0.0
+ 	 */
++	#[\Override]
+ 	public function getDescription(): string {
+ 		return $this->l->t('Proofreads a text and lists corrections');
+ 	}
+@@ -57,6 +59,7 @@ class TextToTextProofread implements ITaskType {
+ 	 * @return string
+ 	 * @since 31.0.0
+ 	 */
++	#[\Override]
+ 	public function getId(): string {
+ 		return self::ID;
+ 	}
+@@ -65,6 +68,7 @@ class TextToTextProofread implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 31.0.0
+ 	 */
++	#[\Override]
+ 	public function getInputShape(): array {
+ 		return [
+ 			'input' => new ShapeDescriptor(
+@@ -79,6 +83,7 @@ class TextToTextProofread implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 31.0.0
+ 	 */
++	#[\Override]
+ 	public function getOutputShape(): array {
+ 		return [
+ 			'output' => new ShapeDescriptor(
+diff --git a/lib/public/TaskProcessing/TaskTypes/TextToTextReformulation.php b/lib/public/TaskProcessing/TaskTypes/TextToTextReformulation.php
+index 120f5316ae..92ce7ad2e8 100644
+--- a/lib/public/TaskProcessing/TaskTypes/TextToTextReformulation.php
++++ b/lib/public/TaskProcessing/TaskTypes/TextToTextReformulation.php
+@@ -42,6 +42,7 @@ class TextToTextReformulation implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getName(): string {
+ 		return $this->l->t('Reformulate text');
+ 	}
+@@ -50,6 +51,7 @@ class TextToTextReformulation implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getDescription(): string {
+ 		return $this->l->t('Takes a text and reformulates it');
+ 	}
+@@ -58,6 +60,7 @@ class TextToTextReformulation implements ITaskType {
+ 	 * @return string
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getId(): string {
+ 		return self::ID;
+ 	}
+@@ -66,6 +69,7 @@ class TextToTextReformulation implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getInputShape(): array {
+ 		return [
+ 			'input' => new ShapeDescriptor(
+@@ -80,6 +84,7 @@ class TextToTextReformulation implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getOutputShape(): array {
+ 		return [
+ 			'output' => new ShapeDescriptor(
+diff --git a/lib/public/TaskProcessing/TaskTypes/TextToTextSimplification.php b/lib/public/TaskProcessing/TaskTypes/TextToTextSimplification.php
+index d107e584e3..b4d88501f7 100644
+--- a/lib/public/TaskProcessing/TaskTypes/TextToTextSimplification.php
++++ b/lib/public/TaskProcessing/TaskTypes/TextToTextSimplification.php
+@@ -42,6 +42,7 @@ class TextToTextSimplification implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getName(): string {
+ 		return $this->l->t('Simplify text');
+ 	}
+@@ -50,6 +51,7 @@ class TextToTextSimplification implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getDescription(): string {
+ 		return $this->l->t('Takes a text and simplifies it');
+ 	}
+@@ -58,6 +60,7 @@ class TextToTextSimplification implements ITaskType {
+ 	 * @return string
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getId(): string {
+ 		return self::ID;
+ 	}
+@@ -66,6 +69,7 @@ class TextToTextSimplification implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getInputShape(): array {
+ 		return [
+ 			'input' => new ShapeDescriptor(
+@@ -80,6 +84,7 @@ class TextToTextSimplification implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getOutputShape(): array {
+ 		return [
+ 			'output' => new ShapeDescriptor(
+diff --git a/lib/public/TaskProcessing/TaskTypes/TextToTextSummary.php b/lib/public/TaskProcessing/TaskTypes/TextToTextSummary.php
+index 601b478c0b..6b16b0d1c5 100644
+--- a/lib/public/TaskProcessing/TaskTypes/TextToTextSummary.php
++++ b/lib/public/TaskProcessing/TaskTypes/TextToTextSummary.php
+@@ -41,6 +41,7 @@ class TextToTextSummary implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getName(): string {
+ 		return $this->l->t('Summarize');
+ 	}
+@@ -49,6 +50,7 @@ class TextToTextSummary implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getDescription(): string {
+ 		return $this->l->t('Summarizes a text');
+ 	}
+@@ -57,6 +59,7 @@ class TextToTextSummary implements ITaskType {
+ 	 * @return string
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getId(): string {
+ 		return self::ID;
+ 	}
+@@ -65,6 +68,7 @@ class TextToTextSummary implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getInputShape(): array {
+ 		return [
+ 			'input' => new ShapeDescriptor(
+@@ -79,6 +83,7 @@ class TextToTextSummary implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getOutputShape(): array {
+ 		return [
+ 			'output' => new ShapeDescriptor(
+diff --git a/lib/public/TaskProcessing/TaskTypes/TextToTextTopics.php b/lib/public/TaskProcessing/TaskTypes/TextToTextTopics.php
+index 943cc2e2fd..7aa9aecf36 100644
+--- a/lib/public/TaskProcessing/TaskTypes/TextToTextTopics.php
++++ b/lib/public/TaskProcessing/TaskTypes/TextToTextTopics.php
+@@ -42,6 +42,7 @@ class TextToTextTopics implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getName(): string {
+ 		return $this->l->t('Extract topics');
+ 	}
+@@ -50,6 +51,7 @@ class TextToTextTopics implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getDescription(): string {
+ 		return $this->l->t('Extracts topics from a text and outputs them separated by commas');
+ 	}
+@@ -58,6 +60,7 @@ class TextToTextTopics implements ITaskType {
+ 	 * @return string
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getId(): string {
+ 		return self::ID;
+ 	}
+@@ -66,6 +69,7 @@ class TextToTextTopics implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getInputShape(): array {
+ 		return [
+ 			'input' => new ShapeDescriptor(
+@@ -80,6 +84,7 @@ class TextToTextTopics implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getOutputShape(): array {
+ 		return [
+ 			'output' => new ShapeDescriptor(
+diff --git a/lib/public/TaskProcessing/TaskTypes/TextToTextTranslate.php b/lib/public/TaskProcessing/TaskTypes/TextToTextTranslate.php
+index a02550226e..0de8a7e1ad 100644
+--- a/lib/public/TaskProcessing/TaskTypes/TextToTextTranslate.php
++++ b/lib/public/TaskProcessing/TaskTypes/TextToTextTranslate.php
+@@ -42,6 +42,7 @@ class TextToTextTranslate implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getName(): string {
+ 		return $this->l->t('Translate');
+ 	}
+@@ -50,6 +51,7 @@ class TextToTextTranslate implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getDescription(): string {
+ 		return $this->l->t('Translate text from one language to another');
+ 	}
+@@ -58,6 +60,7 @@ class TextToTextTranslate implements ITaskType {
+ 	 * @return string
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getId(): string {
+ 		return self::ID;
+ 	}
+@@ -66,6 +69,7 @@ class TextToTextTranslate implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getInputShape(): array {
+ 		return [
+ 			'input' => new ShapeDescriptor(
+@@ -90,6 +94,7 @@ class TextToTextTranslate implements ITaskType {
+ 	 * @return ShapeDescriptor[]
+ 	 * @since 30.0.0
+ 	 */
++	#[\Override]
+ 	public function getOutputShape(): array {
+ 		return [
+ 			'output' => new ShapeDescriptor(
+diff --git a/lib/public/Teams/Team.php b/lib/public/Teams/Team.php
+index cc70f6fbd4..a0a2a3c8c9 100644
+--- a/lib/public/Teams/Team.php
++++ b/lib/public/Teams/Team.php
+@@ -58,6 +58,7 @@ class Team implements \JsonSerializable {
+ 	 *
+ 	 * @since 29.0.0
+ 	 */
++	#[\Override]
+ 	public function jsonSerialize(): array {
+ 		return [
+ 			'teamId' => $this->teamId,
+diff --git a/lib/public/Teams/TeamResource.php b/lib/public/Teams/TeamResource.php
+index a15faacf79..b83e5b65ad 100644
+--- a/lib/public/Teams/TeamResource.php
++++ b/lib/public/Teams/TeamResource.php
+@@ -110,6 +110,7 @@ class TeamResource implements \JsonSerializable {
+ 	 *
+ 	 * @since 29.0.0
+ 	 */
++	#[\Override]
+ 	public function jsonSerialize(): array {
+ 		return [
+ 			'id' => $this->resourceId,
+diff --git a/lib/public/TextProcessing/FreePromptTaskType.php b/lib/public/TextProcessing/FreePromptTaskType.php
+index 2433f24dbd..d5af0fc8ff 100644
+--- a/lib/public/TextProcessing/FreePromptTaskType.php
++++ b/lib/public/TextProcessing/FreePromptTaskType.php
+@@ -37,6 +37,7 @@ class FreePromptTaskType implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 27.1.0
+ 	 */
++	#[\Override]
+ 	public function getName(): string {
+ 		return $this->l->t('Free prompt');
+ 	}
+@@ -45,6 +46,7 @@ class FreePromptTaskType implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 27.1.0
+ 	 */
++	#[\Override]
+ 	public function getDescription(): string {
+ 		return $this->l->t('Runs an arbitrary prompt through the language model.');
+ 	}
+diff --git a/lib/public/TextProcessing/HeadlineTaskType.php b/lib/public/TextProcessing/HeadlineTaskType.php
+index 00eb66466a..f7fea210a6 100644
+--- a/lib/public/TextProcessing/HeadlineTaskType.php
++++ b/lib/public/TextProcessing/HeadlineTaskType.php
+@@ -37,6 +37,7 @@ class HeadlineTaskType implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 27.1.0
+ 	 */
++	#[\Override]
+ 	public function getName(): string {
+ 		return $this->l->t('Generate headline');
+ 	}
+@@ -45,6 +46,7 @@ class HeadlineTaskType implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 27.1.0
+ 	 */
++	#[\Override]
+ 	public function getDescription(): string {
+ 		return $this->l->t('Generates a possible headline for a text.');
+ 	}
+diff --git a/lib/public/TextProcessing/SummaryTaskType.php b/lib/public/TextProcessing/SummaryTaskType.php
+index 656a50ebc6..d3580ca15d 100644
+--- a/lib/public/TextProcessing/SummaryTaskType.php
++++ b/lib/public/TextProcessing/SummaryTaskType.php
+@@ -37,6 +37,7 @@ class SummaryTaskType implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 27.1.0
+ 	 */
++	#[\Override]
+ 	public function getName(): string {
+ 		return $this->l->t('Summarize');
+ 	}
+@@ -45,6 +46,7 @@ class SummaryTaskType implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 27.1.0
+ 	 */
++	#[\Override]
+ 	public function getDescription(): string {
+ 		return $this->l->t('Summarizes text by reducing its length without losing key information.');
+ 	}
+diff --git a/lib/public/TextProcessing/Task.php b/lib/public/TextProcessing/Task.php
+index d968ad9ba3..0f874b9259 100644
+--- a/lib/public/TextProcessing/Task.php
++++ b/lib/public/TextProcessing/Task.php
+@@ -193,6 +193,7 @@ final class Task implements \JsonSerializable {
+ 	 * @psalm-return array{id: ?int, type: class-string<T>, status: 0|1|2|3|4, userId: ?string, appId: string, input: string, output: ?string, identifier: string, completionExpectedAt: ?int}
+ 	 * @since 27.1.0
+ 	 */
++	#[\Override]
+ 	public function jsonSerialize(): array {
+ 		return [
+ 			'id' => $this->getId(),
+diff --git a/lib/public/TextProcessing/TopicsTaskType.php b/lib/public/TextProcessing/TopicsTaskType.php
+index c693ee3d27..ef47ad7c7a 100644
+--- a/lib/public/TextProcessing/TopicsTaskType.php
++++ b/lib/public/TextProcessing/TopicsTaskType.php
+@@ -37,6 +37,7 @@ class TopicsTaskType implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 27.1.0
+ 	 */
++	#[\Override]
+ 	public function getName(): string {
+ 		return $this->l->t('Extract topics');
+ 	}
+@@ -45,6 +46,7 @@ class TopicsTaskType implements ITaskType {
+ 	 * @inheritDoc
+ 	 * @since 27.1.0
+ 	 */
++	#[\Override]
+ 	public function getDescription(): string {
+ 		return $this->l->t('Extracts topics from a text and outputs them separated by commas.');
+ 	}
+diff --git a/lib/public/TextToImage/Task.php b/lib/public/TextToImage/Task.php
+index ea1b45ef99..147bff62df 100644
+--- a/lib/public/TextToImage/Task.php
++++ b/lib/public/TextToImage/Task.php
+@@ -188,6 +188,7 @@ final class Task implements \JsonSerializable {
+ 	 * @psalm-return array{id: ?int, status: self::STATUS_*, userId: ?string, appId: string, input: string, identifier: ?string, numberOfImages: int, completionExpectedAt: ?int}
+ 	 * @since 28.0.0
+ 	 */
++	#[\Override]
+ 	public function jsonSerialize(): array {
+ 		return [
+ 			'id' => $this->getId(),
+diff --git a/lib/public/Translation/LanguageTuple.php b/lib/public/Translation/LanguageTuple.php
+index 07507ece68..e30a37a8b1 100644
+--- a/lib/public/Translation/LanguageTuple.php
++++ b/lib/public/Translation/LanguageTuple.php
+@@ -32,6 +32,7 @@ class LanguageTuple implements JsonSerializable {
+ 	 * @since 26.0.0
+ 	 * @return array{from: string, fromLabel: string, to: string, toLabel: string}
+ 	 */
++	#[\Override]
+ 	public function jsonSerialize(): array {
+ 		return [
+ 			'from' => $this->from,
+diff --git a/lib/public/User/Backend/ABackend.php b/lib/public/User/Backend/ABackend.php
+index 2fca83e3be..90be168e23 100644
+--- a/lib/public/User/Backend/ABackend.php
++++ b/lib/public/User/Backend/ABackend.php
+@@ -23,6 +23,7 @@ abstract class ABackend implements IUserBackend, UserInterface {
+ 	 * @param int $actions The action to check for
+ 	 * @return bool
+ 	 */
++	#[\Override]
+ 	public function implementsActions($actions): bool {
+ 		$implements = 0;
+ 
+diff --git a/lib/public/User/Backend/ILimitAwareCountUsersBackend.php b/lib/public/User/Backend/ILimitAwareCountUsersBackend.php
+index a59c0bd8e0..de7950b9e4 100644
+--- a/lib/public/User/Backend/ILimitAwareCountUsersBackend.php
++++ b/lib/public/User/Backend/ILimitAwareCountUsersBackend.php
+@@ -19,5 +19,6 @@ interface ILimitAwareCountUsersBackend extends ICountUsersBackend {
+ 	 * @param int $limit Limit to stop counting users if there are more than $limit. 0 to disable limiting.
+ 	 * @return int|false The number of users (may be limited to $limit) on success false on failure
+ 	 */
++	#[\Override]
+ 	public function countUsers(int $limit = 0): int|false;
+ }
+diff --git a/lib/public/User/IOutOfOfficeData.php b/lib/public/User/IOutOfOfficeData.php
+index e3a4e2773b..8f449758a6 100644
+--- a/lib/public/User/IOutOfOfficeData.php
++++ b/lib/public/User/IOutOfOfficeData.php
+@@ -90,5 +90,6 @@ interface IOutOfOfficeData extends JsonSerializable {
+ 	 *
+ 	 * @since 28.0.0
+ 	 */
++	#[\Override]
+ 	public function jsonSerialize(): array;
+ }
+diff --git a/lib/public/WorkflowEngine/GenericEntityEvent.php b/lib/public/WorkflowEngine/GenericEntityEvent.php
+index 5c1c2a6324..7e1b20370d 100644
+--- a/lib/public/WorkflowEngine/GenericEntityEvent.php
++++ b/lib/public/WorkflowEngine/GenericEntityEvent.php
+@@ -44,6 +44,7 @@ class GenericEntityEvent implements IEntityEvent {
+ 	 *
+ 	 * @since 18.0.0
+ 	 */
++	#[\Override]
+ 	public function getDisplayName(): string {
+ 		return $this->displayName;
+ 	}
+@@ -55,6 +56,7 @@ class GenericEntityEvent implements IEntityEvent {
+ 	 *
+ 	 * @since 18.0.0
+ 	 */
++	#[\Override]
+ 	public function getEventName(): string {
+ 		return $this->eventName;
+ 	}

@@ -1,0 +1,99 @@
+generators:
+  cochange: 0
+  bm25: 15
+  graph: 6
+  random: 10
+candidates:
+- path: .azuredevops/pull_request_template.md
+  sources:
+  - random
+- path: .github/workflows/issue-triage-agent.md
+  sources:
+  - graph
+- path: src/Components/Components/src/ComponentBase.cs
+  sources:
+  - graph
+- path: src/Components/Components/test/CascadingParameterTest.cs
+  sources:
+  - bm25
+- path: src/Components/Components/test/DynamicComponentTest.cs
+  sources:
+  - bm25
+- path: src/Components/Components/test/RouteViewTest.cs
+  sources:
+  - bm25
+- path: src/Components/Components/test/Routing/RouterTest.cs
+  sources:
+  - bm25
+- path: src/Components/Forms/test/ExpressionFormatterTest.cs
+  sources:
+  - random
+- path: src/Components/QuickGrid/Microsoft.AspNetCore.Components.QuickGrid/src/Infrastructure/ColumnsCollectedNotifier.cs
+  sources:
+  - graph
+- path: src/Components/Shared/src/AttributeUtilities.cs
+  sources:
+  - random
+- path: src/Components/Testing/test/Microsoft.AspNetCore.Components.Testing.Tests.csproj
+  sources:
+  - random
+- path: src/Components/Web/test/HtmlRendering/HtmlRendererTest.cs
+  sources:
+  - bm25
+- path: src/Components/Web/test/Routing/NavLinkTest.cs
+  sources:
+  - bm25
+- path: src/Components/test/E2ETest/ServerExecutionTests/VirtualizationCspTest.cs
+  sources:
+  - bm25
+- path: src/Components/test/E2ETest/ServerRenderingTests/StreamingRenderingTest.cs
+  sources:
+  - bm25
+- path: src/Components/test/E2ETest/Tests/ComponentRenderingTestBase.cs
+  sources:
+  - bm25
+- path: src/Components/test/E2ETest/Tests/DynamicComponentRenderingTest.cs
+  sources:
+  - bm25
+- path: src/Components/test/E2ETest/Tests/ErrorBoundaryTest.cs
+  sources:
+  - bm25
+- path: src/Components/test/E2ETest/Tests/EventCallbackTest.cs
+  sources:
+  - bm25
+- path: src/Components/test/E2ETest/Tests/EventTest.cs
+  sources:
+  - bm25
+- path: src/Components/test/E2ETest/Tests/FileDownloadTest.cs
+  sources:
+  - bm25
+- path: src/Components/test/E2ETest/Tests/SvgTest.cs
+  sources:
+  - bm25
+- path: src/Components/test/E2ETest/Tests/WebAssemblyLoggingTest.cs
+  sources:
+  - graph
+- path: src/Mvc/Mvc.ApiExplorer/src/PublicAPI.Unshipped.txt
+  sources:
+  - graph
+- path: src/Mvc/Mvc.TagHelpers/src/EnvironmentTagHelper.cs
+  sources:
+  - graph
+- path: src/Mvc/test/WebSites/HtmlGenerationWebSite/Controllers/HtmlGeneration_WeirdExpressions.cs
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/RazorPagesWebSite/Pages/ShortCircuitPageAtPageFilter.cshtml.cs
+  sources:
+  - random
+- path: src/ObjectPool/test/DisposableObjectPoolTest.cs
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ItemTemplates/content/ViewImports/.template.config/localize/templatestrings.ko.json
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ProjectTemplates/content/StarterWeb-CSharp/Data/SqlServer/00000000000000_CreateIdentitySchema.cs
+  sources:
+  - random
+- path: src/Razor/Razor.Runtime/src/Hosting/RazorCompiledItemExtensions.cs
+  sources:
+  - random

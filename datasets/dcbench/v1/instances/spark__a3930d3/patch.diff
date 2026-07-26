@@ -1,0 +1,1296 @@
+From a3930d3166570858c21aa0eb7179b8c19b9ca2bf Mon Sep 17 00:00:00 2001
+From: Wenchen Fan <wenchen@databricks.com>
+Date: Thu, 9 Apr 2026 01:00:25 +0800
+Subject: [PATCH] [SPARK-56221][SQL][PYTHON][FOLLOWUP] Rename TablePartition
+ and remove SHOW CACHED TABLES / listCachedTables
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+### What changes were proposed in this pull request?
+
+Follow-up to #55025 addressing post-merge review comments:
+
+**1. Rename `CatalogTablePartition` → `TablePartition`**
+
+The public API class `org.apache.spark.sql.catalog.CatalogTablePartition` has the same name as the internal `org.apache.spark.sql.catalyst.catalog.CatalogTablePartition`, causing confusion and potential import ambiguity.
+
+**2. Remove `SHOW CACHED TABLES` SQL command and `listCachedTables()` catalog API**
+
+No other database has a `SHOW CACHED TABLES` command, and the programmatic `listCachedTables()` API was designed to complement it. Both are removed, along with the `CachedTable` class, connect proto `ListCachedTables`, and all related infrastructure.
+
+For SQL users who want to check cache status, a better approach would be to add an `isCached` column to the existing `SHOW TABLES` output, which achieves feature parity with the Scala/Python `isCached()` API.
+
+### Why are the changes needed?
+
+- `CatalogTablePartition` name clashes with an existing internal class.
+- `SHOW CACHED TABLES` is a non-standard SQL command with no precedent in other databases; the programmatic API that complemented it is also unnecessary.
+
+### Does this PR introduce _any_ user-facing change?
+
+Yes, within the unreleased master branch (4.2.0):
+- `CatalogTablePartition` is renamed to `TablePartition` (both Scala and Python).
+- `SHOW CACHED TABLES` SQL command is removed.
+- `spark.catalog.listCachedTables()` and the `CachedTable` class are removed.
+
+### How was this patch tested?
+
+Removed tests for `SHOW CACHED TABLES`, `listCachedTables`, and the parser. Existing tests for `TablePartition` / `listPartitions` remain.
+
+### Was this patch authored or co-authored using generative AI tooling?
+
+Generated-by: Claude Code (claude-sonnet-4-6, claude-opus-4-6)
+
+Closes #55139 from cloud-fan/followup.
+
+Lead-authored-by: Wenchen Fan <wenchen@databricks.com>
+Co-authored-by: Wenchen Fan <cloud0fan@gmail.com>
+Signed-off-by: Wenchen Fan <wenchen@databricks.com>
+---
+ AGENTS.md                                     |  23 ++-
+ docs/sql-performance-tuning.md                |   2 +-
+ docs/sql-ref-ansi-compliance.md               |   1 -
+ docs/sql-ref-syntax-aux-cache-cache-table.md  |   1 -
+ .../sql-ref-syntax-aux-cache-uncache-table.md |   1 -
+ docs/sql-ref-syntax-aux-show-cached-tables.md |  51 ------
+ docs/sql-ref-syntax-aux-show.md               |   1 -
+ docs/sql-ref-syntax.md                        |   1 -
+ .../source/reference/pyspark.sql/catalog.rst  |   1 -
+ python/pyspark/sql/catalog.py                 |  49 +-----
+ python/pyspark/sql/connect/catalog.py         |  15 +-
+ python/pyspark/sql/connect/plan.py            |  10 --
+ .../pyspark/sql/connect/proto/catalog_pb2.py  | 162 +++++++++---------
+ .../pyspark/sql/connect/proto/catalog_pb2.pyi |  20 ---
+ python/pyspark/sql/tests/test_catalog.py      |  16 --
+ .../spark/sql/catalyst/parser/SqlBaseLexer.g4 |   1 -
+ .../sql/catalyst/parser/SqlBaseParser.g4      |   3 -
+ .../apache/spark/sql/catalog/Catalog.scala    |  12 +-
+ .../apache/spark/sql/catalog/interface.scala  |  20 +--
+ .../sql/catalyst/parser/AstBuilder.scala      |   7 -
+ .../catalyst/plans/logical/v2Commands.scala   |  12 --
+ .../SparkConnectDatabaseMetaDataSuite.scala   |   2 +-
+ .../spark/sql/connect/CatalogSuite.scala      |  25 ---
+ .../main/protobuf/spark/connect/catalog.proto |  24 ++-
+ .../apache/spark/sql/connect/Catalog.scala    |  28 +--
+ .../connect/planner/SparkConnectPlanner.scala |   6 -
+ .../apache/spark/sql/classic/Catalog.scala    |  16 +-
+ .../spark/sql/execution/CacheManager.scala    |  12 --
+ .../spark/sql/execution/SparkStrategies.scala |   2 -
+ .../execution/columnar/InMemoryRelation.scala |   6 +-
+ .../spark/sql/execution/command/cache.scala   |  16 --
+ .../datasources/v2/RenameTableExec.scala      |   3 +-
+ .../results/keywords-enforced.sql.out         |   1 -
+ .../sql-tests/results/keywords.sql.out        |   1 -
+ .../results/nonansi/keywords.sql.out          |   1 -
+ .../execution/command/DDLParserSuite.scala    |   6 -
+ .../spark/sql/internal/CatalogSuite.scala     |  23 ---
+ .../ThriftServerWithSparkContextSuite.scala   |   2 +-
+ 38 files changed, 140 insertions(+), 443 deletions(-)
+ delete mode 100644 docs/sql-ref-syntax-aux-show-cached-tables.md
+
+diff --git a/AGENTS.md b/AGENTS.md
+index 3c0cbb4177..62732904dd 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -8,7 +8,7 @@ Before the first code read, edit, or test in a session, ensure a clean working e
+ 2. If the latest commit on `<upstream>/master` is more than a day old (check with `git log -1 --format="%ci" <upstream>/master`), run `git fetch <upstream> master`.
+ 3. If there are uncommitted changes (check with `git status`), ask the user to stash them before proceeding.
+ 4. Switch to the appropriate branch:
+-   - **Existing PR**: look for a local branch matching the PR branch name. If found, switch to it and inform the user. If not found, ask whether to fetch it or if there is a local branch under a different name.
++   - **Existing PR**: resolve the PR branch name via `gh api repos/databricks-eng/runtime/pulls/<number> --jq '.head.ref'`, then look for a local branch matching that name. If found, switch to it and inform the user. If not found, ask whether to fetch it or if there is a local branch under a different name.
+    - **New edits**: ask the user to choose: create a new git worktree from `<upstream>/master` and work from there (recommended), or create and switch to a new branch from `<upstream>/master`.
+    - **Reading code or running tests**: use `<upstream>/master`.
+ 
+@@ -71,9 +71,28 @@ Run a single test case:
+ 
+     python/run-tests --testnames "pyspark.sql.tests.test_catalog CatalogTests.test_current_database"
+ 
++## Investigating PR CI Failures
++
++Do NOT download full job logs to grep for errors — they are very large and slow. Instead, use the test report annotations on the fork.
++
++Step 1 — Get the fork owner and the latest commit SHA of the PR:
++
++    gh api repos/apache/spark/pulls/<PR_NUMBER> --jq '{owner: .head.repo.owner.login, sha: .head.sha}'
++
++Step 2 — Find the "Report test results" check run on the fork's commit:
++
++    gh api repos/<OWNER>/spark/commits/<SHA>/check-runs \
++      --jq '.check_runs[] | select(.name == "Report test results") | {id: .id, annotations: .output.annotations_count}'
++
++Step 3 — Fetch failure annotations:
++
++    gh api repos/<OWNER>/spark/check-runs/<CHECK_RUN_ID>/annotations
++
++Each annotation contains the test class, test name, and failure message.
++
+ ## Pull Request Workflow
+ 
+-PR title requires a JIRA ticket ID (e.g., `[SPARK-xxxx][SQL] Title`). Ask the user to create a new ticket or provide an existing one if not given. Follow the template in `.github/PULL_REQUEST_TEMPLATE` for the PR description.
++PR title requires a JIRA ticket ID (e.g., `[SPARK-xxxx][SQL] Title`). Ask the user to create a new ticket or provide an existing one if not given. Before writing the PR description, read `.github/PULL_REQUEST_TEMPLATE` and fill in every section from that file.
+ 
+ DO NOT push to the upstream repo. Always push to the personal fork. Open PRs against `master` on the upstream repo.
+ 
+diff --git a/docs/sql-performance-tuning.md b/docs/sql-performance-tuning.md
+index f6d130d34d..ebae89cbe5 100644
+--- a/docs/sql-performance-tuning.md
++++ b/docs/sql-performance-tuning.md
+@@ -30,7 +30,7 @@ Spark SQL can cache tables using an in-memory columnar format by calling `spark.
+ Then Spark SQL will scan only required columns and will automatically tune compression to minimize
+ memory usage and GC pressure. You can call `spark.catalog.uncacheTable("tableName")` or `dataFrame.unpersist()` to remove the table from memory.
+ 
+-To list relations cached with an explicit name, use `SHOW CACHED TABLES` in SQL or `spark.catalog.listCachedTables()`. Entries cached only via `Dataset.cache()` without a name are not included.
++To list relations cached with an explicit name, use `spark.catalog.listCachedTables()`. Entries cached only via `Dataset.cache()` without a name are not included.
+ 
+ Configuration of in-memory caching can be done via `spark.conf.set` or by running
+ `SET key=value` commands using SQL.
+diff --git a/docs/sql-ref-ansi-compliance.md b/docs/sql-ref-ansi-compliance.md
+index 5cf4c4e757..504267c79f 100644
+--- a/docs/sql-ref-ansi-compliance.md
++++ b/docs/sql-ref-ansi-compliance.md
+@@ -440,7 +440,6 @@ Below is a list of all the keywords in Spark SQL.
+ |BY|non-reserved|non-reserved|reserved|
+ |BYTE|non-reserved|non-reserved|non-reserved|
+ |CACHE|non-reserved|non-reserved|non-reserved|
+-|CACHED|non-reserved|non-reserved|non-reserved|
+ |CALL|reserved|non-reserved|reserved|
+ |CALLED|non-reserved|non-reserved|non-reserved|
+ |CASCADE|non-reserved|non-reserved|non-reserved|
+diff --git a/docs/sql-ref-syntax-aux-cache-cache-table.md b/docs/sql-ref-syntax-aux-cache-cache-table.md
+index 69cfb3c133..ae9e208e7f 100644
+--- a/docs/sql-ref-syntax-aux-cache-cache-table.md
++++ b/docs/sql-ref-syntax-aux-cache-cache-table.md
+@@ -79,7 +79,6 @@ CACHE TABLE testCache OPTIONS ('storageLevel' 'DISK_ONLY') SELECT * FROM testDat
+ 
+ ### Related Statements
+ 
+-* [SHOW CACHED TABLES](sql-ref-syntax-aux-show-cached-tables.html)
+ * [CLEAR CACHE](sql-ref-syntax-aux-cache-clear-cache.html)
+ * [UNCACHE TABLE](sql-ref-syntax-aux-cache-uncache-table.html)
+ * [REFRESH TABLE](sql-ref-syntax-aux-cache-refresh-table.html)
+diff --git a/docs/sql-ref-syntax-aux-cache-uncache-table.md b/docs/sql-ref-syntax-aux-cache-uncache-table.md
+index 5dcf95e63f..b8ae8e3d4c 100644
+--- a/docs/sql-ref-syntax-aux-cache-uncache-table.md
++++ b/docs/sql-ref-syntax-aux-cache-uncache-table.md
+@@ -49,7 +49,6 @@ UNCACHE TABLE t1;
+ ### Related Statements
+ 
+ * [CACHE TABLE](sql-ref-syntax-aux-cache-cache-table.html)
+-* [SHOW CACHED TABLES](sql-ref-syntax-aux-show-cached-tables.html)
+ * [CLEAR CACHE](sql-ref-syntax-aux-cache-clear-cache.html)
+ * [REFRESH TABLE](sql-ref-syntax-aux-cache-refresh-table.html)
+ * [REFRESH](sql-ref-syntax-aux-cache-refresh.html)
+diff --git a/docs/sql-ref-syntax-aux-show-cached-tables.md b/docs/sql-ref-syntax-aux-show-cached-tables.md
+deleted file mode 100644
+index 90855e9584..0000000000
+--- a/docs/sql-ref-syntax-aux-show-cached-tables.md
++++ /dev/null
+@@ -1,51 +0,0 @@
+----
+-layout: global
+-title: SHOW CACHED TABLES
+-displayTitle: SHOW CACHED TABLES
+-license: |
+-  Licensed to the Apache Software Foundation (ASF) under one or more
+-  contributor license agreements.  See the NOTICE file distributed with
+-  this work for additional information regarding copyright ownership.
+-  The ASF licenses this file to You under the Apache License, Version 2.0
+-  (the "License"); you may not use this file except in compliance with
+-  the License.  You may obtain a copy of the License at
+-
+-     http://www.apache.org/licenses/LICENSE-2.0
+-
+-  Unless required by applicable law or agreed to in writing, software
+-  distributed under the License is distributed on an "AS IS" BASIS,
+-  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-  See the License for the specific language governing permissions and
+-  limitations under the License.
+----
+-
+-### Description
+-
+-The `SHOW CACHED TABLES` statement returns every in-memory cache entry that was registered with an explicit table or view name, for example via [`CACHE TABLE`](sql-ref-syntax-aux-cache-cache-table.html) or `spark.catalog.cacheTable`. The result has two columns: `tableName` (the name used when caching) and `storageLevel` (a string description of how the data is cached).
+-
+-Relations cached only through `Dataset.cache()` / `DataFrame.cache()` without assigning a catalog name are **not** listed.
+-
+-### Syntax
+-
+-```sql
+-SHOW CACHED TABLES
+-```
+-
+-### Examples
+-
+-```sql
+-CACHE TABLE my_table AS SELECT * FROM src;
+-
+-SHOW CACHED TABLES;
+-+----------+--------------------------------------+
+-| tableName|                          storageLevel|
+-+----------+--------------------------------------+
+-|  my_table|Disk Memory Deserialized 1x Replicated|
+-+----------+--------------------------------------+
+-```
+-
+-### Related Statements
+-
+-* [CACHE TABLE](sql-ref-syntax-aux-cache-cache-table.html)
+-* [UNCACHE TABLE](sql-ref-syntax-aux-cache-uncache-table.html)
+-* [CLEAR CACHE](sql-ref-syntax-aux-cache-clear-cache.html)
+diff --git a/docs/sql-ref-syntax-aux-show.md b/docs/sql-ref-syntax-aux-show.md
+index ecca4d8174..9f64ea2d50 100644
+--- a/docs/sql-ref-syntax-aux-show.md
++++ b/docs/sql-ref-syntax-aux-show.md
+@@ -19,7 +19,6 @@ license: |
+   limitations under the License.
+ ---
+ 
+- * [SHOW CACHED TABLES](sql-ref-syntax-aux-show-cached-tables.html)
+  * [SHOW COLUMNS](sql-ref-syntax-aux-show-columns.html)
+  * [SHOW CREATE TABLE](sql-ref-syntax-aux-show-create-table.html)
+  * [SHOW DATABASES](sql-ref-syntax-aux-show-databases.html)
+diff --git a/docs/sql-ref-syntax.md b/docs/sql-ref-syntax.md
+index c67f0a4e1d..d8c37dc021 100644
+--- a/docs/sql-ref-syntax.md
++++ b/docs/sql-ref-syntax.md
+@@ -124,7 +124,6 @@ You use SQL scripting to execute procedural logic in SQL.
+  * [RESET](sql-ref-syntax-aux-conf-mgmt-reset.html)
+  * [SET](sql-ref-syntax-aux-conf-mgmt-set.html)
+  * [SET VAR](sql-ref-syntax-aux-set-var.html)
+- * [SHOW CACHED TABLES](sql-ref-syntax-aux-show-cached-tables.html)
+  * [SHOW COLLATIONS](sql-ref-syntax-aux-show-collations.html)
+  * [SHOW COLUMNS](sql-ref-syntax-aux-show-columns.html)
+  * [SHOW CREATE TABLE](sql-ref-syntax-aux-show-create-table.html)
+diff --git a/python/docs/source/reference/pyspark.sql/catalog.rst b/python/docs/source/reference/pyspark.sql/catalog.rst
+index 4e9da6f41f..faedb151bc 100644
+--- a/python/docs/source/reference/pyspark.sql/catalog.rst
++++ b/python/docs/source/reference/pyspark.sql/catalog.rst
+@@ -46,7 +46,6 @@ Catalog
+     Catalog.getTable
+     Catalog.getTableProperties
+     Catalog.isCached
+-    Catalog.listCachedTables
+     Catalog.listCatalogs
+     Catalog.listColumns
+     Catalog.listDatabases
+diff --git a/python/pyspark/sql/catalog.py b/python/pyspark/sql/catalog.py
+index 64dba06f2f..10e4ec5fc9 100644
+--- a/python/pyspark/sql/catalog.py
++++ b/python/pyspark/sql/catalog.py
+@@ -77,12 +77,7 @@ class Function(NamedTuple):
+     isTemporary: bool
+ 
+ 
+-class CachedTable(NamedTuple):
+-    name: str
+-    storageLevel: str
+-
+-
+-class CatalogTablePartition(NamedTuple):
++class TablePartition(NamedTuple):
+     partition: str
+ 
+ 
+@@ -178,40 +173,6 @@ class Catalog:
+             )
+         return catalogs
+ 
+-    def listCachedTables(self) -> List[CachedTable]:
+-        """Lists named in-memory cache entries (same as ``SHOW CACHED TABLES``).
+-
+-        Includes caches registered with ``CACHE TABLE`` or
+-        :meth:`~pyspark.sql.catalog.Catalog.cacheTable`. Caches from
+-        :meth:`~pyspark.sql.DataFrame.cache` without a name are not listed.
+-
+-        .. versionadded:: 4.2.0
+-
+-        Returns
+-        -------
+-        list
+-            A list of :class:`CachedTable` describing each named cache entry.
+-
+-        Examples
+-        --------
+-        >>> _ = spark.sql("DROP TABLE IF EXISTS tbl_cached_list")
+-        >>> _ = spark.sql("CREATE TABLE tbl_cached_list (id INT) USING parquet")
+-        >>> spark.catalog.clearCache()
+-        >>> spark.catalog.listCachedTables()
+-        []
+-        >>> spark.catalog.cacheTable("tbl_cached_list")
+-        >>> any("tbl_cached_list" in ct.name for ct in spark.catalog.listCachedTables())
+-        True
+-        >>> spark.catalog.uncacheTable("tbl_cached_list")
+-        >>> _ = spark.sql("DROP TABLE tbl_cached_list")
+-        """
+-        iter = self._jcatalog.listCachedTables().toLocalIterator()
+-        out: List[CachedTable] = []
+-        while iter.hasNext():
+-            j = iter.next()
+-            out.append(CachedTable(name=j.name(), storageLevel=j.storageLevel()))
+-        return out
+-
+     def dropTable(self, tableName: str, ifExists: bool = False, purge: bool = False) -> None:
+         """Drops a persistent table.
+ 
+@@ -322,7 +283,7 @@ class Catalog:
+         """
+         self._jcatalog.dropDatabase(dbName, ifExists, cascade)
+ 
+-    def listPartitions(self, tableName: str) -> List[CatalogTablePartition]:
++    def listPartitions(self, tableName: str) -> List[TablePartition]:
+         """Lists partition value strings for a table (same as ``SHOW PARTITIONS``).
+ 
+         .. versionadded:: 4.2.0
+@@ -335,7 +296,7 @@ class Catalog:
+         Returns
+         -------
+         list
+-            A list of :class:`CatalogTablePartition` (each ``partition`` field is a spec string).
++            A list of :class:`TablePartition` (each ``partition`` field is a spec string).
+ 
+         Examples
+         --------
+@@ -350,10 +311,10 @@ class Catalog:
+         >>> _ = spark.sql("DROP TABLE tbl_part_doc")
+         """
+         iter = self._jcatalog.listPartitions(tableName).toLocalIterator()
+-        out: List[CatalogTablePartition] = []
++        out: List[TablePartition] = []
+         while iter.hasNext():
+             j = iter.next()
+-            out.append(CatalogTablePartition(partition=j.partition()))
++            out.append(TablePartition(partition=j.partition()))
+         return out
+ 
+     def listViews(self, dbName: Optional[str] = None, pattern: Optional[str] = None) -> List[Table]:
+diff --git a/python/pyspark/sql/connect/catalog.py b/python/pyspark/sql/connect/catalog.py
+index 914f051b9a..51448c813e 100644
+--- a/python/pyspark/sql/connect/catalog.py
++++ b/python/pyspark/sql/connect/catalog.py
+@@ -25,12 +25,11 @@ from pyspark.storagelevel import StorageLevel
+ from pyspark.sql.types import StructType
+ from pyspark.sql.connect.dataframe import DataFrame
+ from pyspark.sql.catalog import (
+-    CachedTable,
+     Catalog as PySparkCatalog,
+     CatalogMetadata,
+-    CatalogTablePartition,
+     Database,
+     Table,
++    TablePartition,
+     Function,
+     Column,
+ )
+@@ -322,14 +321,6 @@ class Catalog:
+ 
+     refreshByPath.__doc__ = PySparkCatalog.refreshByPath.__doc__
+ 
+-    def listCachedTables(self) -> List[CachedTable]:
+-        table = self._execute_and_fetch(plan.ListCachedTables())
+-        return [
+-            CachedTable(table[0][i].as_py(), table[1][i].as_py()) for i in range(table.num_rows)
+-        ]
+-
+-    listCachedTables.__doc__ = PySparkCatalog.listCachedTables.__doc__
+-
+     def dropTable(self, tableName: str, ifExists: bool = False, purge: bool = False) -> None:
+         self._execute_and_fetch(
+             plan.DropTable(table_name=tableName, if_exists=ifExists, purge=purge)
+@@ -358,9 +349,9 @@ class Catalog:
+ 
+     dropDatabase.__doc__ = PySparkCatalog.dropDatabase.__doc__
+ 
+-    def listPartitions(self, tableName: str) -> List[CatalogTablePartition]:
++    def listPartitions(self, tableName: str) -> List[TablePartition]:
+         table = self._execute_and_fetch(plan.ListPartitions(table_name=tableName))
+-        return [CatalogTablePartition(table[0][i].as_py()) for i in range(table.num_rows)]
++        return [TablePartition(table[0][i].as_py()) for i in range(table.num_rows)]
+ 
+     listPartitions.__doc__ = PySparkCatalog.listPartitions.__doc__
+ 
+diff --git a/python/pyspark/sql/connect/plan.py b/python/pyspark/sql/connect/plan.py
+index 3dac4fc47e..38d8517677 100644
+--- a/python/pyspark/sql/connect/plan.py
++++ b/python/pyspark/sql/connect/plan.py
+@@ -2507,16 +2507,6 @@ class ListCatalogs(LogicalPlan):
+         return plan
+ 
+ 
+-class ListCachedTables(LogicalPlan):
+-    def __init__(self) -> None:
+-        super().__init__(None)
+-
+-    def plan(self, session: "SparkConnectClient") -> proto.Relation:
+-        plan = self._create_proto_relation()
+-        plan.catalog.list_cached_tables.SetInParent()
+-        return plan
+-
+-
+ class DropTable(LogicalPlan):
+     def __init__(self, table_name: str, if_exists: bool = False, purge: bool = False) -> None:
+         super().__init__(None)
+diff --git a/python/pyspark/sql/connect/proto/catalog_pb2.py b/python/pyspark/sql/connect/proto/catalog_pb2.py
+index 5998afe4be..c10a4bdf74 100644
+--- a/python/pyspark/sql/connect/proto/catalog_pb2.py
++++ b/python/pyspark/sql/connect/proto/catalog_pb2.py
+@@ -40,7 +40,7 @@ from pyspark.sql.connect.proto import types_pb2 as spark_dot_connect_dot_types__
+ 
+ 
+ DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(
+-    b'\n\x1bspark/connect/catalog.proto\x12\rspark.connect\x1a\x1aspark/connect/common.proto\x1a\x19spark/connect/types.proto"\xdd\x14\n\x07\x43\x61talog\x12K\n\x10\x63urrent_database\x18\x01 \x01(\x0b\x32\x1e.spark.connect.CurrentDatabaseH\x00R\x0f\x63urrentDatabase\x12U\n\x14set_current_database\x18\x02 \x01(\x0b\x32!.spark.connect.SetCurrentDatabaseH\x00R\x12setCurrentDatabase\x12\x45\n\x0elist_databases\x18\x03 \x01(\x0b\x32\x1c.spark.connect.ListDatabasesH\x00R\rlistDatabases\x12<\n\x0blist_tables\x18\x04 \x01(\x0b\x32\x19.spark.connect.ListTablesH\x00R\nlistTables\x12\x45\n\x0elist_functions\x18\x05 \x01(\x0b\x32\x1c.spark.connect.ListFunctionsH\x00R\rlistFunctions\x12?\n\x0clist_columns\x18\x06 \x01(\x0b\x32\x1a.spark.connect.ListColumnsH\x00R\x0blistColumns\x12?\n\x0cget_database\x18\x07 \x01(\x0b\x32\x1a.spark.connect.GetDatabaseH\x00R\x0bgetDatabase\x12\x36\n\tget_table\x18\x08 \x01(\x0b\x32\x17.spark.connect.GetTableH\x00R\x08getTable\x12?\n\x0cget_function\x18\t \x01(\x0b\x32\x1a.spark.connect.GetFunctionH\x00R\x0bgetFunction\x12H\n\x0f\x64\x61tabase_exists\x18\n \x01(\x0b\x32\x1d.spark.connect.DatabaseExistsH\x00R\x0e\x64\x61tabaseExists\x12?\n\x0ctable_exists\x18\x0b \x01(\x0b\x32\x1a.spark.connect.TableExistsH\x00R\x0btableExists\x12H\n\x0f\x66unction_exists\x18\x0c \x01(\x0b\x32\x1d.spark.connect.FunctionExistsH\x00R\x0e\x66unctionExists\x12X\n\x15\x63reate_external_table\x18\r \x01(\x0b\x32".spark.connect.CreateExternalTableH\x00R\x13\x63reateExternalTable\x12?\n\x0c\x63reate_table\x18\x0e \x01(\x0b\x32\x1a.spark.connect.CreateTableH\x00R\x0b\x63reateTable\x12\x43\n\x0e\x64rop_temp_view\x18\x0f \x01(\x0b\x32\x1b.spark.connect.DropTempViewH\x00R\x0c\x64ropTempView\x12V\n\x15\x64rop_global_temp_view\x18\x10 \x01(\x0b\x32!.spark.connect.DropGlobalTempViewH\x00R\x12\x64ropGlobalTempView\x12Q\n\x12recover_partitions\x18\x11 \x01(\x0b\x32 .spark.connect.RecoverPartitionsH\x00R\x11recoverPartitions\x12\x36\n\tis_cached\x18\x12 \x01(\x0b\x32\x17.spark.connect.IsCachedH\x00R\x08isCached\x12<\n\x0b\x63\x61\x63he_table\x18\x13 \x01(\x0b\x32\x19.spark.connect.CacheTableH\x00R\ncacheTable\x12\x42\n\runcache_table\x18\x14 \x01(\x0b\x32\x1b.spark.connect.UncacheTableH\x00R\x0cuncacheTable\x12<\n\x0b\x63lear_cache\x18\x15 \x01(\x0b\x32\x19.spark.connect.ClearCacheH\x00R\nclearCache\x12\x42\n\rrefresh_table\x18\x16 \x01(\x0b\x32\x1b.spark.connect.RefreshTableH\x00R\x0crefreshTable\x12\x46\n\x0frefresh_by_path\x18\x17 \x01(\x0b\x32\x1c.spark.connect.RefreshByPathH\x00R\rrefreshByPath\x12H\n\x0f\x63urrent_catalog\x18\x18 \x01(\x0b\x32\x1d.spark.connect.CurrentCatalogH\x00R\x0e\x63urrentCatalog\x12R\n\x13set_current_catalog\x18\x19 \x01(\x0b\x32 .spark.connect.SetCurrentCatalogH\x00R\x11setCurrentCatalog\x12\x42\n\rlist_catalogs\x18\x1a \x01(\x0b\x32\x1b.spark.connect.ListCatalogsH\x00R\x0clistCatalogs\x12O\n\x12list_cached_tables\x18\x1b \x01(\x0b\x32\x1f.spark.connect.ListCachedTablesH\x00R\x10listCachedTables\x12\x39\n\ndrop_table\x18\x1c \x01(\x0b\x32\x18.spark.connect.DropTableH\x00R\tdropTable\x12\x36\n\tdrop_view\x18\x1d \x01(\x0b\x32\x17.spark.connect.DropViewH\x00R\x08\x64ropView\x12H\n\x0f\x63reate_database\x18\x1e \x01(\x0b\x32\x1d.spark.connect.CreateDatabaseH\x00R\x0e\x63reateDatabase\x12\x42\n\rdrop_database\x18\x1f \x01(\x0b\x32\x1b.spark.connect.DropDatabaseH\x00R\x0c\x64ropDatabase\x12H\n\x0flist_partitions\x18  \x01(\x0b\x32\x1d.spark.connect.ListPartitionsH\x00R\x0elistPartitions\x12\x39\n\nlist_views\x18! \x01(\x0b\x32\x18.spark.connect.ListViewsH\x00R\tlistViews\x12U\n\x14get_table_properties\x18" \x01(\x0b\x32!.spark.connect.GetTablePropertiesH\x00R\x12getTableProperties\x12\\\n\x17get_create_table_string\x18# \x01(\x0b\x32#.spark.connect.GetCreateTableStringH\x00R\x14getCreateTableString\x12\x45\n\x0etruncate_table\x18$ \x01(\x0b\x32\x1c.spark.connect.TruncateTableH\x00R\rtruncateTable\x12\x42\n\ranalyze_table\x18% \x01(\x0b\x32\x1b.spark.connect.AnalyzeTableH\x00R\x0c\x61nalyzeTableB\n\n\x08\x63\x61t_type"\x11\n\x0f\x43urrentDatabase"-\n\x12SetCurrentDatabase\x12\x17\n\x07\x64\x62_name\x18\x01 \x01(\tR\x06\x64\x62Name":\n\rListDatabases\x12\x1d\n\x07pattern\x18\x01 \x01(\tH\x00R\x07pattern\x88\x01\x01\x42\n\n\x08_pattern"a\n\nListTables\x12\x1c\n\x07\x64\x62_name\x18\x01 \x01(\tH\x00R\x06\x64\x62Name\x88\x01\x01\x12\x1d\n\x07pattern\x18\x02 \x01(\tH\x01R\x07pattern\x88\x01\x01\x42\n\n\x08_db_nameB\n\n\x08_pattern"d\n\rListFunctions\x12\x1c\n\x07\x64\x62_name\x18\x01 \x01(\tH\x00R\x06\x64\x62Name\x88\x01\x01\x12\x1d\n\x07pattern\x18\x02 \x01(\tH\x01R\x07pattern\x88\x01\x01\x42\n\n\x08_db_nameB\n\n\x08_pattern"V\n\x0bListColumns\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName\x12\x1c\n\x07\x64\x62_name\x18\x02 \x01(\tH\x00R\x06\x64\x62Name\x88\x01\x01\x42\n\n\x08_db_name"&\n\x0bGetDatabase\x12\x17\n\x07\x64\x62_name\x18\x01 \x01(\tR\x06\x64\x62Name"S\n\x08GetTable\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName\x12\x1c\n\x07\x64\x62_name\x18\x02 \x01(\tH\x00R\x06\x64\x62Name\x88\x01\x01\x42\n\n\x08_db_name"\\\n\x0bGetFunction\x12#\n\rfunction_name\x18\x01 \x01(\tR\x0c\x66unctionName\x12\x1c\n\x07\x64\x62_name\x18\x02 \x01(\tH\x00R\x06\x64\x62Name\x88\x01\x01\x42\n\n\x08_db_name")\n\x0e\x44\x61tabaseExists\x12\x17\n\x07\x64\x62_name\x18\x01 \x01(\tR\x06\x64\x62Name"V\n\x0bTableExists\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName\x12\x1c\n\x07\x64\x62_name\x18\x02 \x01(\tH\x00R\x06\x64\x62Name\x88\x01\x01\x42\n\n\x08_db_name"_\n\x0e\x46unctionExists\x12#\n\rfunction_name\x18\x01 \x01(\tR\x0c\x66unctionName\x12\x1c\n\x07\x64\x62_name\x18\x02 \x01(\tH\x00R\x06\x64\x62Name\x88\x01\x01\x42\n\n\x08_db_name"\xc6\x02\n\x13\x43reateExternalTable\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName\x12\x17\n\x04path\x18\x02 \x01(\tH\x00R\x04path\x88\x01\x01\x12\x1b\n\x06source\x18\x03 \x01(\tH\x01R\x06source\x88\x01\x01\x12\x34\n\x06schema\x18\x04 \x01(\x0b\x32\x17.spark.connect.DataTypeH\x02R\x06schema\x88\x01\x01\x12I\n\x07options\x18\x05 \x03(\x0b\x32/.spark.connect.CreateExternalTable.OptionsEntryR\x07options\x1a:\n\x0cOptionsEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\tR\x05value:\x02\x38\x01\x42\x07\n\x05_pathB\t\n\x07_sourceB\t\n\x07_schema"\xed\x02\n\x0b\x43reateTable\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName\x12\x17\n\x04path\x18\x02 \x01(\tH\x00R\x04path\x88\x01\x01\x12\x1b\n\x06source\x18\x03 \x01(\tH\x01R\x06source\x88\x01\x01\x12%\n\x0b\x64\x65scription\x18\x04 \x01(\tH\x02R\x0b\x64\x65scription\x88\x01\x01\x12\x34\n\x06schema\x18\x05 \x01(\x0b\x32\x17.spark.connect.DataTypeH\x03R\x06schema\x88\x01\x01\x12\x41\n\x07options\x18\x06 \x03(\x0b\x32\'.spark.connect.CreateTable.OptionsEntryR\x07options\x1a:\n\x0cOptionsEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\tR\x05value:\x02\x38\x01\x42\x07\n\x05_pathB\t\n\x07_sourceB\x0e\n\x0c_descriptionB\t\n\x07_schema"+\n\x0c\x44ropTempView\x12\x1b\n\tview_name\x18\x01 \x01(\tR\x08viewName"1\n\x12\x44ropGlobalTempView\x12\x1b\n\tview_name\x18\x01 \x01(\tR\x08viewName"2\n\x11RecoverPartitions\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName")\n\x08IsCached\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName"\x84\x01\n\nCacheTable\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName\x12\x45\n\rstorage_level\x18\x02 \x01(\x0b\x32\x1b.spark.connect.StorageLevelH\x00R\x0cstorageLevel\x88\x01\x01\x42\x10\n\x0e_storage_level"-\n\x0cUncacheTable\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName"\x0c\n\nClearCache"-\n\x0cRefreshTable\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName"#\n\rRefreshByPath\x12\x12\n\x04path\x18\x01 \x01(\tR\x04path"\x10\n\x0e\x43urrentCatalog"6\n\x11SetCurrentCatalog\x12!\n\x0c\x63\x61talog_name\x18\x01 \x01(\tR\x0b\x63\x61talogName"9\n\x0cListCatalogs\x12\x1d\n\x07pattern\x18\x01 \x01(\tH\x00R\x07pattern\x88\x01\x01\x42\n\n\x08_pattern"\x12\n\x10ListCachedTables"]\n\tDropTable\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName\x12\x1b\n\tif_exists\x18\x02 \x01(\x08R\x08ifExists\x12\x14\n\x05purge\x18\x03 \x01(\x08R\x05purge"D\n\x08\x44ropView\x12\x1b\n\tview_name\x18\x01 \x01(\tR\x08viewName\x12\x1b\n\tif_exists\x18\x02 \x01(\x08R\x08ifExists"\xdb\x01\n\x0e\x43reateDatabase\x12\x17\n\x07\x64\x62_name\x18\x01 \x01(\tR\x06\x64\x62Name\x12"\n\rif_not_exists\x18\x02 \x01(\x08R\x0bifNotExists\x12M\n\nproperties\x18\x03 \x03(\x0b\x32-.spark.connect.CreateDatabase.PropertiesEntryR\nproperties\x1a=\n\x0fPropertiesEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\tR\x05value:\x02\x38\x01"^\n\x0c\x44ropDatabase\x12\x17\n\x07\x64\x62_name\x18\x01 \x01(\tR\x06\x64\x62Name\x12\x1b\n\tif_exists\x18\x02 \x01(\x08R\x08ifExists\x12\x18\n\x07\x63\x61scade\x18\x03 \x01(\x08R\x07\x63\x61scade"/\n\x0eListPartitions\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName"`\n\tListViews\x12\x1c\n\x07\x64\x62_name\x18\x01 \x01(\tH\x00R\x06\x64\x62Name\x88\x01\x01\x12\x1d\n\x07pattern\x18\x02 \x01(\tH\x01R\x07pattern\x88\x01\x01\x42\n\n\x08_db_nameB\n\n\x08_pattern"3\n\x12GetTableProperties\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName"P\n\x14GetCreateTableString\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName\x12\x19\n\x08\x61s_serde\x18\x02 \x01(\x08R\x07\x61sSerde".\n\rTruncateTable\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName"F\n\x0c\x41nalyzeTable\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName\x12\x17\n\x07no_scan\x18\x02 \x01(\x08R\x06noScanB6\n\x1eorg.apache.spark.connect.protoP\x01Z\x12internal/generatedb\x06proto3'
++    b'\n\x1bspark/connect/catalog.proto\x12\rspark.connect\x1a\x1aspark/connect/common.proto\x1a\x19spark/connect/types.proto"\x8c\x14\n\x07\x43\x61talog\x12K\n\x10\x63urrent_database\x18\x01 \x01(\x0b\x32\x1e.spark.connect.CurrentDatabaseH\x00R\x0f\x63urrentDatabase\x12U\n\x14set_current_database\x18\x02 \x01(\x0b\x32!.spark.connect.SetCurrentDatabaseH\x00R\x12setCurrentDatabase\x12\x45\n\x0elist_databases\x18\x03 \x01(\x0b\x32\x1c.spark.connect.ListDatabasesH\x00R\rlistDatabases\x12<\n\x0blist_tables\x18\x04 \x01(\x0b\x32\x19.spark.connect.ListTablesH\x00R\nlistTables\x12\x45\n\x0elist_functions\x18\x05 \x01(\x0b\x32\x1c.spark.connect.ListFunctionsH\x00R\rlistFunctions\x12?\n\x0clist_columns\x18\x06 \x01(\x0b\x32\x1a.spark.connect.ListColumnsH\x00R\x0blistColumns\x12?\n\x0cget_database\x18\x07 \x01(\x0b\x32\x1a.spark.connect.GetDatabaseH\x00R\x0bgetDatabase\x12\x36\n\tget_table\x18\x08 \x01(\x0b\x32\x17.spark.connect.GetTableH\x00R\x08getTable\x12?\n\x0cget_function\x18\t \x01(\x0b\x32\x1a.spark.connect.GetFunctionH\x00R\x0bgetFunction\x12H\n\x0f\x64\x61tabase_exists\x18\n \x01(\x0b\x32\x1d.spark.connect.DatabaseExistsH\x00R\x0e\x64\x61tabaseExists\x12?\n\x0ctable_exists\x18\x0b \x01(\x0b\x32\x1a.spark.connect.TableExistsH\x00R\x0btableExists\x12H\n\x0f\x66unction_exists\x18\x0c \x01(\x0b\x32\x1d.spark.connect.FunctionExistsH\x00R\x0e\x66unctionExists\x12X\n\x15\x63reate_external_table\x18\r \x01(\x0b\x32".spark.connect.CreateExternalTableH\x00R\x13\x63reateExternalTable\x12?\n\x0c\x63reate_table\x18\x0e \x01(\x0b\x32\x1a.spark.connect.CreateTableH\x00R\x0b\x63reateTable\x12\x43\n\x0e\x64rop_temp_view\x18\x0f \x01(\x0b\x32\x1b.spark.connect.DropTempViewH\x00R\x0c\x64ropTempView\x12V\n\x15\x64rop_global_temp_view\x18\x10 \x01(\x0b\x32!.spark.connect.DropGlobalTempViewH\x00R\x12\x64ropGlobalTempView\x12Q\n\x12recover_partitions\x18\x11 \x01(\x0b\x32 .spark.connect.RecoverPartitionsH\x00R\x11recoverPartitions\x12\x36\n\tis_cached\x18\x12 \x01(\x0b\x32\x17.spark.connect.IsCachedH\x00R\x08isCached\x12<\n\x0b\x63\x61\x63he_table\x18\x13 \x01(\x0b\x32\x19.spark.connect.CacheTableH\x00R\ncacheTable\x12\x42\n\runcache_table\x18\x14 \x01(\x0b\x32\x1b.spark.connect.UncacheTableH\x00R\x0cuncacheTable\x12<\n\x0b\x63lear_cache\x18\x15 \x01(\x0b\x32\x19.spark.connect.ClearCacheH\x00R\nclearCache\x12\x42\n\rrefresh_table\x18\x16 \x01(\x0b\x32\x1b.spark.connect.RefreshTableH\x00R\x0crefreshTable\x12\x46\n\x0frefresh_by_path\x18\x17 \x01(\x0b\x32\x1c.spark.connect.RefreshByPathH\x00R\rrefreshByPath\x12H\n\x0f\x63urrent_catalog\x18\x18 \x01(\x0b\x32\x1d.spark.connect.CurrentCatalogH\x00R\x0e\x63urrentCatalog\x12R\n\x13set_current_catalog\x18\x19 \x01(\x0b\x32 .spark.connect.SetCurrentCatalogH\x00R\x11setCurrentCatalog\x12\x42\n\rlist_catalogs\x18\x1a \x01(\x0b\x32\x1b.spark.connect.ListCatalogsH\x00R\x0clistCatalogs\x12\x39\n\ndrop_table\x18\x1b \x01(\x0b\x32\x18.spark.connect.DropTableH\x00R\tdropTable\x12\x36\n\tdrop_view\x18\x1c \x01(\x0b\x32\x17.spark.connect.DropViewH\x00R\x08\x64ropView\x12H\n\x0f\x63reate_database\x18\x1d \x01(\x0b\x32\x1d.spark.connect.CreateDatabaseH\x00R\x0e\x63reateDatabase\x12\x42\n\rdrop_database\x18\x1e \x01(\x0b\x32\x1b.spark.connect.DropDatabaseH\x00R\x0c\x64ropDatabase\x12H\n\x0flist_partitions\x18\x1f \x01(\x0b\x32\x1d.spark.connect.ListPartitionsH\x00R\x0elistPartitions\x12\x39\n\nlist_views\x18  \x01(\x0b\x32\x18.spark.connect.ListViewsH\x00R\tlistViews\x12U\n\x14get_table_properties\x18! \x01(\x0b\x32!.spark.connect.GetTablePropertiesH\x00R\x12getTableProperties\x12\\\n\x17get_create_table_string\x18" \x01(\x0b\x32#.spark.connect.GetCreateTableStringH\x00R\x14getCreateTableString\x12\x45\n\x0etruncate_table\x18# \x01(\x0b\x32\x1c.spark.connect.TruncateTableH\x00R\rtruncateTable\x12\x42\n\ranalyze_table\x18$ \x01(\x0b\x32\x1b.spark.connect.AnalyzeTableH\x00R\x0c\x61nalyzeTableB\n\n\x08\x63\x61t_type"\x11\n\x0f\x43urrentDatabase"-\n\x12SetCurrentDatabase\x12\x17\n\x07\x64\x62_name\x18\x01 \x01(\tR\x06\x64\x62Name":\n\rListDatabases\x12\x1d\n\x07pattern\x18\x01 \x01(\tH\x00R\x07pattern\x88\x01\x01\x42\n\n\x08_pattern"a\n\nListTables\x12\x1c\n\x07\x64\x62_name\x18\x01 \x01(\tH\x00R\x06\x64\x62Name\x88\x01\x01\x12\x1d\n\x07pattern\x18\x02 \x01(\tH\x01R\x07pattern\x88\x01\x01\x42\n\n\x08_db_nameB\n\n\x08_pattern"d\n\rListFunctions\x12\x1c\n\x07\x64\x62_name\x18\x01 \x01(\tH\x00R\x06\x64\x62Name\x88\x01\x01\x12\x1d\n\x07pattern\x18\x02 \x01(\tH\x01R\x07pattern\x88\x01\x01\x42\n\n\x08_db_nameB\n\n\x08_pattern"V\n\x0bListColumns\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName\x12\x1c\n\x07\x64\x62_name\x18\x02 \x01(\tH\x00R\x06\x64\x62Name\x88\x01\x01\x42\n\n\x08_db_name"&\n\x0bGetDatabase\x12\x17\n\x07\x64\x62_name\x18\x01 \x01(\tR\x06\x64\x62Name"S\n\x08GetTable\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName\x12\x1c\n\x07\x64\x62_name\x18\x02 \x01(\tH\x00R\x06\x64\x62Name\x88\x01\x01\x42\n\n\x08_db_name"\\\n\x0bGetFunction\x12#\n\rfunction_name\x18\x01 \x01(\tR\x0c\x66unctionName\x12\x1c\n\x07\x64\x62_name\x18\x02 \x01(\tH\x00R\x06\x64\x62Name\x88\x01\x01\x42\n\n\x08_db_name")\n\x0e\x44\x61tabaseExists\x12\x17\n\x07\x64\x62_name\x18\x01 \x01(\tR\x06\x64\x62Name"V\n\x0bTableExists\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName\x12\x1c\n\x07\x64\x62_name\x18\x02 \x01(\tH\x00R\x06\x64\x62Name\x88\x01\x01\x42\n\n\x08_db_name"_\n\x0e\x46unctionExists\x12#\n\rfunction_name\x18\x01 \x01(\tR\x0c\x66unctionName\x12\x1c\n\x07\x64\x62_name\x18\x02 \x01(\tH\x00R\x06\x64\x62Name\x88\x01\x01\x42\n\n\x08_db_name"\xc6\x02\n\x13\x43reateExternalTable\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName\x12\x17\n\x04path\x18\x02 \x01(\tH\x00R\x04path\x88\x01\x01\x12\x1b\n\x06source\x18\x03 \x01(\tH\x01R\x06source\x88\x01\x01\x12\x34\n\x06schema\x18\x04 \x01(\x0b\x32\x17.spark.connect.DataTypeH\x02R\x06schema\x88\x01\x01\x12I\n\x07options\x18\x05 \x03(\x0b\x32/.spark.connect.CreateExternalTable.OptionsEntryR\x07options\x1a:\n\x0cOptionsEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\tR\x05value:\x02\x38\x01\x42\x07\n\x05_pathB\t\n\x07_sourceB\t\n\x07_schema"\xed\x02\n\x0b\x43reateTable\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName\x12\x17\n\x04path\x18\x02 \x01(\tH\x00R\x04path\x88\x01\x01\x12\x1b\n\x06source\x18\x03 \x01(\tH\x01R\x06source\x88\x01\x01\x12%\n\x0b\x64\x65scription\x18\x04 \x01(\tH\x02R\x0b\x64\x65scription\x88\x01\x01\x12\x34\n\x06schema\x18\x05 \x01(\x0b\x32\x17.spark.connect.DataTypeH\x03R\x06schema\x88\x01\x01\x12\x41\n\x07options\x18\x06 \x03(\x0b\x32\'.spark.connect.CreateTable.OptionsEntryR\x07options\x1a:\n\x0cOptionsEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\tR\x05value:\x02\x38\x01\x42\x07\n\x05_pathB\t\n\x07_sourceB\x0e\n\x0c_descriptionB\t\n\x07_schema"+\n\x0c\x44ropTempView\x12\x1b\n\tview_name\x18\x01 \x01(\tR\x08viewName"1\n\x12\x44ropGlobalTempView\x12\x1b\n\tview_name\x18\x01 \x01(\tR\x08viewName"2\n\x11RecoverPartitions\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName")\n\x08IsCached\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName"\x84\x01\n\nCacheTable\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName\x12\x45\n\rstorage_level\x18\x02 \x01(\x0b\x32\x1b.spark.connect.StorageLevelH\x00R\x0cstorageLevel\x88\x01\x01\x42\x10\n\x0e_storage_level"-\n\x0cUncacheTable\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName"\x0c\n\nClearCache"-\n\x0cRefreshTable\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName"#\n\rRefreshByPath\x12\x12\n\x04path\x18\x01 \x01(\tR\x04path"\x10\n\x0e\x43urrentCatalog"6\n\x11SetCurrentCatalog\x12!\n\x0c\x63\x61talog_name\x18\x01 \x01(\tR\x0b\x63\x61talogName"9\n\x0cListCatalogs\x12\x1d\n\x07pattern\x18\x01 \x01(\tH\x00R\x07pattern\x88\x01\x01\x42\n\n\x08_pattern"]\n\tDropTable\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName\x12\x1b\n\tif_exists\x18\x02 \x01(\x08R\x08ifExists\x12\x14\n\x05purge\x18\x03 \x01(\x08R\x05purge"D\n\x08\x44ropView\x12\x1b\n\tview_name\x18\x01 \x01(\tR\x08viewName\x12\x1b\n\tif_exists\x18\x02 \x01(\x08R\x08ifExists"\xdb\x01\n\x0e\x43reateDatabase\x12\x17\n\x07\x64\x62_name\x18\x01 \x01(\tR\x06\x64\x62Name\x12"\n\rif_not_exists\x18\x02 \x01(\x08R\x0bifNotExists\x12M\n\nproperties\x18\x03 \x03(\x0b\x32-.spark.connect.CreateDatabase.PropertiesEntryR\nproperties\x1a=\n\x0fPropertiesEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\tR\x05value:\x02\x38\x01"^\n\x0c\x44ropDatabase\x12\x17\n\x07\x64\x62_name\x18\x01 \x01(\tR\x06\x64\x62Name\x12\x1b\n\tif_exists\x18\x02 \x01(\x08R\x08ifExists\x12\x18\n\x07\x63\x61scade\x18\x03 \x01(\x08R\x07\x63\x61scade"/\n\x0eListPartitions\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName"`\n\tListViews\x12\x1c\n\x07\x64\x62_name\x18\x01 \x01(\tH\x00R\x06\x64\x62Name\x88\x01\x01\x12\x1d\n\x07pattern\x18\x02 \x01(\tH\x01R\x07pattern\x88\x01\x01\x42\n\n\x08_db_nameB\n\n\x08_pattern"3\n\x12GetTableProperties\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName"P\n\x14GetCreateTableString\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName\x12\x19\n\x08\x61s_serde\x18\x02 \x01(\x08R\x07\x61sSerde".\n\rTruncateTable\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName"F\n\x0c\x41nalyzeTable\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName\x12\x17\n\x07no_scan\x18\x02 \x01(\x08R\x06noScanB6\n\x1eorg.apache.spark.connect.protoP\x01Z\x12internal/generatedb\x06proto3'
+ )
+ 
+ _globals = globals()
+@@ -60,85 +60,83 @@ if not _descriptor._USE_C_DESCRIPTORS:
+     _globals["_CREATEDATABASE_PROPERTIESENTRY"]._loaded_options = None
+     _globals["_CREATEDATABASE_PROPERTIESENTRY"]._serialized_options = b"8\001"
+     _globals["_CATALOG"]._serialized_start = 102
+-    _globals["_CATALOG"]._serialized_end = 2755
+-    _globals["_CURRENTDATABASE"]._serialized_start = 2757
+-    _globals["_CURRENTDATABASE"]._serialized_end = 2774
+-    _globals["_SETCURRENTDATABASE"]._serialized_start = 2776
+-    _globals["_SETCURRENTDATABASE"]._serialized_end = 2821
+-    _globals["_LISTDATABASES"]._serialized_start = 2823
+-    _globals["_LISTDATABASES"]._serialized_end = 2881
+-    _globals["_LISTTABLES"]._serialized_start = 2883
+-    _globals["_LISTTABLES"]._serialized_end = 2980
+-    _globals["_LISTFUNCTIONS"]._serialized_start = 2982
+-    _globals["_LISTFUNCTIONS"]._serialized_end = 3082
+-    _globals["_LISTCOLUMNS"]._serialized_start = 3084
+-    _globals["_LISTCOLUMNS"]._serialized_end = 3170
+-    _globals["_GETDATABASE"]._serialized_start = 3172
+-    _globals["_GETDATABASE"]._serialized_end = 3210
+-    _globals["_GETTABLE"]._serialized_start = 3212
+-    _globals["_GETTABLE"]._serialized_end = 3295
+-    _globals["_GETFUNCTION"]._serialized_start = 3297
+-    _globals["_GETFUNCTION"]._serialized_end = 3389
+-    _globals["_DATABASEEXISTS"]._serialized_start = 3391
+-    _globals["_DATABASEEXISTS"]._serialized_end = 3432
+-    _globals["_TABLEEXISTS"]._serialized_start = 3434
+-    _globals["_TABLEEXISTS"]._serialized_end = 3520
+-    _globals["_FUNCTIONEXISTS"]._serialized_start = 3522
+-    _globals["_FUNCTIONEXISTS"]._serialized_end = 3617
+-    _globals["_CREATEEXTERNALTABLE"]._serialized_start = 3620
+-    _globals["_CREATEEXTERNALTABLE"]._serialized_end = 3946
+-    _globals["_CREATEEXTERNALTABLE_OPTIONSENTRY"]._serialized_start = 3857
+-    _globals["_CREATEEXTERNALTABLE_OPTIONSENTRY"]._serialized_end = 3915
+-    _globals["_CREATETABLE"]._serialized_start = 3949
+-    _globals["_CREATETABLE"]._serialized_end = 4314
+-    _globals["_CREATETABLE_OPTIONSENTRY"]._serialized_start = 3857
+-    _globals["_CREATETABLE_OPTIONSENTRY"]._serialized_end = 3915
+-    _globals["_DROPTEMPVIEW"]._serialized_start = 4316
+-    _globals["_DROPTEMPVIEW"]._serialized_end = 4359
+-    _globals["_DROPGLOBALTEMPVIEW"]._serialized_start = 4361
+-    _globals["_DROPGLOBALTEMPVIEW"]._serialized_end = 4410
+-    _globals["_RECOVERPARTITIONS"]._serialized_start = 4412
+-    _globals["_RECOVERPARTITIONS"]._serialized_end = 4462
+-    _globals["_ISCACHED"]._serialized_start = 4464
+-    _globals["_ISCACHED"]._serialized_end = 4505
+-    _globals["_CACHETABLE"]._serialized_start = 4508
+-    _globals["_CACHETABLE"]._serialized_end = 4640
+-    _globals["_UNCACHETABLE"]._serialized_start = 4642
+-    _globals["_UNCACHETABLE"]._serialized_end = 4687
+-    _globals["_CLEARCACHE"]._serialized_start = 4689
+-    _globals["_CLEARCACHE"]._serialized_end = 4701
+-    _globals["_REFRESHTABLE"]._serialized_start = 4703
+-    _globals["_REFRESHTABLE"]._serialized_end = 4748
+-    _globals["_REFRESHBYPATH"]._serialized_start = 4750
+-    _globals["_REFRESHBYPATH"]._serialized_end = 4785
+-    _globals["_CURRENTCATALOG"]._serialized_start = 4787
+-    _globals["_CURRENTCATALOG"]._serialized_end = 4803
+-    _globals["_SETCURRENTCATALOG"]._serialized_start = 4805
+-    _globals["_SETCURRENTCATALOG"]._serialized_end = 4859
+-    _globals["_LISTCATALOGS"]._serialized_start = 4861
+-    _globals["_LISTCATALOGS"]._serialized_end = 4918
+-    _globals["_LISTCACHEDTABLES"]._serialized_start = 4920
+-    _globals["_LISTCACHEDTABLES"]._serialized_end = 4938
+-    _globals["_DROPTABLE"]._serialized_start = 4940
+-    _globals["_DROPTABLE"]._serialized_end = 5033
+-    _globals["_DROPVIEW"]._serialized_start = 5035
+-    _globals["_DROPVIEW"]._serialized_end = 5103
+-    _globals["_CREATEDATABASE"]._serialized_start = 5106
+-    _globals["_CREATEDATABASE"]._serialized_end = 5325
+-    _globals["_CREATEDATABASE_PROPERTIESENTRY"]._serialized_start = 5264
+-    _globals["_CREATEDATABASE_PROPERTIESENTRY"]._serialized_end = 5325
+-    _globals["_DROPDATABASE"]._serialized_start = 5327
+-    _globals["_DROPDATABASE"]._serialized_end = 5421
+-    _globals["_LISTPARTITIONS"]._serialized_start = 5423
+-    _globals["_LISTPARTITIONS"]._serialized_end = 5470
+-    _globals["_LISTVIEWS"]._serialized_start = 5472
+-    _globals["_LISTVIEWS"]._serialized_end = 5568
+-    _globals["_GETTABLEPROPERTIES"]._serialized_start = 5570
+-    _globals["_GETTABLEPROPERTIES"]._serialized_end = 5621
+-    _globals["_GETCREATETABLESTRING"]._serialized_start = 5623
+-    _globals["_GETCREATETABLESTRING"]._serialized_end = 5703
+-    _globals["_TRUNCATETABLE"]._serialized_start = 5705
+-    _globals["_TRUNCATETABLE"]._serialized_end = 5751
+-    _globals["_ANALYZETABLE"]._serialized_start = 5753
+-    _globals["_ANALYZETABLE"]._serialized_end = 5823
++    _globals["_CATALOG"]._serialized_end = 2674
++    _globals["_CURRENTDATABASE"]._serialized_start = 2676
++    _globals["_CURRENTDATABASE"]._serialized_end = 2693
++    _globals["_SETCURRENTDATABASE"]._serialized_start = 2695
++    _globals["_SETCURRENTDATABASE"]._serialized_end = 2740
++    _globals["_LISTDATABASES"]._serialized_start = 2742
++    _globals["_LISTDATABASES"]._serialized_end = 2800
++    _globals["_LISTTABLES"]._serialized_start = 2802
++    _globals["_LISTTABLES"]._serialized_end = 2899
++    _globals["_LISTFUNCTIONS"]._serialized_start = 2901
++    _globals["_LISTFUNCTIONS"]._serialized_end = 3001
++    _globals["_LISTCOLUMNS"]._serialized_start = 3003
++    _globals["_LISTCOLUMNS"]._serialized_end = 3089
++    _globals["_GETDATABASE"]._serialized_start = 3091
++    _globals["_GETDATABASE"]._serialized_end = 3129
++    _globals["_GETTABLE"]._serialized_start = 3131
++    _globals["_GETTABLE"]._serialized_end = 3214
++    _globals["_GETFUNCTION"]._serialized_start = 3216
++    _globals["_GETFUNCTION"]._serialized_end = 3308
++    _globals["_DATABASEEXISTS"]._serialized_start = 3310
++    _globals["_DATABASEEXISTS"]._serialized_end = 3351
++    _globals["_TABLEEXISTS"]._serialized_start = 3353
++    _globals["_TABLEEXISTS"]._serialized_end = 3439
++    _globals["_FUNCTIONEXISTS"]._serialized_start = 3441
++    _globals["_FUNCTIONEXISTS"]._serialized_end = 3536
++    _globals["_CREATEEXTERNALTABLE"]._serialized_start = 3539
++    _globals["_CREATEEXTERNALTABLE"]._serialized_end = 3865
++    _globals["_CREATEEXTERNALTABLE_OPTIONSENTRY"]._serialized_start = 3776
++    _globals["_CREATEEXTERNALTABLE_OPTIONSENTRY"]._serialized_end = 3834
++    _globals["_CREATETABLE"]._serialized_start = 3868
++    _globals["_CREATETABLE"]._serialized_end = 4233
++    _globals["_CREATETABLE_OPTIONSENTRY"]._serialized_start = 3776
++    _globals["_CREATETABLE_OPTIONSENTRY"]._serialized_end = 3834
++    _globals["_DROPTEMPVIEW"]._serialized_start = 4235
++    _globals["_DROPTEMPVIEW"]._serialized_end = 4278
++    _globals["_DROPGLOBALTEMPVIEW"]._serialized_start = 4280
++    _globals["_DROPGLOBALTEMPVIEW"]._serialized_end = 4329
++    _globals["_RECOVERPARTITIONS"]._serialized_start = 4331
++    _globals["_RECOVERPARTITIONS"]._serialized_end = 4381
++    _globals["_ISCACHED"]._serialized_start = 4383
++    _globals["_ISCACHED"]._serialized_end = 4424
++    _globals["_CACHETABLE"]._serialized_start = 4427
++    _globals["_CACHETABLE"]._serialized_end = 4559
++    _globals["_UNCACHETABLE"]._serialized_start = 4561
++    _globals["_UNCACHETABLE"]._serialized_end = 4606
++    _globals["_CLEARCACHE"]._serialized_start = 4608
++    _globals["_CLEARCACHE"]._serialized_end = 4620
++    _globals["_REFRESHTABLE"]._serialized_start = 4622
++    _globals["_REFRESHTABLE"]._serialized_end = 4667
++    _globals["_REFRESHBYPATH"]._serialized_start = 4669
++    _globals["_REFRESHBYPATH"]._serialized_end = 4704
++    _globals["_CURRENTCATALOG"]._serialized_start = 4706
++    _globals["_CURRENTCATALOG"]._serialized_end = 4722
++    _globals["_SETCURRENTCATALOG"]._serialized_start = 4724
++    _globals["_SETCURRENTCATALOG"]._serialized_end = 4778
++    _globals["_LISTCATALOGS"]._serialized_start = 4780
++    _globals["_LISTCATALOGS"]._serialized_end = 4837
++    _globals["_DROPTABLE"]._serialized_start = 4839
++    _globals["_DROPTABLE"]._serialized_end = 4932
++    _globals["_DROPVIEW"]._serialized_start = 4934
++    _globals["_DROPVIEW"]._serialized_end = 5002
++    _globals["_CREATEDATABASE"]._serialized_start = 5005
++    _globals["_CREATEDATABASE"]._serialized_end = 5224
++    _globals["_CREATEDATABASE_PROPERTIESENTRY"]._serialized_start = 5163
++    _globals["_CREATEDATABASE_PROPERTIESENTRY"]._serialized_end = 5224
++    _globals["_DROPDATABASE"]._serialized_start = 5226
++    _globals["_DROPDATABASE"]._serialized_end = 5320
++    _globals["_LISTPARTITIONS"]._serialized_start = 5322
++    _globals["_LISTPARTITIONS"]._serialized_end = 5369
++    _globals["_LISTVIEWS"]._serialized_start = 5371
++    _globals["_LISTVIEWS"]._serialized_end = 5467
++    _globals["_GETTABLEPROPERTIES"]._serialized_start = 5469
++    _globals["_GETTABLEPROPERTIES"]._serialized_end = 5520
++    _globals["_GETCREATETABLESTRING"]._serialized_start = 5522
++    _globals["_GETCREATETABLESTRING"]._serialized_end = 5602
++    _globals["_TRUNCATETABLE"]._serialized_start = 5604
++    _globals["_TRUNCATETABLE"]._serialized_end = 5650
++    _globals["_ANALYZETABLE"]._serialized_start = 5652
++    _globals["_ANALYZETABLE"]._serialized_end = 5722
+ # @@protoc_insertion_point(module_scope)
+diff --git a/python/pyspark/sql/connect/proto/catalog_pb2.pyi b/python/pyspark/sql/connect/proto/catalog_pb2.pyi
+index 86eefa6a37..72c1c9c6f1 100644
+--- a/python/pyspark/sql/connect/proto/catalog_pb2.pyi
++++ b/python/pyspark/sql/connect/proto/catalog_pb2.pyi
+@@ -82,7 +82,6 @@ class Catalog(google.protobuf.message.Message):
+     CURRENT_CATALOG_FIELD_NUMBER: builtins.int
+     SET_CURRENT_CATALOG_FIELD_NUMBER: builtins.int
+     LIST_CATALOGS_FIELD_NUMBER: builtins.int
+-    LIST_CACHED_TABLES_FIELD_NUMBER: builtins.int
+     DROP_TABLE_FIELD_NUMBER: builtins.int
+     DROP_VIEW_FIELD_NUMBER: builtins.int
+     CREATE_DATABASE_FIELD_NUMBER: builtins.int
+@@ -146,8 +145,6 @@ class Catalog(google.protobuf.message.Message):
+     @property
+     def list_catalogs(self) -> global___ListCatalogs: ...
+     @property
+-    def list_cached_tables(self) -> global___ListCachedTables: ...
+-    @property
+     def drop_table(self) -> global___DropTable: ...
+     @property
+     def drop_view(self) -> global___DropView: ...
+@@ -196,7 +193,6 @@ class Catalog(google.protobuf.message.Message):
+         current_catalog: global___CurrentCatalog | None = ...,
+         set_current_catalog: global___SetCurrentCatalog | None = ...,
+         list_catalogs: global___ListCatalogs | None = ...,
+-        list_cached_tables: global___ListCachedTables | None = ...,
+         drop_table: global___DropTable | None = ...,
+         drop_view: global___DropView | None = ...,
+         create_database: global___CreateDatabase | None = ...,
+@@ -255,8 +251,6 @@ class Catalog(google.protobuf.message.Message):
+             b"get_table_properties",
+             "is_cached",
+             b"is_cached",
+-            "list_cached_tables",
+-            b"list_cached_tables",
+             "list_catalogs",
+             b"list_catalogs",
+             "list_columns",
+@@ -336,8 +330,6 @@ class Catalog(google.protobuf.message.Message):
+             b"get_table_properties",
+             "is_cached",
+             b"is_cached",
+-            "list_cached_tables",
+-            b"list_cached_tables",
+             "list_catalogs",
+             b"list_catalogs",
+             "list_columns",
+@@ -400,7 +392,6 @@ class Catalog(google.protobuf.message.Message):
+             "current_catalog",
+             "set_current_catalog",
+             "list_catalogs",
+-            "list_cached_tables",
+             "drop_table",
+             "drop_view",
+             "create_database",
+@@ -1232,17 +1223,6 @@ class ListCatalogs(google.protobuf.message.Message):
+ 
+ global___ListCatalogs = ListCatalogs
+ 
+-class ListCachedTables(google.protobuf.message.Message):
+-    """See `spark.catalog.listCachedTables`"""
+-
+-    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+-
+-    def __init__(
+-        self,
+-    ) -> None: ...
+-
+-global___ListCachedTables = ListCachedTables
+-
+ class DropTable(google.protobuf.message.Message):
+     """See `spark.catalog.dropTable`"""
+ 
+diff --git a/python/pyspark/sql/tests/test_catalog.py b/python/pyspark/sql/tests/test_catalog.py
+index 51170f846b..92ffea2332 100644
+--- a/python/pyspark/sql/tests/test_catalog.py
++++ b/python/pyspark/sql/tests/test_catalog.py
+@@ -498,22 +498,6 @@ class CatalogTestsMixin:
+                 spark.catalog.refreshTable("spark_catalog.default.my_tab")
+                 self.assertEqual(spark.table("my_tab").count(), 0)
+ 
+-    def test_catalog_list_cached_tables(self):
+-        spark = self.spark
+-        t = "py_catalog_api_cached_t"
+-        with self.table(t):
+-            spark.sql(f"CREATE TABLE {t} (id INT) USING parquet")
+-            spark.catalog.clearCache()
+-            self.assertEqual(spark.catalog.listCachedTables(), [])
+-            self.assertEqual(len(spark.sql("SHOW CACHED TABLES").collect()), 0)
+-            spark.catalog.cacheTable(t)
+-            cached = spark.catalog.listCachedTables()
+-            self.assertTrue(any(t in ct.name for ct in cached))
+-            sql_set = {(r[0], r[1]) for r in spark.sql("SHOW CACHED TABLES").collect()}
+-            api_set = {(ct.name, ct.storageLevel) for ct in cached}
+-            self.assertEqual(sql_set, api_set)
+-            spark.catalog.uncacheTable(t)
+-
+     def test_catalog_drop_table(self):
+         spark = self.spark
+         t = "py_catalog_api_drop_t"
+diff --git a/sql/api/src/main/antlr4/org/apache/spark/sql/catalyst/parser/SqlBaseLexer.g4 b/sql/api/src/main/antlr4/org/apache/spark/sql/catalyst/parser/SqlBaseLexer.g4
+index 9bd3afbf0c..b5e3531dba 100644
+--- a/sql/api/src/main/antlr4/org/apache/spark/sql/catalyst/parser/SqlBaseLexer.g4
++++ b/sql/api/src/main/antlr4/org/apache/spark/sql/catalyst/parser/SqlBaseLexer.g4
+@@ -159,7 +159,6 @@ BUCKETS: 'BUCKETS';
+ BY: 'BY';
+ BYTE: 'BYTE';
+ CACHE: 'CACHE';
+-CACHED: 'CACHED';
+ CALL: 'CALL';
+ CALLED: 'CALLED';
+ CASCADE: 'CASCADE';
+diff --git a/sql/api/src/main/antlr4/org/apache/spark/sql/catalyst/parser/SqlBaseParser.g4 b/sql/api/src/main/antlr4/org/apache/spark/sql/catalyst/parser/SqlBaseParser.g4
+index 4404435145..a905905c09 100644
+--- a/sql/api/src/main/antlr4/org/apache/spark/sql/catalyst/parser/SqlBaseParser.g4
++++ b/sql/api/src/main/antlr4/org/apache/spark/sql/catalyst/parser/SqlBaseParser.g4
+@@ -359,7 +359,6 @@ statement
+     | CLOSE multipartIdentifier                                        #closeCursorStatement
+     | EXPLAIN (LOGICAL | FORMATTED | EXTENDED | CODEGEN | COST)?
+         (statement|setResetStatement)                                  #explain
+-    | SHOW CACHED TABLES                                                 #showCachedTables
+     | SHOW TABLES ((FROM | IN) identifierReference)?
+         (LIKE? pattern=stringLit)?                                        #showTables
+     | SHOW TABLE EXTENDED ((FROM | IN) ns=identifierReference)?
+@@ -1933,7 +1932,6 @@ ansiNonReserved
+     | BY
+     | BYTE
+     | CACHE
+-    | CACHED
+     | CALLED
+     | CASCADE
+     | CATALOG
+@@ -2305,7 +2303,6 @@ nonReserved
+     | BY
+     | BYTE
+     | CACHE
+-    | CACHED
+     | CALL
+     | CALLED
+     | CASCADE
+diff --git a/sql/api/src/main/scala/org/apache/spark/sql/catalog/Catalog.scala b/sql/api/src/main/scala/org/apache/spark/sql/catalog/Catalog.scala
+index c852f830a4..010bb84d26 100644
+--- a/sql/api/src/main/scala/org/apache/spark/sql/catalog/Catalog.scala
++++ b/sql/api/src/main/scala/org/apache/spark/sql/catalog/Catalog.scala
+@@ -701,16 +701,6 @@ abstract class Catalog {
+    */
+   def listCatalogs(pattern: String): Dataset[CatalogMetadata]
+ 
+-  /**
+-   * Lists in-memory cache entries registered with an explicit name (via `CACHE TABLE`,
+-   * `Catalog.cacheTable`, etc.). `Dataset.cache()` without a name is not listed.
+-   *
+-   * @return
+-   *   a dataset of `CachedTable` rows describing each named cache entry.
+-   * @since 4.2.0
+-   */
+-  def listCachedTables(): Dataset[CachedTable] = catalogUnsupported("listCachedTables")
+-
+   /**
+    * Drops a persistent table. This does not remove temp views (use `dropTempView`).
+    *
+@@ -811,7 +801,7 @@ abstract class Catalog {
+    *   name of the partitioned table; may be qualified with catalog and database (namespace).
+    * @since 4.2.0
+    */
+-  def listPartitions(tableName: String): Dataset[CatalogTablePartition] = {
++  def listPartitions(tableName: String): Dataset[TablePartition] = {
+     catalogUnsupported("listPartitions")
+   }
+ 
+diff --git a/sql/api/src/main/scala/org/apache/spark/sql/catalog/interface.scala b/sql/api/src/main/scala/org/apache/spark/sql/catalog/interface.scala
+index da9a2dc4ef..509fe1b780 100644
+--- a/sql/api/src/main/scala/org/apache/spark/sql/catalog/interface.scala
++++ b/sql/api/src/main/scala/org/apache/spark/sql/catalog/interface.scala
+@@ -41,22 +41,6 @@ class CatalogMetadata(val name: String, @Nullable val description: String)
+     s"Catalog[name='$name', ${Option(description).map(d => s"description='$d'").getOrElse("")}]"
+ }
+ 
+-/**
+- * An in-memory cached relation registered with a name, as returned by `Catalog.listCachedTables`.
+- *
+- * @param name
+- *   table or view name used when caching (same string passed to `CACHE TABLE` / `cacheTable`).
+- * @param storageLevel
+- *   storage level description of the cached data.
+- * @since 4.2.0
+- */
+-@Stable
+-class CachedTable(val name: String, val storageLevel: String) extends DefinedByConstructorParams {
+-
+-  override def toString: String =
+-    s"CachedTable[name='$name', storageLevel='$storageLevel']"
+-}
+-
+ /**
+  * A partition string as returned by `Catalog.listPartitions` (same form as `SHOW PARTITIONS`).
+  *
+@@ -65,9 +49,9 @@ class CachedTable(val name: String, val storageLevel: String) extends DefinedByC
+  * @since 4.2.0
+  */
+ @Stable
+-class CatalogTablePartition(val partition: String) extends DefinedByConstructorParams {
++class TablePartition(val partition: String) extends DefinedByConstructorParams {
+ 
+-  override def toString: String = s"CatalogTablePartition[partition='$partition']"
++  override def toString: String = s"TablePartition[partition='$partition']"
+ }
+ 
+ /**
+diff --git a/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/parser/AstBuilder.scala b/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/parser/AstBuilder.scala
+index d4397f5935..3ebaf771a3 100644
+--- a/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/parser/AstBuilder.scala
++++ b/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/parser/AstBuilder.scala
+@@ -6498,13 +6498,6 @@ class AstBuilder extends DataTypeAstBuilder
+       partitionKeys)
+   }
+ 
+-  /**
+-   * Create a [[ShowCachedTables]] command.
+-   */
+-  override def visitShowCachedTables(ctx: ShowCachedTablesContext): LogicalPlan = withOrigin(ctx) {
+-    ShowCachedTables
+-  }
+-
+   /**
+    * Create a [[RefreshTable]].
+    *
+diff --git a/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/plans/logical/v2Commands.scala b/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/plans/logical/v2Commands.scala
+index 9a7d638cc4..e74937639c 100644
+--- a/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/plans/logical/v2Commands.scala
++++ b/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/plans/logical/v2Commands.scala
+@@ -1689,18 +1689,6 @@ object ShowPartitions {
+   }
+ }
+ 
+-/**
+- * The logical plan of the SHOW CACHED TABLES command.
+- *
+- * Lists in-memory cache entries that were registered with an explicit table or view name
+- * (for example via `CACHE TABLE` or `Catalog.cacheTable`).
+- */
+-case object ShowCachedTables extends LeafCommand {
+-  override val output: Seq[Attribute] = Seq(
+-    AttributeReference("tableName", StringType, nullable = false)(),
+-    AttributeReference("storageLevel", StringType, nullable = false)())
+-}
+-
+ /**
+  * The logical plan of the DROP VIEW command.
+  */
+diff --git a/sql/connect/client/jdbc/src/test/scala/org/apache/spark/sql/connect/client/jdbc/SparkConnectDatabaseMetaDataSuite.scala b/sql/connect/client/jdbc/src/test/scala/org/apache/spark/sql/connect/client/jdbc/SparkConnectDatabaseMetaDataSuite.scala
+index 64ae4aa830..7a6026977b 100644
+--- a/sql/connect/client/jdbc/src/test/scala/org/apache/spark/sql/connect/client/jdbc/SparkConnectDatabaseMetaDataSuite.scala
++++ b/sql/connect/client/jdbc/src/test/scala/org/apache/spark/sql/connect/client/jdbc/SparkConnectDatabaseMetaDataSuite.scala
+@@ -209,7 +209,7 @@ class SparkConnectDatabaseMetaDataSuite extends ConnectFunSuite with RemoteSpark
+     withConnection { conn =>
+       val metadata = conn.getMetaData
+       // scalastyle:off line.size.limit
+-      assert(metadata.getSQLKeywords === "ADD,AFTER,AGGREGATE,ALWAYS,ANALYZE,ANTI,ANY_VALUE,ARCHIVE,ASC,BINDING,BUCKET,BUCKETS,BYTE,CACHE,CACHED,CASCADE,CATALOG,CATALOGS,CHANGE,CHANGES,CLEAR,CLUSTER,CLUSTERED,CODEGEN,COLLATION,COLLATIONS,COLLECTION,COLUMNS,COMMENT,COMPACT,COMPACTIONS,COMPENSATION,COMPUTE,CONCATENATE,CONTAINS,CONTINUE,COST,DATA,DATABASE,DATABASES,DATEADD,DATEDIFF,DATE_ADD,DATE_DIFF,DAYOFYEAR,DAYS,DBPROPERTIES,DEFINED,DEFINER,DELAY,DELIMITED,DESC,DFS,DIRECTORIES,DIRECTORY,DISTRIBUTE,DIV,DO,ELSEIF,ENFORCED,ESCAPED,EVOLUTION,EXCHANGE,EXCLUDE,EXCLUSIVE,EXIT,EXPLAIN,EXPORT,EXTEND,EXTENDED,FIELDS,FILEFORMAT,FIRST,FLOW,FOLLOWING,FORMAT,FORMATTED,FOUND,FUNCTIONS,GENERATED,GEOGRAPHY,GEOMETRY,HANDLER,HOURS,IDENTIFIED,IDENTIFIER,IF,IGNORE,ILIKE,IMMEDIATE,INCLUDE,INCLUSIVE,INCREMENT,INDEX,INDEXES,INPATH,INPUT,INPUTFORMAT,INVOKER,ITEMS,ITERATE,JSON,KEY,KEYS,LAST,LAZY,LEAVE,LEVEL,LIMIT,LINES,LIST,LOAD,LOCATION,LOCK,LOCKS,LOGICAL,LONG,LOOP,MACRO,MAP,MATCHED,MATERIALIZED,MEASURE,METRICS,MICROSECOND,MICROSECONDS,MILLISECOND,MILLISECONDS,MINUS,MINUTES,MONTHS,MSCK,NAME,NAMESPACE,NAMESPACES,NANOSECOND,NANOSECONDS,NORELY,NULLS,OFFSET,OPTION,OPTIONS,OUTPUTFORMAT,OVERWRITE,PARTITIONED,PARTITIONS,PERCENT,PIVOT,PLACING,PRECEDING,PRINCIPALS,PROCEDURES,PROPERTIES,PURGE,QUARTER,QUERY,RECORDREADER,RECORDWRITER,RECOVER,RECURSION,REDUCE,REFRESH,RELY,RENAME,REPAIR,REPEAT,REPEATABLE,REPLACE,RESET,RESPECT,RESTRICT,ROLE,ROLES,SCHEMA,SCHEMAS,SECONDS,SECURITY,SEMI,SEPARATED,SERDE,SERDEPROPERTIES,SETS,SHORT,SHOW,SINGLE,SKEWED,SORT,SORTED,SOURCE,STATISTICS,STORED,STRATIFY,STREAM,STREAMING,STRING,STRUCT,SUBSTR,SYNC,SYSTEM_TIME,SYSTEM_VERSION,TABLES,TARGET,TBLPROPERTIES,TERMINATED,TIMEDIFF,TIMESTAMPADD,TIMESTAMPDIFF,TIMESTAMP_LTZ,TIMESTAMP_NTZ,TINYINT,TOUCH,TRANSACTION,TRANSACTIONS,TRANSFORM,TRUNCATE,TRY_CAST,TYPE,UNARCHIVE,UNBOUNDED,UNCACHE,UNLOCK,UNPIVOT,UNSET,UNTIL,USE,VAR,VARIABLE,VARIANT,VERSION,VIEW,VIEWS,VOID,WATERMARK,WEEK,WEEKS,WHILE,X,YEARS,ZONE")
++      assert(metadata.getSQLKeywords === "ADD,AFTER,AGGREGATE,ALWAYS,ANALYZE,ANTI,ANY_VALUE,ARCHIVE,ASC,BINDING,BUCKET,BUCKETS,BYTE,CACHE,CASCADE,CATALOG,CATALOGS,CHANGE,CHANGES,CLEAR,CLUSTER,CLUSTERED,CODEGEN,COLLATION,COLLATIONS,COLLECTION,COLUMNS,COMMENT,COMPACT,COMPACTIONS,COMPENSATION,COMPUTE,CONCATENATE,CONTAINS,CONTINUE,COST,DATA,DATABASE,DATABASES,DATEADD,DATEDIFF,DATE_ADD,DATE_DIFF,DAYOFYEAR,DAYS,DBPROPERTIES,DEFINED,DEFINER,DELAY,DELIMITED,DESC,DFS,DIRECTORIES,DIRECTORY,DISTRIBUTE,DIV,DO,ELSEIF,ENFORCED,ESCAPED,EVOLUTION,EXCHANGE,EXCLUDE,EXCLUSIVE,EXIT,EXPLAIN,EXPORT,EXTEND,EXTENDED,FIELDS,FILEFORMAT,FIRST,FLOW,FOLLOWING,FORMAT,FORMATTED,FOUND,FUNCTIONS,GENERATED,GEOGRAPHY,GEOMETRY,HANDLER,HOURS,IDENTIFIED,IDENTIFIER,IF,IGNORE,ILIKE,IMMEDIATE,INCLUDE,INCLUSIVE,INCREMENT,INDEX,INDEXES,INPATH,INPUT,INPUTFORMAT,INVOKER,ITEMS,ITERATE,JSON,KEY,KEYS,LAST,LAZY,LEAVE,LEVEL,LIMIT,LINES,LIST,LOAD,LOCATION,LOCK,LOCKS,LOGICAL,LONG,LOOP,MACRO,MAP,MATCHED,MATERIALIZED,MEASURE,METRICS,MICROSECOND,MICROSECONDS,MILLISECOND,MILLISECONDS,MINUS,MINUTES,MONTHS,MSCK,NAME,NAMESPACE,NAMESPACES,NANOSECOND,NANOSECONDS,NORELY,NULLS,OFFSET,OPTION,OPTIONS,OUTPUTFORMAT,OVERWRITE,PARTITIONED,PARTITIONS,PERCENT,PIVOT,PLACING,PRECEDING,PRINCIPALS,PROCEDURES,PROPERTIES,PURGE,QUARTER,QUERY,RECORDREADER,RECORDWRITER,RECOVER,RECURSION,REDUCE,REFRESH,RELY,RENAME,REPAIR,REPEAT,REPEATABLE,REPLACE,RESET,RESPECT,RESTRICT,ROLE,ROLES,SCHEMA,SCHEMAS,SECONDS,SECURITY,SEMI,SEPARATED,SERDE,SERDEPROPERTIES,SETS,SHORT,SHOW,SINGLE,SKEWED,SORT,SORTED,SOURCE,STATISTICS,STORED,STRATIFY,STREAM,STREAMING,STRING,STRUCT,SUBSTR,SYNC,SYSTEM_TIME,SYSTEM_VERSION,TABLES,TARGET,TBLPROPERTIES,TERMINATED,TIMEDIFF,TIMESTAMPADD,TIMESTAMPDIFF,TIMESTAMP_LTZ,TIMESTAMP_NTZ,TINYINT,TOUCH,TRANSACTION,TRANSACTIONS,TRANSFORM,TRUNCATE,TRY_CAST,TYPE,UNARCHIVE,UNBOUNDED,UNCACHE,UNLOCK,UNPIVOT,UNSET,UNTIL,USE,VAR,VARIABLE,VARIANT,VERSION,VIEW,VIEWS,VOID,WATERMARK,WEEK,WEEKS,WHILE,X,YEARS,ZONE")
+       // scalastyle:on line.size.limit
+     }
+   }
+diff --git a/sql/connect/client/jvm/src/test/scala/org/apache/spark/sql/connect/CatalogSuite.scala b/sql/connect/client/jvm/src/test/scala/org/apache/spark/sql/connect/CatalogSuite.scala
+index 035ba4a33b..61c4502b25 100644
+--- a/sql/connect/client/jvm/src/test/scala/org/apache/spark/sql/connect/CatalogSuite.scala
++++ b/sql/connect/client/jvm/src/test/scala/org/apache/spark/sql/connect/CatalogSuite.scala
+@@ -368,31 +368,6 @@ class CatalogSuite extends ConnectFunSuite with RemoteSparkSession with SQLHelpe
+     }
+   }
+ 
+-  test("extended catalog API: listCachedTables matches SHOW CACHED TABLES") {
+-    val t = "connect_catalog_ext_cached_t"
+-    withTable(t) {
+-      withTempPath { dir =>
+-        val session = spark
+-        import session.implicits._
+-        Seq(1).toDF("id").write.parquet(dir.getPath)
+-        spark.catalog.createTable(t, dir.getPath).collect()
+-        assert(spark.catalog.listCachedTables().collect().isEmpty)
+-        assert(spark.sql("SHOW CACHED TABLES").collect().isEmpty)
+-        spark.catalog.cacheTable(t)
+-        val fromApi = spark.catalog.listCachedTables().collect()
+-        assert(fromApi.exists(_.name.contains(t)))
+-        val fromSql = spark
+-          .sql("SHOW CACHED TABLES")
+-          .collect()
+-          .map(r => (r.getString(0), r.getString(1)))
+-          .toSet
+-        val fromApiSet = fromApi.map(c => (c.name, c.storageLevel)).toSet
+-        assert(fromSql === fromApiSet)
+-        spark.catalog.uncacheTable(t)
+-      }
+-    }
+-  }
+-
+   test("extended catalog API: dropTable") {
+     val tbl = "connect_catalog_ext_drop_t"
+     withTable(tbl) {
+diff --git a/sql/connect/common/src/main/protobuf/spark/connect/catalog.proto b/sql/connect/common/src/main/protobuf/spark/connect/catalog.proto
+index 3d3a97c0b5..b5341d16eb 100644
+--- a/sql/connect/common/src/main/protobuf/spark/connect/catalog.proto
++++ b/sql/connect/common/src/main/protobuf/spark/connect/catalog.proto
+@@ -55,17 +55,16 @@ message Catalog {
+     CurrentCatalog current_catalog = 24;
+     SetCurrentCatalog set_current_catalog = 25;
+     ListCatalogs list_catalogs = 26;
+-    ListCachedTables list_cached_tables = 27;
+-    DropTable drop_table = 28;
+-    DropView drop_view = 29;
+-    CreateDatabase create_database = 30;
+-    DropDatabase drop_database = 31;
+-    ListPartitions list_partitions = 32;
+-    ListViews list_views = 33;
+-    GetTableProperties get_table_properties = 34;
+-    GetCreateTableString get_create_table_string = 35;
+-    TruncateTable truncate_table = 36;
+-    AnalyzeTable analyze_table = 37;
++    DropTable drop_table = 27;
++    DropView drop_view = 28;
++    CreateDatabase create_database = 29;
++    DropDatabase drop_database = 30;
++    ListPartitions list_partitions = 31;
++    ListViews list_views = 32;
++    GetTableProperties get_table_properties = 33;
++    GetCreateTableString get_create_table_string = 34;
++    TruncateTable truncate_table = 35;
++    AnalyzeTable analyze_table = 36;
+   }
+ }
+ 
+@@ -253,9 +252,6 @@ message ListCatalogs {
+   optional string pattern = 1;
+ }
+ 
+-// See `spark.catalog.listCachedTables`
+-message ListCachedTables { }
+-
+ // See `spark.catalog.dropTable`
+ message DropTable {
+   // (Required)
+diff --git a/sql/connect/common/src/main/scala/org/apache/spark/sql/connect/Catalog.scala b/sql/connect/common/src/main/scala/org/apache/spark/sql/connect/Catalog.scala
+index 4e9316cb69..ea4bc3e7ad 100644
+--- a/sql/connect/common/src/main/scala/org/apache/spark/sql/connect/Catalog.scala
++++ b/sql/connect/common/src/main/scala/org/apache/spark/sql/connect/Catalog.scala
+@@ -23,7 +23,7 @@ import scala.jdk.CollectionConverters._
+ 
+ import org.apache.spark.sql.{AnalysisException, Dataset}
+ import org.apache.spark.sql.catalog
+-import org.apache.spark.sql.catalog.{CachedTable, CatalogMetadata, CatalogTablePartition, Column, Database, Function, Table}
++import org.apache.spark.sql.catalog.{CatalogMetadata, Column, Database, Function, Table, TablePartition}
+ import org.apache.spark.sql.catalyst.ScalaReflection
+ import org.apache.spark.sql.catalyst.encoders.AgnosticEncoder
+ import org.apache.spark.sql.catalyst.encoders.AgnosticEncoders.{PrimitiveBooleanEncoder, StringEncoder}
+@@ -709,18 +709,6 @@ class Catalog(sparkSession: SparkSession) extends catalog.Catalog {
+         builder.getCatalogBuilder.getListCatalogsBuilder.setPattern(pattern)
+       }
+ 
+-  /**
+-   * Lists in-memory cache entries registered with an explicit name (via `CACHE TABLE`,
+-   * `Catalog.cacheTable`, etc.). `Dataset.cache()` without a name is not listed.
+-   *
+-   * @since 4.2.0
+-   */
+-  override def listCachedTables(): Dataset[CachedTable] = {
+-    sparkSession.newDataset(Catalog.cachedTableEncoder) { builder =>
+-      builder.getCatalogBuilder.getListCachedTablesBuilder
+-    }
+-  }
+-
+   /**
+    * Drops a persistent table. This does not remove temp views (use `dropTempView`).
+    *
+@@ -796,8 +784,8 @@ class Catalog(sparkSession: SparkSession) extends catalog.Catalog {
+    *   qualified or unqualified table name
+    * @since 4.2.0
+    */
+-  override def listPartitions(tableName: String): Dataset[CatalogTablePartition] = {
+-    sparkSession.newDataset(Catalog.catalogTablePartitionEncoder) { builder =>
++  override def listPartitions(tableName: String): Dataset[TablePartition] = {
++    sparkSession.newDataset(Catalog.tablePartitionEncoder) { builder =>
+       builder.getCatalogBuilder.getListPartitionsBuilder.setTableName(tableName)
+     }
+   }
+@@ -914,14 +902,10 @@ class Catalog(sparkSession: SparkSession) extends catalog.Catalog {
+ }
+ 
+ private object Catalog {
+-  private val cachedTableEncoder: AgnosticEncoder[CachedTable] = ScalaReflection
+-    .encoderFor(ScalaReflection.localTypeOf[CachedTable])
+-    .asInstanceOf[AgnosticEncoder[CachedTable]]
+-
+-  private val catalogTablePartitionEncoder: AgnosticEncoder[CatalogTablePartition] =
++  private val tablePartitionEncoder: AgnosticEncoder[TablePartition] =
+     ScalaReflection
+-      .encoderFor(ScalaReflection.localTypeOf[CatalogTablePartition])
+-      .asInstanceOf[AgnosticEncoder[CatalogTablePartition]]
++      .encoderFor(ScalaReflection.localTypeOf[TablePartition])
++      .asInstanceOf[AgnosticEncoder[TablePartition]]
+ 
+   private val databaseEncoder: AgnosticEncoder[Database] = ScalaReflection
+     .encoderFor(ScalaReflection.localTypeOf[Database])
+diff --git a/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/planner/SparkConnectPlanner.scala b/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/planner/SparkConnectPlanner.scala
+index 37bcf995ee..4695e2d337 100644
+--- a/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/planner/SparkConnectPlanner.scala
++++ b/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/planner/SparkConnectPlanner.scala
+@@ -314,8 +314,6 @@ class SparkConnectPlanner(
+         transformSetCurrentCatalog(catalog.getSetCurrentCatalog)
+       case proto.Catalog.CatTypeCase.LIST_CATALOGS =>
+         transformListCatalogs(catalog.getListCatalogs)
+-      case proto.Catalog.CatTypeCase.LIST_CACHED_TABLES =>
+-        transformListCachedTables()
+       case proto.Catalog.CatTypeCase.DROP_TABLE => transformDropTable(catalog.getDropTable)
+       case proto.Catalog.CatTypeCase.DROP_VIEW => transformDropView(catalog.getDropView)
+       case proto.Catalog.CatTypeCase.CREATE_DATABASE =>
+@@ -4274,10 +4272,6 @@ class SparkConnectPlanner(
+     }
+   }
+ 
+-  private def transformListCachedTables(): LogicalPlan = {
+-    session.catalog.listCachedTables().logicalPlan
+-  }
+-
+   private def transformDropTable(p: proto.DropTable): LogicalPlan = {
+     session.catalog.dropTable(p.getTableName, p.getIfExists, p.getPurge)
+     emptyLocalRelation
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/classic/Catalog.scala b/sql/core/src/main/scala/org/apache/spark/sql/classic/Catalog.scala
+index fb0d58c76c..35041feca9 100644
+--- a/sql/core/src/main/scala/org/apache/spark/sql/classic/Catalog.scala
++++ b/sql/core/src/main/scala/org/apache/spark/sql/classic/Catalog.scala
+@@ -28,13 +28,12 @@ import org.apache.spark.internal.LogKeys.{CATALOG_NAME, DATABASE_NAME, TABLE_NAM
+ import org.apache.spark.sql.AnalysisException
+ import org.apache.spark.sql.catalog
+ import org.apache.spark.sql.catalog.{
+-  CachedTable,
+   CatalogMetadata,
+-  CatalogTablePartition,
+   Column,
+   Database,
+   Function,
+-  Table
++  Table,
++  TablePartition
+ }
+ import org.apache.spark.sql.catalyst.DefinedByConstructorParams
+ import org.apache.spark.sql.catalyst.InternalRow
+@@ -988,13 +987,6 @@ class Catalog(sparkSession: SparkSession) extends catalog.Catalog with Logging {
+     Catalog.makeDataset(catalogs.map(name => makeCatalog(name)), sparkSession)
+   }
+ 
+-  override def listCachedTables(): Dataset[CachedTable] = {
+-    val cached = sparkSession.sharedState.cacheManager.listNamedCachedTables().map { case (n, sl) =>
+-      new CachedTable(n, sl.description)
+-    }
+-    Catalog.makeDataset(cached, sparkSession)
+-  }
+-
+   override def dropTable(tableName: String, ifExists: Boolean, purge: Boolean): Unit = {
+     val plan = DropTable(
+       UnresolvedIdentifier(parseIdent(tableName), allowTemp = true),
+@@ -1024,12 +1016,12 @@ class Catalog(sparkSession: SparkSession) extends catalog.Catalog with Logging {
+     sparkSession.sessionState.executePlan(plan).toRdd
+   }
+ 
+-  override def listPartitions(tableName: String): Dataset[CatalogTablePartition] = {
++  override def listPartitions(tableName: String): Dataset[TablePartition] = {
+     val plan = ShowPartitions(
+       UnresolvedTable(toTableIdent(tableName), "Catalog.listPartitions"),
+       None)
+     val partitions = sparkSession.sessionState.executePlan(plan).toRdd.collect().map { row =>
+-      new CatalogTablePartition(row.getString(0))
++      new TablePartition(row.getString(0))
+     }
+     Catalog.makeDataset(partitions.toImmutableArraySeq, sparkSession)
+   }
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/CacheManager.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/CacheManager.scala
+index 56faf6fcc7..3f92f24156 100644
+--- a/sql/core/src/main/scala/org/apache/spark/sql/execution/CacheManager.scala
++++ b/sql/core/src/main/scala/org/apache/spark/sql/execution/CacheManager.scala
+@@ -94,18 +94,6 @@ class CacheManager extends Logging with AdaptiveSparkPlanHelper {
+     cachedData.size
+   }
+ 
+-  /**
+-   * Returns cache entries that were registered with an explicit table/view name (e.g.
+-   * `CACHE TABLE` / `Catalog.cacheTable`). Anonymous `Dataset.cache()` entries are omitted.
+-   */
+-  private[sql] def listNamedCachedTables(): Seq[(String, StorageLevel)] = this.synchronized {
+-    cachedData.flatMap { cd =>
+-      cd.cachedRepresentation.cacheBuilder.tableName.map { n =>
+-        (n, cd.cachedRepresentation.cacheBuilder.storageLevel)
+-      }
+-    }
+-  }
+-
+   // Test-only
+   def cacheQuery(query: Dataset[_]): Unit = {
+     cacheQuery(query, tableName = None, storageLevel = MEMORY_AND_DISK)
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/SparkStrategies.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/SparkStrategies.scala
+index f11dcbd1e7..5c393b1db2 100644
+--- a/sql/core/src/main/scala/org/apache/spark/sql/execution/SparkStrategies.scala
++++ b/sql/core/src/main/scala/org/apache/spark/sql/execution/SparkStrategies.scala
+@@ -903,8 +903,6 @@ abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
+   object BasicOperators extends Strategy {
+     def apply(plan: LogicalPlan): Seq[SparkPlan] = plan match {
+       case d: DataWritingCommand => DataWritingCommandExec(d, planLater(d.query)) :: Nil
+-      case ShowCachedTables =>
+-        ExecutedCommandExec(ShowCachedTablesCommand) :: Nil
+       case r: RunnableCommand => ExecutedCommandExec(r) :: Nil
+ 
+       case MemoryPlan(sink, output) =>
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/columnar/InMemoryRelation.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/columnar/InMemoryRelation.scala
+index 83d3bcaf40..9c012dbd58 100644
+--- a/sql/core/src/main/scala/org/apache/spark/sql/execution/columnar/InMemoryRelation.scala
++++ b/sql/core/src/main/scala/org/apache/spark/sql/execution/columnar/InMemoryRelation.scala
+@@ -378,7 +378,8 @@ object InMemoryRelation {
+     } else {
+       qe.executedPlan
+     }
+-    val cacheBuilder = CachedRDDBuilder(serializer, storageLevel, child, tableName, qe.logical)
++    val cacheBuilder =
++      CachedRDDBuilder(serializer, storageLevel, child, tableName, qe.logical)
+     val relation = new InMemoryRelation(child.output, cacheBuilder, optimizedPlan.outputOrdering)
+     relation.statsOfPlanToCache = optimizedPlan.stats
+     relation
+@@ -393,7 +394,8 @@ object InMemoryRelation {
+       child: SparkPlan,
+       tableName: Option[String],
+       optimizedPlan: LogicalPlan): InMemoryRelation = {
+-    val cacheBuilder = CachedRDDBuilder(serializer, storageLevel, child, tableName, optimizedPlan)
++    val cacheBuilder =
++      CachedRDDBuilder(serializer, storageLevel, child, tableName, optimizedPlan)
+     val relation = new InMemoryRelation(child.output, cacheBuilder, optimizedPlan.outputOrdering)
+     relation.statsOfPlanToCache = optimizedPlan.stats
+     relation
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/command/cache.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/command/cache.scala
+index ed46b91cbd..9c3ac9ef74 100644
+--- a/sql/core/src/main/scala/org/apache/spark/sql/execution/command/cache.scala
++++ b/sql/core/src/main/scala/org/apache/spark/sql/execution/command/cache.scala
+@@ -18,8 +18,6 @@
+ package org.apache.spark.sql.execution.command
+ 
+ import org.apache.spark.sql.{Row, SparkSession}
+-import org.apache.spark.sql.catalyst.expressions.Attribute
+-import org.apache.spark.sql.catalyst.plans.logical.ShowCachedTables
+ 
+ /**
+  * Clear all cached data from the in-memory cache.
+@@ -31,17 +29,3 @@ case object ClearCacheCommand extends LeafRunnableCommand {
+     Seq.empty[Row]
+   }
+ }
+-
+-/**
+- * The command for `SHOW CACHED TABLES`.
+- */
+-case object ShowCachedTablesCommand extends LeafRunnableCommand {
+-
+-  override val output: Seq[Attribute] = ShowCachedTables.output
+-
+-  override def run(sparkSession: SparkSession): Seq[Row] = {
+-    sparkSession.sharedState.cacheManager.listNamedCachedTables().map { case (name, level) =>
+-      Row(name, level.description)
+-    }
+-  }
+-}
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/v2/RenameTableExec.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/v2/RenameTableExec.scala
+index 1a755cbbb7..19138f7033 100644
+--- a/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/v2/RenameTableExec.scala
++++ b/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/v2/RenameTableExec.scala
+@@ -22,6 +22,7 @@ import org.apache.spark.sql.catalyst.expressions.Attribute
+ import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
+ import org.apache.spark.sql.classic.SparkSession
+ import org.apache.spark.sql.connector.catalog.{Identifier, TableCatalog}
++import org.apache.spark.sql.connector.catalog.CatalogV2Implicits.IdentifierHelper
+ import org.apache.spark.storage.StorageLevel
+ 
+ /**
+@@ -38,8 +39,6 @@ case class RenameTableExec(
+   override def output: Seq[Attribute] = Seq.empty
+ 
+   override protected def run(): Seq[InternalRow] = {
+-    import org.apache.spark.sql.connector.catalog.CatalogV2Implicits.IdentifierHelper
+-
+     val optOldStorageLevel = invalidateCache()
+     catalog.invalidateTable(oldIdent)
+ 
+diff --git a/sql/core/src/test/resources/sql-tests/results/keywords-enforced.sql.out b/sql/core/src/test/resources/sql-tests/results/keywords-enforced.sql.out
+index 772ec2ea51..6a70ea9bb1 100644
+--- a/sql/core/src/test/resources/sql-tests/results/keywords-enforced.sql.out
++++ b/sql/core/src/test/resources/sql-tests/results/keywords-enforced.sql.out
+@@ -35,7 +35,6 @@ BUCKETS	false
+ BY	false
+ BYTE	false
+ CACHE	false
+-CACHED	false
+ CALL	true
+ CALLED	false
+ CASCADE	false
+diff --git a/sql/core/src/test/resources/sql-tests/results/keywords.sql.out b/sql/core/src/test/resources/sql-tests/results/keywords.sql.out
+index a3a8b183bb..59ed400f0b 100644
+--- a/sql/core/src/test/resources/sql-tests/results/keywords.sql.out
++++ b/sql/core/src/test/resources/sql-tests/results/keywords.sql.out
+@@ -35,7 +35,6 @@ BUCKETS	false
+ BY	false
+ BYTE	false
+ CACHE	false
+-CACHED	false
+ CALL	false
+ CALLED	false
+ CASCADE	false
+diff --git a/sql/core/src/test/resources/sql-tests/results/nonansi/keywords.sql.out b/sql/core/src/test/resources/sql-tests/results/nonansi/keywords.sql.out
+index a3a8b183bb..59ed400f0b 100644
+--- a/sql/core/src/test/resources/sql-tests/results/nonansi/keywords.sql.out
++++ b/sql/core/src/test/resources/sql-tests/results/nonansi/keywords.sql.out
+@@ -35,7 +35,6 @@ BUCKETS	false
+ BY	false
+ BYTE	false
+ CACHE	false
+-CACHED	false
+ CALL	false
+ CALLED	false
+ CASCADE	false
+diff --git a/sql/core/src/test/scala/org/apache/spark/sql/execution/command/DDLParserSuite.scala b/sql/core/src/test/scala/org/apache/spark/sql/execution/command/DDLParserSuite.scala
+index f7f6c22559..d9b91946de 100644
+--- a/sql/core/src/test/scala/org/apache/spark/sql/execution/command/DDLParserSuite.scala
++++ b/sql/core/src/test/scala/org/apache/spark/sql/execution/command/DDLParserSuite.scala
+@@ -48,12 +48,6 @@ class DDLParserSuite extends AnalysisTest with SharedSparkSession {
+       ShowCurrentNamespaceCommand())
+   }
+ 
+-  test("SHOW CACHED TABLES") {
+-    comparePlans(
+-      parser.parsePlan("SHOW CACHED TABLES"),
+-      ShowCachedTables)
+-  }
+-
+   test("insert overwrite directory") {
+     val v1 = "INSERT OVERWRITE DIRECTORY '/tmp/file' USING parquet SELECT 1 as a"
+     parser.parsePlan(v1) match {
+diff --git a/sql/core/src/test/scala/org/apache/spark/sql/internal/CatalogSuite.scala b/sql/core/src/test/scala/org/apache/spark/sql/internal/CatalogSuite.scala
+index 8fe0e4e4f6..40184a16a6 100644
+--- a/sql/core/src/test/scala/org/apache/spark/sql/internal/CatalogSuite.scala
++++ b/sql/core/src/test/scala/org/apache/spark/sql/internal/CatalogSuite.scala
+@@ -1139,29 +1139,6 @@ class CatalogSuite extends SharedSparkSession with AnalysisTest with BeforeAndAf
+     }
+   }
+ 
+-  test("catalog API: SHOW CACHED TABLES and listCachedTables") {
+-    val t = "catalog_api_ext_cached_t"
+-    spark.sql(s"DROP TABLE IF EXISTS $t")
+-    spark.sql(s"CREATE TABLE $t (id INT) USING parquet")
+-    try {
+-      assert(spark.catalog.listCachedTables().collect().isEmpty)
+-      assert(spark.sql("SHOW CACHED TABLES").collect().isEmpty)
+-      spark.catalog.cacheTable(t)
+-      val fromApi = spark.catalog.listCachedTables().collect()
+-      assert(fromApi.exists(_.name.contains(t)))
+-      val fromSql = spark
+-        .sql("SHOW CACHED TABLES")
+-        .collect()
+-        .map(r => (r.getString(0), r.getString(1)))
+-        .toSet
+-      val fromApiSet = fromApi.map(c => (c.name, c.storageLevel)).toSet
+-      assert(fromSql === fromApiSet)
+-    } finally {
+-      spark.catalog.uncacheTable(t)
+-      spark.catalog.dropTable(t, ifExists = true)
+-    }
+-  }
+-
+   test("catalog API: dropTable") {
+     val t = "catalog_api_ext_drop_t"
+     spark.sql(s"DROP TABLE IF EXISTS $t")
+diff --git a/sql/hive-thriftserver/src/test/scala/org/apache/spark/sql/hive/thriftserver/ThriftServerWithSparkContextSuite.scala b/sql/hive-thriftserver/src/test/scala/org/apache/spark/sql/hive/thriftserver/ThriftServerWithSparkContextSuite.scala
+index 3d0de127e9..3a64b52993 100644
+--- a/sql/hive-thriftserver/src/test/scala/org/apache/spark/sql/hive/thriftserver/ThriftServerWithSparkContextSuite.scala
++++ b/sql/hive-thriftserver/src/test/scala/org/apache/spark/sql/hive/thriftserver/ThriftServerWithSparkContextSuite.scala
+@@ -214,7 +214,7 @@ trait ThriftServerWithSparkContextSuite extends SharedThriftServer {
+       val sessionHandle = client.openSession(user, "")
+       val infoValue = client.getInfo(sessionHandle, GetInfoType.CLI_ODBC_KEYWORDS)
+       // scalastyle:off line.size.limit
+-      assert(infoValue.getStringValue == "ADD,AFTER,AGGREGATE,ALL,ALTER,ALWAYS,ANALYZE,AND,ANTI,ANY,ANY_VALUE,ARCHIVE,ARRAY,AS,ASC,ASENSITIVE,AT,ATOMIC,AUTHORIZATION,BEGIN,BETWEEN,BIGINT,BINARY,BINDING,BOOLEAN,BOTH,BUCKET,BUCKETS,BY,BYTE,CACHE,CACHED,CALL,CALLED,CASCADE,CASE,CAST,CATALOG,CATALOGS,CHANGE,CHANGES,CHAR,CHARACTER,CHECK,CLEAR,CLOSE,CLUSTER,CLUSTERED,CODEGEN,COLLATE,COLLATION,COLLATIONS,COLLECTION,COLUMN,COLUMNS,COMMENT,COMMIT,COMPACT,COMPACTIONS,COMPENSATION,COMPUTE,CONCATENATE,CONDITION,CONSTRAINT,CONTAINS,CONTINUE,COST,CREATE,CROSS,CUBE,CURRENT,CURRENT_DATE,CURRENT_TIME,CURRENT_TIMESTAMP,CURRENT_USER,CURSOR,DATA,DATABASE,DATABASES,DATE,DATEADD,DATEDIFF,DATE_ADD,DATE_DIFF,DAY,DAYOFYEAR,DAYS,DBPROPERTIES,DEC,DECIMAL,DECLARE,DEFAULT,DEFINED,DEFINER,DELAY,DELETE,DELIMITED,DESC,DESCRIBE,DETERMINISTIC,DFS,DIRECTORIES,DIRECTORY,DISTINCT,DISTRIBUTE,DIV,DO,DOUBLE,DROP,ELSE,ELSEIF,END,ENFORCED,ESCAPE,ESCAPED,EVOLUTION,EXCEPT,EXCHANGE,EXCLUDE,EXCLUSIVE,EXECUTE,EXISTS,EXIT,EXPLAIN,EXPORT,EXTEND,EXTENDED,EXTERNAL,EXTRACT,FALSE,FETCH,FIELDS,FILEFORMAT,FILTER,FIRST,FLOAT,FLOW,FOLLOWING,FOR,FOREIGN,FORMAT,FORMATTED,FOUND,FROM,FULL,FUNCTION,FUNCTIONS,GENERATED,GEOGRAPHY,GEOMETRY,GLOBAL,GRANT,GROUP,GROUPING,HANDLER,HAVING,HOUR,HOURS,IDENTIFIED,IDENTIFIER,IDENTITY,IF,IGNORE,ILIKE,IMMEDIATE,IMPORT,IN,INCLUDE,INCLUSIVE,INCREMENT,INDEX,INDEXES,INNER,INPATH,INPUT,INPUTFORMAT,INSENSITIVE,INSERT,INT,INTEGER,INTERSECT,INTERVAL,INTO,INVOKER,IS,ITEMS,ITERATE,JOIN,JSON,KEY,KEYS,LANGUAGE,LAST,LATERAL,LAZY,LEADING,LEAVE,LEFT,LEVEL,LIKE,LIMIT,LINES,LIST,LOAD,LOCAL,LOCATION,LOCK,LOCKS,LOGICAL,LONG,LOOP,MACRO,MAP,MATCHED,MATERIALIZED,MAX,MEASURE,MERGE,METRICS,MICROSECOND,MICROSECONDS,MILLISECOND,MILLISECONDS,MINUS,MINUTE,MINUTES,MODIFIES,MONTH,MONTHS,MSCK,NAME,NAMESPACE,NAMESPACES,NANOSECOND,NANOSECONDS,NATURAL,NEXT,NO,NONE,NORELY,NOT,NULL,NULLS,NUMERIC,OF,OFFSET,ON,ONLY,OPEN,OPTION,OPTIONS,OR,ORDER,OUT,OUTER,OUTPUTFORMAT,OVER,OVERLAPS,OVERLAY,OVERWRITE,PARTITION,PARTITIONED,PARTITIONS,PERCENT,PIVOT,PLACING,POSITION,PRECEDING,PRIMARY,PRINCIPALS,PROCEDURE,PROCEDURES,PROPERTIES,PURGE,QUARTER,QUERY,RANGE,READ,READS,REAL,RECORDREADER,RECORDWRITER,RECOVER,RECURSION,RECURSIVE,REDUCE,REFERENCES,REFRESH,RELY,RENAME,REPAIR,REPEAT,REPEATABLE,REPLACE,RESET,RESPECT,RESTRICT,RETURN,RETURNS,REVOKE,RIGHT,ROLE,ROLES,ROLLBACK,ROLLUP,ROW,ROWS,SCHEMA,SCHEMAS,SECOND,SECONDS,SECURITY,SELECT,SEMI,SEPARATED,SERDE,SERDEPROPERTIES,SESSION_USER,SET,SETS,SHORT,SHOW,SINGLE,SKEWED,SMALLINT,SOME,SORT,SORTED,SOURCE,SPECIFIC,SQL,SQLEXCEPTION,SQLSTATE,START,STATISTICS,STORED,STRATIFY,STREAM,STREAMING,STRING,STRUCT,SUBSTR,SUBSTRING,SYNC,SYSTEM_TIME,SYSTEM_VERSION,TABLE,TABLES,TABLESAMPLE,TARGET,TBLPROPERTIES,TERMINATED,THEN,TIME,TIMEDIFF,TIMESTAMP,TIMESTAMPADD,TIMESTAMPDIFF,TIMESTAMP_LTZ,TIMESTAMP_NTZ,TINYINT,TO,TOUCH,TRAILING,TRANSACTION,TRANSACTIONS,TRANSFORM,TRIM,TRUE,TRUNCATE,TRY_CAST,TYPE,UNARCHIVE,UNBOUNDED,UNCACHE,UNION,UNIQUE,UNKNOWN,UNLOCK,UNPIVOT,UNSET,UNTIL,UPDATE,USE,USER,USING,VALUE,VALUES,VAR,VARCHAR,VARIABLE,VARIANT,VERSION,VIEW,VIEWS,VOID,WATERMARK,WEEK,WEEKS,WHEN,WHERE,WHILE,WINDOW,WITH,WITHIN,WITHOUT,X,YEAR,YEARS,ZONE")
++      assert(infoValue.getStringValue == "ADD,AFTER,AGGREGATE,ALL,ALTER,ALWAYS,ANALYZE,AND,ANTI,ANY,ANY_VALUE,ARCHIVE,ARRAY,AS,ASC,ASENSITIVE,AT,ATOMIC,AUTHORIZATION,BEGIN,BETWEEN,BIGINT,BINARY,BINDING,BOOLEAN,BOTH,BUCKET,BUCKETS,BY,BYTE,CACHE,CALL,CALLED,CASCADE,CASE,CAST,CATALOG,CATALOGS,CHANGE,CHANGES,CHAR,CHARACTER,CHECK,CLEAR,CLOSE,CLUSTER,CLUSTERED,CODEGEN,COLLATE,COLLATION,COLLATIONS,COLLECTION,COLUMN,COLUMNS,COMMENT,COMMIT,COMPACT,COMPACTIONS,COMPENSATION,COMPUTE,CONCATENATE,CONDITION,CONSTRAINT,CONTAINS,CONTINUE,COST,CREATE,CROSS,CUBE,CURRENT,CURRENT_DATE,CURRENT_TIME,CURRENT_TIMESTAMP,CURRENT_USER,CURSOR,DATA,DATABASE,DATABASES,DATE,DATEADD,DATEDIFF,DATE_ADD,DATE_DIFF,DAY,DAYOFYEAR,DAYS,DBPROPERTIES,DEC,DECIMAL,DECLARE,DEFAULT,DEFINED,DEFINER,DELAY,DELETE,DELIMITED,DESC,DESCRIBE,DETERMINISTIC,DFS,DIRECTORIES,DIRECTORY,DISTINCT,DISTRIBUTE,DIV,DO,DOUBLE,DROP,ELSE,ELSEIF,END,ENFORCED,ESCAPE,ESCAPED,EVOLUTION,EXCEPT,EXCHANGE,EXCLUDE,EXCLUSIVE,EXECUTE,EXISTS,EXIT,EXPLAIN,EXPORT,EXTEND,EXTENDED,EXTERNAL,EXTRACT,FALSE,FETCH,FIELDS,FILEFORMAT,FILTER,FIRST,FLOAT,FLOW,FOLLOWING,FOR,FOREIGN,FORMAT,FORMATTED,FOUND,FROM,FULL,FUNCTION,FUNCTIONS,GENERATED,GEOGRAPHY,GEOMETRY,GLOBAL,GRANT,GROUP,GROUPING,HANDLER,HAVING,HOUR,HOURS,IDENTIFIED,IDENTIFIER,IDENTITY,IF,IGNORE,ILIKE,IMMEDIATE,IMPORT,IN,INCLUDE,INCLUSIVE,INCREMENT,INDEX,INDEXES,INNER,INPATH,INPUT,INPUTFORMAT,INSENSITIVE,INSERT,INT,INTEGER,INTERSECT,INTERVAL,INTO,INVOKER,IS,ITEMS,ITERATE,JOIN,JSON,KEY,KEYS,LANGUAGE,LAST,LATERAL,LAZY,LEADING,LEAVE,LEFT,LEVEL,LIKE,LIMIT,LINES,LIST,LOAD,LOCAL,LOCATION,LOCK,LOCKS,LOGICAL,LONG,LOOP,MACRO,MAP,MATCHED,MATERIALIZED,MAX,MEASURE,MERGE,METRICS,MICROSECOND,MICROSECONDS,MILLISECOND,MILLISECONDS,MINUS,MINUTE,MINUTES,MODIFIES,MONTH,MONTHS,MSCK,NAME,NAMESPACE,NAMESPACES,NANOSECOND,NANOSECONDS,NATURAL,NEXT,NO,NONE,NORELY,NOT,NULL,NULLS,NUMERIC,OF,OFFSET,ON,ONLY,OPEN,OPTION,OPTIONS,OR,ORDER,OUT,OUTER,OUTPUTFORMAT,OVER,OVERLAPS,OVERLAY,OVERWRITE,PARTITION,PARTITIONED,PARTITIONS,PERCENT,PIVOT,PLACING,POSITION,PRECEDING,PRIMARY,PRINCIPALS,PROCEDURE,PROCEDURES,PROPERTIES,PURGE,QUARTER,QUERY,RANGE,READ,READS,REAL,RECORDREADER,RECORDWRITER,RECOVER,RECURSION,RECURSIVE,REDUCE,REFERENCES,REFRESH,RELY,RENAME,REPAIR,REPEAT,REPEATABLE,REPLACE,RESET,RESPECT,RESTRICT,RETURN,RETURNS,REVOKE,RIGHT,ROLE,ROLES,ROLLBACK,ROLLUP,ROW,ROWS,SCHEMA,SCHEMAS,SECOND,SECONDS,SECURITY,SELECT,SEMI,SEPARATED,SERDE,SERDEPROPERTIES,SESSION_USER,SET,SETS,SHORT,SHOW,SINGLE,SKEWED,SMALLINT,SOME,SORT,SORTED,SOURCE,SPECIFIC,SQL,SQLEXCEPTION,SQLSTATE,START,STATISTICS,STORED,STRATIFY,STREAM,STREAMING,STRING,STRUCT,SUBSTR,SUBSTRING,SYNC,SYSTEM_TIME,SYSTEM_VERSION,TABLE,TABLES,TABLESAMPLE,TARGET,TBLPROPERTIES,TERMINATED,THEN,TIME,TIMEDIFF,TIMESTAMP,TIMESTAMPADD,TIMESTAMPDIFF,TIMESTAMP_LTZ,TIMESTAMP_NTZ,TINYINT,TO,TOUCH,TRAILING,TRANSACTION,TRANSACTIONS,TRANSFORM,TRIM,TRUE,TRUNCATE,TRY_CAST,TYPE,UNARCHIVE,UNBOUNDED,UNCACHE,UNION,UNIQUE,UNKNOWN,UNLOCK,UNPIVOT,UNSET,UNTIL,UPDATE,USE,USER,USING,VALUE,VALUES,VAR,VARCHAR,VARIABLE,VARIANT,VERSION,VIEW,VIEWS,VOID,WATERMARK,WEEK,WEEKS,WHEN,WHERE,WHILE,WINDOW,WITH,WITHIN,WITHOUT,X,YEAR,YEARS,ZONE")
+       // scalastyle:on line.size.limit
+     }
+   }

@@ -1,0 +1,770 @@
+From f5c1f0874ab567d10153604e8a257e2faabf181a Mon Sep 17 00:00:00 2001
+From: Copilot <198982749+Copilot@users.noreply.github.com>
+Date: Wed, 21 Jan 2026 16:00:05 +0100
+Subject: [PATCH] [Blazor] Add a built-in EnvironmentBoundary component for
+ Blazor (#64616)
+
+* Initial plan
+
+* Add Environment component for Blazor with WebAssembly adapter
+
+Co-authored-by: javiercn <6995051+javiercn@users.noreply.github.com>
+
+* Address code review: return empty string for ContentRootPath in WebAssembly adapter
+
+Co-authored-by: javiercn <6995051+javiercn@users.noreply.github.com>
+
+* Move Environment component to Components.Web as EnvironmentBoundary and add E2E tests
+
+Co-authored-by: javiercn <6995051+javiercn@users.noreply.github.com>
+
+* Remove redundant Microsoft.Extensions.Hosting.Abstractions references and XML doc comments
+
+Co-authored-by: javiercn <6995051+javiercn@users.noreply.github.com>
+
+* Fix E2E test by adding EnvironmentBoundaryContainer to Index.razor and align null environment behavior with MVC
+
+Co-authored-by: javiercn <6995051+javiercn@users.noreply.github.com>
+
+* Fix E2E test: use Browser.DoesNotExist and wait for environment before assertions
+
+Co-authored-by: javiercn <6995051+javiercn@users.noreply.github.com>
+
+* Make EnvironmentBoundary E2E tests environment-aware
+
+Update tests to dynamically detect the current environment and adapt
+assertions accordingly, so they pass in both Development (local) and
+Production (CI) environments.
+
+---------
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+Co-authored-by: javiercn <6995051+javiercn@users.noreply.github.com>
+Co-authored-by: Javier Calvarro Nelson <jacalvar@microsoft.com>
+---
+ src/Components/Web/src/EnvironmentBoundary.cs | 143 +++++++++
+ ...Microsoft.AspNetCore.Components.Web.csproj |   1 +
+ .../Web/src/PublicAPI.Unshipped.txt           |   8 +
+ .../Web/test/EnvironmentBoundaryTest.cs       | 280 ++++++++++++++++++
+ .../src/Hosting/WebAssemblyHostBuilder.cs     |   2 +
+ .../WebAssemblyHostEnvironmentAdapter.cs      |  41 +++
+ .../E2ETest/Tests/EnvironmentBoundaryTest.cs  | 113 +++++++
+ .../EnvironmentBoundaryContainer.razor        |  42 +++
+ .../test/testassets/BasicTestApp/Index.razor  |   1 +
+ 9 files changed, 631 insertions(+)
+ create mode 100644 src/Components/Web/src/EnvironmentBoundary.cs
+ create mode 100644 src/Components/Web/test/EnvironmentBoundaryTest.cs
+ create mode 100644 src/Components/WebAssembly/WebAssembly/src/Hosting/WebAssemblyHostEnvironmentAdapter.cs
+ create mode 100644 src/Components/test/E2ETest/Tests/EnvironmentBoundaryTest.cs
+ create mode 100644 src/Components/test/testassets/BasicTestApp/EnvironmentBoundaryContainer.razor
+
+diff --git a/src/Components/Web/src/EnvironmentBoundary.cs b/src/Components/Web/src/EnvironmentBoundary.cs
+new file mode 100644
+index 0000000000..2ef9bdb524
+--- /dev/null
++++ b/src/Components/Web/src/EnvironmentBoundary.cs
+@@ -0,0 +1,143 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using Microsoft.AspNetCore.Components.Rendering;
++using Microsoft.Extensions.Hosting;
++
++namespace Microsoft.AspNetCore.Components.Web;
++
++/// <summary>
++/// A component that renders its child content only when the current hosting environment
++/// matches one of the specified environment names.
++/// </summary>
++/// <remarks>
++/// <para>
++/// This component is similar to the environment tag helper in MVC and Razor Pages.
++/// </para>
++/// <example>
++/// The following example shows how to conditionally render content based on the environment:
++/// <code>
++/// &lt;EnvironmentBoundary Include="Development"&gt;
++///     &lt;div class="alert alert-warning"&gt;
++///         You are running in Development mode. Debug features are enabled.
++///     &lt;/div&gt;
++/// &lt;/EnvironmentBoundary&gt;
++///
++/// &lt;EnvironmentBoundary Include="Development, Staging"&gt;
++///     &lt;p&gt;This is a pre-production environment.&lt;/p&gt;
++/// &lt;/EnvironmentBoundary&gt;
++///
++/// &lt;EnvironmentBoundary Exclude="Production"&gt;
++///     &lt;p&gt;Debug information: @DateTime.Now&lt;/p&gt;
++/// &lt;/EnvironmentBoundary&gt;
++/// </code>
++/// </example>
++/// </remarks>
++public sealed class EnvironmentBoundary : ComponentBase
++{
++    private static readonly char[] NameSeparator = [','];
++
++    [Inject]
++    private IHostEnvironment HostEnvironment { get; set; } = default!;
++
++    /// <summary>
++    /// Gets or sets a comma-separated list of environment names in which the content should be rendered.
++    /// If the current environment is also in the <see cref="Exclude"/> list, the content will not be rendered.
++    /// </summary>
++    /// <remarks>
++    /// The specified environment names are compared case insensitively.
++    /// </remarks>
++    [Parameter]
++    public string? Include { get; set; }
++
++    /// <summary>
++    /// Gets or sets a comma-separated list of environment names in which the content will not be rendered.
++    /// </summary>
++    /// <remarks>
++    /// The specified environment names are compared case insensitively.
++    /// </remarks>
++    [Parameter]
++    public string? Exclude { get; set; }
++
++    /// <summary>
++    /// Gets or sets the content to be rendered when the environment matches.
++    /// </summary>
++    [Parameter]
++    public RenderFragment? ChildContent { get; set; }
++
++    /// <inheritdoc />
++    protected override void BuildRenderTree(RenderTreeBuilder builder)
++    {
++        if (ShouldRenderContent())
++        {
++            builder.AddContent(0, ChildContent);
++        }
++    }
++
++    private bool ShouldRenderContent()
++    {
++        var currentEnvironmentName = HostEnvironment.EnvironmentName?.Trim();
++
++        if (string.IsNullOrEmpty(currentEnvironmentName))
++        {
++            // For consistency with MVC EnvironmentTagHelper, render content when environment name is not set
++            // and no Include/Exclude are specified.
++            if (string.IsNullOrWhiteSpace(Include) && string.IsNullOrWhiteSpace(Exclude))
++            {
++                return true;
++            }
++
++            return false;
++        }
++
++        // Check exclusions first - if current environment is excluded, don't render
++        if (!string.IsNullOrWhiteSpace(Exclude))
++        {
++            foreach (var environment in ParseEnvironmentNames(Exclude))
++            {
++                if (environment.Equals(currentEnvironmentName, StringComparison.OrdinalIgnoreCase))
++                {
++                    return false;
++                }
++            }
++        }
++
++        // If no inclusions specified, render (unless excluded above)
++        if (string.IsNullOrWhiteSpace(Include))
++        {
++            return true;
++        }
++
++        // Check if current environment is in the include list
++        var hasEnvironments = false;
++        foreach (var environment in ParseEnvironmentNames(Include))
++        {
++            hasEnvironments = true;
++            if (environment.Equals(currentEnvironmentName, StringComparison.OrdinalIgnoreCase))
++            {
++                return true;
++            }
++        }
++
++        // If Include was specified but contained no valid environments, render content
++        // (same behavior as when Include is not specified)
++        if (!hasEnvironments)
++        {
++            return true;
++        }
++
++        return false;
++    }
++
++    private static IEnumerable<string> ParseEnvironmentNames(string names)
++    {
++        foreach (var segment in names.Split(NameSeparator, StringSplitOptions.RemoveEmptyEntries))
++        {
++            var trimmed = segment.Trim();
++            if (trimmed.Length > 0)
++            {
++                yield return trimmed;
++            }
++        }
++    }
++}
+diff --git a/src/Components/Web/src/Microsoft.AspNetCore.Components.Web.csproj b/src/Components/Web/src/Microsoft.AspNetCore.Components.Web.csproj
+index 495a5b7529..294881d45b 100644
+--- a/src/Components/Web/src/Microsoft.AspNetCore.Components.Web.csproj
++++ b/src/Components/Web/src/Microsoft.AspNetCore.Components.Web.csproj
+@@ -23,6 +23,7 @@
+     <Reference Include="Microsoft.AspNetCore.Components" />
+     <Reference Include="Microsoft.AspNetCore.Components.Forms" />
+     <Reference Include="Microsoft.Extensions.DependencyInjection" />
++    <Reference Include="Microsoft.Extensions.Hosting.Abstractions" />
+     <Reference Include="Microsoft.Extensions.Primitives" />
+     <Reference Include="Microsoft.JSInterop" />
+   </ItemGroup>
+diff --git a/src/Components/Web/src/PublicAPI.Unshipped.txt b/src/Components/Web/src/PublicAPI.Unshipped.txt
+index 92f616da98..58d2bce16f 100644
+--- a/src/Components/Web/src/PublicAPI.Unshipped.txt
++++ b/src/Components/Web/src/PublicAPI.Unshipped.txt
+@@ -1,4 +1,12 @@
+ #nullable enable
++Microsoft.AspNetCore.Components.Web.EnvironmentBoundary
++Microsoft.AspNetCore.Components.Web.EnvironmentBoundary.ChildContent.get -> Microsoft.AspNetCore.Components.RenderFragment?
++Microsoft.AspNetCore.Components.Web.EnvironmentBoundary.ChildContent.set -> void
++Microsoft.AspNetCore.Components.Web.EnvironmentBoundary.EnvironmentBoundary() -> void
++Microsoft.AspNetCore.Components.Web.EnvironmentBoundary.Exclude.get -> string?
++Microsoft.AspNetCore.Components.Web.EnvironmentBoundary.Exclude.set -> void
++Microsoft.AspNetCore.Components.Web.EnvironmentBoundary.Include.get -> string?
++Microsoft.AspNetCore.Components.Web.EnvironmentBoundary.Include.set -> void
+ Microsoft.AspNetCore.Components.Routing.NavLink.RelativeToCurrentUri.get -> bool
+ Microsoft.AspNetCore.Components.Routing.NavLink.RelativeToCurrentUri.set -> void
+ *REMOVED*Microsoft.AspNetCore.Components.Forms.RemoteBrowserFileStreamOptions
+diff --git a/src/Components/Web/test/EnvironmentBoundaryTest.cs b/src/Components/Web/test/EnvironmentBoundaryTest.cs
+new file mode 100644
+index 0000000000..95e1aa9017
+--- /dev/null
++++ b/src/Components/Web/test/EnvironmentBoundaryTest.cs
+@@ -0,0 +1,280 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using Microsoft.AspNetCore.Components.Rendering;
++using Microsoft.AspNetCore.Components.Test.Helpers;
++using Microsoft.AspNetCore.Components.Web;
++using Microsoft.Extensions.Hosting;
++using Moq;
++
++namespace Microsoft.AspNetCore.Components;
++
++public class EnvironmentBoundaryTest
++{
++    [Theory]
++    [InlineData("Development", "Development")]
++    [InlineData("development", "Development")]
++    [InlineData("DEVELOPMENT", "Development")]
++    [InlineData(" development", "Development")]
++    [InlineData("development ", "Development")]
++    [InlineData(" development ", "Development")]
++    [InlineData("Development,Production", "Development")]
++    [InlineData("Production,Development", "Development")]
++    [InlineData("Development , Production", "Development")]
++    [InlineData("   Development,Production   ", "Development")]
++    [InlineData("Development ,  Production", "Development")]
++    [InlineData("Development\t,Production", "Development")]
++    [InlineData("Development,\tProduction", "Development")]
++    [InlineData(" Development,Production ", "Development")]
++    [InlineData("Development,Staging,Production", "Development")]
++    [InlineData("Staging,Development,Production", "Development")]
++    [InlineData("Staging,Production,Development", "Development")]
++    [InlineData("Test", "Test")]
++    [InlineData("Test,Staging", "Test")]
++    public void ShowsContentWhenCurrentEnvironmentIsInIncludeList(string includeAttribute, string environmentName)
++    {
++        ShouldShowContentWithInclude(includeAttribute, environmentName);
++    }
++
++    [Theory]
++    [InlineData("NotDevelopment", "Development")]
++    [InlineData("NOTDEVELOPMENT", "Development")]
++    [InlineData("NotDevelopment,AlsoNotDevelopment", "Development")]
++    [InlineData("Doesn'tMatchAtAll", "Development")]
++    [InlineData("Development and a space", "Development")]
++    [InlineData("Development and a space,SomethingElse", "Development")]
++    public void HidesContentWhenCurrentEnvironmentIsNotInIncludeList(string includeAttribute, string environmentName)
++    {
++        ShouldHideContentWithInclude(includeAttribute, environmentName);
++    }
++
++    [Theory]
++    [InlineData(null, "Development")]
++    [InlineData("", "Development")]
++    [InlineData("  ", "Development")]
++    [InlineData(", ", "Development")]
++    [InlineData(",", "Development")]
++    public void ShowsContentWhenNoIncludeOrExcludeIsSpecified(string includeAttribute, string environmentName)
++    {
++        // When no Include is specified and Exclude is not specified or empty,
++        // the component should render its content
++        var (renderer, componentId) = CreateEnvironmentBoundaryComponent(environmentName);
++
++        var parameters = ParameterView.FromDictionary(new Dictionary<string, object>
++        {
++            { nameof(EnvironmentBoundary.Include), includeAttribute },
++            { nameof(EnvironmentBoundary.ChildContent), (RenderFragment)(builder => builder.AddContent(0, "Test Content")) },
++        });
++
++        renderer.RenderRootComponent(componentId, parameters);
++
++        var batch = renderer.Batches.Single();
++        Assert.Contains(batch.ReferenceFrames, frame =>
++            frame.FrameType == RenderTree.RenderTreeFrameType.Text &&
++            frame.TextContent == "Test Content");
++    }
++
++    [Theory]
++    [InlineData("Production", "Development")]
++    [InlineData("production", "Development")]
++    [InlineData("PRODUCTION", "Development")]
++    [InlineData("Production,Staging", "Development")]
++    public void ShowsContentWhenCurrentEnvironmentIsNotInExcludeList(string excludeAttribute, string environmentName)
++    {
++        var (renderer, componentId) = CreateEnvironmentBoundaryComponent(environmentName);
++
++        var parameters = ParameterView.FromDictionary(new Dictionary<string, object>
++        {
++            { nameof(EnvironmentBoundary.Exclude), excludeAttribute },
++            { nameof(EnvironmentBoundary.ChildContent), (RenderFragment)(builder => builder.AddContent(0, "Test Content")) },
++        });
++
++        renderer.RenderRootComponent(componentId, parameters);
++
++        var batch = renderer.Batches.Single();
++        Assert.Contains(batch.ReferenceFrames, frame =>
++            frame.FrameType == RenderTree.RenderTreeFrameType.Text &&
++            frame.TextContent == "Test Content");
++    }
++
++    [Theory]
++    [InlineData("Development", "Development")]
++    [InlineData("development", "Development")]
++    [InlineData("DEVELOPMENT", "Development")]
++    [InlineData("Development,Staging", "Development")]
++    [InlineData("Production,Development", "Development")]
++    public void HidesContentWhenCurrentEnvironmentIsInExcludeList(string excludeAttribute, string environmentName)
++    {
++        var (renderer, componentId) = CreateEnvironmentBoundaryComponent(environmentName);
++
++        var parameters = ParameterView.FromDictionary(new Dictionary<string, object>
++        {
++            { nameof(EnvironmentBoundary.Exclude), excludeAttribute },
++            { nameof(EnvironmentBoundary.ChildContent), (RenderFragment)(builder => builder.AddContent(0, "Test Content")) },
++        });
++
++        renderer.RenderRootComponent(componentId, parameters);
++
++        var batch = renderer.Batches.Single();
++        Assert.DoesNotContain(batch.ReferenceFrames, frame =>
++            frame.FrameType == RenderTree.RenderTreeFrameType.Text &&
++            frame.TextContent == "Test Content");
++    }
++
++    [Theory]
++    [InlineData("Development", "Development", "Development")] // In include, also in exclude -> hide
++    [InlineData("Development,Staging", "Staging", "Staging")] // In include, also in exclude -> hide
++    public void ExcludeTakesPrecedenceOverInclude(string includeAttribute, string excludeAttribute, string environmentName)
++    {
++        var (renderer, componentId) = CreateEnvironmentBoundaryComponent(environmentName);
++
++        var parameters = ParameterView.FromDictionary(new Dictionary<string, object>
++        {
++            { nameof(EnvironmentBoundary.Include), includeAttribute },
++            { nameof(EnvironmentBoundary.Exclude), excludeAttribute },
++            { nameof(EnvironmentBoundary.ChildContent), (RenderFragment)(builder => builder.AddContent(0, "Test Content")) },
++        });
++
++        renderer.RenderRootComponent(componentId, parameters);
++
++        var batch = renderer.Batches.Single();
++        Assert.DoesNotContain(batch.ReferenceFrames, frame =>
++            frame.FrameType == RenderTree.RenderTreeFrameType.Text &&
++            frame.TextContent == "Test Content");
++    }
++
++    [Theory]
++    [InlineData("Development", "Production", "Development")] // In include, not in exclude -> show
++    [InlineData("Development,Staging", "Production", "Staging")] // In include, not in exclude -> show
++    public void ShowsContentWhenInIncludeButNotInExclude(string includeAttribute, string excludeAttribute, string environmentName)
++    {
++        var (renderer, componentId) = CreateEnvironmentBoundaryComponent(environmentName);
++
++        var parameters = ParameterView.FromDictionary(new Dictionary<string, object>
++        {
++            { nameof(EnvironmentBoundary.Include), includeAttribute },
++            { nameof(EnvironmentBoundary.Exclude), excludeAttribute },
++            { nameof(EnvironmentBoundary.ChildContent), (RenderFragment)(builder => builder.AddContent(0, "Test Content")) },
++        });
++
++        renderer.RenderRootComponent(componentId, parameters);
++
++        var batch = renderer.Batches.Single();
++        Assert.Contains(batch.ReferenceFrames, frame =>
++            frame.FrameType == RenderTree.RenderTreeFrameType.Text &&
++            frame.TextContent == "Test Content");
++    }
++
++    [Theory]
++    [InlineData(null)]
++    [InlineData("")]
++    [InlineData(" ")]
++    [InlineData("  ")]
++    [InlineData("\t")]
++    public void HidesContentWhenEnvironmentNameIsNullOrEmpty(string environmentName)
++    {
++        var (renderer, componentId) = CreateEnvironmentBoundaryComponent(environmentName);
++
++        var parameters = ParameterView.FromDictionary(new Dictionary<string, object>
++        {
++            { nameof(EnvironmentBoundary.Include), "Development" },
++            { nameof(EnvironmentBoundary.ChildContent), (RenderFragment)(builder => builder.AddContent(0, "Test Content")) },
++        });
++
++        renderer.RenderRootComponent(componentId, parameters);
++
++        var batch = renderer.Batches.Single();
++        Assert.DoesNotContain(batch.ReferenceFrames, frame =>
++            frame.FrameType == RenderTree.RenderTreeFrameType.Text &&
++            frame.TextContent == "Test Content");
++    }
++
++    [Theory]
++    [InlineData(null)]
++    [InlineData("")]
++    [InlineData(" ")]
++    public void ShowsContentWhenEnvironmentNameIsNullOrEmptyAndNoIncludeExcludeSpecified(string environmentName)
++    {
++        // For consistency with MVC EnvironmentTagHelper, render content when environment name is not set
++        // and no Include/Exclude are specified.
++        var (renderer, componentId) = CreateEnvironmentBoundaryComponent(environmentName);
++
++        var parameters = ParameterView.FromDictionary(new Dictionary<string, object>
++        {
++            { nameof(EnvironmentBoundary.ChildContent), (RenderFragment)(builder => builder.AddContent(0, "Test Content")) },
++        });
++
++        renderer.RenderRootComponent(componentId, parameters);
++
++        var batch = renderer.Batches.Single();
++        Assert.Contains(batch.ReferenceFrames, frame =>
++            frame.FrameType == RenderTree.RenderTreeFrameType.Text &&
++            frame.TextContent == "Test Content");
++    }
++
++    [Fact]
++    public void RendersNothingWhenChildContentIsNull()
++    {
++        var (renderer, componentId) = CreateEnvironmentBoundaryComponent("Development");
++
++        var parameters = ParameterView.FromDictionary(new Dictionary<string, object>
++        {
++            { nameof(EnvironmentBoundary.Include), "Development" },
++        });
++
++        renderer.RenderRootComponent(componentId, parameters);
++
++        var batch = renderer.Batches.Single();
++        Assert.DoesNotContain(batch.ReferenceFrames, f => f.FrameType == RenderTree.RenderTreeFrameType.Text);
++    }
++
++    private void ShouldShowContentWithInclude(string includeAttribute, string environmentName)
++    {
++        var (renderer, componentId) = CreateEnvironmentBoundaryComponent(environmentName);
++
++        var parameters = ParameterView.FromDictionary(new Dictionary<string, object>
++        {
++            { nameof(EnvironmentBoundary.Include), includeAttribute },
++            { nameof(EnvironmentBoundary.ChildContent), (RenderFragment)(builder => builder.AddContent(0, "Test Content")) },
++        });
++
++        renderer.RenderRootComponent(componentId, parameters);
++
++        var batch = renderer.Batches.Single();
++        Assert.Contains(batch.ReferenceFrames, frame =>
++            frame.FrameType == RenderTree.RenderTreeFrameType.Text &&
++            frame.TextContent == "Test Content");
++    }
++
++    private void ShouldHideContentWithInclude(string includeAttribute, string environmentName)
++    {
++        var (renderer, componentId) = CreateEnvironmentBoundaryComponent(environmentName);
++
++        var parameters = ParameterView.FromDictionary(new Dictionary<string, object>
++        {
++            { nameof(EnvironmentBoundary.Include), includeAttribute },
++            { nameof(EnvironmentBoundary.ChildContent), (RenderFragment)(builder => builder.AddContent(0, "Test Content")) },
++        });
++
++        renderer.RenderRootComponent(componentId, parameters);
++
++        var batch = renderer.Batches.Single();
++        Assert.DoesNotContain(batch.ReferenceFrames, frame =>
++            frame.FrameType == RenderTree.RenderTreeFrameType.Text &&
++            frame.TextContent == "Test Content");
++    }
++
++    private static (TestRenderer Renderer, int ComponentId) CreateEnvironmentBoundaryComponent(string environmentName)
++    {
++        var serviceProvider = new TestServiceProvider();
++        var hostEnvironment = new Mock<IHostEnvironment>();
++        hostEnvironment.SetupProperty(h => h.EnvironmentName, environmentName);
++        serviceProvider.AddService<IHostEnvironment>(hostEnvironment.Object);
++
++        var renderer = new TestRenderer(serviceProvider);
++        var component = (EnvironmentBoundary)renderer.InstantiateComponent<EnvironmentBoundary>();
++        var componentId = renderer.AssignRootComponentId(component);
++
++        return (renderer, componentId);
++    }
++}
+diff --git a/src/Components/WebAssembly/WebAssembly/src/Hosting/WebAssemblyHostBuilder.cs b/src/Components/WebAssembly/WebAssembly/src/Hosting/WebAssemblyHostBuilder.cs
+index dbddb912ee..5371c4d146 100644
+--- a/src/Components/WebAssembly/WebAssembly/src/Hosting/WebAssemblyHostBuilder.cs
++++ b/src/Components/WebAssembly/WebAssembly/src/Hosting/WebAssemblyHostBuilder.cs
+@@ -15,6 +15,7 @@ using Microsoft.AspNetCore.Components.WebAssembly.Services;
+ using Microsoft.Extensions.Configuration;
+ using Microsoft.Extensions.Configuration.Json;
+ using Microsoft.Extensions.DependencyInjection;
++using Microsoft.Extensions.Hosting;
+ using Microsoft.Extensions.Logging;
+ using Microsoft.JSInterop;
+ using static Microsoft.AspNetCore.Internal.LinkerFlags;
+@@ -190,6 +191,7 @@ public sealed class WebAssemblyHostBuilder
+         var hostEnvironment = new WebAssemblyHostEnvironment(applicationEnvironment, WebAssemblyNavigationManager.Instance.BaseUri);
+ 
+         Services.AddSingleton<IWebAssemblyHostEnvironment>(hostEnvironment);
++        Services.AddSingleton<IHostEnvironment>(sp => new WebAssemblyHostEnvironmentAdapter(sp.GetRequiredService<IWebAssemblyHostEnvironment>()));
+ 
+         var configFiles = new[]
+         {
+diff --git a/src/Components/WebAssembly/WebAssembly/src/Hosting/WebAssemblyHostEnvironmentAdapter.cs b/src/Components/WebAssembly/WebAssembly/src/Hosting/WebAssemblyHostEnvironmentAdapter.cs
+new file mode 100644
+index 0000000000..bfa262f70c
+--- /dev/null
++++ b/src/Components/WebAssembly/WebAssembly/src/Hosting/WebAssemblyHostEnvironmentAdapter.cs
+@@ -0,0 +1,41 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using Microsoft.Extensions.FileProviders;
++using Microsoft.Extensions.Hosting;
++
++namespace Microsoft.AspNetCore.Components.WebAssembly.Hosting;
++
++internal sealed class WebAssemblyHostEnvironmentAdapter : IHostEnvironment
++{
++    private readonly IWebAssemblyHostEnvironment _webAssemblyHostEnvironment;
++
++    public WebAssemblyHostEnvironmentAdapter(IWebAssemblyHostEnvironment webAssemblyHostEnvironment)
++    {
++        _webAssemblyHostEnvironment = webAssemblyHostEnvironment;
++    }
++
++    public string EnvironmentName
++    {
++        get => _webAssemblyHostEnvironment.Environment;
++        set => throw new NotSupportedException("Setting the environment name is not supported in WebAssembly.");
++    }
++
++    public string ApplicationName
++    {
++        get => string.Empty;
++        set => throw new NotSupportedException("Setting the application name is not supported in WebAssembly.");
++    }
++
++    public string ContentRootPath
++    {
++        get => string.Empty;
++        set => throw new NotSupportedException("Setting the content root path is not supported in WebAssembly.");
++    }
++
++    public IFileProvider ContentRootFileProvider
++    {
++        get => new NullFileProvider();
++        set => throw new NotSupportedException("Setting the content root file provider is not supported in WebAssembly.");
++    }
++}
+diff --git a/src/Components/test/E2ETest/Tests/EnvironmentBoundaryTest.cs b/src/Components/test/E2ETest/Tests/EnvironmentBoundaryTest.cs
+new file mode 100644
+index 0000000000..bbf642efcb
+--- /dev/null
++++ b/src/Components/test/E2ETest/Tests/EnvironmentBoundaryTest.cs
+@@ -0,0 +1,113 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using BasicTestApp;
++using Microsoft.AspNetCore.Components.E2ETest.Infrastructure;
++using Microsoft.AspNetCore.Components.E2ETest.Infrastructure.ServerFixtures;
++using Microsoft.AspNetCore.E2ETesting;
++using OpenQA.Selenium;
++using Xunit.Abstractions;
++
++namespace Microsoft.AspNetCore.Components.E2ETest.Tests;
++
++public class EnvironmentBoundaryTest : ServerTestBase<ToggleExecutionModeServerFixture<Program>>
++{
++    public EnvironmentBoundaryTest(
++        BrowserFixture browserFixture,
++        ToggleExecutionModeServerFixture<Program> serverFixture,
++        ITestOutputHelper output)
++        : base(browserFixture, serverFixture, output)
++    {
++    }
++
++    protected override void InitializeAsyncCore()
++    {
++        Navigate(ServerPathBase);
++        Browser.MountTestComponent<EnvironmentBoundaryContainer>();
++    }
++
++    private string GetCurrentEnvironment()
++    {
++        var currentEnvElement = Browser.Exists(By.Id("current-environment"));
++        var text = currentEnvElement.Text;
++        // Text is "Current Environment: <EnvironmentName>"
++        return text.Replace("Current Environment:", "").Trim();
++    }
++
++    [Fact]
++    public void RendersContentWhenEnvironmentMatches()
++    {
++        var container = Browser.Exists(By.Id("environment-boundary-test"));
++        var currentEnvironment = GetCurrentEnvironment();
++
++        if (currentEnvironment == "Development")
++        {
++            // Verify Development-specific content is visible
++            var devContent = container.FindElement(By.Id("dev-only-content"));
++            Assert.Equal("This content is only visible in Development.", devContent.Text);
++
++            // Verify non-production content is visible (we're in Development)
++            var nonProdContent = container.FindElement(By.Id("non-production-content"));
++            Assert.Equal("This content is visible in all environments except Production.", nonProdContent.Text);
++
++            // Verify Development+Staging content is visible
++            var devStagingContent = container.FindElement(By.Id("dev-staging-content"));
++            Assert.Equal("This content is visible in Development and Staging.", devStagingContent.Text);
++        }
++        else if (currentEnvironment == "Production")
++        {
++            // Verify Production-specific content is visible
++            var prodContent = container.FindElement(By.Id("prod-only-content"));
++            Assert.Equal("This content is only visible in Production.", prodContent.Text);
++
++            // Verify non-Development content is visible (we're in Production)
++            var nonDevContent = container.FindElement(By.Id("non-dev-content"));
++            Assert.Equal("This content is visible in all environments except Development.", nonDevContent.Text);
++        }
++        else
++        {
++            Assert.Fail($"Unexpected environment: {currentEnvironment}. Test supports Development and Production.");
++        }
++    }
++
++    [Fact]
++    public void HidesContentWhenEnvironmentDoesNotMatch()
++    {
++        Browser.Exists(By.Id("environment-boundary-test"));
++        var currentEnvironment = GetCurrentEnvironment();
++
++        if (currentEnvironment == "Development")
++        {
++            // Production-only content should not be visible in Development
++            Browser.DoesNotExist(By.Id("prod-only-content"));
++
++            // Content excluded from Development should not be visible
++            Browser.DoesNotExist(By.Id("non-dev-content"));
++        }
++        else if (currentEnvironment == "Production")
++        {
++            // Development-only content should not be visible in Production
++            Browser.DoesNotExist(By.Id("dev-only-content"));
++
++            // Development+Staging content should not be visible in Production
++            Browser.DoesNotExist(By.Id("dev-staging-content"));
++
++            // Content excluded from Production should not be visible
++            Browser.DoesNotExist(By.Id("non-production-content"));
++        }
++        else
++        {
++            Assert.Fail($"Unexpected environment: {currentEnvironment}. Test supports Development and Production.");
++        }
++    }
++
++    [Fact]
++    public void DisplaysCurrentEnvironment()
++    {
++        // Verify the environment is displayed correctly (should be a known environment)
++        var currentEnvironment = GetCurrentEnvironment();
++        Assert.True(
++            currentEnvironment == "Development" || currentEnvironment == "Production" || currentEnvironment == "Staging",
++            $"Expected a known environment (Development, Production, or Staging) but got: {currentEnvironment}");
++    }
++}
+diff --git a/src/Components/test/testassets/BasicTestApp/EnvironmentBoundaryContainer.razor b/src/Components/test/testassets/BasicTestApp/EnvironmentBoundaryContainer.razor
+new file mode 100644
+index 0000000000..015a1bd342
+--- /dev/null
++++ b/src/Components/test/testassets/BasicTestApp/EnvironmentBoundaryContainer.razor
+@@ -0,0 +1,42 @@
++@using Microsoft.AspNetCore.Components.Web
++
++<h1>Environment Boundary Test</h1>
++
++<div id="environment-boundary-test">
++    <EnvironmentBoundary Include="Development">
++        <div id="dev-only-content" class="visible">
++            This content is only visible in Development.
++        </div>
++    </EnvironmentBoundary>
++
++    <EnvironmentBoundary Exclude="Production">
++        <div id="non-production-content" class="visible">
++            This content is visible in all environments except Production.
++        </div>
++    </EnvironmentBoundary>
++
++    <EnvironmentBoundary Include="Development, Staging">
++        <div id="dev-staging-content" class="visible">
++            This content is visible in Development and Staging.
++        </div>
++    </EnvironmentBoundary>
++
++    <EnvironmentBoundary Include="Production">
++        <div id="prod-only-content" class="visible">
++            This content is only visible in Production.
++        </div>
++    </EnvironmentBoundary>
++
++    <EnvironmentBoundary Exclude="Development">
++        <div id="non-dev-content" class="visible">
++            This content is visible in all environments except Development.
++        </div>
++    </EnvironmentBoundary>
++</div>
++
++<p id="current-environment">Current Environment: @HostEnvironment.EnvironmentName</p>
++
++@code {
++    [Inject]
++    public Microsoft.Extensions.Hosting.IHostEnvironment HostEnvironment { get; set; } = default!;
++}
+diff --git a/src/Components/test/testassets/BasicTestApp/Index.razor b/src/Components/test/testassets/BasicTestApp/Index.razor
+index 3f9e6397a7..f219705631 100644
+--- a/src/Components/test/testassets/BasicTestApp/Index.razor
++++ b/src/Components/test/testassets/BasicTestApp/Index.razor
+@@ -32,6 +32,7 @@
+         <option value="BasicTestApp.DynamicComponentRendering">DynamicComponent rendering</option>
+         <option value="BasicTestApp.ElementFocusComponent">Element focus component</option>
+         <option value="BasicTestApp.ElementRefComponent">Element ref component</option>
++        <option value="BasicTestApp.EnvironmentBoundaryContainer">Environment boundary</option>
+         <option value="BasicTestApp.ErrorComponent">Error throwing</option>
+         <option value="BasicTestApp.ErrorBoundaryTest.ErrorBoundaryContainer">Error boundary cases</option>
+         <option value="BasicTestApp.EventBubblingComponent">Event bubbling</option>

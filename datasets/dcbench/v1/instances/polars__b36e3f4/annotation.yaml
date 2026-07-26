@@ -1,0 +1,75 @@
+repo: polars
+base_commit: f30b89c5742e284e5c54a45014b6a99225eeaeec
+commit: b36e3f444e1efb8238f3ab3648b27c9365204301
+patch_stored: true
+gold:
+  - path: crates/polars-core/src/frame/hash_join/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: original home, gutted from ~150 to ~15 lines; shows exactly what moved out (all hash_join submodules/impl DataFrame join methods) and what stayed (`_finish_join` demoted to `pub(crate)`, `zip_outer`)
+  - path: crates/polars-ops/src/frame/join/hash_join/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "new home; the former `impl DataFrame { .. }` inherent join methods become a `JoinDispatch: IntoDf` trait because polars-ops cannot add inherent impls to the foreign `DataFrame` type (orphan rule), which is the actual driver of this restructuring"
+  - path: crates/polars-ops/src/frame/join/hash_join/single_keys_dispatch.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "new file introducing `SeriesJoin: SeriesSealed + Sized`, the same orphan-rule extension-trait workaround applied to the foreign `Series` type for hash_join_left/inner/outer/semi_anti"
+  - path: crates/polars-ops/src/frame/join/general.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: relocates `_finish_join`/`_join_suffix_name` (and `create_chunked_index_mapping`) out of polars-core into their new polars-ops home
+  - path: crates/polars-ops/src/frame/join/checks.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: relocates `_check_categorical_src`, called by every join path to validate matching categorical string caches
+  - path: crates/polars-ops/src/frame/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: defines the pre-existing `IntoDf`/`DataFrameOps` extension-trait pattern that the new `JoinDispatch` trait explicitly copies, and flips `mod join` to `pub mod join` plus adds `mod hashing` to expose the relocated code
+  - path: crates/polars-core/src/hashing/vector_hasher.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: widens `BytesHash`/`BytesHash::new` from `pub(crate)` to `pub` and removes `prepare_hashed_relation_threaded` (relocated to polars-ops), required because join code moving out of polars-core still needs these hashing internals
+  - path: crates/polars-ops/Cargo.toml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: adds the workspace dependencies (hashbrown, ahash, etc.) polars-ops needs to host the relocated join/hashing code
+  - path: crates/polars-ops/src/series/ops/mod.rs
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: "pre-existing `SeriesSealed` sealed-trait definition (`impl SeriesSealed for Series`) that the new `SeriesJoin: SeriesSealed` trait bounds on; explains the orphan-rule extension-trait idiom reused throughout this move"
+forbidden:
+  - path: crates/polars-ops/src/frame/join/hash_join/single_keys_inner.rs
+    reason: renamed/relocated with only mechanical import fixups, not where the restructuring decisions live
+  - path: crates/polars-ops/src/frame/join/asof/mod.rs
+    reason: asof-join code also relocated in this commit, but orthogonal to the hash-join/orphan-rule restructuring that is the semantic core
+  - path: crates/polars-core/src/chunked_array/logical/categorical/builder.rs
+    reason: touched only for the unrelated `HASHMAP_INIT_SIZE` -> `_HASHMAP_INIT_SIZE` privacy rename, not part of the join code move
+  - path: py-polars/src/conversion.rs
+    reason: single now-unused import removed, no real coupling to the join relocation
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 69
+  description: Move (almost) all join code polars-core → polars-ops
+notes: >-
+  Relocates nearly all hash-join and asof-join implementation code from polars-core
+  into polars-ops. Beyond mechanical file moves and `_`-prefixing previously-public
+  hashing helpers (signaling crate-private), the real content is architectural: since
+  DataFrame/Series are defined in polars-core, polars-ops cannot add inherent impls to
+  them (Rust orphan rule), so the former `impl DataFrame`/`impl Series` join methods
+  become extension traits (`JoinDispatch: IntoDf`, `SeriesJoin: SeriesSealed`) mirroring
+  a pattern already used elsewhere in polars-ops (`DataFrameOps: IntoDf`).

@@ -8,7 +8,7 @@ from pathlib import Path
 import anyio
 from mcp.server.fastmcp import FastMCP
 
-from diffctx.diffctx import GitError, build_diff_context
+from diffctx._native import GitError, build_diff_context
 
 from .formatting import format_diff_context_as_markdown
 from .security import validate_dir_path, validate_repo_path
@@ -174,7 +174,7 @@ _FILE_CONTEXT_DESCRIPTION = (
     "Use clipboard=true to copy to clipboard without flooding context.\n\n"
     "Examples:\n"
     '- patterns=["src/**/*.py"] — all Python files\n'
-    '- patterns=["benchmarks/*.py", "tests/conftest.py"] — specific sets\n'
+    '- patterns=["eval/*.py", "tests/conftest.py"] — specific sets\n'
     '- patterns=["*.md"] with dry_run=true — preview what matches'
 )
 
@@ -284,3 +284,15 @@ def run_server() -> None:
         format="%(name)s: %(message)s",
     )
     mcp.run(transport="stdio")
+
+
+def main(prog: str = "diffctx-mcp") -> None:
+    """Run the MCP executable surface."""
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog=prog,
+        description="Run the diffctx MCP server (stdio transport) for editor/agent integration.",
+    )
+    parser.parse_args()
+    run_server()

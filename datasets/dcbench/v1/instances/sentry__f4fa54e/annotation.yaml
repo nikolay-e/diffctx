@@ -1,0 +1,33 @@
+repo: sentry
+base_commit: adcc680599ef1a13a78d888257010819b3a6900d
+commit: f4fa54e861c3b6182121c1716799982217c555ed
+patch_stored: true
+gold:
+- path: src/sentry/eventtypes/error.py:ErrorEvent.extract_metadata
+  tier: essential
+  role: unspecified
+  in_diff: false
+- path: src/sentry/grouping/strategies/newstyle.py:chained_exception,filter_exceptions_for_exception_groups
+  tier: essential
+  role: unspecified
+  in_diff: false
+- path: src/sentry/interfaces/exception.py:Exception.get_stacktrace,Exception.iter_tags
+  tier: essential
+  role: unspecified
+  in_diff: false
+- path: tests/sentry/event_manager/interfaces/test_exception.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 3
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'Confirmed hang: empty ctx.md/md.err for a 127-file diff. The core logic is a genuinely intricate
+  recursive algorithm (filter_exceptions_for_exception_groups with nested closures, itertools.groupby/chain,
+  a locally-defined ExceptionTreeNode class) added to newstyle.py — exactly the kind of change that most
+  needs good context selection, and it produced nothing. The other 120+ files are new/updated .pysnap
+  and .json snapshot fixtures (many near-duplicate exception-group test fixtures), which combined with
+  the complex recursive source function is a plausible combination for a selection algorithm to hang on
+  (large fixture fan-out plus deep call-graph analysis).'

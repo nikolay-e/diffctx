@@ -1,0 +1,97 @@
+repo: gitpod
+base_commit: f5eda871e6f82186e43e2eb1c145b423bd836cc8
+commit: 26f7f5d74263c09102fed090742bd1b3198fa8ec
+patch_stored: true
+gold:
+- path: components/content-service/pkg/initializer/initializer.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/Insights.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/insights/download/download-sessions.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-db/src/typeorm/entity/db-workspace-instance-metrics.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-db/src/typeorm/migration/1739892121734-AddWorkspaceInstanceMetricsTable.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-db/src/typeorm/workspace-db-impl.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-db/src/workspace-db.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-protocol/src/protocol.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-protocol/src/workspace-instance.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/public-api/gitpod/v1/workspace.proto
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/public-api/typescript-common/src/public-api-converter.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-daemon/cmd/content-initializer.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-daemon/pkg/content/initializer.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-daemon/pkg/controller/workspace_controller.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-daemon/pkg/controller/workspace_operations.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-manager-api/core.proto
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-manager-api/go/crd/v1/workspace_types.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-manager-bridge/src/bridge.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-manager-mk2/service/manager.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: components/public-api/go/v1/workspace.pb.go
+- path: components/public-api/java/src/main/java/io/gitpod/publicapi/v1/WorkspaceOuterClass.java
+- path: components/ws-manager-api/go/core.pb.go
+- path: components/ws-manager-api/typescript/src/core_pb.js
+- path: install/installer/helm/charts/gitpod/crd/bases/workspace.gitpod.io_workspaces.yaml
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: Hang on a diff of moderate real size (38 files, ~7.2k changed lines per diff.stat, but a large
+  fraction of that is regenerated protobuf/CRD boilerplate mirroring two .proto/CRD edits). Dozens of
+  hand-written files carry the actual feature (plumbing per-phase initializer duration/size metrics from
+  content-service through ws-daemon/ws-manager into the DB and Insights UI) and none of it surfaced. Less
+  egregious than the 016/024/034 hangs given the larger true diff size, but still a bug — the size here
+  is well within normal single-PR range, not corpus-outlier scale like gitpod/006.

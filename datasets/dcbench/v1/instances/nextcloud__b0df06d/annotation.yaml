@@ -1,0 +1,71 @@
+repo: nextcloud
+base_commit: 00a5c028a4c9312857b67509eab7e2366ce23895
+commit: b0df06d5335802b7d88a519a9046b39da4f84320
+patch_stored: false
+gold:
+  - path: core/src/globals.js
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: removes jquery/jquery-ui-dist/select2/snap.js/strengthify imports, the deprecate() wrapper, the global window.$/jQuery exposure and the $.fn.select2 deprecation shim
+  - path: core/src/main.js
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: drops "import './jquery/index.js'", the entry point that pulled in the whole deleted core/src/jquery/ directory
+  - path: core/Listener/BeforeTemplateRenderedListener.php
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Util::addScript('core','merged-template-prepend',...) becomes Util::addScript('core','mimetypelist',...), replacing the deleted jQuery-bundling merged-template-prepend.json with a direct load of the pre-existing mimetypelist script
+  - path: build/frontend-legacy/webpack.common.cjs
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: removes the webpack.ProvidePlugin that injected jQuery as a global for legacy jquery-plugin scripts
+  - path: build/frontend-legacy/package.json
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: drops the jquery/jquery-ui/jquery-ui-dist/select2/snap.js/strengthify/backbone dependencies this whole commit removes usage of
+  - path: core/src/jquery/index.js
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: deleted aggregator file that main.js used to import, re-exporting all the small jquery/*.js helper modules also deleted in this commit
+  - path: core/src/jquery/ocdialog.js
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: deleted jQuery UI dialog widget, representative of the largest deleted jquery-ui-based component
+  - path: core/css/styles.scss
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: removes the .ui-datepicker/.ui-timepicker/.ui-dialog CSS that styled the jQuery UI widgets deleted from core/src/jquery/
+forbidden:
+  - path: core/css/header.scss
+    reason: same kind of legacy-jQuery-menu CSS removal as styles.scss, redundant to include both
+  - path: core/css/inputs.scss
+    reason: same kind of select2/jQuery-UI CSS removal as styles.scss, redundant to include both
+  - path: core/js/merged-template-prepend.json
+    reason: deleted generated webpack-bundle manifest fragment, mechanical byproduct of the script-name change in BeforeTemplateRenderedListener.php
+  - path: build/frontend-legacy/package-lock.json
+    reason: generated lockfile update, mechanical byproduct of removing the jQuery-related dependencies
+nontrivial_gold_count: 0
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 36
+  description: remove deprecated jQuery/jQuery UI — mixed frontend deletion (js+scss+assets+php)
+notes: >
+  Removes jQuery, jQuery UI, select2, snap.js and strengthify entirely from Nextcloud's
+  core frontend, deleting core/src/jquery/** and its CSS/vendor assets, dropping the
+  npm dependencies and the webpack ProvidePlugin that globally exposed jQuery, and
+  switching BeforeTemplateRenderedListener's Util::addScript() call from the deleted
+  jQuery-bundling 'merged-template-prepend' script to the pre-existing 'mimetypelist'
+  script (a string-keyed script-name match against the build's core.json manifest,
+  hence string_indirection). Fully self-contained deletion; no external nontrivial
+  context needed beyond noting the pre-existing 'mimetypelist' entry point.

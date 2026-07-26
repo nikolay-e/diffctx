@@ -1,0 +1,2265 @@
+From 4695423cb900818c5845ee4ccf6ebc8ca220e506 Mon Sep 17 00:00:00 2001
+From: Orson Peters <orsonpeters@gmail.com>
+Date: Wed, 31 Dec 2025 14:04:58 +0100
+Subject: [PATCH] feat: Add pl.Expr.(min|max)_by (#25905)
+
+---
+ .../src/expressions/aggregation.rs            |   6 +-
+ crates/polars-expr/src/lib.rs                 |   9 +-
+ crates/polars-expr/src/planner.rs             | 161 ++--
+ crates/polars-expr/src/reduce/convert.rs      |   9 +
+ crates/polars-expr/src/reduce/min_max_by.rs   | 734 ++++++++++++++++++
+ crates/polars-expr/src/reduce/mod.rs          |   5 +-
+ crates/polars-mem-engine/src/planner/lp.rs    |   2 +-
+ .../polars-ops/src/series/ops/arg_min_max.rs  |   4 +-
+ crates/polars-plan/dsl-schema-hashes.json     |   2 +-
+ crates/polars-plan/src/dsl/expr/mod.rs        |  12 +-
+ crates/polars-plan/src/dsl/format.rs          |   6 +
+ crates/polars-plan/src/dsl/statistics.rs      |  18 +
+ crates/polars-plan/src/plans/aexpr/builder.rs |  20 +
+ .../polars-plan/src/plans/aexpr/equality.rs   |   4 +-
+ crates/polars-plan/src/plans/aexpr/mod.rs     |  12 +-
+ .../src/plans/aexpr/properties/general.rs     |   2 +
+ crates/polars-plan/src/plans/aexpr/schema.rs  |   6 +-
+ .../polars-plan/src/plans/aexpr/traverse.rs   |  24 +-
+ .../conversion/dsl_to_ir/expr_expansion.rs    |  26 +
+ .../plans/conversion/dsl_to_ir/expr_to_ir.rs  |  10 +
+ .../src/plans/conversion/ir_to_dsl.rs         |  19 +
+ crates/polars-plan/src/plans/ir/format.rs     |  10 +
+ crates/polars-plan/src/plans/iterator.rs      |   9 +
+ .../optimizer/set_order/expr_pushdown.rs      |  10 +-
+ crates/polars-plan/src/plans/visitor/expr.rs  |   2 +
+ crates/polars-python/src/expr/general.rs      |  10 +
+ .../src/lazyframe/visitor/expr_nodes.rs       |  10 +
+ .../src/physical_plan/lower_expr.rs           |  20 +-
+ .../src/physical_plan/lower_group_by.rs       |  49 +-
+ crates/polars-utils/src/min_max.rs            |  10 +
+ .../reference/expressions/aggregation.rst     |   2 +
+ .../source/reference/series/aggregation.rst   |   2 +
+ py-polars/src/polars/_plr.pyi                 |   2 +
+ py-polars/src/polars/expr/expr.py             |  62 ++
+ py-polars/src/polars/series/series.py         |  46 ++
+ .../aggregation/test_aggregations.py          |  56 ++
+ 36 files changed, 1279 insertions(+), 112 deletions(-)
+ create mode 100644 crates/polars-expr/src/reduce/min_max_by.rs
+
+diff --git a/crates/polars-expr/src/expressions/aggregation.rs b/crates/polars-expr/src/expressions/aggregation.rs
+index debe11738..65df500f7 100644
+--- a/crates/polars-expr/src/expressions/aggregation.rs
++++ b/crates/polars-expr/src/expressions/aggregation.rs
+@@ -457,9 +457,9 @@ impl PhysicalExpr for AggregationExpr {
+ }
+ 
+ pub struct AggQuantileExpr {
+-    pub(crate) input: Arc<dyn PhysicalExpr>,
+-    pub(crate) quantile: Arc<dyn PhysicalExpr>,
+-    pub(crate) method: QuantileMethod,
++    input: Arc<dyn PhysicalExpr>,
++    quantile: Arc<dyn PhysicalExpr>,
++    method: QuantileMethod,
+ }
+ 
+ impl AggQuantileExpr {
+diff --git a/crates/polars-expr/src/lib.rs b/crates/polars-expr/src/lib.rs
+index c9ba78853..3f42b07a3 100644
+--- a/crates/polars-expr/src/lib.rs
++++ b/crates/polars-expr/src/lib.rs
+@@ -18,6 +18,8 @@ use polars_utils::IdxSize;
+ pub use crate::planner::{ExpressionConversionState, create_physical_expr};
+ 
+ /// An index where the top bit indicates whether a value should be evicted.
++#[derive(Copy, Clone, Debug)]
++#[repr(transparent)]
+ pub struct EvictIdx(IdxSize);
+ 
+ impl EvictIdx {
+@@ -29,11 +31,16 @@ impl EvictIdx {
+ 
+     #[inline(always)]
+     pub fn idx(&self) -> usize {
+-        (self.0 & ((1 << (IdxSize::BITS - 1)) - 1)) as usize
++        (self.0 & (IdxSize::MAX >> 1)) as usize
+     }
+ 
+     #[inline(always)]
+     pub fn should_evict(&self) -> bool {
+         (self.0 >> (IdxSize::BITS - 1)) != 0
+     }
++
++    pub fn cast_slice(idxs: &[IdxSize]) -> &[EvictIdx] {
++        // SAFETY: same size and align, repr(transparent).
++        unsafe { std::slice::from_raw_parts(idxs.as_ptr() as *const EvictIdx, idxs.len()) }
++    }
+ }
+diff --git a/crates/polars-expr/src/planner.rs b/crates/polars-expr/src/planner.rs
+index 12d9ec886..1d720151e 100644
+--- a/crates/polars-expr/src/planner.rs
++++ b/crates/polars-expr/src/planner.rs
+@@ -26,7 +26,7 @@ fn ok_checker(_i: usize, _state: &ExpressionConversionState) -> PolarsResult<()>
+ 
+ pub fn create_physical_expressions_from_irs(
+     exprs: &[ExprIR],
+-    expr_arena: &Arena<AExpr>,
++    expr_arena: &mut Arena<AExpr>,
+     schema: &SchemaRef,
+     state: &mut ExpressionConversionState,
+ ) -> PolarsResult<Vec<Arc<dyn PhysicalExpr>>> {
+@@ -35,7 +35,7 @@ pub fn create_physical_expressions_from_irs(
+ 
+ pub(crate) fn create_physical_expressions_check_state<F>(
+     exprs: &[ExprIR],
+-    expr_arena: &Arena<AExpr>,
++    expr_arena: &mut Arena<AExpr>,
+     schema: &SchemaRef,
+     state: &mut ExpressionConversionState,
+     checker: F,
+@@ -57,7 +57,7 @@ where
+ 
+ pub(crate) fn create_physical_expressions_from_nodes(
+     exprs: &[Node],
+-    expr_arena: &Arena<AExpr>,
++    expr_arena: &mut Arena<AExpr>,
+     schema: &SchemaRef,
+     state: &mut ExpressionConversionState,
+ ) -> PolarsResult<Vec<Arc<dyn PhysicalExpr>>> {
+@@ -66,7 +66,7 @@ pub(crate) fn create_physical_expressions_from_nodes(
+ 
+ pub(crate) fn create_physical_expressions_from_nodes_check_state<F>(
+     exprs: &[Node],
+-    expr_arena: &Arena<AExpr>,
++    expr_arena: &mut Arena<AExpr>,
+     schema: &SchemaRef,
+     state: &mut ExpressionConversionState,
+     checker: F,
+@@ -127,8 +127,8 @@ impl ExpressionConversionState {
+ 
+ pub fn create_physical_expr(
+     expr_ir: &ExprIR,
+-    expr_arena: &Arena<AExpr>,
+-    schema: &SchemaRef,
++    expr_arena: &mut Arena<AExpr>,
++    schema: &SchemaRef, // Schema of the input.
+     state: &mut ExpressionConversionState,
+ ) -> PolarsResult<Arc<dyn PhysicalExpr>> {
+     let phys_expr = create_physical_expr_inner(expr_ir.node(), expr_arena, schema, state)?;
+@@ -147,30 +147,28 @@ pub fn create_physical_expr(
+ #[recursive]
+ fn create_physical_expr_inner(
+     expression: Node,
+-    expr_arena: &Arena<AExpr>,
+-    schema: &SchemaRef,
++    expr_arena: &mut Arena<AExpr>,
++    schema: &SchemaRef, // Schema of the input.
+     state: &mut ExpressionConversionState,
+ ) -> PolarsResult<Arc<dyn PhysicalExpr>> {
+     use AExpr::*;
+ 
+-    match expr_arena.get(expression) {
++    let aexpr = expr_arena.get(expression);
++    match aexpr.clone() {
+         Len => Ok(Arc::new(phys_expr::CountExpr::new())),
+         #[cfg(feature = "dynamic_group_by")]
+-        aexpr @ Rolling {
++        Rolling {
+             function,
+             index_column,
+             period,
+             offset,
+             closed_window,
+         } => {
+-            let index_column =
+-                create_physical_expr_inner(*index_column, expr_arena, schema, state)?;
+-
+             let output_field = aexpr.to_field(&ToFieldContext::new(expr_arena, schema))?;
+-            let function = *function;
++            let index_column = create_physical_expr_inner(index_column, expr_arena, schema, state)?;
++
+             state.set_window();
+             let phys_function = create_physical_expr_inner(function, expr_arena, schema, state)?;
+-
+             let expr = node_to_expr(expression, expr_arena);
+ 
+             // set again as the state can be reset
+@@ -178,21 +176,20 @@ fn create_physical_expr_inner(
+             Ok(Arc::new(RollingExpr {
+                 phys_function,
+                 index_column,
+-                period: *period,
+-                offset: *offset,
+-                closed_window: *closed_window,
++                period,
++                offset,
++                closed_window,
+                 expr,
+                 output_field,
+             }))
+         },
+-        aexpr @ Over {
++        Over {
+             function,
+             partition_by,
+             order_by,
+             mapping,
+         } => {
+             let output_field = aexpr.to_field(&ToFieldContext::new(expr_arena, schema))?;
+-            let function = *function;
+             state.set_window();
+             let phys_function = create_physical_expr_inner(function, expr_arena, schema, state)?;
+ 
+@@ -215,7 +212,7 @@ fn create_physical_expr_inner(
+                 .iter()
+                 .all(|n| is_elementwise_rec(*n, expr_arena));
+             let group_by =
+-                create_physical_expressions_from_nodes(partition_by, expr_arena, schema, state)?;
++                create_physical_expressions_from_nodes(&partition_by, expr_arena, schema, state)?;
+             let mut apply_columns = aexpr_to_leaf_names(function, expr_arena);
+             // sort and then dedup removes consecutive duplicates == all duplicates
+             apply_columns.sort();
+@@ -267,7 +264,7 @@ fn create_physical_expr_inner(
+                 order_by,
+                 apply_columns,
+                 phys_function,
+-                mapping: *mapping,
++                mapping,
+                 expr,
+                 has_different_group_sources,
+                 output_field,
+@@ -288,11 +285,11 @@ fn create_physical_expr_inner(
+                 .get(expression)
+                 .to_field(&ToFieldContext::new(expr_arena, schema))?;
+             let is_scalar = is_scalar_ae(expression, expr_arena);
+-            let lhs = create_physical_expr_inner(*left, expr_arena, schema, state)?;
+-            let rhs = create_physical_expr_inner(*right, expr_arena, schema, state)?;
++            let lhs = create_physical_expr_inner(left, expr_arena, schema, state)?;
++            let rhs = create_physical_expr_inner(right, expr_arena, schema, state)?;
+             Ok(Arc::new(phys_expr::BinaryExpr::new(
+                 lhs,
+-                *op,
++                op,
+                 rhs,
+                 node_to_expr(expression, expr_arena),
+                 state.local.has_lit,
+@@ -314,10 +311,10 @@ fn create_physical_expr_inner(
+             Ok(Arc::new(ElementExpr::new(output_field)))
+         },
+         Sort { expr, options } => {
+-            let phys_expr = create_physical_expr_inner(*expr, expr_arena, schema, state)?;
++            let phys_expr = create_physical_expr_inner(expr, expr_arena, schema, state)?;
+             Ok(Arc::new(SortExpr::new(
+                 phys_expr,
+-                *options,
++                options,
+                 node_to_expr(expression, expr_arena),
+             )))
+         },
+@@ -326,13 +323,13 @@ fn create_physical_expr_inner(
+             idx,
+             returns_scalar,
+         } => {
+-            let phys_expr = create_physical_expr_inner(*expr, expr_arena, schema, state)?;
+-            let phys_idx = create_physical_expr_inner(*idx, expr_arena, schema, state)?;
++            let phys_expr = create_physical_expr_inner(expr, expr_arena, schema, state)?;
++            let phys_idx = create_physical_expr_inner(idx, expr_arena, schema, state)?;
+             Ok(Arc::new(GatherExpr {
+                 phys_expr,
+                 idx: phys_idx,
+                 expr: node_to_expr(expression, expr_arena),
+-                returns_scalar: *returns_scalar,
++                returns_scalar,
+             }))
+         },
+         SortBy {
+@@ -340,8 +337,8 @@ fn create_physical_expr_inner(
+             by,
+             sort_options,
+         } => {
+-            let phys_expr = create_physical_expr_inner(*expr, expr_arena, schema, state)?;
+-            let phys_by = create_physical_expressions_from_nodes(by, expr_arena, schema, state)?;
++            let phys_expr = create_physical_expr_inner(expr, expr_arena, schema, state)?;
++            let phys_by = create_physical_expressions_from_nodes(&by, expr_arena, schema, state)?;
+             Ok(Arc::new(SortByExpr::new(
+                 phys_expr,
+                 phys_by,
+@@ -350,8 +347,8 @@ fn create_physical_expr_inner(
+             )))
+         },
+         Filter { input, by } => {
+-            let phys_input = create_physical_expr_inner(*input, expr_arena, schema, state)?;
+-            let phys_by = create_physical_expr_inner(*by, expr_arena, schema, state)?;
++            let phys_input = create_physical_expr_inner(input, expr_arena, schema, state)?;
++            let phys_by = create_physical_expr_inner(by, expr_arena, schema, state)?;
+             Ok(Arc::new(FilterExpr::new(
+                 phys_input,
+                 phys_by,
+@@ -367,16 +364,51 @@ fn create_physical_expr_inner(
+                 .get(expression)
+                 .to_field(&ToFieldContext::new(expr_arena, schema))?;
+ 
+-            // Special case: Quantile supports multiple inputs.
++            // Special case: Quantile, MinBy and MaxBy supports multiple inputs.
+             // TODO refactor to FunctionExpr.
+-            if let IRAggExpr::Quantile {
+-                quantile,
+-                method: interpol,
+-                ..
+-            } = agg
+-            {
+-                let quantile = create_physical_expr_inner(*quantile, expr_arena, schema, state)?;
+-                return Ok(Arc::new(AggQuantileExpr::new(input, quantile, *interpol)));
++            match agg {
++                IRAggExpr::Quantile {
++                    quantile,
++                    method: interpol,
++                    ..
++                } => {
++                    let quantile = create_physical_expr_inner(quantile, expr_arena, schema, state)?;
++                    return Ok(Arc::new(AggQuantileExpr::new(input, quantile, interpol)));
++                },
++                IRAggExpr::MinBy { input, by } => {
++                    let arg_min_aexpr = AExpr::Function {
++                        input: vec![ExprIR::from_node(by, expr_arena)],
++                        function: IRFunctionExpr::ArgMin,
++                        options: FunctionOptions::aggregation(),
++                    };
++                    let arg_min = expr_arena.add(arg_min_aexpr);
++                    let gather_aexpr = AExpr::Gather {
++                        expr: input,
++                        idx: arg_min,
++                        returns_scalar: true,
++                    };
++                    let gather = expr_arena.add(gather_aexpr);
++
++                    return create_physical_expr_inner(gather, expr_arena, schema, state);
++                },
++
++                IRAggExpr::MaxBy { input, by } => {
++                    let arg_min_aexpr = AExpr::Function {
++                        input: vec![ExprIR::from_node(by, expr_arena)],
++                        function: IRFunctionExpr::ArgMax,
++                        options: FunctionOptions::aggregation(),
++                    };
++                    let arg_min = expr_arena.add(arg_min_aexpr);
++                    let gather_aexpr = AExpr::Gather {
++                        expr: input,
++                        idx: arg_min,
++                        returns_scalar: true,
++                    };
++                    let gather = expr_arena.add(gather_aexpr);
++
++                    return create_physical_expr_inner(gather, expr_arena, schema, state);
++                },
++                _ => {},
+             }
+ 
+             let groupby = GroupByMethod::from(agg.clone());
+@@ -397,12 +429,12 @@ fn create_physical_expr_inner(
+             dtype,
+             options,
+         } => {
+-            let phys_expr = create_physical_expr_inner(*expr, expr_arena, schema, state)?;
++            let phys_expr = create_physical_expr_inner(expr, expr_arena, schema, state)?;
+             Ok(Arc::new(CastExpr {
+                 input: phys_expr,
+                 dtype: dtype.clone(),
+                 expr: node_to_expr(expression, expr_arena),
+-                options: *options,
++                options,
+             }))
+         },
+         Ternary {
+@@ -413,13 +445,13 @@ fn create_physical_expr_inner(
+             let is_scalar = is_scalar_ae(expression, expr_arena);
+             let mut lit_count = 0u8;
+             state.reset();
+-            let predicate = create_physical_expr_inner(*predicate, expr_arena, schema, state)?;
++            let predicate = create_physical_expr_inner(predicate, expr_arena, schema, state)?;
+             lit_count += state.local.has_lit as u8;
+             state.reset();
+-            let truthy = create_physical_expr_inner(*truthy, expr_arena, schema, state)?;
++            let truthy = create_physical_expr_inner(truthy, expr_arena, schema, state)?;
+             lit_count += state.local.has_lit as u8;
+             state.reset();
+-            let falsy = create_physical_expr_inner(*falsy, expr_arena, schema, state)?;
++            let falsy = create_physical_expr_inner(falsy, expr_arena, schema, state)?;
+             lit_count += state.local.has_lit as u8;
+             Ok(Arc::new(TernaryExpr::new(
+                 predicate,
+@@ -441,7 +473,7 @@ fn create_physical_expr_inner(
+                 .get(expression)
+                 .to_field(&ToFieldContext::new(expr_arena, schema))?;
+ 
+-            let input = create_physical_expressions_from_irs(input, expr_arena, schema, state)?;
++            let input = create_physical_expressions_from_irs(&input, expr_arena, schema, state)?;
+ 
+             let function = function.clone().materialize()?;
+             let function = function.into_inner().as_column_udf();
+@@ -451,7 +483,7 @@ fn create_physical_expr_inner(
+                 SpecialEq::new(function),
+                 None,
+                 node_to_expr(expression, expr_arena),
+-                *options,
++                options,
+                 state.allow_threading,
+                 schema.clone(),
+                 output_field,
+@@ -465,31 +497,31 @@ fn create_physical_expr_inner(
+             variant,
+         } => {
+             let is_scalar = is_scalar_ae(expression, expr_arena);
+-            let evaluation_is_scalar = is_scalar_ae(*evaluation, expr_arena);
+-            let evaluation_is_elementwise = is_elementwise_rec(*evaluation, expr_arena);
++            let evaluation_is_scalar = is_scalar_ae(evaluation, expr_arena);
++            let evaluation_is_elementwise = is_elementwise_rec(evaluation, expr_arena);
+             // @NOTE: This is actually also something the downstream apply code should care about.
+             let mut pd_group = ExprPushdownGroup::Pushable;
+-            pd_group.update_with_expr_rec(expr_arena.get(*evaluation), expr_arena, None);
++            pd_group.update_with_expr_rec(expr_arena.get(evaluation), expr_arena, None);
+             let evaluation_is_fallible = matches!(pd_group, ExprPushdownGroup::Fallible);
+ 
+             let output_field = expr_arena
+                 .get(expression)
+                 .to_field(&ToFieldContext::new(expr_arena, schema))?;
+             let input_field = expr_arena
+-                .get(*expr)
++                .get(expr)
+                 .to_field(&ToFieldContext::new(expr_arena, schema))?;
+-            let expr = create_physical_expr_inner(*expr, expr_arena, schema, state)?;
++            let expr = create_physical_expr_inner(expr, expr_arena, schema, state)?;
+ 
+             let element_dtype = variant.element_dtype(&input_field.dtype)?;
+             let mut eval_schema = schema.as_ref().clone();
+             eval_schema.insert(get_pl_element_name(), element_dtype.clone());
+             let evaluation =
+-                create_physical_expr_inner(*evaluation, expr_arena, &Arc::new(eval_schema), state)?;
++                create_physical_expr_inner(evaluation, expr_arena, &Arc::new(eval_schema), state)?;
+ 
+             Ok(Arc::new(EvalExpr::new(
+                 expr,
+                 evaluation,
+-                *variant,
++                variant,
+                 node_to_expr(expression, expr_arena),
+                 output_field,
+                 is_scalar,
+@@ -507,15 +539,15 @@ fn create_physical_expr_inner(
+             let output_field = expr_arena
+                 .get(expression)
+                 .to_field(&ToFieldContext::new(expr_arena, schema))?;
+-            let input = create_physical_expressions_from_irs(input, expr_arena, schema, state)?;
++            let input = create_physical_expressions_from_irs(&input, expr_arena, schema, state)?;
+             let is_fallible = expr_arena.get(expression).is_fallible_top_level(expr_arena);
+ 
+             Ok(Arc::new(ApplyExpr::new(
+                 input,
+                 function_expr_to_udf(function.clone()),
+-                function_expr_to_groups_udf(function),
++                function_expr_to_groups_udf(&function),
+                 node_to_expr(expression, expr_arena),
+-                *options,
++                options,
+                 state.allow_threading,
+                 schema.clone(),
+                 output_field,
+@@ -528,9 +560,9 @@ fn create_physical_expr_inner(
+             offset,
+             length,
+         } => {
+-            let input = create_physical_expr_inner(*input, expr_arena, schema, state)?;
+-            let offset = create_physical_expr_inner(*offset, expr_arena, schema, state)?;
+-            let length = create_physical_expr_inner(*length, expr_arena, schema, state)?;
++            let input = create_physical_expr_inner(input, expr_arena, schema, state)?;
++            let offset = create_physical_expr_inner(offset, expr_arena, schema, state)?;
++            let length = create_physical_expr_inner(length, expr_arena, schema, state)?;
+             Ok(Arc::new(SliceExpr {
+                 input,
+                 offset,
+@@ -539,8 +571,7 @@ fn create_physical_expr_inner(
+             }))
+         },
+         Explode { expr, options } => {
+-            let input = create_physical_expr_inner(*expr, expr_arena, schema, state)?;
+-            let options = *options;
++            let input = create_physical_expr_inner(expr, expr_arena, schema, state)?;
+             let function = SpecialEq::new(Arc::new(
+                 move |c: &mut [polars_core::frame::column::Column]| c[0].explode(options),
+             ) as Arc<dyn ColumnsUdf>);
+diff --git a/crates/polars-expr/src/reduce/convert.rs b/crates/polars-expr/src/reduce/convert.rs
+index c3500618e..8922cade9 100644
+--- a/crates/polars-expr/src/reduce/convert.rs
++++ b/crates/polars-expr/src/reduce/convert.rs
+@@ -16,6 +16,7 @@ use crate::reduce::first_last_nonnull::{new_first_nonnull_reduction, new_last_no
+ use crate::reduce::len::LenReduce;
+ use crate::reduce::mean::new_mean_reduction;
+ use crate::reduce::min_max::{new_max_reduction, new_min_reduction};
++use crate::reduce::min_max_by::{new_max_by_reduction, new_min_by_reduction};
+ use crate::reduce::sum::new_sum_reduction;
+ use crate::reduce::var_std::new_var_std_reduction;
+ 
+@@ -66,6 +67,14 @@ pub fn into_reduction(
+                 let count = Box::new(CountReduce::new(*include_nulls)) as Box<_>;
+                 (count, *input)
+             },
++            IRAggExpr::MinBy { input, by } => {
++                let gr = new_min_by_reduction(get_dt(*input)?, get_dt(*by)?)?;
++                return Ok((gr, vec![*input, *by]));
++            },
++            IRAggExpr::MaxBy { input, by } => {
++                let gr = new_max_by_reduction(get_dt(*input)?, get_dt(*by)?)?;
++                return Ok((gr, vec![*input, *by]));
++            },
+             IRAggExpr::Quantile { .. } => todo!(),
+             IRAggExpr::Median(_) => todo!(),
+             IRAggExpr::NUnique(_) => todo!(),
+diff --git a/crates/polars-expr/src/reduce/min_max_by.rs b/crates/polars-expr/src/reduce/min_max_by.rs
+new file mode 100644
+index 000000000..fe25eed2b
+--- /dev/null
++++ b/crates/polars-expr/src/reduce/min_max_by.rs
+@@ -0,0 +1,734 @@
++#![allow(unsafe_op_in_unsafe_fn)]
++use std::borrow::Cow;
++use std::marker::PhantomData;
++
++use num_traits::Bounded;
++use polars_core::with_match_physical_integer_polars_type;
++use polars_ops::series::arg_min_max::{
++    arg_max_binary, arg_max_bool, arg_max_numeric, arg_min_binary, arg_min_bool, arg_min_numeric,
++};
++use polars_utils::arg_min_max::ArgMinMax;
++use polars_utils::float::IsFloat;
++use polars_utils::min_max::MinMax;
++
++use super::*;
++use crate::reduce::first_last::new_last_reduction;
++
++pub fn new_min_by_reduction(
++    dtype: DataType,
++    by_dtype: DataType,
++) -> PolarsResult<Box<dyn GroupedReduction>> {
++    // TODO: Move the error checks up and make this function infallible
++    use DataType::*;
++    use SelectPayloadGroupedReduction as SPGR;
++    let payload = new_last_reduction(dtype.clone());
++    Ok(match &by_dtype {
++        Boolean => Box::new(SPGR::new(by_dtype, BooleanMinSelector, payload)),
++        #[cfg(all(feature = "dtype-f16", feature = "propagate_nans"))]
++        #[cfg(feature = "dtype-f16")]
++        Float16 => Box::new(SPGR::new(
++            by_dtype,
++            MinSelector::<Float16Type>(PhantomData),
++            payload,
++        )),
++        Float32 => Box::new(SPGR::new(
++            by_dtype,
++            MinSelector::<Float32Type>(PhantomData),
++            payload,
++        )),
++        Float64 => Box::new(SPGR::new(
++            by_dtype,
++            MinSelector::<Float64Type>(PhantomData),
++            payload,
++        )),
++        Null => Box::new(NullGroupedReduction::new(Scalar::null(dtype))),
++        String | Binary => Box::new(SPGR::new(by_dtype, BinaryMinSelector, payload)),
++        _ if by_dtype.is_integer() || by_dtype.is_temporal() || by_dtype.is_enum() => {
++            with_match_physical_integer_polars_type!(by_dtype.to_physical(), |$T| {
++                Box::new(SPGR::new(by_dtype, MinSelector::<$T>(PhantomData), payload))
++            })
++        },
++        #[cfg(feature = "dtype-decimal")]
++        Decimal(_, _) => Box::new(SPGR::new(
++            by_dtype,
++            MinSelector::<Int128Type>(PhantomData),
++            payload,
++        )),
++        #[cfg(feature = "dtype-categorical")]
++        Categorical(cats, map) => with_match_categorical_physical_type!(cats.physical(), |$C| {
++            let map = map.clone();
++            Box::new(SPGR::new(by_dtype, CatMinSelector::<$C>(map, PhantomData), payload))
++        }),
++        _ => {
++            polars_bail!(InvalidOperation: "`min_by` operation not supported for by dtype `{by_dtype}`")
++        },
++    })
++}
++
++pub fn new_max_by_reduction(
++    dtype: DataType,
++    by_dtype: DataType,
++) -> PolarsResult<Box<dyn GroupedReduction>> {
++    // TODO: Move the error checks up and make this function infallible
++    use DataType::*;
++    use SelectPayloadGroupedReduction as SPGR;
++    let payload = new_last_reduction(dtype.clone());
++    Ok(match &by_dtype {
++        Boolean => Box::new(SPGR::new(by_dtype, BooleanMaxSelector, payload)),
++        #[cfg(all(feature = "dtype-f16", feature = "propagate_nans"))]
++        #[cfg(feature = "dtype-f16")]
++        Float16 => Box::new(SPGR::new(
++            by_dtype,
++            MaxSelector::<Float16Type>(PhantomData),
++            payload,
++        )),
++        Float32 => Box::new(SPGR::new(
++            by_dtype,
++            MaxSelector::<Float32Type>(PhantomData),
++            payload,
++        )),
++        Float64 => Box::new(SPGR::new(
++            by_dtype,
++            MaxSelector::<Float64Type>(PhantomData),
++            payload,
++        )),
++        Null => Box::new(NullGroupedReduction::new(Scalar::null(dtype))),
++        String | Binary => Box::new(SPGR::new(by_dtype, BinaryMaxSelector, payload)),
++        _ if by_dtype.is_integer() || by_dtype.is_temporal() || by_dtype.is_enum() => {
++            with_match_physical_integer_polars_type!(by_dtype.to_physical(), |$T| {
++                Box::new(SPGR::new(by_dtype, MaxSelector::<$T>(PhantomData), payload))
++            })
++        },
++        #[cfg(feature = "dtype-decimal")]
++        Decimal(_, _) => Box::new(SPGR::new(
++            by_dtype,
++            MaxSelector::<Int128Type>(PhantomData),
++            payload,
++        )),
++        #[cfg(feature = "dtype-categorical")]
++        Categorical(cats, map) => with_match_categorical_physical_type!(cats.physical(), |$C| {
++            let map = map.clone();
++            Box::new(SPGR::new(by_dtype, CatMaxSelector::<$C>(map, PhantomData), payload))
++        }),
++        _ => {
++            polars_bail!(InvalidOperation: "`max_by` operation not supported for by dtype `{by_dtype}`")
++        },
++    })
++}
++
++trait SelectReducer: Clone + Send + Sync + 'static {
++    type Value: Clone + Send + Sync + 'static;
++    type Dtype: PolarsPhysicalType;
++
++    fn init(&self) -> Self::Value;
++
++    fn cast_series<'a>(&self, s: &'a Series) -> Cow<'a, Series> {
++        Cow::Borrowed(s)
++    }
++
++    fn select_ca(&self, v: &mut Self::Value, ca: &ChunkedArray<Self::Dtype>) -> Option<usize>;
++
++    fn select_one(
++        &self,
++        a: &mut Self::Value,
++        b: <Self::Dtype as PolarsDataType>::Physical<'_>,
++    ) -> bool;
++
++    fn select_combine(&self, a: &mut Self::Value, b: &Self::Value) -> bool;
++}
++
++struct MinSelector<T>(PhantomData<T>);
++struct MaxSelector<T>(PhantomData<T>);
++
++impl<T> Clone for MinSelector<T> {
++    fn clone(&self) -> Self {
++        Self(PhantomData)
++    }
++}
++
++impl<T> SelectReducer for MinSelector<T>
++where
++    T: PolarsNumericType,
++    ChunkedArray<T>: ChunkAgg<T::Native>,
++    for<'b> &'b [T::Native]: ArgMinMax,
++{
++    type Value = T::Native;
++    type Dtype = T;
++
++    fn init(&self) -> Self::Value {
++        if T::Native::is_float() {
++            T::Native::nan_value()
++        } else {
++            T::Native::max_value()
++        }
++    }
++
++    fn cast_series<'a>(&self, s: &'a Series) -> Cow<'a, Series> {
++        s.to_physical_repr()
++    }
++
++    fn select_ca(&self, v: &mut Self::Value, ca: &ChunkedArray<Self::Dtype>) -> Option<usize> {
++        arg_min_numeric(ca).filter(|idx| {
++            let val = unsafe { ca.value_unchecked(*idx) };
++            self.select_one(v, val)
++        })
++    }
++
++    fn select_one(
++        &self,
++        a: &mut Self::Value,
++        b: <Self::Dtype as PolarsDataType>::Physical<'_>,
++    ) -> bool {
++        let better = b.nan_max_lt(a);
++        if better {
++            *a = b;
++        }
++        better
++    }
++
++    fn select_combine(&self, a: &mut Self::Value, b: &Self::Value) -> bool {
++        self.select_one(a, *b)
++    }
++}
++
++impl<T> Clone for MaxSelector<T> {
++    fn clone(&self) -> Self {
++        Self(PhantomData)
++    }
++}
++
++impl<T> SelectReducer for MaxSelector<T>
++where
++    T: PolarsNumericType,
++    ChunkedArray<T>: ChunkAgg<T::Native>,
++    for<'b> &'b [T::Native]: ArgMinMax,
++{
++    type Value = T::Native;
++    type Dtype = T;
++
++    fn init(&self) -> Self::Value {
++        if T::Native::is_float() {
++            T::Native::nan_value()
++        } else {
++            T::Native::min_value()
++        }
++    }
++
++    fn cast_series<'a>(&self, s: &'a Series) -> Cow<'a, Series> {
++        s.to_physical_repr()
++    }
++
++    fn select_ca(&self, v: &mut Self::Value, ca: &ChunkedArray<Self::Dtype>) -> Option<usize> {
++        arg_max_numeric(ca).filter(|idx| {
++            let val = unsafe { ca.value_unchecked(*idx) };
++            self.select_one(v, val)
++        })
++    }
++
++    fn select_one(
++        &self,
++        a: &mut Self::Value,
++        b: <Self::Dtype as PolarsDataType>::Physical<'_>,
++    ) -> bool {
++        let better = b.nan_min_gt(a);
++        if better {
++            *a = b;
++        }
++        better
++    }
++
++    fn select_combine(&self, a: &mut Self::Value, b: &Self::Value) -> bool {
++        self.select_one(a, *b)
++    }
++}
++
++#[derive(Clone)]
++struct BinaryMinSelector;
++#[derive(Clone)]
++struct BinaryMaxSelector;
++
++impl SelectReducer for BinaryMinSelector {
++    type Dtype = BinaryType;
++    type Value = Option<Vec<u8>>;
++
++    fn init(&self) -> Self::Value {
++        // There's no "maximum string" initializer.
++        None
++    }
++
++    #[inline(always)]
++    fn cast_series<'a>(&self, s: &'a Series) -> Cow<'a, Series> {
++        Cow::Owned(s.cast(&DataType::Binary).unwrap())
++    }
++
++    fn select_ca(&self, v: &mut Self::Value, ca: &ChunkedArray<Self::Dtype>) -> Option<usize> {
++        arg_min_binary(ca).filter(|idx| {
++            let val = unsafe { ca.value_unchecked(*idx) };
++            self.select_one(v, val)
++        })
++    }
++
++    fn select_one(
++        &self,
++        a: &mut Self::Value,
++        b: <Self::Dtype as PolarsDataType>::Physical<'_>,
++    ) -> bool {
++        if let Some(av) = a {
++            if b < av.as_slice() {
++                av.clear();
++                av.extend_from_slice(b);
++                true
++            } else {
++                false
++            }
++        } else {
++            *a = Some(b.to_vec());
++            true
++        }
++    }
++
++    fn select_combine(&self, a: &mut Self::Value, b: &Self::Value) -> bool {
++        if let Some(bv) = b {
++            self.select_one(a, bv)
++        } else {
++            false
++        }
++    }
++}
++
++impl SelectReducer for BinaryMaxSelector {
++    type Dtype = BinaryType;
++    type Value = Vec<u8>;
++
++    fn init(&self) -> Self::Value {
++        // Empty string is <= any other string, so can initialize max with it.
++        Vec::new()
++    }
++
++    #[inline(always)]
++    fn cast_series<'a>(&self, s: &'a Series) -> Cow<'a, Series> {
++        Cow::Owned(s.cast(&DataType::Binary).unwrap())
++    }
++
++    fn select_ca(&self, v: &mut Self::Value, ca: &ChunkedArray<Self::Dtype>) -> Option<usize> {
++        arg_max_binary(ca).filter(|idx| {
++            let val = unsafe { ca.value_unchecked(*idx) };
++            self.select_one(v, val)
++        })
++    }
++
++    fn select_one(
++        &self,
++        a: &mut Self::Value,
++        b: <Self::Dtype as PolarsDataType>::Physical<'_>,
++    ) -> bool {
++        let better = b > a.as_slice();
++        if better {
++            a.clear();
++            a.extend_from_slice(b);
++        }
++        better
++    }
++
++    fn select_combine(&self, a: &mut Self::Value, b: &Self::Value) -> bool {
++        self.select_one(a, b)
++    }
++}
++
++#[derive(Clone)]
++struct BooleanMinSelector;
++#[derive(Clone)]
++struct BooleanMaxSelector;
++
++impl SelectReducer for BooleanMinSelector {
++    type Value = bool;
++    type Dtype = BooleanType;
++
++    fn init(&self) -> Self::Value {
++        true
++    }
++
++    fn select_ca(&self, v: &mut Self::Value, ca: &ChunkedArray<Self::Dtype>) -> Option<usize> {
++        arg_min_bool(ca).filter(|idx| {
++            let val = unsafe { ca.value_unchecked(*idx) };
++            self.select_one(v, val)
++        })
++    }
++
++    fn select_one(
++        &self,
++        a: &mut Self::Value,
++        b: <Self::Dtype as PolarsDataType>::Physical<'_>,
++    ) -> bool {
++        #[allow(clippy::bool_comparison)]
++        let better = b < *a;
++        if better {
++            *a = b;
++        }
++        better
++    }
++
++    fn select_combine(&self, a: &mut Self::Value, b: &Self::Value) -> bool {
++        self.select_one(a, *b)
++    }
++}
++
++impl SelectReducer for BooleanMaxSelector {
++    type Value = bool;
++    type Dtype = BooleanType;
++
++    fn init(&self) -> Self::Value {
++        false
++    }
++
++    fn select_ca(&self, v: &mut Self::Value, ca: &ChunkedArray<Self::Dtype>) -> Option<usize> {
++        arg_max_bool(ca).filter(|idx| {
++            let val = unsafe { ca.value_unchecked(*idx) };
++            self.select_one(v, val)
++        })
++    }
++
++    fn select_one(
++        &self,
++        a: &mut Self::Value,
++        b: <Self::Dtype as PolarsDataType>::Physical<'_>,
++    ) -> bool {
++        #[allow(clippy::bool_comparison)]
++        let better = b > *a;
++        if better {
++            *a = b;
++        }
++        better
++    }
++
++    fn select_combine(&self, a: &mut Self::Value, b: &Self::Value) -> bool {
++        self.select_one(a, *b)
++    }
++}
++
++#[cfg(feature = "dtype-categorical")]
++struct CatMinSelector<T>(Arc<CategoricalMapping>, PhantomData<T>);
++
++#[cfg(feature = "dtype-categorical")]
++impl<T> Clone for CatMinSelector<T> {
++    fn clone(&self) -> Self {
++        Self(self.0.clone(), PhantomData)
++    }
++}
++
++#[cfg(feature = "dtype-categorical")]
++impl<T: PolarsCategoricalType> SelectReducer for CatMinSelector<T> {
++    type Dtype = T::PolarsPhysical;
++    type Value = T::Native;
++
++    fn init(&self) -> Self::Value {
++        T::Native::max_value() // Ensures it's invalid, preferring the other value.
++    }
++
++    #[inline(always)]
++    fn cast_series<'a>(&self, s: &'a Series) -> Cow<'a, Series> {
++        s.to_physical_repr()
++    }
++
++    fn select_ca(&self, v: &mut Self::Value, ca: &ChunkedArray<Self::Dtype>) -> Option<usize> {
++        use polars_ops::series::arg_min_max::arg_min_opt_iter;
++        let arg_min = arg_min_opt_iter(ca.iter().map(|cat| self.0.cat_to_str(cat?.as_cat())));
++        arg_min.filter(|idx| {
++            let val = unsafe { ca.value_unchecked(*idx) };
++            self.select_one(v, val)
++        })
++    }
++
++    fn select_one(
++        &self,
++        a: &mut Self::Value,
++        b: <Self::Dtype as PolarsDataType>::Physical<'_>,
++    ) -> bool {
++        let Some(b_s) = self.0.cat_to_str(b.as_cat()) else {
++            return false;
++        };
++        let Some(a_s) = self.0.cat_to_str(a.as_cat()) else {
++            *a = b;
++            return true;
++        };
++
++        let better = b_s < a_s;
++        if better {
++            *a = b;
++        }
++        better
++    }
++
++    fn select_combine(&self, a: &mut Self::Value, b: &Self::Value) -> bool {
++        self.select_one(a, *b)
++    }
++}
++
++#[cfg(feature = "dtype-categorical")]
++struct CatMaxSelector<T>(Arc<CategoricalMapping>, PhantomData<T>);
++
++#[cfg(feature = "dtype-categorical")]
++impl<T> Clone for CatMaxSelector<T> {
++    fn clone(&self) -> Self {
++        Self(self.0.clone(), PhantomData)
++    }
++}
++
++#[cfg(feature = "dtype-categorical")]
++impl<T: PolarsCategoricalType> SelectReducer for CatMaxSelector<T> {
++    type Dtype = T::PolarsPhysical;
++    type Value = T::Native;
++
++    fn init(&self) -> Self::Value {
++        T::Native::max_value() // Ensures it's invalid, preferring the other value.
++    }
++
++    #[inline(always)]
++    fn cast_series<'a>(&self, s: &'a Series) -> Cow<'a, Series> {
++        s.to_physical_repr()
++    }
++
++    fn select_ca(&self, v: &mut Self::Value, ca: &ChunkedArray<Self::Dtype>) -> Option<usize> {
++        use polars_ops::series::arg_min_max::arg_max_opt_iter;
++        let arg_max = arg_max_opt_iter(ca.iter().map(|cat| self.0.cat_to_str(cat?.as_cat())));
++        arg_max.filter(|idx| {
++            let val = unsafe { ca.value_unchecked(*idx) };
++            self.select_one(v, val)
++        })
++    }
++
++    fn select_one(
++        &self,
++        a: &mut Self::Value,
++        b: <Self::Dtype as PolarsDataType>::Physical<'_>,
++    ) -> bool {
++        let Some(b_s) = self.0.cat_to_str(b.as_cat()) else {
++            return false;
++        };
++        let Some(a_s) = self.0.cat_to_str(a.as_cat()) else {
++            *a = b;
++            return true;
++        };
++
++        let better = b_s > a_s;
++        if better {
++            *a = b;
++        }
++        better
++    }
++
++    fn select_combine(&self, a: &mut Self::Value, b: &Self::Value) -> bool {
++        self.select_one(a, *b)
++    }
++}
++
++struct SelectPayloadGroupedReduction<R: SelectReducer> {
++    values: Vec<R::Value>,
++    mask: MutableBitmap,
++    evicted_values: Vec<R::Value>,
++    evicted_mask: BitmapBuilder,
++    in_dtype: DataType,
++    reducer: R,
++    payload: Box<dyn GroupedReduction>,
++
++    tmp_subset: Vec<IdxSize>,
++    tmp_group_idxs: Vec<IdxSize>,
++}
++
++impl<R: SelectReducer> SelectPayloadGroupedReduction<R> {
++    fn new(in_dtype: DataType, reducer: R, payload: Box<dyn GroupedReduction>) -> Self {
++        Self {
++            values: Vec::new(),
++            mask: MutableBitmap::new(),
++            evicted_values: Vec::new(),
++            evicted_mask: BitmapBuilder::new(),
++            in_dtype,
++            reducer,
++            payload,
++            tmp_subset: Vec::new(),
++            tmp_group_idxs: Vec::new(),
++        }
++    }
++}
++
++impl<R> GroupedReduction for SelectPayloadGroupedReduction<R>
++where
++    R: SelectReducer,
++{
++    fn new_empty(&self) -> Box<dyn GroupedReduction> {
++        Box::new(Self::new(
++            self.in_dtype.clone(),
++            self.reducer.clone(),
++            self.payload.new_empty(),
++        ))
++    }
++
++    fn reserve(&mut self, additional: usize) {
++        self.values.reserve(additional);
++        self.mask.reserve(additional);
++        self.payload.reserve(additional);
++    }
++
++    fn resize(&mut self, num_groups: IdxSize) {
++        self.values.resize(num_groups as usize, self.reducer.init());
++        self.mask.resize(num_groups as usize, false);
++        self.payload.resize(num_groups);
++    }
++
++    fn update_group(
++        &mut self,
++        values: &[&Column],
++        group_idx: IdxSize,
++        _seq_id: u64,
++    ) -> PolarsResult<()> {
++        assert!(values.len() == 2);
++        let payload_values = values[0];
++        let ord_values = values[1];
++        assert_eq!(ord_values.dtype(), &self.in_dtype);
++
++        let ord_values = self
++            .reducer
++            .cast_series(ord_values.as_materialized_series());
++        let ca: &ChunkedArray<R::Dtype> = ord_values.as_ref().as_ref().as_ref();
++
++        if let Some(selected) = self
++            .reducer
++            .select_ca(&mut self.values[group_idx as usize], ca)
++        {
++            self.mask.set(group_idx as usize, true);
++            let selected_val = payload_values.new_from_index(selected, 1);
++            self.payload.update_group(&[&selected_val], group_idx, 0)?;
++        }
++
++        Ok(())
++    }
++
++    unsafe fn update_groups_while_evicting(
++        &mut self,
++        values: &[&Column],
++        subset: &[IdxSize],
++        group_idxs: &[EvictIdx],
++        _seq_id: u64,
++    ) -> PolarsResult<()> {
++        assert!(values.len() == 2);
++        let payload_values = values[0];
++        let ord_values = values[1];
++        assert!(ord_values.dtype() == &self.in_dtype);
++        assert!(subset.len() == group_idxs.len());
++
++        // TODO: @scalar-opt
++        let ord_values = self
++            .reducer
++            .cast_series(ord_values.as_materialized_series());
++        let ca: &ChunkedArray<R::Dtype> = ord_values.as_ref().as_ref().as_ref();
++        let arr = ca.downcast_as_array();
++        unsafe {
++            self.tmp_subset.clear();
++            self.tmp_group_idxs.clear();
++
++            // SAFETY: indices are in-bounds guaranteed by trait.
++            for (i, g) in subset.iter().zip(group_idxs) {
++                let ov = arr.get_unchecked(*i as usize);
++                let grp = self.values.get_unchecked_mut(g.idx());
++                if g.should_evict() {
++                    self.evicted_values
++                        .push(core::mem::replace(grp, self.reducer.init()));
++                    self.evicted_mask.push(self.mask.get_unchecked(g.idx()));
++                    self.mask.set_unchecked(g.idx(), ov.is_some());
++                    if let Some(v) = ov {
++                        self.reducer.select_one(grp, v);
++                    }
++                    self.tmp_subset.push(*i);
++                    self.tmp_group_idxs.push(g.0);
++                } else if let Some(v) = ov {
++                    if self.mask.get_unchecked(g.idx()) {
++                        if self.reducer.select_one(grp, v) {
++                            self.tmp_subset.push(*i);
++                            self.tmp_group_idxs.push(g.0);
++                        }
++                    } else {
++                        self.mask.set_unchecked(g.idx(), true);
++                        self.reducer.select_one(grp, v);
++                        self.tmp_subset.push(*i);
++                        self.tmp_group_idxs.push(g.0);
++                    }
++                }
++            }
++
++            self.payload.update_groups_while_evicting(
++                &[payload_values],
++                &self.tmp_subset,
++                EvictIdx::cast_slice(&self.tmp_group_idxs),
++                0, // seq_id is unused
++            )?;
++        }
++        Ok(())
++    }
++
++    unsafe fn combine_subset(
++        &mut self,
++        other: &dyn GroupedReduction,
++        subset: &[IdxSize],
++        group_idxs: &[IdxSize],
++    ) -> PolarsResult<()> {
++        let other = other.as_any().downcast_ref::<Self>().unwrap();
++        assert!(self.in_dtype == other.in_dtype);
++        assert!(subset.len() == group_idxs.len());
++        unsafe {
++            self.tmp_subset.clear();
++            self.tmp_group_idxs.clear();
++
++            // SAFETY: indices are in-bounds guaranteed by trait.
++            for (i, g) in subset.iter().zip(group_idxs) {
++                let o = other.mask.get_unchecked(*i as usize);
++                if o {
++                    let v = other.values.get_unchecked(*i as usize);
++                    let grp = self.values.get_unchecked_mut(*g as usize);
++                    if self.reducer.select_combine(grp, v) | !self.mask.get_unchecked(*g as usize) {
++                        self.tmp_subset.push(*i);
++                        self.tmp_group_idxs.push(*g);
++                    }
++                    self.mask.set_unchecked(*g as usize, true);
++                }
++            }
++
++            self.payload.combine_subset(
++                other.payload.as_ref(),
++                &self.tmp_subset,
++                &self.tmp_group_idxs,
++            )?;
++        }
++        Ok(())
++    }
++
++    fn take_evictions(&mut self) -> Box<dyn GroupedReduction> {
++        Box::new(Self {
++            values: core::mem::take(&mut self.evicted_values),
++            mask: core::mem::take(&mut self.evicted_mask).into_mut(),
++            evicted_values: Vec::new(),
++            evicted_mask: BitmapBuilder::new(),
++            in_dtype: self.in_dtype.clone(),
++            reducer: self.reducer.clone(),
++            payload: self.payload.take_evictions(),
++            tmp_group_idxs: Vec::new(),
++            tmp_subset: Vec::new(),
++        })
++    }
++
++    fn finalize(&mut self) -> PolarsResult<Series> {
++        let mask = core::mem::take(&mut self.mask);
++        drop(core::mem::take(&mut self.values));
++        drop(core::mem::take(&mut self.tmp_group_idxs));
++        drop(core::mem::take(&mut self.tmp_subset));
++
++        // TODO @ minmax-by: better way to combine payload and mask.
++        let data = self.payload.finalize()?;
++        let mca = BooleanChunked::from_bitmap(PlSmallStr::EMPTY, mask.freeze());
++        let nulls = Series::full_null(data.name().clone(), 1, data.dtype());
++        data.zip_with(&mca, &nulls)
++    }
++
++    fn as_any(&self) -> &dyn Any {
++        self
++    }
++}
+diff --git a/crates/polars-expr/src/reduce/mod.rs b/crates/polars-expr/src/reduce/mod.rs
+index 22cb28511..12ae88162 100644
+--- a/crates/polars-expr/src/reduce/mod.rs
++++ b/crates/polars-expr/src/reduce/mod.rs
+@@ -11,6 +11,7 @@ mod first_last_nonnull;
+ mod len;
+ mod mean;
+ mod min_max;
++mod min_max_by;
+ mod sum;
+ mod var_std;
+ 
+@@ -69,9 +70,7 @@ pub trait GroupedReduction: Any + Send + Sync {
+     ) -> PolarsResult<()> {
+         assert!(values.len() < (1 << (IdxSize::BITS - 1)));
+         // SAFETY: EvictIdx is a wrapper for IdxSize and has same alignment.
+-        let evict_group_idxs = unsafe {
+-            std::slice::from_raw_parts(group_idxs.as_ptr() as *const EvictIdx, subset.len())
+-        };
++        let evict_group_idxs = EvictIdx::cast_slice(group_idxs);
+         self.update_groups_while_evicting(values, subset, evict_group_idxs, seq_id)
+     }
+ 
+diff --git a/crates/polars-mem-engine/src/planner/lp.rs b/crates/polars-mem-engine/src/planner/lp.rs
+index 4526ad487..549c462b6 100644
+--- a/crates/polars-mem-engine/src/planner/lp.rs
++++ b/crates/polars-mem-engine/src/planner/lp.rs
+@@ -149,7 +149,7 @@ pub fn create_multiple_physical_plans(
+ #[allow(clippy::type_complexity)]
+ pub fn python_scan_predicate(
+     options: &mut PythonOptions,
+-    expr_arena: &Arena<AExpr>,
++    expr_arena: &mut Arena<AExpr>,
+     state: &mut ExpressionConversionState,
+ ) -> PolarsResult<(
+     Option<Arc<dyn polars_expr::prelude::PhysicalExpr>>,
+diff --git a/crates/polars-ops/src/series/ops/arg_min_max.rs b/crates/polars-ops/src/series/ops/arg_min_max.rs
+index 163163f9e..4ef763c7c 100644
+--- a/crates/polars-ops/src/series/ops/arg_min_max.rs
++++ b/crates/polars-ops/src/series/ops/arg_min_max.rs
+@@ -7,7 +7,7 @@ use polars_core::with_match_categorical_physical_type;
+ use polars_utils::arg_min_max::ArgMinMax;
+ use polars_utils::min_max::{MaxIgnoreNan, MinIgnoreNan, MinMaxPolicy};
+ 
+-fn arg_min_opt_iter<T, I>(iter: I) -> Option<usize>
++pub fn arg_min_opt_iter<T, I>(iter: I) -> Option<usize>
+ where
+     I: IntoIterator<Item = Option<T>>,
+     T: Ord,
+@@ -19,7 +19,7 @@ where
+         .map(|x| x.0)
+ }
+ 
+-fn arg_max_opt_iter<T, I>(iter: I) -> Option<usize>
++pub fn arg_max_opt_iter<T, I>(iter: I) -> Option<usize>
+ where
+     I: IntoIterator<Item = Option<T>>,
+     T: Ord,
+diff --git a/crates/polars-plan/dsl-schema-hashes.json b/crates/polars-plan/dsl-schema-hashes.json
+index 086d7111b..bc26baf4d 100644
+--- a/crates/polars-plan/dsl-schema-hashes.json
++++ b/crates/polars-plan/dsl-schema-hashes.json
+@@ -1,5 +1,5 @@
+ {
+-  "AggExpr": "409c953bbd263badcb9c10b71dbb2253be26a05021c666a94833aefd45061f3d",
++  "AggExpr": "af752f98580280ad72033852279d3c4dc762c80f8788319a03709df83b963fab",
+   "AnonymousColumnsUdf": "5bbddd4f899afa592c318b20bb8d0bdfe2877fa5bf1a63d9cd0da908ac3aec0e",
+   "AnyValue": "2e8929b09f136470ab8b3f200cd05b0e7c167162a3505c84ebd2a7e3da851403",
+   "ArrayDataTypeFunction": "c6089e74d6b54ea7576f21b0bf7d449d60f091243565d245188126f0cd7f1bf6",
+diff --git a/crates/polars-plan/src/dsl/expr/mod.rs b/crates/polars-plan/src/dsl/expr/mod.rs
+index 29c265410..128fa4c0f 100644
+--- a/crates/polars-plan/src/dsl/expr/mod.rs
++++ b/crates/polars-plan/src/dsl/expr/mod.rs
+@@ -29,6 +29,14 @@ pub enum AggExpr {
+         input: Arc<Expr>,
+         propagate_nans: bool,
+     },
++    MinBy {
++        input: Arc<Expr>,
++        by: Arc<Expr>,
++    },
++    MaxBy {
++        input: Arc<Expr>,
++        by: Arc<Expr>,
++    },
+     Median(Arc<Expr>),
+     NUnique(Arc<Expr>),
+     First(Arc<Expr>),
+@@ -61,8 +69,8 @@ impl AsRef<Expr> for AggExpr {
+     fn as_ref(&self) -> &Expr {
+         use AggExpr::*;
+         match self {
+-            Min { input, .. } => input,
+-            Max { input, .. } => input,
++            Min { input, .. } | MinBy { input, .. } => input,
++            Max { input, .. } | MaxBy { input, .. } => input,
+             Median(e) => e,
+             NUnique(e) => e,
+             First(e) => e,
+diff --git a/crates/polars-plan/src/dsl/format.rs b/crates/polars-plan/src/dsl/format.rs
+index 86bb19616..4da7d424a 100644
+--- a/crates/polars-plan/src/dsl/format.rs
++++ b/crates/polars-plan/src/dsl/format.rs
+@@ -142,6 +142,12 @@ impl fmt::Debug for Expr {
+                             write!(f, "{input:?}.max()")
+                         }
+                     },
++                    MinBy { input, by } => {
++                        write!(f, "{input:?}.min_by({by:?})")
++                    },
++                    MaxBy { input, by } => {
++                        write!(f, "{input:?}.max_by({by:?})")
++                    },
+                     Median(expr) => write!(f, "{expr:?}.median()"),
+                     Mean(expr) => write!(f, "{expr:?}.mean()"),
+                     First(expr) => write!(f, "{expr:?}.first()"),
+diff --git a/crates/polars-plan/src/dsl/statistics.rs b/crates/polars-plan/src/dsl/statistics.rs
+index 7c03dcf1e..b8b231d9d 100644
+--- a/crates/polars-plan/src/dsl/statistics.rs
++++ b/crates/polars-plan/src/dsl/statistics.rs
+@@ -29,6 +29,24 @@ impl Expr {
+         .into()
+     }
+ 
++    /// Get minimum value, ordered by another expression.
++    pub fn min_by(self, by: Self) -> Self {
++        AggExpr::MinBy {
++            input: Arc::new(self),
++            by: Arc::new(by),
++        }
++        .into()
++    }
++
++    /// Get minimum value, ordered by another expression.
++    pub fn max_by(self, by: Self) -> Self {
++        AggExpr::MaxBy {
++            input: Arc::new(self),
++            by: Arc::new(by),
++        }
++        .into()
++    }
++
+     /// Reduce groups to minimal value.
+     pub fn nan_min(self) -> Self {
+         AggExpr::Min {
+diff --git a/crates/polars-plan/src/plans/aexpr/builder.rs b/crates/polars-plan/src/plans/aexpr/builder.rs
+index e36e02a4e..a26cd077b 100644
+--- a/crates/polars-plan/src/plans/aexpr/builder.rs
++++ b/crates/polars-plan/src/plans/aexpr/builder.rs
+@@ -165,6 +165,26 @@ impl AExprBuilder {
+         )
+     }
+ 
++    pub fn min_by(self, by: impl IntoAExprBuilder, arena: &mut Arena<AExpr>) -> Self {
++        Self::agg(
++            IRAggExpr::MinBy {
++                input: self.node(),
++                by: by.into_aexpr_builder().node(),
++            },
++            arena,
++        )
++    }
++
++    pub fn max_by(self, by: impl IntoAExprBuilder, arena: &mut Arena<AExpr>) -> Self {
++        Self::agg(
++            IRAggExpr::MaxBy {
++                input: self.node(),
++                by: by.into_aexpr_builder().node(),
++            },
++            arena,
++        )
++    }
++
+     pub fn sum(self, arena: &mut Arena<AExpr>) -> Self {
+         Self::agg(IRAggExpr::Sum(self.node()), arena)
+     }
+diff --git a/crates/polars-plan/src/plans/aexpr/equality.rs b/crates/polars-plan/src/plans/aexpr/equality.rs
+index 2403bef08..e99cd9149 100644
+--- a/crates/polars-plan/src/plans/aexpr/equality.rs
++++ b/crates/polars-plan/src/plans/aexpr/equality.rs
+@@ -120,7 +120,9 @@ impl IRAggExpr {
+             A::Mean(_) |
+             A::Implode(_) |
+             A::Sum(_) |
+-            A::AggGroups(_) => true,
++            A::AggGroups(_) |
++            A::MinBy { input: _, by: _} |
++            A::MaxBy { input: _, by: _} => true,
+         };
+ 
+         is_equal
+diff --git a/crates/polars-plan/src/plans/aexpr/mod.rs b/crates/polars-plan/src/plans/aexpr/mod.rs
+index f7513cf18..099a7680b 100644
+--- a/crates/polars-plan/src/plans/aexpr/mod.rs
++++ b/crates/polars-plan/src/plans/aexpr/mod.rs
+@@ -45,6 +45,14 @@ pub enum IRAggExpr {
+         input: Node,
+         propagate_nans: bool,
+     },
++    MinBy {
++        input: Node,
++        by: Node,
++    },
++    MaxBy {
++        input: Node,
++        by: Node,
++    },
+     Median(Node),
+     NUnique(Node),
+     Item {
+@@ -167,7 +175,9 @@ impl From<IRAggExpr> for GroupByMethod {
+             Std(_, ddof) => GroupByMethod::Std(ddof),
+             Var(_, ddof) => GroupByMethod::Var(ddof),
+             AggGroups(_) => GroupByMethod::Groups,
+-            Quantile { .. } => unreachable!(),
++
++            // Multi-input aggregations.
++            Quantile { .. } | MinBy { .. } | MaxBy { .. } => unreachable!(),
+         }
+     }
+ }
+diff --git a/crates/polars-plan/src/plans/aexpr/properties/general.rs b/crates/polars-plan/src/plans/aexpr/properties/general.rs
+index b698bb8eb..2e5258ed1 100644
+--- a/crates/polars-plan/src/plans/aexpr/properties/general.rs
++++ b/crates/polars-plan/src/plans/aexpr/properties/general.rs
+@@ -323,6 +323,8 @@ pub fn can_pre_agg(agg: Node, expr_arena: &Arena<AExpr>, _input_schema: &Schema)
+                             agg_e,
+                             IRAggExpr::Min { .. }
+                                 | IRAggExpr::Max { .. }
++                                | IRAggExpr::MinBy { .. }
++                                | IRAggExpr::MaxBy { .. }
+                                 | IRAggExpr::Sum(_)
+                                 | IRAggExpr::Last(_)
+                                 | IRAggExpr::First(_)
+diff --git a/crates/polars-plan/src/plans/aexpr/schema.rs b/crates/polars-plan/src/plans/aexpr/schema.rs
+index 78f1d86cc..b33daf99d 100644
+--- a/crates/polars-plan/src/plans/aexpr/schema.rs
++++ b/crates/polars-plan/src/plans/aexpr/schema.rs
+@@ -140,6 +140,8 @@ impl AExpr {
+                 match agg {
+                     Max { input: expr, .. }
+                     | Min { input: expr, .. }
++                    | MinBy { input: expr, .. }
++                    | MaxBy { input: expr, .. }
+                     | First(expr)
+                     | FirstNonNull(expr)
+                     | Last(expr)
+@@ -358,8 +360,10 @@ impl AExpr {
+             | Ternary { truthy: expr, .. }
+             | Eval { expr, .. }
+             | Slice { input: expr, .. }
+-            | Agg(Max { input: expr, .. })
+             | Agg(Min { input: expr, .. })
++            | Agg(Max { input: expr, .. })
++            | Agg(MinBy { input: expr, .. })
++            | Agg(MaxBy { input: expr, .. })
+             | Agg(First(expr))
+             | Agg(FirstNonNull(expr))
+             | Agg(Last(expr))
+diff --git a/crates/polars-plan/src/plans/aexpr/traverse.rs b/crates/polars-plan/src/plans/aexpr/traverse.rs
+index f5115ad6e..6a531fe5f 100644
+--- a/crates/polars-plan/src/plans/aexpr/traverse.rs
++++ b/crates/polars-plan/src/plans/aexpr/traverse.rs
+@@ -198,10 +198,18 @@ impl AExpr {
+             },
+             Agg(a) => {
+                 match a {
+-                    IRAggExpr::Quantile { expr, quantile, .. } => {
++                    IRAggExpr::Quantile {
++                        expr,
++                        quantile,
++                        method: _,
++                    } => {
+                         *expr = inputs[0];
+                         *quantile = inputs[1];
+                     },
++                    IRAggExpr::MinBy { input, by } | IRAggExpr::MaxBy { input, by } => {
++                        *input = inputs[0];
++                        *by = inputs[1];
++                    },
+                     _ => {
+                         a.set_input(inputs[0]);
+                     },
+@@ -312,6 +320,14 @@ impl AExpr {
+                         *expr = inputs[0];
+                         *quantile = inputs[1];
+                     },
++                    IRAggExpr::MinBy { input, by } => {
++                        *input = inputs[0];
++                        *by = inputs[1];
++                    },
++                    IRAggExpr::MaxBy { input, by } => {
++                        *input = inputs[0];
++                        *by = inputs[1];
++                    },
+                     _ => {
+                         a.set_input(inputs[0]);
+                     },
+@@ -397,6 +413,8 @@ impl IRAggExpr {
+         match self {
+             Min { input, .. } => Single(*input),
+             Max { input, .. } => Single(*input),
++            MinBy { input, by } => Many(vec![*input, *by]),
++            MaxBy { input, by } => Many(vec![*input, *by]),
+             Median(input) => Single(*input),
+             NUnique(input) => Single(*input),
+             First(input) => Single(*input),
+@@ -434,6 +452,10 @@ impl IRAggExpr {
+             Std(input, _) => input,
+             Var(input, _) => input,
+             AggGroups(input) => input,
++
++            // Multi-input aggregations.
++            MinBy { .. } => unreachable!(),
++            MaxBy { .. } => unreachable!(),
+         };
+         *node = input;
+     }
+diff --git a/crates/polars-plan/src/plans/conversion/dsl_to_ir/expr_expansion.rs b/crates/polars-plan/src/plans/conversion/dsl_to_ir/expr_expansion.rs
+index b6298afa9..52fea05b8 100644
+--- a/crates/polars-plan/src/plans/conversion/dsl_to_ir/expr_expansion.rs
++++ b/crates/polars-plan/src/plans/conversion/dsl_to_ir/expr_expansion.rs
+@@ -436,6 +436,32 @@ fn expand_expression_rec(
+                         })
+                     },
+                 )?,
++                AggExpr::MinBy { input, by } => expand_expression_by_combination(
++                    &[input.as_ref().clone(), by.as_ref().clone()],
++                    ignored_selector_columns,
++                    schema,
++                    out,
++                    opt_flags,
++                    |e| {
++                        Expr::Agg(AggExpr::MinBy {
++                            input: Arc::new(e[0].clone()),
++                            by: Arc::new(e[1].clone()),
++                        })
++                    },
++                )?,
++                AggExpr::MaxBy { input, by } => expand_expression_by_combination(
++                    &[input.as_ref().clone(), by.as_ref().clone()],
++                    ignored_selector_columns,
++                    schema,
++                    out,
++                    opt_flags,
++                    |e| {
++                        Expr::Agg(AggExpr::MaxBy {
++                            input: Arc::new(e[0].clone()),
++                            by: Arc::new(e[1].clone()),
++                        })
++                    },
++                )?,
+                 AggExpr::Median(expr) => expand_single(
+                     expr.as_ref(),
+                     ignored_selector_columns,
+diff --git a/crates/polars-plan/src/plans/conversion/dsl_to_ir/expr_to_ir.rs b/crates/polars-plan/src/plans/conversion/dsl_to_ir/expr_to_ir.rs
+index 6fb72d923..55f89cc94 100644
+--- a/crates/polars-plan/src/plans/conversion/dsl_to_ir/expr_to_ir.rs
++++ b/crates/polars-plan/src/plans/conversion/dsl_to_ir/expr_to_ir.rs
+@@ -237,6 +237,16 @@ pub(super) fn to_aexpr_impl(
+                         output_name,
+                     )
+                 },
++                AggExpr::MinBy { input, by } => {
++                    let (input, output_name) = to_aexpr_mat_lit_arc!(input)?;
++                    let (by, _) = to_aexpr_mat_lit_arc!(by)?;
++                    (IRAggExpr::MinBy { input, by }, output_name)
++                },
++                AggExpr::MaxBy { input, by } => {
++                    let (input, output_name) = to_aexpr_mat_lit_arc!(input)?;
++                    let (by, _) = to_aexpr_mat_lit_arc!(by)?;
++                    (IRAggExpr::MaxBy { input, by }, output_name)
++                },
+                 AggExpr::Median(input) => {
+                     let (input, output_name) = to_aexpr_mat_lit_arc!(input)?;
+                     (IRAggExpr::Median(input), output_name)
+diff --git a/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs b/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs
+index fae70ec07..139e4d281 100644
+--- a/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs
++++ b/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs
+@@ -101,6 +101,25 @@ pub fn node_to_expr(node: Node, expr_arena: &Arena<AExpr>) -> Expr {
+                 }
+                 .into()
+             },
++            IRAggExpr::MinBy { input, by } => {
++                let input_exp = node_to_expr(input, expr_arena);
++                let by_exp = node_to_expr(by, expr_arena);
++                AggExpr::MinBy {
++                    input: Arc::new(input_exp),
++                    by: Arc::new(by_exp),
++                }
++                .into()
++            },
++
++            IRAggExpr::MaxBy { input, by } => {
++                let input_exp = node_to_expr(input, expr_arena);
++                let by_exp = node_to_expr(by, expr_arena);
++                AggExpr::MaxBy {
++                    input: Arc::new(input_exp),
++                    by: Arc::new(by_exp),
++                }
++                .into()
++            },
+ 
+             IRAggExpr::Mean(expr) => {
+                 let exp = node_to_expr(expr, expr_arena);
+diff --git a/crates/polars-plan/src/plans/ir/format.rs b/crates/polars-plan/src/plans/ir/format.rs
+index a8cb41e1b..59a039846 100644
+--- a/crates/polars-plan/src/plans/ir/format.rs
++++ b/crates/polars-plan/src/plans/ir/format.rs
+@@ -458,6 +458,16 @@ impl Display for ExprIRDisplay<'_> {
+                             write!(f, ".max()")
+                         }
+                     },
++                    MinBy { input, by } => {
++                        let input = self.with_root(input);
++                        let by = self.with_root(by);
++                        write!(f, "{input}.min_by({by})",)
++                    },
++                    MaxBy { input, by } => {
++                        let input = self.with_root(input);
++                        let by = self.with_root(by);
++                        write!(f, "{input}.max_by({by})",)
++                    },
+                     Median(expr) => write!(f, "{}.median()", self.with_root(expr)),
+                     Mean(expr) => write!(f, "{}.mean()", self.with_root(expr)),
+                     First(expr) => write!(f, "{}.first()", self.with_root(expr)),
+diff --git a/crates/polars-plan/src/plans/iterator.rs b/crates/polars-plan/src/plans/iterator.rs
+index 73388bbd9..0bc061c2a 100644
+--- a/crates/polars-plan/src/plans/iterator.rs
++++ b/crates/polars-plan/src/plans/iterator.rs
+@@ -43,6 +43,14 @@ macro_rules! push_expr {
+                 match agg_e {
+                     Max { input, .. } => $push($c, input),
+                     Min { input, .. } => $push($c, input),
++                    MinBy { input, by } => {
++                        $push($c, by);
++                        $push($c, input);
++                    },
++                    MaxBy { input, by } => {
++                        $push($c, by);
++                        $push($c, input);
++                    },
+                     Mean(e) => $push($c, e),
+                     Median(e) => $push($c, e),
+                     NUnique(e) => $push($c, e),
+@@ -53,6 +61,7 @@ macro_rules! push_expr {
+                     Item { input, .. } => $push($c, input),
+                     Implode(e) => $push($c, e),
+                     Count { input, .. } => $push($c, input),
++                    // TODO: shouldn't quantile push the quantile expr as well?
+                     Quantile { expr, .. } => $push($c, expr),
+                     Sum(e) => $push($c, e),
+                     AggGroups(e) => $push($c, e),
+diff --git a/crates/polars-plan/src/plans/optimizer/set_order/expr_pushdown.rs b/crates/polars-plan/src/plans/optimizer/set_order/expr_pushdown.rs
+index b61c14129..5bf519b3f 100644
+--- a/crates/polars-plan/src/plans/optimizer/set_order/expr_pushdown.rs
++++ b/crates/polars-plan/src/plans/optimizer/set_order/expr_pushdown.rs
+@@ -215,12 +215,18 @@ impl<'a> ObservableOrdersResolver<'a> {
+                 | IRAggExpr::Std(node, _)
+                 | IRAggExpr::Var(node, _)
+                 | IRAggExpr::Item { input: node, .. } => {
+-                    // Input order is deregarded, but must not observe order.
++                    // Input order is disregarded, but must not observe order.
+                     _ = rec!(*node);
+                     O::None
+                 },
++                IRAggExpr::MinBy { input, by } | IRAggExpr::MaxBy { input, by } => {
++                    // Input and 'by' order is disregarded, but must not observe order.
++                    _ = rec!(*input);
++                    _ = rec!(*by);
++                    O::None
++                },
+                 IRAggExpr::Quantile { expr, quantile, .. } => {
+-                    // Input and quantile order is deregarded, but must not observe order.
++                    // Input and quantile order is disregarded, but must not observe order.
+                     _ = rec!(*expr);
+                     _ = rec!(*quantile);
+                     O::None
+diff --git a/crates/polars-plan/src/plans/visitor/expr.rs b/crates/polars-plan/src/plans/visitor/expr.rs
+index d2db1a19b..cef493708 100644
+--- a/crates/polars-plan/src/plans/visitor/expr.rs
++++ b/crates/polars-plan/src/plans/visitor/expr.rs
+@@ -56,6 +56,8 @@ impl TreeWalker for Expr {
+             Agg(agg_expr) => Agg(match agg_expr {
+                 Min { input, propagate_nans } => Min { input: am(input, f)?, propagate_nans },
+                 Max { input, propagate_nans } => Max { input: am(input, f)?, propagate_nans },
++                MinBy { input, by } => MinBy { input: am(input, &mut f)?, by: am(by, f)? },
++                MaxBy { input, by } =>  MaxBy { input: am(input, &mut f)?, by: am(by, f)? },
+                 Median(x) => Median(am(x, f)?),
+                 NUnique(x) => NUnique(am(x, f)?),
+                 First(x) => First(am(x, f)?),
+diff --git a/crates/polars-python/src/expr/general.rs b/crates/polars-python/src/expr/general.rs
+index 53eb979fd..2c8999779 100644
+--- a/crates/polars-python/src/expr/general.rs
++++ b/crates/polars-python/src/expr/general.rs
+@@ -114,9 +114,19 @@ impl PyExpr {
+     fn min(&self) -> Self {
+         self.inner.clone().min().into()
+     }
++
+     fn max(&self) -> Self {
+         self.inner.clone().max().into()
+     }
++
++    fn min_by(&self, by: Self) -> Self {
++        self.inner.clone().min_by(by.inner).into()
++    }
++
++    fn max_by(&self, by: Self) -> Self {
++        self.inner.clone().max_by(by.inner).into()
++    }
++
+     #[cfg(feature = "propagate_nans")]
+     fn nan_max(&self) -> Self {
+         self.inner.clone().nan_max().into()
+diff --git a/crates/polars-python/src/lazyframe/visitor/expr_nodes.rs b/crates/polars-python/src/lazyframe/visitor/expr_nodes.rs
+index b3b871bce..da2418d8f 100644
+--- a/crates/polars-python/src/lazyframe/visitor/expr_nodes.rs
++++ b/crates/polars-python/src/lazyframe/visitor/expr_nodes.rs
+@@ -664,6 +664,16 @@ pub(crate) fn into_py(py: Python<'_>, expr: &AExpr) -> PyResult<Py<PyAny>> {
+                 arguments: vec![input.0],
+                 options: propagate_nans.into_py_any(py)?,
+             },
++            IRAggExpr::MinBy { input, by } => Agg {
++                name: "min_by".into_py_any(py)?,
++                arguments: vec![input.0, by.0],
++                options: py.None(),
++            },
++            IRAggExpr::MaxBy { input, by } => Agg {
++                name: "max_by".into_py_any(py)?,
++                arguments: vec![input.0, by.0],
++                options: py.None(),
++            },
+             IRAggExpr::Median(n) => Agg {
+                 name: "median".into_py_any(py)?,
+                 arguments: vec![n.0],
+diff --git a/crates/polars-stream/src/physical_plan/lower_expr.rs b/crates/polars-stream/src/physical_plan/lower_expr.rs
+index c878045bd..55f8c5da4 100644
+--- a/crates/polars-stream/src/physical_plan/lower_expr.rs
++++ b/crates/polars-stream/src/physical_plan/lower_expr.rs
+@@ -538,10 +538,10 @@ fn simplify_input_streams(
+     Ok(input_streams)
+ }
+ 
+-// Assuming that agg_node is a single-input reduction, lowers its input recursively
+-// and returns a Reduce node as well a node corresponding to the column to select
++// Assuming that agg_node is a reduction, lowers its input recursively and
++// returns a Reduce node as well a node corresponding to the column to select
+ // from the Reduce node for the aggregate.
+-fn lower_unary_reduce_node(
++fn lower_reduce_node(
+     input: PhysStream,
+     agg_node: Node,
+     ctx: &mut LowerExprContext,
+@@ -549,7 +549,7 @@ fn lower_unary_reduce_node(
+     let agg_aexpr = ctx.expr_arena.get(agg_node).clone();
+     let mut agg_input = Vec::with_capacity(1);
+     agg_aexpr.inputs_rev(&mut agg_input);
+-    assert!(agg_input.len() == 1);
++    agg_input.reverse();
+ 
+     let (trans_input, trans_exprs) = lower_exprs_with_ctx(input, &agg_input, ctx)?;
+     let trans_agg_node = ctx.expr_arena.add(agg_aexpr.replace_inputs(&trans_exprs));
+@@ -1702,7 +1702,7 @@ fn lower_exprs_with_ctx(
+                 fmt_str: _,
+                 function: _,
+             } => {
+-                let (trans_stream, trans_expr) = lower_unary_reduce_node(input, expr, ctx)?;
++                let (trans_stream, trans_expr) = lower_reduce_node(input, expr, ctx)?;
+                 input_streams.insert(trans_stream);
+                 transformed_exprs.push(trans_expr);
+             },
+@@ -1711,6 +1711,8 @@ fn lower_exprs_with_ctx(
+                 // Change agg mutably so we can share the codepath for all of these.
+                 IRAggExpr::Min { .. }
+                 | IRAggExpr::Max { .. }
++                | IRAggExpr::MinBy { .. }
++                | IRAggExpr::MaxBy { .. }
+                 | IRAggExpr::First(_)
+                 | IRAggExpr::FirstNonNull(_)
+                 | IRAggExpr::Last(_)
+@@ -1721,7 +1723,7 @@ fn lower_exprs_with_ctx(
+                 | IRAggExpr::Var { .. }
+                 | IRAggExpr::Std { .. }
+                 | IRAggExpr::Count { .. } => {
+-                    let (trans_stream, trans_expr) = lower_unary_reduce_node(input, expr, ctx)?;
++                    let (trans_stream, trans_expr) = lower_reduce_node(input, expr, ctx)?;
+                     input_streams.insert(trans_stream);
+                     transformed_exprs.push(trans_expr);
+                 },
+@@ -1786,7 +1788,7 @@ fn lower_exprs_with_ctx(
+                     ),
+                 ..
+             } => {
+-                let (trans_stream, trans_expr) = lower_unary_reduce_node(input, expr, ctx)?;
++                let (trans_stream, trans_expr) = lower_reduce_node(input, expr, ctx)?;
+                 input_streams.insert(trans_stream);
+                 transformed_exprs.push(trans_expr);
+             },
+@@ -1796,7 +1798,7 @@ fn lower_exprs_with_ctx(
+                 function: IRFunctionExpr::ApproxNUnique,
+                 ..
+             } => {
+-                let (trans_stream, trans_expr) = lower_unary_reduce_node(input, expr, ctx)?;
++                let (trans_stream, trans_expr) = lower_reduce_node(input, expr, ctx)?;
+                 input_streams.insert(trans_stream);
+                 transformed_exprs.push(trans_expr);
+             },
+@@ -1809,7 +1811,7 @@ fn lower_exprs_with_ctx(
+                     | IRFunctionExpr::NullCount,
+                 ..
+             } => {
+-                let (trans_stream, trans_expr) = lower_unary_reduce_node(input, expr, ctx)?;
++                let (trans_stream, trans_expr) = lower_reduce_node(input, expr, ctx)?;
+                 input_streams.insert(trans_stream);
+                 transformed_exprs.push(trans_expr);
+             },
+diff --git a/crates/polars-stream/src/physical_plan/lower_group_by.rs b/crates/polars-stream/src/physical_plan/lower_group_by.rs
+index 4324c7448..127c56a43 100644
+--- a/crates/polars-stream/src/physical_plan/lower_group_by.rs
++++ b/crates/polars-stream/src/physical_plan/lower_group_by.rs
+@@ -74,7 +74,7 @@ fn build_group_by_fallback(
+ }
+ 
+ #[allow(clippy::too_many_arguments)]
+-fn try_replace_agg_input_uniq(
++fn try_replace_agg_inputs_uniq(
+     expr: Node,
+     outer_name: Option<PlSmallStr>,
+     expr_merger: &NaiveExprMerger,
+@@ -87,17 +87,21 @@ fn try_replace_agg_input_uniq(
+     let aexpr = expr_arena.get(expr).clone();
+     let mut inputs = Vec::new();
+     aexpr.inputs_rev(&mut inputs);
++    inputs.reverse();
+ 
+-    assert!(inputs.len() == 1);
+-    let input = inputs[0];
+-
+-    if is_input_independent(input, expr_arena, expr_cache) {
++    if inputs
++        .iter()
++        .any(|i| is_input_independent(*i, expr_arena, expr_cache))
++    {
+         // TODO: we could simply return expr here, but we first need an is_scalar function, because if
+         // it is not a scalar we need to return expr.implode().
+         return None;
+     }
+ 
+-    if !is_elementwise_rec_cached(input, expr_arena, expr_cache) {
++    if !inputs
++        .iter()
++        .all(|i| is_elementwise_rec_cached(*i, expr_arena, expr_cache))
++    {
+         return None;
+     }
+ 
+@@ -105,13 +109,18 @@ fn try_replace_agg_input_uniq(
+     let name = uniq_agg_exprs
+         .entry(agg_id)
+         .or_insert_with(|| {
+-            let input_id = expr_merger.get_uniq_id(input).unwrap();
+-            let input_col = uniq_input_exprs
+-                .entry(input_id)
+-                .or_insert_with(unique_column_name)
+-                .clone();
+-            let input_col_node = expr_arena.add(AExpr::Column(input_col));
+-            let trans_agg_node = expr_arena.add(aexpr.replace_inputs(&[input_col_node]));
++            let input_cols = inputs
++                .iter()
++                .map(|input| {
++                    let input_id = expr_merger.get_uniq_id(*input).unwrap();
++                    let input_col = uniq_input_exprs
++                        .entry(input_id)
++                        .or_insert_with(unique_column_name)
++                        .clone();
++                    expr_arena.add(AExpr::Column(input_col))
++                })
++                .collect::<Vec<_>>();
++            let trans_agg_node = expr_arena.add(aexpr.replace_inputs(&input_cols));
+ 
+             // Add to aggregation expressions and replace with a reference to its output.
+             let agg_expr = if let Some(name) = outer_name {
+@@ -159,9 +168,9 @@ fn try_lower_elementwise_scalar_agg_expr(
+         };
+     }
+ 
+-    macro_rules! replace_agg_input {
++    macro_rules! replace_agg_inputs {
+         ($input:expr) => {
+-            try_replace_agg_input_uniq(
++            try_replace_agg_inputs_uniq(
+                 $input,
+                 outer_name,
+                 expr_merger,
+@@ -250,20 +259,20 @@ fn try_lower_elementwise_scalar_agg_expr(
+                     IRBitwiseFunction::And | IRBitwiseFunction::Or | IRBitwiseFunction::Xor,
+                 ),
+             ..
+-        } => replace_agg_input!(expr),
++        } => replace_agg_inputs!(expr),
+ 
+         #[cfg(feature = "approx_unique")]
+         AExpr::Function {
+             function: IRFunctionExpr::ApproxNUnique,
+             ..
+-        } => replace_agg_input!(expr),
++        } => replace_agg_inputs!(expr),
+ 
+         AExpr::Function {
+             function:
+                 IRFunctionExpr::Boolean(IRBooleanFunction::Any { .. } | IRBooleanFunction::All { .. })
+                 | IRFunctionExpr::NullCount,
+             ..
+-        } => replace_agg_input!(expr),
++        } => replace_agg_inputs!(expr),
+ 
+         node @ AExpr::Function { input, options, .. }
+         | node @ AExpr::AnonymousFunction { input, options, .. }
+@@ -315,6 +324,8 @@ fn try_lower_elementwise_scalar_agg_expr(
+             match agg {
+                 IRAggExpr::Min { .. }
+                 | IRAggExpr::Max { .. }
++                | IRAggExpr::MinBy { .. }
++                | IRAggExpr::MaxBy { .. }
+                 | IRAggExpr::First(_)
+                 | IRAggExpr::FirstNonNull(_)
+                 | IRAggExpr::Last(_)
+@@ -325,7 +336,7 @@ fn try_lower_elementwise_scalar_agg_expr(
+                 | IRAggExpr::Var(..)
+                 | IRAggExpr::Std(..)
+                 | IRAggExpr::Count { .. } => {
+-                    replace_agg_input!(expr)
++                    replace_agg_inputs!(expr)
+                 },
+                 IRAggExpr::Median(..)
+                 | IRAggExpr::NUnique(..)
+diff --git a/crates/polars-utils/src/min_max.rs b/crates/polars-utils/src/min_max.rs
+index 6420b6118..00276d0c4 100644
+--- a/crates/polars-utils/src/min_max.rs
++++ b/crates/polars-utils/src/min_max.rs
+@@ -16,6 +16,16 @@ pub trait MinMax: Sized {
+     fn nan_min_lt(&self, other: &Self) -> bool;
+     fn nan_max_lt(&self, other: &Self) -> bool;
+ 
++    #[inline(always)]
++    fn nan_min_gt(&self, other: &Self) -> bool {
++        other.nan_min_lt(self)
++    }
++
++    #[inline(always)]
++    fn nan_max_gt(&self, other: &Self) -> bool {
++        other.nan_max_lt(self)
++    }
++
+     // Binary operators that return either the minimum or maximum.
+     #[inline(always)]
+     fn min_propagate_nan(self, other: Self) -> Self {
+diff --git a/py-polars/docs/source/reference/expressions/aggregation.rst b/py-polars/docs/source/reference/expressions/aggregation.rst
+index 123111120..fcdeefb27 100644
+--- a/py-polars/docs/source/reference/expressions/aggregation.rst
++++ b/py-polars/docs/source/reference/expressions/aggregation.rst
+@@ -21,9 +21,11 @@ Aggregation
+     Expr.last
+     Expr.len
+     Expr.max
++    Expr.max_by
+     Expr.mean
+     Expr.median
+     Expr.min
++    Expr.min_by
+     Expr.n_unique
+     Expr.nan_max
+     Expr.nan_min
+diff --git a/py-polars/docs/source/reference/series/aggregation.rst b/py-polars/docs/source/reference/series/aggregation.rst
+index fe74d9eb4..52653bb8a 100644
+--- a/py-polars/docs/source/reference/series/aggregation.rst
++++ b/py-polars/docs/source/reference/series/aggregation.rst
+@@ -11,9 +11,11 @@ Aggregation
+     Series.count
+     Series.implode
+     Series.max
++    Series.max_by
+     Series.mean
+     Series.median
+     Series.min
++    Series.min_by
+     Series.mode
+     Series.nan_max
+     Series.nan_min
+diff --git a/py-polars/src/polars/_plr.pyi b/py-polars/src/polars/_plr.pyi
+index 44e25a063..424d4a714 100644
+--- a/py-polars/src/polars/_plr.pyi
++++ b/py-polars/src/polars/_plr.pyi
+@@ -1175,7 +1175,9 @@ class PyExpr:
+     def is_nan(self) -> PyExpr: ...
+     def is_not_nan(self) -> PyExpr: ...
+     def min(self) -> PyExpr: ...
++    def min_by(self, other: PyExpr) -> PyExpr: ...
+     def max(self) -> PyExpr: ...
++    def max_by(self, other: PyExpr) -> PyExpr: ...
+     def nan_max(self) -> PyExpr: ...
+     def nan_min(self) -> PyExpr: ...
+     def mean(self) -> PyExpr: ...
+diff --git a/py-polars/src/polars/expr/expr.py b/py-polars/src/polars/expr/expr.py
+index 5743f2ceb..49c2a795c 100644
+--- a/py-polars/src/polars/expr/expr.py
++++ b/py-polars/src/polars/expr/expr.py
+@@ -3115,6 +3115,37 @@ class Expr:
+         """
+         return wrap_expr(self._pyexpr.max())
+ 
++    @unstable()
++    def max_by(self, by: IntoExpr) -> Expr:
++        """
++        Get maximum value, ordered by another expression.
++
++        .. warning::
++            This functionality is considered **unstable**. It may be changed
++            at any point without it being considered a breaking change.
++
++        Parameters
++        ----------
++        by
++            Column used to determine the largest element.
++            Accepts expression input. Strings are parsed as column names.
++
++        Examples
++        --------
++        >>> df = pl.DataFrame({"a": [-1.0, float("nan"), 1.0], "b": ["x", "y", "z"]})
++        >>> df.select(pl.col("b").max_by("a"))
++        shape: (1, 1)
++        ┌─────┐
++        │ b   │
++        │ --- │
++        │ str │
++        ╞═════╡
++        │ z   │
++        └─────┘
++        """
++        by_pyexpr = parse_into_expression(by)
++        return wrap_expr(self._pyexpr.max_by(by_pyexpr))
++
+     def min(self) -> Expr:
+         """
+         Get minimum value.
+@@ -3134,6 +3165,37 @@ class Expr:
+         """
+         return wrap_expr(self._pyexpr.min())
+ 
++    @unstable()
++    def min_by(self, by: IntoExpr) -> Expr:
++        """
++        Get minimum value, ordered by another expression.
++
++        .. warning::
++            This functionality is considered **unstable**. It may be changed
++            at any point without it being considered a breaking change.
++
++        Parameters
++        ----------
++        by
++            Column used to determine the smallest element.
++            Accepts expression input. Strings are parsed as column names.
++
++        Examples
++        --------
++        >>> df = pl.DataFrame({"a": [-1.0, float("nan"), 1.0], "b": ["x", "y", "z"]})
++        >>> df.select(pl.col("b").min_by("a"))
++        shape: (1, 1)
++        ┌─────┐
++        │ b   │
++        │ --- │
++        │ str │
++        ╞═════╡
++        │ x   │
++        └─────┘
++        """
++        by_pyexpr = parse_into_expression(by)
++        return wrap_expr(self._pyexpr.min_by(by_pyexpr))
++
+     def nan_max(self) -> Expr:
+         """
+         Get maximum value, but propagate/poison encountered NaN values.
+diff --git a/py-polars/src/polars/series/series.py b/py-polars/src/polars/series/series.py
+index 8ffeaf2ad..8abab0930 100644
+--- a/py-polars/src/polars/series/series.py
++++ b/py-polars/src/polars/series/series.py
+@@ -2156,6 +2156,29 @@ class Series:
+         """
+         return self._s.min()
+ 
++    @unstable()
++    def min_by(self, by: IntoExpr) -> Expr:
++        """
++        Get the minimum value in this Series, ordered by an expression.
++
++        .. warning::
++            This functionality is considered **unstable**. It may be changed
++            at any point without it being considered a breaking change.
++
++        Parameters
++        ----------
++        by
++            Column used to determine the smallest element.
++            Accepts expression input. Strings are parsed as column names.
++
++        Examples
++        --------
++        >>> s = pl.Series("a", [-2.0, float("nan"), 1.0])
++        >>> s.min_by(pl.col.a.abs())
++        1.0
++        """
++        return self.to_frame().select_seq(F.col(self.name).min_by(by)).item()
++
+     def max(self) -> PythonLiteral | None:
+         """
+         Get the maximum value in this Series.
+@@ -2168,6 +2191,29 @@ class Series:
+         """
+         return self._s.max()
+ 
++    @unstable()
++    def max_by(self, by: IntoExpr) -> Expr:
++        """
++        Get the maximum value in this Series, ordered by an expression.
++
++        .. warning::
++            This functionality is considered **unstable**. It may be changed
++            at any point without it being considered a breaking change.
++
++        Parameters
++        ----------
++        by
++            Column used to determine the largest element.
++            Accepts expression input. Strings are parsed as column names.
++
++        Examples
++        --------
++        >>> s = pl.Series("a", [-2.0, float("nan"), 1.0])
++        >>> s.max_by(pl.col.a.abs())
++        -2.0
++        """
++        return self.to_frame().select_seq(F.col(self.name).max_by(by)).item()
++
+     def nan_max(self) -> int | float | date | datetime | timedelta | str:
+         """
+         Get maximum value, but propagate/poison encountered NaN values.
+diff --git a/py-polars/tests/unit/operations/aggregation/test_aggregations.py b/py-polars/tests/unit/operations/aggregation/test_aggregations.py
+index d14d9d6bd..97303e945 100644
+--- a/py-polars/tests/unit/operations/aggregation/test_aggregations.py
++++ b/py-polars/tests/unit/operations/aggregation/test_aggregations.py
+@@ -1282,3 +1282,59 @@ def test_sum_inf_not_nan_25849() -> None:
+     data = [10.0, None, 10.0, 10.0, 10.0, 10.0, float("inf"), 10.0, 10.0]
+     df = pl.DataFrame({"x": data, "g": ["X"] * len(data)})
+     assert df.group_by("g").agg(pl.col("x").sum())["x"].item() == float("inf")
++
++
++COLS = ["flt", "dec", "int", "str", "cat", "enum", "date", "dt"]
++
++
++@pytest.mark.parametrize(
++    "agg_funcs", [(pl.Expr.min_by, pl.Expr.min), (pl.Expr.max_by, pl.Expr.max)]
++)
++@pytest.mark.parametrize("by_col", COLS)
++def test_min_max_by(agg_funcs: Any, by_col: str) -> None:
++    agg_by, agg = agg_funcs
++    df = pl.DataFrame(
++        {
++            "flt": [3.0, 2.0, float("nan"), 5.0, None, 4.0],
++            "dec": [3, 2, None, 5, None, 4],
++            "int": [3, 2, None, 5, None, 4],
++            "str": ["c", "b", None, "e", None, "d"],
++            "cat": ["c", "b", None, "e", None, "d"],
++            "enum": ["c", "b", None, "e", None, "d"],
++            "date": [
++                date(2023, 3, 3),
++                date(2023, 2, 2),
++                None,
++                date(2023, 5, 5),
++                None,
++                date(2023, 4, 4),
++            ],
++            "dt": [
++                datetime(2023, 3, 3),
++                datetime(2023, 2, 2),
++                None,
++                datetime(2023, 5, 5),
++                None,
++                datetime(2023, 4, 4),
++            ],
++            "g": [1, 1, 1, 2, 2, 2],
++        },
++        schema_overrides={
++            "dec": pl.Decimal(scale=5),
++            "cat": pl.Categorical,
++            "enum": pl.Enum(["a", "b", "c", "d", "e", "f"]),
++        },
++    )
++
++    result = df.select([agg_by(pl.col(c), pl.col(by_col)) for c in COLS])
++    expected = df.select([agg(pl.col(c)) for c in COLS])
++    assert_frame_equal(result, expected)
++
++    # TODO: remove after https://github.com/pola-rs/polars/issues/25906.
++    if by_col != "cat":
++        df = df.drop("cat")
++        cols = [c for c in COLS if c != "cat"]
++
++        result = df.group_by("g").agg([agg_by(pl.col(c), pl.col(by_col)) for c in cols])
++        expected = df.group_by("g").agg([agg(pl.col(c)) for c in cols])
++        assert_frame_equal(result, expected, check_row_order=False)

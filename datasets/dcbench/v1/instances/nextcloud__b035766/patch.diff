@@ -1,0 +1,1123 @@
+From b0357663b96cf4a3a9bd34194466a4ce76e4f41d Mon Sep 17 00:00:00 2001
+From: Carl Schwan <carl.schwan@nextcloud.com>
+Date: Wed, 10 Sep 2025 10:51:41 +0200
+Subject: [PATCH] perf(preview): Optimize migration and simplify DB layout
+
+* Simplify migration by not moving the actual files and just updating
+  the DB
+* Don't store the storageid in the preview table as it is not needed
+* Start adding tests
+
+Signed-off-by: Carl Schwan <carl.schwan@nextcloud.com>
+---
+ apps/files/lib/Command/ScanAppData.php        |   5 +
+ core/BackgroundJobs/MovePreviewJob.php        |   6 +-
+ .../Version33000Date20250819110529.php        |  23 ++-
+ lib/composer/composer/LICENSE                 |   2 +
+ lib/composer/composer/autoload_classmap.php   |   1 -
+ lib/composer/composer/autoload_static.php     |  13 +-
+ .../ObjectStorePreviewCacheMountProvider.php  | 138 -----------------
+ .../ObjectStore/PrimaryObjectStoreConfig.php  |   6 +
+ lib/private/Preview/Db/Preview.php            |  25 ++-
+ lib/private/Preview/Db/PreviewMapper.php      |  43 ++++--
+ lib/private/Preview/Generator.php             |  17 +--
+ .../Preview/Storage/LocalPreviewStorage.php   |  22 ++-
+ .../Storage/ObjectStorePreviewStorage.php     | 144 +++++++-----------
+ .../Preview/Storage/StorageFactory.php        |   4 +-
+ lib/private/Server.php                        |   2 -
+ ...jectStorePreviewCacheMountProviderTest.php |  95 ------------
+ tests/lib/Files/Storage/Storage.php           |   1 +
+ tests/lib/Preview/MovePreviewJobTest.php      |  32 ++++
+ tests/lib/Preview/PreviewMapperTest.php       |  79 ++++++++++
+ 19 files changed, 291 insertions(+), 367 deletions(-)
+ delete mode 100644 lib/private/Files/Mount/ObjectStorePreviewCacheMountProvider.php
+ delete mode 100644 tests/lib/Files/Mount/ObjectStorePreviewCacheMountProviderTest.php
+ create mode 100644 tests/lib/Preview/MovePreviewJobTest.php
+ create mode 100644 tests/lib/Preview/PreviewMapperTest.php
+
+diff --git a/apps/files/lib/Command/ScanAppData.php b/apps/files/lib/Command/ScanAppData.php
+index 0e08c6a8cf..385e0624b3 100644
+--- a/apps/files/lib/Command/ScanAppData.php
++++ b/apps/files/lib/Command/ScanAppData.php
+@@ -51,6 +51,11 @@ class ScanAppData extends Base {
+ 	}
+ 
+ 	protected function scanFiles(OutputInterface $output, string $folder): int {
++		if ($folder === 'preview') {
++			$output->writeln('<error>Scanning the preview folder is not supported.</error>');
++			return self::FAILURE;
++		}
++
+ 		try {
+ 			/** @var Folder $appData */
+ 			$appData = $this->getAppDataFolder();
+diff --git a/core/BackgroundJobs/MovePreviewJob.php b/core/BackgroundJobs/MovePreviewJob.php
+index d326fab88d..3541a128a4 100644
+--- a/core/BackgroundJobs/MovePreviewJob.php
++++ b/core/BackgroundJobs/MovePreviewJob.php
+@@ -8,6 +8,7 @@ declare(strict_types=1);
+ 
+ namespace OC\Core\BackgroundJobs;
+ 
++use OC\Files\SimpleFS\SimpleFile;
+ use OC\Preview\Db\Preview;
+ use OC\Preview\Db\PreviewMapper;
+ use OC\Preview\Storage\StorageFactory;
+@@ -131,11 +132,12 @@ class MovePreviewJob extends TimedJob {
+ 			$folder = $this->appData->getFolder($internalPath);
+ 
+ 			/**
+-			 * @var list<array{file: ISimpleFile, width: int, height: int, crop: bool, max: bool, extension: string, mtime: int, size: int}> $previewFiles
++			 * @var list<array{file: SimpleFile, width: int, height: int, crop: bool, max: bool, extension: string, mtime: int, size: int}> $previewFiles
+ 			 */
+ 			$previewFiles = [];
+ 
+ 			foreach ($folder->getDirectoryListing() as $previewFile) {
++				/** @var SimpleFile $previewFile */
+ 				[0 => $baseName, 1 => $extension] = explode('.', $previewFile->getName());
+ 				$nameSplit = explode('-', $baseName);
+ 
+@@ -173,7 +175,7 @@ class MovePreviewJob extends TimedJob {
+ 				foreach ($previewFiles as $previewFile) {
+ 					$preview = new Preview();
+ 					$preview->setFileId((int)$fileId);
+-					$preview->setStorageId($result[0]['storage']);
++					$preview->setOldFileId($previewFile['file']->getId());
+ 					$preview->setEtag($result[0]['etag']);
+ 					$preview->setMtime($previewFile['mtime']);
+ 					$preview->setWidth($previewFile['width']);
+diff --git a/core/Migrations/Version33000Date20250819110529.php b/core/Migrations/Version33000Date20250819110529.php
+index 496ee849be..5e607024ec 100644
+--- a/core/Migrations/Version33000Date20250819110529.php
++++ b/core/Migrations/Version33000Date20250819110529.php
+@@ -11,12 +11,15 @@ namespace OC\Core\Migrations;
+ use Closure;
+ use OCP\DB\ISchemaWrapper;
+ use OCP\DB\Types;
++use OCP\Migration\Attributes\CreateTable;
+ use OCP\Migration\IOutput;
+ use OCP\Migration\SimpleMigrationStep;
+ 
+ /**
+  *
+  */
++#[CreateTable(table: 'preview', description: 'Holds the preview data')]
++#[CreateTable(table: 'preview_locations', description: 'Holds the preview location in an object store')]
+ class Version33000Date20250819110529 extends SimpleMigrationStep {
+ 
+ 	/**
+@@ -26,21 +29,33 @@ class Version33000Date20250819110529 extends SimpleMigrationStep {
+ 		/** @var ISchemaWrapper $schema */
+ 		$schema = $schemaClosure();
+ 
++		if (!$schema->hasTable('preview_locations')) {
++			$table = $schema->createTable('preview_locations');
++			$table->addColumn('id', Types::BIGINT, ['autoincrement' => true, 'notnull' => true, 'length' => 20, 'unsigned' => true]);
++			$table->addColumn('bucket_name', Types::STRING, ['notnull' => true, 'length' => 40]);
++			$table->addColumn('object_store_name', Types::STRING, ['notnull' => true, 'length' => 40]);
++			$table->setPrimaryKey(['id']);
++		}
++
+ 		if (!$schema->hasTable('previews')) {
+ 			$table = $schema->createTable('previews');
+ 			$table->addColumn('id', Types::BIGINT, ['autoincrement' => true, 'notnull' => true, 'length' => 20, 'unsigned' => true]);
+ 			$table->addColumn('file_id', Types::BIGINT, ['notnull' => true, 'length' => 20, 'unsigned' => true]);
+-			$table->addColumn('storage_id', Types::BIGINT, ['notnull' => true, 'length' => 20, 'unsigned' => true]);
++			$table->addColumn('old_file_id', Types::BIGINT, ['notnull' => false, 'length' => 20, 'unsigned' => true]);
++			$table->addColumn('location_id', Types::BIGINT, ['notnull' => false, 'length' => 20, 'unsigned' => true]);
+ 			$table->addColumn('width', Types::INTEGER, ['notnull' => true, 'unsigned' => true]);
+ 			$table->addColumn('height', Types::INTEGER, ['notnull' => true, 'unsigned' => true]);
+ 			$table->addColumn('mimetype', Types::INTEGER, ['notnull' => true]);
+-			$table->addColumn('is_max', Types::BOOLEAN, ['notnull' => true, 'default' => false]);
+-			$table->addColumn('crop', Types::BOOLEAN, ['notnull' => true, 'default' => false]);
+-			$table->addColumn('etag', Types::STRING, ['notnull' => true, 'length' => 40]);
++			$table->addColumn('source_mimetype', Types::INTEGER, ['notnull' => true]);
++			$table->addColumn('max', Types::BOOLEAN, ['notnull' => true, 'default' => false]);
++			$table->addColumn('cropped', Types::BOOLEAN, ['notnull' => true, 'default' => false]);
++			$table->addColumn('encrypted', Types::BOOLEAN, ['notnull' => true, 'default' => false]);
++			$table->addColumn('etag', Types::STRING, ['notnull' => true, 'length' => 40, 'fixed' => true]);
+ 			$table->addColumn('mtime', Types::INTEGER, ['notnull' => true, 'unsigned' => true]);
+ 			$table->addColumn('size', Types::INTEGER, ['notnull' => true, 'unsigned' => true]);
+ 			$table->addColumn('version', Types::BIGINT, ['notnull' => true, 'default' => -1]); // can not be null otherwise unique index doesn't work
+ 			$table->setPrimaryKey(['id']);
++			$table->addIndex(['file_id']);
+ 			$table->addUniqueIndex(['file_id', 'width', 'height', 'mimetype', 'crop', 'version'], 'previews_file_uniq_idx');
+ 		}
+ 
+diff --git a/lib/composer/composer/LICENSE b/lib/composer/composer/LICENSE
+index 62ecfd8d00..f27399a042 100644
+--- a/lib/composer/composer/LICENSE
++++ b/lib/composer/composer/LICENSE
+@@ -1,3 +1,4 @@
++
+ Copyright (c) Nils Adermann, Jordi Boggiano
+ 
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+@@ -17,3 +18,4 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
++
+diff --git a/lib/composer/composer/autoload_classmap.php b/lib/composer/composer/autoload_classmap.php
+index d3eb6553b8..5c168a25de 100644
+--- a/lib/composer/composer/autoload_classmap.php
++++ b/lib/composer/composer/autoload_classmap.php
+@@ -1687,7 +1687,6 @@ return array(
+     'OC\\Files\\Mount\\MountPoint' => $baseDir . '/lib/private/Files/Mount/MountPoint.php',
+     'OC\\Files\\Mount\\MoveableMount' => $baseDir . '/lib/private/Files/Mount/MoveableMount.php',
+     'OC\\Files\\Mount\\ObjectHomeMountProvider' => $baseDir . '/lib/private/Files/Mount/ObjectHomeMountProvider.php',
+-    'OC\\Files\\Mount\\ObjectStorePreviewCacheMountProvider' => $baseDir . '/lib/private/Files/Mount/ObjectStorePreviewCacheMountProvider.php',
+     'OC\\Files\\Mount\\RootMountProvider' => $baseDir . '/lib/private/Files/Mount/RootMountProvider.php',
+     'OC\\Files\\Node\\File' => $baseDir . '/lib/private/Files/Node/File.php',
+     'OC\\Files\\Node\\Folder' => $baseDir . '/lib/private/Files/Node/Folder.php',
+diff --git a/lib/composer/composer/autoload_static.php b/lib/composer/composer/autoload_static.php
+index d14e3989a6..423b4cc6b5 100644
+--- a/lib/composer/composer/autoload_static.php
++++ b/lib/composer/composer/autoload_static.php
+@@ -11,32 +11,32 @@ class ComposerStaticInit749170dad3f5e7f9ca158f5a9f04f6a2
+     );
+ 
+     public static $prefixLengthsPsr4 = array (
+-        'O' => 
++        'O' =>
+         array (
+             'OC\\Core\\' => 8,
+             'OC\\' => 3,
+             'OCP\\' => 4,
+         ),
+-        'N' => 
++        'N' =>
+         array (
+             'NCU\\' => 4,
+         ),
+     );
+ 
+     public static $prefixDirsPsr4 = array (
+-        'OC\\Core\\' => 
++        'OC\\Core\\' =>
+         array (
+             0 => __DIR__ . '/../../..' . '/core',
+         ),
+-        'OC\\' => 
++        'OC\\' =>
+         array (
+             0 => __DIR__ . '/../../..' . '/lib/private',
+         ),
+-        'OCP\\' => 
++        'OCP\\' =>
+         array (
+             0 => __DIR__ . '/../../..' . '/lib/public',
+         ),
+-        'NCU\\' => 
++        'NCU\\' =>
+         array (
+             0 => __DIR__ . '/../../..' . '/lib/unstable',
+         ),
+@@ -1728,7 +1728,6 @@ class ComposerStaticInit749170dad3f5e7f9ca158f5a9f04f6a2
+         'OC\\Files\\Mount\\MountPoint' => __DIR__ . '/../../..' . '/lib/private/Files/Mount/MountPoint.php',
+         'OC\\Files\\Mount\\MoveableMount' => __DIR__ . '/../../..' . '/lib/private/Files/Mount/MoveableMount.php',
+         'OC\\Files\\Mount\\ObjectHomeMountProvider' => __DIR__ . '/../../..' . '/lib/private/Files/Mount/ObjectHomeMountProvider.php',
+-        'OC\\Files\\Mount\\ObjectStorePreviewCacheMountProvider' => __DIR__ . '/../../..' . '/lib/private/Files/Mount/ObjectStorePreviewCacheMountProvider.php',
+         'OC\\Files\\Mount\\RootMountProvider' => __DIR__ . '/../../..' . '/lib/private/Files/Mount/RootMountProvider.php',
+         'OC\\Files\\Node\\File' => __DIR__ . '/../../..' . '/lib/private/Files/Node/File.php',
+         'OC\\Files\\Node\\Folder' => __DIR__ . '/../../..' . '/lib/private/Files/Node/Folder.php',
+diff --git a/lib/private/Files/Mount/ObjectStorePreviewCacheMountProvider.php b/lib/private/Files/Mount/ObjectStorePreviewCacheMountProvider.php
+deleted file mode 100644
+index 1546ef98f5..0000000000
+--- a/lib/private/Files/Mount/ObjectStorePreviewCacheMountProvider.php
++++ /dev/null
+@@ -1,138 +0,0 @@
+-<?php
+-
+-declare(strict_types=1);
+-
+-/**
+- * SPDX-FileCopyrightText: 2020 Nextcloud GmbH and Nextcloud contributors
+- * SPDX-License-Identifier: AGPL-3.0-or-later
+- */
+-namespace OC\Files\Mount;
+-
+-use OC\Files\ObjectStore\AppdataPreviewObjectStoreStorage;
+-use OC\Files\ObjectStore\ObjectStoreStorage;
+-use OC\Files\Storage\Wrapper\Jail;
+-use OCP\Files\Config\IRootMountProvider;
+-use OCP\Files\Storage\IStorageFactory;
+-use OCP\IConfig;
+-use Psr\Log\LoggerInterface;
+-
+-/**
+- * Mount provider for object store app data folder for previews
+- */
+-class ObjectStorePreviewCacheMountProvider implements IRootMountProvider {
+-	private LoggerInterface $logger;
+-	/** @var IConfig */
+-	private $config;
+-
+-	public function __construct(LoggerInterface $logger, IConfig $config) {
+-		$this->logger = $logger;
+-		$this->config = $config;
+-	}
+-
+-	/**
+-	 * @return MountPoint[]
+-	 * @throws \Exception
+-	 */
+-	public function getRootMounts(IStorageFactory $loader): array {
+-		if (!is_array($this->config->getSystemValue('objectstore_multibucket'))) {
+-			return [];
+-		}
+-		if ($this->config->getSystemValue('objectstore.multibucket.preview-distribution', false) !== true) {
+-			return [];
+-		}
+-
+-		$instanceId = $this->config->getSystemValueString('instanceid', '');
+-		$mountPoints = [];
+-		$directoryRange = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'];
+-		$i = 0;
+-		foreach ($directoryRange as $parent) {
+-			foreach ($directoryRange as $child) {
+-				$mountPoints[] = new MountPoint(
+-					AppdataPreviewObjectStoreStorage::class,
+-					'/appdata_' . $instanceId . '/preview/' . $parent . '/' . $child,
+-					$this->getMultiBucketObjectStore($i),
+-					$loader,
+-					null,
+-					null,
+-					self::class
+-				);
+-				$i++;
+-			}
+-		}
+-
+-		$rootStorageArguments = $this->getMultiBucketObjectStoreForRoot();
+-		$fakeRootStorage = new ObjectStoreStorage($rootStorageArguments);
+-		$fakeRootStorageJail = new Jail([
+-			'storage' => $fakeRootStorage,
+-			'root' => '/appdata_' . $instanceId . '/preview',
+-		]);
+-
+-		// add a fallback location to be able to fetch existing previews from the old bucket
+-		$mountPoints[] = new MountPoint(
+-			$fakeRootStorageJail,
+-			'/appdata_' . $instanceId . '/preview/old-multibucket',
+-			null,
+-			$loader,
+-			null,
+-			null,
+-			self::class
+-		);
+-
+-		return $mountPoints;
+-	}
+-
+-	protected function getMultiBucketObjectStore(int $number): array {
+-		$config = $this->config->getSystemValue('objectstore_multibucket');
+-
+-		// sanity checks
+-		if (empty($config['class'])) {
+-			$this->logger->error('No class given for objectstore', ['app' => 'files']);
+-		}
+-		if (!isset($config['arguments'])) {
+-			$config['arguments'] = [];
+-		}
+-
+-		/*
+-		 * Use any provided bucket argument as prefix
+-		 * and add the mapping from parent/child => bucket
+-		 */
+-		if (!isset($config['arguments']['bucket'])) {
+-			$config['arguments']['bucket'] = '';
+-		}
+-
+-		$config['arguments']['bucket'] .= "-preview-$number";
+-
+-		// instantiate object store implementation
+-		$config['arguments']['objectstore'] = new $config['class']($config['arguments']);
+-
+-		$config['arguments']['internal-id'] = $number;
+-
+-		return $config['arguments'];
+-	}
+-
+-	protected function getMultiBucketObjectStoreForRoot(): array {
+-		$config = $this->config->getSystemValue('objectstore_multibucket');
+-
+-		// sanity checks
+-		if (empty($config['class'])) {
+-			$this->logger->error('No class given for objectstore', ['app' => 'files']);
+-		}
+-		if (!isset($config['arguments'])) {
+-			$config['arguments'] = [];
+-		}
+-
+-		/*
+-		 * Use any provided bucket argument as prefix
+-		 * and add the mapping from parent/child => bucket
+-		 */
+-		if (!isset($config['arguments']['bucket'])) {
+-			$config['arguments']['bucket'] = '';
+-		}
+-		$config['arguments']['bucket'] .= '0';
+-
+-		// instantiate object store implementation
+-		$config['arguments']['objectstore'] = new $config['class']($config['arguments']);
+-
+-		return $config['arguments'];
+-	}
+-}
+diff --git a/lib/private/Files/ObjectStore/PrimaryObjectStoreConfig.php b/lib/private/Files/ObjectStore/PrimaryObjectStoreConfig.php
+index cd2983d385..02bc28f376 100644
+--- a/lib/private/Files/ObjectStore/PrimaryObjectStoreConfig.php
++++ b/lib/private/Files/ObjectStore/PrimaryObjectStoreConfig.php
+@@ -119,12 +119,14 @@ class PrimaryObjectStoreConfig {
+ 				'default' => 'server1',
+ 				'server1' => $this->validateObjectStoreConfig($objectStoreMultiBucket),
+ 				'root' => 'server1',
++				'preview' => 'server1',
+ 			];
+ 		} elseif ($objectStore) {
+ 			if (!isset($objectStore['default'])) {
+ 				$objectStore = [
+ 					'default' => 'server1',
+ 					'root' => 'server1',
++					'preview' => 'server1',
+ 					'server1' => $objectStore,
+ 				];
+ 			}
+@@ -132,6 +134,10 @@ class PrimaryObjectStoreConfig {
+ 				$objectStore['root'] = 'default';
+ 			}
+ 
++			if (!isset($objectStore['preview'])) {
++				$objectStore['preview'] = 'default';
++			}
++
+ 			if (!is_string($objectStore['default'])) {
+ 				throw new InvalidObjectStoreConfigurationException('The \'default\' object storage configuration is required to be a reference to another configuration.');
+ 			}
+diff --git a/lib/private/Preview/Db/Preview.php b/lib/private/Preview/Db/Preview.php
+index c88cebedc9..b4ebe8b480 100644
+--- a/lib/private/Preview/Db/Preview.php
++++ b/lib/private/Preview/Db/Preview.php
+@@ -17,8 +17,12 @@ use OCP\IPreview;
+ /**
+  * @method \int getFileId()
+  * @method void setFileId(int $fileId)
+- * @method \int getStorageId()
+- * @method void setStorageId(\int $fileId)
++ * @method \int getOldFileId() // Old location in the file-cache table, for legacy compatibility
++ * @method void setOldFileId(int $fileId)
++ * @method \int getLocationId()
++ * @method void setLocationId(int $locationId)
++ * @method \string getBucketName()
++ * @method \string getObjectStoreName()
+  * @method \int getWidth()
+  * @method void setWidth(int $width)
+  * @method \int getHeight()
+@@ -43,7 +47,11 @@ use OCP\IPreview;
+ class Preview extends Entity {
+ 	protected ?int $fileId = null;
+ 
+-	protected ?int $storageId = null;
++	protected ?int $oldFileId = null;
++
++	protected ?int $locationId = null;
++	protected ?string $bucketName = null;
++	protected ?string $objectStoreName = null;
+ 
+ 	protected ?int $width = null;
+ 
+@@ -65,7 +73,8 @@ class Preview extends Entity {
+ 
+ 	public function __construct() {
+ 		$this->addType('fileId', Types::BIGINT);
+-		$this->addType('storageId', Types::BIGINT);
++		$this->addType('oldFileId', Types::BIGINT);
++		$this->addType('locationId', Types::BIGINT);
+ 		$this->addType('width', Types::INTEGER);
+ 		$this->addType('height', Types::INTEGER);
+ 		$this->addType('mimetype', Types::INTEGER);
+@@ -108,4 +117,12 @@ class Preview extends Entity {
+ 			IPreview::MIMETYPE_GIF => 'gif',
+ 		};
+ 	}
++
++	public function setBucketName(string $bucketName): void {
++		$this->bucketName = $bucketName;
++	}
++
++	public function setObjectStoreName(string $objectStoreName): void {
++		$this->objectStoreName = $objectStoreName;
++	}
+ }
+diff --git a/lib/private/Preview/Db/PreviewMapper.php b/lib/private/Preview/Db/PreviewMapper.php
+index 6202363815..e0ec05ef88 100644
+--- a/lib/private/Preview/Db/PreviewMapper.php
++++ b/lib/private/Preview/Db/PreviewMapper.php
+@@ -22,6 +22,7 @@ use OCP\IPreview;
+ class PreviewMapper extends QBMapper {
+ 
+ 	private const TABLE_NAME = 'previews';
++	private const LOCATION_TABLE_NAME = 'preview_locations';
+ 
+ 	public function __construct(IDBConnection $db) {
+ 		parent::__construct($db, self::TABLE_NAME, Preview::class);
+@@ -34,8 +35,7 @@ class PreviewMapper extends QBMapper {
+ 	 */
+ 	public function getAvailablePreviews(array $fileIds): array {
+ 		$selectQb = $this->db->getQueryBuilder();
+-		$selectQb->select('*')
+-			->from(self::TABLE_NAME)
++		$this->joinLocation($selectQb)
+ 			->where(
+ 				$selectQb->expr()->in('file_id', $selectQb->createNamedParameter($fileIds, IQueryBuilder::PARAM_INT_ARRAY)),
+ 			);
+@@ -48,8 +48,7 @@ class PreviewMapper extends QBMapper {
+ 
+ 	public function getPreview(int $fileId, int $width, int $height, string $mode, int $mimetype = IPreview::MIMETYPE_JPEG): ?Preview {
+ 		$selectQb = $this->db->getQueryBuilder();
+-		$selectQb->select('*')
+-			->from(self::TABLE_NAME)
++		$this->joinLocation($selectQb)
+ 			->where(
+ 				$selectQb->expr()->eq('file_id', $selectQb->createNamedParameter($fileId)),
+ 				$selectQb->expr()->eq('width', $selectQb->createNamedParameter($width)),
+@@ -68,10 +67,9 @@ class PreviewMapper extends QBMapper {
+ 	 * @param int[] $fileIds
+ 	 * @return array<int, Preview[]>
+ 	 */
+-	public function getByFileIds(int $storageId, array $fileIds): array {
++	public function getByFileIds(array $fileIds): array {
+ 		$selectQb = $this->db->getQueryBuilder();
+-		$selectQb->select('*')
+-			->from(self::TABLE_NAME)
++		$this->joinLocation($selectQb)
+ 			->where($selectQb->expr()->andX(
+ 				$selectQb->expr()->in('file_id', $selectQb->createNamedParameter($fileIds, IQueryBuilder::PARAM_INT_ARRAY)),
+ 			));
+@@ -85,12 +83,39 @@ class PreviewMapper extends QBMapper {
+ 	/**
+ 	 * @param int[] $previewIds
+ 	 */
+-	public function deleteByIds(int $storageId, array $previewIds): void {
++	public function deleteByIds(array $previewIds): void {
+ 		$qb = $this->db->getQueryBuilder();
+ 		$qb->delete(self::TABLE_NAME)
+ 			->where($qb->expr()->andX(
+-				$qb->expr()->eq('storage_id', $qb->createNamedParameter($storageId, IQueryBuilder::PARAM_INT)),
+ 				$qb->expr()->in('id', $qb->createNamedParameter($previewIds, IQueryBuilder::PARAM_INT_ARRAY))
+ 			))->executeStatement();
+ 	}
++
++	protected function joinLocation(IQueryBuilder $qb): IQueryBuilder {
++		return $qb->select('p.*', 'l.bucket_name', 'l.object_store_name')
++			->from(self::TABLE_NAME, 'p')
++			->join('p', 'preview_locations', 'l', $qb->expr()->eq(
++			'p.location_id', 'l.id'
++		));
++	}
++
++	public function getLocationId(string $bucket, string $objectStore): int {
++		$qb = $this->db->getQueryBuilder();
++		$result = $qb->select('id')
++			->from(self::LOCATION_TABLE_NAME)
++			->where($qb->expr()->eq('bucket_name', $qb->createNamedParameter($bucket)))
++			->andWhere($qb->expr()->eq('object_store_name', $qb->createNamedParameter($objectStore)))
++			->executeQuery();
++		$data = $result->fetchOne();
++		if ($data) {
++			return $data;
++		} else {
++			$qb->insert(self::LOCATION_TABLE_NAME)
++				->values([
++					'bucket_name' => $qb->createNamedParameter($bucket),
++					'object_store_name' => $qb->createNamedParameter($objectStore),
++				])->executeStatement();
++			return $qb->getLastInsertId();
++		}
++	}
+ }
+diff --git a/lib/private/Preview/Generator.php b/lib/private/Preview/Generator.php
+index 2dfbfa6db6..44a12624c3 100644
+--- a/lib/private/Preview/Generator.php
++++ b/lib/private/Preview/Generator.php
+@@ -156,17 +156,13 @@ class Generator {
+ 
+ 			// Try to get a cached preview. Else generate (and store) one
+ 			try {
+-				/** @var ISimpleFile $previewFile */
+-				$previewFile = null;
+-				// TODO(php8.4) replace by array_find
+-				foreach ($previews as $p) {
+-					if ($p->getWidth() === $width && $p->getHeight() === $height && $p->getMimetype() === $maxPreview->getMimetype() && $p->getVersion() === $previewVersion && $p->getCrop() === $crop) {
+-						$previewFile = new PreviewFile($p, $this->storageFactory, $this->previewMapper);
+-						break;
+-					}
+-				}
++				$preview = array_find($previews, fn (Preview $preview): bool => $preview->getWidth() === $width
++					&& $preview->getHeight() === $height && $preview->getMimetype() === $maxPreview->getMimetype()
++					&& $preview->getVersion() === $previewVersion && $preview->getCrop() === $crop);
+ 
+-				if ($previewFile === null) {
++				if ($preview) {
++					$previewFile = new PreviewFile($preview, $this->storageFactory, $this->previewMapper);
++				} else {
+ 					if (!$this->previewManager->isMimeSupported($mimeType)) {
+ 						throw new NotFoundException();
+ 					}
+@@ -543,7 +539,6 @@ class Generator {
+ 	public function savePreview(File $file, int $width, int $height, bool $crop, bool $max, IImage $preview, int $version): Preview {
+ 		$previewEntry = new Preview();
+ 		$previewEntry->setFileId($file->getId());
+-		$previewEntry->setStorageId((int)$file->getMountPoint()->getNumericStorageId());
+ 		$previewEntry->setWidth($width);
+ 		$previewEntry->setHeight($height);
+ 		$previewEntry->setVersion($version);
+diff --git a/lib/private/Preview/Storage/LocalPreviewStorage.php b/lib/private/Preview/Storage/LocalPreviewStorage.php
+index 2c176948c7..d4d7e37c0e 100644
+--- a/lib/private/Preview/Storage/LocalPreviewStorage.php
++++ b/lib/private/Preview/Storage/LocalPreviewStorage.php
+@@ -18,30 +18,35 @@ use OCP\IConfig;
+ 
+ class LocalPreviewStorage implements IPreviewStorage {
+ 	private const PREVIEW_DIRECTORY = '__preview';
+-
+ 	private readonly string $rootFolder;
++	private readonly string $instanceId;
+ 
+ 	public function __construct(
+ 		private readonly IConfig $config,
+ 	) {
++		$this->instanceId = $this->config->getSystemValueString('instanceid');
+ 		$this->rootFolder = $this->config->getSystemValue('datadirectory', OC::$SERVERROOT . '/data');
+ 	}
+ 
+ 	public function writePreview(Preview $preview, $stream): false|int {
+ 		$previewPath = $this->constructPath($preview);
+ 		$this->createParentFiles($previewPath);
+-		$file = @fopen($this->rootFolder . '/' . self::PREVIEW_DIRECTORY . '/' . $previewPath, 'w');
++		$file = @fopen($this->getPreviewRootFolder() . $previewPath, 'w');
+ 		return fwrite($file, $stream);
+ 	}
+ 
+ 	public function readPreview(Preview $preview) {
+ 		$previewPath = $this->constructPath($preview);
+-		return @fopen($this->rootFolder . '/' . self::PREVIEW_DIRECTORY . '/' . $previewPath, 'r');
++		return @fopen($this->getPreviewRootFolder() . $previewPath, 'r');
+ 	}
+ 
+ 	public function deletePreview(Preview $preview) {
+ 		$previewPath = $this->constructPath($preview);
+-		@unlink($this->rootFolder . '/' . self::PREVIEW_DIRECTORY . '/' . $previewPath);
++		@unlink($this->getPreviewRootFolder() . $previewPath);
++	}
++
++	public function getPreviewRootFolder(): string {
++		return $this->rootFolder . '/appdata_' . $this->instanceId . '/preview/';
+ 	}
+ 
+ 	private function constructPath(Preview $preview): string {
+@@ -63,11 +68,14 @@ class LocalPreviewStorage implements IPreviewStorage {
+ 		$previewPath = $this->constructPath($preview);
+ 		$sourcePath = $this->rootFolder . '/appdata_' . $instanceId . '/preview/' . $previewPath;
+ 		$destinationPath = $this->rootFolder . '/' . self::PREVIEW_DIRECTORY . '/' . $previewPath;
+-		if (!file_exists($sourcePath)) {
+-			// legacy flat directory
+-			$sourcePath = $this->rootFolder . '/appdata_' . $instanceId . '/preview/' . $preview->getFileId() . '/' . $preview->getName();
++		if (file_exists($sourcePath)) {
++			return; // No need to migrate
+ 		}
++
++		// legacy flat directory
++		$sourcePath = $this->rootFolder . '/appdata_' . $instanceId . '/preview/' . $preview->getFileId() . '/' . $preview->getName();
+ 		if (file_exists($destinationPath)) {
++			@unlink($sourcePath); // We already have a new preview, just delete the old one
+ 			return;
+ 		}
+ 		$this->createParentFiles($previewPath);
+diff --git a/lib/private/Preview/Storage/ObjectStorePreviewStorage.php b/lib/private/Preview/Storage/ObjectStorePreviewStorage.php
+index a8fe79d473..97313fd306 100644
+--- a/lib/private/Preview/Storage/ObjectStorePreviewStorage.php
++++ b/lib/private/Preview/Storage/ObjectStorePreviewStorage.php
+@@ -14,28 +14,29 @@ use Icewind\Streams\CountWrapper;
+ use OC\Files\ObjectStore\PrimaryObjectStoreConfig;
+ use OC\Files\SimpleFS\SimpleFile;
+ use OC\Preview\Db\Preview;
++use OC\Preview\Db\PreviewMapper;
+ use OCP\Files\NotFoundException;
+ use OCP\Files\ObjectStore\IObjectStore;
+ use OCP\IConfig;
+ 
+ /**
+- * @psalm-type ObjectStoreDefinition = array{store: IObjectStore, objectPrefix: string, config?: array}
++ * @psalm-import-type ObjectStoreConfig from PrimaryObjectStoreConfig
++ * @psalm-type ObjectStoreDefinition = array{store: IObjectStore, objectPrefix: string, config?: ObjectStoreConfig}
+  */
+ class ObjectStorePreviewStorage implements IPreviewStorage {
+ 
+ 	/**
+-	 * @var array<'root'|int, ObjectStoreDefinition>
++	 * @var array<string, array<int, ObjectStoreDefinition>>
+ 	 */
+ 	private array $objectStoreCache = [];
+ 
+-	private bool $isMultibucketEnabled;
+ 	private bool $isMultibucketPreviewDistributionEnabled;
+ 
+ 	public function __construct(
+ 		private readonly PrimaryObjectStoreConfig $objectStoreConfig,
+-		readonly private IConfig $config,
++		IConfig $config,
++		readonly private PreviewMapper $previewMapper,
+ 	) {
+-		$this->isMultibucketEnabled = is_array($config->getSystemValue('objectstore_multibucket'));
+ 		$this->isMultibucketPreviewDistributionEnabled = $config->getSystemValueBool('objectstore.multibucket.preview-distribution');
+ 	}
+ 
+@@ -56,6 +57,7 @@ class ObjectStorePreviewStorage implements IPreviewStorage {
+ 		[
+ 			'objectPrefix' => $objectPrefix,
+ 			'store' => $store,
++			'config' => $config,
+ 		] = $this->getObjectStoreForPreview($preview);
+ 
+ 		$store->writeObject($this->constructUrn($objectPrefix, $preview->getId()), $countStream);
+@@ -79,102 +81,72 @@ class ObjectStorePreviewStorage implements IPreviewStorage {
+ 	}
+ 
+ 	public function migratePreview(Preview $preview, SimpleFile $file): void {
+-		foreach ([false, true] as $fallback) {
+-			[
+-				'objectPrefix' => $objectPrefix,
+-				'store' => $store,
+-				'config' => $config,
+-			] = $this->getObjectStoreForPreview($preview, $fallback);
+-
+-			$oldObjectPrefix = 'urn:oid:';
+-			if (isset($config['objectPrefix'])) {
+-				$oldObjectPrefix = $config['objectPrefix'];
+-			}
+-
+-			try {
+-				$store->copyObject($this->constructUrn($oldObjectPrefix, $file->getId()), $this->constructUrn($objectPrefix, $preview->getId()));
+-				break;
+-			} catch (NotFoundException $e) {
+-				if (!$fallback && $this->isMultibucketPreviewDistributionEnabled) {
+-					continue;
+-				}
+-				throw $e;
+-			}
+-		}
++		// Just set the Preview::bucket and Preview::objectStore
++		$this->getObjectStoreForPreview($preview, true);
+ 	}
+ 
+ 	/**
+ 	 * @return ObjectStoreDefinition
+ 	 */
+-	private function getMultiBucketObjectStore(int $number): array {
+-		/**
+-		 * @var array{class: class-string<IObjectStore>, ...} $config
+-		 */
+-		$config = $this->config->getSystemValue('objectstore_multibucket');
+-
+-		if (!isset($config['arguments'])) {
+-			$config['arguments'] = [];
+-		}
+-
+-		/*
+-		 * Use any provided bucket argument as prefix
+-		 * and add the mapping from parent/child => bucket
+-		 */
+-		if (!isset($config['arguments']['bucket'])) {
+-			$config['arguments']['bucket'] = '';
+-		}
+-
+-		$config['arguments']['bucket'] .= "-preview-$number";
+-
+-		$objectPrefix = 'urn:oid:preview:';
+-		if (isset($config['objectPrefix'])) {
+-			$objectPrefix = $config['objectPrefix'] . 'preview:';
++	private function getObjectStoreForPreview(Preview $preview, bool $oldFallback = false): array {
++		if ($preview->getObjectStoreName() === null) {
++			$config = $this->objectStoreConfig->getObjectStoreConfiguration($oldFallback ? 'root' : 'preview');
++			$objectStoreName = $this->objectStoreConfig->resolveAlias($oldFallback ? 'root' : 'preview');
++
++			$bucketName = $config['arguments']['bucket'];
++			if ($config['arguments']['multibucket']) {
++				if ($this->isMultibucketPreviewDistributionEnabled) {
++					$oldLocationArray = str_split(substr(md5((string)$preview->getFileId()), 0, 2));
++					$bucketNumber = hexdec('0x' . $oldLocationArray[0]) * 16 + hexdec('0x' . $oldLocationArray[0]);
++					$bucketName .= '-preview-' . $bucketNumber;
++				} else {
++					$bucketName .= '0';
++				}
++			}
++			$config['arguments']['bucket'] = $bucketName;
++
++			$locationId = $this->previewMapper->getLocationId($bucketName, $objectStoreName);
++			$preview->setLocationId($locationId);
++			$preview->setObjectStoreName($objectStoreName);
++			$preview->setBucketName($bucketName);
++		} else {
++			$config = $this->objectStoreConfig->getObjectStoreConfiguration($preview->getObjectStoreName());
++			$config['arguments']['bucket'] = $bucketName = $preview->getBucketName();
++			$objectStoreName = $preview->getObjectStoreName();
+ 		}
+ 
+-		return [
+-			'store' => new $config['class']($config['arguments']),
+-			'objectPrefix' => $objectPrefix,
+-			'config' => $config,
+-		];
+-	}
++		$objectPrefix = $this->getObjectPrefix($preview, $config);
+ 
+-	/**
+-	 * @return ObjectStoreDefinition
+-	 */
+-	private function getRootObjectStore(): array {
+-		if (!isset($this->objectStoreCache['root'])) {
+-			$rootConfig = $this->objectStoreConfig->getObjectStoreConfigForRoot();
+-			$objectPrefix = 'urn:oid:preview:';
+-			if (isset($rootConfig['arguments']['objectPrefix'])) {
+-				$objectPrefix = $rootConfig['arguments']['objectPrefix'] . 'preview:';
+-			}
+-			$this->objectStoreCache['root'] = [
+-				'store' => $this->objectStoreConfig->buildObjectStore($rootConfig),
++		if (!isset($this->objectStoreCache[$objectStoreName])) {
++			$this->objectStoreCache[$objectStoreName] = [];
++			$this->objectStoreCache[$objectStoreName][$bucketName] = [
++				'store' => $this->objectStoreConfig->buildObjectStore($config),
+ 				'objectPrefix' => $objectPrefix,
++				'config' => $config,
++			];
++		} elseif (!isset($this->objectStoreCache[$objectStoreName][$bucketName])) {
++			$this->objectStoreCache[$objectStoreName][$bucketName] = [
++				'store' => $this->objectStoreConfig->buildObjectStore($config),
++				'objectPrefix' => $objectPrefix,
++				'config' => $config,
+ 			];
+-		}
+-		return $this->objectStoreCache['root'];
+-	}
+-
+-	/**
+-	 * @return ObjectStoreDefinition
+-	 */
+-	private function getObjectStoreForPreview(Preview $preview, bool $oldFallback = false): array {
+-		if (!$this->isMultibucketEnabled || !$this->isMultibucketPreviewDistributionEnabled || $oldFallback) {
+-			return $this->getRootObjectStore();
+-		}
+-
+-		$oldLocationArray = str_split(substr(md5((string)$preview->getFileId()), 0, 2));
+-		$bucketNumber = hexdec('0x' . $oldLocationArray[0]) * 16 + hexdec('0x' . $oldLocationArray[0]);
+-
+-		if (!isset($this->objectStoreCache[$bucketNumber])) {
+-			$this->objectStoreCache[$bucketNumber] = $this->getMultiBucketObjectStore($bucketNumber);
+ 		}
+ 
+-		return $this->objectStoreCache[$bucketNumber];
++		return $this->objectStoreCache[$objectStoreName][$bucketName];
+ 	}
+ 
+ 	private function constructUrn(string $objectPrefix, int $id): string {
+ 		return $objectPrefix . $id;
+ 	}
++
++	public function getObjectPrefix(Preview $preview, array $config): string {
++		if ($preview->getOldFileId()) {
++			return $config['arguments']['objectPrefix'] ?? 'uri:oid:';
++		}
++		if (isset($config['arguments']['objectPrefix'])) {
++			return $config['arguments']['objectPrefix'] . 'preview:';
++		} else {
++			return 'uri:oid:preview:';
++		}
++	}
+ }
+diff --git a/lib/private/Preview/Storage/StorageFactory.php b/lib/private/Preview/Storage/StorageFactory.php
+index 077395c8b9..0755bacd0b 100644
+--- a/lib/private/Preview/Storage/StorageFactory.php
++++ b/lib/private/Preview/Storage/StorageFactory.php
+@@ -5,6 +5,7 @@ namespace OC\Preview\Storage;
+ use OC\Files\ObjectStore\PrimaryObjectStoreConfig;
+ use OC\Files\SimpleFS\SimpleFile;
+ use OC\Preview\Db\Preview;
++use OC\Preview\Db\PreviewMapper;
+ use OCP\IConfig;
+ 
+ class StorageFactory implements IPreviewStorage {
+@@ -13,6 +14,7 @@ class StorageFactory implements IPreviewStorage {
+ 	public function __construct(
+ 		private readonly PrimaryObjectStoreConfig $objectStoreConfig,
+ 		private readonly IConfig $config,
++		private readonly PreviewMapper $previewMapper,
+ 	) {
+ 	}
+ 
+@@ -34,7 +36,7 @@ class StorageFactory implements IPreviewStorage {
+ 		}
+ 
+ 		if ($this->objectStoreConfig->hasObjectStore()) {
+-			$this->backend = new ObjectStorePreviewStorage($this->objectStoreConfig, $this->config);
++			$this->backend = new ObjectStorePreviewStorage($this->objectStoreConfig, $this->config, $this->previewMapper);
+ 		} else {
+ 			$this->backend = new LocalPreviewStorage($this->config);
+ 		}
+diff --git a/lib/private/Server.php b/lib/private/Server.php
+index 4445788ec4..fa88d8353e 100644
+--- a/lib/private/Server.php
++++ b/lib/private/Server.php
+@@ -49,7 +49,6 @@ use OC\Files\Lock\LockManager;
+ use OC\Files\Mount\CacheMountProvider;
+ use OC\Files\Mount\LocalHomeMountProvider;
+ use OC\Files\Mount\ObjectHomeMountProvider;
+-use OC\Files\Mount\ObjectStorePreviewCacheMountProvider;
+ use OC\Files\Mount\RootMountProvider;
+ use OC\Files\Node\HookConnector;
+ use OC\Files\Node\LazyRoot;
+@@ -789,7 +788,6 @@ class Server extends ServerContainer implements IServerContainer {
+ 			$manager->registerHomeProvider(new LocalHomeMountProvider());
+ 			$manager->registerHomeProvider(new ObjectHomeMountProvider($objectStoreConfig));
+ 			$manager->registerRootProvider(new RootMountProvider($objectStoreConfig, $config));
+-			$manager->registerRootProvider(new ObjectStorePreviewCacheMountProvider($logger, $config));
+ 
+ 			return $manager;
+ 		});
+diff --git a/tests/lib/Files/Mount/ObjectStorePreviewCacheMountProviderTest.php b/tests/lib/Files/Mount/ObjectStorePreviewCacheMountProviderTest.php
+deleted file mode 100644
+index 9060bf0d5f..0000000000
+--- a/tests/lib/Files/Mount/ObjectStorePreviewCacheMountProviderTest.php
++++ /dev/null
+@@ -1,95 +0,0 @@
+-<?php
+-
+-declare(strict_types=1);
+-/**
+- * SPDX-FileCopyrightText: 2020 Nextcloud GmbH and Nextcloud contributors
+- * SPDX-License-Identifier: AGPL-3.0-or-later
+- */
+-
+-namespace Test\Files\Mount;
+-
+-use OC\Files\Mount\ObjectStorePreviewCacheMountProvider;
+-use OC\Files\ObjectStore\S3;
+-use OC\Files\Storage\StorageFactory;
+-use OCP\Files\Storage\IStorageFactory;
+-use OCP\IConfig;
+-use PHPUnit\Framework\MockObject\MockObject;
+-use Psr\Log\LoggerInterface;
+-
+-/**
+- * @group DB
+- *
+- * The DB permission is needed for the fake root storage initialization
+- */
+-class ObjectStorePreviewCacheMountProviderTest extends \Test\TestCase {
+-	/** @var ObjectStorePreviewCacheMountProvider */
+-	protected $provider;
+-
+-	/** @var LoggerInterface|MockObject */
+-	protected $logger;
+-	/** @var IConfig|MockObject */
+-	protected $config;
+-	/** @var IStorageFactory|MockObject */
+-	protected $loader;
+-
+-
+-	protected function setUp(): void {
+-		parent::setUp();
+-
+-		$this->logger = $this->createMock(LoggerInterface::class);
+-		$this->config = $this->createMock(IConfig::class);
+-		$this->loader = $this->createMock(StorageFactory::class);
+-
+-		$this->provider = new ObjectStorePreviewCacheMountProvider($this->logger, $this->config);
+-	}
+-
+-	public function testNoMultibucketObjectStorage(): void {
+-		$this->config->expects($this->once())
+-			->method('getSystemValue')
+-			->with('objectstore_multibucket')
+-			->willReturn(null);
+-
+-		$this->assertEquals([], $this->provider->getRootMounts($this->loader));
+-	}
+-
+-	public function testMultibucketObjectStorage(): void {
+-		$objectstoreConfig = [
+-			'class' => S3::class,
+-			'arguments' => [
+-				'bucket' => 'abc',
+-				'num_buckets' => 64,
+-				'key' => 'KEY',
+-				'secret' => 'SECRET',
+-				'hostname' => 'IP',
+-				'port' => 'PORT',
+-				'use_ssl' => false,
+-				'use_path_style' => true,
+-			],
+-		];
+-		$this->config->expects($this->any())
+-			->method('getSystemValue')
+-			->willReturnCallback(function ($config) use ($objectstoreConfig) {
+-				if ($config === 'objectstore_multibucket') {
+-					return $objectstoreConfig;
+-				} elseif ($config === 'objectstore.multibucket.preview-distribution') {
+-					return true;
+-				}
+-				return null;
+-			});
+-		$this->config->expects($this->once())
+-			->method('getSystemValueString')
+-			->with('instanceid')
+-			->willReturn('INSTANCEID');
+-
+-		$mounts = $this->provider->getRootMounts($this->loader);
+-
+-		// 256 mounts for the subfolders and 1 for the fake root
+-		$this->assertCount(257, $mounts);
+-
+-		// do some sanity checks if they have correct mount point paths
+-		$this->assertEquals('/appdata_INSTANCEID/preview/0/0/', $mounts[0]->getMountPoint());
+-		$this->assertEquals('/appdata_INSTANCEID/preview/2/5/', $mounts[37]->getMountPoint());
+-		// also test the path of the fake bucket
+-		$this->assertEquals('/appdata_INSTANCEID/preview/old-multibucket/', $mounts[256]->getMountPoint());
+-	}
+-}
+diff --git a/tests/lib/Files/Storage/Storage.php b/tests/lib/Files/Storage/Storage.php
+index 8110ab6e8c..60e696739e 100644
+--- a/tests/lib/Files/Storage/Storage.php
++++ b/tests/lib/Files/Storage/Storage.php
+@@ -358,6 +358,7 @@ abstract class Storage extends \Test\TestCase {
+ 		$this->assertTrue($this->instance->file_exists($fileName));
+ 
+ 		$fh = $this->instance->fopen($fileName, 'r');
++		$this->assertTrue(is_resource($fh));
+ 		$content = stream_get_contents($fh);
+ 		$this->assertEquals(file_get_contents($textFile), $content);
+ 	}
+diff --git a/tests/lib/Preview/MovePreviewJobTest.php b/tests/lib/Preview/MovePreviewJobTest.php
+new file mode 100644
+index 0000000000..418f28faff
+--- /dev/null
++++ b/tests/lib/Preview/MovePreviewJobTest.php
+@@ -0,0 +1,32 @@
++<?php
++
++namespace lib\Preview;
++
++use OC\Core\BackgroundJobs\MovePreviewJob;
++use OCP\Files\AppData\IAppDataFactory;
++use OCP\Files\IAppData;
++use OCP\Server;
++use PHPUnit\Framework\Attributes\CoversClass;
++use PHPUnit\Framework\Attributes\TestDox;
++use Test\TestCase;
++
++/**
++ * @group DB
++ */
++#[CoversClass(MovePreviewJob::class)]
++class MovePreviewJobTest extends TestCase {
++	private IAppData $previewAppData;
++
++	public function setUp(): void {
++		parent::setUp();
++		$this->previewAppData = Server::get(IAppDataFactory::class)->get('preview');
++	}
++
++	#[TestDox("Test the migration from the legacy flat hierarchy to the new one")]
++	function testMigrationLegacyPath(): void {
++		$folder = $this->previewAppData->newFolder(5);
++		$file = $folder->newFile('64-64-crop.png', 'abcdefg');
++		$job = Server::get(MovePreviewJob::class);
++		$this->invokePrivate($job, 'run', []);
++	}
++}
+diff --git a/tests/lib/Preview/PreviewMapperTest.php b/tests/lib/Preview/PreviewMapperTest.php
+new file mode 100644
+index 0000000000..68aea1bfcc
+--- /dev/null
++++ b/tests/lib/Preview/PreviewMapperTest.php
+@@ -0,0 +1,79 @@
++<?php
++
++declare(strict_types=1);
++
++/**
++ * SPDX-FileCopyrightText: 2025 Nextcloud GmbH
++ * SPDX-FileContributor: Carl Schwan
++ * SPDX-License-Identifier: AGPL-3.0-or-later
++ */
++
++namespace Test\Preview;
++
++use OC\Preview\Db\Preview;
++use OC\Preview\Db\PreviewMapper;
++use OCP\IDBConnection;
++use OCP\IPreview;
++use OCP\Server;
++use Test\TestCase;
++
++/**
++ * @group DB
++ */
++class PreviewMapperTest extends TestCase {
++	private PreviewMapper $previewMapper;
++	private IDBConnection $connection;
++
++	public function setUp(): void {
++		$this->previewMapper = Server::get(PreviewMapper::class);
++		$this->connection = Server::get(IDBConnection::class);
++	}
++
++	public function testGetAvailablePreviews() {
++		// Empty
++		$this->assertEquals([], $this->previewMapper->getAvailablePreviews([]));
++
++		// No preview available
++		$this->assertEquals([42 => []], $this->previewMapper->getAvailablePreviews([42]));
++
++		$this->createPreviewForFileId(42);
++		$previews = $this->previewMapper->getAvailablePreviews([42]);
++		$this->assertNotEmpty($previews[42]);
++		$this->assertNull($previews[42][0]->getLocationId());
++		$this->assertNull($previews[42][0]->getBucketName());
++		$this->assertNull($previews[42][0]->getObjectStoreName());
++
++		$this->createPreviewForFileId(43, 2);
++		$previews = $this->previewMapper->getAvailablePreviews([43]);
++		$this->assertNotEmpty($previews[43]);
++		$this->assertEquals('preview-2', $previews[43][0]->getBucketName());
++		$this->assertEquals('default', $previews[43][0]->getObjectStoreName());
++	}
++
++	private function createPreviewForFileId(int $fileId, ?int $bucket = null) {
++		if ($bucket) {
++			$qb = $this->connection->getQueryBuilder();
++			$qb->insert('preview_locations')
++				->values([
++					'bucket' => $qb->createNamedParameter('preview-' . $bucket),
++					'object_store' => $qb->createNamedParameter('default'),
++				]);
++			$locationId = $qb->executeStatement();
++		}
++		$preview = new Preview();
++		$preview->setFileId($fileId);
++		$preview->setCrop(true);
++		$preview->setIsMax(true);
++		$preview->setWidth(100);
++		$preview->setHeight(100);
++		$preview->setSize(100);
++		$preview->setMtime(time());
++		$preview->setMimetype(IPreview::MIMETYPE_PNG);
++		$preview->setEtag("abcdefg");
++
++		if ($locationId) {
++			$preview->setLocationId($locationId);
++		}
++		$this->previewMapper->insert($preview);
++	}
++}

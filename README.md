@@ -2,15 +2,17 @@
 
 [![CI](https://github.com/nikolay-e/diffctx/actions/workflows/ci.yml/badge.svg)](https://github.com/nikolay-e/diffctx/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/diffctx)](https://pypi.org/project/diffctx/)
+[![crates.io](https://img.shields.io/crates/v/diffctx)](https://crates.io/crates/diffctx)
+[![npm](https://img.shields.io/npm/v/diffctx)](https://www.npmjs.com/package/diffctx)
 [![License](https://img.shields.io/pypi/l/diffctx)](https://pypi.org/project/diffctx/)
 
 **diffctx selects the minimum code an LLM needs to review a git diff.**
-Instead of pasting whole files, it walks the dependency graph from the changed
-lines outward and stops as soon as additional context stops paying for itself.
+Instead of pasting whole files, it walks the dependency graph outward from the
+changed lines and stops once more context stops paying for itself.
 
 > Coming from [`treemapper`](https://pypi.org/project/treemapper/)? That name is
-> deprecated — it was a thin wrapper around diffctx. Every command, flag, and
-> API call works unchanged: `treemapper` → `diffctx`, `treemapper-mcp` → `diffctx-mcp`.
+> deprecated. Every command, flag, and API call works unchanged:
+> `treemapper` → `diffctx`, `treemapper-mcp` → `diffctx-mcp`.
 
 ## Why not just use `tree` or repomix?
 
@@ -34,10 +36,26 @@ pip install diffctx                     # or: into an active environment
 pipx install 'diffctx[mcp]'             # + MCP server for AI assistants
 ```
 
-A standalone binary (no Python required) is on the
-[releases page](https://github.com/nikolay-e/diffctx/releases/latest).
 The `[tree-sitter]` extra adds AST-level parsing for more accurate context
 selection across 30+ languages.
+
+Without Python:
+
+```bash
+cargo install diffctx                   # native CLI from crates.io
+npx diffctx . --diff HEAD~1             # npm wrapper over the native binary
+docker run --rm -v "$PWD:/repo" ghcr.io/nikolay-e/diffctx . --diff HEAD~1
+```
+
+The image runs as an unprivileged user and writes to stdout; to have `-o` write
+into the mounted repo, add `--user "$(id -u):$(id -g)"`.
+
+Prebuilt binaries for linux (x86_64/aarch64), macOS (arm64) and Windows (x64)
+are attached to every [release](https://github.com/nikolay-e/diffctx/releases/latest).
+The native binary covers diff mode with YAML/JSON output; tree mode, Markdown
+output, the `graph` subcommand and the MCP server live in the Python package.
+`cargo add diffctx` embeds the pipeline in a Rust project
+([docs.rs](https://docs.rs/diffctx)).
 
 ## Quick start
 
@@ -46,19 +64,18 @@ diffctx . --diff HEAD~1       # smart context for last commit → paste into Cla
 diffctx . -f md -c            # full codebase export → clipboard in Markdown
 ```
 
-![diffctx demo](https://raw.githubusercontent.com/nikolay-e/diffctx/main/docs/demo.gif)
+![diffctx demo](https://raw.githubusercontent.com/nikolay-e/diffctx/main/docs/demo/demo.gif)
 
-*`diffctx . --diff HEAD~1` selects only the fragments — functions, imports,
-type definitions — that an LLM actually needs to review the last commit,
-instead of dumping every changed file in full.*
+*`diffctx . --diff HEAD~1` selects only the fragments an LLM needs to review the
+last commit, instead of dumping every changed file in full.*
 
 ## Diff context mode
 
-Finds the minimal set of code fragments needed to understand a change —
-imports, callers, type definitions, config dependencies — across 50+ file
-types. It builds a code graph (imports, co-changes, type refs), propagates
-relevance from the changed lines outward, and stops when relevance drops below
-`--tau` or the `--budget` token cap is reached.
+Finds the minimal set of fragments needed to understand a change — imports,
+callers, type definitions, config dependencies — across 50+ file types. It
+builds a code graph (imports, co-changes, type refs), propagates relevance
+outward from the changed lines, and stops when relevance drops below `--tau` or
+the `--budget` token cap is hit.
 
 | Flag        | Default | Description                                                              |
 |-------------|---------|--------------------------------------------------------------------------|
@@ -70,7 +87,8 @@ relevance from the changed lines outward, and stops when relevance drops below
 | `--timeout` | 300     | Wall-clock deadline in seconds; on expiry diffctx exits 124 instead of hanging |
 
 Calibration of `--alpha`, `--tau`, and the edge-weight priors:
-[`docs/parameter-strategy.md`](docs/parameter-strategy.md). Theory:
+[`docs/engineering/parameter-strategy.md`](docs/engineering/parameter-strategy.md).
+Theory:
 [Context-Selection for Git Diff (Zenodo, 2026)](https://doi.org/10.5281/zenodo.18824580).
 
 ### `graph` subcommand
@@ -106,11 +124,11 @@ diffctx . --diff HEAD~1 -c               # diff context to clipboard
 <!-- END USAGE -->
 
 Every run reports token count and size on stderr — `12,847 tokens
-(o200k_base), 52.3 KB` (tiktoken, the GPT-4o tokenizer; `~`-prefixed
-approximation above 1 MB). `-c/--copy` sends output to the clipboard via
-`pbcopy` (macOS), `clip` (Windows), or `wl-copy`/`xclip`/`xsel` (Linux).
-Unreadable files are replaced by placeholders such as `<binary file: N bytes>`,
-`<file too large: N bytes>`, or `<unreadable content: not utf-8>`.
+(o200k_base), 52.3 KB` (tiktoken, the GPT-4o tokenizer; `~`-prefixed above
+1 MB). `-c/--copy` copies output via `pbcopy` (macOS), `clip` (Windows), or
+`wl-copy`/`xclip`/`xsel` (Linux). Unreadable files become placeholders like
+`<binary file: N bytes>`, `<file too large: N bytes>`, or
+`<unreadable content: not utf-8>`.
 
 ## Python API
 
@@ -147,7 +165,7 @@ print(to_yaml(tree))
 diffctx includes an [MCP](https://modelcontextprotocol.io) server that lets AI
 assistants (Claude Code, Cursor, Windsurf, etc.) call diff context analysis
 automatically during code review. Install with `pip install 'diffctx[mcp]'`
-and add to your MCP client config (e.g. `~/.claude/mcp.json` for Claude Code):
+and add it to your MCP client config (e.g. `~/.claude/mcp.json` for Claude Code):
 
 ```json
 {
@@ -167,11 +185,26 @@ Cursor, Continue, Windsurf, and Zed:
 ## Ignore patterns
 
 Respects `.gitignore` and `.diffctx/ignore` automatically — hierarchically at
-every directory level, with gitignore semantics (negation `!important.log`,
-anchored `/root_only.txt`). `.diffctx/whitelist` acts as an include-only
-filter, and the output file is always auto-ignored. `--no-default-ignores`
-disables the built-in patterns; `--no-ignores` disables all ignore rules
-(tree mode only).
+every directory level, with full gitignore semantics (negation `!important.log`,
+anchored `/root_only.txt`). `.diffctx/whitelist` acts as an include-only filter,
+and the output file is always auto-ignored. `--no-default-ignores` disables the
+built-in patterns; `--no-ignores` disables all ignore rules (tree mode only).
+
+## Token cache
+
+Diff mode caches per-blob tokenization under
+`~/Library/Caches/diffctx/token-cache` (macOS),
+`$XDG_CACHE_HOME/diffctx/token-cache` (Linux) or
+`%LOCALAPPDATA%\diffctx\token-cache` (Windows). It is a pure speedup: deleting
+it only costs one cold run.
+
+| Variable | Effect |
+|----------|--------|
+| `DIFFCTX_TOKEN_CACHE_DIR` | Relocate the cache |
+| `DIFFCTX_TOKEN_CACHE_MAX_BYTES` | Size cap, default `536870912` (512 MB); `0` disables eviction |
+
+Eviction is amortized: each run trims one of the cache's 256 shards back under
+its share of the cap, oldest entries first.
 
 ## Exit codes
 
@@ -181,9 +214,17 @@ disables the built-in patterns; `--no-ignores` disables all ignore rules
 | `1`  | Runtime error (bad path, permission denied, etc.) |
 | `2`  | Usage error (invalid flags/arguments) |
 | `3`  | Environment error (`--diff` outside a git repo, git not installed, no commits yet) |
-| `4`  | `--diff` produced no semantic context (clean tree, binary-only, everything filtered); output is still emitted. Deletion/rename-only diffs list `deleted_files`/`renamed_files` and exit `0` |
+| `4`  | `--diff` produced no semantic context (clean tree, binary-only, everything filtered); output is still emitted. Deletion/rename/lockfile-only diffs list `deleted_files`/`renamed_files`/`lockfile_changes` and exit `0` |
 | `130`| Interrupted (Ctrl-C) |
 | `141`| Broken pipe (e.g. piping into `head`) |
+
+## Repository layout
+
+Rust product code lives in `crates/diffctx-native/`; the Python CLI and MCP
+package live in `src/diffctx/`. Evaluation code, immutable datasets, and paper
+artifacts are intentionally separated under `eval/`, `datasets/`, and `paper/`.
+See [repository ownership boundaries](docs/architecture/repository-layout.md)
+for the lifecycle and entry point of each area.
 
 ## License
 
@@ -193,5 +234,5 @@ Apache 2.0
 
 - [Changelog](CHANGELOG.md)
 - [Security policy](SECURITY.md) — threat model and vulnerability reporting
-- [Parameter strategy](docs/parameter-strategy.md) — how `--alpha`,
+- [Parameter strategy](docs/engineering/parameter-strategy.md) — how `--alpha`,
   `--tau`, and edge weights are calibrated

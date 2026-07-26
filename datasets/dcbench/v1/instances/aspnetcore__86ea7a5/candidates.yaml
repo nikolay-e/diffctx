@@ -1,0 +1,137 @@
+generators:
+  cochange: 0
+  bm25: 15
+  graph: 20
+  random: 10
+candidates:
+- path: .azure/pipelines/blazor-daily-tests.yml
+  sources:
+  - random
+- path: .github/workflows/issue-triage-agent.md
+  sources:
+  - graph
+- path: .github/workflows/test-quarantine.md
+  sources:
+  - bm25
+- path: src/Components/Components/src/RenderTree/RenderTreeDiffBuilder.cs
+  sources:
+  - bm25
+- path: src/Components/Components/src/RenderTree/Renderer.cs
+  sources:
+  - bm25
+- path: src/Components/Components/src/RouteView.cs
+  sources:
+  - random
+- path: src/Components/Components/test/CascadingParameterTest.cs
+  sources:
+  - graph
+- path: src/Components/Endpoints/src/Builder/RazorComponentsEndpointRouteBuilderExtensions.cs
+  sources:
+  - graph
+- path: src/Components/Endpoints/test/TestComponents/WebAssemblyPreloadWrapper.razor
+  sources:
+  - random
+- path: src/Components/Forms/src/EditContextDataAnnotationsExtensions.cs
+  sources:
+  - graph
+- path: src/Components/Forms/test/EditContextDataAnnotationsExtensionsTest.cs
+  sources:
+  - graph
+- path: src/Components/Forms/test/FieldIdentifierTest.cs
+  sources:
+  - graph
+- path: src/Components/Testing/src/Infrastructure/TestServiceOverrideObserver.cs
+  sources:
+  - random
+- path: src/Components/Web/src/Forms/DisplayName.cs
+  sources:
+  - graph
+- path: src/Components/Web/src/Forms/EditForm.cs
+  sources:
+  - bm25
+  - graph
+- path: src/Components/Web/src/Forms/InputCheckbox.cs
+  sources:
+  - bm25
+- path: src/Components/Web/src/Forms/InputDate.cs
+  sources:
+  - bm25
+- path: src/Components/Web/src/Forms/InputExtensions.cs
+  sources:
+  - graph
+- path: src/Components/Web/src/Forms/InputNumber.cs
+  sources:
+  - bm25
+  - graph
+- path: src/Components/Web/src/Forms/Label.cs
+  sources:
+  - bm25
+- path: src/Components/Web/src/HtmlRendering/StaticHtmlRenderer.HtmlWriting.cs
+  sources:
+  - bm25
+- path: src/Components/Web/test/Forms/EditFormTest.cs
+  sources:
+  - bm25
+- path: src/Components/Web/test/Forms/InputDateTest.cs
+  sources:
+  - bm25
+- path: src/Components/Web/test/Forms/InputNumberTest.cs
+  sources:
+  - bm25
+- path: src/Components/Web/test/Forms/InputRadioTest.cs
+  sources:
+  - graph
+- path: src/Components/Web/test/Forms/LabelTest.cs
+  sources:
+  - graph
+- path: src/Components/test/testassets/Components.TestServer/RazorComponents/ValidationModels/AddressModel.cs
+  sources:
+  - graph
+- path: src/DataProtection/DataProtection/test/Microsoft.AspNetCore.DataProtection.Tests/SP800_108/SP800_108Tests.cs
+  sources:
+  - graph
+- path: src/HealthChecks/.vsconfig
+  sources:
+  - random
+- path: src/HttpClientFactory/Polly/src/PACKAGE.md
+  sources:
+  - graph
+- path: src/JSInterop/Microsoft.JSInterop.JS/src/.eslintrc.json
+  sources:
+  - graph
+- path: src/JSInterop/Microsoft.JSInterop.JS/src/package.json
+  sources:
+  - graph
+- path: src/Mvc/Mvc.DataAnnotations/test/DataAnnotationsModelValidatorTest.cs
+  sources:
+  - graph
+- path: src/Mvc/Mvc.TagHelpers/src/InputTagHelper.cs
+  sources:
+  - bm25
+- path: src/Mvc/Mvc.TagHelpers/src/Rendering/ValidationSummary.cs
+  sources:
+  - graph
+- path: src/Mvc/Mvc.ViewFeatures/src/DefaultHtmlGenerator.cs
+  sources:
+  - bm25
+- path: src/Mvc/test/WebSites/HtmlGenerationWebSite/Views/HtmlGeneration_Home/Index.cshtml
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/RazorPagesWebSite/Pages/ViewData/ViewDataSetInViewStart/_Layout.cshtml
+  sources:
+  - random
+- path: src/OpenApi/src/Extensions/JsonNodeSchemaExtensions.cs
+  sources:
+  - bm25
+- path: src/ProjectTemplates/ProjectTemplatesNoDeps.slnf
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ItemTemplates/content/ViewImports/.template.config/localize/templatestrings.tr.json
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ProjectTemplates/content/Worker-FSharp/appsettings.json
+  sources:
+  - random
+- path: src/Servers/IIS/AspNetCoreModuleV2/AspNetCore/applicationinfo.cpp
+  sources:
+  - graph

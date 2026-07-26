@@ -1,0 +1,81 @@
+generators:
+  cochange: 0
+  bm25: 15
+  graph: 0
+  random: 10
+candidates:
+- path: api/envoy/config/core/v3/protocol.proto
+  sources:
+  - bm25
+- path: api/envoy/extensions/common/aws/v3/BUILD
+  sources:
+  - random
+- path: api/envoy/extensions/config/validators/minimum_clusters/v3/minimum_clusters.proto
+  sources:
+  - random
+- path: envoy/http/filter.h
+  sources:
+  - bm25
+- path: mobile/test/common/network/proxy_settings_test.cc
+  sources:
+  - random
+- path: source/common/http/conn_manager_impl.cc
+  sources:
+  - bm25
+- path: source/common/http/http1/codec_impl.cc
+  sources:
+  - bm25
+- path: source/common/http/utility.cc
+  sources:
+  - bm25
+- path: source/common/router/router.cc
+  sources:
+  - bm25
+- path: source/extensions/filters/http/cache/cache_filter.cc
+  sources:
+  - bm25
+- path: source/extensions/filters/http/cache_v2/cache_filter.cc
+  sources:
+  - bm25
+- path: test/common/http/codec_impl_corpus/response_204_A
+  sources:
+  - random
+- path: test/common/orca/orca_load_metrics_test.cc
+  sources:
+  - random
+- path: test/common/tls/test_data/non_spiffe_san_cert_info.h
+  sources:
+  - random
+- path: test/extensions/filters/http/cache/cache_filter_test.cc
+  sources:
+  - bm25
+- path: test/extensions/filters/http/ext_authz/ext_authz_integration_test.cc
+  sources:
+  - bm25
+- path: test/extensions/filters/http/ext_proc/mock_server.h
+  sources:
+  - random
+- path: test/extensions/filters/http/file_system_buffer/filter_test.cc
+  sources:
+  - bm25
+- path: test/extensions/filters/http/rate_limit_quota/test_utils.h
+  sources:
+  - random
+- path: test/extensions/filters/network/thrift_proxy/integration.h
+  sources:
+  - random
+- path: test/extensions/http/cache/file_system_http_cache/file_system_http_cache_test.cc
+  sources:
+  - bm25
+- path: test/extensions/http/cache_v2/file_system_http_cache/file_system_http_cache_test.cc
+  sources:
+  - bm25
+- path: test/integration/integration_test.cc
+  sources:
+  - bm25
+- path: test/integration/multiplexed_integration_test.cc
+  sources:
+  - bm25
+- path: test/mocks/network/connection.h
+  sources:
+  - random

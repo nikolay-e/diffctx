@@ -1,0 +1,54 @@
+repo: home-assistant
+base_commit: 8b37cc8719b2d372fb2bffe0620f3adb6cc497b6
+commit: 6d55c076e44d6e4462eae72c86cbbf0baf01a835
+patch_stored: true
+gold:
+  - path: homeassistant/components/usb/utils.py
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines async_scan_serial_ports/scan_serial_ports, the new shared USB helper that every touched integration now calls instead of serial.tools.list_ports.comports; also folds the removed get_serial_by_id by-id resolution into scan_serial_ports itself.
+  - path: homeassistant/components/usb/models.py
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines the USBDevice/SerialDevice dataclasses returned by async_scan_serial_ports that every changed config_flow.py now type-checks against with isinstance(port, usb.USBDevice) instead of using pyserial's ListPortInfo.
+  - path: homeassistant/components/aurora_abb_powerone/config_flow.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Simplest representative instance of the sweep - replaces sync scan_comports()/serial.tools.list_ports with async_scan_comports() calling usb.async_scan_serial_ports(hass), and adds usb as a manifest dependency.
+  - path: homeassistant/components/dsmr/config_flow.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Representative instance showing the broader simplification - deletes the local get_serial_by_id() helper entirely because /dev/serial/by-id resolution now happens inside usb.async_scan_serial_ports.
+  - path: homeassistant/components/crownstone/helpers.py
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: Shows the type migration beyond the call site - list_ports_as_str is retyped from Sequence[ListPortInfo] to Sequence[USBDevice] and drops manual hex-formatting of vid/pid now that USBDevice stores them pre-formatted.
+  - path: tests/components/dsmr/test_config_flow.py
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Covering test for the pattern - patches homeassistant.components.dsmr.config_flow.usb.async_scan_serial_ports instead of serial.tools.list_ports.comports and deletes test_get_serial_by_id* now that the helper moved into the usb component.
+forbidden:
+  - path: homeassistant/components/insteon/utils.py
+    reason: Same call-site swap to usb.async_scan_serial_ports already illustrated by aurora_abb_powerone/dsmr; redundant repetition of the identical pattern.
+  - path: homeassistant/components/modem_callerid/config_flow.py
+    reason: Another redundant repeat of the same USBDevice/isinstance call-site pattern, adds no new mechanism.
+  - path: requirements_all.txt
+    reason: Auto-generated dependency comment/entry bookkeeping (drops crownstone-uart's pyserial pin), not informative about the code change.
+  - path: requirements_test_all.txt
+    reason: Auto-generated mirror of requirements_all.txt, same trivial bookkeeping.
+nontrivial_gold_count: 2
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: []
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 19
+  description: 'Mechanical multi-integration sweep (A-P): serial port listing via USB helpers across ~15
+    unrelated integrations'
+notes: 'Migrates ~6 integrations off direct pyserial (serial.tools.list_ports) onto the shared homeassistant.components.usb async helper (async_scan_serial_ports returning USBDevice/SerialDevice), which also absorbs the get_serial_by_id by-id resolution previously duplicated per-integration. Gold picks the semantic core (usb helper definitions + 2 representative integrations) rather than all ~15 near-identical call sites, per protocol guidance for wide diffs.'

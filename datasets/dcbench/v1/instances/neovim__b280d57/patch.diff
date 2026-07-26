@@ -1,0 +1,228 @@
+From b280d57db9845359186bfb5167e1559b6184f8d5 Mon Sep 17 00:00:00 2001
+From: dundargoc <gocdundar@gmail.com>
+Date: Mon, 22 Jan 2024 22:07:14 +0100
+Subject: [PATCH] refactor: rewrite ruby provider in lua
+
+---
+ runtime/autoload/provider/ruby.vim   | 67 +++-------------------------
+ runtime/lua/provider/ruby/health.lua |  2 +-
+ runtime/lua/vim/provider/perl.lua    |  2 +-
+ runtime/lua/vim/provider/python.lua  |  2 +-
+ runtime/lua/vim/provider/ruby.lua    | 61 +++++++++++++++++++++++++
+ test/functional/helpers.lua          |  7 +--
+ 6 files changed, 71 insertions(+), 70 deletions(-)
+ create mode 100644 runtime/lua/vim/provider/ruby.lua
+
+diff --git a/runtime/autoload/provider/ruby.vim b/runtime/autoload/provider/ruby.vim
+index 1428fab1c..a2930bd2b 100644
+--- a/runtime/autoload/provider/ruby.vim
++++ b/runtime/autoload/provider/ruby.vim
+@@ -1,73 +1,16 @@
+-" The Ruby provider helper
+ if exists('g:loaded_ruby_provider')
+   finish
+ endif
+-let g:loaded_ruby_provider = 1
+-
+-function! provider#ruby#Detect() abort
+-  let e = empty(s:prog) ? 'missing ruby or ruby-host' : ''
+-  return [s:prog, e]
+-endfunction
+-
+-function! provider#ruby#Prog() abort
+-  return s:prog
+-endfunction
+ 
+ function! provider#ruby#Require(host) abort
+-  let prog = provider#ruby#Prog()
+-  let ruby_plugins = remote#host#PluginsForHost(a:host.name)
+-
+-  for plugin in ruby_plugins
+-    let prog .= " " . shellescape(plugin.path)
+-  endfor
+-
+-  return provider#Poll(prog, a:host.orig_name, '$NVIM_RUBY_LOG_FILE')
++  return v:lua.require'vim.provider.ruby'.require(a:host)
+ endfunction
+ 
+ function! provider#ruby#Call(method, args) abort
+-  if s:err != ''
+-    echoerr s:err
+-    return
+-  endif
+-
+-  if !exists('s:host')
+-    try
+-      let s:host = remote#host#Require('legacy-ruby-provider')
+-    catch
+-      let s:err = v:exception
+-      echohl WarningMsg
+-      echomsg v:exception
+-      echohl None
+-      return
+-    endtry
+-  endif
+-  return call('rpcrequest', insert(insert(a:args, 'ruby_'.a:method), s:host))
++  return v:lua.require'vim.provider.ruby'.call(a:method, a:args)
+ endfunction
+ 
+-function! s:detect()
+-  if exists("g:ruby_host_prog")
+-    return expand(g:ruby_host_prog, v:true)
+-  elseif has('win32')
+-    return exepath('neovim-ruby-host.bat')
+-  else
+-    let p = exepath('neovim-ruby-host')
+-    if empty(p)
+-      return ''
+-    endif
+-    " neovim-ruby-host could be an rbenv shim for another Ruby version.
+-    call system(p)
+-    return v:shell_error ? '' : p
+-  end
+-endfunction
+-
+-let s:err = ''
+-let s:prog = s:detect()
+-let s:plugin_path = expand('<sfile>:p:h') . '/script_host.rb'
++let s:prog = v:lua.require'vim.provider.ruby'.detect()
+ let g:loaded_ruby_provider = empty(s:prog) ? 1 : 2
+-
+-if g:loaded_ruby_provider != 2
+-  let s:err = 'Cannot find the neovim RubyGem. Try :checkhealth'
+-endif
+-
+-call remote#host#RegisterClone('legacy-ruby-provider', 'ruby')
+-call remote#host#RegisterPlugin('legacy-ruby-provider', s:plugin_path, [])
++let s:plugin_path = expand('<sfile>:p:h') . '/script_host.rb'
++call v:lua.require'vim.provider.ruby'.start(s:plugin_path)
+diff --git a/runtime/lua/provider/ruby/health.lua b/runtime/lua/provider/ruby/health.lua
+index 12f1ed9b8..b102cbe53 100644
+--- a/runtime/lua/provider/ruby/health.lua
++++ b/runtime/lua/provider/ruby/health.lua
+@@ -20,7 +20,7 @@ function M.check()
+   end
+   health.info('Ruby: ' .. health.system({ 'ruby', '-v' }))
+ 
+-  local ruby_detect_table = vim.fn['provider#ruby#Detect']()
++  local ruby_detect_table = require('vim.provider.ruby').detect()
+   local host = ruby_detect_table[1]
+   if host:find('^%s*$') then
+     health.warn('`neovim-ruby-host` not found.', {
+diff --git a/runtime/lua/vim/provider/perl.lua b/runtime/lua/vim/provider/perl.lua
+index 8918c9792..da4af0a2a 100644
+--- a/runtime/lua/vim/provider/perl.lua
++++ b/runtime/lua/vim/provider/perl.lua
+@@ -48,7 +48,7 @@ function M.call(method, args)
+     local ok, result = pcall(vim.fn['remote#host#Require'], 'legacy-perl-provider') ---@type any, any
+     if not ok then
+       s_err = result
+-      vim.api.nvim_echo({ result, 'WarningMsg' }, true, {})
++      vim.api.nvim_echo({ { result, 'WarningMsg' } }, true, {})
+       return
+     end
+     s_host = result
+diff --git a/runtime/lua/vim/provider/python.lua b/runtime/lua/vim/provider/python.lua
+index 94872437d..832213123 100644
+--- a/runtime/lua/vim/provider/python.lua
++++ b/runtime/lua/vim/provider/python.lua
+@@ -132,7 +132,7 @@ function M.call(method, args)
+     local ok, result = pcall(vim.fn['remote#host#Require'], 'legacy-python3-provider') ---@type any, any
+     if not ok then
+       s_err = result
+-      vim.api.nvim_echo({ result, 'WarningMsg' }, true, {})
++      vim.api.nvim_echo({ { result, 'WarningMsg' } }, true, {})
+       return
+     end
+     s_host = result
+diff --git a/runtime/lua/vim/provider/ruby.lua b/runtime/lua/vim/provider/ruby.lua
+new file mode 100644
+index 000000000..3ad86001f
+--- /dev/null
++++ b/runtime/lua/vim/provider/ruby.lua
+@@ -0,0 +1,61 @@
++local M = {}
++local s_err ---@type string?
++local s_host ---@type string?
++
++function M.require(host)
++  local prog = M.detect()
++  local args = { prog }
++  local ruby_plugins = vim.fn['remote#host#PluginsForHost'](host.name) ---@type any
++
++  ---@param plugin any
++  for _, plugin in ipairs(ruby_plugins) do
++    table.insert(args, plugin.path)
++  end
++
++  return vim.fn['provider#Poll'](args, host.orig_name, '$NVIM_RUBY_LOG_FILE')
++end
++
++function M.call(method, args)
++  if s_err then
++    return
++  end
++
++  if not s_host then
++    local ok, result = pcall(vim.fn['remote#host#Require'], 'legacy-ruby-provider') ---@type any, any
++    if not ok then
++      s_err = result
++      vim.api.nvim_echo({ { result, 'WarningMsg' } }, true, {})
++      return
++    end
++    s_host = result
++  end
++
++  return vim.fn.rpcrequest(s_host, 'ruby_' .. method, unpack(args))
++end
++
++function M.detect()
++  local prog ---@type string
++  if vim.g.ruby_host_prog then
++    prog = vim.fn.expand(vim.g.ruby_host_prog, true)
++  elseif vim.fn.has('win32') == 1 then
++    prog = vim.fn.exepath('neovim-ruby-host.bat')
++  else
++    local p = vim.fn.exepath('neovim-ruby-host')
++    if p == '' then
++      prog = ''
++    else
++      -- neovim-ruby-host could be an rbenv shim for another Ruby version.
++      vim.fn.system(p)
++      prog = vim.v.shell_error ~= 0 and '' or p
++    end
++  end
++  local err = prog == '' and 'missing ruby or ruby-host' or ''
++  return prog, err
++end
++
++function M.start(plugin_path)
++  vim.fn['remote#host#RegisterClone']('legacy-ruby-provider', 'ruby')
++  vim.fn['remote#host#RegisterPlugin']('legacy-ruby-provider', plugin_path, {})
++end
++
++return M
+diff --git a/test/functional/helpers.lua b/test/functional/helpers.lua
+index fe6d53ab7..d1d26919a 100644
+--- a/test/functional/helpers.lua
++++ b/test/functional/helpers.lua
+@@ -936,17 +936,14 @@ end
+ --- @param provider string
+ --- @return string|boolean?
+ function module.missing_provider(provider)
+-  if provider == 'ruby' then
++  if provider == 'ruby' or provider == 'perl' then
+     --- @type string?
+-    local e = module.fn['provider#ruby#Detect']()[2]
++    local e = module.exec_lua("return {require('vim.provider." .. provider .. "').detect()}")[2]
+     return e ~= '' and e or false
+   elseif provider == 'node' then
+     --- @type string?
+     local e = module.fn['provider#node#Detect']()[2]
+     return e ~= '' and e or false
+-  elseif provider == 'perl' then
+-    --- @type string?
+-    return module.exec_lua([[return {require('vim.provider.perl').detect()}]])[2]
+   elseif provider == 'python' then
+     return module.exec_lua([[return {require('vim.provider.python').detect_by_module('neovim')}]])[2]
+   end

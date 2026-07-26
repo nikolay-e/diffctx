@@ -1,0 +1,16 @@
+repo: sentry
+base_commit: 44532a7b96081f74ee8f9f7625a65f4357bed0f5
+commit: f6263b286f2806ee124d9926814fe008b7b99e68
+patch_stored: true
+gold: []
+forbidden: []
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'Pure reformatting commit (Prettier applied to YAML/JSON/Markdown across 105 files: double-to-single
+  quotes, 4-space to 2-space indent, trailing-blank-line removal) with zero logic changes in every sampled
+  hunk. The ideal output here is a one-line summary (''formatting-only, no semantic changes'') rather
+  than any code fragments, so there is no real should_include set — but the tool still hung instead of
+  recognizing the diff as reformatting-only and short-circuiting, which is the cheapest possible miss
+  since the correct answer is nearly empty anyway.'

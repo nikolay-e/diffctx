@@ -1,0 +1,85 @@
+repo: aspnetcore
+base_commit: aab7c9491e9fc7f49f8dbcf0625befc37b7ac0f1
+commit: 86ea7a547bc96d5ed3068cfb7bac3cfdde85fc89
+patch_stored: true
+gold:
+  - path: src/Components/Forms/src/ClientValidation/DefaultClientValidationService.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines DefaultClientValidationService.ComputeAttributes/AddAttributes, the reflection-over-ValidationAttribute engine that turns DataAnnotations into data-val-* pairs; every other gold file is a caller or consumer of this logic.
+  - path: src/Components/Forms/src/ClientValidation/IClientValidationService.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Declares GetClientValidationAttributes(FieldIdentifier), the contract InputBase, ValidationMessage and ValidationSummary look up via CurrentEditContext.Properties[typeof(IClientValidationService)].
+  - path: src/Components/Forms/src/DataAnnotationsValidator.cs
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: New EnableClientValidation parameter stores the resolved IClientValidationService into CurrentEditContext.Properties only when AssignedRenderMode is null (static SSR), which is the switch that turns the whole feature on.
+  - path: src/Components/Web/src/Forms/InputBase.cs
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: New MergeClientValidationAttributes() reads the service out of EditContext.Properties and TryAdd-merges the generated data-val-* pairs into AdditionalAttributes for every input component, so developer attributes win.
+  - path: src/Components/Web/src/Forms/ValidationMessage.cs
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: RenderForClientValidation() emits data-valmsg-for/data-valmsg-replace markers (using HtmlFieldPrefix.GetFieldName) that the client-side JS validator needs to locate and replace message elements.
+  - path: src/Components/Web/src/Forms/ValidationSummary.cs
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: Parallel RenderForClientValidation() path renders a data-valmsg-summary=\"true\" container with validation-summary-errors/-valid classes for the same JS validator.
+  - path: src/Components/Web/src/Forms/InputRadioGroup.cs
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: ExtractClientValidationAttributes()/InputRadioContext.ClientValidationAttributes special-cases radio groups so data-val-* is emitted on only the first <input type=radio>, mirroring MVC's FormContext behavior without an equivalent mechanism.
+  - path: src/Components/Endpoints/src/DependencyInjection/RazorComponentsServiceCollectionExtensions.cs
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Adds the services.AddClientValidation() call that registers IClientValidationService/DefaultClientValidationService in the SSR endpoint's DI container; without this the service DataAnnotationsValidator looks up is never resolvable.
+  - path: src/Components/Forms/src/EditContextDataAnnotationsExtensions.cs
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Defines EnableDataAnnotationsValidation(IServiceProvider), called unchanged in DataAnnotationsValidator.OnInitialized immediately before the new client-validation wiring, establishing the ordering the new code relies on.
+  - path: src/Components/Forms/src/FieldIdentifier.cs
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Defines the FieldIdentifier struct (Model, FieldName) that DefaultClientValidationService keys its ConcurrentDictionary<(Type,string),...> cache on and that IClientValidationService.GetClientValidationAttributes takes as its parameter.
+  - path: src/Components/Web/src/Forms/HtmlFieldPrefix.cs
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Defines GetFieldName(LambdaExpression), the cascaded-parameter helper ValidationMessage.RenderForClientValidation calls to compute a data-valmsg-for name consistent with nested/prefixed input names.
+forbidden:
+  - path: src/Components/Web/src/Forms/InputCheckbox.cs
+    reason: sibling input component in the same directory that inherits InputBase's new MergeClientValidationAttributes automatically, with no client-validation-specific code of its own
+  - path: src/Components/Web/src/Forms/InputNumber.cs
+    reason: same as InputCheckbox — unmodified InputBase subclass, no direct involvement in the diff
+  - path: src/Components/Web/src/Forms/Label.cs
+    reason: same Forms directory/namespace but only renders a <label for=...>, unrelated to data-val-* generation
+  - path: src/Mvc/Mvc.ViewFeatures/src/DefaultHtmlGenerator.cs
+    reason: MVC's own analogous data-val-* generator (the prior art this feature parallels) but a separate, unmodified codebase not touched by this Blazor Components change
+nontrivial_gold_count: 3
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration, bm25, graph, random]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 16
+  description: '.NET side of Blazor SSR client-side validation (companion to #3)'
+notes: >-
+  Adds a new Microsoft.AspNetCore.Components.Forms.ClientValidation namespace that reflects over DataAnnotations
+  ValidationAttributes to emit data-val-* HTML attributes for static SSR Blazor forms (no interactive render mode),
+  consumed by InputBase/InputRadioGroup/ValidationMessage/ValidationSummary via a service stashed in
+  EditContext.Properties. The linkage from DataAnnotationsValidator to the rendering components is a
+  Properties-by-Type-keyed lookup rather than a direct reference, and the feature's whole purpose is emitting
+  string-keyed data-val-* HTML attributes consumed by external, not-in-repo client-side JS — hence string indirection
+  is set to true above.

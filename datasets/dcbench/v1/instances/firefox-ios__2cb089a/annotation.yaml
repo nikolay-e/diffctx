@@ -1,0 +1,74 @@
+repo: firefox-ios
+base_commit: 07efd46eb7a31ae2c373d966ba77a5bdb883f11c
+commit: 2cb089a11e26009fe17469c2fe035b5e803e99d0
+patch_stored: true
+gold:
+  - path: Client-Bridging-Header.h
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Removes the raw-source import lines for SDWebImage, Adjust and OnePasswordExtension
+      from Carthage/Checkouts, which is the root cause forcing every Swift consumer to gain an
+      explicit `import WebImage`/`import AdjustSdk`/`import OnePasswordExtension`.
+  - path: Client/Application/AdjustIntegration.swift
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: Sole consumer of the `Adjust`/`AdjustDelegate`/`ADJConfig` API removed from the
+      bridging header; gains the new `import AdjustSdk` line that replaces it.
+  - path: Client/Extensions/UIImageViewExtensions.swift
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: Defines the `setIcon`/`sd_setImageWithURL` wrapper on UIImageView using SDWebImage
+      symbols (SDImageCacheType, SDWebImageOperation) that now require `import WebImage` instead
+      of the bridging-header source import.
+  - path: Client/Frontend/Share/ShareExtensionHelper.swift
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: Sole consumer of `OnePasswordExtension.sharedExtension()`, which requires the new
+      `import OnePasswordExtension` line replacing the removed bridging-header import.
+  - path: Client.xcodeproj/project.pbxproj
+    tier: essential
+    role: config
+    in_diff: false
+    rationale: Already declares WebImage.framework, AdjustSdk.framework and OnePasswordExtension.framework
+      as PBXFileReference/PBXBuildFile entries pointing at Carthage/Build/iOS/*.framework and wires
+      them into the Frameworks and "Copy Frameworks" build phases — this is why the fix is to import
+      them as proper Swift modules rather than raw sources via the bridging header.
+  - path: Cartfile
+    tier: helpful
+    role: config
+    in_diff: false
+    rationale: Declares `rs/SDWebImage` "3.7.4", `adjust/ios_sdk` "v4.5.0" and, notably,
+      `AgileBits/onepassword-extension` pinned to the "add-framework-support" branch — explaining
+      why these three (and only these three) Carthage dependencies now ship as linkable frameworks
+      needing native `import` statements.
+forbidden:
+  - path: Client/Frontend/Browser/BrowserTrayAnimators.swift
+    reason: also calls `sd_setImageWithURL` on a UIImageView but is untouched by this commit, so it
+      is not part of this fix's diff surface.
+  - path: Client/Frontend/Browser/TabTrayController.swift
+    reason: same SDWebImage call-site pattern as BrowserTrayAnimators.swift, also untouched by this
+      commit; not needed to understand the change.
+  - path: Cartfile.resolved
+    reason: only pins resolved commit SHAs for the Cartfile dependencies; adds no explanatory value
+      beyond Cartfile itself for understanding the framework-linking fix.
+  - path: Client/Assets/About/Licenses.html
+    reason: static third-party license text that happens to name SDWebImage; unrelated to the
+      bridging-header/import mechanism being fixed.
+nontrivial_gold_count: 2
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 13
+  description: Fix 1Password/Adjust/SDWebImage linking via Client-Bridging-Header — Swift↔ObjC bridging
+    header + Swift call sites
+notes: The commit removes raw Carthage/Checkouts source imports from Client-Bridging-Header.h and
+  replaces them with native Swift `import WebImage`/`import AdjustSdk`/`import OnePasswordExtension`
+  in each consuming file, matching how Client.xcodeproj/project.pbxproj already links the built
+  .framework bundles (Carthage/Build/iOS/*.framework) and how Cartfile declares those three
+  dependencies with framework support.

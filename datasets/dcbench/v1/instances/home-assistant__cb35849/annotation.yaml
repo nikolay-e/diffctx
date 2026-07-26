@@ -1,0 +1,62 @@
+repo: home-assistant
+base_commit: e701afd7a77d69a8047937e1cd05d959e6e49d9e
+commit: cb35849a63ef8332a6e077263ddeeced26199a88
+patch_stored: true
+gold:
+  - path: homeassistant/components/smlight/config_flow.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds async_step_reconfigure and the SOURCE_RECONFIGURE branch in async_step_user, using _get_reconfigure_entry/_abort_if_unique_id_mismatch/async_update_reload_and_abort to update the existing entry's host/credentials.
+  - path: tests/components/smlight/test_config_flow.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: New tests (test_reconfigure_flow, test_reconfigure_connect_error, test_reconfigure_abort_cases, test_reconfigure_auth_error) cover success, connection error, unsupported-device/unique-id-mismatch aborts, and the auth-then-reconfigure path.
+  - path: homeassistant/components/smlight/strings.json
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Adds the "reconfigure" step form strings and the reconfigure_successful/unique_id_mismatch abort keys the new flow references.
+  - path: homeassistant/components/smlight/quality_scale.yaml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Flips reconfiguration-flow from todo to done; this is not cosmetic — hassfest CI enforces it against the actual code (see reconfiguration_flow.py below).
+  - path: homeassistant/config_entries.py
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines SOURCE_RECONFIGURE, ConfigFlow._get_reconfigure_entry(), _abort_if_unique_id_mismatch(), and async_update_reload_and_abort() — the base-class machinery the new async_step_reconfigure is built on.
+  - path: script/hassfest/quality_scale_validation/reconfiguration_flow.py
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: hassfest validator that AST-parses config_flow.py for an `async_step_reconfigure` function whenever quality_scale.yaml marks reconfiguration-flow done — the reason the two files must change together.
+  - path: script/hassfest/quality_scale.py
+    tier: helpful
+    role: config
+    in_diff: false
+    rationale: Registers Rule("reconfiguration-flow", ..., reconfiguration_flow), the string-keyed mapping from the quality_scale.yaml key to the validator function.
+  - path: tests/components/smlight/conftest.py
+    tier: helpful
+    role: test
+    in_diff: false
+    rationale: Defines the mock_config_entry fixture (unique_id "aa:bb:cc:dd:ee:ff") and MOCK_HOST/MOCK_USERNAME/MOCK_PASSWORD constants the new reconfigure tests assert against.
+forbidden:
+  - path: homeassistant/components/smlight/__init__.py
+    reason: same integration package as the gold config_flow.py but untouched setup code, not needed to understand the reconfigure flow
+  - path: homeassistant/components/smlight/coordinator.py
+    reason: same integration, unrelated runtime coordinator code untouched by this commit
+  - path: homeassistant/helpers/schema_config_entry_flow.py
+    reason: a generic class-based reconfigure-flow helper that looks relevant to "reconfiguration flow" but smlight implements its flow imperatively and does not use this module
+nontrivial_gold_count: 4
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: []
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 4
+  description: SMLIGHT reconfiguration flow — config-flow code + strings.json + snapshot coupling in one
+    integration
+notes: Adds a reconfigure step to the SMLIGHT config flow, letting users change host/credentials on an existing entry while re-validating the device identity via unique_id match; the quality_scale.yaml flip to "done" is enforced by a hassfest AST check for async_step_reconfigure, which is the key non-obvious coupling.

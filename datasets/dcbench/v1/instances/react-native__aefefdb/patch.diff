@@ -1,0 +1,2314 @@
+From aefefdbbba21f26879f73f261a4ffa3b3a25a983 Mon Sep 17 00:00:00 2001
+From: Nick Gerleman <ngerlem@fb.com>
+Date: Wed, 4 Oct 2023 19:57:14 -0700
+Subject: [PATCH] Bump Folly to 2023.08.07.00 (#39798)
+
+Summary:
+This bumps folly, to absorb https://github.com/facebook/folly/commit/45fffa629d6bf7321391222d40613d75e8e067d7 which fixes warnings in XCode 15, and NDK 26 (treated as error bc we have better hygiene there). We then bump a little bit further to get past a new warning added, then fixed later.
+
+Need to manually set `FOLLY_HAVE_GETTIME` on Apple because of the silliness described in https://github.com/facebook/folly/issues/1470#issuecomment-1746035194
+
+There is not a combination of Folly, and Android libc++, that has fixes for warnings, but doesn't require the new libc++ in NDK 26. It is expected then that this commit will fail the build, but the next should succeed, and the two must be landed at the same time.
+
+Changelog: [Internal]
+
+Pull Request resolved: https://github.com/facebook/react-native/pull/39798
+
+Reviewed By: fkgozali
+
+Differential Revision: D49897681
+
+Pulled By: NickGerleman
+
+fbshipit-source-id: 52b97ed5b302abf9e27f38dc655207827852dcc3
+---
+ .../AppDelegate/React-RCTAppDelegate.podspec  |   2 +-
+ .../Libraries/Blob/React-RCTBlob.podspec      |   4 +-
+ .../Libraries/Image/React-RCTImage.podspec    |   4 +-
+ .../LinkingIOS/React-RCTLinking.podspec       |   4 +-
+ .../React-RCTAnimation.podspec                |   4 +-
+ .../Network/React-RCTNetwork.podspec          |   4 +-
+ .../React-RCTPushNotification.podspec         |   4 +-
+ .../Settings/React-RCTSettings.podspec        |   4 +-
+ .../Vibration/React-RCTVibration.podspec      |   4 +-
+ packages/react-native/React-Core.podspec      |   4 +-
+ .../CoreModules/React-CoreModules.podspec     |   4 +-
+ .../FBReactNativeSpec.podspec                 |   4 +-
+ .../React/React-RCTFabric.podspec             |   4 +-
+ .../react-native/React/third-party.xcconfig   |   4 +-
+ .../main/jni/third-party/folly/CMakeLists.txt |  43 ++--
+ .../ReactCommon/React-Fabric.podspec          |   4 +-
+ .../ReactCommon/React-FabricImage.podspec     |   4 +-
+ .../ReactCommon/ReactCommon.podspec           |   4 +-
+ .../callinvoker/React-callinvoker.podspec     |   4 +-
+ .../cxxreact/React-cxxreact.podspec           |   4 +-
+ .../ReactCommon/hermes/React-hermes.podspec   |   4 +-
+ .../React-jserrorhandler.podspec              |   4 +-
+ .../ReactCommon/jsi/React-jsi.podspec         |   4 +-
+ .../jsiexecutor/React-jsiexecutor.podspec     |   4 +-
+ .../ReactCommon/logger/React-logger.podspec   |   4 +-
+ .../ios/React-NativeModulesApple.podspec      |   4 +-
+ .../samples/ReactCommon-Samples.podspec       |   4 +-
+ .../debug/React-rendererdebug.podspec         |   4 +-
+ .../renderer/graphics/React-graphics.podspec  |   4 +-
+ .../platform/ios/React-ImageManager.podspec   |   2 +-
+ .../React-runtimescheduler.podspec            |   4 +-
+ .../react/runtime/React-RuntimeCore.podspec   |   4 +-
+ .../react/runtime/React-RuntimeHermes.podspec |   4 +-
+ .../platform/ios/React-RuntimeApple.podspec   |   4 +-
+ .../react/utils/React-utils.podspec           |   4 +-
+ .../reactperflogger/React-perflogger.podspec  |   4 +-
+ .../React-runtimeexecutor.podspec             |   4 +-
+ .../react-native/gradle/libs.versions.toml    |   2 +-
+ .../cocoapods/__tests__/codegen-test.rb       |   4 +-
+ .../cocoapods/__tests__/codegen_utils-test.rb |   4 +-
+ .../__tests__/new_architecture-test.rb        |  18 +-
+ .../__tests__/test_utils/CodegenUtilsMock.rb  |   4 +-
+ .../react-native/scripts/cocoapods/codegen.rb |   2 +-
+ .../scripts/cocoapods/codegen_utils.rb        |   6 +-
+ .../scripts/cocoapods/new_architecture.rb     |   4 +-
+ .../react-native/scripts/react_native_pods.rb |   2 +-
+ .../ios/HelloWorld.xcodeproj/project.pbxproj  |   2 +
+ .../third-party-podspecs/RCT-Folly.podspec    |  54 ++--
+ packages/rn-tester/Podfile.lock               | 240 +++++++++---------
+ .../rn-tester/RCTTest/React-RCTTest.podspec   |   4 +-
+ .../RNTesterPods.xcodeproj/project.pbxproj    | 226 +++++++++--------
+ 51 files changed, 391 insertions(+), 364 deletions(-)
+
+diff --git a/packages/react-native/Libraries/AppDelegate/React-RCTAppDelegate.podspec b/packages/react-native/Libraries/AppDelegate/React-RCTAppDelegate.podspec
+index 1da904f8946..1956cbbbf09 100644
+--- a/packages/react-native/Libraries/AppDelegate/React-RCTAppDelegate.podspec
++++ b/packages/react-native/Libraries/AppDelegate/React-RCTAppDelegate.podspec
+@@ -16,7 +16,7 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_flags = ' -DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1'
++folly_flags = ' -DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1'
+ folly_compiler_flags = folly_flags + ' ' + '-Wno-comma -Wno-shorten-64-to-32'
+ 
+ is_new_arch_enabled = ENV["RCT_NEW_ARCH_ENABLED"] == "1"
+diff --git a/packages/react-native/Libraries/Blob/React-RCTBlob.podspec b/packages/react-native/Libraries/Blob/React-RCTBlob.podspec
+index 932a718453d..eccfe09e0f5 100644
+--- a/packages/react-native/Libraries/Blob/React-RCTBlob.podspec
++++ b/packages/react-native/Libraries/Blob/React-RCTBlob.podspec
+@@ -16,8 +16,8 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32'
+-folly_version = '2022.05.16.00'
++folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32'
++folly_version = '2023.08.07.00'
+ 
+ header_search_paths = [
+   "\"$(PODS_ROOT)/RCT-Folly\"",
+diff --git a/packages/react-native/Libraries/Image/React-RCTImage.podspec b/packages/react-native/Libraries/Image/React-RCTImage.podspec
+index cc8433e25f1..946ba97c60b 100644
+--- a/packages/react-native/Libraries/Image/React-RCTImage.podspec
++++ b/packages/react-native/Libraries/Image/React-RCTImage.podspec
+@@ -16,8 +16,8 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32'
+-folly_version = '2022.05.16.00'
++folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32'
++folly_version = '2023.08.07.00'
+ 
+ header_search_paths = [
+   "\"$(PODS_ROOT)/RCT-Folly\"",
+diff --git a/packages/react-native/Libraries/LinkingIOS/React-RCTLinking.podspec b/packages/react-native/Libraries/LinkingIOS/React-RCTLinking.podspec
+index 1615adb288d..22a06f0bc5b 100644
+--- a/packages/react-native/Libraries/LinkingIOS/React-RCTLinking.podspec
++++ b/packages/react-native/Libraries/LinkingIOS/React-RCTLinking.podspec
+@@ -16,8 +16,8 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32'
+-folly_version = '2022.05.16.00'
++folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32'
++folly_version = '2023.08.07.00'
+ 
+ header_search_paths = [
+   "\"$(PODS_ROOT)/RCT-Folly\"",
+diff --git a/packages/react-native/Libraries/NativeAnimation/React-RCTAnimation.podspec b/packages/react-native/Libraries/NativeAnimation/React-RCTAnimation.podspec
+index c9d0127264f..89d77d63a6d 100644
+--- a/packages/react-native/Libraries/NativeAnimation/React-RCTAnimation.podspec
++++ b/packages/react-native/Libraries/NativeAnimation/React-RCTAnimation.podspec
+@@ -16,8 +16,8 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32'
+-folly_version = '2022.05.16.00'
++folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32'
++folly_version = '2023.08.07.00'
+ 
+ header_search_paths = [
+   "\"$(PODS_ROOT)/RCT-Folly\"",
+diff --git a/packages/react-native/Libraries/Network/React-RCTNetwork.podspec b/packages/react-native/Libraries/Network/React-RCTNetwork.podspec
+index 87f64a701fd..d44160ce6bf 100644
+--- a/packages/react-native/Libraries/Network/React-RCTNetwork.podspec
++++ b/packages/react-native/Libraries/Network/React-RCTNetwork.podspec
+@@ -16,8 +16,8 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32'
+-folly_version = '2022.05.16.00'
++folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32'
++folly_version = '2023.08.07.00'
+ 
+ header_search_paths = [
+   "\"$(PODS_ROOT)/RCT-Folly\"",
+diff --git a/packages/react-native/Libraries/PushNotificationIOS/React-RCTPushNotification.podspec b/packages/react-native/Libraries/PushNotificationIOS/React-RCTPushNotification.podspec
+index ef4b35ae721..a97f267daa8 100644
+--- a/packages/react-native/Libraries/PushNotificationIOS/React-RCTPushNotification.podspec
++++ b/packages/react-native/Libraries/PushNotificationIOS/React-RCTPushNotification.podspec
+@@ -16,8 +16,8 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32'
+-folly_version = '2022.05.16.00'
++folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32'
++folly_version = '2023.08.07.00'
+ 
+ header_search_paths = [
+   "\"$(PODS_ROOT)/RCT-Folly\"",
+diff --git a/packages/react-native/Libraries/Settings/React-RCTSettings.podspec b/packages/react-native/Libraries/Settings/React-RCTSettings.podspec
+index 48a0e54907d..e516652220f 100644
+--- a/packages/react-native/Libraries/Settings/React-RCTSettings.podspec
++++ b/packages/react-native/Libraries/Settings/React-RCTSettings.podspec
+@@ -16,8 +16,8 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32'
+-folly_version = '2022.05.16.00'
++folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32'
++folly_version = '2023.08.07.00'
+ 
+ header_search_paths = [
+   "\"$(PODS_ROOT)/RCT-Folly\"",
+diff --git a/packages/react-native/Libraries/Vibration/React-RCTVibration.podspec b/packages/react-native/Libraries/Vibration/React-RCTVibration.podspec
+index 8911ba9963e..44e365525b7 100644
+--- a/packages/react-native/Libraries/Vibration/React-RCTVibration.podspec
++++ b/packages/react-native/Libraries/Vibration/React-RCTVibration.podspec
+@@ -16,8 +16,8 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32'
+-folly_version = '2022.05.16.00'
++folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32'
++folly_version = '2023.08.07.00'
+ 
+ header_search_paths = [
+   "\"$(PODS_ROOT)/RCT-Folly\"",
+diff --git a/packages/react-native/React-Core.podspec b/packages/react-native/React-Core.podspec
+index cf69ac3c867..984c50a6ee6 100644
+--- a/packages/react-native/React-Core.podspec
++++ b/packages/react-native/React-Core.podspec
+@@ -16,8 +16,8 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32'
+-folly_version = '2022.05.16.00'
++folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32'
++folly_version = '2023.08.07.00'
+ socket_rocket_version = '0.6.0'
+ boost_compiler_flags = '-Wno-documentation'
+ 
+diff --git a/packages/react-native/React/CoreModules/React-CoreModules.podspec b/packages/react-native/React/CoreModules/React-CoreModules.podspec
+index 57f71717184..c4071854a3f 100644
+--- a/packages/react-native/React/CoreModules/React-CoreModules.podspec
++++ b/packages/react-native/React/CoreModules/React-CoreModules.podspec
+@@ -16,8 +16,8 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32'
+-folly_version = '2022.05.16.00'
++folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32'
++folly_version = '2023.08.07.00'
+ socket_rocket_version = '0.6.0'
+ 
+ header_search_paths = [
+diff --git a/packages/react-native/React/FBReactNativeSpec/FBReactNativeSpec.podspec b/packages/react-native/React/FBReactNativeSpec/FBReactNativeSpec.podspec
+index 13bad89aefb..4480a83562a 100644
+--- a/packages/react-native/React/FBReactNativeSpec/FBReactNativeSpec.podspec
++++ b/packages/react-native/React/FBReactNativeSpec/FBReactNativeSpec.podspec
+@@ -19,8 +19,8 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32'
+-folly_version = '2022.05.16.00'
++folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32'
++folly_version = '2023.08.07.00'
+ 
+ Pod::Spec.new do |s|
+   s.name                   = "FBReactNativeSpec"
+diff --git a/packages/react-native/React/React-RCTFabric.podspec b/packages/react-native/React/React-RCTFabric.podspec
+index bd4ed10ec19..a2265d812c4 100644
+--- a/packages/react-native/React/React-RCTFabric.podspec
++++ b/packages/react-native/React/React-RCTFabric.podspec
+@@ -16,9 +16,9 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1'
++folly_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1'
+ folly_compiler_flags = folly_flags + ' ' + '-Wno-comma -Wno-shorten-64-to-32'
+-folly_version = '2022.05.16.00'
++folly_version = '2023.08.07.00'
+ boost_compiler_flags = '-Wno-documentation'
+ 
+ header_search_paths = [
+diff --git a/packages/react-native/React/third-party.xcconfig b/packages/react-native/React/third-party.xcconfig
+index ee7b44b3fb1..6a40e53d73a 100644
+--- a/packages/react-native/React/third-party.xcconfig
++++ b/packages/react-native/React/third-party.xcconfig
+@@ -8,5 +8,5 @@
+ // LICENSE file in the root directory of this source tree.
+ //
+ 
+-HEADER_SEARCH_PATHS = $(SRCROOT)/../third-party/boost_1_83_0 $(SRCROOT)/../third-party/folly-2022.05.16.00 $(SRCROOT)/../third-party/glog-0.3.5/src
+-OTHER_CFLAGS = -DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1
++HEADER_SEARCH_PATHS = $(SRCROOT)/../third-party/boost_1_83_0 $(SRCROOT)/../third-party/folly-2023.08.07.00 $(SRCROOT)/../third-party/glog-0.3.5/src
++OTHER_CFLAGS = -DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/third-party/folly/CMakeLists.txt b/packages/react-native/ReactAndroid/src/main/jni/third-party/folly/CMakeLists.txt
+index da795b8a7e8..30773335d6b 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/third-party/folly/CMakeLists.txt
++++ b/packages/react-native/ReactAndroid/src/main/jni/third-party/folly/CMakeLists.txt
+@@ -24,31 +24,35 @@ SET(folly_FLAGS
+ ##################
+ 
+ SET(folly_runtime_SRC
+-        folly/SharedMutex.cpp
+-        folly/concurrency/CacheLocality.cpp
+-        folly/detail/Futex.cpp
+-        folly/lang/SafeAssert.cpp
+-        folly/lang/ToAscii.cpp
+-        folly/synchronization/ParkingLot.cpp
+-        folly/system/ThreadId.cpp
+-        folly/system/ThreadName.cpp
+-        folly/json.cpp
+-        folly/Unicode.cpp
+         folly/Conv.cpp
+         folly/Demangle.cpp
+-        folly/memory/detail/MallocImpl.cpp
+-        folly/String.cpp
+         folly/dynamic.cpp
+         folly/FileUtil.cpp
+         folly/Format.cpp
+-        folly/net/NetOps.cpp
+         folly/json_pointer.cpp
+-        folly/lang/CString.cpp
++        folly/json.cpp
++        folly/ScopeGuard.cpp
++        folly/SharedMutex.cpp
++        folly/String.cpp
++        folly/Unicode.cpp
++        folly/concurrency/CacheLocality.cpp
++        folly/container/detail/F14Table.cpp
++        folly/detail/FileUtilDetail.cpp
++        folly/detail/Futex.cpp
++        folly/detail/SplitStringSimd.cpp
+         folly/detail/UniqueInstance.cpp
+         folly/hash/SpookyHashV2.cpp
+-        folly/container/detail/F14Table.cpp
+-        folly/ScopeGuard.cpp
+-        folly/portability/SysUio.cpp)
++        folly/lang/CString.cpp
++        folly/lang/SafeAssert.cpp
++        folly/lang/ToAscii.cpp
++        folly/memory/detail/MallocImpl.cpp
++        folly/net/NetOps.cpp
++        folly/portability/SysUio.cpp
++        folly/synchronization/SanitizeThread.cpp
++        folly/synchronization/ParkingLot.cpp
++        folly/system/AtFork.cpp
++        folly/system/ThreadId.cpp
++        folly/system/ThreadName.cpp)
+ 
+ add_library(folly_runtime SHARED ${folly_runtime_SRC})
+ 
+@@ -70,10 +74,12 @@ target_link_libraries(folly_runtime glog double-conversion boost fmt)
+ #####################
+ 
+ add_library(folly_futures STATIC
++        folly/CancellationToken.cpp
+         folly/ExceptionWrapper.cpp
+         folly/ExceptionString.cpp
+         folly/Executor.cpp
+         folly/Singleton.cpp
++        folly/SingletonThreadLocal.cpp
+         folly/Try.cpp
+         folly/concurrency/CacheLocality.cpp
+         folly/detail/AsyncTrace.cpp
+@@ -100,13 +106,14 @@ add_library(folly_futures STATIC
+         folly/io/async/TimeoutManager.cpp
+         folly/io/async/VirtualEventBase.cpp
+         folly/lang/Exception.cpp
++        folly/lang/UncaughtExceptions.cpp
+         folly/memory/MallctlHelper.cpp
++        folly/memory/ReentrantAllocator.cpp
+         folly/portability/SysMembarrier.cpp
+         folly/synchronization/AsymmetricThreadFence.cpp
+         folly/synchronization/Hazptr.cpp
+         folly/synchronization/WaitOptions.cpp
+         folly/synchronization/detail/Sleeper.cpp
+-        folly/system/AtFork.cpp
+         folly/system/Pid.cpp)
+ 
+ target_compile_options(folly_futures
+diff --git a/packages/react-native/ReactCommon/React-Fabric.podspec b/packages/react-native/ReactCommon/React-Fabric.podspec
+index 2f2d1ecd295..153008c3228 100644
+--- a/packages/react-native/ReactCommon/React-Fabric.podspec
++++ b/packages/react-native/ReactCommon/React-Fabric.podspec
+@@ -16,8 +16,8 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32 -Wno-gnu-zero-variadic-macro-arguments'
+-folly_version = '2022.05.16.00'
++folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32 -Wno-gnu-zero-variadic-macro-arguments'
++folly_version = '2023.08.07.00'
+ folly_dep_name = 'RCT-Folly/Fabric'
+ boost_compiler_flags = '-Wno-documentation'
+ react_native_path = ".."
+diff --git a/packages/react-native/ReactCommon/React-FabricImage.podspec b/packages/react-native/ReactCommon/React-FabricImage.podspec
+index dced40c275f..898cd6294cf 100644
+--- a/packages/react-native/ReactCommon/React-FabricImage.podspec
++++ b/packages/react-native/ReactCommon/React-FabricImage.podspec
+@@ -16,8 +16,8 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32 -Wno-gnu-zero-variadic-macro-arguments'
+-folly_version = '2022.05.16.00'
++folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32 -Wno-gnu-zero-variadic-macro-arguments'
++folly_version = '2023.08.07.00'
+ folly_dep_name = 'RCT-Folly/Fabric'
+ boost_compiler_flags = '-Wno-documentation'
+ react_native_path = ".."
+diff --git a/packages/react-native/ReactCommon/ReactCommon.podspec b/packages/react-native/ReactCommon/ReactCommon.podspec
+index d2b5d781b97..0d7fa415fb1 100644
+--- a/packages/react-native/ReactCommon/ReactCommon.podspec
++++ b/packages/react-native/ReactCommon/ReactCommon.podspec
+@@ -16,8 +16,8 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32 -Wno-gnu-zero-variadic-macro-arguments'
+-folly_version = '2022.05.16.00'
++folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32 -Wno-gnu-zero-variadic-macro-arguments'
++folly_version = '2023.08.07.00'
+ boost_compiler_flags = '-Wno-documentation'
+ using_hermes = ENV['USE_HERMES'] == nil || ENV['USE_HERMES'] == "1"
+ Pod::Spec.new do |s|
+diff --git a/packages/react-native/ReactCommon/callinvoker/React-callinvoker.podspec b/packages/react-native/ReactCommon/callinvoker/React-callinvoker.podspec
+index c97cde131c8..42e9dc67389 100644
+--- a/packages/react-native/ReactCommon/callinvoker/React-callinvoker.podspec
++++ b/packages/react-native/ReactCommon/callinvoker/React-callinvoker.podspec
+@@ -16,8 +16,8 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32'
+-folly_version = '2022.05.16.00'
++folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32'
++folly_version = '2023.08.07.00'
+ boost_compiler_flags = '-Wno-documentation'
+ 
+ Pod::Spec.new do |s|
+diff --git a/packages/react-native/ReactCommon/cxxreact/React-cxxreact.podspec b/packages/react-native/ReactCommon/cxxreact/React-cxxreact.podspec
+index 30f3f6ce12c..3869dda9283 100644
+--- a/packages/react-native/ReactCommon/cxxreact/React-cxxreact.podspec
++++ b/packages/react-native/ReactCommon/cxxreact/React-cxxreact.podspec
+@@ -17,8 +17,8 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32'
+-folly_version = '2022.05.16.00'
++folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32'
++folly_version = '2023.08.07.00'
+ boost_compiler_flags = '-Wno-documentation'
+ 
+ Pod::Spec.new do |s|
+diff --git a/packages/react-native/ReactCommon/hermes/React-hermes.podspec b/packages/react-native/ReactCommon/hermes/React-hermes.podspec
+index d404f499c37..24a60a7505a 100644
+--- a/packages/react-native/ReactCommon/hermes/React-hermes.podspec
++++ b/packages/react-native/ReactCommon/hermes/React-hermes.podspec
+@@ -17,8 +17,8 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32'
+-folly_version = '2022.05.16.00'
++folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32'
++folly_version = '2023.08.07.00'
+ boost_compiler_flags = '-Wno-documentation'
+ 
+ Pod::Spec.new do |s|
+diff --git a/packages/react-native/ReactCommon/jserrorhandler/React-jserrorhandler.podspec b/packages/react-native/ReactCommon/jserrorhandler/React-jserrorhandler.podspec
+index 66b4dc9e246..64e86eabfc5 100644
+--- a/packages/react-native/ReactCommon/jserrorhandler/React-jserrorhandler.podspec
++++ b/packages/react-native/ReactCommon/jserrorhandler/React-jserrorhandler.podspec
+@@ -16,8 +16,8 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32 -Wno-gnu-zero-variadic-macro-arguments'
+-folly_version = '2022.05.16.00'
++folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32 -Wno-gnu-zero-variadic-macro-arguments'
++folly_version = '2023.08.07.00'
+ folly_dep_name = 'RCT-Folly/Fabric'
+ boost_compiler_flags = '-Wno-documentation'
+ react_native_path = ".."
+diff --git a/packages/react-native/ReactCommon/jsi/React-jsi.podspec b/packages/react-native/ReactCommon/jsi/React-jsi.podspec
+index aaca03fa7d3..973acfe6fa7 100644
+--- a/packages/react-native/ReactCommon/jsi/React-jsi.podspec
++++ b/packages/react-native/ReactCommon/jsi/React-jsi.podspec
+@@ -20,8 +20,8 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32'
+-folly_version = '2022.05.16.00'
++folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32'
++folly_version = '2023.08.07.00'
+ boost_compiler_flags = '-Wno-documentation'
+ 
+ Pod::Spec.new do |s|
+diff --git a/packages/react-native/ReactCommon/jsiexecutor/React-jsiexecutor.podspec b/packages/react-native/ReactCommon/jsiexecutor/React-jsiexecutor.podspec
+index b5c2ce90a72..cdba9daea0e 100644
+--- a/packages/react-native/ReactCommon/jsiexecutor/React-jsiexecutor.podspec
++++ b/packages/react-native/ReactCommon/jsiexecutor/React-jsiexecutor.podspec
+@@ -16,8 +16,8 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32'
+-folly_version = '2022.05.16.00'
++folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32'
++folly_version = '2023.08.07.00'
+ boost_compiler_flags = '-Wno-documentation'
+ 
+ Pod::Spec.new do |s|
+diff --git a/packages/react-native/ReactCommon/logger/React-logger.podspec b/packages/react-native/ReactCommon/logger/React-logger.podspec
+index 5d25a5b694d..45247ec7373 100644
+--- a/packages/react-native/ReactCommon/logger/React-logger.podspec
++++ b/packages/react-native/ReactCommon/logger/React-logger.podspec
+@@ -17,8 +17,8 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32'
+-folly_version = '2022.05.16.00'
++folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32'
++folly_version = '2023.08.07.00'
+ boost_compiler_flags = '-Wno-documentation'
+ 
+ Pod::Spec.new do |s|
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/core/platform/ios/React-NativeModulesApple.podspec b/packages/react-native/ReactCommon/react/nativemodule/core/platform/ios/React-NativeModulesApple.podspec
+index 71e1082857d..0e4e896e79f 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/core/platform/ios/React-NativeModulesApple.podspec
++++ b/packages/react-native/ReactCommon/react/nativemodule/core/platform/ios/React-NativeModulesApple.podspec
+@@ -16,8 +16,8 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32 -Wno-gnu-zero-variadic-macro-arguments'
+-folly_version = '2022.05.16.00'
++folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32 -Wno-gnu-zero-variadic-macro-arguments'
++folly_version = '2023.08.07.00'
+ boost_compiler_flags = '-Wno-documentation'
+ using_hermes = ENV['USE_HERMES'] == nil || ENV['USE_HERMES'] == "1"
+ Pod::Spec.new do |s|
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/samples/ReactCommon-Samples.podspec b/packages/react-native/ReactCommon/react/nativemodule/samples/ReactCommon-Samples.podspec
+index 9203ae18c0c..163a1af917f 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/samples/ReactCommon-Samples.podspec
++++ b/packages/react-native/ReactCommon/react/nativemodule/samples/ReactCommon-Samples.podspec
+@@ -16,8 +16,8 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32 -Wno-gnu-zero-variadic-macro-arguments'
+-folly_version = '2022.05.16.00'
++folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32 -Wno-gnu-zero-variadic-macro-arguments'
++folly_version = '2023.08.07.00'
+ boost_compiler_flags = '-Wno-documentation'
+ using_hermes = ENV['USE_HERMES'] == nil || ENV['USE_HERMES'] == "1"
+ Pod::Spec.new do |s|
+diff --git a/packages/react-native/ReactCommon/react/renderer/debug/React-rendererdebug.podspec b/packages/react-native/ReactCommon/react/renderer/debug/React-rendererdebug.podspec
+index a0f04de11e1..ab6e959340a 100644
+--- a/packages/react-native/ReactCommon/react/renderer/debug/React-rendererdebug.podspec
++++ b/packages/react-native/ReactCommon/react/renderer/debug/React-rendererdebug.podspec
+@@ -16,8 +16,8 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32'
+-folly_version = '2022.05.16.00'
++folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32'
++folly_version = '2023.08.07.00'
+ 
+ header_search_paths = [
+     "\"$(PODS_ROOT)/RCT-Folly\"",
+diff --git a/packages/react-native/ReactCommon/react/renderer/graphics/React-graphics.podspec b/packages/react-native/ReactCommon/react/renderer/graphics/React-graphics.podspec
+index 30821025e8a..9408fb5ba47 100644
+--- a/packages/react-native/ReactCommon/react/renderer/graphics/React-graphics.podspec
++++ b/packages/react-native/ReactCommon/react/renderer/graphics/React-graphics.podspec
+@@ -16,8 +16,8 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32'
+-folly_version = '2022.05.16.00'
++folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32'
++folly_version = '2023.08.07.00'
+ boost_compiler_flags = '-Wno-documentation'
+ 
+ Pod::Spec.new do |s|
+diff --git a/packages/react-native/ReactCommon/react/renderer/imagemanager/platform/ios/React-ImageManager.podspec b/packages/react-native/ReactCommon/react/renderer/imagemanager/platform/ios/React-ImageManager.podspec
+index 646270c8be7..a4e3bebcf5b 100644
+--- a/packages/react-native/ReactCommon/react/renderer/imagemanager/platform/ios/React-ImageManager.podspec
++++ b/packages/react-native/ReactCommon/react/renderer/imagemanager/platform/ios/React-ImageManager.podspec
+@@ -16,7 +16,7 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32'
++folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32'
+ boost_compiler_flags = '-Wno-documentation'
+ 
+ Pod::Spec.new do |s|
+diff --git a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/React-runtimescheduler.podspec b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/React-runtimescheduler.podspec
+index e4a197ab045..915f5326bbc 100644
+--- a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/React-runtimescheduler.podspec
++++ b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/React-runtimescheduler.podspec
+@@ -16,8 +16,8 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32'
+-folly_version = '2022.05.16.00'
++folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32'
++folly_version = '2023.08.07.00'
+ 
+ header_search_paths = [
+     "\"$(PODS_ROOT)/RCT-Folly\"",
+diff --git a/packages/react-native/ReactCommon/react/runtime/React-RuntimeCore.podspec b/packages/react-native/ReactCommon/react/runtime/React-RuntimeCore.podspec
+index 31f9eeb1b24..10032924f4a 100644
+--- a/packages/react-native/ReactCommon/react/runtime/React-RuntimeCore.podspec
++++ b/packages/react-native/ReactCommon/react/runtime/React-RuntimeCore.podspec
+@@ -16,8 +16,8 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32 -Wno-gnu-zero-variadic-macro-arguments'
+-folly_version = '2022.05.16.00'
++folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32 -Wno-gnu-zero-variadic-macro-arguments'
++folly_version = '2023.08.07.00'
+ folly_dep_name = 'RCT-Folly/Fabric'
+ boost_compiler_flags = '-Wno-documentation'
+ 
+diff --git a/packages/react-native/ReactCommon/react/runtime/React-RuntimeHermes.podspec b/packages/react-native/ReactCommon/react/runtime/React-RuntimeHermes.podspec
+index 3381e190117..f94471af52f 100644
+--- a/packages/react-native/ReactCommon/react/runtime/React-RuntimeHermes.podspec
++++ b/packages/react-native/ReactCommon/react/runtime/React-RuntimeHermes.podspec
+@@ -16,8 +16,8 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32 -Wno-gnu-zero-variadic-macro-arguments'
+-folly_version = '2022.05.16.00'
++folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32 -Wno-gnu-zero-variadic-macro-arguments'
++folly_version = '2023.08.07.00'
+ folly_dep_name = 'RCT-Folly/Fabric'
+ boost_compiler_flags = '-Wno-documentation'
+ 
+diff --git a/packages/react-native/ReactCommon/react/runtime/platform/ios/React-RuntimeApple.podspec b/packages/react-native/ReactCommon/react/runtime/platform/ios/React-RuntimeApple.podspec
+index a758ec68990..a56449fbaac 100644
+--- a/packages/react-native/ReactCommon/react/runtime/platform/ios/React-RuntimeApple.podspec
++++ b/packages/react-native/ReactCommon/react/runtime/platform/ios/React-RuntimeApple.podspec
+@@ -16,8 +16,8 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32 -Wno-gnu-zero-variadic-macro-arguments'
+-folly_version = '2022.05.16.00'
++folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32 -Wno-gnu-zero-variadic-macro-arguments'
++folly_version = '2023.08.07.00'
+ folly_dep_name = 'RCT-Folly/Fabric'
+ boost_compiler_flags = '-Wno-documentation'
+ 
+diff --git a/packages/react-native/ReactCommon/react/utils/React-utils.podspec b/packages/react-native/ReactCommon/react/utils/React-utils.podspec
+index eae635a8929..e22b2c28032 100644
+--- a/packages/react-native/ReactCommon/react/utils/React-utils.podspec
++++ b/packages/react-native/ReactCommon/react/utils/React-utils.podspec
+@@ -16,8 +16,8 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32'
+-folly_version = '2022.05.16.00'
++folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32'
++folly_version = '2023.08.07.00'
+ 
+ header_search_paths = [
+     "\"$(PODS_ROOT)/RCT-Folly\"",
+diff --git a/packages/react-native/ReactCommon/reactperflogger/React-perflogger.podspec b/packages/react-native/ReactCommon/reactperflogger/React-perflogger.podspec
+index b359eb2fdbc..1064755f35d 100644
+--- a/packages/react-native/ReactCommon/reactperflogger/React-perflogger.podspec
++++ b/packages/react-native/ReactCommon/reactperflogger/React-perflogger.podspec
+@@ -16,8 +16,8 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32'
+-folly_version = '2022.05.16.00'
++folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32'
++folly_version = '2023.08.07.00'
+ boost_compiler_flags = '-Wno-documentation'
+ 
+ Pod::Spec.new do |s|
+diff --git a/packages/react-native/ReactCommon/runtimeexecutor/React-runtimeexecutor.podspec b/packages/react-native/ReactCommon/runtimeexecutor/React-runtimeexecutor.podspec
+index 6c9b28f46ac..a3921212304 100644
+--- a/packages/react-native/ReactCommon/runtimeexecutor/React-runtimeexecutor.podspec
++++ b/packages/react-native/ReactCommon/runtimeexecutor/React-runtimeexecutor.podspec
+@@ -16,8 +16,8 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32'
+-folly_version = '2022.05.16.00'
++folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32'
++folly_version = '2023.08.07.00'
+ boost_compiler_flags = '-Wno-documentation'
+ 
+ Pod::Spec.new do |s|
+diff --git a/packages/react-native/gradle/libs.versions.toml b/packages/react-native/gradle/libs.versions.toml
+index 9f81a0edffc..e5a8934008f 100644
+--- a/packages/react-native/gradle/libs.versions.toml
++++ b/packages/react-native/gradle/libs.versions.toml
+@@ -35,7 +35,7 @@ yoga-proguard-annotations = "1.19.0"
+ boost="1_83_0"
+ doubleconversion="1.1.6"
+ fmt="9.1.0"
+-folly="2022.05.16.00"
++folly="2023.08.07.00"
+ glog="0.3.5"
+ libevent="2.1.12"
+ gtest="1.12.1"
+diff --git a/packages/react-native/scripts/cocoapods/__tests__/codegen-test.rb b/packages/react-native/scripts/cocoapods/__tests__/codegen-test.rb
+index 5d2c4a6cd8b..8d472aea862 100644
+--- a/packages/react-native/scripts/cocoapods/__tests__/codegen-test.rb
++++ b/packages/react-native/scripts/cocoapods/__tests__/codegen-test.rb
+@@ -242,7 +242,7 @@ class CodegenTests < Test::Unit::TestCase
+             :codegen_output_dir=>"build/generated/ios",
+             :config_file_dir=>"",
+             :fabric_enabled=>false,
+-            :folly_version=>"2022.05.16.00",
++            :folly_version=>"2023.08.07.00",
+             :react_native_path=>"../node_modules/react-native"
+         }])
+         assert_equal(codegen_utils_mock.get_react_codegen_spec_params, [])
+@@ -270,7 +270,7 @@ class CodegenTests < Test::Unit::TestCase
+         assert_equal(codegen_utils_mock.use_react_native_codegen_discovery_params, [])
+         assert_equal(codegen_utils_mock.get_react_codegen_spec_params, [{
+             :fabric_enabled => true,
+-            :folly_version=>"2022.05.16.00",
++            :folly_version=>"2023.08.07.00",
+             :package_json_file => "~/app/package.json",
+             :script_phases => nil
+         }])
+diff --git a/packages/react-native/scripts/cocoapods/__tests__/codegen_utils-test.rb b/packages/react-native/scripts/cocoapods/__tests__/codegen_utils-test.rb
+index 0b5671bfd2a..00caa92a88e 100644
+--- a/packages/react-native/scripts/cocoapods/__tests__/codegen_utils-test.rb
++++ b/packages/react-native/scripts/cocoapods/__tests__/codegen_utils-test.rb
+@@ -385,7 +385,7 @@ class CodegenUtilsTests < Test::Unit::TestCase
+         ])
+         assert_equal(codegen_utils_mock.get_react_codegen_spec_params,  [{
+             :fabric_enabled => false,
+-            :folly_version=>"2022.05.16.00",
++            :folly_version=>"2023.08.07.00",
+             :package_json_file => "#{app_path}/ios/../node_modules/react-native/package.json",
+             :script_phases => "echo TestScript"
+         }])
+@@ -535,7 +535,7 @@ class CodegenUtilsTests < Test::Unit::TestCase
+           'homepage' => 'https://facebook.com/',
+           'license' => 'Unlicense',
+           'authors' => 'Facebook',
+-          'compiler_flags'  => "-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32 -Wno-documentation -Wno-nullability-completeness -std=c++20",
++          'compiler_flags'  => "-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32 -Wno-documentation -Wno-nullability-completeness -std=c++20",
+           'source' => { :git => '' },
+           'header_mappings_dir' => './',
+           'platforms' => {
+diff --git a/packages/react-native/scripts/cocoapods/__tests__/new_architecture-test.rb b/packages/react-native/scripts/cocoapods/__tests__/new_architecture-test.rb
+index 481185d0250..3c3a177f95c 100644
+--- a/packages/react-native/scripts/cocoapods/__tests__/new_architecture-test.rb
++++ b/packages/react-native/scripts/cocoapods/__tests__/new_architecture-test.rb
+@@ -104,15 +104,15 @@ class NewArchitectureTests < Test::Unit::TestCase
+         NewArchitectureHelper.modify_flags_for_new_architecture(installer, true)
+ 
+         # Assert
+-        assert_equal(first_xcconfig.attributes["OTHER_CPLUSPLUSFLAGS"], "$(inherited) -DRCT_NEW_ARCH_ENABLED=1 -DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1")
++        assert_equal(first_xcconfig.attributes["OTHER_CPLUSPLUSFLAGS"], "$(inherited) -DRCT_NEW_ARCH_ENABLED=1 -DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1")
+         assert_nil(first_xcconfig.attributes["OTHER_CFLAGS"])
+         assert_equal(first_xcconfig.save_as_invocation, ["a/path/First.xcconfig"])
+-        assert_equal(second_xcconfig.attributes["OTHER_CPLUSPLUSFLAGS"], "$(inherited) -DRCT_NEW_ARCH_ENABLED=1 -DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1")
++        assert_equal(second_xcconfig.attributes["OTHER_CPLUSPLUSFLAGS"], "$(inherited) -DRCT_NEW_ARCH_ENABLED=1 -DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1")
+         assert_nil(second_xcconfig.attributes["OTHER_CFLAGS"])
+         assert_equal(second_xcconfig.save_as_invocation, ["a/path/Second.xcconfig"])
+-        assert_equal(react_core_debug_config.build_settings["OTHER_CPLUSPLUSFLAGS"], "$(inherited) -DRCT_NEW_ARCH_ENABLED=1 -DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1")
++        assert_equal(react_core_debug_config.build_settings["OTHER_CPLUSPLUSFLAGS"], "$(inherited) -DRCT_NEW_ARCH_ENABLED=1 -DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1")
+         assert_nil(react_core_debug_config.build_settings["OTHER_CFLAGS"])
+-        assert_equal(react_core_release_config.build_settings["OTHER_CPLUSPLUSFLAGS"], "$(inherited) -DRCT_NEW_ARCH_ENABLED=1 -DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DNDEBUG")
++        assert_equal(react_core_release_config.build_settings["OTHER_CPLUSPLUSFLAGS"], "$(inherited) -DRCT_NEW_ARCH_ENABLED=1 -DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -DNDEBUG")
+         assert_equal(react_core_release_config.build_settings["OTHER_CFLAGS"], "$(inherited) -DNDEBUG")
+         assert_equal(yoga_debug_config.build_settings["OTHER_CPLUSPLUSFLAGS"], "$(inherited)")
+         assert_nil(yoga_debug_config.build_settings["OTHER_CFLAGS"])
+@@ -128,18 +128,18 @@ class NewArchitectureTests < Test::Unit::TestCase
+         spec = SpecMock.new
+ 
+         # Act
+-        NewArchitectureHelper.install_modules_dependencies(spec, true, '2022.05.16.00')
++        NewArchitectureHelper.install_modules_dependencies(spec, true, '2023.08.07.00')
+ 
+         # Assert
+         assert_equal(spec.compiler_flags, NewArchitectureHelper.folly_compiler_flags)
+         assert_equal(spec.pod_target_xcconfig["HEADER_SEARCH_PATHS"], "\"$(PODS_ROOT)/boost\" \"$(PODS_ROOT)/Headers/Private/Yoga\" \"$(PODS_ROOT)/DoubleConversion\" \"$(PODS_ROOT)/fmt/include\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-graphics/React_graphics.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-graphics/React_graphics.framework/Headers/react/renderer/graphics/platform/ios\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-Fabric/React_Fabric.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-Fabric/React_Fabric.framework/Headers/react/renderer/components/view/platform/cxx\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-FabricImage/React_FabricImage.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/ReactCommon/ReactCommon.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/ReactCommon/ReactCommon.framework/Headers/react/nativemodule/core\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-RCTFabric/RCTFabric.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-utils/React_utils.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-debug/React_debug.framework/Headers\" \"${PODS_CONFIGURATION_BUILD_DIR}/React-ImageManager/React_ImageManager.framework/Headers\" \"$(PODS_CONFIGURATION_BUILD_DIR)/React-rendererdebug/React_rendererdebug.framework/Headers\"")
+         assert_equal(spec.pod_target_xcconfig["CLANG_CXX_LANGUAGE_STANDARD"], "c++20")
+-        assert_equal(spec.pod_target_xcconfig["OTHER_CPLUSPLUSFLAGS"], "$(inherited) -DRCT_NEW_ARCH_ENABLED=1 -DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1")
++        assert_equal(spec.pod_target_xcconfig["OTHER_CPLUSPLUSFLAGS"], "$(inherited) -DRCT_NEW_ARCH_ENABLED=1 -DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1")
+         assert_equal(
+             spec.dependencies,
+             [
+                 { :dependency_name => "React-Core" },
+-                { :dependency_name => "RCT-Folly", "version"=>"2022.05.16.00" },
++                { :dependency_name => "RCT-Folly", "version"=>"2023.08.07.00" },
+                 { :dependency_name => "glog" },
+                 { :dependency_name => "React-RCTFabric" },
+                 { :dependency_name => "React-Codegen" },
+@@ -169,7 +169,7 @@ class NewArchitectureTests < Test::Unit::TestCase
+         }
+ 
+         # Act
+-        NewArchitectureHelper.install_modules_dependencies(spec, false, '2022.05.16.00')
++        NewArchitectureHelper.install_modules_dependencies(spec, false, '2023.08.07.00')
+ 
+         # Assert
+         assert_equal(spec.compiler_flags, "-Wno-nullability-completeness #{NewArchitectureHelper.folly_compiler_flags}")
+@@ -179,7 +179,7 @@ class NewArchitectureTests < Test::Unit::TestCase
+             spec.dependencies,
+             [
+                 { :dependency_name => "React-Core" },
+-                { :dependency_name => "RCT-Folly", "version"=>"2022.05.16.00" },
++                { :dependency_name => "RCT-Folly", "version"=>"2023.08.07.00" },
+                 { :dependency_name => "glog" }
+             ]
+         )
+diff --git a/packages/react-native/scripts/cocoapods/__tests__/test_utils/CodegenUtilsMock.rb b/packages/react-native/scripts/cocoapods/__tests__/test_utils/CodegenUtilsMock.rb
+index 22e14ce097d..e6b4174a17e 100644
+--- a/packages/react-native/scripts/cocoapods/__tests__/test_utils/CodegenUtilsMock.rb
++++ b/packages/react-native/scripts/cocoapods/__tests__/test_utils/CodegenUtilsMock.rb
+@@ -66,7 +66,7 @@ class CodegenUtilsMock
+         return @react_codegen_script_phases
+     end
+ 
+-    def get_react_codegen_spec(package_json_file, folly_version: '2022.05.16.00', fabric_enabled: false, hermes_enabled: true, script_phases: nil)
++    def get_react_codegen_spec(package_json_file, folly_version: '2023.08.07.00', fabric_enabled: false, hermes_enabled: true, script_phases: nil)
+         @get_react_codegen_spec_params.push({
+             package_json_file: package_json_file,
+             folly_version: folly_version,
+@@ -92,7 +92,7 @@ class CodegenUtilsMock
+         config_file_dir: '',
+         codegen_output_dir: 'build/generated/ios',
+         config_key: 'codegenConfig',
+-        folly_version: "2022.05.16.00",
++        folly_version: "2023.08.07.00",
+         codegen_utils: CodegenUtilsMock.new()
+     )
+         @use_react_native_codegen_discovery_params.push({
+diff --git a/packages/react-native/scripts/cocoapods/codegen.rb b/packages/react-native/scripts/cocoapods/codegen.rb
+index 898e3995f38..7c6af06e155 100644
+--- a/packages/react-native/scripts/cocoapods/codegen.rb
++++ b/packages/react-native/scripts/cocoapods/codegen.rb
+@@ -81,7 +81,7 @@ def run_codegen!(
+   codegen_output_dir: 'build/generated/ios',
+   config_key: 'codegenConfig',
+   package_json_file: '~/app/package.json',
+-  folly_version: '2022.05.16.00',
++  folly_version: '2023.08.07.00',
+   codegen_utils: CodegenUtils.new()
+   )
+ 
+diff --git a/packages/react-native/scripts/cocoapods/codegen_utils.rb b/packages/react-native/scripts/cocoapods/codegen_utils.rb
+index 78e39ed862a..27b8d9fb4c8 100644
+--- a/packages/react-native/scripts/cocoapods/codegen_utils.rb
++++ b/packages/react-native/scripts/cocoapods/codegen_utils.rb
+@@ -69,12 +69,12 @@ class CodegenUtils
+     # - hermes_enabled: whether hermes is enabled or not.
+     # - script_phases: whether we want to add some build script phases or not.
+     # - file_manager: a class that implements the `File` interface. Defaults to `File`, the Dependency can be injected for testing purposes.
+-    def get_react_codegen_spec(package_json_file, folly_version: '2022.05.16.00', fabric_enabled: false, hermes_enabled: true, script_phases: nil, file_manager: File)
++    def get_react_codegen_spec(package_json_file, folly_version: '2023.08.07.00', fabric_enabled: false, hermes_enabled: true, script_phases: nil, file_manager: File)
+         package = JSON.parse(file_manager.read(package_json_file))
+         version = package['version']
+         new_arch_disabled = ENV['RCT_NEW_ARCH_ENABLED'] != "1"
+         use_frameworks = ENV['USE_FRAMEWORKS'] != nil
+-        folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32'
++        folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32'
+         boost_compiler_flags = '-Wno-documentation'
+ 
+         header_search_paths = [
+@@ -290,7 +290,7 @@ class CodegenUtils
+       config_file_dir: '',
+       codegen_output_dir: 'build/generated/ios',
+       config_key: 'codegenConfig',
+-      folly_version: '2022.05.16.00',
++      folly_version: '2023.08.07.00',
+       codegen_utils: CodegenUtils.new(),
+       file_manager: File
+       )
+diff --git a/packages/react-native/scripts/cocoapods/new_architecture.rb b/packages/react-native/scripts/cocoapods/new_architecture.rb
+index 7210379bdde..1f7a6f95875 100644
+--- a/packages/react-native/scripts/cocoapods/new_architecture.rb
++++ b/packages/react-native/scripts/cocoapods/new_architecture.rb
+@@ -6,7 +6,7 @@
+ require 'json'
+ 
+ class NewArchitectureHelper
+-    @@shared_flags = "-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1"
++    @@shared_flags = "-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1"
+ 
+     @@folly_compiler_flags = "#{@@shared_flags} -Wno-comma -Wno-shorten-64-to-32"
+ 
+@@ -128,7 +128,7 @@ class NewArchitectureHelper
+ 
+ 
+         spec.dependency "React-Core"
+-        spec.dependency "RCT-Folly", '2022.05.16.00'
++        spec.dependency "RCT-Folly", '2023.08.07.00'
+         spec.dependency "glog"
+ 
+         if new_arch_enabled
+diff --git a/packages/react-native/scripts/react_native_pods.rb b/packages/react-native/scripts/react_native_pods.rb
+index 8c7569d2d51..6f7d8edd54b 100644
+--- a/packages/react-native/scripts/react_native_pods.rb
++++ b/packages/react-native/scripts/react_native_pods.rb
+@@ -21,7 +21,7 @@ require_relative './cocoapods/helpers.rb'
+ $CODEGEN_OUTPUT_DIR = 'build/generated/ios'
+ $CODEGEN_COMPONENT_DIR = 'react/renderer/components'
+ $CODEGEN_MODULE_DIR = '.'
+-$FOLLY_VERSION = '2022.05.16.00'
++$FOLLY_VERSION = '2023.08.07.00'
+ 
+ $START_TIME = Time.now.to_i
+ 
+diff --git a/packages/react-native/template/ios/HelloWorld.xcodeproj/project.pbxproj b/packages/react-native/template/ios/HelloWorld.xcodeproj/project.pbxproj
+index eed43451e53..dd7e5f8d367 100644
+--- a/packages/react-native/template/ios/HelloWorld.xcodeproj/project.pbxproj
++++ b/packages/react-native/template/ios/HelloWorld.xcodeproj/project.pbxproj
+@@ -578,6 +578,7 @@
+ 					"-DFOLLY_MOBILE=1",
+ 					"-DFOLLY_USE_LIBCPP=1",
+ 					"-DFOLLY_CFG_NO_COROUTINES=1",
++					"-DFOLLY_HAVE_CLOCK_GETTIME=1",
+ 				);
+ 				SDKROOT = iphoneos;
+ 			};
+@@ -642,6 +643,7 @@
+ 					"-DFOLLY_MOBILE=1",
+ 					"-DFOLLY_USE_LIBCPP=1",
+ 					"-DFOLLY_CFG_NO_COROUTINES=1",
++					"-DFOLLY_HAVE_CLOCK_GETTIME=1",
+ 				);
+ 				SDKROOT = iphoneos;
+ 				VALIDATE_PRODUCT = YES;
+diff --git a/packages/react-native/third-party-podspecs/RCT-Folly.podspec b/packages/react-native/third-party-podspecs/RCT-Folly.podspec
+index 1e68a3e7c5f..a96f25ab1f1 100644
+--- a/packages/react-native/third-party-podspecs/RCT-Folly.podspec
++++ b/packages/react-native/third-party-podspecs/RCT-Folly.podspec
+@@ -3,7 +3,7 @@
+ # This source code is licensed under the MIT license found in the
+ # LICENSE file in the root directory of this source tree.
+ 
+-folly_release_version = '2022.05.16.00'
++folly_release_version = '2023.08.07.00'
+ 
+ Pod::Spec.new do |spec|
+   spec.name = 'RCT-Folly'
+@@ -21,7 +21,7 @@ Pod::Spec.new do |spec|
+   spec.dependency 'DoubleConversion'
+   spec.dependency 'glog'
+   spec.dependency "fmt", "9.1.0"
+-  spec.compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_PTHREAD=1 -Wno-comma -Wno-shorten-64-to-32 -Wno-documentation -faligned-new'
++  spec.compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -DFOLLY_HAVE_PTHREAD=1 -Wno-comma -Wno-shorten-64-to-32 -Wno-documentation -faligned-new'
+   spec.source_files = 'folly/String.cpp',
+                       'folly/Conv.cpp',
+                       'folly/Demangle.cpp',
+@@ -36,6 +36,8 @@ Pod::Spec.new do |spec|
+                       'folly/json_pointer.cpp',
+                       'folly/container/detail/F14Table.cpp',
+                       'folly/detail/Demangle.cpp',
++                      'folly/detail/FileUtilDetail.cpp',
++                      'folly/detail/SplitStringSimd.cpp',
+                       'folly/detail/UniqueInstance.cpp',
+                       'folly/hash/SpookyHashV2.cpp',
+                       'folly/lang/Assume.cpp',
+@@ -44,7 +46,8 @@ Pod::Spec.new do |spec|
+                       'folly/memory/detail/MallocImpl.cpp',
+                       'folly/net/NetOps.cpp',
+                       'folly/portability/SysUio.cpp',
+-                      'folly/system/ThreadId.h',
++                      'folly/synchronization/SanitizeThread.cpp',
++                      'folly/system/AtFork.cpp',
+                       'folly/system/ThreadId.cpp',
+                       'folly/*.h',
+                       'folly/container/*.h',
+@@ -58,6 +61,7 @@ Pod::Spec.new do |spec|
+                       'folly/net/*.h',
+                       'folly/net/detail/*.h',
+                       'folly/portability/*.h',
++                      'folly/system/*.h',
+ 
+   # workaround for https://github.com/facebook/react-native/issues/14326
+   spec.preserve_paths = 'folly/*.h',
+@@ -72,6 +76,7 @@ Pod::Spec.new do |spec|
+                         'folly/net/*.h',
+                         'folly/net/detail/*.h',
+                         'folly/portability/*.h',
++                        'folly/system/*.h',
+   spec.libraries           = "c++abi" # NOTE Apple-only: Keep c++abi here due to https://github.com/react-native-community/releases/issues/251
+   spec.pod_target_xcconfig = { "USE_HEADERMAP" => "NO",
+                                "CLANG_CXX_LANGUAGE_STANDARD" => "c++20",
+@@ -107,36 +112,29 @@ Pod::Spec.new do |spec|
+   spec.subspec 'Futures' do |futures|
+     futures.dependency 'libevent'
+     futures.pod_target_xcconfig = { "HEADER_SEARCH_PATHS" => ["$(inherited)", "$(PODS_ROOT)/Headers/Public/libevent/event"] }
+-    futures.source_files = 'folly/futures/*.{h,cpp}',
+-                           'folly/futures/detail/*.{h,cpp}',
++    futures.source_files = 'folly/{CancellationToken,ExceptionString,ExceptionWrapper,ExceptionWrapper-inl,Executor,Singleton,SingletonThreadLocal,SharedMutex,Try}.{h,cpp}',
++                           'folly/chrono/Hardware.{h,cpp}',
++                           'folly/concurrency/*.{h,cpp}',
++                           'folly/detail/{AsyncTrace,Futex,Futex-inl,MemoryIdler,SingletonStackTrace,StaticSingletonManager,ThreadLocalDetail}.{h,cpp}',
+                            'folly/executors/*.{h,cpp}',
++                           'folly/executors/task_queue/*.{h,cpp}',
+                            'folly/executors/thread_factory/{NamedThreadFactory,ThreadFactory}.{h,cpp}',
+-                           'folly/executors/task_queue/{BlockingQueue,UnboundedBlockingQueue,LifoSemMPMCQueue,PriorityUnboundedBlockingQueue,PriorityLifoSemMPMCQueue}.{h,cpp}',
+-                           'folly/concurrency/*.{h,cpp}',
+-                           'folly/system/{ThreadId,ThreadName,HardwareConcurrency}.{h,cpp}',
+-                           'folly/synchronization/*.{h,cpp}',
+-                           'folly/synchronization/detail/*.{h,cpp}',
+-                           'folly/Try.cpp',
+-                           'folly/concurrency/CacheLocality.cpp',
+                            'folly/experimental/{ExecutionObserver,ReadMostlySharedPtr,SingleWriterFixedHashMap,TLRefCount}.{h,cpp}',
+-                           'folly/io/async/{AtomicNotificationQueue,AtomicNotificationQueue-inl,AsyncTimeout,DelayedDestruction,DelayedDestructionBase,EventBase,EventBaseLocal,EventBaseManager,EventBaseAtomicNotificationQueue,EventBaseAtomicNotificationQueue-inl,EventBaseBackendBase,EventHandler,EventUtil,HHWheelTimer,HHWheelTimer-fwd,NotificationQueue,Request,TimeoutManager,VirtualEventBase}.{h,cpp}',
+-                           'folly/io/{Cursor,Cursor-inl,IOBuf,IOBufQueue}.{h,cpp}',
+-                           'folly/tracing/StaticTracepoint.{h,cpp}',
+-                           'folly/tracing/AsyncStack.{h,cpp}',
+-                           'folly/tracing/AsyncStack-inl.h',
+-                           'folly/{Executor,ExceptionString,ExceptionWrapper,ExceptionWrapper-inl,FileUtil,Singleton,SharedMutex}.{h,cpp}',
+-                           'folly/detail/{AsyncTrace,Futex,Futex-inl,MemoryIdler,SingletonStackTrace,StaticSingletonManager,ThreadLocalDetail}.{h,cpp}',
+-                           'folly/lang/SafeAssert.{h,cpp}',
+-                           'folly/memory/{MallctlHelper,SanitizeAddress}.{h,cpp}',
+-                           'folly/portability/{GFlags,SysUio}.{h,cpp}',
+-                           'folly/portability/SysMembarrier.cpp',
+-                           'folly/chrono/Hardware.{h,cpp}',
++                           'folly/experimental/**/*.h',
++                           'folly/experimental/coro/Coroutine.{h,cpp}',
+                            'folly/experimental/coro/Traits.{h,cpp}',
+                            'folly/fibers/*.{h,cpp}',
+-                           'folly/experimental/coro/Coroutine.{h,cpp}',
+-                           'folly/fibers/Baton-inl.h',
+-                           'folly/experimental/**/*.h',
+-                           'folly/system/{AtFork,Pid}.{h,cpp}'
++                           'folly/futures/*.{h,cpp}',
++                           'folly/futures/detail/*.{h,cpp}',
++                           'folly/io/{Cursor,Cursor-inl,IOBuf,IOBufQueue}.{h,cpp}',
++                           'folly/io/async/{AtomicNotificationQueue,AtomicNotificationQueue-inl,AsyncTimeout,DelayedDestruction,DelayedDestructionBase,EventBase,EventBaseLocal,EventBaseManager,EventBaseAtomicNotificationQueue,EventBaseAtomicNotificationQueue-inl,EventBaseBackendBase,EventHandler,EventUtil,HHWheelTimer,HHWheelTimer-fwd,NotificationQueue,Request,TimeoutManager,VirtualEventBase}.{h,cpp}',
++                           'folly/lang/{SafeAssert,UncaughtExceptions}.{h,cpp}',
++                           'folly/memory/{MallctlHelper,ReentrantAllocator,SanitizeAddress}.{h,cpp}',
++                           'folly/portability/{GFlags,SysMembarrier,SysUio}.{h,cpp}',
++                           'folly/synchronization/*.{h,cpp}',
++                           'folly/synchronization/detail/*.{h,cpp}',
++                           'folly/system/{Pid,ThreadId,ThreadName,HardwareConcurrency}.{h,cpp}',
++                           'folly/tracing/{AsyncStack,AsyncStack-inl,StaticTracepoint}.{h,cpp}'
+                           # TODO: Perhaps some of the wildcards above can be further trimmed down with some of these:
+                           #
+                           #  'folly/executors/{DrivableExecutor,InlineExecutor,QueuedImmediateExecutor,TimedDrivableExecutor}.{h,cpp}',
+diff --git a/packages/rn-tester/Podfile.lock b/packages/rn-tester/Podfile.lock
+index dfc48124ae4..d3c48647995 100644
+--- a/packages/rn-tester/Podfile.lock
++++ b/packages/rn-tester/Podfile.lock
+@@ -4,7 +4,7 @@ PODS:
+   - DoubleConversion (1.1.6)
+   - FBLazyVector (1000.0.0)
+   - FBReactNativeSpec (1000.0.0):
+-    - RCT-Folly (= 2022.05.16.00)
++    - RCT-Folly (= 2023.08.07.00)
+     - RCTRequired (= 1000.0.0)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Core (= 1000.0.0)
+@@ -80,23 +80,23 @@ PODS:
+   - libevent (2.1.12)
+   - OCMock (3.9.1)
+   - OpenSSL-Universal (1.1.1100)
+-  - RCT-Folly (2022.05.16.00):
++  - RCT-Folly (2023.08.07.00):
+     - boost
+     - DoubleConversion
+     - fmt (= 9.1.0)
+     - glog
+-    - RCT-Folly/Default (= 2022.05.16.00)
+-  - RCT-Folly/Default (2022.05.16.00):
++    - RCT-Folly/Default (= 2023.08.07.00)
++  - RCT-Folly/Default (2023.08.07.00):
+     - boost
+     - DoubleConversion
+     - fmt (= 9.1.0)
+     - glog
+-  - RCT-Folly/Fabric (2022.05.16.00):
++  - RCT-Folly/Fabric (2023.08.07.00):
+     - boost
+     - DoubleConversion
+     - fmt (= 9.1.0)
+     - glog
+-  - RCT-Folly/Futures (2022.05.16.00):
++  - RCT-Folly/Futures (2023.08.07.00):
+     - boost
+     - DoubleConversion
+     - fmt (= 9.1.0)
+@@ -144,7 +144,7 @@ PODS:
+   - React-Core (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2022.05.16.00)
++    - RCT-Folly (= 2023.08.07.00)
+     - React-Core/Default (= 1000.0.0)
+     - React-cxxreact
+     - React-hermes
+@@ -158,7 +158,7 @@ PODS:
+   - React-Core/CoreModulesHeaders (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2022.05.16.00)
++    - RCT-Folly (= 2023.08.07.00)
+     - React-Core/Default
+     - React-cxxreact
+     - React-hermes
+@@ -172,7 +172,7 @@ PODS:
+   - React-Core/Default (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2022.05.16.00)
++    - RCT-Folly (= 2023.08.07.00)
+     - React-cxxreact
+     - React-hermes
+     - React-jsi
+@@ -185,7 +185,7 @@ PODS:
+   - React-Core/DevSupport (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2022.05.16.00)
++    - RCT-Folly (= 2023.08.07.00)
+     - React-Core/Default (= 1000.0.0)
+     - React-Core/RCTWebSocket (= 1000.0.0)
+     - React-cxxreact
+@@ -201,7 +201,7 @@ PODS:
+   - React-Core/RCTActionSheetHeaders (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2022.05.16.00)
++    - RCT-Folly (= 2023.08.07.00)
+     - React-Core/Default
+     - React-cxxreact
+     - React-hermes
+@@ -215,7 +215,7 @@ PODS:
+   - React-Core/RCTAnimationHeaders (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2022.05.16.00)
++    - RCT-Folly (= 2023.08.07.00)
+     - React-Core/Default
+     - React-cxxreact
+     - React-hermes
+@@ -229,7 +229,7 @@ PODS:
+   - React-Core/RCTBlobHeaders (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2022.05.16.00)
++    - RCT-Folly (= 2023.08.07.00)
+     - React-Core/Default
+     - React-cxxreact
+     - React-hermes
+@@ -243,7 +243,7 @@ PODS:
+   - React-Core/RCTImageHeaders (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2022.05.16.00)
++    - RCT-Folly (= 2023.08.07.00)
+     - React-Core/Default
+     - React-cxxreact
+     - React-hermes
+@@ -257,7 +257,7 @@ PODS:
+   - React-Core/RCTLinkingHeaders (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2022.05.16.00)
++    - RCT-Folly (= 2023.08.07.00)
+     - React-Core/Default
+     - React-cxxreact
+     - React-hermes
+@@ -271,7 +271,7 @@ PODS:
+   - React-Core/RCTNetworkHeaders (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2022.05.16.00)
++    - RCT-Folly (= 2023.08.07.00)
+     - React-Core/Default
+     - React-cxxreact
+     - React-hermes
+@@ -285,7 +285,7 @@ PODS:
+   - React-Core/RCTPushNotificationHeaders (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2022.05.16.00)
++    - RCT-Folly (= 2023.08.07.00)
+     - React-Core/Default
+     - React-cxxreact
+     - React-hermes
+@@ -299,7 +299,7 @@ PODS:
+   - React-Core/RCTSettingsHeaders (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2022.05.16.00)
++    - RCT-Folly (= 2023.08.07.00)
+     - React-Core/Default
+     - React-cxxreact
+     - React-hermes
+@@ -313,7 +313,7 @@ PODS:
+   - React-Core/RCTTextHeaders (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2022.05.16.00)
++    - RCT-Folly (= 2023.08.07.00)
+     - React-Core/Default
+     - React-cxxreact
+     - React-hermes
+@@ -327,7 +327,7 @@ PODS:
+   - React-Core/RCTVibrationHeaders (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2022.05.16.00)
++    - RCT-Folly (= 2023.08.07.00)
+     - React-Core/Default
+     - React-cxxreact
+     - React-hermes
+@@ -341,7 +341,7 @@ PODS:
+   - React-Core/RCTWebSocket (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2022.05.16.00)
++    - RCT-Folly (= 2023.08.07.00)
+     - React-Core/Default (= 1000.0.0)
+     - React-cxxreact
+     - React-hermes
+@@ -353,7 +353,7 @@ PODS:
+     - SocketRocket (= 0.6.0)
+     - Yoga
+   - React-CoreModules (1000.0.0):
+-    - RCT-Folly (= 2022.05.16.00)
++    - RCT-Folly (= 2023.08.07.00)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Codegen (= 1000.0.0)
+     - React-Core/CoreModulesHeaders (= 1000.0.0)
+@@ -368,7 +368,7 @@ PODS:
+     - fmt (= 9.1.0)
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2022.05.16.00)
++    - RCT-Folly (= 2023.08.07.00)
+     - React-callinvoker (= 1000.0.0)
+     - React-debug (= 1000.0.0)
+     - React-jsi (= 1000.0.0)
+@@ -382,7 +382,7 @@ PODS:
+     - fmt (= 9.1.0)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2022.05.16.00)
++    - RCT-Folly/Fabric (= 2023.08.07.00)
+     - RCTRequired (= 1000.0.0)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Core
+@@ -415,7 +415,7 @@ PODS:
+     - fmt (= 9.1.0)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2022.05.16.00)
++    - RCT-Folly/Fabric (= 2023.08.07.00)
+     - RCTRequired (= 1000.0.0)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Core
+@@ -434,7 +434,7 @@ PODS:
+     - fmt (= 9.1.0)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2022.05.16.00)
++    - RCT-Folly/Fabric (= 2023.08.07.00)
+     - RCTRequired (= 1000.0.0)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Core
+@@ -453,7 +453,7 @@ PODS:
+     - fmt (= 9.1.0)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2022.05.16.00)
++    - RCT-Folly/Fabric (= 2023.08.07.00)
+     - RCTRequired (= 1000.0.0)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Core
+@@ -472,7 +472,7 @@ PODS:
+     - fmt (= 9.1.0)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2022.05.16.00)
++    - RCT-Folly/Fabric (= 2023.08.07.00)
+     - RCTRequired (= 1000.0.0)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Core
+@@ -491,7 +491,7 @@ PODS:
+     - fmt (= 9.1.0)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2022.05.16.00)
++    - RCT-Folly/Fabric (= 2023.08.07.00)
+     - RCTRequired (= 1000.0.0)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Core
+@@ -521,7 +521,7 @@ PODS:
+     - fmt (= 9.1.0)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2022.05.16.00)
++    - RCT-Folly/Fabric (= 2023.08.07.00)
+     - RCTRequired (= 1000.0.0)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Core
+@@ -540,7 +540,7 @@ PODS:
+     - fmt (= 9.1.0)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2022.05.16.00)
++    - RCT-Folly/Fabric (= 2023.08.07.00)
+     - RCTRequired (= 1000.0.0)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Core
+@@ -559,7 +559,7 @@ PODS:
+     - fmt (= 9.1.0)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2022.05.16.00)
++    - RCT-Folly/Fabric (= 2023.08.07.00)
+     - RCTRequired (= 1000.0.0)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Core
+@@ -578,7 +578,7 @@ PODS:
+     - fmt (= 9.1.0)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2022.05.16.00)
++    - RCT-Folly/Fabric (= 2023.08.07.00)
+     - RCTRequired (= 1000.0.0)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Core
+@@ -597,7 +597,7 @@ PODS:
+     - fmt (= 9.1.0)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2022.05.16.00)
++    - RCT-Folly/Fabric (= 2023.08.07.00)
+     - RCTRequired (= 1000.0.0)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Core
+@@ -616,7 +616,7 @@ PODS:
+     - fmt (= 9.1.0)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2022.05.16.00)
++    - RCT-Folly/Fabric (= 2023.08.07.00)
+     - RCTRequired (= 1000.0.0)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Core
+@@ -635,7 +635,7 @@ PODS:
+     - fmt (= 9.1.0)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2022.05.16.00)
++    - RCT-Folly/Fabric (= 2023.08.07.00)
+     - RCTRequired (= 1000.0.0)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Core
+@@ -654,7 +654,7 @@ PODS:
+     - fmt (= 9.1.0)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2022.05.16.00)
++    - RCT-Folly/Fabric (= 2023.08.07.00)
+     - RCTRequired (= 1000.0.0)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Core
+@@ -673,7 +673,7 @@ PODS:
+     - fmt (= 9.1.0)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2022.05.16.00)
++    - RCT-Folly/Fabric (= 2023.08.07.00)
+     - RCTRequired (= 1000.0.0)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Core
+@@ -692,7 +692,7 @@ PODS:
+     - fmt (= 9.1.0)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2022.05.16.00)
++    - RCT-Folly/Fabric (= 2023.08.07.00)
+     - RCTRequired (= 1000.0.0)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Core
+@@ -711,7 +711,7 @@ PODS:
+     - fmt (= 9.1.0)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2022.05.16.00)
++    - RCT-Folly/Fabric (= 2023.08.07.00)
+     - RCTRequired (= 1000.0.0)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Core
+@@ -731,7 +731,7 @@ PODS:
+     - fmt (= 9.1.0)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2022.05.16.00)
++    - RCT-Folly/Fabric (= 2023.08.07.00)
+     - RCTRequired (= 1000.0.0)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Core
+@@ -750,7 +750,7 @@ PODS:
+     - fmt (= 9.1.0)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2022.05.16.00)
++    - RCT-Folly/Fabric (= 2023.08.07.00)
+     - RCTRequired (= 1000.0.0)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Core
+@@ -769,7 +769,7 @@ PODS:
+     - fmt (= 9.1.0)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2022.05.16.00)
++    - RCT-Folly/Fabric (= 2023.08.07.00)
+     - RCTRequired (= 1000.0.0)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Core
+@@ -788,7 +788,7 @@ PODS:
+     - fmt (= 9.1.0)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2022.05.16.00)
++    - RCT-Folly/Fabric (= 2023.08.07.00)
+     - RCTRequired (= 1000.0.0)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Core
+@@ -807,7 +807,7 @@ PODS:
+     - fmt (= 9.1.0)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2022.05.16.00)
++    - RCT-Folly/Fabric (= 2023.08.07.00)
+     - RCTRequired (= 1000.0.0)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Core
+@@ -826,7 +826,7 @@ PODS:
+     - fmt (= 9.1.0)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2022.05.16.00)
++    - RCT-Folly/Fabric (= 2023.08.07.00)
+     - RCTRequired (= 1000.0.0)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Core
+@@ -845,7 +845,7 @@ PODS:
+     - fmt (= 9.1.0)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2022.05.16.00)
++    - RCT-Folly/Fabric (= 2023.08.07.00)
+     - RCTRequired (= 1000.0.0)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Core
+@@ -864,7 +864,7 @@ PODS:
+     - fmt (= 9.1.0)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2022.05.16.00)
++    - RCT-Folly/Fabric (= 2023.08.07.00)
+     - RCTRequired (= 1000.0.0)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Core
+@@ -884,7 +884,7 @@ PODS:
+     - fmt (= 9.1.0)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2022.05.16.00)
++    - RCT-Folly/Fabric (= 2023.08.07.00)
+     - RCTRequired (= 1000.0.0)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Core
+@@ -903,7 +903,7 @@ PODS:
+     - fmt (= 9.1.0)
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2022.05.16.00)
++    - RCT-Folly/Fabric (= 2023.08.07.00)
+     - RCTRequired (= 1000.0.0)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Fabric
+@@ -918,7 +918,7 @@ PODS:
+     - Yoga
+   - React-graphics (1000.0.0):
+     - glog
+-    - RCT-Folly/Fabric (= 2022.05.16.00)
++    - RCT-Folly/Fabric (= 2023.08.07.00)
+     - React-Core/Default (= 1000.0.0)
+     - React-utils
+   - React-hermes (1000.0.0):
+@@ -926,8 +926,8 @@ PODS:
+     - fmt (= 9.1.0)
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2022.05.16.00)
+-    - RCT-Folly/Futures (= 2022.05.16.00)
++    - RCT-Folly (= 2023.08.07.00)
++    - RCT-Folly/Futures (= 2023.08.07.00)
+     - React-cxxreact (= 1000.0.0)
+     - React-jsi
+     - React-jsiexecutor (= 1000.0.0)
+@@ -943,7 +943,7 @@ PODS:
+     - React-rendererdebug
+     - React-utils
+   - React-jserrorhandler (1000.0.0):
+-    - RCT-Folly/Fabric (= 2022.05.16.00)
++    - RCT-Folly/Fabric (= 2023.08.07.00)
+     - React-jsi (= 1000.0.0)
+     - React-Mapbuffer
+   - React-jsi (1000.0.0):
+@@ -951,13 +951,13 @@ PODS:
+     - DoubleConversion
+     - fmt (= 9.1.0)
+     - glog
+-    - RCT-Folly (= 2022.05.16.00)
++    - RCT-Folly (= 2023.08.07.00)
+   - React-jsiexecutor (1000.0.0):
+     - DoubleConversion
+     - fmt (= 9.1.0)
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2022.05.16.00)
++    - RCT-Folly (= 2023.08.07.00)
+     - React-cxxreact (= 1000.0.0)
+     - React-jsi (= 1000.0.0)
+     - React-perflogger (= 1000.0.0)
+@@ -982,7 +982,7 @@ PODS:
+   - React-RCTActionSheet (1000.0.0):
+     - React-Core/RCTActionSheetHeaders (= 1000.0.0)
+   - React-RCTAnimation (1000.0.0):
+-    - RCT-Folly (= 2022.05.16.00)
++    - RCT-Folly (= 2023.08.07.00)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Codegen (= 1000.0.0)
+     - React-Core/RCTAnimationHeaders (= 1000.0.0)
+@@ -1004,7 +1004,7 @@ PODS:
+     - ReactCommon/turbomodule/core
+   - React-RCTBlob (1000.0.0):
+     - hermes-engine
+-    - RCT-Folly (= 2022.05.16.00)
++    - RCT-Folly (= 2023.08.07.00)
+     - React-Codegen (= 1000.0.0)
+     - React-Core/RCTBlobHeaders (= 1000.0.0)
+     - React-Core/RCTWebSocket (= 1000.0.0)
+@@ -1014,7 +1014,7 @@ PODS:
+   - React-RCTFabric (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly/Fabric (= 2022.05.16.00)
++    - RCT-Folly/Fabric (= 2023.08.07.00)
+     - React-Core (= 1000.0.0)
+     - React-debug
+     - React-Fabric (= 1000.0.0)
+@@ -1029,7 +1029,7 @@ PODS:
+     - React-utils
+     - Yoga
+   - React-RCTImage (1000.0.0):
+-    - RCT-Folly (= 2022.05.16.00)
++    - RCT-Folly (= 2023.08.07.00)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Codegen (= 1000.0.0)
+     - React-Core/RCTImageHeaders (= 1000.0.0)
+@@ -1042,7 +1042,7 @@ PODS:
+     - React-jsi (= 1000.0.0)
+     - ReactCommon/turbomodule/core (= 1000.0.0)
+   - React-RCTNetwork (1000.0.0):
+-    - RCT-Folly (= 2022.05.16.00)
++    - RCT-Folly (= 2023.08.07.00)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Codegen (= 1000.0.0)
+     - React-Core/RCTNetworkHeaders (= 1000.0.0)
+@@ -1055,14 +1055,14 @@ PODS:
+     - React-jsi (= 1000.0.0)
+     - ReactCommon/turbomodule/core (= 1000.0.0)
+   - React-RCTSettings (1000.0.0):
+-    - RCT-Folly (= 2022.05.16.00)
++    - RCT-Folly (= 2023.08.07.00)
+     - RCTTypeSafety (= 1000.0.0)
+     - React-Codegen (= 1000.0.0)
+     - React-Core/RCTSettingsHeaders (= 1000.0.0)
+     - React-jsi (= 1000.0.0)
+     - ReactCommon/turbomodule/core (= 1000.0.0)
+   - React-RCTTest (1000.0.0):
+-    - RCT-Folly (= 2022.05.16.00)
++    - RCT-Folly (= 2023.08.07.00)
+     - React-Core (= 1000.0.0)
+     - React-CoreModules (= 1000.0.0)
+     - React-jsi (= 1000.0.0)
+@@ -1071,7 +1071,7 @@ PODS:
+     - React-Core/RCTTextHeaders (= 1000.0.0)
+     - Yoga
+   - React-RCTVibration (1000.0.0):
+-    - RCT-Folly (= 2022.05.16.00)
++    - RCT-Folly (= 2023.08.07.00)
+     - React-Codegen (= 1000.0.0)
+     - React-Core/RCTVibrationHeaders (= 1000.0.0)
+     - React-jsi (= 1000.0.0)
+@@ -1079,7 +1079,7 @@ PODS:
+   - React-rendererdebug (1000.0.0):
+     - DoubleConversion
+     - fmt (= 9.1.0)
+-    - RCT-Folly (= 2022.05.16.00)
++    - RCT-Folly (= 2023.08.07.00)
+     - React-debug
+   - React-rncore (1000.0.0)
+   - React-runtimeexecutor (1000.0.0):
+@@ -1087,7 +1087,7 @@ PODS:
+   - React-runtimescheduler (1000.0.0):
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2022.05.16.00)
++    - RCT-Folly (= 2023.08.07.00)
+     - React-callinvoker
+     - React-debug
+     - React-jsi
+@@ -1096,7 +1096,7 @@ PODS:
+     - React-utils
+   - React-utils (1000.0.0):
+     - glog
+-    - RCT-Folly (= 2022.05.16.00)
++    - RCT-Folly (= 2023.08.07.00)
+     - React-debug
+   - ReactCommon-Samples (1000.0.0):
+     - DoubleConversion
+@@ -1113,7 +1113,7 @@ PODS:
+     - fmt (= 9.1.0)
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2022.05.16.00)
++    - RCT-Folly (= 2023.08.07.00)
+     - React-callinvoker (= 1000.0.0)
+     - React-cxxreact (= 1000.0.0)
+     - React-jsi (= 1000.0.0)
+@@ -1124,7 +1124,7 @@ PODS:
+     - fmt (= 9.1.0)
+     - glog
+     - hermes-engine
+-    - RCT-Folly (= 2022.05.16.00)
++    - RCT-Folly (= 2023.08.07.00)
+     - React-callinvoker (= 1000.0.0)
+     - React-cxxreact (= 1000.0.0)
+     - React-jsi (= 1000.0.0)
+@@ -1132,7 +1132,7 @@ PODS:
+     - React-perflogger (= 1000.0.0)
+   - ScreenshotManager (0.0.1):
+     - glog
+-    - RCT-Folly (= 2022.05.16.00)
++    - RCT-Folly (= 2023.08.07.00)
+     - React-Core
+   - SocketRocket (0.6.0)
+   - Yoga (1.14.0)
+@@ -1347,8 +1347,8 @@ SPEC CHECKSUMS:
+   boost: 26fad476bfa736552bbfa698a06cc530475c1505
+   CocoaAsyncSocket: 065fd1e645c7abab64f7a6a2007a48038fdc6a99
+   DoubleConversion: fea03f2699887d960129cc54bba7e52542b6f953
+-  FBLazyVector: 5151fd0812335f38a10ee094a9f7ec890f10ef21
+-  FBReactNativeSpec: 508d9048374cd5ce4915e3a086d6c80a85d79ff4
++  FBLazyVector: 9efa2420b88992b1eda40354ba0cc0aae2d0c3d3
++  FBReactNativeSpec: b9dfd737f7442d6a5df5fab7b3c14e374948895d
+   Flipper: c7a0093234c4bdd456e363f2f19b2e4b27652d44
+   Flipper-Boost-iOSX: fd1e2b8cbef7e662a122412d7ac5f5bea715403c
+   Flipper-DoubleConversion: 2dc99b02f658daf147069aad9dbd29d8feb06d30
+@@ -1357,59 +1357,59 @@ SPEC CHECKSUMS:
+   Flipper-Glog: 70c50ce58ddaf67dc35180db05f191692570f446
+   Flipper-PeerTalk: 116d8f857dc6ef55c7a5a75ea3ceaafe878aadc9
+   FlipperKit: 37525a5d056ef9b93d1578e04bc3ea1de940094f
+-  fmt: 1e664e35cebe13573b0a255ba28121bc29c2765a
++  fmt: 4c2741a687cc09f0634a2e2c72a838b99f1ff120
+   glog: c5d68082e772fa1c511173d6b30a9de2c05a69a2
+-  hermes-engine: 742b1cd6923bd4dadfed9d2d304a35487f3d2473
++  hermes-engine: 3eb69bfc4c3e106b2e611369e161b108d5fe04eb
+   libevent: 4049cae6c81cdb3654a443be001fb9bdceff7913
+   OCMock: 9491e4bec59e0b267d52a9184ff5605995e74be8
+   OpenSSL-Universal: ebc357f1e6bc71fa463ccb2fe676756aff50e88c
+-  RCT-Folly: 9343647b58e324b13eea8fd2a6a721246aa51379
+-  RCTRequired: ba6e6c0a16c67b5cebead2283c240d05eba8b7e6
+-  RCTTypeSafety: de0389d18d87bd0b6efca63dbff22c5bb9484379
+-  React: 86100f56dc3b059a4f13d2f76331a2744b5c8ebd
+-  React-callinvoker: 85c49fe79d257fb682e3c9450fee550e5f26c662
+-  React-Codegen: 5ad0601f4a0960e6ad81412fdfb270aafba6e4e1
+-  React-Core: 8a61111ea85bf31d23f3800c167e6861bf39e675
+-  React-CoreModules: b6d88f6f29de91bca2a6048e29324f6c86febadc
+-  React-cxxreact: c4808346bb6ff1b6bbc5ccf7999e4d2267be96b4
+-  React-debug: b4915acf30f97857ceb6e809bcd641b1793e0cca
+-  React-Fabric: 920f01c88cede2046d7a8668e66a4b874a0604bd
+-  React-FabricImage: 3ac6940fc9011846884ae5f00d1a6ba4b867018c
+-  React-graphics: af3a57205af5c0f0ca68006d4e1b9320985523c6
+-  React-hermes: ef3c86df2c49c785d139e07c2e1fd8e468c9d79f
+-  React-ImageManager: 27cb75ea062ba1e1506a613f06bd31c7c202a6bd
+-  React-jserrorhandler: 6b0df194f43c40f9f3428675b6e5b4bcf73748c7
+-  React-jsi: 4dda10102dac6ade8dfa8aca92eae6d846c634be
+-  React-jsiexecutor: ece914f0e1288637c2f8d82ac5178ab4d1449cb3
+-  React-jsinspector: 12477c0e019edaab17df04aa3595496ab87157ff
+-  React-logger: 20f279e03c9a6f274f95cc9b9a43daccb36c0c14
+-  React-Mapbuffer: 4e1dbb7e364b1e5290c808650bdd2d86153c8eb1
+-  React-nativeconfig: e096a997284ee757946820ca801df07797e4ab55
+-  React-NativeModulesApple: dcca30cd7e04007a48d024ad65a23d26e083d8c7
+-  React-perflogger: 17f9706f2133da530b7d784dcdc6c27c2eea8cb9
+-  React-RCTActionSheet: 3776cabaa18a13ccaeac5c0ce8f930e9703064bb
+-  React-RCTAnimation: 49d23dcbe6409883df2f277575111a2da578e535
+-  React-RCTAppDelegate: 422899c7af3f7301491999911d1fd1fabcf4df43
+-  React-RCTBlob: ab81f0609ca3096dbfa93e10991969b6d6d13b81
+-  React-RCTFabric: d9795c236775d0803b6f51fba44f5294eeb78171
+-  React-RCTImage: 6fcd6ef9d2946c0d2962a6f76461235f28ceaec2
+-  React-RCTLinking: a901ce89a51ef7c10754c8c389d852a3d076bc33
+-  React-RCTNetwork: de0910a36fc623a8abffdda1b890f80f3d4787e7
+-  React-RCTPushNotification: 8840cdc9bc8941e369d0b519e96f388dd161a30e
+-  React-RCTSettings: f3c1a94f8e63ec8e3471a13729f9f8786c3016e7
+-  React-RCTTest: bf230faad83bc6be0179ae72cbdda2116614ac7e
+-  React-RCTText: 7805bc1b0a5ef7bf91aca462526768a8da58b5eb
+-  React-RCTVibration: 800172cf446a3fb9f1a8e7425349dd9f460d91a3
+-  React-rendererdebug: ad7eea3f653c0aa00ca0fb1438c3c869338b774d
+-  React-rncore: 413f2932477380b82dd5b6c9fc2641b0b27575c4
+-  React-runtimeexecutor: 125a0de52f5dbb585ad852c3cf4e5690dfe94af7
+-  React-runtimescheduler: cfbbe9b714e46f9c0c9786d8ae8ed15a4413fa2a
+-  React-utils: 93c97bf9fce7527051f953b33328a1bcac22f842
+-  ReactCommon: 14c52400dbc545155b26e6b44c7a6ecaff0b4b60
+-  ReactCommon-Samples: d4549883e75923dce187103203c53f3631036d20
+-  ScreenshotManager: 338d56378199c1e9fb50d896a7ce4400cd250b5e
++  RCT-Folly: 3edb9330ce752fe48b85e6c8a65506033f95f4b9
++  RCTRequired: 5548e533128bc26ebd8e8ed7cb3b14e4d56a6223
++  RCTTypeSafety: f5e305cb2f7e2910b2c529a7dc9facf371d2b218
++  React: 78a5cd0062adb251037ab54793ef1c2b51a41c1a
++  React-callinvoker: fd43340e9aa38b774a01fb61e1e46c8354764c6b
++  React-Codegen: 05b37234a5252f99c890f3e2544b278827b613ca
++  React-Core: be3a57d0e4f81b86c00dfc39aef9a071e4c248de
++  React-CoreModules: 1a3ebdfeba6c13aacd27bdeb224a7ab8c0b327fc
++  React-cxxreact: ef020b104574bdc0c11b9e97216110ccfa3ebd7a
++  React-debug: 25099c0c3751fb09bbae97696e4deb8a53f82593
++  React-Fabric: 40f6d706a42195a112e2d610bebc998744c8df40
++  React-FabricImage: a4cd09149f75afa9275af8ad65c826596efe06d5
++  React-graphics: 24b5d0b9f889764c75f4e6cc7c8ae4079452d65d
++  React-hermes: 62bcf4a6c382ef7398fed8b7f532dc002325749f
++  React-ImageManager: c6cbfb029e24a60a07fb1aec56e4168e25322d7d
++  React-jserrorhandler: 62e327b4f33dd4f115ac3a1791197017921cb63d
++  React-jsi: 0b2e26a7855006faa8f0dcb6d3fc56b8326ad115
++  React-jsiexecutor: 6ae3c165b135e7235df5b245e4d9ad82377ac9d5
++  React-jsinspector: 0e97bc40aec64803ab36bf3395ffee312c6b3957
++  React-logger: 38f6e91fa64a6ad1dd8ae66a69cfd0ebb07e7a6d
++  React-Mapbuffer: 05889b942e3937765fbacc5ebf194a0ad0ebbfd8
++  React-nativeconfig: a5573117479c54d0df95722ef421ba8fff260b7a
++  React-NativeModulesApple: b1aea709e0782702f07bd12ef2aa8db67f71dafe
++  React-perflogger: 3aa5d2c085de1ba512940cd6c64c0591d896d29c
++  React-RCTActionSheet: 47e62ad0547aeef5c98395ad3d9fadb594a401e7
++  React-RCTAnimation: 77a73c05593c83f0adae33f254e3cd5f0deae4ed
++  React-RCTAppDelegate: 3c7e0daacbbea9d72bbbdf4ef9ff34707aff2a10
++  React-RCTBlob: b2cf51dc6fdf3789bfc06345eb53829f11e5fa75
++  React-RCTFabric: b77cfa83d50f5a869d7236ea438edc218b673054
++  React-RCTImage: 3ae92a7bd8aa29b93f24289b4164640aa4e88fee
++  React-RCTLinking: 6cb887793b3030cbc3f6429b5730087cc3ffa6fe
++  React-RCTNetwork: a322dc10073445fb288b5524f8ed756ac9908d14
++  React-RCTPushNotification: 17ea6e62f6b8dc48266b8977628e8de5c0dbecae
++  React-RCTSettings: d37093ad0b9094fa222226f79213c72364101d1e
++  React-RCTTest: d37b49f8ef9ced2f3409a6aaab3efaf16b4430ed
++  React-RCTText: 142b6d88aa384455412a39d9870a45bfc0df8875
++  React-RCTVibration: 7c0d1c3645b9e386baea14f875ed4da066bb8f5e
++  React-rendererdebug: ff934455f14701a4852d9d0574c0732ef44b55ef
++  React-rncore: 7291f6a0d4446605c7f6bc0c8e55218548cb2cca
++  React-runtimeexecutor: 8876a87a512c06719d0f140d22c03865364a1e33
++  React-runtimescheduler: d2d20324d97633c450b08cc5a0fd4619d37acc0f
++  React-utils: a292918d2999555af3a4bd5e84e46d613c37afd6
++  ReactCommon: 425c3f816258bf0371759668869186d41bc73f24
++  ReactCommon-Samples: 4fdff497535bc53e0ff66fcaf6e1c3da7ec5e1f7
++  ScreenshotManager: 2b23b74d25f5e307f7b4d21173a61a3934e69475
+   SocketRocket: fccef3f9c5cedea1353a9ef6ada904fde10d6608
+-  Yoga: bdf9f35e09c0e9552bf37646319f7cbf7900b7e5
++  Yoga: c17be32c49fe31647121373886786019855be3a7
+ 
+ PODFILE CHECKSUM: 7d1b558e28efc972a185230c56fef43ed86910a1
+ 
+diff --git a/packages/rn-tester/RCTTest/React-RCTTest.podspec b/packages/rn-tester/RCTTest/React-RCTTest.podspec
+index 2f4e129e88d..7483fa8e0ae 100644
+--- a/packages/rn-tester/RCTTest/React-RCTTest.podspec
++++ b/packages/rn-tester/RCTTest/React-RCTTest.podspec
+@@ -16,8 +16,8 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32'
+-folly_version = '2022.05.16.00'
++folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32'
++folly_version = '2023.08.07.00'
+ 
+ Pod::Spec.new do |s|
+   s.name                   = "React-RCTTest"
+diff --git a/packages/rn-tester/RNTesterPods.xcodeproj/project.pbxproj b/packages/rn-tester/RNTesterPods.xcodeproj/project.pbxproj
+index 86b1cd30c49..0e6e75dc52d 100644
+--- a/packages/rn-tester/RNTesterPods.xcodeproj/project.pbxproj
++++ b/packages/rn-tester/RNTesterPods.xcodeproj/project.pbxproj
+@@ -7,7 +7,7 @@
+ 	objects = {
+ 
+ /* Begin PBXBuildFile section */
+-		04157F50C11E9F16DDD69B17 /* libPods-RNTester.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 2F98312BF816A7F2688C036D /* libPods-RNTester.a */; };
++		111FD3845C7358250C2702B6 /* libPods-RNTesterIntegrationTests.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 63C6B5E1C2465D85E9BDB6E5 /* libPods-RNTesterIntegrationTests.a */; };
+ 		13B07FC11A68108700A75B9A /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 13B07FB71A68108700A75B9A /* main.m */; };
+ 		2DDEF0101F84BF7B00DBDF73 /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2DDEF00F1F84BF7B00DBDF73 /* Images.xcassets */; };
+ 		383889DA23A7398900D06C3E /* RCTConvert_UIColorTests.m in Sources */ = {isa = PBXBuildFile; fileRef = 383889D923A7398900D06C3E /* RCTConvert_UIColorTests.m */; };
+@@ -15,9 +15,8 @@
+ 		5C60EB1C226440DB0018C04F /* AppDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 5C60EB1B226440DB0018C04F /* AppDelegate.mm */; };
+ 		8145AE06241172D900A3F8DA /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 8145AE05241172D900A3F8DA /* LaunchScreen.storyboard */; };
+ 		832F45BB2A8A6E1F0097B4E6 /* SwiftTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 832F45BA2A8A6E1F0097B4E6 /* SwiftTest.swift */; };
+-		953D44E0A849F5064163EA24 /* libPods-RNTesterIntegrationTests.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 4F4A7C4C85AB0198A25D51E4 /* libPods-RNTesterIntegrationTests.a */; };
+-		BE3BEE3556275C62F33864C8 /* libPods-RNTesterUnitTests.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 6144DEEE56C6C17B301A90E4 /* libPods-RNTesterUnitTests.a */; };
+ 		CD10C7A5290BD4EB0033E1ED /* RCTEventEmitterTests.m in Sources */ = {isa = PBXBuildFile; fileRef = CD10C7A4290BD4EB0033E1ED /* RCTEventEmitterTests.m */; };
++		DD6FAB12C0152128DD2DA1BE /* libPods-RNTester.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 175067970892CD30B8B0A8E0 /* libPods-RNTester.a */; };
+ 		E62F11832A5C6580000BF1C8 /* FlexibleSizeExampleView.mm in Sources */ = {isa = PBXBuildFile; fileRef = 27F441E81BEBE5030039B79C /* FlexibleSizeExampleView.mm */; };
+ 		E62F11842A5C6584000BF1C8 /* UpdatePropertiesExampleView.mm in Sources */ = {isa = PBXBuildFile; fileRef = 272E6B3C1BEA849E001FCF37 /* UpdatePropertiesExampleView.mm */; };
+ 		E7C1241A22BEC44B00DA25C0 /* RNTesterIntegrationTests.m in Sources */ = {isa = PBXBuildFile; fileRef = E7C1241922BEC44B00DA25C0 /* RNTesterIntegrationTests.m */; };
+@@ -56,6 +55,7 @@
+ 		E7DB216422B2F3EC005AC45F /* RCTUIManagerScenarioTests.m in Sources */ = {isa = PBXBuildFile; fileRef = E7DB215F22B2F3EC005AC45F /* RCTUIManagerScenarioTests.m */; };
+ 		E7DB216722B2F69F005AC45F /* JavaScriptCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E7DB213022B2C649005AC45F /* JavaScriptCore.framework */; };
+ 		E7DB218C22B41FCD005AC45F /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E7DB218B22B41FCD005AC45F /* XCTest.framework */; };
++		F37EF1CF1FC0B3DD56375DC7 /* libPods-RNTesterUnitTests.a in Frameworks */ = {isa = PBXBuildFile; fileRef = D6942D0981036096211E5BDC /* libPods-RNTesterUnitTests.a */; };
+ /* End PBXBuildFile section */
+ 
+ /* Begin PBXContainerItemProxy section */
+@@ -81,27 +81,27 @@
+ 		13B07FAF1A68108700A75B9A /* AppDelegate.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = AppDelegate.h; path = RNTester/AppDelegate.h; sourceTree = "<group>"; };
+ 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = RNTester/Info.plist; sourceTree = "<group>"; };
+ 		13B07FB71A68108700A75B9A /* main.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = main.m; path = RNTester/main.m; sourceTree = "<group>"; };
++		175067970892CD30B8B0A8E0 /* libPods-RNTester.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-RNTester.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+ 		272E6B3B1BEA849E001FCF37 /* UpdatePropertiesExampleView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = UpdatePropertiesExampleView.h; path = RNTester/NativeExampleViews/UpdatePropertiesExampleView.h; sourceTree = "<group>"; };
+ 		272E6B3C1BEA849E001FCF37 /* UpdatePropertiesExampleView.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; name = UpdatePropertiesExampleView.mm; path = RNTester/NativeExampleViews/UpdatePropertiesExampleView.mm; sourceTree = "<group>"; };
++		2734C5E31C1D7A09BF872585 /* Pods-RNTester.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RNTester.debug.xcconfig"; path = "Target Support Files/Pods-RNTester/Pods-RNTester.debug.xcconfig"; sourceTree = "<group>"; };
+ 		27F441E81BEBE5030039B79C /* FlexibleSizeExampleView.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; name = FlexibleSizeExampleView.mm; path = RNTester/NativeExampleViews/FlexibleSizeExampleView.mm; sourceTree = "<group>"; };
+ 		27F441EA1BEBE5030039B79C /* FlexibleSizeExampleView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = FlexibleSizeExampleView.h; path = RNTester/NativeExampleViews/FlexibleSizeExampleView.h; sourceTree = "<group>"; };
+ 		2DDEF00F1F84BF7B00DBDF73 /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = RNTester/Images.xcassets; sourceTree = "<group>"; };
+-		2F98312BF816A7F2688C036D /* libPods-RNTester.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-RNTester.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+-		3485A25B916F57284634B78A /* Pods-RNTesterIntegrationTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RNTesterIntegrationTests.debug.xcconfig"; path = "Target Support Files/Pods-RNTesterIntegrationTests/Pods-RNTesterIntegrationTests.debug.xcconfig"; sourceTree = "<group>"; };
++		359825B9A5AE4A3F4AA612DD /* Pods-RNTesterUnitTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RNTesterUnitTests.debug.xcconfig"; path = "Target Support Files/Pods-RNTesterUnitTests/Pods-RNTesterUnitTests.debug.xcconfig"; sourceTree = "<group>"; };
+ 		383889D923A7398900D06C3E /* RCTConvert_UIColorTests.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = RCTConvert_UIColorTests.m; sourceTree = "<group>"; };
+-		3CC2F16A3AEB8D7102722AD5 /* Pods-RNTester.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RNTester.debug.xcconfig"; path = "Target Support Files/Pods-RNTester/Pods-RNTester.debug.xcconfig"; sourceTree = "<group>"; };
+ 		3D2AFAF41D646CF80089D1A3 /* legacy_image@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = "legacy_image@2x.png"; path = "RNTester/legacy_image@2x.png"; sourceTree = "<group>"; };
+-		4F4A7C4C85AB0198A25D51E4 /* libPods-RNTesterIntegrationTests.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-RNTesterIntegrationTests.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+ 		5C60EB1B226440DB0018C04F /* AppDelegate.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; name = AppDelegate.mm; path = RNTester/AppDelegate.mm; sourceTree = "<group>"; };
+-		6144DEEE56C6C17B301A90E4 /* libPods-RNTesterUnitTests.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-RNTesterUnitTests.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+-		7FC437025B5EE3899315628B /* Pods-RNTester.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RNTester.release.xcconfig"; path = "Target Support Files/Pods-RNTester/Pods-RNTester.release.xcconfig"; sourceTree = "<group>"; };
++		63C6B5E1C2465D85E9BDB6E5 /* libPods-RNTesterIntegrationTests.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-RNTesterIntegrationTests.a"; sourceTree = BUILT_PRODUCTS_DIR; };
++		66C3087F2D5BF762FE9E6422 /* Pods-RNTesterIntegrationTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RNTesterIntegrationTests.debug.xcconfig"; path = "Target Support Files/Pods-RNTesterIntegrationTests/Pods-RNTesterIntegrationTests.debug.xcconfig"; sourceTree = "<group>"; };
++		7CDA7A212644C6BB8C0D00D8 /* Pods-RNTesterIntegrationTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RNTesterIntegrationTests.release.xcconfig"; path = "Target Support Files/Pods-RNTesterIntegrationTests/Pods-RNTesterIntegrationTests.release.xcconfig"; sourceTree = "<group>"; };
+ 		8145AE05241172D900A3F8DA /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = RNTester/LaunchScreen.storyboard; sourceTree = "<group>"; };
+ 		832F45BA2A8A6E1F0097B4E6 /* SwiftTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SwiftTest.swift; path = RNTester/SwiftTest.swift; sourceTree = "<group>"; };
++		8BFB9C61D7BDE894E24BF24F /* Pods-RNTesterUnitTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RNTesterUnitTests.release.xcconfig"; path = "Target Support Files/Pods-RNTesterUnitTests/Pods-RNTesterUnitTests.release.xcconfig"; sourceTree = "<group>"; };
++		9B8542B8C590B51BD0588751 /* Pods-RNTester.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RNTester.release.xcconfig"; path = "Target Support Files/Pods-RNTester/Pods-RNTester.release.xcconfig"; sourceTree = "<group>"; };
+ 		AC474BFB29BBD4A1002BDAED /* RNTester.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; name = RNTester.xctestplan; path = RNTester/RNTester.xctestplan; sourceTree = "<group>"; };
+-		B8219B8DAB1CDD38543E30A4 /* Pods-RNTesterUnitTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RNTesterUnitTests.release.xcconfig"; path = "Target Support Files/Pods-RNTesterUnitTests/Pods-RNTesterUnitTests.release.xcconfig"; sourceTree = "<group>"; };
+-		BD6F35F6C79ACF7496CBC337 /* Pods-RNTesterIntegrationTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RNTesterIntegrationTests.release.xcconfig"; path = "Target Support Files/Pods-RNTesterIntegrationTests/Pods-RNTesterIntegrationTests.release.xcconfig"; sourceTree = "<group>"; };
+-		C4CEC47A71A2AEE236833CDF /* Pods-RNTesterUnitTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RNTesterUnitTests.debug.xcconfig"; path = "Target Support Files/Pods-RNTesterUnitTests/Pods-RNTesterUnitTests.debug.xcconfig"; sourceTree = "<group>"; };
+ 		CD10C7A4290BD4EB0033E1ED /* RCTEventEmitterTests.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = RCTEventEmitterTests.m; sourceTree = "<group>"; };
++		D6942D0981036096211E5BDC /* libPods-RNTesterUnitTests.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-RNTesterUnitTests.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+ 		E771AEEA22B44E3100EA1189 /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = RNTester/Info.plist; sourceTree = "<group>"; };
+ 		E7C1241922BEC44B00DA25C0 /* RNTesterIntegrationTests.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = RNTesterIntegrationTests.m; sourceTree = "<group>"; };
+ 		E7DB209F22B2BA84005AC45F /* RNTesterUnitTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RNTesterUnitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+@@ -170,7 +170,7 @@
+ 			isa = PBXFrameworksBuildPhase;
+ 			buildActionMask = 2147483647;
+ 			files = (
+-				04157F50C11E9F16DDD69B17 /* libPods-RNTester.a in Frameworks */,
++				DD6FAB12C0152128DD2DA1BE /* libPods-RNTester.a in Frameworks */,
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 		};
+@@ -179,7 +179,7 @@
+ 			buildActionMask = 2147483647;
+ 			files = (
+ 				E7DB213122B2C649005AC45F /* JavaScriptCore.framework in Frameworks */,
+-				BE3BEE3556275C62F33864C8 /* libPods-RNTesterUnitTests.a in Frameworks */,
++				F37EF1CF1FC0B3DD56375DC7 /* libPods-RNTesterUnitTests.a in Frameworks */,
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 		};
+@@ -189,7 +189,7 @@
+ 			files = (
+ 				E7DB218C22B41FCD005AC45F /* XCTest.framework in Frameworks */,
+ 				E7DB216722B2F69F005AC45F /* JavaScriptCore.framework in Frameworks */,
+-				953D44E0A849F5064163EA24 /* libPods-RNTesterIntegrationTests.a in Frameworks */,
++				111FD3845C7358250C2702B6 /* libPods-RNTesterIntegrationTests.a in Frameworks */,
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 		};
+@@ -260,9 +260,9 @@
+ 				E7DB211822B2BD53005AC45F /* libReact-RCTText.a */,
+ 				E7DB211A22B2BD53005AC45F /* libReact-RCTVibration.a */,
+ 				E7DB212222B2BD53005AC45F /* libyoga.a */,
+-				2F98312BF816A7F2688C036D /* libPods-RNTester.a */,
+-				4F4A7C4C85AB0198A25D51E4 /* libPods-RNTesterIntegrationTests.a */,
+-				6144DEEE56C6C17B301A90E4 /* libPods-RNTesterUnitTests.a */,
++				175067970892CD30B8B0A8E0 /* libPods-RNTester.a */,
++				63C6B5E1C2465D85E9BDB6E5 /* libPods-RNTesterIntegrationTests.a */,
++				D6942D0981036096211E5BDC /* libPods-RNTesterUnitTests.a */,
+ 			);
+ 			name = Frameworks;
+ 			sourceTree = "<group>";
+@@ -302,12 +302,12 @@
+ 		E23BD6487B06BD71F1A86914 /* Pods */ = {
+ 			isa = PBXGroup;
+ 			children = (
+-				3CC2F16A3AEB8D7102722AD5 /* Pods-RNTester.debug.xcconfig */,
+-				7FC437025B5EE3899315628B /* Pods-RNTester.release.xcconfig */,
+-				3485A25B916F57284634B78A /* Pods-RNTesterIntegrationTests.debug.xcconfig */,
+-				BD6F35F6C79ACF7496CBC337 /* Pods-RNTesterIntegrationTests.release.xcconfig */,
+-				C4CEC47A71A2AEE236833CDF /* Pods-RNTesterUnitTests.debug.xcconfig */,
+-				B8219B8DAB1CDD38543E30A4 /* Pods-RNTesterUnitTests.release.xcconfig */,
++				2734C5E31C1D7A09BF872585 /* Pods-RNTester.debug.xcconfig */,
++				9B8542B8C590B51BD0588751 /* Pods-RNTester.release.xcconfig */,
++				66C3087F2D5BF762FE9E6422 /* Pods-RNTesterIntegrationTests.debug.xcconfig */,
++				7CDA7A212644C6BB8C0D00D8 /* Pods-RNTesterIntegrationTests.release.xcconfig */,
++				359825B9A5AE4A3F4AA612DD /* Pods-RNTesterUnitTests.debug.xcconfig */,
++				8BFB9C61D7BDE894E24BF24F /* Pods-RNTesterUnitTests.release.xcconfig */,
+ 			);
+ 			path = Pods;
+ 			sourceTree = "<group>";
+@@ -371,14 +371,14 @@
+ 			isa = PBXNativeTarget;
+ 			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "RNTester" */;
+ 			buildPhases = (
+-				3B2555DA1E9C50DBD7DEDDC7 /* [CP] Check Pods Manifest.lock */,
++				ABDE2A52ACD1B95E14790B5E /* [CP] Check Pods Manifest.lock */,
+ 				13B07F871A680F5B00A75B9A /* Sources */,
+ 				13B07F8C1A680F5B00A75B9A /* Frameworks */,
+ 				13B07F8E1A680F5B00A75B9A /* Resources */,
+ 				68CD48B71D2BCB2C007E06A9 /* Build JS Bundle */,
+ 				79E8BE2B119D4C5CCD2F04B3 /* [RN] Copy Hermes Framework */,
+-				4E5A5A192F46F13B14A915AF /* [CP] Embed Pods Frameworks */,
+-				4E2AB2EE08A8E6F86E659152 /* [CP] Copy Pods Resources */,
++				02B6FEF7E86B613B42F31284 /* [CP] Embed Pods Frameworks */,
++				5625E703156DD564DE9175B0 /* [CP] Copy Pods Resources */,
+ 			);
+ 			buildRules = (
+ 			);
+@@ -393,12 +393,12 @@
+ 			isa = PBXNativeTarget;
+ 			buildConfigurationList = E7DB20A622B2BA84005AC45F /* Build configuration list for PBXNativeTarget "RNTesterUnitTests" */;
+ 			buildPhases = (
+-				E13BEB5F9ED322B7AA8D6E0B /* [CP] Check Pods Manifest.lock */,
++				4F76596957F7356516B534CE /* [CP] Check Pods Manifest.lock */,
+ 				E7DB209B22B2BA84005AC45F /* Sources */,
+ 				E7DB209C22B2BA84005AC45F /* Frameworks */,
+ 				E7DB209D22B2BA84005AC45F /* Resources */,
+-				B0C098EC04B51698381E2BD5 /* [CP] Embed Pods Frameworks */,
+-				69760E095072DBD949449A0E /* [CP] Copy Pods Resources */,
++				A904658C20543C2EDC217D15 /* [CP] Embed Pods Frameworks */,
++				01934C30687B8C926E4F59CD /* [CP] Copy Pods Resources */,
+ 			);
+ 			buildRules = (
+ 			);
+@@ -414,12 +414,12 @@
+ 			isa = PBXNativeTarget;
+ 			buildConfigurationList = E7DB215A22B2F332005AC45F /* Build configuration list for PBXNativeTarget "RNTesterIntegrationTests" */;
+ 			buildPhases = (
+-				2C3F1E01BF35036D970B313C /* [CP] Check Pods Manifest.lock */,
++				B7EB74515CDE78D98087DD53 /* [CP] Check Pods Manifest.lock */,
+ 				E7DB214F22B2F332005AC45F /* Sources */,
+ 				E7DB215022B2F332005AC45F /* Frameworks */,
+ 				E7DB215122B2F332005AC45F /* Resources */,
+-				4FB5AB9168FB67DD59C380D8 /* [CP] Embed Pods Frameworks */,
+-				98FEA13D7CC9F0B84C9AFCC2 /* [CP] Copy Pods Resources */,
++				4F27ACC9DB890B37D6C267F1 /* [CP] Embed Pods Frameworks */,
++				E446637427ECD101CAACE52B /* [CP] Copy Pods Resources */,
+ 			);
+ 			buildRules = (
+ 			);
+@@ -501,99 +501,94 @@
+ /* End PBXResourcesBuildPhase section */
+ 
+ /* Begin PBXShellScriptBuildPhase section */
+-		2C3F1E01BF35036D970B313C /* [CP] Check Pods Manifest.lock */ = {
++		01934C30687B8C926E4F59CD /* [CP] Copy Pods Resources */ = {
+ 			isa = PBXShellScriptBuildPhase;
+ 			buildActionMask = 2147483647;
+ 			files = (
+ 			);
+ 			inputFileListPaths = (
++				"${PODS_ROOT}/Target Support Files/Pods-RNTesterUnitTests/Pods-RNTesterUnitTests-resources-${CONFIGURATION}-input-files.xcfilelist",
+ 			);
+-			inputPaths = (
+-				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+-				"${PODS_ROOT}/Manifest.lock",
+-			);
+-			name = "[CP] Check Pods Manifest.lock";
++			name = "[CP] Copy Pods Resources";
+ 			outputFileListPaths = (
+-			);
+-			outputPaths = (
+-				"$(DERIVED_FILE_DIR)/Pods-RNTesterIntegrationTests-checkManifestLockResult.txt",
++				"${PODS_ROOT}/Target Support Files/Pods-RNTesterUnitTests/Pods-RNTesterUnitTests-resources-${CONFIGURATION}-output-files.xcfilelist",
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 			shellPath = /bin/sh;
+-			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
++			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-RNTesterUnitTests/Pods-RNTesterUnitTests-resources.sh\"\n";
+ 			showEnvVarsInLog = 0;
+ 		};
+-		3B2555DA1E9C50DBD7DEDDC7 /* [CP] Check Pods Manifest.lock */ = {
++		02B6FEF7E86B613B42F31284 /* [CP] Embed Pods Frameworks */ = {
+ 			isa = PBXShellScriptBuildPhase;
+ 			buildActionMask = 2147483647;
+ 			files = (
+ 			);
+ 			inputFileListPaths = (
++				"${PODS_ROOT}/Target Support Files/Pods-RNTester/Pods-RNTester-frameworks-${CONFIGURATION}-input-files.xcfilelist",
+ 			);
+-			inputPaths = (
+-				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+-				"${PODS_ROOT}/Manifest.lock",
+-			);
+-			name = "[CP] Check Pods Manifest.lock";
++			name = "[CP] Embed Pods Frameworks";
+ 			outputFileListPaths = (
+-			);
+-			outputPaths = (
+-				"$(DERIVED_FILE_DIR)/Pods-RNTester-checkManifestLockResult.txt",
++				"${PODS_ROOT}/Target Support Files/Pods-RNTester/Pods-RNTester-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 			shellPath = /bin/sh;
+-			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
++			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-RNTester/Pods-RNTester-frameworks.sh\"\n";
+ 			showEnvVarsInLog = 0;
+ 		};
+-		4E2AB2EE08A8E6F86E659152 /* [CP] Copy Pods Resources */ = {
++		4F27ACC9DB890B37D6C267F1 /* [CP] Embed Pods Frameworks */ = {
+ 			isa = PBXShellScriptBuildPhase;
+ 			buildActionMask = 2147483647;
+ 			files = (
+ 			);
+ 			inputFileListPaths = (
+-				"${PODS_ROOT}/Target Support Files/Pods-RNTester/Pods-RNTester-resources-${CONFIGURATION}-input-files.xcfilelist",
++				"${PODS_ROOT}/Target Support Files/Pods-RNTesterIntegrationTests/Pods-RNTesterIntegrationTests-frameworks-${CONFIGURATION}-input-files.xcfilelist",
+ 			);
+-			name = "[CP] Copy Pods Resources";
++			name = "[CP] Embed Pods Frameworks";
+ 			outputFileListPaths = (
+-				"${PODS_ROOT}/Target Support Files/Pods-RNTester/Pods-RNTester-resources-${CONFIGURATION}-output-files.xcfilelist",
++				"${PODS_ROOT}/Target Support Files/Pods-RNTesterIntegrationTests/Pods-RNTesterIntegrationTests-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 			shellPath = /bin/sh;
+-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-RNTester/Pods-RNTester-resources.sh\"\n";
++			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-RNTesterIntegrationTests/Pods-RNTesterIntegrationTests-frameworks.sh\"\n";
+ 			showEnvVarsInLog = 0;
+ 		};
+-		4E5A5A192F46F13B14A915AF /* [CP] Embed Pods Frameworks */ = {
++		4F76596957F7356516B534CE /* [CP] Check Pods Manifest.lock */ = {
+ 			isa = PBXShellScriptBuildPhase;
+ 			buildActionMask = 2147483647;
+ 			files = (
+ 			);
+ 			inputFileListPaths = (
+-				"${PODS_ROOT}/Target Support Files/Pods-RNTester/Pods-RNTester-frameworks-${CONFIGURATION}-input-files.xcfilelist",
+ 			);
+-			name = "[CP] Embed Pods Frameworks";
++			inputPaths = (
++				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
++				"${PODS_ROOT}/Manifest.lock",
++			);
++			name = "[CP] Check Pods Manifest.lock";
+ 			outputFileListPaths = (
+-				"${PODS_ROOT}/Target Support Files/Pods-RNTester/Pods-RNTester-frameworks-${CONFIGURATION}-output-files.xcfilelist",
++			);
++			outputPaths = (
++				"$(DERIVED_FILE_DIR)/Pods-RNTesterUnitTests-checkManifestLockResult.txt",
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 			shellPath = /bin/sh;
+-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-RNTester/Pods-RNTester-frameworks.sh\"\n";
++			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+ 			showEnvVarsInLog = 0;
+ 		};
+-		4FB5AB9168FB67DD59C380D8 /* [CP] Embed Pods Frameworks */ = {
++		5625E703156DD564DE9175B0 /* [CP] Copy Pods Resources */ = {
+ 			isa = PBXShellScriptBuildPhase;
+ 			buildActionMask = 2147483647;
+ 			files = (
+ 			);
+ 			inputFileListPaths = (
+-				"${PODS_ROOT}/Target Support Files/Pods-RNTesterIntegrationTests/Pods-RNTesterIntegrationTests-frameworks-${CONFIGURATION}-input-files.xcfilelist",
++				"${PODS_ROOT}/Target Support Files/Pods-RNTester/Pods-RNTester-resources-${CONFIGURATION}-input-files.xcfilelist",
+ 			);
+-			name = "[CP] Embed Pods Frameworks";
++			name = "[CP] Copy Pods Resources";
+ 			outputFileListPaths = (
+-				"${PODS_ROOT}/Target Support Files/Pods-RNTesterIntegrationTests/Pods-RNTesterIntegrationTests-frameworks-${CONFIGURATION}-output-files.xcfilelist",
++				"${PODS_ROOT}/Target Support Files/Pods-RNTester/Pods-RNTester-resources-${CONFIGURATION}-output-files.xcfilelist",
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 			shellPath = /bin/sh;
+-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-RNTesterIntegrationTests/Pods-RNTesterIntegrationTests-frameworks.sh\"\n";
++			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-RNTester/Pods-RNTester-resources.sh\"\n";
+ 			showEnvVarsInLog = 0;
+ 		};
+ 		68CD48B71D2BCB2C007E06A9 /* Build JS Bundle */ = {
+@@ -612,23 +607,6 @@
+ 			shellPath = /bin/sh;
+ 			shellScript = "set -e\n\nexport PROJECT_ROOT=\"$SRCROOT\"\nexport ENTRY_FILE=\"$SRCROOT/js/RNTesterApp.ios.js\"\nexport SOURCEMAP_FILE=../sourcemap.ios.map\n# export FORCE_BUNDLING=true \n\nWITH_ENVIRONMENT=\"../react-native/scripts/xcode/with-environment.sh\"\nREACT_NATIVE_XCODE=\"../react-native/scripts/react-native-xcode.sh\"\n\n/bin/sh -c \"$WITH_ENVIRONMENT $REACT_NATIVE_XCODE\"\n";
+ 		};
+-		69760E095072DBD949449A0E /* [CP] Copy Pods Resources */ = {
+-			isa = PBXShellScriptBuildPhase;
+-			buildActionMask = 2147483647;
+-			files = (
+-			);
+-			inputFileListPaths = (
+-				"${PODS_ROOT}/Target Support Files/Pods-RNTesterUnitTests/Pods-RNTesterUnitTests-resources-${CONFIGURATION}-input-files.xcfilelist",
+-			);
+-			name = "[CP] Copy Pods Resources";
+-			outputFileListPaths = (
+-				"${PODS_ROOT}/Target Support Files/Pods-RNTesterUnitTests/Pods-RNTesterUnitTests-resources-${CONFIGURATION}-output-files.xcfilelist",
+-			);
+-			runOnlyForDeploymentPostprocessing = 0;
+-			shellPath = /bin/sh;
+-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-RNTesterUnitTests/Pods-RNTesterUnitTests-resources.sh\"\n";
+-			showEnvVarsInLog = 0;
+-		};
+ 		79E8BE2B119D4C5CCD2F04B3 /* [RN] Copy Hermes Framework */ = {
+ 			isa = PBXShellScriptBuildPhase;
+ 			buildActionMask = 2147483647;
+@@ -647,41 +625,46 @@
+ 			shellPath = /bin/sh;
+ 			shellScript = ". ../react-native/sdks/hermes-engine/utils/copy-hermes-xcode.sh\n";
+ 		};
+-		98FEA13D7CC9F0B84C9AFCC2 /* [CP] Copy Pods Resources */ = {
++		A904658C20543C2EDC217D15 /* [CP] Embed Pods Frameworks */ = {
+ 			isa = PBXShellScriptBuildPhase;
+ 			buildActionMask = 2147483647;
+ 			files = (
+ 			);
+ 			inputFileListPaths = (
+-				"${PODS_ROOT}/Target Support Files/Pods-RNTesterIntegrationTests/Pods-RNTesterIntegrationTests-resources-${CONFIGURATION}-input-files.xcfilelist",
++				"${PODS_ROOT}/Target Support Files/Pods-RNTesterUnitTests/Pods-RNTesterUnitTests-frameworks-${CONFIGURATION}-input-files.xcfilelist",
+ 			);
+-			name = "[CP] Copy Pods Resources";
++			name = "[CP] Embed Pods Frameworks";
+ 			outputFileListPaths = (
+-				"${PODS_ROOT}/Target Support Files/Pods-RNTesterIntegrationTests/Pods-RNTesterIntegrationTests-resources-${CONFIGURATION}-output-files.xcfilelist",
++				"${PODS_ROOT}/Target Support Files/Pods-RNTesterUnitTests/Pods-RNTesterUnitTests-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 			shellPath = /bin/sh;
+-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-RNTesterIntegrationTests/Pods-RNTesterIntegrationTests-resources.sh\"\n";
++			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-RNTesterUnitTests/Pods-RNTesterUnitTests-frameworks.sh\"\n";
+ 			showEnvVarsInLog = 0;
+ 		};
+-		B0C098EC04B51698381E2BD5 /* [CP] Embed Pods Frameworks */ = {
++		ABDE2A52ACD1B95E14790B5E /* [CP] Check Pods Manifest.lock */ = {
+ 			isa = PBXShellScriptBuildPhase;
+ 			buildActionMask = 2147483647;
+ 			files = (
+ 			);
+ 			inputFileListPaths = (
+-				"${PODS_ROOT}/Target Support Files/Pods-RNTesterUnitTests/Pods-RNTesterUnitTests-frameworks-${CONFIGURATION}-input-files.xcfilelist",
+ 			);
+-			name = "[CP] Embed Pods Frameworks";
++			inputPaths = (
++				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
++				"${PODS_ROOT}/Manifest.lock",
++			);
++			name = "[CP] Check Pods Manifest.lock";
+ 			outputFileListPaths = (
+-				"${PODS_ROOT}/Target Support Files/Pods-RNTesterUnitTests/Pods-RNTesterUnitTests-frameworks-${CONFIGURATION}-output-files.xcfilelist",
++			);
++			outputPaths = (
++				"$(DERIVED_FILE_DIR)/Pods-RNTester-checkManifestLockResult.txt",
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 			shellPath = /bin/sh;
+-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-RNTesterUnitTests/Pods-RNTesterUnitTests-frameworks.sh\"\n";
++			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+ 			showEnvVarsInLog = 0;
+ 		};
+-		E13BEB5F9ED322B7AA8D6E0B /* [CP] Check Pods Manifest.lock */ = {
++		B7EB74515CDE78D98087DD53 /* [CP] Check Pods Manifest.lock */ = {
+ 			isa = PBXShellScriptBuildPhase;
+ 			buildActionMask = 2147483647;
+ 			files = (
+@@ -696,13 +679,30 @@
+ 			outputFileListPaths = (
+ 			);
+ 			outputPaths = (
+-				"$(DERIVED_FILE_DIR)/Pods-RNTesterUnitTests-checkManifestLockResult.txt",
++				"$(DERIVED_FILE_DIR)/Pods-RNTesterIntegrationTests-checkManifestLockResult.txt",
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 			shellPath = /bin/sh;
+ 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+ 			showEnvVarsInLog = 0;
+ 		};
++		E446637427ECD101CAACE52B /* [CP] Copy Pods Resources */ = {
++			isa = PBXShellScriptBuildPhase;
++			buildActionMask = 2147483647;
++			files = (
++			);
++			inputFileListPaths = (
++				"${PODS_ROOT}/Target Support Files/Pods-RNTesterIntegrationTests/Pods-RNTesterIntegrationTests-resources-${CONFIGURATION}-input-files.xcfilelist",
++			);
++			name = "[CP] Copy Pods Resources";
++			outputFileListPaths = (
++				"${PODS_ROOT}/Target Support Files/Pods-RNTesterIntegrationTests/Pods-RNTesterIntegrationTests-resources-${CONFIGURATION}-output-files.xcfilelist",
++			);
++			runOnlyForDeploymentPostprocessing = 0;
++			shellPath = /bin/sh;
++			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-RNTesterIntegrationTests/Pods-RNTesterIntegrationTests-resources.sh\"\n";
++			showEnvVarsInLog = 0;
++		};
+ /* End PBXShellScriptBuildPhase section */
+ 
+ /* Begin PBXSourcesBuildPhase section */
+@@ -784,7 +784,7 @@
+ /* Begin XCBuildConfiguration section */
+ 		13B07F941A680F5B00A75B9A /* Debug */ = {
+ 			isa = XCBuildConfiguration;
+-			baseConfigurationReference = 3CC2F16A3AEB8D7102722AD5 /* Pods-RNTester.debug.xcconfig */;
++			baseConfigurationReference = 2734C5E31C1D7A09BF872585 /* Pods-RNTester.debug.xcconfig */;
+ 			buildSettings = {
+ 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+ 				CLANG_ENABLE_MODULES = YES;
+@@ -823,7 +823,7 @@
+ 		};
+ 		13B07F951A680F5B00A75B9A /* Release */ = {
+ 			isa = XCBuildConfiguration;
+-			baseConfigurationReference = 7FC437025B5EE3899315628B /* Pods-RNTester.release.xcconfig */;
++			baseConfigurationReference = 9B8542B8C590B51BD0588751 /* Pods-RNTester.release.xcconfig */;
+ 			buildSettings = {
+ 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+ 				CLANG_ENABLE_MODULES = YES;
+@@ -921,6 +921,15 @@
+ 				GCC_WARN_UNUSED_FUNCTION = YES;
+ 				GCC_WARN_UNUSED_LABEL = YES;
+ 				GCC_WARN_UNUSED_VARIABLE = YES;
++				HEADER_SEARCH_PATHS = (
++					"$(inherited)",
++					"${PODS_CONFIGURATION_BUILD_DIR}/ReactCommon-Samples/ReactCommon_Samples.framework/Headers",
++					"${PODS_CONFIGURATION_BUILD_DIR}/ReactCommon/ReactCommon.framework/Headers/react/nativemodule/core",
++					"${PODS_CONFIGURATION_BUILD_DIR}/ReactCommon-Samples/ReactCommon_Samples.framework/Headers/platform/ios",
++					"${PODS_CONFIGURATION_BUILD_DIR}/React-Fabric/React_Fabric.framework/Headers/react/renderer/components/view/platform/cxx",
++					"${PODS_CONFIGURATION_BUILD_DIR}/React-NativeModulesApple/React_NativeModulesApple.framework/Headers",
++					"${PODS_CONFIGURATION_BUILD_DIR}/React-graphics/React_graphics.framework/Headers/react/renderer/graphics/platform/ios",
++				);
+ 				IPHONEOS_DEPLOYMENT_TARGET = 13.4;
+ 				MTL_ENABLE_DEBUG_INFO = YES;
+ 				ONLY_ACTIVE_ARCH = YES;
+@@ -934,6 +943,7 @@
+ 					"-DFOLLY_MOBILE=1",
+ 					"-DFOLLY_USE_LIBCPP=1",
+ 					"-DFOLLY_CFG_NO_COROUTINES=1",
++					"-DFOLLY_HAVE_CLOCK_GETTIME=1",
+ 					"-DRN_FABRIC_ENABLED",
+ 				);
+ 				OTHER_LDFLAGS = (
+@@ -1008,6 +1018,15 @@
+ 				GCC_WARN_UNUSED_FUNCTION = YES;
+ 				GCC_WARN_UNUSED_LABEL = YES;
+ 				GCC_WARN_UNUSED_VARIABLE = YES;
++				HEADER_SEARCH_PATHS = (
++					"$(inherited)",
++					"${PODS_CONFIGURATION_BUILD_DIR}/ReactCommon-Samples/ReactCommon_Samples.framework/Headers",
++					"${PODS_CONFIGURATION_BUILD_DIR}/ReactCommon/ReactCommon.framework/Headers/react/nativemodule/core",
++					"${PODS_CONFIGURATION_BUILD_DIR}/ReactCommon-Samples/ReactCommon_Samples.framework/Headers/platform/ios",
++					"${PODS_CONFIGURATION_BUILD_DIR}/React-Fabric/React_Fabric.framework/Headers/react/renderer/components/view/platform/cxx",
++					"${PODS_CONFIGURATION_BUILD_DIR}/React-NativeModulesApple/React_NativeModulesApple.framework/Headers",
++					"${PODS_CONFIGURATION_BUILD_DIR}/React-graphics/React_graphics.framework/Headers/react/renderer/graphics/platform/ios",
++				);
+ 				IPHONEOS_DEPLOYMENT_TARGET = 13.4;
+ 				MTL_ENABLE_DEBUG_INFO = NO;
+ 				OTHER_CFLAGS = (
+@@ -1020,6 +1039,7 @@
+ 					"-DFOLLY_MOBILE=1",
+ 					"-DFOLLY_USE_LIBCPP=1",
+ 					"-DFOLLY_CFG_NO_COROUTINES=1",
++					"-DFOLLY_HAVE_CLOCK_GETTIME=1",
+ 					"-DRN_FABRIC_ENABLED",
+ 				);
+ 				OTHER_LDFLAGS = (
+@@ -1042,7 +1062,7 @@
+ 		};
+ 		E7DB20A722B2BA84005AC45F /* Debug */ = {
+ 			isa = XCBuildConfiguration;
+-			baseConfigurationReference = C4CEC47A71A2AEE236833CDF /* Pods-RNTesterUnitTests.debug.xcconfig */;
++			baseConfigurationReference = 359825B9A5AE4A3F4AA612DD /* Pods-RNTesterUnitTests.debug.xcconfig */;
+ 			buildSettings = {
+ 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+ 				CLANG_ANALYZER_NONNULL = YES;
+@@ -1084,7 +1104,7 @@
+ 		};
+ 		E7DB20A822B2BA84005AC45F /* Release */ = {
+ 			isa = XCBuildConfiguration;
+-			baseConfigurationReference = B8219B8DAB1CDD38543E30A4 /* Pods-RNTesterUnitTests.release.xcconfig */;
++			baseConfigurationReference = 8BFB9C61D7BDE894E24BF24F /* Pods-RNTesterUnitTests.release.xcconfig */;
+ 			buildSettings = {
+ 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+ 				CLANG_ANALYZER_NONNULL = YES;
+@@ -1126,7 +1146,7 @@
+ 		};
+ 		E7DB215B22B2F332005AC45F /* Debug */ = {
+ 			isa = XCBuildConfiguration;
+-			baseConfigurationReference = 3485A25B916F57284634B78A /* Pods-RNTesterIntegrationTests.debug.xcconfig */;
++			baseConfigurationReference = 66C3087F2D5BF762FE9E6422 /* Pods-RNTesterIntegrationTests.debug.xcconfig */;
+ 			buildSettings = {
+ 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+ 				BUNDLE_LOADER = "$(TEST_HOST)";
+@@ -1169,7 +1189,7 @@
+ 		};
+ 		E7DB215C22B2F332005AC45F /* Release */ = {
+ 			isa = XCBuildConfiguration;
+-			baseConfigurationReference = BD6F35F6C79ACF7496CBC337 /* Pods-RNTesterIntegrationTests.release.xcconfig */;
++			baseConfigurationReference = 7CDA7A212644C6BB8C0D00D8 /* Pods-RNTesterIntegrationTests.release.xcconfig */;
+ 			buildSettings = {
+ 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+ 				BUNDLE_LOADER = "$(TEST_HOST)";

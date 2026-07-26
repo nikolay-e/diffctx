@@ -1,0 +1,379 @@
+From bc6060f98b69baacf377a2e1d9e4355a3f91e6f6 Mon Sep 17 00:00:00 2001
+From: Michael <35783820+mib1185@users.noreply.github.com>
+Date: Tue, 26 May 2026 23:40:50 +0200
+Subject: [PATCH] Remove deprecated call_in_progress binary-sensor in VoIP
+ (#172285)
+
+---
+ homeassistant/components/voip/__init__.py     |   1 -
+ .../components/voip/binary_sensor.py          |  91 ----------
+ homeassistant/components/voip/repairs.py      |  20 ---
+ homeassistant/components/voip/strings.json    |  17 --
+ tests/components/voip/test_binary_sensor.py   | 165 ------------------
+ tests/components/voip/test_repairs.py         |  13 --
+ 6 files changed, 307 deletions(-)
+ delete mode 100644 homeassistant/components/voip/binary_sensor.py
+ delete mode 100644 homeassistant/components/voip/repairs.py
+ delete mode 100644 tests/components/voip/test_binary_sensor.py
+ delete mode 100644 tests/components/voip/test_repairs.py
+
+diff --git a/homeassistant/components/voip/__init__.py b/homeassistant/components/voip/__init__.py
+index c498e71f6a..aaf9b7033d 100644
+--- a/homeassistant/components/voip/__init__.py
++++ b/homeassistant/components/voip/__init__.py
+@@ -20,7 +20,6 @@ from .voip import HassVoipDatagramProtocol
+ 
+ PLATFORMS = (
+     Platform.ASSIST_SATELLITE,
+-    Platform.BINARY_SENSOR,
+     Platform.SELECT,
+     Platform.SWITCH,
+ )
+diff --git a/homeassistant/components/voip/binary_sensor.py b/homeassistant/components/voip/binary_sensor.py
+deleted file mode 100644
+index 68fc5092f6..0000000000
+--- a/homeassistant/components/voip/binary_sensor.py
++++ /dev/null
+@@ -1,91 +0,0 @@
+-"""Binary sensor for VoIP."""
+-
+-from typing import TYPE_CHECKING
+-
+-from homeassistant.components.binary_sensor import (
+-    BinarySensorEntity,
+-    BinarySensorEntityDescription,
+-)
+-from homeassistant.core import HomeAssistant, callback
+-from homeassistant.helpers import issue_registry as ir
+-from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+-
+-from . import VoipConfigEntry
+-from .const import DOMAIN
+-from .devices import VoIPDevice
+-from .entity import VoIPEntity
+-
+-
+-async def async_setup_entry(
+-    hass: HomeAssistant,
+-    config_entry: VoipConfigEntry,
+-    async_add_entities: AddConfigEntryEntitiesCallback,
+-) -> None:
+-    """Set up VoIP binary sensor entities."""
+-    domain_data = config_entry.runtime_data.domain_data
+-
+-    @callback
+-    def async_add_device(device: VoIPDevice) -> None:
+-        """Add device."""
+-        async_add_entities([VoIPCallInProgress(device)])
+-
+-    domain_data.devices.async_add_new_device_listener(async_add_device)
+-
+-    async_add_entities([VoIPCallInProgress(device) for device in domain_data.devices])
+-
+-
+-class VoIPCallInProgress(VoIPEntity, BinarySensorEntity):
+-    """Entity to represent voip call is in progress."""
+-
+-    entity_description = BinarySensorEntityDescription(
+-        entity_registry_enabled_default=False,
+-        key="call_in_progress",
+-        translation_key="call_in_progress",
+-    )
+-    _attr_is_on = False
+-
+-    async def async_added_to_hass(self) -> None:
+-        """Call when entity about to be added to hass."""
+-        await super().async_added_to_hass()
+-
+-        self.async_on_remove(
+-            self.voip_device.async_listen_update(self._is_active_changed)
+-        )
+-
+-        await super().async_added_to_hass()
+-        if TYPE_CHECKING:
+-            assert self.registry_entry is not None
+-        ir.async_create_issue(
+-            self.hass,
+-            DOMAIN,
+-            f"assist_in_progress_deprecated_{self.registry_entry.id}",
+-            breaks_in_ha_version="2025.4",
+-            data={
+-                "entity_id": self.entity_id,
+-                "entity_uuid": self.registry_entry.id,
+-                "integration_name": "VoIP",
+-            },
+-            is_fixable=True,
+-            severity=ir.IssueSeverity.WARNING,
+-            translation_key="assist_in_progress_deprecated",
+-            translation_placeholders={
+-                "integration_name": "VoIP",
+-            },
+-        )
+-
+-    async def async_will_remove_from_hass(self) -> None:
+-        """Remove issue."""
+-        await super().async_will_remove_from_hass()
+-        if TYPE_CHECKING:
+-            assert self.registry_entry is not None
+-        ir.async_delete_issue(
+-            self.hass,
+-            DOMAIN,
+-            f"assist_in_progress_deprecated_{self.registry_entry.id}",
+-        )
+-
+-    @callback
+-    def _is_active_changed(self, device: VoIPDevice) -> None:
+-        """Call when active state changed."""
+-        self._attr_is_on = self.voip_device.is_active
+-        self.async_write_ha_state()
+diff --git a/homeassistant/components/voip/repairs.py b/homeassistant/components/voip/repairs.py
+deleted file mode 100644
+index 24b21bc6d0..0000000000
+--- a/homeassistant/components/voip/repairs.py
++++ /dev/null
+@@ -1,20 +0,0 @@
+-"""Repairs implementation for the VoIP integration."""
+-
+-from homeassistant.components.assist_pipeline.repair_flows import (  # pylint: disable=home-assistant-component-root-import
+-    AssistInProgressDeprecatedRepairFlow,
+-)
+-from homeassistant.components.repairs import RepairsFlow
+-from homeassistant.core import HomeAssistant
+-
+-
+-async def async_create_fix_flow(
+-    hass: HomeAssistant,
+-    issue_id: str,
+-    data: dict[str, str | int | float | None] | None,
+-) -> RepairsFlow:
+-    """Create flow."""
+-    if issue_id.startswith("assist_in_progress_deprecated"):
+-        return AssistInProgressDeprecatedRepairFlow(data)
+-    # If VoIP adds confirm-only repairs in the future, this should be changed
+-    # to return a ConfirmRepairFlow instead of raising a ValueError
+-    raise ValueError(f"unknown repair {issue_id}")
+diff --git a/homeassistant/components/voip/strings.json b/homeassistant/components/voip/strings.json
+index 489c16b28e..d0502190b4 100644
+--- a/homeassistant/components/voip/strings.json
++++ b/homeassistant/components/voip/strings.json
+@@ -10,11 +10,6 @@
+     }
+   },
+   "entity": {
+-    "binary_sensor": {
+-      "call_in_progress": {
+-        "name": "Call in progress"
+-      }
+-    },
+     "select": {
+       "pipeline": {
+         "name": "[%key:component::assist_pipeline::entity::select::pipeline::name%]",
+@@ -48,18 +43,6 @@
+       "message": "VoIP does not currently support non-TTS announcements"
+     }
+   },
+-  "issues": {
+-    "assist_in_progress_deprecated": {
+-      "fix_flow": {
+-        "step": {
+-          "confirm_disable_entity": {
+-            "description": "[%key:component::assist_pipeline::issues::assist_in_progress_deprecated::fix_flow::step::confirm_disable_entity::description%]"
+-          }
+-        }
+-      },
+-      "title": "[%key:component::assist_pipeline::issues::assist_in_progress_deprecated::title%]"
+-    }
+-  },
+   "options": {
+     "step": {
+       "init": {
+diff --git a/tests/components/voip/test_binary_sensor.py b/tests/components/voip/test_binary_sensor.py
+deleted file mode 100644
+index 44ac8e4d77..0000000000
+--- a/tests/components/voip/test_binary_sensor.py
++++ /dev/null
+@@ -1,165 +0,0 @@
+-"""Test VoIP binary sensor devices."""
+-
+-from http import HTTPStatus
+-
+-import pytest
+-
+-from homeassistant.components.repairs import DOMAIN as REPAIRS_DOMAIN
+-from homeassistant.components.voip import DOMAIN
+-from homeassistant.components.voip.devices import VoIPDevice
+-from homeassistant.config_entries import ConfigEntry
+-from homeassistant.core import HomeAssistant
+-from homeassistant.helpers import entity_registry as er, issue_registry as ir
+-from homeassistant.setup import async_setup_component
+-
+-from tests.typing import ClientSessionGenerator
+-
+-
+-@pytest.mark.usefixtures("entity_registry_enabled_by_default")
+-async def test_call_in_progress(
+-    hass: HomeAssistant,
+-    config_entry: ConfigEntry,
+-    voip_device: VoIPDevice,
+-) -> None:
+-    """Test call in progress."""
+-    state = hass.states.get("binary_sensor.192_168_1_210_call_in_progress")
+-    assert state is not None
+-    assert state.state == "off"
+-
+-    voip_device.set_is_active(True)
+-
+-    state = hass.states.get("binary_sensor.192_168_1_210_call_in_progress")
+-    assert state.state == "on"
+-
+-    voip_device.set_is_active(False)
+-
+-    state = hass.states.get("binary_sensor.192_168_1_210_call_in_progress")
+-    assert state.state == "off"
+-
+-
+-@pytest.mark.usefixtures("voip_device")
+-async def test_assist_in_progress_disabled_by_default(
+-    hass: HomeAssistant,
+-    config_entry: ConfigEntry,
+-    entity_registry: er.EntityRegistry,
+-) -> None:
+-    """Test assist in progress binary sensor is added disabled."""
+-
+-    assert not hass.states.get("binary_sensor.192_168_1_210_call_in_progress")
+-    entity_entry = entity_registry.async_get(
+-        "binary_sensor.192_168_1_210_call_in_progress"
+-    )
+-    assert entity_entry
+-    assert entity_entry.disabled
+-    assert entity_entry.disabled_by is er.RegistryEntryDisabler.INTEGRATION
+-
+-
+-@pytest.mark.usefixtures("entity_registry_enabled_by_default")
+-async def test_assist_in_progress_issue(
+-    hass: HomeAssistant,
+-    entity_registry: er.EntityRegistry,
+-    issue_registry: ir.IssueRegistry,
+-    voip_device: VoIPDevice,
+-) -> None:
+-    """Test assist in progress binary sensor."""
+-
+-    call_in_progress_entity_id = "binary_sensor.192_168_1_210_call_in_progress"
+-
+-    state = hass.states.get(call_in_progress_entity_id)
+-    assert state is not None
+-
+-    entity_entry = entity_registry.async_get(call_in_progress_entity_id)
+-    issue = issue_registry.async_get_issue(
+-        DOMAIN, f"assist_in_progress_deprecated_{entity_entry.id}"
+-    )
+-    assert issue is not None
+-
+-    # Test issue goes away after disabling the entity
+-    entity_registry.async_update_entity(
+-        call_in_progress_entity_id,
+-        disabled_by=er.RegistryEntryDisabler.USER,
+-    )
+-    await hass.async_block_till_done()
+-    issue = issue_registry.async_get_issue(
+-        DOMAIN, f"assist_in_progress_deprecated_{entity_entry.id}"
+-    )
+-    assert issue is None
+-
+-
+-@pytest.mark.usefixtures("entity_registry_enabled_by_default")
+-async def test_assist_in_progress_repair_flow(
+-    hass: HomeAssistant,
+-    hass_client: ClientSessionGenerator,
+-    entity_registry: er.EntityRegistry,
+-    issue_registry: ir.IssueRegistry,
+-    voip_device: VoIPDevice,
+-) -> None:
+-    """Test assist in progress binary sensor deprecation issue flow."""
+-
+-    call_in_progress_entity_id = "binary_sensor.192_168_1_210_call_in_progress"
+-
+-    state = hass.states.get(call_in_progress_entity_id)
+-    assert state is not None
+-
+-    entity_entry = entity_registry.async_get(call_in_progress_entity_id)
+-    assert entity_entry.disabled_by is None
+-    issue = issue_registry.async_get_issue(
+-        DOMAIN, f"assist_in_progress_deprecated_{entity_entry.id}"
+-    )
+-    assert issue is not None
+-    assert issue.data == {
+-        "entity_id": call_in_progress_entity_id,
+-        "entity_uuid": entity_entry.id,
+-        "integration_name": "VoIP",
+-    }
+-    assert issue.translation_key == "assist_in_progress_deprecated"
+-    assert issue.translation_placeholders == {"integration_name": "VoIP"}
+-
+-    assert await async_setup_component(hass, REPAIRS_DOMAIN, {REPAIRS_DOMAIN: {}})
+-    await hass.async_block_till_done()
+-    await hass.async_start()
+-
+-    client = await hass_client()
+-
+-    resp = await client.post(
+-        "/api/repairs/issues/fix",
+-        json={"handler": DOMAIN, "issue_id": issue.issue_id},
+-    )
+-
+-    assert resp.status == HTTPStatus.OK
+-    data = await resp.json()
+-
+-    flow_id = data["flow_id"]
+-    assert data == {
+-        "data_schema": [],
+-        "description_placeholders": {
+-            "assist_satellite_domain": "assist_satellite",
+-            "entity_id": call_in_progress_entity_id,
+-            "integration_name": "VoIP",
+-        },
+-        "errors": None,
+-        "flow_id": flow_id,
+-        "handler": DOMAIN,
+-        "last_step": None,
+-        "preview": None,
+-        "step_id": "confirm_disable_entity",
+-        "type": "form",
+-    }
+-
+-    resp = await client.post(f"/api/repairs/issues/fix/{flow_id}")
+-
+-    assert resp.status == HTTPStatus.OK
+-    data = await resp.json()
+-
+-    flow_id = data["flow_id"]
+-    assert data == {
+-        "description": None,
+-        "description_placeholders": None,
+-        "flow_id": flow_id,
+-        "handler": DOMAIN,
+-        "type": "create_entry",
+-    }
+-
+-    # Test the entity is disabled
+-    entity_entry = entity_registry.async_get(call_in_progress_entity_id)
+-    assert entity_entry.disabled_by is er.RegistryEntryDisabler.USER
+diff --git a/tests/components/voip/test_repairs.py b/tests/components/voip/test_repairs.py
+deleted file mode 100644
+index ec2a2cfed9..0000000000
+--- a/tests/components/voip/test_repairs.py
++++ /dev/null
+@@ -1,13 +0,0 @@
+-"""Test VoIP repairs."""
+-
+-import pytest
+-
+-from homeassistant.components.voip import repairs
+-from homeassistant.core import HomeAssistant
+-
+-
+-async def test_create_fix_flow_raises_on_unknown_issue_id(hass: HomeAssistant) -> None:
+-    """Test reate_fix_flow raises on unknown issue_id."""
+-
+-    with pytest.raises(ValueError):
+-        await repairs.async_create_fix_flow(hass, "no_such_issue", None)

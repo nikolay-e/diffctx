@@ -1,0 +1,76 @@
+repo: spark
+base_commit: 0fdebcca1857b2aaa7d89964654b54cf2da7b21c
+commit: 4d13c2231cc4852b922079895223104972dc960b
+patch_stored: false
+gold:
+  - path: pom.xml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Moves `<module>connect/server</module>`/`<module>connect/common</module>` out from among the optional connector modules into the always-built reactor module list — the actual mechanism making the server "builtin" instead of opt-in.
+  - path: assembly/pom.xml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Deletes the `<profile id="connect">` entirely and makes `spark-connect`/`spark-avro`/`spark-protobuf` plain default dependencies of the assembly jar, so Spark Connect ships in every build instead of requiring `-Pconnect`.
+  - path: dev/sparktestsupport/modules.py
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Drops `build_profile_flags=["-Pconnect"]` from the `connect` test `Module`, matching the module no longer being profile-gated, and updates `source_file_regexes` to also match the new `connect` path prefix.
+  - path: launcher/src/main/java/org/apache/spark/launcher/AbstractCommandBuilder.java
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds `"connect/common"`/`"connect/server"` to the bootstrap classpath project list, with an explicit skip ("Do not use locally compiled class files for Spark server because it should use shaded dependencies") — the runtime-classpath half of making Connect builtin.
+  - path: python/pyspark/sql/connect/session.py
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: Removes the `search_jar("connector/connect/server", ...)`/`addJarToCurrentClassLoader` workaround that used to locate and inject Connect server jars at runtime — no longer needed now that they are always on the classpath.
+  - path: repl/src/main/scala/org/apache/spark/repl/Main.scala
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: Removes the `ClassNotFoundException` handler that told shell users "You need to build Spark with -Pconnect", since `SparkConnectPlugin` is now always resolvable.
+  - path: docs/building-spark.md
+    tier: helpful
+    role: doc
+    in_diff: true
+    rationale: Deletes the "Building with Spark Connect support" section documenting `./build/mvn -Pconnect ...`, the user-facing confirmation that this build flag is obsolete.
+  - path: .github/workflows/build_and_test.yml
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Updates the buf breaking-change-detection `input:` path from `connector/connect/common/src/main` to `connect/common/src/main`, CI's awareness of the new module location.
+forbidden:
+  - path: connect/server/src/main/scala/org/apache/spark/sql/connect/SparkConnectPlugin.scala
+    reason: pure git-mv rename (100% similarity) from connector/connect/server, byte-identical content — one of ~4400 renamed files, not a source of information about the move mechanism.
+  - path: connect/common/src/main/protobuf/spark/connect/base.proto
+    reason: pure directory rename, byte-identical content, one of thousands of relocated proto/source files.
+  - path: connector/connect/client/jvm/src/test/scala/org/apache/spark/sql/ClientE2ETestSuite.scala
+    reason: incidental path-string collateral (drops the now-removed "connector" path segment from a test-data path) — not informative about the build/classpath mechanism itself.
+  - path: dev/connect-gen-protos.sh
+    reason: mechanical path-string update in a dev script, one of several near-identical CI/dev-tooling collateral edits.
+nontrivial_gold_count: 0
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 4484
+  description: Move connect server and common to builtin module (extreme-stress mega-restructure)
+notes: >-
+  Moves `connector/connect/server` and `connector/connect/common` to `connect/server`/
+  `connect/common` and removes the Maven `-Pconnect` build profile gate, so Spark
+  Connect ships built-in and end users no longer need `--packages`/`-Pconnect`. Of
+  ~4484 changed paths, all but ~26 are pure 100%-similarity `git mv` directory renames
+  with byte-identical content (verified via `git show --summary`); the real semantic
+  content is the handful of build/classpath/doc files that stop gating Connect behind
+  a profile or auto-discovering its jars at runtime. Deliberately did not gold any of
+  the thousands of renamed source files — they carry zero information about *why* or
+  *how* the move works, only *that* files moved (already fully captured by `pom.xml`).
+  string_indirection is true because module wiring (pom.xml module list,
+  AbstractCommandBuilder's project-name list, dev/sparktestsupport's
+  `source_file_regexes`) all key on plain path/profile-name strings rather than static
+  code references.

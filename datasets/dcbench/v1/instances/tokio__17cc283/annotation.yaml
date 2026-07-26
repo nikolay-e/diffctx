@@ -1,0 +1,48 @@
+repo: tokio
+base_commit: 0a93ed7e7aaa560853cc857938fd4c39dea7a790
+commit: 17cc283f58906bb34d6446331f6f3dbd14fd319e
+patch_stored: true
+gold:
+  - path: tokio-macros/src/entry.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'core change — `crate_name`/`FinalConfig::crate_name` switch from `Option<String>`/Ident to `Option<Path>`; parse_ident() is replaced by parse_path() and the generated code interpolates `#crate_path` instead of `#crate_ident`.'
+  - path: tokio/tests/macros_rename_test.rs
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: adds `crate_path_test`, using `#[test::tokio::test(crate = "test::tokio")]` — a multi-segment path that only compiles once `crate` accepts a syn::Path rather than a bare Ident.
+  - path: tests-build/tests/fail/macros_invalid_input.rs
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: 'removes the `crate = "abc::edf"` case that used to be a compile-fail (path rejected) since it is now valid, and renames the still-failing cases from test_crate_not_ident_* to test_crate_not_path_*.'
+  - path: tests-build/tests/fail/macros_invalid_input.stderr
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: expected compiler output updated to match parse_path()'s new "Failed to parse value of `crate` as path" error text and the removed abc::edf error block.
+  - path: tokio-macros/src/lib.rs
+    tier: helpful
+    role: doc
+    in_diff: false
+    rationale: 'the `#[tokio::main]`/`#[tokio::test]` doc comments (rustdoc `crate = "tokio1"` examples around lines 183, 248, 423) document the crate-rename option this patch generalizes from ident-only to arbitrary path.'
+forbidden:
+  - path: tokio-macros/src/select.rs
+    reason: sibling proc-macro implementation file (the select! internals), does not touch crate-name/path parsing
+  - path: tokio/src/macros/support.rs
+    reason: unrelated declarative-macro support module (select!/join! helpers), not involved in #[tokio::test]/#[tokio::main] crate-name parsing
+  - path: tests-build/tests/fail/macros_dead_code.rs
+    reason: sibling compile-fail test in the same directory, exercises an unrelated macro misuse (dead code lint), untouched by this commit
+  - path: tests-build/tests/fail/macros_type_mismatch.rs
+    reason: sibling compile-fail test, exercises an unrelated macro misuse (return type mismatch), untouched by this commit
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 4
+  description: 'macros: accept path as crate rename — tokio-macros change + tokio test call sites + tests-build'
+notes: 'The `crate = "..."` option on #[tokio::test]/#[tokio::main] previously only accepted a single identifier; this patch changes parsing to accept a full syn::Path (e.g. `test::tokio`), enabling renamed re-export paths, not just renamed crate names. All four diff files are essential (impl + two test suites); lib.rs doc comments are genuinely relevant but untouched, so listed as helpful/out-of-diff context.'

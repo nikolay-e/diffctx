@@ -1,0 +1,53 @@
+repo: envoy
+base_commit: f856c3fbca92f2dd867c3d20c130030b05d3a9c8
+commit: 2a5ad79ca5b45f4633dcfb8f0978559afdaf9796
+patch_stored: true
+gold:
+  - path: source/common/config/utility.h
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: defines the `getFactory`/`getAndCheckFactory` templates whose by-name fallback (via `getFactoryByName`, gated on `envoy.reloadable_features.no_extension_lookup_by_name`) is deleted so lookup is always by typed_config type URL.
+  - path: source/common/runtime/runtime_features.cc
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: removes the `RUNTIME_GUARD(envoy_reloadable_features_no_extension_lookup_by_name)` registration, permanently retiring the flag the rest of the patch stops checking.
+  - path: source/extensions/filters/network/generic_proxy/route_impl.cc
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: second call site in `RouteEntryImpl::createRouteSpecificFilterConfig` that drops its `Runtime::runtimeFeatureEnabled("envoy.reloadable_features.no_extension_lookup_by_name")` guarded fallback to `getFactoryByName`.
+  - path: test/extensions/filters/network/http_connection_manager/config_test_base.h
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: replaces `PassThroughFilterFactory` with a `TemplatedPassThroughFilterFactory<Proto>` and drops the constructor's forced `no_extension_lookup_by_name=false` override, because tests must now register a distinct proto type per filter for type-URL-based lookup to succeed.
+  - path: test/extensions/filters/network/http_connection_manager/config.proto
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: adds `PantryFilterConfig`/`ChefFilterConfig` messages that `config_filter_dependencies_test.cc` packs into `typed_config` so the two dependency-test filters resolve by distinct type URLs instead of by name.
+  - path: source/extensions/filters/http/common/factory_base.h
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: defines `CommonFactoryBase::createEmptyConfigProto()`/`FactoryBase<ConfigProto>` that `TemplatedPassThroughFilterFactory<Proto>` extends in config_test_base.h; it is why each templated test factory must carry its own `ConfigProto` type for `getFactoryByType` to match it, explaining the test-side fallout of the guard removal.
+forbidden:
+  - path: changelogs/1.22.0.yaml
+    reason: historical 2022 changelog entry that originally introduced the guard's revert instructions, untouched by this removal and not needed to understand it
+  - path: CONTRIBUTING.md
+    reason: quotes the same guard name only as a verbatim example of changelog-writing style, unrelated to this specific removal
+  - path: source/common/router/config_impl.cc
+    reason: one of dozens of unmodified `Config::Utility::getFactory` call sites surfaced by bm25 similarity, not central to this change
+  - path: test/common/router/rds_impl_test.cc
+    reason: sibling router test surfaced by bm25 that never references the removed guard or the touched functions
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration, bm25, random]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 12
+  description: 'Runtime guard removal no_extension_lookup_by_name: proto + registry code + 9 test files'
+notes: 'Removes the envoy.reloadable_features.no_extension_lookup_by_name runtime guard: extension/filter factory lookup is now always by typed_config type URL, never falling back to lookup by name field. Most of the diff is mechanical test migration (giving previously name-only test filters distinct proto types) driven by that single behavioral change in source/common/config/utility.h.'

@@ -1,0 +1,64 @@
+repo: kubernetes
+base_commit: 1132a4e4efd80d50b9ef17e1ec479c2d73979f25
+commit: 29601b8628ac8ea512960bc373511ae46888e502
+patch_stored: true
+gold:
+  - path: pkg/apis/resource/types.go
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds the internal ResourcePoolStatusRequest/ResourcePoolStatusRequestSpec/ResourcePoolStatusRequestStatus/PoolStatus structs (types.go:3285ff) that every other hunk (defaults, conversion, fuzzer, register, generated code) is derived from.
+  - path: staging/src/k8s.io/api/resource/v1alpha3/types.go
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: mirrors the same ResourcePoolStatusRequest type as the externally-versioned v1alpha3 API, the wire-format counterpart to pkg/apis/resource/types.go that api discovery/openapi/pb generated files encode.
+  - path: pkg/features/kube_features.go
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: registers the new DRAResourcePoolStatus feature gate (kube_features.go:270, Alpha since 1.36 at line 1375) with a hard dependency on DynamicResourceAllocation (line 2415), gating the whole ResourcePoolStatusRequest API surface.
+  - path: pkg/apis/resource/v1alpha3/defaults.go
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds SetDefaults_ResourcePoolStatusRequestSpec, which defaults Spec.Limit to ResourcePoolStatusRequestLimitDefault (100) when unset — the one piece of actual behavior introduced alongside the plain type declarations.
+  - path: pkg/apis/resource/register.go
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: registers &ResourcePoolStatusRequest{} and &ResourcePoolStatusRequestList{} with the internal API scheme (register.go:63-64), required for the new type to be usable by the runtime scheme at all.
+  - path: pkg/apis/resource/fuzzer/fuzzer.go
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: adds round-trip fuzzer funcs for ResourcePoolStatusRequestStatus and ResourcePoolStatusRequestSpec that normalize empty slices to nil and force a non-nil Limit, documenting the exact round-trip/defaulting edge cases the new type must satisfy.
+  - path: pkg/api/testing/defaulting_test.go
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: adds ResourcePoolStatusRequest/-List to the set of GroupVersionKinds the generic defaulting test iterates over (line 3220-3221), wiring the new type into the existing cross-API defaulting test suite.
+  - path: pkg/apis/certificates/types.go
+    tier: helpful
+    role: doc
+    in_diff: false
+    rationale: 'the ResourcePoolStatusRequest doc comment explicitly cites this file''s CertificateSigningRequest type as the design template ("request follows a request/response pattern similar to CertificateSigningRequest — create a request, and the controller populates the status").'
+forbidden:
+  - path: pkg/apis/resource/v1alpha3/zz_generated.validations.go
+    reason: mechanically generated declarative-validation functions derived from the +required/+optional markers already visible in types.go — no independent semantic content
+  - path: pkg/apis/resource/zz_generated.deepcopy.go
+    reason: mechanically generated DeepCopy methods for the new structs, fully derivable from types.go
+  - path: staging/src/k8s.io/api/resource/v1alpha3/types_swagger_doc_generated.go
+    reason: generated doc-comment strings mirroring types.go, adds no information beyond the hand-written type
+  - path: staging/src/k8s.io/client-go/applyconfigurations/resource/v1alpha3/resourcepoolstatusrequest.go
+    reason: generated server-side-apply configuration builder for the new type — same name, tempting, but pure codegen output
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 44
+  description: 'ResourcePoolStatusRequest API types + generated code in one commit: ~12 hand-written types/validation
+    + 32 generated clients/deepcopy/openapi'
+notes: 'Adds a new alpha DRA API, ResourcePoolStatusRequest (KEP-5677), a CertificateSigningRequest-style request/response type for querying DRA resource-pool availability, gated by a new DRAResourcePoolStatus feature gate. "Validation" here is declarative (struct-tag markers in types.go feeding a validation-gen codegen pass), not a hand-written validation.go, so the essential hand-written surface is the two types.go files, kube_features.go, and defaults.go; register.go/fuzzer.go/defaulting_test.go are the boilerplate wiring every new API type needs. No REST-storage/registry wiring is present at this commit — that is left to a later commit.'

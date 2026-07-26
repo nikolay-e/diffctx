@@ -1,0 +1,69 @@
+repo: envoy
+base_commit: 746c7ad0929d295e1628181a2b24bc47c673b032
+commit: f724ec128aa9d138bd5d05eca6b2c3d0cff30dcd
+patch_stored: true
+gold:
+  - path: source/extensions/filters/http/ext_authz/ext_authz.h
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Declares the new ShadowDecisionObject (FilterState::Object subclass), FilterConfig::shadowMode(), Filter::setShadowFilterState(), and the shadow_denied_/shadow_error_ stats macros that ext_authz.cc implements.
+  - path: source/extensions/filters/http/ext_authz/ext_authz.cc
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Implements setShadowFilterState(), the shadow-mode branches in onComplete() for OK/Denied/Error and the deny_at_disable path, writing the ShadowDecision under key filterConfigName()+".shadow".
+  - path: api/envoy/extensions/filters/http/ext_authz/v3/ext_authz.proto
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines the shadow_mode bool field (32) on ExtAuthz and the new ShadowDecision message (CheckResult enum, status_code, response_headers) that ShadowDecisionObject::populateProto serializes into.
+  - path: test/extensions/filters/http/ext_authz/ext_authz_test.cc
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: Adds ShadowMode* unit tests that assert on ShadowDecisionObject::checkResult()/statusCode()/responseHeaders(), getField(), and the shadow_denied_/shadow_error_ counters, exercising the exact key "ext_authz_filter.shadow".
+  - path: test/extensions/filters/http/ext_authz/ext_authz_integration_test.cc
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Adds ShadowModeDeniedReachesUpstream, proving end-to-end that a shadow-mode deny reaches upstream and the decision is readable via %FILTER_STATE(envoy.filters.http.ext_authz.shadow:PLAIN)% in access logs.
+  - path: changelogs/current.yaml
+    tier: helpful
+    role: doc
+    in_diff: true
+    rationale: Documents the new shadow_mode field and the ".shadow"-suffixed FilterState key under new_features/ext_authz, matching the behavior implemented in ext_authz.cc.
+  - path: envoy/stream_info/filter_state.h
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines FilterState::Object (serializeAsProto, serializeAsString, hasFieldSupport, getField virtuals) and FilterState::StateType/LifeSpan enums that ShadowDecisionObject overrides and that decoder_callbacks_->streamInfo().filterState()->setData(..., StateType::ReadOnly, LifeSpan::FilterChain) consumes.
+  - path: source/extensions/filters/common/ext_authz/ext_authz.h
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines Filters::Common::ExtAuthz::Response, CheckStatus enum (OK/Denied/Error), and UnsafeHeaderVector that setShadowFilterState() switches on and moves into the ShadowDecisionObject constructor.
+forbidden:
+  - path: source/extensions/filters/http/rbac/rbac_filter.cc
+    reason: another authorization-adjacent HTTP filter but unrelated to ext_authz's shadow-mode FilterState mechanism; not touched or referenced.
+  - path: source/extensions/filters/network/ext_authz/ext_authz.cc
+    reason: the network-level (L4) ext_authz filter is a separate implementation from the HTTP filter changed here and has no shadow_mode logic.
+  - path: docs/root/configuration/http/http_filters/ext_authz_filter.rst
+    reason: existing ext_authz config reference doc; not updated by this commit and not needed to understand the code change (proto comments carry the docs).
+  - path: source/extensions/filters/http/ext_proc/ext_proc.h
+    reason: another filter defining a FilterState::Object subclass (ExtProcLoggingInfo) as a superficially similar pattern, but unrelated to ext_authz shadow mode.
+nontrivial_gold_count: 2
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 6
+  description: 'ext_authz shadow mode: tiny commit spanning api proto + source + test + changelog'
+notes: >-
+  Adds shadow_mode to the HTTP ext_authz filter: on deny/error the filter no longer sends a
+  local reply, instead writing a new ShadowDecisionObject (FilterState::Object subclass) under
+  the string key "<filterConfigName>.shadow" so a downstream filter or access-log formatter can
+  read it; both unit and integration tests confirm the string-keyed lookup. The two
+  nontrivial-gold files are the generic FilterState::Object base class and the existing
+  ext_authz client Response/CheckStatus types the new code builds on.

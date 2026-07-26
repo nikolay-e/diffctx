@@ -1,0 +1,770 @@
+From 128fb1369493406dd2123b92cc9de552329d598e Mon Sep 17 00:00:00 2001
+From: Cheng Pan <chengpan@apache.org>
+Date: Tue, 21 Oct 2025 14:21:06 +0800
+Subject: [PATCH] [SPARK-53914][BUILD][CONNECT] Add connect-client-jdbc module
+
+### What changes were proposed in this pull request?
+
+Developer-oriented stuff:
+
+- the maven module `artifactId` is `spark-connect-client-jdbc_2.13`
+- the scala project name is `connect-client-jdbc`
+- the module is located at `sql/connect/client/jdbc`
+- pacakged jar goes `<DIST_DIR>/jars/connect-repl/`, colocated with the `connect-client-jvm` jar
+
+User-facing points:
+
+- The JDBC URL reuses the current URL used by the Spark Connect client, with an additional prefix `jdbc:`, e.g., `jdbc:sc://localhost:15002`
+
+- JDBC Driver class name is: `org.apache.spark.sql.connect.client.jdbc.SparkConnectDriver`
+
+### Why are the changes needed?
+
+Kick off [SPIP: JDBC Driver for Spark Connect](https://issues.apache.org/jira/browse/SPARK-53484)
+
+### Does this PR introduce _any_ user-facing change?
+
+New feature.
+
+### How was this patch tested?
+
+UT added.
+
+### Was this patch authored or co-authored using generative AI tooling?
+
+No.
+
+Closes #52619 from pan3793/SPARK-53914.
+
+Authored-by: Cheng Pan <chengpan@apache.org>
+Signed-off-by: yangjie01 <yangjie01@baidu.com>
+---
+ .github/workflows/maven_test.yml              |   3 +
+ assembly/pom.xml                              |  26 +++
+ dev/sparktestsupport/modules.py               |   1 +
+ pom.xml                                       |   1 +
+ project/SparkBuild.scala                      | 134 ++++++++++-
+ sql/connect/client/jdbc/pom.xml               | 219 ++++++++++++++++++
+ .../client/jdbc/SparkConnectDriver.java       |  31 +++
+ .../META-INF/services/java.sql.Driver         |  18 ++
+ .../NonRegisteringSparkConnectDriver.scala    |  45 ++++
+ .../jdbc/src/test/resources/log4j2.properties |  42 ++++
+ .../client/jdbc/SparkConnectDriverSuite.scala |  34 +++
+ 11 files changed, 545 insertions(+), 9 deletions(-)
+ create mode 100644 sql/connect/client/jdbc/pom.xml
+ create mode 100644 sql/connect/client/jdbc/src/main/java/org/apache/spark/sql/connect/client/jdbc/SparkConnectDriver.java
+ create mode 100644 sql/connect/client/jdbc/src/main/resources/META-INF/services/java.sql.Driver
+ create mode 100644 sql/connect/client/jdbc/src/main/scala/org/apache/spark/sql/connect/client/jdbc/NonRegisteringSparkConnectDriver.scala
+ create mode 100644 sql/connect/client/jdbc/src/test/resources/log4j2.properties
+ create mode 100644 sql/connect/client/jdbc/src/test/scala/org/apache/spark/sql/connect/client/jdbc/SparkConnectDriverSuite.scala
+
+diff --git a/.github/workflows/maven_test.yml b/.github/workflows/maven_test.yml
+index 914fe2e6f5..38a6ed1e56 100644
+--- a/.github/workflows/maven_test.yml
++++ b/.github/workflows/maven_test.yml
+@@ -206,6 +206,9 @@ jobs:
+           if [[ "$INCLUDED_TAGS" != "" ]]; then
+             ./build/mvn $MAVEN_CLI_OPTS -pl "$TEST_MODULES" -Pyarn -Pkubernetes -Pvolcano -Phive -Phive-thriftserver -Phadoop-cloud -Pjvm-profiler -Pspark-ganglia-lgpl -Pkinesis-asl -Djava.version=${JAVA_VERSION/-ea} -Dtest.include.tags="$INCLUDED_TAGS" test -fae
+           elif [[ "$MODULES_TO_TEST" == "connect" ]]; then
++            ./build/mvn $MAVEN_CLI_OPTS -Djava.version=${JAVA_VERSION/-ea} -pl sql/connect/client/jdbc,sql/connect/client/jvm,sql/connect/common,sql/connect/server test -fae
++          elif [[ "$MODULES_TO_TEST" == "connect" && "$INPUT_BRANCH" == "branch-4.0" ]]; then
++            # SPARK-53914: Remove sql/connect/client/jdbc from `-pl` for branch-4.0, this branch can be deleted after the EOL of branch-4.0.
+             ./build/mvn $MAVEN_CLI_OPTS -Djava.version=${JAVA_VERSION/-ea} -pl sql/connect/client/jvm,sql/connect/common,sql/connect/server test -fae
+           elif [[ "$EXCLUDED_TAGS" != "" ]]; then
+             ./build/mvn $MAVEN_CLI_OPTS -pl "$TEST_MODULES" -Pyarn -Pkubernetes -Pvolcano -Phive -Phive-thriftserver -Phadoop-cloud -Pjvm-profiler -Pspark-ganglia-lgpl -Pkinesis-asl -Djava.version=${JAVA_VERSION/-ea} -Dtest.exclude.tags="$EXCLUDED_TAGS" test -fae
+diff --git a/assembly/pom.xml b/assembly/pom.xml
+index 69480bbdd4..0e60120623 100644
+--- a/assembly/pom.xml
++++ b/assembly/pom.xml
+@@ -125,6 +125,18 @@
+       </exclusions>
+       <scope>provided</scope>
+     </dependency>
++    <dependency>
++      <groupId>org.apache.spark</groupId>
++      <artifactId>spark-connect-client-jdbc_${scala.binary.version}</artifactId>
++      <version>${project.version}</version>
++      <exclusions>
++        <exclusion>
++          <groupId>org.apache.spark</groupId>
++          <artifactId>spark-connect-shims_${scala.binary.version}</artifactId>
++        </exclusion>
++      </exclusions>
++      <scope>provided</scope>
++    </dependency>
+ 
+     <!--
+       Because we don't shade dependencies anymore, we need to restore Guava to compile scope so
+@@ -211,6 +223,20 @@
+               </arguments>
+             </configuration>
+           </execution>
++          <execution>
++            <id>copy-connect-client-jdbc-jar</id>
++            <phase>package</phase>
++            <goals>
++              <goal>exec</goal>
++            </goals>
++            <configuration>
++              <executable>cp</executable>
++              <arguments>
++                <argument>${basedir}/../sql/connect/client/jdbc/target/spark-connect-client-jdbc_${scala.binary.version}-${project.version}.jar</argument>
++                <argument>${basedir}/target/scala-${scala.binary.version}/jars/connect-repl</argument>
++              </arguments>
++            </configuration>
++          </execution>
+         </executions>
+       </plugin>
+     </plugins>
+diff --git a/dev/sparktestsupport/modules.py b/dev/sparktestsupport/modules.py
+index 945a2ac918..d09208b419 100644
+--- a/dev/sparktestsupport/modules.py
++++ b/dev/sparktestsupport/modules.py
+@@ -437,6 +437,7 @@ connect = Module(
+     sbt_test_goals=[
+         "connect/test",
+         "connect-client-jvm/test",
++        "connect-client-jdbc/test",
+     ],
+ )
+ 
+diff --git a/pom.xml b/pom.xml
+index e98df3a1a5..954054df50 100644
+--- a/pom.xml
++++ b/pom.xml
+@@ -99,6 +99,7 @@
+     <module>sql/pipelines</module>
+     <module>sql/connect/server</module>
+     <module>sql/connect/common</module>
++    <module>sql/connect/client/jdbc</module>
+     <module>sql/connect/client/jvm</module>
+     <module>assembly</module>
+     <module>examples</module>
+diff --git a/project/SparkBuild.scala b/project/SparkBuild.scala
+index 9f93a36a52..9b96020825 100644
+--- a/project/SparkBuild.scala
++++ b/project/SparkBuild.scala
+@@ -53,8 +53,8 @@ object BuildCommons {
+   val streamingProjects@Seq(streaming, streamingKafka010) =
+     Seq("streaming", "streaming-kafka-0-10").map(ProjectRef(buildLocation, _))
+ 
+-  val connectProjects@Seq(connectCommon, connect, connectClient, connectShims) =
+-    Seq("connect-common", "connect", "connect-client-jvm", "connect-shims")
++  val connectProjects@Seq(connectCommon, connect, connectJdbc, connectClient, connectShims) =
++    Seq("connect-common", "connect", "connect-client-jdbc", "connect-client-jvm", "connect-shims")
+       .map(ProjectRef(buildLocation, _))
+ 
+   val allProjects@Seq(
+@@ -400,7 +400,7 @@ object SparkBuild extends PomBuild {
+     Seq(
+       spark, hive, hiveThriftServer, repl, networkCommon, networkShuffle, networkYarn,
+       unsafe, tags, tokenProviderKafka010, sqlKafka010, pipelines, connectCommon, connect,
+-      connectClient, variant, connectShims, profiler, commonUtilsJava
++      connectJdbc, connectClient, variant, connectShims, profiler, commonUtilsJava
+     ).contains(x)
+   }
+ 
+@@ -447,6 +447,7 @@ object SparkBuild extends PomBuild {
+ 
+   enable(SparkConnectCommon.settings)(connectCommon)
+   enable(SparkConnect.settings)(connect)
++  enable(SparkConnectJdbc.settings)(connectJdbc)
+   enable(SparkConnectClient.settings)(connectClient)
+ 
+   /* Protobuf settings */
+@@ -837,6 +838,95 @@ object SparkConnect {
+   )
+ }
+ 
++object SparkConnectJdbc {
++  import BuildCommons.protoVersion
++  val buildTestDeps = TaskKey[Unit]("buildTestDeps", "Build needed dependencies for test.")
++
++  lazy val settings = Seq(
++    // For some reason the resolution from the imported Maven build does not work for some
++    // of these dependendencies that we need to shade later on.
++    libraryDependencies ++= {
++      val guavaVersion =
++        SbtPomKeys.effectivePom.value.getProperties.get(
++          "connect.guava.version").asInstanceOf[String]
++      Seq(
++        "com.google.guava" % "guava" % guavaVersion,
++        "com.google.protobuf" % "protobuf-java" % protoVersion % "protobuf"
++      )
++    },
++    dependencyOverrides ++= {
++      val guavaVersion =
++        SbtPomKeys.effectivePom.value.getProperties.get(
++          "connect.guava.version").asInstanceOf[String]
++      Seq(
++        "com.google.guava" % "guava" % guavaVersion,
++        "com.google.protobuf" % "protobuf-java" % protoVersion
++      )
++    },
++
++    buildTestDeps := {
++      (LocalProject("assembly") / Compile / Keys.`package`).value
++      (LocalProject("catalyst") / Test / Keys.`package`).value
++    },
++
++    // SPARK-42538: Make sure the `${SPARK_HOME}/assembly/target/scala-$SPARK_SCALA_VERSION/jars` is available for testing.
++    // At the same time, the build of `connect`, `connect-client-jdbc`, `connect-client-jvm` and `sql` will be triggered by `assembly` build,
++    // so no additional configuration is required.
++    test := ((Test / test) dependsOn (buildTestDeps)).value,
++
++    testOnly := ((Test / testOnly) dependsOn (buildTestDeps)).evaluated,
++
++    (Test / javaOptions) += "-Darrow.memory.debug.allocator=true",
++
++    (assembly / test) := { },
++
++    (assembly / logLevel) := Level.Info,
++
++    // Exclude `scala-library` from assembly.
++    (assembly / assemblyPackageScala / assembleArtifact) := false,
++
++    // Exclude `pmml-model-*.jar`, `scala-collection-compat_*.jar`,`jsr305-*.jar` and
++    // `netty-*.jar` and `unused-1.0.0.jar` from assembly.
++    (assembly / assemblyExcludedJars) := {
++      val cp = (assembly / fullClasspath).value
++      cp filter { v =>
++        val name = v.data.getName
++        name.startsWith("pmml-model-") || name.startsWith("scala-collection-compat_") ||
++          name.startsWith("jsr305-") || name == "unused-1.0.0.jar"
++      }
++    },
++    // Only include `spark-connect-client-jdbc-*.jar`
++    // This needs to be consistent with the content of `maven-shade-plugin`.
++    (assembly / assemblyExcludedJars) := {
++      val cp = (assembly / fullClasspath).value
++      val validPrefixes = Set("spark-connect-client-jdbc")
++      cp filterNot { v =>
++        validPrefixes.exists(v.data.getName.startsWith)
++      }
++    },
++
++    (assembly / assemblyShadeRules) := Seq(
++      ShadeRule.rename("io.grpc.**" -> "org.sparkproject.connect.client.io.grpc.@1").inAll,
++      ShadeRule.rename("com.google.**" -> "org.sparkproject.connect.client.com.google.@1").inAll,
++      ShadeRule.rename("io.netty.**" -> "org.sparkproject.connect.client.io.netty.@1").inAll,
++      ShadeRule.rename("org.checkerframework.**" -> "org.sparkproject.connect.client.org.checkerframework.@1").inAll,
++      ShadeRule.rename("javax.annotation.**" -> "org.sparkproject.connect.client.javax.annotation.@1").inAll,
++      ShadeRule.rename("io.perfmark.**" -> "org.sparkproject.connect.client.io.perfmark.@1").inAll,
++      ShadeRule.rename("org.codehaus.**" -> "org.sparkproject.connect.client.org.codehaus.@1").inAll,
++      ShadeRule.rename("android.annotation.**" -> "org.sparkproject.connect.client.android.annotation.@1").inAll
++    ),
++
++    (assembly / assemblyMergeStrategy) := {
++      case m if m.toLowerCase(Locale.ROOT).endsWith("manifest.mf") => MergeStrategy.discard
++      case m if m.toLowerCase(Locale.ROOT).matches("meta-inf.*\\.sf$") => MergeStrategy.discard
++      case m if m.toLowerCase(Locale.ROOT).startsWith("meta-inf/services/") => MergeStrategy.filterDistinctLines
++      // Drop all proto files that are not needed as artifacts of the build.
++      case m if m.toLowerCase(Locale.ROOT).endsWith(".proto") => MergeStrategy.discard
++      case _ => MergeStrategy.first
++    }
++  )
++}
++
+ object SparkConnectClient {
+   import BuildCommons.protoVersion
+   val buildTestDeps = TaskKey[Unit]("buildTestDeps", "Build needed dependencies for test.")
+@@ -869,7 +959,7 @@ object SparkConnectClient {
+     },
+ 
+     // SPARK-42538: Make sure the `${SPARK_HOME}/assembly/target/scala-$SPARK_SCALA_VERSION/jars` is available for testing.
+-    // At the same time, the build of `connect`, `connect-client-jvm` and `sql` will be triggered by `assembly` build,
++    // At the same time, the build of `connect`, `connect-client-jdbc`, `connect-client-jvm` and `sql` will be triggered by `assembly` build,
+     // so no additional configuration is required.
+     test := ((Test / test) dependsOn (buildTestDeps)).value,
+ 
+@@ -1122,7 +1212,7 @@ object ExcludedDependencies {
+  * client dependencies.
+  */
+ object ExcludeShims {
+-  val shimmedProjects = Set("spark-sql-api", "spark-connect-common", "spark-connect-client-jvm")
++  val shimmedProjects = Set("spark-sql-api", "spark-connect-common", "spark-connect-client-jdbc", "spark-connect-client-jvm")
+   val classPathFilter = TaskKey[Classpath => Classpath]("filter for classpath")
+   lazy val settings = Seq(
+     classPathFilter := {
+@@ -1512,12 +1602,12 @@ object Unidoc {
+     ),
+     (ScalaUnidoc / unidoc / unidocProjectFilter) :=
+       inAnyProject -- inProjects(OldDeps.project, repl, examples, tools, kubernetes,
+-        yarn, tags, streamingKafka010, sqlKafka010, connectCommon, connect, connectClient,
+-        connectShims, protobuf, profiler),
++        yarn, tags, streamingKafka010, sqlKafka010, connectCommon, connect, connectJdbc,
++        connectClient, connectShims, protobuf, profiler),
+     (JavaUnidoc / unidoc / unidocProjectFilter) :=
+       inAnyProject -- inProjects(OldDeps.project, repl, examples, tools, kubernetes,
+-        yarn, tags, streamingKafka010, sqlKafka010, connectCommon, connect, connectClient,
+-        connectShims, protobuf, profiler),
++        yarn, tags, streamingKafka010, sqlKafka010, connectCommon, connect, connectJdbc,
++        connectClient, connectShims, protobuf, profiler),
+   )
+ }
+ 
+@@ -1566,6 +1656,8 @@ object CopyDependencies {
+ 
+           if (jar.getName.contains("spark-connect-common")) {
+             // Don't copy the spark connect common JAR as it is shaded in the spark connect.
++          } else if (jar.getName.contains("connect-client-jdbc")) {
++            // Do not place Spark Connect JDBC driver jar as it is not built-in.
+           } else if (jar.getName.contains("connect-client-jvm")) {
+             // Do not place Spark Connect client jars as it is not built-in.
+           } else if (noProvidedSparkJars && jar.getName.contains("spark-avro")) {
+@@ -1614,6 +1706,30 @@ object CopyDependencies {
+           Def.task {}
+         }
+       }.value
++
++      // Copy the Spark Connect JDBC driver assembly manually.
++      Def.taskDyn {
++        if (moduleName.value.contains("assembly")) {
++          Def.task {
++            val scalaBinaryVer = SbtPomKeys.effectivePom.value.getProperties.get(
++              "scala.binary.version").asInstanceOf[String]
++            val sparkVer = SbtPomKeys.effectivePom.value.getProperties.get(
++              "spark.version").asInstanceOf[String]
++            val dest = destPath.value
++            val destDir = new File(dest, "connect-repl").toPath
++            Files.createDirectories(destDir)
++
++            val sourceAssemblyJar = Paths.get(
++              BuildCommons.sparkHome.getAbsolutePath, "sql", "connect", "client",
++              "jdbc", "target", s"scala-$scalaBinaryVer", s"spark-connect-client-jdbc-assembly-$sparkVer.jar")
++            val destAssemblyJar = Paths.get(destDir.toString, s"spark-connect-client-jdbc-assembly-$sparkVer.jar")
++            Files.copy(sourceAssemblyJar, destAssemblyJar, StandardCopyOption.REPLACE_EXISTING)
++            ()
++          }.dependsOn(LocalProject("connect-client-jdbc") / assembly)
++        } else {
++          Def.task {}
++        }
++      }.value
+     },
+     (Compile / packageBin / crossTarget) := destPath.value,
+     (Compile / packageBin) := (Compile / packageBin).dependsOn(copyDeps).value
+diff --git a/sql/connect/client/jdbc/pom.xml b/sql/connect/client/jdbc/pom.xml
+new file mode 100644
+index 0000000000..9f2ba01100
+--- /dev/null
++++ b/sql/connect/client/jdbc/pom.xml
+@@ -0,0 +1,219 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++  ~ Licensed to the Apache Software Foundation (ASF) under one or more
++  ~ contributor license agreements.  See the NOTICE file distributed with
++  ~ this work for additional information regarding copyright ownership.
++  ~ The ASF licenses this file to You under the Apache License, Version 2.0
++  ~ (the "License"); you may not use this file except in compliance with
++  ~ the License.  You may obtain a copy of the License at
++  ~
++  ~    http://www.apache.org/licenses/LICENSE-2.0
++  ~
++  ~ Unless required by applicable law or agreed to in writing, software
++  ~ distributed under the License is distributed on an "AS IS" BASIS,
++  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++  ~ See the License for the specific language governing permissions and
++  ~ limitations under the License.
++  -->
++
++<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
++  <modelVersion>4.0.0</modelVersion>
++  <parent>
++    <groupId>org.apache.spark</groupId>
++    <artifactId>spark-parent_2.13</artifactId>
++    <version>4.1.0-SNAPSHOT</version>
++    <relativePath>../../../../pom.xml</relativePath>
++  </parent>
++
++  <artifactId>spark-connect-client-jdbc_2.13</artifactId>
++  <packaging>jar</packaging>
++  <name>Spark Project Connect JDBC Driver</name>
++  <url>https://spark.apache.org/</url>
++  <properties>
++    <sbt.project.name>connect-client-jdbc</sbt.project.name>
++  </properties>
++
++  <dependencies>
++    <dependency>
++      <groupId>org.apache.spark</groupId>
++      <artifactId>spark-connect-common_${scala.binary.version}</artifactId>
++      <version>${project.version}</version>
++    </dependency>
++    <dependency>
++      <groupId>org.apache.spark</groupId>
++      <artifactId>spark-sql-api_${scala.binary.version}</artifactId>
++      <version>${project.version}</version>
++    </dependency>
++    <dependency>
++      <groupId>org.apache.spark</groupId>
++      <artifactId>spark-connect-shims_${scala.binary.version}</artifactId>
++      <version>${project.version}</version>
++    </dependency>
++    <dependency>
++      <groupId>org.apache.spark</groupId>
++      <artifactId>spark-sketch_${scala.binary.version}</artifactId>
++      <version>${project.version}</version>
++    </dependency>
++    <dependency>
++      <groupId>org.scala-lang</groupId>
++      <artifactId>scala-compiler</artifactId>
++      <scope>compile</scope>
++    </dependency>
++    <dependency>
++      <groupId>org.scala-lang.modules</groupId>
++      <artifactId>scala-xml_${scala.binary.version}</artifactId>
++      <scope>compile</scope>
++    </dependency>
++    <!--
++      We need to define protobuf here because we need to change the scope of both from
++      provided to compile. If we don't do this we can't shade these libraries.
++    -->
++    <dependency>
++      <groupId>com.google.protobuf</groupId>
++      <artifactId>protobuf-java</artifactId>
++      <scope>compile</scope>
++    </dependency>
++    <dependency>
++      <groupId>com.google.guava</groupId>
++      <artifactId>guava</artifactId>
++      <version>${connect.guava.version}</version>
++      <scope>compile</scope>
++    </dependency>
++    <dependency>
++      <groupId>com.google.guava</groupId>
++      <artifactId>failureaccess</artifactId>
++      <version>${guava.failureaccess.version}</version>
++      <scope>compile</scope>
++    </dependency>
++    <dependency>
++      <groupId>org.apache.spark</groupId>
++      <artifactId>spark-tags_${scala.binary.version}</artifactId>
++      <type>test-jar</type>
++      <scope>test</scope>
++    </dependency>
++    <dependency>
++      <groupId>org.scalacheck</groupId>
++      <artifactId>scalacheck_${scala.binary.version}</artifactId>
++      <scope>test</scope>
++    </dependency>
++    <dependency>
++      <groupId>org.apache.spark</groupId>
++      <artifactId>spark-sql-api_${scala.binary.version}</artifactId>
++      <version>${project.version}</version>
++      <classifier>tests</classifier>
++      <scope>test</scope>
++    </dependency>
++    <dependency>
++      <groupId>org.apache.spark</groupId>
++      <artifactId>spark-common-utils_${scala.binary.version}</artifactId>
++      <version>${project.version}</version>
++      <classifier>tests</classifier>
++      <scope>test</scope>
++    </dependency>
++    <!-- Use mima to perform the compatibility check -->
++    <dependency>
++      <groupId>com.typesafe</groupId>
++      <artifactId>mima-core_${scala.binary.version}</artifactId>
++      <version>${mima.version}</version>
++      <scope>test</scope>
++    </dependency>
++  </dependencies>
++  <build>
++    <outputDirectory>target/scala-${scala.binary.version}/classes</outputDirectory>
++    <testOutputDirectory>target/scala-${scala.binary.version}/test-classes</testOutputDirectory>
++    <plugins>
++      <plugin>
++        <groupId>org.scalatest</groupId>
++        <artifactId>scalatest-maven-plugin</artifactId>
++        <configuration>
++          <argLine>-ea -Xmx4g -Xss4m -XX:MaxMetaspaceSize=2g -XX:ReservedCodeCacheSize=${CodeCacheSize} ${extraJavaTestArgs} -Darrow.memory.debug.allocator=true</argLine>
++        </configuration>
++      </plugin>
++      <!-- Shade all Guava / Protobuf / Netty dependencies of this build -->
++      <!-- TODO (SPARK-42449): Ensure shading rules are handled correctly in `native-image.properties` and support GraalVM   -->
++      <plugin>
++        <groupId>org.apache.maven.plugins</groupId>
++        <artifactId>maven-shade-plugin</artifactId>
++        <configuration combine.self = "override">
++          <shadedArtifactAttached>false</shadedArtifactAttached>
++          <promoteTransitiveDependencies>true</promoteTransitiveDependencies>
++          <artifactSet>
++            <includes>
++              <include>org.apache.spark:spark-connect-client-jdbc_${scala.binary.version}</include>
++            </includes>
++          </artifactSet>
++          <relocations>
++            <relocation>
++              <pattern>com.google.common</pattern>
++              <shadedPattern>${spark.shade.packageName}.connect.guava</shadedPattern>
++              <includes>
++                <include>com.google.common.**</include>
++              </includes>
++            </relocation>
++            <relocation>
++              <pattern>io.grpc</pattern>
++              <shadedPattern>${spark.shade.packageName}.io.grpc</shadedPattern>
++              <includes>
++                <include>io.grpc.**</include>
++              </includes>
++            </relocation>
++            <relocation>
++              <pattern>com.google</pattern>
++              <shadedPattern>${spark.shade.packageName}.com.google</shadedPattern>
++              <excludes>
++                <!-- Guava is relocated to ${spark.shade.packageName}.connect.guava -->
++                <exclude>com.google.common.**</exclude>
++              </excludes>
++            </relocation>
++            <relocation>
++              <pattern>io.netty</pattern>
++              <shadedPattern>${spark.shade.packageName}.io.netty</shadedPattern>
++            </relocation>
++            <relocation>
++              <pattern>org.checkerframework</pattern>
++              <shadedPattern>${spark.shade.packageName}.org.checkerframework</shadedPattern>
++            </relocation>
++            <relocation>
++              <pattern>javax.annotation</pattern>
++              <shadedPattern>${spark.shade.packageName}.javax.annotation</shadedPattern>
++            </relocation>
++            <relocation>
++              <pattern>io.perfmark</pattern>
++              <shadedPattern>${spark.shade.packageName}.io.perfmark</shadedPattern>
++            </relocation>
++            <relocation>
++              <pattern>org.codehaus</pattern>
++              <shadedPattern>${spark.shade.packageName}.org.codehaus</shadedPattern>
++            </relocation>
++            <relocation>
++              <pattern>org.apache.arrow</pattern>
++              <shadedPattern>${spark.shade.packageName}.org.apache.arrow</shadedPattern>
++            </relocation>
++            <relocation>
++              <pattern>android.annotation</pattern>
++              <shadedPattern>${spark.shade.packageName}.android.annotation</shadedPattern>
++            </relocation>
++          </relocations>
++          <!--SPARK-42228: Add `ServicesResourceTransformer` to relocation class names in META-INF/services for grpc-->
++          <transformers>
++            <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
++          </transformers>
++        </configuration>
++      </plugin>
++      <plugin>
++        <groupId>org.apache.maven.plugins</groupId>
++        <artifactId>maven-jar-plugin</artifactId>
++        <executions>
++          <execution>
++            <id>prepare-test-jar</id>
++            <phase>test-compile</phase>
++            <goals>
++              <goal>test-jar</goal>
++            </goals>
++          </execution>
++        </executions>
++      </plugin>
++    </plugins>
++  </build>
++</project>
+diff --git a/sql/connect/client/jdbc/src/main/java/org/apache/spark/sql/connect/client/jdbc/SparkConnectDriver.java b/sql/connect/client/jdbc/src/main/java/org/apache/spark/sql/connect/client/jdbc/SparkConnectDriver.java
+new file mode 100644
+index 0000000000..84e62c546e
+--- /dev/null
++++ b/sql/connect/client/jdbc/src/main/java/org/apache/spark/sql/connect/client/jdbc/SparkConnectDriver.java
+@@ -0,0 +1,31 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *    http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.apache.spark.sql.connect.client.jdbc;
++
++import java.sql.DriverManager;
++import java.sql.SQLException;
++
++public class SparkConnectDriver extends NonRegisteringSparkConnectDriver {
++  static {
++    try {
++      DriverManager.registerDriver(new SparkConnectDriver());
++    } catch (SQLException rethrow) {
++      throw new RuntimeException(rethrow);
++    }
++  }
++}
+diff --git a/sql/connect/client/jdbc/src/main/resources/META-INF/services/java.sql.Driver b/sql/connect/client/jdbc/src/main/resources/META-INF/services/java.sql.Driver
+new file mode 100644
+index 0000000000..ceda95849c
+--- /dev/null
++++ b/sql/connect/client/jdbc/src/main/resources/META-INF/services/java.sql.Driver
+@@ -0,0 +1,18 @@
++#
++# Licensed to the Apache Software Foundation (ASF) under one or more
++# contributor license agreements.  See the NOTICE file distributed with
++# this work for additional information regarding copyright ownership.
++# The ASF licenses this file to You under the Apache License, Version 2.0
++# (the "License"); you may not use this file except in compliance with
++# the License.  You may obtain a copy of the License at
++#
++#    http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++#
++
++org.apache.spark.sql.connect.client.jdbc.SparkConnectDriver
+diff --git a/sql/connect/client/jdbc/src/main/scala/org/apache/spark/sql/connect/client/jdbc/NonRegisteringSparkConnectDriver.scala b/sql/connect/client/jdbc/src/main/scala/org/apache/spark/sql/connect/client/jdbc/NonRegisteringSparkConnectDriver.scala
+new file mode 100644
+index 0000000000..1052f6d3e5
+--- /dev/null
++++ b/sql/connect/client/jdbc/src/main/scala/org/apache/spark/sql/connect/client/jdbc/NonRegisteringSparkConnectDriver.scala
+@@ -0,0 +1,45 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *    http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.apache.spark.sql.connect.client.jdbc
++
++import java.sql.{Connection, Driver, DriverPropertyInfo, SQLFeatureNotSupportedException}
++import java.util.Properties
++import java.util.logging.Logger
++
++import org.apache.spark.SparkBuildInfo.{spark_version => SPARK_VERSION}
++import org.apache.spark.util.VersionUtils
++
++class NonRegisteringSparkConnectDriver extends Driver {
++
++  override def acceptsURL(url: String): Boolean = url.startsWith("jdbc:sc://")
++
++  override def connect(url: String, info: Properties): Connection = {
++    throw new UnsupportedOperationException("TODO(SPARK-53934)")
++  }
++
++  override def getPropertyInfo(url: String, info: Properties): Array[DriverPropertyInfo] =
++    Array.empty
++
++  override def getMajorVersion: Int = VersionUtils.majorVersion(SPARK_VERSION)
++
++  override def getMinorVersion: Int = VersionUtils.minorVersion(SPARK_VERSION)
++
++  override def jdbcCompliant: Boolean = false
++
++  override def getParentLogger: Logger = throw new SQLFeatureNotSupportedException
++}
+diff --git a/sql/connect/client/jdbc/src/test/resources/log4j2.properties b/sql/connect/client/jdbc/src/test/resources/log4j2.properties
+new file mode 100644
+index 0000000000..47b6e39eb0
+--- /dev/null
++++ b/sql/connect/client/jdbc/src/test/resources/log4j2.properties
+@@ -0,0 +1,42 @@
++#
++# Licensed to the Apache Software Foundation (ASF) under one or more
++# contributor license agreements.  See the NOTICE file distributed with
++# this work for additional information regarding copyright ownership.
++# The ASF licenses this file to You under the Apache License, Version 2.0
++# (the "License"); you may not use this file except in compliance with
++# the License.  You may obtain a copy of the License at
++#
++#    http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++#
++
++# Set everything to be logged to the file target/unit-tests.log
++rootLogger.level = info
++rootLogger.appenderRef.file.ref = ${sys:test.appender:-File}
++
++appender.file.type = File
++appender.file.name = File
++appender.file.fileName = target/unit-tests.log
++appender.file.layout.type = PatternLayout
++appender.file.layout.pattern = %d{yy/MM/dd HH:mm:ss.SSS} %t %p %c{1}: %m%n%ex
++
++# Tests that launch java subprocesses can set the "test.appender" system property to
++# "console" to avoid having the child process's logs overwrite the unit test's
++# log file.
++appender.console.type = Console
++appender.console.name = console
++appender.console.target = SYSTEM_ERR
++appender.console.layout.type = PatternLayout
++appender.console.layout.pattern = %d{HH:mm:ss.SSS} %p %c: %maxLen{%m}{512}%n%ex{8}%n
++
++# Ignore messages below warning level from Jetty, because it's a bit verbose
++logger.jetty.name = org.sparkproject.jetty
++logger.jetty.level = warn
++
++logger.allocator.name = org.apache.arrow.memory.BaseAllocator
++logger.allocator.level = trace
+diff --git a/sql/connect/client/jdbc/src/test/scala/org/apache/spark/sql/connect/client/jdbc/SparkConnectDriverSuite.scala b/sql/connect/client/jdbc/src/test/scala/org/apache/spark/sql/connect/client/jdbc/SparkConnectDriverSuite.scala
+new file mode 100644
+index 0000000000..eb4ce76d2c
+--- /dev/null
++++ b/sql/connect/client/jdbc/src/test/scala/org/apache/spark/sql/connect/client/jdbc/SparkConnectDriverSuite.scala
+@@ -0,0 +1,34 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *    http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.apache.spark.sql.connect.client.jdbc
++
++import java.sql.DriverManager
++
++import org.scalatest.funsuite.AnyFunSuite // scalastyle:ignore funsuite
++
++class SparkConnectDriverSuite extends AnyFunSuite { // scalastyle:ignore funsuite
++
++  // explicitly load the class to make it known to the DriverManager
++  classOf[SparkConnectDriver].getClassLoader
++
++  val jdbcUrl: String = s"jdbc:sc://localhost:15002"
++
++  test("test SparkConnectDriver") {
++    assert(DriverManager.getDriver(jdbcUrl).isInstanceOf[SparkConnectDriver])
++  }
++}

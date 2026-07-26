@@ -1,0 +1,81 @@
+generators:
+  cochange: 0
+  bm25: 15
+  graph: 0
+  random: 10
+candidates:
+- path: .azure/pipelines/quarantined-pr.yml
+  sources:
+  - random
+- path: .github/workflows/issue-triage-agent.md
+  sources:
+  - bm25
+- path: .github/workflows/test-quarantine.md
+  sources:
+  - bm25
+- path: docs/EventSourceAndCounters.md
+  sources:
+  - bm25
+- path: src/Components/Components/src/DefaultComponentPropertyActivator.cs
+  sources:
+  - random
+- path: src/Components/Components/src/RenderTree/Renderer.cs
+  sources:
+  - bm25
+- path: src/Components/Endpoints/test/Routing/BasePathTest.cs
+  sources:
+  - random
+- path: src/Components/Testing/testassets/TestApp.E2E.Tests/Tests/WeatherServiceOverrideTests.cs
+  sources:
+  - random
+- path: src/Components/Web.JS/src/Rendering/Events/EventDelegator.ts
+  sources:
+  - bm25
+- path: src/Components/Web.JS/src/Rendering/LogicalElements.ts
+  sources:
+  - bm25
+- path: src/Components/Web.JS/src/Services/NavigationEnhancement.ts
+  sources:
+  - bm25
+- path: src/Components/Web.JS/test/DomSync.test.ts
+  sources:
+  - bm25
+- path: src/Components/test/E2ETest/ServerRenderingTests/EnhancedNavigationTest.cs
+  sources:
+  - bm25
+- path: src/Components/test/E2ETest/ServerRenderingTests/FormHandlingTests/FormWithParentBindingContextTest.cs
+  sources:
+  - bm25
+- path: src/Components/test/E2ETest/ServerRenderingTests/StreamingRenderingTest.cs
+  sources:
+  - bm25
+- path: src/Components/test/E2ETest/Tests/ComponentRenderingTestBase.cs
+  sources:
+  - bm25
+- path: src/Components/test/E2ETest/Tests/FormsTest.cs
+  sources:
+  - bm25
+- path: src/Components/test/E2ETest/Tests/RoutingTest.cs
+  sources:
+  - bm25
+- path: src/Components/test/E2ETest/Tests/VirtualizationTest.cs
+  sources:
+  - bm25
+- path: src/HealthChecks/HealthChecks/test/HealthReportTest.cs
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/HtmlGenerationWebSite/Views/HtmlGeneration_Home/AttributesWithBooleanValues.cshtml
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/RazorPagesWebSite/Pages/ViewData/ViewDataSetInViewStart/Index.cs
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ProjectTemplates/content/Worker-FSharp/Program.fs
+  sources:
+  - random
+- path: src/ProjectTemplates/migrations/updateMigrations.cmd
+  sources:
+  - random
+- path: src/ProjectTemplates/templates.nuspec
+  sources:
+  - random

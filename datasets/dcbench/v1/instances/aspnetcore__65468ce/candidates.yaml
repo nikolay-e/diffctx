@@ -1,0 +1,98 @@
+generators:
+  cochange: 0
+  bm25: 15
+  graph: 7
+  random: 10
+candidates:
+- path: .vscode/mcp.json
+  sources:
+  - random
+- path: src/Components/Components/src/PersistentState/RestoreOptions.cs
+  sources:
+  - random
+- path: src/Components/Components/src/Reflection/ComponentProperties.cs
+  sources:
+  - graph
+- path: src/Components/Components/src/Routing/Router.cs
+  sources:
+  - bm25
+- path: src/Components/Endpoints/src/DependencyInjection/WebAssemblySettingsEmitter.cs
+  sources:
+  - graph
+- path: src/Components/Endpoints/src/FormMapping/Metadata/FormDataTypeMetadata.cs
+  sources:
+  - random
+- path: src/Components/Endpoints/src/Rendering/EndpointHtmlRenderer.Streaming.cs
+  sources:
+  - graph
+- path: src/Components/Endpoints/src/Rendering/EndpointHtmlRenderer.cs
+  sources:
+  - bm25
+- path: src/Components/Endpoints/test/EndpointHtmlRendererTest.cs
+  sources:
+  - bm25
+- path: src/Components/Endpoints/test/RazorComponentResultTest.cs
+  sources:
+  - bm25
+- path: src/Components/WebAssembly/Samples/HostedBlazorWebassemblyApp/Client/Data/HttpWeatherForecastService.cs
+  sources:
+  - random
+- path: src/Components/WebAssembly/WebAssembly/src/Hosting/WebAssemblyHostBuilder.cs
+  sources:
+  - bm25
+- path: src/Components/test/E2ETest/ServerRenderingTests/RenderingTest.cs
+  sources:
+  - bm25
+- path: src/Components/test/E2ETest/ServerRenderingTests/StreamingRenderingTest.cs
+  sources:
+  - bm25
+- path: src/Components/test/E2ETest/Tests/HttpClientTest.cs
+  sources:
+  - bm25
+- path: src/Components/test/testassets/Components.TestServer/RazorComponentEndpointsStartup.cs
+  sources:
+  - bm25
+  - graph
+- path: src/DefaultBuilder/test/Microsoft.AspNetCore.Tests/WebApplicationTests.cs
+  sources:
+  - bm25
+- path: src/Http/Http.Extensions/gen/Microsoft.AspNetCore.Http.RequestDelegateGenerator/DiagnosticDescriptors.cs
+  sources:
+  - graph
+- path: src/Mvc/Mvc.Razor.RuntimeCompilation/src/RazorReferenceManager.cs
+  sources:
+  - random
+- path: src/Mvc/Mvc.ViewFeatures/src/CookieTempDataProvider.cs
+  sources:
+  - bm25
+  - graph
+- path: src/Mvc/Mvc.ViewFeatures/src/TempDataDictionary.cs
+  sources:
+  - bm25
+- path: src/Mvc/Mvc.ViewFeatures/test/CookieTempDataProviderTest.cs
+  sources:
+  - bm25
+- path: src/Mvc/test/WebSites/RazorPagesWebSite/Pages/Conventions/AuthFolder/Index.cshtml
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/RoutingWebSite/StartupWithoutEndpointRouting.cs
+  sources:
+  - random
+- path: src/ProjectTemplates/README-BASELINES.md
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ItemTemplates/content/ViewImports/.template.config/localize/templatestrings.pl.json
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ProjectTemplates/content/Worker-FSharp/.template.config/localize/templatestrings.tr.json
+  sources:
+  - random
+- path: src/Security/Authentication/OpenIdConnect/src/OpenIdConnectHandler.cs
+  sources:
+  - bm25
+- path: src/Security/Authentication/test/OpenIdConnect/OpenIdConnectTests.cs
+  sources:
+  - bm25
+- path: src/Tools/dotnet-dev-certs/src/Program.cs
+  sources:
+  - graph

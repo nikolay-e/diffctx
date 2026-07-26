@@ -1,0 +1,44 @@
+repo: neovim
+base_commit: 443171328531e33a7caecda0b81dadd826518a58
+commit: c822a2657c78e4b9d3798dfdf93e365460b5b885
+patch_stored: true
+gold:
+  - path: runtime/lua/vim/_core/editor.lua
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: gains the full `function vim.wait(time, callback, interval, fast_only)` implementation, ported from C, using vim._core.ui_flush()/check_interrupt()/loop_poll() and a Lua-side uv timer to keep the polling interval semantics.
+  - path: src/nvim/lua/executor.c
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'the old nlua_wait() C entrypoint and its dummy-timer machinery are deleted (166 lines removed) and replaced by three narrow C helpers exposed as vim._core.loop_poll/ui_flush/check_interrupt that the new Lua vim.wait() calls into.'
+  - path: runtime/lua/vim/_meta/builtin.lua
+    tier: essential
+    role: doc
+    in_diff: true
+    rationale: the vim.wait() doc-comment/type stub is removed from builtin.lua (since it is no longer a C-registered global) and replaced with @nodoc stubs for the new vim._core.loop_poll/ui_flush/check_interrupt helpers, documenting the new C-Lua boundary.
+  - path: runtime/lua/vim/_core/shared.lua
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: '`function vim.validate(name, value, validator, optional, message)` (line ~1297) is what now raises "callback: expected callable, got number" when vim.wait''s new `vim.validate(''callback'', callback, ''callable'', true)` call fails — the reason test/functional/lua/vim_spec.lua''s expected error string changes from the old hand-written "vim.wait: callback must be callable" to a vim.validate()-shaped message.'
+  - path: test/functional/lua/vim_spec.lua
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: updates the "callback must be a function" test to match vim.validate()'s generic error format instead of the old hand-written C error string, directly evidencing the validation-mechanism change.
+forbidden:
+  - path: runtime/lua/vim/_watch.lua
+    reason: another module that calls `vim.validate('callback', callback, 'function')` in a similar pattern, but unrelated to vim.wait or this specific move.
+  - path: src/nvim/eval/funcs.c
+    reason: implements the separate Vimscript wait()-adjacent builtin functions but is not part of the C-to-Lua vim.wait migration.
+  - path: runtime/lua/vim/_core/system.lua
+    reason: another _core module using the same vim.validate/vim.uv patterns but not touched by or required to understand this specific refactor.
+  - path: runtime/doc/lua.txt
+    reason: auto-generated help text mechanically reflecting the moved doc-comment (relocated section) plus a wording tweak already visible from the diff itself; adds no information beyond editor.lua's doc-comment.
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: 'Moves vim.wait() from a monolithic C implementation (nlua_wait + dummy libuv timer in executor.c) into pure Lua in _core/editor.lua, exposing only three narrow C primitives (vim._core.loop_poll/ui_flush/check_interrupt) as the new C-Lua boundary. The test-expectation change for the "callback must be callable" error is explained by vim._core/shared.lua''s pre-existing vim.validate() implementation, which the new Lua vim.wait() now calls instead of raising a hand-written C error string.'

@@ -1,0 +1,37 @@
+repo: firefox-ios
+base_commit: 5e103bed229500dec81802e176415ef34e4b22fa
+commit: e3b1c7cda2b4c3bd0a351134f38bf2bc6058b859
+patch_stored: true
+gold:
+  - path: firefox-ios/Client.xcodeproj/project.pbxproj
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Adds the PBXFileReference and Summarizer.strings variant-group entry for the newly-added es-MX.lproj/Summarizer.strings, the only structural change in the commit.
+  - path: firefox-ios/Shared/Supporting Files/es-MX.lproj/Summarizer.strings
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New locale file (es-MX) for pre-existing Summarizer.ToS.* keys; its addition is what forces the project.pbxproj registration edit.
+  - path: firefox-ios/Extensions/ActionExtension/lo.lproj/InfoPlist.strings
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: New locale file (lo) for CFBundleDisplayName; its PBXFileReference (1CDB4EDFA0D3B346BC539F73) already existed pre-commit as a placeholder, so unlike Summarizer.strings/es-MX it required no project.pbxproj change.
+forbidden:
+  - path: firefox-ios/Shared/Strings.swift
+    reason: defines the Summarizer.ToS.* key constants but the keys themselves are unchanged in this commit, only their translated values across locales
+  - path: BrowserKit/Sources/Shared/AppInfo.swift
+    reason: reads CFBundleDisplayName generically from the bundle's Info.plist but has no locale-specific logic and is unmodified
+  - path: firefox-ios/Shared/Supporting Files/en-US.lproj/Settings.strings
+    reason: base-locale sibling with a similar path/name to the touched cs/da/el/... Settings.strings files but not part of this diff and not needed to read translated values
+nontrivial_gold_count: 0
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 32
+  description: Localization string import for v149 — pure .strings ripple linked via project file
+notes: 'Automated l10n-bot commit retranslating existing keys across 27 modified .strings/.stringsdict files (values only, no key renames) plus 2 brand-new locale files (es-MX/Summarizer.strings, lo/InfoPlist.strings); project.pbxproj is touched only to register the former as a build resource since the latter''s PBXFileReference already existed pre-commit. No Swift source is touched and all referenced keys pre-date this commit, so understanding the diff needs no context beyond the diff itself — hence no_nontrivial_context: true. string_indirection is false: the change itself is pure key=value content, not a new indirection.'

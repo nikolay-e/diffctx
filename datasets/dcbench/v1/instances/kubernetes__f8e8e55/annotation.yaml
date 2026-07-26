@@ -1,0 +1,45 @@
+repo: kubernetes
+base_commit: 53b29512ec85c9a86dde313e3848aeccce908cf4
+commit: f8e8e55f1d33cc391b3b450dfca64c7ae973ec35
+patch_stored: true
+gold:
+  - path: pkg/features/kube_features.go
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds the v1.36 GA versioned spec for VolumeAttributesClass with Default:true, LockToDefault:true — the feature-gate graduation this commit's title refers to.
+  - path: pkg/kubeapiserver/default_storage_factory_builder.go
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Removes the storage.Resource("volumeattributesclasses").WithVersion("v1beta1") entry from NewStorageFactoryConfigEffectiveVersion's APIStorageVersionOverrides, which is what switches the etcd storage version from v1beta1 to v1.
+  - path: pkg/controlplane/storageversionhashdata/data.go
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Updates the recorded storage-version hash for storage.k8s.io/v1/volumeattributesclasses to match the new v1 storage version, verified against api/discovery/*.json in the same commit.
+  - path: test/integration/etcd/data.go
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Updates ExpectedGVK for the v1 volumeattributesclasses etcd fixture from v1beta1 to v1, the integration-test assertion that the storage version switch actually took effect.
+  - path: pkg/registry/storage/rest/storage_storage.go
+    tier: helpful
+    role: cochange
+    in_diff: false
+    rationale: Registers both storageapiv1beta1 and storageapiv1 VolumeAttributesClass REST storage independently of etcd storage version, clarifying that this commit only changes the internal/etcd serialization version — both API versions remain served.
+forbidden:
+  - path: staging/src/k8s.io/api/storage/v1beta1/types.go
+    reason: v1beta1 VolumeAttributesClass type definition, unchanged by and not needed to understand a pure storage-version switch
+  - path: plugin/pkg/admission/resourcequota/admission_test.go
+    reason: test simplification (removes now-redundant SetFeatureGateDuringTest calls since the gate is locked true), incidental cleanup not central to the storage-version switch
+  - path: pkg/quota/v1/evaluator/core/persistent_volume_claims_test.go
+    reason: same redundant feature-gate-call removal pattern as the resourcequota admission test, not distinct
+  - path: test/compatibility_lifecycle/reference/versioned_feature_list.yaml
+    reason: auto-generated feature-gate version table entry, mechanical fallout of the kube_features.go change
+nontrivial_gold_count: 1
+string_indirection: false
+no_nontrivial_context: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: 'Graduates VolumeAttributesClass to GA-locked-true at 1.36 and switches its etcd storage version from v1beta1 to v1 by dropping the explicit APIStorageVersionOverrides entry. Most touched files are test call-site cleanups now that the gate defaults/locks to true (SetFeatureGateEmulationVersionDuringTest added to keep pre-1.35 gate-disabled test paths working). No codegen involved; gold covers the feature-gate definition, the storage-factory override removal, the storage-hash/etcd-fixture updates, and the untouched REST registration file that shows both API versions stay served regardless of storage version.'

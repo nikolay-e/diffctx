@@ -1,0 +1,137 @@
+generators:
+  cochange: 0
+  bm25: 15
+  graph: 20
+  random: 10
+candidates:
+- path: .github/ISSUE_TEMPLATE/60_analyzer_proposal.md
+  sources:
+  - random
+- path: src/Components/Authorization/src/AuthenticationStateProvider.cs
+  sources:
+  - graph
+- path: src/Components/Components/src/NavigationManager.cs
+  sources:
+  - graph
+- path: src/Components/Components/src/NavigationManagerExtensions.cs
+  sources:
+  - graph
+- path: src/Components/Components/src/RenderTree/Renderer.cs
+  sources:
+  - bm25
+- path: src/Components/Components/src/Routing/NavigationContext.cs
+  sources:
+  - graph
+- path: src/Components/Components/test/Routing/RouterTest.cs
+  sources:
+  - bm25
+- path: src/Components/Endpoints/src/Discovery/RazorComponentApplication.cs
+  sources:
+  - random
+- path: src/Components/QuickGrid/Microsoft.AspNetCore.Components.QuickGrid/test/FailingQuickGrid.cs
+  sources:
+  - graph
+- path: src/Components/QuickGrid/Microsoft.AspNetCore.Components.QuickGrid/test/GridRaceConditionTest.cs
+  sources:
+  - graph
+- path: src/Components/Server/src/Circuits/CircuitHost.cs
+  sources:
+  - bm25
+- path: src/Components/Server/src/Circuits/RemoteNavigationManager.cs
+  sources:
+  - bm25
+- path: src/Components/Web/src/JSComponents/JSComponentInterop.cs
+  sources:
+  - bm25
+- path: src/Components/Web/src/PublicAPI.Shipped.txt
+  sources:
+  - bm25
+- path: src/Components/WebAssembly/Server/src/ContentEncodingNegotiator.cs
+  sources:
+  - random
+- path: src/Components/WebAssembly/WebAssembly.Authentication/src/Models/InteractiveRequestOptions.cs
+  sources:
+  - bm25
+  - graph
+- path: src/Components/WebAssembly/WebAssembly.Authentication/src/Models/RemoteAuthenticationActions.cs
+  sources:
+  - graph
+- path: src/Components/WebAssembly/WebAssembly.Authentication/src/Models/RemoteUserAccount.cs
+  sources:
+  - graph
+- path: src/Components/WebAssembly/WebAssembly.Authentication/src/NavigationManagerExtensions.cs
+  sources:
+  - graph
+- path: src/Components/WebAssembly/WebAssembly.Authentication/src/Options/RemoteAuthenticationApplicationPathsOptions.cs
+  sources:
+  - graph
+- path: src/Components/WebAssembly/WebAssembly.Authentication/src/PublicAPI.Shipped.txt
+  sources:
+  - bm25
+- path: src/Components/WebAssembly/WebAssembly.Authentication/src/RemoteAuthenticatorViewCore.Log.cs
+  sources:
+  - graph
+- path: src/Components/WebAssembly/WebAssembly.Authentication/test/RemoteAuthenticationServiceTests.cs
+  sources:
+  - bm25
+  - graph
+- path: src/Components/WebAssembly/WebAssembly/src/Hosting/WebAssemblyHostBuilder.cs
+  sources:
+  - bm25
+- path: src/Components/WebAssembly/WebAssembly/src/Http/WebAssemblyHttpRequestMessageExtensions.cs
+  sources:
+  - random
+- path: src/Components/WebAssembly/WebAssembly/src/Rendering/WebAssemblyRenderer.cs
+  sources:
+  - bm25
+- path: src/Components/WebAssembly/WebAssembly/src/Services/DefaultWebAssemblyJSRuntime.cs
+  sources:
+  - bm25
+- path: src/Components/WebView/WebView/src/WebViewManager.cs
+  sources:
+  - bm25
+- path: src/JSInterop/Microsoft.JSInterop.JS/src/.eslintrc.json
+  sources:
+  - graph
+- path: src/JSInterop/Microsoft.JSInterop.JS/src/package.json
+  sources:
+  - graph
+- path: src/JSInterop/Microsoft.JSInterop/src/IJSObjectReference.cs
+  sources:
+  - graph
+- path: src/JSInterop/Microsoft.JSInterop/src/IJSRuntime.cs
+  sources:
+  - graph
+- path: src/JSInterop/Microsoft.JSInterop/src/Infrastructure/DotNetDispatcher.cs
+  sources:
+  - bm25
+- path: src/JSInterop/Microsoft.JSInterop/src/JSRuntime.cs
+  sources:
+  - bm25
+- path: src/JSInterop/Microsoft.JSInterop/test/Infrastructure/DotNetObjectReferenceJsonConverterTest.cs
+  sources:
+  - graph
+- path: src/Mvc/Mvc.Razor.RuntimeCompilation/test/DependencyInjection/RazorRuntimeCompilationMvcCoreBuilderExtensionsTest.cs
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/RazorPagesWebSite/Pages/Antiforgery/AntiforgeryDefault.cshtml.cs
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/RoutingWebSite/StartupForGroups.cs
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ItemTemplates/content/ViewImports/.template.config/localize/templatestrings.fr.json
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ProjectTemplates/content/Worker-FSharp/.template.config/localize/templatestrings.pl.json
+  sources:
+  - random
+- path: src/Razor/.vscode/launch.json
+  sources:
+  - random
+- path: src/Validation/test/Microsoft.Extensions.Validation.NativeAotTests/BasicMinimalApiWithValidation.cs
+  sources:
+  - graph
+- path: src/Validation/test/Microsoft.Extensions.Validation.Tests/ValidatableTypeInfoTests.cs
+  sources:
+  - graph

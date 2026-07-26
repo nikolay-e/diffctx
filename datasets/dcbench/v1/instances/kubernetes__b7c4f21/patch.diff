@@ -1,0 +1,708 @@
+From b7c4f21d411fa0eddf400e305bc8c1a12e2fcdee Mon Sep 17 00:00:00 2001
+From: Lalit Chauhan <lalitchauhan@google.com>
+Date: Mon, 5 Jan 2026 21:10:57 +0000
+Subject: [PATCH] promote MutatingAdmissionPolicy to v1: api wiring and
+ validation
+
+- Register v1 MutatingAdmissionPolicy and Binding in apiserver storage.
+- Add defaults and validation for v1 types.
+- Update storage version hash data.
+- Add API testdata.
+---
+ pkg/api/testing/defaulting_test.go            |  25 +++
+ pkg/apis/admissionregistration/v1/defaults.go |   8 +
+ .../v1/zz_generated.defaults.go               |   1 +
+ .../validation/validation.go                  |  10 +-
+ .../storageversionhashdata/data.go            |   2 +
+ .../rest/storage_apiserver.go                 |  19 +++
+ ...ion.k8s.io.v1.MutatingAdmissionPolicy.json | 148 ++++++++++++++++++
+ ...ation.k8s.io.v1.MutatingAdmissionPolicy.pb | Bin 0 -> 1007 bytes
+ ...ion.k8s.io.v1.MutatingAdmissionPolicy.yaml |  94 +++++++++++
+ ....io.v1.MutatingAdmissionPolicyBinding.json | 139 ++++++++++++++++
+ ...8s.io.v1.MutatingAdmissionPolicyBinding.pb | Bin 0 -> 978 bytes
+ ....io.v1.MutatingAdmissionPolicyBinding.yaml |  90 +++++++++++
+ 12 files changed, 531 insertions(+), 5 deletions(-)
+ create mode 100644 staging/src/k8s.io/api/testdata/HEAD/admissionregistration.k8s.io.v1.MutatingAdmissionPolicy.json
+ create mode 100644 staging/src/k8s.io/api/testdata/HEAD/admissionregistration.k8s.io.v1.MutatingAdmissionPolicy.pb
+ create mode 100644 staging/src/k8s.io/api/testdata/HEAD/admissionregistration.k8s.io.v1.MutatingAdmissionPolicy.yaml
+ create mode 100644 staging/src/k8s.io/api/testdata/HEAD/admissionregistration.k8s.io.v1.MutatingAdmissionPolicyBinding.json
+ create mode 100644 staging/src/k8s.io/api/testdata/HEAD/admissionregistration.k8s.io.v1.MutatingAdmissionPolicyBinding.pb
+ create mode 100644 staging/src/k8s.io/api/testdata/HEAD/admissionregistration.k8s.io.v1.MutatingAdmissionPolicyBinding.yaml
+
+diff --git a/pkg/api/testing/defaulting_test.go b/pkg/api/testing/defaulting_test.go
+index 6805a5c76b..07dd20e2b9 100644
+--- a/pkg/api/testing/defaulting_test.go
++++ b/pkg/api/testing/defaulting_test.go
+@@ -25,6 +25,7 @@ import (
+ 	"github.com/google/go-cmp/cmp"
+ 	"sigs.k8s.io/randfill"
+ 
++	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
+ 	apiv1 "k8s.io/api/core/v1"
+ 	extensionsv1beta1 "k8s.io/api/extensions/v1beta1"
+ 	"k8s.io/apimachinery/pkg/api/apitesting/roundtrip"
+@@ -191,6 +192,10 @@ func TestDefaulting(t *testing.T) {
+ 		{Group: "admissionregistration.k8s.io", Version: "v1", Kind: "ValidatingWebhookConfigurationList"}:         {},
+ 		{Group: "admissionregistration.k8s.io", Version: "v1", Kind: "MutatingWebhookConfiguration"}:               {},
+ 		{Group: "admissionregistration.k8s.io", Version: "v1", Kind: "MutatingWebhookConfigurationList"}:           {},
++		{Group: "admissionregistration.k8s.io", Version: "v1", Kind: "MutatingAdmissionPolicy"}:                    {},
++		{Group: "admissionregistration.k8s.io", Version: "v1", Kind: "MutatingAdmissionPolicyBinding"}:             {},
++		{Group: "admissionregistration.k8s.io", Version: "v1", Kind: "MutatingAdmissionPolicyBindingList"}:         {},
++		{Group: "admissionregistration.k8s.io", Version: "v1", Kind: "MutatingAdmissionPolicyList"}:                {},
+ 		{Group: "networking.k8s.io", Version: "v1", Kind: "NetworkPolicy"}:                                         {},
+ 		{Group: "networking.k8s.io", Version: "v1", Kind: "NetworkPolicyList"}:                                     {},
+ 		{Group: "networking.k8s.io", Version: "v1beta1", Kind: "Ingress"}:                                          {},
+@@ -259,6 +264,26 @@ func TestDefaulting(t *testing.T) {
+ 					c.FillNoCustom(s)
+ 					s.TargetSelector = "" // need to fuzz requirement strings specially
+ 				},
++				// Custom fuzzer functions for admissionregistration.k8s.io/v1 types
++				func(s *admissionregistrationv1.MutatingAdmissionPolicySpec, c randfill.Continue) {
++					c.FillNoCustom(s)
++					s.FailurePolicy = nil     // Ensure FailurePolicy is nil to trigger defaulting
++					s.ReinvocationPolicy = "" // Ensure ReinvocationPolicy is empty to trigger defaulting
++				},
++				func(s *admissionregistrationv1.ValidatingAdmissionPolicySpec, c randfill.Continue) {
++					c.FillNoCustom(s)
++					s.FailurePolicy = nil // Ensure FailurePolicy is nil to trigger defaulting
++				},
++				func(s *admissionregistrationv1.MatchResources, c randfill.Continue) {
++					c.FillNoCustom(s)
++					s.MatchPolicy = nil       // Ensure MatchPolicy is nil to trigger defaulting
++					s.NamespaceSelector = nil // Ensure NamespaceSelector is nil to trigger defaulting
++					s.ObjectSelector = nil    // Ensure ObjectSelector is nil to trigger defaulting
++				},
++				func(s *admissionregistrationv1.Rule, c randfill.Continue) {
++					c.FillNoCustom(s)
++					s.Scope = nil // Ensure Scope is nil to trigger defaulting
++				},
+ 			)
+ 
+ 			_, expectedChanged := typesWithDefaulting[gvk]
+diff --git a/pkg/apis/admissionregistration/v1/defaults.go b/pkg/apis/admissionregistration/v1/defaults.go
+index a09ce6a2b8..654c2d38dc 100644
+--- a/pkg/apis/admissionregistration/v1/defaults.go
++++ b/pkg/apis/admissionregistration/v1/defaults.go
+@@ -117,3 +117,11 @@ func SetDefaults_MatchResources(obj *admissionregistrationv1.MatchResources) {
+ 		obj.ObjectSelector = &selector
+ 	}
+ }
++
++// SetDefaults_MutatingAdmissionPolicySpec sets defaults for MutatingAdmissionPolicySpec
++func SetDefaults_MutatingAdmissionPolicySpec(obj *admissionregistrationv1.MutatingAdmissionPolicySpec) {
++	if obj.FailurePolicy == nil {
++		policy := admissionregistrationv1.Fail
++		obj.FailurePolicy = &policy
++	}
++}
+diff --git a/pkg/apis/admissionregistration/v1/zz_generated.defaults.go b/pkg/apis/admissionregistration/v1/zz_generated.defaults.go
+index 95ecb1190c..a2856fad64 100644
+--- a/pkg/apis/admissionregistration/v1/zz_generated.defaults.go
++++ b/pkg/apis/admissionregistration/v1/zz_generated.defaults.go
+@@ -70,6 +70,7 @@ func RegisterDefaults(scheme *runtime.Scheme) error {
+ }
+ 
+ func SetObjectDefaults_MutatingAdmissionPolicy(in *admissionregistrationv1.MutatingAdmissionPolicy) {
++	SetDefaults_MutatingAdmissionPolicySpec(&in.Spec)
+ 	if in.Spec.MatchConstraints != nil {
+ 		SetDefaults_MatchResources(in.Spec.MatchConstraints)
+ 		for i := range in.Spec.MatchConstraints.ResourceRules {
+diff --git a/pkg/apis/admissionregistration/validation/validation.go b/pkg/apis/admissionregistration/validation/validation.go
+index 80f71ed85c..4c9179f7c0 100644
+--- a/pkg/apis/admissionregistration/validation/validation.go
++++ b/pkg/apis/admissionregistration/validation/validation.go
+@@ -328,12 +328,12 @@ func findMutatingPolicyPreexistingExpressions(mutatingPolicy *admissionregistrat
+ 	for _, mc := range mutatingPolicy.Spec.MatchConditions {
+ 		preexisting.matchConditionExpressions.Insert(mc.Expression)
+ 	}
+-	for _, v := range mutatingPolicy.Spec.Mutations {
+-		if v.ApplyConfiguration != nil {
+-			preexisting.applyConfigurationExpressions.Insert(v.ApplyConfiguration.Expression)
++	for _, m := range mutatingPolicy.Spec.Mutations {
++		if m.ApplyConfiguration != nil {
++			preexisting.applyConfigurationExpressions.Insert(m.ApplyConfiguration.Expression)
+ 		}
+-		if v.JSONPatch != nil {
+-			preexisting.jsonPatchExpressions.Insert(v.JSONPatch.Expression)
++		if m.JSONPatch != nil {
++			preexisting.jsonPatchExpressions.Insert(m.JSONPatch.Expression)
+ 		}
+ 	}
+ 	return preexisting
+diff --git a/pkg/controlplane/storageversionhashdata/data.go b/pkg/controlplane/storageversionhashdata/data.go
+index 7107460e0e..b2f6a88a8c 100644
+--- a/pkg/controlplane/storageversionhashdata/data.go
++++ b/pkg/controlplane/storageversionhashdata/data.go
+@@ -88,6 +88,8 @@ var GVRToStorageVersionHash = map[string]string{
+ 	"apps/v1/statefulsets":                                              "H+vl74LkKdo=",
+ 	"admissionregistration.k8s.io/v1/mutatingwebhookconfigurations":     "Sqi0GUgDaX0=",
+ 	"admissionregistration.k8s.io/v1/validatingwebhookconfigurations":   "B0wHjQmsGNk=",
++	"admissionregistration.k8s.io/v1/mutatingadmissionpolicies":         "LYmCf+UMVdg=",
++	"admissionregistration.k8s.io/v1/mutatingadmissionpolicybindings":   "90V5FRZZ3Zg=",
+ 	"admissionregistration.k8s.io/v1/validatingadmissionpolicies":       "6OxvlMmQ6is=",
+ 	"admissionregistration.k8s.io/v1/validatingadmissionpolicybindings": "v9715VZqakg=",
+ 	"events.k8s.io/v1/events":                                           "r2yiGXH7wu8=",
+diff --git a/pkg/registry/admissionregistration/rest/storage_apiserver.go b/pkg/registry/admissionregistration/rest/storage_apiserver.go
+index 4d46bd99f4..4e606283fe 100644
+--- a/pkg/registry/admissionregistration/rest/storage_apiserver.go
++++ b/pkg/registry/admissionregistration/rest/storage_apiserver.go
+@@ -116,6 +116,25 @@ func (p RESTStorageProvider) v1Storage(apiResourceConfigSource serverstorage.API
+ 		storage[resource] = policyBindingStorage
+ 	}
+ 
++	// mutatingadmissionpolicies
++	if resource := "mutatingadmissionpolicies"; apiResourceConfigSource.ResourceEnabled(admissionregistrationv1.SchemeGroupVersion.WithResource(resource)) {
++		policyStorage, err := mutatingadmissionpolicystorage.NewREST(restOptionsGetter, p.Authorizer, r)
++		if err != nil {
++			return storage, err
++		}
++		policyGetter = policyStorage
++		storage[resource] = policyStorage
++	}
++
++	// mutatingadmissionpolicybindings
++	if resource := "mutatingadmissionpolicybindings"; apiResourceConfigSource.ResourceEnabled(admissionregistrationv1.SchemeGroupVersion.WithResource(resource)) {
++		mutationpolicybindingstorage, err := mutationpolicybindingstorage.NewREST(restOptionsGetter, p.Authorizer, &mutationpolicybindingstorage.DefaultPolicyGetter{Getter: policyGetter}, r)
++		if err != nil {
++			return storage, err
++		}
++		storage[resource] = mutationpolicybindingstorage
++	}
++
+ 	return storage, nil
+ }
+ 
+diff --git a/staging/src/k8s.io/api/testdata/HEAD/admissionregistration.k8s.io.v1.MutatingAdmissionPolicy.json b/staging/src/k8s.io/api/testdata/HEAD/admissionregistration.k8s.io.v1.MutatingAdmissionPolicy.json
+new file mode 100644
+index 0000000000..d2e197e1f8
+--- /dev/null
++++ b/staging/src/k8s.io/api/testdata/HEAD/admissionregistration.k8s.io.v1.MutatingAdmissionPolicy.json
+@@ -0,0 +1,148 @@
++{
++  "kind": "MutatingAdmissionPolicy",
++  "apiVersion": "admissionregistration.k8s.io/v1",
++  "metadata": {
++    "name": "nameValue",
++    "generateName": "generateNameValue",
++    "namespace": "namespaceValue",
++    "selfLink": "selfLinkValue",
++    "uid": "uidValue",
++    "resourceVersion": "resourceVersionValue",
++    "generation": 7,
++    "creationTimestamp": "2008-01-01T01:01:01Z",
++    "deletionTimestamp": "2009-01-01T01:01:01Z",
++    "deletionGracePeriodSeconds": 10,
++    "labels": {
++      "labelsKey": "labelsValue"
++    },
++    "annotations": {
++      "annotationsKey": "annotationsValue"
++    },
++    "ownerReferences": [
++      {
++        "apiVersion": "apiVersionValue",
++        "kind": "kindValue",
++        "name": "nameValue",
++        "uid": "uidValue",
++        "controller": true,
++        "blockOwnerDeletion": true
++      }
++    ],
++    "finalizers": [
++      "finalizersValue"
++    ],
++    "managedFields": [
++      {
++        "manager": "managerValue",
++        "operation": "operationValue",
++        "apiVersion": "apiVersionValue",
++        "time": "2004-01-01T01:01:01Z",
++        "fieldsType": "fieldsTypeValue",
++        "fieldsV1": {},
++        "subresource": "subresourceValue"
++      }
++    ]
++  },
++  "spec": {
++    "paramKind": {
++      "apiVersion": "apiVersionValue",
++      "kind": "kindValue"
++    },
++    "matchConstraints": {
++      "namespaceSelector": {
++        "matchLabels": {
++          "matchLabelsKey": "matchLabelsValue"
++        },
++        "matchExpressions": [
++          {
++            "key": "keyValue",
++            "operator": "operatorValue",
++            "values": [
++              "valuesValue"
++            ]
++          }
++        ]
++      },
++      "objectSelector": {
++        "matchLabels": {
++          "matchLabelsKey": "matchLabelsValue"
++        },
++        "matchExpressions": [
++          {
++            "key": "keyValue",
++            "operator": "operatorValue",
++            "values": [
++              "valuesValue"
++            ]
++          }
++        ]
++      },
++      "resourceRules": [
++        {
++          "resourceNames": [
++            "resourceNamesValue"
++          ],
++          "operations": [
++            "operationsValue"
++          ],
++          "apiGroups": [
++            "apiGroupsValue"
++          ],
++          "apiVersions": [
++            "apiVersionsValue"
++          ],
++          "resources": [
++            "resourcesValue"
++          ],
++          "scope": "scopeValue"
++        }
++      ],
++      "excludeResourceRules": [
++        {
++          "resourceNames": [
++            "resourceNamesValue"
++          ],
++          "operations": [
++            "operationsValue"
++          ],
++          "apiGroups": [
++            "apiGroupsValue"
++          ],
++          "apiVersions": [
++            "apiVersionsValue"
++          ],
++          "resources": [
++            "resourcesValue"
++          ],
++          "scope": "scopeValue"
++        }
++      ],
++      "matchPolicy": "matchPolicyValue"
++    },
++    "variables": [
++      {
++        "name": "nameValue",
++        "expression": "expressionValue"
++      }
++    ],
++    "mutations": [
++      {
++        "patchType": "patchTypeValue",
++        "applyConfiguration": {
++          "expression": "expressionValue"
++        },
++        "jsonPatch": {
++          "expression": "expressionValue"
++        }
++      }
++    ],
++    "failurePolicy": "failurePolicyValue",
++    "matchConditions": [
++      {
++        "name": "nameValue",
++        "expression": "expressionValue"
++      }
++    ],
++    "reinvocationPolicy": "reinvocationPolicyValue"
++  }
++}
+\ No newline at end of file
+diff --git a/staging/src/k8s.io/api/testdata/HEAD/admissionregistration.k8s.io.v1.MutatingAdmissionPolicy.pb b/staging/src/k8s.io/api/testdata/HEAD/admissionregistration.k8s.io.v1.MutatingAdmissionPolicy.pb
+new file mode 100644
+index 0000000000000000000000000000000000000000..652aec03b03de8a2f6835273c598a62ecf73f5b5
+GIT binary patch
+literal 1007
+zcmcgrL2DC16yCIfCa-q09fZnIDD1&Q4pjq6$U(4|f{oHb@!)N;d0EHZ%q%n6U=+b~
+z|3z;Fe}XrUh5iTWp=bYrot?>UmKHpTw>RIs_rC9YZzkz$4+gNu##62}mqKC8^-Qsu
+ziT9Jf-skek{2AGKlg|t$;#Xzju}pciAQv0(YYp0hP4OK|b0pg_3N-cjwuGo(-0F-)
+zE+yR3m`;XVB(|d4%K6wvy@v|5%$3PQRfw@@f8(Ilx;nr4(G0xTCi?#S(nQDb{t>iO
+zHo{aN;eu?s&{m8>@R<;@P%MSL4r*tc^YJ;f6D}MvUFi=iHQf%&cwNZTM!%st6E0ZF
+zKO2Fz&sk#x52j487?lNxFSEjbDWBeL6B-ZKSAW(6uV<QJI@YI)%uQy{gtaeU4+5Q!
+zs!7<P{%pc7+-*cw2FSN{7=p1qWwYqRu$oFxJ3Docp_Smm#am9Pbi(Q8yx?-S$Up5y
+zV<4rW;#n*?PM}lGY6-nGo6Gp2l6kg7g4GrrLjAIpJBOen)5cl~{}<7~P1bz^OHFs{
+zzo3JkG9$Bk#Ni9#XT@%+UDIv2mvkTMk_qE!uCT_``zzC6M<Ew;8QCXTE2CcM-2&(p
+BVhI2M
+
+literal 0
+HcmV?d00001
+
+diff --git a/staging/src/k8s.io/api/testdata/HEAD/admissionregistration.k8s.io.v1.MutatingAdmissionPolicy.yaml b/staging/src/k8s.io/api/testdata/HEAD/admissionregistration.k8s.io.v1.MutatingAdmissionPolicy.yaml
+new file mode 100644
+index 0000000000..cb2f5d21dc
+--- /dev/null
++++ b/staging/src/k8s.io/api/testdata/HEAD/admissionregistration.k8s.io.v1.MutatingAdmissionPolicy.yaml
+@@ -0,0 +1,94 @@
++apiVersion: admissionregistration.k8s.io/v1
++kind: MutatingAdmissionPolicy
++metadata:
++  annotations:
++    annotationsKey: annotationsValue
++  creationTimestamp: "2008-01-01T01:01:01Z"
++  deletionGracePeriodSeconds: 10
++  deletionTimestamp: "2009-01-01T01:01:01Z"
++  finalizers:
++  - finalizersValue
++  generateName: generateNameValue
++  generation: 7
++  labels:
++    labelsKey: labelsValue
++  managedFields:
++  - apiVersion: apiVersionValue
++    fieldsType: fieldsTypeValue
++    fieldsV1: {}
++    manager: managerValue
++    operation: operationValue
++    subresource: subresourceValue
++    time: "2004-01-01T01:01:01Z"
++  name: nameValue
++  namespace: namespaceValue
++  ownerReferences:
++  - apiVersion: apiVersionValue
++    blockOwnerDeletion: true
++    controller: true
++    kind: kindValue
++    name: nameValue
++    uid: uidValue
++  resourceVersion: resourceVersionValue
++  selfLink: selfLinkValue
++  uid: uidValue
++spec:
++  failurePolicy: failurePolicyValue
++  matchConditions:
++  - expression: expressionValue
++    name: nameValue
++  matchConstraints:
++    excludeResourceRules:
++    - apiGroups:
++      - apiGroupsValue
++      apiVersions:
++      - apiVersionsValue
++      operations:
++      - operationsValue
++      resourceNames:
++      - resourceNamesValue
++      resources:
++      - resourcesValue
++      scope: scopeValue
++    matchPolicy: matchPolicyValue
++    namespaceSelector:
++      matchExpressions:
++      - key: keyValue
++        operator: operatorValue
++        values:
++        - valuesValue
++      matchLabels:
++        matchLabelsKey: matchLabelsValue
++    objectSelector:
++      matchExpressions:
++      - key: keyValue
++        operator: operatorValue
++        values:
++        - valuesValue
++      matchLabels:
++        matchLabelsKey: matchLabelsValue
++    resourceRules:
++    - apiGroups:
++      - apiGroupsValue
++      apiVersions:
++      - apiVersionsValue
++      operations:
++      - operationsValue
++      resourceNames:
++      - resourceNamesValue
++      resources:
++      - resourcesValue
++      scope: scopeValue
++  mutations:
++  - applyConfiguration:
++      expression: expressionValue
++    jsonPatch:
++      expression: expressionValue
++    patchType: patchTypeValue
++  paramKind:
++    apiVersion: apiVersionValue
++    kind: kindValue
++  reinvocationPolicy: reinvocationPolicyValue
++  variables:
++  - expression: expressionValue
++    name: nameValue
+diff --git a/staging/src/k8s.io/api/testdata/HEAD/admissionregistration.k8s.io.v1.MutatingAdmissionPolicyBinding.json b/staging/src/k8s.io/api/testdata/HEAD/admissionregistration.k8s.io.v1.MutatingAdmissionPolicyBinding.json
+new file mode 100644
+index 0000000000..3b6f00923a
+--- /dev/null
++++ b/staging/src/k8s.io/api/testdata/HEAD/admissionregistration.k8s.io.v1.MutatingAdmissionPolicyBinding.json
+@@ -0,0 +1,139 @@
++{
++  "kind": "MutatingAdmissionPolicyBinding",
++  "apiVersion": "admissionregistration.k8s.io/v1",
++  "metadata": {
++    "name": "nameValue",
++    "generateName": "generateNameValue",
++    "namespace": "namespaceValue",
++    "selfLink": "selfLinkValue",
++    "uid": "uidValue",
++    "resourceVersion": "resourceVersionValue",
++    "generation": 7,
++    "creationTimestamp": "2008-01-01T01:01:01Z",
++    "deletionTimestamp": "2009-01-01T01:01:01Z",
++    "deletionGracePeriodSeconds": 10,
++    "labels": {
++      "labelsKey": "labelsValue"
++    },
++    "annotations": {
++      "annotationsKey": "annotationsValue"
++    },
++    "ownerReferences": [
++      {
++        "apiVersion": "apiVersionValue",
++        "kind": "kindValue",
++        "name": "nameValue",
++        "uid": "uidValue",
++        "controller": true,
++        "blockOwnerDeletion": true
++      }
++    ],
++    "finalizers": [
++      "finalizersValue"
++    ],
++    "managedFields": [
++      {
++        "manager": "managerValue",
++        "operation": "operationValue",
++        "apiVersion": "apiVersionValue",
++        "time": "2004-01-01T01:01:01Z",
++        "fieldsType": "fieldsTypeValue",
++        "fieldsV1": {},
++        "subresource": "subresourceValue"
++      }
++    ]
++  },
++  "spec": {
++    "policyName": "policyNameValue",
++    "paramRef": {
++      "name": "nameValue",
++      "namespace": "namespaceValue",
++      "selector": {
++        "matchLabels": {
++          "matchLabelsKey": "matchLabelsValue"
++        },
++        "matchExpressions": [
++          {
++            "key": "keyValue",
++            "operator": "operatorValue",
++            "values": [
++              "valuesValue"
++            ]
++          }
++        ]
++      },
++      "parameterNotFoundAction": "parameterNotFoundActionValue"
++    },
++    "matchResources": {
++      "namespaceSelector": {
++        "matchLabels": {
++          "matchLabelsKey": "matchLabelsValue"
++        },
++        "matchExpressions": [
++          {
++            "key": "keyValue",
++            "operator": "operatorValue",
++            "values": [
++              "valuesValue"
++            ]
++          }
++        ]
++      },
++      "objectSelector": {
++        "matchLabels": {
++          "matchLabelsKey": "matchLabelsValue"
++        },
++        "matchExpressions": [
++          {
++            "key": "keyValue",
++            "operator": "operatorValue",
++            "values": [
++              "valuesValue"
++            ]
++          }
++        ]
++      },
++      "resourceRules": [
++        {
++          "resourceNames": [
++            "resourceNamesValue"
++          ],
++          "operations": [
++            "operationsValue"
++          ],
++          "apiGroups": [
++            "apiGroupsValue"
++          ],
++          "apiVersions": [
++            "apiVersionsValue"
++          ],
++          "resources": [
++            "resourcesValue"
++          ],
++          "scope": "scopeValue"
++        }
++      ],
++      "excludeResourceRules": [
++        {
++          "resourceNames": [
++            "resourceNamesValue"
++          ],
++          "operations": [
++            "operationsValue"
++          ],
++          "apiGroups": [
++            "apiGroupsValue"
++          ],
++          "apiVersions": [
++            "apiVersionsValue"
++          ],
++          "resources": [
++            "resourcesValue"
++          ],
++          "scope": "scopeValue"
++        }
++      ],
++      "matchPolicy": "matchPolicyValue"
++    }
++  }
++}
+\ No newline at end of file
+diff --git a/staging/src/k8s.io/api/testdata/HEAD/admissionregistration.k8s.io.v1.MutatingAdmissionPolicyBinding.pb b/staging/src/k8s.io/api/testdata/HEAD/admissionregistration.k8s.io.v1.MutatingAdmissionPolicyBinding.pb
+new file mode 100644
+index 0000000000000000000000000000000000000000..ce7ef517c3e61dbcb7142a4a36564e0a2edf3f62
+GIT binary patch
+literal 978
+zcmcgr%}N6?5Z-FRcB<_fJjfynd+^}FKM;xsp*<*QEehhnTe=(9xZ7k&c7-Z}2SM;5
+z1kXN#Zy@*%;=!|TpxMOT7SG~s=F4Q}`@TuSrnI013)t^dDJf@y1XLyhCn{bJn{t`*
+zm5Vhrzn>-wV?iq~Jm3-a25riGg`(RDcpHN%!+mm$qm-cOfH0!kkZuk+_3Tu}*fS;W
+zlqAt<hq6%LSgNGd*U|cnAd;s-)e(_#(r9y{U8%f2ems|LYga{2pD!vpfRkCMMz}{J
+zxkm=5W<q_V=RzGb#xvra>0^5&*EQ!GPz{v^oj61OZoy`$fnz#KWVO^RiN+~qIHH$|
+zpuT!v>cM0mGaL}10aWL4ra!0e{BGka4ezgC<F>V~nvuwtM}ycnvss3*tLwHc(_Z0(
+zHua$ljad6$xQgydqqhI@*y(^Wp^p>qtW$VokK~5yB2+>$F!7Y(&5aDFc9BgsBHg(d
+z3$??9h%QgIdCL5jH&l2t4u3ih{b@HR0F=9#xo0GyLueF>`hm98vx(`B;A#AW*uy7a
+e5T~BEGPw)VQ*E?^?tcy1G>bGJQIB>k*ZKxAx>rO1
+
+literal 0
+HcmV?d00001
+
+diff --git a/staging/src/k8s.io/api/testdata/HEAD/admissionregistration.k8s.io.v1.MutatingAdmissionPolicyBinding.yaml b/staging/src/k8s.io/api/testdata/HEAD/admissionregistration.k8s.io.v1.MutatingAdmissionPolicyBinding.yaml
+new file mode 100644
+index 0000000000..4f73500804
+--- /dev/null
++++ b/staging/src/k8s.io/api/testdata/HEAD/admissionregistration.k8s.io.v1.MutatingAdmissionPolicyBinding.yaml
+@@ -0,0 +1,90 @@
++apiVersion: admissionregistration.k8s.io/v1
++kind: MutatingAdmissionPolicyBinding
++metadata:
++  annotations:
++    annotationsKey: annotationsValue
++  creationTimestamp: "2008-01-01T01:01:01Z"
++  deletionGracePeriodSeconds: 10
++  deletionTimestamp: "2009-01-01T01:01:01Z"
++  finalizers:
++  - finalizersValue
++  generateName: generateNameValue
++  generation: 7
++  labels:
++    labelsKey: labelsValue
++  managedFields:
++  - apiVersion: apiVersionValue
++    fieldsType: fieldsTypeValue
++    fieldsV1: {}
++    manager: managerValue
++    operation: operationValue
++    subresource: subresourceValue
++    time: "2004-01-01T01:01:01Z"
++  name: nameValue
++  namespace: namespaceValue
++  ownerReferences:
++  - apiVersion: apiVersionValue
++    blockOwnerDeletion: true
++    controller: true
++    kind: kindValue
++    name: nameValue
++    uid: uidValue
++  resourceVersion: resourceVersionValue
++  selfLink: selfLinkValue
++  uid: uidValue
++spec:
++  matchResources:
++    excludeResourceRules:
++    - apiGroups:
++      - apiGroupsValue
++      apiVersions:
++      - apiVersionsValue
++      operations:
++      - operationsValue
++      resourceNames:
++      - resourceNamesValue
++      resources:
++      - resourcesValue
++      scope: scopeValue
++    matchPolicy: matchPolicyValue
++    namespaceSelector:
++      matchExpressions:
++      - key: keyValue
++        operator: operatorValue
++        values:
++        - valuesValue
++      matchLabels:
++        matchLabelsKey: matchLabelsValue
++    objectSelector:
++      matchExpressions:
++      - key: keyValue
++        operator: operatorValue
++        values:
++        - valuesValue
++      matchLabels:
++        matchLabelsKey: matchLabelsValue
++    resourceRules:
++    - apiGroups:
++      - apiGroupsValue
++      apiVersions:
++      - apiVersionsValue
++      operations:
++      - operationsValue
++      resourceNames:
++      - resourceNamesValue
++      resources:
++      - resourcesValue
++      scope: scopeValue
++  paramRef:
++    name: nameValue
++    namespace: namespaceValue
++    parameterNotFoundAction: parameterNotFoundActionValue
++    selector:
++      matchExpressions:
++      - key: keyValue
++        operator: operatorValue
++        values:
++        - valuesValue
++      matchLabels:
++        matchLabelsKey: matchLabelsValue
++  policyName: policyNameValue

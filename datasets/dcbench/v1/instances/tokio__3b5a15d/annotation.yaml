@@ -1,0 +1,59 @@
+repo: tokio
+base_commit: 2af3e4430a8c546d5273e0bac669fd6696431e89
+commit: 3b5a15dfdfc5dc789dcb80cef0986fb2fa5cac0a
+patch_stored: true
+gold:
+  - path: tokio/Cargo.toml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: 'introduces the new `io-uring = ["dep:io-uring", "libc", "mio/os-poll", "mio/os-ext", "dep:slab"]` Cargo feature and makes those four target-cfg dependencies `optional = true`, replacing the old `cfg(all(tokio_uring, target_os = "linux"))` unconditional dependency block.'
+  - path: tokio/src/macros/cfg.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'every `tokio_uring` predicate across cfg_io_driver!/cfg_io_driver_impl!/cfg_not_io_driver!/cfg_net_or_uring! is replaced with `all(tokio_unstable, feature = "io-uring")`, and macro `cfg_tokio_uring!` is renamed to `cfg_io_uring!` — the central definition every call site keys off.'
+  - path: tokio/src/fs/open_options.rs
+    tier: essential
+    role: cochange
+    in_diff: true
+    rationale: 'primary consumer: replaces `cfg_tokio_uring!` with `cfg_io_uring!` and every `#[cfg(all(tokio_uring, ...))]` attribute with the expanded `tokio_unstable, feature = "io-uring"` form to gate the Uring(UringOpenOptions) variant.'
+  - path: tokio/src/fs/mod.rs
+    tier: essential
+    role: cochange
+    in_diff: true
+    rationale: '`cfg_tokio_uring! { pub(crate) use self::open_options::UringOpenOptions; }` renamed to `cfg_io_uring!`, matching the macro rename in macros/cfg.rs.'
+  - path: tokio/src/runtime/io/mod.rs
+    tier: essential
+    role: cochange
+    in_diff: true
+    rationale: io-uring-gated driver plumbing updated from the `tokio_uring` cfg predicate to the new `feature = "io-uring"` Cargo-feature form.
+  - path: Cargo.toml
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: 'workspace lint config drops the now-unused `cfg(tokio_uring)` entry from `unexpected_cfgs` since the flag is replaced by a real Cargo feature.'
+  - path: tokio/src/runtime/builder.rs
+    tier: helpful
+    role: cochange
+    in_diff: true
+    rationale: io-uring-related Builder options are re-gated behind `feature = "io-uring"` instead of the removed `tokio_uring` cfg flag.
+forbidden:
+  - path: .github/workflows/ci.yml
+    reason: CI job env vars updated mechanically to pass `--features io-uring` instead of `--cfg tokio_uring`; not needed to understand the feature-flag design
+  - path: .github/workflows/uring-kernel-version-test.yml
+    reason: CI matrix file, only touched for the same mechanical `RUSTFLAGS`/feature-name substitution as ci.yml
+  - path: tokio/tests/fs_uring.rs
+    reason: covering test updated only to add `--cfg tokio_unstable --features io-uring` build attributes, not informative about the flag redesign itself
+  - path: tokio/src/io/mod.rs
+    reason: touched only for a mechanical cfg-predicate substitution identical in shape to fs/open_options.rs, not independently informative
+nontrivial_gold_count: 0
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 14
+  description: 'fs: use Cargo feature for io-uring support instead of cfg — feature-flag restructure,
+    Cargo.toml + cfg macros + runtime driver coupling'
+notes: 'Replaces the ad hoc `--cfg tokio_uring` RUSTFLAGS convention with a proper (still unstable, tokio_unstable-gated) Cargo feature `io-uring`, so `cargo add tokio --features io-uring` works instead of requiring out-of-band RUSTFLAGS. The rename touches every cfg predicate and the `cfg_tokio_uring!` -> `cfg_io_uring!` macro rename in macros/cfg.rs, which is the hub every other touched file keys off; all needed context is within the diff.'

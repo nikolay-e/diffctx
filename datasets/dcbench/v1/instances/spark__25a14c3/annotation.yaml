@@ -1,0 +1,79 @@
+repo: spark
+base_commit: 3a9185964a0de3c720a6b77d38a446258b73468e
+commit: 25a14c313bfd9e18a0ea06a8a521ee28878c2045
+patch_stored: true
+gold:
+  - path: sql/core/src/main/scala/org/apache/spark/sql/functions.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds classic-API `dateadd`/`date_diff`/`day` as thin delegations to the pre-existing `date_add`/`datediff`/`dayofmonth` (e.g. `def dateadd(start, days) = date_add(start, days)`) and `date_from_unix_date` wrapping the pre-existing `DateFromUnixDate` expression — the core of the change.
+  - path: connector/connect/client/jvm/src/main/scala/org/apache/spark/sql/functions.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds the Spark Connect JVM-client parity API (`Column.fn("dateadd", ...)` etc.), sending the same SQL function names as strings over the Connect protocol so the server resolves them via FunctionRegistry.
+  - path: sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/FunctionRegistry.scala
+    tier: essential
+    role: config
+    in_diff: false
+    rationale: Pre-existing string-keyed aliases `expression[DateAdd]("dateadd", setAlias = true, ...)`, `expression[DateDiff]("date_diff", setAlias = true, ...)`, `expression[DayOfMonth]("day", true)` and `expression[DateFromUnixDate]("date_from_unix_date")` — these SQL names already existed; this PR only adds the Scala/Python/Connect DataFrame wrappers around them.
+  - path: sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/datetimeExpressions.scala
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines `DateFromUnixDate`/`DateAdd`/`DateDiff`/`DayOfMonth`, the pre-existing catalyst expressions that `date_from_unix_date`/`dateadd`/`date_diff`/`day` resolve to — explains why this PR touches no expression code at all.
+  - path: python/pyspark/sql/functions.py
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: Adds the PySpark classic-API parity functions `day`/`dateadd`/`date_diff`/`date_from_unix_date` with doctests matching the Scala semantics.
+  - path: python/pyspark/sql/connect/functions.py
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: Adds the PySpark Connect-client parity implementations reusing the classic module's docstrings, required so Connect Python clients get the same functions.
+  - path: sql/core/src/test/scala/org/apache/spark/sql/DateFunctionsSuite.scala
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Extends "dayofmonth"/"function date_add"/"datediff" tests to also assert the new `day`/`dateadd`/`date_diff` aliases produce identical results, plus a new `date_from_unix_date` test.
+  - path: sql/core/src/test/scala/org/apache/spark/sql/DataFrameFunctionsSuite.scala
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Removes `"day"` from `excludedSqlFunctions`, the set of SQL-only names presumed to have no DataFrame API counterpart — confirming `day` is now a first-class Scala function.
+  - path: connector/connect/client/jvm/src/test/scala/org/apache/spark/sql/PlanGenerationTestSuite.scala
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Adds `temporalFunctionTest` entries for `dateadd`/`date_diff`/`date_from_unix_date`/`day` that generate the paired JSON/proto.bin/explain golden fixtures under connector/connect/common/src/test/resources/query-tests/.
+forbidden:
+  - path: python/docs/source/reference/pyspark.sql/functions.rst
+    reason: alphabetized Sphinx doc index entries, bookkeeping only.
+  - path: connector/connect/common/src/test/resources/query-tests/queries/function_dateadd.proto.bin
+    reason: opaque auto-generated binary golden fixture, no readable signal beyond the JSON sibling.
+  - path: connector/connect/common/src/test/resources/query-tests/queries/function_day.json
+    reason: one of four near-identical generated Connect-plan JSON fixtures, redundant once PlanGenerationTestSuite.scala (which generates them) is already gold.
+  - path: connector/connect/common/src/test/resources/query-tests/explain-results/function_date_diff.explain
+    reason: one of four near-identical generated explain-plan fixtures, mechanical byproduct of the PlanGenerationTestSuite entry.
+nontrivial_gold_count: 2
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 20
+  description: Add date time functions to Scala, Python and Connect (part 1) with golden files
+notes: >-
+  Exposes four already-SQL-only date/time functions (`dateadd`, `date_diff`, `day` —
+  all pre-existing FunctionRegistry aliases of `date_add`/`datediff`/`dayofmonth` — and
+  `date_from_unix_date`, wrapping the pre-existing `DateFromUnixDate` expression) as
+  first-class Scala, Python and Spark-Connect DataFrame APIs; no new expression
+  semantics are added. Verified via git grep that `FunctionRegistry.scala` already
+  registered all four names (`setAlias = true` for three of them) before this commit
+  and is untouched by the diff — genuine nontrivial gold explaining why the PR is purely
+  additive wrapper/fixture code across 20 files. string_indirection is true both because
+  FunctionRegistry resolves these names by string key and because the Spark Connect
+  client sends the same function name as a string (`Column.fn("dateadd", ...)`) over
+  the wire for server-side resolution.

@@ -1,0 +1,55 @@
+repo: home-assistant
+base_commit: 1a363e05aaf0609e7429f76d36a26a6b9fd65b79
+commit: 3b25b4cfa6481ca3c0d1c80db3b2c65eff3acf90
+patch_stored: true
+gold:
+  - path: homeassistant/helpers/service.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Central diff file — widens async_get_config_entry's entry_id param to str | None and adds _async_get_single_loaded_config_entry, which looks up the sole loaded, non-ignored, non-disabled config entry for a domain (raising ServiceValidationError with translation_key service_found_no/multiple_config_entry_for_domain or service_config_entry_not_loaded).
+  - path: tests/helpers/test_service.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: test_get_service_config_entry_none exercises every branch of the new fallback — none found, single loaded, ignored/disabled entries skipped, multiple found, and found-but-not-loaded — pinning the exact semantics of the new None-entry_id path.
+  - path: homeassistant/components/abode/services.py
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: First real consumer — _get_abode_system collapses its manual `hass.config_entries.async_loaded_entries(DOMAIN)` + empty-check + ServiceValidationError into one call to service.async_get_config_entry(hass, DOMAIN, None), the pattern this helper exists to replace.
+  - path: homeassistant/components/ness_alarm/services.py
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: Second consumer — both handle_panic and handle_aux duplicated the same async_loaded_entries(DOMAIN)[0]-or-raise logic; both are rewritten to call service.async_get_config_entry(call.hass, DOMAIN, None), eliminating the duplication and the integration-local "no_config_entry" translation key.
+  - path: homeassistant/components/homeassistant/strings.json
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Adds the service_found_multiple_config_entry_for_domain and service_found_no_config_entry_for_domain translation keys that _async_get_single_loaded_config_entry raises by translation_key, under the shared "homeassistant" domain so any integration reusing the helper gets a consistent message for free.
+  - path: homeassistant/components/ness_alarm/strings.json
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Removes the now-dead per-integration "no_config_entry" exception string, since ness_alarm's handlers no longer raise it directly and instead rely on the shared homeassistant-domain translation keys.
+forbidden:
+  - path: homeassistant/components/hue/services.py
+    reason: still uses the old manual async_loaded_entries(DOMAIN)[0]-or-raise pattern this commit was meant to replace, but was not migrated in this commit
+  - path: homeassistant/components/dynalite/services.py
+    reason: same unmigrated manual-lookup pattern as hue/services.py, not touched by this diff
+  - path: homeassistant/components/downloader/services.py
+    reason: another sibling services.py using the pre-existing manual lookup pattern, left untouched by this specific commit
+  - path: homeassistant/config_entries.py
+    reason: defines ConfigEntryState/async_entries that the new helper calls, but is generic foundational infra not specific to this change's logic
+nontrivial_gold_count: 0
+string_indirection: true
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 6
+  description: New helpers/service.py function to get single loaded config entry — core helper addition
+    + first consumers
+notes: 'Self-contained 6-file commit: extends the existing helpers/service.py::async_get_config_entry with a None-entry_id fallback that finds the single loaded config entry for a domain, and migrates its first two consumers (abode, ness_alarm) off their hand-rolled async_loaded_entries(DOMAIN)[0] patterns onto it. string_indirection is true because the raised errors are linked to their user-facing text purely via translation_key strings resolved against homeassistant/strings.json. All context needed to understand the change is already within the 6 diffed files (no_nontrivial_context: true); several sibling integrations (hue, dynalite, downloader) still use the old pattern and were deliberately left forbidden as not-yet-migrated look-alikes.'

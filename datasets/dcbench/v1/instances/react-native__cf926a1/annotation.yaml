@@ -1,0 +1,69 @@
+repo: react-native
+base_commit: 132563d81c5533dc837f034e42117614a9cd20ef
+commit: cf926a1329a8cd6921e9799877883ac1fbc26fbb
+patch_stored: true
+gold:
+- path: packages/react-native/React/Fabric/RCTScheduler.mm
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/jni/react/fabric/Binding.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricMountingManager.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.js
+  tier: essential
+  role: unspecified
+  in_diff: false
+- path: packages/react-native/ReactCommon/react/renderer/core/ShadowNode.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/core/ShadowNode.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/mounting/MountingCoordinator.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/mounting/ShadowTree.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/mounting/updateMountedFlag.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/mounting/updateMountedFlag.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/scheduler/Scheduler.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: packages/react-native/ReactAndroid/src/main/jni/react/devsupport/JInspectorFlags.cpp
+- path: packages/react-native/ReactAndroid/src/main/jni/react/newarchdefaults/DefaultTurboModuleManagerDelegate.cpp
+- path: packages/react-native/ReactAndroid/src/main/jni/react/tracing/PerformanceTracerCxxInterop.cpp
+- path: packages/react-native/ReactCommon/jsi/jsi/jsi.cpp
+- path: packages/react-native/ReactCommon/jsi/jsi/jsi.h
+- path: packages/react-native/ReactCommon/jsi/jsi/jsilib.h
+- path: packages/react-native/ReactCommon/jsi/jsi/test/testlib.cpp
+- path: packages/react-native/ReactCommon/react/nativemodule/core/ReactCommon/TurboModule.h
+nontrivial_gold_count: 1
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: '''Decouple commit from mount on Android'' touches 35 files but ctx pulls in 95 — full recall (every
+  diff file present) but ~60 extra files beyond the diff. Some extras are genuinely useful (ShadowTree.h,
+  MountingCoordinator.h, ConcreteShadowNode.h — headers for the touched .cpp/.h pairs), but many are unrelated
+  to shadow-tree mount/commit decoupling: full JSI engine internals (jsi.cpp/jsi.h/testlib), TurboModule
+  binding plumbing, inspector/tracing interop files. This looks like an import-graph traversal that over-reaches
+  past direct callers into generic core infrastructure, roughly doubling token cost without adding proportional
+  understanding.'

@@ -1,0 +1,460 @@
+From 7eb7d9af6432158be92aadd79468a64e2413df42 Mon Sep 17 00:00:00 2001
+From: Sanne de Vries <65487235+sanne-san@users.noreply.github.com>
+Date: Mon, 23 Feb 2026 14:59:00 +0100
+Subject: [PATCH] Move invoices into subscription settings (#6092)
+
+* Move invoices into subscription settings
+
+- Remove the dedicated /billing/invoices route, controller action,
+  and template
+- Remove the Invoices sidebar link (was conditionally shown when a
+  subscription existed)
+- Add invoices tile directly to the subscription settings page,
+  hidden when there is no subscription
+- Inline invoice fetching into the subscription controller action
+- Fix table component padding for tables without a thead
+- Add gap spacing to funnel and props settings lists (needed after removing the table padding)
+
+* Add changelog entry
+
+* Remove changelog entries as they're not relevant to self hosters
+---
+ CHANGELOG.md                                  |  1 -
+ .../live/funnel_settings/list.ex              |  2 +-
+ lib/plausible_web/components/generic.ex       |  9 ++-
+ .../controllers/settings_controller.ex        | 12 ++--
+ lib/plausible_web/live/props_settings/list.ex |  2 +-
+ lib/plausible_web/router.ex                   |  1 -
+ .../templates/settings/invoices.html.heex     | 60 -------------------
+ .../templates/settings/subscription.html.heex | 51 +++++++++++++++-
+ lib/plausible_web/views/layout_view.ex        |  9 ---
+ .../controllers/settings_controller_test.exs  | 39 +++++-------
+ 10 files changed, 80 insertions(+), 106 deletions(-)
+ delete mode 100644 lib/plausible_web/templates/settings/invoices.html.heex
+
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 4f63d5429..41015ed37 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -15,7 +15,6 @@ All notable changes to this project will be documented in this file.
+ ### Changed
+ 
+ - Keybind hints are hidden on smaller screens
+-- Subscription settings page design is updated
+ 
+ ### Fixed
+ 
+diff --git a/extra/lib/plausible_web/live/funnel_settings/list.ex b/extra/lib/plausible_web/live/funnel_settings/list.ex
+index e4c4e6425..0e52c5ce3 100644
+--- a/extra/lib/plausible_web/live/funnel_settings/list.ex
++++ b/extra/lib/plausible_web/live/funnel_settings/list.ex
+@@ -13,7 +13,7 @@ defmodule PlausibleWeb.Live.FunnelSettings.List do
+     assigns = assign(assigns, :searching?, String.trim(assigns.filter_text) != "")
+ 
+     ~H"""
+-    <div>
++    <div class="flex flex-col gap-4 sm:gap-6">
+       <%= if @searching? or Enum.count(@funnels) > 0 do %>
+         <.filter_bar filter_text={@filter_text} placeholder="Search Funnels">
+           <.button id="add-funnel-button" phx-click="add-funnel" mt?={false}>
+diff --git a/lib/plausible_web/components/generic.ex b/lib/plausible_web/components/generic.ex
+index 8e59bf373..01451ff8a 100644
+--- a/lib/plausible_web/components/generic.ex
++++ b/lib/plausible_web/components/generic.ex
+@@ -864,7 +864,14 @@ defmodule PlausibleWeb.Components.Generic do
+ 
+   def table(assigns) do
+     ~H"""
+-    <table :if={not Enum.empty?(@rows)} class={@width} {@rest}>
++    <table
++      :if={not Enum.empty?(@rows)}
++      class={[
++        "[&:not(:has(thead))>tbody>tr:first-child>td]:pt-0 [&>tbody>tr:last-child>td]:pb-0",
++        @width
++      ]}
++      {@rest}
++    >
+       <thead :if={@thead != []}>
+         <tr class="border-b border-gray-200 dark:border-gray-700">
+           {render_slot(@thead)}
+diff --git a/lib/plausible_web/controllers/settings_controller.ex b/lib/plausible_web/controllers/settings_controller.ex
+index 87c750369..a75753fec 100644
+--- a/lib/plausible_web/controllers/settings_controller.ex
++++ b/lib/plausible_web/controllers/settings_controller.ex
+@@ -13,7 +13,7 @@ defmodule PlausibleWeb.SettingsController do
+        when action in [:update_team_name]
+ 
+   plug Plausible.Plugs.AuthorizeTeamAccess,
+-       [:owner, :billing] when action in [:subscription, :invoices]
++       [:owner, :billing] when action in [:subscription]
+ 
+   plug Plausible.Plugs.AuthorizeTeamAccess,
+        [:owner]
+@@ -138,9 +138,12 @@ defmodule PlausibleWeb.SettingsController do
+     team = conn.assigns.current_team
+     subscription = Teams.Billing.get_subscription(team)
+ 
++    invoices = Plausible.Billing.paddle_api().get_invoices(subscription)
++
+     render(conn, :subscription,
+       layout: {PlausibleWeb.LayoutView, :settings},
+       subscription: subscription,
++      invoices: invoices,
+       pageview_limit: Teams.Billing.monthly_pageview_limit(subscription),
+       pageview_usage: Teams.Billing.monthly_pageview_usage(team),
+       site_usage: Teams.Billing.site_usage(team),
+@@ -150,13 +153,6 @@ defmodule PlausibleWeb.SettingsController do
+     )
+   end
+ 
+-  def invoices(conn, _params) do
+-    subscription = Teams.Billing.get_subscription(conn.assigns.current_team)
+-
+-    invoices = Plausible.Billing.paddle_api().get_invoices(subscription)
+-    render(conn, :invoices, layout: {PlausibleWeb.LayoutView, :settings}, invoices: invoices)
+-  end
+-
+   def api_keys(conn, _params) do
+     current_user = conn.assigns.current_user
+     current_team = conn.assigns[:current_team]
+diff --git a/lib/plausible_web/live/props_settings/list.ex b/lib/plausible_web/live/props_settings/list.ex
+index 9192de9c5..02f881bc2 100644
+--- a/lib/plausible_web/live/props_settings/list.ex
++++ b/lib/plausible_web/live/props_settings/list.ex
+@@ -12,7 +12,7 @@ defmodule PlausibleWeb.Live.PropsSettings.List do
+     assigns = assign(assigns, :searching?, String.trim(assigns.filter_text) != "")
+ 
+     ~H"""
+-    <div>
++    <div class="flex flex-col gap-4 sm:gap-6">
+       <%= if @searching? or Enum.count(@props) > 0 do %>
+         <.filter_bar filter_text={@filter_text} placeholder="Search Properties">
+           <.button phx-click="add-prop" mt?={false}>
+diff --git a/lib/plausible_web/router.ex b/lib/plausible_web/router.ex
+index 3d0f55d84..0ae32d5e1 100644
+--- a/lib/plausible_web/router.ex
++++ b/lib/plausible_web/router.ex
+@@ -493,7 +493,6 @@ defmodule PlausibleWeb.Router do
+     post "/security/password", SettingsController, :update_password
+ 
+     get "/billing/subscription", SettingsController, :subscription
+-    get "/billing/invoices", SettingsController, :invoices
+     get "/api-keys", SettingsController, :api_keys
+ 
+     get "/api-keys/new", SettingsController, :new_api_key
+diff --git a/lib/plausible_web/templates/settings/invoices.html.heex b/lib/plausible_web/templates/settings/invoices.html.heex
+deleted file mode 100644
+index 236a3ecfd..000000000
+--- a/lib/plausible_web/templates/settings/invoices.html.heex
++++ /dev/null
+@@ -1,60 +0,0 @@
+-<.settings_tiles>
+-  <.tile docs="download-invoices">
+-    <:title>
+-      <a id="invoices">Invoices</a>
+-    </:title>
+-    <:subtitle>
+-      Download your invoices.
+-    </:subtitle>
+-    <%= case @invoices do %>
+-      <% {:error, :no_invoices} -> %>
+-        <p class="mt-12 mb-8 text-center text-sm">
+-          <span>
+-            Your invoice will be created once you upgrade to a subscription.
+-          </span>
+-        </p>
+-      <% {:error, :request_failed} -> %>
+-        <.notice theme={:gray} title="We couldn't retrieve your invoices">
+-          Please refresh the page or try again later
+-        </.notice>
+-      <% {:ok, invoice_list} when is_list(invoice_list) -> %>
+-        <div x-data="{showAll: false}" x-cloak>
+-          <.table
+-            rows={Enum.with_index(format_invoices(invoice_list))}
+-            row_attrs={
+-              fn {_invoice, idx} ->
+-                %{
+-                  "x-show" => "showAll || #{idx} < 12"
+-                }
+-              end
+-            }
+-          >
+-            <:thead>
+-              <.th>Date</.th>
+-              <.th>Amount</.th>
+-              <.th>Invoice</.th>
+-            </:thead>
+-            <:tbody :let={{invoice, _idx}}>
+-              <.td>{invoice.date}</.td>
+-              <.td>{invoice.currency <> invoice.amount}</.td>
+-              <.td>
+-                <.styled_link href={invoice.url} new_tab={true}>View</.styled_link>
+-              </.td>
+-            </:tbody>
+-            <tr :if={length(invoice_list) > 12}>
+-              <td colspan="3" class="text-center pt-8 pb-4">
+-                <.button_link
+-                  href={}
+-                  theme="secondary"
+-                  x-on:click="showAll = true"
+-                  x-show="!showAll"
+-                >
+-                  Show more
+-                </.button_link>
+-              </td>
+-            </tr>
+-          </.table>
+-        </div>
+-    <% end %>
+-  </.tile>
+-</.settings_tiles>
+diff --git a/lib/plausible_web/templates/settings/subscription.html.heex b/lib/plausible_web/templates/settings/subscription.html.heex
+index 5cfca3d99..668b80e1f 100644
+--- a/lib/plausible_web/templates/settings/subscription.html.heex
++++ b/lib/plausible_web/templates/settings/subscription.html.heex
+@@ -142,11 +142,59 @@
+       </div>
+     </div>
+   </.tile>
++
++  <.tile :if={@subscription} docs="download-invoices">
++    <:title>
++      <a id="invoices">Invoices</a>
++    </:title>
++    <%= case @invoices do %>
++      <% {:error, :no_invoices} -> %>
++        <p class="mt-10 mb-12 text-center text-sm text-gray-600 dark:text-gray-400">
++          You don't have any invoices yet.
++        </p>
++      <% {:error, :request_failed} -> %>
++        <.notice theme={:gray} title="We couldn't retrieve your invoices">
++          Please refresh the page or try again later
++        </.notice>
++      <% {:ok, invoice_list} when is_list(invoice_list) -> %>
++        <div x-data="{showAll: false}" x-cloak>
++          <.table
++            rows={Enum.with_index(format_invoices(invoice_list))}
++            row_attrs={
++              fn {_invoice, idx} ->
++                %{
++                  "x-show" => "showAll || #{idx} < 3"
++                }
++              end
++            }
++          >
++            <:tbody :let={{invoice, _idx}}>
++              <.td>{invoice.date}</.td>
++              <.td>{invoice.currency <> invoice.amount}</.td>
++              <.td class="flex justify-end">
++                <.styled_link href={invoice.url} new_tab={true}></.styled_link>
++              </.td>
++            </:tbody>
++            <tr :if={length(invoice_list) > 3}>
++              <td colspan="3">
++                <.button
++                  theme="secondary"
++                  x-on:click="showAll = true"
++                  x-show="!showAll"
++                >
++                  Show more
++                </.button>
++              </td>
++            </tr>
++          </.table>
++        </div>
++    <% end %>
++  </.tile>
+ </.settings_tiles>
+ 
+ <%= if Plausible.Billing.Subscriptions.resumable?(@subscription) && @subscription.cancel_url do %>
+   <div class="flex gap-2">
+-    <.button_link theme="danger" href={@subscription.cancel_url}>
++    <.button_link theme="danger" href={@subscription.cancel_url} mt?={false}>
+       Cancel plan
+     </.button_link>
+     <%= if Application.get_env(:plausible, :environment) == "dev" do %>
+@@ -154,6 +202,7 @@
+         href={@subscription.update_url}
+         theme="secondary"
+         class="text-yellow-600 dark:text-yellow-400"
++        mt?={false}
+       >
+         [DEV ONLY] Change status
+       </.button_link>
+diff --git a/lib/plausible_web/views/layout_view.ex b/lib/plausible_web/views/layout_view.ex
+index 8cab57fc7..f224da978 100644
+--- a/lib/plausible_web/views/layout_view.ex
++++ b/lib/plausible_web/views/layout_view.ex
+@@ -99,9 +99,6 @@ defmodule PlausibleWeb.LayoutView do
+     current_team = conn.assigns[:current_team]
+     current_team_role = conn.assigns[:current_team_role]
+ 
+-    # NOTE: Subscription will still exist if it has expired or cancelled
+-    subscription? = !!(conn.assigns[:current_team] && conn.assigns.current_team.subscription)
+-
+     options = %{
+       "Account" =>
+         [
+@@ -110,9 +107,6 @@ defmodule PlausibleWeb.LayoutView do
+           if(ee?() and not Teams.setup?(current_team),
+             do: %{key: "Subscription", value: "billing/subscription", icon: :subscription}
+           ),
+-          if(ee?() and not Teams.setup?(current_team) and subscription?,
+-            do: %{key: "Invoices", value: "billing/invoices", icon: :banknotes}
+-          ),
+           if(not Teams.setup?(current_team),
+             do: %{key: "API keys", value: "api-keys", icon: :api_keys}
+           ),
+@@ -132,9 +126,6 @@ defmodule PlausibleWeb.LayoutView do
+           if(ee?() and current_team_role in [:owner, :billing],
+             do: %{key: "Subscription", value: "billing/subscription", icon: :subscription}
+           ),
+-          if(ee?() and current_team_role in [:owner, :billing] and subscription?,
+-            do: %{key: "Invoices", value: "billing/invoices", icon: :banknotes}
+-          ),
+           if(current_team_role in [:owner, :billing, :admin, :editor],
+             do: %{key: "API keys", value: "api-keys", icon: :api_keys}
+           ),
+diff --git a/test/plausible_web/controllers/settings_controller_test.exs b/test/plausible_web/controllers/settings_controller_test.exs
+index b72bc0ec4..78831dfc9 100644
+--- a/test/plausible_web/controllers/settings_controller_test.exs
++++ b/test/plausible_web/controllers/settings_controller_test.exs
+@@ -264,11 +264,14 @@ defmodule PlausibleWeb.SettingsControllerTest do
+                "by letting your subscription expire, you lose access to our grandfathered terms"
+     end
+ 
++    @tag :ee_only
+     test "does not show invoice section for a user with no subscription", %{conn: conn} do
+-      conn = get(conn, Routes.settings_path(conn, :invoices))
++      html =
++        conn
++        |> get(Routes.settings_path(conn, :subscription))
++        |> html_response(200)
+ 
+-      assert html_response(conn, 200) =~
+-               "Your invoice will be created once you upgrade to a subscription"
++      refute element_exists?(html, "#invoices")
+     end
+ 
+     @tag :ee_only
+@@ -476,10 +479,6 @@ defmodule PlausibleWeb.SettingsControllerTest do
+       team_member_usage_text = text_of_element(html, "[data-test-id='team-member-usage']")
+       assert team_member_usage_text =~ "/ Unlimited"
+     end
+-  end
+-
+-  describe "GET /billing/invoices" do
+-    setup [:create_user, :log_in]
+ 
+     test "does not show invoice section for a free subscription", %{conn: conn, user: user} do
+       new_site(owner: user)
+@@ -491,10 +490,10 @@ defmodule PlausibleWeb.SettingsControllerTest do
+ 
+       html =
+         conn
+-        |> get(Routes.settings_path(conn, :invoices))
++        |> get(Routes.settings_path(conn, :subscription))
+         |> html_response(200)
+ 
+-      assert html =~ "Your invoice will be created once you upgrade to a subscription"
++      assert html =~ "You don't have any invoices yet."
+     end
+ 
+     @tag :ee_only
+@@ -503,7 +502,7 @@ defmodule PlausibleWeb.SettingsControllerTest do
+ 
+       html =
+         conn
+-        |> get(Routes.settings_path(conn, :invoices))
++        |> get(Routes.settings_path(conn, :subscription))
+         |> html_response(200)
+ 
+       assert html =~ "Dec 24, 2020"
+@@ -518,7 +517,7 @@ defmodule PlausibleWeb.SettingsControllerTest do
+ 
+       html =
+         conn
+-        |> get(Routes.settings_path(conn, :invoices))
++        |> get(Routes.settings_path(conn, :subscription))
+         |> html_response(200)
+ 
+       assert html =~ "Invoices"
+@@ -1281,7 +1280,6 @@ defmodule PlausibleWeb.SettingsControllerTest do
+     preferences: {"Preferences", "/settings/preferences"},
+     security: {"Security", "/settings/security"},
+     subscription: {"Subscription", "/settings/billing/subscription"},
+-    invoices: {"Invoices", "/settings/billing/invoices"},
+     api_keys: {"API keys", "/settings/api-keys"},
+     danger_zone: {"Danger zone", "/settings/danger-zone"},
+     team_general: {"General", "/settings/team/general"},
+@@ -1301,7 +1299,6 @@ defmodule PlausibleWeb.SettingsControllerTest do
+ 
+         html
+         |> refute_unexpected_menu_items([
+-          :invoices,
+           :team_general,
+           :sso,
+           :team_danger_zone,
+@@ -1359,8 +1356,8 @@ defmodule PlausibleWeb.SettingsControllerTest do
+       html
+       |> refute_unexpected_menu_items(
+         if(ee?(),
+-          do: [:invoices, :team_general, :sso],
+-          else: [:subscription, :invoices, :team_general, :sso]
++          do: [:team_general, :sso],
++          else: [:subscription, :team_general, :sso]
+         )
+       )
+       |> Floki.parse_document!()
+@@ -1368,7 +1365,7 @@ defmodule PlausibleWeb.SettingsControllerTest do
+       |> assert_mobile_menu(expected_account_menu)
+     end
+ 
+-    test "when no team is assigned & the user has a subscription, the account menu contains invoices",
++    test "when no team is assigned & the user has a subscription, the account menu shows subscription",
+          %{
+            conn: conn,
+            user: user
+@@ -1380,7 +1377,7 @@ defmodule PlausibleWeb.SettingsControllerTest do
+ 
+       expected_account_menu =
+         if(ee?(),
+-          do: [:preferences, :security, :subscription, :invoices, :api_keys, :danger_zone],
++          do: [:preferences, :security, :subscription, :api_keys, :danger_zone],
+           else: [:preferences, :security, :api_keys, :danger_zone]
+         )
+ 
+@@ -1388,7 +1385,7 @@ defmodule PlausibleWeb.SettingsControllerTest do
+       |> refute_unexpected_menu_items(
+         if(ee?(),
+           do: [:team_general, :sso],
+-          else: [:subscription, :invoices, :team_general, :sso]
++          else: [:subscription, :team_general, :sso]
+         )
+       )
+       |> Floki.parse_document!()
+@@ -1422,15 +1419,12 @@ defmodule PlausibleWeb.SettingsControllerTest do
+         )
+ 
+       html
+-      |> refute_unexpected_menu_items(
+-        if(ee?(), do: [:invoices], else: [:subscription, :invoices])
+-      )
+       |> Floki.parse_document!()
+       |> assert_sidebar_menu(expected_account_menu, expected_team_menu)
+       |> assert_mobile_menu(expected_account_menu, expected_team_menu)
+     end
+ 
+-    test "when team is set up, and there's a subscription, renders account & team menu with invoices",
++    test "when team is set up, and there's a subscription, renders account & team menu with subscription",
+          %{
+            conn: conn,
+            user: user
+@@ -1456,7 +1450,6 @@ defmodule PlausibleWeb.SettingsControllerTest do
+           do: [
+             :team_general,
+             :subscription,
+-            :invoices,
+             :api_keys,
+             :sso,
+             :team_danger_zone

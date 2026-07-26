@@ -1,0 +1,48 @@
+repo: tokio
+base_commit: c1f0c76fa042577336326c77c07a9eeb213858ec
+commit: 5b4cbbc39e6c2d14907aff068244160fa8ca58dc
+patch_stored: true
+gold:
+  - path: tokio/Cargo.toml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: 'bumps `rust-version = "1.70"` to `"1.71"` on the primary crate, the actual MSRV declaration this commit changes.'
+  - path: .github/workflows/ci.yml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: 'CI `rust_min: "1.70"` env var bumped to `"1.71"`, keeping the minimal-versions/MSRV CI job in sync with the new floor (comment above it lists the sibling Cargo.toml files that must match).'
+  - path: tokio/src/loom/std/mod.rs
+    tier: essential
+    role: cochange
+    in_diff: true
+    rationale: 'the real payoff of the bump: `rand::seed()` is simplified from manual build_hasher()/hash()/finish() to `RandomState::new().hash_one(...)`, using `BuildHasher::hash_one` which stabilized in Rust 1.71.'
+  - path: tokio-util/src/task/join_map.rs
+    tier: essential
+    role: cochange
+    in_diff: true
+    rationale: 'removes the crate-local `hash_one()` helper entirely and replaces every call site with `hash_builder.hash_one(...)`, now that std provides it as of the new 1.71 MSRV.'
+  - path: tokio-stream/src/stream_map.rs
+    tier: essential
+    role: cochange
+    in_diff: true
+    rationale: 'same simplification as loom/std/mod.rs — `rand::seed()` rewritten to use the newly-available `RandomState::hash_one`.'
+forbidden:
+  - path: tokio-macros/Cargo.toml
+    reason: sibling crate manifest bumping the same rust-version field mechanically, redundant with tokio/Cargo.toml for understanding the change
+  - path: tokio-util/Cargo.toml
+    reason: sibling crate manifest, same mechanical rust-version bump as tokio/Cargo.toml
+  - path: tokio/README.md
+    reason: MSRV badge text update only, no code or policy content beyond what Cargo.toml already states
+  - path: tokio/src/loom/mocked.rs
+    reason: loom's mocked (test-only) variant, sibling to the touched std/mod.rs but not itself touched or relevant to the hash_one simplification
+nontrivial_gold_count: 0
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 11
+  description: 'tokio: raise MSRV to 1.71 — many-crate shallow bump, toml + CI + code'
+notes: 'Raises the workspace MSRV from 1.70 to 1.71, mechanically bumping rust-version across all publishable crate manifests and the CI rust_min env var. The interesting payoff is that Rust 1.71 stabilized `BuildHasher::hash_one`, letting three call sites (loom/std/mod.rs, tokio-util join_map.rs, tokio-stream stream_map.rs) drop hand-rolled build_hasher/hash/finish boilerplate (and, in join_map.rs, an entire local `hash_one` helper function). All sibling Cargo.toml bumps are mechanical duplicates of tokio/Cargo.toml and excluded from gold; README badge and other manifest files add no further understanding.'

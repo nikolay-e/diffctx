@@ -1,0 +1,352 @@
+From 00f1057a2c4049db22355b4af84cb3663d448ff8 Mon Sep 17 00:00:00 2001
+From: Kousuke Saruta <sarutak@apache.org>
+Date: Tue, 11 Feb 2025 20:01:34 -0800
+Subject: [PATCH] [SPARK-50582][SQL][PYTHON] Add quote builtin function
+
+### What changes were proposed in this pull request?
+This PR proposes to add `quote` builtin function, which encloses the given string by single quotes and prepends a backslash to each instance of single quote in the string.
+
+The implementation and behavior are same as Hive's ones.
+https://cwiki.apache.org/confluence/pages/viewpage.action?pageId=27362046#LanguageManualUDF-StringFunctions
+
+https://github.com/apache/hive/blob/3af4517eb8cfd9407ad34ed78a0b48b57dfaa264/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDFQuote.java#L54
+
+### Why are the changes needed?
+For interoperability with Hive.
+
+### Does this PR introduce _any_ user-facing change?
+No.
+
+### How was this patch tested?
+Added new tests.
+
+### Was this patch authored or co-authored using generative AI tooling?
+No.
+
+Closes #49191 from sarutak/quote-builtin-function.
+
+Authored-by: Kousuke Saruta <sarutak@apache.org>
+Signed-off-by: Dongjoon Hyun <dongjoon@apache.org>
+---
+ .../pyspark/sql/connect/functions/builtin.py  |  7 +++
+ python/pyspark/sql/functions/builtin.py       | 31 +++++++++++++
+ .../org/apache/spark/sql/functions.scala      |  9 ++++
+ .../expressions/ExpressionImplUtils.java      |  8 ++++
+ .../catalyst/analysis/FunctionRegistry.scala  |  1 +
+ .../expressions/stringExpressions.scala       | 43 +++++++++++++++++++
+ .../sql-functions/sql-expression-schema.md    |  1 +
+ .../nonansi/string-functions.sql.out          | 21 +++++++++
+ .../analyzer-results/string-functions.sql.out | 21 +++++++++
+ .../sql-tests/inputs/string-functions.sql     |  5 +++
+ .../results/nonansi/string-functions.sql.out  | 24 +++++++++++
+ .../results/string-functions.sql.out          | 24 +++++++++++
+ 12 files changed, 195 insertions(+)
+
+diff --git a/python/pyspark/sql/connect/functions/builtin.py b/python/pyspark/sql/connect/functions/builtin.py
+index 51685def7d..92af6d2eab 100644
+--- a/python/pyspark/sql/connect/functions/builtin.py
++++ b/python/pyspark/sql/connect/functions/builtin.py
+@@ -3106,6 +3106,13 @@ def collation(col: "ColumnOrName") -> Column:
+ collation.__doc__ = pysparkfuncs.collation.__doc__
+ 
+ 
++def quote(col: "ColumnOrName") -> Column:
++    return _invoke_function_over_columns("quote", col)
++
++
++quote.__doc__ = pysparkfuncs.quote.__doc__
++
++
+ # Date/Timestamp functions
+ 
+ 
+diff --git a/python/pyspark/sql/functions/builtin.py b/python/pyspark/sql/functions/builtin.py
+index 4c9f8cad34..c0ef2abc4b 100644
+--- a/python/pyspark/sql/functions/builtin.py
++++ b/python/pyspark/sql/functions/builtin.py
+@@ -17656,6 +17656,37 @@ def collation(col: "ColumnOrName") -> Column:
+     return _invoke_function_over_columns("collation", col)
+ 
+ 
++@_try_remote_functions
++def quote(col: "ColumnOrName") -> Column:
++    r"""Returns `str` enclosed by single quotes and each instance of
++    single quote in it is preceded by a backslash.
++
++    .. versionadded:: 4.1.0
++
++    Parameters
++    ----------
++    col : :class:`~pyspark.sql.Column` or column name
++        target column to be quoted.
++
++    Returns
++    -------
++    :class:`~pyspark.sql.Column`
++        quoted string
++
++    Examples
++    --------
++    >>> from pyspark.sql import functions as sf
++    >>> df = spark.createDataFrame(["Don't"], "STRING")
++    >>> df.select("*", sf.quote("value")).show()
++    +-----+------------+
++    |value|quote(value)|
++    +-----+------------+
++    |Don't|    'Don\'t'|
++    +-----+------------+
++    """
++    return _invoke_function_over_columns("quote", col)
++
++
+ # ---------------------- Collection functions ------------------------------
+ 
+ 
+diff --git a/sql/api/src/main/scala/org/apache/spark/sql/functions.scala b/sql/api/src/main/scala/org/apache/spark/sql/functions.scala
+index 90c50cb53f..81f1e3153d 100644
+--- a/sql/api/src/main/scala/org/apache/spark/sql/functions.scala
++++ b/sql/api/src/main/scala/org/apache/spark/sql/functions.scala
+@@ -5082,6 +5082,15 @@ object functions {
+    */
+   def right(str: Column, len: Column): Column = Column.fn("right", str, len)
+ 
++  /**
++   * Returns `str` enclosed by single quotes and each instance of single quote in it is preceded
++   * by a backslash.
++   *
++   * @group string_funcs
++   * @since 4.1.0
++   */
++  def quote(str: Column): Column = Column.fn("quote", str)
++
+   //////////////////////////////////////////////////////////////////////////////////////////////
+   // DateTime functions
+   //////////////////////////////////////////////////////////////////////////////////////////////
+diff --git a/sql/catalyst/src/main/java/org/apache/spark/sql/catalyst/expressions/ExpressionImplUtils.java b/sql/catalyst/src/main/java/org/apache/spark/sql/catalyst/expressions/ExpressionImplUtils.java
+index 2fad36efe8..8c42e5bf11 100644
+--- a/sql/catalyst/src/main/java/org/apache/spark/sql/catalyst/expressions/ExpressionImplUtils.java
++++ b/sql/catalyst/src/main/java/org/apache/spark/sql/catalyst/expressions/ExpressionImplUtils.java
+@@ -334,4 +334,12 @@ public class ExpressionImplUtils {
+     }
+     return UTF8String.fromBytes(bytes);
+   }
++
++  public static UTF8String quote(UTF8String str) {
++    final String qtChar = "'";
++    final String qtCharRep = "\\\\'";
++
++    String sp = str.toString().replaceAll(qtChar, qtCharRep);
++    return UTF8String.fromString(qtChar + sp + qtChar);
++  }
+ }
+diff --git a/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/FunctionRegistry.scala b/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/FunctionRegistry.scala
+index d59352990b..597ac57a10 100644
+--- a/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/FunctionRegistry.scala
++++ b/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/FunctionRegistry.scala
+@@ -613,6 +613,7 @@ object FunctionRegistry {
+     expression[MakeValidUTF8]("make_valid_utf8"),
+     expression[ValidateUTF8]("validate_utf8"),
+     expression[TryValidateUTF8]("try_validate_utf8"),
++    expression[Quote]("quote"),
+ 
+     // url functions
+     expression[UrlEncode]("url_encode"),
+diff --git a/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/stringExpressions.scala b/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/stringExpressions.scala
+index b90537daab..1788d54516 100755
+--- a/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/stringExpressions.scala
++++ b/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/stringExpressions.scala
+@@ -3719,3 +3719,46 @@ case class Luhncheck(input: Expression) extends RuntimeReplaceable with Implicit
+   override protected def withNewChildrenInternal(
+       newChildren: IndexedSeq[Expression]): Expression = copy(newChildren(0))
+ }
++
++/**
++ * A function that prepends a backslash to each instance of single quote
++ * in the given string and encloses the result by single quotes.
++ */
++// scalastyle:off line.size.limit
++@ExpressionDescription(
++  usage = "_FUNC_(str) - Returns `str` enclosed by single quotes and each instance of single quote in it is preceded by a backslash.",
++  examples = """
++    Examples:
++      > SELECT _FUNC_('Don\'t');
++       'Don\'t'
++  """,
++  since = "4.1.0",
++  group = "string_funcs")
++// scalastyle:on line.size.limit
++case class Quote(input: Expression)
++  extends UnaryExpression
++  with RuntimeReplaceable
++  with ImplicitCastInputTypes
++  with DefaultStringProducingExpression {
++
++  override lazy val replacement: Expression = StaticInvoke(
++    classOf[ExpressionImplUtils],
++    dataType,
++    "quote",
++    Seq(input),
++    inputTypes)
++
++  override def inputTypes: Seq[AbstractDataType] = {
++    Seq(StringTypeWithCollation(supportsTrimCollation = true))
++  }
++
++  override def nodeName: String = "quote"
++
++  override def nullable: Boolean = true
++
++  override def child: Expression = input
++
++  override protected def withNewChildInternal(newChild: Expression): Quote = {
++    copy(input = newChild)
++  }
++}
+diff --git a/sql/core/src/test/resources/sql-functions/sql-expression-schema.md b/sql/core/src/test/resources/sql-functions/sql-expression-schema.md
+index 39cefdaa89..3a9bb40780 100644
+--- a/sql/core/src/test/resources/sql-functions/sql-expression-schema.md
++++ b/sql/core/src/test/resources/sql-functions/sql-expression-schema.md
+@@ -258,6 +258,7 @@
+ | org.apache.spark.sql.catalyst.expressions.Pow | pow | SELECT pow(2, 3) | struct<pow(2, 3):double> |
+ | org.apache.spark.sql.catalyst.expressions.Pow | power | SELECT power(2, 3) | struct<POWER(2, 3):double> |
+ | org.apache.spark.sql.catalyst.expressions.Quarter | quarter | SELECT quarter('2016-08-31') | struct<quarter(2016-08-31):int> |
++| org.apache.spark.sql.catalyst.expressions.Quote | quote | SELECT quote('Don\'t') | struct<quote(Don't):string> |
+ | org.apache.spark.sql.catalyst.expressions.RLike | regexp | SELECT regexp('%SystemDrive%\Users\John', '%SystemDrive%\\Users.*') | struct<REGEXP(%SystemDrive%UsersJohn, %SystemDrive%\Users.*):boolean> |
+ | org.apache.spark.sql.catalyst.expressions.RLike | regexp_like | SELECT regexp_like('%SystemDrive%\Users\John', '%SystemDrive%\\Users.*') | struct<REGEXP_LIKE(%SystemDrive%UsersJohn, %SystemDrive%\Users.*):boolean> |
+ | org.apache.spark.sql.catalyst.expressions.RLike | rlike | SELECT rlike('%SystemDrive%\Users\John', '%SystemDrive%\\Users.*') | struct<RLIKE(%SystemDrive%UsersJohn, %SystemDrive%\Users.*):boolean> |
+diff --git a/sql/core/src/test/resources/sql-tests/analyzer-results/nonansi/string-functions.sql.out b/sql/core/src/test/resources/sql-tests/analyzer-results/nonansi/string-functions.sql.out
+index 98664dedf8..ee4ad922fa 100644
+--- a/sql/core/src/test/resources/sql-tests/analyzer-results/nonansi/string-functions.sql.out
++++ b/sql/core/src/test/resources/sql-tests/analyzer-results/nonansi/string-functions.sql.out
+@@ -1796,3 +1796,24 @@ select try_validate_utf8(x'80')
+ -- !query analysis
+ Project [try_validate_utf8(cast(0x80 as string)) AS try_validate_utf8(X'80')#x]
+ +- OneRowRelation
++
++
++-- !query
++select quote('Spark')
++-- !query analysis
++Project [quote(Spark) AS quote(Spark)#x]
+++- OneRowRelation
++
++
++-- !query
++select quote("Don't")
++-- !query analysis
++Project [quote(Don't) AS quote(Don't)#x]
+++- OneRowRelation
++
++
++-- !query
++select quote(NULL)
++-- !query analysis
++Project [quote(cast(null as string)) AS quote(NULL)#x]
+++- OneRowRelation
+diff --git a/sql/core/src/test/resources/sql-tests/analyzer-results/string-functions.sql.out b/sql/core/src/test/resources/sql-tests/analyzer-results/string-functions.sql.out
+index 98664dedf8..ee4ad922fa 100644
+--- a/sql/core/src/test/resources/sql-tests/analyzer-results/string-functions.sql.out
++++ b/sql/core/src/test/resources/sql-tests/analyzer-results/string-functions.sql.out
+@@ -1796,3 +1796,24 @@ select try_validate_utf8(x'80')
+ -- !query analysis
+ Project [try_validate_utf8(cast(0x80 as string)) AS try_validate_utf8(X'80')#x]
+ +- OneRowRelation
++
++
++-- !query
++select quote('Spark')
++-- !query analysis
++Project [quote(Spark) AS quote(Spark)#x]
+++- OneRowRelation
++
++
++-- !query
++select quote("Don't")
++-- !query analysis
++Project [quote(Don't) AS quote(Don't)#x]
+++- OneRowRelation
++
++
++-- !query
++select quote(NULL)
++-- !query analysis
++Project [quote(cast(null as string)) AS quote(NULL)#x]
+++- OneRowRelation
+diff --git a/sql/core/src/test/resources/sql-tests/inputs/string-functions.sql b/sql/core/src/test/resources/sql-tests/inputs/string-functions.sql
+index c108f7c76f..878fa992f8 100644
+--- a/sql/core/src/test/resources/sql-tests/inputs/string-functions.sql
++++ b/sql/core/src/test/resources/sql-tests/inputs/string-functions.sql
+@@ -306,3 +306,8 @@ select validate_utf8(x'80');
+ select try_validate_utf8('');
+ select try_validate_utf8('abc');
+ select try_validate_utf8(x'80');
++
++-- quote
++select quote('Spark');
++select quote("Don't");
++select quote(NULL);
+\ No newline at end of file
+diff --git a/sql/core/src/test/resources/sql-tests/results/nonansi/string-functions.sql.out b/sql/core/src/test/resources/sql-tests/results/nonansi/string-functions.sql.out
+index 3f9f24f817..bb4d615deb 100644
+--- a/sql/core/src/test/resources/sql-tests/results/nonansi/string-functions.sql.out
++++ b/sql/core/src/test/resources/sql-tests/results/nonansi/string-functions.sql.out
+@@ -2277,3 +2277,27 @@ select try_validate_utf8(x'80')
+ struct<try_validate_utf8(X'80'):string>
+ -- !query output
+ NULL
++
++
++-- !query
++select quote('Spark')
++-- !query schema
++struct<quote(Spark):string>
++-- !query output
++'Spark'
++
++
++-- !query
++select quote("Don't")
++-- !query schema
++struct<quote(Don't):string>
++-- !query output
++'Don\'t'
++
++
++-- !query
++select quote(NULL)
++-- !query schema
++struct<quote(NULL):string>
++-- !query output
++NULL
+diff --git a/sql/core/src/test/resources/sql-tests/results/string-functions.sql.out b/sql/core/src/test/resources/sql-tests/results/string-functions.sql.out
+index 7066736066..7bbef71854 100644
+--- a/sql/core/src/test/resources/sql-tests/results/string-functions.sql.out
++++ b/sql/core/src/test/resources/sql-tests/results/string-functions.sql.out
+@@ -2341,3 +2341,27 @@ select try_validate_utf8(x'80')
+ struct<try_validate_utf8(X'80'):string>
+ -- !query output
+ NULL
++
++
++-- !query
++select quote('Spark')
++-- !query schema
++struct<quote(Spark):string>
++-- !query output
++'Spark'
++
++
++-- !query
++select quote("Don't")
++-- !query schema
++struct<quote(Don't):string>
++-- !query output
++'Don\'t'
++
++
++-- !query
++select quote(NULL)
++-- !query schema
++struct<quote(NULL):string>
++-- !query output
++NULL

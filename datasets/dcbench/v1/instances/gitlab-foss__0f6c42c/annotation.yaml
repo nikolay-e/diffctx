@@ -1,0 +1,68 @@
+repo: gitlab-foss
+base_commit: 2b9ddc2f99bc0a49967c9ccc5b79ccc53e7559b4
+commit: 0f6c42c5ce165dadf1976ae15a043b87ca533618
+patch_stored: true
+gold:
+  - path: app/controllers/concerns/multiple_boards_actions.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New concern that is the semantic core of the move — defines recent/create/update/destroy actions, authorize_admin_board!, and includes BoardsActions.
+  - path: app/controllers/projects/boards_controller.rb
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: Swaps `include BoardsActions` for `include MultipleBoardsActions`, the one-line change that activates multi-board support for projects.
+  - path: app/finders/boards/visits_finder.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New Boards::VisitsFinder (replacing deleted Boards::Visits::LatestService) used by MultipleBoardsActions#recent and #redirect_to_recent_board.
+  - path: app/models/project.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Flips Project#multiple_issue_boards_available? from false to true, the actual feature-gate flip that this whole commit exists to make.
+  - path: config/routes/project.rb
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Adds :create/:update/:destroy actions and the collection :recent route to the project boards resource, required for MultipleBoardsActions' new actions to be routable.
+  - path: app/policies/project_policy.rb
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Adds `enable :admin_board` to reporter/developer/maintainer rules, the ability checked by authorize_admin_board! in the new concern.
+  - path: app/controllers/concerns/boards_responses.rb
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: Defines board_path, boards_path, group?, and parent that MultipleBoardsActions relies on; also has board_params trimmed here (removing EE-only weight/milestone/assignee params).
+  - path: app/controllers/concerns/boards_actions.rb
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Base concern `included do include BoardsActions end` in the new MultipleBoardsActions — defines #index, #show, #board, #boards memoization and the base serialize_as_json that MultipleBoardsActions overrides/extends; not modified by the patch but required to understand what is being layered on top of.
+  - path: app/assets/javascripts/boards/services/board_service.js
+    tier: essential
+    role: caller
+    in_diff: false
+    rationale: Frontend BoardService already constructs `this.recentBoardsEndpoint = \`${recentBoardsEndpoint}.json\`` and consumes the endpoint this patch's new :recent route/action finally makes non-nil for projects (boards_helper.rb's recent_boards_endpoint key), showing the frontend was already waiting on this backend change.
+forbidden:
+  - path: app/models/namespace.rb
+    reason: defines the sibling Namespace#multiple_issue_boards_available? (still false) — this commit only flips Project, group boards are untouched.
+  - path: app/controllers/groups/boards_controller.rb
+    reason: same-directory sibling controller still includes plain BoardsActions, not MultipleBoardsActions — unaffected by this commit despite the name similarity.
+  - path: config/routes/group.rb
+    reason: sibling routes file for group boards; its `resources :boards` entry is unchanged (still only index/show) in this commit.
+  - path: app/services/boards/visits/create_service.rb
+    reason: separate, unmodified Boards::Visits::CreateService (used in BoardsActions#show to record a visit) — easily confused with the new/renamed VisitsFinder but not part of this diff.
+nontrivial_gold_count: 2
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 20
+  description: Multiple issue boards EE-to-CE move — controllers+models+services+routes
+notes: 'Backend-only move of multi-board support for Projects from EE to CE: swaps BoardsActions for a new MultipleBoardsActions concern on Projects::BoardsController, flips Project#multiple_issue_boards_available? to true, adds create/update/destroy services plus a :recent route+finder, and grants :admin_board via policy. Frontend (board_service.js) already consumed the recent-boards endpoint before this change; this patch is what makes it functional for projects.'

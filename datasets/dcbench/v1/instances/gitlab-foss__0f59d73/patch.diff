@@ -1,0 +1,105 @@
+From 0f59d73ef2f65aba791b6738a5e705fe1a8da789 Mon Sep 17 00:00:00 2001
+From: Felipe Artur <fcardozo@gitlab.com>
+Date: Fri, 30 Aug 2019 11:28:20 +0000
+Subject: [PATCH] Rename epic column state to state_id
+
+Rename epic column state to state_id to be consistent with
+issues and merge requests
+---
+ changelogs/unreleased/issue_10770.yml           |  5 +++++
+ ...0822175441_rename_epics_state_to_state_id.rb | 17 +++++++++++++++++
+ ...90822185441_cleanup_epics_state_id_rename.rb | 17 +++++++++++++++++
+ db/schema.rb                                    |  2 +-
+ spec/db/schema_spec.rb                          |  2 +-
+ 5 files changed, 41 insertions(+), 2 deletions(-)
+ create mode 100644 changelogs/unreleased/issue_10770.yml
+ create mode 100644 db/migrate/20190822175441_rename_epics_state_to_state_id.rb
+ create mode 100644 db/post_migrate/20190822185441_cleanup_epics_state_id_rename.rb
+
+diff --git a/changelogs/unreleased/issue_10770.yml b/changelogs/unreleased/issue_10770.yml
+new file mode 100644
+index 0000000000..728160b24a
+--- /dev/null
++++ b/changelogs/unreleased/issue_10770.yml
+@@ -0,0 +1,5 @@
++---
++title: Rename epic column state to state_id
++merge_request: 32270
++author:
++type: changed
+diff --git a/db/migrate/20190822175441_rename_epics_state_to_state_id.rb b/db/migrate/20190822175441_rename_epics_state_to_state_id.rb
+new file mode 100644
+index 0000000000..7f40d164a8
+--- /dev/null
++++ b/db/migrate/20190822175441_rename_epics_state_to_state_id.rb
+@@ -0,0 +1,17 @@
++# frozen_string_literal: true
++
++class RenameEpicsStateToStateId < ActiveRecord::Migration[5.2]
++  include Gitlab::Database::MigrationHelpers
++
++  DOWNTIME = false
++
++  disable_ddl_transaction!
++
++  def up
++    rename_column_concurrently :epics, :state, :state_id
++  end
++
++  def down
++    cleanup_concurrent_column_rename :epics, :state_id, :state
++  end
++end
+diff --git a/db/post_migrate/20190822185441_cleanup_epics_state_id_rename.rb b/db/post_migrate/20190822185441_cleanup_epics_state_id_rename.rb
+new file mode 100644
+index 0000000000..471b2ab9ca
+--- /dev/null
++++ b/db/post_migrate/20190822185441_cleanup_epics_state_id_rename.rb
+@@ -0,0 +1,17 @@
++# frozen_string_literal: true
++
++class CleanupEpicsStateIdRename < ActiveRecord::Migration[5.2]
++  include Gitlab::Database::MigrationHelpers
++
++  DOWNTIME = false
++
++  disable_ddl_transaction!
++
++  def up
++    cleanup_concurrent_column_rename :epics, :state, :state_id
++  end
++
++  def down
++    rename_column_concurrently :epics, :state_id, :state
++  end
++end
+diff --git a/db/schema.rb b/db/schema.rb
+index f1dbe5c322..5999a859e7 100644
+--- a/db/schema.rb
++++ b/db/schema.rb
+@@ -1286,11 +1286,11 @@
+     t.date "due_date_fixed"
+     t.boolean "start_date_is_fixed"
+     t.boolean "due_date_is_fixed"
+-    t.integer "state", limit: 2, default: 1, null: false
+     t.integer "closed_by_id"
+     t.datetime "closed_at"
+     t.integer "parent_id"
+     t.integer "relative_position"
++    t.integer "state_id", limit: 2, default: 1, null: false
+     t.index ["assignee_id"], name: "index_epics_on_assignee_id"
+     t.index ["author_id"], name: "index_epics_on_author_id"
+     t.index ["closed_by_id"], name: "index_epics_on_closed_by_id"
+diff --git a/spec/db/schema_spec.rb b/spec/db/schema_spec.rb
+index 232890b1bb..52af470efa 100644
+--- a/spec/db/schema_spec.rb
++++ b/spec/db/schema_spec.rb
+@@ -30,7 +30,7 @@
+     draft_notes: %w[discussion_id commit_id],
+     emails: %w[user_id],
+     events: %w[target_id],
+-    epics: %w[updated_by_id last_edited_by_id start_date_sourcing_milestone_id due_date_sourcing_milestone_id],
++    epics: %w[updated_by_id last_edited_by_id start_date_sourcing_milestone_id due_date_sourcing_milestone_id state_id],
+     forked_project_links: %w[forked_from_project_id],
+     geo_event_log: %w[hashed_storage_attachments_event_id],
+     geo_job_artifact_deleted_events: %w[job_artifact_id],

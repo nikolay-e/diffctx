@@ -1,0 +1,86 @@
+repo: aspnetcore
+base_commit: 2f91a9debc7b5e2e883515a0f32240a44e39cbef
+commit: c0c2230799a3f876aa673a66bc008bf9b803acac
+patch_stored: true
+gold:
+  - path: src/Components/Endpoints/src/SessionCascadingValueSupplier.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New internal class implementing CreateSubscription/PersistAllValues/GetSession, the core supplier that reads/writes ISession-backed values for [SupplyParameterFromSession] properties.
+  - path: src/Components/Web/src/SupplyParameterFromSessionAttribute.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New public attribute type (sealed, derives CascadingParameterAttributeBase, Name property) that components apply to opt a property into session-backed cascading values.
+  - path: src/Components/Endpoints/src/DependencyInjection/RazorComponentsServiceCollectionExtensions.cs
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Registers SessionCascadingValueSupplier as scoped and wires SupplyParameterFromSessionAttribute to its CreateSubscription via TryAddCascadingValueSupplier<TAttribute>, the DI glue that activates the feature.
+  - path: src/Components/Endpoints/src/Rendering/EndpointHtmlRenderer.cs
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: Calls SessionCascadingValueSupplier.SetRequestContext(httpContext) during prerendering, exactly mirroring the pre-existing TempDataCascadingValueSupplier hookup, so the supplier has an HttpContext to read ISession from.
+  - path: src/Components/Endpoints/test/Session/SessionCascadingValueSupplierTest.cs
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Covering unit test exercising PersistAllValues/RegisterValueCallback/duplicate-key behavior of SessionCascadingValueSupplier, defines the expected persistence semantics (lowercased keys, null removes, exceptions swallowed per key).
+  - path: src/Components/Endpoints/src/TempData/TempDataCascadingValueSupplier.cs
+    tier: essential
+    role: cochange
+    in_diff: false
+    rationale: Pre-existing sibling supplier for [SupplyParameterFromTempData] with near-identical structure (PropertyGetter cache, RegisterValueCallback/DeleteValueCallback, partial Log class, XxxSubscription inner class) that SessionCascadingValueSupplier.cs was directly modeled on; understanding the diff requires seeing the template it diverges from (JSON serialization instead of ITempData, OnStarting registration).
+  - path: src/Components/Components/src/CascadingValueServiceCollectionExtensions.cs
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: "Defines TryAddCascadingValueSupplier<TAttribute>(...) constrained to CascadingParameterAttributeBase, the generic extension method the new DI registration call in RazorComponentsServiceCollectionExtensions.cs invokes to bind SupplyParameterFromSessionAttribute to CascadingParameterValueProvider<TAttribute>."
+  - path: src/Components/Components/src/CascadingParameterValueProvider.cs
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Implements ICascadingValueSupplier.CanSupplyValue as `parameterInfo.Attribute is TAttribute` and Subscribe/GetCurrentValue that invoke the subscribeFactory (SessionCascadingValueSupplier.CreateSubscription) — this is the actual resolver/binder that dispatches on the attribute type at runtime, proving the linkage is a static generic type check, not string lookup.
+  - path: src/Components/Components/src/CascadingParameterAttributeBase.cs
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Abstract base class SupplyParameterFromSessionAttribute derives from and whose internal `SingleDelivery` virtual property it overrides (`internal override bool SingleDelivery => false;`).
+  - path: src/Components/Web/src/SupplyParameterFromTempDataAttribute.cs
+    tier: helpful
+    role: cochange
+    in_diff: false
+    rationale: Sibling attribute (Name property, CascadingParameterAttributeBase base, sealed class) that SupplyParameterFromSessionAttribute.cs almost exactly mirrors, showing the established attribute-authoring pattern being replicated.
+forbidden:
+  - path: src/Components/Endpoints/test/TempData/TempDataCascadingValueSupplierTest.cs
+    reason: sibling test for the TempData supplier, not the Session one — this commit's own SessionCascadingValueSupplierTest.cs already covers the equivalent scenarios
+  - path: src/Components/Endpoints/src/Rendering/SSRRenderModeBoundary.cs
+    reason: same Rendering/ directory as the touched EndpointHtmlRenderer.cs and a bm25 hit, but unrelated to cascading-parameter or session wiring
+  - path: src/Components/Components/src/PersistentState/PersistentValueProviderComponentSubscription.cs
+    reason: similarly-named "supply value" subscription but implements the unrelated PersistentComponentState mechanism, not session state
+  - path: src/Components/Components/src/Routing/Router.cs
+    reason: bm25 keyword hit on "component"/"parameter" terms but has no relation to CascadingParameterAttributeBase or the supplier infrastructure
+nontrivial_gold_count: 5
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration, bm25, graph]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 16
+  description: SupplyParameterFromSession support for Blazor — src+razor+PublicAPI.Unshipped+tests
+notes: >-
+  Adds [SupplyParameterFromSession] for Blazor SSR, following the existing
+  [SupplyParameterFromTempData] pattern: a new SessionCascadingValueSupplier
+  (JSON-serializes property values into ISession by key, persisted on
+  Response.OnStarting) is registered via the generic
+  TryAddCascadingValueSupplier<TAttribute> DI helper and dispatched at
+  runtime through CascadingParameterValueProvider<TAttribute>.CanSupplyValue
+  using a static `is TAttribute` check, not a string-keyed lookup — session
+  keys (attribute.Name ?? property name) are an internal storage detail of
+  the new supplier, not the attribute-to-resolver linkage, hence
+  string_indirection: false. RazorComponentEndpointsNoInteractivityStartup.cs
+  test-asset changes (renaming the UseSessionStorageTempDataProvider flag
+  gating to a new UseSession flag) were judged test-harness plumbing, not
+  gold.

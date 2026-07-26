@@ -1,0 +1,57 @@
+repo: home-assistant
+base_commit: 956dbb8757630255f483dabe0fc3ef5a7d7aa16c
+commit: e056c7d78c7714235fb7bb30b4c4d5c9d8b41efe
+patch_stored: true
+gold:
+  - path: homeassistant/components/opensensemap/air_quality.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: async_setup_entry now looks up an existing air_quality entity by unique_id, removes it if disabled and unused, otherwise raises a repair issue (deprecated_air_quality / deprecated_air_quality_in_use) via ir.async_create_issue and stops creating it for fresh installs.
+  - path: homeassistant/components/opensensemap/const.py
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Adds AIR_QUALITY_DEPRECATION_BREAKS_IN_VERSION = "2027.1.0" passed as breaks_in_ha_version to the new repair issue.
+  - path: homeassistant/components/opensensemap/strings.json
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Adds the deprecated_air_quality / deprecated_air_quality_in_use issue title+description referenced by translation_key in air_quality.py.
+  - path: tests/components/opensensemap/test_air_quality.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: New test file covering all four branches of the deprecation logic (not created on fresh setup, kept+issue when enabled, removed when disabled+unused, kept+flagged when referenced by an automation).
+  - path: tests/components/opensensemap/test_init.py
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Existing setup tests switch their state assertions from air_quality.test_station to sensor.test_station_pm2_5, reflecting that the replacement sensor entity is what's now checked.
+  - path: homeassistant/components/opensensemap/sensor.py
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Already defines the individual pm2_5/pm10/pm1_0 SensorEntityDescriptions ("sensor.test_station_pm2_5" etc.) that the deprecation message and test_init.py's updated assertions point users toward as the air_quality entity's replacement.
+  - path: tests/components/opensensemap/conftest.py
+    tier: helpful
+    role: test
+    in_diff: false
+    rationale: Defines the mock_config_entry and mock_opensensemap_api fixtures (and TEST_STATION_ID) that the new test_air_quality.py depends on.
+forbidden:
+  - path: homeassistant/components/opensensemap/__init__.py
+    reason: same integration package, defines async_setup_entry-adjacent platform forwarding, but untouched by this deprecation logic
+  - path: homeassistant/components/opensensemap/coordinator.py
+    reason: same integration, defines the data-update coordinator but not involved in the entity-deprecation/repair-issue logic
+  - path: homeassistant/helpers/issue_registry.py
+    reason: defines the generic ir.async_create_issue/async_delete_issue API used here, but this is a widely-used, self-explanatory generic mechanism rather than something specific to understanding this change
+nontrivial_gold_count: 2
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: []
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 5
+  description: 'Deprecate openSenseMap air quality entity — deprecation repair-issue pattern: code + strings.json
+    + tests'
+notes: Stops creating the openSenseMap air_quality entity for new setups and raises a repair issue for existing installs that still have it (auto-removing it if disabled and unused), pointing users at the individual pm2_5/pm10/pm1_0 sensor entities already defined in sensor.py as the replacement.

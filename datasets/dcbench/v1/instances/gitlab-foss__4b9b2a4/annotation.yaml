@@ -1,0 +1,72 @@
+repo: gitlab-foss
+base_commit: 62a40c5170cbecfc77dcb5fc97a23f3e93898a53
+commit: 4b9b2a43d02fc5154f780ade7fe76c02420fff15
+patch_stored: true
+gold:
+  - path: app/graphql/mutations/award_emojis/base.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines the shared `authorize :award_emoji`, `awardable_id`/`name` arguments, `find_object`, and `check_object_is_awardable!` that Add/Remove/Toggle all inherit from.
+  - path: app/graphql/mutations/award_emojis/add.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: One of the three new mutations being added (AddAwardEmoji), core to the change.
+  - path: app/graphql/mutations/award_emojis/remove.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: One of the three new mutations being added (RemoveAwardEmoji), core to the change.
+  - path: app/graphql/mutations/award_emojis/toggle.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: One of the three new mutations being added (ToggleAwardEmoji), core to the change.
+  - path: app/graphql/types/award_emojis/award_emoji_type.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines the AwardEmoji GraphQL type returned by all three mutations, including its `read_emoji` authorization requirement.
+  - path: app/policies/award_emoji_policy.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines the `read_emoji` ability enabled by `can_read_awardable`, referenced by `authorize :read_emoji` in award_emoji_type.rb.
+  - path: app/models/concerns/awardable.rb
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines `create_award_emoji`, `remove_award_emoji`, `toggle_award_emoji`, `awarded_emoji?`, and `emoji_awardable?` that the three new mutations call directly on the resolved awardable object.
+  - path: lib/gitlab/graphql/authorize/authorize_resource.rb
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines `authorized_find!` (called in every mutation's `resolve`) and `authorize!`/`authorized?`, the authorization mechanism the new mutations rely on via `include Gitlab::Graphql::Authorize::AuthorizeResource`.
+  - path: app/graphql/mutations/base_mutation.rb
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: Adds `errors_on_object` (used by Add/Toggle resolve methods) and prepends `CopyFieldDescription`, which `base.rb` uses via `copy_field_description`.
+forbidden:
+  - path: app/graphql/mutations/merge_requests/set_wip.rb
+    reason: another existing mutation in the same mount_mutation list, but unrelated to award emoji logic
+  - path: app/models/note.rb
+    reason: overrides emoji_awardable? for Note specifically, but the mutation logic only depends on the generic Awardable concern
+  - path: app/controllers/concerns/toggle_award_emoji.rb
+    reason: legacy Rails-controller toggle-emoji endpoint, superseded in spirit by the new GraphQL mutation but not referenced by it
+  - path: app/helpers/gitlab_routing_helper.rb
+    reason: defines unrelated non-GraphQL route helpers that happen to share the "toggle_award_emoji" name
+nontrivial_gold_count: 2
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 25
+  description: GraphQL emoji add/remove/toggle mutations — graphql+models+lib
+notes: >
+  Adds AddAwardEmoji/RemoveAwardEmoji/ToggleAwardEmoji GraphQL mutations that call
+  through to Awardable concern methods and a new AwardEmojiPolicy for authorization;
+  gold trimmed to the semantic core (base + 3 mutations + type + policy) plus the two
+  out-of-diff definition files (Awardable, AuthorizeResource) the mutations depend on.

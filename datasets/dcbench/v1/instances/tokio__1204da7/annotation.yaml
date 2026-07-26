@@ -1,0 +1,73 @@
+repo: tokio
+base_commit: e75ca93d30e6d2f7a165882d46d8b55fa3e8cb78
+commit: 1204da730000f2eab19d2c05eea12ee3071b3f31
+patch_stored: true
+gold:
+  - path: tokio/src/runtime/context.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: orchestrates the split — declares the new submodules (blocking, current, runtime, runtime_mt) and re-exports their public items; still owns the Context struct and CONTEXT thread-local shared via `super::CONTEXT`.
+  - path: tokio/src/runtime/context/runtime.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new file defining enter_runtime with the changed closure-based signature and the RNG-seed-swap-on-enter behavior change described in the commit message.
+  - path: tokio/src/runtime/context/blocking.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new file defining BlockingRegionGuard::block_on/block_on_timeout, invoked from the enter_runtime closure in all caller sites.
+  - path: tokio/src/runtime/context/current.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new file defining with_current/try_set_current/SetCurrentGuard, now stripped of the RNG-seed bookkeeping that moved to runtime.rs — direct evidence of the seed-timing change.
+  - path: tokio/src/runtime/context/runtime_mt.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new file defining current_enter_context and exit_runtime, called from scheduler/multi_thread/worker.rs's block_in_place path.
+  - path: tokio/src/runtime/handle.rs
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: Handle::block_on is rewritten to call the new closure-taking enter_runtime(&self.inner, true, |blocking| ...) instead of holding an EnterRuntimeGuard and calling .blocking.block_on separately.
+  - path: tokio/src/runtime/scheduler/multi_thread/worker.rs
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: worker run() loop is restructured to put scheduler setup and cx.defer.wake() inside the enter_runtime closure, and calls current_enter_context/exit_runtime defined in context/runtime_mt.rs.
+  - path: tokio/src/runtime/scheduler/current_thread.rs
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: CurrentThread::block_on's core-stealing loop is likewise rewritten around the new closure-based enter_runtime API.
+  - path: tokio/src/runtime/blocking/shutdown.rs
+    tier: helpful
+    role: caller
+    in_diff: false
+    rationale: calls try_enter_blocking_region() (moved into context/blocking.rs) during blocking-pool shutdown — an external consumer unaffected by, but dependent on, the split.
+  - path: tokio/src/task/local.rs
+    tier: helpful
+    role: caller
+    in_diff: false
+    rationale: LocalSet calls context::disallow_block_in_place() (moved into context/blocking.rs) to forbid block_in_place while polling local tasks.
+forbidden:
+  - path: tokio/src/runtime/scheduler/multi_thread/mod.rs
+    reason: touched in the diff but only repeats the same mechanical closure-conversion already shown by handle.rs and worker.rs
+  - path: tokio/src/util/markers.rs
+    reason: adds a trivial marker type (NotSendOrSync); not needed to understand the context split itself
+  - path: tokio/src/runtime/blocking/pool.rs
+    reason: sibling blocking-pool file, does not call any of the split/renamed context functions
+  - path: tokio/src/runtime/task/harness.rs
+    reason: unrelated task-polling internals, not touched or referenced by the context split
+nontrivial_gold_count: 2
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 10
+  description: 'rt: split `runtime::context` into multiple files — module split, thread-local plumbing'
+notes: 'Pure module-split refactor of runtime::context into blocking.rs/current.rs/runtime.rs/runtime_mt.rs, plus one deliberate behavior change: enter_runtime now takes a closure and swaps the RNG seed on entering the runtime (not in set_current), matching the docstring intent that Handle::enter() should not perturb the seed. All 4 caller sites (handle.rs, current_thread.rs, multi_thread/mod.rs, worker.rs) are updated to the closure-based API; two external callers of moved functions (blocking/shutdown.rs, task/local.rs) are added as helpful, out-of-diff context.'

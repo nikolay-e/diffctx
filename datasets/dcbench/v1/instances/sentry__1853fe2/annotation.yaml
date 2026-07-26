@@ -1,0 +1,42 @@
+repo: sentry
+base_commit: be92402ad656e34b9031b8e724e970b42803b51a
+commit: 1853fe25a1cb1970f0425052d424413a522f5e92
+patch_stored: true
+gold:
+- path: .github/CODEOWNERS
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .pre-commit-config.yaml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .vscode/settings.json
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: biome.json
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: eslint.config.mjs
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: package.json
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: static/app/components/charts/groupStatusChart.tsx
+- path: static/app/components/charts/pieChart.tsx
+- path: static/app/utils/cursorPoller.tsx
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 90-file diff hangs completely. Inspection shows only 9 files carry real config/tooling changes
+  (biome.json deleted, eslint.config.mjs restored, package.json deps, pre-commit/CODEOWNERS/vscode config);
+  the other ~81 are purely mechanical quote-style (single->double) reformats with zero logical change,
+  a direct consequence of switching formatters. A correct tool should surface the 9 config files plus
+  at most a couple of sample reformatted files; instead nothing surfaced at all.

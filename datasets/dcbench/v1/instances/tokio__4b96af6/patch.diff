@@ -1,0 +1,335 @@
+From 4b96af6040b0136d3fd147b28e3775961f6a3d0a Mon Sep 17 00:00:00 2001
+From: James Kay <twey@twey.co.uk>
+Date: Mon, 28 Jul 2025 12:59:00 +0100
+Subject: [PATCH] macros: add "local" runtime flavor (#7375)
+
+---
+ tests-integration/tests/macros_main.rs | 12 +++-
+ tokio-macros/src/entry.rs              | 52 ++++++++++++++---
+ tokio-macros/src/lib.rs                | 79 ++++++++++++++++++++++----
+ tokio/src/task/local.rs                |  8 +++
+ 4 files changed, 130 insertions(+), 21 deletions(-)
+
+diff --git a/tests-integration/tests/macros_main.rs b/tests-integration/tests/macros_main.rs
+index 3144280..37fda81 100644
+--- a/tests-integration/tests/macros_main.rs
++++ b/tests-integration/tests/macros_main.rs
+@@ -16,6 +16,13 @@ async fn spawning() -> usize {
+     join.await.unwrap()
+ }
+ 
++#[cfg(tokio_unstable)]
++#[tokio::main(flavor = "local")]
++async fn local_main() -> usize {
++    let join = tokio::task::spawn_local(async { 1 });
++    join.await.unwrap()
++}
++
+ #[test]
+ fn main_with_spawn() {
+     assert_eq!(1, spawning());
+@@ -24,5 +31,8 @@ fn main_with_spawn() {
+ #[test]
+ fn shell() {
+     assert_eq!(1, basic_main());
+-    assert_eq!(bool::default(), generic_fun::<bool>())
++    assert_eq!(bool::default(), generic_fun::<bool>());
++
++    #[cfg(tokio_unstable)]
++    assert_eq!(1, local_main());
+ }
+diff --git a/tokio-macros/src/entry.rs b/tokio-macros/src/entry.rs
+index 07554cf..abd9b9e 100644
+--- a/tokio-macros/src/entry.rs
++++ b/tokio-macros/src/entry.rs
+@@ -10,6 +10,7 @@ type AttributeArgs = syn::punctuated::Punctuated<syn::Meta, syn::Token![,]>;
+ enum RuntimeFlavor {
+     CurrentThread,
+     Threaded,
++    Local,
+ }
+ 
+ impl RuntimeFlavor {
+@@ -17,6 +18,7 @@ impl RuntimeFlavor {
+         match s {
+             "current_thread" => Ok(RuntimeFlavor::CurrentThread),
+             "multi_thread" => Ok(RuntimeFlavor::Threaded),
++            "local" => Ok(RuntimeFlavor::Local),
+             "single_thread" => Err("The single threaded runtime flavor is called `current_thread`.".to_string()),
+             "basic_scheduler" => Err("The `basic_scheduler` runtime flavor has been renamed to `current_thread`.".to_string()),
+             "threaded_scheduler" => Err("The `threaded_scheduler` runtime flavor has been renamed to `multi_thread`.".to_string()),
+@@ -177,15 +179,16 @@ impl Configuration {
+         use RuntimeFlavor as F;
+ 
+         let flavor = self.flavor.unwrap_or(self.default_flavor);
++
+         let worker_threads = match (flavor, self.worker_threads) {
+-            (F::CurrentThread, Some((_, worker_threads_span))) => {
++            (F::CurrentThread | F::Local, Some((_, worker_threads_span))) => {
+                 let msg = format!(
+                     "The `worker_threads` option requires the `multi_thread` runtime flavor. Use `#[{}(flavor = \"multi_thread\")]`",
+                     self.macro_name(),
+                 );
+                 return Err(syn::Error::new(worker_threads_span, msg));
+             }
+-            (F::CurrentThread, None) => None,
++            (F::CurrentThread | F::Local, None) => None,
+             (F::Threaded, worker_threads) if self.rt_multi_thread_available => {
+                 worker_threads.map(|(val, _span)| val)
+             }
+@@ -207,7 +210,7 @@ impl Configuration {
+                 );
+                 return Err(syn::Error::new(start_paused_span, msg));
+             }
+-            (F::CurrentThread, Some((start_paused, _))) => Some(start_paused),
++            (F::CurrentThread | F::Local, Some((start_paused, _))) => Some(start_paused),
+             (_, None) => None,
+         };
+ 
+@@ -219,7 +222,7 @@ impl Configuration {
+                 );
+                 return Err(syn::Error::new(unhandled_panic_span, msg));
+             }
+-            (F::CurrentThread, Some((unhandled_panic, _))) => Some(unhandled_panic),
++            (F::CurrentThread | F::Local, Some((unhandled_panic, _))) => Some(unhandled_panic),
+             (_, None) => None,
+         };
+ 
+@@ -408,13 +411,27 @@ fn parse_knobs(mut input: ItemFn, is_test: bool, config: FinalConfig) -> TokenSt
+         .unwrap_or_else(|| Ident::new("tokio", last_stmt_start_span).into_token_stream());
+ 
+     let mut rt = match config.flavor {
+-        RuntimeFlavor::CurrentThread => quote_spanned! {last_stmt_start_span=>
+-            #crate_path::runtime::Builder::new_current_thread()
+-        },
++        RuntimeFlavor::CurrentThread | RuntimeFlavor::Local => {
++            quote_spanned! {last_stmt_start_span=>
++                #crate_path::runtime::Builder::new_current_thread()
++            }
++        }
+         RuntimeFlavor::Threaded => quote_spanned! {last_stmt_start_span=>
+             #crate_path::runtime::Builder::new_multi_thread()
+         },
+     };
++
++    let mut checks = vec![];
++    let mut errors = vec![];
++
++    let build = if let RuntimeFlavor::Local = config.flavor {
++        checks.push(quote! { tokio_unstable });
++        errors.push("The local runtime flavor is only available when `tokio_unstable` is set.");
++        quote_spanned! {last_stmt_start_span=> build_local(Default::default())}
++    } else {
++        quote_spanned! {last_stmt_start_span=> build()}
++    };
++
+     if let Some(v) = config.worker_threads {
+         rt = quote_spanned! {last_stmt_start_span=> #rt.worker_threads(#v) };
+     }
+@@ -434,17 +451,36 @@ fn parse_knobs(mut input: ItemFn, is_test: bool, config: FinalConfig) -> TokenSt
+         quote! {}
+     };
+ 
++    let do_checks: TokenStream = checks
++        .iter()
++        .zip(&errors)
++        .map(|(check, error)| {
++            quote! {
++                #[cfg(not(#check))]
++                compile_error!(#error);
++            }
++        })
++        .collect();
++
+     let body_ident = quote! { body };
+     // This explicit `return` is intentional. See tokio-rs/tokio#4636
+     let last_block = quote_spanned! {last_stmt_end_span=>
++        #do_checks
++
++        #[cfg(all(#(#checks),*))]
+         #[allow(clippy::expect_used, clippy::diverging_sub_expression, clippy::needless_return)]
+         {
+             return #rt
+                 .enable_all()
+-                .build()
++                .#build
+                 .expect("Failed building the Runtime")
+                 .block_on(#body_ident);
+         }
++
++        #[cfg(not(all(#(#checks),*)))]
++        {
++            panic!("fell through checks")
++        }
+     };
+ 
+     let body = input.body();
+diff --git a/tokio-macros/src/lib.rs b/tokio-macros/src/lib.rs
+index 32353b3..207727f 100644
+--- a/tokio-macros/src/lib.rs
++++ b/tokio-macros/src/lib.rs
+@@ -46,7 +46,12 @@ use proc_macro::TokenStream;
+ /// Awaiting on other futures from the function provided here will not
+ /// perform as fast as those spawned as workers.
+ ///
+-/// # Multi-threaded runtime
++/// # Runtime flavors
++///
++/// The macro can be configured with a `flavor` parameter to select
++/// different runtime configurations.
++///
++/// ## Multi-threaded
+ ///
+ /// To use the multi-threaded runtime, the macro can be configured using
+ ///
+@@ -61,23 +66,37 @@ use proc_macro::TokenStream;
+ /// Note: The multi-threaded runtime requires the `rt-multi-thread` feature
+ /// flag.
+ ///
+-/// # Current thread runtime
++/// ## Current-thread
+ ///
+ /// To use the single-threaded runtime known as the `current_thread` runtime,
+ /// the macro can be configured using
+ ///
+-/// ```
++/// ```rust
+ /// #[tokio::main(flavor = "current_thread")]
+ /// # async fn main() {}
+ /// ```
+ ///
+-/// ## Function arguments:
++/// ## Local
+ ///
+-/// Arguments are allowed for any functions aside from `main` which is special
++/// [Unstable API][unstable] only.
+ ///
+-/// ## Usage
++/// To use the [local runtime], the macro can be configured using
+ ///
+-/// ### Using the multi-thread runtime
++/// ```rust
++/// # #[cfg(tokio_unstable)]
++/// #[tokio::main(flavor = "local")]
++/// # async fn main() {}
++/// # #[cfg(not(tokio_unstable))]
++/// # fn main() {}
++/// ```
++///
++/// # Function arguments
++///
++/// Arguments are allowed for any functions, aside from `main` which is special.
++///
++/// # Usage
++///
++/// ## Using the multi-threaded runtime
+ ///
+ /// ```rust
+ /// #[tokio::main]
+@@ -100,7 +119,7 @@ use proc_macro::TokenStream;
+ /// }
+ /// ```
+ ///
+-/// ### Using current thread runtime
++/// ## Using the current-thread runtime
+ ///
+ /// The basic scheduler is single-threaded.
+ ///
+@@ -125,7 +144,42 @@ use proc_macro::TokenStream;
+ /// }
+ /// ```
+ ///
+-/// ### Set number of worker threads
++/// ## Using the local runtime
++///
++/// Available in the [unstable API][unstable] only.
++///
++/// The [local runtime] is similar to the current-thread runtime but
++/// supports [`task::spawn_local`](../tokio/task/fn.spawn_local.html).
++///
++/// ```rust
++/// # #[cfg(tokio_unstable)]
++/// #[tokio::main(flavor = "local")]
++/// async fn main() {
++///     println!("Hello world");
++/// }
++/// # #[cfg(not(tokio_unstable))]
++/// # fn main() {}
++/// ```
++///
++/// Equivalent code not using `#[tokio::main]`
++///
++/// ```rust
++/// # #[cfg(tokio_unstable)]
++/// fn main() {
++///     tokio::runtime::Builder::new_current_thread()
++///         .enable_all()
++///         .build_local(tokio::runtime::LocalOptions::default())
++///         .unwrap()
++///         .block_on(async {
++///             println!("Hello world");
++///         })
++/// }
++/// # #[cfg(not(tokio_unstable))]
++/// # fn main() {}
++/// ```
++///
++///
++/// ## Set number of worker threads
+ ///
+ /// ```rust
+ /// #[tokio::main(worker_threads = 2)]
+@@ -149,7 +203,7 @@ use proc_macro::TokenStream;
+ /// }
+ /// ```
+ ///
+-/// ### Configure the runtime to start with time paused
++/// ## Configure the runtime to start with time paused
+ ///
+ /// ```rust
+ /// #[tokio::main(flavor = "current_thread", start_paused = true)]
+@@ -175,7 +229,7 @@ use proc_macro::TokenStream;
+ ///
+ /// Note that `start_paused` requires the `test-util` feature to be enabled.
+ ///
+-/// ### Rename package
++/// ## Rename package
+ ///
+ /// ```rust
+ /// use tokio as tokio1;
+@@ -202,7 +256,7 @@ use proc_macro::TokenStream;
+ /// }
+ /// ```
+ ///
+-/// ### Configure unhandled panic behavior
++/// ## Configure unhandled panic behavior
+ ///
+ /// Available options are `shutdown_runtime` and `ignore`. For more details, see
+ /// [`Builder::unhandled_panic`].
+@@ -247,6 +301,7 @@ use proc_macro::TokenStream;
+ ///
+ /// [`Builder::unhandled_panic`]: ../tokio/runtime/struct.Builder.html#method.unhandled_panic
+ /// [unstable]: ../tokio/index.html#unstable-features
++/// [local runtime]: ../tokio/runtime/struct.LocalRuntime.html
+ #[proc_macro_attribute]
+ pub fn main(args: TokenStream, item: TokenStream) -> TokenStream {
+     entry::main(args.into(), item.into(), true).into()
+diff --git a/tokio/src/task/local.rs b/tokio/src/task/local.rs
+index 512a2a3..22b1b9b 100644
+--- a/tokio/src/task/local.rs
++++ b/tokio/src/task/local.rs
+@@ -326,6 +326,14 @@ impl<'a> Drop for LocalDataEnterGuard<'a> {
+ cfg_rt! {
+     /// Spawns a `!Send` future on the current [`LocalSet`] or [`LocalRuntime`].
+     ///
++    /// This is possible when either using one of these types
++    /// explicitly, or (with `tokio_unstable`) by opting to use the
++    /// `"local"` runtime flavor in `tokio::main`:
++    ///
++    /// ```ignore
++    /// #[tokio::main(flavor = "local")]
++    /// ```
++    ///
+     /// The spawned future will run on the same thread that called `spawn_local`.
+     ///
+     /// The provided future will start running in the background immediately

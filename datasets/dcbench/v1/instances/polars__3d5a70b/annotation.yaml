@@ -1,0 +1,59 @@
+repo: polars
+base_commit: 0497decce4a6f8c2b87c0edab398228a5ccaae7c
+commit: 3d5a70be8de4968cbf1c33bb6cb76fbcb822f3ec
+patch_stored: true
+gold:
+  - path: crates/polars-async/Cargo.toml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: New crate manifest for polars-async, pulling atomic-waker/crossbeam-deque/tokio/etc. dependencies out of polars-stream's Cargo.toml into a dedicated crate.
+  - path: crates/polars-async/src/lib.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New crate root declaring `pub mod executor; pub mod primitives;` — the public API surface every other crate now imports via polars_async::executor / polars_async::primitives.
+  - path: crates/polars-async/src/executor/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Renamed from polars-stream's async_executor/mod.rs with real content changes — newly defines `thread_local! { pub static ALLOW_RAYON_THREADS }` here (previously owned by polars-core/src/runtime.rs), inverting the dependency direction.
+  - path: crates/polars-stream/src/lib.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Removes `mod async_executor; mod async_primitives;` — marks where the two private modules were deleted from polars-stream now that they live in polars-async.
+  - path: crates/polars-stream/src/morsel.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: MorselLinearizer/MorselInserter are relocated here from the deleted async_primitives/morsel_linearizer.rs, rebuilt on polars_async::primitives::linearizer::{Inserter, Linearizer} instead of the old local module path — a genuine code move, not just an import rewrite.
+  - path: crates/polars-core/src/runtime.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: RAYON::run_maybe_par_hierarchical's guard switches from the local ALLOW_RAYON_THREADS thread_local (now removed) to polars_async::executor::ALLOW_RAYON_THREADS, the counterpart change to the flag's relocation.
+  - path: Cargo.toml
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Workspace root manifest registers the new polars-async member/workspace dependency that polars-core and polars-stream's Cargo.toml files now depend on.
+forbidden:
+  - path: crates/polars-stream/src/nodes/backward_fill.rs
+    reason: "mechanical import-path update only (crate::async_primitives:: -> polars_async::primitives::), one of ~90 identical call sites adding no new understanding beyond the central move"
+  - path: crates/polars-stream/src/nodes/cum_agg.rs
+    reason: same mechanical import-path update pattern as backward_fill.rs, redundant with the central gold files
+  - path: crates/polars-stream/src/execute.rs
+    reason: "same crate::async_executor:: -> executor:: rename pattern already captured by lib.rs/executor mod.rs; nothing new about the crate split"
+  - path: crates/polars-stream/src/metrics.rs
+    reason: single-line import swap (TaskMetrics) mirroring the same mechanical pattern, not a distinct piece of the refactor
+nontrivial_gold_count: 0
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: []
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 123
+  description: Move async executor to new polars-async crate — crate split stress
+notes: Mechanical crate-split refactor moving the async executor and channel primitives out of polars-stream into a new polars-async crate; ~90 of the 123 changed files are pure `crate::async_executor::` -> `polars_async::executor::` (or async_primitives -> primitives) import-path swaps. The semantic core (new crate scaffolding, the ALLOW_RAYON_THREADS ownership move, and the MorselLinearizer relocation) is fully captured by the diff itself, so no external-to-diff context was needed.

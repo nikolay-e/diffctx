@@ -1,0 +1,90 @@
+repo: envoy
+base_commit: fce9520986a159810f37408a6020867bbb3a9f8d
+commit: 57e0f60a7b332c21efefb184b7843dcefb209c6a
+patch_stored: true
+gold:
+  - path: api/envoy/extensions/transport_sockets/tls/v3/tls.proto
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: defines the deprecated `enforce_rsa_key_usage` field on UpstreamTlsContext whose comment is rewritten to say the option is now ignored; this is the API surface the whole removal ripples from
+  - path: source/common/tls/context_config_impl.h
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: declares ClientContextConfigImpl::enforceRsaKeyUsage() override and the enforce_rsa_key_usage_ bitfield member removed by the patch
+  - path: source/common/tls/context_config_impl.cc
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: constructor init of enforce_rsa_key_usage_ via PROTOBUF_GET_WRAPPED_OR_DEFAULT and the "option set to false" warning log are both deleted here, the core behavioral removal
+  - path: source/common/tls/client_context_impl.h
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: removes the enforce_rsa_key_usage_ member that client_context_impl.cc initialized and consumed
+  - path: source/common/tls/client_context_impl.cc
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: removes the call to SSL_set_enforce_rsa_key_usage(ssl_con.get(), enforce_rsa_key_usage_), the BoringSSL API being deprecated
+  - path: source/common/tls/context_impl.cc
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: removes the SSL_was_key_usage_invalid(ssl) check and stats_.was_key_usage_invalid_.inc() in logHandshake, the other BoringSSL API being deprecated
+  - path: source/common/tls/stats.h
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: removes the was_key_usage_invalid COUNTER macro entry that context_impl.cc used to increment
+  - path: envoy/ssl/context_config.h
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: removes the ContextConfig::enforceRsaKeyUsage() PURE virtual declaration that context_config_impl.h overrides and mocks.h mocks
+  - path: test/common/tls/ssl_socket_test.cc
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: deletes RsaKeyUsageVerificationEnforcementOff/On tests that exercised enforce_rsa_key_usage=false and asserted the ssl.was_key_usage_invalid stat, the exact behavior being deprecated
+  - path: test/mocks/ssl/mocks.h
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: removes MOCK_METHOD(bool, enforceRsaKeyUsage, ...) to stay in sync with the ContextConfig interface change
+  - path: docs/root/_include/ssl_stats.rst
+    tier: helpful
+    role: doc
+    in_diff: true
+    rationale: removes the documentation row for the was_key_usage_invalid stat, describing the exact stat context_impl.cc stops incrementing
+  - path: compat/openssl/source/SSL_set_enforce_rsa_key_usage.cc
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: in-repo compat shim implementing SSL_set_enforce_rsa_key_usage as a no-op for OpenSSL, showing why the option is meaningless outside BoringSSL and grounding the commit message's claim that BoringSSL is removing this API
+  - path: compat/openssl/source/SSL_was_key_usage_invalid.cc
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: in-repo compat shim implementing SSL_was_key_usage_invalid as always-returns-0 for OpenSSL, the counterpart BoringSSL API the commit message says is being removed alongside enforce_rsa_key_usage
+forbidden:
+  - path: api/envoy/extensions/transport_sockets/tls/v3/common.proto
+    reason: same api/tls/v3 directory but does not define enforce_rsa_key_usage or any field touched by this patch
+  - path: docs/root/intro/arch_overview/security/ssl.rst
+    reason: general SSL architecture overview page; does not mention enforce_rsa_key_usage or was_key_usage_invalid at the pinned commit
+  - path: test/common/tls/context_impl_test.cc
+    reason: main ContextImpl unit test file (looks like the obvious test target) but contains no reference to the removed symbols/stat
+  - path: changelogs/1.27.0.yaml
+    reason: historical changelog entry documenting the original introduction of enforce_rsa_key_usage in a past release, superseded by the changelogs/current.yaml entry already in the diff
+nontrivial_gold_count: 2
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration, bm25, random]
+notes: >-
+  Removes the deprecated TLS enforce_rsa_key_usage config option and the was_key_usage_invalid
+  stat/BoringSSL check, since BoringSSL is dropping SSL_set_enforce_rsa_key_usage and
+  SSL_was_key_usage_invalid and Envoy has enforced key-usage validation unconditionally for
+  months. The two in-repo bssl-compat shim files were surfaced via git grep on the exact BoringSSL
+  symbol names named in the commit message; they are not required to compile/read the diff but
+  directly substantiate the "why" the commit message asserts.

@@ -7,13 +7,134 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Standalone native binaries (linux x86_64/aarch64, macOS arm64, Windows
+  x64) are built and attached to every GitHub release. The README had
+  promised them since 1.9.x; releases only ever carried wheels and an sdist.
+- The Rust engine is published to crates.io as the `diffctx` crate
+  (`cargo install diffctx` for the native CLI, `cargo add diffctx` to embed the
+  selection pipeline). Previously the name held only a reservation stub; the
+  crate now carries the released engine, starting at 1.12.0.
+- Container image `ghcr.io/nikolay-e/diffctx` (linux amd64/arm64), built from
+  the release tag and smoke-tested against a real repository before the tag
+  moves: `docker run --rm -v "$PWD:/repo" ghcr.io/nikolay-e/diffctx . --diff HEAD~1`.
+  Mirrored to Docker Hub as `nikolajer/diffctx`.
+- Packaging manifests generated from the release checksums: Scoop
+  (`packaging/scoop/diffctx.json`), AUR (`packaging/aur/`) and an npm wrapper
+  (`packaging/npm/`) that downloads the platform binary and verifies its
+  SHA-256 against the published checksum.
+
 ### Fixed
 
+- **The native binary hard-capped every run at 4096 tokens.** `--budget`
+  carried a fixed clap default instead of leaving the budget unset, so the
+  auto-sizing the Python CLI has always used never ran on the binary shipped
+  via crates.io, npm, the container images, Scoop, AUR and the release
+  archives — the same command returned a truncated selection there (14-file
+  self-eat range: 15 fragments across 10 files, against 172 across 44). The
+  binary now defaults to auto sizing, and `--budget -1` means unlimited as it
+  does in Python.
+- The token cache grew without bound (a machine that had analyzed a few dozen
+  repositories reached 817k files / 4.0 GB). It is now capped at 512 MB,
+  overridable with `DIFFCTX_TOKEN_CACHE_MAX_BYTES` (`0` disables eviction);
+  each run trims one of the 256 shards back under its share of the cap,
+  oldest entries first (#122).
+- The native binary silently emitted YAML for every unrecognized `--format`,
+  including `md` — the documented default of the Python CLI. It now accepts
+  only `yaml`/`json` and exits 2 on anything else.
+- The native binary exited `0` on a diff that produced no semantic context
+  (clean tree, binary-only, everything over the size cap), so callers on the
+  binary channels could not tell an empty selection from a successful one. It
+  now mirrors the Python CLI: the `no semantic context` warning plus its hint
+  on stderr and exit code `4`.
+- The native binary printed no token summary, although the README documents
+  one for every run. It now writes `N tokens (o200k_base), SIZE` to stderr,
+  silenced by the new `-q/--quiet`.
+- `diffctx -v` was a usage error on the native binary while it printed the
+  version on the Python CLI. Both short forms (`-v`, `-V`) now work.
+- **A diff could lose its change signal entirely.** When the only fragment
+  covering a hunk was a whole-file chunk — flat data files, languages without a
+  tree-sitter parser, parse degradation — that chunk had no cheap variant to
+  fall back on, so an oversized core was skipped and the output carried *zero*
+  `role: "changed"` fragments while rendering the unchanged rest of the file as
+  context. Such cores now fall back to an excerpt: the changed lines plus three
+  lines of context, cut from the chunk itself and rendered as `kind: excerpt`,
+  `role: "changed"`. On the elasticsearch `muted-tests.yml` repro the output
+  goes from 121 fragments and no change signal to 118 fragments carrying the
+  appended entry, 5,337 tokens instead of 5,970 (#103). The whole-file
+  fragmentation of flat lists that the same repro shows is the separate
+  granularity issue (#105) and is unchanged.
+- A diff whose selection came back empty rendered as a bare `name`/`type` stub
+  in every format: the writer gated *all* diff metadata on there being
+  fragments, so the commit message and the list of changed files — the only
+  actionable facts about such a run — were dropped. They are now always
+  written.
+
+### Changed
+
+- **Lock files no longer render their hunks in diff mode.** A dependency bump
+  is signal, the checksum churn carrying it is not: `diffctx . --diff` used to
+  spend 12 KB of a 48 KB output on a `Cargo.lock` chunk. The touched lock files
+  are now listed under `lockfile_changes:` (paths only, like `deleted_files:`),
+  mirroring the tree-mode ignore policy while keeping the fact that they
+  changed — on the reported range the output drops from 12,947 to 7,888 tokens
+  (#112). Recognized: `Cargo.lock`, `package-lock.json`, `npm-shrinkwrap.json`,
+  `yarn.lock`, `pnpm-lock.yaml`, `bun.lock(b)`, `deno.lock`, `Pipfile.lock`,
+  `poetry.lock`, `uv.lock`, `pdm.lock`, `composer.lock`, `Gemfile.lock`,
+  `flake.lock`, `go.sum`, `mix.lock`, `packages.lock.json`, `gradle.lockfile`,
+  `Package.resolved`, `cabal.project.freeze`. `--full` still renders their
+  content — it is the escape hatch that promises every fragment of the changed
+  files.
+- Native binary CLI parity: `-f` is accepted as the short form of `--format`,
+  bare `--diff` means the working tree against `HEAD`, `--scoring` advertises
+  its accepted values, and every option carries help text.
+- The standalone binary is covered by its own integration suite
+  (`crates/diffctx-native/tests/native_cli.rs`, run in CI): exit codes, both
+  version flags,
+  the token summary, `--quiet`, format validation and budget handling are now
+  contract-tested against real git repositories. Every parity defect above
+  shipped because nothing exercised the clap parser.
+
+## [1.12.0] - 2026-07-23
+
+### Added
+
+- `--timeout SECONDS` — wall-clock deadline for `--diff` analysis (default
+  300); exceeding it exits `124` instead of hanging indefinitely (#70).
+- `--no-ignores` — turns off every ignore rule (built-in patterns, project
+  `.gitignore`, `.diffctx/ignore`). `--no-default-ignores` only disables the
+  built-in list; its help now says so. Not supported with `--diff`.
+- Output format is inferred from the `-o` extension when `-f` is omitted, so
+  `-o out.json` no longer writes Markdown into a `.json` file; a mismatch
+  between `-f` and the extension warns.
+
+### Fixed
+
+- **All error logging was dead.** An import-time `NullHandler` made
+  `setup_logging` skip attaching a real handler, so `--log-level` was a no-op
+  and all 19 `logger.error/warning/exception` sites were silent — `diffctx . -o
+  /bad/path.md` exited 1 with no message at all.
 - **diffctx invoked from inside a git hook silently analyzed the wrong
   repository.** Git exports repo-locating env vars (`GIT_DIR`,
   `GIT_INDEX_FILE`, `GIT_WORK_TREE`, ...) to hook subprocesses; inherited,
   they overrode `-C` on every internal git call. All git spawns now scrub
   these variables (`git_command()` in `git.rs`).
+- YAML output preserved file content byte-exactly except for trailing
+  newlines; the block chomping indicator is now chosen per content.
+- Arrow-function fragments bound to variables were never stub-eligible (#106).
+- Decorated definitions rendered as a bare `@decorator` line without the
+  `class X:` / `def x():` header.
+- `--max-depth`-pruned directories were labelled `_(empty directory)_` — a
+  factual lie to the reader; they now read
+  `_(children omitted: --max-depth reached)_` (`truncated: true` in
+  YAML/JSON).
+- Mixed directory + glob arguments dropped the glob files' parent path from
+  node names.
+- Double Ctrl-C printed a ~60-line traceback.
+- Lock files `uv.lock`, `pdm.lock`, `bun.lock`, `bun.lockb`, `deno.lock` and
+  `flake.lock` leaked into output; they now join the other lock files in the
+  default ignore patterns.
 - Large-repo hangs/OOM on trivial diffs (#70, #95): discovery no longer
   re-reads and re-tokenizes the whole candidate universe per ensemble
   strategy (one shared pass + a persistent per-blob token cache keyed by
@@ -23,7 +144,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   log instead of re-running the builders, so generation cost stays 1x.
   Verified: gitpod 8000s-hang -> 35.7s,
   pytorch 1848s-SIGKILL -> 7.4s, mui/material-ui OOM class recovered.
-  Outputs are bit-identical (gated by `benchmarks/equivalence_gate.py`).
+  Outputs are bit-identical (gated by `eval/analysis/equivalence_gate.py`).
 
 ### Known limitations
 
@@ -43,6 +164,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ranking) and `peak_rss_bytes` (in-process peak memory). Release builds
   carry line tables (`debug = "line-tables-only"`) for profiling at no
   runtime cost.
+- CLI diagnostics are honest end to end: an exit-code table in `--help`
+  (2 usage, 3 environment, 4 empty diff, 124 timeout), flag-value validation
+  exits 2 instead of 1, git failures report a single line plus a
+  `git log --oneline` hint on unknown revisions, conflicting flags warn
+  (`-q`+`--log-level`, `--full`+selection flags, ...), a failed clipboard
+  copy warns before falling back to stdout, and `--tau` / `--scoring` /
+  `--alpha` / `--budget 0` help text describes what actually happens.
+- `graph --summary` reports category shares as percentages, suppresses
+  degenerate top-referenced lists, detects cycles over dominant-direction
+  edges only, derives churn from `git log --since`, and disambiguates
+  duplicate mermaid labels to relative paths.
 
 ## [1.11.0] - 2026-07-07
 
@@ -51,7 +183,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The default `--format` is now `md` (Markdown), previously `yaml`.** Markdown
   is ~7% more token-efficient than YAML on real diffs and is preferred by
   reviewers for code-fragment-heavy output (evidence:
-  `benchmarks/real_world_diff_bench/`). YAML remains available via `-f yaml`.
+  `datasets/real-world-diff/v1/`). YAML remains available via `-f yaml`.
   This also changes the default stdout format of `treemapper` (a passthrough
   wrapper over this engine); downstream scripts that parse the default output
   must now pass `-f yaml` explicitly. (#104)
@@ -186,7 +318,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   optional `diffctx-mcp` server confines its filesystem reach via
   `DIFFCTX_ALLOWED_PATHS`.
 - Footer of `README.md` links `CHANGELOG.md`, `SECURITY.md`, and
-  `docs/parameter-strategy.md` so they are no longer orphaned.
+  `docs/engineering/parameter-strategy.md` so they are no longer orphaned.
 
 ### Changed
 

@@ -1,0 +1,59 @@
+repo: polars
+base_commit: d54df64dba1734ec4075151d221c5d797f8a0bf7
+commit: da19eb864177f0225c594907b1d3ead8e5dbdd6d
+patch_stored: true
+gold:
+  - path: crates/polars-python/src/lazyframe/visitor/expr_nodes.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds the `PyRollingFunction` pyclass enum and the `IRFunctionExpr::RollingExpr` visitor arm that builds the `(RollingFunction, window_size, min_periods, weights, center, fn_params)` tuple consumed by external engines
+  - path: crates/polars-python/src/c_api/mod.rs
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: registers the new `PyRollingFunction` pyclass on the `_expr_nodes` submodule so it is importable from Python
+  - path: crates/polars-python/src/lazyframe/visit.rs
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: bumps `NodeTraverser::VERSION` minor component (14,1 -> 14,2), the protocol version external engines (e.g. cudf-polars) check to detect this newly-exposed capability
+  - path: py-polars/tests/unit/lazyframe/cuda/test_node_visitor.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: adds 8 tests exercising the new rolling-function visitor tuple shape (min/max/var/std/quantile/skew/kurtosis/rank) via `_collect_rolling_function_data`
+  - path: crates/polars-plan/src/plans/aexpr/function_expr/rolling.rs
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: defines `IRRollingFunction` (Min/Max/Mean/Sum/Quantile/Var/Std/Rank/Skew/Kurtosis/CorrCov/Map), the exact source enum that the new `PyRollingFunction` mirrors variant-for-variant (CorrCov/Map deliberately left unimplemented)
+  - path: crates/polars-core/src/chunked_array/ops/rolling_window.rs
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: defines `RollingOptionsFixedWindow { window_size, min_periods, weights, center, fn_params, .. }`, whose fields are read directly to build the exposed Python tuple
+forbidden:
+  - path: crates/polars-compute/src/rolling/mod.rs
+    reason: defines `RollingFnParams`/`QuantileMethod`, but the new match arms already show the exact fields extracted (prob/method/ddof/seed/bias/fisher), no need for the definition itself
+  - path: crates/polars-plan/src/dsl/function_expr/mod.rs
+    reason: defines the DSL-level (pre-optimization) `FunctionExpr::RollingExpr` sibling variant; the visitor operates on the IR-level `IRFunctionExpr` only
+  - path: crates/polars-python/src/lazyframe/visitor/nodes.rs
+    reason: sibling visitor file for logical-plan (IR) nodes, not expression nodes; unrelated to this rolling-expression exposure
+  - path: py-polars/tests/unit/lazyframe/test_optimizations.py
+    reason: general lazyframe optimization test file with a similar name to the touched cuda visitor test file, but does not cover the node-visitor rolling exposure
+nontrivial_gold_count: 2
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 4
+  description: Expose fixed-size rolling window exprs in Python visitor — rs visitor + py cuda test
+notes: >-
+  Previously the IR node-visitor returned `PyNotImplementedError` for any
+  `IRFunctionExpr::RollingExpr` node, blocking external engines (cudf-polars) from
+  handling fixed-size rolling-window expressions during query-plan traversal. This
+  adds a `PyRollingFunction` pyclass mirroring `IRRollingFunction`'s variants and
+  serializes `RollingOptionsFixedWindow`'s fields into a tuple, bumping the visitor
+  protocol's minor version. CorrCov/Map rolling functions remain unimplemented.

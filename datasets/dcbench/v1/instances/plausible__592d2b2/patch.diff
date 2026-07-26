@@ -1,0 +1,1029 @@
+From 592d2b26a6f3a219be905428eb52afe03b17b6e2 Mon Sep 17 00:00:00 2001
+From: Sanne de Vries <65487235+sanne-san@users.noreply.github.com>
+Date: Thu, 19 Mar 2026 09:19:04 +0100
+Subject: [PATCH] Move subscription settings page content into a LiveView
+ (#6170)
+
+* Move subscription settings page content into a LiveView
+
+Prepares the page to host the choose_plan modal as a LiveComponent in a follow-up PR. Pure refactor, no UX changes.
+- Extract subscription page content into a new SubscriptionSettings LiveView
+- Move data loading out of the controller and into the LiveView
+- Embed the LiveView in the existing settings layout via live_render
+
+* Incorporate feedback
+
+- Render SubscriptionSettings LiveView directly from the router instead of via a controller action and template
+- Update the shared settings layout to work without a request object
+- Move view helpers from SettingsView to the billing components module
+
+* Fix Alpine.js attribute warnings in settings templates
+
+* Update lib/plausible_web/live/components/form.ex
+
+Co-authored-by: Adrian Gruntkowski <adrian.gruntkowski@gmail.com>
+
+* Update lib/plausible_web/live/components/form.ex
+
+Co-authored-by: Adrian Gruntkowski <adrian.gruntkowski@gmail.com>
+
+* Update lib/plausible_web/live/subscription_settings.ex
+
+Co-authored-by: Adrian Gruntkowski <adrian.gruntkowski@gmail.com>
+
+* Update lib/plausible_web/templates/layout/settings.html.heex
+
+Co-authored-by: Adrian Gruntkowski <adrian.gruntkowski@gmail.com>
+
+* Incorporate more feedback
+
+- Move billing helpers to a dedicated Helpers module
+- Add a CurrentPath plug to the settings pipeline so we can avoid all the branching in the layout template
+- Remove conn dependency from the settings layout
+
+* Address remaining PR review feedback
+
+- Use `conn.request_path` instead of `Path.join` in CurrentPath plug
+- Remove unused `%Plug.Conn{}` clause from `account_settings_sidebar`
+- Use dot notation for always-present assigns in `account_settings_sidebar`
+
+* Add SettingsContext on_mount hook for settings LiveViews
+
+---------
+
+Co-authored-by: Adrian Gruntkowski <adrian.gruntkowski@gmail.com>
+---
+ .../live/customer_support/team.ex             |   4 +-
+ .../components/billing/billing.ex             |   1 -
+ .../components/billing/helpers.ex             |  63 ++++
+ .../controllers/settings_controller.ex        |  50 ---
+ lib/plausible_web/live/components/form.ex     |   2 +-
+ lib/plausible_web/live/settings_context.ex    |  16 +
+ .../live/subscription_settings.ex             | 309 ++++++++++++++++++
+ lib/plausible_web/plugs/current_path.ex       |   6 +
+ lib/plausible_web/router.ex                   |  14 +-
+ .../templates/layout/settings.html.heex       |   9 +-
+ .../templates/settings/subscription.html.heex | 242 --------------
+ lib/plausible_web/views/layout_view.ex        |  12 +-
+ lib/plausible_web/views/settings_view.ex      |  64 ----
+ 13 files changed, 422 insertions(+), 370 deletions(-)
+ create mode 100644 lib/plausible_web/components/billing/helpers.ex
+ create mode 100644 lib/plausible_web/live/settings_context.ex
+ create mode 100644 lib/plausible_web/live/subscription_settings.ex
+ create mode 100644 lib/plausible_web/plugs/current_path.ex
+ delete mode 100644 lib/plausible_web/templates/settings/subscription.html.heex
+
+diff --git a/extra/lib/plausible_web/live/customer_support/team.ex b/extra/lib/plausible_web/live/customer_support/team.ex
+index d2ca34d13..bdcb8d505 100644
+--- a/extra/lib/plausible_web/live/customer_support/team.ex
++++ b/extra/lib/plausible_web/live/customer_support/team.ex
+@@ -277,7 +277,9 @@ defmodule PlausibleWeb.Live.CustomerSupport.Team do
+     cond do
+       team && team.subscription ->
+         status_str =
+-          PlausibleWeb.SettingsView.present_subscription_status(team.subscription.status)
++          PlausibleWeb.Components.Billing.Helpers.present_subscription_status(
++            team.subscription.status
++          )
+ 
+         if team.subscription.paddle_subscription_id do
+           assigns = %{status_str: status_str, subscription: team.subscription}
+diff --git a/lib/plausible_web/components/billing/billing.ex b/lib/plausible_web/components/billing/billing.ex
+index e60cb2fb7..41489d570 100644
+--- a/lib/plausible_web/components/billing/billing.ex
++++ b/lib/plausible_web/components/billing/billing.ex
+@@ -6,7 +6,6 @@ defmodule PlausibleWeb.Components.Billing do
+ 
+   import PlausibleWeb.Components.Icons
+ 
+-  require Plausible.Billing.Subscription.Status
+   alias Plausible.Billing.{Plan, Plans, EnterprisePlan}
+ 
+   attr :site, Plausible.Site, required: false, default: nil
+diff --git a/lib/plausible_web/components/billing/helpers.ex b/lib/plausible_web/components/billing/helpers.ex
+new file mode 100644
+index 000000000..f2b2028fe
+--- /dev/null
++++ b/lib/plausible_web/components/billing/helpers.ex
+@@ -0,0 +1,63 @@
++defmodule PlausibleWeb.Components.Billing.Helpers do
++  @moduledoc false
++
++  require Plausible.Billing.Subscription.Status
++  alias Plausible.Billing.{Plan, Plans, EnterprisePlan, Subscription, Subscriptions}
++
++  def present_plan_name(%Plan{kind: kind}),
++    do: kind |> to_string() |> String.capitalize()
++
++  def present_plan_name(%EnterprisePlan{}), do: "Enterprise"
++  def present_plan_name(:free_10k), do: "Free"
++  def present_plan_name(_), do: "Plan"
++
++  def present_subscription_interval(subscription) do
++    case Plans.subscription_interval(subscription) do
++      "monthly" -> "month"
++      "yearly" -> "year"
++      interval -> interval
++    end
++  end
++
++  @spec present_subscription_status(Subscription.Status.status()) :: String.t()
++  def present_subscription_status(Subscription.Status.active()), do: "Active"
++  def present_subscription_status(Subscription.Status.past_due()), do: "Past due"
++  def present_subscription_status(Subscription.Status.deleted()), do: "Cancelled"
++  def present_subscription_status(Subscription.Status.paused()), do: "Paused"
++  def present_subscription_status(status), do: status
++
++  def subscription_pill_color(Subscription.Status.active()), do: :green
++  def subscription_pill_color(Subscription.Status.past_due()), do: :yellow
++  def subscription_pill_color(Subscription.Status.paused()), do: :red
++  def subscription_pill_color(Subscription.Status.deleted()), do: :red
++  def subscription_pill_color(_), do: :gray
++
++  def trial_button_label(team) do
++    if Plausible.Teams.Billing.enterprise_configured?(team) do
++      "Upgrade"
++    else
++      "Choose a plan →"
++    end
++  end
++
++  def change_plan_button_label(nil), do: "Upgrade"
++
++  def change_plan_button_label(subscription) do
++    if Subscriptions.resumable?(subscription) && subscription.cancel_url do
++      "Change plan"
++    else
++      "Upgrade"
++    end
++  end
++
++  def format_invoices(invoice_list) do
++    Enum.map(invoice_list, fn invoice ->
++      %{
++        date: invoice["payout_date"] |> Date.from_iso8601!() |> Calendar.strftime("%b %-d, %Y"),
++        amount: (invoice["amount"] / 1) |> :erlang.float_to_binary(decimals: 2),
++        currency: invoice["currency"] |> PlausibleWeb.BillingView.present_currency(),
++        url: invoice["receipt_url"]
++      }
++    end)
++  end
++end
+diff --git a/lib/plausible_web/controllers/settings_controller.ex b/lib/plausible_web/controllers/settings_controller.ex
+index aa39e396a..8877e31da 100644
+--- a/lib/plausible_web/controllers/settings_controller.ex
++++ b/lib/plausible_web/controllers/settings_controller.ex
+@@ -134,47 +134,6 @@ defmodule PlausibleWeb.SettingsController do
+     render_security(conn)
+   end
+ 
+-  def subscription(conn, _params) do
+-    team = conn.assigns.current_team
+-    subscription = Teams.Billing.get_subscription(team)
+-
+-    invoices = Plausible.Billing.paddle_api().get_invoices(subscription)
+-
+-    pageview_usage = Teams.Billing.monthly_pageview_usage(team)
+-    site_usage = Teams.Billing.site_usage(team)
+-    team_member_usage = Teams.Billing.team_member_usage(team)
+-
+-    usage = %{
+-      monthly_pageviews: pageview_usage,
+-      sites: site_usage,
+-      team_members: team_member_usage
+-    }
+-
+-    notification_type = Plausible.Billing.Quota.usage_notification_type(team, usage)
+-
+-    total_pageview_usage_domain =
+-      if site_usage == 1 do
+-        [site] = Plausible.Teams.owned_sites(team)
+-        site.domain
+-      else
+-        on_ee(do: team && get_consolidated_view_domain(team), else: nil)
+-      end
+-
+-    render(conn, :subscription,
+-      layout: {PlausibleWeb.LayoutView, :settings},
+-      subscription: subscription,
+-      invoices: invoices,
+-      pageview_limit: Teams.Billing.monthly_pageview_limit(subscription),
+-      pageview_usage: pageview_usage,
+-      site_usage: site_usage,
+-      site_limit: Teams.Billing.site_limit(team),
+-      team_member_limit: Teams.Billing.team_member_limit(team),
+-      team_member_usage: team_member_usage,
+-      notification_type: notification_type,
+-      total_pageview_usage_domain: total_pageview_usage_domain
+-    )
+-  end
+-
+   def redirect_invoices(conn, _params) do
+     redirect(conn, to: Routes.settings_path(conn, :subscription))
+   end
+@@ -470,15 +429,6 @@ defmodule PlausibleWeb.SettingsController do
+     end
+   end
+ 
+-  on_ee do
+-    defp get_consolidated_view_domain(team) do
+-      case Plausible.ConsolidatedView.get(team) do
+-        nil -> nil
+-        view -> if Plausible.ConsolidatedView.ok_to_display?(team), do: view.domain
+-      end
+-    end
+-  end
+-
+   defp handle_email_updated(conn) do
+     conn
+     |> put_flash(:success, "Email updated")
+diff --git a/lib/plausible_web/live/components/form.ex b/lib/plausible_web/live/components/form.ex
+index 0a637312d..c49689be1 100644
+--- a/lib/plausible_web/live/components/form.ex
++++ b/lib/plausible_web/live/components/form.ex
+@@ -428,7 +428,7 @@ defmodule PlausibleWeb.Live.Components.Form do
+     end)
+   end
+ 
+-  attr :conn, Plug.Conn, required: true
++  attr :conn, :map, default: %{}
+   attr :name, :string, required: true
+   attr :options, :list, required: true
+   attr :value, :any, default: nil
+diff --git a/lib/plausible_web/live/settings_context.ex b/lib/plausible_web/live/settings_context.ex
+new file mode 100644
+index 000000000..4284f3286
+--- /dev/null
++++ b/lib/plausible_web/live/settings_context.ex
+@@ -0,0 +1,16 @@
++defmodule PlausibleWeb.Live.SettingsContext do
++  @moduledoc false
++
++  import Phoenix.LiveView
++  import Phoenix.Component
++
++  def on_mount(_arg, _params, _session, socket) do
++    socket = attach_hook(socket, :get_current_path, :handle_params, &get_current_path/3)
++    {:cont, socket, layout: {PlausibleWeb.LayoutView, :settings}}
++  end
++
++  defp get_current_path(_params, url, socket) do
++    %{path: current_path} = URI.parse(url)
++    {:cont, assign(socket, :current_path, current_path)}
++  end
++end
+diff --git a/lib/plausible_web/live/subscription_settings.ex b/lib/plausible_web/live/subscription_settings.ex
+new file mode 100644
+index 000000000..470c1cd4a
+--- /dev/null
++++ b/lib/plausible_web/live/subscription_settings.ex
+@@ -0,0 +1,309 @@
++defmodule PlausibleWeb.Live.SubscriptionSettings do
++  @moduledoc """
++  LiveView for the subscription settings page.
++  """
++  use PlausibleWeb, :live_view
++  use Plausible
++
++  import PlausibleWeb.Components.Billing.Helpers
++
++  alias Plausible.Teams
++  alias PlausibleWeb.Router.Helpers, as: Routes
++
++  def mount(_params, _session, socket) do
++    team = socket.assigns.current_team
++    subscription = Teams.Billing.get_subscription(team)
++    invoices = Plausible.Billing.paddle_api().get_invoices(subscription)
++    pageview_usage = Teams.Billing.monthly_pageview_usage(team)
++    site_usage = Teams.Billing.site_usage(team)
++    team_member_usage = Teams.Billing.team_member_usage(team)
++
++    usage = %{
++      monthly_pageviews: pageview_usage,
++      sites: site_usage,
++      team_members: team_member_usage
++    }
++
++    notification_type = Plausible.Billing.Quota.usage_notification_type(team, usage)
++
++    total_pageview_usage_domain =
++      if site_usage == 1 do
++        [site] = Plausible.Teams.owned_sites(team)
++        site.domain
++      else
++        on_ee(do: team && consolidated_view_domain(team), else: nil)
++      end
++
++    socket =
++      socket
++      |> assign(:subscription, subscription)
++      |> assign(:invoices, invoices)
++      |> assign(:pageview_limit, Teams.Billing.monthly_pageview_limit(subscription))
++      |> assign(:pageview_usage, pageview_usage)
++      |> assign(:site_usage, site_usage)
++      |> assign(:site_limit, Teams.Billing.site_limit(team))
++      |> assign(:team_member_limit, Teams.Billing.team_member_limit(team))
++      |> assign(:team_member_usage, team_member_usage)
++      |> assign(:notification_type, notification_type)
++      |> assign(:total_pageview_usage_domain, total_pageview_usage_domain)
++
++    {:ok, socket}
++  end
++
++  def render(assigns) do
++    ~H"""
++    <.settings_tiles>
++      <%= if is_nil(@current_team) || Plausible.Teams.on_trial?(@current_team) do %>
++        <.tile docs="trial-to-paid">
++          <:title>Current plan</:title>
++          <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
++            <div class="flex flex-col gap-1">
++              <div class="flex items-center gap-2">
++                <span class="text-sm font-semibold dark:text-gray-100">Free trial</span>
++                <.pill :if={@current_team} color={:yellow}>
++                  {Plausible.Teams.trial_days_left(@current_team)} days left
++                </.pill>
++              </div>
++              <p
++                :if={is_nil(@current_team)}
++                class="text-sm text-gray-600 dark:text-gray-400"
++              >
++                Your 30-day trial will start when you add your first site
++              </p>
++            </div>
++            <.button_link
++              href={Routes.billing_path(PlausibleWeb.Endpoint, :choose_plan)}
++              mt?={false}
++              id="upgrade-or-change-plan-link"
++            >
++              {trial_button_label(@current_team)}
++            </.button_link>
++          </div>
++        </.tile>
++      <% else %>
++        <.tile docs="billing">
++          <:title>Current plan</:title>
++          <%= if @subscription do %>
++            <div class="flex flex-col gap-5">
++              <PlausibleWeb.Components.Billing.Notice.subscription_cancelled
++                subscription={@subscription}
++                dismissable={false}
++              />
++              <div class="flex flex-col sm:flex-row justify-between items-start gap-4">
++                <div class="flex flex-col gap-1">
++                  <div class="flex items-center gap-2 flex-wrap">
++                    <span class="text-sm font-semibold dark:text-gray-100">
++                      {present_plan_name(Plausible.Billing.Plans.get_subscription_plan(@subscription))}
++                    </span>
++                    <.pill color={subscription_pill_color(@subscription.status)}>
++                      {present_subscription_status(@subscription.status)}
++                    </.pill>
++                  </div>
++                  <p class="text-sm text-gray-600 dark:text-gray-400">
++                    Up to {PlausibleWeb.AuthView.subscription_quota(@subscription)} monthly pageviews
++                  </p>
++                  <%= if @subscription.next_bill_amount && @subscription.next_bill_date do %>
++                    <p class="text-sm text-gray-600 dark:text-gray-400">
++                      {PlausibleWeb.BillingView.present_currency(@subscription.currency_code)}{@subscription.next_bill_amount} / {present_subscription_interval(
++                        @subscription
++                      )} • Renews on {Calendar.strftime(@subscription.next_bill_date, "%b %-d, %Y")}
++                    </p>
++                  <% end %>
++                </div>
++                <div class="flex gap-2">
++                  <.button_link
++                    :if={
++                      @subscription &&
++                        Plausible.Billing.Subscriptions.resumable?(@subscription) &&
++                        @subscription.update_url
++                    }
++                    theme="secondary"
++                    href={@subscription.update_url}
++                    mt?={false}
++                    id="billing-details-link"
++                  >
++                    Billing details
++                  </.button_link>
++                  <.button_link
++                    :if={
++                      not (Plausible.Teams.Billing.enterprise_configured?(@current_team) &&
++                             Plausible.Billing.Subscriptions.halted?(@subscription))
++                    }
++                    href={Routes.billing_path(PlausibleWeb.Endpoint, :choose_plan)}
++                    mt?={false}
++                    id="upgrade-or-change-plan-link"
++                  >
++                    {change_plan_button_label(@subscription)}
++                  </.button_link>
++                </div>
++              </div>
++            </div>
++          <% else %>
++            <PlausibleWeb.Components.Billing.Notice.usage_notification
++              type={:trial_ended}
++              team={@current_team}
++            />
++          <% end %>
++        </.tile>
++      <% end %>
++
++      <.tile docs="subscription-plans">
++        <:title>
++          <a id="subscription">Monthly usage</a>
++        </:title>
++
++        <div class="flex flex-col gap-12">
++          <PlausibleWeb.Components.Billing.Notice.usage_notification
++            :if={
++              @notification_type in [
++                :pageview_approaching_limit,
++                :traffic_exceeded_current_cycle,
++                :traffic_exceeded_last_cycle,
++                :traffic_exceeded_sustained,
++                :grace_period_active,
++                :manual_lock_grace_period_active,
++                :dashboard_locked
++              ]
++            }
++            type={@notification_type}
++            team={@current_team}
++          />
++          <PlausibleWeb.Components.Billing.render_monthly_pageview_usage
++            usage={@pageview_usage}
++            limit={@pageview_limit}
++            total_pageview_usage_domain={@total_pageview_usage_domain}
++          />
++        </div>
++      </.tile>
++
++      <.tile docs="subscription-plans">
++        <:title>Site and team usage</:title>
++
++        <div class="flex flex-col gap-8">
++          <PlausibleWeb.Components.Billing.Notice.usage_notification
++            :if={
++              @notification_type in [
++                :site_limit_reached,
++                :team_member_limit_reached,
++                :site_and_team_member_limit_reached
++              ]
++            }
++            type={@notification_type}
++            team={@current_team}
++          />
++          <div class="grid grid-cols-2 gap-8">
++            <div class="flex flex-col gap-3">
++              <PlausibleWeb.Components.Billing.usage_progress_bar
++                id="site-usage-row"
++                usage={@site_usage}
++                limit={@site_limit}
++              />
++              <div class="flex justify-between flex-wrap text-sm font-medium text-gray-900 dark:text-gray-100">
++                <span>Owned sites</span>
++                <span data-test-id="sites-usage">
++                  {PlausibleWeb.TextHelpers.number_format(@site_usage)}
++                  {if is_number(@site_limit),
++                    do: "/ #{PlausibleWeb.TextHelpers.number_format(@site_limit)}"}
++                  {if @site_limit == :unlimited, do: "/ Unlimited"}
++                </span>
++              </div>
++            </div>
++            <div class="flex flex-col gap-3">
++              <PlausibleWeb.Components.Billing.usage_progress_bar
++                id="team-member-usage-row"
++                usage={@team_member_usage}
++                limit={@team_member_limit}
++              />
++              <div class="flex justify-between flex-wrap text-sm font-medium text-gray-900 dark:text-gray-100">
++                <span>Team members</span>
++                <span data-test-id="team-member-usage">
++                  {PlausibleWeb.TextHelpers.number_format(@team_member_usage)}
++                  {if is_number(@team_member_limit),
++                    do: "/ #{PlausibleWeb.TextHelpers.number_format(@team_member_limit)}"}
++                  {if @team_member_limit == :unlimited, do: "/ Unlimited"}
++                </span>
++              </div>
++            </div>
++          </div>
++        </div>
++      </.tile>
++
++      <.tile :if={@subscription} docs="download-invoices">
++        <:title>
++          <a id="invoices">Invoices</a>
++        </:title>
++        <%= case @invoices do %>
++          <% {:error, :no_invoices} -> %>
++            <p class="mt-10 mb-12 text-center text-sm text-gray-600 dark:text-gray-400">
++              You don't have any invoices yet.
++            </p>
++          <% {:error, :request_failed} -> %>
++            <.notice theme={:gray} title="We couldn't retrieve your invoices">
++              Please refresh the page or try again later
++            </.notice>
++          <% {:ok, invoice_list} when is_list(invoice_list) -> %>
++            <div x-data="{showAll: false}" x-cloak>
++              <.table
++                rows={Enum.with_index(format_invoices(invoice_list))}
++                row_attrs={
++                  fn {_invoice, idx} ->
++                    %{
++                      "x-show" => "showAll || #{idx} < 3"
++                    }
++                  end
++                }
++              >
++                <:tbody :let={{invoice, _idx}}>
++                  <.td>{invoice.date}</.td>
++                  <.td>{invoice.currency <> invoice.amount}</.td>
++                  <.td class="flex justify-end">
++                    <.styled_link href={invoice.url} new_tab={true}></.styled_link>
++                  </.td>
++                </:tbody>
++                <tr :if={length(invoice_list) > 3}>
++                  <td colspan="3">
++                    <.button
++                      theme="secondary"
++                      x-on:click="showAll = true"
++                      x-show="!showAll"
++                    >
++                      Show more
++                    </.button>
++                  </td>
++                </tr>
++              </.table>
++            </div>
++        <% end %>
++      </.tile>
++    </.settings_tiles>
++
++    <%= if Plausible.Billing.Subscriptions.resumable?(@subscription) && @subscription.cancel_url do %>
++      <div class="flex gap-2">
++        <.button_link theme="danger" href={@subscription.cancel_url} mt?={false}>
++          Cancel plan
++        </.button_link>
++        <%= if Application.get_env(:plausible, :environment) == "dev" do %>
++          <.button_link
++            href={@subscription.update_url}
++            theme="secondary"
++            class="text-yellow-600 dark:text-yellow-400"
++            mt?={false}
++          >
++            [DEV ONLY] Change status
++          </.button_link>
++        <% end %>
++      </div>
++    <% end %>
++    """
++  end
++
++  on_ee do
++    defp consolidated_view_domain(team) do
++      view = Plausible.ConsolidatedView.get(team)
++
++      if not is_nil(view) and Plausible.ConsolidatedView.ok_to_display?(team) do
++        view.domain
++      end
++    end
++  end
++end
+diff --git a/lib/plausible_web/plugs/current_path.ex b/lib/plausible_web/plugs/current_path.ex
+new file mode 100644
+index 000000000..fecc537e6
+--- /dev/null
++++ b/lib/plausible_web/plugs/current_path.ex
+@@ -0,0 +1,6 @@
++defmodule PlausibleWeb.Plugs.CurrentPath do
++  @moduledoc false
++
++  def init(_), do: []
++  def call(conn, _), do: Plug.Conn.assign(conn, :current_path, conn.request_path)
++end
+diff --git a/lib/plausible_web/router.ex b/lib/plausible_web/router.ex
+index d864985e8..9f5265bd0 100644
+--- a/lib/plausible_web/router.ex
++++ b/lib/plausible_web/router.ex
+@@ -481,7 +481,12 @@ defmodule PlausibleWeb.Router do
+   end
+ 
+   scope "/settings", PlausibleWeb do
+-    pipe_through [:browser, :csrf, PlausibleWeb.RequireAccountPlug]
++    pipe_through [
++      :browser,
++      :csrf,
++      PlausibleWeb.RequireAccountPlug,
++      PlausibleWeb.Plugs.CurrentPath
++    ]
+ 
+     get "/", SettingsController, :index
+     get "/preferences", SettingsController, :preferences
+@@ -496,7 +501,12 @@ defmodule PlausibleWeb.Router do
+     post "/security/email", SettingsController, :update_email
+     post "/security/password", SettingsController, :update_password
+ 
+-    get "/billing/subscription", SettingsController, :subscription
++    live_session :settings, on_mount: PlausibleWeb.Live.SettingsContext do
++      scope alias: Live, assigns: %{connect_live_socket: true} do
++        live "/billing/subscription", SubscriptionSettings, :subscription, as: :settings
++      end
++    end
++
+     get "/billing/invoices", SettingsController, :redirect_invoices
+     get "/api-keys", SettingsController, :api_keys
+ 
+diff --git a/lib/plausible_web/templates/layout/settings.html.heex b/lib/plausible_web/templates/layout/settings.html.heex
+index 791478790..b7e3f4d34 100644
+--- a/lib/plausible_web/templates/layout/settings.html.heex
++++ b/lib/plausible_web/templates/layout/settings.html.heex
+@@ -1,4 +1,4 @@
+-<% options = account_settings_sidebar(@conn) %>
++<% options = account_settings_sidebar(assigns) %>
+ <div class="container pt-6">
+   <.styled_link class="font-semibold text-sm" href="/sites">
+     ← Back to sites
+@@ -13,8 +13,7 @@
+       <.mobile_nav_dropdown
+         name="settings"
+         options={options}
+-        selected_fn={&is_current_tab(@conn, &1)}
+-        conn={@conn}
++        selected_fn={&is_current_tab(@current_path, &1)}
+         href_base="/settings/"
+       />
+ 
+@@ -27,7 +26,7 @@
+             </p>
+           </div>
+           <Layout.settings_sidebar
+-            selected_fn={&is_current_tab(@conn, &1)}
++            selected_fn={&is_current_tab(@current_path, &1)}
+             options={options["Account"]}
+           />
+         </div>
+@@ -40,7 +39,7 @@
+             </p>
+           </div>
+           <Layout.settings_sidebar
+-            selected_fn={&is_current_tab(@conn, &1)}
++            selected_fn={&is_current_tab(@current_path, &1)}
+             options={options["Team"]}
+           />
+         </div>
+diff --git a/lib/plausible_web/templates/settings/subscription.html.heex b/lib/plausible_web/templates/settings/subscription.html.heex
+deleted file mode 100644
+index b7a3e563e..000000000
+--- a/lib/plausible_web/templates/settings/subscription.html.heex
++++ /dev/null
+@@ -1,242 +0,0 @@
+-<.settings_tiles>
+-  <%= if is_nil(@current_team) || Plausible.Teams.on_trial?(@current_team) do %>
+-    <.tile docs="trial-to-paid">
+-      <:title>Current plan</:title>
+-      <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+-        <div class="flex flex-col gap-1">
+-          <div class="flex items-center gap-2">
+-            <span class="text-sm font-semibold dark:text-gray-100">Free trial</span>
+-            <.pill :if={@current_team} color={:yellow}>
+-              {Plausible.Teams.trial_days_left(@current_team)} days left
+-            </.pill>
+-          </div>
+-          <p
+-            :if={is_nil(@current_team)}
+-            class="text-sm text-gray-600 dark:text-gray-400"
+-          >
+-            Your 30-day trial will start when you add your first site
+-          </p>
+-        </div>
+-        <.button_link
+-          href={Routes.billing_path(@conn, :choose_plan)}
+-          mt?={false}
+-          id="upgrade-or-change-plan-link"
+-        >
+-          {trial_button_label(@current_team)}
+-        </.button_link>
+-      </div>
+-    </.tile>
+-  <% else %>
+-    <.tile docs="billing">
+-      <:title>Current plan</:title>
+-      <%= if @subscription do %>
+-        <div class="flex flex-col gap-5">
+-          <PlausibleWeb.Components.Billing.Notice.subscription_cancelled
+-            subscription={@subscription}
+-            dismissable={false}
+-          />
+-          <div class="flex flex-col sm:flex-row justify-between items-start gap-4">
+-            <div class="flex flex-col gap-1">
+-              <div class="flex items-center gap-2 flex-wrap">
+-                <span class="text-sm font-semibold dark:text-gray-100">
+-                  {present_plan_name(Plausible.Billing.Plans.get_subscription_plan(@subscription))}
+-                </span>
+-                <.pill color={subscription_pill_color(@subscription.status)}>
+-                  {present_subscription_status(@subscription.status)}
+-                </.pill>
+-              </div>
+-              <p class="text-sm text-gray-600 dark:text-gray-400">
+-                Up to {PlausibleWeb.AuthView.subscription_quota(@subscription)} monthly pageviews
+-              </p>
+-              <%= if @subscription.next_bill_amount && @subscription.next_bill_date do %>
+-                <p class="text-sm text-gray-600 dark:text-gray-400">
+-                  {PlausibleWeb.BillingView.present_currency(@subscription.currency_code)}{@subscription.next_bill_amount} / {present_subscription_interval(
+-                    @subscription
+-                  )} • Renews on {Calendar.strftime(@subscription.next_bill_date, "%b %-d, %Y")}
+-                </p>
+-              <% end %>
+-            </div>
+-            <div class="flex gap-2">
+-              <.button_link
+-                :if={
+-                  @subscription &&
+-                    Plausible.Billing.Subscriptions.resumable?(@subscription) &&
+-                    @subscription.update_url
+-                }
+-                theme="secondary"
+-                href={@subscription.update_url}
+-                mt?={false}
+-                id="billing-details-link"
+-              >
+-                Billing details
+-              </.button_link>
+-              <.button_link
+-                :if={
+-                  not (Plausible.Teams.Billing.enterprise_configured?(@current_team) &&
+-                         Plausible.Billing.Subscriptions.halted?(@subscription))
+-                }
+-                href={Routes.billing_path(@conn, :choose_plan)}
+-                mt?={false}
+-                id="upgrade-or-change-plan-link"
+-              >
+-                {change_plan_button_label(@subscription)}
+-              </.button_link>
+-            </div>
+-          </div>
+-        </div>
+-      <% else %>
+-        <PlausibleWeb.Components.Billing.Notice.usage_notification
+-          type={:trial_ended}
+-          team={@current_team}
+-        />
+-      <% end %>
+-    </.tile>
+-  <% end %>
+-
+-  <.tile docs="subscription-plans">
+-    <:title>
+-      <a id="subscription">Monthly usage</a>
+-    </:title>
+-
+-    <div class="flex flex-col gap-12">
+-      <PlausibleWeb.Components.Billing.Notice.usage_notification
+-        :if={
+-          @notification_type in [
+-            :pageview_approaching_limit,
+-            :traffic_exceeded_current_cycle,
+-            :traffic_exceeded_last_cycle,
+-            :traffic_exceeded_sustained,
+-            :grace_period_active,
+-            :manual_lock_grace_period_active,
+-            :dashboard_locked
+-          ]
+-        }
+-        type={@notification_type}
+-        team={@current_team}
+-      />
+-      <PlausibleWeb.Components.Billing.render_monthly_pageview_usage
+-        usage={@pageview_usage}
+-        limit={@pageview_limit}
+-        total_pageview_usage_domain={@total_pageview_usage_domain}
+-      />
+-    </div>
+-  </.tile>
+-
+-  <.tile docs="subscription-plans">
+-    <:title>Site and team usage</:title>
+-
+-    <div class="flex flex-col gap-8">
+-      <PlausibleWeb.Components.Billing.Notice.usage_notification
+-        :if={
+-          @notification_type in [
+-            :site_limit_reached,
+-            :team_member_limit_reached,
+-            :site_and_team_member_limit_reached
+-          ]
+-        }
+-        type={@notification_type}
+-        team={@current_team}
+-      />
+-      <div class="grid grid-cols-2 gap-8">
+-        <div class="flex flex-col gap-3">
+-          <PlausibleWeb.Components.Billing.usage_progress_bar
+-            id="site-usage-row"
+-            usage={@site_usage}
+-            limit={@site_limit}
+-          />
+-          <div class="flex justify-between flex-wrap text-sm font-medium text-gray-900 dark:text-gray-100">
+-            <span>Owned sites</span>
+-            <span data-test-id="sites-usage">
+-              {PlausibleWeb.TextHelpers.number_format(@site_usage)}
+-              {if is_number(@site_limit),
+-                do: "/ #{PlausibleWeb.TextHelpers.number_format(@site_limit)}"}
+-              {if @site_limit == :unlimited, do: "/ Unlimited"}
+-            </span>
+-          </div>
+-        </div>
+-        <div class="flex flex-col gap-3">
+-          <PlausibleWeb.Components.Billing.usage_progress_bar
+-            id="team-member-usage-row"
+-            usage={@team_member_usage}
+-            limit={@team_member_limit}
+-          />
+-          <div class="flex justify-between flex-wrap text-sm font-medium text-gray-900 dark:text-gray-100">
+-            <span>Team members</span>
+-            <span data-test-id="team-member-usage">
+-              {PlausibleWeb.TextHelpers.number_format(@team_member_usage)}
+-              {if is_number(@team_member_limit),
+-                do: "/ #{PlausibleWeb.TextHelpers.number_format(@team_member_limit)}"}
+-              {if @team_member_limit == :unlimited, do: "/ Unlimited"}
+-            </span>
+-          </div>
+-        </div>
+-      </div>
+-    </div>
+-  </.tile>
+-
+-  <.tile :if={@subscription} docs="download-invoices">
+-    <:title>
+-      <a id="invoices">Invoices</a>
+-    </:title>
+-    <%= case @invoices do %>
+-      <% {:error, :no_invoices} -> %>
+-        <p class="mt-10 mb-12 text-center text-sm text-gray-600 dark:text-gray-400">
+-          You don't have any invoices yet.
+-        </p>
+-      <% {:error, :request_failed} -> %>
+-        <.notice theme={:gray} title="We couldn't retrieve your invoices">
+-          Please refresh the page or try again later
+-        </.notice>
+-      <% {:ok, invoice_list} when is_list(invoice_list) -> %>
+-        <div x-data="{showAll: false}" x-cloak>
+-          <.table
+-            rows={Enum.with_index(format_invoices(invoice_list))}
+-            row_attrs={
+-              fn {_invoice, idx} ->
+-                %{
+-                  "x-show" => "showAll || #{idx} < 3"
+-                }
+-              end
+-            }
+-          >
+-            <:tbody :let={{invoice, _idx}}>
+-              <.td>{invoice.date}</.td>
+-              <.td>{invoice.currency <> invoice.amount}</.td>
+-              <.td class="flex justify-end">
+-                <.styled_link href={invoice.url} new_tab={true}></.styled_link>
+-              </.td>
+-            </:tbody>
+-            <tr :if={length(invoice_list) > 3}>
+-              <td colspan="3">
+-                <.button
+-                  theme="secondary"
+-                  x-on:click="showAll = true"
+-                  x-show="!showAll"
+-                >
+-                  Show more
+-                </.button>
+-              </td>
+-            </tr>
+-          </.table>
+-        </div>
+-    <% end %>
+-  </.tile>
+-</.settings_tiles>
+-
+-<%= if Plausible.Billing.Subscriptions.resumable?(@subscription) && @subscription.cancel_url do %>
+-  <div class="flex gap-2">
+-    <.button_link theme="danger" href={@subscription.cancel_url} mt?={false}>
+-      Cancel plan
+-    </.button_link>
+-    <%= if Application.get_env(:plausible, :environment) == "dev" do %>
+-      <.button_link
+-        href={@subscription.update_url}
+-        theme="secondary"
+-        class="text-yellow-600 dark:text-yellow-400"
+-        mt?={false}
+-      >
+-        [DEV ONLY] Change status
+-      </.button_link>
+-    <% end %>
+-  </div>
+-<% end %>
+diff --git a/lib/plausible_web/views/layout_view.ex b/lib/plausible_web/views/layout_view.ex
+index f224da978..aee6bd45c 100644
+--- a/lib/plausible_web/views/layout_view.ex
++++ b/lib/plausible_web/views/layout_view.ex
+@@ -95,9 +95,9 @@ defmodule PlausibleWeb.LayoutView do
+     |> Enum.reject(&is_nil/1)
+   end
+ 
+-  def account_settings_sidebar(conn) do
+-    current_team = conn.assigns[:current_team]
+-    current_team_role = conn.assigns[:current_team_role]
++  def account_settings_sidebar(assigns) do
++    current_team = assigns.current_team
++    current_team_role = assigns.current_team_role
+ 
+     options = %{
+       "Account" =>
+@@ -110,7 +110,7 @@ defmodule PlausibleWeb.LayoutView do
+           if(not Teams.setup?(current_team),
+             do: %{key: "API keys", value: "api-keys", icon: :api_keys}
+           ),
+-          if(Plausible.Users.type(conn.assigns.current_user) == :standard,
++          if(Plausible.Users.type(assigns.current_user) == :standard,
+             do: %{key: "Danger zone", value: "danger-zone", icon: :exclamation_triangle}
+           )
+         ]
+@@ -248,6 +248,10 @@ defmodule PlausibleWeb.LayoutView do
+     false
+   end
+ 
++  def is_current_tab(path, tab) when is_binary(path) do
++    String.ends_with?(path, tab)
++  end
++
+   def is_current_tab(conn, tab) do
+     full_path = Path.join(conn.path_info)
+ 
+diff --git a/lib/plausible_web/views/settings_view.ex b/lib/plausible_web/views/settings_view.ex
+index 167115a35..e4e217de4 100644
+--- a/lib/plausible_web/views/settings_view.ex
++++ b/lib/plausible_web/views/settings_view.ex
+@@ -2,68 +2,4 @@ defmodule PlausibleWeb.SettingsView do
+   use PlausibleWeb, :view
+   use Phoenix.Component, global_prefixes: ~w(x-)
+   use Plausible
+-
+-  require Plausible.Billing.Subscription.Status
+-  alias Plausible.Billing.{Plans, Subscription, Subscriptions}
+-
+-  def present_plan_name(%Plausible.Billing.Plan{kind: kind}),
+-    do: kind |> to_string() |> String.capitalize()
+-
+-  def present_plan_name(%Plausible.Billing.EnterprisePlan{}), do: "Enterprise"
+-  def present_plan_name(:free_10k), do: "Free"
+-  def present_plan_name(_), do: "Plan"
+-
+-  def subscription_interval(subscription) do
+-    Plans.subscription_interval(subscription)
+-  end
+-
+-  def present_subscription_interval(subscription) do
+-    case subscription_interval(subscription) do
+-      "monthly" -> "month"
+-      "yearly" -> "year"
+-      interval -> interval
+-    end
+-  end
+-
+-  @spec present_subscription_status(Subscription.Status.status()) :: String.t()
+-  def present_subscription_status(Subscription.Status.active()), do: "Active"
+-  def present_subscription_status(Subscription.Status.past_due()), do: "Past due"
+-  def present_subscription_status(Subscription.Status.deleted()), do: "Cancelled"
+-  def present_subscription_status(Subscription.Status.paused()), do: "Paused"
+-  def present_subscription_status(status), do: status
+-
+-  def subscription_pill_color(Subscription.Status.active()), do: :green
+-  def subscription_pill_color(Subscription.Status.past_due()), do: :yellow
+-  def subscription_pill_color(Subscription.Status.paused()), do: :red
+-  def subscription_pill_color(Subscription.Status.deleted()), do: :red
+-  def subscription_pill_color(_), do: :gray
+-
+-  def trial_button_label(team) do
+-    if Plausible.Teams.Billing.enterprise_configured?(team) do
+-      "Upgrade"
+-    else
+-      "Choose a plan →"
+-    end
+-  end
+-
+-  def change_plan_button_label(nil), do: "Upgrade"
+-
+-  def change_plan_button_label(subscription) do
+-    if Subscriptions.resumable?(subscription) && subscription.cancel_url do
+-      "Change plan"
+-    else
+-      "Upgrade"
+-    end
+-  end
+-
+-  def format_invoices(invoice_list) do
+-    Enum.map(invoice_list, fn invoice ->
+-      %{
+-        date: invoice["payout_date"] |> Date.from_iso8601!() |> Calendar.strftime("%b %-d, %Y"),
+-        amount: (invoice["amount"] / 1) |> :erlang.float_to_binary(decimals: 2),
+-        currency: invoice["currency"] |> PlausibleWeb.BillingView.present_currency(),
+-        url: invoice["receipt_url"]
+-      }
+-    end)
+-  end
+ end

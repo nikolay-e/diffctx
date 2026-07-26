@@ -1,0 +1,58 @@
+repo: tokio
+base_commit: ce41896f8dcbc6249df3279600f45f7a65915cf6
+commit: 4b96af6040b0136d3fd147b28e3775961f6a3d0a
+patch_stored: true
+gold:
+  - path: tokio-macros/src/entry.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'adds `RuntimeFlavor::Local` (parsed from `flavor = "local"`) and generates `Builder::new_current_thread()...build_local(Default::default())` gated behind a `#[cfg(tokio_unstable)]` compile-time check instead of `.build()`.'
+  - path: tokio-macros/src/lib.rs
+    tier: essential
+    role: doc
+    in_diff: true
+    rationale: '`#[tokio::main]` doc comments add the "## Local" section documenting `flavor = "local"` and its expansion to `Builder::new_current_thread().build_local(LocalOptions::default())`.'
+  - path: tokio/src/task/local.rs
+    tier: essential
+    role: doc
+    in_diff: true
+    rationale: 'spawn_local() doc comment updated to mention the new `#[tokio::main(flavor = "local")]` opt-in as an alternative to using LocalSet/LocalRuntime explicitly.'
+  - path: tests-integration/tests/macros_main.rs
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: adds local_main() using `#[tokio::main(flavor = "local")]` plus `tokio::task::spawn_local`, exercised by the shell() test under `#[cfg(tokio_unstable)]`.
+  - path: tokio/src/runtime/builder.rs
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: 'defines Builder::build_local(options) -> io::Result<LocalRuntime>, the pre-existing (unstable) constructor the macro-generated code now calls for `flavor = "local"`.'
+  - path: tokio/src/runtime/local_runtime/runtime.rs
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: defines the LocalRuntime type returned by build_local(), which #[tokio::main(flavor = "local")] now constructs and block_on()s.
+  - path: tokio/src/runtime/local_runtime/options.rs
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: defines LocalOptions, whose Default::default() is passed to build_local() in the macro-generated code.
+forbidden:
+  - path: tokio/src/runtime/scheduler/current_thread/mod.rs
+    reason: the underlying current-thread scheduler executes both `current_thread` and `local` flavors identically; not itself touched or needed to understand the new macro flavor
+  - path: tokio-macros/src/select.rs
+    reason: sibling proc-macro implementation (select! internals), unrelated to the #[tokio::main]/#[tokio::test] flavor option
+  - path: tokio/src/task/task_local.rs
+    reason: similarly named but unrelated feature (thread/task-local storage via the `tokio::task_local!` macro), not the LocalSet/LocalRuntime "local" flavor
+  - path: tests-integration/tests/macros_select.rs
+    reason: sibling integration test file for select! (not #[tokio::main]), not modified by this commit
+nontrivial_gold_count: 3
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 4
+  description: 'macros: add "local" runtime flavor — tokio-macros entry + tokio/src/task/local.rs coupling'
+notes: 'Adds `flavor = "local"` to #[tokio::main] (tokio_unstable-gated), which expands to the pre-existing `Builder::build_local(LocalOptions::default())` rather than `.build()`, giving spawn_local() access without manually constructing a LocalRuntime. The Local variant reuses CurrentThread scheduling logic (see the `F::CurrentThread | F::Local` match arms in entry.rs) but requires a compile-time tokio_unstable check since build_local/LocalRuntime are unstable APIs defined outside this diff.'

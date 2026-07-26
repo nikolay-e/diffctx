@@ -1,0 +1,69 @@
+repo: envoy
+base_commit: 6a7997eefe2967ac142623098b97f9969996612e
+commit: 394e3c7ce217ab7f2a01d8d48127d2d7dee3983f
+patch_stored: true
+gold:
+  - path: api/envoy/extensions/filters/http/filter_chain/v3/filter_chain.proto
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines the new FilterChainConfig, FilterChainConfigPerRoute, and FilterChain messages that config.cc/filter.cc parse and act on.
+  - path: source/extensions/filters/http/filter_chain/filter.h
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Declares FilterChain, FilterChainPerRouteConfig, and FilterChainConfig classes plus the COMMON_FILTER_CHAIN_STATS counters used throughout config.cc/filter.cc.
+  - path: source/extensions/filters/http/filter_chain/filter.cc
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Implements the FilterChain/FilterChainPerRouteConfig/FilterChainConfig constructors and createFilterFactoriesFromConfig, the core mechanism that turns proto sub-filter lists into runnable filter factories.
+  - path: source/extensions/filters/http/filter_chain/config.cc
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Implements routeLevelFilterChain(), the per-request selection logic that picks between route-level and default filter chains via mostSpecificPerFilterConfig() lookup.
+  - path: test/extensions/filters/http/filter_chain/filter_test.cc
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: FilterChainFactoryTest.InlinedPerRouteConfig/DefaultFilterChain exercise the exact route-selection and stats-counting behavior implemented in config.cc/filter.cc.
+  - path: source/common/http/filter_chain_helper.h
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines Http::FilterChainUtility (FilterFactoriesList, createFilterChainForFactories, createSingletonDownstreamFilterConfigProviderManager) that filter.cc/config.cc call directly to build and invoke the sub filter chain.
+  - path: source/extensions/filters/http/common/factory_base.h
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines Common::FactoryBase<ConfigProto, RouteConfigProto>, the template base class FilterChainFilterFactory extends for createFilterFactoryFromProtoTyped/createRouteSpecificFilterConfigTyped dispatch.
+  - path: api/envoy/config/core/v3/extension.proto
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Defines config.core.v3.TypedExtensionConfig, the message type used for the repeated `filters` field in the new FilterChain proto message.
+forbidden:
+  - path: source/extensions/filters/http/composite/filter.h
+    reason: commit message explicitly compares the new filter to composite, but composite's match-tree/action code is not referenced or reused by filter_chain
+  - path: test/extensions/filters/http/composite/filter_test.cc
+    reason: bm25-similar test for an unrelated (if thematically adjacent) existing filter, not exercising any filter_chain code
+  - path: test/extensions/filters/http/header_mutation/header_mutation_integration_test.cc
+    reason: header_mutation is only used as a stand-in example filter inside filter_chain's own tests; this file tests header_mutation's own unrelated behavior
+  - path: api/envoy/config/core/v3/base.proto
+    reason: bm25 hit for a commonly-imported core proto, but filter_chain.proto imports extension.proto (not base.proto) for TypedExtensionConfig
+nontrivial_gold_count: 3
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration, bm25, random]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 20
+  description: 'New http filter_chain filter: 4 api proto files + source + test + docs + changelog + tools'
+notes: 'Adds a new envoy.filters.http.filter_chain HTTP filter that wraps a configurable
+  chain of sub-filters, selectable per-route via typed_per_filter_config (falling
+  back to a filter-level default chain) or passing through if none is configured.
+  Sub-filter wiring goes through the global NamedHttpFilterConfigFactory registry
+  by string name (Config::Utility::getAndCheckFactory + per-route lookup via
+  filterConfigName()), so the key linkage is name-based DI rather than static
+  references.'

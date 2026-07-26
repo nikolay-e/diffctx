@@ -1,0 +1,2803 @@
+From 4b97dee4eba0a4d1be919f1ca3213153a6c83db5 Mon Sep 17 00:00:00 2001
+From: Dominik Dorfmeister <dominik.dorfmeister@sentry.io>
+Date: Fri, 23 May 2025 08:50:12 +0200
+Subject: [PATCH] =?UTF-8?q?ref(=E2=9C=82=EF=B8=8F):=20enable=20knip=20in?=
+ =?UTF-8?q?=20CI=20(#92010)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+This PR:
+- gets violations for `yarn run knip` to zero.
+- enables `knip` in CI.
+
+Sorry for this being a larger PR, but I fear that by the time I’ve
+broken it down and all the individuals get merged, there will be now
+things that need removal.
+
+It should be the last one, as `knip` is then a mandatory CI check 🎉
+
+Note: The `knip --prod` run is not yet enabled, as I’m waiting for some
+replay specific feedback about 3 more things that need to be removed.
+This is going to be a small follow-up.
+---
+ .github/workflows/frontend.yml                |  40 +-
+ knip.config.ts                                |  17 +-
+ package.json                                  |   3 +-
+ static/app/actionCreators/guides.tsx          |   6 +-
+ static/app/api.tsx                            |   1 +
+ .../charts/treeCoverageSunburstChart.tsx      |   2 +-
+ static/app/components/events/autofix/types.ts |   2 +-
+ static/app/components/issues/compactIssue.tsx | 206 ----------
+ .../performance/spanSearchQueryBuilder.tsx    |   4 +-
+ .../segmentedLoadingBar.stories.tsx           | 146 -------
+ static/app/components/segmentedLoadingBar.tsx |  84 -----
+ .../form/control/index.stories.tsx            |  13 +-
+ .../workflowEngine/form/section.tsx           |  42 ---
+ .../ui/collapsibleSection.stories.tsx         |  35 --
+ .../workflowEngine/ui/collapsibleSection.tsx  |  81 ----
+ .../components/workflowEngine/ui/section.tsx  |   4 +-
+ static/app/stores/guideStore.tsx              |   6 -
+ static/app/stories/index.tsx                  |   3 +-
+ static/app/stories/props.tsx                  |   2 +-
+ static/app/stories/storybook.tsx              |   4 +-
+ .../app/types/workflowEngine/automations.tsx  |   2 +-
+ .../types/workflowEngine/dataConditions.tsx   |   6 -
+ .../agentsInsightsAnalyticsEvents.tsx         |   2 +-
+ static/app/utils/useDimensionsMultiple.tsx    |  45 ---
+ .../components/actionFilters/constants.tsx    |   2 +-
+ static/app/views/automations/hooks/index.tsx  |   5 -
+ static/app/views/automations/hooks/utils.tsx  |  33 --
+ static/app/views/deprecatedAsyncView.tsx      |  27 --
+ .../components/connectedAutomationList.tsx    |   4 -
+ static/app/views/detectors/hooks/index.ts     |   4 +-
+ .../progressiveLoadingIndicator.tsx           |  52 ---
+ .../contexts/pageParamsContext/index.tsx      |  10 -
+ static/app/views/explore/toolbar/styles.tsx   |   4 -
+ .../toolbar/toolbarSuggestedQueries.tsx       | 355 ------------------
+ .../agentMonitoring/utils/features.tsx        |   5 -
+ .../common/utils/useEventsStatsQuery.tsx      |  52 ---
+ .../insights/mobile/appStarts/settings.ts     |   3 -
+ .../appStarts/views/screenSummaryPage.tsx     |  11 -
+ .../screenRenderingContent.tsx                |   5 -
+ .../components/tabbedCodeSnippets.tsx         |  46 ---
+ .../components/tables/screensTable.tsx        | 261 +------------
+ .../mobile/screenload/data/setupContent.ts    |  10 +-
+ .../insights/mobile/screenload/settings.ts    |   3 -
+ .../insights/mobile/screenload/utils.tsx      |  61 ---
+ .../app/views/insights/mobile/ui/settings.ts  |   2 -
+ .../mutations/useUpdateGroupSearchViews.tsx   |  52 ---
+ .../useFetchStarredGroupSearchViews.tsx       |  17 +-
+ static/app/views/issueList/types.tsx          |  12 -
+ .../issueViews/useStarredIssueViews.tsx       |   2 +-
+ .../detail/trace/replayTransactionContext.tsx |  25 +-
+ static/gsApp/constants.tsx                    |   2 -
+ tests/js/fixtures/automations.ts              |  15 -
+ tests/js/fixtures/dataConditions.ts           |   2 +-
+ tests/js/fixtures/userFeedback.ts             |  21 --
+ .../getsentry-test/fixtures/reservedBudget.ts |  18 +-
+ yarn.lock                                     | 138 ++++++-
+ 56 files changed, 220 insertions(+), 1795 deletions(-)
+ delete mode 100644 static/app/components/issues/compactIssue.tsx
+ delete mode 100644 static/app/components/segmentedLoadingBar.stories.tsx
+ delete mode 100644 static/app/components/segmentedLoadingBar.tsx
+ delete mode 100644 static/app/components/workflowEngine/form/section.tsx
+ delete mode 100644 static/app/components/workflowEngine/ui/collapsibleSection.stories.tsx
+ delete mode 100644 static/app/components/workflowEngine/ui/collapsibleSection.tsx
+ delete mode 100644 static/app/utils/useDimensionsMultiple.tsx
+ delete mode 100644 static/app/views/deprecatedAsyncView.tsx
+ delete mode 100644 static/app/views/explore/components/progressiveLoadingIndicator.tsx
+ delete mode 100644 static/app/views/explore/toolbar/toolbarSuggestedQueries.tsx
+ delete mode 100644 static/app/views/insights/common/utils/useEventsStatsQuery.tsx
+ delete mode 100644 static/app/views/insights/mobile/screenRendering/screenRenderingContent.tsx
+ delete mode 100644 static/app/views/insights/mobile/screenload/components/tabbedCodeSnippets.tsx
+ delete mode 100644 static/app/views/issueList/mutations/useUpdateGroupSearchViews.tsx
+ delete mode 100644 tests/js/fixtures/automations.ts
+ delete mode 100644 tests/js/fixtures/userFeedback.ts
+
+diff --git a/.github/workflows/frontend.yml b/.github/workflows/frontend.yml
+index 1a3a72221fe..e8e30d46083 100644
+--- a/.github/workflows/frontend.yml
++++ b/.github/workflows/frontend.yml
+@@ -107,6 +107,44 @@ jobs:
+         id: eslint
+         run: yarn run lint:js
+ 
++  knip:
++    if: needs.files-changed.outputs.frontend_all == 'true'
++    needs: files-changed
++    name: knip
++    runs-on: ubuntu-24.04
++    steps:
++      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
++
++      - uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4
++        id: setup-node
++        with:
++          node-version-file: '.volta.json'
++
++      - name: node_modules cache
++        uses: actions/cache@v4.2.0
++        id: nodemodulescache
++        with:
++          path: node_modules
++          key: ${{ runner.os }}-node-modules-${{ hashFiles('yarn.lock', 'api-docs/yarn.lock', '.volta.json') }}
++
++      - name: Install Javascript Dependencies
++        if: steps.nodemodulescache.outputs.cache-hit != 'true'
++        run: yarn install --frozen-lockfile
++
++      # Setup custom eslint matcher, see https://github.com/actions/setup-node/issues/97
++      - name: setup matchers
++        run: |
++          echo "::remove-matcher owner=masters::"
++          echo "::add-matcher::.github/eslint-stylish.json"
++
++      - name: knip
++        id: knip
++        run: yarn run knip
++
++      - name: knip-prod
++        id: knip-prod
++        run: yarn run knip:prod
++
+   frontend-jest-tests:
+     if: needs.files-changed.outputs.testable_rules_changed == 'true' || needs.files-changed.outputs.testable_modified == 'true'
+     needs: [files-changed]
+@@ -184,7 +222,7 @@ jobs:
+   # It symbolizes that all required Frontend checks have succesfully passed (Or skipped)
+   # This check is the only required Github check
+   frontend-required-check:
+-    needs: [files-changed, frontend-jest-tests, typescript, eslint]
++    needs: [files-changed, frontend-jest-tests, typescript, eslint, knip]
+     name: Frontend
+     # This is necessary since a failed/skipped dependent job would cause this job to be skipped
+     if: always()
+diff --git a/knip.config.ts b/knip.config.ts
+index 4c41c0d3865..ed3ffc231be 100644
+--- a/knip.config.ts
++++ b/knip.config.ts
+@@ -1,3 +1,4 @@
++import {compile} from '@mdx-js/mdx';
+ import type {KnipConfig} from 'knip';
+ 
+ const productionEntryPoints = [
+@@ -34,6 +35,8 @@ const storyBookEntryPoints = [
+   'static/app/stories/storyBook.tsx',
+   // custom webpack loaders for stories
+   'static/app/stories/*loader.ts',
++  // we have some stories in mdx format
++  'static/app/**/*.mdx',
+ ];
+ 
+ const config: KnipConfig = {
+@@ -45,6 +48,7 @@ const config: KnipConfig = {
+   storybook: true,
+   project: [
+     'static/**/*.{js,mjs,ts,tsx}!',
++    'static/app/**/*.mdx',
+     'tests/js/**/*.{js,mjs,ts,tsx}',
+     // exclude this directory because it's how you set up mocks in jest (https://jestjs.io/docs/manual-mocks)
+     '!static/{app,gsApp}/**/__mocks__/**',
+@@ -54,8 +58,19 @@ const config: KnipConfig = {
+     '!static/**/*{t,T}estUtils*.{js,mjs,ts,tsx}!',
+     // helper files for stories - it's fine that they are only used in tests
+     '!static/app/**/__stories__/*.{js,mjs,ts,tsx}!',
+-    '!static/app/{components,views}/stories/*.{js,mjs,ts,tsx}!',
++    '!static/app/stories/*.{js,mjs,ts,tsx}!',
+   ],
++  compilers: {
++    mdx: async text => {
++      const result = await compile(text, {
++        providerImportSource: '@mdx-js/react',
++        jsx: true,
++        outputFormat: 'program',
++      });
++
++      return String(result);
++    },
++  },
+   rules: {
+     binaries: 'off',
+     dependencies: 'off',
+diff --git a/package.json b/package.json
+index 25b77422a0d..9cc58e5928e 100644
+--- a/package.json
++++ b/package.json
+@@ -182,6 +182,7 @@
+     "@eslint/eslintrc": "^3.3.0",
+     "@eslint/js": "^9.22.0",
+     "@mdx-js/loader": "^3.1.0",
++    "@mdx-js/mdx": "^3.1.0",
+     "@pmmmwh/react-refresh-webpack-plugin": "0.5.16",
+     "@sentry/jest-environment": "6.0.0",
+     "@sentry/profiling-node": "9.16.1",
+@@ -217,7 +218,7 @@
+     "jest-environment-jsdom": "29.7.0",
+     "jest-fail-on-console": "3.3.0",
+     "jest-junit": "16.0.0",
+-    "knip": "^5.55.1",
++    "knip": "^5.57.0",
+     "postcss-styled-syntax": "0.7.0",
+     "react-refresh": "0.16.0",
+     "stylelint": "16.10.0",
+diff --git a/static/app/actionCreators/guides.tsx b/static/app/actionCreators/guides.tsx
+index 715dd066199..2289e911aad 100644
+--- a/static/app/actionCreators/guides.tsx
++++ b/static/app/actionCreators/guides.tsx
+@@ -46,10 +46,6 @@ export function setForceHide(forceHide: boolean) {
+   GuideStore.setForceHide(forceHide);
+ }
+ 
+-export function toStep(step: number) {
+-  GuideStore.toStep(step);
+-}
+-
+ export function closeGuide(dismissed?: boolean) {
+   GuideStore.closeGuide(dismissed);
+ }
+@@ -89,7 +85,7 @@ export function recordFinish(guide: string, orgId: string | null) {
+   });
+ }
+ 
+-export function recordDismiss(guide: string, step: number, orgId: string | null) {
++function recordDismiss(guide: string, step: number, orgId: string | null) {
+   if (!isDemoModeActive()) {
+     api.requestPromise('/assistant/', {
+       method: 'PUT',
+diff --git a/static/app/api.tsx b/static/app/api.tsx
+index 98a305eae78..66d01ccfd5f 100644
+--- a/static/app/api.tsx
++++ b/static/app/api.tsx
+@@ -217,6 +217,7 @@ function buildRequestUrl(baseUrl: string, path: string, options: RequestOptions)
+ /**
+  * Check if the API response says project has been renamed.  If so, redirect
+  * user to new project slug
++ * @public used in __mocks__/api.tsx with jest.requireActual
+  */
+ // TODO(ts): refine this type later
+ export function hasProjectBeenRenamed(response: ResponseMeta) {
+diff --git a/static/app/components/charts/treeCoverageSunburstChart.tsx b/static/app/components/charts/treeCoverageSunburstChart.tsx
+index 3f84e5f70a6..dced2edc886 100644
+--- a/static/app/components/charts/treeCoverageSunburstChart.tsx
++++ b/static/app/components/charts/treeCoverageSunburstChart.tsx
+@@ -52,7 +52,7 @@ function bfsFilter(root: ProcessedTreeCoverageSunburstData, maxDepth: number) {
+  *   children: <recursive structure>[] | undefined - only dir nodes should have the children field;
+  * }
+  */
+-export interface TreeCoverageSunburstData {
++interface TreeCoverageSunburstData {
+   children: TreeCoverageSunburstData[];
+   coverage: number;
+   fullPath: string;
+diff --git a/static/app/components/events/autofix/types.ts b/static/app/components/events/autofix/types.ts
+index e07bc3f5d6e..27ee2083412 100644
+--- a/static/app/components/events/autofix/types.ts
++++ b/static/app/components/events/autofix/types.ts
+@@ -176,7 +176,7 @@ type AutofixRelevantCodeFile = {
+   repo_name: string;
+ };
+ 
+-export type AutofixRelevantCodeFileWithUrl = AutofixRelevantCodeFile & {
++type AutofixRelevantCodeFileWithUrl = AutofixRelevantCodeFile & {
+   url?: string;
+ };
+ 
+diff --git a/static/app/components/issues/compactIssue.tsx b/static/app/components/issues/compactIssue.tsx
+deleted file mode 100644
+index bf090f1e9ba..00000000000
+--- a/static/app/components/issues/compactIssue.tsx
++++ /dev/null
+@@ -1,206 +0,0 @@
+-import {Component, Fragment} from 'react';
+-import styled from '@emotion/styled';
+-
+-import {bulkUpdate} from 'sentry/actionCreators/group';
+-import {addLoadingMessage, clearIndicators} from 'sentry/actionCreators/indicator';
+-import type {Client} from 'sentry/api';
+-import EventOrGroupTitle from 'sentry/components/eventOrGroupTitle';
+-import ErrorLevel from 'sentry/components/events/errorLevel';
+-import Link from 'sentry/components/links/link';
+-import PanelItem from 'sentry/components/panels/panelItem';
+-import {IconChat, IconMute, IconStar} from 'sentry/icons';
+-import {t} from 'sentry/locale';
+-import GroupStore from 'sentry/stores/groupStore';
+-import {space} from 'sentry/styles/space';
+-import type {BaseGroup} from 'sentry/types/group';
+-import type {Organization} from 'sentry/types/organization';
+-import {getMessage} from 'sentry/utils/events';
+-import type {Aliases} from 'sentry/utils/theme';
+-import withApi from 'sentry/utils/withApi';
+-import withOrganization from 'sentry/utils/withOrganization';
+-
+-type HeaderProps = {
+-  data: BaseGroup;
+-  organization: Organization;
+-  eventId?: string;
+-};
+-
+-function CompactIssueHeader({data, organization, eventId}: HeaderProps) {
+-  const basePath = `/organizations/${organization.slug}/issues/`;
+-
+-  const issueLink = eventId
+-    ? `${basePath}${data.id}/events/${eventId}/?referrer=compact-issue`
+-    : `${basePath}${data.id}/?referrer=compact-issue`;
+-
+-  const commentColor: keyof Aliases =
+-    data.subscriptionDetails && data.subscriptionDetails.reason === 'mentioned'
+-      ? 'success'
+-      : 'textColor';
+-
+-  return (
+-    <Fragment>
+-      <IssueHeaderMetaWrapper>
+-        <StyledErrorLevel level={data.level} />
+-        <h3 className="truncate">
+-          <IconLink to={issueLink || ''}>
+-            {data.status === 'ignored' && <IconMute size="xs" />}
+-            {data.isBookmarked && <IconStar isSolid size="xs" />}
+-            <EventOrGroupTitle data={data} />
+-          </IconLink>
+-        </h3>
+-      </IssueHeaderMetaWrapper>
+-      <div className="event-extra">
+-        <span className="project-name">
+-          <strong>{data.project.slug}</strong>
+-        </span>
+-        {data.numComments !== 0 && (
+-          <span>
+-            <IconLink to={`${basePath}${data.id}/activity/`} className="comments">
+-              <IconChat size="xs" color={commentColor} />
+-              <span className="tag-count">{data.numComments}</span>
+-            </IconLink>
+-          </span>
+-        )}
+-        <span className="culprit">{getMessage(data)}</span>
+-      </div>
+-    </Fragment>
+-  );
+-}
+-
+-type GroupTypes = ReturnType<typeof GroupStore.get>;
+-
+-/**
+- * Type assertion to disambiguate GroupTypes
+- *
+- * The GroupCollapseRelease type isn't compatible with BaseGroup
+- */
+-function isGroup(maybe: GroupTypes): maybe is BaseGroup {
+-  return (maybe as BaseGroup).status !== undefined;
+-}
+-
+-type Props = {
+-  api: Client;
+-  id: string;
+-  organization: Organization;
+-  children?: React.ReactNode;
+-  data?: BaseGroup;
+-  eventId?: string;
+-};
+-
+-type State = {
+-  issue?: GroupTypes;
+-};
+-
+-class CompactIssue extends Component<Props, State> {
+-  state: State = {
+-    issue: this.props.data || GroupStore.get(this.props.id),
+-  };
+-
+-  UNSAFE_componentWillReceiveProps(nextProps: Props) {
+-    if (nextProps.id !== this.props.id) {
+-      this.setState({
+-        issue: GroupStore.get(this.props.id),
+-      });
+-    }
+-  }
+-
+-  componentWillUnmount() {
+-    this.listener();
+-  }
+-
+-  listener = GroupStore.listen(
+-    (itemIds: Set<string>) => this.onGroupChange(itemIds),
+-    undefined
+-  );
+-
+-  onGroupChange(itemIds: Set<string>) {
+-    if (!itemIds.has(this.props.id)) {
+-      return;
+-    }
+-    const id = this.props.id;
+-    const issue = GroupStore.get(id);
+-    this.setState({
+-      issue,
+-    });
+-  }
+-
+-  onUpdate(data: Record<string, string>) {
+-    const issue = this.state.issue;
+-    if (!issue) {
+-      return;
+-    }
+-    addLoadingMessage(t('Saving changes\u2026'));
+-
+-    bulkUpdate(
+-      this.props.api,
+-      {
+-        orgId: this.props.organization.slug,
+-        projectId: issue.project.slug,
+-        itemIds: [issue.id],
+-        data,
+-      },
+-      {
+-        complete: () => {
+-          clearIndicators();
+-        },
+-      }
+-    );
+-  }
+-
+-  render() {
+-    const issue = this.state.issue;
+-    const {organization} = this.props;
+-    if (!isGroup(issue)) {
+-      return null;
+-    }
+-
+-    let className = 'issue';
+-    if (issue.isBookmarked) {
+-      className += ' isBookmarked';
+-    }
+-    if (issue.hasSeen) {
+-      className += ' hasSeen';
+-    }
+-    if (issue.status === 'resolved') {
+-      className += ' isResolved';
+-    }
+-    if (issue.status === 'ignored') {
+-      className += ' isIgnored';
+-    }
+-
+-    return (
+-      <IssueRow className={className}>
+-        <CompactIssueHeader
+-          data={issue}
+-          organization={organization}
+-          eventId={this.props.eventId}
+-        />
+-        {this.props.children}
+-      </IssueRow>
+-    );
+-  }
+-}
+-
+-export default withApi(withOrganization(CompactIssue));
+-
+-const IssueHeaderMetaWrapper = styled('div')`
+-  display: flex;
+-  align-items: center;
+-`;
+-
+-const StyledErrorLevel = styled(ErrorLevel)`
+-  display: block;
+-  margin-right: ${space(1)};
+-`;
+-
+-const IconLink = styled(Link)`
+-  & > svg {
+-    margin-right: ${space(0.5)};
+-  }
+-`;
+-
+-const IssueRow = styled(PanelItem)`
+-  padding-top: ${space(1.5)};
+-  padding-bottom: ${space(0.75)};
+-  flex-direction: column;
+-`;
+diff --git a/static/app/components/performance/spanSearchQueryBuilder.tsx b/static/app/components/performance/spanSearchQueryBuilder.tsx
+index ba2f797a4e8..3cfe1790dd0 100644
+--- a/static/app/components/performance/spanSearchQueryBuilder.tsx
++++ b/static/app/components/performance/spanSearchQueryBuilder.tsx
+@@ -167,7 +167,7 @@ export function SpanSearchQueryBuilder(props: SpanSearchQueryBuilderProps) {
+   return <IndexedSpanSearchQueryBuilder {...props} />;
+ }
+ 
+-export function IndexedSpanSearchQueryBuilder({
++function IndexedSpanSearchQueryBuilder({
+   initialQuery,
+   searchSource,
+   datetime,
+@@ -189,7 +189,7 @@ export function IndexedSpanSearchQueryBuilder({
+   return <SearchQueryBuilder {...searchQueryBuilderProps} />;
+ }
+ 
+-export function EapSpanSearchQueryBuilder({
++function EapSpanSearchQueryBuilder({
+   initialQuery,
+   searchSource,
+   datetime,
+diff --git a/static/app/components/segmentedLoadingBar.stories.tsx b/static/app/components/segmentedLoadingBar.stories.tsx
+deleted file mode 100644
+index 61b0dd0db94..00000000000
+--- a/static/app/components/segmentedLoadingBar.stories.tsx
++++ /dev/null
+@@ -1,146 +0,0 @@
+-import {useState} from 'react';
+-import styled from '@emotion/styled';
+-
+-import {CodeSnippet} from 'sentry/components/codeSnippet';
+-import {Button} from 'sentry/components/core/button';
+-import {SegmentedLoadingBar} from 'sentry/components/segmentedLoadingBar';
+-import * as Storybook from 'sentry/stories';
+-import {space} from 'sentry/styles/space';
+-
+-export default Storybook.story('SegmentedLoadingBar', story => {
+-  story('Default', () => (
+-    <div>
+-      <p>
+-        The segmented loading bar is a style of loader that indicates progress by showing
+-        a series of segments that fill in as the loading progresses. The currently active
+-        segment is highlighted by a pulsing animation.
+-      </p>
+-      <Column style={{marginBottom: space(2)}}>
+-        <SegmentedLoadingBar segments={3} phase={0} />
+-        <SegmentedLoadingBar segments={5} phase={1} />
+-        <SegmentedLoadingBar segments={3} phase={3} />
+-      </Column>
+-
+-      <p>
+-        The <code>segments</code> prop is the number of segments to display. The{' '}
+-        <code>phase</code> prop is the index of the segment that is currently active.
+-      </p>
+-      <Storybook.SizingWindow style={{marginBottom: space(2)}}>
+-        <Column>
+-          <SegmentedLoadingBar segments={3} phase={0} />
+-          <SegmentedLoadingBar segments={3} phase={1} />
+-          <SegmentedLoadingBar segments={5} phase={1} />
+-        </Column>
+-      </Storybook.SizingWindow>
+-
+-      <p>
+-        The loading bar can be used to indicate the progress of a task that is
+-        transitioning between phases.
+-      </p>
+-      <LoadingBarWithNextPhaseControl />
+-
+-      <p>
+-        A callback for tooltips can be provided to display a tooltip for each segment.
+-      </p>
+-      <Column>
+-        <SegmentedLoadingBar
+-          segments={3}
+-          phase={0}
+-          getTooltipText={phase => {
+-            const nextPhase = phase + 1;
+-            if (nextPhase >= 3) {
+-              return 'This is the last phase.';
+-            }
+-            return `The current phase is ${phase}. The next phase is ${nextPhase}.`;
+-          }}
+-        />
+-        <SegmentedLoadingBar
+-          segments={3}
+-          phase={1}
+-          getTooltipText={phase => {
+-            if (phase > 1) {
+-              return undefined;
+-            }
+-
+-            const nextPhase = phase + 1;
+-            if (nextPhase === 2) {
+-              return `The current phase is ${phase}. The next phase is ${nextPhase}. This is the last tooltip`;
+-            }
+-            return `The current phase is ${phase}. The next phase is ${nextPhase}.`;
+-          }}
+-        />
+-      </Column>
+-    </div>
+-  ));
+-
+-  story('Usage Example', () => (
+-    <CodeSnippet language="tsx">
+-      {`
+-import {SegmentedLoadingBar} from 'sentry/components/segmentedLoadingBar';
+-
+-
+-function LoadingBarWithNextPhaseControl() {
+-  const [phase, setPhase] = useState(0);
+-  const MAX_SEGMENTS = 3;
+-
+-  return (
+-    <Row>
+-      <Button
+-        onClick={() => {
+-          if (phase < MAX_SEGMENTS - 1) {
+-            setPhase(phase + 1);
+-          } else {
+-            setPhase(0);
+-          }
+-        }}
+-      >
+-        Next Phase
+-      </Button>
+-      <div style={{width: '100%'}}>
+-        <SegmentedLoadingBar segments={MAX_SEGMENTS} phase={phase} />
+-      </div>
+-    </Row>
+-  );
+-}
+-      `}
+-    </CodeSnippet>
+-  ));
+-});
+-
+-function LoadingBarWithNextPhaseControl() {
+-  const [phase, setPhase] = useState(0);
+-  const MAX_SEGMENTS = 3;
+-
+-  return (
+-    <Row>
+-      <Button
+-        onClick={() => {
+-          if (phase < MAX_SEGMENTS - 1) {
+-            setPhase(phase + 1);
+-          } else {
+-            setPhase(0);
+-          }
+-        }}
+-      >
+-        Next Phase
+-      </Button>
+-      <div style={{width: '100%'}}>
+-        <SegmentedLoadingBar segments={MAX_SEGMENTS} phase={phase} />
+-      </div>
+-    </Row>
+-  );
+-}
+-
+-const Column = styled('div')`
+-  display: flex;
+-  flex-direction: column;
+-  gap: ${space(1)};
+-  width: 100%;
+-`;
+-
+-const Row = styled('div')`
+-  display: flex;
+-  flex-direction: row;
+-  gap: ${space(1)};
+-  align-items: center;
+-`;
+diff --git a/static/app/components/segmentedLoadingBar.tsx b/static/app/components/segmentedLoadingBar.tsx
+deleted file mode 100644
+index 7cabba4403c..00000000000
+--- a/static/app/components/segmentedLoadingBar.tsx
++++ /dev/null
+@@ -1,84 +0,0 @@
+-import {css} from '@emotion/react';
+-import styled from '@emotion/styled';
+-
+-import {Tooltip} from 'sentry/components/core/tooltip';
+-import {space} from 'sentry/styles/space';
+-
+-interface SegmentedLoadingBarProps {
+-  /**
+-   * The index of the segment that is currently active. The active segment is
+-   * highlighted by a pulsing animation.
+-   */
+-  phase: number;
+-
+-  /**
+-   * The number of segments to display.
+-   */
+-  segments: number;
+-
+-  /**
+-   * A callback to get a tooltip text for a given phase.
+-   *
+-   * The callback takes a phase index that corresponds to the index of the
+-   * segment being rendered.
+-   */
+-  getTooltipText?: (phase: number) => React.ReactNode | undefined;
+-}
+-
+-export function SegmentedLoadingBar({
+-  segments = 3,
+-  phase = 0,
+-  getTooltipText,
+-}: SegmentedLoadingBarProps) {
+-  return (
+-    <LoadingBarContainer>
+-      {Array.from({length: segments}).map((_, index) => (
+-        <Tooltip key={index} title={getTooltipText?.(index)} skipWrapper>
+-          <LoadingBarSegment
+-            key={index}
+-            isActive={index === phase}
+-            isCompleted={index < phase}
+-          />
+-        </Tooltip>
+-      ))}
+-    </LoadingBarContainer>
+-  );
+-}
+-
+-const LoadingBarContainer = styled('div')`
+-  display: flex;
+-  flex-direction: row;
+-  align-items: center;
+-  justify-content: center;
+-  flex-wrap: nowrap;
+-  gap: ${space(0.5)};
+-  width: 100%;
+-`;
+-
+-const LoadingBarSegment = styled('div')<{isActive?: boolean; isCompleted?: boolean}>`
+-  flex: 1;
+-  height: 6px;
+-  border-radius: ${p => p.theme.borderRadius};
+-  background-color: ${p => p.theme.background};
+-  border: 1px solid ${p => p.theme.border};
+-  ${p =>
+-    p.isActive &&
+-    css`
+-      background-color: ${p.theme.gray200};
+-      animation: pulse 500ms ease-in-out infinite alternate-reverse;
+-    `}
+-  ${p =>
+-    p.isCompleted &&
+-    css`
+-      background-color: ${p.theme.gray200};
+-    `}
+-
+-  @keyframes pulse {
+-    0% {
+-      opacity: 0.5;
+-    }
+-    100% {
+-      opacity: 1;
+-    }
+-  }
+-`;
+diff --git a/static/app/components/workflowEngine/form/control/index.stories.tsx b/static/app/components/workflowEngine/form/control/index.stories.tsx
+index c146729b520..ae4cb78ad16 100644
+--- a/static/app/components/workflowEngine/form/control/index.stories.tsx
++++ b/static/app/components/workflowEngine/form/control/index.stories.tsx
+@@ -3,7 +3,6 @@ import {Fragment} from 'react';
+ import {Flex} from 'sentry/components/container/flex';
+ import Form from 'sentry/components/forms/form';
+ import PriorityControl from 'sentry/components/workflowEngine/form/control/priorityControl';
+-import {FormSection} from 'sentry/components/workflowEngine/form/section';
+ import * as Storybook from 'sentry/stories';
+ import {space} from 'sentry/styles/space';
+ 
+@@ -17,17 +16,7 @@ export default Storybook.story('Form Controls', story => {
+ 
+       <Form hideFooter>
+         <Flex column gap={space(2)}>
+-          <FormSection
+-            title="Prioritize"
+-            description="Update issue priority when the following thresholds are met:"
+-          >
+-            <PriorityControl name="priority" />
+-          </FormSection>
+-
+-          <FormSection
+-            title="Prioritize"
+-            description="Sentry will automatically update priority."
+-          />
++          <PriorityControl name="priority" />
+         </Flex>
+       </Form>
+     </Fragment>
+diff --git a/static/app/components/workflowEngine/form/section.tsx b/static/app/components/workflowEngine/form/section.tsx
+deleted file mode 100644
+index edcfff19f58..00000000000
+--- a/static/app/components/workflowEngine/form/section.tsx
++++ /dev/null
+@@ -1,42 +0,0 @@
+-import type {ReactNode} from 'react';
+-import styled from '@emotion/styled';
+-
+-import {Flex} from 'sentry/components/container/flex';
+-import {space} from 'sentry/styles/space';
+-
+-interface FormSectionProps {
+-  description: ReactNode;
+-  title: ReactNode;
+-  children?: ReactNode;
+-}
+-
+-export function FormSection({title, description, children}: FormSectionProps) {
+-  return (
+-    <Container>
+-      <Flex column gap={space(1)}>
+-        <Title>{title}</Title>
+-        <Description>{description}</Description>
+-        <div>{children}</div>
+-      </Flex>
+-    </Container>
+-  );
+-}
+-
+-const Container = styled('section')`
+-  background: ${p => p.theme.background};
+-  border: 1px solid ${p => p.theme.border};
+-  border-radius: ${p => p.theme.borderRadius};
+-  padding: ${space(1.5)} ${space(2)} ${space(1)} ${space(2)};
+-`;
+-
+-const Title = styled('h3')`
+-  font-size: ${p => p.theme.fontSizeLarge};
+-  color: ${p => p.theme.textColor};
+-  margin: 0;
+-`;
+-
+-const Description = styled('div')`
+-  font-size: ${p => p.theme.fontSizeMedium};
+-  color: ${p => p.theme.subText};
+-  margin: 0;
+-`;
+diff --git a/static/app/components/workflowEngine/ui/collapsibleSection.stories.tsx b/static/app/components/workflowEngine/ui/collapsibleSection.stories.tsx
+deleted file mode 100644
+index fcc5c80c1fb..00000000000
+--- a/static/app/components/workflowEngine/ui/collapsibleSection.stories.tsx
++++ /dev/null
+@@ -1,35 +0,0 @@
+-import {Fragment} from 'react';
+-
+-import {Flex} from 'sentry/components/container/flex';
+-import CollapsibleSection from 'sentry/components/workflowEngine/ui/collapsibleSection';
+-import * as Storybook from 'sentry/stories';
+-import {space} from 'sentry/styles/space';
+-
+-export default Storybook.story('Collapsible Section', story => {
+-  story('Basics', () => (
+-    <Fragment>
+-      <p>
+-        The <code>CollapsibleSection</code> component can be customized to start open or
+-        closed by setting <code>open</code>. By default, collapsible sections are
+-        collapsed.
+-      </p>
+-    </Fragment>
+-  ));
+-  story('Simple', () => (
+-    <Flex column gap={space(2)}>
+-      <CollapsibleSection
+-        title="Collapsed Section"
+-        description="Your optional description here"
+-      >
+-        <p>Child components go here</p>
+-      </CollapsibleSection>
+-      <CollapsibleSection
+-        title="Static Section"
+-        description="Your optional description here"
+-        open
+-      >
+-        <p>This section starts expanded!</p>
+-      </CollapsibleSection>
+-    </Flex>
+-  ));
+-});
+diff --git a/static/app/components/workflowEngine/ui/collapsibleSection.tsx b/static/app/components/workflowEngine/ui/collapsibleSection.tsx
+deleted file mode 100644
+index 46bbfe8677e..00000000000
+--- a/static/app/components/workflowEngine/ui/collapsibleSection.tsx
++++ /dev/null
+@@ -1,81 +0,0 @@
+-import styled from '@emotion/styled';
+-
+-import {Flex} from 'sentry/components/container/flex';
+-import InteractionStateLayer from 'sentry/components/interactionStateLayer';
+-import {IconChevron} from 'sentry/icons';
+-import {space} from 'sentry/styles/space';
+-
+-export default function CollapsibleSection({
+-  children,
+-  title,
+-  description,
+-  open = false,
+-}: {
+-  children: React.ReactNode;
+-  title: string;
+-  description?: string;
+-  open?: boolean;
+-}) {
+-  return (
+-    <Body open={open}>
+-      <HeadingWrapper>
+-        <InteractionStateLayer />
+-        <Heading>{title}</Heading>
+-        <IconChevron className="arrow" />
+-      </HeadingWrapper>
+-
+-      <Flex column gap={space(0.5)}>
+-        {description && <Description>{description}</Description>}
+-        {children}
+-      </Flex>
+-    </Body>
+-  );
+-}
+-
+-const Body = styled('details')`
+-  display: flex;
+-  flex-direction: column;
+-  background-color: ${p => p.theme.backgroundElevated};
+-  border: 1px solid ${p => p.theme.border};
+-  border-radius: ${p => p.theme.borderRadius};
+-  padding: ${space(2)} ${space(2)};
+-
+-  &[open] {
+-    gap: ${space(2)};
+-    summary {
+-      padding-bottom: ${space(0.75)};
+-    }
+-    .arrow {
+-      transform: rotate(0deg);
+-    }
+-  }
+-  summary {
+-    padding-bottom: ${space(2)};
+-  }
+-  .arrow {
+-    transform: rotate(180deg);
+-  }
+-`;
+-
+-const Heading = styled('h2')`
+-  font-size: ${p => p.theme.fontSizeExtraLarge};
+-  margin: 0;
+-`;
+-
+-const HeadingWrapper = styled('summary')`
+-  display: flex;
+-  justify-content: space-between;
+-  position: relative;
+-  align-items: center;
+-  padding: ${space(2)} ${space(2)};
+-  margin: -${space(2)} -${space(2)};
+-  border-radius: ${p => p.theme.borderRadius};
+-  cursor: pointer;
+-`;
+-
+-const Description = styled('span')`
+-  font-size: ${p => p.theme.fontSizeMedium};
+-  color: ${p => p.theme.subText};
+-  margin: 0;
+-  padding: 0;
+-`;
+diff --git a/static/app/components/workflowEngine/ui/section.tsx b/static/app/components/workflowEngine/ui/section.tsx
+index 92e67a5df4e..e67dead1a4b 100644
+--- a/static/app/components/workflowEngine/ui/section.tsx
++++ b/static/app/components/workflowEngine/ui/section.tsx
+@@ -19,13 +19,13 @@ export default function Section({children, title, description}: SectionProps) {
+   );
+ }
+ 
+-export const SectionHeading = styled('h4')`
++const SectionHeading = styled('h4')`
+   font-size: ${p => p.theme.fontSizeLarge};
+   font-weight: ${p => p.theme.fontWeightBold};
+   margin: 0;
+ `;
+ 
+-export const SectionDescription = styled('p')`
++const SectionDescription = styled('p')`
+   font-size: ${p => p.theme.fontSizeMedium};
+   font-weight: ${p => p.theme.fontWeightNormal};
+   color: ${p => p.theme.subText};
+diff --git a/static/app/stores/guideStore.tsx b/static/app/stores/guideStore.tsx
+index d424263f862..07f1b1f2b73 100644
+--- a/static/app/stores/guideStore.tsx
++++ b/static/app/stores/guideStore.tsx
+@@ -96,7 +96,6 @@ interface GuideStoreDefinition extends StrictStoreDefinition<GuideStoreState> {
+   setActiveOrganization(data: Organization): void;
+   setForceHide(forceHide: boolean): void;
+   teardown(): void;
+-  toStep(step: number): void;
+   unregisterAnchor(target: string): void;
+   updateCurrentGuide(dismissed?: boolean): void;
+   updatePrevGuide(nextGuide: Guide | null): void;
+@@ -207,11 +206,6 @@ const storeConfig: GuideStoreDefinition = {
+     this.trigger(this.state);
+   },
+ 
+-  toStep(step: number) {
+-    this.state = {...this.state, currentStep: step};
+-    this.trigger(this.state);
+-  },
+-
+   registerAnchor(target) {
+     this.state.anchors.add(target);
+     this.updateCurrentGuide();
+diff --git a/static/app/stories/index.tsx b/static/app/stories/index.tsx
+index 7b340b152cf..44b328bec1d 100644
+--- a/static/app/stories/index.tsx
++++ b/static/app/stories/index.tsx
+@@ -1,6 +1,5 @@
+-export {APIReference} from './apiReference';
+ export {JSXNode, JSXProperty} from './jsx';
+-export {PropMatrix, type PropMatrixProps} from './props';
++export {PropMatrix} from './props';
+ export {Section, Title} from './layout';
+ export {SideBySide} from './layout';
+ export {SizingWindow, Grid} from './layout';
+diff --git a/static/app/stories/props.tsx b/static/app/stories/props.tsx
+index 3c5413a431e..f1359dde7b3 100644
+--- a/static/app/stories/props.tsx
++++ b/static/app/stories/props.tsx
+@@ -10,7 +10,7 @@ export type PropMatrix<P> = Partial<{
+   [Prop in keyof P]: Array<P[Prop]>;
+ }>;
+ 
+-export interface PropMatrixProps<P> {
++interface PropMatrixProps<P> {
+   propMatrix: PropMatrix<P>;
+   render: React.ElementType<P>;
+   selectedProps: [keyof P] | [keyof P, keyof P];
+diff --git a/static/app/stories/storybook.tsx b/static/app/stories/storybook.tsx
+index c7743b31bc5..baefa7a1935 100644
+--- a/static/app/stories/storybook.tsx
++++ b/static/app/stories/storybook.tsx
+@@ -64,7 +64,7 @@ function Story(props: {name: string; render: StoryRenderFunction}) {
+   );
+ }
+ 
+-export const StorySection = styled('section')`
++const StorySection = styled('section')`
+   margin-top: ${space(4)};
+ 
+   & > p {
+@@ -72,7 +72,7 @@ export const StorySection = styled('section')`
+   }
+ `;
+ 
+-export const StoryTitle = styled('h3')`
++const StoryTitle = styled('h3')`
+   border-bottom: 1px solid ${p => p.theme.border};
+   scroll-margin-top: ${space(2)};
+ `;
+diff --git a/static/app/types/workflowEngine/automations.tsx b/static/app/types/workflowEngine/automations.tsx
+index f5f6fc67063..976730bc55c 100644
+--- a/static/app/types/workflowEngine/automations.tsx
++++ b/static/app/types/workflowEngine/automations.tsx
+@@ -1,6 +1,6 @@
+ import type {DataConditionGroup} from 'sentry/types/workflowEngine/dataConditions';
+ 
+-export interface NewAutomation {
++interface NewAutomation {
+   actionFilters: DataConditionGroup[];
+   detectorIds: string[];
+   name: string;
+diff --git a/static/app/types/workflowEngine/dataConditions.tsx b/static/app/types/workflowEngine/dataConditions.tsx
+index 643747ef67b..cbbd759d74c 100644
+--- a/static/app/types/workflowEngine/dataConditions.tsx
++++ b/static/app/types/workflowEngine/dataConditions.tsx
+@@ -52,12 +52,6 @@ export enum DataConditionGroupLogicType {
+   NONE = 'none',
+ }
+ 
+-export const enum DetectorPriorityLevel {
+-  HIGH = 75,
+-  MEDIUM = 50,
+-  LOW = 25,
+-}
+-
+ export interface DataCondition {
+   comparison: any;
+   comparison_type: DataConditionType;
+diff --git a/static/app/utils/analytics/agentsInsightsAnalyticsEvents.tsx b/static/app/utils/analytics/agentsInsightsAnalyticsEvents.tsx
+index c4a96444606..3c4edf2ba8d 100644
+--- a/static/app/utils/analytics/agentsInsightsAnalyticsEvents.tsx
++++ b/static/app/utils/analytics/agentsInsightsAnalyticsEvents.tsx
+@@ -1,4 +1,4 @@
+-export type AgentsInsightsEventParameters = {
++type AgentsInsightsEventParameters = {
+   'agents-insights.page-view': Record<string, unknown>;
+   'agents-insights.table_view_change': {
+     isEnabled: boolean;
+diff --git a/static/app/utils/useDimensionsMultiple.tsx b/static/app/utils/useDimensionsMultiple.tsx
+deleted file mode 100644
+index c4966fc32c8..00000000000
+--- a/static/app/utils/useDimensionsMultiple.tsx
++++ /dev/null
+@@ -1,45 +0,0 @@
+-import {useLayoutEffect, useRef, useState} from 'react';
+-
+-interface Props<Element extends HTMLElement> {
+-  elements: Array<Element | null>;
+-}
+-
+-/**
+- * Measures the dimensions of multiple elements at once.
+- */
+-export function useDimensionsMultiple<Element extends HTMLElement>({
+-  elements,
+-}: Props<Element>) {
+-  const [dimensions, setDimensions] = useState<DOMRectReadOnly[]>([]);
+-  const resizeObserverRef = useRef<ResizeObserver | null>(null);
+-
+-  useLayoutEffect(() => {
+-    resizeObserverRef.current = new ResizeObserver(entries => {
+-      setDimensions(prevDimensions => {
+-        const newDimensions = [...prevDimensions];
+-
+-        for (const entry of entries) {
+-          const index = elements.indexOf(entry.target as Element);
+-          if (index === -1) {
+-            continue;
+-          }
+-          newDimensions[index] = entry.contentRect;
+-        }
+-
+-        return newDimensions;
+-      });
+-    });
+-
+-    elements.forEach(element => {
+-      if (element && resizeObserverRef.current) {
+-        resizeObserverRef.current.observe(element);
+-      }
+-    });
+-
+-    return () => {
+-      resizeObserverRef.current?.disconnect();
+-    };
+-  }, [elements]);
+-
+-  return dimensions;
+-}
+diff --git a/static/app/views/automations/components/actionFilters/constants.tsx b/static/app/views/automations/components/actionFilters/constants.tsx
+index 6ee904c3c07..2943268c252 100644
+--- a/static/app/views/automations/components/actionFilters/constants.tsx
++++ b/static/app/views/automations/components/actionFilters/constants.tsx
+@@ -99,7 +99,7 @@ export enum Level {
+   SAMPLING = 0,
+ }
+ 
+-export enum Interval {
++enum Interval {
+   ONE_MINUTE = '1m',
+   FIVE_MINUTES = '5m',
+   FIFTEEN_MINUTES = '15m',
+diff --git a/static/app/views/automations/hooks/index.tsx b/static/app/views/automations/hooks/index.tsx
+index a27818e8ab1..5db656790c6 100644
+--- a/static/app/views/automations/hooks/index.tsx
++++ b/static/app/views/automations/hooks/index.tsx
+@@ -14,8 +14,3 @@ export function useAutomationsQuery(_options: UseAutomationsQueryOptions = {}) {
+     retry: false,
+   });
+ }
+-
+-export const makeAutomationQueryKey = (
+-  orgSlug: string,
+-  automationId = ''
+-): [url: string] => [`/organizations/${orgSlug}/workflows/${automationId}/`];
+diff --git a/static/app/views/automations/hooks/utils.tsx b/static/app/views/automations/hooks/utils.tsx
+index ed4818b5c4a..587df4fcd41 100644
+--- a/static/app/views/automations/hooks/utils.tsx
++++ b/static/app/views/automations/hooks/utils.tsx
+@@ -1,5 +1,3 @@
+-import {useState} from 'react';
+-
+ import type {ActionType} from 'sentry/types/workflowEngine/actions';
+ import type {Automation} from 'sentry/types/workflowEngine/automations';
+ import {useDetectorQueriesByIds} from 'sentry/views/detectors/hooks';
+@@ -16,37 +14,6 @@ export function useAutomationActions(automation: Automation): ActionType[] {
+   ] as ActionType[];
+ }
+ 
+-interface UseConnectedIdsProps {
+-  storageKey: string;
+-  initialIds?: string[];
+-}
+-
+-export function useConnectedIds({storageKey, initialIds = []}: UseConnectedIdsProps) {
+-  const [connectedIds, setConnectedIds] = useState<Set<string>>(() => {
+-    if (initialIds.length > 0) {
+-      localStorage.setItem(storageKey, JSON.stringify(initialIds));
+-      return new Set(initialIds);
+-    }
+-    const stored = localStorage.getItem(storageKey);
+-    return stored ? new Set(JSON.parse(stored)) : new Set();
+-  });
+-
+-  const toggleConnected = (id: string) => {
+-    setConnectedIds(prev => {
+-      const newSet = new Set(prev);
+-      if (newSet.has(id)) {
+-        newSet.delete(id);
+-      } else {
+-        newSet.add(id);
+-      }
+-      localStorage.setItem(storageKey, JSON.stringify(Array.from(newSet)));
+-      return newSet;
+-    });
+-  };
+-
+-  return {connectedIds, toggleConnected};
+-}
+-
+ export const NEW_AUTOMATION_CONNECTED_IDS_KEY = 'new-automation-connected-ids';
+ export function useAutomationProjectIds(automation: Automation): string[] {
+   const queries = useDetectorQueriesByIds(automation.detectorIds);
+diff --git a/static/app/views/deprecatedAsyncView.tsx b/static/app/views/deprecatedAsyncView.tsx
+deleted file mode 100644
+index ce9b51bc743..00000000000
+--- a/static/app/views/deprecatedAsyncView.tsx
++++ /dev/null
+@@ -1,27 +0,0 @@
+-import DeprecatedAsyncComponent from 'sentry/components/deprecatedAsyncComponent';
+-import SentryDocumentTitle from 'sentry/components/sentryDocumentTitle';
+-
+-type AsyncViewState = DeprecatedAsyncComponent['state'];
+-type AsyncViewProps = DeprecatedAsyncComponent['props'];
+-
+-/**
+- * @deprecated use useApiQuery instead.
+- *
+- * Read the dev docs page on network requests for more information [1].
+- *
+- * [1]: https://develop.sentry.dev/frontend/network-requests/
+- */
+-export default abstract class DeprecatedAsyncView<
+-  P extends AsyncViewProps = AsyncViewProps,
+-  S extends AsyncViewState = AsyncViewState,
+-> extends DeprecatedAsyncComponent<P, S> {
+-  abstract getTitle(): string;
+-
+-  render() {
+-    return (
+-      <SentryDocumentTitle title={this.getTitle()}>
+-        {this.renderComponent()}
+-      </SentryDocumentTitle>
+-    );
+-  }
+-}
+diff --git a/static/app/views/detectors/components/connectedAutomationList.tsx b/static/app/views/detectors/components/connectedAutomationList.tsx
+index 05463365327..a3a3a03eb38 100644
+--- a/static/app/views/detectors/components/connectedAutomationList.tsx
++++ b/static/app/views/detectors/components/connectedAutomationList.tsx
+@@ -90,7 +90,3 @@ const connectedColumns = defineColumns<ConnectedAutomationsData>({
+     width: '1fr',
+   },
+ });
+-
+-export interface ConnectedAutomationsListProps {
+-  automations: Automation[];
+-}
+diff --git a/static/app/views/detectors/hooks/index.ts b/static/app/views/detectors/hooks/index.ts
+index 1d04fb14e2c..9fa53fbd165 100644
+--- a/static/app/views/detectors/hooks/index.ts
++++ b/static/app/views/detectors/hooks/index.ts
+@@ -11,7 +11,7 @@ import {
+ import useApi from 'sentry/utils/useApi';
+ import useOrganization from 'sentry/utils/useOrganization';
+ 
+-export interface UseDetectorsQueryOptions {
++interface UseDetectorsQueryOptions {
+   query?: string;
+   sortBy?: string;
+ }
+@@ -23,7 +23,7 @@ export function useDetectorsQuery(_options: UseDetectorsQueryOptions = {}) {
+   });
+ }
+ 
+-export const makeDetectorQueryKey = (orgSlug: string, detectorId = ''): ApiQueryKey => [
++const makeDetectorQueryKey = (orgSlug: string, detectorId = ''): ApiQueryKey => [
+   `/organizations/${orgSlug}/detectors/${detectorId ? `${detectorId}/` : ''}`,
+   {query: {query: 'type:metric_issue'}}, // TODO: remove this when backend is ready
+ ];
+diff --git a/static/app/views/explore/components/progressiveLoadingIndicator.tsx b/static/app/views/explore/components/progressiveLoadingIndicator.tsx
+deleted file mode 100644
+index d9785f1f1be..00000000000
+--- a/static/app/views/explore/components/progressiveLoadingIndicator.tsx
++++ /dev/null
+@@ -1,52 +0,0 @@
+-import styled from '@emotion/styled';
+-
+-import {Tooltip} from 'sentry/components/core/tooltip';
+-import LoadingIndicator from 'sentry/components/loadingIndicator';
+-import {t} from 'sentry/locale';
+-
+-function ProgressiveLoadingIndicator({
+-  visualizationType,
+-}: {
+-  visualizationType: 'chart' | 'table';
+-}) {
+-  const tooltip =
+-    visualizationType === 'chart'
+-      ? t('Chart is currently loading more data')
+-      : t('Table is currently loading more data');
+-
+-  return (
+-    <Tooltip title={tooltip}>
+-      <_ProgressiveLoadingIndicator
+-        relative
+-        mini
+-        size={16}
+-        data-test-id="progressive-loading-indicator"
+-      />
+-    </Tooltip>
+-  );
+-}
+-
+-export const getProgressiveLoadingIndicator = (
+-  isProgressivelyLoading = false,
+-  visualizationType: 'chart' | 'table'
+-) => {
+-  if (isProgressivelyLoading) {
+-    return (
+-      <ProgressiveLoadingIndicator
+-        key="progressive-loading-indicator"
+-        visualizationType={visualizationType}
+-      />
+-    );
+-  }
+-  return null;
+-};
+-
+-const _ProgressiveLoadingIndicator = styled(LoadingIndicator)`
+-  .loading-indicator {
+-    border-width: 2px;
+-  }
+-
+-  display: flex;
+-  align-items: center;
+-  justify-content: center;
+-`;
+diff --git a/static/app/views/explore/contexts/pageParamsContext/index.tsx b/static/app/views/explore/contexts/pageParamsContext/index.tsx
+index 4dbe98e9d08..639a148ee7a 100644
+--- a/static/app/views/explore/contexts/pageParamsContext/index.tsx
++++ b/static/app/views/explore/contexts/pageParamsContext/index.tsx
+@@ -96,16 +96,6 @@ interface WritablePageParams {
+   title?: string | null;
+ }
+ 
+-export interface SuggestedQuery {
+-  fields: string[];
+-  groupBys: string[];
+-  mode: Mode;
+-  query: string;
+-  sortBys: Sort[];
+-  title: string;
+-  visualizes: BaseVisualize[];
+-}
+-
+ function defaultPageParams(): ReadablePageParams {
+   const aggregateFields = defaultAggregateFields();
+   const dataset = defaultDataset();
+diff --git a/static/app/views/explore/toolbar/styles.tsx b/static/app/views/explore/toolbar/styles.tsx
+index f1cf21ff216..b525e1c170b 100644
+--- a/static/app/views/explore/toolbar/styles.tsx
++++ b/static/app/views/explore/toolbar/styles.tsx
+@@ -27,10 +27,6 @@ export const ToolbarLabel = styled('h6')<{disabled?: boolean; underlined?: boole
+       : ''};
+ `;
+ 
+-export const ToolbarHeaderButton = styled(Button)<{disabled?: boolean}>`
+-  color: ${p => (p.disabled ? p.theme.disabled : p.theme.gray500)};
+-`;
+-
+ export const ToolbarFooterButton = styled(Button)<{disabled?: boolean}>`
+   color: ${p => (p.disabled ? p.theme.disabled : p.theme.linkColor)};
+ `;
+diff --git a/static/app/views/explore/toolbar/toolbarSuggestedQueries.tsx b/static/app/views/explore/toolbar/toolbarSuggestedQueries.tsx
+deleted file mode 100644
+index 3d645f552a7..00000000000
+--- a/static/app/views/explore/toolbar/toolbarSuggestedQueries.tsx
++++ /dev/null
+@@ -1,355 +0,0 @@
+-import {useMemo} from 'react';
+-import styled from '@emotion/styled';
+-
+-import {Tag} from 'sentry/components/core/badge/tag';
+-import Link from 'sentry/components/links/link';
+-import Panel from 'sentry/components/panels/panel';
+-import {ALL_ACCESS_PROJECTS} from 'sentry/constants/pageFilters';
+-import {
+-  backend,
+-  frontend,
+-  mobile,
+-  PlatformCategory,
+-  serverless,
+-} from 'sentry/data/platformCategories';
+-import {IconClose} from 'sentry/icons/iconClose';
+-import {t} from 'sentry/locale';
+-import {space} from 'sentry/styles/space';
+-import type {PageFilters} from 'sentry/types/core';
+-import type {Project} from 'sentry/types/project';
+-import {defined} from 'sentry/utils';
+-import useDismissAlert from 'sentry/utils/useDismissAlert';
+-import {useLocation} from 'sentry/utils/useLocation';
+-import useOrganization from 'sentry/utils/useOrganization';
+-import usePageFilters from 'sentry/utils/usePageFilters';
+-import useProjects from 'sentry/utils/useProjects';
+-import {
+-  newExploreTarget,
+-  type SuggestedQuery,
+-} from 'sentry/views/explore/contexts/pageParamsContext';
+-import {Mode} from 'sentry/views/explore/contexts/pageParamsContext/mode';
+-
+-import {ToolbarHeader, ToolbarHeaderButton, ToolbarLabel, ToolbarSection} from './styles';
+-
+-interface ToolbarSuggestedQueriesProps {}
+-
+-export function ToolbarSuggestedQueries(props: ToolbarSuggestedQueriesProps) {
+-  const organization = useOrganization();
+-
+-  const {dismiss, isDismissed} = useDismissAlert({
+-    key: `${organization.id}:metrics-empty-state-dismissed`,
+-    expirationDays: 30,
+-  });
+-
+-  if (isDismissed) {
+-    return null;
+-  }
+-
+-  return <ToolbarSuggestedQueriesInner {...props} dismiss={dismiss} />;
+-}
+-
+-interface ToolbarSuggestedQueriesInnerProps extends ToolbarSuggestedQueriesProps {
+-  dismiss: () => void;
+-}
+-
+-function ToolbarSuggestedQueriesInner({dismiss}: ToolbarSuggestedQueriesInnerProps) {
+-  const {selection} = usePageFilters();
+-  const {projects} = useProjects();
+-
+-  const suggestedQueries: SuggestedQuery[] = useMemo(() => {
+-    const counters = {
+-      [PlatformCategory.FRONTEND]: 0,
+-      [PlatformCategory.MOBILE]: 0,
+-      [PlatformCategory.BACKEND]: 0,
+-    };
+-
+-    for (const project of getSelectedProjectsList(selection.projects, projects)) {
+-      if (!defined(project.platform)) {
+-        continue;
+-      }
+-      if (frontend.includes(project.platform)) {
+-        counters[PlatformCategory.FRONTEND] += 1;
+-      } else if (mobile.includes(project.platform)) {
+-        counters[PlatformCategory.MOBILE] += 1;
+-      } else if (backend.includes(project.platform)) {
+-        counters[PlatformCategory.BACKEND] += 1;
+-      } else if (serverless.includes(project.platform)) {
+-        // consider serverless as a type of backend platform
+-        counters[PlatformCategory.BACKEND] += 1;
+-      }
+-    }
+-
+-    const platforms = [
+-      PlatformCategory.FRONTEND,
+-      PlatformCategory.MOBILE,
+-      PlatformCategory.BACKEND,
+-    ]
+-      // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
+-      .filter(k => counters[k] > 0)
+-      // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
+-      .sort((a, b) => counters[b] - counters[a]);
+-
+-    return getSuggestedQueries(platforms);
+-  }, [selection, projects]);
+-
+-  return (
+-    <StyledToolbarSection data-test-id="section-suggested-queries">
+-      <StyledPanel>
+-        <ToolbarHeader>
+-          <ToolbarLabel underlined={false}>{t('Suggested Queries')}</ToolbarLabel>
+-          <ToolbarHeaderButton
+-            size="zero"
+-            onClick={dismiss}
+-            borderless
+-            aria-label={t('Dismiss Suggested Queries')}
+-            icon={<IconClose />}
+-          />
+-        </ToolbarHeader>
+-        <div>
+-          {t("Feeling like a newb? Been there, done that. Here's a few to get you goin.")}
+-        </div>
+-        <SuggestedQueriesContainer>
+-          {suggestedQueries.map(suggestedQuery => (
+-            <SuggestedQueryLink
+-              key={suggestedQuery.title}
+-              suggestedQuery={suggestedQuery}
+-            />
+-          ))}
+-        </SuggestedQueriesContainer>
+-      </StyledPanel>
+-    </StyledToolbarSection>
+-  );
+-}
+-
+-interface SuggestedQueryLinkProps {
+-  suggestedQuery: SuggestedQuery;
+-}
+-
+-function SuggestedQueryLink({suggestedQuery}: SuggestedQueryLinkProps) {
+-  const location = useLocation();
+-  const target = useMemo(
+-    () => newExploreTarget(location, {...suggestedQuery, id: null}),
+-    [location, suggestedQuery]
+-  );
+-
+-  return (
+-    <Link to={target}>
+-      {/* @TODO(jonasbadalic): this used to set icon={null}, which was actually being ignored internally as passing a to prop
+-       * was causing the tag to always render a IconOpen. If IconOpen is required, it can be passed manually via icon={<IconOpen />}
+-       */}
+-      <Tag type="info">{suggestedQuery.title}</Tag>
+-    </Link>
+-  );
+-}
+-
+-function getSelectedProjectsList(
+-  selectedProjects: PageFilters['projects'],
+-  projects: Project[]
+-): Project[] {
+-  if (
+-    selectedProjects[0] === ALL_ACCESS_PROJECTS || // all projects
+-    selectedProjects.length === 0 // my projects
+-  ) {
+-    return projects;
+-  }
+-
+-  const projectIds = new Set(selectedProjects.map(String));
+-
+-  return projects.filter(project => projectIds.has(project.id));
+-}
+-
+-function getSuggestedQueries(platforms: PlatformCategory[], maxQueries = 5) {
+-  const frontendQueries: SuggestedQuery[] = [
+-    {
+-      title: t('Worst LCPs'),
+-      fields: [
+-        'id',
+-        'project',
+-        'span.op',
+-        'span.description',
+-        'span.duration',
+-        'measurements.lcp',
+-      ],
+-      groupBys: ['span.description'],
+-      mode: Mode.AGGREGATE,
+-      query: 'span.op:[pageload,navigation]',
+-      sortBys: [{field: 'avg(measurements.lcp)', kind: 'desc'}],
+-      visualizes: [
+-        {yAxes: ['p50(measurements.lcp)']},
+-        {yAxes: ['avg(measurements.lcp)']},
+-      ],
+-    },
+-    {
+-      title: t('Biggest Assets'),
+-      fields: [
+-        'id',
+-        'project',
+-        'span.op',
+-        'span.description',
+-        'span.duration',
+-        'http.response_transfer_size',
+-        'timestamp',
+-      ],
+-      groupBys: ['span.description'],
+-      mode: Mode.AGGREGATE,
+-      query: 'span.op:[resource.css,resource.img,resource.script]',
+-      sortBys: [{field: 'p75(http.response_transfer_size)', kind: 'desc'}],
+-      visualizes: [
+-        {yAxes: ['p75(http.response_transfer_size)']},
+-        {yAxes: ['p90(http.response_transfer_size)']},
+-      ],
+-    },
+-    {
+-      title: t('Top Pageloads'),
+-      fields: [
+-        'id',
+-        'project',
+-        'span.op',
+-        'span.description',
+-        'span.duration',
+-        'timestamp',
+-      ],
+-      groupBys: ['span.description'],
+-      mode: Mode.AGGREGATE,
+-      query: 'span.op:[pageload,navigation]',
+-      sortBys: [{field: 'count(span.duration)', kind: 'desc'}],
+-      visualizes: [{yAxes: ['count(span.duration)']}],
+-    },
+-  ];
+-
+-  const backendQueries: SuggestedQuery[] = [
+-    {
+-      title: t('Slowest Server Calls'),
+-      fields: [
+-        'id',
+-        'project',
+-        'span.op',
+-        'span.description',
+-        'span.duration',
+-        'timestamp',
+-      ],
+-      groupBys: ['span.description'],
+-      mode: Mode.AGGREGATE,
+-      query: 'span.op:http.server',
+-      sortBys: [{field: 'p75(span.duration)', kind: 'desc'}],
+-      visualizes: [{yAxes: ['p75(span.duration)']}, {yAxes: ['p90(span.duration)']}],
+-    },
+-    {
+-      title: t('Top Server Calls'),
+-      fields: [
+-        'id',
+-        'project',
+-        'span.op',
+-        'span.description',
+-        'span.duration',
+-        'timestamp',
+-      ],
+-      groupBys: ['span.description'],
+-      mode: Mode.AGGREGATE,
+-      query: 'span.op:http.server',
+-      sortBys: [{field: 'count(span.duration)', kind: 'desc'}],
+-      visualizes: [{yAxes: ['count(span.duration)']}],
+-    },
+-  ];
+-
+-  const mobileQueries: SuggestedQuery[] = [
+-    {
+-      title: t('Top Screenloads'),
+-      fields: [
+-        'id',
+-        'project',
+-        'span.op',
+-        'span.description',
+-        'span.duration',
+-        'timestamp',
+-      ],
+-      groupBys: ['span.description'],
+-      mode: Mode.AGGREGATE,
+-      query: 'span.op:ui.load',
+-      sortBys: [{field: 'count(span.duration)', kind: 'desc'}],
+-      visualizes: [{yAxes: ['count(span.duration)']}],
+-    },
+-  ];
+-
+-  const allQueries: Partial<Record<PlatformCategory, SuggestedQuery[]>> = {
+-    [PlatformCategory.FRONTEND]: frontendQueries,
+-    [PlatformCategory.BACKEND]: backendQueries,
+-    [PlatformCategory.MOBILE]: mobileQueries,
+-  };
+-
+-  const genericQueries: SuggestedQuery[] = [
+-    {
+-      title: t('Slowest Ops'),
+-      fields: [
+-        'id',
+-        'project',
+-        'span.op',
+-        'span.description',
+-        'span.duration',
+-        'timestamp',
+-      ],
+-      groupBys: ['span.op'],
+-      mode: Mode.AGGREGATE,
+-      query: '',
+-      sortBys: [{field: 'avg(span.duration)', kind: 'desc'}],
+-      visualizes: [{yAxes: ['avg(span.duration)']}, {yAxes: ['p50(span.duration)']}],
+-    },
+-    {
+-      title: t('Database Latency'),
+-      fields: [
+-        'id',
+-        'project',
+-        'span.op',
+-        'span.description',
+-        'span.duration',
+-        'db.system',
+-      ],
+-      groupBys: ['span.op', 'db.system'],
+-      mode: Mode.AGGREGATE,
+-      query: 'span.op:db',
+-      sortBys: [{field: 'avg(span.duration)', kind: 'desc'}],
+-      visualizes: [{yAxes: ['avg(span.duration)']}, {yAxes: ['p50(span.duration)']}],
+-    },
+-  ];
+-
+-  const queries: SuggestedQuery[] = [];
+-
+-  for (const platform of platforms) {
+-    for (const query of allQueries[platform] || []) {
+-      queries.push(query);
+-      if (queries.length >= maxQueries) {
+-        return queries;
+-      }
+-    }
+-  }
+-
+-  for (const query of genericQueries) {
+-    queries.push(query);
+-    if (queries.length >= maxQueries) {
+-      return queries;
+-    }
+-  }
+-
+-  return queries;
+-}
+-
+-const StyledToolbarSection = styled(ToolbarSection)`
+-  margin-bottom: 0;
+-`;
+-
+-const StyledPanel = styled(Panel)`
+-  margin-bottom: 0;
+-  padding: ${space(2)};
+-  background: linear-gradient(
+-    269.35deg,
+-    ${p => p.theme.backgroundTertiary} 0.32%,
+-    rgba(245, 243, 247, 0) 99.69%
+-  );
+-`;
+-
+-const SuggestedQueriesContainer = styled('div')`
+-  display: flex;
+-  flex-wrap: wrap;
+-  gap: ${space(1)};
+-  margin-top: ${space(1)};
+-`;
+diff --git a/static/app/views/insights/agentMonitoring/utils/features.tsx b/static/app/views/insights/agentMonitoring/utils/features.tsx
+index ce893506b9f..a4bbc68c002 100644
+--- a/static/app/views/insights/agentMonitoring/utils/features.tsx
++++ b/static/app/views/insights/agentMonitoring/utils/features.tsx
+@@ -1,10 +1,5 @@
+ import Feature from 'sentry/components/acl/feature';
+ import {NoAccess} from 'sentry/components/noAccess';
+-import type {Organization} from 'sentry/types/organization';
+-
+-export function hasAgentInsights(organization: Organization) {
+-  return organization.features.includes('agents-insights');
+-}
+ 
+ type AgentInsightsFeatureProps = Omit<Parameters<typeof Feature>[0], 'features'>;
+ 
+diff --git a/static/app/views/insights/common/utils/useEventsStatsQuery.tsx b/static/app/views/insights/common/utils/useEventsStatsQuery.tsx
+deleted file mode 100644
+index 8836ec87afe..00000000000
+--- a/static/app/views/insights/common/utils/useEventsStatsQuery.tsx
++++ /dev/null
+@@ -1,52 +0,0 @@
+-import type {MultiSeriesEventsStats} from 'sentry/types/organization';
+-import type EventView from 'sentry/utils/discover/eventView';
+-import {encodeSort} from 'sentry/utils/discover/eventView';
+-import type {DiscoverQueryProps} from 'sentry/utils/discover/genericDiscoverQuery';
+-import {useGenericDiscoverQuery} from 'sentry/utils/discover/genericDiscoverQuery';
+-import {useLocation} from 'sentry/utils/useLocation';
+-import useOrganization from 'sentry/utils/useOrganization';
+-import {
+-  getRetryDelay,
+-  shouldRetryHandler,
+-} from 'sentry/views/insights/common/utils/retryHandlers';
+-
+-export function useEventsStatsQuery({
+-  eventView,
+-  enabled,
+-  referrer,
+-  initialData,
+-  excludeOther = false,
+-}: {
+-  eventView: EventView;
+-  enabled?: boolean;
+-  excludeOther?: boolean;
+-  initialData?: MultiSeriesEventsStats;
+-  referrer?: string;
+-}) {
+-  const location = useLocation();
+-  const organization = useOrganization();
+-  const result = useGenericDiscoverQuery<MultiSeriesEventsStats, DiscoverQueryProps>({
+-    route: 'events-stats',
+-    eventView,
+-    location,
+-    orgSlug: organization.slug,
+-    getRequestPayload: () => ({
+-      ...eventView.getEventsAPIPayload(location),
+-      yAxis: eventView.yAxis,
+-      topEvents: eventView.topEvents,
+-      excludeOther: excludeOther === true ? 1 : 0,
+-      partial: 1,
+-      orderby: eventView.sorts?.[0] ? encodeSort(eventView.sorts?.[0]) : undefined,
+-      interval: eventView.interval,
+-    }),
+-    options: {
+-      enabled,
+-      refetchOnWindowFocus: false,
+-      retry: shouldRetryHandler,
+-      retryDelay: getRetryDelay,
+-    },
+-    referrer,
+-  });
+-
+-  return {...result, data: result.isPending ? initialData : result.data};
+-}
+diff --git a/static/app/views/insights/mobile/appStarts/settings.ts b/static/app/views/insights/mobile/appStarts/settings.ts
+index e283a871184..086e29c22a2 100644
+--- a/static/app/views/insights/mobile/appStarts/settings.ts
++++ b/static/app/views/insights/mobile/appStarts/settings.ts
+@@ -5,9 +5,6 @@ export const BASE_URL = 'app-startup';
+ export const DATA_TYPE = t('App Start');
+ export const DATA_TYPE_PLURAL = t('App Starts');
+ 
+-export const MODULE_DESCRIPTION = t(
+-  'Improve the latency associated with your application starting up. '
+-);
+ export const MODULE_DOC_LINK =
+   'https://docs.sentry.io/product/insights/mobile/app-starts/';
+ 
+diff --git a/static/app/views/insights/mobile/appStarts/views/screenSummaryPage.tsx b/static/app/views/insights/mobile/appStarts/views/screenSummaryPage.tsx
+index 9ed07259f10..0454e26bfc3 100644
+--- a/static/app/views/insights/mobile/appStarts/views/screenSummaryPage.tsx
++++ b/static/app/views/insights/mobile/appStarts/views/screenSummaryPage.tsx
+@@ -13,7 +13,6 @@ import {useLocation} from 'sentry/utils/useLocation';
+ import {useNavigate} from 'sentry/utils/useNavigate';
+ import {HeaderContainer} from 'sentry/views/insights/common/components/headerContainer';
+ import {ModulePageFilterBar} from 'sentry/views/insights/common/components/modulePageFilterBar';
+-import {ModulePageProviders} from 'sentry/views/insights/common/components/modulePageProviders';
+ import {
+   PRIMARY_RELEASE_ALIAS,
+   ReleaseComparisonSelector,
+@@ -202,16 +201,6 @@ export function ScreenSummaryContentPage() {
+   );
+ }
+ 
+-function PageWithProviders() {
+-  return (
+-    <ModulePageProviders moduleName="app_start" pageTitle={t('Screen Summary')}>
+-      <ScreenSummary />
+-    </ModulePageProviders>
+-  );
+-}
+-
+-export default PageWithProviders;
+-
+ const SamplesContainer = styled('div')`
+   margin-top: ${space(2)};
+ `;
+diff --git a/static/app/views/insights/mobile/screenRendering/screenRenderingContent.tsx b/static/app/views/insights/mobile/screenRendering/screenRenderingContent.tsx
+deleted file mode 100644
+index 0a05b116dea..00000000000
+--- a/static/app/views/insights/mobile/screenRendering/screenRenderingContent.tsx
++++ /dev/null
+@@ -1,5 +0,0 @@
+-import {ScreensOverview} from 'sentry/views/insights/mobile/screens/components/screensOverview';
+-
+-export function ScreenRenderingContent() {
+-  return <ScreensOverview />;
+-}
+diff --git a/static/app/views/insights/mobile/screenload/components/tabbedCodeSnippets.tsx b/static/app/views/insights/mobile/screenload/components/tabbedCodeSnippets.tsx
+deleted file mode 100644
+index 2e3ad4de345..00000000000
+--- a/static/app/views/insights/mobile/screenload/components/tabbedCodeSnippets.tsx
++++ /dev/null
+@@ -1,46 +0,0 @@
+-import {useState} from 'react';
+-import styled from '@emotion/styled';
+-
+-import {CodeSnippet} from 'sentry/components/codeSnippet';
+-import {space} from 'sentry/styles/space';
+-
+-export interface CodeSnippetTab {
+-  code: string;
+-  label: string;
+-  language: string;
+-  value: string;
+-  filename?: string;
+-}
+-
+-interface TabbedCodeSnippetProps {
+-  /**
+-   * An array of tabs to be displayed
+-   */
+-  tabs: CodeSnippetTab[];
+-}
+-
+-export function TabbedCodeSnippet({tabs}: TabbedCodeSnippetProps) {
+-  const [selectedTabValue, setSelectedTabValue] = useState(tabs[0]!.value);
+-  const selectedTab = tabs.find(tab => tab.value === selectedTabValue) ?? tabs[0]!;
+-  const {code, language, filename} = selectedTab;
+-
+-  return (
+-    <StyledCodeSnippet
+-      tabs={tabs}
+-      language={language}
+-      hideCopyButton
+-      selectedTab={selectedTabValue}
+-      onTabClick={value => setSelectedTabValue(value)}
+-      filename={filename}
+-    >
+-      {code}
+-    </StyledCodeSnippet>
+-  );
+-}
+-
+-const StyledCodeSnippet = styled(CodeSnippet)`
+-  pre {
+-    height: 213px;
+-  }
+-  margin-top: ${space(1)};
+-`;
+diff --git a/static/app/views/insights/mobile/screenload/components/tables/screensTable.tsx b/static/app/views/insights/mobile/screenload/components/tables/screensTable.tsx
+index 91d12b6842a..3256a908e72 100644
+--- a/static/app/views/insights/mobile/screenload/components/tables/screensTable.tsx
++++ b/static/app/views/insights/mobile/screenload/components/tables/screensTable.tsx
+@@ -1,256 +1,9 @@
+-import {Fragment} from 'react';
+-import {useTheme} from '@emotion/react';
+-import styled from '@emotion/styled';
+-import * as qs from 'query-string';
+-
+-import {Tooltip} from 'sentry/components/core/tooltip';
+-import type {GridColumnHeader} from 'sentry/components/gridEditable';
+-import GridEditable from 'sentry/components/gridEditable';
+-import SortLink from 'sentry/components/gridEditable/sortLink';
+-import ExternalLink from 'sentry/components/links/externalLink';
+-import Link from 'sentry/components/links/link';
+-import type {CursorHandler} from 'sentry/components/pagination';
+-import Pagination from 'sentry/components/pagination';
+-import {t, tct} from 'sentry/locale';
+-import {trackAnalytics} from 'sentry/utils/analytics';
+-import type {TableData, TableDataRow} from 'sentry/utils/discover/discoverQuery';
++import type {TableData} from 'sentry/utils/discover/discoverQuery';
+ import {useDiscoverQuery} from 'sentry/utils/discover/discoverQuery';
+-import type {MetaType} from 'sentry/utils/discover/eventView';
+ import type EventView from 'sentry/utils/discover/eventView';
+-import {isFieldSortable} from 'sentry/utils/discover/eventView';
+-import {getFieldRenderer} from 'sentry/utils/discover/fieldRenderers';
+-import {fieldAlignment} from 'sentry/utils/discover/fields';
+ import {useLocation} from 'sentry/utils/useLocation';
+ import useOrganization from 'sentry/utils/useOrganization';
+ import usePageFilters from 'sentry/utils/usePageFilters';
+-import {TopResultsIndicator} from 'sentry/views/discover/table/topResultsIndicator';
+-import type {TableColumn} from 'sentry/views/discover/table/types';
+-import {
+-  PRIMARY_RELEASE_ALIAS,
+-  SECONDARY_RELEASE_ALIAS,
+-} from 'sentry/views/insights/common/components/releaseSelector';
+-import {OverflowEllipsisTextContainer} from 'sentry/views/insights/common/components/textAlign';
+-import {useReleaseSelection} from 'sentry/views/insights/common/queries/useReleases';
+-import {useModuleURL} from 'sentry/views/insights/common/utils/useModuleURL';
+-import useCrossPlatformProject from 'sentry/views/insights/mobile/common/queries/useCrossPlatformProject';
+-import {TOP_SCREENS} from 'sentry/views/insights/mobile/constants';
+-import {ModuleName, SpanMetricsField} from 'sentry/views/insights/types';
+-
+-type Props = {
+-  data: TableData | undefined;
+-  eventView: EventView;
+-  isLoading: boolean;
+-  pageLinks: string | undefined;
+-  onCursor?: CursorHandler;
+-};
+-
+-export function ScreensTable({data, eventView, isLoading, pageLinks, onCursor}: Props) {
+-  const theme = useTheme();
+-  const moduleURL = useModuleURL('screen_load');
+-  const location = useLocation();
+-  const organization = useOrganization();
+-  const {primaryRelease, secondaryRelease} = useReleaseSelection();
+-  const {project} = useCrossPlatformProject();
+-  const eventViewColumns = eventView.getColumns();
+-
+-  const ttidColumnNamePrimaryRelease = `avg_if(measurements.time_to_initial_display,release,${primaryRelease})`;
+-  const ttidColumnNameSecondaryRelease = `avg_if(measurements.time_to_initial_display,release,${secondaryRelease})`;
+-  const ttfdColumnNamePrimaryRelease = `avg_if(measurements.time_to_full_display,release,${primaryRelease})`;
+-  const ttfdColumnNameSecondaryRelease = `avg_if(measurements.time_to_full_display,release,${secondaryRelease})`;
+-  const countColumnName = `count()`;
+-
+-  const columnNameMap = {
+-    transaction: t('Screen'),
+-    [ttidColumnNamePrimaryRelease]: t('AVG TTID (%s)', PRIMARY_RELEASE_ALIAS),
+-    [ttidColumnNameSecondaryRelease]: t('AVG TTID (%s)', SECONDARY_RELEASE_ALIAS),
+-    [ttfdColumnNamePrimaryRelease]: t('AVG TTFD (%s)', PRIMARY_RELEASE_ALIAS),
+-    [ttfdColumnNameSecondaryRelease]: t('AVG TTFD (%s)', SECONDARY_RELEASE_ALIAS),
+-    [countColumnName]: t('Total Count'),
+-  };
+-
+-  const columnTooltipMap = {
+-    [ttidColumnNamePrimaryRelease]: t(
+-      'Average time to initial display of %s.',
+-      PRIMARY_RELEASE_ALIAS
+-    ),
+-    [ttidColumnNameSecondaryRelease]: t(
+-      'Average time to initial display of %s.',
+-      SECONDARY_RELEASE_ALIAS
+-    ),
+-    [ttfdColumnNamePrimaryRelease]: t(
+-      'Average time to initial display of %s.',
+-      PRIMARY_RELEASE_ALIAS
+-    ),
+-    [ttfdColumnNameSecondaryRelease]: t(
+-      'Average time to full display of %s.',
+-      SECONDARY_RELEASE_ALIAS
+-    ),
+-    [countColumnName]: t('The total count of screen loads.'),
+-  };
+-
+-  function renderBodyCell(column: any, row: any): React.ReactNode {
+-    if (!data?.meta || !data?.meta.fields) {
+-      return row[column.key];
+-    }
+-
+-    const index = data.data.indexOf(row);
+-
+-    const field = String(column.key);
+-
+-    if (field === 'transaction') {
+-      return (
+-        <Fragment>
+-          <TopResultsIndicator count={TOP_SCREENS} index={index} />
+-          <OverflowEllipsisTextContainer>
+-            <Link
+-              to={`${moduleURL}/spans/?${qs.stringify({
+-                ...location.query,
+-                project: row['project.id'],
+-                transaction: row.transaction,
+-                primaryRelease,
+-                secondaryRelease,
+-              })}`}
+-            >
+-              {row.transaction}
+-            </Link>
+-          </OverflowEllipsisTextContainer>
+-        </Fragment>
+-      );
+-    }
+-
+-    const renderer = getFieldRenderer(column.key, data?.meta.fields, false);
+-    const rendered = renderer(row, {
+-      location,
+-      organization,
+-      unit: data?.meta.units?.[column.key],
+-      theme,
+-    });
+-    if (
+-      column.key.includes('time_to_full_display') &&
+-      row[column.key] === 0 &&
+-      project?.platform &&
+-      ['android', 'apple-ios'].includes(project.platform)
+-    ) {
+-      const docsUrl =
+-        project?.platform === 'android'
+-          ? 'https://docs.sentry.io/platforms/android/tracing/instrumentation/automatic-instrumentation/#time-to-full-display'
+-          : 'https://docs.sentry.io/platforms/apple/guides/ios/tracing/instrumentation/automatic-instrumentation/#time-to-full-display';
+-      return (
+-        <div style={{textAlign: 'right'}}>
+-          <Tooltip
+-            title={tct(
+-              'Measuring TTFD requires manual instrumentation in your application. To learn how to collect TTFD, see the documentation [link].',
+-              {
+-                link: <ExternalLink href={docsUrl}>{t('here')}</ExternalLink>,
+-              }
+-            )}
+-            showUnderline
+-            isHoverable
+-          >
+-            {rendered}
+-          </Tooltip>
+-        </div>
+-      );
+-    }
+-
+-    return rendered;
+-  }
+-
+-  function renderHeadCell(
+-    column: GridColumnHeader,
+-    tableMeta?: MetaType
+-  ): React.ReactNode {
+-    const fieldType = tableMeta?.fields?.[column.key];
+-    const alignment = fieldAlignment(column.key as string, fieldType);
+-    const field = {
+-      field: column.key as string,
+-      width: column.width,
+-    };
+-
+-    function generateSortLink() {
+-      if (!tableMeta) {
+-        return undefined;
+-      }
+-
+-      const nextEventView = eventView.sortOnField(field, tableMeta);
+-      const queryStringObject = nextEventView.generateQueryStringObject();
+-
+-      return {
+-        ...location,
+-        query: {...location.query, sort: queryStringObject.sort},
+-      };
+-    }
+-
+-    const currentSort = eventView.sortForField(field, tableMeta);
+-    const currentSortKind = currentSort ? currentSort.kind : undefined;
+-    const canSort = isFieldSortable(field, tableMeta);
+-
+-    const sortLink = (
+-      <SortLink
+-        align={alignment}
+-        title={column.name}
+-        direction={currentSortKind}
+-        canSort={canSort}
+-        generateSortLink={generateSortLink}
+-      />
+-    );
+-
+-    function columnWithToolTip(tooltipTitle: string) {
+-      return (
+-        <Alignment align={alignment}>
+-          <StyledTooltip isHoverable title={<span>{tooltipTitle}</span>}>
+-            {sortLink}
+-          </StyledTooltip>
+-        </Alignment>
+-      );
+-    }
+-
+-    const columnToolTip = columnTooltipMap[column.key];
+-    if (columnToolTip) {
+-      return columnWithToolTip(columnToolTip);
+-    }
+-    return sortLink;
+-  }
+-
+-  return (
+-    <Fragment>
+-      <GridEditable
+-        isLoading={isLoading}
+-        data={data?.data as TableDataRow[]}
+-        columnOrder={eventViewColumns
+-          .filter(
+-            (col: TableColumn<string | number>) =>
+-              col.name !== SpanMetricsField.PROJECT_ID &&
+-              !col.name.startsWith('avg_compare')
+-          )
+-          .map((col: TableColumn<string | number>) => {
+-            return {...col, name: columnNameMap[col.key] ?? col.name};
+-          })}
+-        columnSortBy={[
+-          {
+-            key: 'count()',
+-            order: 'desc',
+-          },
+-        ]}
+-        grid={{
+-          renderHeadCell: column => renderHeadCell(column, data?.meta),
+-          renderBodyCell,
+-        }}
+-      />
+-      <Pagination
+-        pageLinks={pageLinks}
+-        onCursor={onCursor}
+-        paginationAnalyticsEvent={(direction: string) => {
+-          trackAnalytics('insight.general.table_paginate', {
+-            organization,
+-            source: ModuleName.SCREEN_LOAD,
+-            direction,
+-          });
+-        }}
+-      />
+-    </Fragment>
+-  );
+-}
+ 
+ export function useTableQuery({
+   eventView,
+@@ -294,15 +47,3 @@ export function useTableQuery({
+     pageLinks: result.pageLinks,
+   };
+ }
+-
+-const Alignment = styled('span')<{align: string}>`
+-  display: block;
+-  margin: auto;
+-  text-align: ${props => props.align};
+-  width: 100%;
+-`;
+-
+-const StyledTooltip = styled(Tooltip)`
+-  top: 1px;
+-  position: relative;
+-`;
+diff --git a/static/app/views/insights/mobile/screenload/data/setupContent.ts b/static/app/views/insights/mobile/screenload/data/setupContent.ts
+index b087ba2031b..1c4720eaffa 100644
+--- a/static/app/views/insights/mobile/screenload/data/setupContent.ts
++++ b/static/app/views/insights/mobile/screenload/data/setupContent.ts
+@@ -1,5 +1,3 @@
+-import type {CodeSnippetTab} from 'sentry/views/insights/mobile/screenload/components/tabbedCodeSnippets';
+-
+ const swiftSetupSnippet = `// Step 1 - Enable Time to Full Display
+ import Sentry
+ 
+@@ -34,6 +32,14 @@ import * as Sentry from '@sentry/react-native';
+ <Sentry.TimeToFullDisplay record={true} />
+ `;
+ 
++interface CodeSnippetTab {
++  code: string;
++  label: string;
++  language: string;
++  value: string;
++  filename?: string;
++}
++
+ export const SETUP_CONTENT: CodeSnippetTab[] = [
+   {
+     code: swiftSetupSnippet,
+diff --git a/static/app/views/insights/mobile/screenload/settings.ts b/static/app/views/insights/mobile/screenload/settings.ts
+index 40ee6d8c0a0..93ea672ef2f 100644
+--- a/static/app/views/insights/mobile/screenload/settings.ts
++++ b/static/app/views/insights/mobile/screenload/settings.ts
+@@ -5,9 +5,6 @@ export const BASE_URL = 'screens';
+ export const DATA_TYPE = t('Screen Load');
+ export const DATA_TYPE_PLURAL = t('Screen Loads');
+ 
+-export const MODULE_DESCRIPTION = t(
+-  'View the most active screens in your mobile application and monitor your releases for TTID and TTFD regressions.'
+-);
+ export const MODULE_DOC_LINK =
+   'https://docs.sentry.io/product/insights/mobile/screen-loads/';
+ 
+diff --git a/static/app/views/insights/mobile/screenload/utils.tsx b/static/app/views/insights/mobile/screenload/utils.tsx
+index 4d1acd03dea..4462a22dc0a 100644
+--- a/static/app/views/insights/mobile/screenload/utils.tsx
++++ b/static/app/views/insights/mobile/screenload/utils.tsx
+@@ -1,5 +1,4 @@
+ import type {Theme} from '@emotion/react';
+-import Color from 'color';
+ 
+ import type {Series, SeriesDataUnit} from 'sentry/types/echarts';
+ import type {Project} from 'sentry/types/project';
+@@ -12,66 +11,6 @@ export function isCrossPlatform(project: Project) {
+   return project.platform && ['react-native', 'flutter'].includes(project.platform);
+ }
+ 
+-export function transformReleaseEvents({
+-  yAxes,
+-  primaryRelease,
+-  secondaryRelease,
+-  topTransactions,
+-  colorPalette,
+-  releaseEvents,
+-}: {
+-  colorPalette: string[] | readonly string[];
+-  releaseEvents: any;
+-  topTransactions: any;
+-  yAxes: YAxis[];
+-  primaryRelease?: string;
+-  secondaryRelease?: string;
+-}): Record<string, Record<string, Series>> {
+-  const topTransactionsIndex = Object.fromEntries(
+-    topTransactions.map((e: any, i: any) => [e, i])
+-  );
+-  const transformedReleaseEvents = yAxes.reduce(
+-    (acc, yAxis) => ({...acc, [YAXIS_COLUMNS[yAxis]]: {}}),
+-    {}
+-  );
+-
+-  yAxes.forEach(val => {
+-    [primaryRelease, secondaryRelease].filter(defined).forEach(release => {
+-      // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
+-      transformedReleaseEvents[YAXIS_COLUMNS[val]][release] = {
+-        seriesName: release,
+-        data: new Array(topTransactions.length).fill(0),
+-      };
+-    });
+-  });
+-
+-  if (defined(releaseEvents) && defined(primaryRelease)) {
+-    releaseEvents.data?.forEach((row: any) => {
+-      const release = row.release;
+-      const isPrimary = release === primaryRelease;
+-      const transaction = row.transaction;
+-      const index = topTransactionsIndex[transaction];
+-      yAxes.forEach(val => {
+-        // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
+-        if (transformedReleaseEvents[YAXIS_COLUMNS[val]][release]) {
+-          // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
+-          transformedReleaseEvents[YAXIS_COLUMNS[val]][release].data[index] = {
+-            name: row.transaction,
+-            value: row[YAXIS_COLUMNS[val]],
+-            itemStyle: {
+-              color: isPrimary
+-                ? colorPalette[index]
+-                : Color(colorPalette[index]).lighten(0.3).string(),
+-            },
+-          } as SeriesDataUnit;
+-        }
+-      });
+-    });
+-  }
+-
+-  return transformedReleaseEvents;
+-}
+-
+ export function transformDeviceClassEvents({
+   yAxes,
+   primaryRelease,
+diff --git a/static/app/views/insights/mobile/ui/settings.ts b/static/app/views/insights/mobile/ui/settings.ts
+index 3d469006195..912cd47ee11 100644
+--- a/static/app/views/insights/mobile/ui/settings.ts
++++ b/static/app/views/insights/mobile/ui/settings.ts
+@@ -3,8 +3,6 @@ import {t} from 'sentry/locale';
+ export const MODULE_TITLE = t('Mobile UI');
+ export const BASE_URL = 'ui';
+ 
+-export const MODULE_DESCRIPTION = t("Improve your application's responsiveness.");
+-
+ export const MODULE_DOC_LINK = 'https://docs.sentry.io/product/insights/mobile/';
+ 
+ export const MODULE_FEATURES = ['insights-addon-modules', 'starfish-mobile-ui-module'];
+diff --git a/static/app/views/issueList/mutations/useUpdateGroupSearchViews.tsx b/static/app/views/issueList/mutations/useUpdateGroupSearchViews.tsx
+deleted file mode 100644
+index 358589c20df..00000000000
+--- a/static/app/views/issueList/mutations/useUpdateGroupSearchViews.tsx
++++ /dev/null
+@@ -1,52 +0,0 @@
+-import {addErrorMessage} from 'sentry/actionCreators/indicator';
+-import {t} from 'sentry/locale';
+-import {
+-  setApiQueryData,
+-  useMutation,
+-  type UseMutationOptions,
+-  useQueryClient,
+-} from 'sentry/utils/queryClient';
+-import type RequestError from 'sentry/utils/requestError/requestError';
+-import useApi from 'sentry/utils/useApi';
+-import {makeFetchStarredGroupSearchViewsKey} from 'sentry/views/issueList/queries/useFetchStarredGroupSearchViews';
+-import type {
+-  GroupSearchView,
+-  StarredGroupSearchView,
+-  UpdateGroupSearchViewPayload,
+-} from 'sentry/views/issueList/types';
+-
+-type UpdateGroupSearchViewsVariables = {
+-  groupSearchViews: UpdateGroupSearchViewPayload[]; // Id is not required in request payload
+-  orgSlug: string;
+-};
+-
+-export const useUpdateGroupSearchViews = (
+-  options: Omit<
+-    UseMutationOptions<GroupSearchView[], RequestError, UpdateGroupSearchViewsVariables>,
+-    'mutationFn'
+-  > = {}
+-) => {
+-  const api = useApi();
+-  const queryClient = useQueryClient();
+-
+-  return useMutation<GroupSearchView[], RequestError, UpdateGroupSearchViewsVariables>({
+-    ...options,
+-    mutationFn: ({orgSlug, groupSearchViews}: UpdateGroupSearchViewsVariables) =>
+-      api.requestPromise(`/organizations/${orgSlug}/group-search-views/`, {
+-        method: 'PUT',
+-        data: {views: groupSearchViews},
+-      }),
+-    onSuccess: (groupSearchViews, parameters, context) => {
+-      setApiQueryData<StarredGroupSearchView[]>(
+-        queryClient,
+-        makeFetchStarredGroupSearchViewsKey({orgSlug: parameters.orgSlug}),
+-        groupSearchViews // Update the cache with the new groupSearchViews
+-      );
+-      options.onSuccess?.(groupSearchViews, parameters, context);
+-    },
+-    onError: (error, variables, context) => {
+-      addErrorMessage(t('Failed to update views'));
+-      options.onError?.(error, variables, context);
+-    },
+-  });
+-};
+diff --git a/static/app/views/issueList/queries/useFetchStarredGroupSearchViews.tsx b/static/app/views/issueList/queries/useFetchStarredGroupSearchViews.tsx
+index 24534e60da5..8a761972457 100644
+--- a/static/app/views/issueList/queries/useFetchStarredGroupSearchViews.tsx
++++ b/static/app/views/issueList/queries/useFetchStarredGroupSearchViews.tsx
+@@ -1,6 +1,4 @@
+-import type {ApiQueryKey, UseApiQueryOptions} from 'sentry/utils/queryClient';
+-import {useApiQuery} from 'sentry/utils/queryClient';
+-import type {StarredGroupSearchView} from 'sentry/views/issueList/types';
++import type {ApiQueryKey} from 'sentry/utils/queryClient';
+ 
+ type FetchStarredGroupSearchViewsParameters = {
+   orgSlug: string;
+@@ -10,16 +8,3 @@ export const makeFetchStarredGroupSearchViewsKey = ({
+   orgSlug,
+ }: FetchStarredGroupSearchViewsParameters): ApiQueryKey =>
+   [`/organizations/${orgSlug}/group-search-views/starred/`, {}] as const;
+-
+-export const useFetchStarredGroupSearchViews = (
+-  parameters: FetchStarredGroupSearchViewsParameters,
+-  options: Partial<UseApiQueryOptions<StarredGroupSearchView[]>> = {}
+-) => {
+-  return useApiQuery<StarredGroupSearchView[]>(
+-    makeFetchStarredGroupSearchViewsKey(parameters),
+-    {
+-      staleTime: Infinity,
+-      ...options,
+-    }
+-  );
+-};
+diff --git a/static/app/views/issueList/types.tsx b/static/app/views/issueList/types.tsx
+index 880f4a181e6..65f65d79542 100644
+--- a/static/app/views/issueList/types.tsx
++++ b/static/app/views/issueList/types.tsx
+@@ -47,18 +47,6 @@ export type GroupSearchView = StarredGroupSearchView & {
+   visibility: GroupSearchViewVisibility;
+ };
+ 
+-export interface UpdateGroupSearchViewPayload
+-  extends Omit<
+-    GroupSearchView,
+-    'id' | 'lastVisited' | 'visibility' | 'starred' | 'dateCreated' | 'dateUpdated'
+-  > {
+-  environments: string[];
+-  projects: number[];
+-  timeFilters: PageFilters['datetime'];
+-  id?: string;
+-  isAllProjects?: boolean;
+-}
+-
+ // Frontend sort options which map to multiple backend sorts
+ export enum GroupSearchViewSort {
+   VIEWED = 'visited',
+diff --git a/static/app/views/nav/secondary/sections/issues/issueViews/useStarredIssueViews.tsx b/static/app/views/nav/secondary/sections/issues/issueViews/useStarredIssueViews.tsx
+index b6d8176c2c8..17f5ae0c7c2 100644
+--- a/static/app/views/nav/secondary/sections/issues/issueViews/useStarredIssueViews.tsx
++++ b/static/app/views/nav/secondary/sections/issues/issueViews/useStarredIssueViews.tsx
+@@ -38,7 +38,7 @@ export function useStarredIssueViews() {
+   return {starredViews, setStarredIssueViews};
+ }
+ 
+-export const convertGSVtoIssueView = (gsv: StarredGroupSearchView): IssueView => {
++const convertGSVtoIssueView = (gsv: StarredGroupSearchView): IssueView => {
+   return {
+     id: gsv.id,
+     label: gsv.name,
+diff --git a/static/app/views/replays/detail/trace/replayTransactionContext.tsx b/static/app/views/replays/detail/trace/replayTransactionContext.tsx
+index cba08393c2f..b4f6541572f 100644
+--- a/static/app/views/replays/detail/trace/replayTransactionContext.tsx
++++ b/static/app/views/replays/detail/trace/replayTransactionContext.tsx
+@@ -1,12 +1,5 @@
+ import type {ReactNode} from 'react';
+-import {
+-  createContext,
+-  useCallback,
+-  useContext,
+-  useEffect,
+-  useMemo,
+-  useState,
+-} from 'react';
++import {createContext, useCallback, useMemo, useState} from 'react';
+ import type {Location} from 'history';
+ import sortBy from 'lodash/sortBy';
+ 
+@@ -291,19 +284,3 @@ function internalToExternalState({
+ }
+ 
+ export default ReplayTransactionContext;
+-
+-export const useFetchTransactions = () => {
+-  const {fetchTransactionData, state} = useContext(TxnContext);
+-
+-  useEffect(() => {
+-    if (!state.isFetching && state.traces === undefined) {
+-      fetchTransactionData();
+-    }
+-  }, [fetchTransactionData, state]);
+-};
+-
+-export const useTransactionData = () => {
+-  const {eventView, state} = useContext(TxnContext);
+-  const data = useMemo(() => ({eventView, state}), [eventView, state]);
+-  return data;
+-};
+diff --git a/static/gsApp/constants.tsx b/static/gsApp/constants.tsx
+index 792dfe162cf..21a864052db 100644
+--- a/static/gsApp/constants.tsx
++++ b/static/gsApp/constants.tsx
+@@ -182,5 +182,3 @@ export const BILLED_DATA_CATEGORY_INFO = {
+     feature: 'seer-billing',
+   },
+ } as const satisfies Record<DataCategoryExact, BilledDataCategoryInfo>;
+-
+-export const SEER_MONTHLY_PRICE_CENTS = 2000;
+diff --git a/tests/js/fixtures/automations.ts b/tests/js/fixtures/automations.ts
+deleted file mode 100644
+index c06db05ceb3..00000000000
+--- a/tests/js/fixtures/automations.ts
++++ /dev/null
+@@ -1,15 +0,0 @@
+-import {DataConditionGroupFixture} from 'sentry-fixture/dataConditions';
+-
+-import type {Automation} from 'sentry/types/workflowEngine/automations';
+-
+-export function AutomationFixture(params: Partial<Automation>): Automation {
+-  return {
+-    id: '1',
+-    name: 'Automation',
+-    lastTriggered: '2025-01-01T00:00:00.000Z',
+-    actionFilters: [],
+-    detectorIds: [],
+-    triggers: DataConditionGroupFixture({}),
+-    ...params,
+-  };
+-}
+diff --git a/tests/js/fixtures/dataConditions.ts b/tests/js/fixtures/dataConditions.ts
+index ac991be4024..aedc7155065 100644
+--- a/tests/js/fixtures/dataConditions.ts
++++ b/tests/js/fixtures/dataConditions.ts
+@@ -7,7 +7,7 @@ import {
+   DataConditionType,
+ } from 'sentry/types/workflowEngine/dataConditions';
+ 
+-export function DataConditionFixture(params: Partial<DataCondition> = {}): DataCondition {
++function DataConditionFixture(params: Partial<DataCondition> = {}): DataCondition {
+   return {
+     comparison_type: DataConditionType.EQUAL,
+     comparison: '8',
+diff --git a/tests/js/fixtures/userFeedback.ts b/tests/js/fixtures/userFeedback.ts
+deleted file mode 100644
+index 581bc7e0aa3..00000000000
+--- a/tests/js/fixtures/userFeedback.ts
++++ /dev/null
+@@ -1,21 +0,0 @@
+-import {EventFixture} from 'sentry-fixture/event';
+-import {GroupFixture} from 'sentry-fixture/group';
+-import {UserFixture} from 'sentry-fixture/user';
+-
+-import type {UserReport} from 'sentry/types/group';
+-
+-export function UserFeedbackFixture(params: Partial<UserReport> = {}): UserReport {
+-  const event = EventFixture();
+-  return {
+-    id: '123',
+-    name: 'Lyn',
+-    email: 'lyn@sentry.io',
+-    comments: 'Something bad happened',
+-    dateCreated: '2018-12-20T00:00:00.000Z',
+-    issue: GroupFixture(),
+-    eventID: event.id,
+-    event,
+-    user: UserFixture(),
+-    ...params,
+-  };
+-}
+diff --git a/tests/js/getsentry-test/fixtures/reservedBudget.ts b/tests/js/getsentry-test/fixtures/reservedBudget.ts
+index ec8c8fce8ee..0df4f9e6ba7 100644
+--- a/tests/js/getsentry-test/fixtures/reservedBudget.ts
++++ b/tests/js/getsentry-test/fixtures/reservedBudget.ts
+@@ -3,29 +3,13 @@ import {DataCategory} from 'sentry/types/core';
+ import type {
+   PendingReservedBudget as TPendingReservedBudget,
+   ReservedBudget as TReservedBudget,
+-  ReservedBudgetCategory as TReservedBudgetCategory,
+   ReservedBudgetMetricHistory as TReservedBudgetMetricHistory,
+ } from 'getsentry/types';
+ import {ReservedBudgetCategoryType} from 'getsentry/types';
+ 
+-type ReservedBudgetCategoryProps = Partial<TReservedBudgetCategory>;
+ type BudgetProps = Partial<TReservedBudget>;
+ type MetricHistoryProps = Partial<TReservedBudgetMetricHistory>;
+-export type PendingBudgetProps = Partial<TPendingReservedBudget>;
+-
+-export function ReservedBudgetCategoryFixture(props: ReservedBudgetCategoryProps) {
+-  return {
+-    budgetCategoryType: '',
+-    name: '',
+-    docLink: '',
+-    isFixed: false,
+-    defaultBudget: 0,
+-    dataCategories: [],
+-    productName: '',
+-    canProductTrial: false,
+-    ...props,
+-  };
+-}
++type PendingBudgetProps = Partial<TPendingReservedBudget>;
+ 
+ export function ReservedBudgetFixture(props: BudgetProps) {
+   const defaultCategoryProps = {
+diff --git a/yarn.lock b/yarn.lock
+index 8b8a4259820..6b68471cee1 100644
+--- a/yarn.lock
++++ b/yarn.lock
+@@ -1286,6 +1286,28 @@
+   resolved "https://registry.yarnpkg.com/@emmetio/scanner/-/scanner-1.0.4.tgz#e9cdc67194fd91f8b7eb141014be4f2d086c15f1"
+   integrity sha512-IqRuJtQff7YHHBk4G8YZ45uB9BaAGcwQeVzgj/zj8/UdOhtQpEIupUhSk8dys6spFIWVZVeK20CzGEnqR5SbqA==
+ 
++"@emnapi/core@^1.4.3":
++  version "1.4.3"
++  resolved "https://registry.yarnpkg.com/@emnapi/core/-/core-1.4.3.tgz#9ac52d2d5aea958f67e52c40a065f51de59b77d6"
++  integrity sha512-4m62DuCE07lw01soJwPiBGC0nAww0Q+RY70VZ+n49yDIO13yyinhbWCeNnaob0lakDtWQzSdtNWzJeOJt2ma+g==
++  dependencies:
++    "@emnapi/wasi-threads" "1.0.2"
++    tslib "^2.4.0"
++
++"@emnapi/runtime@^1.4.3":
++  version "1.4.3"
++  resolved "https://registry.yarnpkg.com/@emnapi/runtime/-/runtime-1.4.3.tgz#c0564665c80dc81c448adac23f9dfbed6c838f7d"
++  integrity sha512-pBPWdu6MLKROBX05wSNKcNb++m5Er+KQ9QkB+WVM+pW2Kx9hoSrVTnu3BdkI5eBLZoKu/J6mW/B6i6bJB2ytXQ==
++  dependencies:
++    tslib "^2.4.0"
++
++"@emnapi/wasi-threads@1.0.2":
++  version "1.0.2"
++  resolved "https://registry.yarnpkg.com/@emnapi/wasi-threads/-/wasi-threads-1.0.2.tgz#977f44f844eac7d6c138a415a123818c655f874c"
++  integrity sha512-5n3nTJblwRi8LlXkJ9eBzu+kZR8Yxcc7ubakyQTFzPMtIhFpUBRbsnc2Dv88IZDIbCDlBiWrknhB4Lsz7mg6BA==
++  dependencies:
++    tslib "^2.4.0"
++
+ "@emotion/babel-plugin@^11.13.5":
+   version "11.13.5"
+   resolved "https://registry.yarnpkg.com/@emotion/babel-plugin/-/babel-plugin-11.13.5.tgz#eab8d65dbded74e0ecfd28dc218e75607c4e7bc0"
+@@ -2022,7 +2044,7 @@
+     "@mdx-js/mdx" "^3.0.0"
+     source-map "^0.7.0"
+ 
+-"@mdx-js/mdx@^3.0.0":
++"@mdx-js/mdx@^3.0.0", "@mdx-js/mdx@^3.1.0":
+   version "3.1.0"
+   resolved "https://registry.yarnpkg.com/@mdx-js/mdx/-/mdx-3.1.0.tgz#10235cab8ad7d356c262e8c21c68df5850a97dc3"
+   integrity sha512-/QxEhPAvGwbQmy1Px8F899L5Uc2KZ6JtXwlCgJmjSTBedwOZkByYcBG4GceIGPXRDsmfxhHazuS+hlOShRLeDw==
+@@ -2095,6 +2117,15 @@
+     "@module-federation/runtime" "0.13.1"
+     "@module-federation/sdk" "0.13.1"
+ 
++"@napi-rs/wasm-runtime@^0.2.9":
++  version "0.2.10"
++  resolved "https://registry.yarnpkg.com/@napi-rs/wasm-runtime/-/wasm-runtime-0.2.10.tgz#f3b7109419c6670000b2401e0c778b98afc25f84"
++  integrity sha512-bCsCyeZEwVErsGmyPNSzwfwFn4OdxBj0mmv6hOFucB/k81Ojdu68RbZdxYsRQUPc9l6SU5F/cG+bXgWs3oUgsQ==
++  dependencies:
++    "@emnapi/core" "^1.4.3"
++    "@emnapi/runtime" "^1.4.3"
++    "@tybys/wasm-util" "^0.9.0"
++
+ "@nodelib/fs.scandir@2.1.5":
+   version "2.1.5"
+   resolved "https://registry.yarnpkg.com/@nodelib/fs.scandir/-/fs.scandir-2.1.5.tgz#7619c2eb21b25483f6d167548b4cfd5a7488c3d5"
+@@ -2493,6 +2524,73 @@
+   dependencies:
+     "@opentelemetry/core" "^1.1.0"
+ 
++"@oxc-resolver/binding-darwin-arm64@9.0.2":
++  version "9.0.2"
++  resolved "https://registry.yarnpkg.com/@oxc-resolver/binding-darwin-arm64/-/binding-darwin-arm64-9.0.2.tgz#345ff11258dbec11d333bf088a79b864f5f03ec5"
++  integrity sha512-MVyRgP2gzJJtAowjG/cHN3VQXwNLWnY+FpOEsyvDepJki1SdAX/8XDijM1yN6ESD1kr9uhBKjGelC6h3qtT+rA==
++
++"@oxc-resolver/binding-darwin-x64@9.0.2":
++  version "9.0.2"
++  resolved "https://registry.yarnpkg.com/@oxc-resolver/binding-darwin-x64/-/binding-darwin-x64-9.0.2.tgz#cd19f263a31b601356002ebd2eb8dda193753704"
++  integrity sha512-7kV0EOFEZ3sk5Hjy4+bfA6XOQpCwbDiDkkHN4BHHyrBHsXxUR05EcEJPPL1WjItefg+9+8hrBmoK0xRoDs41+A==
++
++"@oxc-resolver/binding-freebsd-x64@9.0.2":
++  version "9.0.2"
++  resolved "https://registry.yarnpkg.com/@oxc-resolver/binding-freebsd-x64/-/binding-freebsd-x64-9.0.2.tgz#e6e0b9b9409cb4eb71307ca880f1d868cce88c94"
++  integrity sha512-6OvkEtRXrt8sJ4aVfxHRikjain9nV1clIsWtJ1J3J8NG1ZhjyJFgT00SCvqxbK+pzeWJq6XzHyTCN78ML+lY2w==
++
++"@oxc-resolver/binding-linux-arm-gnueabihf@9.0.2":
++  version "9.0.2"
++  resolved "https://registry.yarnpkg.com/@oxc-resolver/binding-linux-arm-gnueabihf/-/binding-linux-arm-gnueabihf-9.0.2.tgz#e4ef8e0a831fa05101ca8fc0501cd7b536093e66"
++  integrity sha512-aYpNL6o5IRAUIdoweW21TyLt54Hy/ZS9tvzNzF6ya1ckOQ8DLaGVPjGpmzxdNja9j/bbV6aIzBH7lNcBtiOTkQ==
++
++"@oxc-resolver/binding-linux-arm64-gnu@9.0.2":
++  version "9.0.2"
++  resolved "https://registry.yarnpkg.com/@oxc-resolver/binding-linux-arm64-gnu/-/binding-linux-arm64-gnu-9.0.2.tgz#c95345cf91b9597a469a8d3028d0b182e2e22055"
++  integrity sha512-RGFW4vCfKMFEIzb9VCY0oWyyY9tR1/o+wDdNePhiUXZU4SVniRPQaZ1SJ0sUFI1k25pXZmzQmIP6cBmazi/Dew==
++
++"@oxc-resolver/binding-linux-arm64-musl@9.0.2":
++  version "9.0.2"
++  resolved "https://registry.yarnpkg.com/@oxc-resolver/binding-linux-arm64-musl/-/binding-linux-arm64-musl-9.0.2.tgz#d968aadd446a6c1d729764f3ddd0e1b66e3ec53f"
++  integrity sha512-lxx/PibBfzqYvut2Y8N2D0Ritg9H8pKO+7NUSJb9YjR/bfk2KRmP8iaUz3zB0JhPtf/W3REs65oKpWxgflGToA==
++
++"@oxc-resolver/binding-linux-riscv64-gnu@9.0.2":
++  version "9.0.2"
++  resolved "https://registry.yarnpkg.com/@oxc-resolver/binding-linux-riscv64-gnu/-/binding-linux-riscv64-gnu-9.0.2.tgz#698f364bf15489e69c8441c842a09a468c7389ca"
++  integrity sha512-yD28ptS/OuNhwkpXRPNf+/FvrO7lwURLsEbRVcL1kIE0GxNJNMtKgIE4xQvtKDzkhk6ZRpLho5VSrkkF+3ARTQ==
++
++"@oxc-resolver/binding-linux-s390x-gnu@9.0.2":
++  version "9.0.2"
++  resolved "https://registry.yarnpkg.com/@oxc-resolver/binding-linux-s390x-gnu/-/binding-linux-s390x-gnu-9.0.2.tgz#dfcbf0531f0ade1197275f40e6f8900635af187c"
++  integrity sha512-WBwEJdspoga2w+aly6JVZeHnxuPVuztw3fPfWrei2P6rNM5hcKxBGWKKT6zO1fPMCB4sdDkFohGKkMHVV1eryQ==
++
++"@oxc-resolver/binding-linux-x64-gnu@9.0.2":
++  version "9.0.2"
++  resolved "https://registry.yarnpkg.com/@oxc-resolver/binding-linux-x64-gnu/-/binding-linux-x64-gnu-9.0.2.tgz#73f7157f3b052c44c206b672b970da060125c533"
++  integrity sha512-a2z3/cbOOTUq0UTBG8f3EO/usFcdwwXnCejfXv42HmV/G8GjrT4fp5+5mVDoMByH3Ce3iVPxj1LmS6OvItKMYQ==
++
++"@oxc-resolver/binding-linux-x64-musl@9.0.2":
++  version "9.0.2"
++  resolved "https://registry.yarnpkg.com/@oxc-resolver/binding-linux-x64-musl/-/binding-linux-x64-musl-9.0.2.tgz#2b047ce69cb7fa1900174d43e4a7b6027146a449"
++  integrity sha512-bHZF+WShYQWpuswB9fyxcgMIWVk4sZQT0wnwpnZgQuvGTZLkYJ1JTCXJMtaX5mIFHf69ngvawnwPIUA4Feil0g==
++
++"@oxc-resolver/binding-wasm32-wasi@9.0.2":
++  version "9.0.2"
++  resolved "https://registry.yarnpkg.com/@oxc-resolver/binding-wasm32-wasi/-/binding-wasm32-wasi-9.0.2.tgz#df8eab1815ae0da0c70f0f9dda4bcd84c70d7024"
++  integrity sha512-I5cSgCCh5nFozGSHz+PjIOfrqW99eUszlxKLgoNNzQ1xQ2ou9ZJGzcZ94BHsM9SpyYHLtgHljmOZxCT9bgxYNA==
++  dependencies:
++    "@napi-rs/wasm-runtime" "^0.2.9"
++
++"@oxc-resolver/binding-win32-arm64-msvc@9.0.2":
++  version "9.0.2"
++  resolved "https://registry.yarnpkg.com/@oxc-resolver/binding-win32-arm64-msvc/-/binding-win32-arm64-msvc-9.0.2.tgz#9530c2e08ebb5d02870b004135ef0b4438a620b7"
++  integrity sha512-5IhoOpPr38YWDWRCA5kP30xlUxbIJyLAEsAK7EMyUgqygBHEYLkElaKGgS0X5jRXUQ6l5yNxuW73caogb2FYaw==
++
++"@oxc-resolver/binding-win32-x64-msvc@9.0.2":
++  version "9.0.2"
++  resolved "https://registry.yarnpkg.com/@oxc-resolver/binding-win32-x64-msvc/-/binding-win32-x64-msvc-9.0.2.tgz#15dc9cecd2e89bbcad07247477fc04dd8c3ffbbe"
++  integrity sha512-Qc40GDkaad9rZksSQr2l/V9UubigIHsW69g94Gswc2sKYB3XfJXfIfyV8WTJ67u6ZMXsZ7BH1msSC6Aen75mCg==
++
+ "@peggyjs/from-mem@1.3.4":
+   version "1.3.4"
+   resolved "https://registry.yarnpkg.com/@peggyjs/from-mem/-/from-mem-1.3.4.tgz#430ebc635b2f8ebeeadbc796937bab89e15be2cf"
+@@ -3892,6 +3990,13 @@
+   resolved "https://registry.yarnpkg.com/@tsconfig/svelte/-/svelte-1.0.13.tgz#2fa34376627192c0d643ce54964915e2bd3a58e4"
+   integrity sha512-5lYJP45Xllo4yE/RUBccBT32eBlRDbqN8r1/MIvQbKxW3aFqaYPCNgm8D5V20X4ShHcwvYWNlKg3liDh1MlBoA==
+ 
++"@tybys/wasm-util@^0.9.0":
++  version "0.9.0"
++  resolved "https://registry.yarnpkg.com/@tybys/wasm-util/-/wasm-util-0.9.0.tgz#3e75eb00604c8d6db470bf18c37b7d984a0e3355"
++  integrity sha512-6+7nlbMVX/PVDCwaIQ8nTOPveOcFLSt8GcXdx8hD0bt39uWxYT88uXzqTd4fTvqta7oeUJqudepapKNt2DYJFw==
++  dependencies:
++    tslib "^2.4.0"
++
+ "@types/aria-query@^5.0.1":
+   version "5.0.4"
+   resolved "https://registry.yarnpkg.com/@types/aria-query/-/aria-query-5.0.4.tgz#1a31c3d378850d2778dabb6374d036dcba4ba708"
+@@ -6651,7 +6756,7 @@ enhanced-resolve@5.12.0:
+     graceful-fs "^4.2.4"
+     tapable "^2.2.0"
+ 
+-enhanced-resolve@^5.15.0, enhanced-resolve@^5.17.1, enhanced-resolve@^5.18.1:
++enhanced-resolve@^5.15.0, enhanced-resolve@^5.17.1:
+   version "5.18.1"
+   resolved "https://registry.yarnpkg.com/enhanced-resolve/-/enhanced-resolve-5.18.1.tgz#728ab082f8b7b6836de51f1637aab5d3b9568faf"
+   integrity sha512-ZSW3ma5GkcQBIpwZTSRAI8N71Uuwgs93IezB7mf7R60tC8ZbJideoDNKjHn2O9KIlx6rkGTTEk1xUCK2E1Y2Yg==
+@@ -9358,18 +9463,18 @@ kleur@^3.0.3:
+   resolved "https://registry.yarnpkg.com/kleur/-/kleur-3.0.3.tgz#a79c9ecc86ee1ce3fa6206d1216c501f147fc07e"
+   integrity sha512-eTIzlVOSUR+JxdDFepEYcBMtZ9Qqdef+rnzWdRZuMbOywu5tO2w2N7rqjoANZ5k9vywhL6Br1VRjUIgTQx4E8w==
+ 
+-knip@^5.55.1:
+-  version "5.55.1"
+-  resolved "https://registry.yarnpkg.com/knip/-/knip-5.55.1.tgz#8eb293935623274ea62962041a921ba6ac06b3d6"
+-  integrity sha512-NYXjgGrXgMdabUKCP2TlBH/e83m9KnLc1VLyWHUtoRrCEJ/C15YtbafrpTvm3td+jE4VdDPgudvXT1IMtCx8lw==
++knip@^5.57.0:
++  version "5.57.0"
++  resolved "https://registry.yarnpkg.com/knip/-/knip-5.57.0.tgz#705ec5472a8108cf163b68d83fe483ddf61e242b"
++  integrity sha512-3i2neotCfFWOEGByzz8kzSFePZahelhwZfHXT5SM9FlpMxzN1PE8wV+M65Sl+itd2Z+v7FBXeVd96YLwXnviGg==
+   dependencies:
+     "@nodelib/fs.walk" "^1.2.3"
+-    enhanced-resolve "^5.18.1"
+     fast-glob "^3.3.3"
+     formatly "^0.2.3"
+     jiti "^2.4.2"
+     js-yaml "^4.1.0"
+     minimist "^1.2.8"
++    oxc-resolver "^9.0.2"
+     picocolors "^1.1.0"
+     picomatch "^4.0.1"
+     smol-toml "^1.3.1"
+@@ -10628,6 +10733,25 @@ optionator@^0.9.3:
+     type-check "^0.4.0"
+     word-wrap "^1.2.5"
+ 
++oxc-resolver@^9.0.2:
++  version "9.0.2"
++  resolved "https://registry.yarnpkg.com/oxc-resolver/-/oxc-resolver-9.0.2.tgz#0a86ee1e26f6c3f5f2af73dece276f8f588d4ef8"
++  integrity sha512-w838ygc1p7rF+7+h5vR9A+Y9Fc4imy6C3xPthCMkdFUgFvUWkmABeNB8RBDQ6+afk44Q60/UMMQ+gfDUW99fBA==
++  optionalDependencies:
++    "@oxc-resolver/binding-darwin-arm64" "9.0.2"
++    "@oxc-resolver/binding-darwin-x64" "9.0.2"
++    "@oxc-resolver/binding-freebsd-x64" "9.0.2"
++    "@oxc-resolver/binding-linux-arm-gnueabihf" "9.0.2"
++    "@oxc-resolver/binding-linux-arm64-gnu" "9.0.2"
++    "@oxc-resolver/binding-linux-arm64-musl" "9.0.2"
++    "@oxc-resolver/binding-linux-riscv64-gnu" "9.0.2"
++    "@oxc-resolver/binding-linux-s390x-gnu" "9.0.2"
++    "@oxc-resolver/binding-linux-x64-gnu" "9.0.2"
++    "@oxc-resolver/binding-linux-x64-musl" "9.0.2"
++    "@oxc-resolver/binding-wasm32-wasi" "9.0.2"
++    "@oxc-resolver/binding-win32-arm64-msvc" "9.0.2"
++    "@oxc-resolver/binding-win32-x64-msvc" "9.0.2"
++
+ p-limit@^2.2.0:
+   version "2.3.0"
+   resolved "https://registry.yarnpkg.com/p-limit/-/p-limit-2.3.0.tgz#3dd33c647a214fdfffd835933eb086da0dc21db1"

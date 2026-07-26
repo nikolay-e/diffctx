@@ -1,0 +1,62 @@
+repo: home-assistant
+base_commit: 9bdb2e21fede7ba578a08f3edf098525300a9847
+commit: ee2fb6e150c97ad9f722528b08803d19d71b4397
+patch_stored: true
+gold:
+  - path: homeassistant/components/smtp/config_flow.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New ConfigFlow (server/credentials) plus a ConfigSubentryFlow of SUBENTRY_TYPE_RECIPIENT so each notification recipient becomes a subentry — the core of the YAML-to-config-flow conversion.
+  - path: homeassistant/components/smtp/__init__.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: async_setup_entry bridges the new config entry to the still-legacy notify platform via discovery.async_load_platform, passing subentry unique_ids as CONF_RECIPIENT — the glue between the new flow and the unconverted notify.py.
+  - path: homeassistant/components/smtp/notify.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: async_get_service now branches on whether it was called with YAML `config` (triggers an import flow + async_deprecate_yaml_issue) versus `discovery_info` (the config-entry-driven path), replacing the removed setup_reload_service/services.yaml reload mechanism.
+  - path: homeassistant/components/smtp/issue.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New async_deprecate_yaml_issue, called from notify.py, raises either the generic HOMEASSISTANT_DOMAIN "deprecated_yaml" issue on successful import or a per-config deprecated_yaml_import_issue_error on failure.
+  - path: homeassistant/components/smtp/manifest.json
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Flips config_flow to true and drops quality_scale "legacy", the manifest declaration that must match homeassistant/generated/config_flows.py and generated/integrations.json.
+  - path: tests/components/smtp/test_config_flow.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: New tests cover the user flow (encryption variants, connect/auth/cert errors) and the recipient subentry flow end to end.
+  - path: homeassistant/generated/config_flows.py
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: hassfest-generated FLOWS registry gains "smtp", mirroring manifest.json's config_flow:true so hass.config_entries.flow.async_init(DOMAIN, ...) can find the new ConfigFlow class.
+  - path: homeassistant/components/homeassistant/strings.json
+    tier: essential
+    role: config
+    in_diff: false
+    rationale: Defines the shared "issues.deprecated_yaml" title/description text (used by dozens of integrations); async_deprecate_yaml_issue creates its success-path issue under HOMEASSISTANT_DOMAIN with translation_key "deprecated_yaml", resolved from this file rather than smtp's own strings.json.
+forbidden:
+  - path: homeassistant/components/notify/__init__.py
+    reason: defines the generic BaseNotificationService/PLATFORM_SCHEMA smtp/notify.py builds on, but is untouched and not specific to this conversion
+  - path: homeassistant/helpers/discovery.py
+    reason: defines the generic async_load_platform helper used by __init__.py, but is a stable, widely-used mechanism not specific to understanding this change
+  - path: homeassistant/components/imap/config_flow.py
+    reason: another email-integration config flow that could look like a template for this one, but wasn't touched and isn't required to understand this commit
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: []
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 15
+  description: Add config flow to SMTP integration — legacy-YAML-to-config-flow conversion, strings.json
+    + manifest + tests coupling
+notes: Converts the legacy YAML-only SMTP notify integration to a config flow, modeling each recipient as a config subentry, while still forwarding to the unconverted notify.py platform via discovery.async_load_platform; existing YAML configs are auto-imported and flagged via the shared HOMEASSISTANT_DOMAIN "deprecated_yaml" repair issue rather than a smtp-local one.

@@ -1,0 +1,58 @@
+repo: envoy
+base_commit: b27925c960dcba06b93859fe2ee456e1e2597220
+commit: 82cd1270c98c5d0e31f0936d540bb535b3daa62e
+patch_stored: true
+gold:
+  - path: envoy/stream_info/filter_state.h
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: 'Defines FilterState::setData(data_name, data, life_span, stream_sharing) as the primary virtual method plus a non-virtual deprecated overload `setData(data_name, data, StateType /*state_type*/, life_span, stream_sharing)` that just forwards to the primary one — that deprecated overload is exactly what let all 45 call sites in this diff drop the StateType argument with zero behavior change.'
+  - path: source/common/stream_info/filter_state_impl.cc
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: 'FilterStateImpl::setData is the only concrete implementation of the interface in filter_state.h; it already takes no StateType parameter (removed by the prior #44343), confirming every call site touched here is purely dropping a long-ignored argument, not changing runtime behavior.'
+  - path: source/common/tcp_proxy/tcp_proxy.cc
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: 'Largest and most representative hunk of the ripple: four setData() calls (ProxyProtocolFilterState, TunnelResponseHeaders, TunnelResponseTrailers) each drop their StreamInfo::FilterState::StateType::{Mutable,ReadOnly} argument.'
+  - path: source/common/router/router.cc
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: 'Core HTTP router drops StateType::Mutable from setData() calls for UpstreamServerName/UpstreamSubjectAltNames/NumInternalRedirectsFilterStateName, illustrating the pattern in the main request-processing path (source/).'
+  - path: contrib/istio/filters/http/peer_metadata/source/peer_metadata.cc
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: 'Representative contrib/ change: FilterConfig::setFilterState drops StateType::Mutable from two setData() calls (peer metadata CelState and WorkloadMetadataObject), matching the pattern applied across the contrib/ tree.'
+  - path: mobile/library/common/extensions/filters/http/network_configuration/filter.cc
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: 'Representative mobile/ change: NetworkConfigurationFilter drops StateType::Mutable/ReadOnly from two setData() calls, matching the pattern applied across the mobile/ tree named in the commit title.'
+  - path: test/coverage.yaml
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: 'Coverage baseline for source/extensions/internal_redirect/previous_routes drops from 89.3 to 88.9 because previous_routes.cc lost a StateType-related line, a direct bookkeeping side effect of the call-site edits.'
+forbidden:
+  - path: source/extensions/filters/common/set_filter_state/filter_config.h
+    reason: 'still declares `using StateType = StreamInfo::FilterState::StateType;` and is filter-state-adjacent by name, but belongs to the config-driven set_filter_state proto layer (whose read_only field was already deprecated in #44343) and is untouched by this purely C++-callsite commit'
+  - path: source/extensions/filters/common/expr/cel_state.h
+    reason: 'defines an unrelated CelStateType enum (String/Bytes/Protobuf/FlatBuffers) for CEL serialization, not StreamInfo::FilterState::StateType, despite the similar name'
+  - path: envoy/tcp/conn_pool.h
+    reason: 'declares connectionStateTyped(), an unrelated connection-pool template method that only superficially matches on the substring "StateType"'
+  - path: source/extensions/dynamic_modules/sdk/cpp/sdk.h
+    reason: 'declares getFilterStateTyped()/setFilterStateTyped() on the dynamic-modules ABI, a separate public SDK surface intentionally left untouched by this internal-callsite cleanup'
+nontrivial_gold_count: 2
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: []
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 48
+  description: 'API-change ripple: remove StateType param through 45 call sites in source/contrib/mobile'
+notes: 'Mechanical follow-up to #44343 (7f1e965905a), which deprecated StreamInfo::FilterState::StateType and added a forwarding overload of setData() that ignores it; this commit removes the now-pointless StateType argument from 45 setData() call sites across source/, contrib/, and mobile/ (a later commit, #45200/02a4b85, removes the remaining uses and the deprecated overload itself). No candidates.yaml was present for this instance.'

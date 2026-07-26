@@ -1,0 +1,25 @@
+From b7b147c09683ce67eb91eccb740901d4913e9c5f Mon Sep 17 00:00:00 2001
+From: G Johansson <goran.johansson@shiftit.se>
+Date: Wed, 1 Jul 2026 16:59:27 +0200
+Subject: [PATCH] Use add_suggested_values_to_schema in dnsip config flow
+ (#175268)
+
+---
+ homeassistant/components/dnsip/config_flow.py | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/homeassistant/components/dnsip/config_flow.py b/homeassistant/components/dnsip/config_flow.py
+index ece82c91e0..4f91de1441 100644
+--- a/homeassistant/components/dnsip/config_flow.py
++++ b/homeassistant/components/dnsip/config_flow.py
+@@ -160,7 +160,9 @@ class DnsIPConfigFlow(ConfigFlow, domain=DOMAIN):
+ 
+         return self.async_show_form(
+             step_id="user",
+-            data_schema=DATA_SCHEMA,
++            data_schema=self.add_suggested_values_to_schema(
++                DATA_SCHEMA, user_input or {}
++            ),
+             errors=errors,
+         )
+ 

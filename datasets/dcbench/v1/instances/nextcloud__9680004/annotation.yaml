@@ -1,0 +1,74 @@
+repo: nextcloud
+base_commit: 3e4a1415c4826630e9a88b9acbd23e78315b66b7
+commit: 9680004b58481b08b152e5183bcfe7a2b8892204
+patch_stored: true
+gold:
+  - path: lib/private/Server.php
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: registers a new named 'userId' service resolving ISession user_id, and simplifies IPreview registration from an explicit closure to registerAlias(IPreview::class, PreviewManager::class), now that all its args are autowireable
+  - path: lib/private/AppFramework/Bootstrap/Coordinator.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: central bootstrap actor migrates from IServerContainer $serverContainer to Psr\Container\ContainerInterface, query() calls become get(); it is itself injected into most of the other classes touched in this diff (Calendar Manager, Talk Broker, etc.)
+  - path: lib/private/Calendar/Resource/Manager.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: representative example of the mechanical migration — IServerContainer $server -> ContainerInterface $container, $server->query($backend) -> $container->get($backend)
+  - path: lib/private/Talk/Broker.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: second representative example of the same IServerContainer -> ContainerInterface constructor-type migration, in an unrelated subsystem
+  - path: lib/private/PreviewManager.php
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: its constructor's 'protected ?string $userId' parameter is resolved by parameter-NAME against Server.php's newly-registered 'userId' service, which is what let Server.php drop the explicit IPreview factory closure in favor of registerAlias
+  - path: tests/lib/AppFramework/Bootstrap/CoordinatorTest.php
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: updates the Coordinator test double from IServerContainer mock to ContainerInterface mock
+  - path: tests/lib/Calendar/Resource/ManagerTest.php
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: updates the Calendar Resource Manager test to construct it with a ContainerInterface mock instead of IServerContainer
+  - path: tests/lib/Talk/BrokerTest.php
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: updates the Talk Broker test to construct it with a ContainerInterface mock instead of IServerContainer
+forbidden:
+  - path: lib/private/Comments/ManagerFactory.php
+    reason: same mechanical IServerContainer -> ContainerInterface migration, redundant with the two chosen representative classes
+  - path: lib/private/SystemTag/ManagerFactory.php
+    reason: same mechanical migration pattern, redundant
+  - path: lib/private/Settings/Manager.php
+    reason: same mechanical migration pattern, redundant
+  - path: lib/private/TaskProcessing/Manager.php
+    reason: same mechanical migration pattern, redundant
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 31
+  description: remove deprecated IServerContainer uses in lib/private — DI-graph ripple across 17 private
+    classes + tests
+notes: >
+  Mechanically migrates ~16 lib/private classes off the deprecated IServerContainer
+  (typed to the app-server-specific interface) onto the generic PSR-11
+  Psr\Container\ContainerInterface, replacing ->query() calls with ->get(). Server.php's
+  own DI wiring changes too: it registers a new named 'userId' service and switches
+  IPreview from an explicit factory closure to registerAlias, which only works because
+  PreviewManager's ?string $userId constructor param is resolved by parameter NAME
+  against that new named service (Nextcloud SimpleContainer name-based DI) - hence
+  string_indirection: true and PreviewManager.php as nontrivial external gold. Gold
+  picks Server.php, the shared Coordinator dependency, and two representative migrated
+  classes rather than all 16.

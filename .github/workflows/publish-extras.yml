@@ -1,0 +1,214 @@
+# .github/workflows/publish-extras.yml
+name: diffctx publish extras
+
+permissions: {}
+
+concurrency:
+  group: publish-extras
+  cancel-in-progress: false
+
+'on':
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Released version to publish downstream (e.g. 1.12.1)'
+        required: true
+      publish_npm:
+        description: 'Publish the npm wrapper'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      mirror_dockerhub:
+        description: 'Mirror the ghcr image to Docker Hub'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      publish_aur:
+        description: 'Push the PKGBUILD to the AUR'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+jobs:
+  npm:
+    name: Publish npm wrapper
+    if: github.event.inputs.publish_npm == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          ref: v${{ github.event.inputs.version }}
+
+      - name: Require npm token
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NPM_TOKEN" ]; then
+            echo "Error: secret NPM_TOKEN is not set; add it before publishing to npm."
+            exit 1
+          fi
+
+      - name: Download release binaries
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          mkdir -p release-binaries
+          gh release download "v${VERSION}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --dir release-binaries \
+            --pattern 'diffctx-*-*.tar.gz' --pattern 'diffctx-*-*.zip'
+          ls -la release-binaries
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        with:
+          python-version: '3.12'
+
+      - name: Render checksums and package metadata
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          python scripts/render_packaging.py \
+            --version "$VERSION" \
+            --assets-dir ./release-binaries \
+            --npm-checksums packaging/npm/checksums.json
+          python - <<'PY'
+          import json, os, pathlib
+          path = pathlib.Path("packaging/npm/package.json")
+          data = json.loads(path.read_text(encoding="utf-8"))
+          data["version"] = os.environ["VERSION"]
+          path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+          PY
+          cp README.md LICENSE packaging/npm/
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Publish
+        working-directory: ./packaging/npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --provenance
+
+  dockerhub:
+    name: Mirror image to Docker Hub
+    if: github.event.inputs.mirror_dockerhub == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require Docker Hub credentials
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -z "$DOCKERHUB_USERNAME" ] || [ -z "$DOCKERHUB_TOKEN" ]; then
+            echo "Error: secrets DOCKERHUB_USERNAME / DOCKERHUB_TOKEN are not set."
+            exit 1
+          fi
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0  # v4.4.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Copy ghcr manifest to Docker Hub
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+          SOURCE: ghcr.io/${{ github.repository_owner }}/diffctx
+          TARGET: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/diffctx
+        run: |
+          docker buildx imagetools create \
+            -t "${TARGET}:${VERSION}" \
+            -t "${TARGET}:latest" \
+            "${SOURCE}:${VERSION}"
+          docker buildx imagetools inspect "${TARGET}:${VERSION}"
+
+  aur:
+    name: Push PKGBUILD to the AUR
+    if: github.event.inputs.publish_aur == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          ref: v${{ github.event.inputs.version }}
+
+      - name: Require AUR credentials
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          if [ -z "$AUR_SSH_PRIVATE_KEY" ]; then
+            echo "Error: secret AUR_SSH_PRIVATE_KEY is not set."
+            exit 1
+          fi
+
+      - name: Download release binaries
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          mkdir -p release-binaries
+          gh release download "v${VERSION}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --dir release-binaries \
+            --pattern 'diffctx-*-*.tar.gz' --pattern 'diffctx-*-*.zip'
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        with:
+          python-version: '3.12'
+
+      - name: Render PKGBUILD and .SRCINFO
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          python scripts/render_packaging.py \
+            --version "$VERSION" \
+            --assets-dir ./release-binaries \
+            --pkgbuild packaging/aur/PKGBUILD \
+            --srcinfo packaging/aur/.SRCINFO
+
+      - name: Publish to the AUR
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$AUR_SSH_PRIVATE_KEY" > ~/.ssh/aur
+          chmod 600 ~/.ssh/aur
+          ssh-keyscan -t ed25519 aur.archlinux.org >> ~/.ssh/known_hosts
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/aur -o IdentitiesOnly=yes"
+          git clone ssh://aur@aur.archlinux.org/diffctx-bin.git aur-repo
+          cp packaging/aur/PKGBUILD packaging/aur/.SRCINFO aur-repo/
+          cd aur-repo
+          git config user.name "Nikolay Eremeev"
+          git config user.email "nikolay.eremeev@outlook.com"
+          git add PKGBUILD .SRCINFO
+          if git diff --staged --quiet; then
+            echo "AUR package already at ${VERSION}."
+            exit 0
+          fi
+          git commit -m "diffctx-bin ${VERSION}"
+          git push origin HEAD:master

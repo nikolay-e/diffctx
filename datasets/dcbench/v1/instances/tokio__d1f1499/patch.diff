@@ -1,0 +1,745 @@
+From d1f1499f630c34c1d319acdc2cc86d7a1008c4b4 Mon Sep 17 00:00:00 2001
+From: Qi <add_sp@outlook.com>
+Date: Fri, 10 Oct 2025 11:31:41 +0800
+Subject: [PATCH] tokio: use cargo feature for taskdump support instead of cfg
+ (#7655)
+
+Signed-off-by: ADD-SP <qiqi.zhang@konghq.com>
+Co-authored-by: Alice Ryhl <aliceryhl@google.com>
+---
+ .cirrus.yml                                   |  13 ++-
+ .github/workflows/ci.yml                      | 108 ++++++++++--------
+ Cargo.toml                                    |   1 -
+ examples/Cargo.toml                           |   3 +
+ examples/dump.rs                              |   2 -
+ netlify.toml                                  |   6 +-
+ tokio/Cargo.toml                              |  14 +--
+ tokio/src/lib.rs                              |   8 +-
+ tokio/src/macros/cfg.rs                       |   4 +-
+ tokio/src/runtime/context.rs                  |   4 +-
+ tokio/src/runtime/handle.rs                   |  14 +--
+ tokio/src/runtime/local_runtime/runtime.rs    |   2 +-
+ tokio/src/runtime/runtime.rs                  |   2 +-
+ .../runtime/scheduler/current_thread/mod.rs   |   4 +-
+ tokio/src/runtime/scheduler/defer.rs          |   2 +-
+ tokio/src/runtime/scheduler/inject.rs         |   2 +-
+ tokio/src/runtime/scheduler/inject/shared.rs  |   2 +-
+ tokio/src/runtime/task/mod.rs                 |   2 +-
+ tokio/src/runtime/task/state.rs               |   2 +-
+ tokio/src/sync/notify.rs                      |   4 +-
+ tokio/src/task/local.rs                       |   2 +-
+ tokio/src/task/spawn.rs                       |   2 +-
+ tokio/tests/dump.rs                           |   2 +-
+ tokio/tests/task_trace_self.rs                |   2 +-
+ 24 files changed, 111 insertions(+), 96 deletions(-)
+
+diff --git a/.cirrus.yml b/.cirrus.yml
+index 82fd7a7..e67e442 100644
+--- a/.cirrus.yml
++++ b/.cirrus.yml
+@@ -29,9 +29,12 @@ task:
+     # Free the disk space before the next build,
+     # otherwise cirrus-ci complains about "No space left on device".
+     - cargo clean
+-    # Enable all unstable features, including io_uring, because it supports
+-    # x86_64 FreeBSD.
+-    - RUSTFLAGS="$RUSTFLAGS --cfg tokio_unstable" RUSTDOCFLAGS="$RUSTDOCFLAGS --cfg tokio_unstable" cargo test --all --all-features
++    # Enable all unstable features except `taskdump`, which is Linux-only.
++    - |
++      RUSTFLAGS="$RUSTFLAGS --cfg tokio_unstable" \
++      RUSTDOCFLAGS="$RUSTDOCFLAGS --cfg tokio_unstable" \
++        cargo test \
++          --features $TOKIO_STABLE_FEATURES,io-uring,tracing
+ 
+ task:
+   name: FreeBSD docs
+@@ -48,7 +51,9 @@ task:
+       rustc --version
+   test_script:
+     - . $HOME/.cargo/env
+-    - cargo doc --lib --no-deps --all-features --document-private-items
++    # We use `--features $TOKIO_STABLE_FEATURES,io-uring,tracing` instead of
++    # `--all-features` to exclude `taskdump`, which is Linux-only.
++    - cargo doc --lib --no-deps --features $TOKIO_STABLE_FEATURES,io-uring,tracing --document-private-items
+ 
+ task:
+   name: FreeBSD 32-bit
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 7c6d59e..ea9891d 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -309,17 +309,14 @@ jobs:
+       - name: test tokio full --cfg unstable --cfg taskdump
+         run: |
+           set -euxo pipefail
+-          # taskdump is an unstable feature, but it can only be enabled
+-          # by --cfg tokio_taskdump, not by a feature flag, so we can
+-          # use $TOKIO_STABLE_FEATURES here.
+-          cargo nextest run --features $TOKIO_STABLE_FEATURES
++          cargo nextest run --features $TOKIO_STABLE_FEATURES,taskdump
+           cargo test --doc --features $TOKIO_STABLE_FEATURES
+         working-directory: tokio
+         env:
+-          RUSTFLAGS: --cfg tokio_unstable --cfg tokio_taskdump -Dwarnings
++          RUSTFLAGS: --cfg tokio_unstable -Dwarnings
+           # in order to run doctests for unstable features, we must also pass
+           # the unstable cfg to RustDoc
+-          RUSTDOCFLAGS: --cfg tokio_unstable --cfg tokio_taskdump
++          RUSTDOCFLAGS: --cfg tokio_unstable
+ 
+   check-unstable-mt-counters:
+     name: check tokio full --internal-mt-counters
+@@ -484,7 +481,7 @@ jobs:
+ 
+       - uses: Swatinem/rust-cache@v2
+       # We don't use --all-features since io-uring will be enabled and is not supported on those targets.
+-      - run: cargo check --workspace --features full,test-util --target ${{ matrix.target }}
++      - run: cargo check --workspace --features $TOKIO_STABLE_FEATURES --target ${{ matrix.target }}
+         env:
+           RUSTFLAGS: --cfg tokio_unstable -Dwarnings
+ 
+@@ -496,8 +493,9 @@ jobs:
+       matrix:
+         target:
+           - name: x86_64-unknown-haiku
++            exclude_features: "taskdump" # taskdump is only available on Linux
+           - name: armv7-sony-vita-newlibeabihf
+-            exclude_features: "process,signal,rt-process-signal,full"
++            exclude_features: "process,signal,rt-process-signal,full,taskdump"
+     steps:
+       - uses: actions/checkout@v5
+       - name: Install Rust ${{ env.rust_nightly }}
+@@ -522,14 +520,14 @@ jobs:
+         include:
+           - target: i686-unknown-linux-gnu
+             os: ubuntu-latest
+-            rustflags: --cfg tokio_taskdump
++            extra_features: "taskdump"
+           - target: armv5te-unknown-linux-gnueabi
+             os: ubuntu-latest
+           - target: armv7-unknown-linux-gnueabihf
+             os: ubuntu-24.04-arm
+           - target: aarch64-unknown-linux-gnu
+             os: ubuntu-24.04-arm
+-            rustflags: --cfg tokio_taskdump
++            extra_features: "io-uring,taskdump"
+           - target: aarch64-pc-windows-msvc
+             os: windows-11-arm
+     steps:
+@@ -554,13 +552,15 @@ jobs:
+       - name: Tests run with all features (including parking_lot)
+         run: |
+           set -euxo pipefail
+-          # We use `--features "full,test-util"` instead of `--all-features` since
+-          # `--all-features` includes `io_uring`, which is not available on all targets.
+-          cargo nextest run -p tokio --features full,test-util --target ${{ matrix.target }}
+-          cargo test --doc -p tokio --features full,test-util --target ${{ matrix.target }}
++          # We use `--features "$TOKIO_STABLE_FEATURES"` instead of `--all-features` since
++          # `--all-features` includes `io_uring` and `taskdump`,
++          # which is not available on all targets.
++          cargo nextest run -p tokio --features $TOKIO_STABLE_FEATURES,${{ matrix.extra_features }} --target ${{ matrix.target }}
++          cargo test --doc -p tokio --features $TOKIO_STABLE_FEATURES,${{ matrix.extra_features }} --target ${{ matrix.target }}
+         env:
+           RUST_TEST_THREADS: 1
+-          RUSTFLAGS: --cfg tokio_unstable -Dwarnings --cfg tokio_no_tuning_tests ${{ matrix.rustflags }}
++          RUSTFLAGS: --cfg tokio_unstable -Dwarnings --cfg tokio_no_tuning_tests
++          RUSTDOCFLAGS: --cfg tokio_unstable -Dwarnings
+ 
+   cross-test-without-parking_lot:
+     needs: basics
+@@ -570,14 +570,14 @@ jobs:
+         include:
+           - target: i686-unknown-linux-gnu
+             os: ubuntu-latest
+-            rustflags: --cfg tokio_taskdump
++            extra_features: "taskdump"
+           - target: armv5te-unknown-linux-gnueabi
+             os: ubuntu-latest
+           - target: armv7-unknown-linux-gnueabihf
+             os: ubuntu-24.04-arm
+           - target: aarch64-unknown-linux-gnu
+             os: ubuntu-24.04-arm
+-            rustflags: --cfg tokio_taskdump
++            extra_features: "io-uring,taskdump"
+           - target: aarch64-pc-windows-msvc
+             os: windows-11-arm
+     steps:
+@@ -606,13 +606,15 @@ jobs:
+       - name: Tests run with all features (without parking_lot)
+         run: |
+           set -euxo pipefail
+-          # We use `--features "full,test-util"` instead of `--all-features` since
+-          # `--all-features` includes `io_uring`, which is not available on all targets.
+-          cargo nextest run -p tokio --features full,test-util --target ${{ matrix.target }}
+-          cargo test --doc -p tokio --features full,test-util --target ${{ matrix.target }}
++          # We use `--features "$TOKIO_STABLE_FEATURES"` instead of `--all-features` since
++          # `--all-features` includes `io_uring` and `taskdump`,
++          # which is not available on all targets.
++          cargo nextest run -p tokio --features $TOKIO_STABLE_FEATURES,${{ matrix.extra_features }} --target ${{ matrix.target }}
++          cargo test --doc -p tokio --features $TOKIO_STABLE_FEATURES,${{ matrix.extra_features }} --target ${{ matrix.target }}
+         env:
+           RUST_TEST_THREADS: 1
+           RUSTFLAGS: --cfg tokio_unstable -Dwarnings --cfg tokio_no_parking_lot --cfg tokio_no_tuning_tests ${{ matrix.rustflags }}
++          RUSTDOCFLAGS: --cfg tokio_unstable -Dwarnings
+ 
+   # See https://github.com/tokio-rs/tokio/issues/5187
+   no-atomic-u64-test:
+@@ -640,13 +642,11 @@ jobs:
+       - uses: Swatinem/rust-cache@v2
+       - name: test tokio --all-features
+         run: |
+-          # We use `--features "full,test-util"` instead of `--all-features` since
+-          # `--all-features` includes `io_uring`, which is not available on all targets.
+-          cargo nextest run -Zbuild-std --target target-specs/i686-unknown-linux-gnu.json -p tokio --features full,test-util
+-          cargo test --doc -Zbuild-std --target target-specs/i686-unknown-linux-gnu.json -p tokio --features full,test-util
++          cargo nextest run -Zbuild-std --target target-specs/i686-unknown-linux-gnu.json -p tokio --features $TOKIO_STABLE_FEATURES,taskdump
++          cargo test --doc -Zbuild-std --target target-specs/i686-unknown-linux-gnu.json -p tokio --features $TOKIO_STABLE_FEATURES,taskdump
+         env:
+           RUST_TEST_THREADS: 1
+-          RUSTFLAGS: --cfg tokio_unstable --cfg tokio_taskdump -Dwarnings --cfg tokio_no_tuning_tests
++          RUSTFLAGS: --cfg tokio_unstable -Dwarnings --cfg tokio_no_tuning_tests
+ 
+   no-atomic-u64-check:
+     name: Check tokio --feature-powerset --depth 2 on i686-unknown-linux-gnu without AtomicU64
+@@ -672,18 +672,24 @@ jobs:
+         # We use `--skip io-uring` since io-uring crate doesn't provide a binding for the i686 target.
+         run: cargo hack check -Zbuild-std --target target-specs/i686-unknown-linux-gnu.json -p tokio --feature-powerset --skip io-uring --depth 2 --keep-going
+         env:
+-          RUSTFLAGS: --cfg tokio_unstable --cfg tokio_taskdump -Dwarnings
++          RUSTFLAGS: --cfg tokio_unstable -Dwarnings
+ 
+   features:
+-    name: features ${{ matrix.name }}
++    name: features exclude ${{ matrix.name }}
+     needs: basics
+     runs-on: ubuntu-latest
+     strategy:
+       matrix:
+         include:
+-          - { name: "", rustflags: "", exclude_features: "io-uring" }
+-          - { name: "--unstable", rustflags: "--cfg tokio_unstable -Dwarnings", exclude_features: "" }
+-          - { name: "--unstable --taskdump", rustflags: "--cfg tokio_unstable -Dwarnings --cfg tokio_taskdump", exclude_features: "" }
++          - name: ""
++            rustflags: ""
++            exclude_features: "io-uring,taskdump"
++          - name: "--unstable"
++            rustflags: "--cfg tokio_unstable -Dwarnings"
++            exclude_features: "io-uring,taskdump"
++          - name: "--unstable io-uring,taskdump"
++            rustflags: "--cfg tokio_unstable -Dwarnings"
++            exclude_features: ""
+     steps:
+       - uses: actions/checkout@v5
+       - name: Install Rust ${{ env.rust_nightly }}
+@@ -749,7 +755,7 @@ jobs:
+           cargo hack check -p tokio-macros -p tokio-stream -p tokio-util -p tokio-test --all-features --ignore-private
+       - name: "check --all-features --unstable -Z minimal-versions"
+         env:
+-          RUSTFLAGS: --cfg tokio_unstable --cfg tokio_taskdump -Dwarnings
++          RUSTFLAGS: --cfg tokio_unstable -Dwarnings
+         run: |
+           # Remove dev-dependencies from Cargo.toml to prevent the next `cargo update`
+           # from determining minimal versions based on dev-dependencies.
+@@ -795,7 +801,7 @@ jobs:
+       - name: "clippy --all --all-features --unstable"
+         run: cargo clippy --all --tests --no-deps --all-features
+         env:
+-          RUSTFLAGS: --cfg tokio_unstable --cfg tokio_taskdump -Dwarnings
++          RUSTFLAGS: --cfg tokio_unstable -Dwarnings
+ 
+   docs:
+     name: docs
+@@ -804,9 +810,9 @@ jobs:
+       matrix:
+         run:
+           - os: windows-latest
++            extra_features: "tracing"
+           - os: ubuntu-latest
+-            RUSTFLAGS: --cfg tokio_taskdump
+-            RUSTDOCFLAGS: --cfg tokio_taskdump
++            extra_features: "tracing,io-uring,taskdump"
+ 
+     steps:
+       - uses: actions/checkout@v5
+@@ -816,11 +822,10 @@ jobs:
+           toolchain: ${{ env.rust_nightly }}
+       - uses: Swatinem/rust-cache@v2
+       - name: "doc --lib --all-features"
+-        run: |
+-          cargo doc --lib --no-deps --all-features --document-private-items
++        run: cargo doc --lib --no-deps --document-private-items --features $TOKIO_STABLE_FEATURES,${{ matrix.run.extra_features }}
+         env:
+-          RUSTFLAGS: --cfg docsrs --cfg tokio_unstable ${{ matrix.run.RUSTFLAGS }}
+-          RUSTDOCFLAGS: --cfg docsrs --cfg tokio_unstable -Dwarnings ${{ matrix.run.RUSTDOCFLAGS }}
++          RUSTFLAGS: --cfg docsrs --cfg tokio_unstable
++          RUSTDOCFLAGS: --cfg docsrs --cfg tokio_unstable -Dwarnings
+ 
+   loom-compile:
+     name: build loom tests
+@@ -1083,26 +1088,31 @@ jobs:
+     runs-on: ${{ matrix.os }}
+     strategy:
+       matrix:
+-        os:
+-          - windows-latest
+-          - ubuntu-latest
+-        rust:
+-          # `check-external-types` requires a specific Rust nightly version. See
+-          # the README for details: https://github.com/awslabs/cargo-check-external-types
+-          - nightly-2024-06-30
++        include:
++          - os: windows-latest
++            # Windows neither supports io-uring nor taskdump.
++            extra_features: "tracing"
++          - os: ubuntu-latest
++            # includes all unstable features.
++            extra_features: "tracing,io-uring,taskdump"
+     steps:
+       - uses: actions/checkout@v5
+       - name: Install Rust ${{ matrix.rust }}
+         uses: dtolnay/rust-toolchain@stable
+         with:
+-          toolchain: ${{ matrix.rust }}
++          # `check-external-types` requires a specific Rust nightly version. See
++          # the README for details: https://github.com/awslabs/cargo-check-external-types
++          toolchain: nightly-2025-08-06
+       - uses: Swatinem/rust-cache@v2
+       - name: Install cargo-check-external-types
+         uses: taiki-e/cache-cargo-install-action@v1
+         with:
+-          tool: cargo-check-external-types@0.1.13
++          tool: cargo-check-external-types@0.3.0
+       - name: check-external-types
+-        run: cargo check-external-types --features $TOKIO_STABLE_FEATURES
++        env:
++          RUSTFLAGS: --cfg tokio_unstable -Dwarnings
++          RUSTDOCFLAGS: --cfg tokio_unstable
++        run: cargo check-external-types --features $TOKIO_STABLE_FEATURES,${{ matrix.extra_features }}
+         working-directory: tokio
+ 
+   check-fuzzing:
+diff --git a/Cargo.toml b/Cargo.toml
+index 8f1a02e..dd05666 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -27,7 +27,6 @@ unexpected_cfgs = { level = "warn", check-cfg = [
+   'cfg(tokio_internal_mt_counters)',
+   'cfg(tokio_no_parking_lot)',
+   'cfg(tokio_no_tuning_tests)',
+-  'cfg(tokio_taskdump)',
+   'cfg(tokio_unstable)',
+   'cfg(target_os, values("cygwin"))',
+ ] }
+diff --git a/examples/Cargo.toml b/examples/Cargo.toml
+index 84addca..9a1d4d0 100644
+--- a/examples/Cargo.toml
++++ b/examples/Cargo.toml
+@@ -24,6 +24,9 @@ httparse = "1.0"
+ httpdate = "1.0"
+ once_cell = "1.5.2"
+ 
++[target.'cfg(all(tokio_unstable, target_os = "linux"))'.dev-dependencies]
++tokio = { version = "1.0.0", path = "../tokio", features = ["full", "tracing", "taskdump"] }
++
+ [target.'cfg(windows)'.dev-dependencies.windows-sys]
+ version = "0.61"
+ 
+diff --git a/examples/dump.rs b/examples/dump.rs
+index c7ece45..2211e3e 100644
+--- a/examples/dump.rs
++++ b/examples/dump.rs
+@@ -4,7 +4,6 @@
+ 
+ #[cfg(all(
+     tokio_unstable,
+-    tokio_taskdump,
+     target_os = "linux",
+     any(target_arch = "aarch64", target_arch = "x86", target_arch = "x86_64")
+ ))]
+@@ -82,7 +81,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
+ 
+ #[cfg(not(all(
+     tokio_unstable,
+-    tokio_taskdump,
+     target_os = "linux",
+     any(target_arch = "aarch64", target_arch = "x86", target_arch = "x86_64")
+ )))]
+diff --git a/netlify.toml b/netlify.toml
+index c36d26b..b8888b9 100644
+--- a/netlify.toml
++++ b/netlify.toml
+@@ -17,9 +17,11 @@
+   RUSTDOCFLAGS="""
+     --cfg docsrs \
+     --cfg tokio_unstable \
+-    --cfg tokio_taskdump \
+     """
+-  RUSTFLAGS="--cfg tokio_unstable --cfg tokio_taskdump --cfg docsrs"
++  RUSTFLAGS="""
++    --cfg docsrs \
++    --cfg tokio_unstable
++    """
+ 
+ [[redirects]]
+   from = "/"
+diff --git a/tokio/Cargo.toml b/tokio/Cargo.toml
+index b7389d9..9753056 100644
+--- a/tokio/Cargo.toml
++++ b/tokio/Cargo.toml
+@@ -86,6 +86,8 @@ test-util = ["rt", "sync", "time"]
+ time = []
+ # Unstable feature. Requires `--cfg tokio_unstable` to enable.
+ io-uring = ["dep:io-uring", "libc", "mio/os-poll", "mio/os-ext", "dep:slab"]
++# Unstable feature. Requires `--cfg tokio_unstable` to enable.
++taskdump = ["dep:backtrace"]
+ 
+ [dependencies]
+ tokio-macros = { version = "~2.5.0", path = "../tokio-macros", optional = true }
+@@ -112,11 +114,7 @@ io-uring = { version = "0.7.6", default-features = false, optional = true }
+ libc = { version = "0.2.168", optional = true }
+ mio = { version = "1.0.1", default-features = false, features = ["os-poll", "os-ext"], optional = true }
+ slab = { version = "0.4.9", optional = true }
+-
+-# Currently unstable. The API exposed by these features may be broken at any time.
+-# Requires `--cfg tokio_unstable` to enable.
+-[target.'cfg(tokio_taskdump)'.dependencies]
+-backtrace = { version = "0.3.58" }
++backtrace = { version = "0.3.58", optional = true }
+ 
+ [target.'cfg(unix)'.dependencies]
+ libc = { version = "0.2.168", optional = true }
+@@ -169,10 +167,10 @@ tracing-mock = "= 0.1.0-beta.1"
+ [package.metadata.docs.rs]
+ all-features = true
+ # enable unstable features in the documentation
+-rustdoc-args = ["--cfg", "docsrs", "--cfg", "tokio_unstable", "--cfg", "tokio_taskdump"]
+-# it's necessary to _also_ pass `--cfg tokio_unstable` and `--cfg tokio_taskdump`
++rustdoc-args = ["--cfg", "docsrs", "--cfg", "tokio_unstable"]
++# it's necessary to _also_ pass `--cfg tokio_unstable`
+ # to rustc, or else dependencies will not be enabled, and the docs build will fail.
+-rustc-args = ["--cfg", "tokio_unstable", "--cfg", "tokio_taskdump"]
++rustc-args = ["--cfg", "tokio_unstable"]
+ 
+ [package.metadata.playground]
+ features = ["full", "test-util"]
+diff --git a/tokio/src/lib.rs b/tokio/src/lib.rs
+index ddfadc6..b24a770 100644
+--- a/tokio/src/lib.rs
++++ b/tokio/src/lib.rs
+@@ -483,11 +483,11 @@ compile_error!("Only features sync,macros,io-util,rt,time are supported on wasm.
+ #[cfg(all(not(tokio_unstable), feature = "io-uring"))]
+ compile_error!("The `io-uring` feature requires `--cfg tokio_unstable`.");
+ 
+-#[cfg(all(not(tokio_unstable), tokio_taskdump))]
+-compile_error!("The `tokio_taskdump` feature requires `--cfg tokio_unstable`.");
++#[cfg(all(not(tokio_unstable), feature = "taskdump"))]
++compile_error!("The `taskdump` feature requires `--cfg tokio_unstable`.");
+ 
+ #[cfg(all(
+-    tokio_taskdump,
++    feature = "taskdump",
+     not(doc),
+     not(all(
+         target_os = "linux",
+@@ -495,7 +495,7 @@ compile_error!("The `tokio_taskdump` feature requires `--cfg tokio_unstable`.");
+     ))
+ ))]
+ compile_error!(
+-    "The `tokio_taskdump` feature is only currently supported on \
++    "The `taskdump` feature is only currently supported on \
+ linux, on `aarch64`, `x86` and `x86_64`."
+ );
+ 
+diff --git a/tokio/src/macros/cfg.rs b/tokio/src/macros/cfg.rs
+index f5dfc38..9af23b0 100644
+--- a/tokio/src/macros/cfg.rs
++++ b/tokio/src/macros/cfg.rs
+@@ -499,7 +499,7 @@ macro_rules! cfg_taskdump {
+         $(
+             #[cfg(all(
+                 tokio_unstable,
+-                tokio_taskdump,
++                feature = "taskdump",
+                 feature = "rt",
+                 target_os = "linux",
+                 any(
+@@ -518,7 +518,7 @@ macro_rules! cfg_not_taskdump {
+         $(
+             #[cfg(not(all(
+                 tokio_unstable,
+-                tokio_taskdump,
++                feature = "taskdump",
+                 feature = "rt",
+                 target_os = "linux",
+                 any(
+diff --git a/tokio/src/runtime/context.rs b/tokio/src/runtime/context.rs
+index 0d54f6c..d78935e 100644
+--- a/tokio/src/runtime/context.rs
++++ b/tokio/src/runtime/context.rs
+@@ -66,7 +66,7 @@ struct Context {
+ 
+     #[cfg(all(
+         tokio_unstable,
+-        tokio_taskdump,
++        feature = "taskdump",
+         feature = "rt",
+         target_os = "linux",
+         any(target_arch = "aarch64", target_arch = "x86", target_arch = "x86_64")
+@@ -107,7 +107,7 @@ tokio_thread_local! {
+ 
+             #[cfg(all(
+                 tokio_unstable,
+-                tokio_taskdump,
++                feature = "taskdump",
+                 feature = "rt",
+                 target_os = "linux",
+                 any(
+diff --git a/tokio/src/runtime/handle.rs b/tokio/src/runtime/handle.rs
+index 51f09d7..7561516 100644
+--- a/tokio/src/runtime/handle.rs
++++ b/tokio/src/runtime/handle.rs
+@@ -352,7 +352,7 @@ impl Handle {
+     fn block_on_inner<F: Future>(&self, future: F, _meta: SpawnMeta<'_>) -> F::Output {
+         #[cfg(all(
+             tokio_unstable,
+-            tokio_taskdump,
++            feature = "taskdump",
+             feature = "rt",
+             target_os = "linux",
+             any(target_arch = "aarch64", target_arch = "x86", target_arch = "x86_64")
+@@ -379,7 +379,7 @@ impl Handle {
+         let id = crate::runtime::task::Id::next();
+         #[cfg(all(
+             tokio_unstable,
+-            tokio_taskdump,
++            feature = "taskdump",
+             feature = "rt",
+             target_os = "linux",
+             any(target_arch = "aarch64", target_arch = "x86", target_arch = "x86_64")
+@@ -404,7 +404,7 @@ impl Handle {
+         let id = crate::runtime::task::Id::next();
+         #[cfg(all(
+             tokio_unstable,
+-            tokio_taskdump,
++            feature = "taskdump",
+             feature = "rt",
+             target_os = "linux",
+             any(target_arch = "aarch64", target_arch = "x86", target_arch = "x86_64")
+@@ -559,19 +559,19 @@ cfg_taskdump! {
+         /// ## Unstable Features
+         ///
+         /// This functionality is **unstable**, and requires both the
+-        /// `tokio_unstable` and `tokio_taskdump` `cfg` flags to be set.
++        /// `--cfg tokio_unstable` and cargo feature `taskdump` to be set.
+         ///
+         /// You can do this by setting the `RUSTFLAGS` environment variable
+         /// before invoking `cargo`; e.g.:
+         /// ```bash
+-        /// RUSTFLAGS="--cfg tokio_unstable --cfg tokio_taskdump" cargo run --example dump
++        /// RUSTFLAGS="--cfg tokio_unstable cargo run --example dump
+         /// ```
+         ///
+         /// Or by [configuring][cargo-config] `rustflags` in
+         /// `.cargo/config.toml`:
+         /// ```text
+         /// [build]
+-        /// rustflags = ["--cfg", "tokio_unstable", "--cfg", "tokio_taskdump"]
++        /// rustflags = ["--cfg", "tokio_unstable"]
+         /// ```
+         ///
+         /// [cargo-config]:
+@@ -591,7 +591,7 @@ cfg_taskdump! {
+         ///
+         /// ## Performance
+         ///
+-        /// Although enabling the `tokio_taskdump` feature imposes virtually no
++        /// Although enabling the `taskdump` feature imposes virtually no
+         /// additional runtime overhead, actually calling `Handle::dump` is
+         /// expensive. The runtime must synchronize and pause its workers, then
+         /// re-poll every task in a special tracing mode. Avoid requesting dumps
+diff --git a/tokio/src/runtime/local_runtime/runtime.rs b/tokio/src/runtime/local_runtime/runtime.rs
+index 62c3c58..8c47445 100644
+--- a/tokio/src/runtime/local_runtime/runtime.rs
++++ b/tokio/src/runtime/local_runtime/runtime.rs
+@@ -232,7 +232,7 @@ impl LocalRuntime {
+     fn block_on_inner<F: Future>(&self, future: F, _meta: SpawnMeta<'_>) -> F::Output {
+         #[cfg(all(
+             tokio_unstable,
+-            tokio_taskdump,
++            feature = "taskdump",
+             feature = "rt",
+             target_os = "linux",
+             any(target_arch = "aarch64", target_arch = "x86", target_arch = "x86_64")
+diff --git a/tokio/src/runtime/runtime.rs b/tokio/src/runtime/runtime.rs
+index 120f771..609b278 100644
+--- a/tokio/src/runtime/runtime.rs
++++ b/tokio/src/runtime/runtime.rs
+@@ -347,7 +347,7 @@ impl Runtime {
+     fn block_on_inner<F: Future>(&self, future: F, _meta: SpawnMeta<'_>) -> F::Output {
+         #[cfg(all(
+             tokio_unstable,
+-            tokio_taskdump,
++            feature = "taskdump",
+             feature = "rt",
+             target_os = "linux",
+             any(target_arch = "aarch64", target_arch = "x86", target_arch = "x86_64")
+diff --git a/tokio/src/runtime/scheduler/current_thread/mod.rs b/tokio/src/runtime/scheduler/current_thread/mod.rs
+index 2097d34..a05dbb9 100644
+--- a/tokio/src/runtime/scheduler/current_thread/mod.rs
++++ b/tokio/src/runtime/scheduler/current_thread/mod.rs
+@@ -350,7 +350,7 @@ impl Core {
+     }
+ }
+ 
+-#[cfg(tokio_taskdump)]
++#[cfg(feature = "taskdump")]
+ fn wake_deferred_tasks_and_free(context: &Context) {
+     let wakers = context.defer.take_deferred();
+     for waker in wakers {
+@@ -509,7 +509,7 @@ impl Handle {
+     /// Capture a snapshot of this runtime's state.
+     #[cfg(all(
+         tokio_unstable,
+-        tokio_taskdump,
++        feature = "taskdump",
+         target_os = "linux",
+         any(target_arch = "aarch64", target_arch = "x86", target_arch = "x86_64")
+     ))]
+diff --git a/tokio/src/runtime/scheduler/defer.rs b/tokio/src/runtime/scheduler/defer.rs
+index e7a5dde..4e3fbe8 100644
+--- a/tokio/src/runtime/scheduler/defer.rs
++++ b/tokio/src/runtime/scheduler/defer.rs
+@@ -35,7 +35,7 @@ impl Defer {
+         }
+     }
+ 
+-    #[cfg(tokio_taskdump)]
++    #[cfg(feature = "taskdump")]
+     pub(crate) fn take_deferred(&self) -> Vec<Waker> {
+         let mut deferred = self.deferred.borrow_mut();
+         std::mem::take(&mut *deferred)
+diff --git a/tokio/src/runtime/scheduler/inject.rs b/tokio/src/runtime/scheduler/inject.rs
+index 09684a2..6b02ecc 100644
+--- a/tokio/src/runtime/scheduler/inject.rs
++++ b/tokio/src/runtime/scheduler/inject.rs
+@@ -36,7 +36,7 @@ impl<T: 'static> Inject<T> {
+     }
+ 
+     // Kind of annoying to have to include the cfg here
+-    #[cfg(tokio_taskdump)]
++    #[cfg(feature = "taskdump")]
+     pub(crate) fn is_closed(&self) -> bool {
+         let synced = self.synced.lock();
+         self.shared.is_closed(&synced)
+diff --git a/tokio/src/runtime/scheduler/inject/shared.rs b/tokio/src/runtime/scheduler/inject/shared.rs
+index e32c2e4..61504cf 100644
+--- a/tokio/src/runtime/scheduler/inject/shared.rs
++++ b/tokio/src/runtime/scheduler/inject/shared.rs
+@@ -38,7 +38,7 @@ impl<T: 'static> Shared<T> {
+     }
+ 
+     // Kind of annoying to have to include the cfg here
+-    #[cfg(any(tokio_taskdump, feature = "rt-multi-thread"))]
++    #[cfg(any(feature = "taskdump", feature = "rt-multi-thread"))]
+     pub(crate) fn is_closed(&self, synced: &Synced) -> bool {
+         synced.is_closed
+     }
+diff --git a/tokio/src/runtime/task/mod.rs b/tokio/src/runtime/task/mod.rs
+index 6467372..093b6f6 100644
+--- a/tokio/src/runtime/task/mod.rs
++++ b/tokio/src/runtime/task/mod.rs
+@@ -404,7 +404,7 @@ impl<S: 'static> Task<S> {
+ 
+     #[cfg(all(
+         tokio_unstable,
+-        tokio_taskdump,
++        feature = "taskdump",
+         feature = "rt",
+         target_os = "linux",
+         any(target_arch = "aarch64", target_arch = "x86", target_arch = "x86_64")
+diff --git a/tokio/src/runtime/task/state.rs b/tokio/src/runtime/task/state.rs
+index 2d3a1b5..942d965 100644
+--- a/tokio/src/runtime/task/state.rs
++++ b/tokio/src/runtime/task/state.rs
+@@ -284,7 +284,7 @@ impl State {
+     /// otherwise `false.`
+     #[cfg(all(
+         tokio_unstable,
+-        tokio_taskdump,
++        feature = "taskdump",
+         feature = "rt",
+         target_os = "linux",
+         any(target_arch = "aarch64", target_arch = "x86", target_arch = "x86_64")
+diff --git a/tokio/src/sync/notify.rs b/tokio/src/sync/notify.rs
+index f78da7d..4539b3c 100644
+--- a/tokio/src/sync/notify.rs
++++ b/tokio/src/sync/notify.rs
+@@ -1218,7 +1218,7 @@ impl NotifiedProject<'_> {
+                     return Poll::Pending;
+                 }
+                 State::Waiting => {
+-                    #[cfg(tokio_taskdump)]
++                    #[cfg(feature = "taskdump")]
+                     if let Some(waker) = waker {
+                         let mut ctx = Context::from_waker(waker);
+                         std::task::ready!(crate::trace::trace_leaf(&mut ctx));
+@@ -1312,7 +1312,7 @@ impl NotifiedProject<'_> {
+                     drop(old_waker);
+                 }
+                 State::Done => {
+-                    #[cfg(tokio_taskdump)]
++                    #[cfg(feature = "taskdump")]
+                     if let Some(waker) = waker {
+                         let mut ctx = Context::from_waker(waker);
+                         std::task::ready!(crate::trace::trace_leaf(&mut ctx));
+diff --git a/tokio/src/task/local.rs b/tokio/src/task/local.rs
+index 40f1605..b101a2c 100644
+--- a/tokio/src/task/local.rs
++++ b/tokio/src/task/local.rs
+@@ -411,7 +411,7 @@ cfg_rt! {
+ 
+                 #[cfg(all(
+                     tokio_unstable,
+-                    tokio_taskdump,
++                    feature = "taskdump",
+                     feature = "rt",
+                     target_os = "linux",
+                     any(
+diff --git a/tokio/src/task/spawn.rs b/tokio/src/task/spawn.rs
+index 1b219a2..8ed2880 100644
+--- a/tokio/src/task/spawn.rs
++++ b/tokio/src/task/spawn.rs
+@@ -189,7 +189,7 @@ cfg_rt! {
+ 
+         #[cfg(all(
+             tokio_unstable,
+-            tokio_taskdump,
++            feature = "taskdump",
+             feature = "rt",
+             target_os = "linux",
+             any(
+diff --git a/tokio/tests/dump.rs b/tokio/tests/dump.rs
+index c946f38..56aab8f 100644
+--- a/tokio/tests/dump.rs
++++ b/tokio/tests/dump.rs
+@@ -1,6 +1,6 @@
+ #![cfg(all(
+     tokio_unstable,
+-    tokio_taskdump,
++    feature = "taskdump",
+     target_os = "linux",
+     any(target_arch = "aarch64", target_arch = "x86", target_arch = "x86_64")
+ ))]
+diff --git a/tokio/tests/task_trace_self.rs b/tokio/tests/task_trace_self.rs
+index 60e4268..a2840dc 100644
+--- a/tokio/tests/task_trace_self.rs
++++ b/tokio/tests/task_trace_self.rs
+@@ -1,7 +1,7 @@
+ #![allow(unknown_lints, unexpected_cfgs)]
+ #![cfg(all(
+     tokio_unstable,
+-    tokio_taskdump,
++    feature = "taskdump",
+     target_os = "linux",
+     any(target_arch = "aarch64", target_arch = "x86", target_arch = "x86_64")
+ ))]

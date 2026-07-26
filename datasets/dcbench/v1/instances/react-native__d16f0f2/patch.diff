@@ -1,0 +1,1623 @@
+From d16f0f297c2abd45785c0c6bd94532535b41da0f Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Rub=C3=A9n=20Norte?= <rubennorte@meta.com>
+Date: Tue, 9 Apr 2024 07:51:03 -0700
+Subject: [PATCH] Decouple event logger from PerformanceEntryReporter and
+ remove singleton (#43853)
+
+Summary:
+Pull Request resolved: https://github.com/facebook/react-native/pull/43853
+
+Changelog: [internal]
+
+## Context
+
+This is part of a refactor to decouple the performance entry reporter from the rendering infra and from the native module that uses it.
+
+## Changes
+
+This moves the logic to report the timing of events to a separate class (outside `PerformanceEntryReporter` that now is agnostic to the rendering infra).
+
+Reviewed By: sammy-SC
+
+Differential Revision: D55646392
+
+fbshipit-source-id: 5032a36b23d0741b19fb74cb04f0af3d3d476ef0
+---
+ .../React/React-RCTFabric.podspec             |   1 +
+ .../ReactAndroid/build.gradle.kts             |   2 +
+ .../ReactAndroid/src/main/jni/CMakeLists.txt  |   2 +
+ .../ReactCommon/React-Fabric.podspec          |  13 ++
+ .../webperformance/NativePerformance.cpp      |   4 +-
+ .../NativePerformanceObserver.cpp             |  50 ++---
+ .../NativePerformanceObserver.h               |   1 -
+ .../react/performance/timeline/CMakeLists.txt |  22 ++
+ .../timeline/PerformanceEntryReporter.cpp     | 181 +---------------
+ .../timeline/PerformanceEntryReporter.h       |  47 +---
+ .../React-performancetimeline.podspec         |  56 +++++
+ .../tests/PerformanceEntryReporterTest.cpp    | 190 ++++++++---------
+ .../react/renderer/core/EventDispatcher.cpp   |   9 +-
+ .../react/renderer/core/EventDispatcher.h     |   6 +-
+ .../react/renderer/core/EventLogger.cpp       |  22 --
+ .../react/renderer/core/EventLogger.h         |   4 +-
+ .../renderer/core/EventQueueProcessor.cpp     |   8 +-
+ .../react/renderer/core/EventQueueProcessor.h |   4 +-
+ .../core/tests/EventQueueProcessorTest.cpp    |  13 +-
+ .../renderer/observers/events/CMakeLists.txt  |  25 +++
+ .../events/EventPerformanceLogger.cpp         | 200 ++++++++++++++++++
+ .../observers/events/EventPerformanceLogger.h |  63 ++++++
+ .../react/renderer/scheduler/CMakeLists.txt   |   2 +
+ .../react/renderer/scheduler/Scheduler.cpp    |  18 +-
+ .../react/renderer/scheduler/Scheduler.h      |   5 +
+ .../react-native/scripts/react_native_pods.rb |   1 +
+ 26 files changed, 565 insertions(+), 384 deletions(-)
+ create mode 100644 packages/react-native/ReactCommon/react/performance/timeline/CMakeLists.txt
+ create mode 100644 packages/react-native/ReactCommon/react/performance/timeline/React-performancetimeline.podspec
+ delete mode 100644 packages/react-native/ReactCommon/react/renderer/core/EventLogger.cpp
+ create mode 100644 packages/react-native/ReactCommon/react/renderer/observers/events/CMakeLists.txt
+ create mode 100644 packages/react-native/ReactCommon/react/renderer/observers/events/EventPerformanceLogger.cpp
+ create mode 100644 packages/react-native/ReactCommon/react/renderer/observers/events/EventPerformanceLogger.h
+
+diff --git a/packages/react-native/React/React-RCTFabric.podspec b/packages/react-native/React/React-RCTFabric.podspec
+index 7cfb18a8dd1..a2fd54a8711 100644
+--- a/packages/react-native/React/React-RCTFabric.podspec
++++ b/packages/react-native/React/React-RCTFabric.podspec
+@@ -86,6 +86,7 @@ Pod::Spec.new do |s|
+   add_dependency(s, "React-featureflags")
+   add_dependency(s, "React-debug")
+   add_dependency(s, "React-utils")
++  add_dependency(s, "React-performancetimeline")
+   add_dependency(s, "React-rendererdebug")
+   add_dependency(s, "React-rendererconsistency")
+   add_dependency(s, "React-runtimescheduler")
+diff --git a/packages/react-native/ReactAndroid/build.gradle.kts b/packages/react-native/ReactAndroid/build.gradle.kts
+index 46ebc34418b..0f2465f770d 100644
+--- a/packages/react-native/ReactAndroid/build.gradle.kts
++++ b/packages/react-native/ReactAndroid/build.gradle.kts
+@@ -557,6 +557,7 @@ android {
+             "react_codegen_rncore",
+             "react_debug",
+             "react_featureflags",
++            "react_performance_timeline",
+             "react_utils",
+             "react_render_componentregistry",
+             "react_newarchdefaults",
+@@ -565,6 +566,7 @@ android {
+             "react_render_consistency",
+             "react_render_dom",
+             "react_render_graphics",
++            "react_render_observers_events",
+             "rrc_image",
+             "rrc_root",
+             "rrc_view",
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt b/packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt
+index 464503c4216..87347f9637a 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt
++++ b/packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt
+@@ -71,6 +71,7 @@ add_react_common_subdir(react/renderer/runtimescheduler)
+ add_react_common_subdir(react/debug)
+ add_react_common_subdir(react/config)
+ add_react_common_subdir(react/featureflags)
++add_react_common_subdir(react/performance/timeline)
+ add_react_common_subdir(react/renderer/animations)
+ add_react_common_subdir(react/renderer/attributedstring)
+ add_react_common_subdir(react/renderer/componentregistry)
+@@ -99,6 +100,7 @@ add_react_common_subdir(react/renderer/components/unimplementedview)
+ add_react_common_subdir(react/renderer/components/modal)
+ add_react_common_subdir(react/renderer/components/scrollview)
+ add_react_common_subdir(react/renderer/leakchecker)
++add_react_common_subdir(react/renderer/observers/events)
+ add_react_common_subdir(react/renderer/textlayoutmanager)
+ add_react_common_subdir(react/utils)
+ add_react_common_subdir(react/bridging)
+diff --git a/packages/react-native/ReactCommon/React-Fabric.podspec b/packages/react-native/ReactCommon/React-Fabric.podspec
+index d7af3b162a3..69129f22abd 100644
+--- a/packages/react-native/ReactCommon/React-Fabric.podspec
++++ b/packages/react-native/ReactCommon/React-Fabric.podspec
+@@ -249,11 +249,24 @@ Pod::Spec.new do |s|
+     ss.header_dir           = "react/renderer/mounting"
+   end
+ 
++  s.subspec "observers" do |ss|
++    ss.subspec "events" do |sss|
++      sss.dependency             folly_dep_name, folly_version
++      sss.compiler_flags       = folly_compiler_flags
++      sss.source_files         = "react/renderer/observers/events/**/*.{m,mm,cpp,h}"
++      sss.exclude_files        = "react/renderer/observers/events/tests"
++      sss.header_dir           = "react/renderer/observers/events"
++    end
++  end
++
+   s.subspec "scheduler" do |ss|
+     ss.dependency             folly_dep_name, folly_version
+     ss.compiler_flags       = folly_compiler_flags
+     ss.source_files         = "react/renderer/scheduler/**/*.{m,mm,cpp,h}"
+     ss.header_dir           = "react/renderer/scheduler"
++
++    ss.dependency             "React-performancetimeline"
++    ss.dependency             "React-Fabric/observers/events"
+   end
+ 
+   s.subspec "templateprocessor" do |ss|
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/webperformance/NativePerformance.cpp b/packages/react-native/ReactCommon/react/nativemodule/webperformance/NativePerformance.cpp
+index 1b6f9379d1c..4f377122c15 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/webperformance/NativePerformance.cpp
++++ b/packages/react-native/ReactCommon/react/nativemodule/webperformance/NativePerformance.cpp
+@@ -34,7 +34,7 @@ void NativePerformance::mark(
+     jsi::Runtime& rt,
+     std::string name,
+     double startTime) {
+-  PerformanceEntryReporter::getInstance().mark(name, startTime);
++  PerformanceEntryReporter::getInstance()->mark(name, startTime);
+ }
+ 
+ void NativePerformance::measure(
+@@ -45,7 +45,7 @@ void NativePerformance::measure(
+     std::optional<double> duration,
+     std::optional<std::string> startMark,
+     std::optional<std::string> endMark) {
+-  PerformanceEntryReporter::getInstance().measure(
++  PerformanceEntryReporter::getInstance()->measure(
+       name, startTime, endTime, duration, startMark, endMark);
+ }
+ 
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/webperformance/NativePerformanceObserver.cpp b/packages/react-native/ReactCommon/react/nativemodule/webperformance/NativePerformanceObserver.cpp
+index ca5bbbfe076..b84c961c282 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/webperformance/NativePerformanceObserver.cpp
++++ b/packages/react-native/ReactCommon/react/nativemodule/webperformance/NativePerformanceObserver.cpp
+@@ -26,40 +26,22 @@ namespace facebook::react {
+ 
+ NativePerformanceObserver::NativePerformanceObserver(
+     std::shared_ptr<CallInvoker> jsInvoker)
+-    : NativePerformanceObserverCxxSpec(std::move(jsInvoker)) {
+-  setEventLogger(&PerformanceEntryReporter::getInstance());
+-}
+-
+-NativePerformanceObserver::~NativePerformanceObserver() {
+-  setEventLogger(nullptr);
+-}
++    : NativePerformanceObserverCxxSpec(std::move(jsInvoker)) {}
+ 
+ void NativePerformanceObserver::startReporting(
+-    jsi::Runtime& rt,
++    jsi::Runtime& /*rt*/,
+     PerformanceEntryType entryType) {
+-  PerformanceEntryReporter& reporter = PerformanceEntryReporter::getInstance();
+-
+-  reporter.startReporting(entryType);
++  auto reporter = PerformanceEntryReporter::getInstance();
+ 
+-  if (entryType == PerformanceEntryType::EVENT &&
+-      CoreFeatures::enableReportEventPaintTime) {
+-    UIManagerBinding::getBinding(rt)->getUIManager().registerMountHook(
+-        reporter);
+-  }
++  reporter->startReporting(entryType);
+ }
+ 
+ void NativePerformanceObserver::stopReporting(
+-    jsi::Runtime& rt,
++    jsi::Runtime& /*rt*/,
+     PerformanceEntryType entryType) {
+-  PerformanceEntryReporter& reporter = PerformanceEntryReporter::getInstance();
++  auto reporter = PerformanceEntryReporter::getInstance();
+ 
+-  reporter.stopReporting(entryType);
+-
+-  if (entryType == PerformanceEntryType::EVENT &&
+-      CoreFeatures::enableReportEventPaintTime) {
+-    UIManagerBinding::getBinding(rt)->getUIManager().unregisterMountHook(
+-        reporter);
+-  }
++  reporter->stopReporting(entryType);
+ }
+ 
+ void NativePerformanceObserver::setIsBuffered(
+@@ -67,39 +49,39 @@ void NativePerformanceObserver::setIsBuffered(
+     const std::vector<PerformanceEntryType> entryTypes,
+     bool isBuffered) {
+   for (const PerformanceEntryType entryType : entryTypes) {
+-    PerformanceEntryReporter::getInstance().setAlwaysLogged(
++    PerformanceEntryReporter::getInstance()->setAlwaysLogged(
+         entryType, isBuffered);
+   }
+ }
+ 
+ PerformanceEntryReporter::PopPendingEntriesResult
+ NativePerformanceObserver::popPendingEntries(jsi::Runtime& /*rt*/) {
+-  return PerformanceEntryReporter::getInstance().popPendingEntries();
++  return PerformanceEntryReporter::getInstance()->popPendingEntries();
+ }
+ 
+ void NativePerformanceObserver::setOnPerformanceEntryCallback(
+     jsi::Runtime& /*rt*/,
+     std::optional<AsyncCallback<>> callback) {
+   if (callback) {
+-    PerformanceEntryReporter::getInstance().setReportingCallback(
++    PerformanceEntryReporter::getInstance()->setReportingCallback(
+         [callback = std::move(callback)]() {
+           callback->callWithPriority(SchedulerPriority::IdlePriority);
+         });
+   } else {
+-    PerformanceEntryReporter::getInstance().setReportingCallback(nullptr);
++    PerformanceEntryReporter::getInstance()->setReportingCallback(nullptr);
+   }
+ }
+ 
+ void NativePerformanceObserver::logRawEntry(
+     jsi::Runtime& /*rt*/,
+     const PerformanceEntry entry) {
+-  PerformanceEntryReporter::getInstance().logEntry(entry);
++  PerformanceEntryReporter::getInstance()->logEntry(entry);
+ }
+ 
+ std::vector<std::pair<std::string, uint32_t>>
+ NativePerformanceObserver::getEventCounts(jsi::Runtime& /*rt*/) {
+   const auto& eventCounts =
+-      PerformanceEntryReporter::getInstance().getEventCounts();
++      PerformanceEntryReporter::getInstance()->getEventCounts();
+   return std::vector<std::pair<std::string, uint32_t>>(
+       eventCounts.begin(), eventCounts.end());
+ }
+@@ -108,7 +90,7 @@ void NativePerformanceObserver::setDurationThreshold(
+     jsi::Runtime& /*rt*/,
+     PerformanceEntryType entryType,
+     double durationThreshold) {
+-  PerformanceEntryReporter::getInstance().setDurationThreshold(
++  PerformanceEntryReporter::getInstance()->setDurationThreshold(
+       entryType, durationThreshold);
+ }
+ 
+@@ -116,7 +98,7 @@ void NativePerformanceObserver::clearEntries(
+     jsi::Runtime& /*rt*/,
+     PerformanceEntryType entryType,
+     std::optional<std::string> entryName) {
+-  PerformanceEntryReporter::getInstance().clearEntries(
++  PerformanceEntryReporter::getInstance()->clearEntries(
+       entryType, entryName ? entryName->c_str() : std::string_view{});
+ }
+ 
+@@ -124,7 +106,7 @@ std::vector<PerformanceEntry> NativePerformanceObserver::getEntries(
+     jsi::Runtime& /*rt*/,
+     std::optional<PerformanceEntryType> entryType,
+     std::optional<std::string> entryName) {
+-  return PerformanceEntryReporter::getInstance().getEntries(
++  return PerformanceEntryReporter::getInstance()->getEntries(
+       entryType, entryName ? entryName->c_str() : std::string_view{});
+ }
+ 
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/webperformance/NativePerformanceObserver.h b/packages/react-native/ReactCommon/react/nativemodule/webperformance/NativePerformanceObserver.h
+index 9ef3506695e..e2e4e324571 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/webperformance/NativePerformanceObserver.h
++++ b/packages/react-native/ReactCommon/react/nativemodule/webperformance/NativePerformanceObserver.h
+@@ -49,7 +49,6 @@ class NativePerformanceObserver
+     : public NativePerformanceObserverCxxSpec<NativePerformanceObserver> {
+  public:
+   NativePerformanceObserver(std::shared_ptr<CallInvoker> jsInvoker);
+-  ~NativePerformanceObserver();
+ 
+   void startReporting(jsi::Runtime& rt, PerformanceEntryType entryType);
+ 
+diff --git a/packages/react-native/ReactCommon/react/performance/timeline/CMakeLists.txt b/packages/react-native/ReactCommon/react/performance/timeline/CMakeLists.txt
+new file mode 100644
+index 00000000000..720ae9dcdee
+--- /dev/null
++++ b/packages/react-native/ReactCommon/react/performance/timeline/CMakeLists.txt
+@@ -0,0 +1,22 @@
++# Copyright (c) Meta Platforms, Inc. and affiliates.
++#
++# This source code is licensed under the MIT license found in the
++# LICENSE file in the root directory of this source tree.
++
++cmake_minimum_required(VERSION 3.13)
++set(CMAKE_VERBOSE_MAKEFILE on)
++
++add_compile_options(
++        -fexceptions
++        -frtti
++        -std=c++20
++        -Wall
++        -Wpedantic
++        -DLOG_TAG=\"ReactNative\")
++
++file(GLOB react_performance_timeline_SRC CONFIGURE_DEPENDS *.cpp)
++add_library(react_performance_timeline SHARED ${react_performance_timeline_SRC})
++
++target_include_directories(react_performance_timeline PUBLIC ${REACT_COMMON_DIR})
++target_link_libraries(react_performance_timeline
++        react_cxxreact)
+diff --git a/packages/react-native/ReactCommon/react/performance/timeline/PerformanceEntryReporter.cpp b/packages/react-native/ReactCommon/react/performance/timeline/PerformanceEntryReporter.cpp
+index 756877d17e0..4adeda741da 100644
+--- a/packages/react-native/ReactCommon/react/performance/timeline/PerformanceEntryReporter.cpp
++++ b/packages/react-native/ReactCommon/react/performance/timeline/PerformanceEntryReporter.cpp
+@@ -6,20 +6,14 @@
+  */
+ 
+ #include "PerformanceEntryReporter.h"
+-#include <cxxreact/JSExecutor.h>
+-#include <react/renderer/core/EventLogger.h>
+-#include <react/utils/CoreFeatures.h>
+-
+-#include <functional>
+-#include <unordered_map>
+ 
+-#include <glog/logging.h>
++#include <cxxreact/JSExecutor.h>
+ 
+ namespace facebook::react {
+-EventTag PerformanceEntryReporter::sCurrentEventTag_{0};
+ 
+-PerformanceEntryReporter& PerformanceEntryReporter::getInstance() {
+-  static PerformanceEntryReporter instance;
++std::shared_ptr<PerformanceEntryReporter>
++PerformanceEntryReporter::getInstance() {
++  static auto instance = std::make_shared<PerformanceEntryReporter>();
+   return instance;
+ }
+ 
+@@ -299,171 +293,4 @@ void PerformanceEntryReporter::scheduleFlushBuffer() {
+   }
+ }
+ 
+-struct StrKey {
+-  uint32_t key;
+-  StrKey(std::string_view s) : key(std::hash<std::string_view>{}(s)) {}
+-
+-  bool operator==(const StrKey& rhs) const {
+-    return key == rhs.key;
+-  }
+-};
+-
+-struct StrKeyHash {
+-  constexpr size_t operator()(const StrKey& strKey) const {
+-    return static_cast<size_t>(strKey.key);
+-  }
+-};
+-
+-// Supported events for reporting, see
+-// https://www.w3.org/TR/event-timing/#sec-events-exposed
+-// Not all of these are currently supported by RN, but we map them anyway for
+-// future-proofing.
+-using SupportedEventTypeRegistry =
+-    std::unordered_map<StrKey, std::string_view, StrKeyHash>;
+-
+-static const SupportedEventTypeRegistry& getSupportedEvents() {
+-  static SupportedEventTypeRegistry SUPPORTED_EVENTS = {
+-      {StrKey("topAuxClick"), "auxclick"},
+-      {StrKey("topClick"), "click"},
+-      {StrKey("topContextMenu"), "contextmenu"},
+-      {StrKey("topDblClick"), "dblclick"},
+-      {StrKey("topMouseDown"), "mousedown"},
+-      {StrKey("topMouseEnter"), "mouseenter"},
+-      {StrKey("topMouseLeave"), "mouseleave"},
+-      {StrKey("topMouseOut"), "mouseout"},
+-      {StrKey("topMouseOver"), "mouseover"},
+-      {StrKey("topMouseUp"), "mouseup"},
+-      {StrKey("topPointerOver"), "pointerover"},
+-      {StrKey("topPointerEnter"), "pointerenter"},
+-      {StrKey("topPointerDown"), "pointerdown"},
+-      {StrKey("topPointerUp"), "pointerup"},
+-      {StrKey("topPointerCancel"), "pointercancel"},
+-      {StrKey("topPointerOut"), "pointerout"},
+-      {StrKey("topPointerLeave"), "pointerleave"},
+-      {StrKey("topGotPointerCapture"), "gotpointercapture"},
+-      {StrKey("topLostPointerCapture"), "lostpointercapture"},
+-      {StrKey("topTouchStart"), "touchstart"},
+-      {StrKey("topTouchEnd"), "touchend"},
+-      {StrKey("topTouchCancel"), "touchcancel"},
+-      {StrKey("topKeyDown"), "keydown"},
+-      {StrKey("topKeyPress"), "keypress"},
+-      {StrKey("topKeyUp"), "keyup"},
+-      {StrKey("topBeforeInput"), "beforeinput"},
+-      {StrKey("topInput"), "input"},
+-      {StrKey("topCompositionStart"), "compositionstart"},
+-      {StrKey("topCompositionUpdate"), "compositionupdate"},
+-      {StrKey("topCompositionEnd"), "compositionend"},
+-      {StrKey("topDragStart"), "dragstart"},
+-      {StrKey("topDragEnd"), "dragend"},
+-      {StrKey("topDragEnter"), "dragenter"},
+-      {StrKey("topDragLeave"), "dragleave"},
+-      {StrKey("topDragOver"), "dragover"},
+-      {StrKey("topDrop"), "drop"},
+-  };
+-  return SUPPORTED_EVENTS;
+-}
+-
+-EventTag PerformanceEntryReporter::onEventStart(std::string_view name) {
+-  if (!isReporting(PerformanceEntryType::EVENT)) {
+-    return 0;
+-  }
+-  const auto& supportedEvents = getSupportedEvents();
+-  auto it = supportedEvents.find(name);
+-  if (it == supportedEvents.end()) {
+-    return 0;
+-  }
+-
+-  auto reportedName = it->second;
+-
+-  sCurrentEventTag_++;
+-  if (sCurrentEventTag_ == 0) {
+-    // The tag wrapped around (which is highly unlikely, but still)
+-    sCurrentEventTag_ = 1;
+-  }
+-
+-  auto timeStamp = getCurrentTimeStamp();
+-  {
+-    std::lock_guard lock(eventsInFlightMutex_);
+-    eventsInFlight_.emplace(std::make_pair(
+-        sCurrentEventTag_, EventEntry{reportedName, timeStamp, 0.0}));
+-  }
+-  return sCurrentEventTag_;
+-}
+-
+-void PerformanceEntryReporter::onEventProcessingStart(EventTag tag) {
+-  if (!isReporting(PerformanceEntryType::EVENT) || tag == 0) {
+-    return;
+-  }
+-  auto timeStamp = getCurrentTimeStamp();
+-  {
+-    std::lock_guard lock(eventsInFlightMutex_);
+-    auto it = eventsInFlight_.find(tag);
+-    if (it != eventsInFlight_.end()) {
+-      it->second.processingStartTime = timeStamp;
+-    }
+-  }
+-}
+-
+-void PerformanceEntryReporter::onEventProcessingEnd(EventTag tag) {
+-  if (!isReporting(PerformanceEntryType::EVENT) || tag == 0) {
+-    return;
+-  }
+-  auto timeStamp = getCurrentTimeStamp();
+-  {
+-    std::lock_guard lock(eventsInFlightMutex_);
+-    auto it = eventsInFlight_.find(tag);
+-    if (it == eventsInFlight_.end()) {
+-      return;
+-    }
+-    auto& entry = it->second;
+-    entry.processingEndTime = timeStamp;
+-
+-    if (CoreFeatures::enableReportEventPaintTime) {
+-      // If reporting paint time, don't send the entry just yet and wait for the
+-      // mount hook callback to be called
+-      return;
+-    }
+-
+-    const auto& name = entry.name;
+-
+-    logEventEntry(
+-        std::string(name),
+-        entry.startTime,
+-        timeStamp - entry.startTime,
+-        entry.processingStartTime,
+-        entry.processingEndTime,
+-        entry.interactionId);
+-    eventsInFlight_.erase(it);
+-  }
+-}
+-
+-void PerformanceEntryReporter::shadowTreeDidMount(
+-    const RootShadowNode::Shared& /*rootShadowNode*/,
+-    double mountTime) noexcept {
+-  if (!isReporting(PerformanceEntryType::EVENT) ||
+-      !CoreFeatures::enableReportEventPaintTime) {
+-    return;
+-  }
+-
+-  std::lock_guard lock(eventsInFlightMutex_);
+-  auto it = eventsInFlight_.begin();
+-  while (it != eventsInFlight_.end()) {
+-    const auto& entry = it->second;
+-    if (entry.processingEndTime == 0.0 || entry.processingEndTime > mountTime) {
+-      // This mount doesn't correspond to the event
+-      ++it;
+-      continue;
+-    }
+-
+-    logEventEntry(
+-        std::string(entry.name),
+-        entry.startTime,
+-        mountTime - entry.startTime,
+-        entry.processingStartTime,
+-        entry.processingEndTime,
+-        entry.interactionId);
+-    it = eventsInFlight_.erase(it);
+-  }
+-}
+-
+ } // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/react/performance/timeline/PerformanceEntryReporter.h b/packages/react-native/ReactCommon/react/performance/timeline/PerformanceEntryReporter.h
+index 2e0d0a5bfe9..3a65f025374 100644
+--- a/packages/react-native/ReactCommon/react/performance/timeline/PerformanceEntryReporter.h
++++ b/packages/react-native/ReactCommon/react/performance/timeline/PerformanceEntryReporter.h
+@@ -7,17 +7,16 @@
+ 
+ #pragma once
+ 
+-#include <react/renderer/core/EventLogger.h>
++#include "BoundedConsumableBuffer.h"
++
+ #include <array>
+ #include <functional>
++#include <memory>
+ #include <mutex>
+ #include <optional>
+ #include <string_view>
+ #include <unordered_map>
+ #include <unordered_set>
+-#include "BoundedConsumableBuffer.h"
+-
+-#include <react/renderer/uimanager/UIManagerMountHook.h>
+ 
+ namespace facebook::react {
+ 
+@@ -82,13 +81,15 @@ struct PerformanceEntryBuffer {
+ constexpr size_t NUM_PERFORMANCE_ENTRY_TYPES =
+     (size_t)PerformanceEntryType::_NEXT - 1; // Valid types start from 1.
+ 
+-class PerformanceEntryReporter : public EventLogger, public UIManagerMountHook {
++class PerformanceEntryReporter {
+  public:
++  PerformanceEntryReporter();
++
+   // NOTE: This class is not thread safe, make sure that the calls are made from
+   // the same thread.
+   // TODO: Consider passing it as a parameter to the corresponding modules at
+   // creation time instead of having the singleton.
+-  static PerformanceEntryReporter& getInstance();
++  static std::shared_ptr<PerformanceEntryReporter> getInstance();
+ 
+   struct PopPendingEntriesResult {
+     std::vector<PerformanceEntry> entries;
+@@ -157,18 +158,12 @@ class PerformanceEntryReporter : public EventLogger, public UIManagerMountHook {
+       double processingEnd,
+       uint32_t interactionId);
+ 
+-  EventTag onEventStart(std::string_view name) override;
+-  void onEventProcessingStart(EventTag tag) override;
+-  void onEventProcessingEnd(EventTag tag) override;
+-
+-  void shadowTreeDidMount(
+-      const RootShadowNode::Shared& rootShadowNode,
+-      double mountTime) noexcept override;
+-
+   const std::unordered_map<std::string, uint32_t>& getEventCounts() const {
+     return eventCounts_;
+   }
+ 
++  DOMHighResTimeStamp getCurrentTimeStamp() const;
++
+   void setTimeStampProvider(std::function<double()> provider) {
+     timeStampProvider_ = std::move(provider);
+   }
+@@ -182,32 +177,10 @@ class PerformanceEntryReporter : public EventLogger, public UIManagerMountHook {
+ 
+   uint32_t droppedEntriesCount_{0};
+ 
+-  struct EventEntry {
+-    std::string_view name;
+-    double startTime{0.0};
+-    double processingStartTime{0.0};
+-    double processingEndTime{0.0};
+-
+-    // TODO: Define the way to assign interaction IDs to the event chains
+-    // (T141358175)
+-    uint32_t interactionId{0};
+-  };
+-
+-  // Registry to store the events that are currently ongoing.
+-  // Note that we could probably use a more efficient container for that,
+-  // but since we only report discrete events, the volume is normally low,
+-  // so a hash map should be just fine.
+-  std::unordered_map<EventTag, EventEntry> eventsInFlight_;
+-  mutable std::mutex eventsInFlightMutex_;
+-
+   std::function<double()> timeStampProvider_ = nullptr;
+ 
+   mutable std::mutex nameLookupMutex_;
+ 
+-  static EventTag sCurrentEventTag_;
+-
+-  PerformanceEntryReporter();
+-
+   double getMarkTime(const std::string& markName) const;
+   void scheduleFlushBuffer();
+ 
+@@ -215,8 +188,6 @@ class PerformanceEntryReporter : public EventLogger, public UIManagerMountHook {
+       PerformanceEntryType entryType,
+       std::string_view entryName,
+       std::vector<PerformanceEntry>& res) const;
+-
+-  double getCurrentTimeStamp() const;
+ };
+ 
+ } // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/react/performance/timeline/React-performancetimeline.podspec b/packages/react-native/ReactCommon/react/performance/timeline/React-performancetimeline.podspec
+new file mode 100644
+index 00000000000..1802a6ea7b2
+--- /dev/null
++++ b/packages/react-native/ReactCommon/react/performance/timeline/React-performancetimeline.podspec
+@@ -0,0 +1,56 @@
++# Copyright (c) Meta Platforms, Inc. and affiliates.
++#
++# This source code is licensed under the MIT license found in the
++# LICENSE file in the root directory of this source tree.
++
++require "json"
++
++package = JSON.parse(File.read(File.join(__dir__, "..", "..", "..", "..", "package.json")))
++version = package['version']
++
++source = { :git => 'https://github.com/facebook/react-native.git' }
++if version == '1000.0.0'
++  # This is an unpublished version, use the latest commit hash of the react-native repo, which we’re presumably in.
++  source[:commit] = `git rev-parse HEAD`.strip if system("git rev-parse --git-dir > /dev/null 2>&1")
++else
++  source[:tag] = "v#{version}"
++end
++
++folly_config = get_folly_config()
++folly_compiler_flags = folly_config[:compiler_flags]
++folly_version = folly_config[:version]
++
++header_search_paths = [
++    "\"$(PODS_ROOT)/RCT-Folly\"",
++    "\"$(PODS_ROOT)/boost\"",
++]
++
++if ENV['USE_FRAMEWORKS']
++  header_search_paths << "\"$(PODS_TARGET_SRCROOT)/../../..\"" # this is needed to allow the performancetimeline access its own files
++end
++
++Pod::Spec.new do |s|
++  s.name                   = "React-performancetimeline"
++  s.version                = version
++  s.summary                = "React performance timeline utilities"
++  s.homepage               = "https://reactnative.dev/"
++  s.license                = package["license"]
++  s.author                 = "Meta Platforms, Inc. and its affiliates"
++  s.platforms              = min_supported_versions
++  s.source                 = source
++  s.source_files           = "**/*.{cpp,h}"
++  s.compiler_flags         = folly_compiler_flags
++  s.header_dir             = "react/performance/timeline"
++  s.exclude_files          = "tests"
++  s.pod_target_xcconfig    = {
++    "CLANG_CXX_LANGUAGE_STANDARD" => "c++20",
++    "HEADER_SEARCH_PATHS" => header_search_paths.join(' ')}
++
++  if ENV['USE_FRAMEWORKS']
++    s.module_name            = "React_performancetimeline"
++    s.header_mappings_dir  = "../../.."
++  end
++
++  s.dependency "React-cxxreact"
++  s.dependency "RCT-Folly", folly_version
++end
+diff --git a/packages/react-native/ReactCommon/react/performance/timeline/tests/PerformanceEntryReporterTest.cpp b/packages/react-native/ReactCommon/react/performance/timeline/tests/PerformanceEntryReporterTest.cpp
+index caee605ab45..65cb1a97887 100644
+--- a/packages/react-native/ReactCommon/react/performance/timeline/tests/PerformanceEntryReporterTest.cpp
++++ b/packages/react-native/ReactCommon/react/performance/timeline/tests/PerformanceEntryReporterTest.cpp
+@@ -42,51 +42,51 @@ namespace facebook::react {
+ using namespace facebook::react;
+ 
+ TEST(PerformanceEntryReporter, PerformanceEntryReporterTestStartReporting) {
+-  auto& reporter = PerformanceEntryReporter::getInstance();
++  auto reporter = PerformanceEntryReporter::getInstance();
+ 
+-  reporter.stopReporting();
+-  reporter.clearEntries();
++  reporter->stopReporting();
++  reporter->clearEntries();
+ 
+-  reporter.startReporting(PerformanceEntryType::MARK);
+-  reporter.startReporting(PerformanceEntryType::MEASURE);
++  reporter->startReporting(PerformanceEntryType::MARK);
++  reporter->startReporting(PerformanceEntryType::MEASURE);
+ 
+-  ASSERT_TRUE(reporter.isReporting(PerformanceEntryType::MARK));
+-  ASSERT_TRUE(reporter.isReporting(PerformanceEntryType::MEASURE));
++  ASSERT_TRUE(reporter->isReporting(PerformanceEntryType::MARK));
++  ASSERT_TRUE(reporter->isReporting(PerformanceEntryType::MEASURE));
+ 
+-  ASSERT_FALSE(reporter.isReporting(PerformanceEntryType::EVENT));
++  ASSERT_FALSE(reporter->isReporting(PerformanceEntryType::EVENT));
+ }
+ 
+ TEST(PerformanceEntryReporter, PerformanceEntryReporterTestStopReporting) {
+-  auto& reporter = PerformanceEntryReporter::getInstance();
++  auto reporter = PerformanceEntryReporter::getInstance();
+ 
+-  reporter.stopReporting();
+-  reporter.clearEntries();
++  reporter->stopReporting();
++  reporter->clearEntries();
+ 
+-  reporter.startReporting(PerformanceEntryType::MARK);
++  reporter->startReporting(PerformanceEntryType::MARK);
+ 
+-  reporter.mark("mark0", 0.0);
+-  reporter.mark("mark1", 0.0);
+-  reporter.mark("mark2", 0.0);
+-  reporter.measure("measure0", 0.0, 0.0);
++  reporter->mark("mark0", 0.0);
++  reporter->mark("mark1", 0.0);
++  reporter->mark("mark2", 0.0);
++  reporter->measure("measure0", 0.0, 0.0);
+ 
+-  auto res = reporter.popPendingEntries();
++  auto res = reporter->popPendingEntries();
+   const auto& entries = res.entries;
+ 
+   ASSERT_EQ(0, res.droppedEntriesCount);
+   ASSERT_EQ(3, entries.size());
+ 
+-  res = reporter.popPendingEntries();
++  res = reporter->popPendingEntries();
+ 
+   ASSERT_EQ(0, res.droppedEntriesCount);
+   ASSERT_EQ(0, res.entries.size());
+ 
+-  reporter.stopReporting(PerformanceEntryType::MARK);
+-  reporter.startReporting(PerformanceEntryType::MEASURE);
++  reporter->stopReporting(PerformanceEntryType::MARK);
++  reporter->startReporting(PerformanceEntryType::MEASURE);
+ 
+-  reporter.mark("mark3");
+-  reporter.measure("measure1", 0.0, 0.0);
++  reporter->mark("mark3");
++  reporter->measure("measure1", 0.0, 0.0);
+ 
+-  res = reporter.popPendingEntries();
++  res = reporter->popPendingEntries();
+ 
+   ASSERT_EQ(0, res.droppedEntriesCount);
+   ASSERT_EQ(1, res.entries.size());
+@@ -94,20 +94,20 @@ TEST(PerformanceEntryReporter, PerformanceEntryReporterTestStopReporting) {
+ }
+ 
+ TEST(PerformanceEntryReporter, PerformanceEntryReporterTestReportMarks) {
+-  auto& reporter = PerformanceEntryReporter::getInstance();
++  auto reporter = PerformanceEntryReporter::getInstance();
+ 
+-  reporter.stopReporting();
+-  reporter.clearEntries();
++  reporter->stopReporting();
++  reporter->clearEntries();
+ 
+-  reporter.startReporting(PerformanceEntryType::MARK);
++  reporter->startReporting(PerformanceEntryType::MARK);
+ 
+-  reporter.mark("mark0", 0.0);
+-  reporter.mark("mark1", 1.0);
+-  reporter.mark("mark2", 2.0);
++  reporter->mark("mark0", 0.0);
++  reporter->mark("mark1", 1.0);
++  reporter->mark("mark2", 2.0);
+   // Report mark0 again
+-  reporter.mark("mark0", 3.0);
++  reporter->mark("mark0", 3.0);
+ 
+-  auto res = reporter.popPendingEntries();
++  auto res = reporter->popPendingEntries();
+   const auto& entries = res.entries;
+ 
+   ASSERT_EQ(0, res.droppedEntriesCount);
+@@ -132,35 +132,35 @@ TEST(PerformanceEntryReporter, PerformanceEntryReporterTestReportMarks) {
+ }
+ 
+ TEST(PerformanceEntryReporter, PerformanceEntryReporterTestReportMeasures) {
+-  auto& reporter = PerformanceEntryReporter::getInstance();
++  auto reporter = PerformanceEntryReporter::getInstance();
+ 
+-  reporter.stopReporting();
+-  reporter.clearEntries();
++  reporter->stopReporting();
++  reporter->clearEntries();
+ 
+-  reporter.startReporting(PerformanceEntryType::MARK);
+-  reporter.startReporting(PerformanceEntryType::MEASURE);
++  reporter->startReporting(PerformanceEntryType::MARK);
++  reporter->startReporting(PerformanceEntryType::MEASURE);
+ 
+-  reporter.mark("mark0", 0.0);
+-  reporter.mark("mark1", 1.0);
+-  reporter.mark("mark2", 2.0);
++  reporter->mark("mark0", 0.0);
++  reporter->mark("mark1", 1.0);
++  reporter->mark("mark2", 2.0);
+ 
+-  reporter.measure("measure0", 0.0, 2.0);
+-  reporter.measure("measure1", 0.0, 2.0, 4.0);
+-  reporter.measure("measure2", 0.0, 0.0, std::nullopt, "mark1", "mark2");
+-  reporter.measure("measure3", 0.0, 0.0, 5.0, "mark1");
+-  reporter.measure("measure4", 1.5, 0.0, std::nullopt, std::nullopt, "mark2");
++  reporter->measure("measure0", 0.0, 2.0);
++  reporter->measure("measure1", 0.0, 2.0, 4.0);
++  reporter->measure("measure2", 0.0, 0.0, std::nullopt, "mark1", "mark2");
++  reporter->measure("measure3", 0.0, 0.0, 5.0, "mark1");
++  reporter->measure("measure4", 1.5, 0.0, std::nullopt, std::nullopt, "mark2");
+ 
+-  reporter.setTimeStampProvider([]() { return 3.5; });
+-  reporter.measure("measure5", 0.0, 0.0, std::nullopt, "mark2");
++  reporter->setTimeStampProvider([]() { return 3.5; });
++  reporter->measure("measure5", 0.0, 0.0, std::nullopt, "mark2");
+ 
+-  reporter.mark("mark3", 2.0);
+-  reporter.measure("measure6", 2.0, 2.0);
+-  reporter.mark("mark4", 2.0);
+-  reporter.mark("mark4", 3.0);
++  reporter->mark("mark3", 2.0);
++  reporter->measure("measure6", 2.0, 2.0);
++  reporter->mark("mark4", 2.0);
++  reporter->mark("mark4", 3.0);
+   // Uses the last reported time for mark4
+-  reporter.measure("measure7", 0.0, 0.0, std::nullopt, "mark1", "mark4");
++  reporter->measure("measure7", 0.0, 0.0, std::nullopt, "mark1", "mark4");
+ 
+-  auto res = reporter.popPendingEntries();
++  auto res = reporter->popPendingEntries();
+   const auto& entries = res.entries;
+ 
+   ASSERT_EQ(0, res.droppedEntriesCount);
+@@ -243,42 +243,42 @@ static std::vector<PerformanceEntryType> getTypes(
+ }
+ 
+ TEST(PerformanceEntryReporter, PerformanceEntryReporterTestGetEntries) {
+-  auto& reporter = PerformanceEntryReporter::getInstance();
++  auto reporter = PerformanceEntryReporter::getInstance();
+ 
+-  reporter.stopReporting();
+-  reporter.clearEntries();
++  reporter->stopReporting();
++  reporter->clearEntries();
+ 
+-  auto res = reporter.popPendingEntries();
++  auto res = reporter->popPendingEntries();
+   const auto& entries = res.entries;
+ 
+   ASSERT_EQ(0, res.droppedEntriesCount);
+   ASSERT_EQ(0, entries.size());
+ 
+-  reporter.startReporting(PerformanceEntryType::MARK);
+-  reporter.startReporting(PerformanceEntryType::MEASURE);
++  reporter->startReporting(PerformanceEntryType::MARK);
++  reporter->startReporting(PerformanceEntryType::MEASURE);
+ 
+-  reporter.mark("common_name", 0.0);
+-  reporter.mark("mark1", 1.0);
+-  reporter.mark("mark2", 2.0);
++  reporter->mark("common_name", 0.0);
++  reporter->mark("mark1", 1.0);
++  reporter->mark("mark2", 2.0);
+ 
+-  reporter.measure("common_name", 0.0, 2.0);
+-  reporter.measure("measure1", 0.0, 2.0, 4.0);
+-  reporter.measure("measure2", 0.0, 0.0, std::nullopt, "mark1", "mark2");
+-  reporter.measure("measure3", 0.0, 0.0, 5.0, "mark1");
+-  reporter.measure("measure4", 1.5, 0.0, std::nullopt, std::nullopt, "mark2");
++  reporter->measure("common_name", 0.0, 2.0);
++  reporter->measure("measure1", 0.0, 2.0, 4.0);
++  reporter->measure("measure2", 0.0, 0.0, std::nullopt, "mark1", "mark2");
++  reporter->measure("measure3", 0.0, 0.0, 5.0, "mark1");
++  reporter->measure("measure4", 1.5, 0.0, std::nullopt, std::nullopt, "mark2");
+ 
+-  res = reporter.popPendingEntries();
++  res = reporter->popPendingEntries();
+   ASSERT_EQ(0, res.droppedEntriesCount);
+   ASSERT_EQ(8, res.entries.size());
+ 
+-  reporter.getEntries(PerformanceEntryType::MARK);
+-  const auto marks = reporter.getEntries(PerformanceEntryType::MARK);
++  reporter->getEntries(PerformanceEntryType::MARK);
++  const auto marks = reporter->getEntries(PerformanceEntryType::MARK);
+ 
+-  const auto measures = reporter.getEntries(PerformanceEntryType::MEASURE);
+-  const auto common_name = reporter.getEntries(std::nullopt, "common_name");
++  const auto measures = reporter->getEntries(PerformanceEntryType::MEASURE);
++  const auto common_name = reporter->getEntries(std::nullopt, "common_name");
+ 
+-  reporter.getEntries();
+-  const auto all = reporter.getEntries();
++  reporter->getEntries();
++  const auto all = reporter->getEntries();
+ 
+   ASSERT_EQ(
+       std::vector(
+@@ -319,26 +319,26 @@ TEST(PerformanceEntryReporter, PerformanceEntryReporterTestGetEntries) {
+ }
+ 
+ TEST(PerformanceEntryReporter, PerformanceEntryReporterTestClearEntries) {
+-  auto& reporter = PerformanceEntryReporter::getInstance();
++  auto reporter = PerformanceEntryReporter::getInstance();
+ 
+-  reporter.stopReporting();
+-  reporter.clearEntries();
++  reporter->stopReporting();
++  reporter->clearEntries();
+ 
+-  reporter.startReporting(PerformanceEntryType::MARK);
+-  reporter.startReporting(PerformanceEntryType::MEASURE);
++  reporter->startReporting(PerformanceEntryType::MARK);
++  reporter->startReporting(PerformanceEntryType::MEASURE);
+ 
+-  reporter.mark("common_name", 0.0);
+-  reporter.mark("mark1", 1.0);
+-  reporter.mark("mark2", 2.0);
++  reporter->mark("common_name", 0.0);
++  reporter->mark("mark1", 1.0);
++  reporter->mark("mark2", 2.0);
+ 
+-  reporter.measure("common_name", 0.0, 2.0);
+-  reporter.measure("measure1", 0.0, 2.0, 4.0);
+-  reporter.measure("measure2", 0.0, 0.0, std::nullopt, "mark1", "mark2");
+-  reporter.measure("measure3", 0.0, 0.0, 5.0, "mark1");
+-  reporter.measure("measure4", 1.5, 0.0, std::nullopt, std::nullopt, "mark2");
++  reporter->measure("common_name", 0.0, 2.0);
++  reporter->measure("measure1", 0.0, 2.0, 4.0);
++  reporter->measure("measure2", 0.0, 0.0, std::nullopt, "mark1", "mark2");
++  reporter->measure("measure3", 0.0, 0.0, 5.0, "mark1");
++  reporter->measure("measure4", 1.5, 0.0, std::nullopt, std::nullopt, "mark2");
+ 
+-  reporter.clearEntries(std::nullopt, "common_name");
+-  auto e1 = reporter.getEntries();
++  reporter->clearEntries(std::nullopt, "common_name");
++  auto e1 = reporter->getEntries();
+ 
+   ASSERT_EQ(6, e1.size());
+   ASSERT_EQ(
+@@ -346,8 +346,8 @@ TEST(PerformanceEntryReporter, PerformanceEntryReporterTestClearEntries) {
+           {"mark1", "mark2", "measure1", "measure2", "measure3", "measure4"}),
+       getNames(e1));
+ 
+-  reporter.clearEntries(PerformanceEntryType::MARK, "mark1");
+-  auto e2 = reporter.getEntries();
++  reporter->clearEntries(PerformanceEntryType::MARK, "mark1");
++  auto e2 = reporter->getEntries();
+ 
+   ASSERT_EQ(5, e2.size());
+   ASSERT_EQ(
+@@ -355,14 +355,14 @@ TEST(PerformanceEntryReporter, PerformanceEntryReporterTestClearEntries) {
+           {"mark2", "measure1", "measure2", "measure3", "measure4"}),
+       getNames(e2));
+ 
+-  reporter.clearEntries(PerformanceEntryType::MEASURE);
+-  auto e3 = reporter.getEntries();
++  reporter->clearEntries(PerformanceEntryType::MEASURE);
++  auto e3 = reporter->getEntries();
+ 
+   ASSERT_EQ(1, e3.size());
+   ASSERT_EQ(std::vector<std::string>({"mark2"}), getNames(e3));
+ 
+-  reporter.clearEntries();
+-  auto e4 = reporter.getEntries();
++  reporter->clearEntries();
++  auto e4 = reporter->getEntries();
+ 
+   ASSERT_EQ(0, e4.size());
+ }
+diff --git a/packages/react-native/ReactCommon/react/renderer/core/EventDispatcher.cpp b/packages/react-native/ReactCommon/react/renderer/core/EventDispatcher.cpp
+index 2c8175dc0aa..5b95b5d62b3 100644
+--- a/packages/react-native/ReactCommon/react/renderer/core/EventDispatcher.cpp
++++ b/packages/react-native/ReactCommon/react/renderer/core/EventDispatcher.cpp
+@@ -9,7 +9,6 @@
+ #include <cxxreact/JSExecutor.h>
+ #include <react/featureflags/ReactNativeFeatureFlags.h>
+ #include <react/renderer/core/StateUpdate.h>
+-#include "EventLogger.h"
+ 
+ #include "EventQueue.h"
+ #include "RawEvent.h"
+@@ -21,12 +20,14 @@ EventDispatcher::EventDispatcher(
+     const EventBeat::Factory& asynchronousEventBeatFactory,
+     const EventBeat::SharedOwnerBox& ownerBox,
+     RuntimeScheduler& runtimeScheduler,
+-    StatePipe statePipe)
++    StatePipe statePipe,
++    std::weak_ptr<EventLogger> eventLogger)
+     : eventQueue_(EventQueue(
+           eventProcessor,
+           asynchronousEventBeatFactory(ownerBox),
+           runtimeScheduler)),
+-      statePipe_(std::move(statePipe)) {}
++      statePipe_(std::move(statePipe)),
++      eventLogger_(std::move(eventLogger)) {}
+ 
+ void EventDispatcher::dispatchEvent(RawEvent&& rawEvent) const {
+   // Allows the event listener to interrupt default event dispatch
+@@ -34,7 +35,7 @@ void EventDispatcher::dispatchEvent(RawEvent&& rawEvent) const {
+     return;
+   }
+ 
+-  auto eventLogger = getEventLogger();
++  auto eventLogger = eventLogger_.lock();
+   if (eventLogger != nullptr) {
+     rawEvent.loggingTag = eventLogger->onEventStart(rawEvent.type);
+   }
+diff --git a/packages/react-native/ReactCommon/react/renderer/core/EventDispatcher.h b/packages/react-native/ReactCommon/react/renderer/core/EventDispatcher.h
+index d0331166cef..f339ba6d831 100644
+--- a/packages/react-native/ReactCommon/react/renderer/core/EventDispatcher.h
++++ b/packages/react-native/ReactCommon/react/renderer/core/EventDispatcher.h
+@@ -9,10 +9,12 @@
+ 
+ #include <react/renderer/core/EventBeat.h>
+ #include <react/renderer/core/EventListener.h>
++#include <react/renderer/core/EventLogger.h>
+ #include <react/renderer/core/EventQueue.h>
+ #include <react/renderer/core/EventQueueProcessor.h>
+ #include <react/renderer/core/StatePipe.h>
+ #include <react/renderer/core/StateUpdate.h>
++#include <memory>
+ 
+ namespace facebook::react {
+ 
+@@ -33,7 +35,8 @@ class EventDispatcher {
+       const EventBeat::Factory& asynchronousEventBeatFactory,
+       const EventBeat::SharedOwnerBox& ownerBox,
+       RuntimeScheduler& runtimeScheduler,
+-      StatePipe statePipe);
++      StatePipe statePipe,
++      std::weak_ptr<EventLogger> eventLogger);
+ 
+   /*
+    * Dispatches a raw event with given priority using event-delivery pipe.
+@@ -74,6 +77,7 @@ class EventDispatcher {
+   const StatePipe statePipe_;
+ 
+   mutable EventListenerContainer eventListeners_;
++  const std::weak_ptr<EventLogger> eventLogger_;
+ };
+ 
+ } // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/react/renderer/core/EventLogger.cpp b/packages/react-native/ReactCommon/react/renderer/core/EventLogger.cpp
+deleted file mode 100644
+index 2bb552ea9b8..00000000000
+--- a/packages/react-native/ReactCommon/react/renderer/core/EventLogger.cpp
++++ /dev/null
+@@ -1,22 +0,0 @@
+-/*
+- * Copyright (c) Meta Platforms, Inc. and affiliates.
+- *
+- * This source code is licensed under the MIT license found in the
+- * LICENSE file in the root directory of this source tree.
+- */
+-
+-#include "EventLogger.h"
+-
+-namespace facebook::react {
+-
+-EventLogger* eventLogger;
+-
+-void setEventLogger(EventLogger* logger) {
+-  eventLogger = logger;
+-}
+-
+-EventLogger* getEventLogger() {
+-  return eventLogger;
+-}
+-
+-} // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/react/renderer/core/EventLogger.h b/packages/react-native/ReactCommon/react/renderer/core/EventLogger.h
+index ba0cabd1776..d0fddea4ba7 100644
+--- a/packages/react-native/ReactCommon/react/renderer/core/EventLogger.h
++++ b/packages/react-native/ReactCommon/react/renderer/core/EventLogger.h
+@@ -12,6 +12,7 @@
+ namespace facebook::react {
+ 
+ using EventTag = unsigned int;
++const EventTag EMPTY_EVENT_TAG = 0;
+ 
+ /*
+  * Interface for logging discrete events (such as pointerenter/leave),
+@@ -40,7 +41,4 @@ class EventLogger {
+   virtual void onEventProcessingEnd(EventTag tag) = 0;
+ };
+ 
+-void setEventLogger(EventLogger* eventLogger);
+-EventLogger* getEventLogger();
+-
+ } // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/react/renderer/core/EventQueueProcessor.cpp b/packages/react-native/ReactCommon/react/renderer/core/EventQueueProcessor.cpp
+index a49882f438b..6866422b17f 100644
+--- a/packages/react-native/ReactCommon/react/renderer/core/EventQueueProcessor.cpp
++++ b/packages/react-native/ReactCommon/react/renderer/core/EventQueueProcessor.cpp
+@@ -17,10 +17,12 @@ namespace facebook::react {
+ EventQueueProcessor::EventQueueProcessor(
+     EventPipe eventPipe,
+     EventPipeConclusion eventPipeConclusion,
+-    StatePipe statePipe)
++    StatePipe statePipe,
++    std::weak_ptr<EventLogger> eventLogger)
+     : eventPipe_(std::move(eventPipe)),
+       eventPipeConclusion_(std::move(eventPipeConclusion)),
+-      statePipe_(std::move(statePipe)) {}
++      statePipe_(std::move(statePipe)),
++      eventLogger_(std::move(eventLogger)) {}
+ 
+ void EventQueueProcessor::flushEvents(
+     jsi::Runtime& runtime,
+@@ -52,7 +54,7 @@ void EventQueueProcessor::flushEvents(
+       reactPriority = ReactEventPriority::Discrete;
+     }
+ 
+-    auto eventLogger = getEventLogger();
++    auto eventLogger = eventLogger_.lock();
+     if (eventLogger != nullptr) {
+       eventLogger->onEventProcessingStart(event.loggingTag);
+     }
+diff --git a/packages/react-native/ReactCommon/react/renderer/core/EventQueueProcessor.h b/packages/react-native/ReactCommon/react/renderer/core/EventQueueProcessor.h
+index bfcad84c155..5c1c9f2b0d1 100644
+--- a/packages/react-native/ReactCommon/react/renderer/core/EventQueueProcessor.h
++++ b/packages/react-native/ReactCommon/react/renderer/core/EventQueueProcessor.h
+@@ -22,7 +22,8 @@ class EventQueueProcessor {
+   EventQueueProcessor(
+       EventPipe eventPipe,
+       EventPipeConclusion eventPipeConclusion,
+-      StatePipe statePipe);
++      StatePipe statePipe,
++      std::weak_ptr<EventLogger> eventLogger);
+ 
+   void flushEvents(jsi::Runtime& runtime, std::vector<RawEvent>&& events) const;
+   void flushStateUpdates(std::vector<StateUpdate>&& states) const;
+@@ -31,6 +32,7 @@ class EventQueueProcessor {
+   const EventPipe eventPipe_;
+   const EventPipeConclusion eventPipeConclusion_;
+   const StatePipe statePipe_;
++  const std::weak_ptr<EventLogger> eventLogger_;
+ 
+   mutable bool hasContinuousEventStarted_{false};
+ };
+diff --git a/packages/react-native/ReactCommon/react/renderer/core/tests/EventQueueProcessorTest.cpp b/packages/react-native/ReactCommon/react/renderer/core/tests/EventQueueProcessorTest.cpp
+index 1d673222b93..eaa4404e768 100644
+--- a/packages/react-native/ReactCommon/react/renderer/core/tests/EventQueueProcessorTest.cpp
++++ b/packages/react-native/ReactCommon/react/renderer/core/tests/EventQueueProcessorTest.cpp
+@@ -8,15 +8,25 @@
+ #include <gtest/gtest.h>
+ #include <hermes/hermes.h>
+ #include <jsi/jsi.h>
++#include <react/renderer/core/EventLogger.h>
+ #include <react/renderer/core/EventPipe.h>
+ #include <react/renderer/core/EventQueueProcessor.h>
+ #include <react/renderer/core/StatePipe.h>
+ #include <react/renderer/core/ValueFactoryEventPayload.h>
+ 
+ #include <memory>
++#include <string_view>
+ 
+ namespace facebook::react {
+ 
++class MockEventLogger : public EventLogger {
++  EventTag onEventStart(std::string_view /*name*/) override {
++    return EMPTY_EVENT_TAG;
++  }
++  void onEventProcessingStart(EventTag /*tag*/) override {}
++  void onEventProcessingEnd(EventTag /*tag*/) override {}
++};
++
+ class EventQueueProcessorTest : public testing::Test {
+  protected:
+   void SetUp() override {
+@@ -34,9 +44,10 @@ class EventQueueProcessorTest : public testing::Test {
+ 
+     auto dummyEventPipeConclusion = [](jsi::Runtime& runtime) {};
+     auto dummyStatePipe = [](const StateUpdate& stateUpdate) {};
++    auto mockEventLogger = std::make_shared<MockEventLogger>();
+ 
+     eventProcessor_ = std::make_unique<EventQueueProcessor>(
+-        eventPipe, dummyEventPipeConclusion, dummyStatePipe);
++        eventPipe, dummyEventPipeConclusion, dummyStatePipe, mockEventLogger);
+   }
+ 
+   std::unique_ptr<facebook::hermes::HermesRuntime> runtime_;
+diff --git a/packages/react-native/ReactCommon/react/renderer/observers/events/CMakeLists.txt b/packages/react-native/ReactCommon/react/renderer/observers/events/CMakeLists.txt
+new file mode 100644
+index 00000000000..5c5e61f3658
+--- /dev/null
++++ b/packages/react-native/ReactCommon/react/renderer/observers/events/CMakeLists.txt
+@@ -0,0 +1,25 @@
++# Copyright (c) Meta Platforms, Inc. and affiliates.
++#
++# This source code is licensed under the MIT license found in the
++# LICENSE file in the root directory of this source tree.
++
++cmake_minimum_required(VERSION 3.13)
++set(CMAKE_VERBOSE_MAKEFILE on)
++
++add_compile_options(
++        -fexceptions
++        -frtti
++        -std=c++20
++        -Wall
++        -Wpedantic
++        -DLOG_TAG=\"Fabric\")
++
++file(GLOB react_render_observers_events_SRC CONFIGURE_DEPENDS *.cpp)
++add_library(react_render_observers_events SHARED ${react_render_observers_events_SRC})
++
++target_include_directories(react_render_observers_events PUBLIC ${REACT_COMMON_DIR})
++target_link_libraries(react_render_observers_events
++        react_performance_timeline
++        react_render_core
++        react_render_uimanager
++        react_utils)
+diff --git a/packages/react-native/ReactCommon/react/renderer/observers/events/EventPerformanceLogger.cpp b/packages/react-native/ReactCommon/react/renderer/observers/events/EventPerformanceLogger.cpp
+new file mode 100644
+index 00000000000..73cf365de41
+--- /dev/null
++++ b/packages/react-native/ReactCommon/react/renderer/observers/events/EventPerformanceLogger.cpp
+@@ -0,0 +1,200 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++#include "EventPerformanceLogger.h"
++
++#include <react/utils/CoreFeatures.h>
++#include <unordered_map>
++
++namespace facebook::react {
++
++namespace {
++
++struct StrKey {
++  uint32_t key;
++  StrKey(std::string_view s) : key(std::hash<std::string_view>{}(s)) {}
++
++  bool operator==(const StrKey& rhs) const {
++    return key == rhs.key;
++  }
++};
++
++struct StrKeyHash {
++  constexpr size_t operator()(const StrKey& strKey) const {
++    return static_cast<size_t>(strKey.key);
++  }
++};
++
++// Supported events for reporting, see
++// https://www.w3.org/TR/event-timing/#sec-events-exposed
++// Not all of these are currently supported by RN, but we map them anyway for
++// future-proofing.
++using SupportedEventTypeRegistry =
++    std::unordered_map<StrKey, std::string_view, StrKeyHash>;
++
++const SupportedEventTypeRegistry& getSupportedEvents() {
++  static SupportedEventTypeRegistry SUPPORTED_EVENTS = {
++      {StrKey("topAuxClick"), "auxclick"},
++      {StrKey("topClick"), "click"},
++      {StrKey("topContextMenu"), "contextmenu"},
++      {StrKey("topDblClick"), "dblclick"},
++      {StrKey("topMouseDown"), "mousedown"},
++      {StrKey("topMouseEnter"), "mouseenter"},
++      {StrKey("topMouseLeave"), "mouseleave"},
++      {StrKey("topMouseOut"), "mouseout"},
++      {StrKey("topMouseOver"), "mouseover"},
++      {StrKey("topMouseUp"), "mouseup"},
++      {StrKey("topPointerOver"), "pointerover"},
++      {StrKey("topPointerEnter"), "pointerenter"},
++      {StrKey("topPointerDown"), "pointerdown"},
++      {StrKey("topPointerUp"), "pointerup"},
++      {StrKey("topPointerCancel"), "pointercancel"},
++      {StrKey("topPointerOut"), "pointerout"},
++      {StrKey("topPointerLeave"), "pointerleave"},
++      {StrKey("topGotPointerCapture"), "gotpointercapture"},
++      {StrKey("topLostPointerCapture"), "lostpointercapture"},
++      {StrKey("topTouchStart"), "touchstart"},
++      {StrKey("topTouchEnd"), "touchend"},
++      {StrKey("topTouchCancel"), "touchcancel"},
++      {StrKey("topKeyDown"), "keydown"},
++      {StrKey("topKeyPress"), "keypress"},
++      {StrKey("topKeyUp"), "keyup"},
++      {StrKey("topBeforeInput"), "beforeinput"},
++      {StrKey("topInput"), "input"},
++      {StrKey("topCompositionStart"), "compositionstart"},
++      {StrKey("topCompositionUpdate"), "compositionupdate"},
++      {StrKey("topCompositionEnd"), "compositionend"},
++      {StrKey("topDragStart"), "dragstart"},
++      {StrKey("topDragEnd"), "dragend"},
++      {StrKey("topDragEnter"), "dragenter"},
++      {StrKey("topDragLeave"), "dragleave"},
++      {StrKey("topDragOver"), "dragover"},
++      {StrKey("topDrop"), "drop"},
++  };
++  return SUPPORTED_EVENTS;
++}
++
++} // namespace
++
++EventPerformanceLogger::EventPerformanceLogger(
++    std::weak_ptr<PerformanceEntryReporter> performanceEntryReporter)
++    : performanceEntryReporter_(std::move(performanceEntryReporter)) {}
++
++EventTag EventPerformanceLogger::onEventStart(std::string_view name) {
++  auto performanceEntryReporter = performanceEntryReporter_.lock();
++  if (performanceEntryReporter == nullptr) {
++    return EMPTY_EVENT_TAG;
++  }
++
++  const auto& supportedEvents = getSupportedEvents();
++  auto it = supportedEvents.find(name);
++  if (it == supportedEvents.end()) {
++    return 0;
++  }
++
++  auto reportedName = it->second;
++
++  auto eventTag = createEventTag();
++
++  auto timeStamp = performanceEntryReporter->getCurrentTimeStamp();
++  {
++    std::lock_guard lock(eventsInFlightMutex_);
++    eventsInFlight_.emplace(eventTag, EventEntry{reportedName, timeStamp, 0.0});
++  }
++  return eventTag;
++}
++
++void EventPerformanceLogger::onEventProcessingStart(EventTag tag) {
++  auto performanceEntryReporter = performanceEntryReporter_.lock();
++  if (performanceEntryReporter == nullptr) {
++    return;
++  }
++
++  auto timeStamp = performanceEntryReporter->getCurrentTimeStamp();
++  {
++    std::lock_guard lock(eventsInFlightMutex_);
++    auto it = eventsInFlight_.find(tag);
++    if (it != eventsInFlight_.end()) {
++      it->second.processingStartTime = timeStamp;
++    }
++  }
++}
++
++void EventPerformanceLogger::onEventProcessingEnd(EventTag tag) {
++  auto performanceEntryReporter = performanceEntryReporter_.lock();
++  if (performanceEntryReporter == nullptr) {
++    return;
++  }
++
++  auto timeStamp = performanceEntryReporter->getCurrentTimeStamp();
++  {
++    std::lock_guard lock(eventsInFlightMutex_);
++    auto it = eventsInFlight_.find(tag);
++    if (it == eventsInFlight_.end()) {
++      return;
++    }
++    auto& entry = it->second;
++    entry.processingEndTime = timeStamp;
++
++    if (CoreFeatures::enableReportEventPaintTime) {
++      // If reporting paint time, don't send the entry just yet and wait for the
++      // mount hook callback to be called
++      return;
++    }
++
++    const auto& name = entry.name;
++
++    performanceEntryReporter->logEventEntry(
++        std::string(name),
++        entry.startTime,
++        timeStamp - entry.startTime,
++        entry.processingStartTime,
++        entry.processingEndTime,
++        entry.interactionId);
++    eventsInFlight_.erase(it);
++  }
++}
++
++void EventPerformanceLogger::shadowTreeDidMount(
++    const RootShadowNode::Shared& /*rootShadowNode*/,
++    double mountTime) noexcept {
++  if (!CoreFeatures::enableReportEventPaintTime) {
++    return;
++  }
++
++  auto performanceEntryReporter = performanceEntryReporter_.lock();
++  if (performanceEntryReporter == nullptr) {
++    return;
++  }
++
++  std::lock_guard lock(eventsInFlightMutex_);
++  auto it = eventsInFlight_.begin();
++  while (it != eventsInFlight_.end()) {
++    const auto& entry = it->second;
++    if (entry.processingEndTime == 0.0 || entry.processingEndTime > mountTime) {
++      // This mount doesn't correspond to the event
++      ++it;
++      continue;
++    }
++
++    performanceEntryReporter->logEventEntry(
++        std::string(entry.name),
++        entry.startTime,
++        mountTime - entry.startTime,
++        entry.processingStartTime,
++        entry.processingEndTime,
++        entry.interactionId);
++    it = eventsInFlight_.erase(it);
++  }
++}
++
++EventTag EventPerformanceLogger::createEventTag() {
++  sCurrentEventTag_++;
++  return sCurrentEventTag_;
++}
++
++} // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/react/renderer/observers/events/EventPerformanceLogger.h b/packages/react-native/ReactCommon/react/renderer/observers/events/EventPerformanceLogger.h
+new file mode 100644
+index 00000000000..9badd9c758a
+--- /dev/null
++++ b/packages/react-native/ReactCommon/react/renderer/observers/events/EventPerformanceLogger.h
+@@ -0,0 +1,63 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++#pragma once
++
++#include <react/performance/timeline/PerformanceEntryReporter.h>
++#include <react/renderer/core/EventLogger.h>
++#include <react/renderer/uimanager/UIManagerMountHook.h>
++#include <memory>
++#include <mutex>
++#include <string_view>
++#include <unordered_map>
++
++namespace facebook::react {
++
++class EventPerformanceLogger : public EventLogger, public UIManagerMountHook {
++ public:
++  explicit EventPerformanceLogger(
++      std::weak_ptr<PerformanceEntryReporter> performanceEntryReporter);
++
++#pragma mark - EventLogger
++
++  EventTag onEventStart(std::string_view name) override;
++  void onEventProcessingStart(EventTag tag) override;
++  void onEventProcessingEnd(EventTag tag) override;
++
++#pragma mark - UIManagerMountHook
++
++  void shadowTreeDidMount(
++      const RootShadowNode::Shared& rootShadowNode,
++      double mountTime) noexcept override;
++
++ private:
++  struct EventEntry {
++    std::string_view name;
++    DOMHighResTimeStamp startTime{0.0};
++    DOMHighResTimeStamp processingStartTime{0.0};
++    DOMHighResTimeStamp processingEndTime{0.0};
++
++    // TODO: Define the way to assign interaction IDs to the event chains
++    // (T141358175)
++    PerformanceEntryInteractionId interactionId{0};
++  };
++
++  // Registry to store the events that are currently ongoing.
++  // Note that we could probably use a more efficient container for that,
++  // but since we only report discrete events, the volume is normally low,
++  // so a hash map should be just fine.
++  std::unordered_map<EventTag, EventEntry> eventsInFlight_;
++  std::mutex eventsInFlightMutex_;
++
++  std::weak_ptr<PerformanceEntryReporter> performanceEntryReporter_;
++
++  EventTag sCurrentEventTag_{EMPTY_EVENT_TAG};
++
++  EventTag createEventTag();
++};
++
++} // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/react/renderer/scheduler/CMakeLists.txt b/packages/react-native/ReactCommon/react/renderer/scheduler/CMakeLists.txt
+index 44fda8bc85f..67aed63f794 100644
+--- a/packages/react-native/ReactCommon/react/renderer/scheduler/CMakeLists.txt
++++ b/packages/react-native/ReactCommon/react/renderer/scheduler/CMakeLists.txt
+@@ -26,11 +26,13 @@ target_link_libraries(react_render_scheduler
+         react_config
+         react_debug
+         react_featureflags
++        react_performance_timeline
+         react_render_componentregistry
+         react_render_core
+         react_render_debug
+         react_render_graphics
+         react_render_mounting
++        react_render_observers_events
+         react_render_runtimescheduler
+         react_render_uimanager
+         react_utils
+diff --git a/packages/react-native/ReactCommon/react/renderer/scheduler/Scheduler.cpp b/packages/react-native/ReactCommon/react/renderer/scheduler/Scheduler.cpp
+index 7a34d992dcd..e85ae3d2cc8 100644
+--- a/packages/react-native/ReactCommon/react/renderer/scheduler/Scheduler.cpp
++++ b/packages/react-native/ReactCommon/react/renderer/scheduler/Scheduler.cpp
+@@ -43,6 +43,14 @@ Scheduler::Scheduler(
+   // Creating a container for future `EventDispatcher` instance.
+   eventDispatcher_ = std::make_shared<std::optional<const EventDispatcher>>();
+ 
++  // TODO(T182293888): remove singleton from PerformanceEntryReporter and move
++  // creation here.
++  auto performanceEntryReporter = PerformanceEntryReporter::getInstance();
++  performanceEntryReporter_ = performanceEntryReporter;
++
++  eventPerformanceLogger_ =
++      std::make_shared<EventPerformanceLogger>(performanceEntryReporter_);
++
+   auto uiManager = std::make_shared<UIManager>(
+       runtimeExecutor_, schedulerToolbox.backgroundExecutor, contextContainer_);
+   auto eventOwnerBox = std::make_shared<EventBeat::OwnerBox>();
+@@ -88,11 +96,13 @@ Scheduler::Scheduler(
+   // Creating an `EventDispatcher` instance inside the already allocated
+   // container (inside the optional).
+   eventDispatcher_->emplace(
+-      EventQueueProcessor(eventPipe, eventPipeConclusion, statePipe),
++      EventQueueProcessor(
++          eventPipe, eventPipeConclusion, statePipe, eventPerformanceLogger_),
+       schedulerToolbox.asynchronousEventBeatFactory,
+       eventOwnerBox,
+       *runtimeScheduler,
+-      statePipe);
++      statePipe,
++      eventPerformanceLogger_);
+ 
+   // Casting to `std::shared_ptr<EventDispatcher const>`.
+   auto eventDispatcher =
+@@ -150,6 +160,10 @@ Scheduler::Scheduler(
+ 
+   CoreFeatures::enableReportEventPaintTime = reactNativeConfig_->getBool(
+       "rn_responsiveness_performance:enable_paint_time_reporting");
++
++  if (CoreFeatures::enableReportEventPaintTime) {
++    uiManager->registerMountHook(*eventPerformanceLogger_);
++  }
+ }
+ 
+ Scheduler::~Scheduler() {
+diff --git a/packages/react-native/ReactCommon/react/renderer/scheduler/Scheduler.h b/packages/react-native/ReactCommon/react/renderer/scheduler/Scheduler.h
+index 2df6472ab6a..265aebc9a65 100644
+--- a/packages/react-native/ReactCommon/react/renderer/scheduler/Scheduler.h
++++ b/packages/react-native/ReactCommon/react/renderer/scheduler/Scheduler.h
+@@ -12,6 +12,7 @@
+ 
+ #include <ReactCommon/RuntimeExecutor.h>
+ #include <react/config/ReactNativeConfig.h>
++#include <react/performance/timeline/PerformanceEntryReporter.h>
+ #include <react/renderer/componentregistry/ComponentDescriptorFactory.h>
+ #include <react/renderer/components/root/RootComponentDescriptor.h>
+ #include <react/renderer/core/ComponentDescriptor.h>
+@@ -19,6 +20,7 @@
+ #include <react/renderer/core/EventListener.h>
+ #include <react/renderer/core/LayoutConstraints.h>
+ #include <react/renderer/mounting/MountingOverrideDelegate.h>
++#include <react/renderer/observers/events/EventPerformanceLogger.h>
+ #include <react/renderer/scheduler/InspectorData.h>
+ #include <react/renderer/scheduler/SchedulerDelegate.h>
+ #include <react/renderer/scheduler/SchedulerToolbox.h>
+@@ -131,6 +133,9 @@ class Scheduler final : public UIManagerDelegate {
+    */
+   std::shared_ptr<std::optional<const EventDispatcher>> eventDispatcher_;
+ 
++  std::shared_ptr<PerformanceEntryReporter> performanceEntryReporter_;
++  std::shared_ptr<EventPerformanceLogger> eventPerformanceLogger_;
++
+   /**
+    * Hold onto ContextContainer. See SchedulerToolbox.
+    * Must not be nullptr.
+diff --git a/packages/react-native/scripts/react_native_pods.rb b/packages/react-native/scripts/react_native_pods.rb
+index 84623bd1237..72ac1af94e4 100644
+--- a/packages/react-native/scripts/react_native_pods.rb
++++ b/packages/react-native/scripts/react_native_pods.rb
+@@ -145,6 +145,7 @@ def use_react_native! (
+   pod 'React-jsinspector', :path => "#{prefix}/ReactCommon/jsinspector-modern"
+ 
+   pod 'React-callinvoker', :path => "#{prefix}/ReactCommon/callinvoker"
++  pod 'React-performancetimeline', :path => "#{prefix}/ReactCommon/react/performance/timeline"
+   pod 'React-runtimeexecutor', :path => "#{prefix}/ReactCommon/runtimeexecutor"
+   pod 'React-runtimescheduler', :path => "#{prefix}/ReactCommon/react/renderer/runtimescheduler"
+   pod 'React-rendererdebug', :path => "#{prefix}/ReactCommon/react/renderer/debug"

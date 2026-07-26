@@ -1,0 +1,53 @@
+repo: gitpod
+base_commit: 92d622f288b6139cb71f1ba5ae0d09faed7c0c43
+commit: 8f643e775bdfc76428616a91e670081c60bb1175
+patch_stored: false
+gold:
+- path: components/public-api/buf.gen.yaml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/public-api/generate.sh
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/public-api/gitpod/experimental/v1/dummy.proto
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/public-api/gitpod/v1/organization.proto
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/public-api/gitpod/v1/workspace.proto
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/public-api/java/BUILD.yaml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/public-api/java/build.gradle.kts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/public-api/java/settings.gradle.kts
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: components/public-api/go/v1/*.pb.go
+- path: components/public-api/java/src/main/java/io/gitpod/publicapi/experimental/v1/Workspaces.java
+- path: components/public-api/java/src/main/java/io/gitpod/publicapi/v1/OrganizationOuterClass.java
+- path: components/public-api/java/src/main/java/io/gitpod/publicapi/v1/WorkspaceOuterClass.java
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'Complete hang: ctx.md is 0 bytes despite meta.tsv showing 147 files / 332k inserted lines. The
+  bulk of the diff (>99%) is auto-generated Java/Kotlin protobuf client code (e.g. WorkspaceOuterClass.java
+  alone is 61k lines), but the human-authored delta is small and cheap: ~30 one-line `option java_package=...`/kotlin
+  additions across .proto files plus a handful of build/gradle config files. A correct tool should trivially
+  surface those and treat the generated Java/Kotlin sources as out-of-scope by path heuristic rather than
+  hang trying to process/rank them. Zero output means zero comprehension delivered for a change whose
+  actual intent is a two-sentence summary.'

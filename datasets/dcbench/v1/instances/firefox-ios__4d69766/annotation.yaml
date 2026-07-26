@@ -1,0 +1,64 @@
+repo: firefox-ios
+base_commit: 2bf928c29a5375f12ef850890db34b322403027b
+commit: 4d69766b91c9832dde93f6b02c9c0840429ec314
+patch_stored: true
+gold:
+  - path: BrowserKit/Sources/Redux/Store.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Core of the change: actionQueue becomes [(action: Either<Action, ModernAction>, windowUUID: WindowUUID)], adds dispatch(_ action:forWindowUUID:), and executeAction switches on the Either case with TODO stubs for the reducer/middleware migration."
+  - path: BrowserKit/Sources/Redux/Action.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Defines the new ModernAction protocol (with auto-generated description via Mirror reflection) that Store.dispatch(_ action:forWindowUUID:) and the actionQueue tuple are built around."
+  - path: BrowserKit/Sources/Common/Utilities/Either.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Defines the Either<Left, Right> enum (.legacy/.modern cases) that Store.swift uses to type the actionQueue and branch in executeAction."
+  - path: BrowserKit/Sources/Redux/DispatchStore.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "DispatchStore protocol moves @MainActor from per-method annotations to the protocol declaration itself, and carries the commented-out TODO for the future dispatch(_ action:forWindowUUID:) protocol requirement that Store already implements ahead of the protocol."
+  - path: BrowserKit/Tests/ReduxTests/Utilities/FakeReduxModernAction.swift
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: "Mock enum conforming to ModernAction with varied associated-value shapes (labelled/unlabelled/mixed/nested), used by ActionTests.swift to exercise the Mirror-based description generator."
+  - path: BrowserKit/Tests/ReduxTests/ActionTests.swift
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: "Covers ModernAction's default description implementation added in Action.swift across no-payload, labelled, unlabelled, mixed, and nested-object cases."
+  - path: BrowserKit/Tests/ReduxTests/StoreTests.swift
+    tier: helpful
+    role: test
+    in_diff: false
+    rationale: "Pre-existing tests that dispatch legacy Action values through Store.dispatch(_ action:), the exact path now re-wrapped as .legacy(action) in the tuple-based actionQueue, so they pin down that the refactor preserves legacy dispatch behavior."
+  - path: BrowserKit/Sources/Common/WindowUUID+Extensions.swift
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: "Defines public typealias WindowUUID = UUID, the type newly threaded explicitly through Store's actionQueue tuple and the new dispatch(_ action:forWindowUUID:) signature."
+forbidden:
+  - path: BrowserKit/Sources/Redux/Middleware.swift
+    reason: "sibling file in the same Redux package referenced by executeAction's middleware(newState, legacyAction) call, but its Middleware<State> typealias is unchanged and not needed to understand the ModernAction migration"
+  - path: BrowserKit/Sources/Redux/Reducer.swift
+    reason: "sibling file whose Reducer<State> typealias is invoked unchanged in executeAction's .legacy branch; self-evident from call-site, not modified or essential to the migration"
+  - path: BrowserKit/Tests/ReduxTests/ReduxIntegrationTests.swift
+    reason: "same test directory as the new ActionTests.swift but exercises unrelated reducer/middleware integration paths, no reference to ModernAction or Either"
+  - path: SampleBrowser/SampleBrowser/Extensions/WindowUUID+Extension.swift
+    reason: "near-duplicate WindowUUID typealias in a different target (SampleBrowser, not Client/BrowserKit) that the Redux package does not depend on"
+nontrivial_gold_count: 2
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 6
+  description: 'Redux action migration part 1: add ModernAction to Redux package — package API + consumer
+    coupling, Swift-only'
+notes: "Adds ModernAction (Sendable protocol with Mirror-based auto description) and a generic Either<Left,Right> utility, then reworks Store's actionQueue to carry Either<Action, ModernAction> tuples with a WindowUUID so a future dispatch(_ action:forWindowUUID:) path can coexist with the legacy dispatch(_ action:) path; the .modern branch is a TODO stub (no reducer/middleware wired yet). Purely additive/self-contained: no other type in the repo conforms to DispatchStore and nothing outside this package references ModernAction or Either yet, so no compile-time consumer coupling exists beyond what's in the diff."

@@ -1,0 +1,1161 @@
+From ce718e31f4495b178b4ae8600c5145ccf24252f8 Mon Sep 17 00:00:00 2001
+From: XiaowenHu96 <me@xiaowenhu.com>
+Date: Sat, 27 Jun 2026 10:41:12 +0800
+Subject: [PATCH] feat(api): add nvim_win_resize()
+
+Ref #6645
+
+Problem:
+When a window is resized it takes space from the window right/below first,
+and only falls back to the window left/above when there is no more room.
+Sometimes a user wants the space to come from a specific direction.
+
+Solution:
+Add nvim_win_resize(win, width, height, {anchor}) which resizes a window
+with a choosable anchor edge, letting a window grow leftwards or upwards
+by taking space from the window to the left or above first. The default
+anchor reproduces nvim_win_set_width()/nvim_win_set_height().
+---
+ runtime/doc/api.txt                       |  49 +++--
+ runtime/doc/deprecated.txt                |   2 +
+ runtime/doc/news.txt                      |   3 +
+ runtime/lua/vim/_core/ui2/cmdline.lua     |   2 +-
+ runtime/lua/vim/_core/ui2/messages.lua    |   4 +-
+ runtime/lua/vim/_meta/api.gen.lua         |  35 ++-
+ runtime/lua/vim/_meta/api_keysets.gen.lua |   3 +
+ runtime/lua/vim/lsp/completion.lua        |   2 +-
+ runtime/lua/vim/lsp/util.lua              |   2 +-
+ src/nvim/api/deprecated.c                 |  48 +++++
+ src/nvim/api/keysets_defs.h               |   5 +
+ src/nvim/api/win_config.c                 |   8 +-
+ src/nvim/api/window.c                     | 111 ++++++----
+ src/nvim/ex_docmd.c                       |   4 +-
+ src/nvim/window.c                         |  66 +++---
+ test/functional/api/deprecated_spec.lua   | 103 +++++++++
+ test/functional/api/window_spec.lua       | 251 ++++++++++++++++------
+ 17 files changed, 524 insertions(+), 174 deletions(-)
+
+diff --git a/runtime/doc/api.txt b/runtime/doc/api.txt
+index 31fc1ab32..1cdaa4b57 100644
+--- a/runtime/doc/api.txt
++++ b/runtime/doc/api.txt
+@@ -4231,6 +4231,34 @@ nvim_win_is_valid({win})                                 *nvim_win_is_valid()*
+     Return: ~
+         (`boolean`) true if the window is valid, false otherwise
+ 
++nvim_win_resize({win}, {width}, {height}, {opts})          *nvim_win_resize()*
++    Resize a window, choosing which edge stays anchored.
++
++    The window first takes space from the non-anchored side (the window below
++    or to the right by default), and only then from the anchored side. The
++    "anchor" selects the fixed edge, so a window can also grow upwards or
++    leftwards.
++
++    Can set the height, the width, or both in a single call. "anchor" applies
++    to the matching axis ("top"/"bottom" for height, "left"/"right" for
++    width); the other axis, if also resized, uses its default anchor.
++
++    Attributes: ~
++        Since: 0.13.0
++
++    Parameters: ~
++      • {win}     (`integer`) |window-ID|, or 0 for current window
++      • {width}   (`integer`) New width as a count of columns, set -1 as "no
++                  change"
++      • {height}  (`integer`) New height as a count of rows, set -1 as "no
++                  change"
++      • {opts}    (`vim.api.keyset.win_resize`) Optional parameters.
++                  • anchor: Edge that stays fixed while the opposite edge
++                    moves; the neighbor on the moving side is resized first.
++                    One of:
++                    • "top" (default for height) or "bottom"
++                    • "left" (default for width) or "right"
++
+ nvim_win_set_buf({win}, {buf})                            *nvim_win_set_buf()*
+     Sets the current buffer in a window.
+ 
+@@ -4257,16 +4285,6 @@ nvim_win_set_cursor({win}, {pos})                      *nvim_win_set_cursor()*
+       • {pos}  (`[integer, integer]`) (row, col) tuple representing the new
+                position
+ 
+-nvim_win_set_height({win}, {height})                   *nvim_win_set_height()*
+-    Sets the window height.
+-
+-    Attributes: ~
+-        Since: 0.1.0
+-
+-    Parameters: ~
+-      • {win}     (`integer`) |window-ID|, or 0 for current window
+-      • {height}  (`integer`) Height as a count of rows
+-
+ nvim_win_set_hl_ns({win}, {ns_id})                      *nvim_win_set_hl_ns()*
+     Set highlight namespace for a window. This will use highlights defined
+     with |nvim_set_hl()| for this namespace, but fall back to global
+@@ -4292,17 +4310,6 @@ nvim_win_set_var({win}, {name}, {value})                  *nvim_win_set_var()*
+       • {name}   (`string`) Variable name
+       • {value}  (`any`) Variable value
+ 
+-nvim_win_set_width({win}, {width})                      *nvim_win_set_width()*
+-    Sets the window width. This will only succeed if the screen is split
+-    vertically.
+-
+-    Attributes: ~
+-        Since: 0.1.0
+-
+-    Parameters: ~
+-      • {win}    (`integer`) |window-ID|, or 0 for current window
+-      • {width}  (`integer`) Width as a count of columns
+-
+ nvim_win_text_height({win}, {opts})                   *nvim_win_text_height()*
+     Computes the number of screen lines occupied by a range of text in a given
+     window. Works for off-screen text and takes folds into account.
+diff --git a/runtime/doc/deprecated.txt b/runtime/doc/deprecated.txt
+index 959ac3ded..158491d8a 100644
+--- a/runtime/doc/deprecated.txt
++++ b/runtime/doc/deprecated.txt
+@@ -17,6 +17,8 @@ DEPRECATED IN 0.13					*deprecated-0.13*
+ 
+ API
+ 
++• *nvim_win_set_height()*	Use |nvim_win_resize()| instead.
++• *nvim_win_set_width()*	Use |nvim_win_resize()| instead.
+ • The "buffer" key accepted and/or returned by these functions, was renamed to
+   "buf":
+   • |nvim_create_autocmd()|
+diff --git a/runtime/doc/news.txt b/runtime/doc/news.txt
+index 87b3ea9d1..403c2b67e 100644
+--- a/runtime/doc/news.txt
++++ b/runtime/doc/news.txt
+@@ -119,6 +119,9 @@ The following new features were added.
+ 
+ API
+ 
++• |nvim_win_resize()| resizes a window with a choosable anchor edge, letting a
++  window grow upwards or leftwards by taking space from the window above or to
++  the left first. |nvim_win_set_height()| and |nvim_win_set_width()| are now deprecated.
+ • |nvim_buf_call()| and |nvim_win_call()| now preserve multiple return values.
+ • |nvim_set_hl()| supports "font" key.
+ • |nvim_open_win()| `zindex` controls whether the UI will use a dimmed cursor
+diff --git a/runtime/lua/vim/_core/ui2/cmdline.lua b/runtime/lua/vim/_core/ui2/cmdline.lua
+index 81f089c7e..ec0655045 100644
+--- a/runtime/lua/vim/_core/ui2/cmdline.lua
++++ b/runtime/lua/vim/_core/ui2/cmdline.lua
+@@ -22,7 +22,7 @@ local function win_config(win, hide, height)
+   if ui.cmdheight == 0 and api.nvim_win_get_config(win).hide ~= hide then
+     api.nvim_win_set_config(win, { hide = hide, height = not hide and height or nil })
+   elseif api.nvim_win_get_height(win) ~= height then
+-    api.nvim_win_set_height(win, height)
++    api.nvim_win_resize(win, -1, height, {})
+   end
+   if vim.o.cmdheight ~= height then
+     -- Avoid moving the cursor with 'splitkeep' = "screen", and altering the user
+diff --git a/runtime/lua/vim/_core/ui2/messages.lua b/runtime/lua/vim/_core/ui2/messages.lua
+index 46233e290..9b081999a 100644
+--- a/runtime/lua/vim/_core/ui2/messages.lua
++++ b/runtime/lua/vim/_core/ui2/messages.lua
+@@ -139,7 +139,7 @@ local function set_virttext(type, tgt)
+       -- Check if adding the virt_text on this line will exceed the current window width.
+       local maxwidth = math.max(M.msg.width, math.min(o.columns, scol - offset + width))
+       if tgt == 'msg' and api.nvim_win_get_width(win) < maxwidth then
+-        api.nvim_win_set_width(win, maxwidth)
++        api.nvim_win_resize(win, maxwidth, -1, {})
+         M.msg.width = maxwidth
+       end
+ 
+@@ -293,7 +293,7 @@ function M.show_msg(tgt, kind, content, replace_last, append, id)
+     if tgt == 'msg' then
+       local width_cmd = [[echo max(map(range(1, line('$')), 'virtcol([v:val, "$"])'))]]
+       local width = tonumber(fn.win_execute(ui.wins.msg, width_cmd)) - 1
+-      api.nvim_win_set_width(ui.wins.msg, width)
++      api.nvim_win_resize(ui.wins.msg, width, -1, {})
+       local texth = api.nvim_win_text_height(ui.wins.msg, { start_row = start_row, end_row = row })
+       if texth.all > math.ceil(lines * 0.5) then
+         tgt, buf = M.expand_msg(tgt)
+diff --git a/runtime/lua/vim/_meta/api.gen.lua b/runtime/lua/vim/_meta/api.gen.lua
+index e3a4fda5c..bd8821d7f 100644
+--- a/runtime/lua/vim/_meta/api.gen.lua
++++ b/runtime/lua/vim/_meta/api.gen.lua
+@@ -2492,6 +2492,26 @@ function vim.api.nvim_win_hide(win) end
+ --- @return boolean # true if the window is valid, false otherwise
+ function vim.api.nvim_win_is_valid(win) end
+ 
++--- Resize a window, choosing which edge stays anchored.
++---
++--- The window first takes space from the non-anchored side (the window below or
++--- to the right by default), and only then from the anchored side. The "anchor"
++--- selects the fixed edge, so a window can also grow upwards or leftwards.
++---
++--- Can set the height, the width, or both in a single call. "anchor" applies to the
++--- matching axis ("top"/"bottom" for height, "left"/"right" for width); the other
++--- axis, if also resized, uses its default anchor.
++---
++--- @param win integer `window-ID`, or 0 for current window
++--- @param width integer New width as a count of columns, set -1 as "no change"
++--- @param height integer New height as a count of rows, set -1 as "no change"
++--- @param opts vim.api.keyset.win_resize Optional parameters.
++--- - anchor: Edge that stays fixed while the opposite edge moves; the
++---   neighbor on the moving side is resized first. One of:
++---   - "top" (default for height) or "bottom"
++---   - "left" (default for width) or "right"
++function vim.api.nvim_win_resize(win, width, height, opts) end
++
+ --- Sets the current buffer in a window.
+ ---
+ --- Note: As a side-effect, this executes `BufEnter` and `BufLeave` autocommands.
+@@ -2526,10 +2546,9 @@ function vim.api.nvim_win_set_config(win, config) end
+ --- @param pos [integer, integer] (row, col) tuple representing the new position
+ function vim.api.nvim_win_set_cursor(win, pos) end
+ 
+---- Sets the window height.
+----
+---- @param win integer `window-ID`, or 0 for current window
+---- @param height integer Height as a count of rows
++--- @deprecated
++--- @param win integer
++--- @param height integer
+ function vim.api.nvim_win_set_height(win, height) end
+ 
+ --- Set highlight namespace for a window. This will use highlights defined with
+@@ -2555,11 +2574,9 @@ function vim.api.nvim_win_set_option(window, name, value) end
+ --- @param value any Variable value
+ function vim.api.nvim_win_set_var(win, name, value) end
+ 
+---- Sets the window width. This will only succeed if the screen is split
+---- vertically.
+----
+---- @param win integer `window-ID`, or 0 for current window
+---- @param width integer Width as a count of columns
++--- @deprecated
++--- @param win integer
++--- @param width integer
+ function vim.api.nvim_win_set_width(win, width) end
+ 
+ --- Computes the number of screen lines occupied by a range of text in a given window.
+diff --git a/runtime/lua/vim/_meta/api_keysets.gen.lua b/runtime/lua/vim/_meta/api_keysets.gen.lua
+index 3f5a46598..d16983615 100644
+--- a/runtime/lua/vim/_meta/api_keysets.gen.lua
++++ b/runtime/lua/vim/_meta/api_keysets.gen.lua
+@@ -493,6 +493,9 @@ error('Cannot require a meta file')
+ --- @field zindex? integer
+ --- @field _cmdline_offset? integer
+ 
++--- @class vim.api.keyset.win_resize
++--- @field anchor? string
++
+ --- @class vim.api.keyset.win_text_height
+ --- @field end_row? integer
+ --- @field end_vcol? integer
+diff --git a/runtime/lua/vim/lsp/completion.lua b/runtime/lua/vim/lsp/completion.lua
+index a77c06075..ad258e436 100644
+--- a/runtime/lua/vim/lsp/completion.lua
++++ b/runtime/lua/vim/lsp/completion.lua
+@@ -677,7 +677,7 @@ local function update_popup_window(winid, bufnr, kind)
+       vim.treesitter.start(bufnr, kind)
+     end
+     local all = api.nvim_win_text_height(winid, {}).all
+-    api.nvim_win_set_height(winid, all)
++    api.nvim_win_resize(winid, -1, all, {})
+   end
+ end
+ 
+diff --git a/runtime/lua/vim/lsp/util.lua b/runtime/lua/vim/lsp/util.lua
+index a31c1af1b..6dd4c6f0b 100644
+--- a/runtime/lua/vim/lsp/util.lua
++++ b/runtime/lua/vim/lsp/util.lua
+@@ -1625,7 +1625,7 @@ function M.open_floating_preview(contents, syntax, opts)
+       local win_height = api.nvim_win_get_height(floating_winnr)
+       local text_height = api.nvim_win_text_height(floating_winnr, { max_height = win_height }).all
+       if text_height < win_height then
+-        api.nvim_win_set_height(floating_winnr, text_height)
++        api.nvim_win_resize(floating_winnr, -1, text_height, {})
+       end
+     end
+   end
+diff --git a/src/nvim/api/deprecated.c b/src/nvim/api/deprecated.c
+index 16df5aae1..3ed1ce15f 100644
+--- a/src/nvim/api/deprecated.c
++++ b/src/nvim/api/deprecated.c
+@@ -31,6 +31,7 @@
+ #include "nvim/pos_defs.h"
+ #include "nvim/strings.h"
+ #include "nvim/types_defs.h"
++#include "nvim/window.h"
+ 
+ #include "api/deprecated.c.generated.h"
+ 
+@@ -1006,3 +1007,50 @@ Object nvim_notify(String msg, Integer log_level, Dict opts, Arena *arena, Error
+ 
+   return NLUA_EXEC_STATIC("return vim.notify(...)", args, kRetObject, arena, err);
+ }
++
++/// @deprecated
++///
++/// Use |nvim_win_resize()| instead, e.g., nvim_win_resize(win, -1, height, {})
++///
++/// Sets the window height.
++///
++/// @param win   |window-ID|, or 0 for current window
++/// @param height   Height as a count of rows
++/// @param[out] err Error details, if any
++void nvim_win_set_height(Window win, Integer height, Error *err)
++  FUNC_API_SINCE(1) FUNC_API_DEPRECATED_SINCE(15)
++{
++  win_T *w = find_window_by_handle(win, err);
++
++  if (!w) {
++    return;
++  }
++
++  TRY_WRAP(err, {
++    win_setheight_win((int)height, w, true);
++  });
++}
++
++/// @deprecated
++///
++/// Use |nvim_win_resize()| instead, e.g., nvim_win_resize(win, width, -1, {})
++///
++/// Sets the window width. This will only succeed if the screen is split
++/// vertically.
++///
++/// @param win   |window-ID|, or 0 for current window
++/// @param width    Width as a count of columns
++/// @param[out] err Error details, if any
++void nvim_win_set_width(Window win, Integer width, Error *err)
++  FUNC_API_SINCE(1) FUNC_API_DEPRECATED_SINCE(15)
++{
++  win_T *w = find_window_by_handle(win, err);
++
++  if (!w) {
++    return;
++  }
++
++  TRY_WRAP(err, {
++    win_setwidth_win((int)width, w, true);
++  });
++}
+diff --git a/src/nvim/api/keysets_defs.h b/src/nvim/api/keysets_defs.h
+index 2f3049d73..7ac3ad929 100644
+--- a/src/nvim/api/keysets_defs.h
++++ b/src/nvim/api/keysets_defs.h
+@@ -253,6 +253,11 @@ typedef struct {
+   Integer max_height;
+ } Dict(win_text_height);
+ 
++typedef struct {
++  OptionalKeys is_set__win_resize_;
++  String anchor;
++} Dict(win_resize);
++
+ typedef struct {
+   OptionalKeys is_set__clear_autocmds_;
+   Buffer buffer;  // deprecated - use buf
+diff --git a/src/nvim/api/win_config.c b/src/nvim/api/win_config.c
+index 880b716e0..8a1f7e2f8 100644
+--- a/src/nvim/api/win_config.c
++++ b/src/nvim/api/win_config.c
+@@ -272,9 +272,9 @@ Window nvim_open_win(Buffer buf, Boolean enter, Dict(win_config) *config, Error
+         // Without room for the requested size, window sizes may have been equalized instead.
+         // If the size differs from what was requested, try to set it again now.
+         if ((flags & WSP_VERT) && wp->w_width != size) {
+-          win_setwidth_win(size, wp);
++          win_setwidth_win(size, wp, true);
+         } else if (!(flags & WSP_VERT) && wp->w_height != size) {
+-          win_setheight_win(size, wp);
++          win_setheight_win(size, wp, true);
+         }
+       }
+     }
+@@ -627,10 +627,10 @@ restore_curwin:
+ 
+ resize:
+   if (HAS_KEY_X(config, width)) {
+-    win_setwidth_win(fconfig->width, win);
++    win_setwidth_win(fconfig->width, win, true);
+   }
+   if (HAS_KEY_X(config, height)) {
+-    win_setheight_win(fconfig->height, win);
++    win_setheight_win(fconfig->height, win, true);
+   }
+ 
+   // Merge configs now. If previously a float, clear fields irrelevant to splits that `fconfig` may
+diff --git a/src/nvim/api/window.c b/src/nvim/api/window.c
+index bdca9111b..667ecf4ea 100644
+--- a/src/nvim/api/window.c
++++ b/src/nvim/api/window.c
+@@ -162,25 +162,6 @@ Integer nvim_win_get_height(Window win, Error *err)
+   return w->w_height;
+ }
+ 
+-/// Sets the window height.
+-///
+-/// @param win   |window-ID|, or 0 for current window
+-/// @param height   Height as a count of rows
+-/// @param[out] err Error details, if any
+-void nvim_win_set_height(Window win, Integer height, Error *err)
+-  FUNC_API_SINCE(1)
+-{
+-  win_T *w = find_window_by_handle(win, err);
+-
+-  if (!w) {
+-    return;
+-  }
+-
+-  TRY_WRAP(err, {
+-    win_setheight_win((int)height, w);
+-  });
+-}
+-
+ /// Gets the window width
+ ///
+ /// @param win   |window-ID|, or 0 for current window
+@@ -198,26 +179,6 @@ Integer nvim_win_get_width(Window win, Error *err)
+   return w->w_width;
+ }
+ 
+-/// Sets the window width. This will only succeed if the screen is split
+-/// vertically.
+-///
+-/// @param win   |window-ID|, or 0 for current window
+-/// @param width    Width as a count of columns
+-/// @param[out] err Error details, if any
+-void nvim_win_set_width(Window win, Integer width, Error *err)
+-  FUNC_API_SINCE(1)
+-{
+-  win_T *w = find_window_by_handle(win, err);
+-
+-  if (!w) {
+-    return;
+-  }
+-
+-  TRY_WRAP(err, {
+-    win_setwidth_win((int)width, w);
+-  });
+-}
+-
+ /// Gets a window-scoped (w:) variable
+ ///
+ /// @param win   |window-ID|, or 0 for current window
+@@ -575,3 +536,75 @@ DictAs(win_text_height_ret) nvim_win_text_height(Window win, Dict(win_text_heigh
+   PUT_C(rv, "end_vcol", INTEGER_OBJ(end_vcol));
+   return rv;
+ }
++
++/// Resize a window, choosing which edge stays anchored.
++///
++/// The window first takes space from the non-anchored side (the window below or
++/// to the right by default), and only then from the anchored side. The "anchor"
++/// selects the fixed edge, so a window can also grow upwards or leftwards.
++///
++/// Can set the height, the width, or both in a single call. "anchor" applies to the
++/// matching axis ("top"/"bottom" for height, "left"/"right" for width); the other
++/// axis, if also resized, uses its default anchor.
++///
++/// @param win        |window-ID|, or 0 for current window
++/// @param width      New width as a count of columns, set -1 as "no change"
++/// @param height     New height as a count of rows, set -1 as "no change"
++/// @param opts       Optional parameters.
++///                     - anchor: Edge that stays fixed while the opposite edge moves; the
++///                       neighbor on the moving side is resized first. One of:
++///                       - "top" (default for height) or "bottom"
++///                       - "left" (default for width) or "right"
++/// @param[out] err Error details, if any
++void nvim_win_resize(Window win, Integer width, Integer height, Dict(win_resize) *opts, Error *err)
++  FUNC_API_SINCE(15)
++{
++  win_T *w = find_window_by_handle(win, err);
++
++  if (!w) {
++    return;
++  }
++
++  VALIDATE_EXP((height >= 0 || height == -1), "height",
++               "a non-negative count of rows, or -1 for no change", NULL, {
++    return;
++  });
++  VALIDATE_EXP((width >= 0 || width == -1), "width",
++               "a non-negative count of columns, or -1 for no change", NULL, {
++    return;
++  });
++
++  VALIDATE_R((height >= 0 || width >= 0), "must set at least one of 'height', 'width'", {
++    return;
++  });
++
++  // default anchors
++  bool from_top = true;
++  bool from_left = true;
++
++  if (HAS_KEY(opts, win_resize, anchor)) {
++    char *anchor = opts->anchor.data;
++    bool is_height = strequal("top", anchor) || strequal("bottom", anchor);
++    bool is_width = strequal("left", anchor) || strequal("right", anchor);
++
++    VALIDATE_EXP(is_height || is_width, "anchor", "\"top\", \"bottom\", \"left\" or \"right\"",
++                 anchor, { return; });
++    // anchor must match a dimension that is actually being resized.
++    VALIDATE_CON(!(is_height && height == -1) && !(is_width && width == -1), anchor,
++                 "this dimension", {
++      return;
++    });
++
++    if (is_height) {
++      from_top = strequal("top", anchor);
++    } else {
++      from_left = strequal("left", anchor);
++    }
++  }
++  if (height >= 0) {
++    TRY_WRAP(err, win_setheight_win((int)height, w, from_top));
++  }
++  if (!ERROR_SET(err) && width >= 0) {
++    TRY_WRAP(err, win_setwidth_win((int)width, w, from_left));
++  }
++}
+diff --git a/src/nvim/ex_docmd.c b/src/nvim/ex_docmd.c
+index cda435348..b85b6caf5 100644
+--- a/src/nvim/ex_docmd.c
++++ b/src/nvim/ex_docmd.c
+@@ -6079,14 +6079,14 @@ static void ex_resize(exarg_T *eap)
+     } else if (n == 0 && eap->arg[0] == NUL) {  // default is very wide
+       n = Columns;
+     }
+-    win_setwidth_win(n, wp);
++    win_setwidth_win(n, wp, true);
+   } else {
+     if (*eap->arg == '-' || *eap->arg == '+') {
+       n += wp->w_height;
+     } else if (n == 0 && eap->arg[0] == NUL) {  // default is very high
+       n = Rows - 1;
+     }
+-    win_setheight_win(n, wp);
++    win_setheight_win(n, wp, true);
+   }
+ }
+ 
+diff --git a/src/nvim/window.c b/src/nvim/window.c
+index 13c038fb8..b6b8dc7a4 100644
+--- a/src/nvim/window.c
++++ b/src/nvim/window.c
+@@ -1259,7 +1259,7 @@ win_T *win_split_ins(int size, int flags, win_T *new_wp, int dir, frame_T *to_fl
+     // 'winfixwidth' window.  Take them from a window to the left or right
+     // instead, if possible. Add one for the separator.
+     if (oldwin->w_p_wfw) {
+-      win_setwidth_win(oldwin->w_width + new_size + 1, oldwin);
++      win_setwidth_win(oldwin->w_width + new_size + 1, oldwin, true);
+     }
+ 
+     // Only make all windows the same width if one of them (except oldwin)
+@@ -1346,7 +1346,7 @@ win_T *win_split_ins(int size, int flags, win_T *new_wp, int dir, frame_T *to_fl
+       did_set_fraction = true;
+ 
+       win_setheight_win(oldwin->w_height + new_size + STATUS_HEIGHT,
+-                        oldwin);
++                        oldwin, true);
+       oldwin_height = oldwin->w_height;
+       if (need_status) {
+         oldwin_height -= STATUS_HEIGHT;
+@@ -2110,7 +2110,7 @@ int win_splitmove(win_T *wp, int size, int flags)
+   // If splitting horizontally, try to preserve height.
+   // Note that win_split_ins autocommands may have immediately closed "wp", or made it floating!
+   if (size == 0 && !(flags & WSP_VERT) && win_valid(wp) && !wp->w_floating) {
+-    win_setheight_win(height, wp);
++    win_setheight_win(height, wp, true);
+     if (p_ea) {
+       // Equalize windows.  Note that win_split_ins autocommands may have
+       // made a window other than "wp" current.
+@@ -6183,8 +6183,8 @@ void win_size_restore(garray_T *gap)
+         int width = ((int *)gap->ga_data)[i++];
+         int height = ((int *)gap->ga_data)[i++];
+         if (!wp->w_floating) {
+-          frame_setwidth(wp->w_frame, width);
+-          win_setheight_win(height, wp);
++          frame_setwidth(wp->w_frame, width, true);
++          win_setheight_win(height, wp, true);
+         }
+       }
+     }
+@@ -6251,12 +6251,13 @@ static void frame_comp_pos(frame_T *topfrp, int *row, int *col)
+ // fit around it.
+ void win_setheight(int height)
+ {
+-  win_setheight_win(height, curwin);
++  win_setheight_win(height, curwin, true);
+ }
+ 
+ // Set the window height of window "win" and take care of repositioning other
+ // windows to fit around it.
+-void win_setheight_win(int height, win_T *win)
++// from_top: keep the top edge anchored (take space from the window below first).
++void win_setheight_win(int height, win_T *win, bool from_top)
+ {
+   // Always keep current window at least one line high, even when 'winminheight' is zero.
+   // Keep window at least two lines high if 'winbar' is enabled.
+@@ -6267,7 +6268,8 @@ void win_setheight_win(int height, win_T *win)
+     win_config_float(win, win->w_config);
+     redraw_later(win, UPD_VALID);
+   } else {
+-    frame_setheight(win->w_frame, height + win->w_hsep_height + win->w_status_height);
++    frame_setheight(win->w_frame, height + win->w_hsep_height + win->w_status_height,
++                    from_top);
+ 
+     // recompute the window positions
+     win_comp_pos();
+@@ -6289,7 +6291,7 @@ void win_setheight_win(int height, win_T *win)
+ // If the frame is part of a FR_ROW frame, all frames must be resized as well.
+ // Check for the minimal height of the FR_ROW frame.
+ // At the top level we can also use change the command line height.
+-static void frame_setheight(frame_T *curfrp, int height)
++static void frame_setheight(frame_T *curfrp, int height, bool from_top)
+ {
+   // If the height already is the desired value, nothing to do.
+   if (curfrp->fr_height == height) {
+@@ -6306,7 +6308,7 @@ static void frame_setheight(frame_T *curfrp, int height)
+     // one.  First check for the minimal height of these.
+     int h = frame_minheight(curfrp->fr_parent, NULL);
+     height = MAX(height, h);
+-    frame_setheight(curfrp->fr_parent, height);
++    frame_setheight(curfrp->fr_parent, height, from_top);
+   } else {
+     // Column of frames: try to change only frames in this column.
+ 
+@@ -6334,7 +6336,8 @@ static void frame_setheight(frame_T *curfrp, int height)
+           room -= frame_minheight(frp, NULL);
+         }
+       }
+-      if (curfrp->fr_width != Columns) {
++      // For bottom-anchored resize, treat cmdline room as zero.
++      if (!from_top || curfrp->fr_width != Columns) {
+         room_cmdline = 0;
+       } else {
+         win_T *wp = lastwin_nofloating(NULL);
+@@ -6351,7 +6354,8 @@ static void frame_setheight(frame_T *curfrp, int height)
+         break;
+       }
+       frame_setheight(curfrp->fr_parent, height
+-                      + frame_minheight(curfrp->fr_parent, NOWIN) - (int)p_wmh - 1);
++                      + frame_minheight(curfrp->fr_parent, NOWIN) - (int)p_wmh - 1,
++                      from_top);
+       // NOTREACHED
+     }
+ 
+@@ -6384,9 +6388,10 @@ static void frame_setheight(frame_T *curfrp, int height)
+     // that is not enough, takes lines from frames above the current
+     // frame.
+     for (int run = 0; run < 2; run++) {
+-      // 1st run: start with next window
+-      // 2nd run: start with prev window
+-      frame_T *frp = run == 0 ? curfrp->fr_next : curfrp->fr_prev;
++      // 1st run: from the non-anchored side
++      // 2nd run: the anchored side
++      bool forward = (run == 0) == from_top;
++      frame_T *frp = forward ? curfrp->fr_next : curfrp->fr_prev;
+ 
+       while (frp != NULL && take != 0) {
+         int h = frame_minheight(frp, NULL);
+@@ -6412,11 +6417,7 @@ static void frame_setheight(frame_T *curfrp, int height)
+             take = 0;
+           }
+         }
+-        if (run == 0) {
+-          frp = frp->fr_next;
+-        } else {
+-          frp = frp->fr_prev;
+-        }
++        frp = forward ? frp->fr_next : frp->fr_prev;
+       }
+     }
+   }
+@@ -6426,10 +6427,10 @@ static void frame_setheight(frame_T *curfrp, int height)
+ // fit around it.
+ void win_setwidth(int width)
+ {
+-  win_setwidth_win(width, curwin);
++  win_setwidth_win(width, curwin, true);
+ }
+ 
+-void win_setwidth_win(int width, win_T *wp)
++void win_setwidth_win(int width, win_T *wp, bool from_left)
+ {
+   // Always keep current window at least one column wide, even when
+   // 'winminwidth' is zero.
+@@ -6443,7 +6444,7 @@ void win_setwidth_win(int width, win_T *wp)
+     win_config_float(wp, wp->w_config);
+     redraw_later(wp, UPD_NOT_VALID);
+   } else {
+-    frame_setwidth(wp->w_frame, width + wp->w_vsep_width);
++    frame_setwidth(wp->w_frame, width + wp->w_vsep_width, from_left);
+ 
+     // recompute the window positions
+     win_comp_pos();
+@@ -6456,7 +6457,7 @@ void win_setwidth_win(int width, win_T *wp)
+ // are in the same FR_ROW frame.
+ //
+ // Strategy is similar to frame_setheight().
+-static void frame_setwidth(frame_T *curfrp, int width)
++static void frame_setwidth(frame_T *curfrp, int width, bool from_left)
+ {
+   // If the width already is the desired value, nothing to do.
+   if (curfrp->fr_width == width) {
+@@ -6473,7 +6474,7 @@ static void frame_setwidth(frame_T *curfrp, int width)
+     // this one.  First check for the minimal width of these.
+     int w = frame_minwidth(curfrp->fr_parent, NULL);
+     width = MAX(width, w);
+-    frame_setwidth(curfrp->fr_parent, width);
++    frame_setwidth(curfrp->fr_parent, width, from_left);
+   } else {
+     // Row of frames: try to change only frames in this row.
+     //
+@@ -6508,7 +6509,7 @@ static void frame_setwidth(frame_T *curfrp, int width)
+         break;
+       }
+       frame_setwidth(curfrp->fr_parent, width
+-                     + frame_minwidth(curfrp->fr_parent, NOWIN) - (int)p_wmw - 1);
++                     + frame_minwidth(curfrp->fr_parent, NOWIN) - (int)p_wmw - 1, from_left);
+     }
+ 
+     // Compute the number of lines we will take from others frames (can be
+@@ -6533,9 +6534,10 @@ static void frame_setwidth(frame_T *curfrp, int width)
+     // that is not enough, takes lines from frames left of the current
+     // frame.
+     for (int run = 0; run < 2; run++) {
+-      // 1st run: start with next window
+-      // 2nd run: start with prev window
+-      frame_T *frp = run == 0 ? curfrp->fr_next : curfrp->fr_prev;
++      // 1st run: from the non-anchored side
++      // 2nd run: the anchored side
++      bool forward = (run == 0) == from_left;
++      frame_T *frp = forward ? curfrp->fr_next : curfrp->fr_prev;
+ 
+       while (frp != NULL && take != 0) {
+         int w = frame_minwidth(frp, NULL);
+@@ -6561,11 +6563,7 @@ static void frame_setwidth(frame_T *curfrp, int width)
+             take = 0;
+           }
+         }
+-        if (run == 0) {
+-          frp = frp->fr_next;
+-        } else {
+-          frp = frp->fr_prev;
+-        }
++        frp = forward ? frp->fr_next : frp->fr_prev;
+       }
+     }
+   }
+diff --git a/test/functional/api/deprecated_spec.lua b/test/functional/api/deprecated_spec.lua
+index 976e093c5..8a941e7af 100644
+--- a/test/functional/api/deprecated_spec.lua
++++ b/test/functional/api/deprecated_spec.lua
+@@ -7,6 +7,7 @@ local Screen = require('test.functional.ui.screen')
+ local clear, eval, eq, ok = n.clear, n.eval, t.eq, t.ok
+ local api, command, fn = n.api, n.command, n.fn
+ local pcall_err, assert_alive = t.pcall_err, n.assert_alive
++local insert, exec, feed = n.insert, n.exec, n.feed
+ 
+ describe('deprecated', function()
+   before_each(n.clear)
+@@ -204,4 +205,106 @@ describe('deprecated', function()
+       assert_alive()
+     end)
+   end)
++
++  describe('{get,set}_height', function()
++    it('works', function()
++      command('vsplit')
++      eq(
++        api.nvim_win_get_height(api.nvim_list_wins()[2]),
++        api.nvim_win_get_height(api.nvim_list_wins()[1])
++      )
++      api.nvim_set_current_win(api.nvim_list_wins()[2])
++      command('split')
++      eq(
++        api.nvim_win_get_height(api.nvim_list_wins()[2]),
++        math.floor(api.nvim_win_get_height(api.nvim_list_wins()[1]) / 2)
++      )
++      api.nvim_win_set_height(api.nvim_list_wins()[2], 2)
++      eq(2, api.nvim_win_get_height(api.nvim_list_wins()[2]))
++    end)
++
++    it('failure modes', function()
++      command('split')
++      eq('Invalid window id: 999999', pcall_err(api.nvim_win_set_height, 999999, 10))
++      eq(
++        'Wrong type for argument 2 when calling nvim_win_set_height, expecting Integer',
++        pcall_err(api.nvim_win_set_height, 0, 0.9)
++      )
++    end)
++
++    it('correctly handles height=1', function()
++      command('split')
++      api.nvim_set_current_win(api.nvim_list_wins()[1])
++      api.nvim_win_set_height(api.nvim_list_wins()[2], 1)
++      eq(1, api.nvim_win_get_height(api.nvim_list_wins()[2]))
++    end)
++
++    it('correctly handles height=1 with a winbar', function()
++      command('set winbar=foobar')
++      command('set winminheight=0')
++      command('split')
++      api.nvim_set_current_win(api.nvim_list_wins()[1])
++      api.nvim_win_set_height(api.nvim_list_wins()[2], 1)
++      eq(1, api.nvim_win_get_height(api.nvim_list_wins()[2]))
++    end)
++
++    it('do not cause ml_get errors with foldmethod=expr #19989', function()
++      insert([[
++        aaaaa
++        bbbbb
++        ccccc]])
++      command('set foldmethod=expr')
++      exec([[
++        new
++        let w = nvim_get_current_win()
++        wincmd w
++        call nvim_win_set_height(w, 5)
++      ]])
++      feed('l')
++      eq('', api.nvim_get_vvar('errmsg'))
++    end)
++  end)
++
++  describe('{get,set}_width', function()
++    it('works', function()
++      command('split')
++      eq(
++        api.nvim_win_get_width(api.nvim_list_wins()[2]),
++        api.nvim_win_get_width(api.nvim_list_wins()[1])
++      )
++      api.nvim_set_current_win(api.nvim_list_wins()[2])
++      command('vsplit')
++      eq(
++        api.nvim_win_get_width(api.nvim_list_wins()[2]),
++        math.floor(api.nvim_win_get_width(api.nvim_list_wins()[1]) / 2)
++      )
++      api.nvim_win_set_width(api.nvim_list_wins()[2], 2)
++      eq(2, api.nvim_win_get_width(api.nvim_list_wins()[2]))
++    end)
++
++    it('failure modes', function()
++      command('vsplit')
++      eq('Invalid window id: 999999', pcall_err(api.nvim_win_set_width, 999999, 10))
++      eq(
++        'Wrong type for argument 2 when calling nvim_win_set_width, expecting Integer',
++        pcall_err(api.nvim_win_set_width, 0, 0.9)
++      )
++    end)
++
++    it('do not cause ml_get errors with foldmethod=expr #19989', function()
++      insert([[
++        aaaaa
++        bbbbb
++        ccccc]])
++      command('set foldmethod=expr')
++      exec([[
++        vnew
++        let w = nvim_get_current_win()
++        wincmd w
++        call nvim_win_set_width(w, 5)
++      ]])
++      feed('l')
++      eq('', api.nvim_get_vvar('errmsg'))
++    end)
++  end)
+ end)
+diff --git a/test/functional/api/window_spec.lua b/test/functional/api/window_spec.lua
+index fa2f9ead3..489f54401 100644
+--- a/test/functional/api/window_spec.lua
++++ b/test/functional/api/window_spec.lua
+@@ -321,36 +321,172 @@ describe('API/win', function()
+     end)
+   end)
+ 
+-  describe('{get,set}_height', function()
+-    it('works', function()
+-      command('vsplit')
+-      eq(
+-        api.nvim_win_get_height(api.nvim_list_wins()[2]),
+-        api.nvim_win_get_height(api.nvim_list_wins()[1])
+-      )
+-      api.nvim_set_current_win(api.nvim_list_wins()[2])
+-      command('split')
+-      eq(
+-        api.nvim_win_get_height(api.nvim_list_wins()[2]),
+-        math.floor(api.nvim_win_get_height(api.nvim_list_wins()[1]) / 2)
+-      )
+-      api.nvim_win_set_height(api.nvim_list_wins()[2], 2)
+-      eq(2, api.nvim_win_get_height(api.nvim_list_wins()[2]))
++  describe('resize', function()
++    local function heights(wins)
++      return vim.tbl_map(api.nvim_win_get_height, wins)
++    end
++    local function widths(wins)
++      return vim.tbl_map(api.nvim_win_get_width, wins)
++    end
++
++    it('height: default anchor="top"', function()
++      command('split | split')
++      local wins = api.nvim_list_wins()
++      local before = heights(wins)
++      api.nvim_win_resize(wins[2], -1, before[2] + 2, {})
++      -- default anchor top.
++      local after = heights(wins)
++      eq(before[1], after[1])
++      eq(before[2] + 2, after[2])
++      eq(before[3] - 2, after[3])
+     end)
+ 
+-    it('failure modes', function()
+-      command('split')
+-      eq('Invalid window id: 999999', pcall_err(api.nvim_win_set_height, 999999, 10))
+-      eq(
+-        'Wrong type for argument 2 when calling nvim_win_set_height, expecting Integer',
+-        pcall_err(api.nvim_win_set_height, 0, 0.9)
+-      )
++    it('height: anchor="bottom"', function()
++      command('split | split')
++      local wins = api.nvim_list_wins()
++      local before = heights(wins)
++      api.nvim_win_resize(wins[2], -1, before[2] + 2, { anchor = 'bottom' })
++      local after = heights(wins)
++      -- bottom anchor unchanged.
++      eq(before[1] - 2, after[1])
++      eq(before[2] + 2, after[2])
++      eq(before[3], after[3])
++    end)
++
++    it('height: anchor="bottom" in a nested frame', function()
++      -- layout: column[ Top, row[ML|MR], Bottom ]; current window = ML
++      command('split | split | 2wincmd w | vsplit')
++      local ml = api.nvim_get_current_win()
++      local function row_of(w)
++        return fn.win_screenpos(fn.win_id2win(w))[1]
++      end
++      local top, bottom
++      for _, w in ipairs(api.nvim_list_wins()) do
++        if row_of(w) == 1 then
++          top = w
++        end
++        if not bottom or row_of(w) > row_of(bottom) then
++          bottom = w
++        end
++      end
++      local top_h = api.nvim_win_get_height(top)
++      local bottom_h = api.nvim_win_get_height(bottom)
++      api.nvim_win_resize(ml, -1, api.nvim_win_get_height(ml) + 3, { anchor = 'bottom' })
++      -- "bottom" grow the row upward, taking from Top, not Bottom
++      eq(top_h - 3, api.nvim_win_get_height(top))
++      eq(bottom_h, api.nvim_win_get_height(bottom))
++    end)
++
++    it('height: anchor="bottom" with borrowing', function()
++      -- column[ Wupper, row[ col[Ltop|Ltarget], Right ], Wlower ]; current = Ltarget.
++      -- Growing Ltarget more than Ltop can supply forces us to borrow from row
++      -- and row's growth must respect given anchor.
++      command('split | split | 2wincmd w | vsplit | split | wincmd j')
++      local target = api.nvim_get_current_win()
++      local function row_of(w)
++        return fn.win_screenpos(fn.win_id2win(w))[1]
++      end
++      local wupper, wlower
++      for _, w in ipairs(api.nvim_list_wins()) do
++        if row_of(w) == 1 then
++          wupper = w
++        end
++        if not wlower or row_of(w) > row_of(wlower) then
++          wlower = w
++        end
++      end
++      local wupper_h = api.nvim_win_get_height(wupper)
++      local wlower_h = api.nvim_win_get_height(wlower)
++      api.nvim_win_resize(target, -1, api.nvim_win_get_height(target) + 6, { anchor = 'bottom' })
++      -- must borrow from above.
++      ok(api.nvim_win_get_height(wupper) < wupper_h)
++      eq(wlower_h, api.nvim_win_get_height(wlower))
++    end)
++
++    it('width: default anchor="left"', function()
++      command('vsplit | vsplit')
++      local wins = api.nvim_list_wins()
++      local before = widths(wins)
++      api.nvim_win_resize(wins[2], before[2] + 4, -1, {})
++      local after = widths(wins)
++      eq(before[1], after[1])
++      eq(before[2] + 4, after[2])
++      eq(before[3] - 4, after[3])
++    end)
++
++    it('width: anchor="right"', function()
++      command('vsplit | vsplit')
++      local wins = api.nvim_list_wins()
++      local before = widths(wins)
++      api.nvim_win_resize(wins[2], before[2] + 4, -1, { anchor = 'right' })
++      local after = widths(wins)
++      eq(before[1] - 4, after[1])
++      eq(before[2] + 4, after[2])
++      eq(before[3], after[3])
++    end)
++
++    it('width: anchor="right" a nested frame', function()
++      -- layout: row[ Left, col[MT|MB], Right ]; current window = MT
++      command('vsplit | vsplit | 2wincmd w | split')
++      local mt = api.nvim_get_current_win()
++      local function col_of(w)
++        return fn.win_screenpos(fn.win_id2win(w))[2]
++      end
++      local left, right
++      for _, w in ipairs(api.nvim_list_wins()) do
++        if col_of(w) == 1 then
++          left = w
++        end
++        if not right or col_of(w) > col_of(right) then
++          right = w
++        end
++      end
++      local left_w = api.nvim_win_get_width(left)
++      local right_w = api.nvim_win_get_width(right)
++      api.nvim_win_resize(mt, api.nvim_win_get_width(mt) + 3, -1, { anchor = 'right' })
++      -- "right" must grow the column leftward, taking from Left, not Right
++      eq(left_w - 3, api.nvim_win_get_width(left))
++      eq(right_w, api.nvim_win_get_width(right))
++    end)
++
++    it('sets both height and width in a single call', function()
++      -- layout: column[ Top, row[ML|MR], Bottom ]; current = ML.
++      command('split | split | 2wincmd w | vsplit')
++      local ml = api.nvim_get_current_win()
++      local function row_of(w)
++        return fn.win_screenpos(fn.win_id2win(w))[1]
++      end
++      local top, bottom, mr
++      for _, w in ipairs(api.nvim_list_wins()) do
++        if row_of(w) == 1 then
++          top = w
++        end
++        if not bottom or row_of(w) > row_of(bottom) then
++          bottom = w
++        end
++        if row_of(w) == row_of(ml) and w ~= ml then
++          mr = w
++        end
++      end
++      local top_h = api.nvim_win_get_height(top)
++      local bottom_h = api.nvim_win_get_height(bottom)
++      local mr_w = api.nvim_win_get_width(mr)
++      local h, w = api.nvim_win_get_height(ml), api.nvim_win_get_width(ml)
++      -- "bottom" anchors the height axis; width has no matching anchor so it defaults to "left"
++      api.nvim_win_resize(ml, w - 4, h + 2, { anchor = 'bottom' })
++      eq(h + 2, api.nvim_win_get_height(ml))
++      eq(w - 4, api.nvim_win_get_width(ml))
++      -- height took from above
++      eq(top_h - 2, api.nvim_win_get_height(top))
++      eq(bottom_h, api.nvim_win_get_height(bottom))
++      -- width default to "left"
++      eq(mr_w + 4, api.nvim_win_get_width(mr))
+     end)
+ 
+     it('correctly handles height=1', function()
+       command('split')
+       api.nvim_set_current_win(api.nvim_list_wins()[1])
+-      api.nvim_win_set_height(api.nvim_list_wins()[2], 1)
++      api.nvim_win_resize(api.nvim_list_wins()[2], -1, 1, {})
+       eq(1, api.nvim_win_get_height(api.nvim_list_wins()[2]))
+     end)
+ 
+@@ -359,11 +495,11 @@ describe('API/win', function()
+       command('set winminheight=0')
+       command('split')
+       api.nvim_set_current_win(api.nvim_list_wins()[1])
+-      api.nvim_win_set_height(api.nvim_list_wins()[2], 1)
++      api.nvim_win_resize(api.nvim_list_wins()[2], -1, 1, {})
+       eq(1, api.nvim_win_get_height(api.nvim_list_wins()[2]))
+     end)
+ 
+-    it('do not cause ml_get errors with foldmethod=expr #19989', function()
++    it('does not cause ml_get errors with foldmethod=expr #19989', function()
+       insert([[
+         aaaaa
+         bbbbb
+@@ -373,53 +509,48 @@ describe('API/win', function()
+         new
+         let w = nvim_get_current_win()
+         wincmd w
+-        call nvim_win_set_height(w, 5)
++        call nvim_win_resize(w, -1, 5, #{})
+       ]])
+       feed('l')
+       eq('', api.nvim_get_vvar('errmsg'))
+     end)
+-  end)
+ 
+-  describe('{get,set}_width', function()
+-    it('works', function()
++    it(
++      'accepts size = 0 (clamp to minimum size). Compatible with deprecated set_height/width',
++      function()
++        command('set winminheight=1')
++        command('split')
++        api.nvim_set_current_win(api.nvim_list_wins()[1])
++        api.nvim_win_resize(api.nvim_list_wins()[2], -1, 0, {})
++        eq(1, api.nvim_win_get_height(api.nvim_list_wins()[2]))
++      end
++    )
++
++    it('failure modes', function()
+       command('split')
+       eq(
+-        api.nvim_win_get_width(api.nvim_list_wins()[2]),
+-        api.nvim_win_get_width(api.nvim_list_wins()[1])
++        "Required: must set at least one of 'height', 'width'",
++        pcall_err(api.nvim_win_resize, 0, -1, -1, {})
+       )
+-      api.nvim_set_current_win(api.nvim_list_wins()[2])
+-      command('vsplit')
+       eq(
+-        api.nvim_win_get_width(api.nvim_list_wins()[2]),
+-        math.floor(api.nvim_win_get_width(api.nvim_list_wins()[1]) / 2)
++        "Invalid 'width': expected a non-negative count of columns, or -1 for no change",
++        pcall_err(api.nvim_win_resize, 0, -2, 5, {})
+       )
+-      api.nvim_win_set_width(api.nvim_list_wins()[2], 2)
+-      eq(2, api.nvim_win_get_width(api.nvim_list_wins()[2]))
+-    end)
+-
+-    it('failure modes', function()
+-      command('vsplit')
+-      eq('Invalid window id: 999999', pcall_err(api.nvim_win_set_width, 999999, 10))
+       eq(
+-        'Wrong type for argument 2 when calling nvim_win_set_width, expecting Integer',
+-        pcall_err(api.nvim_win_set_width, 0, 0.9)
++        "Invalid 'height': expected a non-negative count of rows, or -1 for no change",
++        pcall_err(api.nvim_win_resize, 0, 5, -2, {})
+       )
+-    end)
+-
+-    it('do not cause ml_get errors with foldmethod=expr #19989', function()
+-      insert([[
+-        aaaaa
+-        bbbbb
+-        ccccc]])
+-      command('set foldmethod=expr')
+-      exec([[
+-        vnew
+-        let w = nvim_get_current_win()
+-        wincmd w
+-        call nvim_win_set_width(w, 5)
+-      ]])
+-      feed('l')
+-      eq('', api.nvim_get_vvar('errmsg'))
++      -- anchor not applicable to the dimension(s) being changed
++      eq(
++        "Conflict: 'left' not allowed with this dimension",
++        pcall_err(api.nvim_win_resize, 0, -1, 5, { anchor = 'left' })
++      )
++      -- unrecognized anchor value
++      eq(
++        [[Invalid 'anchor': expected "top", "bottom", "left" or "right", got garbage]],
++        pcall_err(api.nvim_win_resize, 0, -1, 5, { anchor = 'garbage' })
++      )
++      eq('Invalid window id: 999999', pcall_err(api.nvim_win_resize, 999999, 5, -1, {}))
+     end)
+   end)
+ 

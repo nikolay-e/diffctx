@@ -1,0 +1,71 @@
+repo: plausible
+base_commit: 05bd71a6090e242278f773bc314a12427a07551a
+commit: fdb561bcb32c80a7155fc2541f2938a665321558
+patch_stored: true
+gold:
+  - path: lib/plausible/teams/invitations/invite_to_site.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Renamed from lib/plausible/site/memberships/create_invitation.ex (Plausible.Site.Memberships.CreateInvitation -> Plausible.Teams.Invitations.InviteToSite); the most widely-called service, updated at every one of its call sites in this commit.
+  - path: lib/plausible/teams/invitations/accept.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Renamed from lib/plausible/site/memberships/accept_invitation.ex (AcceptInvitation -> Accept); called from invitation_controller.ex's accept_invitation/2 and membership_controller.ex's change_team/bulk_transfer_ownership_direct.
+  - path: lib/plausible/teams/invitations/remove_from_team.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Renamed from lib/plausible/teams/invitations/remove.ex (Plausible.Teams.Invitations.Remove -> RemoveFromTeam) specifically to disambiguate from the newly-arrived sibling remove_from_site.ex — the clearest evidence of why this reorg needed new names, not just a new namespace.
+  - path: lib/plausible/teams/invitations/remove_from_site.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Renamed from lib/plausible/site/memberships/remove_invitation.ex (RemoveInvitation -> RemoveFromSite); the sibling that forced remove.ex to become remove_from_team.ex to avoid a naming collision.
+  - path: lib/plausible_web/controllers/invitation_controller.ex
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: Single file that calls all five renamed/moved invitation services (Accept, Reject, RemoveFromSite, RemoveFromTeam), the best vantage point to see the whole rename ripple at once.
+  - path: lib/plausible_web/controllers/site/membership_controller.ex
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: Drops the local `alias Plausible.Site.Memberships` and calls Teams.Invitations.InviteToSite/Accept directly, plus shortens unrelated Plausible.Teams.Billing/Users references now that `alias Plausible.Teams` is in scope.
+  - path: lib/plausible/teams/management/layout/entry.ex
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: Team-management LiveView layout calls Plausible.Teams.Invitations.RemoveFromTeam.remove/3 (previously .Remove.remove/3), showing the rename ripple reaches beyond controllers into LiveView code.
+  - path: lib/plausible/site/admin.ex
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: SiteAdmin's owner-transfer actions call Teams.Invitations.InviteToSite.bulk_create_invitation/5 and Teams.Invitations.Accept.bulk_transfer_ownership_direct/3, the admin-panel call sites for the renamed services.
+forbidden:
+  - path: lib/plausible/teams/memberships.ex
+    reason: sibling Teams.Memberships module (update_role/2, remove/2) referenced in membership_controller.ex but a distinct, pre-existing context for team membership management, untouched by this rename
+  - path: lib/plausible/teams/invitations/reject.ex
+    reason: also renamed in this commit (RejectInvitation -> Reject) but adds no information beyond the identical rename pattern already shown by accept.ex/invite_to_site.ex/remove_from_site.ex
+  - path: extra/lib/plausible_web/controllers/api/external_sites_controller.ex
+    reason: touched by a single call-site rename (CreateInvitation.create_invitation -> InviteToSite.create_invitation), fully explained by invite_to_site.ex alone
+  - path: test/plausible/teams/invitations/accept_test.exs
+    reason: renamed test file mirroring accept.ex's module rename mechanically, adds no new information about the reorganization itself
+nontrivial_gold_count: 0
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: []
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 24
+  description: Move invitations logic under Teams context — context-module move with alias ripple across
+    16 lib files
+notes: Pure reorganization commit — moves lib/plausible/site/memberships/*.ex to
+  lib/plausible/teams/invitations/*.ex (renaming AcceptInvitation/CreateInvitation/RejectInvitation/
+  RemoveInvitation to Accept/InviteToSite/Reject/RemoveFromSite), deletes the now-redundant
+  Plausible.Site.Memberships defdelegate facade, and renames the pre-existing
+  Plausible.Teams.Invitations.Remove to RemoveFromTeam to avoid colliding with the new RemoveFromSite.
+  no_nontrivial_context is true — every symbol needed to understand this move (both endpoints of every
+  rename, every call site) is already present in the diff; nothing outside it is required.

@@ -1,0 +1,54 @@
+repo: gitpod
+base_commit: 25d062a7627b6f9399f257da64799dd667a5ae4a
+commit: a303660a5f206ffdfa8518b1f7f7ef3b5cae6037
+patch_stored: true
+gold:
+- path: components/dashboard/src/Insights.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/data/insights/list-workspace-sessions-query.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/insights/WorkspaceSession.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/insights/WorkspaceSessionGroup.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/insights/download/DownloadInsights.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/insights/download/download-sessions.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-db/src/typeorm/workspace-db-impl.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/public-api/gitpod/v1/workspace.proto
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/api/workspace-service-api.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: components/public-api/go/v1/workspace.pb.go
+- path: components/public-api/java/io/gitpod/publicapi/v1/WorkspaceOuterClass.java
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: Hang on a 29-file 'Insights page' feature. The diff includes a 4382-line generated Java protobuf
+  file (WorkspaceOuterClass.java) and a 1060-line generated Go file (workspace.pb.go) alongside the real
+  new React/TS insights UI. Only 29 files is a small input, so the hang strongly suggests the pipeline
+  chokes on huge generated single-file diffs (symbol/AST blowup) rather than repo-wide scale. The gold
+  context should foreground the new Insights.tsx/download flow and the .proto schema source, not the generated
+  bindings.

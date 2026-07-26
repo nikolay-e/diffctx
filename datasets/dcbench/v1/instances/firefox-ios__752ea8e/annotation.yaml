@@ -1,0 +1,64 @@
+repo: firefox-ios
+base_commit: 636d25cecdb47f7d7f7a16bdb03b955a5b3c9e63
+commit: 752ea8e16f36c402b3a9bd40996de738fc970bf8
+patch_stored: true
+gold:
+  - path: focus-ios/Blockzilla/OpenUtils.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Refactored from a static namespace to an NSObject/UIActivityItemSource that implements isPasswordManagerActivityType(_:) and findLoginExtensionItem() — the core 1Password/LastPass share-sheet integration this commit adds.
+  - path: focus-ios/Blockzilla/Modules/WebView/WebViewController.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines the new onePasswordExtensionItem property, createPasswordManagerExtensionItem(), and fillPasswords(returnedItems:) that OpenUtils.swift calls via self.webViewController.
+  - path: focus-ios/Blockzilla/ShareSheetActivities.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: OpenInFirefoxActivity/OpenInSafariActivity/OpenInChromeActivity gain their own openInFirefox/openInSafari/openInChrome instance methods, replacing the static OpenUtils.openInX(url:) calls removed from OpenUtils.swift in this same commit.
+  - path: focus-ios/Blockzilla/BrowserViewController.swift
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: Sole call site updated to instantiate OpenUtils(url:webViewController:) and pass it to buildShareViewController, demonstrating the new instance-based API contract.
+  - path: focus-ios/Blockzilla/TelemetryIntegration.swift
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: Adds TelemetryEventMethod.show and TelemetryEventObject.autofill constants that OpenUtils.swift's completionWithItemsHandler references when recording autofill telemetry events.
+  - path: focus-ios/Blockzilla/Info.plist
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Adds "org-appextension-feature-password-management" to LSApplicationQueriesSchemes, the URL-scheme string that 1Password/LastPass-style extensions register so canOpenURL/share-sheet discovery can find them — the string-keyed linkage the whole feature depends on.
+  - path: focus-ios/Blockzilla.xcodeproj/project.pbxproj
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Adds OnePasswordExtension.framework as a PBXFileReference and wires it into the Frameworks and new "Embed Frameworks" PBXCopyFilesBuildPhase so the `import OnePasswordExtension` in WebViewController.swift/OpenUtils.swift links and ships.
+  - path: focus-ios/Cartfile
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Declares the new Carthage dependency `github "AgileBits/onepassword-extension" "add-framework-support"` that provides the OnePasswordExtension framework imported by WebViewController.swift and OpenUtils.swift.
+forbidden:
+  - path: focus-ios/Blockzilla/Settings.bundle/com.mono0926.LicensePlist/onepassword-extension.plist
+    reason: newly-added file named after the feature, but contains only MIT license boilerplate text, not any integration code
+  - path: focus-ios/Blockzilla/Settings.bundle/com.mono0926.LicensePlist.latest_result.txt
+    reason: auto-generated license-scan report; its diff is dominated by unrelated Fuzi/AutocompleteTextField version bumps, not the 1Password integration
+  - path: focus-ios/Blockzilla/Settings.bundle/com.mono0926.LicensePlist.plist
+    reason: mechanical Settings-bundle preference-pane list entry adding a menu row, no functional logic
+  - path: focus-ios/Cartfile.resolved
+    reason: sibling of Cartfile; only pins Carthage commit SHAs and also bumps unrelated Fuzi/AutocompleteTextField pins, Cartfile alone documents the new dependency
+nontrivial_gold_count: 0
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 12
+  description: Add 1Password/LastPass support with telemetry (focus-ios) — compact but maximally diverse
+    extension set
+notes: Adds 1Password/LastPass/Bitwarden autofill support to focus-ios's share sheet by turning OpenUtils into a stateful UIActivityItemSource wired to WebViewController's OnePasswordExtension calls, plus the Info.plist URL-scheme entry and Carthage/pbxproj plumbing needed to link the new framework. Searched for callers/tests/consumers outside the diff (createPasswordManagerExtensionItem, fillPasswords, the new Telemetry constants, isPasswordManagerActivityType strings) and found none — this repo has no unit tests covering share-sheet/password-manager logic, so all gold is necessarily in-diff, hence nontrivial_gold_count is zero.

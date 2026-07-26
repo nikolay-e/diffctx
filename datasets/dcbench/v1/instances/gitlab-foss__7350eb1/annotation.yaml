@@ -1,0 +1,79 @@
+repo: gitlab-foss
+base_commit: 0b4f9ff4068af6776b495d9332aeecf58e48786f
+commit: 7350eb1fa83662d4aaa7541acb387b3742ba9788
+patch_stored: true
+gold:
+  - path: lib/gitlab/wiki_file_finder.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New `WikiFileFinder < FileFinder` class overriding `search_filenames` to match wiki page titles via `repository.ls_files(ref)` + regex, the core of the "search wiki titles" feature.
+  - path: lib/gitlab/file_finder.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Refactors `find_by_filename` to extract `search_filenames`/`blobs`/`blob_refs` as overridable methods, specifically so `WikiFileFinder` can override `search_filenames` alone.
+  - path: lib/gitlab/project_search_results.rb
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: '`wiki_blobs` now calls `Gitlab::WikiFileFinder.new(project, ref).find(query)` instead of the removed `project_wiki.search_files(query)`.'
+  - path: app/models/project_wiki.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Removes the old `search_files(query)` method that only searched content, now superseded by `Gitlab::WikiFileFinder`, which searches titles too.
+  - path: app/helpers/search_helper.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds `find_project_for_result_blob`, `parse_search_result`, and `search_blob_title` helpers consumed by the new shared `_blob_data` partial.
+  - path: app/views/search/results/_blob_data.html.haml
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New shared partial factored out of `_blob.html.haml`/`_wiki_blob.html.haml`, rendering both blob and wiki-blob results uniformly via the new helper methods.
+  - path: app/views/search/results/_blob.html.haml
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: Rewritten to delegate to the new `_blob_data` partial instead of inlining markup, showing one caller of the refactor.
+  - path: app/views/search/results/_wiki_blob.html.haml
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: Rewritten to delegate to the new `_blob_data` partial with `project_wiki_path`, the other caller demonstrating the unification.
+  - path: spec/lib/gitlab/wiki_file_finder_spec.rb
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: New spec exercising `WikiFileFinder#find` for both title and content matches via the shared `'file finder'` example.
+  - path: lib/gitlab/search_results.rb
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Defines `Gitlab::SearchResults::FoundBlob` (id, filename, basename, ref, startline, data) — the object shape `FileFinder#find_by_filename`/`find_by_content` construct and that `_blob_data.html.haml` and the specs assert against.
+forbidden:
+  - path: app/models/repository.rb
+    reason: defines the generic `search_files_by_name`/`search_files_by_content` used underneath, but is large, generic repo infra untouched by this commit
+  - path: lib/gitlab/git/repository.rb
+    reason: low-level Gitaly-backed search implementation, several layers below the FileFinder abstraction this change actually touches
+  - path: lib/api/search.rb
+    reason: peripheral REST API endpoint that also consumes find() results, but the `'blobs', 'wiki_blobs'` case merge is incidental, not needed to understand the title-search mechanism
+  - path: changelogs/unreleased/fj-34526-enabling-wiki-search-by-title.yml
+    reason: boilerplate changelog entry, carries no information beyond the commit subject
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 14
+  description: Wiki title search — model+lib+Haml views co-change
+notes: >
+  Adds wiki-title search by introducing `Gitlab::WikiFileFinder`, a subclass of the
+  refactored `FileFinder` that overrides filename search to grep wiki page titles
+  instead of content; unifies the blob/wiki-blob search result views behind a shared
+  `_blob_data` partial and new SearchHelper methods. Gold trimmed from 14 diff files to
+  the mechanism's semantic core; boilerplate changelog and low-level repository search
+  internals excluded.

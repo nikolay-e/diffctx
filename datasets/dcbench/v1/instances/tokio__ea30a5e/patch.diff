@@ -1,0 +1,201 @@
+From ea30a5ea5eee1b3970052f19e8a8b16d0a5c29f4 Mon Sep 17 00:00:00 2001
+From: Qi <add_sp@outlook.com>
+Date: Tue, 20 May 2025 20:55:28 +0800
+Subject: [PATCH] time: rename `cached_when` to `registered_when` (#7333)
+
+---
+ tokio/src/runtime/time/entry.rs       | 47 ++++++++++++++++-----------
+ tokio/src/runtime/time/wheel/level.rs |  4 +--
+ tokio/src/runtime/time/wheel/mod.rs   |  6 ++--
+ 3 files changed, 33 insertions(+), 24 deletions(-)
+
+diff --git a/tokio/src/runtime/time/entry.rs b/tokio/src/runtime/time/entry.rs
+index acf8f2f..8ac6d10 100644
+--- a/tokio/src/runtime/time/entry.rs
++++ b/tokio/src/runtime/time/entry.rs
+@@ -28,7 +28,7 @@
+ //! This single state field allows for code that is firing the timer to
+ //! synchronize with any racing `reset` calls reliably.
+ //!
+-//! # Cached vs true timeouts
++//! # Registered vs true timeouts
+ //!
+ //! To allow for the use case of a timeout that is periodically reset before
+ //! expiration to be as lightweight as possible, we support optimistically
+@@ -43,8 +43,8 @@
+ //!
+ //! We do, however, also need to track what the expiration time was when we
+ //! originally registered the timer; this is used to locate the right linked
+-//! list when the timer is being cancelled. This is referred to as the "cached
+-//! when" internally.
++//! list when the timer is being cancelled.
++//! This is referred to as the `registered_when` internally.
+ //!
+ //! There is of course a race condition between timer reset and timer
+ //! expiration. If the driver fails to observe the updated expiration time, it
+@@ -334,10 +334,16 @@ pub(crate) struct TimerShared {
+     /// Only accessed under the entry lock.
+     pointers: linked_list::Pointers<TimerShared>,
+ 
+-    /// The expiration time for which this entry is currently registered.
++    /// The time when the [`TimerEntry`] was registered into the Wheel,
++    /// [`STATE_DEREGISTERED`] means it is not registered.
++    ///
+     /// Generally owned by the driver, but is accessed by the entry when not
+     /// registered.
+-    cached_when: AtomicU64,
++    ///
++    /// We use relaxed ordering for both loading and storing since this value
++    /// is only accessed either when holding the driver lock or through mutable
++    /// references to [`TimerEntry`].
++    registered_when: AtomicU64,
+ 
+     /// Current state. This records whether the timer entry is currently under
+     /// the ownership of the driver, and if not, its current state (not
+@@ -353,7 +359,10 @@ unsafe impl Sync for TimerShared {}
+ impl std::fmt::Debug for TimerShared {
+     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+         f.debug_struct("TimerShared")
+-            .field("cached_when", &self.cached_when.load(Ordering::Relaxed))
++            .field(
++                "registered_when",
++                &self.registered_when.load(Ordering::Relaxed),
++            )
+             .field("state", &self.state)
+             .finish()
+     }
+@@ -370,7 +379,7 @@ generate_addr_of_methods! {
+ impl TimerShared {
+     pub(super) fn new() -> Self {
+         Self {
+-            cached_when: AtomicU64::new(0),
++            registered_when: AtomicU64::new(0),
+             pointers: linked_list::Pointers::new(),
+             state: StateCell::default(),
+             _p: PhantomPinned,
+@@ -378,9 +387,9 @@ impl TimerShared {
+     }
+ 
+     /// Gets the cached time-of-expiration value.
+-    pub(super) fn cached_when(&self) -> u64 {
++    pub(super) fn registered_when(&self) -> u64 {
+         // Cached-when is only accessed under the driver lock, so we can use relaxed
+-        self.cached_when.load(Ordering::Relaxed)
++        self.registered_when.load(Ordering::Relaxed)
+     }
+ 
+     /// Gets the true time-of-expiration value, and copies it into the cached
+@@ -391,7 +400,7 @@ impl TimerShared {
+     pub(super) unsafe fn sync_when(&self) -> u64 {
+         let true_when = self.true_when();
+ 
+-        self.cached_when.store(true_when, Ordering::Relaxed);
++        self.registered_when.store(true_when, Ordering::Relaxed);
+ 
+         true_when
+     }
+@@ -400,8 +409,8 @@ impl TimerShared {
+     ///
+     /// SAFETY: Must be called with the driver lock held, and when this entry is
+     /// not in any timer wheel lists.
+-    unsafe fn set_cached_when(&self, when: u64) {
+-        self.cached_when.store(when, Ordering::Relaxed);
++    unsafe fn set_registered_when(&self, when: u64) {
++        self.registered_when.store(when, Ordering::Relaxed);
+     }
+ 
+     /// Returns the true time-of-expiration value, with relaxed memory ordering.
+@@ -416,7 +425,7 @@ impl TimerShared {
+     /// in the timer wheel.
+     pub(super) unsafe fn set_expiration(&self, t: u64) {
+         self.state.set_expiration(t);
+-        self.cached_when.store(t, Ordering::Relaxed);
++        self.registered_when.store(t, Ordering::Relaxed);
+     }
+ 
+     /// Sets the true time-of-expiration only if it is after the current.
+@@ -579,8 +588,8 @@ impl TimerEntry {
+ }
+ 
+ impl TimerHandle {
+-    pub(super) unsafe fn cached_when(&self) -> u64 {
+-        unsafe { self.inner.as_ref().cached_when() }
++    pub(super) unsafe fn registered_when(&self) -> u64 {
++        unsafe { self.inner.as_ref().registered_when() }
+     }
+ 
+     pub(super) unsafe fn sync_when(&self) -> u64 {
+@@ -602,7 +611,7 @@ impl TimerHandle {
+     /// Attempts to mark this entry as pending. If the expiration time is after
+     /// `not_after`, however, returns an Err with the current expiration time.
+     ///
+-    /// If an `Err` is returned, the `cached_when` value will be updated to this
++    /// If an `Err` is returned, the `registered_when` value will be updated to this
+     /// new expiration time.
+     ///
+     /// SAFETY: The caller must ensure that the handle remains valid, the driver
+@@ -611,12 +620,12 @@ impl TimerHandle {
+     pub(super) unsafe fn mark_pending(&self, not_after: u64) -> Result<(), u64> {
+         match self.inner.as_ref().state.mark_pending(not_after) {
+             Ok(()) => {
+-                // mark this as being on the pending queue in cached_when
+-                self.inner.as_ref().set_cached_when(STATE_DEREGISTERED);
++                // mark this as being on the pending queue in registered_when
++                self.inner.as_ref().set_registered_when(STATE_DEREGISTERED);
+                 Ok(())
+             }
+             Err(tick) => {
+-                self.inner.as_ref().set_cached_when(tick);
++                self.inner.as_ref().set_registered_when(tick);
+                 Err(tick)
+             }
+         }
+diff --git a/tokio/src/runtime/time/wheel/level.rs b/tokio/src/runtime/time/wheel/level.rs
+index d31eaf4..754e638 100644
+--- a/tokio/src/runtime/time/wheel/level.rs
++++ b/tokio/src/runtime/time/wheel/level.rs
+@@ -120,7 +120,7 @@ impl Level {
+     }
+ 
+     pub(crate) unsafe fn add_entry(&mut self, item: TimerHandle) {
+-        let slot = slot_for(item.cached_when(), self.level);
++        let slot = slot_for(item.registered_when(), self.level);
+ 
+         self.slot[slot].push_front(item);
+ 
+@@ -128,7 +128,7 @@ impl Level {
+     }
+ 
+     pub(crate) unsafe fn remove_entry(&mut self, item: NonNull<TimerShared>) {
+-        let slot = slot_for(unsafe { item.as_ref().cached_when() }, self.level);
++        let slot = slot_for(unsafe { item.as_ref().registered_when() }, self.level);
+ 
+         unsafe { self.slot[slot].remove(item) };
+         if self.slot[slot].is_empty() {
+diff --git a/tokio/src/runtime/time/wheel/mod.rs b/tokio/src/runtime/time/wheel/mod.rs
+index c0459ee..8d94303 100644
+--- a/tokio/src/runtime/time/wheel/mod.rs
++++ b/tokio/src/runtime/time/wheel/mod.rs
+@@ -117,7 +117,7 @@ impl Wheel {
+     /// Removes `item` from the timing wheel.
+     pub(crate) unsafe fn remove(&mut self, item: NonNull<TimerShared>) {
+         unsafe {
+-            let when = item.as_ref().cached_when();
++            let when = item.as_ref().registered_when();
+             if when == STATE_DEREGISTERED {
+                 self.pending.remove(item);
+             } else {
+@@ -231,11 +231,11 @@ impl Wheel {
+ 
+         while let Some(item) = entries.pop_back() {
+             if expiration.level == 0 {
+-                debug_assert_eq!(unsafe { item.cached_when() }, expiration.deadline);
++                debug_assert_eq!(unsafe { item.registered_when() }, expiration.deadline);
+             }
+ 
+             // Try to expire the entry; this is cheap (doesn't synchronize) if
+-            // the timer is not expired, and updates cached_when.
++            // the timer is not expired, and updates registered_when.
+             match unsafe { item.mark_pending(expiration.deadline) } {
+                 Ok(()) => {
+                     // Item was expired

@@ -1,0 +1,1666 @@
+From 726337e06a9a3b13a9ecbf846de57da8d79a5b26 Mon Sep 17 00:00:00 2001
+From: Richard Roggenkemper <46740234+roggenkemper@users.noreply.github.com>
+Date: Fri, 3 Oct 2025 09:32:35 -0700
+Subject: [PATCH] chore(detectors): Rename `performance_issues` modules
+ (#100762)
+
+we detect more than just performance issues - renaming to be
+`issue_detection` at a top level. future PRs will update some of the
+variables/functions that we want to rename to be more generic too
+---
+ .github/CODEOWNERS                            |  4 +--
+ bin/benchmark_detectors                       |  4 +--
+ pyproject.toml                                |  4 +--
+ .../organization_events_trends_v2.py          |  2 +-
+ src/sentry/core/endpoints/team_projects.py    |  2 +-
+ src/sentry/event_manager.py                   |  4 +--
+ .../integrations/issue_alert_image_builder.py |  2 +-
+ .../README.md                                 |  0
+ .../__init__.py                               |  0
+ .../base.py                                   |  4 +--
+ .../detectors/__init__.py                     |  0
+ .../detectors/consecutive_db_detector.py      | 12 ++++----
+ .../detectors/consecutive_http_detector.py    | 12 ++++----
+ .../detectors/disable_detectors.py            |  0
+ .../detectors/experiments/__init__.py         |  0
+ .../mn_plus_one_db_span_detector.py           | 16 +++++-----
+ .../n_plus_one_api_calls_detector.py          | 16 +++++-----
+ .../n_plus_one_db_span_detector.py            | 16 +++++-----
+ .../detectors/http_overhead_detector.py       | 12 ++++----
+ .../detectors/io_main_thread_detector.py      |  0
+ .../detectors/large_payload_detector.py       |  0
+ .../detectors/mn_plus_one_db_span_detector.py |  0
+ .../n_plus_one_api_calls_detector.py          | 16 +++++-----
+ .../detectors/n_plus_one_db_span_detector.py  |  0
+ .../detectors/query_injection_detector.py     |  8 ++---
+ .../render_blocking_asset_span_detector.py    |  0
+ .../detectors/slow_db_query_detector.py       |  0
+ .../detectors/sql_injection_detector.py       |  8 ++---
+ .../detectors/uncompressed_asset_detector.py  |  0
+ .../detectors/utils.py                        |  0
+ .../performance_detection.py                  | 10 +++----
+ .../performance_problem.py                    |  0
+ .../types.py                                  |  0
+ .../project_performance_issue_settings.py     |  2 +-
+ src/sentry/notifications/utils/__init__.py    |  6 ++--
+ src/sentry/runner/commands/performance.py     |  6 ++--
+ .../consumers/process_segments/message.py     |  2 +-
+ .../spans/consumers/process_segments/shim.py  |  2 +-
+ src/sentry/testutils/cases.py                 |  2 +-
+ src/sentry/testutils/factories.py             |  2 +-
+ .../__init__.py                               |  0
+ .../event_generators.py                       |  0
+ .../experiments.py                            |  4 +--
+ .../span_builder.py                           |  0
+ .../store_transaction.py                      |  0
+ .../chartcuterie/test_image_block_builder.py  |  2 +-
+ tests/sentry/api/serializers/test_event.py    |  2 +-
+ .../event_manager/test_event_manager.py       |  2 +-
+ .../__init__.py                               |  0
+ .../experiments/__init__.py                   |  0
+ .../test_m_n_plus_one_db_detector.py          | 28 ++++++++---------
+ .../test_n_plus_one_api_calls_detector.py     | 20 +++++--------
+ .../test_n_plus_one_db_span_detector.py       | 16 +++++-----
+ .../test_consecutive_db_detector.py           | 12 ++++----
+ .../test_consecutive_http_detector.py         | 14 ++++-----
+ .../test_db_main_thread_detector.py           | 12 ++++----
+ .../test_file_io_on_main_thread_detector.py   | 14 ++++-----
+ .../test_http_overhead_detector.py            | 12 ++++----
+ .../test_large_http_payload_detector.py       | 12 ++++----
+ .../test_m_n_plus_one_db_detector.py          | 16 +++++-----
+ .../test_n_plus_one_api_calls_detector.py     | 20 +++++--------
+ .../test_n_plus_one_db_span_detector.py       | 16 +++++-----
+ .../test_performance_detection.py             | 30 +++++++++----------
+ .../test_query_injection_detector.py          | 10 +++----
+ .../test_render_blocking_asset_detector.py    | 14 ++++-----
+ .../test_slow_db_span_detector.py             | 16 ++++------
+ .../test_sql_injection_detector.py            | 10 +++----
+ .../test_uncompressed_asset_detector.py       | 14 ++++-----
+ ...test_project_performance_issue_settings.py |  2 +-
+ tests/sentry/notifications/test_utils.py      |  2 +-
+ .../seer/anomaly_detection/test_store_data.py |  2 +-
+ .../process_segments/test_message.py          |  2 +-
+ tests/sentry/spans/grouping/test_strategy.py  |  2 +-
+ .../sdk_crashes/test_sdk_crash_detection.py   |  2 +-
+ 74 files changed, 234 insertions(+), 248 deletions(-)
+ rename src/sentry/{performance_issues => issue_detection}/README.md (100%)
+ rename src/sentry/{performance_issues => issue_detection}/__init__.py (100%)
+ rename src/sentry/{performance_issues => issue_detection}/base.py (97%)
+ rename src/sentry/{performance_issues => issue_detection}/detectors/__init__.py (100%)
+ rename src/sentry/{performance_issues => issue_detection}/detectors/consecutive_db_detector.py (98%)
+ rename src/sentry/{performance_issues => issue_detection}/detectors/consecutive_http_detector.py (98%)
+ rename src/sentry/{performance_issues => issue_detection}/detectors/disable_detectors.py (100%)
+ rename src/sentry/{performance_issues => issue_detection}/detectors/experiments/__init__.py (100%)
+ rename src/sentry/{performance_issues => issue_detection}/detectors/experiments/mn_plus_one_db_span_detector.py (98%)
+ rename src/sentry/{performance_issues => issue_detection}/detectors/experiments/n_plus_one_api_calls_detector.py (97%)
+ rename src/sentry/{performance_issues => issue_detection}/detectors/experiments/n_plus_one_db_span_detector.py (97%)
+ rename src/sentry/{performance_issues => issue_detection}/detectors/http_overhead_detector.py (98%)
+ rename src/sentry/{performance_issues => issue_detection}/detectors/io_main_thread_detector.py (100%)
+ rename src/sentry/{performance_issues => issue_detection}/detectors/large_payload_detector.py (100%)
+ rename src/sentry/{performance_issues => issue_detection}/detectors/mn_plus_one_db_span_detector.py (100%)
+ rename src/sentry/{performance_issues => issue_detection}/detectors/n_plus_one_api_calls_detector.py (97%)
+ rename src/sentry/{performance_issues => issue_detection}/detectors/n_plus_one_db_span_detector.py (100%)
+ rename src/sentry/{performance_issues => issue_detection}/detectors/query_injection_detector.py (94%)
+ rename src/sentry/{performance_issues => issue_detection}/detectors/render_blocking_asset_span_detector.py (100%)
+ rename src/sentry/{performance_issues => issue_detection}/detectors/slow_db_query_detector.py (100%)
+ rename src/sentry/{performance_issues => issue_detection}/detectors/sql_injection_detector.py (97%)
+ rename src/sentry/{performance_issues => issue_detection}/detectors/uncompressed_asset_detector.py (100%)
+ rename src/sentry/{performance_issues => issue_detection}/detectors/utils.py (100%)
+ rename src/sentry/{performance_issues => issue_detection}/performance_detection.py (99%)
+ rename src/sentry/{performance_issues => issue_detection}/performance_problem.py (100%)
+ rename src/sentry/{performance_issues => issue_detection}/types.py (100%)
+ rename src/sentry/testutils/{performance_issues => issue_detection}/__init__.py (100%)
+ rename src/sentry/testutils/{performance_issues => issue_detection}/event_generators.py (100%)
+ rename src/sentry/testutils/{performance_issues => issue_detection}/experiments.py (86%)
+ rename src/sentry/testutils/{performance_issues => issue_detection}/span_builder.py (100%)
+ rename src/sentry/testutils/{performance_issues => issue_detection}/store_transaction.py (100%)
+ rename tests/sentry/{performance_issues => issue_detection}/__init__.py (100%)
+ rename tests/sentry/{performance_issues => issue_detection}/experiments/__init__.py (100%)
+ rename tests/sentry/{performance_issues => issue_detection}/experiments/test_m_n_plus_one_db_detector.py (94%)
+ rename tests/sentry/{performance_issues => issue_detection}/experiments/test_n_plus_one_api_calls_detector.py (97%)
+ rename tests/sentry/{performance_issues => issue_detection}/experiments/test_n_plus_one_db_span_detector.py (97%)
+ rename tests/sentry/{performance_issues => issue_detection}/test_consecutive_db_detector.py (97%)
+ rename tests/sentry/{performance_issues => issue_detection}/test_consecutive_http_detector.py (98%)
+ rename tests/sentry/{performance_issues => issue_detection}/test_db_main_thread_detector.py (91%)
+ rename tests/sentry/{performance_issues => issue_detection}/test_file_io_on_main_thread_detector.py (95%)
+ rename tests/sentry/{performance_issues => issue_detection}/test_http_overhead_detector.py (96%)
+ rename tests/sentry/{performance_issues => issue_detection}/test_large_http_payload_detector.py (97%)
+ rename tests/sentry/{performance_issues => issue_detection}/test_m_n_plus_one_db_detector.py (94%)
+ rename tests/sentry/{performance_issues => issue_detection}/test_n_plus_one_api_calls_detector.py (96%)
+ rename tests/sentry/{performance_issues => issue_detection}/test_n_plus_one_db_span_detector.py (97%)
+ rename tests/sentry/{performance_issues => issue_detection}/test_performance_detection.py (97%)
+ rename tests/sentry/{performance_issues => issue_detection}/test_query_injection_detector.py (85%)
+ rename tests/sentry/{performance_issues => issue_detection}/test_render_blocking_asset_detector.py (97%)
+ rename tests/sentry/{performance_issues => issue_detection}/test_slow_db_span_detector.py (94%)
+ rename tests/sentry/{performance_issues => issue_detection}/test_sql_injection_detector.py (94%)
+ rename tests/sentry/{performance_issues => issue_detection}/test_uncompressed_asset_detector.py (97%)
+
+diff --git a/.github/CODEOWNERS b/.github/CODEOWNERS
+index 64fb2877887..73c59b32c53 100644
+--- a/.github/CODEOWNERS
++++ b/.github/CODEOWNERS
+@@ -233,8 +233,8 @@ pnpm-lock.yaml                                           @getsentry/owners-js-de
+ /src/sentry/search/events/                                                  @getsentry/visibility
+ /src/sentry/search/eap/                                                     @getsentry/visibility
+ 
+-/src/sentry/performance_issues/                                             @getsentry/issue-detection-backend
+-/tests/sentry/performance_issues/                                           @getsentry/issue-detection-backend
++/src/sentry/issue_detection/                                             @getsentry/issue-detection-backend
++/tests/sentry/issue_detection/                                           @getsentry/issue-detection-backend
+ 
+ /static/app/components/events/eventStatisticalDetector/                     @getsentry/visibility @getsentry/profiling
+ 
+diff --git a/bin/benchmark_detectors b/bin/benchmark_detectors
+index 89bfcb0421e..7d3a12274f7 100755
+--- a/bin/benchmark_detectors
++++ b/bin/benchmark_detectors
+@@ -14,10 +14,10 @@ configure()
+ import time
+ import sentry_sdk
+ from sentry.testutils.performance_issues.event_generators import get_event  # noqa: S007
+-from sentry.performance_issues.detectors.io_main_thread_detector import (
++from sentry.issue_detection.detectors.io_main_thread_detector import (
+     FileIOMainThreadDetector,
+ )
+-from sentry.performance_issues.performance_detection import (
++from sentry.issue_detection.performance_detection import (
+     get_detection_settings,
+     run_detector_on_data,
+ )
+diff --git a/pyproject.toml b/pyproject.toml
+index ae7a3d7c7f1..a96916a10bf 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -449,6 +449,7 @@ module = [
+     "sentry.integrations.vsts.handlers.*",
+     "sentry.integrations.vsts.tasks.*",
+     "sentry.integrations.vsts_extension.*",
++    "sentry.issue_detection.*",
+     "sentry.issues",
+     "sentry.issues.analytics",
+     "sentry.issues.apps",
+@@ -549,7 +550,6 @@ module = [
+     "sentry.options.rollout",
+     "sentry.organizations.*",
+     "sentry.ownership.*",
+-    "sentry.performance_issues.*",
+     "sentry.pipeline.*",
+     "sentry.plugins.base.response",
+     "sentry.plugins.base.view",
+@@ -750,6 +750,7 @@ module = [
+     "tests.sentry.integrations.slack.webhooks.commands.*",
+     "tests.sentry.integrations.source_code_management.*",
+     "tests.sentry.integrations.vsts_extension.*",
++    "tests.sentry.issue_detection.*",
+     "tests.sentry.issues",
+     "tests.sentry.issues.auto_source_code_config.*",
+     "tests.sentry.issues.endpoints.*",
+@@ -790,7 +791,6 @@ module = [
+     "tests.sentry.onboarding_tasks.*",
+     "tests.sentry.organizations.*",
+     "tests.sentry.partnerships.*",
+-    "tests.sentry.performance_issues.*",
+     "tests.sentry.plugins.interfaces.*",
+     "tests.sentry.plugins.sentry_useragents.*",
+     "tests.sentry.plugins.sentry_webhooks.*",
+diff --git a/src/sentry/api/endpoints/organization_events_trends_v2.py b/src/sentry/api/endpoints/organization_events_trends_v2.py
+index 4fc9aa78437..cfb6bc5f093 100644
+--- a/src/sentry/api/endpoints/organization_events_trends_v2.py
++++ b/src/sentry/api/endpoints/organization_events_trends_v2.py
+@@ -13,8 +13,8 @@ from sentry.api.base import region_silo_endpoint
+ from sentry.api.bases import NoProjects, OrganizationEventsV2EndpointBase
+ from sentry.api.paginator import GenericOffsetPaginator
+ from sentry.api.utils import handle_query_errors
++from sentry.issue_detection.detectors.utils import escape_transaction
+ from sentry.models.organization import Organization
+-from sentry.performance_issues.detectors.utils import escape_transaction
+ from sentry.ratelimits.config import RateLimitConfig
+ from sentry.search.events.constants import METRICS_GRANULARITIES
+ from sentry.seer.breakpoints import detect_breakpoints
+diff --git a/src/sentry/core/endpoints/team_projects.py b/src/sentry/core/endpoints/team_projects.py
+index bd7e892fff5..41cd9c2e681 100644
+--- a/src/sentry/core/endpoints/team_projects.py
++++ b/src/sentry/core/endpoints/team_projects.py
+@@ -25,10 +25,10 @@ from sentry.apidocs.examples.team_examples import TeamExamples
+ from sentry.apidocs.parameters import CursorQueryParam, GlobalParams
+ from sentry.apidocs.utils import inline_sentry_response_serializer
+ from sentry.constants import PROJECT_SLUG_MAX_LENGTH, RESERVED_PROJECT_SLUGS, ObjectStatus
++from sentry.issue_detection.detectors.disable_detectors import set_default_disabled_detectors
+ from sentry.models.organization import Organization
+ from sentry.models.project import Project
+ from sentry.models.team import Team
+-from sentry.performance_issues.detectors.disable_detectors import set_default_disabled_detectors
+ from sentry.seer.similarity.utils import (
+     project_is_seer_eligible,
+     set_default_project_autofix_automation_tuning,
+diff --git a/src/sentry/event_manager.py b/src/sentry/event_manager.py
+index 7109a7c8052..507922cebc3 100644
+--- a/src/sentry/event_manager.py
++++ b/src/sentry/event_manager.py
+@@ -79,6 +79,8 @@ from sentry.ingest.transaction_clusterer.datasource.redis import (
+ from sentry.insights import FilterSpan
+ from sentry.insights import modules as insights_modules
+ from sentry.integrations.tasks.kick_off_status_syncs import kick_off_status_syncs
++from sentry.issue_detection.performance_detection import detect_performance_problems
++from sentry.issue_detection.performance_problem import PerformanceProblem
+ from sentry.issues.issue_occurrence import IssueOccurrence
+ from sentry.issues.producer import PayloadType, produce_occurrence_to_kafka
+ from sentry.killswitches import killswitch_matches_context
+@@ -105,8 +107,6 @@ from sentry.models.releaseenvironment import ReleaseEnvironment
+ from sentry.models.releaseprojectenvironment import ReleaseProjectEnvironment
+ from sentry.models.releases.release_project import ReleaseProject
+ from sentry.net.http import connection_from_url
+-from sentry.performance_issues.performance_detection import detect_performance_problems
+-from sentry.performance_issues.performance_problem import PerformanceProblem
+ from sentry.plugins.base import plugins
+ from sentry.quotas.base import index_data_category
+ from sentry.receivers.features import record_event_processed
+diff --git a/src/sentry/integrations/issue_alert_image_builder.py b/src/sentry/integrations/issue_alert_image_builder.py
+index b41ac53e59e..ad1ad49cb52 100644
+--- a/src/sentry/integrations/issue_alert_image_builder.py
++++ b/src/sentry/integrations/issue_alert_image_builder.py
+@@ -10,6 +10,7 @@ from sentry.charts import backend as charts
+ from sentry.charts.types import ChartSize, ChartType
+ from sentry.integrations.time_utils import get_approx_start_time, get_relative_time
+ from sentry.integrations.types import ExternalProviderEnum
++from sentry.issue_detection.detectors import utils
+ from sentry.issues.grouptype import (
+     GroupType,
+     PerformanceP95EndpointRegressionGroupType,
+@@ -17,7 +18,6 @@ from sentry.issues.grouptype import (
+ )
+ from sentry.models.apikey import ApiKey
+ from sentry.models.group import Group
+-from sentry.performance_issues.detectors import utils
+ from sentry.snuba.referrer import Referrer
+ from sentry.utils import metrics
+ from sentry.utils.locking import UnableToAcquireLock
+diff --git a/src/sentry/performance_issues/README.md b/src/sentry/issue_detection/README.md
+similarity index 100%
+rename from src/sentry/performance_issues/README.md
+rename to src/sentry/issue_detection/README.md
+diff --git a/src/sentry/performance_issues/__init__.py b/src/sentry/issue_detection/__init__.py
+similarity index 100%
+rename from src/sentry/performance_issues/__init__.py
+rename to src/sentry/issue_detection/__init__.py
+diff --git a/src/sentry/performance_issues/base.py b/src/sentry/issue_detection/base.py
+similarity index 97%
+rename from src/sentry/performance_issues/base.py
+rename to src/sentry/issue_detection/base.py
+index c2945f3fe04..c66bc19933f 100644
+--- a/src/sentry/performance_issues/base.py
++++ b/src/sentry/issue_detection/base.py
+@@ -7,10 +7,10 @@ from enum import Enum
+ from typing import Any, ClassVar
+ 
+ from sentry import options
++from sentry.issue_detection.detectors.utils import get_span_duration
++from sentry.issue_detection.performance_problem import PerformanceProblem
+ from sentry.models.organization import Organization
+ from sentry.models.project import Project
+-from sentry.performance_issues.detectors.utils import get_span_duration
+-from sentry.performance_issues.performance_problem import PerformanceProblem
+ 
+ from .types import Span
+ 
+diff --git a/src/sentry/performance_issues/detectors/__init__.py b/src/sentry/issue_detection/detectors/__init__.py
+similarity index 100%
+rename from src/sentry/performance_issues/detectors/__init__.py
+rename to src/sentry/issue_detection/detectors/__init__.py
+diff --git a/src/sentry/performance_issues/detectors/consecutive_db_detector.py b/src/sentry/issue_detection/detectors/consecutive_db_detector.py
+similarity index 98%
+rename from src/sentry/performance_issues/detectors/consecutive_db_detector.py
+rename to src/sentry/issue_detection/detectors/consecutive_db_detector.py
+index e549bc0b167..45b100198cc 100644
+--- a/src/sentry/performance_issues/detectors/consecutive_db_detector.py
++++ b/src/sentry/issue_detection/detectors/consecutive_db_detector.py
+@@ -7,12 +7,8 @@ from typing import Any
+ 
+ from django.utils.translation import gettext_lazy as _
+ 
+-from sentry.issues.grouptype import PerformanceConsecutiveDBQueriesGroupType
+-from sentry.issues.issue_occurrence import IssueEvidence
+-from sentry.models.organization import Organization
+-from sentry.models.project import Project
+-from sentry.performance_issues.base import DetectorType, PerformanceDetector
+-from sentry.performance_issues.detectors.utils import (
++from sentry.issue_detection.base import DetectorType, PerformanceDetector
++from sentry.issue_detection.detectors.utils import (
+     fingerprint_spans,
+     get_max_span_duration,
+     get_notification_attachment_body,
+@@ -20,6 +16,10 @@ from sentry.performance_issues.detectors.utils import (
+     get_span_evidence_value,
+     get_total_span_duration,
+ )
++from sentry.issues.grouptype import PerformanceConsecutiveDBQueriesGroupType
++from sentry.issues.issue_occurrence import IssueEvidence
++from sentry.models.organization import Organization
++from sentry.models.project import Project
+ from sentry.utils.event_frames import get_sdk_name
+ 
+ from ..performance_problem import PerformanceProblem
+diff --git a/src/sentry/performance_issues/detectors/consecutive_http_detector.py b/src/sentry/issue_detection/detectors/consecutive_http_detector.py
+similarity index 98%
+rename from src/sentry/performance_issues/detectors/consecutive_http_detector.py
+rename to src/sentry/issue_detection/detectors/consecutive_http_detector.py
+index 0e494c9449a..334c82d4ec9 100644
+--- a/src/sentry/performance_issues/detectors/consecutive_http_detector.py
++++ b/src/sentry/issue_detection/detectors/consecutive_http_detector.py
+@@ -4,12 +4,8 @@ import logging
+ from typing import Any
+ from urllib.parse import urlparse
+ 
+-from sentry.issues.grouptype import PerformanceConsecutiveHTTPQueriesGroupType
+-from sentry.issues.issue_occurrence import IssueEvidence
+-from sentry.models.organization import Organization
+-from sentry.models.project import Project
+-from sentry.performance_issues.base import DetectorType, PerformanceDetector
+-from sentry.performance_issues.detectors.utils import (
++from sentry.issue_detection.base import DetectorType, PerformanceDetector
++from sentry.issue_detection.detectors.utils import (
+     does_overlap_previous_span,
+     fingerprint_http_spans,
+     get_duration_between_spans,
+@@ -21,6 +17,10 @@ from sentry.performance_issues.detectors.utils import (
+     get_url_from_span,
+     is_filtered_url,
+ )
++from sentry.issues.grouptype import PerformanceConsecutiveHTTPQueriesGroupType
++from sentry.issues.issue_occurrence import IssueEvidence
++from sentry.models.organization import Organization
++from sentry.models.project import Project
+ from sentry.utils.event import is_event_from_browser_javascript_sdk
+ from sentry.utils.safe import get_path
+ 
+diff --git a/src/sentry/performance_issues/detectors/disable_detectors.py b/src/sentry/issue_detection/detectors/disable_detectors.py
+similarity index 100%
+rename from src/sentry/performance_issues/detectors/disable_detectors.py
+rename to src/sentry/issue_detection/detectors/disable_detectors.py
+diff --git a/src/sentry/performance_issues/detectors/experiments/__init__.py b/src/sentry/issue_detection/detectors/experiments/__init__.py
+similarity index 100%
+rename from src/sentry/performance_issues/detectors/experiments/__init__.py
+rename to src/sentry/issue_detection/detectors/experiments/__init__.py
+diff --git a/src/sentry/performance_issues/detectors/experiments/mn_plus_one_db_span_detector.py b/src/sentry/issue_detection/detectors/experiments/mn_plus_one_db_span_detector.py
+similarity index 98%
+rename from src/sentry/performance_issues/detectors/experiments/mn_plus_one_db_span_detector.py
+rename to src/sentry/issue_detection/detectors/experiments/mn_plus_one_db_span_detector.py
+index f8da4330505..24458f26dd0 100644
+--- a/src/sentry/performance_issues/detectors/experiments/mn_plus_one_db_span_detector.py
++++ b/src/sentry/issue_detection/detectors/experiments/mn_plus_one_db_span_detector.py
+@@ -7,6 +7,14 @@ from collections.abc import Sequence
+ from typing import Any
+ 
+ from sentry import features
++from sentry.issue_detection.base import DetectorType, PerformanceDetector
++from sentry.issue_detection.detectors.utils import (
++    get_notification_attachment_body,
++    get_span_evidence_value,
++    total_span_time,
++)
++from sentry.issue_detection.performance_problem import PerformanceProblem
++from sentry.issue_detection.types import Span
+ from sentry.issues.grouptype import (
+     PerformanceMNPlusOneDBQueriesGroupType,
+     PerformanceNPlusOneGroupType,
+@@ -14,14 +22,6 @@ from sentry.issues.grouptype import (
+ from sentry.issues.issue_occurrence import IssueEvidence
+ from sentry.models.organization import Organization
+ from sentry.models.project import Project
+-from sentry.performance_issues.base import DetectorType, PerformanceDetector
+-from sentry.performance_issues.detectors.utils import (
+-    get_notification_attachment_body,
+-    get_span_evidence_value,
+-    total_span_time,
+-)
+-from sentry.performance_issues.performance_problem import PerformanceProblem
+-from sentry.performance_issues.types import Span
+ from sentry.utils import metrics
+ 
+ 
+diff --git a/src/sentry/performance_issues/detectors/experiments/n_plus_one_api_calls_detector.py b/src/sentry/issue_detection/detectors/experiments/n_plus_one_api_calls_detector.py
+similarity index 97%
+rename from src/sentry/performance_issues/detectors/experiments/n_plus_one_api_calls_detector.py
+rename to src/sentry/issue_detection/detectors/experiments/n_plus_one_api_calls_detector.py
+index 34bc07a2456..96d63a69cba 100644
+--- a/src/sentry/performance_issues/detectors/experiments/n_plus_one_api_calls_detector.py
++++ b/src/sentry/issue_detection/detectors/experiments/n_plus_one_api_calls_detector.py
+@@ -8,12 +8,8 @@ from typing import Any
+ from urllib.parse import urlparse
+ 
+ from sentry import features
+-from sentry.issues.grouptype import PerformanceNPlusOneAPICallsGroupType
+-from sentry.issues.issue_occurrence import IssueEvidence
+-from sentry.models.organization import Organization
+-from sentry.models.project import Project
+-from sentry.performance_issues.base import DetectorType, PerformanceDetector
+-from sentry.performance_issues.detectors.utils import (
++from sentry.issue_detection.base import DetectorType, PerformanceDetector
++from sentry.issue_detection.detectors.utils import (
+     fingerprint_http_spans,
+     get_notification_attachment_body,
+     get_span_evidence_value,
+@@ -23,8 +19,12 @@ from sentry.performance_issues.detectors.utils import (
+     parameterize_url,
+     parameterize_url_with_result,
+ )
+-from sentry.performance_issues.performance_problem import PerformanceProblem
+-from sentry.performance_issues.types import Span
++from sentry.issue_detection.performance_problem import PerformanceProblem
++from sentry.issue_detection.types import Span
++from sentry.issues.grouptype import PerformanceNPlusOneAPICallsGroupType
++from sentry.issues.issue_occurrence import IssueEvidence
++from sentry.models.organization import Organization
++from sentry.models.project import Project
+ 
+ 
+ class NPlusOneAPICallsExperimentalDetector(PerformanceDetector):
+diff --git a/src/sentry/performance_issues/detectors/experiments/n_plus_one_db_span_detector.py b/src/sentry/issue_detection/detectors/experiments/n_plus_one_db_span_detector.py
+similarity index 97%
+rename from src/sentry/performance_issues/detectors/experiments/n_plus_one_db_span_detector.py
+rename to src/sentry/issue_detection/detectors/experiments/n_plus_one_db_span_detector.py
+index 7b2d4678440..040f3b474fa 100644
+--- a/src/sentry/performance_issues/detectors/experiments/n_plus_one_db_span_detector.py
++++ b/src/sentry/issue_detection/detectors/experiments/n_plus_one_db_span_detector.py
+@@ -4,18 +4,18 @@ import hashlib
+ from typing import Any
+ 
+ from sentry import features
+-from sentry.issues.grouptype import PerformanceNPlusOneGroupType
+-from sentry.issues.issue_occurrence import IssueEvidence
+-from sentry.models.organization import Organization
+-from sentry.models.project import Project
+-from sentry.performance_issues.base import DetectorType, PerformanceDetector
+-from sentry.performance_issues.detectors.utils import (
++from sentry.issue_detection.base import DetectorType, PerformanceDetector
++from sentry.issue_detection.detectors.utils import (
+     get_notification_attachment_body,
+     get_span_evidence_value,
+     total_span_time,
+ )
+-from sentry.performance_issues.performance_problem import PerformanceProblem
+-from sentry.performance_issues.types import Span
++from sentry.issue_detection.performance_problem import PerformanceProblem
++from sentry.issue_detection.types import Span
++from sentry.issues.grouptype import PerformanceNPlusOneGroupType
++from sentry.issues.issue_occurrence import IssueEvidence
++from sentry.models.organization import Organization
++from sentry.models.project import Project
+ from sentry.utils import metrics
+ from sentry.utils.safe import get_path
+ 
+diff --git a/src/sentry/performance_issues/detectors/http_overhead_detector.py b/src/sentry/issue_detection/detectors/http_overhead_detector.py
+similarity index 98%
+rename from src/sentry/performance_issues/detectors/http_overhead_detector.py
+rename to src/sentry/issue_detection/detectors/http_overhead_detector.py
+index 1c0d5c32aca..070d9f6f0b9 100644
+--- a/src/sentry/performance_issues/detectors/http_overhead_detector.py
++++ b/src/sentry/issue_detection/detectors/http_overhead_detector.py
+@@ -5,18 +5,18 @@ from collections import defaultdict
+ from dataclasses import dataclass
+ from typing import Any
+ 
+-from sentry.issues.grouptype import PerformanceHTTPOverheadGroupType
+-from sentry.issues.issue_occurrence import IssueEvidence
+-from sentry.models.organization import Organization
+-from sentry.models.project import Project
+-from sentry.performance_issues.base import DetectorType, PerformanceDetector
+-from sentry.performance_issues.detectors.utils import (
++from sentry.issue_detection.base import DetectorType, PerformanceDetector
++from sentry.issue_detection.detectors.utils import (
+     does_overlap_previous_span,
+     get_notification_attachment_body,
+     get_span_evidence_value,
+     get_url_from_span,
+     is_filtered_url,
+ )
++from sentry.issues.grouptype import PerformanceHTTPOverheadGroupType
++from sentry.issues.issue_occurrence import IssueEvidence
++from sentry.models.organization import Organization
++from sentry.models.project import Project
+ 
+ from ..performance_problem import PerformanceProblem
+ from ..types import Span
+diff --git a/src/sentry/performance_issues/detectors/io_main_thread_detector.py b/src/sentry/issue_detection/detectors/io_main_thread_detector.py
+similarity index 100%
+rename from src/sentry/performance_issues/detectors/io_main_thread_detector.py
+rename to src/sentry/issue_detection/detectors/io_main_thread_detector.py
+diff --git a/src/sentry/performance_issues/detectors/large_payload_detector.py b/src/sentry/issue_detection/detectors/large_payload_detector.py
+similarity index 100%
+rename from src/sentry/performance_issues/detectors/large_payload_detector.py
+rename to src/sentry/issue_detection/detectors/large_payload_detector.py
+diff --git a/src/sentry/performance_issues/detectors/mn_plus_one_db_span_detector.py b/src/sentry/issue_detection/detectors/mn_plus_one_db_span_detector.py
+similarity index 100%
+rename from src/sentry/performance_issues/detectors/mn_plus_one_db_span_detector.py
+rename to src/sentry/issue_detection/detectors/mn_plus_one_db_span_detector.py
+diff --git a/src/sentry/performance_issues/detectors/n_plus_one_api_calls_detector.py b/src/sentry/issue_detection/detectors/n_plus_one_api_calls_detector.py
+similarity index 97%
+rename from src/sentry/performance_issues/detectors/n_plus_one_api_calls_detector.py
+rename to src/sentry/issue_detection/detectors/n_plus_one_api_calls_detector.py
+index 559ac6a6ebf..6020342a054 100644
+--- a/src/sentry/performance_issues/detectors/n_plus_one_api_calls_detector.py
++++ b/src/sentry/issue_detection/detectors/n_plus_one_api_calls_detector.py
+@@ -12,12 +12,8 @@ from urllib.parse import parse_qs, urlparse
+ from django.utils.encoding import force_bytes
+ 
+ from sentry import features
+-from sentry.issues.grouptype import PerformanceNPlusOneAPICallsGroupType
+-from sentry.issues.issue_occurrence import IssueEvidence
+-from sentry.models.organization import Organization
+-from sentry.models.project import Project
+-from sentry.performance_issues.base import DetectorType, PerformanceDetector
+-from sentry.performance_issues.detectors.utils import (
++from sentry.issue_detection.base import DetectorType, PerformanceDetector
++from sentry.issue_detection.detectors.utils import (
+     fingerprint_http_spans,
+     get_notification_attachment_body,
+     get_span_evidence_value,
+@@ -26,8 +22,12 @@ from sentry.performance_issues.detectors.utils import (
+     is_filtered_url,
+     parameterize_url,
+ )
+-from sentry.performance_issues.performance_problem import PerformanceProblem
+-from sentry.performance_issues.types import Span
++from sentry.issue_detection.performance_problem import PerformanceProblem
++from sentry.issue_detection.types import Span
++from sentry.issues.grouptype import PerformanceNPlusOneAPICallsGroupType
++from sentry.issues.issue_occurrence import IssueEvidence
++from sentry.models.organization import Organization
++from sentry.models.project import Project
+ 
+ 
+ class NPlusOneAPICallsDetector(PerformanceDetector):
+diff --git a/src/sentry/performance_issues/detectors/n_plus_one_db_span_detector.py b/src/sentry/issue_detection/detectors/n_plus_one_db_span_detector.py
+similarity index 100%
+rename from src/sentry/performance_issues/detectors/n_plus_one_db_span_detector.py
+rename to src/sentry/issue_detection/detectors/n_plus_one_db_span_detector.py
+diff --git a/src/sentry/performance_issues/detectors/query_injection_detector.py b/src/sentry/issue_detection/detectors/query_injection_detector.py
+similarity index 94%
+rename from src/sentry/performance_issues/detectors/query_injection_detector.py
+rename to src/sentry/issue_detection/detectors/query_injection_detector.py
+index f97b9be5bb9..51fdb58f75a 100644
+--- a/src/sentry/performance_issues/detectors/query_injection_detector.py
++++ b/src/sentry/issue_detection/detectors/query_injection_detector.py
+@@ -3,14 +3,14 @@ from __future__ import annotations
+ import hashlib
+ from typing import Any
+ 
++from sentry.issue_detection.base import DetectorType, PerformanceDetector
++from sentry.issue_detection.detectors.utils import get_notification_attachment_body
++from sentry.issue_detection.performance_problem import PerformanceProblem
++from sentry.issue_detection.types import Span
+ from sentry.issues.grouptype import QueryInjectionVulnerabilityGroupType
+ from sentry.issues.issue_occurrence import IssueEvidence
+ from sentry.models.organization import Organization
+ from sentry.models.project import Project
+-from sentry.performance_issues.base import DetectorType, PerformanceDetector
+-from sentry.performance_issues.detectors.utils import get_notification_attachment_body
+-from sentry.performance_issues.performance_problem import PerformanceProblem
+-from sentry.performance_issues.types import Span
+ from sentry.utils import json
+ 
+ MAX_EVIDENCE_VALUE_LENGTH = 10_000
+diff --git a/src/sentry/performance_issues/detectors/render_blocking_asset_span_detector.py b/src/sentry/issue_detection/detectors/render_blocking_asset_span_detector.py
+similarity index 100%
+rename from src/sentry/performance_issues/detectors/render_blocking_asset_span_detector.py
+rename to src/sentry/issue_detection/detectors/render_blocking_asset_span_detector.py
+diff --git a/src/sentry/performance_issues/detectors/slow_db_query_detector.py b/src/sentry/issue_detection/detectors/slow_db_query_detector.py
+similarity index 100%
+rename from src/sentry/performance_issues/detectors/slow_db_query_detector.py
+rename to src/sentry/issue_detection/detectors/slow_db_query_detector.py
+diff --git a/src/sentry/performance_issues/detectors/sql_injection_detector.py b/src/sentry/issue_detection/detectors/sql_injection_detector.py
+similarity index 97%
+rename from src/sentry/performance_issues/detectors/sql_injection_detector.py
+rename to src/sentry/issue_detection/detectors/sql_injection_detector.py
+index e8458eb5c2c..49408444c3f 100644
+--- a/src/sentry/performance_issues/detectors/sql_injection_detector.py
++++ b/src/sentry/issue_detection/detectors/sql_injection_detector.py
+@@ -5,14 +5,14 @@ import re
+ from collections.abc import Sequence
+ from typing import Any
+ 
++from sentry.issue_detection.base import DetectorType, PerformanceDetector
++from sentry.issue_detection.detectors.utils import get_notification_attachment_body
++from sentry.issue_detection.performance_problem import PerformanceProblem
++from sentry.issue_detection.types import Span
+ from sentry.issues.grouptype import QueryInjectionVulnerabilityGroupType
+ from sentry.issues.issue_occurrence import IssueEvidence
+ from sentry.models.organization import Organization
+ from sentry.models.project import Project
+-from sentry.performance_issues.base import DetectorType, PerformanceDetector
+-from sentry.performance_issues.detectors.utils import get_notification_attachment_body
+-from sentry.performance_issues.performance_problem import PerformanceProblem
+-from sentry.performance_issues.types import Span
+ 
+ MAX_EVIDENCE_VALUE_LENGTH = 10_000
+ 
+diff --git a/src/sentry/performance_issues/detectors/uncompressed_asset_detector.py b/src/sentry/issue_detection/detectors/uncompressed_asset_detector.py
+similarity index 100%
+rename from src/sentry/performance_issues/detectors/uncompressed_asset_detector.py
+rename to src/sentry/issue_detection/detectors/uncompressed_asset_detector.py
+diff --git a/src/sentry/performance_issues/detectors/utils.py b/src/sentry/issue_detection/detectors/utils.py
+similarity index 100%
+rename from src/sentry/performance_issues/detectors/utils.py
+rename to src/sentry/issue_detection/detectors/utils.py
+diff --git a/src/sentry/performance_issues/performance_detection.py b/src/sentry/issue_detection/performance_detection.py
+similarity index 99%
+rename from src/sentry/performance_issues/performance_detection.py
+rename to src/sentry/issue_detection/performance_detection.py
+index 9cdbbdc6b2f..24991c070df 100644
+--- a/src/sentry/performance_issues/performance_detection.py
++++ b/src/sentry/issue_detection/performance_detection.py
+@@ -9,15 +9,15 @@ from typing import Any
+ import sentry_sdk
+ 
+ from sentry import features, nodestore, options, projectoptions
+-from sentry.models.options.project_option import ProjectOption
+-from sentry.models.organization import Organization
+-from sentry.models.project import Project
+-from sentry.performance_issues.detectors.experiments.mn_plus_one_db_span_detector import (
++from sentry.issue_detection.detectors.experiments.mn_plus_one_db_span_detector import (
+     MNPlusOneDBSpanExperimentalDetector,
+ )
+-from sentry.performance_issues.detectors.experiments.n_plus_one_db_span_detector import (
++from sentry.issue_detection.detectors.experiments.n_plus_one_db_span_detector import (
+     NPlusOneDBSpanExperimentalDetector,
+ )
++from sentry.models.options.project_option import ProjectOption
++from sentry.models.organization import Organization
++from sentry.models.project import Project
+ from sentry.projectoptions.defaults import DEFAULT_PROJECT_PERFORMANCE_DETECTION_SETTINGS
+ from sentry.services.eventstore.models import Event, GroupEvent
+ from sentry.utils import metrics
+diff --git a/src/sentry/performance_issues/performance_problem.py b/src/sentry/issue_detection/performance_problem.py
+similarity index 100%
+rename from src/sentry/performance_issues/performance_problem.py
+rename to src/sentry/issue_detection/performance_problem.py
+diff --git a/src/sentry/performance_issues/types.py b/src/sentry/issue_detection/types.py
+similarity index 100%
+rename from src/sentry/performance_issues/types.py
+rename to src/sentry/issue_detection/types.py
+diff --git a/src/sentry/issues/endpoints/project_performance_issue_settings.py b/src/sentry/issues/endpoints/project_performance_issue_settings.py
+index 41f38277c43..c5cbc939620 100644
+--- a/src/sentry/issues/endpoints/project_performance_issue_settings.py
++++ b/src/sentry/issues/endpoints/project_performance_issue_settings.py
+@@ -10,6 +10,7 @@ from sentry.api.api_publish_status import ApiPublishStatus
+ from sentry.api.base import region_silo_endpoint
+ from sentry.api.bases.project import ProjectEndpoint, ProjectSettingPermission
+ from sentry.auth.superuser import superuser_has_permission
++from sentry.issue_detection.performance_detection import get_merged_settings
+ from sentry.issues.grouptype import (
+     GroupType,
+     PerformanceConsecutiveDBQueriesGroupType,
+@@ -27,7 +28,6 @@ from sentry.issues.grouptype import (
+     ProfileFunctionRegressionType,
+     QueryInjectionVulnerabilityGroupType,
+ )
+-from sentry.performance_issues.performance_detection import get_merged_settings
+ 
+ MAX_VALUE = 2147483647
+ TEN_SECONDS = 10000  # ten seconds in milliseconds
+diff --git a/src/sentry/notifications/utils/__init__.py b/src/sentry/notifications/utils/__init__.py
+index 4d9171bf897..2bd80b22cfc 100644
+--- a/src/sentry/notifications/utils/__init__.py
++++ b/src/sentry/notifications/utils/__init__.py
+@@ -16,6 +16,9 @@ from django.utils.translation import gettext_lazy as _
+ from sentry.integrations.base import IntegrationFeatures, IntegrationProvider
+ from sentry.integrations.manager import default_manager as integrations
+ from sentry.integrations.services.integration import integration_service
++from sentry.issue_detection.detectors.utils import get_url_from_span
++from sentry.issue_detection.performance_problem import PerformanceProblem
++from sentry.issue_detection.types import Span
+ from sentry.issues.grouptype import (
+     PerformanceConsecutiveDBQueriesGroupType,
+     PerformanceNPlusOneAPICallsExperimentalGroupType,
+@@ -34,9 +37,6 @@ from sentry.models.release import Release
+ from sentry.models.releasecommit import ReleaseCommit
+ from sentry.models.repository import Repository
+ from sentry.models.rule import Rule
+-from sentry.performance_issues.detectors.utils import get_url_from_span
+-from sentry.performance_issues.performance_problem import PerformanceProblem
+-from sentry.performance_issues.types import Span
+ from sentry.services.eventstore.models import Event, GroupEvent
+ from sentry.silo.base import region_silo_function
+ from sentry.types.rules import NotificationRuleDetails
+diff --git a/src/sentry/runner/commands/performance.py b/src/sentry/runner/commands/performance.py
+index 6f2ef0adf63..7b426b3eca4 100644
+--- a/src/sentry/runner/commands/performance.py
++++ b/src/sentry/runner/commands/performance.py
+@@ -34,8 +34,8 @@ def detect(path: str, detector_class: str | None, verbose: int) -> None:
+     using default detector settings with every detector. Path should be a
+     path to a JSON event data file or directory containing JSON event data files or folders of JSON event data files.
+     """
+-    from sentry.performance_issues import performance_detection
+-    from sentry.performance_issues.base import PerformanceDetector
++    from sentry.issue_detection import performance_detection
++    from sentry.issue_detection.base import PerformanceDetector
+ 
+     if detector_class:
+         detector_classes = [performance_detection.__dict__[detector_class]]
+@@ -105,7 +105,7 @@ def timeit(filename: str, detector_class: str, n: int) -> None:
+ 
+     import timeit
+ 
+-    from sentry.performance_issues import performance_detection
++    from sentry.issue_detection import performance_detection
+ 
+     settings = performance_detection.get_detection_settings()
+ 
+diff --git a/src/sentry/spans/consumers/process_segments/message.py b/src/sentry/spans/consumers/process_segments/message.py
+index d5d4baa959a..82d3e580ecf 100644
+--- a/src/sentry/spans/consumers/process_segments/message.py
++++ b/src/sentry/spans/consumers/process_segments/message.py
+@@ -14,6 +14,7 @@ from sentry.dynamic_sampling.rules.helpers.latest_releases import record_latest_
+ from sentry.event_manager import INSIGHT_MODULE_TO_PROJECT_FLAG_NAME
+ from sentry.insights import FilterSpan
+ from sentry.insights import modules as insights_modules
++from sentry.issue_detection.performance_detection import detect_performance_problems
+ from sentry.issues.grouptype import PerformanceStreamedSpansGroupTypeExperimental
+ from sentry.issues.issue_occurrence import IssueOccurrence
+ from sentry.issues.producer import PayloadType, produce_occurrence_to_kafka
+@@ -23,7 +24,6 @@ from sentry.models.project import Project
+ from sentry.models.release import Release
+ from sentry.models.releaseenvironment import ReleaseEnvironment
+ from sentry.models.releaseprojectenvironment import ReleaseProjectEnvironment
+-from sentry.performance_issues.performance_detection import detect_performance_problems
+ from sentry.receivers.features import record_generic_event_processed
+ from sentry.receivers.onboarding import record_release_received
+ from sentry.signals import first_insight_span_received, first_transaction_received
+diff --git a/src/sentry/spans/consumers/process_segments/shim.py b/src/sentry/spans/consumers/process_segments/shim.py
+index 113f303d734..3092d1b2fde 100644
+--- a/src/sentry/spans/consumers/process_segments/shim.py
++++ b/src/sentry/spans/consumers/process_segments/shim.py
+@@ -11,7 +11,7 @@ from typing import Any, cast
+ import sentry_sdk
+ from sentry_kafka_schemas.schema_types.ingest_spans_v1 import SpanEvent
+ 
+-from sentry.performance_issues.types import SentryTags as PerformanceIssuesSentryTags
++from sentry.issue_detection.types import SentryTags as PerformanceIssuesSentryTags
+ from sentry.spans.consumers.process_segments.types import (
+     CompatibleSpan,
+     attribute_value,
+diff --git a/src/sentry/testutils/cases.py b/src/sentry/testutils/cases.py
+index d838e80bc1e..c1ccb697fc8 100644
+--- a/src/sentry/testutils/cases.py
++++ b/src/sentry/testutils/cases.py
+@@ -78,6 +78,7 @@ from sentry.auth.superuser import SUPERUSER_ORG_ID, Superuser
+ from sentry.conf.types.kafka_definition import Topic, get_topic_codec
+ from sentry.event_manager import EventManager
+ from sentry.eventstream.snuba import SnubaEventStream
++from sentry.issue_detection.performance_detection import detect_performance_problems
+ from sentry.issues.grouptype import (
+     NoiseConfig,
+     PerformanceFileIOMainThreadGroupType,
+@@ -112,7 +113,6 @@ from sentry.notifications.models.notificationsettingprovider import Notification
+ from sentry.notifications.notifications.base import alert_page_needs_org_id
+ from sentry.notifications.types import FineTuningAPIKey
+ from sentry.organizations.services.organization.serial import serialize_rpc_organization
+-from sentry.performance_issues.performance_detection import detect_performance_problems
+ from sentry.plugins.base import plugins
+ from sentry.projects.project_rules.creator import ProjectRuleCreator
+ from sentry.replays.lib.event_linking import transform_event_for_linking_payload
+diff --git a/src/sentry/testutils/factories.py b/src/sentry/testutils/factories.py
+index 7bb0c805029..74f04df15ed 100644
+--- a/src/sentry/testutils/factories.py
++++ b/src/sentry/testutils/factories.py
+@@ -69,6 +69,7 @@ from sentry.integrations.models.integration_feature import (
+ from sentry.integrations.models.organization_integration import OrganizationIntegration
+ from sentry.integrations.models.repository_project_path_config import RepositoryProjectPathConfig
+ from sentry.integrations.types import ExternalProviders
++from sentry.issue_detection.performance_problem import PerformanceProblem
+ from sentry.issues.grouptype import get_group_type_by_type_id
+ from sentry.models.activity import Activity
+ from sentry.models.apikey import ApiKey
+@@ -125,7 +126,6 @@ from sentry.notifications.models.notificationaction import (
+ )
+ from sentry.notifications.models.notificationsettingprovider import NotificationSettingProvider
+ from sentry.organizations.services.organization import RpcOrganization, RpcUserOrganizationContext
+-from sentry.performance_issues.performance_problem import PerformanceProblem
+ from sentry.preprod.models import PreprodArtifactSizeMetrics
+ from sentry.sentry_apps.installations import (
+     SentryAppInstallationCreator,
+diff --git a/src/sentry/testutils/performance_issues/__init__.py b/src/sentry/testutils/issue_detection/__init__.py
+similarity index 100%
+rename from src/sentry/testutils/performance_issues/__init__.py
+rename to src/sentry/testutils/issue_detection/__init__.py
+diff --git a/src/sentry/testutils/performance_issues/event_generators.py b/src/sentry/testutils/issue_detection/event_generators.py
+similarity index 100%
+rename from src/sentry/testutils/performance_issues/event_generators.py
+rename to src/sentry/testutils/issue_detection/event_generators.py
+diff --git a/src/sentry/testutils/performance_issues/experiments.py b/src/sentry/testutils/issue_detection/experiments.py
+similarity index 86%
+rename from src/sentry/testutils/performance_issues/experiments.py
+rename to src/sentry/testutils/issue_detection/experiments.py
+index 8b9e8f7bbfd..601a9c23d6d 100644
+--- a/src/sentry/testutils/performance_issues/experiments.py
++++ b/src/sentry/testutils/issue_detection/experiments.py
+@@ -1,6 +1,6 @@
+ from unittest.mock import patch
+ 
+-from sentry.performance_issues.performance_detection import DETECTOR_CLASSES
++from sentry.issue_detection.performance_detection import DETECTOR_CLASSES
+ from sentry.testutils.cases import TestCase
+ 
+ 
+@@ -20,7 +20,7 @@ def exclude_experimental_detectors(cls: type[TestCase]):
+ 
+     def exclude_experimental_detectors_setUp(self, *args, **kwargs):
+         self.patch_detector_classes = patch(
+-            "sentry.performance_issues.performance_detection.DETECTOR_CLASSES",
++            "sentry.issue_detection.performance_detection.DETECTOR_CLASSES",
+             [cls for cls in DETECTOR_CLASSES if "Experimental" not in cls.__name__],
+         )
+         self.patch_detector_classes.start()
+diff --git a/src/sentry/testutils/performance_issues/span_builder.py b/src/sentry/testutils/issue_detection/span_builder.py
+similarity index 100%
+rename from src/sentry/testutils/performance_issues/span_builder.py
+rename to src/sentry/testutils/issue_detection/span_builder.py
+diff --git a/src/sentry/testutils/performance_issues/store_transaction.py b/src/sentry/testutils/issue_detection/store_transaction.py
+similarity index 100%
+rename from src/sentry/testutils/performance_issues/store_transaction.py
+rename to src/sentry/testutils/issue_detection/store_transaction.py
+diff --git a/tests/acceptance/chartcuterie/test_image_block_builder.py b/tests/acceptance/chartcuterie/test_image_block_builder.py
+index a28c494aea2..4c94102b011 100644
+--- a/tests/acceptance/chartcuterie/test_image_block_builder.py
++++ b/tests/acceptance/chartcuterie/test_image_block_builder.py
+@@ -65,7 +65,7 @@ class TestSlackImageBlockBuilder(
+         assert "_media/" in image_block["image_url"]
+ 
+     @with_feature("organizations:performance-use-metrics")
+-    @patch("sentry.performance_issues.detectors.utils.escape_transaction")
++    @patch("sentry.issue_detection.detectors.utils.escape_transaction")
+     def test_caching(self, mock_escape_transaction: MagicMock) -> None:
+         mock_escape_transaction.return_value = "Test Transaction"
+         group = self._create_endpoint_regression_issue()
+diff --git a/tests/sentry/api/serializers/test_event.py b/tests/sentry/api/serializers/test_event.py
+index ef355bead86..276462dcd34 100644
+--- a/tests/sentry/api/serializers/test_event.py
++++ b/tests/sentry/api/serializers/test_event.py
+@@ -13,7 +13,7 @@ from sentry.models.release import Release
+ from sentry.sdk_updates import SdkIndexState
+ from sentry.testutils.cases import TestCase
+ from sentry.testutils.helpers.datetime import before_now
+-from sentry.testutils.performance_issues.event_generators import get_event
++from sentry.testutils.issue_detection.event_generators import get_event
+ from sentry.testutils.skips import requires_snuba
+ from sentry.utils.samples import load_data
+ from tests.sentry.issues.test_utils import OccurrenceTestMixin
+diff --git a/tests/sentry/event_manager/test_event_manager.py b/tests/sentry/event_manager/test_event_manager.py
+index fc896c94cc1..6bd343424ff 100644
+--- a/tests/sentry/event_manager/test_event_manager.py
++++ b/tests/sentry/event_manager/test_event_manager.py
+@@ -85,7 +85,7 @@ from sentry.testutils.helpers import override_options
+ from sentry.testutils.helpers.datetime import before_now, freeze_time
+ from sentry.testutils.helpers.features import with_feature
+ from sentry.testutils.helpers.usage_accountant import usage_accountant_backend
+-from sentry.testutils.performance_issues.event_generators import get_event
++from sentry.testutils.issue_detection.event_generators import get_event
+ from sentry.testutils.pytest.fixtures import django_db_all
+ from sentry.testutils.skips import requires_snuba
+ from sentry.tsdb.base import TSDBModel
+diff --git a/tests/sentry/performance_issues/__init__.py b/tests/sentry/issue_detection/__init__.py
+similarity index 100%
+rename from tests/sentry/performance_issues/__init__.py
+rename to tests/sentry/issue_detection/__init__.py
+diff --git a/tests/sentry/performance_issues/experiments/__init__.py b/tests/sentry/issue_detection/experiments/__init__.py
+similarity index 100%
+rename from tests/sentry/performance_issues/experiments/__init__.py
+rename to tests/sentry/issue_detection/experiments/__init__.py
+diff --git a/tests/sentry/performance_issues/experiments/test_m_n_plus_one_db_detector.py b/tests/sentry/issue_detection/experiments/test_m_n_plus_one_db_detector.py
+similarity index 94%
+rename from tests/sentry/performance_issues/experiments/test_m_n_plus_one_db_detector.py
+rename to tests/sentry/issue_detection/experiments/test_m_n_plus_one_db_detector.py
+index f385549d3d4..344ebd07f5b 100644
+--- a/tests/sentry/performance_issues/experiments/test_m_n_plus_one_db_detector.py
++++ b/tests/sentry/issue_detection/experiments/test_m_n_plus_one_db_detector.py
+@@ -6,24 +6,24 @@ from unittest.mock import MagicMock, Mock, call, patch
+ 
+ import pytest
+ 
+-from sentry.issues.grouptype import (
+-    PerformanceMNPlusOneDBQueriesGroupType,
+-    PerformanceNPlusOneGroupType,
+-)
+-from sentry.models.options.project_option import ProjectOption
+-from sentry.performance_issues.base import DetectorType
+-from sentry.performance_issues.detectors.experiments.mn_plus_one_db_span_detector import (
++from sentry.issue_detection.base import DetectorType
++from sentry.issue_detection.detectors.experiments.mn_plus_one_db_span_detector import (
+     MNPlusOneDBSpanExperimentalDetector,
+ )
+-from sentry.performance_issues.performance_detection import (
++from sentry.issue_detection.performance_detection import (
+     _detect_performance_problems,
+     get_detection_settings,
+     run_detector_on_data,
+ )
+-from sentry.performance_issues.performance_problem import PerformanceProblem
++from sentry.issue_detection.performance_problem import PerformanceProblem
++from sentry.issues.grouptype import (
++    PerformanceMNPlusOneDBQueriesGroupType,
++    PerformanceNPlusOneGroupType,
++)
++from sentry.models.options.project_option import ProjectOption
+ from sentry.testutils.cases import TestCase
+ from sentry.testutils.helpers.options import override_options
+-from sentry.testutils.performance_issues.event_generators import get_event
++from sentry.testutils.issue_detection.event_generators import get_event
+ 
+ 
+ @pytest.mark.django_db
+@@ -277,7 +277,7 @@ class MNPlusOneDBDetectorTest(TestCase):
+         settings = get_detection_settings(project_id=project.id)
+         assert len(self.find_problems(event, settings)) == 1
+ 
+-    @patch("sentry.performance_issues.detectors.experiments.mn_plus_one_db_span_detector.metrics")
++    @patch("sentry.issue_detection.detectors.experiments.mn_plus_one_db_span_detector.metrics")
+     def test_ignores_event_below_duration_threshold(self, metrics_mock: MagicMock) -> None:
+         event = get_event("m-n-plus-one-db/m-n-plus-one-db-spans-duration-suceeds")
+         assert self.find_problems(event) == []
+@@ -285,7 +285,7 @@ class MNPlusOneDBDetectorTest(TestCase):
+             "mn_plus_one_db_span_detector.below_duration_threshold"
+         )
+ 
+-    @patch("sentry.performance_issues.detectors.experiments.mn_plus_one_db_span_detector.metrics")
++    @patch("sentry.issue_detection.detectors.experiments.mn_plus_one_db_span_detector.metrics")
+     def test_ignores_event_with_low_db_span_percentage(self, metrics_mock: MagicMock) -> None:
+         event = get_event("m-n-plus-one-db/m-n-plus-one-db-spans-duration-suceeds")
+         for index, span in enumerate(event["spans"]):
+@@ -298,7 +298,7 @@ class MNPlusOneDBDetectorTest(TestCase):
+             "mn_plus_one_db_span_detector.below_db_span_percentage"
+         )
+ 
+-    @patch("sentry.performance_issues.detectors.experiments.mn_plus_one_db_span_detector.metrics")
++    @patch("sentry.issue_detection.detectors.experiments.mn_plus_one_db_span_detector.metrics")
+     def test_ignores_event_with_no_common_parent_span(self, metrics_mock: MagicMock) -> None:
+         event = get_event("m-n-plus-one-db/m-n-plus-one-prisma-client")
+         previous_parent_span_id = None
+@@ -312,7 +312,7 @@ class MNPlusOneDBDetectorTest(TestCase):
+         assert self.find_problems(event) == []
+         metrics_mock.incr.assert_called_with("mn_plus_one_db_span_detector.no_parent_span")
+ 
+-    @patch("sentry.performance_issues.detectors.experiments.mn_plus_one_db_span_detector.metrics")
++    @patch("sentry.issue_detection.detectors.experiments.mn_plus_one_db_span_detector.metrics")
+     def test_ignores_prisma_client_if_depth_config_is_too_small(
+         self, metrics_mock: MagicMock
+     ) -> None:
+diff --git a/tests/sentry/performance_issues/experiments/test_n_plus_one_api_calls_detector.py b/tests/sentry/issue_detection/experiments/test_n_plus_one_api_calls_detector.py
+similarity index 97%
+rename from tests/sentry/performance_issues/experiments/test_n_plus_one_api_calls_detector.py
+rename to tests/sentry/issue_detection/experiments/test_n_plus_one_api_calls_detector.py
+index dbe3f253e7a..8ac677c3749 100644
+--- a/tests/sentry/performance_issues/experiments/test_n_plus_one_api_calls_detector.py
++++ b/tests/sentry/issue_detection/experiments/test_n_plus_one_api_calls_detector.py
+@@ -6,24 +6,20 @@ from uuid import uuid4
+ 
+ import pytest
+ 
+-from sentry.issues.grouptype import PerformanceNPlusOneAPICallsGroupType
+-from sentry.performance_issues.base import DetectorType
+-from sentry.performance_issues.detectors.experiments.n_plus_one_api_calls_detector import (
++from sentry.issue_detection.base import DetectorType
++from sentry.issue_detection.detectors.experiments.n_plus_one_api_calls_detector import (
+     NPlusOneAPICallsExperimentalDetector,
+ )
+-from sentry.performance_issues.detectors.utils import parameterize_url
+-from sentry.performance_issues.performance_detection import (
++from sentry.issue_detection.detectors.utils import parameterize_url
++from sentry.issue_detection.performance_detection import (
+     get_detection_settings,
+     run_detector_on_data,
+ )
+-from sentry.performance_issues.performance_problem import PerformanceProblem
+-from sentry.performance_issues.types import Span
++from sentry.issue_detection.performance_problem import PerformanceProblem
++from sentry.issue_detection.types import Span
++from sentry.issues.grouptype import PerformanceNPlusOneAPICallsGroupType
+ from sentry.testutils.cases import TestCase
+-from sentry.testutils.performance_issues.event_generators import (
+-    create_event,
+-    create_span,
+-    get_event,
+-)
++from sentry.testutils.issue_detection.event_generators import create_event, create_span, get_event
+ 
+ 
+ @pytest.mark.django_db
+diff --git a/tests/sentry/performance_issues/experiments/test_n_plus_one_db_span_detector.py b/tests/sentry/issue_detection/experiments/test_n_plus_one_db_span_detector.py
+similarity index 97%
+rename from tests/sentry/performance_issues/experiments/test_n_plus_one_db_span_detector.py
+rename to tests/sentry/issue_detection/experiments/test_n_plus_one_db_span_detector.py
+index d6b47aeb623..8cbbbcef54a 100644
+--- a/tests/sentry/performance_issues/experiments/test_n_plus_one_db_span_detector.py
++++ b/tests/sentry/issue_detection/experiments/test_n_plus_one_db_span_detector.py
+@@ -5,20 +5,20 @@ from typing import Any
+ 
+ import pytest
+ 
+-from sentry.issues.grouptype import PerformanceNPlusOneGroupType
+-from sentry.issues.issue_occurrence import IssueEvidence
+-from sentry.models.options.project_option import ProjectOption
+-from sentry.performance_issues.base import DetectorType
+-from sentry.performance_issues.detectors.experiments.n_plus_one_db_span_detector import (
++from sentry.issue_detection.base import DetectorType
++from sentry.issue_detection.detectors.experiments.n_plus_one_db_span_detector import (
+     NPlusOneDBSpanExperimentalDetector,
+ )
+-from sentry.performance_issues.performance_detection import (
++from sentry.issue_detection.performance_detection import (
+     get_detection_settings,
+     run_detector_on_data,
+ )
+-from sentry.performance_issues.performance_problem import PerformanceProblem
++from sentry.issue_detection.performance_problem import PerformanceProblem
++from sentry.issues.grouptype import PerformanceNPlusOneGroupType
++from sentry.issues.issue_occurrence import IssueEvidence
++from sentry.models.options.project_option import ProjectOption
+ from sentry.testutils.cases import TestCase
+-from sentry.testutils.performance_issues.event_generators import get_event
++from sentry.testutils.issue_detection.event_generators import get_event
+ 
+ 
+ @pytest.mark.django_db
+diff --git a/tests/sentry/performance_issues/test_consecutive_db_detector.py b/tests/sentry/issue_detection/test_consecutive_db_detector.py
+similarity index 97%
+rename from tests/sentry/performance_issues/test_consecutive_db_detector.py
+rename to tests/sentry/issue_detection/test_consecutive_db_detector.py
+index 0a50a85848b..c246ebfb62b 100644
+--- a/tests/sentry/performance_issues/test_consecutive_db_detector.py
++++ b/tests/sentry/issue_detection/test_consecutive_db_detector.py
+@@ -4,16 +4,16 @@ from typing import Any
+ 
+ import pytest
+ 
+-from sentry.issues.grouptype import PerformanceConsecutiveDBQueriesGroupType
+-from sentry.models.options.project_option import ProjectOption
+-from sentry.performance_issues.detectors.consecutive_db_detector import ConsecutiveDBSpanDetector
+-from sentry.performance_issues.performance_detection import (
++from sentry.issue_detection.detectors.consecutive_db_detector import ConsecutiveDBSpanDetector
++from sentry.issue_detection.performance_detection import (
+     get_detection_settings,
+     run_detector_on_data,
+ )
+-from sentry.performance_issues.performance_problem import PerformanceProblem
++from sentry.issue_detection.performance_problem import PerformanceProblem
++from sentry.issues.grouptype import PerformanceConsecutiveDBQueriesGroupType
++from sentry.models.options.project_option import ProjectOption
+ from sentry.testutils.cases import TestCase
+-from sentry.testutils.performance_issues.event_generators import (
++from sentry.testutils.issue_detection.event_generators import (
+     create_event,
+     create_span,
+     get_event,
+diff --git a/tests/sentry/performance_issues/test_consecutive_http_detector.py b/tests/sentry/issue_detection/test_consecutive_http_detector.py
+similarity index 98%
+rename from tests/sentry/performance_issues/test_consecutive_http_detector.py
+rename to tests/sentry/issue_detection/test_consecutive_http_detector.py
+index 87c3824a0c4..d0f74684cd1 100644
+--- a/tests/sentry/performance_issues/test_consecutive_http_detector.py
++++ b/tests/sentry/issue_detection/test_consecutive_http_detector.py
+@@ -4,19 +4,17 @@ from typing import Any
+ 
+ import pytest
+ 
+-from sentry.issues.grouptype import PerformanceConsecutiveHTTPQueriesGroupType
+-from sentry.models.options.project_option import ProjectOption
+-from sentry.performance_issues.detectors.consecutive_http_detector import (
+-    ConsecutiveHTTPSpanDetector,
+-)
+-from sentry.performance_issues.performance_detection import (
++from sentry.issue_detection.detectors.consecutive_http_detector import ConsecutiveHTTPSpanDetector
++from sentry.issue_detection.performance_detection import (
+     get_detection_settings,
+     run_detector_on_data,
+ )
+-from sentry.performance_issues.performance_problem import PerformanceProblem
++from sentry.issue_detection.performance_problem import PerformanceProblem
++from sentry.issues.grouptype import PerformanceConsecutiveHTTPQueriesGroupType
++from sentry.models.options.project_option import ProjectOption
+ from sentry.spans.grouping.strategy.base import Span
+ from sentry.testutils.cases import TestCase
+-from sentry.testutils.performance_issues.event_generators import (
++from sentry.testutils.issue_detection.event_generators import (
+     create_event,
+     create_span,
+     modify_span_start,
+diff --git a/tests/sentry/performance_issues/test_db_main_thread_detector.py b/tests/sentry/issue_detection/test_db_main_thread_detector.py
+similarity index 91%
+rename from tests/sentry/performance_issues/test_db_main_thread_detector.py
+rename to tests/sentry/issue_detection/test_db_main_thread_detector.py
+index 4226af0b179..beba5022abd 100644
+--- a/tests/sentry/performance_issues/test_db_main_thread_detector.py
++++ b/tests/sentry/issue_detection/test_db_main_thread_detector.py
+@@ -4,16 +4,16 @@ from typing import Any
+ 
+ import pytest
+ 
+-from sentry.issues.grouptype import PerformanceDBMainThreadGroupType
+-from sentry.models.options.project_option import ProjectOption
+-from sentry.performance_issues.detectors.io_main_thread_detector import DBMainThreadDetector
+-from sentry.performance_issues.performance_detection import (
++from sentry.issue_detection.detectors.io_main_thread_detector import DBMainThreadDetector
++from sentry.issue_detection.performance_detection import (
+     get_detection_settings,
+     run_detector_on_data,
+ )
+-from sentry.performance_issues.performance_problem import PerformanceProblem
++from sentry.issue_detection.performance_problem import PerformanceProblem
++from sentry.issues.grouptype import PerformanceDBMainThreadGroupType
++from sentry.models.options.project_option import ProjectOption
+ from sentry.testutils.cases import TestCase
+-from sentry.testutils.performance_issues.event_generators import get_event
++from sentry.testutils.issue_detection.event_generators import get_event
+ 
+ 
+ @pytest.mark.django_db
+diff --git a/tests/sentry/performance_issues/test_file_io_on_main_thread_detector.py b/tests/sentry/issue_detection/test_file_io_on_main_thread_detector.py
+similarity index 95%
+rename from tests/sentry/performance_issues/test_file_io_on_main_thread_detector.py
+rename to tests/sentry/issue_detection/test_file_io_on_main_thread_detector.py
+index 3b990a7e602..3d83cc500d7 100644
+--- a/tests/sentry/performance_issues/test_file_io_on_main_thread_detector.py
++++ b/tests/sentry/issue_detection/test_file_io_on_main_thread_detector.py
+@@ -7,17 +7,17 @@ from zipfile import ZipFile
+ 
+ import pytest
+ 
+-from sentry.issues.grouptype import PerformanceFileIOMainThreadGroupType
+-from sentry.models.debugfile import create_files_from_dif_zip
+-from sentry.models.options.project_option import ProjectOption
+-from sentry.performance_issues.detectors.io_main_thread_detector import FileIOMainThreadDetector
+-from sentry.performance_issues.performance_detection import (
++from sentry.issue_detection.detectors.io_main_thread_detector import FileIOMainThreadDetector
++from sentry.issue_detection.performance_detection import (
+     get_detection_settings,
+     run_detector_on_data,
+ )
+-from sentry.performance_issues.performance_problem import PerformanceProblem
++from sentry.issue_detection.performance_problem import PerformanceProblem
++from sentry.issues.grouptype import PerformanceFileIOMainThreadGroupType
++from sentry.models.debugfile import create_files_from_dif_zip
++from sentry.models.options.project_option import ProjectOption
+ from sentry.testutils.cases import TestCase
+-from sentry.testutils.performance_issues.event_generators import get_event
++from sentry.testutils.issue_detection.event_generators import get_event
+ 
+ PROGUARD_SOURCE = b"""\
+ # compiler: R8
+diff --git a/tests/sentry/performance_issues/test_http_overhead_detector.py b/tests/sentry/issue_detection/test_http_overhead_detector.py
+similarity index 96%
+rename from tests/sentry/performance_issues/test_http_overhead_detector.py
+rename to tests/sentry/issue_detection/test_http_overhead_detector.py
+index 1a248a42120..0e839de862b 100644
+--- a/tests/sentry/performance_issues/test_http_overhead_detector.py
++++ b/tests/sentry/issue_detection/test_http_overhead_detector.py
+@@ -4,16 +4,16 @@ from typing import Any
+ 
+ import pytest
+ 
+-from sentry.issues.grouptype import PerformanceHTTPOverheadGroupType
+-from sentry.performance_issues.base import DetectorType
+-from sentry.performance_issues.detectors.http_overhead_detector import HTTPOverheadDetector
+-from sentry.performance_issues.performance_detection import (
++from sentry.issue_detection.base import DetectorType
++from sentry.issue_detection.detectors.http_overhead_detector import HTTPOverheadDetector
++from sentry.issue_detection.performance_detection import (
+     get_detection_settings,
+     run_detector_on_data,
+ )
+-from sentry.performance_issues.performance_problem import PerformanceProblem
++from sentry.issue_detection.performance_problem import PerformanceProblem
++from sentry.issues.grouptype import PerformanceHTTPOverheadGroupType
+ from sentry.testutils.cases import TestCase
+-from sentry.testutils.performance_issues.event_generators import (
++from sentry.testutils.issue_detection.event_generators import (
+     PROJECT_ID,
+     create_span,
+     get_event,
+diff --git a/tests/sentry/performance_issues/test_large_http_payload_detector.py b/tests/sentry/issue_detection/test_large_http_payload_detector.py
+similarity index 97%
+rename from tests/sentry/performance_issues/test_large_http_payload_detector.py
+rename to tests/sentry/issue_detection/test_large_http_payload_detector.py
+index 68bf6d7c684..f2c513348a8 100644
+--- a/tests/sentry/performance_issues/test_large_http_payload_detector.py
++++ b/tests/sentry/issue_detection/test_large_http_payload_detector.py
+@@ -4,17 +4,17 @@ from typing import Any
+ 
+ import pytest
+ 
+-from sentry.issues.grouptype import PerformanceLargeHTTPPayloadGroupType
+-from sentry.models.options.project_option import ProjectOption
+-from sentry.performance_issues.detectors.large_payload_detector import LargeHTTPPayloadDetector
+-from sentry.performance_issues.performance_detection import (
++from sentry.issue_detection.detectors.large_payload_detector import LargeHTTPPayloadDetector
++from sentry.issue_detection.performance_detection import (
+     get_detection_settings,
+     run_detector_on_data,
+ )
+-from sentry.performance_issues.performance_problem import PerformanceProblem
++from sentry.issue_detection.performance_problem import PerformanceProblem
++from sentry.issues.grouptype import PerformanceLargeHTTPPayloadGroupType
++from sentry.models.options.project_option import ProjectOption
+ from sentry.testutils.cases import TestCase
+ from sentry.testutils.helpers.features import with_feature
+-from sentry.testutils.performance_issues.event_generators import create_event, create_span
++from sentry.testutils.issue_detection.event_generators import create_event, create_span
+ 
+ 
+ @pytest.mark.django_db
+diff --git a/tests/sentry/performance_issues/test_m_n_plus_one_db_detector.py b/tests/sentry/issue_detection/test_m_n_plus_one_db_detector.py
+similarity index 94%
+rename from tests/sentry/performance_issues/test_m_n_plus_one_db_detector.py
+rename to tests/sentry/issue_detection/test_m_n_plus_one_db_detector.py
+index ec068be9349..80b05d6e002 100644
+--- a/tests/sentry/performance_issues/test_m_n_plus_one_db_detector.py
++++ b/tests/sentry/issue_detection/test_m_n_plus_one_db_detector.py
+@@ -5,19 +5,19 @@ from unittest.mock import Mock, call
+ 
+ import pytest
+ 
+-from sentry.issues.grouptype import PerformanceNPlusOneGroupType
+-from sentry.models.options.project_option import ProjectOption
+-from sentry.performance_issues.base import DetectorType
+-from sentry.performance_issues.detectors.mn_plus_one_db_span_detector import MNPlusOneDBSpanDetector
+-from sentry.performance_issues.performance_detection import (
++from sentry.issue_detection.base import DetectorType
++from sentry.issue_detection.detectors.mn_plus_one_db_span_detector import MNPlusOneDBSpanDetector
++from sentry.issue_detection.performance_detection import (
+     _detect_performance_problems,
+     get_detection_settings,
+     run_detector_on_data,
+ )
+-from sentry.performance_issues.performance_problem import PerformanceProblem
++from sentry.issue_detection.performance_problem import PerformanceProblem
++from sentry.issues.grouptype import PerformanceNPlusOneGroupType
++from sentry.models.options.project_option import ProjectOption
+ from sentry.testutils.cases import TestCase
+-from sentry.testutils.performance_issues.event_generators import get_event
+-from sentry.testutils.performance_issues.experiments import exclude_experimental_detectors
++from sentry.testutils.issue_detection.event_generators import get_event
++from sentry.testutils.issue_detection.experiments import exclude_experimental_detectors
+ 
+ 
+ @pytest.mark.django_db
+diff --git a/tests/sentry/performance_issues/test_n_plus_one_api_calls_detector.py b/tests/sentry/issue_detection/test_n_plus_one_api_calls_detector.py
+similarity index 96%
+rename from tests/sentry/performance_issues/test_n_plus_one_api_calls_detector.py
+rename to tests/sentry/issue_detection/test_n_plus_one_api_calls_detector.py
+index 3108f13986b..16c79058818 100644
+--- a/tests/sentry/performance_issues/test_n_plus_one_api_calls_detector.py
++++ b/tests/sentry/issue_detection/test_n_plus_one_api_calls_detector.py
+@@ -6,25 +6,21 @@ from uuid import uuid4
+ 
+ import pytest
+ 
+-from sentry.issues.grouptype import PerformanceNPlusOneAPICallsGroupType
+-from sentry.performance_issues.base import DetectorType
+-from sentry.performance_issues.detectors.n_plus_one_api_calls_detector import (
++from sentry.issue_detection.base import DetectorType
++from sentry.issue_detection.detectors.n_plus_one_api_calls_detector import (
+     NPlusOneAPICallsDetector,
+     without_query_params,
+ )
+-from sentry.performance_issues.detectors.utils import parameterize_url
+-from sentry.performance_issues.performance_detection import (
++from sentry.issue_detection.detectors.utils import parameterize_url
++from sentry.issue_detection.performance_detection import (
+     get_detection_settings,
+     run_detector_on_data,
+ )
+-from sentry.performance_issues.performance_problem import PerformanceProblem
+-from sentry.performance_issues.types import Span
++from sentry.issue_detection.performance_problem import PerformanceProblem
++from sentry.issue_detection.types import Span
++from sentry.issues.grouptype import PerformanceNPlusOneAPICallsGroupType
+ from sentry.testutils.cases import TestCase
+-from sentry.testutils.performance_issues.event_generators import (
+-    create_event,
+-    create_span,
+-    get_event,
+-)
++from sentry.testutils.issue_detection.event_generators import create_event, create_span, get_event
+ 
+ 
+ @pytest.mark.django_db
+diff --git a/tests/sentry/performance_issues/test_n_plus_one_db_span_detector.py b/tests/sentry/issue_detection/test_n_plus_one_db_span_detector.py
+similarity index 97%
+rename from tests/sentry/performance_issues/test_n_plus_one_db_span_detector.py
+rename to tests/sentry/issue_detection/test_n_plus_one_db_span_detector.py
+index 55fc43e71f1..0fb036e63f6 100644
+--- a/tests/sentry/performance_issues/test_n_plus_one_db_span_detector.py
++++ b/tests/sentry/issue_detection/test_n_plus_one_db_span_detector.py
+@@ -5,18 +5,18 @@ from typing import Any
+ 
+ import pytest
+ 
+-from sentry.issues.grouptype import PerformanceNPlusOneGroupType
+-from sentry.issues.issue_occurrence import IssueEvidence
+-from sentry.models.options.project_option import ProjectOption
+-from sentry.performance_issues.base import DetectorType
+-from sentry.performance_issues.detectors.n_plus_one_db_span_detector import NPlusOneDBSpanDetector
+-from sentry.performance_issues.performance_detection import (
++from sentry.issue_detection.base import DetectorType
++from sentry.issue_detection.detectors.n_plus_one_db_span_detector import NPlusOneDBSpanDetector
++from sentry.issue_detection.performance_detection import (
+     get_detection_settings,
+     run_detector_on_data,
+ )
+-from sentry.performance_issues.performance_problem import PerformanceProblem
++from sentry.issue_detection.performance_problem import PerformanceProblem
++from sentry.issues.grouptype import PerformanceNPlusOneGroupType
++from sentry.issues.issue_occurrence import IssueEvidence
++from sentry.models.options.project_option import ProjectOption
+ from sentry.testutils.cases import TestCase
+-from sentry.testutils.performance_issues.event_generators import get_event
++from sentry.testutils.issue_detection.event_generators import get_event
+ 
+ 
+ @pytest.mark.django_db
+diff --git a/tests/sentry/performance_issues/test_performance_detection.py b/tests/sentry/issue_detection/test_performance_detection.py
+similarity index 97%
+rename from tests/sentry/performance_issues/test_performance_detection.py
+rename to tests/sentry/issue_detection/test_performance_detection.py
+index 70c5e967d0f..80fe3603f88 100644
+--- a/tests/sentry/performance_issues/test_performance_detection.py
++++ b/tests/sentry/issue_detection/test_performance_detection.py
+@@ -5,27 +5,27 @@ from unittest.mock import MagicMock, Mock, call, patch
+ import pytest
+ 
+ from sentry import projectoptions
+-from sentry.issues.grouptype import (
+-    PerformanceConsecutiveHTTPQueriesGroupType,
+-    PerformanceNPlusOneGroupType,
+-    PerformanceSlowDBQueryGroupType,
+-)
+-from sentry.performance_issues.base import DetectorType
+-from sentry.performance_issues.detectors.n_plus_one_db_span_detector import NPlusOneDBSpanDetector
+-from sentry.performance_issues.detectors.utils import total_span_time
+-from sentry.performance_issues.performance_detection import (
++from sentry.issue_detection.base import DetectorType
++from sentry.issue_detection.detectors.n_plus_one_db_span_detector import NPlusOneDBSpanDetector
++from sentry.issue_detection.detectors.utils import total_span_time
++from sentry.issue_detection.performance_detection import (
+     EventPerformanceProblem,
+     _detect_performance_problems,
+     detect_performance_problems,
+     get_detection_settings,
+ )
+-from sentry.performance_issues.performance_problem import PerformanceProblem
+-from sentry.performance_issues.types import Span
++from sentry.issue_detection.performance_problem import PerformanceProblem
++from sentry.issue_detection.types import Span
++from sentry.issues.grouptype import (
++    PerformanceConsecutiveHTTPQueriesGroupType,
++    PerformanceNPlusOneGroupType,
++    PerformanceSlowDBQueryGroupType,
++)
+ from sentry.services.eventstore.models import Event
+ from sentry.testutils.cases import TestCase
+ from sentry.testutils.helpers import override_options
+-from sentry.testutils.performance_issues.event_generators import get_event
+-from sentry.testutils.performance_issues.experiments import exclude_experimental_detectors
++from sentry.testutils.issue_detection.event_generators import get_event
++from sentry.testutils.issue_detection.experiments import exclude_experimental_detectors
+ 
+ BASE_DETECTOR_OPTIONS = {
+     "performance.issues.n_plus_one_db.problem-creation": 1.0,
+@@ -102,13 +102,13 @@ class PerformanceDetectionTest(TestCase):
+ 
+         self.project = self.create_project()
+ 
+-    @patch("sentry.performance_issues.performance_detection._detect_performance_problems")
++    @patch("sentry.issue_detection.performance_detection._detect_performance_problems")
+     def test_options_disabled(self, mock: MagicMock) -> None:
+         with override_options({"performance.issues.all.problem-detection": 0.0}):
+             detect_performance_problems({}, self.project)
+             assert mock.call_count == 0
+ 
+-    @patch("sentry.performance_issues.performance_detection._detect_performance_problems")
++    @patch("sentry.issue_detection.performance_detection._detect_performance_problems")
+     def test_options_enabled(self, mock: MagicMock) -> None:
+         detect_performance_problems({}, self.project)
+         assert mock.call_count == 1
+diff --git a/tests/sentry/performance_issues/test_query_injection_detector.py b/tests/sentry/issue_detection/test_query_injection_detector.py
+similarity index 85%
+rename from tests/sentry/performance_issues/test_query_injection_detector.py
+rename to tests/sentry/issue_detection/test_query_injection_detector.py
+index 603ff167e16..0d191542397 100644
+--- a/tests/sentry/performance_issues/test_query_injection_detector.py
++++ b/tests/sentry/issue_detection/test_query_injection_detector.py
+@@ -4,15 +4,15 @@ from typing import Any
+ 
+ import pytest
+ 
+-from sentry.issues.grouptype import QueryInjectionVulnerabilityGroupType
+-from sentry.performance_issues.detectors.query_injection_detector import QueryInjectionDetector
+-from sentry.performance_issues.performance_detection import (
++from sentry.issue_detection.detectors.query_injection_detector import QueryInjectionDetector
++from sentry.issue_detection.performance_detection import (
+     get_detection_settings,
+     run_detector_on_data,
+ )
+-from sentry.performance_issues.performance_problem import PerformanceProblem
++from sentry.issue_detection.performance_problem import PerformanceProblem
++from sentry.issues.grouptype import QueryInjectionVulnerabilityGroupType
+ from sentry.testutils.cases import TestCase
+-from sentry.testutils.performance_issues.event_generators import get_event
++from sentry.testutils.issue_detection.event_generators import get_event
+ 
+ 
+ @pytest.mark.django_db
+diff --git a/tests/sentry/performance_issues/test_render_blocking_asset_detector.py b/tests/sentry/issue_detection/test_render_blocking_asset_detector.py
+similarity index 97%
+rename from tests/sentry/performance_issues/test_render_blocking_asset_detector.py
+rename to tests/sentry/issue_detection/test_render_blocking_asset_detector.py
+index c968d69b9b2..d0b82e8fb97 100644
+--- a/tests/sentry/performance_issues/test_render_blocking_asset_detector.py
++++ b/tests/sentry/issue_detection/test_render_blocking_asset_detector.py
+@@ -4,19 +4,19 @@ from typing import Any
+ 
+ import pytest
+ 
+-from sentry.issues.grouptype import PerformanceRenderBlockingAssetSpanGroupType
+-from sentry.models.options.project_option import ProjectOption
+-from sentry.performance_issues.base import DetectorType
+-from sentry.performance_issues.detectors.render_blocking_asset_span_detector import (
++from sentry.issue_detection.base import DetectorType
++from sentry.issue_detection.detectors.render_blocking_asset_span_detector import (
+     RenderBlockingAssetSpanDetector,
+ )
+-from sentry.performance_issues.performance_detection import (
++from sentry.issue_detection.performance_detection import (
+     get_detection_settings,
+     run_detector_on_data,
+ )
+-from sentry.performance_issues.performance_problem import PerformanceProblem
++from sentry.issue_detection.performance_problem import PerformanceProblem
++from sentry.issues.grouptype import PerformanceRenderBlockingAssetSpanGroupType
++from sentry.models.options.project_option import ProjectOption
+ from sentry.testutils.cases import TestCase
+-from sentry.testutils.performance_issues.event_generators import (
++from sentry.testutils.issue_detection.event_generators import (
+     PROJECT_ID,
+     create_span,
+     modify_span_start,
+diff --git a/tests/sentry/performance_issues/test_slow_db_span_detector.py b/tests/sentry/issue_detection/test_slow_db_span_detector.py
+similarity index 94%
+rename from tests/sentry/performance_issues/test_slow_db_span_detector.py
+rename to tests/sentry/issue_detection/test_slow_db_span_detector.py
+index f9c1ad1fbd5..6945e984721 100644
+--- a/tests/sentry/performance_issues/test_slow_db_span_detector.py
++++ b/tests/sentry/issue_detection/test_slow_db_span_detector.py
+@@ -4,20 +4,16 @@ from typing import Any
+ 
+ import pytest
+ 
+-from sentry.issues.grouptype import PerformanceSlowDBQueryGroupType
+-from sentry.models.options.project_option import ProjectOption
+-from sentry.performance_issues.detectors.slow_db_query_detector import SlowDBQueryDetector
+-from sentry.performance_issues.performance_detection import (
++from sentry.issue_detection.detectors.slow_db_query_detector import SlowDBQueryDetector
++from sentry.issue_detection.performance_detection import (
+     get_detection_settings,
+     run_detector_on_data,
+ )
+-from sentry.performance_issues.performance_problem import PerformanceProblem
++from sentry.issue_detection.performance_problem import PerformanceProblem
++from sentry.issues.grouptype import PerformanceSlowDBQueryGroupType
++from sentry.models.options.project_option import ProjectOption
+ from sentry.testutils.cases import TestCase
+-from sentry.testutils.performance_issues.event_generators import (
+-    create_event,
+-    create_span,
+-    get_event,
+-)
++from sentry.testutils.issue_detection.event_generators import create_event, create_span, get_event
+ 
+ 
+ @pytest.mark.django_db
+diff --git a/tests/sentry/performance_issues/test_sql_injection_detector.py b/tests/sentry/issue_detection/test_sql_injection_detector.py
+similarity index 94%
+rename from tests/sentry/performance_issues/test_sql_injection_detector.py
+rename to tests/sentry/issue_detection/test_sql_injection_detector.py
+index 4c20bad3787..9199792ad66 100644
+--- a/tests/sentry/performance_issues/test_sql_injection_detector.py
++++ b/tests/sentry/issue_detection/test_sql_injection_detector.py
+@@ -4,15 +4,15 @@ from typing import Any
+ 
+ import pytest
+ 
+-from sentry.issues.grouptype import QueryInjectionVulnerabilityGroupType
+-from sentry.performance_issues.detectors.sql_injection_detector import SQLInjectionDetector
+-from sentry.performance_issues.performance_detection import (
++from sentry.issue_detection.detectors.sql_injection_detector import SQLInjectionDetector
++from sentry.issue_detection.performance_detection import (
+     get_detection_settings,
+     run_detector_on_data,
+ )
+-from sentry.performance_issues.performance_problem import PerformanceProblem
++from sentry.issue_detection.performance_problem import PerformanceProblem
++from sentry.issues.grouptype import QueryInjectionVulnerabilityGroupType
+ from sentry.testutils.cases import TestCase
+-from sentry.testutils.performance_issues.event_generators import get_event
++from sentry.testutils.issue_detection.event_generators import get_event
+ 
+ 
+ @pytest.mark.django_db
+diff --git a/tests/sentry/performance_issues/test_uncompressed_asset_detector.py b/tests/sentry/issue_detection/test_uncompressed_asset_detector.py
+similarity index 97%
+rename from tests/sentry/performance_issues/test_uncompressed_asset_detector.py
+rename to tests/sentry/issue_detection/test_uncompressed_asset_detector.py
+index 12b2ef32000..72f4acc74b3 100644
+--- a/tests/sentry/performance_issues/test_uncompressed_asset_detector.py
++++ b/tests/sentry/issue_detection/test_uncompressed_asset_detector.py
+@@ -4,19 +4,19 @@ from typing import Any
+ 
+ import pytest
+ 
+-from sentry.issues.grouptype import PerformanceUncompressedAssetsGroupType
+-from sentry.models.options.project_option import ProjectOption
+-from sentry.performance_issues.detectors.uncompressed_asset_detector import (
++from sentry.issue_detection.detectors.uncompressed_asset_detector import (
+     UncompressedAssetSpanDetector,
+ )
+-from sentry.performance_issues.performance_detection import (
++from sentry.issue_detection.performance_detection import (
+     get_detection_settings,
+     run_detector_on_data,
+ )
+-from sentry.performance_issues.performance_problem import PerformanceProblem
++from sentry.issue_detection.performance_problem import PerformanceProblem
++from sentry.issues.grouptype import PerformanceUncompressedAssetsGroupType
++from sentry.models.options.project_option import ProjectOption
+ from sentry.testutils.cases import TestCase
+-from sentry.testutils.performance_issues.event_generators import PROJECT_ID, create_span, get_event
+-from sentry.testutils.performance_issues.span_builder import SpanBuilder
++from sentry.testutils.issue_detection.event_generators import PROJECT_ID, create_span, get_event
++from sentry.testutils.issue_detection.span_builder import SpanBuilder
+ 
+ 
+ def create_asset_span(
+diff --git a/tests/sentry/issues/endpoints/test_project_performance_issue_settings.py b/tests/sentry/issues/endpoints/test_project_performance_issue_settings.py
+index 01a0ec91f4d..38c525dd624 100644
+--- a/tests/sentry/issues/endpoints/test_project_performance_issue_settings.py
++++ b/tests/sentry/issues/endpoints/test_project_performance_issue_settings.py
+@@ -4,8 +4,8 @@ from django.test import override_settings
+ from rest_framework import status
+ from rest_framework.exceptions import ErrorDetail
+ 
++from sentry.issue_detection.performance_detection import get_merged_settings
+ from sentry.issues.endpoints.project_performance_issue_settings import SETTINGS_PROJECT_OPTION_KEY
+-from sentry.performance_issues.performance_detection import get_merged_settings
+ from sentry.testutils.cases import APITestCase
+ from sentry.testutils.helpers import override_options
+ from sentry.testutils.helpers.features import with_feature
+diff --git a/tests/sentry/notifications/test_utils.py b/tests/sentry/notifications/test_utils.py
+index b8ae7b08e77..6ac95957b2d 100644
+--- a/tests/sentry/notifications/test_utils.py
++++ b/tests/sentry/notifications/test_utils.py
+@@ -1,6 +1,7 @@
+ import types
+ from unittest import TestCase
+ 
++from sentry.issue_detection.performance_problem import PerformanceProblem
+ from sentry.issues.grouptype import (
+     PerformanceNPlusOneAPICallsGroupType,
+     PerformanceNPlusOneGroupType,
+@@ -11,7 +12,6 @@ from sentry.notifications.utils import (
+     PerformanceProblemContext,
+     RenderBlockingAssetProblemContext,
+ )
+-from sentry.performance_issues.performance_problem import PerformanceProblem
+ 
+ 
+ def mock_event(*, transaction, data=None):
+diff --git a/tests/sentry/seer/anomaly_detection/test_store_data.py b/tests/sentry/seer/anomaly_detection/test_store_data.py
+index 6b8c2d2a779..ba5cd2ebd64 100644
+--- a/tests/sentry/seer/anomaly_detection/test_store_data.py
++++ b/tests/sentry/seer/anomaly_detection/test_store_data.py
+@@ -12,7 +12,7 @@ from sentry.snuba.models import SnubaQuery
+ from sentry.snuba.spans_rpc import Spans
+ from sentry.testutils.cases import BaseMetricsTestCase, PerformanceIssueTestCase, SpanTestCase
+ from sentry.testutils.helpers.datetime import before_now, freeze_time
+-from sentry.testutils.performance_issues.event_generators import get_event
++from sentry.testutils.issue_detection.event_generators import get_event
+ from sentry.utils.snuba import SnubaTSResult
+ from tests.sentry.incidents.endpoints.test_organization_alert_rule_index import AlertRuleBase
+ 
+diff --git a/tests/sentry/spans/consumers/process_segments/test_message.py b/tests/sentry/spans/consumers/process_segments/test_message.py
+index 20574a3b0c8..2e34fae3e43 100644
+--- a/tests/sentry/spans/consumers/process_segments/test_message.py
++++ b/tests/sentry/spans/consumers/process_segments/test_message.py
+@@ -11,7 +11,7 @@ from sentry.models.release import Release
+ from sentry.spans.consumers.process_segments.message import _verify_compatibility, process_segment
+ from sentry.testutils.cases import TestCase
+ from sentry.testutils.helpers.options import override_options
+-from sentry.testutils.performance_issues.experiments import exclude_experimental_detectors
++from sentry.testutils.issue_detection.experiments import exclude_experimental_detectors
+ from tests.sentry.spans.consumers.process import build_mock_span
+ 
+ 
+diff --git a/tests/sentry/spans/grouping/test_strategy.py b/tests/sentry/spans/grouping/test_strategy.py
+index 4d398ce6d90..33e2dd86f45 100644
+--- a/tests/sentry/spans/grouping/test_strategy.py
++++ b/tests/sentry/spans/grouping/test_strategy.py
+@@ -19,7 +19,7 @@ from sentry.spans.grouping.strategy.config import (
+     register_configuration,
+ )
+ from sentry.spans.grouping.utils import hash_values
+-from sentry.testutils.performance_issues.span_builder import SpanBuilder
++from sentry.testutils.issue_detection.span_builder import SpanBuilder
+ 
+ 
+ def test_register_duplicate_confiig() -> None:
+diff --git a/tests/sentry/utils/sdk_crashes/test_sdk_crash_detection.py b/tests/sentry/utils/sdk_crashes/test_sdk_crash_detection.py
+index eaac351f40c..87cb6e081cd 100644
+--- a/tests/sentry/utils/sdk_crashes/test_sdk_crash_detection.py
++++ b/tests/sentry/utils/sdk_crashes/test_sdk_crash_detection.py
+@@ -10,7 +10,7 @@ from sentry.services.eventstore.models import Event
+ from sentry.services.eventstore.snuba.backend import SnubaEventStorage
+ from sentry.testutils.cases import BaseTestCase, SnubaTestCase, TestCase
+ from sentry.testutils.helpers.options import override_options
+-from sentry.testutils.performance_issues.store_transaction import store_transaction
++from sentry.testutils.issue_detection.store_transaction import store_transaction
+ from sentry.testutils.pytest.fixtures import django_db_all
+ from sentry.utils.safe import get_path, set_path
+ from sentry.utils.sdk_crashes.sdk_crash_detection import sdk_crash_detection

@@ -1,0 +1,2431 @@
+From 6d93dd8348129dc112e2f219cc4059a19224a0cc Mon Sep 17 00:00:00 2001
+From: Christian Weichel <christian.weichel@typefox.io>
+Date: Tue, 13 Oct 2020 13:16:44 +0000
+Subject: [PATCH] [ws-daemon] Rename ws-sync to ws-daemon
+
+---
+ .../workspace-networkpolicy-default.yaml      |  4 +--
+ ...errole.yaml => ws-daemon-clusterrole.yaml} |  4 +--
+ ...onfigmap.yaml => ws-daemon-configmap.yaml} |  2 +-
+ ...aemonset.yaml => ws-daemon-daemonset.yaml} | 16 +++++------
+ ...licy.yaml => ws-daemon-networkpolicy.yaml} |  6 ++--
+ ...inding.yaml => ws-daemon-rolebinding.yaml} |  8 +++---
+ ...unt.yaml => ws-daemon-serviceaccount.yaml} |  4 +--
+ ...lssecret.yaml => ws-daemon-tlssecret.yaml} |  4 +--
+ chart/templates/ws-manager-deployment.yaml    |  4 +--
+ chart/values.yaml                             |  2 +-
+ components/BUILD.yaml                         |  6 ++--
+ components/common-go/cri/containerd.go        |  4 +--
+ .../content-service/pkg/layer/provider.go     |  2 +-
+ .../content-service/pkg/storage/gcloud.go     |  2 +-
+ components/node-daemon/node-daemon.sh         |  8 +++---
+ components/server/src/storage/commons.ts      |  4 +--
+ .../server/src/workspace/config-provider.ts   |  2 +-
+ .../workspace/workspace-download-service.ts   |  4 +--
+ components/supervisor/BUILD.yaml              |  2 +-
+ components/supervisor/go.mod                  |  4 +--
+ components/supervisor/pkg/backup/backup.go    |  6 ++--
+ .../supervisor/pkg/supervisor/supervisor.go   |  2 +-
+ .../generate.sh                               |  2 +-
+ .../go/BUILD.yaml                             |  0
+ .../{ws-sync-api => ws-daemon-api}/go/go.mod  |  2 +-
+ .../{ws-sync-api => ws-daemon-api}/go/go.sum  |  0
+ .../go/mock/mock_wssync.go                    |  2 +-
+ .../go/workspace.pb.go                        |  4 +--
+ .../go/wssync.pb.go                           |  0
+ .../typescript/.gitignore                     |  0
+ .../typescript/BUILD.yaml                     |  0
+ .../typescript/package.json                   |  2 +-
+ .../typescript/src/index.ts                   |  0
+ .../typescript/src/workspace_grpc_pb.d.ts     |  0
+ .../typescript/src/workspace_grpc_pb.js       |  2 +-
+ .../typescript/src/workspace_pb.d.ts          |  0
+ .../typescript/src/workspace_pb.js            |  0
+ .../typescript/src/wssync_grpc_pb.d.ts        |  0
+ .../typescript/src/wssync_grpc_pb.js          |  0
+ .../typescript/src/wssync_pb.d.ts             |  0
+ .../typescript/src/wssync_pb.js               |  0
+ .../typescript/tsconfig.json                  |  0
+ .../typescript/workspace_pb.js                |  0
+ .../typescript/wssync_pb.js                   |  0
+ .../workspace.proto                           |  4 +--
+ .../wssync.proto                              |  2 +-
+ components/ws-daemon/.gitignore               |  1 +
+ .../.vscode/launch.json                       |  0
+ components/{ws-sync => ws-daemon}/BUILD.yaml  |  4 +--
+ components/{ws-sync => ws-daemon}/README.md   |  4 +--
+ .../{ws-sync => ws-daemon}/cmd/client-init.go |  2 +-
+ .../cmd/client-snapshot.go                    |  2 +-
+ .../{ws-sync => ws-daemon}/cmd/client.go      |  2 +-
+ .../cmd/generate-config.go                    |  2 +-
+ .../cmd/generate-init-request.go              |  2 +-
+ .../{ws-sync => ws-daemon}/cmd/generate.go    |  0
+ components/{ws-sync => ws-daemon}/cmd/root.go |  8 +++---
+ components/{ws-sync => ws-daemon}/cmd/run.go  |  6 ++--
+ .../{ws-sync => ws-daemon}/config-schema.json |  2 +-
+ .../{ws-sync => ws-daemon}/debug.Dockerfile   |  4 +--
+ components/ws-daemon/debug.sh                 | 18 ++++++++++++
+ .../example-config.json                       |  0
+ .../example-initreq.json                      |  0
+ components/{ws-sync => ws-daemon}/go.mod      |  8 ++++--
+ components/{ws-sync => ws-daemon}/go.sum      |  0
+ .../initreq-schema.json                       |  0
+ .../{ws-sync => ws-daemon}/leeway.Dockerfile  |  4 +--
+ components/{ws-sync => ws-daemon}/main.go     |  2 +-
+ .../{ws-sync => ws-daemon}/pkg/archive/tar.go |  0
+ .../pkg/archive/tar_test.go                   |  0
+ .../pkg/internal/session/store.go             |  4 +--
+ .../pkg/internal/session/workspace.go         |  6 ++--
+ .../pkg/internal/session/workspace_test.go    |  2 +-
+ .../pkg/quota/mounts.go                       |  0
+ .../pkg/quota/mounts_test.go                  |  0
+ .../pkg/quota/sandbox_linux.go                |  0
+ .../{ws-sync => ws-daemon}/pkg/quota/size.go  |  0
+ .../pkg/quota/size_test.go                    |  2 +-
+ .../pkg/safetynet/workspace.go                |  0
+ .../pkg/syncd/config.go                       | 10 +++----
+ .../pkg/syncd/service.go                      | 12 ++++----
+ .../pkg/syncd/workspace.go                    |  6 ++--
+ .../shiftfs-module-loader/.gitignore          |  0
+ .../shiftfs-module-loader/BUILD.yaml          |  0
+ .../shiftfs-module-loader/Makefile            |  0
+ .../shiftfs-module-loader/README.md           |  0
+ .../shiftfs-module-loader/dkms.conf           |  0
+ .../shiftfs-module-loader/entrypoint.sh       |  0
+ .../shiftfs-module-loader/leeway.Dockerfile   |  0
+ components/ws-manager-bridge/BUILD.yaml       |  2 +-
+ components/ws-manager-bridge/package.json     |  2 +-
+ components/ws-manager-node/BUILD.yaml         |  2 +-
+ components/ws-manager-node/go.mod             |  8 ++++--
+ components/ws-manager/BUILD.yaml              |  2 +-
+ components/ws-manager/example-config.json     |  2 +-
+ components/ws-manager/go.mod                  |  6 ++--
+ .../ws-manager/pkg/manager/annotations.go     |  2 +-
+ components/ws-manager/pkg/manager/config.go   |  4 +--
+ .../pkg/manager/integration_test.go           |  4 +--
+ components/ws-manager/pkg/manager/manager.go  | 22 +++++++--------
+ .../ws-manager/pkg/manager/manager_ee.go      |  2 +-
+ components/ws-manager/pkg/manager/monitor.go  | 28 +++++++++----------
+ .../pkg/manager/monitor_integration_test.go   |  4 +--
+ .../manager/testdata/cdwp_admission.golden    |  2 +-
+ .../cdwp_duplicate_featureflag.golden         |  2 +-
+ .../testdata/cdwp_fixedresources.golden       |  2 +-
+ .../testdata/cdwp_fullworkspacebackup.golden  |  2 +-
+ .../pkg/manager/testdata/cdwp_prebuild.golden |  2 +-
+ .../testdata/cdwp_prebuild_template.golden    |  2 +-
+ ...rebuild_template_override_resources.golden |  2 +-
+ .../manager/testdata/cdwp_privileged.golden   |  2 +-
+ .../pkg/manager/testdata/cdwp_probe.golden    |  2 +-
+ .../testdata/cdwp_readinessprobe.golden       |  2 +-
+ .../testdata/cdwp_registryfacade.golden       |  2 +-
+ .../pkg/manager/testdata/cdwp_tasks.golden    |  2 +-
+ .../pkg/manager/testdata/cdwp_template.golden |  2 +-
+ .../pkg/manager/testdata/cdwp_timeout.golden  |  2 +-
+ .../pkg/manager/testdata/cdwp_userns.golden   |  2 +-
+ .../testdata/deleteDanglingPLIS_20200402.json |  2 +-
+ .../testdata/getWorkspaces_podOnly.json       |  2 +-
+ .../manager/testdata/status_errimgpull.json   |  2 +-
+ .../status_errimgpull_CREATING01.json         |  2 +-
+ ...tatus_failedPending_evicted_UNKNOWN01.json |  2 +-
+ ...tatus_failedPending_evicted_UNKNOWN02.json |  2 +-
+ .../status_firstUserActivity_RUNNING.json     |  2 +-
+ .../testdata/status_imagespec_RUNNING00.json  |  2 +-
+ .../manager/testdata/status_interrupted.json  |  2 +-
+ .../status_interrupted_CREATING00.json        |  2 +-
+ ...errupted_networkNotReady_1_event_only.json |  2 +-
+ ..._networkNotReady_2_event_and_exitcode.json |  2 +-
+ ...tworkNotReady_3_recovered_CONSTRUCTED.json |  2 +-
+ .../manager/testdata/status_ownerToken.json   |  2 +-
+ .../status_prebuildSuccess_RUNNING01.json     |  4 +--
+ .../status_stuckInCreating_CREATING00.json    |  2 +-
+ .../testdata/status_wsstartup_Creating00.json |  4 +--
+ .../pkg/manager/testdata/stopping_basic.json  |  2 +-
+ .../timeout_interrupted_noActivity.json       |  2 +-
+ .../timeout_interrupted_withActivity.json     |  2 +-
+ components/ws-manager/telepresence.sh         |  4 +--
+ components/ws-sync/.gitignore                 |  1 -
+ components/ws-sync/debug.sh                   | 18 ------------
+ gitpod-ws.theia-workspace                     |  2 +-
+ 142 files changed, 214 insertions(+), 208 deletions(-)
+ rename chart/templates/{ws-sync-clusterrole.yaml => ws-daemon-clusterrole.yaml} (87%)
+ rename chart/templates/{ws-sync-configmap.yaml => ws-daemon-configmap.yaml} (98%)
+ rename chart/templates/{ws-sync-daemonset.yaml => ws-daemon-daemonset.yaml} (95%)
+ rename chart/templates/{ws-sync-networkpolicy.yaml => ws-daemon-networkpolicy.yaml} (93%)
+ rename chart/templates/{ws-sync-rolebinding.yaml => ws-daemon-rolebinding.yaml} (80%)
+ rename chart/templates/{ws-sync-serviceaccount.yaml => ws-daemon-serviceaccount.yaml} (88%)
+ rename chart/templates/{ws-sync-tlssecret.yaml => ws-daemon-tlssecret.yaml} (87%)
+ rename components/{ws-sync-api => ws-daemon-api}/generate.sh (94%)
+ rename components/{ws-sync-api => ws-daemon-api}/go/BUILD.yaml (100%)
+ rename components/{ws-sync-api => ws-daemon-api}/go/go.mod (98%)
+ rename components/{ws-sync-api => ws-daemon-api}/go/go.sum (100%)
+ rename components/{ws-sync-api => ws-daemon-api}/go/mock/mock_wssync.go (99%)
+ rename components/{ws-sync-api => ws-daemon-api}/go/workspace.pb.go (99%)
+ rename components/{ws-sync-api => ws-daemon-api}/go/wssync.pb.go (100%)
+ rename components/{ws-sync-api => ws-daemon-api}/typescript/.gitignore (100%)
+ rename components/{ws-sync-api => ws-daemon-api}/typescript/BUILD.yaml (100%)
+ rename components/{ws-sync-api => ws-daemon-api}/typescript/package.json (95%)
+ rename components/{ws-sync-api => ws-daemon-api}/typescript/src/index.ts (100%)
+ rename components/{ws-sync-api => ws-daemon-api}/typescript/src/workspace_grpc_pb.d.ts (100%)
+ rename components/{ws-sync-api => ws-daemon-api}/typescript/src/workspace_grpc_pb.js (99%)
+ rename components/{ws-sync-api => ws-daemon-api}/typescript/src/workspace_pb.d.ts (100%)
+ rename components/{ws-sync-api => ws-daemon-api}/typescript/src/workspace_pb.js (100%)
+ rename components/{ws-sync-api => ws-daemon-api}/typescript/src/wssync_grpc_pb.d.ts (100%)
+ rename components/{ws-sync-api => ws-daemon-api}/typescript/src/wssync_grpc_pb.js (100%)
+ rename components/{ws-sync-api => ws-daemon-api}/typescript/src/wssync_pb.d.ts (100%)
+ rename components/{ws-sync-api => ws-daemon-api}/typescript/src/wssync_pb.js (100%)
+ rename components/{ws-sync-api => ws-daemon-api}/typescript/tsconfig.json (100%)
+ rename components/{ws-sync-api => ws-daemon-api}/typescript/workspace_pb.js (100%)
+ rename components/{ws-sync-api => ws-daemon-api}/typescript/wssync_pb.js (100%)
+ rename components/{ws-sync-api => ws-daemon-api}/workspace.proto (91%)
+ rename components/{ws-sync-api => ws-daemon-api}/wssync.proto (98%)
+ create mode 100644 components/ws-daemon/.gitignore
+ rename components/{ws-sync => ws-daemon}/.vscode/launch.json (100%)
+ rename components/{ws-sync => ws-daemon}/BUILD.yaml (84%)
+ rename components/{ws-sync => ws-daemon}/README.md (90%)
+ rename components/{ws-sync => ws-daemon}/cmd/client-init.go (98%)
+ rename components/{ws-sync => ws-daemon}/cmd/client-snapshot.go (95%)
+ rename components/{ws-sync => ws-daemon}/cmd/client.go (94%)
+ rename components/{ws-sync => ws-daemon}/cmd/generate-config.go (91%)
+ rename components/{ws-sync => ws-daemon}/cmd/generate-init-request.go (95%)
+ rename components/{ws-sync => ws-daemon}/cmd/generate.go (100%)
+ rename components/{ws-sync => ws-daemon}/cmd/root.go (95%)
+ rename components/{ws-sync => ws-daemon}/cmd/run.go (95%)
+ rename components/{ws-sync => ws-daemon}/config-schema.json (97%)
+ rename components/{ws-sync => ws-daemon}/debug.Dockerfile (88%)
+ create mode 100755 components/ws-daemon/debug.sh
+ rename components/{ws-sync => ws-daemon}/example-config.json (100%)
+ rename components/{ws-sync => ws-daemon}/example-initreq.json (100%)
+ rename components/{ws-sync => ws-daemon}/go.mod (93%)
+ rename components/{ws-sync => ws-daemon}/go.sum (100%)
+ rename components/{ws-sync => ws-daemon}/initreq-schema.json (100%)
+ rename components/{ws-sync => ws-daemon}/leeway.Dockerfile (87%)
+ rename components/{ws-sync => ws-daemon}/main.go (88%)
+ rename components/{ws-sync => ws-daemon}/pkg/archive/tar.go (100%)
+ rename components/{ws-sync => ws-daemon}/pkg/archive/tar_test.go (100%)
+ rename components/{ws-sync => ws-daemon}/pkg/internal/session/store.go (99%)
+ rename components/{ws-sync => ws-daemon}/pkg/internal/session/workspace.go (97%)
+ rename components/{ws-sync => ws-daemon}/pkg/internal/session/workspace_test.go (99%)
+ rename components/{ws-sync => ws-daemon}/pkg/quota/mounts.go (100%)
+ rename components/{ws-sync => ws-daemon}/pkg/quota/mounts_test.go (100%)
+ rename components/{ws-sync => ws-daemon}/pkg/quota/sandbox_linux.go (100%)
+ rename components/{ws-sync => ws-daemon}/pkg/quota/size.go (100%)
+ rename components/{ws-sync => ws-daemon}/pkg/quota/size_test.go (98%)
+ rename components/{ws-sync => ws-daemon}/pkg/safetynet/workspace.go (100%)
+ rename components/{ws-sync => ws-daemon}/pkg/syncd/config.go (88%)
+ rename components/{ws-sync => ws-daemon}/pkg/syncd/service.go (98%)
+ rename components/{ws-sync => ws-daemon}/pkg/syncd/workspace.go (96%)
+ rename components/{ws-sync => ws-daemon}/shiftfs-module-loader/.gitignore (100%)
+ rename components/{ws-sync => ws-daemon}/shiftfs-module-loader/BUILD.yaml (100%)
+ rename components/{ws-sync => ws-daemon}/shiftfs-module-loader/Makefile (100%)
+ rename components/{ws-sync => ws-daemon}/shiftfs-module-loader/README.md (100%)
+ rename components/{ws-sync => ws-daemon}/shiftfs-module-loader/dkms.conf (100%)
+ rename components/{ws-sync => ws-daemon}/shiftfs-module-loader/entrypoint.sh (100%)
+ rename components/{ws-sync => ws-daemon}/shiftfs-module-loader/leeway.Dockerfile (100%)
+ delete mode 100644 components/ws-sync/.gitignore
+ delete mode 100755 components/ws-sync/debug.sh
+
+diff --git a/chart/templates/workspace-networkpolicy-default.yaml b/chart/templates/workspace-networkpolicy-default.yaml
+index 549c13dfa..a4883bde0 100644
+--- a/chart/templates/workspace-networkpolicy-default.yaml
++++ b/chart/templates/workspace-networkpolicy-default.yaml
+@@ -39,12 +39,12 @@ spec:
+         matchLabels:
+           app: {{ template "gitpod.fullname" . }}
+           component: agent-smith
+-  # ALLOW ingress from ws-sync
++  # ALLOW ingress from ws-daemon
+   - from:
+     - podSelector:
+         matchLabels:
+           app: {{ template "gitpod.fullname" . }}
+-          component: ws-sync
++          component: ws-daemon
+   # ALLOW prometheus scraping from theia backend
+   - ports:
+     - protocol: TCP
+diff --git a/chart/templates/ws-sync-clusterrole.yaml b/chart/templates/ws-daemon-clusterrole.yaml
+similarity index 87%
+rename from chart/templates/ws-sync-clusterrole.yaml
+rename to chart/templates/ws-daemon-clusterrole.yaml
+index 4990d1866..972a12704 100644
+--- a/chart/templates/ws-sync-clusterrole.yaml
++++ b/chart/templates/ws-daemon-clusterrole.yaml
+@@ -4,10 +4,10 @@
+ kind: ClusterRole
+ apiVersion: rbac.authorization.k8s.io/v1beta1
+ metadata:
+-  name: {{ .Release.Namespace }}-ns-ws-sync
++  name: {{ .Release.Namespace }}-ns-ws-daemon
+   labels:
+     app: {{ template "gitpod.fullname" . }}
+-    component: ws-sync
++    component: ws-daemon
+     kind: clusterrole
+     stage: {{ .Values.installation.stage }}
+ rules:
+diff --git a/chart/templates/ws-sync-configmap.yaml b/chart/templates/ws-daemon-configmap.yaml
+similarity index 98%
+rename from chart/templates/ws-sync-configmap.yaml
+rename to chart/templates/ws-daemon-configmap.yaml
+index 84ba95bd6..d860c1b55 100644
+--- a/chart/templates/ws-sync-configmap.yaml
++++ b/chart/templates/ws-daemon-configmap.yaml
+@@ -6,7 +6,7 @@
+ apiVersion: v1
+ kind: ConfigMap
+ metadata:
+-  name: ws-sync-config
++  name: ws-daemon-config
+   labels:
+     app: {{ template "gitpod.fullname" . }}
+     chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+diff --git a/chart/templates/ws-sync-daemonset.yaml b/chart/templates/ws-daemon-daemonset.yaml
+similarity index 95%
+rename from chart/templates/ws-sync-daemonset.yaml
+rename to chart/templates/ws-daemon-daemonset.yaml
+index cacf4b79a..e57047b55 100644
+--- a/chart/templates/ws-sync-daemonset.yaml
++++ b/chart/templates/ws-daemon-daemonset.yaml
+@@ -7,31 +7,31 @@
+ apiVersion: apps/v1
+ kind: DaemonSet
+ metadata:
+-  name: ws-sync
++  name: ws-daemon
+   labels:
+     app: {{ template "gitpod.fullname" $ }}
+-    component: ws-sync
++    component: ws-daemon
+     kind: daemonset
+     stage: {{ .Values.installation.stage }}
+ spec:
+   selector:
+     matchLabels:
+       app: {{ template "gitpod.fullname" $ }}
+-      component: ws-sync
++      component: ws-daemon
+       kind: daemonset
+       stage: {{ .Values.installation.stage }}
+   template:
+     metadata:
+       labels:
+         app: {{ template "gitpod.fullname" $ }}
+-        component: ws-sync
++        component: ws-daemon
+         kind: daemonset
+         stage: {{ .Values.installation.stage }}
+       annotations:
+         prometheus.io/scrape: 'true'
+         prometheus.io/path: "/metrics"
+         prometheus.io/port: '9500'
+-        checksum/tlskey: {{ include (print $.Template.BasePath "/ws-sync-tlssecret.yaml") $ | sha256sum }}
++        checksum/tlskey: {{ include (print $.Template.BasePath "/ws-daemon-tlssecret.yaml") $ | sha256sum }}
+         {{- if $comp.userNamespaces.shiftfsModuleLoader.enabled }}
+         seccomp.security.alpha.kubernetes.io/shiftfs-module-loader: unconfined
+         {{- end }}
+@@ -52,7 +52,7 @@ spec:
+       - key: node.kubernetes.io/out-of-disk
+         operator: "Exists"
+         effect: "NoExecute"
+-      serviceAccountName: ws-sync
++      serviceAccountName: ws-daemon
+       volumes:
+       - hostPath:
+           path: {{ $comp.hostWorkspaceArea }}
+@@ -60,7 +60,7 @@ spec:
+         name: working-area
+       - name: tls-certs
+         secret:
+-          secretName: ws-sync-tls
++          secretName: ws-daemon-tls
+       - name: config
+         configMap:
+           name: {{ template "gitpod.comp.configMap" $this }}
+@@ -101,7 +101,7 @@ spec:
+           privileged: true
+ {{- end }}
+       containers:
+-      - name: ws-sync
++      - name: ws-daemon
+         volumeMounts:
+         - mountPath: /mnt/workingarea
+           name: working-area
+diff --git a/chart/templates/ws-sync-networkpolicy.yaml b/chart/templates/ws-daemon-networkpolicy.yaml
+similarity index 93%
+rename from chart/templates/ws-sync-networkpolicy.yaml
+rename to chart/templates/ws-daemon-networkpolicy.yaml
+index 121ef7e69..e2cf6d70b 100644
+--- a/chart/templates/ws-sync-networkpolicy.yaml
++++ b/chart/templates/ws-daemon-networkpolicy.yaml
+@@ -5,17 +5,17 @@
+ apiVersion: networking.k8s.io/v1
+ kind: NetworkPolicy
+ metadata:
+-  name: ws-sync
++  name: ws-daemon
+   labels:
+     app: {{ template "gitpod.fullname" . }}
+-    component: ws-sync
++    component: ws-daemon
+     kind: networkpolicy
+     stage: {{ .Values.installation.stage }}
+ spec:
+   podSelector:
+     matchLabels:
+       app: {{ template "gitpod.fullname" . }}
+-      component: ws-sync
++      component: ws-daemon
+   policyTypes:
+   - Ingress
+   ingress:
+diff --git a/chart/templates/ws-sync-rolebinding.yaml b/chart/templates/ws-daemon-rolebinding.yaml
+similarity index 80%
+rename from chart/templates/ws-sync-rolebinding.yaml
+rename to chart/templates/ws-daemon-rolebinding.yaml
+index fc068ba29..e3e93c4e5 100644
+--- a/chart/templates/ws-sync-rolebinding.yaml
++++ b/chart/templates/ws-daemon-rolebinding.yaml
+@@ -4,16 +4,16 @@
+ kind: RoleBinding
+ apiVersion: rbac.authorization.k8s.io/v1beta1
+ metadata:
+-  name: ws-sync-rb
++  name: ws-daemon-rb
+   labels:
+     app: {{ template "gitpod.fullname" . }}
+-    component: ws-sync
++    component: ws-daemon
+     kind: role-binding
+     stage: {{ .Values.installation.stage }}
+ subjects:
+ - kind: ServiceAccount
+-  name: ws-sync
++  name: ws-daemon
+ roleRef:
+   kind: ClusterRole
+-  name: {{ .Release.Namespace }}-ns-ws-sync
++  name: {{ .Release.Namespace }}-ns-ws-daemon
+   apiGroup: rbac.authorization.k8s.io
+diff --git a/chart/templates/ws-sync-serviceaccount.yaml b/chart/templates/ws-daemon-serviceaccount.yaml
+similarity index 88%
+rename from chart/templates/ws-sync-serviceaccount.yaml
+rename to chart/templates/ws-daemon-serviceaccount.yaml
+index 9c3d6708c..b91997bdd 100644
+--- a/chart/templates/ws-sync-serviceaccount.yaml
++++ b/chart/templates/ws-daemon-serviceaccount.yaml
+@@ -4,9 +4,9 @@
+ apiVersion: v1
+ kind: ServiceAccount
+ metadata:
+-  name: ws-sync
++  name: ws-daemon
+   labels:
+     app: {{ template "gitpod.fullname" . }}
+-    component: ws-sync
++    component: ws-daemon
+     kind: service-account
+     stage: {{ .Values.installation.stage }}
+\ No newline at end of file
+diff --git a/chart/templates/ws-sync-tlssecret.yaml b/chart/templates/ws-daemon-tlssecret.yaml
+similarity index 87%
+rename from chart/templates/ws-sync-tlssecret.yaml
+rename to chart/templates/ws-daemon-tlssecret.yaml
+index 350322564..32325d9ad 100644
+--- a/chart/templates/ws-sync-tlssecret.yaml
++++ b/chart/templates/ws-daemon-tlssecret.yaml
+@@ -4,13 +4,13 @@
+ {{ $comp := .Values.components.wsSync -}}
+ {{- $this := dict "root" . "gp" $.Values "comp" $comp -}}
+ {{- if not $comp.disabled -}}
+-{{- $altNames := list ( printf "%s.%s" (include "gitpod.fullname" .) .Release.Namespace ) ( printf "%s.%s.svc" "ws-sync" .Release.Namespace ) ( printf "wssync" ) -}}
++{{- $altNames := list ( printf "%s.%s" (include "gitpod.fullname" .) .Release.Namespace ) ( printf "%s.%s.svc" "ws-daemon" .Release.Namespace ) ( printf "wssync" ) -}}
+ {{- $ca := genCA "wssync-ca" 365 -}}
+ {{- $cert := genSignedCert (include "gitpod.fullname" . ) nil $altNames 365 $ca -}}
+ apiVersion: v1
+ kind: Secret
+ metadata:
+-  name: ws-sync-tls
++  name: ws-daemon-tls
+   labels:
+     app: {{ template "gitpod.fullname" $ }}
+     chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+diff --git a/chart/templates/ws-manager-deployment.yaml b/chart/templates/ws-manager-deployment.yaml
+index d5dbc8ab1..9a562d770 100644
+--- a/chart/templates/ws-manager-deployment.yaml
++++ b/chart/templates/ws-manager-deployment.yaml
+@@ -38,7 +38,7 @@ spec:
+         prometheus.io/scrape: 'true'
+         prometheus.io/path: "/metrics"
+         prometheus.io/port: '9500'
+-        checksum/tlskey: {{ include (print $.Template.BasePath "/ws-sync-tlssecret.yaml") $ | sha256sum }}
++        checksum/tlskey: {{ include (print $.Template.BasePath "/ws-daemon-tlssecret.yaml") $ | sha256sum }}
+     spec:
+ {{ include "gitpod.pod.affinity" $this | indent 6 }}
+       serviceAccountName: ws-manager
+@@ -50,7 +50,7 @@ spec:
+           name: {{ template "gitpod.comp.configMap" $this }}
+       - name: tls-certs
+         secret:
+-          secretName: ws-sync-tls
++          secretName: ws-daemon-tls
+       - name: workspace-template
+         configMap:
+           name: workspace-template
+diff --git a/chart/values.yaml b/chart/values.yaml
+index 9623c2197..80a3161fb 100644
+--- a/chart/values.yaml
++++ b/chart/values.yaml
+@@ -367,7 +367,7 @@ components:
+       memory: 32Mi
+ 
+   wsSync:
+-    name: "ws-sync"
++    name: "ws-daemon"
+     hostWorkspaceArea: /var/gitpod/workspaces
+     servicePort: 8080
+     workspaceSizeLimit: ""
+diff --git a/components/BUILD.yaml b/components/BUILD.yaml
+index 0be1334d3..11ee6a7e2 100644
+--- a/components/BUILD.yaml
++++ b/components/BUILD.yaml
+@@ -23,8 +23,8 @@ packages:
+       - components/ws-manager-node:docker
+       - components/ws-manager:docker
+       - components/ws-proxy:docker
+-      - components/ws-sync:docker
+-      - components/ws-sync/shiftfs-module-loader:docker
++      - components/ws-daemon:docker
++      - components/ws-daemon/shiftfs-module-loader:docker
+       - components/gitpod-protocol:publish
+       - components/supervisor-api/typescript-grpc:publish
+   - name: all-apps
+@@ -43,7 +43,7 @@ packages:
+       - components/ws-manager-node:app
+       - components/ws-manager:app
+       - components/ee/ws-scheduler:app
+-      - components/ws-sync:app
++      - components/ws-daemon:app
+ scripts:
+   - name: update-license-header
+     deps:
+diff --git a/components/common-go/cri/containerd.go b/components/common-go/cri/containerd.go
+index 6aaa53b00..132bf8c9d 100644
+--- a/components/common-go/cri/containerd.go
++++ b/components/common-go/cri/containerd.go
+@@ -27,7 +27,7 @@ import (
+ 
+ const (
+ 	// labelCacheSize configures how big our label cache is, i.e. how many workspace pods
+-	// we can handle in this ws-sync instance at the same time. 1024 is way more than we
++	// we can handle in this ws-daemon instance at the same time. 1024 is way more than we
+ 	// will ever have on a single machine. A single label is about 200 byte.
+ 	labelCacheSize = 1024
+ 
+@@ -67,7 +67,7 @@ func NewContainerdCRI(cfg *ContainerdConfig, mounts *NodeMountsLookup, pathMappi
+ 	return res, nil
+ }
+ 
+-// ContainerdCRI implements the ws-sync CRI for containerd
++// ContainerdCRI implements the ws-daemon CRI for containerd
+ type ContainerdCRI struct {
+ 	Client  *containerd.Client
+ 	Mounts  *NodeMountsLookup
+diff --git a/components/content-service/pkg/layer/provider.go b/components/content-service/pkg/layer/provider.go
+index 5a4a657ad..3b3548bc0 100644
+--- a/components/content-service/pkg/layer/provider.go
++++ b/components/content-service/pkg/layer/provider.go
+@@ -28,7 +28,7 @@ import (
+ 
+ const (
+ 	// BEWARE:
+-	// these formats duplicate naming conventions embedded in the remote storage implementations or ws-sync.
++	// these formats duplicate naming conventions embedded in the remote storage implementations or ws-daemon.
+ 	fmtWorkspaceManifest = "workspaces/%s/wsfull.json"
+ 	fmtLegacyBackupName  = "workspaces/%s/full.tar"
+ )
+diff --git a/components/content-service/pkg/storage/gcloud.go b/components/content-service/pkg/storage/gcloud.go
+index d937e9d38..012ae14cf 100644
+--- a/components/content-service/pkg/storage/gcloud.go
++++ b/components/content-service/pkg/storage/gcloud.go
+@@ -212,7 +212,7 @@ func (rs *DirectGCPStorage) download(ctx context.Context, destination string, bk
+ }
+ 
+ /* tar files produced by the previous sync process contain their workspace ID in the filenames.
+- * This behavior is difficult for snapshot backups, thus ws-syncd does not do that. However,
++ * This behavior is difficult for snapshot backups, thus ws-daemond does not do that. However,
+  * we need to be able to handle the "old" tar files, hence this legacy mode. See #1559.
+  */
+ func (rs *DirectGCPStorage) fixLegacyFilenames(ctx context.Context, destination string) (err error) {
+diff --git a/components/node-daemon/node-daemon.sh b/components/node-daemon/node-daemon.sh
+index e586933f8..b05e1222a 100644
+--- a/components/node-daemon/node-daemon.sh
++++ b/components/node-daemon/node-daemon.sh
+@@ -26,15 +26,15 @@ for i in $(seq 1 10); do
+     sleep 1
+ done
+ 
+-# 2. We have to ensure this node has a ws-sync running. To this end we wait for ws-sync to become available and then mark the node.
++# 2. We have to ensure this node has a ws-daemon running. To this end we wait for ws-daemon to become available and then mark the node.
+ while true; do
+-    if kubectl get pods --field-selector spec.nodeName=$EXECUTING_NODE_NAME -l component=ws-sync | grep Running &>/dev/null; then
+-        kubectl patch node $EXECUTING_NODE_NAME --patch '{"metadata":{"labels":{"gitpod.io/ws-sync": "available"}}}'
++    if kubectl get pods --field-selector spec.nodeName=$EXECUTING_NODE_NAME -l component=ws-daemon | grep Running &>/dev/null; then
++        kubectl patch node $EXECUTING_NODE_NAME --patch '{"metadata":{"labels":{"gitpod.io/ws-daemon": "available"}}}'
+         break
+     fi
+     sleep 1
+ done
+-echo "ws-sync became available - we've marked the node"
++echo "ws-daemon became available - we've marked the node"
+ 
+ # There's nothing left for us to do, but we mustn't exit either. Let's loop a little.
+ while true; do
+diff --git a/components/server/src/storage/commons.ts b/components/server/src/storage/commons.ts
+index 347ce5711..ec2eb6503 100644
+--- a/components/server/src/storage/commons.ts
++++ b/components/server/src/storage/commons.ts
+@@ -7,7 +7,7 @@
+ import { KubeStage } from "@gitpod/gitpod-protocol/lib/env";
+ 
+ /**
+- * This is the analogon to the code in ws-sync/pkg/storage/storage_gcloud.go:bucketName
++ * This is the analogon to the code in ws-daemon/pkg/storage/storage_gcloud.go:bucketName
+  * @param userId
+  * @param stage
+  */
+@@ -17,7 +17,7 @@ export function getBucketName(userId: string, stage: KubeStage): string {
+ }
+ 
+ /**
+- * This is the analogon to the code in ws-sync/pkg/syncd/config.go:NewStorage
++ * This is the analogon to the code in ws-daemon/pkg/syncd/config.go:NewStorage
+  * @param stage 
+  */
+ export function getBucketNamePrefix(stage: KubeStage): string {
+diff --git a/components/server/src/workspace/config-provider.ts b/components/server/src/workspace/config-provider.ts
+index 5d7e0387b..346a1ff47 100644
+--- a/components/server/src/workspace/config-provider.ts
++++ b/components/server/src/workspace/config-provider.ts
+@@ -280,7 +280,7 @@ export class ConfigProvider {
+ 
+     protected async validateConfig(config: WorkspaceConfig, user: User): Promise<void> {
+         // Make sure the projectRoot does not leave POD_PATH_WORKSPACE_BASE as that's a common
+-        // assumption throughout the code (e.g. ws-sync)
++        // assumption throughout the code (e.g. ws-daemon)
+         const checkoutLocation = config.checkoutLocation;
+         if (checkoutLocation) {
+             const normalizedPath = path.join(POD_PATH_WORKSPACE_BASE, checkoutLocation);
+diff --git a/components/server/src/workspace/workspace-download-service.ts b/components/server/src/workspace/workspace-download-service.ts
+index 0051b4ae0..c970a5146 100644
+--- a/components/server/src/workspace/workspace-download-service.ts
++++ b/components/server/src/workspace/workspace-download-service.ts
+@@ -49,8 +49,8 @@ export class WorkspaceDownloadService {
+                     return;
+                 }
+ 
+-                // we must harmonize this with https://github.com/TypeFox/gitpod/blob/8fc0c82a55da1ca4b5f6ab61deb9c9cd49eff644/components/ws-sync/pkg/storage/storage.go
+-                // Beware: do NOT use env.kube_stage which has some "legacy" translation mechanism which doesn't fit the ws-sync mapping.
++                // we must harmonize this with https://github.com/TypeFox/gitpod/blob/8fc0c82a55da1ca4b5f6ab61deb9c9cd49eff644/components/ws-daemon/pkg/storage/storage.go
++                // Beware: do NOT use env.kube_stage which has some "legacy" translation mechanism which doesn't fit the ws-daemon mapping.
+                 const stage: string = ({
+                     "production": "prod",
+                     "staging": "prodcopy",
+diff --git a/components/supervisor/BUILD.yaml b/components/supervisor/BUILD.yaml
+index abd23847d..69332da54 100644
+--- a/components/supervisor/BUILD.yaml
++++ b/components/supervisor/BUILD.yaml
+@@ -10,7 +10,7 @@ packages:
+       - components/content-service-api/go:lib
+       - components/content-service:lib
+       - components/supervisor-api/go:lib
+-      - components/ws-sync-api/go:lib
++      - components/ws-daemon-api/go:lib
+       - components/ws-manager-node-api/go:lib
+     env:
+       - CGO_ENABLED=0
+diff --git a/components/supervisor/go.mod b/components/supervisor/go.mod
+index be245af09..f7ebcd5cf 100644
+--- a/components/supervisor/go.mod
++++ b/components/supervisor/go.mod
+@@ -10,7 +10,7 @@ require (
+ 	github.com/gitpod-io/gitpod/content-service/api v0.0.0-00010101000000-000000000000
+ 	github.com/gitpod-io/gitpod/supervisor/api v0.0.0-00010101000000-000000000000
+ 	github.com/gitpod-io/gitpod/ws-manager-node/api v0.0.0-00010101000000-000000000000
+-	github.com/gitpod-io/gitpod/ws-sync/api v0.0.0-00010101000000-000000000000
++	github.com/gitpod-io/gitpod/ws-daemon/api v0.0.0-00010101000000-000000000000
+ 	github.com/golang/protobuf v1.4.2
+ 	github.com/google/go-cmp v0.5.2
+ 	github.com/google/uuid v1.0.0
+@@ -37,7 +37,7 @@ replace github.com/gitpod-io/gitpod/supervisor/api => ../supervisor-api/go // le
+ 
+ replace github.com/gitpod-io/gitpod/ws-manager-node/api => ../ws-manager-node-api/go // leeway
+ 
+-replace github.com/gitpod-io/gitpod/ws-sync/api => ../ws-sync-api/go // leeway
++replace github.com/gitpod-io/gitpod/ws-daemon/api => ../ws-daemon-api/go // leeway
+ 
+ replace k8s.io/api => k8s.io/api v0.0.0-20190620084959-7cf5895f2711 // leeway indirect from components/common-go:lib
+ 
+diff --git a/components/supervisor/pkg/backup/backup.go b/components/supervisor/pkg/backup/backup.go
+index 24d0bd2b8..025d12596 100644
+--- a/components/supervisor/pkg/backup/backup.go
++++ b/components/supervisor/pkg/backup/backup.go
+@@ -12,7 +12,7 @@ import (
+ 	csapi "github.com/gitpod-io/gitpod/content-service/api"
+ 	"github.com/gitpod-io/gitpod/content-service/pkg/git"
+ 	supervisor "github.com/gitpod-io/gitpod/supervisor/api"
+-	wssync "github.com/gitpod-io/gitpod/ws-sync/api"
++	wssync "github.com/gitpod-io/gitpod/ws-daemon/api"
+ 
+ 	"google.golang.org/grpc"
+ 	"google.golang.org/grpc/codes"
+@@ -36,7 +36,7 @@ func NewInWorkspaceHelper(checkoutLocation string, pauseTheia chan<- bool) *InWo
+ 	}
+ }
+ 
+-// InWorkspaceHelper implements the in-workspace helper for ws-sync
++// InWorkspaceHelper implements the in-workspace helper for ws-daemon
+ type InWorkspaceHelper struct {
+ 	checkoutLocation string
+ 	pauseChan        chan<- bool
+@@ -167,7 +167,7 @@ const (
+ func (iwh *iwhserver) GitStatus(ctx context.Context, req *wssync.GitStatusRequest) (*wssync.GitStatusResponse, error) {
+ 	//
+ 	// BEWARE
+-	// This functionality is duplicated in ws-sync.
++	// This functionality is duplicated in ws-daemon.
+ 	// When we make the backup work without the PLIS we should de-duplicate this implementation.
+ 	//
+ 
+diff --git a/components/supervisor/pkg/supervisor/supervisor.go b/components/supervisor/pkg/supervisor/supervisor.go
+index ae9b50297..5a52d2b65 100644
+--- a/components/supervisor/pkg/supervisor/supervisor.go
++++ b/components/supervisor/pkg/supervisor/supervisor.go
+@@ -487,7 +487,7 @@ func startContentInit(ctx context.Context, cfg *Config, wg *sync.WaitGroup, cst
+ 	if os.IsNotExist(err) {
+ 		log.WithError(err).Info("no content init descriptor found - not trying to run it")
+ 
+-		// If there is no content descriptor the content must have come from somewhere (i.e. a layer or ws-sync).
++		// If there is no content descriptor the content must have come from somewhere (i.e. a layer or ws-daemon).
+ 		// Let's wait for that to happen.
+ 		// TODO: rewrite using fsnotify
+ 		t := time.NewTicker(100 * time.Millisecond)
+diff --git a/components/ws-sync-api/generate.sh b/components/ws-daemon-api/generate.sh
+similarity index 94%
+rename from components/ws-sync-api/generate.sh
+rename to components/ws-daemon-api/generate.sh
+index f94141d4c..c3e7d9448 100755
+--- a/components/ws-sync-api/generate.sh
++++ b/components/ws-daemon-api/generate.sh
+@@ -2,7 +2,7 @@
+ 
+ GO111MODULE=on go get github.com/golang/protobuf/protoc-gen-go@v1.3.5
+ protoc -I. -I.. --go_out=plugins=grpc:. *.proto
+-mv github.com/gitpod-io/gitpod/ws-sync/api/* go && rm -rf github.com
++mv github.com/gitpod-io/gitpod/ws-daemon/api/* go && rm -rf github.com
+ 
+ GO111MODULE=on go get github.com/golang/mock/mockgen@latest
+ cd go
+diff --git a/components/ws-sync-api/go/BUILD.yaml b/components/ws-daemon-api/go/BUILD.yaml
+similarity index 100%
+rename from components/ws-sync-api/go/BUILD.yaml
+rename to components/ws-daemon-api/go/BUILD.yaml
+diff --git a/components/ws-sync-api/go/go.mod b/components/ws-daemon-api/go/go.mod
+similarity index 98%
+rename from components/ws-sync-api/go/go.mod
+rename to components/ws-daemon-api/go/go.mod
+index bbaa8bb9a..94fe02ce2 100644
+--- a/components/ws-sync-api/go/go.mod
++++ b/components/ws-daemon-api/go/go.mod
+@@ -1,4 +1,4 @@
+-module github.com/gitpod-io/gitpod/ws-sync/api
++module github.com/gitpod-io/gitpod/ws-daemon/api
+ 
+ go 1.14
+ 
+diff --git a/components/ws-sync-api/go/go.sum b/components/ws-daemon-api/go/go.sum
+similarity index 100%
+rename from components/ws-sync-api/go/go.sum
+rename to components/ws-daemon-api/go/go.sum
+diff --git a/components/ws-sync-api/go/mock/mock_wssync.go b/components/ws-daemon-api/go/mock/mock_wssync.go
+similarity index 99%
+rename from components/ws-sync-api/go/mock/mock_wssync.go
+rename to components/ws-daemon-api/go/mock/mock_wssync.go
+index 17941e9df..d8d64473f 100644
+--- a/components/ws-sync-api/go/mock/mock_wssync.go
++++ b/components/ws-daemon-api/go/mock/mock_wssync.go
+@@ -10,7 +10,7 @@ package mock
+ 
+ import (
+ 	context "context"
+-	api "github.com/gitpod-io/gitpod/ws-sync/api"
++	api "github.com/gitpod-io/gitpod/ws-daemon/api"
+ 	gomock "github.com/golang/mock/gomock"
+ 	grpc "google.golang.org/grpc"
+ 	reflect "reflect"
+diff --git a/components/ws-sync-api/go/workspace.pb.go b/components/ws-daemon-api/go/workspace.pb.go
+similarity index 99%
+rename from components/ws-sync-api/go/workspace.pb.go
+rename to components/ws-daemon-api/go/workspace.pb.go
+index 8bbf4290b..1a6f0ef5d 100644
+--- a/components/ws-sync-api/go/workspace.pb.go
++++ b/components/ws-daemon-api/go/workspace.pb.go
+@@ -284,7 +284,7 @@ type InWorkspaceHelperClient interface {
+ 	// when the workspace is about to shut down, e.g. using the PreStop hook of a Kubernetes container.
+ 	//
+ 	// Note that the request/response flow is inverted here, as it's the server (supervisor) which requests a backup
+-	// from the client (ws-sync).
++	// from the client (ws-daemon).
+ 	BackupCanary(ctx context.Context, opts ...grpc.CallOption) (InWorkspaceHelper_BackupCanaryClient, error)
+ 	// PauseTheia can pause the Theia process and all its children. As long as the request stream
+ 	// is held Theia will be paused.
+@@ -381,7 +381,7 @@ type InWorkspaceHelperServer interface {
+ 	// when the workspace is about to shut down, e.g. using the PreStop hook of a Kubernetes container.
+ 	//
+ 	// Note that the request/response flow is inverted here, as it's the server (supervisor) which requests a backup
+-	// from the client (ws-sync).
++	// from the client (ws-daemon).
+ 	BackupCanary(InWorkspaceHelper_BackupCanaryServer) error
+ 	// PauseTheia can pause the Theia process and all its children. As long as the request stream
+ 	// is held Theia will be paused.
+diff --git a/components/ws-sync-api/go/wssync.pb.go b/components/ws-daemon-api/go/wssync.pb.go
+similarity index 100%
+rename from components/ws-sync-api/go/wssync.pb.go
+rename to components/ws-daemon-api/go/wssync.pb.go
+diff --git a/components/ws-sync-api/typescript/.gitignore b/components/ws-daemon-api/typescript/.gitignore
+similarity index 100%
+rename from components/ws-sync-api/typescript/.gitignore
+rename to components/ws-daemon-api/typescript/.gitignore
+diff --git a/components/ws-sync-api/typescript/BUILD.yaml b/components/ws-daemon-api/typescript/BUILD.yaml
+similarity index 100%
+rename from components/ws-sync-api/typescript/BUILD.yaml
+rename to components/ws-daemon-api/typescript/BUILD.yaml
+diff --git a/components/ws-sync-api/typescript/package.json b/components/ws-daemon-api/typescript/package.json
+similarity index 95%
+rename from components/ws-sync-api/typescript/package.json
+rename to components/ws-daemon-api/typescript/package.json
+index 1fdf610d6..10c663f5c 100644
+--- a/components/ws-sync-api/typescript/package.json
++++ b/components/ws-daemon-api/typescript/package.json
+@@ -1,6 +1,6 @@
+ {
+   "private": true,
+-  "name": "@gitpod/ws-sync",
++  "name": "@gitpod/ws-daemon",
+   "version": "0.1.5",
+   "license": "UNLICENSED",
+   "scripts": {
+diff --git a/components/ws-sync-api/typescript/src/index.ts b/components/ws-daemon-api/typescript/src/index.ts
+similarity index 100%
+rename from components/ws-sync-api/typescript/src/index.ts
+rename to components/ws-daemon-api/typescript/src/index.ts
+diff --git a/components/ws-sync-api/typescript/src/workspace_grpc_pb.d.ts b/components/ws-daemon-api/typescript/src/workspace_grpc_pb.d.ts
+similarity index 100%
+rename from components/ws-sync-api/typescript/src/workspace_grpc_pb.d.ts
+rename to components/ws-daemon-api/typescript/src/workspace_grpc_pb.d.ts
+diff --git a/components/ws-sync-api/typescript/src/workspace_grpc_pb.js b/components/ws-daemon-api/typescript/src/workspace_grpc_pb.js
+similarity index 99%
+rename from components/ws-sync-api/typescript/src/workspace_grpc_pb.js
+rename to components/ws-daemon-api/typescript/src/workspace_grpc_pb.js
+index fa72320c4..6ff670fdc 100644
+--- a/components/ws-sync-api/typescript/src/workspace_grpc_pb.js
++++ b/components/ws-daemon-api/typescript/src/workspace_grpc_pb.js
+@@ -83,7 +83,7 @@ var InWorkspaceHelperService = exports.InWorkspaceHelperService = {
+   // when the workspace is about to shut down, e.g. using the PreStop hook of a Kubernetes container.
+   //
+   // Note that the request/response flow is inverted here, as it's the server (supervisor) which requests a backup
+-  // from the client (ws-sync).
++  // from the client (ws-daemon).
+   backupCanary: {
+     path: '/wsbs.InWorkspaceHelper/BackupCanary',
+     requestStream: true,
+diff --git a/components/ws-sync-api/typescript/src/workspace_pb.d.ts b/components/ws-daemon-api/typescript/src/workspace_pb.d.ts
+similarity index 100%
+rename from components/ws-sync-api/typescript/src/workspace_pb.d.ts
+rename to components/ws-daemon-api/typescript/src/workspace_pb.d.ts
+diff --git a/components/ws-sync-api/typescript/src/workspace_pb.js b/components/ws-daemon-api/typescript/src/workspace_pb.js
+similarity index 100%
+rename from components/ws-sync-api/typescript/src/workspace_pb.js
+rename to components/ws-daemon-api/typescript/src/workspace_pb.js
+diff --git a/components/ws-sync-api/typescript/src/wssync_grpc_pb.d.ts b/components/ws-daemon-api/typescript/src/wssync_grpc_pb.d.ts
+similarity index 100%
+rename from components/ws-sync-api/typescript/src/wssync_grpc_pb.d.ts
+rename to components/ws-daemon-api/typescript/src/wssync_grpc_pb.d.ts
+diff --git a/components/ws-sync-api/typescript/src/wssync_grpc_pb.js b/components/ws-daemon-api/typescript/src/wssync_grpc_pb.js
+similarity index 100%
+rename from components/ws-sync-api/typescript/src/wssync_grpc_pb.js
+rename to components/ws-daemon-api/typescript/src/wssync_grpc_pb.js
+diff --git a/components/ws-sync-api/typescript/src/wssync_pb.d.ts b/components/ws-daemon-api/typescript/src/wssync_pb.d.ts
+similarity index 100%
+rename from components/ws-sync-api/typescript/src/wssync_pb.d.ts
+rename to components/ws-daemon-api/typescript/src/wssync_pb.d.ts
+diff --git a/components/ws-sync-api/typescript/src/wssync_pb.js b/components/ws-daemon-api/typescript/src/wssync_pb.js
+similarity index 100%
+rename from components/ws-sync-api/typescript/src/wssync_pb.js
+rename to components/ws-daemon-api/typescript/src/wssync_pb.js
+diff --git a/components/ws-sync-api/typescript/tsconfig.json b/components/ws-daemon-api/typescript/tsconfig.json
+similarity index 100%
+rename from components/ws-sync-api/typescript/tsconfig.json
+rename to components/ws-daemon-api/typescript/tsconfig.json
+diff --git a/components/ws-sync-api/typescript/workspace_pb.js b/components/ws-daemon-api/typescript/workspace_pb.js
+similarity index 100%
+rename from components/ws-sync-api/typescript/workspace_pb.js
+rename to components/ws-daemon-api/typescript/workspace_pb.js
+diff --git a/components/ws-sync-api/typescript/wssync_pb.js b/components/ws-daemon-api/typescript/wssync_pb.js
+similarity index 100%
+rename from components/ws-sync-api/typescript/wssync_pb.js
+rename to components/ws-daemon-api/typescript/wssync_pb.js
+diff --git a/components/ws-sync-api/workspace.proto b/components/ws-daemon-api/workspace.proto
+similarity index 91%
+rename from components/ws-sync-api/workspace.proto
+rename to components/ws-daemon-api/workspace.proto
+index 3630724ed..fd20b4d9a 100644
+--- a/components/ws-sync-api/workspace.proto
++++ b/components/ws-daemon-api/workspace.proto
+@@ -4,14 +4,14 @@ package wsbs;
+ 
+ import "content-service-api/initializer.proto";
+ 
+-option go_package = "github.com/gitpod-io/gitpod/ws-sync/api";
++option go_package = "github.com/gitpod-io/gitpod/ws-daemon/api";
+ 
+ service InWorkspaceHelper {
+     // BackupCanary can prepare workspace content backups. The canary is supposed to be triggered
+     // when the workspace is about to shut down, e.g. using the PreStop hook of a Kubernetes container.
+     //
+     // Note that the request/response flow is inverted here, as it's the server (supervisor) which requests a backup
+-    // from the client (ws-sync).
++    // from the client (ws-daemon).
+     rpc BackupCanary(stream BackupCanaryResponse) returns (stream BackupCanaryRequest) {}
+ 
+     // PauseTheia can pause the Theia process and all its children. As long as the request stream
+diff --git a/components/ws-sync-api/wssync.proto b/components/ws-daemon-api/wssync.proto
+similarity index 98%
+rename from components/ws-sync-api/wssync.proto
+rename to components/ws-daemon-api/wssync.proto
+index b7bb759e3..570cbe028 100644
+--- a/components/ws-sync-api/wssync.proto
++++ b/components/ws-daemon-api/wssync.proto
+@@ -4,7 +4,7 @@ package wssync;
+ 
+ import "content-service-api/initializer.proto";
+ 
+-option go_package = "github.com/gitpod-io/gitpod/ws-sync/api";
++option go_package = "github.com/gitpod-io/gitpod/ws-daemon/api";
+ 
+ service WorkspaceContentService {
+     // initWorkspace intialises a new workspace folder in the working area
+diff --git a/components/ws-daemon/.gitignore b/components/ws-daemon/.gitignore
+new file mode 100644
+index 000000000..8d3db55f8
+--- /dev/null
++++ b/components/ws-daemon/.gitignore
+@@ -0,0 +1 @@
++ws-daemond
+diff --git a/components/ws-sync/.vscode/launch.json b/components/ws-daemon/.vscode/launch.json
+similarity index 100%
+rename from components/ws-sync/.vscode/launch.json
+rename to components/ws-daemon/.vscode/launch.json
+diff --git a/components/ws-sync/BUILD.yaml b/components/ws-daemon/BUILD.yaml
+similarity index 84%
+rename from components/ws-sync/BUILD.yaml
+rename to components/ws-daemon/BUILD.yaml
+index dcd7ac7b2..bdf491176 100644
+--- a/components/ws-sync/BUILD.yaml
++++ b/components/ws-daemon/BUILD.yaml
+@@ -9,7 +9,7 @@ packages:
+       - components/common-go:lib
+       - components/content-service-api/go:lib
+       - components/content-service:lib
+-      - components/ws-sync-api/go:lib
++      - components/ws-daemon-api/go:lib
+     env:
+       - CGO_ENABLED=0
+       - GOOS=linux
+@@ -24,4 +24,4 @@ packages:
+     config:
+       dockerfile: leeway.Dockerfile
+       image:
+-        - ${imageRepoBase}/ws-sync:${version}
++        - ${imageRepoBase}/ws-daemon:${version}
+diff --git a/components/ws-sync/README.md b/components/ws-daemon/README.md
+similarity index 90%
+rename from components/ws-sync/README.md
+rename to components/ws-daemon/README.md
+index 6cc28071e..8df2cbfb7 100644
+--- a/components/ws-sync/README.md
++++ b/components/ws-daemon/README.md
+@@ -10,8 +10,8 @@ _Beware_: when running all testcases (i.e. without `-execute`) the test itself w
+ This also means that not all `-test.` flags will be passed on to the children. At the moment it's only `-test.v`.
+ 
+ ### Tracing / Jaeger
+-`ws-sync` has OpenTracing instrumentation which means you can get traces out of ws-sync.
+-At the moment we just print the traces as log messages. If you want to run ws-sync with a remote
++`ws-daemon` has OpenTracing instrumentation which means you can get traces out of ws-daemon.
++At the moment we just print the traces as log messages. If you want to run ws-daemon with a remote
+ Jaeger installation, you should set the following [environment variables](https://github.com/jaegertracing/jaeger-client-go#environment-variables):
+ ```
+ # set the Jaeger endpoint (e.g. an all-in-binary)
+diff --git a/components/ws-sync/cmd/client-init.go b/components/ws-daemon/cmd/client-init.go
+similarity index 98%
+rename from components/ws-sync/cmd/client-init.go
+rename to components/ws-daemon/cmd/client-init.go
+index b9a5985f3..ec7bf2af6 100644
+--- a/components/ws-sync/cmd/client-init.go
++++ b/components/ws-daemon/cmd/client-init.go
+@@ -9,7 +9,7 @@ import (
+ 
+ 	"github.com/alecthomas/repr"
+ 	csapi "github.com/gitpod-io/gitpod/content-service/api"
+-	"github.com/gitpod-io/gitpod/ws-sync/api"
++	"github.com/gitpod-io/gitpod/ws-daemon/api"
+ 	log "github.com/sirupsen/logrus"
+ 	"github.com/spf13/cobra"
+ )
+diff --git a/components/ws-sync/cmd/client-snapshot.go b/components/ws-daemon/cmd/client-snapshot.go
+similarity index 95%
+rename from components/ws-sync/cmd/client-snapshot.go
+rename to components/ws-daemon/cmd/client-snapshot.go
+index 385d1deea..4157802ae 100644
+--- a/components/ws-sync/cmd/client-snapshot.go
++++ b/components/ws-daemon/cmd/client-snapshot.go
+@@ -9,7 +9,7 @@ import (
+ 
+ 	"github.com/alecthomas/repr"
+ 	"github.com/gitpod-io/gitpod/common-go/log"
+-	"github.com/gitpod-io/gitpod/ws-sync/api"
++	"github.com/gitpod-io/gitpod/ws-daemon/api"
+ 	"github.com/spf13/cobra"
+ )
+ 
+diff --git a/components/ws-sync/cmd/client.go b/components/ws-daemon/cmd/client.go
+similarity index 94%
+rename from components/ws-sync/cmd/client.go
+rename to components/ws-daemon/cmd/client.go
+index ee9a3d58a..109ac6a5b 100644
+--- a/components/ws-sync/cmd/client.go
++++ b/components/ws-daemon/cmd/client.go
+@@ -14,7 +14,7 @@ import (
+ // clientCmd represents the client command
+ var clientCmd = &cobra.Command{
+ 	Use:   "client",
+-	Short: "client that talks to a ws-syncd to initialize workspace",
++	Short: "client that talks to a ws-daemond to initialize workspace",
+ 	Args:  cobra.ExactArgs(1),
+ }
+ 
+diff --git a/components/ws-sync/cmd/generate-config.go b/components/ws-daemon/cmd/generate-config.go
+similarity index 91%
+rename from components/ws-sync/cmd/generate-config.go
+rename to components/ws-daemon/cmd/generate-config.go
+index 14bfe03d8..6f3c20d20 100644
+--- a/components/ws-sync/cmd/generate-config.go
++++ b/components/ws-daemon/cmd/generate-config.go
+@@ -24,7 +24,7 @@ var generateConfigCmd = &cobra.Command{
+ 		// schema.Definitions["Backup"].Properties["timeout"].Type = "string"
+ 		schema.Definitions["Configuration"].Properties["workspaceSizeLimit"].Type = "string"
+ 
+-		schema.Title = "ws-sync config schema - generated using ws-sync generate config"
++		schema.Title = "ws-daemon config schema - generated using ws-daemon generate config"
+ 		out, err := json.MarshalIndent(schema, "", "  ")
+ 		if err != nil {
+ 			panic(err)
+diff --git a/components/ws-sync/cmd/generate-init-request.go b/components/ws-daemon/cmd/generate-init-request.go
+similarity index 95%
+rename from components/ws-sync/cmd/generate-init-request.go
+rename to components/ws-daemon/cmd/generate-init-request.go
+index 184a69056..0bd005b2a 100644
+--- a/components/ws-sync/cmd/generate-init-request.go
++++ b/components/ws-daemon/cmd/generate-init-request.go
+@@ -11,7 +11,7 @@ import (
+ 	"fmt"
+ 
+ 	"github.com/alecthomas/jsonschema"
+-	"github.com/gitpod-io/gitpod/ws-sync/api"
++	"github.com/gitpod-io/gitpod/ws-daemon/api"
+ 	"github.com/spf13/cobra"
+ )
+ 
+diff --git a/components/ws-sync/cmd/generate.go b/components/ws-daemon/cmd/generate.go
+similarity index 100%
+rename from components/ws-sync/cmd/generate.go
+rename to components/ws-daemon/cmd/generate.go
+diff --git a/components/ws-sync/cmd/root.go b/components/ws-daemon/cmd/root.go
+similarity index 95%
+rename from components/ws-sync/cmd/root.go
+rename to components/ws-daemon/cmd/root.go
+index f61fcab28..dad42e809 100644
+--- a/components/ws-sync/cmd/root.go
++++ b/components/ws-daemon/cmd/root.go
+@@ -15,7 +15,7 @@ import (
+ 
+ 	"github.com/gitpod-io/gitpod/common-go/log"
+ 	"github.com/gitpod-io/gitpod/common-go/tracing"
+-	"github.com/gitpod-io/gitpod/ws-sync/pkg/syncd"
++	"github.com/gitpod-io/gitpod/ws-daemon/pkg/syncd"
+ 	"github.com/spf13/cobra"
+ 
+ 	"google.golang.org/grpc"
+@@ -24,7 +24,7 @@ import (
+ 
+ var (
+ 	// ServiceName is the name we use for tracing/logging
+-	ServiceName = "ws-sync"
++	ServiceName = "ws-daemon"
+ 	// Version of this service - set during build
+ 	Version = ""
+ )
+@@ -32,7 +32,7 @@ var (
+ var verbose bool
+ var configFile string
+ var rootCmd = &cobra.Command{
+-	Use:   "ws-syncd",
++	Use:   "ws-daemond",
+ 	Short: "Workspace initialization and synchronization daemon",
+ 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+ 		log.Init(ServiceName, Version, verbose, verbose)
+@@ -41,7 +41,7 @@ var rootCmd = &cobra.Command{
+ 
+ // Execute runs this main command
+ func Execute() {
+-	closer := tracing.Init("ws-sync")
++	closer := tracing.Init("ws-daemon")
+ 	if closer != nil {
+ 		defer closer.Close()
+ 	}
+diff --git a/components/ws-sync/cmd/run.go b/components/ws-daemon/cmd/run.go
+similarity index 95%
+rename from components/ws-sync/cmd/run.go
+rename to components/ws-daemon/cmd/run.go
+index ad7560085..6c3294e9a 100644
+--- a/components/ws-sync/cmd/run.go
++++ b/components/ws-daemon/cmd/run.go
+@@ -13,8 +13,8 @@ import (
+ 	"syscall"
+ 	"time"
+ 
+-	"github.com/gitpod-io/gitpod/ws-sync/api"
+-	"github.com/gitpod-io/gitpod/ws-sync/pkg/syncd"
++	"github.com/gitpod-io/gitpod/ws-daemon/api"
++	"github.com/gitpod-io/gitpod/ws-daemon/pkg/syncd"
+ 
+ 	"github.com/gitpod-io/gitpod/common-go/log"
+ 	"github.com/gitpod-io/gitpod/common-go/pprof"
+@@ -96,7 +96,7 @@ var runCmd = &cobra.Command{
+ 		// run until we're told to stop
+ 		sigChan := make(chan os.Signal, 1)
+ 		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+-		log.Info("🧫 ws-sync is up and running. Stop with SIGINT or CTRL+C")
++		log.Info("🧫 ws-daemon is up and running. Stop with SIGINT or CTRL+C")
+ 		<-sigChan
+ 		server.Stop()
+ 		service.Stop()
+diff --git a/components/ws-sync/config-schema.json b/components/ws-daemon/config-schema.json
+similarity index 97%
+rename from components/ws-sync/config-schema.json
+rename to components/ws-daemon/config-schema.json
+index 2e20abcad..3909a8dad 100644
+--- a/components/ws-sync/config-schema.json
++++ b/components/ws-daemon/config-schema.json
+@@ -1,7 +1,7 @@
+ {
+   "$schema": "http://json-schema.org/draft-04/schema#",
+   "$ref": "#/definitions/config",
+-  "title": "ws-sync config schema - generated using ws-sync generate config",
++  "title": "ws-daemon config schema - generated using ws-daemon generate config",
+   "definitions": {
+     "": {
+       "required": [
+diff --git a/components/ws-sync/debug.Dockerfile b/components/ws-daemon/debug.Dockerfile
+similarity index 88%
+rename from components/ws-sync/debug.Dockerfile
+rename to components/ws-daemon/debug.Dockerfile
+index 7e4d77c35..ca6341390 100644
+--- a/components/ws-sync/debug.Dockerfile
++++ b/components/ws-daemon/debug.Dockerfile
+@@ -11,6 +11,6 @@ RUN apk add --no-cache git bash openssh-client lz4 e2fsprogs
+ #     && echo "gitpod:gitpod" | chpasswd
+ 
+ COPY --from=debugger /go/bin/dlv /usr/bin
+-COPY ws-syncd /app/ws-syncd
+-ENTRYPOINT [ "/app/ws-syncd" ]
++COPY ws-daemond /app/ws-daemond
++ENTRYPOINT [ "/app/ws-daemond" ]
+ CMD [ "-v", "help" ]
+\ No newline at end of file
+diff --git a/components/ws-daemon/debug.sh b/components/ws-daemon/debug.sh
+new file mode 100755
+index 000000000..b89d40815
+--- /dev/null
++++ b/components/ws-daemon/debug.sh
+@@ -0,0 +1,18 @@
++#!/bin/bash
++
++# ws-daemon runs as daemonset on each node which renders telepresence useless for debugging.
++# This script builds ws-daemon locally, puts it in a Dockerfile, builds the image, pushes it,
++# patches the daemonset and restarts all pods.
++#
++# This way you can test out your changes with a 30 sec turnaround.
++#
++# BEWARE: the properly built version of ws-daemon may behave differently.
++
++docker ps &> /dev/null || (echo "You need a working Docker daemon. Maybe set DOCKER_HOST?"; exit -1)
++gcloud auth list | grep typefox &>/dev/null || (echo "Login using 'gcloud auth login' for the docker push to work"; exit 1)
++
++leeway build .:docker -Dversion=dev
++devImage=eu.gcr.io/gitpod-dev/ws-daemon:dev
++
++kubectl patch daemonset ws-daemon --patch '{"spec": {"template": {"spec": {"containers": [{"name": "ws-daemon","image": "'$devImage'"}]}}}}'
++kubectl get pods --no-headers -o=custom-columns=:metadata.name | grep ws-daemon | xargs kubectl delete pod
+diff --git a/components/ws-sync/example-config.json b/components/ws-daemon/example-config.json
+similarity index 100%
+rename from components/ws-sync/example-config.json
+rename to components/ws-daemon/example-config.json
+diff --git a/components/ws-sync/example-initreq.json b/components/ws-daemon/example-initreq.json
+similarity index 100%
+rename from components/ws-sync/example-initreq.json
+rename to components/ws-daemon/example-initreq.json
+diff --git a/components/ws-sync/go.mod b/components/ws-daemon/go.mod
+similarity index 93%
+rename from components/ws-sync/go.mod
+rename to components/ws-daemon/go.mod
+index 0511196c5..5b5bca35b 100644
+--- a/components/ws-sync/go.mod
++++ b/components/ws-daemon/go.mod
+@@ -1,4 +1,4 @@
+-module github.com/gitpod-io/gitpod/ws-sync
++module github.com/gitpod-io/gitpod/ws-daemon
+ 
+ go 1.14
+ 
+@@ -17,7 +17,7 @@ require (
+ 	github.com/gitpod-io/gitpod/common-go v0.0.0-00010101000000-000000000000
+ 	github.com/gitpod-io/gitpod/content-service v0.0.0-00010101000000-000000000000
+ 	github.com/gitpod-io/gitpod/content-service/api v0.0.0-00010101000000-000000000000
+-	github.com/gitpod-io/gitpod/ws-sync/api v0.0.0-00010101000000-000000000000
++	github.com/gitpod-io/gitpod/ws-daemon/api v0.0.0-00010101000000-000000000000
+ 	github.com/google/go-cmp v0.5.2
+ 	github.com/grpc-ecosystem/go-grpc-middleware v1.0.0
+ 	github.com/opencontainers/go-digest v1.0.0
+@@ -30,13 +30,15 @@ require (
+ 	google.golang.org/grpc v1.32.0
+ )
+ 
++replace github.com/gitpod-io/gitpod/ws-daemon/api => ../ws-daemon-api/go // leeway
++
+ replace github.com/gitpod-io/gitpod/common-go => ../common-go // leeway
+ 
+ replace github.com/gitpod-io/gitpod/content-service => ../content-service // leeway
+ 
+ replace github.com/gitpod-io/gitpod/content-service/api => ../content-service-api/go // leeway
+ 
+-replace github.com/gitpod-io/gitpod/ws-sync/api => ../ws-sync-api/go // leeway
++replace github.com/gitpod-io/gitpod/ws-daemon/api => ../ws-daemon-api/go // leeway
+ 
+ replace k8s.io/api => k8s.io/api v0.0.0-20190620084959-7cf5895f2711 // leeway indirect from components/common-go:lib
+ 
+diff --git a/components/ws-sync/go.sum b/components/ws-daemon/go.sum
+similarity index 100%
+rename from components/ws-sync/go.sum
+rename to components/ws-daemon/go.sum
+diff --git a/components/ws-sync/initreq-schema.json b/components/ws-daemon/initreq-schema.json
+similarity index 100%
+rename from components/ws-sync/initreq-schema.json
+rename to components/ws-daemon/initreq-schema.json
+diff --git a/components/ws-sync/leeway.Dockerfile b/components/ws-daemon/leeway.Dockerfile
+similarity index 87%
+rename from components/ws-sync/leeway.Dockerfile
+rename to components/ws-daemon/leeway.Dockerfile
+index 596045bc6..4694b0dc4 100644
+--- a/components/ws-sync/leeway.Dockerfile
++++ b/components/ws-daemon/leeway.Dockerfile
+@@ -12,8 +12,8 @@ RUN addgroup -g 33333 gitpod \
+     && adduser -D -h /home/gitpod -s /bin/sh -u 33333 -G gitpod gitpod \
+     && echo "gitpod:gitpod" | chpasswd
+ 
+-COPY components-ws-sync--app/ws-sync /app/ws-syncd
++COPY components-ws-daemon--app/ws-daemon /app/ws-daemond
+ 
+ USER root
+-ENTRYPOINT [ "/app/ws-syncd" ]
++ENTRYPOINT [ "/app/ws-daemond" ]
+ CMD [ "-v", "help" ]
+\ No newline at end of file
+diff --git a/components/ws-sync/main.go b/components/ws-daemon/main.go
+similarity index 88%
+rename from components/ws-sync/main.go
+rename to components/ws-daemon/main.go
+index c85a12020..bf6d83733 100644
+--- a/components/ws-sync/main.go
++++ b/components/ws-daemon/main.go
+@@ -5,7 +5,7 @@
+ package main
+ 
+ import (
+-	"github.com/gitpod-io/gitpod/ws-sync/cmd"
++	"github.com/gitpod-io/gitpod/ws-daemon/cmd"
+ 
+ 	// enable pprof - see https://blog.golang.org/profiling-go-programs
+ 	_ "net/http/pprof"
+diff --git a/components/ws-sync/pkg/archive/tar.go b/components/ws-daemon/pkg/archive/tar.go
+similarity index 100%
+rename from components/ws-sync/pkg/archive/tar.go
+rename to components/ws-daemon/pkg/archive/tar.go
+diff --git a/components/ws-sync/pkg/archive/tar_test.go b/components/ws-daemon/pkg/archive/tar_test.go
+similarity index 100%
+rename from components/ws-sync/pkg/archive/tar_test.go
+rename to components/ws-daemon/pkg/archive/tar_test.go
+diff --git a/components/ws-sync/pkg/internal/session/store.go b/components/ws-daemon/pkg/internal/session/store.go
+similarity index 99%
+rename from components/ws-sync/pkg/internal/session/store.go
+rename to components/ws-daemon/pkg/internal/session/store.go
+index 6c2d613ff..c32d65fe3 100644
+--- a/components/ws-sync/pkg/internal/session/store.go
++++ b/components/ws-daemon/pkg/internal/session/store.go
+@@ -206,7 +206,7 @@ func (s *Store) doHousekeeping(ctx context.Context) (errs []error) {
+ 
+ 	// find session files which are no longer needed
+ 	// TODO: This broke with FWB where the actual content can lay somewhere completely different
+-	//       Really we should not never remove workspaces from the ws-sync side, but instead have
++	//       Really we should not never remove workspaces from the ws-daemon side, but instead have
+ 	//       ws-manager do that for us.
+ 
+ 	// existingWorkspaces, err := filepath.Glob(filepath.Join(s.Location, workspaceFilePattern))
+@@ -244,7 +244,7 @@ func (s *Store) doHousekeeping(ctx context.Context) (errs []error) {
+ 
+ 	// find workspace directories which are left over.
+ 	// For the time being we won't do that because we're not sure we're the only ones working in this directory!
+-	// Legacy ws-sync will work here too.
++	// Legacy ws-daemon will work here too.
+ 	//
+ 	// files, err := ioutil.ReadDir(s.Location)
+ 	// if err != nil {
+diff --git a/components/ws-sync/pkg/internal/session/workspace.go b/components/ws-daemon/pkg/internal/session/workspace.go
+similarity index 97%
+rename from components/ws-sync/pkg/internal/session/workspace.go
+rename to components/ws-daemon/pkg/internal/session/workspace.go
+index e3a0eb0b9..91e502911 100644
+--- a/components/ws-sync/pkg/internal/session/workspace.go
++++ b/components/ws-daemon/pkg/internal/session/workspace.go
+@@ -58,7 +58,7 @@ type Workspace struct {
+ 	// workspace resides. If this workspace has no Git working copy, this field is an empty string.
+ 	CheckoutLocation string `json:"checkoutLocation"`
+ 
+-	// UpperdirLocation is the absolute ws-sync container-relative path to the workspace container's upperdir.
++	// UpperdirLocation is the absolute ws-daemon container-relative path to the workspace container's upperdir.
+ 	UpperdirLocation string `json:"upperdir"`
+ 
+ 	CreatedAt           time.Time        `json:"createdAt"`
+@@ -122,7 +122,7 @@ func (s *Workspace) WaitForInit(ctx context.Context) (ready bool) {
+ 	return
+ }
+ 
+-// MarkInitDone marks this workspace as initialized and writes this workspace to disk so that it can be restored should ws-sync crash/be restarted
++// MarkInitDone marks this workspace as initialized and writes this workspace to disk so that it can be restored should ws-daemon crash/be restarted
+ func (s *Workspace) MarkInitDone(ctx context.Context) (err error) {
+ 	//nolint:ineffassign,staticcheck
+ 	span, ctx := opentracing.StartSpanFromContext(ctx, "workspace.MarkInitDone")
+@@ -130,7 +130,7 @@ func (s *Workspace) MarkInitDone(ctx context.Context) (err error) {
+ 
+ 	// We persist before changing state so that we only mark everything as ready
+ 	// if we actually have a persistent workspace. Otherwise we might have wsman thinking
+-	// something different than a restarted ws-sync.
++	// something different than a restarted ws-daemon.
+ 	err = s.persist()
+ 	if err != nil {
+ 		return xerrors.Errorf("cannot mark init done: %w", err)
+diff --git a/components/ws-sync/pkg/internal/session/workspace_test.go b/components/ws-daemon/pkg/internal/session/workspace_test.go
+similarity index 99%
+rename from components/ws-sync/pkg/internal/session/workspace_test.go
+rename to components/ws-daemon/pkg/internal/session/workspace_test.go
+index 9c1f2be9b..dfbb35157 100644
+--- a/components/ws-sync/pkg/internal/session/workspace_test.go
++++ b/components/ws-daemon/pkg/internal/session/workspace_test.go
+@@ -16,7 +16,7 @@ import (
+ 	"time"
+ 
+ 	"github.com/gitpod-io/gitpod/content-service/pkg/storage"
+-	"github.com/gitpod-io/gitpod/ws-sync/pkg/safetynet"
++	"github.com/gitpod-io/gitpod/ws-daemon/pkg/safetynet"
+ 	"github.com/google/go-cmp/cmp"
+ 	"github.com/google/go-cmp/cmp/cmpopts"
+ 	"github.com/sirupsen/logrus"
+diff --git a/components/ws-sync/pkg/quota/mounts.go b/components/ws-daemon/pkg/quota/mounts.go
+similarity index 100%
+rename from components/ws-sync/pkg/quota/mounts.go
+rename to components/ws-daemon/pkg/quota/mounts.go
+diff --git a/components/ws-sync/pkg/quota/mounts_test.go b/components/ws-daemon/pkg/quota/mounts_test.go
+similarity index 100%
+rename from components/ws-sync/pkg/quota/mounts_test.go
+rename to components/ws-daemon/pkg/quota/mounts_test.go
+diff --git a/components/ws-sync/pkg/quota/sandbox_linux.go b/components/ws-daemon/pkg/quota/sandbox_linux.go
+similarity index 100%
+rename from components/ws-sync/pkg/quota/sandbox_linux.go
+rename to components/ws-daemon/pkg/quota/sandbox_linux.go
+diff --git a/components/ws-sync/pkg/quota/size.go b/components/ws-daemon/pkg/quota/size.go
+similarity index 100%
+rename from components/ws-sync/pkg/quota/size.go
+rename to components/ws-daemon/pkg/quota/size.go
+diff --git a/components/ws-sync/pkg/quota/size_test.go b/components/ws-daemon/pkg/quota/size_test.go
+similarity index 98%
+rename from components/ws-sync/pkg/quota/size_test.go
+rename to components/ws-daemon/pkg/quota/size_test.go
+index a85577ebc..2318fe89f 100644
+--- a/components/ws-sync/pkg/quota/size_test.go
++++ b/components/ws-daemon/pkg/quota/size_test.go
+@@ -9,7 +9,7 @@ import (
+ 	"fmt"
+ 	"testing"
+ 
+-	"github.com/gitpod-io/gitpod/ws-sync/pkg/quota"
++	"github.com/gitpod-io/gitpod/ws-daemon/pkg/quota"
+ )
+ 
+ func TestParseSize(t *testing.T) {
+diff --git a/components/ws-sync/pkg/safetynet/workspace.go b/components/ws-daemon/pkg/safetynet/workspace.go
+similarity index 100%
+rename from components/ws-sync/pkg/safetynet/workspace.go
+rename to components/ws-daemon/pkg/safetynet/workspace.go
+diff --git a/components/ws-sync/pkg/syncd/config.go b/components/ws-daemon/pkg/syncd/config.go
+similarity index 88%
+rename from components/ws-sync/pkg/syncd/config.go
+rename to components/ws-daemon/pkg/syncd/config.go
+index c6c41a197..31fea38a5 100644
+--- a/components/ws-sync/pkg/syncd/config.go
++++ b/components/ws-daemon/pkg/syncd/config.go
+@@ -11,8 +11,8 @@ import (
+ 	"github.com/gitpod-io/gitpod/common-go/log"
+ 	"github.com/gitpod-io/gitpod/common-go/util"
+ 	"github.com/gitpod-io/gitpod/content-service/pkg/storage"
+-	"github.com/gitpod-io/gitpod/ws-sync/pkg/quota"
+-	"github.com/gitpod-io/gitpod/ws-sync/pkg/safetynet"
++	"github.com/gitpod-io/gitpod/ws-daemon/pkg/quota"
++	"github.com/gitpod-io/gitpod/ws-daemon/pkg/safetynet"
+ )
+ 
+ // Configuration configures the workspace manager
+@@ -29,7 +29,7 @@ type Configuration struct {
+ 	// Storage is some form of permanent file store to which we back up workspaces
+ 	Storage storage.Config `json:"storage"`
+ 
+-	// Backup configures the behaviour of ws-sync during backup
++	// Backup configures the behaviour of ws-daemon during backup
+ 	Backup struct {
+ 		// Timeout configures the maximum time the remote storage upload can take
+ 		// per attempt. Defaults to 10 minutes.
+@@ -46,7 +46,7 @@ type Configuration struct {
+ 	// FullWorkspaceBackup configures the FWB behaviour
+ 	FullWorkspaceBackup FullWorkspaceBackupConfig `json:"fullWorkspaceBackup,omitempty"`
+ 
+-	// KubernetesNamespace is the namespace this ws-sync is deployed in
++	// KubernetesNamespace is the namespace this ws-daemon is deployed in
+ 	KubernetesNamespace string `json:"namespace"`
+ }
+ 
+@@ -54,7 +54,7 @@ type Configuration struct {
+ type FullWorkspaceBackupConfig struct {
+ 	Enabled bool `json:"enabled"`
+ 
+-	// CRI configures ws-sync's container runtime interface
++	// CRI configures ws-daemon's container runtime interface
+ 	CRI *cri.Config `json:"cri"`
+ 
+ 	// WorkDir is a directory located on the same disk as the upperdir of containers
+diff --git a/components/ws-sync/pkg/syncd/service.go b/components/ws-daemon/pkg/syncd/service.go
+similarity index 98%
+rename from components/ws-sync/pkg/syncd/service.go
+rename to components/ws-daemon/pkg/syncd/service.go
+index a3acc97c9..754009b13 100644
+--- a/components/ws-sync/pkg/syncd/service.go
++++ b/components/ws-daemon/pkg/syncd/service.go
+@@ -20,11 +20,11 @@ import (
+ 	csapi "github.com/gitpod-io/gitpod/content-service/api"
+ 	wsinit "github.com/gitpod-io/gitpod/content-service/pkg/initializer"
+ 	"github.com/gitpod-io/gitpod/content-service/pkg/storage"
+-	"github.com/gitpod-io/gitpod/ws-sync/api"
+-	"github.com/gitpod-io/gitpod/ws-sync/pkg/archive"
+-	"github.com/gitpod-io/gitpod/ws-sync/pkg/internal/session"
+-	"github.com/gitpod-io/gitpod/ws-sync/pkg/quota"
+-	"github.com/gitpod-io/gitpod/ws-sync/pkg/safetynet"
++	"github.com/gitpod-io/gitpod/ws-daemon/api"
++	"github.com/gitpod-io/gitpod/ws-daemon/pkg/archive"
++	"github.com/gitpod-io/gitpod/ws-daemon/pkg/internal/session"
++	"github.com/gitpod-io/gitpod/ws-daemon/pkg/quota"
++	"github.com/gitpod-io/gitpod/ws-daemon/pkg/safetynet"
+ 
+ 	"github.com/gitpod-io/gitpod/common-go/log"
+ 	"github.com/opencontainers/go-digest"
+@@ -196,7 +196,7 @@ func (s *WorkspaceService) InitWorkspace(ctx context.Context, req *api.InitWorks
+ 
+ 	if !req.FullWorkspaceBackup {
+ 		// Initialize workspace.
+-		// FWB workspaces initialize without the help of ws-sync, but using their supervisor or the registry-facade.
++		// FWB workspaces initialize without the help of ws-daemon, but using their supervisor or the registry-facade.
+ 		initializer, err := wsinit.NewFromRequest(ctx, workspace.Location, rs, req.Initializer)
+ 		if err != nil {
+ 			log.WithError(err).WithField("instanceId", req.Id).Error("cannot initialize workspace")
+diff --git a/components/ws-sync/pkg/syncd/workspace.go b/components/ws-daemon/pkg/syncd/workspace.go
+similarity index 96%
+rename from components/ws-sync/pkg/syncd/workspace.go
+rename to components/ws-daemon/pkg/syncd/workspace.go
+index e81c6015e..fd63d1160 100644
+--- a/components/ws-sync/pkg/syncd/workspace.go
++++ b/components/ws-daemon/pkg/syncd/workspace.go
+@@ -12,9 +12,9 @@ import (
+ 
+ 	wsk8s "github.com/gitpod-io/gitpod/common-go/kubernetes"
+ 	"github.com/gitpod-io/gitpod/common-go/log"
+-	"github.com/gitpod-io/gitpod/ws-sync/api"
+-	"github.com/gitpod-io/gitpod/ws-sync/pkg/internal/session"
+-	"github.com/gitpod-io/gitpod/ws-sync/pkg/safetynet"
++	"github.com/gitpod-io/gitpod/ws-daemon/api"
++	"github.com/gitpod-io/gitpod/ws-daemon/pkg/internal/session"
++	"github.com/gitpod-io/gitpod/ws-daemon/pkg/safetynet"
+ 	"golang.org/x/xerrors"
+ 	"google.golang.org/grpc"
+ 	"google.golang.org/grpc/codes"
+diff --git a/components/ws-sync/shiftfs-module-loader/.gitignore b/components/ws-daemon/shiftfs-module-loader/.gitignore
+similarity index 100%
+rename from components/ws-sync/shiftfs-module-loader/.gitignore
+rename to components/ws-daemon/shiftfs-module-loader/.gitignore
+diff --git a/components/ws-sync/shiftfs-module-loader/BUILD.yaml b/components/ws-daemon/shiftfs-module-loader/BUILD.yaml
+similarity index 100%
+rename from components/ws-sync/shiftfs-module-loader/BUILD.yaml
+rename to components/ws-daemon/shiftfs-module-loader/BUILD.yaml
+diff --git a/components/ws-sync/shiftfs-module-loader/Makefile b/components/ws-daemon/shiftfs-module-loader/Makefile
+similarity index 100%
+rename from components/ws-sync/shiftfs-module-loader/Makefile
+rename to components/ws-daemon/shiftfs-module-loader/Makefile
+diff --git a/components/ws-sync/shiftfs-module-loader/README.md b/components/ws-daemon/shiftfs-module-loader/README.md
+similarity index 100%
+rename from components/ws-sync/shiftfs-module-loader/README.md
+rename to components/ws-daemon/shiftfs-module-loader/README.md
+diff --git a/components/ws-sync/shiftfs-module-loader/dkms.conf b/components/ws-daemon/shiftfs-module-loader/dkms.conf
+similarity index 100%
+rename from components/ws-sync/shiftfs-module-loader/dkms.conf
+rename to components/ws-daemon/shiftfs-module-loader/dkms.conf
+diff --git a/components/ws-sync/shiftfs-module-loader/entrypoint.sh b/components/ws-daemon/shiftfs-module-loader/entrypoint.sh
+similarity index 100%
+rename from components/ws-sync/shiftfs-module-loader/entrypoint.sh
+rename to components/ws-daemon/shiftfs-module-loader/entrypoint.sh
+diff --git a/components/ws-sync/shiftfs-module-loader/leeway.Dockerfile b/components/ws-daemon/shiftfs-module-loader/leeway.Dockerfile
+similarity index 100%
+rename from components/ws-sync/shiftfs-module-loader/leeway.Dockerfile
+rename to components/ws-daemon/shiftfs-module-loader/leeway.Dockerfile
+diff --git a/components/ws-manager-bridge/BUILD.yaml b/components/ws-manager-bridge/BUILD.yaml
+index c04f93bd4..ff6ef1411 100644
+--- a/components/ws-manager-bridge/BUILD.yaml
++++ b/components/ws-manager-bridge/BUILD.yaml
+@@ -9,7 +9,7 @@ packages:
+       - components/gitpod-messagebus:lib
+       - components/gitpod-protocol:lib
+       - components/ws-manager-api/typescript:lib
+-      - components/ws-sync-api/typescript:lib
++      - components/ws-daemon-api/typescript:lib
+     config:
+       packaging: offline-mirror
+       yarnLock: ${coreYarnLockBase}/yarn.lock
+diff --git a/components/ws-manager-bridge/package.json b/components/ws-manager-bridge/package.json
+index 596a70842..b22c3c60b 100644
+--- a/components/ws-manager-bridge/package.json
++++ b/components/ws-manager-bridge/package.json
+@@ -27,7 +27,7 @@
+     "@gitpod/gitpod-messagebus": "0.1.5",
+     "@gitpod/gitpod-protocol": "0.1.5",
+     "@gitpod/ws-manager": "0.1.5",
+-    "@gitpod/ws-sync": "0.1.5",
++    "@gitpod/ws-daemon": "0.1.5",
+     "amqplib": "^0.5.2",
+     "express": "^4.16.1",
+     "grpc": "^1.21.1",
+diff --git a/components/ws-manager-node/BUILD.yaml b/components/ws-manager-node/BUILD.yaml
+index 55ee2f2f8..69682e582 100644
+--- a/components/ws-manager-node/BUILD.yaml
++++ b/components/ws-manager-node/BUILD.yaml
+@@ -17,7 +17,7 @@ packages:
+     type: go
+     deps:
+       - components/common-go:lib
+-      - components/ws-sync-api/go:lib
++      - components/ws-daemon-api/go:lib
+       - components/ws-manager-node-api/go:lib
+     srcs:
+       - "pkg/protocol/**"
+diff --git a/components/ws-manager-node/go.mod b/components/ws-manager-node/go.mod
+index 76a5c36bb..24054b61f 100644
+--- a/components/ws-manager-node/go.mod
++++ b/components/ws-manager-node/go.mod
+@@ -29,13 +29,15 @@ require (
+ 	k8s.io/client-go v0.0.0
+ )
+ 
+-replace github.com/gitpod-io/gitpod/common-go => ../common-go // leeway
++replace github.com/gitpod-io/gitpod/ws-daemon/api => ../ws-daemon-api/go // leeway
+ 
+ replace github.com/gitpod-io/gitpod/content-service/api => ../content-service-api/go // leeway
+ 
+-replace github.com/gitpod-io/gitpod/ws-manager-node/api => ../ws-manager-node-api/go // leeway
++replace github.com/gitpod-io/gitpod/ws-daemon/api => ../ws-daemon-api/go // leeway
+ 
+-replace github.com/gitpod-io/gitpod/ws-sync/api => ../ws-sync-api/go // leeway
++replace github.com/gitpod-io/gitpod/common-go => ../common-go // leeway
++
++replace github.com/gitpod-io/gitpod/ws-manager-node/api => ../ws-manager-node-api/go // leeway
+ 
+ replace k8s.io/api => k8s.io/api v0.0.0-20190620084959-7cf5895f2711 // leeway indirect from components/common-go:lib
+ 
+diff --git a/components/ws-manager/BUILD.yaml b/components/ws-manager/BUILD.yaml
+index 163c728ca..d528903e5 100644
+--- a/components/ws-manager/BUILD.yaml
++++ b/components/ws-manager/BUILD.yaml
+@@ -12,7 +12,7 @@ packages:
+       - components/content-service:lib
+       - components/registry-facade-api/go:lib
+       - components/ws-manager-api/go:lib
+-      - components/ws-sync-api/go:lib
++      - components/ws-daemon-api/go:lib
+     env:
+       - CGO_ENABLED=0
+       - GOOS=linux
+diff --git a/components/ws-manager/example-config.json b/components/ws-manager/example-config.json
+index d3c776869..c309fd010 100644
+--- a/components/ws-manager/example-config.json
++++ b/components/ws-manager/example-config.json
+@@ -16,7 +16,7 @@
+         }
+       },
+       "sync": {
+-        "image": "eu.gcr.io/gitpod-dev/gitpod-ws-sync:cw-ws-manager.24",
++        "image": "eu.gcr.io/gitpod-dev/gitpod-ws-daemon:cw-ws-manager.24",
+         "requests": {
+           "cpu": "1m",
+           "memory": "1073741824m"
+diff --git a/components/ws-manager/go.mod b/components/ws-manager/go.mod
+index b8d98ab60..54fe67566 100644
+--- a/components/ws-manager/go.mod
++++ b/components/ws-manager/go.mod
+@@ -11,7 +11,7 @@ require (
+ 	github.com/gitpod-io/gitpod/content-service/api v0.0.0-00010101000000-000000000000
+ 	github.com/gitpod-io/gitpod/registry-facade/api v0.0.0-00010101000000-000000000000
+ 	github.com/gitpod-io/gitpod/ws-manager/api v0.0.0-00010101000000-000000000000
+-	github.com/gitpod-io/gitpod/ws-sync/api v0.0.0-00010101000000-000000000000
++	github.com/gitpod-io/gitpod/ws-daemon/api v0.0.0-00010101000000-000000000000
+ 	github.com/go-ozzo/ozzo-validation v3.5.0+incompatible
+ 	github.com/golang/mock v1.4.4
+ 	github.com/golang/protobuf v1.4.2
+@@ -33,6 +33,8 @@ require (
+ 	sigs.k8s.io/yaml v1.1.0
+ )
+ 
++replace github.com/gitpod-io/gitpod/ws-daemon/api => ../ws-daemon-api/go // leeway
++
+ replace github.com/gitpod-io/gitpod/common-go => ../common-go // leeway
+ 
+ replace github.com/gitpod-io/gitpod/content-service => ../content-service // leeway
+@@ -43,7 +45,7 @@ replace github.com/gitpod-io/gitpod/registry-facade/api => ../registry-facade-ap
+ 
+ replace github.com/gitpod-io/gitpod/ws-manager/api => ../ws-manager-api/go // leeway
+ 
+-replace github.com/gitpod-io/gitpod/ws-sync/api => ../ws-sync-api/go // leeway
++replace github.com/gitpod-io/gitpod/ws-daemon/api => ../ws-daemon-api/go // leeway
+ 
+ replace k8s.io/api => k8s.io/api v0.0.0-20190620084959-7cf5895f2711 // leeway indirect from components/common-go:lib
+ 
+diff --git a/components/ws-manager/pkg/manager/annotations.go b/components/ws-manager/pkg/manager/annotations.go
+index ca1ce3180..a0080ad75 100644
+--- a/components/ws-manager/pkg/manager/annotations.go
++++ b/components/ws-manager/pkg/manager/annotations.go
+@@ -44,7 +44,7 @@ const (
+ 	workspaceSnapshotAnnotation = "gitpod/snapshot"
+ 
+ 	// workspaceInitializerAnnotation contains the protobuf serialized initializer config in base64 encoding. We need to keep this around post-request
+-	// as we'll pass on the request to ws-sync later in the workspace's lifecycle. This is not a configmap as we cannot create the map prior to the pod,
++	// as we'll pass on the request to ws-daemon later in the workspace's lifecycle. This is not a configmap as we cannot create the map prior to the pod,
+ 	// because then we would not know which configmaps to delete; we cannot create the map after the pod as then the pod could reach the state what the
+ 	// configmap is needed, but isn't present yet.
+ 	// According to the K8S documentation, storing "large" amounts of data in annotations is not an issue:
+diff --git a/components/ws-manager/pkg/manager/config.go b/components/ws-manager/pkg/manager/config.go
+index 6403ac273..f6206a516 100644
+--- a/components/ws-manager/pkg/manager/config.go
++++ b/components/ws-manager/pkg/manager/config.go
+@@ -130,9 +130,9 @@ type WorkspacePodTemplateConfiguration struct {
+ 
+ // WorkspaceSyncConfiguration configures our connection to the workspace sync daemons runnin on the nodes
+ type WorkspaceSyncConfiguration struct {
+-	// Port is the port on the node on which the ws-sync is listening
++	// Port is the port on the node on which the ws-daemon is listening
+ 	Port int `json:"port"`
+-	// TLS is the certificate/key config to connect to ws-sync
++	// TLS is the certificate/key config to connect to ws-daemon
+ 	TLS struct {
+ 		// Authority is the root certificate that was used to sign the certificate itself
+ 		Authority string `json:"ca"`
+diff --git a/components/ws-manager/pkg/manager/integration_test.go b/components/ws-manager/pkg/manager/integration_test.go
+index 40459764b..74a83cbf4 100644
+--- a/components/ws-manager/pkg/manager/integration_test.go
++++ b/components/ws-manager/pkg/manager/integration_test.go
+@@ -21,11 +21,11 @@ import (
+ 	csapi "github.com/gitpod-io/gitpod/content-service/api"
+ 	"github.com/gitpod-io/gitpod/content-service/pkg/layer"
+ 	"github.com/gitpod-io/gitpod/content-service/pkg/storage"
++	wssync "github.com/gitpod-io/gitpod/ws-daemon/api"
++	wssync_mock "github.com/gitpod-io/gitpod/ws-daemon/api/mock"
+ 	"github.com/gitpod-io/gitpod/ws-manager/api"
+ 	"github.com/gitpod-io/gitpod/ws-manager/pkg/manager/internal/grpcpool"
+ 	"github.com/gitpod-io/gitpod/ws-manager/pkg/test"
+-	wssync "github.com/gitpod-io/gitpod/ws-sync/api"
+-	wssync_mock "github.com/gitpod-io/gitpod/ws-sync/api/mock"
+ 	"github.com/golang/mock/gomock"
+ 	"github.com/golang/protobuf/ptypes"
+ 	"github.com/google/uuid"
+diff --git a/components/ws-manager/pkg/manager/manager.go b/components/ws-manager/pkg/manager/manager.go
+index d5431398a..54b5ab272 100644
+--- a/components/ws-manager/pkg/manager/manager.go
++++ b/components/ws-manager/pkg/manager/manager.go
+@@ -23,9 +23,9 @@ import (
+ 	"github.com/gitpod-io/gitpod/common-go/tracing"
+ 	"github.com/gitpod-io/gitpod/content-service/pkg/layer"
+ 	regapi "github.com/gitpod-io/gitpod/registry-facade/api"
++	wssync "github.com/gitpod-io/gitpod/ws-daemon/api"
+ 	"github.com/gitpod-io/gitpod/ws-manager/api"
+ 	"github.com/gitpod-io/gitpod/ws-manager/pkg/manager/internal/grpcpool"
+-	wssync "github.com/gitpod-io/gitpod/ws-sync/api"
+ 
+ 	validation "github.com/go-ozzo/ozzo-validation"
+ 	"github.com/opentracing/opentracing-go"
+@@ -92,8 +92,8 @@ const (
+ 
+ 	// theiaVersionLabelFmt is the format to produce the label a node has if Theia is available on it in a particular version
+ 	theiaVersionLabelFmt = "gitpod.io/theia.%s"
+-	// wssyncLabel is the label a node has if ws-sync is running on it
+-	wssyncLabel = "gitpod.io/ws-sync"
++	// wssyncLabel is the label a node has if ws-daemon is running on it
++	wssyncLabel = "gitpod.io/ws-daemon"
+ )
+ 
+ const (
+@@ -101,7 +101,7 @@ const (
+ 	stopWorkspaceNormallyGracePeriod = 30 * time.Second
+ 	// stopWorkspaceImmediatelyGracePeriod is the grace period we use when stopping a pod as soon as possbile
+ 	stopWorkspaceImmediatelyGracePeriod = 1 * time.Second
+-	// wssyncDialTimeout is the time we allow for trying to connect to ws-sync.
++	// wssyncDialTimeout is the time we allow for trying to connect to ws-daemon.
+ 	// Note: this is NOT the time we allow for RPC calls to wssync, but just for establishing the connection.
+ 	wssyncDialTimeout = 10 * time.Second
+ )
+@@ -1103,7 +1103,7 @@ func isKubernetesObjNotFoundError(err error) bool {
+ 	return false
+ }
+ 
+-// connectToWorkspaceSync establishes a connection to the ws-sync daemon running on the node of the pod/workspace.
++// connectToWorkspaceSync establishes a connection to the ws-daemon daemon running on the node of the pod/workspace.
+ func (m *Manager) connectToWorkspaceSync(ctx context.Context, wso workspaceObjects) (wssync.WorkspaceContentServiceClient, error) {
+ 	span, ctx := tracing.FromContext(ctx, "connectToWorkspaceSync")
+ 	tracing.ApplyOWI(span, wso.GetOWI())
+@@ -1115,7 +1115,7 @@ func (m *Manager) connectToWorkspaceSync(ctx context.Context, wso workspaceObjec
+ 	}
+ 	conn, err := m.wssyncPool.Get(host)
+ 	if err != nil {
+-		return nil, xerrors.Errorf("cannot connect to ws-sync: %w", err)
++		return nil, xerrors.Errorf("cannot connect to ws-daemon: %w", err)
+ 	}
+ 
+ 	return wssync.NewWorkspaceContentServiceClient(conn), nil
+@@ -1123,8 +1123,8 @@ func (m *Manager) connectToWorkspaceSync(ctx context.Context, wso workspaceObjec
+ 
+ // newWssyncConnectionFactory creates a new wssync connection factory based on the wsmanager configuration
+ func newWssyncConnectionFactory(managerConfig Configuration) (grpcpool.Factory, error) {
+-	// We use client-side retry when ws-sync is unavilable. The unavailability need just cover the time ws-sync
+-	// needs to restart. If ws-sync is unavailable during a connection attempt, the WithBlock and WithBackoffMaxDelay
++	// We use client-side retry when ws-daemon is unavilable. The unavailability need just cover the time ws-daemon
++	// needs to restart. If ws-daemon is unavailable during a connection attempt, the WithBlock and WithBackoffMaxDelay
+ 	// configure the behaviour.
+ 	// Once the connection has been established, but becomes unavailable during a call, this retry mechanism takes hold.
+ 	//
+@@ -1176,8 +1176,8 @@ func newWssyncConnectionFactory(managerConfig Configuration) (grpcpool.Factory,
+ 
+ 		certificate, err := tls.LoadX509KeyPair(crt, key)
+ 		if err != nil {
+-			log.WithField("config", cfg.TLS).Error("Cannot load ws-sync certs - this is a configuration issue.")
+-			return nil, xerrors.Errorf("cannot load ws-sync certs: %w", err)
++			log.WithField("config", cfg.TLS).Error("Cannot load ws-daemon certs - this is a configuration issue.")
++			return nil, xerrors.Errorf("cannot load ws-daemon certs: %w", err)
+ 		}
+ 
+ 		creds := credentials.NewTLS(&tls.Config{
+@@ -1203,7 +1203,7 @@ func newWssyncConnectionFactory(managerConfig Configuration) (grpcpool.Factory,
+ 
+ 		conn, err := grpc.DialContext(conctx, addr, opts...)
+ 		if err != nil {
+-			log.WithError(err).WithField("host", host).Error("cannot connect to ws-sync")
++			log.WithError(err).WithField("host", host).Error("cannot connect to ws-daemon")
+ 
+ 			// we deliberately swallow the error here as users might see this one.
+ 			return nil, xerrors.Errorf("cannot connect to workspace sync")
+diff --git a/components/ws-manager/pkg/manager/manager_ee.go b/components/ws-manager/pkg/manager/manager_ee.go
+index 6566f5a82..5770cefee 100644
+--- a/components/ws-manager/pkg/manager/manager_ee.go
++++ b/components/ws-manager/pkg/manager/manager_ee.go
+@@ -16,8 +16,8 @@ import (
+ 	wsk8s "github.com/gitpod-io/gitpod/common-go/kubernetes"
+ 	"github.com/gitpod-io/gitpod/common-go/log"
+ 	"github.com/gitpod-io/gitpod/common-go/tracing"
++	wssync "github.com/gitpod-io/gitpod/ws-daemon/api"
+ 	"github.com/gitpod-io/gitpod/ws-manager/api"
+-	wssync "github.com/gitpod-io/gitpod/ws-sync/api"
+ 
+ 	"google.golang.org/grpc/codes"
+ 	"google.golang.org/grpc/status"
+diff --git a/components/ws-manager/pkg/manager/monitor.go b/components/ws-manager/pkg/manager/monitor.go
+index 868ddac80..3a4e1c97a 100644
+--- a/components/ws-manager/pkg/manager/monitor.go
++++ b/components/ws-manager/pkg/manager/monitor.go
+@@ -23,9 +23,9 @@ import (
+ 	"github.com/gitpod-io/gitpod/common-go/log"
+ 	"github.com/gitpod-io/gitpod/common-go/tracing"
+ 	csapi "github.com/gitpod-io/gitpod/content-service/api"
++	wssync "github.com/gitpod-io/gitpod/ws-daemon/api"
+ 	"github.com/gitpod-io/gitpod/ws-manager/api"
+ 	"github.com/gitpod-io/gitpod/ws-manager/pkg/internal/util"
+-	wssync "github.com/gitpod-io/gitpod/ws-sync/api"
+ 
+ 	corev1 "k8s.io/api/core/v1"
+ 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+@@ -52,13 +52,13 @@ const (
+ )
+ 
+ var (
+-	// wssyncMaxAttempts is the number of times we'll attempt to work with ws-sync when a former attempt returned unavailable.
++	// wssyncMaxAttempts is the number of times we'll attempt to work with ws-daemon when a former attempt returned unavailable.
+ 	// We rety for two minutes every 5 seconds (see wssyncRetryInterval).
+ 	//
+ 	// Note: this is a variable rather than a constant so that tests can modify this value.
+ 	wssyncMaxAttempts = 120 / 5
+ 
+-	// wssyncRetryInterval is the time in between attempts to work with ws-sync.
++	// wssyncRetryInterval is the time in between attempts to work with ws-daemon.
+ 	//
+ 	// Note: this is a variable rather than a constant so that tests can modify this value.
+ 	wssyncRetryInterval = 5 * time.Second
+@@ -313,7 +313,7 @@ func (m *Monitor) onPodEvent(evt watch.Event) error {
+ 	}
+ 
+ 	// There's one bit of the status which we cannot infere from Kubernetes alone, and that's the Git repo status
+-	// inside the workspace. To get this information, we have to ask ws-sync. At the moment we only care about this
++	// inside the workspace. To get this information, we have to ask ws-daemon. At the moment we only care about this
+ 	// information during shutdown, as we're only showing it for stopped workspaces.
+ 
+ 	if evt.Type == watch.Deleted {
+@@ -544,7 +544,7 @@ func (m *Monitor) actOnPodEvent(ctx context.Context, status *api.WorkspaceStatus
+ func (m *Monitor) actOnHeadlessDone(pod *corev1.Pod, failed bool) (err error) {
+ 	wso := workspaceObjects{Pod: pod}
+ 
+-	// This timeout is really a catch-all safety net in case any of the ws-sync interaction
++	// This timeout is really a catch-all safety net in case any of the ws-daemon interaction
+ 	// goes out of hand. Really it should never play a role.
+ 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Hour)
+ 	defer cancel()
+@@ -920,12 +920,12 @@ func (m *Monitor) waitForWorkspaceReady(ctx context.Context, pod *corev1.Pod) (e
+ 	})
+ 	if st, ok := grpc_status.FromError(err); ok && st.Code() == codes.NotFound {
+ 		// Looks like we have missed the CREATING phase in which we'd otherwise start the workspace content initialization.
+-		// Let's see if we're initializing already. If so, there's something very wrong because ws-sync does not know about
++		// Let's see if we're initializing already. If so, there's something very wrong because ws-daemon does not know about
+ 		// this workspace yet. In that case we'll run another desperate attempt to initialize the workspace.
+ 		m.initializerMapLock.Lock()
+ 		if _, alreadyInitializing := m.initializerMap[pod.Name]; alreadyInitializing {
+ 			// we're already initializing but wssync does not know about this workspace. That's very bad.
+-			log.WithFields(wsk8s.GetOWIFromObject(&pod.ObjectMeta)).Error("we were already initializing but wssync does not know about this workspace (bug in ws-sync?). Trying again!")
++			log.WithFields(wsk8s.GetOWIFromObject(&pod.ObjectMeta)).Error("we were already initializing but wssync does not know about this workspace (bug in ws-daemon?). Trying again!")
+ 			delete(m.initializerMap, pod.Name)
+ 		}
+ 		m.initializerMapLock.Unlock()
+@@ -1015,7 +1015,7 @@ func (m *Monitor) probeWorkspaceReady(ctx context.Context, pod *corev1.Pod) (res
+ 	return &probeResult, nil
+ }
+ 
+-// initializeWorkspaceContent talks to a ws-sync daemon on the node of the pod and initializes the workspace content.
++// initializeWorkspaceContent talks to a ws-daemon daemon on the node of the pod and initializes the workspace content.
+ // If we're already initializing the workspace, thus function will return immediately. If we were not initializing,
+ // prior to this call this function returns once initialization is complete.
+ func (m *Monitor) initializeWorkspaceContent(ctx context.Context, pod *corev1.Pod) (err error) {
+@@ -1076,10 +1076,10 @@ func (m *Monitor) initializeWorkspaceContent(ctx context.Context, pod *corev1.Po
+ 			}
+ 		}
+ 
+-		// connect to the appropriate ws-sync
++		// connect to the appropriate ws-daemon
+ 		snc, err = m.manager.connectToWorkspaceSync(ctx, workspaceObjects{Pod: pod})
+ 		if err != nil {
+-			return xerrors.Errorf("cannot connect to ws-sync: %w", err)
++			return xerrors.Errorf("cannot connect to ws-daemon: %w", err)
+ 		}
+ 
+ 		// mark that we're already initialising this workspace
+@@ -1147,7 +1147,7 @@ func retryIfUnavailable(ctx context.Context, op func(ctx context.Context) error)
+ 	return grpc_status.Error(codes.Unavailable, "workspace content initialization is currently unavailable")
+ }
+ 
+-// finalizeWorkspaceContent talks to a ws-sync daemon on the node of the pod and initializes the workspace content.
++// finalizeWorkspaceContent talks to a ws-daemon daemon on the node of the pod and initializes the workspace content.
+ func (m *Monitor) finalizeWorkspaceContent(ctx context.Context, wso *workspaceObjects) {
+ 	span, ctx := tracing.FromContext(ctx, "finalizeWorkspaceContent")
+ 	defer tracing.FinishSpan(span, nil)
+@@ -1191,12 +1191,12 @@ func (m *Monitor) finalizeWorkspaceContent(ctx context.Context, wso *workspaceOb
+ 		}
+ 
+ 		// Maybe the workspace never made it to a phase where we actually initialized a workspace.
+-		// Assuming that once we've had a hostIP we've spoken to ws-sync it's safe to assume that if
++		// Assuming that once we've had a hostIP we've spoken to ws-daemon it's safe to assume that if
+ 		// we don't have a hostIP we don't need to dipose the workspace.
+ 		// Obviously that only holds if we do not require a backup. If we do require one, we want to
+ 		// fail as loud as we can in this case.
+ 		if !doBackup && wso.HostIP() == "" {
+-			// we don't need a backup and have never spoken to ws-sync: we're good here.
++			// we don't need a backup and have never spoken to ws-daemon: we're good here.
+ 			m.finalizerMapLock.Unlock()
+ 			return true, &csapi.GitStatus{}, nil
+ 		}
+@@ -1269,7 +1269,7 @@ func (m *Monitor) finalizeWorkspaceContent(ctx context.Context, wso *workspaceOb
+ 		if doBackup && isGRPCError {
+ 			switch st.Code() {
+ 			case codes.DataLoss:
+-				// ws-sync told us that it's lost data
++				// ws-daemon told us that it's lost data
+ 				dataloss = true
+ 			case codes.FailedPrecondition:
+ 				// the workspace content was not in the state we thought it was
+diff --git a/components/ws-manager/pkg/manager/monitor_integration_test.go b/components/ws-manager/pkg/manager/monitor_integration_test.go
+index 104d0859c..96aa3bd93 100644
+--- a/components/ws-manager/pkg/manager/monitor_integration_test.go
++++ b/components/ws-manager/pkg/manager/monitor_integration_test.go
+@@ -12,9 +12,9 @@ import (
+ 
+ 	"github.com/gitpod-io/gitpod/common-go/log"
+ 	"github.com/gitpod-io/gitpod/common-go/tracing"
++	wssync "github.com/gitpod-io/gitpod/ws-daemon/api"
++	wssync_mock "github.com/gitpod-io/gitpod/ws-daemon/api/mock"
+ 	"github.com/gitpod-io/gitpod/ws-manager/api"
+-	wssync "github.com/gitpod-io/gitpod/ws-sync/api"
+-	wssync_mock "github.com/gitpod-io/gitpod/ws-sync/api/mock"
+ 	"github.com/golang/mock/gomock"
+ 	"github.com/sirupsen/logrus"
+ 	"google.golang.org/grpc/codes"
+diff --git a/components/ws-manager/pkg/manager/testdata/cdwp_admission.golden b/components/ws-manager/pkg/manager/testdata/cdwp_admission.golden
+index b8427dd53..e1dc559f1 100644
+--- a/components/ws-manager/pkg/manager/testdata/cdwp_admission.golden
++++ b/components/ws-manager/pkg/manager/testdata/cdwp_admission.golden
+@@ -203,7 +203,7 @@
+                                         "operator": "Exists"
+                                     },
+                                     {
+-                                        "key": "gitpod.io/ws-sync",
++                                        "key": "gitpod.io/ws-daemon",
+                                         "operator": "Exists"
+                                     }
+                                 ]
+diff --git a/components/ws-manager/pkg/manager/testdata/cdwp_duplicate_featureflag.golden b/components/ws-manager/pkg/manager/testdata/cdwp_duplicate_featureflag.golden
+index 7443ae100..da16debe0 100644
+--- a/components/ws-manager/pkg/manager/testdata/cdwp_duplicate_featureflag.golden
++++ b/components/ws-manager/pkg/manager/testdata/cdwp_duplicate_featureflag.golden
+@@ -212,7 +212,7 @@
+                                         "operator": "Exists"
+                                     },
+                                     {
+-                                        "key": "gitpod.io/ws-sync",
++                                        "key": "gitpod.io/ws-daemon",
+                                         "operator": "Exists"
+                                     }
+                                 ]
+diff --git a/components/ws-manager/pkg/manager/testdata/cdwp_fixedresources.golden b/components/ws-manager/pkg/manager/testdata/cdwp_fixedresources.golden
+index 199ce7e0c..189b39cd3 100644
+--- a/components/ws-manager/pkg/manager/testdata/cdwp_fixedresources.golden
++++ b/components/ws-manager/pkg/manager/testdata/cdwp_fixedresources.golden
+@@ -200,7 +200,7 @@
+                                         "operator": "Exists"
+                                     },
+                                     {
+-                                        "key": "gitpod.io/ws-sync",
++                                        "key": "gitpod.io/ws-daemon",
+                                         "operator": "Exists"
+                                     }
+                                 ]
+diff --git a/components/ws-manager/pkg/manager/testdata/cdwp_fullworkspacebackup.golden b/components/ws-manager/pkg/manager/testdata/cdwp_fullworkspacebackup.golden
+index f57adfdfd..716363a3c 100644
+--- a/components/ws-manager/pkg/manager/testdata/cdwp_fullworkspacebackup.golden
++++ b/components/ws-manager/pkg/manager/testdata/cdwp_fullworkspacebackup.golden
+@@ -180,7 +180,7 @@
+                             {
+                                 "matchExpressions": [
+                                     {
+-                                        "key": "gitpod.io/ws-sync",
++                                        "key": "gitpod.io/ws-daemon",
+                                         "operator": "Exists"
+                                     }
+                                 ]
+diff --git a/components/ws-manager/pkg/manager/testdata/cdwp_prebuild.golden b/components/ws-manager/pkg/manager/testdata/cdwp_prebuild.golden
+index 8d1348ca2..5152986fd 100644
+--- a/components/ws-manager/pkg/manager/testdata/cdwp_prebuild.golden
++++ b/components/ws-manager/pkg/manager/testdata/cdwp_prebuild.golden
+@@ -203,7 +203,7 @@
+                                         "operator": "Exists"
+                                     },
+                                     {
+-                                        "key": "gitpod.io/ws-sync",
++                                        "key": "gitpod.io/ws-daemon",
+                                         "operator": "Exists"
+                                     }
+                                 ]
+diff --git a/components/ws-manager/pkg/manager/testdata/cdwp_prebuild_template.golden b/components/ws-manager/pkg/manager/testdata/cdwp_prebuild_template.golden
+index 058786c8c..375640119 100644
+--- a/components/ws-manager/pkg/manager/testdata/cdwp_prebuild_template.golden
++++ b/components/ws-manager/pkg/manager/testdata/cdwp_prebuild_template.golden
+@@ -216,7 +216,7 @@
+                                         "operator": "Exists"
+                                     },
+                                     {
+-                                        "key": "gitpod.io/ws-sync",
++                                        "key": "gitpod.io/ws-daemon",
+                                         "operator": "Exists"
+                                     },
+                                     {
+diff --git a/components/ws-manager/pkg/manager/testdata/cdwp_prebuild_template_override_resources.golden b/components/ws-manager/pkg/manager/testdata/cdwp_prebuild_template_override_resources.golden
+index aca639578..44d9ac01d 100644
+--- a/components/ws-manager/pkg/manager/testdata/cdwp_prebuild_template_override_resources.golden
++++ b/components/ws-manager/pkg/manager/testdata/cdwp_prebuild_template_override_resources.golden
+@@ -216,7 +216,7 @@
+                                         "operator": "Exists"
+                                     },
+                                     {
+-                                        "key": "gitpod.io/ws-sync",
++                                        "key": "gitpod.io/ws-daemon",
+                                         "operator": "Exists"
+                                     },
+                                     {
+diff --git a/components/ws-manager/pkg/manager/testdata/cdwp_privileged.golden b/components/ws-manager/pkg/manager/testdata/cdwp_privileged.golden
+index ebb02177c..b0ff86fa5 100644
+--- a/components/ws-manager/pkg/manager/testdata/cdwp_privileged.golden
++++ b/components/ws-manager/pkg/manager/testdata/cdwp_privileged.golden
+@@ -199,7 +199,7 @@
+                                         "operator": "Exists"
+                                     },
+                                     {
+-                                        "key": "gitpod.io/ws-sync",
++                                        "key": "gitpod.io/ws-daemon",
+                                         "operator": "Exists"
+                                     }
+                                 ]
+diff --git a/components/ws-manager/pkg/manager/testdata/cdwp_probe.golden b/components/ws-manager/pkg/manager/testdata/cdwp_probe.golden
+index ce1418c96..33119c10d 100644
+--- a/components/ws-manager/pkg/manager/testdata/cdwp_probe.golden
++++ b/components/ws-manager/pkg/manager/testdata/cdwp_probe.golden
+@@ -203,7 +203,7 @@
+                                         "operator": "Exists"
+                                     },
+                                     {
+-                                        "key": "gitpod.io/ws-sync",
++                                        "key": "gitpod.io/ws-daemon",
+                                         "operator": "Exists"
+                                     }
+                                 ]
+diff --git a/components/ws-manager/pkg/manager/testdata/cdwp_readinessprobe.golden b/components/ws-manager/pkg/manager/testdata/cdwp_readinessprobe.golden
+index bd708b5a4..5e4c563da 100644
+--- a/components/ws-manager/pkg/manager/testdata/cdwp_readinessprobe.golden
++++ b/components/ws-manager/pkg/manager/testdata/cdwp_readinessprobe.golden
+@@ -199,7 +199,7 @@
+                                         "operator": "Exists"
+                                     },
+                                     {
+-                                        "key": "gitpod.io/ws-sync",
++                                        "key": "gitpod.io/ws-daemon",
+                                         "operator": "Exists"
+                                     }
+                                 ]
+diff --git a/components/ws-manager/pkg/manager/testdata/cdwp_registryfacade.golden b/components/ws-manager/pkg/manager/testdata/cdwp_registryfacade.golden
+index 3078edfeb..737dfe67a 100644
+--- a/components/ws-manager/pkg/manager/testdata/cdwp_registryfacade.golden
++++ b/components/ws-manager/pkg/manager/testdata/cdwp_registryfacade.golden
+@@ -183,7 +183,7 @@
+                             {
+                                 "matchExpressions": [
+                                     {
+-                                        "key": "gitpod.io/ws-sync",
++                                        "key": "gitpod.io/ws-daemon",
+                                         "operator": "Exists"
+                                     }
+                                 ]
+diff --git a/components/ws-manager/pkg/manager/testdata/cdwp_tasks.golden b/components/ws-manager/pkg/manager/testdata/cdwp_tasks.golden
+index 88c26bd06..584961e0f 100644
+--- a/components/ws-manager/pkg/manager/testdata/cdwp_tasks.golden
++++ b/components/ws-manager/pkg/manager/testdata/cdwp_tasks.golden
+@@ -203,7 +203,7 @@
+                                         "operator": "Exists"
+                                     },
+                                     {
+-                                        "key": "gitpod.io/ws-sync",
++                                        "key": "gitpod.io/ws-daemon",
+                                         "operator": "Exists"
+                                     }
+                                 ]
+diff --git a/components/ws-manager/pkg/manager/testdata/cdwp_template.golden b/components/ws-manager/pkg/manager/testdata/cdwp_template.golden
+index 9885e4642..a9c3cd8ff 100644
+--- a/components/ws-manager/pkg/manager/testdata/cdwp_template.golden
++++ b/components/ws-manager/pkg/manager/testdata/cdwp_template.golden
+@@ -212,7 +212,7 @@
+                                         "operator": "Exists"
+                                     },
+                                     {
+-                                        "key": "gitpod.io/ws-sync",
++                                        "key": "gitpod.io/ws-daemon",
+                                         "operator": "Exists"
+                                     },
+                                     {
+diff --git a/components/ws-manager/pkg/manager/testdata/cdwp_timeout.golden b/components/ws-manager/pkg/manager/testdata/cdwp_timeout.golden
+index f9fa5df45..61e20abda 100644
+--- a/components/ws-manager/pkg/manager/testdata/cdwp_timeout.golden
++++ b/components/ws-manager/pkg/manager/testdata/cdwp_timeout.golden
+@@ -204,7 +204,7 @@
+                                         "operator": "Exists"
+                                     },
+                                     {
+-                                        "key": "gitpod.io/ws-sync",
++                                        "key": "gitpod.io/ws-daemon",
+                                         "operator": "Exists"
+                                     }
+                                 ]
+diff --git a/components/ws-manager/pkg/manager/testdata/cdwp_userns.golden b/components/ws-manager/pkg/manager/testdata/cdwp_userns.golden
+index 7443ae100..da16debe0 100644
+--- a/components/ws-manager/pkg/manager/testdata/cdwp_userns.golden
++++ b/components/ws-manager/pkg/manager/testdata/cdwp_userns.golden
+@@ -212,7 +212,7 @@
+                                         "operator": "Exists"
+                                     },
+                                     {
+-                                        "key": "gitpod.io/ws-sync",
++                                        "key": "gitpod.io/ws-daemon",
+                                         "operator": "Exists"
+                                     }
+                                 ]
+diff --git a/components/ws-manager/pkg/manager/testdata/deleteDanglingPLIS_20200402.json b/components/ws-manager/pkg/manager/testdata/deleteDanglingPLIS_20200402.json
+index 8ce901103..fece0d38c 100644
+--- a/components/ws-manager/pkg/manager/testdata/deleteDanglingPLIS_20200402.json
++++ b/components/ws-manager/pkg/manager/testdata/deleteDanglingPLIS_20200402.json
+@@ -142,7 +142,7 @@
+                     "key": "gitpod.io/theia.master.2563"
+                   },
+                   {
+-                    "key": "gitpod.io/ws-sync",
++                    "key": "gitpod.io/ws-daemon",
+                     "operator": "Exists"
+                   },
+                   {
+diff --git a/components/ws-manager/pkg/manager/testdata/getWorkspaces_podOnly.json b/components/ws-manager/pkg/manager/testdata/getWorkspaces_podOnly.json
+index b722063f2..b67c65b77 100644
+--- a/components/ws-manager/pkg/manager/testdata/getWorkspaces_podOnly.json
++++ b/components/ws-manager/pkg/manager/testdata/getWorkspaces_podOnly.json
+@@ -50,7 +50,7 @@
+                       "operator": "Exists"
+                     },
+                     {
+-                      "key": "gitpod.io/ws-sync",
++                      "key": "gitpod.io/ws-daemon",
+                       "operator": "Exists"
+                     },
+                     {
+diff --git a/components/ws-manager/pkg/manager/testdata/status_errimgpull.json b/components/ws-manager/pkg/manager/testdata/status_errimgpull.json
+index f83476620..a70251983 100644
+--- a/components/ws-manager/pkg/manager/testdata/status_errimgpull.json
++++ b/components/ws-manager/pkg/manager/testdata/status_errimgpull.json
+@@ -209,7 +209,7 @@
+                     "operator": "Exists"
+                   },
+                   {
+-                    "key": "gitpod.io/ws-sync",
++                    "key": "gitpod.io/ws-daemon",
+                     "operator": "Exists"
+                   }
+                 ]
+diff --git a/components/ws-manager/pkg/manager/testdata/status_errimgpull_CREATING01.json b/components/ws-manager/pkg/manager/testdata/status_errimgpull_CREATING01.json
+index c8b987c4d..2d70d139d 100644
+--- a/components/ws-manager/pkg/manager/testdata/status_errimgpull_CREATING01.json
++++ b/components/ws-manager/pkg/manager/testdata/status_errimgpull_CREATING01.json
+@@ -215,7 +215,7 @@
+               {
+                 "matchExpressions": [
+                   {
+-                    "key": "gitpod.io/ws-sync",
++                    "key": "gitpod.io/ws-daemon",
+                     "operator": "Exists"
+                   },
+                   {
+diff --git a/components/ws-manager/pkg/manager/testdata/status_failedPending_evicted_UNKNOWN01.json b/components/ws-manager/pkg/manager/testdata/status_failedPending_evicted_UNKNOWN01.json
+index 6a978a2c4..004d9a99e 100644
+--- a/components/ws-manager/pkg/manager/testdata/status_failedPending_evicted_UNKNOWN01.json
++++ b/components/ws-manager/pkg/manager/testdata/status_failedPending_evicted_UNKNOWN01.json
+@@ -156,7 +156,7 @@
+                     "operator": "Exists"
+                   },
+                   {
+-                    "key": "gitpod.io/ws-sync",
++                    "key": "gitpod.io/ws-daemon",
+                     "operator": "Exists"
+                   },
+                   {
+diff --git a/components/ws-manager/pkg/manager/testdata/status_failedPending_evicted_UNKNOWN02.json b/components/ws-manager/pkg/manager/testdata/status_failedPending_evicted_UNKNOWN02.json
+index 00b28542c..def2c4b5d 100644
+--- a/components/ws-manager/pkg/manager/testdata/status_failedPending_evicted_UNKNOWN02.json
++++ b/components/ws-manager/pkg/manager/testdata/status_failedPending_evicted_UNKNOWN02.json
+@@ -161,7 +161,7 @@
+                     "operator": "Exists"
+                   },
+                   {
+-                    "key": "gitpod.io/ws-sync",
++                    "key": "gitpod.io/ws-daemon",
+                     "operator": "Exists"
+                   },
+                   {
+diff --git a/components/ws-manager/pkg/manager/testdata/status_firstUserActivity_RUNNING.json b/components/ws-manager/pkg/manager/testdata/status_firstUserActivity_RUNNING.json
+index 12611f803..09ecfdc33 100644
+--- a/components/ws-manager/pkg/manager/testdata/status_firstUserActivity_RUNNING.json
++++ b/components/ws-manager/pkg/manager/testdata/status_firstUserActivity_RUNNING.json
+@@ -153,7 +153,7 @@
+                     "operator": "Exists"
+                   },
+                   {
+-                    "key": "gitpod.io/ws-sync",
++                    "key": "gitpod.io/ws-daemon",
+                     "operator": "Exists"
+                   },
+                   {
+diff --git a/components/ws-manager/pkg/manager/testdata/status_imagespec_RUNNING00.json b/components/ws-manager/pkg/manager/testdata/status_imagespec_RUNNING00.json
+index 10459a215..46cce60a7 100644
+--- a/components/ws-manager/pkg/manager/testdata/status_imagespec_RUNNING00.json
++++ b/components/ws-manager/pkg/manager/testdata/status_imagespec_RUNNING00.json
+@@ -212,7 +212,7 @@
+               {
+                 "matchExpressions": [
+                   {
+-                    "key": "gitpod.io/ws-sync",
++                    "key": "gitpod.io/ws-daemon",
+                     "operator": "Exists"
+                   },
+                   {
+diff --git a/components/ws-manager/pkg/manager/testdata/status_interrupted.json b/components/ws-manager/pkg/manager/testdata/status_interrupted.json
+index 466eb3de2..e74e2014b 100644
+--- a/components/ws-manager/pkg/manager/testdata/status_interrupted.json
++++ b/components/ws-manager/pkg/manager/testdata/status_interrupted.json
+@@ -220,7 +220,7 @@
+                     "operator": "Exists"
+                   },
+                   {
+-                    "key": "gitpod.io/ws-sync",
++                    "key": "gitpod.io/ws-daemon",
+                     "operator": "Exists"
+                   },
+                   {
+diff --git a/components/ws-manager/pkg/manager/testdata/status_interrupted_CREATING00.json b/components/ws-manager/pkg/manager/testdata/status_interrupted_CREATING00.json
+index c8f690e16..ea6c9f145 100644
+--- a/components/ws-manager/pkg/manager/testdata/status_interrupted_CREATING00.json
++++ b/components/ws-manager/pkg/manager/testdata/status_interrupted_CREATING00.json
+@@ -212,7 +212,7 @@
+                     "operator": "Exists"
+                   },
+                   {
+-                    "key": "gitpod.io/ws-sync",
++                    "key": "gitpod.io/ws-daemon",
+                     "operator": "Exists"
+                   },
+                   {
+diff --git a/components/ws-manager/pkg/manager/testdata/status_interrupted_networkNotReady_1_event_only.json b/components/ws-manager/pkg/manager/testdata/status_interrupted_networkNotReady_1_event_only.json
+index 0f6d15bdc..91a2ea176 100644
+--- a/components/ws-manager/pkg/manager/testdata/status_interrupted_networkNotReady_1_event_only.json
++++ b/components/ws-manager/pkg/manager/testdata/status_interrupted_networkNotReady_1_event_only.json
+@@ -155,7 +155,7 @@
+                     "operator": "Exists"
+                   },
+                   {
+-                    "key": "gitpod.io/ws-sync",
++                    "key": "gitpod.io/ws-daemon",
+                     "operator": "Exists"
+                   },
+                   {
+diff --git a/components/ws-manager/pkg/manager/testdata/status_interrupted_networkNotReady_2_event_and_exitcode.json b/components/ws-manager/pkg/manager/testdata/status_interrupted_networkNotReady_2_event_and_exitcode.json
+index 46656d464..c3813ce1d 100644
+--- a/components/ws-manager/pkg/manager/testdata/status_interrupted_networkNotReady_2_event_and_exitcode.json
++++ b/components/ws-manager/pkg/manager/testdata/status_interrupted_networkNotReady_2_event_and_exitcode.json
+@@ -220,7 +220,7 @@
+                     "operator": "Exists"
+                   },
+                   {
+-                    "key": "gitpod.io/ws-sync",
++                    "key": "gitpod.io/ws-daemon",
+                     "operator": "Exists"
+                   },
+                   {
+diff --git a/components/ws-manager/pkg/manager/testdata/status_interrupted_networkNotReady_3_recovered_CONSTRUCTED.json b/components/ws-manager/pkg/manager/testdata/status_interrupted_networkNotReady_3_recovered_CONSTRUCTED.json
+index 7d17503a2..01829ddf2 100644
+--- a/components/ws-manager/pkg/manager/testdata/status_interrupted_networkNotReady_3_recovered_CONSTRUCTED.json
++++ b/components/ws-manager/pkg/manager/testdata/status_interrupted_networkNotReady_3_recovered_CONSTRUCTED.json
+@@ -220,7 +220,7 @@
+                     "operator": "Exists"
+                   },
+                   {
+-                    "key": "gitpod.io/ws-sync",
++                    "key": "gitpod.io/ws-daemon",
+                     "operator": "Exists"
+                   },
+                   {
+diff --git a/components/ws-manager/pkg/manager/testdata/status_ownerToken.json b/components/ws-manager/pkg/manager/testdata/status_ownerToken.json
+index eee2cf09a..6f7b1425d 100644
+--- a/components/ws-manager/pkg/manager/testdata/status_ownerToken.json
++++ b/components/ws-manager/pkg/manager/testdata/status_ownerToken.json
+@@ -155,7 +155,7 @@
+                     "operator": "Exists"
+                   },
+                   {
+-                    "key": "gitpod.io/ws-sync",
++                    "key": "gitpod.io/ws-daemon",
+                     "operator": "Exists"
+                   },
+                   {
+diff --git a/components/ws-manager/pkg/manager/testdata/status_prebuildSuccess_RUNNING01.json b/components/ws-manager/pkg/manager/testdata/status_prebuildSuccess_RUNNING01.json
+index 8ea0c014b..04f7cd8a9 100644
+--- a/components/ws-manager/pkg/manager/testdata/status_prebuildSuccess_RUNNING01.json
++++ b/components/ws-manager/pkg/manager/testdata/status_prebuildSuccess_RUNNING01.json
+@@ -234,8 +234,8 @@
+           "lastState": {},
+           "ready": true,
+           "restartCount": 0,
+-          "image": "eu.gcr.io/gitpod-dev/gitpod-ws-sync:cw-integrate-wsman-server.45",
+-          "imageID": "docker-pullable://eu.gcr.io/gitpod-dev/gitpod-ws-sync@sha256:cc21efdbebcf0d800e9d1f2a9346d346ca2757a79bc255a4098f8544efb8aaa3",
++          "image": "eu.gcr.io/gitpod-dev/gitpod-ws-daemon:cw-integrate-wsman-server.45",
++          "imageID": "docker-pullable://eu.gcr.io/gitpod-dev/gitpod-ws-daemon@sha256:cc21efdbebcf0d800e9d1f2a9346d346ca2757a79bc255a4098f8544efb8aaa3",
+           "containerID": "docker://5208401cb3cb46103dcab5d8c9858d54edebb2c37810f827de27185fe3628f4e"
+         },
+         {
+diff --git a/components/ws-manager/pkg/manager/testdata/status_stuckInCreating_CREATING00.json b/components/ws-manager/pkg/manager/testdata/status_stuckInCreating_CREATING00.json
+index 1c491b2f7..cdf545df2 100644
+--- a/components/ws-manager/pkg/manager/testdata/status_stuckInCreating_CREATING00.json
++++ b/components/ws-manager/pkg/manager/testdata/status_stuckInCreating_CREATING00.json
+@@ -158,7 +158,7 @@
+                     "operator": "Exists"
+                   },
+                   {
+-                    "key": "gitpod.io/ws-sync",
++                    "key": "gitpod.io/ws-daemon",
+                     "operator": "Exists"
+                   },
+                   {
+diff --git a/components/ws-manager/pkg/manager/testdata/status_wsstartup_Creating00.json b/components/ws-manager/pkg/manager/testdata/status_wsstartup_Creating00.json
+index 60005f8a4..ad211290e 100644
+--- a/components/ws-manager/pkg/manager/testdata/status_wsstartup_Creating00.json
++++ b/components/ws-manager/pkg/manager/testdata/status_wsstartup_Creating00.json
+@@ -234,8 +234,8 @@
+           "lastState": {},
+           "ready": false,
+           "restartCount": 0,
+-          "image": "eu.gcr.io/gitpod-dev/gitpod-ws-sync:cw-ws-manager.14",
+-          "imageID": "docker-pullable://eu.gcr.io/gitpod-dev/gitpod-ws-sync@sha256:be172b330ca6bbea9437c0dfb1cb84d67bd387a61295be6023f4273eba0ed6c2",
++          "image": "eu.gcr.io/gitpod-dev/gitpod-ws-daemon:cw-ws-manager.14",
++          "imageID": "docker-pullable://eu.gcr.io/gitpod-dev/gitpod-ws-daemon@sha256:be172b330ca6bbea9437c0dfb1cb84d67bd387a61295be6023f4273eba0ed6c2",
+           "containerID": "docker://350b2aab9bec5b6e507980d2a68dd70cc73c1dd40961614a3e32032c7ffb027c"
+         },
+         {
+diff --git a/components/ws-manager/pkg/manager/testdata/stopping_basic.json b/components/ws-manager/pkg/manager/testdata/stopping_basic.json
+index 188600502..12625834c 100644
+--- a/components/ws-manager/pkg/manager/testdata/stopping_basic.json
++++ b/components/ws-manager/pkg/manager/testdata/stopping_basic.json
+@@ -154,7 +154,7 @@
+                                             "operator": "Exists"
+                                         },
+                                         {
+-                                            "key": "gitpod.io/ws-sync",
++                                            "key": "gitpod.io/ws-daemon",
+                                             "operator": "Exists"
+                                         },
+                                         {
+diff --git a/components/ws-manager/pkg/manager/testdata/timeout_interrupted_noActivity.json b/components/ws-manager/pkg/manager/testdata/timeout_interrupted_noActivity.json
+index 7024ecd4c..9c5f6da7b 100644
+--- a/components/ws-manager/pkg/manager/testdata/timeout_interrupted_noActivity.json
++++ b/components/ws-manager/pkg/manager/testdata/timeout_interrupted_noActivity.json
+@@ -222,7 +222,7 @@
+                       "operator": "Exists"
+                     },
+                     {
+-                      "key": "gitpod.io/ws-sync",
++                      "key": "gitpod.io/ws-daemon",
+                       "operator": "Exists"
+                     },
+                     {
+diff --git a/components/ws-manager/pkg/manager/testdata/timeout_interrupted_withActivity.json b/components/ws-manager/pkg/manager/testdata/timeout_interrupted_withActivity.json
+index 4eb79330d..55211f65d 100644
+--- a/components/ws-manager/pkg/manager/testdata/timeout_interrupted_withActivity.json
++++ b/components/ws-manager/pkg/manager/testdata/timeout_interrupted_withActivity.json
+@@ -223,7 +223,7 @@
+                       "operator": "Exists"
+                     },
+                     {
+-                      "key": "gitpod.io/ws-sync",
++                      "key": "gitpod.io/ws-daemon",
+                       "operator": "Exists"
+                     },
+                     {
+diff --git a/components/ws-manager/telepresence.sh b/components/ws-manager/telepresence.sh
+index 1ee9bf8dd..87bc66e4f 100755
+--- a/components/ws-manager/telepresence.sh
++++ b/components/ws-manager/telepresence.sh
+@@ -7,8 +7,8 @@ if [ "$1" == "intp" ]; then
+ fi
+ 
+ alsoProxy=""
+-for h in $(kubectl get pods -l component=ws-sync --no-headers -o=custom-columns=:status.hostIP | grep -v none); do
+-    echo "Also proxying ws-sync daemon on ${h}"
++for h in $(kubectl get pods -l component=ws-daemon --no-headers -o=custom-columns=:status.hostIP | grep -v none); do
++    echo "Also proxying ws-daemon daemon on ${h}"
+     alsoProxy="${alsoProxy} --also-proxy ${h}"
+ done
+ 
+diff --git a/components/ws-sync/.gitignore b/components/ws-sync/.gitignore
+deleted file mode 100644
+index ab5141c57..000000000
+--- a/components/ws-sync/.gitignore
++++ /dev/null
+@@ -1 +0,0 @@
+-ws-syncd
+diff --git a/components/ws-sync/debug.sh b/components/ws-sync/debug.sh
+deleted file mode 100755
+index fe544c2e4..000000000
+--- a/components/ws-sync/debug.sh
++++ /dev/null
+@@ -1,18 +0,0 @@
+-#!/bin/bash
+-
+-# ws-sync runs as daemonset on each node which renders telepresence useless for debugging.
+-# This script builds ws-sync locally, puts it in a Dockerfile, builds the image, pushes it,
+-# patches the daemonset and restarts all pods.
+-#
+-# This way you can test out your changes with a 30 sec turnaround.
+-#
+-# BEWARE: the properly built version of ws-sync may behave differently.
+-
+-docker ps &> /dev/null || (echo "You need a working Docker daemon. Maybe set DOCKER_HOST?"; exit -1)
+-gcloud auth list | grep typefox &>/dev/null || (echo "Login using 'gcloud auth login' for the docker push to work"; exit 1)
+-
+-leeway build .:docker -Dversion=dev
+-devImage=eu.gcr.io/gitpod-dev/ws-sync:dev
+-
+-kubectl patch daemonset ws-sync --patch '{"spec": {"template": {"spec": {"containers": [{"name": "ws-sync","image": "'$devImage'"}]}}}}'
+-kubectl get pods --no-headers -o=custom-columns=:metadata.name | grep ws-sync | xargs kubectl delete pod
+diff --git a/gitpod-ws.theia-workspace b/gitpod-ws.theia-workspace
+index cc045f930..6806fb212 100644
+--- a/gitpod-ws.theia-workspace
++++ b/gitpod-ws.theia-workspace
+@@ -13,8 +13,8 @@
+       { "path": "components/supervisor" },
+       { "path": "components/ws-manager-node" },
+       { "path": "components/ws-manager" },
++      { "path": "components/ws-daemon" },
+       { "path": "components/ws-proxy" },
+-      { "path": "components/ws-sync" },
+       { "path": "install/installer" }
+    ],
+    "settings": {

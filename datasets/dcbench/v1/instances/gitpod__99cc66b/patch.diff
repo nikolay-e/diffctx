@@ -1,0 +1,3464 @@
+From 99cc66b7cf24d20f8fa4d8aba6faacb68822810f Mon Sep 17 00:00:00 2001
+From: Gero Posmyk-Leinemann <gero@gitpod.io>
+Date: Fri, 15 Nov 2024 13:28:54 +0100
+Subject: [PATCH] [ws-manager] Re-create workspace pods on rejection (#20243)
+
+* [ws-manager] Re-create workspace pods (incl. test)
+
+* [gpctl] Fix "workspaces list"
+
+* [ws-daemon, ws-manager] Review comments, logging cleanups and ordering fix
+
+* [dev/rejector] Add the tool we use to test PodRejection under "dev"
+
+* [bridge] Log nested status shape (and properly scrubbing it)
+---
+ components/ws-daemon-api/go/mock/mock.go      |  20 +
+ .../ws-daemon-api/go/workspace_daemon.pb.go   | 431 ++++++++++++------
+ .../go/workspace_daemon_grpc.pb.go            |  46 +-
+ .../src/workspace_daemon_grpc_pb.d.ts         |  17 +
+ .../src/workspace_daemon_grpc_pb.js           |  38 +-
+ .../typescript/src/workspace_daemon_pb.d.ts   |  40 ++
+ .../typescript/src/workspace_daemon_pb.js     | 304 ++++++++++++
+ .../ws-daemon-api/workspace_daemon.proto      |  10 +
+ components/ws-daemon/pkg/cgroup/cgroup.go     |   9 +-
+ .../ws-daemon/pkg/container/container.go      |   3 +
+ .../ws-daemon/pkg/container/containerd.go     |  29 ++
+ components/ws-daemon/pkg/content/hooks.go     |  35 ++
+ components/ws-daemon/pkg/controller/mock.go   |  14 +
+ .../pkg/controller/workspace_controller.go    |  65 ++-
+ .../pkg/controller/workspace_operations.go    |  56 ++-
+ components/ws-daemon/pkg/cpulimit/dispatch.go |   9 +-
+ components/ws-daemon/pkg/daemon/daemon.go     |  12 +-
+ .../ws-daemon/pkg/daemon/markunmount.go       |  26 +-
+ components/ws-daemon/pkg/diskguard/guard.go   |   1 +
+ components/ws-daemon/pkg/dispatch/dispatch.go |  86 +++-
+ .../pkg/internal/session/workspace.go         |   6 +-
+ components/ws-daemon/pkg/iws/iws.go           |  51 ++-
+ components/ws-daemon/pkg/netlimit/netlimit.go |  12 +-
+ .../ws-daemon/pkg/nsinsider/nsinsider.go      |   9 +-
+ components/ws-manager-api/go/config/config.go |   5 +
+ .../go/crd/v1/workspace_types.go              |  45 +-
+ components/ws-manager-bridge/src/bridge.ts    |  10 +-
+ .../bases/workspace.gitpod.io_workspaces.yaml |   5 +
+ .../ws-manager-mk2/controllers/metrics.go     |  18 +
+ .../ws-manager-mk2/controllers/status.go      |  52 +++
+ .../controllers/subscriber_controller.go      |   6 +
+ .../ws-manager-mk2/controllers/suite_test.go  |  20 +-
+ .../controllers/workspace_controller.go       |  66 ++-
+ .../controllers/workspace_controller_test.go  | 197 ++++++++
+ dev/gpctl/cmd/workspaces-list.go              |   6 +-
+ dev/rejector/.gitignore                       |   1 +
+ dev/rejector/go.mod                           |  50 ++
+ dev/rejector/go.sum                           | 154 +++++++
+ dev/rejector/main.go                          | 147 ++++++
+ 39 files changed, 1901 insertions(+), 210 deletions(-)
+ create mode 100644 dev/rejector/.gitignore
+ create mode 100644 dev/rejector/go.mod
+ create mode 100644 dev/rejector/go.sum
+ create mode 100644 dev/rejector/main.go
+
+diff --git a/components/ws-daemon-api/go/mock/mock.go b/components/ws-daemon-api/go/mock/mock.go
+index bed7b84ca..2ce7bd122 100644
+--- a/components/ws-daemon-api/go/mock/mock.go
++++ b/components/ws-daemon-api/go/mock/mock.go
+@@ -509,6 +509,26 @@ func (mr *MockInWorkspaceServiceClientMockRecorder) UmountSysfs(arg0, arg1 inter
+ 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UmountSysfs", reflect.TypeOf((*MockInWorkspaceServiceClient)(nil).UmountSysfs), varargs...)
+ }
+ 
++// WipingTeardown mocks base method.
++func (m *MockInWorkspaceServiceClient) WipingTeardown(arg0 context.Context, arg1 *api.WipingTeardownRequest, arg2 ...grpc.CallOption) (*api.WipingTeardownResponse, error) {
++	m.ctrl.T.Helper()
++	varargs := []interface{}{arg0, arg1}
++	for _, a := range arg2 {
++		varargs = append(varargs, a)
++	}
++	ret := m.ctrl.Call(m, "WipingTeardown", varargs...)
++	ret0, _ := ret[0].(*api.WipingTeardownResponse)
++	ret1, _ := ret[1].(error)
++	return ret0, ret1
++}
++
++// WipingTeardown indicates an expected call of WipingTeardown.
++func (mr *MockInWorkspaceServiceClientMockRecorder) WipingTeardown(arg0, arg1 interface{}, arg2 ...interface{}) *gomock.Call {
++	mr.mock.ctrl.T.Helper()
++	varargs := append([]interface{}{arg0, arg1}, arg2...)
++	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WipingTeardown", reflect.TypeOf((*MockInWorkspaceServiceClient)(nil).WipingTeardown), varargs...)
++}
++
+ // WorkspaceInfo mocks base method.
+ func (m *MockInWorkspaceServiceClient) WorkspaceInfo(arg0 context.Context, arg1 *api.WorkspaceInfoRequest, arg2 ...grpc.CallOption) (*api.WorkspaceInfoResponse, error) {
+ 	m.ctrl.T.Helper()
+diff --git a/components/ws-daemon-api/go/workspace_daemon.pb.go b/components/ws-daemon-api/go/workspace_daemon.pb.go
+index decedbda6..21ef37d37 100644
+--- a/components/ws-daemon-api/go/workspace_daemon.pb.go
++++ b/components/ws-daemon-api/go/workspace_daemon.pb.go
+@@ -829,6 +829,100 @@ func (x *TeardownResponse) GetSuccess() bool {
+ 	return false
+ }
+ 
++type WipingTeardownRequest struct {
++	state         protoimpl.MessageState
++	sizeCache     protoimpl.SizeCache
++	unknownFields protoimpl.UnknownFields
++
++	DoWipe bool `protobuf:"varint,1,opt,name=do_wipe,json=doWipe,proto3" json:"do_wipe,omitempty"`
++}
++
++func (x *WipingTeardownRequest) Reset() {
++	*x = WipingTeardownRequest{}
++	if protoimpl.UnsafeEnabled {
++		mi := &file_workspace_daemon_proto_msgTypes[16]
++		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++		ms.StoreMessageInfo(mi)
++	}
++}
++
++func (x *WipingTeardownRequest) String() string {
++	return protoimpl.X.MessageStringOf(x)
++}
++
++func (*WipingTeardownRequest) ProtoMessage() {}
++
++func (x *WipingTeardownRequest) ProtoReflect() protoreflect.Message {
++	mi := &file_workspace_daemon_proto_msgTypes[16]
++	if protoimpl.UnsafeEnabled && x != nil {
++		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++		if ms.LoadMessageInfo() == nil {
++			ms.StoreMessageInfo(mi)
++		}
++		return ms
++	}
++	return mi.MessageOf(x)
++}
++
++// Deprecated: Use WipingTeardownRequest.ProtoReflect.Descriptor instead.
++func (*WipingTeardownRequest) Descriptor() ([]byte, []int) {
++	return file_workspace_daemon_proto_rawDescGZIP(), []int{16}
++}
++
++func (x *WipingTeardownRequest) GetDoWipe() bool {
++	if x != nil {
++		return x.DoWipe
++	}
++	return false
++}
++
++type WipingTeardownResponse struct {
++	state         protoimpl.MessageState
++	sizeCache     protoimpl.SizeCache
++	unknownFields protoimpl.UnknownFields
++
++	Success bool `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
++}
++
++func (x *WipingTeardownResponse) Reset() {
++	*x = WipingTeardownResponse{}
++	if protoimpl.UnsafeEnabled {
++		mi := &file_workspace_daemon_proto_msgTypes[17]
++		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++		ms.StoreMessageInfo(mi)
++	}
++}
++
++func (x *WipingTeardownResponse) String() string {
++	return protoimpl.X.MessageStringOf(x)
++}
++
++func (*WipingTeardownResponse) ProtoMessage() {}
++
++func (x *WipingTeardownResponse) ProtoReflect() protoreflect.Message {
++	mi := &file_workspace_daemon_proto_msgTypes[17]
++	if protoimpl.UnsafeEnabled && x != nil {
++		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++		if ms.LoadMessageInfo() == nil {
++			ms.StoreMessageInfo(mi)
++		}
++		return ms
++	}
++	return mi.MessageOf(x)
++}
++
++// Deprecated: Use WipingTeardownResponse.ProtoReflect.Descriptor instead.
++func (*WipingTeardownResponse) Descriptor() ([]byte, []int) {
++	return file_workspace_daemon_proto_rawDescGZIP(), []int{17}
++}
++
++func (x *WipingTeardownResponse) GetSuccess() bool {
++	if x != nil {
++		return x.Success
++	}
++	return false
++}
++
+ type SetupPairVethsRequest struct {
+ 	state         protoimpl.MessageState
+ 	sizeCache     protoimpl.SizeCache
+@@ -840,7 +934,7 @@ type SetupPairVethsRequest struct {
+ func (x *SetupPairVethsRequest) Reset() {
+ 	*x = SetupPairVethsRequest{}
+ 	if protoimpl.UnsafeEnabled {
+-		mi := &file_workspace_daemon_proto_msgTypes[16]
++		mi := &file_workspace_daemon_proto_msgTypes[18]
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		ms.StoreMessageInfo(mi)
+ 	}
+@@ -853,7 +947,7 @@ func (x *SetupPairVethsRequest) String() string {
+ func (*SetupPairVethsRequest) ProtoMessage() {}
+ 
+ func (x *SetupPairVethsRequest) ProtoReflect() protoreflect.Message {
+-	mi := &file_workspace_daemon_proto_msgTypes[16]
++	mi := &file_workspace_daemon_proto_msgTypes[18]
+ 	if protoimpl.UnsafeEnabled && x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -866,7 +960,7 @@ func (x *SetupPairVethsRequest) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use SetupPairVethsRequest.ProtoReflect.Descriptor instead.
+ func (*SetupPairVethsRequest) Descriptor() ([]byte, []int) {
+-	return file_workspace_daemon_proto_rawDescGZIP(), []int{16}
++	return file_workspace_daemon_proto_rawDescGZIP(), []int{18}
+ }
+ 
+ func (x *SetupPairVethsRequest) GetPid() int64 {
+@@ -885,7 +979,7 @@ type SetupPairVethsResponse struct {
+ func (x *SetupPairVethsResponse) Reset() {
+ 	*x = SetupPairVethsResponse{}
+ 	if protoimpl.UnsafeEnabled {
+-		mi := &file_workspace_daemon_proto_msgTypes[17]
++		mi := &file_workspace_daemon_proto_msgTypes[19]
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		ms.StoreMessageInfo(mi)
+ 	}
+@@ -898,7 +992,7 @@ func (x *SetupPairVethsResponse) String() string {
+ func (*SetupPairVethsResponse) ProtoMessage() {}
+ 
+ func (x *SetupPairVethsResponse) ProtoReflect() protoreflect.Message {
+-	mi := &file_workspace_daemon_proto_msgTypes[17]
++	mi := &file_workspace_daemon_proto_msgTypes[19]
+ 	if protoimpl.UnsafeEnabled && x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -911,7 +1005,7 @@ func (x *SetupPairVethsResponse) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use SetupPairVethsResponse.ProtoReflect.Descriptor instead.
+ func (*SetupPairVethsResponse) Descriptor() ([]byte, []int) {
+-	return file_workspace_daemon_proto_rawDescGZIP(), []int{17}
++	return file_workspace_daemon_proto_rawDescGZIP(), []int{19}
+ }
+ 
+ type WorkspaceInfoRequest struct {
+@@ -923,7 +1017,7 @@ type WorkspaceInfoRequest struct {
+ func (x *WorkspaceInfoRequest) Reset() {
+ 	*x = WorkspaceInfoRequest{}
+ 	if protoimpl.UnsafeEnabled {
+-		mi := &file_workspace_daemon_proto_msgTypes[18]
++		mi := &file_workspace_daemon_proto_msgTypes[20]
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		ms.StoreMessageInfo(mi)
+ 	}
+@@ -936,7 +1030,7 @@ func (x *WorkspaceInfoRequest) String() string {
+ func (*WorkspaceInfoRequest) ProtoMessage() {}
+ 
+ func (x *WorkspaceInfoRequest) ProtoReflect() protoreflect.Message {
+-	mi := &file_workspace_daemon_proto_msgTypes[18]
++	mi := &file_workspace_daemon_proto_msgTypes[20]
+ 	if protoimpl.UnsafeEnabled && x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -949,7 +1043,7 @@ func (x *WorkspaceInfoRequest) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use WorkspaceInfoRequest.ProtoReflect.Descriptor instead.
+ func (*WorkspaceInfoRequest) Descriptor() ([]byte, []int) {
+-	return file_workspace_daemon_proto_rawDescGZIP(), []int{18}
++	return file_workspace_daemon_proto_rawDescGZIP(), []int{20}
+ }
+ 
+ type WorkspaceInfoResponse struct {
+@@ -963,7 +1057,7 @@ type WorkspaceInfoResponse struct {
+ func (x *WorkspaceInfoResponse) Reset() {
+ 	*x = WorkspaceInfoResponse{}
+ 	if protoimpl.UnsafeEnabled {
+-		mi := &file_workspace_daemon_proto_msgTypes[19]
++		mi := &file_workspace_daemon_proto_msgTypes[21]
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		ms.StoreMessageInfo(mi)
+ 	}
+@@ -976,7 +1070,7 @@ func (x *WorkspaceInfoResponse) String() string {
+ func (*WorkspaceInfoResponse) ProtoMessage() {}
+ 
+ func (x *WorkspaceInfoResponse) ProtoReflect() protoreflect.Message {
+-	mi := &file_workspace_daemon_proto_msgTypes[19]
++	mi := &file_workspace_daemon_proto_msgTypes[21]
+ 	if protoimpl.UnsafeEnabled && x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -989,7 +1083,7 @@ func (x *WorkspaceInfoResponse) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use WorkspaceInfoResponse.ProtoReflect.Descriptor instead.
+ func (*WorkspaceInfoResponse) Descriptor() ([]byte, []int) {
+-	return file_workspace_daemon_proto_rawDescGZIP(), []int{19}
++	return file_workspace_daemon_proto_rawDescGZIP(), []int{21}
+ }
+ 
+ func (x *WorkspaceInfoResponse) GetResources() *Resources {
+@@ -1011,7 +1105,7 @@ type Resources struct {
+ func (x *Resources) Reset() {
+ 	*x = Resources{}
+ 	if protoimpl.UnsafeEnabled {
+-		mi := &file_workspace_daemon_proto_msgTypes[20]
++		mi := &file_workspace_daemon_proto_msgTypes[22]
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		ms.StoreMessageInfo(mi)
+ 	}
+@@ -1024,7 +1118,7 @@ func (x *Resources) String() string {
+ func (*Resources) ProtoMessage() {}
+ 
+ func (x *Resources) ProtoReflect() protoreflect.Message {
+-	mi := &file_workspace_daemon_proto_msgTypes[20]
++	mi := &file_workspace_daemon_proto_msgTypes[22]
+ 	if protoimpl.UnsafeEnabled && x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -1037,7 +1131,7 @@ func (x *Resources) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use Resources.ProtoReflect.Descriptor instead.
+ func (*Resources) Descriptor() ([]byte, []int) {
+-	return file_workspace_daemon_proto_rawDescGZIP(), []int{20}
++	return file_workspace_daemon_proto_rawDescGZIP(), []int{22}
+ }
+ 
+ func (x *Resources) GetCpu() *Cpu {
+@@ -1066,7 +1160,7 @@ type Cpu struct {
+ func (x *Cpu) Reset() {
+ 	*x = Cpu{}
+ 	if protoimpl.UnsafeEnabled {
+-		mi := &file_workspace_daemon_proto_msgTypes[21]
++		mi := &file_workspace_daemon_proto_msgTypes[23]
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		ms.StoreMessageInfo(mi)
+ 	}
+@@ -1079,7 +1173,7 @@ func (x *Cpu) String() string {
+ func (*Cpu) ProtoMessage() {}
+ 
+ func (x *Cpu) ProtoReflect() protoreflect.Message {
+-	mi := &file_workspace_daemon_proto_msgTypes[21]
++	mi := &file_workspace_daemon_proto_msgTypes[23]
+ 	if protoimpl.UnsafeEnabled && x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -1092,7 +1186,7 @@ func (x *Cpu) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use Cpu.ProtoReflect.Descriptor instead.
+ func (*Cpu) Descriptor() ([]byte, []int) {
+-	return file_workspace_daemon_proto_rawDescGZIP(), []int{21}
++	return file_workspace_daemon_proto_rawDescGZIP(), []int{23}
+ }
+ 
+ func (x *Cpu) GetUsed() int64 {
+@@ -1121,7 +1215,7 @@ type Memory struct {
+ func (x *Memory) Reset() {
+ 	*x = Memory{}
+ 	if protoimpl.UnsafeEnabled {
+-		mi := &file_workspace_daemon_proto_msgTypes[22]
++		mi := &file_workspace_daemon_proto_msgTypes[24]
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		ms.StoreMessageInfo(mi)
+ 	}
+@@ -1134,7 +1228,7 @@ func (x *Memory) String() string {
+ func (*Memory) ProtoMessage() {}
+ 
+ func (x *Memory) ProtoReflect() protoreflect.Message {
+-	mi := &file_workspace_daemon_proto_msgTypes[22]
++	mi := &file_workspace_daemon_proto_msgTypes[24]
+ 	if protoimpl.UnsafeEnabled && x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -1147,7 +1241,7 @@ func (x *Memory) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use Memory.ProtoReflect.Descriptor instead.
+ func (*Memory) Descriptor() ([]byte, []int) {
+-	return file_workspace_daemon_proto_rawDescGZIP(), []int{22}
++	return file_workspace_daemon_proto_rawDescGZIP(), []int{24}
+ }
+ 
+ func (x *Memory) GetUsed() int64 {
+@@ -1177,7 +1271,7 @@ type WriteIDMappingRequest_Mapping struct {
+ func (x *WriteIDMappingRequest_Mapping) Reset() {
+ 	*x = WriteIDMappingRequest_Mapping{}
+ 	if protoimpl.UnsafeEnabled {
+-		mi := &file_workspace_daemon_proto_msgTypes[23]
++		mi := &file_workspace_daemon_proto_msgTypes[25]
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		ms.StoreMessageInfo(mi)
+ 	}
+@@ -1190,7 +1284,7 @@ func (x *WriteIDMappingRequest_Mapping) String() string {
+ func (*WriteIDMappingRequest_Mapping) ProtoMessage() {}
+ 
+ func (x *WriteIDMappingRequest_Mapping) ProtoReflect() protoreflect.Message {
+-	mi := &file_workspace_daemon_proto_msgTypes[23]
++	mi := &file_workspace_daemon_proto_msgTypes[25]
+ 	if protoimpl.UnsafeEnabled && x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -1291,93 +1385,104 @@ var file_workspace_daemon_proto_rawDesc = []byte{
+ 	0x6f, 0x77, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x22, 0x2c, 0x0a, 0x10, 0x54, 0x65,
+ 	0x61, 0x72, 0x64, 0x6f, 0x77, 0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x18,
+ 	0x0a, 0x07, 0x73, 0x75, 0x63, 0x63, 0x65, 0x73, 0x73, 0x18, 0x02, 0x20, 0x01, 0x28, 0x08, 0x52,
+-	0x07, 0x73, 0x75, 0x63, 0x63, 0x65, 0x73, 0x73, 0x22, 0x29, 0x0a, 0x15, 0x53, 0x65, 0x74, 0x75,
+-	0x70, 0x50, 0x61, 0x69, 0x72, 0x56, 0x65, 0x74, 0x68, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
+-	0x74, 0x12, 0x10, 0x0a, 0x03, 0x70, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x03, 0x52, 0x03,
+-	0x70, 0x69, 0x64, 0x22, 0x18, 0x0a, 0x16, 0x53, 0x65, 0x74, 0x75, 0x70, 0x50, 0x61, 0x69, 0x72,
+-	0x56, 0x65, 0x74, 0x68, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x16, 0x0a,
+-	0x14, 0x57, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x49, 0x6e, 0x66, 0x6f, 0x52, 0x65,
+-	0x71, 0x75, 0x65, 0x73, 0x74, 0x22, 0x45, 0x0a, 0x15, 0x57, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61,
+-	0x63, 0x65, 0x49, 0x6e, 0x66, 0x6f, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x2c,
+-	0x0a, 0x09, 0x72, 0x65, 0x73, 0x6f, 0x75, 0x72, 0x63, 0x65, 0x73, 0x18, 0x01, 0x20, 0x01, 0x28,
+-	0x0b, 0x32, 0x0e, 0x2e, 0x69, 0x77, 0x73, 0x2e, 0x52, 0x65, 0x73, 0x6f, 0x75, 0x72, 0x63, 0x65,
+-	0x73, 0x52, 0x09, 0x72, 0x65, 0x73, 0x6f, 0x75, 0x72, 0x63, 0x65, 0x73, 0x22, 0x4c, 0x0a, 0x09,
+-	0x52, 0x65, 0x73, 0x6f, 0x75, 0x72, 0x63, 0x65, 0x73, 0x12, 0x1a, 0x0a, 0x03, 0x63, 0x70, 0x75,
+-	0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x08, 0x2e, 0x69, 0x77, 0x73, 0x2e, 0x43, 0x70, 0x75,
+-	0x52, 0x03, 0x63, 0x70, 0x75, 0x12, 0x23, 0x0a, 0x06, 0x6d, 0x65, 0x6d, 0x6f, 0x72, 0x79, 0x18,
+-	0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x0b, 0x2e, 0x69, 0x77, 0x73, 0x2e, 0x4d, 0x65, 0x6d, 0x6f,
+-	0x72, 0x79, 0x52, 0x06, 0x6d, 0x65, 0x6d, 0x6f, 0x72, 0x79, 0x22, 0x2f, 0x0a, 0x03, 0x43, 0x70,
+-	0x75, 0x12, 0x12, 0x0a, 0x04, 0x75, 0x73, 0x65, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x03, 0x52,
+-	0x04, 0x75, 0x73, 0x65, 0x64, 0x12, 0x14, 0x0a, 0x05, 0x6c, 0x69, 0x6d, 0x69, 0x74, 0x18, 0x02,
+-	0x20, 0x01, 0x28, 0x03, 0x52, 0x05, 0x6c, 0x69, 0x6d, 0x69, 0x74, 0x22, 0x32, 0x0a, 0x06, 0x4d,
+-	0x65, 0x6d, 0x6f, 0x72, 0x79, 0x12, 0x12, 0x0a, 0x04, 0x75, 0x73, 0x65, 0x64, 0x18, 0x01, 0x20,
+-	0x01, 0x28, 0x03, 0x52, 0x04, 0x75, 0x73, 0x65, 0x64, 0x12, 0x14, 0x0a, 0x05, 0x6c, 0x69, 0x6d,
+-	0x69, 0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x03, 0x52, 0x05, 0x6c, 0x69, 0x6d, 0x69, 0x74, 0x2a,
+-	0x22, 0x0a, 0x0d, 0x46, 0x53, 0x53, 0x68, 0x69, 0x66, 0x74, 0x4d, 0x65, 0x74, 0x68, 0x6f, 0x64,
+-	0x12, 0x0b, 0x0a, 0x07, 0x53, 0x48, 0x49, 0x46, 0x54, 0x46, 0x53, 0x10, 0x00, 0x22, 0x04, 0x08,
+-	0x01, 0x10, 0x01, 0x32, 0xcc, 0x06, 0x0a, 0x12, 0x49, 0x6e, 0x57, 0x6f, 0x72, 0x6b, 0x73, 0x70,
+-	0x61, 0x63, 0x65, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x12, 0x51, 0x0a, 0x10, 0x50, 0x72,
+-	0x65, 0x70, 0x61, 0x72, 0x65, 0x46, 0x6f, 0x72, 0x55, 0x73, 0x65, 0x72, 0x4e, 0x53, 0x12, 0x1c,
+-	0x2e, 0x69, 0x77, 0x73, 0x2e, 0x50, 0x72, 0x65, 0x70, 0x61, 0x72, 0x65, 0x46, 0x6f, 0x72, 0x55,
+-	0x73, 0x65, 0x72, 0x4e, 0x53, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x1d, 0x2e, 0x69,
+-	0x77, 0x73, 0x2e, 0x50, 0x72, 0x65, 0x70, 0x61, 0x72, 0x65, 0x46, 0x6f, 0x72, 0x55, 0x73, 0x65,
+-	0x72, 0x4e, 0x53, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x4b, 0x0a,
+-	0x0e, 0x57, 0x72, 0x69, 0x74, 0x65, 0x49, 0x44, 0x4d, 0x61, 0x70, 0x70, 0x69, 0x6e, 0x67, 0x12,
+-	0x1a, 0x2e, 0x69, 0x77, 0x73, 0x2e, 0x57, 0x72, 0x69, 0x74, 0x65, 0x49, 0x44, 0x4d, 0x61, 0x70,
+-	0x70, 0x69, 0x6e, 0x67, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x1b, 0x2e, 0x69, 0x77,
+-	0x73, 0x2e, 0x57, 0x72, 0x69, 0x74, 0x65, 0x49, 0x44, 0x4d, 0x61, 0x70, 0x70, 0x69, 0x6e, 0x67,
+-	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x4b, 0x0a, 0x0e, 0x45, 0x76,
+-	0x61, 0x63, 0x75, 0x61, 0x74, 0x65, 0x43, 0x47, 0x72, 0x6f, 0x75, 0x70, 0x12, 0x1a, 0x2e, 0x69,
+-	0x77, 0x73, 0x2e, 0x45, 0x76, 0x61, 0x63, 0x75, 0x61, 0x74, 0x65, 0x43, 0x47, 0x72, 0x6f, 0x75,
+-	0x70, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x1b, 0x2e, 0x69, 0x77, 0x73, 0x2e, 0x45,
+-	0x76, 0x61, 0x63, 0x75, 0x61, 0x74, 0x65, 0x43, 0x47, 0x72, 0x6f, 0x75, 0x70, 0x52, 0x65, 0x73,
+-	0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x3c, 0x0a, 0x09, 0x4d, 0x6f, 0x75, 0x6e, 0x74,
+-	0x50, 0x72, 0x6f, 0x63, 0x12, 0x15, 0x2e, 0x69, 0x77, 0x73, 0x2e, 0x4d, 0x6f, 0x75, 0x6e, 0x74,
+-	0x50, 0x72, 0x6f, 0x63, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x16, 0x2e, 0x69, 0x77,
+-	0x73, 0x2e, 0x4d, 0x6f, 0x75, 0x6e, 0x74, 0x50, 0x72, 0x6f, 0x63, 0x52, 0x65, 0x73, 0x70, 0x6f,
+-	0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x3f, 0x0a, 0x0a, 0x55, 0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x50,
+-	0x72, 0x6f, 0x63, 0x12, 0x16, 0x2e, 0x69, 0x77, 0x73, 0x2e, 0x55, 0x6d, 0x6f, 0x75, 0x6e, 0x74,
+-	0x50, 0x72, 0x6f, 0x63, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x17, 0x2e, 0x69, 0x77,
+-	0x73, 0x2e, 0x55, 0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x50, 0x72, 0x6f, 0x63, 0x52, 0x65, 0x73, 0x70,
+-	0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x3d, 0x0a, 0x0a, 0x4d, 0x6f, 0x75, 0x6e, 0x74, 0x53,
+-	0x79, 0x73, 0x66, 0x73, 0x12, 0x15, 0x2e, 0x69, 0x77, 0x73, 0x2e, 0x4d, 0x6f, 0x75, 0x6e, 0x74,
+-	0x50, 0x72, 0x6f, 0x63, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x16, 0x2e, 0x69, 0x77,
+-	0x73, 0x2e, 0x4d, 0x6f, 0x75, 0x6e, 0x74, 0x50, 0x72, 0x6f, 0x63, 0x52, 0x65, 0x73, 0x70, 0x6f,
+-	0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x40, 0x0a, 0x0b, 0x55, 0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x53,
+-	0x79, 0x73, 0x66, 0x73, 0x12, 0x16, 0x2e, 0x69, 0x77, 0x73, 0x2e, 0x55, 0x6d, 0x6f, 0x75, 0x6e,
+-	0x74, 0x50, 0x72, 0x6f, 0x63, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x17, 0x2e, 0x69,
+-	0x77, 0x73, 0x2e, 0x55, 0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x50, 0x72, 0x6f, 0x63, 0x52, 0x65, 0x73,
+-	0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x39, 0x0a, 0x08, 0x4d, 0x6f, 0x75, 0x6e, 0x74,
+-	0x4e, 0x66, 0x73, 0x12, 0x14, 0x2e, 0x69, 0x77, 0x73, 0x2e, 0x4d, 0x6f, 0x75, 0x6e, 0x74, 0x4e,
+-	0x66, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x15, 0x2e, 0x69, 0x77, 0x73, 0x2e,
+-	0x4d, 0x6f, 0x75, 0x6e, 0x74, 0x4e, 0x66, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65,
+-	0x22, 0x00, 0x12, 0x3c, 0x0a, 0x09, 0x55, 0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x4e, 0x66, 0x73, 0x12,
+-	0x15, 0x2e, 0x69, 0x77, 0x73, 0x2e, 0x55, 0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x4e, 0x66, 0x73, 0x52,
+-	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x16, 0x2e, 0x69, 0x77, 0x73, 0x2e, 0x55, 0x6d, 0x6f,
+-	0x75, 0x6e, 0x74, 0x4e, 0x66, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00,
+-	0x12, 0x39, 0x0a, 0x08, 0x54, 0x65, 0x61, 0x72, 0x64, 0x6f, 0x77, 0x6e, 0x12, 0x14, 0x2e, 0x69,
+-	0x77, 0x73, 0x2e, 0x54, 0x65, 0x61, 0x72, 0x64, 0x6f, 0x77, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65,
+-	0x73, 0x74, 0x1a, 0x15, 0x2e, 0x69, 0x77, 0x73, 0x2e, 0x54, 0x65, 0x61, 0x72, 0x64, 0x6f, 0x77,
+-	0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x4b, 0x0a, 0x0e, 0x53,
+-	0x65, 0x74, 0x75, 0x70, 0x50, 0x61, 0x69, 0x72, 0x56, 0x65, 0x74, 0x68, 0x73, 0x12, 0x1a, 0x2e,
+-	0x69, 0x77, 0x73, 0x2e, 0x53, 0x65, 0x74, 0x75, 0x70, 0x50, 0x61, 0x69, 0x72, 0x56, 0x65, 0x74,
+-	0x68, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x1b, 0x2e, 0x69, 0x77, 0x73, 0x2e,
+-	0x53, 0x65, 0x74, 0x75, 0x70, 0x50, 0x61, 0x69, 0x72, 0x56, 0x65, 0x74, 0x68, 0x73, 0x52, 0x65,
+-	0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x48, 0x0a, 0x0d, 0x57, 0x6f, 0x72, 0x6b,
+-	0x73, 0x70, 0x61, 0x63, 0x65, 0x49, 0x6e, 0x66, 0x6f, 0x12, 0x19, 0x2e, 0x69, 0x77, 0x73, 0x2e,
+-	0x57, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x49, 0x6e, 0x66, 0x6f, 0x52, 0x65, 0x71,
+-	0x75, 0x65, 0x73, 0x74, 0x1a, 0x1a, 0x2e, 0x69, 0x77, 0x73, 0x2e, 0x57, 0x6f, 0x72, 0x6b, 0x73,
+-	0x70, 0x61, 0x63, 0x65, 0x49, 0x6e, 0x66, 0x6f, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65,
+-	0x22, 0x00, 0x32, 0x60, 0x0a, 0x14, 0x57, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x49,
+-	0x6e, 0x66, 0x6f, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x12, 0x48, 0x0a, 0x0d, 0x57, 0x6f,
+-	0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x49, 0x6e, 0x66, 0x6f, 0x12, 0x19, 0x2e, 0x69, 0x77,
+-	0x73, 0x2e, 0x57, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x49, 0x6e, 0x66, 0x6f, 0x52,
+-	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x1a, 0x2e, 0x69, 0x77, 0x73, 0x2e, 0x57, 0x6f, 0x72,
+-	0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x49, 0x6e, 0x66, 0x6f, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e,
+-	0x73, 0x65, 0x22, 0x00, 0x42, 0x2b, 0x5a, 0x29, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63,
+-	0x6f, 0x6d, 0x2f, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2d, 0x69, 0x6f, 0x2f, 0x67, 0x69, 0x74,
+-	0x70, 0x6f, 0x64, 0x2f, 0x77, 0x73, 0x2d, 0x64, 0x61, 0x65, 0x6d, 0x6f, 0x6e, 0x2f, 0x61, 0x70,
+-	0x69, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
++	0x07, 0x73, 0x75, 0x63, 0x63, 0x65, 0x73, 0x73, 0x22, 0x30, 0x0a, 0x15, 0x57, 0x69, 0x70, 0x69,
++	0x6e, 0x67, 0x54, 0x65, 0x61, 0x72, 0x64, 0x6f, 0x77, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
++	0x74, 0x12, 0x17, 0x0a, 0x07, 0x64, 0x6f, 0x5f, 0x77, 0x69, 0x70, 0x65, 0x18, 0x01, 0x20, 0x01,
++	0x28, 0x08, 0x52, 0x06, 0x64, 0x6f, 0x57, 0x69, 0x70, 0x65, 0x22, 0x32, 0x0a, 0x16, 0x57, 0x69,
++	0x70, 0x69, 0x6e, 0x67, 0x54, 0x65, 0x61, 0x72, 0x64, 0x6f, 0x77, 0x6e, 0x52, 0x65, 0x73, 0x70,
++	0x6f, 0x6e, 0x73, 0x65, 0x12, 0x18, 0x0a, 0x07, 0x73, 0x75, 0x63, 0x63, 0x65, 0x73, 0x73, 0x18,
++	0x01, 0x20, 0x01, 0x28, 0x08, 0x52, 0x07, 0x73, 0x75, 0x63, 0x63, 0x65, 0x73, 0x73, 0x22, 0x29,
++	0x0a, 0x15, 0x53, 0x65, 0x74, 0x75, 0x70, 0x50, 0x61, 0x69, 0x72, 0x56, 0x65, 0x74, 0x68, 0x73,
++	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x10, 0x0a, 0x03, 0x70, 0x69, 0x64, 0x18, 0x01,
++	0x20, 0x01, 0x28, 0x03, 0x52, 0x03, 0x70, 0x69, 0x64, 0x22, 0x18, 0x0a, 0x16, 0x53, 0x65, 0x74,
++	0x75, 0x70, 0x50, 0x61, 0x69, 0x72, 0x56, 0x65, 0x74, 0x68, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f,
++	0x6e, 0x73, 0x65, 0x22, 0x16, 0x0a, 0x14, 0x57, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65,
++	0x49, 0x6e, 0x66, 0x6f, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x22, 0x45, 0x0a, 0x15, 0x57,
++	0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x49, 0x6e, 0x66, 0x6f, 0x52, 0x65, 0x73, 0x70,
++	0x6f, 0x6e, 0x73, 0x65, 0x12, 0x2c, 0x0a, 0x09, 0x72, 0x65, 0x73, 0x6f, 0x75, 0x72, 0x63, 0x65,
++	0x73, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x0e, 0x2e, 0x69, 0x77, 0x73, 0x2e, 0x52, 0x65,
++	0x73, 0x6f, 0x75, 0x72, 0x63, 0x65, 0x73, 0x52, 0x09, 0x72, 0x65, 0x73, 0x6f, 0x75, 0x72, 0x63,
++	0x65, 0x73, 0x22, 0x4c, 0x0a, 0x09, 0x52, 0x65, 0x73, 0x6f, 0x75, 0x72, 0x63, 0x65, 0x73, 0x12,
++	0x1a, 0x0a, 0x03, 0x63, 0x70, 0x75, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x08, 0x2e, 0x69,
++	0x77, 0x73, 0x2e, 0x43, 0x70, 0x75, 0x52, 0x03, 0x63, 0x70, 0x75, 0x12, 0x23, 0x0a, 0x06, 0x6d,
++	0x65, 0x6d, 0x6f, 0x72, 0x79, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x0b, 0x2e, 0x69, 0x77,
++	0x73, 0x2e, 0x4d, 0x65, 0x6d, 0x6f, 0x72, 0x79, 0x52, 0x06, 0x6d, 0x65, 0x6d, 0x6f, 0x72, 0x79,
++	0x22, 0x2f, 0x0a, 0x03, 0x43, 0x70, 0x75, 0x12, 0x12, 0x0a, 0x04, 0x75, 0x73, 0x65, 0x64, 0x18,
++	0x01, 0x20, 0x01, 0x28, 0x03, 0x52, 0x04, 0x75, 0x73, 0x65, 0x64, 0x12, 0x14, 0x0a, 0x05, 0x6c,
++	0x69, 0x6d, 0x69, 0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x03, 0x52, 0x05, 0x6c, 0x69, 0x6d, 0x69,
++	0x74, 0x22, 0x32, 0x0a, 0x06, 0x4d, 0x65, 0x6d, 0x6f, 0x72, 0x79, 0x12, 0x12, 0x0a, 0x04, 0x75,
++	0x73, 0x65, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x03, 0x52, 0x04, 0x75, 0x73, 0x65, 0x64, 0x12,
++	0x14, 0x0a, 0x05, 0x6c, 0x69, 0x6d, 0x69, 0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x03, 0x52, 0x05,
++	0x6c, 0x69, 0x6d, 0x69, 0x74, 0x2a, 0x22, 0x0a, 0x0d, 0x46, 0x53, 0x53, 0x68, 0x69, 0x66, 0x74,
++	0x4d, 0x65, 0x74, 0x68, 0x6f, 0x64, 0x12, 0x0b, 0x0a, 0x07, 0x53, 0x48, 0x49, 0x46, 0x54, 0x46,
++	0x53, 0x10, 0x00, 0x22, 0x04, 0x08, 0x01, 0x10, 0x01, 0x32, 0x99, 0x07, 0x0a, 0x12, 0x49, 0x6e,
++	0x57, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65,
++	0x12, 0x51, 0x0a, 0x10, 0x50, 0x72, 0x65, 0x70, 0x61, 0x72, 0x65, 0x46, 0x6f, 0x72, 0x55, 0x73,
++	0x65, 0x72, 0x4e, 0x53, 0x12, 0x1c, 0x2e, 0x69, 0x77, 0x73, 0x2e, 0x50, 0x72, 0x65, 0x70, 0x61,
++	0x72, 0x65, 0x46, 0x6f, 0x72, 0x55, 0x73, 0x65, 0x72, 0x4e, 0x53, 0x52, 0x65, 0x71, 0x75, 0x65,
++	0x73, 0x74, 0x1a, 0x1d, 0x2e, 0x69, 0x77, 0x73, 0x2e, 0x50, 0x72, 0x65, 0x70, 0x61, 0x72, 0x65,
++	0x46, 0x6f, 0x72, 0x55, 0x73, 0x65, 0x72, 0x4e, 0x53, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73,
++	0x65, 0x22, 0x00, 0x12, 0x4b, 0x0a, 0x0e, 0x57, 0x72, 0x69, 0x74, 0x65, 0x49, 0x44, 0x4d, 0x61,
++	0x70, 0x70, 0x69, 0x6e, 0x67, 0x12, 0x1a, 0x2e, 0x69, 0x77, 0x73, 0x2e, 0x57, 0x72, 0x69, 0x74,
++	0x65, 0x49, 0x44, 0x4d, 0x61, 0x70, 0x70, 0x69, 0x6e, 0x67, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
++	0x74, 0x1a, 0x1b, 0x2e, 0x69, 0x77, 0x73, 0x2e, 0x57, 0x72, 0x69, 0x74, 0x65, 0x49, 0x44, 0x4d,
++	0x61, 0x70, 0x70, 0x69, 0x6e, 0x67, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00,
++	0x12, 0x4b, 0x0a, 0x0e, 0x45, 0x76, 0x61, 0x63, 0x75, 0x61, 0x74, 0x65, 0x43, 0x47, 0x72, 0x6f,
++	0x75, 0x70, 0x12, 0x1a, 0x2e, 0x69, 0x77, 0x73, 0x2e, 0x45, 0x76, 0x61, 0x63, 0x75, 0x61, 0x74,
++	0x65, 0x43, 0x47, 0x72, 0x6f, 0x75, 0x70, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x1b,
++	0x2e, 0x69, 0x77, 0x73, 0x2e, 0x45, 0x76, 0x61, 0x63, 0x75, 0x61, 0x74, 0x65, 0x43, 0x47, 0x72,
++	0x6f, 0x75, 0x70, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x3c, 0x0a,
++	0x09, 0x4d, 0x6f, 0x75, 0x6e, 0x74, 0x50, 0x72, 0x6f, 0x63, 0x12, 0x15, 0x2e, 0x69, 0x77, 0x73,
++	0x2e, 0x4d, 0x6f, 0x75, 0x6e, 0x74, 0x50, 0x72, 0x6f, 0x63, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
++	0x74, 0x1a, 0x16, 0x2e, 0x69, 0x77, 0x73, 0x2e, 0x4d, 0x6f, 0x75, 0x6e, 0x74, 0x50, 0x72, 0x6f,
++	0x63, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x3f, 0x0a, 0x0a, 0x55,
++	0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x50, 0x72, 0x6f, 0x63, 0x12, 0x16, 0x2e, 0x69, 0x77, 0x73, 0x2e,
++	0x55, 0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x50, 0x72, 0x6f, 0x63, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
++	0x74, 0x1a, 0x17, 0x2e, 0x69, 0x77, 0x73, 0x2e, 0x55, 0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x50, 0x72,
++	0x6f, 0x63, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x3d, 0x0a, 0x0a,
++	0x4d, 0x6f, 0x75, 0x6e, 0x74, 0x53, 0x79, 0x73, 0x66, 0x73, 0x12, 0x15, 0x2e, 0x69, 0x77, 0x73,
++	0x2e, 0x4d, 0x6f, 0x75, 0x6e, 0x74, 0x50, 0x72, 0x6f, 0x63, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
++	0x74, 0x1a, 0x16, 0x2e, 0x69, 0x77, 0x73, 0x2e, 0x4d, 0x6f, 0x75, 0x6e, 0x74, 0x50, 0x72, 0x6f,
++	0x63, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x40, 0x0a, 0x0b, 0x55,
++	0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x53, 0x79, 0x73, 0x66, 0x73, 0x12, 0x16, 0x2e, 0x69, 0x77, 0x73,
++	0x2e, 0x55, 0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x50, 0x72, 0x6f, 0x63, 0x52, 0x65, 0x71, 0x75, 0x65,
++	0x73, 0x74, 0x1a, 0x17, 0x2e, 0x69, 0x77, 0x73, 0x2e, 0x55, 0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x50,
++	0x72, 0x6f, 0x63, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x39, 0x0a,
++	0x08, 0x4d, 0x6f, 0x75, 0x6e, 0x74, 0x4e, 0x66, 0x73, 0x12, 0x14, 0x2e, 0x69, 0x77, 0x73, 0x2e,
++	0x4d, 0x6f, 0x75, 0x6e, 0x74, 0x4e, 0x66, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a,
++	0x15, 0x2e, 0x69, 0x77, 0x73, 0x2e, 0x4d, 0x6f, 0x75, 0x6e, 0x74, 0x4e, 0x66, 0x73, 0x52, 0x65,
++	0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x3c, 0x0a, 0x09, 0x55, 0x6d, 0x6f, 0x75,
++	0x6e, 0x74, 0x4e, 0x66, 0x73, 0x12, 0x15, 0x2e, 0x69, 0x77, 0x73, 0x2e, 0x55, 0x6d, 0x6f, 0x75,
++	0x6e, 0x74, 0x4e, 0x66, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x16, 0x2e, 0x69,
++	0x77, 0x73, 0x2e, 0x55, 0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x4e, 0x66, 0x73, 0x52, 0x65, 0x73, 0x70,
++	0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x39, 0x0a, 0x08, 0x54, 0x65, 0x61, 0x72, 0x64, 0x6f,
++	0x77, 0x6e, 0x12, 0x14, 0x2e, 0x69, 0x77, 0x73, 0x2e, 0x54, 0x65, 0x61, 0x72, 0x64, 0x6f, 0x77,
++	0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x15, 0x2e, 0x69, 0x77, 0x73, 0x2e, 0x54,
++	0x65, 0x61, 0x72, 0x64, 0x6f, 0x77, 0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22,
++	0x00, 0x12, 0x4b, 0x0a, 0x0e, 0x57, 0x69, 0x70, 0x69, 0x6e, 0x67, 0x54, 0x65, 0x61, 0x72, 0x64,
++	0x6f, 0x77, 0x6e, 0x12, 0x1a, 0x2e, 0x69, 0x77, 0x73, 0x2e, 0x57, 0x69, 0x70, 0x69, 0x6e, 0x67,
++	0x54, 0x65, 0x61, 0x72, 0x64, 0x6f, 0x77, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a,
++	0x1b, 0x2e, 0x69, 0x77, 0x73, 0x2e, 0x57, 0x69, 0x70, 0x69, 0x6e, 0x67, 0x54, 0x65, 0x61, 0x72,
++	0x64, 0x6f, 0x77, 0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x4b,
++	0x0a, 0x0e, 0x53, 0x65, 0x74, 0x75, 0x70, 0x50, 0x61, 0x69, 0x72, 0x56, 0x65, 0x74, 0x68, 0x73,
++	0x12, 0x1a, 0x2e, 0x69, 0x77, 0x73, 0x2e, 0x53, 0x65, 0x74, 0x75, 0x70, 0x50, 0x61, 0x69, 0x72,
++	0x56, 0x65, 0x74, 0x68, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x1b, 0x2e, 0x69,
++	0x77, 0x73, 0x2e, 0x53, 0x65, 0x74, 0x75, 0x70, 0x50, 0x61, 0x69, 0x72, 0x56, 0x65, 0x74, 0x68,
++	0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x48, 0x0a, 0x0d, 0x57,
++	0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x49, 0x6e, 0x66, 0x6f, 0x12, 0x19, 0x2e, 0x69,
++	0x77, 0x73, 0x2e, 0x57, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x49, 0x6e, 0x66, 0x6f,
++	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x1a, 0x2e, 0x69, 0x77, 0x73, 0x2e, 0x57, 0x6f,
++	0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x49, 0x6e, 0x66, 0x6f, 0x52, 0x65, 0x73, 0x70, 0x6f,
++	0x6e, 0x73, 0x65, 0x22, 0x00, 0x32, 0x60, 0x0a, 0x14, 0x57, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61,
++	0x63, 0x65, 0x49, 0x6e, 0x66, 0x6f, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x12, 0x48, 0x0a,
++	0x0d, 0x57, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x49, 0x6e, 0x66, 0x6f, 0x12, 0x19,
++	0x2e, 0x69, 0x77, 0x73, 0x2e, 0x57, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x49, 0x6e,
++	0x66, 0x6f, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x1a, 0x2e, 0x69, 0x77, 0x73, 0x2e,
++	0x57, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x49, 0x6e, 0x66, 0x6f, 0x52, 0x65, 0x73,
++	0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x42, 0x2b, 0x5a, 0x29, 0x67, 0x69, 0x74, 0x68, 0x75,
++	0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2d, 0x69, 0x6f, 0x2f,
++	0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2f, 0x77, 0x73, 0x2d, 0x64, 0x61, 0x65, 0x6d, 0x6f, 0x6e,
++	0x2f, 0x61, 0x70, 0x69, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+ }
+ 
+ var (
+@@ -1393,7 +1498,7 @@ func file_workspace_daemon_proto_rawDescGZIP() []byte {
+ }
+ 
+ var file_workspace_daemon_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+-var file_workspace_daemon_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
++var file_workspace_daemon_proto_msgTypes = make([]protoimpl.MessageInfo, 26)
+ var file_workspace_daemon_proto_goTypes = []interface{}{
+ 	(FSShiftMethod)(0),                    // 0: iws.FSShiftMethod
+ 	(*PrepareForUserNSRequest)(nil),       // 1: iws.PrepareForUserNSRequest
+@@ -1412,21 +1517,23 @@ var file_workspace_daemon_proto_goTypes = []interface{}{
+ 	(*UmountNfsResponse)(nil),             // 14: iws.UmountNfsResponse
+ 	(*TeardownRequest)(nil),               // 15: iws.TeardownRequest
+ 	(*TeardownResponse)(nil),              // 16: iws.TeardownResponse
+-	(*SetupPairVethsRequest)(nil),         // 17: iws.SetupPairVethsRequest
+-	(*SetupPairVethsResponse)(nil),        // 18: iws.SetupPairVethsResponse
+-	(*WorkspaceInfoRequest)(nil),          // 19: iws.WorkspaceInfoRequest
+-	(*WorkspaceInfoResponse)(nil),         // 20: iws.WorkspaceInfoResponse
+-	(*Resources)(nil),                     // 21: iws.Resources
+-	(*Cpu)(nil),                           // 22: iws.Cpu
+-	(*Memory)(nil),                        // 23: iws.Memory
+-	(*WriteIDMappingRequest_Mapping)(nil), // 24: iws.WriteIDMappingRequest.Mapping
++	(*WipingTeardownRequest)(nil),         // 17: iws.WipingTeardownRequest
++	(*WipingTeardownResponse)(nil),        // 18: iws.WipingTeardownResponse
++	(*SetupPairVethsRequest)(nil),         // 19: iws.SetupPairVethsRequest
++	(*SetupPairVethsResponse)(nil),        // 20: iws.SetupPairVethsResponse
++	(*WorkspaceInfoRequest)(nil),          // 21: iws.WorkspaceInfoRequest
++	(*WorkspaceInfoResponse)(nil),         // 22: iws.WorkspaceInfoResponse
++	(*Resources)(nil),                     // 23: iws.Resources
++	(*Cpu)(nil),                           // 24: iws.Cpu
++	(*Memory)(nil),                        // 25: iws.Memory
++	(*WriteIDMappingRequest_Mapping)(nil), // 26: iws.WriteIDMappingRequest.Mapping
+ }
+ var file_workspace_daemon_proto_depIdxs = []int32{
+ 	0,  // 0: iws.PrepareForUserNSResponse.fs_shift:type_name -> iws.FSShiftMethod
+-	24, // 1: iws.WriteIDMappingRequest.mapping:type_name -> iws.WriteIDMappingRequest.Mapping
+-	21, // 2: iws.WorkspaceInfoResponse.resources:type_name -> iws.Resources
+-	22, // 3: iws.Resources.cpu:type_name -> iws.Cpu
+-	23, // 4: iws.Resources.memory:type_name -> iws.Memory
++	26, // 1: iws.WriteIDMappingRequest.mapping:type_name -> iws.WriteIDMappingRequest.Mapping
++	23, // 2: iws.WorkspaceInfoResponse.resources:type_name -> iws.Resources
++	24, // 3: iws.Resources.cpu:type_name -> iws.Cpu
++	25, // 4: iws.Resources.memory:type_name -> iws.Memory
+ 	1,  // 5: iws.InWorkspaceService.PrepareForUserNS:input_type -> iws.PrepareForUserNSRequest
+ 	4,  // 6: iws.InWorkspaceService.WriteIDMapping:input_type -> iws.WriteIDMappingRequest
+ 	5,  // 7: iws.InWorkspaceService.EvacuateCGroup:input_type -> iws.EvacuateCGroupRequest
+@@ -1437,24 +1544,26 @@ var file_workspace_daemon_proto_depIdxs = []int32{
+ 	11, // 12: iws.InWorkspaceService.MountNfs:input_type -> iws.MountNfsRequest
+ 	13, // 13: iws.InWorkspaceService.UmountNfs:input_type -> iws.UmountNfsRequest
+ 	15, // 14: iws.InWorkspaceService.Teardown:input_type -> iws.TeardownRequest
+-	17, // 15: iws.InWorkspaceService.SetupPairVeths:input_type -> iws.SetupPairVethsRequest
+-	19, // 16: iws.InWorkspaceService.WorkspaceInfo:input_type -> iws.WorkspaceInfoRequest
+-	19, // 17: iws.WorkspaceInfoService.WorkspaceInfo:input_type -> iws.WorkspaceInfoRequest
+-	2,  // 18: iws.InWorkspaceService.PrepareForUserNS:output_type -> iws.PrepareForUserNSResponse
+-	3,  // 19: iws.InWorkspaceService.WriteIDMapping:output_type -> iws.WriteIDMappingResponse
+-	6,  // 20: iws.InWorkspaceService.EvacuateCGroup:output_type -> iws.EvacuateCGroupResponse
+-	8,  // 21: iws.InWorkspaceService.MountProc:output_type -> iws.MountProcResponse
+-	10, // 22: iws.InWorkspaceService.UmountProc:output_type -> iws.UmountProcResponse
+-	8,  // 23: iws.InWorkspaceService.MountSysfs:output_type -> iws.MountProcResponse
+-	10, // 24: iws.InWorkspaceService.UmountSysfs:output_type -> iws.UmountProcResponse
+-	12, // 25: iws.InWorkspaceService.MountNfs:output_type -> iws.MountNfsResponse
+-	14, // 26: iws.InWorkspaceService.UmountNfs:output_type -> iws.UmountNfsResponse
+-	16, // 27: iws.InWorkspaceService.Teardown:output_type -> iws.TeardownResponse
+-	18, // 28: iws.InWorkspaceService.SetupPairVeths:output_type -> iws.SetupPairVethsResponse
+-	20, // 29: iws.InWorkspaceService.WorkspaceInfo:output_type -> iws.WorkspaceInfoResponse
+-	20, // 30: iws.WorkspaceInfoService.WorkspaceInfo:output_type -> iws.WorkspaceInfoResponse
+-	18, // [18:31] is the sub-list for method output_type
+-	5,  // [5:18] is the sub-list for method input_type
++	17, // 15: iws.InWorkspaceService.WipingTeardown:input_type -> iws.WipingTeardownRequest
++	19, // 16: iws.InWorkspaceService.SetupPairVeths:input_type -> iws.SetupPairVethsRequest
++	21, // 17: iws.InWorkspaceService.WorkspaceInfo:input_type -> iws.WorkspaceInfoRequest
++	21, // 18: iws.WorkspaceInfoService.WorkspaceInfo:input_type -> iws.WorkspaceInfoRequest
++	2,  // 19: iws.InWorkspaceService.PrepareForUserNS:output_type -> iws.PrepareForUserNSResponse
++	3,  // 20: iws.InWorkspaceService.WriteIDMapping:output_type -> iws.WriteIDMappingResponse
++	6,  // 21: iws.InWorkspaceService.EvacuateCGroup:output_type -> iws.EvacuateCGroupResponse
++	8,  // 22: iws.InWorkspaceService.MountProc:output_type -> iws.MountProcResponse
++	10, // 23: iws.InWorkspaceService.UmountProc:output_type -> iws.UmountProcResponse
++	8,  // 24: iws.InWorkspaceService.MountSysfs:output_type -> iws.MountProcResponse
++	10, // 25: iws.InWorkspaceService.UmountSysfs:output_type -> iws.UmountProcResponse
++	12, // 26: iws.InWorkspaceService.MountNfs:output_type -> iws.MountNfsResponse
++	14, // 27: iws.InWorkspaceService.UmountNfs:output_type -> iws.UmountNfsResponse
++	16, // 28: iws.InWorkspaceService.Teardown:output_type -> iws.TeardownResponse
++	18, // 29: iws.InWorkspaceService.WipingTeardown:output_type -> iws.WipingTeardownResponse
++	20, // 30: iws.InWorkspaceService.SetupPairVeths:output_type -> iws.SetupPairVethsResponse
++	22, // 31: iws.InWorkspaceService.WorkspaceInfo:output_type -> iws.WorkspaceInfoResponse
++	22, // 32: iws.WorkspaceInfoService.WorkspaceInfo:output_type -> iws.WorkspaceInfoResponse
++	19, // [19:33] is the sub-list for method output_type
++	5,  // [5:19] is the sub-list for method input_type
+ 	5,  // [5:5] is the sub-list for extension type_name
+ 	5,  // [5:5] is the sub-list for extension extendee
+ 	0,  // [0:5] is the sub-list for field type_name
+@@ -1659,7 +1768,7 @@ func file_workspace_daemon_proto_init() {
+ 			}
+ 		}
+ 		file_workspace_daemon_proto_msgTypes[16].Exporter = func(v interface{}, i int) interface{} {
+-			switch v := v.(*SetupPairVethsRequest); i {
++			switch v := v.(*WipingTeardownRequest); i {
+ 			case 0:
+ 				return &v.state
+ 			case 1:
+@@ -1671,7 +1780,7 @@ func file_workspace_daemon_proto_init() {
+ 			}
+ 		}
+ 		file_workspace_daemon_proto_msgTypes[17].Exporter = func(v interface{}, i int) interface{} {
+-			switch v := v.(*SetupPairVethsResponse); i {
++			switch v := v.(*WipingTeardownResponse); i {
+ 			case 0:
+ 				return &v.state
+ 			case 1:
+@@ -1683,7 +1792,7 @@ func file_workspace_daemon_proto_init() {
+ 			}
+ 		}
+ 		file_workspace_daemon_proto_msgTypes[18].Exporter = func(v interface{}, i int) interface{} {
+-			switch v := v.(*WorkspaceInfoRequest); i {
++			switch v := v.(*SetupPairVethsRequest); i {
+ 			case 0:
+ 				return &v.state
+ 			case 1:
+@@ -1695,7 +1804,7 @@ func file_workspace_daemon_proto_init() {
+ 			}
+ 		}
+ 		file_workspace_daemon_proto_msgTypes[19].Exporter = func(v interface{}, i int) interface{} {
+-			switch v := v.(*WorkspaceInfoResponse); i {
++			switch v := v.(*SetupPairVethsResponse); i {
+ 			case 0:
+ 				return &v.state
+ 			case 1:
+@@ -1707,7 +1816,7 @@ func file_workspace_daemon_proto_init() {
+ 			}
+ 		}
+ 		file_workspace_daemon_proto_msgTypes[20].Exporter = func(v interface{}, i int) interface{} {
+-			switch v := v.(*Resources); i {
++			switch v := v.(*WorkspaceInfoRequest); i {
+ 			case 0:
+ 				return &v.state
+ 			case 1:
+@@ -1719,7 +1828,7 @@ func file_workspace_daemon_proto_init() {
+ 			}
+ 		}
+ 		file_workspace_daemon_proto_msgTypes[21].Exporter = func(v interface{}, i int) interface{} {
+-			switch v := v.(*Cpu); i {
++			switch v := v.(*WorkspaceInfoResponse); i {
+ 			case 0:
+ 				return &v.state
+ 			case 1:
+@@ -1731,7 +1840,7 @@ func file_workspace_daemon_proto_init() {
+ 			}
+ 		}
+ 		file_workspace_daemon_proto_msgTypes[22].Exporter = func(v interface{}, i int) interface{} {
+-			switch v := v.(*Memory); i {
++			switch v := v.(*Resources); i {
+ 			case 0:
+ 				return &v.state
+ 			case 1:
+@@ -1743,6 +1852,30 @@ func file_workspace_daemon_proto_init() {
+ 			}
+ 		}
+ 		file_workspace_daemon_proto_msgTypes[23].Exporter = func(v interface{}, i int) interface{} {
++			switch v := v.(*Cpu); i {
++			case 0:
++				return &v.state
++			case 1:
++				return &v.sizeCache
++			case 2:
++				return &v.unknownFields
++			default:
++				return nil
++			}
++		}
++		file_workspace_daemon_proto_msgTypes[24].Exporter = func(v interface{}, i int) interface{} {
++			switch v := v.(*Memory); i {
++			case 0:
++				return &v.state
++			case 1:
++				return &v.sizeCache
++			case 2:
++				return &v.unknownFields
++			default:
++				return nil
++			}
++		}
++		file_workspace_daemon_proto_msgTypes[25].Exporter = func(v interface{}, i int) interface{} {
+ 			switch v := v.(*WriteIDMappingRequest_Mapping); i {
+ 			case 0:
+ 				return &v.state
+@@ -1761,7 +1894,7 @@ func file_workspace_daemon_proto_init() {
+ 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
+ 			RawDescriptor: file_workspace_daemon_proto_rawDesc,
+ 			NumEnums:      1,
+-			NumMessages:   24,
++			NumMessages:   26,
+ 			NumExtensions: 0,
+ 			NumServices:   2,
+ 		},
+diff --git a/components/ws-daemon-api/go/workspace_daemon_grpc.pb.go b/components/ws-daemon-api/go/workspace_daemon_grpc.pb.go
+index 80bceecc8..e16c065c2 100644
+--- a/components/ws-daemon-api/go/workspace_daemon_grpc.pb.go
++++ b/components/ws-daemon-api/go/workspace_daemon_grpc.pb.go
+@@ -56,17 +56,19 @@ type InWorkspaceServiceClient interface {
+ 	// The PID must be in the PID namespace of the workspace container.
+ 	// The path is relative to the mount namespace of the PID.
+ 	UmountSysfs(ctx context.Context, in *UmountProcRequest, opts ...grpc.CallOption) (*UmountProcResponse, error)
+-	// UmountSysfs unmounts a masked sysfs from the container's rootfs.
++	// MountNfs mounts a nfs share into the container's rootfs.
+ 	// The PID must be in the PID namespace of the workspace container.
+ 	// The path is relative to the mount namespace of the PID.
+ 	MountNfs(ctx context.Context, in *MountNfsRequest, opts ...grpc.CallOption) (*MountNfsResponse, error)
+-	// UmountSysfs unmounts a masked sysfs from the container's rootfs.
++	// UmountNfs unmounts a nfs share from the container's rootfs.
+ 	// The PID must be in the PID namespace of the workspace container.
+ 	// The path is relative to the mount namespace of the PID.
+ 	UmountNfs(ctx context.Context, in *UmountNfsRequest, opts ...grpc.CallOption) (*UmountNfsResponse, error)
+ 	// Teardown prepares workspace content backups and unmounts shiftfs mounts. The canary is supposed to be triggered
+ 	// when the workspace is about to shut down, e.g. using the PreStop hook of a Kubernetes container.
+ 	Teardown(ctx context.Context, in *TeardownRequest, opts ...grpc.CallOption) (*TeardownResponse, error)
++	// WipingTeardown undoes everything PrepareForUserNS does, especially unmounts shiftfs mounts
++	WipingTeardown(ctx context.Context, in *WipingTeardownRequest, opts ...grpc.CallOption) (*WipingTeardownResponse, error)
+ 	// Set up a pair of veths that interconnect the specified PID and the workspace container's network namespace.
+ 	SetupPairVeths(ctx context.Context, in *SetupPairVethsRequest, opts ...grpc.CallOption) (*SetupPairVethsResponse, error)
+ 	// Get information about the workspace
+@@ -171,6 +173,15 @@ func (c *inWorkspaceServiceClient) Teardown(ctx context.Context, in *TeardownReq
+ 	return out, nil
+ }
+ 
++func (c *inWorkspaceServiceClient) WipingTeardown(ctx context.Context, in *WipingTeardownRequest, opts ...grpc.CallOption) (*WipingTeardownResponse, error) {
++	out := new(WipingTeardownResponse)
++	err := c.cc.Invoke(ctx, "/iws.InWorkspaceService/WipingTeardown", in, out, opts...)
++	if err != nil {
++		return nil, err
++	}
++	return out, nil
++}
++
+ func (c *inWorkspaceServiceClient) SetupPairVeths(ctx context.Context, in *SetupPairVethsRequest, opts ...grpc.CallOption) (*SetupPairVethsResponse, error) {
+ 	out := new(SetupPairVethsResponse)
+ 	err := c.cc.Invoke(ctx, "/iws.InWorkspaceService/SetupPairVeths", in, out, opts...)
+@@ -223,17 +234,19 @@ type InWorkspaceServiceServer interface {
+ 	// The PID must be in the PID namespace of the workspace container.
+ 	// The path is relative to the mount namespace of the PID.
+ 	UmountSysfs(context.Context, *UmountProcRequest) (*UmountProcResponse, error)
+-	// UmountSysfs unmounts a masked sysfs from the container's rootfs.
++	// MountNfs mounts a nfs share into the container's rootfs.
+ 	// The PID must be in the PID namespace of the workspace container.
+ 	// The path is relative to the mount namespace of the PID.
+ 	MountNfs(context.Context, *MountNfsRequest) (*MountNfsResponse, error)
+-	// UmountSysfs unmounts a masked sysfs from the container's rootfs.
++	// UmountNfs unmounts a nfs share from the container's rootfs.
+ 	// The PID must be in the PID namespace of the workspace container.
+ 	// The path is relative to the mount namespace of the PID.
+ 	UmountNfs(context.Context, *UmountNfsRequest) (*UmountNfsResponse, error)
+ 	// Teardown prepares workspace content backups and unmounts shiftfs mounts. The canary is supposed to be triggered
+ 	// when the workspace is about to shut down, e.g. using the PreStop hook of a Kubernetes container.
+ 	Teardown(context.Context, *TeardownRequest) (*TeardownResponse, error)
++	// WipingTeardown undoes everything PrepareForUserNS does, especially unmounts shiftfs mounts
++	WipingTeardown(context.Context, *WipingTeardownRequest) (*WipingTeardownResponse, error)
+ 	// Set up a pair of veths that interconnect the specified PID and the workspace container's network namespace.
+ 	SetupPairVeths(context.Context, *SetupPairVethsRequest) (*SetupPairVethsResponse, error)
+ 	// Get information about the workspace
+@@ -275,6 +288,9 @@ func (UnimplementedInWorkspaceServiceServer) UmountNfs(context.Context, *UmountN
+ func (UnimplementedInWorkspaceServiceServer) Teardown(context.Context, *TeardownRequest) (*TeardownResponse, error) {
+ 	return nil, status.Errorf(codes.Unimplemented, "method Teardown not implemented")
+ }
++func (UnimplementedInWorkspaceServiceServer) WipingTeardown(context.Context, *WipingTeardownRequest) (*WipingTeardownResponse, error) {
++	return nil, status.Errorf(codes.Unimplemented, "method WipingTeardown not implemented")
++}
+ func (UnimplementedInWorkspaceServiceServer) SetupPairVeths(context.Context, *SetupPairVethsRequest) (*SetupPairVethsResponse, error) {
+ 	return nil, status.Errorf(codes.Unimplemented, "method SetupPairVeths not implemented")
+ }
+@@ -474,6 +490,24 @@ func _InWorkspaceService_Teardown_Handler(srv interface{}, ctx context.Context,
+ 	return interceptor(ctx, in, info, handler)
+ }
+ 
++func _InWorkspaceService_WipingTeardown_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
++	in := new(WipingTeardownRequest)
++	if err := dec(in); err != nil {
++		return nil, err
++	}
++	if interceptor == nil {
++		return srv.(InWorkspaceServiceServer).WipingTeardown(ctx, in)
++	}
++	info := &grpc.UnaryServerInfo{
++		Server:     srv,
++		FullMethod: "/iws.InWorkspaceService/WipingTeardown",
++	}
++	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
++		return srv.(InWorkspaceServiceServer).WipingTeardown(ctx, req.(*WipingTeardownRequest))
++	}
++	return interceptor(ctx, in, info, handler)
++}
++
+ func _InWorkspaceService_SetupPairVeths_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+ 	in := new(SetupPairVethsRequest)
+ 	if err := dec(in); err != nil {
+@@ -557,6 +591,10 @@ var InWorkspaceService_ServiceDesc = grpc.ServiceDesc{
+ 			MethodName: "Teardown",
+ 			Handler:    _InWorkspaceService_Teardown_Handler,
+ 		},
++		{
++			MethodName: "WipingTeardown",
++			Handler:    _InWorkspaceService_WipingTeardown_Handler,
++		},
+ 		{
+ 			MethodName: "SetupPairVeths",
+ 			Handler:    _InWorkspaceService_SetupPairVeths_Handler,
+diff --git a/components/ws-daemon-api/typescript/src/workspace_daemon_grpc_pb.d.ts b/components/ws-daemon-api/typescript/src/workspace_daemon_grpc_pb.d.ts
+index 259582456..4043ed3b3 100644
+--- a/components/ws-daemon-api/typescript/src/workspace_daemon_grpc_pb.d.ts
++++ b/components/ws-daemon-api/typescript/src/workspace_daemon_grpc_pb.d.ts
+@@ -24,6 +24,7 @@ interface IInWorkspaceServiceService extends grpc.ServiceDefinition<grpc.Untyped
+     mountNfs: IInWorkspaceServiceService_IMountNfs;
+     umountNfs: IInWorkspaceServiceService_IUmountNfs;
+     teardown: IInWorkspaceServiceService_ITeardown;
++    wipingTeardown: IInWorkspaceServiceService_IWipingTeardown;
+     setupPairVeths: IInWorkspaceServiceService_ISetupPairVeths;
+     workspaceInfo: IInWorkspaceServiceService_IWorkspaceInfo;
+ }
+@@ -118,6 +119,15 @@ interface IInWorkspaceServiceService_ITeardown extends grpc.MethodDefinition<wor
+     responseSerialize: grpc.serialize<workspace_daemon_pb.TeardownResponse>;
+     responseDeserialize: grpc.deserialize<workspace_daemon_pb.TeardownResponse>;
+ }
++interface IInWorkspaceServiceService_IWipingTeardown extends grpc.MethodDefinition<workspace_daemon_pb.WipingTeardownRequest, workspace_daemon_pb.WipingTeardownResponse> {
++    path: "/iws.InWorkspaceService/WipingTeardown";
++    requestStream: false;
++    responseStream: false;
++    requestSerialize: grpc.serialize<workspace_daemon_pb.WipingTeardownRequest>;
++    requestDeserialize: grpc.deserialize<workspace_daemon_pb.WipingTeardownRequest>;
++    responseSerialize: grpc.serialize<workspace_daemon_pb.WipingTeardownResponse>;
++    responseDeserialize: grpc.deserialize<workspace_daemon_pb.WipingTeardownResponse>;
++}
+ interface IInWorkspaceServiceService_ISetupPairVeths extends grpc.MethodDefinition<workspace_daemon_pb.SetupPairVethsRequest, workspace_daemon_pb.SetupPairVethsResponse> {
+     path: "/iws.InWorkspaceService/SetupPairVeths";
+     requestStream: false;
+@@ -150,6 +160,7 @@ export interface IInWorkspaceServiceServer extends grpc.UntypedServiceImplementa
+     mountNfs: grpc.handleUnaryCall<workspace_daemon_pb.MountNfsRequest, workspace_daemon_pb.MountNfsResponse>;
+     umountNfs: grpc.handleUnaryCall<workspace_daemon_pb.UmountNfsRequest, workspace_daemon_pb.UmountNfsResponse>;
+     teardown: grpc.handleUnaryCall<workspace_daemon_pb.TeardownRequest, workspace_daemon_pb.TeardownResponse>;
++    wipingTeardown: grpc.handleUnaryCall<workspace_daemon_pb.WipingTeardownRequest, workspace_daemon_pb.WipingTeardownResponse>;
+     setupPairVeths: grpc.handleUnaryCall<workspace_daemon_pb.SetupPairVethsRequest, workspace_daemon_pb.SetupPairVethsResponse>;
+     workspaceInfo: grpc.handleUnaryCall<workspace_daemon_pb.WorkspaceInfoRequest, workspace_daemon_pb.WorkspaceInfoResponse>;
+ }
+@@ -185,6 +196,9 @@ export interface IInWorkspaceServiceClient {
+     teardown(request: workspace_daemon_pb.TeardownRequest, callback: (error: grpc.ServiceError | null, response: workspace_daemon_pb.TeardownResponse) => void): grpc.ClientUnaryCall;
+     teardown(request: workspace_daemon_pb.TeardownRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: workspace_daemon_pb.TeardownResponse) => void): grpc.ClientUnaryCall;
+     teardown(request: workspace_daemon_pb.TeardownRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: workspace_daemon_pb.TeardownResponse) => void): grpc.ClientUnaryCall;
++    wipingTeardown(request: workspace_daemon_pb.WipingTeardownRequest, callback: (error: grpc.ServiceError | null, response: workspace_daemon_pb.WipingTeardownResponse) => void): grpc.ClientUnaryCall;
++    wipingTeardown(request: workspace_daemon_pb.WipingTeardownRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: workspace_daemon_pb.WipingTeardownResponse) => void): grpc.ClientUnaryCall;
++    wipingTeardown(request: workspace_daemon_pb.WipingTeardownRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: workspace_daemon_pb.WipingTeardownResponse) => void): grpc.ClientUnaryCall;
+     setupPairVeths(request: workspace_daemon_pb.SetupPairVethsRequest, callback: (error: grpc.ServiceError | null, response: workspace_daemon_pb.SetupPairVethsResponse) => void): grpc.ClientUnaryCall;
+     setupPairVeths(request: workspace_daemon_pb.SetupPairVethsRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: workspace_daemon_pb.SetupPairVethsResponse) => void): grpc.ClientUnaryCall;
+     setupPairVeths(request: workspace_daemon_pb.SetupPairVethsRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: workspace_daemon_pb.SetupPairVethsResponse) => void): grpc.ClientUnaryCall;
+@@ -225,6 +239,9 @@ export class InWorkspaceServiceClient extends grpc.Client implements IInWorkspac
+     public teardown(request: workspace_daemon_pb.TeardownRequest, callback: (error: grpc.ServiceError | null, response: workspace_daemon_pb.TeardownResponse) => void): grpc.ClientUnaryCall;
+     public teardown(request: workspace_daemon_pb.TeardownRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: workspace_daemon_pb.TeardownResponse) => void): grpc.ClientUnaryCall;
+     public teardown(request: workspace_daemon_pb.TeardownRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: workspace_daemon_pb.TeardownResponse) => void): grpc.ClientUnaryCall;
++    public wipingTeardown(request: workspace_daemon_pb.WipingTeardownRequest, callback: (error: grpc.ServiceError | null, response: workspace_daemon_pb.WipingTeardownResponse) => void): grpc.ClientUnaryCall;
++    public wipingTeardown(request: workspace_daemon_pb.WipingTeardownRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: workspace_daemon_pb.WipingTeardownResponse) => void): grpc.ClientUnaryCall;
++    public wipingTeardown(request: workspace_daemon_pb.WipingTeardownRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: workspace_daemon_pb.WipingTeardownResponse) => void): grpc.ClientUnaryCall;
+     public setupPairVeths(request: workspace_daemon_pb.SetupPairVethsRequest, callback: (error: grpc.ServiceError | null, response: workspace_daemon_pb.SetupPairVethsResponse) => void): grpc.ClientUnaryCall;
+     public setupPairVeths(request: workspace_daemon_pb.SetupPairVethsRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: workspace_daemon_pb.SetupPairVethsResponse) => void): grpc.ClientUnaryCall;
+     public setupPairVeths(request: workspace_daemon_pb.SetupPairVethsRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: workspace_daemon_pb.SetupPairVethsResponse) => void): grpc.ClientUnaryCall;
+diff --git a/components/ws-daemon-api/typescript/src/workspace_daemon_grpc_pb.js b/components/ws-daemon-api/typescript/src/workspace_daemon_grpc_pb.js
+index 5da4aaf3f..8d284e974 100644
+--- a/components/ws-daemon-api/typescript/src/workspace_daemon_grpc_pb.js
++++ b/components/ws-daemon-api/typescript/src/workspace_daemon_grpc_pb.js
+@@ -186,6 +186,28 @@ function deserialize_iws_UmountProcResponse(buffer_arg) {
+   return workspace_daemon_pb.UmountProcResponse.deserializeBinary(new Uint8Array(buffer_arg));
+ }
+ 
++function serialize_iws_WipingTeardownRequest(arg) {
++  if (!(arg instanceof workspace_daemon_pb.WipingTeardownRequest)) {
++    throw new Error('Expected argument of type iws.WipingTeardownRequest');
++  }
++  return Buffer.from(arg.serializeBinary());
++}
++
++function deserialize_iws_WipingTeardownRequest(buffer_arg) {
++  return workspace_daemon_pb.WipingTeardownRequest.deserializeBinary(new Uint8Array(buffer_arg));
++}
++
++function serialize_iws_WipingTeardownResponse(arg) {
++  if (!(arg instanceof workspace_daemon_pb.WipingTeardownResponse)) {
++    throw new Error('Expected argument of type iws.WipingTeardownResponse');
++  }
++  return Buffer.from(arg.serializeBinary());
++}
++
++function deserialize_iws_WipingTeardownResponse(buffer_arg) {
++  return workspace_daemon_pb.WipingTeardownResponse.deserializeBinary(new Uint8Array(buffer_arg));
++}
++
+ function serialize_iws_WorkspaceInfoRequest(arg) {
+   if (!(arg instanceof workspace_daemon_pb.WorkspaceInfoRequest)) {
+     throw new Error('Expected argument of type iws.WorkspaceInfoRequest');
+@@ -332,7 +354,7 @@ umountSysfs: {
+     responseSerialize: serialize_iws_UmountProcResponse,
+     responseDeserialize: deserialize_iws_UmountProcResponse,
+   },
+-  // UmountSysfs unmounts a masked sysfs from the container's rootfs.
++  // MountNfs mounts a nfs share into the container's rootfs.
+ // The PID must be in the PID namespace of the workspace container.
+ // The path is relative to the mount namespace of the PID.
+ mountNfs: {
+@@ -346,7 +368,7 @@ mountNfs: {
+     responseSerialize: serialize_iws_MountNfsResponse,
+     responseDeserialize: deserialize_iws_MountNfsResponse,
+   },
+-  // UmountSysfs unmounts a masked sysfs from the container's rootfs.
++  // UmountNfs unmounts a nfs share from the container's rootfs.
+ // The PID must be in the PID namespace of the workspace container.
+ // The path is relative to the mount namespace of the PID.
+ umountNfs: {
+@@ -373,6 +395,18 @@ teardown: {
+     responseSerialize: serialize_iws_TeardownResponse,
+     responseDeserialize: deserialize_iws_TeardownResponse,
+   },
++  // WipingTeardown undoes everything PrepareForUserNS does, especially unmounts shiftfs mounts
++wipingTeardown: {
++    path: '/iws.InWorkspaceService/WipingTeardown',
++    requestStream: false,
++    responseStream: false,
++    requestType: workspace_daemon_pb.WipingTeardownRequest,
++    responseType: workspace_daemon_pb.WipingTeardownResponse,
++    requestSerialize: serialize_iws_WipingTeardownRequest,
++    requestDeserialize: deserialize_iws_WipingTeardownRequest,
++    responseSerialize: serialize_iws_WipingTeardownResponse,
++    responseDeserialize: deserialize_iws_WipingTeardownResponse,
++  },
+   // Set up a pair of veths that interconnect the specified PID and the workspace container's network namespace.
+ setupPairVeths: {
+     path: '/iws.InWorkspaceService/SetupPairVeths',
+diff --git a/components/ws-daemon-api/typescript/src/workspace_daemon_pb.d.ts b/components/ws-daemon-api/typescript/src/workspace_daemon_pb.d.ts
+index ca41df437..5936d1538 100644
+--- a/components/ws-daemon-api/typescript/src/workspace_daemon_pb.d.ts
++++ b/components/ws-daemon-api/typescript/src/workspace_daemon_pb.d.ts
+@@ -368,6 +368,46 @@ export namespace TeardownResponse {
+     }
+ }
+ 
++export class WipingTeardownRequest extends jspb.Message {
++    getDoWipe(): boolean;
++    setDoWipe(value: boolean): WipingTeardownRequest;
++
++    serializeBinary(): Uint8Array;
++    toObject(includeInstance?: boolean): WipingTeardownRequest.AsObject;
++    static toObject(includeInstance: boolean, msg: WipingTeardownRequest): WipingTeardownRequest.AsObject;
++    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
++    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
++    static serializeBinaryToWriter(message: WipingTeardownRequest, writer: jspb.BinaryWriter): void;
++    static deserializeBinary(bytes: Uint8Array): WipingTeardownRequest;
++    static deserializeBinaryFromReader(message: WipingTeardownRequest, reader: jspb.BinaryReader): WipingTeardownRequest;
++}
++
++export namespace WipingTeardownRequest {
++    export type AsObject = {
++        doWipe: boolean,
++    }
++}
++
++export class WipingTeardownResponse extends jspb.Message {
++    getSuccess(): boolean;
++    setSuccess(value: boolean): WipingTeardownResponse;
++
++    serializeBinary(): Uint8Array;
++    toObject(includeInstance?: boolean): WipingTeardownResponse.AsObject;
++    static toObject(includeInstance: boolean, msg: WipingTeardownResponse): WipingTeardownResponse.AsObject;
++    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
++    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
++    static serializeBinaryToWriter(message: WipingTeardownResponse, writer: jspb.BinaryWriter): void;
++    static deserializeBinary(bytes: Uint8Array): WipingTeardownResponse;
++    static deserializeBinaryFromReader(message: WipingTeardownResponse, reader: jspb.BinaryReader): WipingTeardownResponse;
++}
++
++export namespace WipingTeardownResponse {
++    export type AsObject = {
++        success: boolean,
++    }
++}
++
+ export class SetupPairVethsRequest extends jspb.Message {
+     getPid(): number;
+     setPid(value: number): SetupPairVethsRequest;
+diff --git a/components/ws-daemon-api/typescript/src/workspace_daemon_pb.js b/components/ws-daemon-api/typescript/src/workspace_daemon_pb.js
+index 5907286a4..81fa9dd26 100644
+--- a/components/ws-daemon-api/typescript/src/workspace_daemon_pb.js
++++ b/components/ws-daemon-api/typescript/src/workspace_daemon_pb.js
+@@ -41,6 +41,8 @@ goog.exportSymbol('proto.iws.UmountNfsRequest', null, global);
+ goog.exportSymbol('proto.iws.UmountNfsResponse', null, global);
+ goog.exportSymbol('proto.iws.UmountProcRequest', null, global);
+ goog.exportSymbol('proto.iws.UmountProcResponse', null, global);
++goog.exportSymbol('proto.iws.WipingTeardownRequest', null, global);
++goog.exportSymbol('proto.iws.WipingTeardownResponse', null, global);
+ goog.exportSymbol('proto.iws.WorkspaceInfoRequest', null, global);
+ goog.exportSymbol('proto.iws.WorkspaceInfoResponse', null, global);
+ goog.exportSymbol('proto.iws.WriteIDMappingRequest', null, global);
+@@ -403,6 +405,48 @@ if (goog.DEBUG && !COMPILED) {
+    */
+   proto.iws.TeardownResponse.displayName = 'proto.iws.TeardownResponse';
+ }
++/**
++ * Generated by JsPbCodeGenerator.
++ * @param {Array=} opt_data Optional initial data array, typically from a
++ * server response, or constructed directly in Javascript. The array is used
++ * in place and becomes part of the constructed object. It is not cloned.
++ * If no data is provided, the constructed object will be empty, but still
++ * valid.
++ * @extends {jspb.Message}
++ * @constructor
++ */
++proto.iws.WipingTeardownRequest = function(opt_data) {
++  jspb.Message.initialize(this, opt_data, 0, -1, null, null);
++};
++goog.inherits(proto.iws.WipingTeardownRequest, jspb.Message);
++if (goog.DEBUG && !COMPILED) {
++  /**
++   * @public
++   * @override
++   */
++  proto.iws.WipingTeardownRequest.displayName = 'proto.iws.WipingTeardownRequest';
++}
++/**
++ * Generated by JsPbCodeGenerator.
++ * @param {Array=} opt_data Optional initial data array, typically from a
++ * server response, or constructed directly in Javascript. The array is used
++ * in place and becomes part of the constructed object. It is not cloned.
++ * If no data is provided, the constructed object will be empty, but still
++ * valid.
++ * @extends {jspb.Message}
++ * @constructor
++ */
++proto.iws.WipingTeardownResponse = function(opt_data) {
++  jspb.Message.initialize(this, opt_data, 0, -1, null, null);
++};
++goog.inherits(proto.iws.WipingTeardownResponse, jspb.Message);
++if (goog.DEBUG && !COMPILED) {
++  /**
++   * @public
++   * @override
++   */
++  proto.iws.WipingTeardownResponse.displayName = 'proto.iws.WipingTeardownResponse';
++}
+ /**
+  * Generated by JsPbCodeGenerator.
+  * @param {Array=} opt_data Optional initial data array, typically from a
+@@ -2921,6 +2965,266 @@ proto.iws.TeardownResponse.prototype.setSuccess = function(value) {
+ 
+ 
+ 
++if (jspb.Message.GENERATE_TO_OBJECT) {
++/**
++ * Creates an object representation of this proto.
++ * Field names that are reserved in JavaScript and will be renamed to pb_name.
++ * Optional fields that are not set will be set to undefined.
++ * To access a reserved field use, foo.pb_<name>, eg, foo.pb_default.
++ * For the list of reserved names please see:
++ *     net/proto2/compiler/js/internal/generator.cc#kKeyword.
++ * @param {boolean=} opt_includeInstance Deprecated. whether to include the
++ *     JSPB instance for transitional soy proto support:
++ *     http://goto/soy-param-migration
++ * @return {!Object}
++ */
++proto.iws.WipingTeardownRequest.prototype.toObject = function(opt_includeInstance) {
++  return proto.iws.WipingTeardownRequest.toObject(opt_includeInstance, this);
++};
++
++
++/**
++ * Static version of the {@see toObject} method.
++ * @param {boolean|undefined} includeInstance Deprecated. Whether to include
++ *     the JSPB instance for transitional soy proto support:
++ *     http://goto/soy-param-migration
++ * @param {!proto.iws.WipingTeardownRequest} msg The msg instance to transform.
++ * @return {!Object}
++ * @suppress {unusedLocalVariables} f is only used for nested messages
++ */
++proto.iws.WipingTeardownRequest.toObject = function(includeInstance, msg) {
++  var f, obj = {
++    doWipe: jspb.Message.getBooleanFieldWithDefault(msg, 1, false)
++  };
++
++  if (includeInstance) {
++    obj.$jspbMessageInstance = msg;
++  }
++  return obj;
++};
++}
++
++
++/**
++ * Deserializes binary data (in protobuf wire format).
++ * @param {jspb.ByteSource} bytes The bytes to deserialize.
++ * @return {!proto.iws.WipingTeardownRequest}
++ */
++proto.iws.WipingTeardownRequest.deserializeBinary = function(bytes) {
++  var reader = new jspb.BinaryReader(bytes);
++  var msg = new proto.iws.WipingTeardownRequest;
++  return proto.iws.WipingTeardownRequest.deserializeBinaryFromReader(msg, reader);
++};
++
++
++/**
++ * Deserializes binary data (in protobuf wire format) from the
++ * given reader into the given message object.
++ * @param {!proto.iws.WipingTeardownRequest} msg The message object to deserialize into.
++ * @param {!jspb.BinaryReader} reader The BinaryReader to use.
++ * @return {!proto.iws.WipingTeardownRequest}
++ */
++proto.iws.WipingTeardownRequest.deserializeBinaryFromReader = function(msg, reader) {
++  while (reader.nextField()) {
++    if (reader.isEndGroup()) {
++      break;
++    }
++    var field = reader.getFieldNumber();
++    switch (field) {
++    case 1:
++      var value = /** @type {boolean} */ (reader.readBool());
++      msg.setDoWipe(value);
++      break;
++    default:
++      reader.skipField();
++      break;
++    }
++  }
++  return msg;
++};
++
++
++/**
++ * Serializes the message to binary data (in protobuf wire format).
++ * @return {!Uint8Array}
++ */
++proto.iws.WipingTeardownRequest.prototype.serializeBinary = function() {
++  var writer = new jspb.BinaryWriter();
++  proto.iws.WipingTeardownRequest.serializeBinaryToWriter(this, writer);
++  return writer.getResultBuffer();
++};
++
++
++/**
++ * Serializes the given message to binary data (in protobuf wire
++ * format), writing to the given BinaryWriter.
++ * @param {!proto.iws.WipingTeardownRequest} message
++ * @param {!jspb.BinaryWriter} writer
++ * @suppress {unusedLocalVariables} f is only used for nested messages
++ */
++proto.iws.WipingTeardownRequest.serializeBinaryToWriter = function(message, writer) {
++  var f = undefined;
++  f = message.getDoWipe();
++  if (f) {
++    writer.writeBool(
++      1,
++      f
++    );
++  }
++};
++
++
++/**
++ * optional bool do_wipe = 1;
++ * @return {boolean}
++ */
++proto.iws.WipingTeardownRequest.prototype.getDoWipe = function() {
++  return /** @type {boolean} */ (jspb.Message.getBooleanFieldWithDefault(this, 1, false));
++};
++
++
++/**
++ * @param {boolean} value
++ * @return {!proto.iws.WipingTeardownRequest} returns this
++ */
++proto.iws.WipingTeardownRequest.prototype.setDoWipe = function(value) {
++  return jspb.Message.setProto3BooleanField(this, 1, value);
++};
++
++
++
++
++
++if (jspb.Message.GENERATE_TO_OBJECT) {
++/**
++ * Creates an object representation of this proto.
++ * Field names that are reserved in JavaScript and will be renamed to pb_name.
++ * Optional fields that are not set will be set to undefined.
++ * To access a reserved field use, foo.pb_<name>, eg, foo.pb_default.
++ * For the list of reserved names please see:
++ *     net/proto2/compiler/js/internal/generator.cc#kKeyword.
++ * @param {boolean=} opt_includeInstance Deprecated. whether to include the
++ *     JSPB instance for transitional soy proto support:
++ *     http://goto/soy-param-migration
++ * @return {!Object}
++ */
++proto.iws.WipingTeardownResponse.prototype.toObject = function(opt_includeInstance) {
++  return proto.iws.WipingTeardownResponse.toObject(opt_includeInstance, this);
++};
++
++
++/**
++ * Static version of the {@see toObject} method.
++ * @param {boolean|undefined} includeInstance Deprecated. Whether to include
++ *     the JSPB instance for transitional soy proto support:
++ *     http://goto/soy-param-migration
++ * @param {!proto.iws.WipingTeardownResponse} msg The msg instance to transform.
++ * @return {!Object}
++ * @suppress {unusedLocalVariables} f is only used for nested messages
++ */
++proto.iws.WipingTeardownResponse.toObject = function(includeInstance, msg) {
++  var f, obj = {
++    success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false)
++  };
++
++  if (includeInstance) {
++    obj.$jspbMessageInstance = msg;
++  }
++  return obj;
++};
++}
++
++
++/**
++ * Deserializes binary data (in protobuf wire format).
++ * @param {jspb.ByteSource} bytes The bytes to deserialize.
++ * @return {!proto.iws.WipingTeardownResponse}
++ */
++proto.iws.WipingTeardownResponse.deserializeBinary = function(bytes) {
++  var reader = new jspb.BinaryReader(bytes);
++  var msg = new proto.iws.WipingTeardownResponse;
++  return proto.iws.WipingTeardownResponse.deserializeBinaryFromReader(msg, reader);
++};
++
++
++/**
++ * Deserializes binary data (in protobuf wire format) from the
++ * given reader into the given message object.
++ * @param {!proto.iws.WipingTeardownResponse} msg The message object to deserialize into.
++ * @param {!jspb.BinaryReader} reader The BinaryReader to use.
++ * @return {!proto.iws.WipingTeardownResponse}
++ */
++proto.iws.WipingTeardownResponse.deserializeBinaryFromReader = function(msg, reader) {
++  while (reader.nextField()) {
++    if (reader.isEndGroup()) {
++      break;
++    }
++    var field = reader.getFieldNumber();
++    switch (field) {
++    case 1:
++      var value = /** @type {boolean} */ (reader.readBool());
++      msg.setSuccess(value);
++      break;
++    default:
++      reader.skipField();
++      break;
++    }
++  }
++  return msg;
++};
++
++
++/**
++ * Serializes the message to binary data (in protobuf wire format).
++ * @return {!Uint8Array}
++ */
++proto.iws.WipingTeardownResponse.prototype.serializeBinary = function() {
++  var writer = new jspb.BinaryWriter();
++  proto.iws.WipingTeardownResponse.serializeBinaryToWriter(this, writer);
++  return writer.getResultBuffer();
++};
++
++
++/**
++ * Serializes the given message to binary data (in protobuf wire
++ * format), writing to the given BinaryWriter.
++ * @param {!proto.iws.WipingTeardownResponse} message
++ * @param {!jspb.BinaryWriter} writer
++ * @suppress {unusedLocalVariables} f is only used for nested messages
++ */
++proto.iws.WipingTeardownResponse.serializeBinaryToWriter = function(message, writer) {
++  var f = undefined;
++  f = message.getSuccess();
++  if (f) {
++    writer.writeBool(
++      1,
++      f
++    );
++  }
++};
++
++
++/**
++ * optional bool success = 1;
++ * @return {boolean}
++ */
++proto.iws.WipingTeardownResponse.prototype.getSuccess = function() {
++  return /** @type {boolean} */ (jspb.Message.getBooleanFieldWithDefault(this, 1, false));
++};
++
++
++/**
++ * @param {boolean} value
++ * @return {!proto.iws.WipingTeardownResponse} returns this
++ */
++proto.iws.WipingTeardownResponse.prototype.setSuccess = function(value) {
++  return jspb.Message.setProto3BooleanField(this, 1, value);
++};
++
++
++
++
++
+ if (jspb.Message.GENERATE_TO_OBJECT) {
+ /**
+  * Creates an object representation of this proto.
+diff --git a/components/ws-daemon-api/workspace_daemon.proto b/components/ws-daemon-api/workspace_daemon.proto
+index 3d18a912d..10dc51344 100644
+--- a/components/ws-daemon-api/workspace_daemon.proto
++++ b/components/ws-daemon-api/workspace_daemon.proto
+@@ -56,6 +56,9 @@ service InWorkspaceService {
+     // when the workspace is about to shut down, e.g. using the PreStop hook of a Kubernetes container.
+     rpc Teardown(TeardownRequest) returns (TeardownResponse) {}
+ 
++    // WipingTeardown undoes everything PrepareForUserNS does, especially unmounts shiftfs mounts
++    rpc WipingTeardown(WipingTeardownRequest) returns (WipingTeardownResponse) {}
++
+     // Set up a pair of veths that interconnect the specified PID and the workspace container's network namespace.
+     rpc SetupPairVeths(SetupPairVethsRequest) returns (SetupPairVethsResponse) {}
+ 
+@@ -137,6 +140,13 @@ message TeardownResponse {
+     bool success = 2;
+ }
+ 
++message WipingTeardownRequest {
++    bool do_wipe = 1;
++}
++message WipingTeardownResponse {
++    bool success = 1;
++}
++
+ message SetupPairVethsRequest {
+     int64 pid = 1;
+ }
+diff --git a/components/ws-daemon/pkg/cgroup/cgroup.go b/components/ws-daemon/pkg/cgroup/cgroup.go
+index e0f73a93a..899c1064e 100644
+--- a/components/ws-daemon/pkg/cgroup/cgroup.go
++++ b/components/ws-daemon/pkg/cgroup/cgroup.go
+@@ -6,6 +6,7 @@ package cgroup
+ 
+ import (
+ 	"context"
++	"errors"
+ 
+ 	"github.com/gitpod-io/gitpod/common-go/cgroups"
+ 	"github.com/gitpod-io/gitpod/common-go/log"
+@@ -79,8 +80,11 @@ func (host *PluginHost) WorkspaceAdded(ctx context.Context, ws *dispatch.Workspa
+ 		return xerrors.Errorf("no dispatch available")
+ 	}
+ 
+-	cgroupPath, err := disp.Runtime.ContainerCGroupPath(context.Background(), ws.ContainerID)
++	cgroupPath, err := disp.Runtime.ContainerCGroupPath(ctx, ws.ContainerID)
+ 	if err != nil {
++		if errors.Is(err, context.Canceled) {
++			return nil
++		}
+ 		return xerrors.Errorf("cannot get cgroup path for container %s: %w", ws.ContainerID, err)
+ 	}
+ 
+@@ -95,8 +99,11 @@ func (host *PluginHost) WorkspaceAdded(ctx context.Context, ws *dispatch.Workspa
+ 		if plg.Type() != host.CGroupVersion {
+ 			continue
+ 		}
++		dispatch.GetDispatchWaitGroup(ctx).Add(1)
+ 
+ 		go func(plg Plugin) {
++			defer dispatch.GetDispatchWaitGroup(ctx).Done()
++
+ 			err := plg.Apply(ctx, opts)
+ 			if err == context.Canceled || err == context.DeadlineExceeded {
+ 				err = nil
+diff --git a/components/ws-daemon/pkg/container/container.go b/components/ws-daemon/pkg/container/container.go
+index 93c71685a..888a6e08c 100644
+--- a/components/ws-daemon/pkg/container/container.go
++++ b/components/ws-daemon/pkg/container/container.go
+@@ -51,6 +51,9 @@ type Runtime interface {
+ 	IsContainerdReady(ctx context.Context) (bool, error)
+ 
+ 	GetContainerImageInfo(ctx context.Context, id ID) (*workspacev1.WorkspaceImageInfo, error)
++
++	// DisposeContainer removes a stopped container, and everything we know about it
++	DisposeContainer(ctx context.Context, workspaceInstanceID string)
+ }
+ 
+ var (
+diff --git a/components/ws-daemon/pkg/container/containerd.go b/components/ws-daemon/pkg/container/containerd.go
+index 8c2de20be..4af0dab74 100644
+--- a/components/ws-daemon/pkg/container/containerd.go
++++ b/components/ws-daemon/pkg/container/containerd.go
+@@ -7,6 +7,7 @@ package container
+ import (
+ 	"context"
+ 	"encoding/json"
++	"errors"
+ 	"fmt"
+ 	"path/filepath"
+ 	"regexp"
+@@ -433,6 +434,34 @@ func (s *Containerd) WaitForContainerStop(ctx context.Context, workspaceInstance
+ 	}
+ }
+ 
++func (s *Containerd) DisposeContainer(ctx context.Context, workspaceInstanceID string) {
++	log := log.WithContext(ctx)
++
++	log.Debug("containerd: disposing container")
++
++	s.cond.L.Lock()
++	defer s.cond.L.Unlock()
++
++	info, ok := s.wsiIdx[workspaceInstanceID]
++	if !ok {
++		// seems we are already done here
++		log.Debug("containerd: disposing container skipped")
++		return
++	}
++	defer log.Debug("containerd: disposing container done")
++
++	if info.ID != "" {
++		err := s.Client.ContainerService().Delete(ctx, info.ID)
++		if err != nil && !errors.Is(err, errdefs.ErrNotFound) {
++			log.WithField("containerId", info.ID).WithError(err).Error("cannot delete containerd container")
++		}
++	}
++
++	delete(s.wsiIdx, info.InstanceID)
++	delete(s.podIdx, info.PodName)
++	delete(s.cntIdx, info.ID)
++}
++
+ // ContainerExists finds out if a container with the given ID exists.
+ func (s *Containerd) ContainerExists(ctx context.Context, id ID) (exists bool, err error) {
+ 	_, err = s.Client.ContainerService().Get(ctx, string(id))
+diff --git a/components/ws-daemon/pkg/content/hooks.go b/components/ws-daemon/pkg/content/hooks.go
+index 94acf5582..3662097c7 100644
+--- a/components/ws-daemon/pkg/content/hooks.go
++++ b/components/ws-daemon/pkg/content/hooks.go
+@@ -9,17 +9,21 @@ import (
+ 	"errors"
+ 	"io/fs"
+ 	"os"
++	"path/filepath"
+ 
+ 	"github.com/gitpod-io/gitpod/common-go/log"
+ 	"github.com/gitpod-io/gitpod/common-go/tracing"
+ 	"github.com/gitpod-io/gitpod/content-service/pkg/initializer"
+ 	"github.com/gitpod-io/gitpod/content-service/pkg/storage"
+ 	"github.com/gitpod-io/gitpod/ws-daemon/api"
++	daemonapi "github.com/gitpod-io/gitpod/ws-daemon/api"
+ 	"github.com/gitpod-io/gitpod/ws-daemon/pkg/internal/session"
+ 	"github.com/gitpod-io/gitpod/ws-daemon/pkg/iws"
+ 	"github.com/gitpod-io/gitpod/ws-daemon/pkg/quota"
+ 	"github.com/opentracing/opentracing-go"
+ 	"golang.org/x/xerrors"
++	"google.golang.org/grpc"
++	"google.golang.org/grpc/credentials/insecure"
+ )
+ 
+ // WorkspaceLifecycleHooks configures the lifecycle hooks for all workspaces
+@@ -44,6 +48,7 @@ func WorkspaceLifecycleHooks(cfg Config, workspaceCIDR string, uidmapper *iws.Ui
+ 			hookInstallQuota(xfs, true),
+ 		},
+ 		session.WorkspaceDisposed: {
++			hookWipingTeardown(), // if ws.DoWipe == true: make sure we 100% tear down the workspace
+ 			iws.StopServingWorkspace,
+ 			hookRemoveQuota(xfs),
+ 		},
+@@ -164,3 +169,33 @@ func hookRemoveQuota(xfs *quota.XFS) session.WorkspaceLivecycleHook {
+ 		return xfs.RemoveQuota(ws.XFSProjectID)
+ 	}
+ }
++
++func hookWipingTeardown() session.WorkspaceLivecycleHook {
++	return func(ctx context.Context, ws *session.Workspace) error {
++		log := log.WithFields(ws.OWI())
++
++		if !ws.DoWipe {
++			// this is the "default" case for 99% of all workspaces
++			// TODO(gpl): We should probably make this the default for all workspaces - but not with this PR
++			return nil
++		}
++
++		socketFN := filepath.Join(ws.ServiceLocDaemon, "daemon.sock")
++		conn, err := grpc.DialContext(ctx, "unix://"+socketFN, grpc.WithTransportCredentials(insecure.NewCredentials()))
++		if err != nil {
++			log.WithError(err).Error("error connecting to IWS for WipingTeardown")
++			return nil
++		}
++		client := daemonapi.NewInWorkspaceServiceClient(conn)
++
++		res, err := client.WipingTeardown(ctx, &daemonapi.WipingTeardownRequest{
++			DoWipe: ws.DoWipe,
++		})
++		if err != nil {
++			return err
++		}
++		log.WithField("success", res.Success).Debug("wiping teardown done")
++
++		return nil
++	}
++}
+diff --git a/components/ws-daemon/pkg/controller/mock.go b/components/ws-daemon/pkg/controller/mock.go
+index 94083127f..415670484 100644
+--- a/components/ws-daemon/pkg/controller/mock.go
++++ b/components/ws-daemon/pkg/controller/mock.go
+@@ -127,3 +127,17 @@ func (mr *MockWorkspaceOperationsMockRecorder) SnapshotIDs(arg0, arg1 interface{
+ 	mr.mock.ctrl.T.Helper()
+ 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SnapshotIDs", reflect.TypeOf((*MockWorkspaceOperations)(nil).SnapshotIDs), arg0, arg1)
+ }
++
++// WipeWorkspace mocks base method.
++func (m *MockWorkspaceOperations) WipeWorkspace(arg0 context.Context, arg1 string) error {
++	m.ctrl.T.Helper()
++	ret := m.ctrl.Call(m, "WipeWorkspace", arg0, arg1)
++	ret0, _ := ret[0].(error)
++	return ret0
++}
++
++// WipeWorkspace indicates an expected call of WipeWorkspace.
++func (mr *MockWorkspaceOperationsMockRecorder) WipeWorkspace(arg0, arg1 interface{}) *gomock.Call {
++	mr.mock.ctrl.T.Helper()
++	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WipeWorkspace", reflect.TypeOf((*MockWorkspaceOperations)(nil).WipeWorkspace), arg0, arg1)
++}
+diff --git a/components/ws-daemon/pkg/controller/workspace_controller.go b/components/ws-daemon/pkg/controller/workspace_controller.go
+index 134ffd5bb..5f199ca6b 100644
+--- a/components/ws-daemon/pkg/controller/workspace_controller.go
++++ b/components/ws-daemon/pkg/controller/workspace_controller.go
+@@ -258,10 +258,73 @@ func (wsc *WorkspaceController) handleWorkspaceRunning(ctx context.Context, ws *
+ }
+ 
+ func (wsc *WorkspaceController) handleWorkspaceStop(ctx context.Context, ws *workspacev1.Workspace, req ctrl.Request) (result ctrl.Result, err error) {
+-	log := log.FromContext(ctx)
+ 	span, ctx := opentracing.StartSpanFromContext(ctx, "handleWorkspaceStop")
+ 	defer tracing.FinishSpan(span, &err)
+ 
++	if ws.IsConditionTrue(workspacev1.WorkspaceConditionPodRejected) {
++		// edge case only exercised for rejected workspace pods
++		if ws.IsConditionPresent(workspacev1.WorkspaceConditionStateWiped) {
++			// we are done here
++			return ctrl.Result{}, nil
++		}
++
++		return wsc.doWipeWorkspace(ctx, ws, req)
++	}
++
++	// regular case
++	return wsc.doWorkspaceContentBackup(ctx, span, ws, req)
++}
++
++func (wsc *WorkspaceController) doWipeWorkspace(ctx context.Context, ws *workspacev1.Workspace, req ctrl.Request) (result ctrl.Result, err error) {
++	log := log.FromContext(ctx)
++
++	// in this case we are not interested in any backups, but instead are concerned with completely wiping all state that might be dangling somewhere
++	if ws.IsConditionTrue(workspacev1.WorkspaceConditionContainerRunning) {
++		// Container is still running, we need to wait for it to stop.
++		// We should get an event when the condition changes, but requeue
++		// anyways to make sure we act on it in time.
++		return ctrl.Result{RequeueAfter: 500 * time.Millisecond}, nil
++	}
++
++	if wsc.latestWorkspace(ctx, ws) != nil {
++		return ctrl.Result{Requeue: true, RequeueAfter: 100 * time.Millisecond}, nil
++	}
++
++	setStateWipedCondition := func(success bool) {
++		err := retry.RetryOnConflict(retryParams, func() error {
++			if err := wsc.Get(ctx, req.NamespacedName, ws); err != nil {
++				return err
++			}
++
++			if success {
++				ws.Status.SetCondition(workspacev1.NewWorkspaceConditionStateWiped("", metav1.ConditionTrue))
++			} else {
++				ws.Status.SetCondition(workspacev1.NewWorkspaceConditionStateWiped("", metav1.ConditionFalse))
++			}
++			return wsc.Client.Status().Update(ctx, ws)
++		})
++		if err != nil {
++			log.Error(err, "failed to set StateWiped condition")
++		}
++	}
++	log.Info("handling workspace stop - wiping mode")
++	defer log.Info("handling workspace stop - wiping done.")
++
++	err = wsc.operations.WipeWorkspace(ctx, ws.Name)
++	if err != nil {
++		setStateWipedCondition(false)
++		wsc.emitEvent(ws, "Wiping", fmt.Errorf("failed to wipe workspace: %w", err))
++		return ctrl.Result{}, fmt.Errorf("failed to wipe workspace: %w", err)
++	}
++
++	setStateWipedCondition(true)
++
++	return ctrl.Result{}, nil
++}
++
++func (wsc *WorkspaceController) doWorkspaceContentBackup(ctx context.Context, span opentracing.Span, ws *workspacev1.Workspace, req ctrl.Request) (result ctrl.Result, err error) {
++	log := log.FromContext(ctx)
++
+ 	if c := wsk8s.GetCondition(ws.Status.Conditions, string(workspacev1.WorkspaceConditionContentReady)); c == nil || c.Status == metav1.ConditionFalse {
+ 		return ctrl.Result{}, fmt.Errorf("workspace content was never ready")
+ 	}
+diff --git a/components/ws-daemon/pkg/controller/workspace_operations.go b/components/ws-daemon/pkg/controller/workspace_operations.go
+index e0d4d96b2..802ab7a19 100644
+--- a/components/ws-daemon/pkg/controller/workspace_operations.go
++++ b/components/ws-daemon/pkg/controller/workspace_operations.go
+@@ -14,6 +14,7 @@ import (
+ 	"path/filepath"
+ 	"time"
+ 
++	"github.com/gitpod-io/gitpod/common-go/log"
+ 	glog "github.com/gitpod-io/gitpod/common-go/log"
+ 	"github.com/gitpod-io/gitpod/common-go/tracing"
+ 	csapi "github.com/gitpod-io/gitpod/content-service/api"
+@@ -22,6 +23,7 @@ import (
+ 	"github.com/gitpod-io/gitpod/content-service/pkg/logs"
+ 	"github.com/gitpod-io/gitpod/content-service/pkg/storage"
+ 	"github.com/gitpod-io/gitpod/ws-daemon/pkg/content"
++	"github.com/gitpod-io/gitpod/ws-daemon/pkg/dispatch"
+ 	"github.com/gitpod-io/gitpod/ws-daemon/pkg/internal/session"
+ 	workspacev1 "github.com/gitpod-io/gitpod/ws-manager/api/crd/v1"
+ 	"github.com/opentracing/opentracing-go"
+@@ -68,6 +70,8 @@ type WorkspaceOperations interface {
+ 	BackupWorkspace(ctx context.Context, opts BackupOptions) (*csapi.GitStatus, error)
+ 	// DeleteWorkspace deletes the content of the workspace from disk
+ 	DeleteWorkspace(ctx context.Context, instanceID string) error
++	// WipeWorkspace deletes all references to the workspace. Does not fail if parts are already gone, or state is incosistent.
++	WipeWorkspace(ctx context.Context, instanceID string) error
+ 	// SnapshotIDs generates the name and url for a snapshot
+ 	SnapshotIDs(ctx context.Context, instanceID string) (snapshotUrl, snapshotName string, err error)
+ 	// Snapshot takes a snapshot of the workspace
+@@ -81,6 +85,7 @@ type DefaultWorkspaceOperations struct {
+ 	provider               *WorkspaceProvider
+ 	backupWorkspaceLimiter chan struct{}
+ 	metrics                *Metrics
++	dispatch               *dispatch.Dispatch
+ }
+ 
+ var _ WorkspaceOperations = (*DefaultWorkspaceOperations)(nil)
+@@ -106,7 +111,7 @@ type BackupOptions struct {
+ 	SkipBackupContent bool
+ }
+ 
+-func NewWorkspaceOperations(config content.Config, provider *WorkspaceProvider, reg prometheus.Registerer) (WorkspaceOperations, error) {
++func NewWorkspaceOperations(config content.Config, provider *WorkspaceProvider, reg prometheus.Registerer, dispatch *dispatch.Dispatch) (WorkspaceOperations, error) {
+ 	waitingTimeHist, waitingTimeoutCounter, err := registerConcurrentBackupMetrics(reg, "_mk2")
+ 	if err != nil {
+ 		return nil, err
+@@ -121,6 +126,7 @@ func NewWorkspaceOperations(config content.Config, provider *WorkspaceProvider,
+ 		},
+ 		// we permit five concurrent backups at any given time, hence the five in the channel
+ 		backupWorkspaceLimiter: make(chan struct{}, 5),
++		dispatch:               dispatch,
+ 	}, nil
+ }
+ 
+@@ -185,6 +191,8 @@ func (wso *DefaultWorkspaceOperations) InitWorkspace(ctx context.Context, option
+ 		return "cannot persist workspace", err
+ 	}
+ 
++	glog.WithFields(ws.OWI()).Debug("content init done")
++
+ 	return "", nil
+ }
+ 
+@@ -290,6 +298,52 @@ func (wso *DefaultWorkspaceOperations) DeleteWorkspace(ctx context.Context, inst
+ 	return nil
+ }
+ 
++func (wso *DefaultWorkspaceOperations) WipeWorkspace(ctx context.Context, instanceID string) error {
++	log := log.New().WithContext(ctx)
++
++	ws, err := wso.provider.GetAndConnect(ctx, instanceID)
++	if err != nil {
++		// we have to assume everything is fine, and this workspace has already been completely wiped
++		return nil
++	}
++	log = log.WithFields(ws.OWI())
++
++	// mark this session as being wiped
++	ws.DoWipe = true
++
++	if err = ws.Dispose(ctx, wso.provider.hooks[session.WorkspaceDisposed]); err != nil {
++		log.WithError(err).Error("cannot dispose session")
++		return err
++	}
++
++	// dispose all running "dispatch handlers", e.g. all code running on the "pod informer"-triggered part of ws-daemon
++	wso.dispatch.DisposeWorkspace(ctx, instanceID)
++
++	// remove workspace daemon directory in the node
++	removedChan := make(chan struct{}, 1)
++	go func() {
++		defer close(removedChan)
++
++		if err := os.RemoveAll(ws.ServiceLocDaemon); err != nil {
++			log.WithError(err).Warn("cannot delete workspace daemon directory, leaving it dangling...")
++		}
++	}()
++
++	// We never want the "RemoveAll" to block the workspace from being delete, so we'll resort to make this a best-effort approach, and time out after 10s.
++	timeout := time.NewTicker(10 * time.Second)
++	defer timeout.Stop()
++	select {
++	case <-timeout.C:
++	case <-removedChan:
++		log.Debug("successfully removed workspace daemon directory")
++	}
++
++	// remove the reference from the WorkspaceProvider, e.g. the "workspace controller" part of ws-daemon
++	wso.provider.Remove(ctx, instanceID)
++
++	return nil
++}
++
+ func (wso *DefaultWorkspaceOperations) SnapshotIDs(ctx context.Context, instanceID string) (snapshotUrl, snapshotName string, err error) {
+ 	sess, err := wso.provider.GetAndConnect(ctx, instanceID)
+ 	if err != nil {
+diff --git a/components/ws-daemon/pkg/cpulimit/dispatch.go b/components/ws-daemon/pkg/cpulimit/dispatch.go
+index 724599a26..8020d7b9b 100644
+--- a/components/ws-daemon/pkg/cpulimit/dispatch.go
++++ b/components/ws-daemon/pkg/cpulimit/dispatch.go
+@@ -179,8 +179,11 @@ func (d *DispatchListener) WorkspaceAdded(ctx context.Context, ws *dispatch.Work
+ 		return xerrors.Errorf("no dispatch available")
+ 	}
+ 
+-	cgroupPath, err := disp.Runtime.ContainerCGroupPath(context.Background(), ws.ContainerID)
++	cgroupPath, err := disp.Runtime.ContainerCGroupPath(ctx, ws.ContainerID)
+ 	if err != nil {
++		if errors.Is(err, context.Canceled) {
++			return nil
++		}
+ 		return xerrors.Errorf("cannot start governer: %w", err)
+ 	}
+ 
+@@ -194,7 +197,11 @@ func (d *DispatchListener) WorkspaceAdded(ctx context.Context, ws *dispatch.Work
+ 		OWI:         ws.OWI(),
+ 		Annotations: ws.Pod.Annotations,
+ 	}
++
++	dispatch.GetDispatchWaitGroup(ctx).Add(1)
+ 	go func() {
++		defer dispatch.GetDispatchWaitGroup(ctx).Done()
++
+ 		<-ctx.Done()
+ 
+ 		d.mu.Lock()
+diff --git a/components/ws-daemon/pkg/daemon/daemon.go b/components/ws-daemon/pkg/daemon/daemon.go
+index b62f673f9..e2b26855c 100644
+--- a/components/ws-daemon/pkg/daemon/daemon.go
++++ b/components/ws-daemon/pkg/daemon/daemon.go
+@@ -208,7 +208,12 @@ func NewDaemon(config Config) (*Daemon, error) {
+ 		config.CPULimit.CGroupBasePath,
+ 	)
+ 
+-	workspaceOps, err := controller.NewWorkspaceOperations(contentCfg, controller.NewWorkspaceProvider(contentCfg.WorkingArea, hooks), wrappedReg)
++	dsptch, err := dispatch.NewDispatch(containerRuntime, clientset, config.Runtime.KubernetesNamespace, nodename, listener...)
++	if err != nil {
++		return nil, err
++	}
++
++	workspaceOps, err := controller.NewWorkspaceOperations(contentCfg, controller.NewWorkspaceProvider(contentCfg.WorkingArea, hooks), wrappedReg, dsptch)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+@@ -233,11 +238,6 @@ func NewDaemon(config Config) (*Daemon, error) {
+ 	housekeeping := controller.NewHousekeeping(contentCfg.WorkingArea, 5*time.Minute)
+ 	go housekeeping.Start(context.Background())
+ 
+-	dsptch, err := dispatch.NewDispatch(containerRuntime, clientset, config.Runtime.KubernetesNamespace, nodename, listener...)
+-	if err != nil {
+-		return nil, err
+-	}
+-
+ 	dsk := diskguard.FromConfig(config.DiskSpaceGuard, clientset, nodename)
+ 
+ 	return &Daemon{
+diff --git a/components/ws-daemon/pkg/daemon/markunmount.go b/components/ws-daemon/pkg/daemon/markunmount.go
+index dc89419b6..30fa029a5 100644
+--- a/components/ws-daemon/pkg/daemon/markunmount.go
++++ b/components/ws-daemon/pkg/daemon/markunmount.go
+@@ -8,6 +8,7 @@ import (
+ 	"bufio"
+ 	"bytes"
+ 	"context"
++	"errors"
+ 	"io/ioutil"
+ 	"path/filepath"
+ 	"strings"
+@@ -101,8 +102,24 @@ func (c *MarkUnmountFallback) WorkspaceUpdated(ctx context.Context, ws *dispatch
+ 	}
+ 	ttl := time.Duration(gracePeriod)*time.Second + propagationGracePeriod
+ 
++	dispatch.GetDispatchWaitGroup(ctx).Add(1)
+ 	go func() {
+-		time.Sleep(ttl)
++		defer dispatch.GetDispatchWaitGroup(ctx).Done()
++
++		defer func() {
++			// We expect the container to be gone now. Don't keep its referenec in memory.
++			c.mu.Lock()
++			delete(c.handled, ws.InstanceID)
++			c.mu.Unlock()
++		}()
++
++		wait := time.NewTicker(ttl)
++		defer wait.Stop()
++		select {
++		case <-ctx.Done():
++			return
++		case <-wait.C:
++		}
+ 
+ 		dsp := dispatch.GetFromContext(ctx)
+ 		if !dsp.WorkspaceExistsOnNode(ws.InstanceID) {
+@@ -111,17 +128,12 @@ func (c *MarkUnmountFallback) WorkspaceUpdated(ctx context.Context, ws *dispatch
+ 		}
+ 
+ 		err := unmountMark(ws.InstanceID)
+-		if err != nil {
++		if err != nil && errors.Is(err, context.Canceled) {
+ 			log.WithFields(ws.OWI()).WithError(err).Error("cannot unmount mark mount from within ws-daemon")
+ 			c.activityCounter.WithLabelValues("false").Inc()
+ 		} else {
+ 			c.activityCounter.WithLabelValues("true").Inc()
+ 		}
+-
+-		// We expect the container to be gone now. Don't keep its referenec in memory.
+-		c.mu.Lock()
+-		delete(c.handled, ws.InstanceID)
+-		c.mu.Unlock()
+ 	}()
+ 
+ 	return nil
+diff --git a/components/ws-daemon/pkg/diskguard/guard.go b/components/ws-daemon/pkg/diskguard/guard.go
+index fe21543e8..92183c156 100644
+--- a/components/ws-daemon/pkg/diskguard/guard.go
++++ b/components/ws-daemon/pkg/diskguard/guard.go
+@@ -71,6 +71,7 @@ type Guard struct {
+ // Start starts the disk guard
+ func (g *Guard) Start() {
+ 	t := time.NewTicker(g.Interval)
++	defer t.Stop()
+ 	for {
+ 		bvail, err := getAvailableBytes(g.Path)
+ 		if err != nil {
+diff --git a/components/ws-daemon/pkg/dispatch/dispatch.go b/components/ws-daemon/pkg/dispatch/dispatch.go
+index ecffefcb6..34504da7e 100644
+--- a/components/ws-daemon/pkg/dispatch/dispatch.go
++++ b/components/ws-daemon/pkg/dispatch/dispatch.go
+@@ -7,6 +7,7 @@ package dispatch
+ import (
+ 	"context"
+ 	"errors"
++	"fmt"
+ 	"sync"
+ 	"time"
+ 
+@@ -59,7 +60,8 @@ func NewDispatch(runtime container.Runtime, kubernetes kubernetes.Interface, k8s
+ 		Listener:            listener,
+ 		NodeName:            nodename,
+ 
+-		ctxs: make(map[string]*workspaceState),
++		ctxs:         make(map[string]*workspaceState),
++		disposedCtxs: make(map[string]struct{}),
+ 	}
+ 
+ 	return d, nil
+@@ -76,9 +78,10 @@ type Dispatch struct {
+ 
+ 	Listener []Listener
+ 
+-	stopchan chan struct{}
+-	ctxs     map[string]*workspaceState
+-	mu       sync.Mutex
++	stopchan     chan struct{}
++	ctxs         map[string]*workspaceState
++	disposedCtxs map[string]struct{}
++	mu           sync.Mutex
+ }
+ 
+ type workspaceState struct {
+@@ -86,6 +89,9 @@ type workspaceState struct {
+ 	Context        context.Context
+ 	Cancel         context.CancelFunc
+ 	Workspace      *Workspace
++
++	// this WaitGroup keeps track of when each handler is finished. It's only relied upon in DisposeWorkspace() to determine when work on a given instanceID has commenced.
++	HandlerWaitGroup sync.WaitGroup
+ }
+ 
+ type contextKey struct{}
+@@ -99,6 +105,16 @@ func GetFromContext(ctx context.Context) *Dispatch {
+ 	return ctx.Value(contextDispatch).(*Dispatch)
+ }
+ 
++type dispatchHandlerWaitGroupKey struct{}
++
++var (
++	contextDispatchWaitGroup = dispatchHandlerWaitGroupKey{}
++)
++
++func GetDispatchWaitGroup(ctx context.Context) *sync.WaitGroup {
++	return ctx.Value(contextDispatchWaitGroup).(*sync.WaitGroup)
++}
++
+ // Start starts the dispatch
+ func (d *Dispatch) Start() error {
+ 	ifac := informers.NewSharedInformerFactoryWithOptions(d.Kubernetes, podInformerResyncInterval, informers.WithNamespace(d.KubernetesNamespace))
+@@ -170,6 +186,39 @@ func (d *Dispatch) WorkspaceExistsOnNode(instanceID string) (ok bool) {
+ 	return
+ }
+ 
++// DisposeWorkspace disposes the workspace incl. all running handler code for that pod
++func (d *Dispatch) DisposeWorkspace(ctx context.Context, instanceID string) {
++	d.mu.Lock()
++	defer d.mu.Unlock()
++
++	log.WithField("instanceID", instanceID).Debug("disposing workspace")
++	defer log.WithField("instanceID", instanceID).Debug("disposing workspace done")
++
++	// Make the runtome drop all state it might still have about this workspace
++	d.Runtime.DisposeContainer(ctx, instanceID)
++
++	// If we have that instanceID present, cancel it's context
++	state, present := d.ctxs[instanceID]
++	if !present {
++		return
++	}
++	if state.Cancel != nil {
++		state.Cancel()
++	}
++
++	// ...and wait for all long-running/async processes/go-routines to finish
++	state.HandlerWaitGroup.Wait()
++
++	// Mark as disposed, so we do not handle any further updates for it (except deletion)
++	d.disposedCtxs[disposedKey(instanceID, state.Workspace.Pod)] = struct{}{}
++
++	delete(d.ctxs, instanceID)
++}
++
++func disposedKey(instanceID string, pod *corev1.Pod) string {
++	return fmt.Sprintf("%s-%s", instanceID, pod.CreationTimestamp.String())
++}
++
+ func (d *Dispatch) handlePodUpdate(oldPod, newPod *corev1.Pod) {
+ 	workspaceID, ok := newPod.Labels[wsk8s.MetaIDLabel]
+ 	if !ok {
+@@ -182,6 +231,11 @@ func (d *Dispatch) handlePodUpdate(oldPod, newPod *corev1.Pod) {
+ 	if d.NodeName != "" && newPod.Spec.NodeName != d.NodeName {
+ 		return
+ 	}
++	disposedKey := disposedKey(workspaceInstanceID, newPod)
++	if _, alreadyDisposed := d.disposedCtxs[disposedKey]; alreadyDisposed {
++		log.WithField("disposedKey", disposedKey).Debug("dropping pod update for disposed pod")
++		return
++	}
+ 
+ 	d.mu.Lock()
+ 	defer d.mu.Unlock()
+@@ -190,7 +244,7 @@ func (d *Dispatch) handlePodUpdate(oldPod, newPod *corev1.Pod) {
+ 	if !ok {
+ 		// we haven't seen this pod before - add it, and wait for the container
+ 		owi := wsk8s.GetOWIFromObject(&newPod.ObjectMeta)
+-		d.ctxs[workspaceInstanceID] = &workspaceState{
++		s := &workspaceState{
+ 			WorkspaceAdded: false,
+ 			Workspace: &Workspace{
+ 				InstanceID:  workspaceInstanceID,
+@@ -198,11 +252,13 @@ func (d *Dispatch) handlePodUpdate(oldPod, newPod *corev1.Pod) {
+ 				Pod:         newPod,
+ 			},
+ 		}
++		d.ctxs[workspaceInstanceID] = s
+ 
+-		// Important!!!!: ideally this timeout must be equal to ws-manager https://github.com/gitpod-io/gitpod/blob/main/components/ws-manager/pkg/manager/manager.go#L171
+-		waitForPodCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+ 		containerCtx, containerCtxCancel := context.WithCancel(context.Background())
+ 		containerCtx = context.WithValue(containerCtx, contextDispatch, d)
++		containerCtx = context.WithValue(containerCtx, contextDispatchWaitGroup, &s.HandlerWaitGroup)
++		// Important!!!!: ideally this timeout must be equal to ws-manager https://github.com/gitpod-io/gitpod/blob/main/components/ws-manager/pkg/manager/manager.go#L171
++		waitForPodCtx, cancel := context.WithTimeout(containerCtx, 10*time.Minute)
+ 		go func() {
+ 			containerID, err := d.Runtime.WaitForContainer(waitForPodCtx, workspaceInstanceID)
+ 			if err != nil && err != context.Canceled {
+@@ -217,12 +273,19 @@ func (d *Dispatch) handlePodUpdate(oldPod, newPod *corev1.Pod) {
+ 				d.mu.Unlock()
+ 				return
+ 			}
++			// Only register with the WaitGroup _after_ acquiring the lock to avoid DeadLocks
++			s.HandlerWaitGroup.Add(1)
++			defer s.HandlerWaitGroup.Done()
++
+ 			s.Context = containerCtx
+-			s.Cancel = containerCtxCancel
++			s.Cancel = sync.OnceFunc(containerCtxCancel)
+ 			s.Workspace.ContainerID = containerID
+ 
+ 			for _, l := range d.Listener {
++				s.HandlerWaitGroup.Add(1)
+ 				go func(listener Listener) {
++					defer s.HandlerWaitGroup.Done()
++
+ 					err := listener.WorkspaceAdded(containerCtx, s.Workspace)
+ 					if err != nil {
+ 						log.WithError(err).WithFields(owi).Error("dispatch listener failed")
+@@ -259,7 +322,10 @@ func (d *Dispatch) handlePodUpdate(oldPod, newPod *corev1.Pod) {
+ 			continue
+ 		}
+ 
++		state.HandlerWaitGroup.Add(1)
+ 		go func() {
++			defer state.HandlerWaitGroup.Done()
++
+ 			err := lu.WorkspaceUpdated(state.Context, state.Workspace)
+ 			if err != nil {
+ 				log.WithError(err).WithFields(wsk8s.GetOWIFromObject(&oldPod.ObjectMeta)).Error("dispatch listener failed")
+@@ -273,6 +339,8 @@ func (d *Dispatch) handlePodDeleted(pod *corev1.Pod) {
+ 	if !ok {
+ 		return
+ 	}
++	log.WithField("instanceID", instanceID).Debug("pod deleted")
++	defer log.WithField("instanceID", instanceID).Debug("pod deleted done")
+ 
+ 	d.mu.Lock()
+ 	defer d.mu.Unlock()
+@@ -285,5 +353,7 @@ func (d *Dispatch) handlePodDeleted(pod *corev1.Pod) {
+ 	if state.Cancel != nil {
+ 		state.Cancel()
+ 	}
++
+ 	delete(d.ctxs, instanceID)
++
+ }
+diff --git a/components/ws-daemon/pkg/internal/session/workspace.go b/components/ws-daemon/pkg/internal/session/workspace.go
+index a5169fd09..880e6739d 100644
+--- a/components/ws-daemon/pkg/internal/session/workspace.go
++++ b/components/ws-daemon/pkg/internal/session/workspace.go
+@@ -56,8 +56,10 @@ type Workspace struct {
+ 	// workspace resides. If this workspace has no Git working copy, this field is an empty string.
+ 	CheckoutLocation string `json:"checkoutLocation"`
+ 
+-	CreatedAt       time.Time        `json:"createdAt"`
+-	DoBackup        bool             `json:"doBackup"`
++	CreatedAt time.Time `json:"createdAt"`
++	DoBackup  bool      `json:"doBackup"`
++	// DoWipe is a mode that a) does not make backups and b) ensures leaving a clean slate on workspace stop
++	DoWipe          bool             `json:"doWipe"`
+ 	Owner           string           `json:"owner"`
+ 	WorkspaceID     string           `json:"metaID"`
+ 	InstanceID      string           `json:"workspaceID"`
+diff --git a/components/ws-daemon/pkg/iws/iws.go b/components/ws-daemon/pkg/iws/iws.go
+index 8d782cc3f..a2916cb90 100644
+--- a/components/ws-daemon/pkg/iws/iws.go
++++ b/components/ws-daemon/pkg/iws/iws.go
+@@ -95,11 +95,12 @@ func ServeWorkspace(uidmapper *Uidmapper, fsshift api.FSShiftMethod, cgroupMount
+ 		}
+ 
+ 		iws := &InWorkspaceServiceServer{
+-			Uidmapper:        uidmapper,
+-			Session:          ws,
+-			FSShift:          fsshift,
+-			CGroupMountPoint: cgroupMountPoint,
+-			WorkspaceCIDR:    workspaceCIDR,
++			Uidmapper:            uidmapper,
++			Session:              ws,
++			FSShift:              fsshift,
++			CGroupMountPoint:     cgroupMountPoint,
++			WorkspaceCIDR:        workspaceCIDR,
++			prepareForUserNSCond: sync.NewCond(&sync.Mutex{}),
+ 		}
+ 		err = iws.Start()
+ 		if err != nil {
+@@ -146,6 +147,10 @@ type InWorkspaceServiceServer struct {
+ 	srv  *grpc.Server
+ 	sckt io.Closer
+ 
++	// prepareForUserNSCond allows to synchronize around the "PrepareForUserNS" method
++	// !!! ONLY USE FOR WipingTeardown() !!!
++	prepareForUserNSCond *sync.Cond
++
+ 	api.UnimplementedInWorkspaceServiceServer
+ }
+ 
+@@ -188,6 +193,9 @@ func (wbs *InWorkspaceServiceServer) Start() error {
+ 		"/iws.InWorkspaceService/Teardown": ratelimit{
+ 			UseOnce: true,
+ 		},
++		"/iws.InWorkspaceService/WipingTeardown": ratelimit{
++			Limiter: rate.NewLimiter(rate.Every(2500*time.Millisecond), 4),
++		},
+ 		"/iws.InWorkspaceService/WorkspaceInfo": ratelimit{
+ 			Limiter: rate.NewLimiter(rate.Every(1500*time.Millisecond), 4),
+ 		},
+@@ -212,6 +220,9 @@ func (wbs *InWorkspaceServiceServer) Stop() {
+ 
+ // PrepareForUserNS mounts the workspace's shiftfs mark
+ func (wbs *InWorkspaceServiceServer) PrepareForUserNS(ctx context.Context, req *api.PrepareForUserNSRequest) (*api.PrepareForUserNSResponse, error) {
++	wbs.prepareForUserNSCond.L.Lock()
++	defer wbs.prepareForUserNSCond.L.Unlock()
++
+ 	rt := wbs.Uidmapper.Runtime
+ 	if rt == nil {
+ 		return nil, status.Errorf(codes.FailedPrecondition, "not connected to container runtime")
+@@ -945,9 +956,10 @@ func (wbs *InWorkspaceServiceServer) EvacuateCGroup(ctx context.Context, req *ap
+ 	return &api.EvacuateCGroupResponse{}, nil
+ }
+ 
+-// Teardown triggers the final liev backup and possibly shiftfs mark unmount
++// Teardown triggers the final live backup and possibly shiftfs mark unmount
+ func (wbs *InWorkspaceServiceServer) Teardown(ctx context.Context, req *api.TeardownRequest) (*api.TeardownResponse, error) {
+ 	owi := wbs.Session.OWI()
++	log := log.WithFields(owi)
+ 
+ 	var (
+ 		success = true
+@@ -956,13 +968,38 @@ func (wbs *InWorkspaceServiceServer) Teardown(ctx context.Context, req *api.Tear
+ 
+ 	err = wbs.unPrepareForUserNS()
+ 	if err != nil {
+-		log.WithError(err).WithFields(owi).Error("mark FS unmount failed")
++		log.WithError(err).Error("mark FS unmount failed")
+ 		success = false
+ 	}
+ 
+ 	return &api.TeardownResponse{Success: success}, nil
+ }
+ 
++// WipingTeardown tears down every state we created using IWS
++func (wbs *InWorkspaceServiceServer) WipingTeardown(ctx context.Context, req *api.WipingTeardownRequest) (*api.WipingTeardownResponse, error) {
++	log := log.WithFields(wbs.Session.OWI())
++	log.WithField("doWipe", req.DoWipe).Debug("iws.WipingTeardown")
++	defer log.WithField("doWipe", req.DoWipe).Debug("iws.WipingTeardown done")
++
++	if !req.DoWipe {
++		return &api.WipingTeardownResponse{Success: true}, nil
++	}
++
++	wbs.prepareForUserNSCond.L.Lock()
++	defer wbs.prepareForUserNSCond.L.Unlock()
++
++	// Sometimes the Teardown() call in ring0 is not executed successfully, and we leave the mark-mount dangling
++	// Here we just try to unmount it (again) best-effort-style. Testing shows it works reliably!
++	success := true
++	err := wbs.unPrepareForUserNS()
++	if err != nil && !strings.Contains(err.Error(), "no such file or directory") {
++		log.WithError(err).Warnf("error trying to unmount mark")
++		success = false
++	}
++
++	return &api.WipingTeardownResponse{Success: success}, nil
++}
++
+ func (wbs *InWorkspaceServiceServer) unPrepareForUserNS() error {
+ 	mountpoint := filepath.Join(wbs.Session.ServiceLocNode, "mark")
+ 	err := nsi.Nsinsider(wbs.Session.InstanceID, 1, func(c *exec.Cmd) {
+diff --git a/components/ws-daemon/pkg/netlimit/netlimit.go b/components/ws-daemon/pkg/netlimit/netlimit.go
+index 901b14c6c..75720e591 100644
+--- a/components/ws-daemon/pkg/netlimit/netlimit.go
++++ b/components/ws-daemon/pkg/netlimit/netlimit.go
+@@ -6,6 +6,7 @@ package netlimit
+ 
+ import (
+ 	"context"
++	"errors"
+ 	"fmt"
+ 	"os"
+ 	"os/exec"
+@@ -128,8 +129,11 @@ func (c *ConnLimiter) limitWorkspace(ctx context.Context, ws *dispatch.Workspace
+ 		return fmt.Errorf("no dispatch available")
+ 	}
+ 
+-	pid, err := disp.Runtime.ContainerPID(context.Background(), ws.ContainerID)
++	pid, err := disp.Runtime.ContainerPID(ctx, ws.ContainerID)
+ 	if err != nil {
++		if errors.Is(err, context.Canceled) {
++			return nil
++		}
+ 		return fmt.Errorf("could not get pid for container %s of workspace %s", ws.ContainerID, ws.WorkspaceID)
+ 	}
+ 
+@@ -141,12 +145,18 @@ func (c *ConnLimiter) limitWorkspace(ctx context.Context, ws *dispatch.Workspace
+ 		}
+ 	}, nsinsider.EnterMountNS(false), nsinsider.EnterNetNS(true))
+ 	if err != nil {
++		if errors.Is(context.Cause(ctx), context.Canceled) {
++			return nil
++		}
+ 		log.WithError(err).WithFields(ws.OWI()).Error("cannot enable connection limiting")
+ 		return err
+ 	}
+ 	c.limited[ws.InstanceID] = struct{}{}
+ 
++	dispatch.GetDispatchWaitGroup(ctx).Add(1)
+ 	go func(*dispatch.Workspace) {
++		defer dispatch.GetDispatchWaitGroup(ctx).Done()
++
+ 		ticker := time.NewTicker(30 * time.Second)
+ 		defer ticker.Stop()
+ 
+diff --git a/components/ws-daemon/pkg/nsinsider/nsinsider.go b/components/ws-daemon/pkg/nsinsider/nsinsider.go
+index 7889c8aee..53951490f 100644
+--- a/components/ws-daemon/pkg/nsinsider/nsinsider.go
++++ b/components/ws-daemon/pkg/nsinsider/nsinsider.go
+@@ -7,6 +7,7 @@ package nsinsider
+ import (
+ 	"bytes"
+ 	"fmt"
++	"io"
+ 	"os"
+ 	"os/exec"
+ 	"path/filepath"
+@@ -101,15 +102,19 @@ func Nsinsider(instanceID string, targetPid int, mod func(*exec.Cmd), opts ...ns
+ 	}
+ 
+ 	var cmdOut bytes.Buffer
++	var cmdErr bytes.Buffer
+ 	cmd.Stdout = &cmdOut
+-	cmd.Stderr = os.Stderr
++	cmd.Stderr = &cmdErr // gpl: Why to we write the stderr to os.StdErr? Not sure, so keeping the behavior here...
+ 	cmd.Stdin = os.Stdin
+ 	err = cmd.Run()
++	_, _ = io.Copy(os.Stderr, &cmdErr)
+ 	log.FromBuffer(&cmdOut, log.WithFields(log.OWI("", "", instanceID)))
+ 	if err != nil {
+-		return fmt.Errorf("run nsinsider (%v) failed: %q\n%v",
++		// writing stderr to the error so clients can pattern match on specific errors
++		return fmt.Errorf("run nsinsider (%v) failed: %q \\ %q\n%v",
+ 			cmd.Args,
+ 			cmdOut.String(),
++			cmdErr.String(),
+ 			err,
+ 		)
+ 	}
+diff --git a/components/ws-manager-api/go/config/config.go b/components/ws-manager-api/go/config/config.go
+index 62a715ba0..36b8e8b6a 100644
+--- a/components/ws-manager-api/go/config/config.go
++++ b/components/ws-manager-api/go/config/config.go
+@@ -142,6 +142,11 @@ type Configuration struct {
+ 
+ 	// SSHGatewayCAPublicKey is a CA public key
+ 	SSHGatewayCAPublicKey string
++
++	// PodRecreationMaxRetries
++	PodRecreationMaxRetries int `json:"podRecreationMaxRetries,omitempty"`
++	// PodRecreationBackoff
++	PodRecreationBackoff util.Duration `json:"podRecreationBackoff,omitempty"`
+ }
+ 
+ type WorkspaceClass struct {
+diff --git a/components/ws-manager-api/go/crd/v1/workspace_types.go b/components/ws-manager-api/go/crd/v1/workspace_types.go
+index 9ef7411cd..f16e75810 100644
+--- a/components/ws-manager-api/go/crd/v1/workspace_types.go
++++ b/components/ws-manager-api/go/crd/v1/workspace_types.go
+@@ -181,9 +181,11 @@ type WorkspaceImageInfo struct {
+ 
+ // WorkspaceStatus defines the observed state of Workspace
+ type WorkspaceStatus struct {
+-	PodStarts  int    `json:"podStarts"`
+-	URL        string `json:"url,omitempty" scrub:"redact"`
+-	OwnerToken string `json:"ownerToken,omitempty" scrub:"redact"`
++	PodStarts       int          `json:"podStarts"`
++	PodRecreated    int          `json:"podRecreated"`
++	PodDeletionTime *metav1.Time `json:"podDeletionTime,omitempty"`
++	URL             string       `json:"url,omitempty" scrub:"redact"`
++	OwnerToken      string       `json:"ownerToken,omitempty" scrub:"redact"`
+ 
+ 	// +kubebuilder:default=Unknown
+ 	Phase WorkspacePhase `json:"phase,omitempty"`
+@@ -277,6 +279,12 @@ const (
+ 	// WorkspaceContainerRunning is true if the workspace container is running.
+ 	// Used to determine if a backup can be taken, only once the container is stopped.
+ 	WorkspaceConditionContainerRunning WorkspaceCondition = "WorkspaceContainerRunning"
++
++	// WorkspaceConditionPodRejected is true if we detected that the pod was rejected by the node
++	WorkspaceConditionPodRejected WorkspaceCondition = "PodRejected"
++
++	// WorkspaceConditionStateWiped is true once all state has successfully been wiped by ws-daemon. This is only set if PodRejected=true, and the rejected workspace has been deleted.
++	WorkspaceConditionStateWiped WorkspaceCondition = "StateWiped"
+ )
+ 
+ func NewWorkspaceConditionDeployed() metav1.Condition {
+@@ -305,6 +313,24 @@ func NewWorkspaceConditionFailed(message string) metav1.Condition {
+ 	}
+ }
+ 
++func NewWorkspaceConditionPodRejected(message string, status metav1.ConditionStatus) metav1.Condition {
++	return metav1.Condition{
++		Type:               string(WorkspaceConditionPodRejected),
++		LastTransitionTime: metav1.Now(),
++		Status:             status,
++		Message:            message,
++	}
++}
++
++func NewWorkspaceConditionStateWiped(message string, status metav1.ConditionStatus) metav1.Condition {
++	return metav1.Condition{
++		Type:               string(WorkspaceConditionStateWiped),
++		LastTransitionTime: metav1.Now(),
++		Status:             status,
++		Message:            message,
++	}
++}
++
+ func NewWorkspaceConditionTimeout(message string) metav1.Condition {
+ 	return metav1.Condition{
+ 		Type:               string(WorkspaceConditionTimeout),
+@@ -499,6 +525,19 @@ func (w *Workspace) IsConditionTrue(condition WorkspaceCondition) bool {
+ 	return wsk8s.ConditionPresentAndTrue(w.Status.Conditions, string(condition))
+ }
+ 
++func (w *Workspace) IsConditionPresent(condition WorkspaceCondition) bool {
++	c := wsk8s.GetCondition(w.Status.Conditions, string(condition))
++	return c != nil
++}
++
++func (w *Workspace) GetConditionState(condition WorkspaceCondition) (state metav1.ConditionStatus, ok bool) {
++	cond := wsk8s.GetCondition(w.Status.Conditions, string(condition))
++	if cond == nil {
++		return "", false
++	}
++	return cond.Status, true
++}
++
+ // UpsertConditionOnStatusChange calls SetCondition if the condition does not exist or it's status or message has changed.
+ func (w *Workspace) UpsertConditionOnStatusChange(newCondition metav1.Condition) {
+ 	oldCondition := wsk8s.GetCondition(w.Status.Conditions, newCondition.Type)
+diff --git a/components/ws-manager-bridge/src/bridge.ts b/components/ws-manager-bridge/src/bridge.ts
+index a23f1c851..3d86ea88e 100644
+--- a/components/ws-manager-bridge/src/bridge.ts
++++ b/components/ws-manager-bridge/src/bridge.ts
+@@ -23,7 +23,7 @@ import {
+     DescribeClusterRequest,
+     WorkspaceType,
+ } from "@gitpod/ws-manager/lib";
+-import { TrustedValue } from "@gitpod/gitpod-protocol/lib/util/scrubbing";
++import { scrubber, TrustedValue } from "@gitpod/gitpod-protocol/lib/util/scrubbing";
+ import { WorkspaceDB } from "@gitpod/gitpod-db/lib/workspace-db";
+ import { log, LogContext } from "@gitpod/gitpod-protocol/lib/util/logging";
+ import { TraceContext } from "@gitpod/gitpod-protocol/lib/util/tracing";
+@@ -193,7 +193,7 @@ export class WorkspaceManagerBridge implements Disposable {
+     ) {
+         const start = performance.now();
+         const status = rawStatus.toObject();
+-        log.info("Handling WorkspaceStatus update", filterStatus(status));
++        log.info("Handling WorkspaceStatus update", { status: new TrustedValue(filterStatus(status)) });
+ 
+         if (!status.spec || !status.metadata || !status.conditions) {
+             log.warn("Received invalid status update", status);
+@@ -462,11 +462,11 @@ const mapPortProtocol = (protocol: WsManPortProtocol): PortProtocol => {
+ export const filterStatus = (status: WorkspaceStatus.AsObject): Partial<WorkspaceStatus.AsObject> => {
+     return {
+         id: status.id,
+-        metadata: status.metadata,
++        metadata: scrubber.scrub(status.metadata),
+         phase: status.phase,
+         message: status.message,
+-        conditions: new TrustedValue(status.conditions).value,
+-        runtime: new TrustedValue(status.runtime).value,
++        conditions: status.conditions,
++        runtime: status.runtime,
+     };
+ };
+ 
+diff --git a/components/ws-manager-mk2/config/crd/bases/workspace.gitpod.io_workspaces.yaml b/components/ws-manager-mk2/config/crd/bases/workspace.gitpod.io_workspaces.yaml
+index 8a71373e2..738a6d05e 100644
+--- a/components/ws-manager-mk2/config/crd/bases/workspace.gitpod.io_workspaces.yaml
++++ b/components/ws-manager-mk2/config/crd/bases/workspace.gitpod.io_workspaces.yaml
+@@ -550,6 +550,11 @@ spec:
+                 type: string
+               podStarts:
+                 type: integer
++              podRecreated:
++                type: integer
++              podDeletionTime:
++                format: date-time
++                type: string
+               runtime:
+                 properties:
+                   hostIP:
+diff --git a/components/ws-manager-mk2/controllers/metrics.go b/components/ws-manager-mk2/controllers/metrics.go
+index 72f1eb1ac..f182a5f4c 100644
+--- a/components/ws-manager-mk2/controllers/metrics.go
++++ b/components/ws-manager-mk2/controllers/metrics.go
+@@ -30,6 +30,7 @@ const (
+ 	workspaceStartFailuresTotal   string = "workspace_starts_failure_total"
+ 	workspaceFailuresTotal        string = "workspace_failure_total"
+ 	workspaceStopsTotal           string = "workspace_stops_total"
++	workspaceRecreationsTotal     string = "workspace_recreations_total"
+ 	workspaceBackupsTotal         string = "workspace_backups_total"
+ 	workspaceBackupFailuresTotal  string = "workspace_backups_failure_total"
+ 	workspaceRestoresTotal        string = "workspace_restores_total"
+@@ -57,6 +58,7 @@ type controllerMetrics struct {
+ 	totalStartsFailureCounterVec *prometheus.CounterVec
+ 	totalFailuresCounterVec      *prometheus.CounterVec
+ 	totalStopsCounterVec         *prometheus.CounterVec
++	totalRecreationsCounterVec   *prometheus.CounterVec
+ 
+ 	totalBackupCounterVec         *prometheus.CounterVec
+ 	totalBackupFailureCounterVec  *prometheus.CounterVec
+@@ -120,6 +122,12 @@ func newControllerMetrics(r *WorkspaceReconciler) (*controllerMetrics, error) {
+ 			Name:      workspaceStopsTotal,
+ 			Help:      "total number of workspaces stopped",
+ 		}, []string{"reason", "type", "class"}),
++		totalRecreationsCounterVec: prometheus.NewCounterVec(prometheus.CounterOpts{
++			Namespace: metricsNamespace,
++			Subsystem: metricsWorkspaceSubsystem,
++			Name:      workspaceRecreationsTotal,
++			Help:      "total number of workspace recreations",
++		}, []string{"type", "class", "attempt"}),
+ 
+ 		totalBackupCounterVec: prometheus.NewCounterVec(prometheus.CounterOpts{
+ 			Namespace: metricsNamespace,
+@@ -233,6 +241,14 @@ func (m *controllerMetrics) countWorkspaceStop(log *logr.Logger, ws *workspacev1
+ 	m.totalStopsCounterVec.WithLabelValues(reason, tpe, class).Inc()
+ }
+ 
++func (m *controllerMetrics) countWorkspaceRecreations(log *logr.Logger, ws *workspacev1.Workspace) {
++	class := ws.Spec.Class
++	tpe := string(ws.Spec.Type)
++	attempt := fmt.Sprint(ws.Status.PodRecreated)
++
++	m.totalRecreationsCounterVec.WithLabelValues(tpe, class, attempt).Inc()
++}
++
+ func (m *controllerMetrics) countTotalBackups(log *logr.Logger, ws *workspacev1.Workspace) {
+ 	class := ws.Spec.Class
+ 	tpe := string(ws.Spec.Type)
+@@ -291,6 +307,7 @@ type metricState struct {
+ 	recordedContentReady    bool
+ 	recordedBackupFailed    bool
+ 	recordedBackupCompleted bool
++	recordedRecreations     int
+ }
+ 
+ func newMetricState(ws *workspacev1.Workspace) metricState {
+@@ -306,6 +323,7 @@ func newMetricState(ws *workspacev1.Workspace) metricState {
+ 		recordedContentReady:    ws.IsConditionTrue(workspacev1.WorkspaceConditionContentReady),
+ 		recordedBackupFailed:    ws.IsConditionTrue(workspacev1.WorkspaceConditionBackupFailure),
+ 		recordedBackupCompleted: ws.IsConditionTrue(workspacev1.WorkspaceConditionBackupComplete),
++		recordedRecreations:     ws.Status.PodRecreated,
+ 	}
+ }
+ 
+diff --git a/components/ws-manager-mk2/controllers/status.go b/components/ws-manager-mk2/controllers/status.go
+index e417ab41d..9af7ae996 100644
+--- a/components/ws-manager-mk2/controllers/status.go
++++ b/components/ws-manager-mk2/controllers/status.go
+@@ -10,6 +10,7 @@ import (
+ 	"encoding/json"
+ 	"fmt"
+ 	"strings"
++	"time"
+ 
+ 	wsk8s "github.com/gitpod-io/gitpod/common-go/kubernetes"
+ 	"github.com/gitpod-io/gitpod/common-go/tracing"
+@@ -37,6 +38,15 @@ const (
+ 	// headlessTaskFailedPrefix is the prefix of the pod termination message if a headless task failed (e.g. user error
+ 	// or aborted prebuild).
+ 	headlessTaskFailedPrefix = "headless task failed: "
++
++	// podRejectedReasonNodeAffinity is the value of pod.status.Reason in case the pod got rejected by kubelet because of a NodeAffinity mismatch
++	podRejectedReasonNodeAffinity = "NodeAffinity"
++
++	// podRejectedReasonOutOfCPU is the value of pod.status.Reason in case the pod got rejected by kubelet because of insufficient CPU available
++	podRejectedReasonOutOfCPU = "OutOfcpu"
++
++	// podRejectedReasonOutOfMemory is the value of pod.status.Reason in case the pod got rejected by kubelet because of insufficient memory available
++	podRejectedReasonOutOfMemory = "OutOfmemory"
+ )
+ 
+ func (r *WorkspaceReconciler) updateWorkspaceStatus(ctx context.Context, workspace *workspacev1.Workspace, pods *corev1.PodList, cfg *config.Configuration) (err error) {
+@@ -62,6 +72,13 @@ func (r *WorkspaceReconciler) updateWorkspaceStatus(ctx context.Context, workspa
+ 			workspace.Status.Phase = workspacev1.WorkspacePhaseStopped
+ 		}
+ 
++		if workspace.Status.Phase == workspacev1.WorkspacePhaseStopped && workspace.Status.PodDeletionTime == nil {
++			// Set the timestamp when we first saw the pod as deleted.
++			// This is used for the delaying eventual pod restarts
++			podDeletionTime := metav1.NewTime(time.Now())
++			workspace.Status.PodDeletionTime = &podDeletionTime
++		}
++
+ 		workspace.UpsertConditionOnStatusChange(workspacev1.NewWorkspaceConditionContainerRunning(metav1.ConditionFalse))
+ 		return nil
+ 	case 1:
+@@ -123,6 +140,16 @@ func (r *WorkspaceReconciler) updateWorkspaceStatus(ctx context.Context, workspa
+ 		workspace.Status.Phase = *phase
+ 	}
+ 
++	if failure != "" && !workspace.IsConditionTrue(workspacev1.WorkspaceConditionPodRejected) {
++		// Check: A situation where we want to retry?
++		if isPodRejected(pod) {
++			// This is a situation where we want to re-create the pod!
++			log.Info("workspace scheduling failed", "workspace", workspace.Name, "reason", failure)
++			workspace.Status.SetCondition(workspacev1.NewWorkspaceConditionPodRejected(failure, metav1.ConditionTrue))
++			r.Recorder.Event(workspace, corev1.EventTypeWarning, "PodRejected", failure)
++		}
++	}
++
+ 	if failure != "" && !workspace.IsConditionTrue(workspacev1.WorkspaceConditionFailed) {
+ 		var nodeName string
+ 		if workspace.Status.Runtime != nil {
+@@ -272,6 +299,15 @@ func (r *WorkspaceReconciler) checkNodeDisappeared(ctx context.Context, workspac
+ }
+ 
+ func isDisposalFinished(ws *workspacev1.Workspace) bool {
++	if ws.IsConditionTrue(workspacev1.WorkspaceConditionPodRejected) {
++		if c := wsk8s.GetCondition(ws.Status.Conditions, string(workspacev1.WorkspaceConditionStateWiped)); c != nil {
++			// If the condition is set, we are done with the disposal
++			return true
++		}
++		// If the condition has not yet been set, we are not done, yet.
++		return false
++	}
++
+ 	return ws.IsConditionTrue(workspacev1.WorkspaceConditionBackupComplete) ||
+ 		ws.IsConditionTrue(workspacev1.WorkspaceConditionBackupFailure) ||
+ 		ws.IsConditionTrue(workspacev1.WorkspaceConditionAborted) ||
+@@ -311,6 +347,17 @@ func (r *WorkspaceReconciler) extractFailure(ctx context.Context, ws *workspacev
+ 		return msg, nil
+ 	}
+ 
++	// Check for state wiping failure.
++	if c := wsk8s.GetCondition(ws.Status.Conditions, string(workspacev1.WorkspaceConditionStateWiped)); c != nil && c.Status == metav1.ConditionFalse {
++		msg := c.Message
++		if msg == "" {
++			msg = "Wiping workspace state failed for an unknown reason"
++		} else {
++			msg = fmt.Sprintf("Wiping workspace state failed: %s", msg)
++		}
++		return msg, nil
++	}
++
+ 	status := pod.Status
+ 	if status.Phase == corev1.PodFailed && (status.Reason != "" || status.Message != "") {
+ 		// Don't force the phase to UNKNONWN here to leave a chance that we may detect the actual phase of
+@@ -458,3 +505,8 @@ func isPodBeingDeleted(pod *corev1.Pod) bool {
+ func isWorkspaceBeingDeleted(ws *workspacev1.Workspace) bool {
+ 	return ws.ObjectMeta.DeletionTimestamp != nil
+ }
++
++// isPodRejected returns true if the pod has been rejected by the kubelet
++func isPodRejected(pod *corev1.Pod) bool {
++	return pod.Status.Phase == corev1.PodFailed && (pod.Status.Reason == podRejectedReasonNodeAffinity || pod.Status.Reason == podRejectedReasonOutOfCPU || pod.Status.Reason == podRejectedReasonOutOfMemory) && strings.HasPrefix(pod.Status.Message, "Pod was rejected")
++}
+diff --git a/components/ws-manager-mk2/controllers/subscriber_controller.go b/components/ws-manager-mk2/controllers/subscriber_controller.go
+index 0349d28e0..70a0ce27c 100644
+--- a/components/ws-manager-mk2/controllers/subscriber_controller.go
++++ b/components/ws-manager-mk2/controllers/subscriber_controller.go
+@@ -61,6 +61,12 @@ func (r *SubscriberReconciler) Reconcile(ctx context.Context, req ctrl.Request)
+ 		workspace.Status.Conditions = []metav1.Condition{}
+ 	}
+ 
++	if workspace.IsConditionTrue(workspacev1.WorkspaceConditionPodRejected) {
++		// In this situation, we are about to re-create the pod. We don't want clients to see all the "stopping, stopped, starting" chatter, so we hide it here.
++		// TODO(gpl) Is this a sane approach?
++		return ctrl.Result{}, nil
++	}
++
+ 	if r.OnReconcile != nil {
+ 		r.OnReconcile(ctx, &workspace)
+ 	}
+diff --git a/components/ws-manager-mk2/controllers/suite_test.go b/components/ws-manager-mk2/controllers/suite_test.go
+index 224821400..6da6e06bf 100644
+--- a/components/ws-manager-mk2/controllers/suite_test.go
++++ b/components/ws-manager-mk2/controllers/suite_test.go
+@@ -49,9 +49,10 @@ func TestAPIs(t *testing.T) {
+ }
+ 
+ var (
+-	ctx       context.Context
+-	cancel    context.CancelFunc
+-	wsMetrics *controllerMetrics
++	ctx                context.Context
++	cancel             context.CancelFunc
++	wsMetrics          *controllerMetrics
++	RegisterSubscriber func(func(*workspacev1.Workspace))
+ )
+ 
+ var _ = BeforeSuite(func() {
+@@ -116,6 +117,15 @@ var _ = BeforeSuite(func() {
+ 	Expect(timeoutReconciler.SetupWithManager(k8sManager)).To(Succeed())
+ 
+ 	ctx, cancel = context.WithCancel(context.Background())
++	subscriberReconciler, err := NewSubscriberReconciler(k8sManager.GetClient(), &conf)
++	Expect(err).ToNot(HaveOccurred())
++	Expect(subscriberReconciler.SetupWithManager(ctx, k8sManager)).To(Succeed())
++	RegisterSubscriber = func(onReconcile func(*workspacev1.Workspace)) {
++		subscriberReconciler.OnReconcile = func(ctx context.Context, ws *workspacev1.Workspace) {
++			onReconcile(ws)
++		}
++	}
++
+ 	_ = createNamespace(secretsNamespace)
+ 
+ 	go func() {
+@@ -149,7 +159,9 @@ func newTestConfig() config.Configuration {
+ 				Name: "default",
+ 			},
+ 		},
+-		WorkspaceURLTemplate: "{{ .ID }}-{{ .Prefix }}-{{ .Host }}",
++		WorkspaceURLTemplate:    "{{ .ID }}-{{ .Prefix }}-{{ .Host }}",
++		PodRecreationMaxRetries: 3,
++		PodRecreationBackoff:    util.Duration(500 * time.Millisecond),
+ 	}
+ }
+ 
+diff --git a/components/ws-manager-mk2/controllers/workspace_controller.go b/components/ws-manager-mk2/controllers/workspace_controller.go
+index 55301df50..01a39cbcf 100644
+--- a/components/ws-manager-mk2/controllers/workspace_controller.go
++++ b/components/ws-manager-mk2/controllers/workspace_controller.go
+@@ -138,7 +138,7 @@ func (r *WorkspaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
+ 	}
+ 
+ 	if !equality.Semantic.DeepDerivative(oldStatus, workspace.Status) {
+-		log.Info("updating workspace status", "status", workspace.Status, "podStatus", podStatus)
++		log.Info("updating workspace status", "status", workspace.Status, "podStatus", podStatus, "pods", len(workspacePods.Items))
+ 	}
+ 
+ 	err = r.Status().Update(ctx, &workspace)
+@@ -180,7 +180,7 @@ func (r *WorkspaceReconciler) actOnStatus(ctx context.Context, workspace *worksp
+ 	if len(workspacePods.Items) == 0 {
+ 		// if there isn't a workspace pod and we're not currently deleting this workspace,// create one.
+ 		switch {
+-		case workspace.Status.PodStarts == 0:
++		case workspace.Status.PodStarts == 0 || workspace.Status.PodStarts-workspace.Status.PodRecreated < 1:
+ 			sctx, err := newStartWorkspaceContext(ctx, r.Config, workspace)
+ 			if err != nil {
+ 				log.Error(err, "unable to create startWorkspace context")
+@@ -204,8 +204,6 @@ func (r *WorkspaceReconciler) actOnStatus(ctx context.Context, workspace *worksp
+ 				log.Error(err, "unable to create Pod for Workspace", "pod", pod)
+ 				return ctrl.Result{Requeue: true}, err
+ 			} else {
+-				// TODO(cw): replicate the startup mechanism where pods can fail to be scheduled,
+-				//			 need to be deleted and re-created
+ 				// Must increment and persist the pod starts, and ensure we retry on conflict.
+ 				// If we fail to persist this value, it's possible that the Pod gets recreated
+ 				// when the workspace stops, due to PodStarts still being 0 when the original Pod
+@@ -221,6 +219,49 @@ func (r *WorkspaceReconciler) actOnStatus(ctx context.Context, workspace *worksp
+ 				r.Recorder.Event(workspace, corev1.EventTypeNormal, "Creating", "")
+ 			}
+ 
++		case workspace.Status.Phase == workspacev1.WorkspacePhaseStopped && workspace.IsConditionTrue(workspacev1.WorkspaceConditionPodRejected):
++			if workspace.Status.PodRecreated > r.Config.PodRecreationMaxRetries {
++				workspace.Status.SetCondition(workspacev1.NewWorkspaceConditionPodRejected(fmt.Sprintf("Pod reached maximum recreations %d, failing", workspace.Status.PodRecreated), metav1.ConditionFalse))
++				return ctrl.Result{Requeue: true}, nil // requeue so we end up in the "Stopped" case below
++			}
++			log = log.WithValues("PodStarts", workspace.Status.PodStarts, "PodRecreated", workspace.Status.PodRecreated, "Phase", workspace.Status.Phase)
++
++			// Make sure to wait for "recreationTimeout" before creating the pod again
++			if workspace.Status.PodDeletionTime == nil {
++				log.Info("pod recreation: waiting for pod deletion time to be populated...")
++				return ctrl.Result{Requeue: true, RequeueAfter: 5 * time.Second}, nil
++			}
++
++			recreationTimeout := r.podRecreationTimeout()
++			podDeletionTime := workspace.Status.PodDeletionTime.Time
++			waitTime := time.Until(podDeletionTime.Add(recreationTimeout))
++			log = log.WithValues("waitTime", waitTime.String(), "recreationTimeout", recreationTimeout.String(), "podDeletionTime", podDeletionTime.String())
++			if waitTime > 0 {
++				log.Info("pod recreation: waiting for timeout...")
++				return ctrl.Result{Requeue: true, RequeueAfter: waitTime}, nil
++			}
++			log.Info("trigger pod recreation")
++
++			// Reset status
++			sc := workspace.Status.DeepCopy()
++			workspace.Status = workspacev1.WorkspaceStatus{}
++			workspace.Status.Phase = workspacev1.WorkspacePhasePending
++			workspace.Status.OwnerToken = sc.OwnerToken
++			workspace.Status.PodStarts = sc.PodStarts
++			workspace.Status.PodRecreated = sc.PodRecreated + 1
++			workspace.Status.SetCondition(workspacev1.NewWorkspaceConditionPodRejected(fmt.Sprintf("Recreating pod... (%d retry)", workspace.Status.PodRecreated), metav1.ConditionFalse))
++
++			if err := r.Status().Update(ctx, workspace); err != nil {
++				log.Error(err, "Failed to update workspace status-reset")
++				return ctrl.Result{}, err
++			}
++
++			// Reset metrics cache
++			r.metrics.forgetWorkspace(workspace)
++
++			r.Recorder.Event(workspace, corev1.EventTypeNormal, "Recreating", "")
++			return ctrl.Result{Requeue: true}, nil
++
+ 		case workspace.Status.Phase == workspacev1.WorkspacePhaseStopped:
+ 			if err := r.deleteWorkspaceSecrets(ctx, workspace); err != nil {
+ 				return ctrl.Result{}, err
+@@ -325,6 +366,14 @@ func (r *WorkspaceReconciler) actOnStatus(ctx context.Context, workspace *worksp
+ 	return ctrl.Result{}, nil
+ }
+ 
++func (r *WorkspaceReconciler) podRecreationTimeout() time.Duration {
++	recreationTimeout := 15 * time.Second // waiting less time creates issues with ws-daemon's pod-centric control loop ("Dispatch") if the workspace ends up on the same node again
++	if r.Config.PodRecreationBackoff != 0 {
++		recreationTimeout = time.Duration(r.Config.PodRecreationBackoff)
++	}
++	return recreationTimeout
++}
++
+ func (r *WorkspaceReconciler) updateMetrics(ctx context.Context, workspace *workspacev1.Workspace) {
+ 	log := log.FromContext(ctx)
+ 
+@@ -378,6 +427,11 @@ func (r *WorkspaceReconciler) updateMetrics(ctx context.Context, workspace *work
+ 		lastState.recordedStartTime = true
+ 	}
+ 
++	if lastState.recordedRecreations < workspace.Status.PodRecreated {
++		r.metrics.countWorkspaceRecreations(&log, workspace)
++		lastState.recordedRecreations = workspace.Status.PodRecreated
++	}
++
+ 	if workspace.Status.Phase == workspacev1.WorkspacePhaseStopped {
+ 		r.metrics.countWorkspaceStop(&log, workspace)
+ 
+@@ -403,7 +457,9 @@ func isStartFailure(ws *workspacev1.Workspace) bool {
+ 	isAborted := ws.IsConditionTrue(workspacev1.WorkspaceConditionAborted)
+ 	// Also ignore workspaces that are requested to be stopped before they became ready.
+ 	isStoppedByRequest := ws.IsConditionTrue(workspacev1.WorkspaceConditionStoppedByRequest)
+-	return !everReady && !isAborted && !isStoppedByRequest
++	// Also ignore pods that got rejected by the node
++	isPodRejected := ws.IsConditionTrue(workspacev1.WorkspaceConditionPodRejected)
++	return !everReady && !isAborted && !isStoppedByRequest && !isPodRejected
+ }
+ 
+ func (r *WorkspaceReconciler) emitPhaseEvents(ctx context.Context, ws *workspacev1.Workspace, old *workspacev1.WorkspaceStatus) {
+diff --git a/components/ws-manager-mk2/controllers/workspace_controller_test.go b/components/ws-manager-mk2/controllers/workspace_controller_test.go
+index 5af06352e..a284c2224 100644
+--- a/components/ws-manager-mk2/controllers/workspace_controller_test.go
++++ b/components/ws-manager-mk2/controllers/workspace_controller_test.go
+@@ -389,6 +389,155 @@ var _ = Describe("WorkspaceController", func() {
+ 			})
+ 		})
+ 
++		It("pod rejection should result in a retry", func() {
++			ws := newWorkspace(uuid.NewString(), "default")
++			m := collectMetricCounts(wsMetrics, ws)
++			su := collectSubscriberUpdates()
++
++			// ### prepare block start
++			By("creating workspace")
++			// Simulate pod getting scheduled to a node.
++			var node corev1.Node
++			node.Name = uuid.NewString()
++			Expect(k8sClient.Create(ctx, &node)).To(Succeed())
++			// Manually create the workspace pod with the node name.
++			// We can't update the pod with the node name, as this operation
++			// is only allowed for the scheduler. So as a hack, we manually
++			// create the workspace's pod.
++			pod := &corev1.Pod{
++				ObjectMeta: metav1.ObjectMeta{
++					Name:       fmt.Sprintf("ws-%s", ws.Name),
++					Namespace:  ws.Namespace,
++					Finalizers: []string{workspacev1.GitpodFinalizerName},
++					Labels: map[string]string{
++						wsk8s.WorkspaceManagedByLabel: constants.ManagedBy,
++					},
++				},
++				Spec: corev1.PodSpec{
++					NodeName: node.Name,
++					Containers: []corev1.Container{{
++						Name:  "workspace",
++						Image: "someimage",
++					}},
++				},
++			}
++
++			Expect(k8sClient.Create(ctx, pod)).To(Succeed())
++			pod = createWorkspaceExpectPod(ws)
++			updateObjWithRetries(k8sClient, pod, false, func(pod *corev1.Pod) {
++				Expect(ctrl.SetControllerReference(ws, pod, k8sClient.Scheme())).To(Succeed())
++			})
++			// mimic the regular "start" phase
++			updateObjWithRetries(k8sClient, ws, true, func(ws *workspacev1.Workspace) {
++				ws.Status.PodStarts = 1
++				ws.Status.PodRecreated = 0
++			})
++
++			// Wait until controller has reconciled at least once (by waiting for the runtime status to get updated).
++			// This is necessary for the metrics to get recorded correctly. If we don't wait, the first reconciliation
++			// might be once the Pod is already in a running state, and hence the metric state might not record e.g. content
++			// restore.
++			// This is only necessary because we manually created the pod, normally the Pod creation is the controller's
++			// first reconciliation which ensures the metrics are recorded from the workspace's initial state.
++
++			Eventually(func(g Gomega) {
++				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: ws.Name, Namespace: ws.Namespace}, ws)).To(Succeed())
++				g.Expect(ws.Status.Runtime).ToNot(BeNil())
++				g.Expect(ws.Status.Runtime.PodName).To(Equal(pod.Name))
++			}, timeout, interval).Should(Succeed())
++
++			// Await "deployed" condition, and check we are good
++			expectConditionEventually(ws, string(workspacev1.WorkspaceConditionDeployed), metav1.ConditionTrue, "")
++			Eventually(func(g Gomega) {
++				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: ws.Name, Namespace: ws.Namespace}, ws)).To(Succeed())
++				g.Expect(ws.Status.PodStarts).To(Equal(1))
++				g.Expect(ws.Status.PodRecreated).To(Equal(0))
++			}, timeout, interval).Should(Succeed())
++
++			// ### prepare block end
++
++			// ### trigger block start
++			// Make pod be rejected 🪄
++			By("rejecting pod")
++			rejectPod(pod)
++
++			By("await pod being in stopping")
++			Eventually(func(g Gomega) {
++				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: ws.Name, Namespace: ws.Namespace}, ws)).To(Succeed())
++				g.Expect(ws.Status.Phase).To(Equal(workspacev1.WorkspacePhaseStopping))
++			}, timeout, interval).Should(Succeed())
++
++			// when a rejected workspace pod is in stopping, ws-daemon wipes the state before it's moved to "stopped"
++			// mimic this ws-daemon behavior
++			updateObjWithRetries(k8sClient, ws, true, func(ws *workspacev1.Workspace) {
++				ws.Status.SetCondition(workspacev1.NewWorkspaceConditionStateWiped("", metav1.ConditionTrue))
++			})
++
++			By("await pod recreation")
++			Eventually(func(g Gomega) {
++				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: ws.Name, Namespace: ws.Namespace}, ws)).To(Succeed())
++				g.Expect(ws.Status.PodRecreated).To(Equal(1))
++				g.Expect(ws.Status.Phase).To(Equal(workspacev1.WorkspacePhasePending))
++			}, timeout, interval).Should(Succeed())
++			// ### trigger block end
++
++			// ### retry block start
++			// Transition Pod to pending, and expect workspace to reach Creating phase.
++			// This should also cause create time metrics to be recorded.
++			updateObjWithRetries(k8sClient, pod, true, func(pod *corev1.Pod) {
++				pod.Status.Phase = corev1.PodPending
++				pod.Status.ContainerStatuses = []corev1.ContainerStatus{{
++					State: corev1.ContainerState{
++						Waiting: &corev1.ContainerStateWaiting{
++							Reason: "ContainerCreating",
++						},
++					},
++					Name: "workspace",
++				}}
++			})
++
++			expectPhaseEventually(ws, workspacev1.WorkspacePhaseCreating)
++			// ### retry block end
++
++			// ### move to running start
++			// Transition Pod to running, and expect workspace to reach Running phase.
++			// This should also cause e.g. startup time metrics to be recorded.
++			updateObjWithRetries(k8sClient, pod, true, func(pod *corev1.Pod) {
++				pod.Status.Phase = corev1.PodRunning
++				pod.Status.ContainerStatuses = []corev1.ContainerStatus{{
++					Name:  "workspace",
++					Ready: true,
++				}}
++			})
++
++			updateObjWithRetries(k8sClient, ws, true, func(ws *workspacev1.Workspace) {
++				ws.Status.SetCondition(workspacev1.NewWorkspaceConditionContentReady(metav1.ConditionTrue, workspacev1.ReasonInitializationSuccess, ""))
++			})
++
++			expectPhaseEventually(ws, workspacev1.WorkspacePhaseRunning)
++			// ### move to running end
++
++			// ### validate start
++			Eventually(func(g Gomega) {
++				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: ws.Name, Namespace: ws.Namespace}, ws)).To(Succeed())
++				g.Expect(ws.Status.PodStarts).To(Equal(2))
++				g.Expect(ws.Status.PodRecreated).To(Equal(1))
++			}, timeout, interval).Should(Succeed())
++
++			expectMetricsDelta(m, collectMetricCounts(wsMetrics, ws), metricCounts{
++				restores:       1,
++				backups:        0,
++				backupFailures: 0,
++				failures:       1,
++				creatingCounts: 1,
++				stops:          map[StopReason]int{StopReasonStartFailure: 1},
++				starts:         1, // this is NOT PodStarts, but merely an artifact of how we count it in the tests
++				recreations:    map[int]int{1: 1},
++			})
++
++			expectPhaseTransitions(su, []workspacev1.WorkspacePhase{workspacev1.WorkspacePhasePending, workspacev1.WorkspacePhaseCreating, workspacev1.WorkspacePhaseInitializing, workspacev1.WorkspacePhaseRunning})
++			// ### validate end
++		})
+ 	})
+ 
+ 	Context("with headless workspaces", func() {
+@@ -634,6 +783,16 @@ func requestStop(ws *workspacev1.Workspace) {
+ 	})
+ }
+ 
++func rejectPod(pod *corev1.Pod) {
++	GinkgoHelper()
++	By("adding pod rejected condition")
++	updateObjWithRetries(k8sClient, pod, true, func(pod *corev1.Pod) {
++		pod.Status.Phase = corev1.PodFailed
++		pod.Status.Reason = "OutOfcpu"
++		pod.Status.Message = "Pod was rejected"
++	})
++}
++
+ func markReady(ws *workspacev1.Workspace) {
+ 	GinkgoHelper()
+ 	By("adding content ready condition")
+@@ -829,6 +988,7 @@ type metricCounts struct {
+ 	startFailures   int
+ 	failures        int
+ 	stops           map[StopReason]int
++	recreations     map[int]int
+ 	backups         int
+ 	backupFailures  int
+ 	restores        int
+@@ -855,12 +1015,17 @@ func collectMetricCounts(wsMetrics *controllerMetrics, ws *workspacev1.Workspace
+ 	for _, reason := range stopReasons {
+ 		stopCounts[reason] = int(testutil.ToFloat64(wsMetrics.totalStopsCounterVec.WithLabelValues(string(reason), tpe, cls)))
+ 	}
++	recreations := make(map[int]int)
++	for _, attempts := range []int{1, 2, 3, 4, 5} {
++		recreations[attempts] = int(testutil.ToFloat64(wsMetrics.totalRecreationsCounterVec.WithLabelValues(tpe, cls, fmt.Sprint(attempts))))
++	}
+ 	return metricCounts{
+ 		starts:          int(collectHistCount(startHist)),
+ 		creatingCounts:  int(collectHistCount(creatingHist)),
+ 		startFailures:   int(testutil.ToFloat64(wsMetrics.totalStartsFailureCounterVec.WithLabelValues(tpe, cls))),
+ 		failures:        int(testutil.ToFloat64(wsMetrics.totalFailuresCounterVec.WithLabelValues(tpe, cls))),
+ 		stops:           stopCounts,
++		recreations:     recreations,
+ 		backups:         int(testutil.ToFloat64(wsMetrics.totalBackupCounterVec.WithLabelValues(tpe, cls))),
+ 		backupFailures:  int(testutil.ToFloat64(wsMetrics.totalBackupFailureCounterVec.WithLabelValues(tpe, cls))),
+ 		restores:        int(testutil.ToFloat64(wsMetrics.totalRestoreCounterVec.WithLabelValues(tpe, cls))),
+@@ -883,3 +1048,35 @@ func expectMetricsDelta(initial metricCounts, cur metricCounts, expectedDelta me
+ 	Expect(cur.restores-initial.restores).To(Equal(expectedDelta.restores), "expected metric count delta for restores")
+ 	Expect(cur.restoreFailures-initial.restoreFailures).To(Equal(expectedDelta.restoreFailures), "expected metric count delta for restoreFailures")
+ }
++
++type subscriberUpdates struct {
++	phaseTransitions []workspacev1.WorkspacePhase
++}
++
++func collectSubscriberUpdates() *subscriberUpdates {
++	su := subscriberUpdates{}
++	recordPhaseTransition := func(su *subscriberUpdates, ws *workspacev1.Workspace) {
++		phase := ws.Status.Phase
++
++		var lastPhase workspacev1.WorkspacePhase
++		lenPhases := len(su.phaseTransitions)
++		if lenPhases > 0 {
++			lastPhase = su.phaseTransitions[lenPhases-1]
++		}
++
++		if lastPhase != phase {
++			su.phaseTransitions = append(su.phaseTransitions, phase)
++		}
++	}
++
++	RegisterSubscriber(func(ws *workspacev1.Workspace) {
++		recordPhaseTransition(&su, ws)
++	})
++	return &su
++}
++
++func expectPhaseTransitions(su *subscriberUpdates, expectation []workspacev1.WorkspacePhase) {
++	GinkgoHelper()
++	By("checking recorded phase transitions")
++	Expect(su.phaseTransitions).To(HaveExactElements(expectation), "expected list of recorded phase transitions")
++}
+diff --git a/dev/gpctl/cmd/workspaces-list.go b/dev/gpctl/cmd/workspaces-list.go
+index 9b2b7ddfe..e6da108ae 100644
+--- a/dev/gpctl/cmd/workspaces-list.go
++++ b/dev/gpctl/cmd/workspaces-list.go
+@@ -56,6 +56,10 @@ var workspacesListCmd = &cobra.Command{
+ 				pod = fmt.Sprintf("imagebuild-%s", w.GetId())
+ 			}
+ 
++			var nodeName string
++			if w.Runtime != nil {
++				nodeName = w.Runtime.NodeName
++			}
+ 			out = append(out, PrintWorkspace{
+ 				Owner:       w.GetMetadata().GetOwner(),
+ 				WorkspaceID: w.GetMetadata().GetMetaId(),
+@@ -64,7 +68,7 @@ var workspacesListCmd = &cobra.Command{
+ 				Type:        w.GetSpec().GetType().String(),
+ 				Pod:         pod,
+ 				Active:      w.GetConditions().FirstUserActivity != nil,
+-				Node:        w.Runtime.NodeName,
++				Node:        nodeName,
+ 			})
+ 		}
+ 
+diff --git a/dev/rejector/.gitignore b/dev/rejector/.gitignore
+new file mode 100644
+index 000000000..a6258cab7
+--- /dev/null
++++ b/dev/rejector/.gitignore
+@@ -0,0 +1 @@
++rejector
+diff --git a/dev/rejector/go.mod b/dev/rejector/go.mod
+new file mode 100644
+index 000000000..9c3b2cba3
+--- /dev/null
++++ b/dev/rejector/go.mod
+@@ -0,0 +1,50 @@
++module gitpod.io/rejector/v2
++
++go 1.22.2
++
++require (
++	k8s.io/api v0.31.1
++	k8s.io/apimachinery v0.31.1
++	k8s.io/client-go v0.31.1
++)
++
++require (
++	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
++	github.com/emicklei/go-restful/v3 v3.11.0 // indirect
++	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
++	github.com/go-logr/logr v1.4.2 // indirect
++	github.com/go-openapi/jsonpointer v0.19.6 // indirect
++	github.com/go-openapi/jsonreference v0.20.2 // indirect
++	github.com/go-openapi/swag v0.22.4 // indirect
++	github.com/gogo/protobuf v1.3.2 // indirect
++	github.com/golang/protobuf v1.5.4 // indirect
++	github.com/google/gnostic-models v0.6.8 // indirect
++	github.com/google/go-cmp v0.6.0 // indirect
++	github.com/google/gofuzz v1.2.0 // indirect
++	github.com/google/uuid v1.6.0 // indirect
++	github.com/imdario/mergo v0.3.6 // indirect
++	github.com/josharian/intern v1.0.0 // indirect
++	github.com/json-iterator/go v1.1.12 // indirect
++	github.com/mailru/easyjson v0.7.7 // indirect
++	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
++	github.com/modern-go/reflect2 v1.0.2 // indirect
++	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
++	github.com/spf13/pflag v1.0.5 // indirect
++	github.com/x448/float16 v0.8.4 // indirect
++	golang.org/x/net v0.26.0 // indirect
++	golang.org/x/oauth2 v0.21.0 // indirect
++	golang.org/x/sys v0.21.0 // indirect
++	golang.org/x/term v0.21.0 // indirect
++	golang.org/x/text v0.16.0 // indirect
++	golang.org/x/time v0.3.0 // indirect
++	google.golang.org/protobuf v1.34.2 // indirect
++	gopkg.in/inf.v0 v0.9.1 // indirect
++	gopkg.in/yaml.v2 v2.4.0 // indirect
++	gopkg.in/yaml.v3 v3.0.1 // indirect
++	k8s.io/klog/v2 v2.130.1 // indirect
++	k8s.io/kube-openapi v0.0.0-20240228011516-70dd3763d340 // indirect
++	k8s.io/utils v0.0.0-20240711033017-18e509b52bc8 // indirect
++	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
++	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect
++	sigs.k8s.io/yaml v1.4.0 // indirect
++)
+diff --git a/dev/rejector/go.sum b/dev/rejector/go.sum
+new file mode 100644
+index 000000000..4dcca4b88
+--- /dev/null
++++ b/dev/rejector/go.sum
+@@ -0,0 +1,154 @@
++github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
++github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
++github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
++github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=
++github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
++github.com/emicklei/go-restful/v3 v3.11.0 h1:rAQeMHw1c7zTmncogyy8VvRZwtkmkZ4FxERmMY4rD+g=
++github.com/emicklei/go-restful/v3 v3.11.0/go.mod h1:6n3XBCmQQb25CM2LCACGz8ukIrRry+4bhvbpWn3mrbc=
++github.com/fxamacker/cbor/v2 v2.7.0 h1:iM5WgngdRBanHcxugY4JySA0nk1wZorNOpTgCMedv5E=
++github.com/fxamacker/cbor/v2 v2.7.0/go.mod h1:pxXPTn3joSm21Gbwsv0w9OSA2y1HFR9qXEeXQVeNoDQ=
++github.com/go-logr/logr v1.4.2 h1:6pFjapn8bFcIbiKo3XT4j/BhANplGihG6tvd+8rYgrY=
++github.com/go-logr/logr v1.4.2/go.mod h1:9T104GzyrTigFIr8wt5mBrctHMim0Nb2HLGrmQ40KvY=
++github.com/go-openapi/jsonpointer v0.19.6 h1:eCs3fxoIi3Wh6vtgmLTOjdhSpiqphQ+DaPn38N2ZdrE=
++github.com/go-openapi/jsonpointer v0.19.6/go.mod h1:osyAmYz/mB/C3I+WsTTSgw1ONzaLJoLCyoi6/zppojs=
++github.com/go-openapi/jsonreference v0.20.2 h1:3sVjiK66+uXK/6oQ8xgcRKcFgQ5KXa2KvnJRumpMGbE=
++github.com/go-openapi/jsonreference v0.20.2/go.mod h1:Bl1zwGIM8/wsvqjsOQLJ/SH+En5Ap4rVB5KVcIDZG2k=
++github.com/go-openapi/swag v0.22.3/go.mod h1:UzaqsxGiab7freDnrUUra0MwWfN/q7tE4j+VcZ0yl14=
++github.com/go-openapi/swag v0.22.4 h1:QLMzNJnMGPRNDCbySlcj1x01tzU8/9LTTL9hZZZogBU=
++github.com/go-openapi/swag v0.22.4/go.mod h1:UzaqsxGiab7freDnrUUra0MwWfN/q7tE4j+VcZ0yl14=
++github.com/go-task/slim-sprig/v3 v3.0.0 h1:sUs3vkvUymDpBKi3qH1YSqBQk9+9D/8M2mN1vB6EwHI=
++github.com/go-task/slim-sprig/v3 v3.0.0/go.mod h1:W848ghGpv3Qj3dhTPRyJypKRiqCdHZiAzKg9hl15HA8=
++github.com/gogo/protobuf v1.3.2 h1:Ov1cvc58UF3b5XjBnZv7+opcTcQFZebYjWzi34vdm4Q=
++github.com/gogo/protobuf v1.3.2/go.mod h1:P1XiOD3dCwIKUDQYPy72D8LYyHL2YPYrpS2s69NZV8Q=
++github.com/golang/protobuf v1.5.4 h1:i7eJL8qZTpSEXOPTxNKhASYpMn+8e5Q6AdndVa1dWek=
++github.com/golang/protobuf v1.5.4/go.mod h1:lnTiLA8Wa4RWRcIUkrtSVa5nRhsEGBg48fD6rSs7xps=
++github.com/google/gnostic-models v0.6.8 h1:yo/ABAfM5IMRsS1VnXjTBvUb61tFIHozhlYvRgGre9I=
++github.com/google/gnostic-models v0.6.8/go.mod h1:5n7qKqH0f5wFt+aWF8CW6pZLLNOfYuF5OpfBSENuI8U=
++github.com/google/go-cmp v0.5.9/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeNGIjoY=
++github.com/google/go-cmp v0.6.0 h1:ofyhxvXcZhMsU5ulbFiLKl/XBFqE1GSq7atu8tAmTRI=
++github.com/google/go-cmp v0.6.0/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeNGIjoY=
++github.com/google/gofuzz v1.0.0/go.mod h1:dBl0BpW6vV/+mYPU4Po3pmUjxk6FQPldtuIdl/M65Eg=
++github.com/google/gofuzz v1.2.0 h1:xRy4A+RhZaiKjJ1bPfwQ8sedCA+YS2YcCHW6ec7JMi0=
++github.com/google/gofuzz v1.2.0/go.mod h1:dBl0BpW6vV/+mYPU4Po3pmUjxk6FQPldtuIdl/M65Eg=
++github.com/google/pprof v0.0.0-20240525223248-4bfdf5a9a2af h1:kmjWCqn2qkEml422C2Rrd27c3VGxi6a/6HNq8QmHRKM=
++github.com/google/pprof v0.0.0-20240525223248-4bfdf5a9a2af/go.mod h1:K1liHPHnj73Fdn/EKuT8nrFqBihUSKXoLYU0BuatOYo=
++github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
++github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
++github.com/imdario/mergo v0.3.6 h1:xTNEAn+kxVO7dTZGu0CegyqKZmoWFI0rF8UxjlB2d28=
++github.com/imdario/mergo v0.3.6/go.mod h1:2EnlNZ0deacrJVfApfmtdGgDfMuh/nq6Ok1EcJh5FfA=
++github.com/josharian/intern v1.0.0 h1:vlS4z54oSdjm0bgjRigI+G1HpF+tI+9rE5LLzOg8HmY=
++github.com/josharian/intern v1.0.0/go.mod h1:5DoeVV0s6jJacbCEi61lwdGj/aVlrQvzHFFd8Hwg//Y=
++github.com/json-iterator/go v1.1.12 h1:PV8peI4a0ysnczrg+LtxykD8LfKY9ML6u2jnxaEnrnM=
++github.com/json-iterator/go v1.1.12/go.mod h1:e30LSqwooZae/UwlEbR2852Gd8hjQvJoHmT4TnhNGBo=
++github.com/kisielk/errcheck v1.5.0/go.mod h1:pFxgyoBC7bSaBwPgfKdkLd5X25qrDl4LWUI2bnpBCr8=
++github.com/kisielk/gotool v1.0.0/go.mod h1:XhKaO+MFFWcvkIS/tQcRk01m1F5IRFswLeQ+oQHNcck=
++github.com/kr/pretty v0.2.1/go.mod h1:ipq/a2n7PKx3OHsz4KJII5eveXtPO4qwEXGdVfWzfnI=
++github.com/kr/pretty v0.3.1 h1:flRD4NNwYAUpkphVc1HcthR4KEIFJ65n8Mw5qdRn3LE=
++github.com/kr/pretty v0.3.1/go.mod h1:hoEshYVHaxMs3cyo3Yncou5ZscifuDolrwPKZanG3xk=
++github.com/kr/pty v1.1.1/go.mod h1:pFQYn66WHrOpPYNljwOMqo10TkYh1fy3cYio2l3bCsQ=
++github.com/kr/text v0.1.0/go.mod h1:4Jbv+DJW3UT/LiOwJeYQe1efqtUx/iVham/4vfdArNI=
++github.com/kr/text v0.2.0 h1:5Nx0Ya0ZqY2ygV366QzturHI13Jq95ApcVaJBhpS+AY=
++github.com/kr/text v0.2.0/go.mod h1:eLer722TekiGuMkidMxC/pM04lWEeraHUUmBw8l2grE=
++github.com/mailru/easyjson v0.7.7 h1:UGYAvKxe3sBsEDzO8ZeWOSlIQfWFlxbzLZe7hwFURr0=
++github.com/mailru/easyjson v0.7.7/go.mod h1:xzfreul335JAWq5oZzymOObrkdz5UnU4kGfJJLY9Nlc=
++github.com/modern-go/concurrent v0.0.0-20180228061459-e0a39a4cb421/go.mod h1:6dJC0mAP4ikYIbvyc7fijjWJddQyLn8Ig3JB5CqoB9Q=
++github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd h1:TRLaZ9cD/w8PVh93nsPXa1VrQ6jlwL5oN8l14QlcNfg=
++github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd/go.mod h1:6dJC0mAP4ikYIbvyc7fijjWJddQyLn8Ig3JB5CqoB9Q=
++github.com/modern-go/reflect2 v1.0.2 h1:xBagoLtFs94CBntxluKeaWgTMpvLxC4ur3nMaC9Gz0M=
++github.com/modern-go/reflect2 v1.0.2/go.mod h1:yWuevngMOJpCy52FWWMvUC8ws7m/LJsjYzDa0/r8luk=
++github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 h1:C3w9PqII01/Oq1c1nUAm88MOHcQC9l5mIlSMApZMrHA=
++github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822/go.mod h1:+n7T8mK8HuQTcFwEeznm/DIxMOiR9yIdICNftLE1DvQ=
++github.com/onsi/ginkgo/v2 v2.19.0 h1:9Cnnf7UHo57Hy3k6/m5k3dRfGTMXGvxhHFvkDTCTpvA=
++github.com/onsi/ginkgo/v2 v2.19.0/go.mod h1:rlwLi9PilAFJ8jCg9UE1QP6VBpd6/xj3SRC0d6TU0To=
++github.com/onsi/gomega v1.19.0 h1:4ieX6qQjPP/BfC3mpsAtIGGlxTWPeA3Inl/7DtXw1tw=
++github.com/onsi/gomega v1.19.0/go.mod h1:LY+I3pBVzYsTBU1AnDwOSxaYi9WoWiqgwooUqq9yPro=
++github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
++github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
++github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
++github.com/rogpeppe/go-internal v1.12.0 h1:exVL4IDcn6na9z1rAb56Vxr+CgyK3nn3O+epU5NdKM8=
++github.com/rogpeppe/go-internal v1.12.0/go.mod h1:E+RYuTGaKKdloAfM02xzb0FW3Paa99yedzYV+kq4uf4=
++github.com/spf13/pflag v1.0.5 h1:iy+VFUOCP1a+8yFto/drg2CJ5u0yRoB7fZw3DKv/JXA=
++github.com/spf13/pflag v1.0.5/go.mod h1:McXfInJRrz4CZXVZOBLb0bTZqETkiAhM9Iw0y3An2Bg=
++github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
++github.com/stretchr/objx v0.4.0/go.mod h1:YvHI0jy2hoMjB+UWwv71VJQ9isScKT/TqJzVSSt89Yw=
++github.com/stretchr/objx v0.5.0/go.mod h1:Yh+to48EsGEfYuaHDzXPcE3xhTkx73EhmCGUpEOglKo=
++github.com/stretchr/testify v1.3.0/go.mod h1:M5WIy9Dh21IEIfnGCwXGc5bZfKNJtfHm1UVUgZn+9EI=
++github.com/stretchr/testify v1.7.1/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
++github.com/stretchr/testify v1.8.0/go.mod h1:yNjHg4UonilssWZ8iaSj1OCr/vHnekPRkoO+kdMU+MU=
++github.com/stretchr/testify v1.8.1/go.mod h1:w2LPCIKwWwSfY2zedu0+kehJoqGctiVI29o6fzry7u4=
++github.com/stretchr/testify v1.9.0 h1:HtqpIVDClZ4nwg75+f6Lvsy/wHu+3BoSGCbBAcpTsTg=
++github.com/stretchr/testify v1.9.0/go.mod h1:r2ic/lqez/lEtzL7wO/rwa5dbSLXVDPFyf8C91i36aY=
++github.com/x448/float16 v0.8.4 h1:qLwI1I70+NjRFUR3zs1JPUCgaCXSh3SW62uAKT1mSBM=
++github.com/x448/float16 v0.8.4/go.mod h1:14CWIYCyZA/cWjXOioeEpHeN/83MdbZDRQHoFcYsOfg=
++github.com/yuin/goldmark v1.1.27/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
++github.com/yuin/goldmark v1.2.1/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
++golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2/go.mod h1:djNgcEr1/C05ACkg1iLfiJU5Ep61QUkGW8qpdssI0+w=
++golang.org/x/crypto v0.0.0-20191011191535-87dc89f01550/go.mod h1:yigFU9vqHzYiE8UmvKecakEJjdnWj3jj499lnFckfCI=
++golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9/go.mod h1:LzIPMQfyMNhhGPhUkYOs5KpL4U8rLKemX1yGLhDgUto=
++golang.org/x/mod v0.2.0/go.mod h1:s0Qsj1ACt9ePp/hMypM3fl4fZqREWJwdYDEqhRiZZUA=
++golang.org/x/mod v0.3.0/go.mod h1:s0Qsj1ACt9ePp/hMypM3fl4fZqREWJwdYDEqhRiZZUA=
++golang.org/x/net v0.0.0-20190404232315-eb5bcb51f2a3/go.mod h1:t9HGtf8HONx5eT2rtn7q6eTqICYqUVnKs3thJo3Qplg=
++golang.org/x/net v0.0.0-20190620200207-3b0461eec859/go.mod h1:z5CRVTTTmAJ677TzLLGU+0bjPO0LkuOLi4/5GtJWs/s=
++golang.org/x/net v0.0.0-20200226121028-0de0cce0169b/go.mod h1:z5CRVTTTmAJ677TzLLGU+0bjPO0LkuOLi4/5GtJWs/s=
++golang.org/x/net v0.0.0-20201021035429-f5854403a974/go.mod h1:sp8m0HH+o8qH0wwXwYZr8TS3Oi6o0r6Gce1SSxlDquU=
++golang.org/x/net v0.26.0 h1:soB7SVo0PWrY4vPW/+ay0jKDNScG2X9wFeYlXIvJsOQ=
++golang.org/x/net v0.26.0/go.mod h1:5YKkiSynbBIh3p6iOc/vibscux0x38BZDkn8sCUPxHE=
++golang.org/x/oauth2 v0.21.0 h1:tsimM75w1tF/uws5rbeHzIWxEqElMehnc+iW793zsZs=
++golang.org/x/oauth2 v0.21.0/go.mod h1:XYTD2NtWslqkgxebSiOHnXEap4TF09sJSc7H1sXbhtI=
++golang.org/x/sync v0.0.0-20190423024810-112230192c58/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
++golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
++golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
++golang.org/x/sys v0.0.0-20190215142949-d0b11bdaac8a/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
++golang.org/x/sys v0.0.0-20190412213103-97732733099d/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
++golang.org/x/sys v0.0.0-20200930185726-fdedc70b468f/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
++golang.org/x/sys v0.21.0 h1:rF+pYz3DAGSQAxAu1CbC7catZg4ebC4UIeIhKxBZvws=
++golang.org/x/sys v0.21.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
++golang.org/x/term v0.21.0 h1:WVXCp+/EBEHOj53Rvu+7KiT/iElMrO8ACK16SMZ3jaA=
++golang.org/x/term v0.21.0/go.mod h1:ooXLefLobQVslOqselCNF4SxFAaoS6KujMbsGzSDmX0=
++golang.org/x/text v0.3.0/go.mod h1:NqM8EUOU14njkJ3fqMW+pc6Ldnwhi/IjpwHt7yyuwOQ=
++golang.org/x/text v0.3.3/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=
++golang.org/x/text v0.16.0 h1:a94ExnEXNtEwYLGJSIUxnWoxoRz/ZcCsV63ROupILh4=
++golang.org/x/text v0.16.0/go.mod h1:GhwF1Be+LQoKShO3cGOHzqOgRrGaYc9AvblQOmPVHnI=
++golang.org/x/time v0.3.0 h1:rg5rLMjNzMS1RkNLzCG38eapWhnYLFYXDXj2gOlr8j4=
++golang.org/x/time v0.3.0/go.mod h1:tRJNPiyCQ0inRvYxbN9jk5I+vvW/OXSQhTDSoE431IQ=
++golang.org/x/tools v0.0.0-20180917221912-90fa682c2a6e/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
++golang.org/x/tools v0.0.0-20191119224855-298f0cb1881e/go.mod h1:b+2E5dAYhXwXZwtnZ6UAqBI28+e2cm9otk0dWdXHAEo=
++golang.org/x/tools v0.0.0-20200619180055-7c47624df98f/go.mod h1:EkVYQZoAsY45+roYkvgYkIh4xh/qjgUK9TdY2XT94GE=
++golang.org/x/tools v0.0.0-20210106214847-113979e3529a/go.mod h1:emZCQorbCU4vsT4fOWvOPXz4eW1wZW4PmDk9uLelYpA=
++golang.org/x/tools v0.21.1-0.20240508182429-e35e4ccd0d2d h1:vU5i/LfpvrRCpgM/VPfJLg5KjxD3E+hfT1SH+d9zLwg=
++golang.org/x/tools v0.21.1-0.20240508182429-e35e4ccd0d2d/go.mod h1:aiJjzUbINMkxbQROHiO6hDPo2LHcIPhhQsa9DLh0yGk=
++golang.org/x/xerrors v0.0.0-20190717185122-a985d3407aa7/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
++golang.org/x/xerrors v0.0.0-20191011141410-1b5146add898/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
++golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
++golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
++google.golang.org/protobuf v1.34.2 h1:6xV6lTsCfpGD21XK49h7MhtcApnLqkfYgPcdHftf6hg=
++google.golang.org/protobuf v1.34.2/go.mod h1:qYOHts0dSfpeUzUFpOMr/WGzszTmLH+DiWniOlNbLDw=
++gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
++gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c h1:Hei/4ADfdWqJk1ZMxUNpqntNwaWcugrBjAiHlqqRiVk=
++gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c/go.mod h1:JHkPIbrfpd72SG/EVd6muEfDQjcINNoR0C8j2r3qZ4Q=
++gopkg.in/inf.v0 v0.9.1 h1:73M5CoZyi3ZLMOyDlQh031Cx6N9NDJ2Vvfl76EDAgDc=
++gopkg.in/inf.v0 v0.9.1/go.mod h1:cWUDdTG/fYaXco+Dcufb5Vnc6Gp2YChqWtbxRZE0mXw=
++gopkg.in/yaml.v2 v2.2.8/go.mod h1:hI93XBmqTisBFMUTm0b8Fm+jr3Dg1NNxqwp+5A1VGuI=
++gopkg.in/yaml.v2 v2.4.0 h1:D8xgwECY7CYvx+Y2n4sBz93Jn9JRvxdiyyo8CTfuKaY=
++gopkg.in/yaml.v2 v2.4.0/go.mod h1:RDklbk79AGWmwhnvt/jBztapEOGDOx6ZbXqjP6csGnQ=
++gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
++gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
++gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
++k8s.io/api v0.31.1 h1:Xe1hX/fPW3PXYYv8BlozYqw63ytA92snr96zMW9gWTU=
++k8s.io/api v0.31.1/go.mod h1:sbN1g6eY6XVLeqNsZGLnI5FwVseTrZX7Fv3O26rhAaI=
++k8s.io/apimachinery v0.31.1 h1:mhcUBbj7KUjaVhyXILglcVjuS4nYXiwC+KKFBgIVy7U=
++k8s.io/apimachinery v0.31.1/go.mod h1:rsPdaZJfTfLsNJSQzNHQvYoTmxhoOEofxtOsF3rtsMo=
++k8s.io/client-go v0.31.1 h1:f0ugtWSbWpxHR7sjVpQwuvw9a3ZKLXX0u0itkFXufb0=
++k8s.io/client-go v0.31.1/go.mod h1:sKI8871MJN2OyeqRlmA4W4KM9KBdBUpDLu/43eGemCg=
++k8s.io/klog/v2 v2.130.1 h1:n9Xl7H1Xvksem4KFG4PYbdQCQxqc/tTUyrgXaOhHSzk=
++k8s.io/klog/v2 v2.130.1/go.mod h1:3Jpz1GvMt720eyJH1ckRHK1EDfpxISzJ7I9OYgaDtPE=
++k8s.io/kube-openapi v0.0.0-20240228011516-70dd3763d340 h1:BZqlfIlq5YbRMFko6/PM7FjZpUb45WallggurYhKGag=
++k8s.io/kube-openapi v0.0.0-20240228011516-70dd3763d340/go.mod h1:yD4MZYeKMBwQKVht279WycxKyM84kkAx2DPrTXaeb98=
++k8s.io/utils v0.0.0-20240711033017-18e509b52bc8 h1:pUdcCO1Lk/tbT5ztQWOBi5HBgbBP1J8+AsQnQCKsi8A=
++k8s.io/utils v0.0.0-20240711033017-18e509b52bc8/go.mod h1:OLgZIPagt7ERELqWJFomSt595RzquPNLL48iOWgYOg0=
++sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd h1:EDPBXCAspyGV4jQlpZSudPeMmr1bNJefnuqLsRAsHZo=
++sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd/go.mod h1:B8JuhiUyNFVKdsE8h686QcCxMaH6HrOAZj4vswFpcB0=
++sigs.k8s.io/structured-merge-diff/v4 v4.4.1 h1:150L+0vs/8DA78h1u02ooW1/fFq/Lwr+sGiqlzvrtq4=
++sigs.k8s.io/structured-merge-diff/v4 v4.4.1/go.mod h1:N8hJocpFajUSSeSJ9bOZ77VzejKZaXsTtZo4/u7Io08=
++sigs.k8s.io/yaml v1.4.0 h1:Mk1wCc2gy/F0THH0TAp1QYyJNzRm2KCLy3o5ASXVI5E=
++sigs.k8s.io/yaml v1.4.0/go.mod h1:Ejl7/uTz7PSA4eKMyQCUTnhZYNmLIl+5c2lQPGR2BPY=
+diff --git a/dev/rejector/main.go b/dev/rejector/main.go
+new file mode 100644
+index 000000000..6764a1ad7
+--- /dev/null
++++ b/dev/rejector/main.go
+@@ -0,0 +1,147 @@
++package main
++
++import (
++	"context"
++	"encoding/json"
++	"flag"
++	"fmt"
++	"os"
++	"os/signal"
++	"path/filepath"
++	"syscall"
++
++	corev1 "k8s.io/api/core/v1"
++	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
++	"k8s.io/apimachinery/pkg/types"
++	"k8s.io/client-go/kubernetes"
++	"k8s.io/client-go/rest"
++	"k8s.io/client-go/tools/clientcmd"
++)
++
++// This is a test utility that is used to inject a very specific error condition into workspace pods, so that we can test the behavior of the ws-manager+ws-daemon in handling such cases.
++
++type patchStringValue struct {
++	Op    string `json:"op"`
++	Path  string `json:"path"`
++	Value string `json:"value"`
++}
++
++func main() {
++	// Get Kubernetes client
++	clientset, err := getClient()
++	if err != nil {
++		fmt.Printf("Error creating Kubernetes client: %v\n", err)
++		os.Exit(1)
++	}
++
++	namespace := "default"
++	ctx := context.Background()
++
++	// Listen for pod events
++	podWatcher, err := clientset.CoreV1().Pods(namespace).Watch(ctx, metav1.ListOptions{
++		LabelSelector: "component=workspace",
++	})
++	if err != nil {
++		fmt.Printf("Error watching pods: %v\n", err)
++		os.Exit(1)
++	}
++
++	// Handle pod events
++	ch := podWatcher.ResultChan()
++	stopChan := make(chan os.Signal, 1)
++	signal.Notify(stopChan, syscall.SIGINT, syscall.SIGTERM)
++
++	fmt.Println("Starting rejector...")
++
++	knownPodVersions := map[string]string{}
++	podRejectedCount := map[string]int{}
++
++	for {
++		select {
++		case event := <-ch:
++			pod, ok := event.Object.(*corev1.Pod)
++			if !ok {
++				fmt.Println("Unexpected type")
++				continue
++			}
++
++			marked := true
++			// marked := slices.ContainsFunc(pod.Spec.Containers[0].Env, func(e corev1.EnvVar) bool {
++			// 	return e.Name == "GITPOD_WORKSPACE_CONTEXT_URL" && strings.Contains(e.Value, "geropl")
++			// })
++
++			knownVersion, known := knownPodVersions[pod.Name]
++			if known && knownVersion >= pod.ResourceVersion {
++				fmt.Printf("Skipping pod %s bc of outdated version...\n", pod.Name)
++				continue
++			}
++
++			if count := podRejectedCount[pod.Name]; count > 0 || !marked {
++				fmt.Printf("Skipping pod %s...\n", pod.Name)
++				continue
++			}
++			fmt.Printf("Found marked pod %s\n", pod.Name)
++
++			if pod.Status.Phase == corev1.PodPending && pod.Spec.NodeName != "" {
++				fmt.Printf("found marked pending & scheduled pod: %s\n", pod.Name)
++				patch := []patchStringValue{
++					{
++						Path:  "/status/phase",
++						Op:    "replace",
++						Value: string(corev1.PodFailed),
++					},
++					{
++						Path:  "/status/reason",
++						Op:    "replace",
++						Value: "NodeAffinity",
++					},
++					{
++						Path:  "/status/message",
++						Op:    "replace",
++						Value: "Pod was rejected",
++					},
++				}
++				patchBytes, _ := json.Marshal(patch)
++				pUpdated, err := clientset.CoreV1().Pods(namespace).Patch(ctx, pod.Name, types.JSONPatchType, patchBytes, metav1.PatchOptions{}, "status")
++				if err != nil {
++					fmt.Printf("error patching pod %s: %v\n", pod.Name, err)
++				}
++				podRejectedCount[pod.Name] = podRejectedCount[pod.Name] + 1
++				knownPodVersions[pUpdated.Name] = pUpdated.ResourceVersion
++				fmt.Printf("Applied status: %s\n", pUpdated.Status.Phase)
++			}
++
++		case <-stopChan:
++			fmt.Println("Shutting down rejector...")
++			return
++		}
++	}
++}
++
++// Function to get the Kubernetes client
++func getClient() (*kubernetes.Clientset, error) {
++	var config *rest.Config
++	var err error
++
++	// Try to get in-cluster config
++	config, err = rest.InClusterConfig()
++	if err != nil {
++		// Fall back to using kubeconfig file if not running in a cluster
++		kubeconfigFlag := flag.String("kubeconfig", "~/.kube/config", "location of your kubeconfig file")
++		flag.Parse()
++		kubeconfig, err := filepath.Abs(*kubeconfigFlag)
++		if err != nil {
++			fmt.Printf("Cannot resolve kubeconfig path: %s", *kubeconfigFlag)
++		}
++		config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
++		if err != nil {
++			return nil, err
++		}
++	}
++
++	clientset, err := kubernetes.NewForConfig(config)
++	if err != nil {
++		return nil, err
++	}
++	return clientset, nil
++}

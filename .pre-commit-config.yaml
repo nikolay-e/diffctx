@@ -26,7 +26,9 @@ repos:
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
+        exclude: ^datasets/dcbench/v1/instances/.*/patch\.diff$
       - id: end-of-file-fixer
+        exclude: ^datasets/dcbench/v1/instances/.*/patch\.diff$
       - id: check-yaml
       - id: check-added-large-files
         args: ["--maxkb=1000"]
@@ -35,13 +37,18 @@ repos:
       - id: check-json
       - id: mixed-line-ending
         args: ["--fix=lf"]
+        exclude: ^datasets/dcbench/v1/instances/.*/patch\.diff$
       - id: check-case-conflict
       - id: check-docstring-first
       - id: check-ast
       - id: debug-statements
       - id: name-tests-test
         args: ["--pytest-test-first"]
-        exclude: ^(tests/(utils|conftest|framework/.*|garbage_data|scoring)\.py|diffctx/tests/fixtures/garbage/.*\.py)$
+        exclude: |
+          (?x)^(
+            tests/(utils|conftest|framework/.*|garbage_data|scoring)\.py
+            |crates/diffctx-native/tests/fixtures/garbage/.*\.py
+          )$
       - id: fix-byte-order-marker
       - id: detect-private-key
 
@@ -127,12 +134,16 @@ repos:
     hooks:
       - id: detect-secrets
         args: ["--baseline", ".secrets.baseline"]
+        # packaging/ holds generated release manifests whose SHA-256 digests
+        # of public artifacts read as high-entropy strings.
+        exclude: ^packaging/
 
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.29.0
     hooks:
       - id: gitleaks
         name: Scan for secrets (gitleaks)
+        exclude: ^datasets/dcbench/v1/instances/
 
   - repo: https://github.com/semgrep/pre-commit
     rev: v1.149.0
@@ -220,7 +231,7 @@ repos:
             {extends: default, rules:
             {line-length: {max: 120}, document-start: disable,
             indentation: disable, comments: disable}}
-        exclude: ^tests/cases/diff/
+        exclude: ^(tests/cases/diff/|datasets/dcbench/v1/instances/)
 
   # ============================================================================
   # SHELL LINTING
@@ -231,6 +242,9 @@ repos:
       - id: shfmt
         name: shfmt (shell script formatting)
         args: [-w, -i, '2']
+        # PKGBUILD is makepkg input, not a script: no shebang, and its
+        # formatting is fixed by the generator in scripts/render_packaging.py.
+        exclude: ^packaging/aur/
 
   - repo: https://github.com/shellcheck-py/shellcheck-py
     rev: v0.11.0.1
@@ -238,6 +252,7 @@ repos:
       - id: shellcheck
         name: shellcheck (shell script linting)
         args: [-x]
+        exclude: ^packaging/aur/
 
   # ============================================================================
   # MARKDOWN LINTING
@@ -258,39 +273,48 @@ repos:
       - id: cargo-fmt
         name: cargo fmt (Rust formatting)
         language: system
-        entry: bash -c 'cd diffctx && cargo fmt -- --check'
+        entry: bash -c 'cd crates/diffctx-native && cargo fmt -- --check'
         pass_filenames: false
-        files: ^diffctx/.*\.rs$
+        files: ^(Cargo\.(toml|lock)|crates/diffctx-native/)
         types: [file]
 
       - id: cargo-clippy
         name: cargo clippy (Rust linting)
         language: system
-        entry: bash -c 'cd diffctx && cargo clippy --release --lib 2>&1 | tail -5'
+        # pipefail: without it `| tail` swallows clippy's exit code and the hook
+        # can never fail. --all-targets: --lib alone left the standalone binary
+        # and the integration tests unlinted.
+        entry: >-
+          bash -c 'set -o pipefail; cd crates/diffctx-native &&
+          cargo clippy --release --all-targets 2>&1 | tail -5'
         pass_filenames: false
-        files: ^diffctx/
+        files: ^(Cargo\.(toml|lock)|crates/diffctx-native/)
         types: [file]
 
       - id: cargo-test
         name: cargo test (Rust unit tests)
         language: system
-        # Two-step: lib unit tests in dev profile (panic=unwind harness),
-        # yaml_cases integration test in release (harness=false, abort-safe).
+        # Dev profile for the harness-based targets (lib, native_cli): the
+        # release profile sets panic = "abort", and pulling the binary into a
+        # libtest target there mixes abort and unwind artifacts in
+        # target/release, which then breaks the harness-free yaml_cases build.
+        # yaml_cases stays on release (harness = false, so abort-safe).
         entry: |
           bash -c '
-          cd diffctx &&
+          cd crates/diffctx-native &&
           cargo test --lib &&
+          cargo test --test native_cli &&
           DIFFCTX_YAML_CASES_LIMIT=20 cargo test --release --test yaml_cases'
         pass_filenames: false
-        files: ^diffctx/.*\.rs$
+        files: ^(Cargo\.(toml|lock)|crates/diffctx-native/)
         types: [file]
 
       - id: cargo-audit
         name: cargo audit (dependency vulnerabilities)
         language: system
-        entry: bash -c 'command -v cargo-audit >/dev/null 2>&1 && cd diffctx && cargo audit || true'
+        entry: bash -c 'command -v cargo-audit >/dev/null 2>&1 && cargo audit || true'
         pass_filenames: false
-        files: ^diffctx/Cargo\.(toml|lock)$
+        files: ^(Cargo\.(toml|lock)|crates/diffctx-native/Cargo\.toml)$
         types: [file]
 
   # ============================================================================

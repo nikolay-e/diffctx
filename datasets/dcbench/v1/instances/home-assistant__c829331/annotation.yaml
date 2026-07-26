@@ -1,0 +1,33 @@
+repo: home-assistant
+base_commit: 41a256a3ffd77294442241aac8efd12f9d9cee7c
+commit: c82933175dd76b95e30fd847ab0f03d45fce883b
+patch_stored: true
+gold:
+  - path: homeassistant/components/accuweather/config_flow.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Representative hunk of the sweep — drops the redundant `import asyncio` and rewrites `except (..., asyncio.TimeoutError, ...)` to the builtin `TimeoutError`, the exact pattern repeated across all 63 files.
+  - path: tests/components/bond/test_entity.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: Shows the mirrored test-side edit, `patch_bond_device_state(side_effect=asyncio.TimeoutError)` -> `TimeoutError`, confirming the change is a pure identifier swap with no behavioral difference (TimeoutError is an alias of asyncio.TimeoutError since Python 3.11).
+forbidden:
+  - path: homeassistant/components/accuweather/__init__.py
+    reason: same integration directory as a gold file but untouched by this commit
+  - path: homeassistant/components/airvisual/config_flow.py
+    reason: alphabetically adjacent config_flow.py, looks like it belongs to this sweep but is not in the diff
+  - path: homeassistant/components/bond/entity.py
+    reason: same component as a gold test file but not part of this commit's changes
+nontrivial_gold_count: 0
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: []
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 63
+  description: Use builtin TimeoutError [a-d] — wide shallow mechanical sweep across 60+ alphabetical
+    integrations
+notes: Pure find-and-replace of `asyncio.TimeoutError` with the builtin `TimeoutError` (an alias since Python 3.11) across 63 unrelated files/integrations, dropping now-unused `import asyncio`. No cross-file mechanism links the files — each edit is self-contained and needs no external context, so no_nontrivial_context is set; two representative in-diff files stand in for the other ~61 identical edits.

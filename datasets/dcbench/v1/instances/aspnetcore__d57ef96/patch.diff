@@ -1,0 +1,319 @@
+From d57ef96c5c25e659e467d372da1468ced12e3daf Mon Sep 17 00:00:00 2001
+From: Javier Calvarro Nelson <jacalvar@microsoft.com>
+Date: Mon, 17 Jun 2024 16:17:58 +0200
+Subject: [PATCH] [Blazor] Rename ComponentPlatform to RendererInfo (#56263)
+
+* Rename ComponentPlatform to RendererInfo
+---
+ .../Components/src/ComponentBase.cs           |  4 +--
+ .../Components/src/PublicAPI.Unshipped.txt    | 14 ++++-----
+ src/Components/Components/src/RenderHandle.cs |  4 +--
+ .../src/RenderTree/ComponentPlatform.cs       | 31 -------------------
+ .../Components/src/RenderTree/Renderer.cs     |  4 +--
+ .../Components/src/RenderTree/RendererInfo.cs | 22 +++++++++++++
+ .../Server/src/Circuits/RemoteRenderer.cs     |  4 +--
+ .../src/HtmlRendering/StaticHtmlRenderer.cs   |  4 +--
+ .../Web/src/PublicAPI.Unshipped.txt           |  2 +-
+ .../src/Rendering/WebAssemblyRenderer.cs      |  4 +--
+ .../WebView/src/Services/WebViewRenderer.cs   |  4 +--
+ .../CascadingAuthenticationStateReader.razor  |  4 +--
+ .../ComponentPlatformDetails.razor            |  2 +-
+ .../ResourceCollectionSample.razor            |  4 +--
+ 14 files changed, 49 insertions(+), 58 deletions(-)
+ delete mode 100644 src/Components/Components/src/RenderTree/ComponentPlatform.cs
+ create mode 100644 src/Components/Components/src/RenderTree/RendererInfo.cs
+
+diff --git a/src/Components/Components/src/ComponentBase.cs b/src/Components/Components/src/ComponentBase.cs
+index d9c0f346b0..5de04ae8d7 100644
+--- a/src/Components/Components/src/ComponentBase.cs
++++ b/src/Components/Components/src/ComponentBase.cs
+@@ -43,9 +43,9 @@ public abstract class ComponentBase : IComponent, IHandleEvent, IHandleAfterRend
+     }
+ 
+     /// <summary>
+-    /// Gets the <see cref="ComponentPlatform"/> the component is running on.
++    /// Gets the <see cref="Components.RendererInfo"/> the component is running on.
+     /// </summary>
+-    protected ComponentPlatform Platform => _renderHandle.Platform;
++    protected RendererInfo RendererInfo => _renderHandle.RendererInfo;
+ 
+     /// <summary>
+     /// Gets the <see cref="ResourceAssetCollection"/> for the application.
+diff --git a/src/Components/Components/src/PublicAPI.Unshipped.txt b/src/Components/Components/src/PublicAPI.Unshipped.txt
+index 77e24cf1f6..e8c43eb034 100644
+--- a/src/Components/Components/src/PublicAPI.Unshipped.txt
++++ b/src/Components/Components/src/PublicAPI.Unshipped.txt
+@@ -1,15 +1,15 @@
+ #nullable enable
+ Microsoft.AspNetCore.Components.ComponentBase.Assets.get -> Microsoft.AspNetCore.Components.ResourceAssetCollection!
+ Microsoft.AspNetCore.Components.ComponentBase.AssignedRenderMode.get -> Microsoft.AspNetCore.Components.IComponentRenderMode?
+-Microsoft.AspNetCore.Components.ComponentBase.Platform.get -> Microsoft.AspNetCore.Components.ComponentPlatform!
+-Microsoft.AspNetCore.Components.ComponentPlatform
+-Microsoft.AspNetCore.Components.ComponentPlatform.ComponentPlatform(string! platformName, bool isInteractive) -> void
+-Microsoft.AspNetCore.Components.ComponentPlatform.IsInteractive.get -> bool
+-Microsoft.AspNetCore.Components.ComponentPlatform.Name.get -> string!
++Microsoft.AspNetCore.Components.ComponentBase.RendererInfo.get -> Microsoft.AspNetCore.Components.RendererInfo!
+ Microsoft.AspNetCore.Components.ExcludeFromInteractiveRoutingAttribute
+ Microsoft.AspNetCore.Components.ExcludeFromInteractiveRoutingAttribute.ExcludeFromInteractiveRoutingAttribute() -> void
++Microsoft.AspNetCore.Components.RendererInfo
++Microsoft.AspNetCore.Components.RendererInfo.IsInteractive.get -> bool
++Microsoft.AspNetCore.Components.RendererInfo.Name.get -> string!
++Microsoft.AspNetCore.Components.RendererInfo.RendererInfo(string! rendererName, bool isInteractive) -> void
+ Microsoft.AspNetCore.Components.RenderHandle.Assets.get -> Microsoft.AspNetCore.Components.ResourceAssetCollection!
+-Microsoft.AspNetCore.Components.RenderHandle.Platform.get -> Microsoft.AspNetCore.Components.ComponentPlatform!
++Microsoft.AspNetCore.Components.RenderHandle.RendererInfo.get -> Microsoft.AspNetCore.Components.RendererInfo!
+ Microsoft.AspNetCore.Components.RenderHandle.RenderMode.get -> Microsoft.AspNetCore.Components.IComponentRenderMode?
+ Microsoft.AspNetCore.Components.ResourceAsset
+ Microsoft.AspNetCore.Components.ResourceAsset.Properties.get -> System.Collections.Generic.IReadOnlyList<Microsoft.AspNetCore.Components.ResourceAssetProperty!>?
+@@ -25,4 +25,4 @@ Microsoft.AspNetCore.Components.ResourceAssetProperty.ResourceAssetProperty(stri
+ Microsoft.AspNetCore.Components.ResourceAssetProperty.Value.get -> string!
+ static readonly Microsoft.AspNetCore.Components.ResourceAssetCollection.Empty -> Microsoft.AspNetCore.Components.ResourceAssetCollection!
+ virtual Microsoft.AspNetCore.Components.RenderTree.Renderer.Assets.get -> Microsoft.AspNetCore.Components.ResourceAssetCollection!
+-virtual Microsoft.AspNetCore.Components.RenderTree.Renderer.ComponentPlatform.get -> Microsoft.AspNetCore.Components.ComponentPlatform!
++virtual Microsoft.AspNetCore.Components.RenderTree.Renderer.RendererInfo.get -> Microsoft.AspNetCore.Components.RendererInfo!
+diff --git a/src/Components/Components/src/RenderHandle.cs b/src/Components/Components/src/RenderHandle.cs
+index 4af9900681..6ac2b7b3cd 100644
+--- a/src/Components/Components/src/RenderHandle.cs
++++ b/src/Components/Components/src/RenderHandle.cs
+@@ -52,9 +52,9 @@ public readonly struct RenderHandle
+         ?? throw new InvalidOperationException("No renderer has been initialized.");
+ 
+     /// <summary>
+-    /// Gets the <see cref="ComponentPlatform"/> the component is running on.
++    /// Gets the <see cref="Components.RendererInfo"/> the component is running on.
+     /// </summary>
+-    public ComponentPlatform Platform => _renderer?.ComponentPlatform ?? throw new InvalidOperationException("No renderer has been initialized.");
++    public RendererInfo RendererInfo => _renderer?.RendererInfo ?? throw new InvalidOperationException("No renderer has been initialized.");
+ 
+     /// <summary>
+     /// Retrieves the <see cref="IComponentRenderMode"/> assigned to the component.
+diff --git a/src/Components/Components/src/RenderTree/ComponentPlatform.cs b/src/Components/Components/src/RenderTree/ComponentPlatform.cs
+deleted file mode 100644
+index 40a15d4f60..0000000000
+--- a/src/Components/Components/src/RenderTree/ComponentPlatform.cs
++++ /dev/null
+@@ -1,31 +0,0 @@
+-// Licensed to the .NET Foundation under one or more agreements.
+-// The .NET Foundation licenses this file to you under the MIT license.
+-
+-namespace Microsoft.AspNetCore.Components;
+-
+-/// <summary>
+-/// Provides information about the platform that the component is running on.
+-/// </summary>
+-public sealed class ComponentPlatform
+-{
+-    /// <summary>
+-    /// Constructs a new instance of <see cref="ComponentPlatform"/>.
+-    /// </summary>
+-    /// <param name="platformName">The name of the platform.</param>
+-    /// <param name="isInteractive">A flag to indicate if the platform is interactive.</param>
+-    public ComponentPlatform(string platformName, bool isInteractive)
+-    {
+-        Name = platformName;
+-        IsInteractive = isInteractive;
+-    }
+-
+-    /// <summary>
+-    /// Gets the name of the platform.
+-    /// </summary>
+-    public string Name { get; }
+-
+-    /// <summary>
+-    /// Gets a flag to indicate if the platform is interactive.
+-    /// </summary>
+-    public bool IsInteractive { get; }
+-}
+diff --git a/src/Components/Components/src/RenderTree/Renderer.cs b/src/Components/Components/src/RenderTree/Renderer.cs
+index 20be6ba7f0..e0fcfd8343 100644
+--- a/src/Components/Components/src/RenderTree/Renderer.cs
++++ b/src/Components/Components/src/RenderTree/Renderer.cs
+@@ -154,9 +154,9 @@ public abstract partial class Renderer : IDisposable, IAsyncDisposable
+         => _componentStateByComponent.GetValueOrDefault(component);
+ 
+     /// <summary>
+-    /// Gets the <see cref="ComponentPlatform"/> associated with this <see cref="Renderer"/>.
++    /// Gets the <see cref="RendererInfo"/> associated with this <see cref="Renderer"/>.
+     /// </summary>
+-    protected internal virtual ComponentPlatform ComponentPlatform { get; }
++    protected internal virtual RendererInfo RendererInfo { get; }
+ 
+     /// <summary>
+     /// Gets the <see cref="ResourceAssetCollection"/> associated with this <see cref="Renderer"/>.
+diff --git a/src/Components/Components/src/RenderTree/RendererInfo.cs b/src/Components/Components/src/RenderTree/RendererInfo.cs
+new file mode 100644
+index 0000000000..9c401b5ce0
+--- /dev/null
++++ b/src/Components/Components/src/RenderTree/RendererInfo.cs
+@@ -0,0 +1,22 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++namespace Microsoft.AspNetCore.Components;
++
++/// <summary>
++/// Provides information about the platform that the component is running on.
++/// </summary>
++/// <param name="rendererName">The name of the platform.</param>
++/// <param name="isInteractive">A flag to indicate if the platform is interactive.</param>
++public sealed class RendererInfo(string rendererName, bool isInteractive)
++{
++    /// <summary>
++    /// Gets the name of the platform.
++    /// </summary>
++    public string Name { get; } = rendererName;
++
++    /// <summary>
++    /// Gets a flag to indicate if the platform is interactive.
++    /// </summary>
++    public bool IsInteractive { get; } = isInteractive;
++}
+diff --git a/src/Components/Server/src/Circuits/RemoteRenderer.cs b/src/Components/Server/src/Circuits/RemoteRenderer.cs
+index c589d4eef8..31b2920621 100644
+--- a/src/Components/Server/src/Circuits/RemoteRenderer.cs
++++ b/src/Components/Server/src/Circuits/RemoteRenderer.cs
+@@ -18,7 +18,7 @@ internal partial class RemoteRenderer : WebRenderer
+ #pragma warning restore CA1852 // Seal internal types
+ {
+     private static readonly Task CanceledTask = Task.FromCanceled(new CancellationToken(canceled: true));
+-    private static readonly ComponentPlatform _componentPlatform = new("Server", isInteractive: true);
++    private static readonly RendererInfo _componentPlatform = new("Server", isInteractive: true);
+ 
+     private readonly CircuitClientProxy _client;
+     private readonly CircuitOptions _options;
+@@ -62,7 +62,7 @@ internal partial class RemoteRenderer : WebRenderer
+ 
+     protected override ResourceAssetCollection Assets => _resourceCollection ?? base.Assets;
+ 
+-    protected override ComponentPlatform ComponentPlatform => _componentPlatform;
++    protected override RendererInfo RendererInfo => _componentPlatform;
+ 
+     protected override IComponentRenderMode? GetComponentRenderMode(IComponent component) => RenderMode.InteractiveServer;
+ 
+diff --git a/src/Components/Web/src/HtmlRendering/StaticHtmlRenderer.cs b/src/Components/Web/src/HtmlRendering/StaticHtmlRenderer.cs
+index 1a1c3425c8..104dcb930d 100644
+--- a/src/Components/Web/src/HtmlRendering/StaticHtmlRenderer.cs
++++ b/src/Components/Web/src/HtmlRendering/StaticHtmlRenderer.cs
+@@ -19,7 +19,7 @@ namespace Microsoft.AspNetCore.Components.HtmlRendering.Infrastructure;
+ /// </summary>
+ public partial class StaticHtmlRenderer : Renderer
+ {
+-    private static readonly ComponentPlatform _componentPlatform = new ComponentPlatform("Static", isInteractive: false);
++    private static readonly RendererInfo _componentPlatform = new RendererInfo("Static", isInteractive: false);
+ 
+     private static readonly Task CanceledRenderTask = Task.FromCanceled(new CancellationToken(canceled: true));
+     private readonly NavigationManager? _navigationManager;
+@@ -41,7 +41,7 @@ public partial class StaticHtmlRenderer : Renderer
+     public override Dispatcher Dispatcher { get; } = Dispatcher.CreateDefault();
+ 
+     /// <inheritdoc/>
+-    protected internal override ComponentPlatform ComponentPlatform => _componentPlatform;
++    protected internal override RendererInfo RendererInfo => _componentPlatform;
+ 
+     /// <summary>
+     /// Adds a root component of the specified type and begins rendering it.
+diff --git a/src/Components/Web/src/PublicAPI.Unshipped.txt b/src/Components/Web/src/PublicAPI.Unshipped.txt
+index d3c6279055..42e7a30fad 100644
+--- a/src/Components/Web/src/PublicAPI.Unshipped.txt
++++ b/src/Components/Web/src/PublicAPI.Unshipped.txt
+@@ -3,4 +3,4 @@ Microsoft.AspNetCore.Components.Web.Internal.IInternalWebJSInProcessRuntime
+ Microsoft.AspNetCore.Components.Web.Internal.IInternalWebJSInProcessRuntime.InvokeJS(string! identifier, string? argsJson, Microsoft.JSInterop.JSCallResultType resultType, long targetInstanceId) -> string!
+ Microsoft.AspNetCore.Components.Web.KeyboardEventArgs.IsComposing.get -> bool
+ Microsoft.AspNetCore.Components.Web.KeyboardEventArgs.IsComposing.set -> void
+-override Microsoft.AspNetCore.Components.HtmlRendering.Infrastructure.StaticHtmlRenderer.ComponentPlatform.get -> Microsoft.AspNetCore.Components.ComponentPlatform!
++override Microsoft.AspNetCore.Components.HtmlRendering.Infrastructure.StaticHtmlRenderer.RendererInfo.get -> Microsoft.AspNetCore.Components.RendererInfo!
+diff --git a/src/Components/WebAssembly/WebAssembly/src/Rendering/WebAssemblyRenderer.cs b/src/Components/WebAssembly/WebAssembly/src/Rendering/WebAssemblyRenderer.cs
+index cc9426e260..d71cd1d63f 100644
+--- a/src/Components/WebAssembly/WebAssembly/src/Rendering/WebAssemblyRenderer.cs
++++ b/src/Components/WebAssembly/WebAssembly/src/Rendering/WebAssemblyRenderer.cs
+@@ -25,7 +25,7 @@ internal sealed partial class WebAssemblyRenderer : WebRenderer
+     private readonly Dispatcher _dispatcher;
+     private readonly ResourceAssetCollection _resourceCollection;
+     private readonly IInternalJSImportMethods _jsMethods;
+-    private static readonly ComponentPlatform _componentPlatform = new("WebAssembly", isInteractive: true);
++    private static readonly RendererInfo _componentPlatform = new("WebAssembly", isInteractive: true);
+ 
+     public WebAssemblyRenderer(IServiceProvider serviceProvider, ResourceAssetCollection resourceCollection, ILoggerFactory loggerFactory, JSComponentInterop jsComponentInterop)
+         : base(serviceProvider, loggerFactory, DefaultWebAssemblyJSRuntime.Instance.ReadJsonSerializerOptions(), jsComponentInterop)
+@@ -85,7 +85,7 @@ internal sealed partial class WebAssemblyRenderer : WebRenderer
+ 
+     protected override ResourceAssetCollection Assets => _resourceCollection;
+ 
+-    protected override ComponentPlatform ComponentPlatform => _componentPlatform;
++    protected override RendererInfo RendererInfo => _componentPlatform;
+ 
+     public override Dispatcher Dispatcher => _dispatcher;
+ 
+diff --git a/src/Components/WebView/WebView/src/Services/WebViewRenderer.cs b/src/Components/WebView/WebView/src/Services/WebViewRenderer.cs
+index 5387502394..8e4ef85596 100644
+--- a/src/Components/WebView/WebView/src/Services/WebViewRenderer.cs
++++ b/src/Components/WebView/WebView/src/Services/WebViewRenderer.cs
+@@ -9,7 +9,7 @@ namespace Microsoft.AspNetCore.Components.WebView.Services;
+ 
+ internal sealed class WebViewRenderer : WebRenderer
+ {
+-    private static readonly ComponentPlatform _componentPlatform = new("WebView", isInteractive: true);
++    private static readonly RendererInfo _componentPlatform = new("WebView", isInteractive: true);
+     private readonly Queue<UnacknowledgedRenderBatch> _unacknowledgedRenderBatches = new();
+     private readonly Dispatcher _dispatcher;
+     private readonly IpcSender _ipcSender;
+@@ -32,7 +32,7 @@ internal sealed class WebViewRenderer : WebRenderer
+ 
+     public override Dispatcher Dispatcher => _dispatcher;
+ 
+-    protected override ComponentPlatform ComponentPlatform => _componentPlatform;
++    protected override RendererInfo RendererInfo => _componentPlatform;
+ 
+     protected override int GetWebRendererId() => (int)WebRendererId.WebView;
+ 
+diff --git a/src/Components/test/testassets/TestContentPackage/CascadingAuthenticationStateReader.razor b/src/Components/test/testassets/TestContentPackage/CascadingAuthenticationStateReader.razor
+index 9f0e4830af..77a7f86aa9 100644
+--- a/src/Components/test/testassets/TestContentPackage/CascadingAuthenticationStateReader.razor
++++ b/src/Components/test/testassets/TestContentPackage/CascadingAuthenticationStateReader.razor
+@@ -58,13 +58,13 @@ else
+ 
+ <p>
+     Interactive:
+-    <strong id="is-interactive">@Platform.IsInteractive</strong>
++    <strong id="is-interactive">@RendererInfo.IsInteractive</strong>
+ </p>
+ 
+ 
+ <p>
+     Platform:
+-    <strong id="platform">@Platform.Name</strong>
++    <strong id="platform">@RendererInfo.Name</strong>
+ </p>
+ 
+ <hr />
+diff --git a/src/Components/test/testassets/TestContentPackage/ComponentPlatformDetails.razor b/src/Components/test/testassets/TestContentPackage/ComponentPlatformDetails.razor
+index 76763edadb..2debc69aca 100644
+--- a/src/Components/test/testassets/TestContentPackage/ComponentPlatformDetails.razor
++++ b/src/Components/test/testassets/TestContentPackage/ComponentPlatformDetails.razor
+@@ -26,7 +26,7 @@
+             _renderMode = "static";
+         }
+ 
+-        if (Platform.IsInteractive)
++        if (RendererInfo.IsInteractive)
+         {
+             _isInteractive = true;
+         }
+diff --git a/src/Components/test/testassets/TestContentPackage/ResourceCollectionSample.razor b/src/Components/test/testassets/TestContentPackage/ResourceCollectionSample.razor
+index 703d78fc3f..d4ef2c3d82 100644
+--- a/src/Components/test/testassets/TestContentPackage/ResourceCollectionSample.razor
++++ b/src/Components/test/testassets/TestContentPackage/ResourceCollectionSample.razor
+@@ -2,11 +2,11 @@
+ @using Microsoft.AspNetCore.Components.Web;
+ @inject IJSRuntime JSRuntime
+ 
+-<p id="platform-name">@Platform.Name</p>
++<p id="platform-name">@RendererInfo.Name</p>
+ 
+ <p id="basic-app-styles">@Assets["BasicTestApp.styles.css"]</p>
+ 
+-@if (!Platform.IsInteractive)
++@if (!RendererInfo.IsInteractive)
+ {
+     <button id="import-module" onclick="import('./Index.mjs')">Import JS Module</button>    
+ }else

@@ -1,0 +1,45 @@
+repo: neovim
+base_commit: b03e790cddd19b57fa91f4fbfcc30c28f3c173bf
+commit: 6bf2a6fc5bb395b67c88cb26d332f882a106c7ab
+patch_stored: true
+gold:
+  - path: src/nvim/api/private/helpers.h
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: defines the TRY_WRAP(err, code) macro that now expands to try_enter(&tstate)/code/try_leave(&tstate, err) instead of the old try_start()/code/try_end(err) pair, and drops the `trylevel` field from TryState — the mechanism every other file's callsite change depends on.
+  - path: src/nvim/api/private/helpers.c
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: try_start()/try_end()/try_leave() are consolidated into try_enter()/try_leave(); try_leave() changes signature from bool-returning to void and now restores/asserts all TryState fields (including no more trylevel), which is why call sites switch from `if (try_end(err))`/`tl_ret = try_leave(...)` to `ERROR_SET(err)` checks.
+  - path: src/nvim/api/vim.c
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: nvim_create_buf() is rewritten from try_start()/fail-label/try_end(err) into a single TRY_WRAP(err, {...}) block with an internal `fail:` label, the clearest example of the "wrappers that don't restore previous state are dangerous" fix described in the commit message.
+  - path: src/nvim/ex_getln.c
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: command_line_enter()/color_cmdline() drop the local `tl_ret`/`dgc_ret` bookkeeping variables entirely in favor of ERROR_SET(&err) after TRY_WRAP, showing the refactor's ripple through the widest/most convoluted call site.
+  - path: src/nvim/api/buffer.c
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: nvim_buf_set_lines/set_text/set_name/call convert bare try_start()/end:/try_end(err) blocks into TRY_WRAP(err, { ... end:; }), the largest single-file diff and the origin of the "goto end inside TRY_WRAP" pattern reused elsewhere.
+forbidden:
+  - path: src/nvim/api/window.c
+    reason: same mechanical try_enter/try_leave-to-TRY_WRAP conversion already illustrated by tabpage.c and window-independent of the core mechanism change.
+  - path: src/nvim/api/tabpage.c
+    reason: smallest, most trivial instance of the same conversion pattern already shown by vim.c/buffer.c.
+  - path: src/nvim/eval.c
+    reason: also calls Vimscript-exception-handling helpers but was not touched by this refactor and uses a different mechanism (not try_start/try_end).
+  - path: src/nvim/api/private/dispatch.c
+    reason: dispatches API calls to their handlers but has no knowledge of try_start/TRY_WRAP internals; unrelated to this refactor.
+nontrivial_gold_count: 0
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: 'Removes the two-wrapper try_start()/try_end() vs try_enter()/try_leave() split (the former did not restore trylevel/msg_list, deemed dangerous for api-fast functions) and converts every remaining try_start() call site across api/*.c, ex_getln.c, lua/stdlib.c and option.c to the single TRY_WRAP macro. Grepped the base commit for any try_start/try_end callers outside the 10-file diff and found none, so the change is fully self-contained with no external nontrivial context.'

@@ -1,0 +1,62 @@
+repo: kubernetes
+base_commit: bedb915a4e7120c90fee1343693a9a403cb06d92
+commit: 45dfb46448a130482e9050664f9d7f7288c0b4b3
+patch_stored: true
+gold:
+  - path: pkg/features/kube_features.go
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: registers the TokenRequestServiceAccountUIDValidation gate at Beta/default-true for 1.34 in the kube-internal versioned feature-gate map.
+  - path: pkg/registry/core/serviceaccount/storage/token.go
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: TokenREST.Create adds the UID-mismatch check gated by utilfeature.DefaultFeatureGate.Enabled(genericfeatures.TokenRequestServiceAccountUIDValidation) and implements PreserveRequestObjectMetaSystemFieldsOnSubresourceCreate.
+  - path: pkg/registry/core/serviceaccount/storage/token_test.go
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: TestTokenRequest_ServiceAccountUIDValidation directly exercises the new gated branch in TokenREST.Create for matching/mismatched/empty UIDs.
+  - path: staging/src/k8s.io/apiserver/pkg/features/kube_features.go
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: defines the genericfeatures.TokenRequestServiceAccountUIDValidation featuregate.Feature constant that token.go checks and pkg/features/kube_features.go re-registers.
+  - path: test/compatibility_lifecycle/reference/versioned_feature_list.yaml
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: compatibility-lifecycle reference entry for TokenRequestServiceAccountUIDValidation must track the same version/default/prerelease as the Go registration.
+  - path: test/integration/auth/svcaccttoken_test.go
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: adds integration subtests hitting CreateToken over the real API with the feature gate on/off, covering the end-to-end UID-mismatch conflict and warning paths.
+  - path: staging/src/k8s.io/apiserver/pkg/endpoints/handlers/create.go
+    tier: essential
+    role: caller
+    in_diff: false
+    rationale: 'the generic create handler type-asserts r.(rest.SubresourceObjectMetaPreserver) and only skips rest.WipeObjectMetaSystemFields(objectMeta) when PreserveRequestObjectMetaSystemFieldsOnSubresourceCreate() returns true — this is why token.go must implement that method for req.UID to survive into TokenREST.Create at all.'
+  - path: staging/src/k8s.io/apiserver/pkg/registry/rest/rest.go
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: defines the SubresourceObjectMetaPreserver interface (PreserveRequestObjectMetaSystemFieldsOnSubresourceCreate() bool) that token.go implements and create.go type-asserts against.
+forbidden:
+  - path: pkg/registry/core/serviceaccount/storage/storage.go
+    reason: sibling file in the same package (ServiceAccount REST storage) but unrelated to TokenREST or UID validation
+  - path: pkg/registry/core/pod/storage/storage.go
+    reason: BindingREST implements the same SubresourceObjectMetaPreserver interface but for an unrelated pod-binding subresource, not touched by this change
+  - path: staging/src/k8s.io/apiserver/pkg/registry/rest/meta.go
+    reason: defines WipeObjectMetaSystemFields, the internal helper skipped when preservation is on, but its implementation detail is not needed to understand the UID-validation feature itself
+nontrivial_gold_count: 2
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 6
+  description: 'TokenRequestServiceAccountUIDValidation feature gate + UID validation logic: pkg/features
+    + pkg/registry + staging + compatibility test — compact wide-scatter gate'
+notes: Adds a feature-gated check that TokenRequest.UID matches the target ServiceAccount's UID, returning a Conflict when mismatched (or a warning+audit-annotation when the gate is off); TokenREST also newly implements SubresourceObjectMetaPreserver so the generic create handler stops wiping the request UID before Create ever sees it — that handler is the key nontrivial-gold link since it silently determines whether req.UID is even populated.
+string_indirection: false

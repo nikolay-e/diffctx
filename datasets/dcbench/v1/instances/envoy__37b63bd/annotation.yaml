@@ -1,0 +1,57 @@
+repo: envoy
+base_commit: 9457518194e480e6d6f04a6611260a3efffba35b
+commit: 37b63bd01bb7733d2f6ab68045c0dfc8eb90e77e
+patch_stored: true
+gold:
+  - path: bazel/dependency_imports.bzl
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Renames the crates_repository from dynamic_modules_rust_sdk_crate_index to envoy_rust_crate_index, switches cargo_lockfile from the per-crate source/extensions/dynamic_modules/sdk/rust:Cargo.lock to the root :Cargo.lock, and expands manifests to list both Rust crates' Cargo.toml plus the root Cargo.toml -- this is the core of the refactor.
+  - path: source/extensions/dynamic_modules/sdk/rust/BUILD
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Updates load() to pull all_crate_deps from the renamed @envoy_rust_crate_index and adds exports_files(["Cargo.toml"]) so the root-level crates_repository manifests list in dependency_imports.bzl can reference this crate's Cargo.toml as a Bazel label.
+  - path: bazel/dependency_imports_extra.bzl
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Updates load("@dynamic_modules_rust_sdk_crate_index//:defs.bzl", "crate_repositories") to load("@envoy_rust_crate_index//:defs.bzl", ...), keeping this WORKSPACE-wiring consumer consistent with the repository rename in dependency_imports.bzl.
+  - path: test/extensions/dynamic_modules/test_data/rust/BUILD
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Adds exports_files(["Cargo.toml"]) mirroring the sdk/rust BUILD change, exposing the second Cargo workspace member (test-programs crate) so it too can be listed in dependency_imports.bzl's manifests.
+  - path: Cargo.toml
+    tier: helpful
+    role: config
+    in_diff: false
+    rationale: Pre-existing repo-root [workspace] whose members list (source/extensions/dynamic_modules/sdk/rust, test/extensions/dynamic_modules/test_data/rust) is exactly what dependency_imports.bzl's new manifests list mirrors -- shows this Bazel refactor is catching up to an already-established root Cargo workspace, explaining why the per-crate Cargo.Bazel.lock/Cargo.lock become redundant and are deleted.
+forbidden:
+  - path: Cargo.lock
+    reason: auto-generated root lockfile content now referenced by label, but adds no semantic understanding of the Bazel target rename itself
+  - path: MODULE.bazel.lock
+    reason: auto-generated Bzlmod dependency lockfile, unrelated to this Cargo/rust-sdk crate-index rename
+  - path: bazel/repository_locations.bzl
+    reason: pins the external rules_rust repo version, not the local crate-index naming/manifest change made in this commit
+  - path: source/extensions/dynamic_modules/sdk/rust/README.md
+    reason: documents external consumer usage of the SDK crate as a standalone dependency, not the internal Bazel/Cargo workspace wiring changed here
+nontrivial_gold_count: 1
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration, bm25, graph, random]
+string_indirection: true
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 8
+  description: Bazel refactor of cargo workspace for builtin Rust extensions (Starlark+Cargo coupling)
+notes: >
+  Consolidates Bazel's Rust crates_repository from a per-crate index scoped to
+  source/extensions/dynamic_modules/sdk/rust's own Cargo.lock/toml into a single
+  repo-root index (envoy_rust_crate_index) spanning both Rust crates via the
+  pre-existing root Cargo workspace, deleting the now-redundant per-crate
+  Cargo.Bazel.lock/Cargo.lock and rustfmt.toml symlinks. The linkage between the
+  crates_repository name string and its load("@name//:defs.bzl", ...) consumers
+  is string-based (Bazel external-repo naming), hence string_indirection: true.
+  Most of the raw diff size (~3000 of ~3136 lines) is the deleted generated
+  lockfiles, not semantic content; the real change is 4 small config edits.

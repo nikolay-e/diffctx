@@ -1,0 +1,2136 @@
+From 610b14e4f3f606cd4c49518b9a42e3290fd52aeb Mon Sep 17 00:00:00 2001
+From: Riccardo Cipolleschi <cipolleschi@meta.com>
+Date: Thu, 6 Apr 2023 12:07:26 -0700
+Subject: [PATCH] Move min ios version to 13.4 for OSS (#36795)
+
+Summary:
+Pull Request resolved: https://github.com/facebook/react-native/pull/36795
+
+This change bump the min iOS version for React Native to 13.4, to align with company guidelines.
+
+## Changelog:
+[iOS][Changed] - Moved the min iOS version to 13.4
+
+Reviewed By: cortinico
+
+Differential Revision: D44634663
+
+fbshipit-source-id: 035e8fcbb395f7394f8253e3ec485ad9937531c2
+---
+ .../React-RCTActionSheet.podspec              |   2 +-
+ .../Libraries/AppDelegate/RCTAppDelegate.mm   |   7 +-
+ .../AppDelegate/React-RCTAppDelegate.podspec  |   2 +-
+ .../Libraries/Blob/React-RCTBlob.podspec      |   2 +-
+ .../FBLazyVector/FBLazyVector.podspec         |   2 +-
+ .../Libraries/Image/RCTImageView.mm           |  12 +-
+ .../Libraries/Image/React-RCTImage.podspec    |   2 +-
+ .../LinkingIOS/React-RCTLinking.podspec       |   2 +-
+ .../React-RCTAnimation.podspec                |   2 +-
+ .../Network/React-RCTNetwork.podspec          |   2 +-
+ .../React-RCTPushNotification.podspec         |   2 +-
+ .../Libraries/RCTRequired/RCTRequired.podspec |   2 +-
+ .../Settings/React-RCTSettings.podspec        |   2 +-
+ .../Libraries/Text/React-RCTText.podspec      |   2 +-
+ .../Text/TextInput/Multiline/RCTUITextView.m  |   2 +-
+ .../Text/TextInput/RCTBaseTextInputView.m     |  20 +-
+ .../TypeSafety/RCTTypeSafety.podspec          |   2 +-
+ .../Vibration/React-RCTVibration.podspec      |   2 +-
+ packages/react-native/React-Core.podspec      |   2 +-
+ packages/react-native/React.podspec           |   2 +-
+ packages/react-native/React/Base/RCTConvert.m |  38 ++--
+ .../CoreModules/RCTAccessibilityManager.mm    |  22 +--
+ .../CoreModules/RCTActionSheetManager.mm      |  42 ++--
+ .../React/CoreModules/RCTAlertController.m    |  20 +-
+ .../React/CoreModules/RCTAlertManager.mm      |   9 +-
+ .../React/CoreModules/RCTAppearance.mm        |  66 +++----
+ .../React/CoreModules/RCTDevLoadingView.mm    |   9 +-
+ .../React/CoreModules/RCTLogBoxView.mm        |  12 +-
+ .../React/CoreModules/RCTPerfMonitor.mm       |  38 +---
+ .../React/CoreModules/RCTRedBox.mm            |  12 +-
+ .../React/CoreModules/RCTStatusBarManager.mm  |  24 +--
+ .../CoreModules/React-CoreModules.podspec     |   2 +-
+ .../FBReactNativeSpec.podspec                 |   2 +-
+ .../Modal/RCTFabricModalHostViewController.mm |   7 +-
+ .../ScrollView/RCTScrollViewComponentView.mm  |   9 +-
+ .../TextInput/RCTTextInputComponentView.mm    |   5 +-
+ .../TextInput/RCTTextInputUtils.mm            |  14 +-
+ .../View/RCTViewComponentView.mm              |   6 +-
+ .../React/Fabric/RCTSurfacePointerHandler.mm  | 181 ++++++++----------
+ .../React/React-RCTFabric.podspec             |   2 +-
+ .../React/Views/RCTModalHostView.m            |   6 +-
+ .../React/Views/RCTModalHostViewController.m  |   7 +-
+ .../React/Views/RCTSegmentedControl.m         |  28 +--
+ packages/react-native/React/Views/RCTView.m   |  37 ++--
+ .../react-native/React/Views/RCTViewManager.m |  16 +-
+ .../React/Views/ScrollView/RCTScrollView.m    |   6 +-
+ .../ReactCommon/React-Fabric.podspec          |   2 +-
+ .../ReactCommon/React-rncore.podspec          |   2 +-
+ .../ReactCommon/ReactCommon.podspec           |   2 +-
+ .../callinvoker/React-callinvoker.podspec     |   2 +-
+ .../cxxreact/React-cxxreact.podspec           |   2 +-
+ .../ReactCommon/hermes/React-hermes.podspec   |   2 +-
+ .../ReactCommon/jsc/React-jsc.podspec         |   2 +-
+ .../ReactCommon/jsi/React-jsi.podspec         |   2 +-
+ .../jsiexecutor/React-jsiexecutor.podspec     |   2 +-
+ .../jsinspector/React-jsinspector.podspec     |   2 +-
+ .../ReactCommon/logger/React-logger.podspec   |   2 +-
+ .../ios/React-NativeModulesApple.podspec      |   2 +-
+ .../samples/ReactCommon-Samples.podspec       |   2 +-
+ .../renderer/graphics/React-graphics.podspec  |   2 +-
+ .../platform/ios/React-ImageManager.podspec   |   2 +-
+ .../reactperflogger/React-perflogger.podspec  |   2 +-
+ .../React-runtimeexecutor.podspec             |   2 +-
+ .../ReactCommon/yoga/Yoga.podspec             |   2 +-
+ .../cocoapods/__tests__/codegen_utils-test.rb |   4 +-
+ .../react-native/scripts/react_native_pods.rb |  24 +--
+ .../sdks/hermes-engine/hermes-engine.podspec  |   2 +-
+ .../ios/HelloWorld.xcodeproj/project.pbxproj  |   8 +-
+ packages/react-native/template/ios/Podfile    |   2 +-
+ .../DoubleConversion.podspec                  |   2 +-
+ .../third-party-podspecs/RCT-Folly.podspec    |   2 +-
+ .../third-party-podspecs/glog.podspec         |   2 +-
+ .../MyNativeView.podspec                      |   2 +-
+ .../NativeCxxModuleExample.podspec            |   2 +-
+ .../ScreenshotManager.podspec                 |   2 +-
+ packages/rn-tester/Podfile                    |   2 +-
+ .../rn-tester/RCTTest/React-RCTTest.podspec   |   2 +-
+ .../RNTesterPods.xcodeproj/project.pbxproj    |  16 +-
+ .../RCTConvert_UIColorTests.m                 |  81 ++++----
+ tools/build_defs/oss/rn_defs.bzl              |   2 +-
+ 80 files changed, 330 insertions(+), 554 deletions(-)
+
+diff --git a/packages/react-native/Libraries/ActionSheetIOS/React-RCTActionSheet.podspec b/packages/react-native/Libraries/ActionSheetIOS/React-RCTActionSheet.podspec
+index 5cad0ca8191..ab5194b12fd 100644
+--- a/packages/react-native/Libraries/ActionSheetIOS/React-RCTActionSheet.podspec
++++ b/packages/react-native/Libraries/ActionSheetIOS/React-RCTActionSheet.podspec
+@@ -24,7 +24,7 @@ Pod::Spec.new do |s|
+   s.documentation_url      = "https://reactnative.dev/docs/actionsheetios"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.source                 = source
+   s.source_files           = "*.{m}"
+   s.preserve_paths         = "package.json", "LICENSE", "LICENSE-docs"
+diff --git a/packages/react-native/Libraries/AppDelegate/RCTAppDelegate.mm b/packages/react-native/Libraries/AppDelegate/RCTAppDelegate.mm
+index 74cf88e77b5..8cf38696905 100644
+--- a/packages/react-native/Libraries/AppDelegate/RCTAppDelegate.mm
++++ b/packages/react-native/Libraries/AppDelegate/RCTAppDelegate.mm
+@@ -112,11 +112,8 @@ static NSString *const kRNConcurrentRoot = @"concurrentRoot";
+   enableFabric = self.fabricEnabled;
+ #endif
+   UIView *rootView = RCTAppSetupDefaultRootView(bridge, moduleName, initProps, enableFabric);
+-  if (@available(iOS 13.0, *)) {
+-    rootView.backgroundColor = [UIColor systemBackgroundColor];
+-  } else {
+-    rootView.backgroundColor = [UIColor whiteColor];
+-  }
++
++  rootView.backgroundColor = [UIColor systemBackgroundColor];
+ 
+   return rootView;
+ }
+diff --git a/packages/react-native/Libraries/AppDelegate/React-RCTAppDelegate.podspec b/packages/react-native/Libraries/AppDelegate/React-RCTAppDelegate.podspec
+index b191bf21140..c37f0a9fa22 100644
+--- a/packages/react-native/Libraries/AppDelegate/React-RCTAppDelegate.podspec
++++ b/packages/react-native/Libraries/AppDelegate/React-RCTAppDelegate.podspec
+@@ -57,7 +57,7 @@ Pod::Spec.new do |s|
+   s.documentation_url      = "https://reactnative.dev/docs/actionsheetios"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.source                 = source
+   s.source_files            = "**/*.{c,h,m,mm,S,cpp}"
+ 
+diff --git a/packages/react-native/Libraries/Blob/React-RCTBlob.podspec b/packages/react-native/Libraries/Blob/React-RCTBlob.podspec
+index 2cbb75dcc8a..c2a74ae8d1b 100644
+--- a/packages/react-native/Libraries/Blob/React-RCTBlob.podspec
++++ b/packages/react-native/Libraries/Blob/React-RCTBlob.podspec
+@@ -39,7 +39,7 @@ Pod::Spec.new do |s|
+   s.homepage               = "https://reactnative.dev/"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.compiler_flags         = folly_compiler_flags + ' -Wno-nullability-completeness'
+   s.source                 = source
+   s.source_files           = "*.{h,m,mm}"
+diff --git a/packages/react-native/Libraries/FBLazyVector/FBLazyVector.podspec b/packages/react-native/Libraries/FBLazyVector/FBLazyVector.podspec
+index b8473d5bae5..a67c495bfb2 100644
+--- a/packages/react-native/Libraries/FBLazyVector/FBLazyVector.podspec
++++ b/packages/react-native/Libraries/FBLazyVector/FBLazyVector.podspec
+@@ -23,7 +23,7 @@ Pod::Spec.new do |s|
+   s.homepage               = "https://reactnative.dev/"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.source                 = source
+   s.source_files           = "**/*.{c,h,m,mm,cpp}"
+   s.header_dir             = "FBLazyVector"
+diff --git a/packages/react-native/Libraries/Image/RCTImageView.mm b/packages/react-native/Libraries/Image/RCTImageView.mm
+index 8f965053767..3b3878fccb6 100644
+--- a/packages/react-native/Libraries/Image/RCTImageView.mm
++++ b/packages/react-native/Libraries/Image/RCTImageView.mm
+@@ -99,15 +99,11 @@ static NSDictionary *onLoadParamsForSource(RCTImageSource *source)
+                selector:@selector(clearImageIfDetached)
+                    name:UIApplicationDidEnterBackgroundNotification
+                  object:nil];
+-#if defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && __IPHONE_OS_VERSION_MAX_ALLOWED >= 130000
+-    if (@available(iOS 13.0, *)) {
+-      [center addObserver:self
+-                 selector:@selector(clearImageIfDetached)
++    [center addObserver:self
++               selector:@selector(clearImageIfDetached)
+ 
+-                     name:UISceneDidEnterBackgroundNotification
+-                   object:nil];
+-    }
+-#endif
++                   name:UISceneDidEnterBackgroundNotification
++                 object:nil];
+   }
+   return self;
+ }
+diff --git a/packages/react-native/Libraries/Image/React-RCTImage.podspec b/packages/react-native/Libraries/Image/React-RCTImage.podspec
+index c7779c6a802..f6a91baaf99 100644
+--- a/packages/react-native/Libraries/Image/React-RCTImage.podspec
++++ b/packages/react-native/Libraries/Image/React-RCTImage.podspec
+@@ -40,7 +40,7 @@ Pod::Spec.new do |s|
+   s.documentation_url      = "https://reactnative.dev/docs/image"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.compiler_flags         = folly_compiler_flags + ' -Wno-nullability-completeness'
+   s.source                 = source
+   s.source_files           = "*.{m,mm}"
+diff --git a/packages/react-native/Libraries/LinkingIOS/React-RCTLinking.podspec b/packages/react-native/Libraries/LinkingIOS/React-RCTLinking.podspec
+index a0ccd2a0af9..5bf0a98802d 100644
+--- a/packages/react-native/Libraries/LinkingIOS/React-RCTLinking.podspec
++++ b/packages/react-native/Libraries/LinkingIOS/React-RCTLinking.podspec
+@@ -40,7 +40,7 @@ Pod::Spec.new do |s|
+   s.documentation_url      = "https://reactnative.dev/docs/linking"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.compiler_flags         = folly_compiler_flags + ' -Wno-nullability-completeness'
+   s.source                 = source
+   s.source_files           = "*.{m,mm}"
+diff --git a/packages/react-native/Libraries/NativeAnimation/React-RCTAnimation.podspec b/packages/react-native/Libraries/NativeAnimation/React-RCTAnimation.podspec
+index 9660837b50c..c2aefd247e0 100644
+--- a/packages/react-native/Libraries/NativeAnimation/React-RCTAnimation.podspec
++++ b/packages/react-native/Libraries/NativeAnimation/React-RCTAnimation.podspec
+@@ -39,7 +39,7 @@ Pod::Spec.new do |s|
+   s.homepage               = "https://reactnative.dev/"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.compiler_flags         = folly_compiler_flags + ' -Wno-nullability-completeness'
+   s.source                 = source
+   s.source_files           = "**/*.{h,m,mm}"
+diff --git a/packages/react-native/Libraries/Network/React-RCTNetwork.podspec b/packages/react-native/Libraries/Network/React-RCTNetwork.podspec
+index 0e171e77153..d8f54459dfe 100644
+--- a/packages/react-native/Libraries/Network/React-RCTNetwork.podspec
++++ b/packages/react-native/Libraries/Network/React-RCTNetwork.podspec
+@@ -39,7 +39,7 @@ Pod::Spec.new do |s|
+   s.homepage               = "https://reactnative.dev/"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.compiler_flags         = folly_compiler_flags + ' -Wno-nullability-completeness'
+   s.source                 = source
+   s.source_files           = "*.{m,mm}"
+diff --git a/packages/react-native/Libraries/PushNotificationIOS/React-RCTPushNotification.podspec b/packages/react-native/Libraries/PushNotificationIOS/React-RCTPushNotification.podspec
+index e9549ee7975..60a698a0d38 100644
+--- a/packages/react-native/Libraries/PushNotificationIOS/React-RCTPushNotification.podspec
++++ b/packages/react-native/Libraries/PushNotificationIOS/React-RCTPushNotification.podspec
+@@ -40,7 +40,7 @@ Pod::Spec.new do |s|
+   s.documentation_url      = "https://reactnative.dev/docs/pushnotificationios"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.compiler_flags         = folly_compiler_flags + ' -Wno-nullability-completeness'
+   s.source                 = source
+   s.source_files           = "*.{m,mm}"
+diff --git a/packages/react-native/Libraries/RCTRequired/RCTRequired.podspec b/packages/react-native/Libraries/RCTRequired/RCTRequired.podspec
+index dc38d2a4c47..16d9093cad6 100644
+--- a/packages/react-native/Libraries/RCTRequired/RCTRequired.podspec
++++ b/packages/react-native/Libraries/RCTRequired/RCTRequired.podspec
+@@ -23,7 +23,7 @@ Pod::Spec.new do |s|
+   s.homepage               = "https://reactnative.dev/"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.source                 = source
+   s.source_files           = "**/*.{c,h,m,mm,cpp}"
+   s.header_dir             = "RCTRequired"
+diff --git a/packages/react-native/Libraries/Settings/React-RCTSettings.podspec b/packages/react-native/Libraries/Settings/React-RCTSettings.podspec
+index b8eee3e01ee..4bbd4e476bd 100644
+--- a/packages/react-native/Libraries/Settings/React-RCTSettings.podspec
++++ b/packages/react-native/Libraries/Settings/React-RCTSettings.podspec
+@@ -40,7 +40,7 @@ Pod::Spec.new do |s|
+   s.documentation_url      = "https://reactnative.dev/docs/settings"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.compiler_flags         = folly_compiler_flags + ' -Wno-nullability-completeness'
+   s.source                 = source
+   s.source_files           = "*.{m,mm}"
+diff --git a/packages/react-native/Libraries/Text/React-RCTText.podspec b/packages/react-native/Libraries/Text/React-RCTText.podspec
+index 091ccea4c99..36d878b3c3f 100644
+--- a/packages/react-native/Libraries/Text/React-RCTText.podspec
++++ b/packages/react-native/Libraries/Text/React-RCTText.podspec
+@@ -24,7 +24,7 @@ Pod::Spec.new do |s|
+   s.documentation_url      = "https://reactnative.dev/docs/text"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.source                 = source
+   s.source_files           = "**/*.{h,m}"
+   s.preserve_paths         = "package.json", "LICENSE", "LICENSE-docs"
+diff --git a/packages/react-native/Libraries/Text/TextInput/Multiline/RCTUITextView.m b/packages/react-native/Libraries/Text/TextInput/Multiline/RCTUITextView.m
+index 13756acfb05..61b9dadc19b 100644
+--- a/packages/react-native/Libraries/Text/TextInput/Multiline/RCTUITextView.m
++++ b/packages/react-native/Libraries/Text/TextInput/Multiline/RCTUITextView.m
+@@ -170,7 +170,7 @@ static UIColor *defaultPlaceholderColor(void)
+ }
+ 
+ // Turn off scroll animation to fix flaky scrolling.
+-// This is only necessary for iOS <= 13.
++// This is only necessary for iOS <= 14.
+ #if defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && __IPHONE_OS_VERSION_MAX_ALLOWED < 140000
+ - (void)setContentOffset:(CGPoint)contentOffset animated:(__unused BOOL)animated
+ {
+diff --git a/packages/react-native/Libraries/Text/TextInput/RCTBaseTextInputView.m b/packages/react-native/Libraries/Text/TextInput/RCTBaseTextInputView.m
+index 0bc14b42f7c..cb496feb279 100644
+--- a/packages/react-native/Libraries/Text/TextInput/RCTBaseTextInputView.m
++++ b/packages/react-native/Libraries/Text/TextInput/RCTBaseTextInputView.m
+@@ -261,17 +261,13 @@ RCT_NOT_IMPLEMENTED(-(instancetype)initWithFrame : (CGRect)frame)
+       @"password" : UITextContentTypePassword,
+     };
+ 
+-#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 120000 /* __IPHONE_12_0 */
+-    if (@available(iOS 12.0, *)) {
+-      NSDictionary<NSString *, NSString *> *iOS12extras =
+-          @{@"newPassword" : UITextContentTypeNewPassword, @"oneTimeCode" : UITextContentTypeOneTimeCode};
++    NSDictionary<NSString *, NSString *> *iOS12extras =
++        @{@"newPassword" : UITextContentTypeNewPassword, @"oneTimeCode" : UITextContentTypeOneTimeCode};
+ 
+-      NSMutableDictionary<NSString *, NSString *> *iOS12baseMap = [contentTypeMap mutableCopy];
+-      [iOS12baseMap addEntriesFromDictionary:iOS12extras];
++    NSMutableDictionary<NSString *, NSString *> *iOS12baseMap = [contentTypeMap mutableCopy];
++    [iOS12baseMap addEntriesFromDictionary:iOS12extras];
+ 
+-      contentTypeMap = [iOS12baseMap copy];
+-    }
+-#endif
++    contentTypeMap = [iOS12baseMap copy];
+   });
+ 
+   // Setting textContentType to an empty string will disable any
+@@ -282,11 +278,7 @@ RCT_NOT_IMPLEMENTED(-(instancetype)initWithFrame : (CGRect)frame)
+ 
+ - (void)setPasswordRules:(NSString *)descriptor
+ {
+-#if defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_12_0
+-  if (@available(iOS 12.0, *)) {
+-    self.backedTextInputView.passwordRules = [UITextInputPasswordRules passwordRulesWithDescriptor:descriptor];
+-  }
+-#endif
++  self.backedTextInputView.passwordRules = [UITextInputPasswordRules passwordRulesWithDescriptor:descriptor];
+ }
+ 
+ - (UIKeyboardType)keyboardType
+diff --git a/packages/react-native/Libraries/TypeSafety/RCTTypeSafety.podspec b/packages/react-native/Libraries/TypeSafety/RCTTypeSafety.podspec
+index 79c04d09fe4..71829f0cb72 100644
+--- a/packages/react-native/Libraries/TypeSafety/RCTTypeSafety.podspec
++++ b/packages/react-native/Libraries/TypeSafety/RCTTypeSafety.podspec
+@@ -23,7 +23,7 @@ Pod::Spec.new do |s|
+   s.homepage               = "https://reactnative.dev/"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.source                 = source
+   s.source_files           = "**/*.{c,h,m,mm,cpp}"
+   s.header_dir             = "RCTTypeSafety"
+diff --git a/packages/react-native/Libraries/Vibration/React-RCTVibration.podspec b/packages/react-native/Libraries/Vibration/React-RCTVibration.podspec
+index 559cc9b5804..2eb4c33882d 100644
+--- a/packages/react-native/Libraries/Vibration/React-RCTVibration.podspec
++++ b/packages/react-native/Libraries/Vibration/React-RCTVibration.podspec
+@@ -40,7 +40,7 @@ Pod::Spec.new do |s|
+   s.documentation_url      = "https://reactnative.dev/docs/vibration"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.compiler_flags         = folly_compiler_flags + ' -Wno-nullability-completeness'
+   s.source                 = source
+   s.source_files           = "*.{m,mm}"
+diff --git a/packages/react-native/React-Core.podspec b/packages/react-native/React-Core.podspec
+index 53e9e509ff6..720e115e0b7 100644
+--- a/packages/react-native/React-Core.podspec
++++ b/packages/react-native/React-Core.podspec
+@@ -67,7 +67,7 @@ Pod::Spec.new do |s|
+   s.homepage               = "https://reactnative.dev/"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.source                 = source
+   s.resource_bundle        = { "AccessibilityResources" => ["React/AccessibilityResources/*.lproj"]}
+   s.compiler_flags         = folly_compiler_flags + ' ' + boost_compiler_flags
+diff --git a/packages/react-native/React.podspec b/packages/react-native/React.podspec
+index 0ea4f42f394..c47a13517e0 100644
+--- a/packages/react-native/React.podspec
++++ b/packages/react-native/React.podspec
+@@ -36,7 +36,7 @@ Pod::Spec.new do |s|
+   s.homepage               = "https://reactnative.dev/"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.source                 = source
+   s.preserve_paths         = "package.json", "LICENSE", "LICENSE-docs"
+   s.cocoapods_version      = ">= 1.10.1"
+diff --git a/packages/react-native/React/Base/RCTConvert.m b/packages/react-native/React/Base/RCTConvert.m
+index c5cb77a16f2..600ff3fff47 100644
+--- a/packages/react-native/React/Base/RCTConvert.m
++++ b/packages/react-native/React/Base/RCTConvert.m
+@@ -959,31 +959,23 @@ static NSString *RCTSemanticColorNames(void)
+       id highContrastDark = [appearances objectForKey:@"highContrastDark"];
+       UIColor *highContrastDarkColor = [RCTConvert UIColor:highContrastDark];
+       if (lightColor != nil && darkColor != nil) {
+-#if defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && __IPHONE_OS_VERSION_MAX_ALLOWED >= 130000
+-        if (@available(iOS 13.0, *)) {
+-          UIColor *color = [UIColor colorWithDynamicProvider:^UIColor *_Nonnull(
+-                                        UITraitCollection *_Nonnull collection) {
+-            if (collection.userInterfaceStyle == UIUserInterfaceStyleDark) {
+-              if (collection.accessibilityContrast == UIAccessibilityContrastHigh && highContrastDarkColor != nil) {
+-                return highContrastDarkColor;
+-              } else {
+-                return darkColor;
+-              }
++        UIColor *color = [UIColor colorWithDynamicProvider:^UIColor *_Nonnull(UITraitCollection *_Nonnull collection) {
++          if (collection.userInterfaceStyle == UIUserInterfaceStyleDark) {
++            if (collection.accessibilityContrast == UIAccessibilityContrastHigh && highContrastDarkColor != nil) {
++              return highContrastDarkColor;
+             } else {
+-              if (collection.accessibilityContrast == UIAccessibilityContrastHigh && highContrastLightColor != nil) {
+-                return highContrastLightColor;
+-              } else {
+-                return lightColor;
+-              }
++              return darkColor;
+             }
+-          }];
+-          return color;
+-        } else {
+-#endif
+-          return lightColor;
+-#if defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && __IPHONE_OS_VERSION_MAX_ALLOWED >= 130000
+-        }
+-#endif
++          } else {
++            if (collection.accessibilityContrast == UIAccessibilityContrastHigh && highContrastLightColor != nil) {
++              return highContrastLightColor;
++            } else {
++              return lightColor;
++            }
++          }
++        }];
++        return color;
++
+       } else {
+         RCTLogConvertError(json, @"a UIColor. Expected an iOS dynamic appearance aware color.");
+         return nil;
+diff --git a/packages/react-native/React/CoreModules/RCTAccessibilityManager.mm b/packages/react-native/React/CoreModules/RCTAccessibilityManager.mm
+index 99c3d2ffef1..d91b2a1980e 100644
+--- a/packages/react-native/React/CoreModules/RCTAccessibilityManager.mm
++++ b/packages/react-native/React/CoreModules/RCTAccessibilityManager.mm
+@@ -305,19 +305,15 @@ RCT_EXPORT_METHOD(announceForAccessibilityWithOptions
+                   : (NSString *)announcement options
+                   : (JS::NativeAccessibilityManager::SpecAnnounceForAccessibilityWithOptionsOptions &)options)
+ {
+-  if (@available(iOS 11.0, *)) {
+-    NSMutableDictionary<NSString *, NSNumber *> *attrsDictionary = [NSMutableDictionary new];
+-    if (options.queue()) {
+-      attrsDictionary[UIAccessibilitySpeechAttributeQueueAnnouncement] = @(*(options.queue()) ? YES : NO);
+-    }
+-
+-    if (attrsDictionary.count > 0) {
+-      NSAttributedString *announcementWithAttrs = [[NSAttributedString alloc] initWithString:announcement
+-                                                                                  attributes:attrsDictionary];
+-      UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification, announcementWithAttrs);
+-    } else {
+-      UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification, announcement);
+-    }
++  NSMutableDictionary<NSString *, NSNumber *> *attrsDictionary = [NSMutableDictionary new];
++  if (options.queue()) {
++    attrsDictionary[UIAccessibilitySpeechAttributeQueueAnnouncement] = @(*(options.queue()) ? YES : NO);
++  }
++
++  if (attrsDictionary.count > 0) {
++    NSAttributedString *announcementWithAttrs = [[NSAttributedString alloc] initWithString:announcement
++                                                                                attributes:attrsDictionary];
++    UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification, announcementWithAttrs);
+   } else {
+     UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification, announcement);
+   }
+diff --git a/packages/react-native/React/CoreModules/RCTActionSheetManager.mm b/packages/react-native/React/CoreModules/RCTActionSheetManager.mm
+index 433a2cfa74d..38a4d165807 100644
+--- a/packages/react-native/React/CoreModules/RCTActionSheetManager.mm
++++ b/packages/react-native/React/CoreModules/RCTActionSheetManager.mm
+@@ -181,20 +181,15 @@ RCT_EXPORT_METHOD(showActionSheetWithOptions
+   }
+ 
+   alertController.view.tintColor = tintColor;
+-#if defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && defined(__IPHONE_13_0) && \
+-    __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_13_0
+-  if (@available(iOS 13.0, *)) {
+-    NSString *userInterfaceStyle = [RCTConvert NSString:options.userInterfaceStyle()];
+-
+-    if (userInterfaceStyle == nil || [userInterfaceStyle isEqualToString:@""]) {
+-      alertController.overrideUserInterfaceStyle = UIUserInterfaceStyleUnspecified;
+-    } else if ([userInterfaceStyle isEqualToString:@"dark"]) {
+-      alertController.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+-    } else if ([userInterfaceStyle isEqualToString:@"light"]) {
+-      alertController.overrideUserInterfaceStyle = UIUserInterfaceStyleLight;
+-    }
++  NSString *userInterfaceStyle = [RCTConvert NSString:options.userInterfaceStyle()];
++
++  if (userInterfaceStyle == nil || [userInterfaceStyle isEqualToString:@""]) {
++    alertController.overrideUserInterfaceStyle = UIUserInterfaceStyleUnspecified;
++  } else if ([userInterfaceStyle isEqualToString:@"dark"]) {
++    alertController.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
++  } else if ([userInterfaceStyle isEqualToString:@"light"]) {
++    alertController.overrideUserInterfaceStyle = UIUserInterfaceStyleLight;
+   }
+-#endif
+ 
+   [_alertControllers addObject:alertController];
+   [self presentViewController:alertController onParentViewController:controller anchorViewTag:anchorViewTag];
+@@ -274,20 +269,15 @@ RCT_EXPORT_METHOD(showShareActionSheetWithOptions
+   NSNumber *anchorViewTag = [RCTConvert NSNumber:options.anchor() ? @(*options.anchor()) : nil];
+   shareController.view.tintColor = [RCTConvert UIColor:options.tintColor() ? @(*options.tintColor()) : nil];
+ 
+-#if defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && defined(__IPHONE_13_0) && \
+-    __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_13_0
+-  if (@available(iOS 13.0, *)) {
+-    NSString *userInterfaceStyle = [RCTConvert NSString:options.userInterfaceStyle()];
+-
+-    if (userInterfaceStyle == nil || [userInterfaceStyle isEqualToString:@""]) {
+-      shareController.overrideUserInterfaceStyle = UIUserInterfaceStyleUnspecified;
+-    } else if ([userInterfaceStyle isEqualToString:@"dark"]) {
+-      shareController.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+-    } else if ([userInterfaceStyle isEqualToString:@"light"]) {
+-      shareController.overrideUserInterfaceStyle = UIUserInterfaceStyleLight;
+-    }
++  NSString *userInterfaceStyle = [RCTConvert NSString:options.userInterfaceStyle()];
++
++  if (userInterfaceStyle == nil || [userInterfaceStyle isEqualToString:@""]) {
++    shareController.overrideUserInterfaceStyle = UIUserInterfaceStyleUnspecified;
++  } else if ([userInterfaceStyle isEqualToString:@"dark"]) {
++    shareController.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
++  } else if ([userInterfaceStyle isEqualToString:@"light"]) {
++    shareController.overrideUserInterfaceStyle = UIUserInterfaceStyleLight;
+   }
+-#endif
+ 
+   [self presentViewController:shareController onParentViewController:controller anchorViewTag:anchorViewTag];
+ }
+diff --git a/packages/react-native/React/CoreModules/RCTAlertController.m b/packages/react-native/React/CoreModules/RCTAlertController.m
+index 3387a6e8d97..e3f19959e93 100644
+--- a/packages/react-native/React/CoreModules/RCTAlertController.m
++++ b/packages/react-native/React/CoreModules/RCTAlertController.m
+@@ -43,11 +43,10 @@
+ 
+ - (void)show:(BOOL)animated completion:(void (^)(void))completion
+ {
+-  if (@available(iOS 13.0, *)) {
+-    UIUserInterfaceStyle style =
+-        RCTSharedApplication().delegate.window.overrideUserInterfaceStyle ?: UIUserInterfaceStyleUnspecified;
+-    self.overrideUserInterfaceStyle = style;
+-  }
++  UIUserInterfaceStyle style =
++      RCTSharedApplication().delegate.window.overrideUserInterfaceStyle ?: UIUserInterfaceStyleUnspecified;
++  self.overrideUserInterfaceStyle = style;
++
+   [self.alertWindow makeKeyAndVisible];
+   [self.alertWindow.rootViewController presentViewController:self animated:animated completion:completion];
+ }
+@@ -65,14 +64,13 @@
+ 
+ - (UIWindow *)getUIWindowFromScene
+ {
+-  if (@available(iOS 13.0, *)) {
+-    for (UIScene *scene in RCTSharedApplication().connectedScenes) {
+-      if (scene.activationState == UISceneActivationStateForegroundActive &&
+-          [scene isKindOfClass:[UIWindowScene class]]) {
+-        return [[UIWindow alloc] initWithWindowScene:(UIWindowScene *)scene];
+-      }
++  for (UIScene *scene in RCTSharedApplication().connectedScenes) {
++    if (scene.activationState == UISceneActivationStateForegroundActive &&
++        [scene isKindOfClass:[UIWindowScene class]]) {
++      return [[UIWindow alloc] initWithWindowScene:(UIWindowScene *)scene];
+     }
+   }
++
+   return nil;
+ }
+ 
+diff --git a/packages/react-native/React/CoreModules/RCTAlertManager.mm b/packages/react-native/React/CoreModules/RCTAlertManager.mm
+index df46ec58423..085166e88aa 100644
+--- a/packages/react-native/React/CoreModules/RCTAlertManager.mm
++++ b/packages/react-native/React/CoreModules/RCTAlertManager.mm
+@@ -105,13 +105,8 @@ RCT_EXPORT_METHOD(alertWithArgs : (JS::NativeAlertManager::Args &)args callback
+                                                                              message:nil
+                                                                       preferredStyle:UIAlertControllerStyleAlert];
+ 
+-#if defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && defined(__IPHONE_13_0) && \
+-    __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_13_0
+-  if (@available(iOS 13.0, *)) {
+-    UIUserInterfaceStyle userInterfaceStyle = [RCTConvert UIUserInterfaceStyle:args.userInterfaceStyle()];
+-    alertController.overrideUserInterfaceStyle = userInterfaceStyle;
+-  }
+-#endif
++  UIUserInterfaceStyle userInterfaceStyle = [RCTConvert UIUserInterfaceStyle:args.userInterfaceStyle()];
++  alertController.overrideUserInterfaceStyle = userInterfaceStyle;
+ 
+   switch (type) {
+     case RCTAlertViewStylePlainTextInput: {
+diff --git a/packages/react-native/React/CoreModules/RCTAppearance.mm b/packages/react-native/React/CoreModules/RCTAppearance.mm
+index 17535a99f1a..2930401fc98 100644
+--- a/packages/react-native/React/CoreModules/RCTAppearance.mm
++++ b/packages/react-native/React/CoreModules/RCTAppearance.mm
+@@ -38,32 +38,27 @@ NSString *RCTCurrentOverrideAppearancePreference()
+ 
+ NSString *RCTColorSchemePreference(UITraitCollection *traitCollection)
+ {
+-#if defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && defined(__IPHONE_13_0) && \
+-    __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_13_0
+-  if (@available(iOS 13.0, *)) {
+-    static NSDictionary *appearances;
+-    static dispatch_once_t onceToken;
+-
+-    if (sColorSchemeOverride) {
+-      return sColorSchemeOverride;
+-    }
+-
+-    dispatch_once(&onceToken, ^{
+-      appearances = @{
+-        @(UIUserInterfaceStyleLight) : RCTAppearanceColorSchemeLight,
+-        @(UIUserInterfaceStyleDark) : RCTAppearanceColorSchemeDark
+-      };
+-    });
+-
+-    if (!sAppearancePreferenceEnabled) {
+-      // Return the default if the app doesn't allow different color schemes.
+-      return RCTAppearanceColorSchemeLight;
+-    }
+-
+-    traitCollection = traitCollection ?: [UITraitCollection currentTraitCollection];
+-    return appearances[@(traitCollection.userInterfaceStyle)] ?: RCTAppearanceColorSchemeLight;
++  static NSDictionary *appearances;
++  static dispatch_once_t onceToken;
++
++  if (sColorSchemeOverride) {
++    return sColorSchemeOverride;
++  }
++
++  dispatch_once(&onceToken, ^{
++    appearances = @{
++      @(UIUserInterfaceStyleLight) : RCTAppearanceColorSchemeLight,
++      @(UIUserInterfaceStyleDark) : RCTAppearanceColorSchemeDark
++    };
++  });
++
++  if (!sAppearancePreferenceEnabled) {
++    // Return the default if the app doesn't allow different color schemes.
++    return RCTAppearanceColorSchemeLight;
+   }
+-#endif
++
++  traitCollection = traitCollection ?: [UITraitCollection currentTraitCollection];
++  return appearances[@(traitCollection.userInterfaceStyle)] ?: RCTAppearanceColorSchemeLight;
+ 
+   // Default to light on older OS version - same behavior as Android.
+   return RCTAppearanceColorSchemeLight;
+@@ -97,10 +92,9 @@ RCT_EXPORT_METHOD(setColorScheme : (NSString *)style)
+ {
+   UIUserInterfaceStyle userInterfaceStyle = [RCTConvert UIUserInterfaceStyle:style];
+   NSArray<__kindof UIWindow *> *windows = RCTSharedApplication().windows;
+-  if (@available(iOS 13.0, *)) {
+-    for (UIWindow *window in windows) {
+-      window.overrideUserInterfaceStyle = userInterfaceStyle;
+-    }
++
++  for (UIWindow *window in windows) {
++    window.overrideUserInterfaceStyle = userInterfaceStyle;
+   }
+ }
+ 
+@@ -135,19 +129,15 @@ RCT_EXPORT_SYNCHRONOUS_TYPED_METHOD(NSString *, getColorScheme)
+ 
+ - (void)startObserving
+ {
+-  if (@available(iOS 13.0, *)) {
+-    [[NSNotificationCenter defaultCenter] addObserver:self
+-                                             selector:@selector(appearanceChanged:)
+-                                                 name:RCTUserInterfaceStyleDidChangeNotification
+-                                               object:nil];
+-  }
++  [[NSNotificationCenter defaultCenter] addObserver:self
++                                           selector:@selector(appearanceChanged:)
++                                               name:RCTUserInterfaceStyleDidChangeNotification
++                                             object:nil];
+ }
+ 
+ - (void)stopObserving
+ {
+-  if (@available(iOS 13.0, *)) {
+-    [[NSNotificationCenter defaultCenter] removeObserver:self];
+-  }
++  [[NSNotificationCenter defaultCenter] removeObserver:self];
+ }
+ 
+ @end
+diff --git a/packages/react-native/React/CoreModules/RCTDevLoadingView.mm b/packages/react-native/React/CoreModules/RCTDevLoadingView.mm
+index 9bac8178b39..8ad0fc0d327 100644
+--- a/packages/react-native/React/CoreModules/RCTDevLoadingView.mm
++++ b/packages/react-native/React/CoreModules/RCTDevLoadingView.mm
+@@ -150,13 +150,8 @@ RCT_EXPORT_MODULE()
+     self->_window.backgroundColor = backgroundColor;
+     self->_window.hidden = NO;
+ 
+-#if defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && defined(__IPHONE_13_0) && \
+-    __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_13_0
+-    if (@available(iOS 13.0, *)) {
+-      UIWindowScene *scene = (UIWindowScene *)RCTSharedApplication().connectedScenes.anyObject;
+-      self->_window.windowScene = scene;
+-    }
+-#endif
++    UIWindowScene *scene = (UIWindowScene *)RCTSharedApplication().connectedScenes.anyObject;
++    self->_window.windowScene = scene;
+   });
+ }
+ 
+diff --git a/packages/react-native/React/CoreModules/RCTLogBoxView.mm b/packages/react-native/React/CoreModules/RCTLogBoxView.mm
+index 067550d3423..b2de00b5851 100644
+--- a/packages/react-native/React/CoreModules/RCTLogBoxView.mm
++++ b/packages/react-native/React/CoreModules/RCTLogBoxView.mm
+@@ -37,11 +37,7 @@
+ {
+   RCTErrorNewArchitectureValidation(RCTNotAllowedInFabricWithoutLegacy, @"RCTLogBoxView", nil);
+ 
+-  if (@available(iOS 13.0, *)) {
+-    self = [super initWithWindowScene:window.windowScene];
+-  } else {
+-    self = [super initWithFrame:window.frame];
+-  }
++  self = [super initWithWindowScene:window.windowScene];
+ 
+   self.windowLevel = UIWindowLevelStatusBar - 1;
+   self.backgroundColor = [UIColor clearColor];
+@@ -59,11 +55,7 @@
+ 
+ - (instancetype)initWithWindow:(UIWindow *)window surfacePresenter:(id<RCTSurfacePresenterStub>)surfacePresenter
+ {
+-  if (@available(iOS 13.0, *)) {
+-    self = [super initWithWindowScene:window.windowScene];
+-  } else {
+-    self = [super initWithFrame:window.frame];
+-  }
++  self = [super initWithWindowScene:window.windowScene];
+ 
+   id<RCTSurfaceProtocol> surface = [surfacePresenter createFabricSurfaceForModuleName:@"LogBox" initialProperties:@{}];
+   [surface start];
+diff --git a/packages/react-native/React/CoreModules/RCTPerfMonitor.mm b/packages/react-native/React/CoreModules/RCTPerfMonitor.mm
+index 832cd32c3c1..307161f5b3e 100644
+--- a/packages/react-native/React/CoreModules/RCTPerfMonitor.mm
++++ b/packages/react-native/React/CoreModules/RCTPerfMonitor.mm
+@@ -45,35 +45,7 @@ NSArray<NSString *> *LabelsForRCTPerformanceLoggerTags();
+ 
+ static BOOL RCTJSCSetOption(const char *option)
+ {
+-  static RCTJSCSetOptionType setOption;
+-  static dispatch_once_t onceToken;
+-
+-  // As of iOS 13.4, it is no longer possible to change the JavaScriptCore
+-  // options at runtime. The options are protected and will cause an
+-  // exception when you try to change them after the VM has been initialized.
+-  // https://github.com/facebook/react-native/issues/28414
+-  if (@available(iOS 13.4, *)) {
+-    return NO;
+-  }
+-
+-  dispatch_once(&onceToken, ^{
+-    /**
+-     * JSC private C++ static method to toggle options at runtime
+-     *
+-     * JSC::Options::setOptions - JavaScriptCore/runtime/Options.h
+-     */
+-    setOption = reinterpret_cast<RCTJSCSetOptionType>(dlsym(RTLD_DEFAULT, "_ZN3JSC7Options9setOptionEPKc"));
+-
+-    if (RCT_DEBUG && setOption == NULL) {
+-      RCTLogWarn(@"The symbol used to enable JSC runtime options is not available in this iOS version");
+-    }
+-  });
+-
+-  if (setOption) {
+-    return setOption(option);
+-  } else {
+-    return NO;
+-  }
++  return NO;
+ }
+ 
+ static vm_size_t RCTGetResidentMemorySize(void)
+@@ -218,12 +190,8 @@ RCT_EXPORT_MODULE()
+     [_container addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(tap)]];
+ 
+     _container.backgroundColor = [UIColor whiteColor];
+-#if defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && defined(__IPHONE_13_0) && \
+-    __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_13_0
+-    if (@available(iOS 13.0, *)) {
+-      _container.backgroundColor = [UIColor systemBackgroundColor];
+-    }
+-#endif
++
++    _container.backgroundColor = [UIColor systemBackgroundColor];
+   }
+ 
+   return _container;
+diff --git a/packages/react-native/React/CoreModules/RCTRedBox.mm b/packages/react-native/React/CoreModules/RCTRedBox.mm
+index c349c4e2a18..c80731cea7d 100644
+--- a/packages/react-native/React/CoreModules/RCTRedBox.mm
++++ b/packages/react-native/React/CoreModules/RCTRedBox.mm
+@@ -328,13 +328,11 @@ RCT_NOT_IMPLEMENTED(-(instancetype)initWithCoder : (NSCoder *)aDecoder)
+     cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"msg-cell"];
+     cell.textLabel.accessibilityIdentifier = @"redbox-error";
+     cell.textLabel.textColor = [UIColor whiteColor];
+-    if (@available(iOS 13.0, *)) {
+-      // Prefer a monofont for formatting messages that were designed
+-      // to be displayed in a terminal.
+-      cell.textLabel.font = [UIFont monospacedSystemFontOfSize:14 weight:UIFontWeightBold];
+-    } else {
+-      cell.textLabel.font = [UIFont boldSystemFontOfSize:14];
+-    }
++
++    // Prefer a monofont for formatting messages that were designed
++    // to be displayed in a terminal.
++    cell.textLabel.font = [UIFont monospacedSystemFontOfSize:14 weight:UIFontWeightBold];
++
+     cell.textLabel.lineBreakMode = NSLineBreakByWordWrapping;
+     cell.textLabel.numberOfLines = 0;
+     cell.detailTextLabel.textColor = [UIColor whiteColor];
+diff --git a/packages/react-native/React/CoreModules/RCTStatusBarManager.mm b/packages/react-native/React/CoreModules/RCTStatusBarManager.mm
+index 3c5d7938519..5d5318fb414 100644
+--- a/packages/react-native/React/CoreModules/RCTStatusBarManager.mm
++++ b/packages/react-native/React/CoreModules/RCTStatusBarManager.mm
+@@ -21,25 +21,11 @@
+   static NSDictionary *mapping;
+   static dispatch_once_t onceToken;
+   dispatch_once(&onceToken, ^{
+-    if (@available(iOS 13.0, *)) {
+-      mapping = @{
+-        @"default" : @(UIStatusBarStyleDefault),
+-        @"light-content" : @(UIStatusBarStyleLightContent),
+-#if defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && defined(__IPHONE_13_0) && \
+-    __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_13_0
+-        @"dark-content" : @(UIStatusBarStyleDarkContent)
+-#else
+-          @"dark-content": @(UIStatusBarStyleDefault)
+-#endif
+-      };
+-
+-    } else {
+-      mapping = @{
+-        @"default" : @(UIStatusBarStyleDefault),
+-        @"light-content" : @(UIStatusBarStyleLightContent),
+-        @"dark-content" : @(UIStatusBarStyleDefault)
+-      };
+-    }
++    mapping = @{
++      @"default" : @(UIStatusBarStyleDefault),
++      @"light-content" : @(UIStatusBarStyleLightContent),
++      @"dark-content" : @(UIStatusBarStyleDarkContent)
++    };
+   });
+   return _RCT_CAST(
+       UIStatusBarStyle,
+diff --git a/packages/react-native/React/CoreModules/React-CoreModules.podspec b/packages/react-native/React/CoreModules/React-CoreModules.podspec
+index 0b1659a4888..7941b07c49e 100644
+--- a/packages/react-native/React/CoreModules/React-CoreModules.podspec
++++ b/packages/react-native/React/CoreModules/React-CoreModules.podspec
+@@ -39,7 +39,7 @@ Pod::Spec.new do |s|
+   s.homepage               = "https://reactnative.dev/"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.compiler_flags         = folly_compiler_flags + ' -Wno-nullability-completeness'
+   s.source                 = source
+   s.source_files           = "**/*.{c,m,mm,cpp}"
+diff --git a/packages/react-native/React/FBReactNativeSpec/FBReactNativeSpec.podspec b/packages/react-native/React/FBReactNativeSpec/FBReactNativeSpec.podspec
+index 2d9b0b25cb1..bca80d92e08 100644
+--- a/packages/react-native/React/FBReactNativeSpec/FBReactNativeSpec.podspec
++++ b/packages/react-native/React/FBReactNativeSpec/FBReactNativeSpec.podspec
+@@ -29,7 +29,7 @@ Pod::Spec.new do |s|
+   s.homepage               = "https://reactnative.dev/"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.compiler_flags         = folly_compiler_flags + ' -Wno-nullability-completeness'
+   s.source                 = source
+   # This podspec is used to trigger the codegen, and built files are generated in a different location.
+diff --git a/packages/react-native/React/Fabric/Mounting/ComponentViews/Modal/RCTFabricModalHostViewController.mm b/packages/react-native/React/Fabric/Mounting/ComponentViews/Modal/RCTFabricModalHostViewController.mm
+index f15c2ecafb0..db5b92fb8f4 100644
+--- a/packages/react-native/React/Fabric/Mounting/ComponentViews/Modal/RCTFabricModalHostViewController.mm
++++ b/packages/react-native/React/Fabric/Mounting/ComponentViews/Modal/RCTFabricModalHostViewController.mm
+@@ -22,12 +22,7 @@
+   }
+   _touchHandler = [RCTSurfaceTouchHandler new];
+ 
+-#if defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && defined(__IPHONE_13_0) && \
+-    __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_13_0
+-  if (@available(iOS 13.0, *)) {
+-    self.modalInPresentation = YES;
+-  }
+-#endif
++  self.modalInPresentation = YES;
+ 
+   return self;
+ }
+diff --git a/packages/react-native/React/Fabric/Mounting/ComponentViews/ScrollView/RCTScrollViewComponentView.mm b/packages/react-native/React/Fabric/Mounting/ComponentViews/ScrollView/RCTScrollViewComponentView.mm
+index 7c8be1b411a..e5755844e7e 100644
+--- a/packages/react-native/React/Fabric/Mounting/ComponentViews/ScrollView/RCTScrollViewComponentView.mm
++++ b/packages/react-native/React/Fabric/Mounting/ComponentViews/ScrollView/RCTScrollViewComponentView.mm
+@@ -272,12 +272,9 @@ static void RCTSendScrollEventForNativeAnimations_DEPRECATED(UIScrollView *scrol
+     scrollView.snapToOffsets = snapToOffsets;
+   }
+ 
+-  if (@available(iOS 13.0, *)) {
+-    if (oldScrollViewProps.automaticallyAdjustsScrollIndicatorInsets !=
+-        newScrollViewProps.automaticallyAdjustsScrollIndicatorInsets) {
+-      scrollView.automaticallyAdjustsScrollIndicatorInsets =
+-          newScrollViewProps.automaticallyAdjustsScrollIndicatorInsets;
+-    }
++  if (oldScrollViewProps.automaticallyAdjustsScrollIndicatorInsets !=
++      newScrollViewProps.automaticallyAdjustsScrollIndicatorInsets) {
++    scrollView.automaticallyAdjustsScrollIndicatorInsets = newScrollViewProps.automaticallyAdjustsScrollIndicatorInsets;
+   }
+ 
+   if ((oldScrollViewProps.contentInsetAdjustmentBehavior != newScrollViewProps.contentInsetAdjustmentBehavior) ||
+diff --git a/packages/react-native/React/Fabric/Mounting/ComponentViews/TextInput/RCTTextInputComponentView.mm b/packages/react-native/React/Fabric/Mounting/ComponentViews/TextInput/RCTTextInputComponentView.mm
+index dd96b5d211b..9e41f9d3b5f 100644
+--- a/packages/react-native/React/Fabric/Mounting/ComponentViews/TextInput/RCTTextInputComponentView.mm
++++ b/packages/react-native/React/Fabric/Mounting/ComponentViews/TextInput/RCTTextInputComponentView.mm
+@@ -178,10 +178,7 @@ using namespace facebook::react;
+   }
+ 
+   if (newTextInputProps.traits.passwordRules != oldTextInputProps.traits.passwordRules) {
+-    if (@available(iOS 12.0, *)) {
+-      _backedTextInputView.passwordRules =
+-          RCTUITextInputPasswordRulesFromString(newTextInputProps.traits.passwordRules);
+-    }
++    _backedTextInputView.passwordRules = RCTUITextInputPasswordRulesFromString(newTextInputProps.traits.passwordRules);
+   }
+ 
+   // Traits `blurOnSubmit`, `clearTextOnFocus`, and `selectTextOnFocus` were omitted intentionally here
+diff --git a/packages/react-native/React/Fabric/Mounting/ComponentViews/TextInput/RCTTextInputUtils.mm b/packages/react-native/React/Fabric/Mounting/ComponentViews/TextInput/RCTTextInputUtils.mm
+index f0012583f08..532c29e59e3 100644
+--- a/packages/react-native/React/Fabric/Mounting/ComponentViews/TextInput/RCTTextInputUtils.mm
++++ b/packages/react-native/React/Fabric/Mounting/ComponentViews/TextInput/RCTTextInputUtils.mm
+@@ -44,9 +44,7 @@ void RCTCopyBackedTextInput(
+   toTextInput.keyboardType = fromTextInput.keyboardType;
+   toTextInput.textContentType = fromTextInput.textContentType;
+ 
+-  if (@available(iOS 12.0, *)) {
+-    toTextInput.passwordRules = fromTextInput.passwordRules;
+-  }
++  toTextInput.passwordRules = fromTextInput.passwordRules;
+ 
+   [toTextInput setSelectedTextRange:fromTextInput.selectedTextRange notifyDelegate:NO];
+ }
+@@ -213,12 +211,10 @@ UITextContentType RCTUITextContentTypeFromString(std::string const &contentType)
+       @"password" : UITextContentTypePassword,
+     } mutableCopy];
+ 
+-    if (@available(iOS 12.0, *)) {
+-      [mutableContentTypeMap addEntriesFromDictionary:@{
+-        @"newPassword" : UITextContentTypeNewPassword,
+-        @"oneTimeCode" : UITextContentTypeOneTimeCode
+-      }];
+-    }
++    [mutableContentTypeMap addEntriesFromDictionary:@{
++      @"newPassword" : UITextContentTypeNewPassword,
++      @"oneTimeCode" : UITextContentTypeOneTimeCode
++    }];
+ 
+     contentTypeMap = [mutableContentTypeMap copy];
+   });
+diff --git a/packages/react-native/React/Fabric/Mounting/ComponentViews/View/RCTViewComponentView.mm b/packages/react-native/React/Fabric/Mounting/ComponentViews/View/RCTViewComponentView.mm
+index 9619fe743aa..febd3607f69 100644
+--- a/packages/react-native/React/Fabric/Mounting/ComponentViews/View/RCTViewComponentView.mm
++++ b/packages/react-native/React/Fabric/Mounting/ComponentViews/View/RCTViewComponentView.mm
+@@ -591,9 +591,9 @@ static RCTBorderStyle RCTBorderStyleFromBorderStyle(BorderStyle borderStyle)
+     layer.borderColor = borderColor;
+     CGColorRelease(borderColor);
+     layer.cornerRadius = (CGFloat)borderMetrics.borderRadii.topLeft;
+-    if (@available(iOS 13.0, *)) {
+-      layer.cornerCurve = CornerCurveFromBorderCurve(borderMetrics.borderCurves.topLeft);
+-    }
++
++    layer.cornerCurve = CornerCurveFromBorderCurve(borderMetrics.borderCurves.topLeft);
++
+     layer.backgroundColor = _backgroundColor.CGColor;
+   } else {
+     if (!_borderLayer) {
+diff --git a/packages/react-native/React/Fabric/RCTSurfacePointerHandler.mm b/packages/react-native/React/Fabric/RCTSurfacePointerHandler.mm
+index a9b3eb929d6..edff8b261bf 100644
+--- a/packages/react-native/React/Fabric/RCTSurfacePointerHandler.mm
++++ b/packages/react-native/React/Fabric/RCTSurfacePointerHandler.mm
+@@ -165,17 +165,16 @@ static UIView *FindClosestFabricManagedTouchableView(UIView *componentView)
+ 
+ static NSInteger ButtonMaskDiffToButton(UIEventButtonMask prevButtonMask, UIEventButtonMask curButtonMask)
+ {
+-  if (@available(iOS 13.4, *)) {
+-    if ((prevButtonMask & UIEventButtonMaskPrimary) != (curButtonMask & UIEventButtonMaskPrimary)) {
+-      return 0;
+-    }
+-    if ((prevButtonMask & 0x4) != (curButtonMask & 0x4)) {
+-      return 1;
+-    }
+-    if ((prevButtonMask & UIEventButtonMaskSecondary) != (curButtonMask & UIEventButtonMaskSecondary)) {
+-      return 2;
+-    }
++  if ((prevButtonMask & UIEventButtonMaskPrimary) != (curButtonMask & UIEventButtonMaskPrimary)) {
++    return 0;
++  }
++  if ((prevButtonMask & 0x4) != (curButtonMask & 0x4)) {
++    return 1;
++  }
++  if ((prevButtonMask & UIEventButtonMaskSecondary) != (curButtonMask & UIEventButtonMaskSecondary)) {
++    return 2;
+   }
++
+   return -1;
+ }
+ 
+@@ -218,18 +217,18 @@ static CGFloat RadsToDegrees(CGFloat rads)
+ static NSInteger ButtonMaskToButtons(UIEventButtonMask buttonMask)
+ {
+   NSInteger buttonsMaskResult = 0;
+-  if (@available(iOS 13.4, *)) {
+-    if ((buttonMask & UIEventButtonMaskPrimary) != 0) {
+-      buttonsMaskResult |= 1;
+-    }
+-    if ((buttonMask & UIEventButtonMaskSecondary) != 0) {
+-      buttonsMaskResult |= 2;
+-    }
+-    // undocumented mask value which represents the "auxiliary button" (i.e. middle mouse button)
+-    if ((buttonMask & 0x4) != 0) {
+-      buttonsMaskResult |= 4;
+-    }
++
++  if ((buttonMask & UIEventButtonMaskPrimary) != 0) {
++    buttonsMaskResult |= 1;
+   }
++  if ((buttonMask & UIEventButtonMaskSecondary) != 0) {
++    buttonsMaskResult |= 2;
++  }
++  // undocumented mask value which represents the "auxiliary button" (i.e. middle mouse button)
++  if ((buttonMask & 0x4) != 0) {
++    buttonsMaskResult |= 4;
++  }
++
+   return buttonsMaskResult;
+ }
+ 
+@@ -250,17 +249,10 @@ static const char *PointerTypeCStringFromUITouchType(UITouchType type)
+ 
+ static void UpdatePointerEventModifierFlags(PointerEvent &event, UIKeyModifierFlags flags)
+ {
+-  if (@available(iOS 13.4, *)) {
+-    event.ctrlKey = (flags & UIKeyModifierControl) != 0;
+-    event.shiftKey = (flags & UIKeyModifierShift) != 0;
+-    event.altKey = (flags & UIKeyModifierAlternate) != 0;
+-    event.metaKey = (flags & UIKeyModifierCommand) != 0;
+-  } else {
+-    event.ctrlKey = false;
+-    event.shiftKey = false;
+-    event.altKey = false;
+-    event.metaKey = false;
+-  }
++  event.ctrlKey = (flags & UIKeyModifierControl) != 0;
++  event.shiftKey = (flags & UIKeyModifierShift) != 0;
++  event.altKey = (flags & UIKeyModifierAlternate) != 0;
++  event.metaKey = (flags & UIKeyModifierCommand) != 0;
+ }
+ 
+ static PointerEvent CreatePointerEventFromActivePointer(
+@@ -286,21 +278,20 @@ static PointerEvent CreatePointerEventFromActivePointer(
+   }
+ 
+   event.pressure = activePointer.force;
+-  if (@available(iOS 13.4, *)) {
+-    if (activePointer.touchType == UITouchTypeIndirectPointer) {
+-      // pointer events with a mouse button pressed should report a pressure of 0.5
+-      // when the touch is down and 0.0 when it is lifted regardless of how it is reported by the OS
+-      event.pressure = eventType != RCTPointerEventTypeEnd ? 0.5 : 0.0;
+-    }
++
++  if (activePointer.touchType == UITouchTypeIndirectPointer) {
++    // pointer events with a mouse button pressed should report a pressure of 0.5
++    // when the touch is down and 0.0 when it is lifted regardless of how it is reported by the OS
++    event.pressure = eventType != RCTPointerEventTypeEnd ? 0.5 : 0.0;
+   }
+ 
+   CGFloat pointerSize = activePointer.majorRadius * 2.0;
+-  if (@available(iOS 13.4, *)) {
+-    if (activePointer.touchType == UITouchTypeIndirectPointer) {
+-      // mouse type pointers should always report a size of 1
+-      pointerSize = 1.0;
+-    }
++
++  if (activePointer.touchType == UITouchTypeIndirectPointer) {
++    // mouse type pointers should always report a size of 1
++    pointerSize = 1.0;
+   }
++
+   event.width = pointerSize;
+   event.height = pointerSize;
+ 
+@@ -374,19 +365,13 @@ static void UpdateActivePointerWithUITouch(
+   activePointer.altitudeAngle = uiTouch.altitudeAngle;
+   activePointer.azimuthAngle = [uiTouch azimuthAngleInView:nil];
+ 
+-  if (@available(ios 13.4, *)) {
+-    UIEventButtonMask nextButtonMask = 0;
+-    if (uiTouch.phase != UITouchPhaseEnded) {
+-      nextButtonMask = uiTouch.type == UITouchTypeIndirectPointer ? uiEvent.buttonMask : 1;
+-    }
+-    activePointer.button = ButtonMaskDiffToButton(activePointer.buttonMask, nextButtonMask);
+-    activePointer.buttonMask = nextButtonMask;
+-    activePointer.modifierFlags = uiEvent.modifierFlags;
+-  } else {
+-    activePointer.button = 0;
+-    activePointer.buttonMask = 0;
+-    activePointer.modifierFlags = 0;
++  UIEventButtonMask nextButtonMask = 0;
++  if (uiTouch.phase != UITouchPhaseEnded) {
++    nextButtonMask = uiTouch.type == UITouchTypeIndirectPointer ? uiEvent.buttonMask : 1;
+   }
++  activePointer.button = ButtonMaskDiffToButton(activePointer.buttonMask, nextButtonMask);
++  activePointer.buttonMask = nextButtonMask;
++  activePointer.modifierFlags = uiEvent.modifierFlags;
+ }
+ 
+ static BOOL IsViewListeningToEvent(RCTReactTaggedView *taggedView, ViewEvents::Offset eventType)
+@@ -477,15 +462,13 @@ RCT_NOT_IMPLEMENTED(-(instancetype)initWithTarget : (id)target action : (SEL)act
+   [view addGestureRecognizer:self];
+   _rootComponentView = view;
+ 
+-  if (@available(iOS 13.4, *)) {
+-    _mouseHoverRecognizer = [[UIHoverGestureRecognizer alloc] initWithTarget:self action:@selector(mouseHovering:)];
+-    _mouseHoverRecognizer.allowedTouchTypes = @[ @(UITouchTypeIndirectPointer) ];
+-    [view addGestureRecognizer:_mouseHoverRecognizer];
++  _mouseHoverRecognizer = [[UIHoverGestureRecognizer alloc] initWithTarget:self action:@selector(mouseHovering:)];
++  _mouseHoverRecognizer.allowedTouchTypes = @[ @(UITouchTypeIndirectPointer) ];
++  [view addGestureRecognizer:_mouseHoverRecognizer];
+ 
+-    _penHoverRecognizer = [[UIHoverGestureRecognizer alloc] initWithTarget:self action:@selector(penHovering:)];
+-    _penHoverRecognizer.allowedTouchTypes = @[ @(UITouchTypePencil) ];
+-    [view addGestureRecognizer:_penHoverRecognizer];
+-  }
++  _penHoverRecognizer = [[UIHoverGestureRecognizer alloc] initWithTarget:self action:@selector(penHovering:)];
++  _penHoverRecognizer.allowedTouchTypes = @[ @(UITouchTypePencil) ];
++  [view addGestureRecognizer:_penHoverRecognizer];
+ }
+ 
+ - (void)detachFromView:(UIView *)view
+@@ -515,32 +498,25 @@ RCT_NOT_IMPLEMENTED(-(instancetype)initWithTarget : (id)target action : (SEL)act
+     ActivePointer activePointer = {};
+ 
+     // Determine the identifier of the Pointer and if it is the primary pointer
+-    if (@available(iOS 13.4, *)) {
+-      switch (touch.type) {
+-        case UITouchTypeIndirectPointer:
+-          activePointer.identifier = kMousePointerId;
+-          activePointer.isPrimary = true;
+-          break;
+-        case UITouchTypePencil:
+-          activePointer.identifier = kPencilPointerId;
+-          activePointer.isPrimary = true;
+-          break;
+-        default:
+-          // use the identifier pool offset to ensure no conflicts between the reserved IDs and the
+-          // touch IDs
+-          activePointer.identifier = _identifierPool.dequeue() + kTouchIdentifierPoolOffset;
+-          if (_primaryTouchPointerId == -1) {
+-            _primaryTouchPointerId = activePointer.identifier;
+-            activePointer.isPrimary = true;
+-          }
+-          break;
+-      }
+-    } else {
+-      activePointer.identifier = _identifierPool.dequeue();
+-      if (_primaryTouchPointerId == -1) {
+-        _primaryTouchPointerId = activePointer.identifier;
++
++    switch (touch.type) {
++      case UITouchTypeIndirectPointer:
++        activePointer.identifier = kMousePointerId;
+         activePointer.isPrimary = true;
+-      }
++        break;
++      case UITouchTypePencil:
++        activePointer.identifier = kPencilPointerId;
++        activePointer.isPrimary = true;
++        break;
++      default:
++        // use the identifier pool offset to ensure no conflicts between the reserved IDs and the
++        // touch IDs
++        activePointer.identifier = _identifierPool.dequeue() + kTouchIdentifierPoolOffset;
++        if (_primaryTouchPointerId == -1) {
++          _primaryTouchPointerId = activePointer.identifier;
++          activePointer.isPrimary = true;
++        }
++        break;
+     }
+ 
+     // If the pointer has not been marked as hovering over views before the touch started, we register
+@@ -582,19 +558,15 @@ RCT_NOT_IMPLEMENTED(-(instancetype)initWithTarget : (id)target action : (SEL)act
+       _primaryTouchPointerId = -1;
+     }
+ 
+-    if (@available(iOS 13.4, *)) {
+-      // only need to enqueue if the touch type isn't one with a reserved identifier
+-      switch (touch.type) {
+-        case UITouchTypeIndirectPointer:
+-        case UITouchTypePencil:
+-          break;
+-        default:
+-          // since the touch's identifier has been offset we need to re-normalize it to 0-based
+-          // which is what the identifier pool expects
+-          _identifierPool.enqueue(activePointer.identifier - kTouchIdentifierPoolOffset);
+-      }
+-    } else {
+-      _identifierPool.enqueue(activePointer.identifier);
++    // only need to enqueue if the touch type isn't one with a reserved identifier
++    switch (touch.type) {
++      case UITouchTypeIndirectPointer:
++      case UITouchTypePencil:
++        break;
++      default:
++        // since the touch's identifier has been offset we need to re-normalize it to 0-based
++        // which is what the identifier pool expects
++        _identifierPool.enqueue(activePointer.identifier - kTouchIdentifierPoolOffset);
+     }
+ 
+     _activePointers.erase(touch);
+@@ -749,11 +721,8 @@ RCT_NOT_IMPLEMENTED(-(instancetype)initWithTarget : (id)target action : (SEL)act
+   CGPoint offsetLocation = [recognizer locationInView:targetView];
+ 
+   UIKeyModifierFlags modifierFlags;
+-  if (@available(iOS 13.4, *)) {
+-    modifierFlags = recognizer.modifierFlags;
+-  } else {
+-    modifierFlags = 0;
+-  }
++
++  modifierFlags = recognizer.modifierFlags;
+ 
+   PointerEvent event = CreatePointerEventFromIncompleteHoverData(
+       pointerId, pointerType, clientLocation, screenLocation, offsetLocation, modifierFlags);
+diff --git a/packages/react-native/React/React-RCTFabric.podspec b/packages/react-native/React/React-RCTFabric.podspec
+index 0f9484b00b7..944e50a66bd 100644
+--- a/packages/react-native/React/React-RCTFabric.podspec
++++ b/packages/react-native/React/React-RCTFabric.podspec
+@@ -50,7 +50,7 @@ Pod::Spec.new do |s|
+   s.homepage               = "https://reactnative.dev/"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.source                 = source
+   s.source_files           = "Fabric/**/*.{c,h,m,mm,S,cpp}"
+   s.exclude_files          = "**/tests/*",
+diff --git a/packages/react-native/React/Views/RCTModalHostView.m b/packages/react-native/React/Views/RCTModalHostView.m
+index 65428a037d7..dfde4ae47ab 100644
+--- a/packages/react-native/React/Views/RCTModalHostView.m
++++ b/packages/react-native/React/Views/RCTModalHostView.m
+@@ -182,9 +182,9 @@ RCT_NOT_IMPLEMENTED(-(instancetype)initWithCoder : coder)
+     if (self.presentationStyle != UIModalPresentationNone) {
+       _modalViewController.modalPresentationStyle = self.presentationStyle;
+     }
+-    if (@available(iOS 13.0, *)) {
+-      _modalViewController.presentationController.delegate = self;
+-    }
++
++    _modalViewController.presentationController.delegate = self;
++
+     [_delegate presentModalHostView:self withViewController:_modalViewController animated:[self hasAnimationType]];
+     _isPresented = YES;
+   }
+diff --git a/packages/react-native/React/Views/RCTModalHostViewController.m b/packages/react-native/React/Views/RCTModalHostViewController.m
+index c9f717e0943..059b64157f9 100644
+--- a/packages/react-native/React/Views/RCTModalHostViewController.m
++++ b/packages/react-native/React/Views/RCTModalHostViewController.m
+@@ -22,12 +22,7 @@
+     return nil;
+   }
+ 
+-#if defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && defined(__IPHONE_13_0) && \
+-    __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_13_0
+-  if (@available(iOS 13.0, *)) {
+-    self.modalInPresentation = YES;
+-  }
+-#endif
++  self.modalInPresentation = YES;
+ 
+   _preferredStatusBarStyle = [RCTSharedApplication() statusBarStyle];
+   _preferredStatusBarHidden = [RCTSharedApplication() isStatusBarHidden];
+diff --git a/packages/react-native/React/Views/RCTSegmentedControl.m b/packages/react-native/React/Views/RCTSegmentedControl.m
+index 254b8ce6d5c..a3e399f8fda 100644
+--- a/packages/react-native/React/Views/RCTSegmentedControl.m
++++ b/packages/react-native/React/Views/RCTSegmentedControl.m
+@@ -39,36 +39,22 @@
+ 
+ - (void)setBackgroundColor:(UIColor *)backgroundColor
+ {
+-#if defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && defined(__IPHONE_13_0) && \
+-    __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_13_0
+-  if (@available(iOS 13.0, *)) {
+-    [super setBackgroundColor:backgroundColor];
+-  }
+-#endif
++  [super setBackgroundColor:backgroundColor];
+ }
+ 
+ - (void)setTextColor:(UIColor *)textColor
+ {
+-#if defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && defined(__IPHONE_13_0) && \
+-    __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_13_0
+-  if (@available(iOS 13.0, *)) {
+-    [self setTitleTextAttributes:@{NSForegroundColorAttributeName : textColor} forState:UIControlStateNormal];
+-  }
+-#endif
++  [self setTitleTextAttributes:@{NSForegroundColorAttributeName : textColor} forState:UIControlStateNormal];
+ }
+ 
+ - (void)setTintColor:(UIColor *)tintColor
+ {
+   [super setTintColor:tintColor];
+-#if defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && defined(__IPHONE_13_0) && \
+-    __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_13_0
+-  if (@available(iOS 13.0, *)) {
+-    [self setSelectedSegmentTintColor:tintColor];
+-    [self setTitleTextAttributes:@{NSForegroundColorAttributeName : [UIColor whiteColor]}
+-                        forState:UIControlStateSelected];
+-    [self setTitleTextAttributes:@{NSForegroundColorAttributeName : tintColor} forState:UIControlStateNormal];
+-  }
+-#endif
++
++  [self setSelectedSegmentTintColor:tintColor];
++  [self setTitleTextAttributes:@{NSForegroundColorAttributeName : [UIColor whiteColor]}
++                      forState:UIControlStateSelected];
++  [self setTitleTextAttributes:@{NSForegroundColorAttributeName : tintColor} forState:UIControlStateNormal];
+ }
+ 
+ - (void)didChange
+diff --git a/packages/react-native/React/Views/RCTView.m b/packages/react-native/React/Views/RCTView.m
+index 619509f9bd5..dcb19bfafc2 100644
+--- a/packages/react-native/React/Views/RCTView.m
++++ b/packages/react-native/React/Views/RCTView.m
+@@ -599,13 +599,10 @@ RCT_NOT_IMPLEMENTED(-(instancetype)initWithCoder : unused)
+ - (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection
+ {
+   [super traitCollectionDidChange:previousTraitCollection];
+-#if defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && __IPHONE_OS_VERSION_MAX_ALLOWED >= 130000
+-  if (@available(iOS 13.0, *)) {
+-    if ([self.traitCollection hasDifferentColorAppearanceComparedToTraitCollection:previousTraitCollection]) {
+-      [self.layer setNeedsDisplay];
+-    }
++
++  if ([self.traitCollection hasDifferentColorAppearanceComparedToTraitCollection:previousTraitCollection]) {
++    [self.layer setNeedsDisplay];
+   }
+-#endif
+ }
+ 
+ #pragma mark - Borders
+@@ -756,17 +753,12 @@ static CGFloat RCTDefaultIfNegativeTo(CGFloat defaultValue, CGFloat x)
+     borderTopColor = _borderBlockStartColor;
+   }
+ 
+-#if defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && __IPHONE_OS_VERSION_MAX_ALLOWED >= 130000
+-  if (@available(iOS 13.0, *)) {
+-    borderColor = [borderColor resolvedColorWithTraitCollection:self.traitCollection];
+-    borderTopColor = [borderTopColor resolvedColorWithTraitCollection:self.traitCollection];
+-    directionAwareBorderLeftColor =
+-        [directionAwareBorderLeftColor resolvedColorWithTraitCollection:self.traitCollection];
+-    borderBottomColor = [borderBottomColor resolvedColorWithTraitCollection:self.traitCollection];
+-    directionAwareBorderRightColor =
+-        [directionAwareBorderRightColor resolvedColorWithTraitCollection:self.traitCollection];
+-  }
+-#endif
++  borderColor = [borderColor resolvedColorWithTraitCollection:self.traitCollection];
++  borderTopColor = [borderTopColor resolvedColorWithTraitCollection:self.traitCollection];
++  directionAwareBorderLeftColor = [directionAwareBorderLeftColor resolvedColorWithTraitCollection:self.traitCollection];
++  borderBottomColor = [borderBottomColor resolvedColorWithTraitCollection:self.traitCollection];
++  directionAwareBorderRightColor =
++      [directionAwareBorderRightColor resolvedColorWithTraitCollection:self.traitCollection];
+ 
+   return (RCTBorderColors){
+       (borderTopColor ?: borderColor).CGColor,
+@@ -814,15 +806,8 @@ static CGFloat RCTDefaultIfNegativeTo(CGFloat defaultValue, CGFloat x)
+   // correctly clip the subviews.
+ 
+   CGColorRef backgroundColor;
+-#if defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && __IPHONE_OS_VERSION_MAX_ALLOWED >= 130000
+-  if (@available(iOS 13.0, *)) {
+-    backgroundColor = [_backgroundColor resolvedColorWithTraitCollection:self.traitCollection].CGColor;
+-  } else {
+-    backgroundColor = _backgroundColor.CGColor;
+-  }
+-#else
+-  backgroundColor = _backgroundColor.CGColor;
+-#endif
++
++  backgroundColor = [_backgroundColor resolvedColorWithTraitCollection:self.traitCollection].CGColor;
+ 
+   if (useIOSBorderRendering) {
+     layer.cornerRadius = cornerRadii.topLeft;
+diff --git a/packages/react-native/React/Views/RCTViewManager.m b/packages/react-native/React/Views/RCTViewManager.m
+index fedc9636a49..2b8f2c0a33a 100644
+--- a/packages/react-native/React/Views/RCTViewManager.m
++++ b/packages/react-native/React/Views/RCTViewManager.m
+@@ -277,15 +277,13 @@ RCT_CUSTOM_VIEW_PROPERTY(removeClippedSubviews, BOOL, RCTView)
+ }
+ RCT_CUSTOM_VIEW_PROPERTY(borderCurve, RCTBorderCurve, RCTView)
+ {
+-  if (@available(iOS 13.0, *)) {
+-    switch ([RCTConvert RCTBorderCurve:json]) {
+-      case RCTBorderCurveContinuous:
+-        view.layer.cornerCurve = kCACornerCurveContinuous;
+-        break;
+-      case RCTBorderCurveCircular:
+-        view.layer.cornerCurve = kCACornerCurveCircular;
+-        break;
+-    }
++  switch ([RCTConvert RCTBorderCurve:json]) {
++    case RCTBorderCurveContinuous:
++      view.layer.cornerCurve = kCACornerCurveContinuous;
++      break;
++    case RCTBorderCurveCircular:
++      view.layer.cornerCurve = kCACornerCurveCircular;
++      break;
+   }
+ }
+ RCT_CUSTOM_VIEW_PROPERTY(borderRadius, CGFloat, RCTView)
+diff --git a/packages/react-native/React/Views/ScrollView/RCTScrollView.m b/packages/react-native/React/Views/ScrollView/RCTScrollView.m
+index 2929f2dfdf3..6bd4b708983 100644
+--- a/packages/react-native/React/Views/ScrollView/RCTScrollView.m
++++ b/packages/react-native/React/Views/ScrollView/RCTScrollView.m
+@@ -1015,17 +1015,13 @@ RCT_SET_AND_PRESERVE_OFFSET(setShowsVerticalScrollIndicator, showsVerticalScroll
+ RCT_SET_AND_PRESERVE_OFFSET(setZoomScale, zoomScale, CGFloat);
+ RCT_SET_AND_PRESERVE_OFFSET(setScrollIndicatorInsets, scrollIndicatorInsets, UIEdgeInsets);
+ 
+-#if defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && __IPHONE_OS_VERSION_MAX_ALLOWED >= 130000 /* __IPHONE_13_0 */
+ - (void)setAutomaticallyAdjustsScrollIndicatorInsets:(BOOL)automaticallyAdjusts API_AVAILABLE(ios(13.0))
+ {
+   // `automaticallyAdjustsScrollIndicatorInsets` is available since iOS 13.
+   if ([_scrollView respondsToSelector:@selector(setAutomaticallyAdjustsScrollIndicatorInsets:)]) {
+-    if (@available(iOS 13.0, *)) {
+-      _scrollView.automaticallyAdjustsScrollIndicatorInsets = automaticallyAdjusts;
+-    }
++    _scrollView.automaticallyAdjustsScrollIndicatorInsets = automaticallyAdjusts;
+   }
+ }
+-#endif
+ 
+ - (void)setContentInsetAdjustmentBehavior:(UIScrollViewContentInsetAdjustmentBehavior)behavior
+ {
+diff --git a/packages/react-native/ReactCommon/React-Fabric.podspec b/packages/react-native/ReactCommon/React-Fabric.podspec
+index e439a5d7e63..2f345d4fa86 100644
+--- a/packages/react-native/ReactCommon/React-Fabric.podspec
++++ b/packages/react-native/ReactCommon/React-Fabric.podspec
+@@ -29,7 +29,7 @@ Pod::Spec.new do |s|
+   s.homepage               = "https://reactnative.dev/"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.source                 = source
+   s.source_files           = "dummyFile.cpp"
+   s.pod_target_xcconfig = { "USE_HEADERMAP" => "YES",
+diff --git a/packages/react-native/ReactCommon/React-rncore.podspec b/packages/react-native/ReactCommon/React-rncore.podspec
+index a58fc56f2e0..62838bb5fe4 100644
+--- a/packages/react-native/ReactCommon/React-rncore.podspec
++++ b/packages/react-native/ReactCommon/React-rncore.podspec
+@@ -33,7 +33,7 @@ Pod::Spec.new do |s|
+   s.homepage               = "https://reactnative.dev/"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.source                 = source
+   s.source_files           = "dummyFile.cpp"
+   s.pod_target_xcconfig = { "USE_HEADERMAP" => "YES",
+diff --git a/packages/react-native/ReactCommon/ReactCommon.podspec b/packages/react-native/ReactCommon/ReactCommon.podspec
+index 734478b28d6..9ca2ec4b996 100644
+--- a/packages/react-native/ReactCommon/ReactCommon.podspec
++++ b/packages/react-native/ReactCommon/ReactCommon.podspec
+@@ -28,7 +28,7 @@ Pod::Spec.new do |s|
+   s.homepage               = "https://reactnative.dev/"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.source                 = source
+   s.header_dir             = "ReactCommon" # Use global header_dir for all subspecs for use_frameworks! compatibility
+   s.compiler_flags         = folly_compiler_flags + ' ' + boost_compiler_flags
+diff --git a/packages/react-native/ReactCommon/callinvoker/React-callinvoker.podspec b/packages/react-native/ReactCommon/callinvoker/React-callinvoker.podspec
+index dbff635a1c3..10ec16dbad3 100644
+--- a/packages/react-native/ReactCommon/callinvoker/React-callinvoker.podspec
++++ b/packages/react-native/ReactCommon/callinvoker/React-callinvoker.podspec
+@@ -27,7 +27,7 @@ Pod::Spec.new do |s|
+   s.homepage               = "https://reactnative.dev/"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.source                 = source
+   s.source_files           = "**/*.{cpp,h}"
+   s.header_dir             = "ReactCommon"
+diff --git a/packages/react-native/ReactCommon/cxxreact/React-cxxreact.podspec b/packages/react-native/ReactCommon/cxxreact/React-cxxreact.podspec
+index 26747a5b69f..fe1b09b0a59 100644
+--- a/packages/react-native/ReactCommon/cxxreact/React-cxxreact.podspec
++++ b/packages/react-native/ReactCommon/cxxreact/React-cxxreact.podspec
+@@ -28,7 +28,7 @@ Pod::Spec.new do |s|
+   s.homepage               = "https://reactnative.dev/"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.source                 = source
+   s.source_files           = "*.{cpp,h}"
+   s.exclude_files          = "SampleCxxModule.*"
+diff --git a/packages/react-native/ReactCommon/hermes/React-hermes.podspec b/packages/react-native/ReactCommon/hermes/React-hermes.podspec
+index 425ef3c84c4..e89b85829f6 100644
+--- a/packages/react-native/ReactCommon/hermes/React-hermes.podspec
++++ b/packages/react-native/ReactCommon/hermes/React-hermes.podspec
+@@ -31,7 +31,7 @@ Pod::Spec.new do |s|
+   s.homepage               = "https://reactnative.dev/"
+   s.license                = package['license']
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :osx => "10.14", :ios => "12.4" }
++  s.platforms              = { :osx => "10.14", :ios => min_ios_version_supported }
+   s.source                 = source
+   s.source_files           = "executor/*.{cpp,h}",
+                              "inspector/*.{cpp,h}",
+diff --git a/packages/react-native/ReactCommon/jsc/React-jsc.podspec b/packages/react-native/ReactCommon/jsc/React-jsc.podspec
+index ac0e7858cba..dd6d3079f40 100644
+--- a/packages/react-native/ReactCommon/jsc/React-jsc.podspec
++++ b/packages/react-native/ReactCommon/jsc/React-jsc.podspec
+@@ -23,7 +23,7 @@ Pod::Spec.new do |s|
+   s.homepage               = "https://reactnative.dev/"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.source                 = source
+   s.source_files           = "JSCRuntime.{cpp,h}"
+   s.exclude_files          = "**/test/*"
+diff --git a/packages/react-native/ReactCommon/jsi/React-jsi.podspec b/packages/react-native/ReactCommon/jsi/React-jsi.podspec
+index e7c49d2f133..a6768f029f4 100644
+--- a/packages/react-native/ReactCommon/jsi/React-jsi.podspec
++++ b/packages/react-native/ReactCommon/jsi/React-jsi.podspec
+@@ -31,7 +31,7 @@ Pod::Spec.new do |s|
+   s.homepage               = "https://reactnative.dev/"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.source                 = source
+ 
+   s.header_dir    = "jsi"
+diff --git a/packages/react-native/ReactCommon/jsiexecutor/React-jsiexecutor.podspec b/packages/react-native/ReactCommon/jsiexecutor/React-jsiexecutor.podspec
+index e97969d5e84..a8b2ae881cf 100644
+--- a/packages/react-native/ReactCommon/jsiexecutor/React-jsiexecutor.podspec
++++ b/packages/react-native/ReactCommon/jsiexecutor/React-jsiexecutor.podspec
+@@ -27,7 +27,7 @@ Pod::Spec.new do |s|
+   s.homepage               = "https://reactnative.dev/"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.source                 = source
+   s.source_files         = "jsireact/*.{cpp,h}"
+   s.compiler_flags         = folly_compiler_flags + ' ' + boost_compiler_flags
+diff --git a/packages/react-native/ReactCommon/jsinspector/React-jsinspector.podspec b/packages/react-native/ReactCommon/jsinspector/React-jsinspector.podspec
+index 4b6d9a9287f..e82b9e7c5c1 100644
+--- a/packages/react-native/ReactCommon/jsinspector/React-jsinspector.podspec
++++ b/packages/react-native/ReactCommon/jsinspector/React-jsinspector.podspec
+@@ -23,7 +23,7 @@ Pod::Spec.new do |s|
+   s.homepage               = "https://reactnative.dev/"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.source                 = source
+   s.source_files           = "*.{cpp,h}"
+   s.header_dir             = 'jsinspector'
+diff --git a/packages/react-native/ReactCommon/logger/React-logger.podspec b/packages/react-native/ReactCommon/logger/React-logger.podspec
+index 17c2856a92e..a61e9272cab 100644
+--- a/packages/react-native/ReactCommon/logger/React-logger.podspec
++++ b/packages/react-native/ReactCommon/logger/React-logger.podspec
+@@ -28,7 +28,7 @@ Pod::Spec.new do |s|
+   s.homepage               = "https://reactnative.dev/"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.source                 = source
+   s.source_files           = "*.{cpp,h}"
+   s.exclude_files          = "SampleCxxModule.*"
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/core/platform/ios/React-NativeModulesApple.podspec b/packages/react-native/ReactCommon/react/nativemodule/core/platform/ios/React-NativeModulesApple.podspec
+index bf36f7347f4..43668653d04 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/core/platform/ios/React-NativeModulesApple.podspec
++++ b/packages/react-native/ReactCommon/react/nativemodule/core/platform/ios/React-NativeModulesApple.podspec
+@@ -29,7 +29,7 @@ Pod::Spec.new do |s|
+     s.homepage               = "https://reactnative.dev/"
+     s.license                = package["license"]
+     s.author                 = "Meta Platforms, Inc. and its affiliates"
+-    s.platforms              = { :ios => "12.4" }
++    s.platforms              = { :ios => min_ios_version_supported }
+     s.source                 = source
+     s.compiler_flags         = folly_compiler_flags + ' ' + boost_compiler_flags
+     s.pod_target_xcconfig    = { "HEADER_SEARCH_PATHS" => "\"$(PODS_ROOT)/boost\" \"$(PODS_ROOT)/RCT-Folly\" \"$(PODS_ROOT)/DoubleConversion\" \"$(PODS_ROOT)/Headers/Private/React-Core\"",
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/samples/ReactCommon-Samples.podspec b/packages/react-native/ReactCommon/react/nativemodule/samples/ReactCommon-Samples.podspec
+index a9a362f0c65..20bc81f09dd 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/samples/ReactCommon-Samples.podspec
++++ b/packages/react-native/ReactCommon/react/nativemodule/samples/ReactCommon-Samples.podspec
+@@ -29,7 +29,7 @@ Pod::Spec.new do |s|
+   s.homepage               = "https://reactnative.dev/"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.source                 = source
+   s.compiler_flags         = folly_compiler_flags + ' ' + boost_compiler_flags
+   s.pod_target_xcconfig    = { "HEADER_SEARCH_PATHS" => "\"$(PODS_ROOT)/boost\" \"$(PODS_ROOT)/RCT-Folly\" \"$(PODS_ROOT)/DoubleConversion\" \"$(PODS_ROOT)/Headers/Private/React-Core\" \"${PODS_CONFIGURATION_BUILD_DIR}/ReactCommon-Samples/ReactCommon_Samples.framework/Headers\"",
+diff --git a/packages/react-native/ReactCommon/react/renderer/graphics/React-graphics.podspec b/packages/react-native/ReactCommon/react/renderer/graphics/React-graphics.podspec
+index 19cc4ea84a7..85a9e21bbee 100644
+--- a/packages/react-native/ReactCommon/react/renderer/graphics/React-graphics.podspec
++++ b/packages/react-native/ReactCommon/react/renderer/graphics/React-graphics.podspec
+@@ -34,7 +34,7 @@ Pod::Spec.new do |s|
+   s.homepage               = "https://reactnative.dev/"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.source                 = source
+   s.compiler_flags         = folly_compiler_flags + ' ' + boost_compiler_flags
+   s.source_files           = source_files
+diff --git a/packages/react-native/ReactCommon/react/renderer/imagemanager/platform/ios/React-ImageManager.podspec b/packages/react-native/ReactCommon/react/renderer/imagemanager/platform/ios/React-ImageManager.podspec
+index 71438db28e7..d6fbd78c6d0 100644
+--- a/packages/react-native/ReactCommon/react/renderer/imagemanager/platform/ios/React-ImageManager.podspec
++++ b/packages/react-native/ReactCommon/react/renderer/imagemanager/platform/ios/React-ImageManager.podspec
+@@ -34,7 +34,7 @@ Pod::Spec.new do |s|
+   s.homepage               = "https://reactnative.dev/"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.source                 = source
+   s.compiler_flags         = folly_compiler_flags + ' ' + boost_compiler_flags
+   s.source_files           = source_files
+diff --git a/packages/react-native/ReactCommon/reactperflogger/React-perflogger.podspec b/packages/react-native/ReactCommon/reactperflogger/React-perflogger.podspec
+index 37a372c07b1..3c2980d9f10 100644
+--- a/packages/react-native/ReactCommon/reactperflogger/React-perflogger.podspec
++++ b/packages/react-native/ReactCommon/reactperflogger/React-perflogger.podspec
+@@ -27,7 +27,7 @@ Pod::Spec.new do |s|
+   s.homepage               = "https://reactnative.dev/"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.source                 = source
+   s.source_files           = "**/*.{cpp,h}"
+   s.header_dir             = "reactperflogger"
+diff --git a/packages/react-native/ReactCommon/runtimeexecutor/React-runtimeexecutor.podspec b/packages/react-native/ReactCommon/runtimeexecutor/React-runtimeexecutor.podspec
+index 2a36877299a..499c39e56c9 100644
+--- a/packages/react-native/ReactCommon/runtimeexecutor/React-runtimeexecutor.podspec
++++ b/packages/react-native/ReactCommon/runtimeexecutor/React-runtimeexecutor.podspec
+@@ -27,7 +27,7 @@ Pod::Spec.new do |s|
+   s.homepage               = "https://reactnative.dev/"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.source                 = source
+   s.source_files           = "**/*.{cpp,h}"
+   s.header_dir             = "ReactCommon"
+diff --git a/packages/react-native/ReactCommon/yoga/Yoga.podspec b/packages/react-native/ReactCommon/yoga/Yoga.podspec
+index 8ddf0bdcee9..e86ce76b356 100644
+--- a/packages/react-native/ReactCommon/yoga/Yoga.podspec
++++ b/packages/react-native/ReactCommon/yoga/Yoga.podspec
+@@ -43,7 +43,7 @@ Pod::Spec.new do |spec|
+   ]
+ 
+   # Pinning to the same version as React.podspec.
+-  spec.platforms = { :ios => "12.4" }
++  spec.platforms = { :ios => min_ios_version_supported }
+ 
+   # Set this environment variable when *not* using the `:path` option to install the pod.
+   # E.g. when publishing this spec to a spec repo.
+diff --git a/packages/react-native/scripts/cocoapods/__tests__/codegen_utils-test.rb b/packages/react-native/scripts/cocoapods/__tests__/codegen_utils-test.rb
+index 725e57c278a..c4e08a399a9 100644
+--- a/packages/react-native/scripts/cocoapods/__tests__/codegen_utils-test.rb
++++ b/packages/react-native/scripts/cocoapods/__tests__/codegen_utils-test.rb
+@@ -20,7 +20,7 @@ require_relative "./test_utils/FileUtilsMock.rb"
+ # without incurring in circular deps
+ # TODO: move `min_ios_version_supported` to utils.rb
+ def min_ios_version_supported
+-    return '12.4'
++    return '13.4'
+ end
+ 
+ class CodegenUtilsTests < Test::Unit::TestCase
+@@ -535,7 +535,7 @@ class CodegenUtilsTests < Test::Unit::TestCase
+           'source' => { :git => '' },
+           'header_mappings_dir' => './',
+           'platforms' => {
+-            'ios' => '12.4',
++            'ios' => '13.4',
+           },
+           'source_files' => "**/*.{h,mm,cpp}",
+           'pod_target_xcconfig' => {
+diff --git a/packages/react-native/scripts/react_native_pods.rb b/packages/react-native/scripts/react_native_pods.rb
+index 55bf9dbc7c7..0437407b2f4 100644
+--- a/packages/react-native/scripts/react_native_pods.rb
++++ b/packages/react-native/scripts/react_native_pods.rb
+@@ -38,7 +38,7 @@ require Pod::Executable.execute_command('node', ['-p',
+ # By using this function, you won't have to manually change your Podfile
+ # when we change the minimum version supported by the framework.
+ def min_ios_version_supported
+-  return '12.4'
++  return '13.4'
+ end
+ 
+ # This function prepares the project for React Native, before processing
+@@ -359,22 +359,14 @@ end
+ # Actual fix was authored by https://github.com/mikehardy.
+ # New app template will call this for now until the underlying issue is resolved.
+ def __apply_Xcode_12_5_M1_post_install_workaround(installer)
+-  # Flipper podspecs are still targeting an older iOS deployment target, and may cause an error like:
+-  #   "error: thread-local storage is not supported for the current target"
+-  # The most reliable known workaround is to bump iOS deployment target to match react-native (iOS 11 now).
+-  installer.pods_project.targets.each do |target|
+-    target.build_configurations.each do |config|
+-      # ensure IPHONEOS_DEPLOYMENT_TARGET is at least 11.0
+-      deployment_target = config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_f
+-      should_upgrade = deployment_target < 11.0 && deployment_target != 0.0
+-      if should_upgrade
+-        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '11.0'
+-      end
+-    end
+-  end
++  # NOTE: This fix is still required due to RCT-Folly
++  # creating a function with a better name but keeping the
++  # previous for backward compatibility
++  __fix_double_definition_of_clockid_in_folly()
++end
+ 
+-  # But... doing so caused another issue in Flipper:
+-  #   "Time.h:52:17: error: typedef redefinition with different types"
++def __fix_double_definition_of_clockid_in_folly()
++  # "Time.h:52:17: error: typedef redefinition with different types"
+   # We need to make a patch to RCT-Folly - remove the `__IPHONE_OS_VERSION_MIN_REQUIRED` check.
+   # See https://github.com/facebook/flipper/issues/834 for more details.
+   time_header = "#{Pod::Config.instance.installation_root.to_s}/Pods/RCT-Folly/folly/portability/Time.h"
+diff --git a/packages/react-native/sdks/hermes-engine/hermes-engine.podspec b/packages/react-native/sdks/hermes-engine/hermes-engine.podspec
+index 87d0710b4b9..81112367d81 100644
+--- a/packages/react-native/sdks/hermes-engine/hermes-engine.podspec
++++ b/packages/react-native/sdks/hermes-engine/hermes-engine.podspec
+@@ -34,7 +34,7 @@ Pod::Spec.new do |spec|
+   spec.license     = package['license']
+   spec.author      = "Facebook"
+   spec.source      = source
+-  spec.platforms   = { :osx => "10.13", :ios => "12.4" }
++  spec.platforms   = { :osx => "10.13", :ios => min_ios_version_supported }
+ 
+   spec.preserve_paths      = '**/*.*'
+   spec.source_files        = ''
+diff --git a/packages/react-native/template/ios/HelloWorld.xcodeproj/project.pbxproj b/packages/react-native/template/ios/HelloWorld.xcodeproj/project.pbxproj
+index 2ad58796333..afc51486e31 100644
+--- a/packages/react-native/template/ios/HelloWorld.xcodeproj/project.pbxproj
++++ b/packages/react-native/template/ios/HelloWorld.xcodeproj/project.pbxproj
+@@ -438,7 +438,7 @@
+ 					"$(inherited)",
+ 				);
+ 				INFOPLIST_FILE = HelloWorldTests/Info.plist;
+-				IPHONEOS_DEPLOYMENT_TARGET = 12.4;
++				IPHONEOS_DEPLOYMENT_TARGET = 13.4;
+ 				LD_RUNPATH_SEARCH_PATHS = (
+ 					"$(inherited)",
+ 					"@executable_path/Frameworks",
+@@ -462,7 +462,7 @@
+ 				BUNDLE_LOADER = "$(TEST_HOST)";
+ 				COPY_PHASE_STRIP = NO;
+ 				INFOPLIST_FILE = HelloWorldTests/Info.plist;
+-				IPHONEOS_DEPLOYMENT_TARGET = 12.4;
++				IPHONEOS_DEPLOYMENT_TARGET = 13.4;
+ 				LD_RUNPATH_SEARCH_PATHS = (
+ 					"$(inherited)",
+ 					"@executable_path/Frameworks",
+@@ -580,7 +580,7 @@
+ 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+ 				GCC_WARN_UNUSED_FUNCTION = YES;
+ 				GCC_WARN_UNUSED_VARIABLE = YES;
+-				IPHONEOS_DEPLOYMENT_TARGET = 12.4;
++				IPHONEOS_DEPLOYMENT_TARGET = 13.4;
+ 				LD_RUNPATH_SEARCH_PATHS = (
+ 					/usr/lib/swift,
+ 					"$(inherited)",
+@@ -644,7 +644,7 @@
+ 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+ 				GCC_WARN_UNUSED_FUNCTION = YES;
+ 				GCC_WARN_UNUSED_VARIABLE = YES;
+-				IPHONEOS_DEPLOYMENT_TARGET = 12.4;
++				IPHONEOS_DEPLOYMENT_TARGET = 13.4;
+ 				LD_RUNPATH_SEARCH_PATHS = (
+ 					/usr/lib/swift,
+ 					"$(inherited)",
+diff --git a/packages/react-native/template/ios/Podfile b/packages/react-native/template/ios/Podfile
+index 197230d1d6e..fa73cff4b8c 100644
+--- a/packages/react-native/template/ios/Podfile
++++ b/packages/react-native/template/ios/Podfile
+@@ -57,6 +57,6 @@ target 'HelloWorld' do
+       config[:reactNativePath],
+       :mac_catalyst_enabled => false
+     )
+-    __apply_Xcode_12_5_M1_post_install_workaround(installer)
++    __fix_double_definition_of_clockid_in_folly()
+   end
+ end
+diff --git a/packages/react-native/third-party-podspecs/DoubleConversion.podspec b/packages/react-native/third-party-podspecs/DoubleConversion.podspec
+index 93ee49f5d1b..74ae9f4bdf9 100644
+--- a/packages/react-native/third-party-podspecs/DoubleConversion.podspec
++++ b/packages/react-native/third-party-podspecs/DoubleConversion.podspec
+@@ -21,6 +21,6 @@ Pod::Spec.new do |spec|
+   spec.user_target_xcconfig = { "HEADER_SEARCH_PATHS" => "\"$(PODS_ROOT)/DoubleConversion\"" }
+ 
+   # Pinning to the same version as React.podspec.
+-  spec.platforms = { :ios => "12.4" }
++  spec.platforms = { :ios => min_ios_version_supported }
+ 
+ end
+diff --git a/packages/react-native/third-party-podspecs/RCT-Folly.podspec b/packages/react-native/third-party-podspecs/RCT-Folly.podspec
+index ec097f63d10..991284d64b8 100644
+--- a/packages/react-native/third-party-podspecs/RCT-Folly.podspec
++++ b/packages/react-native/third-party-podspecs/RCT-Folly.podspec
+@@ -152,5 +152,5 @@ Pod::Spec.new do |spec|
+ 
+   # Folly has issues when compiled with iOS 10 set as deployment target
+   # See https://github.com/facebook/folly/issues/1470 for details
+-  spec.platforms = { :ios => "9.0" }
++  spec.platforms = { :ios => min_ios_version_supported }
+ end
+diff --git a/packages/react-native/third-party-podspecs/glog.podspec b/packages/react-native/third-party-podspecs/glog.podspec
+index 64213f95f36..756be38d8c1 100644
+--- a/packages/react-native/third-party-podspecs/glog.podspec
++++ b/packages/react-native/third-party-podspecs/glog.podspec
+@@ -33,6 +33,6 @@ Pod::Spec.new do |spec|
+                                "HEADER_SEARCH_PATHS" => "$(PODS_TARGET_SRCROOT)/src" }
+ 
+   # Pinning to the same version as React.podspec.
+-  spec.platforms = { :ios => "12.4" }
++  spec.platforms = { :ios => min_ios_version_supported }
+ 
+ end
+diff --git a/packages/rn-tester/NativeComponentExample/MyNativeView.podspec b/packages/rn-tester/NativeComponentExample/MyNativeView.podspec
+index 5b2f92b9f1c..029ef1935d4 100644
+--- a/packages/rn-tester/NativeComponentExample/MyNativeView.podspec
++++ b/packages/rn-tester/NativeComponentExample/MyNativeView.podspec
+@@ -17,7 +17,7 @@ Pod::Spec.new do |s|
+   s.description     = "my-native-view"
+   s.homepage        = "https://github.com/sota000/my-native-view.git"
+   s.license         = "MIT"
+-  s.platforms       = { :ios => "12.4" }
++  s.platforms       = { :ios => min_ios_version_supported }
+   s.compiler_flags  = boost_compiler_flags + ' -Wno-nullability-completeness'
+   s.author          = "Meta Platforms, Inc. and its affiliates"
+   s.source          = { :git => "https://github.com/facebook/my-native-view.git", :tag => "#{s.version}" }
+diff --git a/packages/rn-tester/NativeCxxModuleExample/NativeCxxModuleExample.podspec b/packages/rn-tester/NativeCxxModuleExample/NativeCxxModuleExample.podspec
+index 4eaef3a3978..e4f38793ab2 100644
+--- a/packages/rn-tester/NativeCxxModuleExample/NativeCxxModuleExample.podspec
++++ b/packages/rn-tester/NativeCxxModuleExample/NativeCxxModuleExample.podspec
+@@ -14,7 +14,7 @@ Pod::Spec.new do |s|
+   s.description     = "NativeCxxModuleExample"
+   s.homepage        = "https://github.com/facebook/react-native.git"
+   s.license         = "MIT"
+-  s.platforms       = { :ios => "12.4" }
++  s.platforms       = { :ios => min_ios_version_supported }
+   s.compiler_flags  = '-Wno-nullability-completeness'
+   s.author          = "Meta Platforms, Inc. and its affiliates"
+   s.source          = { :git => "https://github.com/facebook/react-native.git", :tag => "#{s.version}" }
+diff --git a/packages/rn-tester/NativeModuleExample/ScreenshotManager.podspec b/packages/rn-tester/NativeModuleExample/ScreenshotManager.podspec
+index 66bd9daf5b7..787effe5163 100644
+--- a/packages/rn-tester/NativeModuleExample/ScreenshotManager.podspec
++++ b/packages/rn-tester/NativeModuleExample/ScreenshotManager.podspec
+@@ -14,7 +14,7 @@ Pod::Spec.new do |s|
+   s.description     = "ScreenshotManager"
+   s.homepage        = "https://github.com/facebook/react-native.git"
+   s.license         = "MIT"
+-  s.platforms       = { :ios => "12.4" }
++  s.platforms       = { :ios => min_ios_version_supported }
+   s.compiler_flags  = '-Wno-nullability-completeness'
+   s.author          = "Meta Platforms, Inc. and its affiliates"
+   s.source          = { :git => "https://github.com/facebook/react-native.git", :tag => "#{s.version}" }
+diff --git a/packages/rn-tester/Podfile b/packages/rn-tester/Podfile
+index 15112ae6497..e4e35975def 100644
+--- a/packages/rn-tester/Podfile
++++ b/packages/rn-tester/Podfile
+@@ -72,5 +72,5 @@ end
+ 
+ post_install do |installer|
+   react_native_post_install(installer, @prefix_path, :mac_catalyst_enabled => false)
+-  __apply_Xcode_12_5_M1_post_install_workaround(installer)
++  __fix_double_definition_of_clockid_in_folly()
+ end
+diff --git a/packages/rn-tester/RCTTest/React-RCTTest.podspec b/packages/rn-tester/RCTTest/React-RCTTest.podspec
+index b29c8e11aea..76a3594f2bf 100644
+--- a/packages/rn-tester/RCTTest/React-RCTTest.podspec
++++ b/packages/rn-tester/RCTTest/React-RCTTest.podspec
+@@ -26,7 +26,7 @@ Pod::Spec.new do |s|
+   s.homepage               = "https://reactnative.dev/"
+   s.license                = package["license"]
+   s.author                 = "Meta Platforms, Inc. and its affiliates"
+-  s.platforms              = { :ios => "12.4" }
++  s.platforms              = { :ios => min_ios_version_supported }
+   s.compiler_flags         = folly_compiler_flags + ' -Wno-nullability-completeness'
+   s.source                 = source
+   s.source_files           = "**/*.{h,m,mm}"
+diff --git a/packages/rn-tester/RNTesterPods.xcodeproj/project.pbxproj b/packages/rn-tester/RNTesterPods.xcodeproj/project.pbxproj
+index bc5dbd4d247..ff44d2b4f18 100644
+--- a/packages/rn-tester/RNTesterPods.xcodeproj/project.pbxproj
++++ b/packages/rn-tester/RNTesterPods.xcodeproj/project.pbxproj
+@@ -843,7 +843,7 @@
+ 				CODE_SIGN_ENTITLEMENTS = RNTester/RNTester.entitlements;
+ 				DEVELOPMENT_TEAM = "";
+ 				INFOPLIST_FILE = "$(SRCROOT)/RNTester/Info.plist";
+-				IPHONEOS_DEPLOYMENT_TARGET = 12.4;
++				IPHONEOS_DEPLOYMENT_TARGET = 13.4;
+ 				LD_RUNPATH_SEARCH_PATHS = (
+ 					/usr/lib/swift,
+ 					"$(inherited)",
+@@ -876,7 +876,7 @@
+ 				DEVELOPMENT_TEAM = "";
+ 				EXCLUDED_ARCHS = "";
+ 				INFOPLIST_FILE = "$(SRCROOT)/RNTester/Info.plist";
+-				IPHONEOS_DEPLOYMENT_TARGET = 12.4;
++				IPHONEOS_DEPLOYMENT_TARGET = 13.4;
+ 				LD_RUNPATH_SEARCH_PATHS = (
+ 					/usr/lib/swift,
+ 					"$(inherited)",
+@@ -961,7 +961,7 @@
+ 				GCC_WARN_UNUSED_FUNCTION = YES;
+ 				GCC_WARN_UNUSED_LABEL = YES;
+ 				GCC_WARN_UNUSED_VARIABLE = YES;
+-				IPHONEOS_DEPLOYMENT_TARGET = 12.4;
++				IPHONEOS_DEPLOYMENT_TARGET = 13.4;
+ 				MTL_ENABLE_DEBUG_INFO = YES;
+ 				ONLY_ACTIVE_ARCH = YES;
+ 				OTHER_CFLAGS = (
+@@ -1044,7 +1044,7 @@
+ 				GCC_WARN_UNUSED_FUNCTION = YES;
+ 				GCC_WARN_UNUSED_LABEL = YES;
+ 				GCC_WARN_UNUSED_VARIABLE = YES;
+-				IPHONEOS_DEPLOYMENT_TARGET = 12.4;
++				IPHONEOS_DEPLOYMENT_TARGET = 13.4;
+ 				MTL_ENABLE_DEBUG_INFO = NO;
+ 				OTHER_CFLAGS = (
+ 					"$(inherited)",
+@@ -1085,7 +1085,7 @@
+ 				DEBUG_INFORMATION_FORMAT = dwarf;
+ 				DEVELOPMENT_TEAM = "";
+ 				INFOPLIST_FILE = RNTesterUnitTests/Info.plist;
+-				IPHONEOS_DEPLOYMENT_TARGET = 12.4;
++				IPHONEOS_DEPLOYMENT_TARGET = 13.4;
+ 				LD_RUNPATH_SEARCH_PATHS = (
+ 					"$(inherited)",
+ 					"@executable_path/Frameworks",
+@@ -1123,7 +1123,7 @@
+ 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+ 				DEVELOPMENT_TEAM = "";
+ 				INFOPLIST_FILE = RNTesterUnitTests/Info.plist;
+-				IPHONEOS_DEPLOYMENT_TARGET = 12.4;
++				IPHONEOS_DEPLOYMENT_TARGET = 13.4;
+ 				LD_RUNPATH_SEARCH_PATHS = (
+ 					"$(inherited)",
+ 					"@executable_path/Frameworks",
+@@ -1164,7 +1164,7 @@
+ 					"$(inherited)",
+ 				);
+ 				INFOPLIST_FILE = RNTesterIntegrationTests/Info.plist;
+-				IPHONEOS_DEPLOYMENT_TARGET = 12.4;
++				IPHONEOS_DEPLOYMENT_TARGET = 13.4;
+ 				LD_RUNPATH_SEARCH_PATHS = (
+ 					"$(inherited)",
+ 					"@executable_path/Frameworks",
+@@ -1199,7 +1199,7 @@
+ 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+ 				DEVELOPMENT_TEAM = "";
+ 				INFOPLIST_FILE = RNTesterIntegrationTests/Info.plist;
+-				IPHONEOS_DEPLOYMENT_TARGET = 12.4;
++				IPHONEOS_DEPLOYMENT_TARGET = 13.4;
+ 				LD_RUNPATH_SEARCH_PATHS = (
+ 					"$(inherited)",
+ 					"@executable_path/Frameworks",
+diff --git a/packages/rn-tester/RNTesterUnitTests/RCTConvert_UIColorTests.m b/packages/rn-tester/RNTesterUnitTests/RCTConvert_UIColorTests.m
+index 1d942d3cafc..d0bfb605dbe 100644
+--- a/packages/rn-tester/RNTesterUnitTests/RCTConvert_UIColorTests.m
++++ b/packages/rn-tester/RNTesterUnitTests/RCTConvert_UIColorTests.m
+@@ -75,30 +75,26 @@ static BOOL CGColorsAreEqual(CGColorRef color1, CGColorRef color2)
+   UIColor *value = [RCTConvert UIColor:json];
+   XCTAssertNotNil(value);
+ 
+-#if defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && __IPHONE_OS_VERSION_MAX_ALLOWED >= 130000
+-  if (@available(iOS 13.0, *)) {
+-    id savedTraitCollection = [UITraitCollection currentTraitCollection];
+-
+-    [UITraitCollection
+-        setCurrentTraitCollection:[UITraitCollection traitCollectionWithUserInterfaceStyle:UIUserInterfaceStyleLight]];
+-    CGFloat rgba[4];
+-    RCTGetRGBAColorComponents([value CGColor], rgba);
+-    XCTAssertEqual(rgba[0], 0);
+-    XCTAssertEqual(rgba[1], 0);
+-    XCTAssertEqual(rgba[2], 0);
+-    XCTAssertEqual(rgba[3], 0);
+-
+-    [UITraitCollection
+-        setCurrentTraitCollection:[UITraitCollection traitCollectionWithUserInterfaceStyle:UIUserInterfaceStyleDark]];
+-    RCTGetRGBAColorComponents([value CGColor], rgba);
+-    XCTAssertEqual(rgba[0], 1);
+-    XCTAssertEqual(rgba[1], 1);
+-    XCTAssertEqual(rgba[2], 1);
+-    XCTAssertEqual(rgba[3], 0);
+-
+-    [UITraitCollection setCurrentTraitCollection:savedTraitCollection];
+-  }
+-#endif
++  id savedTraitCollection = [UITraitCollection currentTraitCollection];
++
++  [UITraitCollection
++      setCurrentTraitCollection:[UITraitCollection traitCollectionWithUserInterfaceStyle:UIUserInterfaceStyleLight]];
++  CGFloat rgba[4];
++  RCTGetRGBAColorComponents([value CGColor], rgba);
++  XCTAssertEqual(rgba[0], 0);
++  XCTAssertEqual(rgba[1], 0);
++  XCTAssertEqual(rgba[2], 0);
++  XCTAssertEqual(rgba[3], 0);
++
++  [UITraitCollection
++      setCurrentTraitCollection:[UITraitCollection traitCollectionWithUserInterfaceStyle:UIUserInterfaceStyleDark]];
++  RCTGetRGBAColorComponents([value CGColor], rgba);
++  XCTAssertEqual(rgba[0], 1);
++  XCTAssertEqual(rgba[1], 1);
++  XCTAssertEqual(rgba[2], 1);
++  XCTAssertEqual(rgba[3], 0);
++
++  [UITraitCollection setCurrentTraitCollection:savedTraitCollection];
+ }
+ 
+ - (void)testCompositeDynamicColor
+@@ -109,23 +105,19 @@ static BOOL CGColorsAreEqual(CGColorRef color1, CGColorRef color2)
+   UIColor *value = [RCTConvert UIColor:json];
+   XCTAssertNotNil(value);
+ 
+-#if defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && __IPHONE_OS_VERSION_MAX_ALLOWED >= 130000
+-  if (@available(iOS 13.0, *)) {
+-    id savedTraitCollection = [UITraitCollection currentTraitCollection];
++  id savedTraitCollection = [UITraitCollection currentTraitCollection];
+ 
+-    [UITraitCollection
+-        setCurrentTraitCollection:[UITraitCollection traitCollectionWithUserInterfaceStyle:UIUserInterfaceStyleLight]];
++  [UITraitCollection
++      setCurrentTraitCollection:[UITraitCollection traitCollectionWithUserInterfaceStyle:UIUserInterfaceStyleLight]];
+ 
+-    XCTAssertTrue(CGColorsAreEqual([value CGColor], [[UIColor systemRedColor] CGColor]));
++  XCTAssertTrue(CGColorsAreEqual([value CGColor], [[UIColor systemRedColor] CGColor]));
+ 
+-    [UITraitCollection
+-        setCurrentTraitCollection:[UITraitCollection traitCollectionWithUserInterfaceStyle:UIUserInterfaceStyleDark]];
++  [UITraitCollection
++      setCurrentTraitCollection:[UITraitCollection traitCollectionWithUserInterfaceStyle:UIUserInterfaceStyleDark]];
+ 
+-    XCTAssertTrue(CGColorsAreEqual([value CGColor], [[UIColor systemBlueColor] CGColor]));
++  XCTAssertTrue(CGColorsAreEqual([value CGColor], [[UIColor systemBlueColor] CGColor]));
+ 
+-    [UITraitCollection setCurrentTraitCollection:savedTraitCollection];
+-  }
+-#endif
++  [UITraitCollection setCurrentTraitCollection:savedTraitCollection];
+ }
+ 
+ - (void)testGenerateFallbacks
+@@ -171,15 +163,12 @@ static BOOL CGColorsAreEqual(CGColorRef color1, CGColorRef color2)
+     @"clearColor" : @(0x00000000),
+   };
+ 
+-#if defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && __IPHONE_OS_VERSION_MAX_ALLOWED >= 130000
+   id savedTraitCollection = nil;
+-  if (@available(iOS 13.0, *)) {
+-    savedTraitCollection = [UITraitCollection currentTraitCollection];
+ 
+-    [UITraitCollection
+-        setCurrentTraitCollection:[UITraitCollection traitCollectionWithUserInterfaceStyle:UIUserInterfaceStyleLight]];
+-  }
+-#endif
++  savedTraitCollection = [UITraitCollection currentTraitCollection];
++
++  [UITraitCollection
++      setCurrentTraitCollection:[UITraitCollection traitCollectionWithUserInterfaceStyle:UIUserInterfaceStyleLight]];
+ 
+   for (NSString *semanticColor in semanticColors) {
+     id json = RCTJSONParse([NSString stringWithFormat:@"{ \"semantic\": \"%@\" }", semanticColor], nil);
+@@ -206,11 +195,7 @@ static BOOL CGColorsAreEqual(CGColorRef color1, CGColorRef color2)
+     XCTAssertEqual(alpha1, alpha2);
+   }
+ 
+-#if defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && __IPHONE_OS_VERSION_MAX_ALLOWED >= 130000
+-  if (@available(iOS 13.0, *)) {
+-    [UITraitCollection setCurrentTraitCollection:savedTraitCollection];
+-  }
+-#endif
++  [UITraitCollection setCurrentTraitCollection:savedTraitCollection];
+ }
+ 
+ @end
+diff --git a/tools/build_defs/oss/rn_defs.bzl b/tools/build_defs/oss/rn_defs.bzl
+index 0813b09ccd5..415091a7a87 100644
+--- a/tools/build_defs/oss/rn_defs.bzl
++++ b/tools/build_defs/oss/rn_defs.bzl
+@@ -74,7 +74,7 @@ JNI_TARGET = "//packages/react-native/ReactAndroid/src/main/jni/first-party/jni-
+ KEYSTORE_TARGET = "//keystores:debug"
+ 
+ # Minimum supported iOS version for RN
+-REACT_NATIVE_TARGET_IOS_SDK = "12.4"
++REACT_NATIVE_TARGET_IOS_SDK = "13.4"
+ 
+ def get_apple_inspector_flags():
+     return []

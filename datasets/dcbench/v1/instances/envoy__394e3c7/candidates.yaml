@@ -1,0 +1,81 @@
+generators:
+  cochange: 0
+  bm25: 15
+  graph: 0
+  random: 10
+candidates:
+- path: api/envoy/config/core/v3/base.proto
+  sources:
+  - bm25
+- path: api/envoy/config/route/v3/route_components.proto
+  sources:
+  - bm25
+- path: changelogs/1.37.0.yaml
+  sources:
+  - bm25
+- path: changelogs/1.38.0.yaml
+  sources:
+  - bm25
+- path: compat/openssl/test/certs/server_2_cert.cfg
+  sources:
+  - random
+- path: contrib/golang/filters/http/test/golang_integration_test.cc
+  sources:
+  - bm25
+- path: contrib/stat_sinks/wasm_filter/source/wasm_filter_stat_sink_impl.cc
+  sources:
+  - random
+- path: mobile/docs/root/development/testing/testing.rst
+  sources:
+  - random
+- path: mobile/library/swift/stats/Tags.swift
+  sources:
+  - random
+- path: test/common/common/logger_fuzz_test.cc
+  sources:
+  - random
+- path: test/common/http/http2/http2_connection_corpus/WINDOW_UPDATE
+  sources:
+  - random
+- path: test/extensions/filters/http/composite/composite_filter_integration_test.cc
+  sources:
+  - bm25
+- path: test/extensions/filters/http/composite/filter_test.cc
+  sources:
+  - bm25
+- path: test/extensions/filters/http/dynamic_forward_proxy/proxy_filter_integration_test.cc
+  sources:
+  - bm25
+- path: test/extensions/filters/http/ext_authz/ext_authz_integration_test.cc
+  sources:
+  - bm25
+- path: test/extensions/filters/http/header_mutation/header_mutation_integration_test.cc
+  sources:
+  - bm25
+- path: test/extensions/filters/http/lua/lua_integration_test.cc
+  sources:
+  - bm25
+- path: test/extensions/filters/http/wasm/test_data/test_shared_queue_cpp.cc
+  sources:
+  - random
+- path: test/extensions/filters/listener/http_inspector/http_inspector_fuzz_test.cc
+  sources:
+  - random
+- path: test/extensions/filters/network/http_connection_manager/config.proto
+  sources:
+  - random
+- path: test/extensions/tracers/opentelemetry/samplers/dynatrace/sampler_config_provider_test.cc
+  sources:
+  - random
+- path: test/integration/idle_timeout_integration_test.cc
+  sources:
+  - bm25
+- path: test/integration/integration_test.cc
+  sources:
+  - bm25
+- path: test/integration/multiplexed_integration_test.cc
+  sources:
+  - bm25
+- path: test/integration/quic_http_integration_test.cc
+  sources:
+  - bm25

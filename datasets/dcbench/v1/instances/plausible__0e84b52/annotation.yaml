@@ -1,0 +1,87 @@
+repo: plausible
+base_commit: 6933a3e5f6d2ced47c0ac25c3d3ac21bf0812ccd
+commit: 0e84b52acb4caef2af43cbdb563d44120bcc0216
+patch_stored: true
+gold:
+  - path: lib/plausible/auth/totp.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds validate_with_secret/6 and rewrites validate_code/2 to try totp_secret then totp_secret_fallback, the core of the rotation logic.
+  - path: lib/plausible/auth/totp/fallback_vault.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: defines Plausible.Auth.TOTP.FallbackVault, the new Cloak.Vault started in application.ex and referenced by totp.ex/user.ex.
+  - path: lib/plausible/auth/user.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds the totp_secret_fallback Ecto field using the new FallbackEncryptedBinary type, coupling the schema to the vault.
+  - path: config/runtime.exs
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: parses TOTP_VAULT_KEY_FALLBACK and sets fallback_vault_key in the :plausible, Plausible.Auth.TOTP config read by application.ex.
+  - path: lib/plausible/application.ex
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: starts a Plausible.Auth.TOTP.FallbackVault child with totp_fallback_vault_key() in the supervision tree, wiring config to the vault process.
+  - path: lib/plausible/data_migration/backfill_totp_secret_fallback.ex
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: implements step 2 of the rotation procedure (backfilling totp_secret_fallback from totp_secret), exercised by rotation_test.exs.
+  - path: lib/plausible/data_migration/overwrite_totp_secret.ex
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: implements step 4 of the rotation procedure (overwriting totp_secret from totp_secret_fallback), exercised by rotation_test.exs.
+  - path: test/plausible/auth/totp/rotation_test.exs
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: end-to-end test that drives the full 5-step vault-key rotation, proving the fallback+backfill+overwrite pieces cooperate.
+  - path: lib/plausible/auth/totp/fallback_encrypted_binary.ex
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: defines the Cloak.Ecto.Binary type used by user.ex's totp_secret_fallback field, backed by FallbackVault.
+  - path: lib/plausible/auth/totp/vault.ex
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: pre-existing Plausible.Auth.TOTP.Vault that FallbackVault.init/1 is a near-verbatim copy of, needed to see what pattern is being duplicated for the fallback.
+  - path: lib/plausible/auth/totp/encrypted_binary.ex
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: pre-existing Plausible.Auth.TOTP.EncryptedBinary type that fallback_encrypted_binary.ex mirrors, using Vault instead of FallbackVault.
+  - path: priv/repo/migrations/20260528094343_add_totp_secret_fallback_to_user.exs
+    tier: essential
+    role: config
+    in_diff: false
+    rationale: Ecto migration that adds the totp_secret_fallback binary column the User schema field in user.ex maps onto; without it the schema change has no backing DB column.
+forbidden:
+  - path: lib/plausible/auth/totp/recovery_code.ex
+    reason: sibling module in the same totp/ directory but unrelated to vault-key rotation.
+  - path: lib/plausible/data_migration/backfill_teams.ex
+    reason: same data_migration/ directory and "backfill_*" naming pattern, but a completely unrelated migration.
+  - path: lib/plausible/data_migration/clickhouse_repo.ex
+    reason: shared helper module in the same directory, not used by the TOTP migration scripts.
+  - path: lib/plausible/auth/auth.ex
+    reason: broad auth context module; tempting due to directory proximity but not touched or referenced by the fallback-vault change.
+nontrivial_gold_count: 3
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: >-
+  Adds a fallback Cloak vault + Ecto field (totp_secret_fallback) so TOTP
+  secrets can be re-encrypted under a new vault key without breaking existing
+  users mid-rotation; validate_code now falls back to the secondary secret
+  and reports decode failures to Sentry. Two new data-migration scripts
+  (backfill, overwrite) implement the operator-driven rotation steps, and
+  rotation_test.exs is an integration test of the whole procedure. Linkage is
+  entirely via static module references (Cloak.Vault name, Ecto type, config
+  keys), not strings, so string_indirection is false.

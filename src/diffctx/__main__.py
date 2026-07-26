@@ -11,7 +11,7 @@ except (OSError, ValueError) as e:
     # If logging initialization fails, warn but continue
     print(f"Warning: logging init failed: {e}", file=sys.stderr)
 
-from diffctx.main import main
+from diffctx.cli import main
 
 if __name__ == "__main__":
     main()

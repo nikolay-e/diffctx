@@ -1,0 +1,93 @@
+repo: gitpod
+base_commit: 663fcb958750e345c38521e18e06d401255e3b97
+commit: d54bd04999de812be44865004d82d62cb72fc320
+patch_stored: true
+gold:
+- path: components/dashboard/src/app/AppRoutes.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/data/featureflag-query.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/data/organizations/update-org-settings-mutation.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/teams/OrgSettingsPage.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/teams/TeamNetworking.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/teams/TeamOnboarding.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/teams/TeamPolicies.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/teams/policies/EditorOptions.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/teams/policies/OrgWorkspaceClassesOptions.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/teams/policies/RoleRestrictions.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/teams/policies/WorkspaceClassesEnterpriseCallout.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-db/src/typeorm/entity/db-team-settings.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-db/src/typeorm/migration/1736261239285-AddOrgOnboardingSettings.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-db/src/typeorm/team-db-impl.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-protocol/src/teams-projects-protocol.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/public-api/gitpod/v1/organization.proto
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/api/organization-service-api.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/orgs/organization-service.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: components/public-api/go/v1/*.pb.go
+- path: components/public-api/go/v1/v1connect/*.go
+- path: components/public-api/java/**/*.java
+- path: components/public-api/java/**/*.kt
+- path: components/public-api/typescript/src/gitpod/v1/*_pb.ts
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'Complete hang: ctx.md is empty despite a real 261-file, 2866+/1371- diff with a genuine feature
+  (enterprise onboarding settings) buried among ~230 mechanically regenerated protobuf/connect/client
+  files (2-line version-string bumps repeated per language x2 API surfaces). The generated-file fanout
+  is the likely trigger for the unbounded hang (issue #70). Zero comprehension-per-token delivered — total
+  failure, not merely inefficient. A correct tool should recognize the regenerated pb.go/connect.go/*.java/*.kt/*_pb.ts
+  files as low-signal boilerplate and skip or summarize them rather than choke on the volume.'

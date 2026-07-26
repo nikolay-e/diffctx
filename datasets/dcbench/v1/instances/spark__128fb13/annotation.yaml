@@ -1,0 +1,71 @@
+repo: spark
+base_commit: 6739e4f98c861dba78377c487ede6e8877eb57bc
+commit: 128fb1369493406dd2123b92cc9de552329d598e
+patch_stored: true
+gold:
+  - path: sql/connect/client/jdbc/src/main/scala/org/apache/spark/sql/connect/client/jdbc/NonRegisteringSparkConnectDriver.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Core `java.sql.Driver` implementation — `acceptsURL` matches the `jdbc:sc://` prefix and `connect` is the (stubbed) entry point; this is what the whole module exists to provide.
+  - path: sql/connect/client/jdbc/src/main/java/org/apache/spark/sql/connect/client/jdbc/SparkConnectDriver.java
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Public driver class extending `NonRegisteringSparkConnectDriver` and self-registering with `DriverManager.registerDriver` in a static initializer — the class the JDBC SPI file names.
+  - path: sql/connect/client/jdbc/src/main/resources/META-INF/services/java.sql.Driver
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: JDBC `ServiceLoader` SPI descriptor naming `org.apache.spark.sql.connect.client.jdbc.SparkConnectDriver` by fully-qualified string — the string-indirection mechanism by which `DriverManager.getDriver("jdbc:sc://...")` discovers this class with no static reference from any caller.
+  - path: sql/connect/client/jdbc/pom.xml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Defines the new Maven module identity `spark-connect-client-jdbc_2.13`, its dependencies (connect-common, sql-api, connect-shims), and the shade/relocation rules that produce the standalone driver jar.
+  - path: project/SparkBuild.scala
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Adds `object SparkConnectJdbc` (SBT settings mirroring the Maven shade config) and wires `connectJdbc` into `connectProjects`/`ExcludeShims`/`CopyDependencies`, plus the manual assembly-jar copy into `connect-repl` — the SBT-side twin of the Maven module.
+  - path: pom.xml
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Adds `<module>sql/connect/client/jdbc</module>` to the reactor module list so Maven actually builds the new module.
+  - path: assembly/pom.xml
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Adds the dependency on `spark-connect-client-jdbc` and a `copy-connect-client-jdbc-jar` exec execution that places the built jar under `jars/connect-repl`, colocated with `connect-client-jvm`.
+  - path: sql/connect/client/jdbc/src/test/scala/org/apache/spark/sql/connect/client/jdbc/SparkConnectDriverSuite.scala
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Asserts `DriverManager.getDriver("jdbc:sc://localhost:15002")` resolves to `SparkConnectDriver`, exercising the SPI registration end-to-end.
+forbidden:
+  - path: dev/sparktestsupport/modules.py
+    reason: mechanical addition of "connect-client-jdbc/test" to the sbt test-goal list, doesn't explain driver behavior.
+  - path: .github/workflows/maven_test.yml
+    reason: CI module-selection plumbing (which `-pl` list to test), unrelated to what the driver does.
+  - path: sql/connect/client/jdbc/src/test/resources/log4j2.properties
+    reason: boilerplate test logging config copy-pasted from sibling connect modules, no driver-specific content.
+nontrivial_gold_count: 0
+string_indirection: true
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 11
+  description: 'Add connect-client-jdbc module: pom.xml + code + CI coupling'
+notes: >-
+  Kicks off a JDBC driver for Spark Connect: a brand-new `sql/connect/client/jdbc`
+  Maven/SBT module with a stub `java.sql.Driver` implementation (`connect` throws
+  "TODO(SPARK-53934)"; only URL-acceptance and self-registration are implemented so
+  far) plus the Maven/SBT/assembly build wiring to package and ship its jar. Every file
+  in the diff is new, so all context needed to understand the change is self-contained
+  within it — no_nontrivial_context is set. string_indirection is true because the JDBC
+  `ServiceLoader` mechanism (`META-INF/services/java.sql.Driver`) links `DriverManager`
+  to `SparkConnectDriver` purely by a fully-qualified class-name string, not a static
+  reference.

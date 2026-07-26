@@ -1,0 +1,423 @@
+From 4d69766b91c9832dde93f6b02c9c0840429ec314 Mon Sep 17 00:00:00 2001
+From: Isabella <173110554+ih-codes@users.noreply.github.com>
+Date: Fri, 26 Jun 2026 15:40:40 -0600
+Subject: [PATCH] Refactor FXIOS-16140 [Technical Debt] [Redux] Action
+ migration part 1: Add `ModernAction` to Redux package (#34383)
+
+* Add Either utility.
+
+* Update Redux package with new "Modern Action" and TODO: stubs for reducer and middleware migration paths.
+
+* Add new ModernAction unit tests and mock types.
+---
+ .../Sources/Common/Utilities/Either.swift     |  10 ++
+ BrowserKit/Sources/Redux/Action.swift         |  42 +++++
+ BrowserKit/Sources/Redux/DispatchStore.swift  |  10 +-
+ BrowserKit/Sources/Redux/Store.swift          |  42 ++++-
+ BrowserKit/Tests/ReduxTests/ActionTests.swift | 156 ++++++++++++++++++
+ .../Utilities/FakeReduxModernAction.swift     |  44 +++++
+ 6 files changed, 291 insertions(+), 13 deletions(-)
+ create mode 100644 BrowserKit/Sources/Common/Utilities/Either.swift
+ create mode 100644 BrowserKit/Tests/ReduxTests/ActionTests.swift
+ create mode 100644 BrowserKit/Tests/ReduxTests/Utilities/FakeReduxModernAction.swift
+
+diff --git a/BrowserKit/Sources/Common/Utilities/Either.swift b/BrowserKit/Sources/Common/Utilities/Either.swift
+new file mode 100644
+index 000000000..af7940933
+--- /dev/null
++++ b/BrowserKit/Sources/Common/Utilities/Either.swift
+@@ -0,0 +1,10 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at http://mozilla.org/MPL/2.0/
++
++/// A code migration helper; can be used to wrap different values in an array, method arguments, etc. while migrating from
++/// some legacy type to a new type.
++public enum Either<Left, Right> {
++    case legacy(Left)
++    case modern(Right)
++}
+diff --git a/BrowserKit/Sources/Redux/Action.swift b/BrowserKit/Sources/Redux/Action.swift
+index bb153dba6..bb9e2a1d6 100644
+--- a/BrowserKit/Sources/Redux/Action.swift
++++ b/BrowserKit/Sources/Redux/Action.swift
+@@ -24,3 +24,45 @@ extension Action {
+ }
+ 
+ public protocol ActionType: Sendable {}
++
++/// Used to describe an action that can be dispatched by the redux store.
++/// `ModernAction` is the replacement for the old `Action` and `ActionType` protocols, which will be deprecated
++/// in the future.
++public protocol ModernAction: Sendable {
++    var description: String { get }
++}
++
++extension ModernAction {
++    /// Automatically generates a debug description for enumerated actions with nested associated values.
++    var description: String {
++        let mirror = Mirror(reflecting: self)
++        let enumTypeName = "\(mirror.subjectType)"
++
++        guard let caseName = mirror.children.first?.label,
++              let associatedValue = mirror.children.first?.value else {
++            // Enum without an associated value
++            return "\(enumTypeName).\(self)"
++        }
++
++        // Print the associated value(s) if possible
++        let associatedValueMirror = Mirror(reflecting: associatedValue)
++        if associatedValueMirror.children.isEmpty {
++            // Also enum without an associated value
++            return "\(enumTypeName).\(caseName)"
++        }
++
++        // Pretty print the Action's payload, one item per line, in curly brackets
++        let indentValue = "\n   "
++        let numberOfChildren = associatedValueMirror.children.count
++        let values = indentValue + associatedValueMirror.children.enumerated().map { index, child in
++            let label = child.label ?? ""
++            let value = child.value
++            let optionalTrailingComma = index < (numberOfChildren - 1) ? "," : ""
++            return label.isEmpty
++                   ? "\(value)"
++                   : "\(label): \(value)\(optionalTrailingComma)"
++        }.joined(separator: indentValue)
++
++        return "\(enumTypeName).\(caseName) {\(values)\n}"
++    }
++}
+diff --git a/BrowserKit/Sources/Redux/DispatchStore.swift b/BrowserKit/Sources/Redux/DispatchStore.swift
+index b5802e2c1..55d9d3d5f 100644
+--- a/BrowserKit/Sources/Redux/DispatchStore.swift
++++ b/BrowserKit/Sources/Redux/DispatchStore.swift
+@@ -5,26 +5,24 @@
+ import Foundation
+ 
+ /// Protocol that allows to subscribe to the store and receive dispatched actions to modify the store state
++@MainActor
+ public protocol DispatchStore {
+-    @MainActor
+     func dispatch(_ action: Action)
++
++    // TODO: FXIOS-16140, FXIOS-16140 (needed for later Client integration)
++    // func dispatch(_ action: ModernAction, forWindowUUID windowUUID: WindowUUID)
+ }
+ 
+ public protocol DefaultDispatchStore<State>: DispatchStore where State: StateType {
+     associatedtype State
+ 
+-    @MainActor
+     var state: State { get }
+ 
+-    @MainActor
+     func subscribe<S: StoreSubscriber>(_ subscriber: S) where S.SubscriberStateType == State
+-    @MainActor
+     func subscribe<SubState, S: StoreSubscriber>(
+         _ subscriber: S,
+         transform: ((Subscription<State>) -> Subscription<SubState>)?
+     ) where S.SubscriberStateType == SubState
+-    @MainActor
+     func unsubscribe<S: StoreSubscriber>(_ subscriber: S) where S.SubscriberStateType == State
+-    @MainActor
+     func unsubscribe(_ subscriber: any StoreSubscriber)
+ }
+diff --git a/BrowserKit/Sources/Redux/Store.swift b/BrowserKit/Sources/Redux/Store.swift
+index 6c7388164..c82cddeaa 100644
+--- a/BrowserKit/Sources/Redux/Store.swift
++++ b/BrowserKit/Sources/Redux/Store.swift
+@@ -18,7 +18,7 @@ public final class Store<State: StateType & Sendable>: DefaultDispatchStore {
+     private var middlewares: [Middleware<State>]
+     private var subscriptions: Set<SubscriptionType> = []
+ 
+-    private var actionQueue: [Action] = []
++    private var actionQueue: [(action: Either<Action, ModernAction>, windowUUID: WindowUUID)] = []
+     private var isProcessingActions = false
+ 
+     public var state: State {
+@@ -71,13 +71,26 @@ public final class Store<State: StateType & Sendable>: DefaultDispatchStore {
+         }
+     }
+ 
++    /// Legacy method to dispatch actions to the global store. Eventually will be deprecated and replaced by
++    /// `dispatch(_action:forWindowUUID)`, which takes a `ModernAction`.
+     public func dispatch(_ action: Action) {
+         MainActor.assertIsolated("Expected to be called only on main actor.")
+         logger.log("Dispatched action: \(action.debugDescription)", level: .info, category: .redux)
+ 
+         // We queue and process actions to ensure each single action completely passes through reducers and middlewares
+         // before the next action fires.
+-        actionQueue.append(action)
++        actionQueue.append((.legacy(action), action.windowUUID))
++        processQueuedActions()
++    }
++
++    /// Method to dispatch actions to the global store.
++    public func dispatch(_ action: ModernAction, forWindowUUID windowUUID: WindowUUID) {
++        MainActor.assertIsolated("Expected to be called only on main actor.")
++        logger.log("Dispatched action: \(action.description)", level: .info, category: .redux)
++
++        // We queue and process actions to ensure each single action completely passes through reducers and middlewares
++        // before the next action fires.
++        actionQueue.append((.modern(action), windowUUID))
+         processQueuedActions()
+     }
+ 
+@@ -85,25 +98,40 @@ public final class Store<State: StateType & Sendable>: DefaultDispatchStore {
+         guard !isProcessingActions else { return }
+         isProcessingActions = true
+         while !actionQueue.isEmpty {
+-            let action = actionQueue.removeFirst()
+-            executeAction(action)
++            let tuple = actionQueue.removeFirst()
++            executeAction(tuple.action, forWindowUUID: tuple.windowUUID)
+         }
+         isProcessingActions = false
+     }
+ 
+-    private func executeAction(_ action: Action) {
++    private func executeAction(_ action: Either<Action, ModernAction>, forWindowUUID windowUUID: WindowUUID) {
+         // Each active screen state is given an opportunity to be reduced using the dispatched action
+         // (Note: this is true even if the action's UUID differs from the screen's window's UUID).
+         // Typically, reducers should compare the action's UUID to the incoming state UUID and skip
+         // processing for actions originating in other windows.
+         // Note that only reducers for active screens are processed.
+-        let newState = reducer(state, action)
++        let newState: State
++        switch action {
++        case .legacy(let legacyAction):
++            newState = reducer(state, legacyAction)
++        case .modern:
++            // TODO: FXIOS-16140 Part 2 - Reducer migration
++            // newState = reducer.modernReducer(state, modernAction, windowUUID)
++            return
++        }
+ 
+         // Middlewares are all given an opportunity to respond to the action. This is only done once
+         // per middleware, regardless of how many active windows or screen states there are. (This
+         // differs slightly from reducers, which are called once for each screen.)
+         middlewares.forEach { middleware in
+-            middleware(newState, action)
++            switch action {
++            case .legacy(let legacyAction):
++                middleware(newState, legacyAction)
++            case .modern:
++                // TODO: FXIOS-16140 Part 3 - Middleware migration
++                //  middleware.modernMiddleware(newState, modernAction, windowUUID)
++                break
++            }
+         }
+ 
+         state = newState
+diff --git a/BrowserKit/Tests/ReduxTests/ActionTests.swift b/BrowserKit/Tests/ReduxTests/ActionTests.swift
+new file mode 100644
+index 000000000..645cf1533
+--- /dev/null
++++ b/BrowserKit/Tests/ReduxTests/ActionTests.swift
+@@ -0,0 +1,156 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at http://mozilla.org/MPL/2.0/
++
++import XCTest
++
++@testable import Redux
++
++final class ModernActionTests: XCTestCase {
++    func testActionDescription_noAssociatedValue() {
++        let action = FakeReduxModernAction.requestInitialValue
++        let expectedDescription = "FakeReduxModernAction.requestInitialValue"
++
++        XCTAssertEqual(action.description, expectedDescription)
++    }
++
++    func testActionDescription_withLabelledAssociatedValue() {
++        let testValue = 3
++        let action = FakeReduxModernAction.initialValueLoaded(initialValue: testValue)
++        let expectedDescription = """
++        FakeReduxModernAction.initialValueLoaded {
++           initialValue: \(testValue)
++        }
++        """
++
++        XCTAssertEqual(action.description, expectedDescription)
++    }
++
++    func testActionDescription_withLabelledAssociatedValueObject() {
++        let testBool = true
++        let testCount = 4
++        let testOptional: Int? = .some(2)
++        let testOptionalAsInterpolatedString = "\(String(describing: testOptional))"
++        let testPayload = FakeComplicatedPayload(someBool: testBool, someCount: testCount, someOptionalCount: testOptional)
++        let action = FakeReduxModernAction.complicatedActionLabelledPayload(labelled: testPayload)
++        let expectedDescription = """
++        FakeReduxModernAction.complicatedActionLabelledPayload {
++           labelled: FakeComplicatedPayload(someBool: \(testBool), someCount: \(testCount), someOptionalCount: \(testOptionalAsInterpolatedString))
++        }
++        """.trimmingCharacters(in: .whitespaces) // Trim the newlines at the end due to the """ termination
++
++        XCTAssertEqual(action.description, expectedDescription)
++    }
++
++    func testActionDescription_withUnlabelledAssociatedValueObject() {
++        let testBool = true
++        let testCount = 4
++        let testOptional: Int? = .some(2)
++        let testOptionalAsInterpolatedString = "\(String(describing: testOptional))"
++        let testPayload = FakeComplicatedPayload(someBool: testBool, someCount: testCount, someOptionalCount: testOptional)
++        let action = FakeReduxModernAction.complicatedActionUnlabelledPayload(testPayload)
++        let expectedDescription = """
++        FakeReduxModernAction.complicatedActionUnlabelledPayload {
++           someBool: \(testBool),
++           someCount: \(testCount),
++           someOptionalCount: \(testOptionalAsInterpolatedString)
++        }
++        """.trimmingCharacters(in: .whitespaces) // Trim the newlines at the end due to the """ termination
++
++        XCTAssertEqual(action.description, expectedDescription)
++    }
++
++    func testActionDescription_withMixedLabelledValue_UnlabelledObject() {
++        let testBool = true
++        let testCount = 4
++        let testOptional: Int? = .some(2)
++        let testOptionalAsInterpolatedString = "\(String(describing: testOptional))"
++        let testPayload = FakeComplicatedPayload(someBool: testBool, someCount: testCount, someOptionalCount: testOptional)
++        let action = FakeReduxModernAction.mixedLabelsPayload1(isPrivate: testBool, testPayload)
++        // We should never have one labelled and one unlabelled property in our action's associated value payloads like this,
++        // but if we do this is what we expect:
++        let expectedDescription = """
++        FakeReduxModernAction.mixedLabelsPayload1 {
++           isPrivate: \(testBool),
++           .1: FakeComplicatedPayload(someBool: \(testBool), someCount: \(testCount), someOptionalCount: \(testOptionalAsInterpolatedString))
++        }
++        """.trimmingCharacters(in: .whitespaces) // Trim the newlines at the end due to the """ termination
++
++        XCTAssertEqual(action.description, expectedDescription)
++    }
++
++    func testActionDescription_withMixedUnlabelledValue_LabelledObject() {
++        let testBool = true
++        let testCount = 4
++        let testOptional: Int? = .some(2)
++        let testOptionalAsInterpolatedString = "\(String(describing: testOptional))"
++        let testPayload = FakeComplicatedPayload(someBool: testBool, someCount: testCount, someOptionalCount: testOptional)
++        let action = FakeReduxModernAction.mixedLabelsPayload2(testBool, complicatedPayload: testPayload)
++        // We should never have one labelled and one unlabelled property in our action's associated value payloads like this,
++        // but if we do this is what we expect:
++        let expectedDescription = """
++        FakeReduxModernAction.mixedLabelsPayload2 {
++           .0: \(testBool),
++           complicatedPayload: FakeComplicatedPayload(someBool: \(testBool), someCount: \(testCount), someOptionalCount: \(testOptionalAsInterpolatedString))
++        }
++        """.trimmingCharacters(in: .whitespaces) // Trim the newlines at the end due to the """ termination
++
++        XCTAssertEqual(action.description, expectedDescription)
++    }
++
++    func testActionDescription_withMixedUnlabelledValue_UnlabelledObject() {
++        let testBool = true
++        let testCount = 4
++        let testOptional: Int? = .some(2)
++        let testOptionalAsInterpolatedString = "\(String(describing: testOptional))"
++        let testPayload = FakeComplicatedPayload(someBool: testBool, someCount: testCount, someOptionalCount: testOptional)
++        let action = FakeReduxModernAction.mixedLabelsPayload3(testBool, testPayload)
++        // We should never have two unlabelled properties in our action's associated value payloads like this, but if we do
++        // this is what we expect:
++        let expectedDescription = """
++        FakeReduxModernAction.mixedLabelsPayload3 {
++           .0: \(testBool),
++           .1: FakeComplicatedPayload(someBool: \(testBool), someCount: \(testCount), someOptionalCount: \(testOptionalAsInterpolatedString))
++        }
++        """.trimmingCharacters(in: .whitespaces) // Trim the newlines at the end due to the """ termination
++
++        XCTAssertEqual(action.description, expectedDescription)
++    }
++
++    func testActionDescription_withMixedLabelledValue_LabelledObject() {
++        let testBool = true
++        let testCount = 4
++        let testOptional: Int? = .some(2)
++        let testOptionalAsInterpolatedString = "\(String(describing: testOptional))"
++        let testPayload = FakeComplicatedPayload(someBool: testBool, someCount: testCount, someOptionalCount: testOptional)
++        let action = FakeReduxModernAction.mixedLabelsPayload4(isPrivate: testBool, complicatedPayload: testPayload)
++        let expectedDescription = """
++        FakeReduxModernAction.mixedLabelsPayload4 {
++           isPrivate: \(testBool),
++           complicatedPayload: FakeComplicatedPayload(someBool: \(testBool), someCount: \(testCount), someOptionalCount: \(testOptionalAsInterpolatedString))
++        }
++        """.trimmingCharacters(in: .whitespaces) // Trim the newlines at the end due to the """ termination
++
++        XCTAssertEqual(action.description, expectedDescription)
++    }
++
++    func testActionDescription_withNestedObjects() {
++        let nestedObject1 = FakeComplicatedPayload(someBool: true, someCount: 1, someOptionalCount: 2)
++        let nestedObject2 = Optional.some(FakeComplicatedPayload(someBool: false, someCount: 10, someOptionalCount: 9))
++        let fakePayload = FakeNestedComplicatedPayload(
++            someString: "TestString",
++            nestedComponent: nestedObject1,
++            optionalNestedComponent: nestedObject2
++        )
++        let action = FakeReduxModernAction.nestedObjectPayload(nestedObject: fakePayload)
++        // swiftlint:disable line_length
++        let expectedDescription = """
++        FakeReduxModernAction.nestedObjectPayload {
++           nestedObject: FakeNestedComplicatedPayload(someString: "TestString", nestedComponent: ReduxTests.FakeComplicatedPayload(someBool: true, someCount: 1, someOptionalCount: Optional(2)), optionalNestedComponent: Optional(ReduxTests.FakeComplicatedPayload(someBool: false, someCount: 10, someOptionalCount: Optional(9))))
++        }
++        """.trimmingCharacters(in: .whitespaces) // Trim the newlines at the end due to the """ termination
++        // swiftlint:enable line_length
++
++        XCTAssertEqual(action.description, expectedDescription)
++    }
++}
+diff --git a/BrowserKit/Tests/ReduxTests/Utilities/FakeReduxModernAction.swift b/BrowserKit/Tests/ReduxTests/Utilities/FakeReduxModernAction.swift
+new file mode 100644
+index 000000000..58fc254e0
+--- /dev/null
++++ b/BrowserKit/Tests/ReduxTests/Utilities/FakeReduxModernAction.swift
+@@ -0,0 +1,44 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at http://mozilla.org/MPL/2.0/
++
++import XCTest
++import Common
++
++@testable import Redux
++
++enum FakeReduxModernAction: ModernAction, Equatable {
++    // User action
++    case requestInitialValue
++    case increaseCounter
++    case decreaseCounter
++
++    // Middleware actions
++    case initialValueLoaded(initialValue: Int)
++    case counterIncreased(counterValue: Int)
++    case counterDecreased(counterValue: Int)
++    case setPrivateModeTo(isPrivate: Bool)
++
++    // Testing action descriptions in tests
++    case complicatedActionLabelledPayload(labelled: FakeComplicatedPayload)
++    case complicatedActionUnlabelledPayload(FakeComplicatedPayload)
++
++    case mixedLabelsPayload1(isPrivate: Bool, FakeComplicatedPayload)
++    case mixedLabelsPayload2(Bool, complicatedPayload: FakeComplicatedPayload)
++    case mixedLabelsPayload3(Bool, FakeComplicatedPayload)
++    case mixedLabelsPayload4(isPrivate: Bool, complicatedPayload: FakeComplicatedPayload)
++
++    case nestedObjectPayload(nestedObject: FakeNestedComplicatedPayload)
++}
++
++struct FakeComplicatedPayload: Equatable {
++    let someBool: Bool
++    let someCount: Int
++    let someOptionalCount: Int?
++}
++
++struct FakeNestedComplicatedPayload: Equatable {
++    let someString: String
++    let nestedComponent: FakeComplicatedPayload
++    let optionalNestedComponent: FakeComplicatedPayload?
++}

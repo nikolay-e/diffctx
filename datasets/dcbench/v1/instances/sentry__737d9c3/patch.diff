@@ -1,0 +1,431 @@
+From 737d9c3d11b2fb4257a70b4a6553afcad62cd279 Mon Sep 17 00:00:00 2001
+From: Nick <nicholas.deschenes@sentry.io>
+Date: Wed, 14 Jan 2026 07:26:41 -0400
+Subject: [PATCH] feat(search-bar): Add support for explicit boolean tags
+ (#105606)
+
+This PR adds in support to for explicit boolean tag attributes
+`tags[<key>, boolean]`, in both the BE, and FE grammars. As well as
+support in the FE search query builder to render these values correctly,
+etc.
+
+Ticket: EXP-687
+---
+ .../search-syntax/explicit_boolean_tag.json   | 55 +++++++++++++++++++
+ src/sentry/api/event_search.py                | 21 ++++++-
+ .../app/components/searchSyntax/grammar.pegjs |  9 ++-
+ .../components/searchSyntax/mutableSearch.tsx |  4 +-
+ .../components/searchSyntax/parser.spec.tsx   |  5 ++
+ static/app/components/searchSyntax/parser.tsx | 13 +++++
+ .../app/components/searchSyntax/renderer.tsx  |  1 +
+ static/app/components/searchSyntax/utils.tsx  | 11 ++++
+ static/app/utils/fields/index.ts              | 26 ++++++++-
+ .../views/explore/components/typeBadge.tsx    |  2 +-
+ tests/sentry/api/test_event_search.py         |  7 +++
+ 11 files changed, 147 insertions(+), 7 deletions(-)
+ create mode 100644 fixtures/search-syntax/explicit_boolean_tag.json
+
+diff --git a/fixtures/search-syntax/explicit_boolean_tag.json b/fixtures/search-syntax/explicit_boolean_tag.json
+new file mode 100644
+index 00000000000..63bfe309e7c
+--- /dev/null
++++ b/fixtures/search-syntax/explicit_boolean_tag.json
+@@ -0,0 +1,55 @@
++[
++  {
++    "query": "tags[foo,boolean]:true release:1.2.1 tags[project_id,boolean]:false",
++    "result": [
++      {"type": "spaces", "value": ""},
++      {
++        "type": "filter",
++        "filter": "text",
++        "negated": false,
++        "key": {
++          "type": "keyExplicitBooleanTag",
++          "prefix": "tags",
++          "key": {"type": "keySimple", "value": "foo", "quoted": false}
++        },
++        "operator": "",
++        "value": {
++          "type": "valueText",
++          "value": "true",
++          "quoted": false
++        }
++      },
++      {"type": "spaces", "value": " "},
++      {
++        "type": "filter",
++        "filter": "text",
++        "negated": false,
++        "key": {"type": "keySimple", "value": "release", "quoted": false},
++        "operator": "",
++        "value": {
++          "type": "valueText",
++          "value": "1.2.1",
++          "quoted": false
++        }
++      },
++      {"type": "spaces", "value": " "},
++      {
++        "type": "filter",
++        "filter": "text",
++        "negated": false,
++        "key": {
++          "type": "keyExplicitBooleanTag",
++          "prefix": "tags",
++          "key": {"type": "keySimple", "value": "project_id", "quoted": false}
++        },
++        "operator": "",
++        "value": {
++          "type": "valueText",
++          "value": "false",
++          "quoted": false
++        }
++      },
++      {"type": "spaces", "value": ""}
++    ]
++  }
++]
+diff --git a/src/sentry/api/event_search.py b/src/sentry/api/event_search.py
+index c727499d490..70f8d210ee8 100644
+--- a/src/sentry/api/event_search.py
++++ b/src/sentry/api/event_search.py
+@@ -148,15 +148,16 @@ explicit_number_flag_key  = "flags" open_bracket escaped_key spaces comma spaces
+ explicit_tag_key        = "tags" open_bracket escaped_key closed_bracket
+ explicit_string_tag_key = "tags" open_bracket escaped_key spaces comma spaces "string" closed_bracket
+ explicit_number_tag_key = "tags" open_bracket escaped_key spaces comma spaces "number" closed_bracket
++explicit_boolean_tag_key = "tags" open_bracket escaped_key spaces comma spaces "boolean" closed_bracket
+ 
+ aggregate_key                    = key open_paren spaces function_args? spaces closed_paren
+ function_args                    = aggregate_param (spaces comma spaces !comma aggregate_param?)*
+ aggregate_param                  = explicit_tag_key_aggregate_param / quoted_aggregate_param / raw_aggregate_param
+ raw_aggregate_param              = ~r"[^()\t\n, \"]+"
+ quoted_aggregate_param           = '"' ('\\"' / ~r'[^\t\n\"]')* '"'
+-explicit_tag_key_aggregate_param = explicit_tag_key / explicit_number_tag_key / explicit_string_tag_key
++explicit_tag_key_aggregate_param = explicit_tag_key / explicit_number_tag_key / explicit_string_tag_key / explicit_boolean_tag_key
+ 
+-search_key             = explicit_number_flag_key / explicit_number_tag_key / key / quoted_key
++search_key             = explicit_number_flag_key / explicit_number_tag_key / explicit_boolean_tag_key / key / quoted_key
+ text_key               = explicit_flag_key / explicit_string_flag_key / explicit_tag_key / explicit_string_tag_key / search_key
+ value                  = ~r"[^()\t\n ]*"
+ quoted_value           = '"' ('\\"' / ~r'[^"]')* '"'
+@@ -1504,6 +1505,22 @@ class SearchVisitor(NodeVisitor[list[QueryToken]]):
+     ) -> SearchKey:
+         return SearchKey(f"tags[{children[2]},number]")
+ 
++    def visit_explicit_boolean_tag_key(
++        self,
++        node: Node,
++        children: tuple[
++            Node,  # "tags"
++            str,  # '['
++            str,  # escaped_key
++            str,  # ' '
++            Node,  # ','
++            str,  # ' '
++            Node,  # "boolean"
++            str,  # ']'
++        ],
++    ) -> SearchKey:
++        return SearchKey(f"tags[{children[2]},boolean]")
++
+     def visit_explicit_flag_key(
+         self,
+         node: Node,
+diff --git a/static/app/components/searchSyntax/grammar.pegjs b/static/app/components/searchSyntax/grammar.pegjs
+index 0570531b4cb..6187da934d5 100644
+--- a/static/app/components/searchSyntax/grammar.pegjs
++++ b/static/app/components/searchSyntax/grammar.pegjs
+@@ -285,6 +285,11 @@ explicit_number_tag_key
+       return tc.tokenKeyExplicitNumberTag(prefix, key)
+     }
+ 
++explicit_boolean_tag_key
++  = prefix:"tags" open_bracket key:escaped_key spaces comma spaces 'boolean' closed_bracket {
++      return tc.tokenKeyExplicitBooleanTag(prefix, key)
++    }
++
+ aggregate_key
+   = name:key open_paren s1:spaces args:function_args? s2:spaces closed_paren {
+       return tc.tokenKeyAggregate(name, args, s1, s2);
+@@ -310,12 +315,12 @@ quoted_aggregate_param
+     }
+ 
+ explicit_tag_aggregate_param
+-  = key:(explicit_tag_key / explicit_string_tag_key / explicit_number_tag_key) {
++  = key:(explicit_tag_key / explicit_string_tag_key / explicit_number_tag_key / explicit_boolean_tag_key) {
+       return tc.tokenKeyAggregateParam(key.text, false);
+     }
+ 
+ search_key
+-  = explicit_number_flag_key / explicit_number_tag_key / key / quoted_key
++  = explicit_number_flag_key / explicit_number_tag_key / explicit_boolean_tag_key / key / quoted_key
+ 
+ text_key
+   = explicit_flag_key / explicit_string_flag_key / explicit_tag_key / explicit_string_tag_key / search_key
+diff --git a/static/app/components/searchSyntax/mutableSearch.tsx b/static/app/components/searchSyntax/mutableSearch.tsx
+index a375286b5bc..59e5f4a3ef4 100644
+--- a/static/app/components/searchSyntax/mutableSearch.tsx
++++ b/static/app/components/searchSyntax/mutableSearch.tsx
+@@ -158,8 +158,9 @@ function parseToFlatTokens(query: string): Token[] {
+                 | ParserToken.VALUE_TEXT
+                 | ParserToken.KEY_SIMPLE
+                 | ParserToken.KEY_EXPLICIT_TAG
+-                | ParserToken.KEY_EXPLICIT_STRING_TAG
++                | ParserToken.KEY_EXPLICIT_BOOLEAN_TAG
+                 | ParserToken.KEY_EXPLICIT_NUMBER_TAG
++                | ParserToken.KEY_EXPLICIT_STRING_TAG
+                 | ParserToken.KEY_EXPLICIT_FLAG
+                 | ParserToken.KEY_EXPLICIT_STRING_FLAG
+                 | ParserToken.KEY_EXPLICIT_NUMBER_FLAG
+@@ -249,6 +250,7 @@ const KEY_TOKENS = [
+   ParserToken.KEY_SIMPLE,
+   ParserToken.KEY_EXPLICIT_TAG,
+   ParserToken.KEY_AGGREGATE,
++  ParserToken.KEY_EXPLICIT_BOOLEAN_TAG,
+   ParserToken.KEY_EXPLICIT_NUMBER_TAG,
+   ParserToken.KEY_EXPLICIT_STRING_TAG,
+   ParserToken.KEY_EXPLICIT_FLAG,
+diff --git a/static/app/components/searchSyntax/parser.spec.tsx b/static/app/components/searchSyntax/parser.spec.tsx
+index 0a287889c90..48402ca9805 100644
+--- a/static/app/components/searchSyntax/parser.spec.tsx
++++ b/static/app/components/searchSyntax/parser.spec.tsx
+@@ -74,6 +74,11 @@ function treeTransformer({tree, transform}: TreeTransformerOpts) {
+           argsSpaceBefore: nodeVisitor(token.argsSpaceBefore),
+           argsSpaceAfter: nodeVisitor(token.argsSpaceAfter),
+         });
++      case Token.KEY_EXPLICIT_BOOLEAN_TAG:
++        return transform({
++          ...token,
++          key: nodeVisitor(token.key),
++        });
+       case Token.KEY_EXPLICIT_NUMBER_TAG:
+         return transform({
+           ...token,
+diff --git a/static/app/components/searchSyntax/parser.tsx b/static/app/components/searchSyntax/parser.tsx
+index 7efe6bf7287..a71dc79d9b2 100644
+--- a/static/app/components/searchSyntax/parser.tsx
++++ b/static/app/components/searchSyntax/parser.tsx
+@@ -45,6 +45,7 @@ export enum Token {
+   KEY_EXPLICIT_NUMBER_FLAG = 'keyExplicitNumberFlag',
+   KEY_EXPLICIT_STRING_FLAG = 'keyExplicitStringFlag',
+   KEY_EXPLICIT_TAG = 'keyExplicitTag',
++  KEY_EXPLICIT_BOOLEAN_TAG = 'keyExplicitBooleanTag',
+   KEY_EXPLICIT_NUMBER_TAG = 'keyExplicitNumberTag',
+   KEY_EXPLICIT_STRING_TAG = 'keyExplicitStringTag',
+   KEY_AGGREGATE = 'keyAggregate',
+@@ -590,6 +591,16 @@ export class TokenConverter {
+     key,
+   });
+ 
++  tokenKeyExplicitBooleanTag = (
++    prefix: string,
++    key: ReturnType<TokenConverter['tokenKeySimple']>
++  ) => ({
++    ...this.defaultTokenFields,
++    type: Token.KEY_EXPLICIT_BOOLEAN_TAG as const,
++    prefix,
++    key,
++  });
++
+   tokenKeyAggregateParam = (value: string, quoted: boolean) => ({
+     ...this.defaultTokenFields,
+     type: Token.KEY_AGGREGATE_PARAMS as const,
+@@ -879,6 +890,7 @@ export class TokenConverter {
+         Token.KEY_SIMPLE,
+         Token.KEY_EXPLICIT_TAG,
+         Token.KEY_AGGREGATE,
++        Token.KEY_EXPLICIT_BOOLEAN_TAG,
+         Token.KEY_EXPLICIT_NUMBER_TAG,
+         Token.KEY_EXPLICIT_STRING_TAG,
+         Token.KEY_EXPLICIT_FLAG,
+@@ -895,6 +907,7 @@ export class TokenConverter {
+         | Token.KEY_EXPLICIT_TAG
+         | Token.KEY_EXPLICIT_FLAG
+         | Token.KEY_AGGREGATE
++        | Token.KEY_EXPLICIT_BOOLEAN_TAG
+         | Token.KEY_EXPLICIT_NUMBER_TAG
+         | Token.KEY_EXPLICIT_NUMBER_FLAG
+         | Token.KEY_EXPLICIT_STRING_TAG
+diff --git a/static/app/components/searchSyntax/renderer.tsx b/static/app/components/searchSyntax/renderer.tsx
+index 28a41a9a532..d8662c49cc1 100644
+--- a/static/app/components/searchSyntax/renderer.tsx
++++ b/static/app/components/searchSyntax/renderer.tsx
+@@ -229,6 +229,7 @@ function KeyToken({
+     | Token.KEY_SIMPLE
+     | Token.KEY_AGGREGATE
+     | Token.KEY_EXPLICIT_TAG
++    | Token.KEY_EXPLICIT_BOOLEAN_TAG
+     | Token.KEY_EXPLICIT_NUMBER_TAG
+     | Token.KEY_EXPLICIT_STRING_TAG
+     | Token.KEY_EXPLICIT_FLAG
+diff --git a/static/app/components/searchSyntax/utils.tsx b/static/app/components/searchSyntax/utils.tsx
+index 59912ecfe41..0420a5237a6 100644
+--- a/static/app/components/searchSyntax/utils.tsx
++++ b/static/app/components/searchSyntax/utils.tsx
+@@ -120,6 +120,9 @@ export function treeResultLocator<T>({
+       case Token.KEY_EXPLICIT_STRING_TAG:
+         nodeVisitor(token.key);
+         break;
++      case Token.KEY_EXPLICIT_BOOLEAN_TAG:
++        nodeVisitor(token.key);
++        break;
+       case Token.KEY_EXPLICIT_NUMBER_FLAG:
+         nodeVisitor(token.key);
+         break;
+@@ -170,6 +173,7 @@ export const getKeyName = (
+     | Token.KEY_SIMPLE
+     | Token.KEY_EXPLICIT_TAG
+     | Token.KEY_AGGREGATE
++    | Token.KEY_EXPLICIT_BOOLEAN_TAG
+     | Token.KEY_EXPLICIT_NUMBER_TAG
+     | Token.KEY_EXPLICIT_STRING_TAG
+     | Token.KEY_EXPLICIT_FLAG
+@@ -188,6 +192,8 @@ export const getKeyName = (
+       return aggregateWithArgs
+         ? `${key.name.value}(${key.args ? key.args.text : ''})`
+         : key.name.value;
++    case Token.KEY_EXPLICIT_BOOLEAN_TAG:
++      return key.text;
+     case Token.KEY_EXPLICIT_NUMBER_TAG:
+       return key.text;
+     case Token.KEY_EXPLICIT_STRING_TAG:
+@@ -214,6 +220,7 @@ export const getKeyLabel = (
+     | Token.KEY_SIMPLE
+     | Token.KEY_EXPLICIT_TAG
+     | Token.KEY_AGGREGATE
++    | Token.KEY_EXPLICIT_BOOLEAN_TAG
+     | Token.KEY_EXPLICIT_NUMBER_TAG
+     | Token.KEY_EXPLICIT_STRING_TAG
+     | Token.KEY_EXPLICIT_FLAG
+@@ -228,6 +235,8 @@ export const getKeyLabel = (
+       return key.text;
+     case Token.KEY_AGGREGATE:
+       return key.name.value;
++    case Token.KEY_EXPLICIT_BOOLEAN_TAG:
++      return key.key.value;
+     case Token.KEY_EXPLICIT_NUMBER_TAG:
+       return key.key.value;
+     case Token.KEY_EXPLICIT_STRING_TAG:
+@@ -312,6 +321,8 @@ export function stringifyToken(token: TokenResult<Token>): string {
+       return token.text;
+     case Token.KEY_EXPLICIT_TAG:
+       return `${token.prefix}[${token.key.value}]`;
++    case Token.KEY_EXPLICIT_BOOLEAN_TAG:
++      return `${token.prefix}[${token.key.value},boolean]`;
+     case Token.KEY_EXPLICIT_NUMBER_TAG:
+       return `${token.prefix}[${token.key.value},number]`;
+     case Token.KEY_EXPLICIT_STRING_TAG:
+diff --git a/static/app/utils/fields/index.ts b/static/app/utils/fields/index.ts
+index 76e433752f0..19d250c74b8 100644
+--- a/static/app/utils/fields/index.ts
++++ b/static/app/utils/fields/index.ts
+@@ -20,6 +20,7 @@ export enum FieldKind {
+   EQUATION = 'equation',
+   METRICS = 'metric',
+   NUMERIC_METRICS = 'numeric_metric',
++  BOOLEAN = 'boolean',
+ }
+ 
+ export enum FieldKey {
+@@ -3390,6 +3391,10 @@ export const getFieldDefinition = (
+         return {kind: FieldKind.FIELD, valueType: FieldValueType.STRING};
+       }
+ 
++      if (kind === FieldKind.BOOLEAN) {
++        return {kind: FieldKind.FIELD, valueType: FieldValueType.BOOLEAN};
++      }
++
+       return null;
+ 
+     case 'log':
+@@ -3408,6 +3413,11 @@ export const getFieldDefinition = (
+       if (kind === FieldKind.TAG) {
+         return {kind: FieldKind.FIELD, valueType: FieldValueType.STRING};
+       }
++
++      if (kind === FieldKind.BOOLEAN) {
++        return {kind: FieldKind.FIELD, valueType: FieldValueType.BOOLEAN};
++      }
++
+       return null;
+ 
+     case 'tracemetric':
+@@ -3426,6 +3436,11 @@ export const getFieldDefinition = (
+       if (kind === FieldKind.TAG) {
+         return {kind: FieldKind.FIELD, valueType: FieldValueType.STRING};
+       }
++
++      if (kind === FieldKind.BOOLEAN) {
++        return {kind: FieldKind.FIELD, valueType: FieldValueType.BOOLEAN};
++      }
++
+       return null;
+ 
+     case 'event':
+@@ -3457,7 +3472,16 @@ const TYPED_TAG_KEY_RE = /tags\[([^\s]*),([^\s]*)\]/;
+ 
+ export function classifyTagKey(key: string): FieldKind {
+   const result = key.match(TYPED_TAG_KEY_RE);
+-  return result?.[2] === 'number' ? FieldKind.MEASUREMENT : FieldKind.TAG;
++
++  if (result?.[2] === 'number') {
++    return FieldKind.MEASUREMENT;
++  }
++
++  if (result?.[2] === 'boolean') {
++    return FieldKind.BOOLEAN;
++  }
++
++  return FieldKind.TAG;
+ }
+ 
+ export function prettifyTagKey(key: string): string {
+diff --git a/static/app/views/explore/components/typeBadge.tsx b/static/app/views/explore/components/typeBadge.tsx
+index 5f6129157e0..37ee0ef509c 100644
+--- a/static/app/views/explore/components/typeBadge.tsx
++++ b/static/app/views/explore/components/typeBadge.tsx
+@@ -17,7 +17,7 @@ export function TypeBadge({func, kind, valueType, isLogicFilter}: TypeBadgeProps
+     return <Text variant="success">{t('f(x)')}</Text>;
+   }
+ 
+-  if (valueType === FieldValueType.BOOLEAN) {
++  if (valueType === FieldValueType.BOOLEAN || kind === FieldKind.BOOLEAN) {
+     return <Text variant="promotion">{t('boolean')}</Text>;
+   }
+ 
+diff --git a/tests/sentry/api/test_event_search.py b/tests/sentry/api/test_event_search.py
+index 166e08a24e5..4a43af6388a 100644
+--- a/tests/sentry/api/test_event_search.py
++++ b/tests/sentry/api/test_event_search.py
+@@ -108,6 +108,9 @@ def result_transformer(result):
+         if token["type"] == "keyExplicitNumberTag":
+             return SearchKey(name=f"tags[{token['key']['value']},number]")
+ 
++        if token["type"] == "keyExplicitBooleanTag":
++            return SearchKey(name=f"tags[{token['key']['value']},boolean]")
++
+         if token["type"] == "keyExplicitFlag":
+             return SearchKey(name=f"flags[{token['key']['value']}]")
+ 
+@@ -1115,6 +1118,8 @@ def test_invalid_translate_wildcard_as_clickhouse_pattern(pattern) -> None:
+         pytest.param("tags[foo:bar,string]:true", "tags[foo:bar,string]", "true"),
+         pytest.param("tags[foo,number]:0", "tags[foo,number]", "0"),
+         pytest.param("tags[foo:bar,number]:0", "tags[foo:bar,number]", "0"),
++        pytest.param("tags[foo,boolean]:true", "tags[foo,boolean]", "true"),
++        pytest.param("tags[foo:bar,boolean]:true", "tags[foo:bar,boolean]", "true"),
+         pytest.param("flags[foo]:true", "flags[foo]", "true"),
+         pytest.param("flags[foo,string]:true", "flags[foo,string]", "true"),
+         pytest.param("flags[foo:bar,string]:true", "flags[foo:bar,string]", "true"),
+@@ -1133,9 +1138,11 @@ def test_handles_special_character_in_tags_and_flags(query, key, value) -> None:
+         pytest.param("has:tags[foo]", "tags[foo]"),
+         pytest.param("has:tags[foo,string]", "tags[foo,string]"),
+         pytest.param("has:tags[foo,number]", "tags[foo,number]"),
++        pytest.param("has:tags[foo,boolean]", "tags[foo,boolean]"),
+         pytest.param("has:tags[foo:bar]", "tags[foo:bar]"),
+         pytest.param("has:tags[foo:bar,string]", "tags[foo:bar,string]"),
+         pytest.param("has:tags[foo:bar,number]", "tags[foo:bar,number]"),
++        pytest.param("has:tags[foo:bar,boolean]", "tags[foo:bar,boolean]"),
+         pytest.param("has:flags[foo]", "flags[foo]"),
+         pytest.param("has:flags[foo,string]", "flags[foo,string]"),
+         pytest.param("has:flags[foo,number]", "flags[foo,number]"),

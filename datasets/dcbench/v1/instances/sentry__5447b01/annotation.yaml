@@ -1,0 +1,41 @@
+repo: sentry
+base_commit: dab4c4d95980e46c6be36d892771b0e4cbf5d525
+commit: 5447b015f270798b17bce3ad6a10abcaef6bc695
+patch_stored: true
+gold:
+- path: src/sentry/api/endpoints/api_application_rotate_secret.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/api/endpoints/api_applications.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/api/serializers/models/apiapplication.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/types/user.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/views/settings/account/apiApplications/details.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/views/settings/account/apiApplications/index.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'status=hang on the smallest commit in the whole 11-commit batch: 12 files, 615 truth.diff lines,
+  a clean well-scoped OAuth public/confidential client feature (isPublic flag threaded through the Django
+  endpoint, serializer, TS type, and two React views plus their specs). This is the single most damning
+  hang: there is no plausible size/complexity excuse — diffctx should trivially handle this, yet ctx.md
+  is 0 bytes. Strongly suggests the hang trigger is unrelated to diff size/file count and is instead some
+  deterministic bug in the pipeline (parsing, ranking, or output-formatting stage) that reproduces even
+  on toy-sized real-world diffs.'

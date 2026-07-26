@@ -1,0 +1,650 @@
+From 176234f9f7f687e148099bd52b818c4f27765f8d Mon Sep 17 00:00:00 2001
+From: Adam Rutkowski <hq@mtod.org>
+Date: Wed, 11 Feb 2026 12:24:28 +0100
+Subject: [PATCH] Add 24h time range to dashboard and Stats API v2 (#6062)
+
+* Implement '24h' in dashboard time range picker
+
+* Implement "Last 24h" range for dashboard
+
+* Implement comparison logic for 24h range
+
+* Implement '24h' period for Stats API v2 queries
+
+* Update ts types
+
+* Make the option say 'Last 24 Hours' and move within range picker
+
+* Update CHANGELOG
+
+* Remove unnecessary date shifting, 'to' is always 'now'
+
+* Update CHANGELOG
+
+* Remove another unnecessary shift
+
+* Use :"24h" input_range in consolidated views on /sites
+---
+ CHANGELOG.md                                  |  1 +
+ .../query-periods/query-dates.test.tsx        |  1 +
+ .../js/dashboard/query-time-periods.test.ts   |  5 ++
+ assets/js/dashboard/query-time-periods.ts     | 17 ++++
+ .../dashboard/stats/graph/interval-picker.tsx |  1 +
+ assets/js/types/query-api.d.ts                |  1 +
+ .../lib/plausible/stats/consolidated_view.ex  | 37 +++------
+ lib/plausible/stats/api_query_parser.ex       |  1 +
+ lib/plausible/stats/comparisons.ex            | 57 +++++++++++--
+ lib/plausible/stats/dashboard/query_parser.ex |  1 +
+ lib/plausible/stats/interval.ex               |  2 +
+ .../stats/legacy/legacy_query_builder.ex      |  6 ++
+ lib/plausible/stats/query_builder.ex          |  5 ++
+ priv/json-schemas/query-api-schema.json       |  4 +
+ test/plausible/stats/comparisons_test.exs     | 79 +++++++++++++++++++
+ .../stats/consolidated_view_test.exs          |  8 ++
+ .../stats/dashboard/query_parser_test.exs     | 10 +++
+ test/plausible/stats/interval_test.exs        |  4 +
+ .../stats/query/api_query_parser_test.exs     | 11 +++
+ .../stats/query/query_builder_test.exs        |  7 +-
+ .../internal_controller/docs_query_test.exs   | 18 +++++
+ 21 files changed, 240 insertions(+), 36 deletions(-)
+
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 5e0f89228..41015ed37 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file.
+ 
+ - Adds team_id to query debug metadata (saved in system.query_log log_comment column)
+ - Add "Unknown" option to Countries shield, for when the country code is unrecognized
++- Add "Last 24 Hours" to dashboard time range picker and Stats API v2
+ 
+ ### Removed
+ 
+diff --git a/assets/js/dashboard/nav-menu/query-periods/query-dates.test.tsx b/assets/js/dashboard/nav-menu/query-periods/query-dates.test.tsx
+index 7437dc204..d56e065f3 100644
+--- a/assets/js/dashboard/nav-menu/query-periods/query-dates.test.tsx
++++ b/assets/js/dashboard/nav-menu/query-periods/query-dates.test.tsx
+@@ -30,6 +30,7 @@ test('if no period is stored, loads with default value of "Last 28 days", all ex
+       ['Today', 'D'],
+       ['Yesterday', 'E'],
+       ['Realtime', 'R'],
++      ['Last 24 Hours', 'H'],
+       ['Last 7 Days', 'W'],
+       ['Last 28 Days', 'F'],
+       ['Last 91 Days', 'N'],
+diff --git a/assets/js/dashboard/query-time-periods.test.ts b/assets/js/dashboard/query-time-periods.test.ts
+index a1f2a90b5..f293d68eb 100644
+--- a/assets/js/dashboard/query-time-periods.test.ts
++++ b/assets/js/dashboard/query-time-periods.test.ts
+@@ -21,6 +21,11 @@ describe(`${getStoredPeriod.name}`, () => {
+     localStorage.setItem(key, QueryPeriod['7d'])
+     expect(getStoredPeriod(domain, null)).toEqual(QueryPeriod['7d'])
+   })
++
++  it('returns correct value for 24h period if stored', () => {
++    localStorage.setItem(key, QueryPeriod['24h'])
++    expect(getStoredPeriod(domain, null)).toEqual(QueryPeriod['24h'])
++  })
+ })
+ 
+ describe(`${getDashboardTimeSettings.name}`, () => {
+diff --git a/assets/js/dashboard/query-time-periods.ts b/assets/js/dashboard/query-time-periods.ts
+index a20b55f56..c4e8191a2 100644
+--- a/assets/js/dashboard/query-time-periods.ts
++++ b/assets/js/dashboard/query-time-periods.ts
+@@ -30,6 +30,7 @@ export enum QueryPeriod {
+   'day' = 'day',
+   'month' = 'month',
+   '7d' = '7d',
++  '24h' = '24h',
+   '28d' = '28d',
+   '30d' = '30d',
+   '91d' = '91d',
+@@ -320,6 +321,19 @@ export const getDatePeriodGroups = ({
+       ]
+     ],
+     [
++      [
++        ['Last 24 Hours', 'H'],
++        {
++          search: (s) => ({
++            ...s,
++            ...clearedDateSearch,
++            period: QueryPeriod['24h'],
++            keybindHint: 'H'
++          }),
++          isActive: ({ query }) => query.period === QueryPeriod['24h'],
++          onEvent
++        }
++      ],
+       [
+         ['Last 7 Days', 'W'],
+         {
+@@ -605,6 +619,9 @@ export function getCurrentPeriodDisplayName({
+     }
+     return formatDay(query.date)
+   }
++  if (query.period === '24h') {
++    return 'Last 24 Hours'
++  }
+   if (query.period === '7d') {
+     return 'Last 7 days'
+   }
+diff --git a/assets/js/dashboard/stats/graph/interval-picker.tsx b/assets/js/dashboard/stats/graph/interval-picker.tsx
+index afa3f1cf9..52528ab92 100644
+--- a/assets/js/dashboard/stats/graph/interval-picker.tsx
++++ b/assets/js/dashboard/stats/graph/interval-picker.tsx
+@@ -43,6 +43,7 @@ function getDefaultInterval(
+ ): string {
+   const defaultByPeriod: Record<string, string> = {
+     day: 'hour',
++    '24h': 'hour',
+     '7d': 'day',
+     '6mo': 'month',
+     '12mo': 'month',
+diff --git a/assets/js/types/query-api.d.ts b/assets/js/types/query-api.d.ts
+index 5778384cb..3dce7f674 100644
+--- a/assets/js/types/query-api.d.ts
++++ b/assets/js/types/query-api.d.ts
+@@ -18,6 +18,7 @@ export type Metric =
+ export type DateRangeShorthand =
+   | "all"
+   | "day"
++  | "24h"
+   | "7d"
+   | "28d"
+   | "30d"
+diff --git a/extra/lib/plausible/stats/consolidated_view.ex b/extra/lib/plausible/stats/consolidated_view.ex
+index 2d5306572..ed22668e3 100644
+--- a/extra/lib/plausible/stats/consolidated_view.ex
++++ b/extra/lib/plausible/stats/consolidated_view.ex
+@@ -1,11 +1,11 @@
+ defmodule Plausible.Stats.ConsolidatedView do
+   alias Plausible.{Site, Stats}
+-  alias Plausible.Stats.{ParsedQueryParams, QueryBuilder, QueryInclude}
++  alias Plausible.Stats.QueryBuilder
+   require Logger
+ 
+   @spec overview_24h(Site.t(), NaiveDateTime.t()) :: map()
+   def overview_24h(%Site{consolidated: true} = view, now \\ NaiveDateTime.utc_now()) do
+-    stats = query_24h_stats(view, now)
++    stats = query_24h_stats(view)
+     intervals = query_24h_intervals(view, now)
+ 
+     Map.merge(stats, intervals)
+@@ -38,29 +38,13 @@ defmodule Plausible.Stats.ConsolidatedView do
+     end
+   end
+ 
+-  defp query_24h_stats(view, now) do
+-    from =
+-      NaiveDateTime.shift(now, hour: -24)
+-      |> DateTime.from_naive!("Etc/UTC")
+-
+-    to = now |> DateTime.from_naive!("Etc/UTC")
+-
+-    c_from =
+-      NaiveDateTime.shift(now, hour: -48)
+-      |> DateTime.from_naive!("Etc/UTC")
+-
+-    c_to =
+-      NaiveDateTime.shift(now, hour: -24)
+-      |> DateTime.from_naive!("Etc/UTC")
+-
+-    {:ok, stats_query} =
+-      QueryBuilder.build(view, %ParsedQueryParams{
+-        input_date_range: {:datetime_range, from, to},
++  defp query_24h_stats(view) do
++    stats_query =
++      QueryBuilder.build!(view,
++        input_date_range: :"24h",
+         metrics: [:visitors, :visits, :pageviews, :views_per_visit],
+-        include: %QueryInclude{
+-          compare: {:datetime_range, c_from, c_to}
+-        }
+-      })
++        include: [compare: :previous_period]
++      )
+ 
+     %Stats.QueryResult{
+       results: [
+@@ -86,13 +70,10 @@ defmodule Plausible.Stats.ConsolidatedView do
+   end
+ 
+   defp query_24h_intervals(view, now) do
+-    from_datetime = now |> NaiveDateTime.shift(hour: -24) |> DateTime.from_naive!("Etc/UTC")
+-    to_datetime = now |> DateTime.from_naive!("Etc/UTC")
+-
+     graph_query =
+       QueryBuilder.build!(view,
+         metrics: [:visitors],
+-        input_date_range: {:datetime_range, from_datetime, to_datetime},
++        input_date_range: :"24h",
+         dimensions: ["time:hour"],
+         order_by: [{"time:hour", :asc}]
+       )
+diff --git a/lib/plausible/stats/api_query_parser.ex b/lib/plausible/stats/api_query_parser.ex
+index e16dccf19..6a8b0380e 100644
+--- a/lib/plausible/stats/api_query_parser.ex
++++ b/lib/plausible/stats/api_query_parser.ex
+@@ -173,6 +173,7 @@ defmodule Plausible.Stats.ApiQueryParser do
+   end
+ 
+   defp parse_input_date_range("day"), do: {:ok, :day}
++  defp parse_input_date_range("24h"), do: {:ok, :"24h"}
+   defp parse_input_date_range("month"), do: {:ok, :month}
+   defp parse_input_date_range("year"), do: {:ok, :year}
+   defp parse_input_date_range("all"), do: {:ok, :all}
+diff --git a/lib/plausible/stats/comparisons.ex b/lib/plausible/stats/comparisons.ex
+index e6097fa6f..2321e1771 100644
+--- a/lib/plausible/stats/comparisons.ex
++++ b/lib/plausible/stats/comparisons.ex
+@@ -53,13 +53,18 @@ defmodule Plausible.Stats.Comparisons do
+           DateTimeRange.new!(from, to)
+ 
+         _ ->
+-          comparison_date_range = get_comparison_date_range(source_query)
+-
+-          DateTimeRange.new!(
+-            comparison_date_range.first,
+-            comparison_date_range.last,
+-            source_query.timezone
+-          )
++          # For 24h period, work directly with datetime ranges to preserve time precision
++          if source_query.input_date_range == :"24h" do
++            get_comparison_datetime_range(source_query)
++          else
++            comparison_date_range = get_comparison_date_range(source_query)
++
++            DateTimeRange.new!(
++              comparison_date_range.first,
++              comparison_date_range.last,
++              source_query.timezone
++            )
++          end
+       end
+ 
+     DateTimeRange.to_timezone(datetime_range, "Etc/UTC")
+@@ -115,6 +120,44 @@ defmodule Plausible.Stats.Comparisons do
+     end
+   end
+ 
++  # For 24h period, shift the datetime range directly to preserve time precision
++  defp get_comparison_datetime_range(
++         %Query{
++           input_date_range: :"24h",
++           include: %{compare: :previous_period, compare_match_day_of_week: true}
++         } = source_query
++       ) do
++    days_back = 7
++    comparison_start = DateTime.shift(source_query.utc_time_range.first, day: -days_back)
++    comparison_end = DateTime.shift(source_query.utc_time_range.last, day: -days_back)
++
++    DateTimeRange.new!(comparison_start, comparison_end)
++  end
++
++  defp get_comparison_datetime_range(
++         %Query{
++           input_date_range: :"24h",
++           include: %{compare: :previous_period}
++         } = source_query
++       ) do
++    comparison_start = DateTime.shift(source_query.utc_time_range.first, hour: -24)
++    comparison_end = DateTime.shift(source_query.utc_time_range.last, hour: -24)
++
++    DateTimeRange.new!(comparison_start, comparison_end)
++  end
++
++  defp get_comparison_datetime_range(
++         %Query{
++           input_date_range: :"24h",
++           include: %{compare: :year_over_year}
++         } = source_query
++       ) do
++    comparison_start = DateTime.shift(source_query.utc_time_range.first, year: -1)
++    comparison_end = DateTime.shift(source_query.utc_time_range.last, year: -1)
++
++    DateTimeRange.new!(comparison_start, comparison_end)
++  end
++
+   defp get_comparison_date_range(%Query{include: %{compare: :year_over_year}} = source_query) do
+     source_date_range = Query.date_range(source_query, trim_trailing: true)
+ 
+diff --git a/lib/plausible/stats/dashboard/query_parser.ex b/lib/plausible/stats/dashboard/query_parser.ex
+index dff9f08d8..ee5459e97 100644
+--- a/lib/plausible/stats/dashboard/query_parser.ex
++++ b/lib/plausible/stats/dashboard/query_parser.ex
+@@ -36,6 +36,7 @@ defmodule Plausible.Stats.Dashboard.QueryParser do
+     "year" => :year,
+     "all" => :all,
+     "7d" => {:last_n_days, 7},
++    "24h" => :"24h",
+     "28d" => {:last_n_days, 28},
+     "30d" => {:last_n_days, 30},
+     "91d" => {:last_n_days, 91},
+diff --git a/lib/plausible/stats/interval.ex b/lib/plausible/stats/interval.ex
+index df8062899..d5a067d91 100644
+--- a/lib/plausible/stats/interval.ex
++++ b/lib/plausible/stats/interval.ex
+@@ -49,6 +49,7 @@ defmodule Plausible.Stats.Interval do
+     case query.input_date_range do
+       period when period in [:realtime, :realtime_30m] -> "minute"
+       :day -> "hour"
++      :"24h" -> "hour"
+       {:last_n_days, _} -> "day"
+       period when period in [:custom, :month] -> "day"
+       {:last_n_months, _} -> "month"
+@@ -59,6 +60,7 @@ defmodule Plausible.Stats.Interval do
+   @valid_by_period %{
+     "realtime" => ["minute"],
+     "day" => ["minute", "hour"],
++    "24h" => ["minute", "hour"],
+     "7d" => ["hour", "day"],
+     "28d" => ["day", "week"],
+     "30d" => ["day", "week"],
+diff --git a/lib/plausible/stats/legacy/legacy_query_builder.ex b/lib/plausible/stats/legacy/legacy_query_builder.ex
+index 89d8dfd71..7e7c46d29 100644
+--- a/lib/plausible/stats/legacy/legacy_query_builder.ex
++++ b/lib/plausible/stats/legacy/legacy_query_builder.ex
+@@ -108,6 +108,12 @@ defmodule Plausible.Stats.Legacy.QueryBuilder do
+     struct!(query, input_date_range: :day, utc_time_range: datetime_range)
+   end
+ 
++  defp put_input_date_range(%Query{now: now} = query, _site, %{"period" => "24h"}) do
++    from = DateTime.shift(now, hour: -24)
++    datetime_range = DateTimeRange.new!(from, now)
++    struct!(query, input_date_range: :"24h", utc_time_range: datetime_range)
++  end
++
+   defp put_input_date_range(query, site, %{"period" => period} = params)
+        when period in ["7d", "28d", "30d", "91d"] do
+     {days, "d"} = Integer.parse(period)
+diff --git a/lib/plausible/stats/query_builder.ex b/lib/plausible/stats/query_builder.ex
+index 5eb151138..cea96a920 100644
+--- a/lib/plausible/stats/query_builder.ex
++++ b/lib/plausible/stats/query_builder.ex
+@@ -100,6 +100,11 @@ defmodule Plausible.Stats.QueryBuilder do
+     DateTimeRange.new!(relative_date, relative_date, site.timezone)
+   end
+ 
++  defp build_datetime_range(:"24h", _site, _relative_date, now) do
++    from = DateTime.shift(now, hour: -24)
++    DateTimeRange.new!(from, now)
++  end
++
+   defp build_datetime_range(:month, site, relative_date, _now) do
+     first = relative_date |> Date.beginning_of_month()
+     last = relative_date |> Date.end_of_month()
+diff --git a/priv/json-schemas/query-api-schema.json b/priv/json-schemas/query-api-schema.json
+index 3d3eb38bd..99a50badd 100644
+--- a/priv/json-schemas/query-api-schema.json
++++ b/priv/json-schemas/query-api-schema.json
+@@ -134,6 +134,10 @@
+           "const": "day",
+           "description": "Last day"
+         },
++        {
++          "const": "24h",
++          "description": "Last 24 hours (rolling window from now-24h to now)"
++        },
+         {
+           "const": "7d",
+           "description": "Last 7 days relative to today"
+diff --git a/test/plausible/stats/comparisons_test.exs b/test/plausible/stats/comparisons_test.exs
+index 4cb1a5bfd..876e83c64 100644
+--- a/test/plausible/stats/comparisons_test.exs
++++ b/test/plausible/stats/comparisons_test.exs
+@@ -453,4 +453,83 @@ defmodule Plausible.Stats.ComparisonsTest do
+     |> Query.date_range()
+     |> Enum.count()
+   end
++
++  describe "with period set to 24h" do
++    test "shifts back 24h period when mode is previous_period", %{site: site} do
++      Plausible.Stats.Query.Test.fix_now(~U[2023-03-15 18:30:00Z])
++
++      query =
++        QueryBuilder.build!(site,
++          metrics: [:visitors],
++          input_date_range: :"24h",
++          include: [compare: :previous_period]
++        )
++
++      comparison_query = Comparisons.get_comparison_query(query)
++
++      # 24h range from 2023-03-14 18:30:00 to 2023-03-15 18:30:00 (UTC)
++      # Previous period shifts back exactly 24 hours
++      assert comparison_query.utc_time_range.first == ~U[2023-03-13 18:30:00Z]
++      assert comparison_query.utc_time_range.last == ~U[2023-03-14 18:30:00Z]
++    end
++
++    test "shifts back 24h period when mode is year_over_year", %{site: site} do
++      Plausible.Stats.Query.Test.fix_now(~U[2023-03-15 18:30:00Z])
++
++      query =
++        QueryBuilder.build!(site,
++          metrics: [:visitors],
++          input_date_range: :"24h",
++          include: [compare: :year_over_year]
++        )
++
++      comparison_query = Comparisons.get_comparison_query(query)
++
++      # 24h range: 2023-03-14 18:30:00 to 2023-03-15 18:30:00 (UTC)
++      # Year over year shifts back exactly 1 year
++      assert comparison_query.utc_time_range.first == ~U[2022-03-14 18:30:00Z]
++      assert comparison_query.utc_time_range.last == ~U[2022-03-15 18:30:00Z]
++    end
++
++    test "custom time zone works with 24h comparison" do
++      site = insert(:site, timezone: "US/Eastern")
++
++      Plausible.Stats.Query.Test.fix_now(~U[2023-03-15 18:30:00Z])
++
++      query =
++        QueryBuilder.build!(site,
++          metrics: [:visitors],
++          input_date_range: :"24h",
++          include: [compare: :previous_period]
++        )
++
++      comparison_query = Comparisons.get_comparison_query(query)
++
++      # 24h range: 2023-03-14 18:30:00 to 2023-03-15 18:30:00 (UTC)
++      # Previous period shifts back exactly 24 hours
++      assert comparison_query.utc_time_range.first == ~U[2023-03-13 18:30:00Z]
++      assert comparison_query.utc_time_range.last == ~U[2023-03-14 18:30:00Z]
++    end
++
++    test "shifts back 24h period to match day of week when mode is previous_period with match_day_of_week",
++         %{site: site} do
++      # Wednesday
++      Plausible.Stats.Query.Test.fix_now(~U[2023-03-15 18:30:00Z])
++
++      query =
++        QueryBuilder.build!(site,
++          metrics: [:visitors],
++          input_date_range: :"24h",
++          include: [compare: :previous_period, compare_match_day_of_week: true]
++        )
++
++      comparison_query = Comparisons.get_comparison_query(query)
++
++      # 24h range: Tuesday 2023-03-14 18:30:00 to Wednesday 2023-03-15 18:30:00 (UTC)
++      # Match day of week: shift back 7 days to get the same Tuesday->Wednesday window
++      # Result: Tuesday 2023-03-07 18:30:00 to Wednesday 2023-03-08 18:30:00
++      assert comparison_query.utc_time_range.first == ~U[2023-03-07 18:30:00Z]
++      assert comparison_query.utc_time_range.last == ~U[2023-03-08 18:30:00Z]
++    end
++  end
+ end
+diff --git a/test/plausible/stats/consolidated_view_test.exs b/test/plausible/stats/consolidated_view_test.exs
+index f7232f833..d54900dd1 100644
+--- a/test/plausible/stats/consolidated_view_test.exs
++++ b/test/plausible/stats/consolidated_view_test.exs
+@@ -4,6 +4,8 @@ defmodule Plausible.Stats.ConsolidatedViewTest do
+   on_ee do
+     test "returns stats for a consolidated view merged with placeholder" do
+       fixed_now = ~N[2023-10-26 10:00:15]
++      Plausible.Stats.Query.Test.fix_now(DateTime.from_naive!(fixed_now, "Etc/UTC"))
++
+       owner = new_user()
+       site1 = new_site(owner: owner)
+       site2 = new_site(owner: owner)
+@@ -68,6 +70,8 @@ defmodule Plausible.Stats.ConsolidatedViewTest do
+ 
+     test "excludes engagement events from visitor counts" do
+       fixed_now = ~N[2025-10-20 12:49:15]
++      Plausible.Stats.Query.Test.fix_now(DateTime.from_naive!(fixed_now, "Etc/UTC"))
++
+       owner = new_user()
+       site = new_site(owner: owner)
+       new_site(owner: owner)
+@@ -92,6 +96,8 @@ defmodule Plausible.Stats.ConsolidatedViewTest do
+ 
+     test "filters out-of-range timeslots correctly" do
+       fixed_now = ~N[2025-10-20 12:49:15]
++      Plausible.Stats.Query.Test.fix_now(DateTime.from_naive!(fixed_now, "Etc/UTC"))
++
+       owner = new_user()
+       site = new_site(owner: owner)
+       new_site(owner: owner)
+@@ -120,6 +126,8 @@ defmodule Plausible.Stats.ConsolidatedViewTest do
+ 
+     test "orders timeslots chronologically" do
+       fixed_now = ~N[2025-10-20 12:49:15]
++      Plausible.Stats.Query.Test.fix_now(DateTime.from_naive!(fixed_now, "Etc/UTC"))
++
+       owner = new_user()
+       site = new_site(owner: owner)
+       new_site(owner: owner)
+diff --git a/test/plausible/stats/dashboard/query_parser_test.exs b/test/plausible/stats/dashboard/query_parser_test.exs
+index d35a547df..fe0d7167b 100644
+--- a/test/plausible/stats/dashboard/query_parser_test.exs
++++ b/test/plausible/stats/dashboard/query_parser_test.exs
+@@ -56,6 +56,16 @@ defmodule Plausible.Stats.Dashboard.QueryParserTest do
+       end
+     end
+ 
++    test "parses 24h period" do
++      {:ok, parsed} = parse("?period=24h", build(:site), %{})
++      assert_matches %ParsedQueryParams{input_date_range: :"24h"} = parsed
++    end
++
++    test "parses 24h period from user prefs" do
++      {:ok, parsed} = parse("", build(:site), %{"period" => "24h"})
++      assert_matches %ParsedQueryParams{input_date_range: :"24h"} = parsed
++    end
++
+     for i <- [6, 12] do
+       test "parses #{i}mo period" do
+         {:ok, parsed} = parse("?period=#{unquote(i)}mo", build(:site), %{})
+diff --git a/test/plausible/stats/interval_test.exs b/test/plausible/stats/interval_test.exs
+index 93eeecd26..e1a78c31a 100644
+--- a/test/plausible/stats/interval_test.exs
++++ b/test/plausible/stats/interval_test.exs
+@@ -17,6 +17,7 @@ defmodule Plausible.Stats.IntervalTest do
+     test "by input_date_range" do
+       assert default_for_query(build_query(%{input_date_range: :realtime})) == "minute"
+       assert default_for_query(build_query(%{input_date_range: :day})) == "hour"
++      assert default_for_query(build_query(%{input_date_range: :"24h"})) == "hour"
+       assert default_for_query(build_query(%{input_date_range: {:last_n_days, 7}})) == "day"
+       assert default_for_query(build_query(%{input_date_range: {:last_n_months, 12}})) == "month"
+     end
+@@ -46,6 +47,7 @@ defmodule Plausible.Stats.IntervalTest do
+       assert valid_by_period(site: site) == %{
+                "realtime" => ["minute"],
+                "day" => ["minute", "hour"],
++               "24h" => ["minute", "hour"],
+                "month" => ["day", "week"],
+                "7d" => ["hour", "day"],
+                "28d" => ["day", "week"],
+@@ -65,6 +67,7 @@ defmodule Plausible.Stats.IntervalTest do
+       assert valid_by_period(site: site) == %{
+                "realtime" => ["minute"],
+                "day" => ["minute", "hour"],
++               "24h" => ["minute", "hour"],
+                "month" => ["day", "week"],
+                "7d" => ["hour", "day"],
+                "28d" => ["day", "week"],
+@@ -85,6 +88,7 @@ defmodule Plausible.Stats.IntervalTest do
+       assert valid_by_period(site: site, from: ago_13m, to: Date.utc_today()) == %{
+                "realtime" => ["minute"],
+                "day" => ["minute", "hour"],
++               "24h" => ["minute", "hour"],
+                "month" => ["day", "week"],
+                "7d" => ["hour", "day"],
+                "28d" => ["day", "week"],
+diff --git a/test/plausible/stats/query/api_query_parser_test.exs b/test/plausible/stats/query/api_query_parser_test.exs
+index 218b6050c..ed9e99b2a 100644
+--- a/test/plausible/stats/query/api_query_parser_test.exs
++++ b/test/plausible/stats/query/api_query_parser_test.exs
+@@ -26,4 +26,15 @@ defmodule Plausible.Stats.ApiQueryParserTest do
+             }} =
+              parse(params)
+   end
++
++  test "parses 24h date_range shorthand" do
++    params = %{
++      "site_id" => "example.com",
++      "metrics" => ["visitors"],
++      "date_range" => "24h"
++    }
++
++    assert {:ok, parsed} = parse(params)
++    assert parsed.input_date_range == :"24h"
++  end
+ end
+diff --git a/test/plausible/stats/query/query_builder_test.exs b/test/plausible/stats/query/query_builder_test.exs
+index 5c28b7ef4..bdada0bf1 100644
+--- a/test/plausible/stats/query/query_builder_test.exs
++++ b/test/plausible/stats/query/query_builder_test.exs
+@@ -11,6 +11,10 @@ defmodule Plausible.Stats.QueryBuilderTest do
+     first: DateTime.new!(~D[2021-05-05], ~T[12:00:00], "Etc/UTC"),
+     last: DateTime.new!(~D[2021-05-05], ~T[12:30:05], "Etc/UTC")
+   }
++  @date_range_24h %DateTimeRange{
++    first: DateTime.new!(~D[2021-05-04], ~T[12:30:00], "Etc/UTC"),
++    last: DateTime.new!(~D[2021-05-05], ~T[12:30:00], "Etc/UTC")
++  }
+   @date_range_day %DateTimeRange{
+     first: DateTime.new!(~D[2021-05-05], ~T[00:00:00], "Etc/UTC"),
+     last: DateTime.new!(~D[2021-05-05], ~T[23:59:59], "Etc/UTC")
+@@ -180,7 +184,8 @@ defmodule Plausible.Stats.QueryBuilderTest do
+   describe "date range" do
+     for {input_date_range, expected_utc_time_range} <- [
+           {:realtime, @date_range_realtime},
+-          {:realtime_30m, @date_range_30m}
++          {:realtime_30m, @date_range_30m},
++          {:"24h", @date_range_24h}
+         ] do
+       test "builds utc_time_range for #{input_date_range} input_date_range", %{site: site} do
+         assert {:ok, query} =
+diff --git a/test/plausible_web/controllers/api/internal_controller/docs_query_test.exs b/test/plausible_web/controllers/api/internal_controller/docs_query_test.exs
+index 03cd0af46..bf2ea3c13 100644
+--- a/test/plausible_web/controllers/api/internal_controller/docs_query_test.exs
++++ b/test/plausible_web/controllers/api/internal_controller/docs_query_test.exs
+@@ -86,5 +86,23 @@ defmodule PlausibleWeb.Api.InternalController.DocsQueryTest do
+ 
+       assert json_response(conn, 200)["results"] == [%{"metrics" => [1], "dimensions" => []}]
+     end
++
++    test "supports 24h date_range shorthand", %{conn: conn, site: site} do
++      now = NaiveDateTime.utc_now()
++
++      populate_stats(site, [
++        build(:pageview, timestamp: NaiveDateTime.add(now, -23, :hour)),
++        build(:pageview, timestamp: NaiveDateTime.add(now, -25, :hour))
++      ])
++
++      conn =
++        post(conn, "/api/docs/query", %{
++          "site_id" => site.domain,
++          "metrics" => ["pageviews"],
++          "date_range" => "24h"
++        })
++
++      assert json_response(conn, 200)["results"] == [%{"metrics" => [1], "dimensions" => []}]
++    end
+   end
+ end

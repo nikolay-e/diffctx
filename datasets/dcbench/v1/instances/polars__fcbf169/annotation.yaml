@@ -1,0 +1,60 @@
+repo: polars
+base_commit: cf2968ffc494aa28c30892ff4b22b3240f6abd2d
+commit: fcbf169d6014d873328939be7c4acb08d96c9fb2
+patch_stored: true
+gold:
+  - path: crates/polars-core/src/chunked_array/ops/sort/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "adds the object-dtype guard (`polars_bail!(InvalidOperation: ...)`) to the free function `arg_sort`, the multi-column arg-sort entry point"
+  - path: crates/polars-core/src/frame/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds the same object-dtype guard to `DataFrame`'s `by_column` sort path so `df.sort("obj_col")` errors instead of panicking
+  - path: py-polars/tests/unit/dataframe/test_df.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: adds `test_sort_errors_with_object_dtype_24677`, the regression test tied to the GH issue this commit fixes
+  - path: py-polars/tests/unit/testing/test_assert_frame_equal.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: updates the expected error message for `assert_frame_equal(..., check_row_order=False)` on unsortable object-dtype columns, since that code path now surfaces the new guard's message instead of the old one
+  - path: crates/polars-core/src/series/series_trait.rs
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: defines `SeriesTrait::arg_sort`'s default implementation as `invalid_operation_panic!(arg_sort, self)` — the literal `panic!` that ObjectChunked hits (it never overrides arg_sort) and that this commit's guards now preempt before that code path is ever reached
+  - path: crates/polars-core/src/series/mod.rs
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: defines the `invalid_operation_panic!` macro itself (`panic!("`{}` operation not supported for dtype `{}`", ...)`), the mechanism behind the panic this fix avoids
+forbidden:
+  - path: crates/polars-core/src/series/implementations/object.rs
+    reason: ObjectChunked's Series impl invokes `invalid_operation_panic!` for a different method (`into_total_ord_inner`), a related but distinct panic path not touched or fixed by this commit
+  - path: crates/polars-expr/src/expressions/sort.rs
+    reason: expression-level sort executor that calls into the now-guarded functions but contains no logic relevant to this fix itself
+  - path: py-polars/tests/unit/operations/test_sort.py
+    reason: broad general sort test suite with a similar name/topic, but does not cover this specific object-dtype panic regression
+  - path: crates/polars-core/src/chunked_array/ops/sort/arg_sort_multiple.rs
+    reason: sibling file in the same sort module, but unrelated to the object-dtype guard added in sort/mod.rs
+nontrivial_gold_count: 2
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 4
+  description: panic→error sorting object dtype — polars-core fix, py-side tests
+notes: >-
+  Sorting a column of Python `object` dtype previously hit `SeriesTrait::arg_sort`'s
+  default `invalid_operation_panic!` macro (a real Rust panic, crashing the process)
+  because ObjectChunked never overrides arg_sort. This commit adds an explicit
+  object-dtype check with a proper `PolarsResult` error at the two sort entry points
+  (`arg_sort` free function and `DataFrame`'s by-column sort), converting a crash
+  into a catchable `InvalidOperationError`, and updates the one existing test whose
+  expected error message changed as a result.

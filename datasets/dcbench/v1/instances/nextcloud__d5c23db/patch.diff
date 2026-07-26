@@ -1,0 +1,614 @@
+From d5c23dbb9fed1a1b958e07ebdb7202c37bddc074 Mon Sep 17 00:00:00 2001
+From: Carl Schwan <carl@carlschwan.eu>
+Date: Wed, 29 Jun 2022 15:34:06 +0200
+Subject: [PATCH] Move CappedMemoryCache to OCP
+
+This is an helpful helper that should be used in more place than just
+server and this is already the case with groupfodlers, deck, user_oidc
+and more using it, so let's make it public
+
+Signed-off-by: Carl Schwan <carl@carlschwan.eu>
+---
+ .../lib/Lib/Storage/AmazonS3.php              |   2 +-
+ apps/files_external/lib/Lib/Storage/SMB.php   |   2 +-
+ apps/files_external/lib/Lib/Storage/Swift.php |   2 +-
+ apps/files_sharing/lib/MountProvider.php      |   2 +-
+ apps/files_sharing/lib/SharedMount.php        |   2 +-
+ apps/user_ldap/lib/Group_LDAP.php             |   2 +-
+ apps/user_ldap/lib/Helper.php                 |   2 +-
+ apps/user_ldap/lib/User/Manager.php           |   2 +-
+ apps/workflowengine/lib/Manager.php           |   2 +-
+ lib/composer/composer/autoload_classmap.php   |   1 +
+ lib/composer/composer/autoload_static.php     |   1 +
+ lib/private/Accounts/AccountManager.php       |   2 +-
+ lib/private/AllConfig.php                     |   2 +-
+ .../Token/PublicKeyTokenProvider.php          |   2 +-
+ lib/private/Cache/CappedMemoryCache.php       |   1 +
+ lib/private/Diagnostics/QueryLogger.php       |   2 +-
+ lib/private/Encryption/File.php               |   2 +-
+ lib/private/Files/AppData/AppData.php         |   2 +-
+ lib/private/Files/Config/UserMountCache.php   |   2 +-
+ lib/private/Files/Filesystem.php              |   2 +-
+ lib/private/Files/Mount/Manager.php           |   2 +-
+ lib/private/Files/Node/Root.php               |   2 +-
+ .../Files/Storage/Wrapper/Encoding.php        |   2 +-
+ lib/private/Share20/Manager.php               |   2 +-
+ lib/private/User/Database.php                 |   2 +-
+ lib/public/Cache/CappedMemoryCache.php        | 160 ++++++++++++++++++
+ tests/lib/App/InfoParserTest.php              |   6 +-
+ tests/lib/Cache/CappedMemoryCacheTest.php     |   4 +-
+ tests/lib/Files/Config/UserMountCacheTest.php |   2 +-
+ tests/lib/Files/Node/RootTest.php             |   2 +-
+ tests/lib/Files/ViewTest.php                  |   2 +-
+ 31 files changed, 193 insertions(+), 30 deletions(-)
+ create mode 100644 lib/public/Cache/CappedMemoryCache.php
+
+diff --git a/apps/files_external/lib/Lib/Storage/AmazonS3.php b/apps/files_external/lib/Lib/Storage/AmazonS3.php
+index e7a8c5f932..6ebbed33a8 100644
+--- a/apps/files_external/lib/Lib/Storage/AmazonS3.php
++++ b/apps/files_external/lib/Lib/Storage/AmazonS3.php
+@@ -44,7 +44,7 @@ use Aws\S3\Exception\S3Exception;
+ use Aws\S3\S3Client;
+ use Icewind\Streams\CallbackWrapper;
+ use Icewind\Streams\IteratorDirectory;
+-use OC\Cache\CappedMemoryCache;
++use OCP\Cache\CappedMemoryCache;
+ use OC\Files\Cache\CacheEntry;
+ use OC\Files\ObjectStore\S3ConnectionTrait;
+ use OC\Files\ObjectStore\S3ObjectTrait;
+diff --git a/apps/files_external/lib/Lib/Storage/SMB.php b/apps/files_external/lib/Lib/Storage/SMB.php
+index bdb9b4f9c8..6c59263ddd 100644
+--- a/apps/files_external/lib/Lib/Storage/SMB.php
++++ b/apps/files_external/lib/Lib/Storage/SMB.php
+@@ -54,7 +54,7 @@ use Icewind\SMB\ServerFactory;
+ use Icewind\SMB\System;
+ use Icewind\Streams\CallbackWrapper;
+ use Icewind\Streams\IteratorDirectory;
+-use OC\Cache\CappedMemoryCache;
++use OCP\Cache\CappedMemoryCache;
+ use OC\Files\Filesystem;
+ use OC\Files\Storage\Common;
+ use OCA\Files_External\Lib\Notify\SMBNotifyHandler;
+diff --git a/apps/files_external/lib/Lib/Storage/Swift.php b/apps/files_external/lib/Lib/Storage/Swift.php
+index fb93c6cdce..cc0ee6c7c2 100644
+--- a/apps/files_external/lib/Lib/Storage/Swift.php
++++ b/apps/files_external/lib/Lib/Storage/Swift.php
+@@ -200,7 +200,7 @@ class Swift extends \OC\Files\Storage\Common {
+ 
+ 		$this->params = $params;
+ 		// FIXME: private class...
+-		$this->objectCache = new \OC\Cache\CappedMemoryCache();
++		$this->objectCache = new \OCP\Cache\CappedMemoryCache();
+ 		$this->connectionFactory = new SwiftFactory(
+ 			\OC::$server->getMemCacheFactory()->createDistributed('swift/'),
+ 			$this->params,
+diff --git a/apps/files_sharing/lib/MountProvider.php b/apps/files_sharing/lib/MountProvider.php
+index d27f9e5e0d..5817ece680 100644
+--- a/apps/files_sharing/lib/MountProvider.php
++++ b/apps/files_sharing/lib/MountProvider.php
+@@ -28,7 +28,7 @@
+  */
+ namespace OCA\Files_Sharing;
+ 
+-use OC\Cache\CappedMemoryCache;
++use OCP\Cache\CappedMemoryCache;
+ use OC\Files\View;
+ use OCA\Files_Sharing\Event\ShareMountedEvent;
+ use OCP\EventDispatcher\IEventDispatcher;
+diff --git a/apps/files_sharing/lib/SharedMount.php b/apps/files_sharing/lib/SharedMount.php
+index 95ff66c4b7..676e253344 100644
+--- a/apps/files_sharing/lib/SharedMount.php
++++ b/apps/files_sharing/lib/SharedMount.php
+@@ -29,7 +29,7 @@
+ 
+ namespace OCA\Files_Sharing;
+ 
+-use OC\Cache\CappedMemoryCache;
++use OCP\Cache\CappedMemoryCache;
+ use OC\Files\Filesystem;
+ use OC\Files\Mount\MountPoint;
+ use OC\Files\Mount\MoveableMount;
+diff --git a/apps/user_ldap/lib/Group_LDAP.php b/apps/user_ldap/lib/Group_LDAP.php
+index 8fcb10cb85..5e3d3afc14 100644
+--- a/apps/user_ldap/lib/Group_LDAP.php
++++ b/apps/user_ldap/lib/Group_LDAP.php
+@@ -45,7 +45,7 @@ namespace OCA\User_LDAP;
+ use Closure;
+ use Exception;
+ use OC;
+-use OC\Cache\CappedMemoryCache;
++use OCP\Cache\CappedMemoryCache;
+ use OC\ServerNotAvailableException;
+ use OCP\Group\Backend\IGetDisplayNameBackend;
+ use OCP\Group\Backend\IDeleteGroupBackend;
+diff --git a/apps/user_ldap/lib/Helper.php b/apps/user_ldap/lib/Helper.php
+index 3ca5de6787..6668338d19 100644
+--- a/apps/user_ldap/lib/Helper.php
++++ b/apps/user_ldap/lib/Helper.php
+@@ -29,7 +29,7 @@
+  */
+ namespace OCA\User_LDAP;
+ 
+-use OC\Cache\CappedMemoryCache;
++use OCP\Cache\CappedMemoryCache;
+ use OCP\DB\QueryBuilder\IQueryBuilder;
+ use OCP\IConfig;
+ use OCP\IDBConnection;
+diff --git a/apps/user_ldap/lib/User/Manager.php b/apps/user_ldap/lib/User/Manager.php
+index e52b093f5a..655463a0ec 100644
+--- a/apps/user_ldap/lib/User/Manager.php
++++ b/apps/user_ldap/lib/User/Manager.php
+@@ -28,7 +28,7 @@
+  */
+ namespace OCA\User_LDAP\User;
+ 
+-use OC\Cache\CappedMemoryCache;
++use OCP\Cache\CappedMemoryCache;
+ use OCA\User_LDAP\Access;
+ use OCA\User_LDAP\FilesystemHelper;
+ use OCP\IAvatarManager;
+diff --git a/apps/workflowengine/lib/Manager.php b/apps/workflowengine/lib/Manager.php
+index f6c3e3086c..659fd2421c 100644
+--- a/apps/workflowengine/lib/Manager.php
++++ b/apps/workflowengine/lib/Manager.php
+@@ -30,7 +30,7 @@
+ namespace OCA\WorkflowEngine;
+ 
+ use Doctrine\DBAL\Exception;
+-use OC\Cache\CappedMemoryCache;
++use OCP\Cache\CappedMemoryCache;
+ use OCA\WorkflowEngine\AppInfo\Application;
+ use OCA\WorkflowEngine\Check\FileMimeType;
+ use OCA\WorkflowEngine\Check\FileName;
+diff --git a/lib/composer/composer/autoload_classmap.php b/lib/composer/composer/autoload_classmap.php
+index e3572aa833..e8510bc865 100644
+--- a/lib/composer/composer/autoload_classmap.php
++++ b/lib/composer/composer/autoload_classmap.php
+@@ -116,6 +116,7 @@ return array(
+     'OCP\\BackgroundJob\\QueuedJob' => $baseDir . '/lib/public/BackgroundJob/QueuedJob.php',
+     'OCP\\BackgroundJob\\TimedJob' => $baseDir . '/lib/public/BackgroundJob/TimedJob.php',
+     'OCP\\Broadcast\\Events\\IBroadcastEvent' => $baseDir . '/lib/public/Broadcast/Events/IBroadcastEvent.php',
++    'OCP\\Cache\\CappedMemoryCache' => $baseDir . '/lib/public/Cache/CappedMemoryCache.php',
+     'OCP\\Calendar\\BackendTemporarilyUnavailableException' => $baseDir . '/lib/public/Calendar/BackendTemporarilyUnavailableException.php',
+     'OCP\\Calendar\\Exceptions\\CalendarException' => $baseDir . '/lib/public/Calendar/Exceptions/CalendarException.php',
+     'OCP\\Calendar\\ICalendar' => $baseDir . '/lib/public/Calendar/ICalendar.php',
+diff --git a/lib/composer/composer/autoload_static.php b/lib/composer/composer/autoload_static.php
+index 658f2cdfe2..26b25e89aa 100644
+--- a/lib/composer/composer/autoload_static.php
++++ b/lib/composer/composer/autoload_static.php
+@@ -149,6 +149,7 @@ class ComposerStaticInit749170dad3f5e7f9ca158f5a9f04f6a2
+         'OCP\\BackgroundJob\\QueuedJob' => __DIR__ . '/../../..' . '/lib/public/BackgroundJob/QueuedJob.php',
+         'OCP\\BackgroundJob\\TimedJob' => __DIR__ . '/../../..' . '/lib/public/BackgroundJob/TimedJob.php',
+         'OCP\\Broadcast\\Events\\IBroadcastEvent' => __DIR__ . '/../../..' . '/lib/public/Broadcast/Events/IBroadcastEvent.php',
++        'OCP\\Cache\\CappedMemoryCache' => __DIR__ . '/../../..' . '/lib/public/Cache/CappedMemoryCache.php',
+         'OCP\\Calendar\\BackendTemporarilyUnavailableException' => __DIR__ . '/../../..' . '/lib/public/Calendar/BackendTemporarilyUnavailableException.php',
+         'OCP\\Calendar\\Exceptions\\CalendarException' => __DIR__ . '/../../..' . '/lib/public/Calendar/Exceptions/CalendarException.php',
+         'OCP\\Calendar\\ICalendar' => __DIR__ . '/../../..' . '/lib/public/Calendar/ICalendar.php',
+diff --git a/lib/private/Accounts/AccountManager.php b/lib/private/Accounts/AccountManager.php
+index bdf33d73c2..20e0add1cc 100644
+--- a/lib/private/Accounts/AccountManager.php
++++ b/lib/private/Accounts/AccountManager.php
+@@ -42,7 +42,7 @@ use libphonenumber\PhoneNumber;
+ use libphonenumber\PhoneNumberFormat;
+ use libphonenumber\PhoneNumberUtil;
+ use OC\Profile\TProfileHelper;
+-use OC\Cache\CappedMemoryCache;
++use OCP\Cache\CappedMemoryCache;
+ use OCA\Settings\BackgroundJobs\VerifyUserData;
+ use OCP\Accounts\IAccount;
+ use OCP\Accounts\IAccountManager;
+diff --git a/lib/private/AllConfig.php b/lib/private/AllConfig.php
+index f282baee14..7e01e0ca81 100644
+--- a/lib/private/AllConfig.php
++++ b/lib/private/AllConfig.php
+@@ -32,7 +32,7 @@
+  */
+ namespace OC;
+ 
+-use OC\Cache\CappedMemoryCache;
++use OCP\Cache\CappedMemoryCache;
+ use OCP\DB\QueryBuilder\IQueryBuilder;
+ use OCP\IConfig;
+ use OCP\IDBConnection;
+diff --git a/lib/private/Authentication/Token/PublicKeyTokenProvider.php b/lib/private/Authentication/Token/PublicKeyTokenProvider.php
+index 96bf9a8608..d21179a35c 100644
+--- a/lib/private/Authentication/Token/PublicKeyTokenProvider.php
++++ b/lib/private/Authentication/Token/PublicKeyTokenProvider.php
+@@ -34,7 +34,7 @@ use OC\Authentication\Exceptions\InvalidTokenException;
+ use OC\Authentication\Exceptions\TokenPasswordExpiredException;
+ use OC\Authentication\Exceptions\PasswordlessTokenException;
+ use OC\Authentication\Exceptions\WipeTokenException;
+-use OC\Cache\CappedMemoryCache;
++use OCP\Cache\CappedMemoryCache;
+ use OCP\AppFramework\Db\DoesNotExistException;
+ use OCP\AppFramework\Utility\ITimeFactory;
+ use OCP\IConfig;
+diff --git a/lib/private/Cache/CappedMemoryCache.php b/lib/private/Cache/CappedMemoryCache.php
+index 6063b5e711..31e8ef3e72 100644
+--- a/lib/private/Cache/CappedMemoryCache.php
++++ b/lib/private/Cache/CappedMemoryCache.php
+@@ -28,6 +28,7 @@ use OCP\ICache;
+  *
+  * Uses a simple FIFO expiry mechanism
+  * @template T
++ * @deprecated use OCP\Cache\CappedMemoryCache instead
+  */
+ class CappedMemoryCache implements ICache, \ArrayAccess {
+ 	private $capacity;
+diff --git a/lib/private/Diagnostics/QueryLogger.php b/lib/private/Diagnostics/QueryLogger.php
+index 40d68d94ae..5f40175107 100644
+--- a/lib/private/Diagnostics/QueryLogger.php
++++ b/lib/private/Diagnostics/QueryLogger.php
+@@ -24,7 +24,7 @@
+  */
+ namespace OC\Diagnostics;
+ 
+-use OC\Cache\CappedMemoryCache;
++use OCP\Cache\CappedMemoryCache;
+ use OCP\Diagnostics\IQueryLogger;
+ 
+ class QueryLogger implements IQueryLogger {
+diff --git a/lib/private/Encryption/File.php b/lib/private/Encryption/File.php
+index 2d7e23a888..844059923b 100644
+--- a/lib/private/Encryption/File.php
++++ b/lib/private/Encryption/File.php
+@@ -27,7 +27,7 @@
+  */
+ namespace OC\Encryption;
+ 
+-use OC\Cache\CappedMemoryCache;
++use OCP\Cache\CappedMemoryCache;
+ use OCA\Files_External\Service\GlobalStoragesService;
+ use OCP\Files\IRootFolder;
+ use OCP\Files\NotFoundException;
+diff --git a/lib/private/Files/AppData/AppData.php b/lib/private/Files/AppData/AppData.php
+index 471de799c2..237fcb42e0 100644
+--- a/lib/private/Files/AppData/AppData.php
++++ b/lib/private/Files/AppData/AppData.php
+@@ -26,7 +26,7 @@ declare(strict_types=1);
+  */
+ namespace OC\Files\AppData;
+ 
+-use OC\Cache\CappedMemoryCache;
++use OCP\Cache\CappedMemoryCache;
+ use OC\Files\SimpleFS\SimpleFolder;
+ use OC\SystemConfig;
+ use OCP\Files\Folder;
+diff --git a/lib/private/Files/Config/UserMountCache.php b/lib/private/Files/Config/UserMountCache.php
+index c326eeb0b6..f26c42938d 100644
+--- a/lib/private/Files/Config/UserMountCache.php
++++ b/lib/private/Files/Config/UserMountCache.php
+@@ -28,7 +28,7 @@
+  */
+ namespace OC\Files\Config;
+ 
+-use OC\Cache\CappedMemoryCache;
++use OCP\Cache\CappedMemoryCache;
+ use OCA\Files_Sharing\SharedMount;
+ use OCP\DB\QueryBuilder\IQueryBuilder;
+ use OCP\Files\Config\ICachedMountFileInfo;
+diff --git a/lib/private/Files/Filesystem.php b/lib/private/Files/Filesystem.php
+index 20b44e2736..9542666b03 100644
+--- a/lib/private/Files/Filesystem.php
++++ b/lib/private/Files/Filesystem.php
+@@ -37,7 +37,7 @@
+  */
+ namespace OC\Files;
+ 
+-use OC\Cache\CappedMemoryCache;
++use OCP\Cache\CappedMemoryCache;
+ use OC\Files\Mount\MountPoint;
+ use OC\User\NoUserException;
+ use OCP\EventDispatcher\IEventDispatcher;
+diff --git a/lib/private/Files/Mount/Manager.php b/lib/private/Files/Mount/Manager.php
+index 69285018d1..9ba0e50405 100644
+--- a/lib/private/Files/Mount/Manager.php
++++ b/lib/private/Files/Mount/Manager.php
+@@ -29,7 +29,7 @@ declare(strict_types=1);
+ 
+ namespace OC\Files\Mount;
+ 
+-use OC\Cache\CappedMemoryCache;
++use OCP\Cache\CappedMemoryCache;
+ use OC\Files\Filesystem;
+ use OC\Files\SetupManager;
+ use OC\Files\SetupManagerFactory;
+diff --git a/lib/private/Files/Node/Root.php b/lib/private/Files/Node/Root.php
+index 6dd65a4291..9e3d4afd8d 100644
+--- a/lib/private/Files/Node/Root.php
++++ b/lib/private/Files/Node/Root.php
+@@ -32,7 +32,7 @@
+ 
+ namespace OC\Files\Node;
+ 
+-use OC\Cache\CappedMemoryCache;
++use OCP\Cache\CappedMemoryCache;
+ use OC\Files\FileInfo;
+ use OC\Files\Mount\Manager;
+ use OC\Files\Mount\MountPoint;
+diff --git a/lib/private/Files/Storage/Wrapper/Encoding.php b/lib/private/Files/Storage/Wrapper/Encoding.php
+index d6201dc887..ac9cc248ce 100644
+--- a/lib/private/Files/Storage/Wrapper/Encoding.php
++++ b/lib/private/Files/Storage/Wrapper/Encoding.php
+@@ -28,7 +28,7 @@
+  */
+ namespace OC\Files\Storage\Wrapper;
+ 
+-use OC\Cache\CappedMemoryCache;
++use OCP\Cache\CappedMemoryCache;
+ use OC\Files\Filesystem;
+ use OCP\Files\Storage\IStorage;
+ use OCP\ICache;
+diff --git a/lib/private/Share20/Manager.php b/lib/private/Share20/Manager.php
+index b1a9783d7b..905a006372 100644
+--- a/lib/private/Share20/Manager.php
++++ b/lib/private/Share20/Manager.php
+@@ -41,7 +41,7 @@
+  */
+ namespace OC\Share20;
+ 
+-use OC\Cache\CappedMemoryCache;
++use OCP\Cache\CappedMemoryCache;
+ use OC\Files\Mount\MoveableMount;
+ use OC\KnownUser\KnownUserService;
+ use OC\Share20\Exception\ProviderException;
+diff --git a/lib/private/User/Database.php b/lib/private/User/Database.php
+index fce7551c24..0b38f04bfe 100644
+--- a/lib/private/User/Database.php
++++ b/lib/private/User/Database.php
+@@ -45,7 +45,7 @@ declare(strict_types=1);
+  */
+ namespace OC\User;
+ 
+-use OC\Cache\CappedMemoryCache;
++use OCP\Cache\CappedMemoryCache;
+ use OCP\EventDispatcher\IEventDispatcher;
+ use OCP\IDBConnection;
+ use OCP\Security\Events\ValidatePasswordPolicyEvent;
+diff --git a/lib/public/Cache/CappedMemoryCache.php b/lib/public/Cache/CappedMemoryCache.php
+new file mode 100644
+index 0000000000..6699600d42
+--- /dev/null
++++ b/lib/public/Cache/CappedMemoryCache.php
+@@ -0,0 +1,160 @@
++<?php
++/**
++ * @copyright Copyright (c) 2016, ownCloud, Inc.
++ *
++ * @author Robin Appelman <robin@icewind.nl>
++ *
++ * @license AGPL-3.0
++ *
++ * This code is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU Affero General Public License, version 3,
++ * as published by the Free Software Foundation.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ * GNU Affero General Public License for more details.
++ *
++ * You should have received a copy of the GNU Affero General Public License, version 3,
++ * along with this program. If not, see <http://www.gnu.org/licenses/>
++ *
++ */
++namespace OCP\Cache;
++
++use OCP\ICache;
++
++/**
++ * In-memory cache with a capacity limit to keep memory usage in check
++ *
++ * Uses a simple FIFO expiry mechanism
++ *
++ * @since 25.0.0
++ * @template T
++ */
++class CappedMemoryCache implements ICache, \ArrayAccess {
++	private int $capacity;
++	/** @var T[] */
++	private array $cache = [];
++
++	/**
++	 * @inheritdoc
++	 * @since 25.0.0
++	 */
++	public function __construct(int $capacity = 512) {
++		$this->capacity = $capacity;
++	}
++
++	/**
++	 * @inheritdoc
++	 * @since 25.0.0
++	 */
++	public function hasKey($key): bool {
++		return isset($this->cache[$key]);
++	}
++
++	/**
++	 * @return ?T
++	 * @since 25.0.0
++	 */
++	public function get($key) {
++		return $this->cache[$key] ?? null;
++	}
++
++	/**
++	 * @inheritdoc
++	 * @param string $key
++	 * @param T $value
++	 * @param int $ttl
++	 * @since 25.0.0
++	 * @return bool
++	 */
++	public function set($key, $value, $ttl = 0): bool {
++		if (is_null($key)) {
++			$this->cache[] = $value;
++		} else {
++			$this->cache[$key] = $value;
++		}
++		$this->garbageCollect();
++		return true;
++	}
++
++	/**
++	 * @since 25.0.0
++	 */
++	public function remove($key): bool {
++		unset($this->cache[$key]);
++		return true;
++	}
++
++	/**
++	 * @inheritdoc
++	 * @since 25.0.0
++	 */
++	public function clear($prefix = ''): bool {
++		$this->cache = [];
++		return true;
++	}
++
++	/**
++	 * @since 25.0.0
++	 */
++	public function offsetExists($offset): bool {
++		return $this->hasKey($offset);
++	}
++
++	/**
++	 * @inheritdoc
++	 * @return T
++	 * @since 25.0.0
++	 */
++	#[\ReturnTypeWillChange]
++	public function &offsetGet($offset) {
++		return $this->cache[$offset];
++	}
++
++	/**
++	 * @inheritdoc
++	 * @param string $offset
++	 * @param T $value
++	 * @since 25.0.0
++	 */
++	public function offsetSet($offset, $value): void {
++		$this->set($offset, $value);
++	}
++
++	/**
++	 * @inheritdoc
++	 * @since 25.0.0
++	 */
++	public function offsetUnset($offset): void {
++		$this->remove($offset);
++	}
++
++	/**
++	 * @return T[]
++	 * @since 25.0.0
++	 */
++	public function getData(): array {
++		return $this->cache;
++	}
++
++
++	/**
++	 * @since 25.0.0
++	 */
++	private function garbageCollect(): void {
++		while (count($this->cache) > $this->capacity) {
++			reset($this->cache);
++			$key = key($this->cache);
++			$this->remove($key);
++		}
++	}
++
++	/**
++	 * @inheritdoc
++	 * @since 25.0.0
++	 */
++	public static function isAvailable(): bool {
++		return true;
++	}
++}
+diff --git a/tests/lib/App/InfoParserTest.php b/tests/lib/App/InfoParserTest.php
+index 8de0f4cfd4..bc56161150 100644
+--- a/tests/lib/App/InfoParserTest.php
++++ b/tests/lib/App/InfoParserTest.php
+@@ -11,16 +11,16 @@ namespace Test\App;
+ use OC;
+ use OC\App\InfoParser;
+ use Test\TestCase;
++use OCP\Cache\CappedMemoryCache;
+ 
+ class InfoParserTest extends TestCase {
+-	/** @var OC\Cache\CappedMemoryCache */
++	/** @var OCP\Cache\CappedMemoryCache */
+ 	private static $cache;
+ 
+ 	public static function setUpBeforeClass(): void {
+-		self::$cache = new OC\Cache\CappedMemoryCache();
++		self::$cache = new CappedMemoryCache();
+ 	}
+ 
+-
+ 	public function parserTest($expectedJson, $xmlFile, $cache = null) {
+ 		$parser = new InfoParser($cache);
+ 
+diff --git a/tests/lib/Cache/CappedMemoryCacheTest.php b/tests/lib/Cache/CappedMemoryCacheTest.php
+index db0d2bd119..b9d10b6610 100644
+--- a/tests/lib/Cache/CappedMemoryCacheTest.php
++++ b/tests/lib/Cache/CappedMemoryCacheTest.php
+@@ -30,11 +30,11 @@ namespace Test\Cache;
+ class CappedMemoryCacheTest extends TestCache {
+ 	protected function setUp(): void {
+ 		parent::setUp();
+-		$this->instance = new \OC\Cache\CappedMemoryCache();
++		$this->instance = new \OCP\Cache\CappedMemoryCache();
+ 	}
+ 
+ 	public function testSetOverCap() {
+-		$instance = new \OC\Cache\CappedMemoryCache(3);
++		$instance = new \OCP\Cache\CappedMemoryCache(3);
+ 
+ 		$instance->set('1', 'a');
+ 		$instance->set('2', 'b');
+diff --git a/tests/lib/Files/Config/UserMountCacheTest.php b/tests/lib/Files/Config/UserMountCacheTest.php
+index 221159bc98..8b26b309da 100644
+--- a/tests/lib/Files/Config/UserMountCacheTest.php
++++ b/tests/lib/Files/Config/UserMountCacheTest.php
+@@ -11,7 +11,7 @@ namespace Test\Files\Config;
+ use OC\DB\QueryBuilder\Literal;
+ use OC\Files\Mount\MountPoint;
+ use OC\Files\Storage\Storage;
+-use OC\Cache\CappedMemoryCache;
++use OCP\Cache\CappedMemoryCache;
+ use OC\User\Manager;
+ use OCP\EventDispatcher\IEventDispatcher;
+ use OCP\Files\Config\ICachedMountInfo;
+diff --git a/tests/lib/Files/Node/RootTest.php b/tests/lib/Files/Node/RootTest.php
+index ee86eab567..5d8e2a4ac6 100644
+--- a/tests/lib/Files/Node/RootTest.php
++++ b/tests/lib/Files/Node/RootTest.php
+@@ -8,7 +8,7 @@
+ 
+ namespace Test\Files\Node;
+ 
+-use OC\Cache\CappedMemoryCache;
++use OCP\Cache\CappedMemoryCache;
+ use OC\Files\FileInfo;
+ use OC\Files\Mount\Manager;
+ use OC\Files\Node\Folder;
+diff --git a/tests/lib/Files/ViewTest.php b/tests/lib/Files/ViewTest.php
+index 37cd8414a0..86101d79a1 100644
+--- a/tests/lib/Files/ViewTest.php
++++ b/tests/lib/Files/ViewTest.php
+@@ -7,7 +7,7 @@
+ 
+ namespace Test\Files;
+ 
+-use OC\Cache\CappedMemoryCache;
++use OCP\Cache\CappedMemoryCache;
+ use OC\Files\Cache\Watcher;
+ use OC\Files\Filesystem;
+ use OC\Files\Mount\MountPoint;

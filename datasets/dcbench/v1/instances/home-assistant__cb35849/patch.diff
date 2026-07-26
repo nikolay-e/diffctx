@@ -1,0 +1,311 @@
+From cb35849a63ef8332a6e077263ddeeced26199a88 Mon Sep 17 00:00:00 2001
+From: TimL <tl@smlight.tech>
+Date: Sun, 28 Jun 2026 22:26:45 +1000
+Subject: [PATCH] Add reconfiguration flow to SMLIGHT integration (#174952)
+
+---
+ .../components/smlight/config_flow.py         |  57 ++++++-
+ .../components/smlight/quality_scale.yaml     |   2 +-
+ homeassistant/components/smlight/strings.json |  14 +-
+ tests/components/smlight/test_config_flow.py  | 152 +++++++++++++++++-
+ 4 files changed, 221 insertions(+), 4 deletions(-)
+
+diff --git a/homeassistant/components/smlight/config_flow.py b/homeassistant/components/smlight/config_flow.py
+index 1e60dc1392..ce081b35ff 100644
+--- a/homeassistant/components/smlight/config_flow.py
++++ b/homeassistant/components/smlight/config_flow.py
+@@ -8,7 +8,12 @@ from pysmlight.const import Devices
+ from pysmlight.exceptions import SmlightAuthError, SmlightConnectionError
+ import voluptuous as vol
+ 
+-from homeassistant.config_entries import SOURCE_USER, ConfigFlow, ConfigFlowResult
++from homeassistant.config_entries import (
++    SOURCE_RECONFIGURE,
++    SOURCE_USER,
++    ConfigFlow,
++    ConfigFlowResult,
++)
+ from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PASSWORD, CONF_USERNAME
+ from homeassistant.helpers.aiohttp_client import async_get_clientsession
+ from homeassistant.helpers.device_registry import format_mac
+@@ -82,6 +87,17 @@ class SmlightConfigFlow(ConfigFlow, domain=DOMAIN):
+                     if info.model not in Devices:
+                         return self.async_abort(reason="unsupported_device")
+ 
++                    if self.source == SOURCE_RECONFIGURE:
++                        await self.async_set_unique_id(format_mac(info.MAC))
++                        self._abort_if_unique_id_mismatch()
++                        return self.async_update_reload_and_abort(
++                            self._get_reconfigure_entry(),
++                            data_updates={
++                                CONF_HOST: self._host,
++                                **user_input,
++                            },
++                        )
++
+                     return await self._async_complete_entry(user_input)
+             except SmlightConnectionError:
+                 return self.async_abort(reason="cannot_connect")
+@@ -184,6 +200,45 @@ class SmlightConfigFlow(ConfigFlow, domain=DOMAIN):
+             errors=errors,
+         )
+ 
++    async def async_step_reconfigure(
++        self, user_input: dict[str, Any] | None = None
++    ) -> ConfigFlowResult:
++        """Handle reconfiguration of SMLIGHT device."""
++        errors: dict[str, str] = {}
++        entry = self._get_reconfigure_entry()
++
++        if user_input is not None:
++            self._host = user_input[CONF_HOST]
++            self.client = Api2(self._host, session=async_get_clientsession(self.hass))
++
++            check_input = {**entry.data, **user_input}
++            try:
++                await self._async_check_auth_required(check_input)
++                info = await self.client.get_info()
++            except SmlightConnectionError:
++                errors["base"] = "cannot_connect"
++            except SmlightAuthError:
++                return await self.async_step_auth()
++            else:
++                if info.model not in Devices:
++                    return self.async_abort(reason="unsupported_device")
++
++                await self.async_set_unique_id(format_mac(info.MAC))
++                self._abort_if_unique_id_mismatch()
++
++                return self.async_update_reload_and_abort(
++                    entry,
++                    data_updates=user_input,
++                )
++
++        return self.async_show_form(
++            step_id="reconfigure",
++            data_schema=self.add_suggested_values_to_schema(
++                STEP_USER_DATA_SCHEMA, user_input or entry.data
++            ),
++            errors=errors,
++        )
++
+     @override
+     async def async_step_dhcp(
+         self, discovery_info: DhcpServiceInfo
+diff --git a/homeassistant/components/smlight/quality_scale.yaml b/homeassistant/components/smlight/quality_scale.yaml
+index 3f0d14d0bc..1b85b3cc0d 100644
+--- a/homeassistant/components/smlight/quality_scale.yaml
++++ b/homeassistant/components/smlight/quality_scale.yaml
+@@ -69,7 +69,7 @@ rules:
+   entity-translations: done
+   exception-translations: done
+   icon-translations: done
+-  reconfiguration-flow: todo
++  reconfiguration-flow: done
+   repair-issues: done
+   stale-devices:
+     status: exempt
+diff --git a/homeassistant/components/smlight/strings.json b/homeassistant/components/smlight/strings.json
+index 0a6af2ca81..ad83fc40d7 100644
+--- a/homeassistant/components/smlight/strings.json
++++ b/homeassistant/components/smlight/strings.json
+@@ -5,6 +5,8 @@
+       "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
+       "reauth_failed": "[%key:common::config_flow::error::invalid_auth%]",
+       "reauth_successful": "[%key:common::config_flow::abort::reauth_successful%]",
++      "reconfigure_successful": "[%key:common::config_flow::abort::reconfigure_successful%]",
++      "unique_id_mismatch": "Please ensure you reconfigure against the same device.",
+       "unsupported_device": "This device is not yet supported by the SMLIGHT integration"
+     },
+     "error": {
+@@ -39,12 +41,22 @@
+         "description": "Please enter the correct username and password",
+         "title": "[%key:common::config_flow::title::reauth%]"
+       },
++      "reconfigure": {
++        "data": {
++          "host": "[%key:common::config_flow::data::host%]"
++        },
++        "data_description": {
++          "host": "[%key:component::smlight::config::step::user::data_description::host%]"
++        },
++        "description": "Please enter the new hostname or IP address of the SMLIGHT device.",
++        "title": "Reconfigure SMLIGHT device"
++      },
+       "user": {
+         "data": {
+           "host": "[%key:common::config_flow::data::host%]"
+         },
+         "data_description": {
+-          "host": "The hostname or IP address of the SMLIGHT SLZB-06x device"
++          "host": "The hostname or IP address of the SMLIGHT SLZB device"
+         },
+         "description": "Set up SMLIGHT Zigbee integration"
+       }
+diff --git a/tests/components/smlight/test_config_flow.py b/tests/components/smlight/test_config_flow.py
+index 2bf1f03f91..850b74542f 100644
+--- a/tests/components/smlight/test_config_flow.py
++++ b/tests/components/smlight/test_config_flow.py
+@@ -8,7 +8,12 @@ from pysmlight.exceptions import SmlightAuthError, SmlightConnectionError
+ import pytest
+ 
+ from homeassistant.components.smlight.const import DOMAIN
+-from homeassistant.config_entries import SOURCE_DHCP, SOURCE_USER, SOURCE_ZEROCONF
++from homeassistant.config_entries import (
++    SOURCE_DHCP,
++    SOURCE_RECONFIGURE,
++    SOURCE_USER,
++    SOURCE_ZEROCONF,
++)
+ from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
+ from homeassistant.core import HomeAssistant
+ from homeassistant.data_entry_flow import FlowResultType
+@@ -729,3 +734,148 @@ async def test_reauth_connect_error(
+     assert result2["type"] is FlowResultType.ABORT
+     assert result2["reason"] == "cannot_connect"
+     assert len(mock_smlight_client.authenticate.mock_calls) == 1
++
++
++@pytest.mark.usefixtures("mock_smlight_client")
++@pytest.mark.usefixtures("mock_setup_entry")
++async def test_reconfigure_flow(
++    hass: HomeAssistant,
++    mock_config_entry: MockConfigEntry,
++) -> None:
++    """Test reconfigure flow completes successfully."""
++    mock_config_entry.add_to_hass(hass)
++
++    result = await mock_config_entry.start_reconfigure_flow(hass)
++
++    assert result["type"] is FlowResultType.FORM
++    assert result["step_id"] == SOURCE_RECONFIGURE
++
++    result = await hass.config_entries.flow.async_configure(
++        result["flow_id"],
++        {
++            CONF_HOST: MOCK_HOST,
++        },
++    )
++
++    assert result["type"] is FlowResultType.ABORT
++    assert result["reason"] == "reconfigure_successful"
++    assert mock_config_entry.data[CONF_HOST] == MOCK_HOST
++    assert mock_config_entry.unique_id == "aa:bb:cc:dd:ee:ff"
++    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
++
++
++@pytest.mark.parametrize(
++    "mock_method",
++    ["check_auth_needed", "get_info"],
++)
++async def test_reconfigure_connect_error(
++    hass: HomeAssistant,
++    mock_smlight_client: MagicMock,
++    mock_config_entry: MockConfigEntry,
++    mock_method: str,
++) -> None:
++    """Test reconfigure flow handles connection errors."""
++    getattr(mock_smlight_client, mock_method).side_effect = SmlightConnectionError
++    mock_config_entry.add_to_hass(hass)
++
++    result = await mock_config_entry.start_reconfigure_flow(hass)
++
++    assert result["type"] is FlowResultType.FORM
++    assert result["step_id"] == SOURCE_RECONFIGURE
++
++    result = await hass.config_entries.flow.async_configure(
++        result["flow_id"],
++        {
++            CONF_HOST: MOCK_HOST,
++        },
++    )
++
++    assert result["type"] is FlowResultType.FORM
++    assert result["step_id"] == SOURCE_RECONFIGURE
++    assert result["errors"] == {"base": "cannot_connect"}
++
++
++@pytest.mark.parametrize(
++    ("get_info_return", "expected_reason"),
++    [
++        (Info(MAC="AA:BB:CC:DD:EE:FF", model="SLZB-X"), "unsupported_device"),
++        (Info(MAC="11:22:33:44:55:66", model="SLZB-06p7"), "unique_id_mismatch"),
++    ],
++)
++async def test_reconfigure_abort_cases(
++    hass: HomeAssistant,
++    mock_smlight_client: MagicMock,
++    mock_config_entry: MockConfigEntry,
++    get_info_return: Info,
++    expected_reason: str,
++) -> None:
++    """Test reconfigure flow aborts on wrong or unsupported device."""
++    mock_config_entry.add_to_hass(hass)
++
++    result = await mock_config_entry.start_reconfigure_flow(hass)
++
++    assert result["type"] is FlowResultType.FORM
++    assert result["step_id"] == SOURCE_RECONFIGURE
++
++    mock_smlight_client.get_info.side_effect = None
++    mock_smlight_client.get_info.return_value = get_info_return
++
++    result = await hass.config_entries.flow.async_configure(
++        result["flow_id"],
++        {
++            CONF_HOST: MOCK_HOST,
++        },
++    )
++
++    assert result["type"] is FlowResultType.ABORT
++    assert result["reason"] == expected_reason
++
++
++@pytest.mark.usefixtures("mock_setup_entry")
++async def test_reconfigure_auth_error(
++    hass: HomeAssistant,
++    mock_smlight_client: MagicMock,
++    mock_config_entry: MockConfigEntry,
++) -> None:
++    """Test reconfigure flow handles auth error and redirects to auth step."""
++    mock_smlight_client.check_auth_needed.return_value = True
++    mock_smlight_client.authenticate.side_effect = SmlightAuthError
++
++    mock_config_entry.add_to_hass(hass)
++
++    result = await mock_config_entry.start_reconfigure_flow(hass)
++
++    assert result["type"] is FlowResultType.FORM
++    assert result["step_id"] == SOURCE_RECONFIGURE
++
++    result = await hass.config_entries.flow.async_configure(
++        result["flow_id"],
++        {
++            CONF_HOST: MOCK_HOST,
++        },
++    )
++
++    assert result["type"] is FlowResultType.FORM
++    assert result["step_id"] == "auth"
++
++    mock_smlight_client.authenticate.side_effect = None
++    result = await hass.config_entries.flow.async_configure(
++        result["flow_id"],
++        {
++            CONF_USERNAME: MOCK_USERNAME,
++            CONF_PASSWORD: MOCK_PASSWORD,
++        },
++    )
++
++    assert result["type"] is FlowResultType.ABORT
++    assert result["reason"] == "reconfigure_successful"
++
++    assert mock_config_entry.data == {
++        CONF_USERNAME: MOCK_USERNAME,
++        CONF_PASSWORD: MOCK_PASSWORD,
++        CONF_HOST: MOCK_HOST,
++    }
++
++    assert mock_config_entry.unique_id == "aa:bb:cc:dd:ee:ff"
++    assert len(mock_smlight_client.authenticate.mock_calls) == 2
++    assert len(hass.config_entries.async_entries(DOMAIN)) == 1

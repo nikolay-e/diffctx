@@ -1,0 +1,33 @@
+repo: gitpod
+base_commit: e49bdbbbd3b090dcdc169bf9f85c072c78c633cf
+commit: 329e56580ec49a180676a123ca72480ae3de7b3e
+patch_stored: true
+gold:
+- path: .werft/jobs/build/installer/post-process.sh
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-manager/pkg/manager/manager.go:connectToWorkspaceDaemon,waitForTCPPortToBeReachable
+  tier: essential
+  role: unspecified
+  in_diff: false
+- path: install/installer/pkg/components/registry-facade/objects.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: install/installer/pkg/components/ws-daemon/networkpolicy.go (deleted)
+  tier: essential
+  role: unspecified
+  in_diff: false
+forbidden: []
+nontrivial_gold_count: 2
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'Confirmed hang: empty ctx.md/md.err, 0 fragments for a 31-file diff. Notable structural feature:
+  23 of the 31 files are near-identical golden testdata files (install/installer/cmd/testdata/render/*/output.golden),
+  each with the same 65-line diff repeated almost verbatim (removal of a ws-daemon NetworkPolicy block).
+  Repeated near-duplicate large diffs across many files is a plausible trigger for an algorithm that does
+  pairwise or accumulating similarity/relevance comparisons. The real logic change (manager.go''s hostIP->podIP
+  rename plus new waitForTCPPortToBeReachable polling function) is drowned out entirely since nothing
+  was produced.'

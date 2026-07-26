@@ -1,0 +1,49 @@
+repo: kubernetes
+base_commit: f67b004ebf50b271148ac8ac5dd776f650423395
+commit: 3902f5611f29a80dad6c43618c1d87af7baa9637
+patch_stored: true
+gold:
+  - path: staging/src/k8s.io/api/resource/v1/types.go
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: defines the four new DeviceAttribute list fields — IntValues, BoolValues, StringValues, VersionValues (types.go:701-745), each tagged `+featureGate=DRAListTypeAttributes` — that this entire 45-file diff (proto, deepcopy, conversion, openapi, applyconfigurations, declarative validation) is generated from; this hand-written change is not itself part of the diff.
+  - path: pkg/apis/resource/types.go
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: internal (unversioned) counterpart of the same DeviceAttribute list fields (types.go:671-745), the source for the regenerated pkg/apis/resource/zz_generated.deepcopy.go and the per-version zz_generated.conversion.go/zz_generated.validations.go files touched in this diff.
+  - path: pkg/features/kube_features.go
+    tier: essential
+    role: config
+    in_diff: false
+    rationale: registers the DRAListTypeAttributes feature gate (kube_features.go:236) named by every `+featureGate=DRAListTypeAttributes` marker on the new fields, gating their availability.
+  - path: staging/src/k8s.io/api/resource/v1/generated.proto
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: the clearest hand-readable artifact of what changed — adds protobuf field tags 6-9 (ints/bools/strings/versions) to the DeviceAttribute message, the semantic core of this "make update" regeneration.
+  - path: staging/src/k8s.io/client-go/applyconfigurations/resource/v1/deviceattribute.go
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: the regenerated server-side-apply configuration for DeviceAttribute, adding IntValues/BoolValues/StringValues/VersionValues builder fields — representative of the client-facing surface this codegen pass produces.
+forbidden:
+  - path: staging/src/k8s.io/api/resource/v1beta1/types.go
+    reason: same DeviceAttribute list fields already present at the v1beta1 version (also hand-written, also outside this diff) — duplicative of the v1/types.go source already cited as gold
+  - path: staging/src/k8s.io/api/resource/v1beta2/types.go
+    reason: same DeviceAttribute list fields already present at the v1beta2 version — duplicative sibling of v1/types.go, adds no new information
+  - path: pkg/apis/resource/v1/zz_generated.validations.go
+    reason: mechanically generated declarative-validation functions derived from the +required/+optional/+featureGate markers already visible in types.go — no independent semantic content
+  - path: staging/src/k8s.io/api/resource/v1/zz_generated.deepcopy.go
+    reason: mechanically generated DeepCopy methods for the new slice fields, fully derivable from types.go
+nontrivial_gold_count: 3
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 45
+  description: 'KEP-5491 list-attribute fields "make update" output: 45/45 files match generated/openapi/testdata
+    patterns — 100% generated commit'
+notes: 'Pure `hack/update-codegen.sh` regeneration (commit message: "generated code for list attribute fields in DeviceAttribute API (\"make update\"-ed)") for KEP-5491 — literally 0 of 45 changed files are hand-written. The DeviceAttribute.{IntValues,BoolValues,StringValues,VersionValues} fields and the DRAListTypeAttributes feature gate that this diff''s deepcopy/conversion/openapi/proto/applyconfiguration output all derive from were added by an earlier commit and are pulled in here as external gold, mirroring the same pattern as kubernetes__078f462 (Workload API generated files) and both DRA-family instances (kubernetes__1acfb8e, kubernetes__29601b8) in this batch. Feature-gate name matched by the `+featureGate=DRAListTypeAttributes` marker string is the string-indirection linkage.'

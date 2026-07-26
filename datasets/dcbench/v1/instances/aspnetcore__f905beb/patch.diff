@@ -1,0 +1,67 @@
+From f905bebf6206d90192c66e84993963f2f8a506c4 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Marek=20Fi=C5=A1era?= <mara@neptuo.com>
+Date: Sat, 12 Jul 2025 17:28:59 +0200
+Subject: [PATCH] [Blazor] Rename LinkPreload to ResourcePreloader (#62673)
+
+---
+ .../src/Assets/{LinkPreload.cs => ResourcePreloader.cs}       | 4 ++--
+ src/Components/Endpoints/src/PublicAPI.Unshipped.txt          | 4 ++--
+ .../test/TestComponents/WebAssemblyPreloadWrapper.razor       | 2 +-
+ .../BlazorWeb-CSharp/BlazorWebCSharp.1/Components/App.razor   | 2 +-
+ 4 files changed, 6 insertions(+), 6 deletions(-)
+ rename src/Components/Endpoints/src/Assets/{LinkPreload.cs => ResourcePreloader.cs} (94%)
+
+diff --git a/src/Components/Endpoints/src/Assets/LinkPreload.cs b/src/Components/Endpoints/src/Assets/ResourcePreloader.cs
+similarity index 94%
+rename from src/Components/Endpoints/src/Assets/LinkPreload.cs
+rename to src/Components/Endpoints/src/Assets/ResourcePreloader.cs
+index e60c0140e5..ffe6e2f785 100644
+--- a/src/Components/Endpoints/src/Assets/LinkPreload.cs
++++ b/src/Components/Endpoints/src/Assets/ResourcePreloader.cs
+@@ -7,9 +7,9 @@ using Microsoft.AspNetCore.Components.Rendering;
+ namespace Microsoft.AspNetCore.Components;
+ 
+ /// <summary>
+-/// Represents link elements for preloading assets.
++/// Represents a component that renders preload link elements for resources.
+ /// </summary>
+-public sealed class LinkPreload : IComponent
++public sealed class ResourcePreloader : IComponent
+ {
+     private RenderHandle renderHandle;
+     private List<PreloadAsset>? assets;
+diff --git a/src/Components/Endpoints/src/PublicAPI.Unshipped.txt b/src/Components/Endpoints/src/PublicAPI.Unshipped.txt
+index f58ed00616..424ca15533 100644
+--- a/src/Components/Endpoints/src/PublicAPI.Unshipped.txt
++++ b/src/Components/Endpoints/src/PublicAPI.Unshipped.txt
+@@ -1,5 +1,5 @@
+ #nullable enable
+-Microsoft.AspNetCore.Components.LinkPreload
+-Microsoft.AspNetCore.Components.LinkPreload.LinkPreload() -> void
++Microsoft.AspNetCore.Components.ResourcePreloader
++Microsoft.AspNetCore.Components.ResourcePreloader.ResourcePreloader() -> void
+ Microsoft.Extensions.DependencyInjection.RazorComponentsRazorComponentBuilderExtensions
+ static Microsoft.Extensions.DependencyInjection.RazorComponentsRazorComponentBuilderExtensions.RegisterPersistentService<TPersistentService>(this Microsoft.Extensions.DependencyInjection.IRazorComponentsBuilder! builder, Microsoft.AspNetCore.Components.IComponentRenderMode! renderMode) -> Microsoft.Extensions.DependencyInjection.IRazorComponentsBuilder!
+diff --git a/src/Components/Endpoints/test/TestComponents/WebAssemblyPreloadWrapper.razor b/src/Components/Endpoints/test/TestComponents/WebAssemblyPreloadWrapper.razor
+index d4224a9ae8..9494b0df50 100644
+--- a/src/Components/Endpoints/test/TestComponents/WebAssemblyPreloadWrapper.razor
++++ b/src/Components/Endpoints/test/TestComponents/WebAssemblyPreloadWrapper.razor
+@@ -1,4 +1,4 @@
+ ﻿@using Microsoft.AspNetCore.Components.Web
+-<LinkPreload />
++<ResourcePreloader />
+ 
+ <WebAssemblyPreloadComponent @rendermode="@(new InteractiveWebAssemblyRenderMode(prerender: true))" />
+diff --git a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWeb-CSharp/BlazorWebCSharp.1/Components/App.razor b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWeb-CSharp/BlazorWebCSharp.1/Components/App.razor
+index 95de1f7005..347861a467 100644
+--- a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWeb-CSharp/BlazorWebCSharp.1/Components/App.razor
++++ b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWeb-CSharp/BlazorWebCSharp.1/Components/App.razor
+@@ -5,7 +5,7 @@
+     <meta charset="utf-8" />
+     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+     <base href="/" />
+-    <LinkPreload />
++    <ResourcePreloader />
+     @*#if (SampleContent)
+     <link rel="stylesheet" href="@Assets["lib/bootstrap/dist/css/bootstrap.min.css"]" />
+     ##endif*@

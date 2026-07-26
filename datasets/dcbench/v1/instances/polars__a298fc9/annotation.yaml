@@ -1,0 +1,71 @@
+repo: polars
+base_commit: 6a3d76e5ecdb8e41d3be18d39fceec9a065dfbec
+commit: a298fc95ac8023957331253aaa956ae2aa89d16a
+patch_stored: true
+gold:
+  - path: crates/polars-plan/src/dsl/functions/concat.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Adds dsl::as_list(), the Rust DSL builder constructing Expr::Function{function: FunctionExpr::AsList}, placed right next to the pre-existing concat_list() it is contrasted with."
+  - path: crates/polars-expr/src/dispatch/misc.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Adds the as_list dispatch function, the actual algorithm: wraps each input column in a unit list via Column::to_unit_list() then concatenates them row-wise with lst_concat, producing one list element per input expression regardless of whether the input was itself a list."
+  - path: crates/polars-core/src/series/ops/reshape.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds Series::to_unit_list() (renamed/refactored from the removed Series::as_list, same single-element-per-row semantics) — the low-level primitive that as_list's dispatch relies on.
+  - path: crates/polars-core/src/frame/column/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Column::as_list renamed to Column::to_unit_list, dispatching to either Series::to_unit_list or the new ScalarColumn::to_unit_list scalar fast path.
+  - path: crates/polars-core/src/frame/column/scalar.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds ScalarColumn::to_unit_list(), a scalar-optimized path avoiding materialization when packing a scalar column into a unit list.
+  - path: crates/polars-plan/src/plans/aexpr/function_expr/schema.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds FieldsMapper::map_to_list_of_dtypes, explicitly documented as NOT unwrapping List inputs (unlike map_to_list_supertype) — the typing rule that makes List(T) inputs produce List(List(T)) output, the key semantic difference from concat_list.
+  - path: crates/polars-python/src/functions/lazy.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: PyO3 binding `#[pyfunction(name = "list")] pub fn as_list(...)` — the Rust function is named as_list but exported to Python under the name "list", a string-based rename at the FFI boundary.
+  - path: py-polars/src/polars/functions/as_datatype.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines the public pl.list() Python function calling plr.list(exprs); also, because this module now defines a top-level `list`, the pre-existing struct() function's `list(schema.keys())` call had to be changed to `[*schema.keys()]` in the same diff to avoid being shadowed by the new function.
+  - path: py-polars/tests/unit/functions/as_datatype/test_concat_list.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: Extends the concat_list test file with list()-specific cases proving list-typed inputs are NOT flattened (List(T) -> List(List(T))), unlike concat_list's flattening behavior.
+  - path: crates/polars-ops/src/chunked_array/list/namespace.rs
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines ListNameSpaceImpl::lst_concat, the pre-existing row-wise list-concatenation primitive that dispatch::misc::as_list reuses to combine the per-column unit lists into the final output — without seeing this, "unit-list each column then lst_concat" reads as unexplained machinery.
+forbidden:
+  - path: py-polars/src/polars/series/series.py
+    reason: defines the similarly-named but unrelated Series.to_list() (materializes a Series to a Python list), not the new list-column-construction function and not touched by this commit
+  - path: crates/polars-python/src/functions/eager.rs
+    reason: eager-mode counterpart file for similarly-named functions, but pl.list() is lazy-only in this commit (built on Expr::Function, no eager DataFrame-level entry point added)
+  - path: crates/polars-plan/dsl-schema-hashes.json
+    reason: mechanical schema-hash bump generated from the enum change, not needed to understand the feature
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: []
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 29
+  description: Add `list` expression — Rust core + PyO3 + python API + stubs + docs in one commit
+notes: Adds pl.list(*exprs), which packs each expression's value as one list element without unwrapping List-typed inputs (unlike concat_list, which flattens them) — implemented by unit-listing each column then lst_concat-ing them. The Rust function is named as_list throughout but exported to Python as "list" via #[pyfunction(name = "list")], and defining that name in as_datatype.py forced an incidental fix to a builtin-list() call in the same file's struct() function.

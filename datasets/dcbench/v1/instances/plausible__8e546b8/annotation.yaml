@@ -1,0 +1,98 @@
+repo: plausible
+base_commit: 1ceebd2d0bc620977eb530b8a1dc067db4a4c5e5
+commit: 8e546b89e8d318d58d68a43530234aa9d7550ea1
+patch_stored: true
+gold:
+  - path: lib/plausible_web/controllers/api/stats_controller.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds query/2, the new internal endpoint that parses params via Dashboard.QueryParser.parse/1, builds a Query via QueryBuilder.build/3, and returns Plausible.Stats.query/2's result as JSON.
+  - path: lib/plausible_web/router.ex
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: registers "post /:domain/query, StatsController, :query", the new route the dashboard's fetch-top-stats.ts now calls instead of /top-stats.
+  - path: lib/plausible/stats/dashboard/query_parser.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: completely rewritten from a query-string-plus-user-prefs parser to a map-based parse/1 matching the Stats API v2 request shape (date_range/metrics/include), delegating shared parsing to ApiQueryParser.
+  - path: lib/plausible/stats/api_query_parser.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: several parse_input_date_range/parse_metrics/parse_date_strings clauses are changed from defp to def specifically so the rewritten Dashboard.QueryParser can call them directly instead of duplicating parsing logic.
+  - path: assets/js/dashboard/stats-query.ts
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new StatsQuery/ReportParams types and createStatsQuery/2, the FE-side shape matching the new Dashboard.QueryParser.parse/1 input contract.
+  - path: assets/js/dashboard/stats/graph/fetch-top-stats.ts
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new module replacing the old inline fetchTopStats in visitor-graph.js; builds queries via createStatsQuery, posts them with api.stats, and reshapes the response into the topStats array consumed by top-stats.js.
+  - path: assets/js/dashboard/api.ts
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds stats/2, POSTing a StatsQuery to the new /query endpoint, and the QueryApiResponse type describing its shape.
+  - path: assets/js/dashboard/stats/graph/visitor-graph.js
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: fetchTopStatsAndGraphData now calls the imported fetchTopStats and reworks importedSwitchVisible/importedSwitchDisabled/importedSwitchTooltip around the new response.meta.imports_skip_reason shape instead of the old with_imported_switch object.
+  - path: assets/js/dashboard/stats/graph/top-stats.js
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: consumes the renamed response fields (stat.metric/comparisonValue/graphable and data.topStats instead of stat.graph_metric/comparison_value and data.top_stats) produced by fetch-top-stats.ts.
+  - path: lib/plausible/stats/query_result.ex
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: query metadata now includes comparison_date_range (needed by fetch-top-stats.ts's formatTopStatsData for comparingFrom/comparingTo) and drops the dashboard_metric_labels meta entry.
+  - path: lib/plausible/stats/query_optimizer.ex
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: adds remove_time_on_page_if_unavailable/1, triggered by the include.drop_unavailable_time_on_page flag the rewritten Dashboard.QueryParser now always sets to true.
+  - path: test/plausible_web/controllers/api/stats_controller/internal_query_api_test.exs
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: new test file covering the query/2 action end-to-end (valid params, parser errors surfaced as bad_request).
+  - path: lib/plausible/stats/query_builder.ex
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: defines build/3, called directly by the new StatsController.query/2 to turn the Dashboard.QueryParser's ParsedQueryParams into an executable Query; understanding its contract is necessary to see what the new endpoint actually does.
+forbidden:
+  - path: lib/plausible_web/controllers/api/external_stats_controller.ex
+    reason: the public-facing Stats API v2 controller; similarly named and uses the same Query/QueryBuilder pipeline, but this commit only adds an internal dashboard endpoint on stats_controller.ex.
+  - path: assets/js/dashboard/stats/graph/interval-picker.tsx
+    reason: sibling component in the same graph/ directory consumed alongside TopStats, but not touched or involved in the endpoint migration.
+  - path: lib/plausible/stats/query.ex
+    reason: defines the Query struct that query_optimizer.ex/query_result.ex operate on, but is itself untouched and its shape is already evident from those files' diffs.
+  - path: assets/js/dashboard/stats/graph/with-imported-switch.tsx
+    reason: the component rendered with the tooltip/disabled props visitor-graph.js recomputes, but the component itself is unchanged.
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: >-
+  Introduces a new internal POST /:domain/query endpoint that lets the
+  dashboard's Top Stats panel use the same Stats-API-v2-shaped query
+  contract (date_range/metrics/include) as the public API, replacing the
+  bespoke /top-stats endpoint and its ad hoc query-string parsing. This
+  requires a from-scratch rewrite of Dashboard.QueryParser (now a map-based
+  parse/1 reusing ApiQueryParser's shared clauses) and a parallel FE rewrite
+  (stats-query.ts + fetch-top-stats.ts + api.stats) that reshapes field
+  names (graph_metric->metric, top_stats->topStats, etc.) throughout
+  top-stats.js/visitor-graph.js. A secondary, more mechanical change
+  (dropping the now-unused dashboard_metric_labels feature in favor of
+  drop_unavailable_time_on_page) rides along in query_include.ex/
+  query_optimizer.ex/metrics.ex/query_result.ex. string_indirection is false
+  — the endpoint is reached via a normal Phoenix route, and FE/BE field
+  names are matched structurally, not looked up by name.

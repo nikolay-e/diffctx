@@ -1,0 +1,68 @@
+repo: gitlab-foss
+base_commit: ec5808a645fde49059eb97f9db82e0e1fedbd1a6
+commit: 05b2de630463d5e724197e5554bc7c022fcdafaf
+patch_stored: true
+gold:
+  - path: app/assets/javascripts/clusters/clusters_bundle.js
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds Clusters#initEnvironments/destroy wiring and the `Environments = () => import('ee_component/clusters/components/environments.vue')` lazy import that the rest of the change plumbs data into.
+  - path: app/assets/javascripts/clusters/stores/clusters_store.js
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Extends ClusterStore state with environments/environmentsHelpPath/clustersHelpPath/deployBoardsHelpPath and adds updateEnvironments(), the store consumed by initEnvironments in clusters_bundle.js.
+  - path: app/views/clusters/clusters/show.html.haml
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Sets the new environments_help_path/clusters_help_path/deploy_boards_help_path data attributes read by clusters_bundle.js and adds the `render_if_exists 'clusters/clusters/group_cluster_environments'` call that gates the whole feature.
+  - path: app/views/clusters/clusters/_configure.html.haml
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "New partial extracted from show.html.haml (form/prometheus-graphs/applications-table/details/advanced-settings sections) and rendered via `render 'configure', expanded: expanded` only when `!Gitlab.ee?`."
+  - path: spec/frontend/clusters/stores/clusters_store_spec.js
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Updated spec asserting ClusterStore's default state includes the new environmentsHelpPath/clustersHelpPath/deployBoardsHelpPath/environments fields added in clusters_store.js.
+  - path: config/webpack.config.js
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: NormalModuleReplacementPlugin rewrites any `ee_component/*.vue` import (the exact string clusters_bundle.js imports) to `ee/*.vue` only if an `ee` webpack alias exists, else replaces it with vue_shared/components/empty_component.js — in this CE/foss repo the Environments component therefore always resolves to a no-op stub.
+  - path: app/assets/javascripts/vue_shared/components/empty_component.js
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: "The literal fallback module (`export default { render: () => null }`) that config/webpack.config.js substitutes for `ee_component/clusters/components/environments.vue` in this CE repo, so the new Environments mount renders nothing here."
+  - path: app/helpers/application_helper.rb
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines `render_if_exists`/`partial_exists?` (using `lookup_context.exists?`), the helper show.html.haml calls for `clusters/clusters/group_cluster_environments`, which silently no-ops because that EE-only partial does not exist in this repo.
+  - path: doc/development/ee_features.md
+    tier: helpful
+    role: doc
+    in_diff: false
+    rationale: Documents the `render_if_exists` (EE-partial-first, quietly-fails-in-CE) and `ee_component/*.vue` webpack-alias conventions that this patch's show.html.haml and clusters_bundle.js changes are built on top of.
+forbidden:
+  - path: app/views/clusters/clusters/_form.html.haml
+    reason: Same directory and referenced by the new _configure.html.haml, but its content is untouched — only relocated behind a moved `render 'form'` call.
+  - path: app/views/clusters/clusters/_banner.html.haml
+    reason: Rendered from show.html.haml both before and after the diff, unchanged — not part of the environments feature.
+  - path: app/views/clusters/clusters/_advanced_settings.html.haml
+    reason: Pre-existing unchanged partial merely relocated into _configure.html.haml, unrelated to the group-cluster-environments addition.
+  - path: app/assets/javascripts/clusters/components/applications.vue
+    reason: Sibling Vue component already imported/mounted before this commit; the diff does not touch it and it is unrelated to the new Environments component.
+nontrivial_gold_count: 4
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 7
+  description: Group-cluster deployments UI — compact, 4 ext types
+notes: 'Adds FE plumbing (help paths, ClusterStore.environments, Clusters#initEnvironments) to mount an Environments Vue component and an EE-only group_cluster_environments partial on the cluster show page. In this CE/foss repo both are gated to no-ops: render_if_exists silently skips the missing EE partial, and webpack NormalModuleReplacementPlugin swaps the ee_component import for empty_component.js — understanding the change requires seeing that CE/EE indirection, not just the diff.'

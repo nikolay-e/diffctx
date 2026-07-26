@@ -1,0 +1,158 @@
+From c97cd05df9d5983873aee0e23b03f5ed7fad789e Mon Sep 17 00:00:00 2001
+From: Rohit Agrawal <rohit.agrawal@databricks.com>
+Date: Tue, 21 Oct 2025 05:35:31 +0200
+Subject: [PATCH] xds: deprecate flag report_load_with_rq_issued and remove
+ legacy code paths (#41614)
+
+## Description
+
+This PR removes the deprecated reloadable flag
+`report_load_with_rq_issued` and cleans up the legacy paths.
+
+Fix https://github.com/envoyproxy/envoy/issues/41509
+
+---
+
+**Commit Message:** router: deprecate flag report_load_with_rq_issued
+and remove legacy code paths
+**Additional Description:** Remove the deprecated reloadable flag
+`report_load_with_rq_issued` and cleans up the legacy paths.
+**Risk Level:** Low
+**Testing:** CI
+**Docs Changes:** N/A
+**Release Notes:** Added
+
+Signed-off-by: Rohit Agrawal <rohit.agrawal@databricks.com>
+---
+ changelogs/current.yaml                       |  3 ++
+ source/common/runtime/runtime_features.cc     |  1 -
+ source/common/upstream/load_stats_reporter.cc |  6 +---
+ .../upstream/load_stats_reporter_test.cc      | 36 ++++---------------
+ 4 files changed, 10 insertions(+), 36 deletions(-)
+
+diff --git a/changelogs/current.yaml b/changelogs/current.yaml
+index 44fc582ad..a428f1f01 100644
+--- a/changelogs/current.yaml
++++ b/changelogs/current.yaml
+@@ -60,6 +60,9 @@ removed_config_or_runtime:
+ - area: http
+   change: |
+     Removed runtime guard ``envoy.reloadable_features.original_src_fix_port_exhaustion`` and legacy code paths.
++- area: xds
++  change: |
++    Removed runtime guard ``envoy.reloadable_features.report_load_with_rq_issued`` and legacy code paths.
+ 
+ new_features:
+ - area: http
+diff --git a/source/common/runtime/runtime_features.cc b/source/common/runtime/runtime_features.cc
+index 8b1f7a256..fe8619737 100644
+--- a/source/common/runtime/runtime_features.cc
++++ b/source/common/runtime/runtime_features.cc
+@@ -66,7 +66,6 @@ RUNTIME_GUARD(envoy_reloadable_features_quic_signal_headers_only_to_http1_backen
+ RUNTIME_GUARD(envoy_reloadable_features_quic_upstream_reads_fixed_number_packets);
+ RUNTIME_GUARD(envoy_reloadable_features_quic_upstream_socket_use_address_cache_for_read);
+ RUNTIME_GUARD(envoy_reloadable_features_reject_empty_trusted_ca_file);
+-RUNTIME_GUARD(envoy_reloadable_features_report_load_with_rq_issued);
+ RUNTIME_GUARD(envoy_reloadable_features_router_filter_resetall_on_local_reply);
+ RUNTIME_GUARD(envoy_reloadable_features_safe_http2_options);
+ RUNTIME_GUARD(envoy_reloadable_features_skip_dns_lookup_for_proxied_requests);
+diff --git a/source/common/upstream/load_stats_reporter.cc b/source/common/upstream/load_stats_reporter.cc
+index 6cc62f147..a59576426 100644
+--- a/source/common/upstream/load_stats_reporter.cc
++++ b/source/common/upstream/load_stats_reporter.cc
+@@ -145,11 +145,7 @@ void LoadStatsReporter::sendLoadStatsRequest() {
+           }
+         }
+ 
+-        bool should_send_locality_stats = rq_success + rq_error + rq_active != 0;
+-        if (Runtime::runtimeFeatureEnabled(
+-                "envoy.reloadable_features.report_load_with_rq_issued")) {
+-          should_send_locality_stats = rq_issued != 0;
+-        }
++        bool should_send_locality_stats = rq_issued != 0;
+         if (should_send_locality_stats) {
+           locality_stats.set_total_successful_requests(rq_success);
+           locality_stats.set_total_error_requests(rq_error);
+diff --git a/test/common/upstream/load_stats_reporter_test.cc b/test/common/upstream/load_stats_reporter_test.cc
+index 949b42a00..80e5af493 100644
+--- a/test/common/upstream/load_stats_reporter_test.cc
++++ b/test/common/upstream/load_stats_reporter_test.cc
+@@ -271,9 +271,7 @@ HostSharedPtr makeTestHost(const std::string& hostname,
+ }
+ 
+ void addStats(const HostSharedPtr& host, double a, double b = 0, double c = 0, double d = 0) {
+-  if (Runtime::runtimeFeatureEnabled("envoy.reloadable_features.report_load_with_rq_issued")) {
+-    host->stats().rq_total_.inc();
+-  }
++  host->stats().rq_total_.inc();
+   host->stats().rq_success_.inc();
+   host->loadMetricStats().add("metric_a", a);
+   if (b != 0) {
+@@ -426,22 +424,8 @@ TEST_F(LoadStatsReporterTest, EndpointLevelLoadStatsReportingNoUpdate) {
+   response_timer_cb_();
+ }
+ 
+-class LoadStatsReporterTestWithRqTotal : public LoadStatsReporterTest,
+-                                         public testing::WithParamInterface<bool> {
+-public:
+-  LoadStatsReporterTestWithRqTotal() {
+-    scoped_runtime_.mergeValues(
+-        {{"envoy.reloadable_features.report_load_with_rq_issued", GetParam() ? "true" : "false"}});
+-  }
+-  TestScopedRuntime scoped_runtime_;
+-};
+-
+-INSTANTIATE_TEST_SUITE_P(LoadStatsReporterTestWithRqTotal, LoadStatsReporterTestWithRqTotal,
+-                         ::testing::Bool());
+-
+ // Validate that per-locality metrics are aggregated across hosts and included in the load report.
+-TEST_P(LoadStatsReporterTestWithRqTotal, UpstreamLocalityStats) {
+-  bool expects_rq_total = GetParam();
++TEST_F(LoadStatsReporterTest, UpstreamLocalityStats) {
+   EXPECT_CALL(*async_client_, startRaw(_, _, _, _)).WillOnce(Return(&async_stream_));
+   expectSendMessage({});
+   createLoadStatsReporter();
+@@ -479,9 +463,7 @@ TEST_P(LoadStatsReporterTestWithRqTotal, UpstreamLocalityStats) {
+     auto expected_locality0_stats = expected_cluster_stats.add_upstream_locality_stats();
+     expected_locality0_stats->mutable_locality()->set_region("mars");
+     expected_locality0_stats->set_total_successful_requests(3);
+-    if (expects_rq_total) {
+-      expected_locality0_stats->set_total_issued_requests(3);
+-    }
++    expected_locality0_stats->set_total_issued_requests(3);
+     addStatExpectation(expected_locality0_stats, "metric_a", 3, 0.88888);
+     addStatExpectation(expected_locality0_stats, "metric_b", 2, 1.12345);
+     addStatExpectation(expected_locality0_stats, "metric_c", 1, 3.14159);
+@@ -489,9 +471,7 @@ TEST_P(LoadStatsReporterTestWithRqTotal, UpstreamLocalityStats) {
+     auto expected_locality1_stats = expected_cluster_stats.add_upstream_locality_stats();
+     expected_locality1_stats->mutable_locality()->set_region("jupiter");
+     expected_locality1_stats->set_total_successful_requests(1);
+-    if (expects_rq_total) {
+-      expected_locality1_stats->set_total_issued_requests(1);
+-    }
++    expected_locality1_stats->set_total_issued_requests(1);
+     addStatExpectation(expected_locality1_stats, "metric_a", 1, 10.01);
+     addStatExpectation(expected_locality1_stats, "metric_c", 1, 20.02);
+     addStatExpectation(expected_locality1_stats, "metric_d", 1, 30.03);
+@@ -504,9 +484,7 @@ TEST_P(LoadStatsReporterTestWithRqTotal, UpstreamLocalityStats) {
+   // Traffic between previous request and next response. Previous latched metrics are cleared.
+   host1->stats().rq_success_.inc();
+ 
+-  if (expects_rq_total) {
+-    host1->stats().rq_total_.inc();
+-  }
++  host1->stats().rq_total_.inc();
+   host1->loadMetricStats().add("metric_a", 1.41421);
+   host1->loadMetricStats().add("metric_e", 2.71828);
+ 
+@@ -524,9 +502,7 @@ TEST_P(LoadStatsReporterTestWithRqTotal, UpstreamLocalityStats) {
+     auto expected_locality0_stats = expected_cluster_stats.add_upstream_locality_stats();
+     expected_locality0_stats->mutable_locality()->set_region("mars");
+     expected_locality0_stats->set_total_successful_requests(1);
+-    if (expects_rq_total) {
+-      expected_locality0_stats->set_total_issued_requests(1);
+-    }
++    expected_locality0_stats->set_total_issued_requests(1);
+     addStatExpectation(expected_locality0_stats, "metric_a", 1, 1.41421);
+     addStatExpectation(expected_locality0_stats, "metric_e", 1, 2.71828);
+ 

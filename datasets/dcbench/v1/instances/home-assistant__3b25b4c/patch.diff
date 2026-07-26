@@ -1,0 +1,262 @@
+From 3b25b4cfa6481ca3c0d1c80db3b2c65eff3acf90 Mon Sep 17 00:00:00 2001
+From: epenet <6771947+epenet@users.noreply.github.com>
+Date: Fri, 19 Jun 2026 13:01:07 +0200
+Subject: [PATCH] Add service helper to get a single loaded config entry
+ (#174190)
+
+---
+ homeassistant/components/abode/services.py    |  9 ++--
+ .../components/homeassistant/strings.json     |  6 +++
+ .../components/ness_alarm/services.py         | 53 +++++++++----------
+ .../components/ness_alarm/strings.json        |  5 --
+ homeassistant/helpers/service.py              | 42 ++++++++++++++-
+ tests/helpers/test_service.py                 | 40 ++++++++++++++
+ 6 files changed, 116 insertions(+), 39 deletions(-)
+
+diff --git a/homeassistant/components/abode/services.py b/homeassistant/components/abode/services.py
+index 2c25acceb0..7c1321a58c 100644
+--- a/homeassistant/components/abode/services.py
++++ b/homeassistant/components/abode/services.py
+@@ -7,8 +7,7 @@ import voluptuous as vol
+ 
+ from homeassistant.const import ATTR_ENTITY_ID
+ from homeassistant.core import HomeAssistant, ServiceCall, callback
+-from homeassistant.exceptions import ServiceValidationError
+-from homeassistant.helpers import config_validation as cv
++from homeassistant.helpers import config_validation as cv, service
+ from homeassistant.helpers.dispatcher import dispatcher_send
+ 
+ from .const import DOMAIN, LOGGER
+@@ -31,10 +30,8 @@ AUTOMATION_SCHEMA = vol.Schema({ATTR_ENTITY_ID: cv.entity_ids})
+ 
+ def _get_abode_system(hass: HomeAssistant) -> AbodeSystem:
+     """Return the Abode system for the loaded config entry."""
+-    entries: list[AbodeConfigEntry] = hass.config_entries.async_loaded_entries(DOMAIN)
+-    if not entries:
+-        raise ServiceValidationError("Abode integration is not loaded")
+-    return entries[0].runtime_data
++    entry: AbodeConfigEntry = service.async_get_config_entry(hass, DOMAIN, None)
++    return entry.runtime_data
+ 
+ 
+ def _change_setting(call: ServiceCall) -> None:
+diff --git a/homeassistant/components/homeassistant/strings.json b/homeassistant/components/homeassistant/strings.json
+index 5005d99d26..d69701b1a6 100644
+--- a/homeassistant/components/homeassistant/strings.json
++++ b/homeassistant/components/homeassistant/strings.json
+@@ -66,6 +66,12 @@
+     "service_does_not_support_response": {
+       "message": "An action which does not return responses can't be called with {return_response}."
+     },
++    "service_found_multiple_config_entry_for_domain": {
++      "message": "Found multiple config entries for integration {domain}."
++    },
++    "service_found_no_config_entry_for_domain": {
++      "message": "Could not find config entry for integration {domain}."
++    },
+     "service_lacks_response_request": {
+       "message": "The action requires responses and must be called with {return_response}."
+     },
+diff --git a/homeassistant/components/ness_alarm/services.py b/homeassistant/components/ness_alarm/services.py
+index c43a085347..a2550bc07d 100644
+--- a/homeassistant/components/ness_alarm/services.py
++++ b/homeassistant/components/ness_alarm/services.py
+@@ -1,14 +1,18 @@
+ """Services for the Ness Alarm integration."""
+ 
++from typing import TYPE_CHECKING
++
+ import voluptuous as vol
+ 
+ from homeassistant.const import ATTR_CODE, ATTR_STATE
+-from homeassistant.core import HomeAssistant, ServiceCall
+-from homeassistant.exceptions import ServiceValidationError
+-from homeassistant.helpers import config_validation as cv
++from homeassistant.core import HomeAssistant, ServiceCall, callback
++from homeassistant.helpers import config_validation as cv, service
+ 
+ from .const import ATTR_OUTPUT_ID, DOMAIN, SERVICE_AUX, SERVICE_PANIC
+ 
++if TYPE_CHECKING:
++    from . import NessAlarmConfigEntry
++
+ SERVICE_SCHEMA_PANIC = vol.Schema({vol.Required(ATTR_CODE): cv.string})
+ SERVICE_SCHEMA_AUX = vol.Schema(
+     {
+@@ -18,34 +22,29 @@ SERVICE_SCHEMA_AUX = vol.Schema(
+ )
+ 
+ 
++async def _handle_panic(call: ServiceCall) -> None:
++    """Handle panic service call."""
++    entry: NessAlarmConfigEntry = service.async_get_config_entry(
++        call.hass, DOMAIN, None
++    )
++    await entry.runtime_data.panic(call.data[ATTR_CODE])
++
++
++async def _handle_aux(call: ServiceCall) -> None:
++    """Handle aux service call."""
++    entry: NessAlarmConfigEntry = service.async_get_config_entry(
++        call.hass, DOMAIN, None
++    )
++    await entry.runtime_data.aux(call.data[ATTR_OUTPUT_ID], call.data[ATTR_STATE])
++
++
++@callback
+ def async_setup_services(hass: HomeAssistant) -> None:
+     """Register Ness Alarm services."""
+ 
+-    async def handle_panic(call: ServiceCall) -> None:
+-        """Handle panic service call."""
+-        entries = call.hass.config_entries.async_loaded_entries(DOMAIN)
+-        if not entries:
+-            raise ServiceValidationError(
+-                translation_domain=DOMAIN,
+-                translation_key="no_config_entry",
+-            )
+-        client = entries[0].runtime_data
+-        await client.panic(call.data[ATTR_CODE])
+-
+-    async def handle_aux(call: ServiceCall) -> None:
+-        """Handle aux service call."""
+-        entries = call.hass.config_entries.async_loaded_entries(DOMAIN)
+-        if not entries:
+-            raise ServiceValidationError(
+-                translation_domain=DOMAIN,
+-                translation_key="no_config_entry",
+-            )
+-        client = entries[0].runtime_data
+-        await client.aux(call.data[ATTR_OUTPUT_ID], call.data[ATTR_STATE])
+-
+     hass.services.async_register(
+-        DOMAIN, SERVICE_PANIC, handle_panic, schema=SERVICE_SCHEMA_PANIC
++        DOMAIN, SERVICE_PANIC, _handle_panic, schema=SERVICE_SCHEMA_PANIC
+     )
+     hass.services.async_register(
+-        DOMAIN, SERVICE_AUX, handle_aux, schema=SERVICE_SCHEMA_AUX
++        DOMAIN, SERVICE_AUX, _handle_aux, schema=SERVICE_SCHEMA_AUX
+     )
+diff --git a/homeassistant/components/ness_alarm/strings.json b/homeassistant/components/ness_alarm/strings.json
+index dea09e2dd6..76afd44a58 100644
+--- a/homeassistant/components/ness_alarm/strings.json
++++ b/homeassistant/components/ness_alarm/strings.json
+@@ -59,11 +59,6 @@
+       }
+     }
+   },
+-  "exceptions": {
+-    "no_config_entry": {
+-      "message": "No Ness Alarm configuration entry is loaded"
+-    }
+-  },
+   "issues": {
+     "deprecated_yaml_import_issue_cannot_connect": {
+       "description": "Configuring {integration_title} via YAML is deprecated and will be removed in a future release. While importing your configuration, a connection error occurred. Please correct your YAML configuration and restart Home Assistant, or remove the {domain} key from your configuration and configure the integration via the UI.",
+diff --git a/homeassistant/helpers/service.py b/homeassistant/helpers/service.py
+index 4cc7a96a19..5a95230999 100644
+--- a/homeassistant/helpers/service.py
++++ b/homeassistant/helpers/service.py
+@@ -1373,9 +1373,11 @@ def async_register_batched_platform_entity_service[_EntityT: Entity](
+ 
+ @callback
+ def async_get_config_entry(
+-    hass: HomeAssistant, domain: str, entry_id: str
++    hass: HomeAssistant, domain: str, entry_id: str | None
+ ) -> ConfigEntry:
+     """Get and validate a service config entry."""
++    if entry_id is None:
++        return _async_get_single_loaded_config_entry(hass, domain)
+     config_entry = hass.config_entries.async_get_entry(entry_id)
+     if not config_entry:
+         raise ServiceValidationError(
+@@ -1405,3 +1407,41 @@ def async_get_config_entry(
+             },
+         )
+     return config_entry
++
++
++@callback
++def _async_get_single_loaded_config_entry(
++    hass: HomeAssistant, domain: str
++) -> ConfigEntry:
++    """Retrieve single loaded config entry.
++
++    This is a fallback for services that do not request (or have not been
++    provided with) a config entry ID. Only one config entry should exist
++    for the domain, and it must be loaded.
++    """
++    config_entries = hass.config_entries.async_entries(
++        domain, include_ignore=False, include_disabled=False
++    )
++    if not config_entries:
++        raise ServiceValidationError(
++            translation_domain=HOMEASSISTANT_DOMAIN,
++            translation_key="service_found_no_config_entry_for_domain",
++            translation_placeholders={"domain": domain},
++        )
++    if len(config_entries) > 1:
++        raise ServiceValidationError(
++            translation_domain=HOMEASSISTANT_DOMAIN,
++            translation_key="service_found_multiple_config_entry_for_domain",
++            translation_placeholders={"domain": domain},
++        )
++    config_entry = config_entries[0]
++    if config_entry.state is not ConfigEntryState.LOADED:
++        raise ServiceValidationError(
++            translation_domain=HOMEASSISTANT_DOMAIN,
++            translation_key="service_config_entry_not_loaded",
++            translation_placeholders={
++                "domain": domain,
++                "entry_title": config_entry.title,
++            },
++        )
++    return config_entry
+diff --git a/tests/helpers/test_service.py b/tests/helpers/test_service.py
+index 54ef1563b7..f6de318d44 100644
+--- a/tests/helpers/test_service.py
++++ b/tests/helpers/test_service.py
+@@ -3388,3 +3388,43 @@ async def test_get_service_config_entry(hass: HomeAssistant) -> None:
+     with pytest.raises(exceptions.ServiceValidationError) as err:
+         service.async_get_config_entry(hass, domain, entry_id)
+     assert err.value.translation_key == "service_config_entry_not_loaded"
++
++
++async def test_get_service_config_entry_none(hass: HomeAssistant) -> None:
++    """Test that we can get a service config entry if no entry ID is provided."""
++    domain = "mock_integration"
++
++    # No config entry exists
++    with pytest.raises(exceptions.ServiceValidationError) as err:
++        service.async_get_config_entry(hass, domain, None)
++    assert err.value.translation_key == "service_found_no_config_entry_for_domain"
++
++    # A single config entry exists and is loaded
++    entry1 = MockConfigEntry(domain=domain)
++    entry1.add_to_hass(hass)
++    entry1.mock_state(hass, config_entries.ConfigEntryState.LOADED)
++    assert service.async_get_config_entry(hass, domain, None) is entry1
++
++    # Ignored and disabled entries are not counted
++    ignored_entry = MockConfigEntry(domain=domain, source=config_entries.SOURCE_IGNORE)
++    ignored_entry.add_to_hass(hass)
++    disabled_entry = MockConfigEntry(
++        domain=domain, disabled_by=config_entries.ConfigEntryDisabler.USER
++    )
++    disabled_entry.add_to_hass(hass)
++    assert service.async_get_config_entry(hass, domain, None) is entry1
++
++    # Multiple config entries exist
++    entry2 = MockConfigEntry(domain=domain)
++    entry2.add_to_hass(hass)
++    entry2.mock_state(hass, config_entries.ConfigEntryState.LOADED)
++    with pytest.raises(exceptions.ServiceValidationError) as err:
++        service.async_get_config_entry(hass, domain, None)
++    assert err.value.translation_key == "service_found_multiple_config_entry_for_domain"
++
++    # A single config entry exists, but is not loaded
++    await hass.config_entries.async_remove(entry2.entry_id)
++    entry1.mock_state(hass, config_entries.ConfigEntryState.NOT_LOADED)
++    with pytest.raises(exceptions.ServiceValidationError) as err:
++        service.async_get_config_entry(hass, domain, None)
++    assert err.value.translation_key == "service_config_entry_not_loaded"

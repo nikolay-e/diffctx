@@ -1,0 +1,59 @@
+repo: tokio
+base_commit: a66884a2fb80d1180451706f3c3e006a3fdcb036
+commit: 218f2629fffa25912ee14a2cc8ec6e98ae223b11
+patch_stored: true
+gold:
+  - path: tokio/src/runtime/io/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "new file — the I/O driver's Driver/Handle implementation relocated verbatim from io/driver/mod.rs, now living under runtime:: since the driver is a runtime-only concern."
+  - path: tokio/src/runtime/driver.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'rewires IoDriver/IoHandle type aliases and Driver::new() from `crate::io::driver::*` to `crate::runtime::io::*` — the glue proving the relocation is wired into the runtime driver stack.'
+  - path: tokio/src/io/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: top-level io module now declares `mod interest; mod ready;` (extracted from the old driver module) and re-exports `pub use interest::Interest; pub use ready::Ready;` since those two types stay public API and cannot move into runtime.
+  - path: tokio/src/io/interest.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "new file — the public `Interest` type extracted out of the deleted io/driver/interest.rs so it can keep living under the public io:: path while the rest of the driver moves to runtime::."
+  - path: tokio/src/io/ready.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new file — the public `Ready` type extracted out of the deleted io/driver/ready.rs, same public-API-preservation rationale as interest.rs.
+  - path: tokio/src/runtime/mod.rs
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: 'adds `cfg_io_driver_impl! { pub(crate) mod io; }` — declares the new runtime::io submodule that runtime/io/mod.rs fills in.'
+  - path: tokio/src/io/async_fd.rs
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: 'representative consumer whose imports change from `crate::io::driver::{Handle, Interest, ReadyEvent, Registration}` to `crate::io::Interest` + `crate::runtime::io::{Handle, ReadyEvent, Registration}` — shows the split of public vs. runtime-internal types in practice.'
+forbidden:
+  - path: tokio/src/io/poll_evented.rs
+    reason: another consumer touched only to fix the same import-path change already demonstrated by async_fd.rs, not independently informative
+  - path: tokio/src/signal/unix/driver.rs
+    reason: unrelated signal driver, only touched for a mechanical import-path update, not part of the I/O driver relocation itself
+  - path: tokio/src/process/unix/orphan.rs
+    reason: process reaping internals, touched only for a mechanical import-path fixup
+  - path: tokio/src/runtime/enter.rs
+    reason: sibling runtime-internal file (runtime-entry guard), not touched by and unrelated to the I/O driver move
+nontrivial_gold_count: 0
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 24
+  description: 'rt: move I/O driver into `runtime` module — io → runtime relocation, many import-path
+    hops'
+notes: 'Internal refactor moving the I/O driver (io/driver/{mod,registration,scheduled_io,platform,metrics}.rs) to runtime/io/, since the driver is runtime-internal machinery. The two public API types it carried, Interest and Ready, are pulled out into new top-level io/interest.rs and io/ready.rs files instead of moving with the rest, preserving the public crate::io::{Interest,Ready} paths. No behavior change; remaining touched files (async_fd.rs, poll_evented.rs, signal/unix/driver.rs, process/unix/orphan.rs, bsd/poll_aio.rs) are mechanical import-path updates at consumer call sites, all resolvable within the diff itself.'

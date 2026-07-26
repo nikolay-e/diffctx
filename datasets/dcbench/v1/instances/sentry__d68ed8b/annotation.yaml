@@ -1,0 +1,35 @@
+repo: sentry
+base_commit: 9d8fd880f7f891d5678ebd090164af84d1d5f505
+commit: d68ed8b1cebe4565e98970a299523068c039a4f0
+patch_stored: true
+gold:
+- path: knip.config.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: rspack.config.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/components/clippedBox.stories.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/components/confirm.stories.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/components/core/alert/index.stories.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 125 nearly-identical *.stories.tsx files undergo the same mechanical Storybook-API restructure;
+  the tool hangs and produces nothing. Even though this is the most homogeneous, easiest-to-summarize
+  case in the whole batch (a reader only needs 2-3 representative before/after examples plus the build-config
+  files that drive the restructure), the tool times out rather than recognizing the repetition and truncating.
+  Complete loss of signal for what should be a cheap case.

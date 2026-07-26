@@ -1,0 +1,1124 @@
+From 6537153e2c7b122f04981f72f4ddb73dcf423787 Mon Sep 17 00:00:00 2001
+From: Cheng Pan <chengpan@apache.org>
+Date: Tue, 12 Aug 2025 13:48:57 +0800
+Subject: [PATCH] [SPARK-53138][CORE][BUILD] Split common-utils Java code into
+ a new module
+
+### What changes were proposed in this pull request?
+
+This PR splits the Java code of `common/utils` into a new module `common/utils-java`, except for:
+
+- `common/utils/src/main/java/org/apache/spark/storage/StorageLevelMapper.java`
+- `common/utils/src/main/java/org/apache/spark/SparkThrowable.java`
+
+A few utility methods are rewritten in Java to avoid depending on `scala-library`.
+
+### Why are the changes needed?
+
+To make YARN ESS (`common/network-yarn`) scala-free again.
+
+Read the discussion of SPARK-52942 (https://github.com/apache/spark/pull/51650) for more details and the following PR.
+
+- #51775
+
+### Does this PR introduce _any_ user-facing change?
+
+No.
+
+### How was this patch tested?
+
+```
+$ build/mvn -pl common/network-yarn -am clean package -DskipTests -Pyarn
+...
+[INFO] Including org.apache.spark:spark-network-shuffle_2.13:jar:4.1.0-SNAPSHOT in the shaded jar.
+[INFO] Including org.apache.spark:spark-network-common_2.13:jar:4.1.0-SNAPSHOT in the shaded jar.
+[INFO] Including io.netty:netty-all:jar:4.1.123.Final in the shaded jar.
+[INFO] Including io.netty:netty-buffer:jar:4.1.123.Final in the shaded jar.
+[INFO] Including io.netty:netty-codec:jar:4.1.123.Final in the shaded jar.
+[INFO] Including io.netty:netty-codec-dns:jar:4.1.123.Final in the shaded jar.
+[INFO] Including io.netty:netty-codec-http:jar:4.1.123.Final in the shaded jar.
+[INFO] Including io.netty:netty-codec-http2:jar:4.1.123.Final in the shaded jar.
+[INFO] Including io.netty:netty-codec-socks:jar:4.1.123.Final in the shaded jar.
+[INFO] Including io.netty:netty-common:jar:4.1.123.Final in the shaded jar.
+[INFO] Including io.netty:netty-handler:jar:4.1.123.Final in the shaded jar.
+[INFO] Including io.netty:netty-transport-native-unix-common:jar:4.1.123.Final in the shaded jar.
+[INFO] Including io.netty:netty-handler-proxy:jar:4.1.123.Final in the shaded jar.
+[INFO] Including io.netty:netty-resolver:jar:4.1.123.Final in the shaded jar.
+[INFO] Including io.netty:netty-resolver-dns:jar:4.1.123.Final in the shaded jar.
+[INFO] Including io.netty:netty-transport:jar:4.1.123.Final in the shaded jar.
+[INFO] Including io.netty:netty-transport-classes-epoll:jar:4.1.123.Final in the shaded jar.
+[INFO] Including io.netty:netty-transport-classes-kqueue:jar:4.1.123.Final in the shaded jar.
+[INFO] Including io.netty:netty-transport-native-epoll:jar:linux-riscv64:4.1.123.Final in the shaded jar.
+[INFO] Including io.netty:netty-transport-native-epoll:jar:linux-x86_64:4.1.123.Final in the shaded jar.
+[INFO] Including io.netty:netty-transport-native-epoll:jar:linux-aarch_64:4.1.123.Final in the shaded jar.
+[INFO] Including io.netty:netty-transport-native-kqueue:jar:osx-aarch_64:4.1.123.Final in the shaded jar.
+[INFO] Including io.netty:netty-transport-native-kqueue:jar:osx-x86_64:4.1.123.Final in the shaded jar.
+[INFO] Including io.netty:netty-tcnative-boringssl-static:jar:linux-x86_64:2.0.72.Final in the shaded jar.
+[INFO] Including io.netty:netty-tcnative-classes:jar:2.0.72.Final in the shaded jar.
+[INFO] Including io.netty:netty-tcnative-boringssl-static:jar:windows-x86_64:2.0.72.Final in the shaded jar.
+[INFO] Including io.netty:netty-tcnative-boringssl-static:jar:linux-aarch_64:2.0.72.Final in the shaded jar.
+[INFO] Including io.netty:netty-tcnative-boringssl-static:jar:osx-aarch_64:2.0.72.Final in the shaded jar.
+[INFO] Including io.netty:netty-tcnative-boringssl-static:jar:osx-x86_64:2.0.72.Final in the shaded jar.
+[INFO] Including org.fusesource.leveldbjni:leveldbjni-all:jar:1.8 in the shaded jar.
+[INFO] Including org.rocksdb:rocksdbjni:jar:9.8.4 in the shaded jar.
+[INFO] Including com.fasterxml.jackson.core:jackson-databind:jar:2.19.2 in the shaded jar.
+[INFO] Including com.fasterxml.jackson.core:jackson-core:jar:2.19.2 in the shaded jar.
+[INFO] Including com.fasterxml.jackson.core:jackson-annotations:jar:2.19.2 in the shaded jar.
+[INFO] Including org.apache.commons:commons-crypto:jar:1.1.0 in the shaded jar.
+[INFO] Including com.google.crypto.tink:tink:jar:1.16.0 in the shaded jar.
+[INFO] Including com.google.code.gson:gson:jar:2.11.0 in the shaded jar.
+[INFO] Including org.apache.spark:spark-common-utils-java_2.13:jar:4.1.0-SNAPSHOT in the shaded jar.
+[INFO] Including org.slf4j:jul-to-slf4j:jar:2.0.17 in the shaded jar.
+[INFO] Including org.slf4j:jcl-over-slf4j:jar:2.0.17 in the shaded jar.
+[INFO] Including org.apache.logging.log4j:log4j-slf4j2-impl:jar:2.24.3 in the shaded jar.
+[INFO] Including org.apache.logging.log4j:log4j-api:jar:2.24.3 in the shaded jar.
+[INFO] Including org.apache.logging.log4j:log4j-core:jar:2.24.3 in the shaded jar.
+[INFO] Including org.apache.logging.log4j:log4j-1.2-api:jar:2.24.3 in the shaded jar.
+[INFO] Including org.apache.logging.log4j:log4j-layout-template-json:jar:2.24.3 in the shaded jar.
+[INFO] Including org.apache.commons:commons-lang3:jar:3.18.0 in the shaded jar.
+[INFO] Including io.dropwizard.metrics:metrics-core:jar:4.2.32 in the shaded jar.
+[INFO] Including org.roaringbitmap:RoaringBitmap:jar:1.3.0 in the shaded jar.
+[INFO] Including com.google.code.findbugs:jsr305:jar:3.0.0 in the shaded jar.
+[INFO] Including org.spark-project.spark:unused:jar:1.0.0 in the shaded jar.
+...
+```
+
+Now, YARN ESS jar is scala-free, rocksdbjni and netty contribute the major size.
+```
+$ ll common/network-yarn/target/scala-2.13/spark-4.1.0-SNAPSHOT-yarn-shuffle.jar
+-rw-r--r-- 1 chengpan  staff    92M Aug  6 16:54 common/network-yarn/target/scala-2.13/spark-4.1.0-SNAPSHOT-yarn-shuffle.jar
+$ jar tf common/network-yarn/target/scala-2.13/spark-4.1.0-SNAPSHOT-yarn-shuffle.jar | grep scala
+<no-output>
+$ ll ~/.m2/repository/org/rocksdb/rocksdbjni/9.8.4/rocksdbjni-9.8.4.jar
+-rw-r--r-- 1 chengpan  staff    68M Jan 12  2025 /Users/chengpan/.m2/repository/org/rocksdb/rocksdbjni/9.8.4/rocksdbjni-9.8.4.jar
+```
+
+### Was this patch authored or co-authored using generative AI tooling?
+
+No.
+
+Closes #51868 from pan3793/SPARK-53138.
+
+Authored-by: Cheng Pan <chengpan@apache.org>
+Signed-off-by: yangjie01 <yangjie01@baidu.com>
+---
+ .github/workflows/build_and_test.yml          |  4 +-
+ .github/workflows/maven_test.yml              |  6 +-
+ common/network-common/pom.xml                 |  2 +-
+ .../spark/network/RpcIntegrationSuite.java    |  3 +-
+ .../org/apache/spark/network/StreamSuite.java |  4 +-
+ .../spark/network/util/DBProviderSuite.java   |  4 +-
+ .../ExternalShuffleBlockResolverSuite.java    |  8 +-
+ common/network-yarn/pom.xml                   |  2 +-
+ common/utils-java/pom.xml                     | 84 +++++++++++++++++++
+ .../java/org/apache/spark/QueryContext.java   |  0
+ .../org/apache/spark/QueryContextType.java    |  0
+ .../api/java/function/CoGroupFunction.java    |  0
+ .../java/function/DoubleFlatMapFunction.java  |  0
+ .../api/java/function/DoubleFunction.java     |  0
+ .../api/java/function/FilterFunction.java     |  0
+ .../api/java/function/FlatMapFunction.java    |  0
+ .../api/java/function/FlatMapFunction2.java   |  0
+ .../java/function/FlatMapGroupsFunction.java  |  0
+ .../api/java/function/ForeachFunction.java    |  0
+ .../function/ForeachPartitionFunction.java    |  0
+ .../spark/api/java/function/Function.java     |  0
+ .../spark/api/java/function/Function0.java    |  0
+ .../spark/api/java/function/Function2.java    |  0
+ .../spark/api/java/function/Function3.java    |  0
+ .../spark/api/java/function/Function4.java    |  0
+ .../spark/api/java/function/MapFunction.java  |  0
+ .../api/java/function/MapGroupsFunction.java  |  0
+ .../java/function/MapPartitionsFunction.java  |  0
+ .../java/function/PairFlatMapFunction.java    |  0
+ .../spark/api/java/function/PairFunction.java |  0
+ .../api/java/function/ReduceFunction.java     |  0
+ .../spark/api/java/function/VoidFunction.java |  0
+ .../api/java/function/VoidFunction2.java      |  0
+ .../spark/api/java/function/package-info.java |  0
+ .../org/apache/spark/internal/LogKey.java     |  0
+ .../org/apache/spark/internal/LogKeys.java    |  0
+ .../java/org/apache/spark/internal/MDC.java   |  0
+ .../apache/spark/internal/SparkLogger.java    |  0
+ .../spark/internal/SparkLoggerFactory.java    |  0
+ .../org/apache/spark/memory/MemoryMode.java   |  0
+ .../apache/spark/network/util/ByteUnit.java   |  0
+ .../apache/spark/network/util/JavaUtils.java  | 82 +++++++++++++++++-
+ .../spark/unsafe/array/ByteArrayUtils.java    |  0
+ .../main/java/org/apache/spark/util/Pair.java |  0
+ .../org/apache/spark/SparkLayout.json         |  0
+ .../apache/spark/log4j2-defaults.properties   |  0
+ .../spark/log4j2-json-layout.properties       |  0
+ .../org/apache/spark/util/CustomLogKeys.java  |  0
+ .../spark/util/PatternSparkLoggerSuite.java   |  0
+ .../spark/util/SparkLoggerSuiteBase.java      |  0
+ .../util/StructuredSparkLoggerSuite.java      |  5 +-
+ .../src/test/resources/log4j2.properties      | 60 +++++++++++++
+ common/utils/pom.xml                          | 12 +++
+ .../spark/api/java/function/package.scala     |  0
+ .../org/apache/spark/util/SparkEnvUtils.scala |  8 +-
+ .../apache/spark/util/SparkFileUtils.scala    | 16 +---
+ .../apache/spark/util/SparkStreamUtils.scala  |  3 +-
+ .../apache/spark/util/SparkSystemUtils.scala  | 21 ++---
+ .../spark/types/variant/VariantUtil.java      |  3 +-
+ dev/sparktestsupport/modules.py               | 15 +++-
+ pom.xml                                       |  1 +
+ project/MimaExcludes.scala                    |  7 ++
+ project/SparkBuild.scala                      |  6 +-
+ 63 files changed, 295 insertions(+), 61 deletions(-)
+ create mode 100644 common/utils-java/pom.xml
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/QueryContext.java (100%)
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/QueryContextType.java (100%)
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/api/java/function/CoGroupFunction.java (100%)
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/api/java/function/DoubleFlatMapFunction.java (100%)
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/api/java/function/DoubleFunction.java (100%)
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/api/java/function/FilterFunction.java (100%)
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/api/java/function/FlatMapFunction.java (100%)
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/api/java/function/FlatMapFunction2.java (100%)
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/api/java/function/FlatMapGroupsFunction.java (100%)
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/api/java/function/ForeachFunction.java (100%)
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/api/java/function/ForeachPartitionFunction.java (100%)
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/api/java/function/Function.java (100%)
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/api/java/function/Function0.java (100%)
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/api/java/function/Function2.java (100%)
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/api/java/function/Function3.java (100%)
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/api/java/function/Function4.java (100%)
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/api/java/function/MapFunction.java (100%)
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/api/java/function/MapGroupsFunction.java (100%)
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/api/java/function/MapPartitionsFunction.java (100%)
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/api/java/function/PairFlatMapFunction.java (100%)
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/api/java/function/PairFunction.java (100%)
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/api/java/function/ReduceFunction.java (100%)
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/api/java/function/VoidFunction.java (100%)
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/api/java/function/VoidFunction2.java (100%)
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/api/java/function/package-info.java (100%)
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/internal/LogKey.java (100%)
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/internal/LogKeys.java (100%)
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/internal/MDC.java (100%)
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/internal/SparkLogger.java (100%)
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/internal/SparkLoggerFactory.java (100%)
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/memory/MemoryMode.java (100%)
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/network/util/ByteUnit.java (100%)
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/network/util/JavaUtils.java (89%)
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/unsafe/array/ByteArrayUtils.java (100%)
+ rename common/{utils => utils-java}/src/main/java/org/apache/spark/util/Pair.java (100%)
+ rename common/{utils => utils-java}/src/main/resources/org/apache/spark/SparkLayout.json (100%)
+ rename common/{utils => utils-java}/src/main/resources/org/apache/spark/log4j2-defaults.properties (100%)
+ rename common/{utils => utils-java}/src/main/resources/org/apache/spark/log4j2-json-layout.properties (100%)
+ rename common/{utils => utils-java}/src/test/java/org/apache/spark/util/CustomLogKeys.java (100%)
+ rename common/{utils => utils-java}/src/test/java/org/apache/spark/util/PatternSparkLoggerSuite.java (100%)
+ rename common/{utils => utils-java}/src/test/java/org/apache/spark/util/SparkLoggerSuiteBase.java (100%)
+ rename common/{utils => utils-java}/src/test/java/org/apache/spark/util/StructuredSparkLoggerSuite.java (97%)
+ create mode 100644 common/utils-java/src/test/resources/log4j2.properties
+ rename common/utils/src/main/{java => scala}/org/apache/spark/api/java/function/package.scala (100%)
+
+diff --git a/.github/workflows/build_and_test.yml b/.github/workflows/build_and_test.yml
+index 24a9ef51ea..fd1632fe88 100644
+--- a/.github/workflows/build_and_test.yml
++++ b/.github/workflows/build_and_test.yml
+@@ -112,7 +112,7 @@ jobs:
+             ui=false
+             docs=false
+           fi
+-          build=`./dev/is-changed.py -m "core,unsafe,kvstore,avro,utils,network-common,network-shuffle,repl,launcher,examples,sketch,variant,api,catalyst,hive-thriftserver,mllib-local,mllib,graphx,streaming,sql-kafka-0-10,streaming-kafka-0-10,streaming-kinesis-asl,kubernetes,hadoop-cloud,spark-ganglia-lgpl,profiler,protobuf,yarn,connect,sql,hive,pipelines"`
++          build=`./dev/is-changed.py -m "core,unsafe,kvstore,avro,utils,utils-java,network-common,network-shuffle,repl,launcher,examples,sketch,variant,api,catalyst,hive-thriftserver,mllib-local,mllib,graphx,streaming,sql-kafka-0-10,streaming-kafka-0-10,streaming-kinesis-asl,kubernetes,hadoop-cloud,spark-ganglia-lgpl,profiler,protobuf,yarn,connect,sql,hive,pipelines"`
+           precondition="
+             {
+               \"build\": \"$build\",
+@@ -242,7 +242,7 @@ jobs:
+         # Note that the modules below are from sparktestsupport/modules.py.
+         modules:
+           - >-
+-            core, unsafe, kvstore, avro, utils,
++            core, unsafe, kvstore, avro, utils, utils-java,
+             network-common, network-shuffle, repl, launcher,
+             examples, sketch, variant
+           - >-
+diff --git a/.github/workflows/maven_test.yml b/.github/workflows/maven_test.yml
+index 2bab9bb570..f2f07d6520 100644
+--- a/.github/workflows/maven_test.yml
++++ b/.github/workflows/maven_test.yml
+@@ -67,7 +67,7 @@ jobs:
+           - hive2.3
+         modules:
+           - >-
+-            core,launcher,common#unsafe,common#kvstore,common#network-common,common#network-shuffle,common#sketch,common#utils,common#variant
++            core,launcher,common#unsafe,common#kvstore,common#network-common,common#network-shuffle,common#sketch,common#utils,common#utils-java,common#variant
+           - >-
+             graphx,streaming,hadoop-cloud
+           - >-
+@@ -214,6 +214,10 @@ jobs:
+             # SPARK-52441: Remove sql/pipelines from TEST_MODULES for branch-4.0, this branch can be deleted after the EOL of branch-4.0.
+             TEST_MODULES=${TEST_MODULES/,sql\/pipelines/}
+             ./build/mvn $MAVEN_CLI_OPTS -pl "$TEST_MODULES" -Pyarn -Pkubernetes -Pvolcano -Phive -Phive-thriftserver -Pspark-ganglia-lgpl -Phadoop-cloud -Pjvm-profiler -Pkinesis-asl -Djava.version=${JAVA_VERSION/-ea} test -fae
++          elif [[ "$MODULES_TO_TEST" == *"common#utils-java"* && "$INPUT_BRANCH" == "branch-4.0" ]]; then
++            # SPARK-53138: Remove common/utils-java from TEST_MODULES for branch-4.0, this branch can be deleted after the EOL of branch-4.0.
++            TEST_MODULES=${TEST_MODULES/,common\/utils-java/}
++            ./build/mvn $MAVEN_CLI_OPTS -pl "$TEST_MODULES" -Pyarn -Pkubernetes -Pvolcano -Phive -Phive-thriftserver -Pspark-ganglia-lgpl -Phadoop-cloud -Pjvm-profiler -Pkinesis-asl -Djava.version=${JAVA_VERSION/-ea} test -fae
+           else
+             ./build/mvn $MAVEN_CLI_OPTS -pl "$TEST_MODULES" -Pyarn -Pkubernetes -Pvolcano -Phive -Phive-thriftserver -Pspark-ganglia-lgpl -Phadoop-cloud -Pjvm-profiler -Pkinesis-asl -Djava.version=${JAVA_VERSION/-ea} test -fae
+           fi
+diff --git a/common/network-common/pom.xml b/common/network-common/pom.xml
+index 3e5c3c17e1..51b782920e 100644
+--- a/common/network-common/pom.xml
++++ b/common/network-common/pom.xml
+@@ -170,7 +170,7 @@
+ 
+     <dependency>
+       <groupId>org.apache.spark</groupId>
+-      <artifactId>spark-common-utils_${scala.binary.version}</artifactId>
++      <artifactId>spark-common-utils-java_${scala.binary.version}</artifactId>
+       <version>${project.version}</version>
+     </dependency>
+ 
+diff --git a/common/network-common/src/test/java/org/apache/spark/network/RpcIntegrationSuite.java b/common/network-common/src/test/java/org/apache/spark/network/RpcIntegrationSuite.java
+index 7fbb27f4ac..e229e32e91 100644
+--- a/common/network-common/src/test/java/org/apache/spark/network/RpcIntegrationSuite.java
++++ b/common/network-common/src/test/java/org/apache/spark/network/RpcIntegrationSuite.java
+@@ -38,7 +38,6 @@ import org.apache.spark.network.util.JavaUtils;
+ import org.apache.spark.network.util.MapConfigProvider;
+ import org.apache.spark.network.util.TransportConf;
+ import org.apache.spark.util.Pair;
+-import org.apache.spark.util.SparkFileUtils$;
+ 
+ public class RpcIntegrationSuite {
+   static TransportConf conf;
+@@ -429,7 +428,7 @@ public class RpcIntegrationSuite {
+ 
+     void verify() throws IOException {
+       if (streamId.equals("file")) {
+-        assertTrue(SparkFileUtils$.MODULE$.contentEquals(testData.testFile, outFile),
++        assertTrue(JavaUtils.contentEquals(testData.testFile, outFile),
+           "File stream did not match.");
+       } else {
+         byte[] result = ((ByteArrayOutputStream)out).toByteArray();
+diff --git a/common/network-common/src/test/java/org/apache/spark/network/StreamSuite.java b/common/network-common/src/test/java/org/apache/spark/network/StreamSuite.java
+index fb55faf189..496af96cb1 100644
+--- a/common/network-common/src/test/java/org/apache/spark/network/StreamSuite.java
++++ b/common/network-common/src/test/java/org/apache/spark/network/StreamSuite.java
+@@ -42,9 +42,9 @@ import org.apache.spark.network.client.TransportClientFactory;
+ import org.apache.spark.network.server.RpcHandler;
+ import org.apache.spark.network.server.StreamManager;
+ import org.apache.spark.network.server.TransportServer;
++import org.apache.spark.network.util.JavaUtils;
+ import org.apache.spark.network.util.MapConfigProvider;
+ import org.apache.spark.network.util.TransportConf;
+-import org.apache.spark.util.SparkFileUtils$;
+ 
+ public class StreamSuite {
+   private static final String[] STREAMS = StreamTestHelper.STREAMS;
+@@ -212,7 +212,7 @@ public class StreamSuite {
+         callback.waitForCompletion(timeoutMs);
+ 
+         if (srcBuffer == null) {
+-          assertTrue(SparkFileUtils$.MODULE$.contentEquals(testData.testFile, outFile),
++          assertTrue(JavaUtils.contentEquals(testData.testFile, outFile),
+             "File stream did not match.");
+         } else {
+           ByteBuffer base;
+diff --git a/common/network-common/src/test/java/org/apache/spark/network/util/DBProviderSuite.java b/common/network-common/src/test/java/org/apache/spark/network/util/DBProviderSuite.java
+index b809034f1f..f7299e1576 100644
+--- a/common/network-common/src/test/java/org/apache/spark/network/util/DBProviderSuite.java
++++ b/common/network-common/src/test/java/org/apache/spark/network/util/DBProviderSuite.java
+@@ -26,8 +26,6 @@ import org.junit.jupiter.api.Test;
+ import java.io.File;
+ import java.io.IOException;
+ 
+-import org.apache.spark.util.SparkSystemUtils$;
+-
+ import static org.junit.jupiter.api.Assumptions.assumeFalse;
+ 
+ public class DBProviderSuite {
+@@ -39,7 +37,7 @@ public class DBProviderSuite {
+ 
+   @Test
+   public void testLevelDBCheckVersionFailed() throws IOException, InterruptedException {
+-    assumeFalse(SparkSystemUtils$.MODULE$.isMacOnAppleSilicon());
++    assumeFalse(JavaUtils.isMacOnAppleSilicon);
+     testCheckVersionFailed(DBBackend.LEVELDB, "leveldb");
+   }
+ 
+diff --git a/common/network-shuffle/src/test/java/org/apache/spark/network/shuffle/ExternalShuffleBlockResolverSuite.java b/common/network-shuffle/src/test/java/org/apache/spark/network/shuffle/ExternalShuffleBlockResolverSuite.java
+index 3e068d4573..488d02d63d 100644
+--- a/common/network-shuffle/src/test/java/org/apache/spark/network/shuffle/ExternalShuffleBlockResolverSuite.java
++++ b/common/network-shuffle/src/test/java/org/apache/spark/network/shuffle/ExternalShuffleBlockResolverSuite.java
+@@ -23,10 +23,10 @@ import java.nio.charset.StandardCharsets;
+ 
+ import com.fasterxml.jackson.databind.ObjectMapper;
+ import org.apache.spark.network.shuffle.protocol.ExecutorShuffleInfo;
++import org.apache.spark.network.util.JavaUtils;
+ import org.apache.spark.network.util.MapConfigProvider;
+ import org.apache.spark.network.util.TransportConf;
+ import org.apache.spark.network.shuffle.ExternalShuffleBlockResolver.AppExecId;
+-import org.apache.spark.util.SparkStreamUtils$;
+ import org.junit.jupiter.api.AfterAll;
+ import org.junit.jupiter.api.BeforeAll;
+ import org.junit.jupiter.api.Test;
+@@ -82,17 +82,17 @@ public class ExternalShuffleBlockResolverSuite {
+ 
+     try (InputStream block0Stream = resolver.getBlockData(
+         "app0", "exec0", 0, 0, 0).createInputStream()) {
+-      assertEquals(sortBlock0, SparkStreamUtils$.MODULE$.toString(block0Stream));
++      assertEquals(sortBlock0, JavaUtils.toString(block0Stream));
+     }
+ 
+     try (InputStream block1Stream = resolver.getBlockData(
+         "app0", "exec0", 0, 0, 1).createInputStream()) {
+-      assertEquals(sortBlock1, SparkStreamUtils$.MODULE$.toString(block1Stream));
++      assertEquals(sortBlock1, JavaUtils.toString(block1Stream));
+     }
+ 
+     try (InputStream blocksStream = resolver.getContinuousBlocksData(
+         "app0", "exec0", 0, 0, 0, 2).createInputStream()) {
+-      assertEquals(sortBlock0 + sortBlock1, SparkStreamUtils$.MODULE$.toString(blocksStream));
++      assertEquals(sortBlock0 + sortBlock1, JavaUtils.toString(blocksStream));
+     }
+   }
+ 
+diff --git a/common/network-yarn/pom.xml b/common/network-yarn/pom.xml
+index 93998198c9..c4451923b1 100644
+--- a/common/network-yarn/pom.xml
++++ b/common/network-yarn/pom.xml
+@@ -48,7 +48,7 @@
+     <dependency>
+       <groupId>org.apache.spark</groupId>
+       <artifactId>spark-tags_${scala.binary.version}</artifactId>
+-      <scope>test</scope>
++      <scope>provided</scope>
+     </dependency>
+ 
+     <!--
+diff --git a/common/utils-java/pom.xml b/common/utils-java/pom.xml
+new file mode 100644
+index 0000000000..ba3603f810
+--- /dev/null
++++ b/common/utils-java/pom.xml
+@@ -0,0 +1,84 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++  ~ Licensed to the Apache Software Foundation (ASF) under one or more
++  ~ contributor license agreements.  See the NOTICE file distributed with
++  ~ this work for additional information regarding copyright ownership.
++  ~ The ASF licenses this file to You under the Apache License, Version 2.0
++  ~ (the "License"); you may not use this file except in compliance with
++  ~ the License.  You may obtain a copy of the License at
++  ~
++  ~    http://www.apache.org/licenses/LICENSE-2.0
++  ~
++  ~ Unless required by applicable law or agreed to in writing, software
++  ~ distributed under the License is distributed on an "AS IS" BASIS,
++  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++  ~ See the License for the specific language governing permissions and
++  ~ limitations under the License.
++  -->
++
++<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
++  <modelVersion>4.0.0</modelVersion>
++  <parent>
++    <groupId>org.apache.spark</groupId>
++    <artifactId>spark-parent_2.13</artifactId>
++    <version>4.1.0-SNAPSHOT</version>
++    <relativePath>../../pom.xml</relativePath>
++  </parent>
++
++  <artifactId>spark-common-utils-java_2.13</artifactId>
++  <packaging>jar</packaging>
++  <name>Spark Project Common Java Utils</name>
++  <url>https://spark.apache.org/</url>
++  <properties>
++    <sbt.project.name>common-utils-java</sbt.project.name>
++  </properties>
++
++  <dependencies>
++    <dependency>
++      <groupId>org.apache.spark</groupId>
++      <artifactId>spark-tags_${scala.binary.version}</artifactId>
++    </dependency>
++    <dependency>
++      <groupId>com.fasterxml.jackson.core</groupId>
++      <artifactId>jackson-databind</artifactId>
++    </dependency>
++    <dependency>
++      <groupId>org.slf4j</groupId>
++      <artifactId>slf4j-api</artifactId>
++    </dependency>
++
++    <dependency>
++      <groupId>org.slf4j</groupId>
++      <artifactId>jul-to-slf4j</artifactId>
++    </dependency>
++    <dependency>
++      <groupId>org.slf4j</groupId>
++      <artifactId>jcl-over-slf4j</artifactId>
++    </dependency>
++    <dependency>
++      <groupId>org.apache.logging.log4j</groupId>
++      <artifactId>log4j-slf4j2-impl</artifactId>
++    </dependency>
++    <dependency>
++      <groupId>org.apache.logging.log4j</groupId>
++      <artifactId>log4j-api</artifactId>
++    </dependency>
++    <dependency>
++      <groupId>org.apache.logging.log4j</groupId>
++      <artifactId>log4j-core</artifactId>
++    </dependency>
++    <dependency>
++      <groupId>org.apache.logging.log4j</groupId>
++      <artifactId>log4j-1.2-api</artifactId>
++    </dependency>
++    <dependency>
++      <groupId>org.apache.logging.log4j</groupId>
++      <artifactId>log4j-layout-template-json</artifactId>
++    </dependency>
++  </dependencies>
++  <build>
++    <outputDirectory>target/scala-${scala.binary.version}/classes</outputDirectory>
++    <testOutputDirectory>target/scala-${scala.binary.version}/test-classes</testOutputDirectory>
++  </build>
++</project>
+diff --git a/common/utils/src/main/java/org/apache/spark/QueryContext.java b/common/utils-java/src/main/java/org/apache/spark/QueryContext.java
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/QueryContext.java
+rename to common/utils-java/src/main/java/org/apache/spark/QueryContext.java
+diff --git a/common/utils/src/main/java/org/apache/spark/QueryContextType.java b/common/utils-java/src/main/java/org/apache/spark/QueryContextType.java
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/QueryContextType.java
+rename to common/utils-java/src/main/java/org/apache/spark/QueryContextType.java
+diff --git a/common/utils/src/main/java/org/apache/spark/api/java/function/CoGroupFunction.java b/common/utils-java/src/main/java/org/apache/spark/api/java/function/CoGroupFunction.java
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/api/java/function/CoGroupFunction.java
+rename to common/utils-java/src/main/java/org/apache/spark/api/java/function/CoGroupFunction.java
+diff --git a/common/utils/src/main/java/org/apache/spark/api/java/function/DoubleFlatMapFunction.java b/common/utils-java/src/main/java/org/apache/spark/api/java/function/DoubleFlatMapFunction.java
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/api/java/function/DoubleFlatMapFunction.java
+rename to common/utils-java/src/main/java/org/apache/spark/api/java/function/DoubleFlatMapFunction.java
+diff --git a/common/utils/src/main/java/org/apache/spark/api/java/function/DoubleFunction.java b/common/utils-java/src/main/java/org/apache/spark/api/java/function/DoubleFunction.java
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/api/java/function/DoubleFunction.java
+rename to common/utils-java/src/main/java/org/apache/spark/api/java/function/DoubleFunction.java
+diff --git a/common/utils/src/main/java/org/apache/spark/api/java/function/FilterFunction.java b/common/utils-java/src/main/java/org/apache/spark/api/java/function/FilterFunction.java
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/api/java/function/FilterFunction.java
+rename to common/utils-java/src/main/java/org/apache/spark/api/java/function/FilterFunction.java
+diff --git a/common/utils/src/main/java/org/apache/spark/api/java/function/FlatMapFunction.java b/common/utils-java/src/main/java/org/apache/spark/api/java/function/FlatMapFunction.java
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/api/java/function/FlatMapFunction.java
+rename to common/utils-java/src/main/java/org/apache/spark/api/java/function/FlatMapFunction.java
+diff --git a/common/utils/src/main/java/org/apache/spark/api/java/function/FlatMapFunction2.java b/common/utils-java/src/main/java/org/apache/spark/api/java/function/FlatMapFunction2.java
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/api/java/function/FlatMapFunction2.java
+rename to common/utils-java/src/main/java/org/apache/spark/api/java/function/FlatMapFunction2.java
+diff --git a/common/utils/src/main/java/org/apache/spark/api/java/function/FlatMapGroupsFunction.java b/common/utils-java/src/main/java/org/apache/spark/api/java/function/FlatMapGroupsFunction.java
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/api/java/function/FlatMapGroupsFunction.java
+rename to common/utils-java/src/main/java/org/apache/spark/api/java/function/FlatMapGroupsFunction.java
+diff --git a/common/utils/src/main/java/org/apache/spark/api/java/function/ForeachFunction.java b/common/utils-java/src/main/java/org/apache/spark/api/java/function/ForeachFunction.java
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/api/java/function/ForeachFunction.java
+rename to common/utils-java/src/main/java/org/apache/spark/api/java/function/ForeachFunction.java
+diff --git a/common/utils/src/main/java/org/apache/spark/api/java/function/ForeachPartitionFunction.java b/common/utils-java/src/main/java/org/apache/spark/api/java/function/ForeachPartitionFunction.java
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/api/java/function/ForeachPartitionFunction.java
+rename to common/utils-java/src/main/java/org/apache/spark/api/java/function/ForeachPartitionFunction.java
+diff --git a/common/utils/src/main/java/org/apache/spark/api/java/function/Function.java b/common/utils-java/src/main/java/org/apache/spark/api/java/function/Function.java
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/api/java/function/Function.java
+rename to common/utils-java/src/main/java/org/apache/spark/api/java/function/Function.java
+diff --git a/common/utils/src/main/java/org/apache/spark/api/java/function/Function0.java b/common/utils-java/src/main/java/org/apache/spark/api/java/function/Function0.java
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/api/java/function/Function0.java
+rename to common/utils-java/src/main/java/org/apache/spark/api/java/function/Function0.java
+diff --git a/common/utils/src/main/java/org/apache/spark/api/java/function/Function2.java b/common/utils-java/src/main/java/org/apache/spark/api/java/function/Function2.java
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/api/java/function/Function2.java
+rename to common/utils-java/src/main/java/org/apache/spark/api/java/function/Function2.java
+diff --git a/common/utils/src/main/java/org/apache/spark/api/java/function/Function3.java b/common/utils-java/src/main/java/org/apache/spark/api/java/function/Function3.java
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/api/java/function/Function3.java
+rename to common/utils-java/src/main/java/org/apache/spark/api/java/function/Function3.java
+diff --git a/common/utils/src/main/java/org/apache/spark/api/java/function/Function4.java b/common/utils-java/src/main/java/org/apache/spark/api/java/function/Function4.java
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/api/java/function/Function4.java
+rename to common/utils-java/src/main/java/org/apache/spark/api/java/function/Function4.java
+diff --git a/common/utils/src/main/java/org/apache/spark/api/java/function/MapFunction.java b/common/utils-java/src/main/java/org/apache/spark/api/java/function/MapFunction.java
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/api/java/function/MapFunction.java
+rename to common/utils-java/src/main/java/org/apache/spark/api/java/function/MapFunction.java
+diff --git a/common/utils/src/main/java/org/apache/spark/api/java/function/MapGroupsFunction.java b/common/utils-java/src/main/java/org/apache/spark/api/java/function/MapGroupsFunction.java
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/api/java/function/MapGroupsFunction.java
+rename to common/utils-java/src/main/java/org/apache/spark/api/java/function/MapGroupsFunction.java
+diff --git a/common/utils/src/main/java/org/apache/spark/api/java/function/MapPartitionsFunction.java b/common/utils-java/src/main/java/org/apache/spark/api/java/function/MapPartitionsFunction.java
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/api/java/function/MapPartitionsFunction.java
+rename to common/utils-java/src/main/java/org/apache/spark/api/java/function/MapPartitionsFunction.java
+diff --git a/common/utils/src/main/java/org/apache/spark/api/java/function/PairFlatMapFunction.java b/common/utils-java/src/main/java/org/apache/spark/api/java/function/PairFlatMapFunction.java
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/api/java/function/PairFlatMapFunction.java
+rename to common/utils-java/src/main/java/org/apache/spark/api/java/function/PairFlatMapFunction.java
+diff --git a/common/utils/src/main/java/org/apache/spark/api/java/function/PairFunction.java b/common/utils-java/src/main/java/org/apache/spark/api/java/function/PairFunction.java
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/api/java/function/PairFunction.java
+rename to common/utils-java/src/main/java/org/apache/spark/api/java/function/PairFunction.java
+diff --git a/common/utils/src/main/java/org/apache/spark/api/java/function/ReduceFunction.java b/common/utils-java/src/main/java/org/apache/spark/api/java/function/ReduceFunction.java
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/api/java/function/ReduceFunction.java
+rename to common/utils-java/src/main/java/org/apache/spark/api/java/function/ReduceFunction.java
+diff --git a/common/utils/src/main/java/org/apache/spark/api/java/function/VoidFunction.java b/common/utils-java/src/main/java/org/apache/spark/api/java/function/VoidFunction.java
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/api/java/function/VoidFunction.java
+rename to common/utils-java/src/main/java/org/apache/spark/api/java/function/VoidFunction.java
+diff --git a/common/utils/src/main/java/org/apache/spark/api/java/function/VoidFunction2.java b/common/utils-java/src/main/java/org/apache/spark/api/java/function/VoidFunction2.java
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/api/java/function/VoidFunction2.java
+rename to common/utils-java/src/main/java/org/apache/spark/api/java/function/VoidFunction2.java
+diff --git a/common/utils/src/main/java/org/apache/spark/api/java/function/package-info.java b/common/utils-java/src/main/java/org/apache/spark/api/java/function/package-info.java
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/api/java/function/package-info.java
+rename to common/utils-java/src/main/java/org/apache/spark/api/java/function/package-info.java
+diff --git a/common/utils/src/main/java/org/apache/spark/internal/LogKey.java b/common/utils-java/src/main/java/org/apache/spark/internal/LogKey.java
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/internal/LogKey.java
+rename to common/utils-java/src/main/java/org/apache/spark/internal/LogKey.java
+diff --git a/common/utils/src/main/java/org/apache/spark/internal/LogKeys.java b/common/utils-java/src/main/java/org/apache/spark/internal/LogKeys.java
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/internal/LogKeys.java
+rename to common/utils-java/src/main/java/org/apache/spark/internal/LogKeys.java
+diff --git a/common/utils/src/main/java/org/apache/spark/internal/MDC.java b/common/utils-java/src/main/java/org/apache/spark/internal/MDC.java
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/internal/MDC.java
+rename to common/utils-java/src/main/java/org/apache/spark/internal/MDC.java
+diff --git a/common/utils/src/main/java/org/apache/spark/internal/SparkLogger.java b/common/utils-java/src/main/java/org/apache/spark/internal/SparkLogger.java
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/internal/SparkLogger.java
+rename to common/utils-java/src/main/java/org/apache/spark/internal/SparkLogger.java
+diff --git a/common/utils/src/main/java/org/apache/spark/internal/SparkLoggerFactory.java b/common/utils-java/src/main/java/org/apache/spark/internal/SparkLoggerFactory.java
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/internal/SparkLoggerFactory.java
+rename to common/utils-java/src/main/java/org/apache/spark/internal/SparkLoggerFactory.java
+diff --git a/common/utils/src/main/java/org/apache/spark/memory/MemoryMode.java b/common/utils-java/src/main/java/org/apache/spark/memory/MemoryMode.java
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/memory/MemoryMode.java
+rename to common/utils-java/src/main/java/org/apache/spark/memory/MemoryMode.java
+diff --git a/common/utils/src/main/java/org/apache/spark/network/util/ByteUnit.java b/common/utils-java/src/main/java/org/apache/spark/network/util/ByteUnit.java
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/network/util/ByteUnit.java
+rename to common/utils-java/src/main/java/org/apache/spark/network/util/ByteUnit.java
+diff --git a/common/utils/src/main/java/org/apache/spark/network/util/JavaUtils.java b/common/utils-java/src/main/java/org/apache/spark/network/util/JavaUtils.java
+similarity index 89%
+rename from common/utils/src/main/java/org/apache/spark/network/util/JavaUtils.java
+rename to common/utils-java/src/main/java/org/apache/spark/network/util/JavaUtils.java
+index b05d1cc27b..1ed05f2c18 100644
+--- a/common/utils/src/main/java/org/apache/spark/network/util/JavaUtils.java
++++ b/common/utils-java/src/main/java/org/apache/spark/network/util/JavaUtils.java
+@@ -43,7 +43,6 @@ import org.apache.spark.internal.SparkLogger;
+ import org.apache.spark.internal.SparkLoggerFactory;
+ import org.apache.spark.internal.LogKeys;
+ import org.apache.spark.internal.MDC;
+-import org.apache.spark.util.SparkSystemUtils$;
+ 
+ /**
+  * General utilities available in the network package. Many of these are sourced from Spark's
+@@ -265,9 +264,7 @@ public class JavaUtils {
+     // On Unix systems, use operating system command to run faster
+     // If that does not work out, fallback to the Java IO way
+     // We exclude Apple Silicon test environment due to the limited resource issues.
+-    if (SparkSystemUtils$.MODULE$.isUnix() && filter == null &&
+-        !(SparkSystemUtils$.MODULE$.isMac() && (System.getenv("SPARK_TESTING") != null ||
+-        System.getProperty("spark.testing") != null))) {
++    if (isUnix && filter == null && !(isMac && isTesting())) {
+       try {
+         deleteRecursivelyUsingUnixNative(file);
+         return;
+@@ -663,4 +660,81 @@ public class JavaUtils {
+     }
+     return (int) value;
+   }
++
++  /** Return true if the content of the files are equal or they both don't exist */
++  public static boolean contentEquals(File file1, File file2) throws IOException {
++    if (file1 == null && file2 != null || file1 != null && file2 == null) {
++      return false;
++    } else if (file1 == null && file2 == null || !file1.exists() && !file2.exists()) {
++      return true;
++    } else if (!file1.exists() || !file2.exists()) {
++      return false;
++    } else if (file1.isDirectory() || file2.isDirectory()) {
++      throw new IllegalArgumentException("Input is not a file: %s or %s".formatted(file1, file2));
++    } else if (file1.length() != file2.length()) {
++      return false;
++    } else {
++      Path path1 = file1.toPath();
++      Path path2 = file2.toPath();
++      return Files.isSameFile(path1, path2) || Files.mismatch(path1, path2) == -1L;
++    }
++  }
++
++  public static String toString(InputStream in) throws IOException {
++    return new String(in.readAllBytes(), StandardCharsets.UTF_8);
++  }
++
++  /**
++   * Indicates whether Spark is currently running unit tests.
++   */
++  public static boolean isTesting() {
++    return System.getenv("SPARK_TESTING") != null || System.getProperty("spark.testing") != null;
++  }
++
++  /**
++   * The `os.name` system property.
++   */
++  public static String osName = System.getProperty("os.name");
++
++  /**
++   * The `os.version` system property.
++   */
++  public static String osVersion = System.getProperty("os.version");
++
++  /**
++   * The `java.version` system property.
++   */
++  public static String javaVersion = Runtime.version().toString();
++
++  /**
++   * The `os.arch` system property.
++   */
++  public static String osArch = System.getProperty("os.arch");
++
++  /**
++   * Whether the underlying operating system is Windows.
++   */
++  public static boolean isWindows = osName.regionMatches(true, 0, "Windows", 0, 7);
++
++  /**
++   * Whether the underlying operating system is Mac OS X.
++   */
++  public static boolean isMac = osName.regionMatches(true, 0, "Mac OS X", 0, 8);
++
++  /**
++   * Whether the underlying operating system is Mac OS X and processor is Apple Silicon.
++   */
++  public static boolean isMacOnAppleSilicon = isMac && osArch.equals("aarch64");
++
++  /**
++   * Whether the underlying operating system is Linux.
++   */
++  public static boolean isLinux = osName.regionMatches(true, 0, "Linux", 0, 5);
++
++  /**
++   * Whether the underlying operating system is UNIX.
++   */
++  public static boolean isUnix = Stream.of("AIX", "HP-UX", "Irix", "Linux", "Mac OS X", "Solaris",
++    "SunOS", "FreeBSD", "OpenBSD", "NetBSD")
++    .anyMatch(prefix -> osName.regionMatches(true, 0, prefix, 0, prefix.length()));
+ }
+diff --git a/common/utils/src/main/java/org/apache/spark/unsafe/array/ByteArrayUtils.java b/common/utils-java/src/main/java/org/apache/spark/unsafe/array/ByteArrayUtils.java
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/unsafe/array/ByteArrayUtils.java
+rename to common/utils-java/src/main/java/org/apache/spark/unsafe/array/ByteArrayUtils.java
+diff --git a/common/utils/src/main/java/org/apache/spark/util/Pair.java b/common/utils-java/src/main/java/org/apache/spark/util/Pair.java
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/util/Pair.java
+rename to common/utils-java/src/main/java/org/apache/spark/util/Pair.java
+diff --git a/common/utils/src/main/resources/org/apache/spark/SparkLayout.json b/common/utils-java/src/main/resources/org/apache/spark/SparkLayout.json
+similarity index 100%
+rename from common/utils/src/main/resources/org/apache/spark/SparkLayout.json
+rename to common/utils-java/src/main/resources/org/apache/spark/SparkLayout.json
+diff --git a/common/utils/src/main/resources/org/apache/spark/log4j2-defaults.properties b/common/utils-java/src/main/resources/org/apache/spark/log4j2-defaults.properties
+similarity index 100%
+rename from common/utils/src/main/resources/org/apache/spark/log4j2-defaults.properties
+rename to common/utils-java/src/main/resources/org/apache/spark/log4j2-defaults.properties
+diff --git a/common/utils/src/main/resources/org/apache/spark/log4j2-json-layout.properties b/common/utils-java/src/main/resources/org/apache/spark/log4j2-json-layout.properties
+similarity index 100%
+rename from common/utils/src/main/resources/org/apache/spark/log4j2-json-layout.properties
+rename to common/utils-java/src/main/resources/org/apache/spark/log4j2-json-layout.properties
+diff --git a/common/utils/src/test/java/org/apache/spark/util/CustomLogKeys.java b/common/utils-java/src/test/java/org/apache/spark/util/CustomLogKeys.java
+similarity index 100%
+rename from common/utils/src/test/java/org/apache/spark/util/CustomLogKeys.java
+rename to common/utils-java/src/test/java/org/apache/spark/util/CustomLogKeys.java
+diff --git a/common/utils/src/test/java/org/apache/spark/util/PatternSparkLoggerSuite.java b/common/utils-java/src/test/java/org/apache/spark/util/PatternSparkLoggerSuite.java
+similarity index 100%
+rename from common/utils/src/test/java/org/apache/spark/util/PatternSparkLoggerSuite.java
+rename to common/utils-java/src/test/java/org/apache/spark/util/PatternSparkLoggerSuite.java
+diff --git a/common/utils/src/test/java/org/apache/spark/util/SparkLoggerSuiteBase.java b/common/utils-java/src/test/java/org/apache/spark/util/SparkLoggerSuiteBase.java
+similarity index 100%
+rename from common/utils/src/test/java/org/apache/spark/util/SparkLoggerSuiteBase.java
+rename to common/utils-java/src/test/java/org/apache/spark/util/SparkLoggerSuiteBase.java
+diff --git a/common/utils/src/test/java/org/apache/spark/util/StructuredSparkLoggerSuite.java b/common/utils-java/src/test/java/org/apache/spark/util/StructuredSparkLoggerSuite.java
+similarity index 97%
+rename from common/utils/src/test/java/org/apache/spark/util/StructuredSparkLoggerSuite.java
+rename to common/utils-java/src/test/java/org/apache/spark/util/StructuredSparkLoggerSuite.java
+index cc2d156cc9..88ac8ea347 100644
+--- a/common/utils/src/test/java/org/apache/spark/util/StructuredSparkLoggerSuite.java
++++ b/common/utils-java/src/test/java/org/apache/spark/util/StructuredSparkLoggerSuite.java
+@@ -24,7 +24,6 @@ import org.apache.logging.log4j.Level;
+ import org.junit.jupiter.api.AfterAll;
+ import org.junit.jupiter.api.BeforeAll;
+ 
+-import org.apache.spark.internal.Logging$;
+ import org.apache.spark.internal.SparkLogger;
+ import org.apache.spark.internal.SparkLoggerFactory;
+ 
+@@ -33,13 +32,13 @@ public class StructuredSparkLoggerSuite extends SparkLoggerSuiteBase {
+   // Enable Structured Logging before running the tests
+   @BeforeAll
+   public static void setup() {
+-    Logging$.MODULE$.enableStructuredLogging();
++    SparkLoggerFactory.enableStructuredLogging();
+   }
+ 
+   // Disable Structured Logging after running the tests
+   @AfterAll
+   public static void teardown() {
+-    Logging$.MODULE$.disableStructuredLogging();
++    SparkLoggerFactory.disableStructuredLogging();
+   }
+ 
+   private static final SparkLogger LOGGER =
+diff --git a/common/utils-java/src/test/resources/log4j2.properties b/common/utils-java/src/test/resources/log4j2.properties
+new file mode 100644
+index 0000000000..cb38f5b55a
+--- /dev/null
++++ b/common/utils-java/src/test/resources/log4j2.properties
+@@ -0,0 +1,60 @@
++#
++# Licensed to the Apache Software Foundation (ASF) under one or more
++# contributor license agreements.  See the NOTICE file distributed with
++# this work for additional information regarding copyright ownership.
++# The ASF licenses this file to You under the Apache License, Version 2.0
++# (the "License"); you may not use this file except in compliance with
++# the License.  You may obtain a copy of the License at
++#
++#    http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++#
++
++rootLogger.level = info
++rootLogger.appenderRef.file.ref = ${sys:test.appender:-File}
++
++appender.file.type = File
++appender.file.name = File
++appender.file.fileName = target/unit-tests.log
++appender.file.layout.type = JsonTemplateLayout
++appender.file.layout.eventTemplateUri = classpath:org/apache/spark/SparkLayout.json
++
++# Structured Logging Appender
++appender.structured.type = File
++appender.structured.name = structured
++appender.structured.fileName = target/structured.log
++appender.structured.layout.type = JsonTemplateLayout
++appender.structured.layout.eventTemplateUri = classpath:org/apache/spark/SparkLayout.json
++
++# Pattern Logging Appender
++appender.pattern.type = File
++appender.pattern.name = pattern
++appender.pattern.fileName = target/pattern.log
++appender.pattern.layout.type = PatternLayout
++appender.pattern.layout.pattern = %d{yy/MM/dd HH:mm:ss} %p %c{1}: %m%n%ex
++
++# Custom loggers
++logger.structured_logging.name = org.apache.spark.util.StructuredLoggingSuite
++logger.structured_logging.level = trace
++logger.structured_logging.appenderRefs = structured
++logger.structured_logging.appenderRef.structured.ref = structured
++
++logger.pattern_logging.name = org.apache.spark.util.PatternLoggingSuite
++logger.pattern_logging.level = trace
++logger.pattern_logging.appenderRefs = pattern
++logger.pattern_logging.appenderRef.pattern.ref = pattern
++
++logger.structured_logger.name = org.apache.spark.util.StructuredSparkLoggerSuite
++logger.structured_logger.level = trace
++logger.structured_logger.appenderRefs = structured
++logger.structured_logger.appenderRef.structured.ref = structured
++
++logger.pattern_logger.name = org.apache.spark.util.PatternSparkLoggerSuite
++logger.pattern_logger.level = trace
++logger.pattern_logger.appenderRefs = pattern
++logger.pattern_logger.appenderRef.pattern.ref = pattern
+diff --git a/common/utils/pom.xml b/common/utils/pom.xml
+index abcadd83fc..df3bc5adb1 100644
+--- a/common/utils/pom.xml
++++ b/common/utils/pom.xml
+@@ -39,6 +39,18 @@
+       <groupId>org.apache.spark</groupId>
+       <artifactId>spark-tags_${scala.binary.version}</artifactId>
+     </dependency>
++    <dependency>
++      <groupId>org.apache.spark</groupId>
++      <artifactId>spark-common-utils-java_${scala.binary.version}</artifactId>
++      <version>${project.version}</version>
++    </dependency>
++    <dependency>
++      <groupId>org.apache.spark</groupId>
++      <artifactId>spark-common-utils-java_${scala.binary.version}</artifactId>
++      <version>${project.version}</version>
++      <type>test-jar</type>
++      <scope>test</scope>
++    </dependency>
+     <dependency>
+       <groupId>org.apache.xbean</groupId>
+       <artifactId>xbean-asm9-shaded</artifactId>
+diff --git a/common/utils/src/main/java/org/apache/spark/api/java/function/package.scala b/common/utils/src/main/scala/org/apache/spark/api/java/function/package.scala
+similarity index 100%
+rename from common/utils/src/main/java/org/apache/spark/api/java/function/package.scala
+rename to common/utils/src/main/scala/org/apache/spark/api/java/function/package.scala
+diff --git a/common/utils/src/main/scala/org/apache/spark/util/SparkEnvUtils.scala b/common/utils/src/main/scala/org/apache/spark/util/SparkEnvUtils.scala
+index b54e6ee5d7..01e3f52de4 100644
+--- a/common/utils/src/main/scala/org/apache/spark/util/SparkEnvUtils.scala
++++ b/common/utils/src/main/scala/org/apache/spark/util/SparkEnvUtils.scala
+@@ -16,16 +16,14 @@
+  */
+ package org.apache.spark.util
+ 
++import org.apache.spark.network.util.JavaUtils
++
+ private[spark] trait SparkEnvUtils {
+ 
+   /**
+    * Indicates whether Spark is currently running unit tests.
+    */
+-  def isTesting: Boolean = {
+-    // Scala's `sys.env` creates a ton of garbage by constructing Scala immutable maps, so
+-    // we directly use the Java APIs instead.
+-    System.getenv("SPARK_TESTING") != null || System.getProperty("spark.testing") != null
+-  }
++  def isTesting: Boolean = JavaUtils.isTesting
+ 
+ }
+ 
+diff --git a/common/utils/src/main/scala/org/apache/spark/util/SparkFileUtils.scala b/common/utils/src/main/scala/org/apache/spark/util/SparkFileUtils.scala
+index dcf38f70a7..3f1f9c1f9d 100644
+--- a/common/utils/src/main/scala/org/apache/spark/util/SparkFileUtils.scala
++++ b/common/utils/src/main/scala/org/apache/spark/util/SparkFileUtils.scala
+@@ -220,21 +220,7 @@ private[spark] trait SparkFileUtils extends Logging {
+ 
+   /** Return true if the content of the files are equal or they both don't exist */
+   def contentEquals(file1: File, file2: File): Boolean = {
+-    if (file1 == null && file2 != null || file1 != null && file2 == null) {
+-      false
+-    } else if (file1 == null && file2 == null || !file1.exists() && !file2.exists()) {
+-      true
+-    } else if (!file1.exists() || !file2.exists()) {
+-      false
+-    } else if (file1.isDirectory() || file2.isDirectory()) {
+-      throw new IllegalArgumentException(s"Input is not a file: $file1 or $file2")
+-    } else if (file1.length != file2.length) {
+-      false
+-    } else {
+-      val path1 = file1.toPath
+-      val path2 = file2.toPath
+-      Files.isSameFile(path1, path2) || Files.mismatch(path1, path2) == -1L
+-    }
++    JavaUtils.contentEquals(file1, file2)
+   }
+ 
+   def touch(file: File): Unit = {
+diff --git a/common/utils/src/main/scala/org/apache/spark/util/SparkStreamUtils.scala b/common/utils/src/main/scala/org/apache/spark/util/SparkStreamUtils.scala
+index d4e44b0191..a2556770ed 100644
+--- a/common/utils/src/main/scala/org/apache/spark/util/SparkStreamUtils.scala
++++ b/common/utils/src/main/scala/org/apache/spark/util/SparkStreamUtils.scala
+@@ -18,7 +18,6 @@ package org.apache.spark.util
+ 
+ import java.io.{FileInputStream, FileOutputStream, InputStream, OutputStream}
+ import java.nio.channels.{FileChannel, WritableByteChannel}
+-import java.nio.charset.StandardCharsets
+ 
+ import org.apache.spark.network.util.JavaUtils
+ import org.apache.spark.util.SparkErrorUtils.tryWithSafeFinally
+@@ -108,7 +107,7 @@ private[spark] trait SparkStreamUtils {
+   }
+ 
+   def toString(in: InputStream): String = {
+-    new String(in.readAllBytes(), StandardCharsets.UTF_8)
++    JavaUtils.toString(in)
+   }
+ 
+   def readFully(in: InputStream, arr: Array[Byte], off: Int, len: Int): Unit = {
+diff --git a/common/utils/src/main/scala/org/apache/spark/util/SparkSystemUtils.scala b/common/utils/src/main/scala/org/apache/spark/util/SparkSystemUtils.scala
+index 305cc55282..eccf556c42 100644
+--- a/common/utils/src/main/scala/org/apache/spark/util/SparkSystemUtils.scala
++++ b/common/utils/src/main/scala/org/apache/spark/util/SparkSystemUtils.scala
+@@ -16,52 +16,53 @@
+  */
+ package org.apache.spark.util
+ 
++import org.apache.spark.network.util.JavaUtils
++
+ private[spark] trait SparkSystemUtils {
+   /**
+    * The `os.name` system property.
+    */
+-  val osName = System.getProperty("os.name")
++  val osName = JavaUtils.osName
+ 
+   /**
+    * The `os.version` system property.
+    */
+-  val osVersion = System.getProperty("os.version")
++  val osVersion = JavaUtils.osVersion
+ 
+   /**
+    * The `os.arch` system property.
+    */
+-  val osArch = System.getProperty("os.arch")
++  val osArch = JavaUtils.osArch
+ 
+   /**
+    * The `java.version` system property.
+    */
+-  val javaVersion = Runtime.version.toString
++  val javaVersion = JavaUtils.javaVersion
+ 
+   /**
+    * Whether the underlying operating system is Windows.
+    */
+-  val isWindows = osName.regionMatches(true, 0, "Windows", 0, 7)
++  val isWindows = JavaUtils.isWindows
+ 
+   /**
+    * Whether the underlying operating system is Mac OS X.
+    */
+-  val isMac = osName.regionMatches(true, 0, "Mac OS X", 0, 8)
++  val isMac = JavaUtils.isMac
+ 
+   /**
+    * Whether the underlying operating system is Mac OS X and processor is Apple Silicon.
+    */
+-  val isMacOnAppleSilicon = isMac && osArch.equals("aarch64")
++  val isMacOnAppleSilicon = JavaUtils.isMacOnAppleSilicon
+ 
+   /**
+    * Whether the underlying operating system is Linux.
+    */
+-  val isLinux = osName.regionMatches(true, 0, "Linux", 0, 5)
++  val isLinux = JavaUtils.isLinux
+ 
+   /**
+    * Whether the underlying operating system is UNIX.
+    */
+-  val isUnix = Seq("AIX", "HP-UX", "Irix", "Linux", "Mac OS X", "Solaris", "SunOS", "FreeBSD",
+-      "OpenBSD", "NetBSD").exists(prefix => osName.regionMatches(true, 0, prefix, 0, prefix.length))
++  val isUnix = JavaUtils.isUnix
+ }
+ 
+ object SparkSystemUtils extends SparkSystemUtils
+diff --git a/common/variant/src/main/java/org/apache/spark/types/variant/VariantUtil.java b/common/variant/src/main/java/org/apache/spark/types/variant/VariantUtil.java
+index 40ea064cbf..795d46ec20 100644
+--- a/common/variant/src/main/java/org/apache/spark/types/variant/VariantUtil.java
++++ b/common/variant/src/main/java/org/apache/spark/types/variant/VariantUtil.java
+@@ -19,6 +19,7 @@ package org.apache.spark.types.variant;
+ 
+ import org.apache.spark.QueryContext;
+ import org.apache.spark.SparkRuntimeException;
++import org.apache.spark.network.util.JavaUtils;
+ import scala.collection.immutable.Map$;
+ 
+ import java.math.BigDecimal;
+@@ -140,7 +141,7 @@ public class VariantUtil {
+   // Both variant value and variant metadata need to be no longer than 128MiB.
+   // Note: to make tests more reliable, we set the max size to 16Mib to avoid OOM in tests.
+   public static final int SIZE_LIMIT =
+-    System.getenv("SPARK_TESTING") != null ? U24_MAX + 1 : 128 * 1024 * 1024;
++    JavaUtils.isTesting() ? U24_MAX + 1 : 128 * 1024 * 1024;
+ 
+   public static final int MAX_DECIMAL4_PRECISION = 9;
+   public static final int MAX_DECIMAL8_PRECISION = 18;
+diff --git a/dev/sparktestsupport/modules.py b/dev/sparktestsupport/modules.py
+index 0f53a26ce2..c0645d7b5b 100644
+--- a/dev/sparktestsupport/modules.py
++++ b/dev/sparktestsupport/modules.py
+@@ -113,9 +113,20 @@ tags = Module(
+     ],
+ )
+ 
++utils_java = Module(
++    name="utils-java",
++    dependencies=[tags],
++    source_file_regexes=[
++        "common/utils-java/",
++    ],
++    sbt_test_goals=[
++        "common-utils-java/test",
++    ],
++)
++
+ utils = Module(
+     name="utils",
+-    dependencies=[tags],
++    dependencies=[tags, utils_java],
+     source_file_regexes=[
+         "common/utils/",
+     ],
+@@ -137,7 +148,7 @@ kvstore = Module(
+ 
+ network_common = Module(
+     name="network-common",
+-    dependencies=[tags, utils],
++    dependencies=[tags, utils_java],
+     source_file_regexes=[
+         "common/network-common/",
+     ],
+diff --git a/pom.xml b/pom.xml
+index 110627d368..9f4be969ee 100644
+--- a/pom.xml
++++ b/pom.xml
+@@ -82,6 +82,7 @@
+     <module>common/network-shuffle</module>
+     <module>common/unsafe</module>
+     <module>common/utils</module>
++    <module>common/utils-java</module>
+     <module>common/variant</module>
+     <module>common/tags</module>
+     <module>sql/connect/shims</module>
+diff --git a/project/MimaExcludes.scala b/project/MimaExcludes.scala
+index 5f1c0cbca0..f11896a1bb 100644
+--- a/project/MimaExcludes.scala
++++ b/project/MimaExcludes.scala
+@@ -83,6 +83,13 @@ object MimaExcludes {
+     // SPARK-51267: Match local Spark Connect server logic between Python and Scala
+     ProblemFilters.exclude[MissingFieldProblem]("org.apache.spark.launcher.SparkLauncher.SPARK_LOCAL_REMOTE"),
+ 
++    // SPARK-53138: Split common/utils Java code into a new module common/utils-java
++    ProblemFilters.exclude[MissingClassProblem]("org.apache.spark.QueryContext"),
++    ProblemFilters.exclude[MissingClassProblem]("org.apache.spark.QueryContextType"),
++    ProblemFilters.exclude[MissingClassProblem]("org.apache.spark.api.java.function.*"),
++    ProblemFilters.exclude[MissingClassProblem]("org.apache.spark.network.util.ByteUnit"),
++    ProblemFilters.exclude[MissingClassProblem]("org.apache.spark.network.util.JavaUtils"),
++
+     (problem: Problem) => problem match {
+       case MissingClassProblem(cls) => !cls.fullName.startsWith("org.sparkproject.jpmml") &&
+           !cls.fullName.startsWith("org.sparkproject.dmg.pmml")
+diff --git a/project/SparkBuild.scala b/project/SparkBuild.scala
+index df6eabae8b..b1bbdad177 100644
+--- a/project/SparkBuild.scala
++++ b/project/SparkBuild.scala
+@@ -59,10 +59,10 @@ object BuildCommons {
+ 
+   val allProjects@Seq(
+     core, graphx, mllib, mllibLocal, repl, networkCommon, networkShuffle, launcher, unsafe, tags, sketch, kvstore,
+-    commonUtils, variant, pipelines, _*
++    commonUtils, commonUtilsJava, variant, pipelines, _*
+   ) = Seq(
+     "core", "graphx", "mllib", "mllib-local", "repl", "network-common", "network-shuffle", "launcher", "unsafe",
+-    "tags", "sketch", "kvstore", "common-utils", "variant", "pipelines"
++    "tags", "sketch", "kvstore", "common-utils", "common-utils-java", "variant", "pipelines"
+   ).map(ProjectRef(buildLocation, _)) ++ sqlProjects ++ streamingProjects ++ connectProjects
+ 
+   val optionallyEnabledProjects@Seq(kubernetes, yarn,
+@@ -400,7 +400,7 @@ object SparkBuild extends PomBuild {
+     Seq(
+       spark, hive, hiveThriftServer, repl, networkCommon, networkShuffle, networkYarn,
+       unsafe, tags, tokenProviderKafka010, sqlKafka010, pipelines, connectCommon, connect,
+-      connectClient, variant, connectShims, profiler
++      connectClient, variant, connectShims, profiler, commonUtilsJava
+     ).contains(x)
+   }
+ 

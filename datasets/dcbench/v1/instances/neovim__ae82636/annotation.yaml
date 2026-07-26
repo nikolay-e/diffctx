@@ -1,0 +1,32 @@
+repo: neovim
+base_commit: e2cb675705221066522ae707ed5f572a0cf0ebcf
+commit: ae826362761aca9d1bdb065c156fecfcd2e9e132
+patch_stored: true
+gold:
+  - path: runtime/doc/lua.txt
+    tier: essential
+    role: doc
+    in_diff: true
+    rationale: the generated file being caught up; its `vim.filetype.match()` third-return-value description is changed from "generic filetype (e.g. \".conf\")" to "generic configuration file (i.e., \".conf\")".
+  - path: runtime/lua/vim/filetype.lua
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: 'the `---@return boolean|nil # Return true if a match was found by falling back to a generic configuration file (i.e., ".conf")...` doc-comment on M.match() at line ~3104 already reads exactly like the new lua.txt text at the base commit — proving this diff is a stale-doc catch-up regen, not a content edit; without this file the 1-line wording change looks arbitrary.'
+  - path: src/gen/gen_vimdoc.lua
+    tier: helpful
+    role: config
+    in_diff: false
+    rationale: lists 'filetype.lua'/'runtime/lua/vim/filetype.lua' in its module config, the generator that turns filetype.lua's ---@return doc-comments into the runtime/doc/lua.txt section this commit regenerates.
+forbidden:
+  - path: runtime/lua/vim/health.lua
+    reason: another module contributing sections to lua.txt via the same generator but with no textual connection to the M.match() wording change.
+  - path: runtime/doc/filetype.txt
+    reason: separate hand-maintained help file about filetype detection semantics generally; not the source of or generated from the changed vim.filetype.match() doc-comment.
+  - path: src/gen/gen_help_html.lua
+    reason: generates help.html from vimdoc, a downstream consumer of lua.txt, not involved in producing the text that changed.
+nontrivial_gold_count: 2
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: 'Pure "regenerate generated doc" commit: runtime/doc/lua.txt is auto-generated from Lua source ---@... doc-comments via src/gen/gen_vimdoc.lua, and the source doc-comment in runtime/lua/vim/filetype.lua (M.match()) already had the new wording before this commit — the previous lua.txt had simply drifted out of sync (stale regen) and this commit re-runs the generator to catch it up. Confirmed by diffing filetype.lua at base_commit vs this commit: byte-identical at the relevant lines.'

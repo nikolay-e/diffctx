@@ -1,0 +1,81 @@
+generators:
+  cochange: 0
+  bm25: 15
+  graph: 0
+  random: 10
+candidates:
+- path: .azure/pipelines/stress.yml
+  sources:
+  - random
+- path: .github/workflows/test-quarantine.md
+  sources:
+  - bm25
+- path: src/Components/Components/src/ComponentBase.cs
+  sources:
+  - bm25
+- path: src/Components/Components/src/RenderTree/RenderTreeDiffBuilder.cs
+  sources:
+  - bm25
+- path: src/Components/Components/src/RenderTree/Renderer.cs
+  sources:
+  - bm25
+- path: src/Components/Components/src/Rendering/ComponentState.cs
+  sources:
+  - bm25
+- path: src/Components/Components/src/Routing/Router.cs
+  sources:
+  - bm25
+- path: src/Components/Components/test/CascadingParameterTest.cs
+  sources:
+  - bm25
+- path: src/Components/Components/test/ComponentsMetricsTest.cs
+  sources:
+  - random
+- path: src/Components/Endpoints/test/Builder/TestFileProvider/TestFileInfo.cs
+  sources:
+  - random
+- path: src/Components/QuickGrid/Microsoft.AspNetCore.Components.QuickGrid/src/QuickGrid.razor.cs
+  sources:
+  - bm25
+- path: src/Components/Server/src/Circuits/CircuitHost.cs
+  sources:
+  - bm25
+- path: src/Components/Server/src/Circuits/RemoteRenderer.cs
+  sources:
+  - bm25
+- path: src/Components/Testing/test/SanitizeFileNameTests.cs
+  sources:
+  - random
+- path: src/Components/Web/src/Forms/InputBase.cs
+  sources:
+  - bm25
+- path: src/Components/Web/src/Virtualization/Virtualize.cs
+  sources:
+  - bm25
+- path: src/DataProtection/DataProtection/src/KeyManagement/KeyRingProvider.cs
+  sources:
+  - bm25
+- path: src/HealthChecks/build.sh
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/HtmlGenerationWebSite/Views/HtmlGeneration_Home/EditWarehouse.cshtml
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/RazorPagesWebSite/Pages/ViewData/ViewDataToViewComponentPage.cshtml
+  sources:
+  - random
+- path: src/ProjectTemplates/README.md
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ItemTemplates/content/ViewImports/.template.config/localize/templatestrings.zh-Hant.json
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ProjectTemplates/content/StarterWeb-CSharp/Views/Shared/_LoginPartial.OrgAuth.cshtml
+  sources:
+  - random
+- path: src/SignalR/clients/csharp/Client.Core/src/HubConnection.cs
+  sources:
+  - bm25
+- path: src/SignalR/server/Core/src/HubConnectionContext.cs
+  sources:
+  - bm25

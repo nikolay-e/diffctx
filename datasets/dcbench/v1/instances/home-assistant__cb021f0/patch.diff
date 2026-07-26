@@ -1,0 +1,470 @@
+From cb021f0b6bb61601fff47fde7a136e1050a72109 Mon Sep 17 00:00:00 2001
+From: puddly <32534428+puddly@users.noreply.github.com>
+Date: Tue, 21 Apr 2026 21:15:57 -0400
+Subject: [PATCH] Allow integrations to contribute serial port scanning helpers
+ (#168660)
+
+Co-authored-by: Paulus Schoutsen <paulus@home-assistant.io>
+---
+ .../homeassistant_yellow/__init__.py          | 22 ++++-
+ .../homeassistant_yellow/manifest.json        |  2 +-
+ homeassistant/components/usb/__init__.py      | 57 ++++++++++-
+ homeassistant/components/usb/utils.py         |  8 --
+ .../homeassistant_yellow/test_init.py         | 57 +++++++++++
+ tests/components/insteon/mock_setup.py        |  4 +
+ tests/components/usb/__init__.py              |  7 +-
+ tests/components/usb/test_init.py             | 94 ++++++++++++++++++-
+ 8 files changed, 231 insertions(+), 20 deletions(-)
+
+diff --git a/homeassistant/components/homeassistant_yellow/__init__.py b/homeassistant/components/homeassistant_yellow/__init__.py
+index e772c0fe7b..26a7b90f3f 100644
+--- a/homeassistant/components/homeassistant_yellow/__init__.py
++++ b/homeassistant/components/homeassistant_yellow/__init__.py
+@@ -16,8 +16,13 @@ from homeassistant.components.homeassistant_hardware.util import (
+     ApplicationType,
+     guess_firmware_info,
+ )
++from homeassistant.components.usb import (
++    SerialDevice,
++    USBDevice,
++    async_register_serial_port_scanner,
++)
+ from homeassistant.config_entries import SOURCE_HARDWARE, ConfigEntry
+-from homeassistant.core import HomeAssistant
++from homeassistant.core import HomeAssistant, callback
+ from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
+ from homeassistant.helpers import discovery_flow
+ from homeassistant.helpers.aiohttp_client import async_get_clientsession
+@@ -26,6 +31,7 @@ from homeassistant.helpers.hassio import is_hassio
+ from .const import (
+     FIRMWARE,
+     FIRMWARE_VERSION,
++    MANUFACTURER,
+     NABU_CASA_FIRMWARE_RELEASES_URL,
+     RADIO_DEVICE,
+     ZHA_HW_DISCOVERY_DATA,
+@@ -80,6 +86,20 @@ async def async_setup_entry(
+             data=ZHA_HW_DISCOVERY_DATA,
+         )
+ 
++    @callback
++    def _scan_serial_ports(hass: HomeAssistant) -> list[USBDevice | SerialDevice]:
++        """Contribute the Yellow's built-in Zigbee radio port."""
++        return [
++            SerialDevice(
++                device=RADIO_DEVICE,
++                serial_number=None,
++                manufacturer=MANUFACTURER,
++                description="Yellow Zigbee Radio",
++            )
++        ]
++
++    entry.async_on_unload(async_register_serial_port_scanner(hass, _scan_serial_ports))
++
+     # Create and store the firmware update coordinator in runtime_data
+     session = async_get_clientsession(hass)
+     coordinator = FirmwareUpdateCoordinator(
+diff --git a/homeassistant/components/homeassistant_yellow/manifest.json b/homeassistant/components/homeassistant_yellow/manifest.json
+index 31f5b163f9..9c69c2ce86 100644
+--- a/homeassistant/components/homeassistant_yellow/manifest.json
++++ b/homeassistant/components/homeassistant_yellow/manifest.json
+@@ -4,7 +4,7 @@
+   "after_dependencies": ["hassio"],
+   "codeowners": ["@home-assistant/core"],
+   "config_flow": false,
+-  "dependencies": ["hardware", "homeassistant_hardware"],
++  "dependencies": ["hardware", "homeassistant_hardware", "usb"],
+   "documentation": "https://www.home-assistant.io/integrations/homeassistant_yellow",
+   "integration_type": "hardware",
+   "loggers": [
+diff --git a/homeassistant/components/usb/__init__.py b/homeassistant/components/usb/__init__.py
+index 6dc3a20cc7..2abedf2b7d 100644
+--- a/homeassistant/components/usb/__init__.py
++++ b/homeassistant/components/usb/__init__.py
+@@ -4,6 +4,7 @@ from __future__ import annotations
+ 
+ import asyncio
+ from collections.abc import Callable, Coroutine, Sequence
++from contextlib import suppress
+ import dataclasses
+ from datetime import datetime, timedelta
+ import logging
+@@ -35,7 +36,6 @@ from homeassistant.util.hass_dict import HassKey
+ from .const import DOMAIN
+ from .models import SerialDevice, USBDevice
+ from .utils import (
+-    async_scan_serial_ports,
+     scan_serial_ports,
+     usb_device_from_path,
+     usb_device_matches_matcher,
+@@ -47,6 +47,7 @@ _LOGGER = logging.getLogger(__name__)
+ _USB_DATA: HassKey[USBDiscovery] = HassKey(DOMAIN)
+ 
+ PORT_EVENT_CALLBACK_TYPE = Callable[[set[USBDevice], set[USBDevice]], None]
++SERIAL_PORT_SCANNER_TYPE = Callable[[HomeAssistant], Sequence[USBDevice | SerialDevice]]
+ 
+ POLLING_MONITOR_SCAN_PERIOD = timedelta(seconds=5)
+ REQUEST_SCAN_COOLDOWN = 10  # 10 second cooldown
+@@ -58,6 +59,7 @@ __all__ = [
+     "USBDevice",
+     "async_register_port_event_callback",
+     "async_register_scan_request_callback",
++    "async_register_serial_port_scanner",
+     "async_scan_serial_ports",
+     "scan_serial_ports",
+     "usb_device_from_path",
+@@ -100,6 +102,21 @@ def async_register_port_event_callback(
+     return hass.data[_USB_DATA].async_register_port_event_callback(callback)
+ 
+ 
++async def async_scan_serial_ports(
++    hass: HomeAssistant,
++) -> Sequence[USBDevice | SerialDevice]:
++    """Scan serial ports and return USB and other serial devices."""
++    return await hass.data[_USB_DATA].async_scan_serial_ports()
++
++
++@hass_callback
++def async_register_serial_port_scanner(
++    hass: HomeAssistant, scanner: SERIAL_PORT_SCANNER_TYPE
++) -> CALLBACK_TYPE:
++    """Register a scanner that contributes additional serial ports to scans."""
++    return hass.data[_USB_DATA].async_register_serial_port_scanner(scanner)
++
++
+ @hass_callback
+ def async_get_usb_matchers_for_device(
+     hass: HomeAssistant, device: USBDevice
+@@ -198,6 +215,7 @@ class USBDiscovery:
+         self.initial_scan_done = False
+         self._initial_scan_callbacks: list[CALLBACK_TYPE] = []
+         self._port_event_callbacks: set[PORT_EVENT_CALLBACK_TYPE] = set()
++        self._serial_port_scanners: list[SERIAL_PORT_SCANNER_TYPE] = []
+         self._last_processed_devices: set[USBDevice] = set()
+         self._scan_lock = asyncio.Lock()
+ 
+@@ -313,6 +331,41 @@ class USBDiscovery:
+ 
+         return _async_remove_callback
+ 
++    @hass_callback
++    def async_register_serial_port_scanner(
++        self,
++        scanner: SERIAL_PORT_SCANNER_TYPE,
++    ) -> CALLBACK_TYPE:
++        """Register a scanner that contributes additional serial ports to scans."""
++        self._serial_port_scanners.append(scanner)
++
++        @hass_callback
++        def _async_remove_callback() -> None:
++            with suppress(ValueError):
++                self._serial_port_scanners.remove(scanner)
++
++        return _async_remove_callback
++
++    async def async_scan_serial_ports(self) -> Sequence[USBDevice | SerialDevice]:
++        """Scan serial ports and return USB and other serial devices.
++
++        Ports returned by registered scanners override real ports with the same
++        device path, letting integrations enhance the metadata for known devices.
++        """
++        ports: dict[str, USBDevice | SerialDevice] = {
++            p.device: p
++            for p in await self.hass.async_add_executor_job(scan_serial_ports)
++        }
++
++        for scanner in self._serial_port_scanners:
++            try:
++                for port in scanner(self.hass):
++                    ports[port.device] = port
++            except Exception:
++                _LOGGER.exception("Error in USB scanner callback")
++
++        return list(ports.values())
++
+     @hass_callback
+     def async_get_usb_matchers_for_device(self, device: USBDevice) -> list[USBMatcher]:
+         """Return a list of matchers that match the given device."""
+@@ -440,7 +493,7 @@ class USBDiscovery:
+             # Only consider USB-serial ports for discovery
+             usb_ports = [
+                 p
+-                for p in await async_scan_serial_ports(self.hass)
++                for p in await self.async_scan_serial_ports()
+                 if isinstance(p, USBDevice)
+             ]
+ 
+diff --git a/homeassistant/components/usb/utils.py b/homeassistant/components/usb/utils.py
+index 7506a72ee4..661b5d562d 100644
+--- a/homeassistant/components/usb/utils.py
++++ b/homeassistant/components/usb/utils.py
+@@ -8,7 +8,6 @@ import os
+ 
+ from serialx import SerialPortInfo, list_serial_ports
+ 
+-from homeassistant.core import HomeAssistant
+ from homeassistant.helpers.service_info.usb import UsbServiceInfo
+ from homeassistant.loader import USBMatcher
+ 
+@@ -52,13 +51,6 @@ def scan_serial_ports() -> Sequence[USBDevice | SerialDevice]:
+     return [usb_serial_device_from_port(port) for port in list_serial_ports()]
+ 
+ 
+-async def async_scan_serial_ports(
+-    hass: HomeAssistant,
+-) -> Sequence[USBDevice | SerialDevice]:
+-    """Scan serial ports and return USB and other serial devices, async."""
+-    return await hass.async_add_executor_job(scan_serial_ports)
+-
+-
+ def usb_device_from_path(device_path: str) -> USBDevice | None:
+     """Get USB device info from a device path."""
+ 
+diff --git a/tests/components/homeassistant_yellow/test_init.py b/tests/components/homeassistant_yellow/test_init.py
+index 7bff7f10c6..7dc93ccf97 100644
+--- a/tests/components/homeassistant_yellow/test_init.py
++++ b/tests/components/homeassistant_yellow/test_init.py
+@@ -14,12 +14,14 @@ from homeassistant.components.homeassistant_yellow.config_flow import (
+     HomeAssistantYellowConfigFlow,
+ )
+ from homeassistant.components.homeassistant_yellow.const import DOMAIN
++from homeassistant.components.usb import SerialDevice, async_scan_serial_ports
+ from homeassistant.config_entries import ConfigEntryState
+ from homeassistant.core import HomeAssistant
+ from homeassistant.exceptions import HomeAssistantError
+ from homeassistant.setup import async_setup_component
+ 
+ from tests.common import MockConfigEntry, MockModule, mock_integration
++from tests.components.usb import patch_scanned_serial_ports
+ 
+ 
+ @pytest.mark.parametrize(
+@@ -150,6 +152,61 @@ async def test_setup_zha(hass: HomeAssistant, addon_store_info) -> None:
+     assert config_entry.title == "Yellow"
+ 
+ 
++async def test_contributes_radio_serial_port(
++    hass: HomeAssistant, addon_store_info
++) -> None:
++    """Yellow registers a scanner that contributes its radio serial port."""
++    mock_integration(hass, MockModule("hassio"))
++    await async_setup_component(hass, HASSIO_DOMAIN, {})
++
++    bare_port = SerialDevice(
++        device="/dev/ttyAMA1",
++        serial_number=None,
++        manufacturer=None,
++        description=None,
++    )
++
++    config_entry = MockConfigEntry(
++        data={"firmware": ApplicationType.EZSP},
++        domain=DOMAIN,
++        options={},
++        title="Home Assistant Yellow",
++        version=1,
++        minor_version=2,
++    )
++    config_entry.add_to_hass(hass)
++
++    with (
++        patch(
++            "homeassistant.components.homeassistant_yellow.get_os_info",
++            return_value={"board": "yellow"},
++        ),
++        patch(
++            "homeassistant.components.onboarding.async_is_onboarded",
++            return_value=True,
++        ),
++        patch_scanned_serial_ports(return_value=[bare_port]),
++    ):
++        assert await hass.config_entries.async_setup(config_entry.entry_id)
++        await hass.async_block_till_done(wait_background_tasks=True)
++
++        ports = await async_scan_serial_ports(hass)
++
++        assert ports == [
++            SerialDevice(
++                device="/dev/ttyAMA1",
++                serial_number=None,
++                manufacturer="Nabu Casa",
++                description="Yellow Zigbee Radio",
++            )
++        ]
++
++        assert await hass.config_entries.async_unload(config_entry.entry_id)
++
++        ports = await async_scan_serial_ports(hass)
++        assert ports == [bare_port]
++
++
+ async def test_setup_entry_no_hassio(hass: HomeAssistant) -> None:
+     """Test setup of a config entry without hassio."""
+     # Setup the config entry
+diff --git a/tests/components/insteon/mock_setup.py b/tests/components/insteon/mock_setup.py
+index c0d90509a5..ac3b056549 100644
+--- a/tests/components/insteon/mock_setup.py
++++ b/tests/components/insteon/mock_setup.py
+@@ -2,8 +2,10 @@
+ 
+ from homeassistant.components.insteon.api import async_load_api
+ from homeassistant.components.insteon.const import DOMAIN
++from homeassistant.components.usb import DOMAIN as USB_DOMAIN
+ from homeassistant.core import HomeAssistant
+ from homeassistant.helpers import device_registry as dr
++from homeassistant.setup import async_setup_component
+ 
+ from .const import MOCK_USER_INPUT_PLM
+ from .mock_devices import MockDevices
+@@ -19,6 +21,8 @@ async def async_mock_setup(
+     config_options: dict | None = None,
+ ):
+     """Set up for tests."""
++    assert await async_setup_component(hass, USB_DOMAIN, {"usb": {}})
++
+     config_data = MOCK_USER_INPUT_PLM if config_data is None else config_data
+     config_options = {} if config_options is None else config_options
+     config_entry = MockConfigEntry(
+diff --git a/tests/components/usb/__init__.py b/tests/components/usb/__init__.py
+index 28cd535836..18099cfe0c 100644
+--- a/tests/components/usb/__init__.py
++++ b/tests/components/usb/__init__.py
+@@ -1,14 +1,15 @@
+ """Tests for the USB Discovery integration."""
+ 
+-from unittest.mock import patch
++from typing import Any
++from unittest.mock import _patch, patch
+ 
+ from homeassistant.components.usb import async_request_scan as usb_async_request_scan
+ from homeassistant.core import HomeAssistant
+ 
+ 
+-def patch_scanned_serial_ports(**kwargs) -> None:
++def patch_scanned_serial_ports(**kwargs: Any) -> _patch:
+     """Patch the USB integration's list of scanned serial ports."""
+-    return patch("homeassistant.components.usb.utils.scan_serial_ports", **kwargs)
++    return patch("homeassistant.components.usb.scan_serial_ports", **kwargs)
+ 
+ 
+ async def async_request_scan(hass: HomeAssistant) -> None:
+diff --git a/tests/components/usb/test_init.py b/tests/components/usb/test_init.py
+index 698dc8f482..8fafac70d3 100644
+--- a/tests/components/usb/test_init.py
++++ b/tests/components/usb/test_init.py
+@@ -11,12 +11,9 @@ from serialx import SerialPortInfo
+ 
+ from homeassistant import config_entries
+ from homeassistant.components import usb
+-from homeassistant.components.usb import DOMAIN
++from homeassistant.components.usb import DOMAIN, async_scan_serial_ports
+ from homeassistant.components.usb.models import SerialDevice, USBDevice
+-from homeassistant.components.usb.utils import (
+-    async_scan_serial_ports,
+-    usb_device_from_path,
+-)
++from homeassistant.components.usb.utils import usb_device_from_path
+ from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, EVENT_HOMEASSISTANT_STOP
+ from homeassistant.core import HomeAssistant
+ from homeassistant.setup import async_setup_component
+@@ -1297,6 +1294,7 @@ async def test_register_port_event_callback_failure(
+ 
+ async def test_async_scan_serial_ports(hass: HomeAssistant) -> None:
+     """Test async_scan_serial_ports parsing."""
++    assert await async_setup_component(hass, DOMAIN, {"usb": {}})
+     with patch(
+         "homeassistant.components.usb.utils.list_serial_ports",
+         return_value=[
+@@ -1346,6 +1344,92 @@ async def test_async_scan_serial_ports(hass: HomeAssistant) -> None:
+     ]
+ 
+ 
++async def test_async_scan_serial_ports_with_scanner(hass: HomeAssistant) -> None:
++    """Contributed ports are appended to, and override, real scan results."""
++    real_amA1 = SerialDevice(
++        device="/dev/ttyAMA1",
++        serial_number=None,
++        manufacturer=None,
++        description=None,
++    )
++    real_usb = USBDevice(
++        device="/dev/serial/by-id/usb-Real-Stick",
++        vid="303A",
++        pid="4001",
++        serial_number="ABC123",
++        manufacturer="Nabu Casa",
++        description="ZBT-2",
++    )
++    contributed_amA1 = SerialDevice(
++        device="/dev/ttyAMA1",
++        serial_number=None,
++        manufacturer="Nabu Casa",
++        description="Yellow Radio",
++    )
++    extra_socket = SerialDevice(
++        device="socket://127.0.0.1:9999",
++        serial_number=None,
++        manufacturer="Test",
++        description="Extra",
++    )
++
++    assert await async_setup_component(hass, DOMAIN, {"usb": {}})
++
++    with patch_scanned_serial_ports(return_value=[real_amA1, real_usb]):
++        devices = await async_scan_serial_ports(hass)
++
++    assert devices == [real_amA1, real_usb]
++
++    unregister = usb.async_register_serial_port_scanner(
++        hass, lambda _hass: [contributed_amA1, extra_socket]
++    )
++
++    with patch_scanned_serial_ports(return_value=[real_amA1, real_usb]):
++        devices = await async_scan_serial_ports(hass)
++
++    assert devices == [contributed_amA1, real_usb, extra_socket]
++
++    unregister()
++
++    with patch_scanned_serial_ports(return_value=[real_amA1, real_usb]):
++        devices = await async_scan_serial_ports(hass)
++
++    assert devices == [real_amA1, real_usb]
++
++
++async def test_async_scan_serial_ports_scanner_raises(
++    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
++) -> None:
++    """A scanner raising does not prevent other scanners or real ports."""
++    real_port = SerialDevice(
++        device="/dev/ttyUSB0",
++        serial_number=None,
++        manufacturer=None,
++        description=None,
++    )
++    contributed_port = SerialDevice(
++        device="/dev/ttyAMA1",
++        serial_number=None,
++        manufacturer="Nabu Casa",
++        description="Yellow Radio",
++    )
++
++    assert await async_setup_component(hass, DOMAIN, {"usb": {}})
++
++    def broken_scanner(_hass: HomeAssistant) -> list:
++        raise RuntimeError("scanner broke")
++
++    usb.async_register_serial_port_scanner(hass, broken_scanner)
++    usb.async_register_serial_port_scanner(hass, lambda _hass: [contributed_port])
++
++    with patch_scanned_serial_ports(return_value=[real_port]):
++        devices = await async_scan_serial_ports(hass)
++
++    assert devices == [real_port, contributed_port]
++    assert "Error in USB scanner callback" in caplog.text
++    assert "scanner broke" in caplog.text
++
++
+ def test_usb_device_from_path_finds_by_symlink() -> None:
+     """Test usb_device_from_path finds device by symlink path."""
+     scanned_device = USBDevice(

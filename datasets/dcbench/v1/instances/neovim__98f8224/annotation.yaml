@@ -1,0 +1,49 @@
+repo: neovim
+base_commit: 8d154e5927d728cc2ad74a0dec8b45fab1333f8c
+commit: 98f8224c1948fd8440f13f84f19a0adb78171fe4
+patch_stored: true
+gold:
+  - path: runtime/lua/vim/pos.lua
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'new module defining the `vim.Pos` class/`vim.pos()` constructor with overloaded comparison metamethods (__lt/__le/__eq), the core abstraction the whole feature is built on.'
+  - path: runtime/lua/vim/range.lua
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'new module defining `vim.Range`/`vim.range()`, built directly on `vim.Pos` (Range.new validates start/end_ are vim.Pos-shaped and requires matching `.buf`), plus Range:has()/Range:intersect().'
+  - path: runtime/lua/vim/_editor.lua
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: adds `pos = true, range = true` to the loop that populates `vim._submodules`, the table consulted by the lazy-load `__index` metamethod so that `vim.pos`/`vim.range` resolve to `require(''vim.pos'')`/`require(''vim.range'')` on first access.
+  - path: runtime/lua/vim/_init_packages.lua
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: 'defines `vim._submodules` and the `setmetatable(vim, {__index = function(t, key) if vim._submodules[key] then t[key] = require(''vim.'' .. key) ... end})` lazy-loading mechanism — without this file the 2-line _editor.lua change (adding `pos`/`range` keys) has no visible effect; this is the actual runtime wiring, and it uses string-based module resolution (string_indirection).'
+  - path: src/gen/gen_vimdoc.lua
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: adds 'pos.lua'/'range.lua' (and their runtime/lua/vim/ paths) to the vimdoc-generator's module list, the mechanism that produces the new `vim.pos`/`vim.range` sections in runtime/doc/lua.txt from these files' `---@brief`/doc comments.
+  - path: test/functional/lua/range_spec.lua
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: covers the cross-module invariant that Range.new() rejects start/end positions with mismatched `.buf` fields, pinning behavior not obvious from range.lua alone (pos1/pos2 from different buffers -> pcall failure).
+forbidden:
+  - path: runtime/lua/vim/_meta.lua
+    reason: '`--- @meta` LuaLS type-annotation stub only (its own comment says "loaded specially in _init_packages.lua"), not executed at runtime — the actual lazy-require wiring lives in _init_packages.lua, not here.'
+  - path: runtime/doc/lua.txt
+    reason: auto-generated help text mechanically produced from pos.lua/range.lua's doc comments via gen_vimdoc.lua; redundant with the source modules.
+  - path: runtime/lua/vim/shared.lua
+    reason: unrelated general-purpose utility module in the same directory; not part of the vim.pos/vim.range feature.
+  - path: runtime/lua/vim/loader.lua
+    reason: implements Lua module caching/loading for `require()` generally but is not the module-specific lazy-registration mechanism this commit hooks into.
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: 'Adds two new experimental Lua modules, vim.pos (Pos: row/col[/buf] with comparison operators) and vim.range (Range: start/end_ Pos pair with has()/intersect()), registers them in the `vim._submodules` lazy-load table, and wires their doc comments into the vimdoc generator. The lazy-load mechanism itself (string_indirection: true) lives in runtime/lua/vim/_init_packages.lua, not touched by this diff, and is required to understand why adding two boolean table entries in _editor.lua is sufficient to expose `vim.pos`/`vim.range` at runtime.'

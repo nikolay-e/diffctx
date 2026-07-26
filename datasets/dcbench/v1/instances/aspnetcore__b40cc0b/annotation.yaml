@@ -1,0 +1,79 @@
+repo: aspnetcore
+base_commit: 453ceec29c512e72cef9a60df177702474c0bd7d
+commit: b40cc0b2f9eb111697300e95a336d8ade2c5d431
+patch_stored: true
+gold:
+  - path: src/Components/Endpoints/src/DependencyInjection/EndpointHtmlRenderer.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "New file defining internal sealed partial class EndpointHtmlRenderer : StaticHtmlRenderer, IComponentPrerenderer -- the class that now unifies HtmlRenderer + ComponentPrerenderer into one layered type; constructor calls base(serviceProvider, loggerFactory)."
+  - path: src/Components/Endpoints/src/DependencyInjection/EndpointHtmlRenderer.PrerenderComponents.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Renamed from ComponentPrerenderer.cs; becomes the second partial-class piece of EndpointHtmlRenderer, keeping PrerenderComponentAsync/PrerenderComponentCoreAsync but now calling inherited Dispatcher/BeginRenderingComponent from StaticHtmlRenderer instead of a wrapped _htmlRenderer field."
+  - path: src/Components/Endpoints/src/DependencyInjection/EndpointHtmlRenderer.PrerenderState.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "New file that is the third partial-class piece of EndpointHtmlRenderer, extracted from the old ComponentPrerenderer to isolate PrerenderPersistedStateAsync/UpdateSaveStateRenderMode/ComponentStateHtmlContent -- the core of the layering split described in the curation summary."
+  - path: src/Components/Web/src/HtmlRendering/StaticHtmlRenderer.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Renamed/publicized from HtmlRendererCore.cs (internal sealed -> public class StaticHtmlRenderer : Renderer), moved to namespace Microsoft.AspNetCore.Components.HtmlRendering.Infrastructure, and BeginRenderingComponentAsync renamed to BeginRenderingComponent -- this is the new public base class both HtmlRenderer and EndpointHtmlRenderer build on."
+  - path: src/Components/Web/src/HtmlRendering/HtmlRenderer.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Public wrapper API updated so its _passiveHtmlRenderer field is typed StaticHtmlRenderer (was HtmlRendererCore) and all BeginRenderingComponentAsync calls become BeginRenderingComponent, showing how the public-facing API composes the renamed base type."
+  - path: src/Components/Endpoints/src/DependencyInjection/RazorComponentsServiceCollectionExtensions.cs
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: "DI registration collapses services.TryAddScoped<IComponentPrerenderer, ComponentPrerenderer>() plus services.TryAddScoped<HtmlRenderer>() into a single services.TryAddScoped<IComponentPrerenderer, EndpointHtmlRenderer>(), the concrete wiring change that makes the layering refactor take effect at runtime."
+  - path: src/Components/Web/src/PublicAPI.Unshipped.txt
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: "Records the new public surface (StaticHtmlRenderer class, its constructor, BeginRenderingComponent, and overridden Dispatcher/HandleException/UpdateDisplayAsync) that the Roslyn PublicAPI analyzer requires -- the 'with baseline' part of the curation description."
+  - path: src/Components/Endpoints/src/DependencyInjection/IComponentPrerenderer.cs
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: "Defines the IComponentPrerenderer interface (PrerenderComponentAsync, PrerenderPersistedStateAsync, Dispatcher) that EndpointHtmlRenderer now implements directly instead of ComponentPrerenderer implementing it while wrapping a separate HtmlRenderer -- the contract the refactor preserves."
+  - path: src/Components/Endpoints/src/RazorComponentEndpoint.cs
+    tier: helpful
+    role: caller
+    in_diff: false
+    rationale: "Resolves IComponentPrerenderer from DI and calls componentPrerenderer.Dispatcher.InvokeAsync(...) / PrerenderComponentAsync(...) -- a real runtime consumer that now receives an EndpointHtmlRenderer instance instead of the old ComponentPrerenderer, unmodified by this commit because the interface contract didn't change."
+  - path: src/Components/Web/test/HtmlRendering/HtmlRendererTest.cs
+    tier: helpful
+    role: test
+    in_diff: false
+    rationale: "Exercises HtmlRenderer.BeginRenderingComponent/RenderComponentAsync end to end (e.g. RenderComponentAsync_ThrowsIfNotOnSyncContext); untouched by the commit, so it is the regression net proving the HtmlRendererCore -> StaticHtmlRenderer rename/delegation change preserved behavior."
+forbidden:
+  - path: src/Mvc/Mvc.TagHelpers/src/ComponentTagHelper.cs
+    reason: "Its test (ComponentTagHelperTest.cs) is in the diff, but the production file itself only calls requestServices.GetRequiredService<IComponentPrerenderer>() -- it references the unchanged interface, never the renamed/moved ComponentPrerenderer/EndpointHtmlRenderer/StaticHtmlRenderer types."
+  - path: src/Mvc/Mvc.TagHelpers/src/PersistComponentStateTagHelper.cs
+    reason: "Sibling of the above with the same shape -- its test file was edited to use EndpointHtmlRenderer.UpdateSaveStateRenderMode, but the production code only depends on IComponentPrerenderer, unaffected by the layering split."
+  - path: src/Components/Components/src/RenderTree/Renderer.cs
+    reason: "StaticHtmlRenderer extends Renderer and calls a Renderer(serviceProvider, loggerFactory) constructor, but that overload already existed pre-commit and Renderer.cs itself is untouched by this refactor."
+  - path: src/Components/WebAssembly/WebAssembly/src/Rendering/WebAssemblyRenderer.cs
+    reason: "A same-family Renderer subclass (bm25/graph candidate hit) but for interactive WebAssembly rendering, a completely different code path from the static/prerendering HtmlRenderer/EndpointHtmlRenderer layering touched here."
+nontrivial_gold_count: 3
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration, bm25, graph]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 17
+  description: Refactor HtmlRenderer layering — architectural refactor with baseline
+notes: >-
+  Splits the old ComponentPrerenderer (which wrapped a separate HtmlRenderer instance)
+  into EndpointHtmlRenderer, a partial class across 3 files that directly subclasses
+  the newly-public StaticHtmlRenderer (renamed from internal HtmlRendererCore) and
+  implements IComponentPrerenderer, collapsing two DI-registered services into one and
+  updating the PublicAPI.Unshipped.txt baseline accordingly. DI wiring is via normal
+  typed service registration, not string-keyed, so string_indirection is false.

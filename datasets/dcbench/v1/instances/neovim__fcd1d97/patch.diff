@@ -1,0 +1,651 @@
+From fcd1d972657338eb9c4733848a6a532098ff67b8 Mon Sep 17 00:00:00 2001
+From: Olivia Kinnear <git@superatomic.dev>
+Date: Wed, 6 May 2026 07:15:00 -0500
+Subject: [PATCH] feat(lua)!: vim.isnil, vim.nonnil, deprecate vim.F #39495
+
+---
+ runtime/doc/deprecated.txt                   |  7 +++
+ runtime/doc/lua.txt                          | 48 +++++++++++++++++
+ runtime/doc/news.txt                         |  4 ++
+ runtime/lua/man.lua                          |  4 +-
+ runtime/lua/vim/F.lua                        | 29 +++++-----
+ runtime/lua/vim/_core/shared.lua             | 56 +++++++++++++++++++-
+ runtime/lua/vim/_core/util.lua               |  7 ---
+ runtime/lua/vim/diagnostic.lua               |  2 +-
+ runtime/lua/vim/diagnostic/_float.lua        |  6 +--
+ runtime/lua/vim/diagnostic/_jump.lua         |  8 +--
+ runtime/lua/vim/lsp/_capability.lua          |  4 +-
+ runtime/lua/vim/lsp/_changetracking.lua      |  2 +-
+ runtime/lua/vim/lsp/buf.lua                  |  2 +-
+ runtime/lua/vim/lsp/completion.lua           |  3 +-
+ runtime/lua/vim/lsp/util.lua                 | 12 +++--
+ runtime/lua/vim/pack.lua                     |  4 +-
+ runtime/lua/vim/provider/health.lua          |  2 +-
+ runtime/lua/vim/treesitter.lua               |  2 +-
+ runtime/lua/vim/treesitter/_query_linter.lua |  2 +-
+ runtime/lua/vim/treesitter/languagetree.lua  |  2 +-
+ runtime/plugin/editorconfig.lua              |  2 +-
+ test/functional/lua/vim_spec.lua             | 47 ++++++++++++----
+ 22 files changed, 197 insertions(+), 58 deletions(-)
+
+diff --git a/runtime/doc/deprecated.txt b/runtime/doc/deprecated.txt
+index b66ecd9ab..4f98976ec 100644
+--- a/runtime/doc/deprecated.txt
++++ b/runtime/doc/deprecated.txt
+@@ -27,6 +27,13 @@ API
+ EVENTS
+ • *BufModifiedSet*	Use |OptionSet| with pattern "modified" instead.
+ 
++LUA
++
++• vim.F.if_nil()			Renamed to |vim.nonnil()|
++• vim.F.ok_or_nil()
++• vim.F.npcall()			Renamed to |vim.npcall()|
++• vim.F.nil_wrap()			Use |vim.npcall()| instead
++
+ ------------------------------------------------------------------------------
+ DEPRECATED IN 0.12					*deprecated-0.12*
+ 
+diff --git a/runtime/doc/lua.txt b/runtime/doc/lua.txt
+index 13650356c..8208386c4 100644
+--- a/runtime/doc/lua.txt
++++ b/runtime/doc/lua.txt
+@@ -1768,6 +1768,18 @@ vim.islist({t})                                                 *vim.islist()*
+     See also: ~
+       • |vim.isarray()|
+ 
++vim.isnil({t})                                                   *vim.isnil()*
++    Tests if `t` is `nil` or |vim.NIL|.
++
++    Attributes: ~
++        Since: 0.13.0
++
++    Parameters: ~
++      • {t}  (`any?`)
++
++    Return: ~
++        (`boolean`) `true` if `nil` or |vim.NIL|, else `false`.
++
+ vim.list.bisect({t}, {val}, {opts})                        *vim.list.bisect()*
+     Search for a position in a sorted |lua-list| {t} where {val} can be
+     inserted while keeping the list sorted.
+@@ -1906,6 +1918,42 @@ vim.list_slice({list}, {start}, {finish})                   *vim.list_slice()*
+     Return: ~
+         (`any[]`) Copy of table sliced from start to finish (inclusive)
+ 
++vim.nonnil({...})                                               *vim.nonnil()*
++    Returns the first argument which is not nil.
++
++    If all arguments are nil, returns nil.
++
++    Example: >lua
++        local a = nil
++        local b = nil
++        local c = 42
++        local d = true
++        assert(vim.nonnil(a, b, c, d) == 42)
++<
++
++    Attributes: ~
++        Since: 0.13.0
++
++    Parameters: ~
++      • {...}  (`any`)
++
++    Return: ~
++        (`any`)
++
++vim.npcall({fn}, {...})                                         *vim.npcall()*
++    Calls the function `fn` in `protected mode` like |pcall()|, but returns
++    `nil` on error.
++
++    Attributes: ~
++        Since: 0.13.0
++
++    Parameters: ~
++      • {fn}   (`fun(...):T`)
++      • {...}  (`any?`)
++
++    Return: ~
++        (`any`) ...
++
+ vim.pesc({s})                                                     *vim.pesc()*
+     Escapes magic chars in |lua-pattern|s.
+ 
+diff --git a/runtime/doc/news.txt b/runtime/doc/news.txt
+index 2dc422af1..59ccdb43b 100644
+--- a/runtime/doc/news.txt
++++ b/runtime/doc/news.txt
+@@ -176,6 +176,10 @@ LUA
+   available.
+ • |vim.list.unique()| and |vim.list.bisect()| now support passing a string
+   as a shorthand of a `key`
++• |vim.isnil()| tests if a value is `nil` or |vim.NIL|.
++• |vim.nonnil()| returns the first argument which is not nil.
++• |vim.npcall()| calls the function `fn` in protected-mode like |pcall()|,
++  but returns `nil` on error.
+ 
+ OPTIONS
+ 
+diff --git a/runtime/lua/man.lua b/runtime/lua/man.lua
+index 847a4d651..2fd81852e 100644
+--- a/runtime/lua/man.lua
++++ b/runtime/lua/man.lua
+@@ -498,8 +498,8 @@ local function get_paths(name, sect)
+   -- - does not work on MacOS 14 and later.
+   -- - only returns '/usr/bin/man' on MacOS 13 and earlier.
+   --- @type string?
+-  local mandirs_raw = vim.F.npcall(system, { 'manpath', '-q' })
+-    or vim.F.npcall(system, { 'man', '-w' })
++  local mandirs_raw = vim.npcall(system, { 'manpath', '-q' })
++    or vim.npcall(system, { 'man', '-w' })
+     or vim.env.MANPATH
+ 
+   if not mandirs_raw then
+diff --git a/runtime/lua/vim/F.lua b/runtime/lua/vim/F.lua
+index 681a92d35..80166a546 100644
+--- a/runtime/lua/vim/F.lua
++++ b/runtime/lua/vim/F.lua
+@@ -14,22 +14,19 @@ local F = {}
+ --- assert(vim.F.if_nil(a, b, c, d) == 42)
+ --- ```
+ ---
+----@generic T
+----@param ... T
+----@return T
++--- @deprecated
++--- @generic T
++--- @param ... T
++--- @return T
+ function F.if_nil(...)
+-  local nargs = select('#', ...)
+-  for i = 1, nargs do
+-    local v = select(i, ...)
+-    if v ~= nil then
+-      return v
+-    end
+-  end
+-  return nil
++  vim.deprecate('vim.F.if_nil', 'vim.nonnil', '0.14')
++  return vim.nonnil(...)
+ end
+ 
+ -- Use in combination with pcall
++--- @deprecated
+ function F.ok_or_nil(status, ...)
++  vim.deprecate('vim.F.ok_or_nil', 'actual error handling', '0.14')
+   if not status then
+     return
+   end
+@@ -37,21 +34,27 @@ function F.ok_or_nil(status, ...)
+ end
+ 
+ -- Nil pcall.
++--- @deprecated
+ --- @generic T
+ --- @param fn  fun(...):T
+ --- @param ... T?
+ --- @return T
+ function F.npcall(fn, ...)
+-  return F.ok_or_nil(pcall(fn, ...))
++  vim.deprecate('vim.F.npcall', 'vim.npcall', '0.14')
++  return vim.npcall(fn, ...)
+ end
+ 
+ --- Wrap a function to return nil if it fails, otherwise the value
++--- @deprecated
+ function F.nil_wrap(fn)
++  vim.deprecate('vim.F.nil_wrap', 'vim.npcall', '0.14')
+   return function(...)
+-    return F.npcall(fn, ...)
++    return vim.npcall(fn, ...)
+   end
+ end
+ 
++-- TODO: deprecate `F.pack_len` and `F.unpack_len`
++
+ --- like {...} except preserve the length explicitly
+ function F.pack_len(...)
+   return { n = select('#', ...), ... }
+diff --git a/runtime/lua/vim/_core/shared.lua b/runtime/lua/vim/_core/shared.lua
+index 6f6771389..993100e00 100644
+--- a/runtime/lua/vim/_core/shared.lua
++++ b/runtime/lua/vim/_core/shared.lua
+@@ -1006,6 +1006,15 @@ function vim.islist(t)
+   return true
+ end
+ 
++--- Tests if `t` is `nil` or |vim.NIL|.
++---
++--- @since 15
++--- @param t? any
++--- @return boolean `true` if `nil` or |vim.NIL|, else `false`.
++function vim.isnil(t)
++  return t == nil or t == vim.NIL
++end
++
+ --- Counts the number of non-nil values in table `t`.
+ ---
+ --- ```lua
+@@ -1582,7 +1591,7 @@ local get_context_state = function(context)
+ 
+       -- Do not override already set state and fall back to `vim.NIL` for
+       -- state `nil` values (which still needs restoring later)
+-      res[sc][name] = vim.F.if_nil(res[sc][name], vim[sc][name], vim.NIL)
++      res[sc][name] = vim.nonnil(res[sc][name], vim[sc][name], vim.NIL)
+ 
+       -- Always track global option value to properly restore later.
+       -- This matters for at least `o` and `wo` (which might set either/both
+@@ -1758,4 +1767,49 @@ end
+ -- Use max 32-bit signed int value to avoid overflow on 32-bit systems. #31633
+ vim._maxint = 2 ^ 32 - 1
+ 
++--- Returns the first argument which is not nil.
++---
++--- If all arguments are nil, returns nil.
++---
++--- Example:
++---
++--- ```lua
++--- local a = nil
++--- local b = nil
++--- local c = 42
++--- local d = true
++--- assert(vim.nonnil(a, b, c, d) == 42)
++--- ```
++---
++--- @since 15
++--- @generic T
++--- @param ... T
++--- @return T
++function vim.nonnil(...)
++  local nargs = select('#', ...)
++  for i = 1, nargs do
++    local v = select(i, ...)
++    if v ~= nil then
++      return v
++    end
++  end
++  return nil
++end
++
++--- Calls the function `fn` in `protected mode` like |pcall()|, but returns
++--- `nil` on error.
++---
++--- @since 15
++--- @generic T
++--- @param fn fun(...):T
++--- @param ... any?
++--- @return T ...
++function vim.npcall(fn, ...)
++  return (function(success, ...)
++    if success then
++      return ...
++    end
++  end)(pcall(fn, ...))
++end
++
+ return vim
+diff --git a/runtime/lua/vim/_core/util.lua b/runtime/lua/vim/_core/util.lua
+index bceded904..e5dd5c206 100644
+--- a/runtime/lua/vim/_core/util.lua
++++ b/runtime/lua/vim/_core/util.lua
+@@ -166,11 +166,4 @@ function M.get_forge_url(repo, target, target_type)
+   return ('%s/%s/%s'):format(repo, middle, target)
+ end
+ 
+---- Check if value is `nil` or `vim.NIL`
+----
+---- @return boolean
+-function M.isnil(value)
+-  return value == nil or value == vim.NIL
+-end
+-
+ return M
+diff --git a/runtime/lua/vim/diagnostic.lua b/runtime/lua/vim/diagnostic.lua
+index 30287d7f0..ae932cc04 100644
+--- a/runtime/lua/vim/diagnostic.lua
++++ b/runtime/lua/vim/diagnostic.lua
+@@ -799,7 +799,7 @@ end
+ --- @param opts? vim.diagnostic.setqflist.Opts|vim.diagnostic.setloclist.Opts
+ local function set_list(loclist, opts)
+   opts = opts or {}
+-  local open = vim.F.if_nil(opts.open, true)
++  local open = vim.nonnil(opts.open, true)
+   local title = opts.title or 'Diagnostics'
+   local winnr = opts.winnr or 0
+   local bufnr --- @type integer?
+diff --git a/runtime/lua/vim/diagnostic/_float.lua b/runtime/lua/vim/diagnostic/_float.lua
+index 3cd1452cd..4cda1be61 100644
+--- a/runtime/lua/vim/diagnostic/_float.lua
++++ b/runtime/lua/vim/diagnostic/_float.lua
+@@ -1,4 +1,4 @@
+-local api, if_nil = vim.api, vim.F.if_nil
++local api, nonnil = vim.api, vim.nonnil
+ local shared = require('vim.diagnostic._shared')
+ local store = require('vim.diagnostic._store')
+ 
+@@ -99,7 +99,7 @@ function M.open(opts, ...)
+     return
+   end
+ 
+-  local severity_sort = if_nil(opts.severity_sort, global_opts.severity_sort)
++  local severity_sort = nonnil(opts.severity_sort, global_opts.severity_sort)
+   if severity_sort then
+     if type(severity_sort) == 'table' and severity_sort.reverse then
+       table.sort(diagnostics, function(a, b)
+@@ -114,7 +114,7 @@ function M.open(opts, ...)
+ 
+   local lines = {} --- @type string[]
+   local highlights = {} --- @type { hlname: string, prefix?: { length: integer, hlname: string? }, suffix?: { length: integer, hlname: string? } }[]
+-  local header = if_nil(opts.header, 'Diagnostics:')
++  local header = nonnil(opts.header, 'Diagnostics:')
+   if header then
+     vim.validate('header', header, { 'string', 'table' }, "'string' or 'table'")
+     if type(header) == 'table' then
+diff --git a/runtime/lua/vim/diagnostic/_jump.lua b/runtime/lua/vim/diagnostic/_jump.lua
+index e9703493e..15f3c528c 100644
+--- a/runtime/lua/vim/diagnostic/_jump.lua
++++ b/runtime/lua/vim/diagnostic/_jump.lua
+@@ -1,4 +1,4 @@
+-local api, if_nil = vim.api, vim.F.if_nil
++local api, nonnil = vim.api, vim.nonnil
+ local shared = require('vim.diagnostic._shared')
+ local store = require('vim.diagnostic._store')
+ 
+@@ -60,7 +60,7 @@ local function next_diagnostic(search_forward, opts, use_logical_pos)
+   -- Adjust row to be 0-indexed
+   position[1] = position[1] - 1
+ 
+-  local wrap = if_nil(opts.wrap, true)
++  local wrap = nonnil(opts.wrap, true)
+   local diagnostics = store.get_diagnostics(bufnr, opts, true)
+ 
+   if opts._highest then
+@@ -197,7 +197,7 @@ end
+ function M.goto_prev(opts)
+   vim.deprecate('vim.diagnostic.goto_prev()', 'vim.diagnostic.jump()', '0.13')
+   opts = opts or {}
+-  opts.float = if_nil(opts.float, true) --- @diagnostic disable-line
++  opts.float = nonnil(opts.float, true) --- @diagnostic disable-line
+   goto_diagnostic(M.get_prev(opts), opts)
+ end
+ 
+@@ -282,7 +282,7 @@ end
+ function M.goto_next(opts)
+   vim.deprecate('vim.diagnostic.goto_next()', 'vim.diagnostic.jump()', '0.13')
+   opts = opts or {}
+-  opts.float = if_nil(opts.float, true) --- @diagnostic disable-line
++  opts.float = nonnil(opts.float, true) --- @diagnostic disable-line
+   goto_diagnostic(M.get_next(opts), opts)
+ end
+ 
+diff --git a/runtime/lua/vim/lsp/_capability.lua b/runtime/lua/vim/lsp/_capability.lua
+index f5c35f86c..5c13de878 100644
+--- a/runtime/lua/vim/lsp/_capability.lua
++++ b/runtime/lua/vim/lsp/_capability.lua
+@@ -208,8 +208,8 @@ function M.is_enabled(name, filter)
+   -- As a fallback when not explicitly enabled or disabled:
+   -- Clients are treated as "enabled" since their capabilities can control behavior.
+   -- Buffers are treated as "disabled" to allow users to enable them as needed.
+-  return vim.F.if_nil(client and client._enabled_capabilities[name], vim.g[var], true)
+-    and vim.F.if_nil(bufnr and vim.b[bufnr][var], vim.g[var], false)
++  return vim.nonnil(client and client._enabled_capabilities[name], vim.g[var], true)
++    and vim.nonnil(bufnr and vim.b[bufnr][var], vim.g[var], false)
+ end
+ 
+ M.all = all_capabilities
+diff --git a/runtime/lua/vim/lsp/_changetracking.lua b/runtime/lua/vim/lsp/_changetracking.lua
+index bf8000f6c..0788cd186 100644
+--- a/runtime/lua/vim/lsp/_changetracking.lua
++++ b/runtime/lua/vim/lsp/_changetracking.lua
+@@ -64,7 +64,7 @@ local state_by_group = setmetatable({}, {
+ ---@param client vim.lsp.Client
+ ---@return vim.lsp.CTGroup
+ local function get_group(client)
+-  local allow_inc_sync = vim.F.if_nil(client.flags.allow_incremental_sync, true)
++  local allow_inc_sync = vim.nonnil(client.flags.allow_incremental_sync, true)
+   local change_capability = vim.tbl_get(client.server_capabilities, 'textDocumentSync', 'change')
+   local sync_kind = change_capability or protocol.TextDocumentSyncKind.None
+   if not allow_inc_sync and change_capability == protocol.TextDocumentSyncKind.Incremental then
+diff --git a/runtime/lua/vim/lsp/buf.lua b/runtime/lua/vim/lsp/buf.lua
+index 68cecb3df..51ca6672a 100644
+--- a/runtime/lua/vim/lsp/buf.lua
++++ b/runtime/lua/vim/lsp/buf.lua
+@@ -5,7 +5,7 @@ local api = vim.api
+ local lsp = vim.lsp
+ local validate = vim.validate
+ local util = require('vim.lsp.util')
+-local npcall = vim.F.npcall
++local npcall = vim.npcall
+ 
+ local M = {}
+ 
+diff --git a/runtime/lua/vim/lsp/completion.lua b/runtime/lua/vim/lsp/completion.lua
+index 7011f137e..3a6f17aa7 100644
+--- a/runtime/lua/vim/lsp/completion.lua
++++ b/runtime/lua/vim/lsp/completion.lua
+@@ -36,7 +36,6 @@ local M = {}
+ local api = vim.api
+ local lsp = vim.lsp
+ local protocol = lsp.protocol
+-local isnil = require('vim._core.util').isnil
+ 
+ local rtt_ms = 50.0
+ local ns_to_ms = 0.000001
+@@ -1011,7 +1010,7 @@ local function trigger(bufnr, clients, ctx)
+             client and client.name or 'UNKNOWN'
+           )
+         )
+-      elseif not isnil(result) and #(result.items or result) > 0 then
++      elseif not vim.isnil(result) and #(result.items or result) > 0 then
+         Context.isIncomplete = Context.isIncomplete or result.isIncomplete
+         local encoding = client and client.offset_encoding or 'utf-16'
+         local client_matches, tmp_server_start_boundary
+diff --git a/runtime/lua/vim/lsp/util.lua b/runtime/lua/vim/lsp/util.lua
+index 7a9ebf85b..a8759218f 100644
+--- a/runtime/lua/vim/lsp/util.lua
++++ b/runtime/lua/vim/lsp/util.lua
+@@ -3,7 +3,6 @@ local validate = vim.validate
+ local api = vim.api
+ local list_extend = vim.list_extend
+ local uv = vim.uv
+-local isnil = require('vim._core.util').isnil
+ 
+ local M = {}
+ 
+@@ -1030,7 +1029,7 @@ function M.show_document(location, position_encoding, opts)
+   local bufnr = vim.uri_to_bufnr(uri)
+ 
+   opts = opts or {}
+-  local focus = vim.F.if_nil(opts.focus, true)
++  local focus = vim.nonnil(opts.focus, true)
+   if focus then
+     -- Save position in jumplist
+     vim.cmd("normal! m'")
+@@ -1982,13 +1981,16 @@ function M.symbols_to_items(symbols, bufnr, position_encoding)
+       local end_lnum = range['end'].line + 1
+       local end_col = get_line_byte_from_position(bufnr, range['end'], position_encoding) + 1
+ 
+-      local is_deprecated = not isnil(symbol.deprecated or nil)
+-        or (not isnil(symbol.tags) and vim.tbl_contains(symbol.tags, protocol.SymbolTag.Deprecated))
++      local is_deprecated = not vim.isnil(symbol.deprecated or nil)
++        or (
++          not vim.isnil(symbol.tags)
++          and vim.tbl_contains(symbol.tags, protocol.SymbolTag.Deprecated)
++        )
+       local text = string.format(
+         '[%s] %s%s%s',
+         kind,
+         symbol.name,
+-        not isnil(symbol.containerName) and ' in ' .. symbol.containerName or '',
++        not vim.isnil(symbol.containerName) and ' in ' .. symbol.containerName or '',
+         is_deprecated and ' (deprecated)' or ''
+       )
+ 
+diff --git a/runtime/lua/vim/pack.lua b/runtime/lua/vim/pack.lua
+index 932e6ca07..38f7493e0 100644
+--- a/runtime/lua/vim/pack.lua
++++ b/runtime/lua/vim/pack.lua
+@@ -435,7 +435,7 @@ local function normalize_plugs(plugs)
+     local p_data = plug_map[p.path]
+     -- TODO(echasnovski): if both versions are `vim.VersionRange`, collect as
+     -- their intersection. Needs `vim.version.intersect`.
+-    p_data.plug.spec.version = vim.F.if_nil(p_data.plug.spec.version, p.spec.version)
++    p_data.plug.spec.version = vim.nonnil(p_data.plug.spec.version, p.spec.version)
+ 
+     -- Ensure no conflicts
+     local spec_ref = p_data.plug.spec
+@@ -964,7 +964,7 @@ local function lock_read(confirm, specs)
+     plugin_lock = { plugins = {} }
+   end
+ 
+-  lock_sync(vim.F.if_nil(confirm, true), vim.F.if_nil(specs, {}))
++  lock_sync(vim.nonnil(confirm, true), vim.nonnil(specs, {}))
+ end
+ 
+ --- @class vim.pack.keyset.add
+diff --git a/runtime/lua/vim/provider/health.lua b/runtime/lua/vim/provider/health.lua
+index 5024de5a3..6e1b08e0b 100644
+--- a/runtime/lua/vim/provider/health.lua
++++ b/runtime/lua/vim/provider/health.lua
+@@ -77,7 +77,7 @@ local function system(cmd, args)
+     vim.fn.chansend(jobid, stdin)
+   end
+ 
+-  local res = vim.fn.jobwait({ jobid }, vim.F.if_nil(args.timeout, 30) * 1000)
++  local res = vim.fn.jobwait({ jobid }, vim.nonnil(args.timeout, 30) * 1000)
+   if res[1] == -1 then
+     error('Command timed out: ' .. shellify(cmd))
+     vim.fn.jobstop(jobid)
+diff --git a/runtime/lua/vim/treesitter.lua b/runtime/lua/vim/treesitter.lua
+index 98e2fbed5..7c17d62a6 100644
+--- a/runtime/lua/vim/treesitter.lua
++++ b/runtime/lua/vim/treesitter.lua
+@@ -97,7 +97,7 @@ function M.get_parser(buf, lang, opts)
+     if not api.nvim_buf_is_loaded(buf) then
+       return nil, string.format('Buffer %s must be loaded to create parser', buf)
+     end
+-    local parser = vim.F.npcall(M._create_parser, buf, lang, opts)
++    local parser = vim.npcall(M._create_parser, buf, lang, opts)
+     if not parser then
+       return nil,
+         string.format('Parser could not be created for buffer %s and language "%s"', buf, lang)
+diff --git a/runtime/lua/vim/treesitter/_query_linter.lua b/runtime/lua/vim/treesitter/_query_linter.lua
+index 5c575206d..75c12e52e 100644
+--- a/runtime/lua/vim/treesitter/_query_linter.lua
++++ b/runtime/lua/vim/treesitter/_query_linter.lua
+@@ -173,7 +173,7 @@ function M.lint(buf, opts)
+     local lang = opts.langs[i]
+ 
+     --- @type (table|nil)
+-    local parser_info = vim.F.npcall(vim.treesitter.language.inspect, lang)
++    local parser_info = vim.npcall(vim.treesitter.language.inspect, lang)
+     local lang_context = {
+       lang = lang,
+       parser_info = parser_info,
+diff --git a/runtime/lua/vim/treesitter/languagetree.lua b/runtime/lua/vim/treesitter/languagetree.lua
+index 77f890ab0..9a0378fd1 100644
+--- a/runtime/lua/vim/treesitter/languagetree.lua
++++ b/runtime/lua/vim/treesitter/languagetree.lua
+@@ -1415,7 +1415,7 @@ end
+ ---@return TSTree?
+ function LanguageTree:tree_for_range(range, opts)
+   opts = opts or {}
+-  local ignore = vim.F.if_nil(opts.ignore_injections, true)
++  local ignore = vim.nonnil(opts.ignore_injections, true)
+ 
+   if not ignore then
+     for _, child in pairs(self._children) do
+diff --git a/runtime/plugin/editorconfig.lua b/runtime/plugin/editorconfig.lua
+index 5566329f7..8de304631 100644
+--- a/runtime/plugin/editorconfig.lua
++++ b/runtime/plugin/editorconfig.lua
+@@ -3,7 +3,7 @@ vim.api.nvim_create_autocmd({ 'BufNewFile', 'BufRead', 'BufFilePost' }, {
+   group = group,
+   callback = function(ev)
+     -- Buffer-local enable has higher priority
+-    local enable = vim.F.if_nil(vim.b.editorconfig, vim.g.editorconfig, true)
++    local enable = vim.nonnil(vim.b.editorconfig, vim.g.editorconfig, true)
+     if not enable then
+       return
+     end
+diff --git a/test/functional/lua/vim_spec.lua b/test/functional/lua/vim_spec.lua
+index cdd643b80..4d896b955 100644
+--- a/test/functional/lua/vim_spec.lua
++++ b/test/functional/lua/vim_spec.lua
+@@ -982,6 +982,14 @@ describe('lua stdlib', function()
+     )
+   end)
+ 
++  it('vim.isnil', function()
++    eq(true, exec_lua('return vim.isnil(nil)'))
++    eq(true, exec_lua('return vim.isnil(vim.NIL)'))
++    eq(false, exec_lua('return vim.isnil(true)'))
++    eq(false, exec_lua('return vim.isnil(false)'))
++    eq(false, exec_lua('return vim.isnil({})'))
++  end)
++
+   it('vim.tbl_isempty', function()
+     eq(true, exec_lua('return vim.tbl_isempty({})'))
+     eq(false, exec_lua('return vim.tbl_isempty({ 1, 2, 3 })'))
+@@ -2976,8 +2984,8 @@ describe('lua stdlib', function()
+     )
+   end)
+ 
+-  it('vim.F.if_nil', function()
+-    local function if_nil(...)
++  it('vim.nonnil', function()
++    local function nonnil(...)
+       return exec_lua(
+         [[
+         local args = {...}
+@@ -2987,7 +2995,7 @@ describe('lua stdlib', function()
+             args[i] = nil
+           end
+         end
+-        return vim.F.if_nil(unpack(args, 1, nargs))
++        return vim.nonnil(unpack(args, 1, nargs))
+       ]],
+         ...
+       )
+@@ -2997,12 +3005,33 @@ describe('lua stdlib', function()
+     local b = NIL
+     local c = 42
+     local d = false
+-    eq(42, if_nil(a, c))
+-    eq(false, if_nil(d, b))
+-    eq(42, if_nil(a, b, c, d))
+-    eq(false, if_nil(d))
+-    eq(false, if_nil(d, c))
+-    eq(NIL, if_nil(a))
++    eq(42, nonnil(a, c))
++    eq(false, nonnil(d, b))
++    eq(42, nonnil(a, b, c, d))
++    eq(false, nonnil(d))
++    eq(false, nonnil(d, c))
++    eq(NIL, nonnil(a))
++  end)
++
++  it('vim.npcall', function()
++    -- No error
++    eq(
++      { '123', 'test' },
++      exec_lua(function()
++        local function swap_args(a, b)
++          return b, a
++        end
++        return { vim.npcall(swap_args, 'test', '123') }
++      end)
++    )
++
++    -- Error
++    eq(
++      nil,
++      exec_lua(function()
++        return vim.npcall(error, 'error')
++      end)
++    )
+   end)
+ 
+   it('lpeg', function()

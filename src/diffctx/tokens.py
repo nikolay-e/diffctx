@@ -43,7 +43,4 @@ def print_token_summary(text: str, encoding: str = "o200k_base") -> None:
     else:
         byte_size = len(text.encode("utf-8"))
     size = _format_size(byte_size)
-    if result.is_exact:
-        print(f"{result.count:,} tokens ({result.encoding}), {size}", file=sys.stderr)
-    else:
-        print(f"~{result.count:,} tokens ({result.encoding}), {size}", file=sys.stderr)
+    print(f"{result.count:,} tokens ({result.encoding}), {size}", file=sys.stderr)

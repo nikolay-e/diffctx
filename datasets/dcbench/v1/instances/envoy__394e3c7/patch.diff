@@ -1,0 +1,1305 @@
+From 394e3c7ce217ab7f2a01d8d48127d2d7dee3983f Mon Sep 17 00:00:00 2001
+From: code <wbphub@gmail.com>
+Date: Thu, 11 Jun 2026 10:27:41 +0800
+Subject: [PATCH] http: new filter chain filter (#42912)
+
+Commit Message: http: new filter chain filter
+Additional Description:
+
+- New filter to configured multiple sub filter chains and allow the
+route to select one or provide a inline sub filter chain.
+
+This PR gives the actual per route level filter chain support. We only
+need to ensure most filters could support the
+`createFilterFactoryFromProtoWithServerContext`.
+
+This filter is a little similar to composite, but with following
+difference:
+- provides full feature sub filter chain support.
+- not as flexible as composite filter, only the initial route could be
+used to help to select the sub filter chain, but more easier to use and
+more robust for lots scenarios.
+
+Risk Level: low. new filter.
+Testing: unit/integration.
+Docs Changes: added.
+Release Notes: added.
+Platform Specific Features: n/a.
+
+---------
+
+Signed-off-by: wbpcode/wangbaiping <wbphub@gmail.com>
+Signed-off-by: wbpcode <wbphub@gmail.com>
+Signed-off-by: code <wbphub@gmail.com>
+Co-authored-by: phlax <phlax@users.noreply.github.com>
+---
+ CODEOWNERS                                    |   1 +
+ api/BUILD                                     |   1 +
+ .../filters/http/filter_chain/v3/BUILD        |  12 ++
+ .../http/filter_chain/v3/filter_chain.proto   |  71 ++++++++
+ api/versioning/BUILD                          |   1 +
+ .../http__new-filter-chain-filter.rst         |   4 +
+ .../http/http_filters/filter_chain_filter.rst |  94 +++++++++++
+ .../http/http_filters/http_filters.rst        |   1 +
+ source/extensions/extensions_build_config.bzl |   1 +
+ source/extensions/extensions_metadata.yaml    |   8 +
+ .../filters/http/filter_chain/BUILD           |  41 +++++
+ .../filters/http/filter_chain/config.cc       |  80 +++++++++
+ .../filters/http/filter_chain/config.h        |  43 +++++
+ .../filters/http/filter_chain/filter.cc       | 109 +++++++++++++
+ .../filters/http/filter_chain/filter.h        | 103 ++++++++++++
+ .../filters/http/filter_chain/BUILD           |  72 ++++++++
+ .../filters/http/filter_chain/config_test.cc  | 149 +++++++++++++++++
+ .../filter_chain_integration_test.cc          | 128 +++++++++++++++
+ .../filters/http/filter_chain/filter_test.cc  | 154 ++++++++++++++++++
+ tools/code_format/config.yaml                 |   2 +
+ 20 files changed, 1075 insertions(+)
+ create mode 100644 api/envoy/extensions/filters/http/filter_chain/v3/BUILD
+ create mode 100644 api/envoy/extensions/filters/http/filter_chain/v3/filter_chain.proto
+ create mode 100644 changelogs/current/new_features/http__new-filter-chain-filter.rst
+ create mode 100644 docs/root/configuration/http/http_filters/filter_chain_filter.rst
+ create mode 100644 source/extensions/filters/http/filter_chain/BUILD
+ create mode 100644 source/extensions/filters/http/filter_chain/config.cc
+ create mode 100644 source/extensions/filters/http/filter_chain/config.h
+ create mode 100644 source/extensions/filters/http/filter_chain/filter.cc
+ create mode 100644 source/extensions/filters/http/filter_chain/filter.h
+ create mode 100644 test/extensions/filters/http/filter_chain/BUILD
+ create mode 100644 test/extensions/filters/http/filter_chain/config_test.cc
+ create mode 100644 test/extensions/filters/http/filter_chain/filter_chain_integration_test.cc
+ create mode 100644 test/extensions/filters/http/filter_chain/filter_test.cc
+
+diff --git a/CODEOWNERS b/CODEOWNERS
+index 1933f0413..ed72236b5 100644
+--- a/CODEOWNERS
++++ b/CODEOWNERS
+@@ -105,6 +105,7 @@ extensions/filters/common/original_src @klarose @mattklein123
+ /*/extensions/common/dynamic_forward_proxy @mattklein123 @ryantheoptimist
+ /*/extensions/filters/http/dynamic_forward_proxy @mattklein123 @ryantheoptimist
+ /*/extensions/filters/http/composite @mattklein123 @tyxia @yanavlasov
++/*/extensions/filters/http/filter_chain @wbpcode @agrawroh @tyxia
+ # omit_canary_hosts retry predicate
+ /*/extensions/retry/host/omit_canary_hosts @sriduth @mattklein123
+ # previous hosts
+diff --git a/api/BUILD b/api/BUILD
+index 2f1230962..8ceaa1b13 100644
+--- a/api/BUILD
++++ b/api/BUILD
+@@ -213,6 +213,7 @@ proto_library(
+         "//envoy/extensions/filters/http/fault/v3:pkg",
+         "//envoy/extensions/filters/http/file_server/v3:pkg",
+         "//envoy/extensions/filters/http/file_system_buffer/v3:pkg",
++        "//envoy/extensions/filters/http/filter_chain/v3:pkg",
+         "//envoy/extensions/filters/http/gcp_authn/v3:pkg",
+         "//envoy/extensions/filters/http/geoip/v3:pkg",
+         "//envoy/extensions/filters/http/grpc_field_extraction/v3:pkg",
+diff --git a/api/envoy/extensions/filters/http/filter_chain/v3/BUILD b/api/envoy/extensions/filters/http/filter_chain/v3/BUILD
+new file mode 100644
+index 000000000..504c6c705
+--- /dev/null
++++ b/api/envoy/extensions/filters/http/filter_chain/v3/BUILD
+@@ -0,0 +1,12 @@
++# DO NOT EDIT. This file is generated by tools/proto_format/proto_sync.py.
++
++load("@envoy_api//bazel:api_build_system.bzl", "api_proto_package")
++
++licenses(["notice"])  # Apache 2
++
++api_proto_package(
++    deps = [
++        "//envoy/config/core/v3:pkg",
++        "@xds//udpa/annotations:pkg",
++    ],
++)
+diff --git a/api/envoy/extensions/filters/http/filter_chain/v3/filter_chain.proto b/api/envoy/extensions/filters/http/filter_chain/v3/filter_chain.proto
+new file mode 100644
+index 000000000..94db1dda3
+--- /dev/null
++++ b/api/envoy/extensions/filters/http/filter_chain/v3/filter_chain.proto
+@@ -0,0 +1,71 @@
++syntax = "proto3";
++
++package envoy.extensions.filters.http.filter_chain.v3;
++
++import "envoy/config/core/v3/extension.proto";
++
++import "udpa/annotations/status.proto";
++import "validate/validate.proto";
++
++option java_package = "io.envoyproxy.envoy.extensions.filters.http.filter_chain.v3";
++option java_outer_classname = "FilterChainProto";
++option java_multiple_files = true;
++option go_package = "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/filter_chain/v3;filter_chainv3";
++option (udpa.annotations.file_status).package_version_status = ACTIVE;
++
++// [#protodoc-title: Filter Chain]
++// Filter Chain :ref:`configuration overview <config_http_filters_filter_chain>`.
++//
++// .. attention::
++//   This filter is specific to Envoy and is not supported in other xDS implementations.
++//
++// [#extension: envoy.filters.http.filter_chain]
++
++// Filter-level configuration for the filter chain filter. This filter acts as a wrapper
++// that applies a configurable chain of HTTP filters to incoming requests.
++message FilterChainConfig {
++  // Default filter chain applied when no route level filter chain is specified.
++  //
++  // This field is optional. If not specified and no route-level configuration matches,
++  // the filter will pass through without applying any additional filters.
++  FilterChain default_filter_chain = 1;
++}
++
++// Per-route configuration for the filter chain filter. This allows different filter chains
++// to be applied on different routes.
++//
++// .. note::
++//   Only the initial route match is considered for filter chain selection. Subsequent
++//   internal route refreshes do not affect the filter chain applied to the request.
++//
++// This could be used to implement route specific filter chains.
++message FilterChainConfigPerRoute {
++  // Filter chain to be applied on current route.
++  //
++  // .. note::
++  //   Not all HTTP filters are compatible to be used within this route level filter chain
++  //   for now.
++  //
++  FilterChain filter_chain = 1 [(validate.rules).message = {required: true}];
++}
++
++// A filter chain is a list of HTTP filters that are applied in order.
++// This message is used to define a reusable chain of filters.
++message FilterChain {
++  // A list of HTTP filter configurations to be applied in order.
++  // Each filter in the chain will process the request/response in sequence.
++  // At least one filter must be specified.
++  //
++  // .. warning::
++  //   Please do not configure the ``filter_chain`` filter itself or ``composite`` filter
++  //   within this list recursively to avoid undefined behavior.
++  //
++  // .. note::
++  //   It is possible to configure ``terminal`` filters (filters that do not expect next filter
++  //   in the chain, e.g., ``envoy.filters.http.router``) in the middle of the chain. However,
++  //   use it with caution to avoid unexpected behavior.
++  //
++  // [#extension-category: envoy.filters.http]
++  repeated config.core.v3.TypedExtensionConfig filters = 1
++      [(validate.rules).repeated = {min_items: 1}];
++}
+diff --git a/api/versioning/BUILD b/api/versioning/BUILD
+index d735f0597..ce049bf73 100644
+--- a/api/versioning/BUILD
++++ b/api/versioning/BUILD
+@@ -152,6 +152,7 @@ proto_library(
+         "//envoy/extensions/filters/http/fault/v3:pkg",
+         "//envoy/extensions/filters/http/file_server/v3:pkg",
+         "//envoy/extensions/filters/http/file_system_buffer/v3:pkg",
++        "//envoy/extensions/filters/http/filter_chain/v3:pkg",
+         "//envoy/extensions/filters/http/gcp_authn/v3:pkg",
+         "//envoy/extensions/filters/http/geoip/v3:pkg",
+         "//envoy/extensions/filters/http/grpc_field_extraction/v3:pkg",
+diff --git a/changelogs/current/new_features/http__new-filter-chain-filter.rst b/changelogs/current/new_features/http__new-filter-chain-filter.rst
+new file mode 100644
+index 000000000..32ac6a4f6
+--- /dev/null
++++ b/changelogs/current/new_features/http__new-filter-chain-filter.rst
+@@ -0,0 +1,4 @@
++Added new :ref:`filter chain filter <config_http_filters_filter_chain>` to allow users to configure
++multiple sub filter chain in single position of the main HTTP filter chain.
++And allow per route configuration of the filter chain filter to select different sub filter chains
++based on route match criteria.
+diff --git a/docs/root/configuration/http/http_filters/filter_chain_filter.rst b/docs/root/configuration/http/http_filters/filter_chain_filter.rst
+new file mode 100644
+index 000000000..8654ba7ef
+--- /dev/null
++++ b/docs/root/configuration/http/http_filters/filter_chain_filter.rst
+@@ -0,0 +1,94 @@
++.. _config_http_filters_filter_chain:
++
++Filter Chain
++============
++
++* This filter should be configured with the type URL ``type.googleapis.com/envoy.extensions.filters.http.filter_chain.v3.FilterChainConfig``.
++* :ref:`v3 API reference <envoy_v3_api_msg_extensions.filters.http.filter_chain.v3.FilterChainConfig>`
++
++The filter chain filter acts as a wrapper that applies a configurable chain of HTTP filters
++to incoming requests. This allows you to define reusable filter chains that can be applied
++selectively based on route configuration.
++
++The filter supports:
++
++* A default filter chain that is applied when no route-specific configuration is present.
++* Named filter chains that can be referenced by route-level configuration.
++* Inline filter chains defined directly in per-route configuration.
++
++The filter processes the request through the configured filter chain in order during the
++decode phase, and in reverse order during the encode phase.
++
++Configuration
++-------------
++
++Filter-level Configuration
++~~~~~~~~~~~~~~~~~~~~~~~~~~
++
++The filter-level configuration (:ref:`FilterChainConfig <envoy_v3_api_msg_extensions.filters.http.filter_chain.v3.FilterChainConfig>`)
++defines:
++
++* ``default_filter_chain``: The default filter chain to apply when no route-specific configuration matches.
++
++Per-Route Configuration
++~~~~~~~~~~~~~~~~~~~~~~~
++
++The per-route configuration (:ref:`FilterChainConfigPerRoute <envoy_v3_api_msg_extensions.filters.http.filter_chain.v3.FilterChainConfigPerRoute>`)
++allows different filter chains to be applied on different routes:
++
++* ``filter_chain``: An inline filter chain definition that takes precedence if specified.
++
++Example Configuration
++---------------------
++
++Basic Configuration
++~~~~~~~~~~~~~~~~~~~
++
++This example configures a default filter chain with a buffer filter:
++
++.. code-block:: yaml
++
++  http_filters:
++  - name: envoy.filters.http.filter_chain
++    typed_config:
++      "@type": type.googleapis.com/envoy.extensions.filters.http.filter_chain.v3.FilterChainConfig
++      default_filter_chain:
++        filters:
++        - name: envoy.filters.http.buffer
++          typed_config:
++            "@type": type.googleapis.com/envoy.extensions.filters.http.buffer.v3.Buffer
++            max_request_bytes: 65536
++  - name: envoy.filters.http.router
++    typed_config:
++      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
++
++Inline Per-Route Filter Chain
++~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
++
++You can also define a filter chain inline in the per-route configuration:
++
++.. code-block:: yaml
++
++  routes:
++  - match:
++      prefix: "/upload/"
++    route:
++      cluster: upload_cluster
++    typed_per_filter_config:
++      envoy.filters.http.filter_chain:
++        "@type": type.googleapis.com/envoy.extensions.filters.http.filter_chain.v3.FilterChainConfigPerRoute
++        filter_chain:
++          filters:
++          - name: envoy.filters.http.buffer
++            typed_config:
++              "@type": type.googleapis.com/envoy.extensions.filters.http.buffer.v3.Buffer
++              max_request_bytes: 104857600
++
++Behavior Notes
++--------------
++
++* When no filter chain is configured (either at filter level or route level), the filter
++  passes through all requests without modification.
++* The filter chain is resolved once per request during the initialization of the filter chain.
++* Filters in the chain are executed in order during decoding (request processing) and
++  in reverse order during encoding (response processing).
+diff --git a/docs/root/configuration/http/http_filters/http_filters.rst b/docs/root/configuration/http/http_filters/http_filters.rst
+index 61fafd48f..58fc189b1 100644
+--- a/docs/root/configuration/http/http_filters/http_filters.rst
++++ b/docs/root/configuration/http/http_filters/http_filters.rst
+@@ -34,6 +34,7 @@ HTTP filters
+   fault_filter
+   file_server_filter
+   file_system_buffer_filter
++  filter_chain_filter
+   gcp_authn_filter
+   geoip_filter
+   golang_filter
+diff --git a/source/extensions/extensions_build_config.bzl b/source/extensions/extensions_build_config.bzl
+index 011dce6e4..943018bcd 100644
+--- a/source/extensions/extensions_build_config.bzl
++++ b/source/extensions/extensions_build_config.bzl
+@@ -184,6 +184,7 @@ EXTENSIONS = {
+     "envoy.filters.http.ext_proc":                      "//source/extensions/filters/http/ext_proc:config",
+     "envoy.filters.http.fault":                         "//source/extensions/filters/http/fault:config",
+     "envoy.filters.http.file_server":                   "//source/extensions/filters/http/file_server:config",
++    "envoy.filters.http.filter_chain":                  "//source/extensions/filters/http/filter_chain:config",
+     "envoy.filters.http.file_system_buffer":            "//source/extensions/filters/http/file_system_buffer:config",
+     "envoy.filters.http.gcp_authn":                     "//source/extensions/filters/http/gcp_authn:config",
+     "envoy.filters.http.geoip":                         "//source/extensions/filters/http/geoip:config",
+diff --git a/source/extensions/extensions_metadata.yaml b/source/extensions/extensions_metadata.yaml
+index bd4eddc1b..b47f8d5fb 100644
+--- a/source/extensions/extensions_metadata.yaml
++++ b/source/extensions/extensions_metadata.yaml
+@@ -497,6 +497,14 @@ envoy.filters.http.fault:
+   status: stable
+   type_urls:
+   - envoy.extensions.filters.http.fault.v3.HTTPFault
++envoy.filters.http.filter_chain:
++  categories:
++  - envoy.filters.http
++  security_posture: unknown
++  status: alpha
++  type_urls:
++  - envoy.extensions.filters.http.filter_chain.v3.FilterChainConfig
++  - envoy.extensions.filters.http.filter_chain.v3.FilterChainConfigPerRoute
+ envoy.filters.http.file_server:
+   categories:
+   - envoy.filters.http
+diff --git a/source/extensions/filters/http/filter_chain/BUILD b/source/extensions/filters/http/filter_chain/BUILD
+new file mode 100644
+index 000000000..6510e9dbe
+--- /dev/null
++++ b/source/extensions/filters/http/filter_chain/BUILD
+@@ -0,0 +1,41 @@
++load(
++    "//bazel:envoy_build_system.bzl",
++    "envoy_cc_extension",
++    "envoy_cc_library",
++    "envoy_extension_package",
++)
++
++licenses(["notice"])  # Apache 2
++
++# HTTP filter that wraps a configurable filter chain.
++
++envoy_extension_package()
++
++envoy_cc_library(
++    name = "filter_lib",
++    srcs = ["filter.cc"],
++    hdrs = ["filter.h"],
++    deps = [
++        "//envoy/http:filter_interface",
++        "//envoy/registry",
++        "//envoy/server:filter_config_interface",
++        "//source/common/config:utility_lib",
++        "//source/common/http:filter_chain_helper_lib",
++        "//source/common/http:utility_lib",
++        "//source/extensions/filters/http/common:pass_through_filter_lib",
++        "@envoy_api//envoy/extensions/filters/http/filter_chain/v3:pkg_cc_proto",
++    ],
++)
++
++envoy_cc_extension(
++    name = "config",
++    srcs = ["config.cc"],
++    hdrs = ["config.h"],
++    deps = [
++        ":filter_lib",
++        "//envoy/registry",
++        "//envoy/server:filter_config_interface",
++        "//source/extensions/filters/http/common:factory_base_lib",
++        "@envoy_api//envoy/extensions/filters/http/filter_chain/v3:pkg_cc_proto",
++    ],
++)
+diff --git a/source/extensions/filters/http/filter_chain/config.cc b/source/extensions/filters/http/filter_chain/config.cc
+new file mode 100644
+index 000000000..2564c4663
+--- /dev/null
++++ b/source/extensions/filters/http/filter_chain/config.cc
+@@ -0,0 +1,80 @@
++#include "source/extensions/filters/http/filter_chain/config.h"
++
++#include "envoy/registry/registry.h"
++
++#include "source/extensions/filters/http/filter_chain/filter.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace FilterChain {
++
++namespace {
++
++OptRef<const FilterChain> routeLevelFilterChain(FilterChainConfig& filter_chain_config,
++                                                Http::FilterChainFactoryCallbacks& callbacks) {
++  const OptRef<const Router::Route> route = callbacks.route();
++  if (!route.has_value()) {
++    filter_chain_config.stats().no_route_.inc();
++    return {};
++  }
++  const auto* per_route_config = dynamic_cast<const FilterChainPerRouteConfig*>(
++      route->mostSpecificPerFilterConfig(callbacks.filterConfigName()));
++  if (per_route_config == nullptr) {
++    filter_chain_config.stats().no_route_filter_config_.inc();
++    return {};
++  }
++  if (auto chain = per_route_config->filterChain(); chain.has_value()) {
++    filter_chain_config.stats().use_route_filter_chain_.inc();
++    return chain;
++  }
++  return {};
++}
++
++} // namespace
++
++Http::FilterFactoryCb FilterChainFilterFactory::createFilterFactoryFromProtoTyped(
++    const FilterChainConfigProto& proto_config, const std::string& stats_prefix,
++    Server::Configuration::FactoryContext& context) {
++  auto filter_config = std::make_shared<FilterChainConfig>(proto_config, context, stats_prefix);
++
++  return [filter_config](Http::FilterChainFactoryCallbacks& callbacks) -> void {
++    OptRef<const FilterChain> chain = routeLevelFilterChain(*filter_config, callbacks);
++
++    // If no route level filter chain, use the default one.
++    if (!chain.has_value()) {
++      if (chain = filter_config->filterChain(); !chain.has_value()) {
++        ENVOY_LOG(debug, "filter chain filter: no filter chain found, passing through");
++        filter_config->stats().pass_through_.inc();
++        return;
++      }
++      filter_config->stats().use_default_filter_chain_.inc();
++    }
++
++    ASSERT(chain.has_value());
++    Http::FilterChainUtility::createFilterChainForFactories(callbacks, chain->filterFactories());
++  };
++}
++
++absl::StatusOr<Router::RouteSpecificFilterConfigConstSharedPtr>
++FilterChainFilterFactory::createRouteSpecificFilterConfigTyped(
++    const envoy::extensions::filters::http::filter_chain::v3::FilterChainConfigPerRoute&
++        proto_config,
++    Server::Configuration::ServerFactoryContext& context, ProtobufMessage::ValidationVisitor&) {
++  absl::Status creation_status = absl::OkStatus();
++  // TODO(wbpcode): use the route name or vhost name as stats prefix?
++  auto filter_config = std::make_shared<FilterChainPerRouteConfig>(
++      proto_config, context, "filter_chain.", creation_status);
++  RETURN_IF_NOT_OK(creation_status);
++  return filter_config;
++}
++
++/**
++ * Static registration for the filter chain filter. @see RegisterFactory.
++ */
++REGISTER_FACTORY(FilterChainFilterFactory, Server::Configuration::NamedHttpFilterConfigFactory);
++
++} // namespace FilterChain
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/source/extensions/filters/http/filter_chain/config.h b/source/extensions/filters/http/filter_chain/config.h
+new file mode 100644
+index 000000000..ecb7b8bc6
+--- /dev/null
++++ b/source/extensions/filters/http/filter_chain/config.h
+@@ -0,0 +1,43 @@
++#pragma once
++
++#include "envoy/extensions/filters/http/filter_chain/v3/filter_chain.pb.h"
++#include "envoy/extensions/filters/http/filter_chain/v3/filter_chain.pb.validate.h"
++
++#include "source/extensions/filters/http/common/factory_base.h"
++#include "source/extensions/filters/http/filter_chain/filter.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace FilterChain {
++
++/**
++ * Config registration for the filter chain filter. @see NamedHttpFilterConfigFactory.
++ */
++class FilterChainFilterFactory
++    : public Common::FactoryBase<
++          envoy::extensions::filters::http::filter_chain::v3::FilterChainConfig,
++          envoy::extensions::filters::http::filter_chain::v3::FilterChainConfigPerRoute>,
++      public Logger::Loggable<Logger::Id::filter> {
++public:
++  FilterChainFilterFactory() : FactoryBase("envoy.filters.http.filter_chain") {}
++
++private:
++  Http::FilterFactoryCb createFilterFactoryFromProtoTyped(
++      const envoy::extensions::filters::http::filter_chain::v3::FilterChainConfig& proto_config,
++      const std::string& stats_prefix, Server::Configuration::FactoryContext& context) override;
++
++  absl::StatusOr<Router::RouteSpecificFilterConfigConstSharedPtr>
++  createRouteSpecificFilterConfigTyped(
++      const envoy::extensions::filters::http::filter_chain::v3::FilterChainConfigPerRoute&
++          proto_config,
++      Server::Configuration::ServerFactoryContext& context,
++      ProtobufMessage::ValidationVisitor&) override;
++};
++
++DECLARE_FACTORY(FilterChainFilterFactory);
++
++} // namespace FilterChain
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/source/extensions/filters/http/filter_chain/filter.cc b/source/extensions/filters/http/filter_chain/filter.cc
+new file mode 100644
+index 000000000..e10d8a9d5
+--- /dev/null
++++ b/source/extensions/filters/http/filter_chain/filter.cc
+@@ -0,0 +1,109 @@
++#include "source/extensions/filters/http/filter_chain/filter.h"
++
++#include "envoy/registry/registry.h"
++#include "envoy/server/filter_config.h"
++
++#include "source/common/config/utility.h"
++#include "source/common/http/utility.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace FilterChain {
++
++namespace {
++
++constexpr absl::string_view FilterChainName = "envoy.filters.http.filter_chain";
++
++// Helper to process filter config and create filter factories
++Http::FilterChainUtility::FilterFactoriesList createFilterFactoriesFromConfig(
++    const envoy::extensions::filters::http::filter_chain::v3::FilterChain& proto_config,
++    Server::Configuration::ServerFactoryContext& context, const std::string& stats_prefix) {
++  Http::FilterChainUtility::FilterFactoriesList filter_factories;
++  filter_factories.reserve(proto_config.filters_size());
++
++  for (const auto& filter_config : proto_config.filters()) {
++    auto& factory =
++        Config::Utility::getAndCheckFactory<Server::Configuration::NamedHttpFilterConfigFactory>(
++            filter_config);
++    if (factory.name() == FilterChainName) {
++      throw EnvoyException("FilterChain filter cannot be configured recursively.");
++    }
++
++    ProtobufTypes::MessagePtr message = Config::Utility::translateToFactoryConfig(
++        filter_config, context.messageValidationVisitor(), factory);
++    auto callback_or_error =
++        factory.createFilterFactoryFromProtoWithServerContext(*message, stats_prefix, context);
++
++    auto filter_config_provider =
++        Http::FilterChainUtility::createSingletonDownstreamFilterConfigProviderManager(context)
++            ->createStaticFilterConfigProvider(callback_or_error, filter_config.name());
++    filter_factories.push_back({std::move(filter_config_provider), false});
++  }
++  return filter_factories;
++}
++
++// Helper to process filter config and create filter factories
++Http::FilterChainUtility::FilterFactoriesList createFilterFactoriesFromConfig(
++    const envoy::extensions::filters::http::filter_chain::v3::FilterChain& proto_config,
++    Server::Configuration::FactoryContext& context, const std::string& stats_prefix) {
++  Http::FilterChainUtility::FilterFactoriesList filter_factories;
++  filter_factories.reserve(proto_config.filters_size());
++
++  for (const auto& filter_config : proto_config.filters()) {
++    auto& factory =
++        Config::Utility::getAndCheckFactory<Server::Configuration::NamedHttpFilterConfigFactory>(
++            filter_config);
++    if (factory.name() == FilterChainName) {
++      throw EnvoyException("FilterChain filter cannot be configured recursively.");
++    }
++
++    ProtobufTypes::MessagePtr message = Config::Utility::translateToFactoryConfig(
++        filter_config, context.messageValidationVisitor(), factory);
++    auto callback_or_error = factory.createFilterFactoryFromProto(*message, stats_prefix, context);
++    THROW_IF_NOT_OK_REF(callback_or_error.status());
++
++    auto filter_config_provider =
++        Http::FilterChainUtility::createSingletonDownstreamFilterConfigProviderManager(
++            context.serverFactoryContext())
++            ->createStaticFilterConfigProvider(std::move(callback_or_error.value()),
++                                               filter_config.name());
++    filter_factories.push_back({std::move(filter_config_provider), false});
++  }
++  return filter_factories;
++}
++
++} // namespace
++
++FilterChain::FilterChain(
++    const envoy::extensions::filters::http::filter_chain::v3::FilterChain& proto_config,
++    Server::Configuration::ServerFactoryContext& context, const std::string& stats_prefix)
++    : filter_factories_(createFilterFactoriesFromConfig(proto_config, context, stats_prefix)) {}
++
++FilterChain::FilterChain(
++    const envoy::extensions::filters::http::filter_chain::v3::FilterChain& proto_config,
++    Server::Configuration::FactoryContext& context, const std::string& stats_prefix)
++    : filter_factories_(createFilterFactoriesFromConfig(proto_config, context, stats_prefix)) {}
++
++FilterChainPerRouteConfig::FilterChainPerRouteConfig(
++    const envoy::extensions::filters::http::filter_chain::v3::FilterChainConfigPerRoute&
++        proto_config,
++    Server::Configuration::ServerFactoryContext& context, const std::string& stats_prefix,
++    absl::Status&) {
++  filter_chain_ = std::make_shared<FilterChain>(proto_config.filter_chain(), context, stats_prefix);
++}
++
++FilterChainConfig::FilterChainConfig(const FilterChainConfigProto& proto_config,
++                                     Server::Configuration::FactoryContext& context,
++                                     const std::string& stats_prefix)
++    : stats_(createStats(stats_prefix, context.scope())) {
++  if (proto_config.has_default_filter_chain()) {
++    default_filter_chain_ =
++        std::make_shared<FilterChain>(proto_config.default_filter_chain(), context, stats_prefix);
++  }
++}
++
++} // namespace FilterChain
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/source/extensions/filters/http/filter_chain/filter.h b/source/extensions/filters/http/filter_chain/filter.h
+new file mode 100644
+index 000000000..27e976ba7
+--- /dev/null
++++ b/source/extensions/filters/http/filter_chain/filter.h
+@@ -0,0 +1,103 @@
++#pragma once
++
++#include <memory>
++#include <vector>
++
++#include "envoy/extensions/filters/http/filter_chain/v3/filter_chain.pb.h"
++#include "envoy/http/filter.h"
++#include "envoy/stats/scope.h"
++#include "envoy/stats/stats_macros.h"
++
++#include "source/common/http/filter_chain_helper.h"
++#include "source/extensions/filters/http/common/pass_through_filter.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace FilterChain {
++
++using FilterChainConfigProto =
++    envoy::extensions::filters::http::filter_chain::v3::FilterChainConfig;
++using FilterChainConfigProtoPerRoute =
++    envoy::extensions::filters::http::filter_chain::v3::FilterChainConfigPerRoute;
++
++#define COMMON_FILTER_CHAIN_STATS(COUNTER)                                                         \
++  COUNTER(no_route)                                                                                \
++  COUNTER(no_route_filter_config)                                                                  \
++  COUNTER(use_route_filter_chain)                                                                  \
++  COUNTER(use_default_filter_chain)                                                                \
++  COUNTER(pass_through)
++
++struct FilterChainStats {
++  COMMON_FILTER_CHAIN_STATS(GENERATE_COUNTER_STRUCT)
++};
++
++/**
++ * Configuration for a single filter chain.
++ */
++class FilterChain {
++public:
++  FilterChain(const envoy::extensions::filters::http::filter_chain::v3::FilterChain& proto_config,
++              Server::Configuration::ServerFactoryContext& context,
++              const std::string& stats_prefix);
++  FilterChain(const envoy::extensions::filters::http::filter_chain::v3::FilterChain& proto_config,
++              Server::Configuration::FactoryContext& context, const std::string& stats_prefix);
++
++  const Http::FilterChainUtility::FilterFactoriesList& filterFactories() const {
++    return filter_factories_;
++  }
++
++private:
++  Http::FilterChainUtility::FilterFactoriesList filter_factories_;
++};
++
++using FilterChainConstSharedPtr = std::shared_ptr<const FilterChain>;
++
++/**
++ * Per-route configuration for the filter chain filter.
++ */
++class FilterChainPerRouteConfig : public Router::RouteSpecificFilterConfig {
++public:
++  FilterChainPerRouteConfig(const FilterChainConfigProtoPerRoute& proto_config,
++                            Server::Configuration::ServerFactoryContext& context,
++                            const std::string& stats_prefix, absl::Status& creation_status);
++
++  OptRef<const FilterChain> filterChain() const { return makeOptRefFromPtr(filter_chain_.get()); }
++
++private:
++  FilterChainConstSharedPtr filter_chain_;
++};
++
++using FilterChainPerRouteConfigConstSharedPtr = std::shared_ptr<const FilterChainPerRouteConfig>;
++
++/**
++ * Filter-level configuration for the filter chain filter.
++ */
++class FilterChainConfig {
++public:
++  FilterChainConfig(const FilterChainConfigProto& proto_config,
++                    Server::Configuration::FactoryContext& context,
++                    const std::string& stats_prefix);
++
++  OptRef<const FilterChain> filterChain() const {
++    return makeOptRefFromPtr(default_filter_chain_.get());
++  }
++
++  FilterChainStats& stats() { return stats_; }
++
++private:
++  static FilterChainStats createStats(const std::string& stats_prefix, Stats::Scope& scope) {
++    const std::string final_prefix = fmt::format("{}filter_chain.", stats_prefix);
++    return {COMMON_FILTER_CHAIN_STATS(POOL_COUNTER_PREFIX(scope, final_prefix))};
++  }
++
++  FilterChainConstSharedPtr default_filter_chain_;
++  FilterChainStats stats_;
++};
++
++using FilterChainConfigSharedPtr = std::shared_ptr<FilterChainConfig>;
++
++} // namespace FilterChain
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/test/extensions/filters/http/filter_chain/BUILD b/test/extensions/filters/http/filter_chain/BUILD
+new file mode 100644
+index 000000000..a246f99dd
+--- /dev/null
++++ b/test/extensions/filters/http/filter_chain/BUILD
+@@ -0,0 +1,72 @@
++load(
++    "//bazel:envoy_build_system.bzl",
++    "envoy_package",
++)
++load(
++    "//test/extensions:extensions_build_system.bzl",
++    "envoy_extension_cc_test",
++)
++
++licenses(["notice"])  # Apache 2
++
++envoy_package()
++
++envoy_extension_cc_test(
++    name = "config_test",
++    srcs = ["config_test.cc"],
++    extension_names = ["envoy.filters.http.filter_chain"],
++    deps = [
++        "//source/common/http:header_map_lib",
++        "//source/extensions/filters/http/filter_chain:config",
++        "//source/extensions/filters/http/filter_chain:filter_lib",
++        "//source/extensions/filters/http/header_mutation:config",
++        "//test/mocks/server:factory_context_mocks",
++        "//test/mocks/server:instance_mocks",
++        "//test/test_common:utility_lib",
++        "@envoy_api//envoy/extensions/filters/http/filter_chain/v3:pkg_cc_proto",
++    ],
++)
++
++envoy_extension_cc_test(
++    name = "filter_test",
++    srcs = ["filter_test.cc"],
++    extension_names = ["envoy.filters.http.filter_chain"],
++    rbe_pool = "6gig",
++    deps = [
++        "//source/common/http:header_map_lib",
++        "//source/extensions/filters/http/buffer:config",
++        "//source/extensions/filters/http/filter_chain:config",
++        "//source/extensions/filters/http/filter_chain:filter_lib",
++        "//test/mocks/access_log:access_log_mocks",
++        "//test/mocks/http:http_mocks",
++        "//test/mocks/server:factory_context_mocks",
++        "//test/mocks/server:instance_mocks",
++        "//test/test_common:registry_lib",
++        "//test/test_common:utility_lib",
++        "@envoy_api//envoy/extensions/filters/http/filter_chain/v3:pkg_cc_proto",
++    ],
++)
++
++envoy_extension_cc_test(
++    name = "filter_chain_integration_test",
++    size = "large",
++    srcs = ["filter_chain_integration_test.cc"],
++    extension_names = ["envoy.filters.http.filter_chain"],
++    rbe_pool = "6gig",
++    shard_count = 4,
++    deps = [
++        "//source/common/http:header_map_lib",
++        "//source/extensions/filters/http/filter_chain:config",
++        "//source/extensions/filters/http/filter_chain:filter_lib",
++        "//source/extensions/filters/http/header_mutation:config",
++        "//test/common/http:common_lib",
++        "//test/integration:http_integration_lib",
++        "//test/integration/filters:add_header_filter_config_lib",
++        "//test/integration/filters:set_response_code_filter_config_proto_cc_proto",
++        "//test/integration/filters:set_response_code_filter_lib",
++        "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
++        "@envoy_api//envoy/extensions/filters/http/filter_chain/v3:pkg_cc_proto",
++        "@envoy_api//envoy/extensions/filters/http/header_mutation/v3:pkg_cc_proto",
++        "@envoy_api//envoy/extensions/filters/network/http_connection_manager/v3:pkg_cc_proto",
++    ],
++)
+diff --git a/test/extensions/filters/http/filter_chain/config_test.cc b/test/extensions/filters/http/filter_chain/config_test.cc
+new file mode 100644
+index 000000000..e96bd9bdf
+--- /dev/null
++++ b/test/extensions/filters/http/filter_chain/config_test.cc
+@@ -0,0 +1,149 @@
++#include "envoy/extensions/filters/http/filter_chain/v3/filter_chain.pb.h"
++#include "envoy/extensions/filters/http/filter_chain/v3/filter_chain.pb.validate.h"
++
++#include "source/extensions/filters/http/filter_chain/config.h"
++#include "source/extensions/filters/http/filter_chain/filter.h"
++
++#include "test/mocks/server/factory_context.h"
++#include "test/mocks/server/instance.h"
++#include "test/test_common/utility.h"
++
++#include "gmock/gmock.h"
++#include "gtest/gtest.h"
++
++using testing::_;
++using testing::NiceMock;
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace FilterChain {
++namespace {
++
++TEST(FilterChainFilterFactoryTest, FilterChainFilterCorrectYaml) {
++  const std::string yaml_string = R"EOF(
++  default_filter_chain:
++    filters:
++    - name: envoy.filters.http.header_mutation
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
++        mutations:
++          request_mutations:
++          - remove: "test"
++  )EOF";
++
++  envoy::extensions::filters::http::filter_chain::v3::FilterChainConfig proto_config;
++  TestUtility::loadFromYaml(yaml_string, proto_config);
++  NiceMock<Server::Configuration::MockFactoryContext> context;
++  FilterChainFilterFactory factory;
++  Http::FilterFactoryCb cb =
++      factory.createFilterFactoryFromProto(proto_config, "stats", context).value();
++  NiceMock<Http::MockFilterChainFactoryCallbacks> filter_callback;
++  EXPECT_CALL(filter_callback, addStreamFilter(_));
++  cb(filter_callback);
++}
++
++TEST(FilterChainFilterFactoryTest, FilterChainFilterRecursiveConfig) {
++  const std::string yaml_string = R"EOF(
++  default_filter_chain:
++    filters:
++    - name: envoy.filters.http.filter_chain
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.filters.http.filter_chain.v3.FilterChainConfig
++        default_filter_chain:
++          filters:
++          - name: envoy.filters.http.header_mutation
++            typed_config:
++              "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
++              mutations:
++                request_mutations:
++                - remove: "test"
++  )EOF";
++
++  envoy::extensions::filters::http::filter_chain::v3::FilterChainConfig proto_config;
++  TestUtility::loadFromYaml(yaml_string, proto_config);
++  NiceMock<Server::Configuration::MockFactoryContext> context;
++  FilterChainFilterFactory factory;
++  EXPECT_THROW_WITH_MESSAGE(
++      { auto status_or = factory.createFilterFactoryFromProto(proto_config, "stats", context); },
++      EnvoyException, "FilterChain filter cannot be configured recursively.");
++}
++
++TEST(FilterChainFilterFactoryTest, FilterChainFilterEmptyConfig) {
++  envoy::extensions::filters::http::filter_chain::v3::FilterChainConfig proto_config;
++  NiceMock<Server::Configuration::MockFactoryContext> context;
++  FilterChainFilterFactory factory;
++  Http::FilterFactoryCb cb =
++      factory.createFilterFactoryFromProto(proto_config, "stats", context).value();
++  NiceMock<Http::MockFilterChainFactoryCallbacks> filter_callback;
++  EXPECT_CALL(filter_callback, addStreamFilter(_)).Times(0);
++  cb(filter_callback);
++}
++
++TEST(FilterChainFilterFactoryTest, FilterChainFilterRouteSpecificConfigWithFilterChain) {
++  FilterChainFilterFactory factory;
++  NiceMock<Server::Configuration::MockServerFactoryContext> factory_context;
++
++  const std::string yaml_string = R"EOF(
++  filter_chain:
++    filters:
++    - name: envoy.filters.http.header_mutation
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
++        mutations:
++          request_mutations:
++          - remove: "test"
++  )EOF";
++
++  ProtobufTypes::MessagePtr proto_config = factory.createEmptyRouteConfigProto();
++  TestUtility::loadFromYaml(yaml_string, *proto_config);
++
++  Router::RouteSpecificFilterConfigConstSharedPtr route_config =
++      factory
++          .createRouteSpecificFilterConfig(*proto_config, factory_context,
++                                           ProtobufMessage::getNullValidationVisitor())
++          .value();
++  EXPECT_TRUE(route_config.get());
++
++  const auto* inflated = dynamic_cast<const FilterChainPerRouteConfig*>(route_config.get());
++  EXPECT_TRUE(inflated);
++  EXPECT_TRUE(inflated->filterChain().has_value());
++}
++
++TEST(FilterChainFilterFactoryTest,
++     FilterChainFilterRouteSpecificConfigWithFilterChainRecursiveConfig) {
++  FilterChainFilterFactory factory;
++  NiceMock<Server::Configuration::MockServerFactoryContext> factory_context;
++
++  const std::string yaml_string = R"EOF(
++  filter_chain:
++    filters:
++    - name: envoy.filters.http.filter_chain
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.filters.http.filter_chain.v3.FilterChainConfigPerRoute
++        filter_chain:
++          filters:
++          - name: envoy.filters.http.header_mutation
++            typed_config:
++              "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
++              mutations:
++                request_mutations:
++                - remove: "test"
++  )EOF";
++
++  ProtobufTypes::MessagePtr proto_config = factory.createEmptyRouteConfigProto();
++  TestUtility::loadFromYaml(yaml_string, *proto_config);
++
++  EXPECT_THROW_WITH_MESSAGE(
++      {
++        auto route_config = factory.createRouteSpecificFilterConfig(
++            *proto_config, factory_context, ProtobufMessage::getNullValidationVisitor());
++      },
++      EnvoyException, "FilterChain filter cannot be configured recursively.");
++}
++
++} // namespace
++} // namespace FilterChain
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/test/extensions/filters/http/filter_chain/filter_chain_integration_test.cc b/test/extensions/filters/http/filter_chain/filter_chain_integration_test.cc
+new file mode 100644
+index 000000000..0343e340c
+--- /dev/null
++++ b/test/extensions/filters/http/filter_chain/filter_chain_integration_test.cc
+@@ -0,0 +1,128 @@
++#include "envoy/config/core/v3/base.pb.h"
++#include "envoy/extensions/filters/http/filter_chain/v3/filter_chain.pb.h"
++#include "envoy/extensions/filters/http/header_mutation/v3/header_mutation.pb.h"
++#include "envoy/extensions/filters/network/http_connection_manager/v3/http_connection_manager.pb.h"
++
++#include "source/common/protobuf/utility.h"
++
++#include "test/integration/http_integration.h"
++
++namespace Envoy {
++namespace {
++
++class FilterChainIntegrationTest : public testing::TestWithParam<Network::Address::IpVersion>,
++                                   public HttpIntegrationTest {
++public:
++  FilterChainIntegrationTest() : HttpIntegrationTest(Http::CodecClient::Type::HTTP1, GetParam()) {}
++};
++
++INSTANTIATE_TEST_SUITE_P(IpVersions, FilterChainIntegrationTest,
++                         testing::ValuesIn(TestEnvironment::getIpVersionsForTest()),
++                         TestUtility::ipTestParamsToString);
++
++// Test basic filter chain with header mutation filter
++TEST_P(FilterChainIntegrationTest, BasicFilterChainWithHeaderMutation) {
++  const std::string filter_config = R"EOF(
++name: envoy.filters.http.filter_chain
++typed_config:
++  "@type": type.googleapis.com/envoy.extensions.filters.http.filter_chain.v3.FilterChainConfig
++  default_filter_chain:
++    filters:
++    - name: envoy.filters.http.header_mutation
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
++        mutations:
++          response_mutations:
++          - append:
++              header:
++                key: "x-new-header"
++                value: "default-value"
++              append_action: APPEND_IF_EXISTS_OR_ADD
++)EOF";
++
++  config_helper_.prependFilter(filter_config, true);
++  initialize();
++
++  codec_client_ = makeHttpConnection(lookupPort("http"));
++  auto response = codec_client_->makeHeaderOnlyRequest(default_request_headers_);
++  waitForNextUpstreamRequest();
++
++  upstream_request_->encodeHeaders(default_response_headers_, true);
++  ASSERT_TRUE(response->waitForEndStream());
++  ASSERT_TRUE(response->complete());
++  EXPECT_EQ("200", response->headers().getStatusValue());
++  EXPECT_EQ(
++      "default-value",
++      response->headers().get(Http::LowerCaseString("x-new-header"))[0]->value().getStringView());
++}
++
++// Test empty filter chain (passthrough)
++TEST_P(FilterChainIntegrationTest, EmptyFilterChainPassthrough) {
++  const std::string filter_config = R"EOF(
++name: envoy.filters.http.filter_chain
++typed_config:
++  "@type": type.googleapis.com/envoy.extensions.filters.http.filter_chain.v3.FilterChainConfig
++)EOF";
++
++  config_helper_.prependFilter(filter_config, true);
++  initialize();
++
++  codec_client_ = makeHttpConnection(lookupPort("http"));
++  auto response = codec_client_->makeHeaderOnlyRequest(default_request_headers_);
++  waitForNextUpstreamRequest();
++
++  upstream_request_->encodeHeaders(default_response_headers_, true);
++  ASSERT_TRUE(response->waitForEndStream());
++  ASSERT_TRUE(response->complete());
++  EXPECT_EQ("200", response->headers().getStatusValue());
++}
++
++// Test filter chain with per-route configuration using inline filter_chain
++TEST_P(FilterChainIntegrationTest, PerRouteInlineFilterChain) {
++  const std::string filter_config = R"EOF(
++name: envoy.filters.http.filter_chain
++typed_config:
++  "@type": type.googleapis.com/envoy.extensions.filters.http.filter_chain.v3.FilterChainConfig
++)EOF";
++
++  config_helper_.prependFilter(filter_config, true);
++
++  // Add per-route config with inline filter chain
++  config_helper_.addConfigModifier([](envoy::extensions::filters::network::http_connection_manager::
++                                          v3::HttpConnectionManager& hcm) {
++    auto* virtual_host = hcm.mutable_route_config()->mutable_virtual_hosts(0);
++    auto* route = virtual_host->mutable_routes(0);
++    auto* typed_per_filter_config = route->mutable_typed_per_filter_config();
++
++    envoy::extensions::filters::http::filter_chain::v3::FilterChainConfigPerRoute per_route;
++    auto* filter_chain = per_route.mutable_filter_chain();
++    auto* filter = filter_chain->add_filters();
++    filter->set_name("envoy.filters.http.header_mutation");
++    envoy::extensions::filters::http::header_mutation::v3::HeaderMutation header_mutation_config;
++    auto* mutation = header_mutation_config.mutable_mutations()->add_response_mutations();
++    mutation->mutable_append()->set_append_action(
++        envoy::config::core::v3::HeaderValueOption::APPEND_IF_EXISTS_OR_ADD);
++    mutation->mutable_append()->mutable_header()->set_key("x-new-header");
++    mutation->mutable_append()->mutable_header()->set_value("value-from-inline-custom-chain");
++    filter->mutable_typed_config()->PackFrom(header_mutation_config);
++
++    (*typed_per_filter_config)["envoy.filters.http.filter_chain"].PackFrom(per_route);
++  });
++
++  initialize();
++
++  codec_client_ = makeHttpConnection(lookupPort("http"));
++  auto response = codec_client_->makeHeaderOnlyRequest(default_request_headers_);
++  waitForNextUpstreamRequest();
++
++  upstream_request_->encodeHeaders(default_response_headers_, true);
++  ASSERT_TRUE(response->waitForEndStream());
++  ASSERT_TRUE(response->complete());
++  EXPECT_EQ("200", response->headers().getStatusValue());
++  EXPECT_EQ(
++      "value-from-inline-custom-chain",
++      response->headers().get(Http::LowerCaseString("x-new-header"))[0]->value().getStringView());
++}
++
++} // namespace
++} // namespace Envoy
+diff --git a/test/extensions/filters/http/filter_chain/filter_test.cc b/test/extensions/filters/http/filter_chain/filter_test.cc
+new file mode 100644
+index 000000000..df5fc81b1
+--- /dev/null
++++ b/test/extensions/filters/http/filter_chain/filter_test.cc
+@@ -0,0 +1,154 @@
++#include <cstddef>
++
++#include "envoy/extensions/filters/http/filter_chain/v3/filter_chain.pb.h"
++#include "envoy/extensions/filters/http/filter_chain/v3/filter_chain.pb.validate.h"
++#include "envoy/registry/registry.h"
++
++#include "source/extensions/filters/http/filter_chain/config.h"
++
++#include "test/mocks/http/mocks.h"
++#include "test/mocks/server/factory_context.h"
++#include "test/test_common/registry.h"
++#include "test/test_common/utility.h"
++
++#include "gmock/gmock.h"
++#include "gtest/gtest.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace FilterChain {
++namespace {
++
++using testing::_;
++using testing::NiceMock;
++using testing::Return;
++
++class MockFilterConfigFactory : public Server::Configuration::NamedHttpFilterConfigFactory {
++public:
++  MockFilterConfigFactory() = default;
++
++  absl::StatusOr<Http::FilterFactoryCb>
++  createFilterFactoryFromProto(const Protobuf::Message&, const std::string&,
++                               Server::Configuration::FactoryContext&) override {
++    return [this](Http::FilterChainFactoryCallbacks& callbacks) -> void {
++      callbacks.addStreamDecoderFilter(std::make_shared<Http::MockStreamDecoderFilter>());
++      filter_added_++;
++    };
++  }
++
++  Http::FilterFactoryCb createFilterFactoryFromProtoWithServerContext(
++      const Protobuf::Message&, const std::string&,
++      Server::Configuration::ServerFactoryContext&) override {
++    return [this](Http::FilterChainFactoryCallbacks& callbacks) -> void {
++      callbacks.addStreamDecoderFilter(std::make_shared<Http::MockStreamDecoderFilter>());
++      filter_added_++;
++    };
++  }
++
++  ProtobufTypes::MessagePtr createEmptyConfigProto() override {
++    return std::make_unique<Protobuf::Struct>();
++  }
++
++  std::string name() const override { return "mock_filter"; }
++
++  size_t filter_added_{};
++};
++
++class FilterChainFactoryTest : public testing::Test {
++public:
++  void SetUp() override {
++    mock_factory_ = std::make_shared<MockFilterConfigFactory>();
++    registry_ = std::make_unique<
++        Registry::InjectFactory<Server::Configuration::NamedHttpFilterConfigFactory>>(
++        *mock_factory_);
++  }
++
++  void initialize(const std::string& yaml_config, const std::string& per_route_yaml = "") {
++    FilterChainConfigProto proto_config;
++    if (!yaml_config.empty()) {
++      TestUtility::loadFromYaml(yaml_config, proto_config);
++    }
++    auto callback_or_error = factory_.createFilterFactoryFromProto(proto_config, "test.", context_);
++    EXPECT_TRUE(callback_or_error.status().ok());
++
++    cb_ = callback_or_error.value();
++
++    if (!per_route_yaml.empty()) {
++      FilterChainConfigProtoPerRoute proto_per_route;
++      TestUtility::loadFromYaml(per_route_yaml, proto_per_route);
++
++      auto specific_config_or_error = factory_.createRouteSpecificFilterConfig(
++          proto_per_route, context_.serverFactoryContext(), context_.messageValidationVisitor());
++      EXPECT_TRUE(specific_config_or_error.status().ok());
++      specific_config_ = specific_config_or_error.value();
++    }
++  }
++
++  FilterChainFilterFactory factory_;
++  std::shared_ptr<MockFilterConfigFactory> mock_factory_;
++  std::unique_ptr<Registry::InjectFactory<Server::Configuration::NamedHttpFilterConfigFactory>>
++      registry_;
++  NiceMock<Server::Configuration::MockFactoryContext> context_;
++  Http::FilterFactoryCb cb_;
++  NiceMock<Http::MockFilterChainFactoryCallbacks> callbacks_;
++  NiceMock<Router::MockRoute> route_;
++  Router::RouteSpecificFilterConfigConstSharedPtr specific_config_;
++};
++
++TEST_F(FilterChainFactoryTest, EmptyConfig) {
++  initialize("");
++
++  EXPECT_CALL(callbacks_, addStreamDecoderFilter(_)).Times(0);
++  cb_(callbacks_);
++  EXPECT_EQ(mock_factory_->filter_added_, 0);
++  EXPECT_EQ(context_.store_.counter("test.filter_chain.no_route").value(), 1);
++  EXPECT_EQ(context_.store_.counter("test.filter_chain.pass_through").value(), 1);
++}
++
++TEST_F(FilterChainFactoryTest, DefaultFilterChain) {
++  const std::string yaml_config = R"EOF(
++    default_filter_chain:
++      filters:
++      - name: mock_filter
++        typed_config:
++          "@type": type.googleapis.com/google.protobuf.Struct
++    )EOF";
++  initialize(yaml_config);
++
++  EXPECT_CALL(callbacks_, addStreamDecoderFilter(_));
++  cb_(callbacks_);
++  EXPECT_EQ(mock_factory_->filter_added_, 1);
++  EXPECT_EQ(context_.store_.counter("test.filter_chain.no_route").value(), 1);
++  EXPECT_EQ(context_.store_.counter("test.filter_chain.use_default_filter_chain").value(), 1);
++}
++
++TEST_F(FilterChainFactoryTest, InlinedPerRouteConfig) {
++  const std::string per_route_yaml = R"EOF(
++    filter_chain:
++      filters:
++      - name: mock_filter
++        typed_config:
++          "@type": type.googleapis.com/google.protobuf.Struct
++      - name: another_filter
++        typed_config:
++          "@type": type.googleapis.com/google.protobuf.Struct
++  )EOF";
++  initialize("", per_route_yaml);
++
++  EXPECT_CALL(callbacks_, route())
++      .WillOnce(Return(makeOptRefFromPtr<const Router::Route>(&route_)));
++  EXPECT_CALL(callbacks_, filterConfigName()).WillOnce(Return("envoy.filters.http.filter_chain"));
++  EXPECT_CALL(route_, mostSpecificPerFilterConfig("envoy.filters.http.filter_chain"))
++      .WillOnce(Return(specific_config_.get()));
++  EXPECT_CALL(callbacks_, addStreamDecoderFilter(_)).Times(2);
++  cb_(callbacks_);
++  EXPECT_EQ(mock_factory_->filter_added_, 2);
++  EXPECT_EQ(context_.store_.counter("test.filter_chain.use_route_filter_chain").value(), 1);
++}
++
++} // namespace
++} // namespace FilterChain
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/tools/code_format/config.yaml b/tools/code_format/config.yaml
+index 53b18a377..54b540a1d 100644
+--- a/tools/code_format/config.yaml
++++ b/tools/code_format/config.yaml
+@@ -183,11 +183,13 @@ paths:
+     - source/extensions/filters/http/ext_authz
+     - source/extensions/filters/http/ext_proc
+     - source/extensions/filters/http/file_system_buffer
++    - source/extensions/filters/http/filter_chain/filter.cc
+     - source/extensions/filters/http/gcp_authn
+     - source/extensions/filters/http/grpc_field_extraction
+     - source/extensions/filters/http/grpc_json_reverse_transcoder
+     - source/extensions/filters/http/grpc_json_transcoder
+     - source/extensions/filters/http/grpc_stats
++    - source/extensions/filters/http/header_mutation/config.cc
+     - source/extensions/filters/http/health_check
+     - source/extensions/filters/http/json_to_metadata
+     - source/extensions/filters/http/jwt_authn

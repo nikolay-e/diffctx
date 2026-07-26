@@ -1,0 +1,151 @@
+From d4296539748e01986b8c60bc7ab6b58df0051f58 Mon Sep 17 00:00:00 2001
+From: Hyukjin Kwon <gurwls223@apache.org>
+Date: Mon, 26 Aug 2024 10:49:19 +0900
+Subject: [PATCH] [SPARK-49347][R] Deprecate SparkR
+
+### What changes were proposed in this pull request?
+
+This PR proposes to deprecate SparkR per the vote result: https://lists.apache.org/thread/3c8qxks26kqflsjh0gtjo3nldk686vtq
+
+### Why are the changes needed?
+
+See the discussion in dev mailing list: https://lists.apache.org/thread/qjgsgxklvpvyvbzsx1qr8o533j4zjlm5
+
+### Does this PR introduce _any_ user-facing change?
+
+Yes, it deprecates SparkR.
+
+### How was this patch tested?
+
+Manually checked the documentation.
+
+Also tested with SparkR shell:
+
+```bash
+./bin/sparkR
+```
+
+```
+      ____              __
+     / __/__  ___ _____/ /__
+    _\ \/ _ \/ _ `/ __/  '_/
+   /___/ .__/\_,_/_/ /_/\_\   version 4.0.0-SNAPSHOT
+      /_/
+
+...
+During startup - Warning messages:
+1: In SparkR::sparkR.session() :
+  SparkR is deprecated from Apache Spark 4.0.0 and will be removed in a future version.
+```
+
+### Was this patch authored or co-authored using generative AI tooling?
+
+No.
+
+Closes #47842 from HyukjinKwon/sparkr-deprecation.
+
+Authored-by: Hyukjin Kwon <gurwls223@apache.org>
+Signed-off-by: Hyukjin Kwon <gurwls223@apache.org>
+---
+ R/pkg/R/sparkR.R                     | 5 +++++
+ R/pkg/README.md                      | 2 +-
+ R/pkg/vignettes/sparkr-vignettes.Rmd | 2 ++
+ docs/building-spark.md               | 2 +-
+ docs/configuration.md                | 2 +-
+ docs/sparkr-migration-guide.md       | 4 ++++
+ docs/sparkr.md                       | 2 ++
+ 7 files changed, 16 insertions(+), 3 deletions(-)
+
+diff --git a/R/pkg/R/sparkR.R b/R/pkg/R/sparkR.R
+index 0be7e5da24..fc2ab8de1e 100644
+--- a/R/pkg/R/sparkR.R
++++ b/R/pkg/R/sparkR.R
+@@ -404,6 +404,11 @@ sparkR.session <- function(
+   enableHiveSupport = TRUE,
+   ...) {
+ 
++  if (Sys.getenv("SPARK_TESTING") == "") {
++    warning(
++      "SparkR is deprecated from Apache Spark 4.0.0 and will be removed in a future version.")
++  }
++
+   sparkConfigMap <- convertNamedListToEnv(sparkConfig)
+   namedParams <- list(...)
+   if (length(namedParams) > 0) {
+diff --git a/R/pkg/README.md b/R/pkg/README.md
+index da9f042b4f..c05a758122 100644
+--- a/R/pkg/README.md
++++ b/R/pkg/README.md
+@@ -1,4 +1,4 @@
+-# R on Spark
++# R on Spark (deprecated)
+ 
+ SparkR is an R package that provides a light-weight frontend to use Spark from R.
+ 
+diff --git a/R/pkg/vignettes/sparkr-vignettes.Rmd b/R/pkg/vignettes/sparkr-vignettes.Rmd
+index 4a510763af..338b74110f 100644
+--- a/R/pkg/vignettes/sparkr-vignettes.Rmd
++++ b/R/pkg/vignettes/sparkr-vignettes.Rmd
+@@ -52,6 +52,8 @@ old_java_opt <- Sys.getenv("_JAVA_OPTIONS")
+ Sys.setenv("_JAVA_OPTIONS" = paste("-XX:-UsePerfData", old_java_opt, sep = " "))
+ ```
+ 
++SparkR is deprecated from Apache Spark 4.0.0 and will be removed in a future version.
++
+ ## Overview
+ 
+ SparkR is an R package that provides a light-weight frontend to use Apache Spark from R. With Spark `r packageVersion("SparkR")`, SparkR provides a distributed data frame implementation that supports data processing operations like selection, filtering, aggregation etc. and distributed machine learning using [MLlib](https://spark.apache.org/mllib/).
+diff --git a/docs/building-spark.md b/docs/building-spark.md
+index b2ab923e89..4bd749d90e 100644
+--- a/docs/building-spark.md
++++ b/docs/building-spark.md
+@@ -242,7 +242,7 @@ The run-tests script also can be limited to a specific Python version or a speci
+ 
+     ./python/run-tests --python-executables=python --modules=pyspark-sql
+ 
+-## Running R Tests
++## Running R Tests (deprecated)
+ 
+ To run the SparkR tests you will need to install the [knitr](https://cran.r-project.org/package=knitr), [rmarkdown](https://cran.r-project.org/package=rmarkdown), [testthat](https://cran.r-project.org/package=testthat), [e1071](https://cran.r-project.org/package=e1071) and [survival](https://cran.r-project.org/package=survival) packages first:
+ 
+diff --git a/docs/configuration.md b/docs/configuration.md
+index 532da87f56..ff2f21d282 100644
+--- a/docs/configuration.md
++++ b/docs/configuration.md
+@@ -3576,7 +3576,7 @@ External users can query the static sql config values via `SparkSession.conf` or
+ </tr>
+ </table>
+ 
+-### SparkR
++### SparkR (deprecated)
+ 
+ <table class="spark-config">
+ <thead><tr><th>Property Name</th><th>Default</th><th>Meaning</th><th>Since Version</th></tr></thead>
+diff --git a/docs/sparkr-migration-guide.md b/docs/sparkr-migration-guide.md
+index cb34bcc4b6..568cf6ec4f 100644
+--- a/docs/sparkr-migration-guide.md
++++ b/docs/sparkr-migration-guide.md
+@@ -26,6 +26,10 @@ Note that this migration guide describes the items specific to SparkR.
+ Many items of SQL migration can be applied when migrating SparkR to higher versions.
+ Please refer [Migration Guide: SQL, Datasets and DataFrame](sql-migration-guide.html).
+ 
++## Upgrading from SparkR 3.5 to 4.0
++
++ - In Spark 4.0, SparkR is deprecated and will be removed in a future version.
++
+ ## Upgrading from SparkR 3.1 to 3.2
+ 
+  - Previously, SparkR automatically downloaded and installed the Spark distribution in user's cache directory to complete SparkR installation when SparkR runs in a plain R shell or Rscript, and the Spark distribution cannot be found. Now, it asks if users want to download and install or not. To restore the previous behavior, set `SPARKR_ASK_INSTALLATION` environment variable to `FALSE`.
+diff --git a/docs/sparkr.md b/docs/sparkr.md
+index ef99ea961c..0c64c0fba8 100644
+--- a/docs/sparkr.md
++++ b/docs/sparkr.md
+@@ -22,6 +22,8 @@ license: |
+ * This will become a table of contents (this text will be scraped).
+ {:toc}
+ 
++SparkR is deprecated from Apache Spark 4.0.0 and will be removed in a future version.
++
+ # Overview
+ SparkR is an R package that provides a light-weight frontend to use Apache Spark from R.
+ In Spark {{site.SPARK_VERSION}}, SparkR provides a distributed data frame implementation that

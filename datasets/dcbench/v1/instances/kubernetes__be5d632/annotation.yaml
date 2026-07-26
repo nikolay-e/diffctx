@@ -1,0 +1,45 @@
+repo: kubernetes
+base_commit: 1acfb8e8fc0ecb4451e52916846fc170c5f4f496
+commit: be5d632997f65af5c9f426a84d97779a74a4afe5
+patch_stored: true
+gold:
+  - path: staging/src/k8s.io/api/resource/v1/types.go
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Hand-written DeviceTaintRule/DeviceTaintRuleSpec/DeviceTaintRuleStatus/DeviceTaintRuleList type definitions added in parent commit 1acfb8e that this commit's zz_generated.*, generated.pb.go, and client-go typed/informer/lister files for the v1 package are mechanically regenerated from.
+  - path: staging/src/k8s.io/api/resource/v1/register.go
+    tier: essential
+    role: config
+    in_diff: false
+    rationale: Registers DeviceTaintRule/DeviceTaintRuleList with the v1 SchemeBuilder, the source that client-go/informers/generic.go and the new v1 devicetaintrule typed client/lister/informer files (regenerated here) are keyed off of.
+  - path: pkg/registry/resource/devicetaintrule/storage/storage.go
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Hand-written REST storage strategy for DeviceTaintRule that pkg/registry/resource/rest/storage_resource.go wires the v1 resource to, motivating why v1 generated clients/informers now exist for this kind.
+  - path: pkg/registry/resource/devicetaintrule/strategy.go
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Hand-written admission/validation strategy for DeviceTaintRule underpinning the v1 API surface whose generated validations.go this commit adds.
+  - path: pkg/registry/resource/rest/storage_resource.go
+    tier: helpful
+    role: config
+    in_diff: false
+    rationale: Wires devicetaintrule storage into the v1 REST resource map, the hand-written counterpart to the generated client/informer/lister churn in this commit.
+forbidden:
+  - path: api/openapi-spec/swagger.json
+    reason: aggregated OpenAPI spec is a downstream mechanical artifact of types.go, not itself explanatory
+  - path: staging/src/k8s.io/api/testdata/HEAD/resource.k8s.io.v1.DeviceTaintRule.json
+    reason: roundtrip fixture snapshot auto-updated by codegen, not authoritative source
+  - path: pkg/apis/resource/v1beta2/zz_generated.conversion.go
+    reason: sibling version's generated conversion file touched only for cross-version plumbing, not the v1 promotion itself
+  - path: staging/src/k8s.io/client-go/applyconfigurations/utils.go
+    reason: generated applyconfiguration registry switch statement, mechanical fallout of the new v1 types
+nontrivial_gold_count: 5
+string_indirection: false
+no_nontrivial_context: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: 'Pure codegen commit ("DRA: add DeviceTaintRule to v1 API (generated files)") regenerating zz_generated/proto/openapi/client-go artifacts for the v1 DeviceTaintRule API added by hand-written parent commit 1acfb8e. All 38 diff files are generated; gold points to the hand-written type/register/storage sources in v1 that the generators consumed, mirroring the earlier v1alpha3 companion-commit pattern (kubernetes__99dbd85).'

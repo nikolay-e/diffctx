@@ -1,0 +1,87 @@
+From 35397b818d27f9999ec4eaad225361add2221182 Mon Sep 17 00:00:00 2001
+From: Erik Montnemery <erik@montnemery.com>
+Date: Thu, 28 May 2026 10:54:08 +0200
+Subject: [PATCH] Deprecate device tracker battery_level property (#171819)
+
+Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+---
+ .../components/device_tracker/entity.py       | 24 ++++++++++++++++++
+ .../components/device_tracker/test_entity.py  | 25 +++++++++++++++++++
+ 2 files changed, 49 insertions(+)
+
+diff --git a/homeassistant/components/device_tracker/entity.py b/homeassistant/components/device_tracker/entity.py
+index d08857e843..497e9ab1f5 100644
+--- a/homeassistant/components/device_tracker/entity.py
++++ b/homeassistant/components/device_tracker/entity.py
+@@ -169,11 +169,35 @@ class BaseTrackerEntity(Entity):
+     _attr_entity_category = EntityCategory.DIAGNOSTIC
+     _attr_source_type: SourceType
+ 
++    def __init_subclass__(cls, **kwargs: Any) -> None:
++        """Post initialisation processing."""
++        super().__init_subclass__(**kwargs)
++        if "battery_level" in cls.__dict__:
++            if cls.__module__.startswith("homeassistant.components."):
++                # Don't ask users to report issue for built in integrations,
++                # they already have issues opened on them.
++                return
++            report_issue = async_suggest_report_issue(
++                async_get_hass_or_none(), module=cls.__module__
++            )
++            _LOGGER.warning(
++                (
++                    "%s::%s is overriding the deprecated battery_level property on "
++                    "a subclass of BaseTrackerEntity, this will be unsupported from "
++                    "Home Assistant 2027.7, please %s"
++                ),
++                cls.__module__,
++                cls.__name__,
++                report_issue,
++            )
++
+     @cached_property
+     def battery_level(self) -> int | None:
+         """Return the battery level of the device.
+ 
+         Percentage from 0-100.
++
++        The property is deprecated and will be removed in Home Assistant 2027.7.
+         """
+         return None
+ 
+diff --git a/tests/components/device_tracker/test_entity.py b/tests/components/device_tracker/test_entity.py
+index 0591b87216..2cd8b35332 100644
+--- a/tests/components/device_tracker/test_entity.py
++++ b/tests/components/device_tracker/test_entity.py
+@@ -1379,6 +1379,31 @@ def test_base_tracker_entity() -> None:
+         entity.state_attributes  # noqa: B018
+ 
+ 
++def test_battery_level_override_deprecation_warning(
++    caplog: pytest.LogCaptureFixture,
++) -> None:
++    """Test that overriding battery_level in a subclass logs a warning."""
++    error_message = "is overriding the deprecated battery_level property"
++
++    caplog.clear()
++
++    class _SubclassWithOverride(TrackerEntity):
++        @property
++        def battery_level(self) -> int | None:
++            return 50
++
++    assert error_message in caplog.text
++    assert _SubclassWithOverride.__name__ in caplog.text
++
++    # No warning for a subclass that does not override battery_level
++    caplog.clear()
++
++    class _SubclassWithoutOverride(TrackerEntity):
++        pass
++
++    assert error_message not in caplog.text
++
++
+ async def test_attr_location_name_deprecation_warning(
+     hass: HomeAssistant,
+     caplog: pytest.LogCaptureFixture,

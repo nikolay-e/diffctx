@@ -1,0 +1,1010 @@
+From 85609c117e2b96a786204069669c66d36d971733 Mon Sep 17 00:00:00 2001
+From: Krasimir Angelov <kangelov@gitlab.com>
+Date: Mon, 6 May 2019 13:11:42 +0000
+Subject: [PATCH] Implement support for CI variables of type file
+
+Add env_var and file as supported types for CI variables. Variables of
+type file expose to users existing gitlab-runner behaviour - save
+variable value into a temp file and set the path to this file in an ENV
+var named after the variable key.
+
+Resolves https://gitlab.com/gitlab-org/gitlab-ce/issues/46806.
+---
+ .../ci_variable_list/ci_variable_list.js      |  4 +++
+ .../native_form_variable_list.js              |  1 +
+ .../groups/variables_controller.rb            |  2 +-
+ .../projects/pipeline_schedules_controller.rb |  2 +-
+ .../projects/pipelines_controller.rb          |  2 +-
+ .../projects/variables_controller.rb          |  2 +-
+ app/helpers/ci_variables_helper.rb            |  7 +++++
+ app/models/concerns/has_variable.rb           |  7 ++++-
+ .../ci/variables/_variable_row.html.haml      |  4 +++
+ .../unreleased/46806-typed-ci-variables.yml   |  5 +++
+ ...30217_add_variable_type_to_ci_variables.rb | 17 ++++++++++
+ ...add_variable_type_to_ci_group_variables.rb | 17 ++++++++++
+ ..._variable_type_to_ci_pipeline_variables.rb | 17 ++++++++++
+ ..._type_to_ci_pipeline_schedule_variables.rb | 17 ++++++++++
+ db/schema.rb                                  |  4 +++
+ doc/api/group_level_variables.md              | 31 ++++++++++++-------
+ doc/api/pipeline_schedules.md                 |  5 +++
+ doc/api/pipelines.md                          |  3 +-
+ doc/api/project_level_variables.md            | 31 ++++++++++++-------
+ lib/api/entities.rb                           |  2 +-
+ lib/api/group_variables.rb                    |  2 ++
+ lib/api/pipeline_schedules.rb                 |  2 ++
+ lib/api/variables.rb                          |  2 ++
+ .../pipeline_schedules_controller_spec.rb     |  3 +-
+ .../ci/pipeline_schedule_variables.rb         |  1 +
+ .../api/schemas/pipeline_schedule.json        |  2 +-
+ .../schemas/pipeline_schedule_variable.json   | 10 ++++--
+ spec/models/ci/group_variable_spec.rb         |  3 +-
+ .../ci/pipeline_schedule_variable_spec.rb     |  2 +-
+ spec/models/ci/pipeline_variable_spec.rb      |  3 +-
+ spec/models/ci/variable_spec.rb               |  3 +-
+ spec/requests/api/group_variables_spec.rb     |  8 +++--
+ spec/requests/api/pipeline_schedules_spec.rb  |  7 +++--
+ spec/requests/api/pipelines_spec.rb           |  9 +++---
+ spec/requests/api/variables_spec.rb           |  8 +++--
+ .../controllers/variables_shared_examples.rb  | 12 +++++++
+ .../models/ci_variable_shared_examples.rb     | 29 +++++++++++++++++
+ 37 files changed, 237 insertions(+), 49 deletions(-)
+ create mode 100644 changelogs/unreleased/46806-typed-ci-variables.yml
+ create mode 100644 db/migrate/20190415030217_add_variable_type_to_ci_variables.rb
+ create mode 100644 db/migrate/20190416213556_add_variable_type_to_ci_group_variables.rb
+ create mode 100644 db/migrate/20190416213615_add_variable_type_to_ci_pipeline_variables.rb
+ create mode 100644 db/migrate/20190416213631_add_variable_type_to_ci_pipeline_schedule_variables.rb
+ create mode 100644 spec/support/shared_examples/models/ci_variable_shared_examples.rb
+
+diff --git a/app/assets/javascripts/ci_variable_list/ci_variable_list.js b/app/assets/javascripts/ci_variable_list/ci_variable_list.js
+index da3100b938..0390a3bf96 100644
+--- a/app/assets/javascripts/ci_variable_list/ci_variable_list.js
++++ b/app/assets/javascripts/ci_variable_list/ci_variable_list.js
+@@ -26,6 +26,10 @@ export default class VariableList {
+         selector: '.js-ci-variable-input-id',
+         default: '',
+       },
++      variable_type: {
++        selector: '.js-ci-variable-input-variable-type',
++        default: 'env_var',
++      },
+       key: {
+         selector: '.js-ci-variable-input-key',
+         default: '',
+diff --git a/app/assets/javascripts/ci_variable_list/native_form_variable_list.js b/app/assets/javascripts/ci_variable_list/native_form_variable_list.js
+index e7111c666a..fdbefd8c31 100644
+--- a/app/assets/javascripts/ci_variable_list/native_form_variable_list.js
++++ b/app/assets/javascripts/ci_variable_list/native_form_variable_list.js
+@@ -19,6 +19,7 @@ export default function setupNativeFormVariableList({ container, formField = 'va
+     const isTouched = variableList.checkIfRowTouched($lastRow);
+     if (!isTouched) {
+       $lastRow.find('input, textarea').attr('name', '');
++      $lastRow.find('select').attr('name', '');
+     }
+   });
+ }
+diff --git a/app/controllers/groups/variables_controller.rb b/app/controllers/groups/variables_controller.rb
+index b44e3b0fff..11e3cfb01e 100644
+--- a/app/controllers/groups/variables_controller.rb
++++ b/app/controllers/groups/variables_controller.rb
+@@ -41,7 +41,7 @@ def group_variables_params
+     end
+ 
+     def variable_params_attributes
+-      %i[id key secret_value protected masked _destroy]
++      %i[id variable_type key secret_value protected masked _destroy]
+     end
+ 
+     def authorize_admin_build!
+diff --git a/app/controllers/projects/pipeline_schedules_controller.rb b/app/controllers/projects/pipeline_schedules_controller.rb
+index 6b721c8fdf..72e939a331 100644
+--- a/app/controllers/projects/pipeline_schedules_controller.rb
++++ b/app/controllers/projects/pipeline_schedules_controller.rb
+@@ -98,7 +98,7 @@ def schedule
+   def schedule_params
+     params.require(:schedule)
+       .permit(:description, :cron, :cron_timezone, :ref, :active,
+-        variables_attributes: [:id, :key, :secret_value, :_destroy] )
++        variables_attributes: [:id, :variable_type, :key, :secret_value, :_destroy] )
+   end
+ 
+   def authorize_play_pipeline_schedule!
+diff --git a/app/controllers/projects/pipelines_controller.rb b/app/controllers/projects/pipelines_controller.rb
+index 22c4b8eef1..db3b7c8b17 100644
+--- a/app/controllers/projects/pipelines_controller.rb
++++ b/app/controllers/projects/pipelines_controller.rb
+@@ -169,7 +169,7 @@ def show_represent_params
+   end
+ 
+   def create_params
+-    params.require(:pipeline).permit(:ref, variables_attributes: %i[key secret_value])
++    params.require(:pipeline).permit(:ref, variables_attributes: %i[key variable_type secret_value])
+   end
+ 
+   # rubocop: disable CodeReuse/ActiveRecord
+diff --git a/app/controllers/projects/variables_controller.rb b/app/controllers/projects/variables_controller.rb
+index 05a79d59ff..646728e816 100644
+--- a/app/controllers/projects/variables_controller.rb
++++ b/app/controllers/projects/variables_controller.rb
+@@ -38,6 +38,6 @@ def variables_params
+   end
+ 
+   def variable_params_attributes
+-    %i[id key secret_value protected masked _destroy]
++    %i[id variable_type key secret_value protected masked _destroy]
+   end
+ end
+diff --git a/app/helpers/ci_variables_helper.rb b/app/helpers/ci_variables_helper.rb
+index 88ce311a1d..5bfdeb9e33 100644
+--- a/app/helpers/ci_variables_helper.rb
++++ b/app/helpers/ci_variables_helper.rb
+@@ -20,4 +20,11 @@ def ci_variable_masked?(variable, only_key_value)
+       true
+     end
+   end
++
++  def ci_variable_type_options
++    [
++      %w(Variable env_var),
++      %w(File file)
++    ]
++  end
+ end
+diff --git a/app/models/concerns/has_variable.rb b/app/models/concerns/has_variable.rb
+index 2ec42a1029..b4e9956907 100644
+--- a/app/models/concerns/has_variable.rb
++++ b/app/models/concerns/has_variable.rb
+@@ -4,6 +4,11 @@ module HasVariable
+   extend ActiveSupport::Concern
+ 
+   included do
++    enum variable_type: {
++      env_var: 1,
++      file: 2
++    }
++
+     validates :key,
+       presence: true,
+       length: { maximum: 255 },
+@@ -24,6 +29,6 @@ def key=(new_key)
+   end
+ 
+   def to_runner_variable
+-    { key: key, value: value, public: false }
++    { key: key, value: value, public: false, file: file? }
+   end
+ end
+diff --git a/app/views/ci/variables/_variable_row.html.haml b/app/views/ci/variables/_variable_row.html.haml
+index 12a8d9930b..37257b3aa1 100644
+--- a/app/views/ci/variables/_variable_row.html.haml
++++ b/app/views/ci/variables/_variable_row.html.haml
+@@ -3,6 +3,7 @@
+ - only_key_value = local_assigns.fetch(:only_key_value, false)
+ 
+ - id = variable&.id
++- variable_type = variable&.variable_type
+ - key = variable&.key
+ - value = variable&.value
+ - is_protected_default = ci_variable_protected_by_default?
+@@ -12,6 +13,7 @@
+ 
+ - id_input_name = "#{form_field}[variables_attributes][][id]"
+ - destroy_input_name = "#{form_field}[variables_attributes][][_destroy]"
++- variable_type_input_name = "#{form_field}[variables_attributes][][variable_type]"
+ - key_input_name = "#{form_field}[variables_attributes][][key]"
+ - value_input_name = "#{form_field}[variables_attributes][][secret_value]"
+ - protected_input_name = "#{form_field}[variables_attributes][][protected]"
+@@ -21,6 +23,8 @@
+   .ci-variable-row-body
+     %input.js-ci-variable-input-id{ type: "hidden", name: id_input_name, value: id }
+     %input.js-ci-variable-input-destroy{ type: "hidden", name: destroy_input_name }
++    %select.js-ci-variable-input-variable-type.ci-variable-body-item.form-control.select-control{ name: variable_type_input_name }
++      = options_for_select(ci_variable_type_options, variable_type)
+     %input.js-ci-variable-input-key.ci-variable-body-item.qa-ci-variable-input-key.form-control{ type: "text",
+       name: key_input_name,
+       value: key,
+diff --git a/changelogs/unreleased/46806-typed-ci-variables.yml b/changelogs/unreleased/46806-typed-ci-variables.yml
+new file mode 100644
+index 0000000000..aa15c31bca
+--- /dev/null
++++ b/changelogs/unreleased/46806-typed-ci-variables.yml
+@@ -0,0 +1,5 @@
++---
++title: CI variables of type file
++merge_request: 27112
++author:
++type: added
+diff --git a/db/migrate/20190415030217_add_variable_type_to_ci_variables.rb b/db/migrate/20190415030217_add_variable_type_to_ci_variables.rb
+new file mode 100644
+index 0000000000..433f510299
+--- /dev/null
++++ b/db/migrate/20190415030217_add_variable_type_to_ci_variables.rb
+@@ -0,0 +1,17 @@
++# frozen_string_literal: true
++
++class AddVariableTypeToCiVariables < ActiveRecord::Migration[5.0]
++  include Gitlab::Database::MigrationHelpers
++  disable_ddl_transaction!
++
++  DOWNTIME = false
++  ENV_VAR_VARIABLE_TYPE = 1
++
++  def up
++    add_column_with_default(:ci_variables, :variable_type, :smallint, default: ENV_VAR_VARIABLE_TYPE)
++  end
++
++  def down
++    remove_column(:ci_variables, :variable_type)
++  end
++end
+diff --git a/db/migrate/20190416213556_add_variable_type_to_ci_group_variables.rb b/db/migrate/20190416213556_add_variable_type_to_ci_group_variables.rb
+new file mode 100644
+index 0000000000..dce73caeb5
+--- /dev/null
++++ b/db/migrate/20190416213556_add_variable_type_to_ci_group_variables.rb
+@@ -0,0 +1,17 @@
++# frozen_string_literal: true
++
++class AddVariableTypeToCiGroupVariables < ActiveRecord::Migration[5.0]
++  include Gitlab::Database::MigrationHelpers
++  disable_ddl_transaction!
++
++  DOWNTIME = false
++  ENV_VAR_VARIABLE_TYPE = 1
++
++  def up
++    add_column_with_default(:ci_group_variables, :variable_type, :smallint, default: ENV_VAR_VARIABLE_TYPE)
++  end
++
++  def down
++    remove_column(:ci_group_variables, :variable_type)
++  end
++end
+diff --git a/db/migrate/20190416213615_add_variable_type_to_ci_pipeline_variables.rb b/db/migrate/20190416213615_add_variable_type_to_ci_pipeline_variables.rb
+new file mode 100644
+index 0000000000..1010d9bd29
+--- /dev/null
++++ b/db/migrate/20190416213615_add_variable_type_to_ci_pipeline_variables.rb
+@@ -0,0 +1,17 @@
++# frozen_string_literal: true
++
++class AddVariableTypeToCiPipelineVariables < ActiveRecord::Migration[5.0]
++  include Gitlab::Database::MigrationHelpers
++  disable_ddl_transaction!
++
++  DOWNTIME = false
++  ENV_VAR_VARIABLE_TYPE = 1
++
++  def up
++    add_column_with_default(:ci_pipeline_variables, :variable_type, :smallint, default: ENV_VAR_VARIABLE_TYPE)
++  end
++
++  def down
++    remove_column(:ci_pipeline_variables, :variable_type)
++  end
++end
+diff --git a/db/migrate/20190416213631_add_variable_type_to_ci_pipeline_schedule_variables.rb b/db/migrate/20190416213631_add_variable_type_to_ci_pipeline_schedule_variables.rb
+new file mode 100644
+index 0000000000..3079b2afd9
+--- /dev/null
++++ b/db/migrate/20190416213631_add_variable_type_to_ci_pipeline_schedule_variables.rb
+@@ -0,0 +1,17 @@
++# frozen_string_literal: true
++
++class AddVariableTypeToCiPipelineScheduleVariables < ActiveRecord::Migration[5.0]
++  include Gitlab::Database::MigrationHelpers
++  disable_ddl_transaction!
++
++  DOWNTIME = false
++  ENV_VAR_VARIABLE_TYPE = 1
++
++  def up
++    add_column_with_default(:ci_pipeline_schedule_variables, :variable_type, :smallint, default: ENV_VAR_VARIABLE_TYPE)
++  end
++
++  def down
++    remove_column(:ci_pipeline_schedule_variables, :variable_type)
++  end
++end
+diff --git a/db/schema.rb b/db/schema.rb
+index ef8cb4abf3..1bcd22dc81 100644
+--- a/db/schema.rb
++++ b/db/schema.rb
+@@ -419,6 +419,7 @@
+     t.datetime_with_timezone "created_at", null: false
+     t.datetime_with_timezone "updated_at", null: false
+     t.boolean "masked", default: false, null: false
++    t.integer "variable_type", limit: 2, default: 1, null: false
+     t.index ["group_id", "key"], name: "index_ci_group_variables_on_group_id_and_key", unique: true, using: :btree
+   end
+ 
+@@ -458,6 +459,7 @@
+     t.integer "pipeline_schedule_id", null: false
+     t.datetime_with_timezone "created_at"
+     t.datetime_with_timezone "updated_at"
++    t.integer "variable_type", limit: 2, default: 1, null: false
+     t.index ["pipeline_schedule_id", "key"], name: "index_ci_pipeline_schedule_variables_on_schedule_id_and_key", unique: true, using: :btree
+   end
+ 
+@@ -484,6 +486,7 @@
+     t.string "encrypted_value_salt"
+     t.string "encrypted_value_iv"
+     t.integer "pipeline_id", null: false
++    t.integer "variable_type", limit: 2, default: 1, null: false
+     t.index ["pipeline_id", "key"], name: "index_ci_pipeline_variables_on_pipeline_id_and_key", unique: true, using: :btree
+   end
+ 
+@@ -618,6 +621,7 @@
+     t.boolean "protected", default: false, null: false
+     t.string "environment_scope", default: "*", null: false
+     t.boolean "masked", default: false, null: false
++    t.integer "variable_type", limit: 2, default: 1, null: false
+     t.index ["project_id", "key", "environment_scope"], name: "index_ci_variables_on_project_id_and_key_and_environment_scope", unique: true, using: :btree
+   end
+ 
+diff --git a/doc/api/group_level_variables.md b/doc/api/group_level_variables.md
+index 3551bfa3f8..7b00df6d77 100644
+--- a/doc/api/group_level_variables.md
++++ b/doc/api/group_level_variables.md
+@@ -22,10 +22,12 @@ curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/a
+ [
+     {
+         "key": "TEST_VARIABLE_1",
++        "variable_type": "env_var",
+         "value": "TEST_1"
+     },
+     {
+         "key": "TEST_VARIABLE_2",
++        "variable_type": "env_var",
+         "value": "TEST_2"
+     }
+ ]
+@@ -51,6 +53,7 @@ curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/a
+ ```json
+ {
+     "key": "TEST_VARIABLE_1",
++    "variable_type": "env_var",
+     "value": "TEST_1"
+ }
+ ```
+@@ -63,12 +66,13 @@ Create a new variable.
+ POST /groups/:id/variables
+ ```
+ 
+-| Attribute   | Type    | required | Description           |
+-|-------------|---------|----------|-----------------------|
+-| `id`        | integer/string | yes      | The ID of a group or [URL-encoded path of the group](README.md#namespaced-path-encoding) owned by the authenticated user   |
+-| `key`       | string  | yes      | The `key` of a variable; must have no more than 255 characters; only `A-Z`, `a-z`, `0-9`, and `_` are allowed |
+-| `value`     | string  | yes      | The `value` of a variable |
+-| `protected` | boolean | no       | Whether the variable is protected |
++| Attribute       | Type    | required | Description           |
++|-----------------|---------|----------|-----------------------|
++| `id`            | integer/string | yes      | The ID of a group or [URL-encoded path of the group](README.md#namespaced-path-encoding) owned by the authenticated user   |
++| `key`           | string  | yes      | The `key` of a variable; must have no more than 255 characters; only `A-Z`, `a-z`, `0-9`, and `_` are allowed |
++| `value`         | string  | yes      | The `value` of a variable |
++| `variable_type` | string  | no       | The type of a variable. Available types are: `env_var` (default) and `file` |
++| `protected`     | boolean | no       | Whether the variable is protected |
+ 
+ ```
+ curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/1/variables" --form "key=NEW_VARIABLE" --form "value=new value"
+@@ -78,6 +82,7 @@ curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitla
+ {
+     "key": "NEW_VARIABLE",
+     "value": "new value",
++    "variable_type": "env_var",
+     "protected": false
+ }
+ ```
+@@ -90,12 +95,13 @@ Update a group's variable.
+ PUT /groups/:id/variables/:key
+ ```
+ 
+-| Attribute   | Type    | required | Description             |
+-|-------------|---------|----------|-------------------------|
+-| `id`        | integer/string | yes      | The ID of a group or [URL-encoded path of the group](README.md#namespaced-path-encoding) owned by the authenticated user     |
+-| `key`       | string  | yes      | The `key` of a variable   |
+-| `value`     | string  | yes      | The `value` of a variable |
+-| `protected` | boolean | no       | Whether the variable is protected |
++| Attribute       | Type    | required | Description             |
++|-----------------|---------|----------|-------------------------|
++| `id`            | integer/string | yes      | The ID of a group or [URL-encoded path of the group](README.md#namespaced-path-encoding) owned by the authenticated user     |
++| `key`           | string  | yes      | The `key` of a variable   |
++| `value`         | string  | yes      | The `value` of a variable |
++| `variable_type` | string  | no       | The type of a variable. Available types are: `env_var` (default) and `file` |
++| `protected`     | boolean | no       | Whether the variable is protected |
+ 
+ ```
+ curl --request PUT --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/1/variables/NEW_VARIABLE" --form "value=updated value"
+@@ -105,6 +111,7 @@ curl --request PUT --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab
+ {
+     "key": "NEW_VARIABLE",
+     "value": "updated value",
++    "variable_type": "env_var",
+     "protected": true
+ }
+ ```
+diff --git a/doc/api/pipeline_schedules.md b/doc/api/pipeline_schedules.md
+index 50d9e007ec..470e55425f 100644
+--- a/doc/api/pipeline_schedules.md
++++ b/doc/api/pipeline_schedules.md
+@@ -88,6 +88,7 @@ curl --header "PRIVATE-TOKEN: k5ESFgWY2Qf5xEvDcFxZ" "https://gitlab.example.com/
+     "variables": [
+         {
+             "key": "TEST_VARIABLE_1",
++            "variable_type": "env_var",
+             "value": "TEST_1"
+         }
+     ]
+@@ -296,6 +297,7 @@ POST /projects/:id/pipeline_schedules/:pipeline_schedule_id/variables
+ | `pipeline_schedule_id` | integer        | yes      | The pipeline schedule id |
+ | `key`                  | string         | yes      | The `key` of a variable; must have no more than 255 characters; only `A-Z`, `a-z`, `0-9`, and `_` are allowed |
+ | `value`                | string         | yes      | The `value` of a variable |
++| `variable_type`        | string         | no       | The type of a variable. Available types are: `env_var` (default) and `file` |
+ 
+ ```sh
+ curl --request POST --header "PRIVATE-TOKEN: k5ESFgWY2Qf5xEvDcFxZ" --form "key=NEW_VARIABLE" --form "value=new value" "https://gitlab.example.com/api/v4/projects/29/pipeline_schedules/13/variables"
+@@ -304,6 +306,7 @@ curl --request POST --header "PRIVATE-TOKEN: k5ESFgWY2Qf5xEvDcFxZ" --form "key=N
+ ```json
+ {
+     "key": "NEW_VARIABLE",
++    "variable_type": "env_var",
+     "value": "new value"
+ }
+ ```
+@@ -322,6 +325,7 @@ PUT /projects/:id/pipeline_schedules/:pipeline_schedule_id/variables/:key
+ | `pipeline_schedule_id` | integer        | yes      | The pipeline schedule id |
+ | `key`                  | string         | yes      | The `key` of a variable   |
+ | `value`                | string         | yes      | The `value` of a variable |
++| `variable_type`        | string         | no       | The type of a variable. Available types are: `env_var` (default) and `file` |
+ 
+ ```sh
+ curl --request PUT --header "PRIVATE-TOKEN: k5ESFgWY2Qf5xEvDcFxZ" --form "value=updated value" "https://gitlab.example.com/api/v4/projects/29/pipeline_schedules/13/variables/NEW_VARIABLE"
+@@ -331,6 +335,7 @@ curl --request PUT --header "PRIVATE-TOKEN: k5ESFgWY2Qf5xEvDcFxZ" --form "value=
+ {
+     "key": "NEW_VARIABLE",
+     "value": "updated value"
++    "variable_type": "env_var",
+ }
+ ```
+ 
+diff --git a/doc/api/pipelines.md b/doc/api/pipelines.md
+index 1a4310ef32..753faec3cc 100644
+--- a/doc/api/pipelines.md
++++ b/doc/api/pipelines.md
+@@ -114,6 +114,7 @@ Example of response
+ [
+   {
+     "key": "RUN_NIGHTLY_BUILD",
++    "variable_type": "env_var",
+     "value": "true"
+   },
+   {
+@@ -135,7 +136,7 @@ POST /projects/:id/pipeline
+ |------------|---------|----------|---------------------|
+ | `id`       | integer/string | yes      | The ID or [URL-encoded path of the project](README.md#namespaced-path-encoding) owned by the authenticated user |
+ | `ref`       | string | yes      | Reference to commit |
+-| `variables` | array | no | An array containing the variables available in the pipeline, matching the structure [{ 'key' => 'UPLOAD_TO_S3', 'value' => 'true' }] |
++| `variables` | array | no | An array containing the variables available in the pipeline, matching the structure [{ 'key' => 'UPLOAD_TO_S3', 'variable_type' => 'file', 'value' => 'true' }] |
+ 
+ ```
+ curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/pipeline?ref=master"
+diff --git a/doc/api/project_level_variables.md b/doc/api/project_level_variables.md
+index 438bebe62f..4a6f562439 100644
+--- a/doc/api/project_level_variables.md
++++ b/doc/api/project_level_variables.md
+@@ -20,10 +20,12 @@ curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/a
+ [
+     {
+         "key": "TEST_VARIABLE_1",
++        "variable_type": "env_var",
+         "value": "TEST_1"
+     },
+     {
+         "key": "TEST_VARIABLE_2",
++        "variable_type": "env_var",
+         "value": "TEST_2"
+     }
+ ]
+@@ -49,6 +51,7 @@ curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/a
+ ```json
+ {
+     "key": "TEST_VARIABLE_1",
++    "variable_type": "env_var",
+     "value": "TEST_1"
+ }
+ ```
+@@ -61,12 +64,13 @@ Create a new variable.
+ POST /projects/:id/variables
+ ```
+ 
+-| Attribute   | Type    | required | Description           |
+-|-------------|---------|----------|-----------------------|
+-| `id`        | integer/string | yes      | The ID of a project or [urlencoded NAMESPACE/PROJECT_NAME of the project](README.md#namespaced-path-encoding) owned by the authenticated user   |
+-| `key`       | string  | yes      | The `key` of a variable; must have no more than 255 characters; only `A-Z`, `a-z`, `0-9`, and `_` are allowed |
+-| `value`     | string  | yes      | The `value` of a variable |
+-| `protected` | boolean | no       | Whether the variable is protected |
++| Attribute       | Type    | required | Description           |
++|-----------------|---------|----------|-----------------------|
++| `id`            | integer/string | yes      | The ID of a project or [urlencoded NAMESPACE/PROJECT_NAME of the project](README.md#namespaced-path-encoding) owned by the authenticated user   |
++| `key`           | string  | yes      | The `key` of a variable; must have no more than 255 characters; only `A-Z`, `a-z`, `0-9`, and `_` are allowed |
++| `value`         | string  | yes      | The `value` of a variable |
++| `variable_type` | string  | no       | The type of a variable. Available types are: `env_var` (default) and `file` |
++| `protected`     | boolean | no       | Whether the variable is protected |
+ 
+ ```
+ curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/variables" --form "key=NEW_VARIABLE" --form "value=new value"
+@@ -76,6 +80,7 @@ curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitla
+ {
+     "key": "NEW_VARIABLE",
+     "value": "new value",
++    "variable_type": "env_var",
+     "protected": false
+ }
+ ```
+@@ -88,12 +93,13 @@ Update a project's variable.
+ PUT /projects/:id/variables/:key
+ ```
+ 
+-| Attribute   | Type    | required | Description             |
+-|-------------|---------|----------|-------------------------|
+-| `id`        | integer/string | yes      | The ID of a project or [urlencoded NAMESPACE/PROJECT_NAME of the project](README.md#namespaced-path-encoding) owned by the authenticated user     |
+-| `key`       | string  | yes      | The `key` of a variable   |
+-| `value`     | string  | yes      | The `value` of a variable |
+-| `protected` | boolean | no       | Whether the variable is protected |
++| Attribute       | Type    | required | Description             |
++|-----------------|---------|----------|-------------------------|
++| `id`            | integer/string | yes      | The ID of a project or [urlencoded NAMESPACE/PROJECT_NAME of the project](README.md#namespaced-path-encoding) owned by the authenticated user     |
++| `key`           | string  | yes      | The `key` of a variable   |
++| `value`         | string  | yes      | The `value` of a variable |
++| `variable_type` | string  | no       | The type of a variable. Available types are: `env_var` (default) and `file` |
++| `protected`     | boolean | no       | Whether the variable is protected |
+ 
+ ```
+ curl --request PUT --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/variables/NEW_VARIABLE" --form "value=updated value"
+@@ -103,6 +109,7 @@ curl --request PUT --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab
+ {
+     "key": "NEW_VARIABLE",
+     "value": "updated value",
++    "variable_type": "env_var",
+     "protected": true
+ }
+ ```
+diff --git a/lib/api/entities.rb b/lib/api/entities.rb
+index a228614f68..90ed24a2de 100644
+--- a/lib/api/entities.rb
++++ b/lib/api/entities.rb
+@@ -1288,7 +1288,7 @@ class Trigger < Grape::Entity
+     end
+ 
+     class Variable < Grape::Entity
+-      expose :key, :value
++      expose :variable_type, :key, :value
+       expose :protected?, as: :protected, if: -> (entity, _) { entity.respond_to?(:protected?) }
+     end
+ 
+diff --git a/lib/api/group_variables.rb b/lib/api/group_variables.rb
+index 3f048e0dc5..47fcbabb4d 100644
+--- a/lib/api/group_variables.rb
++++ b/lib/api/group_variables.rb
+@@ -47,6 +47,7 @@ class GroupVariables < Grape::API
+         requires :key, type: String, desc: 'The key of the variable'
+         requires :value, type: String, desc: 'The value of the variable'
+         optional :protected, type: String, desc: 'Whether the variable is protected'
++        optional :variable_type, type: String, values: Ci::GroupVariable.variable_types.keys, desc: 'The type of variable, must be one of env_var or file. Defaults to env_var'
+       end
+       post ':id/variables' do
+         variable_params = declared_params(include_missing: false)
+@@ -67,6 +68,7 @@ class GroupVariables < Grape::API
+         optional :key, type: String, desc: 'The key of the variable'
+         optional :value, type: String, desc: 'The value of the variable'
+         optional :protected, type: String, desc: 'Whether the variable is protected'
++        optional :variable_type, type: String, values: Ci::GroupVariable.variable_types.keys, desc: 'The type of variable, must be one of env_var or file'
+       end
+       # rubocop: disable CodeReuse/ActiveRecord
+       put ':id/variables/:key' do
+diff --git a/lib/api/pipeline_schedules.rb b/lib/api/pipeline_schedules.rb
+index c86b50d373..1d1ef1afc6 100644
+--- a/lib/api/pipeline_schedules.rb
++++ b/lib/api/pipeline_schedules.rb
+@@ -118,6 +118,7 @@ class PipelineSchedules < Grape::API
+         requires :pipeline_schedule_id, type: Integer, desc: 'The pipeline schedule id'
+         requires :key, type: String, desc: 'The key of the variable'
+         requires :value, type: String, desc: 'The value of the variable'
++        optional :variable_type, type: String, values: Ci::PipelineScheduleVariable.variable_types.keys, desc: 'The type of variable, must be one of env_var or file. Defaults to env_var'
+       end
+       post ':id/pipeline_schedules/:pipeline_schedule_id/variables' do
+         authorize! :update_pipeline_schedule, pipeline_schedule
+@@ -138,6 +139,7 @@ class PipelineSchedules < Grape::API
+         requires :pipeline_schedule_id, type: Integer, desc: 'The pipeline schedule id'
+         requires :key, type: String, desc: 'The key of the variable'
+         optional :value, type: String, desc: 'The value of the variable'
++        optional :variable_type, type: String, values: Ci::PipelineScheduleVariable.variable_types.keys, desc: 'The type of variable, must be one of env_var or file'
+       end
+       put ':id/pipeline_schedules/:pipeline_schedule_id/variables/:key' do
+         authorize! :update_pipeline_schedule, pipeline_schedule
+diff --git a/lib/api/variables.rb b/lib/api/variables.rb
+index 3489ba827e..a1bb21b3a0 100644
+--- a/lib/api/variables.rb
++++ b/lib/api/variables.rb
+@@ -55,6 +55,7 @@ def filter_variable_parameters(params)
+         requires :key, type: String, desc: 'The key of the variable'
+         requires :value, type: String, desc: 'The value of the variable'
+         optional :protected, type: String, desc: 'Whether the variable is protected'
++        optional :variable_type, type: String, values: Ci::Variable.variable_types.keys, desc: 'The type of variable, must be one of env_var or file. Defaults to env_var'
+ 
+         if Gitlab.ee?
+           optional :environment_scope, type: String, desc: 'The environment_scope of the variable'
+@@ -80,6 +81,7 @@ def filter_variable_parameters(params)
+         optional :key, type: String, desc: 'The key of the variable'
+         optional :value, type: String, desc: 'The value of the variable'
+         optional :protected, type: String, desc: 'Whether the variable is protected'
++        optional :variable_type, type: String, values: Ci::Variable.variable_types.keys, desc: 'The type of variable, must be one of env_var or file'
+ 
+         if Gitlab.ee?
+           optional :environment_scope, type: String, desc: 'The environment_scope of the variable'
+diff --git a/spec/controllers/projects/pipeline_schedules_controller_spec.rb b/spec/controllers/projects/pipeline_schedules_controller_spec.rb
+index eb8983a763..850ef9c92f 100644
+--- a/spec/controllers/projects/pipeline_schedules_controller_spec.rb
++++ b/spec/controllers/projects/pipeline_schedules_controller_spec.rb
+@@ -91,7 +91,7 @@ def visit_pipelines_schedules
+       context 'when variables_attributes has one variable' do
+         let(:schedule) do
+           basic_param.merge({
+-            variables_attributes: [{ key: 'AAA', secret_value: 'AAA123' }]
++            variables_attributes: [{ key: 'AAA', secret_value: 'AAA123', variable_type: 'file' }]
+           })
+         end
+ 
+@@ -105,6 +105,7 @@ def visit_pipelines_schedules
+           Ci::PipelineScheduleVariable.last.tap do |v|
+             expect(v.key).to eq("AAA")
+             expect(v.value).to eq("AAA123")
++            expect(v.variable_type).to eq("file")
+           end
+         end
+       end
+diff --git a/spec/factories/ci/pipeline_schedule_variables.rb b/spec/factories/ci/pipeline_schedule_variables.rb
+index 8d29118e31..c85b97fbfc 100644
+--- a/spec/factories/ci/pipeline_schedule_variables.rb
++++ b/spec/factories/ci/pipeline_schedule_variables.rb
+@@ -2,6 +2,7 @@
+   factory :ci_pipeline_schedule_variable, class: Ci::PipelineScheduleVariable do
+     sequence(:key) { |n| "VARIABLE_#{n}" }
+     value 'VARIABLE_VALUE'
++    variable_type 'env_var'
+ 
+     pipeline_schedule factory: :ci_pipeline_schedule
+   end
+diff --git a/spec/fixtures/api/schemas/pipeline_schedule.json b/spec/fixtures/api/schemas/pipeline_schedule.json
+index c76c694511..690c4a7d4e 100644
+--- a/spec/fixtures/api/schemas/pipeline_schedule.json
++++ b/spec/fixtures/api/schemas/pipeline_schedule.json
+@@ -33,7 +33,7 @@
+       "additionalProperties": false
+     },
+     "variables": {
+-      "type": ["array", "null"],
++      "type": "array",
+       "items": { "$ref": "pipeline_schedule_variable.json" }
+     }
+   },
+diff --git a/spec/fixtures/api/schemas/pipeline_schedule_variable.json b/spec/fixtures/api/schemas/pipeline_schedule_variable.json
+index f7ccb2d44a..022d36cb88 100644
+--- a/spec/fixtures/api/schemas/pipeline_schedule_variable.json
++++ b/spec/fixtures/api/schemas/pipeline_schedule_variable.json
+@@ -1,8 +1,14 @@
+ {
+-  "type": ["object", "null"],
++  "type": "object",
++  "required": [
++    "key",
++    "value",
++    "variable_type"
++  ],
+   "properties": {
+     "key": { "type": "string" },
+-    "value": { "type": "string" }
++    "value": { "type": "string" },
++    "variable_type": { "type": "string" }
+   },
+   "additionalProperties": false
+ }
+diff --git a/spec/models/ci/group_variable_spec.rb b/spec/models/ci/group_variable_spec.rb
+index b3999765e5..406a69f3bb 100644
+--- a/spec/models/ci/group_variable_spec.rb
++++ b/spec/models/ci/group_variable_spec.rb
+@@ -5,7 +5,8 @@
+ describe Ci::GroupVariable do
+   subject { build(:ci_group_variable) }
+ 
+-  it { is_expected.to include_module(HasVariable) }
++  it_behaves_like "CI variable"
++
+   it { is_expected.to include_module(Presentable) }
+   it { is_expected.to include_module(Maskable) }
+   it { is_expected.to validate_uniqueness_of(:key).scoped_to(:group_id).with_message(/\(\w+\) has already been taken/) }
+diff --git a/spec/models/ci/pipeline_schedule_variable_spec.rb b/spec/models/ci/pipeline_schedule_variable_spec.rb
+index 3c9379ecb0..c96a24d504 100644
+--- a/spec/models/ci/pipeline_schedule_variable_spec.rb
++++ b/spec/models/ci/pipeline_schedule_variable_spec.rb
+@@ -5,5 +5,5 @@
+ describe Ci::PipelineScheduleVariable do
+   subject { build(:ci_pipeline_schedule_variable) }
+ 
+-  it { is_expected.to include_module(HasVariable) }
++  it_behaves_like "CI variable"
+ end
+diff --git a/spec/models/ci/pipeline_variable_spec.rb b/spec/models/ci/pipeline_variable_spec.rb
+index 2ecb688299..e8c7ce088e 100644
+--- a/spec/models/ci/pipeline_variable_spec.rb
++++ b/spec/models/ci/pipeline_variable_spec.rb
+@@ -5,7 +5,8 @@
+ describe Ci::PipelineVariable do
+   subject { build(:ci_pipeline_variable) }
+ 
+-  it { is_expected.to include_module(HasVariable) }
++  it_behaves_like "CI variable"
++
+   it { is_expected.to validate_uniqueness_of(:key).scoped_to(:pipeline_id) }
+ 
+   describe '#hook_attrs' do
+diff --git a/spec/models/ci/variable_spec.rb b/spec/models/ci/variable_spec.rb
+index d2df6b3344..a231c7eaed 100644
+--- a/spec/models/ci/variable_spec.rb
++++ b/spec/models/ci/variable_spec.rb
+@@ -5,8 +5,9 @@
+ describe Ci::Variable do
+   subject { build(:ci_variable) }
+ 
++  it_behaves_like "CI variable"
++
+   describe 'validations' do
+-    it { is_expected.to include_module(HasVariable) }
+     it { is_expected.to include_module(Presentable) }
+     it { is_expected.to include_module(Maskable) }
+     it { is_expected.to validate_uniqueness_of(:key).scoped_to(:project_id, :environment_scope).with_message(/\(\w+\) has already been taken/) }
+diff --git a/spec/requests/api/group_variables_spec.rb b/spec/requests/api/group_variables_spec.rb
+index 66b9aae4b5..d50bae3dc4 100644
+--- a/spec/requests/api/group_variables_spec.rb
++++ b/spec/requests/api/group_variables_spec.rb
+@@ -51,6 +51,7 @@
+         expect(response).to have_gitlab_http_status(200)
+         expect(json_response['value']).to eq(variable.value)
+         expect(json_response['protected']).to eq(variable.protected?)
++        expect(json_response['variable_type']).to eq(variable.variable_type)
+       end
+ 
+       it 'responds with 404 Not Found if requesting non-existing variable' do
+@@ -94,17 +95,19 @@
+         expect(json_response['key']).to eq('TEST_VARIABLE_2')
+         expect(json_response['value']).to eq('PROTECTED_VALUE_2')
+         expect(json_response['protected']).to be_truthy
++        expect(json_response['variable_type']).to eq('env_var')
+       end
+ 
+       it 'creates variable with optional attributes' do
+         expect do
+-          post api("/groups/#{group.id}/variables", user), params: { key: 'TEST_VARIABLE_2', value: 'VALUE_2' }
++          post api("/groups/#{group.id}/variables", user), params: { variable_type: 'file', key: 'TEST_VARIABLE_2', value: 'VALUE_2' }
+         end.to change {group.variables.count}.by(1)
+ 
+         expect(response).to have_gitlab_http_status(201)
+         expect(json_response['key']).to eq('TEST_VARIABLE_2')
+         expect(json_response['value']).to eq('VALUE_2')
+         expect(json_response['protected']).to be_falsey
++        expect(json_response['variable_type']).to eq('file')
+       end
+ 
+       it 'does not allow to duplicate variable key' do
+@@ -145,7 +148,7 @@
+         initial_variable = group.variables.reload.first
+         value_before = initial_variable.value
+ 
+-        put api("/groups/#{group.id}/variables/#{variable.key}", user), params: { value: 'VALUE_1_UP', protected: true }
++        put api("/groups/#{group.id}/variables/#{variable.key}", user), params: { variable_type: 'file', value: 'VALUE_1_UP', protected: true }
+ 
+         updated_variable = group.variables.reload.first
+ 
+@@ -153,6 +156,7 @@
+         expect(value_before).to eq(variable.value)
+         expect(updated_variable.value).to eq('VALUE_1_UP')
+         expect(updated_variable).to be_protected
++        expect(json_response['variable_type']).to eq('file')
+       end
+ 
+       it 'responds with 404 Not Found if requesting non-existing variable' do
+diff --git a/spec/requests/api/pipeline_schedules_spec.rb b/spec/requests/api/pipeline_schedules_spec.rb
+index 870ef34437..072bd02f2a 100644
+--- a/spec/requests/api/pipeline_schedules_spec.rb
++++ b/spec/requests/api/pipeline_schedules_spec.rb
+@@ -91,6 +91,7 @@ def active?(str)
+     let(:pipeline_schedule) { create(:ci_pipeline_schedule, project: project, owner: developer) }
+ 
+     before do
++      pipeline_schedule.variables << build(:ci_pipeline_schedule_variable)
+       pipeline_schedule.pipelines << build(:ci_pipeline, project: project)
+     end
+ 
+@@ -331,13 +332,14 @@ def active?(str)
+         it 'creates pipeline_schedule_variable' do
+           expect do
+             post api("/projects/#{project.id}/pipeline_schedules/#{pipeline_schedule.id}/variables", developer),
+-              params: params
++              params: params.merge(variable_type: 'file')
+           end.to change { pipeline_schedule.variables.count }.by(1)
+ 
+           expect(response).to have_gitlab_http_status(:created)
+           expect(response).to match_response_schema('pipeline_schedule_variable')
+           expect(json_response['key']).to eq(params[:key])
+           expect(json_response['value']).to eq(params[:value])
++          expect(json_response['variable_type']).to eq('file')
+         end
+       end
+ 
+@@ -389,11 +391,12 @@ def active?(str)
+     context 'authenticated user with valid permissions' do
+       it 'updates pipeline_schedule_variable' do
+         put api("/projects/#{project.id}/pipeline_schedules/#{pipeline_schedule.id}/variables/#{pipeline_schedule_variable.key}", developer),
+-          params: { value: 'updated_value' }
++          params: { value: 'updated_value', variable_type: 'file' }
+ 
+         expect(response).to have_gitlab_http_status(:ok)
+         expect(response).to match_response_schema('pipeline_schedule_variable')
+         expect(json_response['value']).to eq('updated_value')
++        expect(json_response['variable_type']).to eq('file')
+       end
+     end
+ 
+diff --git a/spec/requests/api/pipelines_spec.rb b/spec/requests/api/pipelines_spec.rb
+index 2615823144..35b3dd219f 100644
+--- a/spec/requests/api/pipelines_spec.rb
++++ b/spec/requests/api/pipelines_spec.rb
+@@ -294,6 +294,7 @@ def expect_variables(variables, expected_variables)
+ 
+         expect(variable.key).to eq(expected_variable['key'])
+         expect(variable.value).to eq(expected_variable['value'])
++        expect(variable.variable_type).to eq(expected_variable['variable_type'])
+       end
+     end
+ 
+@@ -314,7 +315,7 @@ def expect_variables(variables, expected_variables)
+         end
+ 
+         context 'variables given' do
+-          let(:variables) { [{ 'key' => 'UPLOAD_TO_S3', 'value' => 'true' }] }
++          let(:variables) { [{ 'variable_type' => 'file', 'key' => 'UPLOAD_TO_S3', 'value' => 'true' }] }
+ 
+           it 'creates and returns a new pipeline using the given variables' do
+             expect do
+@@ -330,7 +331,7 @@ def expect_variables(variables, expected_variables)
+         end
+ 
+         describe 'using variables conditions' do
+-          let(:variables) { [{ 'key' => 'STAGING', 'value' => 'true' }] }
++          let(:variables) { [{ 'variable_type' => 'env_var', 'key' => 'STAGING', 'value' => 'true' }] }
+ 
+           before do
+             config = YAML.dump(test: { script: 'test', only: { variables: ['$STAGING'] } })
+@@ -467,7 +468,7 @@ def expect_variables(variables, expected_variables)
+           subject
+ 
+           expect(response).to have_gitlab_http_status(200)
+-          expect(json_response).to contain_exactly({ "key" => "foo", "value" => "bar" })
++          expect(json_response).to contain_exactly({ "variable_type" => "env_var", "key" => "foo", "value" => "bar" })
+         end
+       end
+     end
+@@ -488,7 +489,7 @@ def expect_variables(variables, expected_variables)
+           subject
+ 
+           expect(response).to have_gitlab_http_status(200)
+-          expect(json_response).to contain_exactly({ "key" => "foo", "value" => "bar" })
++          expect(json_response).to contain_exactly({ "variable_type" => "env_var", "key" => "foo", "value" => "bar" })
+         end
+       end
+ 
+diff --git a/spec/requests/api/variables_spec.rb b/spec/requests/api/variables_spec.rb
+index 5df6baf0dd..cc07869a74 100644
+--- a/spec/requests/api/variables_spec.rb
++++ b/spec/requests/api/variables_spec.rb
+@@ -43,6 +43,7 @@
+         expect(response).to have_gitlab_http_status(200)
+         expect(json_response['value']).to eq(variable.value)
+         expect(json_response['protected']).to eq(variable.protected?)
++        expect(json_response['variable_type']).to eq('env_var')
+       end
+ 
+       it 'responds with 404 Not Found if requesting non-existing variable' do
+@@ -80,17 +81,19 @@
+         expect(json_response['key']).to eq('TEST_VARIABLE_2')
+         expect(json_response['value']).to eq('PROTECTED_VALUE_2')
+         expect(json_response['protected']).to be_truthy
++        expect(json_response['variable_type']).to eq('env_var')
+       end
+ 
+       it 'creates variable with optional attributes' do
+         expect do
+-          post api("/projects/#{project.id}/variables", user), params: { key: 'TEST_VARIABLE_2', value: 'VALUE_2' }
++          post api("/projects/#{project.id}/variables", user), params: { variable_type: 'file',  key: 'TEST_VARIABLE_2', value: 'VALUE_2' }
+         end.to change {project.variables.count}.by(1)
+ 
+         expect(response).to have_gitlab_http_status(201)
+         expect(json_response['key']).to eq('TEST_VARIABLE_2')
+         expect(json_response['value']).to eq('VALUE_2')
+         expect(json_response['protected']).to be_falsey
++        expect(json_response['variable_type']).to eq('file')
+       end
+ 
+       it 'does not allow to duplicate variable key' do
+@@ -125,7 +128,7 @@
+         initial_variable = project.variables.reload.first
+         value_before = initial_variable.value
+ 
+-        put api("/projects/#{project.id}/variables/#{variable.key}", user), params: { value: 'VALUE_1_UP', protected: true }
++        put api("/projects/#{project.id}/variables/#{variable.key}", user), params: { variable_type: 'file', value: 'VALUE_1_UP', protected: true }
+ 
+         updated_variable = project.variables.reload.first
+ 
+@@ -133,6 +136,7 @@
+         expect(value_before).to eq(variable.value)
+         expect(updated_variable.value).to eq('VALUE_1_UP')
+         expect(updated_variable).to be_protected
++        expect(updated_variable.variable_type).to eq('file')
+       end
+ 
+       it 'responds with 404 Not Found if requesting non-existing variable' do
+diff --git a/spec/support/shared_examples/controllers/variables_shared_examples.rb b/spec/support/shared_examples/controllers/variables_shared_examples.rb
+index b615a8f54c..e80722857e 100644
+--- a/spec/support/shared_examples/controllers/variables_shared_examples.rb
++++ b/spec/support/shared_examples/controllers/variables_shared_examples.rb
+@@ -120,4 +120,16 @@
+       expect(response).to match_response_schema('variables')
+     end
+   end
++
++  context 'for variables of type file' do
++    let(:variables_attributes) do
++      [
++        new_variable_attributes.merge(variable_type: 'file')
++      ]
++    end
++
++    it 'creates new variable of type file' do
++      expect { subject }.to change { owner.variables.file.count }.by(1)
++    end
++  end
+ end
+diff --git a/spec/support/shared_examples/models/ci_variable_shared_examples.rb b/spec/support/shared_examples/models/ci_variable_shared_examples.rb
+new file mode 100644
+index 0000000000..f93de8b6ff
+--- /dev/null
++++ b/spec/support/shared_examples/models/ci_variable_shared_examples.rb
+@@ -0,0 +1,29 @@
++# frozen_string_literal: true
++
++shared_examples_for 'CI variable' do
++  it { is_expected.to include_module(HasVariable) }
++
++  describe "variable type" do
++    it 'defines variable types' do
++      expect(described_class.variable_types).to eq({ "env_var" => 1, "file" => 2 })
++    end
++
++    it "defaults variable type to env_var" do
++      expect(subject.variable_type).to eq("env_var")
++    end
++
++    it "supports variable type file" do
++      variable = described_class.new(variable_type: :file)
++      expect(variable).to be_file
++    end
++  end
++
++  it 'strips whitespaces when assigning key' do
++    subject.key = " SECRET "
++    expect(subject.key).to eq("SECRET")
++  end
++
++  it 'can convert to runner variable' do
++    expect(subject.to_runner_variable.keys).to include(:key, :value, :public, :file)
++  end
++end

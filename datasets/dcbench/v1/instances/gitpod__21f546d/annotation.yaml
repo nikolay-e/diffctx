@@ -1,0 +1,70 @@
+repo: gitpod
+base_commit: 8a52ad204fc6053fe3408fbafb19d7a196989a10
+commit: 21f546d4c172e62b78aa32cd9a692122610d0a85
+patch_stored: true
+gold:
+- path: WORKSPACE.yaml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ide/jetbrains/backend-plugin/BUILD.yaml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ide/jetbrains/backend-plugin/gradle-stable.properties
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ide/jetbrains/backend-plugin/src/main/kotlin/io/gitpod/jetbrains/remote/GitpodMetricControlProvider.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ide/jetbrains/backend-plugin/src/main/kotlin/io/gitpod/jetbrains/remote/GitpodPortForwardingServiceImpl.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ide/jetbrains/backend-plugin/src/main/resources-latest/META-INF/extensions.xml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ide/jetbrains/backend-plugin/src/main/resources-stable/META-INF/extensions.xml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ide/jetbrains/backend-plugin/src/main/resources/META-INF/plugin.xml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ide/jetbrains/gateway-plugin/gradle-stable.properties
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ide/jetbrains/gateway-plugin/src/main/kotlin/io/gitpod/jetbrains/gateway/GitpodConnectionHandleFactoryImpl.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ide/jetbrains/gateway-plugin/src/main/resources/META-INF/plugin.xml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: install/installer/pkg/components/ide-service/ide-configmap.json
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: install/installer/pkg/components/ide-service/ide_config_configmap.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'status=hang on the SMALLEST hang case in the sample: only 18 files and a 484-line, entirely human-authored
+  diff (JetBrains 2024.3 stable release: version bumps, package de-duplication of stable/latest variants
+  via file renames, plugin.xml wiring). No generated blobs, no huge files, no unusual file count — this
+  is about as tractable a diff as this benchmark contains, yet diffctx still produced zero context. This
+  strongly suggests the hang is not solely a function of diff size/file-count but can be triggered by
+  something structural in this specific diff (e.g. the file renames combined with package-path changes,
+  or Bazel .pb config parsing), which is the most concerning finding among the hang cases since it rules
+  out ''just too big'' as the sole explanation.'

@@ -1,0 +1,824 @@
+From cc06a351bd52eb78c47dd5d8e5cdc6a33b63fe38 Mon Sep 17 00:00:00 2001
+From: RobertJoonas <56999674+RobertJoonas@users.noreply.github.com>
+Date: Thu, 25 Sep 2025 14:58:32 +0100
+Subject: [PATCH] Remove virtual rollups in favour of persisted consolidated
+ sites (#5749)
+
+* virtual rollups -> consolidated sites
+
+* fix queryparser and test
+
+* fix legacy_query_builder and test
+
+* fix typespec
+
+* simple consolidated view query test (Stats API)
+
+* add test util
+
+* skip verification on consolidated sites
+
+* add test for internal (dashboard) stats query
+
+* fix CE
+
+* Fix showing consilidated stats on the dashboard
+
+...by making sure site.native_stats_start_at and stats_start_date are
+set.
+
+* fix CE again
+
+* add typespecs and tests for native_stats_start_at
+
+* skip else clause
+
+* use ConsolidatedView.enable in test util
+
+* defensive where builder
+
+* remove redundant cache
+
+* get query.consolidated_site_ids from cache
+
+* fix test
+
+* fix CE
+
+* fix CE again
+
+* eligibility check when enabling cvs
+
+* create cvs with native_stats_start_at assigned already
+
+* fix dialyzer warning
+---
+ extra/lib/plausible/consolidated_view.ex      | 33 +++++++++---
+ lib/plausible/application.ex                  |  6 ---
+ lib/plausible/site.ex                         | 14 -----
+ lib/plausible/sites.ex                        | 17 ++++++
+ lib/plausible/stats/clickhouse.ex             |  4 ++
+ lib/plausible/stats/filters/query_parser.ex   | 18 ++++---
+ .../stats/legacy/legacy_query_builder.ex      | 22 ++++----
+ lib/plausible/stats/query.ex                  |  2 +-
+ lib/plausible/stats/sql/where_builder.ex      | 46 ++++------------
+ .../controllers/stats_controller.ex           |  4 +-
+ lib/plausible_web/live/verification.ex        |  2 +
+ .../plugs/authorize_public_api.ex             | 19 ++-----
+ .../plugs/authorize_site_access.ex            |  9 ----
+ test/plausible/consolidated_view_test.exs     | 36 +++++++++++--
+ test/plausible/stats/query_parser_test.exs    | 32 +++++++++++-
+ test/plausible/stats/query_test.exs           | 15 ++++++
+ .../query_consolidated_view_test.exs          | 30 +++++++++++
+ .../api/stats_controller/pages_test.exs       | 52 +++++++++++++++++++
+ .../controllers/stats_controller_test.exs     | 48 +++++++++++++++++
+ test/support/teams/test.ex                    |  7 +++
+ 20 files changed, 306 insertions(+), 110 deletions(-)
+ create mode 100644 test/plausible_web/controllers/api/external_stats_controller/query_consolidated_view_test.exs
+
+diff --git a/extra/lib/plausible/consolidated_view.ex b/extra/lib/plausible/consolidated_view.ex
+index f4ec372d4..1df8fb83d 100644
+--- a/extra/lib/plausible/consolidated_view.ex
++++ b/extra/lib/plausible/consolidated_view.ex
+@@ -20,13 +20,9 @@ defmodule Plausible.ConsolidatedView do
+     from s in q, where: s.consolidated == true
+   end
+ 
+-  @spec enable(Team.t()) :: {:ok, Site.t()} | {:error, :upgrade_required}
++  @spec enable(Team.t()) :: {:ok, Site.t()} | {:error, :no_sites}
+   def enable(%Team{} = team) do
+-    if eligible?(team) do
+-      do_enable(team)
+-    else
+-      {:error, :upgrade_required}
+-    end
++    with :ok <- ensure_eligible(team), do: do_enable(team)
+   end
+ 
+   @spec disable(Team.t()) :: :ok
+@@ -60,11 +56,26 @@ defmodule Plausible.ConsolidatedView do
+     )
+   end
+ 
++  @spec native_stats_start_at(Team.t()) :: NaiveDateTime.t() | nil
++  def native_stats_start_at(%Team{} = team) do
++    q =
++      from(sr in Site.regular(),
++        group_by: sr.team_id,
++        where: sr.team_id == ^team.id,
++        select: min(sr.native_stats_start_at)
++      )
++
++    Repo.one(q)
++  end
++
+   defp do_enable(%Team{} = team) do
+     case get(team) do
+       nil ->
++        native_stats_start_at = native_stats_start_at(team)
++
+         team
+         |> Site.new_for_team(%{consolidated: true, domain: make_id(team)})
++        |> Site.set_native_stats_start_at(native_stats_start_at)
+         |> Repo.insert()
+ 
+       consolidated_view ->
+@@ -77,6 +88,12 @@ defmodule Plausible.ConsolidatedView do
+   end
+ 
+   # TODO: Only active trials and business subscriptions should be eligible.
+-  # This function should call a new underlying feature module.
+-  defp eligible?(%Team{}), do: always(true)
++  # This function should also call a new underlying feature module.
++  defp ensure_eligible(%Team{} = team) do
++    if Plausible.Teams.owned_sites_count(team) == 0 do
++      {:error, :no_sites}
++    else
++      :ok
++    end
++  end
+ end
+diff --git a/lib/plausible/application.ex b/lib/plausible/application.ex
+index c17769839..d04dec8cf 100644
+--- a/lib/plausible/application.ex
++++ b/lib/plausible/application.ex
+@@ -58,12 +58,6 @@ defmodule Plausible.Application do
+           n_lock_partitions: 1,
+           ets_options: [read_concurrency: true, write_concurrency: true]
+         ),
+-        Plausible.Cache.Adapter.child_specs(:site_ids, :cache_site_ids,
+-          ttl_check_interval: :timer.seconds(10),
+-          global_ttl: :timer.minutes(30),
+-          n_lock_partitions: 1,
+-          ets_options: [read_concurrency: true, write_concurrency: true]
+-        ),
+         {Plausible.Session.Transfer,
+          base_path: Application.get_env(:plausible, :session_transfer_dir)},
+         warmed_cache(Plausible.Site.Cache,
+diff --git a/lib/plausible/site.ex b/lib/plausible/site.ex
+index 5ab58e978..9a3d9729d 100644
+--- a/lib/plausible/site.ex
++++ b/lib/plausible/site.ex
+@@ -65,8 +65,6 @@ defmodule Plausible.Site do
+ 
+     has_many :completed_imports, Plausible.Imported.SiteImport, where: [status: :completed]
+ 
+-    field :rollup, :boolean, virtual: true, default: false
+-
+     timestamps()
+   end
+ 
+@@ -74,18 +72,6 @@ defmodule Plausible.Site do
+     from s in q, where: not s.consolidated
+   end
+ 
+-  def rollup(team) do
+-    %Plausible.Site{
+-      id: 0,
+-      native_stats_start_at: ~N[2018-01-01 00:00:00],
+-      stats_start_date: ~D[2018-01-01],
+-      rollup: true,
+-      domain: "rollup:#{team.identifier}",
+-      team: team,
+-      team_id: team.id
+-    }
+-  end
+-
+   def new_for_team(team, params) do
+     params
+     |> new()
+diff --git a/lib/plausible/sites.ex b/lib/plausible/sites.ex
+index 3b0ed17a6..005d19947 100644
+--- a/lib/plausible/sites.ex
++++ b/lib/plausible/sites.ex
+@@ -352,6 +352,23 @@ defmodule Plausible.Sites do
+     date
+   end
+ 
++  on_ee do
++    def stats_start_date(%Site{consolidated: true} = site) do
++      native_stats_start_at = Plausible.ConsolidatedView.native_stats_start_at(site.team)
++
++      if native_stats_start_at do
++        start_date = NaiveDateTime.to_date(native_stats_start_at)
++
++        site
++        |> Site.set_native_stats_start_at(native_stats_start_at)
++        |> Site.set_stats_start_date(start_date)
++        |> Repo.update!()
++
++        start_date
++      end
++    end
++  end
++
+   def stats_start_date(%Site{} = site) do
+     start_date =
+       [
+diff --git a/lib/plausible/stats/clickhouse.ex b/lib/plausible/stats/clickhouse.ex
+index c8895378e..74f9578fc 100644
+--- a/lib/plausible/stats/clickhouse.ex
++++ b/lib/plausible/stats/clickhouse.ex
+@@ -84,6 +84,10 @@ defmodule Plausible.Stats.Clickhouse do
+   end
+ 
+   def has_pageviews?(site) do
++    # This function is currently only used in installation verification
++    # which is not accessible for consolidated views.
++    true = Plausible.Sites.regular?(site)
++
+     ClickhouseRepo.exists?(
+       from(e in "events_v2",
+         where:
+diff --git a/lib/plausible/stats/filters/query_parser.ex b/lib/plausible/stats/filters/query_parser.ex
+index c21cadba9..9cb6e257f 100644
+--- a/lib/plausible/stats/filters/query_parser.ex
++++ b/lib/plausible/stats/filters/query_parser.ex
+@@ -47,10 +47,10 @@ defmodule Plausible.Stats.Filters.QueryParser do
+          {:ok, pagination} <- parse_pagination(Map.get(params, "pagination", %{})),
+          {preloaded_goals, revenue_warning, revenue_currencies} <-
+            preload_goals_and_revenue(site, metrics, filters, dimensions),
+-         rollup_site_ids = get_rollup_site_ids(site),
++         consolidated_site_ids = get_consolidated_site_ids(site),
+          query = %{
+            now: now,
+-           rollup_site_ids: rollup_site_ids,
++           consolidated_site_ids: consolidated_site_ids,
+            input_date_range: Map.get(params, "date_range"),
+            metrics: metrics,
+            filters: filters,
+@@ -77,14 +77,16 @@ defmodule Plausible.Stats.Filters.QueryParser do
+     end
+   end
+ 
+-  def get_rollup_site_ids(%Plausible.Site{rollup: true} = site) do
+-    Plausible.Cache.Adapter.get(:site_ids, site.team_id, fn ->
+-      Plausible.Teams.owned_sites_ids(site.team)
+-    end)
++  on_ee do
++    def get_consolidated_site_ids(%Plausible.Site{} = site) do
++      if Plausible.Sites.consolidated?(site) do
++        Plausible.ConsolidatedView.Cache.get(site.team.identifier)
++      end
++    end
++  else
++    def get_consolidated_site_ids(_site), do: nil
+   end
+ 
+-  def get_rollup_site_ids(_site), do: nil
+-
+   def parse_date_range_pair(site, [from, to]) when is_binary(from) and is_binary(to) do
+     with {:ok, date_range} <- date_range_from_date_strings(site, from, to) do
+       {:ok, date_range |> DateTimeRange.to_timezone("Etc/UTC")}
+diff --git a/lib/plausible/stats/legacy/legacy_query_builder.ex b/lib/plausible/stats/legacy/legacy_query_builder.ex
+index 89c643748..b5972d141 100644
+--- a/lib/plausible/stats/legacy/legacy_query_builder.ex
++++ b/lib/plausible/stats/legacy/legacy_query_builder.ex
+@@ -28,7 +28,7 @@ defmodule Plausible.Stats.Legacy.QueryBuilder do
+       |> put_parsed_filters(params)
+       |> resolve_segments(site)
+       |> preload_goals_and_revenue(site)
+-      |> put_rollup_site_ids(site)
++      |> put_consolidated_site_ids(site)
+       |> put_order_by(params)
+       |> put_include(site, params)
+       |> Query.put_comparison_utc_time_range()
+@@ -42,17 +42,19 @@ defmodule Plausible.Stats.Legacy.QueryBuilder do
+     query
+   end
+ 
+-  defp put_rollup_site_ids(query, %Plausible.Site{rollup: true} = site) do
+-    site_ids =
+-      Plausible.Cache.Adapter.get(:site_ids, site.team_id, fn ->
+-        Plausible.Teams.owned_sites_ids(site.team)
+-      end)
+-
+-    struct!(query, rollup_site_ids: site_ids)
++  on_ee do
++    defp put_consolidated_site_ids(query, %Plausible.Site{} = site) do
++      if Plausible.Sites.consolidated?(site) do
++        site_ids = Plausible.ConsolidatedView.Cache.get(site.team.identifier)
++        struct!(query, consolidated_site_ids: site_ids)
++      else
++        query
++      end
++    end
++  else
++    defp put_consolidated_site_ids(query, _site), do: query
+   end
+ 
+-  defp put_rollup_site_ids(query, _site), do: query
+-
+   defp resolve_segments(query, site) do
+     with {:ok, preloaded_segments} <-
+            Plausible.Segments.Filters.preload_needed_segments(site, query.filters),
+diff --git a/lib/plausible/stats/query.ex b/lib/plausible/stats/query.ex
+index 5bbf7f448..1be5be683 100644
+--- a/lib/plausible/stats/query.ex
++++ b/lib/plausible/stats/query.ex
+@@ -26,7 +26,7 @@ defmodule Plausible.Stats.Query do
+             revenue_warning: nil,
+             remove_unavailable_revenue_metrics: false,
+             site_id: nil,
+-            rollup_site_ids: nil,
++            consolidated_site_ids: nil,
+             site_native_stats_start_at: nil,
+             # Contains information to determine how to combine legacy and new time on page metrics
+             time_on_page_data: %{},
+diff --git a/lib/plausible/stats/sql/where_builder.ex b/lib/plausible/stats/sql/where_builder.ex
+index 33201e42a..b6f90fc5d 100644
+--- a/lib/plausible/stats/sql/where_builder.ex
++++ b/lib/plausible/stats/sql/where_builder.ex
+@@ -41,46 +41,23 @@ defmodule Plausible.Stats.SQL.WhereBuilder do
+     end
+   end
+ 
+-  defp filter_site_time_range(
+-         :events,
+-         %Plausible.Stats.Query{rollup_site_ids: [_ | _] = site_ids} = query
+-       ) do
+-    {first_datetime, last_datetime} = utc_boundaries(query)
+-
+-    dynamic(
+-      [e],
+-      fragment("? in ?", e.site_id, ^site_ids) and
+-        e.timestamp >= ^first_datetime and
+-        e.timestamp <= ^last_datetime
+-    )
++  defp filter_site_time_range(table, query) do
++    dynamic([], ^filter_site_id(query) and ^filter_time_range(table, query))
+   end
+ 
+-  defp filter_site_time_range(:events, query) do
+-    {first_datetime, last_datetime} = utc_boundaries(query)
+-
+-    dynamic(
+-      [e],
+-      e.site_id == ^query.site_id and e.timestamp >= ^first_datetime and
+-        e.timestamp <= ^last_datetime
+-    )
++  defp filter_site_id(query) do
++    case query.consolidated_site_ids do
++      nil -> dynamic([x], x.site_id == ^query.site_id)
++      [_ | _] = ids -> dynamic([x], fragment("? in ?", x.site_id, ^ids))
++    end
+   end
+ 
+-  defp filter_site_time_range(
+-         :sessions,
+-         %Plausible.Stats.Query{rollup_site_ids: [_ | _] = site_ids} = query
+-       ) do
++  defp filter_time_range(:events, query) do
+     {first_datetime, last_datetime} = utc_boundaries(query)
+-
+-    dynamic(
+-      [s],
+-      fragment("? in ?", s.site_id, ^site_ids) and
+-        s.start >= ^NaiveDateTime.add(first_datetime, -7, :day) and
+-        s.timestamp >= ^first_datetime and
+-        s.start <= ^last_datetime
+-    )
++    dynamic([e], e.timestamp >= ^first_datetime and e.timestamp <= ^last_datetime)
+   end
+ 
+-  defp filter_site_time_range(:sessions, query) do
++  defp filter_time_range(:sessions, query) do
+     {first_datetime, last_datetime} = utc_boundaries(query)
+ 
+     # Counts each _active_ session in time range even if they started before
+@@ -96,8 +73,7 @@ defmodule Plausible.Stats.SQL.WhereBuilder do
+       # Without it, the sample factor would be greatly overestimated for large sites,
+       # as query would be estimated to return _all_ rows matching other conditions
+       # before `start == last_datetime`.
+-      s.site_id == ^query.site_id and
+-        s.start >= ^NaiveDateTime.add(first_datetime, -7, :day) and
++      s.start >= ^NaiveDateTime.add(first_datetime, -7, :day) and
+         s.timestamp >= ^first_datetime and
+         s.start <= ^last_datetime
+     )
+diff --git a/lib/plausible_web/controllers/stats_controller.ex b/lib/plausible_web/controllers/stats_controller.ex
+index bde27f820..6dfc6d86d 100644
+--- a/lib/plausible_web/controllers/stats_controller.ex
++++ b/lib/plausible_web/controllers/stats_controller.ex
+@@ -60,7 +60,9 @@ defmodule PlausibleWeb.StatsController do
+     can_see_stats? = not Teams.locked?(site.team) or site_role == :super_admin
+     demo = site.domain == "plausible.io"
+     dogfood_page_path = if demo, do: "/#{site.domain}", else: "/:dashboard"
+-    skip_to_dashboard? = conn.params["skip_to_dashboard"] == "true"
++
++    skip_to_dashboard? =
++      conn.params["skip_to_dashboard"] == "true" or Plausible.Sites.consolidated?(site)
+ 
+     {:ok, segments} = Plausible.Segments.get_all_for_site(site, site_role)
+ 
+diff --git a/lib/plausible_web/live/verification.ex b/lib/plausible_web/live/verification.ex
+index 0e674d93b..8cfe7e9d7 100644
+--- a/lib/plausible_web/live/verification.ex
++++ b/lib/plausible_web/live/verification.ex
+@@ -32,6 +32,8 @@ defmodule PlausibleWeb.Live.Verification do
+         ]
+       )
+ 
++    true = Plausible.Sites.regular?(site)
++
+     private = Map.get(socket.private.connect_info, :private, %{})
+ 
+     super_admin? = Plausible.Auth.is_super_admin?(current_user)
+diff --git a/lib/plausible_web/plugs/authorize_public_api.ex b/lib/plausible_web/plugs/authorize_public_api.ex
+index 8604bb60a..ead3fc6fd 100644
+--- a/lib/plausible_web/plugs/authorize_public_api.ex
++++ b/lib/plausible_web/plugs/authorize_public_api.ex
+@@ -121,7 +121,7 @@ defmodule PlausibleWeb.Plugs.AuthorizePublicAPI do
+ 
+   defp verify_by_scope(conn, api_key, "stats:read:" <> _ = scope) do
+     with :ok <- check_scope(api_key, scope),
+-         {:ok, site} <- find_site(conn.params["site_id"], api_key),
++         {:ok, site} <- find_site(conn.params["site_id"]),
+          :ok <- verify_site_access(api_key, site, Plausible.Billing.Feature.StatsAPI) do
+       Plausible.OpenTelemetry.add_site_attributes(site)
+       site = Plausible.Repo.preload(site, :completed_imports)
+@@ -191,7 +191,7 @@ defmodule PlausibleWeb.Plugs.AuthorizePublicAPI do
+   end
+ 
+   defp maybe_verify_site_access(conn, api_key, feature) do
+-    case find_site(conn.params["site_id"], api_key) do
++    case find_site(conn.params["site_id"]) do
+       {:ok, site} ->
+         verify_site_access(api_key, site, feature)
+ 
+@@ -210,20 +210,11 @@ defmodule PlausibleWeb.Plugs.AuthorizePublicAPI do
+     end
+   end
+ 
+-  defp find_site(nil, _api_key), do: {:error, :missing_site_id}
++  defp find_site(nil), do: {:error, :missing_site_id}
+ 
+-  defp find_site("rollup:" <> team_identifier, api_key) do
+-    with true <- Plausible.Auth.is_super_admin?(api_key.user),
+-         %Plausible.Teams.Team{} = team <- Plausible.Teams.get(team_identifier) do
+-      {:ok, Plausible.Site.rollup(team)}
+-    else
+-      _ -> {:error, :invalid_api_key}
+-    end
+-  end
+-
+-  defp find_site(site_id, _api_key) do
++  defp find_site(site_id) do
+     domain_based_search =
+-      from s in Plausible.Site.regular(),
++      from s in Plausible.Site,
+         where: s.domain == ^site_id or s.domain_changed_from == ^site_id
+ 
+     case Repo.one(domain_based_search) do
+diff --git a/lib/plausible_web/plugs/authorize_site_access.ex b/lib/plausible_web/plugs/authorize_site_access.ex
+index 8c8924976..589cac5ff 100644
+--- a/lib/plausible_web/plugs/authorize_site_access.ex
++++ b/lib/plausible_web/plugs/authorize_site_access.ex
+@@ -172,15 +172,6 @@ defmodule PlausibleWeb.Plugs.AuthorizeSiteAccess do
+     end
+   end
+ 
+-  defp get_site_with_role(conn, current_user, "rollup:" <> team_identifier) do
+-    with true <- Plausible.Auth.is_super_admin?(current_user),
+-         %Plausible.Teams.Team{} = team <- Plausible.Teams.get(team_identifier) do
+-      {:ok, %{site: Plausible.Site.rollup(team), role: nil, member_type: nil}}
+-    else
+-      _ -> error_not_found(conn)
+-    end
+-  end
+-
+   defp get_site_with_role(conn, current_user, domain) do
+     site = Repo.get_by(Plausible.Site, domain: domain)
+ 
+diff --git a/test/plausible/consolidated_view_test.exs b/test/plausible/consolidated_view_test.exs
+index 3fa515300..1f1c163d7 100644
+--- a/test/plausible/consolidated_view_test.exs
++++ b/test/plausible/consolidated_view_test.exs
+@@ -5,32 +5,39 @@ defmodule Plausible.ConsolidatedViewTest do
+     use Plausible.DataCase, async: true
+     import Ecto.Query
+     alias Plausible.ConsolidatedView
++    import Plausible.Teams.Test
+ 
+     describe "enable/1" do
+       setup [:create_user, :create_team]
+ 
+       test "creates and persists a new consolidated site instance", %{team: team} do
++        new_site(team: team)
+         assert {:ok, %Plausible.Site{consolidated: true}} = ConsolidatedView.enable(team)
+         assert ConsolidatedView.get(team)
+       end
+ 
+       test "is idempotent", %{team: team} do
++        new_site(team: team)
+         assert {:ok, s1} = ConsolidatedView.enable(team)
+         assert {:ok, s2} = ConsolidatedView.enable(team)
+ 
+         assert 1 =
+-                 from(s in Plausible.Site, where: s.team_id == ^team.id)
++                 from(s in Plausible.ConsolidatedView.sites(), where: s.team_id == ^team.id)
+                  |> Plausible.Repo.aggregate(:count)
+ 
+         assert s1.domain == s2.domain
+       end
+ 
++      test "returns {:error, :no_sites} when the team does not have any sites", %{team: team} do
++        assert {:error, :no_sites} = ConsolidatedView.enable(team)
++      end
++
+       @tag :skip
+       test "returns {:error, :upgrade_required} when team ineligible for this feature"
+     end
+ 
+     describe "disable/1" do
+-      setup [:create_user, :create_team]
++      setup [:create_user, :create_team, :create_site]
+ 
+       setup %{team: team} do
+         ConsolidatedView.enable(team)
+@@ -70,7 +77,7 @@ defmodule Plausible.ConsolidatedViewTest do
+     end
+ 
+     describe "get/1" do
+-      setup [:create_user, :create_team]
++      setup [:create_user, :create_team, :create_site]
+ 
+       test "can get by team", %{team: team} do
+         assert is_nil(ConsolidatedView.get(team))
+@@ -84,5 +91,28 @@ defmodule Plausible.ConsolidatedViewTest do
+         assert %Plausible.Site{} = ConsolidatedView.get(team.identifier)
+       end
+     end
++
++    describe "native_stats_start_at/1" do
++      setup [:create_user, :create_team]
++
++      test "returns nil if no included sites", %{team: team} do
++        ConsolidatedView.enable(team)
++        assert is_nil(ConsolidatedView.native_stats_start_at(team))
++      end
++
++      test "returns earliest native_stats_start_at from included sites", %{team: team} do
++        ConsolidatedView.enable(team)
++
++        datetimes = [
++          ~N[2024-01-01 12:00:00],
++          ~N[2024-01-01 11:00:00],
++          ~N[2024-02-01 12:00:00]
++        ]
++
++        for dt <- datetimes, do: new_site(team: team, native_stats_start_at: dt)
++
++        assert ConsolidatedView.native_stats_start_at(team) == Enum.min(datetimes)
++      end
++    end
+   end
+ end
+diff --git a/test/plausible/stats/query_parser_test.exs b/test/plausible/stats/query_parser_test.exs
+index 6d67c6507..f3187c13a 100644
+--- a/test/plausible/stats/query_parser_test.exs
++++ b/test/plausible/stats/query_parser_test.exs
+@@ -78,7 +78,7 @@ defmodule Plausible.Stats.Filters.QueryParserTest do
+         :preloaded_goals,
+         :revenue_warning,
+         :revenue_currencies,
+-        :rollup_site_ids
++        :consolidated_site_ids
+       ])
+ 
+     assert result == expected_result
+@@ -2703,4 +2703,34 @@ defmodule Plausible.Stats.Filters.QueryParserTest do
+       )
+     end
+   end
++
++  on_ee do
++    describe "query.consolidated_site_ids" do
++      test "is set to nil when site is regular", %{site: site} do
++        params = %{
++          "site_id" => site.domain,
++          "metrics" => ["visitors"],
++          "date_range" => "all"
++        }
++
++        {:ok, %{consolidated_site_ids: nil}} = parse(site, :public, params)
++        {:ok, %{consolidated_site_ids: nil}} = parse(site, :internal, params)
++      end
++
++      test "is set to a list of site_ids when site is consolidated", %{site: site} do
++        cv = new_consolidated_view(site.team)
++
++        params = %{
++          "site_id" => site.domain,
++          "metrics" => ["visitors"],
++          "date_range" => "all"
++        }
++
++        site_id = site.id
++
++        assert {:ok, %{consolidated_site_ids: [^site_id]}} = parse(cv, :public, params)
++        assert {:ok, %{consolidated_site_ids: [^site_id]}} = parse(cv, :internal, params)
++      end
++    end
++  end
+ end
+diff --git a/test/plausible/stats/query_test.exs b/test/plausible/stats/query_test.exs
+index bc700fb48..6d8252c0c 100644
+--- a/test/plausible/stats/query_test.exs
++++ b/test/plausible/stats/query_test.exs
+@@ -484,4 +484,19 @@ defmodule Plausible.Stats.QueryTest do
+                })
+     end
+   end
++
++  on_ee do
++    describe "query.consolidated_site_ids" do
++      test "is set to nil when site is regular", %{site: site} do
++        assert %{consolidated_site_ids: nil} = Query.from(site, %{"period" => "day"})
++      end
++
++      test "is set to a list of site_ids when site is consolidated", %{site: site} do
++        cv = new_consolidated_view(site.team)
++
++        site_id = site.id
++        assert %{consolidated_site_ids: [^site_id]} = Query.from(cv, %{"period" => "day"})
++      end
++    end
++  end
+ end
+diff --git a/test/plausible_web/controllers/api/external_stats_controller/query_consolidated_view_test.exs b/test/plausible_web/controllers/api/external_stats_controller/query_consolidated_view_test.exs
+new file mode 100644
+index 000000000..86a53dade
+--- /dev/null
++++ b/test/plausible_web/controllers/api/external_stats_controller/query_consolidated_view_test.exs
+@@ -0,0 +1,30 @@
++defmodule PlausibleWeb.Api.ExternalStatsController.QueryConsolidatedViewTest do
++  use PlausibleWeb.ConnCase
++
++  on_ee do
++    use Plausible.Teams.Test
++
++    setup [:create_user, :create_team, :create_site, :create_api_key, :use_api_key]
++
++    test "simple aggregate query across all consolidated site_ids", %{
++      team: team,
++      site: site,
++      conn: conn
++    } do
++      another_site = new_site(team: team)
++      cv = new_consolidated_view(team)
++
++      populate_stats(site, [build(:pageview)])
++      populate_stats(another_site, [build(:pageview)])
++
++      conn =
++        post(conn, "/api/v2/query", %{
++          "site_id" => cv.domain,
++          "date_range" => "all",
++          "metrics" => ["visitors"]
++        })
++
++      assert %{"results" => [%{"metrics" => [2]}]} = json_response(conn, 200)
++    end
++  end
++end
+diff --git a/test/plausible_web/controllers/api/stats_controller/pages_test.exs b/test/plausible_web/controllers/api/stats_controller/pages_test.exs
+index f595a3039..066a3eadb 100644
+--- a/test/plausible_web/controllers/api/stats_controller/pages_test.exs
++++ b/test/plausible_web/controllers/api/stats_controller/pages_test.exs
+@@ -2143,6 +2143,58 @@ defmodule PlausibleWeb.Api.StatsController.PagesTest do
+                }
+              ]
+     end
++
++    on_ee do
++      test "returns pages across all sites on a consolidated view", %{conn: conn, site: site} do
++        another_site = new_site(team: site.team)
++        cv = new_consolidated_view(site.team)
++
++        populate_stats(site, [
++          build(:pageview, pathname: "/a1", timestamp: ~N[2021-01-01 00:00:00]),
++          build(:pageview, pathname: "/a2", timestamp: ~N[2021-01-01 00:00:00]),
++          build(:pageview, pathname: "/a2", timestamp: ~N[2021-01-01 00:00:00])
++        ])
++
++        populate_stats(another_site, [
++          build(:pageview, pathname: "/b1", timestamp: ~N[2021-01-01 00:00:00]),
++          build(:pageview, pathname: "/b1", timestamp: ~N[2021-01-01 00:00:00]),
++          build(:pageview, pathname: "/b1", timestamp: ~N[2021-01-01 00:00:00])
++        ])
++
++        conn =
++          get(
++            conn,
++            "/api/stats/#{cv.domain}/pages?period=day&date=2021-01-01&detailed=true"
++          )
++
++        assert json_response(conn, 200)["results"] == [
++                 %{
++                   "bounce_rate" => 100,
++                   "name" => "/b1",
++                   "pageviews" => 3,
++                   "time_on_page" => nil,
++                   "visitors" => 3,
++                   "scroll_depth" => nil
++                 },
++                 %{
++                   "bounce_rate" => 100,
++                   "name" => "/a2",
++                   "pageviews" => 2,
++                   "time_on_page" => nil,
++                   "visitors" => 2,
++                   "scroll_depth" => nil
++                 },
++                 %{
++                   "bounce_rate" => 100,
++                   "name" => "/a1",
++                   "pageviews" => 1,
++                   "time_on_page" => nil,
++                   "visitors" => 1,
++                   "scroll_depth" => nil
++                 }
++               ]
++      end
++    end
+   end
+ 
+   describe "GET /api/stats/:domain/entry-pages" do
+diff --git a/test/plausible_web/controllers/stats_controller_test.exs b/test/plausible_web/controllers/stats_controller_test.exs
+index 90c3273bd..790bbdee6 100644
+--- a/test/plausible_web/controllers/stats_controller_test.exs
++++ b/test/plausible_web/controllers/stats_controller_test.exs
+@@ -149,6 +149,54 @@ defmodule PlausibleWeb.StatsControllerTest do
+       assert text_of_attr(resp, @react_container, "data-logged-in") == "true"
+     end
+ 
++    on_ee do
++      test "first view of a consolidated dashboard sets stats_start_date and native_stats_start_at according to native_stats_start_at of the earliest team site",
++           %{
++             conn: conn,
++             site: site,
++             user: user
++           } do
++        team = team_of(user)
++        now = NaiveDateTime.utc_now(:second)
++        ten_days_ago = NaiveDateTime.add(now, -10, :day)
++        twenty_days_ago = NaiveDateTime.add(now, -20, :day)
++
++        site
++        |> Plausible.Site.set_native_stats_start_at(ten_days_ago)
++        |> Plausible.Repo.update!()
++
++        new_site(team: team, native_stats_start_at: twenty_days_ago)
++        cv = new_consolidated_view(team)
++
++        conn = get(conn, "/" <> cv.domain)
++        resp = html_response(conn, 200)
++
++        assert text_of_attr(resp, @react_container, "data-domain") == cv.domain
++        assert text_of_attr(resp, @react_container, "data-logged-in") == "true"
++        assert text_of_attr(resp, @react_container, "data-current-user-role") == "owner"
++        assert text_of_attr(resp, @react_container, "data-current-user-id") == "#{user.id}"
++
++        cv = Plausible.Repo.reload(cv)
++        assert cv.stats_start_date == NaiveDateTime.to_date(twenty_days_ago)
++        assert cv.native_stats_start_at == twenty_days_ago
++      end
++
++      test "does not redirect consolidated views to verification", %{
++        conn: conn,
++        user: user
++      } do
++        cv = user |> team_of() |> new_consolidated_view()
++
++        conn = get(conn, "/" <> cv.domain)
++        resp = html_response(conn, 200)
++
++        assert text_of_attr(resp, @react_container, "data-domain") == cv.domain
++        assert text_of_attr(resp, @react_container, "data-logged-in") == "true"
++        assert text_of_attr(resp, @react_container, "data-current-user-role") == "owner"
++        assert text_of_attr(resp, @react_container, "data-current-user-id") == "#{user.id}"
++      end
++    end
++
+     @tag :ee_only
+     test "header, stats are shown; footer is not shown", %{conn: conn, site: site, user: user} do
+       populate_stats(site, [build(:pageview)])
+diff --git a/test/support/teams/test.ex b/test/support/teams/test.ex
+index 787301948..625a94b02 100644
+--- a/test/support/teams/test.ex
++++ b/test/support/teams/test.ex
+@@ -23,6 +23,13 @@ defmodule Plausible.Teams.Test do
+     Plug.Conn.put_session(conn, :current_team_id, team.identifier)
+   end
+ 
++  on_ee do
++    def new_consolidated_view(team) do
++      {:ok, site} = Plausible.ConsolidatedView.enable(team)
++      site
++    end
++  end
++
+   def new_site(args \\ []) do
+     args =
+       cond do

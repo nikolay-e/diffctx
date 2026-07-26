@@ -1,0 +1,73 @@
+repo: aspnetcore
+base_commit: b684b82e53767691c368e9ea4c44264449671fa2
+commit: f905bebf6206d90192c66e84993963f2f8a506c4
+patch_stored: true
+gold:
+  - path: src/Components/Endpoints/src/Assets/ResourcePreloader.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: The renamed class itself (LinkPreload -> ResourcePreloader), still implementing IComponent.
+  - path: src/Components/Endpoints/src/PublicAPI.Unshipped.txt
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Public API surface tracker that must list the exact new type/ctor name Microsoft.AspNetCore.Components.ResourcePreloader for the Roslyn PublicAPI analyzer to pass.
+  - path: src/Components/Endpoints/test/TestComponents/WebAssemblyPreloadWrapper.razor
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: Test component markup that instantiates the renamed tag <ResourcePreloader /> and is exercised by EndpointHtmlRendererTest.
+  - path: src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWeb-CSharp/BlazorWebCSharp.1/Components/App.razor
+    tier: helpful
+    role: cochange
+    in_diff: true
+    rationale: Project-template App.razor that also references the tag <ResourcePreloader /> and had to be updated in lockstep with the rename.
+  - path: src/Components/Endpoints/src/Builder/ResourcePreloadService.cs
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Defines the internal ResourcePreloadService type injected into ResourcePreloader via [Inject] Service and invoked through Service.SetPreloadingHandler(PreloadAssets), i.e. the collaborator whose contract explains what the renamed component actually does.
+  - path: src/Components/Endpoints/src/Rendering/SSRRenderModeBoundary.cs
+    tier: helpful
+    role: caller
+    in_diff: false
+    rationale: PreloadWebAssemblyAssets() resolves ResourcePreloadService from DI and calls service.Preload(preloadAssets), the caller that ultimately feeds assets into ResourcePreloader.PreloadAssets.
+  - path: src/Components/Endpoints/src/Builder/ResourcePreloadCollection.cs
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Defines the PreloadAsset type (Url/PreloadRel/PreloadAs/PreloadPriority/PreloadCrossorigin/Integrity) that ResourcePreloader.RenderPreloadAssets iterates to build <link> elements.
+  - path: src/Components/Endpoints/test/EndpointHtmlRendererTest.cs
+    tier: helpful
+    role: test
+    in_diff: false
+    rationale: CanPreload_WebAssembly_ResourceAssets exercises WebAssemblyPreloadWrapper end-to-end through PrerenderComponentAsync, covering the renamed component's rendered output.
+forbidden:
+  - path: src/Components/Components/src/IComponent.cs
+    reason: generic base interface implemented by every Blazor component, not specific to this rename
+  - path: src/Components/Endpoints/src/DependencyInjection/RazorComponentsRazorComponentBuilderExtensions.cs
+    reason: only touches PublicAPI.Unshipped.txt by proximity (RegisterPersistentService entry sits near the renamed lines); unrelated persistent-state feature
+  - path: src/Components/QuickGrid/Microsoft.AspNetCore.Components.QuickGrid/src/QuickGrid.razor.cs
+    reason: unrelated Blazor component surfaced by graph-similarity candidate generator, no reference to LinkPreload/ResourcePreloader
+  - path: src/Components/Samples/BlazorServerApp/Pages/_Layout.cshtml
+    reason: bm25 lexical match on generic Razor layout terms, does not reference the renamed component
+nontrivial_gold_count: 4
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration, bm25, graph, random]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 5
+  description: Rename LinkPreload to ResourcePreloader — compact rename with baseline
+notes: >-
+  Pure symbol rename (class + PublicAPI entries + 2 usage sites) confirmed
+  complete via git grep for LinkPreload at the parent commit — no stray
+  references were missed. string_indirection is true because Razor markup
+  binds the component by its tag name string (<ResourcePreloader />), a
+  textual reference the compiler resolves via Razor codegen rather than a
+  static C# symbol reference. Beyond the 4 diff files, added the
+  ResourcePreloadService/ResourcePreloadCollection definitions, the
+  SSRRenderModeBoundary caller, and the EndpointHtmlRendererTest covering
+  test as helpful nontrivial context that explains what the renamed
+  component actually does end-to-end.

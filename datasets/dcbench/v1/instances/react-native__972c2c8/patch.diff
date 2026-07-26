@@ -1,0 +1,427 @@
+From 972c2c864c0b563163a36080a13908d1c0a3fb87 Mon Sep 17 00:00:00 2001
+From: Nicola Corti <ncor@meta.com>
+Date: Fri, 11 Oct 2024 05:34:02 -0700
+Subject: [PATCH] Bump Kotlin 1.9.x to 2.0.x (#46955)
+
+Summary:
+Pull Request resolved: https://github.com/facebook/react-native/pull/46955
+
+This is a major bump of Kotlin. It comes with no breaking changes for the Kotlin API, but there are several new warnigns that I had to fix.
+Most importantly several `override` methods that are overriding Deprecated API, also need to be deprecated as well in Kotlin.
+
+Changelog:
+[Android] [Changed] - Bump Kotlin 1.9.x to 2.0.x
+
+Reviewed By: tdn120
+
+Differential Revision: D64179842
+
+fbshipit-source-id: 295ab2636ce9f9bb04e9d8c7ed27d9f8a1a64338
+---
+ packages/gradle-plugin/gradle/libs.versions.toml         | 2 +-
+ .../react-native-gradle-plugin/build.gradle.kts          | 8 +++++---
+ packages/gradle-plugin/settings-plugin/build.gradle.kts  | 8 +++++---
+ packages/gradle-plugin/shared-testutil/build.gradle.kts  | 9 ++++++---
+ packages/gradle-plugin/shared/build.gradle.kts           | 9 ++++++---
+ packages/helloworld/android/build.gradle                 | 2 +-
+ .../SampleNativeComponentViewManager.kt                  | 1 +
+ .../com/facebook/react/animated/EventAnimationDriver.kt  | 3 +++
+ .../com/facebook/react/devsupport/DevSettingsActivity.kt | 2 ++
+ .../facebook/react/fabric/events/FabricEventEmitter.kt   | 3 +++
+ .../react/internal/interop/InteropEventEmitter.kt        | 1 +
+ .../facebook/react/runtime/BridgelessCatalystInstance.kt | 2 ++
+ .../react/uimanager/drawable/InsetBoxShadowDrawable.kt   | 1 +
+ .../facebook/react/uimanager/drawable/OutlineDrawable.kt | 1 +
+ .../react/uimanager/drawable/OutsetBoxShadowDrawable.kt  | 1 +
+ .../react/uimanager/events/BlackHoleEventDispatcher.kt   | 1 +
+ .../com/facebook/react/uimanager/events/TouchEvent.kt    | 1 +
+ .../react/views/image/ReactImageDownloadListener.kt      | 2 +-
+ .../facebook/react/bridge/interop/FakeRCTEventEmitter.kt | 2 ++
+ .../com/facebook/testutils/fakes/FakeEventDispatcher.kt  | 1 +
+ packages/react-native/gradle/libs.versions.toml          | 2 +-
+ packages/rn-tester/android/app/build.gradle.kts          | 2 +-
+ .../react/uiapp/component/MyLegacyViewManager.kt         | 1 +
+ 23 files changed, 48 insertions(+), 17 deletions(-)
+
+diff --git a/packages/gradle-plugin/gradle/libs.versions.toml b/packages/gradle-plugin/gradle/libs.versions.toml
+index 715209b8bee..25e4ee62a53 100644
+--- a/packages/gradle-plugin/gradle/libs.versions.toml
++++ b/packages/gradle-plugin/gradle/libs.versions.toml
+@@ -4,7 +4,7 @@ gson = "2.8.9"
+ guava = "31.0.1-jre"
+ javapoet = "1.13.0"
+ junit = "4.13.2"
+-kotlin = "1.9.24"
++kotlin = "2.0.21"
+ assertj = "3.25.1"
+ 
+ [libraries]
+diff --git a/packages/gradle-plugin/react-native-gradle-plugin/build.gradle.kts b/packages/gradle-plugin/react-native-gradle-plugin/build.gradle.kts
+index 6669e9e3b6d..022f60c29f4 100644
+--- a/packages/gradle-plugin/react-native-gradle-plugin/build.gradle.kts
++++ b/packages/gradle-plugin/react-native-gradle-plugin/build.gradle.kts
+@@ -6,6 +6,8 @@
+  */
+ 
+ import org.gradle.api.tasks.testing.logging.TestExceptionFormat
++import org.jetbrains.kotlin.gradle.dsl.JvmTarget
++import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
+ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+ 
+ plugins {
+@@ -60,10 +62,10 @@ java { targetCompatibility = JavaVersion.VERSION_11 }
+ kotlin { jvmToolchain(17) }
+ 
+ tasks.withType<KotlinCompile>().configureEach {
+-  kotlinOptions {
+-    apiVersion = "1.6"
++  compilerOptions {
++    apiVersion.set(KotlinVersion.KOTLIN_1_7)
+     // See comment above on JDK 11 support
+-    jvmTarget = "11"
++    jvmTarget.set(JvmTarget.JVM_11)
+     allWarningsAsErrors =
+         project.properties["enableWarningsAsErrors"]?.toString()?.toBoolean() ?: false
+   }
+diff --git a/packages/gradle-plugin/settings-plugin/build.gradle.kts b/packages/gradle-plugin/settings-plugin/build.gradle.kts
+index 40e094ee48d..8f5ae862d38 100644
+--- a/packages/gradle-plugin/settings-plugin/build.gradle.kts
++++ b/packages/gradle-plugin/settings-plugin/build.gradle.kts
+@@ -6,6 +6,8 @@
+  */
+ 
+ import org.gradle.api.tasks.testing.logging.TestExceptionFormat
++import org.jetbrains.kotlin.gradle.dsl.JvmTarget
++import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
+ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+ 
+ plugins {
+@@ -50,10 +52,10 @@ java { targetCompatibility = JavaVersion.VERSION_11 }
+ kotlin { jvmToolchain(17) }
+ 
+ tasks.withType<KotlinCompile>().configureEach {
+-  kotlinOptions {
+-    apiVersion = "1.6"
++  compilerOptions {
++    apiVersion.set(KotlinVersion.KOTLIN_1_7)
+     // See comment above on JDK 11 support
+-    jvmTarget = "11"
++    jvmTarget.set(JvmTarget.JVM_11)
+     allWarningsAsErrors =
+         project.properties["enableWarningsAsErrors"]?.toString()?.toBoolean() ?: false
+   }
+diff --git a/packages/gradle-plugin/shared-testutil/build.gradle.kts b/packages/gradle-plugin/shared-testutil/build.gradle.kts
+index 30a1124ebb6..b3c0204b0f5 100644
+--- a/packages/gradle-plugin/shared-testutil/build.gradle.kts
++++ b/packages/gradle-plugin/shared-testutil/build.gradle.kts
+@@ -6,6 +6,8 @@
+  */
+ 
+ import org.gradle.api.tasks.testing.logging.TestExceptionFormat
++import org.jetbrains.kotlin.gradle.dsl.JvmTarget
++import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
+ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+ 
+ plugins { alias(libs.plugins.kotlin.jvm) }
+@@ -21,9 +23,10 @@ java { targetCompatibility = JavaVersion.VERSION_11 }
+ kotlin { jvmToolchain(17) }
+ 
+ tasks.withType<KotlinCompile>().configureEach {
+-  kotlinOptions {
+-    apiVersion = "1.6"
+-    jvmTarget = "11"
++  compilerOptions {
++    apiVersion.set(KotlinVersion.KOTLIN_1_7)
++    // See comment above on JDK 11 support
++    jvmTarget.set(JvmTarget.JVM_11)
+     allWarningsAsErrors =
+         project.properties["enableWarningsAsErrors"]?.toString()?.toBoolean() ?: false
+   }
+diff --git a/packages/gradle-plugin/shared/build.gradle.kts b/packages/gradle-plugin/shared/build.gradle.kts
+index f7f55f5f2f1..b705a7c6997 100644
+--- a/packages/gradle-plugin/shared/build.gradle.kts
++++ b/packages/gradle-plugin/shared/build.gradle.kts
+@@ -6,6 +6,8 @@
+  */
+ 
+ import org.gradle.api.tasks.testing.logging.TestExceptionFormat
++import org.jetbrains.kotlin.gradle.dsl.JvmTarget
++import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
+ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+ 
+ plugins { alias(libs.plugins.kotlin.jvm) }
+@@ -27,9 +29,10 @@ java { targetCompatibility = JavaVersion.VERSION_11 }
+ kotlin { jvmToolchain(17) }
+ 
+ tasks.withType<KotlinCompile>().configureEach {
+-  kotlinOptions {
+-    apiVersion = "1.6"
+-    jvmTarget = "11"
++  compilerOptions {
++    apiVersion.set(KotlinVersion.KOTLIN_1_7)
++    // See comment above on JDK 11 support
++    jvmTarget.set(JvmTarget.JVM_11)
+     allWarningsAsErrors =
+         project.properties["enableWarningsAsErrors"]?.toString()?.toBoolean() ?: false
+   }
+diff --git a/packages/helloworld/android/build.gradle b/packages/helloworld/android/build.gradle
+index 0dd0fccb82d..b51b5dffbbf 100644
+--- a/packages/helloworld/android/build.gradle
++++ b/packages/helloworld/android/build.gradle
+@@ -12,7 +12,7 @@ buildscript {
+         compileSdkVersion = 35
+         targetSdkVersion = 34
+         ndkVersion = "26.1.10909125"
+-        kotlinVersion = "1.9.24"
++        kotlinVersion = "2.0.21"
+     }
+     repositories {
+         google()
+diff --git a/packages/react-native-test-library/android/src/main/java/com/facebook/react/osslibraryexample/SampleNativeComponentViewManager.kt b/packages/react-native-test-library/android/src/main/java/com/facebook/react/osslibraryexample/SampleNativeComponentViewManager.kt
+index e76fedbb338..3ab92ac3bd8 100644
+--- a/packages/react-native-test-library/android/src/main/java/com/facebook/react/osslibraryexample/SampleNativeComponentViewManager.kt
++++ b/packages/react-native-test-library/android/src/main/java/com/facebook/react/osslibraryexample/SampleNativeComponentViewManager.kt
+@@ -76,6 +76,7 @@ internal class SampleNativeComponentViewManager :
+     }
+   }
+ 
++  @Deprecated("Deprecated in Java")
+   @SuppressLint("BadMethodUse-android.view.View.setBackgroundColor")
+   @Suppress("DEPRECATION") // We intentionally want to test against the legacy API here.
+   override fun receiveCommand(view: SampleNativeView, commandId: Int, args: ReadableArray?) {
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/animated/EventAnimationDriver.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/animated/EventAnimationDriver.kt
+index b4b1a46b886..cf7600f1885 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/animated/EventAnimationDriver.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/animated/EventAnimationDriver.kt
+@@ -24,6 +24,7 @@ internal class EventAnimationDriver(
+     private val eventPath: List<String>,
+     @JvmField internal var valueNode: ValueAnimatedNode
+ ) : RCTModernEventEmitter {
++  @Deprecated("Deprecated in Java")
+   override fun receiveEvent(targetReactTag: Int, eventName: String, event: WritableMap?) =
+       receiveEvent(-1, targetReactTag, eventName, event)
+ 
+@@ -36,6 +37,7 @@ internal class EventAnimationDriver(
+       // We assume this event can't be coalesced. `customCoalesceKey` has no meaning in Fabric.
+       receiveEvent(surfaceId, targetTag, eventName, false, 0, event, EventCategoryDef.UNSPECIFIED)
+ 
++  @Deprecated("Deprecated in Java")
+   override fun receiveTouches(
+       eventName: String,
+       touches: WritableArray,
+@@ -44,6 +46,7 @@ internal class EventAnimationDriver(
+     throw UnsupportedOperationException("receiveTouches is not support by native animated events")
+   }
+ 
++  @Deprecated("Deprecated in Java")
+   override fun receiveTouches(touchEvent: TouchEvent) {
+     throw UnsupportedOperationException("receiveTouches is not support by native animated events")
+   }
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/devsupport/DevSettingsActivity.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/devsupport/DevSettingsActivity.kt
+index f19f7b52d43..6eaf92ac4b9 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/devsupport/DevSettingsActivity.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/devsupport/DevSettingsActivity.kt
+@@ -18,6 +18,8 @@ import com.facebook.react.R
+  * be triggered through the developers option menu displayed by [DevSupportManager].
+  */
+ public class DevSettingsActivity : PreferenceActivity() {
++
++  @Deprecated("Deprecated in Java")
+   public override fun onCreate(savedInstanceState: Bundle?) {
+     super.onCreate(savedInstanceState)
+     title = application.resources.getString(R.string.catalyst_settings_title)
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/events/FabricEventEmitter.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/events/FabricEventEmitter.kt
+index 2c85e1273d1..3420e0ed61b 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/events/FabricEventEmitter.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/events/FabricEventEmitter.kt
+@@ -17,6 +17,7 @@ import com.facebook.react.uimanager.events.TouchEvent
+ import com.facebook.systrace.Systrace
+ 
+ public class FabricEventEmitter(private val uiManager: FabricUIManager) : RCTModernEventEmitter {
++  @Deprecated("Deprecated in Java")
+   public override fun receiveEvent(reactTag: Int, eventName: String, params: WritableMap?): Unit {
+     receiveEvent(ViewUtil.NO_SURFACE_ID, reactTag, eventName, params)
+   }
+@@ -49,6 +50,7 @@ public class FabricEventEmitter(private val uiManager: FabricUIManager) : RCTMod
+   }
+ 
+   /** Touches are dispatched by [.receiveTouches] */
++  @Deprecated("Deprecated in Java")
+   public override fun receiveTouches(
+       eventName: String,
+       touches: WritableArray,
+@@ -57,6 +59,7 @@ public class FabricEventEmitter(private val uiManager: FabricUIManager) : RCTMod
+     throw UnsupportedOperationException("EventEmitter#receiveTouches is not supported by Fabric")
+   }
+ 
++  @Deprecated("Deprecated in Java")
+   public override fun receiveTouches(event: TouchEvent): Unit {
+     // Calls are expected to go via TouchesHelper
+     throw UnsupportedOperationException("EventEmitter#receiveTouches is not supported by Fabric")
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/interop/InteropEventEmitter.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/interop/InteropEventEmitter.kt
+index 5c4e7e42c30..eca7be1f683 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/interop/InteropEventEmitter.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/interop/InteropEventEmitter.kt
+@@ -39,6 +39,7 @@ public class InteropEventEmitter(private val reactContext: ReactContext) : RCTEv
+     dispatcher?.dispatchEvent(InteropEvent(eventName, eventData, surfaceId, targetReactTag))
+   }
+ 
++  @Deprecated("Deprecated in Java")
+   override fun receiveTouches(
+       eventName: String,
+       touches: WritableArray,
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/BridgelessCatalystInstance.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/BridgelessCatalystInstance.kt
+index 4bf0b77429a..1a988f2afac 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/BridgelessCatalystInstance.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/BridgelessCatalystInstance.kt
+@@ -87,10 +87,12 @@ public class BridgelessCatalystInstance(private val reactHost: ReactHostImpl) :
+   override fun <T : JavaScriptModule> getJSModule(jsInterface: Class<T>): T? =
+       reactHost.currentReactContext?.getJSModule(jsInterface)
+ 
++  @get:Deprecated("Deprecated in Java")
+   override public val javaScriptContextHolder: JavaScriptContextHolder
+     get() = reactHost.getJavaScriptContextHolder()!!
+ 
+   @Suppress("INAPPLICABLE_JVM_NAME")
++  @get:Deprecated("Deprecated in Java")
+   @get:JvmName("getJSCallInvokerHolder") // This is needed to keep backward compatibility
+   override public val jsCallInvokerHolder: CallInvokerHolder
+     get() = reactHost.getJSCallInvokerHolder()!!
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/uimanager/drawable/InsetBoxShadowDrawable.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/uimanager/drawable/InsetBoxShadowDrawable.kt
+index f29f148efdb..a241468a714 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/uimanager/drawable/InsetBoxShadowDrawable.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/uimanager/drawable/InsetBoxShadowDrawable.kt
+@@ -85,6 +85,7 @@ internal class InsetBoxShadowDrawable(
+     invalidateSelf()
+   }
+ 
++  @Deprecated("Deprecated in Java")
+   override fun getOpacity(): Int {
+     val alpha = Color.alpha(shadowColor)
+     return if (alpha == 0) PixelFormat.TRANSPARENT
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/uimanager/drawable/OutlineDrawable.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/uimanager/drawable/OutlineDrawable.kt
+index cb7e2f10494..fcc6079f7e3 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/uimanager/drawable/OutlineDrawable.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/uimanager/drawable/OutlineDrawable.kt
+@@ -105,6 +105,7 @@ internal class OutlineDrawable(
+     invalidateSelf()
+   }
+ 
++  @Deprecated("Deprecated in Java")
+   override fun getOpacity(): Int =
+       ((outlinePaint.alpha / 255f) / (Color.alpha(outlineColor) / 255f) * 255f).roundToInt()
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/uimanager/drawable/OutsetBoxShadowDrawable.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/uimanager/drawable/OutsetBoxShadowDrawable.kt
+index 9df839902af..3d4a433d908 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/uimanager/drawable/OutsetBoxShadowDrawable.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/uimanager/drawable/OutsetBoxShadowDrawable.kt
+@@ -73,6 +73,7 @@ internal class OutsetBoxShadowDrawable(
+     invalidateSelf()
+   }
+ 
++  @Deprecated("Deprecated in Java")
+   override fun getOpacity(): Int {
+     val alpha = Color.alpha(shadowColor)
+     return if (alpha == 0) PixelFormat.TRANSPARENT
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/uimanager/events/BlackHoleEventDispatcher.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/uimanager/events/BlackHoleEventDispatcher.kt
+index e25e980eb40..2c0229f1ccf 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/uimanager/events/BlackHoleEventDispatcher.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/uimanager/events/BlackHoleEventDispatcher.kt
+@@ -34,6 +34,7 @@ public class BlackHoleEventDispatcher private constructor() : EventDispatcher {
+       listener: BatchEventDispatchedListener
+   ): Unit = Unit
+ 
++  @Deprecated("Deprecated in Java")
+   @Suppress("DEPRECATION")
+   public override fun registerEventEmitter(
+       uiManagerType: Int,
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/uimanager/events/TouchEvent.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/uimanager/events/TouchEvent.kt
+index a62acf4be2b..8feb8b3600f 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/uimanager/events/TouchEvent.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/uimanager/events/TouchEvent.kt
+@@ -110,6 +110,7 @@ public class TouchEvent private constructor() : Event<TouchEvent>() {
+ 
+   override fun getCoalescingKey(): Short = coalescingKey
+ 
++  @Deprecated("Deprecated in Java")
+   override fun dispatch(rctEventEmitter: RCTEventEmitter) {
+     if (verifyMotionEvent()) {
+       TouchesHelper.sendTouchesLegacy(rctEventEmitter, this)
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/image/ReactImageDownloadListener.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/image/ReactImageDownloadListener.kt
+index caf3f3eebe2..a6cf0551fe8 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/image/ReactImageDownloadListener.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/image/ReactImageDownloadListener.kt
+@@ -44,7 +44,7 @@ internal open class ReactImageDownloadListener<INFO> :
+ 
+     override fun setColorFilter(colorFilter: ColorFilter?) = Unit
+ 
+-    override fun getOpacity(): Int = PixelFormat.OPAQUE
++    @Deprecated("Deprecated in Java") override fun getOpacity(): Int = PixelFormat.OPAQUE
+   }
+ 
+   companion object {
+diff --git a/packages/react-native/ReactAndroid/src/test/java/com/facebook/react/bridge/interop/FakeRCTEventEmitter.kt b/packages/react-native/ReactAndroid/src/test/java/com/facebook/react/bridge/interop/FakeRCTEventEmitter.kt
+index 46f96d0b6bf..f325893d022 100644
+--- a/packages/react-native/ReactAndroid/src/test/java/com/facebook/react/bridge/interop/FakeRCTEventEmitter.kt
++++ b/packages/react-native/ReactAndroid/src/test/java/com/facebook/react/bridge/interop/FakeRCTEventEmitter.kt
+@@ -17,8 +17,10 @@ import com.facebook.react.uimanager.events.RCTEventEmitter
+ @UnstableReactNativeAPI
+ class FakeRCTEventEmitter : RCTEventEmitter {
+ 
++  @Deprecated("Deprecated in Java")
+   override fun receiveEvent(targetReactTag: Int, eventName: String, event: WritableMap?) = Unit
+ 
++  @Deprecated("Deprecated in Java")
+   override fun receiveTouches(
+       eventName: String,
+       touches: WritableArray,
+diff --git a/packages/react-native/ReactAndroid/src/test/java/com/facebook/testutils/fakes/FakeEventDispatcher.kt b/packages/react-native/ReactAndroid/src/test/java/com/facebook/testutils/fakes/FakeEventDispatcher.kt
+index d386ac5858e..e3c9fafab72 100644
+--- a/packages/react-native/ReactAndroid/src/test/java/com/facebook/testutils/fakes/FakeEventDispatcher.kt
++++ b/packages/react-native/ReactAndroid/src/test/java/com/facebook/testutils/fakes/FakeEventDispatcher.kt
+@@ -38,6 +38,7 @@ class FakeEventDispatcher : EventDispatcher {
+ 
+   override fun removeBatchEventDispatchedListener(listener: BatchEventDispatchedListener) = Unit
+ 
++  @Deprecated("Deprecated in Java")
+   override fun registerEventEmitter(uiManagerType: Int, eventEmitter: RCTEventEmitter) = Unit
+ 
+   override fun registerEventEmitter(uiManagerType: Int, eventEmitter: RCTModernEventEmitter) = Unit
+diff --git a/packages/react-native/gradle/libs.versions.toml b/packages/react-native/gradle/libs.versions.toml
+index c43ee422c33..20745f01185 100644
+--- a/packages/react-native/gradle/libs.versions.toml
++++ b/packages/react-native/gradle/libs.versions.toml
+@@ -23,7 +23,7 @@ javax-annotation-api = "1.3.2"
+ javax-inject = "1"
+ jsr305 = "3.0.2"
+ junit = "4.13.2"
+-kotlin = "1.9.24"
++kotlin = "2.0.21"
+ mockito = "3.12.4"
+ nexus-publish = "1.3.0"
+ okhttp = "4.9.2"
+diff --git a/packages/rn-tester/android/app/build.gradle.kts b/packages/rn-tester/android/app/build.gradle.kts
+index 68e961266ad..703d6387ed6 100644
+--- a/packages/rn-tester/android/app/build.gradle.kts
++++ b/packages/rn-tester/android/app/build.gradle.kts
+@@ -194,7 +194,7 @@ tasks.withType<JavaCompile>().configureEach {
+ }
+ 
+ tasks.withType<KotlinCompile>().configureEach {
+-  kotlinOptions {
++  compilerOptions {
+     allWarningsAsErrors =
+         project.properties["enableWarningsAsErrors"]?.toString()?.toBoolean() ?: false
+   }
+diff --git a/packages/rn-tester/android/app/src/main/java/com/facebook/react/uiapp/component/MyLegacyViewManager.kt b/packages/rn-tester/android/app/src/main/java/com/facebook/react/uiapp/component/MyLegacyViewManager.kt
+index 422fbcb00db..990227b4f58 100644
+--- a/packages/rn-tester/android/app/src/main/java/com/facebook/react/uiapp/component/MyLegacyViewManager.kt
++++ b/packages/rn-tester/android/app/src/main/java/com/facebook/react/uiapp/component/MyLegacyViewManager.kt
+@@ -65,6 +65,7 @@ internal class MyLegacyViewManager(reactContext: ReactApplicationContext) :
+     }
+   }
+ 
++  @Deprecated("Deprecated in Java")
+   @Suppress("DEPRECATION") // We intentionally want to test against the legacy API here.
+   override fun receiveCommand(view: MyNativeView, commandId: Int, args: ReadableArray?) {
+     when (commandId) {

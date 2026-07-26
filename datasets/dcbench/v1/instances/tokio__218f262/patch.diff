@@ -1,0 +1,368 @@
+From 218f2629fffa25912ee14a2cc8ec6e98ae223b11 Mon Sep 17 00:00:00 2001
+From: Carl Lerche <me@carllerche.com>
+Date: Thu, 25 Aug 2022 12:58:57 -0700
+Subject: [PATCH] rt: move I/O driver into `runtime` module (#4942)
+
+This patch moves the I/O driver into the runtime module. The I/O driver
+is a runtime concern and is only used by the runtime. Moving the driver
+is the first step to cleaning up some Tokio internals. There will be
+follow-up patches that integrate the I/O driver and other runtime concerns
+more closely.
+
+Because `Interest` and `Ready` are public APIs, they were moved to the
+top-level `io` module instead of moving the types to `runtime`.
+
+This is an internal refactor and should not impact any public APIs.
+---
+ tokio/src/io/async_fd.rs                      |  3 +-
+ tokio/src/io/bsd/poll_aio.rs                  |  3 +-
+ tokio/src/io/{driver => }/interest.rs         |  4 +-
+ tokio/src/io/mod.rs                           |  8 ++--
+ tokio/src/io/poll_evented.rs                  |  3 +-
+ tokio/src/io/{driver => }/ready.rs            |  0
+ tokio/src/lib.rs                              |  6 +++
+ tokio/src/process/unix/orphan.rs              |  2 +-
+ tokio/src/runtime/driver.rs                   |  6 +--
+ .../src/{io/driver => runtime/io}/metrics.rs  |  0
+ tokio/src/{io/driver => runtime/io}/mod.rs    | 14 ++-----
+ .../src/{io/driver => runtime/io}/platform.rs |  0
+ .../{io/driver => runtime/io}/registration.rs |  3 +-
+ .../{io/driver => runtime/io}/scheduled_io.rs |  4 +-
+ tokio/src/runtime/mod.rs                      | 40 ++++++++++---------
+ tokio/src/runtime/tests/mod.rs                |  4 ++
+ tokio/src/signal/unix/driver.rs               |  3 +-
+ 17 files changed, 59 insertions(+), 44 deletions(-)
+ rename tokio/src/io/{driver => }/interest.rs (98%)
+ rename tokio/src/io/{driver => }/ready.rs (100%)
+ rename tokio/src/{io/driver => runtime/io}/metrics.rs (100%)
+ rename tokio/src/{io/driver => runtime/io}/mod.rs (98%)
+ rename tokio/src/{io/driver => runtime/io}/platform.rs (100%)
+ rename tokio/src/{io/driver => runtime/io}/registration.rs (98%)
+ rename tokio/src/{io/driver => runtime/io}/scheduled_io.rs (99%)
+
+diff --git a/tokio/src/io/async_fd.rs b/tokio/src/io/async_fd.rs
+index d91710a..eb544b9 100644
+--- a/tokio/src/io/async_fd.rs
++++ b/tokio/src/io/async_fd.rs
+@@ -1,4 +1,5 @@
+-use crate::io::driver::{Handle, Interest, ReadyEvent, Registration};
++use crate::io::Interest;
++use crate::runtime::io::{Handle, ReadyEvent, Registration};
+ 
+ use mio::unix::SourceFd;
+ use std::io;
+diff --git a/tokio/src/io/bsd/poll_aio.rs b/tokio/src/io/bsd/poll_aio.rs
+index f1ac4b2..ceb8313 100644
+--- a/tokio/src/io/bsd/poll_aio.rs
++++ b/tokio/src/io/bsd/poll_aio.rs
+@@ -1,6 +1,7 @@
+ //! Use POSIX AIO futures with Tokio.
+ 
+-use crate::io::driver::{Handle, Interest, ReadyEvent, Registration};
++use crate::io::interest::Interest;
++use crate::runtime::io::{Handle, ReadyEvent, Registration};
+ use mio::event::Source;
+ use mio::Registry;
+ use mio::Token;
+diff --git a/tokio/src/io/driver/interest.rs b/tokio/src/io/interest.rs
+similarity index 98%
+rename from tokio/src/io/driver/interest.rs
+rename to tokio/src/io/interest.rs
+index d6b46df..013c114 100644
+--- a/tokio/src/io/driver/interest.rs
++++ b/tokio/src/io/interest.rs
+@@ -1,6 +1,6 @@
+ #![cfg_attr(not(feature = "net"), allow(dead_code, unreachable_pub))]
+ 
+-use crate::io::driver::Ready;
++use crate::io::ready::Ready;
+ 
+ use std::fmt;
+ use std::ops;
+@@ -100,7 +100,7 @@ impl Interest {
+         self.0
+     }
+ 
+-    pub(super) fn mask(self) -> Ready {
++    pub(crate) fn mask(self) -> Ready {
+         match self {
+             Interest::READABLE => Ready::READABLE | Ready::READ_CLOSED,
+             Interest::WRITABLE => Ready::WRITABLE | Ready::WRITE_CLOSED,
+diff --git a/tokio/src/io/mod.rs b/tokio/src/io/mod.rs
+index 3f6cc6b..e5c09a3 100644
+--- a/tokio/src/io/mod.rs
++++ b/tokio/src/io/mod.rs
+@@ -1,5 +1,3 @@
+-#![cfg_attr(loom, allow(dead_code, unreachable_pub))]
+-
+ //! Traits, helpers, and type definitions for asynchronous I/O functionality.
+ //!
+ //! This module is the asynchronous version of `std::io`. Primarily, it
+@@ -205,10 +203,12 @@ pub use self::read_buf::ReadBuf;
+ pub use std::io::{Error, ErrorKind, Result, SeekFrom};
+ 
+ cfg_io_driver_impl! {
+-    pub(crate) mod driver;
++    pub(crate) mod interest;
++    pub(crate) mod ready;
+ 
+     cfg_net! {
+-        pub use driver::{Interest, Ready};
++        pub use interest::Interest;
++        pub use ready::Ready;
+     }
+ 
+     #[cfg_attr(tokio_wasi, allow(unused_imports))]
+diff --git a/tokio/src/io/poll_evented.rs b/tokio/src/io/poll_evented.rs
+index f37d4da..b8c0be2 100644
+--- a/tokio/src/io/poll_evented.rs
++++ b/tokio/src/io/poll_evented.rs
+@@ -1,4 +1,5 @@
+-use crate::io::driver::{Handle, Interest, Registration};
++use crate::io::interest::Interest;
++use crate::runtime::io::{Handle, Registration};
+ 
+ use mio::event::Source;
+ use std::fmt;
+diff --git a/tokio/src/io/driver/ready.rs b/tokio/src/io/ready.rs
+similarity index 100%
+rename from tokio/src/io/driver/ready.rs
+rename to tokio/src/io/ready.rs
+diff --git a/tokio/src/lib.rs b/tokio/src/lib.rs
+index 30f5abe..e71fd34 100644
+--- a/tokio/src/lib.rs
++++ b/tokio/src/lib.rs
+@@ -16,6 +16,7 @@
+ ))]
+ #![cfg_attr(docsrs, feature(doc_cfg))]
+ #![cfg_attr(docsrs, allow(unused_attributes))]
++#![cfg_attr(loom, allow(dead_code, unreachable_pub))]
+ 
+ //! A runtime for writing reliable network applications without compromising speed.
+ //!
+@@ -458,6 +459,11 @@ mod blocking;
+ cfg_rt! {
+     pub mod runtime;
+ }
++cfg_not_rt! {
++    cfg_io_driver_impl! {
++        pub(crate) mod runtime;
++    }
++}
+ 
+ pub(crate) mod coop;
+ 
+diff --git a/tokio/src/process/unix/orphan.rs b/tokio/src/process/unix/orphan.rs
+index 0e52530..b32b5d7 100644
+--- a/tokio/src/process/unix/orphan.rs
++++ b/tokio/src/process/unix/orphan.rs
+@@ -120,7 +120,7 @@ where
+ #[cfg(all(test, not(loom)))]
+ pub(crate) mod test {
+     use super::*;
+-    use crate::io::driver::Driver as IoDriver;
++    use crate::runtime::io::Driver as IoDriver;
+     use crate::signal::unix::driver::{Driver as SignalDriver, Handle as SignalHandle};
+     use crate::sync::watch;
+     use std::cell::{Cell, RefCell};
+diff --git a/tokio/src/runtime/driver.rs b/tokio/src/runtime/driver.rs
+index 7e45977..916e1bf 100644
+--- a/tokio/src/runtime/driver.rs
++++ b/tokio/src/runtime/driver.rs
+@@ -8,9 +8,9 @@ use std::time::Duration;
+ // ===== io driver =====
+ 
+ cfg_io_driver! {
+-    type IoDriver = crate::io::driver::Driver;
++    type IoDriver = crate::runtime::io::Driver;
+     type IoStack = crate::park::either::Either<ProcessDriver, ParkThread>;
+-    pub(crate) type IoHandle = Option<crate::io::driver::Handle>;
++    pub(crate) type IoHandle = Option<crate::runtime::io::Handle>;
+ 
+     fn create_io_stack(enabled: bool) -> io::Result<(IoStack, IoHandle, SignalHandle)> {
+         use crate::park::either::Either;
+@@ -19,7 +19,7 @@ cfg_io_driver! {
+         assert!(!enabled);
+ 
+         let ret = if enabled {
+-            let io_driver = crate::io::driver::Driver::new()?;
++            let io_driver = crate::runtime::io::Driver::new()?;
+             let io_handle = io_driver.handle();
+ 
+             let (signal_driver, signal_handle) = create_signal_driver(io_driver)?;
+diff --git a/tokio/src/io/driver/metrics.rs b/tokio/src/runtime/io/metrics.rs
+similarity index 100%
+rename from tokio/src/io/driver/metrics.rs
+rename to tokio/src/runtime/io/metrics.rs
+diff --git a/tokio/src/io/driver/mod.rs b/tokio/src/runtime/io/mod.rs
+similarity index 98%
+rename from tokio/src/io/driver/mod.rs
+rename to tokio/src/runtime/io/mod.rs
+index 9801a22..d447b87 100644
+--- a/tokio/src/io/driver/mod.rs
++++ b/tokio/src/runtime/io/mod.rs
+@@ -1,13 +1,5 @@
+ #![cfg_attr(not(feature = "rt"), allow(dead_code))]
+ 
+-mod interest;
+-#[allow(unreachable_pub)]
+-pub use interest::Interest;
+-
+-mod ready;
+-#[allow(unreachable_pub)]
+-pub use ready::Ready;
+-
+ mod registration;
+ pub(crate) use registration::Registration;
+ 
+@@ -16,6 +8,8 @@ use scheduled_io::ScheduledIo;
+ 
+ mod metrics;
+ 
++use crate::io::interest::Interest;
++use crate::io::ready::Ready;
+ use crate::park::{Park, Unpark};
+ use crate::util::slab::{self, Slab};
+ use crate::{loom::sync::RwLock, util::bit};
+@@ -268,7 +262,7 @@ cfg_rt! {
+         /// This function panics if there is no current reactor set and `rt` feature
+         /// flag is not enabled.
+         #[track_caller]
+-        pub(super) fn current() -> Self {
++        pub(crate) fn current() -> Self {
+             crate::runtime::context::io_handle().expect("A Tokio 1.x context was found, but IO is disabled. Call `enable_io` on the runtime builder to enable IO.")
+         }
+     }
+@@ -283,7 +277,7 @@ cfg_not_rt! {
+         /// This function panics if there is no current reactor set, or if the `rt`
+         /// feature flag is not enabled.
+         #[track_caller]
+-        pub(super) fn current() -> Self {
++        pub(crate) fn current() -> Self {
+             panic!("{}", crate::util::error::CONTEXT_MISSING_ERROR)
+         }
+     }
+diff --git a/tokio/src/io/driver/platform.rs b/tokio/src/runtime/io/platform.rs
+similarity index 100%
+rename from tokio/src/io/driver/platform.rs
+rename to tokio/src/runtime/io/platform.rs
+diff --git a/tokio/src/io/driver/registration.rs b/tokio/src/runtime/io/registration.rs
+similarity index 98%
+rename from tokio/src/io/driver/registration.rs
+rename to tokio/src/runtime/io/registration.rs
+index b765976..a82eaee 100644
+--- a/tokio/src/io/driver/registration.rs
++++ b/tokio/src/runtime/io/registration.rs
+@@ -1,6 +1,7 @@
+ #![cfg_attr(not(feature = "net"), allow(dead_code))]
+ 
+-use crate::io::driver::{Direction, Handle, Interest, ReadyEvent, ScheduledIo};
++use crate::io::interest::Interest;
++use crate::runtime::io::{Direction, Handle, ReadyEvent, ScheduledIo};
+ use crate::util::slab;
+ 
+ use mio::event::Source;
+diff --git a/tokio/src/io/driver/scheduled_io.rs b/tokio/src/runtime/io/scheduled_io.rs
+similarity index 99%
+rename from tokio/src/io/driver/scheduled_io.rs
+rename to tokio/src/runtime/io/scheduled_io.rs
+index 229fe7b..af42ba8 100644
+--- a/tokio/src/io/driver/scheduled_io.rs
++++ b/tokio/src/runtime/io/scheduled_io.rs
+@@ -1,4 +1,6 @@
+-use super::{Interest, Ready, ReadyEvent, Tick};
++use super::{ReadyEvent, Tick};
++use crate::io::interest::Interest;
++use crate::io::ready::Ready;
+ use crate::loom::sync::atomic::AtomicUsize;
+ use crate::loom::sync::Mutex;
+ use crate::util::bit;
+diff --git a/tokio/src/runtime/mod.rs b/tokio/src/runtime/mod.rs
+index 7fb907f..24e2013 100644
+--- a/tokio/src/runtime/mod.rs
++++ b/tokio/src/runtime/mod.rs
+@@ -178,27 +178,15 @@
+ #[macro_use]
+ mod tests;
+ 
+-pub(crate) mod enter;
+-
+-pub(crate) mod task;
+-
+-cfg_metrics! {
+-    mod metrics;
+-    pub use metrics::RuntimeMetrics;
+-
+-    pub(crate) use metrics::{MetricsBatch, SchedulerMetrics, WorkerMetrics};
+-
+-    cfg_net! {
+-       pub(crate) use metrics::IoDriverMetrics;
+-    }
+-}
+-
+-cfg_not_metrics! {
+-    pub(crate) mod metrics;
+-    pub(crate) use metrics::{SchedulerMetrics, WorkerMetrics, MetricsBatch};
++cfg_io_driver_impl! {
++    pub(crate) mod io;
+ }
+ 
+ cfg_rt! {
++    pub(crate) mod enter;
++
++    pub(crate) mod task;
++
+     mod basic_scheduler;
+     use basic_scheduler::BasicScheduler;
+ 
+@@ -235,6 +223,22 @@ cfg_rt! {
+ 
+     mod spawner;
+     use self::spawner::Spawner;
++
++    cfg_metrics! {
++        mod metrics;
++        pub use metrics::RuntimeMetrics;
++
++        pub(crate) use metrics::{MetricsBatch, SchedulerMetrics, WorkerMetrics};
++
++        cfg_net! {
++        pub(crate) use metrics::IoDriverMetrics;
++        }
++    }
++
++    cfg_not_metrics! {
++        pub(crate) mod metrics;
++        pub(crate) use metrics::{SchedulerMetrics, WorkerMetrics, MetricsBatch};
++    }
+ }
+ 
+ cfg_rt_multi_thread! {
+diff --git a/tokio/src/runtime/tests/mod.rs b/tokio/src/runtime/tests/mod.rs
+index 08724d4..4c5d69a 100644
+--- a/tokio/src/runtime/tests/mod.rs
++++ b/tokio/src/runtime/tests/mod.rs
+@@ -1,3 +1,7 @@
++// Enable dead_code / unreachable_pub here. It has been disabled in lib.rs for
++// other code when running loom tests.
++#![cfg_attr(loom, warn(dead_code, unreachable_pub))]
++
+ use self::unowned_wrapper::unowned;
+ 
+ mod unowned_wrapper {
+diff --git a/tokio/src/signal/unix/driver.rs b/tokio/src/signal/unix/driver.rs
+index ba2edc3..54959e0 100644
+--- a/tokio/src/signal/unix/driver.rs
++++ b/tokio/src/signal/unix/driver.rs
+@@ -2,9 +2,10 @@
+ 
+ //! Signal driver
+ 
+-use crate::io::driver::{Driver as IoDriver, Interest};
++use crate::io::interest::Interest;
+ use crate::io::PollEvented;
+ use crate::park::Park;
++use crate::runtime::io::Driver as IoDriver;
+ use crate::signal::registry::globals;
+ 
+ use mio::net::UnixStream;

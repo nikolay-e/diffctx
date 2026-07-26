@@ -1,0 +1,81 @@
+repo: nextcloud
+base_commit: 7d64c63acf9cf5ef18dd36ccb1883a3540bf86c7
+commit: f033ef7c18f87284c15a55321ec727b41836132c
+patch_stored: true
+gold:
+  - path: lib/private/Template/TemplateManager.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: its own internal helpers (printGuestPage, error/exception pages) switch from 'new Template(...)' to '$this->getTemplate(...)', the concrete class everything now routes through
+  - path: lib/public/AppFramework/Http/TemplateResponse.php
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: render() replaces 'new \OCP\Template(...)' with 'Server::get(ITemplateManager::class)->getTemplate(...)', the most central call site in the whole framework
+  - path: lib/base.php
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: bootstrap-level untrustedDomain guest page switches to Server::get(ITemplateManager::class)->getTemplate(), same migration at the earliest point in the request lifecycle
+  - path: lib/public/Authentication/TwoFactorAuth/IProvider.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: getTemplate(IUser $user) return type widens from the concrete OCP\Template class to the OCP\Template\ITemplate interface
+  - path: apps/twofactor_backupcodes/lib/Provider/BackupCodesProvider.php
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: representative IProvider implementer — gains an injected ITemplateManager and its getTemplate() now delegates to it instead of 'new Template(...)'
+  - path: apps/user_ldap/lib/Settings/Admin.php
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: representative second app — same ITemplateManager injection replacing two 'new Template(...)' calls for wizard/setting controls
+  - path: lib/public/Template/ITemplateManager.php
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: pre-existing OCP interface (getTemplate/printGuestPage/printErrorPage/printExceptionErrorPage) that this commit adopts as the sole entry point, replacing direct 'new \OCP\Template()' construction everywhere
+  - path: lib/public/Template/ITemplate.php
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: pre-existing interface (fetchPage/printPage/assign) that is the new return type of getTemplate() and of every migrated IProvider::getTemplate() implementation
+  - path: apps/twofactor_backupcodes/tests/Unit/Provider/BackupCodesProviderTest.php
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: updates BackupCodesProvider's test construction to supply the new ITemplateManager dependency
+  - path: apps/user_ldap/tests/Settings/AdminTest.php
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: updates Admin settings test construction to supply the new ITemplateManager dependency
+forbidden:
+  - path: lib/public/Authentication/TwoFactorAuth/ILoginSetupProvider.php
+    reason: same Template -> ITemplate docblock/type migration pattern as IProvider.php, redundant to include both
+  - path: lib/public/Authentication/TwoFactorAuth/IPersonalProviderSettings.php
+    reason: same migration pattern, redundant with IProvider.php
+  - path: tests/Core/Controller/TwoFactorChallengeControllerTest.php
+    reason: redundant test coverage of the same underlying getTemplate()/ITemplate mechanism already covered by the two chosen test files
+nontrivial_gold_count: 2
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 12
+  description: migrate all OCP\Template uses to ITemplateManager — OCP change rippling into 2 apps + core
+    + base.php
+notes: >
+  Migrates every direct 'new \OCP\Template(...)' construction (deprecated concrete class)
+  to the pre-existing OCP\Template\ITemplateManager::getTemplate() factory, returning
+  the OCP\Template\ITemplate interface instead. Touches the framework's own
+  TemplateResponse/base.php/TemplateManager plus two representative app-level
+  IProvider/IDelegatedSettings implementers gaining constructor-injected
+  ITemplateManager. ITemplateManager/ITemplate themselves are pre-existing and not
+  touched by this diff, but are essential nontrivial context since they define the
+  target API surface every call site now migrates to. Type-based constructor DI
+  throughout, no string indirection.

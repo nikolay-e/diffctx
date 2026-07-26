@@ -1,0 +1,1509 @@
+From e7ce4ff0bfdc469a40c3bd66edadaaf6c62e2ec3 Mon Sep 17 00:00:00 2001
+From: Alex Hunt <huntie@meta.com>
+Date: Mon, 8 Sep 2025 13:35:23 -0700
+Subject: [PATCH] Move NetworkReporter out of jsinspector-modern (#53484)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Summary:
+Pull Request resolved: https://github.com/facebook/react-native/pull/53484
+
+Refactor to better organise network event reporting features.
+
+- Introduce new `ReactCommon/react/networking` package, containing `NetworkReporter` class (outer-most interface with each platform).
+    - Move `ReactCommon/performance/timeline` dependency to this level, removing jsinspector→performance dependency.
+- Simplifies the remaining `NetworkHandler` in `jsinspector-modern/network` — which now is only focused on CDP network reporting.
+
+Changelog: [Internal]
+
+Reviewed By: cortinico
+
+Differential Revision: D81129562
+
+fbshipit-source-id: 6c36045e872b0fd9510d0fa3e98acb0969e74d72
+---
+ .../Network/RCTInspectorNetworkReporter.mm    |   4 +-
+ packages/react-native/Package.swift           |  14 +
+ .../React/React-RCTFabric.podspec             |   2 +-
+ .../ReactAndroid/src/main/jni/CMakeLists.txt  |   3 +
+ .../main/jni/react/devsupport/CMakeLists.txt  |   2 +-
+ .../devsupport/JInspectorNetworkReporter.cpp  |   2 +-
+ .../jsinspector-modern/NetworkIOAgent.cpp     |  16 +-
+ .../jsinspector-modern/network/CMakeLists.txt |   4 +-
+ .../jsinspector-modern/network/CdpNetwork.cpp |  23 +-
+ .../jsinspector-modern/network/CdpNetwork.h   |  14 +-
+ .../jsinspector-modern/network/HttpUtils.cpp  |   3 +-
+ .../jsinspector-modern/network/HttpUtils.h    |   6 +-
+ .../network/NetworkHandler.cpp                | 209 ++++++++++++
+ .../network/NetworkHandler.h                  | 147 ++++++++
+ .../network/NetworkReporter.cpp               | 316 ------------------
+ .../network/React-jsinspectornetwork.podspec  |   3 -
+ .../react/networking/CMakeLists.txt           |  21 ++
+ .../react/networking/NetworkReporter.cpp      | 192 +++++++++++
+ .../networking}/NetworkReporter.h             |  65 +---
+ .../networking}/NetworkTypes.h                |   4 +-
+ .../react/networking/React-networking.podspec |  51 +++
+ .../react-native/scripts/react_native_pods.rb |   1 +
+ 22 files changed, 674 insertions(+), 428 deletions(-)
+ create mode 100644 packages/react-native/ReactCommon/jsinspector-modern/network/NetworkHandler.cpp
+ create mode 100644 packages/react-native/ReactCommon/jsinspector-modern/network/NetworkHandler.h
+ delete mode 100644 packages/react-native/ReactCommon/jsinspector-modern/network/NetworkReporter.cpp
+ create mode 100644 packages/react-native/ReactCommon/react/networking/CMakeLists.txt
+ create mode 100644 packages/react-native/ReactCommon/react/networking/NetworkReporter.cpp
+ rename packages/react-native/ReactCommon/{jsinspector-modern/network => react/networking}/NetworkReporter.h (70%)
+ rename packages/react-native/ReactCommon/{jsinspector-modern/network => react/networking}/NetworkTypes.h (88%)
+ create mode 100644 packages/react-native/ReactCommon/react/networking/React-networking.podspec
+
+diff --git a/packages/react-native/Libraries/Network/RCTInspectorNetworkReporter.mm b/packages/react-native/Libraries/Network/RCTInspectorNetworkReporter.mm
+index 74d8155832c..96a73d19aa0 100644
+--- a/packages/react-native/Libraries/Network/RCTInspectorNetworkReporter.mm
++++ b/packages/react-native/Libraries/Network/RCTInspectorNetworkReporter.mm
+@@ -10,9 +10,9 @@
+ #import "RCTNetworkConversions.h"
+ 
+ #import <React/RCTLog.h>
+-#import <jsinspector-modern/network/NetworkReporter.h>
++#import <react/networking/NetworkReporter.h>
+ 
+-using namespace facebook::react::jsinspector_modern;
++using namespace facebook::react;
+ 
+ #ifdef REACT_NATIVE_DEBUGGER_ENABLED
+ namespace {
+diff --git a/packages/react-native/Package.swift b/packages/react-native/Package.swift
+index a756decbf4b..4617284315d 100644
+--- a/packages/react-native/Package.swift
++++ b/packages/react-native/Package.swift
+@@ -211,6 +211,18 @@ let reactHermes = RNTarget(
+   ]
+ )
+ 
++/// React-networking.podspec
++let reactNetworking = RNTarget(
++  name: .reactNetworking,
++  path: "ReactCommon/react/networking",
++  excludedPaths: ["tests"],
++  dependencies: [.reactNativeDependencies, .reactJsInspectorNetwork, .reactPerformanceTimeline],
++  defines: [
++    CXXSetting.define("REACT_NATIVE_DEBUGGER_ENABLED", to: "1", .when(configuration: BuildConfiguration.debug)),
++    CXXSetting.define("REACT_NATIVE_DEBUGGER_ENABLED_DEVONLY", to: "1", .when(configuration: BuildConfiguration.debug)),
++  ]
++)
++
+ /// React-performancecdpmetrics.podspec
+ let reactPerformanceCdpMetrics = RNTarget(
+   name: .reactPerformanceCdpMetrics,
+@@ -566,6 +578,7 @@ let targets = [
+   reactNativeDependencies,
+   hermesPrebuilt,
+   reactJsiTooling,
++  reactNetworking,
+   reactPerformanceCdpMetrics,
+   reactPerformanceTimeline,
+   reactRuntimeScheduler,
+@@ -737,6 +750,7 @@ extension String {
+   static let hermesPrebuilt = "hermes-prebuilt"
+ 
+   static let reactJsiTooling = "React-jsitooling"
++  static let reactNetworking = "React-networking"
+   static let reactPerformanceCdpMetrics = "React-performancecdpmetrics"
+   static let reactPerformanceTimeline = "React-performancetimeline"
+   static let reactRuntimeScheduler = "React-runtimescheduler"
+diff --git a/packages/react-native/React/React-RCTFabric.podspec b/packages/react-native/React/React-RCTFabric.podspec
+index 83000572e5b..385b3480d61 100644
+--- a/packages/react-native/React/React-RCTFabric.podspec
++++ b/packages/react-native/React/React-RCTFabric.podspec
+@@ -91,9 +91,9 @@ Pod::Spec.new do |s|
+   add_dependency(s, "React-RCTAnimation", :framework_name => 'RCTAnimation')
+   add_dependency(s, "React-jsinspector", :framework_name => 'jsinspector_modern')
+   add_dependency(s, "React-jsinspectorcdp", :framework_name => 'jsinspector_moderncdp')
+-  add_dependency(s, "React-jsinspectornetwork", :framework_name => 'jsinspector_modernnetwork')
+   add_dependency(s, "React-jsinspectortracing", :framework_name => 'jsinspector_moderntracing')
+   add_dependency(s, "React-performancecdpmetrics", :framework_name => 'React_performancecdpmetrics')
++  add_dependency(s, "React-networking", :framework_name => 'React_networking')
+   add_dependency(s, "React-renderercss")
+   add_dependency(s, "React-RCTFBReactNativeSpec")
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt b/packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt
+index e28541f17c6..dec36bef5f2 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt
++++ b/packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt
+@@ -124,6 +124,7 @@ add_react_common_subdir(react/nativemodule/dom)
+ add_react_common_subdir(react/nativemodule/featureflags)
+ add_react_common_subdir(react/nativemodule/microtasks)
+ add_react_common_subdir(react/nativemodule/idlecallbacks)
++add_react_common_subdir(react/networking)
+ add_react_common_subdir(jserrorhandler)
+ add_react_common_subdir(react/runtime)
+ add_react_common_subdir(react/runtime/hermes)
+@@ -190,6 +191,7 @@ add_library(reactnative
+           $<TARGET_OBJECTS:react_nativemodule_featureflags>
+           $<TARGET_OBJECTS:react_nativemodule_idlecallbacks>
+           $<TARGET_OBJECTS:react_nativemodule_microtasks>
++          $<TARGET_OBJECTS:react_networking>
+           $<TARGET_OBJECTS:react_newarchdefaults>
+           $<TARGET_OBJECTS:react_performance_cdpmetrics>
+           $<TARGET_OBJECTS:react_performance_timeline>
+@@ -279,6 +281,7 @@ target_include_directories(reactnative
+         $<TARGET_PROPERTY:react_nativemodule_featureflags,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_nativemodule_idlecallbacks,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_nativemodule_microtasks,INTERFACE_INCLUDE_DIRECTORIES>
++        $<TARGET_PROPERTY:react_networking,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_newarchdefaults,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_performance_cdpmetrics,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_performance_timeline,INTERFACE_INCLUDE_DIRECTORIES>
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/devsupport/CMakeLists.txt b/packages/react-native/ReactAndroid/src/main/jni/react/devsupport/CMakeLists.txt
+index cddaf86af7d..3905a4af4ad 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/devsupport/CMakeLists.txt
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/devsupport/CMakeLists.txt
+@@ -20,6 +20,6 @@ target_include_directories(react_devsupportjni PUBLIC .)
+ target_link_libraries(react_devsupportjni
+         fbjni
+         jsinspector
+-        jsinspector_network)
++        react_networking)
+ 
+ target_compile_reactnative_options(react_devsupportjni PRIVATE)
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/devsupport/JInspectorNetworkReporter.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/devsupport/JInspectorNetworkReporter.cpp
+index 34eda93de81..f8cd1479cb3 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/devsupport/JInspectorNetworkReporter.cpp
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/devsupport/JInspectorNetworkReporter.cpp
+@@ -7,7 +7,7 @@
+ 
+ #include "JInspectorNetworkReporter.h"
+ 
+-#include <jsinspector-modern/network/NetworkReporter.h>
++#include <react/networking/NetworkReporter.h>
+ 
+ #include <cstddef>
+ #include <string>
+diff --git a/packages/react-native/ReactCommon/jsinspector-modern/NetworkIOAgent.cpp b/packages/react-native/ReactCommon/jsinspector-modern/NetworkIOAgent.cpp
+index 722578f5514..eafa48563cf 100644
+--- a/packages/react-native/ReactCommon/jsinspector-modern/NetworkIOAgent.cpp
++++ b/packages/react-native/ReactCommon/jsinspector-modern/NetworkIOAgent.cpp
+@@ -11,7 +11,7 @@
+ #include "Base64.h"
+ #include "Utf8.h"
+ 
+-#include <jsinspector-modern/network/NetworkReporter.h>
++#include <jsinspector-modern/network/NetworkHandler.h>
+ 
+ #include <sstream>
+ #include <tuple>
+@@ -272,19 +272,19 @@ bool NetworkIOAgent::handleRequest(
+   }
+ 
+   if (InspectorFlags::getInstance().getNetworkInspectionEnabled()) {
+-    auto& networkReporter = NetworkReporter::getInstance();
++    auto& networkHandler = NetworkHandler::getInstance();
+ 
+     // @cdp Network.enable support is experimental.
+     if (req.method == "Network.enable") {
+-      networkReporter.setFrontendChannel(frontendChannel_);
+-      networkReporter.enableDebugging();
++      networkHandler.setFrontendChannel(frontendChannel_);
++      networkHandler.enable();
+       frontendChannel_(cdp::jsonResult(req.id));
+       return true;
+     }
+ 
+     // @cdp Network.disable support is experimental.
+     if (req.method == "Network.disable") {
+-      networkReporter.disableDebugging();
++      networkHandler.disable();
+       frontendChannel_(cdp::jsonResult(req.id));
+       return true;
+     }
+@@ -497,9 +497,9 @@ void NetworkIOAgent::handleGetResponseBody(const cdp::PreparsedRequest& req) {
+     return;
+   }
+ 
+-  auto& networkReporter = NetworkReporter::getInstance();
++  auto& networkHandler = NetworkHandler::getInstance();
+ 
+-  if (!networkReporter.isDebuggingEnabled()) {
++  if (!networkHandler.isEnabled()) {
+     frontendChannel_(cdp::jsonError(
+         requestId,
+         cdp::ErrorCode::InvalidRequest,
+@@ -508,7 +508,7 @@ void NetworkIOAgent::handleGetResponseBody(const cdp::PreparsedRequest& req) {
+   }
+ 
+   auto storedResponse =
+-      networkReporter.getResponseBody(req.params.at("requestId").asString());
++      networkHandler.getResponseBody(req.params.at("requestId").asString());
+ 
+   if (!storedResponse) {
+     frontendChannel_(cdp::jsonError(
+diff --git a/packages/react-native/ReactCommon/jsinspector-modern/network/CMakeLists.txt b/packages/react-native/ReactCommon/jsinspector-modern/network/CMakeLists.txt
+index 9c9aef21efa..c5d2af857bf 100644
+--- a/packages/react-native/ReactCommon/jsinspector-modern/network/CMakeLists.txt
++++ b/packages/react-native/ReactCommon/jsinspector-modern/network/CMakeLists.txt
+@@ -24,6 +24,4 @@ target_include_directories(jsinspector_network PUBLIC ${REACT_COMMON_DIR})
+ target_link_libraries(jsinspector_network
+         folly_runtime
+         glog
+-        jsinspector_cdp
+-        react_performance_timeline
+-        react_timing)
++        jsinspector_cdp)
+diff --git a/packages/react-native/ReactCommon/jsinspector-modern/network/CdpNetwork.cpp b/packages/react-native/ReactCommon/jsinspector-modern/network/CdpNetwork.cpp
+index 3ca9d5c3f69..19ed4380eeb 100644
+--- a/packages/react-native/ReactCommon/jsinspector-modern/network/CdpNetwork.cpp
++++ b/packages/react-native/ReactCommon/jsinspector-modern/network/CdpNetwork.cpp
+@@ -27,15 +27,6 @@ folly::dynamic headersToDynamic(const std::optional<Headers>& headers) {
+ 
+ } // namespace
+ 
+-/* static */ Request Request::fromInputParams(const RequestInfo& requestInfo) {
+-  return {
+-      .url = requestInfo.url,
+-      .method = requestInfo.httpMethod,
+-      .headers = requestInfo.headers,
+-      .postData = requestInfo.httpBody,
+-  };
+-}
+-
+ folly::dynamic Request::toDynamic() const {
+   folly::dynamic result = folly::dynamic::object;
+ 
+@@ -48,16 +39,16 @@ folly::dynamic Request::toDynamic() const {
+ }
+ 
+ /* static */ Response Response::fromInputParams(
+-    const ResponseInfo& responseInfo,
++    const std::string& url,
++    uint16_t status,
++    const std::optional<Headers>& headers,
+     int encodedDataLength) {
+-  auto headers = responseInfo.headers.value_or(Headers());
+-
+   return {
+-      .url = responseInfo.url,
+-      .status = responseInfo.statusCode,
+-      .statusText = httpReasonPhrase(responseInfo.statusCode),
++      .url = url,
++      .status = status,
++      .statusText = httpReasonPhrase(status),
+       .headers = headers,
+-      .mimeType = mimeTypeFromHeaders(headers),
++      .mimeType = mimeTypeFromHeaders(headers.value_or(Headers())),
+       .encodedDataLength = encodedDataLength,
+   };
+ }
+diff --git a/packages/react-native/ReactCommon/jsinspector-modern/network/CdpNetwork.h b/packages/react-native/ReactCommon/jsinspector-modern/network/CdpNetwork.h
+index fa49cb9f18b..b22c2979912 100644
+--- a/packages/react-native/ReactCommon/jsinspector-modern/network/CdpNetwork.h
++++ b/packages/react-native/ReactCommon/jsinspector-modern/network/CdpNetwork.h
+@@ -7,8 +7,6 @@
+ 
+ #pragma once
+ 
+-#include "NetworkTypes.h"
+-
+ #include <folly/dynamic.h>
+ 
+ #include <string>
+@@ -18,6 +16,8 @@
+ 
+ namespace facebook::react::jsinspector_modern::cdp::network {
+ 
++using Headers = std::map<std::string, std::string>;
++
+ /**
+  * https://chromedevtools.github.io/devtools-protocol/tot/Network/#type-Request
+  */
+@@ -27,12 +27,6 @@ struct Request {
+   std::optional<Headers> headers;
+   std::optional<std::string> postData;
+ 
+-  /**
+-   * Convenience function to construct a `Request` from the generic
+-   * `RequestInfo` input object.
+-   */
+-  static Request fromInputParams(const RequestInfo& requestInfo);
+-
+   folly::dynamic toDynamic() const;
+ };
+ 
+@@ -52,7 +46,9 @@ struct Response {
+    * `ResponseInfo` input object.
+    */
+   static Response fromInputParams(
+-      const ResponseInfo& responseInfo,
++      const std::string& url,
++      uint16_t status,
++      const std::optional<Headers>& headers,
+       int encodedDataLength);
+ 
+   folly::dynamic toDynamic() const;
+diff --git a/packages/react-native/ReactCommon/jsinspector-modern/network/HttpUtils.cpp b/packages/react-native/ReactCommon/jsinspector-modern/network/HttpUtils.cpp
+index 6dfb205d5ba..98fd13a051f 100644
+--- a/packages/react-native/ReactCommon/jsinspector-modern/network/HttpUtils.cpp
++++ b/packages/react-native/ReactCommon/jsinspector-modern/network/HttpUtils.cpp
+@@ -146,7 +146,8 @@ std::string httpReasonPhrase(uint16_t status) {
+   return "<Unknown>";
+ }
+ 
+-std::string mimeTypeFromHeaders(const Headers& headers) {
++std::string mimeTypeFromHeaders(
++    const std::map<std::string, std::string>& headers) {
+   std::string mimeType = "application/octet-stream";
+ 
+   for (const auto& [name, value] : headers) {
+diff --git a/packages/react-native/ReactCommon/jsinspector-modern/network/HttpUtils.h b/packages/react-native/ReactCommon/jsinspector-modern/network/HttpUtils.h
+index 9f549c2a286..5fcd275d12c 100644
+--- a/packages/react-native/ReactCommon/jsinspector-modern/network/HttpUtils.h
++++ b/packages/react-native/ReactCommon/jsinspector-modern/network/HttpUtils.h
+@@ -7,8 +7,7 @@
+ 
+ #pragma once
+ 
+-#include "NetworkTypes.h"
+-
++#include <map>
+ #include <string>
+ 
+ namespace facebook::react::jsinspector_modern {
+@@ -22,6 +21,7 @@ std::string httpReasonPhrase(uint16_t status);
+  * Get the MIME type for a response based on the 'Content-Type' header. If
+  * the header is not present, returns 'application/octet-stream'.
+  */
+-std::string mimeTypeFromHeaders(const Headers& headers);
++std::string mimeTypeFromHeaders(
++    const std::map<std::string, std::string>& headers);
+ 
+ } // namespace facebook::react::jsinspector_modern
+diff --git a/packages/react-native/ReactCommon/jsinspector-modern/network/NetworkHandler.cpp b/packages/react-native/ReactCommon/jsinspector-modern/network/NetworkHandler.cpp
+new file mode 100644
+index 00000000000..80ed5bb23b1
+--- /dev/null
++++ b/packages/react-native/ReactCommon/jsinspector-modern/network/NetworkHandler.cpp
+@@ -0,0 +1,209 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++#include "NetworkHandler.h"
++
++#include <jsinspector-modern/cdp/CdpJson.h>
++
++#include <glog/logging.h>
++#include <chrono>
++
++namespace facebook::react::jsinspector_modern {
++
++namespace {
++
++/**
++ * Get the current Unix timestamp in seconds (µs precision, CDP format).
++ */
++double getCurrentUnixTimestampSeconds() {
++  auto now = std::chrono::system_clock::now().time_since_epoch();
++  auto seconds = std::chrono::duration_cast<std::chrono::seconds>(now).count();
++  auto micros =
++      std::chrono::duration_cast<std::chrono::microseconds>(now).count() %
++      1000000;
++
++  return static_cast<double>(seconds) +
++      (static_cast<double>(micros) / 1000000.0);
++}
++
++} // namespace
++
++NetworkHandler& NetworkHandler::getInstance() {
++  static NetworkHandler instance;
++  return instance;
++}
++
++void NetworkHandler::setFrontendChannel(FrontendChannel frontendChannel) {
++  frontendChannel_ = std::move(frontendChannel);
++}
++
++bool NetworkHandler::enable() {
++  if (enabled_.load(std::memory_order_acquire)) {
++    return false;
++  }
++
++  enabled_.store(true, std::memory_order_release);
++  return true;
++}
++
++bool NetworkHandler::disable() {
++  if (!enabled_.load(std::memory_order_acquire)) {
++    return false;
++  }
++
++  enabled_.store(false, std::memory_order_release);
++  requestBodyBuffer_.clear();
++  return true;
++}
++
++void NetworkHandler::onRequestWillBeSent(
++    const std::string& requestId,
++    const cdp::network::Request& request,
++    const std::optional<cdp::network::Response>& redirectResponse) {
++  if (!isEnabledNoSync()) {
++    return;
++  }
++
++  double timestamp = getCurrentUnixTimestampSeconds();
++  auto params = cdp::network::RequestWillBeSentParams{
++      .requestId = requestId,
++      .loaderId = "",
++      .documentURL = "mobile",
++      .request = request,
++      // NOTE: Both timestamp and wallTime use the same unit, however wallTime
++      // is relative to an "arbitrary epoch". In our implementation, use the
++      // Unix epoch for both.
++      .timestamp = timestamp,
++      .wallTime = timestamp,
++      .initiator = folly::dynamic::object("type", "script"),
++      .redirectHasExtraInfo = redirectResponse.has_value(),
++      .redirectResponse = redirectResponse,
++  };
++
++  frontendChannel_(
++      cdp::jsonNotification("Network.requestWillBeSent", params.toDynamic()));
++}
++
++void NetworkHandler::onRequestWillBeSentExtraInfo(
++    const std::string& requestId,
++    const Headers& headers) {
++  if (!isEnabledNoSync()) {
++    return;
++  }
++
++  auto params = cdp::network::RequestWillBeSentExtraInfoParams{
++      .requestId = requestId,
++      .headers = headers,
++      .connectTiming = {.requestTime = getCurrentUnixTimestampSeconds()},
++  };
++
++  frontendChannel_(cdp::jsonNotification(
++      "Network.requestWillBeSentExtraInfo", params.toDynamic()));
++}
++
++void NetworkHandler::onResponseReceived(
++    const std::string& requestId,
++    const cdp::network::Response& response) {
++  if (!isEnabledNoSync()) {
++    return;
++  }
++
++  auto resourceType = cdp::network::resourceTypeFromMimeType(response.mimeType);
++  resourceTypeMap_.emplace(requestId, resourceType);
++
++  auto params = cdp::network::ResponseReceivedParams{
++      .requestId = requestId,
++      .loaderId = "",
++      .timestamp = getCurrentUnixTimestampSeconds(),
++      .type = resourceType,
++      .response = response,
++      .hasExtraInfo = false,
++  };
++
++  frontendChannel_(
++      cdp::jsonNotification("Network.responseReceived", params.toDynamic()));
++}
++
++void NetworkHandler::onDataReceived(
++    const std::string& requestId,
++    int dataLength,
++    int encodedDataLength) {
++  if (!isEnabledNoSync()) {
++    return;
++  }
++
++  auto params = cdp::network::DataReceivedParams{
++      .requestId = requestId,
++      .timestamp = getCurrentUnixTimestampSeconds(),
++      .dataLength = dataLength,
++      .encodedDataLength = encodedDataLength,
++  };
++
++  frontendChannel_(
++      cdp::jsonNotification("Network.dataReceived", params.toDynamic()));
++}
++
++void NetworkHandler::onLoadingFinished(
++    const std::string& requestId,
++    int encodedDataLength) {
++  if (!isEnabledNoSync()) {
++    return;
++  }
++
++  auto params = cdp::network::LoadingFinishedParams{
++      .requestId = requestId,
++      .timestamp = getCurrentUnixTimestampSeconds(),
++      .encodedDataLength = encodedDataLength,
++  };
++
++  frontendChannel_(
++      cdp::jsonNotification("Network.loadingFinished", params.toDynamic()));
++}
++
++void NetworkHandler::onLoadingFailed(
++    const std::string& requestId,
++    bool cancelled) const {
++  if (!isEnabledNoSync()) {
++    return;
++  }
++
++  auto params = cdp::network::LoadingFailedParams{
++      .requestId = requestId,
++      .timestamp = getCurrentUnixTimestampSeconds(),
++      .type = resourceTypeMap_.find(requestId) != resourceTypeMap_.end()
++          ? resourceTypeMap_.at(requestId)
++          : "Other",
++      .errorText = cancelled ? "net::ERR_ABORTED" : "net::ERR_FAILED",
++      .canceled = cancelled,
++  };
++
++  frontendChannel_(
++      cdp::jsonNotification("Network.loadingFailed", params.toDynamic()));
++}
++
++void NetworkHandler::storeResponseBody(
++    const std::string& requestId,
++    std::string_view body,
++    bool base64Encoded) {
++  std::lock_guard<std::mutex> lock(requestBodyMutex_);
++  requestBodyBuffer_.put(requestId, body, base64Encoded);
++}
++
++std::optional<std::tuple<std::string, bool>> NetworkHandler::getResponseBody(
++    const std::string& requestId) {
++  std::lock_guard<std::mutex> lock(requestBodyMutex_);
++  auto responseBody = requestBodyBuffer_.get(requestId);
++
++  if (responseBody == nullptr) {
++    return std::nullopt;
++  }
++
++  return std::make_optional<std::tuple<std::string, bool>>(
++      responseBody->data, responseBody->base64Encoded);
++}
++
++} // namespace facebook::react::jsinspector_modern
+diff --git a/packages/react-native/ReactCommon/jsinspector-modern/network/NetworkHandler.h b/packages/react-native/ReactCommon/jsinspector-modern/network/NetworkHandler.h
+new file mode 100644
+index 00000000000..cb38d1b7628
+--- /dev/null
++++ b/packages/react-native/ReactCommon/jsinspector-modern/network/NetworkHandler.h
+@@ -0,0 +1,147 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++#pragma once
++
++#include "BoundedRequestBuffer.h"
++#include "CdpNetwork.h"
++
++#include <folly/dynamic.h>
++
++#include <atomic>
++#include <mutex>
++#include <string>
++#include <tuple>
++
++namespace facebook::react::jsinspector_modern {
++
++/**
++ * A callback that can be used to send debugger messages (method responses and
++ * events) to the frontend. The message must be a JSON-encoded string.
++ * The callback may be called from any thread.
++ */
++using FrontendChannel = std::function<void(std::string_view messageJson)>;
++
++using Headers = std::map<std::string, std::string>;
++
++/**
++ * [Experimental] Handler for reporting network events via CDP.
++ */
++class NetworkHandler {
++ public:
++  static NetworkHandler& getInstance();
++
++  /**
++   * Set the channel used to send CDP events to the frontend. This should be
++   * supplied before calling `enable`.
++   */
++  void setFrontendChannel(FrontendChannel frontendChannel);
++
++  /**
++   * Enable network debugging. Returns `false` if already enabled.
++   *
++   * @cdp Network.enable
++   */
++  bool enable();
++
++  /**
++   * Disable network debugging. Returns `false` if not initially enabled.
++   *
++   * @cdp Network.disable
++   */
++  bool disable();
++
++  /**
++   * Returns whether network debugging is currently enabled.
++   */
++  inline bool isEnabled() const {
++    return enabled_.load(std::memory_order_acquire);
++  }
++
++  /**
++   * @cdp Network.requestWillBeSent
++   */
++  void onRequestWillBeSent(
++      const std::string& requestId,
++      const cdp::network::Request& request,
++      const std::optional<cdp::network::Response>& redirectResponse);
++
++  /**
++   * @cdp Network.requestWillBeSentExtraInfo
++   */
++  void onRequestWillBeSentExtraInfo(
++      const std::string& requestId,
++      const Headers& headers);
++
++  /**
++   * @cdp Network.responseReceived
++   */
++  void onResponseReceived(
++      const std::string& requestId,
++      const cdp::network::Response& response);
++
++  /**
++   * @cdp Network.dataReceived
++   */
++  void onDataReceived(
++      const std::string& requestId,
++      int dataLength,
++      int encodedDataLength);
++
++  /**
++   * @cdp Network.loadingFinished
++   */
++  void onLoadingFinished(const std::string& requestId, int encodedDataLength);
++
++  /**
++   * @cdp Network.loadingFailed
++   */
++  void onLoadingFailed(const std::string& requestId, bool cancelled) const;
++
++  /**
++   * Store the fetched response body for a text or image network response.
++   *
++   * Reponse bodies are stored in a bounded buffer with a fixed maximum memory
++   * size, where oldest responses will be evicted if the buffer is exceeded.
++   *
++   * Should be called after checking \ref NetworkHandler::isEnabled.
++   */
++  void storeResponseBody(
++      const std::string& requestId,
++      std::string_view body,
++      bool base64Encoded);
++
++  /**
++   * Retrieve a stored response body for a given request ID.
++   *
++   * \returns An optional tuple of [responseBody, base64Encoded]. Returns
++   * nullopt if no entry is found in the buffer.
++   */
++  std::optional<std::tuple<std::string, bool>> getResponseBody(
++      const std::string& requestId);
++
++ private:
++  NetworkHandler() = default;
++  NetworkHandler(const NetworkHandler&) = delete;
++  NetworkHandler& operator=(const NetworkHandler&) = delete;
++  ~NetworkHandler() = default;
++
++  std::atomic<bool> enabled_{false};
++
++  inline bool isEnabledNoSync() const {
++    return enabled_.load(std::memory_order_relaxed);
++  }
++
++  FrontendChannel frontendChannel_;
++
++  std::map<std::string, std::string> resourceTypeMap_{};
++
++  BoundedRequestBuffer requestBodyBuffer_{};
++  std::mutex requestBodyMutex_;
++};
++
++} // namespace facebook::react::jsinspector_modern
+diff --git a/packages/react-native/ReactCommon/jsinspector-modern/network/NetworkReporter.cpp b/packages/react-native/ReactCommon/jsinspector-modern/network/NetworkReporter.cpp
+deleted file mode 100644
+index f911b7e9981..00000000000
+--- a/packages/react-native/ReactCommon/jsinspector-modern/network/NetworkReporter.cpp
++++ /dev/null
+@@ -1,316 +0,0 @@
+-/*
+- * Copyright (c) Meta Platforms, Inc. and affiliates.
+- *
+- * This source code is licensed under the MIT license found in the
+- * LICENSE file in the root directory of this source tree.
+- */
+-
+-#include "NetworkReporter.h"
+-
+-#ifdef REACT_NATIVE_DEBUGGER_ENABLED
+-#include "CdpNetwork.h"
+-#endif
+-
+-#ifdef REACT_NATIVE_DEBUGGER_ENABLED
+-#include <jsinspector-modern/cdp/CdpJson.h>
+-#endif
+-#include <react/featureflags/ReactNativeFeatureFlags.h>
+-#include <react/performance/timeline/PerformanceEntryReporter.h>
+-
+-#ifdef REACT_NATIVE_DEBUGGER_ENABLED
+-#include <chrono>
+-#endif
+-#include <glog/logging.h>
+-#include <stdexcept>
+-
+-namespace facebook::react::jsinspector_modern {
+-
+-#ifdef REACT_NATIVE_DEBUGGER_ENABLED
+-namespace {
+-
+-/**
+- * Get the current Unix timestamp in seconds (µs precision, CDP format).
+- */
+-double getCurrentUnixTimestampSeconds() {
+-  auto now = std::chrono::system_clock::now().time_since_epoch();
+-  auto seconds = std::chrono::duration_cast<std::chrono::seconds>(now).count();
+-  auto micros =
+-      std::chrono::duration_cast<std::chrono::microseconds>(now).count() %
+-      1000000;
+-
+-  return static_cast<double>(seconds) +
+-      (static_cast<double>(micros) / 1000000.0);
+-}
+-
+-} // namespace
+-#endif
+-
+-NetworkReporter& NetworkReporter::getInstance() {
+-  static NetworkReporter instance;
+-  return instance;
+-}
+-
+-void NetworkReporter::setFrontendChannel(FrontendChannel frontendChannel) {
+-  frontendChannel_ = std::move(frontendChannel);
+-}
+-
+-bool NetworkReporter::enableDebugging() {
+-  if (debuggingEnabled_.load(std::memory_order_acquire)) {
+-    return false;
+-  }
+-
+-  debuggingEnabled_.store(true, std::memory_order_release);
+-  return true;
+-}
+-
+-bool NetworkReporter::disableDebugging() {
+-  if (!debuggingEnabled_.load(std::memory_order_acquire)) {
+-    return false;
+-  }
+-
+-  debuggingEnabled_.store(false, std::memory_order_release);
+-  requestBodyBuffer_.clear();
+-  return true;
+-}
+-
+-void NetworkReporter::reportRequestStart(
+-    const std::string& requestId,
+-    const RequestInfo& requestInfo,
+-    int encodedDataLength,
+-    const std::optional<ResponseInfo>& redirectResponse) {
+-  if (ReactNativeFeatureFlags::enableResourceTimingAPI()) {
+-    auto now = HighResTimeStamp::now();
+-
+-    // All builds: Annotate PerformanceResourceTiming metadata
+-    {
+-      std::lock_guard<std::mutex> lock(perfTimingsMutex_);
+-      perfTimingsBuffer_.emplace(
+-          requestId,
+-          ResourceTimingData{
+-              .url = requestInfo.url,
+-              .fetchStart = now,
+-              .requestStart = now,
+-          });
+-    }
+-  }
+-
+-#ifdef REACT_NATIVE_DEBUGGER_ENABLED
+-  // Debug build: CDP event handling
+-  if (!isDebuggingEnabledNoSync()) {
+-    return;
+-  }
+-
+-  double timestamp = getCurrentUnixTimestampSeconds();
+-  auto request = cdp::network::Request::fromInputParams(requestInfo);
+-  auto params = cdp::network::RequestWillBeSentParams{
+-      .requestId = requestId,
+-      .loaderId = "",
+-      .documentURL = "mobile",
+-      .request = std::move(request),
+-      // NOTE: Both timestamp and wallTime use the same unit, however wallTime
+-      // is relative to an "arbitrary epoch". In our implementation, use the
+-      // Unix epoch for both.
+-      .timestamp = timestamp,
+-      .wallTime = timestamp,
+-      .initiator = folly::dynamic::object("type", "script"),
+-      .redirectHasExtraInfo = redirectResponse.has_value(),
+-  };
+-
+-  if (redirectResponse.has_value()) {
+-    params.redirectResponse = cdp::network::Response::fromInputParams(
+-        redirectResponse.value(), encodedDataLength);
+-  }
+-
+-  frontendChannel_(
+-      cdp::jsonNotification("Network.requestWillBeSent", params.toDynamic()));
+-#endif
+-}
+-
+-void NetworkReporter::reportConnectionTiming(
+-    const std::string& requestId,
+-    const std::optional<Headers>& headers) {
+-  if (ReactNativeFeatureFlags::enableResourceTimingAPI()) {
+-    auto now = HighResTimeStamp::now();
+-
+-    // All builds: Annotate PerformanceResourceTiming metadata
+-    {
+-      std::lock_guard<std::mutex> lock(perfTimingsMutex_);
+-      auto it = perfTimingsBuffer_.find(requestId);
+-      if (it != perfTimingsBuffer_.end()) {
+-        it->second.connectStart = now;
+-      }
+-    }
+-  }
+-
+-#ifdef REACT_NATIVE_DEBUGGER_ENABLED
+-  // Debug build: CDP event handling
+-  if (!isDebuggingEnabledNoSync()) {
+-    return;
+-  }
+-
+-  auto params = cdp::network::RequestWillBeSentExtraInfoParams{
+-      .requestId = requestId,
+-      .headers = headers.value_or(Headers{}),
+-      .connectTiming = {.requestTime = getCurrentUnixTimestampSeconds()},
+-  };
+-
+-  frontendChannel_(cdp::jsonNotification(
+-      "Network.requestWillBeSentExtraInfo", params.toDynamic()));
+-#endif
+-}
+-
+-void NetworkReporter::reportResponseStart(
+-    const std::string& requestId,
+-    const ResponseInfo& responseInfo,
+-    int encodedDataLength) {
+-  if (ReactNativeFeatureFlags::enableResourceTimingAPI()) {
+-    auto now = HighResTimeStamp::now();
+-
+-    // All builds: Annotate PerformanceResourceTiming metadata
+-    {
+-      std::lock_guard<std::mutex> lock(perfTimingsMutex_);
+-      auto it = perfTimingsBuffer_.find(requestId);
+-      if (it != perfTimingsBuffer_.end()) {
+-        it->second.connectEnd = now;
+-        it->second.responseStart = now;
+-        it->second.responseStatus = responseInfo.statusCode;
+-      }
+-    }
+-  }
+-
+-#ifdef REACT_NATIVE_DEBUGGER_ENABLED
+-  // Debug build: CDP event handling
+-  if (!isDebuggingEnabledNoSync()) {
+-    return;
+-  }
+-
+-  auto response =
+-      cdp::network::Response::fromInputParams(responseInfo, encodedDataLength);
+-  auto resourceType = cdp::network::resourceTypeFromMimeType(response.mimeType);
+-  resourceTypeMap_.emplace(requestId, resourceType);
+-
+-  auto params = cdp::network::ResponseReceivedParams{
+-      .requestId = requestId,
+-      .loaderId = "",
+-      .timestamp = getCurrentUnixTimestampSeconds(),
+-      .type = resourceType,
+-      .response = response,
+-      .hasExtraInfo = false,
+-  };
+-
+-  frontendChannel_(
+-      cdp::jsonNotification("Network.responseReceived", params.toDynamic()));
+-#endif
+-}
+-
+-void NetworkReporter::reportDataReceived(
+-    const std::string& requestId,
+-    int dataLength,
+-    const std::optional<int>& encodedDataLength) {
+-#ifdef REACT_NATIVE_DEBUGGER_ENABLED
+-  // Debug build: CDP event handling
+-  if (!isDebuggingEnabledNoSync()) {
+-    return;
+-  }
+-
+-  auto params = cdp::network::DataReceivedParams{
+-      .requestId = requestId,
+-      .timestamp = getCurrentUnixTimestampSeconds(),
+-      .dataLength = dataLength,
+-      .encodedDataLength = encodedDataLength.value_or(dataLength),
+-  };
+-
+-  frontendChannel_(
+-      cdp::jsonNotification("Network.dataReceived", params.toDynamic()));
+-#endif
+-}
+-
+-void NetworkReporter::reportResponseEnd(
+-    const std::string& requestId,
+-    int encodedDataLength) {
+-  if (ReactNativeFeatureFlags::enableResourceTimingAPI()) {
+-    auto now = HighResTimeStamp::now();
+-
+-    // All builds: Report PerformanceResourceTiming event
+-    {
+-      std::lock_guard<std::mutex> lock(perfTimingsMutex_);
+-      auto it = perfTimingsBuffer_.find(requestId);
+-      if (it != perfTimingsBuffer_.end()) {
+-        auto& eventData = it->second;
+-        PerformanceEntryReporter::getInstance()->reportResourceTiming(
+-            eventData.url,
+-            eventData.fetchStart,
+-            eventData.requestStart,
+-            eventData.connectStart.value_or(now),
+-            eventData.connectEnd.value_or(now),
+-            eventData.responseStart.value_or(now),
+-            now,
+-            eventData.responseStatus);
+-        perfTimingsBuffer_.erase(requestId);
+-      }
+-    }
+-  }
+-
+-#ifdef REACT_NATIVE_DEBUGGER_ENABLED
+-  // Debug build: CDP event handling
+-  if (!isDebuggingEnabledNoSync()) {
+-    return;
+-  }
+-
+-  auto params = cdp::network::LoadingFinishedParams{
+-      .requestId = requestId,
+-      .timestamp = getCurrentUnixTimestampSeconds(),
+-      .encodedDataLength = encodedDataLength,
+-  };
+-
+-  frontendChannel_(
+-      cdp::jsonNotification("Network.loadingFinished", params.toDynamic()));
+-#endif
+-}
+-
+-void NetworkReporter::reportRequestFailed(
+-    const std::string& requestId,
+-    bool cancelled) const {
+-#ifdef REACT_NATIVE_DEBUGGER_ENABLED
+-  // Debug build: CDP event handling
+-  if (!isDebuggingEnabledNoSync()) {
+-    return;
+-  }
+-
+-  auto params = cdp::network::LoadingFailedParams{
+-      .requestId = requestId,
+-      .timestamp = getCurrentUnixTimestampSeconds(),
+-      .type = resourceTypeMap_.find(requestId) != resourceTypeMap_.end()
+-          ? resourceTypeMap_.at(requestId)
+-          : "Other",
+-      .errorText = cancelled ? "net::ERR_ABORTED" : "net::ERR_FAILED",
+-      .canceled = cancelled,
+-  };
+-
+-  frontendChannel_(
+-      cdp::jsonNotification("Network.loadingFailed", params.toDynamic()));
+-#endif
+-}
+-
+-void NetworkReporter::storeResponseBody(
+-    const std::string& requestId,
+-    std::string_view body,
+-    bool base64Encoded) {
+-  std::lock_guard<std::mutex> lock(requestBodyMutex_);
+-  requestBodyBuffer_.put(requestId, body, base64Encoded);
+-}
+-
+-std::optional<std::tuple<std::string, bool>> NetworkReporter::getResponseBody(
+-    const std::string& requestId) {
+-  std::lock_guard<std::mutex> lock(requestBodyMutex_);
+-  auto responseBody = requestBodyBuffer_.get(requestId);
+-
+-  if (responseBody == nullptr) {
+-    return std::nullopt;
+-  }
+-
+-  return std::make_optional<std::tuple<std::string, bool>>(
+-      responseBody->data, responseBody->base64Encoded);
+-}
+-
+-} // namespace facebook::react::jsinspector_modern
+diff --git a/packages/react-native/ReactCommon/jsinspector-modern/network/React-jsinspectornetwork.podspec b/packages/react-native/ReactCommon/jsinspector-modern/network/React-jsinspectornetwork.podspec
+index d17a80a0b00..c3cc232eb71 100644
+--- a/packages/react-native/ReactCommon/jsinspector-modern/network/React-jsinspectornetwork.podspec
++++ b/packages/react-native/ReactCommon/jsinspector-modern/network/React-jsinspectornetwork.podspec
+@@ -44,9 +44,6 @@ Pod::Spec.new do |s|
+   resolve_use_frameworks(s, header_mappings_dir: "../..", module_name: module_name)
+ 
+   add_dependency(s, "React-jsinspectorcdp", :framework_name => 'jsinspector_moderncdp')
+-  add_dependency(s, "React-featureflags")
+-  s.dependency "React-performancetimeline"
+-  s.dependency "React-timing"
+ 
+   add_rn_third_party_dependencies(s)
+   add_rncore_dependency(s)
+diff --git a/packages/react-native/ReactCommon/react/networking/CMakeLists.txt b/packages/react-native/ReactCommon/react/networking/CMakeLists.txt
+new file mode 100644
+index 00000000000..eee155065bb
+--- /dev/null
++++ b/packages/react-native/ReactCommon/react/networking/CMakeLists.txt
+@@ -0,0 +1,21 @@
++# Copyright (c) Meta Platforms, Inc. and affiliates.
++#
++# This source code is licensed under the MIT license found in the
++# LICENSE file in the root directory of this source tree.
++
++cmake_minimum_required(VERSION 3.13)
++set(CMAKE_VERBOSE_MAKEFILE on)
++
++include(${REACT_COMMON_DIR}/cmake-utils/react-native-flags.cmake)
++
++file(GLOB react_networking_SRC CONFIGURE_DEPENDS *.cpp)
++add_library(react_networking OBJECT ${react_networking_SRC})
++
++target_compile_reactnative_options(react_networking PRIVATE)
++target_compile_options(react_networking PRIVATE -Wpedantic)
++
++target_include_directories(react_networking PUBLIC ${REACT_COMMON_DIR})
++target_link_libraries(react_networking
++        folly_runtime
++        react_performance_timeline
++        react_timing)
+diff --git a/packages/react-native/ReactCommon/react/networking/NetworkReporter.cpp b/packages/react-native/ReactCommon/react/networking/NetworkReporter.cpp
+new file mode 100644
+index 00000000000..7ea6572f5b0
+--- /dev/null
++++ b/packages/react-native/ReactCommon/react/networking/NetworkReporter.cpp
+@@ -0,0 +1,192 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++#include "NetworkReporter.h"
++
++#ifdef REACT_NATIVE_DEBUGGER_ENABLED
++#include "jsinspector-modern/network/NetworkHandler.h"
++#endif
++#include <react/featureflags/ReactNativeFeatureFlags.h>
++#include <react/performance/timeline/PerformanceEntryReporter.h>
++
++namespace facebook::react {
++
++NetworkReporter& NetworkReporter::getInstance() {
++  static NetworkReporter instance;
++  return instance;
++}
++
++bool NetworkReporter::isDebuggingEnabled() const {
++#ifdef REACT_NATIVE_DEBUGGER_ENABLED
++  return jsinspector_modern::NetworkHandler::getInstance().isEnabled();
++#else
++  return false;
++#endif
++}
++
++void NetworkReporter::reportRequestStart(
++    const std::string& requestId,
++    const RequestInfo& requestInfo,
++    int encodedDataLength,
++    const std::optional<ResponseInfo>& redirectResponse) {
++  if (ReactNativeFeatureFlags::enableResourceTimingAPI()) {
++    auto now = HighResTimeStamp::now();
++
++    // All builds: Annotate PerformanceResourceTiming metadata
++    {
++      std::lock_guard<std::mutex> lock(perfTimingsMutex_);
++      perfTimingsBuffer_.emplace(
++          requestId,
++          ResourceTimingData{
++              .url = requestInfo.url,
++              .fetchStart = now,
++              .requestStart = now,
++          });
++    }
++  }
++
++#ifdef REACT_NATIVE_DEBUGGER_ENABLED
++  // Debug build: CDP event handling
++  jsinspector_modern::NetworkHandler::getInstance().onRequestWillBeSent(
++      requestId,
++      {
++          .url = requestInfo.url,
++          .method = requestInfo.httpMethod,
++          .headers = requestInfo.headers,
++          .postData = requestInfo.httpBody,
++      },
++      redirectResponse.has_value()
++          ? std::optional<jsinspector_modern::cdp::network::Response>(
++                jsinspector_modern::cdp::network::Response::fromInputParams(
++                    redirectResponse->url,
++                    redirectResponse->statusCode,
++                    redirectResponse->headers,
++                    encodedDataLength))
++          : std::nullopt);
++#endif
++}
++
++void NetworkReporter::reportConnectionTiming(
++    const std::string& requestId,
++    const std::optional<Headers>& headers) {
++  if (ReactNativeFeatureFlags::enableResourceTimingAPI()) {
++    auto now = HighResTimeStamp::now();
++
++    // All builds: Annotate PerformanceResourceTiming metadata
++    {
++      std::lock_guard<std::mutex> lock(perfTimingsMutex_);
++      auto it = perfTimingsBuffer_.find(requestId);
++      if (it != perfTimingsBuffer_.end()) {
++        it->second.connectStart = now;
++      }
++    }
++  }
++
++#ifdef REACT_NATIVE_DEBUGGER_ENABLED
++  // Debug build: CDP event handling
++  jsinspector_modern::NetworkHandler::getInstance()
++      .onRequestWillBeSentExtraInfo(requestId, headers.value_or(Headers{}));
++#endif
++}
++
++void NetworkReporter::reportResponseStart(
++    const std::string& requestId,
++    const ResponseInfo& responseInfo,
++    int encodedDataLength) {
++  if (ReactNativeFeatureFlags::enableResourceTimingAPI()) {
++    auto now = HighResTimeStamp::now();
++
++    // All builds: Annotate PerformanceResourceTiming metadata
++    {
++      std::lock_guard<std::mutex> lock(perfTimingsMutex_);
++      auto it = perfTimingsBuffer_.find(requestId);
++      if (it != perfTimingsBuffer_.end()) {
++        it->second.connectEnd = now;
++        it->second.responseStart = now;
++        it->second.responseStatus = responseInfo.statusCode;
++      }
++    }
++  }
++
++#ifdef REACT_NATIVE_DEBUGGER_ENABLED
++  // Debug build: CDP event handling
++  jsinspector_modern::NetworkHandler::getInstance().onResponseReceived(
++      requestId,
++      jsinspector_modern::cdp::network::Response::fromInputParams(
++          responseInfo.url,
++          responseInfo.statusCode,
++          responseInfo.headers,
++          encodedDataLength));
++#endif
++}
++
++void NetworkReporter::reportDataReceived(
++    const std::string& requestId,
++    int dataLength,
++    const std::optional<int>& encodedDataLength) {
++#ifdef REACT_NATIVE_DEBUGGER_ENABLED
++  // Debug build: CDP event handling
++  jsinspector_modern::NetworkHandler::getInstance().onDataReceived(
++      requestId, dataLength, encodedDataLength.value_or(dataLength));
++#endif
++}
++
++void NetworkReporter::reportResponseEnd(
++    const std::string& requestId,
++    int encodedDataLength) {
++  if (ReactNativeFeatureFlags::enableResourceTimingAPI()) {
++    auto now = HighResTimeStamp::now();
++
++    // All builds: Report PerformanceResourceTiming event
++    {
++      std::lock_guard<std::mutex> lock(perfTimingsMutex_);
++      auto it = perfTimingsBuffer_.find(requestId);
++      if (it != perfTimingsBuffer_.end()) {
++        auto& eventData = it->second;
++        PerformanceEntryReporter::getInstance()->reportResourceTiming(
++            eventData.url,
++            eventData.fetchStart,
++            eventData.requestStart,
++            eventData.connectStart.value_or(now),
++            eventData.connectEnd.value_or(now),
++            eventData.responseStart.value_or(now),
++            now,
++            eventData.responseStatus);
++        perfTimingsBuffer_.erase(requestId);
++      }
++    }
++  }
++
++#ifdef REACT_NATIVE_DEBUGGER_ENABLED
++  // Debug build: CDP event handling
++  jsinspector_modern::NetworkHandler::getInstance().onLoadingFinished(
++      requestId, encodedDataLength);
++#endif
++}
++
++void NetworkReporter::reportRequestFailed(
++    const std::string& requestId,
++    bool cancelled) const {
++#ifdef REACT_NATIVE_DEBUGGER_ENABLED
++  // Debug build: CDP event handling
++  jsinspector_modern::NetworkHandler::getInstance().onLoadingFailed(
++      requestId, cancelled);
++#endif
++}
++
++void NetworkReporter::storeResponseBody(
++    const std::string& requestId,
++    std::string_view body,
++    bool base64Encoded) {
++#ifdef REACT_NATIVE_DEBUGGER_ENABLED
++  // Debug build: Store fetched response body for later CDP retrieval
++  jsinspector_modern::NetworkHandler::getInstance().storeResponseBody(
++      requestId, body, base64Encoded);
++#endif
++}
++
++} // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/jsinspector-modern/network/NetworkReporter.h b/packages/react-native/ReactCommon/react/networking/NetworkReporter.h
+similarity index 70%
+rename from packages/react-native/ReactCommon/jsinspector-modern/network/NetworkReporter.h
+rename to packages/react-native/ReactCommon/react/networking/NetworkReporter.h
+index 69c0972b751..3e5c2c227ab 100644
+--- a/packages/react-native/ReactCommon/jsinspector-modern/network/NetworkReporter.h
++++ b/packages/react-native/ReactCommon/react/networking/NetworkReporter.h
+@@ -7,27 +7,16 @@
+ 
+ #pragma once
+ 
+-#include "BoundedRequestBuffer.h"
+ #include "NetworkTypes.h"
+ 
+ #include <folly/dynamic.h>
+ #include <react/timing/primitives.h>
+ 
+-#include <atomic>
+-#include <functional>
+ #include <mutex>
+ #include <string>
+-#include <tuple>
+ #include <unordered_map>
+ 
+-namespace facebook::react::jsinspector_modern {
+-
+-/**
+- * A callback that can be used to send debugger messages (method responses and
+- * events) to the frontend. The message must be a JSON-encoded string.
+- * The callback may be called from any thread.
+- */
+-using FrontendChannel = std::function<void(std::string_view messageJson)>;
++namespace facebook::react {
+ 
+ /**
+  * Container for static network event metadata aligning with the
+@@ -57,34 +46,10 @@ class NetworkReporter {
+  public:
+   static NetworkReporter& getInstance();
+ 
+-  /**
+-   * Set the channel used to send CDP events to the frontend. This should be
+-   * supplied before calling `enableDebugging`.
+-   */
+-  void setFrontendChannel(FrontendChannel frontendChannel);
+-
+-  /**
+-   * Enable network tracking over CDP. Once enabled, network events will be
+-   * sent to the debugger client. Returns `false` if already enabled.
+-   *
+-   * Corresponds to `Network.enable` in CDP.
+-   */
+-  bool enableDebugging();
+-
+-  /**
+-   * Disable network tracking over CDP, preventing network events from being
+-   * sent to the debugger client. Returns `false` if not initially enabled.
+-   *
+-   * Corresponds to `Network.disable` in CDP.
+-   */
+-  bool disableDebugging();
+-
+   /**
+    * Returns whether network tracking over CDP is currently enabled.
+    */
+-  inline bool isDebuggingEnabled() const {
+-    return debuggingEnabled_.load(std::memory_order_acquire);
+-  }
++  bool isDebuggingEnabled() const;
+ 
+   /**
+    * Report a network request that is about to be sent.
+@@ -174,38 +139,14 @@ class NetworkReporter {
+       std::string_view body,
+       bool base64Encoded);
+ 
+-  /**
+-   * Retrieve a stored response body for a given request ID.
+-   *
+-   * \returns An optional tuple of [responseBody, base64Encoded]. Returns
+-   * nullopt if no entry is found in the buffer.
+-   */
+-  std::optional<std::tuple<std::string, bool>> getResponseBody(
+-      const std::string& requestId);
+-
+  private:
+   NetworkReporter() = default;
+   NetworkReporter(const NetworkReporter&) = delete;
+   NetworkReporter& operator=(const NetworkReporter&) = delete;
+   ~NetworkReporter() = default;
+ 
+-  std::atomic<bool> debuggingEnabled_{false};
+-
+-  inline bool isDebuggingEnabledNoSync() const {
+-    return debuggingEnabled_.load(std::memory_order_relaxed);
+-  }
+-
+-  FrontendChannel frontendChannel_;
+-
+   std::unordered_map<std::string, ResourceTimingData> perfTimingsBuffer_{};
+   std::mutex perfTimingsMutex_;
+-
+-  // Only populated when CDP debugging is enabled.
+-  std::map<std::string, std::string> resourceTypeMap_{};
+-
+-  // Only populated when CDP debugging is enabled.
+-  BoundedRequestBuffer requestBodyBuffer_{};
+-  std::mutex requestBodyMutex_;
+ };
+ 
+-} // namespace facebook::react::jsinspector_modern
++} // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/jsinspector-modern/network/NetworkTypes.h b/packages/react-native/ReactCommon/react/networking/NetworkTypes.h
+similarity index 88%
+rename from packages/react-native/ReactCommon/jsinspector-modern/network/NetworkTypes.h
+rename to packages/react-native/ReactCommon/react/networking/NetworkTypes.h
+index f493326a063..d79256d017b 100644
+--- a/packages/react-native/ReactCommon/jsinspector-modern/network/NetworkTypes.h
++++ b/packages/react-native/ReactCommon/react/networking/NetworkTypes.h
+@@ -13,7 +13,7 @@
+ 
+ // Defines generic input object types for NetworkReporter.
+ 
+-namespace facebook::react::jsinspector_modern {
++namespace facebook::react {
+ 
+ /**
+  * A collection of parsed HTTP headers.
+@@ -39,4 +39,4 @@ struct ResponseInfo {
+   std::optional<Headers> headers;
+ };
+ 
+-} // namespace facebook::react::jsinspector_modern
++} // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/react/networking/React-networking.podspec b/packages/react-native/ReactCommon/react/networking/React-networking.podspec
+new file mode 100644
+index 00000000000..233bdf981ee
+--- /dev/null
++++ b/packages/react-native/ReactCommon/react/networking/React-networking.podspec
+@@ -0,0 +1,51 @@
++# Copyright (c) Meta Platforms, Inc. and affiliates.
++#
++# This source code is licensed under the MIT license found in the
++# LICENSE file in the root directory of this source tree.
++
++require "json"
++
++package = JSON.parse(File.read(File.join(__dir__, "..", "..", "..", "package.json")))
++version = package['version']
++
++source = { :git => 'https://github.com/facebook/react-native.git' }
++if version == '1000.0.0'
++  # This is an unpublished version, use the latest commit hash of the react-native repo, which we’re presumably in.
++  source[:commit] = `git rev-parse HEAD`.strip if system("git rev-parse --git-dir > /dev/null 2>&1")
++else
++  source[:tag] = "v#{version}"
++end
++
++header_search_paths = []
++
++if ENV['USE_FRAMEWORKS']
++  header_search_paths << "\"$(PODS_TARGET_SRCROOT)/../..\"" # this is needed to allow the feature flags access its own files
++end
++
++Pod::Spec.new do |s|
++  s.name                   = "React-networking"
++  s.version                = version
++  s.summary                = "Common networking modules for React Native"
++  s.homepage               = "https://reactnative.dev/"
++  s.license                = package["license"]
++  s.author                 = "Meta Platforms, Inc. and its affiliates"
++  s.platforms              = min_supported_versions
++  s.source                 = source
++  s.source_files           = podspec_sources("*.{cpp,h}", "*.h")
++  s.header_dir             = "react/networking"
++  s.pod_target_xcconfig    = { "CLANG_CXX_LANGUAGE_STANDARD" => rct_cxx_language_standard(),
++                               "HEADER_SEARCH_PATHS" => header_search_paths.join(' '),
++                               "DEFINES_MODULE" => "YES" }
++
++  if ENV['USE_FRAMEWORKS'] && ReactNativeCoreUtils.build_rncore_from_source()
++    s.module_name            = "React_networking"
++    s.header_mappings_dir  = "../.."
++  end
++  add_dependency(s, "React-featureflags")
++  add_dependency(s, "React-jsinspectornetwork", :framework_name => 'jsinspector_modernnetwork')
++  s.dependency "React-performancetimeline"
++  s.dependency "React-timing"
++
++  add_rn_third_party_dependencies(s)
++  add_rncore_dependency(s)
++end
+diff --git a/packages/react-native/scripts/react_native_pods.rb b/packages/react-native/scripts/react_native_pods.rb
+index fbf64da3e57..7dff2b95063 100644
+--- a/packages/react-native/scripts/react_native_pods.rb
++++ b/packages/react-native/scripts/react_native_pods.rb
+@@ -162,6 +162,7 @@ def use_react_native! (
+   pod 'React-jsinspectortracing', :path => "#{prefix}/ReactCommon/jsinspector-modern/tracing"
+ 
+   pod 'React-callinvoker', :path => "#{prefix}/ReactCommon/callinvoker"
++  pod 'React-networking', :path => "#{prefix}/ReactCommon/react/networking"
+   pod 'React-performancecdpmetrics', :path => "#{prefix}/ReactCommon/react/performance/cdpmetrics"
+   pod 'React-performancetimeline', :path => "#{prefix}/ReactCommon/react/performance/timeline"
+   pod 'React-timing', :path => "#{prefix}/ReactCommon/react/timing"

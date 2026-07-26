@@ -1,0 +1,81 @@
+repo: nextcloud
+base_commit: 1219c8e152e43324bafd2132b12d2590ea78e6d2
+commit: 78fd649e47530bb29daeda086250202dbc14becc
+patch_stored: true
+gold:
+  - path: lib/public/AppFramework/Http/EmptyContentSecurityPolicy.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: base CSP class loses evalScriptAllowed property, allowEvalScript()/addAllowedChildSrcDomain()/disallowChildSrcDomain() and the allowedChildSrcDomains property
+  - path: lib/public/AppFramework/Http/ContentSecurityPolicy.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: subclass drops the evalScriptAllowed and allowedChildSrcDomains protected properties in step with the base class removal
+  - path: lib/private/Security/CSP/ContentSecurityPolicy.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: further subclass loses isEvalScriptAllowed()/setEvalScriptAllowed()/getAllowedChildSrcDomains()/setAllowedChildSrcDomains(), the concrete accessors for the removed properties
+  - path: lib/public/AppFramework/Http/StrictContentSecurityPolicy.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: whole class deleted (deprecated since 17.0.0), representative of the wholesale removal of the Strict*ContentSecurityPolicy family
+  - path: lib/public/Collaboration/Resources/IManager.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: interface drops registerResourceProvider(), deprecated since 18.0.0 in favor of IProviderManager::registerResourceProvider
+  - path: lib/private/Collaboration/Resources/Manager.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: removes the Manager::registerResourceProvider() implementation matching the interface deletion
+  - path: lib/public/Util.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: removes Util::recursiveArraySearch(), deprecated since 15.0.0
+  - path: tests/lib/Security/CSP/ContentSecurityPolicyManagerTest.php
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: test assertions referencing the removed eval/child-src CSP accessors are dropped
+  - path: tests/lib/Collaboration/Resources/ManagerTest.php
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: removes the test coverage for the deleted Manager::registerResourceProvider()
+  - path: tests/lib/UtilTest.php
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: removes the test coverage for the deleted Util::recursiveArraySearch()
+forbidden:
+  - path: lib/public/AppFramework/Http/StrictEvalContentSecurityPolicy.php
+    reason: same whole-class deletion pattern as StrictContentSecurityPolicy.php, redundant for understanding the change
+  - path: lib/public/AppFramework/Http/StrictInlineContentSecurityPolicy.php
+    reason: same whole-class deletion pattern, redundant with StrictContentSecurityPolicy.php
+  - path: tests/lib/AppFramework/Http/EmptyContentSecurityPolicyTest.php
+    reason: redundant test-removal file covering the same evalScript/childSrc deletions as ContentSecurityPolicyManagerTest.php
+  - path: lib/composer/composer/autoload_classmap.php
+    reason: generated autoload map, mechanical byproduct of deleting the Strict*ContentSecurityPolicy classes
+nontrivial_gold_count: 0
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 16
+  description: remove long-deprecated methods from OCP — lib/public + lib/private impls + tests + autoload
+notes: >
+  Pure removal of three unrelated groups of long-deprecated OCP API surface (CSP
+  eval-script/child-src knobs and the whole Strict*ContentSecurityPolicy class family,
+  Collaboration\Resources\IManager::registerResourceProvider, Util::recursiveArraySearch),
+  each already marked @deprecated years earlier. No new logic is introduced and every
+  interface/implementation/test pair for the three groups lives in the diff itself, so
+  no_nontrivial_context applies; gold picks one representative pair per deletion group
+  instead of every touched file.

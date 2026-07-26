@@ -1,0 +1,90 @@
+repo: nextcloud
+base_commit: 4fe0799d2697838745d699090cdeddc16c81e3c7
+commit: 805fe3e15b68beb5a3cf0ce8f1263e9030d3c04d
+patch_stored: true
+gold:
+  - path: apps/files/appinfo/info.xml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: adds <admin>OCA\Files\Settings\AdminSettings</admin>, the string-keyed FQCN registration that makes the new admin settings page appear
+  - path: apps/files/lib/Settings/AdminSettings.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new ISettings page provideInitialState('filesCompatibilitySettings', {docUrl,status,windowsSupport}) and Util::addScript(APP_ID,'settings-admin'), replacing the declarative settings form
+  - path: apps/files/lib/Settings/DeclarativeAdminSettings.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: deleted declarative form whose single windows_support field is what AdminSettings.php/SettingsService now expose through a full custom UI instead
+  - path: apps/files/lib/AppInfo/Application.php
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: removes registerDeclarativeSettings(DeclarativeAdminSettings::class), no longer needed once AdminSettings.php is registered via appinfo.xml instead
+  - path: apps/files/lib/Controller/FilenamesController.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new OCS routes (toggle windows-compatibility, POST/GET/DELETE sanitization) that the Vue settings components call via generateOcsUrl
+  - path: apps/files/lib/Service/SettingsService.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: gains STATUS_WCF_* constants and isFilenameSanitizationRunning()/getSanitizationStatus(), the state machine both FilenamesController and the background job read/write
+  - path: apps/files/lib/BackgroundJob/SanitizeFilenames.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new QueuedJob that FilenamesController::sanitizeFilenames() schedules via $jobList->add(SanitizeFilenames::class, ...) and that drives SettingsService's status constants
+  - path: apps/files/templates/settings-admin.php
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: new template providing the mount point div id="files-admin-settings" matched by main-settings-admin.ts's $mount() call
+  - path: apps/files/src/main-settings-admin.ts
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new Vue entry mounting views/SettingsAdmin.vue to '#files-admin-settings'
+  - path: webpack.modules.js
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: registers the 'settings-admin' build entry pointing at main-settings-admin.ts, matched by name in AdminSettings.php's Util::addScript() call
+  - path: apps/files/src/views/SettingsAdmin.vue
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: loads 'filesCompatibilitySettings' initial state and calls the windows-compatibility toggle endpoint added on FilenamesController
+  - path: apps/files/src/components/Settings/SettingsSanitizeFilenames.vue
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: drives the start/status/stop calls against FilenamesController's sanitization endpoints and renders SettingsService's status/progress fields
+forbidden:
+  - path: apps/files/composer/composer/autoload_classmap.php
+    reason: generated PSR-4 autoload map, mechanical byproduct of the new classes
+  - path: apps/files/composer/composer/autoload_static.php
+    reason: generated autoload map, same mechanical byproduct
+  - path: apps/files/lib/Command/SanitizeFilenames.php
+    reason: pre-existing occ CLI command reusing SettingsService's new status constants, tangential to understanding the admin UI flow itself
+  - path: apps/files/src/main-settings-personal.js
+    reason: unrelated personal-settings entry point rename/TS conversion bundled in the same commit, no sanitization logic
+nontrivial_gold_count: 0
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 17
+  description: 'files: filename-sanitization UI after WCF — full-stack PHP+Vue+TS+appinfo XML'
+notes: >
+  Adds an admin UI to toggle Windows-compatible-filename (WCF) enforcement and run a
+  background job that sanitizes existing filenames, replacing the old single-field
+  declarative settings form with a full custom admin page plus a sanitization-progress
+  panel. Linkage runs through several string layers: appinfo.xml's class-string settings
+  registration, addScript()/webpack entry names, template mount-point ids, initial-state
+  keys, and OCS route URLs called via generateOcsUrl - hence string_indirection: true.
+  Fully self-contained within the diff; no external nontrivial context needed.

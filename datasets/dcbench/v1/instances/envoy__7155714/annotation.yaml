@@ -1,0 +1,45 @@
+repo: envoy
+base_commit: 748e7d74065f461093e5b5f37b738b71479f0897
+commit: 715571429ec54282139c3929b98a7ebcd35a5c37
+patch_stored: true
+gold:
+  - path: bazel/repositories.bzl
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "_com_google_absl() defines the native.bind(name = \"abseil_*\", actual = \"@com_google_absl//...\") aliases; this commit deletes most of them (abseil_any, abseil_base, abseil_hash, abseil_optional, abseil_int128, etc.), which is the root cause forcing every BUILD file below to stop referencing those bind names via external_deps and instead depend on @com_google_absl// targets directly."
+  - path: bazel/envoy_internal.bzl
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: "Defines envoy_external_dep_path(dep) = \"//external:%s\" % dep, the string-indirection function that turns an external_deps entry like \"abseil_optional\" into the //external:abseil_optional label resolved by native.bind in repositories.bzl; this is the mechanism the whole migration is dismantling."
+  - path: bazel/envoy_library.bzl
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: "envoy_cc_library/envoy_basic_cc_library expand `deps = deps + [envoy_external_dep_path(dep) for dep in external_deps]`, i.e. the macro that every migrated BUILD file's external_deps list flows through; explains why BUILD authors could swap external_deps entries for equivalent @com_google_absl// deps entries with identical resulting target set."
+  - path: bazel/external/quiche.BUILD
+    tier: essential
+    role: cochange
+    in_diff: true
+    rationale: "Largest single-file hunk in the diff (18 changed lines across many envoy_quic_cc_library/envoy_cc_library rules); each rule drops an external_deps = [\"abseil_algorithm\"/\"abseil_str_format\"/\"abseil_node_hash_map\"/\"abseil_inlined_vector\"] entry and adds the equivalent @com_google_absl// label to deps, the canonical instance of the migration pattern for vendored (quiche) code."
+  - path: source/common/quic/platform/BUILD
+    tier: helpful
+    role: cochange
+    in_diff: true
+    rationale: "Representative example of the same external_deps->deps rewrite applied inside the main source tree (quiche_flags_constants, quiche_flags_impl_lib, quiche_time_utils_impl_lib all drop abseil_base/abseil_optional/abseil_synchronization/abseil_time external_deps entries for direct @com_google_absl// deps)."
+forbidden:
+  - path: api/BUILD
+    reason: "surfaced by bm25 on 'BUILD'/'external_deps' keywords but has no abseil bind references and is untouched by this commit — api targets don't use the abseil_* binds being removed"
+  - path: CODEOWNERS
+    reason: "bm25 keyword match only; lists file ownership, no abseil/bind/external_deps content"
+  - path: changelogs/1.30.0.yaml
+    reason: "changelog entries are per-PR release notes, not referenced by or explanatory of this internal build-system refactor"
+  - path: source/extensions/extensions_build_config.bzl
+    reason: "sibling bazel config file (extension registry) but unrelated axis — it maps extension names to build targets, not abseil external_deps/binds"
+nontrivial_gold_count: 2
+string_indirection: true
+no_nontrivial_context: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration, bm25, random]
+notes: 'Mechanical but wide (107-file) Bazel refactor: removes most native.bind() aliases for abseil in bazel/repositories.bzl and rewrites ~105 BUILD files to reference @com_google_absl// targets directly in deps instead of the old external_deps = ["abseil_*"] string names. The linkage between external_deps entries and real targets is entirely by string (envoy_external_dep_path -> //external:<name> -> native.bind), so string_indirection is true; annotation picks the bind-definition, the external_deps macro plumbing, and two representative migrated BUILD files as the semantic core rather than all 105 touched BUILD files.'

@@ -1,0 +1,67 @@
+repo: polars
+base_commit: 0751676b8a79dc2fe58f4afdd255812a5c9c8e66
+commit: a314cb6a4a89e65c2dc89c5022dc3de5b6c26070
+patch_stored: true
+gold:
+  - path: py-polars/polars/_utils/deprecation.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Shared deprecate_function/deprecate_renamed_function/deprecate_nonkeyword_arguments decorator machinery used by every one of the ~50 removed deprecated methods/params across the codebase; simplified here by dropping the now-unused `moved` parameter from deprecate_renamed_function.
+  - path: py-polars/polars/expr/categorical.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Representative full-method removal — deletes ExprCatNameSpace.set_ordering() (deprecated since 0.19.19), one of dozens of independent deprecated-API deletions this commit performs.
+  - path: py-polars/src/expr/categorical.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Removes PyExpr::cat_set_ordering, the Rust-side PyO3 binding paired 1:1 with the Python ExprCatNameSpace.set_ordering() removal in expr/categorical.py — the only Rust file in this otherwise Python-only commit, demonstrating the FFI-boundary coupling required to fully delete a deprecated method.
+  - path: py-polars/docs/source/reference/expressions/categories.rst
+    tier: essential
+    role: doc
+    in_diff: true
+    rationale: Removes the `Expr.cat.set_ordering` autosummary entry, the doc-reference co-change paired with the categorical.py/categorical.rs removal.
+  - path: py-polars/tests/unit/datatypes/test_categorical.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: test_categorical_sort_order drops its `@pytest.mark.filterwarnings("ignore:\`set_ordering\` is deprecated...")` marker and the calls to the now-deleted cat.set_ordering(), replacing them with the recommended cast(pl.Categorical("lexical")) alternative.
+  - path: py-polars/polars/series/series.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Largest single file touched — removes the greatest number of deprecated Series-level methods/parameters, representative of the bulk of this commit's removal surface.
+  - path: py-polars/polars/dataframe/frame.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Removes multiple deprecated DataFrame-level methods/parameters, the DataFrame-side counterpart to the Series and LazyFrame removals.
+  - path: py-polars/polars/lazyframe/frame.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Removes multiple deprecated LazyFrame-level methods/parameters, the LazyFrame-side counterpart to the DataFrame and Series removals.
+  - path: py-polars/polars/__init__.py
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Shrinks the top-level `import *` / `__all__` surface as deprecated top-level functions (e.g. Expr.keep_name/map_alias/prefix/suffix-adjacent top-level helpers) are deleted, the package-export co-change accompanying the per-module deletions.
+forbidden:
+  - path: py-polars/polars/series/list.py
+    reason: a same-family namespace file with cosmetic docstring/typing touches elsewhere in the diff family but no deprecated-API removal of its own beyond what's already captured by the representative series.py/frame.py entries
+  - path: docs/releases/upgrade/0.20.md
+    reason: this repo-root breaking-changes changelog for the same target version looks like the natural place to find "why was this removed", but it documents unrelated behavior changes (e.g. join-null semantics) and is not touched by or a source for this scheduled-deprecation-removal commit
+  - path: py-polars/polars/functions/aggregation/horizontal.py
+    reason: touched for a removed deprecated parameter but is one of many equivalent per-module removal sites already represented by the frame.py/series.py examples; not independently needed to understand the commit's pattern
+nontrivial_gold_count: 0
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: []
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 86
+  description: Scheduled removal of deprecated functionality — mass py+rs co-change
+notes: Deletes ~50 independently-deprecated methods/parameters/top-level functions across DataFrame/LazyFrame/Series/Expr and their namespaces, each a self-contained removal (Python method + matching doc autosummary entry + test warning-filter cleanup, occasionally a paired Rust PyO3 binding as with cat.set_ordering). There is no single feature tying the removals together beyond the shared deprecation.py decorator machinery; gold picks the shared utility plus one fully-traced example (categorical.py/.rst/.rs/test) as representative of the repeated pattern, plus the three largest per-class removal sites.

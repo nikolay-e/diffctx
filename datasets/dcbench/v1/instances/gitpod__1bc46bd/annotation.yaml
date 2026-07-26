@@ -1,0 +1,65 @@
+repo: gitpod
+base_commit: 8f3888d8758713f23de2edef785f0034a5b51949
+commit: 1bc46bd2a58dbc9033313519453939d895f16fce
+patch_stored: true
+gold:
+- path: .github/actions/delete-preview/entrypoint.sh
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .github/actions/deploy-gitpod/entrypoint.sh
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .github/actions/deploy-monitoring-satellite/entrypoint.sh
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .github/actions/integration-tests/action.yml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .github/actions/setup-environment/action.yml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: dev/preview/previewctl/cmd/credentials.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: dev/preview/previewctl/pkg/k8s/context/gke/dev.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: dev/preview/previewctl/pkg/k8s/context/harvester/harvester.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: dev/preview/workflow/preview/deploy-gitpod.sh
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: install/installer/cmd/mirror_repo.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: install/installer/pkg/common/constants.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: install/installer/pkg/config/vars.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: Another total hang on an 86-file DevOps refactor (GCP service-account auth removed in favor of
+  Workload Identity, previewctl install-context simplified, several Go/shell files deleted). Unlike commit
+  002 this diff is mostly genuine substantive changes rather than boilerplate regeneration, so there is
+  no obvious single 'garbage' file to blame — this looks like an intrinsic scaling problem in the selection/parsing
+  pipeline on ~86 heterogeneous files (YAML actions, Dockerfiles, shell scripts, Go, Terraform) rather
+  than a specific pathological file. Zero output means zero comprehension delivered; this is a pure regression,
+  not a bloat issue.

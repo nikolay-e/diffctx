@@ -1,0 +1,50 @@
+repo: react-native
+base_commit: 47a00f97d814c90c7cfd0b324df6dfc7eb4b25bf
+commit: 98a38cc1a71249a816546b3474beaffd5c6ec705
+patch_stored: true
+gold:
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/ReactBaseTextShadowNode.java
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/CustomLetterSpacingSpan.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/CustomLineHeightSpan.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/CustomStyleSpan.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactSpan.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/SetSpanOperation.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/TextInlineImageSpan.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/TextInlineViewPlaceholderSpan.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: A whole-package Java-to-Kotlin mechanical conversion (15 files deleted, 15 new .kt equivalents,
+  one call-site update in ReactBaseTextShadowNode.java for op.getWhat()->op.what since Kotlin properties
+  don't need getters). Since it's a rewrite, needing the full body of each new .kt file is legitimate
+  — this is not over-selection, it's an inherent full-file-diff situation. ctx_files=26 is below git_files=31
+  (some deleted .java files apparently didn't get a separate full dump), which is reasonable since the
+  .kt replacement carries the same information. md_tokens=15410 is proportionate to a 514+/649- diff spread
+  across whole-file rewrites. This is the healthiest of the sampled commits — status=ok, no file-count
+  blowup, no hang.

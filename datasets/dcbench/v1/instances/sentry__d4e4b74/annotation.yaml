@@ -1,0 +1,78 @@
+repo: sentry
+base_commit: bee2e467f1278343e64bb45a448e0d007405ffcc
+commit: d4e4b74becfb0f2d7f393ef5af5789d012b3b144
+patch_stored: true
+gold:
+- path: src/sentry/migrations/1017_add_apidevicecode.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/models/__init__.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/models/apidevicecode.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/runner/commands/cleanup.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/sentry_apps/token_exchange/util.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/templates/sentry/oauth-device-authorize.html
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/templates/sentry/oauth-device-complete.html
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/templates/sentry/oauth-device.html
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/testutils/helpers/backups.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/web/frontend/oauth_authorize.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/web/frontend/oauth_device.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/web/frontend/oauth_device_authorization.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/web/frontend/oauth_token.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/web/urls.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/data/controlsiloUrlPatterns.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'The most concerning hang in the batch: this is a clean, self-contained, moderately-sized new feature
+  (19 files, ~2000 lines, OAuth Device Flow per RFC 8628 — new Django model, migration, three web/frontend
+  views, HTML templates, URL routing, tests). Nothing in diff.stat resembles the pathological triggers
+  seen elsewhere (no regenerated protobuf files, no multi-thousand-line lockfile or migration dump) —
+  the largest single file is oauth_token.py at 204 changed lines. This strongly suggests a hang trigger
+  unrelated to raw file/diff size, possibly in parsing the new Django template files (.html) or the multi-class/multi-function
+  apidevicecode.py module, and deserves separate root-cause investigation from the other 4 hangs which
+  all have an obvious oversized-file culprit.'

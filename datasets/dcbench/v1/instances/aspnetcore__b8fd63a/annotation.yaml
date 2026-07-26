@@ -1,0 +1,52 @@
+repo: aspnetcore
+base_commit: 7601b50339a8ca3b8cf0103895dd1e36c5de6bc1
+commit: b8fd63a66e6f48f10f6872d13251ebd56462f5b4
+patch_stored: true
+gold:
+  - path: src/Components/QuickGrid/Microsoft.AspNetCore.Components.QuickGrid/src/PublicAPI.Shipped.txt
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Largest single hunk in the commit (151 lines added) — appends the QuickGrid public-surface entries being marked shipped for .NET 8.
+  - path: src/Components/QuickGrid/Microsoft.AspNetCore.Components.QuickGrid/src/PublicAPI.Unshipped.txt
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Paired file for the QuickGrid Shipped.txt entry — the same 151 API signature lines are removed here, demonstrating the Unshipped -> Shipped move mechanism the whole commit performs.
+  - path: src/Components/Web/src/PublicAPI.Shipped.txt
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Second-largest hunk (113 lines) — representative of the same shipped-marking pattern applied to the Components.Web public surface.
+  - path: src/Identity/Core/src/PublicAPI.Shipped.txt
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: 97-line hunk showing the identical churn pattern applied outside the Components subsystem, confirming the change is repo-wide and mechanical rather than Components-specific.
+forbidden:
+  - path: src/Components/Components/src/RenderTree/Renderer.cs
+    reason: implements Renderer, whose public members appear as text in PublicAPI.Shipped.txt, but the class file itself is untouched and irrelevant to a baseline-churn commit
+  - path: src/Identity/Core/src/IdentityApiEndpointRouteBuilderExtensions.cs
+    reason: bm25 matched on Identity API names present in the PublicAPI txt diff, but the implementation is unchanged and not needed to understand the churn
+  - path: src/Security/Authorization/Policy/src/AuthorizationMiddleware.cs
+    reason: graph-hint false positive; unrelated to marking APIs as shipped, not touched by the commit
+  - path: src/SignalR/clients/csharp/Client.Core/src/HubConnection.cs
+    reason: bm25 matched HubConnection API name strings inside PublicAPI text, but the file is unchanged and adds no understanding of the mechanical move
+nontrivial_gold_count: 0
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration, bm25, graph, random]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 161
+  description: Mark API from 8 as shipped — pure PublicAPI baseline churn stress
+notes: >-
+  Verified all 161 changed files are PublicAPI.Shipped.txt/PublicAPI.Unshipped.txt pairs across
+  every project in the repo, with zero non-PublicAPI files touched. Spot-checked several diffs
+  (Antiforgery, Components, WebAssembly.Authentication): entries move verbatim from Unshipped to
+  Shipped, and where a Shipped.txt shows both additions and deletions (e.g. WebAssembly.Authentication,
+  79/79) the removed and added line sets are set-identical — a pure alphabetical resort, not an API
+  change. No behavior, source, or test changes are woven in. no_nontrivial_context: true — this is
+  pure mechanical release bookkeeping with no external context needed beyond the diff itself; gold
+  entries are the 4 largest representative hunks, not an exhaustive list of all 161 touched files.

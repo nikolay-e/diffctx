@@ -1,0 +1,27 @@
+repo: react-native
+base_commit: bc1735f014707306f1ee935dec75b7f2ccf068ff
+commit: 07abfceae117edc8ed205fe1ebaef89ce3041386
+patch_stored: true
+gold:
+- path: packages/react-native/README.md
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: packages/react-native/ReactAndroid/src/main/jni/react/fabric/test/FabricMountingManagerTest.cpp
+- path: packages/react-native/ReactCommon/jsi/jsi/jsi.h
+- path: packages/react-native/scripts/cocoapods/__tests__/utils-test.rb
+- path: private/helloworld/ios/HelloWorld/AppDelegate.swift
+- path: scripts/objc-test.sh
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'This is a pure template removal: the diff only touches a new README.md plus wholesale deletion
+  of packages/react-native/template/* (59 files, 8 insertions/2245 deletions). diffctx correctly renders
+  the deletions as a deleted_files list and shows the new README content — that part is right and sufficient
+  on its own. But of the 6 total fragments selected, 5 are completely unrelated files never touched by
+  this diff (an iOS AppDelegate.swift under private/helloworld, objc-test.sh, a cocoapods utils-test.rb,
+  jsi.h, FabricMountingManagerTest.cpp) with no discernible connection to a template-removal commit —
+  pure noise padding a diff that needed none. relevance_precision is only ~1/6 despite the change itself
+  being trivially understandable.'

@@ -1,0 +1,377 @@
+From f8e8e55f1d33cc391b3b450dfca64c7ae973ec35 Mon Sep 17 00:00:00 2001
+From: carlory <baofa.fan@daocloud.io>
+Date: Thu, 18 Dec 2025 15:35:05 +0800
+Subject: [PATCH] locked the feature-gate VolumeAttributesClass to default
+ (true) and switch storage version from v1beta1 to v1
+
+Signed-off-by: carlory <baofa.fan@daocloud.io>
+---
+ api/discovery/apis__storage.k8s.io__v1.json    |  2 +-
+ .../apis__storage.k8s.io__v1beta1.json         |  2 +-
+ pkg/api/persistentvolume/util_test.go          |  4 ++++
+ pkg/api/persistentvolumeclaim/util_test.go     |  3 +++
+ pkg/apis/core/validation/validation_test.go    | 18 ++++++++++++++++++
+ .../volume/persistentvolume/binder_test.go     |  4 ++++
+ .../volume/persistentvolume/index_test.go      |  6 ------
+ .../storageversionhashdata/data.go             |  2 +-
+ pkg/features/kube_features.go                  |  1 +
+ .../default_storage_factory_builder.go         |  2 --
+ .../core/persistent_volume_claims_test.go      |  1 -
+ .../admission/resourcequota/admission_test.go  |  7 -------
+ .../admission_test.go                          |  4 ++++
+ .../reference/versioned_feature_list.yaml      |  4 ++++
+ test/integration/etcd/data.go                  |  3 ++-
+ .../volume/persistent_volumes_test.go          |  4 ++++
+ 16 files changed, 47 insertions(+), 20 deletions(-)
+
+diff --git a/api/discovery/apis__storage.k8s.io__v1.json b/api/discovery/apis__storage.k8s.io__v1.json
+index a10713b88c..005468f74e 100644
+--- a/api/discovery/apis__storage.k8s.io__v1.json
++++ b/api/discovery/apis__storage.k8s.io__v1.json
+@@ -110,7 +110,7 @@
+         "vac"
+       ],
+       "singularName": "volumeattributesclass",
+-      "storageVersionHash": "Bl3MtjZ/n/s=",
++      "storageVersionHash": "tIjydgKBC5w=",
+       "verbs": [
+         "create",
+         "delete",
+diff --git a/api/discovery/apis__storage.k8s.io__v1beta1.json b/api/discovery/apis__storage.k8s.io__v1beta1.json
+index b74991544c..276ef4259f 100644
+--- a/api/discovery/apis__storage.k8s.io__v1beta1.json
++++ b/api/discovery/apis__storage.k8s.io__v1beta1.json
+@@ -11,7 +11,7 @@
+         "vac"
+       ],
+       "singularName": "volumeattributesclass",
+-      "storageVersionHash": "Bl3MtjZ/n/s=",
++      "storageVersionHash": "tIjydgKBC5w=",
+       "verbs": [
+         "create",
+         "delete",
+diff --git a/pkg/api/persistentvolume/util_test.go b/pkg/api/persistentvolume/util_test.go
+index c0e410cb0e..122b7ec321 100644
+--- a/pkg/api/persistentvolume/util_test.go
++++ b/pkg/api/persistentvolume/util_test.go
+@@ -24,6 +24,7 @@ import (
+ 
+ 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+ 	"k8s.io/apimachinery/pkg/util/sets"
++	"k8s.io/apimachinery/pkg/util/version"
+ 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+ 	featuregatetesting "k8s.io/component-base/featuregate/testing"
+ 	api "k8s.io/kubernetes/pkg/apis/core"
+@@ -87,6 +88,9 @@ func TestDropDisabledFields(t *testing.T) {
+ 
+ 	for name, tc := range tests {
+ 		t.Run(name, func(t *testing.T) {
++			if !tc.vacEnabled {
++				featuregatetesting.SetFeatureGateEmulationVersionDuringTest(t, utilfeature.DefaultFeatureGate, version.MustParse("1.35"))
++			}
+ 			featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.VolumeAttributesClass, tc.vacEnabled)
+ 
+ 			DropDisabledSpecFields(tc.newSpec, tc.oldSpec)
+diff --git a/pkg/api/persistentvolumeclaim/util_test.go b/pkg/api/persistentvolumeclaim/util_test.go
+index f28f63f3f9..0559d84250 100644
+--- a/pkg/api/persistentvolumeclaim/util_test.go
++++ b/pkg/api/persistentvolumeclaim/util_test.go
+@@ -442,6 +442,9 @@ func TestDropDisabledVolumeAttributesClass(t *testing.T) {
+ 
+ 	for testName, test := range tests {
+ 		t.Run(testName, func(t *testing.T) {
++			if !test.vacEnabled {
++				featuregatetesting.SetFeatureGateEmulationVersionDuringTest(t, utilfeature.DefaultFeatureGate, version.MustParse("1.35"))
++			}
+ 			featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.VolumeAttributesClass, test.vacEnabled)
+ 			DropDisabledFields(&test.spec, &test.oldSpec)
+ 			if test.spec.VolumeAttributesClassName != test.wantVAC {
+diff --git a/pkg/apis/core/validation/validation_test.go b/pkg/apis/core/validation/validation_test.go
+index 598e173f97..2fb13216ae 100644
+--- a/pkg/apis/core/validation/validation_test.go
++++ b/pkg/apis/core/validation/validation_test.go
+@@ -561,6 +561,9 @@ func TestValidatePersistentVolumes(t *testing.T) {
+ 
+ 	for name, scenario := range scenarios {
+ 		t.Run(name, func(t *testing.T) {
++			if !scenario.enableVolumeAttributesClass {
++				featuregatetesting.SetFeatureGateEmulationVersionDuringTest(t, utilfeature.DefaultFeatureGate, version.MustParse("1.35"))
++			}
+ 			featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.VolumeAttributesClass, scenario.enableVolumeAttributesClass)
+ 
+ 			opts := ValidationOptionsForPersistentVolume(scenario.volume, nil)
+@@ -1040,6 +1043,9 @@ func TestValidationOptionsForPersistentVolume(t *testing.T) {
+ 
+ 	for name, tc := range tests {
+ 		t.Run(name, func(t *testing.T) {
++			if !tc.enableVolumeAttributesClass {
++				featuregatetesting.SetFeatureGateEmulationVersionDuringTest(t, utilfeature.DefaultFeatureGate, version.MustParse("1.35"))
++			}
+ 			featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.VolumeAttributesClass, tc.enableVolumeAttributesClass)
+ 
+ 			opts := ValidationOptionsForPersistentVolume(nil, tc.oldPv)
+@@ -1626,6 +1632,9 @@ func TestValidatePeristentVolumeAttributesClassUpdate(t *testing.T) {
+ 	}
+ 
+ 	for name, scenario := range scenarios {
++		if !scenario.enableVolumeAttributesClass {
++			featuregatetesting.SetFeatureGateEmulationVersionDuringTest(t, utilfeature.DefaultFeatureGate, version.MustParse("1.35"))
++		}
+ 		featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.VolumeAttributesClass, scenario.enableVolumeAttributesClass)
+ 
+ 		originalNewPV := scenario.newPV.DeepCopy()
+@@ -2227,6 +2236,9 @@ func testValidatePVC(t *testing.T, ephemeral bool) {
+ 
+ 	for name, scenario := range scenarios {
+ 		t.Run(name, func(t *testing.T) {
++			if !scenario.enableVolumeAttributesClass {
++				featuregatetesting.SetFeatureGateEmulationVersionDuringTest(t, utilfeature.DefaultFeatureGate, version.MustParse("1.35"))
++			}
+ 			featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.VolumeAttributesClass, scenario.enableVolumeAttributesClass)
+ 
+ 			var errs field.ErrorList
+@@ -3183,6 +3195,9 @@ func TestValidationOptionsForPersistentVolumeClaim(t *testing.T) {
+ 
+ 	for name, tc := range tests {
+ 		t.Run(name, func(t *testing.T) {
++			if !tc.enableVolumeAttributesClass {
++				featuregatetesting.SetFeatureGateEmulationVersionDuringTest(t, utilfeature.DefaultFeatureGate, version.MustParse("1.35"))
++			}
+ 			featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.VolumeAttributesClass, tc.enableVolumeAttributesClass)
+ 
+ 			opts := ValidationOptionsForPersistentVolumeClaim(nil, tc.oldPvc)
+@@ -3214,6 +3229,9 @@ func TestValidationOptionsForPersistentVolumeClaimTemplate(t *testing.T) {
+ 
+ 	for name, tc := range tests {
+ 		t.Run(name, func(t *testing.T) {
++			if !tc.enableVolumeAttributesClass {
++				featuregatetesting.SetFeatureGateEmulationVersionDuringTest(t, utilfeature.DefaultFeatureGate, version.MustParse("1.35"))
++			}
+ 			featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.VolumeAttributesClass, tc.enableVolumeAttributesClass)
+ 
+ 			opts := ValidationOptionsForPersistentVolumeClaimTemplate(nil, tc.oldPvcTemplate)
+diff --git a/pkg/controller/volume/persistentvolume/binder_test.go b/pkg/controller/volume/persistentvolume/binder_test.go
+index 08b280f219..57799bb51e 100644
+--- a/pkg/controller/volume/persistentvolume/binder_test.go
++++ b/pkg/controller/volume/persistentvolume/binder_test.go
+@@ -23,6 +23,7 @@ import (
+ 	v1 "k8s.io/api/core/v1"
+ 	storage "k8s.io/api/storage/v1"
+ 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
++	"k8s.io/apimachinery/pkg/util/version"
+ 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+ 	featuregatetesting "k8s.io/component-base/featuregate/testing"
+ 	"k8s.io/component-helpers/storage/volume"
+@@ -800,6 +801,9 @@ func TestSync(t *testing.T) {
+ 	}
+ 
+ 	for _, isEnabled := range []bool{true, false} {
++		if !isEnabled {
++			featuregatetesting.SetFeatureGateEmulationVersionDuringTest(t, utilfeature.DefaultFeatureGate, version.MustParse("1.35"))
++		}
+ 		featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.VolumeAttributesClass, isEnabled)
+ 
+ 		allTests := tests
+diff --git a/pkg/controller/volume/persistentvolume/index_test.go b/pkg/controller/volume/persistentvolume/index_test.go
+index 25b50d9e06..12854858a9 100644
+--- a/pkg/controller/volume/persistentvolume/index_test.go
++++ b/pkg/controller/volume/persistentvolume/index_test.go
+@@ -23,12 +23,9 @@ import (
+ 	v1 "k8s.io/api/core/v1"
+ 	"k8s.io/apimachinery/pkg/api/resource"
+ 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+-	utilfeature "k8s.io/apiserver/pkg/util/feature"
+ 	"k8s.io/client-go/kubernetes/scheme"
+ 	ref "k8s.io/client-go/tools/reference"
+-	featuregatetesting "k8s.io/component-base/featuregate/testing"
+ 	"k8s.io/component-helpers/storage/volume"
+-	"k8s.io/kubernetes/pkg/features"
+ 	"k8s.io/kubernetes/pkg/volume/util"
+ )
+ 
+@@ -78,9 +75,6 @@ func makeVolumeModePVC(size string, mode *v1.PersistentVolumeMode, modfn func(*v
+ }
+ 
+ func TestMatchVolume(t *testing.T) {
+-	// Default enable the VolumeAttributesClass feature gate.
+-	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.VolumeAttributesClass, true)
+-
+ 	volList := newPersistentVolumeOrderedIndex()
+ 	for _, pv := range createTestVolumes() {
+ 		volList.store.Add(pv)
+diff --git a/pkg/controlplane/storageversionhashdata/data.go b/pkg/controlplane/storageversionhashdata/data.go
+index eef787a688..7107460e0e 100644
+--- a/pkg/controlplane/storageversionhashdata/data.go
++++ b/pkg/controlplane/storageversionhashdata/data.go
+@@ -80,7 +80,7 @@ var GVRToStorageVersionHash = map[string]string{
+ 	"storage.k8s.io/v1/storageclasses":                                  "K+m6uJwbjGY=",
+ 	"storage.k8s.io/v1/csistoragecapacities":                            "xeVl+2Ly1kE=",
+ 	"storage.k8s.io/v1/volumeattachments":                               "tJx/ezt6UDU=",
+-	"storage.k8s.io/v1/volumeattributesclasses":                         "Bl3MtjZ/n/s=",
++	"storage.k8s.io/v1/volumeattributesclasses":                         "tIjydgKBC5w=",
+ 	"apps/v1/controllerrevisions":                                       "85nkx63pcBU=",
+ 	"apps/v1/daemonsets":                                                "dd7pWHUlMKQ=",
+ 	"apps/v1/deployments":                                               "8aSe+NMegvE=",
+diff --git a/pkg/features/kube_features.go b/pkg/features/kube_features.go
+index 314b100d84..f9a52e0660 100644
+--- a/pkg/features/kube_features.go
++++ b/pkg/features/kube_features.go
+@@ -1912,6 +1912,7 @@ var defaultVersionedKubernetesFeatureGates = map[featuregate.Feature]featuregate
+ 		{Version: version.MustParse("1.29"), Default: false, PreRelease: featuregate.Alpha},
+ 		{Version: version.MustParse("1.31"), Default: false, PreRelease: featuregate.Beta},
+ 		{Version: version.MustParse("1.34"), Default: true, PreRelease: featuregate.GA},
++		{Version: version.MustParse("1.36"), Default: true, PreRelease: featuregate.GA, LockToDefault: true},
+ 	},
+ 
+ 	VolumeLimitScaling: {
+diff --git a/pkg/kubeapiserver/default_storage_factory_builder.go b/pkg/kubeapiserver/default_storage_factory_builder.go
+index 6cf4688bfc..251dcd0ac8 100644
+--- a/pkg/kubeapiserver/default_storage_factory_builder.go
++++ b/pkg/kubeapiserver/default_storage_factory_builder.go
+@@ -39,7 +39,6 @@ import (
+ 	"k8s.io/kubernetes/pkg/apis/policy"
+ 	"k8s.io/kubernetes/pkg/apis/resource"
+ 	"k8s.io/kubernetes/pkg/apis/scheduling"
+-	"k8s.io/kubernetes/pkg/apis/storage"
+ 	"k8s.io/kubernetes/pkg/apis/storagemigration"
+ )
+ 
+@@ -86,7 +85,6 @@ func NewStorageFactoryConfigEffectiveVersion(effectiveVersion basecompatibility.
+ 		admissionregistration.Resource("mutatingadmissionpolicybindings").WithVersion("v1beta1"),
+ 		certificates.Resource("clustertrustbundles").WithVersion("v1beta1"),
+ 		certificates.Resource("podcertificaterequests").WithVersion("v1beta1"),
+-		storage.Resource("volumeattributesclasses").WithVersion("v1beta1"),
+ 		storagemigration.Resource("storagemigrations").WithVersion("v1beta1"),
+ 		resource.Resource("devicetaintrules").WithVersion("v1alpha3"),
+ 		scheduling.Resource("workloads").WithVersion("v1alpha1"),
+diff --git a/pkg/quota/v1/evaluator/core/persistent_volume_claims_test.go b/pkg/quota/v1/evaluator/core/persistent_volume_claims_test.go
+index 9462ecb298..c5530de5d4 100644
+--- a/pkg/quota/v1/evaluator/core/persistent_volume_claims_test.go
++++ b/pkg/quota/v1/evaluator/core/persistent_volume_claims_test.go
+@@ -146,7 +146,6 @@ func TestPersistentVolumeClaimEvaluatorMatchingScopes(t *testing.T) {
+ 	}
+ 
+ 	for testName, testCase := range testCases {
+-		featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.VolumeAttributesClass, true)
+ 		t.Run(testName, func(t *testing.T) {
+ 			gotSelectors, err := evaluator.MatchingScopes(testCase.claim, testCase.selectors)
+ 			if err != nil {
+diff --git a/plugin/pkg/admission/resourcequota/admission_test.go b/plugin/pkg/admission/resourcequota/admission_test.go
+index 8250580c69..c21293e80b 100644
+--- a/plugin/pkg/admission/resourcequota/admission_test.go
++++ b/plugin/pkg/admission/resourcequota/admission_test.go
+@@ -32,16 +32,13 @@ import (
+ 	genericadmissioninitializer "k8s.io/apiserver/pkg/admission/initializer"
+ 	"k8s.io/apiserver/pkg/admission/plugin/resourcequota"
+ 	resourcequotaapi "k8s.io/apiserver/pkg/admission/plugin/resourcequota/apis/resourcequota"
+-	utilfeature "k8s.io/apiserver/pkg/util/feature"
+ 	"k8s.io/client-go/informers"
+ 	"k8s.io/client-go/kubernetes"
+ 	"k8s.io/client-go/kubernetes/fake"
+ 	testcore "k8s.io/client-go/testing"
+ 	"k8s.io/client-go/tools/cache"
+-	featuregatetesting "k8s.io/component-base/featuregate/testing"
+ 	api "k8s.io/kubernetes/pkg/apis/core"
+ 	controlplaneadmission "k8s.io/kubernetes/pkg/controlplane/apiserver/admission"
+-	"k8s.io/kubernetes/pkg/features"
+ 	"k8s.io/kubernetes/pkg/quota/v1/install"
+ )
+ 
+@@ -993,8 +990,6 @@ func TestAdmitBelowTerminatingQuotaLimitWhenPodScopeUpdated(t *testing.T) {
+ // It creates a glod and silver quota, and creates a pvc with the glod class.
+ // It ensures that the glod quota is incremented, and the silver quota is not.
+ func TestAdmitBelowVolumeAttributesClassQuotaLimit(t *testing.T) {
+-	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.VolumeAttributesClass, true)
+-
+ 	classGold := "gold"
+ 	classSilver := "silver"
+ 
+@@ -1127,8 +1122,6 @@ func TestAdmitBelowVolumeAttributesClassQuotaLimit(t *testing.T) {
+ // use to lower / free the reserved quota. We need always overcount in the admission plugin if something later causes
+ // the request to be rejected, so you can not reduce quota with requests that aren't completed.
+ func TestAdmitBelowVolumeAttributesClassQuotaLimitWhenPVCScopeUpdated(t *testing.T) {
+-	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.VolumeAttributesClass, true)
+-
+ 	classGold := "gold"
+ 	classSilver := "silver"
+ 	classCopper := "copper"
+diff --git a/plugin/pkg/admission/storage/storageobjectinuseprotection/admission_test.go b/plugin/pkg/admission/storage/storageobjectinuseprotection/admission_test.go
+index 77c3d0c231..14e5f377f1 100644
+--- a/plugin/pkg/admission/storage/storageobjectinuseprotection/admission_test.go
++++ b/plugin/pkg/admission/storage/storageobjectinuseprotection/admission_test.go
+@@ -25,6 +25,7 @@ import (
+ 	"k8s.io/apimachinery/pkg/runtime"
+ 	"k8s.io/apimachinery/pkg/runtime/schema"
+ 	"k8s.io/apimachinery/pkg/util/dump"
++	"k8s.io/apimachinery/pkg/util/version"
+ 	"k8s.io/apiserver/pkg/admission"
+ 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+ 	featuregatetesting "k8s.io/component-base/featuregate/testing"
+@@ -150,6 +151,9 @@ func TestAdmit(t *testing.T) {
+ 		t.Run(test.name, func(t *testing.T) {
+ 			ctrl := newPlugin()
+ 
++			if !test.enableVacFeatureGate {
++				featuregatetesting.SetFeatureGateEmulationVersionDuringTest(t, utilfeature.DefaultFeatureGate, version.MustParse("1.35"))
++			}
+ 			featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.VolumeAttributesClass, test.enableVacFeatureGate)
+ 
+ 			obj := test.object.DeepCopyObject()
+diff --git a/test/compatibility_lifecycle/reference/versioned_feature_list.yaml b/test/compatibility_lifecycle/reference/versioned_feature_list.yaml
+index dcfa4df5bc..d4df88f459 100644
+--- a/test/compatibility_lifecycle/reference/versioned_feature_list.yaml
++++ b/test/compatibility_lifecycle/reference/versioned_feature_list.yaml
+@@ -2001,6 +2001,10 @@
+     lockToDefault: false
+     preRelease: GA
+     version: "1.34"
++  - default: true
++    lockToDefault: true
++    preRelease: GA
++    version: "1.36"
+ - name: VolumeLimitScaling
+   versionedSpecs:
+   - default: false
+diff --git a/test/integration/etcd/data.go b/test/integration/etcd/data.go
+index e9a410083c..4f545997e5 100644
+--- a/test/integration/etcd/data.go
++++ b/test/integration/etcd/data.go
+@@ -388,6 +388,7 @@ func GetEtcdStorageDataForNamespaceServedAt(namespace string, v string, isEmulat
+ 		gvr("storage.k8s.io", "v1beta1", "volumeattributesclasses"): {
+ 			Stub:              `{"metadata": {"name": "vac2"}, "driverName": "example.com/driver", "parameters": {"foo": "bar"}}`,
+ 			ExpectedEtcdPath:  "/registry/volumeattributesclasses/vac2",
++			ExpectedGVK:       gvkP("storage.k8s.io", "v1", "VolumeAttributesClass"),
+ 			IntroducedVersion: "1.31",
+ 			RemovedVersion:    "1.37",
+ 		},
+@@ -397,7 +398,7 @@ func GetEtcdStorageDataForNamespaceServedAt(namespace string, v string, isEmulat
+ 		gvr("storage.k8s.io", "v1", "volumeattributesclasses"): {
+ 			Stub:              `{"metadata": {"name": "vac3"}, "driverName": "example.com/driver", "parameters": {"foo": "bar"}}`,
+ 			ExpectedEtcdPath:  "/registry/volumeattributesclasses/vac3",
+-			ExpectedGVK:       gvkP("storage.k8s.io", "v1beta1", "VolumeAttributesClass"),
++			ExpectedGVK:       gvkP("storage.k8s.io", "v1", "VolumeAttributesClass"),
+ 			IntroducedVersion: "1.34",
+ 		},
+ 		// --
+diff --git a/test/integration/volume/persistent_volumes_test.go b/test/integration/volume/persistent_volumes_test.go
+index d3a9e6c346..42d67d7d62 100644
+--- a/test/integration/volume/persistent_volumes_test.go
++++ b/test/integration/volume/persistent_volumes_test.go
+@@ -29,6 +29,7 @@ import (
+ 	storage "k8s.io/api/storage/v1"
+ 	"k8s.io/apimachinery/pkg/api/resource"
+ 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
++	"k8s.io/apimachinery/pkg/util/version"
+ 	"k8s.io/apimachinery/pkg/util/wait"
+ 	"k8s.io/apimachinery/pkg/watch"
+ 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+@@ -673,6 +674,9 @@ func TestPersistentVolumeClaimVolumeAttirbutesClassName(t *testing.T) {
+ 
+ 	for _, tc := range testCases {
+ 		t.Run(tc.name, func(t *testing.T) {
++			if !tc.featureEnabled {
++				featuregatetesting.SetFeatureGateEmulationVersionDuringTest(t, utilfeature.DefaultFeatureGate, version.MustParse("1.35"))
++			}
+ 			featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.VolumeAttributesClass, tc.featureEnabled)
+ 			s := kubeapiservertesting.StartTestServerOrDie(t, nil, []string{"--disable-admission-plugins=ServiceAccount,StorageObjectInUseProtection"}, framework.SharedEtcd())
+ 			defer s.TearDownFn()

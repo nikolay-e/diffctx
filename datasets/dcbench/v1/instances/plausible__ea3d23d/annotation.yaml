@@ -1,0 +1,61 @@
+repo: plausible
+base_commit: 9527ed618f76b6ba1222074751774825d4ff36af
+commit: ea3d23d879810ffeb4f4ab1216dcafb390486e9c
+patch_stored: true
+gold:
+  - path: extra/lib/plausible/funnel.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds the `strict_order` boolean field to the Funnel Ecto schema and casts it in changeset/2, the struct field every other file in this change reads or writes.
+  - path: extra/lib/plausible/funnels.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: create/4, update/4, create_changeset/4, edit_changeset/4 and ephemeral_definition/4 all gain an `opts` param threading `strict_order?` into the Funnel changeset, forming the context API the LiveView form calls.
+  - path: extra/lib/plausible/stats/funnel.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Branches on funnel_definition.strict_order to emit ClickHouse `windowFunnel(...,'strict_order')(timestamp, steps)` instead of the plain windowFunnel, the actual query-time behavior change the feature exists for.
+  - path: extra/lib/plausible_web/live/funnel_settings/form.ex
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: Adds the toggle-strict-order UI event handler and threads socket.assigns.strict_order? through validate/save/build_ephemeral_funnel into Funnels.create/4, update/4 and ephemeral_definition/4.
+  - path: test/plausible/funnels_test.exs
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Asserts strict_order persists across create/update and, critically, that a strict-order funnel records 0 visitors at a step reached only via an intervening unrelated event, proving the windowFunnel('strict_order') behavior.
+  - path: test/plausible_web/live/funnel_settings_test.exs
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Covers the LiveView toggle-switch UI end-to-end (save persists strict_order, toggling re-evaluates the funnel preview live), exercising form.ex's new event handling.
+  - path: priv/repo/migrations/20260408120000_add_strict_order_to_funnels.exs
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Pre-existing migration (already applied at base_commit, added by an earlier commit) that adds the `strict_order boolean not null default false` column to the funnels table backing extra/lib/plausible/funnel.ex's new schema field.
+forbidden:
+  - path: extra/lib/plausible/funnel/step.ex
+    reason: Funnel.Step schema in the same module tree as funnel.ex but unrelated — strict_order does not touch step definitions
+  - path: lib/plausible/stats.ex
+    reason: thin on_ee dispatcher (funnel/3 delegates to Plausible.Stats.Funnel.funnel/3) with no strict_order-specific logic of its own
+  - path: extra/lib/plausible_web/live/funnel_settings/list.ex
+    reason: sibling LiveView in the same funnel_settings/ directory as form.ex but renders the funnels list, not the create/edit form the toggle lives in
+  - path: extra/lib/plausible/plugins/api/funnels.ex
+    reason: public Plugins API for funnels, similarly named to funnels.ex but a separate untouched integration surface
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: []
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 6
+  description: Strict order funnels — Ecto schema field coupled with ClickHouse funnel query logic
+notes: Adds an opt-in strict_order flag to funnels so that steps must occur consecutively (no
+  intervening events) to count, implemented by switching the ClickHouse windowFunnel aggregate to its
+  'strict_order' mode and threading the flag through the funnel context API and settings LiveView. The
+  backing DB column was added by an earlier, separate migration commit not part of this diff.

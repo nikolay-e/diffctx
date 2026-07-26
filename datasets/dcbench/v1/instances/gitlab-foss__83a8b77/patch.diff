@@ -1,0 +1,584 @@
+From 83a8b779615c968af5afe15a1cbc6903d639f265 Mon Sep 17 00:00:00 2001
+From: Alessio Caiazza <acaiazza@gitlab.com>
+Date: Sun, 12 May 2019 16:10:46 -0500
+Subject: [PATCH] Add Namespace and ProjectStatistics to GraphQL API
+
+We can query namespaces, and nested projects.
+
+Projects now exposes statistics
+---
+ .../resolvers/namespace_projects_resolver.rb  | 33 ++++++++
+ app/graphql/resolvers/namespace_resolver.rb   | 13 +++
+ app/graphql/types/namespace_type.rb           |  5 ++
+ app/graphql/types/project_statistics_type.rb  | 15 ++++
+ app/graphql/types/project_type.rb             |  4 +
+ app/graphql/types/query_type.rb               |  5 ++
+ app/models/project_statistics.rb              |  2 +
+ changelogs/unreleased/ac-graphql-stats.yml    |  5 ++
+ doc/api/graphql/index.md                      |  1 +
+ .../batch_project_statistics_loader.rb        | 23 ++++++
+ .../namespace_projects_resolver_spec.rb       | 69 ++++++++++++++++
+ ...mespace_type.rb => namespace_type_spec.rb} |  2 +
+ .../types/project_statistics_type_spec.rb     | 10 +++
+ spec/graphql/types/project_type_spec.rb       |  2 +
+ spec/graphql/types/query_type_spec.rb         | 12 ++-
+ .../batch_project_statistics_loader_spec.rb   | 18 ++++
+ spec/models/project_statistics_spec.rb        | 14 ++++
+ spec/requests/api/graphql/group_query_spec.rb |  9 +-
+ .../api/graphql/namespace/projects_spec.rb    | 82 +++++++++++++++++++
+ .../project/project_statistics_spec.rb        | 43 ++++++++++
+ 20 files changed, 362 insertions(+), 5 deletions(-)
+ create mode 100644 app/graphql/resolvers/namespace_projects_resolver.rb
+ create mode 100644 app/graphql/resolvers/namespace_resolver.rb
+ create mode 100644 app/graphql/types/project_statistics_type.rb
+ create mode 100644 changelogs/unreleased/ac-graphql-stats.yml
+ create mode 100644 lib/gitlab/graphql/loaders/batch_project_statistics_loader.rb
+ create mode 100644 spec/graphql/resolvers/namespace_projects_resolver_spec.rb
+ rename spec/graphql/types/{namespace_type.rb => namespace_type_spec.rb} (71%)
+ create mode 100644 spec/graphql/types/project_statistics_type_spec.rb
+ create mode 100644 spec/lib/gitlab/graphql/loaders/batch_project_statistics_loader_spec.rb
+ create mode 100644 spec/requests/api/graphql/namespace/projects_spec.rb
+ create mode 100644 spec/requests/api/graphql/project/project_statistics_spec.rb
+
+diff --git a/app/graphql/resolvers/namespace_projects_resolver.rb b/app/graphql/resolvers/namespace_projects_resolver.rb
+new file mode 100644
+index 0000000000..677ea808ae
+--- /dev/null
++++ b/app/graphql/resolvers/namespace_projects_resolver.rb
+@@ -0,0 +1,33 @@
++# frozen_string_literal: true
++
++module Resolvers
++  class NamespaceProjectsResolver < BaseResolver
++    argument :include_subgroups, GraphQL::BOOLEAN_TYPE,
++             required: false,
++             default_value: false,
++             description: 'Include also subgroup projects'
++
++    type Types::ProjectType, null: true
++
++    alias_method :namespace, :object
++
++    def resolve(include_subgroups:)
++      # The namespace could have been loaded in batch by `BatchLoader`.
++      # At this point we need the `id` or the `full_path` of the namespace
++      # to query for projects, so make sure it's loaded and not `nil` before continuing.
++      namespace.sync if namespace.respond_to?(:sync)
++      return Project.none if namespace.nil?
++
++      if include_subgroups
++        namespace.all_projects.with_route
++      else
++        namespace.projects.with_route
++      end
++    end
++
++    def self.resolver_complexity(args, child_complexity:)
++      complexity = super
++      complexity + 10
++    end
++  end
++end
+diff --git a/app/graphql/resolvers/namespace_resolver.rb b/app/graphql/resolvers/namespace_resolver.rb
+new file mode 100644
+index 0000000000..17b3800d15
+--- /dev/null
++++ b/app/graphql/resolvers/namespace_resolver.rb
+@@ -0,0 +1,13 @@
++# frozen_string_literal: true
++
++module Resolvers
++  class NamespaceResolver < BaseResolver
++    prepend FullPathResolver
++
++    type Types::NamespaceType, null: true
++
++    def resolve(full_path:)
++      model_by_full_path(Namespace, full_path)
++    end
++  end
++end
+diff --git a/app/graphql/types/namespace_type.rb b/app/graphql/types/namespace_type.rb
+index 36d8ee8c87..f6d91320e5 100644
+--- a/app/graphql/types/namespace_type.rb
++++ b/app/graphql/types/namespace_type.rb
+@@ -15,5 +15,10 @@ class NamespaceType < BaseObject
+     field :visibility, GraphQL::STRING_TYPE, null: true
+     field :lfs_enabled, GraphQL::BOOLEAN_TYPE, null: true, method: :lfs_enabled?
+     field :request_access_enabled, GraphQL::BOOLEAN_TYPE, null: true
++
++    field :projects,
++          Types::ProjectType.connection_type,
++          null: false,
++          resolver: ::Resolvers::NamespaceProjectsResolver
+   end
+ end
+diff --git a/app/graphql/types/project_statistics_type.rb b/app/graphql/types/project_statistics_type.rb
+new file mode 100644
+index 0000000000..35ae23c21f
+--- /dev/null
++++ b/app/graphql/types/project_statistics_type.rb
+@@ -0,0 +1,15 @@
++# frozen_string_literal: true
++
++module Types
++  class ProjectStatisticsType < BaseObject
++    graphql_name 'ProjectStatistics'
++
++    field :commit_count, GraphQL::INT_TYPE, null: false
++
++    field :storage_size, GraphQL::INT_TYPE, null: false
++    field :repository_size, GraphQL::INT_TYPE, null: false
++    field :lfs_objects_size, GraphQL::INT_TYPE, null: false
++    field :build_artifacts_size, GraphQL::INT_TYPE, null: false
++    field :packages_size, GraphQL::INT_TYPE, null: false
++  end
++end
+diff --git a/app/graphql/types/project_type.rb b/app/graphql/types/project_type.rb
+index 06a1aab09f..2236ffa394 100644
+--- a/app/graphql/types/project_type.rb
++++ b/app/graphql/types/project_type.rb
+@@ -69,6 +69,10 @@ class ProjectType < BaseObject
+     field :namespace, Types::NamespaceType, null: false
+     field :group, Types::GroupType, null: true
+ 
++    field :statistics, Types::ProjectStatisticsType,
++          null: false,
++          resolve: -> (obj, _args, _ctx) { Gitlab::Graphql::Loaders::BatchProjectStatisticsLoader.new(obj.id).find }
++
+     field :repository, Types::RepositoryType, null: false
+ 
+     field :merge_requests,
+diff --git a/app/graphql/types/query_type.rb b/app/graphql/types/query_type.rb
+index 40d7de1a49..536bdb077a 100644
+--- a/app/graphql/types/query_type.rb
++++ b/app/graphql/types/query_type.rb
+@@ -14,6 +14,11 @@ class QueryType < ::Types::BaseObject
+           resolver: Resolvers::GroupResolver,
+           description: "Find a group"
+ 
++    field :namespace, Types::NamespaceType,
++          null: true,
++          resolver: Resolvers::NamespaceResolver,
++          description: "Find a namespace"
++
+     field :metadata, Types::MetadataType,
+           null: true,
+           resolver: Resolvers::MetadataResolver,
+diff --git a/app/models/project_statistics.rb b/app/models/project_statistics.rb
+index dd0654aec0..11e3737298 100644
+--- a/app/models/project_statistics.rb
++++ b/app/models/project_statistics.rb
+@@ -16,6 +16,8 @@ def wiki_size
+   COLUMNS_TO_REFRESH = [:repository_size, :wiki_size, :lfs_objects_size, :commit_count].freeze
+   INCREMENTABLE_COLUMNS = { build_artifacts_size: %i[storage_size], packages_size: %i[storage_size] }.freeze
+ 
++  scope :for_project_ids, ->(project_ids) { where(project_id: project_ids) }
++
+   def total_repository_size
+     repository_size + lfs_objects_size
+   end
+diff --git a/changelogs/unreleased/ac-graphql-stats.yml b/changelogs/unreleased/ac-graphql-stats.yml
+new file mode 100644
+index 0000000000..8837dce4d8
+--- /dev/null
++++ b/changelogs/unreleased/ac-graphql-stats.yml
+@@ -0,0 +1,5 @@
++---
++title: Add Namespace and ProjectStatistics to GraphQL API
++merge_request: 28277
++author:
++type: added
+diff --git a/doc/api/graphql/index.md b/doc/api/graphql/index.md
+index 9195ba4cdf..88e657a5d2 100644
+--- a/doc/api/graphql/index.md
++++ b/doc/api/graphql/index.md
+@@ -47,6 +47,7 @@ A first iteration of a GraphQL API includes the following queries
+ 
+ 1. `project` : Within a project it is also possible to fetch a `mergeRequest` by IID.
+ 1. `group` : Only basic group information is currently supported.
++1. `namespace` : Within a namespace it is also possible to fetch `projects`.
+ 
+ ### Multiplex queries
+ 
+diff --git a/lib/gitlab/graphql/loaders/batch_project_statistics_loader.rb b/lib/gitlab/graphql/loaders/batch_project_statistics_loader.rb
+new file mode 100644
+index 0000000000..5e151f4dbd
+--- /dev/null
++++ b/lib/gitlab/graphql/loaders/batch_project_statistics_loader.rb
+@@ -0,0 +1,23 @@
++# frozen_string_literal: true
++
++module Gitlab
++  module Graphql
++    module Loaders
++      class BatchProjectStatisticsLoader
++        attr_reader :project_id
++
++        def initialize(project_id)
++          @project_id = project_id
++        end
++
++        def find
++          BatchLoader.for(project_id).batch do |project_ids, loader|
++            ProjectStatistics.for_project_ids(project_ids).each do |statistics|
++              loader.call(statistics.project_id, statistics)
++            end
++          end
++        end
++      end
++    end
++  end
++end
+diff --git a/spec/graphql/resolvers/namespace_projects_resolver_spec.rb b/spec/graphql/resolvers/namespace_projects_resolver_spec.rb
+new file mode 100644
+index 0000000000..395e08081d
+--- /dev/null
++++ b/spec/graphql/resolvers/namespace_projects_resolver_spec.rb
+@@ -0,0 +1,69 @@
++# frozen_string_literal: true
++
++require 'spec_helper'
++
++describe Resolvers::NamespaceProjectsResolver, :nested_groups do
++  include GraphqlHelpers
++
++  let(:current_user) { create(:user) }
++
++  context "with a group" do
++    let(:group) { create(:group) }
++    let(:namespace) { group }
++    let(:project1) { create(:project, namespace: namespace) }
++    let(:project2) { create(:project, namespace: namespace) }
++    let(:nested_group) { create(:group, parent: group) }
++    let(:nested_project) { create(:project, group: nested_group) }
++
++    before do
++      project1.add_developer(current_user)
++      project2.add_developer(current_user)
++      nested_project.add_developer(current_user)
++    end
++
++    describe '#resolve' do
++      it 'finds all projects' do
++        expect(resolve_projects).to contain_exactly(project1, project2)
++      end
++
++      it 'finds all projects including the subgroups' do
++        expect(resolve_projects(include_subgroups: true)).to contain_exactly(project1, project2, nested_project)
++      end
++
++      context 'with an user namespace' do
++        let(:namespace) { current_user.namespace }
++
++        it 'finds all projects' do
++          expect(resolve_projects).to contain_exactly(project1, project2)
++        end
++
++        it 'finds all projects including the subgroups' do
++          expect(resolve_projects(include_subgroups: true)).to contain_exactly(project1, project2)
++        end
++      end
++    end
++  end
++
++  context "when passing a non existent, batch loaded namespace" do
++    let(:namespace) do
++      BatchLoader.for("non-existent-path").batch do |_fake_paths, loader, _|
++        loader.call("non-existent-path", nil)
++      end
++    end
++
++    it "returns nil without breaking" do
++      expect(resolve_projects).to be_empty
++    end
++  end
++
++  it 'has an high complexity regardless of arguments' do
++    field = Types::BaseField.new(name: 'test', type: GraphQL::STRING_TYPE, resolver_class: described_class, null: false, max_page_size: 100)
++
++    expect(field.to_graphql.complexity.call({}, {}, 1)).to eq 24
++    expect(field.to_graphql.complexity.call({}, { include_subgroups: true }, 1)).to eq 24
++  end
++
++  def resolve_projects(args = { include_subgroups: false }, context = { current_user: current_user })
++    resolve(described_class, obj: namespace, args: args, ctx: context)
++  end
++end
+diff --git a/spec/graphql/types/namespace_type.rb b/spec/graphql/types/namespace_type_spec.rb
+similarity index 71%
+rename from spec/graphql/types/namespace_type.rb
+rename to spec/graphql/types/namespace_type_spec.rb
+index 7cd6a79ae5..b4144cc412 100644
+--- a/spec/graphql/types/namespace_type.rb
++++ b/spec/graphql/types/namespace_type_spec.rb
+@@ -4,4 +4,6 @@
+ 
+ describe GitlabSchema.types['Namespace'] do
+   it { expect(described_class.graphql_name).to eq('Namespace') }
++
++  it { expect(described_class).to have_graphql_field(:projects) }
+ end
+diff --git a/spec/graphql/types/project_statistics_type_spec.rb b/spec/graphql/types/project_statistics_type_spec.rb
+new file mode 100644
+index 0000000000..485e194edb
+--- /dev/null
++++ b/spec/graphql/types/project_statistics_type_spec.rb
+@@ -0,0 +1,10 @@
++# frozen_string_literal: true
++
++require 'spec_helper'
++
++describe GitlabSchema.types['ProjectStatistics'] do
++  it "has all the required fields" do
++    is_expected.to have_graphql_fields(:storage_size, :repository_size, :lfs_objects_size,
++                                       :build_artifacts_size, :packages_size, :commit_count)
++  end
++end
+diff --git a/spec/graphql/types/project_type_spec.rb b/spec/graphql/types/project_type_spec.rb
+index 075fa7c7e4..cb5ac2e3cb 100644
+--- a/spec/graphql/types/project_type_spec.rb
++++ b/spec/graphql/types/project_type_spec.rb
+@@ -19,4 +19,6 @@
+   it { is_expected.to have_graphql_field(:pipelines) }
+ 
+   it { is_expected.to have_graphql_field(:repository) }
++
++  it { is_expected.to have_graphql_field(:statistics) }
+ end
+diff --git a/spec/graphql/types/query_type_spec.rb b/spec/graphql/types/query_type_spec.rb
+index b462695581..af1972a251 100644
+--- a/spec/graphql/types/query_type_spec.rb
++++ b/spec/graphql/types/query_type_spec.rb
+@@ -5,7 +5,17 @@
+     expect(described_class.graphql_name).to eq('Query')
+   end
+ 
+-  it { is_expected.to have_graphql_fields(:project, :group, :echo, :metadata) }
++  it { is_expected.to have_graphql_fields(:project, :namespace, :group, :echo, :metadata) }
++
++  describe 'namespace field' do
++    subject { described_class.fields['namespace'] }
++
++    it 'finds namespaces by full path' do
++      is_expected.to have_graphql_arguments(:full_path)
++      is_expected.to have_graphql_type(Types::NamespaceType)
++      is_expected.to have_graphql_resolver(Resolvers::NamespaceResolver)
++    end
++  end
+ 
+   describe 'project field' do
+     subject { described_class.fields['project'] }
+diff --git a/spec/lib/gitlab/graphql/loaders/batch_project_statistics_loader_spec.rb b/spec/lib/gitlab/graphql/loaders/batch_project_statistics_loader_spec.rb
+new file mode 100644
+index 0000000000..ec2fcad31e
+--- /dev/null
++++ b/spec/lib/gitlab/graphql/loaders/batch_project_statistics_loader_spec.rb
+@@ -0,0 +1,18 @@
++# frozen_string_literal: true
++
++require 'spec_helper'
++
++describe Gitlab::Graphql::Loaders::BatchProjectStatisticsLoader do
++  describe '#find' do
++    it 'only queries once for project statistics' do
++      stats = create_list(:project_statistics, 2)
++      project1 = stats.first.project
++      project2 = stats.last.project
++
++      expect do
++        described_class.new(project1.id).find
++        described_class.new(project2.id).find
++      end.not_to exceed_query_limit(1)
++    end
++  end
++end
+diff --git a/spec/models/project_statistics_spec.rb b/spec/models/project_statistics_spec.rb
+index f985c114d4..358873f9a2 100644
+--- a/spec/models/project_statistics_spec.rb
++++ b/spec/models/project_statistics_spec.rb
+@@ -11,6 +11,20 @@
+     it { is_expected.to belong_to(:namespace) }
+   end
+ 
++  describe 'scopes' do
++    describe '.for_project_ids' do
++      it 'returns only requested projects' do
++        stats = create_list(:project_statistics, 3)
++        project_ids = stats[0..1].map { |s| s.project_id }
++        expected_ids = stats[0..1].map { |s| s.id }
++
++        requested_stats = described_class.for_project_ids(project_ids).pluck(:id)
++
++        expect(requested_stats).to eq(expected_ids)
++      end
++    end
++  end
++
+   describe 'statistics columns' do
+     it "support values up to 8 exabytes" do
+       statistics.update!(
+diff --git a/spec/requests/api/graphql/group_query_spec.rb b/spec/requests/api/graphql/group_query_spec.rb
+index 8ff95cc9af..db9f2ac9dd 100644
+--- a/spec/requests/api/graphql/group_query_spec.rb
++++ b/spec/requests/api/graphql/group_query_spec.rb
+@@ -86,17 +86,18 @@ def group_query(group)
+       end
+ 
+       it 'avoids N+1 queries' do
+-        post_graphql(group_query(group1), current_user: admin)
+-
+         control_count = ActiveRecord::QueryRecorder.new do
+           post_graphql(group_query(group1), current_user: admin)
+         end.count
+ 
+-        create(:project, namespace: group1)
++        queries = [{ query: group_query(group1) },
++                   { query: group_query(group2) }]
+ 
+         expect do
+-          post_graphql(group_query(group1), current_user: admin)
++          post_multiplex(queries, current_user: admin)
+         end.not_to exceed_query_limit(control_count)
++
++        expect(graphql_errors).to contain_exactly(nil, nil)
+       end
+     end
+ 
+diff --git a/spec/requests/api/graphql/namespace/projects_spec.rb b/spec/requests/api/graphql/namespace/projects_spec.rb
+new file mode 100644
+index 0000000000..e05273da4b
+--- /dev/null
++++ b/spec/requests/api/graphql/namespace/projects_spec.rb
+@@ -0,0 +1,82 @@
++# frozen_string_literal: true
++
++require 'spec_helper'
++
++describe 'getting projects', :nested_groups do
++  include GraphqlHelpers
++
++  let(:group)             { create(:group) }
++  let!(:project)          { create(:project, namespace: subject) }
++  let(:nested_group)      { create(:group, parent: group) }
++  let!(:nested_project)   { create(:project, group: nested_group) }
++  let!(:public_project)   { create(:project, :public, namespace: subject) }
++  let(:user)              { create(:user) }
++  let(:include_subgroups) { true }
++
++  subject { group }
++
++  let(:query) do
++    graphql_query_for(
++      'namespace',
++      { 'fullPath' => subject.full_path },
++      <<~QUERY
++      projects(includeSubgroups: #{include_subgroups}) {
++        edges {
++          node {
++            #{all_graphql_fields_for('Project')}
++          }
++        }
++      }
++      QUERY
++    )
++  end
++
++  before do
++    group.add_owner(user)
++  end
++
++  shared_examples 'a graphql namespace' do
++    it_behaves_like 'a working graphql query' do
++      before do
++        post_graphql(query, current_user: user)
++      end
++    end
++
++    it "includes the packages size if the user can read the statistics" do
++      post_graphql(query, current_user: user)
++
++      count = if include_subgroups
++                subject.all_projects.count
++              else
++                subject.projects.count
++              end
++
++      expect(graphql_data['namespace']['projects']['edges'].size).to eq(count)
++    end
++
++    context 'with no user' do
++      it 'finds only public projects' do
++        post_graphql(query, current_user: nil)
++
++        expect(graphql_data['namespace']['projects']['edges'].size).to eq(1)
++        project = graphql_data['namespace']['projects']['edges'][0]['node']
++        expect(project['id']).to eq(public_project.id.to_s)
++      end
++    end
++  end
++
++  it_behaves_like 'a graphql namespace'
++
++  context 'when the namespace is a user' do
++    subject { user.namespace }
++    let(:include_subgroups) { false }
++
++    it_behaves_like 'a graphql namespace'
++  end
++
++  context 'when not including subgroups' do
++    let(:include_subgroups) { false }
++
++    it_behaves_like 'a graphql namespace'
++  end
++end
+diff --git a/spec/requests/api/graphql/project/project_statistics_spec.rb b/spec/requests/api/graphql/project/project_statistics_spec.rb
+new file mode 100644
+index 0000000000..8683fa1f39
+--- /dev/null
++++ b/spec/requests/api/graphql/project/project_statistics_spec.rb
+@@ -0,0 +1,43 @@
++# frozen_string_literal: true
++
++require 'spec_helper'
++
++describe 'rendering namespace statistics' do
++  include GraphqlHelpers
++
++  let(:project) { create(:project) }
++  let!(:project_statistics) { create(:project_statistics, project: project, packages_size: 5.megabytes) }
++  let(:user) { create(:user) }
++
++  let(:query) do
++    graphql_query_for('project',
++                      { 'fullPath' => project.full_path },
++                      "statistics { #{all_graphql_fields_for('ProjectStatistics')} }")
++  end
++
++  before do
++    project.add_reporter(user)
++  end
++
++  it_behaves_like 'a working graphql query' do
++    before do
++      post_graphql(query, current_user: user)
++    end
++  end
++
++  it "includes the packages size if the user can read the statistics" do
++    post_graphql(query, current_user: user)
++
++    expect(graphql_data['project']['statistics']['packagesSize']).to eq(5.megabytes)
++  end
++
++  context 'when the project is public' do
++    let(:project) { create(:project, :public) }
++
++    it 'includes the statistics regardless of the user' do
++      post_graphql(query, current_user: nil)
++
++      expect(graphql_data['project']['statistics']).to be_present
++    end
++  end
++end

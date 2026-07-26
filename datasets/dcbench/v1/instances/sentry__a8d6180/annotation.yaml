@@ -1,0 +1,40 @@
+repo: sentry
+base_commit: a55da2e616de0e604e6693388bca1e7cd3464ce4
+commit: a8d6180a9987fd1e75aa2862ee1e37cd5d49e904
+patch_stored: true
+gold:
+- path: migrations_lockfile.txt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/explore/migrations/0001_squashed_0004_add_explore_last_visited_table.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/migrations/0001_squashed_0904_onboarding_task_project_id_idx.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/workflow_engine/migrations/0001_squashed_0065_add_status_to_detector_and_workflow.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: tools/squash_migrations.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: full field-by-field CreateModel bodies inside src/sentry/migrations/0001_squashed_0904_onboarding_task_project_id_idx.py
+    (9102 new lines) rendered verbatim rather than summarized by the 'replaces=[...]' squash mapping
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'This is a genuinely enormous diff (12321 insertions across 112 files) so some bloat is inherent
+  to the commit itself, and status=over_dump is at least partly deserved rather than purely a tool bug.
+  But comprehension-per-token still suffers badly: understanding a migration-squash only requires the
+  ''replaces=[]'' mapping and lockfile pointer changes, not the full literal re-emission of every field
+  of every historically-squashed Django model (the 9102-line new migration file). ctx_files=61 is actually
+  below git_files=112 (many small numstat-only migrations were presumably deduped), so the failure mode
+  here is per-file over-dump of a few giant files rather than file-count over-selection, distinct from
+  the react-native cases.'

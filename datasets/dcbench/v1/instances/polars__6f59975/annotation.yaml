@@ -1,0 +1,56 @@
+repo: polars
+base_commit: a599b9ea2f0869bba82eea7ffdca82eff97785b2
+commit: 6f59975555a707acc54566f10a4a440eb0a5585b
+patch_stored: true
+gold:
+  - path: crates/polars-plan/src/dsl/array.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds the public DSL ArrayNameSpace::len(), mapping to FunctionExpr::ArrayExpr(ArrayFunction::Length) — the entry point of the feature, following the same map_private pattern as the sibling max/min/sum methods in this file.
+  - path: crates/polars-plan/src/dsl/function_expr/array.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds ArrayFunction::Length (IDX_DTYPE typing), its Display arm, dispatch wiring (map!(length)), and the length() implementation that reads array.width() and preserves the validity bitmap for null sub-arrays.
+  - path: crates/polars-python/src/expr/array.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: PyExpr::arr_len FFI binding exposing the new method across the PyO3 boundary.
+  - path: py-polars/polars/expr/array.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Public Expr.arr.len() Python method calling self._pyexpr.arr_len().
+  - path: py-polars/polars/series/array.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Series-side ArrayNameSpace.len() added with an empty body — dispatched to the Expr implementation via the @expr_dispatch decorator on the class.
+  - path: py-polars/tests/unit/operations/namespaces/array/test_array.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: Adds test_array_lengths covering normal arrays, empty/null sub-arrays, and null vs. empty Series edge cases against the validity-preserving length() implementation.
+  - path: py-polars/polars/series/utils.py
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines expr_dispatch — ArrayNameSpace (Series side) is decorated with @expr_dispatch, so the empty-bodied Series.arr.len() only works because this mechanism matches its signature by name against ExprArrayNameSpace.len and dispatches to it via getattr(expr_namespace, func.__name__) at call time.
+forbidden:
+  - path: py-polars/polars/expr/expr.py
+    reason: defines the unrelated top-level Expr.len() (row count of the whole column), a same-named sibling in a different namespace that this commit does not touch
+  - path: py-polars/polars/series/list.py
+    reason: the analogous `list` namespace already has a len() method with a similar name/shape but is a separate, untouched implementation for the List dtype rather than Array
+  - path: crates/polars-plan/src/dsl/list.rs
+    reason: ListNameSpace's len(), a same-purpose sibling for the List dtype that this Array-specific commit does not modify
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: []
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 6
+  description: Add len method to arr — minimal full-chain FFI commit
+notes: Adds Expr.arr.len()/Series.arr.len() returning the fixed sub-array width as IDX_DTYPE while preserving null sub-array validity; Series-side needs no explicit implementation because of the @expr_dispatch decorator.

@@ -1,0 +1,81 @@
+generators:
+  cochange: 0
+  bm25: 15
+  graph: 0
+  random: 10
+candidates:
+- path: api/contrib/envoy/extensions/private_key_providers/cryptomb/v3alpha/cryptomb.proto
+  sources:
+  - random
+- path: api/envoy/config/cluster/v3/cluster.proto
+  sources:
+  - bm25
+- path: api/envoy/config/core/v3/protocol.proto
+  sources:
+  - bm25
+- path: api/envoy/config/route/v3/route_components.proto
+  sources:
+  - bm25
+- path: api/envoy/extensions/filters/network/http_connection_manager/v3/http_connection_manager.proto
+  sources:
+  - bm25
+- path: api/envoy/service/accesslog/v3/als.proto
+  sources:
+  - random
+- path: changelogs/1.18.0.yaml
+  sources:
+  - bm25
+- path: changelogs/1.30.0.yaml
+  sources:
+  - bm25
+- path: changelogs/1.36.0.yaml
+  sources:
+  - bm25
+- path: docs/root/configuration/http/http_filters/_include/helloworld.pb
+  sources:
+  - bm25
+- path: docs/root/operations/admin.rst
+  sources:
+  - bm25
+- path: mobile/library/common/extensions/filters/http/local_error/filter.cc
+  sources:
+  - random
+- path: source/common/http/conn_manager_impl.cc
+  sources:
+  - bm25
+- path: source/common/router/router.cc
+  sources:
+  - bm25
+- path: source/common/tcp_proxy/tcp_proxy.cc
+  sources:
+  - bm25
+- path: source/common/upstream/cluster_manager_impl.cc
+  sources:
+  - bm25
+- path: source/extensions/common/wasm/context.cc
+  sources:
+  - bm25
+- path: source/server/server.cc
+  sources:
+  - bm25
+- path: test/common/http/header_mutation_test.cc
+  sources:
+  - random
+- path: test/common/router/header_parser_corpus/clusterfuzz-testcase-minimized-header_parser_fuzz_test-5630125928873984
+  sources:
+  - random
+- path: test/common/singleton/threadsafe_singleton_test.cc
+  sources:
+  - random
+- path: test/extensions/filters/http/ext_proc/ext_proc_full_duplex_integration_test.cc
+  sources:
+  - random
+- path: test/extensions/filters/http/on_demand/on_demand_integration_test.cc
+  sources:
+  - random
+- path: test/extensions/filters/network/thrift_proxy/header_transport_impl_test.cc
+  sources:
+  - random
+- path: test/mocks/local_reply/BUILD
+  sources:
+  - random

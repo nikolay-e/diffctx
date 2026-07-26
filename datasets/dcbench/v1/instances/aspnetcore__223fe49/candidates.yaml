@@ -1,0 +1,113 @@
+generators:
+  cochange: 0
+  bm25: 15
+  graph: 12
+  random: 10
+candidates:
+- path: .vscode/launch.json
+  sources:
+  - random
+- path: src/Components/Endpoints/src/Builder/RazorComponentEndpointDataSource.cs
+  sources:
+  - random
+- path: src/Components/WebAssembly/WebAssembly/src/PACKAGE.md
+  sources:
+  - random
+- path: src/Components/WebAssembly/testassets/ThreadingApp.Server/Properties/launchSettings.json
+  sources:
+  - random
+- path: src/DefaultBuilder/test/Microsoft.AspNetCore.Tests/WebApplicationTests.cs
+  sources:
+  - bm25
+- path: src/Hosting/Abstractions/src/IHostingStartup.cs
+  sources:
+  - graph
+- path: src/Hosting/Hosting/src/WebHostBuilder.cs
+  sources:
+  - bm25
+- path: src/Hosting/Hosting/test/WebHostBuilderTests.cs
+  sources:
+  - bm25
+- path: src/Hosting/test/testassets/Microsoft.AspNetCore.Hosting.TestSites/Program.cs
+  sources:
+  - graph
+- path: src/Mvc/Mvc.Abstractions/src/Microsoft.AspNetCore.Mvc.Abstractions.WarningSuppressions.xml
+  sources:
+  - graph
+- path: src/Mvc/Mvc.Core/src/DependencyInjection/MvcCoreServiceCollectionExtensions.cs
+  sources:
+  - bm25
+- path: src/Mvc/Mvc.Core/test/DependencyInjection/MvcCoreServiceCollectionExtensionsTest.cs
+  sources:
+  - bm25
+- path: src/Mvc/Mvc.Razor.RuntimeCompilation/src/CSharpCompiler.cs
+  sources:
+  - bm25
+  - graph
+- path: src/Mvc/Mvc.Razor.RuntimeCompilation/src/LazyMetadataReferenceFeature.cs
+  sources:
+  - graph
+- path: src/Mvc/Mvc.Razor.RuntimeCompilation/src/PACKAGE.md
+  sources:
+  - graph
+- path: src/Mvc/Mvc.Razor.RuntimeCompilation/src/PageActionDescriptorChangeProvider.cs
+  sources:
+  - graph
+- path: src/Mvc/Mvc.Razor.RuntimeCompilation/src/PublicAPI.Shipped.txt
+  sources:
+  - bm25
+- path: src/Mvc/Mvc.Razor.RuntimeCompilation/src/RuntimeViewCompiler.cs
+  sources:
+  - bm25
+  - graph
+- path: src/Mvc/Mvc.Razor.RuntimeCompilation/src/RuntimeViewCompilerProvider.cs
+  sources:
+  - graph
+- path: src/Mvc/Mvc.Razor.RuntimeCompilation/test/CSharpCompilerTest.cs
+  sources:
+  - graph
+- path: src/Mvc/Mvc.Razor.RuntimeCompilation/test/PageLoaderMatcherPolicyTest.cs
+  sources:
+  - random
+- path: src/Mvc/Mvc.Razor/src/DependencyInjection/MvcRazorMvcCoreBuilderExtensions.cs
+  sources:
+  - bm25
+- path: src/Mvc/Mvc.RazorPages/src/DependencyInjection/MvcRazorPagesMvcCoreBuilderExtensions.cs
+  sources:
+  - bm25
+- path: src/Mvc/Mvc.RazorPages/src/Infrastructure/CompiledPageActionDescriptorProvider.cs
+  sources:
+  - graph
+- path: src/Mvc/Mvc.Testing/src/WebApplicationFactory.cs
+  sources:
+  - bm25
+- path: src/Mvc/Mvc/test/MvcServiceCollectionExtensionsTest.cs
+  sources:
+  - bm25
+- path: src/Mvc/perf/Microbenchmarks/Microsoft.AspNetCore.Mvc/RuntimePerformanceBenchmarkBase.cs
+  sources:
+  - bm25
+- path: src/Mvc/test/Mvc.FunctionalTests/LinkGenerationTests.cs
+  sources:
+  - bm25
+- path: src/Mvc/test/Mvc.FunctionalTests/RespectBrowserAcceptHeaderTests.cs
+  sources:
+  - bm25
+- path: src/Mvc/test/WebSites/RazorBuildWebSite/StartupWithHostingStartup.cs
+  sources:
+  - graph
+- path: src/Mvc/test/WebSites/RazorPagesWebSite/Pages/Validation/_ViewImports.cshtml
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/RoutingWebSite/Areas/Admin/Pages/LGAreaPage.cshtml.cs
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ItemTemplates/content/ApiController/.template.config/localize/templatestrings.ko.json
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ProjectTemplates/content/StarterWeb-CSharp/Views/Shared/_Layout.cshtml.css
+  sources:
+  - random
+- path: src/Razor/Razor.Runtime/src/PublicAPI.Shipped.txt
+  sources:
+  - random

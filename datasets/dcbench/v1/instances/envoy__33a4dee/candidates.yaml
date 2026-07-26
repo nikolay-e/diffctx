@@ -1,0 +1,139 @@
+generators:
+  cochange: 0
+  bm25: 15
+  graph: 20
+  random: 10
+candidates:
+- path: api/bazel/cc_proto_descriptor_library/text_format_transcoder.h
+  sources:
+  - graph
+- path: api/contrib/envoy/extensions/filters/network/rocketmq_proxy/v3/rocketmq_proxy.proto
+  sources:
+  - random
+- path: api/envoy/api/v2/eds.proto
+  sources:
+  - graph
+- path: api/envoy/service/endpoint/v3/eds.proto
+  sources:
+  - graph
+- path: api/versioning/BUILD
+  sources:
+  - random
+- path: changelogs/1.30.0.yaml
+  sources:
+  - graph
+- path: changelogs/1.34.0.yaml
+  sources:
+  - graph
+- path: contrib/client_ssl_auth/filters/network/source/client_ssl_auth.h
+  sources:
+  - graph
+- path: contrib/client_ssl_auth/filters/network/test/config_test.cc
+  sources:
+  - graph
+- path: contrib/common/sqlutils/source/sqlutils.h
+  sources:
+  - graph
+- path: contrib/config/test/kv_store_xds_delegate_integration_test.cc
+  sources:
+  - graph
+- path: contrib/hyperscan/matching/input_matchers/source/config.h
+  sources:
+  - graph
+- path: contrib/hyperscan/regex_engines/source/config.h
+  sources:
+  - graph
+- path: contrib/peak_ewma/load_balancing_policies/source/peak_ewma_lb.h
+  sources:
+  - graph
+- path: contrib/postgres_inspector/filters/listener/source/postgres_inspector.h
+  sources:
+  - graph
+- path: envoy/common/exception.h
+  sources:
+  - graph
+- path: envoy/router/route_config_provider_manager.h
+  sources:
+  - graph
+- path: mobile/library/common/system/default_system_helper.h
+  sources:
+  - random
+- path: source/common/config/utility.cc
+  sources:
+  - bm25
+- path: source/common/config/utility.h
+  sources:
+  - bm25
+- path: source/common/config/xds_manager_impl.h
+  sources:
+  - graph
+- path: source/common/filesystem/posix/filesystem_impl.cc
+  sources:
+  - graph
+- path: source/common/upstream/cluster_manager_impl.cc
+  sources:
+  - bm25
+- path: source/extensions/config_subscription/grpc/grpc_collection_subscription_factory.cc
+  sources:
+  - bm25
+- path: source/extensions/config_subscription/grpc/grpc_mux_impl.h
+  sources:
+  - bm25
+- path: source/extensions/config_subscription/grpc/grpc_subscription_factory.cc
+  sources:
+  - bm25
+- path: source/extensions/config_subscription/grpc/new_grpc_mux_impl.h
+  sources:
+  - bm25
+- path: source/extensions/config_subscription/grpc/xds_mux/grpc_mux_impl.h
+  sources:
+  - bm25
+  - graph
+- path: test/common/config/grpc_subscription_test_harness.h
+  sources:
+  - bm25
+- path: test/common/config/utility_test.cc
+  sources:
+  - bm25
+- path: test/common/http/header_map_impl_fuzz_test.cc
+  sources:
+  - random
+- path: test/common/protobuf/deterministic_hash_test.cc
+  sources:
+  - random
+- path: test/extensions/clusters/eds/eds_speed_test.cc
+  sources:
+  - bm25
+- path: test/extensions/config_subscription/common/subscription_factory_impl_test.cc
+  sources:
+  - bm25
+- path: test/extensions/config_subscription/grpc/delta_subscription_impl_test.cc
+  sources:
+  - bm25
+- path: test/extensions/config_subscription/grpc/delta_subscription_test_harness.h
+  sources:
+  - bm25
+- path: test/extensions/config_subscription/grpc/xds_failover_integration_test.cc
+  sources:
+  - bm25
+- path: test/extensions/filters/http/ext_proc/ext_proc_grpc_fuzz.cc
+  sources:
+  - random
+- path: test/extensions/filters/http/on_demand/on_demand_filter_test.cc
+  sources:
+  - random
+- path: test/extensions/filters/network/thrift_proxy/compact_protocol_impl_test.cc
+  sources:
+  - random
+- path: test/fuzz/utility.h
+  sources:
+  - random
+- path: test/integration/fake_upstream.h
+  sources:
+  - graph
+- path: test/mocks/config/xds_manager.h
+  sources:
+  - graph
+- path: test/mocks/tracing/mocks.h
+  sources:
+  - random

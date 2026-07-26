@@ -1,0 +1,40 @@
+repo: sentry
+base_commit: f3456299d2072c79d5480214c38fc877689793b7
+commit: f8386e32fccba988daa8d4eadc481e86e1344e2c
+patch_stored: true
+gold:
+- path: src/sentry/migrations/0001_squashed_0484_break_org_member_user_fk.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/migrations/0490_add_is_test_to_org.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/migrations/0610_remove_notification_setting_table.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/new_migrations/monkey/special.py
+  tier: essential
+  role: unspecified
+  in_diff: false
+forbidden:
+- path: bin/send_metrics.py
+- path: src/sentry/models/apiapplication.py
+- path: src/sentry/models/artifactbundle.py
+- path: src/sentry/models/broadcast.py
+- path: src/sentry/models/dashboard.py
+- path: src/sentry/models/options/option.py
+- path: src/sentry/uptime/migrations/0001_squashed_0042_extra_uptime_indexes.py
+nontrivial_gold_count: 1
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 74 migration files get the identical mechanical substitution (RunSQL -> SafeRunSQL); the tool correctly
+  achieves full recall (all 74 present, none missing) and even surfaces the SafeRunSQL definition itself
+  (new_migrations/monkey/special.py), which is the single most useful file. But it also renders all 74
+  near-duplicate migration diffs in full plus 19 extra model files (broadcast.py, dashboard.py, apiapplication.py,
+  etc.) that are only tangentially referenced by migration RunPython bodies, pushing md_tokens to 48k
+  for a change whose informational content is really 'one substitution pattern applied uniformly'. A reader
+  needs the definition plus 2-3 samples, not all 74 near-identical hunks.

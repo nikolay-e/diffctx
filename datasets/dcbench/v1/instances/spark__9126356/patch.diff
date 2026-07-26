@@ -1,0 +1,671 @@
+From 91263564ce649bbb3fc286a18e0ca323102dc2ce Mon Sep 17 00:00:00 2001
+From: David Milicevic <david.milicevic@databricks.com>
+Date: Sat, 13 Jun 2026 15:28:26 +0200
+Subject: [PATCH] [SPARK-57372][SQL] Remove the Types Framework feature flag
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+### What changes were proposed in this pull request?
+
+Removes the `spark.sql.types.framework.enabled` configuration and makes the Types Framework unconditionally active — it is the single path for the data types it manages (`TimeType` and the nanosecond timestamp types), with no flag gating it.
+
+Two follow-on adjustments fall out of making the framework unconditional:
+
+- The nanosecond timestamp types (SPARK-56822) gated their preview flag on the framework flag ("can only be enabled when the framework is enabled"). With the framework always on that requirement is always satisfied, so it is removed; the nanosecond types remain gated by their own `spark.sql.timestampNanosTypes.enabled` at the parser and schema entry points.
+- The TIME-type-enabled check that lived on the legacy serializer/deserializer path (reached only when the framework was off) moves into the framework's `TimeType` operations, so disabling `spark.sql.timeType.enabled` still rejects TIME exactly as before.
+
+### Why are the changes needed?
+
+The flag was only ever a release-rollout kill switch — on under tests, off in production, never intended as a per-session toggle. Every framework dispatch read the session config, and those dispatches sit on per-row hot paths (columnar reads, projections, encoder building), where the lookup is a measurable cost; the only way to make it cheap is to effectively pin it, at which point it stops being a meaningful toggle. A permanently test-on/prod-off switch also adds standing surface area — an audit-allowlist exception, and a divergent legacy path that tests never exercise — for no benefit now that the framework is validated. Removing it deletes the per-row cost and collapses the two code paths into one.
+
+### Does this PR introduce _any_ user-facing change?
+
+No. `spark.sql.types.framework.enabled` is internal, defaulted on only under tests and off in production, and never shipped in a released (GA) version, so there is no migration concern and no `RemovedConfig` entry is needed (cf. SPARK-49671, which removed the internal, already-on-by-default `spark.sql.collation.trim.enabled` without one). Behavior for the managed types is unchanged, and feature gates such as `spark.sql.timeType.enabled` / `spark.sql.timestampNanosTypes.enabled` continue to apply.
+
+### How was this patch tested?
+
+Existing encoder, type-conversion, Row-JSON, nanosecond-timestamp, and SQL config-audit suites pass with the framework now unconditionally enabled (already the default under tests); suites that toggled the flag were updated to drop the now-impossible disabled-framework cases. A new `TimeTypeOpsSuite` pins the relocated gate: building a TIME serializer/deserializer with `spark.sql.timeType.enabled=false` is rejected with `UNSUPPORTED_TIME_TYPE`.
+
+### Was this patch authored or co-authored using generative AI tooling?
+
+Generated-by: Claude Opus 4.8 (claude-opus-4-8)
+
+This pull request and its description were written by Isaac.
+
+Closes #56439 from davidm-db/SPARK-57372-remove-types-framework-flag.
+
+Authored-by: David Milicevic <david.milicevic@databricks.com>
+Signed-off-by: Max Gekk <max.gekk@gmail.com>
+---
+ .../spark/sql/internal/SqlApiConf.scala       |  2 -
+ .../spark/sql/types/ops/TypeApiOps.scala      | 23 +++---
+ .../catalyst/DeserializerBuildHelper.scala    | 15 +---
+ .../sql/catalyst/SerializerBuildHelper.scala  | 14 +---
+ .../sql/catalyst/types/ops/TimeTypeOps.scala  | 15 ++++
+ .../sql/catalyst/types/ops/TypeOps.scala      | 23 +++---
+ .../apache/spark/sql/internal/SQLConf.scala   | 25 +-----
+ .../org/apache/spark/sql/RowJsonSuite.scala   | 47 ++++--------
+ .../catalyst/types/ops/TimeTypeOpsSuite.scala | 76 +++++++++++++++++++
+ .../ops/TimestampNanosTypeOpsSuite.scala      | 28 +------
+ .../common/types/ops/ConnectTypeOps.scala     | 39 ++++------
+ .../spark/sql/SparkSessionBuilderSuite.scala  |  1 -
+ .../configs-without-binding-policy-exceptions |  1 -
+ 13 files changed, 142 insertions(+), 167 deletions(-)
+ create mode 100644 sql/catalyst/src/test/scala/org/apache/spark/sql/catalyst/types/ops/TimeTypeOpsSuite.scala
+
+diff --git a/sql/api/src/main/scala/org/apache/spark/sql/internal/SqlApiConf.scala b/sql/api/src/main/scala/org/apache/spark/sql/internal/SqlApiConf.scala
+index 99f8518295..b101ee0563 100644
+--- a/sql/api/src/main/scala/org/apache/spark/sql/internal/SqlApiConf.scala
++++ b/sql/api/src/main/scala/org/apache/spark/sql/internal/SqlApiConf.scala
+@@ -53,7 +53,6 @@ private[sql] trait SqlApiConf {
+   def parserDfaCacheFlushRatio: Double
+   def legacyParameterSubstitutionConstantsOnly: Boolean
+   def legacyIdentifierClauseOnly: Boolean
+-  def typesFrameworkEnabled: Boolean
+   def timestampNanosTypesEnabled: Boolean
+ }
+ 
+@@ -112,6 +111,5 @@ private[sql] object DefaultSqlApiConf extends SqlApiConf {
+   override def parserDfaCacheFlushRatio: Double = -1.0
+   override def legacyParameterSubstitutionConstantsOnly: Boolean = false
+   override def legacyIdentifierClauseOnly: Boolean = false
+-  override def typesFrameworkEnabled: Boolean = false
+   override def timestampNanosTypesEnabled: Boolean = SparkEnvUtils.isTesting
+ }
+diff --git a/sql/api/src/main/scala/org/apache/spark/sql/types/ops/TypeApiOps.scala b/sql/api/src/main/scala/org/apache/spark/sql/types/ops/TypeApiOps.scala
+index d7575976e1..ab46e34c91 100644
+--- a/sql/api/src/main/scala/org/apache/spark/sql/types/ops/TypeApiOps.scala
++++ b/sql/api/src/main/scala/org/apache/spark/sql/types/ops/TypeApiOps.scala
+@@ -162,16 +162,15 @@ trait TypeApiOps extends Serializable {
+  * Factory object for creating TypeApiOps instances.
+  *
+  * Returns Option to serve as both lookup and existence check - callers use getOrElse to fall
+- * through to legacy handling. The feature flag check is inside apply(), so callers don't need to
+- * check it separately.
++ * through to legacy handling for types the framework does not manage.
+  */
+ object TypeApiOps {
+ 
+   /**
+    * Returns a TypeApiOps instance for the given DataType, if supported by the framework.
+    *
+-   * Returns None if the type is not supported or the framework is disabled. This is the single
+-   * registration point for all client-side type operations.
++   * Returns None if the type is not supported. This is the single registration point for all
++   * client-side type operations.
+    *
+    * @param dt
+    *   the DataType to get operations for
+@@ -187,15 +186,12 @@ object TypeApiOps {
+   def apply(
+       dt: DataType,
+       zoneId: => ZoneId = SparkDateTimeUtils.getZoneId(SqlApiConf.get.sessionLocalTimeZone))
+-      : Option[TypeApiOps] = {
+-    if (!SqlApiConf.get.typesFrameworkEnabled) return None
+-    dt match {
+-      case tt: TimeType => Some(new TimeTypeApiOps(tt))
+-      case t: TimestampNTZNanosType => Some(new TimestampNTZNanosTypeApiOps(t))
+-      case t: TimestampLTZNanosType => Some(new TimestampLTZNanosTypeApiOps(t, zoneId))
+-      // Add new types here - single registration point
+-      case _ => None
+-    }
++      : Option[TypeApiOps] = dt match {
++    case tt: TimeType => Some(new TimeTypeApiOps(tt))
++    case t: TimestampNTZNanosType => Some(new TimestampNTZNanosTypeApiOps(t))
++    case t: TimestampLTZNanosType => Some(new TimestampLTZNanosTypeApiOps(t, zoneId))
++    // Add new types here - single registration point
++    case _ => None
+   }
+ 
+   /**
+@@ -203,7 +199,6 @@ object TypeApiOps {
+    */
+   def fromArrowType(at: ArrowType): Option[DataType] = {
+     import org.apache.arrow.vector.types.TimeUnit
+-    if (!SqlApiConf.get.typesFrameworkEnabled) return None
+     at match {
+       case t: ArrowType.Time if t.getUnit == TimeUnit.NANOSECOND && t.getBitWidth == 8 * 8 =>
+         Some(TimeType(TimeType.MICROS_PRECISION))
+diff --git a/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/DeserializerBuildHelper.scala b/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/DeserializerBuildHelper.scala
+index 1fa7803006..b08804dccc 100644
+--- a/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/DeserializerBuildHelper.scala
++++ b/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/DeserializerBuildHelper.scala
+@@ -20,7 +20,7 @@ package org.apache.spark.sql.catalyst
+ import org.apache.spark.sql.catalyst.{expressions => exprs}
+ import org.apache.spark.sql.catalyst.analysis.{GetColumnByOrdinal, UnresolvedExtractValue}
+ import org.apache.spark.sql.catalyst.encoders.{AgnosticEncoder, AgnosticEncoders, AgnosticExpressionPathEncoder, Codec, JavaSerializationCodec, KryoSerializationCodec}
+-import org.apache.spark.sql.catalyst.encoders.AgnosticEncoders.{ArrayEncoder, BoxedLeafEncoder, CharEncoder, DateEncoder, DayTimeIntervalEncoder, GeographyEncoder, GeometryEncoder, InstantEncoder, IterableEncoder, JavaBeanEncoder, JavaBigIntEncoder, JavaDecimalEncoder, JavaEnumEncoder, LocalDateEncoder, LocalDateTimeEncoder, LocalTimeEncoder, MapEncoder, OptionEncoder, PrimitiveBooleanEncoder, PrimitiveByteEncoder, PrimitiveDoubleEncoder, PrimitiveFloatEncoder, PrimitiveIntEncoder, PrimitiveLongEncoder, PrimitiveShortEncoder, ProductEncoder, ScalaBigIntEncoder, ScalaDecimalEncoder, ScalaEnumEncoder, StringEncoder, TimestampEncoder, TransformingEncoder, UDTEncoder, VarcharEncoder, YearMonthIntervalEncoder}
++import org.apache.spark.sql.catalyst.encoders.AgnosticEncoders.{ArrayEncoder, BoxedLeafEncoder, CharEncoder, DateEncoder, DayTimeIntervalEncoder, GeographyEncoder, GeometryEncoder, InstantEncoder, IterableEncoder, JavaBeanEncoder, JavaBigIntEncoder, JavaDecimalEncoder, JavaEnumEncoder, LocalDateEncoder, LocalDateTimeEncoder, MapEncoder, OptionEncoder, PrimitiveBooleanEncoder, PrimitiveByteEncoder, PrimitiveDoubleEncoder, PrimitiveFloatEncoder, PrimitiveIntEncoder, PrimitiveLongEncoder, PrimitiveShortEncoder, ProductEncoder, ScalaBigIntEncoder, ScalaDecimalEncoder, ScalaEnumEncoder, StringEncoder, TimestampEncoder, TransformingEncoder, UDTEncoder, VarcharEncoder, YearMonthIntervalEncoder}
+ import org.apache.spark.sql.catalyst.encoders.EncoderUtils.{dataTypeForClass, externalDataTypeFor, isNativeEncoder}
+ import org.apache.spark.sql.catalyst.expressions.{Expression, GetStructField, IsNull, Literal, MapKeys, MapValues, UpCast}
+ import org.apache.spark.sql.catalyst.expressions.objects.{AssertNotNull, CreateExternalRow, DecodeUsingSerializer, InitializeJavaBean, Invoke, NewInstance, StaticInvoke, UnresolvedCatalystToExternalMap, UnresolvedMapObjects, WrapOption}
+@@ -176,15 +176,6 @@ object DeserializerBuildHelper {
+       returnNullable = false)
+   }
+ 
+-  def createDeserializerForLocalTime(path: Expression): Expression = {
+-    StaticInvoke(
+-      DateTimeUtils.getClass,
+-      ObjectType(classOf[java.time.LocalTime]),
+-      "nanosToLocalTime",
+-      path :: Nil,
+-      returnNullable = false)
+-  }
+-
+   def createDeserializerForJavaBigDecimal(
+       path: Expression,
+       returnNullable: Boolean): Expression = {
+@@ -364,10 +355,6 @@ object DeserializerBuildHelper {
+       createDeserializerForInstant(path)
+     case LocalDateTimeEncoder =>
+       createDeserializerForLocalDateTime(path)
+-    case LocalTimeEncoder if !SQLConf.get.isTimeTypeEnabled =>
+-      throw org.apache.spark.sql.errors.QueryCompilationErrors.unsupportedTimeTypeError()
+-    case LocalTimeEncoder =>
+-      createDeserializerForLocalTime(path)
+     case UDTEncoder(udt, udtClass) =>
+       val obj = NewInstance(udtClass, Nil, ObjectType(udtClass))
+       Invoke(obj, "deserialize", ObjectType(udt.userClass), path :: Nil)
+diff --git a/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/SerializerBuildHelper.scala b/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/SerializerBuildHelper.scala
+index 00a0d6ca25..3531ebc77c 100644
+--- a/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/SerializerBuildHelper.scala
++++ b/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/SerializerBuildHelper.scala
+@@ -22,7 +22,7 @@ import scala.language.existentials
+ import org.apache.spark.sql.catalyst.{expressions => exprs}
+ import org.apache.spark.sql.catalyst.DeserializerBuildHelper.expressionWithNullSafety
+ import org.apache.spark.sql.catalyst.encoders.{AgnosticEncoder, AgnosticEncoders, AgnosticExpressionPathEncoder, Codec, JavaSerializationCodec, KryoSerializationCodec}
+-import org.apache.spark.sql.catalyst.encoders.AgnosticEncoders.{ArrayEncoder, BoxedBooleanEncoder, BoxedByteEncoder, BoxedDoubleEncoder, BoxedFloatEncoder, BoxedIntEncoder, BoxedLeafEncoder, BoxedLongEncoder, BoxedShortEncoder, CharEncoder, DateEncoder, DayTimeIntervalEncoder, GeographyEncoder, GeometryEncoder, InstantEncoder, IterableEncoder, JavaBeanEncoder, JavaBigIntEncoder, JavaDecimalEncoder, JavaEnumEncoder, LocalDateEncoder, LocalDateTimeEncoder, LocalTimeEncoder, MapEncoder, OptionEncoder, PrimitiveLeafEncoder, ProductEncoder, ScalaBigIntEncoder, ScalaDecimalEncoder, ScalaEnumEncoder, StringEncoder, TimestampEncoder, TransformingEncoder, UDTEncoder, VarcharEncoder, YearMonthIntervalEncoder}
++import org.apache.spark.sql.catalyst.encoders.AgnosticEncoders.{ArrayEncoder, BoxedBooleanEncoder, BoxedByteEncoder, BoxedDoubleEncoder, BoxedFloatEncoder, BoxedIntEncoder, BoxedLeafEncoder, BoxedLongEncoder, BoxedShortEncoder, CharEncoder, DateEncoder, DayTimeIntervalEncoder, GeographyEncoder, GeometryEncoder, InstantEncoder, IterableEncoder, JavaBeanEncoder, JavaBigIntEncoder, JavaDecimalEncoder, JavaEnumEncoder, LocalDateEncoder, LocalDateTimeEncoder, MapEncoder, OptionEncoder, PrimitiveLeafEncoder, ProductEncoder, ScalaBigIntEncoder, ScalaDecimalEncoder, ScalaEnumEncoder, StringEncoder, TimestampEncoder, TransformingEncoder, UDTEncoder, VarcharEncoder, YearMonthIntervalEncoder}
+ import org.apache.spark.sql.catalyst.encoders.EncoderUtils.{externalDataTypeFor, isNativeEncoder, lenientExternalDataTypeFor}
+ import org.apache.spark.sql.catalyst.expressions.{BoundReference, CheckOverflow, CreateNamedStruct, Expression, IsNull, KnownNotNull, Literal, UnsafeArrayData}
+ import org.apache.spark.sql.catalyst.expressions.objects._
+@@ -118,15 +118,6 @@ object SerializerBuildHelper {
+       returnNullable = false)
+   }
+ 
+-  def createSerializerForLocalTime(inputObject: Expression): Expression = {
+-    StaticInvoke(
+-      DateTimeUtils.getClass,
+-      TimeType(),
+-      "localTimeToNanos",
+-      inputObject :: Nil,
+-      returnNullable = false)
+-  }
+-
+   def createSerializerForScalaEnum(inputObject: Expression): Expression = {
+     createSerializerForString(
+       Invoke(
+@@ -384,9 +375,6 @@ object SerializerBuildHelper {
+     case TimestampEncoder(false) => createSerializerForSqlTimestamp(input)
+     case InstantEncoder(false) => createSerializerForJavaInstant(input)
+     case LocalDateTimeEncoder => createSerializerForLocalDateTime(input)
+-    case LocalTimeEncoder if !SQLConf.get.isTimeTypeEnabled =>
+-      throw org.apache.spark.sql.errors.QueryCompilationErrors.unsupportedTimeTypeError()
+-    case LocalTimeEncoder => createSerializerForLocalTime(input)
+     case UDTEncoder(udt, udtClass) => createSerializerForUserDefinedType(input, udt, udtClass)
+     case OptionEncoder(valueEnc) =>
+       createSerializer(valueEnc, UnwrapOption(externalDataTypeFor(valueEnc), input))
+diff --git a/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/types/ops/TimeTypeOps.scala b/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/types/ops/TimeTypeOps.scala
+index 217a69ba4f..f4c4b6c5a5 100644
+--- a/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/types/ops/TimeTypeOps.scala
++++ b/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/types/ops/TimeTypeOps.scala
+@@ -26,7 +26,9 @@ import org.apache.spark.sql.catalyst.expressions.{Expression, Literal, MutableLo
+ import org.apache.spark.sql.catalyst.expressions.objects.StaticInvoke
+ import org.apache.spark.sql.catalyst.types.{PhysicalDataType, PhysicalLongType}
+ import org.apache.spark.sql.catalyst.util.DateTimeUtils
++import org.apache.spark.sql.errors.QueryCompilationErrors
+ import org.apache.spark.sql.execution.arrow.{ArrowFieldWriter, TimeWriter}
++import org.apache.spark.sql.internal.SQLConf
+ import org.apache.spark.sql.types.{ObjectType, TimeType}
+ import org.apache.spark.sql.types.ops.TimeTypeApiOps
+ 
+@@ -92,7 +94,19 @@ case class TimeTypeOps(override val t: TimeType) extends TimeTypeApiOps(t) with
+ 
+   // ==================== Optional Operations ====================
+ 
++  // Building a TIME serializer/deserializer requires the TIME type to be enabled. The framework
++  // dispatch at the head of Serializer/DeserializerBuildHelper routes LocalTimeEncoder through
++  // these methods, so this is the single gate on the encoder path. Throw rather than return None
++  // so the dispatch surfaces UNSUPPORTED_TIME_TYPE instead of falling through to the default
++  // match, which does not handle LocalTimeEncoder.
++  private def checkTimeTypeEnabled(): Unit = {
++    if (!SQLConf.get.isTimeTypeEnabled) {
++      throw QueryCompilationErrors.unsupportedTimeTypeError()
++    }
++  }
++
+   override def createSerializer(input: Expression): Option[Expression] = {
++    checkTimeTypeEnabled()
+     Some(StaticInvoke(
+       DateTimeUtils.getClass,
+       t,
+@@ -102,6 +116,7 @@ case class TimeTypeOps(override val t: TimeType) extends TimeTypeApiOps(t) with
+   }
+ 
+   override def createDeserializer(path: Expression): Option[Expression] = {
++    checkTimeTypeEnabled()
+     Some(StaticInvoke(
+       DateTimeUtils.getClass,
+       ObjectType(classOf[java.time.LocalTime]),
+diff --git a/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/types/ops/TypeOps.scala b/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/types/ops/TypeOps.scala
+index 2313c22f1f..f11a3bb071 100644
+--- a/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/types/ops/TypeOps.scala
++++ b/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/types/ops/TypeOps.scala
+@@ -26,7 +26,6 @@ import org.apache.spark.sql.catalyst.WalkedTypePath
+ import org.apache.spark.sql.catalyst.expressions.{Expression, Literal, MutableValue}
+ import org.apache.spark.sql.catalyst.types.PhysicalDataType
+ import org.apache.spark.sql.execution.arrow.ArrowFieldWriter
+-import org.apache.spark.sql.internal.SQLConf
+ import org.apache.spark.sql.types.{DataType, TimestampLTZNanosType, TimestampNTZNanosType, TimeType}
+ 
+ /**
+@@ -220,8 +219,7 @@ trait TypeOps extends Serializable {
+  * Factory object for creating TypeOps instances.
+  *
+  * Returns Option to serve as both lookup and existence check - callers use getOrElse to fall
+- * through to legacy handling. The feature flag check is inside apply(), so callers don't need to
+- * check it separately.
++ * through to legacy handling for types the framework does not manage.
+  *
+  * Uses pattern matching (not Set enumeration) to support parameterized types like
+  * TimeType(precision) or DecimalType(precision, scale).
+@@ -231,22 +229,19 @@ object TypeOps {
+   /**
+    * Returns a TypeOps instance for the given DataType, if supported by the framework.
+    *
+-   * Returns None if the type is not supported or the framework is disabled. This is the single
+-   * registration point for all server-side type operations.
++   * Returns None if the type is not supported. This is the single registration point for all
++   * server-side type operations.
+    *
+    * @param dt
+    *   the DataType to get operations for
+    * @return
+    *   Some(TypeOps) if supported, None otherwise
+    */
+-  def apply(dt: DataType): Option[TypeOps] = {
+-    if (!SQLConf.get.typesFrameworkEnabled) return None
+-    dt match {
+-      case tt: TimeType => Some(TimeTypeOps(tt))
+-      case t: TimestampNTZNanosType => Some(TimestampNTZNanosTypeOps(t))
+-      case t: TimestampLTZNanosType => Some(TimestampLTZNanosTypeOps(t))
+-      // Add new types here - single registration point
+-      case _ => None
+-    }
++  def apply(dt: DataType): Option[TypeOps] = dt match {
++    case tt: TimeType => Some(TimeTypeOps(tt))
++    case t: TimestampNTZNanosType => Some(TimestampNTZNanosTypeOps(t))
++    case t: TimestampLTZNanosType => Some(TimestampLTZNanosTypeOps(t))
++    // Add new types here - single registration point
++    case _ => None
+   }
+ }
+diff --git a/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala b/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala
+index abe8a9a592..586f69fcf1 100644
+--- a/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala
++++ b/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala
+@@ -634,17 +634,6 @@ object SQLConf {
+       .booleanConf
+       .createWithDefault(true)
+ 
+-  val TYPES_FRAMEWORK_ENABLED =
+-    buildConf("spark.sql.types.framework.enabled")
+-      .internal()
+-      .doc("When true, use the Types Framework for supported types (currently TimeType and the " +
+-        "nanosecond timestamp types TimestampNTZNanosType and TimestampLTZNanosType). " +
+-        "The framework centralizes type-specific operations in Ops classes instead of " +
+-        "scattered pattern matching. When false, use legacy scattered implementation.")
+-      .version("4.2.0")
+-      .booleanConf
+-      .createWithDefaultFunction(() => Utils.isTesting)
+-
+   val TIMESTAMP_NANOS_TYPES_ENABLED =
+     buildConf("spark.sql.timestampNanosTypes.enabled")
+       .internal()
+@@ -656,9 +645,7 @@ object SQLConf {
+         "Unparameterized TIMESTAMP, TIMESTAMP_NTZ, and TIMESTAMP_LTZ remain microsecond " +
+         "types. Enabling this flag does not guarantee full SQL support: casts, Parquet read, " +
+         "typed literals, and other operations may still fail until their respective features " +
+-        "are implemented. The nanosecond timestamp types are implemented solely through the " +
+-        "Types Framework, so this flag only takes effect when " +
+-        s"${TYPES_FRAMEWORK_ENABLED.key} is also true.")
++        "are implemented.")
+       .version("4.3.0")
+       .withBindingPolicy(ConfigBindingPolicy.SESSION)
+       .booleanConf
+@@ -7665,15 +7652,7 @@ class SQLConf extends Serializable with Logging with SqlApiConf {
+ 
+   def geospatialEnabled: Boolean = getConf(GEOSPATIAL_ENABLED)
+ 
+-  def typesFrameworkEnabled: Boolean = getConf(TYPES_FRAMEWORK_ENABLED)
+-
+-  // The nanos types are implemented solely through the Types Framework, so the flag has no
+-  // effect without it. The requirement is enforced here instead of in a checkValue of
+-  // TIMESTAMP_NANOS_TYPES_ENABLED: a validator must not call SQLConf.get, because validators
+-  // run inside mergeSparkConf while the session's SQLConf is still being constructed, and the
+-  // SQLConf.get lookup re-enters that construction (infinite recursion).
+-  def timestampNanosTypesEnabled: Boolean =
+-    getConf(TIMESTAMP_NANOS_TYPES_ENABLED) && getConf(TYPES_FRAMEWORK_ENABLED)
++  def timestampNanosTypesEnabled: Boolean = getConf(TIMESTAMP_NANOS_TYPES_ENABLED)
+ 
+   def dataSourceV2JoinPushdown: Boolean = getConf(DATA_SOURCE_V2_JOIN_PUSHDOWN)
+ 
+diff --git a/sql/catalyst/src/test/scala/org/apache/spark/sql/RowJsonSuite.scala b/sql/catalyst/src/test/scala/org/apache/spark/sql/RowJsonSuite.scala
+index 183eefaa8d..31d967f3da 100644
+--- a/sql/catalyst/src/test/scala/org/apache/spark/sql/RowJsonSuite.scala
++++ b/sql/catalyst/src/test/scala/org/apache/spark/sql/RowJsonSuite.scala
+@@ -132,46 +132,26 @@ class RowJsonSuite extends SparkFunSuite with SQLHelper {
+     new GenericRowWithSchema(Array(value), new StructType().add("a", TimeType(precision))).jsonValue
+ 
+   test("SPARK-57338: TIME column renders the external LocalTime in JSON") {
+-    withSQLConf(SQLConf.TYPES_FRAMEWORK_ENABLED.key -> "true") {
+-      assert(timeRowJson(LocalTime.of(12, 13, 14), TimeType.MICROS_PRECISION) ===
+-        JObject("a" -> JString("12:13:14")))
+-      // The fraction is rendered up to microsecond resolution with trailing zeros trimmed.
+-      assert(timeRowJson(LocalTime.of(1, 2, 3, 123456000), TimeType.MICROS_PRECISION) ===
+-        JObject("a" -> JString("01:02:03.123456")))
+-      assert(timeRowJson(LocalTime.of(10, 30, 0, 100000000), TimeType.MICROS_PRECISION) ===
+-        JObject("a" -> JString("10:30:00.1")))
+-      assert(timeRowJson(LocalTime.MIDNIGHT, TimeType.MICROS_PRECISION) ===
+-        JObject("a" -> JString("00:00:00")))
+-    }
++    assert(timeRowJson(LocalTime.of(12, 13, 14), TimeType.MICROS_PRECISION) ===
++      JObject("a" -> JString("12:13:14")))
++    // The fraction is rendered up to microsecond resolution with trailing zeros trimmed.
++    assert(timeRowJson(LocalTime.of(1, 2, 3, 123456000), TimeType.MICROS_PRECISION) ===
++      JObject("a" -> JString("01:02:03.123456")))
++    assert(timeRowJson(LocalTime.of(10, 30, 0, 100000000), TimeType.MICROS_PRECISION) ===
++      JObject("a" -> JString("10:30:00.1")))
++    assert(timeRowJson(LocalTime.MIDNIGHT, TimeType.MICROS_PRECISION) ===
++      JObject("a" -> JString("00:00:00")))
+   }
+ 
+   test("SPARK-57338: TIME column JSON rendering is independent of the column precision") {
+-    withSQLConf(SQLConf.TYPES_FRAMEWORK_ENABLED.key -> "true") {
+-      val time = LocalTime.of(1, 2, 3, 123456000)
+-      (TimeType.MIN_PRECISION to TimeType.MAX_PRECISION).foreach { p =>
+-        assert(timeRowJson(time, p) === JObject("a" -> JString("01:02:03.123456")))
+-      }
++    val time = LocalTime.of(1, 2, 3, 123456000)
++    (TimeType.MIN_PRECISION to TimeType.MAX_PRECISION).foreach { p =>
++      assert(timeRowJson(time, p) === JObject("a" -> JString("01:02:03.123456")))
+     }
+   }
+ 
+   test("SPARK-57338: null TIME column renders as JSON null") {
+-    withSQLConf(SQLConf.TYPES_FRAMEWORK_ENABLED.key -> "true") {
+-      assert(timeRowJson(null, TimeType.MICROS_PRECISION) === JObject("a" -> JNull))
+-    }
+-  }
+-
+-  // With the Types Framework off (the production default), TypeApiOps returns None and Row JSON
+-  // falls back to the legacy toJsonDefault, which must still render the external LocalTime that a
+-  // public Row holds for a TIME column - matching HiveResult's legacy fallback - rather than
+-  // failing with FAILED_ROW_TO_JSON.
+-  test("SPARK-57338: TIME column renders via the legacy path with the framework disabled") {
+-    withSQLConf(SQLConf.TYPES_FRAMEWORK_ENABLED.key -> "false") {
+-      assert(timeRowJson(LocalTime.of(12, 13, 14), TimeType.MICROS_PRECISION) ===
+-        JObject("a" -> JString("12:13:14")))
+-      assert(timeRowJson(LocalTime.of(1, 2, 3, 123456000), TimeType.MICROS_PRECISION) ===
+-        JObject("a" -> JString("01:02:03.123456")))
+-      assert(timeRowJson(null, TimeType.MICROS_PRECISION) === JObject("a" -> JNull))
+-    }
++    assert(timeRowJson(null, TimeType.MICROS_PRECISION) === JObject("a" -> JNull))
+   }
+ 
+   // With nanosecond cast-to-string now supported through the framework (SPARK-57285), Row JSON
+@@ -181,7 +161,6 @@ class RowJsonSuite extends SparkFunSuite with SQLHelper {
+     def nanosRowJson(value: Any, dt: DataType): JValue =
+       new GenericRowWithSchema(Array(value), new StructType().add("a", dt)).jsonValue
+     withSQLConf(
+-        SQLConf.TYPES_FRAMEWORK_ENABLED.key -> "true",
+         SQLConf.TIMESTAMP_NANOS_TYPES_ENABLED.key -> "true",
+         SQLConf.SESSION_LOCAL_TIMEZONE.key -> "UTC") {
+       val ldt = LocalDateTime.of(2020, 1, 1, 12, 0, 0, 123456789)
+diff --git a/sql/catalyst/src/test/scala/org/apache/spark/sql/catalyst/types/ops/TimeTypeOpsSuite.scala b/sql/catalyst/src/test/scala/org/apache/spark/sql/catalyst/types/ops/TimeTypeOpsSuite.scala
+new file mode 100644
+index 0000000000..c29faef09f
+--- /dev/null
++++ b/sql/catalyst/src/test/scala/org/apache/spark/sql/catalyst/types/ops/TimeTypeOpsSuite.scala
+@@ -0,0 +1,76 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *    http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.apache.spark.sql.catalyst.types.ops
++
++import org.apache.spark.SparkFunSuite
++import org.apache.spark.sql.AnalysisException
++import org.apache.spark.sql.catalyst.{DeserializerBuildHelper, SerializerBuildHelper}
++import org.apache.spark.sql.catalyst.encoders.AgnosticEncoders.LocalTimeEncoder
++import org.apache.spark.sql.catalyst.plans.SQLHelper
++import org.apache.spark.sql.internal.SQLConf
++import org.apache.spark.sql.types.{ObjectType, TimeType}
++
++/**
++ * Tests for the Types Framework wiring of TimeType.
++ *
++ * The TIME-type-enabled gate lives in TimeTypeOps.createSerializer / createDeserializer; the
++ * framework dispatch at the head of Serializer/DeserializerBuildHelper routes LocalTimeEncoder
++ * through it. Disabling spark.sql.timeType.enabled must therefore still reject building a TIME
++ * serializer/deserializer with UNSUPPORTED_TIME_TYPE, rather than silently producing one. The
++ * enabled path is asserted too, so the gate is covered in both directions.
++ */
++class TimeTypeOpsSuite extends SparkFunSuite with SQLHelper {
++
++  test("building a TIME serializer is rejected when the TIME type is disabled") {
++    withSQLConf(SQLConf.TIME_TYPE_ENABLED.key -> "false") {
++      checkError(
++        exception = intercept[AnalysisException] {
++          SerializerBuildHelper.createSerializer(LocalTimeEncoder)
++        },
++        condition = "UNSUPPORTED_TIME_TYPE",
++        parameters = Map.empty[String, String])
++    }
++  }
++
++  test("building a TIME deserializer is rejected when the TIME type is disabled") {
++    withSQLConf(SQLConf.TIME_TYPE_ENABLED.key -> "false") {
++      checkError(
++        exception = intercept[AnalysisException] {
++          DeserializerBuildHelper.createDeserializer(LocalTimeEncoder)
++        },
++        condition = "UNSUPPORTED_TIME_TYPE",
++        parameters = Map.empty[String, String])
++    }
++  }
++
++  test("building a TIME serializer succeeds when the TIME type is enabled") {
++    withSQLConf(SQLConf.TIME_TYPE_ENABLED.key -> "true") {
++      // The gate passes and the framework builds a TIME serializer.
++      val serializer = SerializerBuildHelper.createSerializer(LocalTimeEncoder)
++      assert(serializer.dataType.isInstanceOf[TimeType])
++    }
++  }
++
++  test("building a TIME deserializer succeeds when the TIME type is enabled") {
++    withSQLConf(SQLConf.TIME_TYPE_ENABLED.key -> "true") {
++      // The gate passes and the framework builds a TIME deserializer returning java.time.LocalTime.
++      val deserializer = DeserializerBuildHelper.createDeserializer(LocalTimeEncoder)
++      assert(deserializer.dataType === ObjectType(classOf[java.time.LocalTime]))
++    }
++  }
++}
+diff --git a/sql/catalyst/src/test/scala/org/apache/spark/sql/catalyst/types/ops/TimestampNanosTypeOpsSuite.scala b/sql/catalyst/src/test/scala/org/apache/spark/sql/catalyst/types/ops/TimestampNanosTypeOpsSuite.scala
+index b31fe31075..6633416a06 100644
+--- a/sql/catalyst/src/test/scala/org/apache/spark/sql/catalyst/types/ops/TimestampNanosTypeOpsSuite.scala
++++ b/sql/catalyst/src/test/scala/org/apache/spark/sql/catalyst/types/ops/TimestampNanosTypeOpsSuite.scala
+@@ -38,8 +38,7 @@ import org.apache.spark.unsafe.types.{TimestampNanosVal, UTF8String}
+  *
+  * Verifies that TimestampNTZNanosType and TimestampLTZNanosType route physical representation,
+  * literals, row accessors, mutable values, codegen class selection, conversions, and encoders
+- * through TypeOps/TypeApiOps. The Types Framework is the sole integration path for these types, so
+- * the suite runs with spark.sql.types.framework.enabled = true (the default under tests).
++ * through TypeOps/TypeApiOps. The Types Framework is the sole integration path for these types.
+  */
+ class TimestampNanosTypeOpsSuite extends SparkFunSuite with SQLHelper {
+ 
+@@ -266,29 +265,4 @@ class TimestampNanosTypeOpsSuite extends SparkFunSuite with SQLHelper {
+       OptionEncoder(InstantNanosEncoder(9)),
+       Seq(Some(Instant.parse("2019-02-26T16:56:00.123456789Z")), None))
+   }
+-
+-  test("framework disabled leaves the nanos types unsupported (no legacy fallback)") {
+-    withSQLConf(SQLConf.TYPES_FRAMEWORK_ENABLED.key -> "false") {
+-      allCases.foreach { case (dt, _, _) =>
+-        assert(TypeOps(dt).isEmpty, s"TypeOps should be empty for $dt when disabled")
+-        assert(TypeApiOps(dt).isEmpty, s"TypeApiOps should be empty for $dt when disabled")
+-      }
+-    }
+-  }
+-
+-  test("the nanos types flag only takes effect when the Types Framework is enabled") {
+-    // Setting the flag must always succeed (a checkValue consulting SQLConf.get would recurse
+-    // into the session conf's own construction); the framework requirement is enforced in the
+-    // effective getter instead.
+-    withSQLConf(
+-        SQLConf.TIMESTAMP_NANOS_TYPES_ENABLED.key -> "true",
+-        SQLConf.TYPES_FRAMEWORK_ENABLED.key -> "false") {
+-      assert(!SQLConf.get.timestampNanosTypesEnabled)
+-    }
+-    withSQLConf(
+-        SQLConf.TIMESTAMP_NANOS_TYPES_ENABLED.key -> "true",
+-        SQLConf.TYPES_FRAMEWORK_ENABLED.key -> "true") {
+-      assert(SQLConf.get.timestampNanosTypesEnabled)
+-    }
+-  }
+ }
+diff --git a/sql/connect/common/src/main/scala/org/apache/spark/sql/connect/common/types/ops/ConnectTypeOps.scala b/sql/connect/common/src/main/scala/org/apache/spark/sql/connect/common/types/ops/ConnectTypeOps.scala
+index 3390bf1d06..7225bc05fe 100644
+--- a/sql/connect/common/src/main/scala/org/apache/spark/sql/connect/common/types/ops/ConnectTypeOps.scala
++++ b/sql/connect/common/src/main/scala/org/apache/spark/sql/connect/common/types/ops/ConnectTypeOps.scala
+@@ -24,7 +24,6 @@ import org.apache.spark.sql.catalyst.encoders.AgnosticEncoder
+ import org.apache.spark.sql.catalyst.encoders.AgnosticEncoders.LocalTimeEncoder
+ import org.apache.spark.sql.connect.client.arrow.{ArrowDeserializers, ArrowSerializer, ArrowVectorReader}
+ import org.apache.spark.sql.connect.client.arrow.types.ops.TimeTypeConnectOps
+-import org.apache.spark.sql.internal.SqlApiConf
+ import org.apache.spark.sql.types.{DataType, TimeType}
+ 
+ /**
+@@ -89,50 +88,42 @@ trait ConnectTypeOps extends Serializable {
+ /**
+  * Factory object for ConnectTypeOps lookup.
+  *
+- * Provides separate factory methods for proto (server-side, feature-flag-gated) and Arrow
+- * (client-side, no flag) dispatch.
++ * Provides separate factory methods for proto conversion and Arrow serde dispatch.
+  */
+ object ConnectTypeOps {
+ 
+-  // ==================== Proto Dispatch (server-side, flag-gated) ====================
++  // ==================== Proto Dispatch ====================
+ 
+-  /** DataType-keyed dispatch for proto conversions. Checks feature flag. */
+-  def apply(dt: DataType): Option[ConnectTypeOps] = {
+-    if (!SqlApiConf.get.typesFrameworkEnabled) return None
+-    dt match {
+-      case tt: TimeType => Some(new TimeTypeConnectOps(tt))
+-      // Add new framework types here
+-      case _ => None
+-    }
++  /** DataType-keyed dispatch for proto conversions. */
++  def apply(dt: DataType): Option[ConnectTypeOps] = dt match {
++    case tt: TimeType => Some(new TimeTypeConnectOps(tt))
++    // Add new framework types here
++    case _ => None
+   }
+ 
+-  /** Reverse lookup by value class for the generic literal builder. Checks feature flag. */
++  /** Reverse lookup by value class for the generic literal builder. */
+   def toLiteralProtoForValue(
+       value: Any,
+-      builder: proto.Expression.Literal.Builder): Option[proto.Expression.Literal.Builder] = {
+-    if (!SqlApiConf.get.typesFrameworkEnabled) return None
++      builder: proto.Expression.Literal.Builder): Option[proto.Expression.Literal.Builder] =
+     value match {
+       case v: java.time.LocalTime =>
+         Some(new TimeTypeConnectOps(TimeType()).toLiteralProto(v, builder))
+       // Add new framework value types here
+       case _ => None
+     }
+-  }
+ 
+   /**
+    * Shared KindCase -> ConnectTypeOps lookup. All reverse lookups by proto enum case dispatch
+-   * through this single registration point. Checks feature flag.
++   * through this single registration point.
+    */
+-  private def opsForKindCase(kindCase: proto.DataType.KindCase): Option[ConnectTypeOps] = {
+-    if (!SqlApiConf.get.typesFrameworkEnabled) return None
++  private def opsForKindCase(kindCase: proto.DataType.KindCase): Option[ConnectTypeOps] =
+     kindCase match {
+       case proto.DataType.KindCase.TIME => Some(new TimeTypeConnectOps(TimeType()))
+       // Add new framework proto kinds here - single registration for all KindCase lookups
+       case _ => None
+     }
+-  }
+ 
+-  /** Reverse lookup: converts a proto DataType to a Spark DataType. Checks feature flag. */
++  /** Reverse lookup: converts a proto DataType to a Spark DataType. */
+   def toCatalystType(t: proto.DataType): Option[DataType] =
+     opsForKindCase(t.getKindCase).map(_.toCatalystTypeFromProto(t))
+ 
+@@ -155,9 +146,9 @@ object ConnectTypeOps {
+       case _ => proto.DataType.KindCase.KIND_NOT_SET
+     }
+ 
+-  // ==================== Arrow Dispatch (client-side, NO flag check) ====================
++  // ==================== Arrow Dispatch ====================
+ 
+-  /** Encoder-keyed dispatch for Arrow serialization. No feature flag check. */
++  /** Encoder-keyed dispatch for Arrow serialization. */
+   def forEncoder(enc: AgnosticEncoder[_]): Option[ConnectTypeOps] =
+     enc match {
+       case LocalTimeEncoder => Some(new TimeTypeConnectOps(TimeType()))
+@@ -165,7 +156,7 @@ object ConnectTypeOps {
+       case _ => None
+     }
+ 
+-  /** DataType-keyed dispatch for ArrowVectorReader. No feature flag check. */
++  /** DataType-keyed dispatch for ArrowVectorReader. */
+   def forDataType(dt: DataType): Option[ConnectTypeOps] =
+     dt match {
+       case tt: TimeType => Some(new TimeTypeConnectOps(tt))
+diff --git a/sql/core/src/test/scala/org/apache/spark/sql/SparkSessionBuilderSuite.scala b/sql/core/src/test/scala/org/apache/spark/sql/SparkSessionBuilderSuite.scala
+index a2ae074d98..365ce3ddd0 100644
+--- a/sql/core/src/test/scala/org/apache/spark/sql/SparkSessionBuilderSuite.scala
++++ b/sql/core/src/test/scala/org/apache/spark/sql/SparkSessionBuilderSuite.scala
+@@ -92,7 +92,6 @@ class SparkSessionBuilderSuite extends SparkFunSuite with Eventually {
+     val session = SparkSession.builder()
+       .master("local")
+       .config(SQLConf.TIMESTAMP_NANOS_TYPES_ENABLED.key, value = true)
+-      .config(SQLConf.TYPES_FRAMEWORK_ENABLED.key, value = true)
+       .getOrCreate()
+     assert(session.conf.get(SQLConf.TIMESTAMP_NANOS_TYPES_ENABLED.key) == "true")
+     assert(session.sql("SELECT 1").collect() === Array(Row(1)))
+diff --git a/sql/hive/src/test/resources/conf/binding-policy-exceptions/configs-without-binding-policy-exceptions b/sql/hive/src/test/resources/conf/binding-policy-exceptions/configs-without-binding-policy-exceptions
+index a9d53bdb10..75a905223e 100644
+--- a/sql/hive/src/test/resources/conf/binding-policy-exceptions/configs-without-binding-policy-exceptions
++++ b/sql/hive/src/test/resources/conf/binding-policy-exceptions/configs-without-binding-policy-exceptions
+@@ -1102,7 +1102,6 @@ spark.sql.timestampType
+ spark.sql.transposeMaxValues
+ spark.sql.truncateTable.ignorePermissionAcl.enabled
+ spark.sql.tvf.allowMultipleTableArguments.enabled
+-spark.sql.types.framework.enabled
+ spark.sql.ui.explainMode
+ spark.sql.ui.retainedExecutions
+ spark.sql.unionOutputPartitioning

@@ -1,0 +1,67 @@
+repo: home-assistant
+base_commit: 50dbff31b022757ebc0e482001b5154b486a991c
+commit: cb021f0b6bb61601fff47fde7a136e1050a72109
+patch_stored: true
+gold:
+  - path: homeassistant/components/usb/__init__.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines the new extension point `async_register_serial_port_scanner`/`SERIAL_PORT_SCANNER_TYPE` and the `USBDiscovery._serial_port_scanners` list whose registered callbacks are merged into `async_scan_serial_ports` results, keyed by `port.device`.
+  - path: homeassistant/components/usb/utils.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: The old `async_scan_serial_ports` helper is removed from here (moved into __init__.py as a method-backed wrapper), which is why the import list in usb/__init__.py changed.
+  - path: homeassistant/components/homeassistant_yellow/__init__.py
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: First real consumer of `async_register_serial_port_scanner`; registers a callback that contributes the Yellow's built-in Zigbee radio as a SerialDevice.
+  - path: homeassistant/components/homeassistant_yellow/manifest.json
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Adds "usb" to dependencies, required so the new integration point (hass.data[USB DOMAIN]) exists before homeassistant_yellow calls async_register_serial_port_scanner.
+  - path: tests/components/usb/test_init.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: test_async_scan_serial_ports_with_scanner and test_async_scan_serial_ports_scanner_raises cover the override/merge-by-device-path semantics and the try/except isolation around scanner callbacks.
+  - path: tests/components/usb/__init__.py
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: patch_scanned_serial_ports patch target moves from usb.utils.scan_serial_ports to usb.scan_serial_ports, mirroring the function's relocation.
+  - path: tests/components/homeassistant_yellow/test_init.py
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: test_contributes_radio_serial_port exercises registration on setup and automatic unregistration via entry.async_on_unload on unload.
+  - path: tests/components/insteon/mock_setup.py
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Insteon tests now must explicitly async_setup_component the usb domain, showing the usb component's discovery data must be initialized before async_scan_serial_ports works.
+  - path: homeassistant/components/usb/models.py
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Defines the frozen SerialDevice/USBDevice dataclasses (USBDevice subclasses SerialDevice) that scanners return and that are keyed/overridden by `.device` in the new merge logic.
+forbidden:
+  - path: homeassistant/components/zha/config_flow.py
+    reason: one of many pre-existing callers of usb.async_scan_serial_ports; unaffected because the function is re-exported from usb/__init__.py unchanged, not touched by this commit
+  - path: homeassistant/components/homeassistant_sky_connect/__init__.py
+    reason: sibling hardware integration to homeassistant_yellow that also scans serial ports, but does not register a contributor scanner and is untouched here
+  - path: homeassistant/components/insteon/utils.py
+    reason: same integration as the touched mock_setup.py test fixture, but the runtime code calling usb.async_scan_serial_ports was not changed
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: []
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 8
+  description: 'Core extension point: integrations contribute serial port scanning helpers — usb component
+    + helper + manifest coupling'
+notes: Adds a callback-registration extension point to the usb component (async_register_serial_port_scanner) so integrations like homeassistant_yellow can contribute/override synthetic serial ports (e.g. an onboard radio) merged by device path into async_scan_serial_ports results; backward compatible for the ~10 existing usb.async_scan_serial_ports callers via the preserved re-export in usb/__init__.py.

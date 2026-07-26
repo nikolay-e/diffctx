@@ -1,0 +1,80 @@
+repo: aspnetcore
+base_commit: 336519c01e7fd9d492e63e11c1f9a84e60d2c487
+commit: 1ce2228b384d184718362abc70ac23cb4af8e247
+patch_stored: true
+gold:
+  - path: src/Validation/src/Microsoft.Extensions.Validation.csproj
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New csproj that defines the extracted `Microsoft.Extensions.Validation` package identity (deps on DependencyInjection.Abstractions/Options, IsAspNetCoreApp, IsTrimmable) — this is the destination the whole move creates.
+  - path: src/Validation/src/ValidationOptions.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Central `ValidationOptions` class (Resolvers list, MaxDepth, TryGetValidatable*) moved verbatim from namespace `Microsoft.AspNetCore.Http.Validation` to `Microsoft.Extensions.Validation`; it is the type callers resolve via `IOptions<ValidationOptions>`.
+  - path: src/Http/Routing/src/ValidationEndpointFilterFactory.cs
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: Real consumer of the moved API — adds `using Microsoft.Extensions.Validation;` and pulls `IOptions<ValidationOptions>`/`IValidatableInfo` from the new package to build the per-endpoint validation filter.
+  - path: src/Http/Routing/src/RouteEndpointDataSource.cs
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: Second Routing consumer that also adds `using Microsoft.Extensions.Validation;` for endpoint metadata wiring alongside ValidationEndpointFilterFactory.
+  - path: eng/ProjectReferences.props
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Registers the new package's project path by string name (`<ProjectReferenceProvider Include="Microsoft.Extensions.Validation" ProjectPath="...\src\Validation\src\Microsoft.Extensions.Validation.csproj" />`) so other projects can `<Reference Include="Microsoft.Extensions.Validation" />` by name (see Routing.csproj).
+  - path: eng/SharedFramework.Local.props
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Adds `<AspNetCoreAppReferenceAndPackage Include="Microsoft.Extensions.Validation" />` so the new package ships as part of the ASP.NET Core shared framework, keyed by string assembly name.
+  - path: src/Framework/test/TestData.cs
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Integration test data asserting `"Microsoft.Extensions.Validation"` (string) appears in the expected shared-framework assembly manifest — verifies the moved package actually lands in the runtime package.
+  - path: src/Http/Http.Abstractions/src/PublicAPI.Unshipped.txt
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Removes every `Microsoft.AspNetCore.Http.Validation.*` public API entry (IValidatableInfo, ValidationOptions, ValidateContext, etc.) from Http.Abstractions' API baseline, proving those types no longer live in this assembly.
+  - path: src/Validation/src/PublicAPI.Unshipped.txt
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Adds the mirror-image `Microsoft.Extensions.Validation.*` public API entries as the new package's baseline — pins exactly which symbols moved and under which new namespace.
+forbidden:
+  - path: eng/Baseline.xml
+    reason: API-compat baseline only tracks previously-shipped packages (see the Microsoft.AspNetCore.OpenApi entry); Validation is still unshipped so this file is correctly untouched.
+  - path: docs/UpdatingMajorVersionAndTFM.md
+    reason: bm25 false positive — its "### Validation" heading is a generic checklist step for TFM bumps, unrelated to the Validation package.
+  - path: src/OpenApi/test/Microsoft.AspNetCore.OpenApi.SourceGenerators.Tests/SnapshotTestHelper.cs
+    reason: sibling source-generator test helper for the unrelated OpenApi feature, only superficially similar (source-gen snapshot testing pattern).
+  - path: src/Http/Http.Extensions/test/RequestDelegateGenerator/RequestDelegateCreationTestBase.cs
+    reason: neighboring source-generator test base class for RequestDelegateGenerator, not the ValidationsGenerator being moved.
+nontrivial_gold_count: 0
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration, candidates]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 129
+  description: Move unified validation APIs to separate package — 100+ file package extraction
+notes: >-
+  Extracts the unified-validation APIs (IValidatableInfo, ValidationOptions,
+  ValidatableTypeInfo, the ValidationsGenerator source generator, etc.) out of
+  Http.Abstractions/Http.Extensions into a brand-new Microsoft.Extensions.Validation
+  package under src/Validation/, renamespacing Microsoft.AspNetCore.Http.Validation ->
+  Microsoft.Extensions.Validation. Exhaustive git grep for the old and new namespace
+  across both the base and pinned commits shows every real consumer (Routing,
+  the sample, the benchmark) and every build-wiring file (eng/*.props, TestData.cs,
+  the two PublicAPI baselines) is already part of this diff — no outside-the-diff
+  file needed updating, hence nontrivial_gold_count: 0. string_indirection is true
+  because the shared-framework/package wiring (eng/SharedFramework.Local.props,
+  eng/ProjectReferences.props, TestData.cs) links the new package by string assembly
+  name via MSBuild item groups, not by a static code reference.

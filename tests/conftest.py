@@ -13,13 +13,13 @@ from tests.framework.pygit2_backend import Pygit2Repo
 PROJECT_ROOT = Path(__file__).parent.parent
 SRC_DIR = PROJECT_ROOT / "src"
 
-# Benchmark-only test files exercise `benchmarks/` adapters which depend on
+# Evaluation-only test files exercise `eval/` adapters which depend on
 # `pebble` / `rank-bm25` — paper-track deps that the CLI release no longer
 # pulls into [dev]. Skip collection when the deps aren't installed so the
-# CLI test run stays green; benchmark devs install the deps explicitly.
+# CLI test run stays green; evaluation developers install the deps explicitly.
 collect_ignore_glob: list[str] = []
 if importlib.util.find_spec("pebble") is None:
-    collect_ignore_glob.extend(["test_benchmark_runner.py", "test_benchmark_splits.py", "test_benchmark_adapters.py"])
+    collect_ignore_glob.extend(["eval/test_runner.py", "eval/test_splits.py", "eval/test_adapters.py"])
 
 GITIGNORE = ".gitignore"
 
@@ -60,7 +60,7 @@ def run_mapper(monkeypatch, temp_project):
             m.chdir(temp_project)
             m.setattr(sys, "argv", ["diffctx", *args])
             try:
-                from diffctx.main import main
+                from diffctx.cli import main
 
                 main()
                 return True

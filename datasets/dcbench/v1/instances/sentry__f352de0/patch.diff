@@ -1,0 +1,1447 @@
+From f352de0321a3f67c4b19f36617b932ce13f20a7c Mon Sep 17 00:00:00 2001
+From: Jonas <jonas.badalic@sentry.io>
+Date: Wed, 17 Jul 2024 08:45:41 -0400
+Subject: [PATCH] deps: remove moment (#74234)
+
+`moment` is a dependency of `moment-timezone` and does not need to be
+separately installed or imported (it is also confusing that we use these
+interchangeably when they point to the same underlying module)
+
+Apologies for the ping everyone, the change just touched on a lot of
+files.
+---
+ package.json                                             | 1 -
+ static/app/bootstrap/exportGlobals.tsx                   | 2 +-
+ static/app/bootstrap/initializeLocale.tsx                | 2 +-
+ static/app/components/avatar/seenByList.tsx              | 2 +-
+ static/app/components/charts/chartZoom.tsx               | 2 +-
+ static/app/components/charts/components/tooltip.tsx      | 2 +-
+ static/app/components/charts/components/xAxis.spec.tsx   | 2 +-
+ static/app/components/charts/percentageAreaChart.tsx     | 2 +-
+ static/app/components/charts/useChartZoom.tsx            | 2 +-
+ static/app/components/charts/utils.tsx                   | 2 +-
+ static/app/components/customIgnoreDurationModal.tsx      | 2 +-
+ static/app/components/dateTime.tsx                       | 9 +++------
+ .../app/components/dynamicSampling/investigationRule.tsx | 2 +-
+ .../events/breadcrumbs/breadcrumbsTimeline.tsx           | 2 +-
+ static/app/components/events/errorItem.tsx               | 2 +-
+ .../events/eventReplay/replayClipPreview.spec.tsx        | 2 +-
+ .../eventStatisticalDetector/eventComparison/index.tsx   | 2 +-
+ .../events/eventStatisticalDetector/spanOpBreakdown.tsx  | 2 +-
+ .../crashContent/exception/actionableItems.tsx           | 2 +-
+ .../events/interfaces/performance/durationChart.tsx      | 2 +-
+ static/app/components/events/interfaces/spans/utils.tsx  | 2 +-
+ static/app/components/forms/fields/datePickerField.tsx   | 2 +-
+ static/app/components/globalSdkUpdateAlert.spec.tsx      | 2 +-
+ static/app/components/group/suggestedOwnerHovercard.tsx  | 2 +-
+ static/app/components/metrics/chart/useFocusArea.tsx     | 2 +-
+ .../components/metrics/chart/useMetricChartSamples.tsx   | 2 +-
+ static/app/components/metrics/chart/utils.tsx            | 2 +-
+ static/app/components/modals/widgetViewerModal.tsx       | 2 +-
+ .../components/onboarding/useRecentCreatedProject.tsx    | 2 +-
+ static/app/components/onboardingWizard/task.tsx          | 2 +-
+ .../app/components/organizations/pageFilters/parse.tsx   | 2 +-
+ .../tokens/filter/specificDatePicker.tsx                 | 2 +-
+ static/app/components/searchSyntax/parser.tsx            | 2 +-
+ static/app/components/timeRangeSelector/dateRange.tsx    | 2 +-
+ static/app/components/timeRangeSelector/utils.tsx        | 2 +-
+ static/app/utils/date/getFormattedTimestamp.tsx          | 2 +-
+ static/app/utils/dates.tsx                               | 2 +-
+ static/app/utils/discover/eventView.tsx                  | 2 +-
+ static/app/utils/duration/getPeriod.tsx                  | 2 +-
+ static/app/utils/getDaysSinceDate.spec.tsx               | 2 +-
+ static/app/utils/getDaysSinceDate.tsx                    | 2 +-
+ static/app/utils/metrics/index.tsx                       | 2 +-
+ .../app/utils/profiling/profile/sentrySampledProfile.tsx | 2 +-
+ static/app/utils/promptIsDismissed.tsx                   | 2 +-
+ static/app/utils/replays/hooks/useReplayData.spec.tsx    | 2 +-
+ static/app/utils/replays/replayDataUtils.tsx             | 2 +-
+ static/app/utils/replays/replayReader.tsx                | 2 +-
+ static/app/utils/sessions.tsx                            | 2 +-
+ static/app/views/admin/adminEnvironment.tsx              | 2 +-
+ static/app/views/admin/adminProjects.tsx                 | 2 +-
+ static/app/views/admin/adminRelays.tsx                   | 2 +-
+ static/app/views/admin/adminUsers.tsx                    | 2 +-
+ static/app/views/alerts/list/incidents/row.tsx           | 2 +-
+ .../alerts/rules/issue/details/ruleDetails.spec.tsx      | 2 +-
+ .../app/views/alerts/rules/issue/details/ruleDetails.tsx | 2 +-
+ static/app/views/alerts/rules/issue/index.spec.tsx       | 2 +-
+ static/app/views/alerts/rules/metric/details/body.tsx    | 2 +-
+ static/app/views/alerts/rules/metric/details/index.tsx   | 2 +-
+ .../views/alerts/rules/metric/details/metricChart.tsx    | 5 ++---
+ .../alerts/rules/metric/details/metricChartOption.tsx    | 5 ++---
+ .../app/views/alerts/rules/metric/details/utils.spec.tsx | 2 +-
+ static/app/views/alerts/rules/metric/details/utils.tsx   | 2 +-
+ static/app/views/discover/queryList.tsx                  | 2 +-
+ .../app/views/insights/common/queries/useSpanSamples.tsx | 2 +-
+ .../app/views/insights/common/queries/useSpansQuery.tsx  | 2 +-
+ .../app/views/insights/common/utils/getDateFilters.tsx   | 2 +-
+ static/app/views/insights/common/views/spans/queries.tsx | 2 +-
+ static/app/views/issueDetails/groupActivityItem.tsx      | 2 +-
+ .../issueDetails/groupReplays/groupReplays.spec.tsx      | 2 +-
+ static/app/views/issueList/overview.tsx                  | 2 +-
+ static/app/views/metrics/widget.tsx                      | 2 +-
+ .../app/views/monitors/components/timeline/gridLines.tsx | 2 +-
+ .../components/timeline/hooks/useDateNavigation.tsx      | 2 +-
+ .../components/timeline/hooks/useMonitorDates.tsx        | 2 +-
+ .../monitors/components/timeline/serviceIncidents.tsx    | 2 +-
+ .../components/timeline/utils/getTimeRangeFromEvent.tsx  | 2 +-
+ static/app/views/organizationStats/index.tsx             | 2 +-
+ .../views/organizationStats/teamInsights/controls.tsx    | 2 +-
+ .../organizationStats/teamInsights/teamIssuesAge.tsx     | 2 +-
+ .../organizationStats/teamInsights/teamReleases.tsx      | 2 +-
+ .../app/views/organizationStats/teamInsights/utils.tsx   | 2 +-
+ .../views/organizationStats/usageChart/utils.spec.tsx    | 2 +-
+ static/app/views/organizationStats/usageChart/utils.tsx  | 2 +-
+ static/app/views/organizationStats/usageStatsOrg.tsx     | 2 +-
+ .../app/views/performance/trends/changeExplorer.spec.tsx | 2 +-
+ static/app/views/performance/trends/changeExplorer.tsx   | 2 +-
+ .../trends/changeExplorerUtils/functionsList.tsx         | 2 +-
+ .../trends/changeExplorerUtils/metricsTable.tsx          | 2 +-
+ .../trends/changeExplorerUtils/spansList.spec.tsx        | 2 +-
+ .../performance/trends/changeExplorerUtils/spansList.tsx | 2 +-
+ static/app/views/performance/trends/index.spec.tsx       | 2 +-
+ static/app/views/performance/trends/types.tsx            | 2 +-
+ static/app/views/performance/trends/utils/index.tsx      | 2 +-
+ .../views/performance/vitalDetail/vitalChartMetrics.tsx  | 2 +-
+ static/app/views/releases/detail/overview/index.tsx      | 2 +-
+ .../detail/overview/sidebar/totalCrashFreeUsers.tsx      | 2 +-
+ static/app/views/releases/detail/utils.tsx               | 4 ++--
+ static/app/views/releases/list/releasesAdoptionChart.tsx | 2 +-
+ static/app/views/releases/list/releasesRequest.tsx       | 2 +-
+ static/app/views/releases/utils/index.tsx                | 2 +-
+ static/app/views/replays/types.tsx                       | 2 +-
+ static/app/views/settings/account/accountIdentities.tsx  | 2 +-
+ .../app/views/settings/account/accountSubscriptions.tsx  | 2 +-
+ .../settings/organizationMembers/inviteBanner.spec.tsx   | 2 +-
+ static/app/views/traces/content.tsx                      | 2 +-
+ tests/js/fixtures/replayList.ts                          | 2 +-
+ tests/js/fixtures/replayRecord.ts                        | 2 +-
+ yarn.lock                                                | 8 ++++----
+ 108 files changed, 115 insertions(+), 121 deletions(-)
+
+diff --git a/package.json b/package.json
+index 1ba1b9395ef..967e902c905 100644
+--- a/package.json
++++ b/package.json
+@@ -136,7 +136,6 @@
+     "mobx": "^6.8.0",
+     "mobx-react": "~7.6.0",
+     "mockdate": "3.0.5",
+-    "moment": "2.29.4",
+     "moment-timezone": "0.5.44",
+     "papaparse": "^5.3.2",
+     "pegjs": "^0.10.0",
+diff --git a/static/app/bootstrap/exportGlobals.tsx b/static/app/bootstrap/exportGlobals.tsx
+index 6b19ef7af8b..7b62c39158c 100644
+--- a/static/app/bootstrap/exportGlobals.tsx
++++ b/static/app/bootstrap/exportGlobals.tsx
+@@ -2,7 +2,7 @@ import * as React from 'react';
+ import {findDOMNode} from 'react-dom';
+ import {createRoot} from 'react-dom/client';
+ import * as Sentry from '@sentry/react';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import plugins from 'sentry/plugins';
+ 
+diff --git a/static/app/bootstrap/initializeLocale.tsx b/static/app/bootstrap/initializeLocale.tsx
+index 17cb82b4cbe..b209feb0514 100644
+--- a/static/app/bootstrap/initializeLocale.tsx
++++ b/static/app/bootstrap/initializeLocale.tsx
+@@ -1,5 +1,5 @@
+ import * as Sentry from '@sentry/react';
+-import * as moment from 'moment';
++import * as moment from 'moment-timezone';
+ import * as qs from 'query-string';
+ 
+ import {DEFAULT_LOCALE_DATA, setLocale} from 'sentry/locale';
+diff --git a/static/app/components/avatar/seenByList.tsx b/static/app/components/avatar/seenByList.tsx
+index 5052729ac81..75d534bd3a6 100644
+--- a/static/app/components/avatar/seenByList.tsx
++++ b/static/app/components/avatar/seenByList.tsx
+@@ -1,6 +1,6 @@
+ import {Fragment} from 'react';
+ import styled from '@emotion/styled';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import AvatarList from 'sentry/components/avatar/avatarList';
+ import {Tooltip} from 'sentry/components/tooltip';
+diff --git a/static/app/components/charts/chartZoom.tsx b/static/app/components/charts/chartZoom.tsx
+index 93c8c8fd50f..b41fe879b32 100644
+--- a/static/app/components/charts/chartZoom.tsx
++++ b/static/app/components/charts/chartZoom.tsx
+@@ -6,7 +6,7 @@ import type {
+   ToolboxComponentOption,
+   XAXisComponentOption,
+ } from 'echarts';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ import * as qs from 'query-string';
+ 
+ import {updateDateTime} from 'sentry/actionCreators/pageFilters';
+diff --git a/static/app/components/charts/components/tooltip.tsx b/static/app/components/charts/components/tooltip.tsx
+index d80becccada..ce2613bf9cf 100644
+--- a/static/app/components/charts/components/tooltip.tsx
++++ b/static/app/components/charts/components/tooltip.tsx
+@@ -3,7 +3,7 @@ import 'echarts/lib/component/tooltip';
+ import type {Theme} from '@emotion/react';
+ import {useTheme} from '@emotion/react';
+ import type {TooltipComponentFormatterCallback, TooltipComponentOption} from 'echarts';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import type BaseChart from 'sentry/components/charts/baseChart';
+ import {t} from 'sentry/locale';
+diff --git a/static/app/components/charts/components/xAxis.spec.tsx b/static/app/components/charts/components/xAxis.spec.tsx
+index d11486df1ed..6685b06b930 100644
+--- a/static/app/components/charts/components/xAxis.spec.tsx
++++ b/static/app/components/charts/components/xAxis.spec.tsx
+@@ -2,7 +2,7 @@ import type {XAxisProps} from 'sentry/components/charts/components/xAxis';
+ import XAxis from 'sentry/components/charts/components/xAxis';
+ import {lightTheme} from 'sentry/utils/theme';
+ 
+-jest.mock('moment', () => {
++jest.mock('moment-timezone', () => {
+   const moment = jest.requireActual('moment-timezone');
+   moment.tz.setDefault('America/Los_Angeles'); // Whatever timezone you want
+   return moment;
+diff --git a/static/app/components/charts/percentageAreaChart.tsx b/static/app/components/charts/percentageAreaChart.tsx
+index 846cb8fab8f..ac9916724a8 100644
+--- a/static/app/components/charts/percentageAreaChart.tsx
++++ b/static/app/components/charts/percentageAreaChart.tsx
+@@ -1,6 +1,6 @@
+ import {Component} from 'react';
+ import type {LineSeriesOption} from 'echarts';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import type {Series, SeriesDataUnit} from 'sentry/types/echarts';
+ import toArray from 'sentry/utils/array/toArray';
+diff --git a/static/app/components/charts/useChartZoom.tsx b/static/app/components/charts/useChartZoom.tsx
+index e9cb1abf885..a498e771386 100644
+--- a/static/app/components/charts/useChartZoom.tsx
++++ b/static/app/components/charts/useChartZoom.tsx
+@@ -6,7 +6,7 @@ import type {
+   ToolboxComponentOption,
+   XAXisComponentOption,
+ } from 'echarts';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ import * as qs from 'query-string';
+ 
+ import {updateDateTime} from 'sentry/actionCreators/pageFilters';
+diff --git a/static/app/components/charts/utils.tsx b/static/app/components/charts/utils.tsx
+index ba4fd64328f..a80c4c6014b 100644
+--- a/static/app/components/charts/utils.tsx
++++ b/static/app/components/charts/utils.tsx
+@@ -3,7 +3,7 @@ import * as Sentry from '@sentry/react';
+ import type {LegendComponentOption, LineSeriesOption} from 'echarts';
+ import type {Location} from 'history';
+ import orderBy from 'lodash/orderBy';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {DEFAULT_STATS_PERIOD} from 'sentry/constants';
+ import type {EventsStats, MultiSeriesEventsStats, PageFilters} from 'sentry/types';
+diff --git a/static/app/components/customIgnoreDurationModal.tsx b/static/app/components/customIgnoreDurationModal.tsx
+index 10821bc41ac..e7ba5952034 100644
+--- a/static/app/components/customIgnoreDurationModal.tsx
++++ b/static/app/components/customIgnoreDurationModal.tsx
+@@ -1,5 +1,5 @@
+ import {Component, createRef, Fragment} from 'react';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ import {sprintf} from 'sprintf-js';
+ 
+ import type {ModalRenderProps} from 'sentry/actionCreators/modal';
+diff --git a/static/app/components/dateTime.tsx b/static/app/components/dateTime.tsx
+index a67adf01b6b..0274359eef5 100644
+--- a/static/app/components/dateTime.tsx
++++ b/static/app/components/dateTime.tsx
+@@ -1,5 +1,4 @@
+-import moment from 'moment';
+-import momentTimezone from 'moment-timezone';
++import moment from 'moment-timezone';
+ 
+ import ConfigStore from 'sentry/stores/configStore';
+ import {getFormat} from 'sentry/utils/dates';
+@@ -8,7 +7,7 @@ export interface DateTimeProps extends React.HTMLAttributes<HTMLTimeElement> {
+   /**
+    * Input date.
+    */
+-  date: moment.MomentInput | momentTimezone.MomentInput;
++  date: moment.MomentInput;
+   /**
+    * If true, will only return the date part, e.g. "Jan 1".
+    */
+@@ -82,9 +81,7 @@ export function DateTime({
+     <time {...props}>
+       {utc
+         ? moment.utc(date as moment.MomentInput).format(formatString)
+-        : momentTimezone
+-            .tz(date, forcedTimezone ?? options?.timezone ?? '')
+-            .format(formatString)}
++        : moment.tz(date, forcedTimezone ?? options?.timezone ?? '').format(formatString)}
+     </time>
+   );
+ }
+diff --git a/static/app/components/dynamicSampling/investigationRule.tsx b/static/app/components/dynamicSampling/investigationRule.tsx
+index 2a49016be35..28fba241517 100644
+--- a/static/app/components/dynamicSampling/investigationRule.tsx
++++ b/static/app/components/dynamicSampling/investigationRule.tsx
+@@ -1,6 +1,6 @@
+ import {useEffect} from 'react';
+ import styled from '@emotion/styled';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {addErrorMessage, addSuccessMessage} from 'sentry/actionCreators/indicator';
+ import type {BaseButtonProps} from 'sentry/components/button';
+diff --git a/static/app/components/events/breadcrumbs/breadcrumbsTimeline.tsx b/static/app/components/events/breadcrumbs/breadcrumbsTimeline.tsx
+index ea4a8b1eafe..57a68664386 100644
+--- a/static/app/components/events/breadcrumbs/breadcrumbsTimeline.tsx
++++ b/static/app/components/events/breadcrumbs/breadcrumbsTimeline.tsx
+@@ -1,7 +1,7 @@
+ import {Fragment, useRef} from 'react';
+ import styled from '@emotion/styled';
+ import {useVirtualizer} from '@tanstack/react-virtual';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import DateTime from 'sentry/components/dateTime';
+ import Duration from 'sentry/components/duration';
+diff --git a/static/app/components/events/errorItem.tsx b/static/app/components/events/errorItem.tsx
+index 12c7ab156b6..df283ac1fbf 100644
+--- a/static/app/components/events/errorItem.tsx
++++ b/static/app/components/events/errorItem.tsx
+@@ -1,7 +1,7 @@
+ import {Fragment, useMemo, useState} from 'react';
+ import styled from '@emotion/styled';
+ import startCase from 'lodash/startCase';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {Button} from 'sentry/components/button';
+ import KeyValueList from 'sentry/components/events/interfaces/keyValueList';
+diff --git a/static/app/components/events/eventReplay/replayClipPreview.spec.tsx b/static/app/components/events/eventReplay/replayClipPreview.spec.tsx
+index bd153547368..86d0d48d013 100644
+--- a/static/app/components/events/eventReplay/replayClipPreview.spec.tsx
++++ b/static/app/components/events/eventReplay/replayClipPreview.spec.tsx
+@@ -1,4 +1,4 @@
+-import {duration} from 'moment';
++import {duration} from 'moment-timezone';
+ import {ProjectFixture} from 'sentry-fixture/project';
+ import {RRWebInitFrameEventsFixture} from 'sentry-fixture/replay/rrweb';
+ import {ReplayRecordFixture} from 'sentry-fixture/replayRecord';
+diff --git a/static/app/components/events/eventStatisticalDetector/eventComparison/index.tsx b/static/app/components/events/eventStatisticalDetector/eventComparison/index.tsx
+index 5bcf43355ac..533a468233d 100644
+--- a/static/app/components/events/eventStatisticalDetector/eventComparison/index.tsx
++++ b/static/app/components/events/eventStatisticalDetector/eventComparison/index.tsx
+@@ -1,6 +1,6 @@
+ import {useMemo} from 'react';
+ import styled from '@emotion/styled';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {EventDataSection} from 'sentry/components/events/eventDataSection';
+ import {EventDisplay} from 'sentry/components/events/eventStatisticalDetector/eventComparison/eventDisplay';
+diff --git a/static/app/components/events/eventStatisticalDetector/spanOpBreakdown.tsx b/static/app/components/events/eventStatisticalDetector/spanOpBreakdown.tsx
+index f877c8413d2..8b7d1944e4a 100644
+--- a/static/app/components/events/eventStatisticalDetector/spanOpBreakdown.tsx
++++ b/static/app/components/events/eventStatisticalDetector/spanOpBreakdown.tsx
+@@ -1,7 +1,7 @@
+ import {useMemo} from 'react';
+ import styled from '@emotion/styled';
+ import type {Location} from 'history';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import EmptyStateWarning from 'sentry/components/emptyStateWarning';
+ import {DataSection} from 'sentry/components/events/styles';
+diff --git a/static/app/components/events/interfaces/crashContent/exception/actionableItems.tsx b/static/app/components/events/interfaces/crashContent/exception/actionableItems.tsx
+index efc45d7c23f..3410b6be246 100644
+--- a/static/app/components/events/interfaces/crashContent/exception/actionableItems.tsx
++++ b/static/app/components/events/interfaces/crashContent/exception/actionableItems.tsx
+@@ -2,7 +2,7 @@ import type React from 'react';
+ import {Fragment, useEffect, useMemo, useState} from 'react';
+ import styled from '@emotion/styled';
+ import startCase from 'lodash/startCase';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import Alert from 'sentry/components/alert';
+ import {Button} from 'sentry/components/button';
+diff --git a/static/app/components/events/interfaces/performance/durationChart.tsx b/static/app/components/events/interfaces/performance/durationChart.tsx
+index cbe252f8d5b..a8635fa0a12 100644
+--- a/static/app/components/events/interfaces/performance/durationChart.tsx
++++ b/static/app/components/events/interfaces/performance/durationChart.tsx
+@@ -2,7 +2,7 @@ import {useRef} from 'react';
+ import {useTheme} from '@emotion/react';
+ import type {YAXisComponentOption} from 'echarts';
+ import type {Location} from 'history';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import EventsRequest from 'sentry/components/charts/eventsRequest';
+ import type {LineChartSeries} from 'sentry/components/charts/lineChart';
+diff --git a/static/app/components/events/interfaces/spans/utils.tsx b/static/app/components/events/interfaces/spans/utils.tsx
+index 0068fcead2d..b3d25167f92 100644
+--- a/static/app/components/events/interfaces/spans/utils.tsx
++++ b/static/app/components/events/interfaces/spans/utils.tsx
+@@ -3,7 +3,7 @@ import type {Location} from 'history';
+ import isNumber from 'lodash/isNumber';
+ import maxBy from 'lodash/maxBy';
+ import set from 'lodash/set';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {lightenBarColor} from 'sentry/components/performance/waterfall/utils';
+ import type {
+diff --git a/static/app/components/forms/fields/datePickerField.tsx b/static/app/components/forms/fields/datePickerField.tsx
+index c42da8bbd62..0473227277d 100644
+--- a/static/app/components/forms/fields/datePickerField.tsx
++++ b/static/app/components/forms/fields/datePickerField.tsx
+@@ -2,7 +2,7 @@ import isPropValid from '@emotion/is-prop-valid';
+ import {useTheme} from '@emotion/react';
+ import styled from '@emotion/styled';
+ import {FocusScope} from '@react-aria/focus';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {DatePicker} from 'sentry/components/calendar';
+ import FormField from 'sentry/components/forms/formField';
+diff --git a/static/app/components/globalSdkUpdateAlert.spec.tsx b/static/app/components/globalSdkUpdateAlert.spec.tsx
+index 689210a2480..ab23512ddcb 100644
+--- a/static/app/components/globalSdkUpdateAlert.spec.tsx
++++ b/static/app/components/globalSdkUpdateAlert.spec.tsx
+@@ -1,4 +1,4 @@
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ import {OrganizationFixture} from 'sentry-fixture/organization';
+ 
+ import {render, screen, userEvent, waitFor} from 'sentry-test/reactTestingLibrary';
+diff --git a/static/app/components/group/suggestedOwnerHovercard.tsx b/static/app/components/group/suggestedOwnerHovercard.tsx
+index 922f5bb0445..4f8aed1f77c 100644
+--- a/static/app/components/group/suggestedOwnerHovercard.tsx
++++ b/static/app/components/group/suggestedOwnerHovercard.tsx
+@@ -1,6 +1,6 @@
+ import {Component, Fragment} from 'react';
+ import styled from '@emotion/styled';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {openInviteMembersModal} from 'sentry/actionCreators/modal';
+ import {Alert} from 'sentry/components/alert';
+diff --git a/static/app/components/metrics/chart/useFocusArea.tsx b/static/app/components/metrics/chart/useFocusArea.tsx
+index 30b17a1b367..f381fc3f3b8 100644
+--- a/static/app/components/metrics/chart/useFocusArea.tsx
++++ b/static/app/components/metrics/chart/useFocusArea.tsx
+@@ -5,7 +5,7 @@ import styled from '@emotion/styled';
+ import {useResizeObserver} from '@react-aria/utils';
+ import color from 'color';
+ import isEqual from 'lodash/isEqual';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {Button} from 'sentry/components/button';
+ import type {DateTimeObject} from 'sentry/components/charts/utils';
+diff --git a/static/app/components/metrics/chart/useMetricChartSamples.tsx b/static/app/components/metrics/chart/useMetricChartSamples.tsx
+index 5acb4a8ace6..83cf415ba77 100644
+--- a/static/app/components/metrics/chart/useMetricChartSamples.tsx
++++ b/static/app/components/metrics/chart/useMetricChartSamples.tsx
+@@ -1,7 +1,7 @@
+ import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+ import {useTheme} from '@emotion/react';
+ import type {XAXisOption, YAXisOption} from 'echarts/types/dist/shared';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {getFormatter} from 'sentry/components/charts/components/tooltip';
+ import {isChartHovered} from 'sentry/components/charts/utils';
+diff --git a/static/app/components/metrics/chart/utils.tsx b/static/app/components/metrics/chart/utils.tsx
+index bacec3290d3..af86decedbd 100644
+--- a/static/app/components/metrics/chart/utils.tsx
++++ b/static/app/components/metrics/chart/utils.tsx
+@@ -1,5 +1,5 @@
+ import type {RefObject} from 'react';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {
+   SAMPLES_X_AXIS_ID,
+diff --git a/static/app/components/modals/widgetViewerModal.tsx b/static/app/components/modals/widgetViewerModal.tsx
+index 557d8a46c5e..e7908e24444 100644
+--- a/static/app/components/modals/widgetViewerModal.tsx
++++ b/static/app/components/modals/widgetViewerModal.tsx
+@@ -9,7 +9,7 @@ import type {Location} from 'history';
+ import cloneDeep from 'lodash/cloneDeep';
+ import isEqual from 'lodash/isEqual';
+ import trimStart from 'lodash/trimStart';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {fetchTotalCount} from 'sentry/actionCreators/events';
+ import type {ModalRenderProps} from 'sentry/actionCreators/modal';
+diff --git a/static/app/components/onboarding/useRecentCreatedProject.tsx b/static/app/components/onboarding/useRecentCreatedProject.tsx
+index f299ff973f3..4680e4b0e1f 100644
+--- a/static/app/components/onboarding/useRecentCreatedProject.tsx
++++ b/static/app/components/onboarding/useRecentCreatedProject.tsx
+@@ -1,4 +1,4 @@
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import type {
+   Group,
+diff --git a/static/app/components/onboardingWizard/task.tsx b/static/app/components/onboardingWizard/task.tsx
+index a1a881d82da..35376797ddd 100644
+--- a/static/app/components/onboardingWizard/task.tsx
++++ b/static/app/components/onboardingWizard/task.tsx
+@@ -1,7 +1,7 @@
+ import {forwardRef} from 'react';
+ import styled from '@emotion/styled';
+ import {motion} from 'framer-motion';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {navigateTo} from 'sentry/actionCreators/navigation';
+ import Avatar from 'sentry/components/avatar';
+diff --git a/static/app/components/organizations/pageFilters/parse.tsx b/static/app/components/organizations/pageFilters/parse.tsx
+index c7ee7abb6e3..2630c16537b 100644
+--- a/static/app/components/organizations/pageFilters/parse.tsx
++++ b/static/app/components/organizations/pageFilters/parse.tsx
+@@ -1,5 +1,5 @@
+ import type {Location} from 'history';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {DEFAULT_STATS_PERIOD} from 'sentry/constants';
+ import {DATE_TIME_KEYS, URL_PARAM} from 'sentry/constants/pageFilters';
+diff --git a/static/app/components/searchQueryBuilder/tokens/filter/specificDatePicker.tsx b/static/app/components/searchQueryBuilder/tokens/filter/specificDatePicker.tsx
+index 956da001ddb..0a9e6e13d06 100644
+--- a/static/app/components/searchQueryBuilder/tokens/filter/specificDatePicker.tsx
++++ b/static/app/components/searchQueryBuilder/tokens/filter/specificDatePicker.tsx
+@@ -8,7 +8,7 @@ import {
+   useState,
+ } from 'react';
+ import styled from '@emotion/styled';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {Button} from 'sentry/components/button';
+ import ButtonBar from 'sentry/components/buttonBar';
+diff --git a/static/app/components/searchSyntax/parser.tsx b/static/app/components/searchSyntax/parser.tsx
+index e1245c3e578..8f234365caa 100644
+--- a/static/app/components/searchSyntax/parser.tsx
++++ b/static/app/components/searchSyntax/parser.tsx
+@@ -1,6 +1,6 @@
+ import * as Sentry from '@sentry/react';
+ import merge from 'lodash/merge';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ import type {LocationRange} from 'pegjs';
+ 
+ import {t} from 'sentry/locale';
+diff --git a/static/app/components/timeRangeSelector/dateRange.tsx b/static/app/components/timeRangeSelector/dateRange.tsx
+index a82ddfc0a49..9d99774ba6c 100644
+--- a/static/app/components/timeRangeSelector/dateRange.tsx
++++ b/static/app/components/timeRangeSelector/dateRange.tsx
+@@ -4,7 +4,7 @@ import type {WithRouterProps} from 'react-router';
+ import type {Theme} from '@emotion/react';
+ import {withTheme} from '@emotion/react';
+ import styled from '@emotion/styled';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {DateRangePicker} from 'sentry/components/calendar';
+ import Checkbox from 'sentry/components/checkbox';
+diff --git a/static/app/components/timeRangeSelector/utils.tsx b/static/app/components/timeRangeSelector/utils.tsx
+index 2d1e961d560..585b95613cc 100644
+--- a/static/app/components/timeRangeSelector/utils.tsx
++++ b/static/app/components/timeRangeSelector/utils.tsx
+@@ -1,5 +1,5 @@
+ import {Fragment} from 'react';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import Datetime from 'sentry/components/dateTime';
+ import autoCompleteFilter from 'sentry/components/dropdownAutoComplete/autoCompleteFilter';
+diff --git a/static/app/utils/date/getFormattedTimestamp.tsx b/static/app/utils/date/getFormattedTimestamp.tsx
+index e6ad1687b00..0e7932b6bee 100644
+--- a/static/app/utils/date/getFormattedTimestamp.tsx
++++ b/static/app/utils/date/getFormattedTimestamp.tsx
+@@ -1,4 +1,4 @@
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {t} from 'sentry/locale';
+ import getDuration from 'sentry/utils/duration/getDuration';
+diff --git a/static/app/utils/dates.tsx b/static/app/utils/dates.tsx
+index 3468ec7a86c..fa18f43875a 100644
+--- a/static/app/utils/dates.tsx
++++ b/static/app/utils/dates.tsx
+@@ -1,4 +1,4 @@
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import ConfigStore from 'sentry/stores/configStore';
+ 
+diff --git a/static/app/utils/discover/eventView.tsx b/static/app/utils/discover/eventView.tsx
+index 43f89c5ccd9..71bfbee0b5a 100644
+--- a/static/app/utils/discover/eventView.tsx
++++ b/static/app/utils/discover/eventView.tsx
+@@ -4,7 +4,7 @@ import isEqual from 'lodash/isEqual';
+ import omit from 'lodash/omit';
+ import pick from 'lodash/pick';
+ import uniqBy from 'lodash/uniqBy';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import type {EventQuery} from 'sentry/actionCreators/events';
+ import {COL_WIDTH_UNDEFINED} from 'sentry/components/gridEditable';
+diff --git a/static/app/utils/duration/getPeriod.tsx b/static/app/utils/duration/getPeriod.tsx
+index 7b14fe10766..e52ec829877 100644
+--- a/static/app/utils/duration/getPeriod.tsx
++++ b/static/app/utils/duration/getPeriod.tsx
+@@ -1,4 +1,4 @@
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {DEFAULT_STATS_PERIOD} from 'sentry/constants';
+ import type {DateString} from 'sentry/types/core';
+diff --git a/static/app/utils/getDaysSinceDate.spec.tsx b/static/app/utils/getDaysSinceDate.spec.tsx
+index ee89fd4916e..52d4d596789 100644
+--- a/static/app/utils/getDaysSinceDate.spec.tsx
++++ b/static/app/utils/getDaysSinceDate.spec.tsx
+@@ -1,6 +1,6 @@
+ import getDaysSinceDate from 'sentry/utils/getDaysSinceDate';
+ 
+-jest.mock('moment', () => {
++jest.mock('moment-timezone', () => {
+   const moment = jest.requireActual('moment');
+   // Jun 06 2022
+   moment.now = jest.fn().mockReturnValue(1654492173000);
+diff --git a/static/app/utils/getDaysSinceDate.tsx b/static/app/utils/getDaysSinceDate.tsx
+index e382eff3015..db222276f4e 100644
+--- a/static/app/utils/getDaysSinceDate.tsx
++++ b/static/app/utils/getDaysSinceDate.tsx
+@@ -1,4 +1,4 @@
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ export function getDaysSinceDatePrecise(date: string) {
+   const dateWithTime = moment(date).utc();
+diff --git a/static/app/utils/metrics/index.tsx b/static/app/utils/metrics/index.tsx
+index f01bf2d93c5..cc06a1f11bc 100644
+--- a/static/app/utils/metrics/index.tsx
++++ b/static/app/utils/metrics/index.tsx
+@@ -1,6 +1,6 @@
+ import {useCallback, useRef} from 'react';
+ import type {InjectedRouter} from 'react-router';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ import * as qs from 'query-string';
+ 
+ import type {DateTimeObject} from 'sentry/components/charts/utils';
+diff --git a/static/app/utils/profiling/profile/sentrySampledProfile.tsx b/static/app/utils/profiling/profile/sentrySampledProfile.tsx
+index af80887d81c..c276d491587 100644
+--- a/static/app/utils/profiling/profile/sentrySampledProfile.tsx
++++ b/static/app/utils/profiling/profile/sentrySampledProfile.tsx
+@@ -1,4 +1,4 @@
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {defined} from 'sentry/utils';
+ import {lastOfArray} from 'sentry/utils/array/lastOfArray';
+diff --git a/static/app/utils/promptIsDismissed.tsx b/static/app/utils/promptIsDismissed.tsx
+index 9ab11bb3942..960ad6e7fca 100644
+--- a/static/app/utils/promptIsDismissed.tsx
++++ b/static/app/utils/promptIsDismissed.tsx
+@@ -1,4 +1,4 @@
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import type {PromptData} from 'sentry/actionCreators/prompts';
+ 
+diff --git a/static/app/utils/replays/hooks/useReplayData.spec.tsx b/static/app/utils/replays/hooks/useReplayData.spec.tsx
+index 6b1f57f319e..baa9fa88b36 100644
+--- a/static/app/utils/replays/hooks/useReplayData.spec.tsx
++++ b/static/app/utils/replays/hooks/useReplayData.spec.tsx
+@@ -1,5 +1,5 @@
+ import type {ReactNode} from 'react';
+-import {duration} from 'moment';
++import {duration} from 'moment-timezone';
+ import {
+   ReplayConsoleEventFixture,
+   ReplayNavigateEventFixture,
+diff --git a/static/app/utils/replays/replayDataUtils.tsx b/static/app/utils/replays/replayDataUtils.tsx
+index a8a1f46fc53..190396c8325 100644
+--- a/static/app/utils/replays/replayDataUtils.tsx
++++ b/static/app/utils/replays/replayDataUtils.tsx
+@@ -1,5 +1,5 @@
+ import invariant from 'invariant';
+-import {duration} from 'moment';
++import {duration} from 'moment-timezone';
+ 
+ import isValidDate from 'sentry/utils/date/isValidDate';
+ import getMinMax from 'sentry/utils/getMinMax';
+diff --git a/static/app/utils/replays/replayReader.tsx b/static/app/utils/replays/replayReader.tsx
+index ee4d2f79716..4020edb0941 100644
+--- a/static/app/utils/replays/replayReader.tsx
++++ b/static/app/utils/replays/replayReader.tsx
+@@ -1,6 +1,6 @@
+ import * as Sentry from '@sentry/react';
+ import memoize from 'lodash/memoize';
+-import {type Duration, duration} from 'moment';
++import {type Duration, duration} from 'moment-timezone';
+ 
+ import {defined} from 'sentry/utils';
+ import domId from 'sentry/utils/domId';
+diff --git a/static/app/utils/sessions.tsx b/static/app/utils/sessions.tsx
+index e610d4c3d02..25feb1dabb5 100644
+--- a/static/app/utils/sessions.tsx
++++ b/static/app/utils/sessions.tsx
+@@ -1,6 +1,6 @@
+ import type {Theme} from '@emotion/react';
+ import compact from 'lodash/compact';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import type {DateTimeObject} from 'sentry/components/charts/utils';
+ import {
+diff --git a/static/app/views/admin/adminEnvironment.tsx b/static/app/views/admin/adminEnvironment.tsx
+index 2f1879fddc9..38acf5f76ea 100644
+--- a/static/app/views/admin/adminEnvironment.tsx
++++ b/static/app/views/admin/adminEnvironment.tsx
+@@ -1,6 +1,6 @@
+ import {Fragment} from 'react';
+ import styled from '@emotion/styled';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {Button} from 'sentry/components/button';
+ import LoadingError from 'sentry/components/loadingError';
+diff --git a/static/app/views/admin/adminProjects.tsx b/static/app/views/admin/adminProjects.tsx
+index 99b31b41c42..6087ff2abf4 100644
+--- a/static/app/views/admin/adminProjects.tsx
++++ b/static/app/views/admin/adminProjects.tsx
+@@ -1,5 +1,5 @@
+ import type {RouteComponentProps} from 'react-router';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import ResultGrid from 'sentry/components/resultGrid';
+ import {t} from 'sentry/locale';
+diff --git a/static/app/views/admin/adminRelays.tsx b/static/app/views/admin/adminRelays.tsx
+index 5528307993f..9849859211c 100644
+--- a/static/app/views/admin/adminRelays.tsx
++++ b/static/app/views/admin/adminRelays.tsx
+@@ -1,6 +1,6 @@
+ import {Component} from 'react';
+ import type {RouteComponentProps} from 'react-router';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import type {Client} from 'sentry/api';
+ import LinkWithConfirmation from 'sentry/components/links/linkWithConfirmation';
+diff --git a/static/app/views/admin/adminUsers.tsx b/static/app/views/admin/adminUsers.tsx
+index 19965c05e34..b168a9576d3 100644
+--- a/static/app/views/admin/adminUsers.tsx
++++ b/static/app/views/admin/adminUsers.tsx
+@@ -1,5 +1,5 @@
+ import type {RouteComponentProps} from 'react-router';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import Link from 'sentry/components/links/link';
+ import ResultGrid from 'sentry/components/resultGrid';
+diff --git a/static/app/views/alerts/list/incidents/row.tsx b/static/app/views/alerts/list/incidents/row.tsx
+index 583e03072d7..c6b674f31e1 100644
+--- a/static/app/views/alerts/list/incidents/row.tsx
++++ b/static/app/views/alerts/list/incidents/row.tsx
+@@ -1,6 +1,6 @@
+ import {Fragment, useMemo} from 'react';
+ import styled from '@emotion/styled';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import ActorAvatar from 'sentry/components/avatar/actorAvatar';
+ import Tag from 'sentry/components/badge/tag';
+diff --git a/static/app/views/alerts/rules/issue/details/ruleDetails.spec.tsx b/static/app/views/alerts/rules/issue/details/ruleDetails.spec.tsx
+index 2a67b0c8931..0d1d7af82ce 100644
+--- a/static/app/views/alerts/rules/issue/details/ruleDetails.spec.tsx
++++ b/static/app/views/alerts/rules/issue/details/ruleDetails.spec.tsx
+@@ -1,4 +1,4 @@
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ import {GroupFixture} from 'sentry-fixture/group';
+ import {MemberFixture} from 'sentry-fixture/member';
+ import {OrganizationFixture} from 'sentry-fixture/organization';
+diff --git a/static/app/views/alerts/rules/issue/details/ruleDetails.tsx b/static/app/views/alerts/rules/issue/details/ruleDetails.tsx
+index 2008fa1e199..6875803481f 100644
+--- a/static/app/views/alerts/rules/issue/details/ruleDetails.tsx
++++ b/static/app/views/alerts/rules/issue/details/ruleDetails.tsx
+@@ -1,7 +1,7 @@
+ import type {RouteComponentProps} from 'react-router';
+ import styled from '@emotion/styled';
+ import pick from 'lodash/pick';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {addErrorMessage, addSuccessMessage} from 'sentry/actionCreators/indicator';
+ import Access from 'sentry/components/acl/access';
+diff --git a/static/app/views/alerts/rules/issue/index.spec.tsx b/static/app/views/alerts/rules/issue/index.spec.tsx
+index c030a2307ee..22a59777d88 100644
+--- a/static/app/views/alerts/rules/issue/index.spec.tsx
++++ b/static/app/views/alerts/rules/issue/index.spec.tsx
+@@ -1,5 +1,5 @@
+ import type {PlainRoute} from 'react-router';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ import {EnvironmentsFixture} from 'sentry-fixture/environments';
+ import {ProjectFixture} from 'sentry-fixture/project';
+ import {ProjectAlertRuleFixture} from 'sentry-fixture/projectAlertRule';
+diff --git a/static/app/views/alerts/rules/metric/details/body.tsx b/static/app/views/alerts/rules/metric/details/body.tsx
+index ecf81fc2004..854217ea705 100644
+--- a/static/app/views/alerts/rules/metric/details/body.tsx
++++ b/static/app/views/alerts/rules/metric/details/body.tsx
+@@ -2,7 +2,7 @@ import {Fragment} from 'react';
+ import type {RouteComponentProps} from 'react-router';
+ import styled from '@emotion/styled';
+ import type {Location} from 'history';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import type {Client} from 'sentry/api';
+ import {Alert} from 'sentry/components/alert';
+diff --git a/static/app/views/alerts/rules/metric/details/index.tsx b/static/app/views/alerts/rules/metric/details/index.tsx
+index b6d3a73d5fa..733cd88b54f 100644
+--- a/static/app/views/alerts/rules/metric/details/index.tsx
++++ b/static/app/views/alerts/rules/metric/details/index.tsx
+@@ -3,7 +3,7 @@ import type {RouteComponentProps} from 'react-router';
+ import type {Location} from 'history';
+ import isEqual from 'lodash/isEqual';
+ import pick from 'lodash/pick';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {fetchOrgMembers} from 'sentry/actionCreators/members';
+ import type {Client, ResponseMeta} from 'sentry/api';
+diff --git a/static/app/views/alerts/rules/metric/details/metricChart.tsx b/static/app/views/alerts/rules/metric/details/metricChart.tsx
+index 01e33d71248..0dbf10f05c6 100644
+--- a/static/app/views/alerts/rules/metric/details/metricChart.tsx
++++ b/static/app/views/alerts/rules/metric/details/metricChart.tsx
+@@ -3,8 +3,7 @@ import type {WithRouterProps} from 'react-router';
+ import styled from '@emotion/styled';
+ import color from 'color';
+ import type {LineSeriesOption} from 'echarts';
+-import moment from 'moment';
+-import momentTimezone from 'moment-timezone';
++import moment from 'moment-timezone';
+ 
+ import type {Client} from 'sentry/api';
+ import Feature from 'sentry/components/acl/feature';
+@@ -103,7 +102,7 @@ function formatTooltipDate(date: moment.MomentInput, format: string): string {
+   const {
+     options: {timezone},
+   } = ConfigStore.get('user');
+-  return momentTimezone.tz(date, timezone).format(format);
++  return moment.tz(date, timezone).format(format);
+ }
+ 
+ function getRuleChangeSeries(
+diff --git a/static/app/views/alerts/rules/metric/details/metricChartOption.tsx b/static/app/views/alerts/rules/metric/details/metricChartOption.tsx
+index 767dc57a6d4..204cb302dde 100644
+--- a/static/app/views/alerts/rules/metric/details/metricChartOption.tsx
++++ b/static/app/views/alerts/rules/metric/details/metricChartOption.tsx
+@@ -1,7 +1,6 @@
+ import color from 'color';
+ import type {YAXisComponentOption} from 'echarts';
+-import moment from 'moment';
+-import momentTimezone from 'moment-timezone';
++import moment from 'moment-timezone';
+ 
+ import type {AreaChartProps, AreaChartSeries} from 'sentry/components/charts/areaChart';
+ import MarkArea from 'sentry/components/charts/components/markArea';
+@@ -35,7 +34,7 @@ function formatTooltipDate(date: moment.MomentInput, format: string): string {
+   const {
+     options: {timezone},
+   } = ConfigStore.get('user');
+-  return momentTimezone.tz(date, timezone).format(format);
++  return moment.tz(date, timezone).format(format);
+ }
+ 
+ function createStatusAreaSeries(
+diff --git a/static/app/views/alerts/rules/metric/details/utils.spec.tsx b/static/app/views/alerts/rules/metric/details/utils.spec.tsx
+index f4a71c1e685..2211597d234 100644
+--- a/static/app/views/alerts/rules/metric/details/utils.spec.tsx
++++ b/static/app/views/alerts/rules/metric/details/utils.spec.tsx
+@@ -1,4 +1,4 @@
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ import {IncidentFixture} from 'sentry-fixture/incident';
+ import {MetricRuleFixture} from 'sentry-fixture/metricRule';
+ 
+diff --git a/static/app/views/alerts/rules/metric/details/utils.tsx b/static/app/views/alerts/rules/metric/details/utils.tsx
+index bb38c415174..b1d263897b1 100644
+--- a/static/app/views/alerts/rules/metric/details/utils.tsx
++++ b/static/app/views/alerts/rules/metric/details/utils.tsx
+@@ -1,4 +1,4 @@
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {getUtcDateString} from 'sentry/utils/dates';
+ import {
+diff --git a/static/app/views/discover/queryList.tsx b/static/app/views/discover/queryList.tsx
+index e7589bfc6c1..fef49d19cbc 100644
+--- a/static/app/views/discover/queryList.tsx
++++ b/static/app/views/discover/queryList.tsx
+@@ -2,7 +2,7 @@ import {Component, Fragment} from 'react';
+ import type {InjectedRouter} from 'react-router';
+ import styled from '@emotion/styled';
+ import type {Location, Query} from 'history';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {resetPageFilters} from 'sentry/actionCreators/pageFilters';
+ import type {Client} from 'sentry/api';
+diff --git a/static/app/views/insights/common/queries/useSpanSamples.tsx b/static/app/views/insights/common/queries/useSpanSamples.tsx
+index 11d7a0c657f..50b8bbb2d3c 100644
+--- a/static/app/views/insights/common/queries/useSpanSamples.tsx
++++ b/static/app/views/insights/common/queries/useSpanSamples.tsx
+@@ -1,4 +1,4 @@
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ import * as qs from 'query-string';
+ 
+ import {useQuery} from 'sentry/utils/queryClient';
+diff --git a/static/app/views/insights/common/queries/useSpansQuery.tsx b/static/app/views/insights/common/queries/useSpansQuery.tsx
+index 67424458633..27551bed9e8 100644
+--- a/static/app/views/insights/common/queries/useSpansQuery.tsx
++++ b/static/app/views/insights/common/queries/useSpansQuery.tsx
+@@ -1,4 +1,4 @@
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import type {TableData} from 'sentry/utils/discover/discoverQuery';
+ import {useDiscoverQuery} from 'sentry/utils/discover/discoverQuery';
+diff --git a/static/app/views/insights/common/utils/getDateFilters.tsx b/static/app/views/insights/common/utils/getDateFilters.tsx
+index fa08f8d4eb3..7e47df0faf6 100644
+--- a/static/app/views/insights/common/utils/getDateFilters.tsx
++++ b/static/app/views/insights/common/utils/getDateFilters.tsx
+@@ -1,4 +1,4 @@
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import type {PageFilters} from 'sentry/types/core';
+ 
+diff --git a/static/app/views/insights/common/views/spans/queries.tsx b/static/app/views/insights/common/views/spans/queries.tsx
+index f57db8f8b10..31ffa22043f 100644
+--- a/static/app/views/insights/common/views/spans/queries.tsx
++++ b/static/app/views/insights/common/views/spans/queries.tsx
+@@ -1,4 +1,4 @@
+-import {unix} from 'moment';
++import {unix} from 'moment-timezone';
+ 
+ import {getInterval} from 'sentry/components/charts/utils';
+ import type {NewQuery} from 'sentry/types/organization';
+diff --git a/static/app/views/issueDetails/groupActivityItem.tsx b/static/app/views/issueDetails/groupActivityItem.tsx
+index 0f6271f83f5..8322a1765d3 100644
+--- a/static/app/views/issueDetails/groupActivityItem.tsx
++++ b/static/app/views/issueDetails/groupActivityItem.tsx
+@@ -1,6 +1,6 @@
+ import {Fragment} from 'react';
+ import styled from '@emotion/styled';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import CommitLink from 'sentry/components/commitLink';
+ import {DateTime} from 'sentry/components/dateTime';
+diff --git a/static/app/views/issueDetails/groupReplays/groupReplays.spec.tsx b/static/app/views/issueDetails/groupReplays/groupReplays.spec.tsx
+index 5c228821775..86fb183680d 100644
+--- a/static/app/views/issueDetails/groupReplays/groupReplays.spec.tsx
++++ b/static/app/views/issueDetails/groupReplays/groupReplays.spec.tsx
+@@ -20,7 +20,7 @@ type InitializeOrgProps = {
+     features?: string[];
+   };
+ };
+-import {duration} from 'moment';
++import {duration} from 'moment-timezone';
+ import {RRWebInitFrameEventsFixture} from 'sentry-fixture/replay/rrweb';
+ import {ReplayListFixture} from 'sentry-fixture/replayList';
+ import {ReplayRecordFixture} from 'sentry-fixture/replayRecord';
+diff --git a/static/app/views/issueList/overview.tsx b/static/app/views/issueList/overview.tsx
+index 3d472f1502f..5e1631df3a8 100644
+--- a/static/app/views/issueList/overview.tsx
++++ b/static/app/views/issueList/overview.tsx
+@@ -8,7 +8,7 @@ import isEqual from 'lodash/isEqual';
+ import mapValues from 'lodash/mapValues';
+ import omit from 'lodash/omit';
+ import pickBy from 'lodash/pickBy';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ import * as qs from 'query-string';
+ 
+ import {addMessage} from 'sentry/actionCreators/indicator';
+diff --git a/static/app/views/metrics/widget.tsx b/static/app/views/metrics/widget.tsx
+index 3bdf4ac8d00..e3c45e793ed 100644
+--- a/static/app/views/metrics/widget.tsx
++++ b/static/app/views/metrics/widget.tsx
+@@ -2,7 +2,7 @@ import {Fragment, memo, useCallback, useMemo} from 'react';
+ import styled from '@emotion/styled';
+ import * as Sentry from '@sentry/react';
+ import type {SeriesOption} from 'echarts';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {updateDateTime} from 'sentry/actionCreators/pageFilters';
+ import Alert from 'sentry/components/alert';
+diff --git a/static/app/views/monitors/components/timeline/gridLines.tsx b/static/app/views/monitors/components/timeline/gridLines.tsx
+index 0eb5072b825..fe9b1bb60ac 100644
+--- a/static/app/views/monitors/components/timeline/gridLines.tsx
++++ b/static/app/views/monitors/components/timeline/gridLines.tsx
+@@ -1,7 +1,7 @@
+ import {useCallback} from 'react';
+ import styled from '@emotion/styled';
+ import {mergeRefs} from '@react-aria/utils';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {updateDateTime} from 'sentry/actionCreators/pageFilters';
+ import {DateTime} from 'sentry/components/dateTime';
+diff --git a/static/app/views/monitors/components/timeline/hooks/useDateNavigation.tsx b/static/app/views/monitors/components/timeline/hooks/useDateNavigation.tsx
+index bbb0ffe47e6..43f16d17995 100644
+--- a/static/app/views/monitors/components/timeline/hooks/useDateNavigation.tsx
++++ b/static/app/views/monitors/components/timeline/hooks/useDateNavigation.tsx
+@@ -1,5 +1,5 @@
+ import {useCallback} from 'react';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {updateDateTime} from 'sentry/actionCreators/pageFilters';
+ import getDuration from 'sentry/utils/duration/getDuration';
+diff --git a/static/app/views/monitors/components/timeline/hooks/useMonitorDates.tsx b/static/app/views/monitors/components/timeline/hooks/useMonitorDates.tsx
+index 882cad06e51..d0a619530c8 100644
+--- a/static/app/views/monitors/components/timeline/hooks/useMonitorDates.tsx
++++ b/static/app/views/monitors/components/timeline/hooks/useMonitorDates.tsx
+@@ -1,5 +1,5 @@
+ import {useRef} from 'react';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {intervalToMilliseconds} from 'sentry/utils/duration/intervalToMilliseconds';
+ import usePageFilters from 'sentry/utils/usePageFilters';
+diff --git a/static/app/views/monitors/components/timeline/serviceIncidents.tsx b/static/app/views/monitors/components/timeline/serviceIncidents.tsx
+index 6ca35ddaedb..63928830a2b 100644
+--- a/static/app/views/monitors/components/timeline/serviceIncidents.tsx
++++ b/static/app/views/monitors/components/timeline/serviceIncidents.tsx
+@@ -2,7 +2,7 @@ import {Fragment, useCallback} from 'react';
+ import {css} from '@emotion/react';
+ import styled from '@emotion/styled';
+ import Color from 'color';
+-import moment, {type Moment} from 'moment';
++import moment, {type Moment} from 'moment-timezone';
+ 
+ import Alert from 'sentry/components/alert';
+ import {Hovercard} from 'sentry/components/hovercard';
+diff --git a/static/app/views/monitors/components/timeline/utils/getTimeRangeFromEvent.tsx b/static/app/views/monitors/components/timeline/utils/getTimeRangeFromEvent.tsx
+index ba158bb5c95..f7aebec6cad 100644
+--- a/static/app/views/monitors/components/timeline/utils/getTimeRangeFromEvent.tsx
++++ b/static/app/views/monitors/components/timeline/utils/getTimeRangeFromEvent.tsx
+@@ -1,4 +1,4 @@
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import type {Event} from 'sentry/types/event';
+ 
+diff --git a/static/app/views/organizationStats/index.tsx b/static/app/views/organizationStats/index.tsx
+index bbad8d5d6ed..b2f30ee8955 100644
+--- a/static/app/views/organizationStats/index.tsx
++++ b/static/app/views/organizationStats/index.tsx
+@@ -4,7 +4,7 @@ import styled from '@emotion/styled';
+ import type {LocationDescriptorObject} from 'history';
+ import omit from 'lodash/omit';
+ import pick from 'lodash/pick';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import type {DateTimeObject} from 'sentry/components/charts/utils';
+ import {CompactSelect} from 'sentry/components/compactSelect';
+diff --git a/static/app/views/organizationStats/teamInsights/controls.tsx b/static/app/views/organizationStats/teamInsights/controls.tsx
+index d0f6c033adf..b3bfd271167 100644
+--- a/static/app/views/organizationStats/teamInsights/controls.tsx
++++ b/static/app/views/organizationStats/teamInsights/controls.tsx
+@@ -3,7 +3,7 @@ import {useTheme} from '@emotion/react';
+ import styled from '@emotion/styled';
+ import type {LocationDescriptorObject} from 'history';
+ import pick from 'lodash/pick';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import SelectControl from 'sentry/components/forms/controls/selectControl';
+ import TeamSelector from 'sentry/components/teamSelector';
+diff --git a/static/app/views/organizationStats/teamInsights/teamIssuesAge.tsx b/static/app/views/organizationStats/teamInsights/teamIssuesAge.tsx
+index 860cba8abec..14855f1a4ee 100644
+--- a/static/app/views/organizationStats/teamInsights/teamIssuesAge.tsx
++++ b/static/app/views/organizationStats/teamInsights/teamIssuesAge.tsx
+@@ -1,7 +1,7 @@
+ import {Fragment} from 'react';
+ import {css} from '@emotion/react';
+ import styled from '@emotion/styled';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {BarChart} from 'sentry/components/charts/barChart';
+ import Count from 'sentry/components/count';
+diff --git a/static/app/views/organizationStats/teamInsights/teamReleases.tsx b/static/app/views/organizationStats/teamInsights/teamReleases.tsx
+index 49ccc343fc2..760a792b2cb 100644
+--- a/static/app/views/organizationStats/teamInsights/teamReleases.tsx
++++ b/static/app/views/organizationStats/teamInsights/teamReleases.tsx
+@@ -2,7 +2,7 @@ import {Fragment} from 'react';
+ import {css, useTheme} from '@emotion/react';
+ import styled from '@emotion/styled';
+ import round from 'lodash/round';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {Button} from 'sentry/components/button';
+ import {BarChart} from 'sentry/components/charts/barChart';
+diff --git a/static/app/views/organizationStats/teamInsights/utils.tsx b/static/app/views/organizationStats/teamInsights/utils.tsx
+index 8041a7e0864..0ae9fc4ba76 100644
+--- a/static/app/views/organizationStats/teamInsights/utils.tsx
++++ b/static/app/views/organizationStats/teamInsights/utils.tsx
+@@ -1,4 +1,4 @@
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import type BaseChart from 'sentry/components/charts/baseChart';
+ import type {DateTimeObject} from 'sentry/components/charts/utils';
+diff --git a/static/app/views/organizationStats/usageChart/utils.spec.tsx b/static/app/views/organizationStats/usageChart/utils.spec.tsx
+index c86c502334f..5f3c8e63a4f 100644
+--- a/static/app/views/organizationStats/usageChart/utils.spec.tsx
++++ b/static/app/views/organizationStats/usageChart/utils.spec.tsx
+@@ -1,4 +1,4 @@
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {
+   getDateFromMoment,
+diff --git a/static/app/views/organizationStats/usageChart/utils.tsx b/static/app/views/organizationStats/usageChart/utils.tsx
+index 541320253dc..257c62debf7 100644
+--- a/static/app/views/organizationStats/usageChart/utils.tsx
++++ b/static/app/views/organizationStats/usageChart/utils.tsx
+@@ -1,4 +1,4 @@
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {parseStatsPeriod} from 'sentry/components/organizations/pageFilters/parse';
+ import type {DataCategoryInfo, IntervalPeriod} from 'sentry/types/core';
+diff --git a/static/app/views/organizationStats/usageStatsOrg.tsx b/static/app/views/organizationStats/usageStatsOrg.tsx
+index 23d4dd25a31..e84d8faa968 100644
+--- a/static/app/views/organizationStats/usageStatsOrg.tsx
++++ b/static/app/views/organizationStats/usageStatsOrg.tsx
+@@ -4,7 +4,7 @@ import type {WithRouterProps} from 'react-router';
+ import styled from '@emotion/styled';
+ import * as Sentry from '@sentry/react';
+ import isEqual from 'lodash/isEqual';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {navigateTo} from 'sentry/actionCreators/navigation';
+ import OptionSelector from 'sentry/components/charts/optionSelector';
+diff --git a/static/app/views/performance/trends/changeExplorer.spec.tsx b/static/app/views/performance/trends/changeExplorer.spec.tsx
+index d578845370f..a621c863fd5 100644
+--- a/static/app/views/performance/trends/changeExplorer.spec.tsx
++++ b/static/app/views/performance/trends/changeExplorer.spec.tsx
+@@ -1,5 +1,5 @@
+ import {Fragment} from 'react';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {initializeData} from 'sentry-test/performance/initializePerformanceData';
+ import {act, render, screen, waitFor} from 'sentry-test/reactTestingLibrary';
+diff --git a/static/app/views/performance/trends/changeExplorer.tsx b/static/app/views/performance/trends/changeExplorer.tsx
+index 3891344ec13..46949527bdb 100644
+--- a/static/app/views/performance/trends/changeExplorer.tsx
++++ b/static/app/views/performance/trends/changeExplorer.tsx
+@@ -1,7 +1,7 @@
+ import {Fragment} from 'react';
+ import styled from '@emotion/styled';
+ import type {Location} from 'history';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {Button} from 'sentry/components/button';
+ import {getArbitraryRelativePeriod} from 'sentry/components/timeRangeSelector/utils';
+diff --git a/static/app/views/performance/trends/changeExplorerUtils/functionsList.tsx b/static/app/views/performance/trends/changeExplorerUtils/functionsList.tsx
+index eeb8cf2264e..099ec6571e9 100644
+--- a/static/app/views/performance/trends/changeExplorerUtils/functionsList.tsx
++++ b/static/app/views/performance/trends/changeExplorerUtils/functionsList.tsx
+@@ -1,6 +1,6 @@
+ import {Fragment, useMemo} from 'react';
+ import type {Location} from 'history';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import EmptyStateWarning from 'sentry/components/emptyStateWarning';
+ import LoadingIndicator from 'sentry/components/loadingIndicator';
+diff --git a/static/app/views/performance/trends/changeExplorerUtils/metricsTable.tsx b/static/app/views/performance/trends/changeExplorerUtils/metricsTable.tsx
+index 67382017ac6..be7ef7c328a 100644
+--- a/static/app/views/performance/trends/changeExplorerUtils/metricsTable.tsx
++++ b/static/app/views/performance/trends/changeExplorerUtils/metricsTable.tsx
+@@ -1,7 +1,7 @@
+ import type {ReactNode} from 'react';
+ import {useMemo} from 'react';
+ import type {Location} from 'history';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import type {GridColumnOrder} from 'sentry/components/gridEditable';
+ import GridEditable, {COL_WIDTH_UNDEFINED} from 'sentry/components/gridEditable';
+diff --git a/static/app/views/performance/trends/changeExplorerUtils/spansList.spec.tsx b/static/app/views/performance/trends/changeExplorerUtils/spansList.spec.tsx
+index e53f5ddc23f..62139f5af4f 100644
+--- a/static/app/views/performance/trends/changeExplorerUtils/spansList.spec.tsx
++++ b/static/app/views/performance/trends/changeExplorerUtils/spansList.spec.tsx
+@@ -1,4 +1,4 @@
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {initializeData} from 'sentry-test/performance/initializePerformanceData';
+ import {render, screen, waitFor} from 'sentry-test/reactTestingLibrary';
+diff --git a/static/app/views/performance/trends/changeExplorerUtils/spansList.tsx b/static/app/views/performance/trends/changeExplorerUtils/spansList.tsx
+index 454f4eb214e..286ddeea221 100644
+--- a/static/app/views/performance/trends/changeExplorerUtils/spansList.tsx
++++ b/static/app/views/performance/trends/changeExplorerUtils/spansList.tsx
+@@ -1,7 +1,7 @@
+ import {useMemo} from 'react';
+ import styled from '@emotion/styled';
+ import type {Location} from 'history';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import EmptyStateWarning from 'sentry/components/emptyStateWarning';
+ import Link from 'sentry/components/links/link';
+diff --git a/static/app/views/performance/trends/index.spec.tsx b/static/app/views/performance/trends/index.spec.tsx
+index fbaa20ed7fb..7c2c2a316ed 100644
+--- a/static/app/views/performance/trends/index.spec.tsx
++++ b/static/app/views/performance/trends/index.spec.tsx
+@@ -31,7 +31,7 @@ const trendsViewQuery = {
+   query: `tpm():>0.01 transaction.duration:>0 transaction.duration:<${DEFAULT_MAX_DURATION}`,
+ };
+ 
+-jest.mock('moment', () => {
++jest.mock('moment-timezone', () => {
+   const moment = jest.requireActual('moment');
+   moment.now = jest.fn().mockReturnValue(1601251200000);
+   return moment;
+diff --git a/static/app/views/performance/trends/types.tsx b/static/app/views/performance/trends/types.tsx
+index da088ba12d0..e9460b0a29b 100644
+--- a/static/app/views/performance/trends/types.tsx
++++ b/static/app/views/performance/trends/types.tsx
+@@ -1,4 +1,4 @@
+-import type moment from 'moment';
++import type moment from 'moment-timezone';
+ 
+ import type {EventQuery} from 'sentry/actionCreators/events';
+ import type {EventsStatsData, Project} from 'sentry/types';
+diff --git a/static/app/views/performance/trends/utils/index.tsx b/static/app/views/performance/trends/utils/index.tsx
+index 586c074da3c..24443a9d2d9 100644
+--- a/static/app/views/performance/trends/utils/index.tsx
++++ b/static/app/views/performance/trends/utils/index.tsx
+@@ -1,6 +1,6 @@
+ import {ASAP} from 'downsample/methods/ASAP';
+ import type {Location} from 'history';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {getInterval} from 'sentry/components/charts/utils';
+ import {wrapQueryInWildcards} from 'sentry/components/performance/searchBar';
+diff --git a/static/app/views/performance/vitalDetail/vitalChartMetrics.tsx b/static/app/views/performance/vitalDetail/vitalChartMetrics.tsx
+index c06c856e68a..a092646c17b 100644
+--- a/static/app/views/performance/vitalDetail/vitalChartMetrics.tsx
++++ b/static/app/views/performance/vitalDetail/vitalChartMetrics.tsx
+@@ -1,5 +1,5 @@
+ import {useTheme} from '@emotion/react';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import ChartZoom from 'sentry/components/charts/chartZoom';
+ import ErrorPanel from 'sentry/components/charts/errorPanel';
+diff --git a/static/app/views/releases/detail/overview/index.tsx b/static/app/views/releases/detail/overview/index.tsx
+index 8c5e1384e54..5a58052c03f 100644
+--- a/static/app/views/releases/detail/overview/index.tsx
++++ b/static/app/views/releases/detail/overview/index.tsx
+@@ -2,7 +2,7 @@ import {Fragment} from 'react';
+ import type {RouteComponentProps} from 'react-router';
+ import styled from '@emotion/styled';
+ import type {Location, LocationDescriptor} from 'history';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {restoreRelease} from 'sentry/actionCreators/release';
+ import {Client} from 'sentry/api';
+diff --git a/static/app/views/releases/detail/overview/sidebar/totalCrashFreeUsers.tsx b/static/app/views/releases/detail/overview/sidebar/totalCrashFreeUsers.tsx
+index 25cfb7b4c2e..e49206adef4 100644
+--- a/static/app/views/releases/detail/overview/sidebar/totalCrashFreeUsers.tsx
++++ b/static/app/views/releases/detail/overview/sidebar/totalCrashFreeUsers.tsx
+@@ -1,7 +1,7 @@
+ import styled from '@emotion/styled';
+ import type {Location} from 'history';
+ import pick from 'lodash/pick';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import Count from 'sentry/components/count';
+ import LoadingError from 'sentry/components/loadingError';
+diff --git a/static/app/views/releases/detail/utils.tsx b/static/app/views/releases/detail/utils.tsx
+index 41b5953ae14..62347a9f0b6 100644
+--- a/static/app/views/releases/detail/utils.tsx
++++ b/static/app/views/releases/detail/utils.tsx
+@@ -1,8 +1,8 @@
+ import type {Theme} from '@emotion/react';
+ import type {Location} from 'history';
+ import pick from 'lodash/pick';
+-import type {Moment} from 'moment';
+-import moment from 'moment';
++import type {Moment} from 'moment-timezone';
++import moment from 'moment-timezone';
+ 
+ import MarkLine from 'sentry/components/charts/components/markLine';
+ import {parseStatsPeriod} from 'sentry/components/timeRangeSelector/utils';
+diff --git a/static/app/views/releases/list/releasesAdoptionChart.tsx b/static/app/views/releases/list/releasesAdoptionChart.tsx
+index d627b663df3..6c06d8135ef 100644
+--- a/static/app/views/releases/list/releasesAdoptionChart.tsx
++++ b/static/app/views/releases/list/releasesAdoptionChart.tsx
+@@ -5,7 +5,7 @@ import type {LineSeriesOption} from 'echarts';
+ import type {Location} from 'history';
+ import compact from 'lodash/compact';
+ import pick from 'lodash/pick';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import type {Client} from 'sentry/api';
+ import ChartZoom from 'sentry/components/charts/chartZoom';
+diff --git a/static/app/views/releases/list/releasesRequest.tsx b/static/app/views/releases/list/releasesRequest.tsx
+index c2de02095fa..477d2567558 100644
+--- a/static/app/views/releases/list/releasesRequest.tsx
++++ b/static/app/views/releases/list/releasesRequest.tsx
+@@ -3,7 +3,7 @@ import type {Location} from 'history';
+ import isEqual from 'lodash/isEqual';
+ import omit from 'lodash/omit';
+ import pick from 'lodash/pick';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {addErrorMessage} from 'sentry/actionCreators/indicator';
+ import type {Client} from 'sentry/api';
+diff --git a/static/app/views/releases/utils/index.tsx b/static/app/views/releases/utils/index.tsx
+index 1d44b8f2b94..04bf3c0e454 100644
+--- a/static/app/views/releases/utils/index.tsx
++++ b/static/app/views/releases/utils/index.tsx
+@@ -2,7 +2,7 @@ import type {Theme} from '@emotion/react';
+ import type {Location} from 'history';
+ import pick from 'lodash/pick';
+ import round from 'lodash/round';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import type {DateTimeObject} from 'sentry/components/charts/utils';
+ import ExternalLink from 'sentry/components/links/externalLink';
+diff --git a/static/app/views/replays/types.tsx b/static/app/views/replays/types.tsx
+index 9fa75c3a2ef..9c2f442a3a1 100644
+--- a/static/app/views/replays/types.tsx
++++ b/static/app/views/replays/types.tsx
+@@ -1,4 +1,4 @@
+-import type {Duration} from 'moment';
++import type {Duration} from 'moment-timezone';
+ 
+ // Keep this in sync with the backend blueprint
+ // "ReplayRecord" is distinct from the common: "replay = new ReplayReader()"
+diff --git a/static/app/views/settings/account/accountIdentities.tsx b/static/app/views/settings/account/accountIdentities.tsx
+index 61c4d4ddc1a..0c574aaa02e 100644
+--- a/static/app/views/settings/account/accountIdentities.tsx
++++ b/static/app/views/settings/account/accountIdentities.tsx
+@@ -1,6 +1,6 @@
+ import {Fragment, useCallback, useMemo} from 'react';
+ import styled from '@emotion/styled';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {disconnectIdentity} from 'sentry/actionCreators/account';
+ import {Alert} from 'sentry/components/alert';
+diff --git a/static/app/views/settings/account/accountSubscriptions.tsx b/static/app/views/settings/account/accountSubscriptions.tsx
+index 3bc86cca045..49cd4ae6aee 100644
+--- a/static/app/views/settings/account/accountSubscriptions.tsx
++++ b/static/app/views/settings/account/accountSubscriptions.tsx
+@@ -2,7 +2,7 @@ import {Fragment} from 'react';
+ import styled from '@emotion/styled';
+ import groupBy from 'lodash/groupBy';
+ import orderBy from 'lodash/orderBy';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {addErrorMessage, addSuccessMessage} from 'sentry/actionCreators/indicator';
+ import {DateTime} from 'sentry/components/dateTime';
+diff --git a/static/app/views/settings/organizationMembers/inviteBanner.spec.tsx b/static/app/views/settings/organizationMembers/inviteBanner.spec.tsx
+index 1d26e3404fa..5da15bc59a0 100644
+--- a/static/app/views/settings/organizationMembers/inviteBanner.spec.tsx
++++ b/static/app/views/settings/organizationMembers/inviteBanner.spec.tsx
+@@ -1,4 +1,4 @@
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ import {MemberFixture} from 'sentry-fixture/member';
+ import {MissingMembersFixture} from 'sentry-fixture/missingMembers';
+ import {OrganizationFixture} from 'sentry-fixture/organization';
+diff --git a/static/app/views/traces/content.tsx b/static/app/views/traces/content.tsx
+index 1ea97163552..50f3cc75ad2 100644
+--- a/static/app/views/traces/content.tsx
++++ b/static/app/views/traces/content.tsx
+@@ -3,7 +3,7 @@ import {useTheme} from '@emotion/react';
+ import styled from '@emotion/styled';
+ import debounce from 'lodash/debounce';
+ import omit from 'lodash/omit';
+-import moment from 'moment';
++import moment from 'moment-timezone';
+ 
+ import {Alert} from 'sentry/components/alert';
+ import {Button} from 'sentry/components/button';
+diff --git a/tests/js/fixtures/replayList.ts b/tests/js/fixtures/replayList.ts
+index 9583b91139f..da6ab1be551 100644
+--- a/tests/js/fixtures/replayList.ts
++++ b/tests/js/fixtures/replayList.ts
+@@ -1,4 +1,4 @@
+-import {duration} from 'moment';
++import {duration} from 'moment-timezone';
+ 
+ import type {ReplayListRecord} from 'sentry/views/replays/types';
+ 
+diff --git a/tests/js/fixtures/replayRecord.ts b/tests/js/fixtures/replayRecord.ts
+index 87dadf7a077..dae31053562 100644
+--- a/tests/js/fixtures/replayRecord.ts
++++ b/tests/js/fixtures/replayRecord.ts
+@@ -1,4 +1,4 @@
+-import {duration} from 'moment';
++import {duration} from 'moment-timezone';
+ 
+ import type {ReplayRecord} from 'sentry/views/replays/types';
+ 
+diff --git a/yarn.lock b/yarn.lock
+index 775b0eaf5a5..2b4ec48bc55 100644
+--- a/yarn.lock
++++ b/yarn.lock
+@@ -9106,10 +9106,10 @@ moment-timezone@0.5.44:
+   dependencies:
+     moment "^2.29.4"
+ 
+-moment@2.29.4, moment@^2.29.4:
+-  version "2.29.4"
+-  resolved "https://registry.yarnpkg.com/moment/-/moment-2.29.4.tgz#3dbe052889fe7c1b2ed966fcb3a77328964ef108"
+-  integrity sha512-5LC9SOxjSc2HF6vO2CyuTDNivEdoz2IvyJJGj6X8DJ0eFyfszE0QiEd+iXmBvUP3WHxSjFH/vIsA0EN00cgr8w==
++moment@^2.29.4:
++  version "2.30.1"
++  resolved "https://registry.yarnpkg.com/moment/-/moment-2.30.1.tgz#f8c91c07b7a786e30c59926df530b4eac96974ae"
++  integrity sha512-uEmtNhbDOrWPFS+hdjFCBfy9f2YoyzRpwcl+DqpC6taX21FzsTLQVbMV/W7PzNSX6x/bhC1zA3c2UQ5NzH6how==
+ 
+ moo-color@^1.0.2:
+   version "1.0.3"

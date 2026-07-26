@@ -1,0 +1,81 @@
+generators:
+  cochange: 0
+  bm25: 15
+  graph: 0
+  random: 10
+candidates:
+- path: CODEOWNERS
+  sources:
+  - bm25
+- path: api/BUILD
+  sources:
+  - bm25
+- path: api/envoy/extensions/health_checkers/thrift/v3/thrift.proto
+  sources:
+  - random
+- path: changelogs/1.16.0.yaml
+  sources:
+  - bm25
+- path: changelogs/1.27.0.yaml
+  sources:
+  - bm25
+- path: changelogs/1.28.0.yaml
+  sources:
+  - bm25
+- path: changelogs/1.30.0.yaml
+  sources:
+  - bm25
+- path: mobile/test/common/integration/proxy.proto
+  sources:
+  - random
+- path: source/common/listener_manager/BUILD
+  sources:
+  - bm25
+- path: source/extensions/extensions_build_config.bzl
+  sources:
+  - bm25
+- path: source/extensions/extensions_metadata.yaml
+  sources:
+  - bm25
+- path: source/extensions/filters/udp/udp_proxy/session_filters/dynamic_forward_proxy/BUILD
+  sources:
+  - random
+- path: source/server/admin/BUILD
+  sources:
+  - bm25
+- path: source/server/server.cc
+  sources:
+  - bm25
+- path: test/common/api/BUILD
+  sources:
+  - random
+- path: test/common/buffer/buffer_corpus/clusterfuzz-testcase-minimized-buffer_fuzz_test-4767917877100544
+  sources:
+  - random
+- path: test/common/http/BUILD
+  sources:
+  - bm25
+- path: test/common/quic/BUILD
+  sources:
+  - bm25
+- path: test/extensions/clusters/logical_dns/BUILD
+  sources:
+  - random
+- path: test/extensions/filters/common/rbac/mocks.h
+  sources:
+  - random
+- path: test/extensions/filters/http/wasm/BUILD
+  sources:
+  - random
+- path: test/extensions/filters/network/redis_proxy/redis_proxy_integration_test.cc
+  sources:
+  - random
+- path: test/mocks/init/mocks.h
+  sources:
+  - random
+- path: test/server/BUILD
+  sources:
+  - bm25
+- path: tools/code_format/config.yaml
+  sources:
+  - bm25

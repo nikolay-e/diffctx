@@ -1,0 +1,79 @@
+repo: envoy
+base_commit: b6384054ee07657ba4895c72c2e76825f8f70984
+commit: a3ea604656c036e5b7faaf00eb36727d5aa37d42
+patch_stored: true
+gold:
+  - path: source/extensions/filters/http/sse_to_metadata/filter.cc
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Implements the SSE-to-metadata filter core (encodeHeaders content-type gate, encodeData/processBuffer/processSseEvent event loop, writeMetadata) that the whole change exists to add.
+  - path: source/extensions/filters/http/sse_to_metadata/filter.h
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Declares FilterConfig and Filter, and directly includes envoy/content_parser/{config,factory,parser}.h to type parser_factory_ (ContentParser::ParserFactoryPtr) and parser_ (ContentParser::ParserPtr) members.
+  - path: source/extensions/filters/http/sse_to_metadata/config.cc
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: REGISTER_FACTORY(SseToMetadataConfig, NamedHttpFilterConfigFactory) self-registers the filter under the string name "envoy.filters.http.sse_to_metadata" used by extensions_build_config.bzl/extensions_metadata.yaml/CODEOWNERS/docs.
+  - path: api/envoy/extensions/filters/http/sse_to_metadata/v3/sse_to_metadata.proto
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines the SseToMetadata/ProcessingRules proto (content_parser TypedExtensionConfig field, max_event_size) that FilterConfig::FilterConfig parses via config.response_rules().content_parser().
+  - path: source/common/http/sse/sse_parser.h
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Declares SseParser::findEventEnd and SseParser::parseEvent, called directly from Filter::processBuffer/processSseEvent to split the byte stream into SSE events and extract the data field.
+  - path: test/extensions/filters/http/sse_to_metadata/filter_test.cc
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Covers Filter behavior (content-type gating, max_event_size eviction, on_present/on_missing/on_error dispatch) exercising the same encodeHeaders/encodeData/encodeTrailers paths added in filter.cc.
+  - path: envoy/content_parser/parser.h
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines ContentParser::Parser, ParseResult and MetadataAction, included by filter.h/filter.cc and consumed directly in Filter::processSseEvent (result.immediate_actions) and Filter::writeMetadata (action.namespace_/key/value).
+  - path: envoy/content_parser/factory.h
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines ContentParser::ParserFactory (createParser/statsPrefix) whose pointer is stored as FilterConfig::parser_factory_ and used in Filter::Filter to construct the per-stream parser_.
+  - path: envoy/content_parser/config.h
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines ContentParser::NamedContentParserConfigFactory, looked up in FilterConfig::FilterConfig via Config::Utility::getAndCheckFactory<NamedContentParserConfigFactory>(config.response_rules().content_parser()) to resolve the parser by its TypedExtensionConfig name.
+  - path: source/extensions/content_parsers/json/config.cc
+    tier: helpful
+    role: cochange
+    in_diff: false
+    rationale: JsonContentParserConfigFactory self-registers as "envoy.content_parsers.json" (the name used in every sse_to_metadata config example/doc/test) and sse_to_metadata's own BUILD config target depends on this target to make that parser resolvable at runtime.
+forbidden:
+  - path: source/extensions/filters/http/json_to_metadata
+    reason: sibling "*_to_metadata" HTTP filter with a similar name and adjacent CODEOWNERS/extensions_build_config entries, but it operates on request-time JSON bodies, not SSE streams, and sse_to_metadata never calls into it directly (only the JSON content-parser proto reuses its Rule message type two layers away)
+  - path: source/extensions/filters/http/header_to_metadata
+    reason: another look-alike "*_to_metadata" filter listed right next to sse_to_metadata in CODEOWNERS, unrelated implementation (header-based, not stream/content-parser based)
+  - path: source/extensions/filters/http/set_metadata
+    reason: alphabetically adjacent entry in api/BUILD and api/versioning/BUILD dep lists purely by proximity of the sse_to_metadata insertion point; no code or config relationship
+  - path: docs/root/api-v3/config/content_parsers/content_parsers.rst
+    reason: only touched to drop a now-duplicate Sphinx anchor (the anchor moved into the proto's protodoc comment); it lists the content_parsers doc index but carries no sse_to_metadata-specific content
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 23
+  description: New sse_to_metadata HTTP filter for stream parsing (full PROTO→CODE→DOCS chain)
+nontrivial_gold_count: 4
+string_indirection: true
+notes: >-
+  Adds a new envoy.filters.http.sse_to_metadata response-encoder filter that parses SSE
+  (text/event-stream) bodies via Http::Sse::SseParser and delegates content extraction to a
+  pluggable envoy.content_parsers.* extension (envoy/content_parser/{parser,factory,config}.h),
+  resolved by TypedExtensionConfig name, with envoy.content_parsers.json as the sole existing
+  implementation reused for LLM token-usage extraction. Both the filter interface and the JSON
+  parser predate this commit and are not in the diff, which is the core nontrivial context here.

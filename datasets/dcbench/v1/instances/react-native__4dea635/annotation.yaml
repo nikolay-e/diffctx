@@ -1,0 +1,51 @@
+repo: react-native
+base_commit: 152afe92441949f55c70e09a824d3c0631ffcdd2
+commit: 4dea63530fe34658348e5803e136764bda875efc
+patch_stored: true
+gold:
+- path: packages/react-native/ReactAndroid/build.gradle
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/hermes/executor/HermesExecutorFactory.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/hermes/inspector-modern/CMakeLists.txt (renamed from inspector/CMakeLists.txt)
+  tier: essential
+  role: unspecified
+  in_diff: false
+- path: packages/react-native/ReactCommon/hermes/inspector/README.md (note pointing to new location)
+  tier: essential
+  role: unspecified
+  in_diff: false
+- path: packages/react-native/ReactCommon/react/runtime/hermes/HermesInstance.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: packages/react-native/ReactCommon/hermes/inspector-modern/Inspector.cpp
+- path: packages/react-native/ReactCommon/hermes/inspector-modern/InspectorState.cpp
+- path: packages/react-native/ReactCommon/hermes/inspector-modern/chrome/Connection.cpp
+- path: packages/react-native/ReactCommon/hermes/inspector-modern/chrome/MessageConverters.cpp
+- path: packages/react-native/ReactCommon/hermes/inspector-modern/chrome/MessageTypes.cpp
+- path: packages/react-native/ReactCommon/hermes/inspector-modern/chrome/tests/ConnectionTests.cpp
+nontrivial_gold_count: 2
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: This is a mechanical fork/rename of an entire directory (hermes/inspector -> hermes/inspector-modern)
+  where git recorded only one file (CMakeLists.txt) as a detected rename and treated ~60 near-duplicate
+  files as brand-new adds (15319 insertions total), so md_tokens=45605 is 'proportionate' to the raw diff
+  size but not to the actual information content — most of Connection.cpp (1667 lines), MessageTypes.cpp
+  (1948 lines) and ConnectionTests.cpp (2955 lines) are copies of pre-existing code under a new namespace.
+  A comprehension-optimized tool should detect the near-duplicate/fork pattern and summarize it (rename
+  + the handful of real integration-point diffs in HermesExecutorFactory.cpp/HermesInstance.cpp) rather
+  than reproduce ~15k lines of copied protocol/message code verbatim; dumping it wholesale is technically
+  'complete' (high recall on paths) but very low comprehension-per-token, which is diffctx's core stated
+  metric. changed_frags=512/515 total suggests nearly everything was marked 'changed' rather than being
+  deduplicated against the original inspector/ content.

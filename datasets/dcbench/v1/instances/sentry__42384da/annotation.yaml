@@ -1,0 +1,25 @@
+repo: sentry
+base_commit: 515a1e5403b343a77253fd1a4cf1cf9d704df082
+commit: 42384da7258ab3af347130bd77b082a3384df278
+patch_stored: true
+gold:
+- path: static/app/utils/theme/theme.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/utils/useBreakpoints.spec.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: status=hang on a mechanical, single-pattern rename across 288 files (theme.breakpoints.small/medium/large
+  -> .sm/.md/.lg, t-shirt sizing), each individual hunk trivial (1-22 lines, almost all identical 'replace
+  one token' edits). This is the most extreme file-count case in the sample (288 files, 570 insertions/575
+  deletions) and the hang here is very plausibly a raw scaling failure in per-file/per-fragment processing
+  rather than anything about diff complexity -- the correct output for this commit is almost trivially
+  small (show the theme.tsx breakpoints definition once, note the mechanical rename applies uniformly
+  across the listed files) yet nothing was produced.

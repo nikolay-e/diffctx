@@ -1,0 +1,46 @@
+repo: gitpod
+base_commit: 9e0f6e13d75b4b2b56c5a664cf56c9e0e25ceefd
+commit: 41f47c80a7db1b47b2d185f922991ab61dff5d56
+patch_stored: true
+gold:
+- path: components/dashboard/src/data/auth-providers/auth-provider-options-query.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-protocol/src/protocol.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/public-api/gitpod/v1/authprovider.proto
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/auth/auth-provider-service.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/azure-devops/azure-api.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/azure-devops/azure-auth-provider.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/azure-devops/azure-context-parser.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: components/public-api/go/v1/authprovider.pb.go
+- path: components/public-api/java/io/gitpod/publicapi/v1/Authprovider.java
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: Hang on a real 42-file feature addition (new Azure DevOps auth provider). Includes two large generated
+  files in the diff (authprovider.pb.go +290/-... and the generated Authprovider.java +723 lines) that
+  are plausible triggers for a parsing/ranking blowup, but the file count itself is modest, so this looks
+  like a genuine algorithmic scaling bug rather than pure input size. Correct output should show the new
+  azure-devops/* source and the wiring points, while treating the two generated protobuf files as reference-only,
+  not full dumps.

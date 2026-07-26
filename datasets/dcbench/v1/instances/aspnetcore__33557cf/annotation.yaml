@@ -1,0 +1,82 @@
+repo: aspnetcore
+base_commit: 82c9da817e3f73a2378e00352dee982f712acae0
+commit: 33557cf9698da9b1970e2bf78f39b6603db0a39b
+patch_stored: true
+gold:
+  - path: src/Components/Testing/src/Infrastructure/ServerFixture.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: xUnit v3 collection fixture that loads the E2E manifest, runs the YARP proxy, and orchestrates StartServerAsync — the central entry point every E2E test app consumes.
+  - path: src/Components/Testing/src/Infrastructure/ServerInstance.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Launches each E2E app process and sets ASPNETCORE_HOSTINGSTARTUPASSEMBLIES / DOTNET_STARTUP_HOOKS env vars that wire the app into the test readiness/lock infrastructure.
+  - path: src/Components/Testing/src/Infrastructure/E2EManifest.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Manifest model shared between the build-time GenerateE2EManifest task and the runtime ServerFixture, which reads it to know how to launch each app.
+  - path: src/Components/Testing/tasks/GenerateE2EManifest.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: MSBuild task invoked by PrepareE2EApps that emits the E2EManifest JSON consumed at test-run time by ServerFixture.
+  - path: src/Components/Testing/eng/targets/Microsoft.AspNetCore.Components.Testing.targets
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Defines the PrepareE2EApps MSBuild target (hooked to AfterTargets=Build;Publish) that invokes GenerateE2EManifest and copies/publishes E2EApp-tagged ProjectReferences — the build-time half of the mechanism.
+  - path: src/Components/Components.slnf
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Solution filter had to be updated to reference the 3 combined TestApp projects instead of 16 stale testasset entries, per commit message ("CodeCheck was failing on missing slnf references").
+  - path: AspNetCore.slnx
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Root solution file registers the new Testing src/gen/tasks/test projects so the wider repo build picks them up.
+  - path: Directory.Build.props
+    tier: essential
+    role: config
+    in_diff: false
+    rationale: Root Arcade props defines the IsTestProject convention and imports eng/targets/Helix.props and eng/targets/FunctionalTestWithAssets.props under it — testassets/Directory.Build.props deliberately flips IsTestProject to false at the end specifically to opt E2E projects out of these Arcade conventions.
+  - path: eng/targets/FunctionalTestWithAssets.props
+    tier: helpful
+    role: config
+    in_diff: false
+    rationale: The PrepareE2EApps target's own header comment states it "Follows the same pattern as FunctionalTestWithAssets.targets" for copying test-asset project output into a consuming test project's bin/publish folder.
+  - path: eng/targets/ResolveReferences.targets
+    tier: helpful
+    role: config
+    in_diff: false
+    rationale: Defines the custom Reference-resolution rules requiring shipping assemblies to be consumed via <Reference> not <ProjectReference>; explains why Testing.Tests.csproj/TestApp.E2E.Tests.csproj use <Reference Include="Microsoft.AspNetCore.Components.Testing" /> per the commit message's CI-fix note.
+forbidden:
+  - path: eng/common/tools.ps1
+    reason: generic Arcade bootstrap script, unrelated to the E2E testing feature (bm25 keyword coincidence)
+  - path: src/SignalR/clients/csharp/Client.Core/src/HubConnection.cs
+    reason: unrelated SignalR client code, no dependency on Components.Testing
+  - path: src/Servers/IIS/IntegrationTesting.IIS/src/IISExpressDeployer.cs
+    reason: a separate, pre-existing IIS-specific test deployer not reused or touched by this Blazor E2E infra
+  - path: src/Components/QuickGrid/Microsoft.AspNetCore.Components.QuickGrid/src/QuickGrid.razor.cs
+    reason: unrelated Blazor component library file, matched only on "Components" keyword
+nontrivial_gold_count: 3
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration, candidates]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 86
+  description: Add Components.Testing E2E test infrastructure — code + MSBuild + solution files
+notes: >
+  Migrates blazor-e2e's Playwright/xUnit-v3 E2E harness into src/Components/Testing:
+  a runtime library (ServerFixture/ServerInstance/E2EManifest) driven by a
+  build-time MSBuild task (GenerateE2EManifest) wired through Microsoft.AspNetCore.Components.Testing.targets,
+  plus a combined TestApp/TestApp.Client/TestApp.E2E.Tests exercising it. Gold favors
+  the 5 core infra files plus solution/slnf wiring (in-diff), and 3 out-of-diff Arcade
+  eng/ convention files that the commit message and in-file comments explicitly
+  reference (ResolveReferences.targets, FunctionalTestWithAssets.props, root
+  Directory.Build.props) over the ~75 net-new testassets/test files, which are mostly
+  mechanical consumers of the same handful of core APIs.

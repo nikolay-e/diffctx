@@ -1,0 +1,133 @@
+generators:
+  cochange: 0
+  bm25: 15
+  graph: 20
+  random: 10
+candidates:
+- path: .azuredevops/dependabot.yml
+  sources:
+  - random
+- path: .github/workflows/community-pr-issue-check.lock.yml
+  sources:
+  - graph
+- path: .github/workflows/issue-triage-agent.md
+  sources:
+  - bm25
+  - graph
+- path: src/Components/Components/src/RenderTree/RenderTreeDiffBuilder.cs
+  sources:
+  - graph
+- path: src/Components/Endpoints/test/TestRenderModeAttribute.cs
+  sources:
+  - random
+- path: src/Components/Shared/src/QueryParameterValueSupplier.cs
+  sources:
+  - random
+- path: src/Components/Testing/test/ServerStartOptionsTests.cs
+  sources:
+  - random
+- path: src/Components/test/E2ETest/ServerRenderingTests/FormHandlingTests/FormWithParentBindingContextTest.cs
+  sources:
+  - graph
+- path: src/DefaultBuilder/src/WebApplicationBuilder.cs
+  sources:
+  - bm25
+- path: src/Hosting/Hosting/src/WebHostBuilder.cs
+  sources:
+  - bm25
+- path: src/Hosting/TestHost/test/TestClientTests.cs
+  sources:
+  - graph
+- path: src/Middleware/WebSockets/test/UnitTests/WebSocketMiddlewareTests.cs
+  sources:
+  - graph
+- path: src/Mvc/Mvc.Abstractions/src/ModelBinding/ModelMetadata.cs
+  sources:
+  - bm25
+- path: src/Mvc/Mvc.Abstractions/src/ModelBinding/Validation/IClientModelValidator.cs
+  sources:
+  - graph
+- path: src/Mvc/Mvc.ApiExplorer/src/DefaultApiDescriptionProvider.cs
+  sources:
+  - bm25
+- path: src/Mvc/Mvc.Core/src/ApiBehaviorOptions.cs
+  sources:
+  - bm25
+- path: src/Mvc/Mvc.Core/src/BindAttribute.cs
+  sources:
+  - graph
+- path: src/Mvc/Mvc.Core/src/DependencyInjection/MvcCoreServiceCollectionExtensions.cs
+  sources:
+  - bm25
+- path: src/Mvc/Mvc.Core/src/ModelBinding/Metadata/DefaultModelMetadata.cs
+  sources:
+  - bm25
+  - graph
+- path: src/Mvc/Mvc.Core/src/ModelBinding/Metadata/ICompositeMetadataDetailsProvider.cs
+  sources:
+  - graph
+- path: src/Mvc/Mvc.Core/src/MvcOptions.cs
+  sources:
+  - bm25
+- path: src/Mvc/Mvc.Core/test/Infrastructure/CompatibilitySwitchTest.cs
+  sources:
+  - graph
+- path: src/Mvc/Mvc.Core/test/ModelBinding/Metadata/DefaultModelMetadataProviderTest.cs
+  sources:
+  - graph
+- path: src/Mvc/Mvc.DataAnnotations/src/DataAnnotationsMetadataProvider.cs
+  sources:
+  - bm25
+  - graph
+- path: src/Mvc/Mvc.TagHelpers/src/LinkTagHelper.cs
+  sources:
+  - bm25
+  - graph
+- path: src/Mvc/Mvc.TagHelpers/src/ScriptTagHelper.cs
+  sources:
+  - bm25
+- path: src/Mvc/Mvc.TagHelpers/test/ImageTagHelperTest.cs
+  sources:
+  - graph
+- path: src/Mvc/Mvc.ViewFeatures/src/DefaultHtmlGenerator.cs
+  sources:
+  - bm25
+- path: src/Mvc/Mvc.ViewFeatures/test/CookieTempDataProviderTest.cs
+  sources:
+  - graph
+- path: src/Mvc/perf/Microbenchmarks/Microsoft.AspNetCore.Mvc.Views/HelperExtensions.cs
+  sources:
+  - graph
+- path: src/Mvc/perf/Microbenchmarks/Microsoft.AspNetCore.Mvc/ActionSelectorBenchmark.cs
+  sources:
+  - graph
+- path: src/Mvc/perf/Microbenchmarks/Microsoft.AspNetCore.Mvc/RuntimePerformanceBenchmarkBase.cs
+  sources:
+  - graph
+- path: src/Mvc/test/WebSites/HtmlGenerationWebSite/Controllers/HtmlGeneration_OrderController.cs
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/RazorPagesWebSite/Pages/ModelWithAuthFilter.cshtml
+  sources:
+  - random
+- path: src/ObjectPool/test/DefaultObjectPoolTest.cs
+  sources:
+  - random
+- path: src/OpenApi/src/Services/OpenApiDocumentService.cs
+  sources:
+  - bm25
+- path: src/ProjectTemplates/Web.ItemTemplates/content/ViewImports/.template.config/localize/templatestrings.pt-BR.json
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ProjectTemplates/content/StarterWeb-CSharp/Views/_ViewImports.cshtml
+  sources:
+  - random
+- path: src/Razor/Razor.Runtime/src/Hosting/DefaultRazorCompiledItem.cs
+  sources:
+  - random
+- path: src/Servers/IIS/AspNetCoreModuleV2/OutOfProcessRequestHandler/forwardinghandler.cpp
+  sources:
+  - graph
+- path: src/Servers/Kestrel/Core/src/KestrelServerOptions.cs
+  sources:
+  - bm25

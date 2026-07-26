@@ -1,0 +1,161 @@
+name: regression.selection.004_dockerfile_version_bump_guard
+tags:
+- lang:python
+- change:single_file
+- change:bug_fix
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    Dockerfile: |
+      FROM node:25-alpine AS builder
+      WORKDIR /app
+      COPY package*.json ./
+      RUN npm ci --production=false
+      COPY . .
+      RUN npm run build
+
+      FROM nginx:1.27.3-alpine AS production
+      COPY --from=builder /app/dist /usr/share/nginx/html
+      COPY nginx.conf /etc/nginx/nginx.conf
+      EXPOSE 80
+      CMD ["nginx", "-g", "daemon off;"]
+    nginx.conf: |
+      worker_processes auto;
+      events { worker_connections 1024; }
+      http {
+          include /etc/nginx/mime.types;
+          server {
+              listen 80;
+              root /usr/share/nginx/html;
+              location / {
+                  try_files $uri /index.html;
+              }
+          }
+      }
+    src/core/csrf.py: |
+      GARBAGE_REG_004_CSRF_A = "csrf_module"
+      GARBAGE_REG_004_ORIGIN_B = True
+
+      def validate_origin(request):
+          allowed = ["https://example.com"]
+          return request.headers.get("Origin", "") in allowed
+
+      class CsrfMiddleware:
+          GARBAGE_REG_004_MW_C = True
+          def process_request(self, request):
+              pass
+    src/auth/login.py: |
+      GARBAGE_REG_004_LOGIN_D = "auth"
+
+      class LoginHandler:
+          GARBAGE_REG_004_SESSION_E = "jwt"
+          def authenticate(self, username, password):
+              pass
+    src/config.py: |
+      GARBAGE_REG_004_CFG_F = "settings"
+      DEBUG = False
+      DATABASE_URL = "postgresql://localhost/app"
+  changed_files:
+    Dockerfile: |
+      FROM node:24-alpine AS builder
+      WORKDIR /app
+      COPY package*.json ./
+      RUN npm ci --production=false
+      COPY . .
+      RUN npm run build
+
+      FROM nginx:1.28-alpine AS production
+      COPY --from=builder /app/dist /usr/share/nginx/html
+      COPY nginx.conf /etc/nginx/nginx.conf
+      EXPOSE 80
+      CMD ["nginx", "-g", "daemon off;"]
+    nginx.conf: |
+      worker_processes auto;
+      events { worker_connections 1024; }
+      http {
+          include /etc/nginx/mime.types;
+          server {
+              listen 80;
+              root /usr/share/nginx/html;
+              location / {
+                  try_files $uri /index.html;
+              }
+          }
+      }
+    src/core/csrf.py: |
+      GARBAGE_REG_004_CSRF_A = "csrf_module"
+      GARBAGE_REG_004_ORIGIN_B = True
+
+      def validate_origin(request):
+          allowed = ["https://example.com"]
+          return request.headers.get("Origin", "") in allowed
+
+      class CsrfMiddleware:
+          GARBAGE_REG_004_MW_C = True
+          def process_request(self, request):
+              pass
+    src/auth/login.py: |
+      GARBAGE_REG_004_LOGIN_D = "auth"
+
+      class LoginHandler:
+          GARBAGE_REG_004_SESSION_E = "jwt"
+          def authenticate(self, username, password):
+              pass
+    src/config.py: |
+      GARBAGE_REG_004_CFG_F = "settings"
+      DEBUG = False
+      DATABASE_URL = "postgresql://localhost/app"
+  commit_message: Update files
+fragments:
+- id: dockerfile
+  selector:
+    path: Dockerfile
+    anchor: FROM node:24-alpine AS builder
+- id: dockerfile_1
+  selector:
+    path: Dockerfile
+    anchor: FROM nginx:1.28-alpine AS production
+- id: no_csrf
+  selector:
+    path: src/core/csrf.py
+- id: no_login
+  selector:
+    path: src/auth/login.py
+- id: no_config
+  selector:
+    path: src/config.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_REG_004_CSRF_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_REG_004_ORIGIN_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_REG_004_MW_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_REG_004_LOGIN_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_REG_004_SESSION_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_REG_004_CFG_F
+oracle:
+  required:
+  - dockerfile
+  - dockerfile_1
+  allowed: []
+  forbidden:
+  - no_csrf
+  - no_login
+  - no_config
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

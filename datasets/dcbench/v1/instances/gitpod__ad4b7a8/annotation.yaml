@@ -1,0 +1,84 @@
+repo: gitpod
+base_commit: e7dbf433e8d028b96f7c382c451e6eaf7e2ad71f
+commit: ad4b7a8f4adb2abb7bc686987928de964e0a7b6b
+patch_stored: true
+gold:
+- path: components/dashboard/src/data/organizations/org-envvar-queries.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/service/json-rpc-envvar-client.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/teams/TeamSettings.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/teams/variables/NamedOrganizationEnvvarItem.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/teams/variables/OrganizationRemoveEnvvarModal.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-db/src/team-db.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-db/src/typeorm/entity/db-org-env-var.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-db/src/typeorm/migration/1737449780009-OrgEnvVars.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-db/src/typeorm/team-db-impl.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-protocol/src/protocol.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/public-api/gitpod/v1/envvar.proto
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/api/envvar-service-api.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/authorization/definitions.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/user/env-var-service.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/spicedb/schema/schema.yaml
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: components/public-api/go/v1/envvar.pb.go
+- path: components/public-api/go/v1/envvar_grpc.pb.go
+- path: components/public-api/go/v1/v1connect/envvar.connect.go
+- path: components/public-api/go/v1/v1connect/envvar.proxy.connect.go
+- path: components/public-api/java/.../Envvar.java
+- path: components/public-api/typescript/src/gitpod/v1/envvar_pb.ts
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: ctx.md and md.err are 0 bytes, rc_md=142 (SIGALRM kill) despite the diff being modest in file count
+  (33 files) — smaller than several successfully-processed commits in this set, which argues against 'diff
+  size' alone as the trigger. The diff is a fairly self-contained feature (org-level GITPOD_IMAGE_AUTH
+  env var) whose real logic lives in ~15 TS/Go files; the remaining files are mechanically regenerated
+  protobuf/grpc/Kotlin/Java client stubs (Envvar.java alone gains 6543 lines) that a correct tool should
+  either skip or heavily compress — but since nothing was emitted at all, that judgment never got exercised.
+  A reader is left with zero signal on a schema/API-surface change that specifically needs the hand-written
+  service and React files to make sense.

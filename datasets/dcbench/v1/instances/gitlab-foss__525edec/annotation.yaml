@@ -1,0 +1,53 @@
+repo: gitlab-foss
+base_commit: 871d06993edba9220c10ef2ca5c64f412ee5f984
+commit: 525edec78bc39ae41284927f1866def56d21a12a
+patch_stored: true
+gold:
+  - path: app/models/deployment.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Adds the `belongs_to :cluster, class_name: 'Clusters::Cluster', optional: true` association that the migrations and spec back."
+  - path: db/migrate/20190623212503_add_cluster_id_to_deployments.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds the raw `cluster_id` integer column that the `belongs_to :cluster` association and FK migration depend on.
+  - path: db/migrate/20190627051902_add_cluster_id_index_fk_to_deployments.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Adds the index and `nullify`-on-delete foreign key from deployments.cluster_id to clusters, matching the model's `optional: true` association."
+  - path: db/schema.rb
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Checked-in schema snapshot must reflect the new column/index/FK for the two migrations, verifying they were actually run.
+  - path: spec/models/deployment_spec.rb
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: "Adds `it { is_expected.to belong_to(:cluster).class_name('Clusters::Cluster') }`, the shoulda-matcher test directly covering the new association."
+forbidden:
+  - path: app/models/clusters/cluster.rb
+    reason: is the FK target class named in `belongs_to`, but its internals are irrelevant to understanding this pure schema/association addition
+  - path: app/models/environment.rb
+    reason: sibling `belongs_to :environment` association already existed before this commit and is untouched
+  - path: lib/gitlab/database/migration_helpers.rb
+    reason: generic concurrent-index/FK helper module reused by virtually every GitLab migration, not specific to this change
+  - path: app/models/concerns/deployable.rb
+    reason: similarly-named concern about deployable polymorphic association, unrelated to the new cluster_id FK
+nontrivial_gold_count: 0
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 5
+  description: cluster_id FK on deployments — migration+model+spec coupling
+notes: >
+  Pure additive schema change: adds an optional cluster_id FK (nullify on delete) to
+  deployments, with the matching model association, two migrations, schema.rb bump,
+  and a shoulda-matcher spec — all 5 changed files are self-contained and no external
+  file is needed to understand the change (justification for no_nontrivial_context).

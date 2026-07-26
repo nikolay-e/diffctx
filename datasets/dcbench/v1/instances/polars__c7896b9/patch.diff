@@ -1,0 +1,3232 @@
+From c7896b99c633517a7dc90630dab066bd21e14798 Mon Sep 17 00:00:00 2001
+From: Orson Peters <orsonpeters@gmail.com>
+Date: Wed, 13 May 2026 14:22:01 +0200
+Subject: [PATCH] refactor(rust): Rename POOL to RAYON (#27606)
+
+---
+ .../polars-core/src/chunked_array/binary.rs   |  6 +--
+ .../polars-core/src/chunked_array/ndarray.rs  |  8 ++--
+ .../src/chunked_array/ops/row_encode.rs       | 10 ++---
+ .../chunked_array/ops/sort/arg_bottom_k.rs    |  8 ++--
+ .../src/chunked_array/ops/sort/arg_sort.rs    |  2 +-
+ .../ops/sort/arg_sort_multiple.rs             |  6 +--
+ .../src/chunked_array/ops/sort/mod.rs         | 28 ++++++------
+ crates/polars-core/src/frame/arithmetic.rs    |  4 +-
+ crates/polars-core/src/frame/chunks.rs        |  4 +-
+ crates/polars-core/src/frame/explode.rs       |  6 +--
+ .../frame/group_by/aggregations/boolean.rs    |  6 +--
+ .../group_by/aggregations/categorical.rs      |  8 ++--
+ .../frame/group_by/aggregations/dispatch.rs   | 43 ++++++++++---------
+ .../src/frame/group_by/aggregations/mod.rs    | 16 +++----
+ .../src/frame/group_by/aggregations/string.rs |  4 +-
+ .../polars-core/src/frame/group_by/hashing.rs | 10 ++---
+ .../src/frame/group_by/into_groups.rs         | 16 +++----
+ crates/polars-core/src/frame/group_by/mod.rs  |  4 +-
+ .../src/frame/group_by/position.rs            |  6 +--
+ crates/polars-core/src/frame/mod.rs           | 30 ++++++-------
+ crates/polars-core/src/frame/row/mod.rs       |  2 +-
+ crates/polars-core/src/frame/row/transpose.rs |  4 +-
+ .../polars-core/src/hashing/vector_hasher.rs  |  4 +-
+ crates/polars-core/src/runtime.rs             |  6 +--
+ .../src/series/implementations/array.rs       |  8 ++--
+ .../src/series/implementations/list.rs        |  6 +--
+ .../src/series/implementations/struct_.rs     |  6 +--
+ crates/polars-core/src/series/mod.rs          |  2 +-
+ crates/polars-core/src/utils/flatten.rs       |  4 +-
+ crates/polars-core/src/utils/mod.rs           |  4 +-
+ crates/polars-expr/src/dispatch/boolean.rs    |  6 +--
+ .../src/dispatch/groups_dispatch.rs           | 14 +++---
+ .../src/expressions/aggregation.rs            |  8 ++--
+ crates/polars-expr/src/expressions/apply.rs   | 10 ++---
+ crates/polars-expr/src/expressions/binary.rs  |  6 +--
+ crates/polars-expr/src/expressions/filter.rs  |  6 +--
+ crates/polars-expr/src/expressions/slice.rs   |  6 +--
+ crates/polars-expr/src/expressions/sort.rs    |  4 +-
+ crates/polars-expr/src/expressions/sortby.rs  | 14 +++---
+ .../polars-expr/src/expressions/structeval.rs |  6 +--
+ crates/polars-expr/src/expressions/ternary.rs |  6 +--
+ crates/polars-expr/src/expressions/window.rs  |  8 ++--
+ crates/polars-io/src/csv/read/parser.rs       |  4 +-
+ crates/polars-io/src/csv/read/read_impl.rs    | 10 +++--
+ crates/polars-io/src/csv/write/write_impl.rs  |  4 +-
+ crates/polars-io/src/csv/write/writer.rs      |  4 +-
+ crates/polars-io/src/ndjson/core.rs           |  8 ++--
+ .../polars-io/src/parquet/read/read_impl.rs   |  9 ++--
+ .../src/parquet/write/batched_writer.rs       |  4 +-
+ crates/polars-io/src/pl_async.rs              |  4 +-
+ crates/polars-lazy/src/frame/exitable.rs      |  4 +-
+ .../polars-mem-engine/src/executors/cache.rs  |  2 +-
+ .../polars-mem-engine/src/executors/filter.rs |  4 +-
+ .../src/executors/group_by.rs                 |  4 +-
+ .../src/executors/group_by_dynamic.rs         |  2 +-
+ .../src/executors/group_by_rolling.rs         |  2 +-
+ .../src/executors/hconcat.rs                  |  4 +-
+ .../polars-mem-engine/src/executors/join.rs   |  2 +-
+ .../src/executors/merge_sorted.rs             |  2 +-
+ crates/polars-mem-engine/src/executors/mod.rs |  2 +-
+ .../src/executors/projection.rs               |  4 +-
+ .../src/executors/projection_utils.rs         | 12 +++---
+ .../src/executors/scan/python_scan.rs         |  2 +-
+ .../polars-mem-engine/src/executors/stack.rs  |  2 +-
+ .../polars-mem-engine/src/executors/union.rs  |  4 +-
+ crates/polars-mem-engine/src/planner/lp.rs    | 11 ++---
+ .../src/chunked_array/array/to_struct.rs      |  4 +-
+ .../src/chunked_array/list/to_struct.rs       |  4 +-
+ crates/polars-ops/src/chunked_array/mode.rs   |  4 +-
+ crates/polars-ops/src/chunked_array/top_k.rs  |  4 +-
+ .../polars-ops/src/frame/join/asof/groups.rs  | 12 +++---
+ .../polars-ops/src/frame/join/cross_join.rs   |  4 +-
+ .../src/frame/join/dispatch_left_right.rs     | 12 +++---
+ .../src/frame/join/hash_join/mod.rs           |  6 +--
+ .../src/frame/join/hash_join/single_keys.rs   |  2 +-
+ .../join/hash_join/single_keys_dispatch.rs    |  8 ++--
+ .../frame/join/hash_join/single_keys_inner.rs |  2 +-
+ .../frame/join/hash_join/single_keys_left.rs  |  2 +-
+ .../frame/join/hash_join/single_keys_outer.rs |  4 +-
+ .../join/hash_join/single_keys_semi_anti.rs   |  6 +--
+ .../src/frame/join/hash_join/sort_merge.rs    | 14 +++---
+ .../polars-ops/src/frame/join/iejoin/mod.rs   |  6 +--
+ crates/polars-ops/src/frame/join/mod.rs       |  8 ++--
+ crates/polars-ops/src/frame/mod.rs            |  4 +-
+ .../polars-ops/src/series/ops/horizontal.rs   | 10 ++---
+ .../src/plans/conversion/dsl_to_ir/scans.rs   |  4 +-
+ crates/polars-python/src/functions/eager.rs   |  2 +-
+ crates/polars-python/src/functions/meta.rs    |  4 +-
+ .../src/interop/arrow/to_rust.rs              |  4 +-
+ crates/polars-stream/src/execute.rs           |  4 +-
+ crates/polars-stream/src/nodes/group_by.rs    |  8 ++--
+ .../src/nodes/input_independent_select.rs     |  4 +-
+ .../src/nodes/joins/equi_join.rs              |  8 ++--
+ .../src/nodes/joins/merge_join.rs             |  4 +-
+ crates/polars-stream/src/nodes/joins/mod.rs   |  4 +-
+ .../src/physical_plan/to_graph.rs             |  4 +-
+ crates/polars-stream/src/skeleton.rs          |  2 +-
+ .../src/utils/in_memory_linearize.rs          |  6 +--
+ crates/polars-time/src/group_by/dynamic.rs    | 10 ++---
+ crates/polars-time/src/windows/group_by.rs    | 12 +++---
+ .../expression_lib/src/expressions.rs         |  6 +--
+ 101 files changed, 342 insertions(+), 335 deletions(-)
+
+diff --git a/crates/polars-core/src/chunked_array/binary.rs b/crates/polars-core/src/chunked_array/binary.rs
+index bf64f30bb..44af927a0 100644
+--- a/crates/polars-core/src/chunked_array/binary.rs
++++ b/crates/polars-core/src/chunked_array/binary.rs
+@@ -5,7 +5,7 @@ use polars_utils::hashing::BytesHash;
+ use rayon::prelude::*;
+ 
+ use crate::prelude::*;
+-use crate::runtime::POOL;
++use crate::runtime::RAYON;
+ use crate::utils::{_set_partition_size, _split_offsets};
+ 
+ #[inline]
+@@ -46,7 +46,7 @@ where
+         mut multithreaded: bool,
+         hb: PlRandomState,
+     ) -> Vec<Vec<BytesHash<'a>>> {
+-        multithreaded &= POOL.current_num_threads() > 1;
++        multithreaded &= RAYON.current_num_threads() > 1;
+         let null_h = hb.hash_one(0xde259df92c607d49_u64);
+ 
+         if multithreaded {
+@@ -54,7 +54,7 @@ where
+ 
+             let split = _split_offsets(self.len(), n_partitions);
+ 
+-            POOL.install(|| {
++            RAYON.install(|| {
+                 split
+                     .into_par_iter()
+                     .map(|(offset, len)| {
+diff --git a/crates/polars-core/src/chunked_array/ndarray.rs b/crates/polars-core/src/chunked_array/ndarray.rs
+index 6faeb700d..3972d7f0c 100644
+--- a/crates/polars-core/src/chunked_array/ndarray.rs
++++ b/crates/polars-core/src/chunked_array/ndarray.rs
+@@ -5,7 +5,7 @@ use rayon::prelude::*;
+ use serde::{Deserialize, Serialize};
+ 
+ use crate::prelude::*;
+-use crate::runtime::POOL;
++use crate::runtime::RAYON;
+ 
+ #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+ #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+@@ -131,7 +131,7 @@ impl DataFrame {
+             // parallel writer; each column owns a disjoint contiguous stripe of the
+             // output buffer.
+             (IndexOrder::Fortran, _) | (IndexOrder::C, 0 | 1) => {
+-                POOL.install(|| {
++                RAYON.install(|| {
+                     columns.par_iter().enumerate().try_for_each(
+                         |(col_idx, s)| -> PolarsResult<()> {
+                             let s = cast_to_target(s)?;
+@@ -174,7 +174,7 @@ impl DataFrame {
+                 // would halve the cast-required traffic but needs per-source-dtype
+                 // specialisation of the gather.
+                 let cast_columns: Vec<Series> = if parallel {
+-                    POOL.install(|| {
++                    RAYON.install(|| {
+                         columns
+                             .par_iter()
+                             .map(cast_to_target)
+@@ -343,7 +343,7 @@ impl DataFrame {
+                     }
+                 };
+                 if parallel {
+-                    POOL.install(|| (0..num_blocks).into_par_iter().for_each(writer));
++                    RAYON.install(|| (0..num_blocks).into_par_iter().for_each(writer));
+                 } else {
+                     (0..num_blocks).for_each(writer);
+                 }
+diff --git a/crates/polars-core/src/chunked_array/ops/row_encode.rs b/crates/polars-core/src/chunked_array/ops/row_encode.rs
+index 8b7e927dc..727150920 100644
+--- a/crates/polars-core/src/chunked_array/ops/row_encode.rs
++++ b/crates/polars-core/src/chunked_array/ops/row_encode.rs
+@@ -6,11 +6,11 @@ use polars_utils::itertools::Itertools;
+ use rayon::prelude::*;
+ 
+ use crate::prelude::*;
+-use crate::runtime::POOL;
++use crate::runtime::RAYON;
+ use crate::utils::_split_offsets;
+ 
+ pub fn encode_rows_vertical_par_unordered(by: &[Column]) -> PolarsResult<BinaryOffsetChunked> {
+-    let n_threads = POOL.current_num_threads();
++    let n_threads = RAYON.current_num_threads();
+     let len = by[0].len();
+     let splits = _split_offsets(len, n_threads);
+ 
+@@ -22,7 +22,7 @@ pub fn encode_rows_vertical_par_unordered(by: &[Column]) -> PolarsResult<BinaryO
+         let rows = _get_rows_encoded_unordered(&sliced)?;
+         Ok(rows.into_array())
+     });
+-    let chunks = POOL.install(|| chunks.collect::<PolarsResult<Vec<_>>>());
++    let chunks = RAYON.install(|| chunks.collect::<PolarsResult<Vec<_>>>());
+ 
+     Ok(BinaryOffsetChunked::from_chunk_iter(
+         PlSmallStr::EMPTY,
+@@ -34,7 +34,7 @@ pub fn encode_rows_vertical_par_unordered(by: &[Column]) -> PolarsResult<BinaryO
+ pub fn encode_rows_vertical_par_unordered_broadcast_nulls(
+     by: &[Column],
+ ) -> PolarsResult<BinaryOffsetChunked> {
+-    let n_threads = POOL.current_num_threads();
++    let n_threads = RAYON.current_num_threads();
+     let len = by[0].len();
+     let splits = _split_offsets(len, n_threads);
+ 
+@@ -61,7 +61,7 @@ pub fn encode_rows_vertical_par_unordered_broadcast_nulls(
+         let validity = combine_validities_and_many(&validities);
+         Ok(rows.into_array().with_validity_typed(validity))
+     });
+-    let chunks = POOL.install(|| chunks.collect::<PolarsResult<Vec<_>>>());
++    let chunks = RAYON.install(|| chunks.collect::<PolarsResult<Vec<_>>>());
+ 
+     Ok(BinaryOffsetChunked::from_chunk_iter(
+         PlSmallStr::EMPTY,
+diff --git a/crates/polars-core/src/chunked_array/ops/sort/arg_bottom_k.rs b/crates/polars-core/src/chunked_array/ops/sort/arg_bottom_k.rs
+index 7787ef280..4d538ad29 100644
+--- a/crates/polars-core/src/chunked_array/ops/sort/arg_bottom_k.rs
++++ b/crates/polars-core/src/chunked_array/ops/sort/arg_bottom_k.rs
+@@ -58,10 +58,10 @@ pub fn _arg_bottom_k(
+ 
+     let sorted = if k >= from_n_rows {
+         match (sort_options.multithreaded, sort_options.maintain_order) {
+-            (true, true) => POOL.install(|| {
++            (true, true) => RAYON.install(|| {
+                 rows.par_sort();
+             }),
+-            (true, false) => POOL.install(|| {
++            (true, false) => RAYON.install(|| {
+                 rows.par_sort_unstable();
+             }),
+             (false, true) => rows.sort(),
+@@ -71,7 +71,7 @@ pub fn _arg_bottom_k(
+     } else if sort_options.maintain_order {
+         // todo: maybe there is some more efficient method, comparable to select_nth_unstable
+         if sort_options.multithreaded {
+-            POOL.install(|| {
++            RAYON.install(|| {
+                 rows.par_sort();
+             })
+         } else {
+@@ -82,7 +82,7 @@ pub fn _arg_bottom_k(
+         // todo: possible multi threaded `select_nth_unstable`?
+         let (lower, _el, _upper) = rows.select_nth_unstable(k);
+         if sort_options.multithreaded {
+-            POOL.install(|| {
++            RAYON.install(|| {
+                 lower.par_sort_unstable();
+             })
+         } else {
+diff --git a/crates/polars-core/src/chunked_array/ops/sort/arg_sort.rs b/crates/polars-core/src/chunked_array/ops/sort/arg_sort.rs
+index bc425398e..fbc2f5b15 100644
+--- a/crates/polars-core/src/chunked_array/ops/sort/arg_sort.rs
++++ b/crates/polars-core/src/chunked_array/ops/sort/arg_sort.rs
+@@ -271,7 +271,7 @@ pub(crate) fn arg_sort_row_fmt(
+     let mut items: Vec<_> = rows_encoded.iter().enumerate_idx().collect();
+ 
+     if parallel {
+-        POOL.install(|| items.par_sort_by(|a, b| a.1.cmp(b.1)));
++        RAYON.install(|| items.par_sort_by(|a, b| a.1.cmp(b.1)));
+     } else {
+         items.sort_by(|a, b| a.1.cmp(b.1));
+     }
+diff --git a/crates/polars-core/src/chunked_array/ops/sort/arg_sort_multiple.rs b/crates/polars-core/src/chunked_array/ops/sort/arg_sort_multiple.rs
+index 650aae3f6..0d6a42ad7 100644
+--- a/crates/polars-core/src/chunked_array/ops/sort/arg_sort_multiple.rs
++++ b/crates/polars-core/src/chunked_array/ops/sort/arg_sort_multiple.rs
+@@ -64,10 +64,10 @@ pub(crate) fn arg_sort_multiple_impl<T: TotalOrd + IsNull + Send + Copy>(
+     };
+ 
+     match (options.multithreaded, options.maintain_order) {
+-        (true, true) => POOL.install(|| {
++        (true, true) => RAYON.install(|| {
+             vals.par_sort_by(compare);
+         }),
+-        (true, false) => POOL.install(|| {
++        (true, false) => RAYON.install(|| {
+             vals.par_sort_unstable_by(compare);
+         }),
+         (false, true) => vals.sort_by(compare),
+@@ -92,7 +92,7 @@ pub(crate) fn argsort_multiple_row_fmt(
+     let mut items: Vec<_> = rows_encoded.iter().enumerate_idx().collect();
+ 
+     if parallel {
+-        POOL.install(|| items.par_sort_by_key(|i| i.1));
++        RAYON.install(|| items.par_sort_by_key(|i| i.1));
+     } else {
+         items.sort_by_key(|i| i.1);
+     }
+diff --git a/crates/polars-core/src/chunked_array/ops/sort/mod.rs b/crates/polars-core/src/chunked_array/ops/sort/mod.rs
+index 52580e5e5..9b32df72c 100644
+--- a/crates/polars-core/src/chunked_array/ops/sort/mod.rs
++++ b/crates/polars-core/src/chunked_array/ops/sort/mod.rs
+@@ -25,7 +25,7 @@ use super::row_encode::_get_rows_encoded_ca;
+ use crate::prelude::compare_inner::TotalOrdInner;
+ use crate::prelude::sort::arg_sort_multiple::*;
+ use crate::prelude::*;
+-use crate::runtime::POOL;
++use crate::runtime::RAYON;
+ use crate::series::IsSorted;
+ use crate::utils::NoNull;
+ 
+@@ -76,7 +76,7 @@ where
+     C: Send + Sync + Fn(&T, &T) -> Ordering,
+ {
+     if parallel {
+-        POOL.install(|| match descending {
++        RAYON.install(|| match descending {
+             true => slice.par_sort_by(|a, b| cmp(b, a)),
+             false => slice.par_sort_by(cmp),
+         })
+@@ -94,7 +94,7 @@ where
+     C: Send + Sync + Fn(&T, &T) -> Ordering,
+ {
+     if options.multithreaded {
+-        POOL.install(|| match options.descending {
++        RAYON.install(|| match options.descending {
+             true => slice.par_sort_unstable_by(|a, b| cmp(b, a)),
+             false => slice.par_sort_unstable_by(cmp),
+         })
+@@ -251,7 +251,7 @@ fn arg_sort_numeric<T>(ca: &ChunkedArray<T>, mut options: SortOptions) -> IdxCa
+ where
+     T: PolarsNumericType,
+ {
+-    options.multithreaded &= POOL.current_num_threads() > 1;
++    options.multithreaded &= RAYON.current_num_threads() > 1;
+     arg_sort_fast_path!(ca, options);
+     if ca.null_count() == 0 {
+         let iter = ca
+@@ -319,7 +319,7 @@ where
+     T: PolarsNumericType,
+ {
+     fn sort_with(&self, mut options: SortOptions) -> ChunkedArray<T> {
+-        options.multithreaded &= POOL.current_num_threads() > 1;
++        options.multithreaded &= RAYON.current_num_threads() > 1;
+         sort_with_numeric(self, options)
+     }
+ 
+@@ -404,7 +404,7 @@ impl ChunkSort<StringType> for StringChunked {
+ 
+ impl ChunkSort<BinaryType> for BinaryChunked {
+     fn sort_with(&self, mut options: SortOptions) -> ChunkedArray<BinaryType> {
+-        options.multithreaded &= POOL.current_num_threads() > 1;
++        options.multithreaded &= RAYON.current_num_threads() > 1;
+         sort_with_fast_path!(self, options);
+         // We will sort by the views and reconstruct with sorted views. We leave the buffers as is.
+         // We must rechunk to ensure that all views point into the proper buffers.
+@@ -500,7 +500,7 @@ impl ChunkSort<BinaryType> for BinaryChunked {
+ 
+ impl ChunkSort<BinaryOffsetType> for BinaryOffsetChunked {
+     fn sort_with(&self, mut options: SortOptions) -> BinaryOffsetChunked {
+-        options.multithreaded &= POOL.current_num_threads() > 1;
++        options.multithreaded &= RAYON.current_num_threads() > 1;
+         sort_with_fast_path!(self, options);
+ 
+         let mut v: Vec<&[u8]> = Vec::with_capacity(self.len());
+@@ -589,7 +589,7 @@ impl ChunkSort<BinaryOffsetType> for BinaryOffsetChunked {
+     }
+ 
+     fn arg_sort(&self, mut options: SortOptions) -> IdxCa {
+-        options.multithreaded &= POOL.current_num_threads() > 1;
++        options.multithreaded &= RAYON.current_num_threads() > 1;
+         let ca = self.rechunk();
+         let arr = ca.downcast_as_array();
+         let mut idx = (0..(arr.len() as IdxSize)).collect::<Vec<_>>();
+@@ -662,7 +662,7 @@ impl ChunkSort<BinaryOffsetType> for BinaryOffsetChunked {
+ #[cfg(feature = "dtype-struct")]
+ impl ChunkSort<StructType> for StructChunked {
+     fn sort_with(&self, mut options: SortOptions) -> ChunkedArray<StructType> {
+-        options.multithreaded &= POOL.current_num_threads() > 1;
++        options.multithreaded &= RAYON.current_num_threads() > 1;
+         let idx = self.arg_sort(options);
+         let mut out = unsafe { self.take_unchecked(&idx) };
+ 
+@@ -687,7 +687,7 @@ impl ChunkSort<StructType> for StructChunked {
+ 
+ impl ChunkSort<ListType> for ListChunked {
+     fn sort_with(&self, mut options: SortOptions) -> ListChunked {
+-        options.multithreaded &= POOL.current_num_threads() > 1;
++        options.multithreaded &= RAYON.current_num_threads() > 1;
+         let idx = self.arg_sort(options);
+         let mut out = unsafe { self.take_unchecked(&idx) };
+ 
+@@ -719,7 +719,7 @@ impl ChunkSort<ListType> for ListChunked {
+ 
+ impl ChunkSort<BooleanType> for BooleanChunked {
+     fn sort_with(&self, mut options: SortOptions) -> ChunkedArray<BooleanType> {
+-        options.multithreaded &= POOL.current_num_threads() > 1;
++        options.multithreaded &= RAYON.current_num_threads() > 1;
+         sort_with_fast_path!(self, options);
+         let mut bitmap = BitmapBuilder::with_capacity(self.len());
+         let mut validity =
+@@ -884,14 +884,14 @@ pub fn arg_sort(columns: &[Column], mut sort_options: SortMultipleOptions) -> Po
+ /// The caller must ensure that the right indexes for `&[(_, IdxSize)]` are integers ranging from `0..idx.len`
+ pub unsafe fn perfect_sort(idx: &[(IdxSize, IdxSize)], out: &mut Vec<IdxSize>) {
+     let chunk_size = std::cmp::max(
+-        idx.len() / POOL.current_num_threads(),
+-        POOL.current_num_threads(),
++        idx.len() / RAYON.current_num_threads(),
++        RAYON.current_num_threads(),
+     );
+ 
+     out.reserve(idx.len());
+     let ptr = out.as_mut_ptr() as *const IdxSize as usize;
+ 
+-    POOL.install(|| {
++    RAYON.install(|| {
+         idx.par_chunks(chunk_size).for_each(|indices| {
+             let ptr = ptr as *mut IdxSize;
+             for (idx_val, idx_location) in indices {
+diff --git a/crates/polars-core/src/frame/arithmetic.rs b/crates/polars-core/src/frame/arithmetic.rs
+index 3cd507860..699206f7e 100644
+--- a/crates/polars-core/src/frame/arithmetic.rs
++++ b/crates/polars-core/src/frame/arithmetic.rs
+@@ -3,7 +3,7 @@ use std::ops::{Add, Div, Mul, Rem, Sub};
+ use rayon::prelude::*;
+ 
+ use crate::prelude::*;
+-use crate::runtime::POOL;
++use crate::runtime::RAYON;
+ use crate::utils::try_get_supertype;
+ 
+ /// Get the supertype that is valid for all columns in the [`DataFrame`].
+@@ -138,7 +138,7 @@ impl DataFrame {
+ 
+                 f(&l, &r).map(Column::from)
+             });
+-        let mut cols = POOL.install(|| cols.collect::<PolarsResult<Vec<_>>>())?;
++        let mut cols = RAYON.install(|| cols.collect::<PolarsResult<Vec<_>>>())?;
+ 
+         let col_len = cols.len();
+         if col_len < max_width {
+diff --git a/crates/polars-core/src/frame/chunks.rs b/crates/polars-core/src/frame/chunks.rs
+index d1d8df6c3..fc10a2ed7 100644
+--- a/crates/polars-core/src/frame/chunks.rs
++++ b/crates/polars-core/src/frame/chunks.rs
+@@ -2,7 +2,7 @@ use arrow::record_batch::RecordBatch;
+ use rayon::prelude::*;
+ 
+ use crate::prelude::*;
+-use crate::runtime::POOL;
++use crate::runtime::RAYON;
+ use crate::utils::{_split_offsets, accumulate_dataframes_vertical_unchecked, split_df_as_ref};
+ 
+ impl From<RecordBatch> for DataFrame {
+@@ -72,7 +72,7 @@ impl DataFrame {
+ 
+         if parallel {
+             // Parallel so that null_counts run in parallel
+-            POOL.install(|| split.into_par_iter().map(split_fn).collect())
++            RAYON.install(|| split.into_par_iter().map(split_fn).collect())
+         } else {
+             split.into_iter().map(split_fn).collect()
+         }
+diff --git a/crates/polars-core/src/frame/explode.rs b/crates/polars-core/src/frame/explode.rs
+index 4aeb5a33d..7caba030d 100644
+--- a/crates/polars-core/src/frame/explode.rs
++++ b/crates/polars-core/src/frame/explode.rs
+@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
+ 
+ use crate::chunked_array::ops::explode::offsets_to_indexes;
+ use crate::prelude::*;
+-use crate::runtime::POOL;
++use crate::runtime::RAYON;
+ use crate::series::IsSorted;
+ 
+ fn get_exploded(
+@@ -79,7 +79,7 @@ impl DataFrame {
+             df = df.drop(s.name().as_str())?;
+         }
+ 
+-        let exploded_columns = POOL.install(|| {
++        let exploded_columns = RAYON.install(|| {
+             columns
+                 .par_iter()
+                 .map(|c| get_exploded(c.as_materialized_series(), options))
+@@ -147,7 +147,7 @@ impl DataFrame {
+             process_column(self, &mut df, exploded.clone())?;
+             PolarsResult::Ok(df)
+         };
+-        let (df, result) = POOL.join(process_first, check_offsets);
++        let (df, result) = RAYON.join(process_first, check_offsets);
+         let mut df = df?;
+         result?;
+ 
+diff --git a/crates/polars-core/src/frame/group_by/aggregations/boolean.rs b/crates/polars-core/src/frame/group_by/aggregations/boolean.rs
+index 5c84039e4..88e483190 100644
+--- a/crates/polars-core/src/frame/group_by/aggregations/boolean.rs
++++ b/crates/polars-core/src/frame/group_by/aggregations/boolean.rs
+@@ -8,7 +8,7 @@ pub fn _agg_helper_idx_bool<F>(groups: &GroupsIdx, f: F) -> Series
+ where
+     F: Fn((IdxSize, &IdxVec)) -> Option<bool> + Send + Sync,
+ {
+-    let ca: BooleanChunked = POOL.install(|| groups.into_par_iter().map(f).collect());
++    let ca: BooleanChunked = RAYON.install(|| groups.into_par_iter().map(f).collect());
+     ca.into_series()
+ }
+ 
+@@ -16,7 +16,7 @@ pub fn _agg_helper_slice_bool<F>(groups: &[[IdxSize; 2]], f: F) -> Series
+ where
+     F: Fn([IdxSize; 2]) -> Option<bool> + Send + Sync,
+ {
+-    let ca: BooleanChunked = POOL.install(|| groups.par_iter().copied().map(f).collect());
++    let ca: BooleanChunked = RAYON.install(|| groups.par_iter().copied().map(f).collect());
+     ca.into_series()
+ }
+ 
+@@ -293,7 +293,7 @@ impl BooleanChunked {
+         let values = self.rechunk();
+         let values = values.downcast_as_array();
+ 
+-        let ca: BooleanChunked = POOL.install(|| {
++        let ca: BooleanChunked = RAYON.install(|| {
+             let validity = values
+                 .validity()
+                 .filter(|v| v.unset_bits() > 0)
+diff --git a/crates/polars-core/src/frame/group_by/aggregations/categorical.rs b/crates/polars-core/src/frame/group_by/aggregations/categorical.rs
+index 195a6c973..d34ae34ac 100644
+--- a/crates/polars-core/src/frame/group_by/aggregations/categorical.rs
++++ b/crates/polars-core/src/frame/group_by/aggregations/categorical.rs
+@@ -12,7 +12,7 @@ impl<T: PolarsCategoricalType> CategoricalChunked<T> {
+         let arr = phys.downcast_as_array();
+         let cats: ChunkedArray<T::PolarsPhysical> = match groups {
+             GroupsType::Idx(groups) => {
+-                POOL.install(|| {
++                RAYON.install(|| {
+                     groups
+                         .into_par_iter()
+                         .map(|(first, idx)| {
+@@ -41,7 +41,7 @@ impl<T: PolarsCategoricalType> CategoricalChunked<T> {
+                 groups: groups_slice,
+                 ..
+             } => {
+-                POOL.install(|| {
++                RAYON.install(|| {
+                     groups_slice
+                         .par_iter()
+                         .copied()
+@@ -78,7 +78,7 @@ impl<T: PolarsCategoricalType> CategoricalChunked<T> {
+         let arr = phys.downcast_as_array();
+         let cats: ChunkedArray<T::PolarsPhysical> = match groups {
+             GroupsType::Idx(groups) => {
+-                POOL.install(|| {
++                RAYON.install(|| {
+                     groups
+                         .into_par_iter()
+                         .map(|(first, idx)| {
+@@ -107,7 +107,7 @@ impl<T: PolarsCategoricalType> CategoricalChunked<T> {
+                 groups: groups_slice,
+                 ..
+             } => {
+-                POOL.install(|| {
++                RAYON.install(|| {
+                     groups_slice
+                         .par_iter()
+                         .copied()
+diff --git a/crates/polars-core/src/frame/group_by/aggregations/dispatch.rs b/crates/polars-core/src/frame/group_by/aggregations/dispatch.rs
+index 541793af3..65069dd57 100644
+--- a/crates/polars-core/src/frame/group_by/aggregations/dispatch.rs
++++ b/crates/polars-core/src/frame/group_by/aggregations/dispatch.rs
+@@ -310,27 +310,28 @@ impl Series {
+             }
+         }
+ 
+-        POOL.install(|| match groups {
+-            GroupsType::Idx(idx) => idx
+-                .all()
+-                .into_par_iter()
+-                .map_with(CloneWrapper(state), |state, idxs| unsafe {
+-                    state.0.n_unique_idx(values, idxs.as_slice())
+-                })
+-                .collect::<NoNull<IdxCa>>(),
+-            GroupsType::Slice {
+-                groups,
+-                overlapping: _,
+-                monotonic: _,
+-            } => groups
+-                .into_par_iter()
+-                .map_with(CloneWrapper(state), |state, [start, len]| {
+-                    state.0.n_unique_slice(values, *start, *len)
+-                })
+-                .collect::<NoNull<IdxCa>>(),
+-        })
+-        .into_inner()
+-        .into_series()
++        RAYON
++            .install(|| match groups {
++                GroupsType::Idx(idx) => idx
++                    .all()
++                    .into_par_iter()
++                    .map_with(CloneWrapper(state), |state, idxs| unsafe {
++                        state.0.n_unique_idx(values, idxs.as_slice())
++                    })
++                    .collect::<NoNull<IdxCa>>(),
++                GroupsType::Slice {
++                    groups,
++                    overlapping: _,
++                    monotonic: _,
++                } => groups
++                    .into_par_iter()
++                    .map_with(CloneWrapper(state), |state, [start, len]| {
++                        state.0.n_unique_slice(values, *start, *len)
++                    })
++                    .collect::<NoNull<IdxCa>>(),
++            })
++            .into_inner()
++            .into_series()
+     }
+ 
+     #[doc(hidden)]
+diff --git a/crates/polars-core/src/frame/group_by/aggregations/mod.rs b/crates/polars-core/src/frame/group_by/aggregations/mod.rs
+index 253385374..5911cfb10 100644
+--- a/crates/polars-core/src/frame/group_by/aggregations/mod.rs
++++ b/crates/polars-core/src/frame/group_by/aggregations/mod.rs
+@@ -39,7 +39,7 @@ use crate::chunked_array::{arg_max_numeric, arg_min_numeric};
+ #[cfg(feature = "object")]
+ use crate::frame::group_by::GroupsIndicator;
+ use crate::prelude::*;
+-use crate::runtime::POOL;
++use crate::runtime::RAYON;
+ use crate::series::IsSorted;
+ use crate::series::implementations::SeriesWrap;
+ use crate::utils::NoNull;
+@@ -151,7 +151,7 @@ where
+     F: Fn((IdxSize, &IdxVec)) -> Option<T::Native> + Send + Sync,
+     T: PolarsNumericType,
+ {
+-    let ca: ChunkedArray<T> = POOL.install(|| groups.into_par_iter().map(f).collect());
++    let ca: ChunkedArray<T> = RAYON.install(|| groups.into_par_iter().map(f).collect());
+     ca.into_series()
+ }
+ 
+@@ -161,7 +161,7 @@ where
+     F: Fn((IdxSize, &IdxVec)) -> T::Native + Send + Sync,
+     T: PolarsNumericType,
+ {
+-    let ca: NoNull<ChunkedArray<T>> = POOL.install(|| groups.into_par_iter().map(f).collect());
++    let ca: NoNull<ChunkedArray<T>> = RAYON.install(|| groups.into_par_iter().map(f).collect());
+     ca.into_inner().into_series()
+ }
+ 
+@@ -172,7 +172,7 @@ where
+     F: Fn(&IdxVec) -> Option<T::Native> + Send + Sync,
+     T: PolarsNumericType,
+ {
+-    let ca: ChunkedArray<T> = POOL.install(|| groups.all().into_par_iter().map(f).collect());
++    let ca: ChunkedArray<T> = RAYON.install(|| groups.all().into_par_iter().map(f).collect());
+     ca.into_series()
+ }
+ 
+@@ -181,7 +181,7 @@ where
+     F: Fn([IdxSize; 2]) -> Option<T::Native> + Send + Sync,
+     T: PolarsNumericType,
+ {
+-    let ca: ChunkedArray<T> = POOL.install(|| groups.par_iter().copied().map(f).collect());
++    let ca: ChunkedArray<T> = RAYON.install(|| groups.par_iter().copied().map(f).collect());
+     ca.into_series()
+ }
+ 
+@@ -189,7 +189,7 @@ pub fn _agg_helper_idx_idx<'a, F>(groups: &'a GroupsIdx, f: F) -> Series
+ where
+     F: Fn((IdxSize, &'a IdxVec)) -> Option<IdxSize> + Send + Sync,
+ {
+-    let ca: IdxCa = POOL.install(|| groups.into_par_iter().map(f).collect());
++    let ca: IdxCa = RAYON.install(|| groups.into_par_iter().map(f).collect());
+     ca.into_series()
+ }
+ 
+@@ -197,7 +197,7 @@ pub fn _agg_helper_slice_idx<F>(groups: &[[IdxSize; 2]], f: F) -> Series
+ where
+     F: Fn([IdxSize; 2]) -> Option<IdxSize> + Send + Sync,
+ {
+-    let ca: IdxCa = POOL.install(|| groups.par_iter().copied().map(f).collect());
++    let ca: IdxCa = RAYON.install(|| groups.par_iter().copied().map(f).collect());
+     ca.into_series()
+ }
+ 
+@@ -206,7 +206,7 @@ where
+     F: Fn([IdxSize; 2]) -> T::Native + Send + Sync,
+     T: PolarsNumericType,
+ {
+-    let ca: NoNull<ChunkedArray<T>> = POOL.install(|| groups.par_iter().copied().map(f).collect());
++    let ca: NoNull<ChunkedArray<T>> = RAYON.install(|| groups.par_iter().copied().map(f).collect());
+     ca.into_inner().into_series()
+ }
+ 
+diff --git a/crates/polars-core/src/frame/group_by/aggregations/string.rs b/crates/polars-core/src/frame/group_by/aggregations/string.rs
+index 968e9de3c..deb637300 100644
+--- a/crates/polars-core/src/frame/group_by/aggregations/string.rs
++++ b/crates/polars-core/src/frame/group_by/aggregations/string.rs
+@@ -4,7 +4,7 @@ pub fn _agg_helper_idx_bin<'a, F>(groups: &'a GroupsIdx, f: F) -> Series
+ where
+     F: Fn((IdxSize, &'a IdxVec)) -> Option<&'a [u8]> + Send + Sync,
+ {
+-    let ca: BinaryChunked = POOL.install(|| groups.into_par_iter().map(f).collect());
++    let ca: BinaryChunked = RAYON.install(|| groups.into_par_iter().map(f).collect());
+     ca.into_series()
+ }
+ 
+@@ -12,7 +12,7 @@ pub fn _agg_helper_slice_bin<'a, F>(groups: &'a [[IdxSize; 2]], f: F) -> Series
+ where
+     F: Fn([IdxSize; 2]) -> Option<&'a [u8]> + Send + Sync,
+ {
+-    let ca: BinaryChunked = POOL.install(|| groups.par_iter().copied().map(f).collect());
++    let ca: BinaryChunked = RAYON.install(|| groups.par_iter().copied().map(f).collect());
+     ca.into_series()
+ }
+ 
+diff --git a/crates/polars-core/src/frame/group_by/hashing.rs b/crates/polars-core/src/frame/group_by/hashing.rs
+index 7cade30be..1a6a95394 100644
+--- a/crates/polars-core/src/frame/group_by/hashing.rs
++++ b/crates/polars-core/src/frame/group_by/hashing.rs
+@@ -9,14 +9,14 @@ use rayon::prelude::*;
+ 
+ use crate::hashing::*;
+ use crate::prelude::*;
+-use crate::runtime::POOL;
++use crate::runtime::RAYON;
+ use crate::utils::flatten;
+ 
+ fn get_init_size() -> usize {
+     // we check if this is executed from the main thread
+     // we don't want to pre-allocate this much if executed
+     // group_tuples in a parallel iterator as that explodes allocation
+-    if POOL.current_thread_index().is_none() {
++    if RAYON.current_thread_index().is_none() {
+         _HASHMAP_INIT_SIZE
+     } else {
+         0
+@@ -34,7 +34,7 @@ fn finish_group_order(mut out: Vec<Vec<IdxItem>>, sorted: bool) -> GroupsType {
+             let mut items = Vec::with_capacity(cap);
+             let items_ptr = unsafe { SyncPtr::new(items.as_mut_ptr()) };
+ 
+-            POOL.install(|| {
++            RAYON.install(|| {
+                 out.into_par_iter()
+                     .zip(offsets)
+                     .for_each(|(mut g, offset)| {
+@@ -128,7 +128,7 @@ where
+     // We will create a hashtable in every thread.
+     // We use the hash to partition the keys to the matching hashtable.
+     // Every thread traverses all keys/hashes and ignores the ones that doesn't fall in that partition.
+-    let out = POOL.install(|| {
++    let out = RAYON.install(|| {
+         (0..n_partitions)
+             .into_par_iter()
+             .map(|thread_no| {
+@@ -182,7 +182,7 @@ where
+     // We will create a hashtable in every thread.
+     // We use the hash to partition the keys to the matching hashtable.
+     // Every thread traverses all keys/hashes and ignores the ones that doesn't fall in that partition.
+-    let out = POOL.install(|| {
++    let out = RAYON.install(|| {
+         (0..n_partitions)
+             .into_par_iter()
+             .map(|thread_no| {
+diff --git a/crates/polars-core/src/frame/group_by/into_groups.rs b/crates/polars-core/src/frame/group_by/into_groups.rs
+index 373b05e92..5ad58e16d 100644
+--- a/crates/polars-core/src/frame/group_by/into_groups.rs
++++ b/crates/polars-core/src/frame/group_by/into_groups.rs
+@@ -24,7 +24,7 @@ pub trait IntoGroupsType {
+ 
+ fn group_multithreaded<T: PolarsDataType>(ca: &ChunkedArray<T>) -> bool {
+     // TODO! change to something sensible
+-    ca.len() > 1000 && POOL.current_num_threads() > 1
++    ca.len() > 1000 && RAYON.current_num_threads() > 1
+ }
+ 
+ fn num_groups_proxy<T>(ca: &ChunkedArray<T>, multithreaded: bool, sorted: bool) -> GroupsType
+@@ -90,7 +90,7 @@ where
+             values = &values[..length - null_count];
+         };
+ 
+-        let n_threads = POOL.current_num_threads();
++        let n_threads = RAYON.current_num_threads();
+         if multithreaded && n_threads > 1 {
+             let parts =
+                 create_clean_partitions(values, n_threads, self.is_sorted_descending_flag());
+@@ -121,7 +121,7 @@ where
+                     partition_to_groups(part, 0, false, offset)
+                 }
+             });
+-            let groups = POOL.install(|| groups.collect::<Vec<_>>());
++            let groups = RAYON.install(|| groups.collect::<Vec<_>>());
+             flatten_par(&groups)
+         } else {
+             partition_to_groups(values, null_count as IdxSize, nulls_first, 0)
+@@ -191,7 +191,7 @@ where
+ }
+ impl IntoGroupsType for BooleanChunked {
+     fn group_tuples(&self, mut multithreaded: bool, sorted: bool) -> PolarsResult<GroupsType> {
+-        multithreaded &= POOL.current_num_threads() > 1;
++        multithreaded &= RAYON.current_num_threads() > 1;
+ 
+         #[cfg(feature = "performant")]
+         {
+@@ -234,7 +234,7 @@ impl IntoGroupsType for BinaryChunked {
+             return Ok(GroupsType::new_slice(out, false, true));
+         }
+ 
+-        multithreaded &= POOL.current_num_threads() > 1;
++        multithreaded &= RAYON.current_num_threads() > 1;
+         let bh = self.to_bytes_hashes(multithreaded, Default::default());
+ 
+         let out = if multithreaded {
+@@ -302,7 +302,7 @@ impl IntoGroupsType for BinaryOffsetChunked {
+             return Ok(GroupsType::new_slice(groups, false, true));
+         }
+ 
+-        multithreaded &= POOL.current_num_threads() > 1;
++        multithreaded &= RAYON.current_num_threads() > 1;
+         let bh = self.to_bytes_hashes(multithreaded, Default::default());
+ 
+         let out = if multithreaded {
+@@ -325,7 +325,7 @@ impl IntoGroupsType for ListChunked {
+         mut multithreaded: bool,
+         sorted: bool,
+     ) -> PolarsResult<GroupsType> {
+-        multithreaded &= POOL.current_num_threads() > 1;
++        multithreaded &= RAYON.current_num_threads() > 1;
+         let by = &[self.clone().into_column()];
+         let ca = if multithreaded {
+             encode_rows_vertical_par_unordered(by).unwrap()
+@@ -346,7 +346,7 @@ impl IntoGroupsType for ArrayChunked {
+         mut multithreaded: bool,
+         sorted: bool,
+     ) -> PolarsResult<GroupsType> {
+-        multithreaded &= POOL.current_num_threads() > 1;
++        multithreaded &= RAYON.current_num_threads() > 1;
+         let by = &[self.clone().into_column()];
+         let ca = if multithreaded {
+             encode_rows_vertical_par_unordered(by).unwrap()
+diff --git a/crates/polars-core/src/frame/group_by/mod.rs b/crates/polars-core/src/frame/group_by/mod.rs
+index 57c0bf1b8..1a51151c4 100644
+--- a/crates/polars-core/src/frame/group_by/mod.rs
++++ b/crates/polars-core/src/frame/group_by/mod.rs
+@@ -9,7 +9,7 @@ use rayon::prelude::*;
+ 
+ use self::hashing::*;
+ use crate::prelude::*;
+-use crate::runtime::POOL;
++use crate::runtime::RAYON;
+ use crate::utils::{_set_partition_size, accumulate_dataframes_vertical};
+ 
+ pub mod aggregations;
+@@ -253,7 +253,7 @@ impl<'a> GroupBy<'a> {
+         } else {
+             &self.groups
+         };
+-        POOL.install(|| {
++        RAYON.install(|| {
+             self.selected_keys
+                 .par_iter()
+                 .map(Column::as_materialized_series)
+diff --git a/crates/polars-core/src/frame/group_by/position.rs b/crates/polars-core/src/frame/group_by/position.rs
+index 9fbdc7255..698d96ec9 100644
+--- a/crates/polars-core/src/frame/group_by/position.rs
++++ b/crates/polars-core/src/frame/group_by/position.rs
+@@ -7,7 +7,7 @@ use rayon::iter::plumbing::UnindexedConsumer;
+ use rayon::prelude::*;
+ 
+ use crate::prelude::*;
+-use crate::runtime::POOL;
++use crate::runtime::RAYON;
+ use crate::utils::{NoNull, flatten, slice_slice};
+ 
+ /// Indexes of the groups, the first index is stored separately.
+@@ -57,7 +57,7 @@ impl From<Vec<Vec<IdxItem>>> for GroupsIdx {
+         let mut all = Vec::with_capacity(cap);
+         let all_ptr = all.as_ptr() as usize;
+ 
+-        POOL.install(|| {
++        RAYON.install(|| {
+             v.into_par_iter()
+                 .zip(offsets)
+                 .for_each(|(mut inner, offset)| {
+@@ -121,7 +121,7 @@ impl GroupsIdx {
+                 })
+                 .collect_trusted::<Vec<_>>()
+         };
+-        let (first, all) = POOL.install(|| rayon::join(take_first, take_all));
++        let (first, all) = RAYON.install(|| rayon::join(take_first, take_all));
+         self.first = first;
+         self.all = all;
+         self.sorted = true
+diff --git a/crates/polars-core/src/frame/mod.rs b/crates/polars-core/src/frame/mod.rs
+index ee6005e17..0e20049bb 100644
+--- a/crates/polars-core/src/frame/mod.rs
++++ b/crates/polars-core/src/frame/mod.rs
+@@ -50,7 +50,7 @@ use strum_macros::IntoStaticStr;
+ #[cfg(feature = "row_hash")]
+ use crate::hashing::_df_rows_to_hashes_threaded_vertical;
+ use crate::prelude::sort::arg_sort;
+-use crate::runtime::POOL;
++use crate::runtime::RAYON;
+ use crate::series::IsSorted;
+ 
+ #[derive(Copy, Clone, Debug, PartialEq, Eq, Default, Hash, IntoStaticStr)]
+@@ -137,7 +137,7 @@ impl DataFrame {
+             slf: &DataFrame,
+             func: &(dyn Fn(&Column) -> PolarsResult<Column> + Send + Sync),
+         ) -> PolarsResult<Vec<Column>> {
+-            POOL.install(|| slf.columns().par_iter().map(func).collect())
++            RAYON.install(|| slf.columns().par_iter().map(func).collect())
+         }
+     }
+ 
+@@ -145,7 +145,7 @@ impl DataFrame {
+         return inner(self, &func);
+ 
+         fn inner(slf: &DataFrame, func: &(dyn Fn(&Column) -> Column + Send + Sync)) -> Vec<Column> {
+-            POOL.install(|| slf.columns().par_iter().map(func).collect())
++            RAYON.install(|| slf.columns().par_iter().map(func).collect())
+         }
+     }
+ 
+@@ -290,7 +290,7 @@ impl DataFrame {
+     /// This may lead to more peak memory consumption.
+     pub fn rechunk_mut_par(&mut self) -> &mut Self {
+         if self.columns().iter().any(|c| c.n_chunks() > 1) {
+-            POOL.install(|| {
++            RAYON.install(|| {
+                 unsafe { self.columns_mut_retain_schema() }
+                     .par_iter_mut()
+                     .for_each(|c| *c = c.rechunk());
+@@ -1248,10 +1248,10 @@ impl DataFrame {
+     /// # Safety
+     /// The indices must be in-bounds.
+     pub unsafe fn take_unchecked_impl(&self, idx: &IdxCa, allow_threads: bool) -> Self {
+-        let cols = if allow_threads && POOL.current_num_threads() > 1 {
+-            POOL.install(|| {
+-                if POOL.current_num_threads() > self.width() {
+-                    let stride = usize::max(idx.len().div_ceil(POOL.current_num_threads()), 256);
++        let cols = if allow_threads && RAYON.current_num_threads() > 1 {
++            RAYON.install(|| {
++                if RAYON.current_num_threads() > self.width() {
++                    let stride = usize::max(idx.len().div_ceil(RAYON.current_num_threads()), 256);
+                     if self.height() / stride >= 2 {
+                         self.apply_columns_par(|c| {
+                             // Nested types initiate a rechunk in their take_unchecked implementation.
+@@ -1296,10 +1296,10 @@ impl DataFrame {
+     /// # Safety
+     /// The indices must be in-bounds.
+     pub unsafe fn take_slice_unchecked_impl(&self, idx: &[IdxSize], allow_threads: bool) -> Self {
+-        let cols = if allow_threads && POOL.current_num_threads() > 1 {
+-            POOL.install(|| {
+-                if POOL.current_num_threads() > self.width() {
+-                    let stride = usize::max(idx.len().div_ceil(POOL.current_num_threads()), 256);
++        let cols = if allow_threads && RAYON.current_num_threads() > 1 {
++            RAYON.install(|| {
++                if RAYON.current_num_threads() > self.width() {
++                    let stride = usize::max(idx.len().div_ceil(RAYON.current_num_threads()), 256);
+                     if self.height() / stride >= 2 {
+                         self.apply_columns_par(|c| {
+                             // Nested types initiate a rechunk in their take_unchecked implementation.
+@@ -2460,7 +2460,7 @@ impl DataFrame {
+         &mut self,
+         hasher_builder: Option<PlSeedableRandomStateQuality>,
+     ) -> PolarsResult<UInt64Chunked> {
+-        let dfs = split_df(self, POOL.current_num_threads(), false);
++        let dfs = split_df(self, RAYON.current_num_threads(), false);
+         let (cas, _) = _df_rows_to_hashes_threaded_vertical(&dfs, hasher_builder)?;
+ 
+         let mut iter = cas.into_iter();
+@@ -2544,7 +2544,7 @@ impl DataFrame {
+         if parallel {
+             // don't parallelize this
+             // there is a lot of parallelization in take and this may easily SO
+-            POOL.install(|| {
++            RAYON.install(|| {
+                 match groups.as_ref() {
+                     GroupsType::Idx(idx) => {
+                         // Rechunk as the gather may rechunk for every group #17562.
+@@ -2712,7 +2712,7 @@ impl Iterator for RecordBatchIter<'_> {
+                 .par_iter()
+                 .map(Column::as_materialized_series)
+                 .map(|s| s.to_arrow(self.idx, self.compat_level));
+-            POOL.install(|| iter.collect())
++            RAYON.install(|| iter.collect())
+         } else {
+             self.df
+                 .columns()
+diff --git a/crates/polars-core/src/frame/row/mod.rs b/crates/polars-core/src/frame/row/mod.rs
+index 1b27ccb4a..560ca126d 100644
+--- a/crates/polars-core/src/frame/row/mod.rs
++++ b/crates/polars-core/src/frame/row/mod.rs
+@@ -15,7 +15,7 @@ use polars_utils::total_ord::TotalHash;
+ use rayon::prelude::*;
+ 
+ use crate::prelude::*;
+-use crate::runtime::POOL;
++use crate::runtime::RAYON;
+ use crate::utils::{dtypes_to_schema, dtypes_to_supertype, try_get_supertype};
+ 
+ #[cfg(feature = "object")]
+diff --git a/crates/polars-core/src/frame/row/transpose.rs b/crates/polars-core/src/frame/row/transpose.rs
+index 5c563a3c0..a2811e3bd 100644
+--- a/crates/polars-core/src/frame/row/transpose.rs
++++ b/crates/polars-core/src/frame/row/transpose.rs
+@@ -189,7 +189,7 @@ pub(super) fn numeric_transpose<T: PolarsNumericType>(
+     let values_buf_ptr = &mut values_buf as *mut Vec<Vec<T::Native>> as usize;
+     let validity_buf_ptr = &mut validity_buf as *mut Vec<Vec<bool>> as usize;
+ 
+-    POOL.install(|| {
++    RAYON.install(|| {
+         cols.iter()
+             .map(Column::as_materialized_series)
+             .enumerate()
+@@ -262,7 +262,7 @@ pub(super) fn numeric_transpose<T: PolarsNumericType>(
+             );
+             ChunkedArray::<T>::with_chunk(name.clone(), arr).into_column()
+         });
+-    POOL.install(|| cols_t.par_extend(par_iter));
++    RAYON.install(|| cols_t.par_extend(par_iter));
+ }
+ 
+ #[cfg(test)]
+diff --git a/crates/polars-core/src/hashing/vector_hasher.rs b/crates/polars-core/src/hashing/vector_hasher.rs
+index 66772e252..02fe8c94b 100644
+--- a/crates/polars-core/src/hashing/vector_hasher.rs
++++ b/crates/polars-core/src/hashing/vector_hasher.rs
+@@ -9,7 +9,7 @@ use xxhash_rust::xxh3::xxh3_64_with_seed;
+ 
+ use super::*;
+ use crate::prelude::*;
+-use crate::runtime::POOL;
++use crate::runtime::RAYON;
+ use crate::series::implementations::null::NullChunked;
+ 
+ // See: https://github.com/tkaitchuck/aHash/blob/f9acd508bd89e7c5b2877a9510098100f9018d64/src/operations.rs#L4
+@@ -483,7 +483,7 @@ pub fn _df_rows_to_hashes_threaded_vertical(
+ ) -> PolarsResult<(Vec<UInt64Chunked>, PlSeedableRandomStateQuality)> {
+     let build_hasher = build_hasher.unwrap_or_default();
+ 
+-    let hashes = POOL.install(|| {
++    let hashes = RAYON.install(|| {
+         keys.into_par_iter()
+             .map(|df| {
+                 let hb = build_hasher.clone();
+diff --git a/crates/polars-core/src/runtime.rs b/crates/polars-core/src/runtime.rs
+index 2ce4de3e8..9ef71c2d1 100644
+--- a/crates/polars-core/src/runtime.rs
++++ b/crates/polars-core/src/runtime.rs
+@@ -7,7 +7,7 @@ use polars_utils::with_drop::WithDrop;
+ use rayon::{ThreadPool, ThreadPoolBuilder, Yield};
+ use tokio::runtime::{Builder, Runtime};
+ 
+-pub struct POOL;
++pub struct RAYON;
+ 
+ // Thread locals to allow disabling threading for specific threads.
+ #[cfg(any(target_os = "emscripten", not(target_family = "wasm")))]
+@@ -22,7 +22,7 @@ thread_local! {
+     );
+ }
+ 
+-impl POOL {
++impl RAYON {
+     pub fn install<OP, R>(&self, op: OP) -> R
+     where
+         OP: FnOnce() -> R + Send,
+@@ -227,7 +227,7 @@ impl AsyncRuntime {
+     fn new() -> Self {
+         let n_threads = std::env::var("POLARS_ASYNC_THREAD_COUNT")
+             .map(|x| x.parse::<usize>().expect("integer"))
+-            .unwrap_or(usize::min(POOL.current_num_threads(), 32));
++            .unwrap_or(usize::min(RAYON.current_num_threads(), 32));
+ 
+         let max_blocking = std::env::var("POLARS_MAX_BLOCKING_THREAD_COUNT")
+             .map(|x| x.parse::<usize>().expect("integer"))
+diff --git a/crates/polars-core/src/series/implementations/array.rs b/crates/polars-core/src/series/implementations/array.rs
+index 21072de30..7e35b1c39 100644
+--- a/crates/polars-core/src/series/implementations/array.rs
++++ b/crates/polars-core/src/series/implementations/array.rs
+@@ -13,7 +13,7 @@ use crate::chunked_array::comparison::*;
+ use crate::frame::group_by::*;
+ use crate::prelude::row_encode::{_get_rows_encoded_ca_unordered, encode_rows_unordered};
+ use crate::prelude::*;
+-use crate::runtime::POOL;
++use crate::runtime::RAYON;
+ use crate::series::implementations::SeriesWrap;
+ 
+ impl private::PrivateSeries for SeriesWrap<ArrayChunked> {
+@@ -240,7 +240,7 @@ impl SeriesTrait for SeriesWrap<ArrayChunked> {
+         if self.len() < 2 {
+             return Ok(self.0.clone().into_series());
+         }
+-        let main_thread = POOL.current_thread_index().is_none();
++        let main_thread = RAYON.current_thread_index().is_none();
+         let groups = self.group_tuples(main_thread, false);
+         // SAFETY:
+         // groups are in bounds
+@@ -254,7 +254,7 @@ impl SeriesTrait for SeriesWrap<ArrayChunked> {
+             0 => Ok(0),
+             1 => Ok(1),
+             _ => {
+-                let main_thread = POOL.current_thread_index().is_none();
++                let main_thread = RAYON.current_thread_index().is_none();
+                 let groups = self.group_tuples(main_thread, false)?;
+                 Ok(groups.len())
+             },
+@@ -267,7 +267,7 @@ impl SeriesTrait for SeriesWrap<ArrayChunked> {
+         if self.len() == 1 {
+             return Ok(IdxCa::new_vec(self.name().clone(), vec![0 as IdxSize]));
+         }
+-        let main_thread = POOL.current_thread_index().is_none();
++        let main_thread = RAYON.current_thread_index().is_none();
+         // arg_unique requires a stable order
+         let groups = self.group_tuples(main_thread, true)?;
+         let first = groups.take_group_firsts();
+diff --git a/crates/polars-core/src/series/implementations/list.rs b/crates/polars-core/src/series/implementations/list.rs
+index 7f1672f42..a4348747c 100644
+--- a/crates/polars-core/src/series/implementations/list.rs
++++ b/crates/polars-core/src/series/implementations/list.rs
+@@ -219,7 +219,7 @@ impl SeriesTrait for SeriesWrap<ListChunked> {
+         if self.len() < 2 {
+             return Ok(self.0.clone().into_series());
+         }
+-        let main_thread = POOL.current_thread_index().is_none();
++        let main_thread = RAYON.current_thread_index().is_none();
+         let groups = self.group_tuples(main_thread, false);
+         // SAFETY:
+         // groups are in bounds
+@@ -233,7 +233,7 @@ impl SeriesTrait for SeriesWrap<ListChunked> {
+             0 => Ok(0),
+             1 => Ok(1),
+             _ => {
+-                let main_thread = POOL.current_thread_index().is_none();
++                let main_thread = RAYON.current_thread_index().is_none();
+                 let groups = self.group_tuples(main_thread, false)?;
+                 Ok(groups.len())
+             },
+@@ -246,7 +246,7 @@ impl SeriesTrait for SeriesWrap<ListChunked> {
+         if self.len() == 1 {
+             return Ok(IdxCa::new_vec(self.name().clone(), vec![0 as IdxSize]));
+         }
+-        let main_thread = POOL.current_thread_index().is_none();
++        let main_thread = RAYON.current_thread_index().is_none();
+         // arg_unique requires a stable order
+         let groups = self.group_tuples(main_thread, true)?;
+         let first = groups.take_group_firsts();
+diff --git a/crates/polars-core/src/series/implementations/struct_.rs b/crates/polars-core/src/series/implementations/struct_.rs
+index b4a817379..b8c18a4ab 100644
+--- a/crates/polars-core/src/series/implementations/struct_.rs
++++ b/crates/polars-core/src/series/implementations/struct_.rs
+@@ -232,7 +232,7 @@ impl SeriesTrait for SeriesWrap<StructChunked> {
+         if self.len() < 2 {
+             return Ok(self.0.clone().into_series());
+         }
+-        let main_thread = POOL.current_thread_index().is_none();
++        let main_thread = RAYON.current_thread_index().is_none();
+         let groups = self.group_tuples(main_thread, false);
+         // SAFETY:
+         // groups are in bounds
+@@ -248,7 +248,7 @@ impl SeriesTrait for SeriesWrap<StructChunked> {
+             1 => Ok(1),
+             _ => {
+                 // TODO! try row encoding
+-                let main_thread = POOL.current_thread_index().is_none();
++                let main_thread = RAYON.current_thread_index().is_none();
+                 let groups = self.group_tuples(main_thread, false)?;
+                 Ok(groups.len())
+             },
+@@ -262,7 +262,7 @@ impl SeriesTrait for SeriesWrap<StructChunked> {
+         if self.len() == 1 {
+             return Ok(IdxCa::new_vec(self.name().clone(), vec![0 as IdxSize]));
+         }
+-        let main_thread = POOL.current_thread_index().is_none();
++        let main_thread = RAYON.current_thread_index().is_none();
+         let groups = self.group_tuples(main_thread, true)?;
+         let first = groups.take_group_firsts();
+         Ok(IdxCa::from_vec(self.name().clone(), first))
+diff --git a/crates/polars-core/src/series/mod.rs b/crates/polars-core/src/series/mod.rs
+index 2eb741b78..5e56e7bd3 100644
+--- a/crates/polars-core/src/series/mod.rs
++++ b/crates/polars-core/src/series/mod.rs
+@@ -44,7 +44,7 @@ use polars_utils::float::IsFloat;
+ pub use series_trait::{IsSorted, *};
+ 
+ use crate::chunked_array::cast::CastOptions;
+-use crate::runtime::POOL;
++use crate::runtime::RAYON;
+ #[cfg(feature = "zip_with")]
+ use crate::series::arithmetic::coerce_lhs_rhs;
+ use crate::utils::{Wrap, handle_casting_failures, materialize_dyn_int};
+diff --git a/crates/polars-core/src/utils/flatten.rs b/crates/polars-core/src/utils/flatten.rs
+index 6344cf46d..971c4a652 100644
+--- a/crates/polars-core/src/utils/flatten.rs
++++ b/crates/polars-core/src/utils/flatten.rs
+@@ -80,7 +80,7 @@ fn flatten_par_impl<T: Send + Sync + Copy>(
+     let mut out = Vec::with_capacity(len);
+     let out_ptr = unsafe { SyncPtr::new(out.as_mut_ptr()) };
+ 
+-    POOL.install(|| {
++    RAYON.install(|| {
+         offsets.into_par_iter().enumerate().for_each(|(i, offset)| {
+             let buf = bufs[i];
+             let ptr: *mut T = out_ptr.get();
+@@ -121,6 +121,6 @@ pub fn flatten_nullable<S: AsRef<[NullableIdxSize]> + Send + Sync>(
+         validity.freeze()
+     };
+ 
+-    let (a, b) = POOL.join(a, b);
++    let (a, b) = RAYON.join(a, b);
+     PrimitiveArray::from_vec(bytemuck::cast_vec::<_, IdxSize>(a)).with_validity(Some(b))
+ }
+diff --git a/crates/polars-core/src/utils/mod.rs b/crates/polars-core/src/utils/mod.rs
+index 0ba4e9625..6d92bd087 100644
+--- a/crates/polars-core/src/utils/mod.rs
++++ b/crates/polars-core/src/utils/mod.rs
+@@ -22,7 +22,7 @@ pub use series::*;
+ pub use supertype::*;
+ 
+ use crate::prelude::*;
+-use crate::runtime::POOL;
++use crate::runtime::RAYON;
+ 
+ #[repr(transparent)]
+ pub struct Wrap<T>(pub T);
+@@ -36,7 +36,7 @@ impl<T> Deref for Wrap<T> {
+ 
+ #[inline(always)]
+ pub fn _set_partition_size() -> usize {
+-    POOL.current_num_threads()
++    RAYON.current_num_threads()
+ }
+ 
+ /// Just a wrapper structure which is useful for certain impl specializations.
+diff --git a/crates/polars-expr/src/dispatch/boolean.rs b/crates/polars-expr/src/dispatch/boolean.rs
+index e8bab8212..aaca9c83b 100644
+--- a/crates/polars-expr/src/dispatch/boolean.rs
++++ b/crates/polars-expr/src/dispatch/boolean.rs
+@@ -3,7 +3,7 @@ use std::sync::Arc;
+ 
+ use polars_core::error::PolarsResult;
+ use polars_core::prelude::{BooleanChunked, Column, DataType, IntoColumn, NamedFrom};
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_plan::dsl::{ColumnsUdf, SpecialEq};
+ use polars_plan::plans::IRBooleanFunction;
+ use polars_utils::pl_str::PlSmallStr;
+@@ -168,7 +168,7 @@ fn not(s: &Column) -> PolarsResult<Column> {
+ 
+ // We shouldn't hit these often only on very wide dataframes where we don't reduce to & expressions.
+ fn any_horizontal(s: &[Column]) -> PolarsResult<Column> {
+-    let out = POOL
++    let out = RAYON
+         .install(|| {
+             s.par_iter()
+                 .try_fold(
+@@ -190,7 +190,7 @@ fn any_horizontal(s: &[Column]) -> PolarsResult<Column> {
+ 
+ // We shouldn't hit these often only on very wide dataframes where we don't reduce to & expressions.
+ fn all_horizontal(s: &[Column]) -> PolarsResult<Column> {
+-    let out = POOL
++    let out = RAYON
+         .install(|| {
+             s.par_iter()
+                 .try_fold(
+diff --git a/crates/polars-expr/src/dispatch/groups_dispatch.rs b/crates/polars-expr/src/dispatch/groups_dispatch.rs
+index 953067c28..e683542a5 100644
+--- a/crates/polars-expr/src/dispatch/groups_dispatch.rs
++++ b/crates/polars-expr/src/dispatch/groups_dispatch.rs
+@@ -14,7 +14,7 @@ use polars_core::prelude::{
+     AnyValue, ChunkCast, Column, CompatLevel, Float64Chunked, GroupPositions, GroupsType,
+     IDX_DTYPE, IntoColumn,
+ };
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_core::scalar::Scalar;
+ use polars_core::series::{ChunkCompareEq, Series};
+ use polars_utils::itertools::Itertools;
+@@ -41,7 +41,7 @@ pub fn reverse<'a>(
+         return Ok(ac);
+     }
+ 
+-    POOL.install(|| {
++    RAYON.install(|| {
+         let positions = GroupsType::Idx(match &**ac.groups().as_ref() {
+             GroupsType::Idx(idx) => idx
+                 .into_par_iter()
+@@ -100,7 +100,7 @@ pub fn null_count<'a>(
+         return Ok(ac);
+     };
+ 
+-    POOL.install(|| {
++    RAYON.install(|| {
+         let validity = BitMask::from_bitmap(&validity);
+         let null_count: Vec<IdxSize> = match &**ac.groups.as_ref() {
+             GroupsType::Idx(idx) => idx
+@@ -355,7 +355,7 @@ pub fn drop_items<'a>(
+ 
+     ac.groups();
+     let predicate = BitMask::from_bitmap(predicate);
+-    POOL.install(|| {
++    RAYON.install(|| {
+         let positions = GroupsType::Idx(match &**ac.groups.as_ref() {
+             GroupsType::Idx(idxs) => idxs
+                 .into_par_iter()
+@@ -538,7 +538,7 @@ pub fn moment_agg<'a, S: Default>(
+     let ca = ca.rechunk();
+     let arr = ca.downcast_as_array();
+ 
+-    let ca = POOL.install(|| match &**ac.groups.as_ref() {
++    let ca = RAYON.install(|| match &**ac.groups.as_ref() {
+         GroupsType::Idx(idx) => {
+             if let Some(validity) = arr.validity().filter(|v| v.unset_bits() > 0) {
+                 idx.into_par_iter()
+@@ -665,7 +665,7 @@ pub fn unique<'a>(
+         }
+     }
+ 
+-    POOL.install(|| {
++    RAYON.install(|| {
+         let positions = GroupsType::Idx(match &**ac.groups().as_ref() {
+             GroupsType::Idx(idx) => idx
+                 .into_par_iter()
+@@ -723,7 +723,7 @@ fn fw_bw_fill_null<'a>(
+     };
+ 
+     let validity = BitMask::from_bitmap(&validity);
+-    POOL.install(|| {
++    RAYON.install(|| {
+         let positions = GroupsType::Idx(match &**ac.groups().as_ref() {
+             GroupsType::Idx(idx) => idx
+                 .into_par_iter()
+diff --git a/crates/polars-expr/src/expressions/aggregation.rs b/crates/polars-expr/src/expressions/aggregation.rs
+index 5c0528512..370840ec2 100644
+--- a/crates/polars-expr/src/expressions/aggregation.rs
++++ b/crates/polars-expr/src/expressions/aggregation.rs
+@@ -1,7 +1,7 @@
+ use std::borrow::Cow;
+ 
+ use polars_core::prelude::*;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_core::series::IsSorted;
+ use polars_core::utils::_split_offsets;
+ use polars_ops::prelude::ArgAgg;
+@@ -639,14 +639,14 @@ where
+ 
+     if !allow_threading
+         || s.len() < thread_boundary
+-        || POOL.current_thread_has_pending_tasks().unwrap_or(false)
++        || RAYON.current_thread_has_pending_tasks().unwrap_or(false)
+     {
+         return f(s);
+     }
+-    let n_threads = POOL.current_num_threads();
++    let n_threads = RAYON.current_num_threads();
+     let splits = _split_offsets(s.len(), n_threads);
+ 
+-    let chunks = POOL.install(|| {
++    let chunks = RAYON.install(|| {
+         splits
+             .into_par_iter()
+             .map(|(offset, len)| {
+diff --git a/crates/polars-expr/src/expressions/apply.rs b/crates/polars-expr/src/expressions/apply.rs
+index 90dd96fb3..0138d2614 100644
+--- a/crates/polars-expr/src/expressions/apply.rs
++++ b/crates/polars-expr/src/expressions/apply.rs
+@@ -5,7 +5,7 @@ use polars_core::chunked_array::from_iterator_par::{
+     ChunkedCollectParIterExt, try_list_from_par_iter,
+ };
+ use polars_core::prelude::*;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use rayon::prelude::*;
+ 
+ use super::*;
+@@ -73,7 +73,7 @@ impl ApplyExpr {
+     ) -> PolarsResult<Vec<AggregationContext<'a>>> {
+         let f = |e: &Arc<dyn PhysicalExpr>| e.evaluate_on_groups(df, groups, state);
+         if self.allow_threading {
+-            POOL.install(|| self.inputs.par_iter().map(f).collect())
++            RAYON.install(|| self.inputs.par_iter().map(f).collect())
+         } else {
+             self.inputs.iter().map(f).collect()
+         }
+@@ -175,11 +175,11 @@ impl ApplyExpr {
+             if self.output_field.dtype.is_known() {
+                 let dtype = self.output_field.dtype.clone();
+                 let dtype = dtype.implode();
+-                POOL.install(|| {
++                RAYON.install(|| {
+                     iter.collect_ca_with_dtype::<PolarsResult<_>>(PlSmallStr::EMPTY, dtype)
+                 })?
+             } else {
+-                POOL.install(|| try_list_from_par_iter(iter, PlSmallStr::EMPTY))?
++                RAYON.install(|| try_list_from_par_iter(iter, PlSmallStr::EMPTY))?
+             }
+         } else {
+             agg.list()
+@@ -432,7 +432,7 @@ impl PhysicalExpr for ApplyExpr {
+     fn evaluate_impl(&self, df: &DataFrame, state: &ExecutionState) -> PolarsResult<Column> {
+         let f = |e: &Arc<dyn PhysicalExpr>| e.evaluate(df, state);
+         let mut inputs = if self.allow_threading && self.inputs.len() > 1 {
+-            POOL.install(|| {
++            RAYON.install(|| {
+                 self.inputs
+                     .par_iter()
+                     .map(f)
+diff --git a/crates/polars-expr/src/expressions/binary.rs b/crates/polars-expr/src/expressions/binary.rs
+index b24b66a57..1ee1b3e58 100644
+--- a/crates/polars-expr/src/expressions/binary.rs
++++ b/crates/polars-expr/src/expressions/binary.rs
+@@ -1,5 +1,5 @@
+ use polars_core::prelude::*;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ #[cfg(feature = "round_series")]
+ use polars_ops::prelude::floor_div_series;
+ 
+@@ -246,7 +246,7 @@ impl PhysicalExpr for BinaryExpr {
+             lhs = self.left.evaluate(df, state)?;
+             rhs = self.right.evaluate(df, state)?;
+         } else {
+-            let (opt_lhs, opt_rhs) = POOL.install(|| {
++            let (opt_lhs, opt_rhs) = RAYON.install(|| {
+                 rayon::join(
+                     || self.left.evaluate(df, state),
+                     || self.right.evaluate(df, state),
+@@ -270,7 +270,7 @@ impl PhysicalExpr for BinaryExpr {
+         groups: &'a GroupPositions,
+         state: &ExecutionState,
+     ) -> PolarsResult<AggregationContext<'a>> {
+-        let (result_a, result_b) = POOL.install(|| {
++        let (result_a, result_b) = RAYON.install(|| {
+             rayon::join(
+                 || self.left.evaluate_on_groups(df, groups, state),
+                 || self.right.evaluate_on_groups(df, groups, state),
+diff --git a/crates/polars-expr/src/expressions/filter.rs b/crates/polars-expr/src/expressions/filter.rs
+index b02fa6d44..b1add4a14 100644
+--- a/crates/polars-expr/src/expressions/filter.rs
++++ b/crates/polars-expr/src/expressions/filter.rs
+@@ -1,5 +1,5 @@
+ use polars_core::prelude::*;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_utils::UnitVec;
+ 
+ use super::*;
+@@ -26,7 +26,7 @@ impl PhysicalExpr for FilterExpr {
+         let s_f = || self.input.evaluate(df, state);
+         let predicate_f = || self.by.evaluate(df, state);
+ 
+-        let (series, predicate) = POOL.install(|| rayon::join(s_f, predicate_f));
++        let (series, predicate) = RAYON.install(|| rayon::join(s_f, predicate_f));
+         let (series, predicate) = (series?, predicate?);
+ 
+         series.filter(predicate.bool()?)
+@@ -41,7 +41,7 @@ impl PhysicalExpr for FilterExpr {
+         let ac_s_f = || self.input.evaluate_on_groups(df, groups, state);
+         let ac_predicate_f = || self.by.evaluate_on_groups(df, groups, state);
+ 
+-        let (ac_s, ac_predicate) = POOL.install(|| rayon::join(ac_s_f, ac_predicate_f));
++        let (ac_s, ac_predicate) = RAYON.install(|| rayon::join(ac_s_f, ac_predicate_f));
+         let (mut ac_s, mut ac_predicate) = (ac_s?, ac_predicate?);
+ 
+         ac_s.set_groups_for_undefined_agg_states();
+diff --git a/crates/polars-expr/src/expressions/slice.rs b/crates/polars-expr/src/expressions/slice.rs
+index 3c1d7080d..b911bc733 100644
+--- a/crates/polars-expr/src/expressions/slice.rs
++++ b/crates/polars-expr/src/expressions/slice.rs
+@@ -1,6 +1,6 @@
+ use AnyValue::Null;
+ use polars_core::prelude::*;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_core::utils::{CustomIterTools, slice_offsets};
+ use polars_utils::idx_vec::IdxVec;
+ use rayon::prelude::*;
+@@ -84,7 +84,7 @@ impl PhysicalExpr for SliceExpr {
+     }
+ 
+     fn evaluate_impl(&self, df: &DataFrame, state: &ExecutionState) -> PolarsResult<Column> {
+-        let results = POOL.install(|| {
++        let results = RAYON.install(|| {
+             [&self.offset, &self.length, &self.input]
+                 .par_iter()
+                 .map(|e| e.evaluate(df, state))
+@@ -104,7 +104,7 @@ impl PhysicalExpr for SliceExpr {
+         groups: &'a GroupPositions,
+         state: &ExecutionState,
+     ) -> PolarsResult<AggregationContext<'a>> {
+-        let mut results = POOL.install(|| {
++        let mut results = RAYON.install(|| {
+             [&self.offset, &self.length, &self.input]
+                 .par_iter()
+                 .map(|e| e.evaluate_on_groups(df, groups, state))
+diff --git a/crates/polars-expr/src/expressions/sort.rs b/crates/polars-expr/src/expressions/sort.rs
+index f0e7f808b..678c9d7ea 100644
+--- a/crates/polars-expr/src/expressions/sort.rs
++++ b/crates/polars-expr/src/expressions/sort.rs
+@@ -1,5 +1,5 @@
+ use polars_core::prelude::*;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_ops::chunked_array::ListNameSpaceImpl;
+ use polars_utils::idx_vec::IdxVec;
+ use rayon::prelude::*;
+@@ -71,7 +71,7 @@ impl PhysicalExpr for SortExpr {
+ 
+                 let mut sort_options = self.options;
+                 sort_options.multithreaded = false;
+-                let groups = POOL.install(|| {
++                let groups = RAYON.install(|| {
+                     match ac.groups().as_ref().as_ref() {
+                         GroupsType::Idx(groups) => {
+                             groups
+diff --git a/crates/polars-expr/src/expressions/sortby.rs b/crates/polars-expr/src/expressions/sortby.rs
+index 980feb04a..e9c151394 100644
+--- a/crates/polars-expr/src/expressions/sortby.rs
++++ b/crates/polars-expr/src/expressions/sortby.rs
+@@ -1,6 +1,6 @@
+ use polars_core::chunked_array::from_iterator_par::ChunkedCollectParIterExt;
+ use polars_core::prelude::*;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_utils::idx_vec::IdxVec;
+ use rayon::prelude::*;
+ 
+@@ -60,7 +60,7 @@ pub(super) fn update_groups_sort_by(
+ ) -> PolarsResult<GroupsType> {
+     // Will trigger a gather for every group, so rechunk before.
+     let sort_by_s = sort_by_s.rechunk();
+-    let groups = POOL.install(|| {
++    let groups = RAYON.install(|| {
+         groups
+             .par_iter()
+             .map(|indicator| sort_by_groups_single_by(indicator, &sort_by_s, options))
+@@ -113,7 +113,7 @@ fn sort_by_groups_no_match_single<'a>(
+     let mut s_by = s_by.list().unwrap().clone();
+ 
+     let dtype = s_in.dtype().clone();
+-    let ca: PolarsResult<ListChunked> = POOL.install(|| {
++    let ca: PolarsResult<ListChunked> = RAYON.install(|| {
+         s_in.par_iter_indexed()
+             .zip(s_by.par_iter_indexed())
+             .map(|(opt_s, s_sort_by)| match (opt_s, s_sort_by) {
+@@ -210,7 +210,7 @@ impl PhysicalExpr for SortByExpr {
+                 let s_sort_by = self.by[0].evaluate(df, state)?;
+                 Ok(s_sort_by.arg_sort(SortOptions::from(&self.sort_options)))
+             };
+-            POOL.install(|| rayon::join(series_f, sorted_idx_f))
++            RAYON.install(|| rayon::join(series_f, sorted_idx_f))
+         } else {
+             let descending = prepare_bool_vec(&self.sort_options.descending, self.by.len());
+             let nulls_last = prepare_bool_vec(&self.sort_options.nulls_last, self.by.len());
+@@ -272,7 +272,7 @@ impl PhysicalExpr for SortByExpr {
+                     .as_materialized_series()
+                     .arg_sort_multiple(&s_sort_by[1..], &options)
+             };
+-            POOL.install(|| rayon::join(series_f, sorted_idx_f))
++            RAYON.install(|| rayon::join(series_f, sorted_idx_f))
+         };
+         let (sorted_idx, series) = (sorted_idx?, series?);
+         polars_ensure!(
+@@ -373,7 +373,7 @@ impl PhysicalExpr for SortByExpr {
+             let sort_by_s = sort_by_s.pop().unwrap();
+             let groups = ac_sort_by.groups();
+ 
+-            let (check, groups) = POOL.join(
++            let (check, groups) = RAYON.join(
+                 || check_groups(groups, ac_in.groups()),
+                 || {
+                     update_groups_sort_by(
+@@ -393,7 +393,7 @@ impl PhysicalExpr for SortByExpr {
+         } else {
+             let groups = ac_sort_by[0].groups();
+ 
+-            let groups = POOL.install(|| {
++            let groups = RAYON.install(|| {
+                 groups
+                     .par_iter()
+                     .map(|indicator| {
+diff --git a/crates/polars-expr/src/expressions/structeval.rs b/crates/polars-expr/src/expressions/structeval.rs
+index c145b4ddc..1d378bb69 100644
+--- a/crates/polars-expr/src/expressions/structeval.rs
++++ b/crates/polars-expr/src/expressions/structeval.rs
+@@ -3,7 +3,7 @@ use std::sync::Arc;
+ use polars_core::error::{PolarsResult, polars_ensure};
+ use polars_core::frame::DataFrame;
+ use polars_core::prelude::*;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_core::schema::Schema;
+ use polars_plan::dsl::Expr;
+ use rayon::prelude::*;
+@@ -235,7 +235,7 @@ impl PhysicalExpr for StructEvalExpr {
+             Ok(result)
+         };
+         let cols = if self.allow_threading {
+-            POOL.install(|| {
++            RAYON.install(|| {
+                 self.evaluation
+                     .par_iter()
+                     .map(f)
+@@ -278,7 +278,7 @@ impl PhysicalExpr for StructEvalExpr {
+ 
+         let f = |e: &Arc<dyn PhysicalExpr>| e.evaluate_on_groups(df, groups, &state);
+         let acs_eval = if self.allow_threading {
+-            POOL.install(|| {
++            RAYON.install(|| {
+                 self.evaluation
+                     .par_iter()
+                     .map(f)
+diff --git a/crates/polars-expr/src/expressions/ternary.rs b/crates/polars-expr/src/expressions/ternary.rs
+index fb7ff8a26..aa288d786 100644
+--- a/crates/polars-expr/src/expressions/ternary.rs
++++ b/crates/polars-expr/src/expressions/ternary.rs
+@@ -1,5 +1,5 @@
+ use polars_core::prelude::*;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_plan::prelude::*;
+ 
+ use super::*;
+@@ -94,7 +94,7 @@ impl PhysicalExpr for TernaryExpr {
+         let op_truthy = || self.truthy.evaluate(df, &state);
+         let op_falsy = || self.falsy.evaluate(df, &state);
+         let (truthy, falsy) = if self.run_par {
+-            POOL.install(|| rayon::join(op_truthy, op_falsy))
++            RAYON.install(|| rayon::join(op_truthy, op_falsy))
+         } else {
+             (op_truthy(), op_falsy())
+         };
+@@ -119,7 +119,7 @@ impl PhysicalExpr for TernaryExpr {
+         let op_truthy = || self.truthy.evaluate_on_groups(df, groups, state);
+         let op_falsy = || self.falsy.evaluate_on_groups(df, groups, state);
+         let (ac_mask, (ac_truthy, ac_falsy)) = if self.run_par {
+-            POOL.install(|| rayon::join(op_mask, || rayon::join(op_truthy, op_falsy)))
++            RAYON.install(|| rayon::join(op_mask, || rayon::join(op_truthy, op_falsy)))
+         } else {
+             (op_mask(), (op_truthy(), op_falsy()))
+         };
+diff --git a/crates/polars-expr/src/expressions/window.rs b/crates/polars-expr/src/expressions/window.rs
+index 61a31ff6a..adfaeadf2 100644
+--- a/crates/polars-expr/src/expressions/window.rs
++++ b/crates/polars-expr/src/expressions/window.rs
+@@ -8,7 +8,7 @@ use polars_core::error::feature_gated;
+ use polars_core::prelude::row_encode::encode_rows_unordered;
+ use polars_core::prelude::sort::perfect_sort;
+ use polars_core::prelude::*;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_core::series::IsSorted;
+ use polars_core::utils::_split_offsets;
+ use polars_ops::frame::SeriesJoin;
+@@ -1091,7 +1091,7 @@ fn set_numeric<T: PolarsNumericType>(
+         match groups {
+             GroupsType::Idx(groups) => {
+                 let agg_vals = ca.cont_slice().expect("rechunked");
+-                POOL.install(|| {
++                RAYON.install(|| {
+                     agg_vals
+                         .par_iter()
+                         .zip(groups.all().par_iter())
+@@ -1106,7 +1106,7 @@ fn set_numeric<T: PolarsNumericType>(
+             },
+             GroupsType::Slice { groups, .. } => {
+                 let agg_vals = ca.cont_slice().expect("rechunked");
+-                POOL.install(|| {
++                RAYON.install(|| {
+                     agg_vals
+                         .par_iter()
+                         .zip(groups.par_iter())
+@@ -1133,7 +1133,7 @@ fn set_numeric<T: PolarsNumericType>(
+         let validity_ptr = validity.as_mut_ptr();
+         let sync_ptr_validity = unsafe { SyncPtr::new(validity_ptr) };
+ 
+-        let n_threads = POOL.current_num_threads();
++        let n_threads = RAYON.current_num_threads();
+         let offsets = _split_offsets(ca.len(), n_threads);
+ 
+         match groups {
+diff --git a/crates/polars-io/src/csv/read/parser.rs b/crates/polars-io/src/csv/read/parser.rs
+index 17e4da4cc..fc0da0786 100644
+--- a/crates/polars-io/src/csv/read/parser.rs
++++ b/crates/polars-io/src/csv/read/parser.rs
+@@ -3,7 +3,7 @@ use std::cmp;
+ use memchr::memchr2_iter;
+ use polars_buffer::Buffer;
+ use polars_core::prelude::*;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_error::feature_gated;
+ use polars_utils::mmap::MMapSemaphore;
+ use polars_utils::pl_path::PlRefPath;
+@@ -106,7 +106,7 @@ pub fn count_rows_from_reader_par(
+     };
+ 
+     let count = CountLines::new(quote_char, eol_char, comment_prefix.cloned());
+-    POOL.install(|| {
++    RAYON.install(|| {
+         let mut states = Vec::new();
+         let eof_unterminated_row;
+ 
+diff --git a/crates/polars-io/src/csv/read/read_impl.rs b/crates/polars-io/src/csv/read/read_impl.rs
+index e160375b3..286fe122a 100644
+--- a/crates/polars-io/src/csv/read/read_impl.rs
++++ b/crates/polars-io/src/csv/read/read_impl.rs
+@@ -3,7 +3,7 @@ use std::sync::Mutex;
+ 
+ use polars_buffer::{Buffer, SharedStorage};
+ use polars_core::prelude::*;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_core::utils::{accumulate_dataframes_vertical, handle_casting_failures};
+ #[cfg(feature = "polars-time")]
+ use polars_time::prelude::*;
+@@ -66,7 +66,7 @@ pub fn cast_columns(
+     };
+ 
+     if parallel {
+-        let cols = POOL.install(|| {
++        let cols = RAYON.install(|| {
+             df.columns()
+                 .into_par_iter()
+                 .map(|s| {
+@@ -350,7 +350,9 @@ impl<'a> CoreReader<'a> {
+             return Ok(df);
+         }
+ 
+-        let n_threads = self.n_threads.unwrap_or_else(|| POOL.current_num_threads());
++        let n_threads = self
++            .n_threads
++            .unwrap_or_else(|| RAYON.current_num_threads());
+ 
+         // This is chosen by benchmarking on ny city trip csv dataset.
+         // We want small enough chunks such that threads start working as soon as possible
+@@ -396,7 +398,7 @@ impl<'a> CoreReader<'a> {
+         let check_utf8 = matches!(self.parse_options.encoding, CsvEncoding::Utf8)
+             && self.schema.iter_fields().any(|f| f.dtype().is_string());
+ 
+-        POOL.scope(|s| {
++        RAYON.scope(|s| {
+             // Pass 1: identify chunks for parallel processing (line parsing).
+             loop {
+                 let b = unsafe { bytes.get_unchecked(total_offset..) };
+diff --git a/crates/polars-io/src/csv/write/write_impl.rs b/crates/polars-io/src/csv/write/write_impl.rs
+index 9a0c4576a..cd024fd53 100644
+--- a/crates/polars-io/src/csv/write/write_impl.rs
++++ b/crates/polars-io/src/csv/write/write_impl.rs
+@@ -3,7 +3,7 @@ mod serializer;
+ use arrow::array::NullArray;
+ use arrow::legacy::time_zone::Tz;
+ use polars_core::prelude::*;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_error::polars_ensure;
+ use polars_utils::reuse_vec::reuse_vec;
+ use rayon::prelude::*;
+@@ -233,7 +233,7 @@ pub(crate) fn write(
+             };
+ 
+         if n_threads > 1 {
+-            POOL.install(|| {
++            RAYON.install(|| {
+                 buffers
+                     .par_iter_mut()
+                     .enumerate()
+diff --git a/crates/polars-io/src/csv/write/writer.rs b/crates/polars-io/src/csv/write/writer.rs
+index 159642a71..f99957005 100644
+--- a/crates/polars-io/src/csv/write/writer.rs
++++ b/crates/polars-io/src/csv/write/writer.rs
+@@ -3,7 +3,7 @@ use std::num::NonZeroUsize;
+ use std::sync::Arc;
+ 
+ use polars_core::frame::DataFrame;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_core::schema::Schema;
+ use polars_error::PolarsResult;
+ use polars_utils::pl_str::PlSmallStr;
+@@ -39,7 +39,7 @@ where
+             header: true,
+             bom: false,
+             batch_size: NonZeroUsize::new(1024).unwrap(),
+-            n_threads: POOL.current_num_threads(),
++            n_threads: RAYON.current_num_threads(),
+         }
+     }
+ 
+diff --git a/crates/polars-io/src/ndjson/core.rs b/crates/polars-io/src/ndjson/core.rs
+index c23144d89..19d146200 100644
+--- a/crates/polars-io/src/ndjson/core.rs
++++ b/crates/polars-io/src/ndjson/core.rs
+@@ -4,7 +4,7 @@ use std::num::NonZeroUsize;
+ pub use arrow::array::StructArray;
+ use num_traits::pow::Pow;
+ use polars_core::prelude::*;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_core::utils::accumulate_dataframes_vertical;
+ use rayon::prelude::*;
+ 
+@@ -112,7 +112,7 @@ impl<'a> CoreJsonReader<'a> {
+         let file_chunks = get_file_chunks_json(bytes, n_threads);
+ 
+         let row_index = self.row_index.as_ref().map(|ri| ri as &RowIndex);
+-        let (mut dfs, prepredicate_heights) = POOL.install(|| {
++        let (mut dfs, prepredicate_heights) = RAYON.install(|| {
+             file_chunks
+                 .into_par_iter()
+                 .map(|(start_pos, stop_at_nbytes)| {
+@@ -153,7 +153,9 @@ impl<'a> CoreJsonReader<'a> {
+     }
+ 
+     pub fn as_df(&mut self) -> PolarsResult<DataFrame> {
+-        let n_threads = self.n_threads.unwrap_or_else(|| POOL.current_num_threads());
++        let n_threads = self
++            .n_threads
++            .unwrap_or_else(|| RAYON.current_num_threads());
+ 
+         let reader_bytes = self.reader_bytes.take().unwrap();
+ 
+diff --git a/crates/polars-io/src/parquet/read/read_impl.rs b/crates/polars-io/src/parquet/read/read_impl.rs
+index 5eecfe87f..1bf944cf9 100644
+--- a/crates/polars-io/src/parquet/read/read_impl.rs
++++ b/crates/polars-io/src/parquet/read/read_impl.rs
+@@ -6,7 +6,7 @@ use polars_buffer::Buffer;
+ use polars_core::chunked_array::builder::NullChunkedBuilder;
+ use polars_core::config;
+ use polars_core::prelude::*;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_core::series::IsSorted;
+ use polars_core::utils::accumulate_dataframes_vertical;
+ use polars_parquet::read::{self, ColumnChunkMetadata, FileMetadata, Filter, RowGroupMetadata};
+@@ -242,7 +242,7 @@ fn rg_to_dfs_optionally_par_over_columns(
+         };
+ 
+         let columns = if let ParallelStrategy::Columns = parallel {
+-            POOL.install(|| {
++            RAYON.install(|| {
+                 projection
+                     .par_iter()
+                     .map(f)
+@@ -340,7 +340,7 @@ fn rg_to_dfs_par_over_rg(
+         row_groups.push((rg_md, rg_slice, row_count_start));
+     }
+ 
+-    let dfs = POOL.install(|| {
++    let dfs = RAYON.install(|| {
+         // Set partitioned fields to prevent quadratic behavior.
+         // Ensure all row groups are partitioned.
+         row_groups
+@@ -436,7 +436,8 @@ pub fn read_parquet<R: MmapBytesReader>(
+         .unwrap_or_else(|| Cow::Owned((0usize..reader_schema.len()).collect::<Vec<_>>()));
+ 
+     if ParallelStrategy::Auto == parallel {
+-        if n_row_groups > materialized_projection.len() || n_row_groups > POOL.current_num_threads()
++        if n_row_groups > materialized_projection.len()
++            || n_row_groups > RAYON.current_num_threads()
+         {
+             parallel = ParallelStrategy::RowGroups;
+         } else {
+diff --git a/crates/polars-io/src/parquet/write/batched_writer.rs b/crates/polars-io/src/parquet/write/batched_writer.rs
+index b51a045c2..4fef5ccd3 100644
+--- a/crates/polars-io/src/parquet/write/batched_writer.rs
++++ b/crates/polars-io/src/parquet/write/batched_writer.rs
+@@ -4,7 +4,7 @@ use std::sync::Mutex;
+ use arrow::record_batch::RecordBatch;
+ use polars_buffer::Buffer;
+ use polars_core::prelude::*;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_parquet::read::{ParquetError, fallible_streaming_iterator};
+ use polars_parquet::write::{
+     CompressedPage, Compressor, DynIter, DynStreamingIterator, Encoding, FallibleStreamingIterator,
+@@ -222,7 +222,7 @@ fn create_serializer(
+     };
+ 
+     let columns = if parallel {
+-        POOL.install(|| {
++        RAYON.install(|| {
+             batch
+                 .columns()
+                 .par_iter()
+diff --git a/crates/polars-io/src/pl_async.rs b/crates/polars-io/src/pl_async.rs
+index 06d2da363..8416043bb 100644
+--- a/crates/polars-io/src/pl_async.rs
++++ b/crates/polars-io/src/pl_async.rs
+@@ -4,7 +4,7 @@ use std::sync::LazyLock;
+ 
+ use polars_buffer::Buffer;
+ use polars_core::config::{self, verbose};
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_utils::relaxed_cell::RelaxedCell;
+ use tokio::sync::Semaphore;
+ 
+@@ -169,7 +169,7 @@ fn get_semaphore() -> &'static (Semaphore, u32) {
+                 FINISHED_TUNING.store(true);
+                 budget
+             })
+-            .unwrap_or_else(|_| std::cmp::max(POOL.current_num_threads(), MAX_BUDGET_PER_REQUEST));
++            .unwrap_or_else(|_| std::cmp::max(RAYON.current_num_threads(), MAX_BUDGET_PER_REQUEST));
+         (Semaphore::new(permits), permits as u32)
+     })
+ }
+diff --git a/crates/polars-lazy/src/frame/exitable.rs b/crates/polars-lazy/src/frame/exitable.rs
+index aae74d4b8..081ecac74 100644
+--- a/crates/polars-lazy/src/frame/exitable.rs
++++ b/crates/polars-lazy/src/frame/exitable.rs
+@@ -1,7 +1,7 @@
+ use std::sync::Mutex;
+ use std::sync::mpsc::{Receiver, channel};
+ 
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_utils::relaxed_cell::RelaxedCell;
+ 
+ use super::*;
+@@ -29,7 +29,7 @@ impl LazyFrame {
+                 });
+             }
+         } else {
+-            POOL.spawn_fifo(move || {
++            RAYON.spawn_fifo(move || {
+                 let result = physical_plan.execute(&mut state);
+                 tx.send(result).unwrap();
+             });
+diff --git a/crates/polars-mem-engine/src/executors/cache.rs b/crates/polars-mem-engine/src/executors/cache.rs
+index 8331a42d4..d44b4f52b 100644
+--- a/crates/polars-mem-engine/src/executors/cache.rs
++++ b/crates/polars-mem-engine/src/executors/cache.rs
+@@ -71,7 +71,7 @@ impl Executor for CachePrefiller {
+         let parallel_scan_exec_limit = {
+             // Note, this needs to be less than the size of the tokio blocking threadpool (which
+             // defaults to 512).
+-            let parallel_scan_exec_limit = POOL.current_num_threads().min(128);
++            let parallel_scan_exec_limit = RAYON.current_num_threads().min(128);
+ 
+             if state.verbose() {
+                 eprintln!(
+diff --git a/crates/polars-mem-engine/src/executors/filter.rs b/crates/polars-mem-engine/src/executors/filter.rs
+index 8bce0dc45..f6f8838de 100644
+--- a/crates/polars-mem-engine/src/executors/filter.rs
++++ b/crates/polars-mem-engine/src/executors/filter.rs
+@@ -87,7 +87,7 @@ impl FilterExec {
+             // @partition-opt
+             df.filter(column_to_mask(&c, df.height())?.as_ref())
+         });
+-        let df = POOL.install(|| iter.collect::<PolarsResult<Vec<_>>>())?;
++        let df = RAYON.install(|| iter.collect::<PolarsResult<Vec<_>>>())?;
+         Ok(accumulate_dataframes_vertical_unchecked(df))
+     }
+ 
+@@ -96,7 +96,7 @@ impl FilterExec {
+         mut df: DataFrame,
+         state: &mut ExecutionState,
+     ) -> PolarsResult<DataFrame> {
+-        let n_partitions = POOL.current_num_threads();
++        let n_partitions = RAYON.current_num_threads();
+         // Vertical parallelism.
+         if self.streamable && df.height() > 0 {
+             if df.first_col_n_chunks() > 1 {
+diff --git a/crates/polars-mem-engine/src/executors/group_by.rs b/crates/polars-mem-engine/src/executors/group_by.rs
+index c55345386..b353155c4 100644
+--- a/crates/polars-mem-engine/src/executors/group_by.rs
++++ b/crates/polars-mem-engine/src/executors/group_by.rs
+@@ -8,7 +8,7 @@ pub(super) fn evaluate_aggs(
+     groups: &GroupPositions,
+     state: &ExecutionState,
+ ) -> PolarsResult<Vec<Column>> {
+-    POOL.install(|| {
++    RAYON.install(|| {
+         aggs.par_iter()
+             .map(|expr| {
+                 let agg = expr.evaluate_on_groups(df, groups, state)?.finalize();
+@@ -85,7 +85,7 @@ pub(super) fn group_by_helper(
+         groups = sliced_groups.as_ref().unwrap();
+     }
+ 
+-    let (mut columns, agg_columns) = POOL.install(|| {
++    let (mut columns, agg_columns) = RAYON.install(|| {
+         let get_columns = || gb.keys_sliced(slice);
+ 
+         let get_agg = || evaluate_aggs(&df, aggs, groups, state);
+diff --git a/crates/polars-mem-engine/src/executors/group_by_dynamic.rs b/crates/polars-mem-engine/src/executors/group_by_dynamic.rs
+index 5a65c9b3a..f5d1b0194 100644
+--- a/crates/polars-mem-engine/src/executors/group_by_dynamic.rs
++++ b/crates/polars-mem-engine/src/executors/group_by_dynamic.rs
+@@ -39,7 +39,7 @@ impl GroupByDynamicExec {
+         };
+ 
+         let (mut time_key, bounds, groups) = df.group_by_dynamic(group_by, &self.options)?;
+-        POOL.install(|| {
++        RAYON.install(|| {
+             keys.iter_mut().for_each(|key| {
+                 unsafe { *key = key.agg_first(&groups) };
+             })
+diff --git a/crates/polars-mem-engine/src/executors/group_by_rolling.rs b/crates/polars-mem-engine/src/executors/group_by_rolling.rs
+index cfdf502db..4aeed3a8c 100644
+--- a/crates/polars-mem-engine/src/executors/group_by_rolling.rs
++++ b/crates/polars-mem-engine/src/executors/group_by_rolling.rs
+@@ -33,7 +33,7 @@ pub(super) fn sort_and_groups(
+         // If not sorted on keys, sort.
+         let idx_s = idx.clone().into_series();
+         if !idx_s.is_sorted(Default::default()).unwrap() {
+-            let (df_ordered, keys_ordered) = POOL.join(
++            let (df_ordered, keys_ordered) = RAYON.join(
+                 || df.take_unchecked(&idx),
+                 || {
+                     keys.iter()
+diff --git a/crates/polars-mem-engine/src/executors/hconcat.rs b/crates/polars-mem-engine/src/executors/hconcat.rs
+index 2735f212a..7ec737b2e 100644
+--- a/crates/polars-mem-engine/src/executors/hconcat.rs
++++ b/crates/polars-mem-engine/src/executors/hconcat.rs
+@@ -38,9 +38,9 @@ impl Executor for HConcatExec {
+             // We don't use par_iter directly because the LP may also start threads for every LP (for instance scan_csv)
+             // this might then lead to a rayon SO. So we take a multitude of the threads to keep work stealing
+             // within bounds
+-            let out = POOL.install(|| {
++            let out = RAYON.install(|| {
+                 inputs
+-                    .chunks_mut(POOL.current_num_threads() * 3)
++                    .chunks_mut(RAYON.current_num_threads() * 3)
+                     .map(|chunk| {
+                         chunk
+                             .into_par_iter()
+diff --git a/crates/polars-mem-engine/src/executors/join.rs b/crates/polars-mem-engine/src/executors/join.rs
+index e239b4464..0c5a10320 100644
+--- a/crates/polars-mem-engine/src/executors/join.rs
++++ b/crates/polars-mem-engine/src/executors/join.rs
+@@ -57,7 +57,7 @@ impl Executor for JoinExec {
+             let mut state_left = state.split();
+             state_right.branch_idx += 1;
+ 
+-            POOL.join(
++            RAYON.join(
+                 move || input_left.execute(&mut state_left),
+                 move || input_right.execute(&mut state_right),
+             )
+diff --git a/crates/polars-mem-engine/src/executors/merge_sorted.rs b/crates/polars-mem-engine/src/executors/merge_sorted.rs
+index 43233ccfe..a6b516e6b 100644
+--- a/crates/polars-mem-engine/src/executors/merge_sorted.rs
++++ b/crates/polars-mem-engine/src/executors/merge_sorted.rs
+@@ -22,7 +22,7 @@ impl Executor for MergeSorted {
+         let (left, right) = {
+             let mut state2 = state.split();
+             state2.branch_idx += 1;
+-            let (left, right) = POOL.join(
++            let (left, right) = RAYON.join(
+                 || self.input_left.execute(state),
+                 || self.input_right.execute(&mut state2),
+             );
+diff --git a/crates/polars-mem-engine/src/executors/mod.rs b/crates/polars-mem-engine/src/executors/mod.rs
+index e00a432cf..6e2793568 100644
+--- a/crates/polars-mem-engine/src/executors/mod.rs
++++ b/crates/polars-mem-engine/src/executors/mod.rs
+@@ -26,7 +26,7 @@ use std::borrow::Cow;
+ 
+ pub use executor::*;
+ pub use filter::column_to_mask;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_plan::utils::*;
+ use projection_utils::*;
+ use rayon::prelude::*;
+diff --git a/crates/polars-mem-engine/src/executors/projection.rs b/crates/polars-mem-engine/src/executors/projection.rs
+index 4ba7397ed..e8f6479b7 100644
+--- a/crates/polars-mem-engine/src/executors/projection.rs
++++ b/crates/polars-mem-engine/src/executors/projection.rs
+@@ -25,7 +25,7 @@ impl ProjectionExec {
+         // Vertical and horizontal parallelism.
+         let df = if self.allow_vertical_parallelism
+             && df.first_col_n_chunks() > 1
+-            && df.height() > POOL.current_num_threads() * 2
++            && df.height() > RAYON.current_num_threads() * 2
+             && self.options.run_parallel
+         {
+             let chunks = df.split_chunks().collect::<Vec<_>>();
+@@ -46,7 +46,7 @@ impl ProjectionExec {
+                 )
+             });
+ 
+-            let df = POOL.install(|| iter.collect::<PolarsResult<Vec<_>>>())?;
++            let df = RAYON.install(|| iter.collect::<PolarsResult<Vec<_>>>())?;
+             accumulate_dataframes_vertical_unchecked(df)
+         }
+         // Only horizontal parallelism.
+diff --git a/crates/polars-mem-engine/src/executors/projection_utils.rs b/crates/polars-mem-engine/src/executors/projection_utils.rs
+index db1b90c0e..4d14c92ac 100644
+--- a/crates/polars-mem-engine/src/executors/projection_utils.rs
++++ b/crates/polars-mem-engine/src/executors/projection_utils.rs
+@@ -21,7 +21,7 @@ fn rolling_evaluate(
+     state: &ExecutionState,
+     rolling: PlHashMap<RollingGroupOptions, Vec<IdAndExpression>>,
+ ) -> PolarsResult<Vec<Vec<(u32, Column)>>> {
+-    POOL.install(|| {
++    RAYON.install(|| {
+         rolling
+             .par_iter()
+             .map(|(options, partition)| {
+@@ -52,7 +52,7 @@ fn window_evaluate(
+     if window.is_empty() {
+         return Ok(vec![]);
+     }
+-    let n_threads = POOL.current_num_threads();
++    let n_threads = RAYON.current_num_threads();
+ 
+     let max_hor = window.values().map(|v| v.len()).max().unwrap_or(0);
+     let vert = window.len();
+@@ -125,7 +125,7 @@ fn window_evaluate(
+     };
+ 
+     if par_vertical {
+-        POOL.install(|| window.par_iter().map(|t| apply(t.1)).collect())
++        RAYON.install(|| window.par_iter().map(|t| apply(t.1)).collect())
+     } else {
+         window.iter().map(|t| apply(t.1)).collect()
+     }
+@@ -211,7 +211,7 @@ fn execute_projection_cached_window_fns(
+         }
+     });
+ 
+-    let mut selected_columns = POOL.install(|| {
++    let mut selected_columns = RAYON.install(|| {
+         other
+             .par_iter()
+             .map(|(idx, expr)| expr.evaluate(df, state).map(|s| (*idx, s)))
+@@ -223,7 +223,7 @@ fn execute_projection_cached_window_fns(
+     // The rolling expression knows how to fetch the groups.
+     #[cfg(feature = "dynamic_group_by")]
+     {
+-        let (a, b) = POOL.join(
++        let (a, b) = RAYON.join(
+             || rolling_evaluate(df, state, rolling),
+             || window_evaluate(df, state, windows),
+         );
+@@ -255,7 +255,7 @@ fn run_exprs_par(
+     exprs: &[Arc<dyn PhysicalExpr>],
+     state: &ExecutionState,
+ ) -> PolarsResult<Vec<Column>> {
+-    POOL.install(|| {
++    RAYON.install(|| {
+         exprs
+             .par_iter()
+             .map(|expr| expr.evaluate(df, state))
+diff --git a/crates/polars-mem-engine/src/executors/scan/python_scan.rs b/crates/polars-mem-engine/src/executors/scan/python_scan.rs
+index 00b5ee54f..4ea8b1d3a 100644
+--- a/crates/polars-mem-engine/src/executors/scan/python_scan.rs
++++ b/crates/polars-mem-engine/src/executors/scan/python_scan.rs
+@@ -61,7 +61,7 @@ impl Executor for PythonScanExec {
+         }
+         let with_columns = self.options.with_columns.take();
+         let n_rows = self.options.n_rows.take();
+-        POOL.block_on(|| {
++        RAYON.block_on(|| {
+             Python::attach(|py| {
+                 let python_scan_function = self.options.scan_fn.take().unwrap().0;
+                 let python_scan_function = python_scan_function.bind(py);
+diff --git a/crates/polars-mem-engine/src/executors/stack.rs b/crates/polars-mem-engine/src/executors/stack.rs
+index 4b99f657e..6967ceb2a 100644
+--- a/crates/polars-mem-engine/src/executors/stack.rs
++++ b/crates/polars-mem-engine/src/executors/stack.rs
+@@ -42,7 +42,7 @@ impl StackExec {
+                 Ok(df)
+             });
+ 
+-            let df = POOL.install(|| iter.collect::<PolarsResult<Vec<_>>>())?;
++            let df = RAYON.install(|| iter.collect::<PolarsResult<Vec<_>>>())?;
+             accumulate_dataframes_vertical_unchecked(df)
+         }
+         // Only horizontal parallelism
+diff --git a/crates/polars-mem-engine/src/executors/union.rs b/crates/polars-mem-engine/src/executors/union.rs
+index ad3d844a2..b2f67d19d 100644
+--- a/crates/polars-mem-engine/src/executors/union.rs
++++ b/crates/polars-mem-engine/src/executors/union.rs
+@@ -83,9 +83,9 @@ impl Executor for UnionExec {
+             // we don't use par_iter directly because the LP may also start threads for every LP (for instance scan_csv)
+             // this might then lead to a rayon SO. So we take a multitude of the threads to keep work stealing
+             // within bounds
+-            let out = POOL.install(|| {
++            let out = RAYON.install(|| {
+                 inputs
+-                    .chunks_mut(POOL.current_num_threads() * 3)
++                    .chunks_mut(RAYON.current_num_threads() * 3)
+                     .map(|chunk| {
+                         chunk
+                             .into_par_iter()
+diff --git a/crates/polars-mem-engine/src/planner/lp.rs b/crates/polars-mem-engine/src/planner/lp.rs
+index 8b8e698cc..6b68c02f5 100644
+--- a/crates/polars-mem-engine/src/planner/lp.rs
++++ b/crates/polars-mem-engine/src/planner/lp.rs
+@@ -1,5 +1,5 @@
+ use polars_core::prelude::*;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_expr::state::ExecutionState;
+ use polars_plan::plans::expr_ir::ExprIR;
+ use polars_plan::prelude::sink::CallbackSinkType;
+@@ -111,9 +111,9 @@ impl MultiplePhysicalPlans {
+             cache_prefiller.execute(&mut state)?;
+         }
+         // Chunked iter to avoid rayon stack overflow.
+-        let out = POOL.install(|| {
++        let out = RAYON.install(|| {
+             self.physical_plans
+-                .chunks_mut(POOL.current_num_threads() * 3)
++                .chunks_mut(RAYON.current_num_threads() * 3)
+                 .map(|chunk| {
+                     chunk
+                         .into_par_iter()
+@@ -494,7 +494,8 @@ fn create_physical_plan_impl(
+         } => {
+             let input_schema = lp_arena.get(input).schema(lp_arena).into_owned();
+             let input = recurse!(input, state)?;
+-            let mut state = ExpressionConversionState::new(POOL.current_num_threads() > expr.len());
++            let mut state =
++                ExpressionConversionState::new(RAYON.current_num_threads() > expr.len());
+             let phys_expr =
+                 create_physical_expressions_from_irs(&expr, expr_arena, &input_schema, &mut state)?;
+ 
+@@ -773,7 +774,7 @@ fn create_physical_plan_impl(
+                     .all(|e| is_elementwise_rec(e.node(), expr_arena));
+ 
+             let mut state =
+-                ExpressionConversionState::new(POOL.current_num_threads() > exprs.len());
++                ExpressionConversionState::new(RAYON.current_num_threads() > exprs.len());
+ 
+             let phys_exprs = create_physical_expressions_from_irs(
+                 &exprs,
+diff --git a/crates/polars-ops/src/chunked_array/array/to_struct.rs b/crates/polars-ops/src/chunked_array/array/to_struct.rs
+index 0a5d53dff..b2293e127 100644
+--- a/crates/polars-ops/src/chunked_array/array/to_struct.rs
++++ b/crates/polars-ops/src/chunked_array/array/to_struct.rs
+@@ -1,4 +1,4 @@
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_utils::format_pl_smallstr;
+ use polars_utils::pl_str::PlSmallStr;
+ use rayon::prelude::*;
+@@ -23,7 +23,7 @@ pub trait ToStruct: AsArray {
+             .as_deref()
+             .unwrap_or(&|i| Ok(arr_default_struct_name_gen(i)));
+ 
+-        let fields = POOL.install(|| {
++        let fields = RAYON.install(|| {
+             (0..n_fields)
+                 .into_par_iter()
+                 .map(|i| {
+diff --git a/crates/polars-ops/src/chunked_array/list/to_struct.rs b/crates/polars-ops/src/chunked_array/list/to_struct.rs
+index 4e78dd61d..3bc683797 100644
+--- a/crates/polars-ops/src/chunked_array/list/to_struct.rs
++++ b/crates/polars-ops/src/chunked_array/list/to_struct.rs
+@@ -1,4 +1,4 @@
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_utils::format_pl_smallstr;
+ use polars_utils::pl_str::PlSmallStr;
+ use rayon::prelude::*;
+@@ -148,7 +148,7 @@ pub trait ToStruct: AsList {
+         let ca = self.as_list();
+         let n_fields = args.det_n_fields(ca);
+ 
+-        let mut fields = POOL.install(|| {
++        let mut fields = RAYON.install(|| {
+             (0..n_fields)
+                 .into_par_iter()
+                 .map(|i| ca.lst_get(i as i64, true))
+diff --git a/crates/polars-ops/src/chunked_array/mode.rs b/crates/polars-ops/src/chunked_array/mode.rs
+index 4ddabffba..686090414 100644
+--- a/crates/polars-ops/src/chunked_array/mode.rs
++++ b/crates/polars-ops/src/chunked_array/mode.rs
+@@ -1,5 +1,5 @@
+ use polars_core::prelude::*;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ 
+ fn mode_indices(groups: GroupsType) -> Vec<IdxSize> {
+     match groups {
+@@ -27,7 +27,7 @@ fn mode_indices(groups: GroupsType) -> Vec<IdxSize> {
+ }
+ 
+ pub fn mode(s: &Series, maintain_order: bool) -> PolarsResult<Series> {
+-    let parallel = !POOL.current_thread_has_pending_tasks().unwrap_or(false);
++    let parallel = !RAYON.current_thread_has_pending_tasks().unwrap_or(false);
+     let groups = s.group_tuples(parallel, maintain_order).unwrap();
+     let idx = mode_indices(groups);
+     let idx = IdxCa::from_vec("".into(), idx);
+diff --git a/crates/polars-ops/src/chunked_array/top_k.rs b/crates/polars-ops/src/chunked_array/top_k.rs
+index 2c975be81..59d9bedb0 100644
+--- a/crates/polars-ops/src/chunked_array/top_k.rs
++++ b/crates/polars-ops/src/chunked_array/top_k.rs
+@@ -3,7 +3,7 @@ use arrow::bitmap::{Bitmap, BitmapBuilder};
+ use polars_core::chunked_array::ops::sort::arg_bottom_k::_arg_bottom_k;
+ use polars_core::downcast_as_macro_arg_physical;
+ use polars_core::prelude::*;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_core::series::IsSorted;
+ use polars_utils::total_ord::TotalOrd;
+ 
+@@ -272,7 +272,7 @@ fn top_k_by_impl(
+         return Ok(src.clone());
+     }
+ 
+-    let multithreaded = k >= 10000 && POOL.current_num_threads() > 1;
++    let multithreaded = k >= 10000 && RAYON.current_num_threads() > 1;
+     let mut sort_options = SortMultipleOptions {
+         descending: descending.into_iter().map(|x| !x).collect(),
+         nulls_last: vec![true; by.len()],
+diff --git a/crates/polars-ops/src/frame/join/asof/groups.rs b/crates/polars-ops/src/frame/join/asof/groups.rs
+index 53fd7c47b..ead017a28 100644
+--- a/crates/polars-ops/src/frame/join/asof/groups.rs
++++ b/crates/polars-ops/src/frame/join/asof/groups.rs
+@@ -3,7 +3,7 @@ use std::hash::Hash;
+ use num_traits::Zero;
+ use polars_core::hashing::_HASHMAP_INIT_SIZE;
+ use polars_core::prelude::*;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_core::series::BitRepr;
+ use polars_core::utils::flatten::flatten_nullable;
+ use polars_core::utils::split_and_flatten;
+@@ -91,11 +91,11 @@ where
+     A: for<'a> AsofJoinState<T::Physical<'a>>,
+     F: Sync + for<'a> Fn(T::Physical<'a>, T::Physical<'a>) -> bool,
+ {
+-    let (left_asof, right_asof) = POOL.join(|| left_asof.rechunk(), || right_asof.rechunk());
++    let (left_asof, right_asof) = RAYON.join(|| left_asof.rechunk(), || right_asof.rechunk());
+     let left_val_arr = left_asof.downcast_as_array();
+     let right_val_arr = right_asof.downcast_as_array();
+ 
+-    let n_threads = POOL.current_num_threads();
++    let n_threads = RAYON.current_num_threads();
+     // `strict` is false so that we always flatten. Even if there are more chunks than threads.
+     let split_by_left = split_and_flatten(by_left, n_threads);
+     let split_by_right = split_and_flatten(by_right, n_threads);
+@@ -158,7 +158,7 @@ where
+             results
+         });
+ 
+-    let bufs = POOL.install(|| out.collect::<Vec<_>>());
++    let bufs = RAYON.install(|| out.collect::<Vec<_>>());
+     Ok(flatten_nullable(&bufs))
+ }
+ 
+@@ -177,7 +177,7 @@ where
+     A: for<'a> AsofJoinState<T::Physical<'a>>,
+     F: Sync + for<'a> Fn(T::Physical<'a>, T::Physical<'a>) -> bool,
+ {
+-    let (left_asof, right_asof) = POOL.join(|| left_asof.rechunk(), || right_asof.rechunk());
++    let (left_asof, right_asof) = RAYON.join(|| left_asof.rechunk(), || right_asof.rechunk());
+     let left_val_arr = left_asof.downcast_as_array();
+     let right_val_arr = right_asof.downcast_as_array();
+ 
+@@ -221,7 +221,7 @@ where
+             }
+             results
+         });
+-    let bufs = POOL.install(|| iter.collect::<Vec<_>>());
++    let bufs = RAYON.install(|| iter.collect::<Vec<_>>());
+     flatten_nullable(&bufs)
+ }
+ 
+diff --git a/crates/polars-ops/src/frame/join/cross_join.rs b/crates/polars-ops/src/frame/join/cross_join.rs
+index 9236fc59c..13af13a65 100644
+--- a/crates/polars-ops/src/frame/join/cross_join.rs
++++ b/crates/polars-ops/src/frame/join/cross_join.rs
+@@ -122,7 +122,7 @@ fn cross_join_dfs<'a>(
+     };
+     let (l_df, r_df) = if parallel {
+         try_raise_keyboard_interrupt();
+-        POOL.install(|| rayon::join(create_left_df, create_right_df))
++        RAYON.install(|| rayon::join(create_left_df, create_right_df))
+     } else {
+         (create_left_df(), create_right_df())
+     };
+@@ -163,7 +163,7 @@ pub(super) fn fused_cross_filter(
+     let rename_names = names.get_column_names();
+     let rename_names = &rename_names[left.width()..];
+ 
+-    let dfs = POOL
++    let dfs = RAYON
+         .install(|| {
+             cartesian_prod.par_iter().map(|(left, right)| {
+                 let (mut left, right) = cross_join_dfs(left, right, None, false, maintain_order)?;
+diff --git a/crates/polars-ops/src/frame/join/dispatch_left_right.rs b/crates/polars-ops/src/frame/join/dispatch_left_right.rs
+index 86de30864..f8f112d6d 100644
+--- a/crates/polars-ops/src/frame/join/dispatch_left_right.rs
++++ b/crates/polars-ops/src/frame/join/dispatch_left_right.rs
+@@ -99,21 +99,21 @@ pub fn materialize_left_join_from_series(
+                     args,
+                 ))
+             } else {
+-                Ok(POOL.join(
++                Ok(RAYON.join(
+                     || materialize_left_join_idx_left(&left, left_idx.as_slice(), args),
+                     || materialize_left_join_idx_right(&right, right_idx.as_slice(), args),
+                 ))
+             }
+         },
+-        (ChunkJoinIds::Left(left_idx), ChunkJoinOptIds::Right(right_idx)) => Ok(POOL.join(
++        (ChunkJoinIds::Left(left_idx), ChunkJoinOptIds::Right(right_idx)) => Ok(RAYON.join(
+             || materialize_left_join_idx_left(&left, left_idx.as_slice(), args),
+             || materialize_left_join_chunked_right(&right, right_idx.as_slice(), args),
+         )),
+-        (ChunkJoinIds::Right(left_idx), ChunkJoinOptIds::Right(right_idx)) => Ok(POOL.join(
++        (ChunkJoinIds::Right(left_idx), ChunkJoinOptIds::Right(right_idx)) => Ok(RAYON.join(
+             || materialize_left_join_chunked_left(&left, left_idx.as_slice(), args),
+             || materialize_left_join_chunked_right(&right, right_idx.as_slice(), args),
+         )),
+-        (ChunkJoinIds::Right(left_idx), ChunkJoinOptIds::Left(right_idx)) => Ok(POOL.join(
++        (ChunkJoinIds::Right(left_idx), ChunkJoinOptIds::Left(right_idx)) => Ok(RAYON.join(
+             || materialize_left_join_chunked_left(&left, left_idx.as_slice(), args),
+             || materialize_left_join_idx_right(&right, right_idx.as_slice(), args),
+         )),
+@@ -129,7 +129,7 @@ pub fn materialize_left_join_from_series(
+             args,
+         ))
+     } else {
+-        Ok(POOL.join(
++        Ok(RAYON.join(
+             || materialize_left_join_idx_left(&left, left_idx.as_slice(), args),
+             || materialize_left_join_idx_right(&right, right_idx.as_slice(), args),
+         ))
+@@ -189,7 +189,7 @@ fn maintain_order_idx(
+         .cont_slice()
+         .unwrap();
+ 
+-    POOL.join(
++    RAYON.join(
+         || materialize_left_join_idx_left(left, join_tuples_left, args),
+         || materialize_left_join_idx_right(other, bytemuck::cast_slice(join_tuples_right), args),
+     )
+diff --git a/crates/polars-ops/src/frame/join/hash_join/mod.rs b/crates/polars-ops/src/frame/join/hash_join/mod.rs
+index 009e33259..1cbfc5419 100644
+--- a/crates/polars-ops/src/frame/join/hash_join/mod.rs
++++ b/crates/polars-ops/src/frame/join/hash_join/mod.rs
+@@ -8,7 +8,7 @@ mod single_keys_outer;
+ mod single_keys_semi_anti;
+ pub(super) mod sort_merge;
+ use arrow::array::ArrayRef;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_core::utils::_set_partition_size;
+ use polars_utils::index::ChunkId;
+ use polars_utils::unique_column_name;
+@@ -187,12 +187,12 @@ pub trait JoinDispatch: IntoDf {
+ 
+             let join_tuples_left = df.column("a").unwrap().idx().unwrap();
+             let join_tuples_right = df.column("b").unwrap().idx().unwrap();
+-            POOL.join(
++            RAYON.join(
+                 || unsafe { df_self.take_unchecked(join_tuples_left) },
+                 || unsafe { other.take_unchecked(join_tuples_right) },
+             )
+         } else {
+-            POOL.join(
++            RAYON.join(
+                 || unsafe { df_self.take_unchecked(&idx_ca_l) },
+                 || unsafe { other.take_unchecked(&idx_ca_r) },
+             )
+diff --git a/crates/polars-ops/src/frame/join/hash_join/single_keys.rs b/crates/polars-ops/src/frame/join/hash_join/single_keys.rs
+index 64c8387d6..dcf1a2679 100644
+--- a/crates/polars-ops/src/frame/join/hash_join/single_keys.rs
++++ b/crates/polars-ops/src/frame/join/hash_join/single_keys.rs
+@@ -47,7 +47,7 @@ where
+         return vec![hm];
+     }
+ 
+-    POOL.install(|| {
++    RAYON.install(|| {
+         // Compute the number of elements in each partition for each portion.
+         let per_thread_partition_sizes: Vec<Vec<usize>> = keys
+             .par_iter()
+diff --git a/crates/polars-ops/src/frame/join/hash_join/single_keys_dispatch.rs b/crates/polars-ops/src/frame/join/hash_join/single_keys_dispatch.rs
+index 9a6ca870e..0e1b8fff3 100644
+--- a/crates/polars-ops/src/frame/join/hash_join/single_keys_dispatch.rs
++++ b/crates/polars-ops/src/frame/join/hash_join/single_keys_dispatch.rs
+@@ -475,7 +475,7 @@ where
+     for<'a> <T::Physical<'a> as ToTotalOrd>::TotalOrdItem:
+         Send + Sync + Copy + Hash + Eq + DirtyHash + IsNull,
+ {
+-    let n_threads = POOL.current_num_threads();
++    let n_threads = RAYON.current_num_threads();
+     let (a, b, swapped) = det_hash_prone_order!(left, right);
+     let splitted_a = split(a, n_threads);
+     let splitted_b = split(b, n_threads);
+@@ -563,7 +563,7 @@ fn create_mappings(
+         }
+     };
+ 
+-    POOL.join(mapping_left, mapping_right)
++    RAYON.join(mapping_left, mapping_right)
+ }
+ 
+ #[cfg(not(feature = "chunked_ids"))]
+@@ -589,7 +589,7 @@ where
+     T::Native: DirtyHash + Copy + ToTotalOrd,
+     <Option<T::Native> as ToTotalOrd>::TotalOrdItem: Send + Sync + DirtyHash,
+ {
+-    let n_threads = POOL.current_num_threads();
++    let n_threads = RAYON.current_num_threads();
+     let splitted_a = split(left, n_threads);
+     let splitted_b = split(right, n_threads);
+     match (
+@@ -722,7 +722,7 @@ where
+     <T::Native as ToTotalOrd>::TotalOrdItem: Send + Sync + Copy + Hash + Eq + DirtyHash + IsNull,
+     <Option<T::Native> as ToTotalOrd>::TotalOrdItem: Send + Sync + DirtyHash + IsNull,
+ {
+-    let n_threads = POOL.current_num_threads();
++    let n_threads = RAYON.current_num_threads();
+     let splitted_a = split(left, n_threads);
+     let splitted_b = split(right, n_threads);
+     match (
+diff --git a/crates/polars-ops/src/frame/join/hash_join/single_keys_inner.rs b/crates/polars-ops/src/frame/join/hash_join/single_keys_inner.rs
+index ce7d06bf1..db7456457 100644
+--- a/crates/polars-ops/src/frame/join/hash_join/single_keys_inner.rs
++++ b/crates/polars-ops/src/frame/join/hash_join/single_keys_inner.rs
+@@ -75,7 +75,7 @@ where
+     let offsets = probe_to_offsets(&probe);
+     // next we probe the other relation
+     // code duplication is because we want to only do the swap check once
+-    let out = POOL.install(|| {
++    let out = RAYON.install(|| {
+         let tuples = probe
+             .into_par_iter()
+             .zip(offsets)
+diff --git a/crates/polars-ops/src/frame/join/hash_join/single_keys_left.rs b/crates/polars-ops/src/frame/join/hash_join/single_keys_left.rs
+index b3bfb8d46..928f0fedb 100644
+--- a/crates/polars-ops/src/frame/join/hash_join/single_keys_left.rs
++++ b/crates/polars-ops/src/frame/join/hash_join/single_keys_left.rs
+@@ -143,7 +143,7 @@ where
+     let offsets = probe_to_offsets(&probe);
+ 
+     // next we probe the other relation
+-    let result: Vec<LeftJoinIds> = POOL.install(move || {
++    let result: Vec<LeftJoinIds> = RAYON.install(move || {
+         probe
+             .into_par_iter()
+             .zip(offsets)
+diff --git a/crates/polars-ops/src/frame/join/hash_join/single_keys_outer.rs b/crates/polars-ops/src/frame/join/hash_join/single_keys_outer.rs
+index c7fae4433..28f033186 100644
+--- a/crates/polars-ops/src/frame/join/hash_join/single_keys_outer.rs
++++ b/crates/polars-ops/src/frame/join/hash_join/single_keys_outer.rs
+@@ -21,7 +21,7 @@ where
+     <T as ToTotalOrd>::TotalOrdItem: Hash + Eq,
+ {
+     let build_hasher = build_hasher.unwrap_or_default();
+-    let hashes = POOL.install(|| {
++    let hashes = RAYON.install(|| {
+         iters
+             .into_par_iter()
+             .map(|iter| {
+@@ -50,7 +50,7 @@ where
+     // We will create a hashtable in every thread.
+     // We use the hash to partition the keys to the matching hashtable.
+     // Every thread traverses all keys/hashes and ignores the ones that doesn't fall in that partition.
+-    POOL.install(|| {
++    RAYON.install(|| {
+         (0..n_partitions)
+             .into_par_iter()
+             .map(|partition_no| {
+diff --git a/crates/polars-ops/src/frame/join/hash_join/single_keys_semi_anti.rs b/crates/polars-ops/src/frame/join/hash_join/single_keys_semi_anti.rs
+index ecce25d36..4612ba166 100644
+--- a/crates/polars-ops/src/frame/join/hash_join/single_keys_semi_anti.rs
++++ b/crates/polars-ops/src/frame/join/hash_join/single_keys_semi_anti.rs
+@@ -33,7 +33,7 @@ where
+         }
+         hash_tbl
+     });
+-    POOL.install(|| par_iter.collect())
++    RAYON.install(|| par_iter.collect())
+ }
+ 
+ /// Construct a ParallelIterator, but doesn't iterate it. This means the caller
+@@ -105,7 +105,7 @@ where
+     let par_iter = semi_anti_impl(probe, build, nulls_equal)
+         .filter(|tpls| !tpls.1)
+         .map(|tpls| tpls.0);
+-    POOL.install(|| par_iter.collect())
++    RAYON.install(|| par_iter.collect())
+ }
+ 
+ pub(super) fn hash_join_tuples_left_semi<T, I>(
+@@ -121,5 +121,5 @@ where
+     let par_iter = semi_anti_impl(probe, build, nulls_equal)
+         .filter(|tpls| tpls.1)
+         .map(|tpls| tpls.0);
+-    POOL.install(|| par_iter.collect())
++    RAYON.install(|| par_iter.collect())
+ }
+diff --git a/crates/polars-ops/src/frame/join/hash_join/sort_merge.rs b/crates/polars-ops/src/frame/join/hash_join/sort_merge.rs
+index ebe509375..22dcf4e96 100644
+--- a/crates/polars-ops/src/frame/join/hash_join/sort_merge.rs
++++ b/crates/polars-ops/src/frame/join/hash_join/sort_merge.rs
+@@ -15,7 +15,7 @@ fn par_sorted_merge_left_impl<T>(
+ where
+     T: PolarsNumericType,
+ {
+-    let offsets = _split_offsets(s_left.len(), POOL.current_num_threads());
++    let offsets = _split_offsets(s_left.len(), RAYON.current_num_threads());
+     let s_left = s_left.rechunk();
+     let s_right = s_right.rechunk();
+ 
+@@ -27,7 +27,7 @@ where
+         let slice_left = &slice_left[offset..offset + len];
+         sorted_join::left::join(slice_left, slice_right, offset as IdxSize)
+     });
+-    let indexes = POOL.install(|| indexes.collect::<Vec<_>>());
++    let indexes = RAYON.install(|| indexes.collect::<Vec<_>>());
+ 
+     let lefts = indexes.iter().map(|t| &t.0).collect::<Vec<_>>();
+     let rights = indexes.iter().map(|t| &t.1).collect::<Vec<_>>();
+@@ -99,7 +99,7 @@ fn par_sorted_merge_inner_impl<T>(
+ where
+     T: PolarsNumericType,
+ {
+-    let offsets = _split_offsets(s_left.len(), POOL.current_num_threads());
++    let offsets = _split_offsets(s_left.len(), RAYON.current_num_threads());
+     let s_left = s_left.rechunk();
+     let s_right = s_right.rechunk();
+ 
+@@ -111,7 +111,7 @@ where
+         let slice_left = &slice_left[offset..offset + len];
+         sorted_join::inner::join(slice_left, slice_right, offset as IdxSize)
+     });
+-    let indexes = POOL.install(|| indexes.collect::<Vec<_>>());
++    let indexes = RAYON.install(|| indexes.collect::<Vec<_>>());
+ 
+     let lefts = indexes.iter().map(|t| &t.0).collect::<Vec<_>>();
+     let rights = indexes.iter().map(|t| &t.1).collect::<Vec<_>>();
+@@ -259,7 +259,7 @@ pub(crate) fn _sort_or_hash_inner(
+ 
+             let (left, mut right) = ids;
+ 
+-            POOL.install(|| {
++            RAYON.install(|| {
+                 right.par_iter_mut().for_each(|idx| {
+                     *idx = unsafe { *reverse_idx_map.get_unchecked(*idx as usize) };
+                 });
+@@ -287,7 +287,7 @@ pub(crate) fn _sort_or_hash_inner(
+ 
+             let (mut left, right) = ids;
+ 
+-            POOL.install(|| {
++            RAYON.install(|| {
+                 left.par_iter_mut().for_each(|idx| {
+                     *idx = unsafe { *reverse_idx_map.get_unchecked(*idx as usize) };
+                 });
+@@ -359,7 +359,7 @@ pub(crate) fn sort_or_hash_left(
+             let reverse_idx_map = create_reverse_map_from_arg_sort(sort_idx);
+             let (left, mut right) = ids;
+ 
+-            POOL.install(|| {
++            RAYON.install(|| {
+                 right.par_iter_mut().for_each(|opt_idx| {
+                     if !opt_idx.is_null_idx() {
+                         *opt_idx =
+diff --git a/crates/polars-ops/src/frame/join/iejoin/mod.rs b/crates/polars-ops/src/frame/join/iejoin/mod.rs
+index d6152c455..b515bb90d 100644
+--- a/crates/polars-ops/src/frame/join/iejoin/mod.rs
++++ b/crates/polars-ops/src/frame/join/iejoin/mod.rs
+@@ -10,7 +10,7 @@ use polars_core::chunked_array::ChunkedArray;
+ use polars_core::datatypes::{IdxCa, NumericNative, PolarsNumericType};
+ use polars_core::frame::DataFrame;
+ use polars_core::prelude::*;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_core::series::IsSorted;
+ use polars_core::utils::{_set_partition_size, split};
+ use polars_core::with_match_physical_numeric_polars_type;
+@@ -325,7 +325,7 @@ pub(super) fn iejoin_par(
+         }
+     });
+ 
+-    let row_indices = POOL.install(|| iter.collect::<PolarsResult<Vec<_>>>())?;
++    let row_indices = RAYON.install(|| iter.collect::<PolarsResult<Vec<_>>>())?;
+ 
+     let mut left_idx = IdxCa::default();
+     let mut right_idx = IdxCa::default();
+@@ -367,7 +367,7 @@ unsafe fn materialize_join(
+ ) -> PolarsResult<DataFrame> {
+     try_raise_keyboard_interrupt();
+     let (join_left, join_right) = {
+-        POOL.join(
++        RAYON.join(
+             || left.take_unchecked(left_row_idx),
+             || right.take_unchecked(right_row_idx),
+         )
+diff --git a/crates/polars-ops/src/frame/join/mod.rs b/crates/polars-ops/src/frame/join/mod.rs
+index 0baab5f85..848fe0292 100644
+--- a/crates/polars-ops/src/frame/join/mod.rs
++++ b/crates/polars-ops/src/frame/join/mod.rs
+@@ -40,7 +40,7 @@ use polars_core::chunked_array::ops::row_encode::{
+ use polars_core::datatypes::DataType;
+ use polars_core::hashing::_HASHMAP_INIT_SIZE;
+ use polars_core::prelude::*;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ pub(super) use polars_core::series::IsSorted;
+ use polars_core::utils::slice_offsets;
+ #[allow(unused_imports)]
+@@ -232,7 +232,7 @@ pub trait DataFrameJoinOps: IntoDf {
+             let Some(JoinTypeOptions::IEJoin(options)) = options else {
+                 unreachable!()
+             };
+-            let func = if POOL.current_num_threads() > 1
++            let func = if RAYON.current_num_threads() > 1
+                 && !left_df.shape_has_zero()
+                 && !other.shape_has_zero()
+             {
+@@ -611,13 +611,13 @@ trait DataFrameJoinOpsPrivate: IntoDf {
+                     a.set_sorted_flag(IsSorted::Ascending);
+                 }
+ 
+-                POOL.join(
++                RAYON.join(
+                     // SAFETY: join indices are known to be in bounds
+                     || unsafe { left_df.take_unchecked(a.idx().unwrap()) },
+                     || unsafe { other.take_unchecked(b.idx().unwrap()) },
+                 )
+             } else {
+-                POOL.join(
++                RAYON.join(
+                     // SAFETY: join indices are known to be in bounds
+                     || unsafe { left_df.take_unchecked(left.into_series().idx().unwrap()) },
+                     || unsafe { other.take_unchecked(right.into_series().idx().unwrap()) },
+diff --git a/crates/polars-ops/src/frame/mod.rs b/crates/polars-ops/src/frame/mod.rs
+index ae4ba86eb..dbba7c2d7 100644
+--- a/crates/polars-ops/src/frame/mod.rs
++++ b/crates/polars-ops/src/frame/mod.rs
+@@ -6,7 +6,7 @@ pub mod unpivot;
+ pub use join::*;
+ use polars_core::prelude::*;
+ #[cfg(feature = "to_dummies")]
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ #[cfg(feature = "to_dummies")]
+ use polars_core::utils::accumulate_dataframes_horizontal;
+ #[cfg(feature = "to_dummies")]
+@@ -109,7 +109,7 @@ pub trait DataFrameOps: IntoDf {
+             PlHashSet::from_iter(df.columns().iter().map(|s| s.name().as_str()))
+         };
+ 
+-        let cols = POOL.install(|| {
++        let cols = RAYON.install(|| {
+             df.columns()
+                 .par_iter()
+                 .map(|s| match set.contains(s.name().as_str()) {
+diff --git a/crates/polars-ops/src/series/ops/horizontal.rs b/crates/polars-ops/src/series/ops/horizontal.rs
+index deae44adc..a3e5702c4 100644
+--- a/crates/polars-ops/src/series/ops/horizontal.rs
++++ b/crates/polars-ops/src/series/ops/horizontal.rs
+@@ -2,7 +2,7 @@ use std::borrow::Cow;
+ 
+ use polars_core::chunked_array::cast::CastOptions;
+ use polars_core::prelude::*;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_core::series::arithmetic::coerce_lhs_rhs;
+ use polars_core::utils::dtypes_to_supertype;
+ use polars_core::with_match_physical_numeric_polars_type;
+@@ -144,7 +144,7 @@ pub fn max_horizontal(columns: &[Column]) -> PolarsResult<Option<Column>> {
+         _ => {
+             // the try_reduce_with is a bit slower in parallelism,
+             // but I don't think it matters here as we parallelize over columns, not over elements
+-            POOL.install(|| {
++            RAYON.install(|| {
+                 columns
+                     .par_iter()
+                     .map(|s| Ok(Cow::Borrowed(s)))
+@@ -170,7 +170,7 @@ pub fn min_horizontal(columns: &[Column]) -> PolarsResult<Option<Column>> {
+         _ => {
+             // the try_reduce_with is a bit slower in parallelism,
+             // but I don't think it matters here as we parallelize over columns, not over elements
+-            POOL.install(|| {
++            RAYON.install(|| {
+                 columns
+                     .par_iter()
+                     .map(|s| Ok(Cow::Borrowed(s)))
+@@ -250,7 +250,7 @@ pub fn sum_horizontal(
+         _ => {
+             // the try_reduce_with is a bit slower in parallelism,
+             // but I don't think it matters here as we parallelize over columns, not over elements
+-            let out = POOL.install(|| {
++            let out = RAYON.install(|| {
+                 non_null_cols
+                     .into_par_iter()
+                     .cloned()
+@@ -314,7 +314,7 @@ pub fn mean_horizontal(
+                     .unwrap()
+             };
+ 
+-            let (sum, null_count) = POOL.install(|| rayon::join(sum, null_count));
++            let (sum, null_count) = RAYON.install(|| rayon::join(sum, null_count));
+             let sum = sum?;
+             let null_count = null_count?;
+ 
+diff --git a/crates/polars-plan/src/plans/conversion/dsl_to_ir/scans.rs b/crates/polars-plan/src/plans/conversion/dsl_to_ir/scans.rs
+index 522ac9fa1..78a030d21 100644
+--- a/crates/polars-plan/src/plans/conversion/dsl_to_ir/scans.rs
++++ b/crates/polars-plan/src/plans/conversion/dsl_to_ir/scans.rs
+@@ -351,7 +351,7 @@ pub async fn csv_file_info(
+     missing_columns_policy: MissingColumnsPolicy,
+ ) -> PolarsResult<FileInfo> {
+     use polars_core::error::feature_gated;
+-    use polars_core::runtime::POOL;
++    use polars_core::runtime::RAYON;
+     use rayon::iter::{IntoParallelIterator, ParallelIterator};
+ 
+     // Holding _first_scan_source should guarantee sources is not empty.
+@@ -577,7 +577,7 @@ pub async fn csv_file_info(
+     );
+     // Run inference in parallel with a specific merge order.
+     // TODO: flatten to single level once Schema::to_supertype is commutative.
+-    let si_results = POOL.join(
++    let si_results = RAYON.join(
+         || infer_schema_func(0),
+         || {
+             (1..sources.len())
+diff --git a/crates/polars-python/src/functions/eager.rs b/crates/polars-python/src/functions/eager.rs
+index da44c2582..94f305983 100644
+--- a/crates/polars-python/src/functions/eager.rs
++++ b/crates/polars-python/src/functions/eager.rs
+@@ -28,7 +28,7 @@ pub fn concat_df(dfs: &Bound<'_, PyAny>, py: Python) -> PyResult<PyDataFrame> {
+     let identity = || Ok(identity_df.clone());
+ 
+     py.enter_polars_df(|| {
+-        polars_core::runtime::POOL.install(|| {
++        polars_core::runtime::RAYON.install(|| {
+             rdfs.into_par_iter()
+                 .fold(identity, |acc: PolarsResult<DataFrame>, df| {
+                     let mut acc: DataFrame = acc?;
+diff --git a/crates/polars-python/src/functions/meta.rs b/crates/polars-python/src/functions/meta.rs
+index befaa3666..5b1fae123 100644
+--- a/crates/polars-python/src/functions/meta.rs
++++ b/crates/polars-python/src/functions/meta.rs
+@@ -1,6 +1,6 @@
+ use polars_core::fmt::FloatFmt;
+ use polars_core::prelude::IDX_DTYPE;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use pyo3::exceptions::PyValueError;
+ use pyo3::prelude::*;
+ 
+@@ -13,7 +13,7 @@ pub fn get_index_type(py: Python) -> PyResult<Bound<PyAny>> {
+ 
+ #[pyfunction]
+ pub fn thread_pool_size() -> usize {
+-    POOL.current_num_threads()
++    RAYON.current_num_threads()
+ }
+ 
+ #[pyfunction]
+diff --git a/crates/polars-python/src/interop/arrow/to_rust.rs b/crates/polars-python/src/interop/arrow/to_rust.rs
+index 4b6d5d1ad..6048335bc 100644
+--- a/crates/polars-python/src/interop/arrow/to_rust.rs
++++ b/crates/polars-python/src/interop/arrow/to_rust.rs
+@@ -1,5 +1,5 @@
+ use polars_core::prelude::*;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_core::utils::accumulate_dataframes_vertical_unchecked;
+ use polars_core::utils::arrow::ffi;
+ use pyo3::ffi::Py_uintptr_t;
+@@ -131,7 +131,7 @@ pub fn to_rust_df(
+             // dict encoded to categorical
+             let columns = if run_parallel {
+                 py.enter_polars(|| {
+-                    POOL.install(|| {
++                    RAYON.install(|| {
+                         columns
+                             .into_par_iter()
+                             .enumerate()
+diff --git a/crates/polars-stream/src/execute.rs b/crates/polars-stream/src/execute.rs
+index 4d815608f..c99e88793 100644
+--- a/crates/polars-stream/src/execute.rs
++++ b/crates/polars-stream/src/execute.rs
+@@ -3,7 +3,7 @@ use std::sync::Arc;
+ use crossbeam_channel::Sender;
+ use parking_lot::Mutex;
+ use polars_core::frame::DataFrame;
+-use polars_core::runtime::{ASYNC, POOL};
++use polars_core::runtime::{ASYNC, RAYON};
+ use polars_error::PolarsResult;
+ use polars_expr::state::ExecutionState;
+ use polars_utils::aliases::PlHashSet;
+@@ -303,7 +303,7 @@ pub fn execute_graph(
+     metrics: Option<Arc<Mutex<GraphMetrics>>>,
+ ) -> PolarsResult<SparseSecondaryMap<GraphNodeKey, DataFrame>> {
+     // Get the number of threads from the rayon thread-pool as that respects our config.
+-    let num_pipelines = POOL.current_num_threads();
++    let num_pipelines = RAYON.current_num_threads();
+     async_executor::set_num_threads(num_pipelines);
+ 
+     let (query_tasks_send, query_tasks_recv) = crossbeam_channel::unbounded();
+diff --git a/crates/polars-stream/src/nodes/group_by.rs b/crates/polars-stream/src/nodes/group_by.rs
+index 223c3fc81..c9740cc58 100644
+--- a/crates/polars-stream/src/nodes/group_by.rs
++++ b/crates/polars-stream/src/nodes/group_by.rs
+@@ -1,7 +1,7 @@
+ use std::sync::Arc;
+ 
+ use polars_core::prelude::{IntoColumn, PlHashSet, PlRandomState};
+-use polars_core::runtime::{ASYNC, POOL};
++use polars_core::runtime::{ASYNC, RAYON};
+ use polars_core::schema::Schema;
+ use polars_core::utils::accumulate_dataframes_vertical_unchecked;
+ use polars_expr::groups::Grouper;
+@@ -251,7 +251,7 @@ impl GroupBySinkState {
+ 
+     fn combine_locals(&mut self) -> PolarsResult<Vec<GroupByPartition>> {
+         // Finalize pre-aggregations.
+-        POOL.install(|| {
++        RAYON.install(|| {
+             self.locals
+                 .as_mut_slice()
+                 .into_par_iter()
+@@ -485,7 +485,7 @@ impl GroupBySinkState {
+         })?;
+ 
+         // Drop remaining local state in parallel.
+-        POOL.install(|| {
++        RAYON.install(|| {
+             core::mem::take(&mut self.locals)
+                 .into_par_iter()
+                 .with_max_len(1)
+@@ -624,7 +624,7 @@ impl ComputeNode for GroupByNode {
+                     unreachable!()
+                 };
+                 let partitions = sink.combine_locals()?;
+-                let dfs = POOL.install(|| {
++                let dfs = RAYON.install(|| {
+                     partitions
+                         .into_par_iter()
+                         .map(|p| p.into_df(&self.key_schema, &self.output_schema))
+diff --git a/crates/polars-stream/src/nodes/input_independent_select.rs b/crates/polars-stream/src/nodes/input_independent_select.rs
+index cbc3765e8..28c53171c 100644
+--- a/crates/polars-stream/src/nodes/input_independent_select.rs
++++ b/crates/polars-stream/src/nodes/input_independent_select.rs
+@@ -1,7 +1,7 @@
+ use std::sync::Arc;
+ 
+ use polars_core::prelude::IntoColumn;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use rayon::iter::IntoParallelRefIterator;
+ use rayon::prelude::*;
+ 
+@@ -38,7 +38,7 @@ impl ComputeNode for InputIndependentSelectNode {
+             return Ok(());
+         }
+ 
+-        POOL.install(|| {
++        RAYON.install(|| {
+             if let Self::ToSelect { selectors } = self {
+                 let empty_df = DataFrame::empty();
+                 let state = ExecutionState::new();
+diff --git a/crates/polars-stream/src/nodes/joins/equi_join.rs b/crates/polars-stream/src/nodes/joins/equi_join.rs
+index 14f89e375..affce3e8e 100644
+--- a/crates/polars-stream/src/nodes/joins/equi_join.rs
++++ b/crates/polars-stream/src/nodes/joins/equi_join.rs
+@@ -7,7 +7,7 @@ use arrow::array::builder::ShareStrategy;
+ use polars_core::config;
+ use polars_core::frame::builder::DataFrameBuilder;
+ use polars_core::prelude::*;
+-use polars_core::runtime::{ASYNC, POOL};
++use polars_core::runtime::{ASYNC, RAYON};
+ use polars_core::schema::{Schema, SchemaExt};
+ use polars_expr::hash_keys::HashKeys;
+ use polars_expr::idx_table::{IdxTable, new_idx_table};
+@@ -227,7 +227,7 @@ fn estimate_cardinality(
+     let last_morsel_len = morsels[last_morsel_idx].df().height();
+     let last_morsel_slice = last_morsel_len - total_height.saturating_sub(sample_limit);
+ 
+-    POOL.install(|| {
++    RAYON.install(|| {
+         let sample_cardinality = morsels[..to_process_end]
+             .par_iter()
+             .enumerate()
+@@ -531,7 +531,7 @@ impl BuildState {
+         let local_builders = &self.local_builders;
+         let probe_tables: SparseInitVec<ProbeTable> = SparseInitVec::with_capacity(num_partitions);
+ 
+-        POOL.scope(|s| {
++        RAYON.scope(|s| {
+             for p in 0..num_partitions {
+                 let probe_tables = &probe_tables;
+                 s.spawn(move |_| {
+@@ -1099,7 +1099,7 @@ impl ProbeState {
+ 
+ impl Drop for ProbeState {
+     fn drop(&mut self) {
+-        POOL.install(|| {
++        RAYON.install(|| {
+             // Parallel drop as the state might be quite big.
+             self.table_per_partition.par_drain(..).for_each(drop);
+         })
+diff --git a/crates/polars-stream/src/nodes/joins/merge_join.rs b/crates/polars-stream/src/nodes/joins/merge_join.rs
+index 0f53b5414..160942e2d 100644
+--- a/crates/polars-stream/src/nodes/joins/merge_join.rs
++++ b/crates/polars-stream/src/nodes/joins/merge_join.rs
+@@ -3,7 +3,7 @@ use std::ops::RangeBounds;
+ 
+ use polars_core::frame::builder::DataFrameBuilder;
+ use polars_core::prelude::*;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_ops::frame::merge_join::*;
+ use polars_ops::frame::{JoinArgs, JoinType, MaintainOrderJoin};
+ use polars_utils::UnitVec;
+@@ -209,7 +209,7 @@ impl ComputeNode for MergeJoinNode {
+             if self.unmatched.is_empty() {
+                 self.state = Done;
+             } else {
+-                POOL.install(|| {
++                RAYON.install(|| {
+                     self.unmatched.par_sort_by_key(|(seq, _df)| *seq);
+                 });
+                 let mut all_unmatched = DataFrame::empty_with_schema(&self.params.output_schema);
+diff --git a/crates/polars-stream/src/nodes/joins/mod.rs b/crates/polars-stream/src/nodes/joins/mod.rs
+index c322bba2d..8dc4e4176 100644
+--- a/crates/polars-stream/src/nodes/joins/mod.rs
++++ b/crates/polars-stream/src/nodes/joins/mod.rs
+@@ -1,7 +1,7 @@
+ use std::sync::Arc;
+ 
+ use crossbeam_queue::ArrayQueue;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_error::PolarsResult;
+ use polars_ooc::{MostRecentSpillContext, SpillFrame};
+ use polars_utils::itertools::Itertools;
+@@ -129,7 +129,7 @@ impl Default for BufferedStream {
+ 
+ impl Drop for BufferedStream {
+     fn drop(&mut self) {
+-        POOL.install(|| {
++        RAYON.install(|| {
+             // Parallel drop as the state might be quite big.
+             (0..self.morsels.len()).into_par_iter().for_each(|_| {
+                 drop(self.morsels.pop());
+diff --git a/crates/polars-stream/src/physical_plan/to_graph.rs b/crates/polars-stream/src/physical_plan/to_graph.rs
+index 40be64121..ec6a8e2c4 100644
+--- a/crates/polars-stream/src/physical_plan/to_graph.rs
++++ b/crates/polars-stream/src/physical_plan/to_graph.rs
+@@ -4,7 +4,7 @@ use num_traits::AsPrimitive;
+ use parking_lot::Mutex;
+ use polars_core::config;
+ use polars_core::prelude::PlRandomState;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_core::schema::{Schema, SchemaRef};
+ use polars_error::{PolarsResult, polars_bail, polars_ensure, polars_err};
+ use polars_expr::groups::new_hash_grouper;
+@@ -80,7 +80,7 @@ pub fn physical_plan_to_graph(
+     expr_arena: &mut Arena<AExpr>,
+ ) -> PolarsResult<(Graph, SecondaryMap<PhysNodeKey, GraphNodeKey>)> {
+     // Get the number of threads from the rayon thread-pool as that respects our config.
+-    let num_pipelines = POOL.current_num_threads();
++    let num_pipelines = RAYON.current_num_threads();
+     let mut ctx = GraphConversionContext {
+         phys_sm,
+         expr_arena,
+diff --git a/crates/polars-stream/src/skeleton.rs b/crates/polars-stream/src/skeleton.rs
+index c78f6b63f..7fcd6d297 100644
+--- a/crates/polars-stream/src/skeleton.rs
++++ b/crates/polars-stream/src/skeleton.rs
+@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
+ use parking_lot::Mutex;
+ use polars_core::prelude::*;
+ use polars_core::query_result::QueryResult;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_expr::planner::{ExpressionConversionState, create_physical_expr, get_expr_depth_limit};
+ use polars_plan::plans::{IR, IRPlan, IRPlanSorted};
+ use polars_plan::prelude::AExpr;
+diff --git a/crates/polars-stream/src/utils/in_memory_linearize.rs b/crates/polars-stream/src/utils/in_memory_linearize.rs
+index 3d4356f71..f80297474 100644
+--- a/crates/polars-stream/src/utils/in_memory_linearize.rs
++++ b/crates/polars-stream/src/utils/in_memory_linearize.rs
+@@ -1,7 +1,7 @@
+ use std::cmp::Reverse;
+ use std::collections::BinaryHeap;
+ 
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_utils::priority::Priority;
+ use polars_utils::sync::SyncPtr;
+ 
+@@ -21,7 +21,7 @@ pub fn linearize<T: Send + Sync>(mut morsels_per_pipe: Vec<Vec<(MorselSeq, T)>>)
+ 
+     let n_threads = num_morsels
+         .div_ceil(MORSELS_PER_THREAD)
+-        .min(POOL.current_num_threads()) as u64;
++        .min(RAYON.current_num_threads()) as u64;
+ 
+     // Partitioning based on sequence number.
+     let max_seq = morsels_per_pipe
+@@ -34,7 +34,7 @@ pub fn linearize<T: Send + Sync>(mut morsels_per_pipe: Vec<Vec<(MorselSeq, T)>>)
+     let morsels_per_p = &morsels_per_pipe;
+     let mut out: Vec<T> = Vec::with_capacity(num_morsels);
+     let out_ptr = unsafe { SyncPtr::new(out.as_mut_ptr()) };
+-    POOL.scope(|s| {
++    RAYON.scope(|s| {
+         let mut out_offset = 0;
+         let mut stop_idx_per_pipe = vec![0; morsels_per_p.len()];
+         for t in 0..n_threads {
+diff --git a/crates/polars-time/src/group_by/dynamic.rs b/crates/polars-time/src/group_by/dynamic.rs
+index 2db4a8917..02ffe065a 100644
+--- a/crates/polars-time/src/group_by/dynamic.rs
++++ b/crates/polars-time/src/group_by/dynamic.rs
+@@ -1,6 +1,6 @@
+ use arrow::legacy::time_zone::Tz;
+ use polars_core::prelude::*;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_core::series::IsSorted;
+ use polars_core::utils::flatten::flatten_par;
+ use polars_ops::series::SeriesMethods;
+@@ -346,12 +346,12 @@ impl Wrap<&DataFrame> {
+                 ))
+             });
+ 
+-            let res = POOL.install(|| iter.collect::<PolarsResult<Vec<_>>>())?;
++            let res = RAYON.install(|| iter.collect::<PolarsResult<Vec<_>>>())?;
+             let groups = res.iter().map(|g| &g.0).collect_vec();
+             let lower = res.iter().map(|g| &g.1).collect_vec();
+             let upper = res.iter().map(|g| &g.2).collect_vec();
+ 
+-            let ((groups, upper), lower) = POOL.install(|| {
++            let ((groups, upper), lower) = RAYON.install(|| {
+                 rayon::join(
+                     || rayon::join(|| flatten_par(&groups), || flatten_par(&upper)),
+                     || flatten_par(&lower),
+@@ -459,8 +459,8 @@ impl Wrap<&DataFrame> {
+                 )
+             });
+ 
+-            let groups = POOL.install(|| iter.collect::<PolarsResult<Vec<_>>>())?;
+-            let groups = POOL.install(|| flatten_par(&groups));
++            let groups = RAYON.install(|| iter.collect::<PolarsResult<Vec<_>>>())?;
++            let groups = RAYON.install(|| flatten_par(&groups));
+             PolarsResult::Ok(GroupsType::new_slice(groups, true, true))
+         } else {
+             // a requirement for the index
+diff --git a/crates/polars-time/src/windows/group_by.rs b/crates/polars-time/src/windows/group_by.rs
+index 0d8971d54..d0be56acb 100644
+--- a/crates/polars-time/src/windows/group_by.rs
++++ b/crates/polars-time/src/windows/group_by.rs
+@@ -10,7 +10,7 @@ use chrono::NaiveDateTime;
+ use chrono::TimeZone as _;
+ use now::DateTimeNow;
+ use polars_core::prelude::*;
+-use polars_core::runtime::POOL;
++use polars_core::runtime::RAYON;
+ use polars_core::utils::_split_offsets;
+ use polars_core::utils::flatten::flatten_par;
+ use rayon::prelude::*;
+@@ -636,12 +636,12 @@ pub fn group_by_values(
+         return Ok(GroupsSlice::from(vec![]));
+     }
+ 
+-    let mut thread_offsets = _split_offsets(time.len(), POOL.current_num_threads());
++    let mut thread_offsets = _split_offsets(time.len(), RAYON.current_num_threads());
+     // there are duplicates in the splits, so we opt for a single partition
+     prune_splits_on_duplicates(time, &mut thread_offsets);
+ 
+     // If we start from within parallel work we will do this single threaded.
+-    let run_parallel = !POOL.current_thread_has_pending_tasks().unwrap_or(false);
++    let run_parallel = !RAYON.current_thread_has_pending_tasks().unwrap_or(false);
+ 
+     // we have a (partial) lookbehind window
+     if offset.negative && !offset.is_zero() {
+@@ -664,7 +664,7 @@ pub fn group_by_values(
+                 return Ok(GroupsSlice::from(vecs));
+             }
+ 
+-            POOL.install(|| {
++            RAYON.install(|| {
+                 let vals = thread_offsets
+                     .par_iter()
+                     .copied()
+@@ -737,7 +737,7 @@ pub fn group_by_values(
+             return Ok(GroupsSlice::from(vecs));
+         }
+ 
+-        POOL.install(|| {
++        RAYON.install(|| {
+             let vals = thread_offsets
+                 .par_iter()
+                 .copied()
+@@ -777,7 +777,7 @@ pub fn group_by_values(
+         // it must be that the window starts at t and t is a member
+         // --t-----------
+         //  [---]
+-        POOL.install(|| {
++        RAYON.install(|| {
+             let vals = thread_offsets
+                 .par_iter()
+                 .copied()
+diff --git a/pyo3-polars/example/derive_expression/expression_lib/src/expressions.rs b/pyo3-polars/example/derive_expression/expression_lib/src/expressions.rs
+index 52f057337..654458d7b 100644
+--- a/pyo3-polars/example/derive_expression/expression_lib/src/expressions.rs
++++ b/pyo3-polars/example/derive_expression/expression_lib/src/expressions.rs
+@@ -3,7 +3,7 @@ use std::fmt::Write;
+ use polars::prelude::*;
+ use polars_plan::prelude::FieldsMapper;
+ use pyo3_polars::derive::{polars_expr, CallerContext};
+-use pyo3_polars::export::polars_core::runtime::POOL;
++use pyo3_polars::export::polars_core::runtime::RAYON;
+ use serde::Deserialize;
+ 
+ #[derive(Deserialize)]
+@@ -70,8 +70,8 @@ fn pig_latinnify_with_parallelism(
+         });
+         Ok(out.into_series())
+     } else {
+-        POOL.install(|| {
+-            let n_threads = POOL.current_num_threads();
++        RAYON.install(|| {
++            let n_threads = RAYON.current_num_threads();
+             let splits = split_offsets(ca.len(), n_threads);
+ 
+             let chunks: Vec<_> = splits

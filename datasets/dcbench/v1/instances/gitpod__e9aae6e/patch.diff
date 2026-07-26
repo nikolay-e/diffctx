@@ -1,0 +1,2763 @@
+From e9aae6e49730d30e6142ca2e241bd211beef3087 Mon Sep 17 00:00:00 2001
+From: Gero Posmyk-Leinemann <gero@gitpod.io>
+Date: Wed, 12 Feb 2025 11:16:48 +0100
+Subject: [PATCH] [docker-up] Auto-login dockerd if GITPOD_IMAGE_AUTH is set
+ (#20586)
+
+* [docker-up] Minor fixes and add tests
+
+Tool: gitpod/catfood.gitpod.cloud
+
+* [image-builder-bob] Tests&fixes from an experimental PR
+
+Tool: gitpod/catfood.gitpod.cloud
+
+* [supervisor, ws-manager] Write docker credentials into client config file if passed into workspace
+
+Tool: gitpod/catfood.gitpod.cloud
+
+* [server] Introduce project.settings.enableDockerdAuthentication and expose it on the API
+
+Tool: gitpod/catfood.gitpod.cloud
+
+* [dashboard] Add "Docker registry authentication" toggle under projects/env vars
+
+Tool: gitpod/catfood.gitpod.cloud
+
+* [server] Guard project.settings.enableDockerdAuthentication by org write_settings permission
+
+Tool: gitpod/catfood.gitpod.cloud
+
+* review comments with cleanup + small fixes
+
+Tool: gitpod/catfood.gitpod.cloud
+---
+ .../variables/ConfigurationVariableList.tsx   |  96 ++--
+ .../variables/EnableDockerdAuthentication.tsx |  83 ++++
+ components/docker-up/BUILD.yaml               |   1 +
+ components/docker-up/docker-up/main.go        | 108 +----
+ components/docker-up/dockerd/args.go          | 148 ++++++
+ components/docker-up/dockerd/args_test.go     |  62 +++
+ components/docker-up/go.mod                   |  20 +-
+ components/docker-up/go.sum                   |  43 +-
+ components/gitpod-protocol/src/protocol.ts    |  20 +
+ .../src/teams-projects-protocol.ts            |   5 +
+ components/image-builder-bob/cmd/proxy.go     |   2 +-
+ .../image-builder-bob/pkg/proxy/auth.go       |  10 +-
+ .../image-builder-bob/pkg/proxy/auth_test.go  | 138 ++++++
+ .../public-api/gitpod/v1/configuration.proto  |   5 +
+ .../public-api/go/v1/configuration.pb.go      | 441 ++++++++++--------
+ .../publicapi/v1/ConfigurationOuterClass.java | 405 ++++++++++++----
+ .../src/public-api-converter.ts               |  29 +-
+ .../src/gitpod/v1/configuration_pb.ts         |  16 +
+ .../src/api/configuration-service-api.ts      |   4 +
+ .../server/src/projects/projects-service.ts   |  10 +
+ .../src/user/env-var-service.spec.db.ts       |   3 +
+ components/server/src/user/env-var-service.ts |  23 +-
+ .../server/src/workspace/workspace-starter.ts |  19 +-
+ .../supervisor/pkg/supervisor/config.go       |   3 +
+ .../supervisor/pkg/supervisor/docker.go       | 128 +++++
+ .../supervisor/pkg/supervisor/docker_test.go  | 175 +++++++
+ .../ws-manager-mk2/controllers/create.go      |   3 +-
+ 27 files changed, 1493 insertions(+), 507 deletions(-)
+ create mode 100644 components/dashboard/src/repositories/detail/variables/EnableDockerdAuthentication.tsx
+ create mode 100644 components/docker-up/dockerd/args.go
+ create mode 100644 components/docker-up/dockerd/args_test.go
+ create mode 100644 components/image-builder-bob/pkg/proxy/auth_test.go
+ create mode 100644 components/supervisor/pkg/supervisor/docker_test.go
+
+diff --git a/components/dashboard/src/repositories/detail/variables/ConfigurationVariableList.tsx b/components/dashboard/src/repositories/detail/variables/ConfigurationVariableList.tsx
+index a3a722d09..256764996 100644
+--- a/components/dashboard/src/repositories/detail/variables/ConfigurationVariableList.tsx
++++ b/components/dashboard/src/repositories/detail/variables/ConfigurationVariableList.tsx
+@@ -14,6 +14,7 @@ import { Table, TableBody, TableHead, TableHeader, TableRow } from "@podkit/tabl
+ import { useListConfigurationVariables } from "../../../data/configurations/configuration-queries";
+ import { LoadingState } from "@podkit/loading/LoadingState";
+ import { ConfigurationVariableItem } from "./ConfigurationVariableItem";
++import { EnableDockerdAuthentication } from "./EnableDockerdAuthentication";
+ 
+ type Props = {
+     configuration: Configuration;
+@@ -27,52 +28,55 @@ export const ConfigurationVariableList = ({ configuration }: Props) => {
+     }
+ 
+     return (
+-        <ConfigurationSettingsField>
+-            {showAddVariableModal && (
+-                <AddVariableModal
+-                    configurationId={configuration.id}
+-                    onClose={() => {
+-                        setShowAddVariableModal(false);
+-                    }}
+-                />
+-            )}
+-            <div className="mb-2 flex">
+-                <div className="flex-grow">
+-                    <Heading3>Environment variables</Heading3>
+-                    <Subheading>Manage repository-specific environment variables.</Subheading>
++        <>
++            <ConfigurationSettingsField>
++                {showAddVariableModal && (
++                    <AddVariableModal
++                        configurationId={configuration.id}
++                        onClose={() => {
++                            setShowAddVariableModal(false);
++                        }}
++                    />
++                )}
++                <div className="mb-2 flex">
++                    <div className="flex-grow">
++                        <Heading3>Environment variables</Heading3>
++                        <Subheading>Manage repository-specific environment variables.</Subheading>
++                    </div>
+                 </div>
+-            </div>
+-            {data.length === 0 ? (
+-                <div className="bg-pk-surface-secondary rounded-xl w-full p-6 flex flex-col justify-center space-y-3">
+-                    <span className="font-semi-bold text-base">No environment variables are set</span>
+-                    <span className="text-sm text-pk-content-secondary">
+-                        All repository-specific environment variables will be visible in prebuilds and optionally in
+-                        workspaces for this repository.
+-                    </span>
+-                </div>
+-            ) : (
+-                <Table>
+-                    <TableHeader>
+-                        <TableRow>
+-                            <TableHead>Name</TableHead>
+-                            <TableHead className="w-48">Visibility</TableHead>
+-                            <TableHead className="w-16"></TableHead>
+-                        </TableRow>
+-                    </TableHeader>
+-                    <TableBody>
+-                        {data.map((variable) => (
+-                            <ConfigurationVariableItem
+-                                key={variable.id}
+-                                configurationId={configuration.id}
+-                                variable={variable}
+-                            />
+-                        ))}
+-                    </TableBody>
+-                </Table>
+-            )}
+-            <Button className="mt-4" onClick={() => setShowAddVariableModal(true)}>
+-                Add Variable
+-            </Button>
+-        </ConfigurationSettingsField>
++                {data.length === 0 ? (
++                    <div className="bg-pk-surface-secondary rounded-xl w-full p-6 flex flex-col justify-center space-y-3">
++                        <span className="font-semi-bold text-base">No environment variables are set</span>
++                        <span className="text-sm text-pk-content-secondary">
++                            All repository-specific environment variables will be visible in prebuilds and optionally in
++                            workspaces for this repository.
++                        </span>
++                    </div>
++                ) : (
++                    <Table>
++                        <TableHeader>
++                            <TableRow>
++                                <TableHead>Name</TableHead>
++                                <TableHead className="w-48">Visibility</TableHead>
++                                <TableHead className="w-16"></TableHead>
++                            </TableRow>
++                        </TableHeader>
++                        <TableBody>
++                            {data.map((variable) => (
++                                <ConfigurationVariableItem
++                                    key={variable.id}
++                                    configurationId={configuration.id}
++                                    variable={variable}
++                                />
++                            ))}
++                        </TableBody>
++                    </Table>
++                )}
++                <Button className="mt-4" onClick={() => setShowAddVariableModal(true)}>
++                    Add Variable
++                </Button>
++            </ConfigurationSettingsField>
++            <EnableDockerdAuthentication configuration={configuration} />
++        </>
+     );
+ };
+diff --git a/components/dashboard/src/repositories/detail/variables/EnableDockerdAuthentication.tsx b/components/dashboard/src/repositories/detail/variables/EnableDockerdAuthentication.tsx
+new file mode 100644
+index 000000000..62a6014d7
+--- /dev/null
++++ b/components/dashboard/src/repositories/detail/variables/EnableDockerdAuthentication.tsx
+@@ -0,0 +1,83 @@
++/**
++ * Copyright (c) 2025 Gitpod GmbH. All rights reserved.
++ * Licensed under the GNU Affero General Public License (AGPL).
++ * See License.AGPL.txt in the project root for license information.
++ */
++
++import { SwitchInputField } from "@podkit/switch/Switch";
++import { Heading3, Subheading } from "@podkit/typography/Headings";
++import { FC, useCallback } from "react";
++import { InputField } from "../../../components/forms/InputField";
++import { useToast } from "../../../components/toasts/Toasts";
++import { useId } from "../../../hooks/useId";
++import { ConfigurationSettingsField } from "../ConfigurationSettingsField";
++import { Configuration } from "@gitpod/public-api/lib/gitpod/v1/configuration_pb";
++import { SquareArrowOutUpRight } from "lucide-react";
++import { useConfiguration, useConfigurationMutation } from "../../../data/configurations/configuration-queries";
++import Alert from "../../../components/Alert";
++
++type Props = {
++    configuration: Configuration;
++};
++export const EnableDockerdAuthentication: FC<Props> = ({ configuration }) => {
++    const { data } = useConfiguration(configuration.id);
++    const configurationMutation = useConfigurationMutation();
++    const { toast } = useToast();
++
++    const updateEnableDockerdAuthentication = useCallback(
++        async (enable: boolean) => {
++            await configurationMutation.mutateAsync(
++                {
++                    configurationId: configuration.id,
++                    workspaceSettings: {
++                        enableDockerdAuthentication: enable,
++                    },
++                },
++                {
++                    onError: (error) => {
++                        toast(`Failed to update dockerd authentication: ${error.message}`);
++                    },
++                },
++            );
++        },
++        [configurationMutation, configuration.id, toast],
++    );
++
++    const inputId = useId({ prefix: "enable-dockerd-authentication" });
++    const isEnabled = data?.workspaceSettings?.enableDockerdAuthentication;
++
++    return (
++        <ConfigurationSettingsField>
++            <Heading3 className="flex flex-row items-center gap-2">Docker registry authentication</Heading3>
++            <Subheading className="max-w-lg flex flex-col gap-2">
++                <span className="flex-1 text-left">
++                    Enable authentication with Docker registries inside of workspaces based on the{" "}
++                    <code>GITPOD_IMAGE_AUTH</code> environment variable.
++                </span>
++
++                <Alert type={"warning"} closable={false} showIcon={true} className="flex rounded p-2 mb-2 w-full">
++                    By enabling this, credentials specified in <code>GITPOD_IMAGE_AUTH</code> will be visible inside all
++                    workspaces on this project.
++                </Alert>
++                <a
++                    className="gp-link flex flex-row items-center gap-1"
++                    href="https://www.gitpod.io/docs/configure/repositories/environment-variables#docker-registry-authentication"
++                    target="_blank"
++                    rel="noreferrer"
++                >
++                    Learn about using private Docker images with Gitpod
++                    <SquareArrowOutUpRight size={12} />
++                </a>
++            </Subheading>
++            <InputField id={inputId}>
++                <SwitchInputField
++                    id={inputId}
++                    checked={isEnabled}
++                    disabled={configurationMutation.isLoading}
++                    onCheckedChange={updateEnableDockerdAuthentication}
++                    label={isEnabled ? "Auto-login enabled" : "Auto-login disabled"}
++                />
++            </InputField>
++        </ConfigurationSettingsField>
++    );
++};
+diff --git a/components/docker-up/BUILD.yaml b/components/docker-up/BUILD.yaml
+index d8eec40e8..e2341073a 100644
+--- a/components/docker-up/BUILD.yaml
++++ b/components/docker-up/BUILD.yaml
+@@ -5,6 +5,7 @@ packages:
+       - go.mod
+       - go.sum
+       - "docker-up/**"
++      - "dockerd/**"
+       - dependencies.sh
+     deps:
+       - components/common-go:lib
+diff --git a/components/docker-up/docker-up/main.go b/components/docker-up/docker-up/main.go
+index 43c3bb1fc..6566e8df7 100644
+--- a/components/docker-up/docker-up/main.go
++++ b/components/docker-up/docker-up/main.go
+@@ -9,11 +9,9 @@ package main
+ 
+ import (
+ 	"archive/tar"
+-	"bufio"
+ 	"compress/gzip"
+ 	"context"
+ 	"embed"
+-	"encoding/json"
+ 	"fmt"
+ 	"io"
+ 	"os"
+@@ -25,6 +23,7 @@ import (
+ 	"syscall"
+ 	"time"
+ 
++	"github.com/gitpod-io/gitpod/docker-up/dockerd"
+ 	"github.com/rootless-containers/rootlesskit/pkg/sigproxy"
+ 	sigproxysignal "github.com/rootless-containers/rootlesskit/pkg/sigproxy/signal"
+ 	"github.com/sirupsen/logrus"
+@@ -45,6 +44,7 @@ var opts struct {
+ 	UserAccessibleSocket bool
+ 	Verbose              bool
+ 	DontWrapNetNS        bool
++	AutoLogin            bool
+ }
+ 
+ //go:embed docker.tgz
+@@ -58,6 +58,7 @@ var aptUpdated = false
+ const (
+ 	dockerSocketFN = "/var/run/docker.sock"
+ 	gitpodUserId   = 33333
++	gitpodGroupId  = 33333
+ 	containerIf    = "eth0"
+ )
+ 
+@@ -73,6 +74,7 @@ func main() {
+ 	pflag.BoolVar(&opts.AutoInstall, "auto-install", true, "auto-install prerequisites (docker)")
+ 	pflag.BoolVar(&opts.UserAccessibleSocket, "user-accessible-socket", true, "chmod the Docker socket to make it user accessible")
+ 	pflag.BoolVar(&opts.DontWrapNetNS, "dont-wrap-netns", os.Getenv("WORKSPACEKIT_WRAP_NETNS") == "true", "wrap the Docker daemon in a network namespace")
++	pflag.BoolVar(&opts.AutoLogin, "auto-login", false, "use content of GITPOD_IMAGE_AUTH to automatically login with the docker daemon")
+ 	pflag.Parse()
+ 
+ 	logger := logrus.New()
+@@ -118,7 +120,8 @@ func runWithinNetns() (err error) {
+ 		)
+ 	}
+ 
+-	userArgs, err := userArgs()
++	userArgsValue, _ := os.LookupEnv(DaemonArgs)
++	userArgs, err := dockerd.ParseUserArgs(log, userArgsValue)
+ 	if err != nil {
+ 		return xerrors.Errorf("cannot add user supplied docker args: %w", err)
+ 	}
+@@ -192,98 +195,6 @@ func runWithinNetns() (err error) {
+ 	return nil
+ }
+ 
+-type ConvertUserArg func(arg, value string) ([]string, error)
+-
+-var allowedDockerArgs = map[string]ConvertUserArg{
+-	"remap-user": convertRemapUser,
+-}
+-
+-func userArgs() ([]string, error) {
+-	userArgs, exists := os.LookupEnv(DaemonArgs)
+-	args := []string{}
+-	if !exists {
+-		return args, nil
+-	}
+-
+-	var providedDockerArgs map[string]string
+-	if err := json.Unmarshal([]byte(userArgs), &providedDockerArgs); err != nil {
+-		return nil, xerrors.Errorf("unable to deserialize docker args: %w", err)
+-	}
+-
+-	for userArg, userValue := range providedDockerArgs {
+-		converter, exists := allowedDockerArgs[userArg]
+-		if !exists {
+-			continue
+-		}
+-
+-		if converter != nil {
+-			cargs, err := converter(userArg, userValue)
+-			if err != nil {
+-				return nil, xerrors.Errorf("could not convert %v - %v: %w", userArg, userValue, err)
+-			}
+-			args = append(args, cargs...)
+-
+-		} else {
+-			args = append(args, "--"+userArg, userValue)
+-		}
+-	}
+-
+-	return args, nil
+-}
+-
+-func convertRemapUser(arg, value string) ([]string, error) {
+-	id, err := strconv.Atoi(value)
+-	if err != nil {
+-		return nil, err
+-	}
+-
+-	for _, f := range []string{"/etc/subuid", "/etc/subgid"} {
+-		err := adaptSubid(f, id)
+-		if err != nil {
+-			return nil, xerrors.Errorf("could not adapt subid files: %w", err)
+-		}
+-	}
+-
+-	return []string{"--userns-remap", "gitpod"}, nil
+-}
+-
+-func adaptSubid(oldfile string, id int) error {
+-	uid, err := os.Open(oldfile)
+-	if err != nil {
+-		return err
+-	}
+-
+-	newfile, err := os.Create(oldfile + ".new")
+-	if err != nil {
+-		return err
+-	}
+-
+-	mappingFmt := func(username string, id int, size int) string { return fmt.Sprintf("%s:%d:%d\n", username, id, size) }
+-
+-	if id != 0 {
+-		newfile.WriteString(mappingFmt("gitpod", 1, id))
+-		newfile.WriteString(mappingFmt("gitpod", gitpodUserId, 1))
+-	} else {
+-		newfile.WriteString(mappingFmt("gitpod", gitpodUserId, 1))
+-		newfile.WriteString(mappingFmt("gitpod", 1, gitpodUserId-1))
+-		newfile.WriteString(mappingFmt("gitpod", gitpodUserId+1, 32200)) // map rest of user ids in the user namespace
+-	}
+-
+-	uidScanner := bufio.NewScanner(uid)
+-	for uidScanner.Scan() {
+-		l := uidScanner.Text()
+-		if !strings.HasPrefix(l, "gitpod") {
+-			newfile.WriteString(l + "\n")
+-		}
+-	}
+-
+-	if err = os.Rename(newfile.Name(), oldfile); err != nil {
+-		return err
+-	}
+-
+-	return nil
+-}
+-
+ var prerequisites = map[string]func() error{
+ 	"dockerd":        installDocker,
+ 	"docker-compose": installDockerCompose,
+@@ -353,7 +264,8 @@ func installDocker() error {
+ 		}
+ 
+ 		switch hdr.Typeflag {
+-		case tar.TypeReg, tar.TypeRegA:
++
++		case tar.TypeReg, tar.TypeRegA: //lint:ignore SA1019 backwards compatibility
+ 			file, err := os.OpenFile(dstpath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, mode)
+ 			if err != nil {
+ 				return xerrors.Errorf("unable to create file: %v", err)
+@@ -480,12 +392,12 @@ func detectRuncVersion(output string) (major, minor int, err error) {
+ 
+ 		major, err = strconv.Atoi(n[0])
+ 		if err != nil {
+-			return 0, 0, xerrors.Errorf("could not parse major %s: %w", n[0])
++			return 0, 0, xerrors.Errorf("could not parse major %s: %w", n[0], err)
+ 		}
+ 
+ 		minor, err = strconv.Atoi(n[1])
+ 		if err != nil {
+-			return 0, 0, xerrors.Errorf("could not parse minor %s: %w", n[1])
++			return 0, 0, xerrors.Errorf("could not parse minor %s: %w", n[1], err)
+ 		}
+ 
+ 		return major, minor, nil
+diff --git a/components/docker-up/dockerd/args.go b/components/docker-up/dockerd/args.go
+new file mode 100644
+index 000000000..ecf57c7e9
+--- /dev/null
++++ b/components/docker-up/dockerd/args.go
+@@ -0,0 +1,148 @@
++// Copyright (c) 2025 Gitpod GmbH. All rights reserved.
++// Licensed under the GNU Affero General Public License (AGPL).
++// See License.AGPL.txt in the project root for license information.
++
++package dockerd
++
++import (
++	"bufio"
++	"encoding/json"
++	"fmt"
++	"os"
++	"strconv"
++	"strings"
++
++	"github.com/sirupsen/logrus"
++	"golang.org/x/xerrors"
++)
++
++const (
++	gitpodUserId = 33333
++)
++
++type ConvertUserArg func(arg string, value interface{}) ([]string, error)
++
++var allowedDockerArgs = map[string]ConvertUserArg{
++	"remap-user": convertRemapUser,
++	// TODO(gpl): Why this allow-list instead of a converter lookup only?
++	"proxies":     nil,
++	"http-proxy":  nil,
++	"https-proxy": nil,
++}
++
++func ParseUserArgs(log *logrus.Entry, userArgs string) ([]string, error) {
++	if userArgs == "" {
++		return nil, nil
++	}
++
++	var providedDockerArgs map[string]interface{}
++	if err := json.Unmarshal([]byte(userArgs), &providedDockerArgs); err != nil {
++		return nil, xerrors.Errorf("unable to deserialize docker args: %w", err)
++	}
++
++	return mapUserArgs(log, providedDockerArgs)
++}
++
++func mapUserArgs(log *logrus.Entry, jsonObj map[string]interface{}) ([]string, error) {
++	args := []string{}
++	for userArg, userValue := range jsonObj {
++		converter, exists := allowedDockerArgs[userArg]
++		if !exists {
++			// TODO(gpl): Why this allow-list instead of a converter lookup only?
++			continue
++		}
++
++		if converter != nil {
++			cargs, err := converter(userArg, userValue)
++			if err != nil {
++				return nil, xerrors.Errorf("could not convert %v - %v: %w", userArg, userValue, err)
++			}
++			args = append(args, cargs...)
++			continue
++		}
++
++		strValue, ok := (userValue).(string)
++		if ok {
++			args = append(args, fmt.Sprintf("--%s=%s", userArg, strValue))
++			continue
++		}
++
++		bValue, ok := (userValue).(bool)
++		if ok {
++			args = append(args, fmt.Sprintf("--%s=%t", userArg, bValue))
++			continue
++		}
++
++		obj, ok := (userValue).(map[string]interface{})
++		if ok {
++			nestedArgs, err := mapUserArgs(log, obj)
++			if err != nil {
++				return nil, xerrors.Errorf("could not convert nested arg %v - %v: %w", userArg, userValue, err)
++			}
++			args = append(args, nestedArgs...)
++			continue
++		}
++
++		log.WithField("arg", userArg).WithField("value", userValue).Warn("could not map userArg to dockerd argument, skipping.")
++	}
++
++	return args, nil
++}
++
++func convertRemapUser(arg string, value interface{}) ([]string, error) {
++	v, ok := (value).(string)
++	if !ok {
++		return nil, xerrors.Errorf("userns-remap expects a string argument")
++	}
++
++	id, err := strconv.Atoi(v)
++	if err != nil {
++		return nil, err
++	}
++
++	for _, f := range []string{"/etc/subuid", "/etc/subgid"} {
++		err := adaptSubid(f, id)
++		if err != nil {
++			return nil, xerrors.Errorf("could not adapt subid files: %w", err)
++		}
++	}
++
++	return []string{"--userns-remap", "gitpod"}, nil
++}
++
++func adaptSubid(oldfile string, id int) error {
++	uid, err := os.Open(oldfile)
++	if err != nil {
++		return err
++	}
++
++	newfile, err := os.Create(oldfile + ".new")
++	if err != nil {
++		return err
++	}
++
++	mappingFmt := func(username string, id int, size int) string { return fmt.Sprintf("%s:%d:%d\n", username, id, size) }
++
++	if id != 0 {
++		newfile.WriteString(mappingFmt("gitpod", 1, id))
++		newfile.WriteString(mappingFmt("gitpod", gitpodUserId, 1))
++	} else {
++		newfile.WriteString(mappingFmt("gitpod", gitpodUserId, 1))
++		newfile.WriteString(mappingFmt("gitpod", 1, gitpodUserId-1))
++		newfile.WriteString(mappingFmt("gitpod", gitpodUserId+1, 32200)) // map rest of user ids in the user namespace
++	}
++
++	uidScanner := bufio.NewScanner(uid)
++	for uidScanner.Scan() {
++		l := uidScanner.Text()
++		if !strings.HasPrefix(l, "gitpod") {
++			newfile.WriteString(l + "\n")
++		}
++	}
++
++	if err = os.Rename(newfile.Name(), oldfile); err != nil {
++		return err
++	}
++
++	return nil
++}
+diff --git a/components/docker-up/dockerd/args_test.go b/components/docker-up/dockerd/args_test.go
+new file mode 100644
+index 000000000..5712c48fd
+--- /dev/null
++++ b/components/docker-up/dockerd/args_test.go
+@@ -0,0 +1,62 @@
++// Copyright (c) 2025 Gitpod GmbH. All rights reserved.
++// Licensed under the GNU Affero General Public License (AGPL).
++// See License.AGPL.txt in the project root for license information.
++
++package dockerd
++
++import (
++	"reflect"
++	"sort"
++	"testing"
++
++	"github.com/sirupsen/logrus"
++)
++
++func TestMapUserArgs(t *testing.T) {
++	tests := []struct {
++		name     string
++		input    map[string]interface{}
++		expected []string
++		wantErr  bool
++	}{
++		{
++			name:     "empty input",
++			input:    map[string]interface{}{},
++			expected: []string{},
++			wantErr:  false,
++		},
++		{
++			name: "tls and proxy settings",
++			input: map[string]interface{}{
++				"proxies": map[string]interface{}{
++					"http-proxy":  "localhost:38080",
++					"https-proxy": "localhost:38081",
++				},
++			},
++			expected: []string{
++				"--http-proxy=localhost:38080",
++				"--https-proxy=localhost:38081",
++			},
++			wantErr: false,
++		},
++	}
++
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			log := logrus.New().WithField("test", t.Name())
++			got, err := mapUserArgs(log, tt.input)
++			if (err != nil) != tt.wantErr {
++				t.Errorf("mapUserArgs() error = %v, wantErr %v", err, tt.wantErr)
++				return
++			}
++			if !tt.wantErr {
++				sort.Strings(got)
++				sort.Strings(tt.expected)
++				// Sort both slices to ensure consistent comparison
++				if !reflect.DeepEqual(got, tt.expected) {
++					t.Errorf("mapUserArgs() = %v, want %v", got, tt.expected)
++				}
++			}
++		})
++	}
++}
+diff --git a/components/docker-up/go.mod b/components/docker-up/go.mod
+index 74474c271..5761d06c0 100644
+--- a/components/docker-up/go.mod
++++ b/components/docker-up/go.mod
+@@ -1,20 +1,22 @@
+ module github.com/gitpod-io/gitpod/docker-up
+ 
+-go 1.22
++go 1.22.0
++
++toolchain go1.23.3
+ 
+ require (
+-	github.com/opencontainers/runtime-spec v1.1.0
+-	github.com/rootless-containers/rootlesskit v1.1.0
++	github.com/opencontainers/runtime-spec v1.2.0
++	github.com/rootless-containers/rootlesskit v1.1.1
+ 	github.com/sirupsen/logrus v1.9.3
+-	github.com/spf13/pflag v1.0.5
+-	github.com/vishvananda/netlink v1.1.0
+-	golang.org/x/sys v0.11.0
+-	golang.org/x/xerrors v0.0.0-20220609144429-65e65417b02f
++	github.com/spf13/pflag v1.0.6
++	github.com/vishvananda/netlink v1.3.0
++	golang.org/x/sys v0.30.0
++	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da
+ )
+ 
+ require (
+-	github.com/stretchr/testify v1.8.1 // indirect
+-	github.com/vishvananda/netns v0.0.0-20191106174202-0a2b9b5464df // indirect
++	github.com/google/go-cmp v0.6.0 // indirect
++	github.com/vishvananda/netns v0.0.4 // indirect
+ )
+ 
+ replace github.com/gitpod-io/gitpod/common-go => ../common-go // leeway
+diff --git a/components/docker-up/go.sum b/components/docker-up/go.sum
+index f563ead30..290a19f44 100644
+--- a/components/docker-up/go.sum
++++ b/components/docker-up/go.sum
+@@ -1,35 +1,32 @@
+ github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
+ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
+ github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
+-github.com/opencontainers/runtime-spec v1.1.0 h1:HHUyrt9mwHUjtasSbXSMvs4cyFxh+Bll4AjJ9odEGpg=
+-github.com/opencontainers/runtime-spec v1.1.0/go.mod h1:jwyrGlmzljRJv/Fgzds9SsS/C5hL+LL3ko9hs6T5lQ0=
++github.com/google/go-cmp v0.6.0 h1:ofyhxvXcZhMsU5ulbFiLKl/XBFqE1GSq7atu8tAmTRI=
++github.com/google/go-cmp v0.6.0/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeNGIjoY=
++github.com/opencontainers/runtime-spec v1.2.0 h1:z97+pHb3uELt/yiAWD691HNHQIF07bE7dzrbT927iTk=
++github.com/opencontainers/runtime-spec v1.2.0/go.mod h1:jwyrGlmzljRJv/Fgzds9SsS/C5hL+LL3ko9hs6T5lQ0=
+ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
+ github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
+-github.com/rootless-containers/rootlesskit v1.1.0 h1:cRaRIYxY8oce4eE/zeAUZhgKu/4tU1p9YHN4+suwV7M=
+-github.com/rootless-containers/rootlesskit v1.1.0/go.mod h1:H+o9ndNe7tS91WqU0/+vpvc+VaCd7TCIWaJjnV0ujUo=
++github.com/rootless-containers/rootlesskit v1.1.1 h1:F5psKWoWY9/VjZ3ifVcaosjvFZJOagX85U22M0/EQZE=
++github.com/rootless-containers/rootlesskit v1.1.1/go.mod h1:UD5GoA3dqKCJrnvnhVgQQnweMF2qZnf9KLw8EewcMZI=
+ github.com/sirupsen/logrus v1.9.3 h1:dueUQJ1C2q9oE3F7wvmSGAaVtTmUizReu6fjN8uqzbQ=
+ github.com/sirupsen/logrus v1.9.3/go.mod h1:naHLuLoDiP4jHNo9R0sCBMtWGeIprob74mVsIT4qYEQ=
+-github.com/spf13/pflag v1.0.5 h1:iy+VFUOCP1a+8yFto/drg2CJ5u0yRoB7fZw3DKv/JXA=
+-github.com/spf13/pflag v1.0.5/go.mod h1:McXfInJRrz4CZXVZOBLb0bTZqETkiAhM9Iw0y3An2Bg=
++github.com/spf13/pflag v1.0.6 h1:jFzHGLGAlb3ruxLB8MhbI6A8+AQX/2eW4qeyNZXNp2o=
++github.com/spf13/pflag v1.0.6/go.mod h1:McXfInJRrz4CZXVZOBLb0bTZqETkiAhM9Iw0y3An2Bg=
+ github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
+-github.com/stretchr/objx v0.4.0/go.mod h1:YvHI0jy2hoMjB+UWwv71VJQ9isScKT/TqJzVSSt89Yw=
+-github.com/stretchr/objx v0.5.0/go.mod h1:Yh+to48EsGEfYuaHDzXPcE3xhTkx73EhmCGUpEOglKo=
++github.com/stretchr/testify v1.7.0 h1:nwc3DEeHmmLAfoZucVR881uASk0Mfjw8xYJ99tb5CcY=
+ github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
+-github.com/stretchr/testify v1.7.1/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
+-github.com/stretchr/testify v1.8.0/go.mod h1:yNjHg4UonilssWZ8iaSj1OCr/vHnekPRkoO+kdMU+MU=
+-github.com/stretchr/testify v1.8.1 h1:w7B6lhMri9wdJUVmEZPGGhZzrYTPvgJArz7wNPgYKsk=
+-github.com/stretchr/testify v1.8.1/go.mod h1:w2LPCIKwWwSfY2zedu0+kehJoqGctiVI29o6fzry7u4=
+-github.com/vishvananda/netlink v1.1.0 h1:1iyaYNBLmP6L0220aDnYQpo1QEV4t4hJ+xEEhhJH8j0=
+-github.com/vishvananda/netlink v1.1.0/go.mod h1:cTgwzPIzzgDAYoQrMm0EdrjRUBkTqKYppBueQtXaqoE=
+-github.com/vishvananda/netns v0.0.0-20191106174202-0a2b9b5464df h1:OviZH7qLw/7ZovXvuNyL3XQl8UFofeikI1NW1Gypu7k=
+-github.com/vishvananda/netns v0.0.0-20191106174202-0a2b9b5464df/go.mod h1:JP3t17pCcGlemwknint6hfoeCVQrEMVwxRLRjXpq+BU=
+-golang.org/x/sys v0.0.0-20190606203320-7fc4e5ec1444/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
++github.com/vishvananda/netlink v1.3.0 h1:X7l42GfcV4S6E4vHTsw48qbrV+9PVojNfIhZcwQdrZk=
++github.com/vishvananda/netlink v1.3.0/go.mod h1:i6NetklAujEcC6fK0JPjT8qSwWyO0HLn4UKG+hGqeJs=
++github.com/vishvananda/netns v0.0.4 h1:Oeaw1EM2JMxD51g9uhtC0D7erkIjgmj8+JZc26m1YX8=
++github.com/vishvananda/netns v0.0.4/go.mod h1:SpkAiCQRtJ6TvvxPnOSyH3BMl6unz3xZlaprSwhNNJM=
+ golang.org/x/sys v0.0.0-20220715151400-c0bba94af5f8/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+-golang.org/x/sys v0.11.0 h1:eG7RXZHdqOJ1i+0lgLgCpSXAp6M3LYlAo6osgSi0xOM=
+-golang.org/x/sys v0.11.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+-golang.org/x/xerrors v0.0.0-20220609144429-65e65417b02f h1:uF6paiQQebLeSXkrTqHqz0MXhXXS1KgF41eUdBNvxK0=
+-golang.org/x/xerrors v0.0.0-20220609144429-65e65417b02f/go.mod h1:K8+ghG5WaK9qNqU5K3HdILfMLy1f3aNYFI/wnl100a8=
++golang.org/x/sys v0.2.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
++golang.org/x/sys v0.10.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
++golang.org/x/sys v0.30.0 h1:QjkSwP/36a20jFYWkSue1YwXzLmsV5Gfq7Eiy72C1uc=
++golang.org/x/sys v0.30.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
++golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da h1:noIWHXmPHxILtqtCOPIhSt0ABwskkZKjD3bXGnZGpNY=
++golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da/go.mod h1:NDW/Ps6MPRej6fsCIbMTohpP40sJ/P/vI1MoTEGwX90=
+ gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
++gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c h1:dUUwHk2QECo/6vqA44rthZ8ie2QXMNeKRTHCNY2nXvo=
+ gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
+-gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
+-gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
+diff --git a/components/gitpod-protocol/src/protocol.ts b/components/gitpod-protocol/src/protocol.ts
+index 63ae2d5c9..399f33da2 100644
+--- a/components/gitpod-protocol/src/protocol.ts
++++ b/components/gitpod-protocol/src/protocol.ts
+@@ -280,6 +280,26 @@ export namespace EnvVar {
+     export function is(data: any): data is EnvVar {
+         return data.hasOwnProperty("name") && data.hasOwnProperty("value");
+     }
++
++    /**
++     * Extracts the "host:credentials" pairs from the GITPOD_IMAGE_AUTH environment variable.
++     * @param envVars
++     * @returns A map of host to credentials
++     */
++    export function getGitpodImageAuth(envVars: EnvVarWithValue[]): Map<string, string> {
++        const res = new Map<string, string>();
++        const imageAuth = envVars.find((e) => e.name === EnvVar.GITPOD_IMAGE_AUTH_ENV_VAR_NAME);
++        if (!imageAuth) {
++            return res;
++        }
++
++        (imageAuth.value || "")
++            .split(",")
++            .map((e) => e.trim().split(":"))
++            .filter((e) => e.length == 2)
++            .forEach((e) => res.set(e[0], e[1]));
++        return res;
++    }
+ }
+ 
+ export namespace UserEnvVar {
+diff --git a/components/gitpod-protocol/src/teams-projects-protocol.ts b/components/gitpod-protocol/src/teams-projects-protocol.ts
+index 7d06730ae..d32a3655a 100644
+--- a/components/gitpod-protocol/src/teams-projects-protocol.ts
++++ b/components/gitpod-protocol/src/teams-projects-protocol.ts
+@@ -28,6 +28,11 @@ export interface ProjectSettings {
+     restrictedWorkspaceClasses?: string[];
+ 
+     restrictedEditorNames?: string[];
++
++    /**
++     * Enable automatic authentication for docker daemon with all credentials specified in GITPOD_IMAGE_AUTH
++     */
++    enableDockerdAuthentication?: boolean;
+ }
+ export namespace PrebuildSettings {
+     export type BranchStrategy = "default-branch" | "all-branches" | "matched-branches";
+diff --git a/components/image-builder-bob/cmd/proxy.go b/components/image-builder-bob/cmd/proxy.go
+index 238f56eec..8bc8f15bf 100644
+--- a/components/image-builder-bob/cmd/proxy.go
++++ b/components/image-builder-bob/cmd/proxy.go
+@@ -37,7 +37,7 @@ var proxyCmd = &cobra.Command{
+ 		}
+ 		authA, err := proxy.NewAuthorizerFromEnvVar(proxyOpts.AdditionalAuth)
+ 		if err != nil {
+-			log.WithError(err).WithField("auth", proxyOpts.Auth).Fatal("cannot unmarshal auth")
++			log.WithError(err).WithField("additionalAuth", proxyOpts.AdditionalAuth).Fatal("cannot unmarshal additionalAuth")
+ 		}
+ 		authP = authP.AddIfNotExists(authA)
+ 
+diff --git a/components/image-builder-bob/pkg/proxy/auth.go b/components/image-builder-bob/pkg/proxy/auth.go
+index fbd76e526..f175acc5e 100644
+--- a/components/image-builder-bob/pkg/proxy/auth.go
++++ b/components/image-builder-bob/pkg/proxy/auth.go
+@@ -52,6 +52,9 @@ func (a MapAuthorizer) Authorize(host string) (user, pass string, err error) {
+ 		}).Info("authorizing registry access")
+ 	}()
+ 
++	// Strip any port from the host if present
++	host = strings.Split(host, ":")[0]
++
+ 	explicitHostMatcher := func() (authConfig, bool) {
+ 		res, ok := a[host]
+ 		return res, ok
+@@ -86,12 +89,13 @@ func (a MapAuthorizer) Authorize(host string) (user, pass string, err error) {
+ 
+ 	user, pass = res.Username, res.Password
+ 	if res.Auth != "" {
+-		var auth []byte
+-		auth, err = base64.StdEncoding.DecodeString(res.Auth)
++		var authBytes []byte
++		authBytes, err = base64.StdEncoding.DecodeString(res.Auth)
+ 		if err != nil {
+ 			return
+ 		}
+-		segs := strings.Split(string(auth), ":")
++		auth := strings.TrimSpace(string(authBytes))
++		segs := strings.Split(auth, ":")
+ 		if len(segs) < 2 {
+ 			return
+ 		}
+diff --git a/components/image-builder-bob/pkg/proxy/auth_test.go b/components/image-builder-bob/pkg/proxy/auth_test.go
+new file mode 100644
+index 000000000..921f90351
+--- /dev/null
++++ b/components/image-builder-bob/pkg/proxy/auth_test.go
+@@ -0,0 +1,138 @@
++// Copyright (c) 2025 Gitpod GmbH. All rights reserved.
++// Licensed under the GNU Affero General Public License (AGPL).
++// See License.AGPL.txt in the project root for license information.
++
++package proxy
++
++import (
++	"testing"
++)
++
++func TestAuthorize(t *testing.T) {
++	type expectation struct {
++		user string
++		pass string
++		err  string
++	}
++	tests := []struct {
++		name        string
++		constructor func(string) (MapAuthorizer, error)
++		input       string
++		testHost    string
++		expected    expectation
++	}{
++		{
++			name:        "docker auth format - valid credentials",
++			constructor: NewAuthorizerFromDockerEnvVar,
++			input:       `{"auths": {"registry.example.com": {"auth": "dXNlcjpwYXNz"}}}`, // base64(user:pass)
++			testHost:    "registry.example.com",
++			expected: expectation{
++				user: "user",
++				pass: "pass",
++			},
++		},
++		{
++			name:        "docker auth format - valid credentials - host with port",
++			constructor: NewAuthorizerFromDockerEnvVar,
++			input:       `{"auths": {"registry.example.com": {"auth": "dXNlcjpwYXNz"}}}`, // base64(user:pass)
++			testHost:    "registry.example.com:443",
++			expected: expectation{
++				user: "user",
++				pass: "pass",
++			},
++		},
++		{
++			name:        "docker auth format - invalid host",
++			constructor: NewAuthorizerFromDockerEnvVar,
++			input:       `{"auths": {"registry.example.com": {"auth": "dXNlcjpwYXNz"}}}`,
++			testHost:    "wrong.registry.com",
++			expected: expectation{
++				user: "",
++				pass: "",
++			},
++		},
++		{
++			name:        "env var format - valid credentials",
++			constructor: NewAuthorizerFromEnvVar,
++			input:       `{"registry.example.com": {"auth": "dXNlcjpwYXNz"}}`,
++			testHost:    "registry.example.com",
++			expected: expectation{
++				user: "user",
++				pass: "pass",
++			},
++		},
++		{
++			name:        "env var format - empty input",
++			constructor: NewAuthorizerFromEnvVar,
++			input:       "",
++			testHost:    "registry.example.com",
++			expected: expectation{
++				user: "",
++				pass: "",
++			},
++		},
++		{
++			name:        "gitpod format - valid credentials",
++			constructor: NewAuthorizerFromEnvVar,
++			input:       `{"registry.example.com": {"auth": "dXNlcjpwYXNz"}}`,
++			testHost:    "registry.example.com",
++			expected: expectation{
++				user: "user",
++				pass: "pass",
++			},
++		},
++		{
++			name:        "gitpod format - multiple hosts",
++			constructor: NewAuthorizerFromEnvVar,
++			input:       `{"registry1.example.com": {"auth": "dXNlcjE6cGFzczEK"}, "registry2.example.com": {"auth": "dXNlcjI6cGFzczIK"}}`,
++			testHost:    "registry2.example.com",
++			expected: expectation{
++				user: "user2",
++				pass: "pass2",
++			},
++		},
++		{
++			name:        "gitpod format - invalid format",
++			constructor: NewAuthorizerFromEnvVar,
++			input:       "invalid:format:with:toomany:colons",
++			testHost:    "registry.example.com",
++			expected: expectation{
++				err: "invalid character 'i' looking for beginning of value",
++			},
++		},
++		{
++			name:        "gitpod format - empty input",
++			constructor: NewAuthorizerFromEnvVar,
++			input:       "",
++			testHost:    "registry.example.com",
++			expected: expectation{
++				user: "",
++				pass: "",
++			},
++		},
++	}
++
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			auth, err := tt.constructor(tt.input)
++			if err != nil {
++				if tt.expected.err == "" {
++					t.Errorf("Constructor failed: %s", err)
++				}
++				return
++			}
++
++			actualUser, actualPassword, err := auth.Authorize(tt.testHost)
++			if (err != nil) != (tt.expected.err != "") {
++				t.Errorf("Authorize() error = %v, wantErr %v", err, tt.expected.err)
++				return
++			}
++			if actualUser != tt.expected.user {
++				t.Errorf("Authorize() actual user = %v, want %v", actualUser, tt.expected.user)
++			}
++			if actualPassword != tt.expected.pass {
++				t.Errorf("Authorize() actual password = %v, want %v", actualPassword, tt.expected.pass)
++			}
++		})
++	}
++}
+diff --git a/components/public-api/gitpod/v1/configuration.proto b/components/public-api/gitpod/v1/configuration.proto
+index f1b05dca2..b70daba44 100644
+--- a/components/public-api/gitpod/v1/configuration.proto
++++ b/components/public-api/gitpod/v1/configuration.proto
+@@ -52,6 +52,8 @@ message WorkspaceSettings {
+   string workspace_class = 1;
+   repeated string restricted_workspace_classes = 2;
+   repeated string restricted_editor_names = 3;
++  // Enable automatic authentication for docker daemon with all credentials specified in GITPOD_IMAGE_AUTH
++  bool enable_dockerd_authentication = 4;
+ }
+ 
+ service ConfigurationService {
+@@ -131,6 +133,9 @@ message UpdateConfigurationRequest {
+     repeated string restricted_editor_names = 4;
+     // Specifies whether restricted_editor_names should be updated.
+     optional bool update_restricted_editor_names = 5;
++
++    // Enable automatic authentication for docker daemon with all credentials specified in GITPOD_IMAGE_AUTH
++    optional bool enable_dockerd_authentication = 6;
+   }
+   string configuration_id = 1;
+   optional string name = 2;
+diff --git a/components/public-api/go/v1/configuration.pb.go b/components/public-api/go/v1/configuration.pb.go
+index 5f6bb5e6a..573ab5783 100644
+--- a/components/public-api/go/v1/configuration.pb.go
++++ b/components/public-api/go/v1/configuration.pb.go
+@@ -371,6 +371,8 @@ type WorkspaceSettings struct {
+ 	WorkspaceClass             string   `protobuf:"bytes,1,opt,name=workspace_class,json=workspaceClass,proto3" json:"workspace_class,omitempty"`
+ 	RestrictedWorkspaceClasses []string `protobuf:"bytes,2,rep,name=restricted_workspace_classes,json=restrictedWorkspaceClasses,proto3" json:"restricted_workspace_classes,omitempty"`
+ 	RestrictedEditorNames      []string `protobuf:"bytes,3,rep,name=restricted_editor_names,json=restrictedEditorNames,proto3" json:"restricted_editor_names,omitempty"`
++	// Enable automatic authentication for docker daemon with all credentials specified in GITPOD_IMAGE_AUTH
++	EnableDockerdAuthentication bool `protobuf:"varint,4,opt,name=enable_dockerd_authentication,json=enableDockerdAuthentication,proto3" json:"enable_dockerd_authentication,omitempty"`
+ }
+ 
+ func (x *WorkspaceSettings) Reset() {
+@@ -426,6 +428,13 @@ func (x *WorkspaceSettings) GetRestrictedEditorNames() []string {
+ 	return nil
+ }
+ 
++func (x *WorkspaceSettings) GetEnableDockerdAuthentication() bool {
++	if x != nil {
++		return x.EnableDockerdAuthentication
++	}
++	return false
++}
++
+ type CreateConfigurationRequest struct {
+ 	state         protoimpl.MessageState
+ 	sizeCache     protoimpl.SizeCache
+@@ -1082,6 +1091,8 @@ type UpdateConfigurationRequest_WorkspaceSettings struct {
+ 	RestrictedEditorNames []string `protobuf:"bytes,4,rep,name=restricted_editor_names,json=restrictedEditorNames,proto3" json:"restricted_editor_names,omitempty"`
+ 	// Specifies whether restricted_editor_names should be updated.
+ 	UpdateRestrictedEditorNames *bool `protobuf:"varint,5,opt,name=update_restricted_editor_names,json=updateRestrictedEditorNames,proto3,oneof" json:"update_restricted_editor_names,omitempty"`
++	// Enable automatic authentication for docker daemon with all credentials specified in GITPOD_IMAGE_AUTH
++	EnableDockerdAuthentication *bool `protobuf:"varint,6,opt,name=enable_dockerd_authentication,json=enableDockerdAuthentication,proto3,oneof" json:"enable_dockerd_authentication,omitempty"`
+ }
+ 
+ func (x *UpdateConfigurationRequest_WorkspaceSettings) Reset() {
+@@ -1151,6 +1162,13 @@ func (x *UpdateConfigurationRequest_WorkspaceSettings) GetUpdateRestrictedEditor
+ 	return false
+ }
+ 
++func (x *UpdateConfigurationRequest_WorkspaceSettings) GetEnableDockerdAuthentication() bool {
++	if x != nil && x.EnableDockerdAuthentication != nil {
++		return *x.EnableDockerdAuthentication
++	}
++	return false
++}
++
+ var File_gitpod_v1_configuration_proto protoreflect.FileDescriptor
+ 
+ var file_gitpod_v1_configuration_proto_rawDesc = []byte{
+@@ -1212,7 +1230,7 @@ var file_gitpod_v1_configuration_proto_rawDesc = []byte{
+ 	0x74, 0x69, 0x6e, 0x67, 0x73, 0x22, 0x36, 0x0a, 0x15, 0x50, 0x72, 0x65, 0x62, 0x75, 0x69, 0x6c,
+ 	0x64, 0x43, 0x6c, 0x6f, 0x6e, 0x65, 0x53, 0x65, 0x74, 0x74, 0x69, 0x6e, 0x67, 0x73, 0x12, 0x1d,
+ 	0x0a, 0x0a, 0x66, 0x75, 0x6c, 0x6c, 0x5f, 0x63, 0x6c, 0x6f, 0x6e, 0x65, 0x18, 0x01, 0x20, 0x01,
+-	0x28, 0x08, 0x52, 0x09, 0x66, 0x75, 0x6c, 0x6c, 0x43, 0x6c, 0x6f, 0x6e, 0x65, 0x22, 0xb6, 0x01,
++	0x28, 0x08, 0x52, 0x09, 0x66, 0x75, 0x6c, 0x6c, 0x43, 0x6c, 0x6f, 0x6e, 0x65, 0x22, 0xfa, 0x01,
+ 	0x0a, 0x11, 0x57, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x53, 0x65, 0x74, 0x74, 0x69,
+ 	0x6e, 0x67, 0x73, 0x12, 0x27, 0x0a, 0x0f, 0x77, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65,
+ 	0x5f, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0e, 0x77, 0x6f,
+@@ -1224,217 +1242,228 @@ var file_gitpod_v1_configuration_proto_rawDesc = []byte{
+ 	0x0a, 0x17, 0x72, 0x65, 0x73, 0x74, 0x72, 0x69, 0x63, 0x74, 0x65, 0x64, 0x5f, 0x65, 0x64, 0x69,
+ 	0x74, 0x6f, 0x72, 0x5f, 0x6e, 0x61, 0x6d, 0x65, 0x73, 0x18, 0x03, 0x20, 0x03, 0x28, 0x09, 0x52,
+ 	0x15, 0x72, 0x65, 0x73, 0x74, 0x72, 0x69, 0x63, 0x74, 0x65, 0x64, 0x45, 0x64, 0x69, 0x74, 0x6f,
+-	0x72, 0x4e, 0x61, 0x6d, 0x65, 0x73, 0x22, 0x76, 0x0a, 0x1a, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65,
+-	0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x71,
+-	0x75, 0x65, 0x73, 0x74, 0x12, 0x27, 0x0a, 0x0f, 0x6f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61,
+-	0x74, 0x69, 0x6f, 0x6e, 0x5f, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0e, 0x6f,
+-	0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x49, 0x64, 0x12, 0x12, 0x0a,
+-	0x04, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x6e, 0x61, 0x6d,
+-	0x65, 0x12, 0x1b, 0x0a, 0x09, 0x63, 0x6c, 0x6f, 0x6e, 0x65, 0x5f, 0x75, 0x72, 0x6c, 0x18, 0x03,
+-	0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x63, 0x6c, 0x6f, 0x6e, 0x65, 0x55, 0x72, 0x6c, 0x22, 0x5d,
+-	0x0a, 0x1b, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72,
+-	0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x3e, 0x0a,
+-	0x0d, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x18, 0x01,
+-	0x20, 0x01, 0x28, 0x0b, 0x32, 0x18, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31,
+-	0x2e, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x0d,
+-	0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x22, 0x44, 0x0a,
+-	0x17, 0x47, 0x65, 0x74, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f,
+-	0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x29, 0x0a, 0x10, 0x63, 0x6f, 0x6e, 0x66,
+-	0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x5f, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01,
+-	0x28, 0x09, 0x52, 0x0f, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f,
+-	0x6e, 0x49, 0x64, 0x22, 0x5a, 0x0a, 0x18, 0x47, 0x65, 0x74, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67,
+-	0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12,
+-	0x3e, 0x0a, 0x0d, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e,
+-	0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x18, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e,
+-	0x76, 0x31, 0x2e, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e,
+-	0x52, 0x0d, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x22,
+-	0x90, 0x02, 0x0a, 0x19, 0x4c, 0x69, 0x73, 0x74, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72,
+-	0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x27, 0x0a,
+-	0x0f, 0x6f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x5f, 0x69, 0x64,
+-	0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0e, 0x6f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61,
+-	0x74, 0x69, 0x6f, 0x6e, 0x49, 0x64, 0x12, 0x1f, 0x0a, 0x0b, 0x73, 0x65, 0x61, 0x72, 0x63, 0x68,
+-	0x5f, 0x74, 0x65, 0x72, 0x6d, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0a, 0x73, 0x65, 0x61,
+-	0x72, 0x63, 0x68, 0x54, 0x65, 0x72, 0x6d, 0x12, 0x3c, 0x0a, 0x0a, 0x70, 0x61, 0x67, 0x69, 0x6e,
+-	0x61, 0x74, 0x69, 0x6f, 0x6e, 0x18, 0x03, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1c, 0x2e, 0x67, 0x69,
+-	0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x61, 0x67, 0x69, 0x6e, 0x61, 0x74, 0x69,
+-	0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x52, 0x0a, 0x70, 0x61, 0x67, 0x69, 0x6e,
+-	0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x23, 0x0a, 0x04, 0x73, 0x6f, 0x72, 0x74, 0x18, 0x04, 0x20,
+-	0x03, 0x28, 0x0b, 0x32, 0x0f, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e,
+-	0x53, 0x6f, 0x72, 0x74, 0x52, 0x04, 0x73, 0x6f, 0x72, 0x74, 0x12, 0x30, 0x0a, 0x11, 0x70, 0x72,
+-	0x65, 0x62, 0x75, 0x69, 0x6c, 0x64, 0x73, 0x5f, 0x65, 0x6e, 0x61, 0x62, 0x6c, 0x65, 0x64, 0x18,
+-	0x05, 0x20, 0x01, 0x28, 0x08, 0x48, 0x00, 0x52, 0x10, 0x70, 0x72, 0x65, 0x62, 0x75, 0x69, 0x6c,
+-	0x64, 0x73, 0x45, 0x6e, 0x61, 0x62, 0x6c, 0x65, 0x64, 0x88, 0x01, 0x01, 0x42, 0x14, 0x0a, 0x12,
+-	0x5f, 0x70, 0x72, 0x65, 0x62, 0x75, 0x69, 0x6c, 0x64, 0x73, 0x5f, 0x65, 0x6e, 0x61, 0x62, 0x6c,
+-	0x65, 0x64, 0x22, 0x9d, 0x01, 0x0a, 0x1a, 0x4c, 0x69, 0x73, 0x74, 0x43, 0x6f, 0x6e, 0x66, 0x69,
+-	0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73,
+-	0x65, 0x12, 0x40, 0x0a, 0x0e, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69,
+-	0x6f, 0x6e, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x18, 0x2e, 0x67, 0x69, 0x74, 0x70,
+-	0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74,
+-	0x69, 0x6f, 0x6e, 0x52, 0x0e, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69,
+-	0x6f, 0x6e, 0x73, 0x12, 0x3d, 0x0a, 0x0a, 0x70, 0x61, 0x67, 0x69, 0x6e, 0x61, 0x74, 0x69, 0x6f,
+-	0x6e, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1d, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64,
+-	0x2e, 0x76, 0x31, 0x2e, 0x50, 0x61, 0x67, 0x69, 0x6e, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65,
+-	0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x52, 0x0a, 0x70, 0x61, 0x67, 0x69, 0x6e, 0x61, 0x74, 0x69,
+-	0x6f, 0x6e, 0x22, 0xfa, 0x0a, 0x0a, 0x1a, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x43, 0x6f, 0x6e,
+-	0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
+-	0x74, 0x12, 0x29, 0x0a, 0x10, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69,
+-	0x6f, 0x6e, 0x5f, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0f, 0x63, 0x6f, 0x6e,
+-	0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x49, 0x64, 0x12, 0x17, 0x0a, 0x04,
+-	0x6e, 0x61, 0x6d, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x48, 0x00, 0x52, 0x04, 0x6e, 0x61,
+-	0x6d, 0x65, 0x88, 0x01, 0x01, 0x12, 0x68, 0x0a, 0x11, 0x70, 0x72, 0x65, 0x62, 0x75, 0x69, 0x6c,
+-	0x64, 0x5f, 0x73, 0x65, 0x74, 0x74, 0x69, 0x6e, 0x67, 0x73, 0x18, 0x03, 0x20, 0x01, 0x28, 0x0b,
+-	0x32, 0x36, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x55, 0x70, 0x64,
+-	0x61, 0x74, 0x65, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e,
+-	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x2e, 0x50, 0x72, 0x65, 0x62, 0x75, 0x69, 0x6c, 0x64,
+-	0x53, 0x65, 0x74, 0x74, 0x69, 0x6e, 0x67, 0x73, 0x48, 0x01, 0x52, 0x10, 0x70, 0x72, 0x65, 0x62,
+-	0x75, 0x69, 0x6c, 0x64, 0x53, 0x65, 0x74, 0x74, 0x69, 0x6e, 0x67, 0x73, 0x88, 0x01, 0x01, 0x12,
+-	0x6b, 0x0a, 0x12, 0x77, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x5f, 0x73, 0x65, 0x74,
+-	0x74, 0x69, 0x6e, 0x67, 0x73, 0x18, 0x04, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x37, 0x2e, 0x67, 0x69,
+-	0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x43, 0x6f,
+-	0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65,
+-	0x73, 0x74, 0x2e, 0x57, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x53, 0x65, 0x74, 0x74,
+-	0x69, 0x6e, 0x67, 0x73, 0x48, 0x02, 0x52, 0x11, 0x77, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63,
+-	0x65, 0x53, 0x65, 0x74, 0x74, 0x69, 0x6e, 0x67, 0x73, 0x88, 0x01, 0x01, 0x1a, 0xcf, 0x04, 0x0a,
+-	0x10, 0x50, 0x72, 0x65, 0x62, 0x75, 0x69, 0x6c, 0x64, 0x53, 0x65, 0x74, 0x74, 0x69, 0x6e, 0x67,
+-	0x73, 0x12, 0x1d, 0x0a, 0x07, 0x65, 0x6e, 0x61, 0x62, 0x6c, 0x65, 0x64, 0x18, 0x01, 0x20, 0x01,
+-	0x28, 0x08, 0x48, 0x00, 0x52, 0x07, 0x65, 0x6e, 0x61, 0x62, 0x6c, 0x65, 0x64, 0x88, 0x01, 0x01,
+-	0x12, 0x3b, 0x0a, 0x17, 0x62, 0x72, 0x61, 0x6e, 0x63, 0x68, 0x5f, 0x6d, 0x61, 0x74, 0x63, 0x68,
+-	0x69, 0x6e, 0x67, 0x5f, 0x70, 0x61, 0x74, 0x74, 0x65, 0x72, 0x6e, 0x18, 0x02, 0x20, 0x01, 0x28,
+-	0x09, 0x48, 0x01, 0x52, 0x15, 0x62, 0x72, 0x61, 0x6e, 0x63, 0x68, 0x4d, 0x61, 0x74, 0x63, 0x68,
+-	0x69, 0x6e, 0x67, 0x50, 0x61, 0x74, 0x74, 0x65, 0x72, 0x6e, 0x88, 0x01, 0x01, 0x12, 0x4f, 0x0a,
+-	0x0f, 0x62, 0x72, 0x61, 0x6e, 0x63, 0x68, 0x5f, 0x73, 0x74, 0x72, 0x61, 0x74, 0x65, 0x67, 0x79,
+-	0x18, 0x03, 0x20, 0x01, 0x28, 0x0e, 0x32, 0x21, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e,
+-	0x76, 0x31, 0x2e, 0x42, 0x72, 0x61, 0x6e, 0x63, 0x68, 0x4d, 0x61, 0x74, 0x63, 0x68, 0x69, 0x6e,
+-	0x67, 0x53, 0x74, 0x72, 0x61, 0x74, 0x65, 0x67, 0x79, 0x48, 0x02, 0x52, 0x0e, 0x62, 0x72, 0x61,
+-	0x6e, 0x63, 0x68, 0x53, 0x74, 0x72, 0x61, 0x74, 0x65, 0x67, 0x79, 0x88, 0x01, 0x01, 0x12, 0x30,
+-	0x0a, 0x11, 0x70, 0x72, 0x65, 0x62, 0x75, 0x69, 0x6c, 0x64, 0x5f, 0x69, 0x6e, 0x74, 0x65, 0x72,
+-	0x76, 0x61, 0x6c, 0x18, 0x04, 0x20, 0x01, 0x28, 0x05, 0x48, 0x03, 0x52, 0x10, 0x70, 0x72, 0x65,
+-	0x62, 0x75, 0x69, 0x6c, 0x64, 0x49, 0x6e, 0x74, 0x65, 0x72, 0x76, 0x61, 0x6c, 0x88, 0x01, 0x01,
+-	0x12, 0x2c, 0x0a, 0x0f, 0x77, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x5f, 0x63, 0x6c,
+-	0x61, 0x73, 0x73, 0x18, 0x05, 0x20, 0x01, 0x28, 0x09, 0x48, 0x04, 0x52, 0x0e, 0x77, 0x6f, 0x72,
+-	0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x43, 0x6c, 0x61, 0x73, 0x73, 0x88, 0x01, 0x01, 0x12, 0x52,
+-	0x0a, 0x10, 0x74, 0x72, 0x69, 0x67, 0x67, 0x65, 0x72, 0x5f, 0x73, 0x74, 0x72, 0x61, 0x74, 0x65,
+-	0x67, 0x79, 0x18, 0x06, 0x20, 0x01, 0x28, 0x0e, 0x32, 0x22, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f,
+-	0x64, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x72, 0x65, 0x62, 0x75, 0x69, 0x6c, 0x64, 0x54, 0x72, 0x69,
+-	0x67, 0x67, 0x65, 0x72, 0x53, 0x74, 0x72, 0x61, 0x74, 0x65, 0x67, 0x79, 0x48, 0x05, 0x52, 0x0f,
+-	0x74, 0x72, 0x69, 0x67, 0x67, 0x65, 0x72, 0x53, 0x74, 0x72, 0x61, 0x74, 0x65, 0x67, 0x79, 0x88,
+-	0x01, 0x01, 0x12, 0x4c, 0x0a, 0x0e, 0x63, 0x6c, 0x6f, 0x6e, 0x65, 0x5f, 0x73, 0x65, 0x74, 0x74,
+-	0x69, 0x6e, 0x67, 0x73, 0x18, 0x07, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x20, 0x2e, 0x67, 0x69, 0x74,
+-	0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x72, 0x65, 0x62, 0x75, 0x69, 0x6c, 0x64, 0x43,
+-	0x6c, 0x6f, 0x6e, 0x65, 0x53, 0x65, 0x74, 0x74, 0x69, 0x6e, 0x67, 0x73, 0x48, 0x06, 0x52, 0x0d,
+-	0x63, 0x6c, 0x6f, 0x6e, 0x65, 0x53, 0x65, 0x74, 0x74, 0x69, 0x6e, 0x67, 0x73, 0x88, 0x01, 0x01,
+-	0x42, 0x0a, 0x0a, 0x08, 0x5f, 0x65, 0x6e, 0x61, 0x62, 0x6c, 0x65, 0x64, 0x42, 0x1a, 0x0a, 0x18,
+-	0x5f, 0x62, 0x72, 0x61, 0x6e, 0x63, 0x68, 0x5f, 0x6d, 0x61, 0x74, 0x63, 0x68, 0x69, 0x6e, 0x67,
+-	0x5f, 0x70, 0x61, 0x74, 0x74, 0x65, 0x72, 0x6e, 0x42, 0x12, 0x0a, 0x10, 0x5f, 0x62, 0x72, 0x61,
+-	0x6e, 0x63, 0x68, 0x5f, 0x73, 0x74, 0x72, 0x61, 0x74, 0x65, 0x67, 0x79, 0x42, 0x14, 0x0a, 0x12,
+-	0x5f, 0x70, 0x72, 0x65, 0x62, 0x75, 0x69, 0x6c, 0x64, 0x5f, 0x69, 0x6e, 0x74, 0x65, 0x72, 0x76,
+-	0x61, 0x6c, 0x42, 0x12, 0x0a, 0x10, 0x5f, 0x77, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65,
+-	0x5f, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x42, 0x13, 0x0a, 0x11, 0x5f, 0x74, 0x72, 0x69, 0x67, 0x67,
+-	0x65, 0x72, 0x5f, 0x73, 0x74, 0x72, 0x61, 0x74, 0x65, 0x67, 0x79, 0x42, 0x11, 0x0a, 0x0f, 0x5f,
+-	0x63, 0x6c, 0x6f, 0x6e, 0x65, 0x5f, 0x73, 0x65, 0x74, 0x74, 0x69, 0x6e, 0x67, 0x73, 0x1a, 0xb8,
+-	0x03, 0x0a, 0x11, 0x57, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x53, 0x65, 0x74, 0x74,
+-	0x69, 0x6e, 0x67, 0x73, 0x12, 0x2c, 0x0a, 0x0f, 0x77, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63,
+-	0x65, 0x5f, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x48, 0x00, 0x52,
+-	0x0e, 0x77, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x43, 0x6c, 0x61, 0x73, 0x73, 0x88,
+-	0x01, 0x01, 0x12, 0x40, 0x0a, 0x1c, 0x72, 0x65, 0x73, 0x74, 0x72, 0x69, 0x63, 0x74, 0x65, 0x64,
+-	0x5f, 0x77, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x5f, 0x63, 0x6c, 0x61, 0x73, 0x73,
+-	0x65, 0x73, 0x18, 0x02, 0x20, 0x03, 0x28, 0x09, 0x52, 0x1a, 0x72, 0x65, 0x73, 0x74, 0x72, 0x69,
+-	0x63, 0x74, 0x65, 0x64, 0x57, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x43, 0x6c, 0x61,
+-	0x73, 0x73, 0x65, 0x73, 0x12, 0x52, 0x0a, 0x23, 0x75, 0x70, 0x64, 0x61, 0x74, 0x65, 0x5f, 0x72,
+-	0x65, 0x73, 0x74, 0x72, 0x69, 0x63, 0x74, 0x65, 0x64, 0x5f, 0x77, 0x6f, 0x72, 0x6b, 0x73, 0x70,
+-	0x61, 0x63, 0x65, 0x5f, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x65, 0x73, 0x18, 0x03, 0x20, 0x01, 0x28,
+-	0x08, 0x48, 0x01, 0x52, 0x20, 0x75, 0x70, 0x64, 0x61, 0x74, 0x65, 0x52, 0x65, 0x73, 0x74, 0x72,
+-	0x69, 0x63, 0x74, 0x65, 0x64, 0x57, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x43, 0x6c,
+-	0x61, 0x73, 0x73, 0x65, 0x73, 0x88, 0x01, 0x01, 0x12, 0x36, 0x0a, 0x17, 0x72, 0x65, 0x73, 0x74,
+-	0x72, 0x69, 0x63, 0x74, 0x65, 0x64, 0x5f, 0x65, 0x64, 0x69, 0x74, 0x6f, 0x72, 0x5f, 0x6e, 0x61,
+-	0x6d, 0x65, 0x73, 0x18, 0x04, 0x20, 0x03, 0x28, 0x09, 0x52, 0x15, 0x72, 0x65, 0x73, 0x74, 0x72,
+-	0x69, 0x63, 0x74, 0x65, 0x64, 0x45, 0x64, 0x69, 0x74, 0x6f, 0x72, 0x4e, 0x61, 0x6d, 0x65, 0x73,
+-	0x12, 0x48, 0x0a, 0x1e, 0x75, 0x70, 0x64, 0x61, 0x74, 0x65, 0x5f, 0x72, 0x65, 0x73, 0x74, 0x72,
+-	0x69, 0x63, 0x74, 0x65, 0x64, 0x5f, 0x65, 0x64, 0x69, 0x74, 0x6f, 0x72, 0x5f, 0x6e, 0x61, 0x6d,
+-	0x65, 0x73, 0x18, 0x05, 0x20, 0x01, 0x28, 0x08, 0x48, 0x02, 0x52, 0x1b, 0x75, 0x70, 0x64, 0x61,
+-	0x74, 0x65, 0x52, 0x65, 0x73, 0x74, 0x72, 0x69, 0x63, 0x74, 0x65, 0x64, 0x45, 0x64, 0x69, 0x74,
+-	0x6f, 0x72, 0x4e, 0x61, 0x6d, 0x65, 0x73, 0x88, 0x01, 0x01, 0x42, 0x12, 0x0a, 0x10, 0x5f, 0x77,
+-	0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x5f, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x42, 0x26,
+-	0x0a, 0x24, 0x5f, 0x75, 0x70, 0x64, 0x61, 0x74, 0x65, 0x5f, 0x72, 0x65, 0x73, 0x74, 0x72, 0x69,
+-	0x63, 0x74, 0x65, 0x64, 0x5f, 0x77, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x5f, 0x63,
+-	0x6c, 0x61, 0x73, 0x73, 0x65, 0x73, 0x42, 0x21, 0x0a, 0x1f, 0x5f, 0x75, 0x70, 0x64, 0x61, 0x74,
+-	0x65, 0x5f, 0x72, 0x65, 0x73, 0x74, 0x72, 0x69, 0x63, 0x74, 0x65, 0x64, 0x5f, 0x65, 0x64, 0x69,
+-	0x74, 0x6f, 0x72, 0x5f, 0x6e, 0x61, 0x6d, 0x65, 0x73, 0x42, 0x07, 0x0a, 0x05, 0x5f, 0x6e, 0x61,
+-	0x6d, 0x65, 0x42, 0x14, 0x0a, 0x12, 0x5f, 0x70, 0x72, 0x65, 0x62, 0x75, 0x69, 0x6c, 0x64, 0x5f,
+-	0x73, 0x65, 0x74, 0x74, 0x69, 0x6e, 0x67, 0x73, 0x42, 0x15, 0x0a, 0x13, 0x5f, 0x77, 0x6f, 0x72,
+-	0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x5f, 0x73, 0x65, 0x74, 0x74, 0x69, 0x6e, 0x67, 0x73, 0x22,
+-	0x5d, 0x0a, 0x1b, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75,
+-	0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x3e,
+-	0x0a, 0x0d, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x18,
+-	0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x18, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76,
+-	0x31, 0x2e, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52,
+-	0x0d, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x22, 0x47,
+-	0x0a, 0x1a, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72,
++	0x72, 0x4e, 0x61, 0x6d, 0x65, 0x73, 0x12, 0x42, 0x0a, 0x1d, 0x65, 0x6e, 0x61, 0x62, 0x6c, 0x65,
++	0x5f, 0x64, 0x6f, 0x63, 0x6b, 0x65, 0x72, 0x64, 0x5f, 0x61, 0x75, 0x74, 0x68, 0x65, 0x6e, 0x74,
++	0x69, 0x63, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x18, 0x04, 0x20, 0x01, 0x28, 0x08, 0x52, 0x1b, 0x65,
++	0x6e, 0x61, 0x62, 0x6c, 0x65, 0x44, 0x6f, 0x63, 0x6b, 0x65, 0x72, 0x64, 0x41, 0x75, 0x74, 0x68,
++	0x65, 0x6e, 0x74, 0x69, 0x63, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x22, 0x76, 0x0a, 0x1a, 0x43, 0x72,
++	0x65, 0x61, 0x74, 0x65, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f,
++	0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x27, 0x0a, 0x0f, 0x6f, 0x72, 0x67, 0x61,
++	0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x5f, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28,
++	0x09, 0x52, 0x0e, 0x6f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x49,
++	0x64, 0x12, 0x12, 0x0a, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52,
++	0x04, 0x6e, 0x61, 0x6d, 0x65, 0x12, 0x1b, 0x0a, 0x09, 0x63, 0x6c, 0x6f, 0x6e, 0x65, 0x5f, 0x75,
++	0x72, 0x6c, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x63, 0x6c, 0x6f, 0x6e, 0x65, 0x55,
++	0x72, 0x6c, 0x22, 0x5d, 0x0a, 0x1b, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x43, 0x6f, 0x6e, 0x66,
++	0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73,
++	0x65, 0x12, 0x3e, 0x0a, 0x0d, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69,
++	0x6f, 0x6e, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x18, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f,
++	0x64, 0x2e, 0x76, 0x31, 0x2e, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69,
++	0x6f, 0x6e, 0x52, 0x0d, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f,
++	0x6e, 0x22, 0x44, 0x0a, 0x17, 0x47, 0x65, 0x74, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72,
+ 	0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x29, 0x0a, 0x10,
+ 	0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x5f, 0x69, 0x64,
+ 	0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0f, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72,
+-	0x61, 0x74, 0x69, 0x6f, 0x6e, 0x49, 0x64, 0x22, 0x1d, 0x0a, 0x1b, 0x44, 0x65, 0x6c, 0x65, 0x74,
++	0x61, 0x74, 0x69, 0x6f, 0x6e, 0x49, 0x64, 0x22, 0x5a, 0x0a, 0x18, 0x47, 0x65, 0x74, 0x43, 0x6f,
++	0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f,
++	0x6e, 0x73, 0x65, 0x12, 0x3e, 0x0a, 0x0d, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61,
++	0x74, 0x69, 0x6f, 0x6e, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x18, 0x2e, 0x67, 0x69, 0x74,
++	0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61,
++	0x74, 0x69, 0x6f, 0x6e, 0x52, 0x0d, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74,
++	0x69, 0x6f, 0x6e, 0x22, 0x90, 0x02, 0x0a, 0x19, 0x4c, 0x69, 0x73, 0x74, 0x43, 0x6f, 0x6e, 0x66,
++	0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
++	0x74, 0x12, 0x27, 0x0a, 0x0f, 0x6f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f,
++	0x6e, 0x5f, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0e, 0x6f, 0x72, 0x67, 0x61,
++	0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x49, 0x64, 0x12, 0x1f, 0x0a, 0x0b, 0x73, 0x65,
++	0x61, 0x72, 0x63, 0x68, 0x5f, 0x74, 0x65, 0x72, 0x6d, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52,
++	0x0a, 0x73, 0x65, 0x61, 0x72, 0x63, 0x68, 0x54, 0x65, 0x72, 0x6d, 0x12, 0x3c, 0x0a, 0x0a, 0x70,
++	0x61, 0x67, 0x69, 0x6e, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x18, 0x03, 0x20, 0x01, 0x28, 0x0b, 0x32,
++	0x1c, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x61, 0x67, 0x69,
++	0x6e, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x52, 0x0a, 0x70,
++	0x61, 0x67, 0x69, 0x6e, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x23, 0x0a, 0x04, 0x73, 0x6f, 0x72,
++	0x74, 0x18, 0x04, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x0f, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64,
++	0x2e, 0x76, 0x31, 0x2e, 0x53, 0x6f, 0x72, 0x74, 0x52, 0x04, 0x73, 0x6f, 0x72, 0x74, 0x12, 0x30,
++	0x0a, 0x11, 0x70, 0x72, 0x65, 0x62, 0x75, 0x69, 0x6c, 0x64, 0x73, 0x5f, 0x65, 0x6e, 0x61, 0x62,
++	0x6c, 0x65, 0x64, 0x18, 0x05, 0x20, 0x01, 0x28, 0x08, 0x48, 0x00, 0x52, 0x10, 0x70, 0x72, 0x65,
++	0x62, 0x75, 0x69, 0x6c, 0x64, 0x73, 0x45, 0x6e, 0x61, 0x62, 0x6c, 0x65, 0x64, 0x88, 0x01, 0x01,
++	0x42, 0x14, 0x0a, 0x12, 0x5f, 0x70, 0x72, 0x65, 0x62, 0x75, 0x69, 0x6c, 0x64, 0x73, 0x5f, 0x65,
++	0x6e, 0x61, 0x62, 0x6c, 0x65, 0x64, 0x22, 0x9d, 0x01, 0x0a, 0x1a, 0x4c, 0x69, 0x73, 0x74, 0x43,
++	0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x52, 0x65, 0x73,
++	0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x40, 0x0a, 0x0e, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75,
++	0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x18, 0x2e,
++	0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67,
++	0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x0e, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75,
++	0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x12, 0x3d, 0x0a, 0x0a, 0x70, 0x61, 0x67, 0x69, 0x6e,
++	0x61, 0x74, 0x69, 0x6f, 0x6e, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1d, 0x2e, 0x67, 0x69,
++	0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x61, 0x67, 0x69, 0x6e, 0x61, 0x74, 0x69,
++	0x6f, 0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x52, 0x0a, 0x70, 0x61, 0x67, 0x69,
++	0x6e, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x22, 0xe5, 0x0b, 0x0a, 0x1a, 0x55, 0x70, 0x64, 0x61, 0x74,
+ 	0x65, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65,
+-	0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x2a, 0x72, 0x0a, 0x17, 0x50, 0x72, 0x65, 0x62, 0x75, 0x69,
+-	0x6c, 0x64, 0x54, 0x72, 0x69, 0x67, 0x67, 0x65, 0x72, 0x53, 0x74, 0x72, 0x61, 0x74, 0x65, 0x67,
+-	0x79, 0x12, 0x29, 0x0a, 0x25, 0x50, 0x52, 0x45, 0x42, 0x55, 0x49, 0x4c, 0x44, 0x5f, 0x54, 0x52,
+-	0x49, 0x47, 0x47, 0x45, 0x52, 0x5f, 0x53, 0x54, 0x52, 0x41, 0x54, 0x45, 0x47, 0x59, 0x5f, 0x55,
+-	0x4e, 0x53, 0x50, 0x45, 0x43, 0x49, 0x46, 0x49, 0x45, 0x44, 0x10, 0x00, 0x12, 0x2c, 0x0a, 0x28,
+-	0x50, 0x52, 0x45, 0x42, 0x55, 0x49, 0x4c, 0x44, 0x5f, 0x54, 0x52, 0x49, 0x47, 0x47, 0x45, 0x52,
+-	0x5f, 0x53, 0x54, 0x52, 0x41, 0x54, 0x45, 0x47, 0x59, 0x5f, 0x41, 0x43, 0x54, 0x49, 0x56, 0x49,
+-	0x54, 0x59, 0x5f, 0x42, 0x41, 0x53, 0x45, 0x44, 0x10, 0x01, 0x2a, 0xc9, 0x01, 0x0a, 0x16, 0x42,
+-	0x72, 0x61, 0x6e, 0x63, 0x68, 0x4d, 0x61, 0x74, 0x63, 0x68, 0x69, 0x6e, 0x67, 0x53, 0x74, 0x72,
+-	0x61, 0x74, 0x65, 0x67, 0x79, 0x12, 0x28, 0x0a, 0x24, 0x42, 0x52, 0x41, 0x4e, 0x43, 0x48, 0x5f,
+-	0x4d, 0x41, 0x54, 0x43, 0x48, 0x49, 0x4e, 0x47, 0x5f, 0x53, 0x54, 0x52, 0x41, 0x54, 0x45, 0x47,
+-	0x59, 0x5f, 0x55, 0x4e, 0x53, 0x50, 0x45, 0x43, 0x49, 0x46, 0x49, 0x45, 0x44, 0x10, 0x00, 0x12,
+-	0x2b, 0x0a, 0x27, 0x42, 0x52, 0x41, 0x4e, 0x43, 0x48, 0x5f, 0x4d, 0x41, 0x54, 0x43, 0x48, 0x49,
+-	0x4e, 0x47, 0x5f, 0x53, 0x54, 0x52, 0x41, 0x54, 0x45, 0x47, 0x59, 0x5f, 0x44, 0x45, 0x46, 0x41,
+-	0x55, 0x4c, 0x54, 0x5f, 0x42, 0x52, 0x41, 0x4e, 0x43, 0x48, 0x10, 0x01, 0x12, 0x29, 0x0a, 0x25,
+-	0x42, 0x52, 0x41, 0x4e, 0x43, 0x48, 0x5f, 0x4d, 0x41, 0x54, 0x43, 0x48, 0x49, 0x4e, 0x47, 0x5f,
+-	0x53, 0x54, 0x52, 0x41, 0x54, 0x45, 0x47, 0x59, 0x5f, 0x41, 0x4c, 0x4c, 0x5f, 0x42, 0x52, 0x41,
+-	0x4e, 0x43, 0x48, 0x45, 0x53, 0x10, 0x02, 0x12, 0x2d, 0x0a, 0x29, 0x42, 0x52, 0x41, 0x4e, 0x43,
+-	0x48, 0x5f, 0x4d, 0x41, 0x54, 0x43, 0x48, 0x49, 0x4e, 0x47, 0x5f, 0x53, 0x54, 0x52, 0x41, 0x54,
+-	0x45, 0x47, 0x59, 0x5f, 0x4d, 0x41, 0x54, 0x43, 0x48, 0x45, 0x44, 0x5f, 0x42, 0x52, 0x41, 0x4e,
+-	0x43, 0x48, 0x45, 0x53, 0x10, 0x03, 0x32, 0x92, 0x04, 0x0a, 0x14, 0x43, 0x6f, 0x6e, 0x66, 0x69,
+-	0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x12,
+-	0x66, 0x0a, 0x13, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75,
+-	0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x25, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e,
+-	0x76, 0x31, 0x2e, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75,
+-	0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x26, 0x2e,
+-	0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65,
++	0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x29, 0x0a, 0x10, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75,
++	0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x5f, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52,
++	0x0f, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x49, 0x64,
++	0x12, 0x17, 0x0a, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x48, 0x00,
++	0x52, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x88, 0x01, 0x01, 0x12, 0x68, 0x0a, 0x11, 0x70, 0x72, 0x65,
++	0x62, 0x75, 0x69, 0x6c, 0x64, 0x5f, 0x73, 0x65, 0x74, 0x74, 0x69, 0x6e, 0x67, 0x73, 0x18, 0x03,
++	0x20, 0x01, 0x28, 0x0b, 0x32, 0x36, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31,
++	0x2e, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61,
++	0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x2e, 0x50, 0x72, 0x65, 0x62,
++	0x75, 0x69, 0x6c, 0x64, 0x53, 0x65, 0x74, 0x74, 0x69, 0x6e, 0x67, 0x73, 0x48, 0x01, 0x52, 0x10,
++	0x70, 0x72, 0x65, 0x62, 0x75, 0x69, 0x6c, 0x64, 0x53, 0x65, 0x74, 0x74, 0x69, 0x6e, 0x67, 0x73,
++	0x88, 0x01, 0x01, 0x12, 0x6b, 0x0a, 0x12, 0x77, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65,
++	0x5f, 0x73, 0x65, 0x74, 0x74, 0x69, 0x6e, 0x67, 0x73, 0x18, 0x04, 0x20, 0x01, 0x28, 0x0b, 0x32,
++	0x37, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x55, 0x70, 0x64, 0x61,
++	0x74, 0x65, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52,
++	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x2e, 0x57, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65,
++	0x53, 0x65, 0x74, 0x74, 0x69, 0x6e, 0x67, 0x73, 0x48, 0x02, 0x52, 0x11, 0x77, 0x6f, 0x72, 0x6b,
++	0x73, 0x70, 0x61, 0x63, 0x65, 0x53, 0x65, 0x74, 0x74, 0x69, 0x6e, 0x67, 0x73, 0x88, 0x01, 0x01,
++	0x1a, 0xcf, 0x04, 0x0a, 0x10, 0x50, 0x72, 0x65, 0x62, 0x75, 0x69, 0x6c, 0x64, 0x53, 0x65, 0x74,
++	0x74, 0x69, 0x6e, 0x67, 0x73, 0x12, 0x1d, 0x0a, 0x07, 0x65, 0x6e, 0x61, 0x62, 0x6c, 0x65, 0x64,
++	0x18, 0x01, 0x20, 0x01, 0x28, 0x08, 0x48, 0x00, 0x52, 0x07, 0x65, 0x6e, 0x61, 0x62, 0x6c, 0x65,
++	0x64, 0x88, 0x01, 0x01, 0x12, 0x3b, 0x0a, 0x17, 0x62, 0x72, 0x61, 0x6e, 0x63, 0x68, 0x5f, 0x6d,
++	0x61, 0x74, 0x63, 0x68, 0x69, 0x6e, 0x67, 0x5f, 0x70, 0x61, 0x74, 0x74, 0x65, 0x72, 0x6e, 0x18,
++	0x02, 0x20, 0x01, 0x28, 0x09, 0x48, 0x01, 0x52, 0x15, 0x62, 0x72, 0x61, 0x6e, 0x63, 0x68, 0x4d,
++	0x61, 0x74, 0x63, 0x68, 0x69, 0x6e, 0x67, 0x50, 0x61, 0x74, 0x74, 0x65, 0x72, 0x6e, 0x88, 0x01,
++	0x01, 0x12, 0x4f, 0x0a, 0x0f, 0x62, 0x72, 0x61, 0x6e, 0x63, 0x68, 0x5f, 0x73, 0x74, 0x72, 0x61,
++	0x74, 0x65, 0x67, 0x79, 0x18, 0x03, 0x20, 0x01, 0x28, 0x0e, 0x32, 0x21, 0x2e, 0x67, 0x69, 0x74,
++	0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x42, 0x72, 0x61, 0x6e, 0x63, 0x68, 0x4d, 0x61, 0x74,
++	0x63, 0x68, 0x69, 0x6e, 0x67, 0x53, 0x74, 0x72, 0x61, 0x74, 0x65, 0x67, 0x79, 0x48, 0x02, 0x52,
++	0x0e, 0x62, 0x72, 0x61, 0x6e, 0x63, 0x68, 0x53, 0x74, 0x72, 0x61, 0x74, 0x65, 0x67, 0x79, 0x88,
++	0x01, 0x01, 0x12, 0x30, 0x0a, 0x11, 0x70, 0x72, 0x65, 0x62, 0x75, 0x69, 0x6c, 0x64, 0x5f, 0x69,
++	0x6e, 0x74, 0x65, 0x72, 0x76, 0x61, 0x6c, 0x18, 0x04, 0x20, 0x01, 0x28, 0x05, 0x48, 0x03, 0x52,
++	0x10, 0x70, 0x72, 0x65, 0x62, 0x75, 0x69, 0x6c, 0x64, 0x49, 0x6e, 0x74, 0x65, 0x72, 0x76, 0x61,
++	0x6c, 0x88, 0x01, 0x01, 0x12, 0x2c, 0x0a, 0x0f, 0x77, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63,
++	0x65, 0x5f, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x18, 0x05, 0x20, 0x01, 0x28, 0x09, 0x48, 0x04, 0x52,
++	0x0e, 0x77, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x43, 0x6c, 0x61, 0x73, 0x73, 0x88,
++	0x01, 0x01, 0x12, 0x52, 0x0a, 0x10, 0x74, 0x72, 0x69, 0x67, 0x67, 0x65, 0x72, 0x5f, 0x73, 0x74,
++	0x72, 0x61, 0x74, 0x65, 0x67, 0x79, 0x18, 0x06, 0x20, 0x01, 0x28, 0x0e, 0x32, 0x22, 0x2e, 0x67,
++	0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x72, 0x65, 0x62, 0x75, 0x69, 0x6c,
++	0x64, 0x54, 0x72, 0x69, 0x67, 0x67, 0x65, 0x72, 0x53, 0x74, 0x72, 0x61, 0x74, 0x65, 0x67, 0x79,
++	0x48, 0x05, 0x52, 0x0f, 0x74, 0x72, 0x69, 0x67, 0x67, 0x65, 0x72, 0x53, 0x74, 0x72, 0x61, 0x74,
++	0x65, 0x67, 0x79, 0x88, 0x01, 0x01, 0x12, 0x4c, 0x0a, 0x0e, 0x63, 0x6c, 0x6f, 0x6e, 0x65, 0x5f,
++	0x73, 0x65, 0x74, 0x74, 0x69, 0x6e, 0x67, 0x73, 0x18, 0x07, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x20,
++	0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x72, 0x65, 0x62, 0x75,
++	0x69, 0x6c, 0x64, 0x43, 0x6c, 0x6f, 0x6e, 0x65, 0x53, 0x65, 0x74, 0x74, 0x69, 0x6e, 0x67, 0x73,
++	0x48, 0x06, 0x52, 0x0d, 0x63, 0x6c, 0x6f, 0x6e, 0x65, 0x53, 0x65, 0x74, 0x74, 0x69, 0x6e, 0x67,
++	0x73, 0x88, 0x01, 0x01, 0x42, 0x0a, 0x0a, 0x08, 0x5f, 0x65, 0x6e, 0x61, 0x62, 0x6c, 0x65, 0x64,
++	0x42, 0x1a, 0x0a, 0x18, 0x5f, 0x62, 0x72, 0x61, 0x6e, 0x63, 0x68, 0x5f, 0x6d, 0x61, 0x74, 0x63,
++	0x68, 0x69, 0x6e, 0x67, 0x5f, 0x70, 0x61, 0x74, 0x74, 0x65, 0x72, 0x6e, 0x42, 0x12, 0x0a, 0x10,
++	0x5f, 0x62, 0x72, 0x61, 0x6e, 0x63, 0x68, 0x5f, 0x73, 0x74, 0x72, 0x61, 0x74, 0x65, 0x67, 0x79,
++	0x42, 0x14, 0x0a, 0x12, 0x5f, 0x70, 0x72, 0x65, 0x62, 0x75, 0x69, 0x6c, 0x64, 0x5f, 0x69, 0x6e,
++	0x74, 0x65, 0x72, 0x76, 0x61, 0x6c, 0x42, 0x12, 0x0a, 0x10, 0x5f, 0x77, 0x6f, 0x72, 0x6b, 0x73,
++	0x70, 0x61, 0x63, 0x65, 0x5f, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x42, 0x13, 0x0a, 0x11, 0x5f, 0x74,
++	0x72, 0x69, 0x67, 0x67, 0x65, 0x72, 0x5f, 0x73, 0x74, 0x72, 0x61, 0x74, 0x65, 0x67, 0x79, 0x42,
++	0x11, 0x0a, 0x0f, 0x5f, 0x63, 0x6c, 0x6f, 0x6e, 0x65, 0x5f, 0x73, 0x65, 0x74, 0x74, 0x69, 0x6e,
++	0x67, 0x73, 0x1a, 0xa3, 0x04, 0x0a, 0x11, 0x57, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65,
++	0x53, 0x65, 0x74, 0x74, 0x69, 0x6e, 0x67, 0x73, 0x12, 0x2c, 0x0a, 0x0f, 0x77, 0x6f, 0x72, 0x6b,
++	0x73, 0x70, 0x61, 0x63, 0x65, 0x5f, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x18, 0x01, 0x20, 0x01, 0x28,
++	0x09, 0x48, 0x00, 0x52, 0x0e, 0x77, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x43, 0x6c,
++	0x61, 0x73, 0x73, 0x88, 0x01, 0x01, 0x12, 0x40, 0x0a, 0x1c, 0x72, 0x65, 0x73, 0x74, 0x72, 0x69,
++	0x63, 0x74, 0x65, 0x64, 0x5f, 0x77, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x5f, 0x63,
++	0x6c, 0x61, 0x73, 0x73, 0x65, 0x73, 0x18, 0x02, 0x20, 0x03, 0x28, 0x09, 0x52, 0x1a, 0x72, 0x65,
++	0x73, 0x74, 0x72, 0x69, 0x63, 0x74, 0x65, 0x64, 0x57, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63,
++	0x65, 0x43, 0x6c, 0x61, 0x73, 0x73, 0x65, 0x73, 0x12, 0x52, 0x0a, 0x23, 0x75, 0x70, 0x64, 0x61,
++	0x74, 0x65, 0x5f, 0x72, 0x65, 0x73, 0x74, 0x72, 0x69, 0x63, 0x74, 0x65, 0x64, 0x5f, 0x77, 0x6f,
++	0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x5f, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x65, 0x73, 0x18,
++	0x03, 0x20, 0x01, 0x28, 0x08, 0x48, 0x01, 0x52, 0x20, 0x75, 0x70, 0x64, 0x61, 0x74, 0x65, 0x52,
++	0x65, 0x73, 0x74, 0x72, 0x69, 0x63, 0x74, 0x65, 0x64, 0x57, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61,
++	0x63, 0x65, 0x43, 0x6c, 0x61, 0x73, 0x73, 0x65, 0x73, 0x88, 0x01, 0x01, 0x12, 0x36, 0x0a, 0x17,
++	0x72, 0x65, 0x73, 0x74, 0x72, 0x69, 0x63, 0x74, 0x65, 0x64, 0x5f, 0x65, 0x64, 0x69, 0x74, 0x6f,
++	0x72, 0x5f, 0x6e, 0x61, 0x6d, 0x65, 0x73, 0x18, 0x04, 0x20, 0x03, 0x28, 0x09, 0x52, 0x15, 0x72,
++	0x65, 0x73, 0x74, 0x72, 0x69, 0x63, 0x74, 0x65, 0x64, 0x45, 0x64, 0x69, 0x74, 0x6f, 0x72, 0x4e,
++	0x61, 0x6d, 0x65, 0x73, 0x12, 0x48, 0x0a, 0x1e, 0x75, 0x70, 0x64, 0x61, 0x74, 0x65, 0x5f, 0x72,
++	0x65, 0x73, 0x74, 0x72, 0x69, 0x63, 0x74, 0x65, 0x64, 0x5f, 0x65, 0x64, 0x69, 0x74, 0x6f, 0x72,
++	0x5f, 0x6e, 0x61, 0x6d, 0x65, 0x73, 0x18, 0x05, 0x20, 0x01, 0x28, 0x08, 0x48, 0x02, 0x52, 0x1b,
++	0x75, 0x70, 0x64, 0x61, 0x74, 0x65, 0x52, 0x65, 0x73, 0x74, 0x72, 0x69, 0x63, 0x74, 0x65, 0x64,
++	0x45, 0x64, 0x69, 0x74, 0x6f, 0x72, 0x4e, 0x61, 0x6d, 0x65, 0x73, 0x88, 0x01, 0x01, 0x12, 0x47,
++	0x0a, 0x1d, 0x65, 0x6e, 0x61, 0x62, 0x6c, 0x65, 0x5f, 0x64, 0x6f, 0x63, 0x6b, 0x65, 0x72, 0x64,
++	0x5f, 0x61, 0x75, 0x74, 0x68, 0x65, 0x6e, 0x74, 0x69, 0x63, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x18,
++	0x06, 0x20, 0x01, 0x28, 0x08, 0x48, 0x03, 0x52, 0x1b, 0x65, 0x6e, 0x61, 0x62, 0x6c, 0x65, 0x44,
++	0x6f, 0x63, 0x6b, 0x65, 0x72, 0x64, 0x41, 0x75, 0x74, 0x68, 0x65, 0x6e, 0x74, 0x69, 0x63, 0x61,
++	0x74, 0x69, 0x6f, 0x6e, 0x88, 0x01, 0x01, 0x42, 0x12, 0x0a, 0x10, 0x5f, 0x77, 0x6f, 0x72, 0x6b,
++	0x73, 0x70, 0x61, 0x63, 0x65, 0x5f, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x42, 0x26, 0x0a, 0x24, 0x5f,
++	0x75, 0x70, 0x64, 0x61, 0x74, 0x65, 0x5f, 0x72, 0x65, 0x73, 0x74, 0x72, 0x69, 0x63, 0x74, 0x65,
++	0x64, 0x5f, 0x77, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x5f, 0x63, 0x6c, 0x61, 0x73,
++	0x73, 0x65, 0x73, 0x42, 0x21, 0x0a, 0x1f, 0x5f, 0x75, 0x70, 0x64, 0x61, 0x74, 0x65, 0x5f, 0x72,
++	0x65, 0x73, 0x74, 0x72, 0x69, 0x63, 0x74, 0x65, 0x64, 0x5f, 0x65, 0x64, 0x69, 0x74, 0x6f, 0x72,
++	0x5f, 0x6e, 0x61, 0x6d, 0x65, 0x73, 0x42, 0x20, 0x0a, 0x1e, 0x5f, 0x65, 0x6e, 0x61, 0x62, 0x6c,
++	0x65, 0x5f, 0x64, 0x6f, 0x63, 0x6b, 0x65, 0x72, 0x64, 0x5f, 0x61, 0x75, 0x74, 0x68, 0x65, 0x6e,
++	0x74, 0x69, 0x63, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x42, 0x07, 0x0a, 0x05, 0x5f, 0x6e, 0x61, 0x6d,
++	0x65, 0x42, 0x14, 0x0a, 0x12, 0x5f, 0x70, 0x72, 0x65, 0x62, 0x75, 0x69, 0x6c, 0x64, 0x5f, 0x73,
++	0x65, 0x74, 0x74, 0x69, 0x6e, 0x67, 0x73, 0x42, 0x15, 0x0a, 0x13, 0x5f, 0x77, 0x6f, 0x72, 0x6b,
++	0x73, 0x70, 0x61, 0x63, 0x65, 0x5f, 0x73, 0x65, 0x74, 0x74, 0x69, 0x6e, 0x67, 0x73, 0x22, 0x5d,
++	0x0a, 0x1b, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72,
++	0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x3e, 0x0a,
++	0x0d, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x18, 0x01,
++	0x20, 0x01, 0x28, 0x0b, 0x32, 0x18, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31,
++	0x2e, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x0d,
++	0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x22, 0x47, 0x0a,
++	0x1a, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61,
++	0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x29, 0x0a, 0x10, 0x63,
++	0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x5f, 0x69, 0x64, 0x18,
++	0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0f, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61,
++	0x74, 0x69, 0x6f, 0x6e, 0x49, 0x64, 0x22, 0x1d, 0x0a, 0x1b, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65,
+ 	0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x73,
+-	0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x5d, 0x0a, 0x10, 0x47, 0x65, 0x74, 0x43, 0x6f,
+-	0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x22, 0x2e, 0x67, 0x69,
+-	0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x47, 0x65, 0x74, 0x43, 0x6f, 0x6e, 0x66, 0x69,
+-	0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a,
+-	0x23, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x47, 0x65, 0x74, 0x43,
++	0x70, 0x6f, 0x6e, 0x73, 0x65, 0x2a, 0x72, 0x0a, 0x17, 0x50, 0x72, 0x65, 0x62, 0x75, 0x69, 0x6c,
++	0x64, 0x54, 0x72, 0x69, 0x67, 0x67, 0x65, 0x72, 0x53, 0x74, 0x72, 0x61, 0x74, 0x65, 0x67, 0x79,
++	0x12, 0x29, 0x0a, 0x25, 0x50, 0x52, 0x45, 0x42, 0x55, 0x49, 0x4c, 0x44, 0x5f, 0x54, 0x52, 0x49,
++	0x47, 0x47, 0x45, 0x52, 0x5f, 0x53, 0x54, 0x52, 0x41, 0x54, 0x45, 0x47, 0x59, 0x5f, 0x55, 0x4e,
++	0x53, 0x50, 0x45, 0x43, 0x49, 0x46, 0x49, 0x45, 0x44, 0x10, 0x00, 0x12, 0x2c, 0x0a, 0x28, 0x50,
++	0x52, 0x45, 0x42, 0x55, 0x49, 0x4c, 0x44, 0x5f, 0x54, 0x52, 0x49, 0x47, 0x47, 0x45, 0x52, 0x5f,
++	0x53, 0x54, 0x52, 0x41, 0x54, 0x45, 0x47, 0x59, 0x5f, 0x41, 0x43, 0x54, 0x49, 0x56, 0x49, 0x54,
++	0x59, 0x5f, 0x42, 0x41, 0x53, 0x45, 0x44, 0x10, 0x01, 0x2a, 0xc9, 0x01, 0x0a, 0x16, 0x42, 0x72,
++	0x61, 0x6e, 0x63, 0x68, 0x4d, 0x61, 0x74, 0x63, 0x68, 0x69, 0x6e, 0x67, 0x53, 0x74, 0x72, 0x61,
++	0x74, 0x65, 0x67, 0x79, 0x12, 0x28, 0x0a, 0x24, 0x42, 0x52, 0x41, 0x4e, 0x43, 0x48, 0x5f, 0x4d,
++	0x41, 0x54, 0x43, 0x48, 0x49, 0x4e, 0x47, 0x5f, 0x53, 0x54, 0x52, 0x41, 0x54, 0x45, 0x47, 0x59,
++	0x5f, 0x55, 0x4e, 0x53, 0x50, 0x45, 0x43, 0x49, 0x46, 0x49, 0x45, 0x44, 0x10, 0x00, 0x12, 0x2b,
++	0x0a, 0x27, 0x42, 0x52, 0x41, 0x4e, 0x43, 0x48, 0x5f, 0x4d, 0x41, 0x54, 0x43, 0x48, 0x49, 0x4e,
++	0x47, 0x5f, 0x53, 0x54, 0x52, 0x41, 0x54, 0x45, 0x47, 0x59, 0x5f, 0x44, 0x45, 0x46, 0x41, 0x55,
++	0x4c, 0x54, 0x5f, 0x42, 0x52, 0x41, 0x4e, 0x43, 0x48, 0x10, 0x01, 0x12, 0x29, 0x0a, 0x25, 0x42,
++	0x52, 0x41, 0x4e, 0x43, 0x48, 0x5f, 0x4d, 0x41, 0x54, 0x43, 0x48, 0x49, 0x4e, 0x47, 0x5f, 0x53,
++	0x54, 0x52, 0x41, 0x54, 0x45, 0x47, 0x59, 0x5f, 0x41, 0x4c, 0x4c, 0x5f, 0x42, 0x52, 0x41, 0x4e,
++	0x43, 0x48, 0x45, 0x53, 0x10, 0x02, 0x12, 0x2d, 0x0a, 0x29, 0x42, 0x52, 0x41, 0x4e, 0x43, 0x48,
++	0x5f, 0x4d, 0x41, 0x54, 0x43, 0x48, 0x49, 0x4e, 0x47, 0x5f, 0x53, 0x54, 0x52, 0x41, 0x54, 0x45,
++	0x47, 0x59, 0x5f, 0x4d, 0x41, 0x54, 0x43, 0x48, 0x45, 0x44, 0x5f, 0x42, 0x52, 0x41, 0x4e, 0x43,
++	0x48, 0x45, 0x53, 0x10, 0x03, 0x32, 0x92, 0x04, 0x0a, 0x14, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67,
++	0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x12, 0x66,
++	0x0a, 0x13, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72,
++	0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x25, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76,
++	0x31, 0x2e, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72,
++	0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x26, 0x2e, 0x67,
++	0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x43,
+ 	0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x73, 0x70,
+-	0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x63, 0x0a, 0x12, 0x4c, 0x69, 0x73, 0x74, 0x43, 0x6f,
+-	0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x12, 0x24, 0x2e, 0x67,
+-	0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x4c, 0x69, 0x73, 0x74, 0x43, 0x6f, 0x6e,
+-	0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65,
+-	0x73, 0x74, 0x1a, 0x25, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x4c,
+-	0x69, 0x73, 0x74, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e,
+-	0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x66, 0x0a, 0x13, 0x55,
+-	0x70, 0x64, 0x61, 0x74, 0x65, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69,
+-	0x6f, 0x6e, 0x12, 0x25, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x55,
+-	0x70, 0x64, 0x61, 0x74, 0x65, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69,
+-	0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x26, 0x2e, 0x67, 0x69, 0x74, 0x70,
+-	0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x43, 0x6f, 0x6e, 0x66,
+-	0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73,
+-	0x65, 0x22, 0x00, 0x12, 0x66, 0x0a, 0x13, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x43, 0x6f, 0x6e,
+-	0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x25, 0x2e, 0x67, 0x69, 0x74,
+-	0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x43, 0x6f, 0x6e,
+-	0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
+-	0x74, 0x1a, 0x26, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x44, 0x65,
+-	0x6c, 0x65, 0x74, 0x65, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f,
+-	0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x42, 0x51, 0x0a, 0x16, 0x69,
+-	0x6f, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x70, 0x75, 0x62, 0x6c, 0x69, 0x63, 0x61,
+-	0x70, 0x69, 0x2e, 0x76, 0x31, 0x5a, 0x37, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f,
+-	0x6d, 0x2f, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2d, 0x69, 0x6f, 0x2f, 0x67, 0x69, 0x74, 0x70,
+-	0x6f, 0x64, 0x2f, 0x63, 0x6f, 0x6d, 0x70, 0x6f, 0x6e, 0x65, 0x6e, 0x74, 0x73, 0x2f, 0x70, 0x75,
+-	0x62, 0x6c, 0x69, 0x63, 0x2d, 0x61, 0x70, 0x69, 0x2f, 0x67, 0x6f, 0x2f, 0x76, 0x31, 0x62, 0x06,
+-	0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
++	0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x5d, 0x0a, 0x10, 0x47, 0x65, 0x74, 0x43, 0x6f, 0x6e,
++	0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x22, 0x2e, 0x67, 0x69, 0x74,
++	0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x47, 0x65, 0x74, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67,
++	0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x23,
++	0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x47, 0x65, 0x74, 0x43, 0x6f,
++	0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f,
++	0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x63, 0x0a, 0x12, 0x4c, 0x69, 0x73, 0x74, 0x43, 0x6f, 0x6e,
++	0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x12, 0x24, 0x2e, 0x67, 0x69,
++	0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x4c, 0x69, 0x73, 0x74, 0x43, 0x6f, 0x6e, 0x66,
++	0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
++	0x74, 0x1a, 0x25, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x4c, 0x69,
++	0x73, 0x74, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73,
++	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x66, 0x0a, 0x13, 0x55, 0x70,
++	0x64, 0x61, 0x74, 0x65, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f,
++	0x6e, 0x12, 0x25, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x55, 0x70,
++	0x64, 0x61, 0x74, 0x65, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f,
++	0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x26, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f,
++	0x64, 0x2e, 0x76, 0x31, 0x2e, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x43, 0x6f, 0x6e, 0x66, 0x69,
++	0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65,
++	0x22, 0x00, 0x12, 0x66, 0x0a, 0x13, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x43, 0x6f, 0x6e, 0x66,
++	0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x25, 0x2e, 0x67, 0x69, 0x74, 0x70,
++	0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x43, 0x6f, 0x6e, 0x66,
++	0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74,
++	0x1a, 0x26, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x44, 0x65, 0x6c,
++	0x65, 0x74, 0x65, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e,
++	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x42, 0x51, 0x0a, 0x16, 0x69, 0x6f,
++	0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x70, 0x75, 0x62, 0x6c, 0x69, 0x63, 0x61, 0x70,
++	0x69, 0x2e, 0x76, 0x31, 0x5a, 0x37, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d,
++	0x2f, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2d, 0x69, 0x6f, 0x2f, 0x67, 0x69, 0x74, 0x70, 0x6f,
++	0x64, 0x2f, 0x63, 0x6f, 0x6d, 0x70, 0x6f, 0x6e, 0x65, 0x6e, 0x74, 0x73, 0x2f, 0x70, 0x75, 0x62,
++	0x6c, 0x69, 0x63, 0x2d, 0x61, 0x70, 0x69, 0x2f, 0x67, 0x6f, 0x2f, 0x76, 0x31, 0x62, 0x06, 0x70,
++	0x72, 0x6f, 0x74, 0x6f, 0x33,
+ }
+ 
+ var (
+diff --git a/components/public-api/java/src/main/java/io/gitpod/publicapi/v1/ConfigurationOuterClass.java b/components/public-api/java/src/main/java/io/gitpod/publicapi/v1/ConfigurationOuterClass.java
+index fb0f3361a..81439b674 100644
+--- a/components/public-api/java/src/main/java/io/gitpod/publicapi/v1/ConfigurationOuterClass.java
++++ b/components/public-api/java/src/main/java/io/gitpod/publicapi/v1/ConfigurationOuterClass.java
+@@ -3600,6 +3600,16 @@ public final class ConfigurationOuterClass {
+      */
+     com.google.protobuf.ByteString
+         getRestrictedEditorNamesBytes(int index);
++
++    /**
++     * <pre>
++     * Enable automatic authentication for docker daemon with all credentials specified in GITPOD_IMAGE_AUTH
++     * </pre>
++     *
++     * <code>bool enable_dockerd_authentication = 4 [json_name = "enableDockerdAuthentication"];</code>
++     * @return The enableDockerdAuthentication.
++     */
++    boolean getEnableDockerdAuthentication();
+   }
+   /**
+    * Protobuf type {@code gitpod.v1.WorkspaceSettings}
+@@ -3756,6 +3766,21 @@ public final class ConfigurationOuterClass {
+       return restrictedEditorNames_.getByteString(index);
+     }
+ 
++    public static final int ENABLE_DOCKERD_AUTHENTICATION_FIELD_NUMBER = 4;
++    private boolean enableDockerdAuthentication_ = false;
++    /**
++     * <pre>
++     * Enable automatic authentication for docker daemon with all credentials specified in GITPOD_IMAGE_AUTH
++     * </pre>
++     *
++     * <code>bool enable_dockerd_authentication = 4 [json_name = "enableDockerdAuthentication"];</code>
++     * @return The enableDockerdAuthentication.
++     */
++    @java.lang.Override
++    public boolean getEnableDockerdAuthentication() {
++      return enableDockerdAuthentication_;
++    }
++
+     private byte memoizedIsInitialized = -1;
+     @java.lang.Override
+     public final boolean isInitialized() {
+@@ -3779,6 +3804,9 @@ public final class ConfigurationOuterClass {
+       for (int i = 0; i < restrictedEditorNames_.size(); i++) {
+         com.google.protobuf.GeneratedMessage.writeString(output, 3, restrictedEditorNames_.getRaw(i));
+       }
++      if (enableDockerdAuthentication_ != false) {
++        output.writeBool(4, enableDockerdAuthentication_);
++      }
+       getUnknownFields().writeTo(output);
+     }
+ 
+@@ -3807,6 +3835,10 @@ public final class ConfigurationOuterClass {
+         size += dataSize;
+         size += 1 * getRestrictedEditorNamesList().size();
+       }
++      if (enableDockerdAuthentication_ != false) {
++        size += com.google.protobuf.CodedOutputStream
++          .computeBoolSize(4, enableDockerdAuthentication_);
++      }
+       size += getUnknownFields().getSerializedSize();
+       memoizedSize = size;
+       return size;
+@@ -3828,6 +3860,8 @@ public final class ConfigurationOuterClass {
+           .equals(other.getRestrictedWorkspaceClassesList())) return false;
+       if (!getRestrictedEditorNamesList()
+           .equals(other.getRestrictedEditorNamesList())) return false;
++      if (getEnableDockerdAuthentication()
++          != other.getEnableDockerdAuthentication()) return false;
+       if (!getUnknownFields().equals(other.getUnknownFields())) return false;
+       return true;
+     }
+@@ -3849,6 +3883,9 @@ public final class ConfigurationOuterClass {
+         hash = (37 * hash) + RESTRICTED_EDITOR_NAMES_FIELD_NUMBER;
+         hash = (53 * hash) + getRestrictedEditorNamesList().hashCode();
+       }
++      hash = (37 * hash) + ENABLE_DOCKERD_AUTHENTICATION_FIELD_NUMBER;
++      hash = (53 * hash) + com.google.protobuf.Internal.hashBoolean(
++          getEnableDockerdAuthentication());
+       hash = (29 * hash) + getUnknownFields().hashCode();
+       memoizedHashCode = hash;
+       return hash;
+@@ -3985,6 +4022,7 @@ public final class ConfigurationOuterClass {
+             com.google.protobuf.LazyStringArrayList.emptyList();
+         restrictedEditorNames_ =
+             com.google.protobuf.LazyStringArrayList.emptyList();
++        enableDockerdAuthentication_ = false;
+         return this;
+       }
+ 
+@@ -4029,6 +4067,9 @@ public final class ConfigurationOuterClass {
+           restrictedEditorNames_.makeImmutable();
+           result.restrictedEditorNames_ = restrictedEditorNames_;
+         }
++        if (((from_bitField0_ & 0x00000008) != 0)) {
++          result.enableDockerdAuthentication_ = enableDockerdAuthentication_;
++        }
+       }
+ 
+       @java.lang.Override
+@@ -4068,6 +4109,9 @@ public final class ConfigurationOuterClass {
+           }
+           onChanged();
+         }
++        if (other.getEnableDockerdAuthentication() != false) {
++          setEnableDockerdAuthentication(other.getEnableDockerdAuthentication());
++        }
+         this.mergeUnknownFields(other.getUnknownFields());
+         onChanged();
+         return this;
+@@ -4111,6 +4155,11 @@ public final class ConfigurationOuterClass {
+                 restrictedEditorNames_.add(s);
+                 break;
+               } // case 26
++              case 32: {
++                enableDockerdAuthentication_ = input.readBool();
++                bitField0_ |= 0x00000008;
++                break;
++              } // case 32
+               default: {
+                 if (!super.parseUnknownField(input, extensionRegistry, tag)) {
+                   done = true; // was an endgroup tag
+@@ -4422,6 +4471,50 @@ public final class ConfigurationOuterClass {
+         return this;
+       }
+ 
++      private boolean enableDockerdAuthentication_ ;
++      /**
++       * <pre>
++       * Enable automatic authentication for docker daemon with all credentials specified in GITPOD_IMAGE_AUTH
++       * </pre>
++       *
++       * <code>bool enable_dockerd_authentication = 4 [json_name = "enableDockerdAuthentication"];</code>
++       * @return The enableDockerdAuthentication.
++       */
++      @java.lang.Override
++      public boolean getEnableDockerdAuthentication() {
++        return enableDockerdAuthentication_;
++      }
++      /**
++       * <pre>
++       * Enable automatic authentication for docker daemon with all credentials specified in GITPOD_IMAGE_AUTH
++       * </pre>
++       *
++       * <code>bool enable_dockerd_authentication = 4 [json_name = "enableDockerdAuthentication"];</code>
++       * @param value The enableDockerdAuthentication to set.
++       * @return This builder for chaining.
++       */
++      public Builder setEnableDockerdAuthentication(boolean value) {
++
++        enableDockerdAuthentication_ = value;
++        bitField0_ |= 0x00000008;
++        onChanged();
++        return this;
++      }
++      /**
++       * <pre>
++       * Enable automatic authentication for docker daemon with all credentials specified in GITPOD_IMAGE_AUTH
++       * </pre>
++       *
++       * <code>bool enable_dockerd_authentication = 4 [json_name = "enableDockerdAuthentication"];</code>
++       * @return This builder for chaining.
++       */
++      public Builder clearEnableDockerdAuthentication() {
++        bitField0_ = (bitField0_ & ~0x00000008);
++        enableDockerdAuthentication_ = false;
++        onChanged();
++        return this;
++      }
++
+       // @@protoc_insertion_point(builder_scope:gitpod.v1.WorkspaceSettings)
+     }
+ 
+@@ -11002,6 +11095,25 @@ public final class ConfigurationOuterClass {
+        * @return The updateRestrictedEditorNames.
+        */
+       boolean getUpdateRestrictedEditorNames();
++
++      /**
++       * <pre>
++       * Enable automatic authentication for docker daemon with all credentials specified in GITPOD_IMAGE_AUTH
++       * </pre>
++       *
++       * <code>optional bool enable_dockerd_authentication = 6 [json_name = "enableDockerdAuthentication"];</code>
++       * @return Whether the enableDockerdAuthentication field is set.
++       */
++      boolean hasEnableDockerdAuthentication();
++      /**
++       * <pre>
++       * Enable automatic authentication for docker daemon with all credentials specified in GITPOD_IMAGE_AUTH
++       * </pre>
++       *
++       * <code>optional bool enable_dockerd_authentication = 6 [json_name = "enableDockerdAuthentication"];</code>
++       * @return The enableDockerdAuthentication.
++       */
++      boolean getEnableDockerdAuthentication();
+     }
+     /**
+      * Protobuf type {@code gitpod.v1.UpdateConfigurationRequest.WorkspaceSettings}
+@@ -11269,6 +11381,33 @@ public final class ConfigurationOuterClass {
+         return updateRestrictedEditorNames_;
+       }
+ 
++      public static final int ENABLE_DOCKERD_AUTHENTICATION_FIELD_NUMBER = 6;
++      private boolean enableDockerdAuthentication_ = false;
++      /**
++       * <pre>
++       * Enable automatic authentication for docker daemon with all credentials specified in GITPOD_IMAGE_AUTH
++       * </pre>
++       *
++       * <code>optional bool enable_dockerd_authentication = 6 [json_name = "enableDockerdAuthentication"];</code>
++       * @return Whether the enableDockerdAuthentication field is set.
++       */
++      @java.lang.Override
++      public boolean hasEnableDockerdAuthentication() {
++        return ((bitField0_ & 0x00000008) != 0);
++      }
++      /**
++       * <pre>
++       * Enable automatic authentication for docker daemon with all credentials specified in GITPOD_IMAGE_AUTH
++       * </pre>
++       *
++       * <code>optional bool enable_dockerd_authentication = 6 [json_name = "enableDockerdAuthentication"];</code>
++       * @return The enableDockerdAuthentication.
++       */
++      @java.lang.Override
++      public boolean getEnableDockerdAuthentication() {
++        return enableDockerdAuthentication_;
++      }
++
+       private byte memoizedIsInitialized = -1;
+       @java.lang.Override
+       public final boolean isInitialized() {
+@@ -11298,6 +11437,9 @@ public final class ConfigurationOuterClass {
+         if (((bitField0_ & 0x00000004) != 0)) {
+           output.writeBool(5, updateRestrictedEditorNames_);
+         }
++        if (((bitField0_ & 0x00000008) != 0)) {
++          output.writeBool(6, enableDockerdAuthentication_);
++        }
+         getUnknownFields().writeTo(output);
+       }
+ 
+@@ -11334,6 +11476,10 @@ public final class ConfigurationOuterClass {
+           size += com.google.protobuf.CodedOutputStream
+             .computeBoolSize(5, updateRestrictedEditorNames_);
+         }
++        if (((bitField0_ & 0x00000008) != 0)) {
++          size += com.google.protobuf.CodedOutputStream
++            .computeBoolSize(6, enableDockerdAuthentication_);
++        }
+         size += getUnknownFields().getSerializedSize();
+         memoizedSize = size;
+         return size;
+@@ -11368,6 +11514,11 @@ public final class ConfigurationOuterClass {
+           if (getUpdateRestrictedEditorNames()
+               != other.getUpdateRestrictedEditorNames()) return false;
+         }
++        if (hasEnableDockerdAuthentication() != other.hasEnableDockerdAuthentication()) return false;
++        if (hasEnableDockerdAuthentication()) {
++          if (getEnableDockerdAuthentication()
++              != other.getEnableDockerdAuthentication()) return false;
++        }
+         if (!getUnknownFields().equals(other.getUnknownFields())) return false;
+         return true;
+       }
+@@ -11401,6 +11552,11 @@ public final class ConfigurationOuterClass {
+           hash = (53 * hash) + com.google.protobuf.Internal.hashBoolean(
+               getUpdateRestrictedEditorNames());
+         }
++        if (hasEnableDockerdAuthentication()) {
++          hash = (37 * hash) + ENABLE_DOCKERD_AUTHENTICATION_FIELD_NUMBER;
++          hash = (53 * hash) + com.google.protobuf.Internal.hashBoolean(
++              getEnableDockerdAuthentication());
++        }
+         hash = (29 * hash) + getUnknownFields().hashCode();
+         memoizedHashCode = hash;
+         return hash;
+@@ -11539,6 +11695,7 @@ public final class ConfigurationOuterClass {
+           restrictedEditorNames_ =
+               com.google.protobuf.LazyStringArrayList.emptyList();
+           updateRestrictedEditorNames_ = false;
++          enableDockerdAuthentication_ = false;
+           return this;
+         }
+ 
+@@ -11593,6 +11750,10 @@ public final class ConfigurationOuterClass {
+             result.updateRestrictedEditorNames_ = updateRestrictedEditorNames_;
+             to_bitField0_ |= 0x00000004;
+           }
++          if (((from_bitField0_ & 0x00000020) != 0)) {
++            result.enableDockerdAuthentication_ = enableDockerdAuthentication_;
++            to_bitField0_ |= 0x00000008;
++          }
+           result.bitField0_ |= to_bitField0_;
+         }
+ 
+@@ -11639,6 +11800,9 @@ public final class ConfigurationOuterClass {
+           if (other.hasUpdateRestrictedEditorNames()) {
+             setUpdateRestrictedEditorNames(other.getUpdateRestrictedEditorNames());
+           }
++          if (other.hasEnableDockerdAuthentication()) {
++            setEnableDockerdAuthentication(other.getEnableDockerdAuthentication());
++          }
+           this.mergeUnknownFields(other.getUnknownFields());
+           onChanged();
+           return this;
+@@ -11692,6 +11856,11 @@ public final class ConfigurationOuterClass {
+                   bitField0_ |= 0x00000010;
+                   break;
+                 } // case 40
++                case 48: {
++                  enableDockerdAuthentication_ = input.readBool();
++                  bitField0_ |= 0x00000020;
++                  break;
++                } // case 48
+                 default: {
+                   if (!super.parseUnknownField(input, extensionRegistry, tag)) {
+                     done = true; // was an endgroup tag
+@@ -12230,6 +12399,62 @@ public final class ConfigurationOuterClass {
+           return this;
+         }
+ 
++        private boolean enableDockerdAuthentication_ ;
++        /**
++         * <pre>
++         * Enable automatic authentication for docker daemon with all credentials specified in GITPOD_IMAGE_AUTH
++         * </pre>
++         *
++         * <code>optional bool enable_dockerd_authentication = 6 [json_name = "enableDockerdAuthentication"];</code>
++         * @return Whether the enableDockerdAuthentication field is set.
++         */
++        @java.lang.Override
++        public boolean hasEnableDockerdAuthentication() {
++          return ((bitField0_ & 0x00000020) != 0);
++        }
++        /**
++         * <pre>
++         * Enable automatic authentication for docker daemon with all credentials specified in GITPOD_IMAGE_AUTH
++         * </pre>
++         *
++         * <code>optional bool enable_dockerd_authentication = 6 [json_name = "enableDockerdAuthentication"];</code>
++         * @return The enableDockerdAuthentication.
++         */
++        @java.lang.Override
++        public boolean getEnableDockerdAuthentication() {
++          return enableDockerdAuthentication_;
++        }
++        /**
++         * <pre>
++         * Enable automatic authentication for docker daemon with all credentials specified in GITPOD_IMAGE_AUTH
++         * </pre>
++         *
++         * <code>optional bool enable_dockerd_authentication = 6 [json_name = "enableDockerdAuthentication"];</code>
++         * @param value The enableDockerdAuthentication to set.
++         * @return This builder for chaining.
++         */
++        public Builder setEnableDockerdAuthentication(boolean value) {
++
++          enableDockerdAuthentication_ = value;
++          bitField0_ |= 0x00000020;
++          onChanged();
++          return this;
++        }
++        /**
++         * <pre>
++         * Enable automatic authentication for docker daemon with all credentials specified in GITPOD_IMAGE_AUTH
++         * </pre>
++         *
++         * <code>optional bool enable_dockerd_authentication = 6 [json_name = "enableDockerdAuthentication"];</code>
++         * @return This builder for chaining.
++         */
++        public Builder clearEnableDockerdAuthentication() {
++          bitField0_ = (bitField0_ & ~0x00000020);
++          enableDockerdAuthentication_ = false;
++          onChanged();
++          return this;
++        }
++
+         // @@protoc_insertion_point(builder_scope:gitpod.v1.UpdateConfigurationRequest.WorkspaceSettings)
+       }
+ 
+@@ -14818,96 +15043,100 @@ public final class ConfigurationOuterClass {
+       "ggerStrategy\022G\n\016clone_settings\030\007 \001(\0132 .g" +
+       "itpod.v1.PrebuildCloneSettingsR\rcloneSet" +
+       "tings\"6\n\025PrebuildCloneSettings\022\035\n\nfull_c" +
+-      "lone\030\001 \001(\010R\tfullClone\"\266\001\n\021WorkspaceSetti" +
++      "lone\030\001 \001(\010R\tfullClone\"\372\001\n\021WorkspaceSetti" +
+       "ngs\022\'\n\017workspace_class\030\001 \001(\tR\016workspaceC" +
+       "lass\022@\n\034restricted_workspace_classes\030\002 \003" +
+       "(\tR\032restrictedWorkspaceClasses\0226\n\027restri" +
+       "cted_editor_names\030\003 \003(\tR\025restrictedEdito" +
+-      "rNames\"v\n\032CreateConfigurationRequest\022\'\n\017" +
+-      "organization_id\030\001 \001(\tR\016organizationId\022\022\n" +
+-      "\004name\030\002 \001(\tR\004name\022\033\n\tclone_url\030\003 \001(\tR\010cl" +
+-      "oneUrl\"]\n\033CreateConfigurationResponse\022>\n" +
+-      "\rconfiguration\030\001 \001(\0132\030.gitpod.v1.Configu" +
+-      "rationR\rconfiguration\"D\n\027GetConfiguratio" +
+-      "nRequest\022)\n\020configuration_id\030\001 \001(\tR\017conf" +
+-      "igurationId\"Z\n\030GetConfigurationResponse\022" +
+-      ">\n\rconfiguration\030\001 \001(\0132\030.gitpod.v1.Confi" +
+-      "gurationR\rconfiguration\"\220\002\n\031ListConfigur" +
+-      "ationsRequest\022\'\n\017organization_id\030\001 \001(\tR\016" +
+-      "organizationId\022\037\n\013search_term\030\002 \001(\tR\nsea" +
+-      "rchTerm\022<\n\npagination\030\003 \001(\0132\034.gitpod.v1." +
+-      "PaginationRequestR\npagination\022#\n\004sort\030\004 " +
+-      "\003(\0132\017.gitpod.v1.SortR\004sort\0220\n\021prebuilds_" +
+-      "enabled\030\005 \001(\010H\000R\020prebuildsEnabled\210\001\001B\024\n\022" +
+-      "_prebuilds_enabled\"\235\001\n\032ListConfiguration" +
+-      "sResponse\022@\n\016configurations\030\001 \003(\0132\030.gitp" +
+-      "od.v1.ConfigurationR\016configurations\022=\n\np" +
+-      "agination\030\002 \001(\0132\035.gitpod.v1.PaginationRe" +
+-      "sponseR\npagination\"\372\n\n\032UpdateConfigurati" +
+-      "onRequest\022)\n\020configuration_id\030\001 \001(\tR\017con" +
+-      "figurationId\022\027\n\004name\030\002 \001(\tH\000R\004name\210\001\001\022h\n" +
+-      "\021prebuild_settings\030\003 \001(\01326.gitpod.v1.Upd" +
+-      "ateConfigurationRequest.PrebuildSettings" +
+-      "H\001R\020prebuildSettings\210\001\001\022k\n\022workspace_set" +
+-      "tings\030\004 \001(\01327.gitpod.v1.UpdateConfigurat" +
+-      "ionRequest.WorkspaceSettingsH\002R\021workspac" +
+-      "eSettings\210\001\001\032\317\004\n\020PrebuildSettings\022\035\n\007ena" +
+-      "bled\030\001 \001(\010H\000R\007enabled\210\001\001\022;\n\027branch_match" +
+-      "ing_pattern\030\002 \001(\tH\001R\025branchMatchingPatte" +
+-      "rn\210\001\001\022O\n\017branch_strategy\030\003 \001(\0162!.gitpod." +
+-      "v1.BranchMatchingStrategyH\002R\016branchStrat" +
+-      "egy\210\001\001\0220\n\021prebuild_interval\030\004 \001(\005H\003R\020pre" +
+-      "buildInterval\210\001\001\022,\n\017workspace_class\030\005 \001(" +
+-      "\tH\004R\016workspaceClass\210\001\001\022R\n\020trigger_strate" +
+-      "gy\030\006 \001(\0162\".gitpod.v1.PrebuildTriggerStra" +
+-      "tegyH\005R\017triggerStrategy\210\001\001\022L\n\016clone_sett" +
+-      "ings\030\007 \001(\0132 .gitpod.v1.PrebuildCloneSett" +
+-      "ingsH\006R\rcloneSettings\210\001\001B\n\n\010_enabledB\032\n\030" +
+-      "_branch_matching_patternB\022\n\020_branch_stra" +
+-      "tegyB\024\n\022_prebuild_intervalB\022\n\020_workspace" +
+-      "_classB\023\n\021_trigger_strategyB\021\n\017_clone_se" +
+-      "ttings\032\270\003\n\021WorkspaceSettings\022,\n\017workspac" +
+-      "e_class\030\001 \001(\tH\000R\016workspaceClass\210\001\001\022@\n\034re" +
+-      "stricted_workspace_classes\030\002 \003(\tR\032restri" +
+-      "ctedWorkspaceClasses\022R\n#update_restricte" +
+-      "d_workspace_classes\030\003 \001(\010H\001R updateRestr" +
+-      "ictedWorkspaceClasses\210\001\001\0226\n\027restricted_e" +
+-      "ditor_names\030\004 \003(\tR\025restrictedEditorNames" +
+-      "\022H\n\036update_restricted_editor_names\030\005 \001(\010" +
+-      "H\002R\033updateRestrictedEditorNames\210\001\001B\022\n\020_w" +
+-      "orkspace_classB&\n$_update_restricted_wor" +
+-      "kspace_classesB!\n\037_update_restricted_edi" +
+-      "tor_namesB\007\n\005_nameB\024\n\022_prebuild_settings" +
+-      "B\025\n\023_workspace_settings\"]\n\033UpdateConfigu" +
+-      "rationResponse\022>\n\rconfiguration\030\001 \001(\0132\030." +
+-      "gitpod.v1.ConfigurationR\rconfiguration\"G" +
+-      "\n\032DeleteConfigurationRequest\022)\n\020configur" +
+-      "ation_id\030\001 \001(\tR\017configurationId\"\035\n\033Delet" +
+-      "eConfigurationResponse*r\n\027PrebuildTrigge" +
+-      "rStrategy\022)\n%PREBUILD_TRIGGER_STRATEGY_U" +
+-      "NSPECIFIED\020\000\022,\n(PREBUILD_TRIGGER_STRATEG" +
+-      "Y_ACTIVITY_BASED\020\001*\311\001\n\026BranchMatchingStr" +
+-      "ategy\022(\n$BRANCH_MATCHING_STRATEGY_UNSPEC" +
+-      "IFIED\020\000\022+\n\'BRANCH_MATCHING_STRATEGY_DEFA" +
+-      "ULT_BRANCH\020\001\022)\n%BRANCH_MATCHING_STRATEGY" +
+-      "_ALL_BRANCHES\020\002\022-\n)BRANCH_MATCHING_STRAT" +
+-      "EGY_MATCHED_BRANCHES\020\0032\222\004\n\024Configuration" +
+-      "Service\022f\n\023CreateConfiguration\022%.gitpod." +
+-      "v1.CreateConfigurationRequest\032&.gitpod.v" +
+-      "1.CreateConfigurationResponse\"\000\022]\n\020GetCo" +
+-      "nfiguration\022\".gitpod.v1.GetConfiguration" +
+-      "Request\032#.gitpod.v1.GetConfigurationResp" +
+-      "onse\"\000\022c\n\022ListConfigurations\022$.gitpod.v1" +
+-      ".ListConfigurationsRequest\032%.gitpod.v1.L" +
+-      "istConfigurationsResponse\"\000\022f\n\023UpdateCon" +
+-      "figuration\022%.gitpod.v1.UpdateConfigurati" +
+-      "onRequest\032&.gitpod.v1.UpdateConfiguratio" +
+-      "nResponse\"\000\022f\n\023DeleteConfiguration\022%.git" +
+-      "pod.v1.DeleteConfigurationRequest\032&.gitp" +
+-      "od.v1.DeleteConfigurationResponse\"\000BQ\n\026i" +
+-      "o.gitpod.publicapi.v1Z7github.com/gitpod" +
+-      "-io/gitpod/components/public-api/go/v1b\006" +
+-      "proto3"
++      "rNames\022B\n\035enable_dockerd_authentication\030" +
++      "\004 \001(\010R\033enableDockerdAuthentication\"v\n\032Cr" +
++      "eateConfigurationRequest\022\'\n\017organization" +
++      "_id\030\001 \001(\tR\016organizationId\022\022\n\004name\030\002 \001(\tR" +
++      "\004name\022\033\n\tclone_url\030\003 \001(\tR\010cloneUrl\"]\n\033Cr" +
++      "eateConfigurationResponse\022>\n\rconfigurati" +
++      "on\030\001 \001(\0132\030.gitpod.v1.ConfigurationR\rconf" +
++      "iguration\"D\n\027GetConfigurationRequest\022)\n\020" +
++      "configuration_id\030\001 \001(\tR\017configurationId\"" +
++      "Z\n\030GetConfigurationResponse\022>\n\rconfigura" +
++      "tion\030\001 \001(\0132\030.gitpod.v1.ConfigurationR\rco" +
++      "nfiguration\"\220\002\n\031ListConfigurationsReques" +
++      "t\022\'\n\017organization_id\030\001 \001(\tR\016organization" +
++      "Id\022\037\n\013search_term\030\002 \001(\tR\nsearchTerm\022<\n\np" +
++      "agination\030\003 \001(\0132\034.gitpod.v1.PaginationRe" +
++      "questR\npagination\022#\n\004sort\030\004 \003(\0132\017.gitpod" +
++      ".v1.SortR\004sort\0220\n\021prebuilds_enabled\030\005 \001(" +
++      "\010H\000R\020prebuildsEnabled\210\001\001B\024\n\022_prebuilds_e" +
++      "nabled\"\235\001\n\032ListConfigurationsResponse\022@\n" +
++      "\016configurations\030\001 \003(\0132\030.gitpod.v1.Config" +
++      "urationR\016configurations\022=\n\npagination\030\002 " +
++      "\001(\0132\035.gitpod.v1.PaginationResponseR\npagi" +
++      "nation\"\345\013\n\032UpdateConfigurationRequest\022)\n" +
++      "\020configuration_id\030\001 \001(\tR\017configurationId" +
++      "\022\027\n\004name\030\002 \001(\tH\000R\004name\210\001\001\022h\n\021prebuild_se" +
++      "ttings\030\003 \001(\01326.gitpod.v1.UpdateConfigura" +
++      "tionRequest.PrebuildSettingsH\001R\020prebuild" +
++      "Settings\210\001\001\022k\n\022workspace_settings\030\004 \001(\0132" +
++      "7.gitpod.v1.UpdateConfigurationRequest.W" +
++      "orkspaceSettingsH\002R\021workspaceSettings\210\001\001" +
++      "\032\317\004\n\020PrebuildSettings\022\035\n\007enabled\030\001 \001(\010H\000" +
++      "R\007enabled\210\001\001\022;\n\027branch_matching_pattern\030" +
++      "\002 \001(\tH\001R\025branchMatchingPattern\210\001\001\022O\n\017bra" +
++      "nch_strategy\030\003 \001(\0162!.gitpod.v1.BranchMat" +
++      "chingStrategyH\002R\016branchStrategy\210\001\001\0220\n\021pr" +
++      "ebuild_interval\030\004 \001(\005H\003R\020prebuildInterva" +
++      "l\210\001\001\022,\n\017workspace_class\030\005 \001(\tH\004R\016workspa" +
++      "ceClass\210\001\001\022R\n\020trigger_strategy\030\006 \001(\0162\".g" +
++      "itpod.v1.PrebuildTriggerStrategyH\005R\017trig" +
++      "gerStrategy\210\001\001\022L\n\016clone_settings\030\007 \001(\0132 " +
++      ".gitpod.v1.PrebuildCloneSettingsH\006R\rclon" +
++      "eSettings\210\001\001B\n\n\010_enabledB\032\n\030_branch_matc" +
++      "hing_patternB\022\n\020_branch_strategyB\024\n\022_pre" +
++      "build_intervalB\022\n\020_workspace_classB\023\n\021_t" +
++      "rigger_strategyB\021\n\017_clone_settings\032\243\004\n\021W" +
++      "orkspaceSettings\022,\n\017workspace_class\030\001 \001(" +
++      "\tH\000R\016workspaceClass\210\001\001\022@\n\034restricted_wor" +
++      "kspace_classes\030\002 \003(\tR\032restrictedWorkspac" +
++      "eClasses\022R\n#update_restricted_workspace_" +
++      "classes\030\003 \001(\010H\001R updateRestrictedWorkspa" +
++      "ceClasses\210\001\001\0226\n\027restricted_editor_names\030" +
++      "\004 \003(\tR\025restrictedEditorNames\022H\n\036update_r" +
++      "estricted_editor_names\030\005 \001(\010H\002R\033updateRe" +
++      "strictedEditorNames\210\001\001\022G\n\035enable_dockerd" +
++      "_authentication\030\006 \001(\010H\003R\033enableDockerdAu" +
++      "thentication\210\001\001B\022\n\020_workspace_classB&\n$_" +
++      "update_restricted_workspace_classesB!\n\037_" +
++      "update_restricted_editor_namesB \n\036_enabl" +
++      "e_dockerd_authenticationB\007\n\005_nameB\024\n\022_pr" +
++      "ebuild_settingsB\025\n\023_workspace_settings\"]" +
++      "\n\033UpdateConfigurationResponse\022>\n\rconfigu" +
++      "ration\030\001 \001(\0132\030.gitpod.v1.ConfigurationR\r" +
++      "configuration\"G\n\032DeleteConfigurationRequ" +
++      "est\022)\n\020configuration_id\030\001 \001(\tR\017configura" +
++      "tionId\"\035\n\033DeleteConfigurationResponse*r\n" +
++      "\027PrebuildTriggerStrategy\022)\n%PREBUILD_TRI" +
++      "GGER_STRATEGY_UNSPECIFIED\020\000\022,\n(PREBUILD_" +
++      "TRIGGER_STRATEGY_ACTIVITY_BASED\020\001*\311\001\n\026Br" +
++      "anchMatchingStrategy\022(\n$BRANCH_MATCHING_" +
++      "STRATEGY_UNSPECIFIED\020\000\022+\n\'BRANCH_MATCHIN" +
++      "G_STRATEGY_DEFAULT_BRANCH\020\001\022)\n%BRANCH_MA" +
++      "TCHING_STRATEGY_ALL_BRANCHES\020\002\022-\n)BRANCH" +
++      "_MATCHING_STRATEGY_MATCHED_BRANCHES\020\0032\222\004" +
++      "\n\024ConfigurationService\022f\n\023CreateConfigur" +
++      "ation\022%.gitpod.v1.CreateConfigurationReq" +
++      "uest\032&.gitpod.v1.CreateConfigurationResp" +
++      "onse\"\000\022]\n\020GetConfiguration\022\".gitpod.v1.G" +
++      "etConfigurationRequest\032#.gitpod.v1.GetCo" +
++      "nfigurationResponse\"\000\022c\n\022ListConfigurati" +
++      "ons\022$.gitpod.v1.ListConfigurationsReques" +
++      "t\032%.gitpod.v1.ListConfigurationsResponse" +
++      "\"\000\022f\n\023UpdateConfiguration\022%.gitpod.v1.Up" +
++      "dateConfigurationRequest\032&.gitpod.v1.Upd" +
++      "ateConfigurationResponse\"\000\022f\n\023DeleteConf" +
++      "iguration\022%.gitpod.v1.DeleteConfiguratio" +
++      "nRequest\032&.gitpod.v1.DeleteConfiguration" +
++      "Response\"\000BQ\n\026io.gitpod.publicapi.v1Z7gi" +
++      "thub.com/gitpod-io/gitpod/components/pub" +
++      "lic-api/go/v1b\006proto3"
+     };
+     descriptor = com.google.protobuf.Descriptors.FileDescriptor
+       .internalBuildGeneratedFileFrom(descriptorData,
+@@ -14939,7 +15168,7 @@ public final class ConfigurationOuterClass {
+     internal_static_gitpod_v1_WorkspaceSettings_fieldAccessorTable = new
+       com.google.protobuf.GeneratedMessage.FieldAccessorTable(
+         internal_static_gitpod_v1_WorkspaceSettings_descriptor,
+-        new java.lang.String[] { "WorkspaceClass", "RestrictedWorkspaceClasses", "RestrictedEditorNames", });
++        new java.lang.String[] { "WorkspaceClass", "RestrictedWorkspaceClasses", "RestrictedEditorNames", "EnableDockerdAuthentication", });
+     internal_static_gitpod_v1_CreateConfigurationRequest_descriptor =
+       getDescriptor().getMessageTypes().get(4);
+     internal_static_gitpod_v1_CreateConfigurationRequest_fieldAccessorTable = new
+@@ -14993,7 +15222,7 @@ public final class ConfigurationOuterClass {
+     internal_static_gitpod_v1_UpdateConfigurationRequest_WorkspaceSettings_fieldAccessorTable = new
+       com.google.protobuf.GeneratedMessage.FieldAccessorTable(
+         internal_static_gitpod_v1_UpdateConfigurationRequest_WorkspaceSettings_descriptor,
+-        new java.lang.String[] { "WorkspaceClass", "RestrictedWorkspaceClasses", "UpdateRestrictedWorkspaceClasses", "RestrictedEditorNames", "UpdateRestrictedEditorNames", });
++        new java.lang.String[] { "WorkspaceClass", "RestrictedWorkspaceClasses", "UpdateRestrictedWorkspaceClasses", "RestrictedEditorNames", "UpdateRestrictedEditorNames", "EnableDockerdAuthentication", });
+     internal_static_gitpod_v1_UpdateConfigurationResponse_descriptor =
+       getDescriptor().getMessageTypes().get(11);
+     internal_static_gitpod_v1_UpdateConfigurationResponse_fieldAccessorTable = new
+diff --git a/components/public-api/typescript-common/src/public-api-converter.ts b/components/public-api/typescript-common/src/public-api-converter.ts
+index 27673c41a..10e62f954 100644
+--- a/components/public-api/typescript-common/src/public-api-converter.ts
++++ b/components/public-api/typescript-common/src/public-api-converter.ts
+@@ -1042,7 +1042,13 @@ export class PublicAPIConverter {
+ 
+     fromWorkspaceSettings(settings?: DeepPartial<WorkspaceSettings>) {
+         const result: Partial<
+-            Pick<ProjectSettings, "workspaceClasses" | "restrictedWorkspaceClasses" | "restrictedEditorNames">
++            Pick<
++                ProjectSettings,
++                | "workspaceClasses"
++                | "restrictedWorkspaceClasses"
++                | "restrictedEditorNames"
++                | "enableDockerdAuthentication"
++            >
+         > = {};
+         if (settings?.workspaceClass) {
+             result.workspaceClasses = {
+@@ -1057,6 +1063,9 @@ export class PublicAPIConverter {
+         if (settings?.restrictedEditorNames) {
+             result.restrictedEditorNames = settings.restrictedEditorNames.filter((e) => !!e) as string[];
+         }
++        if (settings?.enableDockerdAuthentication !== undefined) {
++            result.enableDockerdAuthentication = settings.enableDockerdAuthentication;
++        }
+         return result;
+     }
+ 
+@@ -1097,13 +1106,11 @@ export class PublicAPIConverter {
+ 
+     fromPartialConfiguration(configuration: PartialConfiguration): PartialProject {
+         const prebuilds = this.fromPartialPrebuildSettings(configuration.prebuildSettings);
+-        const { workspaceClasses, restrictedWorkspaceClasses, restrictedEditorNames } = this.fromWorkspaceSettings(
+-            configuration.workspaceSettings,
+-        );
++        const settings = this.fromWorkspaceSettings(configuration.workspaceSettings);
+ 
+         const result: PartialProject = {
+             id: configuration.id,
+-            settings: {},
++            settings,
+         };
+ 
+         if (configuration.name !== undefined) {
+@@ -1113,15 +1120,6 @@ export class PublicAPIConverter {
+         if (Object.keys(prebuilds).length > 0) {
+             result.settings!.prebuilds = prebuilds;
+         }
+-        if (workspaceClasses && Object.keys(workspaceClasses).length > 0) {
+-            result.settings!.workspaceClasses = workspaceClasses;
+-        }
+-        if (restrictedWorkspaceClasses) {
+-            result.settings!.restrictedWorkspaceClasses = restrictedWorkspaceClasses;
+-        }
+-        if (restrictedEditorNames) {
+-            result.settings!.restrictedEditorNames = restrictedEditorNames;
+-        }
+ 
+         return result;
+     }
+@@ -1225,6 +1223,9 @@ export class PublicAPIConverter {
+         if (projectSettings?.restrictedEditorNames) {
+             result.restrictedEditorNames = projectSettings.restrictedEditorNames;
+         }
++        if (projectSettings?.enableDockerdAuthentication !== undefined) {
++            result.enableDockerdAuthentication = projectSettings.enableDockerdAuthentication;
++        }
+         return result;
+     }
+ 
+diff --git a/components/public-api/typescript/src/gitpod/v1/configuration_pb.ts b/components/public-api/typescript/src/gitpod/v1/configuration_pb.ts
+index b17e5c6f9..83c7b5c6f 100644
+--- a/components/public-api/typescript/src/gitpod/v1/configuration_pb.ts
++++ b/components/public-api/typescript/src/gitpod/v1/configuration_pb.ts
+@@ -274,6 +274,13 @@ export class WorkspaceSettings extends Message<WorkspaceSettings> {
+    */
+   restrictedEditorNames: string[] = [];
+ 
++  /**
++   * Enable automatic authentication for docker daemon with all credentials specified in GITPOD_IMAGE_AUTH
++   *
++   * @generated from field: bool enable_dockerd_authentication = 4;
++   */
++  enableDockerdAuthentication = false;
++
+   constructor(data?: PartialMessage<WorkspaceSettings>) {
+     super();
+     proto3.util.initPartial(data, this);
+@@ -285,6 +292,7 @@ export class WorkspaceSettings extends Message<WorkspaceSettings> {
+     { no: 1, name: "workspace_class", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+     { no: 2, name: "restricted_workspace_classes", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+     { no: 3, name: "restricted_editor_names", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
++    { no: 4, name: "enable_dockerd_authentication", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+   ]);
+ 
+   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): WorkspaceSettings {
+@@ -741,6 +749,13 @@ export class UpdateConfigurationRequest_WorkspaceSettings extends Message<Update
+    */
+   updateRestrictedEditorNames?: boolean;
+ 
++  /**
++   * Enable automatic authentication for docker daemon with all credentials specified in GITPOD_IMAGE_AUTH
++   *
++   * @generated from field: optional bool enable_dockerd_authentication = 6;
++   */
++  enableDockerdAuthentication?: boolean;
++
+   constructor(data?: PartialMessage<UpdateConfigurationRequest_WorkspaceSettings>) {
+     super();
+     proto3.util.initPartial(data, this);
+@@ -754,6 +769,7 @@ export class UpdateConfigurationRequest_WorkspaceSettings extends Message<Update
+     { no: 3, name: "update_restricted_workspace_classes", kind: "scalar", T: 8 /* ScalarType.BOOL */, opt: true },
+     { no: 4, name: "restricted_editor_names", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+     { no: 5, name: "update_restricted_editor_names", kind: "scalar", T: 8 /* ScalarType.BOOL */, opt: true },
++    { no: 6, name: "enable_dockerd_authentication", kind: "scalar", T: 8 /* ScalarType.BOOL */, opt: true },
+   ]);
+ 
+   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): UpdateConfigurationRequest_WorkspaceSettings {
+diff --git a/components/server/src/api/configuration-service-api.ts b/components/server/src/api/configuration-service-api.ts
+index 61cccda1b..cade9d8d0 100644
+--- a/components/server/src/api/configuration-service-api.ts
++++ b/components/server/src/api/configuration-service-api.ts
+@@ -196,6 +196,9 @@ export class ConfigurationServiceAPI implements ServiceImpl<typeof Configuration
+         }
+ 
+         if (req.workspaceSettings !== undefined) {
++            // TODO(gpl): What is this? Why do we invent the 4th place to to a shape translation, when there should be only 1?
++            // The only reason to not re-do all of the API handling here is bc of our Classic timeline... and I'm not sure it's
++            // a good enough excuse.
+             update.workspaceSettings = {};
+             if (req.workspaceSettings.workspaceClass !== undefined) {
+                 update.workspaceSettings.workspaceClass = req.workspaceSettings.workspaceClass;
+@@ -216,6 +219,7 @@ export class ConfigurationServiceAPI implements ServiceImpl<typeof Configuration
+                     "updateRestrictedEditorNames is required to be true to update restrictedEditorNames",
+                 );
+             }
++            update.workspaceSettings.enableDockerdAuthentication = req.workspaceSettings.enableDockerdAuthentication;
+         }
+ 
+         if (Object.keys(update).length <= 1) {
+diff --git a/components/server/src/projects/projects-service.ts b/components/server/src/projects/projects-service.ts
+index 27ef2f229..77b4095fc 100644
+--- a/components/server/src/projects/projects-service.ts
++++ b/components/server/src/projects/projects-service.ts
+@@ -442,6 +442,16 @@ export class ProjectsService {
+             throw new ApplicationError(ErrorCodes.NOT_FOUND, `Project ${partialProject.id} not found.`);
+         }
+ 
++        // In case we are altering the "enableDockerdAuthentication": require org write_settings permission, so users
++        // can't inadvertently share credentials an owner configured
++        if (
++            partialProject?.settings?.enableDockerdAuthentication !==
++                existingProject.settings?.enableDockerdAuthentication &&
++            partialProject?.settings?.enableDockerdAuthentication
++        ) {
++            await this.auth.checkPermissionOnOrganization(user.id, "write_settings", existingProject.teamId);
++        }
++
+         // Merge settings so that clients don't need to pass previous value all the time
+         // (not update setting field if undefined)
+         if (partialProject.settings) {
+diff --git a/components/server/src/user/env-var-service.spec.db.ts b/components/server/src/user/env-var-service.spec.db.ts
+index 97f8a0050..e1eb6950d 100644
+--- a/components/server/src/user/env-var-service.spec.db.ts
++++ b/components/server/src/user/env-var-service.spec.db.ts
+@@ -156,6 +156,9 @@ describe("EnvVarService", async () => {
+                 appInstallationId: "noid",
+             },
+             member,
++            {
++                enableDockerdAuthentication: true,
++            },
+         );
+ 
+         es = container.get(EnvVarService);
+diff --git a/components/server/src/user/env-var-service.ts b/components/server/src/user/env-var-service.ts
+index 1e6c6c6a1..3d08a353a 100644
+--- a/components/server/src/user/env-var-service.ts
++++ b/components/server/src/user/env-var-service.ts
+@@ -11,6 +11,7 @@ import {
+     EnvVarWithValue,
+     OrgEnvVar,
+     OrgEnvVarWithValue,
++    Project,
+     ProjectEnvVar,
+     ProjectEnvVarWithValue,
+     UserEnvVar,
+@@ -27,7 +28,16 @@ import { ApplicationError, ErrorCodes } from "@gitpod/gitpod-protocol/lib/messag
+ import { Config } from "../config";
+ 
+ export interface ResolvedEnvVars {
+-    // merged workspace env vars (incl. org, user, project)
++    /**
++     * Credentials for private Docker registries, if it was present in the `workspace` env vars.
++     * Always be filled, even if project settings hide it from workspaces.
++     */
++    gitpodImageAuth?: Map<string, string>;
++
++    /**
++     * Merged workspace env vars (incl. org, user, project)
++     * Will exactly contain the env vars a workspace can/should be able to access.
++     */
+     workspace: EnvVarWithValue[];
+ }
+ 
+@@ -362,7 +372,18 @@ export class EnvVarService {
+             merge(wsContext.envvars);
+         }
+ 
++        // GITPOD_IMAGE_AUTH is a special case: it is only passed into the workspace if the project settings allow it
++        const credentials = EnvVar.getGitpodImageAuth([...workspaceEnvVars.values()]);
++        let project: Project | undefined;
++        if (projectId) {
++            project = await this.projectDB.findProjectById(projectId);
++        }
++        if (!project?.settings?.enableDockerdAuthentication) {
++            workspaceEnvVars.delete(EnvVar.GITPOD_IMAGE_AUTH_ENV_VAR_NAME);
++        }
++
+         return {
++            gitpodImageAuth: credentials,
+             workspace: [...workspaceEnvVars.values()],
+         };
+     }
+diff --git a/components/server/src/workspace/workspace-starter.ts b/components/server/src/workspace/workspace-starter.ts
+index 370355b95..ae9fb0805 100644
+--- a/components/server/src/workspace/workspace-starter.ts
++++ b/components/server/src/workspace/workspace-starter.ts
+@@ -632,7 +632,7 @@ export class WorkspaceStarter {
+             }
+ 
+             // build workspace image
+-            const additionalAuth = await this.getAdditionalImageAuth(envVars);
++            const additionalAuth = envVars.gitpodImageAuth || new Map<string, string>();
+             instance = await this.buildWorkspaceImage(
+                 { span },
+                 user,
+@@ -839,21 +839,6 @@ export class WorkspaceStarter {
+         return undefined;
+     }
+ 
+-    private async getAdditionalImageAuth(envVars: ResolvedEnvVars): Promise<Map<string, string>> {
+-        const res = new Map<string, string>();
+-        const imageAuth = envVars.workspace.find((e) => e.name === EnvVar.GITPOD_IMAGE_AUTH_ENV_VAR_NAME);
+-        if (!imageAuth) {
+-            return res;
+-        }
+-
+-        (imageAuth.value || "")
+-            .split(",")
+-            .map((e) => e.trim().split(":"))
+-            .filter((e) => e.length == 2)
+-            .forEach((e) => res.set(e[0], e[1]));
+-        return res;
+-    }
+-
+     /**
+      * failInstanceStart properly fails a workspace instance if something goes wrong before the instance ever reaches
+      * workspace manager. In this case we need to make sure we also fulfil the tasks of the bridge (e.g. for prebuilds).
+@@ -2056,7 +2041,7 @@ export class WorkspaceStarter {
+         if (organizationId) {
+             const envVars = await this.envVarService.listOrgEnvVarsWithValues(user.id, organizationId);
+ 
+-            const additionalAuth = await this.getAdditionalImageAuth({ workspace: envVars });
++            const additionalAuth = EnvVar.getGitpodImageAuth(envVars);
+             additionalAuth.forEach((val, key) => auth.getAdditionalMap().set(key, val));
+         }
+ 
+diff --git a/components/supervisor/pkg/supervisor/config.go b/components/supervisor/pkg/supervisor/config.go
+index 4e41a2fba..d2b42f175 100644
+--- a/components/supervisor/pkg/supervisor/config.go
++++ b/components/supervisor/pkg/supervisor/config.go
+@@ -350,6 +350,9 @@ type WorkspaceConfig struct {
+ 	ConfigcatEnabled bool `env:"GITPOD_CONFIGCAT_ENABLED"`
+ 
+ 	SSHGatewayCAPublicKey string `env:"GITPOD_SSH_CA_PUBLIC_KEY"`
++
++	// Comma-separated list of host:<base64ed user:password> pairs to authenticate against docker registries
++	GitpodImageAuth string `env:"GITPOD_IMAGE_AUTH"`
+ }
+ 
+ // WorkspaceGitpodToken is a list of tokens that should be added to supervisor's token service.
+diff --git a/components/supervisor/pkg/supervisor/docker.go b/components/supervisor/pkg/supervisor/docker.go
+index 4b25873ca..f2c3eb223 100644
+--- a/components/supervisor/pkg/supervisor/docker.go
++++ b/components/supervisor/pkg/supervisor/docker.go
+@@ -6,12 +6,14 @@ package supervisor
+ 
+ import (
+ 	"context"
++	"encoding/json"
+ 	"errors"
+ 	"fmt"
+ 	"io"
+ 	"net"
+ 	"os"
+ 	"os/exec"
++	"path/filepath"
+ 	"strings"
+ 	"sync"
+ 	"syscall"
+@@ -38,6 +40,9 @@ const (
+ 
+ 	logsDir             = "/workspace/.gitpod/logs"
+ 	dockerUpLogFilePath = logsDir + "/docker-up.log"
++
++	gitpodUserId  = 33333
++	gitpodGroupId = 33333
+ )
+ 
+ var (
+@@ -57,6 +62,17 @@ func socketActivationForDocker(parentCtx context.Context, wg *sync.WaitGroup, te
+ 		return
+ 	}
+ 
++	// insert credentials into docker config
++	credentialsWritten, err := insertCredentialsIntoConfig(cfg.GitpodImageAuth)
++	if err != nil {
++		log.WithError(err).Warn("authentication: cannot write credentials to config")
++	}
++	if credentialsWritten > 0 {
++		log.Info("authentication: successfully wrote credentials")
++	} else {
++		log.Info("authentication: no credentials provided")
++	}
++
+ 	logFile, err := openDockerUpLogFile()
+ 	if err != nil {
+ 		log.WithError(err).Error("docker-up: cannot open log file")
+@@ -285,3 +301,115 @@ func openDockerUpLogFile() (*os.File, error) {
+ 	}
+ 	return logFile, nil
+ }
++
++func insertCredentialsIntoConfig(imageAuth string) (int, error) {
++	imageAuth = strings.TrimSpace(imageAuth)
++	if imageAuth == "" {
++		return 0, nil
++	}
++
++	authConfig := DockerConfig{
++		Auths: make(map[string]RegistryAuth),
++	}
++	authenticationPerHost := strings.Split(imageAuth, ",")
++	for _, hostCredentials := range authenticationPerHost {
++		parts := strings.SplitN(hostCredentials, ":", 2)
++		if len(parts) < 2 {
++			continue
++		}
++		host := parts[0]
++		if host == "docker.io" || strings.HasSuffix(host, ".docker.io") {
++			host = "https://index.docker.io/v1/"
++		}
++
++		authConfig.Auths[host] = RegistryAuth{
++			Auth: parts[1],
++		}
++	}
++	if len(authConfig.Auths) == 0 {
++		return 0, nil
++	}
++
++	err := insertDockerRegistryAuthentication(authConfig, gitpodUserId, gitpodGroupId)
++	if err != nil {
++		return 0, xerrors.Errorf("cannot append registry auth: %w", err)
++	}
++
++	return len(authConfig.Auths), nil
++}
++
++type RegistryAuth struct {
++	Auth string `json:"auth"`
++}
++
++type DockerConfig struct {
++	Auths map[string]RegistryAuth `json:"auths"`
++}
++
++// insertDockerRegistryAuthentication inserts the provided registry credentials to the existing Docker config file
++func insertDockerRegistryAuthentication(newConfig DockerConfig, uid, pid int) error {
++	userHome, err := os.UserHomeDir()
++	if err != nil {
++		return fmt.Errorf("failed to determine user home directory: %w", err)
++	}
++
++	dockerDir := filepath.Join(userHome, ".docker")
++	if err := os.MkdirAll(dockerDir, 0744); err != nil {
++		return fmt.Errorf("failed to create docker config directory: %w", err)
++	}
++	if err := os.Chown(dockerDir, uid, pid); err != nil {
++		return fmt.Errorf("failed to change ownership of docker config directory: %w", err)
++	}
++	configPath := filepath.Join(dockerDir, "config.json")
++
++	// Read existing config if it exists
++	var rawConfig map[string]interface{}
++	existingBytes, err := os.ReadFile(configPath)
++	if err != nil && !os.IsNotExist(err) {
++		return fmt.Errorf("failed to read existing docker config: %w", err)
++	}
++
++	var configCreated bool
++	if len(existingBytes) > 0 {
++		if err := json.Unmarshal(existingBytes, &rawConfig); err != nil {
++			return fmt.Errorf("failed to parse existing docker config: %w", err)
++		}
++	} else {
++		configCreated = true
++		rawConfig = make(map[string]interface{})
++	}
++
++	// Get existing auths or create new
++	existingAuths := make(map[string]interface{})
++	if authsRaw, ok := rawConfig["auths"]; ok {
++		if authsMap, ok := authsRaw.(map[string]interface{}); ok {
++			existingAuths = authsMap
++		}
++	}
++
++	// Merge new auth entries
++	for registry, auth := range newConfig.Auths {
++		// We overwrite existing registry entries
++		existingAuths[registry] = auth
++	}
++
++	// Update auths in raw config while preserving other fields
++	rawConfig["auths"] = existingAuths
++
++	// Write merged config back to file
++	bytes, err := json.MarshalIndent(rawConfig, "", "  ")
++	if err != nil {
++		return fmt.Errorf("failed to marshal docker config: %w", err)
++	}
++
++	if err := os.WriteFile(configPath, bytes, 0644); err != nil {
++		return fmt.Errorf("failed to write docker config file: %w", err)
++	}
++	if configCreated {
++		if err := os.Chown(configPath, uid, pid); err != nil {
++			return fmt.Errorf("failed to change ownership of docker config file: %w", err)
++		}
++	}
++
++	return nil
++}
+diff --git a/components/supervisor/pkg/supervisor/docker_test.go b/components/supervisor/pkg/supervisor/docker_test.go
+new file mode 100644
+index 000000000..ca4e1a7e0
+--- /dev/null
++++ b/components/supervisor/pkg/supervisor/docker_test.go
+@@ -0,0 +1,175 @@
++// Copyright (c) 2025 Gitpod GmbH. All rights reserved.
++// Licensed under the GNU Affero General Public License (AGPL).
++// See License.AGPL.txt in the project root for license information.
++
++package supervisor
++
++import (
++	"encoding/json"
++	"os"
++	"path/filepath"
++	"testing"
++
++	"github.com/google/go-cmp/cmp"
++)
++
++func TestInsertRegistryAuth(t *testing.T) {
++	type expectation struct {
++		json string
++		err  string
++	}
++	tests := []struct {
++		name           string
++		existingConfig string // JSON string of existing config.json
++		inputConfig    DockerConfig
++		expect         expectation
++	}{
++		{
++			name:           "append to empty config",
++			existingConfig: "",
++			inputConfig: DockerConfig{
++				Auths: map[string]RegistryAuth{
++					"reg1.example.com": {Auth: "dXNlcjE6cGFzczE="}, // user1:pass1
++				},
++			},
++			expect: expectation{
++				json: `{
++                    "auths": {
++                        "reg1.example.com": {"auth": "dXNlcjE6cGFzczE="}
++                    }
++                }`,
++			},
++		},
++		{
++			name: "merge with existing config preserving other fields",
++			existingConfig: `{
++                "auths": {
++                    "reg1.example.com": {"auth": "existing=="}
++                },
++                "credsStore": "desktop",
++                "experimental": "enabled",
++                "stackOrchestrator": "swarm"
++            }`,
++			inputConfig: DockerConfig{
++				Auths: map[string]RegistryAuth{
++					"reg2.example.com": {Auth: "bmV3QXV0aA=="}, // newAuth
++				},
++			},
++			expect: expectation{
++				json: `{
++                    "auths": {
++                        "reg1.example.com": {"auth": "existing=="},
++                        "reg2.example.com": {"auth": "bmV3QXV0aA=="}
++                    },
++                    "credsStore": "desktop",
++                    "experimental": "enabled",
++                    "stackOrchestrator": "swarm"
++                }`,
++			},
++		},
++		{
++			name: "override existing registry auth preserving structure",
++			existingConfig: `{
++                "auths": {
++                    "reg1.example.com": {"auth": "old=="}
++                },
++                "credHelpers": {
++                    "registry.example.com": "ecr-login"
++                }
++            }`,
++			inputConfig: DockerConfig{
++				Auths: map[string]RegistryAuth{
++					"reg1.example.com": {Auth: "updated=="},
++				},
++			},
++			expect: expectation{
++				json: `{
++                    "auths": {
++                        "reg1.example.com": {"auth": "updated=="}
++                    },
++                    "credHelpers": {
++                        "registry.example.com": "ecr-login"
++                    }
++                }`,
++			},
++		},
++		{
++			name:           "invalid existing config json",
++			existingConfig: `{invalid json`,
++			inputConfig: DockerConfig{
++				Auths: map[string]RegistryAuth{
++					"reg1.example.com": {Auth: "dXNlcjE6cGFzczE="},
++				},
++			},
++			expect: expectation{
++				err: "failed to parse existing docker config: invalid character 'i' looking for beginning of object key string",
++			},
++		},
++	}
++
++	for _, tc := range tests {
++		t.Run(tc.name, func(t *testing.T) {
++			// Create temp dir for test
++			tmpDir, err := os.MkdirTemp("", "docker-test-*")
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer os.RemoveAll(tmpDir)
++
++			// Set up mock home dir
++			oldHome := os.Getenv("HOME")
++			defer os.Setenv("HOME", oldHome)
++			os.Setenv("HOME", tmpDir)
++
++			// Write existing config if any
++			if tc.existingConfig != "" {
++				configDir := filepath.Join(tmpDir, ".docker")
++				if err := os.MkdirAll(configDir, 0700); err != nil {
++					t.Fatal(err)
++				}
++				if err := os.WriteFile(
++					filepath.Join(configDir, "config.json"),
++					[]byte(tc.existingConfig),
++					0600,
++				); err != nil {
++					t.Fatal(err)
++				}
++			}
++
++			// Run test
++			err = insertDockerRegistryAuthentication(tc.inputConfig, 33333, 33333)
++			if tc.expect.err != "" {
++				if err == nil {
++					t.Error("expected error but got none")
++				}
++
++				if diff := cmp.Diff(tc.expect.err, err.Error()); diff != "" {
++					t.Errorf("unexpected error (-want +got):\n%s", diff)
++				}
++				return
++			}
++			if err != nil {
++				t.Fatalf("unexpected error: %v", err)
++			}
++
++			// Read resulting config
++			configBytes, err := os.ReadFile(filepath.Join(tmpDir, ".docker", "config.json"))
++			if err != nil {
++				t.Fatal(err)
++			}
++
++			// Compare JSON structural equality
++			var got, want interface{}
++			if err := json.Unmarshal(configBytes, &got); err != nil {
++				t.Fatal(err)
++			}
++			if err := json.Unmarshal([]byte(tc.expect.json), &want); err != nil {
++				t.Fatal(err)
++			}
++
++			if diff := cmp.Diff(want, got); diff != "" {
++				t.Errorf("unexpected config (-want +got):\n%s", diff)
++			}
++		})
++	}
++}
+diff --git a/components/ws-manager-mk2/controllers/create.go b/components/ws-manager-mk2/controllers/create.go
+index 54429e31f..f5cbf29c7 100644
+--- a/components/ws-manager-mk2/controllers/create.go
++++ b/components/ws-manager-mk2/controllers/create.go
+@@ -596,7 +596,8 @@ func createWorkspaceEnvironment(sctx *startWorkspaceContext) ([]corev1.EnvVar, e
+ 			"GITPOD_EXTERNAL_EXTENSIONS",
+ 			"GITPOD_WORKSPACE_CLASS_INFO",
+ 			"GITPOD_IDE_ALIAS",
+-			"GITPOD_RLIMIT_CORE":
++			"GITPOD_RLIMIT_CORE",
++			"GITPOD_IMAGE_AUTH":
+ 			// these variables are allowed - don't skip them
+ 		default:
+ 			if strings.HasPrefix(e.Name, "GITPOD_") {

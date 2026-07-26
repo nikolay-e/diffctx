@@ -1,0 +1,52 @@
+repo: react-native
+base_commit: d4edbcffbf9e797d33bf06a8873c73874ec51bdc
+commit: 972c2c864c0b563163a36080a13908d1c0a3fb87
+patch_stored: true
+gold:
+- path: packages/gradle-plugin/gradle/libs.versions.toml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/gradle-plugin/react-native-gradle-plugin/build.gradle.kts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/BridgelessCatalystInstance.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/uimanager/events/TouchEvent.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/gradle/libs.versions.toml
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: CODE_OF_CONDUCT.md
+- path: jest/preprocessor.js
+- path: packages/assets-registry/registry.d.ts
+- path: packages/debugger-shell/__tests__/dotslash-test.js
+- path: packages/polyfills/console.js
+- path: packages/polyfills/error-guard.js
+- path: packages/react-native/Libraries/Components/ScrollView/ScrollView.d.ts
+- path: packages/react-native/Libraries/Components/TextInput/TextInput.d.ts
+- path: packages/react-native/Libraries/Core/ExceptionsManager.js
+- path: packages/react-native/Libraries/Image/Image.android.js
+- path: packages/react-native/Libraries/Image/RCTImageLoader.mm
+- path: packages/react-native/Libraries/Linking/Linking.d.ts
+- path: packages/react-native/Libraries/PushNotificationIOS/PushNotificationIOS.d.ts
+- path: packages/react-native/cli.js
+- path: packages/react-native/index.js
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'The worst over-selection case in this batch: a trivial Kotlin 1.9->2.0 compiler bump touching
+  23 files (48 insertions / 17 deletions, mostly toml version bumps and one-line @JvmStatic-style compat
+  annotations) balloons to 188 ctx_files — a whole-tree dump pulling in ~165 files with zero relation
+  to Kotlin/Gradle at all (CODE_OF_CONDUCT.md, JS polyfills, Flow/TypeScript .d.ts files, Objective-C
+  image loader, push-notification types). This is issue #65 (whole-tree/co-located dump) in its clearest
+  form: relevance_precision is roughly 12%, and md_tokens (46k) is wildly disproportionate to a 65-line
+  real diff.'

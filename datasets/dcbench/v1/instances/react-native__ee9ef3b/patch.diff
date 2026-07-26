@@ -1,0 +1,1226 @@
+From ee9ef3bf2d97aae529172fd484c4c7c6c29acb61 Mon Sep 17 00:00:00 2001
+From: Alex Hunt <huntie@meta.com>
+Date: Fri, 31 Oct 2025 09:39:10 -0700
+Subject: [PATCH] Add Performance Issues to Perf Monitor (1/2) (#54265)
+
+Summary:
+Pull Request resolved: https://github.com/facebook/react-native/pull/54265
+
+Introduces the concept of **Performance Issues**, an experimental performance signals concept for React Native.
+
+**Design**
+
+Performance Issues are an **experimental** user space API via the User Timings `detail` object.
+
+```
+performance.measure({
+  start,
+  end,
+  detail: {
+    devtools: {
+      ...
+    },
+   rnPerfIssue: {
+     name: 'React: Cascading Update',
+     severity: 'warning', // 'info' | 'warning' | 'error',
+     description:
+      'A cascading update is a update that is triggered by a previous update. This can lead to performance issues and should be avoided.',
+    learnMoreUrl:
+      'https://react.dev/reference/dev-tools/react-performance-tracks#cascading-updates',
+    }
+  }
+});
+```
+
+When `rnPerfIssue` is present, we eagerly report an the event over CDP, regardless of an active performance trace, via the `"__react_native_perf_issues_reporter"` runtime binding.
+
+**This diff**
+
+- Adds a `perfIssuesEnabled` feature flag.
+- Initial implementation of the above API.
+- Initially reports a "Cascading Render" issue, aligning 1:1 with the corresponding React performance track event (note: to be added in the React codebase, see https://github.com/facebook/react/pull/34961).
+
+This feature is gated by the `perfMonitorV2Enabled` feature flag.
+
+Changelog: [Internal]
+
+Reviewed By: hoxyq
+
+Differential Revision: D85448200
+
+fbshipit-source-id: e5aed5138682331e1cd3a713a5f09fb6745138bc
+---
+ .../featureflags/ReactNativeFeatureFlags.kt   |  8 ++-
+ .../ReactNativeFeatureFlagsCxxAccessor.kt     | 12 +++-
+ .../ReactNativeFeatureFlagsCxxInterop.kt      |  4 +-
+ .../ReactNativeFeatureFlagsDefaults.kt        |  4 +-
+ .../ReactNativeFeatureFlagsLocalAccessor.kt   | 13 +++-
+ .../ReactNativeFeatureFlagsProvider.kt        |  4 +-
+ .../JReactNativeFeatureFlagsCxxInterop.cpp    | 16 ++++-
+ .../JReactNativeFeatureFlagsCxxInterop.h      |  5 +-
+ .../featureflags/ReactNativeFeatureFlags.cpp  |  6 +-
+ .../featureflags/ReactNativeFeatureFlags.h    |  7 +-
+ .../ReactNativeFeatureFlagsAccessor.cpp       | 68 ++++++++++++-------
+ .../ReactNativeFeatureFlagsAccessor.h         |  6 +-
+ .../ReactNativeFeatureFlagsDefaults.h         |  6 +-
+ .../ReactNativeFeatureFlagsDynamicProvider.h  | 11 ++-
+ .../ReactNativeFeatureFlagsProvider.h         |  3 +-
+ .../NativeReactNativeFeatureFlags.cpp         |  7 +-
+ .../NativeReactNativeFeatureFlags.h           |  4 +-
+ .../cdpmetrics/CdpMetricsReporter.h           |  8 +--
+ .../cdpmetrics/CdpPerfIssuesReporter.cpp      | 60 ++++++++++++++++
+ .../cdpmetrics/CdpPerfIssuesReporter.h        | 37 ++++++++++
+ .../timeline/PerformanceEntryReporter.cpp     | 41 +++++++----
+ .../timeline/PerformanceEntryReporter.h       | 11 +--
+ .../PerformanceEntryReporterListeners.h       | 12 +++-
+ .../tests/PerformanceObserverTest.cpp         |  8 ++-
+ .../react/renderer/scheduler/Scheduler.cpp    | 12 +++-
+ .../react/renderer/scheduler/Scheduler.h      |  2 +
+ .../ReactNativeFeatureFlags.config.js         | 11 +++
+ .../featureflags/ReactNativeFeatureFlags.js   |  7 +-
+ .../specs/NativeReactNativeFeatureFlags.js    |  3 +-
+ 29 files changed, 322 insertions(+), 74 deletions(-)
+ create mode 100644 packages/react-native/ReactCommon/react/performance/cdpmetrics/CdpPerfIssuesReporter.cpp
+ create mode 100644 packages/react-native/ReactCommon/react/performance/cdpmetrics/CdpPerfIssuesReporter.h
+
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt
+index 8dca0e86d35..16d4c32906d 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<3ea1ee77358d99334a7c40bed44f2d90>>
++ * @generated SignedSource<<bac9e360daa589cba476d208f75ef2ca>>
+  */
+ 
+ /**
+@@ -372,6 +372,12 @@ public object ReactNativeFeatureFlags {
+   @JvmStatic
+   public fun overrideBySynchronousMountPropsAtMountingAndroid(): Boolean = accessor.overrideBySynchronousMountPropsAtMountingAndroid()
+ 
++  /**
++   * Enable reporting Performance Issues (`detail.rnPerfIssue`). Displayed in the V2 Performance Monitor and the "Performance Issues" sub-panel in DevTools.
++   */
++  @JvmStatic
++  public fun perfIssuesEnabled(): Boolean = accessor.perfIssuesEnabled()
++
+   /**
+    * Enable the V2 in-app Performance Monitor. This flag is global and should not be changed across React Host lifetimes.
+    */
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt
+index 4b4caaed0bd..8aed0266c71 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<007a5a1235a999716b382ffd4ca23158>>
++ * @generated SignedSource<<2003ae7fc2c782b997d21938cc7b2380>>
+  */
+ 
+ /**
+@@ -77,6 +77,7 @@ internal class ReactNativeFeatureFlagsCxxAccessor : ReactNativeFeatureFlagsAcces
+   private var fuseboxNetworkInspectionEnabledCache: Boolean? = null
+   private var hideOffscreenVirtualViewsOnIOSCache: Boolean? = null
+   private var overrideBySynchronousMountPropsAtMountingAndroidCache: Boolean? = null
++  private var perfIssuesEnabledCache: Boolean? = null
+   private var perfMonitorV2EnabledCache: Boolean? = null
+   private var preparedTextCacheSizeCache: Double? = null
+   private var preventShadowTreeCommitExhaustionCache: Boolean? = null
+@@ -615,6 +616,15 @@ internal class ReactNativeFeatureFlagsCxxAccessor : ReactNativeFeatureFlagsAcces
+     return cached
+   }
+ 
++  override fun perfIssuesEnabled(): Boolean {
++    var cached = perfIssuesEnabledCache
++    if (cached == null) {
++      cached = ReactNativeFeatureFlagsCxxInterop.perfIssuesEnabled()
++      perfIssuesEnabledCache = cached
++    }
++    return cached
++  }
++
+   override fun perfMonitorV2Enabled(): Boolean {
+     var cached = perfMonitorV2EnabledCache
+     if (cached == null) {
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt
+index 2263fe960e7..720c54c8400 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<8a775646d455cdb6d017fd08aee3e807>>
++ * @generated SignedSource<<986b35ba4f323ab1a65dd70a559889e9>>
+  */
+ 
+ /**
+@@ -142,6 +142,8 @@ public object ReactNativeFeatureFlagsCxxInterop {
+ 
+   @DoNotStrip @JvmStatic public external fun overrideBySynchronousMountPropsAtMountingAndroid(): Boolean
+ 
++  @DoNotStrip @JvmStatic public external fun perfIssuesEnabled(): Boolean
++
+   @DoNotStrip @JvmStatic public external fun perfMonitorV2Enabled(): Boolean
+ 
+   @DoNotStrip @JvmStatic public external fun preparedTextCacheSize(): Double
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt
+index bd29add65d3..9502e54a879 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<afccaed3066598724041c48bfb524234>>
++ * @generated SignedSource<<43f629e3be734826b241d7e596daf6f4>>
+  */
+ 
+ /**
+@@ -137,6 +137,8 @@ public open class ReactNativeFeatureFlagsDefaults : ReactNativeFeatureFlagsProvi
+ 
+   override fun overrideBySynchronousMountPropsAtMountingAndroid(): Boolean = false
+ 
++  override fun perfIssuesEnabled(): Boolean = false
++
+   override fun perfMonitorV2Enabled(): Boolean = false
+ 
+   override fun preparedTextCacheSize(): Double = 200.0
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt
+index 5d2b38954e1..ef742de495b 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<ebeb9b37b8d3d0e31f4d4966cbf42b3f>>
++ * @generated SignedSource<<806741418f4ff7e3b6dcac3d78fa27dd>>
+  */
+ 
+ /**
+@@ -81,6 +81,7 @@ internal class ReactNativeFeatureFlagsLocalAccessor : ReactNativeFeatureFlagsAcc
+   private var fuseboxNetworkInspectionEnabledCache: Boolean? = null
+   private var hideOffscreenVirtualViewsOnIOSCache: Boolean? = null
+   private var overrideBySynchronousMountPropsAtMountingAndroidCache: Boolean? = null
++  private var perfIssuesEnabledCache: Boolean? = null
+   private var perfMonitorV2EnabledCache: Boolean? = null
+   private var preparedTextCacheSizeCache: Double? = null
+   private var preventShadowTreeCommitExhaustionCache: Boolean? = null
+@@ -676,6 +677,16 @@ internal class ReactNativeFeatureFlagsLocalAccessor : ReactNativeFeatureFlagsAcc
+     return cached
+   }
+ 
++  override fun perfIssuesEnabled(): Boolean {
++    var cached = perfIssuesEnabledCache
++    if (cached == null) {
++      cached = currentProvider.perfIssuesEnabled()
++      accessedFeatureFlags.add("perfIssuesEnabled")
++      perfIssuesEnabledCache = cached
++    }
++    return cached
++  }
++
+   override fun perfMonitorV2Enabled(): Boolean {
+     var cached = perfMonitorV2EnabledCache
+     if (cached == null) {
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt
+index b083f6900f8..5b23789cd6d 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<1c4ea60d119996f37742542976fedcc8>>
++ * @generated SignedSource<<1a08578b36cb91a183a435b881ca272f>>
+  */
+ 
+ /**
+@@ -137,6 +137,8 @@ public interface ReactNativeFeatureFlagsProvider {
+ 
+   @DoNotStrip public fun overrideBySynchronousMountPropsAtMountingAndroid(): Boolean
+ 
++  @DoNotStrip public fun perfIssuesEnabled(): Boolean
++
+   @DoNotStrip public fun perfMonitorV2Enabled(): Boolean
+ 
+   @DoNotStrip public fun preparedTextCacheSize(): Double
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp
+index d2f758eace8..195256ba827 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<d04720bbbd42eaf338be612a0f3e36a6>>
++ * @generated SignedSource<<4c22217e5a773fd97f4041ef6e052ebc>>
+  */
+ 
+ /**
+@@ -381,6 +381,12 @@ class ReactNativeFeatureFlagsJavaProvider
+     return method(javaProvider_);
+   }
+ 
++  bool perfIssuesEnabled() override {
++    static const auto method =
++        getReactNativeFeatureFlagsProviderJavaClass()->getMethod<jboolean()>("perfIssuesEnabled");
++    return method(javaProvider_);
++  }
++
+   bool perfMonitorV2Enabled() override {
+     static const auto method =
+         getReactNativeFeatureFlagsProviderJavaClass()->getMethod<jboolean()>("perfMonitorV2Enabled");
+@@ -814,6 +820,11 @@ bool JReactNativeFeatureFlagsCxxInterop::overrideBySynchronousMountPropsAtMounti
+   return ReactNativeFeatureFlags::overrideBySynchronousMountPropsAtMountingAndroid();
+ }
+ 
++bool JReactNativeFeatureFlagsCxxInterop::perfIssuesEnabled(
++    facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop> /*unused*/) {
++  return ReactNativeFeatureFlags::perfIssuesEnabled();
++}
++
+ bool JReactNativeFeatureFlagsCxxInterop::perfMonitorV2Enabled(
+     facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop> /*unused*/) {
+   return ReactNativeFeatureFlags::perfMonitorV2Enabled();
+@@ -1136,6 +1147,9 @@ void JReactNativeFeatureFlagsCxxInterop::registerNatives() {
+       makeNativeMethod(
+         "overrideBySynchronousMountPropsAtMountingAndroid",
+         JReactNativeFeatureFlagsCxxInterop::overrideBySynchronousMountPropsAtMountingAndroid),
++      makeNativeMethod(
++        "perfIssuesEnabled",
++        JReactNativeFeatureFlagsCxxInterop::perfIssuesEnabled),
+       makeNativeMethod(
+         "perfMonitorV2Enabled",
+         JReactNativeFeatureFlagsCxxInterop::perfMonitorV2Enabled),
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h
+index b74c0868250..380d2752242 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<7679a91daba1f8941b78a4be4baea6ef>>
++ * @generated SignedSource<<91f5bbbab5f34321687c6f6d31ca49d8>>
+  */
+ 
+ /**
+@@ -201,6 +201,9 @@ class JReactNativeFeatureFlagsCxxInterop
+   static bool overrideBySynchronousMountPropsAtMountingAndroid(
+     facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop>);
+ 
++  static bool perfIssuesEnabled(
++    facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop>);
++
+   static bool perfMonitorV2Enabled(
+     facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop>);
+ 
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp
+index ef3c0fc3e5b..e7dde86a58c 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<303e8208cbdf0b9b9041942822c5597d>>
++ * @generated SignedSource<<91ecd61e5e2ed1a15248db4e40993018>>
+  */
+ 
+ /**
+@@ -254,6 +254,10 @@ bool ReactNativeFeatureFlags::overrideBySynchronousMountPropsAtMountingAndroid()
+   return getAccessor().overrideBySynchronousMountPropsAtMountingAndroid();
+ }
+ 
++bool ReactNativeFeatureFlags::perfIssuesEnabled() {
++  return getAccessor().perfIssuesEnabled();
++}
++
+ bool ReactNativeFeatureFlags::perfMonitorV2Enabled() {
+   return getAccessor().perfMonitorV2Enabled();
+ }
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h
+index 331533669f4..216a8cd4893 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<07b665ad842faafaf7520051f636d805>>
++ * @generated SignedSource<<e996f8acef4c9feeda40ea920a2e5353>>
+  */
+ 
+ /**
+@@ -324,6 +324,11 @@ class ReactNativeFeatureFlags {
+    */
+   RN_EXPORT static bool overrideBySynchronousMountPropsAtMountingAndroid();
+ 
++  /**
++   * Enable reporting Performance Issues (`detail.rnPerfIssue`). Displayed in the V2 Performance Monitor and the "Performance Issues" sub-panel in DevTools.
++   */
++  RN_EXPORT static bool perfIssuesEnabled();
++
+   /**
+    * Enable the V2 in-app Performance Monitor. This flag is global and should not be changed across React Host lifetimes.
+    */
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp
+index 426f44a7edd..80de8cc548c 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<bb1683be477d17206c950e8e690e22d3>>
++ * @generated SignedSource<<340a91df3fcf91bdd7029899016f5e43>>
+  */
+ 
+ /**
+@@ -1055,6 +1055,24 @@ bool ReactNativeFeatureFlagsAccessor::overrideBySynchronousMountPropsAtMountingA
+   return flagValue.value();
+ }
+ 
++bool ReactNativeFeatureFlagsAccessor::perfIssuesEnabled() {
++  auto flagValue = perfIssuesEnabled_.load();
++
++  if (!flagValue.has_value()) {
++    // This block is not exclusive but it is not necessary.
++    // If multiple threads try to initialize the feature flag, we would only
++    // be accessing the provider multiple times but the end state of this
++    // instance and the returned flag value would be the same.
++
++    markFlagAsAccessed(57, "perfIssuesEnabled");
++
++    flagValue = currentProvider_->perfIssuesEnabled();
++    perfIssuesEnabled_ = flagValue;
++  }
++
++  return flagValue.value();
++}
++
+ bool ReactNativeFeatureFlagsAccessor::perfMonitorV2Enabled() {
+   auto flagValue = perfMonitorV2Enabled_.load();
+ 
+@@ -1064,7 +1082,7 @@ bool ReactNativeFeatureFlagsAccessor::perfMonitorV2Enabled() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(57, "perfMonitorV2Enabled");
++    markFlagAsAccessed(58, "perfMonitorV2Enabled");
+ 
+     flagValue = currentProvider_->perfMonitorV2Enabled();
+     perfMonitorV2Enabled_ = flagValue;
+@@ -1082,7 +1100,7 @@ double ReactNativeFeatureFlagsAccessor::preparedTextCacheSize() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(58, "preparedTextCacheSize");
++    markFlagAsAccessed(59, "preparedTextCacheSize");
+ 
+     flagValue = currentProvider_->preparedTextCacheSize();
+     preparedTextCacheSize_ = flagValue;
+@@ -1100,7 +1118,7 @@ bool ReactNativeFeatureFlagsAccessor::preventShadowTreeCommitExhaustion() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(59, "preventShadowTreeCommitExhaustion");
++    markFlagAsAccessed(60, "preventShadowTreeCommitExhaustion");
+ 
+     flagValue = currentProvider_->preventShadowTreeCommitExhaustion();
+     preventShadowTreeCommitExhaustion_ = flagValue;
+@@ -1118,7 +1136,7 @@ bool ReactNativeFeatureFlagsAccessor::shouldPressibilityUseW3CPointerEventsForHo
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(60, "shouldPressibilityUseW3CPointerEventsForHover");
++    markFlagAsAccessed(61, "shouldPressibilityUseW3CPointerEventsForHover");
+ 
+     flagValue = currentProvider_->shouldPressibilityUseW3CPointerEventsForHover();
+     shouldPressibilityUseW3CPointerEventsForHover_ = flagValue;
+@@ -1136,7 +1154,7 @@ bool ReactNativeFeatureFlagsAccessor::shouldTriggerResponderTransferOnScrollAndr
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(61, "shouldTriggerResponderTransferOnScrollAndroid");
++    markFlagAsAccessed(62, "shouldTriggerResponderTransferOnScrollAndroid");
+ 
+     flagValue = currentProvider_->shouldTriggerResponderTransferOnScrollAndroid();
+     shouldTriggerResponderTransferOnScrollAndroid_ = flagValue;
+@@ -1154,7 +1172,7 @@ bool ReactNativeFeatureFlagsAccessor::skipActivityIdentityAssertionOnHostPause()
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(62, "skipActivityIdentityAssertionOnHostPause");
++    markFlagAsAccessed(63, "skipActivityIdentityAssertionOnHostPause");
+ 
+     flagValue = currentProvider_->skipActivityIdentityAssertionOnHostPause();
+     skipActivityIdentityAssertionOnHostPause_ = flagValue;
+@@ -1172,7 +1190,7 @@ bool ReactNativeFeatureFlagsAccessor::sweepActiveTouchOnChildNativeGesturesAndro
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(63, "sweepActiveTouchOnChildNativeGesturesAndroid");
++    markFlagAsAccessed(64, "sweepActiveTouchOnChildNativeGesturesAndroid");
+ 
+     flagValue = currentProvider_->sweepActiveTouchOnChildNativeGesturesAndroid();
+     sweepActiveTouchOnChildNativeGesturesAndroid_ = flagValue;
+@@ -1190,7 +1208,7 @@ bool ReactNativeFeatureFlagsAccessor::traceTurboModulePromiseRejectionsOnAndroid
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(64, "traceTurboModulePromiseRejectionsOnAndroid");
++    markFlagAsAccessed(65, "traceTurboModulePromiseRejectionsOnAndroid");
+ 
+     flagValue = currentProvider_->traceTurboModulePromiseRejectionsOnAndroid();
+     traceTurboModulePromiseRejectionsOnAndroid_ = flagValue;
+@@ -1208,7 +1226,7 @@ bool ReactNativeFeatureFlagsAccessor::updateRuntimeShadowNodeReferencesOnCommit(
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(65, "updateRuntimeShadowNodeReferencesOnCommit");
++    markFlagAsAccessed(66, "updateRuntimeShadowNodeReferencesOnCommit");
+ 
+     flagValue = currentProvider_->updateRuntimeShadowNodeReferencesOnCommit();
+     updateRuntimeShadowNodeReferencesOnCommit_ = flagValue;
+@@ -1226,7 +1244,7 @@ bool ReactNativeFeatureFlagsAccessor::useAlwaysAvailableJSErrorHandling() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(66, "useAlwaysAvailableJSErrorHandling");
++    markFlagAsAccessed(67, "useAlwaysAvailableJSErrorHandling");
+ 
+     flagValue = currentProvider_->useAlwaysAvailableJSErrorHandling();
+     useAlwaysAvailableJSErrorHandling_ = flagValue;
+@@ -1244,7 +1262,7 @@ bool ReactNativeFeatureFlagsAccessor::useFabricInterop() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(67, "useFabricInterop");
++    markFlagAsAccessed(68, "useFabricInterop");
+ 
+     flagValue = currentProvider_->useFabricInterop();
+     useFabricInterop_ = flagValue;
+@@ -1262,7 +1280,7 @@ bool ReactNativeFeatureFlagsAccessor::useNativeEqualsInNativeReadableArrayAndroi
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(68, "useNativeEqualsInNativeReadableArrayAndroid");
++    markFlagAsAccessed(69, "useNativeEqualsInNativeReadableArrayAndroid");
+ 
+     flagValue = currentProvider_->useNativeEqualsInNativeReadableArrayAndroid();
+     useNativeEqualsInNativeReadableArrayAndroid_ = flagValue;
+@@ -1280,7 +1298,7 @@ bool ReactNativeFeatureFlagsAccessor::useNativeTransformHelperAndroid() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(69, "useNativeTransformHelperAndroid");
++    markFlagAsAccessed(70, "useNativeTransformHelperAndroid");
+ 
+     flagValue = currentProvider_->useNativeTransformHelperAndroid();
+     useNativeTransformHelperAndroid_ = flagValue;
+@@ -1298,7 +1316,7 @@ bool ReactNativeFeatureFlagsAccessor::useNativeViewConfigsInBridgelessMode() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(70, "useNativeViewConfigsInBridgelessMode");
++    markFlagAsAccessed(71, "useNativeViewConfigsInBridgelessMode");
+ 
+     flagValue = currentProvider_->useNativeViewConfigsInBridgelessMode();
+     useNativeViewConfigsInBridgelessMode_ = flagValue;
+@@ -1316,7 +1334,7 @@ bool ReactNativeFeatureFlagsAccessor::useOptimizedEventBatchingOnAndroid() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(71, "useOptimizedEventBatchingOnAndroid");
++    markFlagAsAccessed(72, "useOptimizedEventBatchingOnAndroid");
+ 
+     flagValue = currentProvider_->useOptimizedEventBatchingOnAndroid();
+     useOptimizedEventBatchingOnAndroid_ = flagValue;
+@@ -1334,7 +1352,7 @@ bool ReactNativeFeatureFlagsAccessor::useRawPropsJsiValue() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(72, "useRawPropsJsiValue");
++    markFlagAsAccessed(73, "useRawPropsJsiValue");
+ 
+     flagValue = currentProvider_->useRawPropsJsiValue();
+     useRawPropsJsiValue_ = flagValue;
+@@ -1352,7 +1370,7 @@ bool ReactNativeFeatureFlagsAccessor::useShadowNodeStateOnClone() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(73, "useShadowNodeStateOnClone");
++    markFlagAsAccessed(74, "useShadowNodeStateOnClone");
+ 
+     flagValue = currentProvider_->useShadowNodeStateOnClone();
+     useShadowNodeStateOnClone_ = flagValue;
+@@ -1370,7 +1388,7 @@ bool ReactNativeFeatureFlagsAccessor::useSharedAnimatedBackend() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(74, "useSharedAnimatedBackend");
++    markFlagAsAccessed(75, "useSharedAnimatedBackend");
+ 
+     flagValue = currentProvider_->useSharedAnimatedBackend();
+     useSharedAnimatedBackend_ = flagValue;
+@@ -1388,7 +1406,7 @@ bool ReactNativeFeatureFlagsAccessor::useTraitHiddenOnAndroid() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(75, "useTraitHiddenOnAndroid");
++    markFlagAsAccessed(76, "useTraitHiddenOnAndroid");
+ 
+     flagValue = currentProvider_->useTraitHiddenOnAndroid();
+     useTraitHiddenOnAndroid_ = flagValue;
+@@ -1406,7 +1424,7 @@ bool ReactNativeFeatureFlagsAccessor::useTurboModuleInterop() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(76, "useTurboModuleInterop");
++    markFlagAsAccessed(77, "useTurboModuleInterop");
+ 
+     flagValue = currentProvider_->useTurboModuleInterop();
+     useTurboModuleInterop_ = flagValue;
+@@ -1424,7 +1442,7 @@ bool ReactNativeFeatureFlagsAccessor::useTurboModules() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(77, "useTurboModules");
++    markFlagAsAccessed(78, "useTurboModules");
+ 
+     flagValue = currentProvider_->useTurboModules();
+     useTurboModules_ = flagValue;
+@@ -1442,7 +1460,7 @@ double ReactNativeFeatureFlagsAccessor::viewCullingOutsetRatio() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(78, "viewCullingOutsetRatio");
++    markFlagAsAccessed(79, "viewCullingOutsetRatio");
+ 
+     flagValue = currentProvider_->viewCullingOutsetRatio();
+     viewCullingOutsetRatio_ = flagValue;
+@@ -1460,7 +1478,7 @@ double ReactNativeFeatureFlagsAccessor::virtualViewHysteresisRatio() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(79, "virtualViewHysteresisRatio");
++    markFlagAsAccessed(80, "virtualViewHysteresisRatio");
+ 
+     flagValue = currentProvider_->virtualViewHysteresisRatio();
+     virtualViewHysteresisRatio_ = flagValue;
+@@ -1478,7 +1496,7 @@ double ReactNativeFeatureFlagsAccessor::virtualViewPrerenderRatio() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(80, "virtualViewPrerenderRatio");
++    markFlagAsAccessed(81, "virtualViewPrerenderRatio");
+ 
+     flagValue = currentProvider_->virtualViewPrerenderRatio();
+     virtualViewPrerenderRatio_ = flagValue;
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h
+index 5b374f2479d..8ace0df81cd 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<352f96a011a58b975766f1e6f49aeb48>>
++ * @generated SignedSource<<a9a05c6c420123dfe1a2cdb28e2a692a>>
+  */
+ 
+ /**
+@@ -89,6 +89,7 @@ class ReactNativeFeatureFlagsAccessor {
+   bool fuseboxNetworkInspectionEnabled();
+   bool hideOffscreenVirtualViewsOnIOS();
+   bool overrideBySynchronousMountPropsAtMountingAndroid();
++  bool perfIssuesEnabled();
+   bool perfMonitorV2Enabled();
+   double preparedTextCacheSize();
+   bool preventShadowTreeCommitExhaustion();
+@@ -124,7 +125,7 @@ class ReactNativeFeatureFlagsAccessor {
+   std::unique_ptr<ReactNativeFeatureFlagsProvider> currentProvider_;
+   bool wasOverridden_;
+ 
+-  std::array<std::atomic<const char*>, 81> accessedFeatureFlags_;
++  std::array<std::atomic<const char*>, 82> accessedFeatureFlags_;
+ 
+   std::atomic<std::optional<bool>> commonTestFlag_;
+   std::atomic<std::optional<bool>> cdpInteractionMetricsEnabled_;
+@@ -183,6 +184,7 @@ class ReactNativeFeatureFlagsAccessor {
+   std::atomic<std::optional<bool>> fuseboxNetworkInspectionEnabled_;
+   std::atomic<std::optional<bool>> hideOffscreenVirtualViewsOnIOS_;
+   std::atomic<std::optional<bool>> overrideBySynchronousMountPropsAtMountingAndroid_;
++  std::atomic<std::optional<bool>> perfIssuesEnabled_;
+   std::atomic<std::optional<bool>> perfMonitorV2Enabled_;
+   std::atomic<std::optional<double>> preparedTextCacheSize_;
+   std::atomic<std::optional<bool>> preventShadowTreeCommitExhaustion_;
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h
+index f9ec7cb7b58..0f23d4af1b1 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<d61394fb8056e5e1a68f9fe7b936985c>>
++ * @generated SignedSource<<15f3ad61edd6f6f4625584bf5853c60e>>
+  */
+ 
+ /**
+@@ -255,6 +255,10 @@ class ReactNativeFeatureFlagsDefaults : public ReactNativeFeatureFlagsProvider {
+     return false;
+   }
+ 
++  bool perfIssuesEnabled() override {
++    return false;
++  }
++
+   bool perfMonitorV2Enabled() override {
+     return false;
+   }
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDynamicProvider.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDynamicProvider.h
+index 7ebd8d5db5f..837b82c780e 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDynamicProvider.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDynamicProvider.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<adcd03f8f6bcdb8b8197d9b0085c9d77>>
++ * @generated SignedSource<<c04830bf90f79c87f87aaf48b8a83c31>>
+  */
+ 
+ /**
+@@ -558,6 +558,15 @@ class ReactNativeFeatureFlagsDynamicProvider : public ReactNativeFeatureFlagsDef
+     return ReactNativeFeatureFlagsDefaults::overrideBySynchronousMountPropsAtMountingAndroid();
+   }
+ 
++  bool perfIssuesEnabled() override {
++    auto value = values_["perfIssuesEnabled"];
++    if (!value.isNull()) {
++      return value.getBool();
++    }
++
++    return ReactNativeFeatureFlagsDefaults::perfIssuesEnabled();
++  }
++
+   bool perfMonitorV2Enabled() override {
+     auto value = values_["perfMonitorV2Enabled"];
+     if (!value.isNull()) {
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h
+index d980b650b75..279ee760b9d 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<6b88f3c9d5688f9d1844f7cd4936a1e4>>
++ * @generated SignedSource<<7723a5d30da933313517928dc9a58785>>
+  */
+ 
+ /**
+@@ -82,6 +82,7 @@ class ReactNativeFeatureFlagsProvider {
+   virtual bool fuseboxNetworkInspectionEnabled() = 0;
+   virtual bool hideOffscreenVirtualViewsOnIOS() = 0;
+   virtual bool overrideBySynchronousMountPropsAtMountingAndroid() = 0;
++  virtual bool perfIssuesEnabled() = 0;
+   virtual bool perfMonitorV2Enabled() = 0;
+   virtual double preparedTextCacheSize() = 0;
+   virtual bool preventShadowTreeCommitExhaustion() = 0;
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp
+index 3657c1eab01..fd8227de3f5 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp
++++ b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<90c47eabce1b8648c630ba8d9479c603>>
++ * @generated SignedSource<<b696342f8da944abc7b0e37a9734a7fb>>
+  */
+ 
+ /**
+@@ -329,6 +329,11 @@ bool NativeReactNativeFeatureFlags::overrideBySynchronousMountPropsAtMountingAnd
+   return ReactNativeFeatureFlags::overrideBySynchronousMountPropsAtMountingAndroid();
+ }
+ 
++bool NativeReactNativeFeatureFlags::perfIssuesEnabled(
++    jsi::Runtime& /*runtime*/) {
++  return ReactNativeFeatureFlags::perfIssuesEnabled();
++}
++
+ bool NativeReactNativeFeatureFlags::perfMonitorV2Enabled(
+     jsi::Runtime& /*runtime*/) {
+   return ReactNativeFeatureFlags::perfMonitorV2Enabled();
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h
+index 8b0976e5263..8a8a67ab366 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h
++++ b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<e552924ddee2c2ba5ea511da830cd475>>
++ * @generated SignedSource<<450c306b0ee0c57ef543108055cf2d5a>>
+  */
+ 
+ /**
+@@ -150,6 +150,8 @@ class NativeReactNativeFeatureFlags
+ 
+   bool overrideBySynchronousMountPropsAtMountingAndroid(jsi::Runtime& runtime);
+ 
++  bool perfIssuesEnabled(jsi::Runtime& runtime);
++
+   bool perfMonitorV2Enabled(jsi::Runtime& runtime);
+ 
+   double preparedTextCacheSize(jsi::Runtime& runtime);
+diff --git a/packages/react-native/ReactCommon/react/performance/cdpmetrics/CdpMetricsReporter.h b/packages/react-native/ReactCommon/react/performance/cdpmetrics/CdpMetricsReporter.h
+index 87c9400434a..578b7ed32d1 100644
+--- a/packages/react-native/ReactCommon/react/performance/cdpmetrics/CdpMetricsReporter.h
++++ b/packages/react-native/ReactCommon/react/performance/cdpmetrics/CdpMetricsReporter.h
+@@ -19,11 +19,11 @@ namespace facebook::react {
+  * [Experimental] Reports CDP interaction events via the
+  * "__chromium_devtools_metrics_reporter" runtime binding.
+  *
+- * This populates the Interaction to Next Paint (INP) live metric in Chrome
+- * DevTools and the V2 Perf Monitor. Events are reported immediately and do
+- * not require an active CDP Tracing session.
++ * This populates the Interaction to Next Paint (INP) live metric in React
++ * Native DevTools. Events are reported immediately and do not require an
++ * active CDP Tracing session.
+  */
+-class CdpMetricsReporter : public PerformanceEntryReporterEventTimingListener {
++class CdpMetricsReporter : public PerformanceEntryReporterEventListener {
+  public:
+   explicit CdpMetricsReporter(RuntimeExecutor runtimeExecutor);
+ 
+diff --git a/packages/react-native/ReactCommon/react/performance/cdpmetrics/CdpPerfIssuesReporter.cpp b/packages/react-native/ReactCommon/react/performance/cdpmetrics/CdpPerfIssuesReporter.cpp
+new file mode 100644
+index 00000000000..5b528cb83ae
+--- /dev/null
++++ b/packages/react-native/ReactCommon/react/performance/cdpmetrics/CdpPerfIssuesReporter.cpp
+@@ -0,0 +1,60 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++#include "CdpPerfIssuesReporter.h"
++
++#include <folly/dynamic.h>
++#include <folly/json.h>
++#include <string_view>
++
++namespace facebook::react {
++
++namespace {
++
++constexpr std::string_view issuesReporterName =
++    "__react_native_perf_issues_reporter";
++
++} // namespace
++
++CdpPerfIssuesReporter::CdpPerfIssuesReporter(RuntimeExecutor runtimeExecutor)
++    : runtimeExecutor_(std::move(runtimeExecutor)) {}
++
++void CdpPerfIssuesReporter::onMeasureEntry(
++    const PerformanceMeasure& entry,
++    const std::optional<UserTimingDetailProvider>& detailProvider) {
++  std::optional<folly::dynamic> maybeDetail = nullptr;
++  if (detailProvider.has_value()) {
++    maybeDetail = (*detailProvider)();
++  }
++
++  if (!maybeDetail.has_value() || !maybeDetail->isObject()) {
++    return;
++  }
++
++  runtimeExecutor_([entry,
++                    detail = std::move(*maybeDetail)](jsi::Runtime& runtime) {
++    auto global = runtime.global();
++    if (!global.hasProperty(runtime, issuesReporterName.data())) {
++      return;
++    }
++
++    if (detail.count("rnPerfIssue") != 0 && detail["rnPerfIssue"].isObject()) {
++      auto& perfIssue = detail["rnPerfIssue"];
++
++      if (perfIssue.count("name") != 0 && perfIssue.count("severity") != 0 &&
++          perfIssue.count("description") != 0) {
++        auto jsonString = folly::toJson(perfIssue);
++        auto jsiString = jsi::String::createFromUtf8(runtime, jsonString);
++        auto issuesReporter =
++            global.getPropertyAsFunction(runtime, issuesReporterName.data());
++        issuesReporter.call(runtime, jsiString);
++      }
++    }
++  });
++}
++
++} // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/react/performance/cdpmetrics/CdpPerfIssuesReporter.h b/packages/react-native/ReactCommon/react/performance/cdpmetrics/CdpPerfIssuesReporter.h
+new file mode 100644
+index 00000000000..12a1ef2222a
+--- /dev/null
++++ b/packages/react-native/ReactCommon/react/performance/cdpmetrics/CdpPerfIssuesReporter.h
+@@ -0,0 +1,37 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++#pragma once
++
++#include <ReactCommon/RuntimeExecutor.h>
++#include <folly/dynamic.h>
++#include <jsi/jsi.h>
++#include <react/performance/timeline/PerformanceEntry.h>
++#include <react/performance/timeline/PerformanceEntryReporterListeners.h>
++#include <react/timing/primitives.h>
++
++namespace facebook::react {
++
++/**
++ * [Experimental] Reports new Performance Issues via the
++ * "__react_native_perf_issues_reporter" runtime binding.
++ *
++ * This populates the Perf Issues indicator in the V2 Perf Monitor. Events are
++ * reported immediately and do not require an active CDP Tracing session.
++ */
++class CdpPerfIssuesReporter : public PerformanceEntryReporterEventListener {
++ public:
++  explicit CdpPerfIssuesReporter(RuntimeExecutor runtimeExecutor);
++
++  void onMeasureEntry(const PerformanceMeasure &entry, const std::optional<UserTimingDetailProvider> &detailProvider)
++      override;
++
++ private:
++  const RuntimeExecutor runtimeExecutor_{};
++};
++
++} // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/react/performance/timeline/PerformanceEntryReporter.cpp b/packages/react-native/ReactCommon/react/performance/timeline/PerformanceEntryReporter.cpp
+index 05e75a7d488..17b3bbecd5a 100644
+--- a/packages/react-native/ReactCommon/react/performance/timeline/PerformanceEntryReporter.cpp
++++ b/packages/react-native/ReactCommon/react/performance/timeline/PerformanceEntryReporter.cpp
+@@ -88,19 +88,18 @@ PerformanceEntryReporter::PerformanceEntryReporter()
+ #endif
+ }
+ 
+-void PerformanceEntryReporter::addEventTimingListener(
+-    PerformanceEntryReporterEventTimingListener* listener) {
++void PerformanceEntryReporter::addEventListener(
++    PerformanceEntryReporterEventListener* listener) {
+   std::unique_lock lock(listenersMutex_);
+-  eventTimingListeners_.push_back(listener);
++  eventListeners_.push_back(listener);
+ }
+ 
+-void PerformanceEntryReporter::removeEventTimingListener(
+-    PerformanceEntryReporterEventTimingListener* listener) {
++void PerformanceEntryReporter::removeEventListener(
++    PerformanceEntryReporterEventListener* listener) {
+   std::unique_lock lock(listenersMutex_);
+-  auto it = std::find(
+-      eventTimingListeners_.begin(), eventTimingListeners_.end(), listener);
+-  if (it != eventTimingListeners_.end()) {
+-    eventTimingListeners_.erase(it);
++  auto it = std::find(eventListeners_.begin(), eventListeners_.end(), listener);
++  if (it != eventListeners_.end()) {
++    eventListeners_.erase(it);
+   }
+ }
+ 
+@@ -208,13 +207,13 @@ void PerformanceEntryReporter::reportMeasure(
+     const std::string& name,
+     HighResTimeStamp startTime,
+     HighResDuration duration,
+-    UserTimingDetailProvider&& detailProvider) {
++    const std::optional<UserTimingDetailProvider>& detailProvider) {
+   const auto entry = PerformanceMeasure{
+       {.name = std::string(name),
+        .startTime = startTime,
+        .duration = duration}};
+ 
+-  traceMeasure(entry, std::move(detailProvider));
++  traceMeasure(entry, detailProvider);
+ 
+   // Add to buffers & notify observers
+   {
+@@ -223,6 +222,16 @@ void PerformanceEntryReporter::reportMeasure(
+   }
+ 
+   observerRegistry_->queuePerformanceEntry(entry);
++
++  std::vector<PerformanceEntryReporterEventListener*> listenersCopy;
++  {
++    std::shared_lock lock(listenersMutex_);
++    listenersCopy = eventListeners_;
++  }
++
++  for (auto* listener : listenersCopy) {
++    listener->onMeasureEntry(entry, detailProvider);
++  }
+ }
+ 
+ void PerformanceEntryReporter::clearEventCounts() {
+@@ -272,10 +281,10 @@ void PerformanceEntryReporter::reportEvent(
+   // TODO(T198982346): Log interaction events to jsinspector_modern
+   observerRegistry_->queuePerformanceEntry(entry);
+ 
+-  std::vector<PerformanceEntryReporterEventTimingListener*> listenersCopy;
++  std::vector<PerformanceEntryReporterEventListener*> listenersCopy;
+   {
+     std::shared_lock lock(listenersMutex_);
+-    listenersCopy = eventTimingListeners_;
++    listenersCopy = eventListeners_;
+   }
+ 
+   for (auto* listener : listenersCopy) {
+@@ -354,11 +363,13 @@ void PerformanceEntryReporter::traceMark(
+ 
+ void PerformanceEntryReporter::traceMeasure(
+     const PerformanceMeasure& entry,
+-    UserTimingDetailProvider&& detailProvider) const {
++    const std::optional<UserTimingDetailProvider>& detailProvider) const {
+   auto& performanceTracer =
+       jsinspector_modern::tracing::PerformanceTracer::getInstance();
+   if (performanceTracer.isTracing() || ReactPerfettoLogger::isTracing()) {
+-    auto detail = detailProvider != nullptr ? detailProvider() : nullptr;
++    auto detail = detailProvider && detailProvider.has_value()
++        ? (*detailProvider)()
++        : nullptr;
+ 
+     if (ReactPerfettoLogger::isTracing()) {
+       ReactPerfettoLogger::measure(
+diff --git a/packages/react-native/ReactCommon/react/performance/timeline/PerformanceEntryReporter.h b/packages/react-native/ReactCommon/react/performance/timeline/PerformanceEntryReporter.h
+index 5e52a0edcd3..f9c584ab27c 100644
+--- a/packages/react-native/ReactCommon/react/performance/timeline/PerformanceEntryReporter.h
++++ b/packages/react-native/ReactCommon/react/performance/timeline/PerformanceEntryReporter.h
+@@ -59,8 +59,8 @@ class PerformanceEntryReporter {
+   void clearEntries(PerformanceEntryType entryType);
+   void clearEntries(PerformanceEntryType entryType, const std::string &entryName);
+ 
+-  void addEventTimingListener(PerformanceEntryReporterEventTimingListener *listener);
+-  void removeEventTimingListener(PerformanceEntryReporterEventTimingListener *listener);
++  void addEventListener(PerformanceEntryReporterEventListener *listener);
++  void removeEventListener(PerformanceEntryReporterEventListener *listener);
+ 
+   static std::vector<PerformanceEntryType> getSupportedEntryTypes();
+ 
+@@ -84,7 +84,7 @@ class PerformanceEntryReporter {
+       const std::string &name,
+       HighResTimeStamp startTime,
+       HighResDuration duration,
+-      UserTimingDetailProvider &&detailProvider = nullptr);
++      const std::optional<UserTimingDetailProvider> &detailProvider = std::nullopt);
+ 
+   void reportEvent(
+       const std::string &name,
+@@ -123,7 +123,7 @@ class PerformanceEntryReporter {
+   std::unordered_map<std::string, uint32_t> eventCounts_;
+ 
+   mutable std::shared_mutex listenersMutex_;
+-  std::vector<PerformanceEntryReporterEventTimingListener *> eventTimingListeners_{};
++  std::vector<PerformanceEntryReporterEventListener *> eventListeners_{};
+ 
+   const inline PerformanceEntryBuffer &getBuffer(PerformanceEntryType entryType) const
+   {
+@@ -166,7 +166,8 @@ class PerformanceEntryReporter {
+   }
+ 
+   void traceMark(const PerformanceMark &entry, UserTimingDetailProvider &&detailProvider) const;
+-  void traceMeasure(const PerformanceMeasure &entry, UserTimingDetailProvider &&detailProvider) const;
++  void traceMeasure(const PerformanceMeasure &entry, const std::optional<UserTimingDetailProvider> &detailProvider)
++      const;
+   void traceResourceTiming(
+       const PerformanceResourceTiming &entry,
+       const std::optional<std::string> &devtoolsRequestId,
+diff --git a/packages/react-native/ReactCommon/react/performance/timeline/PerformanceEntryReporterListeners.h b/packages/react-native/ReactCommon/react/performance/timeline/PerformanceEntryReporterListeners.h
+index fe9fb60c783..e604963e887 100644
+--- a/packages/react-native/ReactCommon/react/performance/timeline/PerformanceEntryReporterListeners.h
++++ b/packages/react-native/ReactCommon/react/performance/timeline/PerformanceEntryReporterListeners.h
+@@ -14,9 +14,17 @@
+ 
+ namespace facebook::react {
+ 
+-class PerformanceEntryReporterEventTimingListener {
++using UserTimingDetailProvider = std::function<folly::dynamic()>;
++
++class PerformanceEntryReporterEventListener {
+  public:
+-  virtual ~PerformanceEntryReporterEventTimingListener() = default;
++  virtual ~PerformanceEntryReporterEventListener() = default;
++
++  virtual void onMeasureEntry(
++      const PerformanceMeasure & /*entry*/,
++      const std::optional<UserTimingDetailProvider> & /*detailProvider*/)
++  {
++  }
+ 
+   virtual void onEventTimingEntry(const PerformanceEventTiming & /*entry*/) {}
+ };
+diff --git a/packages/react-native/ReactCommon/react/performance/timeline/tests/PerformanceObserverTest.cpp b/packages/react-native/ReactCommon/react/performance/timeline/tests/PerformanceObserverTest.cpp
+index 65a0681f722..a3766272779 100644
+--- a/packages/react-native/ReactCommon/react/performance/timeline/tests/PerformanceObserverTest.cpp
++++ b/packages/react-native/ReactCommon/react/performance/timeline/tests/PerformanceObserverTest.cpp
+@@ -196,7 +196,8 @@ TEST(PerformanceObserver, PerformanceObserverTestObserveTakeRecords) {
+   reporter->reportMeasure(
+       "off",
+       timeOrigin + HighResDuration::fromMilliseconds(10),
+-      HighResDuration::fromMilliseconds(20));
++      HighResDuration::fromMilliseconds(20),
++      std::nullopt);
+   reporter->reportMark(
+       "test2", timeOrigin + HighResDuration::fromMilliseconds(20));
+   reporter->reportMark(
+@@ -391,7 +392,10 @@ TEST(PerformanceObserver, PerformanceObserverTestMultiple) {
+       {.durationThreshold = HighResDuration::fromMilliseconds(80)});
+ 
+   reporter->reportMeasure(
+-      "measure", timeOrigin, HighResDuration::fromMilliseconds(50));
++      "measure",
++      timeOrigin,
++      HighResDuration::fromMilliseconds(50),
++      std::nullopt);
+   reporter->reportEvent(
+       "event1",
+       timeOrigin,
+diff --git a/packages/react-native/ReactCommon/react/renderer/scheduler/Scheduler.cpp b/packages/react-native/ReactCommon/react/renderer/scheduler/Scheduler.cpp
+index 17faa9af625..8c42afc5296 100644
+--- a/packages/react-native/ReactCommon/react/renderer/scheduler/Scheduler.cpp
++++ b/packages/react-native/ReactCommon/react/renderer/scheduler/Scheduler.cpp
+@@ -41,7 +41,12 @@ Scheduler::Scheduler(
+   if (ReactNativeFeatureFlags::enableBridgelessArchitecture() &&
+       ReactNativeFeatureFlags::cdpInteractionMetricsEnabled()) {
+     cdpMetricsReporter_.emplace(CdpMetricsReporter{runtimeExecutor_});
+-    performanceEntryReporter_->addEventTimingListener(&*cdpMetricsReporter_);
++    performanceEntryReporter_->addEventListener(&*cdpMetricsReporter_);
++  }
++
++  if (ReactNativeFeatureFlags::perfIssuesEnabled()) {
++    cdpPerfIssuesReporter_.emplace(CdpPerfIssuesReporter{runtimeExecutor_});
++    performanceEntryReporter_->addEventListener(&*cdpPerfIssuesReporter_);
+   }
+ 
+   eventPerformanceLogger_ =
+@@ -172,7 +177,10 @@ Scheduler::~Scheduler() {
+   uiManager_->setAnimationDelegate(nullptr);
+ 
+   if (cdpMetricsReporter_) {
+-    performanceEntryReporter_->removeEventTimingListener(&*cdpMetricsReporter_);
++    performanceEntryReporter_->removeEventListener(&*cdpMetricsReporter_);
++  }
++  if (cdpPerfIssuesReporter_) {
++    performanceEntryReporter_->removeEventListener(&*cdpPerfIssuesReporter_);
+   }
+ 
+   // Then, let's verify that the requirement was satisfied.
+diff --git a/packages/react-native/ReactCommon/react/renderer/scheduler/Scheduler.h b/packages/react-native/ReactCommon/react/renderer/scheduler/Scheduler.h
+index 6ff88adc797..c324655da72 100644
+--- a/packages/react-native/ReactCommon/react/renderer/scheduler/Scheduler.h
++++ b/packages/react-native/ReactCommon/react/renderer/scheduler/Scheduler.h
+@@ -11,6 +11,7 @@
+ 
+ #include <ReactCommon/RuntimeExecutor.h>
+ #include <react/performance/cdpmetrics/CdpMetricsReporter.h>
++#include <react/performance/cdpmetrics/CdpPerfIssuesReporter.h>
+ #include <react/performance/timeline/PerformanceEntryReporter.h>
+ #include <react/renderer/componentregistry/ComponentDescriptorFactory.h>
+ #include <react/renderer/core/ComponentDescriptor.h>
+@@ -134,6 +135,7 @@ class Scheduler final : public UIManagerDelegate {
+ 
+   std::shared_ptr<PerformanceEntryReporter> performanceEntryReporter_;
+   std::optional<CdpMetricsReporter> cdpMetricsReporter_;
++  std::optional<CdpPerfIssuesReporter> cdpPerfIssuesReporter_;
+   std::shared_ptr<EventPerformanceLogger> eventPerformanceLogger_;
+ 
+   /**
+diff --git a/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js b/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
+index 71cec3c55a4..fa1709b9552 100644
+--- a/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
++++ b/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
+@@ -656,6 +656,17 @@ const definitions: FeatureFlagDefinitions = {
+       },
+       ossReleaseStage: 'none',
+     },
++    perfIssuesEnabled: {
++      defaultValue: false,
++      metadata: {
++        dateAdded: '2025-10-24',
++        description:
++          'Enable reporting Performance Issues (`detail.rnPerfIssue`). Displayed in the V2 Performance Monitor and the "Performance Issues" sub-panel in DevTools.',
++        expectedReleaseValue: true,
++        purpose: 'experimentation',
++      },
++      ossReleaseStage: 'none',
++    },
+     perfMonitorV2Enabled: {
+       defaultValue: false,
+       metadata: {
+diff --git a/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js b/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js
+index 10db4909c19..5508c4ef97f 100644
+--- a/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js
++++ b/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<f3aafc19ab1aa753684c933fef0d2dd2>>
++ * @generated SignedSource<<b9050ce18658ffe880bfb25d8e80e71d>>
+  * @flow strict
+  * @noformat
+  */
+@@ -107,6 +107,7 @@ export type ReactNativeFeatureFlags = $ReadOnly<{
+   fuseboxNetworkInspectionEnabled: Getter<boolean>,
+   hideOffscreenVirtualViewsOnIOS: Getter<boolean>,
+   overrideBySynchronousMountPropsAtMountingAndroid: Getter<boolean>,
++  perfIssuesEnabled: Getter<boolean>,
+   perfMonitorV2Enabled: Getter<boolean>,
+   preparedTextCacheSize: Getter<number>,
+   preventShadowTreeCommitExhaustion: Getter<boolean>,
+@@ -440,6 +441,10 @@ export const hideOffscreenVirtualViewsOnIOS: Getter<boolean> = createNativeFlagG
+  * Override props at mounting with synchronously mounted (i.e. direct manipulation) props from Native Animated.
+  */
+ export const overrideBySynchronousMountPropsAtMountingAndroid: Getter<boolean> = createNativeFlagGetter('overrideBySynchronousMountPropsAtMountingAndroid', false);
++/**
++ * Enable reporting Performance Issues (`detail.rnPerfIssue`). Displayed in the V2 Performance Monitor and the "Performance Issues" sub-panel in DevTools.
++ */
++export const perfIssuesEnabled: Getter<boolean> = createNativeFlagGetter('perfIssuesEnabled', false);
+ /**
+  * Enable the V2 in-app Performance Monitor. This flag is global and should not be changed across React Host lifetimes.
+  */
+diff --git a/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js b/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js
+index b700761075e..4e47ce704a5 100644
+--- a/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js
++++ b/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<d3cb70cbdb88d0abf40c20bd7291bcbc>>
++ * @generated SignedSource<<39ed5ea86ce496ac431328cbfb9b78c3>>
+  * @flow strict
+  * @noformat
+  */
+@@ -82,6 +82,7 @@ export interface Spec extends TurboModule {
+   +fuseboxNetworkInspectionEnabled?: () => boolean;
+   +hideOffscreenVirtualViewsOnIOS?: () => boolean;
+   +overrideBySynchronousMountPropsAtMountingAndroid?: () => boolean;
++  +perfIssuesEnabled?: () => boolean;
+   +perfMonitorV2Enabled?: () => boolean;
+   +preparedTextCacheSize?: () => number;
+   +preventShadowTreeCommitExhaustion?: () => boolean;

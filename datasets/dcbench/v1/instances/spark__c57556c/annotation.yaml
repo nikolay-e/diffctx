@@ -1,0 +1,12 @@
+repo: spark
+base_commit: b7df1874b2696ad2d8da3a075a1111b43924628c
+commit: c57556c9769fd99cd9f25b359c655ff6ac817cb5
+patch_stored: true
+gold: []
+forbidden: []
+nontrivial_gold_count: 0
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: []
+notes: 'Pure file-move refactor: all 49 diff entries are 100%-similarity git renames (zero @@ hunks anywhere in the patch), relocating streaming-execution source files under sql/core/.../execution/streaming/ into new checkpointing/, operators/stateful/, and runtime/ subdirectories for navigability. Verified a sample file (AsyncCommitLog.scala) still declares `package org.apache.spark.sql.execution.streaming` unchanged despite the directory move, confirming zero code/behavior/import change. No external context is needed to understand a pure directory reorganization with no content edits.'

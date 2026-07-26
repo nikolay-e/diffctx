@@ -1,0 +1,89 @@
+repo: plausible
+base_commit: 89a6b771326e0f064e4d46784603daa3cef991fe
+commit: 53581973d05efd3066ff8f56decb22005f2068ae
+patch_stored: true
+gold:
+  - path: lib/plausible/stats/sql/special_metrics.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: maybe_add_scroll_depth/3 is rewritten to group by session_id instead of user_id and select total_scroll_depth/total_scroll_depth_visits, the core semantics change from visitor-based to session-based scroll depth.
+  - path: lib/plausible/exports.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: re-enables the scroll-depth export block (was gated by "and false"), switches it to session_id grouping with total_scroll_depth/total_scroll_depth_visits, and adopts the new scale_sample macro throughout.
+  - path: lib/plausible/imported/csv_importer.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds on_success/2 that sets SiteImport.has_scroll_depth from imported_pages data, fixes the S3/input INSERT statements to select explicit columns instead of "*", and updates the imported_pages ClickHouse column list to total_scroll_depth/total_scroll_depth_visits.
+  - path: lib/plausible/ingestion/event.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: renames the drop reason :no_session_for_pageleave to :no_session_for_engagement, part of removing "pageleave" as a distinct event name.
+  - path: lib/plausible/ingestion/request.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: put_scroll_depth/2 now only captures scroll depth for event_name == "engagement" instead of ["pageleave", "engagement"], removing pageleave from ingestion.
+  - path: lib/plausible/session/cache_store.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: handle_event/4 now pattern-matches only on event name "engagement" instead of ["pageleave", "engagement"], the session-side half of the pageleave removal.
+  - path: lib/plausible/stats/sql/fragments.ex
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: adds the scale_sample/1 macro factoring out the toUInt64(round(...*any(_sample_factor))) pattern that expression.ex, exports.ex, and special_metrics.ex now call.
+  - path: lib/plausible/stats/sql/expression.ex
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: event_metric/1 and session_metric/2 clauses are rewritten to wrap their fragments in scale_sample/1 instead of repeating the sampling formula.
+  - path: lib/plausible/stats/imported/sql/expression.ex
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: re-enables select_metric(:scroll_depth, "imported_pages") (previously commented out) using the renamed total_scroll_depth/total_scroll_depth_visits columns.
+  - path: lib/plausible/imported/page.ex
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: replaces the commented-out scroll_depth/pageleave_visitors Ecto fields with real total_scroll_depth/total_scroll_depth_visits UInt64 fields matching the new imported_pages ClickHouse columns.
+  - path: test/plausible_web/controllers/api/external_stats_controller/query_test.exs
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: new "scroll_depth metric is session-based" test asserts max-per-session-then-average semantics, directly demonstrating the visitor-to-session behavior change.
+  - path: lib/plausible/imported/site_import.ex
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: defines the pre-existing has_scroll_depth boolean field on SiteImport that csv_importer.ex's new on_success/2 sets after detecting scroll-depth data in an import.
+forbidden:
+  - path: lib/plausible/imported/entry_page.ex
+    reason: sibling imported-data schema in the same directory as page.ex, similarly named, but not touched or involved in the scroll-depth rename.
+  - path: lib/plausible/stats/sql/query_builder.ex
+    reason: sibling module in lib/plausible/stats/sql/ alongside expression.ex/fragments.ex/special_metrics.ex, but not modified by this commit.
+  - path: lib/plausible/imported/google_analytics4.ex
+    reason: another Importer implementation in the same directory as csv_importer.ex; tempting due to "import" context but this commit only touches the CSV importer.
+  - path: lib/plausible/stats/sql/where_builder.ex
+    reason: sibling query-building module, same directory, unrelated to the scroll-depth/scale_sample changes.
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: >-
+  Re-enables and fixes scroll-depth support that had been temporarily
+  disabled: switches scroll-depth aggregation from per-visitor (user_id) to
+  per-session (session_id) across native queries, imports, and exports;
+  renames the "pageleave" event/drop-reason to "engagement" throughout
+  ingestion; renames imported columns scroll_depth/pageleave_visitors to
+  total_scroll_depth/total_scroll_depth_visits; fixes a CSV-import bug where
+  SELECT * silently broke on reordered/extra columns; and factors sampling
+  math into a shared scale_sample/1 macro. Linkage is via direct
+  function/macro calls and Ecto field names, not strings, so
+  string_indirection is false.

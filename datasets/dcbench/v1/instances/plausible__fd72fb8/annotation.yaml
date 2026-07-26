@@ -1,0 +1,49 @@
+repo: plausible
+base_commit: f8f970b3133ef0939e57fc5ac0c21388aea1e4f3
+commit: fd72fb8eaec80556aa52e58189d0f7c2c97443fb
+patch_stored: true
+gold:
+  - path: lib/plausible/stats/exploration.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: to_funnel/2's reduce now tracks total_visitors and computes conversion_rate (vs. the first step) and conversion_rate_step (vs. the previous step) per funnel_step, the core calculation this commit adds.
+  - path: assets/js/dashboard/stats/exploration.js
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: ExplorationColumn switches its dropoff bar width from a raw visitors/maxVisitors ratio to conversionRateToShow (selectedConversionRate or visitors/stepMaxVisitors), consuming the new conversion_rate/conversion_rate_step fields from the API.
+  - path: test/plausible/stats/exploration_test.exs
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Asserts conversion_rate and conversion_rate_step values per step across three journey scenarios (forward, filtered, backward), pinning down the exact percentage semantics.
+  - path: test/plausible_web/controllers/api/stats_controller/exploration_test.exs
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Asserts the JSON response from /exploration/funnel now includes conversion_rate and conversion_rate_step keys, the wire contract the JS side in exploration.js reads.
+  - path: lib/plausible/stats/util.ex
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Defines percentage/2, the formatting helper to_funnel/2 calls for both conversion_rate and conversion_rate_step, explaining why results are strings like "50" rather than floats.
+forbidden:
+  - path: extra/lib/plausible/stats/funnel.ex
+    reason: separate, older saved-funnels query module that also computes a dropoff percentage but is a distinct feature/code path from ad-hoc journey exploration
+  - path: assets/js/dashboard/stats/behaviours/index.js
+    reason: mounts <FunnelExploration/> into the Behaviours tab but is untouched by and irrelevant to this specific conversion-rate calculation change
+  - path: lib/plausible_web/controllers/api/stats_controller.ex
+    reason: defines the exploration_next/exploration_funnel actions from an earlier commit but this diff's calculation change lives entirely inside exploration.ex, not the controller
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: []
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 4
+  description: Conversion rate calculation in exploration funnel API — compact ex+js cross-boundary
+notes: Adds conversion_rate (relative to the first funnel step) and conversion_rate_step (relative to
+  the previous step) to each exploration funnel step, and switches the React bar-graph width to use
+  these percentages instead of a raw visitors-ratio, so bars stay meaningful in both forward and
+  backward exploration directions.

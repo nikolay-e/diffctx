@@ -1,0 +1,2448 @@
+From 506746a6ee2bf670cefe583f7d23994ef77886af Mon Sep 17 00:00:00 2001
+From: Raven Black <ravenblack@dropbox.com>
+Date: Thu, 26 Feb 2026 14:42:53 -0500
+Subject: [PATCH] Add file server filter (#43243)
+
+Commit Message: Add file server filter
+Additional Description: Filter facilitates asynchronous serving from
+files. Simplistic configuration for the common use-case. Further
+features (e.g. exclusions) can be added later as needed. Secured against
+path-escapes by using `std::filesystem::path` to verify that the path
+requested isn't altered by normalization, and that it's within a path
+explicitly configured to be shared.
+Risk Level: Negligible, as no change to existing operations, it's a new
+filter. It's marked work in progress and not assured secure, so should
+not be adopted at this time without due caution.
+Testing: I think there's 100% coverage, but CI isn't running right now.
+Docs Changes: New docs for it.
+Release Notes: Will add at the end, to minimize annoying merge
+conflicts.
+Platform Specific Features: Windows not supported, as AsyncFile
+operations don't currently support Windows.
+
+---------
+
+Signed-off-by: Raven Black <ravenblack@dropbox.com>
+---
+ CODEOWNERS                                    |   1 +
+ api/BUILD                                     |   1 +
+ .../filters/http/file_server/v3/BUILD         |  13 +
+ .../http/file_server/v3/file_server.proto     |  85 +++
+ api/versioning/BUILD                          |   1 +
+ bazel/repositories.bzl                        |   1 +
+ .../http/http_filters/file_server_filter.rst  |  20 +
+ .../http/http_filters/http_filters.rst        |   1 +
+ source/extensions/extensions_build_config.bzl |   1 +
+ source/extensions/extensions_metadata.yaml    |   7 +
+ .../extensions/filters/http/file_server/BUILD |  56 ++
+ .../file_server/absl_status_to_http_status.cc |  48 ++
+ .../file_server/absl_status_to_http_status.h  |  17 +
+ .../filters/http/file_server/config.cc        |  99 ++++
+ .../filters/http/file_server/config.h         |  36 ++
+ .../filters/http/file_server/file_streamer.cc | 184 ++++++
+ .../filters/http/file_server/file_streamer.h  |  70 +++
+ .../filters/http/file_server/filter.cc        | 151 +++++
+ .../filters/http/file_server/filter.h         |  53 ++
+ .../filters/http/file_server/filter_config.cc | 119 ++++
+ .../filters/http/file_server/filter_config.h  |  62 ++
+ .../extensions/filters/http/common/fuzz/BUILD |   1 +
+ .../http/common/fuzz/uber_per_filter.cc       |  16 +
+ .../extensions/filters/http/file_server/BUILD |  53 ++
+ .../absl_status_to_http_status_test.cc        |  36 ++
+ .../filters/http/file_server/config_test.cc   | 273 +++++++++
+ .../filters/http/file_server/filter_test.cc   | 534 ++++++++++++++++++
+ .../http/file_server/integration_test.cc      | 210 +++++++
+ 28 files changed, 2149 insertions(+)
+ create mode 100644 api/envoy/extensions/filters/http/file_server/v3/BUILD
+ create mode 100644 api/envoy/extensions/filters/http/file_server/v3/file_server.proto
+ create mode 100644 docs/root/configuration/http/http_filters/file_server_filter.rst
+ create mode 100644 source/extensions/filters/http/file_server/BUILD
+ create mode 100644 source/extensions/filters/http/file_server/absl_status_to_http_status.cc
+ create mode 100644 source/extensions/filters/http/file_server/absl_status_to_http_status.h
+ create mode 100644 source/extensions/filters/http/file_server/config.cc
+ create mode 100644 source/extensions/filters/http/file_server/config.h
+ create mode 100644 source/extensions/filters/http/file_server/file_streamer.cc
+ create mode 100644 source/extensions/filters/http/file_server/file_streamer.h
+ create mode 100644 source/extensions/filters/http/file_server/filter.cc
+ create mode 100644 source/extensions/filters/http/file_server/filter.h
+ create mode 100644 source/extensions/filters/http/file_server/filter_config.cc
+ create mode 100644 source/extensions/filters/http/file_server/filter_config.h
+ create mode 100644 test/extensions/filters/http/file_server/BUILD
+ create mode 100644 test/extensions/filters/http/file_server/absl_status_to_http_status_test.cc
+ create mode 100644 test/extensions/filters/http/file_server/config_test.cc
+ create mode 100644 test/extensions/filters/http/file_server/filter_test.cc
+ create mode 100644 test/extensions/filters/http/file_server/integration_test.cc
+
+diff --git a/CODEOWNERS b/CODEOWNERS
+index 94d886ac9..e96cdc0de 100644
+--- a/CODEOWNERS
++++ b/CODEOWNERS
+@@ -268,6 +268,7 @@ extensions/upstreams/tcp @ggreenway @mattklein123
+ /*/extensions/config/validators/minimum_clusters @adisuissa @yanavlasov
+ # File system based extensions
+ /*/extensions/common/async_files @mattklein123 @ravenblackx
++/*/extensions/filters/http/file_server @ravenblackx @wbpcode @phlax
+ /*/extensions/filters/http/file_system_buffer @mattklein123 @ravenblackx
+ /*/extensions/http/cache/file_system_http_cache @ggreenway @UNOWNED
+ /*/extensions/http/cache_v2/file_system_http_cache @ggreenway @ravenblackx
+diff --git a/api/BUILD b/api/BUILD
+index e9a45bdec..3ffdbb96b 100644
+--- a/api/BUILD
++++ b/api/BUILD
+@@ -204,6 +204,7 @@ proto_library(
+         "//envoy/extensions/filters/http/ext_authz/v3:pkg",
+         "//envoy/extensions/filters/http/ext_proc/v3:pkg",
+         "//envoy/extensions/filters/http/fault/v3:pkg",
++        "//envoy/extensions/filters/http/file_server/v3:pkg",
+         "//envoy/extensions/filters/http/file_system_buffer/v3:pkg",
+         "//envoy/extensions/filters/http/gcp_authn/v3:pkg",
+         "//envoy/extensions/filters/http/geoip/v3:pkg",
+diff --git a/api/envoy/extensions/filters/http/file_server/v3/BUILD b/api/envoy/extensions/filters/http/file_server/v3/BUILD
+new file mode 100644
+index 000000000..d84b1253a
+--- /dev/null
++++ b/api/envoy/extensions/filters/http/file_server/v3/BUILD
+@@ -0,0 +1,13 @@
++# DO NOT EDIT. This file is generated by tools/proto_format/proto_sync.py.
++
++load("@envoy_api//bazel:api_build_system.bzl", "api_proto_package")
++
++licenses(["notice"])  # Apache 2
++
++api_proto_package(
++    deps = [
++        "//envoy/extensions/common/async_files/v3:pkg",
++        "@xds//udpa/annotations:pkg",
++        "@xds//xds/annotations/v3:pkg",
++    ],
++)
+diff --git a/api/envoy/extensions/filters/http/file_server/v3/file_server.proto b/api/envoy/extensions/filters/http/file_server/v3/file_server.proto
+new file mode 100644
+index 000000000..c14adfa6b
+--- /dev/null
++++ b/api/envoy/extensions/filters/http/file_server/v3/file_server.proto
+@@ -0,0 +1,85 @@
++syntax = "proto3";
++
++package envoy.extensions.filters.http.file_server.v3;
++
++import "envoy/extensions/common/async_files/v3/async_file_manager.proto";
++
++import "xds/annotations/v3/status.proto";
++
++import "udpa/annotations/status.proto";
++import "validate/validate.proto";
++
++option java_package = "io.envoyproxy.envoy.extensions.filters.http.file_server.v3";
++option java_outer_classname = "FileServerProto";
++option java_multiple_files = true;
++option go_package = "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/file_server/v3;file_serverv3";
++option (udpa.annotations.file_status).package_version_status = ACTIVE;
++option (xds.annotations.v3.file_status).work_in_progress = true;
++
++// [#protodoc-title: FileServerConfig]
++// [#extension: envoy.filters.http.file_server]
++
++// A :ref:`file server <config_http_filters_file_server>` filter configuration.
++// [#next-free-field: 6]
++message FileServerConfig {
++  message PathMapping {
++    // If no ``request_path_prefix`` is matched, the filter does not intercept a request.
++    //
++    // If a ``request_path_prefix`` is matched, that prefix is removed from the request
++    // and replaced with ``file_path_prefix`` to form a filesystem path for
++    // the request.
++    //
++    // Prefix ``/`` will match all GET requests.
++    string request_path_prefix = 1 [(validate.rules).string = {min_len: 1}];
++
++    // Replaces a matched ``request_path_prefix`` to form a filesystem path for a
++    // request. May be relative to the working directory of the envoy execution,
++    // or an absolute path.
++    string file_path_prefix = 2 [(validate.rules).string = {min_len: 1}];
++  }
++
++  message DirectoryBehavior {
++    // [#not-implemented-hide:] Directory operations currently have no async implementation.
++    message List {
++    }
++
++    // Attempts to serve the given file within the directory, e.g. ``index.html``.
++    // Precisely one of ``default_file`` and ``list`` must be set per ``DirectoryBehavior``.
++    string default_file = 1 [(validate.rules).string = {pattern: "^[^/]*$"}];
++
++    // Responds with an html formatted list of the files and subdirectories in the directory.
++    // Precisely one of ``default_file`` and ``list`` must be set per ``DirectoryBehavior``.
++    // [#not-implemented-hide:] Directory operations currently have no async implementation.
++    List list = 2;
++  }
++
++  // A configuration for the AsyncFileManager to be used to read from the filesystem.
++  common.async_files.v3.AsyncFileManagerConfig manager_config = 1
++      [(validate.rules).message = {required: true}];
++
++  // The longest matching path_mapping takes precedence.
++  repeated PathMapping path_mappings = 2;
++
++  // A map from filename suffix to content type header.
++  // e.g. {"txt": "text/plain"}
++  //
++  // File suffixes may not contain ``.`` as the filename suffix after
++  // the last ``.`` is used to perform an O(1) lookup against the keys.
++  //
++  // An empty string suffix will only match files ending with a ``.``.
++  //
++  // Files with no suffix (e.g. ``README``) can be matched as the full string.
++  map<string, string> content_types = 3;
++
++  // If ``content_types`` does not contain a match for a file suffix,
++  // ``default_content_type`` is used.
++  //
++  // If there is no match and ``default_content_type`` is empty, the
++  // ``content-type`` header will be omitted from the response.
++  string default_content_type = 4;
++
++  // If the requested path refers to a directory, the given behaviors are
++  // tried in order until one succeeds. If the end of the list is reached
++  // with no success, the result is a 403 Forbidden.
++  repeated DirectoryBehavior directory_behaviors = 5;
++}
+diff --git a/api/versioning/BUILD b/api/versioning/BUILD
+index c4bbb5a3f..5f208cbfe 100644
+--- a/api/versioning/BUILD
++++ b/api/versioning/BUILD
+@@ -143,6 +143,7 @@ proto_library(
+         "//envoy/extensions/filters/http/ext_authz/v3:pkg",
+         "//envoy/extensions/filters/http/ext_proc/v3:pkg",
+         "//envoy/extensions/filters/http/fault/v3:pkg",
++        "//envoy/extensions/filters/http/file_server/v3:pkg",
+         "//envoy/extensions/filters/http/file_system_buffer/v3:pkg",
+         "//envoy/extensions/filters/http/gcp_authn/v3:pkg",
+         "//envoy/extensions/filters/http/geoip/v3:pkg",
+diff --git a/bazel/repositories.bzl b/bazel/repositories.bzl
+index c77d2936d..0cb517d34 100644
+--- a/bazel/repositories.bzl
++++ b/bazel/repositories.bzl
+@@ -8,6 +8,7 @@ PPC_SKIP_TARGETS = ["envoy.string_matcher.lua", "envoy.filters.http.lua", "envoy
+ WINDOWS_SKIP_TARGETS = [
+     "envoy.extensions.http.cache.file_system_http_cache",
+     "envoy.extensions.http.cache_v2.file_system_http_cache",
++    "envoy.filters.http.file_server",
+     "envoy.filters.http.file_system_buffer",
+     "envoy.filters.http.language",
+     "envoy.filters.http.sxg",
+diff --git a/docs/root/configuration/http/http_filters/file_server_filter.rst b/docs/root/configuration/http/http_filters/file_server_filter.rst
+new file mode 100644
+index 000000000..c81fec0ff
+--- /dev/null
++++ b/docs/root/configuration/http/http_filters/file_server_filter.rst
+@@ -0,0 +1,20 @@
++.. _config_http_filters_file_server:
++
++File Server
++===========
++
++The file server filter can be used to respond with the contents of a file from the filesystem.
++
++The ``content-length`` header will be the size of the file.
++
++The ``content-type`` header will be set based on filename suffix and filter configuration.
++
++.. note::
++
++ This filter is not yet supported on Windows.
++
++Configuration
++-------------
++
++* This filter should be configured with the type URL ``type.googleapis.com/envoy.extensions.filters.http.file_server.v3.FileServerConfig``.
++* :ref:`v3 API reference <envoy_v3_api_msg_extensions.filters.http.file_server.v3.FileServerConfig>`
+diff --git a/docs/root/configuration/http/http_filters/http_filters.rst b/docs/root/configuration/http/http_filters/http_filters.rst
+index a99655a33..00426b711 100644
+--- a/docs/root/configuration/http/http_filters/http_filters.rst
++++ b/docs/root/configuration/http/http_filters/http_filters.rst
+@@ -31,6 +31,7 @@ HTTP filters
+   ext_authz_filter
+   ext_proc_filter
+   fault_filter
++  file_server_filter
+   file_system_buffer_filter
+   gcp_authn_filter
+   geoip_filter
+diff --git a/source/extensions/extensions_build_config.bzl b/source/extensions/extensions_build_config.bzl
+index 5c13bd213..c92764bad 100644
+--- a/source/extensions/extensions_build_config.bzl
++++ b/source/extensions/extensions_build_config.bzl
+@@ -179,6 +179,7 @@ EXTENSIONS = {
+     "envoy.filters.http.ext_authz":                     "//source/extensions/filters/http/ext_authz:config",
+     "envoy.filters.http.ext_proc":                      "//source/extensions/filters/http/ext_proc:config",
+     "envoy.filters.http.fault":                         "//source/extensions/filters/http/fault:config",
++    "envoy.filters.http.file_server":                   "//source/extensions/filters/http/file_server:config",
+     "envoy.filters.http.file_system_buffer":            "//source/extensions/filters/http/file_system_buffer:config",
+     "envoy.filters.http.gcp_authn":                     "//source/extensions/filters/http/gcp_authn:config",
+     "envoy.filters.http.geoip":                         "//source/extensions/filters/http/geoip:config",
+diff --git a/source/extensions/extensions_metadata.yaml b/source/extensions/extensions_metadata.yaml
+index 492574fab..f5117583b 100644
+--- a/source/extensions/extensions_metadata.yaml
++++ b/source/extensions/extensions_metadata.yaml
+@@ -482,6 +482,13 @@ envoy.filters.http.fault:
+   status: stable
+   type_urls:
+   - envoy.extensions.filters.http.fault.v3.HTTPFault
++envoy.filters.http.file_server:
++  categories:
++  - envoy.filters.http
++  security_posture: unknown
++  status: wip
++  type_urls:
++  - envoy.extensions.filters.http.file_server.v3.FileServerConfig
+ envoy.filters.http.file_system_buffer:
+   categories:
+   - envoy.filters.http
+diff --git a/source/extensions/filters/http/file_server/BUILD b/source/extensions/filters/http/file_server/BUILD
+new file mode 100644
+index 000000000..c803e9de3
+--- /dev/null
++++ b/source/extensions/filters/http/file_server/BUILD
+@@ -0,0 +1,56 @@
++load(
++    "//bazel:envoy_build_system.bzl",
++    "envoy_cc_extension",
++    "envoy_cc_library",
++    "envoy_extension_package",
++)
++
++licenses(["notice"])  # Apache 2
++
++envoy_extension_package()
++
++envoy_cc_library(
++    name = "absl_status_to_http_status",
++    srcs = ["absl_status_to_http_status.cc"],
++    hdrs = ["absl_status_to_http_status.h"],
++    deps = [
++        "//envoy/http:codes_interface",
++    ],
++)
++
++envoy_cc_library(
++    name = "file_server_lib",
++    srcs = [
++        "file_streamer.cc",
++        "filter.cc",
++        "filter_config.cc",
++    ],
++    hdrs = [
++        "file_streamer.h",
++        "filter.h",
++        "filter_config.h",
++    ],
++    deps = [
++        ":absl_status_to_http_status",
++        "//envoy/buffer:buffer_interface",
++        "//envoy/server:instance_interface",
++        "//source/common/common:enum_to_int",
++        "//source/common/common:radix_tree_lib",
++        "//source/common/http:codes_lib",
++        "//source/common/http:header_map_lib",
++        "//source/extensions/common/async_files",
++        "//source/extensions/filters/http/common:pass_through_filter_lib",
++        "@envoy_api//envoy/extensions/filters/http/file_server/v3:pkg_cc_proto",
++    ],
++)
++
++envoy_cc_extension(
++    name = "config",
++    srcs = ["config.cc"],
++    hdrs = ["config.h"],
++    deps = [
++        ":file_server_lib",
++        "//source/extensions/filters/http/common:factory_base_lib",
++        "@envoy_api//envoy/extensions/filters/http/file_server/v3:pkg_cc_proto",
++    ],
++)
+diff --git a/source/extensions/filters/http/file_server/absl_status_to_http_status.cc b/source/extensions/filters/http/file_server/absl_status_to_http_status.cc
+new file mode 100644
+index 000000000..c2486a5e8
+--- /dev/null
++++ b/source/extensions/filters/http/file_server/absl_status_to_http_status.cc
+@@ -0,0 +1,48 @@
++#include "source/extensions/filters/http/file_server/absl_status_to_http_status.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace FileServer {
++
++Http::Code abslStatusToHttpStatus(absl::StatusCode code) {
++  switch (code) {
++  case absl::StatusCode::kOk:
++    return Http::Code::OK;
++  case absl::StatusCode::kCancelled:
++    return static_cast<Http::Code>(499);
++  case absl::StatusCode::kUnknown:
++    return Http::Code::InternalServerError;
++  case absl::StatusCode::kInvalidArgument:
++    return Http::Code::BadRequest;
++  case absl::StatusCode::kDeadlineExceeded:
++    return Http::Code::GatewayTimeout;
++  case absl::StatusCode::kNotFound:
++    return Http::Code::NotFound;
++  case absl::StatusCode::kAlreadyExists:
++    return Http::Code::Conflict;
++  case absl::StatusCode::kPermissionDenied:
++    return Http::Code::Forbidden;
++  case absl::StatusCode::kResourceExhausted:
++    return Http::Code::TooManyRequests;
++  case absl::StatusCode::kFailedPrecondition:
++    return Http::Code::BadRequest;
++  case absl::StatusCode::kAborted:
++    return Http::Code::Conflict;
++  case absl::StatusCode::kOutOfRange:
++    return Http::Code::RangeNotSatisfiable;
++  case absl::StatusCode::kUnimplemented:
++    return Http::Code::ServiceUnavailable;
++  case absl::StatusCode::kDataLoss:
++    return Http::Code::InternalServerError;
++  case absl::StatusCode::kUnauthenticated:
++    return Http::Code::Unauthorized;
++  default:
++    return Http::Code::InternalServerError;
++  }
++}
++
++} // namespace FileServer
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/source/extensions/filters/http/file_server/absl_status_to_http_status.h b/source/extensions/filters/http/file_server/absl_status_to_http_status.h
+new file mode 100644
+index 000000000..1bd2b5ee9
+--- /dev/null
++++ b/source/extensions/filters/http/file_server/absl_status_to_http_status.h
+@@ -0,0 +1,17 @@
++#pragma once
++
++#include "envoy/http/codes.h"
++
++#include "absl/status/status.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace FileServer {
++
++Http::Code abslStatusToHttpStatus(absl::StatusCode code);
++
++} // namespace FileServer
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/source/extensions/filters/http/file_server/config.cc b/source/extensions/filters/http/file_server/config.cc
+new file mode 100644
+index 000000000..50183c988
+--- /dev/null
++++ b/source/extensions/filters/http/file_server/config.cc
+@@ -0,0 +1,99 @@
++#include "source/extensions/filters/http/file_server/config.h"
++
++#include <memory>
++#include <string>
++#include <utility>
++
++#include "envoy/extensions/filters/http/file_server/v3/file_server.pb.validate.h"
++
++#include "source/extensions/filters/http/file_server/filter.h"
++#include "source/extensions/filters/http/file_server/filter_config.h"
++
++#include "absl/container/flat_hash_set.h"
++#include "absl/strings/str_cat.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace FileServer {
++
++namespace {
++absl::Status validateProto(const ProtoFileServerConfig& config) {
++  absl::flat_hash_set<absl::string_view> seen;
++  for (const auto& mapping : config.path_mappings()) {
++    auto [_, inserted] = seen.emplace(mapping.request_path_prefix());
++    if (!inserted) {
++      return absl::InvalidArgumentError(
++          absl::StrCat("duplicate request_path_prefix: ", mapping.request_path_prefix()));
++    }
++  }
++  seen.clear();
++  bool directory_tried = false;
++  static const absl::string_view directory_options = "default_file or list";
++  for (const auto& directory_behavior : config.directory_behaviors()) {
++    if (directory_behavior.default_file().empty() && !directory_behavior.has_list()) {
++      return absl::InvalidArgumentError(
++          absl::StrCat("directory_behavior must set one of ", directory_options));
++    }
++    if (!directory_behavior.default_file().empty() && directory_behavior.has_list()) {
++      return absl::InvalidArgumentError(
++          absl::StrCat("directory_behavior must have only one of ", directory_options));
++    }
++    if (!directory_behavior.default_file().empty()) {
++      auto [_, inserted] = seen.emplace(directory_behavior.default_file());
++      if (!inserted) {
++        return absl::InvalidArgumentError(absl::StrCat(
++            "duplicate default_file in directory_behaviors: ", directory_behavior.default_file()));
++      }
++    } else {
++      if (directory_tried) {
++        return absl::InvalidArgumentError("multiple list directives");
++      }
++      directory_tried = true;
++    }
++  }
++  for (const auto& content_type_pair : config.content_types()) {
++    if (content_type_pair.first.find(".") != std::string::npos) {
++      return absl::InvalidArgumentError(absl::StrCat(
++          "file suffix in content_types may not contain a period: ", content_type_pair.first));
++    }
++  }
++  return absl::OkStatus();
++}
++} // namespace
++
++FileServerFilterFactory::FileServerFilterFactory()
++    : DualFactoryBase(FileServerFilter::filterName()) {}
++
++absl::StatusOr<Http::FilterFactoryCb> FileServerFilterFactory::createFilterFactoryFromProtoTyped(
++    const ProtoFileServerConfig& config, const std::string&, DualInfo,
++    Server::Configuration::ServerFactoryContext& context) {
++  RETURN_IF_NOT_OK(validateProto(config));
++  auto file_server_config = FileServerConfig::create(config, context);
++  if (!file_server_config.ok()) {
++    return file_server_config.status();
++  }
++  return [fsc = std::move(file_server_config.value())](
++             Http::FilterChainFactoryCallbacks& callbacks) -> void {
++    callbacks.addStreamDecoderFilter(std::make_unique<FileServerFilter>(fsc));
++  };
++}
++
++absl::StatusOr<Router::RouteSpecificFilterConfigConstSharedPtr>
++FileServerFilterFactory::createRouteSpecificFilterConfigTyped(
++    const ProtoFileServerConfig& config, Server::Configuration::ServerFactoryContext& context,
++    ProtobufMessage::ValidationVisitor&) {
++  RETURN_IF_NOT_OK(validateProto(config));
++  auto file_server_config = FileServerConfig::create(config, context);
++  if (!file_server_config.ok()) {
++    return file_server_config.status();
++  }
++  return file_server_config.value();
++}
++
++REGISTER_FACTORY(FileServerFilterFactory, Server::Configuration::NamedHttpFilterConfigFactory);
++
++} // namespace FileServer
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/source/extensions/filters/http/file_server/config.h b/source/extensions/filters/http/file_server/config.h
+new file mode 100644
+index 000000000..f2c14dcbd
+--- /dev/null
++++ b/source/extensions/filters/http/file_server/config.h
+@@ -0,0 +1,36 @@
++#pragma once
++
++#include <string>
++
++#include "envoy/extensions/filters/http/file_server/v3/file_server.pb.h"
++
++#include "source/extensions/filters/http/common/factory_base.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace FileServer {
++
++using ProtoFileServerConfig = envoy::extensions::filters::http::file_server::v3::FileServerConfig;
++
++class FileServerFilterFactory
++    : public Extensions::HttpFilters::Common::DualFactoryBase<ProtoFileServerConfig,
++                                                              ProtoFileServerConfig> {
++public:
++  FileServerFilterFactory();
++
++  absl::StatusOr<Http::FilterFactoryCb>
++  createFilterFactoryFromProtoTyped(const ProtoFileServerConfig& config,
++                                    const std::string& stats_prefix, DualInfo info,
++                                    Server::Configuration::ServerFactoryContext& context) override;
++
++  absl::StatusOr<Router::RouteSpecificFilterConfigConstSharedPtr>
++  createRouteSpecificFilterConfigTyped(const ProtoFileServerConfig& config,
++                                       Server::Configuration::ServerFactoryContext& context,
++                                       ProtobufMessage::ValidationVisitor& validator) override;
++};
++
++} // namespace FileServer
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/source/extensions/filters/http/file_server/file_streamer.cc b/source/extensions/filters/http/file_server/file_streamer.cc
+new file mode 100644
+index 000000000..c4adb3802
+--- /dev/null
++++ b/source/extensions/filters/http/file_server/file_streamer.cc
+@@ -0,0 +1,184 @@
++#include "source/extensions/filters/http/file_server/file_streamer.h"
++
++#include "envoy/http/codes.h"
++
++#include "source/common/common/enum_to_int.h"
++#include "source/common/http/header_map_impl.h"
++#include "source/extensions/common/async_files/async_file_manager.h"
++#include "source/extensions/filters/http/file_server/absl_status_to_http_status.h"
++
++#include "absl/strings/str_cat.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace FileServer {
++
++namespace {
++
++const Http::LowerCaseString& acceptRangesHeaderKey() {
++  CONSTRUCT_ON_FIRST_USE(Http::LowerCaseString, "accept-ranges");
++}
++
++} // namespace
++
++void FileStreamer::begin(const FileServerConfig& config, Event::Dispatcher& dispatcher,
++                         uint64_t start, uint64_t end, std::filesystem::path file_path) {
++  ASSERT(config.asyncFileManager() != nullptr);
++  file_server_config_ = &config;
++  dispatcher_ = &dispatcher;
++  pos_ = start;
++  end_ = end;
++  file_path_ = std::move(file_path);
++  cancel_callback_ = file_server_config_->asyncFileManager()->stat(
++      dispatcher_, file_path_.string(), [this](absl::StatusOr<struct stat> result) {
++        if (!result.ok()) {
++          client_.errorFromFile(abslStatusToHttpStatus(result.status().code()),
++                                absl::StrCat("file_server_stat_error"));
++          return;
++        }
++        const struct stat& s = result.value();
++        if (S_ISDIR(s.st_mode)) {
++          startDir(0);
++          return;
++        }
++        cancel_callback_ = file_server_config_->asyncFileManager()->openExistingFile(
++            dispatcher_, file_path_.string(), Common::AsyncFiles::AsyncFileManager::Mode::ReadOnly,
++            [this](absl::StatusOr<AsyncFileHandle> result) {
++              if (!result.ok()) {
++                client_.errorFromFile(abslStatusToHttpStatus(result.status().code()),
++                                      absl::StrCat("file_server_open_error"));
++                return;
++              }
++              async_file_ = std::move(result.value());
++              startFile();
++            });
++      });
++}
++
++void FileStreamer::startDir(int behavior_index) {
++  OptRef<const ProtoFileServerConfig::DirectoryBehavior> behavior =
++      file_server_config_->directoryBehavior(behavior_index);
++  if (!behavior) {
++    client_.errorFromFile(Http::Code::Forbidden, "file_server_no_valid_directory_behavior");
++    return;
++  }
++  if (!behavior->default_file().empty()) {
++    cancel_callback_ = file_server_config_->asyncFileManager()->openExistingFile(
++        dispatcher_, (file_path_ / std::filesystem::path{behavior->default_file()}).string(),
++        Common::AsyncFiles::AsyncFileManager::Mode::ReadOnly,
++        [this, behavior_index](absl::StatusOr<AsyncFileHandle> result) {
++          if (!result.ok()) {
++            // Try the next directoryBehavior.
++            // Since the action is dispatched, this isn't recursion.
++            return startDir(behavior_index + 1);
++          }
++          file_path_ = file_path_ /
++                       std::filesystem::path{
++                           file_server_config_->directoryBehavior(behavior_index)->default_file()};
++          async_file_ = std::move(result.value());
++          startFile();
++        });
++    return;
++  } else if (behavior->has_list()) {
++    client_.errorFromFile(Http::Code::Forbidden, "file_server_list_not_implemented");
++    return;
++  } else {
++    // Normally unreachable due to proto validations.
++    client_.errorFromFile(Http::Code::InternalServerError, "file_server_empty_behavior_type");
++    return;
++  }
++}
++
++void FileStreamer::startFile() {
++  ASSERT(async_file_);
++  auto queued = async_file_->stat(dispatcher_, [this](absl::StatusOr<struct stat> result) {
++    if (!result.ok()) {
++      client_.errorFromFile(abslStatusToHttpStatus(result.status().code()),
++                            "file_server_opened_file_stat_failed");
++      return;
++    }
++    const struct stat& s = result.value();
++    if (static_cast<uint64_t>(s.st_size) < end_ || static_cast<uint64_t>(s.st_size) < pos_ ||
++        (end_ != 0 && end_ < pos_)) {
++      client_.errorFromFile(Http::Code::RangeNotSatisfiable, "file_server_range_not_satisfiable");
++      return;
++    }
++    auto headers = Http::ResponseHeaderMapImpl::create();
++    headers->setReference(acceptRangesHeaderKey(), "bytes");
++    if (pos_ || end_) {
++      // Range request gets PartialContent, a content-range, and reduced content-length header.
++      if (!end_) {
++        end_ = s.st_size;
++      }
++      headers->setContentLength(end_ - pos_);
++      // Subtract one from end_ in this header because range headers use [start, end) vs.
++      // end_ is in normal programmer [start, end] style.
++      headers->setReferenceKey(Envoy::Http::Headers::get().ContentRange,
++                               absl::StrCat("bytes ", pos_, "-", end_ - 1, "/", s.st_size));
++      headers->setStatus(enumToInt(Http::Code::PartialContent));
++    } else {
++      end_ = s.st_size;
++      headers->setContentLength(s.st_size);
++      headers->setStatus(enumToInt(Http::Code::OK));
++    }
++    absl::string_view ct = file_server_config_->contentTypeForPath(file_path_);
++    if (!ct.empty()) {
++      headers->setContentType(ct);
++    }
++    if (client_.headersFromFile(std::move(headers))) {
++      readBodyChunk();
++    }
++  });
++  ASSERT(queued.ok());
++  cancel_callback_ = std::move(queued.value());
++}
++
++void FileStreamer::pause() { paused_ = true; }
++
++void FileStreamer::unpause() {
++  if (paused_) {
++    paused_ = false;
++    if (action_has_been_postponed_by_pause_) {
++      action_has_been_postponed_by_pause_ = false;
++      readBodyChunk();
++    }
++  }
++}
++
++void FileStreamer::readBodyChunk() {
++  ASSERT(async_file_);
++  static const uint64_t kMaxReadSize = 32 * 1024;
++  uint64_t sz = std::min(end_ - pos_, kMaxReadSize);
++  auto queued =
++      async_file_->read(dispatcher_, pos_, sz, [this](absl::StatusOr<Buffer::InstancePtr> result) {
++        if (!result.ok()) {
++          client_.errorFromFile(abslStatusToHttpStatus(result.status().code()),
++                                "file_server_read_operation_failed");
++          return;
++        }
++        Buffer::InstancePtr buf = std::move(result.value());
++        pos_ += buf->length();
++        client_.bodyChunkFromFile(std::move(buf), pos_ == end_);
++        if (!paused_ && pos_ != end_) {
++          readBodyChunk();
++        } else if (paused_) {
++          action_has_been_postponed_by_pause_ = true;
++        }
++      });
++  ASSERT(queued.ok());
++  cancel_callback_ = std::move(queued.value());
++}
++
++void FileStreamer::abort() { cancel_callback_(); }
++
++FileStreamer::~FileStreamer() {
++  if (async_file_) {
++    async_file_->close(nullptr, [](absl::Status) {}).IgnoreError();
++  }
++}
++
++} // namespace FileServer
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/source/extensions/filters/http/file_server/file_streamer.h b/source/extensions/filters/http/file_server/file_streamer.h
+new file mode 100644
+index 000000000..d0f47e28c
+--- /dev/null
++++ b/source/extensions/filters/http/file_server/file_streamer.h
+@@ -0,0 +1,70 @@
++#pragma once
++
++#include "envoy/buffer/buffer.h"
++#include "envoy/http/codes.h"
++#include "envoy/http/header_map.h"
++
++#include "source/extensions/common/async_files/async_file_manager.h"
++#include "source/extensions/filters/http/file_server/filter_config.h"
++
++#include "absl/strings/string_view.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace FileServer {
++
++using Extensions::Common::AsyncFiles::AsyncFileHandle;
++using Extensions::Common::AsyncFiles::AsyncFileManager;
++using Extensions::Common::AsyncFiles::CancelFunction;
++
++class FileStreamerClient {
++public:
++  virtual void errorFromFile(Http::Code code, absl::string_view log_message) PURE;
++  // Return true to keep going - false is for HEAD requests.
++  virtual bool headersFromFile(Http::ResponseHeaderMapPtr response_headers) PURE;
++  virtual void bodyChunkFromFile(Buffer::InstancePtr buf, bool end_stream) PURE;
++  virtual ~FileStreamerClient() = default;
++};
++
++class FileStreamer {
++public:
++  explicit FileStreamer(FileStreamerClient& client) : client_(client) {}
++  ~FileStreamer();
++  // Starts reading and streaming the file.
++  // end == 0 means read to end of file.
++  void begin(const FileServerConfig& config, Event::Dispatcher& dispatcher, uint64_t start,
++             uint64_t end, std::filesystem::path file_path);
++  // Call when the downstream buffer is over watermark.
++  // Stops at the completion of the current action if not unpaused first.
++  void pause();
++  // Call when the downstream buffer is under watermark.
++  // Starts the next action if previously paused.
++  void unpause();
++  // Call when the filter is destroyed for whatever reason.
++  void abort();
++
++private:
++  const FileServerConfig* file_server_config_;
++  void startFile();
++  void startDir(int behavior_index);
++  void onFileOpened(AsyncFileHandle handle);
++  void readBodyChunk();
++  Event::Dispatcher* dispatcher_;
++  FileStreamerClient& client_;
++  std::filesystem::path file_path_;
++  uint64_t pos_ = 0;
++  // If zero, fetches entire file.
++  // To get the last byte, end_ must be the size of the file, not the inclusive last byte
++  // like a range request uses.
++  uint64_t end_ = 0;
++  bool paused_ = false;
++  bool action_has_been_postponed_by_pause_ = false;
++  AsyncFileHandle async_file_;
++  CancelFunction cancel_callback_ = []() {};
++};
++
++} // namespace FileServer
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/source/extensions/filters/http/file_server/filter.cc b/source/extensions/filters/http/file_server/filter.cc
+new file mode 100644
+index 000000000..0350aae4e
+--- /dev/null
++++ b/source/extensions/filters/http/file_server/filter.cc
+@@ -0,0 +1,151 @@
++#include "source/extensions/filters/http/file_server/filter.h"
++
++#include <memory>
++#include <utility>
++
++#include "envoy/buffer/buffer.h"
++
++#include "source/common/http/codes.h"
++#include "source/common/http/headers.h"
++#include "source/common/http/utility.h"
++#include "source/extensions/filters/http/file_server/filter_config.h"
++
++#include "absl/strings/match.h"
++#include "absl/strings/numbers.h"
++#include "absl/strings/str_split.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace FileServer {
++
++using ::Envoy::Http::CodeUtility;
++using Http::RequestHeaderMap;
++using Http::Utility::PercentEncoding;
++
++namespace {
++// Returns 0, 0 if range headers are not present or invalid.
++std::pair<uint64_t, uint64_t> parseRangeHeader(const Http::RequestHeaderMap& headers) {
++  const Envoy::Http::HeaderMap::GetResult range_header =
++      headers.get(Envoy::Http::Headers::get().Range);
++  if (range_header.size() != 1) {
++    return {0, 0};
++  }
++  absl::string_view range_str = range_header[0]->value().getStringView();
++  if (!absl::ConsumePrefix(&range_str, "bytes=")) {
++    return {0, 0};
++  }
++  if (absl::StrContains(range_str, ',')) {
++    // Not handling multiple-range requests.
++    return {0, 0};
++  }
++  std::pair<absl::string_view, absl::string_view> split = absl::StrSplit(range_str, '-');
++  if (split.first.empty()) {
++    // Not handling suffix requests.
++    return {0, 0};
++  }
++  uint64_t start = 0, end = 0;
++  if (!absl::SimpleAtoi(split.first, &start)) {
++    return {0, 0};
++  }
++  if (!absl::SimpleAtoi(split.second, &end)) {
++    return {start, 0};
++  }
++  // Add one because range headers use [start, end] and programmers use [start, end)
++  return {start, end + 1};
++}
++} // namespace
++
++const std::string& FileServerFilter::filterName() {
++  CONSTRUCT_ON_FIRST_USE(std::string, "envoy.filters.http.file_server");
++}
++
++void FileServerFilter::setDecoderFilterCallbacks(Http::StreamDecoderFilterCallbacks& callbacks) {
++  callbacks.addDownstreamWatermarkCallbacks(*this);
++  Http::PassThroughDecoderFilter::setDecoderFilterCallbacks(callbacks);
++}
++
++void FileServerFilter::onAboveWriteBufferHighWatermark() { file_streamer_.pause(); }
++
++void FileServerFilter::onBelowWriteBufferLowWatermark() { file_streamer_.unpause(); }
++
++Http::FilterHeadersStatus FileServerFilter::decodeHeaders(RequestHeaderMap& headers,
++                                                          bool end_stream) {
++  if (!decoder_callbacks_->route() || !headers.Path()) {
++    return Http::FilterHeadersStatus::Continue;
++  }
++  const FileServerConfig* config =
++      Http::Utility::resolveMostSpecificPerFilterConfig<FileServerConfig>(decoder_callbacks_);
++  if (!config) {
++    config = file_server_config_.get();
++  }
++  const std::string path = PercentEncoding::decode(headers.Path()->value().getStringView());
++  std::shared_ptr<const ProtoFileServerConfig::PathMapping> mapping = config->pathMapping(path);
++  if (!mapping) {
++    // If the request didn't match a mapping, skip this filter.
++    return Http::FilterHeadersStatus::Continue;
++  }
++  absl::optional<std::filesystem::path> file_path = config->applyPathMapping(path, *mapping);
++  if (!file_path) {
++    decoder_callbacks_->sendLocalReply(Http::Code::BadRequest,
++                                       CodeUtility::toString(Http::Code::BadRequest), nullptr,
++                                       absl::nullopt, "file_server_rejected_non_normalized_path");
++    return Http::FilterHeadersStatus::StopIteration;
++  }
++  if (!headers.Method()) {
++    decoder_callbacks_->sendLocalReply(Http::Code::BadRequest,
++                                       CodeUtility::toString(Http::Code::BadRequest), nullptr,
++                                       absl::nullopt, "file_server_rejected_missing_method");
++    return Http::FilterHeadersStatus::StopIteration;
++  }
++  if (headers.Method()->value() != Http::Headers::get().MethodValues.Head &&
++      headers.Method()->value() != Http::Headers::get().MethodValues.Get) {
++    decoder_callbacks_->sendLocalReply(Http::Code::MethodNotAllowed,
++                                       CodeUtility::toString(Http::Code::MethodNotAllowed), nullptr,
++                                       absl::nullopt, "file_server_rejected_method");
++    return Http::FilterHeadersStatus::StopIteration;
++  }
++  if (!end_stream) {
++    decoder_callbacks_->sendLocalReply(Http::Code::BadRequest,
++                                       CodeUtility::toString(Http::Code::BadRequest), nullptr,
++                                       absl::nullopt, "file_server_rejected_not_end_stream");
++    return Http::FilterHeadersStatus::StopIteration;
++  }
++  // Parse range header, if present, into start and end (otherwise or on error, 0,0)
++  auto [start, end] = parseRangeHeader(headers);
++  is_head_ = headers.Method()->value() == Http::Headers::get().MethodValues.Head;
++  file_streamer_.begin(*config, decoder_callbacks_->dispatcher(), start, end,
++                       std::move(*file_path));
++  return Http::FilterHeadersStatus::StopIteration;
++}
++
++bool FileServerFilter::headersFromFile(Http::ResponseHeaderMapPtr response_headers) {
++  bool end_response = is_head_ || response_headers->getContentLengthValue() == "0";
++  decoder_callbacks_->encodeHeaders(std::move(response_headers), end_response, "file_server");
++  headers_sent_ = true;
++  return !end_response;
++}
++
++void FileServerFilter::bodyChunkFromFile(Buffer::InstancePtr buffer, bool end_stream) {
++  decoder_callbacks_->encodeData(*buffer, end_stream);
++}
++
++void FileServerFilter::errorFromFile(Http::Code code, absl::string_view log_message) {
++  if (!headers_sent_) {
++    decoder_callbacks_->sendLocalReply(code, CodeUtility::toString(code), nullptr, absl::nullopt,
++                                       log_message);
++  } else {
++    decoder_callbacks_->streamInfo().setResponseCodeDetails(log_message);
++    decoder_callbacks_->resetStream(Http::StreamResetReason::LocalReset, log_message);
++  }
++}
++
++void FileServerFilter::onDestroy() {
++  file_streamer_.abort();
++  file_server_config_.reset();
++}
++
++} // namespace FileServer
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/source/extensions/filters/http/file_server/filter.h b/source/extensions/filters/http/file_server/filter.h
+new file mode 100644
+index 000000000..f4108ca98
+--- /dev/null
++++ b/source/extensions/filters/http/file_server/filter.h
+@@ -0,0 +1,53 @@
++#pragma once
++
++#include <memory>
++#include <string>
++#include <utility>
++
++#include "envoy/buffer/buffer.h"
++#include "envoy/http/filter.h"
++
++#include "source/extensions/filters/http/common/pass_through_filter.h"
++#include "source/extensions/filters/http/file_server/file_streamer.h"
++#include "source/extensions/filters/http/file_server/filter_config.h"
++
++#include "absl/strings/string_view.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace FileServer {
++
++class FileServerFilter : public Http::PassThroughDecoderFilter,
++                         public FileStreamerClient,
++                         public Http::DownstreamWatermarkCallbacks {
++public:
++  explicit FileServerFilter(std::shared_ptr<const FileServerConfig> file_server_config)
++      : file_server_config_(file_server_config), file_streamer_(*this) {}
++
++  static const std::string& filterName();
++
++  void errorFromFile(Http::Code code, absl::string_view log_message) override;
++  bool headersFromFile(Http::ResponseHeaderMapPtr response_headers) override;
++  void bodyChunkFromFile(Buffer::InstancePtr buf, bool end_stream) override;
++
++  void setDecoderFilterCallbacks(Http::StreamDecoderFilterCallbacks& callbacks) override;
++  Http::FilterHeadersStatus decodeHeaders(Http::RequestHeaderMap& headers,
++                                          bool end_stream) override;
++  void onDestroy() override;
++  // Http::DownstreamWatermarkCallbacks
++  void onAboveWriteBufferHighWatermark() override;
++  void onBelowWriteBufferLowWatermark() override;
++
++private:
++  std::shared_ptr<const FileServerConfig> file_server_config_;
++  friend class FileServerConfigTest; // Allow test access to file_server_config_.
++  FileStreamer file_streamer_;
++  bool is_head_ = false;
++  bool headers_sent_ = false;
++};
++
++} // namespace FileServer
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/source/extensions/filters/http/file_server/filter_config.cc b/source/extensions/filters/http/file_server/filter_config.cc
+new file mode 100644
+index 000000000..02a1f02b5
+--- /dev/null
++++ b/source/extensions/filters/http/file_server/filter_config.cc
+@@ -0,0 +1,119 @@
++#include "source/extensions/filters/http/file_server/filter_config.h"
++
++#include <utility>
++
++#include "envoy/common/exception.h"
++
++#include "source/common/common/thread.h"
++
++#include "absl/strings/str_split.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace FileServer {
++
++namespace {
++
++RadixTree<std::shared_ptr<const ProtoFileServerConfig::PathMapping>>
++makePathMappings(const ProtoFileServerConfig& config) {
++  RadixTree<std::shared_ptr<const ProtoFileServerConfig::PathMapping>> tree;
++  for (const auto& mapping : config.path_mappings()) {
++    tree.add(mapping.request_path_prefix(),
++             std::make_shared<ProtoFileServerConfig::PathMapping>(mapping));
++  }
++  return tree;
++}
++
++} // namespace
++
++absl::StatusOr<std::shared_ptr<const FileServerConfig>>
++FileServerConfig::create(const ProtoFileServerConfig& config,
++                         Envoy::Server::Configuration::ServerFactoryContext& context) {
++  auto factory = AsyncFileManagerFactory::singleton(&context.singletonManager());
++  TRY_ASSERT_MAIN_THREAD {
++    // TODO(ravenblack): make getAsyncFileManager use StatusOr instead of throw.
++    auto async_file_manager = factory->getAsyncFileManager(config.manager_config());
++    return std::make_shared<const FileServerConfig>(config, std::move(factory),
++                                                    std::move(async_file_manager));
++  }
++  END_TRY
++  catch (const EnvoyException& e) {
++    return absl::InvalidArgumentError(e.what());
++  }
++}
++
++FileServerConfig::FileServerConfig(const ProtoFileServerConfig& config,
++                                   std::shared_ptr<AsyncFileManagerFactory> factory,
++                                   std::shared_ptr<AsyncFileManager> manager)
++    : async_file_manager_factory_(std::move(factory)), async_file_manager_(std::move(manager)),
++      path_mappings_(makePathMappings(config)),
++      content_types_(config.content_types().begin(), config.content_types().end()),
++      default_content_type_(config.default_content_type()),
++      directory_behaviors_(config.directory_behaviors().begin(),
++                           config.directory_behaviors().end()) {}
++
++std::shared_ptr<const ProtoFileServerConfig::PathMapping>
++FileServerConfig::pathMapping(absl::string_view path) const {
++  return path_mappings_.findLongestPrefix(path);
++}
++
++absl::optional<std::filesystem::path>
++FileServerConfig::applyPathMapping(absl::string_view path_with_query,
++                                   const ProtoFileServerConfig::PathMapping& mapping) {
++  std::pair<absl::string_view, absl::string_view> split = absl::StrSplit(path_with_query, '?');
++  absl::string_view kept_path = split.first.substr(mapping.request_path_prefix().length());
++  if (kept_path.starts_with('/')) {
++    if (mapping.request_path_prefix().ends_with('/')) {
++      // Avoid accepting a value that parses away a double-slash at the join-point.
++      // (Other double-slashes will be rejected by the lexically_normal check.)
++      return absl::nullopt;
++    }
++    // filesystem::path operator / treats the second operand starting with a / as
++    // meaning replace the entire path, and we don't want to do that.
++    kept_path.remove_prefix(1);
++  }
++  if (kept_path.starts_with('/')) {
++    // We don't want to remove more than one slash, to avoid foo/bar, foo//bar
++    // and foo///bar all acting valid.
++    return absl::nullopt;
++  }
++  std::filesystem::path file_path =
++      std::filesystem::path{mapping.file_path_prefix()} / std::filesystem::path{kept_path};
++  if (file_path != file_path.lexically_normal() ||
++      !file_path.string().starts_with(mapping.file_path_prefix())) {
++    // Ensure we're not accidentally looking outside the designated filesystem prefix
++    // in any way controlled by the client. (Symlink escapes are up to the filesystem owner.)
++    return absl::nullopt;
++  }
++  return file_path;
++}
++
++absl::string_view FileServerConfig::contentTypeForPath(const std::filesystem::path& path) const {
++  std::string suffix = path.extension();
++  if (suffix.empty()) {
++    // For files with no suffix, use the whole filename.
++    suffix = path.stem();
++  } else {
++    // Remove the dot.
++    suffix = suffix.substr(1);
++  }
++  auto it = content_types_.find(suffix);
++  if (it == content_types_.end()) {
++    return default_content_type_;
++  }
++  return it->second;
++}
++
++OptRef<const ProtoFileServerConfig::DirectoryBehavior>
++FileServerConfig::directoryBehavior(size_t index) const {
++  if (index >= directory_behaviors_.size()) {
++    return absl::nullopt;
++  }
++  return directory_behaviors_[index];
++}
++
++} // namespace FileServer
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/source/extensions/filters/http/file_server/filter_config.h b/source/extensions/filters/http/file_server/filter_config.h
+new file mode 100644
+index 000000000..212f74e6f
+--- /dev/null
++++ b/source/extensions/filters/http/file_server/filter_config.h
+@@ -0,0 +1,62 @@
++#pragma once
++
++#include <filesystem>
++#include <memory>
++#include <string>
++
++#include "envoy/extensions/filters/http/file_server/v3/file_server.pb.h"
++#include "envoy/router/router.h"
++#include "envoy/server/factory_context.h"
++
++#include "source/common/common/radix_tree.h"
++#include "source/extensions/common/async_files/async_file_manager.h"
++#include "source/extensions/common/async_files/async_file_manager_factory.h"
++
++#include "absl/container/flat_hash_map.h"
++#include "absl/strings/string_view.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace FileServer {
++
++using ProtoFileServerConfig = envoy::extensions::filters::http::file_server::v3::FileServerConfig;
++using ::Envoy::Extensions::Common::AsyncFiles::AsyncFileManager;
++using ::Envoy::Extensions::Common::AsyncFiles::AsyncFileManagerFactory;
++
++class FileServerConfig : public Router::RouteSpecificFilterConfig {
++public:
++  static absl::StatusOr<std::shared_ptr<const FileServerConfig>>
++  create(const ProtoFileServerConfig& config,
++         Envoy::Server::Configuration::ServerFactoryContext& context);
++  FileServerConfig(const ProtoFileServerConfig& config,
++                   std::shared_ptr<AsyncFileManagerFactory> factory,
++                   std::shared_ptr<AsyncFileManager> manager);
++
++  const std::shared_ptr<AsyncFileManager>& asyncFileManager() const { return async_file_manager_; }
++  // Returns nullptr if there is no corresponding path mapping (filter should be bypassed).
++  std::shared_ptr<const ProtoFileServerConfig::PathMapping>
++  pathMapping(absl::string_view path) const;
++  // Returns nullopt if the resulting path is not lexically normalized,
++  // e.g. foo/./bar rather than foo/bar, or foo/../bar rather than bar.
++  static absl::optional<std::filesystem::path>
++  applyPathMapping(absl::string_view path, const ProtoFileServerConfig::PathMapping& mapping);
++
++  absl::string_view contentTypeForPath(const std::filesystem::path& path) const;
++  // nullopt if out of behaviors.
++  OptRef<const ProtoFileServerConfig::DirectoryBehavior> directoryBehavior(size_t index) const;
++
++private:
++  // The factory is held to keep the singleton alive.
++  const std::shared_ptr<AsyncFileManagerFactory> async_file_manager_factory_;
++  const std::shared_ptr<AsyncFileManager> async_file_manager_;
++  const RadixTree<std::shared_ptr<const ProtoFileServerConfig::PathMapping>> path_mappings_;
++  const absl::flat_hash_map<std::string, std::string> content_types_;
++  const std::string default_content_type_;
++  const std::vector<ProtoFileServerConfig::DirectoryBehavior> directory_behaviors_;
++};
++
++} // namespace FileServer
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/test/extensions/filters/http/common/fuzz/BUILD b/test/extensions/filters/http/common/fuzz/BUILD
+index a3cce0ee3..71e3feec1 100644
+--- a/test/extensions/filters/http/common/fuzz/BUILD
++++ b/test/extensions/filters/http/common/fuzz/BUILD
+@@ -57,6 +57,7 @@ envoy_cc_test_library(
+         "//test/proto:bookstore_proto_cc_proto",
+         "//test/test_common:registry_lib",
+         "//test/test_common:test_runtime_lib",
++        "@envoy_api//envoy/extensions/filters/http/file_server/v3:pkg_cc_proto",
+         "@envoy_api//envoy/extensions/filters/http/file_system_buffer/v3:pkg_cc_proto",
+         "@envoy_api//envoy/extensions/filters/http/grpc_json_reverse_transcoder/v3:pkg_cc_proto",
+         "@envoy_api//envoy/extensions/filters/http/grpc_json_transcoder/v3:pkg_cc_proto",
+diff --git a/test/extensions/filters/http/common/fuzz/uber_per_filter.cc b/test/extensions/filters/http/common/fuzz/uber_per_filter.cc
+index a92706be4..829308e42 100644
+--- a/test/extensions/filters/http/common/fuzz/uber_per_filter.cc
++++ b/test/extensions/filters/http/common/fuzz/uber_per_filter.cc
+@@ -1,3 +1,4 @@
++#include "envoy/extensions/filters/http/file_server/v3/file_server.pb.h"
+ #include "envoy/extensions/filters/http/file_system_buffer/v3/file_system_buffer.pb.h"
+ #include "envoy/extensions/filters/http/grpc_json_reverse_transcoder/v3/transcoder.pb.h"
+ #include "envoy/extensions/filters/http/grpc_json_transcoder/v3/transcoder.pb.h"
+@@ -139,6 +140,18 @@ void cleanFileSystemBufferConfig(Protobuf::Message* message) {
+   }
+ }
+ 
++void cleanFileServerConfig(Protobuf::Message* message) {
++  envoy::extensions::filters::http::file_server::v3::FileServerConfig& config =
++      *Envoy::Protobuf::DynamicCastMessage<
++          envoy::extensions::filters::http::file_server::v3::FileServerConfig>(message);
++  if (config.manager_config().thread_pool().thread_count() > kMaxAsyncFileManagerThreadCount) {
++    throw EnvoyException(fmt::format(
++        "received input exceeding the allowed number of threads ({} > {}) for "
++        "FileServerConfig.AsyncFileManager",
++        config.manager_config().thread_pool().thread_count(), kMaxAsyncFileManagerThreadCount));
++  }
++}
++
+ void UberFilterFuzzer::cleanFuzzedConfig(absl::string_view filter_name,
+                                          Protobuf::Message* message) {
+   // Map filter name to clean-up function.
+@@ -154,6 +167,9 @@ void UberFilterFuzzer::cleanFuzzedConfig(absl::string_view filter_name,
+   } else if (filter_name == "envoy.filters.http.file_system_buffer") {
+     // Limit the number of threads to create to kMaxAsyncFileManagerThreadCount
+     cleanFileSystemBufferConfig(message);
++  } else if (filter_name == "envoy.filters.http.file_server") {
++    // Limit the number of threads to create to kMaxAsyncFileManagerThreadCount
++    cleanFileServerConfig(message);
+   }
+ }
+ 
+diff --git a/test/extensions/filters/http/file_server/BUILD b/test/extensions/filters/http/file_server/BUILD
+new file mode 100644
+index 000000000..c6177bf55
+--- /dev/null
++++ b/test/extensions/filters/http/file_server/BUILD
+@@ -0,0 +1,53 @@
++load(
++    "//bazel:envoy_build_system.bzl",
++    "envoy_cc_test",
++    "envoy_package",
++)
++load(
++    "//test/extensions:extensions_build_system.bzl",
++    "envoy_extension_cc_test",
++)
++
++licenses(["notice"])  # Apache 2
++
++envoy_package()
++
++envoy_cc_test(
++    name = "absl_status_to_http_status_test",
++    srcs = ["absl_status_to_http_status_test.cc"],
++    deps = [
++        "//source/extensions/filters/http/file_server:absl_status_to_http_status",
++    ],
++)
++
++envoy_extension_cc_test(
++    name = "file_server_test",
++    srcs = [
++        "config_test.cc",
++        "filter_test.cc",
++    ],
++    extension_names = ["envoy.filters.http.file_server"],
++    rbe_pool = "6gig",
++    tags = ["skip_on_windows"],
++    deps = [
++        "//source/extensions/filters/http/file_server:config",
++        "//test/extensions/common/async_files:mocks",
++        "//test/mocks/server:server_mocks",
++        "//test/mocks/upstream:upstream_mocks",
++        "//test/test_common:status_utility_lib",
++    ],
++)
++
++envoy_extension_cc_test(
++    name = "file_server_integration_test",
++    srcs = [
++        "integration_test.cc",
++    ],
++    extension_names = ["envoy.filters.http.file_server"],
++    rbe_pool = "6gig",
++    tags = ["skip_on_windows"],
++    deps = [
++        "//source/extensions/filters/http/file_server:config",
++        "//test/integration:http_protocol_integration_lib",
++    ],
++)
+diff --git a/test/extensions/filters/http/file_server/absl_status_to_http_status_test.cc b/test/extensions/filters/http/file_server/absl_status_to_http_status_test.cc
+new file mode 100644
+index 000000000..96f1e7d47
+--- /dev/null
++++ b/test/extensions/filters/http/file_server/absl_status_to_http_status_test.cc
+@@ -0,0 +1,36 @@
++#include "source/extensions/filters/http/file_server/absl_status_to_http_status.h"
++
++#include "gtest/gtest.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace FileServer {
++
++TEST(AbslStatusToHttpStatus, Coverage) {
++  EXPECT_EQ(abslStatusToHttpStatus(absl::StatusCode::kOk), Http::Code::OK);
++  EXPECT_EQ(abslStatusToHttpStatus(absl::StatusCode::kCancelled), static_cast<Http::Code>(499));
++  EXPECT_EQ(abslStatusToHttpStatus(absl::StatusCode::kUnknown), Http::Code::InternalServerError);
++  EXPECT_EQ(abslStatusToHttpStatus(absl::StatusCode::kInvalidArgument), Http::Code::BadRequest);
++  EXPECT_EQ(abslStatusToHttpStatus(absl::StatusCode::kDeadlineExceeded),
++            Http::Code::GatewayTimeout);
++  EXPECT_EQ(abslStatusToHttpStatus(absl::StatusCode::kNotFound), Http::Code::NotFound);
++  EXPECT_EQ(abslStatusToHttpStatus(absl::StatusCode::kAlreadyExists), Http::Code::Conflict);
++  EXPECT_EQ(abslStatusToHttpStatus(absl::StatusCode::kPermissionDenied), Http::Code::Forbidden);
++  EXPECT_EQ(abslStatusToHttpStatus(absl::StatusCode::kResourceExhausted),
++            Http::Code::TooManyRequests);
++  EXPECT_EQ(abslStatusToHttpStatus(absl::StatusCode::kFailedPrecondition), Http::Code::BadRequest);
++  EXPECT_EQ(abslStatusToHttpStatus(absl::StatusCode::kAborted), Http::Code::Conflict);
++  EXPECT_EQ(abslStatusToHttpStatus(absl::StatusCode::kOutOfRange), Http::Code::RangeNotSatisfiable);
++  EXPECT_EQ(abslStatusToHttpStatus(absl::StatusCode::kUnimplemented),
++            Http::Code::ServiceUnavailable);
++  EXPECT_EQ(abslStatusToHttpStatus(absl::StatusCode::kDataLoss), Http::Code::InternalServerError);
++  EXPECT_EQ(abslStatusToHttpStatus(absl::StatusCode::kUnauthenticated), Http::Code::Unauthorized);
++  EXPECT_EQ(abslStatusToHttpStatus(static_cast<absl::StatusCode>(99999999)),
++            Http::Code::InternalServerError);
++}
++
++} // namespace FileServer
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/test/extensions/filters/http/file_server/config_test.cc b/test/extensions/filters/http/file_server/config_test.cc
+new file mode 100644
+index 000000000..e19bcb9b9
+--- /dev/null
++++ b/test/extensions/filters/http/file_server/config_test.cc
+@@ -0,0 +1,273 @@
++#include "source/extensions/filters/http/file_server/config.h"
++#include "source/extensions/filters/http/file_server/filter.h"
++
++#include "test/mocks/server/factory_context.h"
++#include "test/mocks/server/server_factory_context.h"
++#include "test/test_common/status_utility.h"
++#include "test/test_common/utility.h"
++
++#include "absl/status/status.h"
++#include "gtest/gtest.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace FileServer {
++
++using StatusHelpers::HasStatus;
++using ::testing::Eq;
++using ::testing::HasSubstr;
++using ::testing::IsNull;
++using ::testing::NotNull;
++using ::testing::Optional;
++using ::testing::Property;
++
++MATCHER_P(OptRefWith, m, "") {
++  if (arg == absl::nullopt) {
++    *result_listener << "is nullopt";
++    return false;
++  }
++  return ExplainMatchResult(m, arg.ref(), result_listener);
++};
++
++class FileServerConfigTest : public testing::Test {
++public:
++  static ProtoFileServerConfig configFromYaml(absl::string_view yaml) {
++    std::string s(yaml);
++    ProtoFileServerConfig config;
++    TestUtility::loadFromYaml(s, config);
++    return config;
++  }
++
++  static auto factory() {
++    return Registry::FactoryRegistry<Server::Configuration::NamedHttpFilterConfigFactory>::
++        getFactory(FileServerFilter::filterName());
++  }
++
++  static ProtoFileServerConfig emptyConfig() {
++    return *dynamic_cast<ProtoFileServerConfig*>(factory()->createEmptyConfigProto().get());
++  }
++
++  static std::function<void(std::shared_ptr<Http::StreamDecoderFilter>)>
++  captureConfig(std::shared_ptr<const FileServerConfig>* config) {
++    return [config](std::shared_ptr<Http::StreamDecoderFilter> captured) {
++      *config = std::dynamic_pointer_cast<FileServerFilter>(captured)->file_server_config_;
++    };
++  }
++
++  std::shared_ptr<const FileServerConfig>
++  captureConfigFromProto(const ProtoFileServerConfig& proto_config) {
++    Http::FilterFactoryCb cb =
++        factory()
++            ->createFilterFactoryFromProto(proto_config, "stats", mock_factory_context_)
++            .value();
++    Http::MockFilterChainFactoryCallbacks filter_callback;
++    std::shared_ptr<const FileServerConfig> config;
++    EXPECT_CALL(filter_callback, addStreamDecoderFilter(_)).WillOnce(captureConfig(&config));
++    cb(filter_callback);
++    return config;
++  }
++
++  std::shared_ptr<const FileServerConfig>
++  makeRouteConfig(const ProtoFileServerConfig& route_proto_config) {
++    return std::dynamic_pointer_cast<const FileServerConfig>(
++        factory()
++            ->createRouteSpecificFilterConfig(route_proto_config, mock_server_factory_context_,
++                                              ProtobufMessage::getNullValidationVisitor())
++            .value());
++  }
++  NiceMock<Server::Configuration::MockFactoryContext> mock_factory_context_;
++  NiceMock<Server::Configuration::MockServerFactoryContext> mock_server_factory_context_;
++};
++
++TEST_F(FileServerConfigTest, EmptyDirectoryBehaviorIsConfigError) {
++  auto status_or = factory()->createFilterFactoryFromProto(configFromYaml(R"(
++manager_config:
++  thread_pool: {}
++directory_behaviors:
++  - {}
++)"),
++                                                           "stats", mock_factory_context_);
++  EXPECT_THAT(status_or,
++              HasStatus(absl::StatusCode::kInvalidArgument, HasSubstr("must set one of")));
++}
++
++TEST_F(FileServerConfigTest, OverpopulatedDirectoryBehaviorIsConfigError) {
++  auto status_or = factory()->createFilterFactoryFromProto(configFromYaml(R"(
++manager_config:
++  thread_pool: {}
++directory_behaviors:
++  - default_file: "index.html"
++    list: {}
++)"),
++                                                           "stats", mock_factory_context_);
++  EXPECT_THAT(status_or,
++              HasStatus(absl::StatusCode::kInvalidArgument, HasSubstr("must have only one of")));
++}
++
++TEST_F(FileServerConfigTest, DuplicateDirectoryFilesIsConfigError) {
++  auto status_or = factory()->createFilterFactoryFromProto(configFromYaml(R"(
++manager_config:
++  thread_pool: {}
++directory_behaviors:
++  - default_file: "index.html"
++  - default_file: "index.html"
++)"),
++                                                           "stats", mock_factory_context_);
++  EXPECT_THAT(status_or, HasStatus(absl::StatusCode::kInvalidArgument, HasSubstr("index.html")));
++}
++
++TEST_F(FileServerConfigTest, DuplicateDirectoryListIsConfigError) {
++  auto status_or = factory()->createFilterFactoryFromProto(configFromYaml(R"(
++manager_config:
++  thread_pool: {}
++directory_behaviors:
++  - list: {}
++  - list: {}
++)"),
++                                                           "stats", mock_factory_context_);
++  EXPECT_THAT(status_or,
++              HasStatus(absl::StatusCode::kInvalidArgument, HasSubstr("multiple list directives")));
++}
++
++TEST_F(FileServerConfigTest, DuplicateRequestPathPrefixIsConfigError) {
++  auto status_or = factory()->createFilterFactoryFromProto(configFromYaml(R"(
++manager_config:
++  thread_pool: {}
++path_mappings:
++  - request_path_prefix: "/banana"
++    file_path_prefix: "/banana"
++  - request_path_prefix: "/banana"
++    file_path_prefix: "/other"
++)"),
++                                                           "stats", mock_factory_context_);
++  EXPECT_THAT(status_or, HasStatus(absl::StatusCode::kInvalidArgument, HasSubstr("banana")));
++}
++
++TEST_F(FileServerConfigTest, SuffixForContentTypeContainingPeriodIsError) {
++  auto status_or = factory()->createFilterFactoryFromProto(configFromYaml(R"(
++manager_config:
++  thread_pool: {}
++content_types:
++  "txt": "text/plain"
++  ".html": "text/html"
++)"),
++                                                           "stats", mock_factory_context_);
++  EXPECT_THAT(status_or, HasStatus(absl::StatusCode::kInvalidArgument, HasSubstr(".html")));
++}
++
++TEST_F(FileServerConfigTest, ValidConfigPopulatesConfigObjectAppropriately) {
++  std::shared_ptr<const FileServerConfig> config = captureConfigFromProto(configFromYaml(R"(
++manager_config:
++  thread_pool:
++    thread_count: 1
++path_mappings:
++  - request_path_prefix: /path1/
++    file_path_prefix: /fs1
++  - request_path_prefix: /path1/path2
++    file_path_prefix: fs2
++content_types:
++  "txt": "text/plain"
++  "html": "text/html"
++  "": "text/x-no-suffix"
++  "README": "text/markdown"
++default_content_type: "application/octet-stream"
++directory_behaviors:
++  - default_file: "index.html"
++  - default_file: "index.txt"
++  - list: {}
++)"));
++  EXPECT_THAT(config->pathMapping("/"), IsNull());
++  EXPECT_THAT(config->pathMapping("/path1"), IsNull());
++  EXPECT_THAT(config->pathMapping("/path1/"), NotNull());
++  auto mapping = config->pathMapping("/path1/banana");
++  ASSERT_THAT(mapping, NotNull());
++  EXPECT_THAT(config->applyPathMapping("/path1/banana", *mapping),
++              Optional(std::filesystem::path{"/fs1/banana"}));
++  EXPECT_THAT(config->applyPathMapping("/path1//banana", *mapping), Eq(absl::nullopt));
++  EXPECT_THAT(config->applyPathMapping("/path1/./banana", *mapping), Eq(absl::nullopt));
++  EXPECT_THAT(config->applyPathMapping("/path1/../banana", *mapping), Eq(absl::nullopt));
++  mapping = config->pathMapping("/path1/path2/banana");
++  ASSERT_THAT(mapping, NotNull());
++  EXPECT_THAT(config->applyPathMapping("/path1/path2/banana", *mapping),
++              Optional(std::filesystem::path{"fs2/banana"}));
++  EXPECT_THAT(config->applyPathMapping("/path1/path2//banana", *mapping), Eq(absl::nullopt));
++  EXPECT_THAT(config->contentTypeForPath("/fs1/index.html"), Eq("text/html"));
++  // Multiple dots in the filename uses the last one as suffix.
++  EXPECT_THAT(config->contentTypeForPath("/fs1/index.banana.html"), Eq("text/html"));
++  EXPECT_THAT(config->contentTypeForPath("/fs1/index.txt"), Eq("text/plain"));
++  EXPECT_THAT(config->contentTypeForPath("/fs2/README"), Eq("text/markdown"));
++  EXPECT_THAT(config->contentTypeForPath("/fs2/README."), Eq("text/x-no-suffix"));
++  EXPECT_THAT(config->contentTypeForPath("/fs1/other"), Eq("application/octet-stream"));
++  EXPECT_THAT(config->asyncFileManager(), NotNull());
++  EXPECT_THAT(
++      config->directoryBehavior(0),
++      OptRefWith(Property("default_file", &ProtoFileServerConfig::DirectoryBehavior::default_file,
++                          Eq("index.html"))));
++  EXPECT_THAT(
++      config->directoryBehavior(1),
++      OptRefWith(Property("default_file", &ProtoFileServerConfig::DirectoryBehavior::default_file,
++                          Eq("index.txt"))));
++  EXPECT_THAT(config->directoryBehavior(2),
++              OptRefWith(Property("has_list", &ProtoFileServerConfig::DirectoryBehavior::has_list,
++                                  Eq(true))));
++  EXPECT_THAT(config->directoryBehavior(3), Eq(absl::nullopt));
++}
++
++TEST_F(FileServerConfigTest, DuplicateDirectoryFilesIsConfigErrorInRouteConfig) {
++  auto status_or = factory()->createRouteSpecificFilterConfig(
++      configFromYaml(R"(
++manager_config:
++  thread_pool: {}
++directory_behaviors:
++  - default_file: "index.html"
++  - default_file: "index.html"
++)"),
++      mock_server_factory_context_, ProtobufMessage::getNullValidationVisitor());
++  EXPECT_THAT(status_or, HasStatus(absl::StatusCode::kInvalidArgument, HasSubstr("index.html")));
++}
++
++TEST_F(FileServerConfigTest, InvalidFileManagerConfigFailsInRouteConfig) {
++  auto mismatched_config = factory()->createRouteSpecificFilterConfig(
++      configFromYaml(R"(
++manager_config:
++  id: "mismatched"
++  thread_pool:
++    thread_count: 2
++)"),
++      mock_server_factory_context_, ProtobufMessage::getNullValidationVisitor());
++  auto status_or = factory()->createRouteSpecificFilterConfig(
++      configFromYaml(R"(
++manager_config:
++  id: "mismatched"
++  thread_pool:
++    thread_count: 1
++)"),
++      mock_server_factory_context_, ProtobufMessage::getNullValidationVisitor());
++  EXPECT_THAT(status_or, HasStatus(absl::StatusCode::kInvalidArgument,
++                                   HasSubstr("AsyncFileManager mismatched config")));
++}
++
++TEST_F(FileServerConfigTest, InvalidFileManagerConfigFailsInMainConfig) {
++  auto mismatched_config = factory()->createFilterFactoryFromProto(configFromYaml(R"(
++manager_config:
++  id: "mismatched"
++  thread_pool:
++    thread_count: 2
++)"),
++                                                                   "stats", mock_factory_context_);
++  auto status_or = factory()->createFilterFactoryFromProto(configFromYaml(R"(
++manager_config:
++  id: "mismatched"
++  thread_pool:
++    thread_count: 1
++)"),
++                                                           "stats", mock_factory_context_);
++  EXPECT_THAT(status_or, HasStatus(absl::StatusCode::kInvalidArgument,
++                                   HasSubstr("AsyncFileManager mismatched config")));
++}
++
++} // namespace FileServer
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/test/extensions/filters/http/file_server/filter_test.cc b/test/extensions/filters/http/file_server/filter_test.cc
+new file mode 100644
+index 000000000..f2f79d2b3
+--- /dev/null
++++ b/test/extensions/filters/http/file_server/filter_test.cc
+@@ -0,0 +1,534 @@
++#include "source/extensions/filters/http/file_server/config.h"
++#include "source/extensions/filters/http/file_server/filter.h"
++
++#include "test/extensions/common/async_files/mocks.h"
++#include "test/mocks/http/mocks.h"
++#include "test/test_common/status_utility.h"
++#include "test/test_common/utility.h"
++
++#include "absl/status/status.h"
++#include "gtest/gtest.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace FileServer {
++
++using Extensions::Common::AsyncFiles::MockAsyncFileContext;
++using Extensions::Common::AsyncFiles::MockAsyncFileHandle;
++using Extensions::Common::AsyncFiles::MockAsyncFileManager;
++using ::testing::AnyNumber;
++using ::testing::InSequence;
++using ::testing::NiceMock;
++using ::testing::ReturnRef;
++using ::testing::StrictMock;
++
++MATCHER_P(OptRefWith, m, "") {
++  if (arg == absl::nullopt) {
++    *result_listener << "is nullopt";
++    return false;
++  }
++  return ExplainMatchResult(m, arg.ref(), result_listener);
++};
++
++class FileServerFilterTest : public testing::Test {
++public:
++  std::shared_ptr<const FileServerConfig> configFromYaml(absl::string_view yaml) {
++    std::string s(yaml);
++    ProtoFileServerConfig proto_config;
++    TestUtility::loadFromYaml(s, proto_config);
++    return std::make_shared<FileServerConfig>(proto_config, nullptr, mock_async_file_manager_);
++  }
++  void initFilter(FileServerFilter& filter) {
++    filter.setDecoderFilterCallbacks(decoder_callbacks_);
++    // It's a NiceMock but we do want to be notified of unexpected sendLocalReply.
++    EXPECT_CALL(decoder_callbacks_, sendLocalReply).Times(0);
++    EXPECT_CALL(decoder_callbacks_, dispatcher)
++        .Times(AnyNumber())
++        .WillRepeatedly(ReturnRef(*dispatcher_));
++  }
++  std::shared_ptr<FileServerFilter> testFilter() {
++    auto filter = std::make_shared<FileServerFilter>(configFromYaml(R"(
++path_mappings:
++  - request_path_prefix: /path1
++    file_path_prefix: fs1
++content_types:
++  "txt": "text/plain"
++  "html": "text/html"
++default_content_type: "application/octet-stream"
++directory_behaviors:
++  - default_file: "index.html"
++  - default_file: "index.txt"
++  - list: {}
++)"));
++    initFilter(*filter);
++    return filter;
++  }
++
++  void pumpDispatcher() { dispatcher_->run(Event::Dispatcher::RunType::Block); }
++
++  AsyncFileHandle makeMockFile() {
++    mock_file_handle_ =
++        std::make_shared<StrictMock<MockAsyncFileContext>>(mock_async_file_manager_);
++    return mock_file_handle_;
++  }
++
++  std::string responseCodeDetails() {
++    return decoder_callbacks_.stream_info_.response_code_details_.value_or("");
++  }
++
++  std::shared_ptr<MockAsyncFileManager> mock_async_file_manager_ =
++      std::make_shared<NiceMock<MockAsyncFileManager>>();
++  MockAsyncFileHandle mock_file_handle_;
++  NiceMock<Http::MockStreamDecoderFilterCallbacks> decoder_callbacks_;
++  Api::ApiPtr api_ = Api::createApiForTest();
++  Event::DispatcherPtr dispatcher_ = api_->allocateDispatcher("test_thread");
++};
++
++TEST_F(FileServerFilterTest, PassThroughIfNoPath) {
++  auto filter = testFilter();
++  Http::TestRequestHeaderMapImpl request_headers{
++      {":host", "test.host"},
++      {":method", "GET"},
++      {":scheme", "https"},
++  };
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter->decodeHeaders(request_headers, true));
++}
++
++TEST_F(FileServerFilterTest, DestroyBeforeHeadersIsOkay) {
++  auto filter = testFilter();
++  filter->onDestroy();
++  // Should not crash due to uninitialized abort functions or anything!
++}
++
++TEST_F(FileServerFilterTest, PassThroughIfNotMatchingPathMapping) {
++  auto filter = testFilter();
++  Http::TestRequestHeaderMapImpl request_headers{
++      {":path", "/"},
++      {":host", "test.host"},
++      {":method", "GET"},
++      {":scheme", "https"},
++  };
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter->decodeHeaders(request_headers, true));
++}
++
++TEST_F(FileServerFilterTest, BadRequestIfNonNormalizedPath) {
++  auto filter = testFilter();
++  Http::TestRequestHeaderMapImpl request_headers{
++      {":path", "/path1/../"},
++      {":host", "test.host"},
++      {":method", "GET"},
++      {":scheme", "https"},
++  };
++  EXPECT_CALL(decoder_callbacks_, sendLocalReply(Http::Code::BadRequest, _, _, _,
++                                                 "file_server_rejected_non_normalized_path"));
++  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration, filter->decodeHeaders(request_headers, true));
++}
++
++TEST_F(FileServerFilterTest, BadRequestIfMissingMethod) {
++  auto filter = testFilter();
++  Http::TestRequestHeaderMapImpl request_headers{
++      {":path", "/path1/foo"},
++      {":host", "test.host"},
++      {":scheme", "https"},
++  };
++  EXPECT_CALL(decoder_callbacks_, sendLocalReply(Http::Code::BadRequest, _, _, _,
++                                                 "file_server_rejected_missing_method"));
++  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration, filter->decodeHeaders(request_headers, true));
++}
++
++TEST_F(FileServerFilterTest, StillMatchesPathIfPercentEncodingUsed) {
++  auto filter = testFilter();
++  Http::TestRequestHeaderMapImpl request_headers{
++      // %31 is encoding of '1'
++      {":path", "/path%31/foo"},
++      {":host", "test.host"},
++      {":scheme", "https"},
++  };
++  // Missing method is only checked if the path matched, so this is a quick test
++  // for "it matched the path and then failed later".
++  EXPECT_CALL(decoder_callbacks_, sendLocalReply(Http::Code::BadRequest, _, _, _,
++                                                 "file_server_rejected_missing_method"));
++  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration, filter->decodeHeaders(request_headers, true));
++}
++
++TEST_F(FileServerFilterTest, MethodNotAllowedIfMatchedPathAndUnsupportedMethod) {
++  auto filter = testFilter();
++  Http::TestRequestHeaderMapImpl request_headers{
++      {":path", "/path1/foo"},
++      {":method", "POST"},
++      {":host", "test.host"},
++      {":scheme", "https"},
++  };
++  EXPECT_CALL(decoder_callbacks_,
++              sendLocalReply(Http::Code::MethodNotAllowed, _, _, _, "file_server_rejected_method"));
++  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration, filter->decodeHeaders(request_headers, true));
++}
++
++TEST_F(FileServerFilterTest, BadRequestIfHeadersDoNotEndStream) {
++  auto filter = testFilter();
++  Http::TestRequestHeaderMapImpl request_headers{
++      {":path", "/path1/foo"},
++      {":method", "GET"},
++      {":host", "test.host"},
++      {":scheme", "https"},
++  };
++  EXPECT_CALL(decoder_callbacks_, sendLocalReply(Http::Code::BadRequest, _, _, _,
++                                                 "file_server_rejected_not_end_stream"));
++  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration,
++            filter->decodeHeaders(request_headers, false));
++}
++
++TEST_F(FileServerFilterTest, FileStatFailedNotFoundRespondsNotFound) {
++  auto filter = testFilter();
++  Http::TestRequestHeaderMapImpl request_headers{
++      {":path", "/path1/foo"},
++      {":method", "GET"},
++      {":host", "test.host"},
++      {":scheme", "https"},
++  };
++  EXPECT_CALL(*mock_async_file_manager_, stat);
++  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration, filter->decodeHeaders(request_headers, true));
++  EXPECT_CALL(decoder_callbacks_,
++              sendLocalReply(Http::Code::NotFound, _, _, _, "file_server_stat_error"));
++  mock_async_file_manager_->nextActionCompletes(
++      absl::StatusOr<struct stat>{absl::NotFoundError("mocked not found")});
++  pumpDispatcher();
++}
++
++TEST_F(FileServerFilterTest, FilterOnDestroyWhileFileActionInFlightAbortsResponse) {
++  auto filter = testFilter();
++  Http::TestRequestHeaderMapImpl request_headers{
++      {":path", "/path1/foo"},
++      {":method", "GET"},
++      {":host", "test.host"},
++      {":scheme", "https"},
++  };
++  EXPECT_CALL(*mock_async_file_manager_, stat);
++  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration, filter->decodeHeaders(request_headers, true));
++  mock_async_file_manager_->nextActionCompletes(
++      absl::StatusOr<struct stat>{absl::NotFoundError("mocked not found")});
++  filter->onDestroy();
++  pumpDispatcher();
++  // Should have been no call to sendLocalReply due to abort.
++}
++
++TEST_F(FileServerFilterTest, ErrorsOnDirectoryWithNoConfiguredBehavior) {
++  auto filter = std::make_shared<FileServerFilter>(configFromYaml(R"(
++path_mappings:
++  - request_path_prefix: /path1
++    file_path_prefix: fs1
++)"));
++  initFilter(*filter);
++  Http::TestRequestHeaderMapImpl request_headers{
++      {":path", "/path1/foo"},
++      {":method", "GET"},
++      {":host", "test.host"},
++      {":scheme", "https"},
++  };
++  {
++    InSequence seq;
++    EXPECT_CALL(*mock_async_file_manager_, stat);
++    EXPECT_CALL(decoder_callbacks_, sendLocalReply(Http::Code::Forbidden, _, _, _,
++                                                   "file_server_no_valid_directory_behavior"));
++  }
++  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration, filter->decodeHeaders(request_headers, true));
++  struct stat stat_result = {};
++  stat_result.st_mode = S_IFDIR;
++  mock_async_file_manager_->nextActionCompletes(absl::StatusOr<struct stat>{stat_result});
++  pumpDispatcher();
++}
++
++TEST_F(FileServerFilterTest, ErrorsOnDirectoryWithImpossiblyConfiguredBehaviorForCoverage) {
++  auto filter = std::make_shared<FileServerFilter>(configFromYaml(R"(
++path_mappings:
++  - request_path_prefix: /path1
++    file_path_prefix: fs1
++directory_behaviors:
++  - {}
++)"));
++  initFilter(*filter);
++  Http::TestRequestHeaderMapImpl request_headers{
++      {":path", "/path1/foo"},
++      {":method", "GET"},
++      {":host", "test.host"},
++      {":scheme", "https"},
++  };
++  {
++    InSequence seq;
++    EXPECT_CALL(*mock_async_file_manager_, stat);
++    EXPECT_CALL(decoder_callbacks_, sendLocalReply(Http::Code::InternalServerError, _, _, _,
++                                                   "file_server_empty_behavior_type"));
++  }
++  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration, filter->decodeHeaders(request_headers, true));
++  struct stat stat_result = {};
++  stat_result.st_mode = S_IFDIR;
++  mock_async_file_manager_->nextActionCompletes(absl::StatusOr<struct stat>{stat_result});
++  pumpDispatcher();
++}
++
++TEST_F(FileServerFilterTest, TriesAllDirectoryBehaviorsInOrder) {
++  auto filter = testFilter();
++  Http::TestRequestHeaderMapImpl request_headers{
++      {":path", "/path1/foo"},
++      {":method", "GET"},
++      {":host", "test.host"},
++      {":scheme", "https"},
++  };
++  {
++    InSequence seq;
++    EXPECT_CALL(*mock_async_file_manager_, stat);
++    EXPECT_CALL(*mock_async_file_manager_, openExistingFile(_, "fs1/foo/index.html", _, _));
++    EXPECT_CALL(*mock_async_file_manager_, openExistingFile(_, "fs1/foo/index.txt", _, _));
++    EXPECT_CALL(decoder_callbacks_,
++                sendLocalReply(Http::Code::Forbidden, _, _, _, "file_server_list_not_implemented"));
++  }
++  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration, filter->decodeHeaders(request_headers, true));
++  struct stat stat_result = {};
++  stat_result.st_mode = S_IFDIR;
++  mock_async_file_manager_->nextActionCompletes(absl::StatusOr<struct stat>{stat_result});
++  pumpDispatcher();
++  mock_async_file_manager_->nextActionCompletes(
++      absl::StatusOr<AsyncFileHandle>{absl::NotFoundError("mocked not found index.html")});
++  pumpDispatcher();
++  mock_async_file_manager_->nextActionCompletes(
++      absl::StatusOr<AsyncFileHandle>{absl::NotFoundError("mocked not found index.txt")});
++  pumpDispatcher();
++}
++
++TEST_F(FileServerFilterTest, ErrorOpeningExistingFileGivesErrorResponse) {
++  auto filter = testFilter();
++  Http::TestRequestHeaderMapImpl request_headers{
++      {":path", "/path1/foo/index.html"},
++      {":method", "GET"},
++      {":host", "test.host"},
++      {":scheme", "https"},
++  };
++  {
++    InSequence seq;
++    EXPECT_CALL(*mock_async_file_manager_, stat);
++    EXPECT_CALL(*mock_async_file_manager_, openExistingFile(_, "fs1/foo/index.html", _, _));
++    EXPECT_CALL(decoder_callbacks_,
++                sendLocalReply(Http::Code::Forbidden, _, _, _, "file_server_open_error"));
++  }
++  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration, filter->decodeHeaders(request_headers, true));
++  struct stat stat_result = {};
++  mock_async_file_manager_->nextActionCompletes(absl::StatusOr<struct stat>{stat_result});
++  pumpDispatcher();
++  mock_async_file_manager_->nextActionCompletes(absl::StatusOr<AsyncFileHandle>{
++      absl::PermissionDeniedError("mocked permission denied index.html")});
++  pumpDispatcher();
++}
++
++TEST_F(FileServerFilterTest, OpeningIndexFileStartsFileAndStatErrorGivesErrorResponse) {
++  auto filter = testFilter();
++  Http::TestRequestHeaderMapImpl request_headers{
++      {":path", "/path1/foo"},
++      {":method", "GET"},
++      {":host", "test.host"},
++      {":scheme", "https"},
++  };
++  makeMockFile();
++  {
++    InSequence seq;
++    EXPECT_CALL(*mock_async_file_manager_, stat);
++    EXPECT_CALL(*mock_async_file_manager_, openExistingFile(_, "fs1/foo/index.html", _, _));
++    EXPECT_CALL(*mock_file_handle_, stat);
++    EXPECT_CALL(decoder_callbacks_, sendLocalReply(Http::Code::InternalServerError, _, _, _,
++                                                   "file_server_opened_file_stat_failed"));
++  }
++  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration, filter->decodeHeaders(request_headers, true));
++  struct stat stat_result = {};
++  stat_result.st_mode = S_IFDIR;
++  mock_async_file_manager_->nextActionCompletes(absl::StatusOr<struct stat>{stat_result});
++  pumpDispatcher();
++  mock_async_file_manager_->nextActionCompletes(absl::StatusOr<AsyncFileHandle>{mock_file_handle_});
++  pumpDispatcher();
++  mock_async_file_manager_->nextActionCompletes(
++      absl::StatusOr<struct stat>{absl::InternalError("mocked stat-for-size fail")});
++  pumpDispatcher();
++}
++
++TEST_F(FileServerFilterTest, HeadRequestJustStatsFileAndResponds) {
++  auto filter = testFilter();
++  Http::TestRequestHeaderMapImpl request_headers{
++      {":path", "/path1/foo/index.html"},
++      {":method", "HEAD"},
++      {":host", "test.host"},
++      {":scheme", "https"},
++  };
++  makeMockFile();
++  Http::TestResponseHeaderMapImpl expected_headers{
++      {":status", "200"},
++      {"accept-ranges", "bytes"},
++      {"content-length", "12345"},
++      {"content-type", "text/html"},
++  };
++  {
++    InSequence seq;
++    EXPECT_CALL(*mock_async_file_manager_, stat);
++    EXPECT_CALL(*mock_async_file_manager_, openExistingFile(_, "fs1/foo/index.html", _, _));
++    EXPECT_CALL(*mock_file_handle_, stat);
++    EXPECT_CALL(decoder_callbacks_, encodeHeaders_(HeaderMapEqualRef(&expected_headers), true));
++  }
++  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration, filter->decodeHeaders(request_headers, true));
++  struct stat stat_result = {};
++  stat_result.st_size = 12345;
++  mock_async_file_manager_->nextActionCompletes(absl::StatusOr<struct stat>{stat_result});
++  pumpDispatcher();
++  mock_async_file_manager_->nextActionCompletes(absl::StatusOr<AsyncFileHandle>{mock_file_handle_});
++  pumpDispatcher();
++  mock_async_file_manager_->nextActionCompletes(absl::StatusOr<struct stat>{stat_result});
++  pumpDispatcher();
++}
++
++TEST_F(FileServerFilterTest, GetRequestResetsStreamOnReadError) {
++  auto filter = testFilter();
++  Http::TestRequestHeaderMapImpl request_headers{
++      {":path", "/path1/foo/index.html"},
++      {":method", "GET"},
++      {":host", "test.host"},
++      {":scheme", "https"},
++  };
++  makeMockFile();
++  Http::TestResponseHeaderMapImpl expected_headers{
++      {":status", "200"},
++      {"accept-ranges", "bytes"},
++      {"content-length", "12345"},
++      {"content-type", "text/html"},
++  };
++  {
++    InSequence seq;
++    EXPECT_CALL(*mock_async_file_manager_, stat);
++    EXPECT_CALL(*mock_async_file_manager_, openExistingFile(_, "fs1/foo/index.html", _, _));
++    EXPECT_CALL(*mock_file_handle_, stat);
++    EXPECT_CALL(decoder_callbacks_, encodeHeaders_(HeaderMapEqualRef(&expected_headers), false));
++    EXPECT_CALL(*mock_file_handle_, read(_, 0, 12345, _));
++    EXPECT_CALL(decoder_callbacks_, resetStream);
++  }
++  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration, filter->decodeHeaders(request_headers, true));
++  struct stat stat_result = {};
++  stat_result.st_size = 12345;
++  mock_async_file_manager_->nextActionCompletes(absl::StatusOr<struct stat>{stat_result});
++  pumpDispatcher();
++  mock_async_file_manager_->nextActionCompletes(absl::StatusOr<AsyncFileHandle>{mock_file_handle_});
++  pumpDispatcher();
++  mock_async_file_manager_->nextActionCompletes(absl::StatusOr<struct stat>{stat_result});
++  pumpDispatcher();
++  mock_async_file_manager_->nextActionCompletes(
++      absl::StatusOr<Buffer::InstancePtr>{absl::InternalError("mocked read error")});
++  pumpDispatcher();
++  EXPECT_EQ(responseCodeDetails(), "file_server_read_operation_failed");
++}
++
++TEST_F(FileServerFilterTest, GetRequestPausesWhenOverBufferLimit) {
++  auto filter = testFilter();
++  Http::TestRequestHeaderMapImpl request_headers{
++      {":path", "/path1/foo/index.html"},
++      {":method", "GET"},
++      {":host", "test.host"},
++      {":scheme", "https"},
++  };
++  makeMockFile();
++  Http::TestResponseHeaderMapImpl expected_headers{
++      {":status", "200"},
++      {"accept-ranges", "bytes"},
++      {"content-length", "42000"},
++      {"content-type", "text/html"},
++  };
++  // chunk1 is the max read size.
++  std::string chunk1(32 * 1024, 'A');
++  // chunk2 is the remainder.
++  std::string chunk2(42000 - chunk1.length(), 'B');
++  {
++    InSequence seq;
++    EXPECT_CALL(*mock_async_file_manager_, stat);
++    EXPECT_CALL(*mock_async_file_manager_, openExistingFile(_, "fs1/foo/index.html", _, _));
++    EXPECT_CALL(*mock_file_handle_, stat);
++    EXPECT_CALL(decoder_callbacks_, encodeHeaders_(HeaderMapEqualRef(&expected_headers), false));
++    EXPECT_CALL(*mock_file_handle_, read(_, 0, chunk1.length(), _));
++    EXPECT_CALL(decoder_callbacks_, encodeData(BufferStringEqual(chunk1), false));
++    EXPECT_CALL(*mock_file_handle_, read(_, chunk1.length(), chunk2.length(), _));
++    EXPECT_CALL(decoder_callbacks_, encodeData(BufferStringEqual(chunk2), true));
++  }
++  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration, filter->decodeHeaders(request_headers, true));
++  struct stat stat_result = {};
++  stat_result.st_size = chunk1.length() + chunk2.length();
++  mock_async_file_manager_->nextActionCompletes(absl::StatusOr<struct stat>{stat_result});
++  pumpDispatcher();
++  mock_async_file_manager_->nextActionCompletes(absl::StatusOr<AsyncFileHandle>{mock_file_handle_});
++  pumpDispatcher();
++  mock_async_file_manager_->nextActionCompletes(absl::StatusOr<struct stat>{stat_result});
++  pumpDispatcher();
++  mock_async_file_manager_->nextActionCompletes(
++      absl::StatusOr<Buffer::InstancePtr>{std::make_unique<Buffer::OwnedImpl>(chunk1)});
++  filter->onAboveWriteBufferHighWatermark();
++  pumpDispatcher();
++  ASSERT_TRUE(mock_async_file_manager_->queue_.empty())
++      << "next action should not have been queued due to high watermark";
++  filter->onBelowWriteBufferLowWatermark();
++  ASSERT_FALSE(mock_async_file_manager_->queue_.empty())
++      << "next action should have been queued due to low watermark";
++  mock_async_file_manager_->nextActionCompletes(
++      absl::StatusOr<Buffer::InstancePtr>{std::make_unique<Buffer::OwnedImpl>(chunk2)});
++  pumpDispatcher();
++  EXPECT_EQ(responseCodeDetails(), "file_server");
++}
++
++TEST_F(FileServerFilterTest, BufferLimitsDontPauseIfClearedBeforeActionCompletes) {
++  auto filter = testFilter();
++  Http::TestRequestHeaderMapImpl request_headers{
++      {":path", "/path1/foo/index.html"},
++      {":method", "GET"},
++      {":host", "test.host"},
++      {":scheme", "https"},
++  };
++  makeMockFile();
++  Http::TestResponseHeaderMapImpl expected_headers{
++      {":status", "200"},
++      {"accept-ranges", "bytes"},
++      {"content-length", "42000"},
++      {"content-type", "text/html"},
++  };
++  // chunk1 is the max read size.
++  std::string chunk1(32 * 1024, 'A');
++  // chunk2 is the remainder.
++  std::string chunk2(42000 - chunk1.length(), 'B');
++  {
++    InSequence seq;
++    EXPECT_CALL(*mock_async_file_manager_, stat);
++    EXPECT_CALL(*mock_async_file_manager_, openExistingFile(_, "fs1/foo/index.html", _, _));
++    EXPECT_CALL(*mock_file_handle_, stat);
++    EXPECT_CALL(decoder_callbacks_, encodeHeaders_(HeaderMapEqualRef(&expected_headers), false));
++    EXPECT_CALL(*mock_file_handle_, read(_, 0, chunk1.length(), _));
++    EXPECT_CALL(decoder_callbacks_, encodeData(BufferStringEqual(chunk1), false));
++    EXPECT_CALL(*mock_file_handle_, read(_, chunk1.length(), chunk2.length(), _));
++    EXPECT_CALL(decoder_callbacks_, encodeData(BufferStringEqual(chunk2), true));
++  }
++  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration, filter->decodeHeaders(request_headers, true));
++  struct stat stat_result = {};
++  stat_result.st_size = chunk1.length() + chunk2.length();
++  mock_async_file_manager_->nextActionCompletes(absl::StatusOr<struct stat>{stat_result});
++  pumpDispatcher();
++  mock_async_file_manager_->nextActionCompletes(absl::StatusOr<AsyncFileHandle>{mock_file_handle_});
++  pumpDispatcher();
++  mock_async_file_manager_->nextActionCompletes(absl::StatusOr<struct stat>{stat_result});
++  pumpDispatcher();
++  mock_async_file_manager_->nextActionCompletes(
++      absl::StatusOr<Buffer::InstancePtr>{std::make_unique<Buffer::OwnedImpl>(chunk1)});
++  filter->onAboveWriteBufferHighWatermark();
++  filter->onBelowWriteBufferLowWatermark();
++  pumpDispatcher();
++  ASSERT_FALSE(mock_async_file_manager_->queue_.empty())
++      << "next action should have been queued because watermark was cleared before previous action "
++         "completed";
++  mock_async_file_manager_->nextActionCompletes(
++      absl::StatusOr<Buffer::InstancePtr>{std::make_unique<Buffer::OwnedImpl>(chunk2)});
++  pumpDispatcher();
++  EXPECT_EQ(responseCodeDetails(), "file_server");
++}
++
++} // namespace FileServer
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/test/extensions/filters/http/file_server/integration_test.cc b/test/extensions/filters/http/file_server/integration_test.cc
+new file mode 100644
+index 000000000..50b210464
+--- /dev/null
++++ b/test/extensions/filters/http/file_server/integration_test.cc
+@@ -0,0 +1,210 @@
++#include <cstdlib>
++#include <iostream>
++
++#include "test/integration/http_protocol_integration.h"
++#include "test/test_common/utility.h"
++
++#include "absl/strings/str_cat.h"
++#include "absl/strings/string_view.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace FileServer {
++
++using ::testing::AllOf;
++
++class FileServerIntegrationTest : public HttpProtocolIntegrationTest {
++public:
++  static constexpr absl::string_view index_txt_contents_ = "12345678";
++  static constexpr absl::string_view banana_html_contents_ = "abcdefgh";
++  static constexpr absl::string_view readme_md_contents_ = "README CONTENT";
++  static constexpr absl::string_view index_html_contents_ = "87654321";
++  static absl::string_view testTmpDir() {
++    auto env_tmpdir = std::getenv("TEST_TMPDIR");
++    if (env_tmpdir) {
++      return env_tmpdir;
++    }
++    env_tmpdir = std::getenv("TMPDIR");
++    return env_tmpdir ? env_tmpdir : "/tmp";
++  }
++
++  static void prepareTmpFiles() {
++    std::cerr << "Writing test filesystem in tmpdir: " << testTmpDir() << std::endl;
++    TestEnvironment::createPath(absl::StrCat(testTmpDir(), "/fs1"));
++    TestEnvironment::createPath(absl::StrCat(testTmpDir(), "/fs2"));
++    TestEnvironment::writeStringToFileForTest(absl::StrCat(testTmpDir(), "/fs1/banana.html"),
++                                              std::string{banana_html_contents_}, true);
++    TestEnvironment::writeStringToFileForTest(absl::StrCat(testTmpDir(), "/fs1/index.txt"),
++                                              std::string{index_txt_contents_}, true);
++    TestEnvironment::writeStringToFileForTest(absl::StrCat(testTmpDir(), "/fs1/README.md"),
++                                              std::string{readme_md_contents_}, true);
++    TestEnvironment::writeStringToFileForTest(absl::StrCat(testTmpDir(), "/fs2/index.html"),
++                                              std::string{index_html_contents_}, true);
++  }
++
++  static void SetUpTestSuite() { prepareTmpFiles(); }
++
++  std::string testConfig() {
++    return absl::StrCat(R"(
++name: "envoy.filters.http.file_server"
++typed_config:
++  "@type": "type.googleapis.com/envoy.extensions.filters.http.file_server.v3.FileServerConfig"
++  manager_config:
++    thread_pool:
++      thread_count: 1
++  path_mappings:
++    - request_path_prefix: /path1
++      file_path_prefix: )",
++                        testTmpDir(), R"(/fs1
++    - request_path_prefix: /path1/path2
++      file_path_prefix: )",
++                        testTmpDir(), R"(/fs2
++  content_types:
++    "txt": "text/plain"
++    "html": "text/html"
++  default_content_type: "application/octet-stream"
++  directory_behaviors:
++    - default_file: "index.html"
++    - default_file: "index.txt"
++    - list: {}
++)");
++  }
++
++  void initializeFilter(const std::string& config) {
++    config_helper_.prependFilter(config);
++    initialize();
++    codec_client_ = makeHttpConnection(makeClientConnection((lookupPort("http"))));
++  }
++
++  IntegrationStreamDecoderPtr
++  sendHeaderOnlyRequestAwaitResponse(const Http::TestRequestHeaderMapImpl& headers) {
++    IntegrationStreamDecoderPtr response_decoder = codec_client_->makeHeaderOnlyRequest(headers);
++    // Wait for the response to be read by the codec client.
++    EXPECT_TRUE(response_decoder->waitForEndStream());
++    return response_decoder;
++  }
++
++  Http::TestRequestHeaderMapImpl requestPath(std::string path) {
++    return Http::TestRequestHeaderMapImpl{
++        {":method", "GET"},
++        {":path", path},
++        {":authority", "some_authority"},
++        {":scheme", "http"},
++    };
++  }
++};
++
++// Nothing about this filter interacts with the http protocols in any way, so there's no need
++// to run combinatorial iterations of each test, we can just run one.
++INSTANTIATE_TEST_SUITE_P(
++    Protocols, FileServerIntegrationTest,
++    testing::ValuesIn({HttpProtocolIntegrationTest::getProtocolTestParams()[0]}),
++    HttpProtocolIntegrationTest::protocolTestParamsToString);
++
++TEST_P(FileServerIntegrationTest, ReadsConfiguredIndexFileOnRequestForDirectory) {
++  initializeFilter(testConfig());
++  Http::TestRequestHeaderMapImpl request_headers = requestPath("/path1");
++  auto response = sendHeaderOnlyRequestAwaitResponse(request_headers);
++  EXPECT_THAT(response->headers(),
++              AllOf(ContainsHeader(":status", "200"), ContainsHeader("content-type", "text/plain"),
++                    ContainsHeader("content-length", absl::StrCat(index_txt_contents_.length()))));
++  EXPECT_THAT(response->body(), index_txt_contents_);
++}
++
++TEST_P(FileServerIntegrationTest, ReadsSpecifiedFile) {
++  initializeFilter(testConfig());
++  Http::TestRequestHeaderMapImpl request_headers = requestPath("/path1/banana.html");
++  auto response = sendHeaderOnlyRequestAwaitResponse(request_headers);
++  EXPECT_THAT(
++      response->headers(),
++      AllOf(ContainsHeader(":status", "200"), ContainsHeader("content-type", "text/html"),
++            ContainsHeader("content-length", absl::StrCat(banana_html_contents_.length()))));
++  EXPECT_THAT(response->body(), banana_html_contents_);
++}
++
++TEST_P(FileServerIntegrationTest, IgnoresInvalidlyFormattedRangeHeader) {
++  initializeFilter(testConfig());
++  Http::TestRequestHeaderMapImpl request_headers = requestPath("/path1/banana.html");
++  request_headers.addCopy("range", "megatrons=3-5");
++  auto response = sendHeaderOnlyRequestAwaitResponse(request_headers);
++  EXPECT_THAT(
++      response->headers(),
++      AllOf(ContainsHeader(":status", "200"), ContainsHeader("content-type", "text/html"),
++            ContainsHeader("content-length", absl::StrCat(banana_html_contents_.length()))));
++  EXPECT_THAT(response->body(), banana_html_contents_);
++}
++
++TEST_P(FileServerIntegrationTest, IgnoresMultipleRangeHeader) {
++  initializeFilter(testConfig());
++  Http::TestRequestHeaderMapImpl request_headers = requestPath("/path1/banana.html");
++  request_headers.addCopy("range", "bytes=3-5,6-9");
++  auto response = sendHeaderOnlyRequestAwaitResponse(request_headers);
++  EXPECT_THAT(
++      response->headers(),
++      AllOf(ContainsHeader(":status", "200"), ContainsHeader("content-type", "text/html"),
++            ContainsHeader("content-length", absl::StrCat(banana_html_contents_.length()))));
++  EXPECT_THAT(response->body(), banana_html_contents_);
++}
++
++TEST_P(FileServerIntegrationTest, IgnoresSuffixRangeHeader) {
++  initializeFilter(testConfig());
++  Http::TestRequestHeaderMapImpl request_headers = requestPath("/path1/banana.html");
++  request_headers.addCopy("range", "bytes=-6");
++  auto response = sendHeaderOnlyRequestAwaitResponse(request_headers);
++  EXPECT_THAT(
++      response->headers(),
++      AllOf(ContainsHeader(":status", "200"), ContainsHeader("content-type", "text/html"),
++            ContainsHeader("content-length", absl::StrCat(banana_html_contents_.length()))));
++  EXPECT_THAT(response->body(), banana_html_contents_);
++}
++
++TEST_P(FileServerIntegrationTest, IgnoresNonNumericRangeHeader) {
++  initializeFilter(testConfig());
++  Http::TestRequestHeaderMapImpl request_headers = requestPath("/path1/banana.html");
++  request_headers.addCopy("range", "bytes=banana-");
++  auto response = sendHeaderOnlyRequestAwaitResponse(request_headers);
++  EXPECT_THAT(
++      response->headers(),
++      AllOf(ContainsHeader(":status", "200"), ContainsHeader("content-type", "text/html"),
++            ContainsHeader("content-length", absl::StrCat(banana_html_contents_.length()))));
++  EXPECT_THAT(response->body(), banana_html_contents_);
++}
++
++TEST_P(FileServerIntegrationTest, ReadsSpecifiedFileWithRange) {
++  initializeFilter(testConfig());
++  Http::TestRequestHeaderMapImpl request_headers = requestPath("/path1/banana.html");
++  request_headers.addCopy("range", "bytes=3-5");
++  auto response = sendHeaderOnlyRequestAwaitResponse(request_headers);
++  EXPECT_THAT(response->headers(),
++              AllOf(ContainsHeader(":status", "206"), ContainsHeader("content-type", "text/html"),
++                    ContainsHeader("content-length", "3"),
++                    ContainsHeader("content-range", "bytes 3-5/8")));
++  EXPECT_THAT(response->body(), banana_html_contents_.substr(3, 3));
++}
++
++TEST_P(FileServerIntegrationTest, ReadsSpecifiedFileWithRangeToEnd) {
++  initializeFilter(testConfig());
++  Http::TestRequestHeaderMapImpl request_headers = requestPath("/path1/banana.html");
++  request_headers.addCopy("range", "bytes=3-");
++  auto response = sendHeaderOnlyRequestAwaitResponse(request_headers);
++  EXPECT_THAT(response->headers(),
++              AllOf(ContainsHeader(":status", "206"), ContainsHeader("content-type", "text/html"),
++                    ContainsHeader("content-length", "5"),
++                    ContainsHeader("content-range", "bytes 3-7/8")));
++  EXPECT_THAT(response->body(), banana_html_contents_.substr(3));
++}
++
++TEST_P(FileServerIntegrationTest, RejectsRangeRequestLargerThanFile) {
++  initializeFilter(testConfig());
++  Http::TestRequestHeaderMapImpl request_headers = requestPath("/path1/banana.html");
++  request_headers.addCopy("range", "bytes=3-20");
++  auto response = sendHeaderOnlyRequestAwaitResponse(request_headers);
++  EXPECT_THAT(response->headers(),
++              ContainsHeader(":status", absl::StrCat(Http::Code::RangeNotSatisfiable)));
++}
++
++} // namespace FileServer
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy

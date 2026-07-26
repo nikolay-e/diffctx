@@ -1,0 +1,82 @@
+repo: nextcloud
+base_commit: be8b2bfa8bd5884a330c8dbd99099834195c9b0b
+commit: 754422aa000f90c445962e7ecf9b6947ae843ee1
+patch_stored: true
+gold:
+  - path: apps/theming/lib/Settings/Admin.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: provideInitialState('adminThemingInfo'/'adminThemingParameters', ...) and Util::addScript(APP_ID, 'settings-admin') are the string-keyed bridge to the new AdminTheming.vue tree
+  - path: apps/theming/lib/Settings/Personal.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: mirrors Admin.php for the personal settings page, providing initial state and loading the 'settings-personal' script
+  - path: apps/theming/templates/settings-admin.php
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: DOM mount element id changes from 'admin-theming' to 'settings-admin-theming', matched by settings-admin.ts's app.mount() call
+  - path: apps/theming/templates/settings-personal.php
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: DOM mount element id changes to 'settings-personal-theming', matched by settings-personal.ts's app.mount() call
+  - path: apps/theming/src/settings-admin.ts
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new Vue 3 createApp() entry point (replaces admin-settings.js) that mounts views/AdminTheming.vue to '#settings-admin-theming'
+  - path: apps/theming/src/settings-personal.ts
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new Vue 3 createApp() entry point (replaces personal-settings.js) that mounts views/UserTheming.vue to '#settings-personal-theming'
+  - path: apps/theming/src/views/AdminTheming.vue
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new top-level admin settings view (replaces src/AdminTheming.vue) composing the migrated AdminSection* components
+  - path: apps/theming/src/views/UserTheming.vue
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new top-level personal settings view (replaces src/UserTheming.vue) composing the migrated UserSection* components
+  - path: apps/theming/lib/Controller/ThemingController.php
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: updateStylesheet()/undoChanges() OCS endpoints are called via axios by the new useAdminThemingValue.ts composable's setValue/resetValue
+  - path: apps/theming/src/composables/useAdminThemingValue.ts
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: new shared save/reset composable (replaces mixins/admin/FieldMixin.js) posting to ThemingController's updateStylesheet/undoChanges by setting-name string
+forbidden:
+  - path: apps/theming/src/mixins/admin/FieldMixin.js
+    reason: deleted legacy Vue2 mixin superseded by useAdminThemingValue.ts, understanding the new code does not require it
+  - path: apps/theming/src/components/BackgroundSettings.vue
+    reason: deleted component whose responsibility was absorbed into the new AdminSectionTheming/UserSectionBackground split, not needed to understand the migration architecture
+  - path: apps/theming/src/utils/color.ts
+    reason: new color-parsing utility, tangential helper rather than part of the settings-page/entry-point architecture
+  - path: build/frontend-legacy/webpack.modules.cjs
+    reason: only removes the theming entry now that it moved to Vite, the addition (the actually load-bearing side) lives in vite.config.ts
+nontrivial_gold_count: 0
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 54
+  description: theming app migrated to TypeScript + Vue 3 — full-stack stress (PHP backend + frontend
+    rewrite)
+notes: >
+  Full rewrite of the theming app's admin/personal settings UI from Vue 2 (JS, options
+  API, webpack) to Vue 3 (TypeScript, composables, Vite): 54 files touched including many
+  pure renames/deletes of superseded components. Gold picks the architectural backbone —
+  PHP settings classes providing initial state, the template mount points, the new Vue 3
+  entry scripts and top-level views, and the ThemingController endpoints the new save/reset
+  composable calls — rather than every migrated leaf component. Linkage is entirely
+  string-keyed (initial-state keys, DOM element ids, ajax setting names), hence
+  string_indirection: true. Fully self-contained within the diff.

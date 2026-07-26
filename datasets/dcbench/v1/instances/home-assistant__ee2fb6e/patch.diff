@@ -1,0 +1,1261 @@
+From ee2fb6e150c97ad9f722528b08803d19d71b4397 Mon Sep 17 00:00:00 2001
+From: Manu <tr4nt0r@uber.space>
+Date: Tue, 9 Jun 2026 12:38:22 +0200
+Subject: [PATCH] Add config flow to SMTP integration (#172019)
+
+---
+ homeassistant/components/smtp/__init__.py    |  43 +++-
+ homeassistant/components/smtp/config_flow.py | 240 +++++++++++++++++++
+ homeassistant/components/smtp/const.py       |   2 +
+ homeassistant/components/smtp/icons.json     |   7 -
+ homeassistant/components/smtp/issue.py       |  49 ++++
+ homeassistant/components/smtp/manifest.json  |   5 +-
+ homeassistant/components/smtp/notify.py      |  53 ++--
+ homeassistant/components/smtp/services.yaml  |   1 -
+ homeassistant/components/smtp/strings.json   |  77 +++++-
+ homeassistant/generated/config_flows.py      |   1 +
+ homeassistant/generated/integrations.json    |   4 +-
+ tests/components/smtp/conftest.py            |  87 +++++++
+ tests/components/smtp/test_config_flow.py    | 223 +++++++++++++++++
+ tests/components/smtp/test_init.py           | 222 +++++++++++++++++
+ tests/components/smtp/test_notify.py         |  49 ----
+ 15 files changed, 981 insertions(+), 82 deletions(-)
+ create mode 100644 homeassistant/components/smtp/config_flow.py
+ delete mode 100644 homeassistant/components/smtp/icons.json
+ create mode 100644 homeassistant/components/smtp/issue.py
+ delete mode 100644 homeassistant/components/smtp/services.yaml
+ create mode 100644 tests/components/smtp/conftest.py
+ create mode 100644 tests/components/smtp/test_config_flow.py
+ create mode 100644 tests/components/smtp/test_init.py
+
+diff --git a/homeassistant/components/smtp/__init__.py b/homeassistant/components/smtp/__init__.py
+index 5e7fb41c21..4bcd8462de 100644
+--- a/homeassistant/components/smtp/__init__.py
++++ b/homeassistant/components/smtp/__init__.py
+@@ -1 +1,42 @@
+-"""The smtp component."""
++"""The smtp integration."""
++
++from homeassistant.config_entries import ConfigEntry
++from homeassistant.const import CONF_NAME, CONF_RECIPIENT, Platform
++from homeassistant.core import HomeAssistant
++from homeassistant.helpers import discovery
++
++from .const import DOMAIN
++
++
++async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
++    """Set up SMTP from a config entry."""
++
++    hass.async_create_task(
++        discovery.async_load_platform(
++            hass,
++            Platform.NOTIFY,
++            DOMAIN,
++            {
++                **entry.data,
++                CONF_NAME: entry.title,
++                CONF_RECIPIENT: [
++                    subentry.unique_id for subentry in entry.subentries.values()
++                ],
++            },
++            {},
++        )
++    )
++
++    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
++
++    return True
++
++
++async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
++    """Handle update."""
++    hass.config_entries.async_schedule_reload(entry.entry_id)
++
++
++async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
++    """Unload a config entry."""
++    return True
+diff --git a/homeassistant/components/smtp/config_flow.py b/homeassistant/components/smtp/config_flow.py
+new file mode 100644
+index 0000000000..2b9a982e60
+--- /dev/null
++++ b/homeassistant/components/smtp/config_flow.py
+@@ -0,0 +1,240 @@
++"""Config flow for the SMTP integration."""
++
++import logging
++from smtplib import SMTP, SMTP_SSL, SMTPAuthenticationError
++import socket
++from ssl import SSLCertVerificationError
++from typing import Any
++
++import voluptuous as vol
++
++from homeassistant.config_entries import (
++    SOURCE_USER,
++    ConfigEntry,
++    ConfigFlow,
++    ConfigFlowResult,
++    ConfigSubentryData,
++    ConfigSubentryFlow,
++    FlowType,
++    SubentryFlowContext,
++    SubentryFlowResult,
++)
++from homeassistant.const import (
++    CONF_NAME,
++    CONF_PASSWORD,
++    CONF_PORT,
++    CONF_RECIPIENT,
++    CONF_SENDER,
++    CONF_USERNAME,
++    CONF_VERIFY_SSL,
++)
++from homeassistant.core import callback
++from homeassistant.helpers import config_validation as cv
++from homeassistant.helpers.selector import (
++    SelectSelector,
++    SelectSelectorConfig,
++    SelectSelectorMode,
++    TextSelector,
++    TextSelectorConfig,
++    TextSelectorType,
++)
++from homeassistant.util.ssl import create_client_context
++
++from .const import (
++    CONF_ENCRYPTION,
++    CONF_SENDER_NAME,
++    CONF_SERVER,
++    DEFAULT_ENCRYPTION,
++    DEFAULT_HOST,
++    DEFAULT_PORT,
++    DEFAULT_TIMEOUT,
++    DOMAIN,
++    ENCRYPTION_OPTIONS,
++    SUBENTRY_TYPE_RECIPIENT,
++)
++
++_LOGGER = logging.getLogger(__name__)
++
++
++STEP_USER_DATA_SCHEMA = vol.Schema(
++    {
++        vol.Required(CONF_SENDER): TextSelector(
++            TextSelectorConfig(
++                type=TextSelectorType.TEXT,
++                autocomplete="email",
++            ),
++        ),
++        vol.Optional(CONF_SENDER_NAME): cv.string,
++        vol.Required(CONF_SERVER, default=DEFAULT_HOST): cv.string,
++        vol.Required(CONF_PORT, default=DEFAULT_PORT): cv.port,
++        vol.Required(CONF_ENCRYPTION, default=DEFAULT_ENCRYPTION): SelectSelector(
++            SelectSelectorConfig(
++                options=ENCRYPTION_OPTIONS,
++                mode=SelectSelectorMode.DROPDOWN,
++                translation_key="encryption",
++            )
++        ),
++        vol.Optional(CONF_USERNAME): TextSelector(
++            TextSelectorConfig(
++                type=TextSelectorType.TEXT,
++                autocomplete="username",
++            ),
++        ),
++        vol.Optional(CONF_PASSWORD): TextSelector(
++            TextSelectorConfig(
++                type=TextSelectorType.PASSWORD,
++                autocomplete="current-password",
++            ),
++        ),
++        vol.Required(CONF_VERIFY_SSL, default=True): cv.boolean,
++    }
++)
++
++
++class MailConfigFlow(ConfigFlow, domain=DOMAIN):
++    """Handle a config flow for SMTP."""
++
++    @classmethod
++    @callback
++    def async_get_supported_subentry_types(
++        cls, config_entry: ConfigEntry
++    ) -> dict[str, type[ConfigSubentryFlow]]:
++        """Return subentries supported by this integration."""
++        return {SUBENTRY_TYPE_RECIPIENT: RecipientSubentryFlowHandler}
++
++    async def async_step_user(
++        self, user_input: dict[str, Any] | None = None
++    ) -> ConfigFlowResult:
++        """Handle the initial step."""
++        errors: dict[str, str] = {}
++        if user_input is not None:
++            self._async_abort_entries_match(
++                {
++                    CONF_SERVER: user_input[CONF_SERVER],
++                    CONF_SENDER: user_input[CONF_SENDER],
++                    CONF_USERNAME: user_input.get(CONF_USERNAME),
++                }
++            )
++            errors = await self.hass.async_add_executor_job(validate_input, user_input)
++            if not errors:
++                return self.async_create_entry(
++                    title=user_input.get(CONF_SENDER_NAME, user_input[CONF_SENDER]),
++                    data=user_input,
++                )
++        return self.async_show_form(
++            step_id="user",
++            data_schema=self.add_suggested_values_to_schema(
++                data_schema=STEP_USER_DATA_SCHEMA, suggested_values=user_input
++            ),
++            errors=errors,
++        )
++
++    async def async_on_create_entry(self, result: ConfigFlowResult) -> ConfigFlowResult:
++        """Start subentry flow after creating main entry."""
++        subentry_result = await self.hass.config_entries.subentries.async_init(
++            (result["result"].entry_id, SUBENTRY_TYPE_RECIPIENT),
++            context=SubentryFlowContext(source=SOURCE_USER),
++        )
++        result["next_flow"] = (
++            FlowType.CONFIG_SUBENTRIES_FLOW,
++            subentry_result["flow_id"],
++        )
++        return result
++
++    async def async_step_import(self, import_info: dict[str, Any]) -> ConfigFlowResult:
++        """Import config from yaml."""
++
++        self._async_abort_entries_match(import_info)
++
++        errors = await self.hass.async_add_executor_job(validate_input, import_info)
++        if not errors:
++            title = (
++                import_info.get(CONF_NAME)
++                or import_info.get(CONF_SENDER_NAME)
++                or import_info[CONF_SENDER]
++            )
++            return self.async_create_entry(
++                title=title,
++                data=import_info,
++                subentries=[
++                    ConfigSubentryData(
++                        subentry_type=SUBENTRY_TYPE_RECIPIENT,
++                        title=recipient,
++                        unique_id=recipient,
++                        data={},
++                    )
++                    for recipient in import_info[CONF_RECIPIENT]
++                ],
++            )
++
++        return self.async_abort(reason=errors["base"])
++
++
++def validate_input(user_input: dict[str, Any]) -> dict[str, str]:
++    """Validate the user input allows us to connect."""
++    errors: dict[str, str] = {}
++    ssl_context = create_client_context() if user_input[CONF_VERIFY_SSL] else None
++    mail: SMTP_SSL | SMTP | None = None
++    try:
++        if user_input[CONF_ENCRYPTION] == "tls":
++            mail = SMTP_SSL(
++                user_input[CONF_SERVER],
++                user_input[CONF_PORT],
++                timeout=DEFAULT_TIMEOUT,
++                context=ssl_context,
++            )
++        else:
++            mail = SMTP(
++                user_input[CONF_SERVER], user_input[CONF_PORT], timeout=DEFAULT_TIMEOUT
++            )
++        mail.ehlo_or_helo_if_needed()
++        if user_input[CONF_ENCRYPTION] == "starttls":
++            mail.starttls(context=ssl_context)
++            mail.ehlo()
++        if user_input.get(CONF_USERNAME) and user_input.get(CONF_PASSWORD):
++            mail.login(user_input[CONF_USERNAME], user_input[CONF_PASSWORD])
++
++    except SMTPAuthenticationError:
++        errors["base"] = "invalid_auth"
++    except SSLCertVerificationError:
++        errors["base"] = "invalid_cert"
++    except socket.gaierror, ConnectionRefusedError:
++        errors["base"] = "cannot_connect"
++    except Exception:
++        _LOGGER.exception("Unexpected exception")
++        errors["base"] = "unknown"
++    finally:
++        if mail is not None:
++            mail.quit()
++
++    return errors
++
++
++class RecipientSubentryFlowHandler(ConfigSubentryFlow):
++    """Handle subentry flow for adding an email recipient."""
++
++    async def async_step_user(
++        self, user_input: dict[str, Any] | None = None
++    ) -> SubentryFlowResult:
++        """User flow to add a new recipient."""
++
++        if user_input is not None:
++            return self.async_create_entry(
++                title=user_input.get(CONF_NAME, user_input[CONF_RECIPIENT]),
++                data={},
++                unique_id=user_input[CONF_RECIPIENT],
++            )
++        return self.async_show_form(
++            step_id="user",
++            data_schema=vol.Schema(
++                {
++                    vol.Optional(CONF_NAME): cv.string,
++                    vol.Required(CONF_RECIPIENT): TextSelector(
++                        TextSelectorConfig(
++                            type=TextSelectorType.TEXT,
++                            autocomplete="email",
++                        ),
++                    ),
++                }
++            ),
++        )
+diff --git a/homeassistant/components/smtp/const.py b/homeassistant/components/smtp/const.py
+index b0bfc2e029..dc9fccd3d5 100644
+--- a/homeassistant/components/smtp/const.py
++++ b/homeassistant/components/smtp/const.py
+@@ -19,3 +19,5 @@ DEFAULT_DEBUG: Final = False
+ DEFAULT_ENCRYPTION: Final = "starttls"
+ 
+ ENCRYPTION_OPTIONS: Final = ["tls", "starttls", "none"]
++
++SUBENTRY_TYPE_RECIPIENT: Final = "recipient"
+diff --git a/homeassistant/components/smtp/icons.json b/homeassistant/components/smtp/icons.json
+deleted file mode 100644
+index a982942557..0000000000
+--- a/homeassistant/components/smtp/icons.json
++++ /dev/null
+@@ -1,7 +0,0 @@
+-{
+-  "services": {
+-    "reload": {
+-      "service": "mdi:reload"
+-    }
+-  }
+-}
+diff --git a/homeassistant/components/smtp/issue.py b/homeassistant/components/smtp/issue.py
+new file mode 100644
+index 0000000000..e503e6be70
+--- /dev/null
++++ b/homeassistant/components/smtp/issue.py
+@@ -0,0 +1,49 @@
++"""Issues for SMTP integration."""
++
++from typing import Any
++
++from homeassistant.const import CONF_NAME, CONF_SENDER
++from homeassistant.core import DOMAIN as HOMEASSISTANT_DOMAIN, HomeAssistant, callback
++from homeassistant.helpers.issue_registry import IssueSeverity, async_create_issue
++from homeassistant.util import yaml as yaml_util
++
++from .const import CONF_SERVER, DOMAIN
++
++
++@callback
++def async_deprecate_yaml_issue(
++    hass: HomeAssistant, config: dict[str, Any], *, import_success: bool = True
++) -> None:
++    """Deprecate yaml issue."""
++    if import_success:
++        async_create_issue(
++            hass,
++            HOMEASSISTANT_DOMAIN,
++            f"deprecated_yaml_{DOMAIN}",
++            is_fixable=False,
++            issue_domain=DOMAIN,
++            breaks_in_ha_version="2027.1.0",
++            severity=IssueSeverity.WARNING,
++            translation_key="deprecated_yaml",
++            translation_placeholders={
++                "domain": DOMAIN,
++                "integration_title": "SMTP",
++            },
++        )
++    else:
++        async_create_issue(
++            hass,
++            DOMAIN,
++            (
++                f"deprecated_yaml_import_issue_error_{config.get(CONF_NAME, 'unknown')}"
++                f"_{config[CONF_SENDER]}_{config[CONF_SERVER]}"
++            ),
++            breaks_in_ha_version="2027.1.0",
++            is_fixable=False,
++            severity=IssueSeverity.WARNING,
++            translation_key="deprecated_yaml_import_issue_error",
++            translation_placeholders={
++                "url": f"/config/integrations/dashboard/add?domain={DOMAIN}",
++                "config": yaml_util.dump(config),
++            },
++        )
+diff --git a/homeassistant/components/smtp/manifest.json b/homeassistant/components/smtp/manifest.json
+index 66954eebcc..ad47c06066 100644
+--- a/homeassistant/components/smtp/manifest.json
++++ b/homeassistant/components/smtp/manifest.json
+@@ -2,7 +2,8 @@
+   "domain": "smtp",
+   "name": "SMTP",
+   "codeowners": [],
++  "config_flow": true,
+   "documentation": "https://www.home-assistant.io/integrations/smtp",
+-  "iot_class": "cloud_push",
+-  "quality_scale": "legacy"
++  "integration_type": "service",
++  "iot_class": "cloud_push"
+ }
+diff --git a/homeassistant/components/smtp/notify.py b/homeassistant/components/smtp/notify.py
+index b3c811a5f9..bd13484c9b 100644
+--- a/homeassistant/components/smtp/notify.py
++++ b/homeassistant/components/smtp/notify.py
+@@ -23,6 +23,7 @@ from homeassistant.components.notify import (
+     PLATFORM_SCHEMA as NOTIFY_PLATFORM_SCHEMA,
+     BaseNotificationService,
+ )
++from homeassistant.config_entries import SOURCE_IMPORT
+ from homeassistant.const import (
+     CONF_DEBUG,
+     CONF_PASSWORD,
+@@ -35,9 +36,9 @@ from homeassistant.const import (
+     Platform,
+ )
+ from homeassistant.core import HomeAssistant
++from homeassistant.data_entry_flow import FlowResultType
+ from homeassistant.exceptions import ServiceValidationError
+ from homeassistant.helpers import config_validation as cv
+-from homeassistant.helpers.reload import setup_reload_service
+ from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
+ from homeassistant.util import dt as dt_util
+ from homeassistant.util.ssl import create_client_context
+@@ -56,6 +57,7 @@ from .const import (
+     DOMAIN,
+     ENCRYPTION_OPTIONS,
+ )
++from .issue import async_deprecate_yaml_issue
+ 
+ PLATFORMS = [Platform.NOTIFY]
+ 
+@@ -80,30 +82,49 @@ PLATFORM_SCHEMA = NOTIFY_PLATFORM_SCHEMA.extend(
+ )
+ 
+ 
+-def get_service(
++async def async_get_service(
+     hass: HomeAssistant,
+     config: ConfigType,
+     discovery_info: DiscoveryInfoType | None = None,
+ ) -> MailNotificationService | None:
+     """Get the mail notification service."""
+-    setup_reload_service(hass, DOMAIN, PLATFORMS)
+-    ssl_context = create_client_context() if config[CONF_VERIFY_SSL] else None
++    if config:
++        result = await hass.config_entries.flow.async_init(
++            DOMAIN, context={"source": SOURCE_IMPORT}, data=config
++        )
++        if result.get("type") is FlowResultType.CREATE_ENTRY or (
++            result.get("type") is FlowResultType.ABORT
++            and result.get("reason") == "already_configured"
++        ):
++            async_deprecate_yaml_issue(hass, config)
++        else:
++            async_deprecate_yaml_issue(hass, config, import_success=False)
++        return None
++
++    if discovery_info is None:
++        return None
++
++    ssl_context = (
++        await hass.async_add_executor_job(create_client_context)
++        if discovery_info[CONF_VERIFY_SSL]
++        else None
++    )
+     mail_service = MailNotificationService(
+-        config[CONF_SERVER],
+-        config[CONF_PORT],
+-        config[CONF_TIMEOUT],
+-        config[CONF_SENDER],
+-        config[CONF_ENCRYPTION],
+-        config.get(CONF_USERNAME),
+-        config.get(CONF_PASSWORD),
+-        config[CONF_RECIPIENT],
+-        config.get(CONF_SENDER_NAME),
+-        config[CONF_DEBUG],
+-        config[CONF_VERIFY_SSL],
++        discovery_info[CONF_SERVER],
++        discovery_info[CONF_PORT],
++        discovery_info.get(CONF_TIMEOUT, DEFAULT_TIMEOUT),
++        discovery_info[CONF_SENDER],
++        discovery_info[CONF_ENCRYPTION],
++        discovery_info.get(CONF_USERNAME),
++        discovery_info.get(CONF_PASSWORD),
++        discovery_info[CONF_RECIPIENT],
++        discovery_info.get(CONF_SENDER_NAME),
++        DEFAULT_DEBUG,
++        discovery_info[CONF_VERIFY_SSL],
+         ssl_context,
+     )
+ 
+-    if mail_service.connection_is_valid():
++    if await hass.async_add_executor_job(mail_service.connection_is_valid):
+         return mail_service
+ 
+     return None
+diff --git a/homeassistant/components/smtp/services.yaml b/homeassistant/components/smtp/services.yaml
+deleted file mode 100644
+index c983a105c9..0000000000
+--- a/homeassistant/components/smtp/services.yaml
++++ /dev/null
+@@ -1 +0,0 @@
+-reload:
+diff --git a/homeassistant/components/smtp/strings.json b/homeassistant/components/smtp/strings.json
+index f0fed718bf..dac9a8c62b 100644
+--- a/homeassistant/components/smtp/strings.json
++++ b/homeassistant/components/smtp/strings.json
+@@ -1,13 +1,82 @@
+ {
++  "config": {
++    "abort": {
++      "already_configured": "[%key:common::config_flow::abort::already_configured_device%]"
++    },
++    "error": {
++      "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
++      "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",
++      "invalid_cert": "Invalid certificate",
++      "unknown": "[%key:common::config_flow::error::unknown%]"
++    },
++    "step": {
++      "user": {
++        "data": {
++          "encryption": "Connection security",
++          "password": "[%key:common::config_flow::data::password%]",
++          "port": "[%key:common::config_flow::data::port%]",
++          "sender": "Sender email",
++          "sender_name": "Sender name",
++          "server": "[%key:common::config_flow::data::host%]",
++          "username": "[%key:common::config_flow::data::username%]",
++          "verify_ssl": "[%key:common::config_flow::data::verify_ssl%]"
++        },
++        "data_description": {
++          "encryption": "Encryption method used for the SMTP connection.",
++          "password": "Password or app-specific password for the SMTP account.",
++          "port": "SMTP server port number.",
++          "sender": "Email address that will appear in the From field.",
++          "sender_name": "Display name shown as the email sender.",
++          "server": "Hostname or IP address of the SMTP server.",
++          "username": "Username used to authenticate with the SMTP server.",
++          "verify_ssl": "Enable certificate verification for secure SSL/TLS connections."
++        }
++      }
++    }
++  },
++  "config_subentries": {
++    "recipient": {
++      "abort": {
++        "already_configured": "Recipient is already configured"
++      },
++      "entry_type": "Recipient",
++      "initiate_flow": {
++        "user": "Add recipient"
++      },
++      "step": {
++        "user": {
++          "data": {
++            "name": "[%key:common::config_flow::data::name%]",
++            "recipient": "[%key:common::config_flow::data::email%]"
++          },
++          "data_description": {
++            "name": "Name of the recipient",
++            "recipient": "Email address of the recipient."
++          },
++          "description": "Set up a recipient for notifications.",
++          "title": "Recipient"
++        }
++      }
++    }
++  },
+   "exceptions": {
+     "remote_path_not_allowed": {
+       "message": "Cannot send email with attachment \"{file_name}\" from directory \"{file_path}\" which is not secure to load data from. Only folders added to `{allow_list}` are accessible. See {url} for more information."
+     }
+   },
+-  "services": {
+-    "reload": {
+-      "description": "Reloads smtp notify services.",
+-      "name": "[%key:common::action::reload%]"
++  "issues": {
++    "deprecated_yaml_import_issue_error": {
++      "description": "YAML configuration for SMTP is being deprecated, but an error occurred while importing your existing configuration.\n\nVerify that the YAML configuration is valid, then restart Home Assistant to try again. Alternatively remove the SMTP YAML configuration from your `configuration.yaml` file and continue to [set up the integration]({url}) manually.\n\n**Configuration that could not be imported:**\n\n```{config}```",
++      "title": "Failed to import SMTP YAML configuration"
++    }
++  },
++  "selector": {
++    "encryption": {
++      "options": {
++        "none": "None",
++        "starttls": "STARTTLS",
++        "tls": "SSL/TLS"
++      }
+     }
+   }
+ }
+diff --git a/homeassistant/generated/config_flows.py b/homeassistant/generated/config_flows.py
+index ecdd41d6e0..c017d0a107 100644
+--- a/homeassistant/generated/config_flows.py
++++ b/homeassistant/generated/config_flows.py
+@@ -695,6 +695,7 @@ FLOWS = {
+         "smarty",
+         "smhi",
+         "smlight",
++        "smtp",
+         "snapcast",
+         "snoo",
+         "snooz",
+diff --git a/homeassistant/generated/integrations.json b/homeassistant/generated/integrations.json
+index 4e3b7ba8ce..7303e333cc 100644
+--- a/homeassistant/generated/integrations.json
++++ b/homeassistant/generated/integrations.json
+@@ -6605,8 +6605,8 @@
+     },
+     "smtp": {
+       "name": "SMTP",
+-      "integration_type": "hub",
+-      "config_flow": false,
++      "integration_type": "service",
++      "config_flow": true,
+       "iot_class": "cloud_push"
+     },
+     "smud": {
+diff --git a/tests/components/smtp/conftest.py b/tests/components/smtp/conftest.py
+new file mode 100644
+index 0000000000..0238bc34f9
+--- /dev/null
++++ b/tests/components/smtp/conftest.py
+@@ -0,0 +1,87 @@
++"""Common fixtures for the SMTP tests."""
++
++from collections.abc import Generator
++from unittest.mock import AsyncMock, MagicMock, patch
++
++import pytest
++
++from homeassistant.components.smtp.const import (
++    CONF_ENCRYPTION,
++    CONF_SENDER_NAME,
++    CONF_SERVER,
++    DOMAIN,
++    SUBENTRY_TYPE_RECIPIENT,
++)
++from homeassistant.config_entries import ConfigSubentryData
++from homeassistant.const import (
++    CONF_PASSWORD,
++    CONF_PORT,
++    CONF_SENDER,
++    CONF_USERNAME,
++    CONF_VERIFY_SSL,
++)
++
++from tests.common import MockConfigEntry
++
++
++@pytest.fixture
++def mock_setup_entry() -> Generator[AsyncMock]:
++    """Override async_setup_entry."""
++    with patch(
++        "homeassistant.components.smtp.async_setup_entry", return_value=True
++    ) as mock_setup_entry:
++        yield mock_setup_entry
++
++
++@pytest.fixture(name="smtp")
++def mock_smtp() -> Generator[MagicMock]:
++    """Mock smtplib.SMTP."""
++
++    with (
++        patch(
++            "homeassistant.components.smtp.notify.smtplib.SMTP", autospec=True
++        ) as mock_client,
++        patch("homeassistant.components.smtp.config_flow.SMTP", new=mock_client),
++    ):
++        client = mock_client.return_value
++        yield client
++
++
++@pytest.fixture(name="smtp_ssl")
++def mock_smtp_ssl() -> Generator[MagicMock]:
++    """Mock SMTP."""
++
++    with patch(
++        "homeassistant.components.smtp.config_flow.SMTP_SSL", autospec=True
++    ) as mock_client:
++        client = mock_client.return_value
++        yield client
++
++
++@pytest.fixture(name="config_entry")
++def mock_config_entry() -> MockConfigEntry:
++    """Mock smtp configuration entry."""
++    return MockConfigEntry(
++        domain=DOMAIN,
++        title="Home Assistant",
++        data={
++            CONF_SENDER: "email@example.com",
++            CONF_SENDER_NAME: "Home Assistant",
++            CONF_SERVER: "mail.example.com",
++            CONF_PORT: 587,
++            CONF_ENCRYPTION: "starttls",
++            CONF_USERNAME: "test-username",
++            CONF_PASSWORD: "test-password",
++            CONF_VERIFY_SSL: True,
++        },
++        entry_id="123456789",
++        subentries_data=[
++            ConfigSubentryData(
++                data={},
++                subentry_id="ABCDEF",
++                subentry_type=SUBENTRY_TYPE_RECIPIENT,
++                title="Recipient",
++                unique_id="recipient@example.com",
++            )
++        ],
++    )
+diff --git a/tests/components/smtp/test_config_flow.py b/tests/components/smtp/test_config_flow.py
+new file mode 100644
+index 0000000000..b4fab42427
+--- /dev/null
++++ b/tests/components/smtp/test_config_flow.py
+@@ -0,0 +1,223 @@
++"""Test the SMTP config flow."""
++
++from smtplib import SMTPAuthenticationError
++from socket import gaierror
++from ssl import SSLCertVerificationError
++from unittest.mock import AsyncMock, MagicMock
++
++import pytest
++
++from homeassistant.components.smtp.const import (
++    CONF_ENCRYPTION,
++    CONF_SENDER_NAME,
++    CONF_SERVER,
++    DOMAIN,
++    SUBENTRY_TYPE_RECIPIENT,
++)
++from homeassistant.config_entries import SOURCE_USER, FlowType
++from homeassistant.const import (
++    CONF_NAME,
++    CONF_PASSWORD,
++    CONF_PORT,
++    CONF_RECIPIENT,
++    CONF_SENDER,
++    CONF_USERNAME,
++    CONF_VERIFY_SSL,
++)
++from homeassistant.core import HomeAssistant
++from homeassistant.data_entry_flow import FlowResultType
++
++from tests.common import MockConfigEntry
++
++
++@pytest.mark.usefixtures("smtp", "smtp_ssl")
++@pytest.mark.parametrize("encryption", ["tls", "starttls"])
++async def test_form(
++    hass: HomeAssistant, mock_setup_entry: AsyncMock, encryption: str
++) -> None:
++    """Test we get the form."""
++    result = await hass.config_entries.flow.async_init(
++        DOMAIN, context={"source": SOURCE_USER}
++    )
++    assert result["type"] is FlowResultType.FORM
++    assert result["errors"] == {}
++
++    result = await hass.config_entries.flow.async_configure(
++        result["flow_id"],
++        {
++            CONF_SENDER: "email@example.com",
++            CONF_SENDER_NAME: "Home Assistant",
++            CONF_SERVER: "mail.example.com",
++            CONF_PORT: 587,
++            CONF_ENCRYPTION: encryption,
++            CONF_USERNAME: "test-username",
++            CONF_PASSWORD: "test-password",
++            CONF_VERIFY_SSL: True,
++        },
++    )
++    await hass.async_block_till_done()
++
++    assert result["type"] is FlowResultType.CREATE_ENTRY
++    assert result["title"] == "Home Assistant"
++    assert result["data"] == {
++        CONF_SENDER: "email@example.com",
++        CONF_SENDER_NAME: "Home Assistant",
++        CONF_SERVER: "mail.example.com",
++        CONF_PORT: 587,
++        CONF_ENCRYPTION: encryption,
++        CONF_USERNAME: "test-username",
++        CONF_PASSWORD: "test-password",
++        CONF_VERIFY_SSL: True,
++    }
++    assert len(mock_setup_entry.mock_calls) == 1
++
++    await hass.async_block_till_done(wait_background_tasks=True)
++    subentry_flows = hass.config_entries.subentries.async_progress()
++    assert len(subentry_flows) == 1
++    assert result["next_flow"][0] == FlowType.CONFIG_SUBENTRIES_FLOW
++
++    result = await hass.config_entries.subentries.async_configure(
++        result["next_flow"][1],
++        user_input={CONF_NAME: "Recipient", CONF_RECIPIENT: "recipient@example.com"},
++    )
++
++    assert result["type"] is FlowResultType.CREATE_ENTRY
++    assert result["title"] == "Recipient"
++    assert result["unique_id"] == "recipient@example.com"
++
++
++@pytest.mark.usefixtures("smtp")
++async def test_form_already_configured(
++    hass: HomeAssistant,
++    config_entry: MockConfigEntry,
++) -> None:
++    """Test we abort when entry is already configured."""
++
++    config_entry.add_to_hass(hass)
++
++    result = await hass.config_entries.flow.async_init(
++        DOMAIN, context={"source": SOURCE_USER}
++    )
++    assert result["type"] is FlowResultType.FORM
++    assert result["errors"] == {}
++
++    result = await hass.config_entries.flow.async_configure(
++        result["flow_id"],
++        {
++            CONF_SENDER: "email@example.com",
++            CONF_SENDER_NAME: "Home Assistant",
++            CONF_SERVER: "mail.example.com",
++            CONF_PORT: 587,
++            CONF_ENCRYPTION: "tls",
++            CONF_USERNAME: "test-username",
++            CONF_PASSWORD: "test-password",
++            CONF_VERIFY_SSL: True,
++        },
++    )
++    await hass.async_block_till_done()
++
++    assert result["type"] is FlowResultType.ABORT
++    assert result["reason"] == "already_configured"
++
++
++@pytest.mark.parametrize(
++    ("exception", "text_error"),
++    [
++        (SMTPAuthenticationError(0, ""), "invalid_auth"),
++        (ConnectionRefusedError, "cannot_connect"),
++        (gaierror, "cannot_connect"),
++        (SSLCertVerificationError, "invalid_cert"),
++        (ValueError, "unknown"),
++    ],
++)
++async def test_form_errors(
++    hass: HomeAssistant,
++    mock_setup_entry: AsyncMock,
++    smtp: MagicMock,
++    exception: Exception,
++    text_error: str,
++) -> None:
++    """Test we handle errors."""
++    result = await hass.config_entries.flow.async_init(
++        DOMAIN, context={"source": SOURCE_USER}
++    )
++
++    smtp.login.side_effect = exception
++
++    result = await hass.config_entries.flow.async_configure(
++        result["flow_id"],
++        {
++            CONF_SENDER: "email@example.com",
++            CONF_SENDER_NAME: "Home Assistant",
++            CONF_SERVER: "mail.example.com",
++            CONF_PORT: 587,
++            CONF_ENCRYPTION: "starttls",
++            CONF_USERNAME: "test-username",
++            CONF_PASSWORD: "test-password",
++            CONF_VERIFY_SSL: True,
++        },
++    )
++
++    assert result["type"] is FlowResultType.FORM
++    assert result["errors"] == {"base": text_error}
++
++    smtp.login.side_effect = None
++
++    result = await hass.config_entries.flow.async_configure(
++        result["flow_id"],
++        {
++            CONF_SENDER: "email@example.com",
++            CONF_SENDER_NAME: "Home Assistant",
++            CONF_SERVER: "mail.example.com",
++            CONF_PORT: 587,
++            CONF_ENCRYPTION: "starttls",
++            CONF_USERNAME: "test-username",
++            CONF_PASSWORD: "test-password",
++            CONF_VERIFY_SSL: True,
++        },
++    )
++    await hass.async_block_till_done()
++
++    assert result["type"] is FlowResultType.CREATE_ENTRY
++    assert result["title"] == "Home Assistant"
++    assert result["data"] == {
++        CONF_SENDER: "email@example.com",
++        CONF_SENDER_NAME: "Home Assistant",
++        CONF_SERVER: "mail.example.com",
++        CONF_PORT: 587,
++        CONF_ENCRYPTION: "starttls",
++        CONF_USERNAME: "test-username",
++        CONF_PASSWORD: "test-password",
++        CONF_VERIFY_SSL: True,
++    }
++    assert len(mock_setup_entry.mock_calls) == 1
++
++
++@pytest.mark.usefixtures("smtp")
++async def test_form_recipient_already_configured(
++    hass: HomeAssistant,
++    config_entry: MockConfigEntry,
++) -> None:
++    """Test we abort when subentry is already configured."""
++
++    config_entry.add_to_hass(hass)
++    assert await hass.config_entries.async_setup(config_entry.entry_id)
++    await hass.async_block_till_done()
++
++    result = await hass.config_entries.subentries.async_init(
++        (config_entry.entry_id, SUBENTRY_TYPE_RECIPIENT),
++        context={"source": SOURCE_USER},
++    )
++    assert result["type"] is FlowResultType.FORM
++    assert result["step_id"] == "user"
++
++    result = await hass.config_entries.subentries.async_configure(
++        result["flow_id"],
++        user_input={
++            CONF_NAME: "Rick Astley",
++            CONF_RECIPIENT: "recipient@example.com",
++        },
++    )
++
++    assert result["type"] is FlowResultType.ABORT
++    assert result["reason"] == "already_configured"
+diff --git a/tests/components/smtp/test_init.py b/tests/components/smtp/test_init.py
+new file mode 100644
+index 0000000000..2fd19bdd40
+--- /dev/null
++++ b/tests/components/smtp/test_init.py
+@@ -0,0 +1,222 @@
++"""Tests for the SMTP integration."""
++
++from unittest.mock import AsyncMock, MagicMock
++
++import pytest
++
++from homeassistant.components.notify import DOMAIN as NOTIFY_DOMAIN
++from homeassistant.components.smtp.const import (
++    CONF_ENCRYPTION,
++    CONF_SENDER_NAME,
++    CONF_SERVER,
++    DOMAIN,
++)
++from homeassistant.config_entries import ConfigEntryState
++from homeassistant.const import (
++    CONF_DEBUG,
++    CONF_NAME,
++    CONF_PASSWORD,
++    CONF_PLATFORM,
++    CONF_PORT,
++    CONF_RECIPIENT,
++    CONF_SENDER,
++    CONF_TIMEOUT,
++    CONF_USERNAME,
++    CONF_VERIFY_SSL,
++)
++from homeassistant.core import DOMAIN as HOMEASSISTANT_DOMAIN, HomeAssistant
++from homeassistant.helpers import issue_registry as ir
++from homeassistant.setup import async_setup_component
++
++from tests.common import MockConfigEntry
++
++
++@pytest.mark.usefixtures("smtp")
++async def test_entry_setup_unload(
++    hass: HomeAssistant, config_entry: MockConfigEntry
++) -> None:
++    """Test integration setup and unload."""
++
++    config_entry.add_to_hass(hass)
++    assert await hass.config_entries.async_setup(config_entry.entry_id)
++    await hass.async_block_till_done()
++
++    assert config_entry.state is ConfigEntryState.LOADED
++
++    assert await hass.config_entries.async_unload(config_entry.entry_id)
++
++    assert config_entry.state is ConfigEntryState.NOT_LOADED
++
++
++@pytest.mark.usefixtures("smtp")
++async def test_import(
++    hass: HomeAssistant,
++    mock_setup_entry: AsyncMock,
++    issue_registry: ir.IssueRegistry,
++) -> None:
++    """Test yaml import."""
++
++    await async_setup_component(
++        hass,
++        NOTIFY_DOMAIN,
++        {
++            NOTIFY_DOMAIN: [
++                {
++                    CONF_PLATFORM: DOMAIN,
++                    CONF_NAME: "notifier_name",
++                    CONF_SENDER: "email@example.com",
++                    CONF_SENDER_NAME: "Home Assistant",
++                    CONF_SERVER: "mail.example.com",
++                    CONF_PORT: 587,
++                    CONF_ENCRYPTION: "starttls",
++                    CONF_USERNAME: "test-username",
++                    CONF_PASSWORD: "test-password",
++                    CONF_VERIFY_SSL: True,
++                    CONF_RECIPIENT: "recipient@example.com",
++                }
++            ]
++        },
++    )
++
++    await hass.async_block_till_done()
++
++    assert len(mock_setup_entry.mock_calls) == 1
++    assert len(entries := hass.config_entries.async_entries(DOMAIN)) == 1
++
++    assert len(entries[0].subentries) == 1
++
++    assert entries[0].title == "notifier_name"
++    assert entries[0].data == {
++        CONF_PLATFORM: DOMAIN,
++        CONF_NAME: "notifier_name",
++        CONF_SENDER: "email@example.com",
++        CONF_SENDER_NAME: "Home Assistant",
++        CONF_SERVER: "mail.example.com",
++        CONF_PORT: 587,
++        CONF_ENCRYPTION: "starttls",
++        CONF_USERNAME: "test-username",
++        CONF_PASSWORD: "test-password",
++        CONF_VERIFY_SSL: True,
++        CONF_RECIPIENT: ["recipient@example.com"],
++        CONF_TIMEOUT: 5,
++        CONF_DEBUG: False,
++    }
++
++    assert list(entries[0].subentries.values())[0].unique_id == "recipient@example.com"
++
++    assert issue_registry.async_get_issue(
++        domain=HOMEASSISTANT_DOMAIN,
++        issue_id=f"deprecated_yaml_{DOMAIN}",
++    )
++
++
++@pytest.mark.usefixtures("smtp")
++async def test_import_already_configured(
++    hass: HomeAssistant,
++    mock_setup_entry: AsyncMock,
++    issue_registry: ir.IssueRegistry,
++) -> None:
++    """Test yaml import aborts if already configured."""
++    config_entry = MockConfigEntry(
++        domain=DOMAIN,
++        title="Home Assistant",
++        data={
++            CONF_PLATFORM: DOMAIN,
++            CONF_NAME: "notifier_name",
++            CONF_SENDER: "email@example.com",
++            CONF_SENDER_NAME: "Home Assistant",
++            CONF_SERVER: "mail.example.com",
++            CONF_PORT: 587,
++            CONF_ENCRYPTION: "starttls",
++            CONF_USERNAME: "test-username",
++            CONF_PASSWORD: "test-password",
++            CONF_VERIFY_SSL: True,
++            CONF_RECIPIENT: ["recipient@example.com"],
++            CONF_DEBUG: False,
++            CONF_TIMEOUT: 5,
++        },
++        entry_id="123456789",
++    )
++
++    config_entry.add_to_hass(hass)
++
++    await async_setup_component(
++        hass,
++        NOTIFY_DOMAIN,
++        {
++            NOTIFY_DOMAIN: [
++                {
++                    CONF_PLATFORM: DOMAIN,
++                    CONF_NAME: "notifier_name",
++                    CONF_SENDER: "email@example.com",
++                    CONF_SENDER_NAME: "Home Assistant",
++                    CONF_SERVER: "mail.example.com",
++                    CONF_PORT: 587,
++                    CONF_ENCRYPTION: "starttls",
++                    CONF_USERNAME: "test-username",
++                    CONF_PASSWORD: "test-password",
++                    CONF_VERIFY_SSL: True,
++                    CONF_RECIPIENT: "recipient@example.com",
++                }
++            ]
++        },
++    )
++
++    await hass.async_block_till_done()
++
++    assert len(mock_setup_entry.mock_calls) == 0
++    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
++
++    assert issue_registry.async_get_issue(
++        domain=HOMEASSISTANT_DOMAIN,
++        issue_id=f"deprecated_yaml_{DOMAIN}",
++    )
++
++
++async def test_import_errors(
++    hass: HomeAssistant,
++    mock_setup_entry: AsyncMock,
++    issue_registry: ir.IssueRegistry,
++    smtp: MagicMock,
++) -> None:
++    """Test yaml triggers import flow, aborts with errors, and creates error issue."""
++    smtp.login.side_effect = ValueError
++
++    await async_setup_component(
++        hass,
++        NOTIFY_DOMAIN,
++        {
++            NOTIFY_DOMAIN: [
++                {
++                    CONF_PLATFORM: DOMAIN,
++                    CONF_NAME: "notifier_name",
++                    CONF_SENDER: "email@example.com",
++                    CONF_SENDER_NAME: "Home Assistant",
++                    CONF_SERVER: "mail.example.com",
++                    CONF_PORT: 587,
++                    CONF_ENCRYPTION: "starttls",
++                    CONF_USERNAME: "test-username",
++                    CONF_PASSWORD: "test-password",
++                    CONF_VERIFY_SSL: True,
++                    CONF_RECIPIENT: "recipient@example.com",
++                }
++            ]
++        },
++    )
++
++    await hass.async_block_till_done()
++
++    assert len(mock_setup_entry.mock_calls) == 0
++    assert len(hass.config_entries.async_entries(DOMAIN)) == 0
++
++    assert not issue_registry.async_get_issue(
++        domain=HOMEASSISTANT_DOMAIN,
++        issue_id=f"deprecated_yaml_{DOMAIN}",
++    )
++    assert issue_registry.async_get_issue(
++        domain=DOMAIN,
++        issue_id=(
++            "deprecated_yaml_import_issue_error_notifier_name"
++            "_email@example.com_mail.example.com"
++        ),
++    )
+diff --git a/tests/components/smtp/test_notify.py b/tests/components/smtp/test_notify.py
+index ce76de53f8..610b9042ac 100644
+--- a/tests/components/smtp/test_notify.py
++++ b/tests/components/smtp/test_notify.py
+@@ -6,18 +6,12 @@ from unittest.mock import patch
+ 
+ import pytest
+ 
+-from homeassistant import config as hass_config
+-from homeassistant.components import notify
+ from homeassistant.components.smtp.const import DOMAIN
+ from homeassistant.components.smtp.notify import MailNotificationService
+-from homeassistant.const import SERVICE_RELOAD
+ from homeassistant.core import HomeAssistant
+ from homeassistant.exceptions import ServiceValidationError
+-from homeassistant.setup import async_setup_component
+ from homeassistant.util.ssl import create_client_context
+ 
+-from tests.common import get_fixture_path
+-
+ 
+ class MockSMTP(MailNotificationService):
+     """Test SMTP object that doesn't need a working server."""
+@@ -27,49 +21,6 @@ class MockSMTP(MailNotificationService):
+         return msg.as_string(), recipients
+ 
+ 
+-async def test_reload_notify(hass: HomeAssistant) -> None:
+-    """Verify we can reload the notify service."""
+-
+-    with patch(
+-        "homeassistant.components.smtp.notify.MailNotificationService.connection_is_valid"
+-    ):
+-        assert await async_setup_component(
+-            hass,
+-            notify.DOMAIN,
+-            {
+-                notify.DOMAIN: [
+-                    {
+-                        "name": DOMAIN,
+-                        "platform": DOMAIN,
+-                        "recipient": "test@example.com",
+-                        "sender": "test@example.com",
+-                    },
+-                ]
+-            },
+-        )
+-        await hass.async_block_till_done()
+-
+-    assert hass.services.has_service(notify.DOMAIN, DOMAIN)
+-
+-    yaml_path = get_fixture_path("configuration.yaml", "smtp")
+-    with (
+-        patch.object(hass_config, "YAML_CONFIG_FILE", yaml_path),
+-        patch(
+-            "homeassistant.components.smtp.notify.MailNotificationService.connection_is_valid"
+-        ),
+-    ):
+-        await hass.services.async_call(
+-            DOMAIN,
+-            SERVICE_RELOAD,
+-            {},
+-            blocking=True,
+-        )
+-        await hass.async_block_till_done()
+-
+-    assert not hass.services.has_service(notify.DOMAIN, DOMAIN)
+-    assert hass.services.has_service(notify.DOMAIN, "smtp_reloaded")
+-
+-
+ @pytest.fixture
+ def message():
+     """Return MockSMTP object with test data."""

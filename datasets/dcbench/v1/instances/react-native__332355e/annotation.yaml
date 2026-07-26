@@ -1,0 +1,74 @@
+repo: react-native
+base_commit: 1c8751a16a4de82f71831de338a726de800a227b
+commit: 332355e80fffedbf35100b3576af289d6765de2a
+patch_stored: true
+gold:
+- path: packages/react-native/ReactCommon/react/renderer/consistency/ScopedShadowTreeRevisionLock.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/consistency/ShadowTreeRevisionConsistencyManager.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/consistency/ShadowTreeRevisionConsistencyManager.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Legacy.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Modern.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/uimanager/UIManager.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/uimanager/UIManager.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/uimanager/consistency/LatestShadowTreeRevisionProvider.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/uimanager/consistency/LatestShadowTreeRevisionProvider.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/uimanager/consistency/LazyShadowTreeRevisionConsistencyManager.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/uimanager/consistency/LazyShadowTreeRevisionConsistencyManager.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: packages/react-native/React/React-RCTFabric.podspec
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt
+- path: packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp
+- path: packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h
+- path: packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'meta shows ctx_files=105 while the actual diff (git_files) touched only 48 files — more than double
+  over-selection, confirming the over_dump / whole-tree pull-in failure mode (#65). Head of ctx.md opens
+  with two files rendered in full (a podspec and a generated Kotlin feature-flag file, both auto-generated
+  boilerplate present in essentially every RN feature-flag PR) before any of the genuinely new consistency-manager
+  classes appear. changed_frags=105 of total_frags=236 in md_tokens=48557 for a 689-insertion diff is
+  heavy bloat: the ~13 mechanically-generated feature-flag scaffold files (Cxx/Java/JS accessors, interop,
+  defaults, provider) each carry only a few changed lines but are rendered as large full-file chunks.
+  YAML would likely compress this better since MD''s chunk headers/backtick fencing repeat per-file boilerplate.'

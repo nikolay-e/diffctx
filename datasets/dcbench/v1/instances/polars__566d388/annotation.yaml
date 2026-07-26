@@ -1,0 +1,68 @@
+repo: polars
+base_commit: bd9f102d0502e0717910fd9927eddd2d728df689
+commit: 566d388622fa961277f76a74c1d612c776896947
+patch_stored: true
+gold:
+  - path: crates/polars-ops/src/chunked_array/array/dispersion.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds mean_with_nulls(), the core per-subarray mean kernel with dtype-specific handling (Float32, Duration, default f64), mirroring the pre-existing median_with_nulls() in the same file.
+  - path: crates/polars-ops/src/chunked_array/array/namespace.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds ArrayNameSpace::array_mean(), the trait method that calls dispersion::mean_with_nulls and that the plan-level dispatch function calls into.
+  - path: crates/polars-plan/src/dsl/array.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds the public DSL ArrayNameSpace::mean() builder, mapping to FunctionExpr::ArrayExpr(ArrayFunction::Mean) — the entry point of the feature.
+  - path: crates/polars-plan/src/plans/aexpr/function_expr/array.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds IRArrayFunction::Mean, its moment_dtype() typing rule, and the map!(mean) dispatch wiring to dispatch::mean which calls Column::array()?.array_mean().
+  - path: crates/polars-python/src/expr/array.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: PyExpr::arr_mean FFI binding exposing the new method across the PyO3 boundary.
+  - path: py-polars/polars/expr/array.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Public Expr.arr.mean() Python method calling self._pyexpr.arr_mean().
+  - path: py-polars/tests/unit/datatypes/test_array.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: Adds test_arr_mean covering int/float/duration sub-array dtypes, reusing the existing data_dispersion fixture in the same file.
+  - path: crates/polars-plan/src/plans/aexpr/function_expr/schema.rs
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Defines moment_dtype(), the pre-existing typing rule (reused unchanged by Mean) that explains why a Duration sub-array's mean stays Duration-typed in the test rather than becoming a plain float.
+  - path: py-polars/polars/series/utils.py
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: "Defines expr_dispatch: py-polars/polars/series/array.py's Series arr-namespace class is decorated with @expr_dispatch, which is why this commit needs NO Series-side Python change at all. Series(...).arr.mean() is auto-dispatched to Expr.arr.mean() by name at class-definition time."
+forbidden:
+  - path: crates/polars-ops/src/chunked_array/list/sum_mean.rs
+    reason: the list-namespace (not array-namespace) mean implementation, a similarly-named sibling under a parallel `list` module that this commit does not touch
+  - path: py-polars/polars/series/array.py
+    reason: looks like the natural place for a Series-side mean() method but none is needed — the class is @expr_dispatch-decorated so it works without any change here
+  - path: crates/polars-plan/src/dsl/function_expr/array.rs
+    reason: only adds the DSL-level ArrayFunction::Mean enum variant/Display arm; the semantically interesting dtype rule and dispatch wiring live in the IR-level aexpr/function_expr/array.rs already selected as gold
+  - path: crates/polars-plan/dsl-schema.sha256
+    reason: mechanical schema-hash bump generated from the enum change, not needed to understand the feature
+nontrivial_gold_count: 2
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: []
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 13
+  description: Implement mean in `arr` namespace — polars-ops kernel + py test/doc
+notes: Adds Expr.arr.mean() end to end, closely mirroring the existing arr.median() implementation pattern in the same files. No Series-side Python change is needed because the @expr_dispatch decorator on Series' arr-namespace class auto-wires Series.arr.mean() to the new Expr method.

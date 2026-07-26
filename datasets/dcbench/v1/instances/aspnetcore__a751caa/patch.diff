@@ -1,0 +1,4018 @@
+From a751caa6d54351cfe3adb2a052753619f4e85162 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ond=C5=99ej=20Rozto=C4=8Dil?= <roztocil@outlook.com>
+Date: Thu, 14 May 2026 21:10:08 +0200
+Subject: [PATCH] Add JS library for client-side validation in Blazor SSR
+ (#66420)
+
+---
+ package-lock.json                             |   4 +-
+ src/Components/Web.JS/src/Boot.Web.ts         |  27 +
+ src/Components/Web.JS/src/GlobalExports.ts    |   2 +
+ .../Web.JS/src/Platform/SsrStartOptions.ts    |   7 +
+ .../Web.JS/src/Validation/CoreValidators.ts   |  30 +
+ .../Web.JS/src/Validation/DomScanner.ts       | 203 ++++
+ .../Web.JS/src/Validation/DomUtils.ts         |  55 +
+ .../Web.JS/src/Validation/ErrorDisplay.ts     | 208 ++++
+ .../Web.JS/src/Validation/EventManager.ts     | 147 +++
+ .../Web.JS/src/Validation/ValidationEngine.ts | 275 +++++
+ .../src/Validation/ValidationService.ts       |  36 +
+ .../Web.JS/src/Validation/ValidationTypes.ts  |  74 ++
+ .../src/Validation/Validators/CreditCard.ts   |  40 +
+ .../Web.JS/src/Validation/Validators/Email.ts |  24 +
+ .../src/Validation/Validators/EqualTo.ts      |  53 +
+ .../Validation/Validators/FileExtensions.ts   |  31 +
+ .../Web.JS/src/Validation/Validators/Phone.ts |  28 +
+ .../Web.JS/src/Validation/Validators/Range.ts |  37 +
+ .../Web.JS/src/Validation/Validators/Regex.ts |  29 +
+ .../src/Validation/Validators/Required.ts     |  30 +
+ .../src/Validation/Validators/StringLength.ts |  34 +
+ .../Web.JS/src/Validation/Validators/Url.ts   |  22 +
+ src/Components/Web.JS/src/Validation/index.ts |  16 +
+ .../test/Validation/CoreValidators.test.ts    | 976 ++++++++++++++++++
+ .../Web.JS/test/Validation/DomScanner.test.ts | 210 ++++
+ .../ClientValidationAttributesTest.cs         | 175 ++++
+ .../ClientValidationBasicTest.cs              | 182 ++++
+ .../ClientValidationScenariosTest.cs          | 169 +++
+ .../ClientValidationTestBase.cs               |  66 ++
+ .../ClientValidation/AllValidators.razor      |  62 ++
+ .../ClientValidation/BasicValidation.razor    |  91 ++
+ .../ClientValidation/CustomValidator.razor    |  44 +
+ .../ClientValidation/DynamicContent.razor     |  40 +
+ .../ClientValidation/Formnovalidate.razor     |  44 +
+ .../ClientValidation/MultipleForms.razor      |  28 +
+ .../Forms/ClientValidation/NoValidation.razor |  14 +
+ .../Forms/ClientValidation/RadioGroup.razor   |  40 +
+ .../ServerRenderedMessages.razor              |  36 +
+ .../Pages/Forms/ClientValidation/Timing.razor |  40 +
+ .../Forms/ClientValidation/_Imports.razor     |   1 +
+ 40 files changed, 3627 insertions(+), 3 deletions(-)
+ create mode 100644 src/Components/Web.JS/src/Validation/CoreValidators.ts
+ create mode 100644 src/Components/Web.JS/src/Validation/DomScanner.ts
+ create mode 100644 src/Components/Web.JS/src/Validation/DomUtils.ts
+ create mode 100644 src/Components/Web.JS/src/Validation/ErrorDisplay.ts
+ create mode 100644 src/Components/Web.JS/src/Validation/EventManager.ts
+ create mode 100644 src/Components/Web.JS/src/Validation/ValidationEngine.ts
+ create mode 100644 src/Components/Web.JS/src/Validation/ValidationService.ts
+ create mode 100644 src/Components/Web.JS/src/Validation/ValidationTypes.ts
+ create mode 100644 src/Components/Web.JS/src/Validation/Validators/CreditCard.ts
+ create mode 100644 src/Components/Web.JS/src/Validation/Validators/Email.ts
+ create mode 100644 src/Components/Web.JS/src/Validation/Validators/EqualTo.ts
+ create mode 100644 src/Components/Web.JS/src/Validation/Validators/FileExtensions.ts
+ create mode 100644 src/Components/Web.JS/src/Validation/Validators/Phone.ts
+ create mode 100644 src/Components/Web.JS/src/Validation/Validators/Range.ts
+ create mode 100644 src/Components/Web.JS/src/Validation/Validators/Regex.ts
+ create mode 100644 src/Components/Web.JS/src/Validation/Validators/Required.ts
+ create mode 100644 src/Components/Web.JS/src/Validation/Validators/StringLength.ts
+ create mode 100644 src/Components/Web.JS/src/Validation/Validators/Url.ts
+ create mode 100644 src/Components/Web.JS/src/Validation/index.ts
+ create mode 100644 src/Components/Web.JS/test/Validation/CoreValidators.test.ts
+ create mode 100644 src/Components/Web.JS/test/Validation/DomScanner.test.ts
+ create mode 100644 src/Components/test/E2ETest/ServerRenderingTests/ClientValidation/ClientValidationAttributesTest.cs
+ create mode 100644 src/Components/test/E2ETest/ServerRenderingTests/ClientValidation/ClientValidationBasicTest.cs
+ create mode 100644 src/Components/test/E2ETest/ServerRenderingTests/ClientValidation/ClientValidationScenariosTest.cs
+ create mode 100644 src/Components/test/E2ETest/ServerRenderingTests/ClientValidation/ClientValidationTestBase.cs
+ create mode 100644 src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/AllValidators.razor
+ create mode 100644 src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/BasicValidation.razor
+ create mode 100644 src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/CustomValidator.razor
+ create mode 100644 src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/DynamicContent.razor
+ create mode 100644 src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/Formnovalidate.razor
+ create mode 100644 src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/MultipleForms.razor
+ create mode 100644 src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/NoValidation.razor
+ create mode 100644 src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/RadioGroup.razor
+ create mode 100644 src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/ServerRenderedMessages.razor
+ create mode 100644 src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/Timing.razor
+ create mode 100644 src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/_Imports.razor
+
+diff --git a/package-lock.json b/package-lock.json
+index f339dab01a..38a4f33ccc 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -7715,7 +7715,6 @@
+       "version": "0.1.13",
+       "resolved": "https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-public-npm/npm/registry/encoding/-/encoding-0.1.13.tgz",
+       "integrity": "sha1-VldK/deR9UqOmyeFwFgqLSYhD6k=",
+-      "dev": true,
+       "license": "MIT",
+       "optional": true,
+       "dependencies": {
+@@ -7726,7 +7725,6 @@
+       "version": "0.6.3",
+       "resolved": "https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-public-npm/npm/registry/iconv-lite/-/iconv-lite-0.6.3.tgz",
+       "integrity": "sha1-pS+AvzjaGVLrXGgXkHGYcaGnJQE=",
+-      "dev": true,
+       "license": "MIT",
+       "optional": true,
+       "dependencies": {
+@@ -15765,7 +15763,7 @@
+       "version": "2.1.2",
+       "resolved": "https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-public-npm/npm/registry/safer-buffer/-/safer-buffer-2.1.2.tgz",
+       "integrity": "sha1-RPoWGwGHuVSd2Eu5GAL5vYOFzWo=",
+-      "dev": true,
++      "devOptional": true,
+       "license": "MIT"
+     },
+     "node_modules/saucelabs": {
+diff --git a/src/Components/Web.JS/src/Boot.Web.ts b/src/Components/Web.JS/src/Boot.Web.ts
+index 784f849ae7..8d0a105171 100644
+--- a/src/Components/Web.JS/src/Boot.Web.ts
++++ b/src/Components/Web.JS/src/Boot.Web.ts
+@@ -29,6 +29,7 @@ import { resolveOptions } from './Platform/Circuits/CircuitStartOptions';
+ import { JSInitializer } from './JSInitializers/JSInitializers';
+ import { enableFocusOnNavigate } from './Rendering/FocusOnNavigate';
+ import { WebAssemblyStartOptions } from './Platform/WebAssemblyStartOptions';
++import { createValidationService, ValidationOptions } from './Validation';
+ 
+ let started = false;
+ let rootComponentManager: WebRootComponentManager;
+@@ -78,6 +79,17 @@ function boot(options?: Partial<WebStartOptions>) : Promise<void> {
+ 
+   enableFocusOnNavigate(jsEventRegistry);
+ 
++  // Client-side validation is initialized on demand: only when the page contains
++  // SSR-rendered form fields with data-val attributes. This avoids adding document-level
++  // event listeners in interactive-only apps that never use client-side validation.
++  jsEventRegistry.addEventListener('enhancedload', () => {
++    if (Blazor.formValidation) {
++      Blazor.formValidation.scanRules();
++    } else {
++      initFormValidationIfNeeded(options?.ssr?.formValidation);
++    }
++  });
++
+   // Wait until the initial page response completes before activating interactive components.
+   // If stream rendering is used, this helps to ensure that only the final set of interactive
+   // components produced by the stream render actually get activated for interactivity.
+@@ -150,9 +162,24 @@ function onInitialDomContentLoaded(options: Partial<WebStartOptions>) {
+ 
+   rootComponentManager.onDocumentUpdated();
+ 
++  // Initialize client-side validation if the page has validatable fields.
++  initFormValidationIfNeeded(options?.ssr?.formValidation);
++
+   callAfterStartedCallbacks(initializersPromise);
+ }
+ 
++function initFormValidationIfNeeded(formValidation?: ValidationOptions): void {
++  if (Blazor.formValidation) {
++    return;
++  }
++  for (const form of Array.from(document.forms)) {
++    if (form.querySelector('[data-val="true"]')) {
++      Blazor.formValidation = createValidationService(formValidation);
++      return;
++    }
++  }
++}
++
+ async function resolveConfiguredOptions<TOptions>(initializers: Promise<JSInitializer>, options: TOptions): Promise<TOptions> {
+   await initializers;
+   return options;
+diff --git a/src/Components/Web.JS/src/GlobalExports.ts b/src/Components/Web.JS/src/GlobalExports.ts
+index 6bd2fbe69c..7a8998b6fe 100644
+--- a/src/Components/Web.JS/src/GlobalExports.ts
++++ b/src/Components/Web.JS/src/GlobalExports.ts
+@@ -20,6 +20,7 @@ import { WebStartOptions } from './Platform/WebStartOptions';
+ import { RuntimeAPI } from '@microsoft/dotnet-runtime';
+ import { JSEventRegistry } from './Services/JSEventRegistry';
+ import { BinaryMedia } from './Rendering/BinaryMedia';
++import { ValidationService } from './Validation';
+ 
+ 
+ // TODO: It's kind of hard to tell which .NET platform(s) some of these APIs are relevant to.
+@@ -47,6 +48,7 @@ export interface IBlazor {
+   platform?: Platform;
+   rootComponents: typeof RootComponentsFunctions;
+   runtime: RuntimeAPI,
++  formValidation?: ValidationService;
+ 
+   _internal: {
+     navigationManager: typeof navigationManagerInternalFunctions | any;
+diff --git a/src/Components/Web.JS/src/Platform/SsrStartOptions.ts b/src/Components/Web.JS/src/Platform/SsrStartOptions.ts
+index da904e9b01..36332f1f76 100644
+--- a/src/Components/Web.JS/src/Platform/SsrStartOptions.ts
++++ b/src/Components/Web.JS/src/Platform/SsrStartOptions.ts
+@@ -1,6 +1,8 @@
+ // Licensed to the .NET Foundation under one or more agreements.
+ // The .NET Foundation licenses this file to you under the MIT license.
+ 
++import type { ValidationOptions } from '../Validation';
++
+ export interface SsrStartOptions {
+   /**
+    * If true, does not attempt to preserve DOM nodes when performing dynamic updates to SSR content
+@@ -13,4 +15,9 @@ export interface SsrStartOptions {
+    * before closing the circuit.
+    */
+   circuitInactivityTimeoutMs?: number;
++
++  /**
++   * Configures client-side form validation for SSR-rendered forms.
++   */
++  formValidation?: ValidationOptions;
+ }
+diff --git a/src/Components/Web.JS/src/Validation/CoreValidators.ts b/src/Components/Web.JS/src/Validation/CoreValidators.ts
+new file mode 100644
+index 0000000000..bba8b84f17
+--- /dev/null
++++ b/src/Components/Web.JS/src/Validation/CoreValidators.ts
+@@ -0,0 +1,30 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++import { ValidatorRegistry } from './ValidationTypes';
++import { requiredValidator } from './Validators/Required';
++import { stringLengthValidator } from './Validators/StringLength';
++import { rangeValidator } from './Validators/Range';
++import { regexValidator } from './Validators/Regex';
++import { emailValidator } from './Validators/Email';
++import { urlValidator } from './Validators/Url';
++import { phoneValidator } from './Validators/Phone';
++import { creditCardValidator } from './Validators/CreditCard';
++import { equalToValidator } from './Validators/EqualTo';
++import { fileExtensionsValidator } from './Validators/FileExtensions';
++
++/** Registers all built-in validators for standard data-val-* rules. */
++export function registerCoreValidators(registry: ValidatorRegistry): void {
++  registry.set('required', requiredValidator);
++  registry.set('length', stringLengthValidator);
++  registry.set('minlength', stringLengthValidator);
++  registry.set('maxlength', stringLengthValidator);
++  registry.set('range', rangeValidator);
++  registry.set('regex', regexValidator);
++  registry.set('email', emailValidator);
++  registry.set('url', urlValidator);
++  registry.set('phone', phoneValidator);
++  registry.set('creditcard', creditCardValidator);
++  registry.set('equalto', equalToValidator);
++  registry.set('fileextensions', fileExtensionsValidator);
++}
+diff --git a/src/Components/Web.JS/src/Validation/DomScanner.ts b/src/Components/Web.JS/src/Validation/DomScanner.ts
+new file mode 100644
+index 0000000000..5746efe957
+--- /dev/null
++++ b/src/Components/Web.JS/src/Validation/DomScanner.ts
+@@ -0,0 +1,203 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++import { EventManager } from './EventManager';
++import { getElementForm, shouldSkipElement } from './DomUtils';
++import { ElementState, validatableElementSelector, ValidationEngine, ValidationRule } from './ValidationEngine';
++import { ValidatableElement } from './ValidationTypes';
++
++/**
++ * Discovers validatable elements in the DOM and registers them with the engine.
++ * Handles both initial page scan and re-scans after DOM mutations (e.g., Blazor
++ * enhanced navigation). Uses fingerprinting to detect attribute changes without
++ * unnecessarily re-registering unchanged elements.
++ */
++export class DomScanner {
++  constructor(
++    private engine: ValidationEngine,
++    private eventManager: EventManager
++  ) { }
++
++  /** Scans the given root (or entire document) for validatable elements. */
++  scan(elementOrSelector?: ParentNode | string): void {
++    if (!elementOrSelector) {
++      this.scanSubtree(document);
++    } else {
++      const root = typeof elementOrSelector === 'string'
++        ? document.querySelector(elementOrSelector)
++        : elementOrSelector;
++      if (root) {
++        this.scanSubtree(root);
++      }
++    }
++  }
++
++  private scanSubtree(root: ParentNode): void {
++    // Phase 1: Reconcile - clean up elements that are no longer valid candidates
++    this.reconcile(root);
++
++    // Phase 2: Discover — find and register new/changed elements
++    const candidates = Array.from(root.querySelectorAll<ValidatableElement>(validatableElementSelector));
++
++    for (const element of candidates) {
++      if (shouldSkipElement(element)) {
++        continue;
++      }
++
++      // Only track one radio button per name group — the validator checks all siblings
++      if (element instanceof HTMLInputElement && element.type === 'radio') {
++        const form = getElementForm(element);
++        if (form && this.isRadioGroupAlreadyTracked(form, element.name)) {
++          continue;
++        }
++      }
++
++      const previousState = this.engine.getElementState(element);
++      const fingerprint = computeElementFingerprint(element);
++
++      if (previousState) {
++        // Element is already tracked.
++        // Check if its attributes have changed.
++        if (fingerprint === previousState.fingerprint) {
++          continue;
++        }
++
++        // Unregister the element so we can re-register with the current state.
++        this.engine.unregisterElement(element);
++      }
++
++      const rules = parseRules(element);
++      if (rules.length === 0) {
++        continue;
++      }
++
++      const form = getElementForm(element);
++      if (!form) {
++        continue;
++      }
++
++      const state: ElementState = {
++        rules: rules,
++        form: form,
++        triggerEvents: element.getAttribute('data-valevent')?.trim() || 'default',
++        listenerController: new AbortController(),
++        fingerprint: fingerprint,
++        hasBeenInvalid: false,
++      };
++
++      this.engine.registerElement(element, form, state);
++      this.eventManager.attachInputListeners(element);
++
++      // Suppress native browser validation UI, we handle it ourselves
++      if (!form.hasAttribute('novalidate')) {
++        form.setAttribute('novalidate', '');
++      }
++    }
++  }
++
++  private reconcile(root: ParentNode): void {
++    for (const [form, formState] of this.engine.getTrackedForms()) {
++      if (!root.contains(form)) {
++        continue;
++      }
++
++      if (!form.isConnected) {
++        this.unregisterElements(formState.trackedElements);
++        continue;
++      }
++
++      this.unregisterElements(formState.trackedElements, element =>
++        !element.isConnected ||
++        shouldSkipElement(element) ||
++        element.getAttribute('data-val') !== 'true');
++    }
++  }
++
++  private unregisterElements(
++    elements: Set<ValidatableElement>,
++    predicate?: (el: ValidatableElement) => boolean,
++  ): void {
++    const toRemove = predicate ? [...elements].filter(predicate) : [...elements];
++    for (const element of toRemove) {
++      this.engine.unregisterElement(element);
++    }
++  }
++
++  private isRadioGroupAlreadyTracked(form: HTMLFormElement, groupName: string): boolean {
++    const formState = this.engine.getFormState(form);
++    if (!formState) {
++      return false;
++    }
++
++    for (const tracked of formState.trackedElements) {
++      if (tracked instanceof HTMLInputElement
++        && tracked.type === 'radio'
++        && tracked.name === groupName) {
++        return true;
++      }
++    }
++
++    return false;
++  }
++}
++
++const ruleAttributePrefix = 'data-val-';
++const ruleAttributePrefixLength = ruleAttributePrefix.length;
++
++/**
++ * Parses data-val-* attributes on an element into structured validation rules.
++ * e.g., data-val-range="Error." + data-val-range-min="10" + data-val-range-max="50"
++ * becomes { ruleName: 'range', errorMessage: 'Error.', params: { min: '10', max: '50' } }.
++ */
++export function parseRules(element: ValidatableElement): ValidationRule[] {
++  const ruleMap: Record<string, ValidationRule> = {};
++
++  for (let i = 0; i < element.attributes.length; i++) {
++    const attr = element.attributes[i];
++    if (!attr.name.startsWith(ruleAttributePrefix)) {
++      continue;
++    }
++
++    const ruleAndParamName = attr.name.substring(ruleAttributePrefixLength);
++    const dashIndex = ruleAndParamName.indexOf('-');
++    const ruleName = dashIndex === -1 ? ruleAndParamName : ruleAndParamName.substring(0, dashIndex);
++    const paramName = dashIndex === -1 ? undefined : ruleAndParamName.substring(dashIndex + 1);
++
++    if (!ruleName) {
++      continue;
++    }
++
++    const rule = ruleMap[ruleName] ?? { ruleName, errorMessage: '', params: {} };
++
++    if (!paramName) {
++      // Attribute shape: data-val-range="Value must be between 10 and 50."
++      rule.errorMessage = attr.value;
++    } else {
++      // Attribute shape: data-val-range-min="10"
++      rule.params[paramName] = attr.value;
++    }
++
++    ruleMap[ruleName] = rule;
++  }
++
++  return Object.values(ruleMap);
++}
++
++function computeElementFingerprint(element: ValidatableElement): string {
++  const parts: string[] = [];
++
++  const name = element.getAttribute('name');
++  if (name) {
++    parts.push(`name=${name}`);
++  }
++
++  for (let i = 0; i < element.attributes.length; i++) {
++    const attr = element.attributes[i];
++    if (attr.name.startsWith('data-val')) {
++      parts.push(`${attr.name}=${attr.value}`);
++    }
++  }
++
++  parts.sort();
++  return parts.join('|');
++}
+diff --git a/src/Components/Web.JS/src/Validation/DomUtils.ts b/src/Components/Web.JS/src/Validation/DomUtils.ts
+new file mode 100644
+index 0000000000..e976a361c3
+--- /dev/null
++++ b/src/Components/Web.JS/src/Validation/DomUtils.ts
+@@ -0,0 +1,55 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++/** Returns the closest ancestor <form> element, or null if the element is not in a form. */
++export function getElementForm(element: HTMLElement): HTMLFormElement | null {
++  return element.closest('form');
++}
++
++/**
++ * Finds all message elements linked to the given input via data-valmsg-for attribute.
++ * Message elements must be within the same form as the input.
++ */
++export function findMessageElements(element: HTMLElement): HTMLElement[] {
++  const name = element.getAttribute('name');
++  if (!name) {
++    return [];
++  }
++
++  const form = getElementForm(element);
++  if (!form) {
++    return [];
++  }
++
++  return Array.from(form.querySelectorAll<HTMLElement>(`[data-valmsg-for="${CSS.escape(name)}"]`));
++}
++
++/**
++ * Returns true if the element should be skipped during validation
++ * (disabled, hidden, type="hidden", or not visible in the layout).
++ */
++export function shouldSkipElement(element: HTMLElement): boolean {
++  if ((element as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement).disabled) {
++    return true;
++  }
++
++  if (element.hidden) {
++    return true;
++  }
++
++  if (element instanceof HTMLInputElement && element.type === 'hidden') {
++    return true;
++  }
++
++  // Use getComputedStyle for robust visibility detection covering CSS classes, stylesheets,
++  // and inherited styles. Combined with offsetParent to detect inherited display:none.
++  const style = getComputedStyle(element);
++  if (element.offsetParent === null && style.position !== 'fixed' && style.position !== 'sticky') {
++    return true;
++  }
++  if (style.visibility === 'hidden') {
++    return true;
++  }
++
++  return false;
++}
+diff --git a/src/Components/Web.JS/src/Validation/ErrorDisplay.ts b/src/Components/Web.JS/src/Validation/ErrorDisplay.ts
+new file mode 100644
+index 0000000000..2f9a12864d
+--- /dev/null
++++ b/src/Components/Web.JS/src/Validation/ErrorDisplay.ts
+@@ -0,0 +1,208 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++import { findMessageElements } from './DomUtils';
++import { ValidatableElement } from './ValidationTypes';
++
++/**
++ * CSS class names applied to inputs, message elements, and the validation summary.
++ * Override via ValidationOptions.cssClasses to integrate with CSS frameworks
++ * (e.g., Bootstrap's 'is-invalid'/'is-valid', or Tailwind utility classes).
++ */
++export interface CssClassNames {
++  inputError: string;
++  inputValid: string;
++  messageError: string;
++  messageValid: string;
++  summaryError: string;
++  summaryValid: string;
++}
++
++export const defaultCssClassNames: CssClassNames = {
++  inputError: 'input-validation-error',
++  inputValid: 'input-validation-valid',
++  messageError: 'field-validation-error',
++  messageValid: 'field-validation-valid',
++  summaryError: 'validation-summary-errors',
++  summaryValid: 'validation-summary-valid',
++};
++
++/**
++ * Manages visual feedback for validation: CSS classes on inputs, message element
++ * content, ARIA attributes for accessibility, and the validation summary.
++ */
++export class ErrorDisplay {
++  private cssClasses: CssClassNames;
++
++  constructor(cssClasses?: Partial<CssClassNames>) {
++    this.cssClasses = { ...defaultCssClassNames, ...cssClasses };
++  }
++
++  showFieldError(input: ValidatableElement, errorMessage: string): void {
++    addClasses(input, this.cssClasses.inputError);
++    removeClasses(input, this.cssClasses.inputValid);
++
++    const messageElements = findMessageElements(input);
++    this.updateMessageElements(messageElements, errorMessage);
++
++    // Update ARIA attributes.
++    input.setAttribute('aria-invalid', 'true');
++    const firstMessageElement = messageElements[0];
++    if (firstMessageElement) {
++      if (!firstMessageElement.id) {
++        firstMessageElement.id = generateMessageId(input);
++      }
++      // Append our message ID to aria-describedby (preserving existing tokens like help text IDs)
++      addAriaToken(input, 'aria-describedby', firstMessageElement.id);
++    }
++  }
++
++  clearFieldError(input: ValidatableElement): void {
++    removeClasses(input, this.cssClasses.inputError);
++    addClasses(input, this.cssClasses.inputValid);
++
++    const messageElements = findMessageElements(input);
++    this.updateMessageElements(messageElements, '');
++
++    // Update ARIA attributes.
++    input.removeAttribute('aria-invalid');
++    // Remove only our message ID from aria-describedby when we know it,
++    // preserving any other developer-provided tokens.
++    const msgId = messageElements[0]?.id;
++    if (msgId) {
++      removeAriaToken(input, 'aria-describedby', msgId);
++    }
++  }
++
++  clearFieldToPristine(input: ValidatableElement): void {
++    removeClasses(input, this.cssClasses.inputError);
++    removeClasses(input, this.cssClasses.inputValid);
++
++    const messageElements = findMessageElements(input);
++    for (const messageElement of messageElements) {
++      removeClasses(messageElement, this.cssClasses.messageError);
++      removeClasses(messageElement, this.cssClasses.messageValid);
++      if (messageElement.getAttribute('data-valmsg-replace') !== 'false') {
++        messageElement.textContent = '';
++      }
++    }
++
++    input.removeAttribute('aria-invalid');
++    const msgId = messageElements[0]?.id;
++    if (msgId) {
++      removeAriaToken(input, 'aria-describedby', msgId);
++    }
++  }
++
++  private updateMessageElements(messageElements: HTMLElement[], errorMessage: string): void {
++    const classToAdd = errorMessage ? this.cssClasses.messageError : this.cssClasses.messageValid;
++    const classToRemove = errorMessage ? this.cssClasses.messageValid : this.cssClasses.messageError;
++
++    for (const messageElement of messageElements) {
++      addClasses(messageElement, classToAdd);
++      removeClasses(messageElement, classToRemove);
++
++      if (messageElement.getAttribute('data-valmsg-replace') !== 'false') {
++        messageElement.textContent = errorMessage;
++      }
++
++      this.removeServerRenderedSiblings(messageElement);
++    }
++  }
++
++  private removeServerRenderedSiblings(messageElement: HTMLElement): void {
++    // Remove server-rendered sibling validation messages (Blazor SSR renders
++    // one <div class="validation-message"> per error, only the first has data-valmsg-for).
++    let sibling = messageElement.nextElementSibling;
++    while (sibling) {
++      const next = sibling.nextElementSibling;
++      if (sibling.classList.contains('validation-message') && !sibling.hasAttribute('data-valmsg-for')) {
++        sibling.remove();
++      } else {
++        break; // Stop at the first unrelated element
++      }
++      sibling = next;
++    }
++  }
++
++  updateSummary(form: HTMLFormElement, errors?: Map<string, string>): void {
++    // TODO: Support multiple summary elements?
++    // TODO: Support summary elements outside the form?
++    const summaryElement = form.querySelector<HTMLElement>('[data-valmsg-summary]');
++    if (!summaryElement) {
++      return;
++    }
++
++    let ul = summaryElement.querySelector('ul');
++
++    // Clear existing summary messages.
++    while (ul?.firstChild) {
++      ul.removeChild(ul.firstChild);
++    }
++
++    if (!errors || errors.size === 0) {
++      // Set summary to valid state if there are no errors.
++      removeClasses(summaryElement, this.cssClasses.summaryError);
++      addClasses(summaryElement, this.cssClasses.summaryValid);
++    } else {
++      if (!ul) {
++        ul = document.createElement('ul');
++        summaryElement.appendChild(ul);
++      }
++
++      // Add non-duplicate error messages to the summary.
++      const uniqueErrorMessages = new Set<string>(errors.values());
++      for (const errorMessage of uniqueErrorMessages) {
++        const li = document.createElement('li');
++        li.textContent = errorMessage;
++        ul.appendChild(li);
++      }
++
++      removeClasses(summaryElement, this.cssClasses.summaryValid);
++      addClasses(summaryElement, this.cssClasses.summaryError);
++    }
++  }
++}
++
++function addClasses(element: Element, classes: string): void {
++  for (const cls of classes.split(' ')) {
++    if (cls) {
++      element.classList.add(cls);
++    }
++  }
++}
++
++function removeClasses(element: Element, classes: string): void {
++  for (const cls of classes.split(' ')) {
++    if (cls) {
++      element.classList.remove(cls);
++    }
++  }
++}
++
++let messageIdCounter = 0;
++
++/** Generates a unique, safe ID for a validation message element. */
++function generateMessageId(input: ValidatableElement): string {
++  const name = (input.getAttribute('name') || input.id || 'field').replace(/[^a-zA-Z0-9_-]/g, '-');
++  return `val-msg-${name}-${++messageIdCounter}`;
++}
++
++/** Appends a token to a space-separated attribute value (e.g., aria-describedby), avoiding duplicates. */
++function addAriaToken(element: Element, attribute: string, token: string): void {
++  const existing = element.getAttribute(attribute) || '';
++  const tokens = existing.split(/\s+/).filter(t => t && t !== token);
++  tokens.push(token);
++  element.setAttribute(attribute, tokens.join(' '));
++}
++
++/** Removes a token from a space-separated attribute value. Removes the attribute entirely if no tokens remain. */
++function removeAriaToken(element: Element, attribute: string, token: string): void {
++  const existing = element.getAttribute(attribute) || '';
++  const tokens = existing.split(/\s+/).filter(t => t && t !== token);
++  if (tokens.length > 0) {
++    element.setAttribute(attribute, tokens.join(' '));
++  } else {
++    element.removeAttribute(attribute);
++  }
++}
+diff --git a/src/Components/Web.JS/src/Validation/EventManager.ts b/src/Components/Web.JS/src/Validation/EventManager.ts
+new file mode 100644
+index 0000000000..325b64a1c9
+--- /dev/null
++++ b/src/Components/Web.JS/src/Validation/EventManager.ts
+@@ -0,0 +1,147 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++import { getElementForm } from './DomUtils';
++import { ValidationEngine } from './ValidationEngine';
++import { ValidatableElement } from './ValidationTypes';
++
++/**
++ * Manages DOM event listeners for validation triggers and form submission interception.
++ *
++ * Form-level listeners use capture phase on `document` to fire before other handlers
++ * (including Blazor enhanced navigation). When validation fails, stopPropagation()
++ * prevents the submit from reaching bubble-phase handlers.
++ */
++export class EventManager {
++  private formInterceptorController: AbortController | null = null;
++
++  constructor(private engine: ValidationEngine) { }
++
++  /**
++   * Attaches per-field validation listeners based on the element's trigger configuration.
++   * Default: 'lazy validation, eager recovery' — validate on change always, on input
++   * only after the form has been submitted or the field has had an error.
++   */
++  attachInputListeners(element: ValidatableElement): void {
++    const state = this.engine.getElementState(element);
++    if (!state) {
++      return;
++    }
++
++    if (state.triggerEvents === 'submit') {
++      // No listeners for fields that are only validated on submit.
++      return;
++    }
++
++    const form = getElementForm(element);
++    if (!form) {
++      return;
++    }
++
++    const formState = this.engine.getFormState(form);
++    if (!formState) {
++      return;
++    }
++
++    const signal = state.listenerController.signal;
++
++    const validate = () => {
++      this.engine.validateElement(element);
++      this.engine.updateValidationSummary(form);
++    };
++
++    // Explicit data-valevent override: listen to the specified event(s), no gating.
++    if (state.triggerEvents !== 'default') {
++      for (const eventType of state.triggerEvents.split(/\s+/)) {
++        if (eventType) {
++          element.addEventListener(eventType, validate, { signal });
++        }
++      }
++      return;
++    }
++
++    // Default: lazy validation, eager recovery.
++    // Always validate on 'change' (fires on blur-commit for text, immediately for checkbox/select).
++    // After the form has been submitted, or after the field has been invalid, validate also on 'input'.
++    const validateGated = () => {
++      if (formState.hasBeenSubmitted || state.hasBeenInvalid) {
++        validate();
++      }
++    };
++
++    element.addEventListener('change', validate, { signal });
++    element.addEventListener('input', validateGated, { signal });
++  }
++
++  /** Attaches document-level submit and reset interceptors (capture phase). */
++  attachFormInterceptors(): void {
++    this.formInterceptorController = new AbortController();
++    const signal = this.formInterceptorController.signal;
++
++    document.addEventListener('submit', this.handleSubmit.bind(this), { signal, capture: true });
++    document.addEventListener('reset', this.handleReset.bind(this), { signal, capture: true });
++  }
++
++  detachFormInterceptors(): void {
++    this.formInterceptorController?.abort();
++    this.formInterceptorController = null;
++  }
++
++  private handleSubmit(event: SubmitEvent): void {
++    const form = event.target;
++
++    if (!(form instanceof HTMLFormElement)) {
++      return;
++    }
++
++    // Respect formnovalidate on the submit button (HTML spec).
++    if (event.submitter?.hasAttribute('formnovalidate')) {
++      return;
++    }
++
++    // Only intercept tracked forms.
++    const formState = this.engine.getFormState(form);
++    if (!formState) {
++      return;
++    }
++
++    formState.hasBeenSubmitted = true;
++    const errors = this.engine.validateForm(form);
++
++    if (errors.size > 0) {
++      event.preventDefault();
++      event.stopPropagation();
++      dispatchValidationComplete(form, false, errors);
++      return;
++    }
++
++    dispatchValidationComplete(form, true, errors);
++  }
++
++  private handleReset(event: Event): void {
++    const form = event.target;
++    if (!(form instanceof HTMLFormElement)) {
++      return;
++    }
++
++    // Only intercept tracked forms.
++    if (!this.engine.getFormState(form)) {
++      return;
++    }
++
++    // Use setTimeout because the reset event fires before the browser resets field values.
++    // We clear validation state after values are reset so the state is consistent.
++    setTimeout(() => this.engine.resetForm(form), 0);
++  }
++}
++
++/**
++ * Dispatches a 'validationcomplete' custom event on the form. Bubbles to document.
++ * detail.valid: whether the form is valid. detail.errors: Map of field name to error message.
++ */
++function dispatchValidationComplete(form: HTMLFormElement, valid: boolean, errors: Map<string, string>): void {
++  form.dispatchEvent(new CustomEvent('validationcomplete', {
++    bubbles: true,
++    detail: { valid, errors },
++  }));
++}
+diff --git a/src/Components/Web.JS/src/Validation/ValidationEngine.ts b/src/Components/Web.JS/src/Validation/ValidationEngine.ts
+new file mode 100644
+index 0000000000..bb37316ed5
+--- /dev/null
++++ b/src/Components/Web.JS/src/Validation/ValidationEngine.ts
+@@ -0,0 +1,275 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++import { ErrorDisplay } from './ErrorDisplay';
++import { findMessageElements, shouldSkipElement } from './DomUtils';
++import { ValidatableElement, ValidationContext, ValidationResult, ValidatorRegistry } from './ValidationTypes';
++
++/** A parsed validation rule from data-val-* attributes on an element. */
++export type ValidationRule = {
++  ruleName: string;
++  errorMessage: string;
++  params: Record<string, string>;
++};
++
++/** Per-element validation state tracked by the engine. */
++export interface ElementState {
++  rules: ValidationRule[];
++  form: HTMLFormElement; // Owning form, stored at registration to avoid DOM traversal on disconnect
++  triggerEvents: string; // 'default' | 'submit' | space-separated event types
++  fingerprint: string; // Hash of data-val* attributes for change detection during re-scan
++  listenerController: AbortController;
++  currentError?: string;
++  hasBeenInvalid: boolean; // Enables eager recovery (input-level validation after first error)
++}
++
++/** Per-form validation state tracked by the engine. */
++export interface FormState {
++  trackedElements: Set<ValidatableElement>;
++  hasBeenSubmitted: boolean; // Enables input-level validation after first submit attempt
++}
++
++/** CSS selector for elements that opt into client-side validation via data-val="true". */
++export const validatableElementSelector = 'input[data-val="true"], select[data-val="true"], textarea[data-val="true"]';
++
++/**
++ * Central validation coordinator. Manages per-form and per-element state, runs validator
++ * functions against field values, and delegates UI updates to ErrorDisplay.
++ *
++ * Invariants:
++ * - Each validatable element is tracked in exactly one form's trackedElements set.
++ * - An element's rules are immutable after registration; attribute changes trigger
++ *   unregister + re-register via DomScanner's fingerprint comparison.
++ * - setCustomValidity() is called on every validated element to drive the browser's
++ *   Constraint Validation API (:valid/:invalid pseudo-classes).
++ */
++export class ValidationEngine {
++  private trackedForms: Map<HTMLFormElement, FormState> = new Map();
++
++  private trackedElements: WeakMap<ValidatableElement, ElementState> = new WeakMap();
++
++  constructor(
++    private validatorRegistry: ValidatorRegistry,
++    private errorDisplay: ErrorDisplay,
++  ) { }
++
++  /** Registers a validatable element with its parsed rules and associates it with a form. */
++  registerElement(element: ValidatableElement, form: HTMLFormElement, state: ElementState): void {
++    this.trackedElements.set(element, state);
++    const formState = this.trackedForms.get(form) ?? this.registerForm(form);
++    formState.trackedElements.add(element);
++    initializeMessageElementsAria(element);
++  }
++
++  /** Unregisters an element: aborts its listeners, clears errors, and removes from form tracking. */
++  unregisterElement(element: ValidatableElement): void {
++    const state = this.trackedElements.get(element);
++    if (state) {
++      // Abort active listeners for this element.
++      state.listenerController.abort();
++      element.setCustomValidity('');
++      this.errorDisplay.clearFieldError(element);
++
++      // Remove from form tracking using stored form ref (works even if element is disconnected from DOM)
++      const formState = this.trackedForms.get(state.form);
++      if (formState) {
++        formState.trackedElements.delete(element);
++        if (formState.trackedElements.size === 0) {
++          this.trackedForms.delete(state.form);
++        }
++      }
++
++      this.trackedElements.delete(element);
++    }
++  }
++
++  /** Clears all validation state for a form, resets fields to neutral, and clears the summary. */
++  resetForm(form: HTMLFormElement): void {
++    const formState = this.trackedForms.get(form);
++    if (!formState) {
++      return;
++    }
++
++    for (const element of formState.trackedElements) {
++      const state = this.trackedElements.get(element);
++      if (state) {
++        this.markPristine(element, state);
++      }
++    }
++
++    formState.hasBeenSubmitted = false;
++    this.errorDisplay.updateSummary(form);
++  }
++
++  getElementState(element: ValidatableElement): ElementState | undefined {
++    return this.trackedElements.get(element);
++  }
++
++  getFormState(form: HTMLFormElement): FormState | undefined {
++    return this.trackedForms.get(form);
++  }
++
++  getTrackedForms(): Map<HTMLFormElement, FormState> {
++    return this.trackedForms;
++  }
++
++  /**
++   * Validates all tracked elements in the form, updates error display and summary,
++   * and focuses the first invalid field. Returns a map of field name to error message
++   * (empty map when valid). The public API wraps this as a boolean.
++   */
++  validateForm(form: HTMLFormElement): Map<string, string> {
++    const formState = this.trackedForms.get(form);
++    if (!formState) {
++      // The form is not being tracked, so consider it valid.
++      return new Map();
++    }
++
++    const errors = new Map<string, string>();
++    let firstInvalidElement: ValidatableElement | null = null;
++
++    for (const input of formState.trackedElements) {
++      if (shouldSkipElement(input)) {
++        // Skip hidden fields but mark them as valid to clear previous errors
++        const state = this.getElementState(input);
++        if (state) {
++          this.markValid(input, state);
++        }
++        continue;
++      }
++
++      const isValid = this.validateElement(input);
++      if (!isValid) {
++        const name = input.name || input.id || '';
++        errors.set(name, input.validationMessage);
++        firstInvalidElement ??= input;
++      }
++    }
++
++    if (firstInvalidElement) {
++      firstInvalidElement.focus();
++    }
++
++    this.errorDisplay.updateSummary(form, errors);
++    return errors;
++  }
++
++  /** Validates a single element against all its rules, updates error display, returns validity. */
++  validateElement(element: ValidatableElement): boolean {
++    const state = this.getElementState(element);
++
++    if (!state) {
++      // No validation rules for this element, so consider it valid.
++      return true;
++    }
++
++    const errorMessage = this.validateElementInternal(element, state);
++
++    if (errorMessage) {
++      this.markInvalid(element, state, errorMessage);
++      return false;
++    } else {
++      this.markValid(element, state);
++      return true;
++    }
++  }
++
++  /** Rebuilds and updates the validation summary element for the form based on current errors. */
++  updateValidationSummary(form: HTMLFormElement): void {
++    const formState = this.trackedForms.get(form);
++    if (!formState) {
++      return;
++    }
++
++    const errors = new Map<string, string>();
++
++    for (const element of formState.trackedElements) {
++      const state = this.trackedElements.get(element);
++      if (state?.currentError) {
++        const name = element.getAttribute('name') || element.id || '';
++        errors.set(name, state.currentError);
++      }
++    }
++
++    this.errorDisplay.updateSummary(form, errors);
++  }
++
++  private validateElementInternal(element: ValidatableElement, state: ElementState): string {
++    const value = getElementValue(element);
++    const context: ValidationContext = { value, element, params: {} };
++
++    for (const rule of state.rules) {
++      const validator = this.validatorRegistry.get(rule.ruleName);
++      if (!validator) {
++        continue;
++      }
++
++      context.params = rule.params;
++      const result = validator(context);
++      const errorMessage = resolveErrorMessage(result, rule);
++
++      if (errorMessage) {
++        return errorMessage;
++      }
++    }
++
++    return '';
++  }
++
++  private registerForm(form: HTMLFormElement): FormState {
++    const formState: FormState = { trackedElements: new Set(), hasBeenSubmitted: false };
++    this.trackedForms.set(form, formState);
++    this.errorDisplay.updateSummary(form);
++    return formState;
++  }
++
++
++  private markInvalid(element: ValidatableElement, state: ElementState, errorMessage: string): void {
++    state.currentError = errorMessage;
++    state.hasBeenInvalid = true;
++    element.setCustomValidity(errorMessage);
++    this.errorDisplay.showFieldError(element, errorMessage);
++  }
++
++  private markValid(element: ValidatableElement, state: ElementState): void {
++    state.currentError = undefined;
++    element.setCustomValidity('');
++    this.errorDisplay.clearFieldError(element);
++  }
++
++  private markPristine(element: ValidatableElement, state: ElementState): void {
++    state.currentError = undefined;
++    state.hasBeenInvalid = false;
++    element.setCustomValidity('');
++    this.errorDisplay.clearFieldToPristine(element);
++  }
++}
++
++function getElementValue(element: ValidatableElement): string {
++  if (element instanceof HTMLInputElement) {
++    if (element.type === 'checkbox' || element.type === 'radio') {
++      return element.checked ? element.value : '';
++    }
++  }
++
++  return element.value;
++}
++
++function resolveErrorMessage(result: ValidationResult, rule: ValidationRule): string {
++  if (result.success) {
++    return '';
++  }
++
++  return result.message ?? rule.errorMessage;
++}
++
++function initializeMessageElementsAria(element: ValidatableElement): void {
++  for (const el of findMessageElements(element)) {
++    if (!el.hasAttribute('role')) {
++      el.setAttribute('role', 'alert');
++    }
++    if (!el.hasAttribute('aria-live')) {
++      el.setAttribute('aria-live', 'assertive');
++    }
++  }
++}
+diff --git a/src/Components/Web.JS/src/Validation/ValidationService.ts b/src/Components/Web.JS/src/Validation/ValidationService.ts
+new file mode 100644
+index 0000000000..6907105478
+--- /dev/null
++++ b/src/Components/Web.JS/src/Validation/ValidationService.ts
+@@ -0,0 +1,36 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++import { registerCoreValidators } from './CoreValidators';
++import { DomScanner } from './DomScanner';
++import { ErrorDisplay } from './ErrorDisplay';
++import { EventManager } from './EventManager';
++import { ValidationEngine } from './ValidationEngine';
++import { ValidationOptions, ValidatableElement, ValidationService, Validator, ValidatorRegistry } from './ValidationTypes';
++
++/**
++ * Creates and initializes a client-side form validation service. Registers built-in
++ * validators, scans the DOM for validatable elements, and attaches form event interceptors.
++ *
++ * @param options - Optional configuration (e.g., custom CSS class names).
++ * @returns A ValidationService instance for programmatic access.
++ */
++export function createValidationService(options?: ValidationOptions): ValidationService {
++  const registry = new ValidatorRegistry();
++  registerCoreValidators(registry);
++
++  const errorDisplay = new ErrorDisplay(options?.cssClasses);
++  const engine = new ValidationEngine(registry, errorDisplay);
++  const eventManager = new EventManager(engine);
++  const scanner = new DomScanner(engine, eventManager);
++
++  eventManager.attachFormInterceptors();
++  scanner.scan(document);
++
++  return {
++    addValidator: (name: string, validator: Validator) => registry.set(name, validator),
++    scanRules: (elementOrSelector?: ParentNode | string) => scanner.scan(elementOrSelector),
++    validateField: (element: ValidatableElement) => engine.validateElement(element),
++    validateForm: (form: HTMLFormElement) => engine.validateForm(form).size === 0,
++  };
++}
+diff --git a/src/Components/Web.JS/src/Validation/ValidationTypes.ts b/src/Components/Web.JS/src/Validation/ValidationTypes.ts
+new file mode 100644
+index 0000000000..7b20c66ff8
+--- /dev/null
++++ b/src/Components/Web.JS/src/Validation/ValidationTypes.ts
+@@ -0,0 +1,74 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++/** An HTML form element that can be validated. */
++export type ValidatableElement = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
++
++/** Context passed to a validator function with the current field value, element, and rule parameters. */
++export type ValidationContext = {
++  value: string | null | undefined;
++  element: ValidatableElement;
++  params: Record<string, string>;
++};
++
++/**
++ * The result of a validator function.
++ * - `success: true` means the field is valid.
++ * - `success: false` means invalid; if `message` is provided it overrides the rule's
++ *   default error message, otherwise the rule's own message (from `data-val-{rule}=...`)
++ *   is used.
++ */
++export type ValidationResult = { success: boolean; message?: string };
++
++/** Convenience helpers for constructing {@link ValidationResult} values. */
++export function pass(): ValidationResult {
++  return { success: true };
++}
++export function fail(message?: string): ValidationResult {
++  return message === undefined ? { success: false } : { success: false, message };
++}
++
++/** A function that validates a field value and returns a result. */
++export type Validator = (context: ValidationContext) => ValidationResult;
++
++/** Configuration options for the client-side form validation service. */
++export interface ValidationOptions {
++  /** Override default CSS class names for validation states.
++   *  Supports space-separated class names (e.g., 'border-red-500 ring-1'). */
++  cssClasses?: Partial<import('./ErrorDisplay').CssClassNames>;
++}
++
++/**
++ * Public API for client-side form validation. Exposed as `Blazor.formValidation`
++ * (when embedded in blazor.web.js) or `window.__aspnetValidation` (standalone bundle).
++ */
++export interface ValidationService {
++  /** Registers a custom validator function for a given rule name (e.g., 'zipcode'). */
++  addValidator(name: string, validator: Validator): void;
++  /** Scans the DOM (or a subtree) for validatable elements and registers them. */
++  scanRules(elementOrSelector?: ParentNode | string): void;
++  /** Validates a single field element and updates its error display. */
++  validateField(element: ValidatableElement): boolean;
++  /** Validates all tracked fields in the form. Returns true if all fields are valid. */
++  validateForm(form: HTMLFormElement): boolean;
++}
++
++interface ValidatorEntry {
++  fn: Validator;
++}
++
++/**
++ * Maps rule names (e.g., 'required', 'range') to validator functions.
++ * Used internally for built-in validators and externally via `addValidator`.
++ */
++export class ValidatorRegistry {
++  private validators: Map<string, ValidatorEntry> = new Map();
++
++  set(name: string, validator: Validator): void {
++    this.validators.set(name, { fn: validator });
++  }
++
++  get(name: string): Validator | undefined {
++    return this.validators.get(name)?.fn;
++  }
++}
+diff --git a/src/Components/Web.JS/src/Validation/Validators/CreditCard.ts b/src/Components/Web.JS/src/Validation/Validators/CreditCard.ts
+new file mode 100644
+index 0000000000..4d7edbac6f
+--- /dev/null
++++ b/src/Components/Web.JS/src/Validation/Validators/CreditCard.ts
+@@ -0,0 +1,40 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++import { ValidationContext, ValidationResult, Validator, pass, fail } from '../ValidationTypes';
++
++// Validates credit card numbers using the Luhn algorithm (same as .NET CreditCardAttribute).
++// Strips dashes and spaces before validation. Requires 13-19 digits.
++export const creditCardValidator: Validator = (context: ValidationContext): ValidationResult => {
++  const { value } = context;
++  if (!value) {
++    return pass();
++  }
++
++  // Strip dashes and spaces
++  const stripped = value.replace(/[\s-]/g, '');
++
++  // Only digits allowed after stripping
++  if (!/^\d+$/.test(stripped)) {
++    return fail();
++  }
++
++  // Valid card numbers are 13-19 digits
++  if (stripped.length < 13 || stripped.length > 19) {
++    return fail();
++  }
++
++  // Luhn algorithm
++  let checksum = 0;
++  let doubleDigit = false;
++  for (let i = stripped.length - 1; i >= 0; i--) {
++    let digitValue = (stripped.charCodeAt(i) - 48) * (doubleDigit ? 2 : 1);
++    doubleDigit = !doubleDigit;
++    while (digitValue > 0) {
++      checksum += digitValue % 10;
++      digitValue = Math.floor(digitValue / 10);
++    }
++  }
++
++  return (checksum % 10) === 0 ? pass() : fail();
++};
+diff --git a/src/Components/Web.JS/src/Validation/Validators/Email.ts b/src/Components/Web.JS/src/Validation/Validators/Email.ts
+new file mode 100644
+index 0000000000..a1acc5410b
+--- /dev/null
++++ b/src/Components/Web.JS/src/Validation/Validators/Email.ts
+@@ -0,0 +1,24 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++import { ValidationContext, ValidationResult, Validator, pass, fail } from '../ValidationTypes';
++
++// Validates email format with the same semantics as .NET's EmailAddressAttribute:
++// no CR/LF, and exactly one '@' that is neither the first nor the last character.
++// Matching the server-side rule guarantees the client never rejects a value the
++// server would accept (and vice versa).
++// Source: https://github.com/dotnet/runtime/blob/main/src/libraries/System.ComponentModel.Annotations/src/System/ComponentModel/DataAnnotations/EmailAddressAttribute.cs
++export const emailValidator: Validator = (context: ValidationContext): ValidationResult => {
++  const { value } = context;
++  if (!value) {
++    return pass();
++  }
++
++  if (value.includes('\r') || value.includes('\n')) {
++    return fail();
++  }
++
++  const firstAt = value.indexOf('@');
++  const lastAt = value.lastIndexOf('@');
++  return (firstAt > 0 && firstAt === lastAt && firstAt !== value.length - 1) ? pass() : fail();
++};
+diff --git a/src/Components/Web.JS/src/Validation/Validators/EqualTo.ts b/src/Components/Web.JS/src/Validation/Validators/EqualTo.ts
+new file mode 100644
+index 0000000000..5641dca48c
+--- /dev/null
++++ b/src/Components/Web.JS/src/Validation/Validators/EqualTo.ts
+@@ -0,0 +1,53 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++import { ValidationContext, ValidationResult, Validator, pass, fail } from '../ValidationTypes';
++
++// Validates that the value equals another field's value (for password confirmation, etc.).
++// Resolves "*.PropertyName" to the model-prefixed field name using the current field's name.
++// Finds the other field by [name] attribute within the same form.
++// Throws if the mandatory `other` parameter is missing.
++export const equalToValidator: Validator = (context: ValidationContext): ValidationResult => {
++  const { value, element, params } = context;
++  if (!params.other) {
++    throw new Error('EqualTo validator requires a non-empty "other" parameter.');
++  }
++
++  if (!value) {
++    return pass();
++  }
++
++  const otherFieldName = resolveOtherFieldName(element.name, params.other);
++  if (!otherFieldName) {
++    return pass();
++  }
++
++  const form = element.closest('form');
++  if (!form) {
++    return pass();
++  }
++
++  const otherElement = form.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(`[name="${CSS.escape(otherFieldName)}"]`);
++
++  if (!otherElement) {
++    return pass();
++  }
++
++  return value === otherElement.value ? pass() : fail();
++};
++
++function resolveOtherFieldName(currentName: string, otherParam: string | undefined): string | undefined {
++  if (!otherParam) {
++    return undefined;
++  }
++
++  if (otherParam.startsWith('*.')) {
++    // Replace * with the model prefix from the current field's name.
++    // E.g. currentName="User.Password", otherParam="*.ConfirmPassword" → "User.ConfirmPassword"
++    const lastDot = currentName.lastIndexOf('.');
++    const prefix = lastDot >= 0 ? currentName.substring(0, lastDot + 1) : '';
++    return prefix + otherParam.substring(2);
++  }
++
++  return otherParam;
++}
+diff --git a/src/Components/Web.JS/src/Validation/Validators/FileExtensions.ts b/src/Components/Web.JS/src/Validation/Validators/FileExtensions.ts
+new file mode 100644
+index 0000000000..8545af3c79
+--- /dev/null
++++ b/src/Components/Web.JS/src/Validation/Validators/FileExtensions.ts
+@@ -0,0 +1,31 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++import { ValidationContext, ValidationResult, Validator, pass, fail } from '../ValidationTypes';
++
++// Validates that the filename ends with an allowed extension (case-insensitive).
++// Extensions param is comma-separated with dot prefix (e.g. ".png,.jpg,.gif").
++// Throws if the mandatory `extensions` parameter is missing.
++export const fileExtensionsValidator: Validator = (context: ValidationContext): ValidationResult => {
++  const { value, params } = context;
++  if (!params.extensions) {
++    throw new Error('FileExtensions validator requires a non-empty "extensions" parameter.');
++  }
++
++  if (!value) {
++    return pass();
++  }
++
++  // Build regex from comma-separated extensions, stripping dots and escaping regex metacharacters.
++  const extensions = params.extensions.split(',')
++    .map(ext => ext.trim().replace(/^\./, ''))
++    .filter(ext => ext.length > 0)
++    .map(ext => ext.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
++    .join('|');
++
++  if (!extensions) {
++    return pass();
++  }
++
++  return new RegExp(`\\.(${extensions})$`, 'i').test(value) ? pass() : fail();
++};
+diff --git a/src/Components/Web.JS/src/Validation/Validators/Phone.ts b/src/Components/Web.JS/src/Validation/Validators/Phone.ts
+new file mode 100644
+index 0000000000..31a4e0a5f8
+--- /dev/null
++++ b/src/Components/Web.JS/src/Validation/Validators/Phone.ts
+@@ -0,0 +1,28 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++import { ValidationContext, ValidationResult, Validator, pass, fail } from '../ValidationTypes';
++
++// Validates phone numbers matching .NET's PhoneAttribute logic.
++// Strips leading '+' and trailing extensions (ext./ext/x + digits).
++// Requires at least one digit. Only allows digits, whitespace, and: - . ( )
++export const phoneValidator: Validator = (context: ValidationContext): ValidationResult => {
++  const { value } = context;
++  if (!value) {
++    return pass();
++  }
++
++  // Strip leading '+' (international prefix)
++  let phone = value.startsWith('+') ? value.substring(1) : value;
++
++  // Strip trailing extension: "ext." / "ext" / "x" followed by digits
++  phone = phone.replace(/\s*(ext\.?|x)\s*\d+$/i, '').trimEnd();
++
++  // Must contain at least one digit
++  if (!/\d/.test(phone)) {
++    return fail();
++  }
++
++  // Only allow digits, whitespace, and: - . ( )
++  return /^[\d\s\-.()\u00a0]+$/.test(phone) ? pass() : fail();
++};
+diff --git a/src/Components/Web.JS/src/Validation/Validators/Range.ts b/src/Components/Web.JS/src/Validation/Validators/Range.ts
+new file mode 100644
+index 0000000000..2f28710097
+--- /dev/null
++++ b/src/Components/Web.JS/src/Validation/Validators/Range.ts
+@@ -0,0 +1,37 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++import { ValidationContext, ValidationResult, Validator, pass, fail } from '../ValidationTypes';
++
++// Validates that a numeric value falls within min/max bounds (inclusive).
++// Non-numeric values fail. Uses Number() for parsing.
++// Throws if neither bound is defined (rule has no effect).
++export const rangeValidator: Validator = (context: ValidationContext): ValidationResult => {
++  const { value, params } = context;
++  if (params.min === undefined && params.max === undefined) {
++    throw new Error('Range validator requires at least one of "min" or "max" parameters.');
++  }
++
++  if (!value) {
++    return pass();
++  }
++
++  const num = Number(value);
++  if (isNaN(num)) {
++    return fail();
++  }
++
++  if (params.min !== undefined) {
++    if (num < Number(params.min)) {
++      return fail();
++    }
++  }
++
++  if (params.max !== undefined) {
++    if (num > Number(params.max)) {
++      return fail();
++    }
++  }
++
++  return pass();
++};
+diff --git a/src/Components/Web.JS/src/Validation/Validators/Regex.ts b/src/Components/Web.JS/src/Validation/Validators/Regex.ts
+new file mode 100644
+index 0000000000..f47b29e1ca
+--- /dev/null
++++ b/src/Components/Web.JS/src/Validation/Validators/Regex.ts
+@@ -0,0 +1,29 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++import { ValidationContext, ValidationResult, Validator, pass, fail } from '../ValidationTypes';
++
++// Validates that the value matches a regular expression pattern (full match).
++// The pattern is anchored with ^(?:...)$ to match .NET's exact-match semantics.
++// Throws if the mandatory `pattern` parameter is missing.
++export const regexValidator: Validator = (context: ValidationContext): ValidationResult => {
++  const { value, params } = context;
++  if (!params.pattern) {
++    throw new Error('regex validator requires a non-empty "pattern" parameter.');
++  }
++
++  if (!value) {
++    return pass();
++  }
++
++  // Anchor the pattern for full-match semantics, matching .NET's RegularExpressionAttribute
++  // which requires Index == 0 && Length == value.Length. The non-capturing group avoids
++  // changing semantics for patterns with alternation (e.g. "a|b").
++  const anchored = `^(?:${params.pattern})$`;
++
++  try {
++    return new RegExp(anchored).test(value) ? pass() : fail();
++  } catch {
++    return pass();
++  }
++};
+diff --git a/src/Components/Web.JS/src/Validation/Validators/Required.ts b/src/Components/Web.JS/src/Validation/Validators/Required.ts
+new file mode 100644
+index 0000000000..49cab02a2b
+--- /dev/null
++++ b/src/Components/Web.JS/src/Validation/Validators/Required.ts
+@@ -0,0 +1,30 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++import { ValidationContext, ValidationResult, Validator, pass, fail } from '../ValidationTypes';
++
++// Validates that the field has a non-empty value.
++// Checkboxes: must be checked. Radio groups: at least one in the group must be checked.
++// Text/select/textarea: value must be non-empty after trimming whitespace.
++export const requiredValidator: Validator = (context: ValidationContext): ValidationResult => {
++  const { value, element } = context;
++  if (element instanceof HTMLInputElement) {
++    if (element.type === 'checkbox') {
++      return element.checked ? pass() : fail();
++    }
++
++    if (element.type === 'radio') {
++      const form = element.closest('form');
++      if (form) {
++        const radios = form.querySelectorAll<HTMLInputElement>(`input[type="radio"][name="${CSS.escape(element.name)}"]`);
++        return Array.from(radios).some(r => r.checked) ? pass() : fail();
++      }
++    }
++  }
++
++  if (!value) {
++    return fail();
++  }
++
++  return value.trim().length > 0 ? pass() : fail();
++};
+diff --git a/src/Components/Web.JS/src/Validation/Validators/StringLength.ts b/src/Components/Web.JS/src/Validation/Validators/StringLength.ts
+new file mode 100644
+index 0000000000..5ac3411a84
+--- /dev/null
++++ b/src/Components/Web.JS/src/Validation/Validators/StringLength.ts
+@@ -0,0 +1,34 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++import { ValidationContext, ValidationResult, Validator, pass, fail } from '../ValidationTypes';
++
++// Validates string length against min and/or max bounds (inclusive).
++// Used for 'length' ([StringLength]), 'minlength' ([MinLength]), and 'maxlength' ([MaxLength]) rules.
++// Throws if neither bound is defined (rule has no effect).
++export const stringLengthValidator: Validator = (context: ValidationContext): ValidationResult => {
++  const { value, params } = context;
++  if (!params.min && !params.max) {
++    throw new Error('length/minlength/maxlength validator requires at least one of "min" or "max" parameters.');
++  }
++
++  if (!value) {
++    return pass();
++  }
++
++  if (params.min) {
++    const min = parseInt(params['min'], 10);
++    if (value.length < min) {
++      return fail();
++    }
++  }
++
++  if (params.max) {
++    const max = parseInt(params['max'], 10);
++    if (value.length > max) {
++      return fail();
++    }
++  }
++
++  return pass();
++};
+diff --git a/src/Components/Web.JS/src/Validation/Validators/Url.ts b/src/Components/Web.JS/src/Validation/Validators/Url.ts
+new file mode 100644
+index 0000000000..c68ea7683f
+--- /dev/null
++++ b/src/Components/Web.JS/src/Validation/Validators/Url.ts
+@@ -0,0 +1,22 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++import { ValidationContext, ValidationResult, Validator, pass, fail } from '../ValidationTypes';
++
++// Validates URL format with the same semantics as .NET's UrlAttribute (string overload):
++// the value must start with "http://", "https://", or "ftp://" (case-insensitive).
++// Matching the server-side rule guarantees the client never rejects a value the
++// server would accept (and vice versa). This intentionally accepts hostnames
++// like "http://localhost" and even values with embedded whitespace - the server
++// would too.
++// Source: https://github.com/dotnet/runtime/blob/main/src/libraries/System.ComponentModel.Annotations/src/System/ComponentModel/DataAnnotations/UrlAttribute.cs
++const urlPrefix = /^(?:https?|ftp):\/\//i;
++
++export const urlValidator: Validator = (context: ValidationContext): ValidationResult => {
++  const { value } = context;
++  if (!value) {
++    return pass();
++  }
++
++  return urlPrefix.test(value) ? pass() : fail();
++};
+diff --git a/src/Components/Web.JS/src/Validation/index.ts b/src/Components/Web.JS/src/Validation/index.ts
+new file mode 100644
+index 0000000000..7079da2ef4
+--- /dev/null
++++ b/src/Components/Web.JS/src/Validation/index.ts
+@@ -0,0 +1,16 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++// ES module facade for the client-side validation library. Importing this module
++// has no side effects - the consumer is responsible for calling
++// `createValidationService()` to instantiate the service.
++
++export { createValidationService } from './ValidationService';
++export type {
++  ValidationService,
++  ValidationOptions,
++  ValidationContext,
++  ValidationResult,
++  Validator,
++  ValidatableElement,
++} from './ValidationTypes';
+diff --git a/src/Components/Web.JS/test/Validation/CoreValidators.test.ts b/src/Components/Web.JS/test/Validation/CoreValidators.test.ts
+new file mode 100644
+index 0000000000..d2281ba1e5
+--- /dev/null
++++ b/src/Components/Web.JS/test/Validation/CoreValidators.test.ts
+@@ -0,0 +1,976 @@
++import { expect, test, describe, beforeAll } from '@jest/globals';
++import { registerCoreValidators } from '../../src/Validation/CoreValidators';
++import { ValidatorRegistry, ValidationContext, ValidationResult, Validator } from '../../src/Validation/ValidationTypes';
++
++// jsdom does not provide CSS.escape; polyfill for radio group tests
++beforeAll(() => {
++  if (typeof globalThis.CSS === 'undefined') {
++    (globalThis as any).CSS = { escape: (v: string) => v.replace(/([^\w-])/g, '\\$1') };
++  }
++});
++
++// Returns a function that yields the boolean success of the named validator.
++// Existing tests assert against this boolean; tests that need to inspect the
++// full ValidationResult shape (e.g., custom message) call `getValidatorRaw`.
++function getValidator(name: string): (ctx: ValidationContext) => boolean {
++  const v = getValidatorRaw(name);
++  return (ctx: ValidationContext) => v(ctx).success;
++}
++
++function getValidatorRaw(name: string): Validator {
++  const registry = new ValidatorRegistry();
++  registerCoreValidators(registry);
++  const v = registry.get(name);
++  if (!v) throw new Error(`Validator '${name}' not found`);
++  return v;
++}
++
++function makeContext(overrides: Partial<ValidationContext> & { element?: HTMLElement } = {}): ValidationContext {
++  return {
++    value: overrides.value ?? '',
++    element: (overrides.element ?? document.createElement('input')) as any,
++    params: overrides.params ?? {},
++  };
++}
++
++function makeCheckbox(checked: boolean): HTMLInputElement {
++  const el = document.createElement('input');
++  el.type = 'checkbox';
++  el.checked = checked;
++  return el;
++}
++
++function makeRadioGroup(name: string, ...radios: { checked: boolean; name?: string }[]): HTMLInputElement[] {
++  const form = document.createElement('form');
++  return radios.map(r => {
++    const el = document.createElement('input');
++    el.type = 'radio';
++    el.name = r.name ?? name;
++    el.checked = r.checked;
++    form.appendChild(el);
++    return el;
++  });
++}
++
++describe('registerCoreValidators', () => {
++  test('registers required and length validators', () => {
++    const registry = new ValidatorRegistry();
++    registerCoreValidators(registry);
++    expect(registry.get('required')).toBeDefined();
++    expect(registry.get('length')).toBeDefined();
++  });
++});
++
++// ValidationResult is a structured object so custom validators can supply a
++// per-call error message that overrides the rule's default. The built-in
++// validators just produce { success: true } / { success: false } and rely on
++// the rule's own message.
++describe('ValidationResult shape', () => {
++  test('built-in validators return a ValidationResult object', () => {
++    const required = getValidatorRaw('required');
++    const result = required({ value: '', element: document.createElement('input') as any, params: {} });
++    expect(result).toEqual({ success: false });
++  });
++
++  test('built-in validators return success: true on pass', () => {
++    const required = getValidatorRaw('required');
++    const result = required({ value: 'x', element: document.createElement('input') as any, params: {} });
++    expect(result).toEqual({ success: true });
++  });
++
++  test('custom validators can supply a per-call message via the result', () => {
++    const registry = new ValidatorRegistry();
++    registerCoreValidators(registry);
++    registry.set('custom', () => ({ success: false, message: 'override' }));
++    const result = registry.get('custom')!({ value: '', element: document.createElement('input') as any, params: {} });
++    expect(result).toEqual({ success: false, message: 'override' });
++  });
++});
++
++// Matches .NET [Required] behavior:
++// - Null/empty/whitespace-only values are invalid (AllowEmptyStrings = false by default)
++// - Checkboxes must be checked (like [Required] on a bool property)
++// - Radio groups must have a selection
++describe('requiredValidator', () => {
++  const required = getValidator('required');
++
++  describe('text input', () => {
++    test('rejects null', () => {
++      expect(required(makeContext({ value: null }))).toBe(false);
++    });
++
++    test('rejects undefined', () => {
++      expect(required(makeContext({ value: undefined }))).toBe(false);
++    });
++
++    test('rejects empty string', () => {
++      expect(required(makeContext({ value: '' }))).toBe(false);
++    });
++
++    test('rejects whitespace-only string', () => {
++      expect(required(makeContext({ value: '   ' }))).toBe(false);
++    });
++
++    test('rejects string containing only tabs and newlines', () => {
++      expect(required(makeContext({ value: '\t\n ' }))).toBe(false);
++    });
++
++    test('accepts non-empty value', () => {
++      expect(required(makeContext({ value: 'hello' }))).toBe(true);
++    });
++
++    test('accepts value with non-whitespace content surrounded by spaces', () => {
++      expect(required(makeContext({ value: '  a  ' }))).toBe(true);
++    });
++  });
++
++  describe('checkbox', () => {
++    test('accepts when checked', () => {
++      expect(required(makeContext({ element: makeCheckbox(true), value: 'on' }))).toBe(true);
++    });
++
++    test('rejects when unchecked', () => {
++      expect(required(makeContext({ element: makeCheckbox(false), value: '' }))).toBe(false);
++    });
++
++    test('only the checked state matters, not the value (checked with empty value)', () => {
++      expect(required(makeContext({ element: makeCheckbox(true), value: '' }))).toBe(true);
++    });
++
++    test('only the checked state matters, not the value (unchecked with non-empty value)', () => {
++      expect(required(makeContext({ element: makeCheckbox(false), value: 'yes' }))).toBe(false);
++    });
++  });
++
++  describe('radio group', () => {
++    test('accepts when any radio in the group is selected', () => {
++      const radios = makeRadioGroup('color', { checked: false }, { checked: true });
++      expect(required(makeContext({ element: radios[0], value: '' }))).toBe(true);
++    });
++
++    test('rejects when no radio in the group is selected', () => {
++      const radios = makeRadioGroup('color', { checked: false }, { checked: false });
++      expect(required(makeContext({ element: radios[0], value: '' }))).toBe(false);
++    });
++
++    test('only considers radios with the same name attribute', () => {
++      const radios = makeRadioGroup('color', { checked: false }, { checked: true, name: 'size' });
++      expect(required(makeContext({ element: radios[0], value: '' }))).toBe(false);
++    });
++
++    test('handles name attributes containing special characters', () => {
++      const radios = makeRadioGroup('field.name[0]', { checked: false }, { checked: true });
++      expect(required(makeContext({ element: radios[0], value: '' }))).toBe(true);
++    });
++
++    test('rejects standalone radio not inside a form with no value', () => {
++      const radio = document.createElement('input');
++      radio.type = 'radio';
++      radio.name = 'color';
++      expect(required(makeContext({ element: radio, value: '' }))).toBe(false);
++    });
++
++    test('accepts standalone radio not inside a form with a value', () => {
++      const radio = document.createElement('input');
++      radio.type = 'radio';
++      radio.name = 'color';
++      expect(required(makeContext({ element: radio, value: 'red' }))).toBe(true);
++    });
++  });
++
++  describe('select', () => {
++    test('accepts when a value is selected', () => {
++      const select = document.createElement('select');
++      expect(required(makeContext({ element: select, value: 'option1' }))).toBe(true);
++    });
++
++    test('rejects when no value is selected', () => {
++      const select = document.createElement('select');
++      expect(required(makeContext({ element: select, value: '' }))).toBe(false);
++    });
++  });
++
++  describe('textarea', () => {
++    test('accepts non-empty content', () => {
++      const textarea = document.createElement('textarea');
++      expect(required(makeContext({ element: textarea, value: 'text' }))).toBe(true);
++    });
++
++    test('rejects whitespace-only content', () => {
++      const textarea = document.createElement('textarea');
++      expect(required(makeContext({ element: textarea, value: '   ' }))).toBe(false);
++    });
++  });
++});
++
++// Matches .NET [Length] / [StringLength] / [MinLength] / [MaxLength] behavior:
++// - Null/empty values pass (emptiness is [Required]'s concern, not [Length]'s)
++// - Boundaries are inclusive (min <= length <= max)
++describe('lengthValidator', () => {
++  const length = getValidator('length');
++
++  describe('empty values are not validated', () => {
++    test('accepts null', () => {
++      expect(length(makeContext({ value: null, params: { min: '3' } }))).toBe(true);
++    });
++
++    test('accepts undefined', () => {
++      expect(length(makeContext({ value: undefined, params: { min: '3' } }))).toBe(true);
++    });
++
++    test('accepts empty string', () => {
++      expect(length(makeContext({ value: '', params: { min: '3' } }))).toBe(true);
++    });
++  });
++
++  describe('minimum length', () => {
++    test('rejects value shorter than minimum', () => {
++      expect(length(makeContext({ value: 'ab', params: { min: '3' } }))).toBe(false);
++    });
++
++    test('accepts value exactly at minimum', () => {
++      expect(length(makeContext({ value: 'abc', params: { min: '3' } }))).toBe(true);
++    });
++
++    test('accepts value longer than minimum', () => {
++      expect(length(makeContext({ value: 'abcd', params: { min: '3' } }))).toBe(true);
++    });
++  });
++
++  describe('maximum length', () => {
++    test('rejects value longer than maximum', () => {
++      expect(length(makeContext({ value: 'abcdef', params: { max: '5' } }))).toBe(false);
++    });
++
++    test('accepts value exactly at maximum', () => {
++      expect(length(makeContext({ value: 'abcde', params: { max: '5' } }))).toBe(true);
++    });
++
++    test('accepts value shorter than maximum', () => {
++      expect(length(makeContext({ value: 'abc', params: { max: '5' } }))).toBe(true);
++    });
++  });
++
++  describe('minimum and maximum combined', () => {
++    test('rejects value below minimum', () => {
++      expect(length(makeContext({ value: 'ab', params: { min: '3', max: '5' } }))).toBe(false);
++    });
++
++    test('rejects value above maximum', () => {
++      expect(length(makeContext({ value: 'abcdef', params: { min: '3', max: '5' } }))).toBe(false);
++    });
++
++    test('accepts value within range', () => {
++      expect(length(makeContext({ value: 'abcd', params: { min: '3', max: '5' } }))).toBe(true);
++    });
++
++    test('accepts value at minimum boundary', () => {
++      expect(length(makeContext({ value: 'abc', params: { min: '3', max: '5' } }))).toBe(true);
++    });
++
++    test('accepts value at maximum boundary', () => {
++      expect(length(makeContext({ value: 'abcde', params: { min: '3', max: '5' } }))).toBe(true);
++    });
++  });
++
++  describe('exact length (min equals max)', () => {
++    test('accepts value of exact length', () => {
++      expect(length(makeContext({ value: 'abc', params: { min: '3', max: '3' } }))).toBe(true);
++    });
++
++    test('rejects shorter value', () => {
++      expect(length(makeContext({ value: 'ab', params: { min: '3', max: '3' } }))).toBe(false);
++    });
++
++    test('rejects longer value', () => {
++      expect(length(makeContext({ value: 'abcd', params: { min: '3', max: '3' } }))).toBe(false);
++    });
++  });
++
++  test('throws when no constraints are specified', () => {
++    expect(() => length(makeContext({ value: 'anything', params: {} }))).toThrow(/min.*max/);
++  });
++});
++
++// Matches .NET [Range] behavior:
++// - Null/empty values pass (emptiness is [Required]'s concern)
++// - Boundaries are inclusive (min <= value <= max)
++// - Uses numeric comparison via Number()
++// - Non-numeric values are rejected
++describe('rangeValidator', () => {
++  const range = getValidator('range');
++
++  describe('empty values are not validated', () => {
++    test('accepts null', () => {
++      expect(range(makeContext({ value: null, params: { min: '1', max: '100' } }))).toBe(true);
++    });
++
++    test('accepts undefined', () => {
++      expect(range(makeContext({ value: undefined, params: { min: '1', max: '100' } }))).toBe(true);
++    });
++
++    test('accepts empty string', () => {
++      expect(range(makeContext({ value: '', params: { min: '1', max: '100' } }))).toBe(true);
++    });
++  });
++
++  describe('integer range', () => {
++    test('rejects value below minimum', () => {
++      expect(range(makeContext({ value: '0', params: { min: '1', max: '100' } }))).toBe(false);
++    });
++
++    test('accepts value exactly at minimum', () => {
++      expect(range(makeContext({ value: '1', params: { min: '1', max: '100' } }))).toBe(true);
++    });
++
++    test('accepts value in the middle', () => {
++      expect(range(makeContext({ value: '50', params: { min: '1', max: '100' } }))).toBe(true);
++    });
++
++    test('accepts value exactly at maximum', () => {
++      expect(range(makeContext({ value: '100', params: { min: '1', max: '100' } }))).toBe(true);
++    });
++
++    test('rejects value above maximum', () => {
++      expect(range(makeContext({ value: '101', params: { min: '1', max: '100' } }))).toBe(false);
++    });
++  });
++
++  describe('decimal range', () => {
++    test('accepts decimal value within range', () => {
++      expect(range(makeContext({ value: '50.0', params: { min: '0.5', max: '99.5' } }))).toBe(true);
++    });
++
++    test('accepts decimal at minimum boundary', () => {
++      expect(range(makeContext({ value: '0.5', params: { min: '0.5', max: '99.5' } }))).toBe(true);
++    });
++
++    test('rejects decimal below minimum', () => {
++      expect(range(makeContext({ value: '0.4', params: { min: '0.5', max: '99.5' } }))).toBe(false);
++    });
++
++    test('accepts decimal at maximum boundary', () => {
++      expect(range(makeContext({ value: '99.5', params: { min: '0.5', max: '99.5' } }))).toBe(true);
++    });
++
++    test('rejects decimal above maximum', () => {
++      expect(range(makeContext({ value: '99.6', params: { min: '0.5', max: '99.5' } }))).toBe(false);
++    });
++  });
++
++  describe('negative range', () => {
++    test('accepts value in negative range', () => {
++      expect(range(makeContext({ value: '-50', params: { min: '-100', max: '-1' } }))).toBe(true);
++    });
++
++    test('accepts boundary of negative range', () => {
++      expect(range(makeContext({ value: '-100', params: { min: '-100', max: '-1' } }))).toBe(true);
++    });
++
++    test('rejects value outside negative range', () => {
++      expect(range(makeContext({ value: '0', params: { min: '-100', max: '-1' } }))).toBe(false);
++    });
++  });
++
++  describe('non-numeric input', () => {
++    test('rejects alphabetic string', () => {
++      expect(range(makeContext({ value: 'abc', params: { min: '1', max: '100' } }))).toBe(false);
++    });
++
++    test('rejects mixed alphanumeric', () => {
++      expect(range(makeContext({ value: '123abc', params: { min: '1', max: '100' } }))).toBe(false);
++    });
++  });
++
++  describe('partial params', () => {
++    test('validates only minimum when max is absent', () => {
++      expect(range(makeContext({ value: '50', params: { min: '10' } }))).toBe(true);
++      expect(range(makeContext({ value: '5', params: { min: '10' } }))).toBe(false);
++    });
++
++    test('validates only maximum when min is absent', () => {
++      expect(range(makeContext({ value: '50', params: { max: '100' } }))).toBe(true);
++      expect(range(makeContext({ value: '150', params: { max: '100' } }))).toBe(false);
++    });
++
++    test('throws when both bounds are absent', () => {
++      expect(() => range(makeContext({ value: '999999', params: {} }))).toThrow(/min.*max/);
++    });
++  });
++});
++
++// Matches .NET [RegularExpression] behavior:
++// - Null/empty values pass (emptiness is [Required]'s concern)
++// - Full match required (pattern is anchored with ^(?:...)$)
++// - Case-sensitive by default
++describe('regexValidator', () => {
++  const regex = getValidator('regex');
++
++  describe('empty values are not validated', () => {
++    test('accepts null', () => {
++      expect(regex(makeContext({ value: null, params: { pattern: '[A-Z]+' } }))).toBe(true);
++    });
++
++    test('accepts undefined', () => {
++      expect(regex(makeContext({ value: undefined, params: { pattern: '[A-Z]+' } }))).toBe(true);
++    });
++
++    test('accepts empty string', () => {
++      expect(regex(makeContext({ value: '', params: { pattern: '[A-Z]+' } }))).toBe(true);
++    });
++  });
++
++  describe('matching', () => {
++    test('accepts value matching letter pattern', () => {
++      expect(regex(makeContext({ value: 'Hello', params: { pattern: '[A-Za-z]+' } }))).toBe(true);
++    });
++
++    test('accepts value matching digit pattern', () => {
++      expect(regex(makeContext({ value: '555-1234', params: { pattern: '\\d{3}-\\d{4}' } }))).toBe(true);
++    });
++
++    test('rejects value not matching pattern', () => {
++      expect(regex(makeContext({ value: '12345', params: { pattern: '[A-Za-z]+' } }))).toBe(false);
++    });
++  });
++
++  describe('full match (not partial)', () => {
++    test('rejects partial match at start', () => {
++      expect(regex(makeContext({ value: 'abc123', params: { pattern: '[A-Za-z]+' } }))).toBe(false);
++    });
++
++    test('rejects partial match in middle', () => {
++      expect(regex(makeContext({ value: '123abc456', params: { pattern: '[A-Za-z]+' } }))).toBe(false);
++    });
++
++    test('rejects partial match at end', () => {
++      expect(regex(makeContext({ value: '123abc', params: { pattern: '[A-Za-z]+' } }))).toBe(false);
++    });
++  });
++
++  describe('already-anchored patterns', () => {
++    test('works correctly when pattern has anchors', () => {
++      expect(regex(makeContext({ value: 'abc', params: { pattern: '^[a-z]+$' } }))).toBe(true);
++    });
++
++    test('rejects non-match with anchored pattern', () => {
++      expect(regex(makeContext({ value: 'ABC', params: { pattern: '^[a-z]+$' } }))).toBe(false);
++    });
++  });
++
++  describe('alternation', () => {
++    test('accepts first alternative', () => {
++      expect(regex(makeContext({ value: 'cat', params: { pattern: 'cat|dog' } }))).toBe(true);
++    });
++
++    test('accepts second alternative', () => {
++      expect(regex(makeContext({ value: 'dog', params: { pattern: 'cat|dog' } }))).toBe(true);
++    });
++
++    test('rejects non-matching alternative', () => {
++      expect(regex(makeContext({ value: 'fish', params: { pattern: 'cat|dog' } }))).toBe(false);
++    });
++  });
++
++  describe('case sensitivity', () => {
++    test('rejects wrong case', () => {
++      expect(regex(makeContext({ value: 'ABC', params: { pattern: '[a-z]+' } }))).toBe(false);
++    });
++  });
++
++  test('throws when pattern param is missing', () => {
++    expect(() => regex(makeContext({ value: 'anything', params: {} }))).toThrow(/pattern/);
++  });
++});
++
++// Validates email format with the same semantics as .NET's EmailAddressAttribute.
++// Empty values pass (emptiness is [Required]'s concern).
++describe('emailValidator', () => {
++  const email = getValidator('email');
++
++  describe('empty values are not validated', () => {
++    test('accepts empty string', () => {
++      expect(email(makeContext({ value: '' }))).toBe(true);
++    });
++
++    test('accepts null', () => {
++      expect(email(makeContext({ value: null }))).toBe(true);
++    });
++
++    test('accepts undefined', () => {
++      expect(email(makeContext({ value: undefined }))).toBe(true);
++    });
++  });
++
++  describe('valid emails', () => {
++    test('accepts simple email', () => {
++      expect(email(makeContext({ value: 'user@example.com' }))).toBe(true);
++    });
++
++    test('accepts email with subdomain', () => {
++      expect(email(makeContext({ value: 'user@mail.example.com' }))).toBe(true);
++    });
++
++    test('accepts email with dots in local part', () => {
++      expect(email(makeContext({ value: 'first.last@example.com' }))).toBe(true);
++    });
++
++    test('accepts email with plus tag', () => {
++      expect(email(makeContext({ value: 'user+tag@example.com' }))).toBe(true);
++    });
++
++    test('accepts email with digits', () => {
++      expect(email(makeContext({ value: 'user123@example456.com' }))).toBe(true);
++    });
++
++    test('accepts email with hyphens in domain', () => {
++      expect(email(makeContext({ value: 'user@my-domain.com' }))).toBe(true);
++    });
++
++    test('accepts single-char local part', () => {
++      expect(email(makeContext({ value: 'a@example.com' }))).toBe(true);
++    });
++
++    // Matches .NET's EmailAddressAttribute, which only requires a single '@'
++    // not at the start or end. Whitespace inside the value is allowed.
++    test('accepts value with internal whitespace (matches .NET)', () => {
++      expect(email(makeContext({ value: 'user @example.com' }))).toBe(true);
++    });
++
++    // The server accepts addresses without a TLD; the client must too.
++    test('accepts value without TLD (matches .NET)', () => {
++      expect(email(makeContext({ value: 'a@b' }))).toBe(true);
++    });
++  });
++
++  describe('invalid emails', () => {
++    test('rejects missing @', () => {
++      expect(email(makeContext({ value: 'userexample.com' }))).toBe(false);
++    });
++
++    test('rejects missing local part', () => {
++      expect(email(makeContext({ value: '@example.com' }))).toBe(false);
++    });
++
++    test('rejects missing domain', () => {
++      expect(email(makeContext({ value: 'user@' }))).toBe(false);
++    });
++
++    test('rejects double @', () => {
++      expect(email(makeContext({ value: 'user@@example.com' }))).toBe(false);
++    });
++
++    test('rejects two separated @', () => {
++      expect(email(makeContext({ value: 'a@b@c' }))).toBe(false);
++    });
++
++    test('rejects plain text', () => {
++      expect(email(makeContext({ value: 'not-an-email' }))).toBe(false);
++    });
++
++    test('rejects value containing CR', () => {
++      expect(email(makeContext({ value: 'user\r@example.com' }))).toBe(false);
++    });
++
++    test('rejects value containing LF', () => {
++      expect(email(makeContext({ value: 'user@example.com\n' }))).toBe(false);
++    });
++  });
++});
++
++// Validates URL format with the same semantics as .NET's UrlAttribute.
++// Empty values pass (emptiness is [Required]'s concern).
++describe('urlValidator', () => {
++  const url = getValidator('url');
++
++  describe('empty values are not validated', () => {
++    test('accepts empty string', () => {
++      expect(url(makeContext({ value: '' }))).toBe(true);
++    });
++
++    test('accepts null', () => {
++      expect(url(makeContext({ value: null }))).toBe(true);
++    });
++
++    test('accepts undefined', () => {
++      expect(url(makeContext({ value: undefined }))).toBe(true);
++    });
++  });
++
++  describe('valid URLs', () => {
++    test('accepts http URL', () => {
++      expect(url(makeContext({ value: 'http://example.com' }))).toBe(true);
++    });
++
++    test('accepts https URL', () => {
++      expect(url(makeContext({ value: 'https://example.com' }))).toBe(true);
++    });
++
++    test('accepts ftp URL', () => {
++      expect(url(makeContext({ value: 'ftp://example.com' }))).toBe(true);
++    });
++
++    test('accepts URL with path', () => {
++      expect(url(makeContext({ value: 'https://example.com/path/to/page' }))).toBe(true);
++    });
++
++    test('accepts URL with query string', () => {
++      expect(url(makeContext({ value: 'https://example.com?q=1&b=2' }))).toBe(true);
++    });
++
++    test('accepts URL with port', () => {
++      expect(url(makeContext({ value: 'https://example.com:8080' }))).toBe(true);
++    });
++
++    test('accepts URL with subdomain', () => {
++      expect(url(makeContext({ value: 'https://www.example.com' }))).toBe(true);
++    });
++
++    // .NET UrlAttribute uses case-insensitive prefix matching.
++    test('accepts URL with uppercase scheme (matches .NET)', () => {
++      expect(url(makeContext({ value: 'HTTPS://example.com' }))).toBe(true);
++    });
++
++    test('accepts URL with mixed-case scheme (matches .NET)', () => {
++      expect(url(makeContext({ value: 'Http://example.com' }))).toBe(true);
++    });
++
++    // .NET only checks the scheme prefix, so localhost/private hosts pass.
++    test('accepts http://localhost (matches .NET)', () => {
++      expect(url(makeContext({ value: 'http://localhost' }))).toBe(true);
++    });
++
++    // .NET accepts whatever follows the scheme, including embedded whitespace.
++    test('accepts URL with embedded whitespace (matches .NET)', () => {
++      expect(url(makeContext({ value: 'https://exam ple.com' }))).toBe(true);
++    });
++  });
++
++  describe('invalid URLs', () => {
++    test('rejects plain text', () => {
++      expect(url(makeContext({ value: 'not-a-url' }))).toBe(false);
++    });
++
++    test('rejects missing protocol', () => {
++      expect(url(makeContext({ value: 'example.com' }))).toBe(false);
++    });
++
++    test('rejects single word', () => {
++      expect(url(makeContext({ value: 'hello' }))).toBe(false);
++    });
++
++    // .NET UrlAttribute requires http/https/ftp - protocol-relative URLs are not accepted.
++    test('rejects protocol-relative URL (matches .NET)', () => {
++      expect(url(makeContext({ value: '//example.com' }))).toBe(false);
++    });
++
++    test('rejects unsupported scheme', () => {
++      expect(url(makeContext({ value: 'gopher://example.com' }))).toBe(false);
++    });
++
++    test('rejects mailto scheme', () => {
++      expect(url(makeContext({ value: 'mailto:user@example.com' }))).toBe(false);
++    });
++
++    test('rejects scheme without ://', () => {
++      expect(url(makeContext({ value: 'http:example.com' }))).toBe(false);
++    });
++
++    test('rejects leading whitespace before scheme', () => {
++      expect(url(makeContext({ value: ' http://example.com' }))).toBe(false);
++    });
++  });
++});
++
++// Matches .NET PhoneAttribute behavior:
++// - Null/empty passes
++// - Strips leading '+' and trailing extensions (ext./ext/x + digits)
++// - Must contain at least one digit
++// - Only digits, whitespace, and -.() allowed
++describe('phoneValidator', () => {
++  const phone = getValidator('phone');
++
++  describe('empty values are not validated', () => {
++    test('accepts empty string', () => {
++      expect(phone(makeContext({ value: '' }))).toBe(true);
++    });
++
++    test('accepts null', () => {
++      expect(phone(makeContext({ value: null }))).toBe(true);
++    });
++
++    test('accepts undefined', () => {
++      expect(phone(makeContext({ value: undefined }))).toBe(true);
++    });
++  });
++
++  describe('valid phone numbers', () => {
++    test('accepts digits only', () => {
++      expect(phone(makeContext({ value: '5551234567' }))).toBe(true);
++    });
++
++    test('accepts formatted US number', () => {
++      expect(phone(makeContext({ value: '(555) 123-4567' }))).toBe(true);
++    });
++
++    test('accepts dashes', () => {
++      expect(phone(makeContext({ value: '555-123-4567' }))).toBe(true);
++    });
++
++    test('accepts dots', () => {
++      expect(phone(makeContext({ value: '555.123.4567' }))).toBe(true);
++    });
++
++    test('accepts spaces', () => {
++      expect(phone(makeContext({ value: '555 123 4567' }))).toBe(true);
++    });
++
++    test('accepts leading plus', () => {
++      expect(phone(makeContext({ value: '+1-555-123-4567' }))).toBe(true);
++    });
++
++    test('accepts international format', () => {
++      expect(phone(makeContext({ value: '+44 20 7946 0958' }))).toBe(true);
++    });
++
++    test('accepts with ext. extension', () => {
++      expect(phone(makeContext({ value: '555-1234 ext. 5678' }))).toBe(true);
++    });
++
++    test('accepts with ext extension', () => {
++      expect(phone(makeContext({ value: '555-1234 ext5678' }))).toBe(true);
++    });
++
++    test('accepts with x extension', () => {
++      expect(phone(makeContext({ value: '555-1234 x5678' }))).toBe(true);
++    });
++  });
++
++  describe('invalid phone numbers', () => {
++    test('rejects alphabetic string', () => {
++      expect(phone(makeContext({ value: 'abcdef' }))).toBe(false);
++    });
++
++    test('rejects letters mixed with digits', () => {
++      expect(phone(makeContext({ value: '555-abc-1234' }))).toBe(false);
++    });
++
++    test('rejects no digits at all', () => {
++      expect(phone(makeContext({ value: '(--)' }))).toBe(false);
++    });
++
++    test('rejects special characters', () => {
++      expect(phone(makeContext({ value: '555@1234' }))).toBe(false);
++    });
++  });
++});
++
++// Matches .NET CreditCardAttribute behavior (Luhn algorithm).
++// Empty values pass. Strips dashes and spaces before validation.
++// Length check: 13-19 digits.
++describe('creditcardValidator', () => {
++  const creditcard = getValidator('creditcard');
++
++  describe('empty values are not validated', () => {
++    test('accepts empty string', () => {
++      expect(creditcard(makeContext({ value: '' }))).toBe(true);
++    });
++
++    test('accepts null', () => {
++      expect(creditcard(makeContext({ value: null }))).toBe(true);
++    });
++
++    test('accepts undefined', () => {
++      expect(creditcard(makeContext({ value: undefined }))).toBe(true);
++    });
++  });
++
++  describe('valid card numbers', () => {
++    test('accepts valid Visa number', () => {
++      expect(creditcard(makeContext({ value: '4111111111111111' }))).toBe(true);
++    });
++
++    test('accepts valid Mastercard number', () => {
++      expect(creditcard(makeContext({ value: '5500000000000004' }))).toBe(true);
++    });
++
++    test('accepts with dashes', () => {
++      expect(creditcard(makeContext({ value: '4111-1111-1111-1111' }))).toBe(true);
++    });
++
++    test('accepts with spaces', () => {
++      expect(creditcard(makeContext({ value: '4111 1111 1111 1111' }))).toBe(true);
++    });
++  });
++
++  describe('invalid card numbers', () => {
++    test('rejects Luhn-invalid number', () => {
++      expect(creditcard(makeContext({ value: '1234567890123456' }))).toBe(false);
++    });
++
++    test('rejects too short (12 digits)', () => {
++      expect(creditcard(makeContext({ value: '411111111111' }))).toBe(false);
++    });
++
++    test('rejects too long (20 digits)', () => {
++      expect(creditcard(makeContext({ value: '41111111111111111111' }))).toBe(false);
++    });
++
++    test('rejects letters', () => {
++      expect(creditcard(makeContext({ value: 'abcd1234abcd1234' }))).toBe(false);
++    });
++
++    test('rejects special characters', () => {
++      expect(creditcard(makeContext({ value: '4111@1111#1111$1111' }))).toBe(false);
++    });
++  });
++});
++
++// Matches .NET CompareAttribute behavior:
++// - Empty values pass
++// - Strict string equality with another field's value
++// - Resolves "*.PropertyName" to model-prefixed field name
++describe('equaltoValidator', () => {
++  const equalto = getValidator('equalto');
++
++  function makeFormContext(
++    fieldName: string,
++    fieldValue: string,
++    otherName: string,
++    otherValue: string,
++    params: Record<string, string>,
++  ): ValidationContext {
++    const form = document.createElement('form');
++    const field = document.createElement('input');
++    field.name = fieldName;
++    field.value = fieldValue;
++    form.appendChild(field);
++
++    const other = document.createElement('input');
++    other.name = otherName;
++    other.value = otherValue;
++    form.appendChild(other);
++
++    return { value: fieldValue, element: field, params };
++  }
++
++  describe('empty values are not validated', () => {
++    test('accepts empty string', () => {
++      expect(equalto(makeContext({ value: '', params: { other: '*.Confirm' } }))).toBe(true);
++    });
++
++    test('accepts null', () => {
++      expect(equalto(makeContext({ value: null, params: { other: '*.Confirm' } }))).toBe(true);
++    });
++  });
++
++  describe('matching values', () => {
++    test('accepts when values match exactly', () => {
++      const ctx = makeFormContext('Password', 'secret', 'Confirm', 'secret', { other: '*.Confirm' });
++      expect(equalto(ctx)).toBe(true);
++    });
++
++    test('accepts when both fields are empty', () => {
++      const ctx = makeFormContext('Password', '', 'Confirm', '', { other: '*.Confirm' });
++      // value is empty so validator returns true before comparison
++      expect(equalto(ctx)).toBe(true);
++    });
++  });
++
++  describe('non-matching values', () => {
++    test('rejects when values differ', () => {
++      const ctx = makeFormContext('Password', 'secret', 'Confirm', 'different', { other: '*.Confirm' });
++      expect(equalto(ctx)).toBe(false);
++    });
++
++    test('rejects when other field is empty but current is not', () => {
++      const ctx = makeFormContext('Password', 'secret', 'Confirm', '', { other: '*.Confirm' });
++      expect(equalto(ctx)).toBe(false);
++    });
++  });
++
++  describe('other field resolution', () => {
++    test('resolves *.PropertyName with no prefix (simple model)', () => {
++      const ctx = makeFormContext('Password', 'abc', 'ConfirmPassword', 'abc', { other: '*.ConfirmPassword' });
++      expect(equalto(ctx)).toBe(true);
++    });
++
++    test('resolves *.PropertyName with dotted prefix (nested model)', () => {
++      const ctx = makeFormContext('User.Password', 'abc', 'User.ConfirmPassword', 'abc', { other: '*.ConfirmPassword' });
++      expect(equalto(ctx)).toBe(true);
++    });
++
++    test('passes when other field does not exist in form', () => {
++      const form = document.createElement('form');
++      const field = document.createElement('input');
++      field.name = 'Password';
++      field.value = 'secret';
++      form.appendChild(field);
++
++      const ctx: ValidationContext = { value: 'secret', element: field, params: { other: '*.NonExistent' } };
++      expect(equalto(ctx)).toBe(true);
++    });
++
++    test('throws when other param is missing', () => {
++      const ctx = makeFormContext('Password', 'secret', 'Confirm', 'different', {});
++      expect(() => equalto(ctx)).toThrow(/other/);
++    });
++  });
++});
++
++// Matches .NET FileExtensionsAttribute behavior:
++// - Null/empty passes
++// - Case-insensitive extension matching
++// - Extensions param format: ".png,.jpg,.gif" (dot-prefixed, comma-separated)
++describe('fileextensionsValidator', () => {
++  const fileext = getValidator('fileextensions');
++  const imgExtensions = { extensions: '.png,.jpg,.jpeg,.gif' };
++
++  describe('empty values are not validated', () => {
++    test('accepts empty string', () => {
++      expect(fileext(makeContext({ value: '', params: imgExtensions }))).toBe(true);
++    });
++
++    test('accepts null', () => {
++      expect(fileext(makeContext({ value: null, params: imgExtensions }))).toBe(true);
++    });
++
++    test('accepts undefined', () => {
++      expect(fileext(makeContext({ value: undefined, params: imgExtensions }))).toBe(true);
++    });
++  });
++
++  describe('valid file extensions', () => {
++    test('accepts matching extension', () => {
++      expect(fileext(makeContext({ value: 'photo.png', params: imgExtensions }))).toBe(true);
++    });
++
++    test('accepts case-insensitive match', () => {
++      expect(fileext(makeContext({ value: 'photo.PNG', params: imgExtensions }))).toBe(true);
++    });
++
++    test('accepts another allowed extension', () => {
++      expect(fileext(makeContext({ value: 'photo.jpg', params: imgExtensions }))).toBe(true);
++    });
++
++    test('accepts file with multiple dots in name', () => {
++      expect(fileext(makeContext({ value: 'my.vacation.photo.jpeg', params: imgExtensions }))).toBe(true);
++    });
++  });
++
++  describe('invalid file extensions', () => {
++    test('rejects disallowed extension', () => {
++      expect(fileext(makeContext({ value: 'script.exe', params: imgExtensions }))).toBe(false);
++    });
++
++    test('rejects file with no extension', () => {
++      expect(fileext(makeContext({ value: 'readme', params: imgExtensions }))).toBe(false);
++    });
++  });
++
++  test('throws when extensions param is missing', () => {
++    expect(() => fileext(makeContext({ value: 'anything.xyz', params: {} }))).toThrow(/extensions/);
++  });
++});
++
++
+diff --git a/src/Components/Web.JS/test/Validation/DomScanner.test.ts b/src/Components/Web.JS/test/Validation/DomScanner.test.ts
+new file mode 100644
+index 0000000000..5f54b7a129
+--- /dev/null
++++ b/src/Components/Web.JS/test/Validation/DomScanner.test.ts
+@@ -0,0 +1,210 @@
++import { expect, test, describe } from '@jest/globals';
++
++import { parseRules } from '../../src/Validation/DomScanner';
++import { ValidationRule } from '../../src/Validation/ValidationEngine';
++import { ValidatableElement } from '../../src/Validation/ValidationTypes';
++
++function createElement(tag: string, attributes: Record<string, string>): ValidatableElement {
++  const el = document.createElement(tag) as ValidatableElement;
++  for (const [name, value] of Object.entries(attributes)) {
++    el.setAttribute(name, value);
++  }
++  return el;
++}
++
++function input(attributes: Record<string, string>): ValidatableElement {
++  return createElement('input', attributes);
++}
++
++describe('parseRules', () => {
++  test('returns empty array when element has no attributes', () => {
++    const el = input({});
++    expect(parseRules(el)).toEqual([]);
++  });
++
++  test('returns empty array when element has no data-val-* attributes', () => {
++    const el = input({ type: 'text', name: 'age', class: 'form-control' });
++    expect(parseRules(el)).toEqual([]);
++  });
++
++  test('parses a single rule with message only', () => {
++    const el = input({ 'data-val-required': 'This field is required.' });
++    const rules = parseRules(el);
++    expect(rules).toEqual([
++      { ruleName: 'required', errorMessage: 'This field is required.', params: {} },
++    ]);
++  });
++
++  test('parses a single rule with message and one param', () => {
++    const el = input({
++      'data-val-maxlength': 'Too long.',
++      'data-val-maxlength-max': '100',
++    });
++    const rules = parseRules(el);
++    expect(rules).toEqual([
++      { ruleName: 'maxlength', errorMessage: 'Too long.', params: { max: '100' } },
++    ]);
++  });
++
++  test('parses a single rule with message and multiple params', () => {
++    const el = input({
++      'data-val-range': 'Value must be between 10 and 50.',
++      'data-val-range-min': '10',
++      'data-val-range-max': '50',
++    });
++    const rules = parseRules(el);
++    expect(rules).toEqual([
++      {
++        ruleName: 'range',
++        errorMessage: 'Value must be between 10 and 50.',
++        params: { min: '10', max: '50' },
++      },
++    ]);
++  });
++
++  test('parses multiple distinct rules on the same element', () => {
++    const el = input({
++      'data-val-required': 'This field is required.',
++      'data-val-range': 'Must be between 1 and 100.',
++      'data-val-range-min': '1',
++      'data-val-range-max': '100',
++    });
++    const rules = parseRules(el);
++    expect(rules).toHaveLength(2);
++
++    const required = rules.find(r => r.ruleName === 'required');
++    const range = rules.find(r => r.ruleName === 'range');
++
++    expect(required).toEqual({ ruleName: 'required', errorMessage: 'This field is required.', params: {} });
++    expect(range).toEqual({
++      ruleName: 'range',
++      errorMessage: 'Must be between 1 and 100.',
++      params: { min: '1', max: '100' },
++    });
++  });
++
++  test('result does not depend on attribute order (params before message)', () => {
++    const paramsFirst = input({
++      'data-val-range-min': '10',
++      'data-val-range-max': '50',
++      'data-val-range': 'Out of range.',
++    });
++    const messageFirst = input({
++      'data-val-range': 'Out of range.',
++      'data-val-range-min': '10',
++      'data-val-range-max': '50',
++    });
++
++    const rulesA = parseRules(paramsFirst);
++    const rulesB = parseRules(messageFirst);
++
++    expect(rulesA).toEqual(rulesB);
++    expect(rulesA).toEqual([
++      { ruleName: 'range', errorMessage: 'Out of range.', params: { min: '10', max: '50' } },
++    ]);
++  });
++
++  test('result does not depend on attribute order with multiple rules', () => {
++    const el1 = input({
++      'data-val-required': 'Required.',
++      'data-val-range': 'Out of range.',
++      'data-val-range-min': '1',
++    });
++    const el2 = input({
++      'data-val-range-min': '1',
++      'data-val-required': 'Required.',
++      'data-val-range': 'Out of range.',
++    });
++
++    const rules1 = parseRules(el1);
++    const rules2 = parseRules(el2);
++
++    // Both should have the same rules (order of rules in array may differ)
++    expect(rules1).toHaveLength(2);
++    expect(rules2).toHaveLength(2);
++
++    for (const ruleName of ['required', 'range']) {
++      expect(rules1.find(r => r.ruleName === ruleName)).toEqual(
++        rules2.find(r => r.ruleName === ruleName)
++      );
++    }
++  });
++
++  test('rule with params but no message gets empty errorMessage', () => {
++    const el = input({
++      'data-val-range-min': '10',
++      'data-val-range-max': '50',
++    });
++    const rules = parseRules(el);
++    expect(rules).toEqual([
++      { ruleName: 'range', errorMessage: '', params: { min: '10', max: '50' } },
++    ]);
++  });
++
++  test('rule with empty error message string', () => {
++    const el = input({ 'data-val-required': '' });
++    const rules = parseRules(el);
++    expect(rules).toEqual([
++      { ruleName: 'required', errorMessage: '', params: {} },
++    ]);
++  });
++
++  test('param with empty value', () => {
++    const el = input({
++      'data-val-regex': 'Invalid format.',
++      'data-val-regex-pattern': '',
++    });
++    const rules = parseRules(el);
++    expect(rules).toEqual([
++      { ruleName: 'regex', errorMessage: 'Invalid format.', params: { pattern: '' } },
++    ]);
++  });
++
++  test('param name containing dashes is preserved in full', () => {
++    const el = input({
++      'data-val-myrule': 'Error.',
++      'data-val-myrule-some-compound': 'value',
++    });
++    const rules = parseRules(el);
++    expect(rules).toEqual([
++      { ruleName: 'myrule', errorMessage: 'Error.', params: { 'some-compound': 'value' } },
++    ]);
++  });
++
++  test('ignores data-val attribute (no trailing dash)', () => {
++    const el = input({ 'data-val': 'true' });
++    expect(parseRules(el)).toEqual([]);
++  });
++
++  test('ignores attribute that is exactly "data-val-" (empty rule name)', () => {
++    const el = input({ 'data-val-': 'some value' });
++    const rules = parseRules(el);
++    expect(rules).toEqual([]);
++  });
++
++  test('ignores non-data-val attributes alongside data-val-* attributes', () => {
++    const el = input({
++      type: 'text',
++      name: 'email',
++      'data-val-required': 'Email is required.',
++      'aria-label': 'Email',
++      class: 'form-input',
++    });
++    const rules = parseRules(el);
++    expect(rules).toEqual([
++      { ruleName: 'required', errorMessage: 'Email is required.', params: {} },
++    ]);
++  });
++
++  test('ignores unrelated data-* attributes alongside data-val-* attributes', () => {
++    const el = input({
++      'data-bind': 'value: name',
++      'data-tooltip': 'Enter name',
++      'data-val-required': 'Name is required.',
++    });
++    const rules = parseRules(el);
++    expect(rules).toHaveLength(1);
++    expect(rules[0].ruleName).toBe('required');
++  });
++});
++
+diff --git a/src/Components/test/E2ETest/ServerRenderingTests/ClientValidation/ClientValidationAttributesTest.cs b/src/Components/test/E2ETest/ServerRenderingTests/ClientValidation/ClientValidationAttributesTest.cs
+new file mode 100644
+index 0000000000..9fec1244d2
+--- /dev/null
++++ b/src/Components/test/E2ETest/ServerRenderingTests/ClientValidation/ClientValidationAttributesTest.cs
+@@ -0,0 +1,175 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using Components.TestServer.RazorComponents;
++using Microsoft.AspNetCore.Components.E2ETest.Infrastructure;
++using Microsoft.AspNetCore.Components.E2ETest.Infrastructure.ServerFixtures;
++using Microsoft.AspNetCore.E2ETesting;
++using OpenQA.Selenium;
++using TestServer;
++using Xunit.Abstractions;
++
++namespace Microsoft.AspNetCore.Components.E2ETests.ServerRenderingTests.ClientValidation;
++
++// E2E smoke coverage for individual built-in validators, custom validator
++// registration, radio groups, and server-rendered message cleanup.
++// Per-validator exhaustive coverage lives in the Jest unit tests on
++// CoreValidators.test.ts; the tests here verify the integration path.
++public class ClientValidationAttributesTest : ClientValidationTestBase
++{
++    public ClientValidationAttributesTest(
++        BrowserFixture browserFixture,
++        BasicTestAppServerSiteFixture<RazorComponentEndpointsStartup<App>> serverFixture,
++        ITestOutputHelper output)
++        : base(browserFixture, serverFixture, output)
++    {
++    }
++
++    [Fact]
++    public void RangeRejectsOutOfRangeValue()
++    {
++        NavigateToClientValidationPage("all-validators");
++
++        Browser.Exists(By.Id("age")).SendKeys("999");
++        Browser.Exists(By.Id("submit")).Click();
++
++        Browser.Equal("Age must be between 1 and 150.",
++            () => Browser.Exists(By.CssSelector("[data-valmsg-for='Age']")).Text);
++    }
++
++    [Fact]
++    public void RegexRejectsNonMatchingValue()
++    {
++        NavigateToClientValidationPage("all-validators");
++
++        Browser.Exists(By.Id("zipcode")).SendKeys("not-a-zip");
++        Browser.Exists(By.Id("submit")).Click();
++
++        Browser.Equal("Invalid zip code.",
++            () => Browser.Exists(By.CssSelector("[data-valmsg-for='ZipCode']")).Text);
++    }
++
++    [Fact]
++    public void EmailRejectsInvalidEmail()
++    {
++        NavigateToClientValidationPage("all-validators");
++
++        Browser.Exists(By.Id("email")).SendKeys("not-an-email");
++        Browser.Exists(By.Id("submit")).Click();
++
++        Browser.Equal("Invalid email address.",
++            () => Browser.Exists(By.CssSelector("[data-valmsg-for='Email']")).Text);
++    }
++
++    [Fact]
++    public void EqualToRejectsMismatchedPasswords()
++    {
++        NavigateToClientValidationPage("all-validators");
++
++        Browser.Exists(By.Id("password")).SendKeys("secret123");
++        Browser.Exists(By.Id("confirm")).SendKeys("differentValue");
++        Browser.Exists(By.Id("submit")).Click();
++
++        Browser.Equal("Passwords must match.",
++            () => Browser.Exists(By.CssSelector("[data-valmsg-for='ConfirmPassword']")).Text);
++    }
++
++    [Fact]
++    public void EqualToAcceptsMatchingPasswords()
++    {
++        NavigateToClientValidationPage("all-validators");
++
++        Browser.Exists(By.Id("password")).SendKeys("secret123");
++        Browser.Exists(By.Id("confirm")).SendKeys("secret123");
++        Browser.Exists(By.Id("submit")).Click();
++
++        // The ConfirmPassword field has no error; the form is still invalid
++        // because of the Anchor field, but ConfirmPassword's slot is empty.
++        Browser.Equal("",
++            () => Browser.Exists(By.CssSelector("[data-valmsg-for='ConfirmPassword']")).Text);
++    }
++
++    [Fact]
++    public void FileExtensionsRejectsDisallowedExtension()
++    {
++        NavigateToClientValidationPage("all-validators");
++
++        Browser.Exists(By.Id("avatar")).SendKeys("malware.exe");
++        Browser.Exists(By.Id("submit")).Click();
++
++        Browser.Equal("Only image files are allowed.",
++            () => Browser.Exists(By.CssSelector("[data-valmsg-for='Avatar']")).Text);
++    }
++
++    [Fact]
++    public void RequiredRadioGroup_ShowsErrorWhenNoneSelected()
++    {
++        NavigateToClientValidationPage("radio-group");
++
++        Browser.Exists(By.Id("submit")).Click();
++
++        Browser.Equal("Please select a color.",
++            () => Browser.Exists(By.CssSelector("[data-valmsg-for='Color']")).Text);
++    }
++
++    [Fact]
++    public void RequiredRadioGroup_ClearsErrorWhenOneSelected()
++    {
++        NavigateToClientValidationPage("radio-group");
++
++        Browser.Exists(By.Id("submit")).Click();
++        Browser.Equal("Please select a color.",
++            () => Browser.Exists(By.CssSelector("[data-valmsg-for='Color']")).Text);
++
++        Browser.Exists(By.Id("color-green")).Click();
++        Browser.Exists(By.Id("submit")).Click();
++
++        Browser.Equal("",
++            () => Browser.Exists(By.CssSelector("[data-valmsg-for='Color']")).Text);
++    }
++
++    [Fact]
++    public void CustomValidatorRejectsInvalidInput()
++    {
++        NavigateToClientValidationPage("custom-validator");
++        Browser.Exists(By.Id("custom-validator-ready"));
++
++        Browser.Exists(By.Id("code")).SendKeys("XYZ-123");
++        Browser.Exists(By.Id("submit")).Click();
++
++        Browser.Equal("Code must start with 'ABC-'.",
++            () => Browser.Exists(By.CssSelector("[data-valmsg-for='Code']")).Text);
++    }
++
++    [Fact]
++    public void CustomValidatorAcceptsValidInput()
++    {
++        NavigateToClientValidationPage("custom-validator");
++        Browser.Exists(By.Id("custom-validator-ready"));
++
++        Browser.Exists(By.Id("code")).SendKeys("ABC-123");
++        Browser.Exists(By.Id("submit")).Click();
++
++        Browser.Equal("",
++            () => Browser.Exists(By.CssSelector("[data-valmsg-for='Code']")).Text);
++    }
++
++    [Fact]
++    public void JsRemovesSiblingServerErrorsWhenFieldBecomesValid()
++    {
++        NavigateToClientValidationPage("server-rendered-messages");
++
++        // Initially: the Name field has a primary message + one extra sibling
++        // (server-rendered). Both are present in the DOM.
++        Browser.True(() =>
++            Browser.FindElements(By.CssSelector("#test-form > div:first-child > .validation-message")).Count == 2);
++
++        // Fill Name and trigger blur to validate
++        Browser.Exists(By.Id("name")).SendKeys("Alice");
++        Browser.Exists(By.Id("name")).SendKeys(Keys.Tab);
++
++        // Sibling cleanup: only the primary [data-valmsg-for] message remains.
++        Browser.True(() =>
++            Browser.FindElements(By.CssSelector("#test-form > div:first-child > .validation-message")).Count == 1);
++    }
++}
+diff --git a/src/Components/test/E2ETest/ServerRenderingTests/ClientValidation/ClientValidationBasicTest.cs b/src/Components/test/E2ETest/ServerRenderingTests/ClientValidation/ClientValidationBasicTest.cs
+new file mode 100644
+index 0000000000..b30570220a
+--- /dev/null
++++ b/src/Components/test/E2ETest/ServerRenderingTests/ClientValidation/ClientValidationBasicTest.cs
+@@ -0,0 +1,182 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using Components.TestServer.RazorComponents;
++using Microsoft.AspNetCore.Components.E2ETest.Infrastructure;
++using Microsoft.AspNetCore.Components.E2ETest.Infrastructure.ServerFixtures;
++using Microsoft.AspNetCore.E2ETesting;
++using OpenQA.Selenium;
++using OpenQA.Selenium.Support.UI;
++using TestServer;
++using Xunit.Abstractions;
++
++namespace Microsoft.AspNetCore.Components.E2ETests.ServerRenderingTests.ClientValidation;
++
++// E2E coverage for the JS client-side validation pipeline against a Blazor SSR page
++// with raw <form>/<input data-val=*> markup. The .NET-side rendering of data-val-*
++// attributes via DataAnnotationsValidator/InputBase lives in a separate PR; these
++// tests exercise the JS library's behaviour against markup that matches what the
++// .NET side will emit once both PRs land.
++public class ClientValidationBasicTest : ClientValidationTestBase
++{
++    public ClientValidationBasicTest(
++        BrowserFixture browserFixture,
++        BasicTestAppServerSiteFixture<RazorComponentEndpointsStartup<App>> serverFixture,
++        ITestOutputHelper output)
++        : base(browserFixture, serverFixture, output)
++    {
++    }
++
++    protected override void InitializeAsyncCore()
++    {
++        base.InitializeAsyncCore();
++        NavigateToClientValidationPage("basic-validation");
++        // Reset client-side state captured across test runs.
++        ((IJavaScriptExecutor)Browser).ExecuteScript("localStorage.removeItem('lastValidation');");
++    }
++
++    [Fact]
++    public void SubmittingEmptyFormShowsRequiredErrors()
++    {
++        Browser.Exists(By.Id("submit")).Click();
++
++        Browser.Equal("The Name field is required.",
++            () => Browser.Exists(By.CssSelector("[data-valmsg-for='Name']")).Text);
++        Browser.Equal("The Email field is required.",
++            () => Browser.Exists(By.CssSelector("[data-valmsg-for='Email']")).Text);
++        Browser.Equal("Password is required.",
++            () => Browser.Exists(By.CssSelector("[data-valmsg-for='Password']")).Text);
++    }
++
++    [Fact]
++    public void FillingRequiredFieldsAndSubmittingValidates()
++    {
++        Browser.Exists(By.Id("name")).SendKeys("Alice");
++        Browser.Exists(By.Id("email")).SendKeys("alice@example.com");
++        Browser.Exists(By.Id("password")).SendKeys("password123");
++        Browser.Exists(By.Id("agree")).Click();
++        new SelectElement(Browser.Exists(By.Id("category"))).SelectByValue("A");
++
++        Browser.Exists(By.Id("submit")).Click();
++
++        // localStorage value persists across the post-submit page reload that
++        // happens when JS allows the submit through.
++        Browser.Equal("valid:true;errors:0",
++            () => (string)((IJavaScriptExecutor)Browser).ExecuteScript(
++                "return localStorage.getItem('lastValidation');"));
++    }
++
++    [Fact]
++    public void InvalidFieldGetsAriaInvalidAndAriaDescribedBy()
++    {
++        Browser.Exists(By.Id("submit")).Click();
++
++        Browser.Equal("true",
++            () => Browser.Exists(By.Id("name")).GetAttribute("aria-invalid"));
++        Browser.True(
++            () => !string.IsNullOrEmpty(Browser.Exists(By.Id("name")).GetAttribute("aria-describedby")));
++    }
++
++    [Fact]
++    public void ValidFieldHasNoAriaInvalid()
++    {
++        var name = Browser.Exists(By.Id("name"));
++        name.SendKeys("Alice");
++        name.SendKeys(Keys.Tab); // commit change
++
++        Browser.True(() => Browser.Exists(By.Id("name")).GetAttribute("aria-invalid") is null);
++    }
++
++    [Fact]
++    public void SummaryUpdatesAfterInvalidSubmit()
++    {
++        Browser.Exists(By.Id("submit")).Click();
++
++        Browser.True(() =>
++            Browser.FindElements(By.CssSelector("[data-valmsg-summary='true'] li")).Count >= 4);
++    }
++
++    [Fact]
++    public void SummaryClearsAfterValidSubmit()
++    {
++        Browser.Exists(By.Id("submit")).Click();
++        Browser.True(() =>
++            Browser.FindElements(By.CssSelector("[data-valmsg-summary='true'] li")).Count > 0);
++
++        Browser.Exists(By.Id("name")).SendKeys("Alice");
++        Browser.Exists(By.Id("email")).SendKeys("alice@example.com");
++        Browser.Exists(By.Id("password")).SendKeys("password123");
++        Browser.Exists(By.Id("agree")).Click();
++        new SelectElement(Browser.Exists(By.Id("category"))).SelectByValue("A");
++        Browser.Exists(By.Id("submit")).Click();
++
++        Browser.Equal("valid:true;errors:0",
++            () => (string)((IJavaScriptExecutor)Browser).ExecuteScript(
++                "return localStorage.getItem('lastValidation');"));
++    }
++
++    [Fact]
++    public void ResetClearsValidationErrorsAndCssClasses()
++    {
++        Browser.Exists(By.Id("submit")).Click();
++        Browser.Exists(By.CssSelector(".input-validation-error"));
++
++        Browser.Exists(By.Id("reset")).Click();
++
++        Browser.DoesNotExist(By.CssSelector(".input-validation-error"));
++        Browser.DoesNotExist(By.CssSelector(".input-validation-valid"));
++    }
++
++    [Fact]
++    public void NovalidateAttributeAddedToTrackedForm()
++    {
++        // Verified by the InitializeAsyncCore precondition; reasserted here for
++        // explicit documentation of the expected behaviour.
++        Browser.True(() => Browser.Exists(By.Id("test-form")).GetAttribute("novalidate") != null);
++    }
++
++    [Fact]
++    public void ValidationCompleteEventDispatchedOnInvalidSubmit()
++    {
++        Browser.Exists(By.Id("submit")).Click();
++
++        // Form is invalid so JS prevents default; page does not reload, event-log
++        // div is observable directly. (localStorage is also written, but use the
++        // div here as a separate signal.)
++        Browser.Contains("valid:false", () => Browser.Exists(By.Id("event-log")).Text);
++    }
++
++    [Fact]
++    public void CheckboxRequiredValidation_RejectsUnchecked()
++    {
++        Browser.Exists(By.Id("submit")).Click();
++        Browser.Equal("You must agree to the terms.",
++            () => Browser.Exists(By.CssSelector("[data-valmsg-for='Agree']")).Text);
++    }
++
++    [Fact]
++    public void SelectRequiredValidation_RejectsUnselected()
++    {
++        Browser.Exists(By.Id("submit")).Click();
++        Browser.Equal("Please select a category.",
++            () => Browser.Exists(By.CssSelector("[data-valmsg-for='Category']")).Text);
++    }
++
++    [Fact]
++    public void MaxlengthShowsErrorWhenExceeded()
++    {
++        Browser.Exists(By.Id("bio")).SendKeys(new string('x', 101));
++        Browser.Exists(By.Id("submit")).Click();
++        Browser.Equal("Bio must be at most 100 characters.",
++            () => Browser.Exists(By.CssSelector("[data-valmsg-for='Bio']")).Text);
++    }
++
++    [Fact]
++    public void LengthMinMaxShowsErrorWhenTooShort()
++    {
++        Browser.Exists(By.Id("password")).SendKeys("short");
++        Browser.Exists(By.Id("submit")).Click();
++        Browser.Equal("Password must be between 8 and 50 characters.",
++            () => Browser.Exists(By.CssSelector("[data-valmsg-for='Password']")).Text);
++    }
++}
+diff --git a/src/Components/test/E2ETest/ServerRenderingTests/ClientValidation/ClientValidationScenariosTest.cs b/src/Components/test/E2ETest/ServerRenderingTests/ClientValidation/ClientValidationScenariosTest.cs
+new file mode 100644
+index 0000000000..acef74e362
+--- /dev/null
++++ b/src/Components/test/E2ETest/ServerRenderingTests/ClientValidation/ClientValidationScenariosTest.cs
+@@ -0,0 +1,169 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using Components.TestServer.RazorComponents;
++using Microsoft.AspNetCore.Components.E2ETest.Infrastructure;
++using Microsoft.AspNetCore.Components.E2ETest.Infrastructure.ServerFixtures;
++using Microsoft.AspNetCore.E2ETesting;
++using OpenQA.Selenium;
++using TestServer;
++using Xunit.Abstractions;
++
++namespace Microsoft.AspNetCore.Components.E2ETests.ServerRenderingTests.ClientValidation;
++
++// E2E coverage for advanced JS validation scenarios: trigger overrides, skipped
++// elements, multi-form independence, dynamic content, and untracked forms.
++public class ClientValidationScenariosTest : ClientValidationTestBase
++{
++    public ClientValidationScenariosTest(
++        BrowserFixture browserFixture,
++        BasicTestAppServerSiteFixture<RazorComponentEndpointsStartup<App>> serverFixture,
++        ITestOutputHelper output)
++        : base(browserFixture, serverFixture, output)
++    {
++    }
++
++    [Fact]
++    public void DataValeventSubmit_NoValidationOnChangeOrInput()
++    {
++        NavigateToClientValidationPage("timing");
++
++        var field = Browser.Exists(By.Id("submit-only"));
++        field.Click();
++        field.SendKeys(Keys.Tab); // blur
++
++        // Should NOT have triggered validation (per data-valevent="submit")
++        Browser.Equal("",
++            () => Browser.Exists(By.CssSelector("[data-valmsg-for='SubmitOnly']")).Text);
++
++        // Submit triggers it
++        Browser.Exists(By.Id("submit")).Click();
++        Browser.Equal("SubmitOnly is required.",
++            () => Browser.Exists(By.CssSelector("[data-valmsg-for='SubmitOnly']")).Text);
++    }
++
++    [Fact]
++    public void DataValeventInput_ValidatesEagerlyOnPristineForm()
++    {
++        NavigateToClientValidationPage("timing");
++
++        var field = Browser.Exists(By.Id("input-eager"));
++        // Type a character to trigger 'input' event, then clear it via backspace
++        field.SendKeys("x");
++        field.SendKeys(Keys.Backspace);
++
++        // After clearing (back to empty), should be invalid
++        Browser.Equal("InputEager is required.",
++            () => Browser.Exists(By.CssSelector("[data-valmsg-for='InputEager']")).Text);
++    }
++
++    [Fact]
++    public void HiddenDisabledAndDisplayNoneFieldsAreSkipped()
++    {
++        NavigateToClientValidationPage("formnovalidate");
++
++        // Fill only Name; the form has 3 other "required" fields that are hidden,
++        // disabled, or display:none and should all be skipped during validation.
++        Browser.Exists(By.Id("name")).SendKeys("Alice");
++        Browser.Exists(By.Id("btn-submit")).Click();
++
++        Browser.Contains("valid:true", () => Browser.Exists(By.Id("event-log")).Text);
++    }
++
++    [Fact]
++    public void FormnovalidateButtonBypassesValidation()
++    {
++        NavigateToClientValidationPage("formnovalidate");
++
++        // Click the formnovalidate button without filling anything; validation
++        // is bypassed entirely (no validationcomplete event dispatched, no errors).
++        Browser.Exists(By.Id("btn-draft")).Click();
++
++        // No error message text in the Name field's slot.
++        Browser.Equal("",
++            () => Browser.Exists(By.CssSelector("[data-valmsg-for='Name']")).Text);
++    }
++
++    [Fact]
++    public void UntrackedFormHasNoNovalidateAttribute()
++    {
++        // The 'no-validation' page intentionally has no [data-val=true] elements,
++        // so the JS library leaves the form alone and never adds [novalidate].
++        // Skip the submit interceptor too, so the page's "untracked forms post
++        // normally" behaviour is not masked from any future assertions.
++        NavigateToClientValidationPage("no-validation", expectTrackedForm: false, interceptSubmit: false);
++
++        Browser.True(() => Browser.Exists(By.Id("plain-form")).GetAttribute("novalidate") is null);
++    }
++
++    [Fact]
++    public void SubmittingOneFormDoesNotValidateOtherForm()
++    {
++        NavigateToClientValidationPage("multiple-forms");
++        Browser.Exists(By.CssSelector("#form-a[novalidate]"));
++        Browser.Exists(By.CssSelector("#form-b[novalidate]"));
++
++        Browser.Exists(By.Id("submit-a")).Click();
++
++        Browser.Equal("Name A is required.",
++            () => Browser.Exists(By.CssSelector("#form-a [data-valmsg-for='Name']")).Text);
++        Browser.Equal("",
++            () => Browser.Exists(By.CssSelector("#form-b [data-valmsg-for='Name']")).Text);
++    }
++
++    [Fact]
++    public void EachFormHasIndependentSummary()
++    {
++        NavigateToClientValidationPage("multiple-forms");
++
++        Browser.Exists(By.Id("submit-a")).Click();
++
++        Browser.True(() =>
++            Browser.FindElements(By.CssSelector("#form-a [data-valmsg-summary='true'] li")).Count > 0);
++        Browser.Equal(0,
++            () => Browser.FindElements(By.CssSelector("#form-b [data-valmsg-summary='true'] li")).Count);
++    }
++
++    [Fact]
++    public void DynamicallyAddedFieldsValidatedAfterScanRules()
++    {
++        NavigateToClientValidationPage("dynamic-content");
++
++        Browser.Exists(By.Id("add-field")).Click();
++        Browser.Exists(By.Id("dyn"));
++
++        Browser.Exists(By.Id("submit")).Click();
++
++        Browser.Equal("Dyn is required.",
++            () => Browser.Exists(By.CssSelector("[data-valmsg-for='Dyn']")).Text);
++    }
++
++    [Fact]
++    public void RemovedFieldsCleanedUpOnReScan()
++    {
++        NavigateToClientValidationPage("dynamic-content");
++
++        Browser.Exists(By.Id("add-field")).Click();
++        Browser.Exists(By.Id("dyn"));
++        Browser.Exists(By.Id("remove-field")).Click();
++        Browser.DoesNotExist(By.Id("dyn"));
++
++        // Submitting now should fail only on Name, not on Dyn (which no longer exists).
++        Browser.Exists(By.Id("submit")).Click();
++
++        Browser.Equal("Name is required.",
++            () => Browser.Exists(By.CssSelector("[data-valmsg-for='Name']")).Text);
++    }
++
++    [Fact]
++    public void FirstInvalidFieldFocusedOnSubmit()
++    {
++        NavigateToClientValidationPage("basic-validation");
++
++        Browser.Exists(By.Id("submit")).Click();
++
++        // First invalid field is Name; engine focuses it after validateForm.
++        Browser.Equal("name",
++            () => Browser.SwitchTo().ActiveElement().GetAttribute("id"));
++    }
++}
+diff --git a/src/Components/test/E2ETest/ServerRenderingTests/ClientValidation/ClientValidationTestBase.cs b/src/Components/test/E2ETest/ServerRenderingTests/ClientValidation/ClientValidationTestBase.cs
+new file mode 100644
+index 0000000000..053297da30
+--- /dev/null
++++ b/src/Components/test/E2ETest/ServerRenderingTests/ClientValidation/ClientValidationTestBase.cs
+@@ -0,0 +1,66 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using Components.TestServer.RazorComponents;
++using Microsoft.AspNetCore.Components.E2ETest.Infrastructure;
++using Microsoft.AspNetCore.Components.E2ETest.Infrastructure.ServerFixtures;
++using Microsoft.AspNetCore.E2ETesting;
++using OpenQA.Selenium;
++using TestServer;
++using Xunit.Abstractions;
++
++namespace Microsoft.AspNetCore.Components.E2ETests.ServerRenderingTests.ClientValidation;
++
++// Shared base for the ClientValidation Selenium tests. Centralizes navigation +
++// readiness waits + the submit interception that prevents the test forms from
++// actually POSTing to the server.
++//
++// Why the submit interception:
++// The test pages render plain SSR forms with raw data-val-* markup and no
++// anti-forgery token. When the JS client validation library accepts a submit
++// (form is valid), the browser would POST to the SSR endpoint, hit a 400, and
++// navigate to a Chromium error page. Subsequent assertions on the original page
++// would then fail or, worse, succeed flakily by reading whichever page Selenium
++// happened to land on. We install a document-level bubble-phase preventDefault:
++//   - Invalid submits: the validation library handler runs in capture phase on
++//     document, calls preventDefault + stopPropagation, and the bubble phase is
++//     never reached. No interaction with our handler.
++//   - Valid submits: the library lets the event through; the page's own
++//     'validationcomplete' bubble listeners on the form element fire first; then
++//     our document-bubble handler cancels the actual POST.
++public abstract class ClientValidationTestBase
++    : ServerTestBase<BasicTestAppServerSiteFixture<RazorComponentEndpointsStartup<App>>>
++{
++    protected ClientValidationTestBase(
++        BrowserFixture browserFixture,
++        BasicTestAppServerSiteFixture<RazorComponentEndpointsStartup<App>> serverFixture,
++        ITestOutputHelper output)
++        : base(browserFixture, serverFixture, output)
++    {
++    }
++
++    // Navigates to a /forms/client-validation/<page> URL, waits for Blazor to
++    // start, and (by default) installs the submit interceptor. Set
++    // expectTrackedForm to false for pages that intentionally have no
++    // [data-val=true] elements (e.g. the 'no-validation' page) so the helper
++    // does not block waiting for form[novalidate] that will never appear. Set
++    // interceptSubmit to false on pages whose purpose is to verify native form
++    // submission (e.g. 'no-validation') so the interceptor does not mask the
++    // behaviour the test is asserting on.
++    protected void NavigateToClientValidationPage(string page, bool expectTrackedForm = true, bool interceptSubmit = true)
++    {
++        Navigate($"subdir/forms/client-validation/{page}");
++        Browser.Exists(By.Id("blazor-started"));
++        Browser.Exists(By.Id("page-title"));
++        if (expectTrackedForm)
++        {
++            Browser.Exists(By.CssSelector("form[novalidate]"));
++        }
++
++        if (interceptSubmit)
++        {
++            ((IJavaScriptExecutor)Browser).ExecuteScript(
++                "document.addEventListener('submit', function (e) { e.preventDefault(); }, false);");
++        }
++    }
++}
+diff --git a/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/AllValidators.razor b/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/AllValidators.razor
+new file mode 100644
+index 0000000000..1907dc7a17
+--- /dev/null
++++ b/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/AllValidators.razor
+@@ -0,0 +1,62 @@
++@page "/forms/client-validation/all-validators"
++
++<h2 id="page-title">All built-in validators</h2>
++
++<style>
++    .field-validation-error { color: red; }
++    .field-validation-valid { display: none; }
++</style>
++
++<form id="test-form" method="post">
++    <input id="age" name="Age" type="number"
++           data-val="true"
++           data-val-range="Age must be between 1 and 150."
++           data-val-range-min="1"
++           data-val-range-max="150" />
++    <span data-valmsg-for="Age" data-valmsg-replace="true"></span>
++
++    <input id="zipcode" name="ZipCode" type="text"
++           data-val="true"
++           data-val-regex="Invalid zip code."
++           data-val-regex-pattern="\d{5}(-\d{4})?" />
++    <span data-valmsg-for="ZipCode" data-valmsg-replace="true"></span>
++
++    <input id="email" name="Email" type="text"
++           data-val="true"
++           data-val-email="Invalid email address." />
++    <span data-valmsg-for="Email" data-valmsg-replace="true"></span>
++
++    <input id="website" name="Website" type="text"
++           data-val="true"
++           data-val-url="Invalid URL." />
++    <span data-valmsg-for="Website" data-valmsg-replace="true"></span>
++
++    <input id="phone" name="Phone" type="text"
++           data-val="true"
++           data-val-phone="Invalid phone number." />
++    <span data-valmsg-for="Phone" data-valmsg-replace="true"></span>
++
++    <input id="card" name="Card" type="text"
++           data-val="true"
++           data-val-creditcard="Invalid credit card number." />
++    <span data-valmsg-for="Card" data-valmsg-replace="true"></span>
++
++    <input id="password" name="Password" type="password" />
++    <input id="confirm" name="ConfirmPassword" type="password"
++           data-val="true"
++           data-val-equalto="Passwords must match."
++           data-val-equalto-other="*.Password" />
++    <span data-valmsg-for="ConfirmPassword" data-valmsg-replace="true"></span>
++
++    <input id="avatar" name="Avatar" type="text"
++           data-val="true"
++           data-val-fileextensions="Only image files are allowed."
++           data-val-fileextensions-extensions=".png,.jpg,.jpeg,.gif" />
++    <span data-valmsg-for="Avatar" data-valmsg-replace="true"></span>
++
++    <input id="anchor" name="Anchor" type="text"
++           data-val="true"
++           data-val-required="Required." />
++
++    <button type="submit" id="submit">Submit</button>
++</form>
+diff --git a/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/BasicValidation.razor b/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/BasicValidation.razor
+new file mode 100644
+index 0000000000..3eeb7476b2
+--- /dev/null
++++ b/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/BasicValidation.razor
+@@ -0,0 +1,91 @@
++﻿@page "/forms/client-validation/basic-validation"
++
++<h2 id="page-title">Basic client-side validation</h2>
++
++<style>
++    .input-validation-error { border-color: red; }
++    .input-validation-valid { border-color: green; }
++    .field-validation-error { color: red; display: block; }
++    .field-validation-valid { display: none; }
++    .validation-summary-errors { color: red; }
++    .validation-summary-valid { display: none; }
++</style>
++
++<form id="test-form" method="post">
++    <div data-valmsg-summary="true" class="validation-summary-valid">
++        <ul></ul>
++    </div>
++
++    <div>
++        <label for="name">Name (required)</label>
++        <input id="name" name="Name" type="text"
++               data-val="true"
++               data-val-required="The Name field is required." />
++        <span data-valmsg-for="Name" data-valmsg-replace="true"></span>
++    </div>
++
++    <div>
++        <label for="email">Email (required)</label>
++        <input id="email" name="Email" type="text"
++               data-val="true"
++               data-val-required="The Email field is required." />
++        <span data-valmsg-for="Email" data-valmsg-replace="true"></span>
++    </div>
++
++    <div>
++        <label for="bio">Bio (maxlength 100)</label>
++        <textarea id="bio" name="Bio"
++                  data-val="true"
++                  data-val-maxlength="Bio must be at most 100 characters."
++                  data-val-maxlength-max="100"></textarea>
++        <span data-valmsg-for="Bio" data-valmsg-replace="true"></span>
++    </div>
++
++    <div>
++        <label for="password">Password (length 8-50)</label>
++        <input id="password" name="Password" type="password"
++               data-val="true"
++               data-val-required="Password is required."
++               data-val-length="Password must be between 8 and 50 characters."
++               data-val-length-min="8"
++               data-val-length-max="50" />
++        <span data-valmsg-for="Password" data-valmsg-replace="true"></span>
++    </div>
++
++    <div>
++        <label>
++            <input id="agree" name="Agree" type="checkbox"
++                   data-val="true"
++                   data-val-required="You must agree to the terms." />
++            I agree to the terms
++        </label>
++        <span data-valmsg-for="Agree" data-valmsg-replace="true"></span>
++    </div>
++
++    <div>
++        <label for="category">Category (required select)</label>
++        <select id="category" name="Category"
++                data-val="true"
++                data-val-required="Please select a category.">
++            <option value="">-- Select --</option>
++            <option value="A">Category A</option>
++            <option value="B">Category B</option>
++        </select>
++        <span data-valmsg-for="Category" data-valmsg-replace="true"></span>
++    </div>
++
++    <button type="submit" id="submit">Submit</button>
++    <button type="reset" id="reset">Reset</button>
++</form>
++
++<div id="event-log"></div>
++
++<script suppress-error="BL9992">
++    document.getElementById('test-form').addEventListener('validationcomplete', function (e) {
++        var payload = 'valid:' + e.detail.valid + ';errors:' + e.detail.errors.size;
++        document.getElementById('event-log').textContent = payload;
++        // localStorage survives form-post page reloads so tests can read the
++        // event detail even if validation passed and the form was submitted.
++        localStorage.setItem('lastValidation', payload);
++    });
++</script>
+diff --git a/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/CustomValidator.razor b/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/CustomValidator.razor
+new file mode 100644
+index 0000000000..82a8270fbb
+--- /dev/null
++++ b/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/CustomValidator.razor
+@@ -0,0 +1,44 @@
++﻿@page "/forms/client-validation/custom-validator"
++
++<h2 id="page-title">Custom validator</h2>
++
++<style>
++    .input-validation-error { border-color: red; }
++    .field-validation-error { color: red; }
++    .field-validation-valid { display: none; }
++</style>
++
++<form id="test-form" method="post">
++    <div>
++        <label for="code">Code (custom-format)</label>
++        <input id="code" name="Code" type="text"
++               data-val="true"
++               data-val-customformat="Code must start with 'ABC-'."
++               data-val-customformat-prefix="ABC-" />
++        <span data-valmsg-for="Code" data-valmsg-replace="true"></span>
++    </div>
++
++    <button type="submit" id="submit">Submit</button>
++</form>
++
++<script suppress-error="BL9992">
++    // Poll for Blazor.formValidation to become available, then register the custom validator.
++    (function register() {
++        if (window.Blazor && Blazor.formValidation) {
++            Blazor.formValidation.addValidator('customformat', function (context) {
++                if (!context.value) {
++                    return { success: true };
++                }
++                var prefix = context.params['prefix'] || '';
++                return { success: context.value.indexOf(prefix) === 0 };
++            });
++            // Re-scan so the engine picks up the newly-registered rule on the existing field.
++            Blazor.formValidation.scanRules();
++            var marker = document.createElement('span');
++            marker.id = 'custom-validator-ready';
++            document.body.appendChild(marker);
++        } else {
++            setTimeout(register, 30);
++        }
++    })();
++</script>
+diff --git a/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/DynamicContent.razor b/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/DynamicContent.razor
+new file mode 100644
+index 0000000000..3ac930d22d
+--- /dev/null
++++ b/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/DynamicContent.razor
+@@ -0,0 +1,40 @@
++@page "/forms/client-validation/dynamic-content"
++
++<h2 id="page-title">Dynamic content + scanRules</h2>
++
++<style>
++    .field-validation-error { color: red; }
++    .field-validation-valid { display: none; }
++</style>
++
++<form id="test-form" method="post">
++    <input id="name" name="Name" type="text"
++           data-val="true"
++           data-val-required="Name is required." />
++    <span data-valmsg-for="Name" data-valmsg-replace="true"></span>
++
++    <div id="dynamic-container"></div>
++
++    <button type="submit" id="submit">Submit</button>
++</form>
++
++<button id="add-field" type="button">Add field</button>
++<button id="remove-field" type="button">Remove field</button>
++
++<script suppress-error="BL9992">
++    document.getElementById('add-field').addEventListener('click', function () {
++        var container = document.getElementById('dynamic-container');
++        container.innerHTML =
++            '<input id="dyn" name="Dyn" type="text" data-val="true" data-val-required="Dyn is required." />' +
++            '<span data-valmsg-for="Dyn" data-valmsg-replace="true"></span>';
++        if (window.Blazor && Blazor.formValidation) {
++            Blazor.formValidation.scanRules();
++        }
++    });
++    document.getElementById('remove-field').addEventListener('click', function () {
++        document.getElementById('dynamic-container').innerHTML = '';
++        if (window.Blazor && Blazor.formValidation) {
++            Blazor.formValidation.scanRules();
++        }
++    });
++</script>
+diff --git a/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/Formnovalidate.razor b/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/Formnovalidate.razor
+new file mode 100644
+index 0000000000..657347b167
+--- /dev/null
++++ b/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/Formnovalidate.razor
+@@ -0,0 +1,44 @@
++@page "/forms/client-validation/formnovalidate"
++
++<h2 id="page-title">formnovalidate + skipped fields</h2>
++
++<style>
++    .field-validation-error { color: red; }
++    .field-validation-valid { display: none; }
++</style>
++
++<form id="test-form" method="post" data-enhance="false">
++    <input id="name" name="Name" type="text"
++           data-val="true"
++           data-val-required="Name is required." />
++    <span data-valmsg-for="Name" data-valmsg-replace="true"></span>
++
++    <input id="hidden-field" name="HiddenField" type="hidden"
++           data-val="true"
++           data-val-required="HiddenField is required." />
++    <span data-valmsg-for="HiddenField" data-valmsg-replace="true"></span>
++
++    <input id="disabled-field" name="DisabledField" type="text" disabled
++           data-val="true"
++           data-val-required="DisabledField is required." />
++    <span data-valmsg-for="DisabledField" data-valmsg-replace="true"></span>
++
++    <div style="display:none">
++        <input id="display-none-field" name="DisplayNoneField" type="text"
++               data-val="true"
++               data-val-required="DisplayNoneField is required." />
++        <span data-valmsg-for="DisplayNoneField" data-valmsg-replace="true"></span>
++    </div>
++
++    <button type="submit" id="btn-submit">Submit</button>
++    <button type="submit" id="btn-draft" formnovalidate>Save as Draft</button>
++</form>
++
++<div id="event-log"></div>
++
++<script suppress-error="BL9992">
++    document.getElementById('test-form').addEventListener('validationcomplete', function (e) {
++        document.getElementById('event-log').textContent =
++            'valid:' + e.detail.valid + ';errors:' + e.detail.errors.size;
++    });
++</script>
+diff --git a/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/MultipleForms.razor b/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/MultipleForms.razor
+new file mode 100644
+index 0000000000..ee993bea77
+--- /dev/null
++++ b/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/MultipleForms.razor
+@@ -0,0 +1,28 @@
++@page "/forms/client-validation/multiple-forms"
++
++<h2 id="page-title">Multiple independent forms</h2>
++
++<style>
++    .field-validation-error { color: red; }
++    .field-validation-valid { display: none; }
++    .validation-summary-errors { color: red; }
++    .validation-summary-valid { display: none; }
++</style>
++
++<form id="form-a" method="post">
++    <div data-valmsg-summary="true" class="validation-summary-valid"><ul></ul></div>
++    <input id="name-a" name="Name" type="text"
++           data-val="true"
++           data-val-required="Name A is required." />
++    <span data-valmsg-for="Name" data-valmsg-replace="true"></span>
++    <button type="submit" id="submit-a">Submit A</button>
++</form>
++
++<form id="form-b" method="post">
++    <div data-valmsg-summary="true" class="validation-summary-valid"><ul></ul></div>
++    <input id="name-b" name="Name" type="text"
++           data-val="true"
++           data-val-required="Name B is required." />
++    <span data-valmsg-for="Name" data-valmsg-replace="true"></span>
++    <button type="submit" id="submit-b">Submit B</button>
++</form>
+diff --git a/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/NoValidation.razor b/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/NoValidation.razor
+new file mode 100644
+index 0000000000..b7681c10f7
+--- /dev/null
++++ b/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/NoValidation.razor
+@@ -0,0 +1,14 @@
++@page "/forms/client-validation/no-validation"
++
++@*
++    Plain form with NO data-val="true" elements. Used to verify that the JS
++    library does NOT intercept submission of untracked forms (no novalidate
++    attribute set, form posts normally).
++*@
++
++<h2 id="page-title">Form without validation attributes</h2>
++
++<form id="plain-form" method="post">
++    <input id="name" name="Name" type="text" />
++    <button type="submit" id="submit">Submit</button>
++</form>
+diff --git a/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/RadioGroup.razor b/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/RadioGroup.razor
+new file mode 100644
+index 0000000000..58423e3418
+--- /dev/null
++++ b/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/RadioGroup.razor
+@@ -0,0 +1,40 @@
++@page "/forms/client-validation/radio-group"
++
++<h2 id="page-title">Radio group validation</h2>
++
++<style>
++    .input-validation-error { border-color: red; }
++    .field-validation-error { color: red; }
++    .field-validation-valid { display: none; }
++</style>
++
++<form id="test-form" method="post">
++    <fieldset>
++        <legend>Color (required)</legend>
++        <label>
++            <input id="color-red" type="radio" name="Color" value="red"
++                   data-val="true"
++                   data-val-required="Please select a color." />
++            Red
++        </label>
++        <label>
++            <input id="color-green" type="radio" name="Color" value="green"
++                   data-val="true"
++                   data-val-required="Please select a color." />
++            Green
++        </label>
++        <label>
++            <input id="color-blue" type="radio" name="Color" value="blue"
++                   data-val="true"
++                   data-val-required="Please select a color." />
++            Blue
++        </label>
++        <div class="validation-message" data-valmsg-for="Color" data-valmsg-replace="true"></div>
++    </fieldset>
++
++    <input id="anchor" name="Anchor" type="text"
++           data-val="true"
++           data-val-required="Required." />
++
++    <button type="submit" id="submit">Submit</button>
++</form>
+diff --git a/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/ServerRenderedMessages.razor b/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/ServerRenderedMessages.razor
+new file mode 100644
+index 0000000000..602f1fba43
+--- /dev/null
++++ b/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/ServerRenderedMessages.razor
+@@ -0,0 +1,36 @@
++@page "/forms/client-validation/server-rendered-messages"
++
++@*
++    Simulates Blazor SSR rendering after a POST with server-side validation errors.
++    The first <div> for a field has data-valmsg-for (JS manages it); the second is a plain
++    sibling (extra server-rendered error). JS should remove the sibling when client validation
++    runs and the field becomes valid or shows a different client-side error.
++*@
++
++<h2 id="page-title">Server-rendered validation messages</h2>
++
++<style>
++    .validation-message { color: red; }
++    .field-validation-error { color: red; }
++    .field-validation-valid { display: none; }
++</style>
++
++<form id="test-form" method="post">
++    <div>
++        <input id="name" name="Name" type="text"
++               data-val="true"
++               data-val-required="Name is required." />
++        <div class="validation-message" data-valmsg-for="Name" data-valmsg-replace="true">Name is required.</div>
++        <div class="validation-message">Name must be at least 2 characters.</div>
++    </div>
++
++    <div>
++        <input id="email" name="Email" type="text"
++               data-val="true"
++               data-val-required="Email is required."
++               data-val-email="Invalid email." />
++        <div class="validation-message" data-valmsg-for="Email" data-valmsg-replace="true">Email is required.</div>
++    </div>
++
++    <button type="submit" id="submit">Submit</button>
++</form>
+diff --git a/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/Timing.razor b/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/Timing.razor
+new file mode 100644
+index 0000000000..6330b8c6d3
+--- /dev/null
++++ b/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/Timing.razor
+@@ -0,0 +1,40 @@
++@page "/forms/client-validation/timing"
++
++<h2 id="page-title">Validation triggers</h2>
++
++<style>
++    .field-validation-error { color: red; }
++    .field-validation-valid { display: none; }
++</style>
++
++<form id="test-form" method="post">
++    @* Default: change + gated input *@
++    <input id="default-field" name="Default" type="text"
++           data-val="true"
++           data-val-required="Default is required." />
++    <span data-valmsg-for="Default" data-valmsg-replace="true"></span>
++
++    @* data-valevent="submit": only validated on form submit *@
++    <input id="submit-only" name="SubmitOnly" type="text"
++           data-val="true"
++           data-val-required="SubmitOnly is required."
++           data-valevent="submit" />
++    <span data-valmsg-for="SubmitOnly" data-valmsg-replace="true"></span>
++
++    @* data-valevent="change": only validated on change/blur, never on input *@
++    <input id="change-only" name="ChangeOnly" type="text"
++           data-val="true"
++           data-val-required="ChangeOnly is required."
++           data-valevent="change" />
++    <span data-valmsg-for="ChangeOnly" data-valmsg-replace="true"></span>
++
++    @* data-valevent="input": always validated on every keystroke *@
++    <input id="input-eager" name="InputEager" type="text"
++           data-val="true"
++           data-val-required="InputEager is required."
++           data-valevent="input" />
++    <span data-valmsg-for="InputEager" data-valmsg-replace="true"></span>
++
++    <button type="submit" id="submit">Submit</button>
++    <button type="reset" id="reset">Reset</button>
++</form>
+diff --git a/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/_Imports.razor b/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/_Imports.razor
+new file mode 100644
+index 0000000000..974ee3af73
+--- /dev/null
++++ b/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/ClientValidation/_Imports.razor
+@@ -0,0 +1 @@
++@layout Components.TestServer.RazorComponents.Shared.FormsLayout

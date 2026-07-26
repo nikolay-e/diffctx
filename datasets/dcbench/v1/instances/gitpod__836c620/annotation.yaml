@@ -1,0 +1,52 @@
+repo: gitpod
+base_commit: a73ac9b0e3e197df1ee62a7e3b12054c2e9a7704
+commit: 836c620cd003f0c9b2b2dfe34ac61f1b5158e69c
+patch_stored: false
+gold:
+- path: .gitpod.yml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .werft/build.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .werft/build.yaml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .werft/util/observability.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: dev/addlicense/main.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: dev/image/Dockerfile
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: operations/observability/mixins/Makefile
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: operations/observability/mixins/README.md
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: operations/observability/mixins/go.sum
+- path: operations/observability/mixins/meta/dashboards/**/*.json
+- path: operations/observability/mixins/workspace/dashboards/**/*.json
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'status=hang on a 68-file / 39,252-insertion commit that is almost entirely a wholesale vendoring
+  of Jsonnet observability dashboards (multi-thousand-line generated Grafana JSON files plus a 1,444-line
+  go.sum). The actual hand-written change is tiny: a handful of CI/build script edits. A correct tool
+  should recognize the JSON/go.sum blobs as vendored/generated bulk-add content (list as added_files,
+  no fragment extraction) and focus on the 5-6 real files, but instead it produced nothing at all. Given
+  the sheer line count, this hang is plausibly a scaling/complexity blowup in fragment extraction over
+  huge added files rather than anything content-specific.'

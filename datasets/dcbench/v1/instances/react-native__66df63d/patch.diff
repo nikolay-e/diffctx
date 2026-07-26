@@ -1,0 +1,566 @@
+From 66df63d3b5194ac7163c7cba41699678ea791244 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Rub=C3=A9n=20Norte?= <rubennorte@meta.com>
+Date: Tue, 29 Oct 2024 08:02:54 -0700
+Subject: [PATCH] Generalize feature flags script (#47208)
+
+Summary:
+Pull Request resolved: https://github.com/facebook/react-native/pull/47208
+
+Changelog: [internal]
+
+Small change to unify the yarn commands for feature flags into a single `featureflags` command with options.
+
+Reviewed By: NickGerleman, mdvacca
+
+Differential Revision: D64982509
+
+fbshipit-source-id: 3f9d7ac35f61950bd03fef243e1a95625144a0cd
+---
+ package.json                                  |  3 +--
+ .../featureflags/ReactNativeFeatureFlags.kt   |  4 ++--
+ .../ReactNativeFeatureFlagsCxxAccessor.kt     |  4 ++--
+ .../ReactNativeFeatureFlagsCxxInterop.kt      |  4 ++--
+ .../ReactNativeFeatureFlagsDefaults.kt        |  4 ++--
+ .../ReactNativeFeatureFlagsLocalAccessor.kt   |  4 ++--
+ .../ReactNativeFeatureFlagsProvider.kt        |  4 ++--
+ .../JReactNativeFeatureFlagsCxxInterop.cpp    |  4 ++--
+ .../JReactNativeFeatureFlagsCxxInterop.h      |  4 ++--
+ .../featureflags/ReactNativeFeatureFlags.cpp  |  4 ++--
+ .../featureflags/ReactNativeFeatureFlags.h    |  4 ++--
+ .../ReactNativeFeatureFlagsAccessor.cpp       |  4 ++--
+ .../ReactNativeFeatureFlagsAccessor.h         |  4 ++--
+ .../ReactNativeFeatureFlagsDefaults.h         |  4 ++--
+ .../ReactNativeFeatureFlagsProvider.h         |  4 ++--
+ .../NativeReactNativeFeatureFlags.cpp         |  4 ++--
+ .../NativeReactNativeFeatureFlags.h           |  4 ++--
+ packages/react-native/package.json            |  3 +--
+ .../scripts/featureflags/README.md            |  2 +-
+ .../ReactNativeFeatureFlags.config.js         |  2 +-
+ .../scripts/featureflags/generateFiles.js     |  2 +-
+ .../scripts/featureflags/index.js             | 24 +++++++++++++++++--
+ .../scripts/featureflags/utils.js             |  2 +-
+ .../featureflags/ReactNativeFeatureFlags.js   |  4 ++--
+ .../specs/NativeReactNativeFeatureFlags.js    |  4 ++--
+ scripts/run-ci-javascript-tests.js            |  2 +-
+ 26 files changed, 65 insertions(+), 47 deletions(-)
+
+diff --git a/package.json b/package.json
+index 272657946e2..1cb4780864e 100644
+--- a/package.json
++++ b/package.json
+@@ -14,8 +14,7 @@
+     "flow": "flow",
+     "format-check": "prettier --list-different \"./**/*.{js,md,yml,ts,tsx}\"",
+     "format": "npm run prettier && npm run clang-format",
+-    "featureflags-check": "cd packages/react-native && yarn featureflags-check",
+-    "featureflags-update": "cd packages/react-native && yarn featureflags-update",
++    "featureflags": "cd packages/react-native && yarn featureflags",
+     "lint-ci": "./scripts/circleci/analyze_code.sh && yarn shellcheck",
+     "lint-java": "node ./scripts/lint-java.js",
+     "lint": "eslint .",
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt
+index c05bfedb21e..073e86f2505 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<64521c5f18fcaf7092590a2629bb8418>>
++ * @generated SignedSource<<a562b334fd2ce1cc4686535f73560f0d>>
+  */
+ 
+ /**
+@@ -14,7 +14,7 @@
+  *   packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js.
+  *
+  * To regenerate this code, run the following script from the repo root:
+- *   yarn featureflags-update
++ *   yarn featureflags --update
+  */
+ 
+ package com.facebook.react.internal.featureflags
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt
+index eca0591fb0d..90b4cfb63b8 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<8ed11f58c6671703e4021a91256d315d>>
++ * @generated SignedSource<<8ce0565e55c8ddf1224d7a36a2fc3c7f>>
+  */
+ 
+ /**
+@@ -14,7 +14,7 @@
+  *   packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js.
+  *
+  * To regenerate this code, run the following script from the repo root:
+- *   yarn featureflags-update
++ *   yarn featureflags --update
+  */
+ 
+ package com.facebook.react.internal.featureflags
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt
+index 4a11b6a59f8..413fc8d4a7f 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<6f5d74e7ec13afa88fbd088182f0ba2b>>
++ * @generated SignedSource<<7fa456313164091105a3ce7ad64971aa>>
+  */
+ 
+ /**
+@@ -14,7 +14,7 @@
+  *   packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js.
+  *
+  * To regenerate this code, run the following script from the repo root:
+- *   yarn featureflags-update
++ *   yarn featureflags --update
+  */
+ 
+ package com.facebook.react.internal.featureflags
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt
+index 2f728f7bc15..8b460294be1 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<e1868b062c62107e77fe2897a0681e6e>>
++ * @generated SignedSource<<f6f363a973c42389fe8562b1b2c414f2>>
+  */
+ 
+ /**
+@@ -14,7 +14,7 @@
+  *   packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js.
+  *
+  * To regenerate this code, run the following script from the repo root:
+- *   yarn featureflags-update
++ *   yarn featureflags --update
+  */
+ 
+ package com.facebook.react.internal.featureflags
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt
+index a8e890f04b3..a6cfd9d3657 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<c6e809489f71a930ad05d83a4ef37cde>>
++ * @generated SignedSource<<8688972dbd3246bbdea8d6c9f3fa1eae>>
+  */
+ 
+ /**
+@@ -14,7 +14,7 @@
+  *   packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js.
+  *
+  * To regenerate this code, run the following script from the repo root:
+- *   yarn featureflags-update
++ *   yarn featureflags --update
+  */
+ 
+ package com.facebook.react.internal.featureflags
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt
+index b21ea33d51f..147b7144b1e 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<4c0f737c0dfaa5095d46defe1f67bddf>>
++ * @generated SignedSource<<d646f6a328cc6ec81b99b95e91fa600e>>
+  */
+ 
+ /**
+@@ -14,7 +14,7 @@
+  *   packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js.
+  *
+  * To regenerate this code, run the following script from the repo root:
+- *   yarn featureflags-update
++ *   yarn featureflags --update
+  */
+ 
+ package com.facebook.react.internal.featureflags
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp
+index b3ce8d4134b..0b85bf183d1 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<e51d7efeeff83508fa5f1a7a46ee859d>>
++ * @generated SignedSource<<4a81321707e81b7b1bf4c54b2801287d>>
+  */
+ 
+ /**
+@@ -14,7 +14,7 @@
+  *   packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js.
+  *
+  * To regenerate this code, run the following script from the repo root:
+- *   yarn featureflags-update
++ *   yarn featureflags --update
+  */
+ 
+ #include "JReactNativeFeatureFlagsCxxInterop.h"
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h
+index 13ec4a40301..302b566af8b 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<161df10ef8d0b49dce49c9d0e9354279>>
++ * @generated SignedSource<<0693d6be00ed71c6b2b2e17c916da46e>>
+  */
+ 
+ /**
+@@ -14,7 +14,7 @@
+  *   packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js.
+  *
+  * To regenerate this code, run the following script from the repo root:
+- *   yarn featureflags-update
++ *   yarn featureflags --update
+  */
+ 
+ #pragma once
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp
+index 07f80cbcc9d..ae48be2beb6 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<0b4373e19b66481d17c0a8e81785df23>>
++ * @generated SignedSource<<9787a6557a68b98bf6a3d70771e03679>>
+  */
+ 
+ /**
+@@ -14,7 +14,7 @@
+  *   packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js.
+  *
+  * To regenerate this code, run the following script from the repo root:
+- *   yarn featureflags-update
++ *   yarn featureflags --update
+  */
+ 
+ #include "ReactNativeFeatureFlags.h"
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h
+index e2ba424ee2b..efce5aba6e4 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<fdd3b31a0a8fbd406a14c8a088350034>>
++ * @generated SignedSource<<4dfc1aeb1a5540ee3838635e17756f78>>
+  */
+ 
+ /**
+@@ -14,7 +14,7 @@
+  *   packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js.
+  *
+  * To regenerate this code, run the following script from the repo root:
+- *   yarn featureflags-update
++ *   yarn featureflags --update
+  */
+ 
+ #pragma once
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp
+index 9649df5c3bc..45434e82862 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<3ee70c854f08a871c4951e231f5c27c2>>
++ * @generated SignedSource<<e7300b3d99a21db2f8afbe99e4c32356>>
+  */
+ 
+ /**
+@@ -14,7 +14,7 @@
+  *   packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js.
+  *
+  * To regenerate this code, run the following script from the repo root:
+- *   yarn featureflags-update
++ *   yarn featureflags --update
+  */
+ 
+ #include <react/featureflags/ReactNativeFeatureFlagsDefaults.h>
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h
+index 99179e355e0..845270dcb74 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<337a399929dd2a198b1b7d99ff395236>>
++ * @generated SignedSource<<e4a3bfe61673016256590c7989856aa7>>
+  */
+ 
+ /**
+@@ -14,7 +14,7 @@
+  *   packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js.
+  *
+  * To regenerate this code, run the following script from the repo root:
+- *   yarn featureflags-update
++ *   yarn featureflags --update
+  */
+ 
+ #pragma once
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h
+index c2ce793a4fa..fd82f4cba04 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<65bca35ca4b820d9b311b4d9a194fdab>>
++ * @generated SignedSource<<0909e8a8f83deb9799b58befef766e85>>
+  */
+ 
+ /**
+@@ -14,7 +14,7 @@
+  *   packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js.
+  *
+  * To regenerate this code, run the following script from the repo root:
+- *   yarn featureflags-update
++ *   yarn featureflags --update
+  */
+ 
+ #pragma once
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h
+index ba4ec76b533..8f45961d13c 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<6f33275c4058c3c67653247c1983f526>>
++ * @generated SignedSource<<50aa6a085f28af3d82877f619e03b611>>
+  */
+ 
+ /**
+@@ -14,7 +14,7 @@
+  *   packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js.
+  *
+  * To regenerate this code, run the following script from the repo root:
+- *   yarn featureflags-update
++ *   yarn featureflags --update
+  */
+ 
+ #pragma once
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp
+index 14503b46dd5..3c1d2afabe1 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp
++++ b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<9c9ab8e276227aa107d905c5eb6578ae>>
++ * @generated SignedSource<<825b50d1d5ed20c468511b6cc9f7299d>>
+  */
+ 
+ /**
+@@ -14,7 +14,7 @@
+  *   packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js.
+  *
+  * To regenerate this code, run the following script from the repo root:
+- *   yarn featureflags-update
++ *   yarn featureflags --update
+  */
+ 
+ #include "NativeReactNativeFeatureFlags.h"
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h
+index 61b8510b279..372abfa2540 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h
++++ b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<81af74188979662ffc39840c1521ca72>>
++ * @generated SignedSource<<b7ab6ce17aa3309d28619d2536aa1bb7>>
+  */
+ 
+ /**
+@@ -14,7 +14,7 @@
+  *   packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js.
+  *
+  * To regenerate this code, run the following script from the repo root:
+- *   yarn featureflags-update
++ *   yarn featureflags --update
+  */
+ 
+ #pragma once
+diff --git a/packages/react-native/package.json b/packages/react-native/package.json
+index 1bd6aa10d5b..dd7cb6850ca 100644
+--- a/packages/react-native/package.json
++++ b/packages/react-native/package.json
+@@ -95,8 +95,7 @@
+   ],
+   "scripts": {
+     "prepack": "node ./scripts/prepack.js",
+-    "featureflags-check": "node ./scripts/featureflags/index.js --verify-unchanged",
+-    "featureflags-update": "node ./scripts/featureflags/index.js"
++    "featureflags": "node ./scripts/featureflags/index.js"
+   },
+   "peerDependencies": {
+     "@types/react": "^18.2.6",
+diff --git a/packages/react-native/scripts/featureflags/README.md b/packages/react-native/scripts/featureflags/README.md
+index 7f774a944c4..4d8e030a5a3 100644
+--- a/packages/react-native/scripts/featureflags/README.md
++++ b/packages/react-native/scripts/featureflags/README.md
+@@ -37,7 +37,7 @@ must be regenerated running this from the `react-native`
+ repository:
+ 
+ ```shell
+-yarn featureflags-update
++yarn featureflags --update
+ ```
+ 
+ ## Access
+diff --git a/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js b/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
+index 3ee7ede1696..064bdb0d9d7 100644
+--- a/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
++++ b/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
+@@ -17,7 +17,7 @@ import type {FeatureFlagDefinitions} from './types';
+  *
+  * If you modify this file, you need to update all the generated files
+  * running the following script from the repo root:
+- *   yarn featureflags-update
++ *   yarn featureflags --update
+  */
+ 
+ // These flags are only used in tests for the feature flags system
+diff --git a/packages/react-native/scripts/featureflags/generateFiles.js b/packages/react-native/scripts/featureflags/generateFiles.js
+index b466b8cd667..41ddfb9ced4 100644
+--- a/packages/react-native/scripts/featureflags/generateFiles.js
++++ b/packages/react-native/scripts/featureflags/generateFiles.js
+@@ -78,7 +78,7 @@ export default function generateFiles(
+ 
+       throw new Error(
+         `Detected changes in generated files for feature flags:\n${changedFilesStr}\n\n` +
+-          'Please rerun `yarn featureflags-update` and commit the changes.',
++          'Please rerun `yarn featureflags --update` and commit the changes.',
+       );
+     }
+ 
+diff --git a/packages/react-native/scripts/featureflags/index.js b/packages/react-native/scripts/featureflags/index.js
+index 38e991437f2..9cbc102bf6d 100644
+--- a/packages/react-native/scripts/featureflags/index.js
++++ b/packages/react-native/scripts/featureflags/index.js
+@@ -9,6 +9,26 @@
+ 
+ if (require.main === module) {
+   require('../../../../scripts/build/babel-register').registerForMonorepo();
+-  const update = require('./update').default;
+-  update(process.argv.includes('--verify-unchanged'));
++
++  let command;
++
++  if (process.argv.includes('--update')) {
++    command = 'update';
++  } else if (process.argv.includes('--verify-unchanged')) {
++    command = 'verify-unchanged';
++  }
++
++  switch (command) {
++    case 'update':
++      require('./update').default(false);
++      break;
++    case 'verify-unchanged':
++      require('./update').default(true);
++      break;
++    default:
++      console.error(
++        'Usage: node featureflags.js [--update|--verify-unchanged]',
++      );
++      process.exit(1);
++  }
+ }
+diff --git a/packages/react-native/scripts/featureflags/utils.js b/packages/react-native/scripts/featureflags/utils.js
+index 1634f3c73ff..72690df4245 100644
+--- a/packages/react-native/scripts/featureflags/utils.js
++++ b/packages/react-native/scripts/featureflags/utils.js
+@@ -47,5 +47,5 @@ export const DO_NOT_MODIFY_COMMENT = `/**
+  *   packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js.
+  *
+  * To regenerate this code, run the following script from the repo root:
+- *   yarn featureflags-update
++ *   yarn featureflags --update
+  */`;
+diff --git a/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js b/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js
+index 5bdc98c8e7a..7719cbf18e6 100644
+--- a/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js
++++ b/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<394b8d464269026a6bec25a488a3a35e>>
++ * @generated SignedSource<<63fec3bc9a6fb21e6a91c68acfc38507>>
+  * @flow strict
+  */
+ 
+@@ -15,7 +15,7 @@
+  *   packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js.
+  *
+  * To regenerate this code, run the following script from the repo root:
+- *   yarn featureflags-update
++ *   yarn featureflags --update
+  */
+ 
+ import {
+diff --git a/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js b/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js
+index da26e85e853..c386fb099c2 100644
+--- a/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js
++++ b/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<af633e24069a9e044194e0efbfeabbe4>>
++ * @generated SignedSource<<2d8cb8ee61c47bd213fea2f9c80468e9>>
+  * @flow strict
+  */
+ 
+@@ -15,7 +15,7 @@
+  *   packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js.
+  *
+  * To regenerate this code, run the following script from the repo root:
+- *   yarn featureflags-update
++ *   yarn featureflags --update
+  */
+ 
+ import type {TurboModule} from '../../../../Libraries/TurboModule/RCTExport';
+diff --git a/scripts/run-ci-javascript-tests.js b/scripts/run-ci-javascript-tests.js
+index c9cccaa3832..0a6a1351355 100644
+--- a/scripts/run-ci-javascript-tests.js
++++ b/scripts/run-ci-javascript-tests.js
+@@ -34,7 +34,7 @@ try {
+   echo('Executing JavaScript tests');
+ 
+   describe('Test: feature flags codegen');
+-  if (exec(`${YARN_BINARY} run featureflags-check`).code) {
++  if (exec(`${YARN_BINARY} run featureflags --verify-unchanged`).code) {
+     echo('Failed to run featureflags check.');
+     exitCode = 1;
+     throw Error(exitCode);

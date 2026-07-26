@@ -1,0 +1,59 @@
+repo: nextcloud
+base_commit: 4828ac352145d2d3eb002e55631bac2d494c96a9
+commit: f94fb33062bf3a10e5b0b2023194ad55ce18c3fb
+patch_stored: true
+gold:
+  - path: lib/public/Authentication/Token/IToken.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: gains the full IToken interface body (constants, getId/getUID/getScope/etc.) moved verbatim from the private interface, now the canonical definition
+  - path: lib/private/Authentication/Token/IToken.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: reduced to 'interface IToken extends OCPIToken {}', a BC shim aliasing the app-private interface onto the new public one
+  - path: lib/public/Authentication/Token/IProvider.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "gains 'public function getToken(string $tokenId): IToken' with the same @throws contract as the private interface's existing method"
+  - path: lib/private/Authentication/Token/IProvider.php
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: "pre-existing private interface whose getToken(string $tokenId): IToken declaration (identical signature and @throws docblock) was copied verbatim onto the new public interface"
+  - path: lib/private/Authentication/Token/PublicKeyTokenProvider.php
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: the concrete IProvider implementation actually exercised at runtime — implements getToken() looking up a PublicKeyToken and is what callers of the newly-public interface ultimately reach
+  - path: lib/private/Authentication/Token/Manager.php
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: second concrete IProvider implementer, delegating getToken() to the underlying token provider(s)
+forbidden:
+  - path: lib/composer/composer/autoload_classmap.php
+    reason: generated autoload map, mechanical byproduct of the interface content move
+  - path: lib/composer/composer/autoload_static.php
+    reason: generated autoload map, same mechanical byproduct
+  - path: lib/private/Authentication/Token/PublicKeyTokenMapper.php
+    reason: also defines a getToken() method but at the DB-mapper layer returning a concrete PublicKeyToken, not the IToken/IProvider abstraction this commit promotes
+nontrivial_gold_count: 3
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 5
+  description: Move IToken and IProvider::getToken to OCP — compact private→public interface promotion
+notes: >
+  Promotes the app-private Authentication\Token\IToken interface to OCP verbatim (the
+  private one becomes a thin 'extends' BC shim) and adds IProvider::getToken() to OCP,
+  copying the exact signature/docblock already present on the private IProvider
+  interface. Neither the private IProvider interface nor its concrete implementers
+  (PublicKeyTokenProvider, Manager) are touched by this diff, but they are essential
+  nontrivial context: the private IProvider is the literal source of the copied method
+  declaration, and PublicKeyTokenProvider is the class that actually answers getToken()
+  calls made through the newly-public interface.

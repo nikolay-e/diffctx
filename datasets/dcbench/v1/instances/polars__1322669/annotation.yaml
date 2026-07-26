@@ -1,0 +1,51 @@
+repo: polars
+base_commit: 93d22aff1ec615667758d5c525e1c339326f98bf
+commit: 1322669eba567c717b4de22d83a748ba63010151
+patch_stored: true
+gold:
+  - path: crates/polars-plan/src/plans/optimizer/flatten_merge_sorted.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New file defining FlattenMergeSortedRule, the optimizer rule that rebalances deep merge_sorted chains — the core of the fix.
+  - path: crates/polars-plan/src/plans/optimizer/mod.rs
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Registers FlattenMergeSortedRule into the optimizer's rule stack behind the merge_sorted feature flag, wiring the new rule into optimize().
+  - path: crates/polars-plan/src/plans/ir/mod.rs
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines the IR::MergeSorted variant (input_left, input_right, key, maintain_order) that FlattenMergeSortedRule matches on and reconstructs.
+  - path: crates/polars-plan/src/plans/optimizer/stack_opt.rs
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Defines the OptimizationRule trait (optimize_plan signature) that FlattenMergeSortedRule implements.
+  - path: py-polars/tests/unit/lazyframe/test_order_observability.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: Adds test_merge_sorted_deep_chain_to_union / _explain_matches_balanced asserting the deep chain stays MERGE_SORTED (not flattened to UNION) and matches the balanced-tree explain plan.
+  - path: py-polars/tests/unit/operations/test_merge_sorted.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: Adds test_merge_sorted_deep_chain_maintain_order / _with_sort_collect verifying correctness of results after the rebalancing rule runs on deep chains.
+forbidden:
+  - path: crates/polars-plan/src/plans/optimizer/flatten_union.rs
+    reason: analogous existing optimizer rule in the same directory but not touched or needed to understand this fix
+  - path: crates/polars-plan/src/plans/conversion/dsl_to_ir/mod.rs
+    reason: constructs IR::MergeSorted from DslPlan::MergeSorted but is unrelated to the post-hoc rebalancing optimization
+  - path: crates/polars-plan/src/plans/ir/format.rs
+    reason: only formats MergeSorted for display/explain output, not part of the rebalancing logic
+nontrivial_gold_count: 2
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: []
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 4
+  description: Rebalance deep merge_sorted chains — optimizer fix verified by py tests
+notes: New FlattenMergeSortedRule optimizer pass rebalances left-deep merge_sorted chains into a balanced binary tree, keeping the plan as MERGE_SORTED nodes (not falling back to UNION) for chains of length > 2; verified via explain-plan and correctness tests.
