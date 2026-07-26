@@ -29,8 +29,17 @@ static HUNK_RE: Lazy<Regex> =
 
 static RANGE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^\s*(\S+?)(\.\.\.?)(\S*?)\s*$").unwrap());
 
-static SAFE_RANGE_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^[a-zA-Z0-9_.^~/@{}\-]+(\.\.\.?[a-zA-Z0-9_.^~/@{}\-]*)?$").unwrap());
+// Neither side of a range may begin with `-`: a leading dash would be parsed
+// by git as an option rather than a revision, so a caller-supplied range like
+// `--ext-diff` or `--textconv` would re-enable the very filters SAFE_DIFF_FLAGS
+// disables and run repo-configured commands. Refs that begin with a dash are
+// unaddressable on a git command line anyway, so nothing legitimate is lost.
+static SAFE_RANGE_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r"^[a-zA-Z0-9_.^~/@{}][a-zA-Z0-9_.^~/@{}\-]*(\.\.\.?([a-zA-Z0-9_.^~/@{}][a-zA-Z0-9_.^~/@{}\-]*)?)?$",
+    )
+    .unwrap()
+});
 
 #[derive(Debug, thiserror::Error)]
 pub enum GitError {
@@ -59,6 +68,23 @@ fn validate_diff_range(diff_range: &str) -> Result<()> {
     }
     if !SAFE_RANGE_RE.is_match(trimmed) {
         return Err(GitError::InvalidRange(diff_range.to_string()));
+    }
+    Ok(())
+}
+
+/// Second gate for the single revisions derived from a range (`base`, `head`),
+/// covering the call sites that pass a rev straight into argv or into the
+/// `cat-file --batch` request stream. A leading dash turns the rev into a git
+/// option; whitespace and control characters (notably `\n`) would split one
+/// batch request into two.
+fn validate_rev(rev: &str) -> Result<()> {
+    if rev.is_empty()
+        || rev.starts_with('-')
+        || rev
+            .chars()
+            .any(|c| c.is_whitespace() || c.is_control() || c == '\0')
+    {
+        return Err(GitError::InvalidRange(rev.to_string()));
     }
     Ok(())
 }
@@ -543,11 +569,15 @@ pub fn split_diff_range(range: &str) -> (Option<String>, Option<String>) {
 }
 
 pub fn show_file_at_revision(repo_root: &Path, rev: &str, rel_path: &Path) -> Result<String> {
+    validate_rev(rev)?;
     let spec = format!("{}:{}", rev, rel_path.to_string_lossy().replace('\\', "/"));
     run_git(repo_root, &["show", &spec])
 }
 
 pub fn get_commit_message(repo_root: &Path, rev: &str) -> Result<String> {
+    if validate_rev(rev).is_err() {
+        return Ok(String::new());
+    }
     match run_git(repo_root, &["log", "-1", "--format=%s%n%b", rev]) {
         Ok(s) => Ok(s.trim().to_string()),
         Err(_) => Ok(String::new()),
@@ -645,6 +675,17 @@ fn collect_diffctx_ignore_patterns(repo_root: &Path) -> Vec<String> {
 /// to git as a temporary `core.excludesFile`, so the same engine evaluates
 /// both mechanisms uniformly). Best-effort: any failure returns an empty set
 /// rather than blocking the diff pipeline on an ignore-resolution problem.
+///
+/// A `.gitignore` exclusion inherited from an excluded ancestor directory does
+/// NOT count. `--no-index` is required for `.diffctx/ignore` to apply to
+/// tracked files at all, but it also revives git's rule that a file cannot be
+/// re-included once a parent directory is excluded. pandoc excludes every
+/// dotted root entry with `/*.*` and re-includes `!.github/**`: git keeps
+/// `.github/workflows/ci.yml` because it is tracked, while `--no-index`
+/// reports it ignored *via the ancestor* — which silently reduced a real
+/// change to an empty selection (#153). A pattern matching the path itself
+/// still excludes it, so `.diffctx/ignore` and per-directory `.gitignore`
+/// rules (#85) keep working.
 pub fn find_ignored_paths(repo_root: &Path, rel_paths: &[String]) -> FxHashSet<String> {
     if rel_paths.is_empty() {
         return FxHashSet::default();
@@ -661,13 +702,26 @@ pub fn find_ignored_paths(repo_root: &Path, rel_paths: &[String]) -> FxHashSet<S
         }
     };
 
-    let mut args: Vec<String> = vec!["check-ignore".into(), "--no-index".into()];
+    // Ancestors are queried alongside the paths themselves so an exclusion can
+    // be attributed: same winning rule on a parent directory means the file was
+    // only caught transitively.
+    let mut queries: Vec<String> = rel_paths.to_vec();
+    let mut ancestors: FxHashSet<String> = FxHashSet::default();
+    for rel in rel_paths {
+        for ancestor in ancestor_dirs(rel) {
+            if ancestors.insert(ancestor.clone()) {
+                queries.push(ancestor);
+            }
+        }
+    }
+
+    let mut args: Vec<String> = vec!["check-ignore".into(), "--no-index".into(), "-v".into()];
     if let Some(ref path) = temp_excludes {
         args.insert(0, format!("core.excludesFile={}", path.display()));
         args.insert(0, "-c".into());
     }
     args.push("--".into());
-    args.extend(rel_paths.iter().cloned());
+    args.extend(queries);
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
 
     let result = (|| -> Result<FxHashSet<String>> {
@@ -687,7 +741,31 @@ pub fn find_ignored_paths(repo_root: &Path, rel_paths: &[String]) -> FxHashSet<S
             )));
         }
         let stdout = String::from_utf8_lossy(&output.stdout);
-        Ok(stdout.lines().map(unquote_c_style).collect())
+        let excludes_source = temp_excludes.as_ref().map(|p| p.display().to_string());
+
+        let mut rules: rustc_hash::FxHashMap<String, String> = rustc_hash::FxHashMap::default();
+        for line in stdout.lines() {
+            if let Some((rule, path)) = parse_verbose_ignore_match(line) {
+                rules.insert(path, rule);
+            }
+        }
+
+        Ok(rel_paths
+            .iter()
+            .filter(|rel| match rules.get(*rel) {
+                None => false,
+                Some(rule) => {
+                    let from_diffctx = excludes_source
+                        .as_deref()
+                        .is_some_and(|src| rule.starts_with(&format!("{src}:")));
+                    from_diffctx
+                        || !ancestor_dirs(rel)
+                            .iter()
+                            .any(|dir| rules.get(dir) == Some(rule))
+                }
+            })
+            .cloned()
+            .collect())
     })();
 
     if let Some(path) = temp_excludes {
@@ -695,6 +773,23 @@ pub fn find_ignored_paths(repo_root: &Path, rel_paths: &[String]) -> FxHashSet<S
     }
 
     result.unwrap_or_default()
+}
+
+/// `check-ignore -v` emits `<source>:<line>:<pattern>\t<path>`; returns the
+/// `<source>:<line>:<pattern>` rule identity and the path it matched.
+fn parse_verbose_ignore_match(line: &str) -> Option<(String, String)> {
+    let (rule, path) = line.split_once('\t')?;
+    Some((rule.to_string(), unquote_c_style(path)))
+}
+
+fn ancestor_dirs(rel: &str) -> Vec<String> {
+    let mut dirs = Vec::new();
+    let mut remainder = rel;
+    while let Some((parent, _)) = remainder.rsplit_once('/') {
+        dirs.push(parent.to_string());
+        remainder = parent;
+    }
+    dirs
 }
 
 pub struct CatFileBatch {
@@ -738,6 +833,7 @@ impl CatFileBatch {
     }
 
     pub fn get(&mut self, rev: &str, rel_path: &Path) -> Result<String> {
+        validate_rev(rev)?;
         let spec = format!(
             "{}:{}\n",
             rev,

@@ -27,6 +27,9 @@ changed lines and stops once more context stops paying for itself.
 | Python API | ✗ | ✗ | ✗ | ✓ |
 | MCP server | ✗ | ✗ | ✗ | ✓ |
 
+Fuller positioning — measured results, and when a whole-repo packer or a
+persistent code-graph server fits better: [COMPARISON.md](COMPARISON.md).
+
 ## Install
 
 ```bash

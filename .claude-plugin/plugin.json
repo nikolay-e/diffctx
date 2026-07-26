@@ -1,0 +1,27 @@
+{
+  "name": "diffctx",
+  "displayName": "diffctx",
+  "version": "1.12.2",
+  "description": "Smart git diff context for LLMs and AI agents: budgeted fragment selection, deterministic, MCP server included",
+  "author": {
+    "name": "Nikolay Eremeev",
+    "email": "nikolay.eremeev@outlook.com"
+  },
+  "homepage": "https://nikolay-e.github.io/diffctx/",
+  "repository": "https://github.com/nikolay-e/diffctx",
+  "license": "Apache-2.0",
+  "keywords": [
+    "code-review",
+    "git-diff",
+    "diff-context",
+    "context-selection",
+    "code-graph",
+    "mcp",
+    "llm"
+  ],
+  "mcpServers": {
+    "diffctx": {
+      "command": "diffctx-mcp"
+    }
+  }
+}

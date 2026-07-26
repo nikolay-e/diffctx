@@ -274,3 +274,101 @@ class TestPathTraversalContainment:
         args = {"repo_path": str(mcp_repo.path), "subdirectory": "../"}
         with pytest.raises((ToolError, ValueError), match=r"escapes|outside|not.*directory"):
             await server.call_tool("get_tree_map", args)
+
+
+class TestToolDeadline:
+    """The engine caps each git subprocess but not the CPU-bound phases, and
+    the MCP path has no CLI watchdog behind it — without a deadline in the tool
+    itself one call wedges the server for the lifetime of the client."""
+
+    @pytest.mark.asyncio
+    async def test_tool_call_fails_when_the_deadline_passes(self, server, mcp_repo, monkeypatch):
+        from diffctx.mcp import server as server_module
+
+        monkeypatch.setattr(server_module, "_DEFAULT_TIMEOUT_SECONDS", 0)
+        with pytest.raises(ToolError, match="exceeded the 0s deadline"):
+            await server.call_tool("get_tree_map", {"repo_path": str(mcp_repo.path)})
+
+    @pytest.mark.asyncio
+    async def test_every_tool_warns_that_repo_content_is_untrusted(self, server):
+        tools = await server.list_tools()
+        assert tools
+        for tool in tools:
+            assert "untrusted" in (tool.description or ""), f"{tool.name} omits the untrusted-content warning"
+
+
+class TestSymlinkJail:
+    """The allow-list is only a jail if containment is decided on the real path:
+    a symlink sitting inside an allowed directory otherwise hands the server
+    read access to whatever it points at."""
+
+    @pytest.mark.asyncio
+    async def test_repo_path_symlink_out_of_allowed_dir_is_rejected(self, server, tmp_path, monkeypatch):
+        allowed = tmp_path / "allowed"
+        allowed.mkdir()
+        outside = Pygit2Repo(tmp_path / "outside_repo")
+        outside.add_file("src/calc.py", "def add(a, b):\n    return a + b\n")
+        outside.commit("initial commit")
+        link = allowed / "repo_link"
+        link.symlink_to(outside.path, target_is_directory=True)
+
+        monkeypatch.setenv("DIFFCTX_ALLOWED_PATHS", str(allowed))
+        args = {"repo_path": str(link), "diff_range": "HEAD"}
+        with pytest.raises(ToolError, match="not in allowed paths"):
+            await server.call_tool("get_diff_context", args)
+
+    @pytest.mark.asyncio
+    async def test_get_file_context_does_not_follow_symlink_out_of_repo(self, server, mcp_repo):
+        outside_secret = mcp_repo.path.parent / "outside_secret.txt"
+        outside_secret.write_text("SHOULD_NOT_LEAK\n")
+        (mcp_repo.path / "innocent.txt").symlink_to(outside_secret)
+
+        result = await server.call_tool(
+            "get_file_context",
+            {"repo_path": str(mcp_repo.path), "patterns": ["*.txt"]},
+        )
+        assert "SHOULD_NOT_LEAK" not in _get_text(result)
+
+    @pytest.mark.asyncio
+    async def test_get_tree_map_subdirectory_symlink_out_of_repo_is_rejected(self, server, mcp_repo, tmp_path):
+        outside_dir = tmp_path / "outside_dir"
+        outside_dir.mkdir()
+        (outside_dir / "secret.txt").write_text("SHOULD_NOT_LEAK\n")
+        (mcp_repo.path / "escape").symlink_to(outside_dir, target_is_directory=True)
+
+        args = {"repo_path": str(mcp_repo.path), "subdirectory": "escape"}
+        with pytest.raises(ToolError, match="escapes repo_path"):
+            await server.call_tool("get_tree_map", args)
+
+
+class TestGitRefInjection:
+    """A diff range reaches a `git` argv. Anything option-shaped must be
+    refused before git can interpret it — `--ext-diff`/`--textconv` would
+    re-enable repository-configured filter commands that diffctx disables."""
+
+    @pytest.mark.parametrize(
+        "diff_range",
+        ["--ext-diff", "--textconv", "-p", "--upload-pack=touch /tmp/pwn", "-u"],
+    )
+    @pytest.mark.asyncio
+    async def test_option_shaped_range_is_refused_before_git_sees_it(self, server, mcp_repo, diff_range):
+        args = {"repo_path": str(mcp_repo.path), "diff_range": diff_range}
+        with pytest.raises(ToolError, match="invalid diff range:"):
+            await server.call_tool("get_diff_context", args)
+
+    @pytest.mark.asyncio
+    async def test_dashes_inside_a_ref_name_still_reach_git(self, server, mcp_repo):
+        """The syntax gate rejects a leading dash only. A branch named
+        `no-such-branch` must still be resolved by git, not refused as
+        malformed."""
+        args = {"repo_path": str(mcp_repo.path), "diff_range": "no-such-branch..HEAD"}
+        with pytest.raises(ToolError, match="git log --oneline"):
+            await server.call_tool("get_diff_context", args)
+
+    @pytest.mark.asyncio
+    async def test_ordinary_range_is_unaffected(self, server, mcp_repo):
+        result = await server.call_tool(
+            "get_diff_context",
+            {"repo_path": str(mcp_repo.path), "diff_range": "HEAD~1..HEAD"},
+        )
+        assert "calc.py" in _get_text(result)

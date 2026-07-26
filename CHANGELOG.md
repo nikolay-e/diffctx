@@ -15,7 +15,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   run and wrote 31 MB of the working directory into the protocol transport
   instead of speaking MCP. Both spellings now reach the same server.
 
+### Security
+
+- **A diff range could re-enable repository-configured diff commands.** The
+  range validator allowed a leading `-`, so `--ext-diff` or `--textconv` passed
+  as a "range" landed in argv *after* the `--no-ext-diff --no-textconv` that
+  every diff invocation sets — undoing them and letting `.gitattributes` run
+  external commands. Neither side of a range may now begin with a dash, and
+  single revisions are additionally rejected for whitespace or control
+  characters (a newline split one `cat-file --batch` request into two). Refs
+  starting with a dash are unaddressable on a git command line, so nothing
+  legitimate is lost.
+- MCP tool calls had no wall-clock deadline — the CLI's watchdog covered only
+  the CLI, leaving parse, fragmentation and scoring unbounded on the MCP path.
+  All three tools now share the CLI's 300 s default.
+- `SECURITY.md` documents prompt injection via repository content honestly: it
+  is inherent to moving repository text into a model's context, diffctx does
+  not detect or neutralize it, and output must be treated as untrusted.
+
 ### Fixed
+
+- **A changed file could vanish from the diff entirely when `.gitignore`
+  excluded its parent directory.** `check-ignore --no-index` — required for
+  `.diffctx/ignore` to apply to tracked files — also revives git's rule that a
+  file cannot be re-included once a parent directory is excluded. pandoc
+  excludes every dotted root entry with `/*.*` and re-includes `!.github/**`;
+  git keeps the tracked workflow file, diffctx dropped it, and a one-file
+  commit rendered as an empty selection with exit 4. An exclusion inherited
+  from an excluded ancestor no longer counts; a pattern matching the path
+  itself still excludes it, so `.diffctx/ignore` and per-directory
+  `.gitignore` rules are unaffected (#153).
 
 - **The container images ran as root.** The published 1.12.1 image had no
   `USER` directive, so every `docker run` executed as uid 0 while the README
