@@ -74,6 +74,31 @@ class TestMcpMainEntrypoint:
         assert "unrecognized arguments" in captured.err
 
 
+class TestMcpSubcommand:
+    """MCP clients that resolve the executable from the published package name
+    run `diffctx`, not `diffctx-mcp`. Without a subcommand that reaches the
+    server, they start a tree-mapping run and flood the transport with the
+    whole working directory."""
+
+    def test_mcp_subcommand_reaches_the_server(self, monkeypatch):
+        from diffctx import cli
+
+        started = []
+        monkeypatch.setattr("diffctx.mcp.server.main", lambda prog="diffctx-mcp": started.append(prog))
+        monkeypatch.setattr(cli.sys, "argv", ["diffctx", "mcp"])
+        cli.main()
+        assert started, "mcp subcommand did not dispatch to the server"
+
+    def test_bare_invocation_still_maps_the_tree(self, monkeypatch, tmp_path):
+        from diffctx import cli
+
+        ran = []
+        monkeypatch.setattr("diffctx._app.run", lambda: ran.append(True))
+        monkeypatch.setattr(cli.sys, "argv", ["diffctx", str(tmp_path)])
+        cli.main()
+        assert ran, "non-mcp invocation must still reach the tree/diff pipeline"
+
+
 class TestServerIdentity:
     """The `initialize` response is how a client learns which diffctx it is
     talking to. FastMCP takes no version argument, so an unset version makes

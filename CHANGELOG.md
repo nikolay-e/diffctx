@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `diffctx mcp` starts the MCP server, alongside the existing `diffctx-mcp`
+  console script. MCP registries publish a *package* name, and clients that
+  derive the executable from it run `diffctx` — which started a tree-mapping
+  run and wrote 31 MB of the working directory into the protocol transport
+  instead of speaking MCP. Both spellings now reach the same server.
+
 ### Fixed
 
 - **The container images ran as root.** The published 1.12.1 image had no

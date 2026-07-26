@@ -265,9 +265,38 @@ def main() -> None:
     Argument parsing lives in this module; orchestration remains an internal
     application service so importing ``diffctx.cli`` stays lightweight.
     """
+    if sys.argv[1:2] == ["mcp"]:
+        _run_mcp_server()
+        return
+
     from ._app import run
 
     run()
+
+
+def _run_mcp_server() -> None:
+    # MCP clients that resolve the executable from the published package name
+    # land on this entry point rather than diffctx-mcp; without this branch they
+    # would start a tree-mapping run and flood the transport with the whole
+    # working directory instead of speaking the protocol.
+    if Path("mcp").is_dir():
+        _warn("'mcp' is the subcommand; to map the directory ./mcp, run: diffctx ./mcp")
+
+    try:
+        from .mcp.server import main as mcp_main
+    except ImportError:
+        _fail_missing_mcp_extra()
+
+    sys.argv = [f"{_current_prog} mcp", *sys.argv[2:]]
+    mcp_main(prog=f"{_current_prog} mcp")
+
+
+def _fail_missing_mcp_extra() -> NoReturn:
+    print(
+        f"{_current_prog}: error: the mcp subcommand requires the 'mcp' extra: pip install 'diffctx[mcp]'",
+        file=sys.stderr,
+    )
+    sys.exit(3)
 
 
 DEFAULT_IGNORES_HELP = """

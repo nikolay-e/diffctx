@@ -6,6 +6,9 @@
 pip install diffctx[mcp]
 ```
 
+The server starts as either `diffctx-mcp` or `diffctx mcp` — the two are
+equivalent. Zero-install: `uvx --from 'diffctx[mcp]' diffctx mcp`.
+
 ## Client Configuration
 
 ### Claude Code
