@@ -797,3 +797,40 @@ jobs:
           git commit -m "chore: packaging manifests for ${VERSION}"
           git pull --rebase origin main
           git push origin HEAD:main
+
+  publish-extras:
+    name: Publish npm wrapper and mirror to Docker Hub
+    needs: [prepare-version, publish-image, update-packaging-manifests]
+    if: github.event.inputs.publish_to_pypi == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      # Dispatched rather than inlined so the downstream channels stay
+      # re-runnable on their own after a partial release. Left un-dispatched,
+      # npm and Docker Hub silently keep serving the previous version — that is
+      # how 1.12.1 stayed live on both while every other channel moved on.
+      # AUR is excluded: it needs credentials this repository does not hold.
+      - name: Dispatch the downstream publish workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.prepare-version.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh workflow run publish-extras.yml \
+            --repo "$REPO" --ref main \
+            -f version="$VERSION" \
+            -f publish_npm=true \
+            -f mirror_dockerhub=true \
+            -f publish_aur=false
+
+      - name: Wait for the downstream publish workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          sleep 15
+          RUN_ID=$(gh run list --repo "$REPO" --workflow publish-extras.yml \
+            --event workflow_dispatch --limit 1 --json databaseId --jq '.[0].databaseId')
+          echo "Watching run $RUN_ID"
+          gh run watch "$RUN_ID" --repo "$REPO" --exit-status --interval 20
