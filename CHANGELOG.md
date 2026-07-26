@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The container images ran as root.** The published 1.12.1 image had no
+  `USER` directive, so every `docker run` executed as uid 0 while the README
+  promised an unprivileged user. The image now runs as uid 10001.
 - **The MCP server advertised the SDK's version as its own.** `FastMCP` takes
   no version argument, so `initialize` reported the installed `mcp` package
   version (e.g. `1.28.1`) as the diffctx server version — a number that drifts

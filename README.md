@@ -44,14 +44,17 @@ npx diffctx . --diff HEAD~1             # npm wrapper over the native binary
 docker run --rm -v "$PWD:/repo" ghcr.io/nikolay-e/diffctx . --diff HEAD~1
 ```
 
-The image runs as an unprivileged user and writes to stdout; to have `-o` write
-into the mounted repo, add `--user "$(id -u):$(id -g)"`.
+The image runs as a non-root user (uid 10001) and writes to stdout — the
+native binary has no `-o` flag, so redirect to capture: `... --diff HEAD~1 >
+context.yaml`.
 
 Prebuilt binaries for linux (x86_64/aarch64), macOS (arm64) and Windows (x64)
 are attached to every [release](https://github.com/nikolay-e/diffctx/releases/latest).
 The native binary covers diff mode with YAML/JSON output; tree mode, Markdown
 output, the `graph` subcommand and the MCP server live in the Python package.
-`cargo add diffctx` embeds the pipeline in a Rust project
+`cargo add diffctx` embeds the pipeline in a Rust project — the library is
+imported as `_diffctx` (`use _diffctx::pipeline::build_diff_context`), since
+the crate doubles as the Python extension module
 ([docs.rs](https://docs.rs/diffctx)).
 
 ## Quick start
