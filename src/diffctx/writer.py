@@ -65,12 +65,12 @@ def _escape_markdown(s: str) -> str:
     return _MD_SPECIAL_CHARS.sub(r"\\\1", s)
 
 
-def _write_yaml_content(file: TextIO, content: str, base_indent: str) -> None:
+def _write_yaml_block(file: TextIO, key: str, content: str, base_indent: str) -> None:
     content_indent = base_indent + "  "
     if not content:
-        file.write(f'{base_indent}content: ""\n')
+        file.write(f'{base_indent}{key}: ""\n')
     elif _has_problematic_chars(content) or not content.strip():
-        file.write(f'{base_indent}content: "{_escape_yaml_content(content)}"\n')
+        file.write(f'{base_indent}{key}: "{_escape_yaml_content(content)}"\n')
     else:
         # Chomping must match the tail exactly: clip (|) normalizes any tail
         # to one newline, silently adding one to newline-less files and
@@ -85,12 +85,16 @@ def _write_yaml_content(file: TextIO, content: str, base_indent: str) -> None:
         else:
             chomping = "+"
             body_lines = content[:-1].split("\n")
-        file.write(f"{base_indent}content: |2{chomping}\n")
+        file.write(f"{base_indent}{key}: |2{chomping}\n")
         for line in body_lines:
             if line:
                 file.write(f"{content_indent}{line}\n")
             else:
                 file.write("\n")
+
+
+def _write_yaml_content(file: TextIO, content: str, base_indent: str) -> None:
+    _write_yaml_block(file, "content", content, base_indent)
 
 
 def _write_yaml_node(file: TextIO, node: dict[str, Any], indent: str = "") -> None:
@@ -135,6 +139,7 @@ def _has_diff_metadata(tree: dict[str, Any]) -> bool:
         or tree.get("changed_files")
         or tree.get("commit_message")
         or tree.get("lockfile_changes")
+        or tree.get("raw_diff")
     )
 
 
@@ -158,6 +163,8 @@ def _write_yaml_diff_metadata(file: TextIO, tree: dict[str, Any]) -> None:
             file.write(f'    to: "{_escape_yaml_string(str(pair.get("to", "")))}"\n')
     if tree.get("lockfile_changes"):
         _write_yaml_path_list(file, "lockfile_changes", tree["lockfile_changes"])
+    if tree.get("raw_diff"):
+        _write_yaml_block(file, "raw_diff", tree["raw_diff"], "")
     if tree.get("fragments"):
         file.write(f"fragment_count: {len(tree['fragments'])}\n")
         file.write("fragments:\n")
@@ -253,6 +260,10 @@ def _write_tree_text_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
         file.write(f"  renamed: {pair.get('from', '')} -> {pair.get('to', '')}\n")
     if tree.get("lockfile_changes"):
         file.write(f"  lock files changed: {', '.join(str(p) for p in tree['lockfile_changes'])}\n")
+    if tree.get("raw_diff"):
+        file.write("  raw diff:\n")
+        for line in tree["raw_diff"].rstrip("\n").split("\n"):
+            file.write(f"    {line}\n" if line else "\n")
     for frag in tree.get("fragments", []):
         _write_text_fragment(file, frag, "  ")
 
@@ -420,7 +431,10 @@ def _write_markdown_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
         for path in tree["lockfile_changes"]:
             file.write(f"- {_escape_md_inline_code(str(path))}\n")
         file.write("\n")
-    for frag in tree["fragments"]:
+    if tree.get("raw_diff"):
+        file.write("## Raw diff\n\n")
+        _write_md_code_block(file, tree["raw_diff"], "diff", "")
+    for frag in tree.get("fragments", []):
         _write_markdown_fragment(file, frag)
 
 

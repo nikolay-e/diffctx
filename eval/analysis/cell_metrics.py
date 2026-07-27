@@ -290,6 +290,19 @@ def _collect_cardinality(rows: Sequence[dict]) -> dict[str, list[float]]:
     return out
 
 
+def _apply_modes(rows: Sequence[dict]) -> dict[str, int]:
+    """How each row's gold patch landed: strict apply vs whitespace-tolerant
+    fallback (issue #171). Empty for checkpoints predating the stamp."""
+    out: dict[str, int] = {}
+    for r in rows:
+        mode = (r.get("extra") or {}).get("apply_mode")
+        if mode is None:
+            continue
+        key = str(mode)
+        out[key] = out.get(key, 0) + 1
+    return out
+
+
 def _collect_status_breakdown(rows: Sequence[dict]) -> tuple[dict[str, int], dict[str, int]]:
     statuses: dict[str, int] = {}
     errors: dict[str, int] = {}
@@ -349,6 +362,8 @@ def compute_cell_summary(rows: Sequence[dict]) -> dict:
     frag_recall = [float(r["fragment_recall"]) for r in rows if r.get("fragment_recall") is not None]
     frag_precision = [float(r["fragment_precision"]) for r in rows if r.get("fragment_precision") is not None]
     line_f1 = [float(r["line_f1"]) for r in rows if r.get("line_f1") is not None]
+    line_precision = [float(r["line_precision"]) for r in rows if r.get("line_precision") is not None]
+    line_recall = [float(r["line_recall"]) for r in rows if r.get("line_recall") is not None]
 
     cardinality = _collect_cardinality(rows)
     statuses, errors = _collect_status_breakdown(rows)
@@ -373,10 +388,15 @@ def compute_cell_summary(rows: Sequence[dict]) -> dict:
         "fragment_precision": _optional_mean_block(frag_precision),
         "fragment_fbeta": (_f_beta_block(frag_precision, frag_recall) if frag_recall and frag_precision else None),
         "line_f1": _line_f1_block(rows, line_f1),
+        "line_precision": _optional_mean_block(line_precision),
+        "line_recall": _optional_mean_block(line_recall),
         "elapsed_seconds": _percentile_block(elapsed),
         "used_tokens": _percentile_block(tokens),
         "by_language": _by_language(rows),
     }
+    apply_modes = _apply_modes(rows)
+    if apply_modes:
+        out["apply_modes"] = apply_modes
     _merge_cardinality(out, cardinality)
     _merge_extras(out, rows)
     return out

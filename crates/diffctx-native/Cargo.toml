@@ -1,6 +1,6 @@
 [package]
 name = "diffctx"
-version = "1.12.1"
+version = "1.12.2"
 edition = "2024"
 rust-version = "1.85"
 description = "Selects the minimum code an LLM needs to review a git diff: walks the dependency graph outward from changed lines and stops when extra context stops paying for itself"
@@ -76,7 +76,7 @@ lang-extra = [
 mimalloc = { version = "0.1", default-features = false }
 clap = { version = "4", features = ["derive"] }
 tree-sitter = "0.25"
-tree-sitter-python = { version = "0.23", optional = true }
+tree-sitter-python = { version = "0.25", optional = true }
 tree-sitter-javascript = { version = "0.23", optional = true }
 tree-sitter-typescript = { version = "0.23", optional = true }
 tree-sitter-go = { version = "0.25", optional = true }

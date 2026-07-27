@@ -43,7 +43,7 @@ each.
 ## Test Suite Layout
 
 - pytest-xdist runs tests in parallel (`addopts = "-n auto --dist worksteal"`).
-- 500+ pytest tests; 16 of them live in `tests/test_mcp.py` and are gated
+- 500+ pytest tests; 20 of them live in `tests/test_mcp.py` and are gated
   by `pytest.importorskip("mcp")`. They use `pytest-asyncio` with
   `asyncio_mode = auto` (in `pyproject.toml`).
 - `tests/test_mcp.py` is the ONLY async-using test module. If you add
@@ -57,7 +57,7 @@ each.
 
 See `/qa` skill: Packaging QA (Test-Gating Trap) for the general lesson. Here
 it bites at the intersection of two extras: `[mcp]` must be in the CI install
-extras (else `importorskip("mcp")` silently skips all 16 `test_mcp.py` tests),
+extras (else `importorskip("mcp")` silently skips all 20 `test_mcp.py` tests),
 AND `pytest-asyncio` + `asyncio_mode = auto` must be present (else the async
 tests collect but never await — they "pass" by never running). Re-check this
 every time someone adds a new `[<extra>]` that ships a tool with its own tests.
@@ -105,16 +105,16 @@ diffctx --diff -f yaml
 
 ## Issue Triage Is Gated by the E/Q-Class Discipline
 
-Every open issue in this repo (65, 93, 103, 105, 107, 112, 114, 116, 121, 123
-— written without the `#` here because markdownlint's autofix rewraps a line
-starting with `#nnn` into a heading) is a fragmentation or selection change:
-Q-class by the rule in `CLAUDE.md`, i.e. output-changing and frozen during an
-evaluation cycle, and each needs benchmark revalidation (`yaml_cases` plus
-`datasets/real-world-diff/v1`) rather than an in-pass edit. So a QA round
-does NOT clear them one by one; it adds fresh repro data (new shapes, new
-byte-share numbers) to the existing issue and leaves the fix to a dedicated
-calibration cycle. Do not re-litigate this per issue, and do not open new
-issues for shapes already listed under "Known #65 Repro Shapes".
+Any issue that asks for a fragmentation or selection change is Q-class by
+the rule in `CLAUDE.md`: output-changing, frozen during an evaluation
+cycle, and needing benchmark revalidation (`yaml_cases` plus
+`datasets/real-world-diff/v1`) rather than an in-pass edit. (Not every
+open issue is in that class — the research/eval backlog is not — but the
+selection-quality ones like #65 are.) So a QA round does NOT clear them
+one by one; it adds fresh repro data (new shapes, new byte-share numbers)
+to the existing issue and leaves the fix to a dedicated calibration
+cycle. Do not re-litigate this per issue, and do not open new issues for
+shapes already listed under "Known #65 Repro Shapes".
 
 ## Pre-commit Caveats
 
@@ -122,9 +122,6 @@ See `/qa` skill: Packaging QA for `language: system` venv-shebang rot (recover
 with `rm -rf .venv && python3 -m venv .venv && pip install "maturin>=1.10,<1.14"
 && pip install -e ".[dev,full,mcp]" --no-build-isolation`). CI is unaffected
 (fresh venv per run).
-
-diffctx-specific hygiene: stale `src/treemapper.egg-info/` from a rebrand-era
-`pip install` is gitignored but may linger — delete on hygiene pass.
 
 The `cargo-clippy` hook used to run `cargo clippy --release --lib 2>&1 | tail
 -5`: the pipe swallowed the exit code (the hook could never fail) and `--lib`
@@ -186,7 +183,7 @@ and the clones carry live upstream HEADs. This is the dogfood that synthetic
 `firefox-ios`, `nextcloud`, `kubernetes`, `home-assistant`, `envoy`). Two
 consequences: (1) git operations needing old trees/blobs lazy-fetch over the
 network, so **wall-clock timing is NOT a clean diffctx signal there** — before
-judging "slow/hang", re-run with a warmed object cache; a double rc=142 with
+judging "slow/hang", re-run with a warmed object cache; a double rc=124 with
 warm cache IS a real hang. (2) First diff runs need network; offline sweeps
 should use the original full clones.
 
@@ -198,32 +195,30 @@ shadow:
 ```bash
 cd test-repos/<repo>
 git pull --ff-only
-# Hard-cap runtime. `--timeout` (true wall-clock watchdog, exit 124; Python side
-# is `_call_with_wall_clock_deadline` in src/diffctx/_app.py — daemon worker +
-# os._exit because a runaway pyo3 call cannot be cancelled) exists on dev builds
-# of BOTH the standalone Rust binary and the Python CLI, but NOT in released
-# 1.11.0. Until a release ships it, the perl cap is MANDATORY for pipx smokes
-# (then `--timeout 200` replaces it). macOS has no `timeout`; use:
-perl -e 'alarm 200; exec @ARGV' /Users/nikolay/.local/bin/diffctx . --diff HEAD~1
-# (on the dev build, just pass `--timeout 200`.)
+# Hard-cap runtime with the built-in watchdog. `--timeout` (true wall-clock,
+# exit 124; Python side is `_call_with_wall_clock_deadline` in
+# src/diffctx/_app.py — daemon worker + os._exit because a runaway pyo3 call
+# cannot be cancelled) shipped in 1.12.0 on BOTH the standalone Rust binary
+# and the Python CLI, so it works on the pipx binary too:
+/Users/nikolay/.local/bin/diffctx . --diff HEAD~1 --timeout 200
 ```
 
-**A cap-hit IS the issue.** rc=142 (SIGALRM) or rc=137 (SIGKILL) with no output =
-diffctx hung on that repo — file it and stop the sweep (don't run the remaining
-giant repos like `linux`, they'll hang too and burn hours). Known hang repros:
-`gitpod` / `pytorch` on a trivial HEAD~1, `aspnetcore` on a 17-file HEAD~1 —
-all #70. **#70 is CLOSED (fix in dev, NOT in released 1.11.0)** — a hang on the
-pipx binary in one of those repos is expected until a release ships the fix;
-verify any new hang against the dev standalone binary
-(`cargo build --release --bin diffctx`) before reopening #70 or filing new.
-The #70 scope is broader than its title: the unbounded hang also fires on
-**large diffs** (60–100+ files, e.g. onnxruntime / elasticsearch), not only
-"large repo + trivial diff" — correlates with diff/graph size.
+**A cap-hit IS the issue.** rc=124 (`--timeout` fired) or rc=137 (SIGKILL)
+with no output = diffctx hung on that repo — file it and stop the sweep
+(don't run the remaining giant repos like `linux`, they'll hang too and burn
+hours). The historical hang class (#70: `gitpod` / `pytorch` on a trivial
+HEAD~1, `aspnetcore` on a 17-file HEAD~1) is CLOSED and its fix has shipped,
+so a hang on the current pipx binary is a real finding — still verify it
+against the dev standalone binary (`cargo build --release --bin diffctx`)
+before reopening #70 or filing new. The #70 scope was broader than its
+title: the unbounded hang also fired on **large diffs** (60–100+ files,
+e.g. onnxruntime / elasticsearch), not only "large repo + trivial diff" —
+it correlated with diff/graph size.
 
-**Bash-tool timeout must exceed the perl alarm.** The Bash tool's default
-120s kills the command BEFORE the 200s alarm fires (rc=143, looks like a
-mystery kill). Pass `timeout: 260000` on every sweep invocation so the perl
-cap stays the binding constraint and rc=142 keeps its meaning.
+**Bash-tool timeout must exceed the watchdog.** The Bash tool's default
+120s kills the command BEFORE a 200s `--timeout` fires (rc=143, looks like
+a mystery kill). Pass `timeout: 260000` on every sweep invocation so the
+watchdog stays the binding constraint and rc=124 keeps its meaning.
 
 **Per repo, judge:** did it (a) finish without panic / non-zero exit / hang,
 (b) honor the range — `changed_files` matches `git diff HEAD~1 --stat`, not a
@@ -269,16 +264,16 @@ after one is filed.
   carried the largest fragments of the whole output (~37% of bytes). Hence the
   byte-share check in Diff-Mode Self-Eat.
 
-### #103: EOF-Append to a Flat Data-List File Loses the Change Signal
+### EOF-Append to a Flat Data-List File Lost the Change Signal (#103, closed)
 
-A diff whose ONLY change is a few lines appended at EOF of a large flat
-YAML/data-list file (elasticsearch `muted-tests.yml` class) can produce an
+A diff whose ONLY change was a few lines appended at EOF of a large flat
+YAML/data-list file (elasticsearch `muted-tests.yml` class) could produce an
 output with **zero `role: "changed"` fragments** — the changed lines never
-surface — while the whole file is exploded into per-entry `definition` context
+surfaced — while the whole file exploded into per-entry `definition` context
 fragments. Two separable defects: (A) change signal lost (correctness — worse
-than over-selection), (B) whole-file fragmentation of a flat list (overlaps #65).
-Tracked on #103, primarily for (A). A clean rc=0 with a plausible token
-count still hides this class — `role:`-absence is the tell.
+than over-selection), fixed by the excerpt fallback below; (B) whole-file
+fragmentation of a flat list (overlaps #65). A clean rc=0 with a plausible
+token count still hides this class — `role:`-absence is the tell.
 
 ### Excerpt Fallback (the #103-A fix, 2026-07-25)
 
@@ -297,7 +292,7 @@ braces, plus a 3-line EOF append — regression test
 cost half of the class (whole file rendered when the chunk DOES fit, #105/#107)
 is untouched: the fallback only fires under budget pressure.
 
-### Lock-File Policy in Diff Mode (#112, 2026-07-25)
+### Lock-File Policy in Diff Mode (#112, closed 2026-07-25)
 
 Diff mode diverts lock files (the `is_lockfile_path` list in `pipeline.rs`,
 mirroring tree mode's `DEFAULT_IGNORE_PATTERNS`) into a paths-only
@@ -325,10 +320,12 @@ spans) settles it in a minute.
 When fragmentation yields no narrow fragment covering a hunk (flat data files,
 non-tree-sitter languages, parse degradation), `find_core_for_hunk` falls back
 to a whole-file chunk as the core; chunk kinds have no signature stub, so at
-auto budget the core silently drops — change signal lost. The three issues are
-one class; the sketched fix (hunk-window excerpt core) is on #103.
-Selection-guarantee gaps of this shape are found fastest by comparing
-`--budget 999999` output against auto-budget output.
+auto budget the core silently dropped — change signal lost. The three issues
+are one class; the lost-signal half is fixed by the shipped hunk-window
+excerpt fallback (#103, closed — see Excerpt Fallback above), while the
+granularity-cost half stays on #105/#107. Selection-guarantee gaps of this
+shape are found fastest by comparing `--budget 999999` output against
+auto-budget output.
 
 ### Confirmed-Correct Diff Shapes (don't re-file)
 
@@ -389,7 +386,7 @@ alphabetically after that **never runs in CI** — a green CI does NOT mean the
 full case suite passes. On every QA pass, run the FULL suite locally
 (`cd crates/diffctx-native && cargo test --release --test yaml_cases`) and triage cases below
 the score threshold (default `min_score=10`, `DIFFCTX_YAML_MIN_SCORE` to
-override). Standing baseline: ~2262 passed / ~463 failed (the
+override). Standing baseline: 2265 passed / 460 failed (the
 `forbidden_rate=100%` over-selection class, tracked on #65); the
 nightly-full-eval.yml gate is `MIN_PASS_COUNT=2260` — compare against that,
 not against zero failures.
@@ -575,22 +572,22 @@ the post-push fetch will be clean.
 `src/diffctx/cli.py` (argparse, PyPI) and `crates/diffctx-native/src/main.rs` (clap, every
 binary channel) define their flags separately — nothing keeps them in sync, and
 a divergence is invisible to the test suite (`yaml_cases` and the pybridge both
-pass parameters explicitly, never through clap defaults). The 4096-token hard
-cap shipped this way: clap carried `default_value_t = DEFAULT_BUDGET_TOKENS`
-where the Python CLI leaves the budget unset, so 5 of the 6 release channels
-truncated every run while PyPI auto-sized. **Diff the two `--help` outputs every
-release-QA pass** — defaults, short flags, optional-value flags, accepted enum
-values — and treat any divergence not stated in README's "native binary covers
-…" paragraph as a bug.
+pass parameters explicitly, never through clap defaults). A historical clap
+budget default (fixed; today both CLIs treat an omitted budget as auto-sized)
+once made every binary channel truncate every run while PyPI
+auto-sized. The lesson: **diff the two `--help` outputs every release-QA
+pass** — defaults, short flags, optional-value flags, accepted enum values —
+and treat any divergence not stated in README's "native binary covers …"
+paragraph as a bug.
 
 `crates/diffctx-native/tests/native_cli.rs` now pins the contract (exit codes, both version
 flags, token summary, `--quiet`, format validation, budget handling) against
 real git repos, so regressions in *covered* behavior fail CI. The manual
 `--help` diff still matters for anything newly added on either side. Parity is
-not only flags: the 2026-07-24 pass also found the binary exiting `0` on an
-empty diff where Python exits `4`, and printing no token summary at all
-although README documents one "for every run" — **compare observable behavior
-(exit codes, stderr), not just the flag table.**
+not only flags: the 2026-07-24 pass also caught (both since fixed and shipped)
+the binary exiting `0` on an empty diff where Python exits `4`, and printing
+no token summary although README documents one "for every run" — **compare
+observable behavior (exit codes, stderr), not just the flag table.**
 
 **Never add a libtest-harness integration test under `--release`.**
 `[profile.release]` sets `panic = "abort"`; a harness test forces `unwind` and
@@ -612,10 +609,52 @@ standalone output silently reports 0 — use `grep -E 'role: "?changed"?'` in
 any check that may see either producer. Also: the standalone binary's clap
 parser rejects `--budget -1` (`use '-- -1'`); pass a large N instead.
 
-## Release Channels (post-1.12.1)
+## Release Channels and Freeze Policy (post-1.12.2)
 
-diffctx ships to six places; a release QA pass verifies each by INSTALLING it,
-not by reading the workflow log:
+diffctx has nine nominal distribution channels. They are not one pipeline and
+they do not carry the same guarantee, so each sits in one of three tiers:
+
+- **Supported** — shipped every release, verified by INSTALLING it before the
+  release is called done; a regression there blocks the release.
+- **Best-effort** — published automatically, verified when convenient; a
+  failure earns a follow-up dispatch, not a rollback.
+- **Manifest-only** — the repository regenerates a package manifest carrying
+  the release checksums, but nothing is pushed to any upstream index. NOT a
+  live channel. Never advertise it as an install route.
+
+| Channel | Published by | Automated | Actually live | Tier |
+|---|---|---|---|---|
+| PyPI | `cd.yml` (`publish-to-pypi`) | yes | yes | supported |
+| crates.io | `publish-crate.yml`, dispatched by `cd.yml` | yes | yes | supported |
+| GitHub Release | `cd.yml` (`finalize-release`) | yes | yes | supported |
+| ghcr.io | `cd.yml` (`build-image` → `publish-image`) | yes | yes | supported |
+| MCP registry | maintainer, `mcp-publisher` from `server.json` | no | yes | supported |
+| npm | `publish-extras.yml`, dispatched by `cd.yml` | yes | yes | best-effort |
+| Docker Hub `nikolajer/diffctx` | `publish-extras.yml`, dispatched by `cd.yml` | yes | yes | best-effort |
+| Scoop `bucket/diffctx.json` | `cd.yml` (`update-packaging-manifests`) | yes | yes | best-effort |
+
+AUR was dropped in 1.12.3: `diffctx-bin` had never been submitted, the job
+gated on a credential this repository does not hold, and Arch users are already
+served by `pipx install diffctx` and `cargo install diffctx`.
+
+Only `publish_to_pypi == 'true'` arms the crates.io and publish-extras
+dispatches; a dry run publishes nowhere.
+
+**The Scoop bucket is this repository.** `bucket/diffctx.json` is what
+`scoop bucket add diffctx https://github.com/nikolay-e/diffctx` clones, so the
+push of the regenerated manifest to `main` *is* the publication — there is no
+second repository and no extra credential. That makes
+`update-packaging-manifests` a real publishing job: it must not carry
+`continue-on-error`, and a failure means Windows users stay on the previous
+version. It is still absent from `publish-extras`' `needs`, so a Scoop failure
+cannot block npm or the Docker Hub mirror.
+
+The best-effort tier (npm, Docker Hub, Scoop) gets no feature work and no
+manual release steps, but each one is published automatically and verified by
+installing.
+
+A release QA pass verifies every live channel by INSTALLING it, not by reading
+the workflow log:
 
 | Channel | Verify with |
 |---|---|
@@ -624,10 +663,28 @@ not by reading the workflow log:
 | npm | `npm install diffctx@<v>` in a scratch dir, then `node_modules/.bin/diffctx` |
 | GitHub Release | assets = 4 wheels + sdist + 4 binary archives (tar.gz ×3, zip) |
 | ghcr / Docker Hub | `docker run --rm <img>:<v> --version` + a bind-mounted repo `--diff`. Hub repo is `nikolajer/diffctx` — NOT the ghcr owner name |
-| Scoop / AUR | `packaging/` manifests carry the release SHA-256s (regenerated by CD) |
+| MCP registry | `curl -s 'https://registry.modelcontextprotocol.io/v0/servers?search=diffctx'` reports the new version and `status: active` |
+| Scoop | on Windows: `scoop bucket add diffctx https://github.com/nikolay-e/diffctx`, `scoop install diffctx/diffctx`, `diffctx --version`. Without Windows, assert `bucket/diffctx.json` carries the release `.zip` SHA-256 |
 
 Traps found the hard way:
 
+- **A channel with no dispatch silently serves the previous release.** npm and
+  Docker Hub sat on 1.12.1 through the whole 1.12.2 release — every other
+  channel moved, and nothing failed, because `publish-extras.yml` was
+  `workflow_dispatch`-only and nobody ran it. The `publish-extras` job in
+  `cd.yml` now dispatches it; if that job is ever skipped, check both channels
+  BY INSTALLING before calling a release complete. A green CD run is not
+  evidence that npm shipped.
+- **`bucket/` is a published surface, not scratch space.** Renaming it, moving
+  the manifest or adding unrelated JSON there changes what every
+  `scoop update` sees. A manifest whose `hash` does not match the release asset
+  makes `scoop install` refuse the download, so the checksum regeneration in
+  `update-packaging-manifests` is load-bearing, not cosmetic.
+- **CD pushes the release tag to GitHub only.** The Forgejo remote (`origin`)
+  does not receive it, so after every release run
+  `git fetch github --tags && git push origin v<version>`. Both remotes must
+  carry the tag before publishing to the MCP registry, whose entries are
+  immutable.
 - **A draft GitHub release does NOT create its tag.** 1.10.1/1.10.2 were live on
   PyPI for three weeks with no tag in the repo because their releases stayed
   drafts; 1.12.1 repeated it (tag existed only in the local clone, absent from
@@ -640,11 +697,13 @@ Traps found the hard way:
 - **Publishing an old draft steals the `Latest` marker** (GitHub marks the most
   recently published release latest). Restore with
   `gh release edit v<newest> --latest`.
-- **CD-generated `packaging/` manifests trip three pre-commit hooks**:
-  `detect-secrets` reads SHA-256 digests as high-entropy strings, `shfmt`
-  reformats PKGBUILD, `shellcheck` rejects it (SC2148 — makepkg input has no
-  shebang). All three carry `exclude: ^packaging/`; keep the exclusions when
-  adding manifest kinds, or CD's own push turns main red.
+- **Generated manifests trip `detect-secrets`**: the SHA-256 digests of public
+  release artifacts read as high-entropy strings. The hook carries
+  `exclude: ^(packaging|bucket)/`. Moving a manifest outside those two
+  directories, or adding a third manifest kind elsewhere, turns CD's own push
+  red — this is exactly what happened when the Scoop manifest moved from
+  `packaging/scoop/` to `bucket/`. (The `shfmt`/`shellcheck` exclusions that
+  used to sit alongside it were for the AUR PKGBUILD and went with it.)
 - **OIDC in a reusable workflow carries the CALLER's filename.** crates.io
   trusted publishing configured for `publish-crate.yml` rejects a run invoked
   via `uses: ./.github/workflows/publish-crate.yml` from `cd.yml` (HTTP 400,

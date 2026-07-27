@@ -15,6 +15,7 @@ except ImportError:
     _fcntl = None  # type: ignore[assignment]
 from collections.abc import Generator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 
 WORKERS = int(os.environ.get("BENCH_WORKERS", "11"))
@@ -420,7 +421,51 @@ def ensure_repo(
     return repo_dir
 
 
-def apply_as_commit(repo_dir: Path, patch_text: str, message: str = "bench") -> bool:
+STRICT_APPLY = "strict"
+TOLERANT_APPLY = "ignore_whitespace"
+
+
+@dataclass(frozen=True)
+class ApplyOutcome:
+    """Whether the gold patch landed, and under which apply gate.
+
+    ``mode`` is ``None`` when nothing was applied, ``"strict"`` for the exact
+    ``git apply --index``, and ``"ignore_whitespace"`` for the tolerant retry.
+    Callers stamp it into the instance record so a tolerantly-applied row stays
+    distinguishable from a strictly-applied one in the evaluation artifacts.
+    """
+
+    applied: bool
+    mode: str | None = None
+
+    def __bool__(self) -> bool:
+        return self.applied
+
+
+def _apply_patch_to_index(repo_dir: Path, patch_path: str) -> str | None:
+    """Strict apply first, whitespace-tolerant retry only on failure.
+
+    ``git apply`` is atomic (a rejected hunk leaves the worktree and index
+    untouched), so the retry starts from the same state as the strict attempt.
+
+    ``--ignore-whitespace`` relaxes whitespace-only context mismatches, never
+    content: it absorbs the dataset class of LF-normalized gold patches over
+    CRLF repository blobs (5 deterministic PolyBench-500 apply failures,
+    issues #96 / #171). ``--3way`` is deliberately NOT used as a further
+    fallback -- it fuzzy-merges and silently produces wrong-content commits.
+    """
+    strict = run_cmd(["git", "-C", str(repo_dir), "apply", "--index", patch_path], check=False)
+    if strict.returncode == 0:
+        return STRICT_APPLY
+    tolerant = run_cmd(["git", "-C", str(repo_dir), "apply", "--index", "--ignore-whitespace", patch_path], check=False)
+    if tolerant.returncode == 0:
+        print(f"  APPLY TOLERANT (--ignore-whitespace): strict apply said {strict.stderr[:200]}")
+        return TOLERANT_APPLY
+    print(f"  APPLY FAIL: {tolerant.stderr[:300]}")
+    return None
+
+
+def apply_gold_patch(repo_dir: Path, patch_text: str, message: str = "bench") -> ApplyOutcome:
     """Apply ``patch_text`` as a real commit on top of HEAD.
 
     Two failure modes were observed in production and are now defended:
@@ -436,16 +481,12 @@ def apply_as_commit(repo_dir: Path, patch_text: str, message: str = "bench") -> 
        Fix: pass `-c user.name=... -c user.email=...` inline, and
        check the commit's exit code explicitly.
 
-    2. **`git apply --3way` fuzzy-merges and silently produces
-       wrong-content commits.** Removed -- only ``git apply --index
-       --ignore-whitespace`` is used. ``--ignore-whitespace`` relaxes
-       whitespace-only context mismatches (never content): it absorbs the
-       dataset class of LF-normalized gold patches over CRLF repository
-       blobs (5 deterministic PolyBench-500 apply failures, issue #96)
-       without any of --3way's fuzzy-content risk. If the apply still
-       fails the instance is reported as unrecoverable.
+    2. **A whitespace-tolerant apply must not be the default gate.**
+       See `_apply_patch_to_index`: exact apply runs first and the
+       relaxed one only as a recorded fallback, so the artifact keeps
+       the distinction instead of silently loosening the gate.
 
-    Returns False on apply error, commit error, or empty commit
+    Returns a falsy outcome on apply error, commit error, or empty commit
     (HEAD didn't advance). Caller should flag these as
     ``status="apply_fail"`` and exclude from metrics.
     """
@@ -453,10 +494,9 @@ def apply_as_commit(repo_dir: Path, patch_text: str, message: str = "bench") -> 
         f.write(patch_text)
         patch_path = f.name
     try:
-        r = run_cmd(["git", "-C", str(repo_dir), "apply", "--index", "--ignore-whitespace", patch_path], check=False)
-        if r.returncode != 0:
-            print(f"  APPLY FAIL: {r.stderr[:300]}")
-            return False
+        mode = _apply_patch_to_index(repo_dir, patch_path)
+        if mode is None:
+            return ApplyOutcome(False)
 
         before = run_cmd(
             ["git", "-C", str(repo_dir), "rev-parse", "HEAD"],
@@ -481,7 +521,7 @@ def apply_as_commit(repo_dir: Path, patch_text: str, message: str = "bench") -> 
         )
         if commit_r.returncode != 0:
             print(f"  COMMIT FAIL: {commit_r.stderr[:300]}")
-            return False
+            return ApplyOutcome(False)
 
         after = run_cmd(
             ["git", "-C", str(repo_dir), "rev-parse", "HEAD"],
@@ -490,10 +530,16 @@ def apply_as_commit(repo_dir: Path, patch_text: str, message: str = "bench") -> 
         if before == after:
             # HEAD didn't move -- commit silently no-op'd. Treat as failure.
             print(f"  COMMIT NOOP: HEAD still at {before[:12]}")
-            return False
-        return True
+            return ApplyOutcome(False)
+        return ApplyOutcome(True, mode)
     finally:
         os.unlink(patch_path)
+
+
+def apply_as_commit(repo_dir: Path, patch_text: str, message: str = "bench") -> bool:
+    """Boolean view of `apply_gold_patch` for callers that do not record the
+    apply mode (leave-one-out partial patches, forensic diagnostics)."""
+    return apply_gold_patch(repo_dir, patch_text, message).applied
 
 
 def reset_to_parent(repo_dir: Path) -> None:

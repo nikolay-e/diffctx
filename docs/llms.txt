@@ -1,0 +1,72 @@
+# diffctx
+
+> Selects the minimum set of code fragments an LLM needs to understand a git
+> diff, under a hard token budget. Deterministic, runs locally, makes no model
+> calls. Ships a Model Context Protocol (MCP) server so AI coding agents can
+> fetch diff context in one call instead of exploring a repository by hand.
+
+diffctx is **diff-seeded**: the input is a change (a commit, a range, or an
+uncommitted working tree), and the output is the surrounding code needed to
+review it — callers, type definitions, imports, config dependencies — packed to
+fit a token budget. This is a different problem from whole-repository packing
+and from query-seeded code-graph lookup.
+
+Formerly published on PyPI as `treemapper`; that name is sunset and frozen. The
+current package, CLI, and repository are all `diffctx`.
+
+## What it is not
+
+- Not a repository packer. Tools like repomix export a whole codebase; diffctx
+  starts from a diff and selects a small subset under a budget.
+- Not a query-seeded code-graph server. Persistent whole-repo graph MCP servers
+  answer "who calls X". diffctx answers "what do I need to read to understand
+  this patch". If you want a persistent repo-wide graph, those tools fit better.
+- Not an LLM wrapper. It calls no model and needs no API key; selection is a
+  deterministic optimization over a typed dependency graph.
+
+## Install
+
+- `pipx install diffctx` (Python CLI, all output formats, MCP server via
+  `pipx install 'diffctx[mcp]'`)
+- `uvx diffctx . --diff HEAD~1` (zero-install)
+- `cargo install diffctx` / `npx diffctx` / `docker run ghcr.io/nikolay-e/diffctx`
+  (native binary: diff mode, YAML/JSON output)
+
+## MCP server
+
+Command `diffctx-mcp`, stdio transport, read-only. Register in Claude Code with
+`claude mcp add diffctx -- diffctx-mcp`. Tools: `get_diff_context`,
+`get_tree_map`, `get_file_context`.
+
+## Method and measured results
+
+Diff-aware context selection is formulated as budgeted submodular maximization
+over multi-resolution fragments on a typed dependency graph, with lazy-greedy
+selection under a partition matroid. Evaluated on 1500 instances across
+SWE-bench Verified, PolyBench-500, and ContextBench Verified.
+
+At an 8000-token budget: pooled file recall 0.919 [0.908, 0.929]. Against
+same-budget baselines, paired deltas favor diffctx by +0.371 over whole-file
+BM25 packing and +0.410 over the Aider repo-map oracle upper bound
+(permutation p = 1e-5). Every table value traces to a committed per-instance
+CSV artifact.
+
+Paper: https://doi.org/10.5281/zenodo.18824579
+
+## Token counting
+
+Budgets and printed counts use tiktoken `o200k_base` (GPT-4o family). Counts for
+Claude, Gemini, Llama and other families differ, so treat `--budget N` as an
+upper bound in o200k tokens and leave headroom. `--with-raw-diff` bundles the
+literal patch ahead of the selected context; it is not charged to the budget,
+and the stderr summary reports the real output size either way.
+See docs/product/token-budget.md.
+
+## Links
+
+- Repository: https://github.com/nikolay-e/diffctx
+- Documentation: https://nikolay-e.github.io/diffctx/
+- PyPI: https://pypi.org/project/diffctx/
+- crates.io: https://crates.io/crates/diffctx
+- Changelog: https://github.com/nikolay-e/diffctx/blob/main/CHANGELOG.md
+- License: Apache-2.0

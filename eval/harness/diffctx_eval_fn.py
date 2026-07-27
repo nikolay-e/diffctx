@@ -128,7 +128,7 @@ def _ensure_worker_state(repos_dir_str: str) -> tuple[Path, UniversalEvaluator]:
 
 
 def _pool_eval(repos_dir_str: str, instance: BenchmarkInstance, params: RunParams) -> EvalResult:
-    from eval.harness.common import apply_as_commit, ensure_repo, reset_to_parent
+    from eval.harness.common import apply_gold_patch, ensure_repo, reset_to_parent
 
     pid = os.getpid()
     iid = instance.instance_id
@@ -162,7 +162,8 @@ def _pool_eval(repos_dir_str: str, instance: BenchmarkInstance, params: RunParam
             os.environ[k] = v
         print(f"[pid={pid}] {iid} stage=apply t_clone={t_clone_s}s", flush=True)
         t_apply = time.perf_counter()
-        applied = apply_as_commit(repo_dir, instance.gold_patch, "diffctx-eval-gold")
+        apply_outcome = apply_gold_patch(repo_dir, instance.gold_patch, "diffctx-eval-gold")
+        applied = apply_outcome.applied
         t_apply_s = round(time.perf_counter() - t_apply, 2)
         if not applied:
             # Scoring would otherwise run HEAD~1..HEAD against the base
@@ -208,6 +209,7 @@ def _pool_eval(repos_dir_str: str, instance: BenchmarkInstance, params: RunParam
             result.extra["language"] = instance.language
             result.extra["t_clone_s"] = t_clone_s
             result.extra["t_apply_s"] = t_apply_s
+            result.extra["apply_mode"] = apply_outcome.mode
             return result
         fragments = _output_fragments(output)
         used_tokens = _compute_used_tokens(output)
@@ -224,6 +226,7 @@ def _pool_eval(repos_dir_str: str, instance: BenchmarkInstance, params: RunParam
         result.extra["fragment_count"] = len(fragments)
         result.extra["t_clone_s"] = t_clone_s
         result.extra["t_apply_s"] = t_apply_s
+        result.extra["apply_mode"] = apply_outcome.mode
         latency = output.get("latency") or {}
         if latency:
             result.extra["latency_total_ms"] = latency.get("total_ms")
@@ -252,6 +255,7 @@ def _build_eval_result_from_output(
     params: RunParams,
     elapsed: float,
     evaluator: UniversalEvaluator,
+    apply_mode: str | None = None,
 ) -> EvalResult:
     if output is None:
         result = EvalResult(
@@ -263,6 +267,7 @@ def _build_eval_result_from_output(
             elapsed_seconds=elapsed,
         )
         result.extra["status"] = "diffctx_fail"
+        result.extra["apply_mode"] = apply_mode
         return result
     fragments = _output_fragments(output)
     used_tokens = _compute_used_tokens(output)
@@ -277,6 +282,7 @@ def _build_eval_result_from_output(
     result.extra["status"] = "ok"
     result.extra["language"] = instance.language
     result.extra["fragment_count"] = len(fragments)
+    result.extra["apply_mode"] = apply_mode
     latency = output.get("latency") or {}
     if latency:
         result.extra["latency_total_ms"] = latency.get("total_ms")
@@ -307,6 +313,7 @@ def _eval_one_cell(
     bench_timeout: float,
     heavy_elapsed: float,
     out: list[tuple[RunParams, EvalResult]],
+    apply_mode: str | None = None,
 ) -> None:
     from diffctx._native.pipeline import select_with_params
 
@@ -327,7 +334,7 @@ def _eval_one_cell(
         select_elapsed = time.perf_counter() - t_select_start
         # The heavy phase is charged to the first recorded cell only.
         charged = heavy_elapsed + select_elapsed if not out else select_elapsed
-        out.append((params, _build_eval_result_from_output(output, instance, params, charged, evaluator)))
+        out.append((params, _build_eval_result_from_output(output, instance, params, charged, evaluator, apply_mode)))
     finally:
         _restore_params_env(prior_env)
 
@@ -338,7 +345,7 @@ def pool_eval_all_cells(
     params_list: list[RunParams],
 ) -> list[tuple[RunParams, EvalResult]]:
     from diffctx._native.pipeline import compute_scored_state
-    from eval.harness.common import apply_as_commit, ensure_repo, reset_to_parent
+    from eval.harness.common import apply_gold_patch, ensure_repo, reset_to_parent
 
     if not params_list:
         return []
@@ -359,7 +366,8 @@ def pool_eval_all_cells(
     # _eval_one_cell would silently no-op those axes in this reuse path.
     prior_env = _apply_params_env(params_list[0])
     try:
-        applied = apply_as_commit(repo_dir, instance.gold_patch, "diffctx-eval-gold")
+        apply_outcome = apply_gold_patch(repo_dir, instance.gold_patch, "diffctx-eval-gold")
+        applied = apply_outcome.applied
         if not applied:
             return [(p, _failure_result(instance, p, "apply_fail", "gold patch did not apply as commit")) for p in params_list]
 
@@ -377,7 +385,7 @@ def pool_eval_all_cells(
         heavy_elapsed = time.perf_counter() - t_heavy_start
 
         for params in params_list:
-            _eval_one_cell(state, instance, params, evaluator, bench_timeout, heavy_elapsed, out)
+            _eval_one_cell(state, instance, params, evaluator, bench_timeout, heavy_elapsed, out, apply_outcome.mode)
     finally:
         _restore_params_env(prior_env)
         if applied:

@@ -22,6 +22,7 @@ _USAGE_EXAMPLES: list[tuple[str, str]] = [
     ("diffctx . --diff main..feature", "context for feature branch"),
     ("diffctx . --diff HEAD~1 --budget 30000", "limit to ~30k tokens"),
     ("diffctx . --diff HEAD~1 -c", "diff context to clipboard"),
+    ("diffctx . --diff HEAD~1 --with-raw-diff", "raw patch + selected context"),
 ]
 
 _BEGIN = "<!-- BEGIN USAGE -->"

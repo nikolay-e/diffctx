@@ -84,7 +84,7 @@ jobs:
         run: |
           echo "Setting version to $VERSION"
           python - <<'PY'
-          import os, re, pathlib
+          import json, os, re, pathlib
           ver = os.environ["VERSION"]
 
           p = pathlib.Path("src/diffctx/version.py")
@@ -104,6 +104,27 @@ jobs:
           s, n = re.subn(r'(?m)^version\s*=\s*"[^"]+"', f'version = "{ver}"', s, count=1)
           assert n == 1, "Cargo.toml: [package].version not found"
           cargo.write_text(s, encoding="utf-8")
+
+          # The Action's default pin and the plugin manifest are consumer-facing
+          # versions: left unbumped, Marketplace and plugin users stay on the
+          # previous release forever while every other channel moves.
+          act = pathlib.Path("action.yml")
+          s = act.read_text(encoding="utf-8")
+          s, n = re.subn(r'(?m)^(\s*default:\s*)\d+\.\d+\.\d+\s*$', rf'\g<1>{ver}', s, count=1)
+          assert n == 1, "action.yml: diffctx-version default not found"
+          act.write_text(s, encoding="utf-8")
+
+          plug = pathlib.Path(".claude-plugin/plugin.json")
+          doc = json.loads(plug.read_text(encoding="utf-8"))
+          doc["version"] = ver
+          plug.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+
+          srv = pathlib.Path("server.json")
+          doc = json.loads(srv.read_text(encoding="utf-8"))
+          doc["version"] = ver
+          for pkg in doc["packages"]:
+              pkg["version"] = ver
+          srv.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
 
           lock = pathlib.Path("Cargo.lock")
           s = lock.read_text(encoding="utf-8")
@@ -130,7 +151,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/diffctx/version.py pyproject.toml crates/diffctx-native/Cargo.toml Cargo.lock
+          git add src/diffctx/version.py pyproject.toml crates/diffctx-native/Cargo.toml Cargo.lock \
+            server.json action.yml .claude-plugin/plugin.json
           if ! git diff --staged --quiet; then
             git commit -m "Release version ${VERSION}"
           else
@@ -740,10 +762,13 @@ jobs:
           docker run --rm -v "$PWD:/repo" "${IMAGE}:${VERSION}" . --diff HEAD~1..HEAD --no-content
 
   update-packaging-manifests:
-    name: Refresh Scoop manifest and AUR PKGBUILD
+    name: Publish Scoop bucket manifest
     needs: [prepare-version, finalize-release]
     if: github.event.inputs.publish_to_pypi == 'true'
     runs-on: ubuntu-latest
+    # `bucket/` makes this repository itself the Scoop bucket, so pushing the
+    # refreshed manifest to main IS the publication step — a failure here means
+    # Windows users stay on the previous version.
     steps:
       - name: Checkout main
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
@@ -770,9 +795,7 @@ jobs:
           python scripts/render_packaging.py \
             --version "$VERSION" \
             --assets-dir ./release-binaries \
-            --scoop packaging/scoop/diffctx.json \
-            --pkgbuild packaging/aur/PKGBUILD \
-            --srcinfo packaging/aur/.SRCINFO \
+            --scoop bucket/diffctx.json \
             --npm-checksums packaging/npm/checksums.json
 
       - name: Commit and push
@@ -781,8 +804,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add packaging/scoop/diffctx.json packaging/aur/PKGBUILD \
-            packaging/aur/.SRCINFO packaging/npm/checksums.json
+          git add bucket/diffctx.json packaging/npm/checksums.json
           if git diff --staged --quiet; then
             echo "Manifests already current."
             exit 0
@@ -790,3 +812,41 @@ jobs:
           git commit -m "chore: packaging manifests for ${VERSION}"
           git pull --rebase origin main
           git push origin HEAD:main
+
+  publish-extras:
+    name: Publish npm wrapper and mirror to Docker Hub
+    # No edge to update-packaging-manifests: publish-extras.yml re-renders the
+    # npm checksums from the release tag, so a Scoop bucket failure can never
+    # hold back npm or the Docker Hub mirror.
+    needs: [prepare-version, publish-image]
+    if: github.event.inputs.publish_to_pypi == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      # Dispatched rather than inlined so the downstream channels stay
+      # re-runnable on their own after a partial release. Left un-dispatched,
+      # npm and Docker Hub silently keep serving the previous version — that is
+      # how 1.12.1 stayed live on both while every other channel moved on.
+      - name: Dispatch the downstream publish workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.prepare-version.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh workflow run publish-extras.yml \
+            --repo "$REPO" --ref main \
+            -f version="$VERSION" \
+            -f publish_npm=true \
+            -f mirror_dockerhub=true
+
+      - name: Wait for the downstream publish workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          sleep 15
+          RUN_ID=$(gh run list --repo "$REPO" --workflow publish-extras.yml \
+            --event workflow_dispatch --limit 1 --json databaseId --jq '.[0].databaseId')
+          echo "Watching run $RUN_ID"
+          gh run watch "$RUN_ID" --repo "$REPO" --exit-status --interval 20
