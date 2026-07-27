@@ -84,14 +84,19 @@ def _fragment_metrics(
 def _line_metrics(
     selected: tuple[GoldenFragment, ...],
     gold: tuple[GoldenFragment, ...],
-) -> tuple[float, float, float]:
+) -> tuple[float, float, float] | None:
     """Per-file line set (F1, precision, recall), averaged over files in gold.
+
+    Returns None when the gold set carries no line ranges at all — that is
+    "not measurable", and reporting it as 0.0 turned a benchmark without line
+    annotations into a table of zeroes.
 
     Whole-file gold contributes nothing (we lack a line count without reading
     the file). Whole-file selected fragments are likewise skipped — line-level
     scoring is only meaningful for hunk-level annotations. Precision and recall
-    use the same macro average as F1 so the three numbers describe the same
-    population of files (a low F1 with high recall means over-selection).
+    are macro-averaged over the gold files, so a gold file that was never
+    selected charges 0 to both; precision here answers "how much of each gold
+    file's lines did we get right", not "how much of the selection was useful".
     """
     sel_lines: dict[str, set[int]] = {}
     for s in selected:
@@ -102,7 +107,12 @@ def _line_metrics(
 
     paths = [p for p, ls in gold_lines.items() if ls]
     if not paths:
-        return 0.0, 0.0, 0.0
+        # Not measurable, which is not the same as measured-zero. Returning 0.0
+        # made every whole-file-gold benchmark (all of PolyBench) report
+        # `n_with_line_gold = 500, mean_line_precision = 0.000` — a paper-grade
+        # table asserting zero line hits on a benchmark carrying no line
+        # annotations at all.
+        return None
     total_f1 = 0.0
     total_precision = 0.0
     total_recall = 0.0
@@ -187,10 +197,9 @@ class UniversalEvaluator:
             frag_r, frag_p = _fragment_metrics(output.selected_fragments, instance.gold_fragments)
             result.fragment_recall = frag_r
             result.fragment_precision = frag_p
-            line_f1, line_precision, line_recall = _line_metrics(output.selected_fragments, instance.gold_fragments)
-            result.line_f1 = line_f1
-            result.line_precision = line_precision
-            result.line_recall = line_recall
+            line_metrics = _line_metrics(output.selected_fragments, instance.gold_fragments)
+            if line_metrics is not None:
+                result.line_f1, result.line_precision, result.line_recall = line_metrics
             result.extra["n_selected_fragments"] = len(output.selected_fragments)
             result.extra["n_gold_fragments"] = len(instance.gold_fragments)
         return result

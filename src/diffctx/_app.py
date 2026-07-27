@@ -81,6 +81,10 @@ def _ensure_git_repo(root_dir: Path, prog: str) -> None:
 def _diff_result_is_empty(result: dict[str, Any]) -> bool:
     if result.get("deleted_files") or result.get("renamed_files") or result.get("lockfile_changes"):
         return False
+    # A bundled patch is actionable output on its own; exiting 4 next to a
+    # complete diff fails any `set -e` CI step for a run that produced content.
+    if result.get("raw_diff"):
+        return False
     count = result.get("fragment_count")
     if isinstance(count, int):
         return count == 0

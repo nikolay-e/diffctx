@@ -32,6 +32,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   context file, its exact token count and an `empty` flag as step outputs, so a
   downstream job can feed an LLM without re-tokenizing
   (`docs/product/github-action.md`, #145).
+- The Claude Code plugin declares its MCP server self-bootstrapping:
+  `uvx --from 'diffctx[mcp]' diffctx-mcp`. Installing the plugin no longer
+  assumes `pip install 'diffctx[mcp]'` has already happened — `uv` fetches it
+  on first use. (The entry point rather than the `diffctx mcp` subcommand: the
+  subcommand only exists from this release on, so on any older version the
+  bare command would try to map a directory named `mcp`.)
 - `diffctx mcp` starts the MCP server, alongside the existing `diffctx-mcp`
   console script. MCP registries publish a *package* name, and clients that
   derive the executable from it run `diffctx` — which started a tree-mapping

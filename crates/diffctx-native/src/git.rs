@@ -22,7 +22,17 @@ pub fn set_git_timeout(secs: u64) {
 fn git_timeout() -> u64 {
     GIT_TIMEOUT_SECS.load(Ordering::Relaxed)
 }
-const SAFE_DIFF_FLAGS: &[&str] = &["--no-textconv", "--no-ext-diff"];
+// The prefix and color flags are not cosmetic: the diff parser keys off the
+// literal `--- a/` / `+++ b/` headers, so a user's `diff.noprefix`,
+// `diff.mnemonicPrefix`, `diff.srcPrefix`/`dstPrefix` or `color.ui=always`
+// silently reduced every run to zero fragments and an empty `changed_files`.
+const SAFE_DIFF_FLAGS: &[&str] = &[
+    "--no-textconv",
+    "--no-ext-diff",
+    "--no-color",
+    "--src-prefix=a/",
+    "--dst-prefix=b/",
+];
 
 static HUNK_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@").unwrap());
@@ -68,6 +78,18 @@ fn validate_diff_range(diff_range: &str) -> Result<()> {
     }
     if !SAFE_RANGE_RE.is_match(trimmed) {
         return Err(GitError::InvalidRange(diff_range.to_string()));
+    }
+    // The regex alone cannot enforce this: its leading character class is
+    // greedy over `.`, so it swallows the separator and never enters the
+    // second-side group — `a..--ext-diff` matched. Split and check each side,
+    // otherwise the documented "neither side may begin with a dash" gate is
+    // dead code and only the later per-rev check stands between a crafted
+    // range and an argv option.
+    let separator = if trimmed.contains("...") { "..." } else { ".." };
+    for side in trimmed.split(separator) {
+        if !side.is_empty() {
+            validate_rev(side).map_err(|_| GitError::InvalidRange(diff_range.to_string()))?;
+        }
     }
     Ok(())
 }
@@ -777,8 +799,13 @@ pub fn find_ignored_paths(repo_root: &Path, rel_paths: &[String]) -> FxHashSet<S
 
 /// `check-ignore -v` emits `<source>:<line>:<pattern>\t<path>`; returns the
 /// `<source>:<line>:<pattern>` rule identity and the path it matched.
+///
+/// Split from the right: git prints the pattern raw but C-quotes any path
+/// containing a tab, so the last tab is always the separator. Splitting from
+/// the left mis-parses a pattern that itself contains a tab, and the resulting
+/// lookup miss reports an ignored file as not ignored — i.e. it leaks.
 fn parse_verbose_ignore_match(line: &str) -> Option<(String, String)> {
-    let (rule, path) = line.split_once('\t')?;
+    let (rule, path) = line.rsplit_once('\t')?;
     Some((rule.to_string(), unquote_c_style(path)))
 }
 

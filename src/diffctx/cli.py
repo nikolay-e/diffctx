@@ -448,7 +448,8 @@ def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> arg
             "Generate a structured representation of a directory tree (Markdown, YAML, JSON, or text). "
             "Supports diff context mode (--diff) for intelligent code change analysis.\n\n"
             "Subcommands:\n"
-            "  graph    Build and analyze the project dependency graph"
+            "  graph    Build and analyze the project dependency graph\n"
+            "  mcp      Run the MCP server over stdio (same as diffctx-mcp; needs the [mcp] extra)"
         ),
         epilog=DEFAULT_IGNORES_HELP,
         formatter_class=argparse.RawDescriptionHelpFormatter,
