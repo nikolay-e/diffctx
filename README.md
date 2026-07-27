@@ -181,19 +181,32 @@ print(to_yaml(tree))
 
 ## MCP server
 
+[![MCP Registry](https://img.shields.io/badge/MCP_Registry-io.github.nikolay--e%2Fdiffctx-blue)](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.nikolay-e/diffctx)
+
 diffctx includes an [MCP](https://modelcontextprotocol.io) server that lets AI
 assistants (Claude Code, Cursor, Windsurf, etc.) call diff context analysis
-automatically during code review. Install with `pip install 'diffctx[mcp]'`,
-then register it — for Claude Code:
+automatically during code review. It is published in the official MCP registry
+as `io.github.nikolay-e/diffctx`. One-line setup (zero-install via
+[uv](https://docs.astral.sh/uv/)):
 
 ```bash
-claude mcp add diffctx -- diffctx-mcp
+# Claude Code
+claude mcp add diffctx -- uvx --from 'diffctx[mcp]' diffctx-mcp
+# Codex CLI
+codex mcp add diffctx -- uvx --from 'diffctx[mcp]' diffctx-mcp
+# Gemini CLI
+gemini mcp add diffctx uvx -- --from 'diffctx[mcp]' diffctx-mcp
+# VS Code
+code --add-mcp '{"name":"diffctx","command":"uvx","args":["--from","diffctx[mcp]","diffctx-mcp"]}'
 ```
+
+With `pip install 'diffctx[mcp]'` already done, replace the
+`uvx --from 'diffctx[mcp]' diffctx-mcp` tail with plain `diffctx-mcp`.
 
 The server exposes three tools — `get_diff_context`, `get_tree_map`, and
 `get_file_context` — that assistants call when reviewing PRs, explaining
-changes, or investigating broken tests. Tool reference and configs for
-Cursor, Continue, Windsurf, and Zed:
+changes, or investigating broken tests. Tool reference and JSON configs for
+Claude Desktop, Cursor, Continue, Windsurf, and Zed:
 [`src/diffctx/mcp/README.md`](src/diffctx/mcp/README.md).
 
 ## Ignore patterns

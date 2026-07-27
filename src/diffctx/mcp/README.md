@@ -35,6 +35,21 @@ Claude Code plugin ships:
 }
 ```
 
+### Claude Desktop
+
+Add to `claude_desktop_config.json` (Settings → Developer → Edit Config):
+
+```json
+{
+  "mcpServers": {
+    "diffctx": {
+      "command": "uvx",
+      "args": ["--from", "diffctx[mcp]", "diffctx-mcp"]
+    }
+  }
+}
+```
+
 ### Cursor
 
 Add to `~/.cursor/mcp.json`:

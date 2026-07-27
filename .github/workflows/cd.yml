@@ -710,6 +710,38 @@ jobs:
           echo "Watching run $RUN_ID"
           gh run watch "$RUN_ID" --repo "$REPO" --exit-status --interval 20
 
+  publish-mcp-registry:
+    name: Publish to the MCP registry
+    needs: [prepare-version, finalize-release]
+    if: github.event.inputs.publish_to_pypi == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      # The release tag, not main: finalize-release commits the bumped
+      # server.json there, and registry versions are immutable — publishing
+      # main mid-release would race the bump commit.
+      - name: Checkout release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ needs.prepare-version.outputs.tag_name }}
+
+      - name: Install mcp-publisher
+        run: |
+          OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+          ARCH=$(uname -m)
+          BASE="https://github.com/modelcontextprotocol/registry/releases/download"
+          curl -fsSL "${BASE}/v1.8.0/mcp-publisher_${OS}_${ARCH}.tar.gz" | tar xz mcp-publisher
+
+      # github-oidc mints the io.github.nikolay-e/* namespace from this
+      # repository's identity — no stored secret, no device flow.
+      - name: Publish server.json
+        run: |
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher validate
+          ./mcp-publisher publish
+
   build-image:
     name: Build image (${{ matrix.platform }})
     needs: [prepare-version, finalize-release]
