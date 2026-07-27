@@ -381,11 +381,17 @@ class TestBudgetTokensValidation:
         assert "Nothing was returned" in text
 
 
+@pytest.mark.timeout(120)
 class TestTokenBudgetGuardExecutes:
     """The over-budget branch on get_tree_map (:214) and get_file_context
     (:324) decides between returning real content and a refusal notice.
     Every other fixture in this suite stays far under the 25k default, so
-    the branch was dead code outside these tests."""
+    the branch was dead code outside these tests.
+
+    The class-level timeout overrides the global 10s: the diff-context legs
+    run the full parse+graph+selection pipeline over a 4000-function file at
+    an unlimited budget, which fits 10s locally but not on a loaded CI
+    runner sharing the box with xdist siblings."""
 
     @pytest.fixture
     def big_file_repo(self, tmp_path):
