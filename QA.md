@@ -58,4 +58,5 @@ Project-specific facts for `/qa`. Generic methodology lives in
   while green in CI.
 - SonarCloud `githubactions:S8543` on the publish-extras npm smoke:
   `$VERSION` is an exact just-published version, package has zero
-  deps — suppressed with NOSONAR.
+  deps — marked false positive in SonarCloud via API (NOSONAR is NOT
+  supported by the githubactions analyzer; don't re-add it).

@@ -137,9 +137,10 @@ jobs:
           cd "$WORK"
           npm init -y >/dev/null
           for attempt in 1 2 3 4 5; do
-            # NOSONAR on the next line: VERSION is an exact just-published
-            # version and the package has zero dependencies (S8543).
-            if npm install --ignore-scripts "diffctx@$VERSION"; then break; fi # NOSONAR
+            # Sonar S8543 (unlocked dependency versions) is marked false
+            # positive in SonarCloud: VERSION is the exact just-published
+            # version and the package has zero dependencies.
+            if npm install --ignore-scripts "diffctx@$VERSION"; then break; fi
             echo "npm registry not settled yet (attempt $attempt); retrying"
             sleep 20
           done
