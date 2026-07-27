@@ -649,7 +649,16 @@ pub fn raw_diff_text(root_dir: &Path, diff_range: Option<&str>, timeout: u64) ->
 }
 
 fn keep_disclosable_sections(root_dir: &Path, diff_text: &str) -> String {
-    let lines: Vec<&str> = diff_text.lines().collect();
+    // Two views over the same text. Analysis runs on terminator-free lines so
+    // the exact header comparisons below keep working; output is emitted from
+    // the raw slices, because the bundle is advertised as git's own patch and
+    // dropping the CR of a CRLF repository yields something `git apply`
+    // rejects.
+    let raw: Vec<&str> = diff_text.split_inclusive('\n').collect();
+    let lines: Vec<&str> = raw
+        .iter()
+        .map(|line| line.trim_end_matches('\n').trim_end_matches('\r'))
+        .collect();
     let sections = split_diff_sections(root_dir, &lines);
     let rel_paths: Vec<String> = sections
         .iter()
@@ -672,13 +681,15 @@ fn keep_disclosable_sections(root_dir: &Path, diff_text: &str) -> String {
         {
             continue;
         }
-        kept.extend_from_slice(&lines[range]);
+        kept.extend_from_slice(&raw[range]);
     }
     if kept.is_empty() {
         return String::new();
     }
-    let mut text = kept.join("\n");
-    text.push('\n');
+    let mut text = kept.concat();
+    if !text.ends_with('\n') {
+        text.push('\n');
+    }
     text
 }
 

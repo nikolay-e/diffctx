@@ -105,6 +105,20 @@ jobs:
           assert n == 1, "Cargo.toml: [package].version not found"
           cargo.write_text(s, encoding="utf-8")
 
+          # The Action's default pin and the plugin manifest are consumer-facing
+          # versions: left unbumped, Marketplace and plugin users stay on the
+          # previous release forever while every other channel moves.
+          act = pathlib.Path("action.yml")
+          s = act.read_text(encoding="utf-8")
+          s, n = re.subn(r'(?m)^(\s*default:\s*)\d+\.\d+\.\d+\s*$', rf'\g<1>{ver}', s, count=1)
+          assert n == 1, "action.yml: diffctx-version default not found"
+          act.write_text(s, encoding="utf-8")
+
+          plug = pathlib.Path(".claude-plugin/plugin.json")
+          doc = json.loads(plug.read_text(encoding="utf-8"))
+          doc["version"] = ver
+          plug.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+
           srv = pathlib.Path("server.json")
           doc = json.loads(srv.read_text(encoding="utf-8"))
           doc["version"] = ver
@@ -137,7 +151,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/diffctx/version.py pyproject.toml crates/diffctx-native/Cargo.toml Cargo.lock server.json
+          git add src/diffctx/version.py pyproject.toml crates/diffctx-native/Cargo.toml Cargo.lock \
+            server.json action.yml .claude-plugin/plugin.json
           if ! git diff --staged --quiet; then
             git commit -m "Release version ${VERSION}"
           else
