@@ -8,6 +8,9 @@
       name="description"
       content="diffctx selects the minimum code an LLM needs to review a git diff. Watch the pipeline work: diff → fragments → code graph → relevance → greedy selection."
     />
+    <link rel="canonical" href="https://nikolay-e.github.io/diffctx/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://nikolay-e.github.io/diffctx/" />
     <meta
       property="og:title"
       content="diffctx — smart diff context for LLM code review"
@@ -16,6 +19,34 @@
       property="og:description"
       content="Walks the dependency graph from changed lines outward and stops as soon as context stops paying for itself."
     />
+    <meta
+      property="og:image"
+      content="https://raw.githubusercontent.com/nikolay-e/diffctx/main/docs/demo/demo.gif"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "diffctx",
+        "alternateName": "diffctx (formerly treemapper)",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Linux, macOS, Windows",
+        "description": "Selects the minimum set of code fragments an LLM needs to understand a git diff, under a hard token budget. Deterministic, local, no model calls. Ships a Model Context Protocol server for AI coding agents.",
+        "url": "https://nikolay-e.github.io/diffctx/",
+        "codeRepository": "https://github.com/nikolay-e/diffctx",
+        "programmingLanguage": ["Rust", "Python"],
+        "license": "https://www.apache.org/licenses/LICENSE-2.0",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "keywords": "git diff context, LLM code review, MCP server, context engineering, budgeted context selection, code dependency graph",
+        "citation": {
+          "@type": "ScholarlyArticle",
+          "name": "diffctx: Budgeted Typed-Graph Retrieval for Diff-Aware Code Context Selection",
+          "identifier": "https://doi.org/10.5281/zenodo.18824579",
+          "author": { "@type": "Person", "name": "Nikolay Eremeev" }
+        }
+      }
+    </script>
     <link
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230b0f0d'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%2352f2a8'/%3E%3Ccircle cx='7' cy='9' r='2.2' fill='%23e8b44f'/%3E%3Ccircle cx='25' cy='10' r='2.2' fill='%2352f2a8' opacity='.55'/%3E%3Ccircle cx='24' cy='24' r='2.2' fill='%2352f2a8' opacity='.3'/%3E%3Cpath d='M16 16L7 9M16 16l9-6m-9 6l8 8' stroke='%2352f2a8' stroke-opacity='.4'/%3E%3C/svg%3E"
@@ -1417,7 +1448,7 @@
         <p class="sec-sub reveal" style="margin-top: 26px">
           Free, local, offline. Works with any LLM. Python API and standalone
           binaries included. Theory:
-          <a href="https://doi.org/10.5281/zenodo.18824580"
+          <a href="https://doi.org/10.5281/zenodo.18824579"
             >Context-Selection for Git Diff (Zenodo, 2026)</a
           >.
         </p>
@@ -1435,7 +1466,7 @@
         <a href="https://github.com/nikolay-e/diffctx/blob/main/CHANGELOG.md"
           >changelog</a
         >
-        <a href="https://doi.org/10.5281/zenodo.18824580">paper</a>
+        <a href="https://doi.org/10.5281/zenodo.18824579">paper</a>
       </div>
     </footer>
 

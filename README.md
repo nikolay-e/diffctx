@@ -27,6 +27,9 @@ changed lines and stops once more context stops paying for itself.
 | Python API | ✗ | ✗ | ✗ | ✓ |
 | MCP server | ✗ | ✗ | ✗ | ✓ |
 
+Fuller positioning — measured results, and when a whole-repo packer or a
+persistent code-graph server fits better: [COMPARISON.md](COMPARISON.md).
+
 ## Install
 
 ```bash
@@ -36,9 +39,6 @@ pip install diffctx                     # or: into an active environment
 pipx install 'diffctx[mcp]'             # + MCP server for AI assistants
 ```
 
-The `[tree-sitter]` extra adds AST-level parsing for more accurate context
-selection across 30+ languages.
-
 Without Python:
 
 ```bash
@@ -47,14 +47,24 @@ npx diffctx . --diff HEAD~1             # npm wrapper over the native binary
 docker run --rm -v "$PWD:/repo" ghcr.io/nikolay-e/diffctx . --diff HEAD~1
 ```
 
-The image runs as an unprivileged user and writes to stdout; to have `-o` write
-into the mounted repo, add `--user "$(id -u):$(id -g)"`.
+On Windows, via Scoop (this repository is the bucket):
+
+```powershell
+scoop bucket add diffctx https://github.com/nikolay-e/diffctx
+scoop install diffctx/diffctx
+```
+
+The image runs as a non-root user (uid 10001) and writes to stdout — the
+native binary has no `-o` flag, so redirect to capture: `... --diff HEAD~1 >
+context.yaml`.
 
 Prebuilt binaries for linux (x86_64/aarch64), macOS (arm64) and Windows (x64)
 are attached to every [release](https://github.com/nikolay-e/diffctx/releases/latest).
 The native binary covers diff mode with YAML/JSON output; tree mode, Markdown
 output, the `graph` subcommand and the MCP server live in the Python package.
-`cargo add diffctx` embeds the pipeline in a Rust project
+`cargo add diffctx` embeds the pipeline in a Rust project — the library is
+imported as `_diffctx` (`use _diffctx::pipeline::build_diff_context`), since
+the crate doubles as the Python extension module
 ([docs.rs](https://docs.rs/diffctx)).
 
 ## Quick start
@@ -80,16 +90,18 @@ the `--budget` token cap is hit.
 | Flag        | Default | Description                                                              |
 |-------------|---------|--------------------------------------------------------------------------|
 | `--scoring` | `ego`   | `ego` = bounded expansion around changed nodes (fast, predictable radius); `ppr` = Personalized PageRank (global, smoother decay, slower); `bm25` = lexical retrieval against the diff hunks (baseline for sparse graphs) |
-| `--budget`  | auto    | Hard token cap: `N` enforces a fixed cap, `-1` disables it, `0` is a strict-zero floor (empty selection; use `--full` for changed files only) |
+| `--budget`  | auto    | Hard cap in o200k_base tokens (see [Token counting](docs/product/token-budget.md)): `N` enforces a fixed cap, `-1` disables it, `0` is a strict-zero floor (empty selection; use `--full` for changed files only) |
 | `--alpha`   | 0.60    | PPR damping; higher = context clusters tighter around changes (`--scoring ppr` only) |
 | `--tau`     | 0.12    | Relevance threshold for full fragment content; lower-scoring fragments are stubbed or dropped (lower = more context) |
 | `--full`    | false   | Only the changed files, every fragment, no related-code context          |
 | `--timeout` | 300     | Wall-clock deadline in seconds; on expiry diffctx exits 124 instead of hanging |
+| `--with-raw-diff` | false | Also embed git's raw unified diff ahead of the selected fragments — additive (selection unchanged), not charged to `--budget`, lock/ignored/secret-like sections omitted. Python CLI only |
 
 Calibration of `--alpha`, `--tau`, and the edge-weight priors:
 [`docs/engineering/parameter-strategy.md`](docs/engineering/parameter-strategy.md).
 Theory:
-[Context-Selection for Git Diff (Zenodo, 2026)](https://doi.org/10.5281/zenodo.18824580).
+[diffctx: Budgeted Typed-Graph Retrieval for Diff-Aware Code Context
+Selection (Zenodo, 2026)](https://doi.org/10.5281/zenodo.18824579).
 
 ### `graph` subcommand
 
@@ -107,19 +119,20 @@ diffctx graph . --level file -f graphml -o g.xml # file-level graph as GraphML
 <!-- BEGIN USAGE -->
 ```bash
 # full codebase export:
-diffctx .                                # Markdown to stdout + token count
-diffctx . -f md -c                       # Markdown → clipboard
-diffctx . -f json -o tree.json           # JSON → file
-diffctx . --no-content                   # structure only, no file contents
-diffctx . --max-depth 3                  # limit depth
-diffctx . -i custom.ignore               # custom ignore patterns
+diffctx .                                 # Markdown to stdout + token count
+diffctx . -f md -c                        # Markdown → clipboard
+diffctx . -f json -o tree.json            # JSON → file
+diffctx . --no-content                    # structure only, no file contents
+diffctx . --max-depth 3                   # limit depth
+diffctx . -i custom.ignore                # custom ignore patterns
 
 # diff context mode (requires git repo):
-diffctx . --diff                         # uncommitted changes (working tree vs HEAD)
-diffctx . --diff HEAD~1                  # context for last commit
-diffctx . --diff main..feature           # context for feature branch
-diffctx . --diff HEAD~1 --budget 30000   # limit to ~30k tokens
-diffctx . --diff HEAD~1 -c               # diff context to clipboard
+diffctx . --diff                          # uncommitted changes (working tree vs HEAD)
+diffctx . --diff HEAD~1                   # context for last commit
+diffctx . --diff main..feature            # context for feature branch
+diffctx . --diff HEAD~1 --budget 30000    # limit to ~30k tokens
+diffctx . --diff HEAD~1 -c                # diff context to clipboard
+diffctx . --diff HEAD~1 --with-raw-diff   # raw patch + selected context
 ```
 <!-- END USAGE -->
 
@@ -129,6 +142,11 @@ Every run reports token count and size on stderr — `12,847 tokens
 `wl-copy`/`xclip`/`xsel` (Linux). Unreadable files become placeholders like
 `<binary file: N bytes>`, `<file too large: N bytes>`, or
 `<unreadable content: not utf-8>`.
+
+Counts come from tiktoken's `o200k_base` encoder and are exact only for the
+GPT-4o family; Claude, Gemini and others tokenize differently, so treat
+`--budget` as an upper bound in o200k tokens and leave headroom. Details:
+[`docs/product/token-budget.md`](docs/product/token-budget.md).
 
 ## Python API
 
@@ -145,6 +163,7 @@ ctx = build_diff_context(
     full=False,
     scoring_mode="ego",
     timeout=300,
+    with_raw_diff=False,      # True also embeds the raw unified diff (not charged to budget)
 )
 print(to_markdown(ctx))
 
@@ -164,21 +183,16 @@ print(to_yaml(tree))
 
 diffctx includes an [MCP](https://modelcontextprotocol.io) server that lets AI
 assistants (Claude Code, Cursor, Windsurf, etc.) call diff context analysis
-automatically during code review. Install with `pip install 'diffctx[mcp]'`
-and add it to your MCP client config (e.g. `~/.claude/mcp.json` for Claude Code):
+automatically during code review. Install with `pip install 'diffctx[mcp]'`,
+then register it — for Claude Code:
 
-```json
-{
-  "mcpServers": {
-    "diffctx": {
-      "command": "diffctx-mcp"
-    }
-  }
-}
+```bash
+claude mcp add diffctx -- diffctx-mcp
 ```
 
-The server exposes a `get_diff_context` tool that assistants call when
-reviewing PRs, explaining changes, or investigating broken tests. Configs for
+The server exposes three tools — `get_diff_context`, `get_tree_map`, and
+`get_file_context` — that assistants call when reviewing PRs, explaining
+changes, or investigating broken tests. Tool reference and configs for
 Cursor, Continue, Windsurf, and Zed:
 [`src/diffctx/mcp/README.md`](src/diffctx/mcp/README.md).
 
@@ -215,6 +229,7 @@ its share of the cap, oldest entries first.
 | `2`  | Usage error (invalid flags/arguments) |
 | `3`  | Environment error (`--diff` outside a git repo, git not installed, no commits yet) |
 | `4`  | `--diff` produced no semantic context (clean tree, binary-only, everything filtered); output is still emitted. Deletion/rename/lockfile-only diffs list `deleted_files`/`renamed_files`/`lockfile_changes` and exit `0` |
+| `124`| `--diff` exceeded the `--timeout` wall-clock deadline |
 | `130`| Interrupted (Ctrl-C) |
 | `141`| Broken pipe (e.g. piping into `head`) |
 
@@ -230,8 +245,20 @@ for the lifecycle and entry point of each area.
 
 Apache 2.0
 
+<!-- mcp-name: io.github.nikolay-e/diffctx -->
+<!-- Ownership marker read from the PyPI description by the MCP registry. -->
+<!-- Must survive edits verbatim: one space after the colon, case-sensitive. -->
+
 ---
 
+- [Documentation site](https://nikolay-e.github.io/diffctx/) — the pipeline
+  end to end: diff → fragments → graph → relevance → selection
+- [GitHub Action](docs/product/github-action.md) — diff context as a CI step
+  for LLM review
+- [Token counting](docs/product/token-budget.md) — which encoder, and what
+  `--budget` means for non-GPT models
+- [Comparison](COMPARISON.md) — measured results, and when a whole-repo packer
+  or a persistent code-graph server fits better
 - [Changelog](CHANGELOG.md)
 - [Security policy](SECURITY.md) — threat model and vulnerability reporting
 - [Parameter strategy](docs/engineering/parameter-strategy.md) — how `--alpha`,

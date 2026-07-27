@@ -23,7 +23,7 @@ from eval.baselines.bm25_baseline import _build_bm25_corpus, _greedy_budget_pack
 from eval.harness.adapters.base import BenchmarkInstance, EvalResult
 from eval.harness.adapters.evaluator import SelectionOutput, UniversalEvaluator
 from eval.harness.adapters.runner import RunParams
-from eval.harness.common import apply_as_commit, ensure_repo, reset_to_parent
+from eval.harness.common import apply_gold_patch, ensure_repo, reset_to_parent
 
 _BASE_SEED = int(os.environ.get("DIFFCTX_RANDOM_BASELINE_SEED", "42"))
 
@@ -61,7 +61,8 @@ def _random_eval(
 
     applied = False
     try:
-        applied = apply_as_commit(repo_dir, instance.gold_patch, "random-baseline-gold")
+        apply_outcome = apply_gold_patch(repo_dir, instance.gold_patch, "random-baseline-gold")
+        applied = apply_outcome.applied
         if not applied:
             return _fail_result(instance, params.budget, "apply_fail", "gold patch did not apply as commit")
         t0 = time.perf_counter()
@@ -98,6 +99,7 @@ def _random_eval(
         result.extra["language"] = instance.language
         result.extra["baseline"] = "random"
         result.extra["seed"] = _BASE_SEED
+        result.extra["apply_mode"] = apply_outcome.mode
         return result
     finally:
         if applied:

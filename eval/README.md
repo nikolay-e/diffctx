@@ -260,12 +260,13 @@ results/
 └── loo_{scoring}_n{limit}_b{budget}.json      # leave-one-out
 ```
 
-JSON record schema (per instance, abbreviated):
+`cb` / `loo` JSON record schema (per instance, abbreviated):
 
 ```json
 {
   "id": "<repo>__<sha>",
-  "status": "ok | clone_fail | timeout | error",
+  "status": "ok | clone_fail | apply_fail | timeout | error",
+  "apply_mode": "strict | ignore_whitespace",
   "language": "python",
   "repo": "owner/name",
   "elapsed_s": 12.3,
@@ -277,6 +278,41 @@ JSON record schema (per instance, abbreviated):
   "line_recall_nontrivial": 0.71
 }
 ```
+
+Sweep / final-eval per-instance record (`<test_set>.checkpoint.jsonl`,
+`<test_set>.json`) is `EvalResult` serialized field-for-field. The schema is
+additive — consumers must tolerate unknown keys and missing new ones:
+
+```json
+{
+  "instance_id": "polybench500::org__repo-123",
+  "source_benchmark": "polybench500",
+  "file_recall": 0.91,
+  "file_precision": 0.42,
+  "fragment_recall": 0.66,
+  "fragment_precision": 0.51,
+  "line_f1": 0.55,
+  "line_precision": 0.45,
+  "line_recall": 0.70,
+  "used_tokens": 7812,
+  "budget": 8000,
+  "elapsed_seconds": 12.3,
+  "extra": {"status": "ok", "apply_mode": "ignore_whitespace", "language": "java"}
+}
+```
+
+Fragment- and line-level fields are `null` unless the source benchmark ships
+`gold_fragments` (ContextBench, PolyBench). `extra.apply_mode` records which
+gate the gold patch passed: `"strict"` for the exact `git apply --index`,
+`"ignore_whitespace"` for the tolerant retry that recovers LF-normalized gold
+patches over CRLF blobs. `cell-metrics` aggregates the modes into
+`apply_modes` so a cell's tolerant rows stay countable.
+
+`aggregate-sweep` emits two flat tables: `cell_index.csv` (row per cell,
+new columns appended at the end of the header) and `instance_index.csv` (row
+per (cell, instance) with the file-, fragment- and line-level metrics plus
+`status` / `apply_mode`) — the latter is what fragment/line reporting reads,
+so no rerun is needed to analyse a sweep at finer granularity.
 
 ## Reproducibility
 
@@ -393,7 +429,8 @@ result = ev.evaluate(
 )
 # result.file_recall, result.file_precision   — always
 # result.fragment_recall, .fragment_precision — when gold_fragments present
-# result.line_f1                              — line-set F1 averaged over files
+# result.line_f1, .line_precision, .line_recall — line-set metrics, macro-averaged
+#                                               over the files appearing in gold
 ```
 
 `ev.aggregate_per_benchmark(results)` groups by `source_benchmark`. The

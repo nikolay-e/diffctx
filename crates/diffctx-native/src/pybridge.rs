@@ -514,6 +514,23 @@ fn diff_context_output_to_dict<'py>(
 }
 
 #[pyfunction]
+#[pyo3(signature = (root_dir, diff_range, timeout = DEFAULT_PIPELINE_TIMEOUT_SECONDS))]
+fn get_raw_diff_text(
+    py: Python<'_>,
+    root_dir: &str,
+    diff_range: &str,
+    timeout: u64,
+) -> PyResult<String> {
+    let range = if diff_range.is_empty() {
+        None
+    } else {
+        Some(diff_range)
+    };
+    py.detach(|| pipeline::raw_diff_text(Path::new(root_dir), range, timeout))
+        .map_err(map_pipeline_err)
+}
+
+#[pyfunction]
 fn get_language_for_file(path: &str) -> Option<String> {
     crate::languages::get_language_for_file(path).map(|s| s.to_string())
 }
@@ -781,6 +798,7 @@ pub fn _diffctx(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(compute_scored_state, m)?)?;
     m.add_function(wrap_pyfunction!(select_with_params, m)?)?;
     m.add_class::<PyScoredState>()?;
+    m.add_function(wrap_pyfunction!(get_raw_diff_text, m)?)?;
     m.add_function(wrap_pyfunction!(get_language_for_file, m)?)?;
     m.add_function(wrap_pyfunction!(count_tokens, m)?)?;
     m.add_function(wrap_pyfunction!(build_project_graph, m)?)?;

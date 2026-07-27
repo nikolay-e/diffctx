@@ -7,25 +7,9 @@ import pytest
 
 from eval.harness.adapters import BenchmarkInstance, EvalResult
 from eval.harness.adapters.base import BenchmarkAdapter
-from eval.harness.adapters.calibrate import (
-    GridSpec,
-    TrialResult,
-    evaluate_grid,
-    render_grid_report,
-    top_k_trials,
-)
-from eval.harness.adapters.final_eval import (
-    aggregate_by_language,
-    aggregate_test_set,
-    render_language_table,
-    render_paper_table,
-)
-from eval.harness.adapters.runner import (
-    RunParams,
-    filter_instances_by_manifest,
-    read_manifest,
-    run_eval_set,
-)
+from eval.harness.adapters.calibrate import GridSpec, TrialResult, evaluate_grid, render_grid_report, top_k_trials
+from eval.harness.adapters.final_eval import aggregate_by_language, aggregate_test_set, render_language_table, render_paper_table
+from eval.harness.adapters.runner import RunParams, filter_instances_by_manifest, read_manifest, run_eval_set
 
 
 class _StubAdapter(BenchmarkAdapter):
@@ -400,6 +384,268 @@ def test_parallel_eval_records_apply_fail_not_garbage_score(tmp_path: Path, monk
     assert results[0].extra["status"] == "apply_fail"
     rows = [_json.loads(line) for line in ckpt.read_text().splitlines()]
     assert rows[0]["extra"]["status"] == "apply_fail"
+
+
+def _init_repo(path: Path) -> None:
+    import subprocess
+
+    path.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "init", "-q"], cwd=path, check=True)
+    subprocess.run(["git", "config", "core.autocrlf", "false"], cwd=path, check=True)
+    subprocess.run(["git", "config", "user.email", "t@t"], cwd=path, check=True)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=path, check=True)
+
+
+def _commit_all(path: Path, message: str) -> None:
+    import subprocess
+
+    subprocess.run(["git", "add", "-A"], cwd=path, check=True)
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", message], cwd=path, check=True)
+
+
+def _lf_gold_patch(tmp_path: Path, before: str, after: str) -> str:
+    """Gold patch generated against LF content — the PolyBench shape of issue #171."""
+    import subprocess
+
+    lf_repo = tmp_path / "lf_origin"
+    _init_repo(lf_repo)
+    (lf_repo / "app.py").write_text(before)
+    _commit_all(lf_repo, "base")
+    (lf_repo / "app.py").write_text(after)
+    return subprocess.run(["git", "diff"], cwd=lf_repo, capture_output=True, text=True, check=True).stdout
+
+
+def test_apply_gold_patch_reports_strict_mode_on_matching_line_endings(tmp_path: Path):
+    from eval.harness.common import apply_gold_patch
+
+    before = "def f():\n    return 1\n"
+    after = "def f():\n    return 2\n"
+    patch = _lf_gold_patch(tmp_path, before, after)
+
+    repo = tmp_path / "lf_repo"
+    _init_repo(repo)
+    (repo / "app.py").write_text(before)
+    _commit_all(repo, "base")
+
+    outcome = apply_gold_patch(repo, patch, "gold")
+    assert outcome.applied is True
+    assert outcome.mode == "strict"
+    assert (repo / "app.py").read_text() == after
+
+
+def test_apply_gold_patch_falls_back_to_whitespace_tolerant_on_crlf_repo(tmp_path: Path):
+    import subprocess
+
+    from eval.harness.common import apply_gold_patch
+
+    before = "def f():\n    return 1\n    # tail\n"
+    after = "def f():\n    return 2\n    # tail\n"
+    patch = _lf_gold_patch(tmp_path, before, after)
+
+    repo = tmp_path / "crlf_repo"
+    _init_repo(repo)
+    (repo / "app.py").write_bytes(before.replace("\n", "\r\n").encode())
+    _commit_all(repo, "base")
+    base_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=True
+    ).stdout.strip()
+
+    strict = subprocess.run(["git", "apply", "--index", "-"], cwd=repo, input=patch, capture_output=True, text=True)
+    assert strict.returncode != 0, "fixture no longer reproduces the CRLF-vs-LF strict apply failure"
+
+    outcome = apply_gold_patch(repo, patch, "gold")
+    assert outcome.applied is True
+    assert outcome.mode == "ignore_whitespace"
+
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=True).stdout.strip()
+    assert head != base_commit
+    changed = subprocess.run(
+        ["git", "diff", "--name-only", "HEAD~1..HEAD"], cwd=repo, capture_output=True, text=True, check=True
+    ).stdout.split()
+    assert changed == ["app.py"]
+    assert "return 2" in (repo / "app.py").read_text()
+
+
+def test_apply_gold_patch_reports_no_mode_when_content_conflicts(tmp_path: Path):
+    from eval.harness.common import apply_gold_patch
+
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "app.py").write_text("def f():\n    return 1\n")
+    _commit_all(repo, "base")
+
+    non_applying = (
+        "diff --git a/app.py b/app.py\n"
+        "--- a/app.py\n"
+        "+++ b/app.py\n"
+        "@@ -1,1 +1,1 @@\n"
+        "-nonexistent line\n"
+        "+replacement\n"
+    )
+    outcome = apply_gold_patch(repo, non_applying, "gold")
+    assert outcome.applied is False
+    assert outcome.mode is None
+
+
+def test_checkpoint_rows_keep_fragment_and_line_metrics(tmp_path: Path):
+    import json as _json
+
+    from eval.harness.adapters import GoldenFragment
+    from eval.harness.adapters.evaluator import SelectionOutput, UniversalEvaluator
+
+    gold = (GoldenFragment(path="f.py", start_line=1, end_line=10),)
+    inst = BenchmarkInstance(
+        instance_id="frag::1",
+        source_benchmark="frag",
+        repo="o/r",
+        base_commit="0" * 40,
+        gold_patch="",
+        gold_files=frozenset({"f.py"}),
+        language="python",
+        gold_fragments=gold,
+    )
+
+    def _fragment_eval(instance: BenchmarkInstance, params: RunParams) -> EvalResult:
+        selection = SelectionOutput(
+            selected_files=frozenset({"f.py"}),
+            selected_fragments=(GoldenFragment(path="f.py", start_line=1, end_line=20),),
+            used_tokens=500,
+        )
+        r = UniversalEvaluator().evaluate(instance, selection, budget=params.budget)
+        r.extra["status"] = "ok"
+        r.extra["apply_mode"] = "ignore_whitespace"
+        return r
+
+    ckpt = tmp_path / "frag.checkpoint.jsonl"
+    run_eval_set([inst], _fragment_eval, RunParams(), workers=1, checkpoint_path=ckpt)
+
+    row = _json.loads(ckpt.read_text().splitlines()[0])
+    assert row["fragment_recall"] == pytest.approx(1.0)
+    assert row["fragment_precision"] == pytest.approx(1.0)
+    assert row["line_f1"] == pytest.approx(2 / 3)
+    assert row["line_precision"] == pytest.approx(0.5)
+    assert row["line_recall"] == pytest.approx(1.0)
+    assert row["extra"]["apply_mode"] == "ignore_whitespace"
+
+    # A resumed run must replay those metrics instead of zeroing them.
+    replayed = run_eval_set([inst], _fragment_eval, RunParams(), workers=1, resume_from=ckpt)
+    assert replayed[0].line_precision == pytest.approx(0.5)
+    assert replayed[0].line_recall == pytest.approx(1.0)
+
+
+def test_cell_metrics_summarizes_line_metrics_and_apply_modes():
+    from eval.analysis.cell_metrics import compute_cell_summary
+
+    rows = [
+        {
+            "instance_id": "i1",
+            "file_recall": 1.0,
+            "file_precision": 0.5,
+            "fragment_recall": 1.0,
+            "fragment_precision": 1.0,
+            "line_f1": 2 / 3,
+            "line_precision": 0.5,
+            "line_recall": 1.0,
+            "extra": {"status": "ok", "apply_mode": "strict"},
+        },
+        {
+            "instance_id": "i2",
+            "file_recall": 0.5,
+            "file_precision": 0.5,
+            "fragment_recall": 0.5,
+            "fragment_precision": 0.5,
+            "line_f1": 0.5,
+            "line_precision": 0.5,
+            "line_recall": 0.5,
+            "extra": {"status": "ok", "apply_mode": "ignore_whitespace"},
+        },
+    ]
+    summary = compute_cell_summary(rows)
+    assert summary["line_precision"]["mean"] == pytest.approx(0.5)
+    assert summary["line_recall"]["mean"] == pytest.approx(0.75)
+    assert summary["apply_modes"] == {"strict": 1, "ignore_whitespace": 1}
+
+
+def test_aggregate_sweep_writes_per_instance_csv_with_fragment_and_line_metrics(tmp_path: Path):
+    import csv as _csv
+    import json as _json
+
+    from eval.analysis.aggregate_sweep import collect_cells, write_instance_csv
+
+    root = tmp_path / "all_cells"
+    cell = root / "cell-ego-b8000-L2-polybench500"
+    cell.mkdir(parents=True)
+    (cell / "polybench500.checkpoint.jsonl").write_text(
+        _json.dumps(
+            {
+                "instance_id": "polybench500::1",
+                "file_recall": 0.75,
+                "file_precision": 0.5,
+                "fragment_recall": 0.6,
+                "fragment_precision": 0.4,
+                "line_f1": 0.55,
+                "line_precision": 0.45,
+                "line_recall": 0.7,
+                "used_tokens": 1234,
+                "elapsed_seconds": 1.5,
+                "extra": {"status": "ok", "apply_mode": "ignore_whitespace", "language": "java", "n_gold": 4},
+            }
+        )
+        + "\n"
+    )
+    (cell / "cell_summary.json").write_text(_json.dumps({"n": 1}))
+    (cell / "metadata.json").write_text(
+        _json.dumps({"cell": {"method": "ego", "budget": 8000, "depth": 2, "test_set": "polybench500"}})
+    )
+
+    cells = collect_cells(root)
+    out = tmp_path / "instance_index.csv"
+    assert write_instance_csv(cells, out) == 1
+
+    row = next(iter(_csv.DictReader(out.open())))
+    assert row["instance_id"] == "polybench500::1"
+    assert row["method"] == "ego"
+    assert row["depth"] == "2"
+    assert row["fragment_recall"] == "0.6"
+    assert row["line_f1"] == "0.55"
+    assert row["line_precision"] == "0.45"
+    assert row["line_recall"] == "0.7"
+    assert row["apply_mode"] == "ignore_whitespace"
+    assert row["status"] == "ok"
+
+
+def test_aggregate_sweep_cell_csv_keeps_existing_columns_and_appends_line_metrics(tmp_path: Path):
+    import csv as _csv
+
+    from eval.analysis.aggregate_sweep import write_csv
+
+    cells = [
+        {
+            "method": "ego",
+            "budget": 8000,
+            "depth": 2,
+            "test_set": "polybench500",
+            "n_instances": 1,
+            "metadata": {},
+            "summary": {
+                "n": 1,
+                "ok": 1,
+                "file_recall": {"mean": 0.75},
+                "line_f1": {"mean": 0.55, "n_with_gold": 1},
+                "line_precision": {"mean": 0.45},
+                "line_recall": {"mean": 0.7},
+            },
+        }
+    ]
+    out = tmp_path / "cell_index.csv"
+    write_csv(cells, out)
+    header = out.read_text().splitlines()[0].split(",")
+    assert header[:6] == ["method", "budget", "depth", "test_set", "n_instances", "n_ok"]
+    assert header.index("mean_file_recall") < header.index("mean_line_f1")
+    row = next(iter(_csv.DictReader(out.open())))
+    assert row["mean_line_precision"] == "0.45"
+    assert row["mean_line_recall"] == "0.7"
+    assert row["n_with_line_gold"] == "1"
 
 
 def test_aggregate_sweep_expands_multi_budget_cells(tmp_path: Path):

@@ -56,6 +56,8 @@ class EvalResult:
     fragment_recall: float | None = None
     fragment_precision: float | None = None
     line_f1: float | None = None
+    line_precision: float | None = None
+    line_recall: float | None = None
     used_tokens: int = 0
     budget: int = 0
     elapsed_seconds: float = 0.0

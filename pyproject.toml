@@ -5,8 +5,8 @@ requires = [ "maturin>=1.10,<1.15" ]
 
 [project]
 name = "diffctx"
-version = "1.12.1"
-description = "Export codebase structure and contents for AI/LLM context"
+version = "1.12.2"
+description = "Smart git diff context for LLMs and AI agents: budgeted fragment selection, deterministic, MCP server included"
 readme = "README.md"
 keywords = [
   "ai",
@@ -104,9 +104,11 @@ optional-dependencies.tree-sitter = [
   "tree-sitter-swift>=0.0.1,<1.0",
   "tree-sitter-typescript>=0.21,<1.0",
 ]
-urls.Changelog = "https://github.com/nikolay-e/diffctx/releases"
-urls.Homepage = "https://github.com/nikolay-e/diffctx"
+urls.Changelog = "https://github.com/nikolay-e/diffctx/blob/main/CHANGELOG.md"
+urls.Documentation = "https://nikolay-e.github.io/diffctx/"
+urls.Homepage = "https://nikolay-e.github.io/diffctx/"
 urls.Issues = "https://github.com/nikolay-e/diffctx/issues"
+urls.Paper = "https://doi.org/10.5281/zenodo.18824579"
 urls.Repository = "https://github.com/nikolay-e/diffctx"
 scripts.diffctx = "diffctx.cli:main"
 scripts.diffctx-mcp = "diffctx.mcp.server:main"
@@ -223,6 +225,7 @@ module = [
   "mcp",
   "mcp.server",
   "mcp.server.fastmcp",
+  "mcp.types",
   "anyio",
   "diffctx._diffctx",
   "_diffctx",

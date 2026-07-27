@@ -17,6 +17,8 @@ Output:
     <out>/grand_summary.json   — every cell's metadata + summary in one file
     <out>/SWEEP_TABLE.md       — markdown matrix of mean recall per cell
     <out>/cell_index.csv       — flat row-per-cell CSV for further analysis
+    <out>/instance_index.csv   — row-per-(cell, instance) CSV with the file-,
+                                 fragment- and line-level metrics of each row
 
 The aggregator is permissive: missing artifacts are reported but do not
 cause the script to fail (so partial sweeps still produce useful output).
@@ -55,6 +57,44 @@ def _safe_load(path: Path) -> dict | None:
         return None
 
 
+_INSTANCE_METRIC_FIELDS: tuple[str, ...] = (
+    "file_recall",
+    "file_precision",
+    "fragment_recall",
+    "fragment_precision",
+    "line_f1",
+    "line_precision",
+    "line_recall",
+    "used_tokens",
+    "elapsed_seconds",
+)
+_INSTANCE_EXTRA_FIELDS: tuple[str, ...] = (
+    "status",
+    "apply_mode",
+    "language",
+    "n_gold",
+    "n_selected",
+    "fragment_count",
+)
+
+
+def _instance_metrics(rows: list[dict]) -> list[dict]:
+    """Slim per-instance projection retained for `instance_index.csv`.
+
+    Only the scoring columns survive: the raw checkpoint rows carry
+    `selected_files` lists whose aggregate size dwarfs everything else in the
+    aggregator's memory when every cell of a full sweep is held at once.
+    """
+    out: list[dict] = []
+    for r in rows:
+        extra = r.get("extra") or {}
+        row: dict = {"instance_id": r.get("instance_id")}
+        row.update({f: r.get(f) for f in _INSTANCE_METRIC_FIELDS})
+        row.update({f: extra.get(f) for f in _INSTANCE_EXTRA_FIELDS})
+        out.append(row)
+    return out
+
+
 def _budget_sweep_records(cell_root: Path, meta: dict, method, depth, test_set) -> list[dict]:
     """Expand a multi-budget cell (issue #52 layout) into one record per budget.
 
@@ -80,6 +120,7 @@ def _budget_sweep_records(cell_root: Path, meta: dict, method, depth, test_set) 
                 "summary": summary,
                 "n_instances": len(rows),
                 "instance_recall_values": [r.get("file_recall", 0.0) for r in rows],
+                "instance_metrics": _instance_metrics(rows),
             }
         )
     return records
@@ -129,6 +170,7 @@ def _single_budget_record(cell_root: Path, meta: dict, cell_info: dict, parsed, 
         "summary": summary,
         "n_instances": len(rows),
         "instance_recall_values": [r.get("file_recall", 0.0) for r in rows],
+        "instance_metrics": _instance_metrics(rows),
     }
 
 
@@ -625,6 +667,8 @@ def _csv_blocks(s: dict) -> dict[str, dict]:
         "frag_fbeta": _or_empty(s, "fragment_fbeta"),
         "line": line_block,
         "line_cond": _or_empty(line_block, "conditional_on_file_hit") if line_block else {},
+        "line_prec": _or_empty(s, "line_precision"),
+        "line_rec": _or_empty(s, "line_recall"),
         "tokens": _or_empty(s, "used_tokens"),
         "elapsed": _or_empty(s, "elapsed_seconds"),
         "rec_hist": _or_empty(file_recall, "hist"),
@@ -654,6 +698,9 @@ def _csv_row_for_cell(c: dict) -> dict:
         "mean_fragment_f1": _or_empty(b["frag_fbeta"], "f1").get("mean") if b["frag_fbeta"] else None,
         "mean_line_f1": b["line"].get("mean"),
         "mean_line_f1_given_file_hit": b["line_cond"].get("mean"),
+        "mean_line_precision": b["line_prec"].get("mean"),
+        "mean_line_recall": b["line_rec"].get("mean"),
+        "n_with_line_gold": b["line"].get("n_with_gold"),
         "n_with_fragment_gold": b["frag"].get("n_with_gold"),
         "recall_perfect_pct": b["rec_hist"].get("perfect_pct"),
         "recall_zero_pct": b["rec_hist"].get("zero_pct"),
@@ -715,12 +762,66 @@ def write_csv(cells: list[dict], path: Path) -> None:
         "elapsed_p99",
         "git_sha",
         "started_at_utc",
+        # Appended, never interleaved: existing consumers index this header by
+        # position as well as by name.
+        "mean_line_precision",
+        "mean_line_recall",
+        "n_with_line_gold",
     ]
     with path.open("w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=fields)
         w.writeheader()
         for c in cells:
             w.writerow(_csv_row_for_cell(c))
+
+
+_INSTANCE_CSV_FIELDS: tuple[str, ...] = (
+    "method",
+    "budget",
+    "depth",
+    "test_set",
+    "instance_id",
+    "status",
+    "apply_mode",
+    "language",
+    "file_recall",
+    "file_precision",
+    "fragment_recall",
+    "fragment_precision",
+    "line_f1",
+    "line_precision",
+    "line_recall",
+    "used_tokens",
+    "elapsed_seconds",
+    "n_gold",
+    "n_selected",
+    "fragment_count",
+)
+
+
+def write_instance_csv(cells: list[dict], path: Path) -> int:
+    """Row-per-(cell, instance) CSV carrying fragment- and line-level metrics.
+
+    The per-cell summaries average these away, so without this file the only
+    source of paper-level fragment/line numbers is a rerun of the sweep.
+    """
+    written = 0
+    with path.open("w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(_INSTANCE_CSV_FIELDS))
+        w.writeheader()
+        for c in cells:
+            cell_keys = {
+                "method": c["method"],
+                "budget": c["budget"],
+                "depth": c.get("depth"),
+                "test_set": c["test_set"],
+            }
+            for inst in c.get("instance_metrics") or []:
+                row = dict(cell_keys)
+                row.update({k: inst.get(k) for k in _INSTANCE_CSV_FIELDS if k not in cell_keys})
+                w.writerow(row)
+                written += 1
+    return written
 
 
 def main() -> int:
@@ -744,6 +845,7 @@ def main() -> int:
                 "test_set": c["test_set"],
                 "metadata": c["metadata"],
                 "summary": c["summary"],
+                "depth": c.get("depth"),
             }
             for c in cells
         ],
@@ -759,9 +861,11 @@ def main() -> int:
     )
     (args.out / "SWEEP_TABLE.md").write_text(sweep_md)
     write_csv(cells, args.out / "cell_index.csv")
+    n_instance_rows = write_instance_csv(cells, args.out / "instance_index.csv")
     print(f"Wrote: {args.out / 'grand_summary.json'}")
     print(f"Wrote: {args.out / 'SWEEP_TABLE.md'}")
     print(f"Wrote: {args.out / 'cell_index.csv'}")
+    print(f"Wrote: {args.out / 'instance_index.csv'} ({n_instance_rows} rows)")
     return 0
 
 
