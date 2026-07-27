@@ -131,6 +131,9 @@ _DIFF_DESCRIPTION = (
     "Set clipboard=true to copy to clipboard without flooding context.\n"
     "budget_tokens: -1 = unlimited (still capped by max_tokens below), "
     "0 = strict-zero floor (changed lines only, no related context).\n"
+    "include_raw_diff=true also embeds git's raw unified diff ahead of the "
+    "selected fragments — additive (selection unchanged), not charged to "
+    "budget_tokens; lock/ignored/secret-like sections omitted.\n"
     "Supports 30+ languages." + _UNTRUSTED_NOTICE
 )
 
@@ -142,6 +145,7 @@ async def get_diff_context(
     budget_tokens: int = 8000,
     clipboard: bool = False,
     max_tokens: int = _DEFAULT_MAX_TOKENS,
+    include_raw_diff: bool = False,
 ) -> str:
     validated_path = validate_repo_path(repo_path)
     _validate_budget_tokens(budget_tokens)
@@ -155,6 +159,7 @@ async def get_diff_context(
                 budget_tokens=budget_tokens,
                 tau=_DEFAULT_TAU,
                 timeout=_DEFAULT_TIMEOUT_SECONDS,
+                with_raw_diff=include_raw_diff,
             ),
         )
     except GitError as e:

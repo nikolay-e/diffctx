@@ -161,6 +161,27 @@ class TestGetDiffContext:
         assert len(_get_text(result_small)) <= len(_get_text(result_large))
 
     @pytest.mark.asyncio
+    async def test_include_raw_diff_embeds_patch_ahead_of_fragments(self, server, mcp_repo):
+        result = await server.call_tool(
+            "get_diff_context",
+            {"repo_path": str(mcp_repo.path), "diff_range": "HEAD~1..HEAD", "include_raw_diff": True},
+        )
+        text = _get_text(result)
+        assert "## Raw diff" in text
+        assert "+def subtract(a, b):" in text
+        assert text.index("## Raw diff") < text.index("## `")
+
+    @pytest.mark.asyncio
+    async def test_raw_diff_is_additive_selection_unchanged(self, server, mcp_repo):
+        args = {"repo_path": str(mcp_repo.path), "diff_range": "HEAD~1..HEAD"}
+        without = _get_text(await server.call_tool("get_diff_context", args))
+        with_raw = _get_text(await server.call_tool("get_diff_context", {**args, "include_raw_diff": True}))
+        assert "## Raw diff" not in without
+        raw_start = with_raw.index("## Raw diff")
+        fragments_after_raw = with_raw[with_raw.index("\n## ", raw_start + 1) :]
+        assert fragments_after_raw in without
+
+    @pytest.mark.asyncio
     async def test_invalid_repo_path(self, server, tmp_path):
         args = {"repo_path": str(tmp_path / "nonexistent"), "diff_range": "HEAD~1..HEAD"}
         with pytest.raises(ToolError, match="Not a directory"):
