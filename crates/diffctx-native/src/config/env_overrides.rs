@@ -224,19 +224,12 @@ mod override_name_consistency {
     }
 
     // Read via `read_env_*` but intentionally not in the Tier-3 table:
-    // - `DIFFCTX_OP_SELECTION_CORE_BUDGET_FRACTION`: `core_budget_fraction`
-    //   is Tier-1 (calibrated), exposed only so
-    //   `scripts/sensitivity_check.py` can sweep it (documented in prose,
-    //   not the table -- see parameter-strategy.md's "env-overridable ...
-    //   for sweeps" note).
-    // - `DIFFCTX_EGO_LEXICAL_EPS`: a pre-existing doc gap. Fixing it means
-    //   adding a row to parameter-strategy.md, which is outside this
-    //   slice's owned files (render.rs, analytics.rs, config/,
-    //   sensitivity_check.py); flagged for a follow-up docs pass instead.
-    const TIER1_EXTRAS_READ_BUT_NOT_TABLED: &[&str] = &[
-        "DIFFCTX_OP_SELECTION_CORE_BUDGET_FRACTION",
-        "DIFFCTX_EGO_LEXICAL_EPS",
-    ];
+    // `DIFFCTX_OP_SELECTION_CORE_BUDGET_FRACTION` -- `core_budget_fraction`
+    // is Tier-1 (calibrated), exposed only so `scripts/sensitivity_check.py`
+    // can sweep it (documented in prose, not the table -- see
+    // parameter-strategy.md's "env-overridable ... for sweeps" note).
+    const TIER1_EXTRAS_READ_BUT_NOT_TABLED: &[&str] =
+        &["DIFFCTX_OP_SELECTION_CORE_BUDGET_FRACTION"];
 
     #[test]
     fn every_script_swept_name_is_actually_read_in_code() {

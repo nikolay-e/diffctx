@@ -35,7 +35,7 @@ def validate_repo_path(repo_path: str) -> Path:
     repo_root = _find_repo_root(path)
     if repo_root is None:
         raise ValueError(
-            f"Not a git repository (checked {path} and its parent directories " f"up to the filesystem root): {repo_path}"
+            f"Not a git repository (checked {path} and its parent directories up to the filesystem root): {repo_path}"
         )
     _check_allowed(repo_root)
     # Re-validate after resolve to prevent symlink-swap TOCTOU.

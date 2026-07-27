@@ -84,6 +84,28 @@ def test_diff_context_never_leaks_unchanged_private_key_neighbour(tmp_path):
     assert "app.py" in rendered
 
 
+@pytest.mark.parametrize("full", [False, True])
+def test_diff_context_excludes_changed_diffctx_ignored_file_in_all_roles(tmp_path, full):
+    """#173 repro: a *changed, tracked* file excluded via .diffctx/ignore was
+    dropped from changed_files but pulled back by the graph as a context chunk,
+    content included. Asserts the excluded path appears in NO fragment in any
+    role, for both the default and --full modes."""
+    repo = Pygit2Repo(tmp_path / "repo")
+    repo.add_file(".diffctx/ignore", "excluded.py\n")
+    repo.add_file("keep.py", "import excluded\n\ndef use():\n    return excluded.value\n")
+    repo.add_file("excluded.py", "value = 41  # EXCLUDED_CONTENT_MARKER\n")
+    repo.commit("initial")
+
+    repo.add_file("keep.py", "import excluded\n\ndef use():\n    return excluded.value + 1\n")
+    repo.add_file("excluded.py", "value = 42  # EXCLUDED_CONTENT_MARKER\n")
+    repo.commit("change both")
+
+    rendered = diffctx.to_yaml(diffctx.build_diff_context(root_dir=repo.path, diff_range="HEAD~1", full=full))
+    assert "excluded.py" not in rendered
+    assert "EXCLUDED_CONTENT_MARKER" not in rendered
+    assert "keep.py" in rendered
+
+
 def test_no_default_ignores_fails_loudly_with_diff():
     """Regression: pybridge.rs silently dropped no_default_ignores with only a
     tracing::warn! that never surfaces (tracing_subscriber is only installed in
@@ -91,5 +113,6 @@ def test_no_default_ignores_fails_loudly_with_diff():
     set still applied, no signal to the caller. ignore_file/whitelist_file already
     raised NotImplementedError from the Python wrapper; no_default_ignores now
     does the same instead of being silently discarded."""
+    root = Path(".")
     with pytest.raises(NotImplementedError, match="no-default-ignores"):
-        diffctx.build_diff_context(root_dir=Path("."), diff_range="HEAD", no_default_ignores=True)
+        diffctx.build_diff_context(root_dir=root, diff_range="HEAD", no_default_ignores=True)

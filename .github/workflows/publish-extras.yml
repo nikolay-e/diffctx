@@ -126,7 +126,9 @@ jobs:
         run: npm publish --access public --provenance
 
       # install.js is the script every `npx diffctx` runs, and nothing executed
-      # it before this step existed.
+      # it before this step existed. --ignore-scripts keeps npm from running
+      # lifecycle scripts implicitly; the smoke then invokes install.js
+      # explicitly — same script, executed as the deliberate object under test.
       - name: Smoke the published package
         env:
           VERSION: ${{ github.event.inputs.version }}
@@ -135,10 +137,13 @@ jobs:
           cd "$WORK"
           npm init -y >/dev/null
           for attempt in 1 2 3 4 5; do
-            if npm install "diffctx@$VERSION"; then break; fi
+            # NOSONAR on the next line: VERSION is an exact just-published
+            # version and the package has zero dependencies (S8543).
+            if npm install --ignore-scripts "diffctx@$VERSION"; then break; fi # NOSONAR
             echo "npm registry not settled yet (attempt $attempt); retrying"
             sleep 20
           done
+          node node_modules/diffctx/install.js
           ./node_modules/.bin/diffctx --version
 
   dockerhub:

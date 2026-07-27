@@ -204,6 +204,12 @@ anchored `/root_only.txt`). `.diffctx/whitelist` acts as an include-only filter,
 and the output file is always auto-ignored. `--no-default-ignores` disables the
 built-in patterns; `--no-ignores` disables all ignore rules (tree mode only).
 
+An excluded path never appears in the output in any role: in diff mode it is
+dropped both from `changed_files` and from the candidate universe, so it cannot
+come back as a related-context fragment either (including under `--full`). The
+same guarantee covers secret-like paths (`id_rsa`, `*.pem`, `*.key`, ...),
+which are filtered even without an ignore entry.
+
 ## Token cache
 
 Diff mode caches per-blob tokenization under
