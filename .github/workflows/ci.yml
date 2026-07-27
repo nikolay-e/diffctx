@@ -118,18 +118,31 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-        with:
-          fetch-depth: 2
 
       - name: Build image
         run: docker build -f Dockerfile -t diffctx:ci .
 
+      # A synthetic two-commit repo, not this repo's own HEAD~1..HEAD: whether
+      # the latest commit's diff fits a fixed budget depends on what that
+      # commit happens to touch, which made the smoke fail on a docs-only or
+      # test-only push. The fixture mirrors cd.yml's publish-image smoke.
       - name: Smoke the image on a real two-commit diff
         run: |
           docker run --rm -v "$PWD:/repo" diffctx:ci --version
-          docker run --rm -v "$PWD:/repo" diffctx:ci . \
+          SMOKE=$(mktemp -d)
+          cd "$SMOKE"
+          git init -q
+          git config user.email "smoke@test.local"
+          git config user.name "Smoke"
+          printf 'def add(a, b):\n    return a + b\n' > util.py
+          printf 'from util import add\n\ndef main():\n    print(add(1, 2))\n' > app.py
+          git add -A && git commit -q -m "initial"
+          printf 'def add(a, b):\n    return a + b\n\ndef sub(a, b):\n    return a - b\n' > util.py
+          git add -A && git commit -q -m "add sub"
+          docker run --rm -v "$SMOKE:/repo" diffctx:ci . \
             --diff HEAD~1..HEAD --budget 2000 > /tmp/out.md
           test -s /tmp/out.md
+          grep -q "def sub" /tmp/out.md
 
   # ============================================================================
   # Linting and Type Checking
