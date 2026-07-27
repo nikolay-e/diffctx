@@ -95,7 +95,18 @@ fn drop_redundant_signatures(candidates: &[Fragment], budget: u32) -> Vec<Fragme
     let mut full_token_by_loc: FxHashMap<(Arc<str>, u32), u32> = FxHashMap::default();
     for f in candidates {
         if !f.kind.is_signature() {
-            full_token_by_loc.insert((f.id.path.clone(), f.start_line()), f.token_count);
+            // Keep the LARGEST co-located full fragment, not the last one seen.
+            // Two non-signature fragments can share a start line (a class header
+            // `Definition` at [10,12] and the full class at [10,300]), and with a
+            // plain `insert` whichever came last in the candidate vec won the
+            // slot. When the small header won, the class's stub was filtered out
+            // as "redundant" precisely when the full class did not fit and the
+            // stub was its only affordable representation — and the outcome
+            // depended on vec order rather than on anything meaningful.
+            full_token_by_loc
+                .entry((f.id.path.clone(), f.start_line()))
+                .and_modify(|t| *t = (*t).max(f.token_count))
+                .or_insert(f.token_count);
         }
     }
     candidates
@@ -665,9 +676,24 @@ pub fn lazy_greedy_select(
 
     if let Some(ref full) = full_singleton {
         let u = utility_value(&empty_state.utility_state) + full_singleton_gain;
-        if u > best_alt_utility {
+        // Additive on top of the core selection, never a replacement for it.
+        // This branch used to return `vec![full]` outright, so a single heavy
+        // fragment whose standalone utility beat the greedy chain's discarded
+        // every changed-code fragment — the one thing the output exists to
+        // carry. `ensure_changed_files_represented` could not reliably undo it
+        // either: it only had `budget - full.token_count` left and only picks a
+        // fragment that fits. The two utilities are also measured from
+        // different baselines (this one from an empty state, `greedy_utility`
+        // from the core base), so the comparison can only ever be a heuristic
+        // nudge — not grounds for dropping the core.
+        if u > best_alt_utility && full.token_count <= base_budget {
             best_alt_utility = u;
-            best_alt = Some((vec![full.clone()], full.token_count));
+            let mut sel = base_selected.clone();
+            if !sel.iter().any(|f| f.id == full.id) {
+                sel.push(full.clone());
+            }
+            let used = budget_tokens - (base_budget - full.token_count);
+            best_alt = Some((sel, used));
         }
     }
 
@@ -708,5 +734,232 @@ pub fn lazy_greedy_select(
         utility: greedy_utility,
         greedy_iters,
         stopping_certificate,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::FragmentKind;
+
+    fn frag(path: &str, start: u32, end: u32, kind: FragmentKind, tokens: u32) -> Fragment {
+        let mut identifiers = FxHashSet::default();
+        identifiers.insert(format!("sym_{path}_{start}"));
+        Fragment {
+            id: FragmentId::new(Arc::from(path), start, end),
+            kind,
+            content: Arc::from(format!("// {path}:{start}-{end}\n")),
+            identifiers,
+            token_count: tokens,
+            symbol_name: Some(format!("sym_{start}")),
+        }
+    }
+
+    fn rel_map(frags: &[Fragment], score: f64) -> FxHashMap<FragmentId, f64> {
+        frags.iter().map(|f| (f.id.clone(), score)).collect()
+    }
+
+    fn cost_of(selected: &[Fragment]) -> u32 {
+        selected.iter().map(|f| f.token_count).sum()
+    }
+
+    /// The budget is a hard contract (`cost(C) <= B`); four separate call sites
+    /// gate on it and none of them was asserted. A `pick_smallest_fitting` that
+    /// returns a non-fitting candidate is one `if` away, and the oracle corpus
+    /// can never catch it because its budget is always >=2.5x the whole repo.
+    #[test]
+    fn selection_never_exceeds_the_budget() {
+        let frags: Vec<Fragment> = (0..12)
+            .map(|i| {
+                frag(
+                    "a.rs",
+                    1 + i * 50,
+                    40 + i * 50,
+                    FragmentKind::Function,
+                    30 + i * 17,
+                )
+            })
+            .collect();
+        let core: FxHashSet<FragmentId> = std::iter::once(frags[0].id.clone()).collect();
+        let rel = rel_map(&frags, 0.7);
+
+        for budget in [1u32, 7, 30, 31, 60, 200, 1_000] {
+            let result =
+                lazy_greedy_select(frags.clone(), &core, &rel, &[], budget, 0.12, None, None);
+            assert!(
+                cost_of(&result.selected) <= budget,
+                "budget {budget} overrun: cost {} via {:?}",
+                cost_of(&result.selected),
+                result.reason
+            );
+            assert!(
+                result.used_tokens <= budget,
+                "reported used_tokens {} exceeds budget {budget}",
+                result.used_tokens
+            );
+        }
+    }
+
+    #[test]
+    fn selected_fragments_never_overlap_and_are_never_duplicated() {
+        let frags: Vec<Fragment> = (0..8)
+            .map(|i| frag("a.rs", 1 + i * 10, 12 + i * 10, FragmentKind::Function, 25))
+            .collect();
+        let core: FxHashSet<FragmentId> = std::iter::once(frags[0].id.clone()).collect();
+        let rel = rel_map(&frags, 0.9);
+        let result = lazy_greedy_select(frags, &core, &rel, &[], 400, 0.12, None, None);
+
+        let ids: FxHashSet<FragmentId> = result.selected.iter().map(|f| f.id.clone()).collect();
+        assert_eq!(
+            ids.len(),
+            result.selected.len(),
+            "duplicate fragment selected"
+        );
+    }
+
+    /// `find_best_singleton_full_set` used to return `vec![full]`, discarding
+    /// every core fragment. The core IS the changed code, so a selection that
+    /// drops all of it answers a different question than the one asked.
+    #[test]
+    fn a_winning_singleton_never_evicts_the_core_selection() {
+        // A heavy, highly relevant non-core fragment is the shape that makes the
+        // full-set singleton win.
+        let core_frag = frag("changed.rs", 1, 8, FragmentKind::Function, 20);
+        let heavy = frag("other.rs", 1, 400, FragmentKind::Class, 900);
+        let filler = frag("other.rs", 500, 520, FragmentKind::Function, 40);
+        let frags = vec![core_frag.clone(), heavy.clone(), filler];
+
+        let core: FxHashSet<FragmentId> = std::iter::once(core_frag.id.clone()).collect();
+        let mut rel = FxHashMap::default();
+        rel.insert(core_frag.id.clone(), 0.05);
+        rel.insert(heavy.id.clone(), 1.0);
+        rel.insert(frags[2].id.clone(), 0.1);
+
+        let result = lazy_greedy_select(frags, &core, &rel, &[], 2_000, 0.12, None, None);
+        assert!(
+            result.selected.iter().any(|f| core.contains(&f.id)),
+            "no core fragment survived; reason was {:?}",
+            result.reason
+        );
+        assert!(cost_of(&result.selected) <= 2_000);
+    }
+
+    #[test]
+    fn empty_ground_set_reports_no_candidates() {
+        let result = lazy_greedy_select(
+            Vec::new(),
+            &FxHashSet::default(),
+            &FxHashMap::default(),
+            &[],
+            1_000,
+            0.12,
+            None,
+            None,
+        );
+        assert!(result.selected.is_empty());
+        assert_eq!(result.reason, SelectionReason::NoCandidates);
+        assert_eq!(result.used_tokens, 0);
+    }
+
+    /// Keyed on `(path, start_line)`, this used to be last-write-wins, so a
+    /// small co-located sibling could delete the stub that was the only
+    /// affordable representation of an oversized fragment.
+    #[test]
+    fn drop_redundant_signatures_is_independent_of_candidate_order() {
+        let header = frag("a.rs", 10, 12, FragmentKind::Definition, 40);
+        let whole = frag("a.rs", 10, 300, FragmentKind::Class, 4_000);
+        let stub = frag("a.rs", 10, 11, FragmentKind::ClassSignature, 15);
+
+        let forward =
+            drop_redundant_signatures(&[header.clone(), whole.clone(), stub.clone()], 500);
+        let backward = drop_redundant_signatures(&[whole, header, stub], 500);
+
+        let kinds = |v: &[Fragment]| -> Vec<FragmentKind> { v.iter().map(|f| f.kind).collect() };
+        assert!(
+            kinds(&forward).contains(&FragmentKind::ClassSignature),
+            "the stub for an unaffordable class was dropped: {:?}",
+            kinds(&forward)
+        );
+        let mut a: Vec<FragmentKind> = kinds(&forward);
+        let mut b: Vec<FragmentKind> = kinds(&backward);
+        a.sort_by_key(|k| format!("{k:?}"));
+        b.sort_by_key(|k| format!("{k:?}"));
+        assert_eq!(a, b, "verdict depended on candidate order");
+    }
+
+    #[test]
+    fn drop_redundant_signatures_removes_a_stub_whose_full_fragment_fits() {
+        let whole = frag("a.rs", 10, 40, FragmentKind::Class, 100);
+        let stub = frag("a.rs", 10, 11, FragmentKind::ClassSignature, 15);
+        let kept = drop_redundant_signatures(&[whole, stub], 500);
+        assert!(
+            !kept.iter().any(|f| f.kind.is_signature()),
+            "stub survived even though the full fragment fits the budget"
+        );
+    }
+    /// tau is the adaptive stop: once a candidate's density falls below
+    /// `tau * peak_density` the loop stops instead of spending the rest of the
+    /// budget. The whole oracle corpus runs at tau=0.0, which makes the
+    /// predicate unreachable, so deleting the rule failed no test. This runs at
+    /// the shipped default so the assertion covers the real operating point.
+    #[test]
+    fn tau_stops_the_greedy_loop_before_the_budget_is_spent() {
+        // Descending relevance against escalating cost gives sharply
+        // descending density, which is what the stop rule reacts to.
+        let frags: Vec<Fragment> = (0..6)
+            .map(|i| {
+                frag(
+                    "a.rs",
+                    1 + i * 20,
+                    10 + i * 20,
+                    FragmentKind::Function,
+                    20 + i * i * 120,
+                )
+            })
+            .collect();
+        let core: FxHashSet<FragmentId> = std::iter::once(frags[0].id.clone()).collect();
+        let mut rel = FxHashMap::default();
+        for (i, f) in frags.iter().enumerate() {
+            rel.insert(f.id.clone(), 1.0 / (1.0 + 3.0 * i as f64));
+        }
+
+        let budget = 10_000;
+        let default_tau = lazy_greedy_select(
+            frags.clone(),
+            &core,
+            &rel,
+            &[],
+            budget,
+            crate::config::limits::DEFAULT_STOPPING_THRESHOLD,
+            None,
+            None,
+        );
+        let no_tau = lazy_greedy_select(frags, &core, &rel, &[], budget, 0.0, None, None);
+
+        assert_eq!(
+            default_tau.reason,
+            SelectionReason::StoppedByTau,
+            "the adaptive stop did not fire at the shipped default"
+        );
+        assert!(
+            default_tau.selected.len() < no_tau.selected.len(),
+            "tau={} selected {} fragments, same as tau=0.0 — the rule is inert",
+            crate::config::limits::DEFAULT_STOPPING_THRESHOLD,
+            default_tau.selected.len()
+        );
+        assert!(
+            default_tau.used_tokens < no_tau.used_tokens,
+            "the stop saved no budget: {} vs {}",
+            default_tau.used_tokens,
+            no_tau.used_tokens
+        );
+        assert!(
+            default_tau.stopping_certificate > 0.0,
+            "StoppedByTau must carry a positive certificate"
+        );
+        assert_eq!(
+            no_tau.stopping_certificate, 0.0,
+            "tau=0.0 cannot produce a stopping certificate"
+        );
     }
 }

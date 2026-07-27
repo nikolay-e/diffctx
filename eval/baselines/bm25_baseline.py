@@ -95,7 +95,7 @@ def _bm25_eval(
 ) -> EvalResult:
     from rank_bm25 import BM25Okapi
 
-    from eval.harness.common import apply_as_commit, ensure_repo, reset_to_parent
+    from eval.harness.common import apply_gold_patch, ensure_repo, reset_to_parent
 
     repo_url = str(instance.extra.get("repo_url") or f"https://github.com/{instance.repo}")
     repo_dir = ensure_repo(repo_url, instance.repo, instance.base_commit, worktree_dir)
@@ -113,7 +113,8 @@ def _bm25_eval(
 
     applied = False
     try:
-        applied = apply_as_commit(repo_dir, instance.gold_patch, "bm25-baseline-gold")
+        apply_outcome = apply_gold_patch(repo_dir, instance.gold_patch, "bm25-baseline-gold")
+        applied = apply_outcome.applied
         if not applied:
             r = EvalResult(
                 instance_id=instance.instance_id,
@@ -173,6 +174,7 @@ def _bm25_eval(
         result.extra["language"] = instance.language
         result.extra["baseline"] = "bm25"
         result.extra["query_terms"] = len(query_tokens)
+        result.extra["apply_mode"] = apply_outcome.mode
         return result
     finally:
         if applied:

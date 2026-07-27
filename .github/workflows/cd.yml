@@ -32,12 +32,12 @@ jobs:
       commit_sha: ${{ steps.commit_version.outputs.commit_sha }}
     steps:
       - name: Checkout Code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: '3.12'
 
@@ -84,7 +84,7 @@ jobs:
         run: |
           echo "Setting version to $VERSION"
           python - <<'PY'
-          import os, re, pathlib
+          import json, os, re, pathlib
           ver = os.environ["VERSION"]
 
           p = pathlib.Path("src/diffctx/version.py")
@@ -104,6 +104,27 @@ jobs:
           s, n = re.subn(r'(?m)^version\s*=\s*"[^"]+"', f'version = "{ver}"', s, count=1)
           assert n == 1, "Cargo.toml: [package].version not found"
           cargo.write_text(s, encoding="utf-8")
+
+          # The Action's default pin and the plugin manifest are consumer-facing
+          # versions: left unbumped, Marketplace and plugin users stay on the
+          # previous release forever while every other channel moves.
+          act = pathlib.Path("action.yml")
+          s = act.read_text(encoding="utf-8")
+          s, n = re.subn(r'(?m)^(\s*default:\s*)\d+\.\d+\.\d+\s*$', rf'\g<1>{ver}', s, count=1)
+          assert n == 1, "action.yml: diffctx-version default not found"
+          act.write_text(s, encoding="utf-8")
+
+          plug = pathlib.Path(".claude-plugin/plugin.json")
+          doc = json.loads(plug.read_text(encoding="utf-8"))
+          doc["version"] = ver
+          plug.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+
+          srv = pathlib.Path("server.json")
+          doc = json.loads(srv.read_text(encoding="utf-8"))
+          doc["version"] = ver
+          for pkg in doc["packages"]:
+              pkg["version"] = ver
+          srv.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
 
           lock = pathlib.Path("Cargo.lock")
           s = lock.read_text(encoding="utf-8")
@@ -130,7 +151,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/diffctx/version.py pyproject.toml crates/diffctx-native/Cargo.toml Cargo.lock
+          git add src/diffctx/version.py pyproject.toml crates/diffctx-native/Cargo.toml Cargo.lock \
+            server.json action.yml .claude-plugin/plugin.json
           if ! git diff --staged --quiet; then
             git commit -m "Release version ${VERSION}"
           else
@@ -226,7 +248,7 @@ jobs:
           grep -E '^version\s*=' pyproject.toml
 
       - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: '3.12'
 
@@ -269,7 +291,7 @@ jobs:
           git checkout "$TAG_NAME"
 
       - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: '3.12'
 
@@ -419,7 +441,7 @@ jobs:
           ls -la dist/
 
       - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: '3.12'
 
@@ -430,7 +452,7 @@ jobs:
           twine check dist/*
 
       - name: Publish to PyPI (OIDC trusted publishing)
-        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b  # release/v1
+        uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247  # release/v1
         with:
           packages-dir: ./dist
           print-hash: true
@@ -452,7 +474,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -508,6 +530,69 @@ jobs:
           git add -A && git commit -q -m "add sub"
           diffctx . --diff HEAD~1..HEAD --no-content
           echo "OK: diff mode works (Rust extension present)"
+
+      # server.json, .mcp.json and the Claude plugin all resolve to
+      # `uvx --from diffctx[mcp] diffctx-mcp`, but nothing here installed the
+      # [mcp] extra or ran the console script — so renaming the entry point, or
+      # the extra failing to resolve, shipped green while every MCP consumer
+      # got a server that would not start. stdout cleanliness is part of the
+      # contract: stdio multiplexes JSON-RPC over stdout, so one library
+      # logging there corrupts every frame.
+      - name: Smoke - diffctx-mcp console script and stdio handshake
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare-version.outputs.version }}
+        run: |
+          python -m pip install "diffctx[mcp]==${VERSION}"
+          command -v diffctx-mcp
+          python - <<'PY'
+          import json, os, subprocess, sys
+
+          def frame(obj):
+              return json.dumps(obj) + "\n"
+
+          init = frame({
+              "jsonrpc": "2.0", "id": 1, "method": "initialize",
+              "params": {
+                  "protocolVersion": "2024-11-05",
+                  "capabilities": {},
+                  "clientInfo": {"name": "cd-smoke", "version": "0"},
+              },
+          })
+          initialized = frame({"jsonrpc": "2.0", "method": "notifications/initialized"})
+          list_tools = frame({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+
+          proc = subprocess.run(
+              ["diffctx-mcp"],
+              input=init + initialized + list_tools,
+              capture_output=True, text=True, timeout=120,
+          )
+
+          lines = [ln for ln in proc.stdout.splitlines() if ln.strip()]
+          if not lines:
+              sys.exit(f"no JSON-RPC on stdout; stderr:\n{proc.stderr}")
+
+          responses = []
+          for ln in lines:
+              try:
+                  responses.append(json.loads(ln))
+              except json.JSONDecodeError:
+                  sys.exit(f"non-JSON-RPC line on stdout: {ln!r}")
+
+          init_result = next(r["result"] for r in responses if r.get("id") == 1)
+          reported = init_result["serverInfo"]["version"]
+          expected = os.environ["VERSION"]
+          if reported != expected:
+              sys.exit(f"server reports {reported}, expected {expected}")
+
+          tools = next(r["result"]["tools"] for r in responses if r.get("id") == 2)
+          names = sorted(t["name"] for t in tools)
+          for required in ("get_diff_context", "get_file_context", "get_tree_map"):
+              if required not in names:
+                  sys.exit(f"tool {required} missing from {names}")
+
+          print(f"OK: diffctx-mcp {reported} served {names} over clean stdout")
+          PY
 
   finalize-release:
     name: Push Release and Create GitHub Release
@@ -625,6 +710,38 @@ jobs:
           echo "Watching run $RUN_ID"
           gh run watch "$RUN_ID" --repo "$REPO" --exit-status --interval 20
 
+  publish-mcp-registry:
+    name: Publish to the MCP registry
+    needs: [prepare-version, finalize-release]
+    if: github.event.inputs.publish_to_pypi == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      # The release tag, not main: finalize-release commits the bumped
+      # server.json there, and registry versions are immutable — publishing
+      # main mid-release would race the bump commit.
+      - name: Checkout release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ needs.prepare-version.outputs.tag_name }}
+
+      - name: Install mcp-publisher
+        run: |
+          OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+          ARCH=$(uname -m)
+          BASE="https://github.com/modelcontextprotocol/registry/releases/download"
+          curl -fsSL "${BASE}/v1.8.0/mcp-publisher_${OS}_${ARCH}.tar.gz" | tar xz mcp-publisher
+
+      # github-oidc mints the io.github.nikolay-e/* namespace from this
+      # repository's identity — no stored secret, no device flow.
+      - name: Publish server.json
+        run: |
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher validate
+          ./mcp-publisher publish
+
   build-image:
     name: Build image (${{ matrix.platform }})
     needs: [prepare-version, finalize-release]
@@ -647,7 +764,7 @@ jobs:
       IMAGE: ghcr.io/${{ github.repository_owner }}/diffctx
     steps:
       - name: Checkout release tag
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           ref: ${{ needs.prepare-version.outputs.tag_name }}
 
@@ -655,7 +772,7 @@ jobs:
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
 
       - name: Login to ghcr
-        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0  # v4.4.0
+        uses: docker/login-action@06fb636fac595d6fb4b28a5dfcb21a6f5091859c  # v4.5.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -705,7 +822,7 @@ jobs:
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
 
       - name: Login to ghcr
-        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0  # v4.4.0
+        uses: docker/login-action@06fb636fac595d6fb4b28a5dfcb21a6f5091859c  # v4.5.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -740,13 +857,16 @@ jobs:
           docker run --rm -v "$PWD:/repo" "${IMAGE}:${VERSION}" . --diff HEAD~1..HEAD --no-content
 
   update-packaging-manifests:
-    name: Refresh Scoop manifest and AUR PKGBUILD
+    name: Publish Scoop bucket manifest
     needs: [prepare-version, finalize-release]
     if: github.event.inputs.publish_to_pypi == 'true'
     runs-on: ubuntu-latest
+    # `bucket/` makes this repository itself the Scoop bucket, so pushing the
+    # refreshed manifest to main IS the publication step — a failure here means
+    # Windows users stay on the previous version.
     steps:
       - name: Checkout main
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           ref: main
           token: ${{ secrets.RELEASE_PUSH_TOKEN }}
@@ -759,7 +879,7 @@ jobs:
           merge-multiple: true
 
       - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: '3.12'
 
@@ -770,10 +890,53 @@ jobs:
           python scripts/render_packaging.py \
             --version "$VERSION" \
             --assets-dir ./release-binaries \
-            --scoop packaging/scoop/diffctx.json \
-            --pkgbuild packaging/aur/PKGBUILD \
-            --srcinfo packaging/aur/.SRCINFO \
+            --scoop bucket/diffctx.json \
             --npm-checksums packaging/npm/checksums.json
+
+      # `bucket/` IS the Scoop bucket, and this manifest was pushed to main with
+      # nothing checking it — a wrong hash, a stale version, or a `bin` that no
+      # longer matches the archive layout broke `scoop install` for every
+      # Windows user silently. Verify against the actual artifact before pushing.
+      - name: Verify the rendered Scoop manifest
+        env:
+          VERSION: ${{ needs.prepare-version.outputs.version }}
+        run: |
+          python - <<'PY'
+          import hashlib, json, os, pathlib, sys
+
+          version = os.environ["VERSION"]
+          manifest = json.loads(pathlib.Path("bucket/diffctx.json").read_text())
+
+          if manifest["version"] != version:
+              sys.exit(f"manifest version {manifest['version']} != {version}")
+
+          arch = manifest["architecture"]["64bit"]
+          url = arch["url"]
+          if version not in url:
+              sys.exit(f"asset URL does not carry the version: {url}")
+
+          asset_name = url.rsplit("/", 1)[-1]
+          asset = pathlib.Path("release-binaries") / asset_name
+          if not asset.is_file():
+              have = sorted(p.name for p in pathlib.Path("release-binaries").iterdir())
+              sys.exit(f"{asset_name} not among the built artifacts: {have}")
+
+          actual = hashlib.sha256(asset.read_bytes()).hexdigest()
+          if actual.lower() != arch["hash"].lower():
+              sys.exit(f"hash mismatch for {asset_name}: manifest {arch['hash']}, actual {actual}")
+
+          declared_bin = manifest["bin"]
+          bins = declared_bin if isinstance(declared_bin, list) else [declared_bin]
+          import zipfile
+          with zipfile.ZipFile(asset) as zf:
+              members = zf.namelist()
+          for entry in bins:
+              target = entry[0] if isinstance(entry, list) else entry
+              if target not in members:
+                  sys.exit(f"manifest bin {target!r} is not in the archive: {members}")
+
+          print(f"OK: {asset_name} hash matches and bin {bins} resolves inside the archive")
+          PY
 
       - name: Commit and push
         env:
@@ -781,8 +944,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add packaging/scoop/diffctx.json packaging/aur/PKGBUILD \
-            packaging/aur/.SRCINFO packaging/npm/checksums.json
+          git add bucket/diffctx.json packaging/npm/checksums.json
           if git diff --staged --quiet; then
             echo "Manifests already current."
             exit 0
@@ -790,3 +952,41 @@ jobs:
           git commit -m "chore: packaging manifests for ${VERSION}"
           git pull --rebase origin main
           git push origin HEAD:main
+
+  publish-extras:
+    name: Publish npm wrapper and mirror to Docker Hub
+    # No edge to update-packaging-manifests: publish-extras.yml re-renders the
+    # npm checksums from the release tag, so a Scoop bucket failure can never
+    # hold back npm or the Docker Hub mirror.
+    needs: [prepare-version, publish-image]
+    if: github.event.inputs.publish_to_pypi == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      # Dispatched rather than inlined so the downstream channels stay
+      # re-runnable on their own after a partial release. Left un-dispatched,
+      # npm and Docker Hub silently keep serving the previous version — that is
+      # how 1.12.1 stayed live on both while every other channel moved on.
+      - name: Dispatch the downstream publish workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.prepare-version.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh workflow run publish-extras.yml \
+            --repo "$REPO" --ref main \
+            -f version="$VERSION" \
+            -f publish_npm=true \
+            -f mirror_dockerhub=true
+
+      - name: Wait for the downstream publish workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          sleep 15
+          RUN_ID=$(gh run list --repo "$REPO" --workflow publish-extras.yml \
+            --event workflow_dispatch --limit 1 --json databaseId --jq '.[0].databaseId')
+          echo "Watching run $RUN_ID"
+          gh run watch "$RUN_ID" --repo "$REPO" --exit-status --interval 20

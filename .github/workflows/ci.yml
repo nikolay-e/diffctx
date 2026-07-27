@@ -22,10 +22,10 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: '3.12'
 
@@ -45,6 +45,110 @@ jobs:
         run: pre-commit run --all-files
 
   # ============================================================================
+  # Rust dependency advisories. Separate job because the pre-commit hook can
+  # only skip when cargo-audit is absent, and it is absent on GitHub runners —
+  # so this is the only place the check actually runs.
+  # ============================================================================
+  cargo-audit:
+    name: Rust dependency advisories
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # stable
+        with:
+          toolchain: "1.92.0"
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Audit
+        run: cargo audit
+
+  # ============================================================================
+  # Cargo.toml splits 39 tree-sitter grammars into lang-core/lang-extra, but
+  # only the default (both) feature set was ever compiled. Under lang-core
+  # alone 21 LANG_CONFIGS entries resolve to no grammar and silently degrade to
+  # generic chunking, and nothing would have caught the build breaking outright.
+  # ============================================================================
+  cargo-feature-sets:
+    name: Rust builds without default features
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # stable
+        with:
+          toolchain: "1.92.0"
+
+      - name: Cache Cargo
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-features-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-features-${{ runner.os }}-
+
+      - name: Check lang-core only
+        working-directory: crates/diffctx-native
+        run: cargo check --no-default-features --features lang-core
+
+      - name: Check with no language grammars at all
+        working-directory: crates/diffctx-native
+        run: cargo check --no-default-features
+
+  # ============================================================================
+  # Docker image build. Gated here rather than only at release time: cd.yml's
+  # build-image needs finalize-release, so the first build of this Dockerfile
+  # happened after PyPI and the GitHub Release had already shipped — a broken
+  # COPY whitelist left ghcr.io with no tag while every other channel moved.
+  # ============================================================================
+  docker-build:
+    name: Docker image builds
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Build image
+        run: docker build -f Dockerfile -t diffctx:ci .
+
+      # A synthetic two-commit repo, not this repo's own HEAD~1..HEAD: whether
+      # the latest commit's diff fits a fixed budget depends on what that
+      # commit happens to touch, which made the smoke fail on a docs-only or
+      # test-only push. The fixture mirrors cd.yml's publish-image smoke.
+      - name: Smoke the image on a real two-commit diff
+        run: |
+          docker run --rm -v "$PWD:/repo" diffctx:ci --version
+          SMOKE=$(mktemp -d)
+          cd "$SMOKE"
+          git init -q
+          git config user.email "smoke@test.local"
+          git config user.name "Smoke"
+          printf 'def add(a, b):\n    return a + b\n' > util.py
+          printf 'from util import add\n\ndef main():\n    print(add(1, 2))\n' > app.py
+          git add -A && git commit -q -m "initial"
+          printf 'def add(a, b):\n    return a + b\n\ndef sub(a, b):\n    return a - b\n' > util.py
+          git add -A && git commit -q -m "add sub"
+          # mktemp -d creates the dir 0700 for the runner user, while the image
+          # runs as the unprivileged uid 10001 — without this the container
+          # sees "'/repo' is not a git repository".
+          chmod -R a+rwX "$SMOKE"
+          docker run --rm -v "$SMOKE:/repo" diffctx:ci . \
+            --diff HEAD~1..HEAD --budget 2000 > /tmp/out.md
+          test -s /tmp/out.md
+          grep -q "def sub" /tmp/out.md
+
+  # ============================================================================
   # Linting and Type Checking
   # ============================================================================
   lint-type-check:
@@ -54,10 +158,10 @@ jobs:
       contents: read
     steps:
       - name: Checkout Code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set up Python 3.10
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: '3.10'
           cache: 'pip'
@@ -86,7 +190,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # stable
@@ -104,10 +208,14 @@ jobs:
           key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-
 
+      # No DIFFCTX_YAML_CASES_LIMIT: the whole 2725-case corpus is gated here
+      # (~2 min). Sampling used to be mandatory because ~460 cases score below
+      # threshold at the current operating point; those are now enumerated in
+      # tests/known_below_threshold.txt, so the full suite is green and a
+      # regression in ANY case — in any of the 38 language directories — fails
+      # the build. A limit still works locally for a fast stratified subset.
       - name: Build and test
         working-directory: crates/diffctx-native
-        env:
-          DIFFCTX_YAML_CASES_LIMIT: "20"
         run: |
           cargo test --lib
           # Dev profile: the release profile sets panic = "abort", and building
@@ -115,13 +223,11 @@ jobs:
           # artifacts that break the harness-free yaml_cases build.
           cargo test --test native_cli
           cargo build --release --examples
-          cargo test --release --test yaml_cases
-
-      # Informational full-suite run (2700+ cases): quality-threshold failures
-      # are tracked as an eval baseline, not a CI gate.
-      - name: Run diffctx YAML test suite
-        working-directory: crates/diffctx-native
-        run: ../../target/release/examples/diffctx-test || true
+          # --profile release-unwind (not --release): panic = "abort" in the
+          # release profile makes `cargo test` compile the graph twice (abort
+          # cdylib artifact + unwind test universe) and the hashless cdylib
+          # output names collide (cargo#6313 warning, future hard error).
+          cargo test --profile release-unwind --test yaml_cases
 
   # ============================================================================
   # Cross-platform Python Testing (diffctx core)
@@ -144,10 +250,10 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
@@ -224,10 +330,10 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: '3.12'
 
@@ -261,10 +367,10 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: '3.12'
 

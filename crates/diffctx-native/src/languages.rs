@@ -21,6 +21,7 @@ pub static EXTENSION_TO_LANGUAGE: Lazy<FxHashMap<&'static str, &'static str>> = 
         (".toml", "toml"),
         (".md", "markdown"),
         (".markdown", "markdown"),
+        (".mdx", "markdown"),
         (".html", "html"),
         (".htm", "html"),
         (".css", "css"),
@@ -146,6 +147,8 @@ pub static EXTENSION_TO_LANGUAGE: Lazy<FxHashMap<&'static str, &'static str>> = 
         (".j2", "jinja"),
         (".jinja", "jinja"),
         (".jinja2", "jinja"),
+        (".cmake", "cmake"),
+        (".mk", "make"),
     ];
 
     let mut map = FxHashMap::with_capacity_and_hasher(entries.len(), Default::default());
@@ -235,4 +238,70 @@ pub fn get_language_for_file(path: &str) -> Option<&'static str> {
     }
 
     None
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn known_extension_resolves_to_its_language() {
+        assert_eq!(get_language_for_file("foo.py"), Some("python"));
+        assert_eq!(get_language_for_file("src/lib.rs"), Some("rust"));
+    }
+
+    #[test]
+    fn extension_matching_is_case_insensitive() {
+        assert_eq!(get_language_for_file("FOO.PY"), Some("python"));
+        assert_eq!(get_language_for_file("Main.RS"), Some("rust"));
+    }
+
+    #[test]
+    fn filename_map_prefix_rule_catches_dockerfile_variants() {
+        assert_eq!(get_language_for_file("Dockerfile"), Some("dockerfile"));
+        assert_eq!(get_language_for_file("Dockerfile.prod"), Some("dockerfile"));
+        assert_eq!(get_language_for_file("dockerfile.dev"), Some("dockerfile"));
+    }
+
+    #[test]
+    fn exact_filename_map_hit_takes_priority_over_extension() {
+        assert_eq!(get_language_for_file("CMakeLists.txt"), Some("cmake"));
+        assert_eq!(get_language_for_file("Makefile"), Some("makefile"));
+    }
+
+    #[test]
+    fn unknown_extension_resolves_to_none() {
+        assert_eq!(get_language_for_file("foo.xyz123notreal"), None);
+        assert_eq!(get_language_for_file("no_extension_at_all"), None);
+    }
+
+    #[test]
+    fn mdx_matches_markdown_extensions_consistently() {
+        assert_eq!(get_language_for_file("component.mdx"), Some("markdown"));
+    }
+
+    #[test]
+    fn cmake_and_make_extensions_are_discoverable() {
+        assert_eq!(get_language_for_file("toolchain.cmake"), Some("cmake"));
+        assert_eq!(get_language_for_file("rules.mk"), Some("make"));
+    }
+
+    #[test]
+    fn extension_table_row_count_is_pinned() {
+        assert_eq!(
+            EXTENSION_TO_LANGUAGE.len(),
+            145,
+            "a row was added or removed from EXTENSION_TO_LANGUAGE; update this count \
+             deliberately and re-check get_language_for_file coverage"
+        );
+    }
+
+    #[test]
+    fn filename_table_row_count_is_pinned() {
+        assert_eq!(
+            FILENAME_TO_LANGUAGE.len(),
+            44,
+            "a row was added or removed from FILENAME_TO_LANGUAGE; update this count \
+             deliberately and re-check get_language_for_file coverage"
+        );
+    }
 }

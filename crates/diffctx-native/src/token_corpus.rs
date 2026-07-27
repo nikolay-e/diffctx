@@ -379,4 +379,115 @@ mod tests {
         );
         assert_eq!(cache_max_bytes_from(""), Some(DEFAULT_CACHE_MAX_BYTES));
     }
+
+    fn git(repo: &Path, args: &[&str]) {
+        let out = git::git_command(repo)
+            .args(args)
+            .env("GIT_AUTHOR_NAME", "test")
+            .env("GIT_AUTHOR_EMAIL", "test@example.com")
+            .env("GIT_COMMITTER_NAME", "test")
+            .env("GIT_COMMITTER_EMAIL", "test@example.com")
+            .output()
+            .expect("spawn git");
+        assert!(
+            out.status.success(),
+            "git {args:?} failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    fn init_repo(root: &Path) {
+        git(root, &["init", "--quiet"]);
+        git(root, &["config", "user.email", "test@example.com"]);
+        git(root, &["config", "user.name", "test"]);
+        git(root, &["config", "commit.gpgsign", "false"]);
+    }
+
+    /// A blob OID is only a valid cache key while the working tree matches the
+    /// index. The three bypass branches are what keep cold and warm runs
+    /// bit-equivalent, and the determinism fixture cannot reach any of them:
+    /// every entry there is mode 100644, stage 0 and clean. A regression here
+    /// surfaces only on the *second* run against a given repo, i.e. never in a
+    /// fresh CI checkout.
+    #[test]
+    fn only_clean_regular_tracked_files_are_cache_keyed() {
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path();
+        init_repo(root);
+
+        std::fs::write(root.join("clean.py"), "x = 1\n").expect("write clean");
+        std::fs::write(root.join("exec.sh"), "echo hi\n").expect("write exec");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(root.join("exec.sh"), std::fs::Permissions::from_mode(0o755))
+                .expect("chmod exec");
+        }
+        std::fs::write(root.join("dirty.py"), "y = 1\n").expect("write dirty");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink("clean.py", root.join("link.py")).expect("symlink");
+
+        git(root, &["add", "-A"]);
+        git(root, &["commit", "--quiet", "-m", "base"]);
+
+        // Unstaged modification: the index OID no longer describes the content.
+        std::fs::write(root.join("dirty.py"), "y = 2\n").expect("modify dirty");
+
+        let oids = resolve_cacheable_oids(root);
+        let keyed = |name: &str| oids.contains_key(&root.join(name));
+
+        assert!(keyed("clean.py"), "a clean 100644 file must be cache-keyed");
+        assert!(keyed("exec.sh"), "a clean 100755 file must be cache-keyed");
+        assert!(
+            !keyed("dirty.py"),
+            "a file with unstaged modifications must bypass the cache"
+        );
+        #[cfg(unix)]
+        assert!(
+            !keyed("link.py"),
+            "a symlink (mode 120000) must bypass the cache"
+        );
+
+        for oid in oids.values() {
+            assert!(
+                oid.len() >= 3 && oid.bytes().all(|b| b.is_ascii_hexdigit()),
+                "unusable oid as a cache key: {oid:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn resolve_cacheable_oids_is_empty_outside_a_repository() {
+        let tmp = TempDir::new().expect("tempdir");
+        assert!(resolve_cacheable_oids(tmp.path()).is_empty());
+    }
+
+    #[test]
+    fn cache_entries_round_trip_and_reject_unusable_oids() {
+        let tmp = TempDir::new().expect("tempdir");
+        let store = TokenCacheStore {
+            dir: tmp.path().to_path_buf(),
+        };
+
+        let mut term_counts: FxHashMap<String, u32> = FxHashMap::default();
+        term_counts.insert("alpha".into(), 3);
+        term_counts.insert("beta".into(), 1);
+        let doc = DocTokens {
+            term_counts: term_counts.clone(),
+            total_len: 4,
+        };
+
+        let oid = "abcdef0123456789";
+        store.save(oid, &doc);
+        let loaded = store.load(oid).expect("entry round-trips");
+        assert_eq!(loaded.total_len, doc.total_len);
+        assert_eq!(loaded.term_counts, term_counts);
+
+        assert!(store.entry_path("ab").is_none(), "too-short oid accepted");
+        assert!(
+            store.entry_path("../../etc/passwd").is_none(),
+            "non-hex oid accepted as a path component"
+        );
+        assert!(store.load("zzzz").is_none());
+    }
 }

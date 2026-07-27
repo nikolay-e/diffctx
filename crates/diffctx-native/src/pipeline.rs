@@ -98,15 +98,7 @@ pub fn compute_scored_state(
     timeout: u64,
 ) -> Result<ScoredState> {
     git::set_git_timeout(timeout);
-    let root_dir = root_dir.canonicalize().unwrap_or_else(|e| {
-        tracing::debug!("canonicalize failed for '{}': {}", root_dir.display(), e);
-        root_dir.to_path_buf()
-    });
-
-    if !git::is_git_repo(&root_dir) {
-        anyhow::bail!("'{}' is not a git repository", root_dir.display());
-    }
-    let root_dir = git::find_toplevel(&root_dir).unwrap_or(root_dir);
+    let root_dir = resolve_repo_root(root_dir)?;
     if alpha <= 0.0 || alpha >= 1.0 {
         anyhow::bail!("alpha must be in (0, 1), got {}", alpha);
     }
@@ -572,7 +564,7 @@ pub fn select_with_params(
 /// DEFAULT_IGNORE_PATTERNS). Matches by file name only, so public keys (`*.pub`)
 /// stay visible. `.env` files are intentionally NOT excluded here: a changed
 /// `.env` is legitimate change context (see the `*_env_file_change` cases).
-fn is_secret_path(path: &Path) -> bool {
+pub(crate) fn is_secret_path(path: &Path) -> bool {
     let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
         return false;
     };
@@ -620,7 +612,7 @@ fn is_lockfile_path(path: &Path) -> bool {
     )
 }
 
-fn rel_path_string(root_dir: &Path, path: &Path) -> Option<String> {
+pub(crate) fn rel_path_string(root_dir: &Path, path: &Path) -> Option<String> {
     path.strip_prefix(root_dir)
         .ok()
         .map(|p| p.to_string_lossy().replace('\\', "/"))
@@ -639,10 +631,144 @@ fn resolve_ignored_paths(root_dir: &Path, hunks: &[crate::types::DiffHunk]) -> F
     git::find_ignored_paths(root_dir, &rel_paths)
 }
 
-fn is_ignored_path(root_dir: &Path, path: &Path, ignored_rel_paths: &FxHashSet<String>) -> bool {
+pub(crate) fn is_ignored_path(
+    root_dir: &Path,
+    path: &Path,
+    ignored_rel_paths: &FxHashSet<String>,
+) -> bool {
     rel_path_string(root_dir, path)
         .map(|rel| ignored_rel_paths.contains(&rel))
         .unwrap_or(false)
+}
+
+/// The unified diff of `diff_range` as git prints it, minus the file sections
+/// diff mode never discloses: secret-like paths, ignored paths, and lock files
+/// (#112). Additive output for `--with-raw-diff` (#150) — it feeds no
+/// selection state, so selection is bit-identical with and without it.
+pub fn raw_diff_text(root_dir: &Path, diff_range: Option<&str>, timeout: u64) -> Result<String> {
+    git::set_git_timeout(timeout);
+    let root_dir = resolve_repo_root(root_dir)?;
+    let diff_text = git::get_diff_text(&root_dir, diff_range)?;
+    Ok(keep_disclosable_sections(&root_dir, &diff_text))
+}
+
+fn keep_disclosable_sections(root_dir: &Path, diff_text: &str) -> String {
+    // Two views over the same text. Analysis runs on terminator-free lines so
+    // the exact header comparisons below keep working; output is emitted from
+    // the raw slices, because the bundle is advertised as git's own patch and
+    // dropping the CR of a CRLF repository yields something `git apply`
+    // rejects.
+    let raw: Vec<&str> = diff_text.split_inclusive('\n').collect();
+    let lines: Vec<&str> = raw
+        .iter()
+        .map(|line| line.trim_end_matches('\n').trim_end_matches('\r'))
+        .collect();
+    let sections = split_diff_sections(root_dir, &lines);
+    let rel_paths: Vec<String> = sections
+        .iter()
+        .filter_map(|(path, _)| path.as_deref())
+        .filter_map(|path| rel_path_string(root_dir, path))
+        .collect();
+    let ignored_rel_paths = git::find_ignored_paths(root_dir, &rel_paths);
+
+    let mut kept: Vec<&str> = Vec::new();
+    for (path, range) in sections {
+        // A section whose path cannot be resolved inside the repository is
+        // dropped: the bundle must never widen what diff mode is willing to
+        // show, and an unattributable section cannot be policy-checked.
+        let Some(path) = path else {
+            continue;
+        };
+        if is_secret_path(&path)
+            || is_lockfile_path(&path)
+            || is_ignored_path(root_dir, &path, &ignored_rel_paths)
+        {
+            continue;
+        }
+        kept.extend_from_slice(&raw[range]);
+    }
+    if kept.is_empty() {
+        return String::new();
+    }
+    let mut text = kept.concat();
+    if !text.ends_with('\n') {
+        text.push('\n');
+    }
+    text
+}
+
+type DiffSection = (Option<PathBuf>, std::ops::Range<usize>);
+
+fn split_diff_sections(root_dir: &Path, lines: &[&str]) -> Vec<DiffSection> {
+    let starts: Vec<usize> = lines
+        .iter()
+        .enumerate()
+        .filter(|(_, line)| line.starts_with("diff --git "))
+        .map(|(index, _)| index)
+        .collect();
+    starts
+        .iter()
+        .enumerate()
+        .map(|(nth, &start)| {
+            let end = starts.get(nth + 1).copied().unwrap_or(lines.len());
+            (section_path(root_dir, &lines[start..end]), start..end)
+        })
+        .collect()
+}
+
+fn section_path(root_dir: &Path, section: &[&str]) -> Option<PathBuf> {
+    let mut old_path: Option<PathBuf> = None;
+    let mut new_path: Option<PathBuf> = None;
+    for line in section.iter().take_while(|line| !line.starts_with("@@")) {
+        match git::parse_path_line(line, root_dir) {
+            ("new", path) => new_path = path,
+            ("old", path) => old_path = path,
+            _ => {}
+        }
+    }
+    new_path
+        .or(old_path)
+        .or_else(|| pathless_section(root_dir, section))
+}
+
+/// Sections with no `---`/`+++` pair at all: pure renames, binary files,
+/// mode-only changes. A rename states its target outright; the rest carry the
+/// same path on both sides of the `diff --git` header, so only a symmetric
+/// header is attributable — `a/x b/y` without a rename line could equally be
+/// one path containing " b/", and an unattributable section is dropped.
+fn pathless_section(root_dir: &Path, section: &[&str]) -> Option<PathBuf> {
+    if let Some(quoted) = section
+        .iter()
+        .find_map(|line| line.strip_prefix("rename to "))
+    {
+        return contained_path(root_dir, &git::unquote_c_style(quoted.trim()));
+    }
+    let rest = section.first()?.strip_prefix("diff --git ")?;
+    let rel_path = rest.get("a/".len()..rest.find(" b/")?)?;
+    if rest != format!("a/{rel_path} b/{rel_path}") {
+        return None;
+    }
+    contained_path(root_dir, rel_path)
+}
+
+fn contained_path(root_dir: &Path, rel_path: &str) -> Option<PathBuf> {
+    let joined = root_dir.join(rel_path);
+    let resolved = joined.canonicalize().unwrap_or_else(|_| joined.clone());
+    let resolved_root = root_dir
+        .canonicalize()
+        .unwrap_or_else(|_| root_dir.to_path_buf());
+    resolved.starts_with(&resolved_root).then_some(joined)
+}
+
+fn resolve_repo_root(root_dir: &Path) -> Result<PathBuf> {
+    let root_dir = root_dir.canonicalize().unwrap_or_else(|e| {
+        tracing::debug!("canonicalize failed for '{}': {}", root_dir.display(), e);
+        root_dir.to_path_buf()
+    });
+    if !git::is_git_repo(&root_dir) {
+        anyhow::bail!("'{}' is not a git repository", root_dir.display());
+    }
+    Ok(git::find_toplevel(&root_dir).unwrap_or(root_dir))
 }
 
 fn build_diff_context_full(
@@ -652,14 +778,7 @@ fn build_diff_context_full(
     timeout: u64,
 ) -> Result<DiffContextOutput> {
     git::set_git_timeout(timeout);
-    let root_dir = root_dir.canonicalize().unwrap_or_else(|e| {
-        tracing::debug!("canonicalize failed for '{}': {}", root_dir.display(), e);
-        root_dir.to_path_buf()
-    });
-    if !git::is_git_repo(&root_dir) {
-        anyhow::bail!("'{}' is not a git repository", root_dir.display());
-    }
-    let root_dir = git::find_toplevel(&root_dir).unwrap_or(root_dir);
+    let root_dir = resolve_repo_root(root_dir)?;
     let mut hunks = git::parse_diff(&root_dir, diff_range)?;
     hunks.retain(|h| !is_secret_path(Path::new(&*h.path)));
     if hunks.is_empty() {

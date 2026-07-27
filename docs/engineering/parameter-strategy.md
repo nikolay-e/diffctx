@@ -14,9 +14,11 @@ A parameter is calibrated only when:
 1. It sits at the **top of the influence hierarchy** (a single change
    affects many outputs).
 2. Its **dimensionality is low enough** that the labeled corpus
-   (~600 SWE-bench instances) supports tuning without overfit. Rule of
-   thumb: at least ~50 examples per learnable scalar; calibrating
-   100+ parameters on 600 examples is overfit by construction.
+   (1500 instances across three frozen 500-instance manifests:
+   SWE-bench Verified, PolyBench-500, ContextBench Verified) supports
+   tuning without overfit. Rule of thumb: at least ~50 examples per
+   learnable scalar; calibrating 100+ parameters on 1500 examples is
+   overfit by construction.
 3. **No principled domain prior** exists. Where a structural reason
    ("`import` is stronger than `siblings`", "static-typed languages
    make `call` edges more reliable than dynamic-typed ones") fixes the
@@ -26,33 +28,41 @@ Parameters that fail any of these conditions stay fixed.
 
 ## Three Tiers
 
-### Tier 1 — Calibrated (10 scalars)
+### Tier 1 — Calibrated (2 scalars)
 
-The per-`EdgeCategory` weights $w_\tau$, defined in
-`crates/diffctx-native/src/config/category_weights.rs`. There are exactly ten
-categories — `Semantic`, `Structural`, `Sibling`, `Config`,
+The two operational parameters actually calibrated against the corpus
+are the stopping threshold $\tau$ and the core budget fraction
+$\beta_{core}$ (paper: §"Edge-Type Weight Priors and Operational
+Calibration" and §"Calibration Protocol"). Calibration is a 5×3 grid
+search over $(\tau, \beta_{core})$ on the frozen calibration manifests,
+validated on a held-out manifest; the validated winner is
+$\tau = 0.12$, $\beta_{core} = 0.5$, which the deployed defaults carry:
+
+- $\tau$ — `DEFAULT_STOPPING_THRESHOLD = 0.12` in `config/limits.rs`,
+  user-overridable via the `--tau` CLI flag only (no env var).
+- $\beta_{core}$ — `core_budget_fraction = 0.5` in
+  `config/selection.rs`, env-overridable via
+  `DIFFCTX_OP_SELECTION_CORE_BUDGET_FRACTION` for sweeps.
+
+#### Per-category weights — uncalibrated unit priors
+
+The per-`EdgeCategory` multipliers $w_\tau$, defined in
+`crates/diffctx-native/src/config/category_weights.rs`. There are
+exactly ten categories — `Semantic`, `Structural`, `Sibling`, `Config`,
 `ConfigGeneric`, `Document`, `Similarity`, `History`, `TestEdge`,
 `Generic` — and one scalar multiplier per category. Every fine-grained
 edge weight from `weights.rs` is multiplied by its category's $w_\tau$
 before scoring.
 
-These ten scalars are the **only learnable parameters of the model**
-in the corpus-fitting sense. They are calibrated by Bayesian
-optimization against the benchmark via the
-`DIFFCTX_CATWEIGHT_*` environment variables (no rebuild required).
-
-| Parameter         | Env var                            | Default |
-| ----------------- | ---------------------------------- | ------- |
-| `w_semantic`      | `DIFFCTX_CATWEIGHT_SEMANTIC`       | 1.0     |
-| `w_structural`    | `DIFFCTX_CATWEIGHT_STRUCTURAL`     | 1.0     |
-| `w_sibling`       | `DIFFCTX_CATWEIGHT_SIBLING`        | 1.0     |
-| `w_config`        | `DIFFCTX_CATWEIGHT_CONFIG`         | 1.0     |
-| `w_config_gen`    | `DIFFCTX_CATWEIGHT_CONFIGGENERIC`  | 1.0     |
-| `w_document`      | `DIFFCTX_CATWEIGHT_DOCUMENT`       | 1.0     |
-| `w_similarity`    | `DIFFCTX_CATWEIGHT_SIMILARITY`     | 1.0     |
-| `w_history`       | `DIFFCTX_CATWEIGHT_HISTORY`        | 1.0     |
-| `w_test_edge`     | `DIFFCTX_CATWEIGHT_TESTEDGE`       | 1.0     |
-| `w_generic`       | `DIFFCTX_CATWEIGHT_GENERIC`        | 1.0     |
+These ten scalars are the **intended** future calibration surface, but
+today they are all fixed at 1.0, have **no runtime override plumbing**
+(no env vars, no CLI flags), and **no calibration has ever run** on
+them. The paper states the same: full data-driven calibration over the
+category-weight simplex is left to future work because the labeled
+corpora needed to disambiguate ten weights without overfit exceed the
+current evaluation's size. Until that happens, treat them as
+uncalibrated unit priors — any claim that they were "learned" or
+"tuned" is false.
 
 ### Tier 1.5 — Per-instance solver (1 mechanism)
 
@@ -64,19 +74,22 @@ distribution exactly fill the requested token budget. Bisection bounds
 `config/selection.rs::BoltzmannConfig` and behave as numerical-method
 parameters, not learnable knobs.
 
-### Tier 2 — Domain priors (~265 scalars, fixed)
+### Tier 2 — Domain priors (~275 scalars, fixed)
 
 These encode structural knowledge about how source code relates and
-should not be tuned against any benchmark. Calibrating them on 600
-examples would yield ~2.4 examples per parameter — overfit by
-construction.
+should not be tuned against any benchmark. Calibrating them on 1500
+examples would yield ~5 examples per parameter — an order of magnitude
+below the ~50-per-scalar floor, overfit by construction.
 
 - **Per-edge-type weights** (~130, `config/weights.rs`,
   `config/edge_weights.rs`): one default weight per fine-grained edge
   type (e.g. `import`, `inherits`, `same_crate`, `dockerfile_from`).
   Reflect the structural strength of a relation. **Fixed.**
-- **Per-language weights** (~90, `config/weights.rs::LANG_WEIGHTS`):
-  18 languages × ~5 parameters scaling call/type/usage edges per the
+- **Per-category multipliers** (10,
+  `config/category_weights.rs`): all 1.0, see Tier 1 above.
+  **Fixed pending future calibration.**
+- **Per-language weights** (90, `config/weights.rs::LANG_WEIGHTS`):
+  18 language entries × 5 fields scaling call/type/usage edges per the
   language's static-vs-dynamic-typing properties. **Fixed.**
 - **Need priorities and match strengths** (~30, `config/needs.rs`):
   priorities for need types (`call_definition_priority=1.0`,
@@ -88,10 +101,10 @@ construction.
   (entrypoints, tests, generated). **Fixed.**
 
 Reviewers asking "did you tune these against the benchmark?" — the
-answer is **no, by design**. They are domain priors; the only learned
-component scaling them is the 10 $w_\tau$ in Tier 1.
+answer is **no, by design**. They are domain priors; the only
+corpus-calibrated scalars are the two in Tier 1.
 
-### Tier 3 — Operational, sensitivity-checked (~15 scalars)
+### Tier 3 — Operational, sensitivity-checked (~17 scalars)
 
 These have meaningful influence on output but are not low-dimensional
 enough nor isolated enough to justify per-corpus calibration. They are
@@ -100,8 +113,9 @@ locality assumptions, density-greedy stopping heuristics) and verified
 by a **±25% / ±50% sensitivity sweep** (`scripts/sensitivity_check.sh`)
 that quantifies how much output changes under perturbation.
 
-All Tier-3 parameters are runtime-overridable via `DIFFCTX_OP_*`
-environment variables to enable the sweep without rebuild.
+Tier-3 parameters are runtime-overridable via environment variables
+(most under the `DIFFCTX_OP_*` prefix, a few historical ones without
+it) to enable the sweep without rebuild.
 
 > **Not a stable interface.** The `DIFFCTX_OP_*` overrides — along with the
 > other internal toggles (`DIFFCTX_OBJECTIVE`, `DIFFCTX_EGO_*`,
@@ -115,44 +129,57 @@ environment variables to enable the sweep without rebuild.
 | ------------------------------------------------ | -------------------------------------------------------- | ------- |
 | `PPR.alpha` (damping $\alpha$)                   | `DIFFCTX_OP_PPR_ALPHA`                                   | 0.60    |
 | `PPR.forward_blend` ($\rho$)                     | `DIFFCTX_OP_PPR_FORWARD_BLEND`                           | 0.40    |
-| `EGO.per_hop_decay` ($\gamma$)                   | `DIFFCTX_OP_EGO_PER_HOP_DECAY`                           | 0.5     |
+| `EGO.per_hop_decay` ($\gamma$)                   | `DIFFCTX_EGO_PER_HOP_DECAY`                              | 0.5     |
+| `EGO.identifier_overlap_epsilon`                 | `DIFFCTX_EGO_LEXICAL_EPS`                                | 0.1     |
+| Graph traversal radius                           | `DIFFCTX_OP_GRAPH_DEPTH`                                 | 2       |
 | `UTILITY.eta` ($\eta$)                           | `DIFFCTX_OP_UTILITY_ETA`                                 | 0.20    |
 | `UTILITY.structural_bonus_weight`                | `DIFFCTX_OP_UTILITY_STRUCTURAL_BONUS_WEIGHT`             | 0.10    |
 | `UTILITY.r_cap_sigma`                            | `DIFFCTX_OP_UTILITY_R_CAP_SIGMA`                         | 2.0     |
 | `UTILITY.proximity_decay`                        | `DIFFCTX_OP_UTILITY_PROXIMITY_DECAY`                     | 0.30    |
-| `SELECTION.core_budget_fraction` ($\beta_{core}$) | `DIFFCTX_OP_SELECTION_CORE_BUDGET_FRACTION`              | 0.70    |
-| `SELECTION.stopping_threshold` ($\tau$)          | `DIFFCTX_OP_SELECTION_STOPPING_THRESHOLD`                | 0.12    |
 | `SELECTION.r_cap_min`                            | `DIFFCTX_OP_SELECTION_R_CAP_MIN`                         | 0.01    |
 | `RESCUE.budget_fraction`                         | `DIFFCTX_OP_RESCUE_BUDGET_FRACTION`                      | 0.05    |
 | `RESCUE.min_score_percentile`                    | `DIFFCTX_OP_RESCUE_MIN_SCORE_PERCENTILE`                 | 0.80    |
 | `FILTERING.proximity_half_decay`                 | `DIFFCTX_OP_FILTERING_PROXIMITY_HALF_DECAY`              | 50.0    |
 | `FILTERING.definition_proximity_half_decay`      | `DIFFCTX_OP_FILTERING_DEFINITION_PROXIMITY_HALF_DECAY`   | 5.0     |
+| `NEEDS.relatedness_bonus`                        | `DIFFCTX_RELATEDNESS_BONUS`                              | 0.25    |
+| `NEEDS.min_rel_for_bonus`                        | `DIFFCTX_MIN_REL_FOR_BONUS`                              | 0.03    |
 | `BOLTZMANN.calibration_tolerance`                | `DIFFCTX_OP_BOLTZMANN_CALIBRATION_TOLERANCE`             | 0.05    |
+| `BOLTZMANN.bisect_iters`                         | `DIFFCTX_OP_BOLTZMANN_BISECT_ITERS`                      | 24      |
+
+The Tier-1 pair ($\tau$, $\beta_{core}$) is intentionally absent from
+this table: those two are calibrated, not merely sensitivity-checked.
 
 ## Tier ratios
 
-- Calibrated : domain priors : operational ≈ **10 : 265 : 15**
-- Calibrated to learnable-corpus-size ratio: 10 vs 600 = 60 examples per
-  parameter — comfortably above the rule-of-thumb 50 floor.
+- Calibrated : domain priors : operational ≈ **2 : 275 : 17**
+- Calibrated to learnable-corpus-size ratio: 2 vs 1500 = 750 examples
+  per parameter — far above the rule-of-thumb 50 floor.
 
 This is the sentence reviewers should be able to verify on their own:
-**fewer than 4% of the scalars in `config/` are corpus-calibrated.**
+**fewer than 1% of the scalars in `config/` are corpus-calibrated.**
 
 ## What this means for the paper
 
-Section 4.3 ("Edge-Type Weight Calibration") describes the calibration
-of $w_\tau$ only. Section 4.5.1 (file-importance prior) and the
-appendix table on EDGE_WEIGHTS describe domain priors that are **fixed
-from structural reasoning, not learned**. Sensitivity analysis for
-Tier-3 parameters belongs in an appendix (`scripts/sensitivity_check.sh`
+The section "Edge-Type Weight Priors and Operational Calibration"
+describes exactly this split: the fine-grained edge weights and the
+unit category multipliers are **fixed priors** (their full calibration
+is recorded as future work), while $\tau$ and $\beta_{core}$ are the
+two calibrated operational parameters, with the grid protocol in
+"Calibration Protocol" and the grid table in the empirical section.
+The edge-categories table in the paper enumerates the ten categories
+whose multipliers stay at 1.0. Sensitivity analysis for Tier-3
+parameters belongs in an appendix (`scripts/sensitivity_check.sh`
 output). Anywhere the paper mentions "tuned" or "calibrated", the
-referent must be a Tier-1 parameter.
+referent must be $\tau$ or $\beta_{core}$.
 
 ## What changes when
 
 - New edge type / new language → Tier 2 update, no calibration impact.
 - New scoring mode / utility term → may add a Tier-3 parameter; document
   it here and add it to the sensitivity sweep before merge.
-- New benchmark dataset → re-run Tier-1 Bayesian optimization. Tier-2
-  and Tier-3 do not change unless the new dataset reveals systematic
-  bias attributable to a specific prior.
+- New benchmark dataset → re-run the $(\tau, \beta_{core})$ grid
+  calibration. Tier-2 and Tier-3 do not change unless the new dataset
+  reveals systematic bias attributable to a specific prior.
+- Category-weight calibration becomes feasible (larger labeled corpus)
+  → that is a new Tier-1 entry and a Q-class change; it requires env
+  plumbing first, then a full calibration → validation → sweep cycle.

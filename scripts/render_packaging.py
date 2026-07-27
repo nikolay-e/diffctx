@@ -57,66 +57,11 @@ def render_scoop(version: str, checksums: dict[str, str]) -> str:
     return json.dumps(manifest, indent=4) + "\n"
 
 
-def render_pkgbuild(version: str, checksums: dict[str, str]) -> str:
-    lines = [
-        "# Maintainer: Nikolay Eremeev <nikolay.eremeev@outlook.com>",
-        "pkgname=diffctx-bin",
-        f"pkgver={version}",
-        "pkgrel=1",
-        f'pkgdesc="{DESCRIPTION}"',
-        "arch=('x86_64' 'aarch64')",
-        f'url="{REPO_URL}"',
-        "license=('Apache-2.0')",
-        "depends=('git' 'gcc-libs')",
-        "provides=('diffctx')",
-        "conflicts=('diffctx')",
-    ]
-    for arch, target in LINUX_TARGETS.items():
-        archive = asset_name(version, target)
-        lines.append(f'source_{arch}=("{REPO_URL}/releases/download/v{version}/{archive}")')
-        lines.append(f"sha256sums_{arch}=('{checksums[archive]}')")
-    lines.extend(
-        [
-            "",
-            "package() {",
-            '    install -Dm755 diffctx "$pkgdir/usr/bin/diffctx"',
-            '    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"',
-            "}",
-        ]
-    )
-    return "\n".join(lines) + "\n"
-
-
-def render_srcinfo(version: str, checksums: dict[str, str]) -> str:
-    lines = [
-        "pkgbase = diffctx-bin",
-        f"\tpkgdesc = {DESCRIPTION}",
-        f"\tpkgver = {version}",
-        "\tpkgrel = 1",
-        f"\turl = {REPO_URL}",
-        "\tarch = x86_64",
-        "\tarch = aarch64",
-        "\tlicense = Apache-2.0",
-        "\tdepends = git",
-        "\tdepends = gcc-libs",
-        "\tprovides = diffctx",
-        "\tconflicts = diffctx",
-    ]
-    for arch, target in LINUX_TARGETS.items():
-        archive = asset_name(version, target)
-        lines.append(f"\tsource_{arch} = {REPO_URL}/releases/download/v{version}/{archive}")
-        lines.append(f"\tsha256sums_{arch} = {checksums[archive]}")
-    lines.extend(["", "pkgname = diffctx-bin"])
-    return "\n".join(lines) + "\n"
-
-
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--version", required=True)
     parser.add_argument("--assets-dir", required=True, type=Path)
     parser.add_argument("--scoop", type=Path)
-    parser.add_argument("--pkgbuild", type=Path)
-    parser.add_argument("--srcinfo", type=Path)
     parser.add_argument("--npm-checksums", type=Path)
     args = parser.parse_args()
 
@@ -124,8 +69,6 @@ def main() -> None:
 
     for path, content in (
         (args.scoop, render_scoop(args.version, checksums)),
-        (args.pkgbuild, render_pkgbuild(args.version, checksums)),
-        (args.srcinfo, render_srcinfo(args.version, checksums)),
         (args.npm_checksums, json.dumps(checksums, indent=2, sort_keys=True) + "\n"),
     ):
         if path is None:

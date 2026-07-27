@@ -387,4 +387,102 @@ mod tests {
         assert_eq!(selected.len(), 1);
         assert_eq!(selected[0].id, stub.id);
     }
+
+    fn cost(selected: &[Fragment]) -> u32 {
+        selected.iter().map(|f| f.token_count).sum()
+    }
+
+    /// `cost(C) <= B` is stated as a hard contract in `pick_smallest_fitting`
+    /// and gated at five separate call sites, none of which was asserted. The
+    /// oracle corpus cannot catch a breach either: its budget is always >=2.5x
+    /// the whole repository, so no post-pass ever runs near the cap there.
+    #[test]
+    fn post_passes_never_push_the_selection_past_the_budget() {
+        use crate::types::FragmentKind;
+
+        let core = frag("changed.rs", 1, 9, FragmentKind::Function, 40);
+        let all = vec![
+            core.clone(),
+            frag("changed.rs", 20, 60, FragmentKind::Function, 300),
+            frag("changed.rs", 70, 75, FragmentKind::FunctionSignature, 12),
+            frag("other.rs", 1, 30, FragmentKind::Class, 180),
+            frag("other.rs", 40, 44, FragmentKind::Function, 25),
+        ];
+        let core_ids: FxHashSet<FragmentId> = std::iter::once(core.id.clone()).collect();
+        let rel: FxHashMap<FragmentId, f64> = all.iter().map(|f| (f.id.clone(), 0.6)).collect();
+        let changed = vec![PathBuf::from("changed.rs"), PathBuf::from("other.rs")];
+        let excerpts: FxHashMap<FragmentId, Fragment> = FxHashMap::default();
+
+        for budget in [0u32, 11, 12, 40, 65, 200, 600] {
+            let mut selected: Vec<Fragment> = if budget >= core.token_count {
+                vec![core.clone()]
+            } else {
+                Vec::new()
+            };
+
+            rescue_nontrivial_context(&mut selected, &all, &rel, &core_ids, budget);
+            assert!(
+                cost(&selected) <= budget,
+                "rescue overran budget {budget}: cost {}",
+                cost(&selected)
+            );
+
+            let remaining = budget.saturating_sub(cost(&selected));
+            ensure_changed_files_represented(
+                &mut selected,
+                &all,
+                &changed,
+                remaining,
+                Path::new("."),
+                &[],
+                None,
+                &core_ids,
+                &excerpts,
+            );
+            assert!(
+                cost(&selected) <= budget,
+                "ensure_changed_files_represented overran budget {budget}: cost {}",
+                cost(&selected)
+            );
+
+            let ids: FxHashSet<&FragmentId> = selected.iter().map(|f| &f.id).collect();
+            assert_eq!(ids.len(), selected.len(), "a fragment was selected twice");
+        }
+    }
+
+    #[test]
+    fn pick_smallest_fitting_refuses_every_oversized_candidate() {
+        use crate::types::FragmentKind;
+
+        let candidates = vec![
+            frag("a.rs", 1, 40, FragmentKind::Function, 500),
+            frag("a.rs", 50, 90, FragmentKind::Function, 400),
+        ];
+        let core_ids: FxHashSet<FragmentId> = FxHashSet::default();
+        assert!(
+            pick_smallest_fitting(&candidates, &FxHashSet::default(), 399, &core_ids).is_none(),
+            "returned a candidate that does not fit — the budget contract is broken"
+        );
+        assert!(
+            pick_smallest_fitting(&candidates, &FxHashSet::default(), 400, &core_ids).is_some(),
+            "refused a candidate that fits exactly"
+        );
+    }
+
+    #[test]
+    fn pick_smallest_fitting_skips_already_selected_and_zero_cost_fragments() {
+        use crate::types::FragmentKind;
+
+        let taken = frag("a.rs", 1, 10, FragmentKind::Function, 30);
+        let zero = frag("a.rs", 20, 30, FragmentKind::Function, 0);
+        let free = frag("a.rs", 40, 50, FragmentKind::Function, 60);
+        let selected: FxHashSet<FragmentId> = std::iter::once(taken.id.clone()).collect();
+        let picked = pick_smallest_fitting(
+            &[taken, zero, free.clone()],
+            &selected,
+            1_000,
+            &FxHashSet::default(),
+        );
+        assert_eq!(picked.map(|f| f.id), Some(free.id));
+    }
 }

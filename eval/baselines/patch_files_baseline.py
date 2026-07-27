@@ -18,7 +18,7 @@ import tiktoken
 from eval.harness.adapters.base import BenchmarkInstance, EvalResult
 from eval.harness.adapters.evaluator import SelectionOutput, UniversalEvaluator
 from eval.harness.adapters.runner import RunParams
-from eval.harness.common import apply_as_commit, ensure_repo, patch_files_at_head, reset_to_parent
+from eval.harness.common import apply_gold_patch, ensure_repo, patch_files_at_head, reset_to_parent
 
 
 def _fail_result(instance: BenchmarkInstance, budget: int, status: str, error: str | None = None) -> EvalResult:
@@ -50,7 +50,8 @@ def _patch_files_eval(
 
     applied = False
     try:
-        applied = apply_as_commit(repo_dir, instance.gold_patch, "patch-files-baseline-gold")
+        apply_outcome = apply_gold_patch(repo_dir, instance.gold_patch, "patch-files-baseline-gold")
+        applied = apply_outcome.applied
         if not applied:
             return _fail_result(instance, params.budget, "apply_fail", "gold patch did not apply as commit")
         t0 = time.perf_counter()
@@ -87,6 +88,7 @@ def _patch_files_eval(
         result.extra["language"] = instance.language
         result.extra["baseline"] = "patch_files"
         result.extra["n_changed_candidates"] = len(candidates)
+        result.extra["apply_mode"] = apply_outcome.mode
         return result
     finally:
         if applied:

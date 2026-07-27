@@ -29,14 +29,6 @@ concurrency:
         options:
           - 'true'
           - 'false'
-      publish_aur:
-        description: 'Push the PKGBUILD to the AUR'
-        required: true
-        default: 'false'
-        type: choice
-        options:
-          - 'true'
-          - 'false'
 
 jobs:
   npm:
@@ -48,7 +40,7 @@ jobs:
       id-token: write
     steps:
       - name: Checkout release tag
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           ref: v${{ github.event.inputs.version }}
 
@@ -74,7 +66,7 @@ jobs:
           ls -la release-binaries
 
       - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: '3.12'
 
@@ -101,11 +93,59 @@ jobs:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
+      # The in-repo version is the literal string "0.0.0-placeholder". If the
+      # patch step above is ever refactored or mis-pathed, npm publishes that
+      # placeholder and exits 0 — and install.js then derives an asset name
+      # with no matching checksum, so every `npx diffctx` dies. Assert before
+      # the publish rather than discovering it from user reports.
+      - name: Assert package version was set
+        working-directory: ./packaging/npm
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          ACTUAL=$(node -p "require('./package.json').version")
+          echo "package.json version: $ACTUAL (expected $VERSION)"
+          test "$ACTUAL" = "$VERSION"
+          test -f checksums.json
+          node -e "
+            const c = require('./checksums.json');
+            const n = Object.keys(c).length;
+            if (n === 0) { throw new Error('checksums.json is empty'); }
+            for (const k of Object.keys(c)) {
+              if (!k.includes(process.env.VERSION)) {
+                throw new Error('checksum key does not carry the version: ' + k);
+              }
+            }
+            console.log('checksums.json: ' + n + ' assets, all version-tagged');
+          "
+
       - name: Publish
         working-directory: ./packaging/npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --access public --provenance
+
+      # install.js is the script every `npx diffctx` runs, and nothing executed
+      # it before this step existed. --ignore-scripts keeps npm from running
+      # lifecycle scripts implicitly; the smoke then invokes install.js
+      # explicitly — same script, executed as the deliberate object under test.
+      - name: Smoke the published package
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          WORK=$(mktemp -d)
+          cd "$WORK"
+          npm init -y >/dev/null
+          for attempt in 1 2 3 4 5; do
+            # Sonar S8543 (unlocked dependency versions) is marked false
+            # positive in SonarCloud: VERSION is the exact just-published
+            # version and the package has zero dependencies.
+            if npm install --ignore-scripts "diffctx@$VERSION"; then break; fi
+            echo "npm registry not settled yet (attempt $attempt); retrying"
+            sleep 20
+          done
+          node node_modules/diffctx/install.js
+          ./node_modules/.bin/diffctx --version
 
   dockerhub:
     name: Mirror image to Docker Hub
@@ -126,7 +166,7 @@ jobs:
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
 
       - name: Login to Docker Hub
-        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0  # v4.4.0
+        uses: docker/login-action@06fb636fac595d6fb4b28a5dfcb21a6f5091859c  # v4.5.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -142,73 +182,3 @@ jobs:
             -t "${TARGET}:latest" \
             "${SOURCE}:${VERSION}"
           docker buildx imagetools inspect "${TARGET}:${VERSION}"
-
-  aur:
-    name: Push PKGBUILD to the AUR
-    if: github.event.inputs.publish_aur == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout release tag
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-        with:
-          ref: v${{ github.event.inputs.version }}
-
-      - name: Require AUR credentials
-        env:
-          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-        run: |
-          if [ -z "$AUR_SSH_PRIVATE_KEY" ]; then
-            echo "Error: secret AUR_SSH_PRIVATE_KEY is not set."
-            exit 1
-          fi
-
-      - name: Download release binaries
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ github.event.inputs.version }}
-        run: |
-          mkdir -p release-binaries
-          gh release download "v${VERSION}" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --dir release-binaries \
-            --pattern 'diffctx-*-*.tar.gz' --pattern 'diffctx-*-*.zip'
-
-      - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
-        with:
-          python-version: '3.12'
-
-      - name: Render PKGBUILD and .SRCINFO
-        env:
-          VERSION: ${{ github.event.inputs.version }}
-        run: |
-          python scripts/render_packaging.py \
-            --version "$VERSION" \
-            --assets-dir ./release-binaries \
-            --pkgbuild packaging/aur/PKGBUILD \
-            --srcinfo packaging/aur/.SRCINFO
-
-      - name: Publish to the AUR
-        env:
-          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-          VERSION: ${{ github.event.inputs.version }}
-        run: |
-          mkdir -p ~/.ssh
-          echo "$AUR_SSH_PRIVATE_KEY" > ~/.ssh/aur
-          chmod 600 ~/.ssh/aur
-          ssh-keyscan -t ed25519 aur.archlinux.org >> ~/.ssh/known_hosts
-          export GIT_SSH_COMMAND="ssh -i ~/.ssh/aur -o IdentitiesOnly=yes"
-          git clone ssh://aur@aur.archlinux.org/diffctx-bin.git aur-repo
-          cp packaging/aur/PKGBUILD packaging/aur/.SRCINFO aur-repo/
-          cd aur-repo
-          git config user.name "Nikolay Eremeev"
-          git config user.email "nikolay.eremeev@outlook.com"
-          git add PKGBUILD .SRCINFO
-          if git diff --staged --quiet; then
-            echo "AUR package already at ${VERSION}."
-            exit 0
-          fi
-          git commit -m "diffctx-bin ${VERSION}"
-          git push origin HEAD:master

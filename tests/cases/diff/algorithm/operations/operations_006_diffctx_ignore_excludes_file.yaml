@@ -1,4 +1,4 @@
-name: operations_006_diffctxignore_excludes_file
+name: operations_006_diffctx_ignore_excludes_file
 tags:
 - lang:python
 - change:multi_file
@@ -9,7 +9,7 @@ tags:
 - difficulty:easy
 repo:
   initial_files:
-    .diffctxignore: |
+    .diffctx/ignore: |
       *.tmp
       *.log
       build/
@@ -75,7 +75,7 @@ repo:
           def count_files(self) -> int:
               return sum(1 for _ in self.scan() if _.is_file())
   changed_files:
-    .diffctxignore: |
+    .diffctx/ignore: |
       *.tmp
       *.log
       build/

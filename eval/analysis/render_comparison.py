@@ -35,6 +35,8 @@ def _load_dir(path: Path) -> list[EvalResult]:
                     fragment_recall=row.get("fragment_recall"),
                     fragment_precision=row.get("fragment_precision"),
                     line_f1=row.get("line_f1"),
+                    line_precision=row.get("line_precision"),
+                    line_recall=row.get("line_recall"),
                     used_tokens=int(row.get("used_tokens", 0)),
                     budget=int(row.get("budget", 0)),
                     elapsed_seconds=float(row.get("elapsed_seconds", 0.0)),

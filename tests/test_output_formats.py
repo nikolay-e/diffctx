@@ -105,6 +105,20 @@ def test_multiline_content_preservation(run_mapper, temp_project):
             break
 
 
+def test_yaml_output_parses_with_control_characters(temp_project):
+    control_content = "before\x0cform_feed\x1bescape\x07bell\x0bvtab\x7fdel\x9fc1\nafter\n"
+    control_file = temp_project / "src" / "control_chars.c"
+    control_file.write_text(control_content, encoding="utf-8")
+
+    result = run_diffctx_subprocess([str(temp_project), "--format", "yaml"])
+    assert result.returncode == 0
+
+    tree = yaml.safe_load(result.stdout)
+    found = next(c for c in tree["children"] if c["name"] == "src")
+    file_node = next(c for c in found["children"] if c["name"] == "control_chars.c")
+    assert file_node["content"] == control_content
+
+
 def test_format_option_invalid(temp_project):
     result = run_diffctx_subprocess([str(temp_project), "--format", "invalid"])
     assert result.returncode != 0

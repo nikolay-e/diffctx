@@ -142,3 +142,171 @@ pub fn generate_signature_variants(fragments: &[Fragment]) -> Vec<Fragment> {
 
     signatures
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn frag(kind: FragmentKind, start: u32, content: &str) -> Fragment {
+        let line_count = content.lines().count() as u32;
+        Fragment {
+            id: FragmentId::new(Arc::from("a.src"), start, start + line_count - 1),
+            kind,
+            content: Arc::from(content),
+            identifiers: FxHashSet::default(),
+            token_count: 100,
+            symbol_name: Some("target".into()),
+        }
+    }
+
+    fn stub_of(f: &Fragment) -> String {
+        let sigs = generate_signature_variants(std::slice::from_ref(f));
+        assert_eq!(sigs.len(), 1, "expected exactly one signature variant");
+        sigs[0].content.to_string()
+    }
+
+    #[test]
+    fn python_default_containing_braces_does_not_truncate_the_parameter_list() {
+        // `x={}` puts a brace inside the parameter list; truncating there would
+        // ship a syntactically broken stub.
+        let f = frag(
+            FragmentKind::Function,
+            1,
+            "def f(\n    x={},\n    y=1,\n):\n    body_one()\n    body_two()\n",
+        );
+        let stub = stub_of(&f);
+        assert!(stub.contains("x={}"), "stub lost a parameter: {stub:?}");
+        assert!(stub.contains("y=1"), "stub lost a parameter: {stub:?}");
+        assert!(
+            stub.trim_end().ends_with("):"),
+            "stub is not closed: {stub:?}"
+        );
+        assert!(!stub.contains("body_one"), "stub leaked the body: {stub:?}");
+    }
+
+    #[test]
+    fn open_paren_inside_a_string_literal_does_not_extend_the_signature() {
+        let f = frag(
+            FragmentKind::Function,
+            1,
+            "def f(sep=\"a(b\"):\n    one()\n    two()\n    three()\n    four()\n",
+        );
+        let stub = stub_of(&f);
+        assert!(
+            stub.contains("sep=\"a(b\""),
+            "stub mangled the literal: {stub:?}"
+        );
+        assert!(!stub.contains("one()"), "stub leaked the body: {stub:?}");
+    }
+
+    #[test]
+    fn rust_attribute_prefix_is_kept_above_the_signature() {
+        let f = frag(
+            FragmentKind::Struct,
+            10,
+            "#[derive(Debug, Clone)]\npub struct S {\n    a: u32,\n    b: u32,\n    c: u32,\n}\n",
+        );
+        let stub = stub_of(&f);
+        assert!(
+            stub.starts_with("#[derive(Debug, Clone)]"),
+            "lost the attribute: {stub:?}"
+        );
+        assert!(stub.contains("pub struct S {"), "lost the header: {stub:?}");
+        assert!(!stub.contains("a: u32"), "stub leaked the body: {stub:?}");
+    }
+
+    #[test]
+    fn multiline_decorator_prefix_is_kept_whole() {
+        let f = frag(
+            FragmentKind::Function,
+            1,
+            "@retry(\n    times=3,\n)\ndef f(x):\n    one()\n    two()\n",
+        );
+        let stub = stub_of(&f);
+        assert!(stub.starts_with("@retry("), "lost the decorator: {stub:?}");
+        assert!(
+            stub.contains("times=3"),
+            "truncated the decorator: {stub:?}"
+        );
+        assert!(stub.contains("def f(x):"), "lost the signature: {stub:?}");
+        assert!(!stub.contains("one()"), "stub leaked the body: {stub:?}");
+    }
+
+    #[test]
+    fn signature_span_matches_the_emitted_line_count() {
+        // sig_end_line is derived arithmetically from start_line; if it drifts,
+        // the stub's FragmentId claims lines it does not contain and the
+        // interval index deduplicates against the wrong span.
+        let f = frag(
+            FragmentKind::Function,
+            42,
+            "def f(\n    x,\n):\n    one()\n    two()\n    three()\n",
+        );
+        let sigs = generate_signature_variants(std::slice::from_ref(&f));
+        let sig = &sigs[0];
+        assert_eq!(sig.id.start_line, 42);
+        assert_eq!(
+            sig.id.end_line - sig.id.start_line + 1,
+            sig.content.lines().count() as u32
+        );
+    }
+
+    #[test]
+    fn kind_maps_to_its_signature_variant_and_ineligible_kinds_are_skipped() {
+        let body = "\nline\nline\nline\nline\nline\n";
+        for (kind, expected) in [
+            (FragmentKind::Function, FragmentKind::FunctionSignature),
+            (FragmentKind::Class, FragmentKind::ClassSignature),
+            (FragmentKind::Struct, FragmentKind::StructSignature),
+            (FragmentKind::Interface, FragmentKind::InterfaceSignature),
+            (FragmentKind::Enum, FragmentKind::EnumSignature),
+            // #106: TS/JS arrow bindings must get a stub or a large changed
+            // arrow function disappears from the output entirely.
+            (FragmentKind::Variable, FragmentKind::FunctionSignature),
+        ] {
+            let sigs = generate_signature_variants(&[frag(kind, 1, body)]);
+            assert_eq!(sigs.len(), 1, "{kind:?} produced no signature");
+            assert_eq!(sigs[0].kind, expected, "{kind:?} mapped wrong");
+        }
+        assert!(generate_signature_variants(&[frag(FragmentKind::Chunk, 1, body)]).is_empty());
+        assert!(generate_signature_variants(&[frag(FragmentKind::Module, 1, body)]).is_empty());
+    }
+
+    #[test]
+    fn fragments_shorter_than_the_threshold_get_no_stub() {
+        let short = frag(FragmentKind::Function, 1, "def f():\n    one()\n");
+        assert!(generate_signature_variants(&[short]).is_empty());
+    }
+
+    #[test]
+    fn duplicate_signature_spans_are_emitted_once() {
+        let a = frag(
+            FragmentKind::Function,
+            1,
+            "def f(x):\n    a()\n    b()\n    c()\n    d()\n",
+        );
+        let b = frag(
+            FragmentKind::Function,
+            1,
+            "def f(x):\n    a()\n    b()\n    c()\n    e()\n",
+        );
+        assert_eq!(generate_signature_variants(&[a, b]).len(), 1);
+    }
+
+    #[test]
+    fn signatureless_content_falls_back_to_a_bounded_prefix() {
+        // No parens and no brace at all: the fallback must stay inside the
+        // fragment rather than claiming the whole body.
+        let f = frag(
+            FragmentKind::Class,
+            1,
+            "class C:\n    x = 1\n    y = 2\n    z = 3\n    w = 4\n",
+        );
+        let stub = stub_of(&f);
+        assert!(
+            stub.lines().count() <= 2,
+            "fallback took too much: {stub:?}"
+        );
+        assert!(stub.starts_with("class C:"));
+    }
+}

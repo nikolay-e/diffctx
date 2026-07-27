@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 import itertools
+import json
 import re
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 from tests.framework.pygit2_backend import Pygit2Repo
+
+from .conftest import run_diffctx_subprocess
 
 PROJECT_ROOT = Path(__file__).parent.parent
 SRC_DIR = PROJECT_ROOT / "src"
@@ -447,3 +451,28 @@ def test_full_mode_keeps_lockfile_content(tmp_path):
 
     assert "Cargo.lock" in stdout
     assert "checksum" in stdout
+
+
+def test_rename_only_diff_emits_labelled_from_to_pairs(tmp_path):
+    """renamed_files is the only field with a hand-written serializer
+    (render.rs serialize_renames). Dropping that attribute makes serde emit
+    two-element arrays instead of {from, to}: still valid YAML/JSON, still
+    parses, fragment_count unchanged - and every consumer loses the label. On a
+    pure-rename diff this field is the only signal the output carries."""
+    body = "def compute(a, b):\n    return a + b\n\n\ndef helper():\n    return compute(1, 2)\n"
+    repo = Pygit2Repo(tmp_path / "repo")
+    repo.add_file("old_name.py", body)
+    repo.commit("base")
+    repo.remove_file("old_name.py")
+    repo.add_file("new_name.py", body)
+    repo.commit("rename old_name.py to new_name.py")
+
+    for fmt, load in (("json", json.loads), ("yaml", yaml.safe_load)):
+        result = run_diffctx_subprocess(
+            [str(repo.path), "--diff", "HEAD~1..HEAD", "-f", fmt],
+            cwd=repo.path,
+        )
+        doc = load(result.stdout)
+        assert doc["renamed_files"] == [
+            {"from": "old_name.py", "to": "new_name.py"}
+        ], f"{fmt} output lost the labelled rename: {doc.get('renamed_files')!r}"

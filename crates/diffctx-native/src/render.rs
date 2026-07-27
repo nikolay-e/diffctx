@@ -232,16 +232,32 @@ fn extract_symbol(frag: &Fragment) -> Option<String> {
     None
 }
 
-fn get_relative_path(frag: &Fragment, repo_root: &Path) -> String {
+// Windows paths use `\` as the component separator, so a rendered path must
+// be normalized to `/` for cross-platform-readable output. On POSIX, `\` is
+// a legal filename character (`src\utils.py` is one file, not a directory
+// separator) — rewriting it there would report a path that does not exist
+// and silently merge two distinct files under one heading in `by_path`.
+#[cfg(windows)]
+fn normalize_path_separators(s: std::borrow::Cow<'_, str>) -> String {
+    s.replace('\\', "/")
+}
+
+#[cfg(not(windows))]
+fn normalize_path_separators(s: std::borrow::Cow<'_, str>) -> String {
+    s.into_owned()
+}
+
+pub(crate) fn get_relative_path(frag: &Fragment, repo_root: &Path) -> String {
     let frag_path = Path::new(frag.path());
     if !frag_path.is_absolute() {
-        return frag_path.to_string_lossy().replace('\\', "/");
+        return normalize_path_separators(frag_path.to_string_lossy());
     }
-    frag_path
-        .strip_prefix(repo_root)
-        .unwrap_or(frag_path)
-        .to_string_lossy()
-        .replace('\\', "/")
+    normalize_path_separators(
+        frag_path
+            .strip_prefix(repo_root)
+            .unwrap_or(frag_path)
+            .to_string_lossy(),
+    )
 }
 
 fn create_fragment_entry(frag: &Fragment, path_str: &str) -> FragmentEntry {
@@ -395,5 +411,97 @@ pub fn build_diff_context_output(
         fragment_count: fragments_out.len(),
         fragments: fragments_out,
         latency: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn empty_output(renamed_files: Vec<(String, String)>) -> DiffContextOutput {
+        DiffContextOutput {
+            name: "repo".to_string(),
+            output_type: "diff_context".to_string(),
+            commit_message: None,
+            changed_files: Vec::new(),
+            deleted_files: Vec::new(),
+            renamed_files,
+            lockfile_changes: Vec::new(),
+            fragment_count: 0,
+            fragments: Vec::new(),
+            latency: None,
+        }
+    }
+
+    #[test]
+    fn renamed_files_serialize_as_labelled_from_to_in_yaml() {
+        let out = empty_output(vec![("old.py".to_string(), "new.py".to_string())]);
+        let yaml = serde_yaml::to_string(&out).unwrap();
+        assert!(
+            yaml.contains("from: old.py"),
+            "expected labelled `from:` entry, got:\n{yaml}"
+        );
+        assert!(
+            yaml.contains("to: new.py"),
+            "expected labelled `to:` entry, got:\n{yaml}"
+        );
+        // Guards against serde's default tuple-as-two-element-sequence shape
+        // (`- - old.py\n  - new.py`), which drops the from/to labels.
+        assert!(!yaml.contains("- - old.py"));
+    }
+
+    #[test]
+    fn renamed_files_serialize_as_labelled_from_to_in_json() {
+        let out = empty_output(vec![("old.py".to_string(), "new.py".to_string())]);
+        let json = serde_json::to_value(&out).unwrap();
+        let renamed = json["renamed_files"]
+            .as_array()
+            .expect("renamed_files must serialize as an array");
+        assert_eq!(renamed.len(), 1);
+        assert_eq!(renamed[0]["from"], "old.py");
+        assert_eq!(renamed[0]["to"], "new.py");
+        assert!(
+            renamed[0].is_object(),
+            "must not serialize as a positional [old, new] tuple: {renamed:?}"
+        );
+    }
+
+    #[test]
+    fn renamed_files_empty_is_omitted_from_output() {
+        let out = empty_output(Vec::new());
+        let json = serde_json::to_value(&out).unwrap();
+        assert!(json.get("renamed_files").is_none());
+    }
+
+    fn frag_at(path: &str) -> Fragment {
+        Fragment {
+            id: FragmentId::new(Arc::from(path), 1, 5),
+            kind: FragmentKind::Function,
+            content: Arc::from(""),
+            identifiers: FxHashSet::default(),
+            token_count: 1,
+            symbol_name: None,
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn get_relative_path_posix_backslash_in_filename_round_trips_unchanged() {
+        // On POSIX `\` is a legal filename character: `src\utils.py` is one
+        // file, not `src/utils.py` in a subdirectory. Rewriting the
+        // separator here would report a path that does not exist.
+        let frag = frag_at("src\\utils.py");
+        let root = Path::new("/repo");
+        let rel = get_relative_path(&frag, root);
+        assert_eq!(rel, "src\\utils.py");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn get_relative_path_strips_repo_root_on_posix() {
+        let frag = frag_at("/repo/src/lib.rs");
+        let root = Path::new("/repo");
+        let rel = get_relative_path(&frag, root);
+        assert_eq!(rel, "src/lib.rs");
     }
 }

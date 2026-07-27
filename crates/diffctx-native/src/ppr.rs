@@ -47,6 +47,37 @@ fn init_seed_residuals(
     residual
 }
 
+/// Mirrors `init_seed_residuals`'s own validity check without building the
+/// residual vector, so `personalized_pagerank` can tell "no seed mass ever
+/// entered the push" apart from "the push ran and every score genuinely
+/// converged to zero" -- both cases otherwise return the same empty
+/// `scores` map with `forward_pushes == 0`, which is indistinguishable to
+/// a caller that just sees an empty selection and assumes it means the
+/// diff genuinely has no related context (a seed absent from the graph and
+/// an explicit all-zero `seed_weights` map, reachable on a deletion-only
+/// hunk, both hit this path).
+fn has_valid_seed_mass(
+    csr: &CsrGraph,
+    seeds: &FxHashSet<FragmentId>,
+    seed_weights: Option<&FxHashMap<FragmentId, f64>>,
+) -> bool {
+    let has_valid_seed = seeds.iter().any(|s| csr.node_to_idx.contains_key(s));
+    if !has_valid_seed {
+        return false;
+    }
+    match seed_weights {
+        Some(sw) => {
+            let total: f64 = seeds
+                .iter()
+                .filter(|s| csr.node_to_idx.contains_key(*s))
+                .map(|s| sw.get(s).copied().unwrap_or(PPR.default_seed_epsilon))
+                .sum();
+            total > 0.0
+        }
+        None => true,
+    }
+}
+
 /// Result of one PPR push pass. `truncated` flags whether the
 /// `max_pushes` budget cut the iteration short — when true, the
 /// returned estimate is biased toward seeds and the absolute scores
@@ -152,6 +183,12 @@ pub struct PprResult {
     pub truncated: bool,
     pub forward_pushes: usize,
     pub backward_pushes: usize,
+    /// False when no seed mass ever entered the push (no seed matched a
+    /// graph node, or `seed_weights` summed to <= 0 across matched seeds).
+    /// Lets the caller tell "nothing to seed from" apart from "seeded and
+    /// converged to a genuinely empty `scores` map" -- both produce the
+    /// same empty map and `forward_pushes == 0` otherwise.
+    pub seeded: bool,
 }
 
 pub fn personalized_pagerank(
@@ -168,10 +205,12 @@ pub fn personalized_pagerank(
             truncated: false,
             forward_pushes: 0,
             backward_pushes: 0,
+            seeded: false,
         };
     }
 
     let (fwd_csr, rev_csr) = graph.to_csr();
+    let seeded = has_valid_seed_mass(fwd_csr, seeds, seed_weights);
 
     let (forward, backward) = rayon::join(
         || ppr_push_csr(fwd_csr, seeds, alpha, tol, seed_weights),
@@ -205,6 +244,7 @@ pub fn personalized_pagerank(
         truncated: forward.truncated || backward.truncated,
         forward_pushes: forward.pushes,
         backward_pushes: backward.pushes,
+        seeded,
     }
 }
 
@@ -603,6 +643,197 @@ mod tests {
                      expected={expected_leaf}, got={actual_leaf}"
                 );
             }
+        }
+    }
+
+    fn build_three_cycle() -> Graph {
+        let mut g = Graph::new();
+        let a = fid("a.rs", 1, 10);
+        let b = fid("b.rs", 1, 10);
+        let c = fid("c.rs", 1, 10);
+        g.add_node(a.clone());
+        g.add_node(b.clone());
+        g.add_node(c.clone());
+        g.add_edge(a, b.clone(), 1.0);
+        g.add_edge(b, c.clone(), 1.0);
+        g.add_edge(c, fid("a.rs", 1, 10), 1.0);
+        g
+    }
+
+    /// `max_pushes = n * PPR.push_scale_factor` (3*100=300 for this
+    /// fixture). A high alpha (slow restart) plus a tight tolerance
+    /// forces far more pushes than that budget, so the push loop must
+    /// stop early and report `truncated`. Deleting `truncated = true;`
+    /// in `ppr_push_csr` would make this pass silently -- the pinned
+    /// `forward_pushes` count is what actually catches that deletion,
+    /// since the flag alone can't distinguish "stopped early" from "ran
+    /// exactly to convergence at push 300".
+    #[test]
+    fn ppr_truncates_under_tight_tolerance_and_high_alpha() {
+        let mut g = build_three_cycle();
+        let a = fid("a.rs", 1, 10);
+        let seeds: FxHashSet<FragmentId> = std::iter::once(a).collect();
+
+        let result = personalized_pagerank(&mut g, &seeds, 0.99, 1e-12, 0.5, None);
+
+        assert!(
+            result.truncated,
+            "alpha=0.99, tol=1e-12 on a 3-cycle must exhaust the push budget"
+        );
+        assert_eq!(
+            result.forward_pushes, 300,
+            "pinned push count for this fixture; a regression in max_pushes or the push loop \
+             would move this number"
+        );
+    }
+
+    #[test]
+    fn ppr_does_not_truncate_under_loose_tolerance() {
+        let mut g = build_three_cycle();
+        let a = fid("a.rs", 1, 10);
+        let seeds: FxHashSet<FragmentId> = std::iter::once(a).collect();
+
+        let result = personalized_pagerank(&mut g, &seeds, 0.6, 1e-6, 0.5, None);
+
+        assert!(
+            !result.truncated,
+            "alpha=0.6, tol=1e-6 on a 3-cycle must converge well within the push budget"
+        );
+    }
+
+    #[test]
+    fn ppr_chain_with_dangling_terminal_node_sums_to_one() {
+        // a -> b -> c, c has no outgoing edges (dangling). None of the
+        // existing fixtures (full cycle, symmetric star) has a node with
+        // zero out-weight; `ppr_push_csr`'s `total_w <= 0.0` branch is
+        // only exercised here.
+        let mut g = Graph::new();
+        let a = fid("a.rs", 1, 10);
+        let b = fid("b.rs", 1, 10);
+        let c = fid("c.rs", 1, 10);
+        g.add_node(a.clone());
+        g.add_node(b.clone());
+        g.add_node(c.clone());
+        g.add_edge(a.clone(), b.clone(), 1.0);
+        g.add_edge(b.clone(), c.clone(), 1.0);
+
+        let seeds: FxHashSet<FragmentId> = std::iter::once(a).collect();
+        let result = personalized_pagerank(&mut g, &seeds, 0.6, 1e-8, 0.5, None);
+
+        assert!(result.seeded);
+        let total: f64 = result.scores.values().sum();
+        assert!(
+            (total - 1.0).abs() < 1e-6,
+            "mass must still sum to 1.0 despite the dangling terminal node; got {total}"
+        );
+    }
+
+    #[test]
+    fn ppr_seed_absent_from_graph_is_distinguishable_from_zero_seed_weights() {
+        let a = fid("a.rs", 1, 10);
+        let b = fid("b.rs", 1, 10);
+        let ghost = fid("ghost.rs", 1, 10);
+
+        // Baseline: a real, present, positively-weighted seed produces a
+        // non-empty, seeded result.
+        let mut g_present = Graph::new();
+        g_present.add_node(a.clone());
+        g_present.add_node(b.clone());
+        g_present.add_edge(a.clone(), b.clone(), 1.0);
+        let seeds_present: FxHashSet<FragmentId> = std::iter::once(a.clone()).collect();
+        let present = personalized_pagerank(&mut g_present, &seeds_present, 0.6, 1e-6, 0.5, None);
+        assert!(present.seeded);
+        assert!(!present.scores.is_empty());
+
+        // A seed id that matches no node in the graph.
+        let mut g_absent = Graph::new();
+        g_absent.add_node(a.clone());
+        g_absent.add_node(b.clone());
+        g_absent.add_edge(a.clone(), b.clone(), 1.0);
+        let seeds_absent: FxHashSet<FragmentId> = std::iter::once(ghost).collect();
+        let absent = personalized_pagerank(&mut g_absent, &seeds_absent, 0.6, 1e-6, 0.5, None);
+        assert!(
+            !absent.seeded,
+            "a seed id absent from the graph must not be reported as seeded"
+        );
+        assert!(absent.scores.is_empty());
+        assert_eq!(absent.forward_pushes, 0);
+
+        // A seed that IS in the graph, but `seed_weights` zeroes it out --
+        // reachable when every changed line in a hunk maps to a deleted
+        // fragment. Same empty `scores` / zero pushes as the absent-seed
+        // case above, but `seeded` must still tell them apart.
+        let mut g_zeroed = Graph::new();
+        g_zeroed.add_node(a.clone());
+        g_zeroed.add_node(b.clone());
+        g_zeroed.add_edge(a.clone(), b.clone(), 1.0);
+        let seeds_zeroed: FxHashSet<FragmentId> = std::iter::once(a.clone()).collect();
+        let mut zero_weights: FxHashMap<FragmentId, f64> = FxHashMap::default();
+        zero_weights.insert(a, 0.0);
+        let zeroed = personalized_pagerank(
+            &mut g_zeroed,
+            &seeds_zeroed,
+            0.6,
+            1e-6,
+            0.5,
+            Some(&zero_weights),
+        );
+        assert!(
+            !zeroed.seeded,
+            "an all-zero seed_weights map must not be reported as seeded"
+        );
+        assert!(zeroed.scores.is_empty());
+        assert_eq!(zeroed.forward_pushes, 0);
+
+        assert_eq!(
+            (absent.scores.len(), absent.forward_pushes, absent.seeded),
+            (zeroed.scores.len(), zeroed.forward_pushes, zeroed.seeded),
+            "both degenerate cases produce identical scores/pushes -- `seeded` is currently the \
+             only signal telling them apart from each other and from real convergence-to-zero"
+        );
+    }
+
+    #[test]
+    fn ppr_excludes_self_loop_and_infinite_weight_and_stays_finite() {
+        use crate::graph::{EdgeCategory, build_graph};
+        use crate::types::{Fragment, FragmentKind};
+
+        let a = fid("a.rs", 1, 10);
+        let b = fid("b.rs", 1, 10);
+        let plain = |id: FragmentId| Fragment {
+            id,
+            kind: FragmentKind::Function,
+            content: Arc::from(""),
+            identifiers: FxHashSet::default(),
+            token_count: 10,
+            symbol_name: None,
+        };
+        let frags = vec![plain(a.clone()), plain(b.clone())];
+
+        let mut edges: FxHashMap<(FragmentId, FragmentId), f64> = FxHashMap::default();
+        let mut cats: FxHashMap<(FragmentId, FragmentId), EdgeCategory> = FxHashMap::default();
+        edges.insert((a.clone(), b.clone()), 1.0);
+        cats.insert((a.clone(), b.clone()), EdgeCategory::Semantic);
+        edges.insert((a.clone(), a.clone()), 5.0); // self-loop
+        cats.insert((a.clone(), a.clone()), EdgeCategory::Semantic);
+        edges.insert((b.clone(), b.clone()), f64::INFINITY); // self-loop AND non-finite
+        cats.insert((b.clone(), b.clone()), EdgeCategory::Semantic);
+
+        let mut graph = build_graph(&frags, edges, cats);
+        let seeds: FxHashSet<FragmentId> = std::iter::once(a).collect();
+        let result = personalized_pagerank(&mut graph, &seeds, 0.6, 1e-6, 0.5, None);
+
+        assert!(result.seeded);
+        assert!(
+            !result.scores.is_empty(),
+            "a self-loop / infinite-weight edge must not poison out_weight_sum into NaN and \
+             empty out the whole score map"
+        );
+        for (id, score) in &result.scores {
+            assert!(
+                score.is_finite(),
+                "score for {id} must be finite, got {score}"
+            );
         }
     }
 }

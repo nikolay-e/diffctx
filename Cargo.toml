@@ -10,3 +10,11 @@ strip = true
 panic = "abort"
 debug = "line-tables-only"
 split-debuginfo = "packed"
+
+# `cargo test --release` with panic = "abort" compiles the whole dependency
+# graph twice (abort for the cdylib lib artifact, unwind for the test
+# universe); the hashless cdylib output names then collide (cargo#6313).
+# Tests run through this profile instead: same optimizations, one universe.
+[profile.release-unwind]
+inherits = "release"
+panic = "unwind"

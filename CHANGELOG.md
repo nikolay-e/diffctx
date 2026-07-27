@@ -9,29 +9,85 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Standalone native binaries (linux x86_64/aarch64, macOS arm64, Windows
-  x64) are built and attached to every GitHub release. The README had
-  promised them since 1.9.x; releases only ever carried wheels and an sdist.
-- The Rust engine is published to crates.io as the `diffctx` crate
-  (`cargo install diffctx` for the native CLI, `cargo add diffctx` to embed the
-  selection pipeline). Previously the name held only a reservation stub; the
-  crate now carries the released engine, starting at 1.12.0.
-- Container image `ghcr.io/nikolay-e/diffctx` (linux amd64/arm64), built from
-  the release tag and smoke-tested against a real repository before the tag
-  moves: `docker run --rm -v "$PWD:/repo" ghcr.io/nikolay-e/diffctx . --diff HEAD~1`.
-  Mirrored to Docker Hub as `nikolajer/diffctx`.
-- Packaging manifests generated from the release checksums: Scoop
-  (`packaging/scoop/diffctx.json`), AUR (`packaging/aur/`) and an npm wrapper
-  (`packaging/npm/`) that downloads the platform binary and verifies its
-  SHA-256 against the published checksum.
+- **Scoop install on Windows.** This repository is now itself the bucket:
+  `scoop bucket add diffctx https://github.com/nikolay-e/diffctx` then
+  `scoop install diffctx/diffctx`. The manifest moved from `packaging/scoop/`
+  to `bucket/diffctx.json`, where `scoop bucket add` reads it, so CD pushing
+  the regenerated manifest to `main` is the publication step. Previously the
+  manifest was correct but unreachable — no bucket existed, so
+  `scoop search diffctx` found nothing.
+
+- `--with-raw-diff` bundles git's raw unified diff ahead of the selected
+  context in every Python-CLI format (md/yaml/json/txt) and in the Python API
+  (`build_diff_context(..., with_raw_diff=True)`). Additive only — selection is
+  byte-identical with and without it — and not charged to `--budget`; the
+  stderr token summary reports the real output size and breaks out the patch's
+  share. Lock-file (#112), ignored and secret-like sections stay omitted. Not
+  in the native binary or the MCP server yet (#150).
+- Token counting is documented explicitly: every count and `--budget` use
+  tiktoken `o200k_base` (GPT-4o family) and are approximate for other model
+  families — `docs/product/token-budget.md`, plus a `Token counting` section in
+  `--help` (#150).
+- A GitHub Action (`action.yml`) runs diffctx as a CI step and exposes the
+  context file, its exact token count and an `empty` flag as step outputs, so a
+  downstream job can feed an LLM without re-tokenizing
+  (`docs/product/github-action.md`, #145).
+- The Claude Code plugin declares its MCP server self-bootstrapping:
+  `uvx --from 'diffctx[mcp]' diffctx-mcp`. Installing the plugin no longer
+  assumes `pip install 'diffctx[mcp]'` has already happened — `uv` fetches it
+  on first use. (The entry point rather than the `diffctx mcp` subcommand: the
+  subcommand only exists from this release on, so on any older version the
+  bare command would try to map a directory named `mcp`.)
+- `diffctx mcp` starts the MCP server, alongside the existing `diffctx-mcp`
+  console script. MCP registries publish a *package* name, and clients that
+  derive the executable from it run `diffctx` — which started a tree-mapping
+  run and wrote 31 MB of the working directory into the protocol transport
+  instead of speaking MCP. Both spellings now reach the same server.
+
+### Security
+
+- **A diff range could re-enable repository-configured diff commands.** The
+  range validator allowed a leading `-`, so `--ext-diff` or `--textconv` passed
+  as a "range" landed in argv *after* the `--no-ext-diff --no-textconv` that
+  every diff invocation sets — undoing them and letting `.gitattributes` run
+  external commands. Neither side of a range may now begin with a dash, and
+  single revisions are additionally rejected for whitespace or control
+  characters (a newline split one `cat-file --batch` request into two). Refs
+  starting with a dash are unaddressable on a git command line, so nothing
+  legitimate is lost.
+- MCP tool calls had no wall-clock deadline — the CLI's watchdog covered only
+  the CLI, leaving parse, fragmentation and scoring unbounded on the MCP path.
+  All three tools now share the CLI's 300 s default.
+- `SECURITY.md` documents prompt injection via repository content honestly: it
+  is inherent to moving repository text into a model's context, diffctx does
+  not detect or neutralize it, and output must be treated as untrusted.
 
 ### Fixed
 
+- **A changed file could vanish from the diff entirely when `.gitignore`
+  excluded its parent directory.** `check-ignore --no-index` — required for
+  `.diffctx/ignore` to apply to tracked files — also revives git's rule that a
+  file cannot be re-included once a parent directory is excluded. pandoc
+  excludes every dotted root entry with `/*.*` and re-includes `!.github/**`;
+  git keeps the tracked workflow file, diffctx dropped it, and a one-file
+  commit rendered as an empty selection with exit 4. An exclusion inherited
+  from an excluded ancestor no longer counts; a pattern matching the path
+  itself still excludes it, so `.diffctx/ignore` and per-directory
+  `.gitignore` rules are unaffected (#153).
+
+- **The container images ran as root.** The published 1.12.1 image had no
+  `USER` directive, so every `docker run` executed as uid 0 while the README
+  promised an unprivileged user. The image now runs as uid 10001.
+- **The MCP server advertised the SDK's version as its own.** `FastMCP` takes
+  no version argument, so `initialize` reported the installed `mcp` package
+  version (e.g. `1.28.1`) as the diffctx server version — a number that drifts
+  with every SDK bump and never matched the shipped package. Clients now see
+  the real version.
 - **The native binary hard-capped every run at 4096 tokens.** `--budget`
   carried a fixed clap default instead of leaving the budget unset, so the
   auto-sizing the Python CLI has always used never ran on the binary shipped
-  via crates.io, npm, the container images, Scoop, AUR and the release
-  archives — the same command returned a truncated selection there (14-file
+  via crates.io, npm, the container images and the release archives — the
+  same command returned a truncated selection there (14-file
   self-eat range: 15 fragments across 10 files, against 172 across 44). The
   binary now defaults to auto sizing, and `--budget -1` means unlimited as it
   does in Python.
@@ -40,9 +96,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   overridable with `DIFFCTX_TOKEN_CACHE_MAX_BYTES` (`0` disables eviction);
   each run trims one of the 256 shards back under its share of the cap,
   oldest entries first (#122).
-- The native binary silently emitted YAML for every unrecognized `--format`,
-  including `md` — the documented default of the Python CLI. It now accepts
-  only `yaml`/`json` and exits 2 on anything else.
 - The native binary exited `0` on a diff that produced no semantic context
   (clean tree, binary-only, everything over the size cap), so callers on the
   binary channels could not tell an empty selection from a successful one. It
@@ -71,6 +124,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   actionable facts about such a run — were dropped. They are now always
   written.
 
+### Removed
+
+- **AUR support.** `diffctx-bin` had never been submitted (the AUR RPC reported
+  `resultcount: 0`), the publishing job gated on a credential this repository
+  does not hold, and every release regenerated a PKGBUILD nobody could install.
+  Arch users are served by `pipx install diffctx` and `cargo install diffctx`.
+
 ### Changed
 
 - **Lock files no longer render their hunks in diff mode.** A dependency bump
@@ -95,6 +155,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the token summary, `--quiet`, format validation and budget handling are now
   contract-tested against real git repositories. Every parity defect above
   shipped because nothing exercised the clap parser.
+
+## [1.12.1] - 2026-07-23
+
+### Added
+
+- Standalone native binaries (linux x86_64/aarch64, macOS arm64, Windows
+  x64) are built and attached to every GitHub release. The README had
+  promised them since 1.9.x; releases only ever carried wheels and an sdist.
+- The Rust engine is published to crates.io as the `diffctx` crate
+  (`cargo install diffctx` for the native CLI, `cargo add diffctx` to embed the
+  selection pipeline). Previously the name held only a reservation stub; the
+  crate now carries the released engine, starting at 1.12.0.
+- Container image `ghcr.io/nikolay-e/diffctx` (linux amd64/arm64), built from
+  the release tag and smoke-tested against a real repository before the tag
+  moves: `docker run --rm -v "$PWD:/repo" ghcr.io/nikolay-e/diffctx . --diff HEAD~1`.
+  Mirrored to Docker Hub as `nikolajer/diffctx`.
+- npm wrapper (`packaging/npm/`) that downloads the platform binary and
+  verifies its SHA-256 against the published checksum. Scoop
+  (`packaging/scoop/diffctx.json`) and AUR (`packaging/aur/`) manifests are
+  generated from the same checksums but are not published to any bucket or
+  to the AUR.
+
+### Fixed
+
+- The native binary silently emitted YAML for every unrecognized `--format`,
+  including `md` — the documented default of the Python CLI. It now accepts
+  only `yaml`/`json` and exits 2 on anything else.
 
 ## [1.12.0] - 2026-07-23
 
@@ -377,5 +464,5 @@ Earlier releases shipped as `treemapper`; see
 <https://github.com/nikolay-e/diffctx/releases> for the corresponding GitHub
 release notes (`1.0.0` through `1.6.1`).
 
-[Unreleased]: https://github.com/nikolay-e/diffctx/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/nikolay-e/diffctx/compare/v1.12.1...HEAD
 [1.7.0]: https://github.com/nikolay-e/diffctx/compare/v1.6.1...v1.7.0

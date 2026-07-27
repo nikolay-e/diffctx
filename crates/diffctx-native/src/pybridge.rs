@@ -27,192 +27,6 @@ fn map_pipeline_err(e: anyhow::Error) -> PyErr {
     pyo3::exceptions::PyRuntimeError::new_err(e.to_string())
 }
 
-#[pyclass(skip_from_py_object)]
-#[derive(Clone)]
-pub struct PyFragment {
-    #[pyo3(get)]
-    pub path: String,
-    #[pyo3(get)]
-    pub lines: String,
-    #[pyo3(get)]
-    pub kind: String,
-    #[pyo3(get)]
-    pub symbol: Option<String>,
-    pub content: Option<Arc<str>>,
-}
-
-#[pymethods]
-impl PyFragment {
-    #[getter]
-    fn content(&self) -> Option<&str> {
-        self.content.as_deref()
-    }
-
-    fn to_dict<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
-        let dict = PyDict::new(py);
-        dict.set_item("path", &self.path)?;
-        dict.set_item("lines", &self.lines)?;
-        dict.set_item("kind", &self.kind)?;
-        if let Some(ref s) = self.symbol {
-            dict.set_item("symbol", s)?;
-        }
-        if let Some(ref c) = self.content {
-            dict.set_item("content", c.as_ref())?;
-        }
-        Ok(dict)
-    }
-
-    fn __repr__(&self) -> String {
-        match &self.symbol {
-            Some(s) => format!("PyFragment({} {} {})", self.path, self.kind, s),
-            None => format!("PyFragment({} {} {})", self.path, self.kind, self.lines),
-        }
-    }
-}
-
-impl From<&FragmentEntry> for PyFragment {
-    fn from(entry: &FragmentEntry) -> Self {
-        Self {
-            path: entry.path.clone(),
-            lines: entry.lines.clone(),
-            kind: entry.kind.clone(),
-            symbol: entry.symbol.clone(),
-            content: entry.content.clone(),
-        }
-    }
-}
-
-#[pyclass(skip_from_py_object)]
-#[derive(Clone)]
-pub struct DiffContextResult {
-    #[pyo3(get)]
-    pub name: String,
-    #[pyo3(get)]
-    pub fragment_count: usize,
-    fragments: Vec<PyFragment>,
-}
-
-#[pymethods]
-impl DiffContextResult {
-    #[getter]
-    fn fragments(&self) -> Vec<PyFragment> {
-        self.fragments.clone()
-    }
-
-    fn to_dict<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
-        let dict = PyDict::new(py);
-        dict.set_item("name", &self.name)?;
-        dict.set_item("type", "diff_context")?;
-        dict.set_item("fragment_count", self.fragment_count)?;
-
-        let frag_list = PyList::empty(py);
-        for frag in &self.fragments {
-            frag_list.append(frag.to_dict(py)?)?;
-        }
-        dict.set_item("fragments", frag_list)?;
-
-        Ok(dict)
-    }
-
-    fn to_yaml(&self) -> PyResult<String> {
-        let output = self.to_serializable();
-        serde_yaml::to_string(&output).map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!(
-                "failed to serialize DiffContextResult to YAML: {e}"
-            ))
-        })
-    }
-
-    fn to_json(&self) -> PyResult<String> {
-        let output = self.to_serializable();
-        serde_json::to_string_pretty(&output).map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!(
-                "failed to serialize DiffContextResult to JSON: {e}"
-            ))
-        })
-    }
-
-    fn __len__(&self) -> usize {
-        self.fragment_count
-    }
-
-    fn __repr__(&self) -> String {
-        format!(
-            "DiffContextResult(name='{}', fragments={})",
-            self.name, self.fragment_count
-        )
-    }
-
-    fn __iter__(slf: PyRef<'_, Self>) -> FragmentIterator {
-        FragmentIterator {
-            fragments: slf.fragments.clone(),
-            index: 0,
-        }
-    }
-}
-
-impl DiffContextResult {
-    fn to_serializable(&self) -> DiffContextOutput {
-        DiffContextOutput {
-            name: self.name.clone(),
-            output_type: "diff_context".to_string(),
-            commit_message: None,
-            changed_files: Vec::new(),
-            deleted_files: Vec::new(),
-            renamed_files: Vec::new(),
-            lockfile_changes: Vec::new(),
-            fragment_count: self.fragment_count,
-            fragments: self
-                .fragments
-                .iter()
-                .map(|f| FragmentEntry {
-                    path: f.path.clone(),
-                    lines: f.lines.clone(),
-                    role: None,
-                    kind: f.kind.clone(),
-                    symbol: f.symbol.clone(),
-                    content: f.content.clone(),
-                })
-                .collect(),
-            latency: None,
-        }
-    }
-}
-
-impl From<DiffContextOutput> for DiffContextResult {
-    fn from(output: DiffContextOutput) -> Self {
-        let fragments: Vec<PyFragment> = output.fragments.iter().map(PyFragment::from).collect();
-        Self {
-            name: output.name,
-            fragment_count: output.fragment_count,
-            fragments,
-        }
-    }
-}
-
-#[pyclass]
-pub struct FragmentIterator {
-    fragments: Vec<PyFragment>,
-    index: usize,
-}
-
-#[pymethods]
-impl FragmentIterator {
-    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
-        slf
-    }
-
-    fn __next__(&mut self) -> Option<PyFragment> {
-        if self.index < self.fragments.len() {
-            let frag = self.fragments[self.index].clone();
-            self.index += 1;
-            Some(frag)
-        } else {
-            None
-        }
-    }
-}
-
 #[pyfunction]
 #[pyo3(signature = (
     root_dir,
@@ -243,6 +57,14 @@ fn build_diff_context<'py>(
     scoring_mode: &str,
     timeout: u64,
 ) -> PyResult<Bound<'py, PyDict>> {
+    // None of these three are implemented in the Rust backend yet. Silently
+    // dropping them here would be invisible: `tracing_subscriber` is only
+    // ever installed in the native binary (main.rs), never in this extension
+    // module, so `tracing::warn!` has no sink and no one ever sees it. The
+    // real guard lives one layer up, in `diffctx._native.pipeline.build_diff_context`,
+    // which raises `NotImplementedError` for a non-default value of any of
+    // the three before this function is ever called - keep that in sync if a
+    // flag ever gets implemented here.
     if ignore_file.is_some() {
         tracing::warn!("ignore_file is not yet implemented in Rust backend, ignored");
     }
@@ -514,6 +336,23 @@ fn diff_context_output_to_dict<'py>(
 }
 
 #[pyfunction]
+#[pyo3(signature = (root_dir, diff_range, timeout = DEFAULT_PIPELINE_TIMEOUT_SECONDS))]
+fn get_raw_diff_text(
+    py: Python<'_>,
+    root_dir: &str,
+    diff_range: &str,
+    timeout: u64,
+) -> PyResult<String> {
+    let range = if diff_range.is_empty() {
+        None
+    } else {
+        Some(diff_range)
+    };
+    py.detach(|| pipeline::raw_diff_text(Path::new(root_dir), range, timeout))
+        .map_err(map_pipeline_err)
+}
+
+#[pyfunction]
 fn get_language_for_file(path: &str) -> Option<String> {
     crate::languages::get_language_for_file(path).map(|s| s.to_string())
 }
@@ -664,13 +503,11 @@ fn hotspots<'py>(
         top,
         root,
         cats.as_ref(),
-        None,
     );
     let mut out = Vec::with_capacity(entries.len());
     for entry in entries {
         let details = PyDict::new(py);
         details.set_item("out_degree", entry.out_degree)?;
-        details.set_item("churn", entry.churn)?;
         out.push((entry.path.to_string(), entry.score, details));
     }
     Ok(out)
@@ -781,6 +618,7 @@ pub fn _diffctx(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(compute_scored_state, m)?)?;
     m.add_function(wrap_pyfunction!(select_with_params, m)?)?;
     m.add_class::<PyScoredState>()?;
+    m.add_function(wrap_pyfunction!(get_raw_diff_text, m)?)?;
     m.add_function(wrap_pyfunction!(get_language_for_file, m)?)?;
     m.add_function(wrap_pyfunction!(count_tokens, m)?)?;
     m.add_function(wrap_pyfunction!(build_project_graph, m)?)?;
@@ -792,8 +630,6 @@ pub fn _diffctx(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(graph_to_json_string, m)?)?;
     m.add_function(wrap_pyfunction!(graph_to_graphml_string, m)?)?;
     m.add_function(wrap_pyfunction!(graph_summary, m)?)?;
-    m.add_class::<DiffContextResult>()?;
-    m.add_class::<PyFragment>()?;
     m.add_class::<PyProjectGraph>()?;
     m.add_class::<PyQuotientGraph>()?;
     m.add_class::<PyModuleMetrics>()?;

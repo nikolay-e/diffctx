@@ -1,0 +1,229 @@
+# action.yml
+name: diffctx LLM Diff Context
+description: >-
+  Select the minimal code context needed to understand a git diff.
+author: Nikolay Eremeev
+
+branding:
+  icon: crosshair
+  color: purple
+
+inputs:
+  path:
+    description: Directory to analyze, relative to the workspace.
+    required: false
+    default: '.'
+
+  diff-range:
+    description: >-
+      Git range for `diffctx --diff`, e.g. `main..HEAD` or `<base>..<head>`.
+      Left empty it resolves to the pull request base..head on pull_request
+      events and to `HEAD~1..HEAD` everywhere else.
+    required: false
+    default: ''
+
+  budget:
+    description: >-
+      Token budget (`--budget`): empty = auto, `N` = fixed cap, `-1` =
+      unlimited, `0` = strict-zero floor.
+    required: false
+    default: ''
+
+  scoring:
+    description: >-
+      Scoring mode (`--scoring`): `ego` = bounded expansion around the changed
+      nodes, `ppr` = Personalized PageRank, `bm25` = lexical retrieval.
+    required: false
+    default: ego
+
+  tau:
+    description: >-
+      Relevance threshold for full fragment content (`--tau`, default 0.12);
+      lower keeps more surrounding context.
+    required: false
+    default: ''
+
+  alpha:
+    description: >-
+      PPR damping (`--alpha`, default 0.60); only affects `scoring: ppr`.
+    required: false
+    default: ''
+
+  full:
+    description: >-
+      Emit every fragment of the changed files and no related code (`--full`);
+      ignores budget, tau, alpha and scoring.
+    required: false
+    default: 'false'
+
+  format:
+    description: >-
+      Output format (`--format`): `md`, `yaml`, `json` or `txt`.
+    required: false
+    default: md
+
+  output-path:
+    description: >-
+      Where to write the context. Empty writes to
+      `$RUNNER_TEMP/diffctx-context.<ext>` so the analyzed working tree stays
+      clean.
+    required: false
+    default: ''
+
+  timeout:
+    description: >-
+      Wall-clock deadline in seconds for the analysis (`--timeout`, default
+      300); on expiry diffctx aborts instead of hanging.
+    required: false
+    default: ''
+
+  fail-on-empty:
+    description: >-
+      Fail the step when diffctx finds no semantic context (CLI exit code 4)
+      instead of only reporting it through the `empty` output.
+    required: false
+    default: 'false'
+
+  diffctx-version:
+    description: Exact diffctx release installed from PyPI.
+    required: false
+    default: 1.12.3
+  python-version:
+    description: Python interpreter used for the isolated diffctx install.
+    required: false
+    default: '3.12'
+
+outputs:
+  context-file:
+    description: Absolute path of the written context file.
+    value: ${{ steps.context.outputs.context-file }}
+
+  token-count:
+    description: Exact o200k_base token count of the context file.
+    value: ${{ steps.context.outputs.token-count }}
+
+  byte-size:
+    description: Size of the context file in bytes.
+    value: ${{ steps.context.outputs.byte-size }}
+
+  diff-range:
+    description: Git range that was actually analyzed.
+    value: ${{ steps.context.outputs.diff-range }}
+
+  empty:
+    description: '`true` when diffctx found no semantic context for the range.'
+    value: ${{ steps.context.outputs.empty }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    # A dedicated venv rather than pipx: the pinned wheel must be importable by
+    # an interpreter this action controls, so the token count is produced by the
+    # very tokenizer that enforced the budget. It also keeps diffctx out of the
+    # consumer's own Python environment.
+    - name: Install diffctx
+      id: install
+      shell: bash
+      env:
+        DIFFCTX_VERSION: ${{ inputs.diffctx-version }}
+      run: |
+        set -euo pipefail
+        venv="${RUNNER_TEMP}/diffctx-venv"
+        python3 -m venv "$venv"
+        "$venv/bin/python" -m pip install --quiet --disable-pip-version-check \
+          "diffctx==${DIFFCTX_VERSION}"
+        "$venv/bin/diffctx" --version
+        echo "venv=$venv" >> "$GITHUB_OUTPUT"
+
+    - name: Build diff context
+      id: context
+      shell: bash
+      env:
+        VENV: ${{ steps.install.outputs.venv }}
+        IN_PATH: ${{ inputs.path }}
+        IN_RANGE: ${{ inputs.diff-range }}
+        IN_BUDGET: ${{ inputs.budget }}
+        IN_SCORING: ${{ inputs.scoring }}
+        IN_TAU: ${{ inputs.tau }}
+        IN_ALPHA: ${{ inputs.alpha }}
+        IN_FULL: ${{ inputs.full }}
+        IN_FORMAT: ${{ inputs.format }}
+        IN_OUTPUT_PATH: ${{ inputs.output-path }}
+        IN_TIMEOUT: ${{ inputs.timeout }}
+        IN_FAIL_ON_EMPTY: ${{ inputs.fail-on-empty }}
+        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      run: |
+        set -euo pipefail
+
+        range="$IN_RANGE"
+        if [ -z "$range" ]; then
+          if [ -n "$PR_BASE_SHA" ] && [ -n "$PR_HEAD_SHA" ]; then
+            range="${PR_BASE_SHA}..${PR_HEAD_SHA}"
+          else
+            range="HEAD~1..HEAD"
+          fi
+        fi
+
+        case "$IN_FORMAT" in
+          md | yaml | json | txt) ext="$IN_FORMAT" ;;
+          *)
+            echo "::error::unsupported format '$IN_FORMAT' (md, yaml, json, txt)"
+            exit 2
+            ;;
+        esac
+
+        out="$IN_OUTPUT_PATH"
+        if [ -z "$out" ]; then
+          out="${RUNNER_TEMP}/diffctx-context.${ext}"
+        fi
+        mkdir -p "$(dirname "$out")"
+
+        args=("$IN_PATH" --diff "$range")
+        args+=(--format "$IN_FORMAT" --output-file "$out")
+        if [ "$IN_FULL" = "true" ]; then
+          args+=(--full)
+        else
+          args+=(--scoring "$IN_SCORING")
+          if [ -n "$IN_BUDGET" ]; then args+=(--budget "$IN_BUDGET"); fi
+          if [ -n "$IN_TAU" ]; then args+=(--tau "$IN_TAU"); fi
+          if [ -n "$IN_ALPHA" ]; then args+=(--alpha "$IN_ALPHA"); fi
+        fi
+        if [ -n "$IN_TIMEOUT" ]; then args+=(--timeout "$IN_TIMEOUT"); fi
+
+        status=0
+        "$VENV/bin/diffctx" "${args[@]}" || status=$?
+
+        empty=false
+        if [ "$status" -eq 4 ]; then
+          empty=true
+        elif [ "$status" -ne 0 ]; then
+          exit "$status"
+        fi
+
+        abs_out="$(cd "$(dirname "$out")" && pwd)/$(basename "$out")"
+        counter='import sys, pathlib, diffctx.tokens as t;'
+        counter=$counter'text = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8");'
+        counter=$counter'print(t.count_tokens(text).count)'
+        tokens="$("$VENV/bin/python" -c "$counter" "$abs_out")"
+        size="$(wc -c <"$abs_out" | tr -d '[:space:]')"
+
+        {
+          echo "context-file=$abs_out"
+          echo "token-count=$tokens"
+          echo "byte-size=$size"
+          echo "diff-range=$range"
+          echo "empty=$empty"
+        } >>"$GITHUB_OUTPUT"
+
+        echo "::notice::diffctx selected $tokens tokens ($size bytes) for $range"
+
+        if [ "$empty" = "true" ] && [ "$IN_FAIL_ON_EMPTY" = "true" ]; then
+          echo "::error::diffctx found no semantic context for $range"
+          exit 4
+        fi

@@ -539,4 +539,61 @@ mod tests {
         assert!(!xml.contains("ham&eggs"));
         assert!(xml.contains("<data key=\"d_tokens\">7</data>"));
     }
+
+    #[test]
+    fn export_stays_cap_consistent_when_edge_cap_fires() {
+        use crate::graph::DEFAULT_MAX_OUT_EDGES_PER_NODE;
+
+        let hub = make_fragment("hub.rs", 1, 10, Some("hub"));
+        let mut frags = vec![hub.clone()];
+        let mut edges: FxHashMap<(FragmentId, FragmentId), f64> = FxHashMap::default();
+        let mut cats: FxHashMap<(FragmentId, FragmentId), EdgeCategory> = FxHashMap::default();
+
+        let n_leaves = DEFAULT_MAX_OUT_EDGES_PER_NODE + 10;
+        for i in 0..n_leaves {
+            let leaf = make_fragment(&format!("leaf_{i}.rs"), 1, 10, None);
+            edges.insert((hub.id.clone(), leaf.id.clone()), 1.0 + i as f64);
+            cats.insert((hub.id.clone(), leaf.id.clone()), EdgeCategory::Semantic);
+            frags.push(leaf);
+        }
+
+        let graph = build_graph(&frags, edges, cats);
+        assert!(
+            graph.cap_stats.edges_dropped_by_cap > 0,
+            "fixture must actually exceed the per-source cap"
+        );
+
+        let frag_map = fragments_map(&frags);
+        let view = ProjectGraphView {
+            graph: &graph,
+            fragments: &frag_map,
+            root_dir: None,
+        };
+
+        let doc = graph_to_document(&view);
+        assert_eq!(
+            doc.edge_count,
+            doc.edges.len(),
+            "edge_count must match the actually-exported edge list, not the pre-cap count"
+        );
+        assert!(
+            doc.edges.iter().all(|e| e.weight > 0.0),
+            "no capped-away phantom edge may be exported with weight 0.0"
+        );
+
+        let xml = graph_to_graphml_string(&view);
+        let xml_edge_count = xml.matches("<edge ").count();
+        assert_eq!(
+            xml_edge_count, doc.edge_count,
+            "GraphML edge count must match the capped edge count too"
+        );
+
+        let summary = graph_summary(&view, 5);
+        assert_eq!(summary.edge_count, doc.edge_count);
+        let summary_type_total: usize = summary.edge_type_counts.values().sum();
+        assert_eq!(
+            summary_type_total, summary.edge_count,
+            "edge_type_counts must sum to the capped edge_count, not the pre-cap total"
+        );
+    }
 }

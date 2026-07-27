@@ -12,7 +12,7 @@ from pathlib import Path
 
 from eval.harness.common import (
     WORKERS,
-    apply_as_commit,
+    apply_gold_patch,
     ensure_repo,
     normalize_gold_path,
     parse_lines_field,
@@ -265,7 +265,8 @@ def evaluate_instance(
     if not repo_dir:
         return {"id": iid, "status": "clone_fail"}
 
-    if not apply_as_commit(repo_dir, inst["patch"]):
+    apply_outcome = apply_gold_patch(repo_dir, inst["patch"])
+    if not apply_outcome:
         subprocess.run(
             ["git", "-C", str(repo_dir), "checkout", "--force", inst["base_commit"]],
             capture_output=True,
@@ -303,6 +304,7 @@ def evaluate_instance(
     result = {
         "id": iid,
         "status": "ok",
+        "apply_mode": apply_outcome.mode,
         "language": inst["language"],
         "repo": inst["repo"],
         "elapsed_s": round(elapsed, 1),

@@ -21,10 +21,8 @@ jobs:
     name: Full yaml_cases suite
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    env:
-      MIN_PASS_COUNT: "2260"
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # stable
@@ -41,20 +39,34 @@ jobs:
           key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-
 
-      - name: Run full yaml_cases suite and gate on pass count
+      # ci.yml now gates every case per-case against
+      # tests/known_below_threshold.txt, so an aggregate pass count no longer
+      # adds protection — it could not name the regressing case anyway, and an
+      # improvement anywhere masked a regression elsewhere. What is still worth
+      # a nightly is the size of the baseline itself: with it bypassed, the raw
+      # failure count must not grow, and shrinking it is the visible work.
+      - name: Run full yaml_cases suite with the baseline bypassed
         working-directory: crates/diffctx-native
+        env:
+          DIFFCTX_YAML_IGNORE_BASELINE: "1"
         run: |
           set -o pipefail
-          cargo test --release --test yaml_cases 2>&1 | tee full_eval.log || true
+          cargo test --profile release-unwind --test yaml_cases 2>&1 | tee full_eval.log || true
           RESULT_LINE=$(grep -E '^test result:' full_eval.log | tail -1)
           echo "Result: ${RESULT_LINE}"
-          PASSED=$(echo "${RESULT_LINE}" | sed -E 's/.* ([0-9]+) passed.*/\1/')
-          if ! [ "${PASSED}" -eq "${PASSED}" ] 2>/dev/null; then
-            echo "Could not parse pass count from test output" >&2
+          FAILED=$(echo "${RESULT_LINE}" | sed -E 's/.* ([0-9]+) failed.*/\1/')
+          if ! [ "${FAILED}" -eq "${FAILED}" ] 2>/dev/null; then
+            echo "Could not parse failure count from test output" >&2
             exit 1
           fi
-          echo "Passed: ${PASSED} (gate: >= ${MIN_PASS_COUNT})"
-          if [ "${PASSED}" -lt "${MIN_PASS_COUNT}" ]; then
-            echo "Full-suite pass count ${PASSED} fell below ${MIN_PASS_COUNT} — ranking regression" >&2
+          BASELINE_SIZE=$(grep -cvE '^\s*(#|$)' tests/known_below_threshold.txt)
+          echo "Below threshold: ${FAILED} (baseline file lists ${BASELINE_SIZE})"
+          if [ "${FAILED}" -gt "${BASELINE_SIZE}" ]; then
+            echo "Below-threshold count ${FAILED} exceeds the ${BASELINE_SIZE} listed in" >&2
+            echo "tests/known_below_threshold.txt — a case regressed without being recorded." >&2
             exit 1
+          fi
+          if [ "${FAILED}" -lt "${BASELINE_SIZE}" ]; then
+            echo "::notice::${BASELINE_SIZE} baselined but only ${FAILED} still fail —" \
+                 "prune tests/known_below_threshold.txt"
           fi

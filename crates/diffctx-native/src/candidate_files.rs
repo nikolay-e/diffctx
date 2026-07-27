@@ -42,7 +42,7 @@ pub fn collect_candidate_files(root_dir: &Path, included_set: &FxHashSet<PathBuf
             .into_par_iter()
             .filter(|f| is_candidate_file(f, root_dir, included_set))
             .collect();
-        return files;
+        return filter_ignored_and_secret(root_dir, files);
     }
 
     let mut fallback: Vec<PathBuf> = Vec::new();
@@ -73,7 +73,31 @@ pub fn collect_candidate_files(root_dir: &Path, included_set: &FxHashSet<PathBuf
             fallback.push(path);
         }
     }
-    fallback
+    filter_ignored_and_secret(root_dir, fallback)
+}
+
+/// Discovery's candidate universe otherwise skips straight from a language
+/// check to the graph: an unchanged file a changed file imports would render
+/// as neighbour context even when `.diffctx/ignore` explicitly excludes it,
+/// or when it is secret-like (`id_rsa`, `*.pem`, ...) — `changed_files` is
+/// filtered this way already (`pipeline::compute_scored_state`), the
+/// discovery universe was not. One batched `git check-ignore` call covers
+/// every survivor of the language filter, so cost stays O(1) subprocess
+/// invocations regardless of repo size, and the final filter still runs in
+/// parallel via rayon.
+fn filter_ignored_and_secret(root_dir: &Path, files: Vec<PathBuf>) -> Vec<PathBuf> {
+    let rel_paths: Vec<String> = files
+        .iter()
+        .filter_map(|f| crate::pipeline::rel_path_string(root_dir, f))
+        .collect();
+    let ignored_rel_paths = git::find_ignored_paths(root_dir, &rel_paths);
+    files
+        .into_par_iter()
+        .filter(|f| {
+            !crate::pipeline::is_secret_path(f)
+                && !crate::pipeline::is_ignored_path(root_dir, f, &ignored_rel_paths)
+        })
+        .collect()
 }
 
 pub fn normalize_path(path: &Path, root_dir: &Path) -> PathBuf {
