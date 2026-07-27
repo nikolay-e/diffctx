@@ -24,8 +24,14 @@ Project-specific facts for `/qa`. Generic methodology lives in
 
 ## Tests
 
-- `pytest` — integration-only, ~600 tests, ~10 s. Known valid skip:
-  `test_clipboard.py` (Windows only).
+- `pytest` — integration-only, ~600 tests, ~2 min locally. Known valid
+  skip: `test_clipboard.py` (Windows only).
+- Local flake mode: `-n auto` on the M4 Pro means 14 xdist workers,
+  each CLI subprocess spawning a full rayon pool — under load the
+  global pytest-timeout (30 s since 27d6a3d6, was 10 s) fires on
+  varying tests. Timeout-only failures with a changing set across runs
+  = oversubscription, not a regression; never run `cargo test`
+  concurrently with pytest, it makes this worse.
 - `cargo test --lib` in `crates/diffctx-native` — inline units, ~171.
 - YAML corpus: `cargo test --test yaml_cases` (CI runs a 20-case sample
   via `DIFFCTX_YAML_CASES_LIMIT=20`; the full 2725-case corpus is gated
