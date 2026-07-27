@@ -99,8 +99,7 @@ filename_safe = st.text(
 
 yaml_safe_content = st.text(
     alphabet=st.characters(
-        blacklist_categories=("Cs", "Cc"),
-        whitelist_characters="\t\n",
+        blacklist_categories=("Cs",),
     ),
     min_size=1,
     max_size=200,

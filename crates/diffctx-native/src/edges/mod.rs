@@ -90,7 +90,11 @@ struct LoggedEmission {
 /// registration order reproduces `dedup_compact_edges` semantics exactly
 /// (each pair counted once, category from the first builder that
 /// produced it) and yields per-node in-degree, per-source out-degree,
-/// the semantic distinct-file fan counts, and the sorted category table.
+/// the semantic distinct-file fan counts, and a sorted `(src, dst) ->
+/// category` lookup used only internally by pass 2 (below) — it is
+/// *not* returned to the caller; `assemble_graph` derives the exported
+/// category table from the post-cap edges instead, which is what keeps
+/// it aligned with the CSR (see `graph::assemble_graph`).
 ///
 /// Pass 2 replays the log instead of rerunning the builders, damps each
 /// emission on the fly with the pass-1 hub-suppression factors — always
@@ -257,7 +261,6 @@ pub fn collect_capped_edges(
         node_to_idx,
         idx_to_node,
         edges,
-        category_entries,
         cap_stats,
     }
 }

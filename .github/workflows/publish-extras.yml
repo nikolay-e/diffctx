@@ -93,11 +93,53 @@ jobs:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
+      # The in-repo version is the literal string "0.0.0-placeholder". If the
+      # patch step above is ever refactored or mis-pathed, npm publishes that
+      # placeholder and exits 0 — and install.js then derives an asset name
+      # with no matching checksum, so every `npx diffctx` dies. Assert before
+      # the publish rather than discovering it from user reports.
+      - name: Assert package version was set
+        working-directory: ./packaging/npm
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          ACTUAL=$(node -p "require('./package.json').version")
+          echo "package.json version: $ACTUAL (expected $VERSION)"
+          test "$ACTUAL" = "$VERSION"
+          test -f checksums.json
+          node -e "
+            const c = require('./checksums.json');
+            const n = Object.keys(c).length;
+            if (n === 0) { throw new Error('checksums.json is empty'); }
+            for (const k of Object.keys(c)) {
+              if (!k.includes(process.env.VERSION)) {
+                throw new Error('checksum key does not carry the version: ' + k);
+              }
+            }
+            console.log('checksums.json: ' + n + ' assets, all version-tagged');
+          "
+
       - name: Publish
         working-directory: ./packaging/npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --access public --provenance
+
+      # install.js is the script every `npx diffctx` runs, and nothing executed
+      # it before this step existed.
+      - name: Smoke the published package
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          WORK=$(mktemp -d)
+          cd "$WORK"
+          npm init -y >/dev/null
+          for attempt in 1 2 3 4 5; do
+            if npm install "diffctx@$VERSION"; then break; fi
+            echo "npm registry not settled yet (attempt $attempt); retrying"
+            sleep 20
+          done
+          ./node_modules/.bin/diffctx --version
 
   dockerhub:
     name: Mirror image to Docker Hub

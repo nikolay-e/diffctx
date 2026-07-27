@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::path::Path;
 use std::sync::Arc;
 
 use once_cell::sync::Lazy;
@@ -910,7 +911,31 @@ fn file_extension(path: &str) -> &str {
 
 fn find_lang_config(path: &str) -> Option<&'static LangConfig> {
     let ext = file_extension(path).to_ascii_lowercase();
-    LANG_CONFIGS.iter().find(|c| c.extension == ext)
+    if let Some(config) = LANG_CONFIGS.iter().find(|c| c.extension == ext) {
+        return Some(config);
+    }
+    find_lang_config_by_filename(path)
+}
+
+// CMakeLists.txt and Makefile/GNUmakefile have compiled-in grammars
+// (LANG_CONFIGS ts_name "cmake"/"make") but no extension of their own — the
+// dot-suffix lookup above yields ".txt" and "" respectively, so they never
+// matched. Reuse the crate's shared filename map instead of hand-rolling a
+// second filename list here; "makefile" is normalized to the "make" ts_name
+// because languages::FILENAME_TO_LANGUAGE keeps the friendlier external
+// string ("makefile") for the markdown-code-fence / discoverability surface.
+fn find_lang_config_by_filename(path: &str) -> Option<&'static LangConfig> {
+    let name_lower = Path::new(path)
+        .file_name()?
+        .to_string_lossy()
+        .to_lowercase();
+    let language = *crate::languages::FILENAME_TO_LANGUAGE.get(name_lower.as_str())?;
+    let ts_name = if language == "makefile" {
+        "make"
+    } else {
+        language
+    };
+    LANG_CONFIGS.iter().find(|c| c.ts_name == ts_name)
 }
 
 static LANGUAGE_CACHE: Lazy<FxHashMap<&'static str, Language>> = Lazy::new(|| {
@@ -1085,6 +1110,20 @@ fn parse_with_cached_parser(
             Some(ParseOptions::new().progress_callback(&mut progress)),
         )
     })
+}
+
+// Additive observability probe: the fragmentation pipeline itself never
+// inspects `Node::has_error`, so a mostly-ERROR tree (unbalanced brace,
+// stray merge-conflict marker, truncated mid-refactor file) is currently
+// indistinguishable from a clean parse to every caller -- both just
+// produce a Vec<Fragment>. This exposes that signal without changing any
+// existing return path; nothing in `fragment()` calls it yet.
+#[allow(dead_code)]
+pub(crate) fn parse_has_error(path: &str, content: &str) -> Option<bool> {
+    let config = find_lang_config(path)?;
+    let language = get_tree_sitter_language(config.ts_name)?;
+    let tree = parse_with_cached_parser(config.ts_name, &language, content)?;
+    Some(tree.root_node().has_error())
 }
 
 fn node_start_line(node: &Node) -> u32 {
@@ -1655,5 +1694,482 @@ impl FragmentationStrategy for TreeSitterStrategy {
         fragments.extend(gap_frags);
 
         fragments
+    }
+}
+
+#[cfg(test)]
+mod grammar_tests {
+    use super::*;
+    use std::time::Instant;
+
+    struct Case {
+        ext: &'static str,
+        source: &'static str,
+        broken_tail: &'static str,
+        expected_kind: FragmentKind,
+        expected_symbol: Option<&'static str>,
+    }
+
+    // One representative construct per registered grammar (LANG_CONFIGS'
+    // 37 unique ts_names). expected_kind/expected_symbol are the real,
+    // observed extract_symbol_name/node_type_to_kind output for each
+    // snippet -- this is a characterization oracle: it locks in today's
+    // correct behavior so a regression in either function (e.g. dropping
+    // a field name from the ["name", "declarator", "type"] probe order,
+    // or a NODE_TYPE_KEYWORDS edit) is caught even though every anchor-line
+    // YAML case still passes.
+    const CASES: &[Case] = &[
+        Case {
+            ext: "py",
+            source: "def foo():\n    pass\n",
+            broken_tail: "def bar(\n",
+            expected_kind: FragmentKind::Function,
+            expected_symbol: Some("foo"),
+        },
+        Case {
+            ext: "js",
+            source: "function foo() {\n  return 1;\n}\n",
+            broken_tail: "function bar(\n",
+            expected_kind: FragmentKind::Function,
+            expected_symbol: Some("foo"),
+        },
+        Case {
+            ext: "jsx",
+            source: "function Foo() {\n  return null;\n}\n",
+            broken_tail: "function Bar(\n",
+            expected_kind: FragmentKind::Function,
+            expected_symbol: Some("Foo"),
+        },
+        Case {
+            ext: "ts",
+            source: "function foo(): number {\n  return 1;\n}\n",
+            broken_tail: "function bar(\n",
+            expected_kind: FragmentKind::Function,
+            expected_symbol: Some("foo"),
+        },
+        Case {
+            ext: "tsx",
+            source: "function Foo() {\n  return null;\n}\n",
+            broken_tail: "function Bar(\n",
+            expected_kind: FragmentKind::Function,
+            expected_symbol: Some("Foo"),
+        },
+        Case {
+            ext: "go",
+            source: "package main\n\nfunc Foo() int {\n  return 1\n}\n",
+            broken_tail: "func Bar(\n",
+            expected_kind: FragmentKind::Function,
+            expected_symbol: Some("Foo"),
+        },
+        Case {
+            ext: "rs",
+            source: "fn foo() -> i32 {\n    1\n}\n",
+            broken_tail: "fn bar(\n",
+            expected_kind: FragmentKind::Function,
+            expected_symbol: Some("foo"),
+        },
+        Case {
+            ext: "java",
+            source: "class Foo {\n  void bar() {}\n}\n",
+            broken_tail: "class Bar {\n",
+            expected_kind: FragmentKind::Class,
+            expected_symbol: Some("Foo"),
+        },
+        // C's function name lives behind child_by_field_name("declarator")
+        // -> unwrap_declarator, not a direct "name" field: this is the
+        // anchor case for TESTS.md's "deleting the declarator entry must
+        // fail cargo test --lib" requirement.
+        Case {
+            ext: "c",
+            source: "int foo() {\n    return 0;\n}\n",
+            broken_tail: "int bar(\n",
+            expected_kind: FragmentKind::Function,
+            expected_symbol: Some("foo"),
+        },
+        Case {
+            ext: "cpp",
+            source: "class Foo {\npublic:\n    void bar();\n};\n",
+            broken_tail: "class Bar {\n",
+            expected_kind: FragmentKind::Class,
+            expected_symbol: Some("Foo"),
+        },
+        Case {
+            ext: "cs",
+            source: "class Foo {\n    void Bar() {}\n}\n",
+            broken_tail: "class Bar {\n",
+            expected_kind: FragmentKind::Class,
+            expected_symbol: Some("Foo"),
+        },
+        Case {
+            ext: "php",
+            source: "<?php\nfunction foo() {\n    return 1;\n}\n",
+            broken_tail: "function bar(\n",
+            expected_kind: FragmentKind::Function,
+            expected_symbol: Some("foo"),
+        },
+        Case {
+            ext: "scala",
+            source: "class Foo {\n  def bar(): Int = 1\n}\n",
+            broken_tail: "class Bar {\n",
+            expected_kind: FragmentKind::Class,
+            expected_symbol: Some("Foo"),
+        },
+        Case {
+            ext: "swift",
+            source: "class Foo {\n  func bar() {}\n}\n",
+            broken_tail: "class Bar {\n",
+            expected_kind: FragmentKind::Class,
+            expected_symbol: Some("Foo"),
+        },
+        Case {
+            ext: "rb",
+            source: "def foo\n  1\nend\n",
+            broken_tail: "def bar\n",
+            expected_kind: FragmentKind::Function,
+            expected_symbol: Some("foo"),
+        },
+        Case {
+            ext: "sh",
+            source: "foo() {\n  echo hi\n}\n",
+            broken_tail: "bar() {\n",
+            expected_kind: FragmentKind::Function,
+            expected_symbol: Some("foo"),
+        },
+        Case {
+            ext: "css",
+            source: ".foo {\n  color: red;\n}\n",
+            broken_tail: ".bar {\n",
+            expected_kind: FragmentKind::Definition,
+            expected_symbol: None,
+        },
+        Case {
+            ext: "hs",
+            source: "foo :: Int\nfoo = 1\n",
+            broken_tail: "bar ::\n",
+            expected_kind: FragmentKind::Declaration,
+            expected_symbol: Some("foo"),
+        },
+        Case {
+            ext: "ex",
+            source: "def foo do\n  1\nend\n",
+            broken_tail: "def bar do\n",
+            expected_kind: FragmentKind::Definition,
+            expected_symbol: None,
+        },
+        Case {
+            ext: "lua",
+            source: "function foo()\n  return 1\nend\n",
+            broken_tail: "function bar(\n",
+            expected_kind: FragmentKind::Function,
+            expected_symbol: Some("foo"),
+        },
+        // extract_symbol_name resolves to the literal "function" keyword
+        // node here, not the assigned-to identifier `foo` -- an existing
+        // R-grammar quirk (the definition_type is the anonymous
+        // `function() {}` expression, not the `foo <-` assignment around
+        // it). Locked in as-is; not something this task's scope fixes.
+        Case {
+            ext: "r",
+            source: "foo <- function() {\n  1\n}\n",
+            broken_tail: "bar <- function(\n",
+            expected_kind: FragmentKind::Function,
+            expected_symbol: Some("function"),
+        },
+        Case {
+            ext: "erl",
+            source: "foo() -> 1.\n",
+            broken_tail: "bar(\n",
+            expected_kind: FragmentKind::Function,
+            expected_symbol: Some("foo"),
+        },
+        Case {
+            ext: "jl",
+            source: "function foo()\n    1\nend\n",
+            broken_tail: "function bar(\n",
+            expected_kind: FragmentKind::Function,
+            expected_symbol: None,
+        },
+        Case {
+            ext: "zig",
+            source: "fn foo() void {}\n",
+            broken_tail: "fn bar(\n",
+            expected_kind: FragmentKind::Function,
+            expected_symbol: Some("foo"),
+        },
+        Case {
+            ext: "clj",
+            source: "(defn foo [] 1)\n",
+            broken_tail: "(defn bar [\n",
+            expected_kind: FragmentKind::Definition,
+            expected_symbol: None,
+        },
+        Case {
+            ext: "nix",
+            source: "{ foo = 1; }\n",
+            broken_tail: "bar =\n",
+            expected_kind: FragmentKind::Variable,
+            expected_symbol: None,
+        },
+        Case {
+            ext: "groovy",
+            source: "class Foo {\n  void bar() {}\n}\n",
+            broken_tail: "class Bar {\n",
+            expected_kind: FragmentKind::Class,
+            expected_symbol: Some("Foo"),
+        },
+        Case {
+            ext: "m",
+            source: "@interface Foo\n@end\n",
+            broken_tail: "@interface Bar\n",
+            expected_kind: FragmentKind::Class,
+            expected_symbol: None,
+        },
+        Case {
+            ext: "dart",
+            source: "class Foo {\n  void bar() {}\n}\n",
+            broken_tail: "class Bar {\n",
+            expected_kind: FragmentKind::Class,
+            expected_symbol: Some("Foo"),
+        },
+        Case {
+            ext: "graphql",
+            source: "type Foo {\n  bar: String\n}\n",
+            broken_tail: "type Bar {\n",
+            expected_kind: FragmentKind::Type,
+            expected_symbol: None,
+        },
+        Case {
+            ext: "prisma",
+            source: "model Foo {\n  id Int @id\n}\n",
+            broken_tail: "model Bar {\n",
+            expected_kind: FragmentKind::Record,
+            expected_symbol: None,
+        },
+        Case {
+            ext: "svelte",
+            source: "<script>\n  let x = 1;\n</script>\n",
+            broken_tail: "<script>\nlet y =\n",
+            expected_kind: FragmentKind::Definition,
+            expected_symbol: None,
+        },
+        Case {
+            ext: "tf",
+            source: "resource \"foo\" \"bar\" {\n  baz = 1\n}\n",
+            broken_tail: "resource \"bar\" \"baz\" {\n",
+            expected_kind: FragmentKind::Definition,
+            expected_symbol: None,
+        },
+        Case {
+            ext: "cmake",
+            source: "function(foo)\nendfunction()\n",
+            broken_tail: "function(bar\n",
+            expected_kind: FragmentKind::Function,
+            expected_symbol: None,
+        },
+        Case {
+            ext: "mk",
+            source: "foo:\n\techo hi\n",
+            broken_tail: "bar:\n\tunterminated \\\n",
+            expected_kind: FragmentKind::Definition,
+            expected_symbol: None,
+        },
+        Case {
+            ext: "yaml",
+            source: "foo: bar\n",
+            broken_tail: "bar:\n  nested:\n    - unterminated [\n",
+            expected_kind: FragmentKind::Definition,
+            expected_symbol: None,
+        },
+        Case {
+            ext: "json",
+            source: "{\"foo\": 1}\n",
+            broken_tail: "\"bar\": {\n",
+            expected_kind: FragmentKind::Definition,
+            expected_symbol: None,
+        },
+        Case {
+            ext: "html",
+            source: "<div id=\"foo\"></div>\n",
+            broken_tail: "<div id=\"bar\"\n",
+            expected_kind: FragmentKind::Definition,
+            expected_symbol: None,
+        },
+    ];
+
+    fn fragment_ext(ext: &str, source: &str) -> Vec<Fragment> {
+        TreeSitterStrategy::new().fragment(Arc::from(format!("case.{ext}")), source)
+    }
+
+    fn fragment_named(name: &str, source: &str) -> Vec<Fragment> {
+        TreeSitterStrategy::new().fragment(Arc::from(name), source)
+    }
+
+    #[test]
+    fn representative_construct_per_grammar_reports_symbol_and_kind() {
+        for case in CASES {
+            let frags = fragment_ext(case.ext, case.source);
+            assert!(
+                !frags.is_empty(),
+                "{}: expected at least one fragment",
+                case.ext
+            );
+            let first = &frags[0];
+            assert_eq!(
+                first.kind, case.expected_kind,
+                "{}: kind mismatch (got {:?})",
+                case.ext, first.kind
+            );
+            assert_eq!(
+                first.symbol_name.as_deref(),
+                case.expected_symbol,
+                "{}: symbol_name mismatch (got {:?})",
+                case.ext,
+                first.symbol_name
+            );
+        }
+    }
+
+    // Regression for parsers/mod.rs:32: a syntactically broken file must
+    // still (a) never panic, (b) never report a fragment span outside the
+    // file, and (c) keep the symbol_name of any definition that appears
+    // before the broken region -- the failure mode under test is
+    // create_code_gap_fragments silently swallowing everything into a
+    // symbol_name: None blob once tree-sitter's ERROR recovery kicks in.
+    #[test]
+    fn broken_file_per_grammar_does_not_panic_and_keeps_valid_spans() {
+        for case in CASES {
+            let broken = format!("{}\n{}", case.source, case.broken_tail);
+            let total_lines = broken.split('\n').count() as u32;
+            let frags = fragment_ext(case.ext, &broken);
+
+            for f in &frags {
+                assert!(
+                    f.id.start_line >= 1,
+                    "{}: start_line must be >= 1",
+                    case.ext
+                );
+                assert!(
+                    f.id.start_line <= f.id.end_line,
+                    "{}: start_line must be <= end_line",
+                    case.ext
+                );
+                assert!(
+                    f.id.end_line <= total_lines,
+                    "{}: end_line {} exceeds file length {}",
+                    case.ext,
+                    f.id.end_line,
+                    total_lines
+                );
+            }
+
+            // Gap-filling Chunk fragments (create_code_gap_fragments) are
+            // the ones whose non-overlap is an actual algorithmic
+            // guarantee (built from a disjoint covered-line complement);
+            // semantic definition fragments can legitimately nest (e.g. an
+            // outer container header plus an inner definition sharing a
+            // line), so only the chunk set is checked for disjointness.
+            let mut chunk_spans: Vec<(u32, u32)> = frags
+                .iter()
+                .filter(|f| f.kind == FragmentKind::Chunk && f.symbol_name.is_none())
+                .map(|f| (f.id.start_line, f.id.end_line))
+                .collect();
+            chunk_spans.sort_unstable();
+            for w in chunk_spans.windows(2) {
+                assert!(
+                    w[0].1 < w[1].0,
+                    "{}: gap-fill chunks overlap: {:?}",
+                    case.ext,
+                    w
+                );
+            }
+
+            if let Some(expected_symbol) = case.expected_symbol {
+                assert!(
+                    frags
+                        .iter()
+                        .any(|f| f.symbol_name.as_deref() == Some(expected_symbol)
+                            && f.kind == case.expected_kind),
+                    "{}: definition before the error point lost its symbol_name/kind",
+                    case.ext
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn every_lang_config_extension_is_discoverable_via_extension_to_language() {
+        for config in LANG_CONFIGS {
+            assert!(
+                crate::languages::EXTENSION_TO_LANGUAGE.contains_key(config.extension),
+                "LANG_CONFIGS extension {:?} (ts_name {:?}) has no EXTENSION_TO_LANGUAGE \
+                 entry, so candidate_files.rs silently excludes it from discovery even \
+                 though a grammar exists for it",
+                config.extension,
+                config.ts_name
+            );
+        }
+    }
+
+    #[test]
+    fn cmake_and_makefile_filenames_dispatch_to_their_compiled_grammars() {
+        let cmake_frags = fragment_named("CMakeLists.txt", "function(foo)\nendfunction()\n");
+        assert!(
+            cmake_frags.iter().any(|f| f.kind == FragmentKind::Function),
+            "CMakeLists.txt should route through the cmake grammar via find_lang_config_by_filename"
+        );
+
+        let make_frags = fragment_named("Makefile", "foo:\n\techo hi\n");
+        assert!(
+            !make_frags.is_empty(),
+            "Makefile should route through the make grammar via find_lang_config_by_filename"
+        );
+    }
+
+    #[test]
+    fn parse_error_is_observable_via_has_error_probe() {
+        let clean = "def foo():\n    pass\n";
+        let broken = "def foo(\n    pass\n";
+        assert_eq!(parse_has_error("clean.py", clean), Some(false));
+        assert_eq!(parse_has_error("broken.py", broken), Some(true));
+        assert_eq!(parse_has_error("no_grammar.unknownext", clean), None);
+    }
+
+    // Regression for tree_sitter_strategy.rs:1055 (PARSE_TIMEOUT / minified
+    // files): a ~230KB single-line minified bundle collapses every
+    // definition onto physical line 1, so line-granularity fragmentation
+    // cannot separate them. The dangerous failure mode is unbounded output
+    // (one fragment per repeated construct, or output size scaling with
+    // the pathological repeat count) -- this pins that the algorithm's
+    // existing dedup-by-(kind,end_line) keeps the fragment count bounded
+    // and no single fragment grows past the source itself.
+    #[test]
+    fn minified_single_line_bundle_yields_bounded_fragment_count() {
+        let n = 8000;
+        let mut content = String::with_capacity(n * 28);
+        for i in 0..n {
+            content.push_str(&format!("function f{i}(){{return {i};}}"));
+        }
+
+        let t0 = Instant::now();
+        let frags = fragment_named("bundle.min.js", &content);
+        assert!(
+            t0.elapsed() < Duration::from_secs(5),
+            "minified parse must not hang the pipeline"
+        );
+
+        assert!(
+            frags.len() < 100,
+            "pathological single-line repetition ({n} defs) must not explode fragment count: got {}",
+            frags.len()
+        );
+        for f in &frags {
+            // +1: create_snippet appends a trailing '\n' when the source
+            // line lacks one, so a whole-line fragment can be exactly one
+            // byte longer than the (newline-free) source.
+            assert!(
+                f.content.len() <= content.len() + 1,
+                "no fragment may exceed the source file size"
+            );
+        }
     }
 }

@@ -97,6 +97,11 @@ fn classify_semantic_edges(
 
         let (changed_frag, other_frag) = if src_changed { (src, dst) } else { (dst, src) };
 
+        // `graph.edge_categories` is capped in lockstep with the CSR
+        // (see `graph::assemble_graph`), so a categorized edge here is
+        // guaranteed to exist in the CSR too -- `fwd_w == rev_w == 0.0`
+        // can only mean a genuinely near-zero weight, never a
+        // capped-away phantom silently suppressing hub-noise filtering.
         let fwd_w = graph
             .forward_edge_weight(changed_frag, other_frag)
             .unwrap_or(0.0);
@@ -301,4 +306,92 @@ pub fn cap_context_fragments(
 
     result.sort_by(|a, b| a.id.cmp(&b.id));
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::FragmentKind;
+    use std::sync::Arc;
+
+    fn frag(path: &str, start: u32, end: u32) -> Fragment {
+        Fragment {
+            id: FragmentId::new(Arc::from(path), start, end),
+            kind: FragmentKind::Function,
+            content: Arc::from(""),
+            identifiers: FxHashSet::default(),
+            token_count: 10,
+            symbol_name: None,
+        }
+    }
+
+    #[test]
+    fn cap_context_fragments_output_is_sorted_and_shuffle_invariant() {
+        let changed_path = "changed.rs";
+        let mut core_ids: FxHashSet<FragmentId> = FxHashSet::default();
+        let mut fragments: Vec<Fragment> = Vec::new();
+        for i in 0..5u32 {
+            let f = frag(changed_path, i * 10, i * 10 + 5);
+            core_ids.insert(f.id.clone());
+            fragments.push(f);
+        }
+
+        let mut rel: FxHashMap<FragmentId, f64> = FxHashMap::default();
+        let over_cap_path = "hub.rs";
+        let n_context = FILTERING.max_context_fragments_per_file + 5;
+        for i in 0..n_context {
+            let f = frag(over_cap_path, (i as u32) * 10, (i as u32) * 10 + 5);
+            // Distinct, strictly descending scores: no ties, so the
+            // top-K selection itself is unambiguous and any remaining
+            // non-determinism can only come from the final id sort.
+            rel.insert(f.id.clone(), (n_context - i) as f64);
+            fragments.push(f);
+        }
+
+        let baseline = cap_context_fragments(fragments.clone(), &core_ids, &rel);
+
+        assert_eq!(
+            baseline.len(),
+            5 + FILTERING.max_context_fragments_per_file,
+            "core fragments bypass the per-file cap; context fragments truncate to it"
+        );
+
+        let baseline_ids: Vec<FragmentId> = baseline.iter().map(|f| f.id.clone()).collect();
+        let mut sorted_ids = baseline_ids.clone();
+        sorted_ids.sort();
+        assert_eq!(
+            baseline_ids, sorted_ids,
+            "cap_context_fragments output must be sorted by fragment id"
+        );
+
+        for shuffled in [
+            {
+                let mut v = fragments.clone();
+                v.reverse();
+                v
+            },
+            {
+                let mut v = fragments.clone();
+                v.rotate_left(7);
+                v
+            },
+            {
+                let mut v = fragments.clone();
+                v.sort_by(|a, b| {
+                    rel.get(&a.id)
+                        .copied()
+                        .unwrap_or(0.0)
+                        .total_cmp(&rel.get(&b.id).copied().unwrap_or(0.0))
+                });
+                v
+            },
+        ] {
+            let result = cap_context_fragments(shuffled, &core_ids, &rel);
+            let ids: Vec<FragmentId> = result.iter().map(|f| f.id.clone()).collect();
+            assert_eq!(
+                ids, baseline_ids,
+                "cap_context_fragments must be invariant under input ordering"
+            );
+        }
+    }
 }

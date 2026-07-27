@@ -564,7 +564,7 @@ pub fn select_with_params(
 /// DEFAULT_IGNORE_PATTERNS). Matches by file name only, so public keys (`*.pub`)
 /// stay visible. `.env` files are intentionally NOT excluded here: a changed
 /// `.env` is legitimate change context (see the `*_env_file_change` cases).
-fn is_secret_path(path: &Path) -> bool {
+pub(crate) fn is_secret_path(path: &Path) -> bool {
     let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
         return false;
     };
@@ -612,7 +612,7 @@ fn is_lockfile_path(path: &Path) -> bool {
     )
 }
 
-fn rel_path_string(root_dir: &Path, path: &Path) -> Option<String> {
+pub(crate) fn rel_path_string(root_dir: &Path, path: &Path) -> Option<String> {
     path.strip_prefix(root_dir)
         .ok()
         .map(|p| p.to_string_lossy().replace('\\', "/"))
@@ -631,7 +631,11 @@ fn resolve_ignored_paths(root_dir: &Path, hunks: &[crate::types::DiffHunk]) -> F
     git::find_ignored_paths(root_dir, &rel_paths)
 }
 
-fn is_ignored_path(root_dir: &Path, path: &Path, ignored_rel_paths: &FxHashSet<String>) -> bool {
+pub(crate) fn is_ignored_path(
+    root_dir: &Path,
+    path: &Path,
+    ignored_rel_paths: &FxHashSet<String>,
+) -> bool {
     rel_path_string(root_dir, path)
         .map(|rel| ignored_rel_paths.contains(&rel))
         .unwrap_or(false)

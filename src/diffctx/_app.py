@@ -419,11 +419,7 @@ def _run(argv: list[str] | None = None, *, prog: str = "diffctx", version: str =
         output_content = _handle_graph_mode(args)
         if not args.quiet:
             print_token_summary(output_content)
-        clipboard_ok = _handle_clipboard(output_content, args, prog)
-        _handle_output_file(output_content, args, prog)
-        should_write_stdout = args.force_stdout or not args.copy or not clipboard_ok
-        if not args.output_file and should_write_stdout:
-            sys.stdout.write(output_content)
+        _emit(output_content, args, prog, write_stdout=sys.stdout.write)
         return
 
     directory_tree = _build_diff_tree(args, prog) if args.diff_range else _build_standard_tree(args)
@@ -436,17 +432,29 @@ def _run(argv: list[str] | None = None, *, prog: str = "diffctx", version: str =
             _report_raw_diff_share(directory_tree, prog, args)
         _warn_if_output_oversized(output_content, args)
 
-    clipboard_ok = _handle_clipboard(output_content, args, prog)
-    _handle_output_file(output_content, args, prog)
-
-    should_write_stdout = args.force_stdout or not args.copy or not clipboard_ok
-    if not args.output_file and should_write_stdout:
+    def _write_via_writer(content: str) -> None:
         from .writer import write_string_to_file
 
-        write_string_to_file(output_content, None, args.output_format)
+        write_string_to_file(content, None, args.output_format)
+
+    _emit(output_content, args, prog, write_stdout=_write_via_writer)
 
     if is_empty_diff_result:
         sys.exit(_EXIT_EMPTY_DIFF)
+
+
+def _emit(
+    output_content: str,
+    args: ParsedArgs,
+    prog: str,
+    *,
+    write_stdout: Callable[[str], object],
+) -> None:
+    clipboard_ok = _handle_clipboard(output_content, args, prog)
+    _handle_output_file(output_content, args, prog)
+    should_write_stdout = args.force_stdout or not args.copy or not clipboard_ok
+    if not args.output_file and should_write_stdout:
+        write_stdout(output_content)
 
 
 _KNOWN_RUNTIME_ERRORS: tuple[type[BaseException], ...] = (

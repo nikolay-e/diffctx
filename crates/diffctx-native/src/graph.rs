@@ -633,7 +633,7 @@ fn apply_hub_suppression(edges: &mut [CompactEdge], idx_to_node: &[FragmentId]) 
 /// so K=64 preserves all legitimate edges while clamping pathological
 /// dense nodes (e.g. utility hubs in django/material-ui that radiate
 /// into thousands of dependents).
-const DEFAULT_MAX_OUT_EDGES_PER_NODE: usize = 64;
+pub(crate) const DEFAULT_MAX_OUT_EDGES_PER_NODE: usize = 64;
 
 /// Truncate each node's outgoing edge list to the top-K by weight.
 /// Run AFTER `apply_hub_suppression` so the suppression pass sees
@@ -756,13 +756,14 @@ pub fn push_bounded_top_k(heap: &mut SourceTopK, candidate: RankedCandidate, k: 
 }
 
 /// Output of the two-pass edge construction: the final damped, deduped,
-/// per-source-capped edge set plus the full pre-cap category table and
-/// cap stats derived from pass-1 counters.
+/// per-source-capped edge set plus cap stats derived from pass-1 counters.
+/// The category table is *not* carried here — `assemble_graph` derives it
+/// from this same post-cap `edges` vector, which is the only way to
+/// guarantee the exported category table and the CSR never disagree.
 pub struct CappedEdges {
     pub node_to_idx: FxHashMap<FragmentId, u32>,
     pub idx_to_node: Vec<FragmentId>,
     pub edges: Vec<CompactEdge>,
-    pub category_entries: Vec<(u32, u32, EdgeCategory)>,
     pub cap_stats: EdgeCapStats,
 }
 
@@ -824,7 +825,6 @@ pub fn build_graph_capped(fragments: &[Fragment], capped: CappedEdges) -> Graph 
         node_to_idx,
         idx_to_node,
         edges,
-        category_entries,
         cap_stats,
     } = capped;
     tracing::debug!(
@@ -835,14 +835,7 @@ pub fn build_graph_capped(fragments: &[Fragment], capped: CappedEdges) -> Graph 
         cap_stats.edges_dropped_by_cap,
         cap_stats.nodes_capped,
     );
-    assemble_graph(
-        fragments,
-        node_to_idx,
-        idx_to_node,
-        edges,
-        category_entries,
-        cap_stats,
-    )
+    assemble_graph(fragments, node_to_idx, idx_to_node, edges, cap_stats)
 }
 
 /// Materialized-edge construction path kept for the map-based adapter
@@ -857,9 +850,6 @@ pub fn build_graph_compact(fragments: &[Fragment], compact: CompactEdges) -> Gra
 
     apply_hub_suppression(&mut edges, &idx_to_node);
 
-    let category_entries: Vec<(u32, u32, EdgeCategory)> =
-        edges.iter().map(|e| (e.src, e.dst, e.category)).collect();
-
     let max_per_node = read_max_out_edges_per_node();
     let cap_stats = cap_out_edges_per_source(&mut edges, max_per_node);
     tracing::debug!(
@@ -871,35 +861,51 @@ pub fn build_graph_compact(fragments: &[Fragment], compact: CompactEdges) -> Gra
         cap_stats.nodes_capped,
     );
 
-    assemble_graph(
-        fragments,
-        node_to_idx,
-        idx_to_node,
-        edges,
-        category_entries,
-        cap_stats,
-    )
+    assemble_graph(fragments, node_to_idx, idx_to_node, edges, cap_stats)
 }
 
+/// Self-loops and non-finite/non-positive weights must never reach a live
+/// graph: they used to be rejected only by `Graph::add_edge`'s guard, which
+/// has no production caller (both real construction paths route through
+/// here). An infinite weight makes `out_weight_sum` infinite, every
+/// normalized PPR transition probability NaN, and the score map come back
+/// empty with exit 0 -- silently shipping core-only context.
+fn is_valid_edge(e: &CompactEdge) -> bool {
+    e.src != e.dst && e.weight.is_finite() && e.weight > 0.0
+}
+
+/// Builds both the CSR and the category table from the *same* filtered,
+/// already-capped `edges` vector. Deriving `edge_categories` here instead
+/// of accepting it as a separately pre-cap parameter is what guarantees
+/// `Graph::categorized_edge_count() == Graph::edge_count()` always --
+/// previously the category table was built from the pre-cap edge set in
+/// both callers, so it disagreed with the CSR whenever the cap actually
+/// fired (capped-away edges exported with `weight: 0.0`, `edge_count`
+/// mismatching `len(edges)` in the same JSON document).
 fn assemble_graph(
     fragments: &[Fragment],
     node_to_idx: FxHashMap<FragmentId, u32>,
     idx_to_node: Vec<FragmentId>,
     edges: Vec<CompactEdge>,
-    category_entries: Vec<(u32, u32, EdgeCategory)>,
     cap_stats: EdgeCapStats,
 ) -> Graph {
-    let fwd_pairs: Vec<(u32, u32, f64)> = edges
+    let valid_edges: Vec<CompactEdge> = edges.into_iter().filter(is_valid_edge).collect();
+
+    let mut category_entries: Vec<(u32, u32, EdgeCategory)> = valid_edges
         .iter()
-        .filter(|e| e.weight > 0.0)
+        .map(|e| (e.src, e.dst, e.category))
+        .collect();
+    category_entries.sort_unstable_by_key(|e| (e.0, e.1));
+
+    let fwd_pairs: Vec<(u32, u32, f64)> = valid_edges
+        .iter()
         .map(|e| (e.src, e.dst, e.weight))
         .collect();
-    let rev_pairs: Vec<(u32, u32, f64)> = edges
+    let rev_pairs: Vec<(u32, u32, f64)> = valid_edges
         .iter()
-        .filter(|e| e.weight > 0.0)
         .map(|e| (e.dst, e.src, e.weight))
         .collect();
-    drop(edges);
+    drop(valid_edges);
 
     let fwd_csr = build_csr_from_pairs(fwd_pairs, &idx_to_node, &node_to_idx);
     let rev_csr = build_csr_from_pairs(rev_pairs, &idx_to_node, &node_to_idx);
@@ -1140,5 +1146,309 @@ mod tests {
         assert!((edges[0].weight - 0.8).abs() < 1e-9);
         assert_eq!(edges[0].category, EdgeCategory::Semantic);
         assert_eq!(edges[1].category, EdgeCategory::Sibling);
+    }
+
+    #[test]
+    fn cap_out_edges_per_source_keeps_top_k_ties_broken_by_ascending_dst() {
+        let mut edges = vec![
+            CompactEdge {
+                src: 0,
+                dst: 100,
+                weight: 10.0,
+                category: EdgeCategory::Semantic,
+            },
+            CompactEdge {
+                src: 0,
+                dst: 50,
+                weight: 8.0,
+                category: EdgeCategory::Semantic,
+            },
+            CompactEdge {
+                src: 0,
+                dst: 30,
+                weight: 8.0,
+                category: EdgeCategory::Semantic,
+            },
+            CompactEdge {
+                src: 0,
+                dst: 70,
+                weight: 8.0,
+                category: EdgeCategory::Semantic,
+            },
+            CompactEdge {
+                src: 0,
+                dst: 5,
+                weight: 1.0,
+                category: EdgeCategory::Semantic,
+            },
+        ];
+
+        let stats = cap_out_edges_per_source(&mut edges, 2);
+
+        assert_eq!(stats.edges_before_cap, 5);
+        assert_eq!(stats.edges_after_cap, 2);
+        assert_eq!(stats.edges_dropped_by_cap, 3);
+        assert_eq!(stats.nodes_capped, 1);
+        assert_eq!(stats.max_out_edges_per_node, 2);
+
+        let survivors: Vec<(u32, f64)> = edges.iter().map(|e| (e.dst, e.weight)).collect();
+        assert_eq!(
+            survivors,
+            vec![(100, 10.0), (30, 8.0)],
+            "of the three weight-8.0 ties (dst 30, 50, 70), only the lowest dst (30) may survive \
+             the second slot"
+        );
+    }
+
+    #[test]
+    fn ranked_candidate_tie_break_matches_cap_out_edges_tie_break() {
+        // Pins that `RankedCandidate::rank`'s dst tie-break agrees with
+        // `cap_out_edges_per_source`'s sort tie-break: both must favor the
+        // lower dst index on equal weight. A regression flipping either
+        // side would silently change which edges the two-pass path keeps
+        // relative to the materialized path.
+        let candidates = [
+            RankedCandidate {
+                weight: 5.0,
+                dst: 30,
+                category: EdgeCategory::Generic,
+            },
+            RankedCandidate {
+                weight: 5.0,
+                dst: 10,
+                category: EdgeCategory::Generic,
+            },
+            RankedCandidate {
+                weight: 5.0,
+                dst: 20,
+                category: EdgeCategory::Generic,
+            },
+        ];
+
+        let mut heap: SourceTopK = BinaryHeap::new();
+        for &c in &candidates {
+            push_bounded_top_k(&mut heap, c, 1);
+        }
+        let kept_by_heap: Vec<u32> = heap.into_iter().map(|Reverse(c)| c.dst).collect();
+        assert_eq!(
+            kept_by_heap,
+            vec![10],
+            "heap tie-break must keep the lowest dst"
+        );
+
+        let mut edges: Vec<CompactEdge> = candidates
+            .iter()
+            .map(|c| CompactEdge {
+                src: 0,
+                dst: c.dst,
+                weight: c.weight,
+                category: c.category,
+            })
+            .collect();
+        cap_out_edges_per_source(&mut edges, 1);
+        let kept_by_sort: Vec<u32> = edges.iter().map(|e| e.dst).collect();
+
+        assert_eq!(
+            kept_by_heap, kept_by_sort,
+            "RankedCandidate::rank tie-break must agree with cap_out_edges_per_source's sort \
+             tie-break"
+        );
+    }
+
+    #[test]
+    fn two_pass_heap_cap_matches_materialized_cap() {
+        // Faithful to `edges::collect_capped_edges`'s two passes: pass 1
+        // fixes a single canonical category per (src, dst) pair (first
+        // builder, in registration order, to emit it) *before* pass 2's
+        // per-builder bounded-heap capping runs. This test verifies the
+        // correctness claim documented there -- per-builder top-K heaps,
+        // merged + deduped + capped again, must select exactly the same
+        // surviving edges as capping the fully materialized union
+        // directly, including the case where the pair's canonical
+        // category came from a builder whose own (locally weaker) copy
+        // gets evicted from its own per-builder heap before the merge.
+        let k = 3usize;
+        type RawEdge = (u32, u32, f64, EdgeCategory);
+
+        let builder_logs: Vec<Vec<RawEdge>> = vec![
+            vec![
+                (0, 1, 9.0, EdgeCategory::Semantic),
+                (0, 2, 9.0, EdgeCategory::Semantic),
+                (0, 3, 7.0, EdgeCategory::Semantic),
+                (0, 4, 1.0, EdgeCategory::Semantic),
+                (1, 5, 4.0, EdgeCategory::Semantic),
+            ],
+            vec![
+                (0, 4, 8.0, EdgeCategory::Structural),
+                (0, 6, 2.0, EdgeCategory::Structural),
+                (1, 5, 6.0, EdgeCategory::Structural),
+                (1, 7, 3.0, EdgeCategory::Structural),
+            ],
+            vec![
+                (0, 2, 9.0, EdgeCategory::Sibling),
+                (0, 7, 9.0, EdgeCategory::Sibling),
+                (1, 8, 0.5, EdgeCategory::Sibling),
+            ],
+        ];
+
+        let mut canonical_category: FxHashMap<(u32, u32), EdgeCategory> = FxHashMap::default();
+        for log in &builder_logs {
+            for &(src, dst, _w, cat) in log {
+                canonical_category.entry((src, dst)).or_insert(cat);
+            }
+        }
+        let canonicalize = |src: u32, dst: u32, fallback: EdgeCategory| {
+            canonical_category
+                .get(&(src, dst))
+                .copied()
+                .unwrap_or(fallback)
+        };
+
+        let mut two_pass_edges: Vec<CompactEdge> = Vec::new();
+        for log in &builder_logs {
+            let mut per_source: FxHashMap<u32, SourceTopK> = FxHashMap::default();
+            for &(src, dst, weight, cat) in log {
+                let category = canonicalize(src, dst, cat);
+                push_bounded_top_k(
+                    per_source.entry(src).or_default(),
+                    RankedCandidate {
+                        weight,
+                        dst,
+                        category,
+                    },
+                    k,
+                );
+            }
+            for (src, heap) in per_source {
+                for Reverse(c) in heap {
+                    two_pass_edges.push(CompactEdge {
+                        src,
+                        dst: c.dst,
+                        weight: c.weight,
+                        category: c.category,
+                    });
+                }
+            }
+        }
+        dedup_compact_edges(&mut two_pass_edges);
+        cap_out_edges_per_source(&mut two_pass_edges, k);
+
+        let mut materialized_edges: Vec<CompactEdge> = builder_logs
+            .iter()
+            .flatten()
+            .map(|&(src, dst, weight, cat)| CompactEdge {
+                src,
+                dst,
+                weight,
+                category: canonicalize(src, dst, cat),
+            })
+            .collect();
+        dedup_compact_edges(&mut materialized_edges);
+        cap_out_edges_per_source(&mut materialized_edges, k);
+
+        let normalize = |edges: &[CompactEdge]| -> Vec<(u32, u32, u64, EdgeCategory)> {
+            let mut v: Vec<(u32, u32, u64, EdgeCategory)> = edges
+                .iter()
+                .map(|e| (e.src, e.dst, e.weight.to_bits(), e.category))
+                .collect();
+            v.sort_by_key(|t| (t.0, t.1));
+            v
+        };
+
+        let two_pass_normalized = normalize(&two_pass_edges);
+        let materialized_normalized = normalize(&materialized_edges);
+        assert_eq!(
+            two_pass_normalized, materialized_normalized,
+            "two-pass per-builder heap capping must be bit-identical to capping the fully \
+             materialized edge set"
+        );
+        assert!(
+            !materialized_normalized.is_empty() && materialized_normalized.len() <= 2 * k,
+            "the cap must actually have fired in this fixture for the comparison to be meaningful"
+        );
+    }
+
+    fn plain_fragment(id: FragmentId) -> Fragment {
+        Fragment {
+            id,
+            kind: crate::types::FragmentKind::Function,
+            content: Arc::from(""),
+            identifiers: FxHashSet::default(),
+            token_count: 10,
+            symbol_name: None,
+        }
+    }
+
+    #[test]
+    fn assemble_graph_excludes_self_loops_and_non_finite_weights() {
+        let a = fid("a.rs", 1, 10);
+        let b = fid("b.rs", 1, 10);
+        let frags = vec![plain_fragment(a.clone()), plain_fragment(b.clone())];
+
+        let mut edges: FxHashMap<(FragmentId, FragmentId), f64> = FxHashMap::default();
+        let mut cats: FxHashMap<(FragmentId, FragmentId), EdgeCategory> = FxHashMap::default();
+        edges.insert((a.clone(), b.clone()), 1.0);
+        cats.insert((a.clone(), b.clone()), EdgeCategory::Semantic);
+        edges.insert((a.clone(), a.clone()), 5.0);
+        cats.insert((a.clone(), a.clone()), EdgeCategory::Semantic);
+        edges.insert((b.clone(), a.clone()), f64::INFINITY);
+        cats.insert((b.clone(), a.clone()), EdgeCategory::Semantic);
+
+        let graph = build_graph(&frags, edges, cats);
+
+        assert_eq!(
+            graph.edge_count(),
+            1,
+            "only the valid a->b edge should survive"
+        );
+        assert_eq!(graph.categorized_edge_count(), 1);
+        assert_eq!(graph.forward_edge_weight(&a, &b), Some(1.0));
+        assert!(
+            graph.forward_edge_weight(&a, &a).is_none(),
+            "self-loop must be excluded from the live CSR"
+        );
+        assert!(
+            graph.forward_edge_weight(&b, &a).is_none(),
+            "infinite weight must be excluded from the live CSR"
+        );
+    }
+
+    #[test]
+    fn category_table_stays_aligned_with_csr_when_cap_fires() {
+        let hub = fid("hub.rs", 1, 10);
+        let mut frags = vec![plain_fragment(hub.clone())];
+        let mut edges: FxHashMap<(FragmentId, FragmentId), f64> = FxHashMap::default();
+        let mut cats: FxHashMap<(FragmentId, FragmentId), EdgeCategory> = FxHashMap::default();
+
+        let n_leaves = DEFAULT_MAX_OUT_EDGES_PER_NODE + 10;
+        for i in 0..n_leaves {
+            let leaf = fid(&format!("leaf_{i}.rs"), 1, 10);
+            frags.push(plain_fragment(leaf.clone()));
+            edges.insert((hub.clone(), leaf.clone()), 1.0 + i as f64);
+            cats.insert((hub.clone(), leaf.clone()), EdgeCategory::Semantic);
+        }
+
+        let graph = build_graph(&frags, edges, cats);
+
+        assert!(
+            graph.cap_stats.edges_dropped_by_cap > 0,
+            "the cap must actually fire for this test to be meaningful"
+        );
+        assert_eq!(
+            graph.categorized_edge_count(),
+            graph.edge_count(),
+            "the category table must be capped alongside the CSR"
+        );
+
+        let mut checked = 0usize;
+        graph.for_each_categorized_edge(|src, dst, _cat| {
+            let w = graph.forward_edge_weight(src, dst);
+            assert!(
+                w.is_some_and(|w| w > 0.0),
+                "every categorized edge must exist in the CSR with a positive weight; {src} -> {dst} did not"
+            );
+            checked += 1;
+        });
+        assert_eq!(checked, graph.edge_count());
     }
 }

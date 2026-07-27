@@ -99,6 +99,59 @@ via Python subprocess tests plus **20** YAML cases.
 
 ---
 
+## Outcomes — implemented 2026-07-27, same session
+
+All DO items landed; every VERIFY gate got its test. Verified by:
+`cargo test --lib` 171 passed (was 71) · `cargo test --test yaml_cases`
+2843 passed / 0 failed (2725 oracle cases + 118 new PPR/BM25 trials) ·
+`pytest` 600 passed · `pre-commit run --all-files` clean.
+
+- **Fixed + regression-tested**: discovery-universe ignore/secret filtering
+  (`candidate_files.rs`); `--no-default-ignores` now raises like its siblings;
+  PID-keyed temp excludesFile got a process-local counter (concurrency test);
+  the three `git.rs` fixes (flags, range gate, rsplit) each have a test;
+  MCP `budget_tokens` validated + `max_tokens` ceiling, `get_file_context`
+  dedup + truncation notice, clipboard degrades, repo-root walk-up; YAML
+  writer escapes all C0/C1 (property strategy un-blacklisted `Cc`);
+  `BestSingleton` no longer evicts the core; `drop_redundant_signatures`
+  keyed on max-token (order-independent); edge-cap category table capped with
+  CSR; self-loop/∞-weight guard moved onto the live path; cmake/make
+  filename dispatch + `EXTENSION_TO_LANGUAGE` consistency test;
+  `sensitivity_check.py` env-var typo (`DIFFCTX_OP_EGO_PER_HOP_DECAY` →
+  real name) + name-set test.
+- **CI gates armed**: full 2725-case corpus now gated per-case against a
+  checked-in `known_below_threshold.txt` (459 entries, enforced in both
+  directions — a listed case that passes also fails); the `|| true`
+  informational run deleted; nightly re-pointed at baseline size with
+  `DIFFCTX_YAML_IGNORE_BASELINE=1`; `cargo audit` armed (real CI job,
+  hook no longer `|| true`); Docker build+smoke on PR (built and smoked
+  locally); MCP stdio handshake in `smoke-pypi` (handshake script verified
+  locally); npm version assert + post-publish install smoke; Scoop manifest
+  hash/bin verification; `action-smoke` tuned-inputs leg + fail-on-empty job;
+  `lang-core`/no-grammar feature builds (both checked locally).
+- **Deleted**: dead `DiffContextResult`/`PyFragment`/`FragmentIterator`
+  pyclass block in `pybridge.rs` (unconstructible from Python, second lossy
+  serialization path); `docs/engineering/correctness.md` updated.
+- **operations_006 correction**: the case was not silently green — it sat in
+  the known-failure baseline. Renamed fixture `.diffctxignore` →
+  `.diffctx/ignore`; with the real ignore source it passes on merit and left
+  the baseline. Non-vacuity checked: with the wrong filename it fails.
+- **Q-class, deliberately NOT landed**: `IntervalIndex::overlaps` asymmetry —
+  the symmetric fix moves 3 corpus cases up (javascript_059, rust_008,
+  rust_027) and 3 down (frontend_010, r_lang_006, r_lang_009), net zero.
+  Current behaviour is pinned by
+  `overlaps_tolerates_a_shared_boundary_in_one_direction_only` and a
+  full verdict matrix; the fix is documented in the code comment for the
+  next calibration cycle. Same reasoning: the oracle harness still runs at
+  τ=0.0 — switching it to the production τ is a Q-class rerun; the τ rule is
+  covered instead by a unit test at `DEFAULT_STOPPING_THRESHOLD`.
+- **Left open**: the hotspot churn duplication (`analytics.rs:441` dead
+  Rust churn vs Python re-scoring in `graph_analytics.py`) — a
+  behaviour-preserving resolution needs a pybridge+Python co-change and
+  stays a follow-up. Mermaid label escaping, in the same file, IS fixed
+  (`escape_mermaid_label`, `#quot;`/`#91;` entities, round-trip test
+  against the Python `_MERMAID_NODE_LINE` protocol).
+
 ## Findings
 
 ### 🔴 The discovery universe is never ignore-filtered — an explicitly excluded

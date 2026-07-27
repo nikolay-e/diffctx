@@ -246,12 +246,14 @@ claim both flipped to refuted only at R2/R3).
   `end_position().row` is 0-indexed inclusive of the last content line; `+1`
   yields the correct 1-indexed inclusive display end AND the correct exclusive
   slice bound (`mod.rs create_snippet` uses `lines[start-1..end]`). Tests agree.
-- **NOT a bug: `role` stripped for consumers.** `pybridge.rs to_serializable`
-  / `PyFragment` do drop `role`, but the real path
-  (`#[pyfunction] build_diff_context` → dict) sets `role` directly from
-  `DiffContextOutput`; MCP/CLI use that path; the role invariant test passes.
-  `DiffContextResult.to_yaml/to_json` is a secondary path with no consumer
-  (🔵 latent only — left as-is).
+- **RESOLVED: `role` stripped for consumers.** `pybridge.rs` used to carry a
+  second, lossy serialization path (`DiffContextResult` / `PyFragment` /
+  `to_serializable`) that dropped `role`, `commit_message` and `changed_files`.
+  It was registered on the module but unconstructible from Python — no
+  `#[new]`, no function returning it — so it was dead weight that would have
+  shipped lossy output the moment anyone wired it up. Deleted rather than
+  tested. The only path is `#[pyfunction] build_diff_context` → dict, which
+  sets `role` directly from `DiffContextOutput`.
 - **NOT a typo: Haskell `type_synomym`** (`tree_sitter_strategy.rs`). Matches
   the actual tree-sitter-haskell 0.23.1 grammar node name (misspelled
   upstream). "Fixing" to `type_synonym` would BREAK Haskell extraction.

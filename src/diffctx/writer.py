@@ -15,9 +15,18 @@ from diffctx._diffctx import get_language_for_file
 
 logger = logging.getLogger(__name__)
 
-_YAML_PROBLEMATIC_RE = re.compile(r"[\r\x00\x85\u2028\u2029]")
+# All Cc-category control chars (C0 0x00-0x1F, DEL 0x7F, C1 0x80-0x9F) except
+# \t/\n, which are legal literal characters inside a YAML block scalar. Every
+# other member of this set is either unrepresentable in a YAML stream or
+# breaks the line-splitting logic in _write_yaml_block (e.g. \r).
+_YAML_PROBLEMATIC_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f\u2028\u2029]")
+
+# Fallback \xHH escape for every Cc control char; the named escapes below
+# override the entries that have a friendlier YAML short form.
+_YAML_CONTROL_HEX_ESCAPES = {chr(cp): f"\\x{cp:02x}" for cp in [*range(0x00, 0x20), 0x7F, *range(0x80, 0xA0)]}
 
 _YAML_BASE_ESCAPE_MAP = {
+    **_YAML_CONTROL_HEX_ESCAPES,
     "\\": "\\\\",
     '"': '\\"',
     "\n": "\\n",

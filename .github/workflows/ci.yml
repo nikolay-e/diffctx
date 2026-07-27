@@ -45,6 +45,93 @@ jobs:
         run: pre-commit run --all-files
 
   # ============================================================================
+  # Rust dependency advisories. Separate job because the pre-commit hook can
+  # only skip when cargo-audit is absent, and it is absent on GitHub runners —
+  # so this is the only place the check actually runs.
+  # ============================================================================
+  cargo-audit:
+    name: Rust dependency advisories
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # stable
+        with:
+          toolchain: "1.92.0"
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Audit
+        run: cargo audit
+
+  # ============================================================================
+  # Cargo.toml splits 39 tree-sitter grammars into lang-core/lang-extra, but
+  # only the default (both) feature set was ever compiled. Under lang-core
+  # alone 21 LANG_CONFIGS entries resolve to no grammar and silently degrade to
+  # generic chunking, and nothing would have caught the build breaking outright.
+  # ============================================================================
+  cargo-feature-sets:
+    name: Rust builds without default features
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # stable
+        with:
+          toolchain: "1.92.0"
+
+      - name: Cache Cargo
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-features-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-features-${{ runner.os }}-
+
+      - name: Check lang-core only
+        working-directory: crates/diffctx-native
+        run: cargo check --no-default-features --features lang-core
+
+      - name: Check with no language grammars at all
+        working-directory: crates/diffctx-native
+        run: cargo check --no-default-features
+
+  # ============================================================================
+  # Docker image build. Gated here rather than only at release time: cd.yml's
+  # build-image needs finalize-release, so the first build of this Dockerfile
+  # happened after PyPI and the GitHub Release had already shipped — a broken
+  # COPY whitelist left ghcr.io with no tag while every other channel moved.
+  # ============================================================================
+  docker-build:
+    name: Docker image builds
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          fetch-depth: 2
+
+      - name: Build image
+        run: docker build -f Dockerfile -t diffctx:ci .
+
+      - name: Smoke the image on a real two-commit diff
+        run: |
+          docker run --rm -v "$PWD:/repo" diffctx:ci --version
+          docker run --rm -v "$PWD:/repo" diffctx:ci . \
+            --diff HEAD~1..HEAD --budget 2000 > /tmp/out.md
+          test -s /tmp/out.md
+
+  # ============================================================================
   # Linting and Type Checking
   # ============================================================================
   lint-type-check:
@@ -104,10 +191,14 @@ jobs:
           key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-
 
+      # No DIFFCTX_YAML_CASES_LIMIT: the whole 2725-case corpus is gated here
+      # (~2 min). Sampling used to be mandatory because ~460 cases score below
+      # threshold at the current operating point; those are now enumerated in
+      # tests/known_below_threshold.txt, so the full suite is green and a
+      # regression in ANY case — in any of the 38 language directories — fails
+      # the build. A limit still works locally for a fast stratified subset.
       - name: Build and test
         working-directory: crates/diffctx-native
-        env:
-          DIFFCTX_YAML_CASES_LIMIT: "20"
         run: |
           cargo test --lib
           # Dev profile: the release profile sets panic = "abort", and building
@@ -116,12 +207,6 @@ jobs:
           cargo test --test native_cli
           cargo build --release --examples
           cargo test --release --test yaml_cases
-
-      # Informational full-suite run (2700+ cases): quality-threshold failures
-      # are tracked as an eval baseline, not a CI gate.
-      - name: Run diffctx YAML test suite
-        working-directory: crates/diffctx-native
-        run: ../../target/release/examples/diffctx-test || true
 
   # ============================================================================
   # Cross-platform Python Testing (diffctx core)

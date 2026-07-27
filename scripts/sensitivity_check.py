@@ -11,13 +11,17 @@ from dataclasses import dataclass
 OPERATIONAL_PARAMS: list[tuple[str, float]] = [
     ("DIFFCTX_OP_PPR_ALPHA", 0.60),
     ("DIFFCTX_OP_PPR_FORWARD_BLEND", 0.40),
-    ("DIFFCTX_OP_EGO_PER_HOP_DECAY", 1.0),
+    ("DIFFCTX_EGO_PER_HOP_DECAY", 0.5),
     ("DIFFCTX_OP_UTILITY_ETA", 0.20),
     ("DIFFCTX_OP_UTILITY_STRUCTURAL_BONUS_WEIGHT", 0.10),
     ("DIFFCTX_OP_UTILITY_R_CAP_SIGMA", 2.0),
     ("DIFFCTX_OP_UTILITY_PROXIMITY_DECAY", 0.30),
+    # beta_core is Tier-1 (calibrated), not Tier-3, but config/selection.rs
+    # exposes it via this env var specifically so it can be swept here (see
+    # docs/engineering/parameter-strategy.md). tau (the other Tier-1
+    # parameter) has no env var by design -- CLI `--tau` flag only -- so it
+    # cannot be and is not swept from this script.
     ("DIFFCTX_OP_SELECTION_CORE_BUDGET_FRACTION", 0.70),
-    ("DIFFCTX_OP_SELECTION_STOPPING_THRESHOLD", 0.08),
     ("DIFFCTX_OP_SELECTION_R_CAP_MIN", 0.01),
     ("DIFFCTX_OP_RESCUE_BUDGET_FRACTION", 0.05),
     ("DIFFCTX_OP_RESCUE_MIN_SCORE_PERCENTILE", 0.80),

@@ -308,7 +308,17 @@ repos:
       - id: cargo-audit
         name: cargo audit (dependency vulnerabilities)
         language: system
-        entry: bash -c 'command -v cargo-audit >/dev/null 2>&1 && cargo audit || true'
+        # A real advisory must fail the hook. The previous entry was
+        # `... && cargo audit || true`, which swallowed a non-zero exit AND
+        # silently passed when cargo-audit was absent — which it is on GitHub
+        # runners, so this check had never once executed while reporting green.
+        # Missing tool now says so out loud instead of masquerading as a pass;
+        # the authoritative run is the cargo-audit job in ci.yml, which
+        # installs it.
+        entry: >-
+          bash -c 'if command -v cargo-audit >/dev/null 2>&1; then
+          cargo audit; else
+          echo "cargo-audit not installed locally - skipping (ci.yml gates this)"; fi'
         pass_filenames: false
         files: ^(Cargo\.(toml|lock)|crates/diffctx-native/Cargo\.toml)$
         types: [file]

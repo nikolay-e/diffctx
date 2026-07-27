@@ -14,6 +14,9 @@ impl FragmentationStrategy for GenericStrategy {
     }
 
     fn fragment(&self, path: Arc<str>, content: &str) -> Vec<Fragment> {
+        if content.trim().is_empty() {
+            return Vec::new();
+        }
         let lines: Vec<&str> = content.split('\n').collect();
         if lines.is_empty() {
             return Vec::new();
@@ -49,5 +52,57 @@ impl FragmentationStrategy for GenericStrategy {
         }
 
         fragments
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_file_yields_no_fragments() {
+        assert!(
+            GenericStrategy
+                .fragment(Arc::from("empty.bin"), "")
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn blank_lines_only_yields_no_fragments() {
+        assert!(
+            GenericStrategy
+                .fragment(Arc::from("blank.bin"), "\n\n\n")
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn whitespace_only_yields_no_fragments() {
+        assert!(
+            GenericStrategy
+                .fragment(Arc::from("whitespace.bin"), "   ")
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn thousand_line_file_splits_into_contiguous_non_overlapping_chunks() {
+        let content: String = (1..=1000)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let fragments = GenericStrategy.fragment(Arc::from("big.txt"), &content);
+
+        let expected_count = 1000usize.div_ceil(PARSERS.generic_max_lines);
+        assert_eq!(fragments.len(), expected_count);
+
+        let mut next_expected_start = 1u32;
+        for fragment in &fragments {
+            assert_eq!(fragment.id.start_line, next_expected_start);
+            assert!(fragment.id.start_line <= fragment.id.end_line);
+            next_expected_start = fragment.id.end_line + 1;
+        }
+        assert_eq!(fragments.last().unwrap().id.end_line, 1000);
     }
 }

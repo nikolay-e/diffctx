@@ -19,6 +19,15 @@ pub fn set_git_timeout(secs: u64) {
     GIT_TIMEOUT_SECS.store(secs, Ordering::Relaxed);
 }
 
+// PID alone is not unique within a process: the MCP server runs each tool
+// body on its own worker thread, so two overlapping pipelines can both reach
+// `find_ignored_paths` under the same PID. A shared filename means whoever
+// finishes first deletes the other's still-in-use excludesFile; git tolerates
+// a missing `core.excludesFile` silently, so the loser's `.diffctx/ignore`
+// rules are dropped without error. The counter makes every call's temp path
+// unique regardless of thread interleaving.
+static TEMP_EXCLUDES_COUNTER: AtomicU64 = AtomicU64::new(0);
+
 fn git_timeout() -> u64 {
     GIT_TIMEOUT_SECS.load(Ordering::Relaxed)
 }
@@ -717,7 +726,12 @@ pub fn find_ignored_paths(repo_root: &Path, rel_paths: &[String]) -> FxHashSet<S
     let temp_excludes = if diffctx_patterns.is_empty() {
         None
     } else {
-        let path = std::env::temp_dir().join(format!("diffctx-ignore-{}.tmp", std::process::id()));
+        let unique = TEMP_EXCLUDES_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!(
+            "diffctx-ignore-{}-{}.tmp",
+            std::process::id(),
+            unique
+        ));
         match std::fs::write(&path, diffctx_patterns.join("\n")) {
             Ok(()) => Some(path),
             Err(_) => None,
@@ -961,5 +975,426 @@ impl CatFileBatch {
 impl Drop for CatFileBatch {
     fn drop(&mut self) {
         self.close();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::sync::Barrier;
+    use tempfile::TempDir;
+
+    fn git(dir: &Path, args: &[&str]) {
+        let status = git_command(dir)
+            .args(args)
+            .status()
+            .unwrap_or_else(|e| panic!("git {args:?}: {e}"));
+        assert!(status.success(), "git {args:?} failed");
+    }
+
+    fn init_git_repo(dir: &Path) {
+        git(dir, &["init", "-q", "-b", "main"]);
+        git(dir, &["config", "user.email", "test@example.com"]);
+        git(dir, &["config", "user.name", "Test"]);
+        git(dir, &["config", "commit.gpgsign", "false"]);
+    }
+
+    fn commit_all(dir: &Path, message: &str) {
+        git(dir, &["add", "-A"]);
+        git(dir, &["commit", "-q", "-m", message]);
+    }
+
+    fn write_file(root: &Path, rel: &str, content: &str) {
+        let path = root.join(rel);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("create parent");
+        }
+        fs::write(&path, content).expect("write file");
+    }
+
+    // --- SAFE_DIFF_FLAGS pins the parser against hostile repo-local config ---
+
+    struct HunkShape {
+        old_start: u32,
+        old_len: u32,
+        new_start: u32,
+        new_len: u32,
+    }
+
+    fn hunk_shapes(hunks: &[DiffHunk]) -> Vec<HunkShape> {
+        hunks
+            .iter()
+            .map(|h| HunkShape {
+                old_start: h.old_start,
+                old_len: h.old_len,
+                new_start: h.new_start,
+                new_len: h.new_len,
+            })
+            .collect()
+    }
+
+    fn basenames(paths: &[PathBuf]) -> Vec<String> {
+        let mut names: Vec<String> = paths
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    }
+
+    fn assert_diff_survives_hostile_config(hostile_config: &[&[&str]]) {
+        let tmp = TempDir::new().expect("tempdir");
+        let clean_root = tmp.path().join("clean");
+        let hostile_root = tmp.path().join("hostile");
+        fs::create_dir_all(&clean_root).expect("mkdir clean");
+        fs::create_dir_all(&hostile_root).expect("mkdir hostile");
+
+        for root in [&clean_root, &hostile_root] {
+            init_git_repo(root);
+            write_file(root, "app.py", "def f():\n    return 1\n");
+            commit_all(root, "initial");
+            write_file(root, "app.py", "def f():\n    return 2\n");
+            commit_all(root, "change");
+        }
+        for args in hostile_config {
+            git(&hostile_root, args);
+        }
+
+        let clean_hunks = parse_diff(&clean_root, Some("HEAD~1..HEAD")).expect("clean parse_diff");
+        let hostile_hunks =
+            parse_diff(&hostile_root, Some("HEAD~1..HEAD")).expect("hostile parse_diff");
+        assert!(
+            !hostile_hunks.is_empty(),
+            "hostile git config reduced the diff to zero hunks"
+        );
+        assert_eq!(
+            hunk_shapes(&hostile_hunks)
+                .iter()
+                .map(|s| (s.old_start, s.old_len, s.new_start, s.new_len))
+                .collect::<Vec<_>>(),
+            hunk_shapes(&clean_hunks)
+                .iter()
+                .map(|s| (s.old_start, s.old_len, s.new_start, s.new_len))
+                .collect::<Vec<_>>(),
+            "hostile config changed the parsed hunk shape vs a clean-config repo"
+        );
+
+        let clean_files =
+            get_changed_files(&clean_root, Some("HEAD~1..HEAD")).expect("clean changed files");
+        let hostile_files =
+            get_changed_files(&hostile_root, Some("HEAD~1..HEAD")).expect("hostile changed files");
+        assert!(
+            !hostile_files.is_empty(),
+            "hostile git config reduced changed_files to empty"
+        );
+        assert_eq!(
+            basenames(&hostile_files),
+            basenames(&clean_files),
+            "hostile config changed the changed_files set vs a clean-config repo"
+        );
+    }
+
+    #[test]
+    fn diff_survives_diff_noprefix() {
+        assert_diff_survives_hostile_config(&[&["config", "diff.noprefix", "true"]]);
+    }
+
+    #[test]
+    fn diff_survives_diff_mnemonic_prefix() {
+        assert_diff_survives_hostile_config(&[&["config", "diff.mnemonicPrefix", "true"]]);
+    }
+
+    #[test]
+    fn diff_survives_custom_src_dst_prefix() {
+        assert_diff_survives_hostile_config(&[
+            &["config", "diff.srcPrefix", "x/"],
+            &["config", "diff.dstPrefix", "y/"],
+        ]);
+    }
+
+    #[test]
+    fn diff_survives_color_ui_always() {
+        assert_diff_survives_hostile_config(&[&["config", "color.ui", "always"]]);
+    }
+
+    // --- validate_diff_range: reject argv-injection ranges, keep legit ones ---
+
+    #[test]
+    fn validate_diff_range_rejects_option_smuggled_in_range() {
+        for hostile in ["HEAD..--ext-diff", "a...-p", "..--upload-pack=x"] {
+            assert!(
+                validate_diff_range(hostile).is_err(),
+                "expected {hostile:?} to be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_diff_range_accepts_legitimate_ranges() {
+        for legit in [
+            "HEAD~1..HEAD",
+            "@{-1}..HEAD",
+            "HEAD~2...origin/main",
+            "main..feature/x",
+        ] {
+            assert!(
+                validate_diff_range(legit).is_ok(),
+                "expected {legit:?} to be accepted"
+            );
+        }
+    }
+
+    // --- parse_verbose_ignore_match: last-tab split survives a tab in the pattern ---
+
+    #[test]
+    fn parse_verbose_ignore_match_splits_on_last_tab_not_first() {
+        // The pattern itself ("foo\tbar") contains a literal tab. Splitting
+        // from the left would take "foo" as the path, silently reporting an
+        // ignored file as not ignored.
+        let line = ".gitignore:3:foo\tbar\tsome/real/path.txt";
+        let (rule, path) = parse_verbose_ignore_match(line).expect("parse");
+        assert_eq!(path, "some/real/path.txt");
+        assert_eq!(rule, ".gitignore:3:foo\tbar");
+    }
+
+    #[test]
+    fn parse_verbose_ignore_match_unquotes_c_style_path() {
+        let line = ".gitignore:1:*.log\t\"weird\\tfile.log\"";
+        let (rule, path) = parse_verbose_ignore_match(line).expect("parse");
+        assert_eq!(path, "weird\tfile.log");
+        assert_eq!(rule, ".gitignore:1:*.log");
+    }
+
+    // --- anchor_diffctx_ignore_line: 4 reachable outputs, root vs nested, negation ---
+
+    #[test]
+    fn anchor_ignore_line_bare_pattern_at_root() {
+        assert_eq!(anchor_diffctx_ignore_line("*.log", ""), "*.log");
+    }
+
+    #[test]
+    fn anchor_ignore_line_bare_pattern_nested() {
+        assert_eq!(anchor_diffctx_ignore_line("*.log", "sub"), "sub/**/*.log");
+    }
+
+    #[test]
+    fn anchor_ignore_line_slash_pattern_at_root() {
+        assert_eq!(
+            anchor_diffctx_ignore_line("secrets/config.py", ""),
+            "/secrets/config.py"
+        );
+    }
+
+    #[test]
+    fn anchor_ignore_line_slash_pattern_nested() {
+        assert_eq!(
+            anchor_diffctx_ignore_line("secrets/config.py", "sub"),
+            "/sub/secrets/config.py"
+        );
+    }
+
+    #[test]
+    fn anchor_ignore_line_negated_bare_pattern() {
+        assert_eq!(anchor_diffctx_ignore_line("!keep.log", ""), "!keep.log");
+    }
+
+    #[test]
+    fn anchor_ignore_line_negated_slash_pattern_nested() {
+        assert_eq!(
+            anchor_diffctx_ignore_line("!secrets/keep.py", "sub"),
+            "!/sub/secrets/keep.py"
+        );
+    }
+
+    // --- unquote_c_style + the quoted diff-header branch ---
+
+    #[test]
+    fn unquote_c_style_decodes_octal_utf8_escapes() {
+        // Exactly what git emits for `café.py` under the default
+        // core.quotePath=true: é is UTF-8 0xC3 0xA9, i.e. octal 303 251.
+        let quoted = r#""a/caf\303\251.py""#;
+        assert_eq!(unquote_c_style(quoted), "a/café.py");
+    }
+
+    #[test]
+    fn unquote_c_style_leaves_unquoted_input_untouched() {
+        assert_eq!(unquote_c_style("a/plain.py"), "a/plain.py");
+    }
+
+    #[test]
+    fn parse_path_line_takes_quoted_branch_for_old_and_new_headers() {
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path();
+        // The path must exist on disk: parse_path_line canonicalizes the
+        // joined path to guard against traversal, and a nonexistent target
+        // can fail to canonicalize while the (existing) root does, tripping
+        // the containment check on platforms where the temp dir sits behind
+        // a symlink (e.g. macOS /var -> /private/var) for reasons unrelated
+        // to the quoted-header parsing this test targets.
+        write_file(root, "café.py", "value = 1\n");
+
+        let old_line = r#"--- "a/caf\303\251.py""#;
+        let (kind, path) = parse_path_line(old_line, root);
+        assert_eq!(kind, "old");
+        assert_eq!(
+            path.expect("old path")
+                .file_name()
+                .unwrap()
+                .to_string_lossy(),
+            "café.py"
+        );
+
+        let new_line = r#"+++ "b/caf\303\251.py""#;
+        let (kind, path) = parse_path_line(new_line, root);
+        assert_eq!(kind, "new");
+        assert_eq!(
+            path.expect("new path")
+                .file_name()
+                .unwrap()
+                .to_string_lossy(),
+            "café.py"
+        );
+    }
+
+    #[test]
+    fn parse_diff_handles_real_repo_with_default_quoted_unicode_filename() {
+        // core.quotePath defaults to true, so a real git diff over a renamed
+        // non-ASCII file exercises the quoted branch end-to-end, not just the
+        // helper in isolation.
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path();
+        init_git_repo(root);
+        write_file(root, "café.py", "value = 1\n");
+        commit_all(root, "initial");
+        write_file(root, "café.py", "value = 2\n");
+        commit_all(root, "change");
+
+        let hunks = parse_diff(root, Some("HEAD~1..HEAD")).expect("parse_diff");
+        assert!(
+            !hunks.is_empty(),
+            "quoted unicode diff header was not parsed into any hunk"
+        );
+        assert!(
+            hunks.iter().any(|h| h.path.contains("café")),
+            "no hunk carried the decoded unicode path, got: {:?}",
+            hunks.iter().map(|h| h.path.as_ref()).collect::<Vec<_>>()
+        );
+    }
+
+    // --- subprocess timeout/kill: wait_with_timeout must not hang or orphan ---
+
+    #[test]
+    fn wait_with_timeout_kills_long_running_child_and_returns_promptly() {
+        let child = Command::new("sleep")
+            .arg("30")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn sleep");
+        let pid = child.id();
+
+        let start = std::time::Instant::now();
+        let result = wait_with_timeout(child, Duration::from_millis(200), &["sleep", "30"]);
+        let elapsed = start.elapsed();
+
+        assert!(
+            matches!(result, Err(GitError::Timeout(_))),
+            "expected Timeout error, got {result:?}"
+        );
+        assert!(
+            elapsed < Duration::from_secs(5),
+            "wait_with_timeout should return promptly, took {elapsed:?}"
+        );
+
+        // The child must actually be reaped, not orphaned: `kill -0` on a
+        // reaped pid fails once the OS releases it. Retry briefly since the
+        // OS may hold a zombie slot for a moment after the kill.
+        let mut still_alive = true;
+        for _ in 0..20 {
+            let status = Command::new("kill")
+                .args(["-0", &pid.to_string()])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .expect("spawn kill -0");
+            if !status.success() {
+                still_alive = false;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert!(!still_alive, "child pid {pid} was not reaped after timeout");
+    }
+
+    #[test]
+    fn wait_with_timeout_does_not_penalize_fast_commands() {
+        let child = Command::new("true")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn true");
+        let result = wait_with_timeout(child, Duration::from_secs(5), &["true"]);
+        assert!(matches!(result, Ok(ref out) if out.status.success()));
+    }
+
+    // --- PID-keyed temp excludesFile: two concurrent calls in one process ---
+
+    #[test]
+    fn find_ignored_paths_concurrent_calls_both_see_their_own_ignore_rules() {
+        let tmp = TempDir::new().expect("tempdir");
+        let root_a = tmp.path().join("repo_a");
+        let root_b = tmp.path().join("repo_b");
+        fs::create_dir_all(&root_a).expect("mkdir a");
+        fs::create_dir_all(&root_b).expect("mkdir b");
+
+        for (root, secret) in [(&root_a, "secret_a.py"), (&root_b, "secret_b.py")] {
+            init_git_repo(root);
+            write_file(root, "app.py", "print('hi')\n");
+            write_file(root, ".diffctx/ignore", &format!("{secret}\n"));
+            write_file(root, secret, "SECRET\n");
+            commit_all(root, "initial");
+        }
+
+        // Run several concurrent rounds: a single lucky interleaving proved
+        // the pre-fix PID-only path could collide, so repeat to make a
+        // regression reliably visible instead of a one-shot coin flip.
+        for _ in 0..10 {
+            let barrier = Arc::new(Barrier::new(2));
+
+            let root_a_thread = root_a.clone();
+            let barrier_a = Arc::clone(&barrier);
+            let handle_a = std::thread::spawn(move || {
+                barrier_a.wait();
+                find_ignored_paths(
+                    &root_a_thread,
+                    &["secret_a.py".to_string(), "app.py".to_string()],
+                )
+            });
+
+            let root_b_thread = root_b.clone();
+            let barrier_b = Arc::clone(&barrier);
+            let handle_b = std::thread::spawn(move || {
+                barrier_b.wait();
+                find_ignored_paths(
+                    &root_b_thread,
+                    &["secret_b.py".to_string(), "app.py".to_string()],
+                )
+            });
+
+            let ignored_a = handle_a.join().expect("thread a panicked");
+            let ignored_b = handle_b.join().expect("thread b panicked");
+
+            assert!(
+                ignored_a.contains("secret_a.py"),
+                "repo A lost its .diffctx/ignore rule to a concurrent call"
+            );
+            assert!(
+                ignored_b.contains("secret_b.py"),
+                "repo B lost its .diffctx/ignore rule to a concurrent call"
+            );
+            assert!(!ignored_a.contains("app.py"));
+            assert!(!ignored_b.contains("app.py"));
+        }
     }
 }

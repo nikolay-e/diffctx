@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TypeVar
 
 import anyio
+import anyio.to_thread
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
@@ -73,6 +74,28 @@ def _over_token_budget_notice(tool: str, token_count: int, max_tokens: int, hint
     )
 
 
+def _validate_budget_tokens(budget_tokens: int) -> None:
+    if budget_tokens < -1:
+        raise ValueError(
+            f"budget_tokens must be >= -1 (-1 = unlimited, capped by max_tokens; "
+            f"0 = strict-zero floor, changed lines only), got {budget_tokens}"
+        )
+
+
+async def _copy_or_degrade(content: str) -> str | None:
+    # Mirrors the CLI's degrade-to-stdout behaviour (diffctx._app._handle_clipboard):
+    # a headless MCP server has no DISPLAY/WAYLAND_DISPLAY/pbcopy by default, and the
+    # already-computed content must not be thrown away just because the clipboard is
+    # unavailable.
+    from diffctx.clipboard import ClipboardError, copy_to_clipboard
+
+    try:
+        await anyio.to_thread.run_sync(lambda: copy_to_clipboard(content))
+        return None
+    except ClipboardError as e:
+        return f"Note: clipboard unavailable ({e}); returning content instead.\n\n"
+
+
 mcp = FastMCP("diffctx")
 # FastMCP takes no version argument, so the SDK reports its own version as the
 # server version during initialize. Clients then see the mcp package version
@@ -106,6 +129,8 @@ _DIFF_DESCRIPTION = (
     "- Analyzing impact of a refactor\n"
     "- Investigating why tests broke after a commit\n\n"
     "Set clipboard=true to copy to clipboard without flooding context.\n"
+    "budget_tokens: -1 = unlimited (still capped by max_tokens below), "
+    "0 = strict-zero floor (changed lines only, no related context).\n"
     "Supports 30+ languages." + _UNTRUSTED_NOTICE
 )
 
@@ -116,8 +141,10 @@ async def get_diff_context(
     diff_range: str = "HEAD~1..HEAD",
     budget_tokens: int = 8000,
     clipboard: bool = False,
+    max_tokens: int = _DEFAULT_MAX_TOKENS,
 ) -> str:
     validated_path = validate_repo_path(repo_path)
+    _validate_budget_tokens(budget_tokens)
     try:
         result = await _run_with_deadline(
             "get_diff_context",
@@ -144,11 +171,22 @@ async def get_diff_context(
     content = format_diff_context_as_markdown(result)
 
     if clipboard:
-        from diffctx.clipboard import copy_to_clipboard
+        degraded_notice = await _copy_or_degrade(content)
+        if degraded_notice is None:
+            frag_count = result.get("fragment_count", 0)
+            return f"Copied diff context ({frag_count} fragments) to clipboard"
+        content = degraded_notice + content
 
-        await anyio.to_thread.run_sync(lambda: copy_to_clipboard(content))
-        frag_count = result.get("fragment_count", 0)
-        return f"Copied diff context ({frag_count} fragments) to clipboard"
+    from diffctx.tokens import count_tokens
+
+    token_count = count_tokens(content).count
+    if token_count > max_tokens:
+        return _over_token_budget_notice(
+            "get_diff_context",
+            token_count,
+            max_tokens,
+            "lower budget_tokens, narrow diff_range, or use clipboard=true",
+        )
 
     return content
 
@@ -206,10 +244,11 @@ async def get_tree_map(
     token_info = count_tokens(content)
 
     if clipboard:
-        from diffctx.clipboard import copy_to_clipboard
-
-        await anyio.to_thread.run_sync(lambda: copy_to_clipboard(content))
-        return f"Copied to clipboard ({token_info.count:,} tokens, {token_info.encoding})"
+        degraded_notice = await _copy_or_degrade(content)
+        if degraded_notice is None:
+            return f"Copied to clipboard ({token_info.count:,} tokens, {token_info.encoding})"
+        content = degraded_notice + content
+        token_info = count_tokens(content)
 
     if token_info.count > max_tokens:
         return _over_token_budget_notice(
@@ -241,32 +280,54 @@ def _is_contained(child: Path, root: Path) -> bool:
         return False
 
 
-def _collect_matched_files(validated_path: Path, patterns: list[str], max_files: int) -> list[Path]:
+def _collect_matched_files(validated_path: Path, patterns: list[str], max_files: int) -> tuple[list[Path], int]:
     import glob as globmod
 
     matched: list[Path] = []
+    seen: set[Path] = set()
+    total_matched = 0
     for pattern in patterns:
         full_pattern = str(validated_path / pattern)
         for match in sorted(globmod.glob(full_pattern, recursive=True)):
             p = Path(match)
-            if not _is_contained(p, validated_path):
+            if not p.is_file() or not _is_contained(p, validated_path):
                 continue
-            if p.is_file() and len(matched) < max_files:
+            resolved = p.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            total_matched += 1
+            if len(matched) < max_files:
                 matched.append(p)
-    return matched
+    return matched, total_matched
 
 
-def _build_dry_run_report(matched: list[Path], validated_path: Path) -> str:
+def _truncation_notice(shown: int, total_matched: int, max_files: int) -> str | None:
+    if total_matched <= shown:
+        return None
+    return f"TRUNCATED: showing {shown} of {total_matched} matched files (max_files={max_files}). Narrow patterns or raise max_files to see the rest."
+
+
+def _build_dry_run_report(matched: list[Path], total_matched: int, validated_path: Path, max_files: int) -> str:
     total_bytes = sum(p.stat().st_size for p in matched if p.exists())
-    lines = [f"Would match {len(matched)} files (~{total_bytes:,} bytes):"]
+    lines = [f"Would match {total_matched} files (~{total_bytes:,} bytes for the {len(matched)} shown below):"]
+    notice = _truncation_notice(len(matched), total_matched, max_files)
+    if notice:
+        lines.append(notice)
     for p in matched:
         rel = p.relative_to(validated_path)
         lines.append(f"  {rel} ({p.stat().st_size:,}b)")
     return "\n".join(lines)
 
 
-def _build_file_content_report(matched: list[Path], validated_path: Path, max_file_bytes: int) -> tuple[str, int, int]:
-    parts = [f"# {len(matched)} files matched\n"]
+def _build_file_content_report(
+    matched: list[Path], total_matched: int, validated_path: Path, max_file_bytes: int, max_files: int
+) -> tuple[str, int, int]:
+    header = f"# {len(matched)} files matched"
+    notice = _truncation_notice(len(matched), total_matched, max_files)
+    if notice:
+        header += f" ({total_matched} total)\n{notice}"
+    parts = [header + "\n"]
     total_lines = 0
     included_count = 0
     for p in matched:
@@ -299,12 +360,12 @@ async def get_file_context(
     validated_path = validate_dir_path(repo_path)
 
     def _read() -> tuple[str, int, int]:
-        matched = _collect_matched_files(validated_path, patterns, max_files)
+        matched, total_matched = _collect_matched_files(validated_path, patterns, max_files)
         if not matched:
             return f"No files matched patterns: {patterns}", 0, 0
         if dry_run:
-            return _build_dry_run_report(matched, validated_path), 0, 0
-        return _build_file_content_report(matched, validated_path, max_file_bytes)
+            return _build_dry_run_report(matched, total_matched, validated_path, max_files), 0, 0
+        return _build_file_content_report(matched, total_matched, validated_path, max_file_bytes, max_files)
 
     raw_result: tuple[str, int, int] = await _run_with_deadline("get_file_context", _read)
     content, n_files, n_lines = raw_result
@@ -313,10 +374,10 @@ async def get_file_context(
         return content
 
     if clipboard and n_files > 0:
-        from diffctx.clipboard import copy_to_clipboard
-
-        await anyio.to_thread.run_sync(lambda: copy_to_clipboard(content))
-        return f"Copied {n_files} files ({n_lines:,} lines) to clipboard"
+        degraded_notice = await _copy_or_degrade(content)
+        if degraded_notice is None:
+            return f"Copied {n_files} files ({n_lines:,} lines) to clipboard"
+        content = degraded_notice + content
 
     from diffctx.tokens import count_tokens
 

@@ -97,6 +97,17 @@ def build_diff_context(
             "--whitelist is not yet supported with --diff; rerun without "
             "--whitelist, or without --diff to use it in tree-mapping mode"
         )
+    # Same footgun as above: the Rust backend used to accept this flag and
+    # silently drop it (a bare `tracing::warn!` that never surfaces - the
+    # extension module never installs a tracing subscriber), so a caller
+    # asking for the full default-ignore-free universe got exit 0 and the
+    # default ignore set applied anyway. Fail loudly instead of guessing.
+    if no_default_ignores:
+        raise NotImplementedError(
+            "--no-default-ignores is not yet supported with --diff (default "
+            "ignore rules still apply); rerun without --no-default-ignores, "
+            "or without --diff to use it in tree-mapping mode"
+        )
 
     # Budget semantics:
     #   None:                   pipeline default (None passes through to Rust as no cap)
@@ -113,10 +124,10 @@ def build_diff_context(
         alpha=alpha,
         tau=tau,
         no_content=no_content,
-        # Both are guaranteed None here: the guards above raise on any
-        # other value until the Rust backend implements them.
+        # All three are guaranteed to be their inert default here: the guards
+        # above raise on any other value until the Rust backend implements them.
         ignore_file=None,
-        no_default_ignores=no_default_ignores,
+        no_default_ignores=False,
         full=full,
         whitelist_file=None,
         scoring_mode=scoring_mode,

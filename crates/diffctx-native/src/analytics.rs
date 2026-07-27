@@ -459,6 +459,29 @@ pub fn hotspots(
     scored
 }
 
+// The mermaid text is a re-parsed protocol, not just a rendering artifact:
+// `src/diffctx/_native/graph_analytics.py`'s `_MERMAID_NODE_LINE` regex
+// (`^\s*(n\d+)\["(.*)"\]\s*$`) drives cycle detection by matching the quote
+// that closes the label. A path or symbol name containing `"`, `[` or `]`
+// (all legal on POSIX, and `[`/`]` are valid in most identifiers too) is
+// also invalid inside a mermaid quoted label, so it can corrupt the whole
+// diagram for a real mermaid renderer. Escape with mermaid's own `#NNN;`
+// numeric-character-reference syntax so the label round-trips as plain text
+// with no bare delimiter characters.
+fn escape_mermaid_label(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for ch in text.chars() {
+        match ch {
+            '#' => out.push_str("#35;"),
+            '"' => out.push_str("#quot;"),
+            '[' => out.push_str("#91;"),
+            ']' => out.push_str("#93;"),
+            other => out.push(other),
+        }
+    }
+    out
+}
+
 pub fn to_mermaid(qg: &QuotientGraph, top_n: usize) -> String {
     if qg.nodes.is_empty() {
         return "graph LR\n".to_string();
@@ -504,6 +527,7 @@ pub fn to_mermaid(qg: &QuotientGraph, top_n: usize) -> String {
         } else {
             node.label.as_str()
         };
+        let label = escape_mermaid_label(label);
         lines.push(format!("    {nid}[\"{label}\"]"));
     }
 
@@ -573,6 +597,7 @@ fn round4(v: f64) -> f64 {
 mod tests {
     use super::*;
     use crate::types::FragmentKind;
+    use regex::Regex;
 
     fn fid(path: &str, start: u32, end: u32) -> FragmentId {
         FragmentId::new(Arc::from(path), start, end)
@@ -751,6 +776,32 @@ mod tests {
         assert!(mermaid.contains("dirB"));
         assert!(mermaid.contains("structural: 3"));
         assert!(mermaid.ends_with('\n'));
+    }
+
+    #[test]
+    fn mermaid_escapes_quotes_and_brackets_in_node_labels() {
+        // Mirrors `src/diffctx/_native/graph_analytics.py`'s
+        // `_MERMAID_NODE_LINE = re.compile(r'^\s*(n\d+)\["(.*)"\]\s*$')`,
+        // which re-parses this text to drive cycle detection.
+        let mermaid_node_line = Regex::new(r#"^\s*(n\d+)\["(.*)"\]\s*$"#).unwrap();
+
+        let frags = vec![frag("src/say\"hi\"[x].rs", 1, 10, 7)];
+        let g = build(&[], &frags);
+        let qg = quotient_graph(&g, &frags, QuotientLevel::File, None);
+        let mermaid = to_mermaid(&qg, 20);
+
+        let node_line = mermaid
+            .lines()
+            .find(|l| l.contains("n0"))
+            .expect("node line for n0 must be present");
+        let caps = mermaid_node_line
+            .captures(node_line)
+            .unwrap_or_else(|| panic!("node line does not match mermaid grammar: {node_line:?}"));
+        let label = &caps[2];
+        assert!(
+            !label.contains('"'),
+            "escaped label still contains a bare quote: {label:?}"
+        );
     }
 
     #[test]

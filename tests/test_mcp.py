@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+import subprocess
+
 import pytest
 
 mcp = pytest.importorskip("mcp", reason="mcp package not installed")
@@ -286,8 +289,9 @@ class TestToolDeadline:
         from diffctx.mcp import server as server_module
 
         monkeypatch.setattr(server_module, "_DEFAULT_TIMEOUT_SECONDS", 0)
+        args = {"repo_path": str(mcp_repo.path)}
         with pytest.raises(ToolError, match="exceeded the 0s deadline"):
-            await server.call_tool("get_tree_map", {"repo_path": str(mcp_repo.path)})
+            await server.call_tool("get_tree_map", args)
 
     @pytest.mark.asyncio
     async def test_every_tool_warns_that_repo_content_is_untrusted(self, server):
@@ -339,6 +343,305 @@ class TestSymlinkJail:
         args = {"repo_path": str(mcp_repo.path), "subdirectory": "escape"}
         with pytest.raises(ToolError, match="escapes repo_path"):
             await server.call_tool("get_tree_map", args)
+
+
+class TestBudgetTokensValidation:
+    """budget_tokens is the only get_diff_context parameter with no guard: a
+    negative value below the -1 unlimited sentinel used to sail straight
+    into the native pipeline, and 0 (a legitimate strict-zero floor) had no
+    documented meaning at this surface."""
+
+    @pytest.mark.asyncio
+    async def test_value_below_unlimited_sentinel_is_rejected(self, server, mcp_repo):
+        args = {"repo_path": str(mcp_repo.path), "diff_range": "HEAD~1..HEAD", "budget_tokens": -2}
+        with pytest.raises(ToolError, match=r"budget_tokens must be >= -1"):
+            await server.call_tool("get_diff_context", args)
+
+    @pytest.mark.asyncio
+    async def test_strict_zero_floor_is_accepted(self, server, mcp_repo):
+        result = await server.call_tool(
+            "get_diff_context",
+            {"repo_path": str(mcp_repo.path), "diff_range": "HEAD~1..HEAD", "budget_tokens": 0},
+        )
+        assert isinstance(_get_text(result), str)
+
+    @pytest.mark.asyncio
+    async def test_unlimited_budget_is_still_capped_by_max_tokens(self, server, mcp_repo):
+        result = await server.call_tool(
+            "get_diff_context",
+            {
+                "repo_path": str(mcp_repo.path),
+                "diff_range": "HEAD~1..HEAD",
+                "budget_tokens": -1,
+                "max_tokens": 50,
+            },
+        )
+        text = _get_text(result)
+        assert "exceeding max_tokens=50" in text
+        assert "Nothing was returned" in text
+
+
+class TestTokenBudgetGuardExecutes:
+    """The over-budget branch on get_tree_map (:214) and get_file_context
+    (:324) decides between returning real content and a refusal notice.
+    Every other fixture in this suite stays far under the 25k default, so
+    the branch was dead code outside these tests."""
+
+    @pytest.fixture
+    def big_file_repo(self, tmp_path):
+        repo = Pygit2Repo(tmp_path / "big_file_repo")
+        repo.add_file("small.py", "def noop():\n    return None\n")
+        repo.commit("initial commit")
+        big_content = "\n".join(f"def func_{i}():\n    return {i}  # marker_{i}" for i in range(4000))
+        repo.add_file("big.py", big_content)
+        repo.commit("add big file")
+        return repo
+
+    @pytest.mark.asyncio
+    async def test_get_tree_map_over_budget_returns_notice(self, server, big_file_repo):
+        result = await server.call_tool(
+            "get_tree_map",
+            {"repo_path": str(big_file_repo.path), "max_tokens": 100},
+        )
+        text = _get_text(result)
+        assert "exceeding max_tokens=100" in text
+        assert "Nothing was returned" in text
+
+    @pytest.mark.asyncio
+    async def test_get_tree_map_under_generous_budget_returns_content(self, server, big_file_repo):
+        result = await server.call_tool(
+            "get_tree_map",
+            {"repo_path": str(big_file_repo.path), "max_tokens": 200_000},
+        )
+        assert "func_0" in _get_text(result)
+
+    @pytest.mark.asyncio
+    async def test_get_file_context_over_budget_returns_notice(self, server, big_file_repo):
+        result = await server.call_tool(
+            "get_file_context",
+            {"repo_path": str(big_file_repo.path), "patterns": ["big.py"], "max_tokens": 100},
+        )
+        text = _get_text(result)
+        assert "exceeding max_tokens=100" in text
+        assert "Nothing was returned" in text
+
+    @pytest.mark.asyncio
+    async def test_get_file_context_under_generous_budget_returns_content(self, server, big_file_repo):
+        result = await server.call_tool(
+            "get_file_context",
+            {"repo_path": str(big_file_repo.path), "patterns": ["big.py"], "max_tokens": 200_000},
+        )
+        assert "func_0" in _get_text(result)
+
+    @pytest.mark.asyncio
+    async def test_get_diff_context_over_budget_returns_notice(self, server, big_file_repo):
+        result = await server.call_tool(
+            "get_diff_context",
+            {
+                "repo_path": str(big_file_repo.path),
+                "diff_range": "HEAD~1..HEAD",
+                "budget_tokens": -1,
+                "max_tokens": 100,
+            },
+        )
+        text = _get_text(result)
+        assert "exceeding max_tokens=100" in text
+
+    @pytest.mark.asyncio
+    async def test_get_diff_context_under_generous_budget_returns_content(self, server, big_file_repo):
+        result = await server.call_tool(
+            "get_diff_context",
+            {
+                "repo_path": str(big_file_repo.path),
+                "diff_range": "HEAD~1..HEAD",
+                "budget_tokens": -1,
+                "max_tokens": 200_000,
+            },
+        )
+        assert "func_0" in _get_text(result)
+
+
+class TestFileContextTruncationAndDedup:
+    """With 400 matches the old loop silently stopped at max_files and
+    reported '# 50 files matched' with no truncation marker — the agent had
+    no way to tell a full read from a partial one. Overlapping glob patterns
+    (a natural LLM-authored pair) also burned slots twice for the same
+    file."""
+
+    @pytest.fixture
+    def many_files_repo(self, tmp_path):
+        repo = Pygit2Repo(tmp_path / "many_files_repo")
+        for i in range(60):
+            repo.add_file(f"src/mod_{i:03d}.py", f"def fn_{i}():\n    return {i}\n")
+        repo.commit("many files")
+        return repo
+
+    @pytest.mark.asyncio
+    async def test_truncation_beyond_max_files_is_disclosed(self, server, many_files_repo):
+        result = await server.call_tool(
+            "get_file_context",
+            {"repo_path": str(many_files_repo.path), "patterns": ["src/*.py"], "max_files": 10},
+        )
+        text = _get_text(result)
+        assert "10 files matched" in text
+        assert "60 total" in text
+        assert "TRUNCATED" in text
+
+    @pytest.mark.asyncio
+    async def test_dry_run_truncation_is_disclosed(self, server, many_files_repo):
+        result = await server.call_tool(
+            "get_file_context",
+            {
+                "repo_path": str(many_files_repo.path),
+                "patterns": ["src/*.py"],
+                "max_files": 10,
+                "dry_run": True,
+            },
+        )
+        text = _get_text(result)
+        assert "Would match 60 files" in text
+        assert "TRUNCATED" in text
+
+    @pytest.mark.asyncio
+    async def test_no_truncation_when_matches_fit(self, server, mcp_repo):
+        result = await server.call_tool(
+            "get_file_context",
+            {"repo_path": str(mcp_repo.path), "patterns": ["src/*.py"]},
+        )
+        assert "TRUNCATED" not in _get_text(result)
+
+    @pytest.mark.asyncio
+    async def test_overlapping_glob_patterns_do_not_duplicate_files(self, server, mcp_repo):
+        result = await server.call_tool(
+            "get_file_context",
+            {"repo_path": str(mcp_repo.path), "patterns": ["src/*.py", "src/**/*.py"]},
+        )
+        text = _get_text(result)
+        assert text.count("## src/calc.py") == 1
+        assert text.count("## src/main.py") == 1
+        assert "2 files matched" in text
+
+
+class TestClipboardDegradation:
+    """copy_to_clipboard raises ClipboardError with no DISPLAY/WAYLAND_DISPLAY
+    or pbcopy — the default state of a headless MCP server. The CLI degrades
+    to stdout in that case; the MCP tools must not throw away already-computed
+    content and raise a bare ToolError instead."""
+
+    @pytest.mark.asyncio
+    async def test_get_diff_context_degrades_instead_of_raising(self, server, mcp_repo, monkeypatch):
+        monkeypatch.setattr("diffctx.clipboard.detect_clipboard_command", lambda: None)
+        result = await server.call_tool(
+            "get_diff_context",
+            {"repo_path": str(mcp_repo.path), "diff_range": "HEAD~1..HEAD", "clipboard": True},
+        )
+        text = _get_text(result)
+        assert "clipboard unavailable" in text
+        assert "calc.py" in text
+
+    @pytest.mark.asyncio
+    async def test_get_tree_map_degrades_instead_of_raising(self, server, mcp_repo, monkeypatch):
+        monkeypatch.setattr("diffctx.clipboard.detect_clipboard_command", lambda: None)
+        result = await server.call_tool(
+            "get_tree_map",
+            {"repo_path": str(mcp_repo.path), "clipboard": True},
+        )
+        text = _get_text(result)
+        assert "clipboard unavailable" in text
+        assert "calc.py" in text
+
+    @pytest.mark.asyncio
+    async def test_get_file_context_degrades_instead_of_raising(self, server, mcp_repo, monkeypatch):
+        monkeypatch.setattr("diffctx.clipboard.detect_clipboard_command", lambda: None)
+        result = await server.call_tool(
+            "get_file_context",
+            {"repo_path": str(mcp_repo.path), "patterns": ["src/*.py"], "clipboard": True},
+        )
+        text = _get_text(result)
+        assert "clipboard unavailable" in text
+        assert "def add" in text
+
+
+class TestRepoPathWalksUpToRoot:
+    """get_diff_context(repo_path='/repo/src') used to fail with 'Not a git
+    repository' even though it plainly is inside one. repo_path only locates
+    the .git directory (diff_range still addresses the whole repo), so
+    walking up to the repo root is safe and turns a dead end into a working
+    call. Bare repos and worktree checkouts were rejected the same way even
+    at their own root."""
+
+    @staticmethod
+    def _run_git(*args, cwd):
+        subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True)
+
+    @pytest.mark.asyncio
+    async def test_subdirectory_of_a_normal_repo_is_accepted(self, server, mcp_repo):
+        result = await server.call_tool(
+            "get_diff_context",
+            {"repo_path": str(mcp_repo.path / "src"), "diff_range": "HEAD~1..HEAD"},
+        )
+        assert "calc.py" in _get_text(result)
+
+    @pytest.mark.asyncio
+    async def test_subdirectory_of_a_worktree_checkout_is_accepted(self, server, mcp_repo, tmp_path):
+        worktree_path = tmp_path / "wt"
+        self._run_git("worktree", "add", str(worktree_path), "-b", "wt-branch", cwd=mcp_repo.path)
+        result = await server.call_tool(
+            "get_diff_context",
+            {"repo_path": str(worktree_path / "src"), "diff_range": "HEAD~1..HEAD"},
+        )
+        assert "calc.py" in _get_text(result)
+
+    @pytest.mark.asyncio
+    async def test_a_bare_clone_is_accepted(self, server, mcp_repo, tmp_path):
+        bare_path = tmp_path / "bare.git"
+        self._run_git("clone", "--bare", str(mcp_repo.path), str(bare_path), cwd=tmp_path)
+        result = await server.call_tool(
+            "get_diff_context",
+            {"repo_path": str(bare_path), "diff_range": "HEAD~1..HEAD"},
+        )
+        assert "calc.py" in _get_text(result)
+
+    @pytest.mark.asyncio
+    async def test_a_directory_with_no_git_repo_anywhere_above_it_is_still_rejected(self, server, tmp_path):
+        plain_dir = tmp_path / "not_a_repo"
+        plain_dir.mkdir()
+        args = {"repo_path": str(plain_dir), "diff_range": "HEAD~1..HEAD"}
+        with pytest.raises(ToolError, match="Not a git repository"):
+            await server.call_tool("get_diff_context", args)
+
+
+class TestConcurrencyAndTimeoutRecovery:
+    """abandon_on_cancel=True exists so a timed-out call fails fast without
+    wedging the server. The only prior timeout test never actually asserted
+    that goal — it just checked the error string. These tests exercise the
+    stated goal directly: a following call must still succeed, and two real
+    calls must be able to run concurrently."""
+
+    @pytest.mark.asyncio
+    async def test_server_stays_responsive_after_a_timed_out_call(self, server, mcp_repo, monkeypatch):
+        from diffctx.mcp import server as server_module
+
+        monkeypatch.setattr(server_module, "_DEFAULT_TIMEOUT_SECONDS", 0)
+        args = {"repo_path": str(mcp_repo.path)}
+        with pytest.raises(ToolError, match="exceeded the 0s deadline"):
+            await server.call_tool("get_tree_map", args)
+
+        monkeypatch.setattr(server_module, "_DEFAULT_TIMEOUT_SECONDS", 300)
+        result = await server.call_tool("get_tree_map", {"repo_path": str(mcp_repo.path)})
+        assert "calc.py" in _get_text(result)
+
+    @pytest.mark.asyncio
+    async def test_concurrent_tool_calls_on_a_real_repo_both_succeed(self, server, mcp_repo):
+        diff_result, tree_result = await asyncio.gather(
+            server.call_tool(
+                "get_diff_context",
+                {"repo_path": str(mcp_repo.path), "diff_range": "HEAD~1..HEAD"},
+            ),
+            server.call_tool("get_tree_map", {"repo_path": str(mcp_repo.path)}),
+        )
+        assert "calc.py" in _get_text(diff_result)
+        assert "calc.py" in _get_text(tree_result)
 
 
 class TestGitRefInjection:
