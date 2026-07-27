@@ -223,7 +223,11 @@ jobs:
           # artifacts that break the harness-free yaml_cases build.
           cargo test --test native_cli
           cargo build --release --examples
-          cargo test --release --test yaml_cases
+          # --profile release-unwind (not --release): panic = "abort" in the
+          # release profile makes `cargo test` compile the graph twice (abort
+          # cdylib artifact + unwind test universe) and the hashless cdylib
+          # output names collide (cargo#6313 warning, future hard error).
+          cargo test --profile release-unwind --test yaml_cases
 
   # ============================================================================
   # Cross-platform Python Testing (diffctx core)

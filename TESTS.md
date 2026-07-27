@@ -148,7 +148,10 @@ All DO items landed; every VERIFY gate got its test. Verified by:
 - **Left open**: the hotspot churn duplication (`analytics.rs:441` dead
   Rust churn vs Python re-scoring in `graph_analytics.py`) — a
   behaviour-preserving resolution needs a pybridge+Python co-change and
-  stays a follow-up. Mermaid label escaping, in the same file, IS fixed
+  stays a follow-up. *(Resolved 2026-07-27, #174: the dead Rust churn
+  path was deleted; `graph_analytics.py` is the single churn owner,
+  pinned by `test_hotspots_report_git_churn`.)*
+  Mermaid label escaping, in the same file, IS fixed
   (`escape_mermaid_label`, `#quot;`/`#91;` entities, round-trip test
   against the Python `_MERMAID_NODE_LINE` protocol).
 
@@ -671,7 +674,8 @@ runs after the release is dispatched
 - **`analytics.rs:441`** — the `churn` half of the Rust hotspot score is dead
   (every caller passes `None`) and the score is discarded by Python, which
   recomputes with duplicated constants. The one Rust test asserts an ordering no
-  user sees.
+  user sees. *(Resolved 2026-07-27, #174: dead churn path deleted from
+  `analytics.rs`/`pybridge.rs`.)*
 - **`pybridge.rs:117`** — `DiffContextResult` is registered but unconstructible
   from Python; its `to_serializable` hardcodes `commit_message: None,
   changed_files: Vec::new(), role: None`, so anyone who later wires it up ships

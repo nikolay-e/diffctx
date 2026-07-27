@@ -72,7 +72,6 @@ pub struct HotspotEntry {
     pub path: Arc<str>,
     pub score: f64,
     pub out_degree: u32,
-    pub churn: u32,
 }
 
 fn relative_path<'a>(path: &'a str, root: Option<&str>) -> &'a str {
@@ -404,7 +403,6 @@ pub fn hotspots(
     top: usize,
     root: Option<&str>,
     edge_types: Option<&FxHashSet<EdgeCategory>>,
-    churn: Option<&FxHashMap<Arc<str>, u32>>,
 ) -> Vec<HotspotEntry> {
     let mut file_frag_count: FxHashMap<Arc<str>, u32> = FxHashMap::default();
     for frag in fragments {
@@ -424,27 +422,17 @@ pub fn hotspots(
     });
 
     let max_deg = out_deg.values().copied().max().unwrap_or(0).max(1);
-    let max_churn = churn
-        .map_or(0, |c| c.values().copied().max().unwrap_or(0))
-        .max(1);
 
     let mut scored: Vec<HotspotEntry> = file_frag_count
         .into_keys()
         .map(|file| {
             let deg = out_deg.get(&file).copied().unwrap_or(0);
-            let ch = churn.and_then(|c| c.get(&file).copied()).unwrap_or(0);
             let deg_norm = f64::from(deg) / f64::from(max_deg);
-            let churn_norm = f64::from(ch) / f64::from(max_churn);
-            let score = round4(
-                ANALYTICS
-                    .hotspot_degree_weight
-                    .mul_add(deg_norm, ANALYTICS.hotspot_churn_weight * churn_norm),
-            );
+            let score = round4(ANALYTICS.hotspot_degree_weight * deg_norm);
             HotspotEntry {
                 path: file,
                 score,
                 out_degree: deg,
-                churn: ch,
             }
         })
         .collect();
@@ -702,7 +690,7 @@ mod tests {
             ),
         ];
         let g = build(&edges, &frags);
-        let hs = hotspots(&g, &frags, 2, None, None, None);
+        let hs = hotspots(&g, &frags, 2, None, None);
         assert_eq!(hs.len(), 2);
         assert_eq!(hs[0].path.as_ref(), "a.rs");
         assert!(hs[0].score >= hs[1].score);

@@ -60,3 +60,7 @@ Project-specific facts for `/qa`. Generic methodology lives in
   `$VERSION` is an exact just-published version, package has zero
   deps — marked false positive in SonarCloud via API (NOSONAR is NOT
   supported by the githubactions analyzer; don't re-add it).
+  Gotcha: editing the flagged line (or its neighbours) shifts the issue
+  hash and Sonar re-raises the finding under a NEW issue key with the
+  FP mark lost — re-fetch after every analysis touching that file and
+  re-mark via `api/issues/do_transition` (`falsepositive`).

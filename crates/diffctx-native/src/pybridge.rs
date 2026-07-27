@@ -503,13 +503,11 @@ fn hotspots<'py>(
         top,
         root,
         cats.as_ref(),
-        None,
     );
     let mut out = Vec::with_capacity(entries.len());
     for entry in entries {
         let details = PyDict::new(py);
         details.set_item("out_degree", entry.out_degree)?;
-        details.set_item("churn", entry.churn)?;
         out.push((entry.path.to_string(), entry.score, details));
     }
     Ok(out)
