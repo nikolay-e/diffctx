@@ -7,7 +7,10 @@ pip install diffctx[mcp]
 ```
 
 The server starts as either `diffctx-mcp` or `diffctx mcp` — the two are
-equivalent. Zero-install: `uvx --from 'diffctx[mcp]' diffctx mcp`.
+equivalent. Zero-install: `uvx --from 'diffctx[mcp]' diffctx-mcp` — use the
+`diffctx-mcp` entry point here, not the `diffctx mcp` subcommand, which only
+exists from 1.12.3 onward and would map a directory named `mcp` on older
+releases.
 
 ## Client Configuration
 
@@ -17,13 +20,16 @@ equivalent. Zero-install: `uvx --from 'diffctx[mcp]' diffctx mcp`.
 claude mcp add diffctx -- diffctx-mcp
 ```
 
-Or add to your project's `.mcp.json`:
+Or add to your project's `.mcp.json`. This form needs nothing installed
+beforehand — `uv` fetches diffctx on first use, which is also what the
+Claude Code plugin ships:
 
 ```json
 {
   "mcpServers": {
     "diffctx": {
-      "command": "diffctx-mcp"
+      "command": "uvx",
+      "args": ["--from", "diffctx[mcp]", "diffctx-mcp"]
     }
   }
 }
