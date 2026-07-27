@@ -139,6 +139,10 @@ jobs:
           git add -A && git commit -q -m "initial"
           printf 'def add(a, b):\n    return a + b\n\ndef sub(a, b):\n    return a - b\n' > util.py
           git add -A && git commit -q -m "add sub"
+          # mktemp -d creates the dir 0700 for the runner user, while the image
+          # runs as the unprivileged uid 10001 — without this the container
+          # sees "'/repo' is not a git repository".
+          chmod -R a+rwX "$SMOKE"
           docker run --rm -v "$SMOKE:/repo" diffctx:ci . \
             --diff HEAD~1..HEAD --budget 2000 > /tmp/out.md
           test -s /tmp/out.md
