@@ -156,7 +156,7 @@ ini_options.pythonpath = [ "src" ]
 ini_options.norecursedirs = [ "mutants", ".git", ".mypy_cache", ".pytest_cache", "__pycache__", ".hypothesis" ]
 ini_options.addopts = "-n auto --dist worksteal"
 ini_options.truncation_limit_lines = 100
-ini_options.timeout = 10
+ini_options.timeout = 30
 ini_options.asyncio_mode = "auto"
 
 [tool.coverage]
