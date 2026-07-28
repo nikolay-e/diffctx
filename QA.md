@@ -46,7 +46,11 @@ Project-specific facts for `/qa`. Generic methodology lives in
 ## Diff-context review
 
 - Use the uv-tool binary `~/.local/bin/diffctx` (pipx-equivalent),
-  never `.venv/bin/diffctx`.
+  never `.venv/bin/diffctx`. Check its version FIRST (`uv tool list`,
+  not `--version` alone): a stale tool silently re-introduces fixed
+  bugs into reviews (a 1.12.2 tool leaked `.diffctx/ignore`-excluded
+  tests/yaml as context — the universe filter shipped in 1.12.3).
+  Refresh: `uv tool install 'diffctx[mcp]' --force --refresh`.
 - This repo's own `.diffctx/ignore` excludes `*.yaml`/`*.yml` (the
   2725-case corpus would drown every self-eat), so CI/workflow YAML
   changes NEVER appear in self-eat output — a workflow-only range
