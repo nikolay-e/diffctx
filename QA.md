@@ -47,6 +47,12 @@ Project-specific facts for `/qa`. Generic methodology lives in
 
 - Use the uv-tool binary `~/.local/bin/diffctx` (pipx-equivalent),
   never `.venv/bin/diffctx`.
+- This repo's own `.diffctx/ignore` excludes `*.yaml`/`*.yml` (the
+  2725-case corpus would drown every self-eat), so CI/workflow YAML
+  changes NEVER appear in self-eat output — a workflow-only range
+  legitimately yields rc=4 and a bare skeleton (excluded paths are
+  hidden even from `changed_files` by the security contract). Review
+  workflow changes with plain `git diff`, don't file this as a bug.
 - `env_overrides.rs` carries name-consistency tests: any new
   `read_env_*("DIFFCTX_*")` must appear in the `parameter-strategy.md`
   Tier-3 table (or the `TIER1_EXTRAS_READ_BUT_NOT_TABLED` allowlist)
