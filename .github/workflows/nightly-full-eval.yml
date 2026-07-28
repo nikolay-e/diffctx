@@ -1,12 +1,11 @@
 ---
 name: Nightly full eval
 
-# ci.yml runs only the first 20 yaml cases (DIFFCTX_YAML_CASES_LIMIT=20);
-# everything alphabetically after that never executes per-push. This job
-# runs the FULL 2700+ case suite nightly and gates on the pass count so a
-# ranking regression in the untested tail cannot land silently. The suite
-# has a standing baseline of ~463 below-threshold cases (score < 10), so
-# the gate is a minimum pass count, not a zero-failure assertion.
+# ci.yml already gates the full corpus per-case against
+# known_below_threshold.txt. This nightly re-runs the suite with
+# DIFFCTX_YAML_IGNORE_BASELINE=1 to report the raw failure count, so
+# baseline growth/shrinkage is tracked even when every per-case verdict
+# matches the checked-in list.
 
 on:
   schedule:

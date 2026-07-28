@@ -12,7 +12,7 @@
 | `oracle` | dict | No | Pass/fail conditions |
 | `accept` | dict | No | How selectors match output fragments |
 | `xfail` | dict | No | Mark test as expected failure |
-| `tests` | list[dict] | No | Multiple test cases in one file |
+| `min_score` | float | No | Per-case score threshold; falls back to `DIFFCTX_YAML_MIN_SCORE`, then 10.0 |
 
 ## repo
 
@@ -34,6 +34,10 @@ repo:
 | `initial_files` | dict[str, str] | `{}` | File path → content before the change |
 | `changed_files` | dict[str, str] | `{}` | File path → content after the change |
 | `commit_message` | string | `"Update files"` | Git commit message for the diff |
+
+The schema cannot express deletions or renames: `changed_files` is merged
+over the initial tree and nothing is ever removed, so a "rename" case is
+recorded by git as an add ([#176](https://github.com/nikolay-e/diffctx/issues/176)).
 
 ## fixtures
 
@@ -83,14 +87,14 @@ fragments:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `path` | string | File path (partial match: `auth.py` matches `src/auth.py`) |
+| `path` | string | File path — exact match or path-component suffix (`auth.py` matches `src/auth.py`; `sr/auth.py` and `auth` do not) |
 | `symbol` | string | Symbol name (function, class, variable name) |
-| `kind` | string | Symbol kind: `function`, `class`, `variable`, etc. |
+| `kind` | string | Symbol kind: `function`, `class`, `variable`, etc. — only enforced when `accept.kind_must_match: true` (default `false`: a specified `kind` is ignored) |
 | `anchor` | string | Content anchor — must appear in fragment content or path |
 | `any_of` | list[selector] | Match if ANY sub-selector matches |
 
-A selector matches an output fragment if ALL specified fields match.
-Unspecified fields are ignored.
+A selector matches an output fragment if ALL specified-and-enforced fields
+match. Unspecified fields are ignored.
 
 ## oracle
 
@@ -149,39 +153,6 @@ xfail:
 
 All fields default to `null`. If `reason` or `category` is set, the test is
 marked as expected failure (xfail).
-
-## Multi-case file
-
-```yaml
-tests:
-  - name: case_one
-    repo:
-      initial_files:
-        foo.py: |
-          x = 1
-      changed_files:
-        foo.py: |
-          x = 2
-    fragments:
-      - id: foo
-        selector: {path: foo.py, anchor: "x = 2"}
-    oracle:
-      required: [foo]
-
-  - name: case_two
-    repo:
-      initial_files:
-        bar.py: |
-          y = 1
-      changed_files:
-        bar.py: |
-          y = 2
-    fragments:
-      - id: bar
-        selector: {path: bar.py, anchor: "y = 2"}
-    oracle:
-      required: [bar]
-```
 
 ## Minimal example
 
@@ -293,7 +264,7 @@ Two runners execute these YAML cases.
 | `fixtures.distractors` | yes | yes |
 | `fixtures.auto_garbage` | yes | yes |
 | `xfail` (active) | skipped | tracked separately |
-| `min_score` (per-case) | overrides env default | uses oracle threshold |
+| `min_score` (per-case) | overrides env default | ignored |
 | Pipeline | real git repo via `tempfile` | in-memory `MemoryRepo` |
 | Parallelism | `libtest-mimic` threads | `rayon` |
 | Use case | CI regression gate | bulk benchmarking, JSON reports |
@@ -308,3 +279,13 @@ min_score: 50.0
 
 If `min_score` is omitted, runners fall back to `DIFFCTX_YAML_MIN_SCORE`
 environment variable, then to the built-in default (10.0).
+
+## Known-failure baseline (the actual CI gate)
+
+CI runs the full corpus and gates every case against
+`crates/diffctx-native/tests/known_below_threshold.txt` — **bidirectionally**:
+a case scoring below threshold fails unless listed, and a listed case that
+starts passing also fails (so improvements must be claimed by removing the
+entry). When your edit changes a case's outcome, update the baseline file in
+the same commit. `DIFFCTX_YAML_IGNORE_BASELINE=1` (nightly) reports instead of
+gating.

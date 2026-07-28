@@ -1,9 +1,9 @@
 # Evaluation framework
 
-Catalog of evaluation, diagnostic, and orchestration code under `eval/` and
-`scripts/`. `evaluation` names the whole subsystem; `benchmark` is reserved
-for a particular dataset or measured execution. For the rationale behind each
-benchmark, see the project paper and `CLAUDE.md`.
+Operator map for the evaluation subsystem under `eval/`. `evaluation` names
+the whole subsystem; `benchmark` is reserved for a particular dataset or
+measured execution. For the rationale behind each benchmark, see the project
+paper and `CLAUDE.md`.
 
 ## TL;DR — when to use what
 
@@ -20,9 +20,9 @@ benchmark, see the project paper and `CLAUDE.md`.
 
 Protocol notes: per-instance timeout for evaluation runs is **600s**;
 sweeps use **900s** to keep the near-dense #116 class measured rather
-than censored
-(`--timeout-per-instance 600`; calibrate.py defaults to 20s — always pass the
-flag). Multi-SWE-bench streaming fails deterministically on a malformed shard
+than censored. Every runner defaults `--timeout-per-instance` to 20s —
+always pass the flag. Multi-SWE-bench streaming fails deterministically
+on a malformed shard
 at the pinned revision; calibration/validation runs need
 `MULTISWE_ALLOW_TRUNCATED=1` (the v1 manifests were built from the same loadable
 prefix). Progress `eta~` is a rolling-window estimate; the final `tail of N`
@@ -48,7 +48,7 @@ Each instance has: `instance_id`, `repo`, `repo_url`, `base_commit`,
 Repo cache is persisted at `~/.cache/contextbench_repos` (override via
 `CONTEXTBENCH_REPOS_DIR`).
 
-### SWE-bench-derived LOO
+### ContextBench-derived LOO
 
 `eval/workflows/leave_one_out.py` reuses ContextBench instances but treats
 them as a robustness probe: hide one patch file, ask diffctx to recover
@@ -62,15 +62,8 @@ it from the remaining context.
 python -m eval <subcommand> [args]
 ```
 
-Selected subcommands (see `SUBCOMMANDS` in `eval/cli.py` for the full table):
-
-| Subcommand | Routes to |
-|---|---|
-| `cb` | `workflows/contextbench.py` (or `workflows/forensic.py` if `--forensic`) |
-| `loo` | `workflows/leave_one_out.py` |
-| `compare` | `analysis/compare_runs.py` |
-| `curve` | `analysis/budget_curve.py` |
-| `aggregate` | `analysis/aggregate_seeds.py` |
+The full subcommand table is `SUBCOMMANDS` in `eval/cli.py` — read it there;
+this file documents only the workflows with non-obvious protocol.
 
 ### `workflows/contextbench.py` — main evaluation
 
@@ -191,30 +184,9 @@ a tuning change).
 **Output**: stdout table —
 `metric | before CI | after CI | delta CI | p_boot | p_wilc`.
 
-### `harness/stats.py` — statistics helpers
-
-Library, not a script. Used by `analysis/compare_runs.py` and others.
-
-| Function | Returns |
-|---|---|
-| `bootstrap_ci(values, n_iter=10000, alpha=0.05, seed=42)` | `(mean, lo, hi)` |
-| `paired_bootstrap_delta(before, after, n_iter=10000, seed=42)` | `{delta_mean, ci_lo, ci_hi, p_value}` |
-| `wilcoxon_paired(before, after)` | `{statistic, p_value}` |
-
-### `harness/common.py` — shared utilities
-
-Library used by every script.
-
-Highlights:
-
-- `repos_dir(...)`: cache directory resolver.
-- `ensure_repo(url, name, commit, target_dir)`: git worktree + checkout.
-- `apply_as_commit(...) / reset_to_parent(...)`: patch ↔ commit cycle.
-- `run_parallel(fn, args, WORKERS)`: thread-pool executor.
-- `save_results(results, tag, seed, budget, scoring, baseline)`:
-  uniform JSON writer to `results/`.
-- `warm_cache(instances)`: pre-clone + fetch all repos before parallel.
-- `WORKERS`: env var `BENCH_WORKERS` (default 11).
+Statistics helpers live in `harness/stats.py`, shared utilities (repo cache,
+patch↔commit cycle, thread pool, `BENCH_WORKERS` default 11) in
+`harness/common.py` — both are libraries whose docstrings are the reference.
 
 ## Sweep orchestration (current)
 
@@ -228,37 +200,27 @@ cell calls `python -m eval run-final` (multi-budget reuse via
 `eval.analysis.aggregate_sweep`. Run provenance for published sweeps lives in
 `results/sweep/README.md`.
 
-### `scripts/sensitivity_check.sh` — parameter sensitivity
+### `scripts/sensitivity_check.py` — parameter sensitivity
 
-One-at-a-time perturbation of the 15 Group-C operational parameters.
-Pertubation factors `[0.50, 0.75, 1.25, 1.50]` → 61 runs total
-(1 baseline + 15 × 4).
-
-**Args**:
-
-| Flag | Default |
-|---|---|
-| `--diff` | `HEAD~5..HEAD` |
-| `--budget` | 4096 |
-| `--repo` | `.` |
-| `--params` | all 15 |
-
-**Output**: stdout table — `param | factor | value | tokens | Δ% | Jaccard`.
-
-**Limitation**: runs on a single diff (the local repo's HEAD~5..HEAD
-by default). Use as smoke test, not as ground truth for parameter
-optimization. For real calibration use ContextBench.
+One-at-a-time perturbation of the 14 operational parameters
+(`OPERATIONAL_PARAMS` in the script), factors `[0.50, 0.75, 1.25, 1.50]` →
+57 runs (1 baseline + 14 × 4). Wrapped by `sensitivity_check.sh` and driven
+in CI by `.github/workflows/sensitivity-check.yml`. Output: stdout table
+`param | factor | value | tokens | Δ% | Jaccard`. Runs on a single diff —
+smoke test, not calibration ground truth.
 
 ## Output directory layout
 
 ```text
 results/
 ├── final/v1/                                  # final eval outputs (paper tables)
-├── sweep/run_<gh_run_id>/                     # per-cell sweep artifacts + provenance
-│   └── cell-<method>-b<budget>-L<depth>-<test_set>/
+├── sweep/                                     # sweep artifacts — layout + provenance in results/sweep/README.md
 ├── cb_{scoring}_n{limit}_b{budget}.json       # contextbench_diffctx outputs
 └── loo_{scoring}_n{limit}_b{budget}.json      # leave-one-out
 ```
+
+Post-#52, ppr/ego/bm25 sweep cells are multi-budget (`cell-<method>-bALL-…`
+with per-budget checkpoints); aider keeps one budget per cell.
 
 `cb` / `loo` JSON record schema (per instance, abbreviated):
 
@@ -318,14 +280,12 @@ so no rerun is needed to analyse a sweep at finer granularity.
 
 - **Seeds**: every script that shuffles takes `--seed` / `--seeds`. Default
   42. Multi-seed runs append `_s{seed}` to the JSON filename.
-- **tiktoken**: pinned to `==0.12.0` in `pyproject.toml` and to `=0.6.0`
-  for `tiktoken-rs` in `crates/diffctx-native/Cargo.toml`. Drift snapshot in
-  `tests/test_diffctx_invariants.py::test_tiktoken_o200k_base_encoding_is_pinned`.
 - **Determinism**: `tests/test_diffctx_invariants.py` locks byte-identical
   output across runs and rayon thread counts.
 - **Worker counts**: `BENCH_WORKERS` (Python pool, default 11),
   `RAYON_NUM_THREADS` (Rust pool — common.py sets to 1 by default to
   avoid oversubscription with the Python pool).
+- Version pins are in the Reproducibility stack table below.
 
 ## Pre-flight & resilience
 
@@ -366,7 +326,7 @@ manifests.
 |---|---|
 | Rust toolchain | `rust-toolchain.toml` (`channel = "1.92.0"`) |
 | Cargo deps | root `Cargo.lock` (committed workspace lockfile) |
-| Python deps | `requirements-eval.lock` from `uv pip compile`; install with `pip install --require-hashes -r requirements-eval.lock` (committed) |
+| Python deps | `requirements-eval.lock`, compiled from `requirements-eval.txt` via `uv pip compile --generate-hashes` (edit the .txt, recompile the lock); install with `pip install --require-hashes -r requirements-eval.lock` |
 | HuggingFace datasets | `datasets/external-revisions.json` from `python -m eval pin-revisions` (committed) |
 | tiktoken BPE | Python `tiktoken` pinned via `requirements-eval.lock` (currently 0.13.0); Rust `tiktoken-rs = "=0.12.0"` in `Cargo.toml`; drift snapshot test `test_tiktoken_o200k_base_encoding_is_pinned` |
 | Build determinism | NOT bit-for-bit — Rust release builds carry HashMap ordering non-determinism per `cargo#16693`. Documented limitation; reviewers don't ask for byte-identical `.so`. |
@@ -437,15 +397,9 @@ result = ev.evaluate(
 calibration objective is `min(per_benchmark_recall)` — generalization-friendly,
 prevents one large benchmark from dominating the global mean.
 
-**Pinning workflow** (mandatory before any calibration sweep):
-
-```bash
-python -m eval pin-revisions   # writes datasets/external-revisions.json
-git add datasets/external-revisions.json
-git commit -m "chore(eval): pin dataset revisions for v1"
-```
-
-Resolution order in `adapters/dataset_pins.py::resolve_revision`:
+**Pinning**: `python -m eval pin-revisions` writes
+`datasets/external-revisions.json` (committed). Resolution order in
+`adapters/dataset_pins.py::resolve_revision`:
 
 1. `BENCH_REVISION_<HF_PATH_UPPER_SAFE>` env var (one-off override)
 2. `datasets/external-revisions.json` (committed pin file)
@@ -471,11 +425,11 @@ All phases dispatch through `python -m eval` and read manifests from
 
 | Phase | Script | Input | Output |
 |---|---|---|---|
-| Build splits | `python -m eval build-splits` | adapters | `manifests/v1/{calibration,validation,test_*}.txt` + `SPLIT_REPORT.md` |
+| Build splits | `python -m eval build-splits` | adapters | `datasets/eval-splits/v1/{calibration,validation,test_*}.txt` + `SPLIT_REPORT.md` |
 | One-off run | `python -m eval run --manifest M --tau X --core-budget-fraction Y --out R.json` | manifest | per-instance results JSON |
 | 2D grid sweep | `python -m eval calibrate --manifest calibration.txt --tau 0.04,0.08,0.12,0.16 --core-budget-fraction 0.5,0.6,0.7,0.8 --out results/calibration/v1` | calibration manifest | `grid_results.json`, `top_candidates.json`, `grid_report.md` |
 | Validation pass | `python -m eval select-final --candidates top_candidates.json --manifest validation.txt --out final_choice.json` | top-K candidates + validation manifest | `final_choice.json` (winner + per-benchmark scores) |
-| Final eval | `python -m eval run-final --winner final_choice.json --manifests-dir manifests/v1 --out results/final/v1` | winner + every test manifest | per-test-set JSONs + `PAPER_TABLE.md` |
+| Final eval | `python -m eval run-final --winner final_choice.json --manifests-dir datasets/eval-splits/v1 --out results/final/v1` | winner + every test manifest | per-test-set JSONs + `PAPER_TABLE.md` |
 
 The objective at sweep time is `min(per_benchmark file_recall)` —
 generalization-friendly. Tie-breaking on `top_k_trials` prefers the trial
@@ -488,24 +442,7 @@ applies the gold patch as a commit, sets the env vars from `params.to_env()`,
 calls `build_diff_context`, computes metrics via `UniversalEvaluator`, and
 reverts. Tests pass a stub `EvalFn` and never touch this module.
 
-## Calibration vs evaluation split
-
-To prevent contamination between hyperparameter calibration (e.g.
-sweeping `tau`) and final paper numbers, **never share instances
-between the two phases**. Recommended split:
-
-| Phase | Dataset | Use |
-|---|---|---|
-| Calibration | `default` minus `verified` | parameter tuning |
-| Evaluation | `contextbench_verified` | paper figures |
-
-Concrete instance manifests live under `datasets/eval-splits/` (when
-present); both files are committed to git so the split is reproducible
-across runs and reviewers. The `verified` config is the
-ContextBench-team-curated holdout — using it as eval keeps the split
-under external authority rather than our own choice.
-
-For the 1D `tau` calibration specifically: 30–50 stratified instances
-from the calibration pool are sufficient (BO converges fast on a 1D
-continuous space). Verify on the full calibration set after best `tau`
-is found, then evaluate ONCE on the held-out `verified` set.
+Calibration and evaluation never share instances: the committed v1 split
+(`datasets/eval-splits/v1/` — calibration, validation, and three test
+manifests, with `SPLIT_REPORT.md` and checksums) is the single source of
+truth, built with cross-benchmark contamination filtering.

@@ -52,8 +52,8 @@ leaves the CLI default in place.
 | `diff-range` | auto | `--diff` | `main..HEAD`, `<base>..<head>`, … |
 | `budget` | auto | `--budget` | Token cap; `-1` unlimited, `0` strict-zero floor |
 | `scoring` | `ego` | `--scoring` | `ego`, `ppr`, `bm25` |
-| `tau` | `0.12` | `--tau` | Relevance threshold for full fragment content |
-| `alpha` | `0.60` | `--alpha` | PPR damping; only affects `scoring: ppr` |
+| `tau` | CLI default (0.12) | `--tau` | Relevance threshold for full fragment content |
+| `alpha` | CLI default (0.60) | `--alpha` | PPR damping; only affects `scoring: ppr` |
 | `full` | `false` | `--full` | Changed files only, every fragment, no related code |
 | `format` | `md` | `--format` | `md`, `yaml`, `json`, `txt` |
 | `output-path` | `$RUNNER_TEMP/diffctx-context.<ext>` | `--output-file` | Where to write |
@@ -86,30 +86,10 @@ reported, not fatal; set `fail-on-empty: true` to make it fail the step.
 ## Installation model
 
 The action creates a throwaway virtualenv under `$RUNNER_TEMP` and installs
-one pinned wheel, `diffctx==<diffctx-version>`, from PyPI.
-
-- **Pinned, not floating.** A version input with a concrete default means an
-  upstream release cannot silently change what a consumer's CI selects.
-- **`pip` into a venv, not `pipx`.** The action needs the wheel *importable*
-  by an interpreter it controls, so `token-count` comes from the same
-  tokenizer that enforced the budget instead of from parsed log text. `pipx`
-  exposes the executable but not that interpreter.
-- **Isolated.** Nothing is installed into the runner's or the consumer's
-  Python environment, so diffctx cannot conflict with the repository's own
-  dependencies.
-
-The published wheels are `abi3` manylinux builds with the Rust extension
-compiled in, so no toolchain and no build step are needed on the runner.
-
-## Choosing a budget
-
-`budget` is the whole point of the action: it is the knob that keeps a review
-inside a model's context window and inside a per-PR cost target. Start at
-`8000` for a general-purpose review, drop to `3000` for a cheap triage pass,
-raise it or use `-1` only when the reviewing model is large enough to make
-that pay. `scoring: ego` is the right default; switch to `ppr` for changes
-whose consequences fan out across the graph, and to `bm25` for repositories
-whose cross-file structure is too sparse to give the graph anything to walk.
+one pinned wheel, `diffctx==<diffctx-version>`, from PyPI. The published
+wheels are `abi3` manylinux builds with the Rust extension compiled in, so no
+toolchain and no build step are needed on the runner, and nothing touches the
+repository's own Python environment.
 
 ## Notes
 
@@ -117,7 +97,3 @@ whose cross-file structure is too sparse to give the graph anything to walk.
   downstream step needs more.
 - Exit codes other than `0` and `4` are propagated verbatim, so a missing
   revision (`3`) or a timeout (`124`) fails the step loudly.
-- `.github/workflows/action-smoke.yml` in this repository runs the action
-  against its own diff on every push and pull request, across three
-  format/scoring combinations, asserting the context file is non-empty and
-  the token count is set.

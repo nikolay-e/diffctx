@@ -28,8 +28,7 @@ Their source, data, and generated outputs have different lifecycles:
 - The standalone Rust binary is built from `crates/diffctx-native/`.
 
 The `diffctx-native` crate intentionally combines the Rust library, native
-binary, optional PyO3 bridge, and native diagnostics. It is not presented as a
-pure domain-only `core` crate.
+binary, optional PyO3 bridge, and native diagnostics.
 
 ## Python/Rust boundary
 

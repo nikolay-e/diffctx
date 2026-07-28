@@ -5,33 +5,20 @@ Reference for two questions the CLI answers only in passing: *whose* tokens
 
 ## Which tokenizer diffctx uses
 
-Every token number diffctx prints or enforces — the `--budget` cap, the
-summary line on stderr, the internal cost model that ranks fragments — comes
-from **tiktoken's `o200k_base` encoder**, the tokenizer of the GPT-4o /
-GPT-4.1 family. The summary line names it:
+Every token number diffctx prints or enforces comes from **tiktoken's
+`o200k_base` encoder** (the GPT-4o / GPT-4.1 tokenizer); the stderr summary
+names it. Counts are exact only for OpenAI models on that encoder — Claude,
+Gemini, Llama and friends tokenize differently, typically within
+single-to-low-double-digit percent either way.
 
-```text
-7,412 tokens (o200k_base), 28.4 KB
-```
-
-Counts are exact for OpenAI models on that encoder. They are **not** exact for
-anything else. Claude, Gemini, Llama, Mistral and friends ship different
-vocabularies, so the same text measures differently — typically by a
-single-digit to low-double-digit percentage, in either direction, with the gap
-widening on code that is heavy in identifiers, non-Latin text, or unusual
-punctuation.
-
-Practical implication: when the consumer is not an OpenAI model, treat
-`--budget N` as *an upper bound of N o200k tokens*, not as a guarantee about
-your model's context window, and leave headroom — e.g. `--budget 28000` when
+Practical implication: for a non-OpenAI consumer treat `--budget N` as *an
+upper bound of N o200k tokens* and leave headroom — e.g. `--budget 28000` when
 aiming at a 32k window. If a hard guarantee matters, measure the produced file
-with your own model's tokenizer; diffctx writes plain text and imposes nothing.
+with your own model's tokenizer.
 
-There is no `--tokenizer` flag, deliberately. `o200k_base` is pinned (and
-locked by `test_tiktoken_o200k_base_encoding_is_pinned`) because every number
-in the paper's evaluation is denominated in it; a switchable tokenizer would
-make published selection results irreproducible. If you need per-family
-counting, open an issue — it is a deferred decision, not an oversight.
+There is no `--tokenizer` flag: `o200k_base` is pinned (locked by
+`test_tiktoken_o200k_base_encoding_is_pinned`) because every number in the
+paper's evaluation is denominated in it.
 
 ## `--with-raw-diff`
 
@@ -62,10 +49,11 @@ hand-assembled `git diff` + `diffctx` bundle.
   path cannot be resolved inside the repository is dropped too.
 - **Untracked files do not appear** in it. `git diff` does not show them;
   diffctx still fragments them into the selected context as usual.
-- **Python CLI only.** The `pip`/`pipx` CLI and the Python API
-  (`build_diff_context(..., with_raw_diff=True)`) support it. The standalone
+- **Python surfaces only.** The `pip`/`pipx` CLI, the Python API
+  (`build_diff_context(..., with_raw_diff=True)`) and the MCP server
+  (`get_diff_context(include_raw_diff=true)`) support it. The standalone
   Rust binary (`cargo install diffctx`, `npx`, the Docker image) has no such
-  flag in this release, and neither does the MCP server.
+  flag in this release.
 
 Rendering per format: a fenced ` ```diff ` block under a `## Raw diff` heading
 in Markdown, a `raw_diff` block scalar in YAML, a `raw_diff` string field in

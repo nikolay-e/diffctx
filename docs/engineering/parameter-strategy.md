@@ -100,18 +100,15 @@ below the ~50-per-scalar floor, overfit by construction.
   `LIMITS.peripheral_cap`, etc.): structural prior on file roles
   (entrypoints, tests, generated). **Fixed.**
 
-Reviewers asking "did you tune these against the benchmark?" — the
-answer is **no, by design**. They are domain priors; the only
-corpus-calibrated scalars are the two in Tier 1.
-
-### Tier 3 — Operational, sensitivity-checked (~17 scalars)
+### Tier 3 — Operational, sensitivity-checked (18 scalars)
 
 These have meaningful influence on output but are not low-dimensional
 enough nor isolated enough to justify per-corpus calibration. They are
 set from analytical reasoning (PPR damping conventions, ego-graph
 locality assumptions, density-greedy stopping heuristics) and verified
-by a **±25% / ±50% sensitivity sweep** (`scripts/sensitivity_check.sh`)
-that quantifies how much output changes under perturbation.
+by a **±25% / ±50% sensitivity sweep** (`scripts/sensitivity_check.py`,
+wrapped by `sensitivity_check.sh`) that quantifies how much output
+changes under perturbation.
 
 Tier-3 parameters are runtime-overridable via environment variables
 (most under the `DIFFCTX_OP_*` prefix, a few historical ones without
@@ -149,28 +146,9 @@ it) to enable the sweep without rebuild.
 The Tier-1 pair ($\tau$, $\beta_{core}$) is intentionally absent from
 this table: those two are calibrated, not merely sensitivity-checked.
 
-## Tier ratios
-
-- Calibrated : domain priors : operational ≈ **2 : 275 : 17**
-- Calibrated to learnable-corpus-size ratio: 2 vs 1500 = 750 examples
-  per parameter — far above the rule-of-thumb 50 floor.
-
-This is the sentence reviewers should be able to verify on their own:
-**fewer than 1% of the scalars in `config/` are corpus-calibrated.**
-
-## What this means for the paper
-
-The section "Edge-Type Weight Priors and Operational Calibration"
-describes exactly this split: the fine-grained edge weights and the
-unit category multipliers are **fixed priors** (their full calibration
-is recorded as future work), while $\tau$ and $\beta_{core}$ are the
-two calibrated operational parameters, with the grid protocol in
-"Calibration Protocol" and the grid table in the empirical section.
-The edge-categories table in the paper enumerates the ten categories
-whose multipliers stay at 1.0. Sensitivity analysis for Tier-3
-parameters belongs in an appendix (`scripts/sensitivity_check.sh`
-output). Anywhere the paper mentions "tuned" or "calibrated", the
-referent must be $\tau$ or $\beta_{core}$.
+Fewer than 1% of the scalars in `config/` are corpus-calibrated;
+anywhere the paper mentions "tuned" or "calibrated", the referent must
+be $\tau$ or $\beta_{core}$.
 
 ## What changes when
 

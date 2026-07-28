@@ -11,9 +11,4 @@
 ## Testing
 
 <!-- How was this tested? -->
-
-## Checklist
-
-- [ ] Tests pass (`pytest`)
-- [ ] Linting passes (`pre-commit run --all-files`)
-- [ ] No breaking changes (or documented in description)
+<!-- Breaking changes? Document them here. -->

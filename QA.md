@@ -33,10 +33,12 @@ Project-specific facts for `/qa`. Generic methodology lives in
   = oversubscription, not a regression; never run `cargo test`
   concurrently with pytest, it makes this worse.
 - `cargo test --lib` in `crates/diffctx-native` — inline units, ~171.
-- YAML corpus: `cargo test --test yaml_cases` (CI runs a 20-case sample
-  via `DIFFCTX_YAML_CASES_LIMIT=20`; the full 2725-case corpus is gated
-  per-case against `known_below_threshold.txt`, enforced
-  bidirectionally, nightly).
+- YAML corpus: CI gates the FULL 2725-case corpus on every push
+  (`cargo test --profile release-unwind --test yaml_cases`), per-case
+  against `known_below_threshold.txt`, enforced bidirectionally;
+  nightly re-runs with `DIFFCTX_YAML_IGNORE_BASELINE=1` to track
+  baseline size. `DIFFCTX_YAML_CASES_LIMIT=20` sampling survives only
+  in the local pre-commit hook.
 - E/Q discipline (CLAUDE.md): Q-class (output-changing) fixes are
   frozen during an eval cycle — bugs like the `IntervalIndex::overlaps`
   asymmetry stay documented + pinned, not fixed in-pass.
@@ -70,3 +72,17 @@ Project-specific facts for `/qa`. Generic methodology lives in
   hash and Sonar re-raises the finding under a NEW issue key with the
   FP mark lost — re-fetch after every analysis touching that file and
   re-mark via `api/issues/do_transition` (`falsepositive`).
+
+## Known non-bugs (audited correct — do not re-file)
+
+- `IntervalIndex::overlaps` boundary asymmetry — deliberate, pinned by
+  a verdict-matrix test; symmetric fix is net-zero on the corpus
+  (Q-class, next calibration).
+- `node_end_line` `+1` in tree-sitter spans is correct (end-exclusive
+  to end-inclusive conversion).
+- Haskell `type_synomym` matches the upstream grammar's misspelling —
+  "fixing" the spelling breaks extraction.
+- BM25 `.ln_1p()` is the Lucene IDF formulation, deliberate.
+- Float-sum nondeterminism pattern: any accumulation over
+  `FxHashMap` iteration order must sort keys first — fixed sites are
+  pinned by determinism tests; new code must follow suit.

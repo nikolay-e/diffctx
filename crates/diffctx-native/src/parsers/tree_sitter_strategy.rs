@@ -1776,9 +1776,8 @@ mod grammar_tests {
             expected_symbol: Some("Foo"),
         },
         // C's function name lives behind child_by_field_name("declarator")
-        // -> unwrap_declarator, not a direct "name" field: this is the
-        // anchor case for TESTS.md's "deleting the declarator entry must
-        // fail cargo test --lib" requirement.
+        // -> unwrap_declarator, not a direct "name" field: deleting the
+        // declarator entry from the dispatch table must fail this case.
         Case {
             ext: "c",
             source: "int foo() {\n    return 0;\n}\n",
