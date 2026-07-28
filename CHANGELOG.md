@@ -15,7 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   strongest source / mass, `proximity` seed-hops) with **no source bodies**:
   a navigation prior for agents at a fraction of pack-mode tokens. Available
   on the Python CLI, the native binary, and the MCP `get_diff_context` tool
-  (`mode="locate"`); pack output is byte-unchanged (#126).
+  (`mode="locate"`); pack output is byte-unchanged (#126). Each item carries
+  a coarse impact `group` (`test` / `type` / `config`) and the header a
+  blast-radius `summary` (files, changed, context, tests) — with
+  `--diff --mode locate` this answers "what does my uncommitted change
+  touch, and which tests cover it" in one call (#135).
 - `DIFFCTX_PROVENANCE_DUMP=<path>` writes one JSONL record per scored
   candidate — relevance, core/selected verdicts, seed-hop distance, and
   per-edge-category incoming mass — for offline analysis of why the selector

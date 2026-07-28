@@ -21,8 +21,19 @@ pub struct LocateOutput {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub lockfile_changes: Vec<String>,
     pub budget_tokens: u32,
+    /// Blast-radius counts over the ranked items (#135): distinct files,
+    /// changed vs context fragments, and how many context items are tests.
+    pub summary: Summary,
     pub item_count: usize,
     pub items: Vec<LocateItem>,
+}
+
+#[derive(Serialize)]
+pub struct Summary {
+    pub files: usize,
+    pub changed: usize,
+    pub context: usize,
+    pub tests: usize,
 }
 
 #[derive(Serialize)]
@@ -42,9 +53,71 @@ pub struct LocateItem {
     pub symbol: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub role: Option<&'static str>,
+    /// Coarse impact group: `test`, `type`, or `config`; absent = general
+    /// code (callers and friends). Path- and kind-derived, presentation only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group: Option<&'static str>,
     pub score: f64,
     pub tokens: u32,
     pub reasons: Vec<Reason>,
+}
+
+fn is_test_path(path: &str) -> bool {
+    let lower = path.to_lowercase();
+    let parts: Vec<&str> = lower.split(['/', '\\']).collect();
+    if parts.iter().any(|p| {
+        matches!(
+            *p,
+            "test" | "tests" | "__tests__" | "spec" | "specs" | "testing"
+        )
+    }) {
+        return true;
+    }
+    let stem = parts
+        .last()
+        .and_then(|f| f.rsplit_once('.').map(|(s, _)| s).or(Some(f)))
+        .unwrap_or("");
+    stem.starts_with("test_")
+        || stem.ends_with("_test")
+        || stem.ends_with(".test")
+        || stem.ends_with(".spec")
+        || stem.ends_with("_spec")
+}
+
+const CONFIG_EXTENSIONS: &[&str] = &[
+    "yaml",
+    "yml",
+    "json",
+    "toml",
+    "ini",
+    "cfg",
+    "conf",
+    "env",
+    "properties",
+];
+
+fn group_of(path: &str, kind: crate::types::FragmentKind) -> Option<&'static str> {
+    use crate::types::FragmentKind as K;
+    if is_test_path(path) {
+        return Some("test");
+    }
+    if matches!(
+        kind,
+        K::Struct
+            | K::Enum
+            | K::Interface
+            | K::Type
+            | K::Record
+            | K::StructSignature
+            | K::ClassSignature
+    ) {
+        return Some("type");
+    }
+    let ext = path.rsplit_once('.').map(|(_, e)| e).unwrap_or("");
+    if CONFIG_EXTENSIONS.contains(&ext.to_lowercase().as_str()) {
+        return Some("config");
+    }
+    None
 }
 
 #[derive(Serialize)]
@@ -117,12 +190,15 @@ pub fn build_locate(state: &ScoredState, outcome: &SelectionOutcome) -> LocateOu
         .map(|frag| {
             let is_changed = state.core_ids.contains(&frag.id)
                 || frag.kind == crate::types::FragmentKind::Excerpt;
+            let path = rel_path(state, frag.id.path.as_ref());
+            let group = group_of(&path, frag.kind);
             LocateItem {
-                path: rel_path(state, frag.id.path.as_ref()),
+                path,
                 lines: format!("{}-{}", frag.id.start_line, frag.id.end_line),
                 kind: format!("{:?}", frag.kind).to_lowercase(),
                 symbol: frag.symbol_name.clone(),
                 role: if is_changed { Some("changed") } else { None },
+                group,
                 score: rel
                     .get(&frag.id)
                     .map(|s| (s * 1e4).round() / 1e4)
@@ -162,6 +238,16 @@ pub fn build_locate(state: &ScoredState, outcome: &SelectionOutcome) -> LocateOu
             .collect(),
         lockfile_changes: state.lockfile_changes.clone(),
         budget_tokens: outcome.effective_budget,
+        summary: Summary {
+            files: items
+                .iter()
+                .map(|i| i.path.as_str())
+                .collect::<std::collections::BTreeSet<_>>()
+                .len(),
+            changed: items.iter().filter(|i| i.role == Some("changed")).count(),
+            context: items.iter().filter(|i| i.role.is_none()).count(),
+            tests: items.iter().filter(|i| i.group == Some("test")).count(),
+        },
         item_count: items.len(),
         items,
     }

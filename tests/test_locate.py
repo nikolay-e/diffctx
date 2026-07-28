@@ -22,6 +22,10 @@ def locate_repo(tmp_path):
         "src/main.py",
         "from calc import add\n\ndef run():\n    return add(1, 2)\n",
     )
+    repo.add_file(
+        "checks/test_calc.py",
+        "from calc import add\n\ndef test_add():\n    assert add(1, 2) == 3\n",
+    )
     base = repo.commit("initial")
     repo.add_file(
         "src/calc.py",
@@ -55,6 +59,14 @@ class TestLocateMode:
             assert {"path", "lines", "kind", "score", "tokens", "reasons"} <= item.keys()
             assert item["reasons"], "every ranked item carries >=1 provenance reason"
         assert "def add" not in result.stdout
+
+        summary = doc["summary"]
+        assert summary["changed"] == sum(1 for i in doc["items"] if i.get("role") == "changed")
+        assert summary["context"] == doc["item_count"] - summary["changed"]
+        assert summary["files"] == len({i["path"] for i in doc["items"]})
+        test_items = [i for i in doc["items"] if i.get("group") == "test"]
+        assert summary["tests"] == len(test_items)
+        assert any(i["path"].endswith("test_calc.py") for i in test_items), "covering test file must be flagged group=test"
 
     def test_changed_items_and_pack_output_unaffected(self, locate_repo):
         repo, diff_range = locate_repo
