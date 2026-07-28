@@ -22,7 +22,8 @@ pub struct LocateOutput {
     pub lockfile_changes: Vec<String>,
     pub budget_tokens: u32,
     /// Blast-radius counts over the ranked items (#135): distinct files,
-    /// changed vs context fragments, and how many context items are tests.
+    /// changed vs context fragments, and how many ranked items (changed or
+    /// context) are tests.
     pub summary: Summary,
     pub item_count: usize,
     pub items: Vec<LocateItem>,
@@ -141,7 +142,7 @@ pub enum Reason {
 fn rel_path(state: &ScoredState, path: &str) -> String {
     let root = state.root_dir.to_string_lossy();
     path.strip_prefix(root.as_ref())
-        .map(|s| s.trim_start_matches('/').to_string())
+        .map(|s| s.trim_start_matches(['/', '\\']).to_string())
         .unwrap_or_else(|| path.to_string())
         .replace('\\', "/")
 }
