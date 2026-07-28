@@ -107,3 +107,29 @@ class TestDistributionPins:
         assert job
         assert "id-token: write" in job.group(0)
         assert "login github-oidc" in job.group(0)
+
+    def test_mcp_publisher_download_is_pinned_and_verified(self):
+        """The release assets are named linux_amd64 (Go convention), not the
+        uname -m x86_64 — and an unpinned binary download in a publishing job
+        is a supply-chain hole. Both invariants live or die together here."""
+        cd = (PROJECT_ROOT / ".github/workflows/cd.yml").read_text(encoding="utf-8")
+        job = re.search(r"publish-mcp-registry:.*?(?=\n  [a-z-]+:\n)", cd, re.DOTALL)
+        assert job
+        assert "mcp-publisher_linux_amd64.tar.gz" in job.group(0)
+        assert "sha256sum -c" in job.group(0)
+        assert re.search(r"PUBLISHER_SHA256=[0-9a-f]{64}", job.group(0))
+
+
+class TestNativeModuleStub:
+    def test_stub_names_match_the_runtime_module(self):
+        """diffctx._diffctx ships a .pyi so editor type-checkers see the
+        native surface; a stub that drifts from the module is worse than
+        none. Names must match exactly in both directions."""
+        import ast
+
+        import diffctx._diffctx as native
+
+        runtime = {n for n in dir(native) if not n.startswith("_")}
+        tree = ast.parse((PROJECT_ROOT / "src/diffctx/_diffctx.pyi").read_text(encoding="utf-8"))
+        stubbed = {node.name for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}
+        assert stubbed == runtime, f"stub-only: {stubbed - runtime}; runtime-only: {runtime - stubbed}"

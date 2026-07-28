@@ -4,18 +4,10 @@ import re
 import subprocess
 from typing import Any, cast
 
-from diffctx._diffctx import (
-    coupling_metrics as _rust_coupling_metrics,
-)
-from diffctx._diffctx import (
-    hotspots as _rust_hotspots,
-)
-from diffctx._diffctx import (
-    quotient_graph as _rust_quotient_graph,
-)
-from diffctx._diffctx import (
-    to_mermaid as _rust_to_mermaid,
-)
+from diffctx._diffctx import coupling_metrics as _rust_coupling_metrics
+from diffctx._diffctx import hotspots as _rust_hotspots
+from diffctx._diffctx import quotient_graph as _rust_quotient_graph
+from diffctx._diffctx import to_mermaid as _rust_to_mermaid
 
 from .project_graph import graph_root
 
@@ -99,7 +91,7 @@ def quotient_graph(pg: Any, level: str = "directory") -> QuotientGraph:
 
 
 def to_mermaid(qg: Any, top_n: int = 50) -> str:
-    text = cast(str, _rust_to_mermaid(qg, top_n))
+    text = _rust_to_mermaid(qg, top_n)
     source = _QUOTIENT_SOURCES.get(id(qg))
     if source is not None:
         pg, level = source
@@ -153,7 +145,7 @@ def _recent_commit_counts(root: Any) -> dict[str, int]:
 
 
 def _full_mermaid(qg: Any) -> str:
-    return cast(str, _rust_to_mermaid(qg, max(int(qg.node_count), 1)))
+    return _rust_to_mermaid(qg, max(int(qg.node_count), 1))
 
 
 def _parse_mermaid(text: str) -> tuple[dict[str, str], list[tuple[str, str, str, float]]]:

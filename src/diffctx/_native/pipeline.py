@@ -47,7 +47,7 @@ def select_with_params(
     """Light-phase select+postpass+render against a precomputed state."""
     from diffctx._diffctx import select_with_params as _rust_select
 
-    return _rust_select(  # type: ignore[no-any-return]
+    return _rust_select(
         state,
         budget_tokens=_normalize_budget(budget_tokens),
         tau=tau,

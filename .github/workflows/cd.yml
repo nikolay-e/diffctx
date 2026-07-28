@@ -727,13 +727,19 @@ jobs:
         with:
           ref: ${{ needs.prepare-version.outputs.tag_name }}
 
+      # Release assets are named linux_amd64/arm64 (Go convention), NOT the
+      # uname -m x86_64/aarch64 — a naive $(uname -m) URL 404s. Pinned by
+      # version + sha256; bump both together.
       - name: Install mcp-publisher
+        env:
+          PUBLISHER_VERSION: v1.8.0
         run: |
-          OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-          ARCH=$(uname -m)
+          PUBLISHER_SHA256=1370446bbe74d562608e8005a6ccce02d146a661fbd78674e11cc70b9618d6cf # pragma: allowlist secret
           BASE="https://github.com/modelcontextprotocol/registry/releases/download"
-          curl --proto '=https' --tlsv1.2 -fsSL \
-            "${BASE}/v1.8.0/mcp-publisher_${OS}_${ARCH}.tar.gz" | tar xz mcp-publisher
+          curl --proto '=https' --tlsv1.2 -fsSL -o mcp-publisher.tar.gz \
+            "${BASE}/${PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz"
+          echo "${PUBLISHER_SHA256}  mcp-publisher.tar.gz" | sha256sum -c -
+          tar xzf mcp-publisher.tar.gz mcp-publisher
 
       # github-oidc mints the io.github.nikolay-e/* namespace from this
       # repository's identity — no stored secret, no device flow.
