@@ -77,6 +77,11 @@ struct Cli {
     #[arg(long, default_value = "ego", value_parser = ["ppr", "ego", "bm25"])]
     scoring: String,
 
+    /// Output mode: `pack` = context with source bodies; `locate` = ranked
+    /// navigation list with provenance reasons, JSON only (--format ignored)
+    #[arg(long, default_value = "pack", value_parser = ["pack", "locate"])]
+    mode: String,
+
     /// Wall-clock deadline in seconds; on expiry diffctx exits 124
     #[arg(long, default_value_t = DEFAULT_PIPELINE_TIMEOUT_SECONDS)]
     timeout: u64,
@@ -159,6 +164,68 @@ fn empty_diff_hint(budget: Option<i64>, diff_ref: &str) -> String {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+fn run_locate(
+    cli: &Cli,
+    path: PathBuf,
+    diff_ref: Option<String>,
+    budget: Option<u32>,
+    alpha: f64,
+    tau: f64,
+    scoring_mode: ScoringMode,
+    timeout: u64,
+) -> Result<()> {
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || {
+        let result = _diffctx::pipeline::build_diff_context_locate(
+            &path,
+            diff_ref.as_deref(),
+            budget,
+            alpha,
+            tau,
+            scoring_mode,
+            timeout,
+        );
+        let _ = tx.send(result);
+    });
+    let output = match rx.recv_timeout(Duration::from_secs(timeout)) {
+        Ok(result) => result?,
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            eprintln!(
+                "diffctx: pipeline exceeded {timeout}s wall-clock deadline; aborting before \
+                 OOM/SIGKILL. Narrow the review with an explicit '--diff <from>..<to>' range or \
+                 run on a smaller subtree, or raise '--timeout'."
+            );
+            std::process::exit(124);
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            anyhow::bail!("diffctx: pipeline worker terminated unexpectedly");
+        }
+    };
+
+    let rendered = format!("{}\n", serde_json::to_string(&output)?);
+    let is_empty = output.item_count == 0
+        && output.deleted_files.is_empty()
+        && output.renamed_files.is_empty()
+        && output.lockfile_changes.is_empty();
+    if is_empty {
+        eprintln!(
+            "diffctx: diff produced no semantic context (clean working tree, binary-only, or \
+             files over the size cap); {}",
+            empty_diff_hint(cli.budget, cli.diff_ref.as_deref().unwrap_or("HEAD"))
+        );
+    }
+    if !cli.quiet {
+        print_token_summary(&rendered);
+    }
+    print!("{rendered}");
+    io::stdout().flush()?;
+    if is_empty {
+        std::process::exit(EXIT_EMPTY_DIFF);
+    }
+    Ok(())
+}
+
 fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
@@ -184,6 +251,26 @@ fn main() -> Result<()> {
     let tau = cli.tau;
     let no_content = cli.no_content;
     let full = cli.full;
+
+    if cli.mode == "locate" {
+        if full {
+            eprintln!(
+                "error: --mode locate is incompatible with --full (locate ranks the selection; --full bypasses it)"
+            );
+            std::process::exit(2);
+        }
+        return run_locate(
+            &cli,
+            path,
+            diff_ref,
+            budget,
+            alpha,
+            tau,
+            scoring_mode,
+            timeout,
+        );
+    }
+
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
         let result = build_diff_context(

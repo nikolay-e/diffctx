@@ -253,6 +253,7 @@ class ParsedArgs:
     timeout: int = _DEFAULT_TIMEOUT
     full_diff: bool = False
     with_raw_diff: bool = False
+    mode: str = "pack"
     command: str | None = None
     graph: GraphArgs | None = None
     extra_dirs: list[Path] | None = None
@@ -544,6 +545,16 @@ def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> arg
         ),
     )
     diff_group.add_argument(
+        "--mode",
+        choices=["pack", "locate"],
+        default=_UNSET,
+        help=(
+            "Output mode: pack = context with source bodies (default); "
+            "locate = ranked navigation list with provenance reasons, JSON only "
+            "(diffctx.locate.v1; -f is ignored)"
+        ),
+    )
+    diff_group.add_argument(
         "--timeout",
         type=int,
         default=_UNSET,
@@ -589,6 +600,8 @@ def _warn_diff_only_flags(args: argparse.Namespace) -> None:
         used.append("--with-raw-diff")
     if args.scoring is not _UNSET:
         used.append("--scoring")
+    if args.mode is not _UNSET:
+        used.append("--mode")
     if args.timeout is not _UNSET:
         used.append("--timeout")
     if used:
@@ -660,12 +673,13 @@ def _resolve_max_file_bytes(args: argparse.Namespace) -> int | None:
     return _validate_max_file_bytes(value, args.no_file_size_limit)
 
 
-def _resolve_diff_params(args: argparse.Namespace) -> tuple[str | None, int | None, float, float, str, int]:
+def _resolve_diff_params(args: argparse.Namespace) -> tuple[str | None, int | None, float, float, str, int, str]:
     budget = None if args.budget is _UNSET else args.budget
     alpha = _DEFAULT_ALPHA if args.alpha is _UNSET else args.alpha
     tau = _DEFAULT_TAU if args.tau is _UNSET else args.tau
     scoring = "ego" if args.scoring is _UNSET else args.scoring
     timeout = _DEFAULT_TIMEOUT if args.timeout is _UNSET else args.timeout
+    mode = "pack" if args.mode is _UNSET else args.mode
 
     _validate_budget(budget)
     _validate_alpha(alpha)
@@ -681,13 +695,25 @@ def _resolve_diff_params(args: argparse.Namespace) -> tuple[str | None, int | No
         diff_range = "HEAD"
     if diff_range and args.no_ignores:
         _exit_usage_error("--no-ignores is not supported with --diff (git's own ignore rules always apply in diff mode)")
-    return diff_range, budget, alpha, tau, scoring, timeout
+    _validate_locate_mode(args, mode)
+    return diff_range, budget, alpha, tau, scoring, timeout, mode
+
+
+def _validate_locate_mode(args: argparse.Namespace, mode: str) -> None:
+    if mode != "locate":
+        return
+    if args.full:
+        _exit_usage_error("--mode locate is incompatible with --full (locate ranks the selection; --full bypasses it)")
+    if args.with_raw_diff:
+        _exit_usage_error("--mode locate emits no source; --with-raw-diff applies to pack mode only")
+    if args.format is not _UNSET:
+        _warn(f"-f {args.format} ignored with --mode locate (locate emits diffctx.locate.v1 JSON)")
 
 
 def _build_tree_parsed_args(args: argparse.Namespace) -> ParsedArgs:
     _validate_max_depth(args.max_depth)
     max_file_bytes = _resolve_max_file_bytes(args)
-    diff_range, budget, alpha, tau, scoring, timeout = _resolve_diff_params(args)
+    diff_range, budget, alpha, tau, scoring, timeout, mode = _resolve_diff_params(args)
     _warn_quiet_log_level_conflict(args)
 
     dirs, files = _expand_paths(args.paths)
@@ -724,6 +750,7 @@ def _build_tree_parsed_args(args: argparse.Namespace) -> ParsedArgs:
         timeout=timeout,
         full_diff=args.full,
         with_raw_diff=args.with_raw_diff,
+        mode=mode,
         extra_dirs=extra_dirs,
         extra_files=extra_files,
         no_explicit_paths=not args.paths,

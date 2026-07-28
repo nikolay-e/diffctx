@@ -6,7 +6,7 @@
 git clone https://github.com/nikolay-e/diffctx.git
 cd diffctx
 python -m venv .venv && source .venv/bin/activate
-pip install "maturin>=1.10,<1.11"
+pip install "maturin>=1.10,<1.15"
 pip install -e ".[dev,full,mcp]" --no-build-isolation
 pre-commit install && pre-commit install --hook-type commit-msg
 ```
@@ -34,29 +34,27 @@ pytest -x                       # stop on first failure
 pytest tests/test_basic.py      # run specific test file
 
 cd crates/diffctx-native
-DIFFCTX_YAML_CASES_LIMIT=20 cargo test --lib          # Rust units + sampled YAML cases
+cargo test --lib                                             # Rust inline units
+DIFFCTX_YAML_CASES_LIMIT=20 cargo test --test yaml_cases     # sampled YAML corpus
 ```
 
-The full YAML suite (no limit) carries a known score-threshold failure
-baseline; CI gates a 20-case sample on PRs and the full run nightly.
+CI gates the full 2725-case YAML corpus per-case against
+`crates/diffctx-native/tests/known_below_threshold.txt` (bidirectional: a
+listed case that starts passing also fails — claim improvements by removing
+the entry in the same commit).
 
 ## Code Style
 
 - Formatting: `black` (line-length 130)
-- Import sorting: `isort`
 - Linting: `ruff`
 - Type checking: `mypy --strict`
 - No docstrings or inline comments explaining "what" — code must be self-documenting
 
 ## Commit Messages
 
-Follow [Conventional Commits](https://www.conventionalcommits.org/):
-
-```text
-feat: add support for Ruby parsing
-fix: handle empty directories in diff context
-chore(deps): bump pathspec to 0.12
-```
+Follow [Conventional Commits](https://www.conventionalcommits.org/) — e.g.
+`fix: handle empty directories in diff context`. The commit-msg hook enforces
+the format.
 
 ## Reporting Bugs
 

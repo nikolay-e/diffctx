@@ -8,7 +8,7 @@ import signal
 import subprocess
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -17,6 +17,8 @@ from .version import __version__
 
 if TYPE_CHECKING:
     from .cli import ParsedArgs
+
+_T = TypeVar("_T")
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +134,7 @@ def _report_raw_diff_share(result: dict[str, Any], prog: str, args: ParsedArgs) 
     )
 
 
-def _call_with_wall_clock_deadline(build: Callable[[], dict[str, Any]], timeout_seconds: int, prog: str) -> dict[str, Any]:
+def _call_with_wall_clock_deadline(build: Callable[[], _T], timeout_seconds: int, prog: str) -> _T:
     # The Rust extension releases the GIL but offers no cancellation, so a
     # pathological repo can hang far past any per-phase git timeout (#70).
     # Mirror the standalone binary's watchdog: run the pipeline on a worker
@@ -422,6 +424,10 @@ def _run(argv: list[str] | None = None, *, prog: str = "diffctx", version: str =
         _emit(output_content, args, prog, write_stdout=sys.stdout.write)
         return
 
+    if args.diff_range and args.mode == "locate":
+        _run_locate_mode(args, prog)
+        return
+
     directory_tree = _build_diff_tree(args, prog) if args.diff_range else _build_standard_tree(args)
     is_empty_diff_result = bool(args.diff_range) and _diff_result_is_empty(directory_tree)
 
@@ -440,6 +446,46 @@ def _run(argv: list[str] | None = None, *, prog: str = "diffctx", version: str =
     _emit(output_content, args, prog, write_stdout=_write_via_writer)
 
     if is_empty_diff_result:
+        sys.exit(_EXIT_EMPTY_DIFF)
+
+
+def _run_locate_mode(args: ParsedArgs, prog: str) -> None:
+    import json
+
+    from ._native import build_locate
+    from .tokens import print_token_summary
+
+    _ensure_git_repo(args.root_dir, prog)
+    payload = _call_with_wall_clock_deadline(
+        lambda: build_locate(
+            root_dir=args.root_dir,
+            diff_range=args.diff_range or "HEAD",
+            budget_tokens=args.budget,
+            alpha=args.alpha,
+            tau=args.tau,
+            scoring_mode=args.scoring,
+            timeout=args.timeout,
+        ),
+        args.timeout,
+        prog,
+    )
+    output_content = payload if payload.endswith("\n") else payload + "\n"
+    doc = json.loads(payload)
+    is_empty = (
+        doc.get("item_count", 0) == 0
+        and not doc.get("deleted_files")
+        and not doc.get("renamed_files")
+        and not doc.get("lockfile_changes")
+    )
+    if is_empty:
+        print(
+            f"{prog}: diff produced no semantic context (clean working tree, binary-only, or files over the size cap)",
+            file=sys.stderr,
+        )
+    if not args.quiet:
+        print_token_summary(output_content)
+    _emit(output_content, args, prog, write_stdout=sys.stdout.write)
+    if is_empty:
         sys.exit(_EXIT_EMPTY_DIFF)
 
 

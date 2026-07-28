@@ -34,6 +34,10 @@ pub struct Repo {
     pub initial_files: BTreeMap<String, String>,
     #[serde(default)]
     pub changed_files: BTreeMap<String, String>,
+    #[serde(default)]
+    pub deleted_files: Vec<String>,
+    #[serde(default)]
+    pub renamed_files: BTreeMap<String, String>,
     #[serde(default = "default_commit_message")]
     pub commit_message: String,
 }

@@ -1,28 +1,23 @@
 # diffctx MCP Server
 
-## Installation
+One-line setup for Claude Code / Codex CLI / Gemini CLI / VS Code lives in
+the [main README](../../../README.md#mcp-server). Zero-install command:
+`uvx --from 'diffctx[mcp]' diffctx-mcp` — use the `diffctx-mcp` entry point,
+not the `diffctx mcp` subcommand, which only exists from 1.12.3 onward and
+would map a directory named `mcp` on older releases.
 
-```bash
-pip install diffctx[mcp]
-```
+## JSON client configs
 
-The server starts as either `diffctx-mcp` or `diffctx mcp` — the two are
-equivalent. Zero-install: `uvx --from 'diffctx[mcp]' diffctx-mcp` — use the
-`diffctx-mcp` entry point here, not the `diffctx mcp` subcommand, which only
-exists from 1.12.3 onward and would map a directory named `mcp` on older
-releases.
+All stdio clients take the same server shape; only the config file differs:
 
-## Client Configuration
-
-### Claude Code
-
-```bash
-claude mcp add diffctx -- diffctx-mcp
-```
-
-Or add to your project's `.mcp.json`. This form needs nothing installed
-beforehand — `uv` fetches diffctx on first use, which is also what the
-Claude Code plugin ships:
+| Client | Config file | Key |
+|---|---|---|
+| Claude Code (project) | `.mcp.json` | `mcpServers` |
+| Claude Desktop | `claude_desktop_config.json` | `mcpServers` |
+| Cursor | `~/.cursor/mcp.json` | `mcpServers` |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` | `mcpServers` |
+| Continue | `~/.continue/config.json` | `experimental.modelContextProtocolServers` (transport object) |
+| Zed | `~/.config/zed/settings.json` | `context_servers` (`command.path`) |
 
 ```json
 {
@@ -35,142 +30,45 @@ Claude Code plugin ships:
 }
 ```
 
-### Claude Desktop
+With `pip install 'diffctx[mcp]'` already done, `"command": "diffctx-mcp"`
+with no args works everywhere instead.
 
-Add to `claude_desktop_config.json` (Settings → Developer → Edit Config):
+Filesystem confinement via `DIFFCTX_ALLOWED_PATHS`: see
+[SECURITY.md](../../../SECURITY.md).
 
-```json
-{
-  "mcpServers": {
-    "diffctx": {
-      "command": "uvx",
-      "args": ["--from", "diffctx[mcp]", "diffctx-mcp"]
-    }
-  }
-}
-```
+## Tools
 
-### Cursor
-
-Add to `~/.cursor/mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "diffctx": {
-      "command": "diffctx-mcp"
-    }
-  }
-}
-```
-
-### Continue
-
-Add to `~/.continue/config.json`:
-
-```json
-{
-  "experimental": {
-    "modelContextProtocolServers": [
-      {
-        "transport": {
-          "type": "stdio",
-          "command": "diffctx-mcp"
-        }
-      }
-    ]
-  }
-}
-```
-
-### Windsurf
-
-Add to `~/.codeium/windsurf/mcp_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "diffctx": {
-      "command": "diffctx-mcp"
-    }
-  }
-}
-```
-
-### Zed
-
-Add to `~/.config/zed/settings.json`:
-
-```json
-{
-  "context_servers": {
-    "diffctx": {
-      "command": {
-        "path": "diffctx-mcp"
-      }
-    }
-  }
-}
-```
-
-## Environment Variables
-
-- `DIFFCTX_ALLOWED_PATHS` — OS-pathsep-separated list (`:` on POSIX, `;` on
-  Windows) of directories the server is allowed to access. When set, requests
-  for repositories outside these paths are rejected.
-
-## Available Tools
+The server pins `tau=0.12` (the CLI default) and applies a 300 s wall-clock
+deadline per tool call; every tool caps its response at `max_tokens`
+(default `25000`) and returns an advisory message instead of oversized
+content.
 
 ### `get_diff_context`
 
-Returns the most relevant code fragments for understanding a git diff.
-
-Parameters:
-
 - `repo_path` (string, required) — absolute path to a git repository
-- `diff_range` (string, default `"HEAD~1..HEAD"`) — git diff range
-- `budget_tokens` (integer, default `8000`) — token budget for selection
-- `clipboard` (boolean, default `false`) — copy the result to the clipboard
-  and return a short confirmation instead of the full context
+- `diff_range` (string, default `"HEAD~1..HEAD"`)
+- `budget_tokens` (integer, default `8000`) — selection budget; `-1`
+  unlimited (still capped by `max_tokens`), `0` strict-zero floor
+- `include_raw_diff` (boolean, default `false`) — embed git's raw unified
+  diff ahead of the fragments (additive, not charged to the budget)
+- `mode` (`"pack"` default, or `"locate"`) — `locate` returns compact
+  `diffctx.locate.v1` JSON: the same ranked selection as a navigation list
+  with provenance reasons and no source bodies
+- `clipboard` (boolean, default `false`) — copy instead of returning
+- `max_tokens` (integer, default `25000`)
 
 ### `get_tree_map`
 
-Returns a structured map of a codebase — directory tree with file contents in
-YAML or Markdown, respecting `.gitignore` and skipping binaries/build
-artifacts. Requires a git repository.
-
-Parameters:
-
-- `repo_path` (string, required) — absolute path to a git repository
-- `subdirectory` (string, default `""`) — optional path under `repo_path` to
-  map instead of the whole repository
-- `output_format` (string, default `"yaml"`) — `"yaml"` or `"md"`
-- `no_content` (boolean, default `false`) — emit structure only, skip contents
-- `max_depth` (integer, optional) — limit traversal depth
-- `max_file_bytes` (integer, default `262144` = 256 KB) — per-file content cap
-- `clipboard` (boolean, default `false`) — copy to clipboard instead of
-  returning the map
-- `max_tokens` (integer, default `25000`) — ceiling on the returned output; if
-  the map exceeds it, an advisory message is returned instead of the content
-  (narrow with `subdirectory`/`no_content`/`max_depth`, or raise the ceiling)
+- `repo_path` (string, required); `subdirectory` (string, default `""`)
+- `output_format` (`"yaml"` default, or `"md"`); `no_content` (boolean)
+- `max_depth` (integer, optional); `max_file_bytes` (default `262144`)
+- `clipboard`, `max_tokens` as above
 
 ### `get_file_context`
 
-Reads files by glob pattern, formatted for LLM consumption. Works on any
-directory (no git required).
+Works on any directory, no git required.
 
-Parameters:
-
-- `repo_path` (string, required) — absolute path to a directory
-- `patterns` (list of strings, required) — glob patterns, e.g.
-  `["src/**/*.py"]`
-- `max_files` (integer, default `50`) — maximum number of files to include
-- `max_file_bytes` (integer, default `262144` = 256 KB) — per-file content cap; larger
-  files are listed but their content is skipped
-- `clipboard` (boolean, default `false`) — copy to clipboard instead of
-  returning the content
-- `dry_run` (boolean, default `false`) — preview which files match without
-  reading their content
-- `max_tokens` (integer, default `25000`) — ceiling on the returned output; if
-  the content exceeds it, an advisory message is returned instead (tighten
-  `patterns`, lower `max_files`, use `dry_run=true`, or raise the ceiling)
+- `repo_path` (string, required); `patterns` (list of globs, required)
+- `max_files` (default `50`); `max_file_bytes` (default `262144`)
+- `dry_run` (boolean, default `false`) — preview matches without reading
+- `clipboard`, `max_tokens` as above

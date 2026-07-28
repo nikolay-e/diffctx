@@ -1,24 +1,18 @@
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any
 
-from diffctx._diffctx import (
-    graph_summary as _rust_graph_summary,
-)
-from diffctx._diffctx import (
-    graph_to_graphml_string as _rust_graph_to_graphml_string,
-)
-from diffctx._diffctx import (
-    graph_to_json_string as _rust_graph_to_json_string,
-)
+from diffctx._diffctx import graph_summary as _rust_graph_summary
+from diffctx._diffctx import graph_to_graphml_string as _rust_graph_to_graphml_string
+from diffctx._diffctx import graph_to_json_string as _rust_graph_to_json_string
 
 
 def graph_to_json_string(pg: Any) -> str:
-    return cast(str, _rust_graph_to_json_string(pg))
+    return _rust_graph_to_json_string(pg)
 
 
 def graph_to_graphml_string(pg: Any) -> str:
-    return cast(str, _rust_graph_to_graphml_string(pg))
+    return _rust_graph_to_graphml_string(pg)
 
 
 def graph_summary(pg: Any, top_n: int = 10) -> str:

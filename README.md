@@ -10,25 +10,16 @@
 Instead of pasting whole files, it walks the dependency graph outward from the
 changed lines and stops once more context stops paying for itself.
 
-> Coming from [`treemapper`](https://pypi.org/project/treemapper/)? That name is
-> deprecated. Every command, flag, and API call works unchanged:
-> `treemapper` → `diffctx`, `treemapper-mcp` → `diffctx-mcp`.
+> Formerly published as `treemapper` — every command, flag, and API call works unchanged.
 
-## Why not just use `tree` or repomix?
+## How it compares
 
-| | `tree` | repomix | Claude Code Review | **diffctx** |
-|---|:---:|:---:|:---:|:---:|
-| **Primary use case** | directory listing | full repo export | automated PR review | **diff context for code review** |
-| Smart diff context | ✗ | ✗ | ✓ | ✓ |
-| Works with any LLM | ✓ | ✓ | Claude only | ✓ |
-| Free / local / offline | ✓ | ✓ | $15–25/review | ✓ |
-| GitHub required | ✗ | ✗ | ✓ | ✗ |
-| Multiple output formats | ✗ | limited | — | YAML/JSON/MD/txt |
-| Python API | ✗ | ✗ | ✗ | ✓ |
-| MCP server | ✗ | ✗ | ✗ | ✓ |
-
-Fuller positioning — measured results, and when a whole-repo packer or a
-persistent code-graph server fits better: [COMPARISON.md](COMPARISON.md).
+Whole-repo packers (repomix and friends) seed on the repository and export
+everything; persistent code-graph servers answer structural queries against a
+maintained index. diffctx is **diff-seeded**: the input is a change, the
+output is the fragments needed to understand it, packed under a hard token
+budget — local, deterministic, no index, no model calls. Measured results and
+when the other two families fit better: [COMPARISON.md](COMPARISON.md).
 
 ## Install
 
@@ -54,18 +45,11 @@ scoop bucket add diffctx https://github.com/nikolay-e/diffctx
 scoop install diffctx/diffctx
 ```
 
-The image runs as a non-root user (uid 10001) and writes to stdout — the
-native binary has no `-o` flag, so redirect to capture: `... --diff HEAD~1 >
-context.yaml`.
-
 Prebuilt binaries for linux (x86_64/aarch64), macOS (arm64) and Windows (x64)
 are attached to every [release](https://github.com/nikolay-e/diffctx/releases/latest).
-The native binary covers diff mode with YAML/JSON output; tree mode, Markdown
-output, the `graph` subcommand and the MCP server live in the Python package.
-`cargo add diffctx` embeds the pipeline in a Rust project — the library is
-imported as `_diffctx` (`use _diffctx::pipeline::build_diff_context`), since
-the crate doubles as the Python extension module
-([docs.rs](https://docs.rs/diffctx)).
+The native binary and Docker image cover diff mode with YAML/JSON output and
+write to stdout (redirect to capture); tree mode, Markdown output, the `graph`
+subcommand and the MCP server live in the Python package.
 
 ## Quick start
 
@@ -96,12 +80,7 @@ the `--budget` token cap is hit.
 | `--full`    | false   | Only the changed files, every fragment, no related-code context          |
 | `--timeout` | 300     | Wall-clock deadline in seconds; on expiry diffctx exits 124 instead of hanging |
 | `--with-raw-diff` | false | Also embed git's raw unified diff ahead of the selected fragments — additive (selection unchanged), not charged to `--budget`, lock/ignored/secret-like sections omitted. Python CLI only |
-
-Calibration of `--alpha`, `--tau`, and the edge-weight priors:
-[`docs/engineering/parameter-strategy.md`](docs/engineering/parameter-strategy.md).
-Theory:
-[diffctx: Budgeted Typed-Graph Retrieval for Diff-Aware Code Context
-Selection (Zenodo, 2026)](https://doi.org/10.5281/zenodo.18824579).
+| `--mode` | `pack` | `locate` emits the same ranked selection as compact `diffctx.locate.v1` JSON — path, lines, score, provenance reasons, a blast-radius `summary` and per-item impact `group` (`test`/`type`/`config`), NO source bodies. `diffctx . --diff --mode locate` = impact of your uncommitted change. The MCP tool takes it as `mode="locate"` |
 
 ### `graph` subcommand
 
@@ -133,20 +112,15 @@ diffctx . --diff main..feature            # context for feature branch
 diffctx . --diff HEAD~1 --budget 30000    # limit to ~30k tokens
 diffctx . --diff HEAD~1 -c                # diff context to clipboard
 diffctx . --diff HEAD~1 --with-raw-diff   # raw patch + selected context
+diffctx . --diff HEAD~1 --mode locate     # ranked navigation JSON, no source
 ```
 <!-- END USAGE -->
 
 Every run reports token count and size on stderr — `12,847 tokens
-(o200k_base), 52.3 KB` (tiktoken, the GPT-4o tokenizer; `~`-prefixed above
-1 MB). `-c/--copy` copies output via `pbcopy` (macOS), `clip` (Windows), or
-`wl-copy`/`xclip`/`xsel` (Linux). Unreadable files become placeholders like
-`<binary file: N bytes>`, `<file too large: N bytes>`, or
-`<unreadable content: not utf-8>`.
-
-Counts come from tiktoken's `o200k_base` encoder and are exact only for the
-GPT-4o family; Claude, Gemini and others tokenize differently, so treat
-`--budget` as an upper bound in o200k tokens and leave headroom. Details:
-[`docs/product/token-budget.md`](docs/product/token-budget.md).
+(o200k_base), 52.3 KB`. Counts are exact only for the GPT-4o family; Claude,
+Gemini and others tokenize differently, so treat `--budget` as an upper bound
+and leave headroom ([details](docs/product/token-budget.md)). Unreadable files
+become placeholders like `<binary file: N bytes>`.
 
 ## Python API
 
@@ -182,6 +156,7 @@ print(to_yaml(tree))
 ## MCP server
 
 [![MCP Registry](https://img.shields.io/badge/MCP_Registry-io.github.nikolay--e%2Fdiffctx-blue)](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.nikolay-e/diffctx)
+[![diffctx MCP server](https://glama.ai/mcp/servers/nikolay-e/diffctx/badges/score.svg)](https://glama.ai/mcp/servers/nikolay-e/diffctx)
 
 diffctx includes an [MCP](https://modelcontextprotocol.io) server that lets AI
 assistants (Claude Code, Cursor, Windsurf, etc.) call diff context analysis
@@ -225,19 +200,10 @@ which are filtered even without an ignore entry.
 
 ## Token cache
 
-Diff mode caches per-blob tokenization under
-`~/Library/Caches/diffctx/token-cache` (macOS),
-`$XDG_CACHE_HOME/diffctx/token-cache` (Linux) or
-`%LOCALAPPDATA%\diffctx\token-cache` (Windows). It is a pure speedup: deleting
-it only costs one cold run.
-
-| Variable | Effect |
-|----------|--------|
-| `DIFFCTX_TOKEN_CACHE_DIR` | Relocate the cache |
-| `DIFFCTX_TOKEN_CACHE_MAX_BYTES` | Size cap, default `536870912` (512 MB); `0` disables eviction |
-
-Eviction is amortized: each run trims one of the cache's 256 shards back under
-its share of the cap, oldest entries first.
+Diff mode caches per-blob tokenization in the OS cache directory (e.g.
+`~/Library/Caches/diffctx/token-cache`) — a pure speedup, safe to delete.
+`DIFFCTX_TOKEN_CACHE_DIR` relocates it; `DIFFCTX_TOKEN_CACHE_MAX_BYTES` caps
+its size (default 512 MB, `0` disables eviction).
 
 ## Exit codes
 
@@ -251,14 +217,6 @@ its share of the cap, oldest entries first.
 | `124`| `--diff` exceeded the `--timeout` wall-clock deadline |
 | `130`| Interrupted (Ctrl-C) |
 | `141`| Broken pipe (e.g. piping into `head`) |
-
-## Repository layout
-
-Rust product code lives in `crates/diffctx-native/`; the Python CLI and MCP
-package live in `src/diffctx/`. Evaluation code, immutable datasets, and paper
-artifacts are intentionally separated under `eval/`, `datasets/`, and `paper/`.
-See [repository ownership boundaries](docs/architecture/repository-layout.md)
-for the lifecycle and entry point of each area.
 
 ## License
 
@@ -278,6 +236,8 @@ Apache 2.0
   `--budget` means for non-GPT models
 - [Comparison](COMPARISON.md) — measured results, and when a whole-repo packer
   or a persistent code-graph server fits better
+- [Paper](https://doi.org/10.5281/zenodo.18824579) — budgeted typed-graph
+  retrieval for diff-aware context selection (Zenodo, 2026)
 - [Changelog](CHANGELOG.md)
 - [Security policy](SECURITY.md) — threat model and vulnerability reporting
 - [Parameter strategy](docs/engineering/parameter-strategy.md) — how `--alpha`,

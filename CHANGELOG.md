@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`--mode locate`** emits the ranked selection as compact
+  `diffctx.locate.v1` JSON — path, line range, kind, symbol, relevance score
+  and machine-readable provenance reasons (`changed`, `edge` with category /
+  strongest source / mass, `proximity` seed-hops) with **no source bodies**:
+  a navigation prior for agents at a fraction of pack-mode tokens. Available
+  on the Python CLI, the native binary, and the MCP `get_diff_context` tool
+  (`mode="locate"`); pack output is byte-unchanged (#126). Each item carries
+  a coarse impact `group` (`test` / `type` / `config`) and the header a
+  blast-radius `summary` (files, changed, context, tests) — with
+  `--diff --mode locate` this answers "what does my uncommitted change
+  touch, and which tests cover it" in one call (#135).
+- `DIFFCTX_PROVENANCE_DUMP=<path>` writes one JSONL record per scored
+  candidate — relevance, core/selected verdicts, seed-hop distance, and
+  per-edge-category incoming mass — for offline analysis of why the selector
+  included or skipped a fragment. Experimental telemetry, not a stable
+  interface; the rendered output is byte-identical with the variable set
+  (#93).
+- The YAML test-case schema can express **deletions and renames**
+  (`repo.deleted_files`, `repo.renamed_files`), so rename regression cases
+  exercise git's real rename path instead of silently degrading to adds
+  (#176).
+
+## [1.12.3] - 2026-07-27
+
+### Added
+
 - **Scoop install on Windows.** This repository is now itself the bucket:
   `scoop bucket add diffctx https://github.com/nikolay-e/diffctx` then
   `scoop install diffctx/diffctx`. The manifest moved from `packaging/scoop/`
@@ -74,6 +100,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from an excluded ancestor no longer counts; a pattern matching the path
   itself still excludes it, so `.diffctx/ignore` and per-directory
   `.gitignore` rules are unaffected (#153).
+- A user-level git config (`diff.noprefix`, `diff.external`, `color.ui=always`,
+  custom src/dst prefixes) could empty the selection: diffctx now pins the
+  diff invocation flags instead of inheriting the caller's configuration.
+- `cd.yml` now dispatches `publish-extras.yml`, so npm and the Docker Hub
+  mirror track every release instead of silently serving the previous one.
+
+### Removed
+
+- **AUR support.** `diffctx-bin` had never been submitted (the AUR RPC reported
+  `resultcount: 0`), the publishing job gated on a credential this repository
+  does not hold, and every release regenerated a PKGBUILD nobody could install.
+  Arch users are served by `pipx install diffctx` and `cargo install diffctx`.
+
+## [1.12.2] - 2026-07-26
+
+### Fixed
 
 - **The container images ran as root.** The published 1.12.1 image had no
   `USER` directive, so every `docker run` executed as uid 0 while the README
@@ -123,13 +165,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fragments, so the commit message and the list of changed files — the only
   actionable facts about such a run — were dropped. They are now always
   written.
-
-### Removed
-
-- **AUR support.** `diffctx-bin` had never been submitted (the AUR RPC reported
-  `resultcount: 0`), the publishing job gated on a credential this repository
-  does not hold, and every release regenerated a PKGBUILD nobody could install.
-  Arch users are served by `pipx install diffctx` and `cargo install diffctx`.
 
 ### Changed
 
@@ -464,5 +499,7 @@ Earlier releases shipped as `treemapper`; see
 <https://github.com/nikolay-e/diffctx/releases> for the corresponding GitHub
 release notes (`1.0.0` through `1.6.1`).
 
-[Unreleased]: https://github.com/nikolay-e/diffctx/compare/v1.12.1...HEAD
+[Unreleased]: https://github.com/nikolay-e/diffctx/compare/v1.12.3...HEAD
+[1.12.3]: https://github.com/nikolay-e/diffctx/compare/v1.12.2...v1.12.3
+[1.12.2]: https://github.com/nikolay-e/diffctx/compare/v1.12.1...v1.12.2
 [1.7.0]: https://github.com/nikolay-e/diffctx/compare/v1.6.1...v1.7.0

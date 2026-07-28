@@ -5,8 +5,16 @@
 **Repo SHA at lock time:** see `git log -1 --format=%H` at commit time
 **Frozen manifests:** `datasets/eval-splits/v1/` (commit `5852d3bb`, 2026-04-29)
 
-This document is committed **before** any of the prespecified primary tests
-below have been run on the v1 test set with the methods listed in
+> **Status (2026-07-28): EXECUTED.** All three confirmatory tests were run
+> and are reported in the paper (`paper/v2`): P1 rejected on the both-OK
+> subset (n=1460); P2 resolved as a significant Friedman omnibus
+> (χ²=39.2, p=3.1e-9 < 0.0167 after Holm) with no pairwise Nemenyi
+> comparison clearing CD=0.087; P3 resolved decisively. The frozen
+> commitments below are preserved verbatim; see **Deviations from prereg**
+> at the end for where execution differed.
+
+This document was committed **before** any of the prespecified primary tests
+below had been run on the v1 test set with the methods listed in
 "Methods Under Comparison". The intent is to fix in advance which tests
 are confirmatory (FWER-corrected) and which are exploratory (FDR-controlled
 or descriptive only), to avoid post-hoc selection bias.
@@ -161,9 +169,30 @@ exploratory descriptive content (CIs only).
 - Demšar, J. (2006). Statistical Comparisons of Classifiers over Multiple
   Data Sets. *JMLR* 7:1-30. <https://www.jmlr.org/papers/v7/demsar06a.html>
 - Benjamini, Y., Hochberg, Y. (1995). Controlling the False Discovery Rate.
-  *JRSS B* 57(1):289-300. <https://www.jstor.org/stable/2346101>
+  *JRSS B* 57(1):289-300. <https://doi.org/10.1111/j.2517-6161.1995.tb02031.x>
 - Andrade, C. (2023). HARKing, Cherry-Picking, P-Hacking, Fishing
   Expeditions, and Data Dredging. *Indian J Psychol Med* 45(1).
   <https://pmc.ncbi.nlm.nih.gov/articles/PMC10964884/>
 - Lakens, D. *Improving Your Statistical Inferences*, ch. 13:
   Preregistration. <https://lakens.github.io/statistical_inferences/13-prereg.html>
+
+---
+
+## Deviations from prereg (recorded post-execution, 2026-07-28)
+
+- **P1 p-value method**: prereg specified Wilcoxon signed-rank combined
+  via Stouffer's Z; the paper reports a permutation sign-flip test
+  (`permutation_paired`, one-sided, 10⁵ permutations, add-one corrected)
+  instead — a methodological upgrade, same hypothesis and direction.
+- **P3 sample**: prereg named a "Lite-300 stratified subset (~100 per
+  test set)"; execution resolved P3 on the full n=500 test sets pooled.
+- **Budget-curve AUC** (trapezoidal recall vs log₁₀(budget)) was never
+  computed or reported; the paper presents the per-cell recall×budget
+  table instead.
+- **`stats.py` drift**: the executed analyses added `tost_paired`,
+  `permutation_paired`, and `paired_cluster_bootstrap` beyond the
+  functions listed under Implementation; the published Friedman/Nemenyi
+  numbers were computed by an ad-hoc invocation not versioned as a
+  repo script.
+- **BM25 workers=1 re-run** (P1 both-OK note) was not performed; the
+  headline test ran on the both-OK subset as specified.

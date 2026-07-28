@@ -34,9 +34,10 @@ current package, CLI, and repository are all `diffctx`.
 
 ## MCP server
 
-Command `diffctx-mcp`, stdio transport, read-only. Register in Claude Code with
-`claude mcp add diffctx -- diffctx-mcp`. Tools: `get_diff_context`,
-`get_tree_map`, `get_file_context`.
+Stdio transport, read-only, published in the official MCP registry as
+`io.github.nikolay-e/diffctx`. Zero-install registration in Claude Code:
+`claude mcp add diffctx -- uvx --from 'diffctx[mcp]' diffctx-mcp`.
+Tools: `get_diff_context`, `get_tree_map`, `get_file_context`.
 
 ## Method and measured results
 
@@ -68,5 +69,7 @@ See docs/product/token-budget.md.
 - Documentation: https://nikolay-e.github.io/diffctx/
 - PyPI: https://pypi.org/project/diffctx/
 - crates.io: https://crates.io/crates/diffctx
+- npm: https://www.npmjs.com/package/diffctx
+- MCP registry: io.github.nikolay-e/diffctx
 - Changelog: https://github.com/nikolay-e/diffctx/blob/main/CHANGELOG.md
 - License: Apache-2.0

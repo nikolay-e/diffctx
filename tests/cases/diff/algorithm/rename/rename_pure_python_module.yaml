@@ -22,6 +22,8 @@ repo:
 
       def log(msg: str) -> None:
           print(msg)
+  renamed_files:
+    src/legacy/temperature.py: src/temperature.py
   changed_files:
     src/temperature.py: |
       def celsius_to_fahrenheit(c: float) -> float:

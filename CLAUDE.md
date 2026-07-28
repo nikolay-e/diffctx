@@ -46,10 +46,12 @@ pytest
 pre-commit run --all-files
 ```
 
-Rust core: `cd crates/diffctx-native && cargo test --lib` (CI runs the
-YAML suite on a 20-case sample via `DIFFCTX_YAML_CASES_LIMIT=20`; the
-full suite carries a known score-threshold failure baseline gated
-nightly). Full setup: [CONTRIBUTING.md](CONTRIBUTING.md).
+Rust core: `cd crates/diffctx-native && cargo test --lib`. CI gates the
+full 2725-case YAML corpus per-case against
+`tests/known_below_threshold.txt` (bidirectional: a listed case that
+passes also fails); nightly tracks baseline size with
+`DIFFCTX_YAML_IGNORE_BASELINE=1`. Full setup:
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Performance-change discipline (E/Q classes)
 

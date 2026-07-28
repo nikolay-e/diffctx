@@ -197,3 +197,49 @@ fn an_omitted_budget_is_not_capped_at_a_fixed_default() {
         "auto budget produced less than a 4096-token cap"
     );
 }
+
+#[test]
+fn locate_mode_emits_the_versioned_schema_with_reasons() {
+    let tmp = code_change_repo();
+    let out = run(
+        tmp.path(),
+        &[".", "--diff", "HEAD~1..HEAD", "--mode", "locate", "-q"],
+    );
+    assert_eq!(out.status.code(), Some(0));
+    let doc: serde_json::Value =
+        serde_json::from_slice(&out.stdout).expect("locate output must be valid JSON");
+    assert_eq!(doc["schema"], "diffctx.locate.v1");
+    let items = doc["items"].as_array().expect("items array");
+    assert_eq!(items.len(), doc["item_count"].as_u64().unwrap() as usize);
+    assert!(!items.is_empty());
+    for item in items {
+        assert!(item["path"].is_string());
+        assert!(item["lines"].is_string());
+        assert!(item["score"].is_number());
+        let reasons = item["reasons"].as_array().expect("reasons array");
+        assert!(!reasons.is_empty(), "every item carries >=1 reason");
+        for reason in reasons {
+            assert!(reason["type"].is_string());
+        }
+    }
+    // No source bodies anywhere in the payload.
+    assert!(!String::from_utf8_lossy(&out.stdout).contains("def add"));
+}
+
+#[test]
+fn locate_mode_rejects_full_and_survives_empty_diffs() {
+    let tmp = code_change_repo();
+    let conflict = run(
+        tmp.path(),
+        &[".", "--diff", "HEAD~1..HEAD", "--mode", "locate", "--full"],
+    );
+    assert_eq!(conflict.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&conflict.stderr).contains("--mode locate"));
+
+    // Clean working tree (bare --diff): the empty-diff contract holds in
+    // locate mode too — exit 4 and a parseable, empty item list.
+    let empty = run(tmp.path(), &[".", "--diff", "--mode", "locate", "-q"]);
+    assert_eq!(empty.status.code(), Some(4));
+    let doc: serde_json::Value = serde_json::from_slice(&empty.stdout).expect("valid JSON");
+    assert_eq!(doc["item_count"], 0);
+}

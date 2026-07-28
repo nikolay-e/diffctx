@@ -74,6 +74,43 @@ def _over_token_budget_notice(tool: str, token_count: int, max_tokens: int, hint
     )
 
 
+def _capped_by_max_tokens(content: str, max_tokens: int, hint: str) -> str:
+    from diffctx.tokens import count_tokens
+
+    token_count = count_tokens(content).count
+    if token_count > max_tokens:
+        return _over_token_budget_notice("get_diff_context", token_count, max_tokens, hint)
+    return content
+
+
+async def _locate_response(validated_path: Path, diff_range: str, budget_tokens: int, clipboard: bool, max_tokens: int) -> str:
+    from diffctx._native import build_locate
+
+    try:
+        payload = await _run_with_deadline(
+            "get_diff_context",
+            partial(
+                build_locate,
+                root_dir=validated_path,
+                diff_range=diff_range,
+                budget_tokens=budget_tokens,
+                tau=_DEFAULT_TAU,
+                timeout=_DEFAULT_TIMEOUT_SECONDS,
+            ),
+        )
+    except GitError as e:
+        raise ValueError(f"Git error: {e}") from e
+    if clipboard:
+        degraded_notice = await _copy_or_degrade(payload)
+        if degraded_notice is None:
+            import json
+
+            item_count = json.loads(payload).get("item_count", 0)
+            return f"Copied locate JSON ({item_count} items) to clipboard"
+        payload = degraded_notice + payload
+    return _capped_by_max_tokens(payload, max_tokens, "lower budget_tokens or narrow diff_range")
+
+
 def _validate_budget_tokens(budget_tokens: int) -> None:
     if budget_tokens < -1:
         raise ValueError(
@@ -134,6 +171,10 @@ _DIFF_DESCRIPTION = (
     "include_raw_diff=true also embeds git's raw unified diff ahead of the "
     "selected fragments — additive (selection unchanged), not charged to "
     "budget_tokens; lock/ignored/secret-like sections omitted.\n"
+    'mode="locate" returns the compact diffctx.locate.v1 JSON instead: the '
+    "same ranked selection as a navigation list (path, lines, score, "
+    "provenance reasons) with NO source bodies — a few hundred tokens where "
+    "the pack costs thousands; fetch bodies selectively afterwards.\n"
     "Supports 30+ languages." + _UNTRUSTED_NOTICE
 )
 
@@ -146,9 +187,16 @@ async def get_diff_context(
     clipboard: bool = False,
     max_tokens: int = _DEFAULT_MAX_TOKENS,
     include_raw_diff: bool = False,
+    mode: str = "pack",
 ) -> str:
     validated_path = validate_repo_path(repo_path)
     _validate_budget_tokens(budget_tokens)
+    if mode not in ("pack", "locate"):
+        raise ValueError(f'mode must be "pack" or "locate", got {mode!r}')
+    if mode == "locate":
+        if include_raw_diff:
+            raise ValueError('mode="locate" emits no source; include_raw_diff applies to mode="pack" only')
+        return await _locate_response(validated_path, diff_range, budget_tokens, clipboard, max_tokens)
     try:
         result = await _run_with_deadline(
             "get_diff_context",
@@ -182,18 +230,7 @@ async def get_diff_context(
             return f"Copied diff context ({frag_count} fragments) to clipboard"
         content = degraded_notice + content
 
-    from diffctx.tokens import count_tokens
-
-    token_count = count_tokens(content).count
-    if token_count > max_tokens:
-        return _over_token_budget_notice(
-            "get_diff_context",
-            token_count,
-            max_tokens,
-            "lower budget_tokens, narrow diff_range, or use clipboard=true",
-        )
-
-    return content
+    return _capped_by_max_tokens(content, max_tokens, "lower budget_tokens, narrow diff_range, or use clipboard=true")
 
 
 _TREE_MAP_DESCRIPTION = (

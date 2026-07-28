@@ -182,6 +182,56 @@ class TestGetDiffContext:
         assert fragments_after_raw in without
 
     @pytest.mark.asyncio
+    async def test_locate_mode_returns_versioned_navigation_json(self, server, mcp_repo):
+        import json
+
+        result = await server.call_tool(
+            "get_diff_context",
+            {"repo_path": str(mcp_repo.path), "diff_range": "HEAD~1..HEAD", "mode": "locate"},
+        )
+        doc = json.loads(_get_text(result))
+        assert doc["schema"] == "diffctx.locate.v1"
+        assert doc["items"] and all(i["reasons"] for i in doc["items"])
+
+    @pytest.mark.asyncio
+    async def test_locate_rejects_include_raw_diff(self, server, mcp_repo):
+        args = {
+            "repo_path": str(mcp_repo.path),
+            "diff_range": "HEAD~1..HEAD",
+            "mode": "locate",
+            "include_raw_diff": True,
+        }
+        with pytest.raises(ToolError, match="pack"):
+            await server.call_tool("get_diff_context", args)
+
+    @pytest.mark.asyncio
+    async def test_locate_clipboard_degrades_to_inline_json(self, server, mcp_repo, monkeypatch):
+        monkeypatch.setattr("diffctx.clipboard.detect_clipboard_command", lambda: None)
+        result = await server.call_tool(
+            "get_diff_context",
+            {"repo_path": str(mcp_repo.path), "diff_range": "HEAD~1..HEAD", "mode": "locate", "clipboard": True},
+        )
+        text = _get_text(result)
+        assert "clipboard unavailable" in text
+        assert '"diffctx.locate.v1"' in text
+
+    @pytest.mark.asyncio
+    async def test_locate_respects_max_tokens_cap(self, server, mcp_repo):
+        result = await server.call_tool(
+            "get_diff_context",
+            {"repo_path": str(mcp_repo.path), "diff_range": "HEAD~1..HEAD", "mode": "locate", "max_tokens": 1},
+        )
+        text = _get_text(result)
+        assert "exceeding max_tokens" in text
+        assert "diffctx.locate.v1" not in text
+
+    @pytest.mark.asyncio
+    async def test_invalid_mode_is_rejected(self, server, mcp_repo):
+        args = {"repo_path": str(mcp_repo.path), "mode": "navigate"}
+        with pytest.raises(ToolError, match="mode"):
+            await server.call_tool("get_diff_context", args)
+
+    @pytest.mark.asyncio
     async def test_invalid_repo_path(self, server, tmp_path):
         args = {"repo_path": str(tmp_path / "nonexistent"), "diff_range": "HEAD~1..HEAD"}
         with pytest.raises(ToolError, match="Not a directory"):

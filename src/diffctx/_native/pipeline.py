@@ -47,7 +47,7 @@ def select_with_params(
     """Light-phase select+postpass+render against a precomputed state."""
     from diffctx._diffctx import select_with_params as _rust_select
 
-    return _rust_select(  # type: ignore[no-any-return]
+    return _rust_select(
         state,
         budget_tokens=_normalize_budget(budget_tokens),
         tau=tau,
@@ -58,6 +58,30 @@ def select_with_params(
 # The Rust side drops the file sections diff mode never discloses (secret-like
 # paths, ignored paths, lock files) so the bundled patch cannot widen what
 # selection is willing to show. Nothing here feeds selection state (#150).
+def build_locate(
+    root_dir: Path,
+    diff_range: str,
+    budget_tokens: int | None = None,
+    alpha: float = 0.60,
+    tau: float = 0.12,
+    scoring_mode: str = "ego",
+    timeout: int = _PIPELINE_TIMEOUT,
+) -> str:
+    from diffctx._diffctx import build_locate as _rust_locate
+
+    return str(
+        _rust_locate(
+            str(root_dir),
+            diff_range,
+            budget_tokens=_normalize_budget(budget_tokens),
+            alpha=alpha,
+            tau=tau,
+            scoring_mode=scoring_mode,
+            timeout=timeout,
+        )
+    )
+
+
 def get_raw_diff_text(root_dir: Path, diff_range: str, timeout: int = _PIPELINE_TIMEOUT) -> str:
     from diffctx._diffctx import get_raw_diff_text as _rust_raw_diff
 
