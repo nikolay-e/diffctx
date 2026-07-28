@@ -12,21 +12,14 @@ changed lines and stops once more context stops paying for itself.
 
 > Formerly published as `treemapper` — every command, flag, and API call works unchanged.
 
-## Why not just use `tree` or repomix?
+## How it compares
 
-| | `tree` | repomix | Claude Code Review | **diffctx** |
-|---|:---:|:---:|:---:|:---:|
-| **Primary use case** | directory listing | full repo export | automated PR review | **diff context for code review** |
-| Smart diff context | ✗ | ✗ | ✓ | ✓ |
-| Works with any LLM | ✓ | ✓ | Claude only | ✓ |
-| Free / local / offline | ✓ | ✓ | $15–25/review | ✓ |
-| GitHub required | ✗ | ✗ | ✓ | ✗ |
-| Multiple output formats | ✗ | limited | — | YAML/JSON/MD/txt |
-| Python API | ✗ | ✗ | ✗ | ✓ |
-| MCP server | ✗ | ✗ | ✗ | ✓ |
-
-Fuller positioning — measured results, and when a whole-repo packer or a
-persistent code-graph server fits better: [COMPARISON.md](COMPARISON.md).
+Whole-repo packers (repomix and friends) seed on the repository and export
+everything; persistent code-graph servers answer structural queries against a
+maintained index. diffctx is **diff-seeded**: the input is a change, the
+output is the fragments needed to understand it, packed under a hard token
+budget — local, deterministic, no index, no model calls. Measured results and
+when the other two families fit better: [COMPARISON.md](COMPARISON.md).
 
 ## Install
 
