@@ -33,11 +33,14 @@ repo:
 |-------|------|---------|-------------|
 | `initial_files` | dict[str, str] | `{}` | File path → content before the change |
 | `changed_files` | dict[str, str] | `{}` | File path → content after the change |
+| `deleted_files` | list[str] | `[]` | Paths removed by the change (git records a deletion) |
+| `renamed_files` | dict[str, str] | `{}` | Old path → new path; a `changed_files` entry for the new path overlays the moved content (rename + edit) |
 | `commit_message` | string | `"Update files"` | Git commit message for the diff |
 
-The schema cannot express deletions or renames: `changed_files` is merged
-over the initial tree and nothing is ever removed, so a "rename" case is
-recorded by git as an add ([#176](https://github.com/nikolay-e/diffctx/issues/176)).
+Order of application: renames first, then `changed_files` writes, then
+deletions — so a deleted path cannot be resurrected by also appearing in
+`changed_files`. Whether git records an R or a delete+add pair follows
+git's own similarity detection.
 
 ## fixtures
 

@@ -336,7 +336,11 @@ fn run_case_with_scoring(
     let case: TestCase =
         serde_yaml::from_str(&raw).map_err(|e| Failed::from(format!("parse YAML: {e}")))?;
 
-    if case.repo.initial_files.is_empty() && case.repo.changed_files.is_empty() {
+    if case.repo.initial_files.is_empty()
+        && case.repo.changed_files.is_empty()
+        && case.repo.deleted_files.is_empty()
+        && case.repo.renamed_files.is_empty()
+    {
         return Err(Failed::from(
             "case has no initial_files and no changed_files",
         ));
@@ -365,7 +369,22 @@ fn run_case_with_scoring(
     .map_err(Failed::from)?;
     let base_sha = rev_parse_head(repo).map_err(Failed::from)?;
 
+    // Renames first (an explicit changed_files entry for the destination
+    // then overwrites the moved content — rename+edit), deletions last so a
+    // case cannot resurrect a deleted path by also listing it in
+    // changed_files. `git add -A` records all three change kinds.
+    for (from, to) in &case.repo.renamed_files {
+        let src = repo.join(from);
+        let dst = repo.join(to);
+        if let Some(parent) = dst.parent() {
+            fs::create_dir_all(parent).map_err(|e| Failed::from(format!("mkdir: {e}")))?;
+        }
+        fs::rename(&src, &dst).map_err(|e| Failed::from(format!("rename {from} -> {to}: {e}")))?;
+    }
     write_files(repo, &changed).map_err(Failed::from)?;
+    for rel in &case.repo.deleted_files {
+        fs::remove_file(repo.join(rel)).map_err(|e| Failed::from(format!("delete {rel}: {e}")))?;
+    }
     run_git(repo, &["add", "-A"]).map_err(Failed::from)?;
     run_git(
         repo,

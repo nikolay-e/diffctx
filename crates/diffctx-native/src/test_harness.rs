@@ -110,6 +110,18 @@ fn build_memory_repo(case: &TestCase) -> MemoryRepo {
         }
     }
 
+    // Mirror the git runner: renames move the old path's content to the new
+    // path (an explicit changed_files entry for the destination wins), then
+    // deletions drop the path from the post-state entirely.
+    for (from, to) in &case.repo.renamed_files {
+        if let Some(content) = changed.remove(from) {
+            changed.entry(to.clone()).or_insert(content);
+        }
+    }
+    for rel in &case.repo.deleted_files {
+        changed.remove(rel);
+    }
+
     MemoryRepo {
         name: case.name.clone(),
         initial_files: initial,
