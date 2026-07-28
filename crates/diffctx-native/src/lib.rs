@@ -12,6 +12,7 @@ pub mod graph;
 pub mod graph_export;
 pub mod interval;
 pub mod languages;
+pub mod locate;
 pub mod memory_pipeline;
 pub mod mode;
 pub mod parsers;

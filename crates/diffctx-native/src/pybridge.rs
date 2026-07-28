@@ -20,6 +20,50 @@ pub struct PyScoredState {
 
 create_exception!(_diffctx, GitError, pyo3::exceptions::PyException);
 
+/// `--mode locate` (#126): same pipeline and selection as pack mode, rendered
+/// as the compact `diffctx.locate.v1` JSON string (ranked items + provenance
+/// reasons, no source bodies).
+#[pyfunction]
+#[pyo3(signature = (
+    root_dir,
+    diff_range,
+    budget_tokens = None,
+    alpha = 0.60,
+    tau = crate::config::limits::DEFAULT_STOPPING_THRESHOLD,
+    scoring_mode = "ego",
+    timeout = DEFAULT_PIPELINE_TIMEOUT_SECONDS,
+))]
+fn build_locate(
+    py: Python<'_>,
+    root_dir: &str,
+    diff_range: &str,
+    budget_tokens: Option<u32>,
+    alpha: f64,
+    tau: f64,
+    scoring_mode: &str,
+    timeout: u64,
+) -> PyResult<String> {
+    let mode =
+        ScoringMode::from_str(scoring_mode).map_err(pyo3::exceptions::PyValueError::new_err)?;
+    let path = Path::new(root_dir).to_path_buf();
+    let range = diff_range.to_string();
+    let output = py
+        .detach(move || {
+            crate::pipeline::build_diff_context_locate(
+                &path,
+                Some(&range),
+                budget_tokens,
+                alpha,
+                tau,
+                mode,
+                timeout,
+            )
+        })
+        .map_err(map_pipeline_err)?;
+    serde_json::to_string(&output)
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+}
+
 fn map_pipeline_err(e: anyhow::Error) -> PyErr {
     if let Some(git_err) = e.downcast_ref::<RustGitError>() {
         return GitError::new_err(git_err.to_string());
@@ -615,6 +659,7 @@ fn graph_summary<'py>(
 #[pymodule]
 pub fn _diffctx(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(build_diff_context, m)?)?;
+    m.add_function(wrap_pyfunction!(build_locate, m)?)?;
     m.add_function(wrap_pyfunction!(compute_scored_state, m)?)?;
     m.add_function(wrap_pyfunction!(select_with_params, m)?)?;
     m.add_class::<PyScoredState>()?;

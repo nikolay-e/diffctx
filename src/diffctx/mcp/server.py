@@ -134,6 +134,10 @@ _DIFF_DESCRIPTION = (
     "include_raw_diff=true also embeds git's raw unified diff ahead of the "
     "selected fragments — additive (selection unchanged), not charged to "
     "budget_tokens; lock/ignored/secret-like sections omitted.\n"
+    'mode="locate" returns the compact diffctx.locate.v1 JSON instead: the '
+    "same ranked selection as a navigation list (path, lines, score, "
+    "provenance reasons) with NO source bodies — a few hundred tokens where "
+    "the pack costs thousands; fetch bodies selectively afterwards.\n"
     "Supports 30+ languages." + _UNTRUSTED_NOTICE
 )
 
@@ -146,9 +150,29 @@ async def get_diff_context(
     clipboard: bool = False,
     max_tokens: int = _DEFAULT_MAX_TOKENS,
     include_raw_diff: bool = False,
+    mode: str = "pack",
 ) -> str:
     validated_path = validate_repo_path(repo_path)
     _validate_budget_tokens(budget_tokens)
+    if mode not in ("pack", "locate"):
+        raise ValueError(f'mode must be "pack" or "locate", got {mode!r}')
+    if mode == "locate":
+        from diffctx._native import build_locate
+
+        try:
+            return await _run_with_deadline(
+                "get_diff_context",
+                partial(
+                    build_locate,
+                    root_dir=validated_path,
+                    diff_range=diff_range,
+                    budget_tokens=budget_tokens,
+                    tau=_DEFAULT_TAU,
+                    timeout=_DEFAULT_TIMEOUT_SECONDS,
+                ),
+            )
+        except GitError as e:
+            raise ValueError(f"Git error: {e}") from e
     try:
         result = await _run_with_deadline(
             "get_diff_context",

@@ -87,6 +87,33 @@ pub fn build_diff_context(
     Ok(select_with_params(&state, budget_tokens, tau, no_content))
 }
 
+/// `--mode locate` (#126): same heavy phase and the SAME selection as pack
+/// mode, rendered as a ranked navigation list with provenance reasons and no
+/// source bodies.
+pub fn build_diff_context_locate(
+    root_dir: &Path,
+    diff_range: Option<&str>,
+    budget_tokens: Option<u32>,
+    alpha: f64,
+    tau: f64,
+    scoring_mode: ScoringMode,
+    timeout: u64,
+) -> Result<crate::locate::LocateOutput> {
+    let state = compute_scored_state(root_dir, diff_range, alpha, scoring_mode, timeout)?;
+    let outcome = if state.all_fragments.is_empty() {
+        SelectionOutcome {
+            selected: Vec::new(),
+            effective_budget: budget_tokens.unwrap_or(0),
+            selection_iters: 0,
+            stopping_certificate: 0.0,
+            select_ms: 0.0,
+        }
+    } else {
+        run_selection(&state, budget_tokens, tau)
+    };
+    Ok(crate::locate::build_locate(&state, &outcome))
+}
+
 /// Heavy phase: clone/parse/fragment/discover/tokenize/score. Independent
 /// of `tau`/`core_budget_fraction`. Designed to be computed ONCE per
 /// instance and reused across an arbitrary number of selection cells.
@@ -377,19 +404,22 @@ pub fn compute_scored_state(
     })
 }
 
-/// Light phase: selection + 3 post-passes + render. Cheap. Re-runnable
-/// against the same `ScoredState` with different (`tau`, `core_budget_fraction`)
-/// to sweep a calibration grid without re-doing the heavy phase.
-///
-/// `core_budget_fraction` is read at the start via `selection().core_budget_fraction`
-/// — set the env var `DIFFCTX_OP_SELECTION_CORE_BUDGET_FRACTION` before
-/// calling to override per-cell.
-pub fn select_with_params(
+pub struct SelectionOutcome {
+    pub selected: Vec<Fragment>,
+    pub effective_budget: u32,
+    pub selection_iters: usize,
+    pub stopping_certificate: f64,
+    pub select_ms: f64,
+}
+
+/// Selection + the 3 post-passes, shared verbatim by the pack renderer
+/// (`select_with_params`) and the locate renderer — extracting it is pure
+/// code motion so both modes select identically by construction.
+pub fn run_selection(
     state: &ScoredState,
     budget_tokens: Option<u32>,
     tau: f64,
-    no_content: bool,
-) -> DiffContextOutput {
+) -> SelectionOutcome {
     let t_start = Instant::now();
     let effective_budget = budget_tokens.unwrap_or_else(|| {
         let core_tokens: u32 = state
@@ -479,6 +509,34 @@ pub fn select_with_params(
     crate::provenance::maybe_dump(state, &selected);
 
     let select_ms = t_start.elapsed().as_secs_f64() * 1000.0;
+    SelectionOutcome {
+        selected,
+        effective_budget,
+        selection_iters,
+        stopping_certificate,
+        select_ms,
+    }
+}
+
+/// Light phase: selection + 3 post-passes + render. Cheap. Re-runnable
+/// against the same `ScoredState` with different (`tau`, `core_budget_fraction`)
+/// to sweep a calibration grid without re-doing the heavy phase.
+///
+/// `core_budget_fraction` is read at the start via `selection().core_budget_fraction`
+/// — set the env var `DIFFCTX_OP_SELECTION_CORE_BUDGET_FRACTION` before
+/// calling to override per-cell.
+pub fn select_with_params(
+    state: &ScoredState,
+    budget_tokens: Option<u32>,
+    tau: f64,
+    no_content: bool,
+) -> DiffContextOutput {
+    let outcome = run_selection(state, budget_tokens, tau);
+    let selected = outcome.selected;
+    let selection_iters = outcome.selection_iters;
+    let stopping_certificate = outcome.stopping_certificate;
+    let select_ms = outcome.select_ms;
+
     let total_ms = state.heavy_latency_ms.parse_changed
         + state.heavy_latency_ms.universe_walk
         + state.heavy_latency_ms.discovery

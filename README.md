@@ -80,6 +80,7 @@ the `--budget` token cap is hit.
 | `--full`    | false   | Only the changed files, every fragment, no related-code context          |
 | `--timeout` | 300     | Wall-clock deadline in seconds; on expiry diffctx exits 124 instead of hanging |
 | `--with-raw-diff` | false | Also embed git's raw unified diff ahead of the selected fragments — additive (selection unchanged), not charged to `--budget`, lock/ignored/secret-like sections omitted. Python CLI only |
+| `--mode` | `pack` | `locate` emits the same ranked selection as compact `diffctx.locate.v1` JSON — path, lines, score, provenance reasons, NO source bodies (a navigation prior for agents; typically a fraction of pack's tokens). The MCP tool takes it as `mode="locate"` |
 
 ### `graph` subcommand
 
@@ -111,6 +112,7 @@ diffctx . --diff main..feature            # context for feature branch
 diffctx . --diff HEAD~1 --budget 30000    # limit to ~30k tokens
 diffctx . --diff HEAD~1 -c                # diff context to clipboard
 diffctx . --diff HEAD~1 --with-raw-diff   # raw patch + selected context
+diffctx . --diff HEAD~1 --mode locate     # ranked navigation JSON, no source
 ```
 <!-- END USAGE -->
 

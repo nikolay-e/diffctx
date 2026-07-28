@@ -23,6 +23,7 @@ _USAGE_EXAMPLES: list[tuple[str, str]] = [
     ("diffctx . --diff HEAD~1 --budget 30000", "limit to ~30k tokens"),
     ("diffctx . --diff HEAD~1 -c", "diff context to clipboard"),
     ("diffctx . --diff HEAD~1 --with-raw-diff", "raw patch + selected context"),
+    ("diffctx . --diff HEAD~1 --mode locate", "ranked navigation JSON, no source"),
 ]
 
 _BEGIN = "<!-- BEGIN USAGE -->"

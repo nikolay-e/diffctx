@@ -51,6 +51,9 @@ content.
   unlimited (still capped by `max_tokens`), `0` strict-zero floor
 - `include_raw_diff` (boolean, default `false`) — embed git's raw unified
   diff ahead of the fragments (additive, not charged to the budget)
+- `mode` (`"pack"` default, or `"locate"`) — `locate` returns compact
+  `diffctx.locate.v1` JSON: the same ranked selection as a navigation list
+  with provenance reasons and no source bodies
 - `clipboard` (boolean, default `false`) — copy instead of returning
 - `max_tokens` (integer, default `25000`)
 

@@ -26,7 +26,7 @@ pub fn maybe_dump(state: &ScoredState, selected: &[Fragment]) {
     }
 }
 
-fn seed_hops(state: &ScoredState) -> FxHashMap<FragmentId, u32> {
+pub fn seed_hops(state: &ScoredState) -> FxHashMap<FragmentId, u32> {
     let graph = &state.scoring_result.graph;
     let mut hops: FxHashMap<FragmentId, u32> = FxHashMap::default();
     let mut queue: VecDeque<FragmentId> = VecDeque::new();
@@ -55,10 +55,18 @@ fn seed_hops(state: &ScoredState) -> FxHashMap<FragmentId, u32> {
     hops
 }
 
-fn incoming_mass(state: &ScoredState) -> FxHashMap<FragmentId, FxHashMap<&'static str, f64>> {
+struct CatMass {
+    mass: f64,
+    top_source: FragmentId,
+    top_contribution: f64,
+}
+
+fn per_category_mass(
+    state: &ScoredState,
+) -> FxHashMap<FragmentId, FxHashMap<&'static str, CatMass>> {
     let graph = &state.scoring_result.graph;
     let rel = &state.scoring_result.rel_scores;
-    let mut mass: FxHashMap<FragmentId, FxHashMap<&'static str, f64>> = FxHashMap::default();
+    let mut mass: FxHashMap<FragmentId, FxHashMap<&'static str, CatMass>> = FxHashMap::default();
     graph.for_each_categorized_edge(|src, dst, cat| {
         let src_rel = rel.get(src).copied().unwrap_or(0.0);
         if src_rel <= 0.0 {
@@ -68,13 +76,59 @@ fn incoming_mass(state: &ScoredState) -> FxHashMap<FragmentId, FxHashMap<&'stati
         if w <= 0.0 {
             return;
         }
-        *mass
+        let contribution = w * src_rel;
+        let entry = mass
             .entry(dst.clone())
             .or_default()
             .entry(cat.as_str())
-            .or_insert(0.0) += w * src_rel;
+            .or_insert_with(|| CatMass {
+                mass: 0.0,
+                top_source: src.clone(),
+                top_contribution: 0.0,
+            });
+        entry.mass += contribution;
+        // Strict `>` with deterministic iteration would still tie-break by
+        // visit order; prefer the lexically-smaller source on equal
+        // contribution so the attribution is order-independent.
+        if contribution > entry.top_contribution
+            || (contribution == entry.top_contribution && src.path < entry.top_source.path)
+        {
+            entry.top_source = src.clone();
+            entry.top_contribution = contribution;
+        }
     });
     mass
+}
+
+/// Per-fragment incoming relevance mass grouped by edge category, sorted by
+/// mass descending: `(category, strongest_source_path, mass)`. Shared by the
+/// provenance dump and the locate renderer (#126) — one attribution pass,
+/// two consumers.
+pub fn incoming_attribution(
+    state: &ScoredState,
+) -> FxHashMap<FragmentId, Vec<(String, String, f64)>> {
+    per_category_mass(state)
+        .into_iter()
+        .map(|(id, cats)| {
+            let mut rows: Vec<(String, String, f64)> = cats
+                .into_iter()
+                .map(|(cat, m)| (cat.to_string(), m.top_source.path.to_string(), m.mass))
+                .collect();
+            rows.sort_by(|a, b| {
+                b.2.partial_cmp(&a.2)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then(a.0.cmp(&b.0))
+            });
+            (id, rows)
+        })
+        .collect()
+}
+
+fn incoming_mass(state: &ScoredState) -> FxHashMap<FragmentId, FxHashMap<&'static str, f64>> {
+    per_category_mass(state)
+        .into_iter()
+        .map(|(id, cats)| (id, cats.into_iter().map(|(c, m)| (c, m.mass)).collect()))
+        .collect()
 }
 
 fn dump(state: &ScoredState, selected: &[Fragment], out_path: &Path) -> std::io::Result<()> {
