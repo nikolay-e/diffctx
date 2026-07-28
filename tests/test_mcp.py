@@ -195,11 +195,9 @@ class TestGetDiffContext:
 
     @pytest.mark.asyncio
     async def test_invalid_mode_is_rejected(self, server, mcp_repo):
+        args = {"repo_path": str(mcp_repo.path), "mode": "navigate"}
         with pytest.raises(ToolError, match="mode"):
-            await server.call_tool(
-                "get_diff_context",
-                {"repo_path": str(mcp_repo.path), "mode": "navigate"},
-            )
+            await server.call_tool("get_diff_context", args)
 
     @pytest.mark.asyncio
     async def test_invalid_repo_path(self, server, tmp_path):

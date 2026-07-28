@@ -695,14 +695,19 @@ def _resolve_diff_params(args: argparse.Namespace) -> tuple[str | None, int | No
         diff_range = "HEAD"
     if diff_range and args.no_ignores:
         _exit_usage_error("--no-ignores is not supported with --diff (git's own ignore rules always apply in diff mode)")
-    if mode == "locate":
-        if args.full:
-            _exit_usage_error("--mode locate is incompatible with --full (locate ranks the selection; --full bypasses it)")
-        if args.with_raw_diff:
-            _exit_usage_error("--mode locate emits no source; --with-raw-diff applies to pack mode only")
-        if args.format is not _UNSET:
-            _warn(f"-f {args.format} ignored with --mode locate (locate emits diffctx.locate.v1 JSON)")
+    _validate_locate_mode(args, mode)
     return diff_range, budget, alpha, tau, scoring, timeout, mode
+
+
+def _validate_locate_mode(args: argparse.Namespace, mode: str) -> None:
+    if mode != "locate":
+        return
+    if args.full:
+        _exit_usage_error("--mode locate is incompatible with --full (locate ranks the selection; --full bypasses it)")
+    if args.with_raw_diff:
+        _exit_usage_error("--mode locate emits no source; --with-raw-diff applies to pack mode only")
+    if args.format is not _UNSET:
+        _warn(f"-f {args.format} ignored with --mode locate (locate emits diffctx.locate.v1 JSON)")
 
 
 def _build_tree_parsed_args(args: argparse.Namespace) -> ParsedArgs:
