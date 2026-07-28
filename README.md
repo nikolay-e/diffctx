@@ -182,6 +182,7 @@ print(to_yaml(tree))
 ## MCP server
 
 [![MCP Registry](https://img.shields.io/badge/MCP_Registry-io.github.nikolay--e%2Fdiffctx-blue)](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.nikolay-e/diffctx)
+[![diffctx MCP server](https://glama.ai/mcp/servers/nikolay-e/diffctx/badges/score.svg)](https://glama.ai/mcp/servers/nikolay-e/diffctx)
 
 diffctx includes an [MCP](https://modelcontextprotocol.io) server that lets AI
 assistants (Claude Code, Cursor, Windsurf, etc.) call diff context analysis
