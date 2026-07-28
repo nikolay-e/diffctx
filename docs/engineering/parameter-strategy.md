@@ -116,7 +116,8 @@ it) to enable the sweep without rebuild.
 
 > **Not a stable interface.** The `DIFFCTX_OP_*` overrides — along with the
 > other internal toggles (`DIFFCTX_OBJECTIVE`, `DIFFCTX_EGO_*`,
-> `DIFFCTX_NO_COMMIT_SIGNAL`, `DIFFCTX_MAX_FRAGMENTS`) — are experimental
+> `DIFFCTX_NO_COMMIT_SIGNAL`, `DIFFCTX_MAX_FRAGMENTS`, and the
+> `DIFFCTX_PROVENANCE_DUMP=<path>` per-candidate telemetry sink) — are experimental
 > calibration knobs for research and sensitivity analysis, not a supported
 > public API. They are undocumented in `--help` on purpose and may change or
 > disappear between releases. Production use should rely only on the

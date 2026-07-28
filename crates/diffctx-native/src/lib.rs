@@ -20,6 +20,7 @@ pub mod pipeline;
 pub mod postpass;
 pub mod ppr;
 pub mod project_graph;
+pub mod provenance;
 pub mod render;
 pub mod scoring;
 pub mod select;

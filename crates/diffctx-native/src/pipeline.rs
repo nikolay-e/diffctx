@@ -476,6 +476,8 @@ pub fn select_with_params(
         r.close();
     }
 
+    crate::provenance::maybe_dump(state, &selected);
+
     let select_ms = t_start.elapsed().as_secs_f64() * 1000.0;
     let total_ms = state.heavy_latency_ms.parse_changed
         + state.heavy_latency_ms.universe_walk
