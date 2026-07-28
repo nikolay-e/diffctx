@@ -732,7 +732,8 @@ jobs:
           OS=$(uname -s | tr '[:upper:]' '[:lower:]')
           ARCH=$(uname -m)
           BASE="https://github.com/modelcontextprotocol/registry/releases/download"
-          curl -fsSL "${BASE}/v1.8.0/mcp-publisher_${OS}_${ARCH}.tar.gz" | tar xz mcp-publisher
+          curl --proto '=https' --tlsv1.2 -fsSL \
+            "${BASE}/v1.8.0/mcp-publisher_${OS}_${ARCH}.tar.gz" | tar xz mcp-publisher
 
       # github-oidc mints the io.github.nikolay-e/* namespace from this
       # repository's identity — no stored secret, no device flow.
