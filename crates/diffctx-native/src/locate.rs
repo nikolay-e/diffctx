@@ -134,12 +134,14 @@ pub enum Reason {
     PostPass,
 }
 
+/// Falls back to the path as given when it lies outside the root: locate is a
+/// navigation list, and an unattributable entry is still more useful named than
+/// dropped. The separator handling comes from `crate::paths` so it matches the
+/// pack renderer instead of unconditionally rewriting backslashes, which on
+/// POSIX renames a legal file.
 fn rel_path(state: &ScoredState, path: &str) -> String {
-    let root = state.root_dir.to_string_lossy();
-    path.strip_prefix(root.as_ref())
-        .map(|s| s.trim_start_matches(['/', '\\']).to_string())
-        .unwrap_or_else(|| path.to_string())
-        .replace('\\', "/")
+    crate::paths::display_rel(&state.root_dir, Path::new(path))
+        .unwrap_or_else(|| crate::paths::to_posix_display(std::borrow::Cow::Borrowed(path)))
 }
 
 fn reasons_for(

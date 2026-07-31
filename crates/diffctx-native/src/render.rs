@@ -236,20 +236,7 @@ fn extract_symbol(frag: &Fragment) -> Option<String> {
     None
 }
 
-// Windows paths use `\` as the component separator, so a rendered path must
-// be normalized to `/` for cross-platform-readable output. On POSIX, `\` is
-// a legal filename character (`src\utils.py` is one file, not a directory
-// separator) — rewriting it there would report a path that does not exist
-// and silently merge two distinct files under one heading in `by_path`.
-#[cfg(windows)]
-fn normalize_path_separators(s: std::borrow::Cow<'_, str>) -> String {
-    s.replace('\\', "/")
-}
-
-#[cfg(not(windows))]
-fn normalize_path_separators(s: std::borrow::Cow<'_, str>) -> String {
-    s.into_owned()
-}
+use crate::paths::to_posix_display as normalize_path_separators;
 
 pub(crate) fn get_relative_path(frag: &Fragment, repo_root: &Path) -> String {
     let frag_path = Path::new(frag.path());

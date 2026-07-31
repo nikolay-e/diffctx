@@ -710,9 +710,7 @@ fn is_lockfile_path(path: &Path) -> bool {
 }
 
 pub(crate) fn rel_path_string(root_dir: &Path, path: &Path) -> Option<String> {
-    path.strip_prefix(root_dir)
-        .ok()
-        .map(|p| p.to_string_lossy().replace('\\', "/"))
+    crate::paths::display_rel(root_dir, path)
 }
 
 /// Resolves `.gitignore` / `.diffctx/ignore` exclusions (#85) for every path

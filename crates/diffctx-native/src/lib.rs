@@ -16,6 +16,7 @@ pub mod locate;
 pub mod memory_pipeline;
 pub mod mode;
 pub mod parsers;
+mod paths;
 pub mod peak_rss;
 pub mod pipeline;
 pub mod postpass;

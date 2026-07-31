@@ -539,11 +539,14 @@ pub fn get_deleted_files(repo_root: &Path, diff_range: Option<&str>) -> Result<F
         .collect())
 }
 
-/// Rename *source* paths, canonicalized. These no longer exist on disk and
-/// cannot be fragmented, so the pipeline excludes them from the changed set.
-/// The rename destinations need no special handling: they exist on HEAD and
-/// reach the universe through the ordinary changed-file path.
-pub fn get_renamed_paths(repo_root: &Path, diff_range: Option<&str>) -> Result<FxHashSet<PathBuf>> {
+/// The `R` records of a rename-only diff, as raw `(old, new)` strings.
+///
+/// `--name-status -z` emits renames as `R<similarity>\0old\0new\0`, so the walk
+/// steps three fields per record and one otherwise. Both callers below ran their
+/// own copy of that walk; they disagreed on validation, one accepting a record
+/// whose destination was missing. A rename without a destination is not a
+/// rename, so the stricter reading is the one kept here.
+fn rename_records(repo_root: &Path, diff_range: Option<&str>) -> Result<Vec<(String, String)>> {
     let mut args: Vec<&str> = vec!["diff"];
     args.extend_from_slice(SAFE_DIFF_FLAGS);
     args.extend_from_slice(&["--diff-filter=R", "--name-status", "-M", "-z"]);
@@ -554,26 +557,35 @@ pub fn get_renamed_paths(repo_root: &Path, diff_range: Option<&str>) -> Result<F
     let output = run_git(repo_root, &args)?;
     let parts: Vec<&str> = output.split('\0').collect();
 
-    let mut old_paths = FxHashSet::default();
+    let mut records = Vec::new();
     let mut i = 0;
-
-    // `--name-status -z` emits renames as `R<similarity>\0old\0new\0`.
     while i < parts.len() {
         if parts[i].starts_with('R') {
-            if i + 1 < parts.len() && !parts[i + 1].is_empty() {
-                let resolved = repo_root
-                    .join(parts[i + 1])
-                    .canonicalize()
-                    .unwrap_or_else(|_| repo_root.join(parts[i + 1]));
-                old_paths.insert(resolved);
+            if i + 2 < parts.len() && !parts[i + 1].is_empty() && !parts[i + 2].is_empty() {
+                records.push((parts[i + 1].to_string(), parts[i + 2].to_string()));
             }
             i += 3;
         } else {
             i += 1;
         }
     }
+    Ok(records)
+}
 
-    Ok(old_paths)
+/// Rename *source* paths, canonicalized. These no longer exist on disk and
+/// cannot be fragmented, so the pipeline excludes them from the changed set.
+/// The rename destinations need no special handling: they exist on HEAD and
+/// reach the universe through the ordinary changed-file path.
+pub fn get_renamed_paths(repo_root: &Path, diff_range: Option<&str>) -> Result<FxHashSet<PathBuf>> {
+    Ok(rename_records(repo_root, diff_range)?
+        .into_iter()
+        .map(|(old, _)| {
+            repo_root
+                .join(&old)
+                .canonicalize()
+                .unwrap_or_else(|_| repo_root.join(&old))
+        })
+        .collect())
 }
 
 /// Rename pairs as repo-relative display paths (`old -> new`), for the output
@@ -583,32 +595,15 @@ pub fn get_rename_pairs(
     repo_root: &Path,
     diff_range: Option<&str>,
 ) -> Result<Vec<(String, String)>> {
-    let mut args: Vec<&str> = vec!["diff"];
-    args.extend_from_slice(SAFE_DIFF_FLAGS);
-    args.extend_from_slice(&["--diff-filter=R", "--name-status", "-M", "-z"]);
-    if let Some(range) = diff_range {
-        validate_diff_range(range)?;
-        args.push(range);
-    }
-    let output = run_git(repo_root, &args)?;
-    let parts: Vec<&str> = output.split('\0').collect();
-
-    let mut pairs = Vec::new();
-    let mut i = 0;
-    while i < parts.len() {
-        if parts[i].starts_with('R') {
-            if i + 2 < parts.len() && !parts[i + 1].is_empty() && !parts[i + 2].is_empty() {
-                pairs.push((
-                    parts[i + 1].replace('\\', "/"),
-                    parts[i + 2].replace('\\', "/"),
-                ));
-            }
-            i += 3;
-        } else {
-            i += 1;
-        }
-    }
-    Ok(pairs)
+    Ok(rename_records(repo_root, diff_range)?
+        .into_iter()
+        .map(|(old, new)| {
+            (
+                crate::paths::to_posix_display(std::borrow::Cow::Owned(old)),
+                crate::paths::to_posix_display(std::borrow::Cow::Owned(new)),
+            )
+        })
+        .collect())
 }
 
 pub fn split_diff_range(range: &str) -> (Option<String>, Option<String>) {
