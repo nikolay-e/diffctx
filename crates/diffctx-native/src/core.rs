@@ -125,91 +125,6 @@ pub fn identify_core_fragments(
     core_ids
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::Arc;
-
-    fn frag(path: &str, start: u32, end: u32, kind: FragmentKind) -> Fragment {
-        Fragment {
-            id: FragmentId::new(Arc::from(path), start, end),
-            kind,
-            content: Arc::from(""),
-            identifiers: FxHashSet::default(),
-            token_count: 10,
-            symbol_name: None,
-        }
-    }
-
-    fn hunk(path: &str, start: u32, len: u32) -> DiffHunk {
-        DiffHunk {
-            path: Arc::from(path),
-            new_start: start,
-            new_len: len,
-            old_start: start,
-            old_len: len,
-        }
-    }
-
-    fn sorted_ids(core: &FxHashSet<FragmentId>) -> Vec<FragmentId> {
-        let mut v: Vec<FragmentId> = core.iter().cloned().collect();
-        v.sort();
-        v
-    }
-
-    /// Which fragment a hunk seeds decides what the output marks as changed.
-    /// The tie-breaks in `find_core_for_hunk` compare kind class and span
-    /// length only, so equally-ranked candidates were resolved by whatever
-    /// order the parser happened to emit them in — the same order dependence
-    /// already ruled out for `drop_redundant_signatures` and
-    /// `cap_context_fragments`.
-    #[test]
-    fn core_identification_is_invariant_under_fragment_order() {
-        // Two equally-sized covering candidates, plus an equally-distant
-        // neighbour on each side of a second hunk that nothing covers.
-        let fragments = vec![
-            frag("a.rs", 10, 20, FragmentKind::Function),
-            frag("a.rs", 15, 25, FragmentKind::Function),
-            frag("a.rs", 60, 70, FragmentKind::Function),
-            frag("a.rs", 90, 100, FragmentKind::Function),
-            frag("b.rs", 1, 11, FragmentKind::Function),
-            frag("b.rs", 30, 40, FragmentKind::Function),
-        ];
-        let hunks = vec![
-            hunk("a.rs", 16, 3),
-            hunk("a.rs", 80, 1),
-            hunk("b.rs", 20, 1),
-        ];
-
-        let baseline = sorted_ids(&identify_core_fragments(&hunks, &fragments));
-        assert!(!baseline.is_empty(), "no core identified at all");
-
-        for permuted in [
-            {
-                let mut v = fragments.clone();
-                v.reverse();
-                v
-            },
-            {
-                let mut v = fragments.clone();
-                v.rotate_left(3);
-                v
-            },
-            {
-                let mut v = fragments.clone();
-                v.sort_by_key(|f| std::cmp::Reverse(f.start_line()));
-                v
-            },
-        ] {
-            assert_eq!(
-                sorted_ids(&identify_core_fragments(&hunks, &permuted)),
-                baseline,
-                "core set changed with fragment order"
-            );
-        }
-    }
-}
-
 fn map_hunks_to_fragments(
     hunks: &[DiffHunk],
     core_ids: &FxHashSet<FragmentId>,
@@ -306,4 +221,89 @@ pub fn compute_seed_weights(
     fill_missing_core_weights(&mut frag_hunk_lines, core_ids, hunks);
 
     frag_hunk_lines
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    fn frag(path: &str, start: u32, end: u32, kind: FragmentKind) -> Fragment {
+        Fragment {
+            id: FragmentId::new(Arc::from(path), start, end),
+            kind,
+            content: Arc::from(""),
+            identifiers: FxHashSet::default(),
+            token_count: 10,
+            symbol_name: None,
+        }
+    }
+
+    fn hunk(path: &str, start: u32, len: u32) -> DiffHunk {
+        DiffHunk {
+            path: Arc::from(path),
+            new_start: start,
+            new_len: len,
+            old_start: start,
+            old_len: len,
+        }
+    }
+
+    fn sorted_ids(core: &FxHashSet<FragmentId>) -> Vec<FragmentId> {
+        let mut v: Vec<FragmentId> = core.iter().cloned().collect();
+        v.sort();
+        v
+    }
+
+    /// Which fragment a hunk seeds decides what the output marks as changed.
+    /// The tie-breaks in `find_core_for_hunk` compare kind class and span
+    /// length only, so equally-ranked candidates were resolved by whatever
+    /// order the parser happened to emit them in — the same order dependence
+    /// already ruled out for `drop_redundant_signatures` and
+    /// `cap_context_fragments`.
+    #[test]
+    fn core_identification_is_invariant_under_fragment_order() {
+        // Two equally-sized covering candidates, plus an equally-distant
+        // neighbour on each side of a second hunk that nothing covers.
+        let fragments = vec![
+            frag("a.rs", 10, 20, FragmentKind::Function),
+            frag("a.rs", 15, 25, FragmentKind::Function),
+            frag("a.rs", 60, 70, FragmentKind::Function),
+            frag("a.rs", 90, 100, FragmentKind::Function),
+            frag("b.rs", 1, 11, FragmentKind::Function),
+            frag("b.rs", 30, 40, FragmentKind::Function),
+        ];
+        let hunks = vec![
+            hunk("a.rs", 16, 3),
+            hunk("a.rs", 80, 1),
+            hunk("b.rs", 20, 1),
+        ];
+
+        let baseline = sorted_ids(&identify_core_fragments(&hunks, &fragments));
+        assert!(!baseline.is_empty(), "no core identified at all");
+
+        for permuted in [
+            {
+                let mut v = fragments.clone();
+                v.reverse();
+                v
+            },
+            {
+                let mut v = fragments.clone();
+                v.rotate_left(3);
+                v
+            },
+            {
+                let mut v = fragments.clone();
+                v.sort_by_key(|f| std::cmp::Reverse(f.start_line()));
+                v
+            },
+        ] {
+            assert_eq!(
+                sorted_ids(&identify_core_fragments(&hunks, &permuted)),
+                baseline,
+                "core set changed with fragment order"
+            );
+        }
+    }
 }
