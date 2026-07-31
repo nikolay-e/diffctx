@@ -43,6 +43,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`xfail:` in a YAML case was an unconditional silent skip.** The runner
+  returned success before building the repo, so a marked case proved nothing and
+  an XPASS was unobservable — the day its bug got fixed it still reported a pass.
+  `known_below_threshold.txt` is enforced bidirectionally for exactly this
+  reason; the two suppression mechanisms now agree. Marked cases run, and one
+  that passes fails with instructions to drop the marker. Twelve of the 44
+  markers turned out to be stale and were removed (ansible jinja templates,
+  HTML `script src`, Rust `build.rs`, an abstract-class case, six C#/PHP one-hop
+  cases, Haskell record syntax, a shell/terraform same-file case); 32 remain
+  legitimately failing.
+- **Excerpt downshift for mostly-unchanged cores** (#149, closing #105, #107 and
+  the scoping half of #114). A core fragment is now rendered as its hunk-window
+  excerpt whenever that window covers no more than half of it, instead of only
+  when the budget forces the substitution. The old rule made granularity a
+  function of leftover budget rather than of how much actually changed: the same
+  402-line `CMakeLists.txt` shipped whole at `--budget 8000` and tightly
+  excerpted at a small budget.
+
+  Two changes make it work. Excerpts are now generated for kinds that *have* a
+  signature variant as well — a signature is not a substitute for a
+  mostly-unchanged function, because it drops the changed lines, which is the
+  one thing the fragment was selected to carry. And `select_core_fragments` now
+  reports which cores it satisfied rather than letting the caller infer it from
+  id membership: a core represented by a substitute has a different id, so it
+  looked "skipped" and the full fragment was handed straight back to the greedy,
+  which re-emitted it alongside the excerpt.
+
+  `render` also had to agree with `locate` that an `Excerpt` carries the
+  `changed` role. Its id is a synthetic span cut out of the core and is not in
+  `core_ids`, so without that the downshift would have stripped the change
+  marker from the output — worse than the over-dump it replaces.
+
+  Measured on the reported shapes: a 122-line bash script with one changed line
+  goes from the whole file to a 7-line window; a 402-line `CMakeLists.txt` from
+  the whole file to 7 lines; a 264-line JavaScript function with two changed
+  lines from the whole function to an 8-line window plus the enclosing
+  signature as context.
 - **Diff-header paths escaping the repository root were accepted on Linux.**
   `Path::starts_with` compares components, not locations, and `canonicalize`
   fails for a path that does not exist — the normal case for the old side of a

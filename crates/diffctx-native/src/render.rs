@@ -278,6 +278,16 @@ fn create_fragment_entry(frag: &Fragment, path_str: &str) -> FragmentEntry {
     }
 }
 
+/// A fragment carries the `changed` role when it IS a core, or when it is the
+/// hunk-window excerpt that was substituted for one. The excerpt's id is not in
+/// `core_ids` — it is a synthetic span cut out of the core — so without this the
+/// downshift would silently strip the change marker from the output, which is
+/// worse than the over-dump it replaces. `locate.rs` already treats `Excerpt`
+/// this way; both surfaces must agree.
+fn carries_changed_role(frag: &Fragment, core_ids: &FxHashSet<FragmentId>) -> bool {
+    core_ids.contains(&frag.id) || frag.kind == FragmentKind::Excerpt
+}
+
 /// Collapse a file's fragments (sorted by start line, ties by descending end
 /// line) into the rendered entries. Two behaviors:
 /// - a same-role fragment fully contained in the running range (`next.end <=
@@ -298,13 +308,13 @@ fn merge_file_fragments(
     let mut i = 0;
     while i < frags.len() {
         let first = frags[i];
-        let role_changed = core_ids.contains(&first.id);
+        let role_changed = carries_changed_role(first, core_ids);
         let mut end = first.end_line();
         let mut parts: Vec<&str> = vec![first.content.trim_end_matches('\n')];
         let mut j = i + 1;
         while j < frags.len() {
             let next = frags[j];
-            if core_ids.contains(&next.id) != role_changed {
+            if carries_changed_role(next, core_ids) != role_changed {
                 break;
             }
             if next.end_line() <= end {

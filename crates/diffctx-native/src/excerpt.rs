@@ -4,28 +4,27 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::types::{DiffHunk, Fragment, FragmentId, FragmentKind, extract_identifiers};
 
-// A core fragment whose kind has no signature variant (chunk, section — the
-// fallbacks for flat data files, unparsed languages and parse degradation) has
-// no cheap stand-in, so when it does not fit the budget the change signal is
-// dropped instead of shrunk (#103). The excerpt is that stand-in: the changed
-// lines plus a little surrounding context, cut out of the parent's own text.
+// The changed lines plus a little surrounding context, cut out of a core
+// fragment's own text.
+//
+// Originally a budget fallback for the kinds with no signature variant (chunk,
+// section — flat data files, unparsed languages, parse degradation), where an
+// oversized core would otherwise be dropped and the change signal lost (#103).
+// It is now also the *downshift* target for a core that is mostly unchanged:
+// emitting a 264-line function for a two-line edit is the over-dump behind #105,
+// #107 and #149, and the signature variant is not a substitute there because it
+// drops the changed lines entirely.
 const CONTEXT_LINES: u32 = 3;
 const MIN_PARENT_LINES: u32 = 12;
+// A core is downshifted to its excerpt when the excerpt covers no more than
+// this share of it — i.e. when most of what the parent would contribute is
+// unchanged context. Deliberately stricter than `MAX_SHARE_OF_PARENT`: that
+// one only decides whether an excerpt is worth cutting at all, this one
+// decides whether to prefer it over the real fragment.
+const DOWNSHIFT_MAX_SHARE: f64 = 0.5;
 // Above this share of the parent the excerpt saves too little to be worth
 // rendering as a separate fragment — the parent itself is the better answer.
 const MAX_SHARE_OF_PARENT: f64 = 0.7;
-
-fn has_signature_variant(kind: FragmentKind) -> bool {
-    matches!(
-        kind,
-        FragmentKind::Function
-            | FragmentKind::Class
-            | FragmentKind::Struct
-            | FragmentKind::Interface
-            | FragmentKind::Enum
-            | FragmentKind::Variable
-    )
-}
 
 fn hunk_window(parent: &Fragment, hunks: &[DiffHunk]) -> Option<(u32, u32)> {
     let (mut lo, mut hi) = (u32::MAX, 0u32);
@@ -44,7 +43,7 @@ fn hunk_window(parent: &Fragment, hunks: &[DiffHunk]) -> Option<(u32, u32)> {
 }
 
 fn excerpt_from(parent: &Fragment, hunks: &[DiffHunk]) -> Option<Fragment> {
-    if has_signature_variant(parent.kind) || parent.kind.is_stub() {
+    if parent.kind.is_stub() {
         return None;
     }
     if parent.line_count() < MIN_PARENT_LINES {
@@ -82,10 +81,19 @@ fn excerpt_from(parent: &Fragment, hunks: &[DiffHunk]) -> Option<Fragment> {
     })
 }
 
-/// Cheap stand-ins for the core fragments that have no signature variant,
-/// keyed by the core they stand in for. Kept out of `all_fragments` on
-/// purpose: they must not become graph nodes or ordinary context candidates,
-/// only substitutes for a core that would otherwise vanish.
+/// Whether a core should be rendered as its excerpt rather than in full.
+///
+/// True when the hunk window covers only a small share of the parent, which is
+/// exactly the over-dump shape: the parent's remaining lines are unchanged
+/// context that the reader did not ask for. A change spread across most of the
+/// fragment keeps the fragment.
+pub fn is_downshift_worthwhile(parent: &Fragment, excerpt: &Fragment) -> bool {
+    f64::from(excerpt.line_count()) <= f64::from(parent.line_count()) * DOWNSHIFT_MAX_SHARE
+}
+
+/// Hunk-window stand-ins for core fragments, keyed by the core each replaces.
+/// Kept out of `all_fragments` on purpose: they must not become graph nodes or
+/// ordinary context candidates, only substitutes for their own core.
 pub fn generate_core_excerpts(
     all_fragments: &[Fragment],
     core_ids: &FxHashSet<FragmentId>,
@@ -160,11 +168,30 @@ mod tests {
         assert!(excerpt_from(&parent, &[hunk("data.yml", 5, 12)]).is_none());
     }
 
+    /// Kinds WITH a signature variant get an excerpt too. The signature is not
+    /// a substitute for a mostly-unchanged core: it drops the changed lines
+    /// entirely, which is the whole point of emitting the core in the first
+    /// place. Excluding them was what made a two-line edit ship a 200-line
+    /// function (#105/#107/#149).
     #[test]
-    fn no_excerpt_for_kinds_that_already_have_a_signature() {
+    fn kinds_with_a_signature_variant_still_get_an_excerpt() {
         let mut parent = chunk("app.py", 1, 200);
         parent.kind = FragmentKind::Function;
-        assert!(excerpt_from(&parent, &[hunk("app.py", 100, 2)]).is_none());
+
+        let excerpt = excerpt_from(&parent, &[hunk("app.py", 100, 2)]).expect("excerpt");
+        assert_eq!(excerpt.kind, FragmentKind::Excerpt);
+        assert!(excerpt.content.contains("line 100"));
+        assert!(excerpt.content.contains("line 101"));
+        assert!(crate::excerpt::is_downshift_worthwhile(&parent, &excerpt));
+    }
+
+    /// A change spread across most of the fragment keeps the fragment: there is
+    /// no unchanged bulk to trim, and a window would just lose context.
+    #[test]
+    fn a_widely_spread_change_is_not_downshifted() {
+        let parent = chunk("app.py", 1, 40);
+        let excerpt = excerpt_from(&parent, &[hunk("app.py", 5, 20)]).expect("excerpt");
+        assert!(!crate::excerpt::is_downshift_worthwhile(&parent, &excerpt));
     }
 
     #[test]

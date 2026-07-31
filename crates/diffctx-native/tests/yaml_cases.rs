@@ -10,7 +10,7 @@ use tempfile::TempDir;
 use walkdir::WalkDir;
 
 mod common;
-use common::{TestCase, calculate_budget, evaluate_oracle, garbage_files};
+use common::{TestCase, XFail, calculate_budget, evaluate_oracle, garbage_files};
 
 fn cases_dir() -> PathBuf {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -346,9 +346,15 @@ fn run_case_with_scoring(
         ));
     }
 
-    if case.xfail.as_ref().map(|x| x.is_active()).unwrap_or(false) {
-        return Ok(());
-    }
+    // An active `xfail:` marks a case as known-broken. It used to `return
+    // Ok(())` here — never running the case at all — so the marker was an
+    // unconditional silent skip and an XPASS was unobservable: the day the
+    // underlying bug got fixed, the case still reported a pass and nobody
+    // learned the marker was stale. `known_below_threshold.txt` is enforced
+    // bidirectionally for exactly this reason; the two suppression mechanisms
+    // now agree. The case runs, and a passing xfail is a failure telling you to
+    // drop the marker.
+    let xfail_active = case.xfail.as_ref().is_some_and(XFail::is_active);
 
     let initial = assemble_initial(&case);
     let changed = assemble_changed(&case);
@@ -441,8 +447,22 @@ fn run_case_with_scoring(
             .unwrap_or(10.0)
     });
 
+    let passing = oracle.score >= min_score;
+    if xfail_active {
+        return if passing {
+            Err(Failed::from(format!(
+                "xfail case now scores {:.1}% >= min {min_score:.1}% — drop the `xfail:` \
+                 block from the case, otherwise a future regression here would be \
+                 silently absorbed",
+                oracle.score
+            )))
+        } else {
+            Ok(())
+        };
+    }
+
     let baselined = known_below_threshold().contains(case_name);
-    match (oracle.score >= min_score, baselined) {
+    match (passing, baselined) {
         (true, false) => Ok(()),
         (false, true) => Ok(()),
         (true, true) => Err(Failed::from(format!(
