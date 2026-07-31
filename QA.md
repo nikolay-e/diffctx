@@ -62,11 +62,25 @@ Project-specific facts for `/qa`. Generic methodology lives in
   tests/yaml as context — the universe filter shipped in 1.12.3).
   Refresh: `uv tool install 'diffctx[mcp]' --force --refresh`.
 - This repo's own `.diffctx/ignore` excludes `*.yaml`/`*.yml` (the
-  2725-case corpus would drown every self-eat), so CI/workflow YAML
-  changes NEVER appear in self-eat output — a workflow-only range
-  legitimately yields rc=4 and a bare skeleton (excluded paths are
-  hidden even from `changed_files` by the security contract). Review
-  workflow changes with plain `git diff`, don't file this as a bug.
+  2725-case corpus would drown every self-eat) **and `tests`** — so the
+  entire `tests/` tree, `crates/diffctx-native/tests/`, every oracle
+  case and all CI/workflow YAML are invisible to self-eat, hidden even
+  from `changed_files` by the security contract. A range that touches
+  only those legitimately yields rc=4 and a bare skeleton. Concretely:
+  a commit changing 33 files can show 9. Review test and workflow
+  changes with plain `git diff`; don't file this as a bug, and don't
+  read the short changed-files list as the whole change.
+- Reading a self-eat diff of a *scoping* change: total emitted lines and
+  context-file count move in OPPOSITE directions. Shrinking fragments
+  frees budget the greedy immediately spends admitting more files, so a
+  genuine over-dump fix shows up as fewer lines AND more files. Measured
+  across three ranges when bounded gap chunks landed: 717→656, 543→531,
+  582→535 lines, while context files went 4→8 and 16→17. Neither number
+  alone is the verdict — this is why #149's gate pairs over-dump rate
+  with precision. Two mechanisms drive the breadth half: freed budget, and
+  `apply_fragment` recording the *excerpt's* identifiers rather than the
+  whole core's, so needs the trimmed body used to cover read as
+  uncovered and the greedy goes looking for them elsewhere.
 - `env_overrides.rs` carries name-consistency tests: any new
   `read_env_*("DIFFCTX_*")` must appear in the `parameter-strategy.md`
   Tier-3 table (or the `TIER1_EXTRAS_READ_BUT_NOT_TABLED` allowlist)
@@ -105,9 +119,17 @@ Project-specific facts for `/qa`. Generic methodology lives in
   (#105); grammar parses but the body is flat → one chunk (#107); fine
   fragments exist but the hunk spans more lines than any of them, so
   `find_core_for_hunk` promotes to the enclosing definition (Forgejo issue
-  2). Don't re-diagnose per language; the fix is #149's gate, extended to
-  the `changed` role and to `Function` (whose signature fallback would drop
-  the changed lines).
+  2). Don't re-diagnose per language.
+  **Status: fixed for the `changed` role** — the excerpt is consulted on how
+  little changed rather than on leftover budget, excerpts are generated for
+  kinds that have a signature variant too (a signature drops the changed
+  lines), `render` agrees with `locate` that an `Excerpt` is `changed`, and
+  long uncovered runs are split into bounded chunks so a flat file has
+  sub-file granularity at all. #105/#107/#114 closed on their own repros.
+  **Still open for the `context` role** (#123): there is no hunk to window
+  around, and the two obvious fixes both fail — see that issue for the
+  measurement (43 corpus failures, including cases that keep full recall but
+  get worse on forbidden files).
 - **`coherence_post_pass` is inert by accident and load-bearing for
   precision.** It resolves a dangling semantic neighbour by lowercased
   `symbol_name` instead of by the id the graph edge already gives it. That

@@ -57,6 +57,11 @@ pub struct ScoredState {
 
 #[derive(Default, Clone, Copy)]
 pub struct HeavyLatencyMs {
+    /// Everything before the heavy phase begins: hunk parse, untracked scan,
+    /// ignore resolution, and the `git diff` / `--name-only` / rename calls.
+    /// Outside every timer until #183 — which is why a 182s run reported 5.3s of
+    /// instrumented work with nothing to say where the rest went.
+    pub pre_phase: f64,
     pub parse_changed: f64,
     pub universe_walk: f64,
     pub discovery: f64,
@@ -124,6 +129,7 @@ pub fn compute_scored_state(
     scoring_mode: ScoringMode,
     timeout: u64,
 ) -> Result<ScoredState> {
+    let t_entry = Instant::now();
     git::set_git_timeout(timeout);
     let root_dir = resolve_repo_root(root_dir)?;
     if alpha <= 0.0 || alpha >= 1.0 {
@@ -237,6 +243,7 @@ pub fn compute_scored_state(
         });
 
     let t0 = Instant::now();
+    let pre_phase_ms = t0.duration_since(t_entry).as_secs_f64() * 1000.0;
 
     let mut seen_frag_ids: FxHashSet<FragmentId> = FxHashSet::default();
     let mut batch_reader = CatFileBatch::new(&root_dir)?;
@@ -352,6 +359,7 @@ pub fn compute_scored_state(
 
     let graph_build_ms = scoring_result.graph_build_ms;
     let heavy_latency_ms = HeavyLatencyMs {
+        pre_phase: pre_phase_ms,
         parse_changed: t_parse_changed.duration_since(t0).as_secs_f64() * 1000.0,
         universe_walk: t_universe.duration_since(t_parse_changed).as_secs_f64() * 1000.0,
         discovery: t_discovery.duration_since(t_universe).as_secs_f64() * 1000.0,
@@ -366,7 +374,8 @@ pub fn compute_scored_state(
     };
 
     tracing::debug!(
-        "diffctx heavy: parse_changed {:.3}s, universe {:.3}s, discovery {:.3}s, parse_discovered {:.3}s, tokenization {:.3}s, graph_build {:.3}s, scoring {:.3}s",
+        "diffctx heavy: pre_phase {:.3}s, parse_changed {:.3}s, universe {:.3}s, discovery {:.3}s, parse_discovered {:.3}s, tokenization {:.3}s, graph_build {:.3}s, scoring {:.3}s",
+        heavy_latency_ms.pre_phase / 1000.0,
         heavy_latency_ms.parse_changed / 1000.0,
         heavy_latency_ms.universe_walk / 1000.0,
         heavy_latency_ms.discovery / 1000.0,
@@ -527,7 +536,8 @@ pub fn select_with_params(
     let stopping_certificate = outcome.stopping_certificate;
     let select_ms = outcome.select_ms;
 
-    let total_ms = state.heavy_latency_ms.parse_changed
+    let total_ms = state.heavy_latency_ms.pre_phase
+        + state.heavy_latency_ms.parse_changed
         + state.heavy_latency_ms.universe_walk
         + state.heavy_latency_ms.discovery
         + state.heavy_latency_ms.parse_discovered
@@ -572,7 +582,13 @@ pub fn select_with_params(
         &state.scoring_result.rel_scores,
         change,
     );
+    tracing::debug!(
+        "diffctx selection: selection {:.3}s (incl. post-passes), total {:.3}s",
+        select_ms / 1000.0,
+        total_ms / 1000.0,
+    );
     output.latency = Some(render::LatencyBreakdown {
+        pre_phase_ms: state.heavy_latency_ms.pre_phase,
         parse_changed_ms: state.heavy_latency_ms.parse_changed,
         universe_walk_ms: state.heavy_latency_ms.universe_walk,
         discovery_ms: state.heavy_latency_ms.discovery,

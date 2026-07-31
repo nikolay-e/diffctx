@@ -43,6 +43,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Latency accounting reconciles with the wall clock** (#183). The phases
+  reported only the heavy stage, so a 182s run showed 5.8s of instrumented work
+  with nothing to say where the rest went — which is what made a slow range look
+  like an unexplained hang. The pre-heavy stage (hunk parse, untracked scan,
+  ignore resolution, the `git diff` calls) is now timed as `pre_phase_ms` and
+  included in `total_ms`, and the debug log emits `selection` (which has always
+  covered the three post-passes) alongside the heavy line. On the range from #121
+  that immediately localises the cost: `selection 216.5s, total 222.4s`. The
+  reported phases now sum to the total within a render-sized residual, and a
+  Python-level test asserts that so a future stage added outside the
+  instrumentation fails loudly instead of vanishing — it caught `pre_phase_ms`
+  missing from both pybridge call sites while being written.
 - **Flat files finally get sub-file granularity** (#105, #107). An uncovered
   region became one fragment however long it was, so a file the grammar extracts
   nothing from — a flat bash script, a `CMakeLists.txt`, any language without a

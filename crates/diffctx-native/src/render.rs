@@ -63,6 +63,10 @@ pub struct DiffContextOutput {
 }
 
 pub struct LatencyBreakdown {
+    /// Pre-heavy-phase work: hunk parse, untracked scan, ignore resolution and
+    /// the `git diff` calls. Outside every timer until #183, which is why the
+    /// reported phases could not be reconciled with the wall clock.
+    pub pre_phase_ms: f64,
     pub parse_changed_ms: f64,
     pub universe_walk_ms: f64,
     pub discovery_ms: f64,

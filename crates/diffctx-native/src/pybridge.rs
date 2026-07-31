@@ -203,6 +203,7 @@ fn build_diff_context<'py>(
     let latency = PyDict::new(py);
     if let Some(ref lb) = output.latency {
         let r = |v: f64| (v * 10.0).round() / 10.0;
+        latency.set_item("pre_phase_ms", r(lb.pre_phase_ms))?;
         latency.set_item("parse_changed_ms", r(lb.parse_changed_ms))?;
         latency.set_item("universe_walk_ms", r(lb.universe_walk_ms))?;
         latency.set_item("discovery_ms", r(lb.discovery_ms))?;
@@ -352,6 +353,7 @@ fn diff_context_output_to_dict<'py>(
     let latency = PyDict::new(py);
     if let Some(ref lb) = output.latency {
         let r = |v: f64| (v * 10.0).round() / 10.0;
+        latency.set_item("pre_phase_ms", r(lb.pre_phase_ms))?;
         latency.set_item("parse_changed_ms", r(lb.parse_changed_ms))?;
         latency.set_item("universe_walk_ms", r(lb.universe_walk_ms))?;
         latency.set_item("discovery_ms", r(lb.discovery_ms))?;
