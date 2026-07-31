@@ -96,28 +96,45 @@ pub struct TestFileDiscovery;
 const TEST_PREFIXES: &[&str] = &["test_", "spec_"];
 const TEST_SUFFIXES: &[&str] = &["_test", "_spec", ".test", ".spec", "-test", "-spec"];
 
+fn lowercase_stem(path: &Path) -> String {
+    path.file_stem()
+        .map(|s| s.to_string_lossy().to_lowercase())
+        .unwrap_or_default()
+}
+
 impl DiscoveryStrategy for TestFileDiscovery {
     fn discover(&self, ctx: &DiscoveryContext) -> Vec<PathBuf> {
         let changed_set: FxHashSet<&Path> = ctx.changed_files.iter().map(|p| p.as_path()).collect();
-        let mut target_stems: FxHashSet<String> = FxHashSet::default();
+        // Test files legitimately live in a tree of their own (`tests/test_x.py`
+        // for `src/x.py`), so the prefixed and suffixed stems have to match
+        // anywhere.
+        let mut test_stems: FxHashSet<String> = FxHashSet::default();
+        // The bare stem is a different rule with a different justification:
+        // `foo.h` beside `foo.c`, `x.ts` beside `x.js`. What makes such a pair
+        // meaningful is co-location, so this one is scoped to the changed
+        // file's own directory. Repo-wide it degenerates on exactly the
+        // basenames real projects repeat most — one changed `mod.rs`,
+        // `index.ts` or `__init__.py` would pull in every namesake in the tree,
+        // and the discovery universe bounds every later stage.
+        let mut sibling_stems: FxHashMap<PathBuf, FxHashSet<String>> = FxHashMap::default();
 
         for f in &ctx.changed_files {
-            let stem = f
-                .file_stem()
-                .map(|s| s.to_string_lossy().to_lowercase())
-                .unwrap_or_default();
+            let stem = lowercase_stem(f);
             if TEST_PREFIXES.iter().any(|p| stem.starts_with(p)) {
                 continue;
             }
             if TEST_SUFFIXES.iter().any(|s| stem.ends_with(s)) {
                 continue;
             }
-            target_stems.insert(stem.clone());
+            sibling_stems
+                .entry(f.parent().unwrap_or(Path::new("")).to_path_buf())
+                .or_default()
+                .insert(stem.clone());
             for prefix in TEST_PREFIXES {
-                target_stems.insert(format!("{}{}", prefix, stem));
+                test_stems.insert(format!("{prefix}{stem}"));
             }
             for suffix in TEST_SUFFIXES {
-                target_stems.insert(format!("{}{}", stem, suffix));
+                test_stems.insert(format!("{stem}{suffix}"));
             }
         }
 
@@ -126,11 +143,11 @@ impl DiscoveryStrategy for TestFileDiscovery {
             if changed_set.contains(candidate.as_path()) {
                 continue;
             }
-            let stem = candidate
-                .file_stem()
-                .map(|s| s.to_string_lossy().to_lowercase())
-                .unwrap_or_default();
-            if target_stems.contains(&stem) {
+            let stem = lowercase_stem(candidate);
+            let is_sibling = sibling_stems
+                .get(candidate.parent().unwrap_or(Path::new("")))
+                .is_some_and(|stems| stems.contains(&stem));
+            if test_stems.contains(&stem) || is_sibling {
                 discovered.push(candidate.clone());
             }
         }
@@ -370,6 +387,49 @@ mod tests {
     /// Each naming convention pairs through a different entry in
     /// TEST_PREFIXES/TEST_SUFFIXES, so removing one leaves the others working
     /// and only that ecosystem's coverage silently disappears.
+    /// The bare stem of a changed file is also a target, which pairs
+    /// `foo.c` with `include/foo.h`. Applied repo-wide it turns the most
+    /// ordinary basenames into a fan-out: one changed `mod.rs` drags in every
+    /// other `mod.rs` in the tree, and the discovery universe bounds
+    /// everything downstream.
+    #[test]
+    fn bare_stem_pairing_does_not_drag_in_same_named_files_repo_wide() {
+        let ctx = CtxBuilder {
+            changed: vec!["crates/a/src/mod.rs"],
+            candidates: vec![
+                "crates/a/src/mod_test.rs",
+                "crates/b/src/mod.rs",
+                "crates/c/src/mod.rs",
+                "vendor/d/mod.rs",
+            ],
+            ..CtxBuilder::new()
+        }
+        .build();
+
+        assert_eq!(
+            names(&TestFileDiscovery.discover(&ctx)),
+            vec!["crates/a/src/mod_test.rs"],
+            "unrelated same-basename files entered the universe"
+        );
+    }
+
+    /// The co-located half of the same rule is the reason it exists: a header
+    /// beside its implementation is a genuine pairing.
+    #[test]
+    fn bare_stem_pairing_still_finds_a_co_located_counterpart() {
+        let ctx = CtxBuilder {
+            changed: vec!["src/parser.c"],
+            candidates: vec!["src/parser.h", "other/parser.h"],
+            ..CtxBuilder::new()
+        }
+        .build();
+
+        assert_eq!(
+            names(&TestFileDiscovery.discover(&ctx)),
+            vec!["src/parser.h"]
+        );
+    }
+
     #[test]
     fn test_file_discovery_pairs_every_supported_naming_convention() {
         let ctx = CtxBuilder {
