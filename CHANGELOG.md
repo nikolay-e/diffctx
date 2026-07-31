@@ -43,6 +43,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The lexical similarity builder no longer holds an unbounded pairwise
+  accumulator** (#116). Its output is bounded by `top_k_neighbors`, but the
+  intermediate `FxHashMap<(u32, u32), f32>` was not: it held every distinct
+  fragment pair co-occurring in any posting list under `max_postings`, i.e. up to
+  `terms x C(max_postings, 2)` entries. On one large instance that reached 199M
+  pairs and tens of GB resident. Contributions now accumulate into a flat vector
+  and reduce by pair — 12 bytes per contribution against hashbrown's ~16 plus a
+  transient copy of the whole table on every doubling rehash, so peak drops
+  several-fold and the rehash spikes disappear. The sort is deliberately
+  **stable**, which preserves each pair's original contribution order and keeps
+  the f32 sums bit-identical; `sort_unstable` would reorder within a run and f32
+  addition is not associative, which could flip a pair across `min_similarity`.
+  Pass 6's top-k cut now breaks weight ties by neighbour index, since candidate
+  order derives from a sorted pair list rather than hashmap iteration. Verified
+  byte-identical output across four scoring modes x three diff ranges, and
+  corpus-neutral (2902/2902).
 - **One answer to "is this a test file"** (#182). Two implementations disagreed:
   a per-language dispatch gating `TestEdge` emission and a flat suffix list
   gating test-need match strength, so a `.kts` file was a test to one and not the
