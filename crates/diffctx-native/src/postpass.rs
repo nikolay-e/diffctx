@@ -10,13 +10,18 @@ use crate::graph::Graph;
 use crate::interval::IntervalIndex;
 use crate::types::{Fragment, FragmentId, FragmentKind};
 
-fn find_dangling_semantic_names(
+/// The unselected semantic neighbours of the current selection, as concrete
+/// fragment ids. Resolving them by `symbol_name` instead — as this used to —
+/// silently pulled in whichever repo-wide fragment happened to share the
+/// lowercased name, so a dangling `handler` could be answered with an
+/// unrelated file's `handler` (#65's declaration-stub shape).
+fn find_dangling_semantic_neighbors(
     selected: &[Fragment],
     graph: &Graph,
     frag_by_id: &FxHashMap<FragmentId, &Fragment>,
     selected_ids: &FxHashSet<FragmentId>,
-) -> FxHashSet<String> {
-    let mut dangling = FxHashSet::default();
+) -> Vec<FragmentId> {
+    let mut dangling: Vec<FragmentId> = Vec::new();
     for frag in selected {
         graph.for_each_forward_neighbor(&frag.id, |nbr_id, _w| {
             if selected_ids.contains(nbr_id) {
@@ -29,13 +34,19 @@ fn find_dangling_semantic_names(
             {
                 return;
             }
-            if let Some(nbr_frag) = frag_by_id.get(nbr_id) {
-                if let Some(ref name) = nbr_frag.symbol_name {
-                    dangling.insert(name.to_lowercase());
-                }
+            // A neighbour with no symbol name has no full/stub pair to choose
+            // between, which is the only reason this pass looks past the
+            // neighbour itself.
+            if frag_by_id
+                .get(nbr_id)
+                .is_some_and(|f| f.symbol_name.is_some())
+            {
+                dangling.push(nbr_id.clone());
             }
         });
     }
+    dangling.sort();
+    dangling.dedup();
     dangling
 }
 
@@ -107,23 +118,23 @@ pub fn coherence_post_pass(
     let used: u32 = selected.iter().map(|f| f.token_count).sum();
     let mut remaining = budget.saturating_sub(used);
 
-    let mut name_to_frags: FxHashMap<String, Vec<&Fragment>> = FxHashMap::default();
+    // The neighbour and its signature variant share a start line, so this
+    // groups exactly the full/stub pair the pass is allowed to choose between.
+    let mut frags_by_loc: FxHashMap<(Arc<str>, u32), Vec<&Fragment>> = FxHashMap::default();
     for f in all_fragments {
-        if let Some(ref name) = f.symbol_name {
-            name_to_frags
-                .entry(name.to_lowercase())
-                .or_default()
-                .push(f);
-        }
+        frags_by_loc
+            .entry((f.id.path.clone(), f.start_line()))
+            .or_default()
+            .push(f);
     }
 
     let frag_by_id: FxHashMap<FragmentId, &Fragment> =
         all_fragments.iter().map(|f| (f.id.clone(), f)).collect();
-    let dangling_names = find_dangling_semantic_names(selected, graph, &frag_by_id, &selected_ids);
+    let dangling = find_dangling_semantic_neighbors(selected, graph, &frag_by_id, &selected_ids);
 
     let mut added_ids = selected_ids;
-    for name in &dangling_names {
-        let candidates = match name_to_frags.get(name) {
+    for nbr_id in &dangling {
+        let candidates = match frags_by_loc.get(&(nbr_id.path.clone(), nbr_id.start_line)) {
             Some(c) => c,
             None => continue,
         };
@@ -157,7 +168,7 @@ fn compute_rescue_threshold(
     if context_scores.is_empty() {
         return f64::INFINITY;
     }
-    context_scores.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
+    context_scores.sort_by(|a, b| b.total_cmp(a));
     let idx = (context_scores.len() as f64 * (1.0 - rescue().min_score_percentile)) as usize;
     context_scores[idx.min(context_scores.len() - 1)]
 }
@@ -182,7 +193,11 @@ pub fn rescue_nontrivial_context(
     }
 
     let selected_ids: FxHashSet<FragmentId> = selected.iter().map(|f| f.id.clone()).collect();
-    let selected_paths: FxHashSet<Arc<str>> = selected.iter().map(|f| f.id.path.clone()).collect();
+    // Files already represented anywhere in the selection are out of scope: the
+    // metric this pass serves is file-level (gold files outside the diff), so
+    // its budget only buys something when it reaches a *new* file.
+    let mut represented_paths: FxHashSet<Arc<str>> =
+        selected.iter().map(|f| f.id.path.clone()).collect();
     let changed_paths: FxHashSet<Arc<str>> = core_ids.iter().map(|fid| fid.path.clone()).collect();
 
     let mut candidates: Vec<&Fragment> = all_fragments
@@ -191,7 +206,7 @@ pub fn rescue_nontrivial_context(
             !selected_ids.contains(&f.id)
                 && !core_ids.contains(&f.id)
                 && !changed_paths.contains(&f.id.path)
-                && !selected_paths.contains(&f.id.path)
+                && !represented_paths.contains(&f.id.path)
                 && rel_scores.get(&f.id).copied().unwrap_or(0.0) >= min_score
                 && f.token_count <= rescue_budget
         })
@@ -199,7 +214,7 @@ pub fn rescue_nontrivial_context(
     candidates.sort_by(|a, b| {
         let sa = rel_scores.get(&a.id).copied().unwrap_or(0.0);
         let sb = rel_scores.get(&b.id).copied().unwrap_or(0.0);
-        sb.partial_cmp(&sa).unwrap_or(std::cmp::Ordering::Equal)
+        sb.total_cmp(&sa).then_with(|| a.id.cmp(&b.id))
     });
 
     let mut interval_idx = IntervalIndex::new();
@@ -209,6 +224,14 @@ pub fn rescue_nontrivial_context(
 
     let mut budget_used = 0u32;
     for cand in candidates {
+        // The path filter above was a snapshot of the incoming selection, so
+        // without this the pass could spend its whole budget stacking several
+        // fragments of one newly reached file — no gain on the file-level
+        // metric it exists for, at the cost of every other file it could
+        // still have reached.
+        if represented_paths.contains(&cand.id.path) {
+            continue;
+        }
         if budget_used + cand.token_count > rescue_budget {
             continue;
         }
@@ -217,6 +240,7 @@ pub fn rescue_nontrivial_context(
         }
         selected.push(cand.clone());
         interval_idx.add(cand);
+        represented_paths.insert(cand.id.path.clone());
         budget_used += cand.token_count;
     }
 }
@@ -448,6 +472,124 @@ mod tests {
             let ids: FxHashSet<&FragmentId> = selected.iter().map(|f| &f.id).collect();
             assert_eq!(ids.len(), selected.len(), "a fragment was selected twice");
         }
+    }
+
+    /// The coherence pass detects a specific dangling neighbor via a graph
+    /// edge, then resolves it by lowercased `symbol_name`. Symbol names are
+    /// not unique across a repository, so the fragment it pulls in can be an
+    /// unrelated file that merely shares the name — exactly the "declaration
+    /// stubs from files nobody asked for" shape tracked in #65.
+    #[test]
+    fn coherence_post_pass_adds_the_dangling_neighbor_not_a_namesake() {
+        use crate::graph::EdgeCategory;
+        use crate::types::FragmentKind;
+
+        let mut selected_frag = frag("caller.rs", 1, 10, FragmentKind::Function, 30);
+        selected_frag.symbol_name = Some("caller".to_string());
+
+        let mut namesake = frag("unrelated.rs", 1, 10, FragmentKind::Function, 30);
+        namesake.symbol_name = Some("handler".to_string());
+
+        let mut neighbor = frag("target.rs", 1, 10, FragmentKind::Function, 30);
+        neighbor.symbol_name = Some("handler".to_string());
+
+        // `namesake` precedes `neighbor`, so it is what the name lookup
+        // resolves to first.
+        let all = vec![selected_frag.clone(), namesake.clone(), neighbor.clone()];
+
+        let mut edges: FxHashMap<(FragmentId, FragmentId), f64> = FxHashMap::default();
+        edges.insert((selected_frag.id.clone(), neighbor.id.clone()), 1.0);
+        let mut categories: FxHashMap<(FragmentId, FragmentId), EdgeCategory> =
+            FxHashMap::default();
+        categories.insert(
+            (selected_frag.id.clone(), neighbor.id.clone()),
+            EdgeCategory::Semantic,
+        );
+        let graph = crate::graph::build_graph(&all, edges, categories);
+
+        let mut selected = vec![selected_frag];
+        coherence_post_pass(&mut selected, &all, &graph, 1_000);
+
+        let added: Vec<&str> = selected
+            .iter()
+            .skip(1)
+            .map(|f| f.id.path.as_ref())
+            .collect();
+        assert_eq!(
+            added,
+            vec!["target.rs"],
+            "the pass pulled in a same-named fragment from an unrelated file \
+             instead of the dangling neighbor the edge pointed at"
+        );
+    }
+
+    /// The rescue budget exists to reach files the selection missed entirely,
+    /// which is what `nontrivial_file_recall` counts. The path filter was a
+    /// snapshot taken before the loop, so several fragments of one freshly
+    /// reached file could absorb the whole allowance.
+    #[test]
+    fn rescue_spends_its_budget_on_distinct_files() {
+        use crate::types::FragmentKind;
+
+        let core = frag("changed.rs", 1, 10, FragmentKind::Function, 100);
+        let mut all = vec![core.clone()];
+        let mut rel: FxHashMap<FragmentId, f64> = FxHashMap::default();
+        rel.insert(core.id.clone(), 1.0);
+
+        // Two fragments in one unrelated file scoring above a third in another
+        // file, so the crowded file is visited first. At 40 tokens each only two
+        // of the three fit the allowance — the budget, not the threshold, is
+        // what decides whether the second file is ever reached.
+        for i in 0..2u32 {
+            let f = frag(
+                "crowded.rs",
+                1 + i * 100,
+                50 + i * 100,
+                FragmentKind::Function,
+                40,
+            );
+            rel.insert(f.id.clone(), 0.90 - f64::from(i) * 0.01);
+            all.push(f);
+        }
+        let lonely = frag("lonely.rs", 1, 50, FragmentKind::Function, 40);
+        rel.insert(lonely.id.clone(), 0.88);
+        all.push(lonely);
+
+        // Low-score filler so the 80th-percentile threshold admits exactly the
+        // three fragments above instead of collapsing onto the maximum.
+        for i in 0..12u32 {
+            let f = frag(
+                "filler.rs",
+                1 + i * 100,
+                50 + i * 100,
+                FragmentKind::Function,
+                40,
+            );
+            rel.insert(f.id.clone(), 0.10);
+            all.push(f);
+        }
+
+        let core_ids: FxHashSet<FragmentId> = std::iter::once(core.id.clone()).collect();
+
+        let mut selected = vec![core];
+        // 5% of 2000 = 100 tokens of rescue: room for two 40-token picks.
+        rescue_nontrivial_context(&mut selected, &all, &rel, &core_ids, 2_000);
+
+        let rescued: Vec<&str> = selected
+            .iter()
+            .skip(1)
+            .map(|f| f.id.path.as_ref())
+            .collect();
+        let distinct: FxHashSet<&str> = rescued.iter().copied().collect();
+        assert_eq!(
+            rescued.len(),
+            distinct.len(),
+            "rescue stacked several fragments of one file: {rescued:?}"
+        );
+        assert!(
+            distinct.contains("lonely.rs"),
+            "the second file was never reached: {rescued:?}"
+        );
     }
 
     #[test]

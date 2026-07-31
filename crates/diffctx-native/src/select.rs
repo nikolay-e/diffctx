@@ -15,6 +15,13 @@ use crate::utility::scoring::{
 
 const SENTINEL_TOKEN_COUNT: u32 = 1_000_000_000;
 
+/// `used_tokens` is a reported contract, so it is derived from the returned
+/// selection rather than reconstructed from budget arithmetic that can drift
+/// away from what was actually placed.
+fn selection_cost(selected: &[Fragment]) -> u32 {
+    selected.iter().map(|f| f.token_count).sum()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SelectionReason {
     TopK,
@@ -661,16 +668,15 @@ pub fn lazy_greedy_select(
     );
 
     let mut best_alt_utility = greedy_utility;
-    let mut best_alt: Option<(Vec<Fragment>, u32)> = None;
+    let mut best_alt: Option<(u32, Vec<Fragment>)> = None;
 
     if let Some(ref singleton) = best_singleton {
         let u = utility_value(&base_state) + best_gain;
         if u > best_alt_utility {
             best_alt_utility = u;
-            let used = budget_tokens - (base_budget - singleton.token_count);
             let mut sel = base_selected.clone();
             sel.push(singleton.clone());
-            best_alt = Some((sel, used));
+            best_alt = Some((selection_cost(&sel), sel));
         }
     }
 
@@ -686,18 +692,25 @@ pub fn lazy_greedy_select(
         // different baselines (this one from an empty state, `greedy_utility`
         // from the core base), so the comparison can only ever be a heuristic
         // nudge — not grounds for dropping the core.
-        if u > best_alt_utility && full.token_count <= base_budget {
+        //
+        // H₁ iterates the FULL ground set, so its winner can be a core the
+        // core pass already packed. Then this arm has nothing to add: its
+        // "alternative" is `base_selected` verbatim, a strict subset of the
+        // greedy result. Utility is monotone and `greedy_utility` already
+        // contains that core's contribution, so `u > best_alt_utility` should
+        // be unreachable in that case — this makes the reasoning a condition
+        // rather than an assumption, because the arm's cost accounting has no
+        // meaning when nothing is appended.
+        let already_selected = base_selected.iter().any(|f| f.id == full.id);
+        if u > best_alt_utility && full.token_count <= base_budget && !already_selected {
             best_alt_utility = u;
             let mut sel = base_selected.clone();
-            if !sel.iter().any(|f| f.id == full.id) {
-                sel.push(full.clone());
-            }
-            let used = budget_tokens - (base_budget - full.token_count);
-            best_alt = Some((sel, used));
+            sel.push(full.clone());
+            best_alt = Some((selection_cost(&sel), sel));
         }
     }
 
-    if let Some((sel, used)) = best_alt {
+    if let Some((used, sel)) = best_alt {
         return SelectionResult {
             selected: sel,
             reason: SelectionReason::BestSingleton,
@@ -797,6 +810,53 @@ mod tests {
                 "reported used_tokens {} exceeds budget {budget}",
                 result.used_tokens
             );
+        }
+    }
+
+    /// `used_tokens` is what every downstream budget report reads, and it was
+    /// only ever asserted as `<= budget`. Three code paths compute it by
+    /// different budget arithmetic; this pins the equality they all have to
+    /// satisfy, so a future path that reconstructs the figure instead of
+    /// measuring the selection fails here rather than in a results table.
+    #[test]
+    fn reported_used_tokens_always_equals_the_cost_of_the_returned_selection() {
+        let shapes: Vec<Vec<Fragment>> = vec![
+            vec![
+                frag("changed.rs", 1, 8, FragmentKind::Function, 20),
+                frag("other.rs", 1, 400, FragmentKind::Class, 900),
+                frag("other.rs", 500, 520, FragmentKind::Function, 40),
+            ],
+            // A lone, heavy core: H₁ over the full ground set can only win with
+            // a fragment the core pass already placed.
+            vec![frag("changed.rs", 1, 200, FragmentKind::Class, 400)],
+            (0..6)
+                .map(|i| {
+                    frag(
+                        "a.rs",
+                        1 + i * 20,
+                        10 + i * 20,
+                        FragmentKind::Function,
+                        20 + i * 60,
+                    )
+                })
+                .collect(),
+        ];
+
+        for frags in shapes {
+            let core: FxHashSet<FragmentId> = std::iter::once(frags[0].id.clone()).collect();
+            let rel = rel_map(&frags, 0.8);
+            for budget in [50u32, 120, 460, 1_000, 5_000] {
+                let result =
+                    lazy_greedy_select(frags.clone(), &core, &rel, &[], budget, 0.12, None, None);
+                assert_eq!(
+                    result.used_tokens,
+                    cost_of(&result.selected),
+                    "reason {:?} at budget {budget}: reported {} but selection costs {}",
+                    result.reason,
+                    result.used_tokens,
+                    cost_of(&result.selected)
+                );
+            }
         }
     }
 
