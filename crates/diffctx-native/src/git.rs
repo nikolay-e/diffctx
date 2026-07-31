@@ -348,12 +348,27 @@ pub(crate) fn resolve_in_repo(repo_root: &Path, rel_path: &str) -> Option<PathBu
     }
 
     let joined = repo_root.join(rel);
-    let resolved_root = repo_root
-        .canonicalize()
-        .unwrap_or_else(|_| repo_root.to_path_buf());
-    let resolved = joined.canonicalize().unwrap_or_else(|_| joined.clone());
-    if !resolved.starts_with(&resolved_root) && !joined.starts_with(repo_root) {
-        return None;
+    // Compare like for like. Falling back to the lexical spelling as an
+    // *alternative* to the canonical check (rather than only when
+    // canonicalization is impossible) would make the canonical check dead: with
+    // `..` already excluded, `joined` always starts with `repo_root`, so an
+    // in-repo symlink pointing outside the tree would resolve outside and still
+    // be accepted.
+    match joined.canonicalize() {
+        Ok(resolved) => {
+            let resolved_root = repo_root
+                .canonicalize()
+                .unwrap_or_else(|_| repo_root.to_path_buf());
+            if !resolved.starts_with(&resolved_root) {
+                return None;
+            }
+        }
+        // Unresolvable: the old side of a deletion, or a path that never
+        // existed. `..` and absolute components are rejected above, so the
+        // lexical join cannot leave the root and needs no further check —
+        // which is also why the canonical root's spelling (`/var` vs
+        // `/private/var`) cannot cause a false rejection here.
+        Err(_) => {}
     }
     Some(joined)
 }
@@ -1360,6 +1375,39 @@ mod tests {
             assert_eq!(kind, "old", "in-repo header refused: {rel}");
             assert!(path.expect("path").ends_with(rel));
         }
+    }
+
+    /// A symlink inside the repository needs no `..` to point outside it, so
+    /// rejecting `..` is not on its own enough — the canonical containment check
+    /// has to stay reachable rather than being short-circuited by a lexical
+    /// fallback that is always true once `..` is gone.
+    #[cfg(unix)]
+    #[test]
+    fn an_in_repo_symlink_pointing_outside_the_root_is_refused() {
+        let tmp = TempDir::new().expect("tempdir");
+        let base = tmp.path().canonicalize().expect("canonical tempdir");
+        let root = base.join("repo");
+        std::fs::create_dir_all(&root).expect("mkdir repo");
+
+        let outside_dir = base.join("outside");
+        std::fs::create_dir_all(&outside_dir).expect("mkdir outside");
+        std::fs::write(outside_dir.join("secret.py"), "token = 1\n").expect("write secret");
+        std::os::unix::fs::symlink(&outside_dir, root.join("escape"))
+            .expect("symlink into the repo");
+
+        let (kind, path) = parse_path_line("--- a/escape/secret.py", &root);
+        assert_eq!(
+            (kind, path.as_ref()),
+            ("", None),
+            "a header reaching outside the repo through an in-repo symlink was accepted"
+        );
+
+        // A symlink that stays inside the repository is still fine.
+        std::fs::create_dir_all(root.join("real")).expect("mkdir real");
+        std::fs::write(root.join("real/mod.py"), "y = 1\n").expect("write real");
+        std::os::unix::fs::symlink(root.join("real"), root.join("alias")).expect("inner symlink");
+        let (kind, _) = parse_path_line("--- a/alias/mod.py", &root);
+        assert_eq!(kind, "old", "an in-repo symlink was wrongly refused");
     }
 
     /// The `core.excludesFile` handed to `git check-ignore` used to be written
