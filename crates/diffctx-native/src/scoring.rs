@@ -417,3 +417,191 @@ impl ScoringStrategy for RrfFusionScoring {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::FragmentKind;
+
+    fn fid(path: &str, start: u32) -> FragmentId {
+        FragmentId::new(Arc::from(path), start, start + 4)
+    }
+
+    fn scores(entries: &[(FragmentId, f64)]) -> FxHashMap<FragmentId, f64> {
+        entries.iter().cloned().collect()
+    }
+
+    /// The property RRF exists for, and the reason `k` damps the top of each
+    /// list: agreement between the two signals beats a single signal's first
+    /// place. A weighted mixture cannot express this without calibrating the two
+    /// score scales against each other — which is the failure RRF replaces.
+    #[test]
+    fn agreement_between_both_signals_outranks_a_single_signal_top_hit() {
+        let agreed = fid("agreed.rs", 1);
+        let ego_only = fid("ego_only.rs", 1);
+        let cores: FxHashSet<FragmentId> = FxHashSet::default();
+
+        // `ego_only` is rank 1 in ego and absent from bm25; `agreed` is only
+        // rank 2 in each, but present in both.
+        let ego = scores(&[(ego_only.clone(), 0.9), (agreed.clone(), 0.5)]);
+        let lexical = scores(&[(agreed.clone(), 0.5)]);
+
+        let fused = fuse_reciprocal_ranks(&[&ego, &lexical], &cores, 60.0);
+        assert!(
+            fused[&agreed] > fused[&ego_only],
+            "agreement lost to a single-signal top hit: {:?} vs {:?}",
+            fused[&agreed],
+            fused[&ego_only]
+        );
+    }
+
+    /// Only ranks may cross between the components. If a raw score leaked in,
+    /// one signal's scale could dominate the other — the miscalibrated-mixture
+    /// behaviour the mode was added to avoid.
+    #[test]
+    fn only_the_rank_order_of_a_component_matters_not_its_scale() {
+        let a = fid("a.rs", 1);
+        let b = fid("b.rs", 1);
+        let cores: FxHashSet<FragmentId> = FxHashSet::default();
+        let lexical = scores(&[(a.clone(), 0.4), (b.clone(), 0.1)]);
+
+        let modest = scores(&[(a.clone(), 0.6), (b.clone(), 0.4)]);
+        let enormous = scores(&[(a.clone(), 6_000.0), (b.clone(), 4_000.0)]);
+
+        assert_eq!(
+            fuse_reciprocal_ranks(&[&modest, &lexical], &cores, 60.0),
+            fuse_reciprocal_ranks(&[&enormous, &lexical], &cores, 60.0),
+            "rescaling one component changed the fused scores"
+        );
+    }
+
+    /// Downstream `r_cap` normalisation and the absolute relevance gates read
+    /// these values, so the fused range has to stay within [0, 1] with the cores
+    /// at the top.
+    #[test]
+    fn fused_scores_are_normalised_and_cores_anchor_the_top() {
+        let core = fid("changed.rs", 1);
+        let ctx = fid("ctx.rs", 1);
+        let cores: FxHashSet<FragmentId> = std::iter::once(core.clone()).collect();
+        let ego = scores(&[(core.clone(), 1.0), (ctx.clone(), 0.3)]);
+        let lexical = scores(&[(ctx.clone(), 0.2)]);
+
+        let fused = fuse_reciprocal_ranks(&[&ego, &lexical], &cores, 60.0);
+        assert_eq!(fused[&core], 1.0, "core is not anchored at the top");
+        for (id, score) in &fused {
+            assert!(
+                (0.0..=1.0).contains(score),
+                "{id:?} scored {score} outside [0, 1]"
+            );
+        }
+    }
+
+    /// Cores are ranked separately (they are always placed first), so letting
+    /// them consume rank slots would push every context fragment down and change
+    /// the fused scores for reasons unrelated to relevance.
+    #[test]
+    fn cores_do_not_occupy_rank_positions() {
+        let core = fid("changed.rs", 1);
+        let ctx = fid("ctx.rs", 1);
+        let cores: FxHashSet<FragmentId> = std::iter::once(core.clone()).collect();
+
+        let with_core = scores(&[(core.clone(), 1.0), (ctx.clone(), 0.3)]);
+        let without_core = scores(&[(ctx.clone(), 0.3)]);
+
+        assert_eq!(
+            rank_positions(&with_core, &cores).get(&ctx),
+            rank_positions(&without_core, &cores).get(&ctx),
+            "a core shifted the rank of a context fragment"
+        );
+    }
+
+    /// Hash-map iteration order must not reach the fused scores: equal
+    /// component scores are ranked by fragment id.
+    #[test]
+    fn equal_component_scores_rank_deterministically() {
+        let cores: FxHashSet<FragmentId> = FxHashSet::default();
+        let ids: Vec<FragmentId> = (0..8).map(|i| fid(&format!("f{i}.rs"), 1)).collect();
+        let tied: FxHashMap<FragmentId, f64> = ids.iter().map(|i| (i.clone(), 0.5)).collect();
+
+        let baseline = rank_positions(&tied, &cores);
+        for _ in 0..8 {
+            let again: FxHashMap<FragmentId, f64> =
+                ids.iter().rev().map(|i| (i.clone(), 0.5)).collect();
+            assert_eq!(rank_positions(&again, &cores), baseline);
+        }
+
+        // Ascending id order is the tie-break, so ranks follow the sorted ids.
+        let mut sorted = ids.clone();
+        sorted.sort();
+        for (expected_rank, id) in sorted.iter().enumerate() {
+            assert_eq!(baseline[id], expected_rank + 1);
+        }
+    }
+
+    /// A zero or negative component score is "not a candidate", not "ranked
+    /// last": including it would hand it a reciprocal-rank contribution.
+    #[test]
+    fn non_positive_component_scores_are_not_ranked() {
+        let kept = fid("kept.rs", 1);
+        let zero = fid("zero.rs", 1);
+        let cores: FxHashSet<FragmentId> = FxHashSet::default();
+        let component = scores(&[(kept.clone(), 0.3), (zero.clone(), 0.0)]);
+
+        let ranks = rank_positions(&component, &cores);
+        assert!(ranks.contains_key(&kept));
+        assert!(
+            !ranks.contains_key(&zero),
+            "a zero-scored fragment was ranked"
+        );
+
+        let fused = fuse_reciprocal_ranks(&[&component], &cores, 60.0);
+        assert!(
+            !fused.contains_key(&zero),
+            "a zero-scored fragment was fused"
+        );
+    }
+
+    /// `DIFFCTX_RRF_K` is a documented knob; a larger k flattens the reciprocal
+    /// curve, which is what makes agreement outweigh a single top hit.
+    #[test]
+    fn a_larger_k_flattens_the_gap_between_adjacent_ranks() {
+        let first = fid("first.rs", 1);
+        let second = fid("second.rs", 1);
+        let cores: FxHashSet<FragmentId> = FxHashSet::default();
+        let component = scores(&[(first.clone(), 0.9), (second.clone(), 0.8)]);
+
+        let sharp = fuse_reciprocal_ranks(&[&component], &cores, 1.0);
+        let flat = fuse_reciprocal_ranks(&[&component], &cores, 60.0);
+
+        // Both are max-normalised, so compare the runner-up's share of the top.
+        assert!(
+            flat[&second] > sharp[&second],
+            "k did not flatten adjacent ranks: {} vs {}",
+            flat[&second],
+            sharp[&second]
+        );
+    }
+
+    #[test]
+    fn a_strategy_is_created_for_every_scoring_kind() {
+        // A new mode that forgets its arm here would silently score as another.
+        for mode in [
+            crate::mode::ScoringMode::Ego,
+            crate::mode::ScoringMode::Ppr,
+            crate::mode::ScoringMode::Bm25,
+            crate::mode::ScoringMode::Rrf,
+        ] {
+            let config = PipelineConfig::from_mode(mode);
+            let strategy = create_scoring_strategy(&config);
+            let empty: Vec<Fragment> = Vec::new();
+            let result =
+                strategy.score_and_filter(&empty, &FxHashSet::default(), &[], None, None, None);
+            assert!(
+                result.filtered_fragments.is_empty(),
+                "{mode:?} invented fragments from an empty universe"
+            );
+        }
+        // Keeps `FragmentKind` in scope for the helper above.
+        let _ = FragmentKind::Function;
+    }
+}
