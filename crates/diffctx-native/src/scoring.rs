@@ -307,13 +307,25 @@ impl RrfFusionScoring {
     }
 }
 
+/// A component's ballot: the fragments it admitted, ordered by its own score.
+///
+/// `admitted` is the component's `filtered_fragments`, not its whole score map.
+/// Rank fusion is defined over the result lists retrievers return, and each
+/// component's guards are the only place an *absolute* judgement survives —
+/// a rank cannot express "this scored near zero". Ranking the full score map
+/// instead lets a component vote for fragments its own filters rejected, and
+/// reciprocal rank then promotes that tail: BM25 scores anything sharing a
+/// generic token, so garbage landed at a respectable rank and earned real
+/// fused mass. Measured on the oracle corpus, that cost 97 cases against EGO
+/// on precision (`forbidden_rate >= 90%` on 91 of them) while recall held.
 fn rank_positions(
     rel: &FxHashMap<FragmentId, f64>,
+    admitted: &FxHashSet<FragmentId>,
     core_ids: &FxHashSet<FragmentId>,
 ) -> FxHashMap<FragmentId, usize> {
     let mut ranked: Vec<(&FragmentId, f64)> = rel
         .iter()
-        .filter(|(fid, score)| **score > 0.0 && !core_ids.contains(*fid))
+        .filter(|(fid, score)| **score > 0.0 && !core_ids.contains(*fid) && admitted.contains(*fid))
         .map(|(fid, score)| (fid, *score))
         .collect();
     // Ties broken by id so the rank list — and therefore every fused
@@ -327,13 +339,13 @@ fn rank_positions(
 }
 
 fn fuse_reciprocal_ranks(
-    components: &[&FxHashMap<FragmentId, f64>],
+    components: &[(&FxHashMap<FragmentId, f64>, &FxHashSet<FragmentId>)],
     core_ids: &FxHashSet<FragmentId>,
     k: f64,
 ) -> FxHashMap<FragmentId, f64> {
     let mut fused: FxHashMap<FragmentId, f64> = FxHashMap::default();
-    for rel in components {
-        for (fid, rank) in rank_positions(rel, core_ids) {
+    for (rel, admitted) in components {
+        for (fid, rank) in rank_positions(rel, admitted, core_ids) {
             *fused.entry(fid).or_insert(0.0) += 1.0 / (k + rank as f64);
         }
     }
@@ -380,15 +392,28 @@ impl ScoringStrategy for RrfFusionScoring {
             discovered_paths,
         );
 
-        let rel_scores =
-            fuse_reciprocal_ranks(&[&ego.rel_scores, &lexical.rel_scores], core_ids, self.k);
-
-        let mut union_ids: FxHashSet<FragmentId> = ego
+        let ego_admitted: FxHashSet<FragmentId> = ego
             .filtered_fragments
             .iter()
             .map(|f| f.id.clone())
             .collect();
-        union_ids.extend(lexical.filtered_fragments.iter().map(|f| f.id.clone()));
+        let lexical_admitted: FxHashSet<FragmentId> = lexical
+            .filtered_fragments
+            .iter()
+            .map(|f| f.id.clone())
+            .collect();
+
+        let rel_scores = fuse_reciprocal_ranks(
+            &[
+                (&ego.rel_scores, &ego_admitted),
+                (&lexical.rel_scores, &lexical_admitted),
+            ],
+            core_ids,
+            self.k,
+        );
+
+        let union_ids: FxHashSet<FragmentId> =
+            ego_admitted.union(&lexical_admitted).cloned().collect();
 
         let union: Vec<Fragment> = all_fragments
             .iter()
@@ -431,6 +456,13 @@ mod tests {
         entries.iter().cloned().collect()
     }
 
+    /// Every scored fragment counts as admitted, which is the pre-#125-fix
+    /// behaviour these properties were written against. Tests that care about
+    /// the admission gate itself build the ballot explicitly.
+    fn ballot(rel: &FxHashMap<FragmentId, f64>) -> FxHashSet<FragmentId> {
+        rel.keys().cloned().collect()
+    }
+
     /// The property RRF exists for, and the reason `k` damps the top of each
     /// list: agreement between the two signals beats a single signal's first
     /// place. A weighted mixture cannot express this without calibrating the two
@@ -446,7 +478,11 @@ mod tests {
         let ego = scores(&[(ego_only.clone(), 0.9), (agreed.clone(), 0.5)]);
         let lexical = scores(&[(agreed.clone(), 0.5)]);
 
-        let fused = fuse_reciprocal_ranks(&[&ego, &lexical], &cores, 60.0);
+        let fused = fuse_reciprocal_ranks(
+            &[(&ego, &ballot(&ego)), (&lexical, &ballot(&lexical))],
+            &cores,
+            60.0,
+        );
         assert!(
             fused[&agreed] > fused[&ego_only],
             "agreement lost to a single-signal top hit: {:?} vs {:?}",
@@ -469,8 +505,19 @@ mod tests {
         let enormous = scores(&[(a.clone(), 6_000.0), (b.clone(), 4_000.0)]);
 
         assert_eq!(
-            fuse_reciprocal_ranks(&[&modest, &lexical], &cores, 60.0),
-            fuse_reciprocal_ranks(&[&enormous, &lexical], &cores, 60.0),
+            fuse_reciprocal_ranks(
+                &[(&modest, &ballot(&modest)), (&lexical, &ballot(&lexical))],
+                &cores,
+                60.0
+            ),
+            fuse_reciprocal_ranks(
+                &[
+                    (&enormous, &ballot(&enormous)),
+                    (&lexical, &ballot(&lexical))
+                ],
+                &cores,
+                60.0
+            ),
             "rescaling one component changed the fused scores"
         );
     }
@@ -486,7 +533,11 @@ mod tests {
         let ego = scores(&[(core.clone(), 1.0), (ctx.clone(), 0.3)]);
         let lexical = scores(&[(ctx.clone(), 0.2)]);
 
-        let fused = fuse_reciprocal_ranks(&[&ego, &lexical], &cores, 60.0);
+        let fused = fuse_reciprocal_ranks(
+            &[(&ego, &ballot(&ego)), (&lexical, &ballot(&lexical))],
+            &cores,
+            60.0,
+        );
         assert_eq!(fused[&core], 1.0, "core is not anchored at the top");
         for (id, score) in &fused {
             assert!(
@@ -509,8 +560,8 @@ mod tests {
         let without_core = scores(&[(ctx.clone(), 0.3)]);
 
         assert_eq!(
-            rank_positions(&with_core, &cores).get(&ctx),
-            rank_positions(&without_core, &cores).get(&ctx),
+            rank_positions(&with_core, &ballot(&with_core), &cores).get(&ctx),
+            rank_positions(&without_core, &ballot(&without_core), &cores).get(&ctx),
             "a core shifted the rank of a context fragment"
         );
     }
@@ -523,11 +574,11 @@ mod tests {
         let ids: Vec<FragmentId> = (0..8).map(|i| fid(&format!("f{i}.rs"), 1)).collect();
         let tied: FxHashMap<FragmentId, f64> = ids.iter().map(|i| (i.clone(), 0.5)).collect();
 
-        let baseline = rank_positions(&tied, &cores);
+        let baseline = rank_positions(&tied, &ballot(&tied), &cores);
         for _ in 0..8 {
             let again: FxHashMap<FragmentId, f64> =
                 ids.iter().rev().map(|i| (i.clone(), 0.5)).collect();
-            assert_eq!(rank_positions(&again, &cores), baseline);
+            assert_eq!(rank_positions(&again, &ballot(&again), &cores), baseline);
         }
 
         // Ascending id order is the tie-break, so ranks follow the sorted ids.
@@ -547,14 +598,14 @@ mod tests {
         let cores: FxHashSet<FragmentId> = FxHashSet::default();
         let component = scores(&[(kept.clone(), 0.3), (zero.clone(), 0.0)]);
 
-        let ranks = rank_positions(&component, &cores);
+        let ranks = rank_positions(&component, &ballot(&component), &cores);
         assert!(ranks.contains_key(&kept));
         assert!(
             !ranks.contains_key(&zero),
             "a zero-scored fragment was ranked"
         );
 
-        let fused = fuse_reciprocal_ranks(&[&component], &cores, 60.0);
+        let fused = fuse_reciprocal_ranks(&[(&component, &ballot(&component))], &cores, 60.0);
         assert!(
             !fused.contains_key(&zero),
             "a zero-scored fragment was fused"
@@ -570,8 +621,8 @@ mod tests {
         let cores: FxHashSet<FragmentId> = FxHashSet::default();
         let component = scores(&[(first.clone(), 0.9), (second.clone(), 0.8)]);
 
-        let sharp = fuse_reciprocal_ranks(&[&component], &cores, 1.0);
-        let flat = fuse_reciprocal_ranks(&[&component], &cores, 60.0);
+        let sharp = fuse_reciprocal_ranks(&[(&component, &ballot(&component))], &cores, 1.0);
+        let flat = fuse_reciprocal_ranks(&[(&component, &ballot(&component))], &cores, 60.0);
 
         // Both are max-normalised, so compare the runner-up's share of the top.
         assert!(
@@ -579,6 +630,35 @@ mod tests {
             "k did not flatten adjacent ranks: {} vs {}",
             flat[&second],
             sharp[&second]
+        );
+    }
+
+    /// The gate that ranks cannot express. A component scores far more
+    /// fragments than it admits — BM25 gives anything sharing a generic token a
+    /// small positive score — and a rank list is purely ordinal, so the moment a
+    /// rejected fragment appears in it the reciprocal rank hands it real fused
+    /// mass. Fusing whole score maps instead of the returned result lists cost
+    /// 97 oracle cases on precision.
+    #[test]
+    fn a_component_cannot_vote_for_what_its_own_filters_rejected() {
+        let good = fid("good.rs", 1);
+        let rejected = fid("garbage.rs", 1);
+        let cores: FxHashSet<FragmentId> = FxHashSet::default();
+        // The rejected fragment outscores the admitted one, so if it is ranked
+        // at all it takes rank 1 and the top of the normalised scale with it.
+        let component = scores(&[(rejected.clone(), 0.9), (good.clone(), 0.1)]);
+        let admitted: FxHashSet<FragmentId> = std::iter::once(good.clone()).collect();
+
+        let fused = fuse_reciprocal_ranks(&[(&component, &admitted)], &cores, 60.0);
+
+        assert!(
+            !fused.contains_key(&rejected),
+            "a fragment the component filtered out still earned fused mass {:?}",
+            fused.get(&rejected)
+        );
+        assert!(
+            fused.contains_key(&good),
+            "the admitted fragment lost its vote"
         );
     }
 
