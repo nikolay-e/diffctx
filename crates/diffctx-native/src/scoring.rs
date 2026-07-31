@@ -356,9 +356,13 @@ fn fuse_reciprocal_ranks(
             *v /= max_fused;
         }
     }
-    // Cores anchor the top of the scale, matching every other strategy —
-    // downstream `r_cap` normalisation and the absolute relevance gates
-    // read these values, so the fused range has to stay [0, 1].
+    // Cores sit at the top of the scale, matching every other strategy —
+    // downstream `r_cap` normalisation and the absolute relevance gates read
+    // these values, so the fused range has to stay [0, 1]. Note they do not
+    // strictly dominate: max-normalisation already put the best non-core at
+    // exactly 1.0, so it ties with the cores rather than sitting below them.
+    // `r_cap` excludes cores when it computes its spread, so the tie is benign
+    // there — but do not read this as a guarantee that cores rank first.
     for fid in core_ids {
         fused.insert(fid.clone(), 1.0);
     }
@@ -423,10 +427,21 @@ impl ScoringStrategy for RrfFusionScoring {
 
         // The union re-admits paths that EGO's structural guards dropped
         // (hub noise, generic-config-only code), because BM25 has no graph
-        // to judge them by. Re-applying the guards keeps the fusion a
-        // recall gain rather than a precision regression, and the per-file
-        // cap has to be recomputed against the fused scores since each
-        // component capped against its own.
+        // to judge them by. The guards are re-applied and the per-file cap
+        // recomputed against the fused scores, since each component capped
+        // against its own.
+        //
+        // Measured caveat, not a claim of soundness: re-applying them does NOT
+        // make the union a net win. On the oracle corpus RRF loses 97 cases to
+        // EGO and gains 18, all on precision, and restricting candidates to
+        // EGO's admitted set recovers only 28 of the 82 (#125).
+        //
+        // A second, unmeasured degree of freedom lives here: each component
+        // already applied `cap_context_fragments` (30/file) against its own
+        // scores before voting, so a fragment the fused ranking would have kept
+        // can have been capped away before it ever reached the ballot. The cap
+        // is per file and the losses are cross-file, so this is unlikely to be
+        // the 97 — but it has not been isolated.
         let filtered = filtering::filter_unrelated_fragments(&union, core_ids, &ego.graph);
         let filtered = filtering::filter_positive_relevance(filtered, core_ids, &rel_scores);
         let filtered = filtering::cap_context_fragments(filtered, core_ids, &rel_scores);
