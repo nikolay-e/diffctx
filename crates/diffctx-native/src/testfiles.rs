@@ -45,11 +45,18 @@ fn has_marker_segment(stem: &str) -> bool {
 /// first is what made `latest` look like a test.
 fn has_camel_marker(stem: &str) -> bool {
     for marker in CAMEL_MARKERS {
-        if let Some(prefix) = stem.strip_suffix(marker) {
-            // `Test` alone is the whole stem, or it follows something.
-            if prefix.is_empty() || !prefix.ends_with(char::is_uppercase) {
-                return true;
-            }
+        // A capital `T` *is* the word boundary: in CamelCase an uppercase letter
+        // always starts a new word, and these markers are compared case
+        // sensitively, so a match cannot be the tail of a longer word.
+        // `latest`/`contest`/`attest` carry a lowercase `t` and never reach here.
+        //
+        // This used to also require the preceding character to be lowercase,
+        // which rejected every acronym-prefixed name the JVM conventions are
+        // full of — `XMLTest`, `HTTPTest`, `DBTest`, `UITest`, `IOTest` were all
+        // classified as ordinary source. The guard prevented no false positive:
+        // the only stems it excluded were exactly those acronyms.
+        if stem.strip_suffix(marker).is_some() {
+            return true;
         }
         if let Some(rest) = stem.strip_prefix(marker) {
             // `TestFoo` — the next character starts a new word. A bare `Test`
@@ -97,6 +104,16 @@ mod tests {
             "src/FooTest.kt",
             "src/AuthSpec.scala",
             "src/TestHelpers.kt",
+            // Acronym + marker. Every one of these was misclassified as
+            // ordinary source while the camel rule demanded a lowercase
+            // character before the marker.
+            "src/XMLTest.java",
+            "src/HTTPTest.go",
+            "src/DBTest.kt",
+            "src/UITest.swift",
+            "src/IOTest.scala",
+            "src/MyXMLTest.java",
+            "src/JSONSpec.scala",
             "crates/x/tests/integration.rs",
             "src/tests.rs",
             "app/__tests__/widget.jsx",
