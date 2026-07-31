@@ -17,8 +17,18 @@ Project-specific facts for `/qa`. Generic methodology lives in
 ## Forge
 
 - `origin` = Forgejo (source of truth, push here); `github` = mirror,
-  but **all CI, issues, PRs, Dependabot live on GitHub**. Forgejo
-  issue/PR lists are empty by design.
+  but **all CI, PRs and Dependabot live on GitHub**, and the roadmap
+  issues do too.
+- Forgejo issues are NOT empty: external reporters file there (it is the
+  public-facing host). Enumerate both arms every pass —
+  `GET /repos/nikolay-e/diffctx/issues?type=issues&state=open`. Triage on
+  Forgejo, then cross-link to the GitHub issue that carries the work item
+  and its gate, rather than duplicating the tracker.
+- The `redact-check` PreToolUse hook blocks a tracker post whose **command
+  line** mentions a deny-listed secret name — including the Keychain
+  service name used to fetch the API token. Fetch the token in a separate
+  Bash call (cache to a `umask 077` scratch file, delete after), then post
+  without naming the service.
 - Push `main` to both remotes (mirror sync is periodic; direct push is
   immediate).
 
@@ -82,6 +92,53 @@ Project-specific facts for `/qa`. Generic methodology lives in
   hash and Sonar re-raises the finding under a NEW issue key with the
   FP mark lost — re-fetch after every analysis touching that file and
   re-mark via `api/issues/do_transition` (`falsepositive`).
+
+## Recurring bug patterns (diagnose once, recognise thereafter)
+
+- **Over-emission for a tiny diff is ONE mechanism, not per-language
+  bugs.** `excerpt::generate_core_excerpts` cuts a hunk window (+3 context
+  lines, capped at 70% of the parent) but is consulted only as a *budget*
+  fallback via `build_signature_lookup`, when the core exceeds
+  `budget x core_budget_fraction`. So the same file ships whole at
+  `--budget 8000` and tightly excerpted at a small budget. Three issues are
+  this one mechanism reached three ways: no grammar → whole-file chunk
+  (#105); grammar parses but the body is flat → one chunk (#107); fine
+  fragments exist but the hunk spans more lines than any of them, so
+  `find_core_for_hunk` promotes to the enclosing definition (Forgejo issue
+  2). Don't re-diagnose per language; the fix is #149's gate, extended to
+  the `changed` role and to `Function` (whose signature fallback would drop
+  the changed lines).
+- **`coherence_post_pass` is inert by accident and load-bearing for
+  precision.** It resolves a dangling semantic neighbour by lowercased
+  `symbol_name` instead of by the id the graph edge already gives it. That
+  is a real bug, but the name lookup mostly lands on already-selected
+  fragments, so the pass adds nothing. Fixing the lookup alone activates a
+  pass with no relevance bar that draws from `filtered_fragments` — i.e. it
+  re-admits candidates the greedy declined — and cost 9 of 2725 oracle
+  cases (`recall=100%, forbidden_rate=100%`). Land the id fix only together
+  with a relevance bar or a cap.
+- **Span-vs-content mismatch.** `line_count()` comes from the id's span
+  while slicing indexes `content.lines()`; nothing enforces agreement.
+  Gate on the actual line vector, and never let `end < start` reach a
+  `FragmentId` — `line_count()` underflows on it in every later stage.
+- **Lexical path containment is not containment.** `Path::starts_with`
+  compares components and `canonicalize` fails on a non-existent path (the
+  old side of a deletion). A lexical fallback used as an *alternative* to
+  the canonical check makes the canonical check dead. Reject `..` and
+  absolute up front, then use the lexical form ONLY when canonicalization
+  is impossible — otherwise an in-repo symlink pointing outside passes.
+  Both are pinned by tests in `git.rs`; the tests must canonicalize their
+  temp root or the hole hides on macOS (`/var -> /private/var`) and only
+  fails on Linux CI.
+
+## Corpus baseline discipline
+
+`known_below_threshold.txt` is bidirectional: a listed case that starts
+passing fails with "remove it from that file". That is a legitimate
+baseline edit **only** when the improvement is intended and kept — if the
+cause gets reverted, restore the entry. Never edit the baseline to absorb
+an unexplained new failure; bisect the cause first (a scratch `git
+worktree` at each candidate commit + a single-case run is the fast path).
 
 ## Known non-bugs (audited correct — do not re-file)
 
