@@ -43,6 +43,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **One answer to "is this a test file"** (#182). Two implementations disagreed:
+  a per-language dispatch gating `TestEdge` emission and a flat suffix list
+  gating test-need match strength, so a `.kts` file was a test to one and not the
+  other and the two halves of "this is a test for the changed code" could hold
+  independently. Both also accepted any stem merely *ending* in the letters
+  `test` — they lowercased the name before comparing, which destroys the
+  CamelCase boundary the JVM/Scala convention relies on, so `latest`, `greatest`,
+  `contest` and `attest` were all classified as tests. Now one
+  `testfiles::is_test_path`, where a `test`/`spec` marker counts only at a word
+  boundary: its own `_`/`-`/`.`-delimited segment, or a capitalised `Test`/`Spec`
+  in the original name. `conftest.py` keeps its previous non-test classification,
+  which corpus cases depend on. Corpus-neutral (2902/2902).
 - **Latency accounting reconciles with the wall clock** (#183). The phases
   reported only the heavy stage, so a 182s run showed 5.8s of instrumented work
   with nothing to say where the rest went — which is what made a slow range look

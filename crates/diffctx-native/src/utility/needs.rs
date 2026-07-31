@@ -294,31 +294,7 @@ fn defines_strength(scope_match: bool, has_scope: bool) -> f64 {
 }
 
 fn is_test_file(path: &str) -> bool {
-    let lower = path.to_lowercase();
-    let name = std::path::Path::new(&lower)
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
-
-    name.starts_with("test_")
-        || name.ends_with("_test.py")
-        || name.ends_with("_test.go")
-        || name.ends_with(".test.ts")
-        || name.ends_with(".test.tsx")
-        || name.ends_with(".test.js")
-        || name.ends_with(".test.jsx")
-        || name.ends_with(".spec.ts")
-        || name.ends_with(".spec.tsx")
-        || name.ends_with(".spec.js")
-        || name.ends_with(".spec.jsx")
-        || name.ends_with("test.java")
-        || name.ends_with("test.kt")
-        || name.ends_with("test.scala")
-        || name.ends_with("test.rs")
-        || lower.contains("/test/")
-        || lower.contains("/tests/")
-        || lower.contains("/__tests__/")
-        || lower.contains("/spec/")
+    crate::testfiles::is_test_path(std::path::Path::new(path))
 }
 
 fn is_test_fragment(frag: &Fragment) -> bool {

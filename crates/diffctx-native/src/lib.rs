@@ -27,6 +27,7 @@ pub mod scoring;
 pub mod select;
 pub mod signatures;
 pub mod stopwords;
+pub mod testfiles;
 pub mod token_corpus;
 pub mod tokenizer;
 pub mod types;
