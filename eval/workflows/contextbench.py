@@ -479,7 +479,7 @@ def main():
     parser.add_argument("--nontrivial-only", action="store_true", default=True)
     parser.add_argument("--seeds", type=str, default="42")
     parser.add_argument("--no-shuffle", action="store_true")
-    parser.add_argument("--scoring", type=str, default="ego", choices=["ppr", "ego", "bm25"])
+    parser.add_argument("--scoring", type=str, default="ego", choices=["ppr", "ego", "bm25", "rrf"])
     parser.add_argument("--baseline", type=str, default="diffctx", choices=["diffctx", "patch_files", "bm25"])
     parser.add_argument("--dataset", type=str, default="full", choices=["verified", "full"])
     parser.add_argument("--tau", type=float, default=0.08)

@@ -11,10 +11,10 @@ use crate::config::limits::LIMITS;
 use crate::config::tokenization::TOKENIZATION;
 use crate::core::{compute_seed_weights, identify_core_fragments};
 use crate::edges;
-use crate::mode::{PipelineConfig, ScoringKind, ScoringMode};
+use crate::mode::{PipelineConfig, ScoringMode};
 use crate::parsers::fragment_file;
 use crate::render::{DiffContextOutput, build_diff_context_output};
-use crate::scoring::{BM25Scoring, EgoGraphScoring, PPRScoring, ScoringStrategy};
+use crate::scoring::create_scoring_strategy;
 use crate::signatures::generate_signature_variants;
 use crate::tokenizer::count_tokens;
 use crate::types::{DiffHunk, Fragment, FragmentId};
@@ -104,14 +104,7 @@ pub fn build_diff_context_in_memory(
         .map(|s| Arc::from(s.as_str()))
         .collect();
 
-    let strategy: Box<dyn ScoringStrategy> = match config.scoring {
-        ScoringKind::Ego => Box::new(EgoGraphScoring::new(config.ego_depth)),
-        ScoringKind::Ppr => Box::new(PPRScoring::new(
-            config.ppr_alpha,
-            config.low_relevance_filter,
-        )),
-        ScoringKind::Bm25 => Box::new(BM25Scoring),
-    };
+    let strategy = create_scoring_strategy(&config);
 
     let scoring_result = strategy.score_and_filter(
         &all_fragments,

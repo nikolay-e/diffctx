@@ -18,10 +18,10 @@ use crate::discovery::{
 };
 use crate::fragmentation::process_files_for_fragments;
 use crate::git::{self, CatFileBatch};
-use crate::mode::{DiscoveryKind, PipelineConfig, ScoringKind, ScoringMode};
+use crate::mode::{DiscoveryKind, PipelineConfig, ScoringMode};
 use crate::postpass;
 use crate::render::{self, DiffContextOutput};
-use crate::scoring::{BM25Scoring, EgoGraphScoring, PPRScoring, ScoringResult, ScoringStrategy};
+use crate::scoring::{ScoringResult, create_scoring_strategy};
 use crate::signatures::generate_signature_variants;
 use crate::tokenizer::count_tokens;
 use crate::types::{Fragment, FragmentId};
@@ -337,14 +337,7 @@ pub fn compute_scored_state(
         .map(|p| Arc::from(p.to_string_lossy().as_ref()))
         .collect();
 
-    let strategy: Box<dyn ScoringStrategy> = match config.scoring {
-        ScoringKind::Ego => Box::new(EgoGraphScoring::new(config.ego_depth)),
-        ScoringKind::Ppr => Box::new(PPRScoring::new(
-            config.ppr_alpha,
-            config.low_relevance_filter,
-        )),
-        ScoringKind::Bm25 => Box::new(BM25Scoring),
-    };
+    let strategy = create_scoring_strategy(&config);
 
     let scoring_result = strategy.score_and_filter(
         &all_fragments,

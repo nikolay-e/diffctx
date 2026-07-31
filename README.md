@@ -73,7 +73,7 @@ the `--budget` token cap is hit.
 
 | Flag        | Default | Description                                                              |
 |-------------|---------|--------------------------------------------------------------------------|
-| `--scoring` | `ego`   | `ego` = bounded expansion around changed nodes (fast, predictable radius); `ppr` = Personalized PageRank (global, smoother decay, slower); `bm25` = lexical retrieval against the diff hunks (baseline for sparse graphs) |
+| `--scoring` | `ego`   | `ego` = bounded expansion around changed nodes (fast, predictable radius); `ppr` = Personalized PageRank (global, smoother decay, slower); `bm25` = lexical retrieval against the diff hunks (baseline for sparse graphs); `rrf` = reciprocal-rank fusion of `ego` and `bm25` (widest recall, no scale calibration between the two signals) |
 | `--budget`  | auto    | Hard cap in o200k_base tokens (see [Token counting](docs/product/token-budget.md)): `N` enforces a fixed cap, `-1` disables it, `0` is a strict-zero floor (empty selection; use `--full` for changed files only) |
 | `--alpha`   | 0.60    | PPR damping; higher = context clusters tighter around changes (`--scoring ppr` only) |
 | `--tau`     | 0.12    | Relevance threshold for full fragment content; lower-scoring fragments are stubbed or dropped (lower = more context) |

@@ -224,7 +224,7 @@ def _depth_of(cell: dict) -> int:
     return d if isinstance(d, int) else -1
 
 
-_METHOD_ORDER = ["ppr", "ego", "bm25", "aider"]
+_METHOD_ORDER = ["ppr", "ego", "bm25", "rrf", "aider"]
 
 
 def _method_sort_key(method: str) -> int:

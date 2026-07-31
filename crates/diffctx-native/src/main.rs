@@ -74,7 +74,7 @@ struct Cli {
     full: bool,
 
     /// Relevance scoring mode
-    #[arg(long, default_value = "ego", value_parser = ["ppr", "ego", "bm25"])]
+    #[arg(long, default_value = "ego", value_parser = ["ppr", "ego", "bm25", "rrf"])]
     scoring: String,
 
     /// Output mode: `pack` = context with source bodies; `locate` = ranked

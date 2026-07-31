@@ -536,12 +536,13 @@ def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> arg
     )
     diff_group.add_argument(
         "--scoring",
-        choices=["ppr", "ego", "bm25"],
+        choices=["ppr", "ego", "bm25", "rrf"],
         default=_UNSET,
         help=(
             "Scoring mode: ego = structural neighbors of the change (default); "
             "ppr = graph-wide relevance (Personalized PageRank), for far-reaching changes; "
-            "bm25 = lexical similarity, for sparse cross-file structure"
+            "bm25 = lexical similarity, for sparse cross-file structure; "
+            "rrf = rank fusion of ego and bm25, widest recall"
         ),
     )
     diff_group.add_argument(

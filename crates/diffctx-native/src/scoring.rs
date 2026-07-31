@@ -6,11 +6,12 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::bm25::BM25;
 use crate::config::limits::{LIMITS, PPR};
-use crate::config::scoring::EGO;
+use crate::config::scoring::{EGO, rrf};
 use crate::config::tokenization::TOKENIZATION;
 use crate::edges;
 use crate::filtering;
 use crate::graph::{self, Graph};
+use crate::mode::{PipelineConfig, ScoringKind};
 use crate::ppr::personalized_pagerank;
 use crate::types::{DiffHunk, Fragment, FragmentId, extract_identifier_list};
 
@@ -28,6 +29,18 @@ pub struct ScoringResult {
     pub ppr_truncated: bool,
     pub ppr_forward_pushes: usize,
     pub ppr_backward_pushes: usize,
+}
+
+pub fn create_scoring_strategy(config: &PipelineConfig) -> Box<dyn ScoringStrategy> {
+    match config.scoring {
+        ScoringKind::Ego => Box::new(EgoGraphScoring::new(config.ego_depth)),
+        ScoringKind::Ppr => Box::new(PPRScoring::new(
+            config.ppr_alpha,
+            config.low_relevance_filter,
+        )),
+        ScoringKind::Bm25 => Box::new(BM25Scoring),
+        ScoringKind::Rrf => Box::new(RrfFusionScoring::new(config.ego_depth)),
+    }
 }
 
 pub trait ScoringStrategy: Send + Sync {
@@ -276,6 +289,139 @@ impl ScoringStrategy for BM25Scoring {
             filtered_fragments: filtered,
             graph: g,
             graph_build_ms: 0.0,
+            ppr_truncated: false,
+            ppr_forward_pushes: 0,
+            ppr_backward_pushes: 0,
+        }
+    }
+}
+
+/// Reciprocal-rank fusion of the structural (EGO) and lexical (BM25) signals.
+///
+/// The two are complementary rather than redundant: on genuine
+/// retrieval the lexical component alone outranks the deployed
+/// graph+lexical mixture, and their score-free union raises the reachable
+/// recall well above either — a miscalibrated-mixture signature. RRF
+/// fuses on ranks only, so neither component's score scale can dominate
+/// the other, which is exactly the failure the weighted mixture had.
+pub struct RrfFusionScoring {
+    pub ego_depth: usize,
+    pub k: f64,
+}
+
+impl RrfFusionScoring {
+    pub fn new(ego_depth: usize) -> Self {
+        Self {
+            ego_depth,
+            k: rrf().k,
+        }
+    }
+}
+
+fn rank_positions(
+    rel: &FxHashMap<FragmentId, f64>,
+    core_ids: &FxHashSet<FragmentId>,
+) -> FxHashMap<FragmentId, usize> {
+    let mut ranked: Vec<(&FragmentId, f64)> = rel
+        .iter()
+        .filter(|(fid, score)| **score > 0.0 && !core_ids.contains(*fid))
+        .map(|(fid, score)| (fid, *score))
+        .collect();
+    // Ties broken by id so the rank list — and therefore every fused
+    // score — is independent of hash-map iteration order.
+    ranked.sort_by(|(ida, sa), (idb, sb)| sb.total_cmp(sa).then_with(|| ida.cmp(idb)));
+    ranked
+        .into_iter()
+        .enumerate()
+        .map(|(i, (fid, _))| (fid.clone(), i + 1))
+        .collect()
+}
+
+fn fuse_reciprocal_ranks(
+    components: &[&FxHashMap<FragmentId, f64>],
+    core_ids: &FxHashSet<FragmentId>,
+    k: f64,
+) -> FxHashMap<FragmentId, f64> {
+    let mut fused: FxHashMap<FragmentId, f64> = FxHashMap::default();
+    for rel in components {
+        for (fid, rank) in rank_positions(rel, core_ids) {
+            *fused.entry(fid).or_insert(0.0) += 1.0 / (k + rank as f64);
+        }
+    }
+
+    let max_fused = fused.values().copied().fold(0.0f64, f64::max);
+    if max_fused > 0.0 {
+        for v in fused.values_mut() {
+            *v /= max_fused;
+        }
+    }
+    // Cores anchor the top of the scale, matching every other strategy —
+    // downstream `r_cap` normalisation and the absolute relevance gates
+    // read these values, so the fused range has to stay [0, 1].
+    for fid in core_ids {
+        fused.insert(fid.clone(), 1.0);
+    }
+    fused
+}
+
+impl ScoringStrategy for RrfFusionScoring {
+    fn score_and_filter(
+        &self,
+        all_fragments: &[Fragment],
+        core_ids: &FxHashSet<FragmentId>,
+        hunks: &[DiffHunk],
+        repo_root: Option<&Path>,
+        seed_weights: Option<&FxHashMap<FragmentId, f64>>,
+        discovered_paths: Option<&FxHashSet<Arc<str>>>,
+    ) -> ScoringResult {
+        let ego = EgoGraphScoring::new(self.ego_depth).score_and_filter(
+            all_fragments,
+            core_ids,
+            hunks,
+            repo_root,
+            seed_weights,
+            discovered_paths,
+        );
+        let lexical = BM25Scoring.score_and_filter(
+            all_fragments,
+            core_ids,
+            hunks,
+            repo_root,
+            seed_weights,
+            discovered_paths,
+        );
+
+        let rel_scores =
+            fuse_reciprocal_ranks(&[&ego.rel_scores, &lexical.rel_scores], core_ids, self.k);
+
+        let mut union_ids: FxHashSet<FragmentId> = ego
+            .filtered_fragments
+            .iter()
+            .map(|f| f.id.clone())
+            .collect();
+        union_ids.extend(lexical.filtered_fragments.iter().map(|f| f.id.clone()));
+
+        let union: Vec<Fragment> = all_fragments
+            .iter()
+            .filter(|f| union_ids.contains(&f.id))
+            .cloned()
+            .collect();
+
+        // The union re-admits paths that EGO's structural guards dropped
+        // (hub noise, generic-config-only code), because BM25 has no graph
+        // to judge them by. Re-applying the guards keeps the fusion a
+        // recall gain rather than a precision regression, and the per-file
+        // cap has to be recomputed against the fused scores since each
+        // component capped against its own.
+        let filtered = filtering::filter_unrelated_fragments(&union, core_ids, &ego.graph);
+        let filtered = filtering::filter_positive_relevance(filtered, core_ids, &rel_scores);
+        let filtered = filtering::cap_context_fragments(filtered, core_ids, &rel_scores);
+
+        ScoringResult {
+            rel_scores,
+            filtered_fragments: filtered,
+            graph: ego.graph,
+            graph_build_ms: ego.graph_build_ms,
             ppr_truncated: false,
             ppr_forward_pushes: 0,
             ppr_backward_pushes: 0,

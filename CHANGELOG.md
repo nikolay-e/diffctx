@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`--scoring rrf`** — reciprocal-rank fusion of the structural (`ego`) and
+  lexical (`bm25`) signals: each ranks the same candidate universe, and a
+  fragment scores `Σ 1/(k + rank_i)` with `k=60` (`DIFFCTX_RRF_K`). Fusion on
+  ranks alone removes the score-scale calibration between the two signals
+  that made the deployed mixture rank below its own lexical component on
+  genuine retrieval, and the candidate set becomes their union rather than
+  either one alone. EGO's structural guards (hub-noise and
+  generic-config-only suppression) and the per-file cap are re-applied to
+  the union against the fused scores, so the wider candidate set does not
+  leak the noise EGO already rejects. `ego` remains the default (#125).
 - **`--mode locate`** emits the ranked selection as compact
   `diffctx.locate.v1` JSON — path, line range, kind, symbol, relevance score
   and machine-readable provenance reasons (`changed`, `edge` with category /

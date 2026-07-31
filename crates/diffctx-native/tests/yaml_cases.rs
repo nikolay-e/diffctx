@@ -475,11 +475,11 @@ fn main() {
         })
         .collect();
 
-    // Every oracle case above runs Ego. `--scoring ppr` and `--scoring bm25` are
+    // Every oracle case above runs Ego. `--scoring ppr`, `bm25` and `rrf` are
     // documented, user-selectable modes whose only other coverage asserts an
-    // exit code, so either could degrade to changed-files-only and ship green.
+    // exit code, so any of them could degrade to changed-files-only and ship green.
     for c in cases.iter().filter(|c| c.name.starts_with("selection/")) {
-        for scoring in [ScoringMode::Ppr, ScoringMode::Bm25] {
+        for scoring in [ScoringMode::Ppr, ScoringMode::Bm25, ScoringMode::Rrf] {
             let (name, path) = (c.name.clone(), c.path.clone());
             let label = format!("scoring/{scoring:?}/{}", c.name).to_lowercase();
             trials.push(
