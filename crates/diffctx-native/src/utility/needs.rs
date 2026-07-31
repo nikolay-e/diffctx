@@ -461,26 +461,38 @@ fn process_line_for_needs(
             priority: NEEDS.call_definition_priority,
         });
     }
+    // `external_syms` names what the diff imports from outside the repository,
+    // and it used to gate only the call loop above. A type annotation is just as
+    // unanswerable: `from typing import Optional` followed by `: Optional[int]`
+    // asked for a definition of `optional` that no fragment in the repo can
+    // provide, so the need stayed unsatisfied — which both inflates the
+    // diversity bonus for every candidate (`unsatisfied` never falls) and hands
+    // `mentions_fallback` strength to any unrelated file that happens to use the
+    // same stdlib type.
     for m in TYPE_REF_RE.captures_iter(line) {
-        let sym = m[1].to_lowercase();
-        let key = ("signature".to_string(), sym.clone());
-        needs.entry(key).or_insert_with(|| InformationNeed {
-            need_type: "signature".to_string(),
-            symbol: sym,
-            scope: None,
-            priority: NEEDS.signature_priority,
-        });
+        add_signature_need(&m[1], external_syms, needs);
     }
     for m in GENERIC_TYPE_RE.captures_iter(line) {
-        let sym = m[1].to_lowercase();
-        let key = ("signature".to_string(), sym.clone());
-        needs.entry(key).or_insert_with(|| InformationNeed {
-            need_type: "signature".to_string(),
-            symbol: sym,
-            scope: None,
-            priority: NEEDS.signature_priority,
-        });
+        add_signature_need(&m[1], external_syms, needs);
     }
+}
+
+fn add_signature_need(
+    raw: &str,
+    external_syms: &FxHashSet<String>,
+    needs: &mut FxHashMap<(String, String), InformationNeed>,
+) {
+    let sym = raw.to_lowercase();
+    if external_syms.contains(&sym) {
+        return;
+    }
+    let key = ("signature".to_string(), sym.clone());
+    needs.entry(key).or_insert_with(|| InformationNeed {
+        need_type: "signature".to_string(),
+        symbol: sym,
+        scope: None,
+        priority: NEEDS.signature_priority,
+    });
 }
 
 fn collect_diff_line_needs(
@@ -697,4 +709,57 @@ pub fn needs_from_diff(
     }
 
     needs.into_values().collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn signature_symbols(diff_text: &str) -> FxHashSet<String> {
+        needs_from_diff(&[], &FxHashSet::default(), diff_text)
+            .into_iter()
+            .filter(|n| n.need_type == "signature")
+            .map(|n| n.symbol)
+            .collect()
+    }
+
+    /// Imports from outside the repository cannot be answered by any fragment
+    /// in it. The call loop already skipped them; the type loops did not, so a
+    /// `typing`-imported annotation became a permanently unsatisfied need —
+    /// which keeps the diversity bonus's `unsatisfied` term high for every
+    /// candidate and lends match strength to any file mentioning the same
+    /// stdlib type.
+    #[test]
+    fn an_externally_imported_type_does_not_become_a_signature_need() {
+        let diff = concat!(
+            "+from typing import Optional\n",
+            "+def handle(x: Optional[int]) -> LocalResult:\n",
+        );
+        let syms = signature_symbols(diff);
+        assert!(
+            !syms.contains("optional"),
+            "an external type became a need: {syms:?}"
+        );
+        assert!(
+            syms.contains("localresult"),
+            "the repository-local type was lost: {syms:?}"
+        );
+    }
+
+    #[test]
+    fn an_externally_imported_generic_argument_is_skipped_too() {
+        let diff = concat!(
+            "+import { Observable } from 'rxjs'\n",
+            "+const s: Array<Observable> = wrap<LocalThing>(x)\n",
+        );
+        let syms = signature_symbols(diff);
+        assert!(
+            !syms.contains("observable"),
+            "an external generic argument became a need: {syms:?}"
+        );
+        assert!(
+            syms.contains("localthing"),
+            "the repository-local generic argument was lost: {syms:?}"
+        );
+    }
 }
