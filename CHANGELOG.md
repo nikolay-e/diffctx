@@ -41,6 +41,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exercise git's real rename path instead of silently degrading to adds
   (#176).
 
+### Fixed
+
+- **Diff-header paths escaping the repository root were accepted on Linux.**
+  `Path::starts_with` compares components, not locations, and `canonicalize`
+  fails for a path that does not exist — the normal case for the old side of a
+  deletion. The guard fell back to the lexically joined path, and
+  `<root>/../../escape.py` starts with `<root>` component-wise. It only failed
+  on macOS, where the temp root canonicalizes through `/var → /private/var`, so
+  the protection rested on an accident of filesystem layout; on Linux the
+  accepted path reached `read_file_content`, whose `exists()` check the OS
+  resolves through `..`, so content outside the repository could be read into
+  the output. A `..` or absolute component is now rejected before any
+  resolution. `--with-raw-diff`'s section filter was a second copy of the same
+  guard with the same hole; both now share one resolver (#147).
+- **`core.excludesFile` was written to a guessable name with `fs::write`**,
+  which follows a symlink and truncates its target — so a pre-planted name in
+  the shared temp directory could redirect the write. Now `O_CREAT | O_EXCL`
+  with mode 0600 and a bounded retry (#147).
+- **A rejected or unrecognized diff header charged its hunks to the previous
+  file.** The hunk loop could not tell "not a path line" from "path refused",
+  so the previous file's paths stayed live. Reset now happens on `diff --git`,
+  the per-file boundary git always emits.
+- **`TestFileDiscovery` matched the changed file's bare stem repo-wide**, so one
+  changed `mod.rs` pulled in every other `mod.rs` in the tree. Bare-stem pairing
+  is now scoped to the changed file's own directory, which is what makes such a
+  pair meaningful; test prefixes and suffixes still match anywhere (#65).
+- **Externally imported types became unanswerable information needs.** The
+  external-symbol filter gated only the call-reference loop, so
+  `from typing import Optional` plus `: Optional[int]` demanded a definition of
+  `optional` from the repository — permanently unsatisfied, which inflates the
+  diversity bonus for every candidate and lends match strength to any file
+  mentioning the same stdlib type (#65).
+- **The nontrivial-context rescue could spend its whole allowance on one file.**
+  Its "file not yet represented" filter was a snapshot taken before the loop.
+  The metric it serves is file-level, so a second fragment of an already-reached
+  file buys nothing and costs the next file its chance.
+- **Core seed selection depended on fragment order.** The tie-breaks compared
+  kind class and span length only, so equally-ranked candidates were resolved by
+  parser emission order — reversing it moved which code the output marks as
+  changed. All three selectors now end on the fragment id.
+- **Two panics reachable from repository content**: generated-fragment
+  truncation checked the cap against the id's line span but sliced the actual
+  text, and signature generation produced an id whose end preceded its start
+  when a fragment's span was wider than its content. Both are now clamped.
+- MCP `get_file_context` reported the raw glob match while checking containment
+  on the resolved path, so a file accepted through a symlink raised an
+  uncaught `ValueError` instead of returning its contents (#147).
+- `build_locate` rejected an empty `diff_range` that `build_diff_context` treats
+  as the working tree, so two entry points into one pipeline disagreed.
+- Sibling grouping deduped with `Vec::contains` against the bucket, making it
+  quadratic in exactly the shape it exists for — thousands of files in one
+  directory (#116).
+
 ### Removed
 
 - The dead `low_relevance_threshold` gate.
@@ -52,6 +105,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   block, so every recorded run attributed its selections to a threshold that
   never fired. Removed on both sides. Bit-equivalent: identical output across
   four scoring modes × three diff ranges, plus the full 2725-case corpus.
+- Phantom knobs that only ever fed a discarded value:
+  `GRAPH_FILTERING.git_rename_similarity_threshold` (its return value was
+  dropped at the single call site) and `GitConfig`'s `poll_interval_ms` /
+  `default_timeout_seconds` fields, which nothing read. Also a
+  `_check_allowed(path.resolve())` in the MCP path validator that ran under a
+  comment claiming it closed a symlink-swap race, while comparing the same
+  already-resolved value against the same allowlist.
 
 ## [1.12.3] - 2026-07-27
 
