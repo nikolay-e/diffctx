@@ -43,6 +43,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Flat files finally get sub-file granularity** (#105, #107). An uncovered
+  region became one fragment however long it was, so a file the grammar extracts
+  nothing from — a flat bash script, a `CMakeLists.txt`, any language without a
+  grammar — collapsed into a single whole-file chunk and nothing narrower could
+  ever be selected. Long gaps are now split into bounded chunks, cutting at a
+  blank line where one is within reach, reusing the thresholds that already
+  govern sub-fragmenting large definitions rather than adding a second size
+  policy. Two consequences: a one-line diff no longer renders the whole file, and
+  the file's *unchanged* remainder becomes available as context at a useful
+  granularity instead of being all-or-nothing. On the corpus this moved
+  `gap_160_shell_terraform_vault_init_single_import` from below-threshold to a
+  full 100%, so its baseline entry is gone.
 - **`xfail:` in a YAML case was an unconditional silent skip.** The runner
   returned success before building the repo, so a marked case proved nothing and
   an XPASS was unobservable — the day its bug got fixed it still reported a pass.

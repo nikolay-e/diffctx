@@ -167,3 +167,69 @@ class TestDownshiftLeavesGenuinelyChangedFragmentsAlone:
         assert all(
             f["kind"] != "excerpt" for f in changed
         ), f"a tiny fragment was needlessly excerpted: {[(f['lines'], f['kind']) for f in changed]}"
+
+
+class TestInlineHtmlBlocksAreSectioned:
+    """#114 reported two symptoms of one root cause: changes inside a large
+    inline `<script>` went missing entirely (the body blew the core budget and
+    kind `Definition` has no signature variant to fall back to), while a
+    `<style>` block was emitted whole. Both are the same
+    coarse-core-with-no-stub shape."""
+
+    def test_a_change_inside_a_large_inline_script_is_reported(self, tmp_path):
+        repo = Pygit2Repo(tmp_path / "inline_script")
+        body = "\n".join(
+            f"function helper{i}(x) {{\n  const a = x * {i};\n  const b = a + {i};\n  return b - {i};\n}}" for i in range(300)
+        )
+        page = "<!doctype html>\n<style>.a{color:red}</style>\n<script>\n" + body + "\n</script>\n"
+        repo.add_file("app.html", page)
+        repo.commit("initial")
+        repo.add_file("app.html", page.replace("const a = x * 150;", "const a = x * 150 + 1;"))
+        repo.commit("one line changed inside the script")
+
+        fragments = _fragments(repo.path)
+        changed = _changed(fragments)
+        assert changed, "the inline-script change went missing from the output"
+        assert sum(_span(f) for f in changed) < 40, f"the whole script body shipped: {[(f['lines'], f['kind']) for f in changed]}"
+        joined = "\n".join(f.get("content") or "" for f in fragments)
+        assert "x * 150 + 1" in joined, "the reported window does not contain the change"
+
+    def test_a_one_line_css_addition_does_not_ship_the_whole_style_block(self, tmp_path):
+        repo = Pygit2Repo(tmp_path / "inline_style")
+        css = "\n".join(f".cls_{i} {{ color: #{i:06x}; margin: {i}px; }}" for i in range(1, 400))
+        page = "<!doctype html>\n<style>\n" + css + '\n</style>\n<body><div class="cls_1"></div></body>\n'
+        repo.add_file("index.html", page)
+        repo.commit("initial")
+        repo.add_file(
+            "index.html",
+            page.replace(
+                ".cls_200 { color: #0000c8; margin: 200px; }",
+                ".cls_200 { color: #0000c8; margin: 200px; }\n.bargrp { display: flex; }",
+            ),
+        )
+        repo.commit("one-line css addition")
+
+        changed = _changed(_fragments(repo.path))
+        assert changed, "the css addition went missing from the output"
+        assert sum(_span(f) for f in changed) < 40, f"the whole style block shipped: {[(f['lines'], f['kind']) for f in changed]}"
+
+
+class TestFlatFilesGetSubFileGranularity:
+    """#105 / #107: a file the grammar extracts nothing from used to become one
+    uncovered run, so the smallest selectable unit was the entire file. Bounded
+    gap chunks give its unchanged remainder a usable granularity too."""
+
+    def test_an_unchanged_region_of_a_flat_file_is_available_as_context(self, tmp_path):
+        repo = Pygit2Repo(tmp_path / "flat_context")
+        helper = "\n".join(f"helper_line_{i}=value_{i}" for i in range(1, 60))
+        caller = "\n".join(f"echo call_{i}" for i in range(1, 60))
+        repo.add_file("helpers.sh", f"#!/bin/bash\n{helper}\n")
+        repo.add_file("main.sh", f"#!/bin/bash\nsource helpers.sh\n{caller}\n")
+        repo.commit("initial")
+        repo.add_file("main.sh", f"#!/bin/bash\nsource helpers.sh\n{caller}\n".replace("echo call_30", "echo call_30_changed"))
+        repo.commit("one line changed")
+
+        fragments = _fragments(repo.path)
+        main_spans = [_span(f) for f in fragments if f["path"] == "main.sh"]
+        assert main_spans, "the changed file is absent"
+        assert max(main_spans) < 60, f"a flat file still ships as one whole-file fragment: {main_spans}"
