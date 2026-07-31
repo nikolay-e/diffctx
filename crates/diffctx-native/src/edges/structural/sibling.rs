@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::limits::SIBLING;
 use crate::config::weights::EDGE_WEIGHTS;
@@ -14,17 +14,23 @@ pub struct SiblingEdgeBuilder;
 impl SiblingEdgeBuilder {
     fn group_files_by_dir<'a>(&self, fragments: &'a [Fragment]) -> FxHashMap<String, Vec<&'a str>> {
         let mut by_dir: FxHashMap<String, Vec<&str>> = FxHashMap::default();
+        // A path belongs to exactly one directory, so one set of already-seen
+        // paths is enough to dedupe every bucket. This used to be
+        // `Vec::contains` against the bucket, i.e. a scan of the directory's
+        // whole file list per fragment — quadratic in exactly the shape this
+        // builder exists for (thousands of files in one directory), while
+        // producing the same buckets in the same first-seen order.
+        let mut seen: FxHashSet<&str> = FxHashSet::default();
         for f in fragments {
-            let path = Path::new(f.path());
-            let dir = path
+            let path_str = f.path();
+            if !seen.insert(path_str) {
+                continue;
+            }
+            let dir = Path::new(path_str)
                 .parent()
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_default();
-            let path_str = f.path();
-            let files = by_dir.entry(dir).or_default();
-            if !files.contains(&path_str) {
-                files.push(path_str);
-            }
+            by_dir.entry(dir).or_default().push(path_str);
         }
         by_dir
     }
