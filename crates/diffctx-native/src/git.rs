@@ -419,11 +419,27 @@ pub fn parse_diff(repo_root: &Path, diff_range: Option<&str>) -> Result<Vec<Diff
     }
 
     let output = run_git(repo_root, &args)?;
+    Ok(parse_hunks_from_diff_output(&output, repo_root))
+}
+
+pub(crate) fn parse_hunks_from_diff_output(output: &str, repo_root: &Path) -> Vec<DiffHunk> {
     let mut hunks = Vec::new();
     let mut old_path: Option<PathBuf> = None;
     let mut new_path: Option<PathBuf> = None;
 
     for line in output.lines() {
+        // `diff --git` is the per-file boundary git always emits, so clearing
+        // here is what keeps one file's hunks from ever being charged to the
+        // previous one. Relying on the `---`/`+++` pair alone leaves the
+        // previous file's paths live whenever this file's header is not
+        // understood or is rejected — a path escaping the repo root returns
+        // `("", None)`, which is a refusal, not "keep the last path".
+        if line.starts_with("diff --git ") {
+            old_path = None;
+            new_path = None;
+            continue;
+        }
+
         let (path_type, path) = parse_path_line(line, repo_root);
         match path_type {
             "old" => {
@@ -447,7 +463,7 @@ pub fn parse_diff(repo_root: &Path, diff_range: Option<&str>) -> Result<Vec<Diff
         }
     }
 
-    Ok(hunks)
+    hunks
 }
 
 pub fn run_git_z(repo_root: &Path, args: &[&str]) -> Result<Vec<String>> {
@@ -499,11 +515,11 @@ pub fn get_deleted_files(repo_root: &Path, diff_range: Option<&str>) -> Result<F
         .collect())
 }
 
-pub fn get_renamed_paths(
-    repo_root: &Path,
-    diff_range: Option<&str>,
-    min_similarity: u32,
-) -> Result<(FxHashSet<PathBuf>, FxHashSet<PathBuf>)> {
+/// Rename *source* paths, canonicalized. These no longer exist on disk and
+/// cannot be fragmented, so the pipeline excludes them from the changed set.
+/// The rename destinations need no special handling: they exist on HEAD and
+/// reach the universe through the ordinary changed-file path.
+pub fn get_renamed_paths(repo_root: &Path, diff_range: Option<&str>) -> Result<FxHashSet<PathBuf>> {
     let mut args: Vec<&str> = vec!["diff"];
     args.extend_from_slice(SAFE_DIFF_FLAGS);
     args.extend_from_slice(&["--diff-filter=R", "--name-status", "-M", "-z"]);
@@ -515,13 +531,11 @@ pub fn get_renamed_paths(
     let parts: Vec<&str> = output.split('\0').collect();
 
     let mut old_paths = FxHashSet::default();
-    let mut pure_new_paths = FxHashSet::default();
     let mut i = 0;
 
+    // `--name-status -z` emits renames as `R<similarity>\0old\0new\0`.
     while i < parts.len() {
         if parts[i].starts_with('R') {
-            let sim: u32 = parts[i][1..].parse().unwrap_or(0);
-
             if i + 1 < parts.len() && !parts[i + 1].is_empty() {
                 let resolved = repo_root
                     .join(parts[i + 1])
@@ -529,22 +543,13 @@ pub fn get_renamed_paths(
                     .unwrap_or_else(|_| repo_root.join(parts[i + 1]));
                 old_paths.insert(resolved);
             }
-
-            if sim >= min_similarity && i + 2 < parts.len() && !parts[i + 2].is_empty() {
-                let resolved = repo_root
-                    .join(parts[i + 2])
-                    .canonicalize()
-                    .unwrap_or_else(|_| repo_root.join(parts[i + 2]));
-                pure_new_paths.insert(resolved);
-            }
-
             i += 3;
         } else {
             i += 1;
         }
     }
 
-    Ok((old_paths, pure_new_paths))
+    Ok(old_paths)
 }
 
 /// Rename pairs as repo-relative display paths (`old -> new`), for the output
@@ -657,6 +662,65 @@ fn anchor_diffctx_ignore_line(line: &str, rel: &str) -> String {
     if neg { format!("!{full}") } else { full }
 }
 
+/// Writes `content` to a fresh file in the system temp directory and returns
+/// its path, or `None` if no such file could be created.
+///
+/// The name used to be `diffctx-ignore-<pid>-<counter>.tmp` written with
+/// `fs::write`, which follows symlinks and truncates the target. Both the pid
+/// and the counter are guessable, so on a shared machine anyone able to write
+/// to the temp directory could pre-plant that name as a symlink and have this
+/// overwrite the file it points at, with repository-controlled content.
+/// `create_new` is `O_CREAT | O_EXCL`: it refuses an existing path, symlink
+/// included, so a planted name costs at most a retry — and if every attempt
+/// loses, the caller degrades to "no `.diffctx/ignore` patterns", which is
+/// already its documented best-effort behaviour.
+fn write_private_temp_file(content: &str) -> Option<PathBuf> {
+    use std::io::Write;
+
+    let dir = std::env::temp_dir();
+    for _ in 0..8 {
+        let unique = TEMP_EXCLUDES_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.subsec_nanos())
+            .unwrap_or(0);
+        let path = dir.join(format!(
+            "diffctx-ignore-{}-{unique}-{nanos}.tmp",
+            std::process::id()
+        ));
+        match create_new_private_file(&path) {
+            Ok(mut file) => {
+                return match file
+                    .write_all(content.as_bytes())
+                    .and_then(|()| file.flush())
+                {
+                    Ok(()) => Some(path),
+                    Err(_) => {
+                        let _ = std::fs::remove_file(&path);
+                        None
+                    }
+                };
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(_) => return None,
+        }
+    }
+    None
+}
+
+/// `O_CREAT | O_EXCL` (`create_new`), which refuses any existing path —
+/// a planted symlink included — instead of following it.
+fn create_new_private_file(path: &Path) -> std::io::Result<std::fs::File> {
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    opts.open(path)
+}
+
 /// Finds every `.diffctx/ignore` file tracked or present in `repo_root`
 /// (any depth) and returns its patterns rewritten to be repo-root-relative,
 /// ready to feed into a combined gitignore-syntax exclude file.
@@ -726,16 +790,7 @@ pub fn find_ignored_paths(repo_root: &Path, rel_paths: &[String]) -> FxHashSet<S
     let temp_excludes = if diffctx_patterns.is_empty() {
         None
     } else {
-        let unique = TEMP_EXCLUDES_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!(
-            "diffctx-ignore-{}-{}.tmp",
-            std::process::id(),
-            unique
-        ));
-        match std::fs::write(&path, diffctx_patterns.join("\n")) {
-            Ok(()) => Some(path),
-            Err(_) => None,
-        }
+        write_private_temp_file(&diffctx_patterns.join("\n"))
     };
 
     // Ancestors are queried alongside the paths themselves so an exclusion can
@@ -1255,6 +1310,128 @@ mod tests {
                 .to_string_lossy(),
             "café.py"
         );
+    }
+
+    /// The `core.excludesFile` handed to `git check-ignore` used to be written
+    /// with `fs::write` under a guessable name in the shared temp directory,
+    /// which follows a symlink and truncates its target. Anything the pipeline
+    /// creates there must refuse a path that already exists.
+    #[test]
+    fn temp_file_creation_refuses_a_pre_planted_path() {
+        let tmp = TempDir::new().expect("tempdir");
+        let victim = tmp.path().join("victim.txt");
+        std::fs::write(&victim, "precious\n").expect("write victim");
+
+        let planted = tmp.path().join("planted.tmp");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&victim, &planted).expect("symlink");
+        #[cfg(not(unix))]
+        std::fs::write(&planted, "").expect("placeholder");
+
+        let err = create_new_private_file(&planted).expect_err("must refuse an existing path");
+        assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+        assert_eq!(
+            std::fs::read_to_string(&victim).expect("victim survives"),
+            "precious\n",
+            "the symlink target was written through"
+        );
+    }
+
+    #[test]
+    fn temp_excludes_file_is_written_and_readable() {
+        let path = write_private_temp_file("*.log\n!keep.log").expect("temp file");
+        let content = std::fs::read_to_string(&path).expect("read back");
+        assert_eq!(content, "*.log\n!keep.log");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path)
+                .expect("metadata")
+                .permissions()
+                .mode()
+                & 0o777;
+            assert_eq!(mode, 0o600, "temp excludes file must not be world-readable");
+        }
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// The traversal guard in `parse_path_line` returns `("", None)`, which the
+    /// hunk loop cannot distinguish from "this line is not a path header". With
+    /// no per-file reset the previous file's paths stay live, so the rejected
+    /// entry's hunks are charged to the last legitimate file — the guard drops
+    /// the path but keeps its line ranges, and those ranges decide which
+    /// fragments are marked as changed.
+    #[test]
+    fn a_rejected_path_header_does_not_charge_its_hunks_to_the_previous_file() {
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path();
+        write_file(root, "real.py", "a = 1\nb = 2\nc = 3\n");
+
+        let output = concat!(
+            "diff --git a/real.py b/real.py\n",
+            "--- a/real.py\n",
+            "+++ b/real.py\n",
+            "@@ -1,1 +1,1 @@\n",
+            "-a = 1\n",
+            "+a = 9\n",
+            "diff --git a/../../escape.py b/../../escape.py\n",
+            "--- a/../../escape.py\n",
+            "+++ b/../../escape.py\n",
+            "@@ -500,20 +500,20 @@\n",
+            "-gone\n",
+            "+new\n",
+        );
+
+        let hunks = parse_hunks_from_diff_output(output, root);
+        assert_eq!(
+            hunks.len(),
+            1,
+            "expected only the in-repo file's hunk, got {:?}",
+            hunks
+                .iter()
+                .map(|h| (h.path.as_ref().to_string(), h.new_start))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(hunks[0].new_start, 1);
+        assert!(hunks[0].path.ends_with("real.py"));
+    }
+
+    /// A deletion emits `+++ /dev/null`, and a creation emits `--- /dev/null`;
+    /// both must still resolve to the side that names a real file.
+    #[test]
+    fn deletions_and_creations_attribute_their_hunks_to_the_named_side() {
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path();
+        write_file(root, "kept.py", "x = 1\n");
+        write_file(root, "added.py", "y = 1\n");
+        write_file(root, "removed.py", "z = 1\n");
+
+        let output = concat!(
+            "diff --git a/kept.py b/kept.py\n",
+            "--- a/kept.py\n",
+            "+++ b/kept.py\n",
+            "@@ -1,1 +1,1 @@\n",
+            "diff --git a/removed.py b/removed.py\n",
+            "--- a/removed.py\n",
+            "+++ /dev/null\n",
+            "@@ -1,1 +0,0 @@\n",
+            "diff --git a/added.py b/added.py\n",
+            "--- /dev/null\n",
+            "+++ b/added.py\n",
+            "@@ -0,0 +1,1 @@\n",
+        );
+
+        let paths: Vec<String> = parse_hunks_from_diff_output(output, root)
+            .iter()
+            .map(|h| {
+                Path::new(h.path.as_ref())
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect();
+        assert_eq!(paths, vec!["kept.py", "removed.py", "added.py"]);
     }
 
     #[test]

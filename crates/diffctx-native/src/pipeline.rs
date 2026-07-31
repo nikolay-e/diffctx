@@ -192,13 +192,10 @@ pub fn compute_scored_state(
     }
 
     let deleted_files = git::get_deleted_files(&root_dir, diff_range)?;
-    // Pure-rename old paths are gone from disk and cannot be fragmented; pure-rename new
-    // paths exist on HEAD and must remain candidates so seeds and discovery can find them.
-    let (renamed_old, _pure_rename_new) = git::get_renamed_paths(
-        &root_dir,
-        diff_range,
-        GRAPH_FILTERING.git_rename_similarity_threshold,
-    )?;
+    // Rename source paths are gone from disk and cannot be fragmented; the
+    // destinations exist on HEAD and stay candidates via the changed set below,
+    // so seeds and discovery still find them.
+    let renamed_old = git::get_renamed_paths(&root_dir, diff_range)?;
     // Display lists for the output header: deletions and renames produce no
     // fragments, but silently omitting them misrepresents the diff (a
     // deletion-only commit used to render as a bare two-line skeleton).
