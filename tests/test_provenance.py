@@ -73,7 +73,8 @@ class TestProvenanceDump:
 
         cores = [r for r in records if r["is_core"]]
         context = [r for r in records if not r["is_core"]]
-        assert cores and context
+        assert cores
+        assert context
         assert all(r["seed_hops"] == 0 for r in cores)
         assert any(r["seed_hops"] >= 1 for r in context)
         assert any(r["incoming_mass"] for r in context)

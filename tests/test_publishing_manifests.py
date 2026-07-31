@@ -67,7 +67,8 @@ class TestClaudePlugin:
         reference nothing."""
         text = (PROJECT_ROOT / "commands" / f"{command}.md").read_text(encoding="utf-8")
         front = re.match(r"\A---\n(.*?)\n---\n", text, re.DOTALL)
-        assert front and "description:" in front.group(1)
+        assert front
+        assert "description:" in front.group(1)
 
         referenced = set(re.findall(r"`(get_[a-z_]+)`", text))
         assert referenced
@@ -85,7 +86,8 @@ class TestDistributionPins:
     def test_action_default_version_matches_package(self):
         action = (PROJECT_ROOT / "action.yml").read_text(encoding="utf-8")
         m = re.search(r"diffctx-version:.*?default:\s*([\d.]+)", action, re.DOTALL)
-        assert m and m.group(1) == __version__
+        assert m
+        assert m.group(1) == __version__
 
     def test_action_docs_pin_a_tag_that_carries_the_action(self):
         """v1.12.2 and older tags predate action.yml — `uses: @<tag>` on them

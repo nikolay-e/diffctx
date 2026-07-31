@@ -96,7 +96,8 @@ def test_max_file_bytes_option(run_mapper, temp_project):
             assert small_content in content
             small_found = True
 
-    assert large_found and small_found
+    assert large_found
+    assert small_found
 
     api_tree = map_directory(temp_project, max_file_bytes=100)
     api_large = next((c for c in api_tree.get("children", []) if c.get("name") == "large.txt"), None)

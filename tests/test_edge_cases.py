@@ -35,7 +35,8 @@ def test_directory_with_only_ignored(temp_project, run_mapper):
 
     assert result["name"] == ignored_dir.name
     assert result["type"] == "directory"
-    assert "children" in result and len(result["children"]) == 1
+    assert "children" in result
+    assert len(result["children"]) == 1
     assert result["children"][0]["name"] == ".gitignore"
 
 

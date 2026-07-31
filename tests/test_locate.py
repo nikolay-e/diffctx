@@ -73,7 +73,8 @@ class TestLocateMode:
         locate = _run(repo.path, [".", "--diff", diff_range, "--mode", "locate", "-q"])
         doc = json.loads(locate.stdout)
         changed = [i for i in doc["items"] if i.get("role") == "changed"]
-        assert changed and all(r["type"] == "changed" for i in changed for r in i["reasons"])
+        assert changed
+        assert all(r["type"] == "changed" for i in changed for r in i["reasons"])
 
         pack_default = _run(repo.path, [".", "--diff", diff_range, "-q", "-f", "yaml"])
         pack_again = _run(repo.path, [".", "--diff", diff_range, "-q", "-f", "yaml"])

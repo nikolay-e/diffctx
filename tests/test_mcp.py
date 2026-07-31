@@ -191,7 +191,8 @@ class TestGetDiffContext:
         )
         doc = json.loads(_get_text(result))
         assert doc["schema"] == "diffctx.locate.v1"
-        assert doc["items"] and all(i["reasons"] for i in doc["items"])
+        assert doc["items"]
+        assert all(i["reasons"] for i in doc["items"])
 
     @pytest.mark.asyncio
     async def test_locate_rejects_include_raw_diff(self, server, mcp_repo):

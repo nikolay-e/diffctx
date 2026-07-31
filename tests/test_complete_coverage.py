@@ -475,7 +475,8 @@ class TestContentPlaceholders:
         try:
             from charset_normalizer import from_bytes  # noqa: F401
 
-            assert content and "<unreadable content" not in content
+            assert content
+            assert "<unreadable content" not in content
         except ImportError:
             assert "<unreadable content" in content
 
