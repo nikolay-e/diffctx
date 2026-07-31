@@ -830,18 +830,40 @@ pub fn find_ignored_paths(repo_root: &Path, rel_paths: &[String]) -> FxHashSet<S
         }
     }
 
-    let mut args: Vec<String> = vec!["check-ignore".into(), "--no-index".into(), "-v".into()];
+    // Paths go over stdin, not argv. Every diff path plus every ancestor
+    // directory used to be passed as arguments, so a monorepo-sized range hit
+    // the platform argv limit, `git` failed to spawn, and the fail-open tail
+    // below turned that into "nothing is ignored" — silently disabling the
+    // `.diffctx/ignore` contract exactly when the repo is large enough for it
+    // to matter. stdin has no such ceiling.
+    let mut args: Vec<String> = vec![
+        "check-ignore".into(),
+        "--no-index".into(),
+        "-v".into(),
+        "--stdin".into(),
+    ];
     if let Some(ref path) = temp_excludes {
         args.insert(0, format!("core.excludesFile={}", path.display()));
         args.insert(0, "-c".into());
     }
-    args.push("--".into());
-    args.extend(queries);
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    // Paths reach `--stdin` through a file rather than a pipe we write
+    // ourselves. Writing the whole payload into a pipe before reading stdout
+    // deadlocks as soon as it outgrows the pipe buffer: git blocks emitting
+    // matches that nobody is draining, we block on the write, and the pipeline
+    // hangs until the git timeout fires. A file hands the feeding to the kernel,
+    // which needs no second thread to stay correct.
+    let query_file = write_private_temp_file(&queries.join("\n"));
 
     let result = (|| -> Result<FxHashSet<String>> {
+        let Some(ref query_path) = query_file else {
+            return Err(GitError::CommandFailed(
+                "could not stage check-ignore query paths".into(),
+            ));
+        };
         let mut cmd = git_command(repo_root);
         cmd.args(&arg_refs)
+            .stdin(Stdio::from(std::fs::File::open(query_path)?))
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         let child = cmd.spawn()?;
@@ -886,8 +908,43 @@ pub fn find_ignored_paths(repo_root: &Path, rel_paths: &[String]) -> FxHashSet<S
     if let Some(path) = temp_excludes {
         let _ = std::fs::remove_file(path);
     }
+    if let Some(path) = query_file {
+        let _ = std::fs::remove_file(path);
+    }
 
-    result.unwrap_or_default()
+    // Fail closed only where a policy was actually declared.
+    //
+    // The returned set is "exclude these", so `unwrap_or_default()` answered a
+    // failed check with "nothing is ignored" — the one answer that leaks, and
+    // QA.md calls `.diffctx/ignore` a security contract. But failing closed
+    // unconditionally is too blunt: `check-ignore` cannot run in a bare clone at
+    // all, and excluding everything turned a supported repo shape into empty
+    // output.
+    //
+    // So the two cases are separated by whether the user declared anything. With
+    // `.diffctx/ignore` patterns present, a failed check must not silently
+    // publish what they asked to withhold. Without them the only loss is
+    // best-effort gitignore filtering, and refusing to emit anything would be a
+    // worse answer than emitting a bare clone's diff. A bare repo has no working
+    // tree, so it never has patterns and always lands on the open branch.
+    let policy_declared = !diffctx_patterns.is_empty();
+    result.unwrap_or_else(|e| {
+        if policy_declared {
+            tracing::error!(
+                "git check-ignore failed ({e}); .diffctx/ignore declares {} pattern(s), so all \
+                 {} queried paths are treated as ignored rather than risk publishing them",
+                diffctx_patterns.len(),
+                rel_paths.len()
+            );
+            rel_paths.iter().cloned().collect()
+        } else {
+            tracing::warn!(
+                "git check-ignore failed ({e}); no .diffctx/ignore patterns are declared, so \
+                 gitignore filtering is skipped for this run"
+            );
+            FxHashSet::default()
+        }
+    })
 }
 
 /// `check-ignore -v` emits `<source>:<line>:<pattern>\t<path>`; returns the

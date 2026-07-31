@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use serde::Serialize;
 
 use crate::pipeline::{ScoredState, SelectionOutcome};
@@ -63,26 +65,19 @@ pub struct LocateItem {
     pub reasons: Vec<Reason>,
 }
 
+/// #182 unified the `TestEdge` builder and the needs matcher onto
+/// `crate::testfiles`, but missed this one — locate carried a third, weaker
+/// answer, and `summary.tests` in the shipped blast-radius view undercounted
+/// because of it. It lowercased the path first, so every CamelCase convention
+/// was invisible: `FooTest.java` outside a test directory, `AuthSpec.scala`,
+/// `widget-test.js` (hyphen form) and `src/tests.rs` all read as ordinary code.
+///
+/// One rule moves the other way: a `testing/` directory no longer counts. The
+/// shared implementation excludes it deliberately — `testing` is Go's stdlib
+/// package name and such directories hold helpers, not tests — and its unit
+/// tests pin `src/testing.rs` as non-test.
 fn is_test_path(path: &str) -> bool {
-    let lower = path.to_lowercase();
-    let parts: Vec<&str> = lower.split(['/', '\\']).collect();
-    if parts.iter().any(|p| {
-        matches!(
-            *p,
-            "test" | "tests" | "__tests__" | "spec" | "specs" | "testing"
-        )
-    }) {
-        return true;
-    }
-    let stem = parts
-        .last()
-        .and_then(|f| f.rsplit_once('.').map(|(s, _)| s).or(Some(f)))
-        .unwrap_or("");
-    stem.starts_with("test_")
-        || stem.ends_with("_test")
-        || stem.ends_with(".test")
-        || stem.ends_with(".spec")
-        || stem.ends_with("_spec")
+    crate::testfiles::is_test_path(Path::new(path))
 }
 
 const CONFIG_EXTENSIONS: &[&str] = &[
@@ -251,5 +246,57 @@ pub fn build_locate(state: &ScoredState, outcome: &SelectionOutcome) -> LocateOu
         },
         item_count: items.len(),
         items,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::FragmentKind;
+
+    /// locate carried its own test-file rule until it was delegated to
+    /// `crate::testfiles`. It lowercased the path first, so every CamelCase
+    /// convention was invisible and `summary.tests` in the blast-radius view
+    /// (#135) undercounted. The bitcheck fixture is this repo, whose tests are
+    /// all `test_*.py` under `tests/` — a shape both rules agree on — so the
+    /// divergence only shows up on cases like these.
+    #[test]
+    fn the_grouping_uses_the_shared_test_classifier() {
+        for path in [
+            "src/main/java/com/example/FooTest.java",
+            "src/main/scala/AuthSpec.scala",
+            "src/XMLTest.java",
+            "ui/widget-spec.js",
+            "src/tests.rs",
+        ] {
+            assert_eq!(
+                group_of(path, FragmentKind::Function),
+                Some("test"),
+                "not grouped as a test: {path}"
+            );
+        }
+    }
+
+    /// The one rule that moved the other way: `testing/` used to count as a test
+    /// directory here. The shared implementation excludes it on purpose —
+    /// `testing` is Go's stdlib package name and such directories hold helpers.
+    #[test]
+    fn a_testing_directory_is_not_itself_a_test() {
+        assert_eq!(
+            group_of("src/testing/helpers.go", FragmentKind::Function),
+            None
+        );
+    }
+
+    /// Grouping is ordered: a type declaration inside a test file is a test,
+    /// not a type, because the test grouping is checked first. Pinned because
+    /// swapping the order silently re-buckets every test fixture struct.
+    #[test]
+    fn a_type_in_a_test_file_groups_as_test() {
+        assert_eq!(
+            group_of("tests/fixtures.rs", FragmentKind::Struct),
+            Some("test")
+        );
+        assert_eq!(group_of("src/model.rs", FragmentKind::Struct), Some("type"));
     }
 }
