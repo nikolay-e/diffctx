@@ -1025,9 +1025,10 @@ mod tests {
     }
     /// tau is the adaptive stop: once a candidate's density falls below
     /// `tau * peak_density` the loop stops instead of spending the rest of the
-    /// budget. The whole oracle corpus runs at tau=0.0, which makes the
-    /// predicate unreachable, so deleting the rule failed no test. This runs at
-    /// the shipped default so the assertion covers the real operating point.
+    /// budget. The oracle corpus used to run at tau=0.0, which made the
+    /// predicate unreachable, so deleting the rule failed no test; the corpus
+    /// now runs at the shipped default too (#175). This keeps a direct
+    /// assertion on the rule that does not depend on corpus wiring.
     #[test]
     fn tau_stops_the_greedy_loop_before_the_budget_is_spent() {
         // Descending relevance against escalating cost gives sharply
