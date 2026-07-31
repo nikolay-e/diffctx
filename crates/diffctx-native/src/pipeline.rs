@@ -791,23 +791,14 @@ fn pathless_section(root_dir: &Path, section: &[&str]) -> Option<PathBuf> {
         .iter()
         .find_map(|line| line.strip_prefix("rename to "))
     {
-        return contained_path(root_dir, &git::unquote_c_style(quoted.trim()));
+        return git::resolve_in_repo(root_dir, &git::unquote_c_style(quoted.trim()));
     }
     let rest = section.first()?.strip_prefix("diff --git ")?;
     let rel_path = rest.get("a/".len()..rest.find(" b/")?)?;
     if rest != format!("a/{rel_path} b/{rel_path}") {
         return None;
     }
-    contained_path(root_dir, rel_path)
-}
-
-fn contained_path(root_dir: &Path, rel_path: &str) -> Option<PathBuf> {
-    let joined = root_dir.join(rel_path);
-    let resolved = joined.canonicalize().unwrap_or_else(|_| joined.clone());
-    let resolved_root = root_dir
-        .canonicalize()
-        .unwrap_or_else(|_| root_dir.to_path_buf());
-    resolved.starts_with(&resolved_root).then_some(joined)
+    git::resolve_in_repo(root_dir, rel_path)
 }
 
 fn resolve_repo_root(root_dir: &Path) -> Result<PathBuf> {

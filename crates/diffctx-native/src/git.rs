@@ -337,7 +337,7 @@ pub(crate) fn unquote_c_style(quoted: &str) -> String {
 /// and downstream `strip_prefix` guards are lexical for exactly the same
 /// reason. Absolute paths are refused for the same reason — `Path::join`
 /// with an absolute argument discards the root entirely.
-fn resolve_in_repo(repo_root: &Path, rel_path: &str) -> Option<PathBuf> {
+pub(crate) fn resolve_in_repo(repo_root: &Path, rel_path: &str) -> Option<PathBuf> {
     let rel = Path::new(rel_path);
     if rel.is_absolute()
         || rel
