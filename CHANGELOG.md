@@ -41,6 +41,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exercise git's real rename path instead of silently degrading to adds
   (#176).
 
+### Removed
+
+- The dead `low_relevance_threshold` gate.
+  `PipelineConfig.low_relevance_filter` was `false` for every scoring mode, so
+  `filter_low_relevance` — and with it `FILTERING.low_relevance_threshold`
+  (0.015) and its `size_penalty_*` scaling — could never execute;
+  `filter_positive_relevance` was always the gate that ran. ContextBench result
+  rows nevertheless stamped `low_relevance_threshold: 0.015` into their `config`
+  block, so every recorded run attributed its selections to a threshold that
+  never fired. Removed on both sides. Bit-equivalent: identical output across
+  four scoring modes × three diff ranges, plus the full 2725-case corpus.
+
 ## [1.12.3] - 2026-07-27
 
 ### Added

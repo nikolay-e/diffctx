@@ -35,13 +35,6 @@ fn proximity_score(frag: &Fragment, file_hunks: &[(u32, u32)]) -> f64 {
     FILTERING.proximity_floor_max / (1.0 + min_gap as f64 / half_decay)
 }
 
-fn effective_relevance_threshold(token_count: u32) -> f64 {
-    let size_factor = (token_count as f64 / FILTERING.size_penalty_base_tokens)
-        .max(1.0)
-        .powf(FILTERING.size_penalty_exponent);
-    FILTERING.low_relevance_threshold * size_factor
-}
-
 pub fn apply_hunk_proximity_bonus(
     rel: &mut FxHashMap<FragmentId, f64>,
     core_ids: &FxHashSet<FragmentId>,
@@ -240,21 +233,6 @@ pub fn filter_unrelated_fragments(
         .iter()
         .filter(|f| !paths_to_remove.contains(&f.id.path))
         .cloned()
-        .collect()
-}
-
-pub fn filter_low_relevance(
-    fragments: Vec<Fragment>,
-    core_ids: &FxHashSet<FragmentId>,
-    rel: &FxHashMap<FragmentId, f64>,
-) -> Vec<Fragment> {
-    fragments
-        .into_iter()
-        .filter(|f| {
-            core_ids.contains(&f.id)
-                || rel.get(&f.id).copied().unwrap_or(0.0)
-                    >= effective_relevance_threshold(f.token_count)
-        })
         .collect()
 }
 

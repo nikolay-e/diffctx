@@ -57,7 +57,6 @@ pub struct PipelineConfig {
     pub discovery: DiscoveryKind,
     pub scoring: ScoringKind,
     pub objective: ObjectiveMode,
-    pub low_relevance_filter: bool,
     pub bm25_top_k: usize,
     pub ego_depth: usize,
     pub ppr_alpha: f64,
@@ -70,7 +69,6 @@ impl PipelineConfig {
             ScoringMode::Ppr => Self {
                 discovery: DiscoveryKind::Ensemble,
                 scoring: ScoringKind::Ppr,
-                low_relevance_filter: false,
                 bm25_top_k: m.bm25_top_k_primary,
                 ego_depth: m.ego_depth_default,
                 ppr_alpha: PPR.alpha,
@@ -79,7 +77,6 @@ impl PipelineConfig {
             ScoringMode::Ego => Self {
                 discovery: DiscoveryKind::Ensemble,
                 scoring: ScoringKind::Ego,
-                low_relevance_filter: false,
                 bm25_top_k: m.bm25_top_k_primary,
                 ego_depth: m.ego_depth_extended,
                 ppr_alpha: PPR.alpha,
@@ -88,7 +85,6 @@ impl PipelineConfig {
             ScoringMode::Bm25 => Self {
                 discovery: DiscoveryKind::Ensemble,
                 scoring: ScoringKind::Bm25,
-                low_relevance_filter: false,
                 bm25_top_k: m.bm25_top_k_off,
                 ego_depth: m.ego_depth_default,
                 ppr_alpha: PPR.alpha,
@@ -100,7 +96,6 @@ impl PipelineConfig {
             ScoringMode::Rrf => Self {
                 discovery: DiscoveryKind::Ensemble,
                 scoring: ScoringKind::Rrf,
-                low_relevance_filter: false,
                 bm25_top_k: m.bm25_top_k_primary,
                 ego_depth: m.ego_depth_extended,
                 ppr_alpha: PPR.alpha,

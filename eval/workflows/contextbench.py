@@ -170,7 +170,6 @@ def run_baseline_bm25(repo_dir: Path, budget: int = 8000) -> dict | None:
 
 def _get_diffctx_config() -> dict:
     return {
-        "low_relevance_threshold": 0.015,
         "proximity_decay": 0.30,
         "peripheral_cap": 0.15,
         "max_context_frags_per_file": 30,

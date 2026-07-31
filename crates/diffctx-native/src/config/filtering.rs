@@ -8,9 +8,6 @@ pub struct FilteringConfig {
     pub definition_proximity_half_decay: f64,
     pub hub_reverse_threshold: usize,
     pub max_context_fragments_per_file: usize,
-    pub low_relevance_threshold: f64,
-    pub size_penalty_base_tokens: f64,
-    pub size_penalty_exponent: f64,
 }
 
 impl Default for FilteringConfig {
@@ -21,9 +18,6 @@ impl Default for FilteringConfig {
             definition_proximity_half_decay: 5.0,
             hub_reverse_threshold: 2,
             max_context_fragments_per_file: 30,
-            low_relevance_threshold: 0.015,
-            size_penalty_base_tokens: 100.0,
-            size_penalty_exponent: 0.5,
         }
     }
 }

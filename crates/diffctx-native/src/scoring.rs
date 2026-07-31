@@ -34,10 +34,7 @@ pub struct ScoringResult {
 pub fn create_scoring_strategy(config: &PipelineConfig) -> Box<dyn ScoringStrategy> {
     match config.scoring {
         ScoringKind::Ego => Box::new(EgoGraphScoring::new(config.ego_depth)),
-        ScoringKind::Ppr => Box::new(PPRScoring::new(
-            config.ppr_alpha,
-            config.low_relevance_filter,
-        )),
+        ScoringKind::Ppr => Box::new(PPRScoring::new(config.ppr_alpha)),
         ScoringKind::Bm25 => Box::new(BM25Scoring),
         ScoringKind::Rrf => Box::new(RrfFusionScoring::new(config.ego_depth)),
     }
@@ -57,15 +54,11 @@ pub trait ScoringStrategy: Send + Sync {
 
 pub struct PPRScoring {
     pub alpha: f64,
-    pub low_relevance_filter: bool,
 }
 
 impl PPRScoring {
-    pub fn new(alpha: f64, low_relevance_filter: bool) -> Self {
-        Self {
-            alpha,
-            low_relevance_filter,
-        }
+    pub fn new(alpha: f64) -> Self {
+        Self { alpha }
     }
 }
 
@@ -104,11 +97,7 @@ impl ScoringStrategy for PPRScoring {
         filtering::apply_hunk_proximity_bonus(&mut rel_scores, core_ids, all_fragments, hunks);
 
         let filtered = filtering::filter_unrelated_fragments(all_fragments, core_ids, &g);
-        let filtered = if self.low_relevance_filter {
-            filtering::filter_low_relevance(filtered, core_ids, &rel_scores)
-        } else {
-            filtering::filter_positive_relevance(filtered, core_ids, &rel_scores)
-        };
+        let filtered = filtering::filter_positive_relevance(filtered, core_ids, &rel_scores);
         let filtered = filtering::cap_context_fragments(filtered, core_ids, &rel_scores);
 
         ScoringResult {
