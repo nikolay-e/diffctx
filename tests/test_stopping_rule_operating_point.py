@@ -15,6 +15,8 @@ rule), and the defaults must not drift apart between entry points.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from tests.framework.pygit2_backend import Pygit2Repo
@@ -155,28 +157,58 @@ def test_every_entry_point_ships_the_same_tau():
     )
 
 
+def _tau_defaults_in(source_path):
+    """Every literal assigned to a parameter or attribute named `tau`, read from
+    the source rather than by importing it.
+
+    The eval package pulls in numpy, which the test environment deliberately
+    does not carry — importing these modules made this guard fail in CI while
+    passing locally. Skipping on ImportError would have been worse: the guard
+    would go quiet in exactly the environment that gates merges. A static read
+    needs no dependency and still sees a hardcoded number."""
+    import ast
+
+    tree = ast.parse(Path(source_path).read_text(encoding="utf-8"))
+    found = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.arguments):
+            for arg, default in zip(node.args[-len(node.defaults) :], node.defaults, strict=False):
+                if arg.arg == "tau" and isinstance(default, ast.Constant) and isinstance(default.value, (int, float)):
+                    found.append(default.value)
+            for arg, default in zip(node.kwonlyargs, node.kw_defaults, strict=False):
+                if arg.arg == "tau" and isinstance(default, ast.Constant) and isinstance(default.value, (int, float)):
+                    found.append(default.value)
+        elif isinstance(node, ast.AnnAssign):
+            target = node.target
+            if isinstance(target, ast.Name) and target.id == "tau" and isinstance(node.value, ast.Constant):
+                if isinstance(node.value.value, (int, float)):
+                    found.append(node.value.value)
+    return found
+
+
 def test_the_measurement_harnesses_score_the_shipped_tau():
     """Three harnesses drifted to private taus — the yaml corpus to 0.0, the
     in-memory runner to 0.05, contextbench to 0.08 — so all three scored an
     algorithm nobody runs. A harness measuring its own operating point produces
     numbers that look valid and mean nothing, which is why this is pinned here
     rather than left to review."""
-    import inspect
+    shipped = _shipped_tau()
+    repo_root = Path(__file__).resolve().parent.parent
 
-    from eval.harness.adapters.runner import RunParams
-    from eval.workflows.contextbench import run_diffctx, shipped_tau
+    for rel in ("eval/workflows/contextbench.py", "eval/harness/adapters/runner.py"):
+        for literal in _tau_defaults_in(repo_root / rel):
+            assert literal == pytest.approx(shipped), (
+                f"{rel} hardcodes tau={literal} against a shipped {shipped}; "
+                f"resolve it from the engine instead of restating it"
+            )
 
-    assert shipped_tau() == pytest.approx(_shipped_tau())
-
-    # contextbench resolves its default at call time, so the signature must
-    # leave it unset rather than restate a number that can drift.
-    assert inspect.signature(run_diffctx).parameters["tau"].default is None, (
-        "contextbench pinned a literal tau default again; it must resolve the " "shipped value at call time"
-    )
-
-    runner_default = inspect.signature(RunParams).parameters["tau"].default
-    assert runner_default == pytest.approx(_shipped_tau()), (
-        f"the eval runner defaults to tau={runner_default} against a shipped " f"{_shipped_tau()}"
+    # The Rust harnesses have the same failure mode and no Python surface to
+    # inspect, so they are pinned by the constant's absence: a bare literal
+    # passed to the in-memory runner is what made it score tau=0.05.
+    harness = (repo_root / "crates/diffctx-native/src/test_harness.rs").read_text(encoding="utf-8")
+    assert "DEFAULT_STOPPING_THRESHOLD" in harness, (
+        "the in-memory harness stopped using the shipped constant; it once ran "
+        "tau=0.05 and reported numbers for a selector nobody ships"
     )
 
 
