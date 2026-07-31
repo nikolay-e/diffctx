@@ -259,14 +259,23 @@ pub fn ensure_changed_files_represented(
         return;
     }
 
+    // Membership through a set, not a scan of `missing_paths` per fragment.
+    // The scan ran `to_string_lossy().to_string()` on both sides of every
+    // comparison, so grouping cost fragments x missing-paths *string
+    // allocations* — on a range that adds hundreds of files it dominated the
+    // whole run. Same buckets, same first-seen order within each.
+    let missing_lookup: FxHashSet<String> = missing_paths
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
     let mut frags_by_path: FxHashMap<String, Vec<Fragment>> = FxHashMap::default();
     for f in all_fragments.iter().chain(core_excerpts.values()) {
-        let path_str = f.id.path.as_ref().to_string();
-        if missing_paths
-            .iter()
-            .any(|p| p.to_string_lossy().as_ref() == path_str)
-        {
-            frags_by_path.entry(path_str).or_default().push(f.clone());
+        let path_str = f.id.path.as_ref();
+        if missing_lookup.contains(path_str) {
+            frags_by_path
+                .entry(path_str.to_string())
+                .or_default()
+                .push(f.clone());
         }
     }
 
