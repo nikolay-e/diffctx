@@ -11,7 +11,7 @@ use crate::config::limits::{
 use crate::git::GitError as RustGitError;
 use crate::mode::ScoringMode;
 use crate::pipeline::{self, ScoredState};
-use crate::render::{DiffContextOutput, FragmentEntry};
+use crate::render::DiffContextOutput;
 
 #[pyclass(unsendable)]
 pub struct PyScoredState {
@@ -28,8 +28,8 @@ create_exception!(_diffctx, GitError, pyo3::exceptions::PyException);
     root_dir,
     diff_range,
     budget_tokens = None,
-    alpha = 0.60,
-    tau = crate::config::limits::DEFAULT_STOPPING_THRESHOLD,
+    alpha = DEFAULT_PPR_ALPHA,
+    tau = DEFAULT_STOPPING_THRESHOLD,
     scoring_mode = "ego",
     timeout = DEFAULT_PIPELINE_TIMEOUT_SECONDS,
 ))]
@@ -46,12 +46,20 @@ fn build_locate(
     let mode =
         ScoringMode::from_str(scoring_mode).map_err(pyo3::exceptions::PyValueError::new_err)?;
     let path = Path::new(root_dir).to_path_buf();
-    let range = diff_range.to_string();
+    // Empty means "the working tree", exactly as in `build_diff_context`.
+    // Forwarding `Some("")` instead reached `validate_diff_range`, which
+    // rejects it — so the two entry points into the same pipeline disagreed
+    // about what an unspecified range means.
+    let range = if diff_range.is_empty() {
+        None
+    } else {
+        Some(diff_range.to_string())
+    };
     let output = py
         .detach(move || {
             crate::pipeline::build_diff_context_locate(
                 &path,
-                Some(&range),
+                range.as_deref(),
                 budget_tokens,
                 alpha,
                 tau,
