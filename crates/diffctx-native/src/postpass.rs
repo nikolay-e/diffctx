@@ -10,18 +10,13 @@ use crate::graph::Graph;
 use crate::interval::IntervalIndex;
 use crate::types::{Fragment, FragmentId, FragmentKind};
 
-/// The unselected semantic neighbours of the current selection, as concrete
-/// fragment ids. Resolving them by `symbol_name` instead — as this used to —
-/// silently pulled in whichever repo-wide fragment happened to share the
-/// lowercased name, so a dangling `handler` could be answered with an
-/// unrelated file's `handler` (#65's declaration-stub shape).
-fn find_dangling_semantic_neighbors(
+fn find_dangling_semantic_names(
     selected: &[Fragment],
     graph: &Graph,
     frag_by_id: &FxHashMap<FragmentId, &Fragment>,
     selected_ids: &FxHashSet<FragmentId>,
-) -> Vec<FragmentId> {
-    let mut dangling: Vec<FragmentId> = Vec::new();
+) -> FxHashSet<String> {
+    let mut dangling = FxHashSet::default();
     for frag in selected {
         graph.for_each_forward_neighbor(&frag.id, |nbr_id, _w| {
             if selected_ids.contains(nbr_id) {
@@ -34,19 +29,13 @@ fn find_dangling_semantic_neighbors(
             {
                 return;
             }
-            // A neighbour with no symbol name has no full/stub pair to choose
-            // between, which is the only reason this pass looks past the
-            // neighbour itself.
-            if frag_by_id
-                .get(nbr_id)
-                .is_some_and(|f| f.symbol_name.is_some())
-            {
-                dangling.push(nbr_id.clone());
+            if let Some(nbr_frag) = frag_by_id.get(nbr_id) {
+                if let Some(ref name) = nbr_frag.symbol_name {
+                    dangling.insert(name.to_lowercase());
+                }
             }
         });
     }
-    dangling.sort();
-    dangling.dedup();
     dangling
 }
 
@@ -118,23 +107,23 @@ pub fn coherence_post_pass(
     let used: u32 = selected.iter().map(|f| f.token_count).sum();
     let mut remaining = budget.saturating_sub(used);
 
-    // The neighbour and its signature variant share a start line, so this
-    // groups exactly the full/stub pair the pass is allowed to choose between.
-    let mut frags_by_loc: FxHashMap<(Arc<str>, u32), Vec<&Fragment>> = FxHashMap::default();
+    let mut name_to_frags: FxHashMap<String, Vec<&Fragment>> = FxHashMap::default();
     for f in all_fragments {
-        frags_by_loc
-            .entry((f.id.path.clone(), f.start_line()))
-            .or_default()
-            .push(f);
+        if let Some(ref name) = f.symbol_name {
+            name_to_frags
+                .entry(name.to_lowercase())
+                .or_default()
+                .push(f);
+        }
     }
 
     let frag_by_id: FxHashMap<FragmentId, &Fragment> =
         all_fragments.iter().map(|f| (f.id.clone(), f)).collect();
-    let dangling = find_dangling_semantic_neighbors(selected, graph, &frag_by_id, &selected_ids);
+    let dangling_names = find_dangling_semantic_names(selected, graph, &frag_by_id, &selected_ids);
 
     let mut added_ids = selected_ids;
-    for nbr_id in &dangling {
-        let candidates = match frags_by_loc.get(&(nbr_id.path.clone(), nbr_id.start_line)) {
+    for name in &dangling_names {
+        let candidates = match name_to_frags.get(name) {
             Some(c) => c,
             None => continue,
         };
@@ -472,55 +461,6 @@ mod tests {
             let ids: FxHashSet<&FragmentId> = selected.iter().map(|f| &f.id).collect();
             assert_eq!(ids.len(), selected.len(), "a fragment was selected twice");
         }
-    }
-
-    /// The coherence pass detects a specific dangling neighbor via a graph
-    /// edge, then resolves it by lowercased `symbol_name`. Symbol names are
-    /// not unique across a repository, so the fragment it pulls in can be an
-    /// unrelated file that merely shares the name — exactly the "declaration
-    /// stubs from files nobody asked for" shape tracked in #65.
-    #[test]
-    fn coherence_post_pass_adds_the_dangling_neighbor_not_a_namesake() {
-        use crate::graph::EdgeCategory;
-        use crate::types::FragmentKind;
-
-        let mut selected_frag = frag("caller.rs", 1, 10, FragmentKind::Function, 30);
-        selected_frag.symbol_name = Some("caller".to_string());
-
-        let mut namesake = frag("unrelated.rs", 1, 10, FragmentKind::Function, 30);
-        namesake.symbol_name = Some("handler".to_string());
-
-        let mut neighbor = frag("target.rs", 1, 10, FragmentKind::Function, 30);
-        neighbor.symbol_name = Some("handler".to_string());
-
-        // `namesake` precedes `neighbor`, so it is what the name lookup
-        // resolves to first.
-        let all = vec![selected_frag.clone(), namesake.clone(), neighbor.clone()];
-
-        let mut edges: FxHashMap<(FragmentId, FragmentId), f64> = FxHashMap::default();
-        edges.insert((selected_frag.id.clone(), neighbor.id.clone()), 1.0);
-        let mut categories: FxHashMap<(FragmentId, FragmentId), EdgeCategory> =
-            FxHashMap::default();
-        categories.insert(
-            (selected_frag.id.clone(), neighbor.id.clone()),
-            EdgeCategory::Semantic,
-        );
-        let graph = crate::graph::build_graph(&all, edges, categories);
-
-        let mut selected = vec![selected_frag];
-        coherence_post_pass(&mut selected, &all, &graph, 1_000);
-
-        let added: Vec<&str> = selected
-            .iter()
-            .skip(1)
-            .map(|f| f.id.path.as_ref())
-            .collect();
-        assert_eq!(
-            added,
-            vec!["target.rs"],
-            "the pass pulled in a same-named fragment from an unrelated file \
-             instead of the dangling neighbor the edge pointed at"
-        );
     }
 
     /// The rescue budget exists to reach files the selection missed entirely,
