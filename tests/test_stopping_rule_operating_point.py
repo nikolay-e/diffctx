@@ -155,6 +155,31 @@ def test_every_entry_point_ships_the_same_tau():
     )
 
 
+def test_the_measurement_harnesses_score_the_shipped_tau():
+    """Three harnesses drifted to private taus — the yaml corpus to 0.0, the
+    in-memory runner to 0.05, contextbench to 0.08 — so all three scored an
+    algorithm nobody runs. A harness measuring its own operating point produces
+    numbers that look valid and mean nothing, which is why this is pinned here
+    rather than left to review."""
+    import inspect
+
+    from eval.harness.adapters.runner import RunParams
+    from eval.workflows.contextbench import run_diffctx, shipped_tau
+
+    assert shipped_tau() == pytest.approx(_shipped_tau())
+
+    # contextbench resolves its default at call time, so the signature must
+    # leave it unset rather than restate a number that can drift.
+    assert inspect.signature(run_diffctx).parameters["tau"].default is None, (
+        "contextbench pinned a literal tau default again; it must resolve the " "shipped value at call time"
+    )
+
+    runner_default = inspect.signature(RunParams).parameters["tau"].default
+    assert runner_default == pytest.approx(_shipped_tau()), (
+        f"the eval runner defaults to tau={runner_default} against a shipped " f"{_shipped_tau()}"
+    )
+
+
 def test_the_shipped_tau_keeps_the_changed_file(stopping_repo):
     """The stop must never cost the change itself. Whatever it prunes, the
     fragments carrying the diff are the one thing the output cannot omit."""

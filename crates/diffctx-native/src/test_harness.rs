@@ -11,6 +11,7 @@ use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use serde::Serialize;
 
+use _diffctx::config::limits::{DEFAULT_PPR_ALPHA, DEFAULT_STOPPING_THRESHOLD};
 use _diffctx::memory_pipeline::{MemoryRepo, build_diff_context_in_memory};
 use _diffctx::mode::ScoringMode;
 
@@ -134,8 +135,17 @@ fn run_single_test(case: &TestCase) -> TestResult {
     let repo = build_memory_repo(case);
     let budget = calculate_budget(case);
 
-    let output =
-        build_diff_context_in_memory(&repo, Some(budget), 0.60, 0.05, false, ScoringMode::Ego);
+    // Shipped constants, not literals. This harness ran tau=0.05 while every
+    // entry point ships 0.12, so it scored an operating point nobody uses —
+    // the same defect #175 fixed in the yaml corpus, in a second harness.
+    let output = build_diff_context_in_memory(
+        &repo,
+        Some(budget),
+        DEFAULT_PPR_ALPHA,
+        DEFAULT_STOPPING_THRESHOLD,
+        false,
+        ScoringMode::Ego,
+    );
 
     let oracle = evaluate_oracle(case, &output);
     let xfail_active = case.xfail.as_ref().map(|x| x.is_active()).unwrap_or(false);
