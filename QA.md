@@ -61,6 +61,16 @@ Project-specific facts for `/qa`. Generic methodology lives in
   bugs into reviews (a 1.12.2 tool leaked `.diffctx/ignore`-excluded
   tests/yaml as context — the universe filter shipped in 1.12.3).
   Refresh: `uv tool install 'diffctx[mcp]' --force --refresh`.
+- `--version` is useless for staleness here: the version string moves
+  only on release, so a tool built weeks ago still says `1.12.3`. Compare
+  the **extension's mtime** against HEAD's date
+  (`ls -la ~/.local/share/uv/tools/diffctx/lib/python*/site-packages/diffctx/_diffctx.abi3.so`).
+  To review a range that includes unreleased work, install from source:
+  `uv tool install . --force --reinstall`.
+- **Do not review with `--budget -1`.** Selection plus the post-passes are
+  ~97% of wall clock on a wide range (#121); unlimited removes the stop and
+  every cell hits the 300s deadline. A wide range at the default budget is
+  the reviewable artifact.
 - This repo's own `.diffctx/ignore` excludes `*.yaml`/`*.yml` (the
   2725-case corpus would drown every self-eat) **and `tests`** — so the
   entire `tests/` tree, `crates/diffctx-native/tests/`, every oracle
@@ -96,8 +106,14 @@ Project-specific facts for `/qa`. Generic methodology lives in
 
 ## Known false positives
 
-- import-linter pre-commit hook can fail locally (namespace package)
-  while green in CI.
+- ~~import-linter pre-commit hook can fail locally (namespace package)
+  while green in CI.~~ **No longer true** — `lint-imports` reports
+  `6 kept, 0 broken` locally. Read a failure as a real violation: one
+  caught `from diffctx import _diffctx` in `mcp/server.py`, which
+  executes `diffctx/__init__` and so pulls `_app` -> `cli`, breaking
+  "MCP server must not import CLI". Import the submodule directly
+  (`from diffctx._diffctx import X`) so the edge points at the submodule
+  rather than the package root.
 - SonarCloud `githubactions:S8543` on the publish-extras npm smoke:
   `$VERSION` is an exact just-published version, package has zero
   deps — marked false positive in SonarCloud via API (NOSONAR is NOT
@@ -152,6 +168,25 @@ Project-specific facts for `/qa`. Generic methodology lives in
   Both are pinned by tests in `git.rs`; the tests must canonicalize their
   temp root or the hole hides on macOS (`/var -> /private/var`) and only
   fails on Linux CI.
+
+## Bit-equivalence gate for refactors (`scripts/bitcheck.sh`)
+
+`record` on the pre-change build, rebuild, `check`. 24 cells (3 fixed
+ranges x 4 scoring modes x pack/locate) in ~20 s; `clean` drops the
+snapshots and the fixture worktree.
+
+- The input is a **worktree pinned to a fixed SHA**, not the live
+  checkout. diffctx analysing its own repo means its sources appear in
+  its own output as context fragments, so editing the code under test
+  also edits the input. Running against the live tree reported 8 moved
+  cells for a change that could not affect them — a stashed file had
+  rewritten a context fragment. Never "simplify" the fixture away.
+- The fixture cannot exercise every path: this repo's `.diffctx/ignore`
+  hides `tests`, so no `FooTest.java`/`widget-spec.js` shape exists in
+  it and a test-classifier change reads as bit-identical. Corpus +
+  targeted unit tests carry that; bitcheck does not.
+- E-class claims ("no output change") land with a bitcheck result in the
+  same commit. Q-class still needs the corpus and a baseline edit.
 
 ## Corpus baseline discipline
 

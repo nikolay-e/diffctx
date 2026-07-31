@@ -12,6 +12,7 @@
 #     scripts/bitcheck.sh record      # snapshot the CURRENT build
 #     <edit code, rebuild>
 #     scripts/bitcheck.sh check       # fail if any cell moved
+#     scripts/bitcheck.sh clean       # drop the snapshots and the fixture worktree
 #
 # Snapshots live under a scratch dir, never in git. `latency` is stripped before
 # comparison: it is wall-clock, so it differs run to run even on identical code.
@@ -33,6 +34,10 @@ FIXTURE_SHA="5e2025ab"
 FIXTURE="$SNAP_DIR/fixture"
 
 ensure_fixture() {
+  # The fixture lives under TMPDIR, which the OS clears without telling git.
+  # Without this prune the stale registration survives and `worktree add`
+  # refuses the path.
+  git -C "$REPO_ROOT" worktree prune
   if [[ -f "$FIXTURE/Cargo.toml" ]]; then
     return
   fi
@@ -63,8 +68,9 @@ BUDGET="${BITCHECK_BUDGET:-8000}"
 CELL_TOTAL=$((${#RANGES[@]} * ${#MODES[@]} * ${#KINDS[@]}))
 
 cell_name() {
+  local range="$1" mode="$2" kind="$3"
   # `/` and `.` in a range make poor filenames.
-  printf '%s__%s__%s' "${1//[^a-zA-Z0-9]/_}" "$2" "$3"
+  printf '%s__%s__%s' "${range//[^a-zA-Z0-9]/_}" "$mode" "$kind"
 }
 
 run_cell() {
@@ -147,6 +153,14 @@ check)
     exit 1
   fi
   printf '\nall %d cells identical\n' "$CELL_TOTAL"
+  ;;
+clean)
+  # Leaves no registration behind: the fixture is a real worktree, and a
+  # dangling entry outlives the directory TMPDIR reclaims.
+  git -C "$REPO_ROOT" worktree remove --force "$FIXTURE" 2>/dev/null || true
+  git -C "$REPO_ROOT" worktree prune
+  rm -rf "$SNAP_DIR"
+  printf 'removed %s and pruned the fixture worktree\n' "$SNAP_DIR"
   ;;
 *)
   sed -n '3,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
