@@ -148,8 +148,19 @@ fn truncate_generated_fragments(file_frags: Vec<Fragment>) -> Vec<Fragment> {
                 return frag;
             }
             let lines: Vec<&str> = frag.content.lines().collect();
-            let remaining = lines.len() - max_lines as usize;
-            let truncated_lines = &lines[..max_lines as usize];
+            // `line_count()` comes from the id's span while the slice below
+            // indexes the actual text. The two agree for well-formed fragments,
+            // but nothing enforces it — a span wider than its content made
+            // `lines[..max_lines]` an out-of-bounds slice and the subtraction an
+            // underflow, i.e. a panic reachable from file content rather than a
+            // degraded fragment. Clamp instead: fewer lines than the cap means
+            // there is nothing to cut.
+            let keep = (max_lines as usize).min(lines.len());
+            let remaining = lines.len().saturating_sub(keep);
+            if remaining == 0 {
+                return frag;
+            }
+            let truncated_lines = &lines[..keep];
             let truncated_content = format!(
                 "{}\n# ... [{} more lines]",
                 truncated_lines.join("\n"),
@@ -373,4 +384,56 @@ pub fn create_whole_file_fragment(
         token_count,
         symbol_name: None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::FragmentKind;
+
+    fn frag(path: &str, start: u32, end: u32, content: &str) -> Fragment {
+        Fragment {
+            id: FragmentId::new(Arc::from(path), start, end),
+            kind: FragmentKind::Chunk,
+            content: Arc::from(content.to_string()),
+            identifiers: FxHashSet::default(),
+            token_count: 0,
+            symbol_name: None,
+        }
+    }
+
+    /// The cap is checked against the id's line span but applied by slicing the
+    /// content, and nothing keeps the two in step. A fragment whose span is
+    /// wider than its text made that an out-of-bounds slice — a panic taking
+    /// the whole process down, reachable from repository content.
+    #[test]
+    fn truncation_survives_a_span_wider_than_its_content() {
+        let over_cap = LIMITS.max_generated_lines as u32 + 50;
+        let short = frag("gen.rs", 1, over_cap, "one\ntwo\nthree\n");
+
+        let out = truncate_generated_fragments(vec![short.clone()]);
+
+        assert_eq!(out.len(), 1);
+        assert_eq!(
+            out[0].content.as_ref(),
+            short.content.as_ref(),
+            "content shorter than the cap has nothing to truncate"
+        );
+    }
+
+    #[test]
+    fn truncation_cuts_a_fragment_that_really_is_too_long() {
+        let max_lines = LIMITS.max_generated_lines;
+        let body: String = (1..=max_lines + 20)
+            .map(|n| format!("line {n}\n"))
+            .collect();
+        let long = frag("gen.rs", 1, (max_lines + 20) as u32, &body);
+
+        let out = truncate_generated_fragments(vec![long]);
+
+        assert_eq!(out.len(), 1);
+        assert!(out[0].content.contains("more lines]"));
+        assert_eq!(out[0].end_line(), max_lines as u32);
+        assert!(!out[0].content.contains(&format!("line {}", max_lines + 1)));
+    }
 }

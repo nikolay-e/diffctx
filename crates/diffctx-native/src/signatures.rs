@@ -119,9 +119,17 @@ pub fn generate_signature_variants(fragments: &[Fragment]) -> Vec<Fragment> {
             continue;
         }
         let lines: Vec<&str> = frag.content.lines().collect();
+        // The eligibility gate above measures the id's line span; everything
+        // below indexes the actual text. A fragment whose span says five lines
+        // while its content holds none would yield `sig_end = 0`, hence an id
+        // whose end precedes its start — and `line_count()` on that id is a
+        // subtraction overflow for every later stage that touches it.
+        if lines.is_empty() {
+            continue;
+        }
         let decorators = decorator_prefix_len(&lines);
-        let sig_end = decorators + find_signature_end(&lines[decorators..]);
-        let sig_content: String = lines[..sig_end].join("\n");
+        let sig_end = (decorators + find_signature_end(&lines[decorators..])).max(1);
+        let sig_content: String = lines[..sig_end.min(lines.len())].join("\n");
         let sig_end_line = frag.start_line() + sig_end as u32 - 1;
         let sig_id = FragmentId::new(frag.id.path.clone(), frag.start_line(), sig_end_line);
 
@@ -308,5 +316,30 @@ mod tests {
             "fallback took too much: {stub:?}"
         );
         assert!(stub.starts_with("class C:"));
+    }
+
+    /// Eligibility is decided from the id's line span, the signature is cut
+    /// from the content. A span claiming lines that the text does not have
+    /// produced an id whose end precedes its start, and `line_count()` on such
+    /// an id is a subtraction overflow in every stage downstream.
+    #[test]
+    fn a_span_wider_than_its_content_yields_no_malformed_signature() {
+        let empty_body = Fragment {
+            id: FragmentId::new(Arc::from("a.src"), 10, 40),
+            kind: FragmentKind::Function,
+            content: Arc::from(""),
+            identifiers: FxHashSet::default(),
+            token_count: 100,
+            symbol_name: Some("target".into()),
+        };
+
+        for sig in generate_signature_variants(&[empty_body]) {
+            assert!(
+                sig.end_line() >= sig.start_line(),
+                "signature id {:?} ends before it starts",
+                sig.id
+            );
+            assert!(sig.line_count() >= 1);
+        }
     }
 }
