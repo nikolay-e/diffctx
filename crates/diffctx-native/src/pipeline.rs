@@ -119,6 +119,38 @@ pub fn build_diff_context_locate(
     Ok(crate::locate::build_locate(&state, &outcome))
 }
 
+/// Line count for an untracked file, or `None` when it is not readable UTF-8
+/// text — the same rejection `read_to_string` gave, so binaries stay excluded.
+///
+/// Counted through a reader rather than by materialising the file. Untracked
+/// files are scanned before any size filter applies (`max_changed_file_size` is
+/// enforced later, in fragmentation), so a dirty tree holding one multi-GB log
+/// allocated the whole thing here just to reach `.lines().count()`. Memory is
+/// now bounded by the buffer instead of the file size, and the count is
+/// unchanged: `str::lines` and `BufRead::lines` agree on `\n` splitting, on
+/// stripping a trailing `\r`, and on not counting a trailing newline as a line.
+///
+/// Counting rather than size-gating keeps this bit-identical: an oversized file
+/// still gets the same hunk it always did. Skipping it outright would also be
+/// safe for the changed-files list (that comes from the untracked scan, not from
+/// hunk emission — a binary is listed today with no hunk at all), but it would
+/// drop a hunk the rest of the pipeline has seen since forever, and nothing
+/// here needs that risk. What remains unbounded is time, not memory: a
+/// multi-GB file is still streamed end to end.
+fn count_text_lines(path: &Path) -> Option<u32> {
+    use std::io::BufRead;
+
+    let file = std::fs::File::open(path).ok()?;
+    let mut count: u32 = 0;
+    for line in std::io::BufReader::new(file).lines() {
+        // Invalid UTF-8 rejects the whole file, as `read_to_string` did — a
+        // partial count would invent a hunk length for a binary.
+        line.ok()?;
+        count = count.saturating_add(1);
+    }
+    Some(count)
+}
+
 /// Heavy phase: clone/parse/fragment/discover/tokenize/score. Independent
 /// of `tau`/`core_budget_fraction`. Designed to be computed ONCE per
 /// instance and reused across an arbitrary number of selection cells.
@@ -147,8 +179,7 @@ pub fn compute_scored_state(
     if is_working_tree_diff {
         if let Ok(files) = git::get_untracked_files(&root_dir) {
             for f in &files {
-                if let Ok(content) = std::fs::read_to_string(f) {
-                    let line_count = content.lines().count() as u32;
+                if let Some(line_count) = count_text_lines(f) {
                     if line_count > 0 {
                         let path_str: Arc<str> = Arc::from(f.to_string_lossy().as_ref());
                         hunks.push(crate::types::DiffHunk {
