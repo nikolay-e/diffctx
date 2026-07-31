@@ -1093,3 +1093,38 @@ fn select_full_mode(all_fragments: &[Fragment], changed_files: &[PathBuf]) -> Ve
     });
     selected
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The raw-diff bundle decides which sections it may disclose by resolving
+    /// each `diff --git` header against the repo root. That guard used to be a
+    /// second, independent copy of the one in `git::parse_path_line`, carrying
+    /// the same lexical-prefix hole; both now share `git::resolve_in_repo`, so
+    /// this pins that a section naming a path outside the root is dropped
+    /// rather than bundled.
+    #[test]
+    fn a_raw_diff_section_escaping_the_root_resolves_to_nothing() {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let base = tmp.path().canonicalize().expect("canonical tempdir");
+        let root = base.join("repo");
+        std::fs::create_dir_all(&root).expect("mkdir repo");
+        std::fs::write(base.join("outside.py"), "secret = 1\n").expect("write outside");
+        std::fs::write(root.join("inside.py"), "x = 1\n").expect("write inside");
+
+        for rel in ["../outside.py", "../missing.py", "sub/../../outside.py"] {
+            let header = format!("diff --git a/{rel} b/{rel}");
+            assert!(
+                section_path(&root, &[header.as_str()]).is_none(),
+                "escaping section accepted: {rel}"
+            );
+        }
+
+        let header = "diff --git a/inside.py b/inside.py";
+        assert!(
+            section_path(&root, &[header]).is_some_and(|p| p.ends_with("inside.py")),
+            "an in-repo section was dropped"
+        );
+    }
+}

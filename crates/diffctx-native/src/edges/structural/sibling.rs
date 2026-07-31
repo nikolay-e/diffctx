@@ -93,3 +93,65 @@ impl EdgeBuilder for SiblingEdgeBuilder {
         Some("sibling")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::FragmentKind;
+    use rustc_hash::FxHashSet as Set;
+    use std::sync::Arc;
+
+    fn frag(path: &str, start: u32) -> Fragment {
+        Fragment {
+            id: crate::types::FragmentId::new(Arc::from(path), start, start + 5),
+            kind: FragmentKind::Function,
+            content: Arc::from(""),
+            identifiers: Set::default(),
+            token_count: 10,
+            symbol_name: None,
+        }
+    }
+
+    /// Grouping deduped files with `Vec::contains` against the bucket, so every
+    /// fragment scanned its directory's whole file list. The buckets it produces
+    /// are what matters: one entry per file, in first-seen order, regardless of
+    /// how many fragments each file contributes.
+    #[test]
+    fn each_file_appears_once_per_directory_in_first_seen_order() {
+        // Several fragments per file, files interleaved across two directories.
+        let fragments = vec![
+            frag("src/b.rs", 1),
+            frag("src/a.rs", 1),
+            frag("src/b.rs", 20),
+            frag("lib/c.rs", 1),
+            frag("src/a.rs", 40),
+            frag("lib/c.rs", 30),
+        ];
+
+        let by_dir = SiblingEdgeBuilder.group_files_by_dir(&fragments);
+
+        assert_eq!(
+            by_dir.get("src").map(Vec::as_slice),
+            Some(&["src/b.rs", "src/a.rs"][..])
+        );
+        assert_eq!(
+            by_dir.get("lib").map(Vec::as_slice),
+            Some(&["lib/c.rs"][..])
+        );
+    }
+
+    /// The per-directory pair loop is quadratic by nature, so the cap is what
+    /// keeps a flat thousand-file directory from emitting a near-dense block.
+    #[test]
+    fn a_directory_over_the_cap_emits_only_the_capped_pairs() {
+        let over = SIBLING.max_files_per_dir + 40;
+        let fragments: Vec<Fragment> = (0..over)
+            .map(|i| frag(&format!("src/f{i:04}.rs"), 1))
+            .collect();
+
+        let edges = SiblingEdgeBuilder.build(&fragments, None);
+        let k = SIBLING.max_files_per_dir;
+        // Every kept pair contributes a forward and a reverse edge.
+        assert_eq!(edges.len(), k * (k - 1));
+    }
+}

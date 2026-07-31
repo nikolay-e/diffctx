@@ -90,3 +90,17 @@ class TestLocateMode:
         assert warned.returncode == 0
         assert "ignored with --mode locate" in warned.stderr
         json.loads(warned.stdout)
+
+    def test_native_build_locate_treats_an_empty_range_as_the_working_tree(self, locate_repo):
+        """`build_diff_context` maps an empty diff_range to the working tree;
+        `build_locate` forwarded `Some("")` into range validation instead, so the
+        two entry points into the same pipeline disagreed about what an
+        unspecified range means."""
+        from diffctx._native.pipeline import build_locate
+
+        repo, _ = locate_repo
+        (repo.path / "src" / "calc.py").write_text("def add(a, b):\n    return a + b + 0\n")
+
+        payload = json.loads(build_locate(repo.path, "", budget_tokens=8000))
+        assert payload["schema"] == "diffctx.locate.v1"
+        assert "src/calc.py" in payload["changed_files"]
