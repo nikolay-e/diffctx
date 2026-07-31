@@ -320,11 +320,45 @@ pub(crate) fn unquote_c_style(quoted: &str) -> String {
     String::from_utf8(result).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
 }
 
-pub(crate) fn parse_path_line(line: &str, repo_root: &Path) -> (&'static str, Option<PathBuf>) {
+/// Resolves a diff-header path against the repository root, or `None` if it
+/// does not stay inside it.
+///
+/// `Path::starts_with` compares components, not locations, and
+/// `canonicalize` fails for any path that does not exist — which is the
+/// normal case for the old side of a deletion, and for a crafted header
+/// naming a file that was never there. The previous guard fell back to the
+/// lexically joined path in that case, and `<root>/../../escape.py` starts
+/// with `<root>` component-wise, so the check passed and the header was
+/// accepted. It only ever failed on macOS, where the temp root canonicalizes
+/// through `/var -> /private/var` and the two spellings stop matching.
+///
+/// A `..` component is therefore rejected outright, before any of this:
+/// git does not emit one for a tracked path, so nothing legitimate needs it,
+/// and downstream `strip_prefix` guards are lexical for exactly the same
+/// reason. Absolute paths are refused for the same reason — `Path::join`
+/// with an absolute argument discards the root entirely.
+fn resolve_in_repo(repo_root: &Path, rel_path: &str) -> Option<PathBuf> {
+    let rel = Path::new(rel_path);
+    if rel.is_absolute()
+        || rel
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return None;
+    }
+
+    let joined = repo_root.join(rel);
     let resolved_root = repo_root
         .canonicalize()
         .unwrap_or_else(|_| repo_root.to_path_buf());
+    let resolved = joined.canonicalize().unwrap_or_else(|_| joined.clone());
+    if !resolved.starts_with(&resolved_root) && !joined.starts_with(repo_root) {
+        return None;
+    }
+    Some(joined)
+}
 
+pub(crate) fn parse_path_line(line: &str, repo_root: &Path) -> (&'static str, Option<PathBuf>) {
     if line.starts_with("--- /dev/null") {
         return ("old", None);
     }
@@ -332,55 +366,30 @@ pub(crate) fn parse_path_line(line: &str, repo_root: &Path) -> (&'static str, Op
         return ("new", None);
     }
 
-    if let Some(rest) = line.strip_prefix("--- a/") {
-        let rel_path = rest.trim();
-        let resolved = (repo_root.join(rel_path))
-            .canonicalize()
-            .unwrap_or_else(|_| repo_root.join(rel_path));
-        if !resolved.starts_with(&resolved_root) {
-            return ("", None);
-        }
-        return ("old", Some(repo_root.join(rel_path)));
-    }
+    let (kind, rel_path) = if let Some(rest) = line.strip_prefix("--- a/") {
+        ("old", rest.trim().to_string())
+    } else if let Some(rest) = line.strip_prefix("+++ b/") {
+        ("new", rest.trim().to_string())
+    } else if let Some(rest) = line.strip_prefix("--- ").filter(|r| r.starts_with("\"a/")) {
+        let unquoted = unquote_c_style(rest.trim());
+        (
+            "old",
+            unquoted.strip_prefix("a/").unwrap_or(&unquoted).to_string(),
+        )
+    } else if let Some(rest) = line.strip_prefix("+++ ").filter(|r| r.starts_with("\"b/")) {
+        let unquoted = unquote_c_style(rest.trim());
+        (
+            "new",
+            unquoted.strip_prefix("b/").unwrap_or(&unquoted).to_string(),
+        )
+    } else {
+        return ("", None);
+    };
 
-    if let Some(rest) = line.strip_prefix("+++ b/") {
-        let rel_path = rest.trim();
-        let resolved = (repo_root.join(rel_path))
-            .canonicalize()
-            .unwrap_or_else(|_| repo_root.join(rel_path));
-        if !resolved.starts_with(&resolved_root) {
-            return ("", None);
-        }
-        return ("new", Some(repo_root.join(rel_path)));
+    match resolve_in_repo(repo_root, &rel_path) {
+        Some(path) => (kind, Some(path)),
+        None => ("", None),
     }
-
-    if let Some(rest) = line.strip_prefix("--- ").filter(|r| r.starts_with("\"a/")) {
-        let quoted = rest.trim();
-        let unquoted = unquote_c_style(quoted);
-        let rel_path = unquoted.strip_prefix("a/").unwrap_or(&unquoted);
-        let resolved = (repo_root.join(rel_path))
-            .canonicalize()
-            .unwrap_or_else(|_| repo_root.join(rel_path));
-        if !resolved.starts_with(&resolved_root) {
-            return ("", None);
-        }
-        return ("old", Some(repo_root.join(rel_path)));
-    }
-
-    if let Some(rest) = line.strip_prefix("+++ ").filter(|r| r.starts_with("\"b/")) {
-        let quoted = rest.trim();
-        let unquoted = unquote_c_style(quoted);
-        let rel_path = unquoted.strip_prefix("b/").unwrap_or(&unquoted);
-        let resolved = (repo_root.join(rel_path))
-            .canonicalize()
-            .unwrap_or_else(|_| repo_root.join(rel_path));
-        if !resolved.starts_with(&resolved_root) {
-            return ("", None);
-        }
-        return ("new", Some(repo_root.join(rel_path)));
-    }
-
-    ("", None)
 }
 
 fn parse_hunk_header(caps: &regex::Captures, path: &Path) -> Option<DiffHunk> {
@@ -1310,6 +1319,47 @@ mod tests {
                 .to_string_lossy(),
             "café.py"
         );
+    }
+
+    /// The containment check is lexical (`Path::starts_with` compares
+    /// components) and `canonicalize` cannot resolve a path that does not
+    /// exist, so the fallback kept `..` in place and `<root>/../x` "started
+    /// with" `<root>`. This only failed on macOS, where the temp root
+    /// canonicalizes through `/var -> /private/var` and the two spellings stop
+    /// matching — so the guard was passing for an accident of layout. Both the
+    /// existing and non-existing target are covered: the first is the one that
+    /// actually reads a file outside the repository.
+    #[test]
+    fn a_header_escaping_the_repo_root_is_refused_whether_or_not_the_target_exists() {
+        let tmp = TempDir::new().expect("tempdir");
+        // Canonicalized on purpose. With the root spelled the same way
+        // `canonicalize` would spell it, the lexical fallback prefix matches and
+        // the hole reproduces here exactly as it did on Linux CI; spelled via a
+        // symlinked temp dir (`/var` on macOS) the mismatch hid it.
+        let base = tmp.path().canonicalize().expect("canonical tempdir");
+        let root = base.join("repo");
+        std::fs::create_dir_all(&root).expect("mkdir repo");
+        std::fs::write(base.join("outside.py"), "secret = 1\n").expect("write outside");
+
+        for rel in ["../outside.py", "../missing.py", "sub/../../outside.py"] {
+            for line in [format!("--- a/{rel}"), format!("+++ b/{rel}")] {
+                let (kind, path) = parse_path_line(&line, &root);
+                assert_eq!(
+                    (kind, path.as_ref()),
+                    ("", None),
+                    "escaping header accepted: {line}"
+                );
+            }
+        }
+
+        // An ordinary in-repo header still resolves, including one whose file
+        // does not exist yet (the old side of a deletion).
+        std::fs::write(root.join("real.py"), "x = 1\n").expect("write real");
+        for rel in ["real.py", "gone.py", "nested/deep.py"] {
+            let (kind, path) = parse_path_line(&format!("--- a/{rel}"), &root);
+            assert_eq!(kind, "old", "in-repo header refused: {rel}");
+            assert!(path.expect("path").ends_with(rel));
+        }
     }
 
     /// The `core.excludesFile` handed to `git check-ignore` used to be written
