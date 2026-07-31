@@ -8,6 +8,12 @@ _PIPELINE_TIMEOUT = 300
 
 _UNLIMITED_BUDGET = 10_000_000
 
+# Mirrors the pyo3 signature defaults by reading them, so this wrapper cannot
+# drift from the engine it wraps. Python always passes `scoring_mode`
+# explicitly, so a literal here would quietly override a changed engine default
+# for every Python and MCP caller.
+from diffctx._diffctx import DEFAULT_SCORING as _DEFAULT_SCORING  # noqa: E402
+
 
 def _normalize_budget(budget_tokens: int | None) -> int | None:
     if budget_tokens is None:
@@ -21,7 +27,7 @@ def compute_scored_state(
     root_dir: Path,
     diff_range: str,
     alpha: float = 0.60,
-    scoring_mode: str = "ego",
+    scoring_mode: str = _DEFAULT_SCORING,
     timeout: int = _PIPELINE_TIMEOUT,
 ) -> Any:
     """Heavy-phase compute, returns an opaque PyScoredState. Reuse it
@@ -64,7 +70,7 @@ def build_locate(
     budget_tokens: int | None = None,
     alpha: float = 0.60,
     tau: float = 0.12,
-    scoring_mode: str = "ego",
+    scoring_mode: str = _DEFAULT_SCORING,
     timeout: int = _PIPELINE_TIMEOUT,
 ) -> str:
     from diffctx._diffctx import build_locate as _rust_locate
@@ -99,7 +105,7 @@ def build_diff_context(
     no_default_ignores: bool = False,
     full: bool = False,
     whitelist_file: Path | None = None,
-    scoring_mode: str = "ego",
+    scoring_mode: str = _DEFAULT_SCORING,
     timeout: int = _PIPELINE_TIMEOUT,
     with_raw_diff: bool = False,
 ) -> dict[str, Any]:

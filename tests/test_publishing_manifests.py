@@ -134,4 +134,11 @@ class TestNativeModuleStub:
         runtime = {n for n in dir(native) if not n.startswith("_")}
         tree = ast.parse((PROJECT_ROOT / "src/diffctx/_diffctx.pyi").read_text(encoding="utf-8"))
         stubbed = {node.name for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}
+        # Module-level constants are part of the surface too: the engine exports
+        # the shipped defaults so the Python layers stop restating them (#175),
+        # and a stub that omits them hides exactly the names callers should be
+        # reading instead of hardcoding.
+        stubbed |= {
+            target.id for node in tree.body if isinstance(node, ast.AnnAssign) and isinstance(target := node.target, ast.Name)
+        }
         assert stubbed == runtime, f"stub-only: {stubbed - runtime}; runtime-only: {runtime - stubbed}"

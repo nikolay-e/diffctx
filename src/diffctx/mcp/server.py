@@ -12,6 +12,7 @@ import anyio.to_thread
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
+from diffctx._diffctx import DEFAULT_TAU as _ENGINE_DEFAULT_TAU
 from diffctx._native import GitError, build_diff_context
 from diffctx.version import __version__
 
@@ -22,11 +23,12 @@ logger = logging.getLogger(__name__)
 
 _T = TypeVar("_T")
 
-# Keep in sync with diffctx.cli._DEFAULT_TAU and the engine's
-# DEFAULT_STOPPING_THRESHOLD (the calibrated grid optimum). The layering
-# contract forbids mcp -> cli, so this user-facing default is duplicated
-# rather than imported.
-_DEFAULT_TAU = 0.12
+# Read from the engine rather than copied. The layering contract forbids
+# mcp -> cli, and the previous answer to that was to restate the number here —
+# which is exactly how the shipped 0.12 came to disagree with two harnesses
+# (#175). Importing the extension crosses no layer: it is what both cli and mcp
+# already sit on top of.
+_DEFAULT_TAU: float = _ENGINE_DEFAULT_TAU
 
 # Mirror diffctx.cli.DEFAULT_MAX_FILE_BYTES (256 KB) so the per-file content
 # cap is identical across the CLI, MCP, and the documented default. Same

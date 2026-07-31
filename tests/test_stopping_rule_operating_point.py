@@ -188,3 +188,28 @@ def test_the_shipped_tau_keeps_the_changed_file(stopping_repo):
     assert any(
         p.endswith("logger.py") for p in paths
     ), f"the changed file is absent from the output at the shipped tau: {sorted(paths)}"
+
+
+def test_the_shipped_defaults_have_exactly_one_source():
+    """Every entry point now reads tau, alpha and the scoring mode from the
+    extension. Restating any of them as a literal is what let the CLI, the MCP
+    server and two harnesses disagree, and it is what would make a future flip
+    of the default scoring mode reach some callers and not others — Python
+    always passes `scoring_mode` explicitly, so a stale literal here silently
+    overrides a changed engine default."""
+    from diffctx import _diffctx
+    from diffctx._native.pipeline import build_diff_context
+    from diffctx.cli import _DEFAULT_ALPHA, _DEFAULT_SCORING, _DEFAULT_TAU
+    from diffctx.mcp.server import _DEFAULT_TAU as MCP_TAU
+
+    assert _DEFAULT_TAU == pytest.approx(_diffctx.DEFAULT_TAU)
+    assert MCP_TAU == pytest.approx(_diffctx.DEFAULT_TAU)
+    assert _DEFAULT_ALPHA == pytest.approx(_diffctx.DEFAULT_ALPHA)
+    assert _DEFAULT_SCORING == _diffctx.DEFAULT_SCORING
+
+    import inspect
+
+    params = inspect.signature(build_diff_context).parameters
+    assert params["scoring_mode"].default == _diffctx.DEFAULT_SCORING
+    assert params["tau"].default == pytest.approx(_diffctx.DEFAULT_TAU)
+    assert params["alpha"].default == pytest.approx(_diffctx.DEFAULT_ALPHA)

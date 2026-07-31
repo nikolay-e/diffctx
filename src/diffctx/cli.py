@@ -7,13 +7,28 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import NoReturn
 
+from diffctx._diffctx import (
+    DEFAULT_ALPHA as _ENGINE_DEFAULT_ALPHA,
+)
+from diffctx._diffctx import (
+    DEFAULT_SCORING as _ENGINE_DEFAULT_SCORING,
+)
+from diffctx._diffctx import (
+    DEFAULT_TAU as _ENGINE_DEFAULT_TAU,
+)
+
 from .version import __version__
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_FILE_BYTES = 256 * 1024  # 256 KB
-_DEFAULT_ALPHA = 0.60
-_DEFAULT_TAU = 0.12
+# Read from the engine, not restated. These same three numbers were written out
+# by hand in the CLI, the MCP server and two eval harnesses, and they drifted:
+# tau shipped as 0.12 while contextbench measured 0.08 and the in-memory runner
+# 0.05 (#175). The extension is the one place that cannot disagree with itself.
+_DEFAULT_ALPHA: float = _ENGINE_DEFAULT_ALPHA
+_DEFAULT_TAU: float = _ENGINE_DEFAULT_TAU
+_DEFAULT_SCORING: str = _ENGINE_DEFAULT_SCORING
 # Mirrors DEFAULT_PIPELINE_TIMEOUT_SECONDS in crates/diffctx-native/src/config/limits.rs.
 _DEFAULT_TIMEOUT = 300
 
@@ -249,7 +264,7 @@ class ParsedArgs:
     budget: int | None = None
     alpha: float = _DEFAULT_ALPHA
     tau: float = _DEFAULT_TAU
-    scoring: str = "ego"
+    scoring: str = _DEFAULT_SCORING
     timeout: int = _DEFAULT_TIMEOUT
     full_diff: bool = False
     with_raw_diff: bool = False
@@ -678,7 +693,7 @@ def _resolve_diff_params(args: argparse.Namespace) -> tuple[str | None, int | No
     budget = None if args.budget is _UNSET else args.budget
     alpha = _DEFAULT_ALPHA if args.alpha is _UNSET else args.alpha
     tau = _DEFAULT_TAU if args.tau is _UNSET else args.tau
-    scoring = "ego" if args.scoring is _UNSET else args.scoring
+    scoring = _DEFAULT_SCORING if args.scoring is _UNSET else args.scoring
     timeout = _DEFAULT_TIMEOUT if args.timeout is _UNSET else args.timeout
     mode = "pack" if args.mode is _UNSET else args.mode
 

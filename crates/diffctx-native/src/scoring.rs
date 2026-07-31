@@ -31,6 +31,37 @@ pub struct ScoringResult {
     pub ppr_backward_pushes: usize,
 }
 
+/// The guard chain every graph-backed strategy ends with: drop what the graph
+/// says is unrelated, drop what scored zero, then cap per file.
+///
+/// EGO, PPR and RRF each spelled this out. BM25 spelled out its own copy of the
+/// middle step instead of calling it — semantically the same today, and exactly
+/// the shape that let the two test-file classifiers drift apart (#182).
+fn finish_scoring(
+    fragments: &[Fragment],
+    core_ids: &FxHashSet<FragmentId>,
+    rel_scores: &FxHashMap<FragmentId, f64>,
+    graph: &Graph,
+) -> Vec<Fragment> {
+    let filtered = filtering::filter_unrelated_fragments(fragments, core_ids, graph);
+    let filtered = filtering::filter_positive_relevance(filtered, core_ids, rel_scores);
+    filtering::cap_context_fragments(filtered, core_ids, rel_scores)
+}
+
+impl Default for ScoringResult {
+    fn default() -> Self {
+        Self {
+            rel_scores: FxHashMap::default(),
+            filtered_fragments: Vec::new(),
+            graph: Graph::new(),
+            graph_build_ms: 0.0,
+            ppr_truncated: false,
+            ppr_forward_pushes: 0,
+            ppr_backward_pushes: 0,
+        }
+    }
+}
+
 pub fn create_scoring_strategy(config: &PipelineConfig) -> Box<dyn ScoringStrategy> {
     match config.scoring {
         ScoringKind::Ego => Box::new(EgoGraphScoring::new(config.ego_depth)),
@@ -96,9 +127,7 @@ impl ScoringStrategy for PPRScoring {
         }
         filtering::apply_hunk_proximity_bonus(&mut rel_scores, core_ids, all_fragments, hunks);
 
-        let filtered = filtering::filter_unrelated_fragments(all_fragments, core_ids, &g);
-        let filtered = filtering::filter_positive_relevance(filtered, core_ids, &rel_scores);
-        let filtered = filtering::cap_context_fragments(filtered, core_ids, &rel_scores);
+        let filtered = finish_scoring(all_fragments, core_ids, &rel_scores, &g);
 
         ScoringResult {
             rel_scores,
@@ -160,18 +189,14 @@ impl ScoringStrategy for EgoGraphScoring {
             }
         }
 
-        let filtered = filtering::filter_unrelated_fragments(all_fragments, core_ids, &g);
-        let filtered = filtering::filter_positive_relevance(filtered, core_ids, &rel_scores);
-        let filtered = filtering::cap_context_fragments(filtered, core_ids, &rel_scores);
+        let filtered = finish_scoring(all_fragments, core_ids, &rel_scores, &g);
 
         ScoringResult {
             rel_scores,
             filtered_fragments: filtered,
             graph: g,
             graph_build_ms,
-            ppr_truncated: false,
-            ppr_forward_pushes: 0,
-            ppr_backward_pushes: 0,
+            ..Default::default()
         }
     }
 }
@@ -263,24 +288,17 @@ impl ScoringStrategy for BM25Scoring {
             }
         }
 
-        let filtered: Vec<Fragment> = all_fragments
-            .iter()
-            .filter(|f| {
-                core_ids.contains(&f.id) || rel_scores.get(&f.id).copied().unwrap_or(0.0) > 0.0
-            })
-            .cloned()
-            .collect();
+        // Deliberately NOT `finish_scoring`: there is no graph here, so the
+        // structural guard has nothing to judge with. The other two steps are
+        // the shared ones rather than a local re-spelling of the same predicate.
+        let filtered =
+            filtering::filter_positive_relevance(all_fragments.to_vec(), core_ids, &rel_scores);
         let filtered = filtering::cap_context_fragments(filtered, core_ids, &rel_scores);
 
-        let g = Graph::new();
         ScoringResult {
             rel_scores,
             filtered_fragments: filtered,
-            graph: g,
-            graph_build_ms: 0.0,
-            ppr_truncated: false,
-            ppr_forward_pushes: 0,
-            ppr_backward_pushes: 0,
+            ..Default::default()
         }
     }
 }
@@ -442,18 +460,14 @@ impl ScoringStrategy for RrfFusionScoring {
         // can have been capped away before it ever reached the ballot. The cap
         // is per file and the losses are cross-file, so this is unlikely to be
         // the 97 — but it has not been isolated.
-        let filtered = filtering::filter_unrelated_fragments(&union, core_ids, &ego.graph);
-        let filtered = filtering::filter_positive_relevance(filtered, core_ids, &rel_scores);
-        let filtered = filtering::cap_context_fragments(filtered, core_ids, &rel_scores);
+        let filtered = finish_scoring(&union, core_ids, &rel_scores, &ego.graph);
 
         ScoringResult {
             rel_scores,
             filtered_fragments: filtered,
             graph: ego.graph,
             graph_build_ms: ego.graph_build_ms,
-            ppr_truncated: false,
-            ppr_forward_pushes: 0,
-            ppr_backward_pushes: 0,
+            ..Default::default()
         }
     }
 }

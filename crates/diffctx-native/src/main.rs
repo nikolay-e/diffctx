@@ -13,7 +13,8 @@ use clap::Parser;
 use tracing_subscriber::EnvFilter;
 
 use _diffctx::config::limits::{
-    DEFAULT_PIPELINE_TIMEOUT_SECONDS, DEFAULT_PPR_ALPHA, DEFAULT_STOPPING_THRESHOLD,
+    DEFAULT_PIPELINE_TIMEOUT_SECONDS, DEFAULT_PPR_ALPHA, DEFAULT_SCORING,
+    DEFAULT_STOPPING_THRESHOLD,
 };
 use _diffctx::mode::ScoringMode;
 use _diffctx::pipeline::build_diff_context;
@@ -74,7 +75,7 @@ struct Cli {
     full: bool,
 
     /// Relevance scoring mode
-    #[arg(long, default_value = "ego", value_parser = ["ppr", "ego", "bm25", "rrf"])]
+    #[arg(long, default_value = DEFAULT_SCORING, value_parser = ["ppr", "ego", "bm25", "rrf"])]
     scoring: String,
 
     /// Output mode: `pack` = context with source bodies; `locate` = ranked

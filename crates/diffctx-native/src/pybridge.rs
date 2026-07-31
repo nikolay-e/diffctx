@@ -6,7 +6,8 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 
 use crate::config::limits::{
-    DEFAULT_PIPELINE_TIMEOUT_SECONDS, DEFAULT_PPR_ALPHA, DEFAULT_STOPPING_THRESHOLD,
+    DEFAULT_PIPELINE_TIMEOUT_SECONDS, DEFAULT_PPR_ALPHA, DEFAULT_SCORING,
+    DEFAULT_STOPPING_THRESHOLD,
 };
 use crate::git::GitError as RustGitError;
 use crate::mode::ScoringMode;
@@ -30,7 +31,7 @@ create_exception!(_diffctx, GitError, pyo3::exceptions::PyException);
     budget_tokens = None,
     alpha = DEFAULT_PPR_ALPHA,
     tau = DEFAULT_STOPPING_THRESHOLD,
-    scoring_mode = "ego",
+    scoring_mode = DEFAULT_SCORING,
     timeout = DEFAULT_PIPELINE_TIMEOUT_SECONDS,
 ))]
 fn build_locate(
@@ -91,7 +92,7 @@ fn map_pipeline_err(e: anyhow::Error) -> PyErr {
     no_default_ignores = false,
     full = false,
     whitelist_file = None,
-    scoring_mode = "ego",
+    scoring_mode = DEFAULT_SCORING,
     timeout = DEFAULT_PIPELINE_TIMEOUT_SECONDS,
 ))]
 fn build_diff_context<'py>(
@@ -162,7 +163,7 @@ fn build_diff_context<'py>(
     root_dir,
     diff_range,
     alpha = DEFAULT_PPR_ALPHA,
-    scoring_mode = "ego",
+    scoring_mode = DEFAULT_SCORING,
     timeout = DEFAULT_PIPELINE_TIMEOUT_SECONDS,
 ))]
 fn compute_scored_state(
@@ -618,6 +619,15 @@ pub fn _diffctx(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyProjectGraph>()?;
     m.add_class::<PyQuotientGraph>()?;
     m.add_class::<PyModuleMetrics>()?;
+    // The shipped defaults, exported so the Python layers read them instead of
+    // restating them. `cli.py` and `mcp/server.py` each carried their own
+    // `_DEFAULT_TAU = 0.12` — the layering contract forbids mcp importing cli,
+    // and the answer to that was a copy. Reading them from the extension keeps
+    // the layering and removes the copy, which is how 0.12/0.08/0.05 drifted
+    // apart across the harnesses in the first place.
+    m.add("DEFAULT_TAU", DEFAULT_STOPPING_THRESHOLD)?;
+    m.add("DEFAULT_ALPHA", DEFAULT_PPR_ALPHA)?;
+    m.add("DEFAULT_SCORING", DEFAULT_SCORING)?;
     m.add("GitError", m.py().get_type::<GitError>())?;
     Ok(())
 }

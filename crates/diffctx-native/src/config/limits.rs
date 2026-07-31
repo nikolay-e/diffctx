@@ -42,6 +42,12 @@ impl Default for AlgorithmLimits {
 /// instead of allocated up front.
 pub const MAX_BLOB_READ_BYTES: usize = 16_000_000;
 
+/// The scoring mode every entry point ships. Named rather than repeated as a
+/// literal in the CLI arg, three pyo3 signatures and the Python layers: those
+/// copies are what would make a future default change land in some entry points
+/// and not others.
+pub const DEFAULT_SCORING: &str = "ego";
+
 pub const DEFAULT_PPR_ALPHA: f64 = 0.60;
 /// Confirmed by the v4 re-calibration on the EGO pipeline (5x3 grid,
 /// v1 calibration manifest): validated winner (tau, cbf) = (0.12, 0.5)
