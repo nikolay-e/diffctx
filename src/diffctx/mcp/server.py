@@ -340,7 +340,14 @@ def _collect_matched_files(validated_path: Path, patterns: list[str], max_files:
             seen.add(resolved)
             total_matched += 1
             if len(matched) < max_files:
-                matched.append(p)
+                # Containment was established on the resolved path, and
+                # `validated_path` is resolved too, so only the resolved form is
+                # guaranteed to be expressible relative to it. The reporters
+                # below call `relative_to` with no fallback, and an unresolved
+                # match — reachable when a pattern is absolute and arrives via a
+                # symlink — is lexically outside the root even though it points
+                # inside, turning an accepted file into an opaque ValueError.
+                matched.append(resolved)
     return matched, total_matched
 
 

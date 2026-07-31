@@ -588,6 +588,23 @@ class TestFileContextTruncationAndDedup:
         assert "TRUNCATED" not in _get_text(result)
 
     @pytest.mark.asyncio
+    async def test_absolute_pattern_reaching_the_repo_through_a_symlink_is_reported(self, server, mcp_repo, tmp_path):
+        """Containment is checked on the resolved path while the report keyed off
+        the raw glob match, so a file accepted as inside the repo could still be
+        inexpressible relative to it — surfacing as an opaque ValueError instead
+        of the file's contents."""
+        link = tmp_path / "repo_link"
+        link.symlink_to(mcp_repo.path, target_is_directory=True)
+
+        result = await server.call_tool(
+            "get_file_context",
+            {"repo_path": str(mcp_repo.path), "patterns": [str(link / "src" / "calc.py")]},
+        )
+        text = _get_text(result)
+        assert "## src/calc.py" in text
+        assert "def add" in text
+
+    @pytest.mark.asyncio
     async def test_overlapping_glob_patterns_do_not_duplicate_files(self, server, mcp_repo):
         result = await server.call_tool(
             "get_file_context",
