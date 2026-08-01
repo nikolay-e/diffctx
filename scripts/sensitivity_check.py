@@ -32,6 +32,8 @@ OPERATIONAL_PARAMS: list[tuple[str, float]] = [
     # unmeasured; if fusion is ever proposed as the default it cannot ship
     # with zero sensitivity data behind its single parameter.
     ("DIFFCTX_RRF_K", 60.0),
+    ("DIFFCTX_PIT_BLEND", 0.65),
+    ("DIFFCTX_PIT_AGREEMENT_BONUS", 0.10),
 ]
 
 PERTURBATION_FACTORS = [0.50, 0.75, 1.25, 1.50]

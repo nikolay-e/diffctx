@@ -155,10 +155,13 @@ def _pool_eval(repos_dir_str: str, instance: BenchmarkInstance, params: RunParam
         result.extra["t_clone_s"] = t_clone_s
         return result
 
-    prior_env = {k: os.environ.get(k) for k in params.to_env()}
+    # Per-instance, so a cell's instances do not overwrite one another's
+    # provenance dump — the variable names a single file, not a directory.
+    cell_env = params.to_env(iid)
+    prior_env = {k: os.environ.get(k) for k in cell_env}
     applied = False
     try:
-        for k, v in params.to_env().items():
+        for k, v in cell_env.items():
             os.environ[k] = v
         print(f"[pid={pid}] {iid} stage=apply t_clone={t_clone_s}s", flush=True)
         t_apply = time.perf_counter()
@@ -290,9 +293,16 @@ def _build_eval_result_from_output(
     return result
 
 
-def _apply_params_env(params: RunParams) -> dict[str, str | None]:
-    prior = {k: os.environ.get(k) for k in params.to_env()}
-    for k, v in params.to_env().items():
+def _apply_params_env(params: RunParams, instance_id: str | None = None) -> dict[str, str | None]:
+    """Apply a cell's env, and route the provenance dump per instance.
+
+    Without the id, `to_env` omits `DIFFCTX_PROVENANCE_DUMP` entirely rather
+    than falling back to a shared path — so forgetting to pass it here would
+    silently collect nothing instead of silently collecting one instance.
+    """
+    env = params.to_env(instance_id)
+    prior = {k: os.environ.get(k) for k in env}
+    for k, v in env.items():
         os.environ[k] = v
     return prior
 
@@ -317,7 +327,7 @@ def _eval_one_cell(
 ) -> None:
     from diffctx._native.pipeline import select_with_params
 
-    prior_env = _apply_params_env(params)
+    prior_env = _apply_params_env(params, instance.instance_id)
     try:
         t_select_start = time.perf_counter()
         cell_timer = _arm_diffctx_kill_switch(bench_timeout)
@@ -364,7 +374,7 @@ def pool_eval_all_cells(
     # DIFFCTX_RELATEDNESS_BONUS, graph depth) is read inside
     # compute_scored_state; applying it only per selection cell in
     # _eval_one_cell would silently no-op those axes in this reuse path.
-    prior_env = _apply_params_env(params_list[0])
+    prior_env = _apply_params_env(params_list[0], instance.instance_id)
     try:
         apply_outcome = apply_gold_patch(repo_dir, instance.gold_patch, "diffctx-eval-gold")
         applied = apply_outcome.applied

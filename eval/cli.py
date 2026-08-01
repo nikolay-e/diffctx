@@ -12,6 +12,8 @@ SUBCOMMANDS = {
     "pin-revisions": ("datasets.pin_revisions", "Pin external dataset revisions"),
     "select-final": ("workflows.select_final", "Select the final calibrated candidate"),
     "equivalence": ("analysis.equivalence_gate", "Check two runs for bit equivalence"),
+    "union-ceiling": ("analysis.union_ceiling", "Upper bound EGO and internal-BM25 reach together"),
+    "discovery-attribution": ("analysis.discovery_attribution", "Split missing gold into never-surfaced vs not-selected"),
     "cell-metrics": ("analysis.cell_metrics", "Summarize a sweep checkpoint"),
     "aggregate-sweep": ("analysis.aggregate_sweep", "Aggregate sweep cells"),
     "stratified-analysis": ("analysis.stratified_analysis", "Run stratified statistical analysis"),

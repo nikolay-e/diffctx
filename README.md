@@ -178,10 +178,13 @@ code --add-mcp '{"name":"diffctx","command":"uvx","args":["--from","diffctx[mcp]
 With `pip install 'diffctx[mcp]'` already done, replace the
 `uvx --from 'diffctx[mcp]' diffctx-mcp` tail with plain `diffctx-mcp`.
 
-The server exposes three tools — `get_diff_context`, `get_tree_map`, and
-`get_file_context` — that assistants call when reviewing PRs, explaining
-changes, or investigating broken tests. Tool reference and JSON configs for
-Claude Desktop, Cursor, Continue, Windsurf, and Zed:
+The server exposes one tool, `diffctx_context`, that assistants call when
+reviewing PRs, explaining changes, or investigating broken tests. It ranks the
+code that explains a diff, then reads only the fragments the assistant picked —
+two calls that pay for the selection instead of a whole pack. The wider
+`get_tree_map` and `get_file_context` tools are opt-in via
+`DIFFCTX_MCP_LEGACY_TOOLS=1`. Tool reference and JSON configs for Claude
+Desktop, Cursor, Continue, Windsurf, and Zed:
 [`src/diffctx/mcp/README.md`](src/diffctx/mcp/README.md).
 
 ## Ignore patterns

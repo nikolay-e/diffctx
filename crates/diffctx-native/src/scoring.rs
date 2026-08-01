@@ -6,7 +6,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::bm25::BM25;
 use crate::config::limits::{LIMITS, PPR};
-use crate::config::scoring::{EGO, rrf};
+use crate::config::scoring::{EGO, pit, rrf};
 use crate::config::tokenization::TOKENIZATION;
 use crate::edges;
 use crate::filtering;
@@ -68,6 +68,7 @@ pub fn create_scoring_strategy(config: &PipelineConfig) -> Box<dyn ScoringStrate
         ScoringKind::Ppr => Box::new(PPRScoring::new(config.ppr_alpha)),
         ScoringKind::Bm25 => Box::new(BM25Scoring),
         ScoringKind::Rrf => Box::new(RrfFusionScoring::new(config.ego_depth)),
+        ScoringKind::Pit => Box::new(PitFusionScoring::new(config.ego_depth)),
     }
 }
 
@@ -460,6 +461,195 @@ impl ScoringStrategy for RrfFusionScoring {
         // can have been capped away before it ever reached the ballot. The cap
         // is per file and the losses are cross-file, so this is unlikely to be
         // the 97 — but it has not been isolated.
+        let filtered = finish_scoring(&union, core_ids, &rel_scores, &ego.graph);
+
+        ScoringResult {
+            rel_scores,
+            filtered_fragments: filtered,
+            graph: ego.graph,
+            graph_build_ms: ego.graph_build_ms,
+            ..Default::default()
+        }
+    }
+}
+
+/// Percentile fusion: the same two signals as RRF, blended on their empirical
+/// distribution position rather than on rank alone.
+///
+/// RRF converts each component to a pure rank, which throws away the magnitude
+/// that says "this scored near zero". Measured on the oracle corpus that costs
+/// 97 cases against EGO and wins 18, all on precision: BM25 gives any
+/// generic-token match a small positive score, and `1/(k + rank)` promotes that
+/// noise to real fused mass (#125).
+///
+/// The probability-integral transform keeps the position. A fragment in the 5th
+/// percentile of a component contributes 0.05 from it, not `1/(k + 12)`. Two
+/// signals that disagree therefore cannot manufacture a strong candidate out of
+/// two weak opinions, which is precisely what the rank form allowed.
+///
+/// `score = blend * PIT(ego) + (1 - blend) * PIT(bm25) + bonus * [both in top-k]`
+///
+/// The agreement term is what fusion is actually for — a fragment both signals
+/// rank highly is more trustworthy than either alone — and it is additive and
+/// small so it breaks ties rather than deciding the ranking.
+pub struct PitFusionScoring {
+    pub ego_depth: usize,
+    pub blend: f64,
+    pub agreement_bonus: f64,
+    pub agreement_top_k: usize,
+}
+
+impl PitFusionScoring {
+    pub fn new(ego_depth: usize) -> Self {
+        let cfg = pit();
+        Self {
+            ego_depth,
+            blend: cfg.blend,
+            agreement_bonus: cfg.agreement_bonus,
+            agreement_top_k: cfg.agreement_top_k,
+        }
+    }
+}
+
+/// Empirical-CDF position in `[0, 1]` for every admitted, positively-scored
+/// fragment, plus the set that sits in the component's own top-k.
+///
+/// Ties share a percentile: two fragments a component cannot separate must not
+/// be separated here either, or the blend would invent a preference the signal
+/// never expressed.
+fn percentiles(
+    rel: &FxHashMap<FragmentId, f64>,
+    admitted: &FxHashSet<FragmentId>,
+    core_ids: &FxHashSet<FragmentId>,
+    top_k: usize,
+) -> (FxHashMap<FragmentId, f64>, FxHashSet<FragmentId>) {
+    let mut ranked: Vec<(&FragmentId, f64)> = rel
+        .iter()
+        .filter(|(fid, score)| **score > 0.0 && !core_ids.contains(*fid) && admitted.contains(*fid))
+        .map(|(fid, score)| (fid, *score))
+        .collect();
+    // Descending by score, id as the tie-break so the traversal is independent
+    // of hash-map iteration order.
+    ranked.sort_by(|(ida, sa), (idb, sb)| sb.total_cmp(sa).then_with(|| ida.cmp(idb)));
+
+    let n = ranked.len();
+    let mut out: FxHashMap<FragmentId, f64> = FxHashMap::default();
+    let mut top: FxHashSet<FragmentId> = FxHashSet::default();
+    if n == 0 {
+        return (out, top);
+    }
+
+    let mut i = 0;
+    while i < n {
+        // One run of equal scores shares the mean percentile of the run.
+        let mut j = i;
+        while j + 1 < n && ranked[j + 1].1.to_bits() == ranked[i].1.to_bits() {
+            j += 1;
+        }
+        // Position 0 is the strongest, so invert: the best fragment gets ~1.0.
+        let mean_pos = (i + j) as f64 / 2.0;
+        let percentile = 1.0 - mean_pos / n as f64;
+        for (fid, _) in &ranked[i..=j] {
+            out.insert((*fid).clone(), percentile);
+        }
+        i = j + 1;
+    }
+    for (fid, _) in ranked.iter().take(top_k) {
+        top.insert((*fid).clone());
+    }
+    (out, top)
+}
+
+impl ScoringStrategy for PitFusionScoring {
+    fn score_and_filter(
+        &self,
+        all_fragments: &[Fragment],
+        core_ids: &FxHashSet<FragmentId>,
+        hunks: &[DiffHunk],
+        repo_root: Option<&Path>,
+        seed_weights: Option<&FxHashMap<FragmentId, f64>>,
+        discovered_paths: Option<&FxHashSet<Arc<str>>>,
+    ) -> ScoringResult {
+        let ego = EgoGraphScoring::new(self.ego_depth).score_and_filter(
+            all_fragments,
+            core_ids,
+            hunks,
+            repo_root,
+            seed_weights,
+            discovered_paths,
+        );
+        let lexical = BM25Scoring.score_and_filter(
+            all_fragments,
+            core_ids,
+            hunks,
+            repo_root,
+            seed_weights,
+            discovered_paths,
+        );
+
+        let ego_admitted: FxHashSet<FragmentId> = ego
+            .filtered_fragments
+            .iter()
+            .map(|f| f.id.clone())
+            .collect();
+        let lexical_admitted: FxHashSet<FragmentId> = lexical
+            .filtered_fragments
+            .iter()
+            .map(|f| f.id.clone())
+            .collect();
+
+        let (ego_pct, ego_top) = percentiles(
+            &ego.rel_scores,
+            &ego_admitted,
+            core_ids,
+            self.agreement_top_k,
+        );
+        let (lex_pct, lex_top) = percentiles(
+            &lexical.rel_scores,
+            &lexical_admitted,
+            core_ids,
+            self.agreement_top_k,
+        );
+
+        let mut rel_scores: FxHashMap<FragmentId, f64> = FxHashMap::default();
+        for fid in ego_pct.keys().chain(lex_pct.keys()) {
+            if rel_scores.contains_key(fid) {
+                continue;
+            }
+            // A fragment only one component admitted contributes 0 from the
+            // other — that is the point. Under RRF an absent component was
+            // simply silent; here it is an explicit "this signal ranks you at
+            // the bottom", which is what stops one weak opinion carrying a
+            // fragment.
+            let e = ego_pct.get(fid).copied().unwrap_or(0.0);
+            let l = lex_pct.get(fid).copied().unwrap_or(0.0);
+            let mut score = self.blend * e + (1.0 - self.blend) * l;
+            if ego_top.contains(fid) && lex_top.contains(fid) {
+                score += self.agreement_bonus;
+            }
+            rel_scores.insert(fid.clone(), score);
+        }
+
+        let max_fused = rel_scores.values().copied().fold(0.0f64, f64::max);
+        if max_fused > 0.0 {
+            for v in rel_scores.values_mut() {
+                *v /= max_fused;
+            }
+        }
+        // Cores anchor the top of the scale, as in every other strategy; the
+        // downstream r_cap and the absolute gates read these values, so the
+        // range has to stay [0, 1].
+        for fid in core_ids {
+            rel_scores.insert(fid.clone(), 1.0);
+        }
+
+        let union_ids: FxHashSet<FragmentId> =
+            ego_admitted.union(&lexical_admitted).cloned().collect();
+        let union: Vec<Fragment> = all_fragments
+            .iter()
+            .filter(|f| union_ids.contains(&f.id))
+            .cloned()
+            .collect();
         let filtered = finish_scoring(&union, core_ids, &rel_scores, &ego.graph);
 
         ScoringResult {

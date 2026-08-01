@@ -233,9 +233,13 @@ def _try_charset_normalizer(raw_bytes: bytes, file_path: Path) -> str | None:
             logger.info("Decoded %s as %s via charset-normalizer", file_path.name, best.encoding)
             return str(best)
     except ImportError:
+        # The optional dependency is absent; the caller's fallback is correct.
         pass
-    except Exception:
-        pass
+    except (OSError, ValueError) as e:
+        # Detection failing is recoverable — the caller falls back — but a bare
+        # `except Exception: pass` here also swallowed programming errors, so
+        # the next real bug in this path would have been invisible.
+        logger.debug("language detection failed: %s", e)
     return None
 
 

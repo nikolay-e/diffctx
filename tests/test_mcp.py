@@ -36,6 +36,21 @@ def server():
     return mcp
 
 
+@pytest.fixture
+def legacy_tools(server):
+    """The pre-v3 tree-map and glob-read tools, which #127 took off by default.
+
+    Registration is idempotent-by-overwrite on the FastMCP registry, so a class
+    that needs them can ask repeatedly. The *default-off* claim is deliberately
+    NOT tested through this fixture — a test that registers the tools cannot
+    also prove they are absent, so that assertion runs in a fresh process
+    (`TestLegacyToolsAreOptIn`).
+    """
+    from diffctx.mcp.server import register_legacy_tools
+
+    register_legacy_tools(server)
+
+
 def _get_text(call_result: tuple) -> str:
     content_blocks = call_result[0]
     return content_blocks[0].text
@@ -131,8 +146,8 @@ class TestGetDiffContext:
     @pytest.mark.asyncio
     async def test_returns_markdown(self, server, mcp_repo):
         result = await server.call_tool(
-            "get_diff_context",
-            {"repo_path": str(mcp_repo.path), "diff_range": "HEAD~1..HEAD"},
+            "diffctx_context",
+            {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD", "mode": "pack"},
         )
         text = _get_text(result)
         assert "```" in text
@@ -141,8 +156,8 @@ class TestGetDiffContext:
     @pytest.mark.asyncio
     async def test_returns_nonempty_for_real_diff(self, server, mcp_repo):
         result = await server.call_tool(
-            "get_diff_context",
-            {"repo_path": str(mcp_repo.path), "diff_range": "HEAD~1..HEAD"},
+            "diffctx_context",
+            {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD", "mode": "pack"},
         )
         text = _get_text(result)
         assert len(text) > 100
@@ -151,20 +166,20 @@ class TestGetDiffContext:
     @pytest.mark.asyncio
     async def test_budget_is_respected(self, server, mcp_repo):
         result_small = await server.call_tool(
-            "get_diff_context",
-            {"repo_path": str(mcp_repo.path), "diff_range": "HEAD~1..HEAD", "budget_tokens": 200},
+            "diffctx_context",
+            {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD", "budget_tokens": 200},
         )
         result_large = await server.call_tool(
-            "get_diff_context",
-            {"repo_path": str(mcp_repo.path), "diff_range": "HEAD~1..HEAD", "budget_tokens": 8000},
+            "diffctx_context",
+            {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD", "budget_tokens": 8000},
         )
         assert len(_get_text(result_small)) <= len(_get_text(result_large))
 
     @pytest.mark.asyncio
     async def test_include_raw_diff_embeds_patch_ahead_of_fragments(self, server, mcp_repo):
         result = await server.call_tool(
-            "get_diff_context",
-            {"repo_path": str(mcp_repo.path), "diff_range": "HEAD~1..HEAD", "include_raw_diff": True},
+            "diffctx_context",
+            {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD", "mode": "pack", "include_raw_diff": True},
         )
         text = _get_text(result)
         assert "## Raw diff" in text
@@ -173,9 +188,9 @@ class TestGetDiffContext:
 
     @pytest.mark.asyncio
     async def test_raw_diff_is_additive_selection_unchanged(self, server, mcp_repo):
-        args = {"repo_path": str(mcp_repo.path), "diff_range": "HEAD~1..HEAD"}
-        without = _get_text(await server.call_tool("get_diff_context", args))
-        with_raw = _get_text(await server.call_tool("get_diff_context", {**args, "include_raw_diff": True}))
+        args = {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD", "mode": "pack"}
+        without = _get_text(await server.call_tool("diffctx_context", args))
+        with_raw = _get_text(await server.call_tool("diffctx_context", {**args, "include_raw_diff": True}))
         assert "## Raw diff" not in without
         raw_start = with_raw.index("## Raw diff")
         fragments_after_raw = with_raw[with_raw.index("\n## ", raw_start + 1) :]
@@ -186,8 +201,8 @@ class TestGetDiffContext:
         import json
 
         result = await server.call_tool(
-            "get_diff_context",
-            {"repo_path": str(mcp_repo.path), "diff_range": "HEAD~1..HEAD", "mode": "locate"},
+            "diffctx_context",
+            {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD", "mode": "locate"},
         )
         doc = json.loads(_get_text(result))
         assert doc["schema"] == "diffctx.locate.v1"
@@ -198,19 +213,19 @@ class TestGetDiffContext:
     async def test_locate_rejects_include_raw_diff(self, server, mcp_repo):
         args = {
             "repo_path": str(mcp_repo.path),
-            "diff_range": "HEAD~1..HEAD",
+            "diff_ref": "HEAD~1..HEAD",
             "mode": "locate",
             "include_raw_diff": True,
         }
         with pytest.raises(ToolError, match="pack"):
-            await server.call_tool("get_diff_context", args)
+            await server.call_tool("diffctx_context", args)
 
     @pytest.mark.asyncio
     async def test_locate_clipboard_degrades_to_inline_json(self, server, mcp_repo, monkeypatch):
         monkeypatch.setattr("diffctx.clipboard.detect_clipboard_command", lambda: None)
         result = await server.call_tool(
-            "get_diff_context",
-            {"repo_path": str(mcp_repo.path), "diff_range": "HEAD~1..HEAD", "mode": "locate", "clipboard": True},
+            "diffctx_context",
+            {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD", "mode": "locate", "clipboard": True},
         )
         text = _get_text(result)
         assert "clipboard unavailable" in text
@@ -219,8 +234,8 @@ class TestGetDiffContext:
     @pytest.mark.asyncio
     async def test_locate_respects_max_tokens_cap(self, server, mcp_repo):
         result = await server.call_tool(
-            "get_diff_context",
-            {"repo_path": str(mcp_repo.path), "diff_range": "HEAD~1..HEAD", "mode": "locate", "max_tokens": 1},
+            "diffctx_context",
+            {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD", "mode": "locate", "max_tokens": 1},
         )
         text = _get_text(result)
         assert "exceeding max_tokens" in text
@@ -230,37 +245,39 @@ class TestGetDiffContext:
     async def test_invalid_mode_is_rejected(self, server, mcp_repo):
         args = {"repo_path": str(mcp_repo.path), "mode": "navigate"}
         with pytest.raises(ToolError, match="mode"):
-            await server.call_tool("get_diff_context", args)
+            await server.call_tool("diffctx_context", args)
 
     @pytest.mark.asyncio
     async def test_invalid_repo_path(self, server, tmp_path):
-        args = {"repo_path": str(tmp_path / "nonexistent"), "diff_range": "HEAD~1..HEAD"}
+        args = {"repo_path": str(tmp_path / "nonexistent"), "diff_ref": "HEAD~1..HEAD"}
         with pytest.raises(ToolError, match="Not a directory"):
-            await server.call_tool("get_diff_context", args)
+            await server.call_tool("diffctx_context", args)
 
     @pytest.mark.asyncio
     async def test_not_a_git_repo(self, server, tmp_path):
         plain_dir = tmp_path / "not_a_repo"
         plain_dir.mkdir()
-        args = {"repo_path": str(plain_dir), "diff_range": "HEAD~1..HEAD"}
+        args = {"repo_path": str(plain_dir), "diff_ref": "HEAD~1..HEAD"}
         with pytest.raises(ToolError, match="Not a git repository"):
-            await server.call_tool("get_diff_context", args)
+            await server.call_tool("diffctx_context", args)
 
     @pytest.mark.asyncio
     async def test_allowed_paths_enforcement(self, server, mcp_repo, monkeypatch):
         monkeypatch.setenv("DIFFCTX_ALLOWED_PATHS", "/some/other/path")
-        args = {"repo_path": str(mcp_repo.path), "diff_range": "HEAD~1..HEAD"}
+        args = {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD"}
         with pytest.raises(ToolError, match="not in allowed paths"):
-            await server.call_tool("get_diff_context", args)
+            await server.call_tool("diffctx_context", args)
 
     @pytest.mark.asyncio
     async def test_invalid_diff_range(self, server, mcp_repo):
-        args = {"repo_path": str(mcp_repo.path), "diff_range": "nonexistent_ref..HEAD"}
+        args = {"repo_path": str(mcp_repo.path), "diff_ref": "nonexistent_ref..HEAD"}
         with pytest.raises(ToolError):
-            await server.call_tool("get_diff_context", args)
+            await server.call_tool("diffctx_context", args)
 
 
 class TestGetTreeMap:
+    pytestmark = pytest.mark.usefixtures("legacy_tools")
+
     @pytest.mark.asyncio
     async def test_returns_tree_for_repo(self, server, mcp_repo):
         result = await server.call_tool(
@@ -302,6 +319,8 @@ class TestGetTreeMap:
 
 
 class TestGetFileContext:
+    pytestmark = pytest.mark.usefixtures("legacy_tools")
+
     @pytest.mark.asyncio
     async def test_glob_returns_matched_file_contents(self, server, mcp_repo):
         result = await server.call_tool(
@@ -333,6 +352,8 @@ class TestGetFileContext:
 
 
 class TestPathTraversalContainment:
+    pytestmark = pytest.mark.usefixtures("legacy_tools")
+
     @pytest.mark.asyncio
     async def test_get_file_context_glob_traversal_returns_only_contained_paths(self, server, mcp_repo):
         outside_secret = mcp_repo.path.parent / "secret.txt"
@@ -352,6 +373,7 @@ class TestPathTraversalContainment:
 
 
 class TestToolDeadline:
+    pytestmark = pytest.mark.usefixtures("legacy_tools")
     """The engine caps each git subprocess but not the CPU-bound phases, and
     the MCP path has no CLI watchdog behind it — without a deadline in the tool
     itself one call wedges the server for the lifetime of the client."""
@@ -374,6 +396,7 @@ class TestToolDeadline:
 
 
 class TestSymlinkJail:
+    pytestmark = pytest.mark.usefixtures("legacy_tools")
     """The allow-list is only a jail if containment is decided on the real path:
     a symlink sitting inside an allowed directory otherwise hands the server
     read access to whatever it points at."""
@@ -389,9 +412,9 @@ class TestSymlinkJail:
         link.symlink_to(outside.path, target_is_directory=True)
 
         monkeypatch.setenv("DIFFCTX_ALLOWED_PATHS", str(allowed))
-        args = {"repo_path": str(link), "diff_range": "HEAD"}
+        args = {"repo_path": str(link), "diff_ref": "HEAD"}
         with pytest.raises(ToolError, match="not in allowed paths"):
-            await server.call_tool("get_diff_context", args)
+            await server.call_tool("diffctx_context", args)
 
     @pytest.mark.asyncio
     async def test_get_file_context_does_not_follow_symlink_out_of_repo(self, server, mcp_repo):
@@ -418,32 +441,32 @@ class TestSymlinkJail:
 
 
 class TestBudgetTokensValidation:
-    """budget_tokens is the only get_diff_context parameter with no guard: a
+    """budget_tokens is the only diffctx_context parameter with no guard: a
     negative value below the -1 unlimited sentinel used to sail straight
     into the native pipeline, and 0 (a legitimate strict-zero floor) had no
     documented meaning at this surface."""
 
     @pytest.mark.asyncio
     async def test_value_below_unlimited_sentinel_is_rejected(self, server, mcp_repo):
-        args = {"repo_path": str(mcp_repo.path), "diff_range": "HEAD~1..HEAD", "budget_tokens": -2}
+        args = {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD", "budget_tokens": -2}
         with pytest.raises(ToolError, match=r"budget_tokens must be >= -1"):
-            await server.call_tool("get_diff_context", args)
+            await server.call_tool("diffctx_context", args)
 
     @pytest.mark.asyncio
     async def test_strict_zero_floor_is_accepted(self, server, mcp_repo):
         result = await server.call_tool(
-            "get_diff_context",
-            {"repo_path": str(mcp_repo.path), "diff_range": "HEAD~1..HEAD", "budget_tokens": 0},
+            "diffctx_context",
+            {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD", "budget_tokens": 0},
         )
         assert isinstance(_get_text(result), str)
 
     @pytest.mark.asyncio
     async def test_unlimited_budget_is_still_capped_by_max_tokens(self, server, mcp_repo):
         result = await server.call_tool(
-            "get_diff_context",
+            "diffctx_context",
             {
                 "repo_path": str(mcp_repo.path),
-                "diff_range": "HEAD~1..HEAD",
+                "diff_ref": "HEAD~1..HEAD",
                 "budget_tokens": -1,
                 "max_tokens": 50,
             },
@@ -464,6 +487,8 @@ class TestTokenBudgetGuardExecutes:
     run the full parse+graph+selection pipeline over a 4000-function file at
     an unlimited budget, which fits 10s locally but not on a loaded CI
     runner sharing the box with xdist siblings."""
+
+    pytestmark = pytest.mark.usefixtures("legacy_tools")
 
     @pytest.fixture
     def big_file_repo(self, tmp_path):
@@ -512,12 +537,12 @@ class TestTokenBudgetGuardExecutes:
         assert "func_0" in _get_text(result)
 
     @pytest.mark.asyncio
-    async def test_get_diff_context_over_budget_returns_notice(self, server, big_file_repo):
+    async def test_diffctx_context_over_budget_returns_notice(self, server, big_file_repo):
         result = await server.call_tool(
-            "get_diff_context",
+            "diffctx_context",
             {
                 "repo_path": str(big_file_repo.path),
-                "diff_range": "HEAD~1..HEAD",
+                "diff_ref": "HEAD~1..HEAD",
                 "budget_tokens": -1,
                 "max_tokens": 100,
             },
@@ -526,12 +551,12 @@ class TestTokenBudgetGuardExecutes:
         assert "exceeding max_tokens=100" in text
 
     @pytest.mark.asyncio
-    async def test_get_diff_context_under_generous_budget_returns_content(self, server, big_file_repo):
+    async def test_diffctx_context_under_generous_budget_returns_content(self, server, big_file_repo):
         result = await server.call_tool(
-            "get_diff_context",
+            "diffctx_context",
             {
                 "repo_path": str(big_file_repo.path),
-                "diff_range": "HEAD~1..HEAD",
+                "diff_ref": "HEAD~1..HEAD",
                 "budget_tokens": -1,
                 "max_tokens": 200_000,
             },
@@ -545,6 +570,8 @@ class TestFileContextTruncationAndDedup:
     no way to tell a full read from a partial one. Overlapping glob patterns
     (a natural LLM-authored pair) also burned slots twice for the same
     file."""
+
+    pytestmark = pytest.mark.usefixtures("legacy_tools")
 
     @pytest.fixture
     def many_files_repo(self, tmp_path):
@@ -623,12 +650,14 @@ class TestClipboardDegradation:
     to stdout in that case; the MCP tools must not throw away already-computed
     content and raise a bare ToolError instead."""
 
+    pytestmark = pytest.mark.usefixtures("legacy_tools")
+
     @pytest.mark.asyncio
-    async def test_get_diff_context_degrades_instead_of_raising(self, server, mcp_repo, monkeypatch):
+    async def test_diffctx_context_degrades_instead_of_raising(self, server, mcp_repo, monkeypatch):
         monkeypatch.setattr("diffctx.clipboard.detect_clipboard_command", lambda: None)
         result = await server.call_tool(
-            "get_diff_context",
-            {"repo_path": str(mcp_repo.path), "diff_range": "HEAD~1..HEAD", "clipboard": True},
+            "diffctx_context",
+            {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD", "clipboard": True},
         )
         text = _get_text(result)
         assert "clipboard unavailable" in text
@@ -658,7 +687,7 @@ class TestClipboardDegradation:
 
 
 class TestRepoPathWalksUpToRoot:
-    """get_diff_context(repo_path='/repo/src') used to fail with 'Not a git
+    """diffctx_context(repo_path='/repo/src') used to fail with 'Not a git
     repository' even though it plainly is inside one. repo_path only locates
     the .git directory (diff_range still addresses the whole repo), so
     walking up to the repo root is safe and turns a dead end into a working
@@ -672,8 +701,8 @@ class TestRepoPathWalksUpToRoot:
     @pytest.mark.asyncio
     async def test_subdirectory_of_a_normal_repo_is_accepted(self, server, mcp_repo):
         result = await server.call_tool(
-            "get_diff_context",
-            {"repo_path": str(mcp_repo.path / "src"), "diff_range": "HEAD~1..HEAD"},
+            "diffctx_context",
+            {"repo_path": str(mcp_repo.path / "src"), "diff_ref": "HEAD~1..HEAD"},
         )
         assert "calc.py" in _get_text(result)
 
@@ -682,8 +711,8 @@ class TestRepoPathWalksUpToRoot:
         worktree_path = tmp_path / "wt"
         self._run_git("worktree", "add", str(worktree_path), "-b", "wt-branch", cwd=mcp_repo.path)
         result = await server.call_tool(
-            "get_diff_context",
-            {"repo_path": str(worktree_path / "src"), "diff_range": "HEAD~1..HEAD"},
+            "diffctx_context",
+            {"repo_path": str(worktree_path / "src"), "diff_ref": "HEAD~1..HEAD"},
         )
         assert "calc.py" in _get_text(result)
 
@@ -692,8 +721,8 @@ class TestRepoPathWalksUpToRoot:
         bare_path = tmp_path / "bare.git"
         self._run_git("clone", "--bare", str(mcp_repo.path), str(bare_path), cwd=tmp_path)
         result = await server.call_tool(
-            "get_diff_context",
-            {"repo_path": str(bare_path), "diff_range": "HEAD~1..HEAD"},
+            "diffctx_context",
+            {"repo_path": str(bare_path), "diff_ref": "HEAD~1..HEAD"},
         )
         assert "calc.py" in _get_text(result)
 
@@ -701,9 +730,9 @@ class TestRepoPathWalksUpToRoot:
     async def test_a_directory_with_no_git_repo_anywhere_above_it_is_still_rejected(self, server, tmp_path):
         plain_dir = tmp_path / "not_a_repo"
         plain_dir.mkdir()
-        args = {"repo_path": str(plain_dir), "diff_range": "HEAD~1..HEAD"}
+        args = {"repo_path": str(plain_dir), "diff_ref": "HEAD~1..HEAD"}
         with pytest.raises(ToolError, match="Not a git repository"):
-            await server.call_tool("get_diff_context", args)
+            await server.call_tool("diffctx_context", args)
 
 
 class TestConcurrencyAndTimeoutRecovery:
@@ -712,6 +741,8 @@ class TestConcurrencyAndTimeoutRecovery:
     that goal — it just checked the error string. These tests exercise the
     stated goal directly: a following call must still succeed, and two real
     calls must be able to run concurrently."""
+
+    pytestmark = pytest.mark.usefixtures("legacy_tools")
 
     @pytest.mark.asyncio
     async def test_server_stays_responsive_after_a_timed_out_call(self, server, mcp_repo, monkeypatch):
@@ -730,8 +761,8 @@ class TestConcurrencyAndTimeoutRecovery:
     async def test_concurrent_tool_calls_on_a_real_repo_both_succeed(self, server, mcp_repo):
         diff_result, tree_result = await asyncio.gather(
             server.call_tool(
-                "get_diff_context",
-                {"repo_path": str(mcp_repo.path), "diff_range": "HEAD~1..HEAD"},
+                "diffctx_context",
+                {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD"},
             ),
             server.call_tool("get_tree_map", {"repo_path": str(mcp_repo.path)}),
         )
@@ -750,24 +781,24 @@ class TestGitRefInjection:
     )
     @pytest.mark.asyncio
     async def test_option_shaped_range_is_refused_before_git_sees_it(self, server, mcp_repo, diff_range):
-        args = {"repo_path": str(mcp_repo.path), "diff_range": diff_range}
+        args = {"repo_path": str(mcp_repo.path), "diff_ref": diff_range}
         with pytest.raises(ToolError, match="invalid diff range:"):
-            await server.call_tool("get_diff_context", args)
+            await server.call_tool("diffctx_context", args)
 
     @pytest.mark.asyncio
     async def test_dashes_inside_a_ref_name_still_reach_git(self, server, mcp_repo):
         """The syntax gate rejects a leading dash only. A branch named
         `no-such-branch` must still be resolved by git, not refused as
         malformed."""
-        args = {"repo_path": str(mcp_repo.path), "diff_range": "no-such-branch..HEAD"}
+        args = {"repo_path": str(mcp_repo.path), "diff_ref": "no-such-branch..HEAD"}
         with pytest.raises(ToolError, match="git log --oneline"):
-            await server.call_tool("get_diff_context", args)
+            await server.call_tool("diffctx_context", args)
 
     @pytest.mark.asyncio
     async def test_ordinary_range_is_unaffected(self, server, mcp_repo):
         result = await server.call_tool(
-            "get_diff_context",
-            {"repo_path": str(mcp_repo.path), "diff_range": "HEAD~1..HEAD"},
+            "diffctx_context",
+            {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD"},
         )
         assert "calc.py" in _get_text(result)
 
@@ -777,6 +808,8 @@ class TestFileContextHonoursTheIgnoreContract:
     MCP server exposes. It used to glob without the ignore specs that
     `get_tree_map` and diff mode both apply, which made `.diffctx/ignore` — a
     security contract per QA.md — advisory for anyone who asked directly."""
+
+    pytestmark = pytest.mark.usefixtures("legacy_tools")
 
     @staticmethod
     def _repo(tmp_path):
@@ -816,3 +849,235 @@ class TestFileContextHonoursTheIgnoreContract:
 
         assert "secrets" not in text
         assert "deploy.key" not in text
+
+
+@pytest.mark.timeout(60)
+class TestProgressiveDisclosure:
+    """The two-call shape #127 collapsed the server onto: rank, then read.
+
+    The acceptance criterion is behavioural, not cosmetic — a diff question has
+    to be answerable in two calls, with the second one addressed entirely by
+    fields the first returned.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_diff_question_is_answered_in_two_calls(self, server, mcp_repo):
+        import json
+
+        ranking = json.loads(
+            _get_text(
+                await server.call_tool(
+                    "diffctx_context",
+                    {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD"},
+                )
+            )
+        )
+        # Ids are built from the ranking's own fields, with no side table: that
+        # is what makes the second call derivable from the first.
+        ids = [f"{i['path']}:{i['lines']}" for i in ranking["items"][:3]]
+        assert ids
+
+        bodies = _get_text(
+            await server.call_tool(
+                "diffctx_context",
+                {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD", "fragment_ids": ids},
+            )
+        )
+        assert "def subtract(a, b):" in bodies
+        assert "```" in bodies
+
+    @pytest.mark.asyncio
+    async def test_fragment_ids_win_over_mode(self, server, mcp_repo):
+        """Passing ids means "read these"; it must not silently return a ranking
+        because `mode` still holds its default."""
+        text = _get_text(
+            await server.call_tool(
+                "diffctx_context",
+                {
+                    "repo_path": str(mcp_repo.path),
+                    "diff_ref": "HEAD~1..HEAD",
+                    "mode": "locate",
+                    "fragment_ids": ["src/calc.py:1-2"],
+                },
+            )
+        )
+        assert "diffctx.locate.v1" not in text
+        assert "def add(a, b):" in text
+
+    @pytest.mark.asyncio
+    async def test_bodies_come_from_the_revision_the_ranking_used(self, server, tmp_path):
+        """The line numbers in a ranking belong to the diff's end revision, so
+        the bodies must be read there too.
+
+        Reading the working tree instead would mis-slice every fragment on any
+        historical range — and still look like source, which is why this is
+        pinned rather than left to review.
+        """
+        repo = Pygit2Repo(tmp_path / "revision_repo")
+        repo.add_file("mod.py", "def one():\n    return 1\n")
+        repo.commit("first")
+        repo.add_file("mod.py", "def one():\n    return 1\n\n\ndef two():\n    return 2\n")
+        repo.commit("second")
+        # A third commit moves the working tree past the range under test.
+        repo.add_file("mod.py", "def one():\n    return 1\n\n\ndef LATER():\n    return 99\n")
+        repo.commit("third")
+
+        text = _get_text(
+            await server.call_tool(
+                "diffctx_context",
+                {"repo_path": str(repo.path), "diff_ref": "HEAD~2..HEAD~1", "fragment_ids": ["mod.py:5-6"]},
+            )
+        )
+        assert "def two():" in text
+        assert "LATER" not in text
+
+    @pytest.mark.asyncio
+    async def test_a_declared_exclusion_is_not_readable_through_fragment_ids(self, server, tmp_path):
+        """`.diffctx/ignore` is a security contract per QA.md. fragment_ids is a
+        new read surface, and an id can arrive from anything the model read, so
+        the contract is enforced here or it is advisory again."""
+        root = tmp_path / "jail_repo"
+        (root / ".diffctx").mkdir(parents=True)
+        (root / ".diffctx" / "ignore").write_text("secrets/\n*.key\n")
+        (root / "secrets").mkdir()
+        (root / "secrets" / "prod.env").write_text("API_TOKEN=must-not-surface\n")
+        (root / "deploy.key").write_text("PRIVATE-KEY-must-not-surface\n")
+        repo = Pygit2Repo(root)
+        repo.add_file("app.py", "def run():\n    return 1\n")
+        repo.commit("initial")
+
+        text = _get_text(
+            await server.call_tool(
+                "diffctx_context",
+                {
+                    "repo_path": str(root),
+                    "diff_ref": "HEAD",
+                    "fragment_ids": ["secrets/prod.env", "deploy.key"],
+                },
+            )
+        )
+        assert "must-not-surface" not in text
+        assert "API_TOKEN" not in text
+
+    @pytest.mark.asyncio
+    async def test_an_id_escaping_the_repo_is_refused(self, server, mcp_repo, tmp_path):
+        outside = tmp_path / "outside.txt"
+        outside.write_text("OUTSIDE-must-not-surface\n")
+        text = _get_text(
+            await server.call_tool(
+                "diffctx_context",
+                {
+                    "repo_path": str(mcp_repo.path),
+                    "diff_ref": "HEAD~1..HEAD",
+                    "fragment_ids": ["../outside.txt", str(outside)],
+                },
+            )
+        )
+        assert "OUTSIDE-must-not-surface" not in text
+
+    @pytest.mark.asyncio
+    async def test_one_malformed_id_costs_that_id_not_the_call(self, server, mcp_repo):
+        text = _get_text(
+            await server.call_tool(
+                "diffctx_context",
+                {
+                    "repo_path": str(mcp_repo.path),
+                    "diff_ref": "HEAD~1..HEAD",
+                    "fragment_ids": ["src/calc.py:1-2", "src/calc.py:9-3", "no/such/file.py:1-2"],
+                },
+            )
+        )
+        assert "def add(a, b):" in text
+        # Every id is accounted for: a dropped one would read as "empty
+        # fragment" rather than "refused fragment".
+        assert "Unparseable" in text
+        assert "Not found" in text
+
+    @pytest.mark.asyncio
+    async def test_a_batch_larger_than_the_limit_is_refused(self, server, mcp_repo):
+        from diffctx.mcp.fetch import MAX_FETCH_IDS
+
+        args = {
+            "repo_path": str(mcp_repo.path),
+            "diff_ref": "HEAD~1..HEAD",
+            "fragment_ids": [f"src/calc.py:{i}-{i}" for i in range(MAX_FETCH_IDS + 1)],
+        }
+        with pytest.raises(ToolError, match="pack"):
+            await server.call_tool("diffctx_context", args)
+
+
+class TestLegacyToolsAreOptIn:
+    """#127's cost claim only holds if the wide tools are genuinely absent by
+    default, so this runs in a fresh process: the registration is read from the
+    environment at import, and a test that registers them in-process cannot
+    also prove they are missing.
+    """
+
+    @staticmethod
+    def _tool_names(env_extra: dict[str, str]) -> list[str]:
+        import json
+        import os
+        import sys
+
+        script = (
+            "import asyncio, json\n"
+            "from diffctx.mcp.server import mcp\n"
+            "print(json.dumps([t.name for t in asyncio.run(mcp.list_tools())]))\n"
+        )
+        proc = subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            env={**os.environ, **env_extra},
+        )
+        assert proc.returncode == 0, proc.stderr
+        names: list[str] = json.loads(proc.stdout.strip().splitlines()[-1])
+        return names
+
+    def test_a_default_server_exposes_only_the_one_tool(self):
+        assert self._tool_names({"DIFFCTX_MCP_LEGACY_TOOLS": ""}) == ["diffctx_context"]
+
+    def test_the_flag_restores_the_pre_v3_surface(self):
+        names = self._tool_names({"DIFFCTX_MCP_LEGACY_TOOLS": "1"})
+        assert set(names) == {"diffctx_context", "get_tree_map", "get_file_context"}
+
+
+class TestToolDefinitionBudget:
+    """#127's gate, pinned so it cannot decay by prose creep.
+
+    Definitions are sent on every request of every session before any work
+    happens, so this cost is paid by every window the server is installed in
+    whether or not the tool is ever called. The three-tool surface measured 1063
+    tokens; the ceilings below leave room to edit but not to drift back.
+    """
+
+    @staticmethod
+    def _definition_tokens(tool) -> int:
+        import json
+
+        import tiktoken
+
+        enc = tiktoken.get_encoding("o200k_base")
+        payload = {"name": tool.name, "description": tool.description, "inputSchema": tool.inputSchema}
+        return len(enc.encode(json.dumps(payload, separators=(",", ":"))))
+
+    @pytest.mark.asyncio
+    async def test_the_default_surface_stays_under_the_budget(self, server):
+        tools = [t for t in await server.list_tools() if t.name == "diffctx_context"]
+        assert len(tools) == 1
+        total = self._definition_tokens(tools[0])
+        # 1063 * 0.4 = 425: the acceptance criterion was a >=60% cut.
+        assert total <= 425, f"tool definition grew to {total} tokens, above the #127 budget"
+
+    @pytest.mark.asyncio
+    async def test_the_description_stays_under_the_budget(self, server):
+        import tiktoken
+
+        tool = next(t for t in await server.list_tools() if t.name == "diffctx_context")
+        enc = tiktoken.get_encoding("o200k_base")
+        n = len(enc.encode(tool.description))
+        assert n <= 80, f"description grew to {n} tokens, above the #127 budget of 80"
+        # The safety boundary is part of that budget, not an exemption from it:
+        # trimming prose must not be achieved by trimming this.
+        assert "untrusted" in tool.description

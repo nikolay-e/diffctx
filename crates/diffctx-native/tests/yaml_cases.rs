@@ -265,6 +265,26 @@ fn format_failure(
     if !oracle.hit_forbidden.is_empty() {
         msg.push_str(&format!("present forbidden: {:?}\n", oracle.hit_forbidden));
     }
+    // Reported, not scored. `score = recall * (1 - forbidden_rate)` carries no
+    // term for over-selection, so a case that finds everything and buries it
+    // reads the same as one that finds everything cleanly. The share of emitted
+    // fragments that actually carry the diff separates those two at a glance,
+    // and it is the number a reader wants first when recall is 100% and the
+    // case still failed. Diagnostic only — changing the formula changes the
+    // gate, which is not a debugging decision.
+    let changed = output
+        .fragments
+        .iter()
+        .filter(|f| f.role.as_deref() == Some("changed"))
+        .count();
+    if !output.fragments.is_empty() {
+        msg.push_str(&format!(
+            "changed-fragment share: {:.2} ({} of {})\n",
+            changed as f64 / output.fragments.len() as f64,
+            changed,
+            output.fragments.len()
+        ));
+    }
     msg.push_str(&format!(
         "selected fragments ({}):\n",
         output.fragments.len()
@@ -316,8 +336,25 @@ fn known_below_threshold() -> &'static std::collections::BTreeSet<String> {
     })
 }
 
+/// The gate runs the SHIPPED default and nothing else — see the header of
+/// `known_below_threshold.txt` for why that matters (#175: three harnesses each
+/// scored a private tau nobody ships).
+///
+/// `DIFFCTX_PROBE_MODE` exists to compare a candidate scoring mode against that
+/// default on the same corpus, which is how RRF was measured at 450 and PIT at
+/// 410 against EGO's 371. It is a measurement knob, deliberately NOT wired into
+/// the baseline file: a probe run is only meaningful with
+/// `DIFFCTX_YAML_IGNORE_BASELINE=1`, since the baseline enumerates EGO's
+/// failures and a different mode fails a different set.
 fn run_case(case_name: &str, case_path: &Path) -> Result<(), Failed> {
-    run_case_with_scoring(case_name, case_path, ScoringMode::Ego, false)
+    let mode = match std::env::var("DIFFCTX_PROBE_MODE").as_deref() {
+        Ok("rrf") => ScoringMode::Rrf,
+        Ok("pit") => ScoringMode::Pit,
+        Ok("ppr") => ScoringMode::Ppr,
+        Ok("bm25") => ScoringMode::Bm25,
+        _ => ScoringMode::Ego,
+    };
+    run_case_with_scoring(case_name, case_path, mode, false)
 }
 
 /// `contributes_context_only` skips the oracle and asserts only that the

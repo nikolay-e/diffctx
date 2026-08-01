@@ -38,3 +38,32 @@ impl Default for RrfConfig {
 pub fn rrf() -> RrfConfig {
     RrfConfig::default()
 }
+
+pub struct PitConfig {
+    /// Weight on the structural component. `1 - blend` goes to the lexical one.
+    pub blend: f64,
+    /// Bonus added when both components place a fragment inside their own
+    /// top-`agreement_top_k`.
+    pub agreement_bonus: f64,
+    pub agreement_top_k: usize,
+}
+
+impl Default for PitConfig {
+    fn default() -> Self {
+        Self {
+            // Structural-leaning, because EGO is the measured stronger arm: it
+            // sits 79 cases ahead of RRF on the oracle corpus. An even blend
+            // would start the successor behind the mode it is replacing.
+            blend: read_env_f64("DIFFCTX_PIT_BLEND", 0.65).clamp(0.0, 1.0),
+            // Agreement is worth something but must not dominate a percentile:
+            // both components are in [0, 1], so a bonus above ~0.2 would let
+            // agreement alone outrank a fragment either signal ranks highly.
+            agreement_bonus: read_env_f64("DIFFCTX_PIT_AGREEMENT_BONUS", 0.10).clamp(0.0, 1.0),
+            agreement_top_k: read_env_f64("DIFFCTX_PIT_AGREEMENT_TOP_K", 20.0).max(1.0) as usize,
+        }
+    }
+}
+
+pub fn pit() -> PitConfig {
+    PitConfig::default()
+}

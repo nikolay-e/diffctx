@@ -178,10 +178,13 @@ def _single_budget_record(cell_root: Path, meta: dict, cell_info: dict, parsed, 
 # `bALL` marks a multi-budget cell (issue #52); its per-budget records are
 # expanded from the b<budget>.checkpoint.jsonl files inside.
 _ARTIFACT_RE_WITH_DEPTH = __import__("re").compile(
-    r"^cell-(?P<method>[a-zA-Z0-9_]+)-b(?P<budget>-?\d+|ALL)-L(?P<depth>-?\d+)-(?P<test_set>.+)$"
+    # `-` is in the method class because `internal-bm25` contains one. The
+    # parse stays unambiguous: the segment after it must be `b<digits|ALL>`,
+    # which no method name can be mistaken for.
+    r"^cell-(?P<method>[a-zA-Z0-9_-]+)-b(?P<budget>-?\d+|ALL)-L(?P<depth>-?\d+)-(?P<test_set>.+)$"
 )
 # Legacy artifact layout: cell-<method>-b<budget>-<test_set> (no depth segment)
-_ARTIFACT_RE_LEGACY = __import__("re").compile(r"^cell-(?P<method>[a-zA-Z0-9_]+)-b(?P<budget>-?\d+)-(?P<test_set>.+)$")
+_ARTIFACT_RE_LEGACY = __import__("re").compile(r"^cell-(?P<method>[a-zA-Z0-9_-]+)-b(?P<budget>-?\d+)-(?P<test_set>.+)$")
 
 _BUDGET_CKPT_RE = __import__("re").compile(r"^b(?P<budget>-?\d+)\.checkpoint\.jsonl$")
 
@@ -224,7 +227,11 @@ def _depth_of(cell: dict) -> int:
     return d if isinstance(d, int) else -1
 
 
-_METHOD_ORDER = ["ppr", "ego", "bm25", "rrf", "aider"]
+# Column order in the comparison table. A method missing here sorts to the end
+# rather than failing, which is why `internal-bm25` sat in the tail unnoticed
+# until it was added: the fusion gate compares against it, so it belongs beside
+# the mode it is the control for.
+_METHOD_ORDER = ["ppr", "ego", "bm25", "internal-bm25", "rrf", "pit", "aider"]
 
 
 def _method_sort_key(method: str) -> int:

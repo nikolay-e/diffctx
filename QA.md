@@ -188,6 +188,36 @@ snapshots and the fixture worktree.
 - E-class claims ("no output change") land with a bitcheck result in the
   same commit. Q-class still needs the corpus and a baseline edit.
 
+## Measuring against a running build
+
+Two ways to invalidate an overnight measurement, both hit this session:
+
+- **`maturin develop` swaps the extension under a running experiment.** The
+  eval harnesses invoke `.venv/bin/diffctx`, which loads
+  `src/diffctx/_diffctx.abi3.so`. Rebuilding mid-run mixes two builds into one
+  result file. `cargo build` / `cargo test` are safe — they write `target/`.
+  Editing Python under `src/diffctx/` is NOT safe for the CLI path (editable
+  install), though `mcp/` is, since the CLI never imports it.
+- **Name the build, not the branch.** Commit time is not build time. Compare the
+  `.so` mtime against `git log --date` and state which commit's *content* the
+  run executed; "measured on main" is meaningless when six commits landed while
+  it ran.
+
+## Reading a benchmark whose cases time out
+
+`datasets/real-world-diff/v1/` is 109 real commits over react-native / gitpod /
+sentry, and its shipped snapshot is 66% hangs — so its quality numbers describe
+the survivors, not the benchmark. Rules that follow:
+
+- Report the hang rate first and the denominator always. "precision 0.81" over
+  43 produced cases out of 81 is not "precision 0.81".
+- Record elapsed per case. The snapshot used a 30s cap and current defaults use
+  300s; only the recorded seconds let one run be read at both.
+- Parallelise per repo (one detached worktree each), not per case — checkouts of
+  a 2 GB repo dominate otherwise, and the three repos never contend.
+- gitpod and sentry are the timeout-bound pair; react-native completes. A
+  liveness claim that does not say which repo is not a claim.
+
 ## Corpus baseline discipline
 
 `known_below_threshold.txt` is bidirectional: a listed case that starts

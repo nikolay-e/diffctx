@@ -130,6 +130,9 @@ it) to enable the sweep without rebuild.
 | `EGO.per_hop_decay` ($\gamma$)                   | `DIFFCTX_EGO_PER_HOP_DECAY`                              | 0.5     |
 | `EGO.identifier_overlap_epsilon`                 | `DIFFCTX_EGO_LEXICAL_EPS`                                | 0.1     |
 | `RRF.k` (rank-fusion damping)                    | `DIFFCTX_RRF_K`                                          | 60.0    |
+| `PIT.blend` (structural share of percentile fusion) | `DIFFCTX_PIT_BLEND`                                    | 0.65    |
+| `PIT.agreement_bonus` (both-signals-agree bonus) | `DIFFCTX_PIT_AGREEMENT_BONUS`                            | 0.10    |
+| `PIT.agreement_top_k` (agreement window)         | `DIFFCTX_PIT_AGREEMENT_TOP_K`                            | 20      |
 | Graph traversal radius                           | `DIFFCTX_OP_GRAPH_DEPTH`                                 | 2       |
 | `UTILITY.eta` ($\eta$)                           | `DIFFCTX_OP_UTILITY_ETA`                                 | 0.20    |
 | `UTILITY.structural_bonus_weight`                | `DIFFCTX_OP_UTILITY_STRUCTURAL_BONUS_WEIGHT`             | 0.10    |

@@ -83,6 +83,11 @@ optional-dependencies.full = [
 ]
 optional-dependencies.mcp = [
   "anyio>=4.5,<5.0",
+  # <2.0 is deliberate, not staleness. MCP Python SDK v2 renamed `FastMCP` to
+  # `MCPServer` and moved it from `mcp.server.fastmcp` to `mcp.server.mcpserver`,
+  # so 2.x fails at import here. Widening the bound also drops every client on
+  # 1.x, which is a compatibility decision rather than a version bump — tracked
+  # separately. Migration guide: https://py.sdk.modelcontextprotocol.io/migration/
   "mcp>=1.27,<2.0",
 ]
 optional-dependencies.tree-sitter = [

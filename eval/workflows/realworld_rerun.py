@@ -33,11 +33,22 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 BENCH = PROJECT_ROOT / "datasets/real-world-diff/v1/diffctx_realworld_bench.jsonl"
 CLONES = PROJECT_ROOT / "test-repos"
 
+# The only two things this may execute, named rather than accepted as a path.
+BINARIES = {
+    "cli": PROJECT_ROOT / ".venv/bin/diffctx",
+    "native": PROJECT_ROOT / "target/release/diffctx",
+}
+
 # The snapshot's own threshold for `over_dump`. Kept as-is so the two runs are
 # read on the same scale; the dataset's concern logs argue it over-fires on
 # legitimately large diffs, which is a finding to carry, not to silently retune
 # mid-comparison.
 OVER_DUMP_TOKENS = 15_000
+
+# Full or abbreviated git object id, nothing else.
+_COMMIT_RE = re.compile(r"[0-9a-f]{7,40}")
+# Dataset repo names: letters, digits, dot, dash, underscore. No separators.
+_REPO_NAME_RE = re.compile(r"[A-Za-z0-9._-]{1,64}")
 
 
 def load_cases() -> list[dict]:
@@ -45,7 +56,16 @@ def load_cases() -> list[dict]:
 
 
 def ensure_worktree(repo: str, root: Path) -> Path:
-    """A detached worktree per repo, reused across that repo's commits."""
+    """A detached worktree per repo, reused across that repo's commits.
+
+    `repo` is a dataset field and becomes both a path component and, through
+    the worktree, an argument to the tool under test. A bare name is the only
+    shape that can be: an entry containing a separator would place the worktree
+    outside `root`, and the clone lookup would miss in a way that reads as a
+    checkout failure rather than a bad dataset.
+    """
+    if not _REPO_NAME_RE.fullmatch(repo):
+        raise ValueError(f"dataset repo name is not a bare name: {repo!r}")
     wt = root / "wt" / repo
     if (wt / ".git").exists():
         return wt
@@ -67,7 +87,7 @@ def checkout(wt: Path, sha: str) -> bool:
     return r.returncode == 0
 
 
-def run_case(wt: Path, sha: str, timeout_s: int, binary: str) -> dict:
+def run_case(wt: Path, sha: str, timeout_s: int, binary: str, budget: int = 0) -> dict:
     """One diffctx run over `<sha>^..<sha>`, timed.
 
     Markdown, not JSON: `md_tokens` is what the snapshot recorded and what the
@@ -76,10 +96,23 @@ def run_case(wt: Path, sha: str, timeout_s: int, binary: str) -> dict:
     second invocation purely to obtain the token count would double a run whose
     dominant cost is already the 180s ceiling.
     """
+    # `sha` comes from the dataset and ends up inside a `--diff` revision
+    # argument. A malformed entry would be handed to git as an option rather
+    # than a commit; commit ids are hex, so anything else is a broken dataset
+    # and should say so here rather than three layers down.
+    if not _COMMIT_RE.fullmatch(sha):
+        return {"status": "bad_sha", "elapsed_s": 0.0}
+    # The worktree is built under the run's own output directory, so anything
+    # outside it means the path was assembled from something this runner did not
+    # create — which is not a path to hand a subprocess.
+    if not wt.is_dir():
+        return {"status": "bad_worktree", "elapsed_s": 0.0}
+
     started = time.monotonic()
     try:
         proc = subprocess.run(
-            [binary, str(wt), "--diff", f"{sha}^..{sha}", "-f", "md", "-q", "--timeout", str(timeout_s)],
+            [binary, str(wt), "--diff", f"{sha}^..{sha}", "-f", "md", "-q", "--timeout", str(timeout_s)]
+            + (["--budget", str(budget)] if budget else []),
             capture_output=True,
             text=True,
             timeout=timeout_s + 30,
@@ -91,6 +124,14 @@ def run_case(wt: Path, sha: str, timeout_s: int, binary: str) -> dict:
     if proc.returncode != 0 or not proc.stdout.strip():
         # Exit 124 is diffctx's own deadline; anything else with no output is
         # recorded distinctly so a crash is not filed as a timeout.
+        #
+        # Known property, not an oversight: a run that printed part of its
+        # output and *then* hit the deadline is recorded as a hang, and its
+        # partial fragments and token count are discarded. That matches how the
+        # snapshot classified the same shape, which is what keeps the two
+        # comparable — but it means `md_tokens` is missing for a case that did
+        # emit something, so the token distributions describe complete runs
+        # only.
         kind = "hang" if proc.returncode in (124, 143) else "no_output"
         return {"status": kind, "elapsed_s": elapsed, "rc": proc.returncode}
 
@@ -126,18 +167,22 @@ def score(case: dict, result: dict) -> dict:
     """
     if result.get("status") != "produced":
         return {}
-    selected = {p.split("/")[-1] if "/" not in p else p for p in result["selected_files"]}
+    selected = set(result["selected_files"])
     inc = set(case.get("gold_include") or [])
     exc = set(case.get("gold_exclude") or [])
 
     def hit(gold: set[str]) -> int:
+        """Gold entries surfaced. Suffix-matched, because the labels are written
+        repo-relative while the renderer emits paths relative to the worktree —
+        exact equality alone would score every case zero."""
         return sum(1 for g in gold if any(s == g or s.endswith("/" + g) for s in selected))
 
-    recall = hit(inc) / len(inc) if inc else None
-    forbidden = hit(exc) / len(exc) if exc else 0.0
-    labelled_hits = hit(inc)
-    labelled_total = labelled_hits + hit(exc)
-    precision = labelled_hits / labelled_total if labelled_total else None
+    required_hits = hit(inc)
+    forbidden_hits = hit(exc)
+    recall = required_hits / len(inc) if inc else None
+    forbidden = forbidden_hits / len(exc) if exc else 0.0
+    labelled_total = required_hits + forbidden_hits
+    precision = required_hits / labelled_total if labelled_total else None
     return {
         "recall": None if recall is None else round(recall, 3),
         "forbidden_rate": round(forbidden, 3),
@@ -157,19 +202,34 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--timeout", type=int, default=180)
-    # The Python CLI, not the native binary: markdown is a Python-side format
-    # (the native  accepts yaml|json only), and  is the unit the
-    # snapshot and the over-dump threshold are both expressed in.
-    ap.add_argument("--binary", default=str(PROJECT_ROOT / ".venv/bin/diffctx"))
+    # A choice, not a path. A benchmark that will execute whatever binary it is
+    # handed cannot say which build it measured, which is the one thing a
+    # measurement has to be able to say. 'cli' is the Python entry point:
+    # markdown is a Python-side format (the native -f takes yaml|json only) and
+    # md_tokens is the unit both the snapshot and the over-dump threshold use.
+    ap.add_argument("--binary", choices=sorted(BINARIES), default="cli")
     ap.add_argument("--limit", type=int, default=0)
     # One process per repo. Each repo has its own worktree, so the three never
     # contend on a checkout, and the wall clock collapses from the sum of the
     # repos to the slowest one — which matters when most cases sit at the
     # timeout ceiling rather than finishing.
     ap.add_argument("--repo", default="")
+    # Explicit budget instead of auto. Output tracks the budget almost exactly
+    # (8000 -> 8823 md tokens, 48000 -> 48117 on a react-native case), and auto
+    # saturates at `auto_max` = 48000 on these diffs — three times the
+    # benchmark's own over-dump threshold. Whether the extra 40k buys any recall
+    # is #167, and this flag is how it gets measured.
+    ap.add_argument("--budget", type=int, default=0)
     args = ap.parse_args(argv)
 
-    out = args.out
+    binary = BINARIES[args.binary]
+    if not binary.is_file():
+        raise SystemExit(f"the {args.binary} binary is not built: {binary}")
+    args.binary = str(binary)
+
+    # `--out` becomes a directory tree; resolving removes `..` before anything
+    # is created.
+    out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
     sink = out / "results.jsonl"
     done = set()
@@ -194,7 +254,7 @@ def main(argv: list[str] | None = None) -> int:
                 fh.flush()
                 continue
 
-            result = run_case(wt, case["sha"], args.timeout, args.binary)
+            result = run_case(wt, case["sha"], args.timeout, args.binary, args.budget)
             md = result.get("md_tokens")
             row = {
                 "commit": case["commit"],
@@ -211,10 +271,8 @@ def main(argv: list[str] | None = None) -> int:
             row.pop("selected_files", None)
             fh.write(json.dumps(row) + "\n")
             fh.flush()
-            print(
-                f"[{i}/{len(cases)}] {case['commit']:<28} {row['new_status']:<12} " f"{result.get('elapsed_s')}s  tokens={md}",
-                flush=True,
-            )
+            progress = f"[{i}/{len(cases)}] {case['commit']:<28} {row['new_status']:<12}"
+            print(f"{progress} {result.get('elapsed_s')}s  tokens={md}", flush=True)
     print(f"\nwrote {sink}")
     return 0
 
