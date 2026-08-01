@@ -231,7 +231,7 @@ def _depth_of(cell: dict) -> int:
 # rather than failing, which is why `internal-bm25` sat in the tail unnoticed
 # until it was added: the fusion gate compares against it, so it belongs beside
 # the mode it is the control for.
-_METHOD_ORDER = ["ppr", "ego", "bm25", "internal-bm25", "rrf", "aider"]
+_METHOD_ORDER = ["ppr", "ego", "bm25", "internal-bm25", "rrf", "pit", "aider"]
 
 
 def _method_sort_key(method: str) -> int:

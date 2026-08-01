@@ -149,6 +149,7 @@ def _process_manifest(
                 budget=b,
                 scoring=params.scoring,
                 extra_env=params.extra_env,
+                provenance_dir=params.provenance_dir,
             )
             for b in budgets_list
         ]
@@ -175,6 +176,7 @@ def _process_manifest(
                 budget=b,
                 scoring=params.scoring,
                 extra_env=params.extra_env,
+                provenance_dir=params.provenance_dir,
             )
             ckpt_b = ckpt_dir / f"b{b}.checkpoint.jsonl"
             rs = run_eval_set(
@@ -215,6 +217,16 @@ def _build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--min-disk-gb", type=float, default=50.0)
     p.add_argument("--limit", type=int, default=0, help="Cap instances per manifest (0 = all)")
     p.add_argument(
+        "--provenance-dir",
+        type=Path,
+        default=None,
+        help="Dump per-instance discovery provenance to <dir>/<instance_id>.jsonl "
+        "(DIFFCTX_PROVENANCE_DUMP). Read it with eval.analysis.discovery_attribution "
+        "--dump-dir to split gold into selected / surfaced-not-selected / never-surfaced. "
+        "Off by default: one line per candidate fragment is far too much to write on "
+        "every cell of a sweep.",
+    )
+    p.add_argument(
         "--baseline",
         choices=["diffctx", "bm25", "patch_files", "random", "aider", "aider_fair", "aider_oracle"],
         default="diffctx",
@@ -233,10 +245,11 @@ def _build_argparser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--scoring",
-        choices=["ego", "ppr", "bm25", "rrf"],
+        choices=["ego", "ppr", "bm25", "rrf", "pit"],
         default=None,
         help="Override winner.json scoring mode for --baseline=diffctx (e.g. the "
-        "internal-BM25 ablation cell: --baseline diffctx --scoring bm25).",
+        "internal-BM25 ablation cell: --baseline diffctx --scoring bm25). 'pit' is the "
+        "percentile-fusion successor to 'rrf'.",
     )
     p.add_argument(
         "--tau",
@@ -442,14 +455,18 @@ def _parse_cli_extra_env(entries: list[str]) -> dict[str, str] | None:
 
 
 def _apply_cli_overrides(params: RunParams, args: argparse.Namespace, cli_env: dict[str, str]) -> RunParams:
-    if args.scoring is None and args.tau is None and not cli_env:
+    prov = str(args.provenance_dir) if args.provenance_dir else None
+    if args.scoring is None and args.tau is None and not cli_env and prov is None:
         return params
+    if prov:
+        Path(prov).mkdir(parents=True, exist_ok=True)
     return RunParams(
         tau=params.tau if args.tau is None else args.tau,
         core_budget_fraction=params.core_budget_fraction,
         budget=params.budget,
         scoring=params.scoring if args.scoring is None else args.scoring,
         extra_env={**params.extra_env, **cli_env},
+        provenance_dir=prov,
     )
 
 
@@ -467,6 +484,8 @@ def main() -> int:
         f"Method: {args.baseline} | budget={params.budget} τ={params.tau} cbf={params.core_budget_fraction} "
         f"scoring={params.scoring} extra_env={params.extra_env or '{}'}"
     )
+    if params.provenance_dir:
+        print(f"Provenance dumps: {params.provenance_dir}/<instance_id>.jsonl")
 
     manifests = sorted(args.manifests_dir.glob("test_*.txt"))
     if not manifests:

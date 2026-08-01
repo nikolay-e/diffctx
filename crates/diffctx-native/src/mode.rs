@@ -7,6 +7,7 @@ pub enum ScoringMode {
     Ego,
     Bm25,
     Rrf,
+    Pit,
 }
 
 impl ScoringMode {
@@ -16,8 +17,9 @@ impl ScoringMode {
             "ego" => Ok(Self::Ego),
             "bm25" => Ok(Self::Bm25),
             "rrf" => Ok(Self::Rrf),
+            "pit" => Ok(Self::Pit),
             other => Err(format!(
-                "unknown scoring_mode '{other}': expected one of ppr|ego|bm25|rrf"
+                "unknown scoring_mode '{other}': expected one of ppr|ego|bm25|rrf|pit"
             )),
         }
     }
@@ -35,6 +37,7 @@ pub enum ScoringKind {
     Ego,
     Bm25,
     Rrf,
+    Pit,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -96,6 +99,18 @@ impl PipelineConfig {
             ScoringMode::Rrf => Self {
                 discovery: DiscoveryKind::Ensemble,
                 scoring: ScoringKind::Rrf,
+                bm25_top_k: m.bm25_top_k_primary,
+                ego_depth: m.ego_depth_extended,
+                ppr_alpha: PPR.alpha,
+                objective: ObjectiveMode::Submodular,
+            },
+            // Same universe and the same depth as Rrf, so the two fusion modes
+            // differ only in how the two signals are combined. Comparing PIT
+            // against RRF is then a comparison of blends, not of candidate
+            // supply.
+            ScoringMode::Pit => Self {
+                discovery: DiscoveryKind::Ensemble,
+                scoring: ScoringKind::Pit,
                 bm25_top_k: m.bm25_top_k_primary,
                 ego_depth: m.ego_depth_extended,
                 ppr_alpha: PPR.alpha,

@@ -236,7 +236,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        method: [ppr, ego, bm25, internal-bm25, rrf, aider]
+        method: [ppr, ego, bm25, internal-bm25, rrf, pit, aider]
         budget: [64000]
         test_set: [swebench_verified]
     runs-on: ubuntu-latest
@@ -312,6 +312,14 @@ jobs:
             rrf)
               echo "baseline=diffctx" >> "$GITHUB_OUTPUT"
               echo "scoring=rrf" >> "$GITHUB_OUTPUT"
+              ;;
+            pit)
+              # Percentile fusion: the same two signals as rrf, blended on
+              # empirical-CDF position instead of rank. It shares the arm so the
+              # #125 gate reads "did fusion fail, or did the RANK FORM of fusion
+              # fail" from one matrix rather than two runs.
+              echo "baseline=diffctx" >> "$GITHUB_OUTPUT"
+              echo "scoring=pit" >> "$GITHUB_OUTPUT"
               ;;
             internal-bm25)
               # BM25 as diffctx's own scoring, NOT the external baseline above:
@@ -425,7 +433,7 @@ jobs:
       # Aider has no shareable state across map_tokens values, so it keeps
       # one budget per cell via `include` entries.
       matrix:
-        method: [ppr, ego, bm25, internal-bm25, rrf]
+        method: [ppr, ego, bm25, internal-bm25, rrf, pit]
         # `depth` is the EGO graph traversal radius; only meaningful for
         # method=ego. PPR uses alpha (not depth), BM25 has no graph.
         # Sentinel -1 means "depth does not apply"; non-EGO methods run
@@ -669,6 +677,11 @@ jobs:
             rrf)
               echo "baseline=diffctx" >> "$GITHUB_OUTPUT"
               echo "scoring=rrf" >> "$GITHUB_OUTPUT"
+              echo "budgets=-1,0,8000,16000,32000,64000,128000" >> "$GITHUB_OUTPUT"
+              ;;
+            pit)
+              echo "baseline=diffctx" >> "$GITHUB_OUTPUT"
+              echo "scoring=pit" >> "$GITHUB_OUTPUT"
               echo "budgets=-1,0,8000,16000,32000,64000,128000" >> "$GITHUB_OUTPUT"
               ;;
             internal-bm25)
