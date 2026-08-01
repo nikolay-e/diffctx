@@ -313,7 +313,10 @@ _FILE_CONTEXT_DESCRIPTION = (
     "Examples:\n"
     '- patterns=["src/**/*.py"] — all Python files\n'
     '- patterns=["eval/*.py", "tests/conftest.py"] — specific sets\n'
-    '- patterns=["*.md"] with dry_run=true — preview what matches' + _UNTRUSTED_NOTICE
+    '- patterns=["*.md"] with dry_run=true — preview what matches\n\n'
+    "Honours .gitignore and .diffctx/ignore: excluded files are never returned "
+    "and are not reported as truncated, so a glob cannot read what the repo "
+    "withholds from the other tools." + _UNTRUSTED_NOTICE
 )
 
 
@@ -325,7 +328,20 @@ def _is_contained(child: Path, root: Path) -> bool:
 
 
 def _collect_matched_files(validated_path: Path, patterns: list[str], max_files: int) -> tuple[list[Path], int]:
+    """Files matching `patterns`, minus anything the repo declared off-limits.
+
+    The ignore specs are applied here for the same reason `get_tree_map` applies
+    them: `.diffctx/ignore` is a security contract, and this tool accepts
+    `**/*`. Without the specs the two MCP tools disagreed about the same repo —
+    a key or an env file that diff mode and the tree map both withhold was
+    readable through an explicit glob, which makes the contract advisory rather
+    than a contract.
+    """
     import glob as globmod
+
+    from diffctx.ignore import get_ignore_specs
+
+    spec = get_ignore_specs(validated_path, None, False, None)
 
     matched: list[Path] = []
     seen: set[Path] = set()
@@ -335,6 +351,15 @@ def _collect_matched_files(validated_path: Path, patterns: list[str], max_files:
         for match in sorted(globmod.glob(full_pattern, recursive=True)):
             p = Path(match)
             if not p.is_file() or not _is_contained(p, validated_path):
+                continue
+            try:
+                rel = p.resolve().relative_to(validated_path.resolve()).as_posix()
+            except ValueError:
+                continue
+            if spec.match_file(rel):
+                # Excluded silently and NOT counted: `total_matched` drives the
+                # truncation notice, and reporting "3 more files" for files the
+                # repo refuses to expose would leak their existence.
                 continue
             resolved = p.resolve()
             if resolved in seen:
