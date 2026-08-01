@@ -16,6 +16,9 @@ from diffctx._diffctx import (
 from diffctx._diffctx import (
     DEFAULT_TAU as _ENGINE_DEFAULT_TAU,
 )
+from diffctx._diffctx import (
+    SCORING_MODES as _ENGINE_SCORING_MODES,
+)
 
 from .version import __version__
 
@@ -28,6 +31,9 @@ DEFAULT_MAX_FILE_BYTES = 256 * 1024  # 256 KB
 # 0.05 (#175). The extension is the one place that cannot disagree with itself.
 _DEFAULT_ALPHA: float = _ENGINE_DEFAULT_ALPHA
 _DEFAULT_TAU: float = _ENGINE_DEFAULT_TAU
+# The accepted --scoring values, for the same reason: this list was a literal
+# and went stale the moment a mode was added to the engine.
+_SCORING_CHOICES: list[str] = list(_ENGINE_SCORING_MODES)
 _DEFAULT_SCORING: str = _ENGINE_DEFAULT_SCORING
 # Mirrors DEFAULT_PIPELINE_TIMEOUT_SECONDS in crates/diffctx-native/src/config/limits.rs.
 _DEFAULT_TIMEOUT = 300
@@ -551,13 +557,14 @@ def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> arg
     )
     diff_group.add_argument(
         "--scoring",
-        choices=["ppr", "ego", "bm25", "rrf"],
+        choices=_SCORING_CHOICES,
         default=_UNSET,
         help=(
             "Scoring mode: ego = structural neighbors of the change (default); "
             "ppr = graph-wide relevance (Personalized PageRank), for far-reaching changes; "
             "bm25 = lexical similarity, for sparse cross-file structure; "
-            "rrf = rank fusion of ego and bm25, widest recall"
+            "rrf = rank fusion of ego and bm25 on ranks; "
+            "pit = the same fusion on score percentiles rather than ranks"
         ),
     )
     diff_group.add_argument(

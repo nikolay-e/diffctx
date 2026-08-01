@@ -122,6 +122,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`--scoring pit` was rejected by both CLIs.** The engine, the MCP server and
+  the eval harness all accepted the mode, while `diffctx --scoring pit` and the
+  standalone binary refused it: each CLI enumerated the accepted values in its
+  own literal, and neither was updated when the mode landed. Both now read
+  `SCORING_MODES` from the engine, and a test pins the list in both directions —
+  a mode the engine parses but does not advertise is as much a defect as the
+  reverse (#125).
+
 - **`.diffctx/ignore` no longer stops applying when `git check-ignore` fails or
   when a path contains a newline.** Two holes, both silent. The batched check
   passed every diff path *plus every ancestor directory* as argv, so a

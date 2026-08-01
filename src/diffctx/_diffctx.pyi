@@ -100,3 +100,4 @@ def graph_to_graphml_string(pg: PyProjectGraph) -> str: ...
 DEFAULT_TAU: float
 DEFAULT_ALPHA: float
 DEFAULT_SCORING: str
+SCORING_MODES: list[str]

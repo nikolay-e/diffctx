@@ -75,7 +75,7 @@ struct Cli {
     full: bool,
 
     /// Relevance scoring mode
-    #[arg(long, default_value = DEFAULT_SCORING, value_parser = ["ppr", "ego", "bm25", "rrf"])]
+    #[arg(long, default_value = DEFAULT_SCORING, value_parser = _diffctx::mode::SCORING_MODE_NAMES.to_vec())]
     scoring: String,
 
     /// Output mode: `pack` = context with source bodies; `locate` = ranked

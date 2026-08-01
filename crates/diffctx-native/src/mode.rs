@@ -19,11 +19,20 @@ impl ScoringMode {
             "rrf" => Ok(Self::Rrf),
             "pit" => Ok(Self::Pit),
             other => Err(format!(
-                "unknown scoring_mode '{other}': expected one of ppr|ego|bm25|rrf|pit"
+                "unknown scoring_mode '{other}': expected one of {}",
+                SCORING_MODE_NAMES.join("|")
             )),
         }
     }
 }
+
+/// The single source of truth for what `--scoring` accepts.
+///
+/// Both CLIs enumerate the accepted values for their own argument parsers, and
+/// both silently kept their own copy: `pit` was reachable through the engine and
+/// the eval harness while `diffctx --scoring pit` rejected it as invalid. A test
+/// pins this array against `from_str` in both directions.
+pub const SCORING_MODE_NAMES: &[&str] = &["ppr", "ego", "bm25", "rrf", "pit"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiscoveryKind {
@@ -116,6 +125,35 @@ impl PipelineConfig {
                 ppr_alpha: PPR.alpha,
                 objective: ObjectiveMode::Submodular,
             },
+        }
+    }
+}
+
+#[cfg(test)]
+mod scoring_mode_name_tests {
+    use super::{SCORING_MODE_NAMES, ScoringMode};
+
+    #[test]
+    fn every_advertised_name_parses() {
+        for name in SCORING_MODE_NAMES {
+            assert!(
+                ScoringMode::from_str(name).is_ok(),
+                "advertised scoring mode does not parse: {name}"
+            );
+        }
+    }
+
+    /// The other direction, which is the one that actually broke: a mode added
+    /// to `from_str` but not to the advertised list is invisible to `--scoring`.
+    #[test]
+    fn every_parsable_mode_is_advertised() {
+        for candidate in ["ppr", "ego", "bm25", "rrf", "pit"] {
+            if ScoringMode::from_str(candidate).is_ok() {
+                assert!(
+                    SCORING_MODE_NAMES.contains(&candidate),
+                    "{candidate} parses but is not advertised to the CLIs"
+                );
+            }
         }
     }
 }
