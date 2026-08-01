@@ -90,6 +90,23 @@ def summarise(rows: list[dict]) -> str:
     if recs:
         out.append(f"- labelled recall: mean {statistics.mean(recs):.3f} over {len(recs)} scored")
 
+    # The budget-independent view. An absolute token threshold calls a
+    # legitimately large diff an over-dump and calls a small one clean
+    # regardless of how much noise it carries; the share of emitted fragments
+    # that actually carry the diff does neither. The dataset's own concern logs
+    # arrive at the same place ("weight changed_frags/total_frags, not just
+    # absolute token count") after a reviewer found a 47k-token case where 184
+    # of 195 fragments were changed — large because the diff was large.
+    shares = [r["changed_frags"] / r["n_frags"] for r in produced if r.get("n_frags")]
+    if shares:
+        shares_sorted = sorted(shares)
+        out.append(
+            f"- changed-fragment share: median **{statistics.median(shares):.2f}**, "
+            f"p10 {shares_sorted[int(0.1 * (len(shares_sorted) - 1))]:.2f} "
+            f"(1.00 = every emitted fragment carries the diff; "
+            f"{sum(1 for s in shares if s < 0.25)} of {len(shares)} below 0.25)"
+        )
+
     toks = [r["md_tokens"] for r in produced if r.get("md_tokens")]
     if toks:
         toks.sort()

@@ -67,7 +67,7 @@ def checkout(wt: Path, sha: str) -> bool:
     return r.returncode == 0
 
 
-def run_case(wt: Path, sha: str, timeout_s: int, binary: str) -> dict:
+def run_case(wt: Path, sha: str, timeout_s: int, binary: str, budget: int = 0) -> dict:
     """One diffctx run over `<sha>^..<sha>`, timed.
 
     Markdown, not JSON: `md_tokens` is what the snapshot recorded and what the
@@ -79,7 +79,8 @@ def run_case(wt: Path, sha: str, timeout_s: int, binary: str) -> dict:
     started = time.monotonic()
     try:
         proc = subprocess.run(
-            [binary, str(wt), "--diff", f"{sha}^..{sha}", "-f", "md", "-q", "--timeout", str(timeout_s)],
+            [binary, str(wt), "--diff", f"{sha}^..{sha}", "-f", "md", "-q", "--timeout", str(timeout_s)]
+            + (["--budget", str(budget)] if budget else []),
             capture_output=True,
             text=True,
             timeout=timeout_s + 30,
@@ -167,6 +168,12 @@ def main(argv: list[str] | None = None) -> int:
     # repos to the slowest one — which matters when most cases sit at the
     # timeout ceiling rather than finishing.
     ap.add_argument("--repo", default="")
+    # Explicit budget instead of auto. Output tracks the budget almost exactly
+    # (8000 -> 8823 md tokens, 48000 -> 48117 on a react-native case), and auto
+    # saturates at `auto_max` = 48000 on these diffs — three times the
+    # benchmark's own over-dump threshold. Whether the extra 40k buys any recall
+    # is #167, and this flag is how it gets measured.
+    ap.add_argument("--budget", type=int, default=0)
     args = ap.parse_args(argv)
 
     out = args.out
@@ -194,7 +201,7 @@ def main(argv: list[str] | None = None) -> int:
                 fh.flush()
                 continue
 
-            result = run_case(wt, case["sha"], args.timeout, args.binary)
+            result = run_case(wt, case["sha"], args.timeout, args.binary, args.budget)
             md = result.get("md_tokens")
             row = {
                 "commit": case["commit"],
