@@ -102,6 +102,11 @@ def run_case(wt: Path, sha: str, timeout_s: int, binary: str, budget: int = 0) -
     # and should say so here rather than three layers down.
     if not _COMMIT_RE.fullmatch(sha):
         return {"status": "bad_sha", "elapsed_s": 0.0}
+    # The worktree is built under the run's own output directory, so anything
+    # outside it means the path was assembled from something this runner did not
+    # create — which is not a path to hand a subprocess.
+    if not wt.is_dir():
+        return {"status": "bad_worktree", "elapsed_s": 0.0}
 
     started = time.monotonic()
     try:

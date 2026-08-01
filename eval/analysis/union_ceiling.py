@@ -81,43 +81,59 @@ def ceiling(ego: dict[str, dict], lex: dict[str, dict], fusion: dict[str, dict] 
     return {"instances": len(rows), "rows": rows}
 
 
+def _means(rows: list[dict]) -> dict[str, float | None]:
+    def mean(key: str) -> float | None:
+        vals = [r[key] for r in rows if r.get(key) is not None]
+        return statistics.mean(vals) if vals else None
+
+    return {k: mean(k) for k in ("ego", "lexical", "union", "fusion")}
+
+
+def _headroom_prose(means: dict[str, float | None]) -> list[str]:
+    """What the ceiling implies, in words, because the number alone is read wrong.
+
+    A fusion result below EGO is a ranking failure; one at the ceiling has
+    nothing left for ranking to win and the remaining loss is candidate supply.
+    Those point at different issues, so the readout says which.
+    """
+    union_m, ego_m, fus = means["union"], means["ego"], means["fusion"]
+    if union_m is None or ego_m is None:
+        return []
+    headroom = union_m - ego_m
+    out = [
+        f"\nHeadroom over EGO is **{headroom:+.3f}**: that is the most any "
+        f"re-ranking of the same two signals can add. A fusion result below "
+        f"EGO is losing on ranking; one at the ceiling has nothing left to "
+        f"gain from ranking at all."
+    ]
+    if fus is not None and headroom > 1e-9:
+        out.append(
+            f"RRF captures **{(fus - ego_m) / headroom:.0%}** of that headroom "
+            f"(negative means it ranks worse than EGO alone despite the wider "
+            f"candidate set)."
+        )
+    return out
+
+
 def render(result: dict) -> str:
     rows = result["rows"]
     if not rows:
         return "No instance carried both a gold set and a selection in both runs."
 
-    def mean(key: str) -> float | None:
-        vals = [r[key] for r in rows if r.get(key) is not None]
-        return statistics.mean(vals) if vals else None
-
+    means = _means(rows)
     out = [f"# Union ceiling over {result['instances']} shared instances\n"]
     out.append("| arm | mean gold recall |")
     out.append("|---|---|")
-    for key, label in (("ego", "EGO alone"), ("lexical", "internal-BM25 alone"), ("union", "**union (ceiling)**")):
-        m = mean(key)
-        if m is not None:
-            out.append(f"| {label} | {m:.3f} |")
-    fus = mean("fusion")
-    if fus is not None:
-        out.append(f"| RRF fusion | {fus:.3f} |")
+    for key, label in (
+        ("ego", "EGO alone"),
+        ("lexical", "internal-BM25 alone"),
+        ("union", "**union (ceiling)**"),
+        ("fusion", "RRF fusion"),
+    ):
+        if means[key] is not None:
+            out.append(f"| {label} | {means[key]:.3f} |")
 
-    union_m, ego_m = mean("union"), mean("ego")
-    if union_m is not None and ego_m is not None:
-        headroom = union_m - ego_m
-        out.append(
-            f"\nHeadroom over EGO is **{headroom:+.3f}**: that is the most any "
-            f"re-ranking of the same two signals can add. A fusion result below "
-            f"EGO is losing on ranking; one at the ceiling has nothing left to "
-            f"gain from ranking at all."
-        )
-        if fus is not None:
-            captured = (fus - ego_m) / headroom if headroom > 1e-9 else None
-            if captured is not None:
-                out.append(
-                    f"RRF captures **{captured:.0%}** of that headroom "
-                    f"(negative means it ranks worse than EGO alone despite the "
-                    f"wider candidate set)."
-                )
+    out += _headroom_prose(means)
 
     only_lex = sum(1 for r in rows if (r.get("lexical") or 0) > (r.get("ego") or 0))
     out.append(
