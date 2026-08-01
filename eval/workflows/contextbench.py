@@ -50,9 +50,26 @@ def is_nontrivial(gold: list[dict], patch: str) -> bool:
     return bool(gold_files(gold) - patch_files(patch))
 
 
-def run_diffctx(repo_dir: Path, budget: int = 8000, scoring_mode: str = "ego", tau: float = 0.08) -> dict | None:
+def shipped_tau() -> float:
+    """The stopping threshold every entry point actually ships.
+
+    Read from the pipeline signature rather than restated here: this harness
+    defaulted to 0.08 against a shipped 0.12, so a run without an explicit
+    --tau scored an operating point no user gets (#175, same defect as the
+    yaml corpus and the in-memory harness).
+    """
+    import inspect
+
     from diffctx._native.pipeline import build_diff_context
 
+    return float(inspect.signature(build_diff_context).parameters["tau"].default)
+
+
+def run_diffctx(repo_dir: Path, budget: int = 8000, scoring_mode: str = "ego", tau: float | None = None) -> dict | None:
+    from diffctx._native.pipeline import build_diff_context
+
+    if tau is None:
+        tau = shipped_tau()
     try:
         return build_diff_context(repo_dir, _DEFAULT_DIFF_RANGE, budget_tokens=budget, scoring_mode=scoring_mode, tau=tau)
     except Exception as e:
@@ -168,13 +185,17 @@ def run_baseline_bm25(repo_dir: Path, budget: int = 8000) -> dict | None:
     return _pack_files_to_fragments(repo_dir, ranked_files, budget)
 
 
-def _get_diffctx_config() -> dict:
-    return {
-        "low_relevance_threshold": 0.015,
-        "proximity_decay": 0.30,
-        "peripheral_cap": 0.15,
-        "max_context_frags_per_file": 30,
-    }
+def _get_diffctx_config(tau: float | None, baseline: str) -> dict:
+    """Provenance for a result row: only what this run actually set.
+
+    This used to return three hand-written literals describing library
+    internals. They were not read from the library, so they could drift (and
+    had: `peripheral_cap` no longer exists in the config at all, and
+    `proximity_decay` is env-overridable, so the recorded 0.30 was a guess).
+    Worse, the two parameters that vary per run — tau and the baseline — were
+    not recorded at all, leaving historical rows unattributable.
+    """
+    return {"tau": tau, "baseline": baseline}
 
 
 def extract_selected_files(output: dict) -> set[str]:
@@ -245,7 +266,7 @@ def evaluate_instance(
     repos_dir: Path = REPOS_DIR,
     scoring_mode: str = "ego",
     baseline: str = "diffctx",
-    tau: float = 0.08,
+    tau: float | None = None,
 ) -> dict | None:
     iid = inst["instance_id"]
     gold = parse_gold_context(inst["gold_context"])
@@ -274,6 +295,9 @@ def evaluate_instance(
             timeout=30,
         )
         return {"id": iid, "status": "apply_fail"}
+
+    if tau is None:
+        tau = shipped_tau()
 
     try:
         t0 = time.time()
@@ -323,7 +347,7 @@ def evaluate_instance(
         "config": {
             "scoring_mode": scoring_mode,
             "budget": budget,
-            **_get_diffctx_config(),
+            **_get_diffctx_config(tau, baseline),
         },
     }
 
@@ -479,10 +503,10 @@ def main():
     parser.add_argument("--nontrivial-only", action="store_true", default=True)
     parser.add_argument("--seeds", type=str, default="42")
     parser.add_argument("--no-shuffle", action="store_true")
-    parser.add_argument("--scoring", type=str, default="ego", choices=["ppr", "ego", "bm25"])
+    parser.add_argument("--scoring", type=str, default="ego", choices=["ppr", "ego", "bm25", "rrf"])
     parser.add_argument("--baseline", type=str, default="diffctx", choices=["diffctx", "patch_files", "bm25"])
     parser.add_argument("--dataset", type=str, default="full", choices=["verified", "full"])
-    parser.add_argument("--tau", type=float, default=0.08)
+    parser.add_argument("--tau", type=float, default=None, help="stopping threshold; default = the shipped value")
     args = parser.parse_args()
 
     seeds = [int(s) for s in args.seeds.split(",")]

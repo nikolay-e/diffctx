@@ -18,10 +18,10 @@ use crate::discovery::{
 };
 use crate::fragmentation::process_files_for_fragments;
 use crate::git::{self, CatFileBatch};
-use crate::mode::{DiscoveryKind, PipelineConfig, ScoringKind, ScoringMode};
+use crate::mode::{DiscoveryKind, PipelineConfig, ScoringMode};
 use crate::postpass;
 use crate::render::{self, DiffContextOutput};
-use crate::scoring::{BM25Scoring, EgoGraphScoring, PPRScoring, ScoringResult, ScoringStrategy};
+use crate::scoring::{ScoringResult, create_scoring_strategy};
 use crate::signatures::generate_signature_variants;
 use crate::tokenizer::count_tokens;
 use crate::types::{Fragment, FragmentId};
@@ -50,6 +50,13 @@ pub struct ScoredState {
     /// Lock files touched by the range, paths only: the dependency bump is
     /// signal, the checksum churn is not (#112).
     pub lockfile_changes: Vec<String>,
+    /// Which discovery strategy first surfaced each discovered path.
+    ///
+    /// Read-only telemetry for the universe ceiling (#130): without it, a gold
+    /// file that never reaches the output is indistinguishable between "no
+    /// strategy found it" and "found but outranked", and those need different
+    /// fixes. Empty for the changed files themselves, which are not discovered.
+    pub discovery_source: FxHashMap<Arc<str>, &'static str>,
     pub preferred_revs: Vec<String>,
     pub commit_message: Option<String>,
     pub heavy_latency_ms: HeavyLatencyMs,
@@ -57,6 +64,11 @@ pub struct ScoredState {
 
 #[derive(Default, Clone, Copy)]
 pub struct HeavyLatencyMs {
+    /// Everything before the heavy phase begins: hunk parse, untracked scan,
+    /// ignore resolution, and the `git diff` / `--name-only` / rename calls.
+    /// Outside every timer until #183 — which is why a 182s run reported 5.3s of
+    /// instrumented work with nothing to say where the rest went.
+    pub pre_phase: f64,
     pub parse_changed: f64,
     pub universe_walk: f64,
     pub discovery: f64,
@@ -114,6 +126,73 @@ pub fn build_diff_context_locate(
     Ok(crate::locate::build_locate(&state, &outcome))
 }
 
+/// Line count for an untracked file, or `None` when it is not readable UTF-8
+/// text — the same rejection `read_to_string` gave, so binaries stay excluded.
+///
+/// Untracked files are scanned before any size filter applies
+/// (`max_changed_file_size` is enforced later, in fragmentation), so a dirty
+/// tree holding one multi-GB log used to allocate all of it here just to reach
+/// `.lines().count()`.
+///
+/// Counted over fixed byte chunks rather than by line. `BufReader::lines()`
+/// bounds nothing on its own: it allocates each line, and a minified bundle or
+/// a single-line JSON dump is one line hundreds of megabytes long — exactly the
+/// shape this was supposed to stop loading. The buffer is the only allocation
+/// that scales.
+///
+/// UTF-8 is validated as it streams, with the incomplete tail of one chunk
+/// carried into the next, so a multi-byte character split across a chunk
+/// boundary is not mistaken for the invalid byte that rejects a binary.
+///
+/// Counting rather than size-gating keeps this bit-identical: an oversized file
+/// still gets the same hunk it always did, and the count matches `str::lines`
+/// (both split on `\n` and neither counts a trailing newline as a line).
+fn count_text_lines(path: &Path) -> Option<u32> {
+    use std::io::Read;
+
+    const CHUNK: usize = 64 * 1024;
+
+    let mut file = std::fs::File::open(path).ok()?;
+    let mut buf = vec![0u8; CHUNK];
+    let mut carry: Vec<u8> = Vec::new();
+    let mut newlines: u32 = 0;
+    let mut last_byte: Option<u8> = None;
+
+    loop {
+        let read = file.read(&mut buf).ok()?;
+        if read == 0 {
+            break;
+        }
+        carry.extend_from_slice(&buf[..read]);
+        let valid_upto = match std::str::from_utf8(&carry) {
+            Ok(_) => carry.len(),
+            // A truncated character at the end of a chunk is not an error yet;
+            // anything else is a binary and rejects the file, as before.
+            Err(e) if e.error_len().is_none() => e.valid_up_to(),
+            Err(_) => return None,
+        };
+        newlines = newlines
+            .saturating_add(carry[..valid_upto].iter().filter(|b| **b == b'\n').count() as u32);
+        if let Some(&b) = carry[..valid_upto].last() {
+            last_byte = Some(b);
+        }
+        carry.drain(..valid_upto);
+    }
+
+    // Trailing bytes that never completed a character mean the file ends
+    // mid-sequence — invalid UTF-8, same verdict as `read_to_string`.
+    if !carry.is_empty() {
+        return None;
+    }
+    // `str::lines` does not count a trailing newline as starting a line, and
+    // counts a final unterminated line as one.
+    Some(match last_byte {
+        None => 0,
+        Some(b'\n') => newlines,
+        Some(_) => newlines.saturating_add(1),
+    })
+}
+
 /// Heavy phase: clone/parse/fragment/discover/tokenize/score. Independent
 /// of `tau`/`core_budget_fraction`. Designed to be computed ONCE per
 /// instance and reused across an arbitrary number of selection cells.
@@ -124,6 +203,7 @@ pub fn compute_scored_state(
     scoring_mode: ScoringMode,
     timeout: u64,
 ) -> Result<ScoredState> {
+    let t_entry = Instant::now();
     git::set_git_timeout(timeout);
     let root_dir = resolve_repo_root(root_dir)?;
     if alpha <= 0.0 || alpha >= 1.0 {
@@ -141,8 +221,7 @@ pub fn compute_scored_state(
     if is_working_tree_diff {
         if let Ok(files) = git::get_untracked_files(&root_dir) {
             for f in &files {
-                if let Ok(content) = std::fs::read_to_string(f) {
-                    let line_count = content.lines().count() as u32;
+                if let Some(line_count) = count_text_lines(f) {
                     if line_count > 0 {
                         let path_str: Arc<str> = Arc::from(f.to_string_lossy().as_ref());
                         hunks.push(crate::types::DiffHunk {
@@ -192,13 +271,10 @@ pub fn compute_scored_state(
     }
 
     let deleted_files = git::get_deleted_files(&root_dir, diff_range)?;
-    // Pure-rename old paths are gone from disk and cannot be fragmented; pure-rename new
-    // paths exist on HEAD and must remain candidates so seeds and discovery can find them.
-    let (renamed_old, _pure_rename_new) = git::get_renamed_paths(
-        &root_dir,
-        diff_range,
-        GRAPH_FILTERING.git_rename_similarity_threshold,
-    )?;
+    // Rename source paths are gone from disk and cannot be fragmented; the
+    // destinations exist on HEAD and stay candidates via the changed set below,
+    // so seeds and discovery still find them.
+    let renamed_old = git::get_renamed_paths(&root_dir, diff_range)?;
     // Display lists for the output header: deletions and renames produce no
     // fragments, but silently omitting them misrepresents the diff (a
     // deletion-only commit used to render as a bare two-line skeleton).
@@ -240,6 +316,7 @@ pub fn compute_scored_state(
         });
 
     let t0 = Instant::now();
+    let pre_phase_ms = t0.duration_since(t_entry).as_secs_f64() * 1000.0;
 
     let mut seen_frag_ids: FxHashSet<FragmentId> = FxHashSet::default();
     let mut batch_reader = CatFileBatch::new(&root_dir)?;
@@ -294,10 +371,18 @@ pub fn compute_scored_state(
         token_corpus: std::sync::OnceLock::new(),
     };
 
-    let discovered_files = create_discovery(&config).discover(&discovery_ctx);
+    let (discovered_files, discovery_attribution) =
+        create_discovery(&config).discover_attributed(&discovery_ctx);
     let discovered_files: Vec<PathBuf> = discovered_files
         .into_iter()
         .map(|p| candidate_files::normalize_path(&p, &root_dir))
+        .collect();
+    let discovery_source: FxHashMap<Arc<str>, &'static str> = discovery_attribution
+        .into_iter()
+        .map(|(path, source)| {
+            let normalized = candidate_files::normalize_path(&path, &root_dir);
+            (Arc::from(normalized.to_string_lossy().as_ref()), source)
+        })
         .collect();
 
     drop(discovery_ctx);
@@ -337,14 +422,7 @@ pub fn compute_scored_state(
         .map(|p| Arc::from(p.to_string_lossy().as_ref()))
         .collect();
 
-    let strategy: Box<dyn ScoringStrategy> = match config.scoring {
-        ScoringKind::Ego => Box::new(EgoGraphScoring::new(config.ego_depth)),
-        ScoringKind::Ppr => Box::new(PPRScoring::new(
-            config.ppr_alpha,
-            config.low_relevance_filter,
-        )),
-        ScoringKind::Bm25 => Box::new(BM25Scoring),
-    };
+    let strategy = create_scoring_strategy(&config);
 
     let scoring_result = strategy.score_and_filter(
         &all_fragments,
@@ -362,6 +440,7 @@ pub fn compute_scored_state(
 
     let graph_build_ms = scoring_result.graph_build_ms;
     let heavy_latency_ms = HeavyLatencyMs {
+        pre_phase: pre_phase_ms,
         parse_changed: t_parse_changed.duration_since(t0).as_secs_f64() * 1000.0,
         universe_walk: t_universe.duration_since(t_parse_changed).as_secs_f64() * 1000.0,
         discovery: t_discovery.duration_since(t_universe).as_secs_f64() * 1000.0,
@@ -376,7 +455,8 @@ pub fn compute_scored_state(
     };
 
     tracing::debug!(
-        "diffctx heavy: parse_changed {:.3}s, universe {:.3}s, discovery {:.3}s, parse_discovered {:.3}s, tokenization {:.3}s, graph_build {:.3}s, scoring {:.3}s",
+        "diffctx heavy: pre_phase {:.3}s, parse_changed {:.3}s, universe {:.3}s, discovery {:.3}s, parse_discovered {:.3}s, tokenization {:.3}s, graph_build {:.3}s, scoring {:.3}s",
+        heavy_latency_ms.pre_phase / 1000.0,
         heavy_latency_ms.parse_changed / 1000.0,
         heavy_latency_ms.universe_walk / 1000.0,
         heavy_latency_ms.discovery / 1000.0,
@@ -394,6 +474,7 @@ pub fn compute_scored_state(
         core_excerpts,
         scoring_result,
         needs,
+        discovery_source,
         changed_files,
         deleted_files: deleted_display,
         renamed_files: renamed_display,
@@ -537,7 +618,8 @@ pub fn select_with_params(
     let stopping_certificate = outcome.stopping_certificate;
     let select_ms = outcome.select_ms;
 
-    let total_ms = state.heavy_latency_ms.parse_changed
+    let total_ms = state.heavy_latency_ms.pre_phase
+        + state.heavy_latency_ms.parse_changed
         + state.heavy_latency_ms.universe_walk
         + state.heavy_latency_ms.discovery
         + state.heavy_latency_ms.parse_discovered
@@ -582,7 +664,13 @@ pub fn select_with_params(
         &state.scoring_result.rel_scores,
         change,
     );
+    tracing::debug!(
+        "diffctx selection: selection {:.3}s (incl. post-passes), total {:.3}s",
+        select_ms / 1000.0,
+        total_ms / 1000.0,
+    );
     output.latency = Some(render::LatencyBreakdown {
+        pre_phase_ms: state.heavy_latency_ms.pre_phase,
         parse_changed_ms: state.heavy_latency_ms.parse_changed,
         universe_walk_ms: state.heavy_latency_ms.universe_walk,
         discovery_ms: state.heavy_latency_ms.discovery,
@@ -628,12 +716,31 @@ pub(crate) fn is_secret_path(path: &Path) -> bool {
     let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
         return false;
     };
-    if matches!(name, "id_rsa" | "id_dsa" | "id_ecdsa" | "id_ed25519") {
+    // Whole-name matches. `_sk` is the sealed-secret half of an SSH key pair
+    // written by `ssh-keygen -O`; `.netrc`/`credentials` carry passwords in
+    // plain text and are the shapes CI images most often leak.
+    if matches!(
+        name,
+        "id_rsa"
+            | "id_dsa"
+            | "id_ecdsa"
+            | "id_ed25519"
+            | "id_ed25519_sk"
+            | "id_ecdsa_sk"
+            | ".netrc"
+            | "_netrc"
+            | "credentials"
+            | ".npmrc"
+            | ".pypirc"
+    ) {
         return true;
     }
     matches!(
         path.extension().and_then(|e| e.to_str()),
-        Some("pem" | "key" | "pfx" | "p12" | "keystore" | "jks")
+        // `.ppk` is PuTTY's private key, `.p8` Apple's signing key, `.asc` an
+        // armoured PGP export — all private-key containers the original list
+        // happened not to name.
+        Some("pem" | "key" | "pfx" | "p12" | "keystore" | "jks" | "ppk" | "p8" | "asc")
     )
 }
 
@@ -673,9 +780,7 @@ fn is_lockfile_path(path: &Path) -> bool {
 }
 
 pub(crate) fn rel_path_string(root_dir: &Path, path: &Path) -> Option<String> {
-    path.strip_prefix(root_dir)
-        .ok()
-        .map(|p| p.to_string_lossy().replace('\\', "/"))
+    crate::paths::display_rel(root_dir, path)
 }
 
 /// Resolves `.gitignore` / `.diffctx/ignore` exclusions (#85) for every path
@@ -801,23 +906,14 @@ fn pathless_section(root_dir: &Path, section: &[&str]) -> Option<PathBuf> {
         .iter()
         .find_map(|line| line.strip_prefix("rename to "))
     {
-        return contained_path(root_dir, &git::unquote_c_style(quoted.trim()));
+        return git::resolve_in_repo(root_dir, &git::unquote_c_style(quoted.trim()));
     }
     let rest = section.first()?.strip_prefix("diff --git ")?;
     let rel_path = rest.get("a/".len()..rest.find(" b/")?)?;
     if rest != format!("a/{rel_path} b/{rel_path}") {
         return None;
     }
-    contained_path(root_dir, rel_path)
-}
-
-fn contained_path(root_dir: &Path, rel_path: &str) -> Option<PathBuf> {
-    let joined = root_dir.join(rel_path);
-    let resolved = joined.canonicalize().unwrap_or_else(|_| joined.clone());
-    let resolved_root = root_dir
-        .canonicalize()
-        .unwrap_or_else(|_| root_dir.to_path_buf());
-    resolved.starts_with(&resolved_root).then_some(joined)
+    git::resolve_in_repo(root_dir, rel_path)
 }
 
 fn resolve_repo_root(root_dir: &Path) -> Result<PathBuf> {
@@ -975,6 +1071,7 @@ fn empty_scored_state(root_dir: PathBuf) -> ScoredState {
         all_fragments: Vec::new(),
         core_ids: FxHashSet::default(),
         core_excerpts: FxHashMap::default(),
+        discovery_source: FxHashMap::default(),
         lockfile_changes: Vec::new(),
         scoring_result: ScoringResult {
             rel_scores: FxHashMap::default(),
@@ -1111,4 +1208,116 @@ fn select_full_mode(all_fragments: &[Fragment], changed_files: &[PathBuf]) -> Ve
             .then(a.start_line().cmp(&b.start_line()))
     });
     selected
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The raw-diff bundle decides which sections it may disclose by resolving
+    /// each `diff --git` header against the repo root. That guard used to be a
+    /// second, independent copy of the one in `git::parse_path_line`, carrying
+    /// the same lexical-prefix hole; both now share `git::resolve_in_repo`, so
+    /// this pins that a section naming a path outside the root is dropped
+    /// rather than bundled.
+    #[test]
+    fn a_raw_diff_section_escaping_the_root_resolves_to_nothing() {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let base = tmp.path().canonicalize().expect("canonical tempdir");
+        let root = base.join("repo");
+        std::fs::create_dir_all(&root).expect("mkdir repo");
+        std::fs::write(base.join("outside.py"), "secret = 1\n").expect("write outside");
+        std::fs::write(root.join("inside.py"), "x = 1\n").expect("write inside");
+
+        for rel in ["../outside.py", "../missing.py", "sub/../../outside.py"] {
+            let header = format!("diff --git a/{rel} b/{rel}");
+            assert!(
+                section_path(&root, &[header.as_str()]).is_none(),
+                "escaping section accepted: {rel}"
+            );
+        }
+
+        let header = "diff --git a/inside.py b/inside.py";
+        assert!(
+            section_path(&root, &[header]).is_some_and(|p| p.ends_with("inside.py")),
+            "an in-repo section was dropped"
+        );
+    }
+}
+
+#[cfg(test)]
+mod secret_path_tests {
+    use super::is_secret_path;
+    use std::path::Path;
+
+    fn secret(p: &str) -> bool {
+        is_secret_path(Path::new(p))
+    }
+
+    /// The original list named the four classic SSH key stems and six
+    /// certificate extensions, which left whole families of private-key
+    /// container through: PuTTY, Apple signing keys, armoured PGP exports, the
+    /// hardware-backed SSH variants, and the plain-text credential files CI
+    /// images leak most often.
+    #[test]
+    fn private_key_and_credential_shapes_are_excluded() {
+        for path in [
+            "home/.ssh/id_rsa",
+            "home/.ssh/id_ed25519",
+            "home/.ssh/id_ed25519_sk",
+            "home/.ssh/id_ecdsa_sk",
+            "certs/server.pem",
+            "certs/server.key",
+            "certs/bundle.pfx",
+            "certs/bundle.p12",
+            "android/release.keystore",
+            "android/release.jks",
+            "windows/deploy.ppk",
+            "apple/AuthKey_ABC123.p8",
+            "gpg/private.asc",
+            "home/.netrc",
+            "home/_netrc",
+            "aws/credentials",
+            "home/.npmrc",
+            "home/.pypirc",
+        ] {
+            assert!(secret(path), "not excluded: {path}");
+        }
+    }
+
+    /// Public halves stay visible — they are not secrets, and a changed
+    /// `authorized_keys` or `.pub` is legitimate review context.
+    #[test]
+    fn public_material_is_not_excluded() {
+        for path in [
+            "home/.ssh/id_rsa.pub",
+            "home/.ssh/id_ed25519.pub",
+            "home/.ssh/authorized_keys",
+            "certs/server.crt",
+        ] {
+            assert!(!secret(path), "wrongly excluded: {path}");
+        }
+    }
+
+    /// `.env` is deliberately NOT excluded: a changed `.env` is change context,
+    /// and corpus cases assert on it. Pinned so widening the list never quietly
+    /// takes it.
+    #[test]
+    fn env_files_remain_visible_by_design() {
+        assert!(!secret(".env"));
+        assert!(!secret("config/.env.production"));
+    }
+
+    /// Ordinary source that merely contains a matching word is untouched — the
+    /// rule is whole-name or extension, never substring.
+    #[test]
+    fn ordinary_files_are_untouched() {
+        for path in [
+            "src/keyboard.rs",
+            "src/credentials_form.tsx",
+            "docs/pemphigus.md",
+        ] {
+            assert!(!secret(path), "wrongly excluded: {path}");
+        }
+    }
 }

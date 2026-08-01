@@ -30,5 +30,7 @@ def test_diff_context_excludes_changed_private_keys(tmp_path):
         rendered = diffctx.to_yaml(diffctx.build_diff_context(root_dir=repo.path, diff_range="HEAD~1", full=full))
         for marker in SECRET_MARKERS:
             assert marker not in rendered, (full, marker)
-        assert "id_rsa" not in rendered and "tls.key" not in rendered and "server.pem" not in rendered
+        assert "id_rsa" not in rendered
+        assert "tls.key" not in rendered
+        assert "server.pem" not in rendered
         assert "app.py" in rendered

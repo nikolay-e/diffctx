@@ -157,7 +157,7 @@ fn compute_rescue_threshold(
     if context_scores.is_empty() {
         return f64::INFINITY;
     }
-    context_scores.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
+    context_scores.sort_by(|a, b| b.total_cmp(a));
     let idx = (context_scores.len() as f64 * (1.0 - rescue().min_score_percentile)) as usize;
     context_scores[idx.min(context_scores.len() - 1)]
 }
@@ -182,7 +182,11 @@ pub fn rescue_nontrivial_context(
     }
 
     let selected_ids: FxHashSet<FragmentId> = selected.iter().map(|f| f.id.clone()).collect();
-    let selected_paths: FxHashSet<Arc<str>> = selected.iter().map(|f| f.id.path.clone()).collect();
+    // Files already represented anywhere in the selection are out of scope: the
+    // metric this pass serves is file-level (gold files outside the diff), so
+    // its budget only buys something when it reaches a *new* file.
+    let mut represented_paths: FxHashSet<Arc<str>> =
+        selected.iter().map(|f| f.id.path.clone()).collect();
     let changed_paths: FxHashSet<Arc<str>> = core_ids.iter().map(|fid| fid.path.clone()).collect();
 
     let mut candidates: Vec<&Fragment> = all_fragments
@@ -191,7 +195,7 @@ pub fn rescue_nontrivial_context(
             !selected_ids.contains(&f.id)
                 && !core_ids.contains(&f.id)
                 && !changed_paths.contains(&f.id.path)
-                && !selected_paths.contains(&f.id.path)
+                && !represented_paths.contains(&f.id.path)
                 && rel_scores.get(&f.id).copied().unwrap_or(0.0) >= min_score
                 && f.token_count <= rescue_budget
         })
@@ -199,7 +203,7 @@ pub fn rescue_nontrivial_context(
     candidates.sort_by(|a, b| {
         let sa = rel_scores.get(&a.id).copied().unwrap_or(0.0);
         let sb = rel_scores.get(&b.id).copied().unwrap_or(0.0);
-        sb.partial_cmp(&sa).unwrap_or(std::cmp::Ordering::Equal)
+        sb.total_cmp(&sa).then_with(|| a.id.cmp(&b.id))
     });
 
     let mut interval_idx = IntervalIndex::new();
@@ -209,6 +213,14 @@ pub fn rescue_nontrivial_context(
 
     let mut budget_used = 0u32;
     for cand in candidates {
+        // The path filter above was a snapshot of the incoming selection, so
+        // without this the pass could spend its whole budget stacking several
+        // fragments of one newly reached file — no gain on the file-level
+        // metric it exists for, at the cost of every other file it could
+        // still have reached.
+        if represented_paths.contains(&cand.id.path) {
+            continue;
+        }
         if budget_used + cand.token_count > rescue_budget {
             continue;
         }
@@ -217,6 +229,7 @@ pub fn rescue_nontrivial_context(
         }
         selected.push(cand.clone());
         interval_idx.add(cand);
+        represented_paths.insert(cand.id.path.clone());
         budget_used += cand.token_count;
     }
 }
@@ -246,14 +259,23 @@ pub fn ensure_changed_files_represented(
         return;
     }
 
+    // Membership through a set, not a scan of `missing_paths` per fragment.
+    // The scan ran `to_string_lossy().to_string()` on both sides of every
+    // comparison, so grouping cost fragments x missing-paths *string
+    // allocations* — on a range that adds hundreds of files it dominated the
+    // whole run. Same buckets, same first-seen order within each.
+    let missing_lookup: FxHashSet<String> = missing_paths
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
     let mut frags_by_path: FxHashMap<String, Vec<Fragment>> = FxHashMap::default();
     for f in all_fragments.iter().chain(core_excerpts.values()) {
-        let path_str = f.id.path.as_ref().to_string();
-        if missing_paths
-            .iter()
-            .any(|p| p.to_string_lossy().as_ref() == path_str)
-        {
-            frags_by_path.entry(path_str).or_default().push(f.clone());
+        let path_str = f.id.path.as_ref();
+        if missing_lookup.contains(path_str) {
+            frags_by_path
+                .entry(path_str.to_string())
+                .or_default()
+                .push(f.clone());
         }
     }
 
@@ -448,6 +470,75 @@ mod tests {
             let ids: FxHashSet<&FragmentId> = selected.iter().map(|f| &f.id).collect();
             assert_eq!(ids.len(), selected.len(), "a fragment was selected twice");
         }
+    }
+
+    /// The rescue budget exists to reach files the selection missed entirely,
+    /// which is what `nontrivial_file_recall` counts. The path filter was a
+    /// snapshot taken before the loop, so several fragments of one freshly
+    /// reached file could absorb the whole allowance.
+    #[test]
+    fn rescue_spends_its_budget_on_distinct_files() {
+        use crate::types::FragmentKind;
+
+        let core = frag("changed.rs", 1, 10, FragmentKind::Function, 100);
+        let mut all = vec![core.clone()];
+        let mut rel: FxHashMap<FragmentId, f64> = FxHashMap::default();
+        rel.insert(core.id.clone(), 1.0);
+
+        // Two fragments in one unrelated file scoring above a third in another
+        // file, so the crowded file is visited first. At 40 tokens each only two
+        // of the three fit the allowance — the budget, not the threshold, is
+        // what decides whether the second file is ever reached.
+        for i in 0..2u32 {
+            let f = frag(
+                "crowded.rs",
+                1 + i * 100,
+                50 + i * 100,
+                FragmentKind::Function,
+                40,
+            );
+            rel.insert(f.id.clone(), 0.90 - f64::from(i) * 0.01);
+            all.push(f);
+        }
+        let lonely = frag("lonely.rs", 1, 50, FragmentKind::Function, 40);
+        rel.insert(lonely.id.clone(), 0.88);
+        all.push(lonely);
+
+        // Low-score filler so the 80th-percentile threshold admits exactly the
+        // three fragments above instead of collapsing onto the maximum.
+        for i in 0..12u32 {
+            let f = frag(
+                "filler.rs",
+                1 + i * 100,
+                50 + i * 100,
+                FragmentKind::Function,
+                40,
+            );
+            rel.insert(f.id.clone(), 0.10);
+            all.push(f);
+        }
+
+        let core_ids: FxHashSet<FragmentId> = std::iter::once(core.id.clone()).collect();
+
+        let mut selected = vec![core];
+        // 5% of 2000 = 100 tokens of rescue: room for two 40-token picks.
+        rescue_nontrivial_context(&mut selected, &all, &rel, &core_ids, 2_000);
+
+        let rescued: Vec<&str> = selected
+            .iter()
+            .skip(1)
+            .map(|f| f.id.path.as_ref())
+            .collect();
+        let distinct: FxHashSet<&str> = rescued.iter().copied().collect();
+        assert_eq!(
+            rescued.len(),
+            distinct.len(),
+            "rescue stacked several fragments of one file: {rescued:?}"
+        );
+        assert!(
+            distinct.contains("lonely.rs"),
+            "the second file was never reached: {rescued:?}"
+        );
     }
 
     #[test]

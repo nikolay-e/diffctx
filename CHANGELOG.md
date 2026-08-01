@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`--scoring rrf`** — reciprocal-rank fusion of the structural (`ego`) and
+  lexical (`bm25`) signals: each ranks the same candidate universe, and a
+  fragment scores `Σ 1/(k + rank_i)` with `k=60` (`DIFFCTX_RRF_K`). Fusion on
+  ranks alone removes the score-scale calibration between the two signals
+  that made the deployed mixture rank below its own lexical component on
+  genuine retrieval, and the candidate set becomes their union rather than
+  either one alone. EGO's structural guards (hub-noise and
+  generic-config-only suppression) and the per-file cap are re-applied to
+  the union against the fused scores, so the wider candidate set does not
+  leak the noise EGO already rejects. `ego` remains the default (#125).
 - **`--mode locate`** emits the ranked selection as compact
   `diffctx.locate.v1` JSON — path, line range, kind, symbol, relevance score
   and machine-readable provenance reasons (`changed`, `edge` with category /
@@ -30,6 +40,210 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`repo.deleted_files`, `repo.renamed_files`), so rename regression cases
   exercise git's real rename path instead of silently degrading to adds
   (#176).
+
+### Fixed
+
+- **`.diffctx/ignore` no longer stops applying when `git check-ignore` fails or
+  when a path contains a newline.** Two holes, both silent. The batched check
+  passed every diff path *plus every ancestor directory* as argv, so a
+  monorepo-sized range hit the platform limit, git failed to spawn, and the
+  result was read as "nothing is ignored" — the one answer that publishes what
+  the user asked to withhold. Paths now go over `--stdin` (fed from a private
+  temp file, not a pipe we write ourselves — writing the payload before reading
+  stdout deadlocks once it outgrows the pipe buffer), and the exchange is
+  NUL-delimited in both directions: line-delimited input split
+  `secret\nname.py` into two phantom queries, git answered about the stem, and
+  the real path never got a verdict. On failure the check now fails **closed**
+  when `.diffctx/ignore` declares patterns — excluding everything queried rather
+  than risk publishing it — and stays open when it declares none, so a bare
+  clone (where `check-ignore` cannot run at all) still produces output.
+- **An untracked file is no longer loaded into memory to count its lines.** The
+  untracked scan runs before any size filter (`max_changed_file_size` is
+  enforced later, in fragmentation), so a dirty tree holding one multi-GB log
+  allocated all of it up front. Counting is now chunked over bytes with
+  streaming UTF-8 validation; a minified bundle that is one line hundreds of
+  megabytes long is bounded too, which a line-based reader would not have been.
+  Line counts are unchanged.
+- **Acronym-prefixed test files are recognised** — `XMLTest`, `HTTPTest`,
+  `DBTest`, `UITest`, `IOTest`, `JSONSpec` all read as ordinary source because
+  the CamelCase rule demanded a lowercase character before the marker. A capital
+  `T` is itself the word boundary, and the markers are matched case-sensitively,
+  so `latest`/`contest`/`attest` were never at risk from dropping that guard
+  (#182). `PodSpec`/`JobSpec` and `ABTest` are accepted over-classifications:
+  no name-based rule separates them from `AuthSpec` and `FooTest`.
+- **`locate` counted tests with its own weaker classifier**, so `summary.tests`
+  in the blast-radius block undercounted: it lowercased the path first, which
+  hides `FooTest.java`, `AuthSpec.scala`, `widget-spec.js` and `src/tests.rs`.
+  It now shares `crate::testfiles` with the edge builder and the needs matcher.
+  A `testing/` directory no longer counts as a test tree (it is Go's stdlib
+  package name and such directories hold helpers). Affects
+  `diffctx.locate.v1` output only; pack selection is unchanged.
+- **An inverted line span can no longer reach a `FragmentId`.** `line_count()`
+  is `end - start + 1` on unsigned integers, so it panicked in debug and wrapped
+  to ~4 billion in release, always somewhere downstream of whoever built the
+  span; it had been fixed twice at call sites. The constructor now asserts in
+  debug and clamps to a one-line span in release.
+- **Rename records with a missing destination are no longer treated as
+  renames.** The two `-z` walkers disagreed on validation; they are now one.
+
+- **The lexical similarity builder no longer holds an unbounded pairwise
+  accumulator** (#116). Its output is bounded by `top_k_neighbors`, but the
+  intermediate `FxHashMap<(u32, u32), f32>` was not: it held every distinct
+  fragment pair co-occurring in any posting list under `max_postings`, i.e. up to
+  `terms x C(max_postings, 2)` entries. On one large instance that reached 199M
+  pairs and tens of GB resident. Contributions now accumulate into a flat vector
+  and reduce by pair — 12 bytes per contribution against hashbrown's ~16 plus a
+  transient copy of the whole table on every doubling rehash, so peak drops
+  several-fold and the rehash spikes disappear. The sort is deliberately
+  **stable**, which preserves each pair's original contribution order and keeps
+  the f32 sums bit-identical; `sort_unstable` would reorder within a run and f32
+  addition is not associative, which could flip a pair across `min_similarity`.
+  Pass 6's top-k cut now breaks weight ties by neighbour index, since candidate
+  order derives from a sorted pair list rather than hashmap iteration. Verified
+  byte-identical output across four scoring modes x three diff ranges, and
+  corpus-neutral (2902/2902).
+- **One answer to "is this a test file"** (#182). Two implementations disagreed:
+  a per-language dispatch gating `TestEdge` emission and a flat suffix list
+  gating test-need match strength, so a `.kts` file was a test to one and not the
+  other and the two halves of "this is a test for the changed code" could hold
+  independently. Both also accepted any stem merely *ending* in the letters
+  `test` — they lowercased the name before comparing, which destroys the
+  CamelCase boundary the JVM/Scala convention relies on, so `latest`, `greatest`,
+  `contest` and `attest` were all classified as tests. Now one
+  `testfiles::is_test_path`, where a `test`/`spec` marker counts only at a word
+  boundary: its own `_`/`-`/`.`-delimited segment, or a capitalised `Test`/`Spec`
+  in the original name. `conftest.py` keeps its previous non-test classification,
+  which corpus cases depend on. Corpus-neutral (2902/2902).
+- **Latency accounting reconciles with the wall clock** (#183). The phases
+  reported only the heavy stage, so a 182s run showed 5.8s of instrumented work
+  with nothing to say where the rest went — which is what made a slow range look
+  like an unexplained hang. The pre-heavy stage (hunk parse, untracked scan,
+  ignore resolution, the `git diff` calls) is now timed as `pre_phase_ms` and
+  included in `total_ms`, and the debug log emits `selection` (which has always
+  covered the three post-passes) alongside the heavy line. On the range from #121
+  that immediately localises the cost: `selection 216.5s, total 222.4s`. The
+  reported phases now sum to the total within a render-sized residual, and a
+  Python-level test asserts that so a future stage added outside the
+  instrumentation fails loudly instead of vanishing — it caught `pre_phase_ms`
+  missing from both pybridge call sites while being written.
+- **Flat files finally get sub-file granularity** (#105, #107). An uncovered
+  region became one fragment however long it was, so a file the grammar extracts
+  nothing from — a flat bash script, a `CMakeLists.txt`, any language without a
+  grammar — collapsed into a single whole-file chunk and nothing narrower could
+  ever be selected. Long gaps are now split into bounded chunks, cutting at a
+  blank line where one is within reach, reusing the thresholds that already
+  govern sub-fragmenting large definitions rather than adding a second size
+  policy. Two consequences: a one-line diff no longer renders the whole file, and
+  the file's *unchanged* remainder becomes available as context at a useful
+  granularity instead of being all-or-nothing. On the corpus this moved
+  `gap_160_shell_terraform_vault_init_single_import` from below-threshold to a
+  full 100%, so its baseline entry is gone.
+- **`xfail:` in a YAML case was an unconditional silent skip.** The runner
+  returned success before building the repo, so a marked case proved nothing and
+  an XPASS was unobservable — the day its bug got fixed it still reported a pass.
+  `known_below_threshold.txt` is enforced bidirectionally for exactly this
+  reason; the two suppression mechanisms now agree. Marked cases run, and one
+  that passes fails with instructions to drop the marker. Twelve of the 44
+  markers turned out to be stale and were removed (ansible jinja templates,
+  HTML `script src`, Rust `build.rs`, an abstract-class case, six C#/PHP one-hop
+  cases, Haskell record syntax, a shell/terraform same-file case); 32 remain
+  legitimately failing.
+- **Excerpt downshift for mostly-unchanged cores** (#149, closing #105, #107 and
+  the scoping half of #114). A core fragment is now rendered as its hunk-window
+  excerpt whenever that window covers no more than half of it, instead of only
+  when the budget forces the substitution. The old rule made granularity a
+  function of leftover budget rather than of how much actually changed: the same
+  402-line `CMakeLists.txt` shipped whole at `--budget 8000` and tightly
+  excerpted at a small budget.
+
+  Two changes make it work. Excerpts are now generated for kinds that *have* a
+  signature variant as well — a signature is not a substitute for a
+  mostly-unchanged function, because it drops the changed lines, which is the
+  one thing the fragment was selected to carry. And `select_core_fragments` now
+  reports which cores it satisfied rather than letting the caller infer it from
+  id membership: a core represented by a substitute has a different id, so it
+  looked "skipped" and the full fragment was handed straight back to the greedy,
+  which re-emitted it alongside the excerpt.
+
+  `render` also had to agree with `locate` that an `Excerpt` carries the
+  `changed` role. Its id is a synthetic span cut out of the core and is not in
+  `core_ids`, so without that the downshift would have stripped the change
+  marker from the output — worse than the over-dump it replaces.
+
+  Measured on the reported shapes: a 122-line bash script with one changed line
+  goes from the whole file to a 7-line window; a 402-line `CMakeLists.txt` from
+  the whole file to 7 lines; a 264-line JavaScript function with two changed
+  lines from the whole function to an 8-line window plus the enclosing
+  signature as context.
+- **Diff-header paths escaping the repository root were accepted on Linux.**
+  `Path::starts_with` compares components, not locations, and `canonicalize`
+  fails for a path that does not exist — the normal case for the old side of a
+  deletion. The guard fell back to the lexically joined path, and
+  `<root>/../../escape.py` starts with `<root>` component-wise. It only failed
+  on macOS, where the temp root canonicalizes through `/var → /private/var`, so
+  the protection rested on an accident of filesystem layout; on Linux the
+  accepted path reached `read_file_content`, whose `exists()` check the OS
+  resolves through `..`, so content outside the repository could be read into
+  the output. A `..` or absolute component is now rejected before any
+  resolution. `--with-raw-diff`'s section filter was a second copy of the same
+  guard with the same hole; both now share one resolver (#147).
+- **`core.excludesFile` was written to a guessable name with `fs::write`**,
+  which follows a symlink and truncates its target — so a pre-planted name in
+  the shared temp directory could redirect the write. Now `O_CREAT | O_EXCL`
+  with mode 0600 and a bounded retry (#147).
+- **A rejected or unrecognized diff header charged its hunks to the previous
+  file.** The hunk loop could not tell "not a path line" from "path refused",
+  so the previous file's paths stayed live. Reset now happens on `diff --git`,
+  the per-file boundary git always emits.
+- **`TestFileDiscovery` matched the changed file's bare stem repo-wide**, so one
+  changed `mod.rs` pulled in every other `mod.rs` in the tree. Bare-stem pairing
+  is now scoped to the changed file's own directory, which is what makes such a
+  pair meaningful; test prefixes and suffixes still match anywhere (#65).
+- **Externally imported types became unanswerable information needs.** The
+  external-symbol filter gated only the call-reference loop, so
+  `from typing import Optional` plus `: Optional[int]` demanded a definition of
+  `optional` from the repository — permanently unsatisfied, which inflates the
+  diversity bonus for every candidate and lends match strength to any file
+  mentioning the same stdlib type (#65).
+- **The nontrivial-context rescue could spend its whole allowance on one file.**
+  Its "file not yet represented" filter was a snapshot taken before the loop.
+  The metric it serves is file-level, so a second fragment of an already-reached
+  file buys nothing and costs the next file its chance.
+- **Core seed selection depended on fragment order.** The tie-breaks compared
+  kind class and span length only, so equally-ranked candidates were resolved by
+  parser emission order — reversing it moved which code the output marks as
+  changed. All three selectors now end on the fragment id.
+- **Two panics reachable from repository content**: generated-fragment
+  truncation checked the cap against the id's line span but sliced the actual
+  text, and signature generation produced an id whose end preceded its start
+  when a fragment's span was wider than its content. Both are now clamped.
+- MCP `get_file_context` reported the raw glob match while checking containment
+  on the resolved path, so a file accepted through a symlink raised an
+  uncaught `ValueError` instead of returning its contents (#147).
+- `build_locate` rejected an empty `diff_range` that `build_diff_context` treats
+  as the working tree, so two entry points into one pipeline disagreed.
+- Sibling grouping deduped with `Vec::contains` against the bucket, making it
+  quadratic in exactly the shape it exists for — thousands of files in one
+  directory (#116).
+
+### Removed
+
+- The dead `low_relevance_threshold` gate.
+  `PipelineConfig.low_relevance_filter` was `false` for every scoring mode, so
+  `filter_low_relevance` — and with it `FILTERING.low_relevance_threshold`
+  (0.015) and its `size_penalty_*` scaling — could never execute;
+  `filter_positive_relevance` was always the gate that ran. ContextBench result
+  rows nevertheless stamped `low_relevance_threshold: 0.015` into their `config`
+  block, so every recorded run attributed its selections to a threshold that
+  never fired. Removed on both sides. Bit-equivalent: identical output across
+  four scoring modes × three diff ranges, plus the full 2725-case corpus.
+- Phantom knobs that only ever fed a discarded value:
+  `GRAPH_FILTERING.git_rename_similarity_threshold` (its return value was
+  dropped at the single call site) and `GitConfig`'s `poll_interval_ms` /
+  `default_timeout_seconds` fields, which nothing read. Also a
+  `_check_allowed(path.resolve())` in the MCP path validator that ran under a
+  comment claiming it closed a symlink-swap race, while comparing the same
+  already-resolved value against the same allowlist.
 
 ## [1.12.3] - 2026-07-27
 

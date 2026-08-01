@@ -320,11 +320,60 @@ pub(crate) fn unquote_c_style(quoted: &str) -> String {
     String::from_utf8(result).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
 }
 
-pub(crate) fn parse_path_line(line: &str, repo_root: &Path) -> (&'static str, Option<PathBuf>) {
-    let resolved_root = repo_root
-        .canonicalize()
-        .unwrap_or_else(|_| repo_root.to_path_buf());
+/// Resolves a diff-header path against the repository root, or `None` if it
+/// does not stay inside it.
+///
+/// `Path::starts_with` compares components, not locations, and
+/// `canonicalize` fails for any path that does not exist — which is the
+/// normal case for the old side of a deletion, and for a crafted header
+/// naming a file that was never there. The previous guard fell back to the
+/// lexically joined path in that case, and `<root>/../../escape.py` starts
+/// with `<root>` component-wise, so the check passed and the header was
+/// accepted. It only ever failed on macOS, where the temp root canonicalizes
+/// through `/var -> /private/var` and the two spellings stop matching.
+///
+/// A `..` component is therefore rejected outright, before any of this:
+/// git does not emit one for a tracked path, so nothing legitimate needs it,
+/// and downstream `strip_prefix` guards are lexical for exactly the same
+/// reason. Absolute paths are refused for the same reason — `Path::join`
+/// with an absolute argument discards the root entirely.
+pub(crate) fn resolve_in_repo(repo_root: &Path, rel_path: &str) -> Option<PathBuf> {
+    let rel = Path::new(rel_path);
+    if rel.is_absolute()
+        || rel
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return None;
+    }
 
+    let joined = repo_root.join(rel);
+    // Compare like for like. Falling back to the lexical spelling as an
+    // *alternative* to the canonical check (rather than only when
+    // canonicalization is impossible) would make the canonical check dead: with
+    // `..` already excluded, `joined` always starts with `repo_root`, so an
+    // in-repo symlink pointing outside the tree would resolve outside and still
+    // be accepted.
+    match joined.canonicalize() {
+        Ok(resolved) => {
+            let resolved_root = repo_root
+                .canonicalize()
+                .unwrap_or_else(|_| repo_root.to_path_buf());
+            if !resolved.starts_with(&resolved_root) {
+                return None;
+            }
+        }
+        // Unresolvable: the old side of a deletion, or a path that never
+        // existed. `..` and absolute components are rejected above, so the
+        // lexical join cannot leave the root and needs no further check —
+        // which is also why the canonical root's spelling (`/var` vs
+        // `/private/var`) cannot cause a false rejection here.
+        Err(_) => {}
+    }
+    Some(joined)
+}
+
+pub(crate) fn parse_path_line(line: &str, repo_root: &Path) -> (&'static str, Option<PathBuf>) {
     if line.starts_with("--- /dev/null") {
         return ("old", None);
     }
@@ -332,55 +381,30 @@ pub(crate) fn parse_path_line(line: &str, repo_root: &Path) -> (&'static str, Op
         return ("new", None);
     }
 
-    if let Some(rest) = line.strip_prefix("--- a/") {
-        let rel_path = rest.trim();
-        let resolved = (repo_root.join(rel_path))
-            .canonicalize()
-            .unwrap_or_else(|_| repo_root.join(rel_path));
-        if !resolved.starts_with(&resolved_root) {
-            return ("", None);
-        }
-        return ("old", Some(repo_root.join(rel_path)));
-    }
+    let (kind, rel_path) = if let Some(rest) = line.strip_prefix("--- a/") {
+        ("old", rest.trim().to_string())
+    } else if let Some(rest) = line.strip_prefix("+++ b/") {
+        ("new", rest.trim().to_string())
+    } else if let Some(rest) = line.strip_prefix("--- ").filter(|r| r.starts_with("\"a/")) {
+        let unquoted = unquote_c_style(rest.trim());
+        (
+            "old",
+            unquoted.strip_prefix("a/").unwrap_or(&unquoted).to_string(),
+        )
+    } else if let Some(rest) = line.strip_prefix("+++ ").filter(|r| r.starts_with("\"b/")) {
+        let unquoted = unquote_c_style(rest.trim());
+        (
+            "new",
+            unquoted.strip_prefix("b/").unwrap_or(&unquoted).to_string(),
+        )
+    } else {
+        return ("", None);
+    };
 
-    if let Some(rest) = line.strip_prefix("+++ b/") {
-        let rel_path = rest.trim();
-        let resolved = (repo_root.join(rel_path))
-            .canonicalize()
-            .unwrap_or_else(|_| repo_root.join(rel_path));
-        if !resolved.starts_with(&resolved_root) {
-            return ("", None);
-        }
-        return ("new", Some(repo_root.join(rel_path)));
+    match resolve_in_repo(repo_root, &rel_path) {
+        Some(path) => (kind, Some(path)),
+        None => ("", None),
     }
-
-    if let Some(rest) = line.strip_prefix("--- ").filter(|r| r.starts_with("\"a/")) {
-        let quoted = rest.trim();
-        let unquoted = unquote_c_style(quoted);
-        let rel_path = unquoted.strip_prefix("a/").unwrap_or(&unquoted);
-        let resolved = (repo_root.join(rel_path))
-            .canonicalize()
-            .unwrap_or_else(|_| repo_root.join(rel_path));
-        if !resolved.starts_with(&resolved_root) {
-            return ("", None);
-        }
-        return ("old", Some(repo_root.join(rel_path)));
-    }
-
-    if let Some(rest) = line.strip_prefix("+++ ").filter(|r| r.starts_with("\"b/")) {
-        let quoted = rest.trim();
-        let unquoted = unquote_c_style(quoted);
-        let rel_path = unquoted.strip_prefix("b/").unwrap_or(&unquoted);
-        let resolved = (repo_root.join(rel_path))
-            .canonicalize()
-            .unwrap_or_else(|_| repo_root.join(rel_path));
-        if !resolved.starts_with(&resolved_root) {
-            return ("", None);
-        }
-        return ("new", Some(repo_root.join(rel_path)));
-    }
-
-    ("", None)
 }
 
 fn parse_hunk_header(caps: &regex::Captures, path: &Path) -> Option<DiffHunk> {
@@ -419,11 +443,27 @@ pub fn parse_diff(repo_root: &Path, diff_range: Option<&str>) -> Result<Vec<Diff
     }
 
     let output = run_git(repo_root, &args)?;
+    Ok(parse_hunks_from_diff_output(&output, repo_root))
+}
+
+pub(crate) fn parse_hunks_from_diff_output(output: &str, repo_root: &Path) -> Vec<DiffHunk> {
     let mut hunks = Vec::new();
     let mut old_path: Option<PathBuf> = None;
     let mut new_path: Option<PathBuf> = None;
 
     for line in output.lines() {
+        // `diff --git` is the per-file boundary git always emits, so clearing
+        // here is what keeps one file's hunks from ever being charged to the
+        // previous one. Relying on the `---`/`+++` pair alone leaves the
+        // previous file's paths live whenever this file's header is not
+        // understood or is rejected — a path escaping the repo root returns
+        // `("", None)`, which is a refusal, not "keep the last path".
+        if line.starts_with("diff --git ") {
+            old_path = None;
+            new_path = None;
+            continue;
+        }
+
         let (path_type, path) = parse_path_line(line, repo_root);
         match path_type {
             "old" => {
@@ -447,7 +487,7 @@ pub fn parse_diff(repo_root: &Path, diff_range: Option<&str>) -> Result<Vec<Diff
         }
     }
 
-    Ok(hunks)
+    hunks
 }
 
 pub fn run_git_z(repo_root: &Path, args: &[&str]) -> Result<Vec<String>> {
@@ -499,11 +539,14 @@ pub fn get_deleted_files(repo_root: &Path, diff_range: Option<&str>) -> Result<F
         .collect())
 }
 
-pub fn get_renamed_paths(
-    repo_root: &Path,
-    diff_range: Option<&str>,
-    min_similarity: u32,
-) -> Result<(FxHashSet<PathBuf>, FxHashSet<PathBuf>)> {
+/// The `R` records of a rename-only diff, as raw `(old, new)` strings.
+///
+/// `--name-status -z` emits renames as `R<similarity>\0old\0new\0`, so the walk
+/// steps three fields per record and one otherwise. Both callers below ran their
+/// own copy of that walk; they disagreed on validation, one accepting a record
+/// whose destination was missing. A rename without a destination is not a
+/// rename, so the stricter reading is the one kept here.
+fn rename_records(repo_root: &Path, diff_range: Option<&str>) -> Result<Vec<(String, String)>> {
     let mut args: Vec<&str> = vec!["diff"];
     args.extend_from_slice(SAFE_DIFF_FLAGS);
     args.extend_from_slice(&["--diff-filter=R", "--name-status", "-M", "-z"]);
@@ -514,37 +557,35 @@ pub fn get_renamed_paths(
     let output = run_git(repo_root, &args)?;
     let parts: Vec<&str> = output.split('\0').collect();
 
-    let mut old_paths = FxHashSet::default();
-    let mut pure_new_paths = FxHashSet::default();
+    let mut records = Vec::new();
     let mut i = 0;
-
     while i < parts.len() {
         if parts[i].starts_with('R') {
-            let sim: u32 = parts[i][1..].parse().unwrap_or(0);
-
-            if i + 1 < parts.len() && !parts[i + 1].is_empty() {
-                let resolved = repo_root
-                    .join(parts[i + 1])
-                    .canonicalize()
-                    .unwrap_or_else(|_| repo_root.join(parts[i + 1]));
-                old_paths.insert(resolved);
+            if i + 2 < parts.len() && !parts[i + 1].is_empty() && !parts[i + 2].is_empty() {
+                records.push((parts[i + 1].to_string(), parts[i + 2].to_string()));
             }
-
-            if sim >= min_similarity && i + 2 < parts.len() && !parts[i + 2].is_empty() {
-                let resolved = repo_root
-                    .join(parts[i + 2])
-                    .canonicalize()
-                    .unwrap_or_else(|_| repo_root.join(parts[i + 2]));
-                pure_new_paths.insert(resolved);
-            }
-
             i += 3;
         } else {
             i += 1;
         }
     }
+    Ok(records)
+}
 
-    Ok((old_paths, pure_new_paths))
+/// Rename *source* paths, canonicalized. These no longer exist on disk and
+/// cannot be fragmented, so the pipeline excludes them from the changed set.
+/// The rename destinations need no special handling: they exist on HEAD and
+/// reach the universe through the ordinary changed-file path.
+pub fn get_renamed_paths(repo_root: &Path, diff_range: Option<&str>) -> Result<FxHashSet<PathBuf>> {
+    Ok(rename_records(repo_root, diff_range)?
+        .into_iter()
+        .map(|(old, _)| {
+            repo_root
+                .join(&old)
+                .canonicalize()
+                .unwrap_or_else(|_| repo_root.join(&old))
+        })
+        .collect())
 }
 
 /// Rename pairs as repo-relative display paths (`old -> new`), for the output
@@ -554,32 +595,15 @@ pub fn get_rename_pairs(
     repo_root: &Path,
     diff_range: Option<&str>,
 ) -> Result<Vec<(String, String)>> {
-    let mut args: Vec<&str> = vec!["diff"];
-    args.extend_from_slice(SAFE_DIFF_FLAGS);
-    args.extend_from_slice(&["--diff-filter=R", "--name-status", "-M", "-z"]);
-    if let Some(range) = diff_range {
-        validate_diff_range(range)?;
-        args.push(range);
-    }
-    let output = run_git(repo_root, &args)?;
-    let parts: Vec<&str> = output.split('\0').collect();
-
-    let mut pairs = Vec::new();
-    let mut i = 0;
-    while i < parts.len() {
-        if parts[i].starts_with('R') {
-            if i + 2 < parts.len() && !parts[i + 1].is_empty() && !parts[i + 2].is_empty() {
-                pairs.push((
-                    parts[i + 1].replace('\\', "/"),
-                    parts[i + 2].replace('\\', "/"),
-                ));
-            }
-            i += 3;
-        } else {
-            i += 1;
-        }
-    }
-    Ok(pairs)
+    Ok(rename_records(repo_root, diff_range)?
+        .into_iter()
+        .map(|(old, new)| {
+            (
+                crate::paths::to_posix_display(std::borrow::Cow::Owned(old)),
+                crate::paths::to_posix_display(std::borrow::Cow::Owned(new)),
+            )
+        })
+        .collect())
 }
 
 pub fn split_diff_range(range: &str) -> (Option<String>, Option<String>) {
@@ -657,6 +681,65 @@ fn anchor_diffctx_ignore_line(line: &str, rel: &str) -> String {
     if neg { format!("!{full}") } else { full }
 }
 
+/// Writes `content` to a fresh file in the system temp directory and returns
+/// its path, or `None` if no such file could be created.
+///
+/// The name used to be `diffctx-ignore-<pid>-<counter>.tmp` written with
+/// `fs::write`, which follows symlinks and truncates the target. Both the pid
+/// and the counter are guessable, so on a shared machine anyone able to write
+/// to the temp directory could pre-plant that name as a symlink and have this
+/// overwrite the file it points at, with repository-controlled content.
+/// `create_new` is `O_CREAT | O_EXCL`: it refuses an existing path, symlink
+/// included, so a planted name costs at most a retry — and if every attempt
+/// loses, the caller degrades to "no `.diffctx/ignore` patterns", which is
+/// already its documented best-effort behaviour.
+fn write_private_temp_file(content: &str) -> Option<PathBuf> {
+    use std::io::Write;
+
+    let dir = std::env::temp_dir();
+    for _ in 0..8 {
+        let unique = TEMP_EXCLUDES_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.subsec_nanos())
+            .unwrap_or(0);
+        let path = dir.join(format!(
+            "diffctx-ignore-{}-{unique}-{nanos}.tmp",
+            std::process::id()
+        ));
+        match create_new_private_file(&path) {
+            Ok(mut file) => {
+                return match file
+                    .write_all(content.as_bytes())
+                    .and_then(|()| file.flush())
+                {
+                    Ok(()) => Some(path),
+                    Err(_) => {
+                        let _ = std::fs::remove_file(&path);
+                        None
+                    }
+                };
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(_) => return None,
+        }
+    }
+    None
+}
+
+/// `O_CREAT | O_EXCL` (`create_new`), which refuses any existing path —
+/// a planted symlink included — instead of following it.
+fn create_new_private_file(path: &Path) -> std::io::Result<std::fs::File> {
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    opts.open(path)
+}
+
 /// Finds every `.diffctx/ignore` file tracked or present in `repo_root`
 /// (any depth) and returns its patterns rewritten to be repo-root-relative,
 /// ready to feed into a combined gitignore-syntax exclude file.
@@ -726,16 +809,7 @@ pub fn find_ignored_paths(repo_root: &Path, rel_paths: &[String]) -> FxHashSet<S
     let temp_excludes = if diffctx_patterns.is_empty() {
         None
     } else {
-        let unique = TEMP_EXCLUDES_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!(
-            "diffctx-ignore-{}-{}.tmp",
-            std::process::id(),
-            unique
-        ));
-        match std::fs::write(&path, diffctx_patterns.join("\n")) {
-            Ok(()) => Some(path),
-            Err(_) => None,
-        }
+        write_private_temp_file(&diffctx_patterns.join("\n"))
     };
 
     // Ancestors are queried alongside the paths themselves so an exclusion can
@@ -751,18 +825,48 @@ pub fn find_ignored_paths(repo_root: &Path, rel_paths: &[String]) -> FxHashSet<S
         }
     }
 
-    let mut args: Vec<String> = vec!["check-ignore".into(), "--no-index".into(), "-v".into()];
+    // Paths go over stdin, not argv. Every diff path plus every ancestor
+    // directory used to be passed as arguments, so a monorepo-sized range hit
+    // the platform argv limit, `git` failed to spawn, and the fail-open tail
+    // below turned that into "nothing is ignored" — silently disabling the
+    // `.diffctx/ignore` contract exactly when the repo is large enough for it
+    // to matter. stdin has no such ceiling.
+    // `-z` on BOTH sides. Line-delimited input splits a path containing a
+    // newline into two phantom queries: git then answers about `secret` and
+    // `name.py` while the real path `secret\nname.py` never gets a verdict, so
+    // the lookup below misses it and a file the user declared ignored is
+    // published. Verified against git directly — line mode reports the
+    // truncated stem, NUL mode reports the whole path. The rest of this module
+    // is already `-z` throughout.
+    let mut args: Vec<String> = vec![
+        "check-ignore".into(),
+        "--no-index".into(),
+        "-v".into(),
+        "-z".into(),
+        "--stdin".into(),
+    ];
     if let Some(ref path) = temp_excludes {
         args.insert(0, format!("core.excludesFile={}", path.display()));
         args.insert(0, "-c".into());
     }
-    args.push("--".into());
-    args.extend(queries);
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    // Paths reach `--stdin` through a file rather than a pipe we write
+    // ourselves. Writing the whole payload into a pipe before reading stdout
+    // deadlocks as soon as it outgrows the pipe buffer: git blocks emitting
+    // matches that nobody is draining, we block on the write, and the pipeline
+    // hangs until the git timeout fires. A file hands the feeding to the kernel,
+    // which needs no second thread to stay correct.
+    let query_file = write_private_temp_file(&format!("{}\0", queries.join("\0")));
 
     let result = (|| -> Result<FxHashSet<String>> {
+        let Some(ref query_path) = query_file else {
+            return Err(GitError::CommandFailed(
+                "could not stage check-ignore query paths".into(),
+            ));
+        };
         let mut cmd = git_command(repo_root);
         cmd.args(&arg_refs)
+            .stdin(Stdio::from(std::fs::File::open(query_path)?))
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         let child = cmd.spawn()?;
@@ -779,12 +883,7 @@ pub fn find_ignored_paths(repo_root: &Path, rel_paths: &[String]) -> FxHashSet<S
         let stdout = String::from_utf8_lossy(&output.stdout);
         let excludes_source = temp_excludes.as_ref().map(|p| p.display().to_string());
 
-        let mut rules: rustc_hash::FxHashMap<String, String> = rustc_hash::FxHashMap::default();
-        for line in stdout.lines() {
-            if let Some((rule, path)) = parse_verbose_ignore_match(line) {
-                rules.insert(path, rule);
-            }
-        }
+        let rules = parse_verbose_ignore_records(&stdout);
 
         Ok(rel_paths
             .iter()
@@ -807,8 +906,43 @@ pub fn find_ignored_paths(repo_root: &Path, rel_paths: &[String]) -> FxHashSet<S
     if let Some(path) = temp_excludes {
         let _ = std::fs::remove_file(path);
     }
+    if let Some(path) = query_file {
+        let _ = std::fs::remove_file(path);
+    }
 
-    result.unwrap_or_default()
+    // Fail closed only where a policy was actually declared.
+    //
+    // The returned set is "exclude these", so `unwrap_or_default()` answered a
+    // failed check with "nothing is ignored" — the one answer that leaks, and
+    // QA.md calls `.diffctx/ignore` a security contract. But failing closed
+    // unconditionally is too blunt: `check-ignore` cannot run in a bare clone at
+    // all, and excluding everything turned a supported repo shape into empty
+    // output.
+    //
+    // So the two cases are separated by whether the user declared anything. With
+    // `.diffctx/ignore` patterns present, a failed check must not silently
+    // publish what they asked to withhold. Without them the only loss is
+    // best-effort gitignore filtering, and refusing to emit anything would be a
+    // worse answer than emitting a bare clone's diff. A bare repo has no working
+    // tree, so it never has patterns and always lands on the open branch.
+    let policy_declared = !diffctx_patterns.is_empty();
+    result.unwrap_or_else(|e| {
+        if policy_declared {
+            tracing::error!(
+                "git check-ignore failed ({e}); .diffctx/ignore declares {} pattern(s), so all \
+                 {} queried paths are treated as ignored rather than risk publishing them",
+                diffctx_patterns.len(),
+                rel_paths.len()
+            );
+            rel_paths.iter().cloned().collect()
+        } else {
+            tracing::warn!(
+                "git check-ignore failed ({e}); no .diffctx/ignore patterns are declared, so \
+                 gitignore filtering is skipped for this run"
+            );
+            FxHashSet::default()
+        }
+    })
 }
 
 /// `check-ignore -v` emits `<source>:<line>:<pattern>\t<path>`; returns the
@@ -818,9 +952,32 @@ pub fn find_ignored_paths(repo_root: &Path, rel_paths: &[String]) -> FxHashSet<S
 /// containing a tab, so the last tab is always the separator. Splitting from
 /// the left mis-parses a pattern that itself contains a tab, and the resulting
 /// lookup miss reports an ignored file as not ignored — i.e. it leaks.
-fn parse_verbose_ignore_match(line: &str) -> Option<(String, String)> {
-    let (rule, path) = line.rsplit_once('\t')?;
-    Some((rule.to_string(), unquote_c_style(path)))
+/// `check-ignore -v -z` emits four NUL-separated fields per match —
+/// `<source>\0<line>\0<pattern>\0<path>\0` — and never quotes the path,
+/// because NUL cannot appear in one.
+///
+/// The text format this replaced (`<source>:<line>:<pattern>\t<path>`) had to
+/// guess where the pattern ended and the path began, and C-quoting made a path
+/// containing a tab or a newline ambiguous. Field-delimited records remove the
+/// guess entirely.
+fn parse_verbose_ignore_records(stdout: &str) -> rustc_hash::FxHashMap<String, String> {
+    let mut rules: rustc_hash::FxHashMap<String, String> = rustc_hash::FxHashMap::default();
+    let fields: Vec<&str> = stdout.split('\0').collect();
+    // A trailing NUL leaves an empty final element; chunks of four skip it.
+    for record in fields.chunks(4) {
+        if record.len() < 4 {
+            break;
+        }
+        let (source, line, pattern, path) = (record[0], record[1], record[2], record[3]);
+        if path.is_empty() {
+            continue;
+        }
+        // The rule identity keeps the text format's shape: callers compare it
+        // against `format!("{excludes_source}:")` to tell a diffctx-declared
+        // exclusion from a gitignore one.
+        rules.insert(path.to_string(), format!("{source}:{line}:{pattern}"));
+    }
+    rules
 }
 
 fn ancestor_dirs(rel: &str) -> Vec<String> {
@@ -1145,25 +1302,52 @@ mod tests {
         }
     }
 
-    // --- parse_verbose_ignore_match: last-tab split survives a tab in the pattern ---
+    // --- parse_verbose_ignore_records: NUL fields remove every delimiter guess ---
 
     #[test]
-    fn parse_verbose_ignore_match_splits_on_last_tab_not_first() {
-        // The pattern itself ("foo\tbar") contains a literal tab. Splitting
-        // from the left would take "foo" as the path, silently reporting an
-        // ignored file as not ignored.
-        let line = ".gitignore:3:foo\tbar\tsome/real/path.txt";
-        let (rule, path) = parse_verbose_ignore_match(line).expect("parse");
-        assert_eq!(path, "some/real/path.txt");
-        assert_eq!(rule, ".gitignore:3:foo\tbar");
+    fn a_tab_in_the_pattern_no_longer_needs_disambiguating() {
+        // The text format put the pattern and the path on one line separated by
+        // a tab, so a pattern containing a tab had to be split from the right
+        // and hoped for. Fields make it unambiguous.
+        let stdout = ".gitignore\x003\x00foo\tbar\x00some/real/path.txt\x00";
+        let rules = parse_verbose_ignore_records(stdout);
+        assert_eq!(
+            rules.get("some/real/path.txt").map(String::as_str),
+            Some(".gitignore:3:foo\tbar")
+        );
+    }
+
+    /// The leak that forced `-z`. A newline in a filename split the query into
+    /// two phantom paths, git answered about the stem, the real path never got
+    /// a verdict, and a file the user declared ignored was published.
+    #[test]
+    fn a_newline_in_the_path_survives_as_one_record() {
+        let stdout = "excl\x001\x00secret*\x00secret\nname.py\x00";
+        let rules = parse_verbose_ignore_records(stdout);
+        assert_eq!(rules.len(), 1);
+        assert_eq!(
+            rules.get("secret\nname.py").map(String::as_str),
+            Some("excl:1:secret*")
+        );
     }
 
     #[test]
-    fn parse_verbose_ignore_match_unquotes_c_style_path() {
-        let line = ".gitignore:1:*.log\t\"weird\\tfile.log\"";
-        let (rule, path) = parse_verbose_ignore_match(line).expect("parse");
-        assert_eq!(path, "weird\tfile.log");
-        assert_eq!(rule, ".gitignore:1:*.log");
+    fn several_records_and_a_trailing_nul_parse_cleanly() {
+        let stdout = ".gitignore\x001\x00*.log\x00a.log\x00.gitignore\x002\x00*.tmp\x00b/c.tmp\x00";
+        let rules = parse_verbose_ignore_records(stdout);
+        assert_eq!(rules.len(), 2);
+        assert!(rules.contains_key("a.log"));
+        assert!(rules.contains_key("b/c.tmp"));
+    }
+
+    #[test]
+    fn a_truncated_final_record_is_dropped_not_half_read() {
+        // Killed mid-write, the last record is short. Reading three fields as
+        // four would key a rule under a pattern.
+        let stdout = ".gitignore\x001\x00*.log\x00a.log\x00.gitignore\x002\x00*.tmp\x00";
+        let rules = parse_verbose_ignore_records(stdout);
+        assert_eq!(rules.len(), 1);
+        assert!(rules.contains_key("a.log"));
     }
 
     // --- anchor_diffctx_ignore_line: 4 reachable outputs, root vs nested, negation ---
@@ -1255,6 +1439,202 @@ mod tests {
                 .to_string_lossy(),
             "café.py"
         );
+    }
+
+    /// The containment check is lexical (`Path::starts_with` compares
+    /// components) and `canonicalize` cannot resolve a path that does not
+    /// exist, so the fallback kept `..` in place and `<root>/../x` "started
+    /// with" `<root>`. This only failed on macOS, where the temp root
+    /// canonicalizes through `/var -> /private/var` and the two spellings stop
+    /// matching — so the guard was passing for an accident of layout. Both the
+    /// existing and non-existing target are covered: the first is the one that
+    /// actually reads a file outside the repository.
+    #[test]
+    fn a_header_escaping_the_repo_root_is_refused_whether_or_not_the_target_exists() {
+        let tmp = TempDir::new().expect("tempdir");
+        // Canonicalized on purpose. With the root spelled the same way
+        // `canonicalize` would spell it, the lexical fallback prefix matches and
+        // the hole reproduces here exactly as it did on Linux CI; spelled via a
+        // symlinked temp dir (`/var` on macOS) the mismatch hid it.
+        let base = tmp.path().canonicalize().expect("canonical tempdir");
+        let root = base.join("repo");
+        std::fs::create_dir_all(&root).expect("mkdir repo");
+        std::fs::write(base.join("outside.py"), "secret = 1\n").expect("write outside");
+
+        for rel in ["../outside.py", "../missing.py", "sub/../../outside.py"] {
+            for line in [format!("--- a/{rel}"), format!("+++ b/{rel}")] {
+                let (kind, path) = parse_path_line(&line, &root);
+                assert_eq!(
+                    (kind, path.as_ref()),
+                    ("", None),
+                    "escaping header accepted: {line}"
+                );
+            }
+        }
+
+        // An ordinary in-repo header still resolves, including one whose file
+        // does not exist yet (the old side of a deletion).
+        std::fs::write(root.join("real.py"), "x = 1\n").expect("write real");
+        for rel in ["real.py", "gone.py", "nested/deep.py"] {
+            let (kind, path) = parse_path_line(&format!("--- a/{rel}"), &root);
+            assert_eq!(kind, "old", "in-repo header refused: {rel}");
+            assert!(path.expect("path").ends_with(rel));
+        }
+    }
+
+    /// A symlink inside the repository needs no `..` to point outside it, so
+    /// rejecting `..` is not on its own enough — the canonical containment check
+    /// has to stay reachable rather than being short-circuited by a lexical
+    /// fallback that is always true once `..` is gone.
+    #[cfg(unix)]
+    #[test]
+    fn an_in_repo_symlink_pointing_outside_the_root_is_refused() {
+        let tmp = TempDir::new().expect("tempdir");
+        let base = tmp.path().canonicalize().expect("canonical tempdir");
+        let root = base.join("repo");
+        std::fs::create_dir_all(&root).expect("mkdir repo");
+
+        let outside_dir = base.join("outside");
+        std::fs::create_dir_all(&outside_dir).expect("mkdir outside");
+        std::fs::write(outside_dir.join("secret.py"), "token = 1\n").expect("write secret");
+        std::os::unix::fs::symlink(&outside_dir, root.join("escape"))
+            .expect("symlink into the repo");
+
+        let (kind, path) = parse_path_line("--- a/escape/secret.py", &root);
+        assert_eq!(
+            (kind, path.as_ref()),
+            ("", None),
+            "a header reaching outside the repo through an in-repo symlink was accepted"
+        );
+
+        // A symlink that stays inside the repository is still fine.
+        std::fs::create_dir_all(root.join("real")).expect("mkdir real");
+        std::fs::write(root.join("real/mod.py"), "y = 1\n").expect("write real");
+        std::os::unix::fs::symlink(root.join("real"), root.join("alias")).expect("inner symlink");
+        let (kind, _) = parse_path_line("--- a/alias/mod.py", &root);
+        assert_eq!(kind, "old", "an in-repo symlink was wrongly refused");
+    }
+
+    /// The `core.excludesFile` handed to `git check-ignore` used to be written
+    /// with `fs::write` under a guessable name in the shared temp directory,
+    /// which follows a symlink and truncates its target. Anything the pipeline
+    /// creates there must refuse a path that already exists.
+    #[test]
+    fn temp_file_creation_refuses_a_pre_planted_path() {
+        let tmp = TempDir::new().expect("tempdir");
+        let victim = tmp.path().join("victim.txt");
+        std::fs::write(&victim, "precious\n").expect("write victim");
+
+        let planted = tmp.path().join("planted.tmp");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&victim, &planted).expect("symlink");
+        #[cfg(not(unix))]
+        std::fs::write(&planted, "").expect("placeholder");
+
+        let err = create_new_private_file(&planted).expect_err("must refuse an existing path");
+        assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+        assert_eq!(
+            std::fs::read_to_string(&victim).expect("victim survives"),
+            "precious\n",
+            "the symlink target was written through"
+        );
+    }
+
+    #[test]
+    fn temp_excludes_file_is_written_and_readable() {
+        let path = write_private_temp_file("*.log\n!keep.log").expect("temp file");
+        let content = std::fs::read_to_string(&path).expect("read back");
+        assert_eq!(content, "*.log\n!keep.log");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path)
+                .expect("metadata")
+                .permissions()
+                .mode()
+                & 0o777;
+            assert_eq!(mode, 0o600, "temp excludes file must not be world-readable");
+        }
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// The traversal guard in `parse_path_line` returns `("", None)`, which the
+    /// hunk loop cannot distinguish from "this line is not a path header". With
+    /// no per-file reset the previous file's paths stay live, so the rejected
+    /// entry's hunks are charged to the last legitimate file — the guard drops
+    /// the path but keeps its line ranges, and those ranges decide which
+    /// fragments are marked as changed.
+    #[test]
+    fn a_rejected_path_header_does_not_charge_its_hunks_to_the_previous_file() {
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path();
+        write_file(root, "real.py", "a = 1\nb = 2\nc = 3\n");
+
+        let output = concat!(
+            "diff --git a/real.py b/real.py\n",
+            "--- a/real.py\n",
+            "+++ b/real.py\n",
+            "@@ -1,1 +1,1 @@\n",
+            "-a = 1\n",
+            "+a = 9\n",
+            "diff --git a/../../escape.py b/../../escape.py\n",
+            "--- a/../../escape.py\n",
+            "+++ b/../../escape.py\n",
+            "@@ -500,20 +500,20 @@\n",
+            "-gone\n",
+            "+new\n",
+        );
+
+        let hunks = parse_hunks_from_diff_output(output, root);
+        assert_eq!(
+            hunks.len(),
+            1,
+            "expected only the in-repo file's hunk, got {:?}",
+            hunks
+                .iter()
+                .map(|h| (h.path.as_ref().to_string(), h.new_start))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(hunks[0].new_start, 1);
+        assert!(hunks[0].path.ends_with("real.py"));
+    }
+
+    /// A deletion emits `+++ /dev/null`, and a creation emits `--- /dev/null`;
+    /// both must still resolve to the side that names a real file.
+    #[test]
+    fn deletions_and_creations_attribute_their_hunks_to_the_named_side() {
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path();
+        write_file(root, "kept.py", "x = 1\n");
+        write_file(root, "added.py", "y = 1\n");
+        write_file(root, "removed.py", "z = 1\n");
+
+        let output = concat!(
+            "diff --git a/kept.py b/kept.py\n",
+            "--- a/kept.py\n",
+            "+++ b/kept.py\n",
+            "@@ -1,1 +1,1 @@\n",
+            "diff --git a/removed.py b/removed.py\n",
+            "--- a/removed.py\n",
+            "+++ /dev/null\n",
+            "@@ -1,1 +0,0 @@\n",
+            "diff --git a/added.py b/added.py\n",
+            "--- /dev/null\n",
+            "+++ b/added.py\n",
+            "@@ -0,0 +1,1 @@\n",
+        );
+
+        let paths: Vec<String> = parse_hunks_from_diff_output(output, root)
+            .iter()
+            .map(|h| {
+                Path::new(h.path.as_ref())
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect();
+        assert_eq!(paths, vec!["kept.py", "removed.py", "added.py"]);
     }
 
     #[test]

@@ -85,6 +85,24 @@ noise, catching regressions in relevance filtering. Each garbage
 file uses unique prefixed identifiers (e.g. `GARBAGE_*`) so leaks
 are unambiguously detectable.
 
+**Reading oracle results** — two traps that make raw numbers lie:
+
+- `changed_files` in a case YAML is the **final state of every file**,
+  not the diff. Usually only one differs from `initial_files`; the rest
+  produce no hunks and are legitimately forbidden. A path appearing
+  under `changed_files` is *not* evidence the tool must emit it.
+- `forbidden_rate = hit_forbidden / forbidden_total` **saturates**. The
+  forbidden list carries a path entry plus several anchor-only entries
+  for the same file, so one wrong file trips ~5 entries and drives
+  `score = recall * (1 - forbidden_rate)` to zero. `forbidden_rate=100%`
+  means "at least one wrong file", not "emitted all the garbage" — the
+  real magnitude is a median of 1 extra file.
+
+The harness passes `DEFAULT_PPR_ALPHA` / `DEFAULT_STOPPING_THRESHOLD`
+so the gate measures the shipped configuration; it once passed
+`tau=0.0`, which hid 119 cases in both directions (#175). Never
+replace those with literals.
+
 ## Technology Choices
 
 | Decision    | Choice            | Rationale                    |

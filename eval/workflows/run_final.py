@@ -233,7 +233,7 @@ def _build_argparser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--scoring",
-        choices=["ego", "ppr", "bm25"],
+        choices=["ego", "ppr", "bm25", "rrf"],
         default=None,
         help="Override winner.json scoring mode for --baseline=diffctx (e.g. the "
         "internal-BM25 ablation cell: --baseline diffctx --scoring bm25).",

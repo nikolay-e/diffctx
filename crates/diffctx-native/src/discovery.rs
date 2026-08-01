@@ -34,11 +34,37 @@ impl DiscoveryContext {
 
 pub trait DiscoveryStrategy: Send + Sync {
     fn discover(&self, ctx: &DiscoveryContext) -> Vec<PathBuf>;
+
+    /// Stable identifier for telemetry. Not a display name — it is written into
+    /// the provenance dump and read back by analysis, so changing one renames a
+    /// column in every recorded run.
+    fn name(&self) -> &'static str;
+
+    /// Discovery plus which strategy surfaced each path.
+    ///
+    /// The ensemble dedupes first-seen and used to throw the attribution away,
+    /// which makes the universe ceiling undiagnosable: "never surfaced at all"
+    /// and "surfaced but not selected" are different failures with different
+    /// fixes (#130), and neither is visible from the selected set alone. The
+    /// default is honest for a single strategy — everything it returns, it
+    /// found — and only the ensemble needs to override it.
+    fn discover_attributed(
+        &self,
+        ctx: &DiscoveryContext,
+    ) -> (Vec<PathBuf>, Vec<(PathBuf, &'static str)>) {
+        let paths = self.discover(ctx);
+        let attribution = paths.iter().map(|p| (p.clone(), self.name())).collect();
+        (paths, attribution)
+    }
 }
 
 pub struct DefaultDiscovery;
 
 impl DiscoveryStrategy for DefaultDiscovery {
+    fn name(&self) -> &'static str {
+        "structural"
+    }
+
     fn discover(&self, ctx: &DiscoveryContext) -> Vec<PathBuf> {
         let changed_set: FxHashSet<&Path> = ctx.changed_files.iter().map(|p| p.as_path()).collect();
 
@@ -96,28 +122,49 @@ pub struct TestFileDiscovery;
 const TEST_PREFIXES: &[&str] = &["test_", "spec_"];
 const TEST_SUFFIXES: &[&str] = &["_test", "_spec", ".test", ".spec", "-test", "-spec"];
 
+fn lowercase_stem(path: &Path) -> String {
+    path.file_stem()
+        .map(|s| s.to_string_lossy().to_lowercase())
+        .unwrap_or_default()
+}
+
 impl DiscoveryStrategy for TestFileDiscovery {
+    fn name(&self) -> &'static str {
+        "test_pairing"
+    }
+
     fn discover(&self, ctx: &DiscoveryContext) -> Vec<PathBuf> {
         let changed_set: FxHashSet<&Path> = ctx.changed_files.iter().map(|p| p.as_path()).collect();
-        let mut target_stems: FxHashSet<String> = FxHashSet::default();
+        // Test files legitimately live in a tree of their own (`tests/test_x.py`
+        // for `src/x.py`), so the prefixed and suffixed stems have to match
+        // anywhere.
+        let mut test_stems: FxHashSet<String> = FxHashSet::default();
+        // The bare stem is a different rule with a different justification:
+        // `foo.h` beside `foo.c`, `x.ts` beside `x.js`. What makes such a pair
+        // meaningful is co-location, so this one is scoped to the changed
+        // file's own directory. Repo-wide it degenerates on exactly the
+        // basenames real projects repeat most — one changed `mod.rs`,
+        // `index.ts` or `__init__.py` would pull in every namesake in the tree,
+        // and the discovery universe bounds every later stage.
+        let mut sibling_stems: FxHashMap<PathBuf, FxHashSet<String>> = FxHashMap::default();
 
         for f in &ctx.changed_files {
-            let stem = f
-                .file_stem()
-                .map(|s| s.to_string_lossy().to_lowercase())
-                .unwrap_or_default();
+            let stem = lowercase_stem(f);
             if TEST_PREFIXES.iter().any(|p| stem.starts_with(p)) {
                 continue;
             }
             if TEST_SUFFIXES.iter().any(|s| stem.ends_with(s)) {
                 continue;
             }
-            target_stems.insert(stem.clone());
+            sibling_stems
+                .entry(f.parent().unwrap_or(Path::new("")).to_path_buf())
+                .or_default()
+                .insert(stem.clone());
             for prefix in TEST_PREFIXES {
-                target_stems.insert(format!("{}{}", prefix, stem));
+                test_stems.insert(format!("{prefix}{stem}"));
             }
             for suffix in TEST_SUFFIXES {
-                target_stems.insert(format!("{}{}", stem, suffix));
+                test_stems.insert(format!("{stem}{suffix}"));
             }
         }
 
@@ -126,11 +173,11 @@ impl DiscoveryStrategy for TestFileDiscovery {
             if changed_set.contains(candidate.as_path()) {
                 continue;
             }
-            let stem = candidate
-                .file_stem()
-                .map(|s| s.to_string_lossy().to_lowercase())
-                .unwrap_or_default();
-            if target_stems.contains(&stem) {
+            let stem = lowercase_stem(candidate);
+            let is_sibling = sibling_stems
+                .get(candidate.parent().unwrap_or(Path::new("")))
+                .is_some_and(|stems| stems.contains(&stem));
+            if test_stems.contains(&stem) || is_sibling {
                 discovered.push(candidate.clone());
             }
         }
@@ -169,6 +216,10 @@ impl BM25Discovery {
 }
 
 impl DiscoveryStrategy for BM25Discovery {
+    fn name(&self) -> &'static str {
+        "lexical_bm25"
+    }
+
     fn discover(&self, ctx: &DiscoveryContext) -> Vec<PathBuf> {
         let query_tokens = extract_identifier_list(&ctx.diff_text, BM25.min_query_token_length);
         if query_tokens.is_empty() {
@@ -272,23 +323,43 @@ impl EnsembleDiscovery {
 
 impl DiscoveryStrategy for EnsembleDiscovery {
     fn discover(&self, ctx: &DiscoveryContext) -> Vec<PathBuf> {
-        let per_strategy: Vec<Vec<PathBuf>> = self
+        self.discover_attributed(ctx).0
+    }
+
+    fn name(&self) -> &'static str {
+        "ensemble"
+    }
+
+    /// First-seen dedup, with the winner recorded rather than discarded.
+    ///
+    /// "First" is strategy order, not merit: a path both the structural and the
+    /// lexical strategy would have found is credited to whichever runs earlier.
+    /// The attribution answers "could anything have surfaced this", which is the
+    /// universe-ceiling question; it is not a claim that the other strategies
+    /// would have missed it.
+    fn discover_attributed(
+        &self,
+        ctx: &DiscoveryContext,
+    ) -> (Vec<PathBuf>, Vec<(PathBuf, &'static str)>) {
+        let per_strategy: Vec<(&'static str, Vec<PathBuf>)> = self
             .strategies
             .par_iter()
-            .map(|strategy| strategy.discover(ctx))
+            .map(|strategy| (strategy.name(), strategy.discover(ctx)))
             .collect();
 
         let mut seen: FxHashSet<PathBuf> = FxHashSet::default();
         let mut result: Vec<PathBuf> = Vec::new();
-        for paths in per_strategy {
+        let mut attribution: Vec<(PathBuf, &'static str)> = Vec::new();
+        for (source, paths) in per_strategy {
             for path in paths {
                 if seen.insert(path.clone()) {
+                    attribution.push((path.clone(), source));
                     result.push(path);
                 }
             }
         }
 
-        result
+        (result, attribution)
     }
 }
 
@@ -370,6 +441,49 @@ mod tests {
     /// Each naming convention pairs through a different entry in
     /// TEST_PREFIXES/TEST_SUFFIXES, so removing one leaves the others working
     /// and only that ecosystem's coverage silently disappears.
+    /// The bare stem of a changed file is also a target, which pairs
+    /// `foo.c` with `include/foo.h`. Applied repo-wide it turns the most
+    /// ordinary basenames into a fan-out: one changed `mod.rs` drags in every
+    /// other `mod.rs` in the tree, and the discovery universe bounds
+    /// everything downstream.
+    #[test]
+    fn bare_stem_pairing_does_not_drag_in_same_named_files_repo_wide() {
+        let ctx = CtxBuilder {
+            changed: vec!["crates/a/src/mod.rs"],
+            candidates: vec![
+                "crates/a/src/mod_test.rs",
+                "crates/b/src/mod.rs",
+                "crates/c/src/mod.rs",
+                "vendor/d/mod.rs",
+            ],
+            ..CtxBuilder::new()
+        }
+        .build();
+
+        assert_eq!(
+            names(&TestFileDiscovery.discover(&ctx)),
+            vec!["crates/a/src/mod_test.rs"],
+            "unrelated same-basename files entered the universe"
+        );
+    }
+
+    /// The co-located half of the same rule is the reason it exists: a header
+    /// beside its implementation is a genuine pairing.
+    #[test]
+    fn bare_stem_pairing_still_finds_a_co_located_counterpart() {
+        let ctx = CtxBuilder {
+            changed: vec!["src/parser.c"],
+            candidates: vec!["src/parser.h", "other/parser.h"],
+            ..CtxBuilder::new()
+        }
+        .build();
+
+        assert_eq!(
+            names(&TestFileDiscovery.discover(&ctx)),
+            vec!["src/parser.h"]
+        );
+    }
+
     #[test]
     fn test_file_discovery_pairs_every_supported_naming_convention() {
         let ctx = CtxBuilder {
@@ -547,18 +661,21 @@ mod tests {
     /// produce results, so recall drops with no error anywhere.
     #[test]
     fn ensemble_deduplicates_across_strategies_and_preserves_first_hit_order() {
-        struct Fixed(Vec<&'static str>);
+        struct Fixed(&'static str, Vec<&'static str>);
         impl DiscoveryStrategy for Fixed {
             fn discover(&self, ctx: &DiscoveryContext) -> Vec<PathBuf> {
-                self.0.iter().map(|p| ctx.root_dir.join(p)).collect()
+                self.1.iter().map(|p| ctx.root_dir.join(p)).collect()
+            }
+            fn name(&self) -> &'static str {
+                self.0
             }
         }
 
         let ctx = CtxBuilder::new().build();
         let ensemble = EnsembleDiscovery::new(vec![
-            Box::new(Fixed(vec!["a.py", "b.py"])),
-            Box::new(Fixed(vec!["b.py", "c.py"])),
-            Box::new(Fixed(vec![])),
+            Box::new(Fixed("first", vec!["a.py", "b.py"])),
+            Box::new(Fixed("second", vec!["b.py", "c.py"])),
+            Box::new(Fixed("third", vec![])),
         ]);
         let found = ensemble.discover(&ctx);
         assert_eq!(
@@ -568,6 +685,62 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["a.py", "b.py", "c.py"]
         );
+    }
+
+    /// The attribution the ensemble used to discard (#130). `b.py` is found by
+    /// both strategies and must be credited to the one that ran first — the
+    /// question it answers is "could anything surface this", not "which one
+    /// deserves it".
+    #[test]
+    fn the_ensemble_records_which_strategy_first_surfaced_each_path() {
+        struct Fixed(&'static str, Vec<&'static str>);
+        impl DiscoveryStrategy for Fixed {
+            fn discover(&self, ctx: &DiscoveryContext) -> Vec<PathBuf> {
+                self.1.iter().map(|p| ctx.root_dir.join(p)).collect()
+            }
+            fn name(&self) -> &'static str {
+                self.0
+            }
+        }
+
+        let ctx = CtxBuilder::new().build();
+        let ensemble = EnsembleDiscovery::new(vec![
+            Box::new(Fixed("structural", vec!["a.py", "b.py"])),
+            Box::new(Fixed("lexical", vec!["b.py", "c.py"])),
+        ]);
+        let (paths, attribution) = ensemble.discover_attributed(&ctx);
+
+        assert_eq!(paths.len(), 3, "dedup must still collapse the shared path");
+        let by_name: Vec<(String, &str)> = attribution
+            .iter()
+            .map(|(p, s)| (p.file_name().unwrap().to_string_lossy().into_owned(), *s))
+            .collect();
+        assert_eq!(
+            by_name,
+            vec![
+                ("a.py".to_string(), "structural"),
+                ("b.py".to_string(), "structural"),
+                ("c.py".to_string(), "lexical"),
+            ]
+        );
+    }
+
+    /// A single strategy needs no bookkeeping: everything it returns, it found.
+    #[test]
+    fn a_lone_strategy_attributes_everything_to_itself() {
+        struct Fixed;
+        impl DiscoveryStrategy for Fixed {
+            fn discover(&self, ctx: &DiscoveryContext) -> Vec<PathBuf> {
+                vec![ctx.root_dir.join("only.py")]
+            }
+            fn name(&self) -> &'static str {
+                "solo"
+            }
+        }
+        let ctx = CtxBuilder::new().build();
+        let (paths, attribution) = Fixed.discover_attributed(&ctx);
+        assert_eq!(paths.len(), 1);
+        assert_eq!(attribution[0].1, "solo");
     }
 
     #[test]

@@ -3,6 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+# Mirrors the pyo3 signature defaults by reading them, so this wrapper cannot
+# drift from the engine it wraps. Python always passes `scoring_mode` and `tau`
+# explicitly, so a literal here would quietly override a changed engine default
+# for every Python and MCP caller.
+from diffctx._diffctx import DEFAULT_SCORING as _DEFAULT_SCORING
+from diffctx._diffctx import DEFAULT_TAU as _DEFAULT_TAU
+
 _PIPELINE_TIMEOUT = 300
 
 
@@ -21,7 +28,7 @@ def compute_scored_state(
     root_dir: Path,
     diff_range: str,
     alpha: float = 0.60,
-    scoring_mode: str = "ego",
+    scoring_mode: str = _DEFAULT_SCORING,
     timeout: int = _PIPELINE_TIMEOUT,
 ) -> Any:
     """Heavy-phase compute, returns an opaque PyScoredState. Reuse it
@@ -41,7 +48,7 @@ def compute_scored_state(
 def select_with_params(
     state: Any,
     budget_tokens: int | None = None,
-    tau: float = 0.12,
+    tau: float = _DEFAULT_TAU,
     no_content: bool = False,
 ) -> dict[str, Any]:
     """Light-phase select+postpass+render against a precomputed state."""
@@ -63,8 +70,8 @@ def build_locate(
     diff_range: str,
     budget_tokens: int | None = None,
     alpha: float = 0.60,
-    tau: float = 0.12,
-    scoring_mode: str = "ego",
+    tau: float = _DEFAULT_TAU,
+    scoring_mode: str = _DEFAULT_SCORING,
     timeout: int = _PIPELINE_TIMEOUT,
 ) -> str:
     from diffctx._diffctx import build_locate as _rust_locate
@@ -93,13 +100,13 @@ def build_diff_context(
     diff_range: str,
     budget_tokens: int | None = None,
     alpha: float = 0.60,
-    tau: float = 0.12,
+    tau: float = _DEFAULT_TAU,
     no_content: bool = False,
     ignore_file: Path | None = None,
     no_default_ignores: bool = False,
     full: bool = False,
     whitelist_file: Path | None = None,
-    scoring_mode: str = "ego",
+    scoring_mode: str = _DEFAULT_SCORING,
     timeout: int = _PIPELINE_TIMEOUT,
     with_raw_diff: bool = False,
 ) -> dict[str, Any]:

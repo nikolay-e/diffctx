@@ -6,6 +6,7 @@ pub enum ScoringMode {
     Ppr,
     Ego,
     Bm25,
+    Rrf,
 }
 
 impl ScoringMode {
@@ -14,8 +15,9 @@ impl ScoringMode {
             "ppr" => Ok(Self::Ppr),
             "ego" => Ok(Self::Ego),
             "bm25" => Ok(Self::Bm25),
+            "rrf" => Ok(Self::Rrf),
             other => Err(format!(
-                "unknown scoring_mode '{other}': expected one of ppr|ego|bm25"
+                "unknown scoring_mode '{other}': expected one of ppr|ego|bm25|rrf"
             )),
         }
     }
@@ -32,6 +34,7 @@ pub enum ScoringKind {
     Ppr,
     Ego,
     Bm25,
+    Rrf,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,7 +57,6 @@ pub struct PipelineConfig {
     pub discovery: DiscoveryKind,
     pub scoring: ScoringKind,
     pub objective: ObjectiveMode,
-    pub low_relevance_filter: bool,
     pub bm25_top_k: usize,
     pub ego_depth: usize,
     pub ppr_alpha: f64,
@@ -67,7 +69,6 @@ impl PipelineConfig {
             ScoringMode::Ppr => Self {
                 discovery: DiscoveryKind::Ensemble,
                 scoring: ScoringKind::Ppr,
-                low_relevance_filter: false,
                 bm25_top_k: m.bm25_top_k_primary,
                 ego_depth: m.ego_depth_default,
                 ppr_alpha: PPR.alpha,
@@ -76,7 +77,6 @@ impl PipelineConfig {
             ScoringMode::Ego => Self {
                 discovery: DiscoveryKind::Ensemble,
                 scoring: ScoringKind::Ego,
-                low_relevance_filter: false,
                 bm25_top_k: m.bm25_top_k_primary,
                 ego_depth: m.ego_depth_extended,
                 ppr_alpha: PPR.alpha,
@@ -85,9 +85,19 @@ impl PipelineConfig {
             ScoringMode::Bm25 => Self {
                 discovery: DiscoveryKind::Ensemble,
                 scoring: ScoringKind::Bm25,
-                low_relevance_filter: false,
                 bm25_top_k: m.bm25_top_k_off,
                 ego_depth: m.ego_depth_default,
+                ppr_alpha: PPR.alpha,
+                objective: ObjectiveMode::Submodular,
+            },
+            // Discovery is deliberately identical to EGO's: the fusion gain
+            // must come from ranking the same universe better, not from a
+            // wider universe that would confound it with a discovery change.
+            ScoringMode::Rrf => Self {
+                discovery: DiscoveryKind::Ensemble,
+                scoring: ScoringKind::Rrf,
+                bm25_top_k: m.bm25_top_k_primary,
+                ego_depth: m.ego_depth_extended,
                 ppr_alpha: PPR.alpha,
                 objective: ObjectiveMode::Submodular,
             },

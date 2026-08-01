@@ -63,6 +63,10 @@ pub struct DiffContextOutput {
 }
 
 pub struct LatencyBreakdown {
+    /// Pre-heavy-phase work: hunk parse, untracked scan, ignore resolution and
+    /// the `git diff` calls. Outside every timer until #183, which is why the
+    /// reported phases could not be reconciled with the wall clock.
+    pub pre_phase_ms: f64,
     pub parse_changed_ms: f64,
     pub universe_walk_ms: f64,
     pub discovery_ms: f64,
@@ -232,20 +236,7 @@ fn extract_symbol(frag: &Fragment) -> Option<String> {
     None
 }
 
-// Windows paths use `\` as the component separator, so a rendered path must
-// be normalized to `/` for cross-platform-readable output. On POSIX, `\` is
-// a legal filename character (`src\utils.py` is one file, not a directory
-// separator) — rewriting it there would report a path that does not exist
-// and silently merge two distinct files under one heading in `by_path`.
-#[cfg(windows)]
-fn normalize_path_separators(s: std::borrow::Cow<'_, str>) -> String {
-    s.replace('\\', "/")
-}
-
-#[cfg(not(windows))]
-fn normalize_path_separators(s: std::borrow::Cow<'_, str>) -> String {
-    s.into_owned()
-}
+use crate::paths::to_posix_display as normalize_path_separators;
 
 pub(crate) fn get_relative_path(frag: &Fragment, repo_root: &Path) -> String {
     let frag_path = Path::new(frag.path());
@@ -278,6 +269,16 @@ fn create_fragment_entry(frag: &Fragment, path_str: &str) -> FragmentEntry {
     }
 }
 
+/// A fragment carries the `changed` role when it IS a core, or when it is the
+/// hunk-window excerpt that was substituted for one. The excerpt's id is not in
+/// `core_ids` — it is a synthetic span cut out of the core — so without this the
+/// downshift would silently strip the change marker from the output, which is
+/// worse than the over-dump it replaces. `locate.rs` already treats `Excerpt`
+/// this way; both surfaces must agree.
+fn carries_changed_role(frag: &Fragment, core_ids: &FxHashSet<FragmentId>) -> bool {
+    core_ids.contains(&frag.id) || frag.kind == FragmentKind::Excerpt
+}
+
 /// Collapse a file's fragments (sorted by start line, ties by descending end
 /// line) into the rendered entries. Two behaviors:
 /// - a same-role fragment fully contained in the running range (`next.end <=
@@ -298,13 +299,14 @@ fn merge_file_fragments(
     let mut i = 0;
     while i < frags.len() {
         let first = frags[i];
-        let role_changed = core_ids.contains(&first.id);
+        let role_changed = carries_changed_role(first, core_ids);
         let mut end = first.end_line();
         let mut parts: Vec<&str> = vec![first.content.trim_end_matches('\n')];
+        let mut uniform_kind = true;
         let mut j = i + 1;
         while j < frags.len() {
             let next = frags[j];
-            if core_ids.contains(&next.id) != role_changed {
+            if carries_changed_role(next, core_ids) != role_changed {
                 break;
             }
             if next.end_line() <= end {
@@ -312,6 +314,7 @@ fn merge_file_fragments(
                 j += 1;
             } else if next.start_line() == end + 1 {
                 parts.push(next.content.trim_end_matches('\n'));
+                uniform_kind &= next.kind == first.kind;
                 end = next.end_line();
                 j += 1;
             } else {
@@ -328,6 +331,17 @@ fn merge_file_fragments(
             } else {
                 Some(Arc::from(merged.as_str()))
             };
+            // The merged span is no longer what `first` was, and the kind has
+            // to stop claiming otherwise. A one-line `function_signature`
+            // followed by contiguous body chunks was emitted as a
+            // `function_signature` carrying the whole 101-line function — the
+            // exact opposite of what a signature means, since it exists as the
+            // cheap stand-in when the full fragment misses the budget (#184).
+            // `chunk` is the vocabulary's name for a span of lines with no
+            // single semantic identity, which is precisely what a mixed run is.
+            if !uniform_kind {
+                entry.kind = crate::types::FragmentKind::Chunk.as_str().to_string();
+            }
         }
         entry.role = role_changed.then(|| "changed".to_string());
         out.push((role_changed, first.start_line(), entry));
@@ -503,5 +517,67 @@ mod tests {
         let root = Path::new("/repo");
         let rel = get_relative_path(&frag, root);
         assert_eq!(rel, "src/lib.rs");
+    }
+}
+
+#[cfg(test)]
+mod merge_kind_tests {
+    use super::*;
+    use crate::types::{FragmentId, FragmentKind};
+
+    fn frag(start: u32, end: u32, kind: FragmentKind, body: &str) -> Fragment {
+        Fragment {
+            id: FragmentId::new(Arc::from("a.py"), start, end),
+            kind,
+            content: Arc::from(body),
+            identifiers: FxHashSet::default(),
+            token_count: 10,
+            symbol_name: None,
+        }
+    }
+
+    /// The defect this guards (#184): a one-line signature followed by
+    /// contiguous body chunks was emitted as a `function_signature` carrying the
+    /// whole function. A signature exists to be the cheap stand-in when the full
+    /// fragment misses the budget, so one that holds the body is the opposite of
+    /// its own contract — and `drop_redundant_signatures` decides using that
+    /// contract.
+    #[test]
+    fn a_merged_run_of_mixed_kinds_does_not_claim_the_first_kind() {
+        let frags = vec![
+            frag(1, 1, FragmentKind::FunctionSignature, "def big(a):"),
+            frag(2, 3, FragmentKind::Chunk, "    x = 1\n    y = 2"),
+        ];
+        let refs: Vec<&Fragment> = frags.iter().collect();
+        let out = merge_file_fragments("a.py", &refs, &FxHashSet::default());
+
+        assert_eq!(out.len(), 1, "contiguous fragments should merge into one");
+        assert_eq!(out[0].2.kind, "chunk");
+        assert_eq!(out[0].2.lines, "1-3");
+    }
+
+    /// A run that is genuinely all one kind keeps it — the rule is about the
+    /// label becoming false, not about merging itself.
+    #[test]
+    fn a_merged_run_of_one_kind_keeps_it() {
+        let frags = vec![
+            frag(1, 2, FragmentKind::Chunk, "a\nb"),
+            frag(3, 4, FragmentKind::Chunk, "c\nd"),
+        ];
+        let refs: Vec<&Fragment> = frags.iter().collect();
+        let out = merge_file_fragments("a.py", &refs, &FxHashSet::default());
+
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].2.kind, "chunk");
+    }
+
+    /// An unmerged fragment is untouched: nothing about it became untrue.
+    #[test]
+    fn a_lone_fragment_keeps_its_kind() {
+        let frags = vec![frag(1, 1, FragmentKind::FunctionSignature, "def big(a):")];
+        let refs: Vec<&Fragment> = frags.iter().collect();
+        let out = merge_file_fragments("a.py", &refs, &FxHashSet::default());
+
+        assert_eq!(out[0].2.kind, "function_signature");
     }
 }

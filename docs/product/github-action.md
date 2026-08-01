@@ -51,7 +51,7 @@ leaves the CLI default in place.
 | `path` | `.` | positional | Directory to analyze, relative to the workspace |
 | `diff-range` | auto | `--diff` | `main..HEAD`, `<base>..<head>`, … |
 | `budget` | auto | `--budget` | Token cap; `-1` unlimited, `0` strict-zero floor |
-| `scoring` | `ego` | `--scoring` | `ego`, `ppr`, `bm25` |
+| `scoring` | `ego` | `--scoring` | `ego`, `ppr`, `bm25`, `rrf` |
 | `tau` | CLI default (0.12) | `--tau` | Relevance threshold for full fragment content |
 | `alpha` | CLI default (0.60) | `--alpha` | PPR damping; only affects `scoring: ppr` |
 | `full` | `false` | `--full` | Changed files only, every fragment, no related code |

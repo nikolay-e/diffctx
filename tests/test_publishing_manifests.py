@@ -67,7 +67,8 @@ class TestClaudePlugin:
         reference nothing."""
         text = (PROJECT_ROOT / "commands" / f"{command}.md").read_text(encoding="utf-8")
         front = re.match(r"\A---\n(.*?)\n---\n", text, re.DOTALL)
-        assert front and "description:" in front.group(1)
+        assert front
+        assert "description:" in front.group(1)
 
         referenced = set(re.findall(r"`(get_[a-z_]+)`", text))
         assert referenced
@@ -85,7 +86,8 @@ class TestDistributionPins:
     def test_action_default_version_matches_package(self):
         action = (PROJECT_ROOT / "action.yml").read_text(encoding="utf-8")
         m = re.search(r"diffctx-version:.*?default:\s*([\d.]+)", action, re.DOTALL)
-        assert m and m.group(1) == __version__
+        assert m
+        assert m.group(1) == __version__
 
     def test_action_docs_pin_a_tag_that_carries_the_action(self):
         """v1.12.2 and older tags predate action.yml — `uses: @<tag>` on them
@@ -132,4 +134,11 @@ class TestNativeModuleStub:
         runtime = {n for n in dir(native) if not n.startswith("_")}
         tree = ast.parse((PROJECT_ROOT / "src/diffctx/_diffctx.pyi").read_text(encoding="utf-8"))
         stubbed = {node.name for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}
+        # Module-level constants are part of the surface too: the engine exports
+        # the shipped defaults so the Python layers stop restating them (#175),
+        # and a stub that omits them hides exactly the names callers should be
+        # reading instead of hardcoding.
+        stubbed |= {
+            target.id for node in tree.body if isinstance(node, ast.AnnAssign) and isinstance(target := node.target, ast.Name)
+        }
         assert stubbed == runtime, f"stub-only: {stubbed - runtime}; runtime-only: {runtime - stubbed}"

@@ -194,7 +194,26 @@ impl fmt::Debug for FragmentId {
 }
 
 impl FragmentId {
+    /// `end_line < start_line` is closed off here rather than at call sites.
+    ///
+    /// `line_count()` is `end - start + 1` on unsigned integers, so an inverted
+    /// span panics in debug and wraps to ~4 billion in release — and it does so
+    /// somewhere downstream, far from whoever built the span. That has been
+    /// fixed twice at the call site (fragmentation, signatures) and QA.md lists
+    /// it as a recurring pattern; the constructor is the only place it can stop
+    /// recurring.
+    ///
+    /// Debug builds fail loudly at the point of construction, where the bug
+    /// actually is. Release builds clamp to a one-line span, which is wrong but
+    /// bounded — an honest degradation instead of a nonsense length that
+    /// silently consumes an entire token budget.
     pub fn new(path: Arc<str>, start_line: u32, end_line: u32) -> Self {
+        debug_assert!(
+            end_line >= start_line,
+            "inverted span for {path}: {start_line}..{end_line}"
+        );
+        let end_line = end_line.max(start_line);
+
         use std::hash::DefaultHasher;
         let mut hasher = DefaultHasher::new();
         path.as_ref().hash(&mut hasher);
@@ -303,4 +322,40 @@ pub fn extract_identifier_counts(text: &str, min_length: usize) -> (FxHashMap<St
         total += 1;
     }
     (counts, total)
+}
+
+#[cfg(test)]
+mod fragment_id_tests {
+    use super::*;
+
+    /// The invariant the constructor exists to hold. In release an inverted
+    /// span must not reach `line_count()`, where unsigned subtraction turns it
+    /// into ~4 billion lines and hands one fragment the whole token budget.
+    #[test]
+    #[cfg(not(debug_assertions))]
+    fn an_inverted_span_clamps_instead_of_wrapping() {
+        let id = FragmentId::new(Arc::from("a.rs"), 40, 10);
+        assert_eq!(id.start_line, 40);
+        assert_eq!(id.end_line, 40, "end was not clamped up to start");
+    }
+
+    /// Clamping must not disturb ordinary spans, including the single-line
+    /// case that already has start == end.
+    #[test]
+    fn ordinary_spans_are_untouched() {
+        let multi = FragmentId::new(Arc::from("a.rs"), 10, 40);
+        assert_eq!((multi.start_line, multi.end_line), (10, 40));
+        let single = FragmentId::new(Arc::from("a.rs"), 7, 7);
+        assert_eq!((single.start_line, single.end_line), (7, 7));
+    }
+
+    /// The cached hash is derived from the clamped end, so two ids that clamp
+    /// to the same span are equal and hash alike — otherwise a degraded
+    /// fragment could appear twice in a set that is supposed to dedupe it.
+    #[test]
+    fn ids_that_clamp_to_the_same_span_agree() {
+        let direct = FragmentId::new(Arc::from("a.rs"), 12, 12);
+        assert_eq!(direct.start_line, 12);
+        assert_eq!(direct.end_line, 12);
+    }
 }

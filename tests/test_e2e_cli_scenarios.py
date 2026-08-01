@@ -262,7 +262,7 @@ class TestDiffModeJourneys:
         assert large.returncode == EXIT_OK
         assert len(small.stdout) <= len(large.stdout)
 
-    @pytest.mark.parametrize("scoring", ["ego", "ppr", "bm25"])
+    @pytest.mark.parametrize("scoring", ["ego", "ppr", "bm25", "rrf"])
     def test_scoring_modes_all_produce_context(self, diff_repo, scoring):
         result = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "--scoring", scoring, "-f", "yaml"], cwd=diff_repo.path)
         assert result.returncode == EXIT_OK

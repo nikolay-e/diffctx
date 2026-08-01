@@ -42,9 +42,11 @@ def test_directory_content(temp_project, run_mapper):
     assert run_mapper([".", "-o", "directory_tree.yaml"])
     result = load_yaml(temp_project / "directory_tree.yaml")
     src_dir = find_node_by_path(result, ["src"])
-    assert src_dir is not None and src_dir["type"] == "directory"
+    assert src_dir is not None
+    assert src_dir["type"] == "directory"
     main_py = find_node_by_path(src_dir, ["main.py"])
-    assert main_py is not None and main_py["type"] == "file"
+    assert main_py is not None
+    assert main_py["type"] == "file"
     expected_main_content = "def main():\n    print('hello')\n"
     assert main_py.get("content") == expected_main_content
 
@@ -107,9 +109,12 @@ def test_file_content_encoding(temp_project, run_mapper):
     multiline_node = find_node_by_path(result, ["multiline.txt"])
     empty_node = find_node_by_path(result, ["empty.txt"])
 
-    assert ascii_node is not None and ascii_node.get("content") == ascii_content_orig + "\n"
-    assert multiline_node is not None and multiline_node.get("content") == multiline_content_orig + "\n"
-    assert empty_node is not None and empty_node.get("content") == empty_content_orig
+    assert ascii_node is not None
+    assert ascii_node.get("content") == ascii_content_orig + "\n"
+    assert multiline_node is not None
+    assert multiline_node.get("content") == multiline_content_orig + "\n"
+    assert empty_node is not None
+    assert empty_node.get("content") == empty_content_orig
 
 
 def test_nested_structures(temp_project, run_mapper):
@@ -267,9 +272,8 @@ def test_unicode_content_and_encoding_errors(temp_project, run_mapper, caplog):
     except ImportError:
         has_charset_normalizer = False
     if has_charset_normalizer:
-        assert (
-            cp1251_content and "unreadable" not in cp1251_content
-        ), f"charset-normalizer should decode CP1251, got: {cp1251_content!r}"
+        assert cp1251_content, f"charset-normalizer decoded nothing: {cp1251_content!r}"
+        assert "unreadable" not in cp1251_content, f"charset-normalizer should decode CP1251, got: {cp1251_content!r}"
     else:
         assert (
             "unreadable" in cp1251_content

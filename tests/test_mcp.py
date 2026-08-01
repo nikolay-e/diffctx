@@ -191,7 +191,8 @@ class TestGetDiffContext:
         )
         doc = json.loads(_get_text(result))
         assert doc["schema"] == "diffctx.locate.v1"
-        assert doc["items"] and all(i["reasons"] for i in doc["items"])
+        assert doc["items"]
+        assert all(i["reasons"] for i in doc["items"])
 
     @pytest.mark.asyncio
     async def test_locate_rejects_include_raw_diff(self, server, mcp_repo):
@@ -588,6 +589,23 @@ class TestFileContextTruncationAndDedup:
         assert "TRUNCATED" not in _get_text(result)
 
     @pytest.mark.asyncio
+    async def test_absolute_pattern_reaching_the_repo_through_a_symlink_is_reported(self, server, mcp_repo, tmp_path):
+        """Containment is checked on the resolved path while the report keyed off
+        the raw glob match, so a file accepted as inside the repo could still be
+        inexpressible relative to it — surfacing as an opaque ValueError instead
+        of the file's contents."""
+        link = tmp_path / "repo_link"
+        link.symlink_to(mcp_repo.path, target_is_directory=True)
+
+        result = await server.call_tool(
+            "get_file_context",
+            {"repo_path": str(mcp_repo.path), "patterns": [str(link / "src" / "calc.py")]},
+        )
+        text = _get_text(result)
+        assert "## src/calc.py" in text
+        assert "def add" in text
+
+    @pytest.mark.asyncio
     async def test_overlapping_glob_patterns_do_not_duplicate_files(self, server, mcp_repo):
         result = await server.call_tool(
             "get_file_context",
@@ -752,3 +770,49 @@ class TestGitRefInjection:
             {"repo_path": str(mcp_repo.path), "diff_range": "HEAD~1..HEAD"},
         )
         assert "calc.py" in _get_text(result)
+
+
+class TestFileContextHonoursTheIgnoreContract:
+    """`get_file_context` accepts `**/*`, so it is the widest read surface the
+    MCP server exposes. It used to glob without the ignore specs that
+    `get_tree_map` and diff mode both apply, which made `.diffctx/ignore` — a
+    security contract per QA.md — advisory for anyone who asked directly."""
+
+    @staticmethod
+    def _repo(tmp_path):
+        root = tmp_path / "ignored_repo"
+        (root / ".diffctx").mkdir(parents=True)
+        (root / ".diffctx" / "ignore").write_text("secrets/\n*.key\n")
+        (root / "secrets").mkdir()
+        (root / "secrets" / "prod.env").write_text("API_TOKEN=must-not-surface\n")
+        (root / "deploy.key").write_text("PRIVATE-KEY-must-not-surface\n")
+        (root / "app.py").write_text("def run():\n    return 1\n")
+        return root
+
+    @pytest.mark.asyncio
+    async def test_a_declared_exclusion_is_not_readable_through_a_glob(self, server, tmp_path):
+        root = self._repo(tmp_path)
+        result = await server.call_tool(
+            "get_file_context",
+            {"repo_path": str(root), "patterns": ["**/*"]},
+        )
+        text = _get_text(result)
+
+        assert "must-not-surface" not in text, "an ignored file's contents were returned"
+        assert "prod.env" not in text
+        assert "deploy.key" not in text
+        assert "app.py" in text, "the fix must not stop ordinary files being read"
+
+    @pytest.mark.asyncio
+    async def test_an_excluded_file_is_not_counted_in_the_truncation_notice(self, server, tmp_path):
+        """Reporting "N more files" for withheld files would leak that they
+        exist, which is most of what the exclusion is protecting."""
+        root = self._repo(tmp_path)
+        result = await server.call_tool(
+            "get_file_context",
+            {"repo_path": str(root), "patterns": ["**/*"], "dry_run": True},
+        )
+        text = _get_text(result)
+
+        assert "secrets" not in text
+        assert "deploy.key" not in text

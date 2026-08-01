@@ -13,44 +13,8 @@ use super::super::base::{self, EdgeBuilder, add_edge_unidirectional, path_to_mod
 static IMPORT_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?m)^\s*(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))").unwrap());
 
-fn is_python_test(name: &str) -> bool {
-    name.starts_with("test_") || name.ends_with("_test.py")
-}
-
-fn is_js_test(name: &str, path_str: &str) -> bool {
-    name.contains(".test.") || name.contains(".spec.") || path_str.contains("__tests__")
-}
-
-fn is_rust_test(name: &str, path_str: &str) -> bool {
-    path_str.contains("/tests/") || name == "tests.rs"
-}
-
-fn is_jvm_test(name: &str) -> bool {
-    let stem = if let Some(idx) = name.rfind('.') {
-        &name[..idx]
-    } else {
-        name
-    };
-    let lower = stem.to_lowercase();
-    lower.ends_with("test") || lower.starts_with("test")
-}
-
 fn is_test_file(path: &Path) -> bool {
-    let name = path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_lowercase())
-        .unwrap_or_default();
-    let path_str = path.to_string_lossy().to_lowercase();
-    let ext = base::file_ext(path);
-
-    let lang_match = match ext.as_str() {
-        ".py" => is_python_test(&name),
-        ".js" | ".ts" | ".jsx" | ".tsx" => is_js_test(&name, &path_str),
-        ".rs" => is_rust_test(&name, &path_str),
-        ".java" | ".kt" | ".kts" | ".scala" => is_jvm_test(&name),
-        _ => false,
-    };
-    lang_match || path_str.contains("/tests/") || path_str.contains("/test/")
+    crate::testfiles::is_test_path(path)
 }
 
 fn extract_imports(content: &str) -> FxHashSet<String> {

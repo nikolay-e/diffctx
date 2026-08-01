@@ -129,6 +129,7 @@ it) to enable the sweep without rebuild.
 | `PPR.forward_blend` ($\rho$)                     | `DIFFCTX_OP_PPR_FORWARD_BLEND`                           | 0.40    |
 | `EGO.per_hop_decay` ($\gamma$)                   | `DIFFCTX_EGO_PER_HOP_DECAY`                              | 0.5     |
 | `EGO.identifier_overlap_epsilon`                 | `DIFFCTX_EGO_LEXICAL_EPS`                                | 0.1     |
+| `RRF.k` (rank-fusion damping)                    | `DIFFCTX_RRF_K`                                          | 60.0    |
 | Graph traversal radius                           | `DIFFCTX_OP_GRAPH_DEPTH`                                 | 2       |
 | `UTILITY.eta` ($\eta$)                           | `DIFFCTX_OP_UTILITY_ETA`                                 | 0.20    |
 | `UTILITY.structural_bonus_weight`                | `DIFFCTX_OP_UTILITY_STRUCTURAL_BONUS_WEIGHT`             | 0.10    |

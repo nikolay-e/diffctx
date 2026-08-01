@@ -17,8 +17,18 @@ Project-specific facts for `/qa`. Generic methodology lives in
 ## Forge
 
 - `origin` = Forgejo (source of truth, push here); `github` = mirror,
-  but **all CI, issues, PRs, Dependabot live on GitHub**. Forgejo
-  issue/PR lists are empty by design.
+  but **all CI, PRs and Dependabot live on GitHub**, and the roadmap
+  issues do too.
+- Forgejo issues are NOT empty: external reporters file there (it is the
+  public-facing host). Enumerate both arms every pass —
+  `GET /repos/nikolay-e/diffctx/issues?type=issues&state=open`. Triage on
+  Forgejo, then cross-link to the GitHub issue that carries the work item
+  and its gate, rather than duplicating the tracker.
+- The `redact-check` PreToolUse hook blocks a tracker post whose **command
+  line** mentions a deny-listed secret name — including the Keychain
+  service name used to fetch the API token. Fetch the token in a separate
+  Bash call (cache to a `umask 077` scratch file, delete after), then post
+  without naming the service.
 - Push `main` to both remotes (mirror sync is periodic; direct push is
   immediate).
 
@@ -51,12 +61,36 @@ Project-specific facts for `/qa`. Generic methodology lives in
   bugs into reviews (a 1.12.2 tool leaked `.diffctx/ignore`-excluded
   tests/yaml as context — the universe filter shipped in 1.12.3).
   Refresh: `uv tool install 'diffctx[mcp]' --force --refresh`.
+- `--version` is useless for staleness here: the version string moves
+  only on release, so a tool built weeks ago still says `1.12.3`. Compare
+  the **extension's mtime** against HEAD's date
+  (`ls -la ~/.local/share/uv/tools/diffctx/lib/python*/site-packages/diffctx/_diffctx.abi3.so`).
+  To review a range that includes unreleased work, install from source:
+  `uv tool install . --force --reinstall`.
+- **Do not review with `--budget -1`.** Selection plus the post-passes are
+  ~97% of wall clock on a wide range (#121); unlimited removes the stop and
+  every cell hits the 300s deadline. A wide range at the default budget is
+  the reviewable artifact.
 - This repo's own `.diffctx/ignore` excludes `*.yaml`/`*.yml` (the
-  2725-case corpus would drown every self-eat), so CI/workflow YAML
-  changes NEVER appear in self-eat output — a workflow-only range
-  legitimately yields rc=4 and a bare skeleton (excluded paths are
-  hidden even from `changed_files` by the security contract). Review
-  workflow changes with plain `git diff`, don't file this as a bug.
+  2725-case corpus would drown every self-eat) **and `tests`** — so the
+  entire `tests/` tree, `crates/diffctx-native/tests/`, every oracle
+  case and all CI/workflow YAML are invisible to self-eat, hidden even
+  from `changed_files` by the security contract. A range that touches
+  only those legitimately yields rc=4 and a bare skeleton. Concretely:
+  a commit changing 33 files can show 9. Review test and workflow
+  changes with plain `git diff`; don't file this as a bug, and don't
+  read the short changed-files list as the whole change.
+- Reading a self-eat diff of a *scoping* change: total emitted lines and
+  context-file count move in OPPOSITE directions. Shrinking fragments
+  frees budget the greedy immediately spends admitting more files, so a
+  genuine over-dump fix shows up as fewer lines AND more files. Measured
+  across three ranges when bounded gap chunks landed: 717→656, 543→531,
+  582→535 lines, while context files went 4→8 and 16→17. Neither number
+  alone is the verdict — this is why #149's gate pairs over-dump rate
+  with precision. Two mechanisms drive the breadth half: freed budget, and
+  `apply_fragment` recording the *excerpt's* identifiers rather than the
+  whole core's, so needs the trimmed body used to cover read as
+  uncovered and the greedy goes looking for them elsewhere.
 - `env_overrides.rs` carries name-consistency tests: any new
   `read_env_*("DIFFCTX_*")` must appear in the `parameter-strategy.md`
   Tier-3 table (or the `TIER1_EXTRAS_READ_BUT_NOT_TABLED` allowlist)
@@ -72,8 +106,14 @@ Project-specific facts for `/qa`. Generic methodology lives in
 
 ## Known false positives
 
-- import-linter pre-commit hook can fail locally (namespace package)
-  while green in CI.
+- ~~import-linter pre-commit hook can fail locally (namespace package)
+  while green in CI.~~ **No longer true** — `lint-imports` reports
+  `6 kept, 0 broken` locally. Read a failure as a real violation: one
+  caught `from diffctx import _diffctx` in `mcp/server.py`, which
+  executes `diffctx/__init__` and so pulls `_app` -> `cli`, breaking
+  "MCP server must not import CLI". Import the submodule directly
+  (`from diffctx._diffctx import X`) so the edge points at the submodule
+  rather than the package root.
 - SonarCloud `githubactions:S8543` on the publish-extras npm smoke:
   `$VERSION` is an exact just-published version, package has zero
   deps — marked false positive in SonarCloud via API (NOSONAR is NOT
@@ -82,6 +122,80 @@ Project-specific facts for `/qa`. Generic methodology lives in
   hash and Sonar re-raises the finding under a NEW issue key with the
   FP mark lost — re-fetch after every analysis touching that file and
   re-mark via `api/issues/do_transition` (`falsepositive`).
+
+## Recurring bug patterns (diagnose once, recognise thereafter)
+
+- **Over-emission for a tiny diff is ONE mechanism, not per-language
+  bugs.** `excerpt::generate_core_excerpts` cuts a hunk window (+3 context
+  lines, capped at 70% of the parent) but is consulted only as a *budget*
+  fallback via `build_signature_lookup`, when the core exceeds
+  `budget x core_budget_fraction`. So the same file ships whole at
+  `--budget 8000` and tightly excerpted at a small budget. Three issues are
+  this one mechanism reached three ways: no grammar → whole-file chunk
+  (#105); grammar parses but the body is flat → one chunk (#107); fine
+  fragments exist but the hunk spans more lines than any of them, so
+  `find_core_for_hunk` promotes to the enclosing definition (Forgejo issue
+  2). Don't re-diagnose per language.
+  **Status: fixed for the `changed` role** — the excerpt is consulted on how
+  little changed rather than on leftover budget, excerpts are generated for
+  kinds that have a signature variant too (a signature drops the changed
+  lines), `render` agrees with `locate` that an `Excerpt` is `changed`, and
+  long uncovered runs are split into bounded chunks so a flat file has
+  sub-file granularity at all. #105/#107/#114 closed on their own repros.
+  **Still open for the `context` role** (#123): there is no hunk to window
+  around, and the two obvious fixes both fail — see that issue for the
+  measurement (43 corpus failures, including cases that keep full recall but
+  get worse on forbidden files).
+- **`coherence_post_pass` is inert by accident and load-bearing for
+  precision.** It resolves a dangling semantic neighbour by lowercased
+  `symbol_name` instead of by the id the graph edge already gives it. That
+  is a real bug, but the name lookup mostly lands on already-selected
+  fragments, so the pass adds nothing. Fixing the lookup alone activates a
+  pass with no relevance bar that draws from `filtered_fragments` — i.e. it
+  re-admits candidates the greedy declined — and cost 9 of 2725 oracle
+  cases (`recall=100%, forbidden_rate=100%`). Land the id fix only together
+  with a relevance bar or a cap.
+- **Span-vs-content mismatch.** `line_count()` comes from the id's span
+  while slicing indexes `content.lines()`; nothing enforces agreement.
+  Gate on the actual line vector, and never let `end < start` reach a
+  `FragmentId` — `line_count()` underflows on it in every later stage.
+- **Lexical path containment is not containment.** `Path::starts_with`
+  compares components and `canonicalize` fails on a non-existent path (the
+  old side of a deletion). A lexical fallback used as an *alternative* to
+  the canonical check makes the canonical check dead. Reject `..` and
+  absolute up front, then use the lexical form ONLY when canonicalization
+  is impossible — otherwise an in-repo symlink pointing outside passes.
+  Both are pinned by tests in `git.rs`; the tests must canonicalize their
+  temp root or the hole hides on macOS (`/var -> /private/var`) and only
+  fails on Linux CI.
+
+## Bit-equivalence gate for refactors (`scripts/bitcheck.sh`)
+
+`record` on the pre-change build, rebuild, `check`. 24 cells (3 fixed
+ranges x 4 scoring modes x pack/locate) in ~20 s; `clean` drops the
+snapshots and the fixture worktree.
+
+- The input is a **worktree pinned to a fixed SHA**, not the live
+  checkout. diffctx analysing its own repo means its sources appear in
+  its own output as context fragments, so editing the code under test
+  also edits the input. Running against the live tree reported 8 moved
+  cells for a change that could not affect them — a stashed file had
+  rewritten a context fragment. Never "simplify" the fixture away.
+- The fixture cannot exercise every path: this repo's `.diffctx/ignore`
+  hides `tests`, so no `FooTest.java`/`widget-spec.js` shape exists in
+  it and a test-classifier change reads as bit-identical. Corpus +
+  targeted unit tests carry that; bitcheck does not.
+- E-class claims ("no output change") land with a bitcheck result in the
+  same commit. Q-class still needs the corpus and a baseline edit.
+
+## Corpus baseline discipline
+
+`known_below_threshold.txt` is bidirectional: a listed case that starts
+passing fails with "remove it from that file". That is a legitimate
+baseline edit **only** when the improvement is intended and kept — if the
+cause gets reverted, restore the entry. Never edit the baseline to absorb
+an unexplained new failure; bisect the cause first (a scratch `git
+worktree` at each candidate commit + a single-case run is the fast path).
 
 ## Known non-bugs (audited correct — do not re-file)
 

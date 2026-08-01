@@ -15,6 +15,13 @@ use crate::utility::scoring::{
 
 const SENTINEL_TOKEN_COUNT: u32 = 1_000_000_000;
 
+/// `used_tokens` is a reported contract, so it is derived from the returned
+/// selection rather than reconstructed from budget arithmetic that can drift
+/// away from what was actually placed.
+fn selection_cost(selected: &[Fragment]) -> u32 {
+    selected.iter().map(|f| f.token_count).sum()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SelectionReason {
     TopK,
@@ -196,7 +203,13 @@ fn select_core_fragments(
     state: &mut SelectionState,
     budget_tokens: u32,
     sig_lookup: &FxHashMap<FragmentId, Fragment>,
-) {
+    core_excerpts: Option<&FxHashMap<FragmentId, Fragment>>,
+) -> FxHashSet<FragmentId> {
+    // Which cores came out represented — by themselves, by a signature stub, or
+    // by a downshifted excerpt. A substitute has its own id, so membership in
+    // the selection cannot answer this, and treating a substituted core as
+    // "skipped" hands the full fragment straight back to the greedy.
+    let mut satisfied: FxHashSet<FragmentId> = FxHashSet::default();
     let core_budget = (budget_tokens as f64 * selection().core_budget_fraction) as u32;
     // Counter for cores placed; the first pass keeps `core_used <= core_budget`,
     // but the rescue pass below intentionally allows it to exceed `core_budget`
@@ -219,27 +232,42 @@ fn select_core_fragments(
             apply_fragment(frag, rel_score, needs, &mut state.utility_state);
         };
 
-    let mut skipped: Vec<&Fragment> = Vec::new();
+    // (originating core id, the fragment actually offered for it — the core
+    // itself or its downshifted excerpt).
+    let mut skipped: Vec<(FragmentId, &Fragment)> = Vec::new();
     for frag in &sorted_core {
+        // Downshift before the budget is consulted, not only when it forces the
+        // issue. A core whose hunk window covers a small share of it is mostly
+        // unchanged context, and emitting it whole is the over-dump behind
+        // #105/#107/#149 — behaviour that otherwise flips purely on how much
+        // budget happens to be left.
+        let core_id = frag.id.clone();
+        let frag: &Fragment = core_excerpts
+            .and_then(|e| e.get(&frag.id))
+            .filter(|excerpt| crate::excerpt::is_downshift_worthwhile(frag, excerpt))
+            .unwrap_or(frag);
         if state.selected_ids.is_superset_of(frag) {
+            satisfied.insert(core_id);
             continue;
         }
         if core_used + frag.token_count > core_budget {
-            if let Some(sig) = sig_lookup.get(&frag.id) {
+            if let Some(sig) = sig_lookup.get(&core_id) {
                 if !state.selected_ids.contains(&sig.id)
                     && core_used + sig.token_count <= core_budget
                 {
-                    let rel_score = rel.get(&frag.id).copied().unwrap_or(0.0);
+                    let rel_score = rel.get(&core_id).copied().unwrap_or(0.0);
                     place_fragment(sig, &mut core_used, state, rel_score);
+                    satisfied.insert(core_id);
                     continue;
                 }
             }
-            skipped.push(frag);
+            skipped.push((core_id, frag));
             continue;
         }
 
-        let rel_score = rel.get(&frag.id).copied().unwrap_or(0.0);
+        let rel_score = rel.get(&core_id).copied().unwrap_or(0.0);
         place_fragment(frag, &mut core_used, state, rel_score);
+        satisfied.insert(core_id);
     }
 
     // Bug #2 fix: cores that didn't fit the core_budget reservation must not be
@@ -248,27 +276,31 @@ fn select_core_fragments(
     // (not just the core slice) so seeds aren't dropped purely because the
     // highest-relevance core happened to be heavy.
     if !skipped.is_empty() {
-        skipped.sort_by(|a, b| a.token_count.cmp(&b.token_count));
-        for frag in skipped {
+        skipped.sort_by(|(_, a), (_, b)| a.token_count.cmp(&b.token_count));
+        for (core_id, frag) in skipped {
             if state.remaining_budget == 0 {
                 break;
             }
             if state.selected_ids.is_superset_of(frag) {
+                satisfied.insert(core_id);
                 continue;
             }
+            let rel_score = rel.get(&core_id).copied().unwrap_or(0.0);
             if frag.token_count <= state.remaining_budget {
-                let rel_score = rel.get(&frag.id).copied().unwrap_or(0.0);
                 place_fragment(frag, &mut core_used, state, rel_score);
-            } else if let Some(sig) = sig_lookup.get(&frag.id) {
+                satisfied.insert(core_id);
+            } else if let Some(sig) = sig_lookup.get(&core_id) {
                 if !state.selected_ids.contains(&sig.id)
                     && sig.token_count <= state.remaining_budget
                 {
-                    let rel_score = rel.get(&frag.id).copied().unwrap_or(0.0);
                     place_fragment(sig, &mut core_used, state, rel_score);
+                    satisfied.insert(core_id);
                 }
             }
         }
     }
+
+    satisfied
 }
 
 fn build_initial_heap(
@@ -524,20 +556,23 @@ fn setup_and_select_core(
 
     let sig_lookup = build_signature_lookup(fragments, &core_fragments, core_excerpts);
     let mut state = init_selection_state(core_ids, rel, budget_tokens, file_importance);
-    select_core_fragments(
+    let satisfied_core_ids = select_core_fragments(
         &core_fragments,
         rel,
         needs,
         &mut state,
         budget_tokens,
         &sig_lookup,
+        core_excerpts,
     );
 
-    let selected_core_ids: FxHashSet<FragmentId> =
-        state.selected.iter().map(|f| f.id.clone()).collect();
+    // A core represented by a substitute (signature stub or downshifted
+    // excerpt) is satisfied even though its own id is absent from the
+    // selection — offering the full fragment back to the greedy would undo the
+    // substitution.
     let skipped_core: Vec<FragmentId> = core_ids
         .iter()
-        .filter(|id| !selected_core_ids.contains(*id))
+        .filter(|id| !satisfied_core_ids.contains(*id))
         .cloned()
         .collect();
 
@@ -661,16 +696,15 @@ pub fn lazy_greedy_select(
     );
 
     let mut best_alt_utility = greedy_utility;
-    let mut best_alt: Option<(Vec<Fragment>, u32)> = None;
+    let mut best_alt: Option<(u32, Vec<Fragment>)> = None;
 
     if let Some(ref singleton) = best_singleton {
         let u = utility_value(&base_state) + best_gain;
         if u > best_alt_utility {
             best_alt_utility = u;
-            let used = budget_tokens - (base_budget - singleton.token_count);
             let mut sel = base_selected.clone();
             sel.push(singleton.clone());
-            best_alt = Some((sel, used));
+            best_alt = Some((selection_cost(&sel), sel));
         }
     }
 
@@ -686,18 +720,25 @@ pub fn lazy_greedy_select(
         // different baselines (this one from an empty state, `greedy_utility`
         // from the core base), so the comparison can only ever be a heuristic
         // nudge — not grounds for dropping the core.
-        if u > best_alt_utility && full.token_count <= base_budget {
+        //
+        // H₁ iterates the FULL ground set, so its winner can be a core the
+        // core pass already packed. Then this arm has nothing to add: its
+        // "alternative" is `base_selected` verbatim, a strict subset of the
+        // greedy result. Utility is monotone and `greedy_utility` already
+        // contains that core's contribution, so `u > best_alt_utility` should
+        // be unreachable in that case — this makes the reasoning a condition
+        // rather than an assumption, because the arm's cost accounting has no
+        // meaning when nothing is appended.
+        let already_selected = base_selected.iter().any(|f| f.id == full.id);
+        if u > best_alt_utility && full.token_count <= base_budget && !already_selected {
             best_alt_utility = u;
             let mut sel = base_selected.clone();
-            if !sel.iter().any(|f| f.id == full.id) {
-                sel.push(full.clone());
-            }
-            let used = budget_tokens - (base_budget - full.token_count);
-            best_alt = Some((sel, used));
+            sel.push(full.clone());
+            best_alt = Some((selection_cost(&sel), sel));
         }
     }
 
-    if let Some((sel, used)) = best_alt {
+    if let Some((used, sel)) = best_alt {
         return SelectionResult {
             selected: sel,
             reason: SelectionReason::BestSingleton,
@@ -800,6 +841,91 @@ mod tests {
         }
     }
 
+    /// `used_tokens` is what every downstream budget report reads, and it was
+    /// only ever asserted as `<= budget`. Three code paths compute it by
+    /// different budget arithmetic; this pins the equality they all have to
+    /// satisfy, so a future path that reconstructs the figure instead of
+    /// measuring the selection fails here rather than in a results table.
+    #[test]
+    fn reported_used_tokens_always_equals_the_cost_of_the_returned_selection() {
+        let shapes: Vec<Vec<Fragment>> = vec![
+            vec![
+                frag("changed.rs", 1, 8, FragmentKind::Function, 20),
+                frag("other.rs", 1, 400, FragmentKind::Class, 900),
+                frag("other.rs", 500, 520, FragmentKind::Function, 40),
+            ],
+            // A lone, heavy core: H₁ over the full ground set can only win with
+            // a fragment the core pass already placed.
+            vec![frag("changed.rs", 1, 200, FragmentKind::Class, 400)],
+            (0..6)
+                .map(|i| {
+                    frag(
+                        "a.rs",
+                        1 + i * 20,
+                        10 + i * 20,
+                        FragmentKind::Function,
+                        20 + i * 60,
+                    )
+                })
+                .collect(),
+        ];
+
+        for frags in shapes {
+            let core: FxHashSet<FragmentId> = std::iter::once(frags[0].id.clone()).collect();
+            let rel = rel_map(&frags, 0.8);
+            for budget in [50u32, 120, 460, 1_000, 5_000] {
+                let result =
+                    lazy_greedy_select(frags.clone(), &core, &rel, &[], budget, 0.12, None, None);
+                assert_eq!(
+                    result.used_tokens,
+                    cost_of(&result.selected),
+                    "reason {:?} at budget {budget}: reported {} but selection costs {}",
+                    result.reason,
+                    result.used_tokens,
+                    cost_of(&result.selected)
+                );
+            }
+        }
+    }
+
+    /// A core that is mostly unchanged must be placed as its hunk-window
+    /// excerpt, not in full — the over-dump behind #105/#107/#149. The excerpt
+    /// arrives through `core_excerpts`, keyed by the core it replaces.
+    #[test]
+    fn a_mostly_unchanged_core_is_placed_as_its_excerpt() {
+        let core = frag("script.sh", 1, 122, FragmentKind::Chunk, 600);
+        let excerpt = frag("script.sh", 58, 64, FragmentKind::Excerpt, 40);
+        let core_ids: FxHashSet<FragmentId> = std::iter::once(core.id.clone()).collect();
+        let rel = rel_map(&[core.clone()], 1.0);
+        let mut excerpts: FxHashMap<FragmentId, Fragment> = FxHashMap::default();
+        excerpts.insert(core.id.clone(), excerpt.clone());
+
+        let result = lazy_greedy_select(
+            vec![core.clone()],
+            &core_ids,
+            &rel,
+            &[],
+            8_000,
+            0.12,
+            None,
+            Some(&excerpts),
+        );
+
+        let ids: Vec<String> = result
+            .selected
+            .iter()
+            .map(|f| format!("{}:{}-{}", f.id.path, f.id.start_line, f.id.end_line))
+            .collect();
+        assert!(
+            result.selected.iter().any(|f| f.id == excerpt.id),
+            "core was not downshifted to its excerpt: {ids:?}"
+        );
+        assert!(
+            !result.selected.iter().any(|f| f.id == core.id),
+            "the full core was emitted alongside the excerpt: {ids:?}"
+        );
+    }
+
     #[test]
     fn selected_fragments_never_overlap_and_are_never_duplicated() {
         let frags: Vec<Fragment> = (0..8)
@@ -899,9 +1025,10 @@ mod tests {
     }
     /// tau is the adaptive stop: once a candidate's density falls below
     /// `tau * peak_density` the loop stops instead of spending the rest of the
-    /// budget. The whole oracle corpus runs at tau=0.0, which makes the
-    /// predicate unreachable, so deleting the rule failed no test. This runs at
-    /// the shipped default so the assertion covers the real operating point.
+    /// budget. The oracle corpus used to run at tau=0.0, which made the
+    /// predicate unreachable, so deleting the rule failed no test; the corpus
+    /// now runs at the shipped default too (#175). This keeps a direct
+    /// assertion on the rule that does not depend on corpus wiring.
     #[test]
     fn tau_stops_the_greedy_loop_before_the_budget_is_spent() {
         // Descending relevance against escalating cost gives sharply

@@ -186,9 +186,18 @@ impl EdgeBuilder for LexicalEdgeBuilder {
             }
         }
 
-        // Pass 5: O(F²) inner loop over each posting, capped by max_postings.
-        // Drop each posting list as soon as we are done with it.
-        let mut dot_products: FxHashMap<(u32, u32), f32> = FxHashMap::default();
+        // Pass 5: accumulate one contribution per co-occurring pair per term,
+        // then reduce. This used to be a `FxHashMap<(u32, u32), f32>`, whose
+        // *output* is bounded by `top_k_neighbors` but whose size is not: it
+        // holds every distinct pair that co-occurs in any posting list under
+        // `max_postings`, i.e. up to `terms * C(max_postings, 2)` entries. On a
+        // large repo that reached 199M pairs and tens of GB of resident memory
+        // (#116) — an unbounded accumulator behind a bounded result.
+        //
+        // A flat vector is 12 bytes per contribution against hashbrown's ~16
+        // plus a transient copy of the whole table on every doubling rehash, so
+        // peak drops several-fold and loses the rehash spikes entirely.
+        let mut contributions: Vec<(u32, u32, f32)> = Vec::new();
         for posting_list in postings.iter_mut() {
             if posting_list.len() > LEXICAL.max_postings || posting_list.len() < 2 {
                 posting_list.clear();
@@ -199,18 +208,43 @@ impl EdgeBuilder for LexicalEdgeBuilder {
                 let (frag_i, weight_i) = posting_list[i];
                 for j in (i + 1)..posting_list.len() {
                     let (frag_j, weight_j) = posting_list[j];
-                    let pair = if frag_i < frag_j {
+                    let (lo, hi) = if frag_i < frag_j {
                         (frag_i, frag_j)
                     } else {
                         (frag_j, frag_i)
                     };
-                    *dot_products.entry(pair).or_insert(0.0) += weight_i * weight_j;
+                    contributions.push((lo, hi, weight_i * weight_j));
                 }
             }
             posting_list.clear();
             posting_list.shrink_to_fit();
         }
         drop(postings);
+
+        // STABLE sort, deliberately: it preserves each pair's original
+        // contribution order, so the f32 sums below are bit-identical to what
+        // the hashmap produced. `sort_unstable` would reorder within a run and
+        // f32 addition is not associative, which could flip a pair across
+        // `min_similarity`.
+        contributions.sort_by_key(|&(a, b, _)| (a, b));
+        let mut dot_products: Vec<((u32, u32), f32)> = Vec::new();
+        let mut idx = 0usize;
+        while idx < contributions.len() {
+            let (a, b, first) = contributions[idx];
+            let mut sum = first;
+            let mut next = idx + 1;
+            while next < contributions.len() {
+                let (na, nb, w) = contributions[next];
+                if na != a || nb != b {
+                    break;
+                }
+                sum += w;
+                next += 1;
+            }
+            dot_products.push(((a, b), sum));
+            idx = next;
+        }
+        drop(contributions);
 
         // Pass 6: turn pairwise similarities into per-node top-k candidate edges.
         let frag_paths: Vec<&str> = fragments.iter().map(|f| f.path()).collect();
@@ -240,7 +274,12 @@ impl EdgeBuilder for LexicalEdgeBuilder {
         let frag_ids: Vec<&FragmentId> = fragments.iter().map(|f| &f.id).collect();
         let mut edges: EdgeDict = FxHashMap::default();
         for (node_idx, mut candidates) in neighbors_by_node {
-            candidates.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+            // Ties broken by neighbour index: the candidate order now derives
+            // from a sorted pair list rather than hashmap iteration, so without
+            // this the top-k cut would depend on accumulation order. Lexical
+            // weights collide often, which makes that a real difference rather
+            // than a theoretical one.
+            candidates.sort_by(|a, b| b.0.total_cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
             candidates.truncate(LEXICAL.top_k_neighbors);
             for (weight, neighbor_idx) in candidates {
                 let key = (

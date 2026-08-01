@@ -28,6 +28,10 @@ OPERATIONAL_PARAMS: list[tuple[str, float]] = [
     ("DIFFCTX_OP_FILTERING_PROXIMITY_HALF_DECAY", 50.0),
     ("DIFFCTX_OP_FILTERING_DEFINITION_PROXIMITY_HALF_DECAY", 5.0),
     ("DIFFCTX_OP_BOLTZMANN_CALIBRATION_TOLERANCE", 0.05),
+    # RRF's only knob. k=60 is Cormack et al. 2009 and was carried over
+    # unmeasured; if fusion is ever proposed as the default it cannot ship
+    # with zero sensitivity data behind its single parameter.
+    ("DIFFCTX_RRF_K", 60.0),
 ]
 
 PERTURBATION_FACTORS = [0.50, 0.75, 1.25, 1.50]

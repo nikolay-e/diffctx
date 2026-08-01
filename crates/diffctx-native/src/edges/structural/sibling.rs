@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::limits::SIBLING;
 use crate::config::weights::EDGE_WEIGHTS;
@@ -14,17 +14,23 @@ pub struct SiblingEdgeBuilder;
 impl SiblingEdgeBuilder {
     fn group_files_by_dir<'a>(&self, fragments: &'a [Fragment]) -> FxHashMap<String, Vec<&'a str>> {
         let mut by_dir: FxHashMap<String, Vec<&str>> = FxHashMap::default();
+        // A path belongs to exactly one directory, so one set of already-seen
+        // paths is enough to dedupe every bucket. This used to be
+        // `Vec::contains` against the bucket, i.e. a scan of the directory's
+        // whole file list per fragment — quadratic in exactly the shape this
+        // builder exists for (thousands of files in one directory), while
+        // producing the same buckets in the same first-seen order.
+        let mut seen: FxHashSet<&str> = FxHashSet::default();
         for f in fragments {
-            let path = Path::new(f.path());
-            let dir = path
+            let path_str = f.path();
+            if !seen.insert(path_str) {
+                continue;
+            }
+            let dir = Path::new(path_str)
                 .parent()
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_default();
-            let path_str = f.path();
-            let files = by_dir.entry(dir).or_default();
-            if !files.contains(&path_str) {
-                files.push(path_str);
-            }
+            by_dir.entry(dir).or_default().push(path_str);
         }
         by_dir
     }
@@ -85,5 +91,67 @@ impl EdgeBuilder for SiblingEdgeBuilder {
 
     fn category_label(&self) -> Option<&str> {
         Some("sibling")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::FragmentKind;
+    use rustc_hash::FxHashSet as Set;
+    use std::sync::Arc;
+
+    fn frag(path: &str, start: u32) -> Fragment {
+        Fragment {
+            id: crate::types::FragmentId::new(Arc::from(path), start, start + 5),
+            kind: FragmentKind::Function,
+            content: Arc::from(""),
+            identifiers: Set::default(),
+            token_count: 10,
+            symbol_name: None,
+        }
+    }
+
+    /// Grouping deduped files with `Vec::contains` against the bucket, so every
+    /// fragment scanned its directory's whole file list. The buckets it produces
+    /// are what matters: one entry per file, in first-seen order, regardless of
+    /// how many fragments each file contributes.
+    #[test]
+    fn each_file_appears_once_per_directory_in_first_seen_order() {
+        // Several fragments per file, files interleaved across two directories.
+        let fragments = vec![
+            frag("src/b.rs", 1),
+            frag("src/a.rs", 1),
+            frag("src/b.rs", 20),
+            frag("lib/c.rs", 1),
+            frag("src/a.rs", 40),
+            frag("lib/c.rs", 30),
+        ];
+
+        let by_dir = SiblingEdgeBuilder.group_files_by_dir(&fragments);
+
+        assert_eq!(
+            by_dir.get("src").map(Vec::as_slice),
+            Some(&["src/b.rs", "src/a.rs"][..])
+        );
+        assert_eq!(
+            by_dir.get("lib").map(Vec::as_slice),
+            Some(&["lib/c.rs"][..])
+        );
+    }
+
+    /// The per-directory pair loop is quadratic by nature, so the cap is what
+    /// keeps a flat thousand-file directory from emitting a near-dense block.
+    #[test]
+    fn a_directory_over_the_cap_emits_only_the_capped_pairs() {
+        let over = SIBLING.max_files_per_dir + 40;
+        let fragments: Vec<Fragment> = (0..over)
+            .map(|i| frag(&format!("src/f{i:04}.rs"), 1))
+            .collect();
+
+        let edges = SiblingEdgeBuilder.build(&fragments, None);
+        let k = SIBLING.max_files_per_dir;
+        // Every kept pair contributes a forward and a reverse edge.
+        assert_eq!(edges.len(), k * (k - 1));
     }
 }
