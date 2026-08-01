@@ -122,33 +122,68 @@ pub fn build_diff_context_locate(
 /// Line count for an untracked file, or `None` when it is not readable UTF-8
 /// text — the same rejection `read_to_string` gave, so binaries stay excluded.
 ///
-/// Counted through a reader rather than by materialising the file. Untracked
-/// files are scanned before any size filter applies (`max_changed_file_size` is
-/// enforced later, in fragmentation), so a dirty tree holding one multi-GB log
-/// allocated the whole thing here just to reach `.lines().count()`. Memory is
-/// now bounded by the buffer instead of the file size, and the count is
-/// unchanged: `str::lines` and `BufRead::lines` agree on `\n` splitting, on
-/// stripping a trailing `\r`, and on not counting a trailing newline as a line.
+/// Untracked files are scanned before any size filter applies
+/// (`max_changed_file_size` is enforced later, in fragmentation), so a dirty
+/// tree holding one multi-GB log used to allocate all of it here just to reach
+/// `.lines().count()`.
+///
+/// Counted over fixed byte chunks rather than by line. `BufReader::lines()`
+/// bounds nothing on its own: it allocates each line, and a minified bundle or
+/// a single-line JSON dump is one line hundreds of megabytes long — exactly the
+/// shape this was supposed to stop loading. The buffer is the only allocation
+/// that scales.
+///
+/// UTF-8 is validated as it streams, with the incomplete tail of one chunk
+/// carried into the next, so a multi-byte character split across a chunk
+/// boundary is not mistaken for the invalid byte that rejects a binary.
 ///
 /// Counting rather than size-gating keeps this bit-identical: an oversized file
-/// still gets the same hunk it always did. Skipping it outright would also be
-/// safe for the changed-files list (that comes from the untracked scan, not from
-/// hunk emission — a binary is listed today with no hunk at all), but it would
-/// drop a hunk the rest of the pipeline has seen since forever, and nothing
-/// here needs that risk. What remains unbounded is time, not memory: a
-/// multi-GB file is still streamed end to end.
+/// still gets the same hunk it always did, and the count matches `str::lines`
+/// (both split on `\n` and neither counts a trailing newline as a line).
 fn count_text_lines(path: &Path) -> Option<u32> {
-    use std::io::BufRead;
+    use std::io::Read;
 
-    let file = std::fs::File::open(path).ok()?;
-    let mut count: u32 = 0;
-    for line in std::io::BufReader::new(file).lines() {
-        // Invalid UTF-8 rejects the whole file, as `read_to_string` did — a
-        // partial count would invent a hunk length for a binary.
-        line.ok()?;
-        count = count.saturating_add(1);
+    const CHUNK: usize = 64 * 1024;
+
+    let mut file = std::fs::File::open(path).ok()?;
+    let mut buf = vec![0u8; CHUNK];
+    let mut carry: Vec<u8> = Vec::new();
+    let mut newlines: u32 = 0;
+    let mut last_byte: Option<u8> = None;
+
+    loop {
+        let read = file.read(&mut buf).ok()?;
+        if read == 0 {
+            break;
+        }
+        carry.extend_from_slice(&buf[..read]);
+        let valid_upto = match std::str::from_utf8(&carry) {
+            Ok(_) => carry.len(),
+            // A truncated character at the end of a chunk is not an error yet;
+            // anything else is a binary and rejects the file, as before.
+            Err(e) if e.error_len().is_none() => e.valid_up_to(),
+            Err(_) => return None,
+        };
+        newlines = newlines
+            .saturating_add(carry[..valid_upto].iter().filter(|b| **b == b'\n').count() as u32);
+        if let Some(&b) = carry[..valid_upto].last() {
+            last_byte = Some(b);
+        }
+        carry.drain(..valid_upto);
     }
-    Some(count)
+
+    // Trailing bytes that never completed a character mean the file ends
+    // mid-sequence — invalid UTF-8, same verdict as `read_to_string`.
+    if !carry.is_empty() {
+        return None;
+    }
+    // `str::lines` does not count a trailing newline as starting a line, and
+    // counts a final unterminated line as one.
+    Some(match last_byte {
+        None => 0,
+        Some(b'\n') => newlines,
+        Some(_) => newlines.saturating_add(1),
+    })
 }
 
 /// Heavy phase: clone/parse/fragment/discover/tokenize/score. Independent

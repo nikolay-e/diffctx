@@ -831,10 +831,18 @@ pub fn find_ignored_paths(repo_root: &Path, rel_paths: &[String]) -> FxHashSet<S
     // below turned that into "nothing is ignored" — silently disabling the
     // `.diffctx/ignore` contract exactly when the repo is large enough for it
     // to matter. stdin has no such ceiling.
+    // `-z` on BOTH sides. Line-delimited input splits a path containing a
+    // newline into two phantom queries: git then answers about `secret` and
+    // `name.py` while the real path `secret\nname.py` never gets a verdict, so
+    // the lookup below misses it and a file the user declared ignored is
+    // published. Verified against git directly — line mode reports the
+    // truncated stem, NUL mode reports the whole path. The rest of this module
+    // is already `-z` throughout.
     let mut args: Vec<String> = vec![
         "check-ignore".into(),
         "--no-index".into(),
         "-v".into(),
+        "-z".into(),
         "--stdin".into(),
     ];
     if let Some(ref path) = temp_excludes {
@@ -848,7 +856,7 @@ pub fn find_ignored_paths(repo_root: &Path, rel_paths: &[String]) -> FxHashSet<S
     // matches that nobody is draining, we block on the write, and the pipeline
     // hangs until the git timeout fires. A file hands the feeding to the kernel,
     // which needs no second thread to stay correct.
-    let query_file = write_private_temp_file(&queries.join("\n"));
+    let query_file = write_private_temp_file(&format!("{}\0", queries.join("\0")));
 
     let result = (|| -> Result<FxHashSet<String>> {
         let Some(ref query_path) = query_file else {
@@ -875,12 +883,7 @@ pub fn find_ignored_paths(repo_root: &Path, rel_paths: &[String]) -> FxHashSet<S
         let stdout = String::from_utf8_lossy(&output.stdout);
         let excludes_source = temp_excludes.as_ref().map(|p| p.display().to_string());
 
-        let mut rules: rustc_hash::FxHashMap<String, String> = rustc_hash::FxHashMap::default();
-        for line in stdout.lines() {
-            if let Some((rule, path)) = parse_verbose_ignore_match(line) {
-                rules.insert(path, rule);
-            }
-        }
+        let rules = parse_verbose_ignore_records(&stdout);
 
         Ok(rel_paths
             .iter()
@@ -949,9 +952,32 @@ pub fn find_ignored_paths(repo_root: &Path, rel_paths: &[String]) -> FxHashSet<S
 /// containing a tab, so the last tab is always the separator. Splitting from
 /// the left mis-parses a pattern that itself contains a tab, and the resulting
 /// lookup miss reports an ignored file as not ignored — i.e. it leaks.
-fn parse_verbose_ignore_match(line: &str) -> Option<(String, String)> {
-    let (rule, path) = line.rsplit_once('\t')?;
-    Some((rule.to_string(), unquote_c_style(path)))
+/// `check-ignore -v -z` emits four NUL-separated fields per match —
+/// `<source>\0<line>\0<pattern>\0<path>\0` — and never quotes the path,
+/// because NUL cannot appear in one.
+///
+/// The text format this replaced (`<source>:<line>:<pattern>\t<path>`) had to
+/// guess where the pattern ended and the path began, and C-quoting made a path
+/// containing a tab or a newline ambiguous. Field-delimited records remove the
+/// guess entirely.
+fn parse_verbose_ignore_records(stdout: &str) -> rustc_hash::FxHashMap<String, String> {
+    let mut rules: rustc_hash::FxHashMap<String, String> = rustc_hash::FxHashMap::default();
+    let fields: Vec<&str> = stdout.split('\0').collect();
+    // A trailing NUL leaves an empty final element; chunks of four skip it.
+    for record in fields.chunks(4) {
+        if record.len() < 4 {
+            break;
+        }
+        let (source, line, pattern, path) = (record[0], record[1], record[2], record[3]);
+        if path.is_empty() {
+            continue;
+        }
+        // The rule identity keeps the text format's shape: callers compare it
+        // against `format!("{excludes_source}:")` to tell a diffctx-declared
+        // exclusion from a gitignore one.
+        rules.insert(path.to_string(), format!("{source}:{line}:{pattern}"));
+    }
+    rules
 }
 
 fn ancestor_dirs(rel: &str) -> Vec<String> {
@@ -1276,25 +1302,52 @@ mod tests {
         }
     }
 
-    // --- parse_verbose_ignore_match: last-tab split survives a tab in the pattern ---
+    // --- parse_verbose_ignore_records: NUL fields remove every delimiter guess ---
 
     #[test]
-    fn parse_verbose_ignore_match_splits_on_last_tab_not_first() {
-        // The pattern itself ("foo\tbar") contains a literal tab. Splitting
-        // from the left would take "foo" as the path, silently reporting an
-        // ignored file as not ignored.
-        let line = ".gitignore:3:foo\tbar\tsome/real/path.txt";
-        let (rule, path) = parse_verbose_ignore_match(line).expect("parse");
-        assert_eq!(path, "some/real/path.txt");
-        assert_eq!(rule, ".gitignore:3:foo\tbar");
+    fn a_tab_in_the_pattern_no_longer_needs_disambiguating() {
+        // The text format put the pattern and the path on one line separated by
+        // a tab, so a pattern containing a tab had to be split from the right
+        // and hoped for. Fields make it unambiguous.
+        let stdout = ".gitignore\x003\x00foo\tbar\x00some/real/path.txt\x00";
+        let rules = parse_verbose_ignore_records(stdout);
+        assert_eq!(
+            rules.get("some/real/path.txt").map(String::as_str),
+            Some(".gitignore:3:foo\tbar")
+        );
+    }
+
+    /// The leak that forced `-z`. A newline in a filename split the query into
+    /// two phantom paths, git answered about the stem, the real path never got
+    /// a verdict, and a file the user declared ignored was published.
+    #[test]
+    fn a_newline_in_the_path_survives_as_one_record() {
+        let stdout = "excl\x001\x00secret*\x00secret\nname.py\x00";
+        let rules = parse_verbose_ignore_records(stdout);
+        assert_eq!(rules.len(), 1);
+        assert_eq!(
+            rules.get("secret\nname.py").map(String::as_str),
+            Some("excl:1:secret*")
+        );
     }
 
     #[test]
-    fn parse_verbose_ignore_match_unquotes_c_style_path() {
-        let line = ".gitignore:1:*.log\t\"weird\\tfile.log\"";
-        let (rule, path) = parse_verbose_ignore_match(line).expect("parse");
-        assert_eq!(path, "weird\tfile.log");
-        assert_eq!(rule, ".gitignore:1:*.log");
+    fn several_records_and_a_trailing_nul_parse_cleanly() {
+        let stdout = ".gitignore\x001\x00*.log\x00a.log\x00.gitignore\x002\x00*.tmp\x00b/c.tmp\x00";
+        let rules = parse_verbose_ignore_records(stdout);
+        assert_eq!(rules.len(), 2);
+        assert!(rules.contains_key("a.log"));
+        assert!(rules.contains_key("b/c.tmp"));
+    }
+
+    #[test]
+    fn a_truncated_final_record_is_dropped_not_half_read() {
+        // Killed mid-write, the last record is short. Reading three fields as
+        // four would key a rule under a pattern.
+        let stdout = ".gitignore\x001\x00*.log\x00a.log\x00.gitignore\x002\x00*.tmp\x00";
+        let rules = parse_verbose_ignore_records(stdout);
+        assert_eq!(rules.len(), 1);
+        assert!(rules.contains_key("a.log"));
     }
 
     // --- anchor_diffctx_ignore_line: 4 reachable outputs, root vs nested, negation ---
