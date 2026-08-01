@@ -81,6 +81,27 @@ Treat diffctx output exactly as you would treat the repository itself: as
 untrusted input. Do not wire it into an agent that holds credentials, can
 write, or can reach the network without a human in the loop.
 
+### Verifying a release
+
+Every artifact attached to a GitHub release — wheels, sdist, standalone
+binaries, and the SBOM — carries signed SLSA build provenance produced by the
+release workflow's own OIDC identity:
+
+```bash
+gh attestation verify diffctx-<version>-<target>.zip --repo nikolay-e/diffctx
+```
+
+A failure means the file was not produced by that workflow from this repository,
+whatever the filename says. The standalone binaries are the case this matters
+most for: unlike the wheels, which additionally carry PyPI attestations
+(visible as "Verified details" on the project page), nothing else vouches for a
+file downloaded from the releases page.
+
+A CycloneDX SBOM (`diffctx-sbom.cyclonedx.json`) ships with each release. It
+answers what is inside the artifact, which provenance does not — the pair is
+what makes it possible to answer "are we affected" about a published CVE
+without reading the dependency tree by hand.
+
 ## Reporting
 
 **Please do NOT report security vulnerabilities through public GitHub

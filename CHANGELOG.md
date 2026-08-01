@@ -86,6 +86,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   found it reading a planted file outside the jail. Containment is now decided
   after resolution, the fuzz runs in CI, and the case is pinned separately so it
   holds where hypothesis is unavailable.
+- **Releases are verifiable.** Every artifact attached to a release — wheels,
+  sdist, standalone binaries and the SBOM itself — now carries signed SLSA build
+  provenance from the release workflow's OIDC identity
+  (`gh attestation verify <file> --repo nikolay-e/diffctx`), PyPI uploads state
+  `attestations: true` explicitly rather than relying on an action default that
+  has changed between versions, and a CycloneDX SBOM ships as a release asset.
+  The binaries are what this is for: unlike the wheels they had no package index
+  vouching for them. SECURITY.md documents the verification commands.
 - **Error payloads no longer disclose resolved paths.** A refusal used to name
   the path the filesystem resolved to, which told a caller that had just been
   denied exactly what lay outside its jail; and an `OSError` rendered with its
