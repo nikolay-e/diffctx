@@ -119,6 +119,14 @@ def run_case(wt: Path, sha: str, timeout_s: int, binary: str, budget: int = 0) -
     if proc.returncode != 0 or not proc.stdout.strip():
         # Exit 124 is diffctx's own deadline; anything else with no output is
         # recorded distinctly so a crash is not filed as a timeout.
+        #
+        # Known property, not an oversight: a run that printed part of its
+        # output and *then* hit the deadline is recorded as a hang, and its
+        # partial fragments and token count are discarded. That matches how the
+        # snapshot classified the same shape, which is what keeps the two
+        # comparable — but it means `md_tokens` is missing for a case that did
+        # emit something, so the token distributions describe complete runs
+        # only.
         kind = "hang" if proc.returncode in (124, 143) else "no_output"
         return {"status": kind, "elapsed_s": elapsed, "rc": proc.returncode}
 

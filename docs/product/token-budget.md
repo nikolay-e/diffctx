@@ -20,6 +20,35 @@ There is no `--tokenizer` flag: `o200k_base` is pinned (locked by
 `test_tiktoken_o200k_base_encoding_is_pinned`) because every number in the
 paper's evaluation is denominated in it.
 
+## What `--budget` does when you omit it
+
+Omitting `--budget` does not mean "no limit" — it sizes one from the change:
+
+```
+auto = clamp(3.0 * sum(min(core_tokens, 1500) for each changed fragment), 8_000, 48_000)
+```
+
+Each changed fragment contributes at most 1 500 tokens, so one 2 000-line
+unparsed template touched by a single hunk cannot drag in the whole repo as
+"context". The result is clamped to `[8 000, 48 000]`.
+
+**On large real-world diffs it saturates at the 48 000 ceiling**, and output
+tracks whatever budget it is given almost exactly — measured on one
+react-native commit: `--budget 8000` produced 8 823 markdown tokens, `16000`
+produced 16 889, `48000` produced 48 117, and auto produced 48 396. So on a wide
+change the default spends 48k, and the way to spend less is to say so.
+
+Whether 48k is the right ceiling is open (#167). The measured trade on
+react-native, all 35 cases scored twice: dropping to `--budget 8000` costs
+0.145 recall and gains 0.118 precision for a fifth of the tokens, with the
+forbidden-file rate falling by nearly two thirds. That is a real trade rather
+than a free win — 20 of 35 cases lose some recall — so the constant has not been
+changed on that evidence alone.
+
+`--budget -1` disables the limit entirely. Do not reach for it on a wide range:
+selection and the post-passes dominate wall clock there, and with nothing to
+stop the greedy the run tends to hit the deadline instead of finishing.
+
 ## `--with-raw-diff`
 
 `diffctx . --diff HEAD~1 --with-raw-diff` writes git's own unified diff into
