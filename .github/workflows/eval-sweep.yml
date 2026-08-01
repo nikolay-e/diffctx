@@ -236,7 +236,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        method: [ppr, ego, bm25, aider]
+        method: [ppr, ego, bm25, internal-bm25, rrf, aider]
         budget: [64000]
         test_set: [swebench_verified]
     runs-on: ubuntu-latest
@@ -309,9 +309,27 @@ jobs:
               echo "baseline=bm25" >> "$GITHUB_OUTPUT"
               echo "scoring=ego" >> "$GITHUB_OUTPUT"
               ;;
+            rrf)
+              echo "baseline=diffctx" >> "$GITHUB_OUTPUT"
+              echo "scoring=rrf" >> "$GITHUB_OUTPUT"
+              ;;
+            internal-bm25)
+              # BM25 as diffctx's own scoring, NOT the external baseline above:
+              # the #125 gate needs the lexical signal inside the same candidate
+              # universe, otherwise the comparison is against a different
+              # discovery and the fusion ceiling is unreadable.
+              echo "baseline=diffctx" >> "$GITHUB_OUTPUT"
+              echo "scoring=bm25" >> "$GITHUB_OUTPUT"
+              ;;
             aider)
               echo "baseline=aider_fair" >> "$GITHUB_OUTPUT"
               echo "scoring=ego" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              # Without this a new method silently emits empty outputs and the
+              # cell runs as whatever the downstream defaults happen to be.
+              echo "::error::unknown sweep method '$method'" >&2
+              exit 1
               ;;
           esac
 
@@ -407,7 +425,7 @@ jobs:
       # Aider has no shareable state across map_tokens values, so it keeps
       # one budget per cell via `include` entries.
       matrix:
-        method: [ppr, ego, bm25]
+        method: [ppr, ego, bm25, internal-bm25, rrf]
         # `depth` is the EGO graph traversal radius; only meaningful for
         # method=ego. PPR uses alpha (not depth), BM25 has no graph.
         # Sentinel -1 means "depth does not apply"; non-EGO methods run
@@ -648,10 +666,29 @@ jobs:
               echo "scoring=ego" >> "$GITHUB_OUTPUT"
               echo "budgets=0,8000,16000,32000,64000,128000" >> "$GITHUB_OUTPUT"
               ;;
+            rrf)
+              echo "baseline=diffctx" >> "$GITHUB_OUTPUT"
+              echo "scoring=rrf" >> "$GITHUB_OUTPUT"
+              echo "budgets=-1,0,8000,16000,32000,64000,128000" >> "$GITHUB_OUTPUT"
+              ;;
+            internal-bm25)
+              # The lexical signal as diffctx's OWN scoring, inside the same
+              # candidate universe. The `bm25` arm above is the external
+              # baseline with its own discovery; comparing fusion against it
+              # measures discovery as much as ranking, which is why the #125
+              # ceiling was unreadable.
+              echo "baseline=diffctx" >> "$GITHUB_OUTPUT"
+              echo "scoring=bm25" >> "$GITHUB_OUTPUT"
+              echo "budgets=-1,0,8000,16000,32000,64000,128000" >> "$GITHUB_OUTPUT"
+              ;;
             aider)
               echo "baseline=aider_fair" >> "$GITHUB_OUTPUT"
               echo "scoring=ego" >> "$GITHUB_OUTPUT"
               echo "budgets=" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::unknown sweep method '$method'" >&2
+              exit 1
               ;;
           esac
 

@@ -43,6 +43,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`.diffctx/ignore` no longer stops applying when `git check-ignore` fails or
+  when a path contains a newline.** Two holes, both silent. The batched check
+  passed every diff path *plus every ancestor directory* as argv, so a
+  monorepo-sized range hit the platform limit, git failed to spawn, and the
+  result was read as "nothing is ignored" — the one answer that publishes what
+  the user asked to withhold. Paths now go over `--stdin` (fed from a private
+  temp file, not a pipe we write ourselves — writing the payload before reading
+  stdout deadlocks once it outgrows the pipe buffer), and the exchange is
+  NUL-delimited in both directions: line-delimited input split
+  `secret\nname.py` into two phantom queries, git answered about the stem, and
+  the real path never got a verdict. On failure the check now fails **closed**
+  when `.diffctx/ignore` declares patterns — excluding everything queried rather
+  than risk publishing it — and stays open when it declares none, so a bare
+  clone (where `check-ignore` cannot run at all) still produces output.
+- **An untracked file is no longer loaded into memory to count its lines.** The
+  untracked scan runs before any size filter (`max_changed_file_size` is
+  enforced later, in fragmentation), so a dirty tree holding one multi-GB log
+  allocated all of it up front. Counting is now chunked over bytes with
+  streaming UTF-8 validation; a minified bundle that is one line hundreds of
+  megabytes long is bounded too, which a line-based reader would not have been.
+  Line counts are unchanged.
+- **Acronym-prefixed test files are recognised** — `XMLTest`, `HTTPTest`,
+  `DBTest`, `UITest`, `IOTest`, `JSONSpec` all read as ordinary source because
+  the CamelCase rule demanded a lowercase character before the marker. A capital
+  `T` is itself the word boundary, and the markers are matched case-sensitively,
+  so `latest`/`contest`/`attest` were never at risk from dropping that guard
+  (#182). `PodSpec`/`JobSpec` and `ABTest` are accepted over-classifications:
+  no name-based rule separates them from `AuthSpec` and `FooTest`.
+- **`locate` counted tests with its own weaker classifier**, so `summary.tests`
+  in the blast-radius block undercounted: it lowercased the path first, which
+  hides `FooTest.java`, `AuthSpec.scala`, `widget-spec.js` and `src/tests.rs`.
+  It now shares `crate::testfiles` with the edge builder and the needs matcher.
+  A `testing/` directory no longer counts as a test tree (it is Go's stdlib
+  package name and such directories hold helpers). Affects
+  `diffctx.locate.v1` output only; pack selection is unchanged.
+- **An inverted line span can no longer reach a `FragmentId`.** `line_count()`
+  is `end - start + 1` on unsigned integers, so it panicked in debug and wrapped
+  to ~4 billion in release, always somewhere downstream of whoever built the
+  span; it had been fixed twice at call sites. The constructor now asserts in
+  debug and clamps to a one-line span in release.
+- **Rename records with a missing destination are no longer treated as
+  renames.** The two `-z` walkers disagreed on validation; they are now one.
+
 - **The lexical similarity builder no longer holds an unbounded pairwise
   accumulator** (#116). Its output is bounded by `top_k_neighbors`, but the
   intermediate `FxHashMap<(u32, u32), f32>` was not: it held every distinct

@@ -3,16 +3,17 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+# Mirrors the pyo3 signature defaults by reading them, so this wrapper cannot
+# drift from the engine it wraps. Python always passes `scoring_mode` and `tau`
+# explicitly, so a literal here would quietly override a changed engine default
+# for every Python and MCP caller.
+from diffctx._diffctx import DEFAULT_SCORING as _DEFAULT_SCORING
+from diffctx._diffctx import DEFAULT_TAU as _DEFAULT_TAU
+
 _PIPELINE_TIMEOUT = 300
 
 
 _UNLIMITED_BUDGET = 10_000_000
-
-# Mirrors the pyo3 signature defaults by reading them, so this wrapper cannot
-# drift from the engine it wraps. Python always passes `scoring_mode`
-# explicitly, so a literal here would quietly override a changed engine default
-# for every Python and MCP caller.
-from diffctx._diffctx import DEFAULT_SCORING as _DEFAULT_SCORING  # noqa: E402
 
 
 def _normalize_budget(budget_tokens: int | None) -> int | None:
@@ -47,7 +48,7 @@ def compute_scored_state(
 def select_with_params(
     state: Any,
     budget_tokens: int | None = None,
-    tau: float = 0.12,
+    tau: float = _DEFAULT_TAU,
     no_content: bool = False,
 ) -> dict[str, Any]:
     """Light-phase select+postpass+render against a precomputed state."""
@@ -69,7 +70,7 @@ def build_locate(
     diff_range: str,
     budget_tokens: int | None = None,
     alpha: float = 0.60,
-    tau: float = 0.12,
+    tau: float = _DEFAULT_TAU,
     scoring_mode: str = _DEFAULT_SCORING,
     timeout: int = _PIPELINE_TIMEOUT,
 ) -> str:
@@ -99,7 +100,7 @@ def build_diff_context(
     diff_range: str,
     budget_tokens: int | None = None,
     alpha: float = 0.60,
-    tau: float = 0.12,
+    tau: float = _DEFAULT_TAU,
     no_content: bool = False,
     ignore_file: Path | None = None,
     no_default_ignores: bool = False,

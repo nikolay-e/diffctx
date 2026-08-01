@@ -13,6 +13,13 @@
 //! `attest`. The rule here is that a `test`/`spec` marker counts only at a
 //! **word boundary**: its own segment between separators, or a capitalised
 //! `Test`/`Spec` in the original name.
+//!
+//! Two families are accepted false positives, because no name-based rule
+//! separates them: `PodSpec`/`JobSpec` (Kubernetes API types) look exactly like
+//! `AuthSpec` (a Scala test), and `ABTest` (an experiment) looks exactly like
+//! `FooTest`. Both over-classify — a K8s model contributes test-need strength
+//! it should not — and both are preferred to under-classifying the conventions
+//! they collide with, which are far more common in the corpora this feeds.
 
 use std::path::Path;
 

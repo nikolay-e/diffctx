@@ -251,7 +251,7 @@ disallow_untyped_decorators = false
 [tool.commitizen]
 name = "cz_conventional_commits"
 tag_format = "v$version"
-version_files = [ "src/diffctx/version.py:__version__" ]
+version_files = [ "src/diffctx/version.py:__version__", "CITATION.cff:^version" ]
 
 [tool.importlinter]
 root_package = "diffctx"
