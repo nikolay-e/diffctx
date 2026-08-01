@@ -265,6 +265,26 @@ fn format_failure(
     if !oracle.hit_forbidden.is_empty() {
         msg.push_str(&format!("present forbidden: {:?}\n", oracle.hit_forbidden));
     }
+    // Reported, not scored. `score = recall * (1 - forbidden_rate)` carries no
+    // term for over-selection, so a case that finds everything and buries it
+    // reads the same as one that finds everything cleanly. The share of emitted
+    // fragments that actually carry the diff separates those two at a glance,
+    // and it is the number a reader wants first when recall is 100% and the
+    // case still failed. Diagnostic only — changing the formula changes the
+    // gate, which is not a debugging decision.
+    let changed = output
+        .fragments
+        .iter()
+        .filter(|f| f.role.as_deref() == Some("changed"))
+        .count();
+    if !output.fragments.is_empty() {
+        msg.push_str(&format!(
+            "changed-fragment share: {:.2} ({} of {})\n",
+            changed as f64 / output.fragments.len() as f64,
+            changed,
+            output.fragments.len()
+        ));
+    }
     msg.push_str(&format!(
         "selected fragments ({}):\n",
         output.fragments.len()
