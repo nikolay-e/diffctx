@@ -45,6 +45,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `DIFFCTX_PIT_AGREEMENT_TOP_K=20`. Measured on the full corpus it recovers 40 of
   those 79 cases (`rrf` 450 below-threshold, `pit` 410) and still trails `ego`
   (371), so **`ego` remains the default** and fusion has yet to earn it (#125).
+
+  Ablations settled *why*, and the answer is not calibration. At `blend=1.0` the
+  lexical arm contributes nothing to the score, and fusion still scores 388
+  against ego's 371 — so no mixing weight can recover the gap. Substituting the
+  identity for the percentile at that blend reproduces ego **exactly** (371),
+  which rules out every other difference between the fusion path and ego: the
+  restricted score map, the max-normalisation with cores pinned to 1.0, and
+  `finish_scoring` over the pre-filtered union all cost zero. The entire
+  structural gap belongs to the transform.
+
+  `DIFFCTX_PIT_TRANSFORM=maxnorm` fuses the components on their rescaled scores
+  instead of their distributional position, and dominates the percentile at
+  every blend measured (371 / 371 / 380 / 396 at blend 1.00 / 0.95 / 0.85 / 0.65
+  against 388 and 412 for the percentile). It still does not beat ego: both
+  curves rise monotonically with lexical weight, so in both families the optimum
+  sits at zero lexical weight.
+
+  One number invites a wrong reading: `--scoring bm25` alone scores 124, far
+  ahead of ego's 371. It is not better — it emits a median of 6 fragments to
+  ego's 10, half of them the change itself, and 71% of its failures are lost
+  recall against ego's 19%. The corpus metric `recall * (1 - forbidden_rate)`
+  has no over-selection term and a saturating forbidden term, so it rewards
+  conservatism; the comparison is a metric artefact, not a ranking result.
 - **`--scoring rrf`** — reciprocal-rank fusion of the structural (`ego`) and
   lexical (`bm25`) signals: each ranks the same candidate universe, and a
   fragment scores `Σ 1/(k + rank_i)` with `k=60` (`DIFFCTX_RRF_K`). Fusion on

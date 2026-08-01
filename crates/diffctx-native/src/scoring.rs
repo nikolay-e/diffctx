@@ -539,6 +539,39 @@ fn percentiles(
         return (out, top);
     }
 
+    // Ablation (not a shipped mode): with DIFFCTX_PIT_TRANSFORM=identity the
+    // component contributes its raw score instead of its percentile. At
+    // blend=1.0 that must reproduce EGO exactly, so whatever gap survives the
+    // identity is attributable to something other than the transform.
+    // `DIFFCTX_PIT_TRANSFORM=maxnorm` fuses the components on their own score
+    // shape, rescaled to a common [0, 1], instead of on distributional position.
+    // Measured on the full corpus it dominates the percentile everywhere:
+    //
+    //   blend   1.00   0.95   0.85   0.65
+    //   maxnorm  371    371    380    396
+    //   pit      388     -      -     412     (ego = 371, rrf = 450)
+    //
+    // The 1.00 column is the isolation that settled the mechanism: rescaling
+    // alone reproduces EGO *exactly*, so the restricted score map, the core
+    // pinning and the pre-filtered union all cost nothing, and the entire
+    // structural gap belongs to the transform. Neither transform beats EGO at
+    // any blend — the curve is monotone in lexical weight, so there is no
+    // calibration to find (#125).
+    if std::env::var("DIFFCTX_PIT_TRANSFORM").as_deref() == Ok("maxnorm") {
+        let denom = ranked
+            .iter()
+            .map(|(_, s)| *s)
+            .fold(0.0f64, f64::max)
+            .max(f64::MIN_POSITIVE);
+        for (fid, score) in &ranked {
+            out.insert((*fid).clone(), *score / denom);
+        }
+        for (fid, _) in ranked.iter().take(top_k) {
+            top.insert((*fid).clone());
+        }
+        return (out, top);
+    }
+
     let mut i = 0;
     while i < n {
         // One run of equal scores shares the mean percentile of the run.
