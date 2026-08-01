@@ -127,18 +127,22 @@ def score(case: dict, result: dict) -> dict:
     """
     if result.get("status") != "produced":
         return {}
-    selected = {p.split("/")[-1] if "/" not in p else p for p in result["selected_files"]}
+    selected = set(result["selected_files"])
     inc = set(case.get("gold_include") or [])
     exc = set(case.get("gold_exclude") or [])
 
     def hit(gold: set[str]) -> int:
+        """Gold entries surfaced. Suffix-matched, because the labels are written
+        repo-relative while the renderer emits paths relative to the worktree —
+        exact equality alone would score every case zero."""
         return sum(1 for g in gold if any(s == g or s.endswith("/" + g) for s in selected))
 
-    recall = hit(inc) / len(inc) if inc else None
-    forbidden = hit(exc) / len(exc) if exc else 0.0
-    labelled_hits = hit(inc)
-    labelled_total = labelled_hits + hit(exc)
-    precision = labelled_hits / labelled_total if labelled_total else None
+    required_hits = hit(inc)
+    forbidden_hits = hit(exc)
+    recall = required_hits / len(inc) if inc else None
+    forbidden = forbidden_hits / len(exc) if exc else 0.0
+    labelled_total = required_hits + forbidden_hits
+    precision = required_hits / labelled_total if labelled_total else None
     return {
         "recall": None if recall is None else round(recall, 3),
         "forbidden_rate": round(forbidden, 3),
