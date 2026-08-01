@@ -89,6 +89,18 @@ pub fn build_diff_context_in_memory(
 
     let core_ids = identify_core_fragments(&hunks, &all_fragments);
 
+    // The same two inputs the shipped pipeline gives the selector. Passing
+    // `None` for both made this harness score a different system: no
+    // excerpt-downshift (#149), so an oversized core was skipped rather than
+    // narrowed, and no I(f) prior, so per-file importance did not shape
+    // admission. Iterating on either of those against this harness measured
+    // something nobody runs.
+    let mut core_excerpts =
+        crate::excerpt::generate_core_excerpts(&all_fragments, &core_ids, &hunks);
+    core_excerpts.par_iter_mut().for_each(|(_, f)| {
+        f.token_count = count_tokens(&f.content) + LIMITS.overhead_per_fragment;
+    });
+
     let mut sig_frags = generate_signature_variants(&all_fragments);
     sig_frags.par_iter_mut().for_each(|f| {
         f.token_count = count_tokens(&f.content) + LIMITS.overhead_per_fragment;
@@ -117,6 +129,8 @@ pub fn build_diff_context_in_memory(
 
     let needs = crate::utility::needs::needs_from_diff(&all_fragments, &core_ids, &diff_text);
 
+    let file_importance =
+        crate::utility::compute_file_importance(&scoring_result.filtered_fragments);
     let selection = crate::select::lazy_greedy_select(
         scoring_result.filtered_fragments.clone(),
         &core_ids,
@@ -124,8 +138,8 @@ pub fn build_diff_context_in_memory(
         &needs,
         effective_budget,
         tau,
-        None,
-        None,
+        Some(&file_importance),
+        Some(&core_excerpts),
     );
 
     let mut selected = selection.selected;
