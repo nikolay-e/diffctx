@@ -39,6 +39,9 @@ CLONES = PROJECT_ROOT / "test-repos"
 # mid-comparison.
 OVER_DUMP_TOKENS = 15_000
 
+# Full or abbreviated git object id, nothing else.
+_COMMIT_RE = re.compile(r"[0-9a-f]{7,40}")
+
 
 def load_cases() -> list[dict]:
     return [json.loads(line) for line in BENCH.read_text().splitlines() if line.strip()]
@@ -76,6 +79,13 @@ def run_case(wt: Path, sha: str, timeout_s: int, binary: str, budget: int = 0) -
     second invocation purely to obtain the token count would double a run whose
     dominant cost is already the 180s ceiling.
     """
+    # `sha` comes from the dataset and ends up inside a `--diff` revision
+    # argument. A malformed entry would be handed to git as an option rather
+    # than a commit; commit ids are hex, so anything else is a broken dataset
+    # and should say so here rather than three layers down.
+    if not _COMMIT_RE.fullmatch(sha):
+        return {"status": "bad_sha", "elapsed_s": 0.0}
+
     started = time.monotonic()
     try:
         proc = subprocess.run(
@@ -232,10 +242,8 @@ def main(argv: list[str] | None = None) -> int:
             row.pop("selected_files", None)
             fh.write(json.dumps(row) + "\n")
             fh.flush()
-            print(
-                f"[{i}/{len(cases)}] {case['commit']:<28} {row['new_status']:<12} " f"{result.get('elapsed_s')}s  tokens={md}",
-                flush=True,
-            )
+            progress = f"[{i}/{len(cases)}] {case['commit']:<28} {row['new_status']:<12}"
+            print(f"{progress} {result.get('elapsed_s')}s  tokens={md}", flush=True)
     print(f"\nwrote {sink}")
     return 0
 
