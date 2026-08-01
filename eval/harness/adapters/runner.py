@@ -32,12 +32,21 @@ class RunParams:
     scoring: str = "ego"
     extra_env: dict[str, str] = field(default_factory=dict)
 
-    def to_env(self) -> dict[str, str]:
+    #: Directory for per-instance provenance dumps. `DIFFCTX_PROVENANCE_DUMP`
+    #: names a single file and is read once per invocation, so a whole cell
+    #: pointed at one path leaves only the last instance's rows. Setting this
+    #: instead gives each instance `<dir>/<instance_id>.jsonl`, which is what
+    #: `eval discovery-attribution` walks.
+    provenance_dir: str | None = None
+
+    def to_env(self, instance_id: str | None = None) -> dict[str, str]:
         # tau reaches Rust as a function argument, not an env var; emitting a
         # DIFFCTX_OP_SELECTION_STOPPING_THRESHOLD here would be inert and
         # invite "swept tau via env, saw no effect" mistakes.
         env = dict(self.extra_env)
         env["DIFFCTX_OP_SELECTION_CORE_BUDGET_FRACTION"] = f"{self.core_budget_fraction}"
+        if self.provenance_dir and instance_id:
+            env["DIFFCTX_PROVENANCE_DUMP"] = str(Path(self.provenance_dir) / f"{instance_id}.jsonl")
         return env
 
     def label(self) -> str:

@@ -75,3 +75,34 @@ def test_the_readout_names_the_subsystem_for_each_bucket(tmp_path):
     assert "surfaced, not selected" in text
     assert "never surfaced" in text
     assert "gone.py" in text
+
+
+class TestProvenanceDumpPathIsPerInstance:
+    """`DIFFCTX_PROVENANCE_DUMP` names one file and is read once per run, so a
+    cell pointed at a single path keeps only the last instance's rows. Every
+    instance needs its own path or the collection is silently a sample of one.
+    """
+
+    def test_no_dump_variable_unless_a_directory_is_configured(self):
+        from eval.harness.adapters.runner import RunParams
+
+        assert "DIFFCTX_PROVENANCE_DUMP" not in RunParams().to_env("inst-1")
+
+    def test_each_instance_gets_its_own_file(self, tmp_path):
+        from eval.harness.adapters.runner import RunParams
+
+        params = RunParams(provenance_dir=str(tmp_path))
+        a = params.to_env("inst-1")["DIFFCTX_PROVENANCE_DUMP"]
+        b = params.to_env("inst-2")["DIFFCTX_PROVENANCE_DUMP"]
+
+        assert a != b, "two instances would overwrite one dump"
+        assert a.endswith("inst-1.jsonl")
+        assert b.endswith("inst-2.jsonl")
+
+    def test_a_missing_instance_id_yields_no_dump_rather_than_a_shared_file(self, tmp_path):
+        """Falling back to a fixed name would reintroduce the overwrite it is
+        meant to prevent, and do it silently."""
+        from eval.harness.adapters.runner import RunParams
+
+        env = RunParams(provenance_dir=str(tmp_path)).to_env(None)
+        assert "DIFFCTX_PROVENANCE_DUMP" not in env

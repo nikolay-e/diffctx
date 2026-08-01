@@ -155,10 +155,13 @@ def _pool_eval(repos_dir_str: str, instance: BenchmarkInstance, params: RunParam
         result.extra["t_clone_s"] = t_clone_s
         return result
 
-    prior_env = {k: os.environ.get(k) for k in params.to_env()}
+    # Per-instance, so a cell's instances do not overwrite one another's
+    # provenance dump — the variable names a single file, not a directory.
+    cell_env = params.to_env(iid)
+    prior_env = {k: os.environ.get(k) for k in cell_env}
     applied = False
     try:
-        for k, v in params.to_env().items():
+        for k, v in cell_env.items():
             os.environ[k] = v
         print(f"[pid={pid}] {iid} stage=apply t_clone={t_clone_s}s", flush=True)
         t_apply = time.perf_counter()

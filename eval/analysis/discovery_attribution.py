@@ -90,7 +90,8 @@ def render(result: dict) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dump", required=True, type=Path, help="provenance JSONL from DIFFCTX_PROVENANCE_DUMP")
+    ap.add_argument("--dump", type=Path, help="provenance JSONL from DIFFCTX_PROVENANCE_DUMP")
+    ap.add_argument("--dump-dir", type=Path, help="directory of per-instance dumps (RunParams.provenance_dir)")
     ap.add_argument("--gold", action="append", default=[], help="repo-relative gold path; repeatable")
     ap.add_argument("--out", type=Path)
     args = ap.parse_args(argv)
@@ -98,7 +99,18 @@ def main(argv: list[str] | None = None) -> int:
     if not args.gold:
         print("no --gold paths given; nothing to attribute", flush=True)
         return 1
-    text = render(attribute(load_dump(args.dump.resolve()), set(args.gold)))
+    if not args.dump and not args.dump_dir:
+        print("give --dump or --dump-dir", flush=True)
+        return 1
+
+    rows: list[dict] = []
+    if args.dump:
+        rows += load_dump(args.dump.resolve())
+    if args.dump_dir:
+        # Per-instance dumps, as written by RunParams(provenance_dir=...).
+        for f in sorted(args.dump_dir.resolve().glob("*.jsonl")):
+            rows += load_dump(f)
+    text = render(attribute(rows, set(args.gold)))
     if args.out:
         args.out.resolve().write_text(text)
     print(text)
