@@ -33,6 +33,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 BENCH = PROJECT_ROOT / "datasets/real-world-diff/v1/diffctx_realworld_bench.jsonl"
 CLONES = PROJECT_ROOT / "test-repos"
 
+# The only two things this may execute, named rather than accepted as a path.
+BINARIES = {
+    "cli": PROJECT_ROOT / ".venv/bin/diffctx",
+    "native": PROJECT_ROOT / "target/release/diffctx",
+}
+
 # The snapshot's own threshold for `over_dump`. Kept as-is so the two runs are
 # read on the same scale; the dataset's concern logs argue it over-fires on
 # legitimately large diffs, which is a finding to carry, not to silently retune
@@ -183,10 +189,12 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--timeout", type=int, default=180)
-    # The Python CLI, not the native binary: markdown is a Python-side format
-    # (the native  accepts yaml|json only), and  is the unit the
-    # snapshot and the over-dump threshold are both expressed in.
-    ap.add_argument("--binary", default=str(PROJECT_ROOT / ".venv/bin/diffctx"))
+    # A choice, not a path. A benchmark that will execute whatever binary it is
+    # handed cannot say which build it measured, which is the one thing a
+    # measurement has to be able to say. 'cli' is the Python entry point:
+    # markdown is a Python-side format (the native -f takes yaml|json only) and
+    # md_tokens is the unit both the snapshot and the over-dump threshold use.
+    ap.add_argument("--binary", choices=sorted(BINARIES), default="cli")
     ap.add_argument("--limit", type=int, default=0)
     # One process per repo. Each repo has its own worktree, so the three never
     # contend on a checkout, and the wall clock collapses from the sum of the
@@ -201,16 +209,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--budget", type=int, default=0)
     args = ap.parse_args(argv)
 
-    # `--binary` reaches `subprocess.run` and `--out` becomes a directory tree.
-    # Both are developer-supplied here, but "developer-supplied" stops being
-    # true the moment this is driven by a script or an agent, and the checks
-    # cost one stat each. Resolving also removes `..` before anything is
-    # created.
-    binary = Path(args.binary).resolve()
+    binary = BINARIES[args.binary]
     if not binary.is_file():
-        raise SystemExit(f"--binary is not a file: {binary}")
+        raise SystemExit(f"the {args.binary} binary is not built: {binary}")
     args.binary = str(binary)
 
+    # `--out` becomes a directory tree; resolving removes `..` before anything
+    # is created.
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
     sink = out / "results.jsonl"
