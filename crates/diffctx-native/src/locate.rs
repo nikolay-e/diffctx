@@ -45,6 +45,8 @@ pub struct LocateOutput {
     pub overflow_count: usize,
 }
 
+// The reference is serde's contract for `skip_serializing_if`, not a choice.
+#[allow(clippy::trivially_copy_pass_by_ref)]
 fn is_zero(n: &usize) -> bool {
     *n == 0
 }
