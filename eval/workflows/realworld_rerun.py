@@ -162,6 +162,11 @@ def main(argv: list[str] | None = None) -> int:
     # snapshot and the over-dump threshold are both expressed in.
     ap.add_argument("--binary", default=str(PROJECT_ROOT / ".venv/bin/diffctx"))
     ap.add_argument("--limit", type=int, default=0)
+    # One process per repo. Each repo has its own worktree, so the three never
+    # contend on a checkout, and the wall clock collapses from the sum of the
+    # repos to the slowest one — which matters when most cases sit at the
+    # timeout ceiling rather than finishing.
+    ap.add_argument("--repo", default="")
     args = ap.parse_args(argv)
 
     out = args.out
@@ -173,6 +178,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"resuming: {len(done)} cases already recorded")
 
     cases = load_cases()
+    if args.repo:
+        cases = [c for c in cases if c["repo"] == args.repo]
     if args.limit:
         cases = cases[: args.limit]
 

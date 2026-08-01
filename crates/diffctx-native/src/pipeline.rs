@@ -716,12 +716,31 @@ pub(crate) fn is_secret_path(path: &Path) -> bool {
     let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
         return false;
     };
-    if matches!(name, "id_rsa" | "id_dsa" | "id_ecdsa" | "id_ed25519") {
+    // Whole-name matches. `_sk` is the sealed-secret half of an SSH key pair
+    // written by `ssh-keygen -O`; `.netrc`/`credentials` carry passwords in
+    // plain text and are the shapes CI images most often leak.
+    if matches!(
+        name,
+        "id_rsa"
+            | "id_dsa"
+            | "id_ecdsa"
+            | "id_ed25519"
+            | "id_ed25519_sk"
+            | "id_ecdsa_sk"
+            | ".netrc"
+            | "_netrc"
+            | "credentials"
+            | ".npmrc"
+            | ".pypirc"
+    ) {
         return true;
     }
     matches!(
         path.extension().and_then(|e| e.to_str()),
-        Some("pem" | "key" | "pfx" | "p12" | "keystore" | "jks")
+        // `.ppk` is PuTTY's private key, `.p8` Apple's signing key, `.asc` an
+        // armoured PGP export — all private-key containers the original list
+        // happened not to name.
+        Some("pem" | "key" | "pfx" | "p12" | "keystore" | "jks" | "ppk" | "p8" | "asc")
     )
 }
 
@@ -1223,5 +1242,82 @@ mod tests {
             section_path(&root, &[header]).is_some_and(|p| p.ends_with("inside.py")),
             "an in-repo section was dropped"
         );
+    }
+}
+
+#[cfg(test)]
+mod secret_path_tests {
+    use super::is_secret_path;
+    use std::path::Path;
+
+    fn secret(p: &str) -> bool {
+        is_secret_path(Path::new(p))
+    }
+
+    /// The original list named the four classic SSH key stems and six
+    /// certificate extensions, which left whole families of private-key
+    /// container through: PuTTY, Apple signing keys, armoured PGP exports, the
+    /// hardware-backed SSH variants, and the plain-text credential files CI
+    /// images leak most often.
+    #[test]
+    fn private_key_and_credential_shapes_are_excluded() {
+        for path in [
+            "home/.ssh/id_rsa",
+            "home/.ssh/id_ed25519",
+            "home/.ssh/id_ed25519_sk",
+            "home/.ssh/id_ecdsa_sk",
+            "certs/server.pem",
+            "certs/server.key",
+            "certs/bundle.pfx",
+            "certs/bundle.p12",
+            "android/release.keystore",
+            "android/release.jks",
+            "windows/deploy.ppk",
+            "apple/AuthKey_ABC123.p8",
+            "gpg/private.asc",
+            "home/.netrc",
+            "home/_netrc",
+            "aws/credentials",
+            "home/.npmrc",
+            "home/.pypirc",
+        ] {
+            assert!(secret(path), "not excluded: {path}");
+        }
+    }
+
+    /// Public halves stay visible — they are not secrets, and a changed
+    /// `authorized_keys` or `.pub` is legitimate review context.
+    #[test]
+    fn public_material_is_not_excluded() {
+        for path in [
+            "home/.ssh/id_rsa.pub",
+            "home/.ssh/id_ed25519.pub",
+            "home/.ssh/authorized_keys",
+            "certs/server.crt",
+        ] {
+            assert!(!secret(path), "wrongly excluded: {path}");
+        }
+    }
+
+    /// `.env` is deliberately NOT excluded: a changed `.env` is change context,
+    /// and corpus cases assert on it. Pinned so widening the list never quietly
+    /// takes it.
+    #[test]
+    fn env_files_remain_visible_by_design() {
+        assert!(!secret(".env"));
+        assert!(!secret("config/.env.production"));
+    }
+
+    /// Ordinary source that merely contains a matching word is untouched — the
+    /// rule is whole-name or extension, never substring.
+    #[test]
+    fn ordinary_files_are_untouched() {
+        for path in [
+            "src/keyboard.rs",
+            "src/credentials_form.tsx",
+            "docs/pemphigus.md",
+        ] {
+            assert!(!secret(path), "wrongly excluded: {path}");
+        }
     }
 }
