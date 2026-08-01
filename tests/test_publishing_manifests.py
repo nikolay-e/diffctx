@@ -70,11 +70,18 @@ class TestClaudePlugin:
         assert front
         assert "description:" in front.group(1)
 
-        referenced = set(re.findall(r"`(get_[a-z_]+)`", text))
+        # Tool-name-shaped references, not every backticked word: the commands
+        # also name parameters (`diff_ref`, `fragment_ids`) and values
+        # (`"locate"`). The pattern was `get_[a-z_]+` until #127 renamed the tool,
+        # at which point it matched nothing and the assertion below was the only
+        # thing that noticed.
+        referenced = set(re.findall(r"`(diffctx_[a-z_]+|get_[a-z_]+)`", text))
         assert referenced
 
         from diffctx.mcp import server as mcp_server
 
+        # The default surface, deliberately: a plugin command that only works
+        # once the operator sets DIFFCTX_MCP_LEGACY_TOOLS is a broken command.
         exported = {t.name for t in mcp_server.mcp._tool_manager.list_tools()}
         assert referenced <= exported, f"unknown tools referenced: {referenced - exported}"
 

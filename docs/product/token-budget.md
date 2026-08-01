@@ -80,7 +80,7 @@ hand-assembled `git diff` + `diffctx` bundle.
   diffctx still fragments them into the selected context as usual.
 - **Python surfaces only.** The `pip`/`pipx` CLI, the Python API
   (`build_diff_context(..., with_raw_diff=True)`) and the MCP server
-  (`get_diff_context(include_raw_diff=true)`) support it. The standalone
+  (`diffctx_context(mode="pack", include_raw_diff=true)`) support it. The standalone
   Rust binary (`cargo install diffctx`, `npx`, the Docker image) has no such
   flag in this release.
 

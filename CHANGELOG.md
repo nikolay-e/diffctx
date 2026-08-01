@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`--scoring pit`** — percentile fusion, the successor to `rrf`. Both blend
+  the structural (`ego`) and lexical (`bm25`) signals over the same candidate
+  universe; the difference is what is blended. `rrf` reduces each component to a
+  rank, which discards the magnitude that says "this scored near zero", and on
+  the oracle corpus that costs 79 cases against plain `ego` — every loss on
+  precision, because BM25 gives any generic-token match a small positive score
+  and `1/(k + rank)` promotes it to real fused mass. `pit` keeps the position
+  instead, via each component's empirical CDF: a fragment in the 5th percentile
+  of a signal contributes 0.05 from it, so two weak opinions cannot manufacture a
+  strong candidate. `score = blend·PIT(ego) + (1-blend)·PIT(bm25) + bonus·[both
+  in top-k]`, with `DIFFCTX_PIT_BLEND=0.65`, `DIFFCTX_PIT_AGREEMENT_BONUS=0.10`,
+  `DIFFCTX_PIT_AGREEMENT_TOP_K=20`. Measured on the full corpus it recovers 40 of
+  those 79 cases (`rrf` 450 below-threshold, `pit` 410) and still trails `ego`
+  (371), so **`ego` remains the default** and fusion has yet to earn it (#125).
 - **`--scoring rrf`** — reciprocal-rank fusion of the structural (`ego`) and
   lexical (`bm25`) signals: each ranks the same candidate universe, and a
   fragment scores `Σ 1/(k + rank_i)` with `k=60` (`DIFFCTX_RRF_K`). Fusion on
@@ -24,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and machine-readable provenance reasons (`changed`, `edge` with category /
   strongest source / mass, `proximity` seed-hops) with **no source bodies**:
   a navigation prior for agents at a fraction of pack-mode tokens. Available
-  on the Python CLI, the native binary, and the MCP `get_diff_context` tool
+  on the Python CLI, the native binary, and the MCP `diffctx_context` tool
   (`mode="locate"`); pack output is byte-unchanged (#126). Each item carries
   a coarse impact `group` (`test` / `type` / `config`) and the header a
   blast-radius `summary` (files, changed, context, tests) — with
@@ -40,6 +54,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`repo.deleted_files`, `repo.renamed_files`), so rename regression cases
   exercise git's real rename path instead of silently degrading to adds
   (#176).
+
+### Changed
+
+- **MCP: one tool instead of three.** `get_diff_context` becomes
+  `diffctx_context` and its `diff_range` parameter becomes `diff_ref`;
+  `get_tree_map` and `get_file_context` are off by default and return with
+  `DIFFCTX_MCP_LEGACY_TOOLS=1`. Tool definitions are sent on every request of
+  every session before any work happens, and the three-tool surface cost 1063
+  tokens of every context window it was installed in against 267 for the single
+  tool (-75%, `o200k_base` over each serialized `{name, description,
+  inputSchema}`).
+
+  The default `mode` is now `"locate"`, and the new `fragment_ids` parameter
+  reads the bodies of ids from a ranking — `"<path>:<lines>"`, taken straight
+  from locate's own fields — so a diff question resolves in two calls that pay
+  only for the fragments actually chosen. `mode="pack"` restores the previous
+  one-call behaviour. Bodies are read at the diff range's end revision rather
+  than from the working tree, so spans from a historical range are not
+  mis-sliced, and `.diffctx/ignore` is enforced on `fragment_ids` as it is
+  everywhere else (#127).
 
 ### Fixed
 
