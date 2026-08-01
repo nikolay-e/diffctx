@@ -77,6 +77,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exercise git's real rename path instead of silently degrading to adds
   (#176).
 
+### Security
+
+- **A symlinked directory inside a repository was a way out of it.** The
+  `fragment_ids` reader checked containment lexically — rejecting `..` and
+  absolute paths — which admits `escape/secret.txt` where `escape/` is a symlink
+  pointing above the repository root. A property fuzz over hostile path shapes
+  found it reading a planted file outside the jail. Containment is now decided
+  after resolution, the fuzz runs in CI, and the case is pinned separately so it
+  holds where hypothesis is unavailable.
+- **Error payloads no longer disclose resolved paths.** A refusal used to name
+  the path the filesystem resolved to, which told a caller that had just been
+  denied exactly what lay outside its jail; and an `OSError` rendered with its
+  absolute filename into returned content. Messages now echo only the argument
+  the caller supplied, and carry no traceback (#147).
+
 ### Changed
 
 - **MCP: one tool instead of three.** `get_diff_context` becomes

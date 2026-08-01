@@ -126,15 +126,32 @@ def _slice(text: str, ref: FragmentRef) -> tuple[str, str]:
 def _is_admissible(repo: Path, rel_path: str) -> bool:
     """Containment plus the repo's own ignore contract.
 
-    Containment is checked lexically on the joined path — the file need not
-    exist in the working tree, since it may only exist in a historical
-    revision, so `resolve()` on a missing path is not a usable test here.
+    Containment is checked twice, because neither check alone is sufficient:
+
+    - **Lexically**, which rejects `..` and absolute forms without touching the
+      filesystem. This is the only check available for a path that exists solely
+      in a historical revision.
+    - **After resolution**, which is what catches a symlinked directory *inside*
+      the repository pointing out of it. That path is lexically internal, so the
+      first check passes it; a property fuzz over hostile path shapes found it
+      reading a planted file one directory above the repo (#147).
+
+    `resolve()` is non-strict, so it still follows the symlinked prefix of a path
+    whose final component does not exist — which is exactly the escape shape.
     """
     from diffctx.ignore import get_ignore_specs
 
     if not rel_path or rel_path.startswith("/") or Path(rel_path).is_absolute():
         return False
     if ".." in Path(rel_path).parts:
+        return False
+    try:
+        resolved = (repo / rel_path).resolve()
+        if not resolved.is_relative_to(repo.resolve()):
+            return False
+    except (OSError, ValueError, RuntimeError):
+        # Unresolvable (a symlink loop, a name the platform rejects): refuse
+        # rather than fall through to the ignore check, which would admit it.
         return False
     spec = get_ignore_specs(repo, None, False, None)
     return not spec.match_file(rel_path)

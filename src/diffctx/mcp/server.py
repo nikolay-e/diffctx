@@ -287,7 +287,7 @@ async def get_tree_map(
     if subdirectory and not _is_contained(target, validated_path):
         raise ValueError(f"subdirectory escapes repo_path: {subdirectory}")
     if not target.is_dir():
-        raise ValueError(f"Not a directory: {target}")
+        raise ValueError(f"Not a directory: {subdirectory or repo_path}")
 
     def _build() -> str:
         ctx = TreeBuildContext(
@@ -442,7 +442,9 @@ def _build_file_content_report(
             suffix = p.suffix.lstrip(".")
             parts.append(f"## {rel}\n```{suffix}\n{content}\n```\n")
         except OSError as e:
-            parts.append(f"## {rel}\n*Error: {e}*\n")
+            # `{e}` on an OSError carries the absolute filename; the path is
+            # already stated as `rel` above it, so only the reason is added.
+            parts.append(f"## {rel}\n*Error: {e.strerror or type(e).__name__}*\n")
     return "\n".join(parts), included_count, total_lines
 
 

@@ -39,6 +39,28 @@ cannot smuggle a flag such as `--ext-diff` or `--textconv` past the argument
 boundary and re-enable the repository-configured filters that diffctx
 explicitly disables (`--no-ext-diff --no-textconv` on every diff invocation).
 
+### Path confinement
+
+Every path a caller supplies to the MCP server is resolved before any decision
+is made about it, and every check runs on the resolved form. This is what makes
+a symlink inside the repository that points out of it non-exploitable: such a
+path is lexically internal, so a `..`-and-absolute check alone admits it. That
+exact shape was a live escape in the `fragment_ids` reader until a property fuzz
+over hostile path forms found it reading a planted file above the repository
+root; containment is now decided after resolution on both the fetch and glob
+surfaces, and the fuzz runs in CI.
+
+`.gitignore` and `.diffctx/ignore` are enforced identically on every read
+surface. They are a confidentiality contract, not a display preference: a path
+the repository withholds from diff mode is not readable through a glob or by
+naming its fragment id either.
+
+Error payloads follow the same boundary. They may echo the argument a caller
+sent, since the caller already has it, but they never disclose what the
+filesystem resolved it to and never carry a traceback — a refusal that names a
+symlink's target hands the caller the very thing it was denied. Payloads reach a
+model that may relay them onward.
+
 ### Prompt injection via repository content
 
 diffctx exists to move repository text into an LLM's context window. That
