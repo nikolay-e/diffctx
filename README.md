@@ -80,7 +80,7 @@ the `--budget` token cap is hit.
 | `--full`    | false   | Only the changed files, every fragment, no related-code context          |
 | `--timeout` | 300     | Wall-clock deadline in seconds; on expiry diffctx exits 124 instead of hanging |
 | `--with-raw-diff` | false | Also embed git's raw unified diff ahead of the selected fragments — additive (selection unchanged), not charged to `--budget`, lock/ignored/secret-like sections omitted. Python CLI only |
-| `--mode` | `pack` | `locate` emits the same ranked selection as compact `diffctx.locate.v1` JSON — path, lines, score, provenance reasons, a blast-radius `summary` and per-item impact `group` (`test`/`type`/`config`), NO source bodies. `diffctx . --diff --mode locate` = impact of your uncommitted change. The MCP tool takes it as `mode="locate"` |
+| `--mode` | `pack` | `locate` emits the same ranked selection as compact `diffctx.locate.v1` JSON — path, lines, score, provenance reasons, a blast-radius `summary` and per-item impact `group` (`test`/`type`/`config`), NO source bodies. Adds a `coverage` block naming what the run could not see (`unparsed_files`, `zero_edge_files`, `ppr_truncated`, `next_up`, a heuristic `confidence`) and an `overflow` ranking of what the budget left behind — omitted entirely when there is nothing to disclose. `diffctx . --diff --mode locate` = impact of your uncommitted change. The MCP tool takes it as `mode="locate"` |
 
 ### `graph` subcommand
 

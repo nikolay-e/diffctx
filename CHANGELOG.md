@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`locate` discloses its own blind spots** — a `coverage` block and an
+  `overflow` ranking, both omitted when there is nothing to report so a clean
+  run costs no tokens. Trust drives repeat calls: an agent told honestly where
+  the selection is thin can grep the gap itself, while one told nothing has to
+  distrust the whole answer.
+
+  `coverage.unparsed_files` names changed files whose language diffctx claims to
+  parse but which yielded no symbol-level structure — nothing else in the output
+  says the parser came back empty there. `zero_edge_files` names changed files
+  with no graph edge in either direction, where relevance had no path to travel.
+  `ppr_truncated` reports a diffusion cut short by its push cap.
+  `overflow` ranks the admitted candidates that did not fit, with a one-line
+  `why` and no bodies, capped at 50 entries against a full `overflow_count`.
+
+  `coverage.next_up` counts how many of those a 25% larger budget would admit,
+  and is zero when the budget was not what stopped selection — at `--budget -1`
+  nothing is crowded out by tokens, so there is nothing to report. It feeds a
+  documented `confidence` heuristic in [0, 1]
+  (`parsed_share * linked_share * fit_share`, less 0.1 when PPR truncated),
+  which says how much of the changed surface the run could see and fit and
+  deliberately does **not** claim the selection is correct. Pack output is
+  byte-unchanged — verified against the full 2902-case corpus (#136).
 - **`--scoring pit`** — percentile fusion, the successor to `rrf`. Both blend
   the structural (`ego`) and lexical (`bm25`) signals over the same candidate
   universe; the difference is what is blended. `rrf` reduces each component to a
