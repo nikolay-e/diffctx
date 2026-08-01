@@ -150,12 +150,16 @@ per-instance timeouts on a dev binary.
 2. **Hop annotation is mandatory**: for every candidate commit, compute the
    dependency-graph distance of each gold file from the diff files (via the
    graph export) and record it as `hop: N` on the gold entry.
-   *Status note:* hop annotation of the legacy-109 instances is currently
-   blocked by diffctx#116 — the full project graphs of gitpod/sentry/
-   react-native exceed practical build time even with
-   `DIFFCTX_MAX_EDGES_PER_NODE` lowered (the bottleneck is edge emission,
-   which the cap does not reduce). Annotate hops for those after the #116
-   fix; lighter coverage repos are unaffected. Select commits
+   *Status note (2026-08-01):* the blocker on the legacy-109 instances is
+   partially lifted, not gone. diffctx#116 was the accumulator's memory shape,
+   and that half shipped in `e5540835` — the pairwise contributions no longer
+   go through a hash map that rehashes a multi-GB table. The **pair count** is
+   unchanged (`terms x C(max_postings, 2)`), so a graph build can still be
+   impractical on these three repos; #116 stays open for the algorithmic half
+   (WAND/MaxScore early rejection). Before scheduling the annotation, run the
+   graph export on gitpod/sentry/react-native against a current binary and
+   record whether it completes — that measurement is the gate, not the issue's
+   open/closed state. Lighter coverage repos are unaffected. Select commits
    so that **at least 40\% have gold files at hop >= 2** --- otherwise the set
    is biased to hop-1 neighbors and any depth sweep plateaus because commits
    are shallow, not because depth is useless.
@@ -169,7 +173,22 @@ per-instance timeouts on a dev binary.
 
 ## Split policy
 
-dcbench is a development set: calibrate freely. If dcbench numbers are ever
-published, freeze a train/test split first (same discipline as
-`datasets/eval-splits/v1/SPLIT_REPORT.md`) and stop calibrating on the test
-half from that commit on.
+**The split already exists — dcbench is not uniformly a development set.**
+
+- `manifests/test_dcbench.txt` (the legacy 109) is a **frozen test set**. It is
+  wired into `default_test_adapters()`, which the harness documents as never
+  seen during the tau sweep, and #149's gate is expressed against it. Do not
+  calibrate on these instances; do not tune a threshold until it passes on
+  them.
+- The remaining 263 instances are the **development half**: calibrate freely.
+
+This paragraph exists because the two statements above used to contradict each
+other. The README said "calibrate freely" with no carve-out while the adapter
+registry treated the 109 as frozen, and `eval-splits/v1/SPLIT_REPORT.md` does
+not cover dcbench at all. Anyone following the README would have calibrated on
+the test half, and any number published on those 109 afterwards would have been
+contestable with no record of which side of the line the tuning happened on.
+
+If the split is ever re-cut, write the new one into
+`eval-splits/v1/SPLIT_REPORT.md` rather than here, and name the commit it takes
+effect from.
