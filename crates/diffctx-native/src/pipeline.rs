@@ -50,6 +50,13 @@ pub struct ScoredState {
     /// Lock files touched by the range, paths only: the dependency bump is
     /// signal, the checksum churn is not (#112).
     pub lockfile_changes: Vec<String>,
+    /// Which discovery strategy first surfaced each discovered path.
+    ///
+    /// Read-only telemetry for the universe ceiling (#130): without it, a gold
+    /// file that never reaches the output is indistinguishable between "no
+    /// strategy found it" and "found but outranked", and those need different
+    /// fixes. Empty for the changed files themselves, which are not discovered.
+    pub discovery_source: FxHashMap<Arc<str>, &'static str>,
     pub preferred_revs: Vec<String>,
     pub commit_message: Option<String>,
     pub heavy_latency_ms: HeavyLatencyMs,
@@ -364,10 +371,18 @@ pub fn compute_scored_state(
         token_corpus: std::sync::OnceLock::new(),
     };
 
-    let discovered_files = create_discovery(&config).discover(&discovery_ctx);
+    let (discovered_files, discovery_attribution) =
+        create_discovery(&config).discover_attributed(&discovery_ctx);
     let discovered_files: Vec<PathBuf> = discovered_files
         .into_iter()
         .map(|p| candidate_files::normalize_path(&p, &root_dir))
+        .collect();
+    let discovery_source: FxHashMap<Arc<str>, &'static str> = discovery_attribution
+        .into_iter()
+        .map(|(path, source)| {
+            let normalized = candidate_files::normalize_path(&path, &root_dir);
+            (Arc::from(normalized.to_string_lossy().as_ref()), source)
+        })
         .collect();
 
     drop(discovery_ctx);
@@ -459,6 +474,7 @@ pub fn compute_scored_state(
         core_excerpts,
         scoring_result,
         needs,
+        discovery_source,
         changed_files,
         deleted_files: deleted_display,
         renamed_files: renamed_display,
@@ -1036,6 +1052,7 @@ fn empty_scored_state(root_dir: PathBuf) -> ScoredState {
         all_fragments: Vec::new(),
         core_ids: FxHashSet::default(),
         core_excerpts: FxHashMap::default(),
+        discovery_source: FxHashMap::default(),
         lockfile_changes: Vec::new(),
         scoring_result: ScoringResult {
             rel_scores: FxHashMap::default(),

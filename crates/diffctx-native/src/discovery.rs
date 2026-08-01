@@ -34,11 +34,37 @@ impl DiscoveryContext {
 
 pub trait DiscoveryStrategy: Send + Sync {
     fn discover(&self, ctx: &DiscoveryContext) -> Vec<PathBuf>;
+
+    /// Stable identifier for telemetry. Not a display name — it is written into
+    /// the provenance dump and read back by analysis, so changing one renames a
+    /// column in every recorded run.
+    fn name(&self) -> &'static str;
+
+    /// Discovery plus which strategy surfaced each path.
+    ///
+    /// The ensemble dedupes first-seen and used to throw the attribution away,
+    /// which makes the universe ceiling undiagnosable: "never surfaced at all"
+    /// and "surfaced but not selected" are different failures with different
+    /// fixes (#130), and neither is visible from the selected set alone. The
+    /// default is honest for a single strategy — everything it returns, it
+    /// found — and only the ensemble needs to override it.
+    fn discover_attributed(
+        &self,
+        ctx: &DiscoveryContext,
+    ) -> (Vec<PathBuf>, Vec<(PathBuf, &'static str)>) {
+        let paths = self.discover(ctx);
+        let attribution = paths.iter().map(|p| (p.clone(), self.name())).collect();
+        (paths, attribution)
+    }
 }
 
 pub struct DefaultDiscovery;
 
 impl DiscoveryStrategy for DefaultDiscovery {
+    fn name(&self) -> &'static str {
+        "structural"
+    }
+
     fn discover(&self, ctx: &DiscoveryContext) -> Vec<PathBuf> {
         let changed_set: FxHashSet<&Path> = ctx.changed_files.iter().map(|p| p.as_path()).collect();
 
@@ -103,6 +129,10 @@ fn lowercase_stem(path: &Path) -> String {
 }
 
 impl DiscoveryStrategy for TestFileDiscovery {
+    fn name(&self) -> &'static str {
+        "test_pairing"
+    }
+
     fn discover(&self, ctx: &DiscoveryContext) -> Vec<PathBuf> {
         let changed_set: FxHashSet<&Path> = ctx.changed_files.iter().map(|p| p.as_path()).collect();
         // Test files legitimately live in a tree of their own (`tests/test_x.py`
@@ -186,6 +216,10 @@ impl BM25Discovery {
 }
 
 impl DiscoveryStrategy for BM25Discovery {
+    fn name(&self) -> &'static str {
+        "lexical_bm25"
+    }
+
     fn discover(&self, ctx: &DiscoveryContext) -> Vec<PathBuf> {
         let query_tokens = extract_identifier_list(&ctx.diff_text, BM25.min_query_token_length);
         if query_tokens.is_empty() {
@@ -289,23 +323,43 @@ impl EnsembleDiscovery {
 
 impl DiscoveryStrategy for EnsembleDiscovery {
     fn discover(&self, ctx: &DiscoveryContext) -> Vec<PathBuf> {
-        let per_strategy: Vec<Vec<PathBuf>> = self
+        self.discover_attributed(ctx).0
+    }
+
+    fn name(&self) -> &'static str {
+        "ensemble"
+    }
+
+    /// First-seen dedup, with the winner recorded rather than discarded.
+    ///
+    /// "First" is strategy order, not merit: a path both the structural and the
+    /// lexical strategy would have found is credited to whichever runs earlier.
+    /// The attribution answers "could anything have surfaced this", which is the
+    /// universe-ceiling question; it is not a claim that the other strategies
+    /// would have missed it.
+    fn discover_attributed(
+        &self,
+        ctx: &DiscoveryContext,
+    ) -> (Vec<PathBuf>, Vec<(PathBuf, &'static str)>) {
+        let per_strategy: Vec<(&'static str, Vec<PathBuf>)> = self
             .strategies
             .par_iter()
-            .map(|strategy| strategy.discover(ctx))
+            .map(|strategy| (strategy.name(), strategy.discover(ctx)))
             .collect();
 
         let mut seen: FxHashSet<PathBuf> = FxHashSet::default();
         let mut result: Vec<PathBuf> = Vec::new();
-        for paths in per_strategy {
+        let mut attribution: Vec<(PathBuf, &'static str)> = Vec::new();
+        for (source, paths) in per_strategy {
             for path in paths {
                 if seen.insert(path.clone()) {
+                    attribution.push((path.clone(), source));
                     result.push(path);
                 }
             }
         }
 
-        result
+        (result, attribution)
     }
 }
 
@@ -607,18 +661,21 @@ mod tests {
     /// produce results, so recall drops with no error anywhere.
     #[test]
     fn ensemble_deduplicates_across_strategies_and_preserves_first_hit_order() {
-        struct Fixed(Vec<&'static str>);
+        struct Fixed(&'static str, Vec<&'static str>);
         impl DiscoveryStrategy for Fixed {
             fn discover(&self, ctx: &DiscoveryContext) -> Vec<PathBuf> {
-                self.0.iter().map(|p| ctx.root_dir.join(p)).collect()
+                self.1.iter().map(|p| ctx.root_dir.join(p)).collect()
+            }
+            fn name(&self) -> &'static str {
+                self.0
             }
         }
 
         let ctx = CtxBuilder::new().build();
         let ensemble = EnsembleDiscovery::new(vec![
-            Box::new(Fixed(vec!["a.py", "b.py"])),
-            Box::new(Fixed(vec!["b.py", "c.py"])),
-            Box::new(Fixed(vec![])),
+            Box::new(Fixed("first", vec!["a.py", "b.py"])),
+            Box::new(Fixed("second", vec!["b.py", "c.py"])),
+            Box::new(Fixed("third", vec![])),
         ]);
         let found = ensemble.discover(&ctx);
         assert_eq!(
@@ -628,6 +685,62 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["a.py", "b.py", "c.py"]
         );
+    }
+
+    /// The attribution the ensemble used to discard (#130). `b.py` is found by
+    /// both strategies and must be credited to the one that ran first — the
+    /// question it answers is "could anything surface this", not "which one
+    /// deserves it".
+    #[test]
+    fn the_ensemble_records_which_strategy_first_surfaced_each_path() {
+        struct Fixed(&'static str, Vec<&'static str>);
+        impl DiscoveryStrategy for Fixed {
+            fn discover(&self, ctx: &DiscoveryContext) -> Vec<PathBuf> {
+                self.1.iter().map(|p| ctx.root_dir.join(p)).collect()
+            }
+            fn name(&self) -> &'static str {
+                self.0
+            }
+        }
+
+        let ctx = CtxBuilder::new().build();
+        let ensemble = EnsembleDiscovery::new(vec![
+            Box::new(Fixed("structural", vec!["a.py", "b.py"])),
+            Box::new(Fixed("lexical", vec!["b.py", "c.py"])),
+        ]);
+        let (paths, attribution) = ensemble.discover_attributed(&ctx);
+
+        assert_eq!(paths.len(), 3, "dedup must still collapse the shared path");
+        let by_name: Vec<(String, &str)> = attribution
+            .iter()
+            .map(|(p, s)| (p.file_name().unwrap().to_string_lossy().into_owned(), *s))
+            .collect();
+        assert_eq!(
+            by_name,
+            vec![
+                ("a.py".to_string(), "structural"),
+                ("b.py".to_string(), "structural"),
+                ("c.py".to_string(), "lexical"),
+            ]
+        );
+    }
+
+    /// A single strategy needs no bookkeeping: everything it returns, it found.
+    #[test]
+    fn a_lone_strategy_attributes_everything_to_itself() {
+        struct Fixed;
+        impl DiscoveryStrategy for Fixed {
+            fn discover(&self, ctx: &DiscoveryContext) -> Vec<PathBuf> {
+                vec![ctx.root_dir.join("only.py")]
+            }
+            fn name(&self) -> &'static str {
+                "solo"
+            }
+        }
+        let ctx = CtxBuilder::new().build();
+        let (paths, attribution) = Fixed.discover_attributed(&ctx);
+        assert_eq!(paths.len(), 1);
+        assert_eq!(attribution[0].1, "solo");
     }
 
     #[test]

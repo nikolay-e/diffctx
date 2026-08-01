@@ -173,6 +173,15 @@ fn dump(state: &ScoredState, selected: &[Fragment], out_path: &Path) -> std::io:
             "is_core": state.core_ids.contains(&frag.id),
             "selected": selected_ids.contains(&frag.id),
             "seed_hops": hops.get(&frag.id).map(|h| *h as i64).unwrap_or(-1),
+            // Which discovery strategy put this file in the universe at all.
+            // `null` for a changed file, which is never discovered — it is the
+            // seed. Splits "never surfaced" from "surfaced but not selected",
+            // which the selected set alone cannot distinguish (#130).
+            "discovery_source": state
+                .discovery_source
+                .get(&frag.id.path)
+                .map(|s| serde_json::json!(s))
+                .unwrap_or(serde_json::Value::Null),
             "incoming_mass": serde_json::Value::Object(contrib),
         });
         writeln!(w, "{line}")?;
