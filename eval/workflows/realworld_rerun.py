@@ -41,6 +41,8 @@ OVER_DUMP_TOKENS = 15_000
 
 # Full or abbreviated git object id, nothing else.
 _COMMIT_RE = re.compile(r"[0-9a-f]{7,40}")
+# Dataset repo names: letters, digits, dot, dash, underscore. No separators.
+_REPO_NAME_RE = re.compile(r"[A-Za-z0-9._-]{1,64}")
 
 
 def load_cases() -> list[dict]:
@@ -48,7 +50,16 @@ def load_cases() -> list[dict]:
 
 
 def ensure_worktree(repo: str, root: Path) -> Path:
-    """A detached worktree per repo, reused across that repo's commits."""
+    """A detached worktree per repo, reused across that repo's commits.
+
+    `repo` is a dataset field and becomes both a path component and, through
+    the worktree, an argument to the tool under test. A bare name is the only
+    shape that can be: an entry containing a separator would place the worktree
+    outside `root`, and the clone lookup would miss in a way that reads as a
+    checkout failure rather than a bad dataset.
+    """
+    if not _REPO_NAME_RE.fullmatch(repo):
+        raise ValueError(f"dataset repo name is not a bare name: {repo!r}")
     wt = root / "wt" / repo
     if (wt / ".git").exists():
         return wt
