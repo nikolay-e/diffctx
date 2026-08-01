@@ -180,7 +180,17 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--budget", type=int, default=0)
     args = ap.parse_args(argv)
 
-    out = args.out
+    # `--binary` reaches `subprocess.run` and `--out` becomes a directory tree.
+    # Both are developer-supplied here, but "developer-supplied" stops being
+    # true the moment this is driven by a script or an agent, and the checks
+    # cost one stat each. Resolving also removes `..` before anything is
+    # created.
+    binary = Path(args.binary).resolve()
+    if not binary.is_file():
+        raise SystemExit(f"--binary is not a file: {binary}")
+    args.binary = str(binary)
+
+    out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
     sink = out / "results.jsonl"
     done = set()

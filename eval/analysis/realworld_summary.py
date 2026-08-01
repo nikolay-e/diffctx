@@ -147,7 +147,9 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     text = summarise(rows)
     if args.out:
-        args.out.write_text(text)
+        # Resolved before writing: `--out ../../x` would otherwise land outside
+        # wherever the caller thought it was pointing.
+        args.out.resolve().write_text(text)
     print(text)
     return 0
 

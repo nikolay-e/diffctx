@@ -9,6 +9,7 @@ from typing import TypeVar
 
 import anyio
 import anyio.to_thread
+import pathspec
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
@@ -327,15 +328,40 @@ def _is_contained(child: Path, root: Path) -> bool:
         return False
 
 
+def _admissible_match(match: str, root: Path, spec: pathspec.PathSpec[pathspec.Pattern]) -> Path | None:
+    """The resolved path if this glob hit may be shown, `None` otherwise.
+
+    Resolved rather than as-globbed because containment is established on the
+    resolved path and `root` is resolved too, so only that form is guaranteed to
+    be expressible relative to it. The reporters call `relative_to` with no
+    fallback, and an unresolved match — reachable when a pattern is absolute and
+    arrives via a symlink — is lexically outside the root even though it points
+    inside, turning an accepted file into an opaque ValueError.
+    """
+    p = Path(match)
+    if not p.is_file() or not _is_contained(p, root):
+        return None
+    resolved = p.resolve()
+    try:
+        rel = resolved.relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return None
+    return None if spec.match_file(rel) else resolved
+
+
 def _collect_matched_files(validated_path: Path, patterns: list[str], max_files: int) -> tuple[list[Path], int]:
     """Files matching `patterns`, minus anything the repo declared off-limits.
 
-    The ignore specs are applied here for the same reason `get_tree_map` applies
+    The ignore specs are applied for the same reason `get_tree_map` applies
     them: `.diffctx/ignore` is a security contract, and this tool accepts
     `**/*`. Without the specs the two MCP tools disagreed about the same repo —
     a key or an env file that diff mode and the tree map both withhold was
     readable through an explicit glob, which makes the contract advisory rather
     than a contract.
+
+    Excluded files are dropped silently and NOT counted: `total_matched` drives
+    the truncation notice, and reporting "3 more files" for files the repo
+    refuses to expose would leak their existence.
     """
     import glob as globmod
 
@@ -347,33 +373,13 @@ def _collect_matched_files(validated_path: Path, patterns: list[str], max_files:
     seen: set[Path] = set()
     total_matched = 0
     for pattern in patterns:
-        full_pattern = str(validated_path / pattern)
-        for match in sorted(globmod.glob(full_pattern, recursive=True)):
-            p = Path(match)
-            if not p.is_file() or not _is_contained(p, validated_path):
-                continue
-            try:
-                rel = p.resolve().relative_to(validated_path.resolve()).as_posix()
-            except ValueError:
-                continue
-            if spec.match_file(rel):
-                # Excluded silently and NOT counted: `total_matched` drives the
-                # truncation notice, and reporting "3 more files" for files the
-                # repo refuses to expose would leak their existence.
-                continue
-            resolved = p.resolve()
-            if resolved in seen:
+        for match in sorted(globmod.glob(str(validated_path / pattern), recursive=True)):
+            resolved = _admissible_match(match, validated_path, spec)
+            if resolved is None or resolved in seen:
                 continue
             seen.add(resolved)
             total_matched += 1
             if len(matched) < max_files:
-                # Containment was established on the resolved path, and
-                # `validated_path` is resolved too, so only the resolved form is
-                # guaranteed to be expressible relative to it. The reporters
-                # below call `relative_to` with no fallback, and an unresolved
-                # match — reachable when a pattern is absolute and arrives via a
-                # symlink — is lexically outside the root even though it points
-                # inside, turning an accepted file into an opaque ValueError.
                 matched.append(resolved)
     return matched, total_matched
 
