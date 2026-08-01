@@ -55,7 +55,10 @@ Two-call flow: rank first, then read only what you chose.
 
 1. `mode="locate"` (**default**) returns compact `diffctx.locate.v1` JSON — the
    ranked selection as a navigation list with line spans, scores and provenance
-   reasons, and no source bodies. A few hundred tokens.
+   reasons, and no source bodies. Cost scales with the number of ranked items,
+   not with their source: a few hundred tokens for a small change, ~1.9k for a
+   38-item ranking on a large one — against the thousands a pack of the same
+   selection costs.
 2. Pass ids built from that ranking's own fields — `"<path>:<lines>"`, e.g.
    `"src/calc.py:12-40"` — back as `fragment_ids` to get their source.
 
