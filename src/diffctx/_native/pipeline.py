@@ -89,6 +89,12 @@ def build_locate(
     )
 
 
+def resolve_diff_range(root_dir: Path, diff_range: str) -> str:
+    from diffctx._diffctx import resolve_diff_range as _rust_resolve
+
+    return str(_rust_resolve(str(root_dir), diff_range))
+
+
 def get_raw_diff_text(root_dir: Path, diff_range: str, timeout: int = _PIPELINE_TIMEOUT) -> str:
     from diffctx._diffctx import get_raw_diff_text as _rust_raw_diff
 

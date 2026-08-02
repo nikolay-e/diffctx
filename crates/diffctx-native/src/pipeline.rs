@@ -210,13 +210,17 @@ pub fn compute_scored_state(
         anyhow::bail!("alpha must be in (0, 1), got {}", alpha);
     }
 
+    let resolved = git::resolve_duration_range(&root_dir, diff_range)?;
+    let diff_range = resolved.range.as_deref();
+
     let mut hunks = git::parse_diff(&root_dir, diff_range)?;
 
     // Untracked files only matter when the diff includes the live working
     // tree. `None` and the literal "HEAD" both mean that (the CLI resolves
     // bare `--diff` to the string "HEAD" before reaching here) - a historical
-    // range like `HEAD~5..HEAD~3` does not include working-tree state.
-    let is_working_tree_diff = matches!(diff_range, None | Some("HEAD"));
+    // range like `HEAD~5..HEAD~3` does not include working-tree state. A
+    // duration window ends at "now", so it includes it too.
+    let is_working_tree_diff = resolved.from_duration || matches!(diff_range, None | Some("HEAD"));
     let mut untracked_files: Vec<PathBuf> = Vec::new();
     if is_working_tree_diff {
         if let Ok(files) = git::get_untracked_files(&root_dir) {
@@ -813,7 +817,8 @@ pub(crate) fn is_ignored_path(
 pub fn raw_diff_text(root_dir: &Path, diff_range: Option<&str>, timeout: u64) -> Result<String> {
     git::set_git_timeout(timeout);
     let root_dir = resolve_repo_root(root_dir)?;
-    let diff_text = git::get_diff_text(&root_dir, diff_range)?;
+    let resolved = git::resolve_duration_range(&root_dir, diff_range)?;
+    let diff_text = git::get_diff_text(&root_dir, resolved.range.as_deref())?;
     Ok(keep_disclosable_sections(&root_dir, &diff_text))
 }
 
@@ -935,6 +940,8 @@ fn build_diff_context_full(
 ) -> Result<DiffContextOutput> {
     git::set_git_timeout(timeout);
     let root_dir = resolve_repo_root(root_dir)?;
+    let resolved = git::resolve_duration_range(&root_dir, diff_range)?;
+    let diff_range = resolved.range.as_deref();
     let mut hunks = git::parse_diff(&root_dir, diff_range)?;
     hunks.retain(|h| !is_secret_path(Path::new(&*h.path)));
     if hunks.is_empty() {

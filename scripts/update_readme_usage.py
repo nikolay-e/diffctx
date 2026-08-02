@@ -20,6 +20,8 @@ _USAGE_EXAMPLES: list[tuple[str, str]] = [
     ("diffctx . --diff", "uncommitted changes (working tree vs HEAD)"),
     ("diffctx . --diff HEAD~1", "context for last commit"),
     ("diffctx . --diff main..feature", "context for feature branch"),
+    ("diffctx . --diff 24h", "everything changed in the last 24 hours"),
+    ("diffctx . --diff 8d", "same over 8 days (also 90s, 10min, 1h30m, 2w)"),
     ("diffctx . --diff HEAD~1 --budget 30000", "limit to ~30k tokens"),
     ("diffctx . --diff HEAD~1 -c", "diff context to clipboard"),
     ("diffctx . --diff HEAD~1 --with-raw-diff", "raw patch + selected context"),

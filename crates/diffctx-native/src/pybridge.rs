@@ -337,6 +337,22 @@ fn get_raw_diff_text(
         .map_err(map_pipeline_err)
 }
 
+/// The commit a duration spec (`24h`, `8d`, `1h30m`) resolves to, or the range
+/// verbatim when it is an ordinary revision. Exported so the Python CLI phrases
+/// its messages in terms of the same window the pipeline actually diffed,
+/// instead of restating the duration grammar on its own.
+#[pyfunction]
+fn resolve_diff_range(root_dir: &str, diff_range: &str) -> PyResult<String> {
+    let range = if diff_range.is_empty() {
+        None
+    } else {
+        Some(diff_range)
+    };
+    let resolved = crate::git::resolve_duration_range(Path::new(root_dir), range)
+        .map_err(|e| GitError::new_err(e.to_string()))?;
+    Ok(resolved.range.unwrap_or_default())
+}
+
 #[pyfunction]
 fn get_language_for_file(path: &str) -> Option<String> {
     crate::languages::get_language_for_file(path).map(|s| s.to_string())
@@ -605,6 +621,7 @@ pub fn _diffctx(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(select_with_params, m)?)?;
     m.add_class::<PyScoredState>()?;
     m.add_function(wrap_pyfunction!(get_raw_diff_text, m)?)?;
+    m.add_function(wrap_pyfunction!(resolve_diff_range, m)?)?;
     m.add_function(wrap_pyfunction!(get_language_for_file, m)?)?;
     m.add_function(wrap_pyfunction!(count_tokens, m)?)?;
     m.add_function(wrap_pyfunction!(build_project_graph, m)?)?;

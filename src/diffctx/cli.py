@@ -7,18 +7,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import NoReturn
 
-from diffctx._diffctx import (
-    DEFAULT_ALPHA as _ENGINE_DEFAULT_ALPHA,
-)
-from diffctx._diffctx import (
-    DEFAULT_SCORING as _ENGINE_DEFAULT_SCORING,
-)
-from diffctx._diffctx import (
-    DEFAULT_TAU as _ENGINE_DEFAULT_TAU,
-)
-from diffctx._diffctx import (
-    SCORING_MODES as _ENGINE_SCORING_MODES,
-)
+from diffctx._diffctx import DEFAULT_ALPHA as _ENGINE_DEFAULT_ALPHA
+from diffctx._diffctx import DEFAULT_SCORING as _ENGINE_DEFAULT_SCORING
+from diffctx._diffctx import DEFAULT_TAU as _ENGINE_DEFAULT_TAU
+from diffctx._diffctx import SCORING_MODES as _ENGINE_SCORING_MODES
 
 from .version import __version__
 
@@ -353,6 +345,8 @@ Examples:
   diffctx . --save             Save as tree.md
   diffctx . --diff             Context for uncommitted changes
   diffctx . --diff HEAD~1      Context for the last commit
+  diffctx . --diff 24h         Context for everything changed in the last 24 hours
+  diffctx . --diff 8d          Same, over the last 8 days (also 90s, 10min, 1h30m, 2w)
   diffctx . --diff HEAD~1 --with-raw-diff   Raw patch + selected context in one file
   diffctx . -c                 Copy output to clipboard
   diffctx . --no-content       Structure only, no file contents
@@ -520,7 +514,12 @@ def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> arg
         const=_DIFF_SENTINEL,
         default=None,
         metavar="RANGE",
-        help="Git diff range (e.g., HEAD~1..HEAD, main..feature). Bare --diff shows uncommitted changes (working tree vs HEAD).",
+        help=(
+            "Git diff range (e.g., HEAD~1..HEAD, main..feature) or a duration window ending now "
+            "(24h, 8d, 90min, 1h30m, 2w — units s/m/h/d/w), which covers the commits inside the "
+            "window plus the uncommitted work on top. Bare --diff shows uncommitted changes "
+            "(working tree vs HEAD)."
+        ),
     )
     diff_group.add_argument(
         "--budget",

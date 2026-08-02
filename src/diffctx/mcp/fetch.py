@@ -68,7 +68,7 @@ def parse_fragment_id(raw: str) -> FragmentRef | None:
     return FragmentRef(path, start, end)
 
 
-def end_revision(diff_ref: str) -> str | None:
+def end_revision(repo: Path, diff_ref: str) -> str | None:
     """The revision a locate ranking's line numbers refer to.
 
     `None` means the working tree: that is what `git diff` with no range
@@ -84,7 +84,18 @@ def end_revision(diff_ref: str) -> str | None:
             right = right.strip()
             # `A..` means "A to the working tree" in git's own reading.
             return right or None
-    return ref
+    # A duration window (`24h`) is a base, not an end: it too runs to the
+    # working tree, so its bodies must be read from disk.
+    return None if _is_duration_window(repo, ref) else ref
+
+
+def _is_duration_window(repo: Path, ref: str) -> bool:
+    from diffctx._native.pipeline import resolve_diff_range
+
+    try:
+        return resolve_diff_range(repo, ref) != ref
+    except Exception:
+        return False
 
 
 def _blob_at(repo: Path, rev: str, rel_path: str) -> str | None:
@@ -170,7 +181,7 @@ def fetch_fragments(repo: Path, diff_ref: str, fragment_ids: list[str], max_file
             f'Fetch the ones you need, or ask for mode="pack" if you need most of the selection.'
         )
 
-    rev = end_revision(diff_ref)
+    rev = end_revision(repo, diff_ref)
     rev_label = rev or "working tree"
     parts = [f"# {len(fragment_ids)} fragments at {rev_label}\n"]
     for raw in fragment_ids:

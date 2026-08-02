@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`--diff <duration>`** — a time window instead of a revision: `24h`, `8d`,
+  `90min`, `1h30m`, `2w` (units `s`, `m`/`min`, `h`, `d`, `w`, composable). The
+  window resolves to the last commit before it and diffs the working tree
+  against that, so one flag covers the commits made inside the window plus the
+  uncommitted and untracked work on top — the "what have I touched today"
+  question, which previously meant counting `HEAD~n` by hand. A window older
+  than the repository falls back to the empty tree, so nothing is silently
+  dropped. Both CLIs and the MCP `diff_ref` share the resolver; a ref that
+  happens to look like a duration (a branch `24h`, an abbreviated sha) is
+  probed first and keeps its git meaning, so no existing invocation changes.
+
 - **`locate` discloses its own blind spots** — a `coverage` block and an
   `overflow` ranking, both omitted when there is nothing to report so a clean
   run costs no tokens. Trust drives repeat calls: an agent told honestly where

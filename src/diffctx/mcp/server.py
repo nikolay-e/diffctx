@@ -100,6 +100,7 @@ def _git_failure(diff_ref: str, e: GitError) -> ValueError:
             f"Invalid diff range '{diff_ref}'. "
             "Try 'HEAD~1..HEAD' for the last commit, "
             "'main..feature' for a branch comparison, "
+            "'24h' or '8d' for everything changed in that window, "
             "or check that both refs exist with 'git log --oneline'."
         )
     return ValueError(f"Git error: {e}")
@@ -182,9 +183,9 @@ _UNTRUSTED_NOTICE = (
 # that mostly restated what the parameters already say. This is the whole
 # description: what it does, the two-call shape, and the safety boundary.
 _CONTEXT_DESCRIPTION = (
-    'Understand a git diff. mode="locate" (default) cheaply ranks the code that '
-    "explains the change; pass its ids back as fragment_ids to read source. "
-    'mode="pack" returns all of it at once. 30+ languages.' + _UNTRUSTED_NOTICE
+    'Understand a git diff (diff_ref: range or 24h window). mode="locate" '
+    "(default) ranks the code explaining it; pass the ids back as fragment_ids "
+    'for source. mode="pack" returns all. 30+ languages.' + _UNTRUSTED_NOTICE
 )
 
 
