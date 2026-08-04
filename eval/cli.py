@@ -26,6 +26,7 @@ SUBCOMMANDS = {
     "convert-legacy-labels": ("datasets.dcbench.convert_legacy_labels", "Convert legacy real-world labels"),
     "dcbench-score": ("workflows.dcbench_score", "Score a scoring mode against dcbench"),
     "dcbench-summary": ("analysis.dcbench_summary", "Paired mode comparison + union ceiling on dcbench"),
+    "runtime-table": ("analysis.runtime_table", "Appendix-B runtime/memory telemetry table (#168)"),
     "cb": ("workflows.contextbench", "ContextBench evaluation (--forensic for diagnostics)"),
     "loo": ("workflows.leave_one_out", "Leave-One-Out evaluation"),
     "compare": ("analysis.compare_runs", "A/B comparison of two result files"),
