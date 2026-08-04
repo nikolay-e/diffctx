@@ -44,15 +44,6 @@ jobs:
         with:
           ref: v${{ github.event.inputs.version }}
 
-      - name: Require npm token
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          if [ -z "$NPM_TOKEN" ]; then
-            echo "Error: secret NPM_TOKEN is not set; add it before publishing to npm."
-            exit 1
-          fi
-
       - name: Download release binaries
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -90,8 +81,14 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
         with:
-          node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
+          # npm >= 11.5 is required for OIDC trusted publishing; Node 22
+          # bundles npm 10.x. No NODE_AUTH_TOKEN and no registry-url: with a
+          # token present npm skips the OIDC exchange (a dead token killed the
+          # 1.13.0 npm publish with a masked-as-404 auth error), and
+          # registry-url makes setup-node write an .npmrc referencing
+          # ${NODE_AUTH_TOKEN}, which npm errors on when the variable is
+          # unset. The default registry is npmjs.org.
+          node-version: '24'
 
       # The in-repo version is the literal string "0.0.0-placeholder". If the
       # patch step above is ever refactored or mis-pathed, npm publishes that
@@ -121,8 +118,6 @@ jobs:
 
       - name: Publish
         working-directory: ./packaging/npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --access public --provenance
 
       # install.js is the script every `npx diffctx` runs, and nothing executed
