@@ -591,7 +591,8 @@ jobs:
 
           tools = next(r["result"]["tools"] for r in responses if r.get("id") == 2)
           names = sorted(t["name"] for t in tools)
-          for required in ("get_diff_context", "get_file_context", "get_tree_map"):
+          # The MCP surface is a single tool since the locate-first flow (#127).
+          for required in ("diffctx_context",):
               if required not in names:
                   sys.exit(f"tool {required} missing from {names}")
 
