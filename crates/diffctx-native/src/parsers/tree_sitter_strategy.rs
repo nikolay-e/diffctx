@@ -1693,7 +1693,137 @@ impl FragmentationStrategy for TreeSitterStrategy {
         let gap_frags = create_code_gap_fragments(Arc::clone(&path), &lines, &covered);
         fragments.extend(gap_frags);
 
+        if config.ts_name == "html" {
+            inject_embedded_languages(&tree.root_node(), source, &path, &mut fragments, 0);
+        }
+
         fragments
+    }
+}
+
+/// Language injection for HTML: the JS inside `<script>` and the CSS inside
+/// `<style>` are parsed with their own grammars, so a changed function in a
+/// single-file web app surfaces as a definition fragment instead of degrading
+/// to a raw line window (#181). The HTML pass has already emitted the
+/// `script_element`/`style_element` container and marked its span covered;
+/// these fragments overlay it the way methods overlay a class.
+fn inject_embedded_languages(
+    node: &Node,
+    source: &[u8],
+    path: &Arc<str>,
+    fragments: &mut Vec<Fragment>,
+    depth: u32,
+) {
+    if depth > PARSERS.max_recursion_depth {
+        return;
+    }
+    let embedded = match node.kind() {
+        "script_element" if script_is_javascript(node, source) => Some("javascript"),
+        "style_element" => Some("css"),
+        _ => None,
+    };
+    if let Some(ts_name) = embedded {
+        for i in 0..node.child_count() {
+            let Some(child) = node.child(i) else { continue };
+            if child.kind() == "raw_text" {
+                fragment_embedded_source(&child, source, path, ts_name, fragments);
+            }
+        }
+        return;
+    }
+    for i in 0..node.child_count() {
+        if let Some(child) = node.child(i) {
+            inject_embedded_languages(&child, source, path, fragments, depth + 1);
+        }
+    }
+}
+
+/// A `type=` attribute that names something other than JavaScript (JSON
+/// payloads, text templates) opts the element out; absent or JS-ish types are
+/// scripts. The check reads the raw start tag rather than walking attribute
+/// nodes: the accepted set is a handful of literals and the tag is one line.
+fn script_is_javascript(node: &Node, source: &[u8]) -> bool {
+    let Some(start_tag) = node.child(0) else {
+        return true;
+    };
+    let Ok(tag) = start_tag.utf8_text(source) else {
+        return true;
+    };
+    let lower = tag.to_lowercase();
+    let Some(pos) = lower.find("type=") else {
+        return true;
+    };
+    let value: String = lower[pos + 5..]
+        .trim_start_matches(['"', '\''])
+        .chars()
+        .take_while(|c| !"\"' >".contains(*c))
+        .collect();
+    matches!(
+        value.as_str(),
+        "" | "module" | "text/javascript" | "application/javascript" | "text/ecmascript"
+    )
+}
+
+fn fragment_embedded_source(
+    raw_text: &Node,
+    source: &[u8],
+    path: &Arc<str>,
+    ts_name: &'static str,
+    fragments: &mut Vec<Fragment>,
+) {
+    let Ok(snippet) = raw_text.utf8_text(source) else {
+        return;
+    };
+    if snippet.trim().is_empty() {
+        return;
+    }
+    let Some(language) = get_tree_sitter_language(ts_name) else {
+        return;
+    };
+    let ext = if ts_name == "javascript" {
+        ".js"
+    } else {
+        ".css"
+    };
+    let Some(config) = LANG_CONFIGS.iter().find(|c| c.extension == ext) else {
+        return;
+    };
+    let Some(tree) = parse_with_cached_parser(ts_name, &language, snippet) else {
+        return;
+    };
+
+    let snippet_lines: Vec<&str> = snippet.split('\n').collect();
+    let mut embedded: Vec<Fragment> = Vec::new();
+    let mut covered: Vec<(u32, u32)> = Vec::new();
+    let mut added_ends: FxHashSet<(String, u32)> = FxHashSet::default();
+    extract_definitions(
+        &tree.root_node(),
+        snippet.as_bytes(),
+        path,
+        &snippet_lines,
+        config.definition_types,
+        &mut embedded,
+        &mut covered,
+        &mut added_ends,
+        0,
+    );
+
+    // Fragment lines are 1-based within the snippet; the snippet's line 1 is
+    // the raw_text node's start line in the file.
+    let offset = node_start_line(raw_text) - 1;
+    for f in embedded {
+        fragments.push(Fragment {
+            id: crate::types::FragmentId::new(
+                Arc::clone(path),
+                f.id.start_line + offset,
+                f.id.end_line + offset,
+            ),
+            kind: f.kind,
+            content: f.content,
+            identifiers: f.identifiers,
+            token_count: f.token_count,
+            symbol_name: f.symbol_name,
+        });
     }
 }
 
@@ -2170,5 +2300,96 @@ mod grammar_tests {
                 "no fragment may exceed the source file size"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod injection_tests {
+    use super::*;
+
+    fn html_with_script() -> String {
+        let helpers: String = (0..5)
+            .map(|i| format!("function helper{i}(x) {{\n  return x + {i};\n}}\n"))
+            .collect();
+        format!(
+            "<!doctype html>\n<style>\n.card {{ color: red; }}\n</style>\n<script>\n{helpers}function computeScore(a, b) {{\n  return a * b - 1;\n}}\n</script>\n"
+        )
+    }
+
+    #[test]
+    fn inline_script_functions_become_definition_fragments_at_file_lines() {
+        let content = html_with_script();
+        let frags = TreeSitterStrategy::new().fragment(Arc::from("app.html"), &content);
+        let compute = frags
+            .iter()
+            .find(|f| f.symbol_name.as_deref() == Some("computeScore"))
+            .expect("computeScore must surface as its own fragment");
+        assert_eq!(compute.kind, FragmentKind::Function);
+        // The function starts on the file line where it is written, not on a
+        // snippet-relative line: doctype(1) style(2-4) script(5) helpers(6-20).
+        let line = content
+            .lines()
+            .position(|l| l.starts_with("function computeScore"))
+            .unwrap() as u32
+            + 1;
+        assert_eq!(compute.id.start_line, line);
+        assert!(compute.content.contains("a * b - 1"));
+
+        let helper0 = frags
+            .iter()
+            .find(|f| f.symbol_name.as_deref() == Some("helper0"))
+            .expect("helpers must surface too");
+        assert!(helper0.id.start_line >= 6);
+    }
+
+    #[test]
+    fn inline_style_rules_become_css_fragments() {
+        let content = html_with_script();
+        let frags = TreeSitterStrategy::new().fragment(Arc::from("app.html"), &content);
+        assert!(
+            frags
+                .iter()
+                .any(|f| f.content.contains(".card") && f.id.start_line == 3),
+            "the style rule must surface at its file line"
+        );
+    }
+
+    #[test]
+    fn a_json_script_payload_is_not_parsed_as_javascript() {
+        let content = "<script type=\"application/json\">\n{\"a\": 1}\n</script>\n";
+        let frags = TreeSitterStrategy::new().fragment(Arc::from("app.html"), content);
+        assert!(
+            frags.iter().all(|f| f.symbol_name.is_none()),
+            "a JSON payload must not produce JS symbols"
+        );
+    }
+}
+
+#[cfg(test)]
+mod injection_scale_tests {
+    use super::*;
+
+    #[test]
+    fn embedded_functions_keep_their_own_spans_at_scale() {
+        let body: String = (0..300)
+            .map(|i| {
+                format!(
+                    "function helper{i}(x) {{\n  const a = x * {i};\n  const b = a + {i};\n  return b - {i};\n}}\n"
+                )
+            })
+            .collect();
+        let content =
+            format!("<!doctype html>\n<style>.a{{color:red}}</style>\n<script>\n{body}</script>\n");
+        let frags = TreeSitterStrategy::new().fragment(Arc::from("app.html"), &content);
+        let helper0 = frags
+            .iter()
+            .find(|f| f.symbol_name.as_deref() == Some("helper0"))
+            .expect("helper0 exists");
+        assert!(
+            helper0.id.end_line - helper0.id.start_line <= 5,
+            "helper0 spans {}-{} — a 5-line function must not absorb its siblings",
+            helper0.id.start_line,
+            helper0.id.end_line
+        );
     }
 }

@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Inline `<script>` and `<style>` in HTML are parsed with their own
+  grammars** (#181). A changed function inside a single-file web app's script
+  now surfaces as a named definition fragment at its real file lines instead
+  of degrading to a raw line window with no symbol boundaries. JS and CSS
+  fragments overlay the `script_element`/`style_element` containers the way
+  methods overlay a class; `type=` attributes naming non-JS payloads (JSON,
+  templates) opt out.
+
 - **`--diff <duration>`** — a time window instead of a revision: `24h`, `8d`,
   `90min`, `1h30m`, `2w` (units `s`, `m`/`min`, `h`, `d`, `w`, composable). The
   window resolves to the last commit before it and diffs the working tree
