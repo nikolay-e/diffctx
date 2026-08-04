@@ -7,7 +7,7 @@ Project-specific facts for `/qa`. Generic methodology lives in
 
 | Check | Applies | Notes |
 |---|---|---|
-| CI | yes | GitHub Actions on the mirror (ci.yml, action-smoke, CodeQL per push; cd.yml/publish-* manual dispatch; nightly-full-eval cron) |
+| CI | yes | GitHub Actions on the mirror (ci.yml, action-smoke, CodeQL per push; cd.yml/publish-* manual dispatch; nightly-full-eval cron). "Rust diffctx tests" is ~6 min on a warm cargo cache; a Rust-touching commit invalidates it (+~10 min compile). Beyond ~30 min on "Build and test" = stuck runner — `gh run cancel` + `gh run rerun --failed` (an 85-min hang resolved to a 6-min green rerun with zero changes) |
 | CD / K8s / ArgoCD | no | CLI+library; ships to PyPI, npm, crates.io, Docker Hub via cd.yml/publish-extras.yml |
 | Browser QA | no | no web frontend |
 | Post-deploy autoqa | no | no deployed service; probes are the publish smokes inside cd.yml/publish-extras.yml |
@@ -52,6 +52,15 @@ Project-specific facts for `/qa`. Generic methodology lives in
 - E/Q discipline (CLAUDE.md): Q-class (output-changing) fixes are
   frozen during an eval cycle — bugs like the `IntervalIndex::overlaps`
   asymmetry stay documented + pinned, not fixed in-pass.
+- **Active-xfail semantics in the yaml harness**: a case with an active
+  `xfail:` (reason/category set) reports test "ok" while its ORACLE still
+  fails — the marker absorbs the failure; test "FAILED" on such a case
+  means the oracle now PASSES ("drop the xfail"). Bare `xfail: {}` is a
+  no-op (`is_active` false, baseline gates instead) — remove on sight.
+- **Rust edits fight the auto-format hook**: the PostToolUse formatter
+  orders `use` items differently from repo rustfmt; `git commit` then
+  fails cargo-fmt. Run `cargo fmt` before every commit that touches
+  Rust.
 
 ## Diff-context review
 
@@ -114,6 +123,14 @@ Project-specific facts for `/qa`. Generic methodology lives in
   "MCP server must not import CLI". Import the submodule directly
   (`from diffctx._diffctx import X`) so the edge points at the submodule
   rather than the package root.
+- Sonar `python:S2245` on `paired_bootstrap` (seeded `random.Random` for
+  CI resampling) — false positive, marked via API 2026-08-04: determinism
+  is the requirement, not a security context.
+- Sonar `pythonsecurity:S8705/S8707` on `eval/workflows/` harnesses
+  ("LLM sandbox escape") — accepted via API 2026-08-04: operator-run
+  local research harnesses; argv exec with regex-validated sha
+  (realworld_rerun) and operator-chosen output dir (run_final). Don't
+  re-litigate unless the eval workflows become agent-facing.
 - SonarCloud `githubactions:S8543` on the publish-extras npm smoke:
   `$VERSION` is an exact just-published version, package has zero
   deps — marked false positive in SonarCloud via API (NOSONAR is NOT
