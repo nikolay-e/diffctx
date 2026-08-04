@@ -198,6 +198,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   2-line edit in a 100-line function shipped 81 lines of the body it had just
   compressed. Context candidates that are slices of a core fragment's span
   are now dropped; signature stubs stay.
+- **A gitignore negation no longer excludes the file it un-ignores** (#193).
+  `check-ignore -v` prints a record when the last matching pattern is a
+  negation — the path is then explicitly NOT ignored — and the record parser
+  treated any record as an exclusion, silently dropping files like an
+  un-ignored `SECURITY.md` from the diff context. Negation records are now
+  skipped for gitignore and `.diffctx/ignore` alike: a policy negation is the
+  user re-including a path in the policy's own terms.
 - **Withheld changed files are visible as withheld** (#188). A changed file
   excluded by ignore rules vanished silently — a reviewer reading the output
   filed "no tests" against a change whose tests the tool had dropped.

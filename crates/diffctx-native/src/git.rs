@@ -1101,6 +1101,17 @@ fn parse_verbose_ignore_records(stdout: &str) -> rustc_hash::FxHashMap<String, S
         if path.is_empty() {
             continue;
         }
+        // `check-ignore -v` also prints a record when the LAST matching
+        // pattern is a negation — the path is then explicitly NOT ignored
+        // (plain `check-ignore` exits 1 for it). Treating any record as "this
+        // path is ignored" inverted the meaning: a repository that un-ignores
+        // a file (`!SECURITY.md`) had that file silently dropped from --diff
+        // output (#193). The same reading is right for `.diffctx/ignore`: a
+        // negation there is the user explicitly re-including a path in the
+        // policy's own terms.
+        if pattern.starts_with('!') {
+            continue;
+        }
         // The rule identity keeps the text format's shape: callers compare it
         // against `format!("{excludes_source}:")` to tell a diffctx-declared
         // exclusion from a gitignore one.
@@ -2013,5 +2024,25 @@ mod tests {
             assert!(!ignored_a.contains("app.py"));
             assert!(!ignored_b.contains("app.py"));
         }
+    }
+}
+
+#[cfg(test)]
+mod negation_record_tests {
+    use super::*;
+
+    #[test]
+    fn a_negation_record_does_not_mark_the_path_ignored() {
+        // check-ignore -v -z output: source \0 line \0 pattern \0 path \0 ...
+        let stdout = ".gitignore\x001\x00*.tmp\x00drop.tmp\x00.gitignore\x002\x00!NEWDOC.md\x00NEWDOC.md\x00";
+        let rules = parse_verbose_ignore_records(stdout);
+        assert!(
+            rules.contains_key("drop.tmp"),
+            "a positive match must stay an exclusion"
+        );
+        assert!(
+            !rules.contains_key("NEWDOC.md"),
+            "a negation match means the path is explicitly NOT ignored (#193)"
+        );
     }
 }
