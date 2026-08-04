@@ -164,6 +164,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The `.diffctx/ignore` withheld-files count counts files, not hunks.** A
+  withheld file with several separated edits inflated the "N changed file(s)
+  withheld" notice — the one number a reviewer uses to judge how much of the
+  change the output actually shows.
+
 - **C# and Scala regained real cross-file reach after the tags gate** (#131,
   #179). The tags fallback had been these languages' only working linkage:
   Scala's import regex captured a truncated prefix (`com.foo.` instead of

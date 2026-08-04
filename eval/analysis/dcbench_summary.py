@@ -83,25 +83,20 @@ def paired_bootstrap(a: list[float], b: list[float], iters: int = 5000, seed: in
     return round(diffs[int(0.025 * iters)], 4), round(diffs[int(0.975 * iters)], 4)
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--runs", required=True, help="directory holding one subdirectory per mode")
-    ap.add_argument("--baseline", default="ego")
-    ap.add_argument("--modes", help="comma-separated subset; default every subdirectory")
-    args = ap.parse_args()
-
-    root = Path(args.runs)
+def _load_modes(root: Path, subset: str | None) -> dict[str, dict[str, dict]]:
     modes = {d.name: load_mode(d) for d in sorted(root.iterdir()) if d.is_dir()}
-    if args.modes:
-        want = {m.strip() for m in args.modes.split(",")}
+    if subset:
+        want = {m.strip() for m in subset.split(",")}
         modes = {m: r for m, r in modes.items() if m in want}
     # A mode still being collected would empty the paired intersection and take
     # every other mode's numbers down with it.
     modes = {m: r for m, r in modes.items() if r}
     if not modes:
         raise SystemExit(f"no mode directories under {root}")
+    return modes
 
-    print(f"# dcbench — {root}\n")
+
+def _print_coverage(modes: dict[str, dict[str, dict]]) -> None:
     print("## Coverage (all instances attempted)\n")
     print("| mode | attempted | produced | hang | other |")
     print("|---|---:|---:|---:|---:|")
@@ -112,13 +107,18 @@ def main() -> None:
             f"{len(st) - st.count('produced') - st.count('hang')} |"
         )
 
+
+def _paired_sets(modes: dict[str, dict[str, dict]]) -> tuple[set[str], list[str]]:
     shared = set.intersection(*[{i for i, r in rows.items() if r.get("status") == "produced"} for rows in modes.values()])
     print(f"\nPaired set: **{len(shared)}** instances produced by every mode.\n")
 
     # Retrieval is only measurable where there is something to retrieve.
     with_nt = sorted(i for i in shared if (next(iter(modes.values()))[i].get("n_nontrivial") or 0) > 0)
     print(f"Of those, **{len(with_nt)}** carry at least one nontrivial gold file.\n")
+    return shared, with_nt
 
+
+def _print_paired_means(modes: dict[str, dict[str, dict]], shared: set[str], with_nt: list[str]) -> None:
     print("## Paired means\n")
     print("| mode | " + " | ".join(METRICS) + " |")
     print("|---" * (len(METRICS) + 1) + "|")
@@ -129,19 +129,39 @@ def main() -> None:
             cells.append(str(_mean([rows[i].get(k) for i in pool])))
         print(f"| {m} | " + " | ".join(cells) + " |")
 
+
+def _print_bootstrap(modes: dict[str, dict[str, dict]], base: str, with_nt: list[str]) -> None:
+    print(f"\n## Nontrivial recall vs {base} (paired bootstrap 95% CI)\n")
+    print("| mode | delta | CI low | CI high | excludes zero |")
+    print("|---|---:|---:|---:|---|")
+    b = [modes[base][i].get("recall_nontrivial") or 0.0 for i in with_nt]
+    for m, rows in modes.items():
+        if m == base:
+            continue
+        a = [rows[i].get("recall_nontrivial") or 0.0 for i in with_nt]
+        lo, hi = paired_bootstrap(a, b)
+        d = round(statistics.mean(a) - statistics.mean(b), 4)
+        print(f"| {m} | {d:+.4f} | {lo:+.4f} | {hi:+.4f} | {'yes' if lo > 0 or hi < 0 else 'no'} |")
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--runs", required=True, help="directory holding one subdirectory per mode")
+    ap.add_argument("--baseline", default="ego")
+    ap.add_argument("--modes", help="comma-separated subset; default every subdirectory")
+    args = ap.parse_args()
+
+    root = Path(args.runs)
+    modes = _load_modes(root, args.modes)
+
+    print(f"# dcbench — {root}\n")
+    _print_coverage(modes)
+    shared, with_nt = _paired_sets(modes)
+    _print_paired_means(modes, shared, with_nt)
+
     base = args.baseline
     if base in modes and with_nt:
-        print(f"\n## Nontrivial recall vs {base} (paired bootstrap 95% CI)\n")
-        print("| mode | delta | CI low | CI high | excludes zero |")
-        print("|---|---:|---:|---:|---|")
-        b = [modes[base][i].get("recall_nontrivial") or 0.0 for i in with_nt]
-        for m, rows in modes.items():
-            if m == base:
-                continue
-            a = [rows[i].get("recall_nontrivial") or 0.0 for i in with_nt]
-            lo, hi = paired_bootstrap(a, b)
-            d = round(statistics.mean(a) - statistics.mean(b), 4)
-            print(f"| {m} | {d:+.4f} | {lo:+.4f} | {hi:+.4f} | {'yes' if lo > 0 or hi < 0 else 'no'} |")
+        _print_bootstrap(modes, base, with_nt)
 
     if "ego" in modes and "bm25" in modes and with_nt:
         print("\n## Union ceiling (ego+bm25 union, same instances)\n")

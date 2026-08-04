@@ -423,19 +423,20 @@ def _write_markdown_fragment(file: TextIO, frag: dict[str, Any]) -> None:
         _write_md_code_block(file, frag["content"], lang, "")
 
 
+def _write_md_path_list(file: TextIO, tree: dict[str, Any], key: str, title: str) -> None:
+    if not tree.get(key):
+        return
+    file.write(f"**{title}:**\n\n")
+    for path in tree[key]:
+        file.write(f"- {_escape_md_inline_code(str(path))}\n")
+    file.write("\n")
+
+
 def _write_markdown_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
     if tree.get("commit_message"):
         file.write(f"> {tree['commit_message']}\n\n")
-    if tree.get("changed_files"):
-        file.write("**Changed files:**\n\n")
-        for path in tree["changed_files"]:
-            file.write(f"- {_escape_md_inline_code(str(path))}\n")
-        file.write("\n")
-    if tree.get("deleted_files"):
-        file.write("**Deleted files:**\n\n")
-        for path in tree["deleted_files"]:
-            file.write(f"- {_escape_md_inline_code(str(path))}\n")
-        file.write("\n")
+    _write_md_path_list(file, tree, "changed_files", "Changed files")
+    _write_md_path_list(file, tree, "deleted_files", "Deleted files")
     if tree.get("renamed_files"):
         file.write("**Renamed files:**\n\n")
         for pair in tree["renamed_files"]:
@@ -443,16 +444,8 @@ def _write_markdown_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
             new_p = _escape_md_inline_code(str(pair.get("to", "")))
             file.write(f"- {old_p} \u2192 {new_p}\n")
         file.write("\n")
-    if tree.get("lockfile_changes"):
-        file.write("**Lock files changed:**\n\n")
-        for path in tree["lockfile_changes"]:
-            file.write(f"- {_escape_md_inline_code(str(path))}\n")
-        file.write("\n")
-    if tree.get("ignored_changes"):
-        file.write("**Changed but excluded by ignore rules:**\n\n")
-        for path in tree["ignored_changes"]:
-            file.write(f"- {_escape_md_inline_code(str(path))}\n")
-        file.write("\n")
+    _write_md_path_list(file, tree, "lockfile_changes", "Lock files changed")
+    _write_md_path_list(file, tree, "ignored_changes", "Changed but excluded by ignore rules")
     if tree.get("policy_excluded_count"):
         n = tree["policy_excluded_count"]
         file.write(f"*{n} changed file(s) withheld by `.diffctx/ignore`.*\n\n")

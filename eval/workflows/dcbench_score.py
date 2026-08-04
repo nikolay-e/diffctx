@@ -233,7 +233,7 @@ def main() -> None:
     ap.add_argument("--tau", type=float, default=None, help="override the stopping threshold (shipped default when omitted)")
     args = ap.parse_args()
 
-    extra_env = dict(kv.split("=", 1) for kv in args.env)
+    extra_env = {k: v for k, v in (kv.split("=", 1) for kv in args.env)}
 
     out = PROJECT_ROOT / args.out
     out.mkdir(parents=True, exist_ok=True)

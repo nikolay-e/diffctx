@@ -55,6 +55,25 @@ def test_policy_excluded_changed_file_surfaces_as_count_without_the_path(tmp_pat
     assert "changed alongside code" not in rendered
 
 
+def test_policy_excluded_count_is_files_not_hunks(tmp_path):
+    repo = Pygit2Repo(tmp_path / "repo")
+    repo.add_file("src/app.py", "def a():\n    pass\n")
+    middle = "\n".join(f"line {i}" for i in range(40))
+    repo.add_file("notes.md", f"# QA notes\n{middle}\ntail\n")
+    repo.commit("initial")
+
+    repo.add_file(".diffctx/ignore", "*.md\n")
+    lines = [f"line {i}" for i in range(40)]
+    lines[0] = "line 0 changed"
+    lines[39] = "line 39 changed"
+    repo.add_file("notes.md", "# QA notes\n" + "\n".join(lines) + "\ntail\n")
+    repo.add_file("src/app.py", "def a():\n    return 1\n")
+    repo.commit("two separated edits inside the withheld file")
+
+    result = diffctx.build_diff_context(root_dir=repo.path, diff_range="HEAD~1")
+    assert result.get("policy_excluded_count") == 1
+
+
 def test_markdown_render_carries_both_exclusion_notes(tmp_path):
     repo = _two_commit_repo(tmp_path, ".gitignore", "*.md\n")
     result = diffctx.build_diff_context(root_dir=repo.path, diff_range="HEAD~1")

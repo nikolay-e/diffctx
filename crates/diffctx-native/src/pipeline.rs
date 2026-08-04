@@ -266,7 +266,9 @@ pub fn compute_scored_state(
     // would undo the policy (#85), while total silence misreads as "the diff
     // did not touch this" (#188).
     let mut ignored_display: Vec<String> = Vec::new();
-    let mut policy_excluded = 0usize;
+    // Counted in files, not hunks: the writer says "N changed file(s)
+    // withheld", and a multi-hunk withheld file must not inflate it.
+    let mut policy_excluded_paths: FxHashSet<String> = FxHashSet::default();
     for h in &hunks {
         let p = Path::new(&*h.path);
         let Some(rel) = rel_path_string(&root_dir, p) else {
@@ -274,10 +276,13 @@ pub fn compute_scored_state(
         };
         match ignored_rel_paths.get(&rel) {
             Some(git::IgnoreSource::Gitignore) => ignored_display.push(rel),
-            Some(git::IgnoreSource::DiffctxPolicy) => policy_excluded += 1,
+            Some(git::IgnoreSource::DiffctxPolicy) => {
+                policy_excluded_paths.insert(rel);
+            }
             None => {}
         }
     }
+    let policy_excluded = policy_excluded_paths.len();
     ignored_display.sort();
     ignored_display.dedup();
     hunks.retain(|h| !is_ignored_path(&root_dir, Path::new(&*h.path), &ignored_rel_paths));

@@ -37,6 +37,38 @@ def pct(vals: list[float], q: float) -> float:
     return s[min(len(s) - 1, int(q * len(s)))]
 
 
+def _load_rows(cp: Path) -> list[tuple[float, dict]]:
+    rows = []
+    for line in cp.read_text().splitlines():
+        if not line.strip():
+            continue
+        r = json.loads(line)
+        lb = (r.get("extra") or {}).get("latency_breakdown")
+        total = (r.get("extra") or {}).get("latency_total_ms")
+        if lb and total is not None:
+            rows.append((float(total), lb))
+    return rows
+
+
+def _table_line(cell: Path, cp: Path, rows: list[tuple[float, dict]]) -> str:
+    totals = [t for t, _ in rows]
+    rss = [lb.get("peak_rss_bytes", 0) / 1e6 for _, lb in rows if lb.get("peak_rss_bytes")]
+    edges = [lb.get("edge_count", 0) for _, lb in rows]
+    pre = [lb.get("edges_before_cap", 0) for _, lb in rows]
+    phase_sum = {p: sum(lb.get(p, 0.0) for _, lb in rows) for p in PHASES}
+    grand = sum(phase_sum.values()) or 1.0
+    top = sorted(phase_sum.items(), key=lambda kv: -kv[1])[:3]
+    top_s = ", ".join(f"{k.removesuffix('_ms')} {v / grand:.0%}" for k, v in top)
+    bench = cp.name.replace(".checkpoint.jsonl", "")
+    return (
+        f"| {cell.name} | {bench} | {len(rows)} "
+        f"| {pct(totals, 0.5):.0f}/{pct(totals, 0.9):.0f}/{pct(totals, 0.99):.0f} "
+        f"| {pct(rss, 0.5):.0f}/{pct(rss, 0.99):.0f} "
+        f"| {pct(edges, 0.5):.0f} ({pct(pre, 0.5):.0f}) "
+        f"| {top_s} |"
+    )
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--runs", required=True)
@@ -53,33 +85,9 @@ def main() -> None:
 
     for cell in sorted(d for d in root.iterdir() if d.is_dir()):
         for cp in sorted(cell.glob("*.checkpoint.jsonl")):
-            rows = []
-            for line in cp.read_text().splitlines():
-                if not line.strip():
-                    continue
-                r = json.loads(line)
-                lb = (r.get("extra") or {}).get("latency_breakdown")
-                total = (r.get("extra") or {}).get("latency_total_ms")
-                if lb and total is not None:
-                    rows.append((float(total), lb))
-            if not rows:
-                continue
-            totals = [t for t, _ in rows]
-            rss = [lb.get("peak_rss_bytes", 0) / 1e6 for _, lb in rows if lb.get("peak_rss_bytes")]
-            edges = [lb.get("edge_count", 0) for _, lb in rows]
-            pre = [lb.get("edges_before_cap", 0) for _, lb in rows]
-            phase_sum = {p: sum(lb.get(p, 0.0) for _, lb in rows) for p in PHASES}
-            grand = sum(phase_sum.values()) or 1.0
-            top = sorted(phase_sum.items(), key=lambda kv: -kv[1])[:3]
-            top_s = ", ".join(f"{k.removesuffix('_ms')} {v / grand:.0%}" for k, v in top)
-            bench = cp.name.replace(".checkpoint.jsonl", "")
-            print(
-                f"| {cell.name} | {bench} | {len(rows)} "
-                f"| {pct(totals, 0.5):.0f}/{pct(totals, 0.9):.0f}/{pct(totals, 0.99):.0f} "
-                f"| {pct(rss, 0.5):.0f}/{pct(rss, 0.99):.0f} "
-                f"| {pct(edges, 0.5):.0f} ({pct(pre, 0.5):.0f}) "
-                f"| {top_s} |"
-            )
+            rows = _load_rows(cp)
+            if rows:
+                print(_table_line(cell, cp, rows))
 
 
 if __name__ == "__main__":

@@ -148,6 +148,18 @@ class SweExploreAdapter(BenchmarkAdapter):
         for row in ds:
             yield dict(row)
 
+    @staticmethod
+    def _seed_patch(row: dict) -> str | None:
+        # The seed. diffctx needs a change to explain, so an instance without a
+        # patch cannot be run diff-seeded and is skipped rather than run against
+        # a fabricated one — a patch synthesised from `modified_core_files`
+        # would be this adapter inventing the input and calling the result a
+        # measurement.
+        patch = row.get("patch") or row.get("gold_patch") or ""
+        if not isinstance(patch, str) or not patch.strip():
+            return None
+        return patch
+
     def _normalize(self, row: dict) -> BenchmarkInstance | None:
         gt = row.get("ground_truth")
         if not isinstance(gt, dict):
@@ -156,13 +168,8 @@ class SweExploreAdapter(BenchmarkAdapter):
         if not gold_files:
             return None
 
-        # The seed. diffctx needs a change to explain, so an instance without a
-        # patch cannot be run diff-seeded and is skipped rather than run against
-        # a fabricated one — a patch synthesised from `modified_core_files`
-        # would be this adapter inventing the input and calling the result a
-        # measurement.
-        patch = row.get("patch") or row.get("gold_patch") or ""
-        if not isinstance(patch, str) or not patch.strip():
+        patch = self._seed_patch(row)
+        if patch is None:
             return None
         patch_files = extract_patch_files(patch)
 
