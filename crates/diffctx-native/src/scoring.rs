@@ -517,6 +517,17 @@ impl PitFusionScoring {
 /// Ties share a percentile: two fragments a component cannot separate must not
 /// be separated here either, or the blend would invent a preference the signal
 /// never expressed.
+///
+/// The CDF is estimated over everything the component scored positively, while
+/// only the fragments it *admitted* receive a value. Those are two different
+/// questions and conflating them was a defect: a percentile read off a
+/// component's admitted set is a position within that set, and the two
+/// components' admitted sets differ by an order of magnitude on a real repo
+/// (BM25 admits a handful, EGO hundreds). Blending a position-among-6 with a
+/// position-among-300 as if they were the same quantity is not a fusion of the
+/// two signals. The admission veto itself is kept — a fragment a component
+/// rejected still contributes nothing from it (#125, `091c4db3`) — because the
+/// component's own guards are the only place an absolute judgement survives.
 fn percentiles(
     rel: &FxHashMap<FragmentId, f64>,
     admitted: &FxHashSet<FragmentId>,
@@ -525,7 +536,7 @@ fn percentiles(
 ) -> (FxHashMap<FragmentId, f64>, FxHashSet<FragmentId>) {
     let mut ranked: Vec<(&FragmentId, f64)> = rel
         .iter()
-        .filter(|(fid, score)| **score > 0.0 && !core_ids.contains(*fid) && admitted.contains(*fid))
+        .filter(|(fid, score)| **score > 0.0 && !core_ids.contains(*fid))
         .map(|(fid, score)| (fid, *score))
         .collect();
     // Descending by score, id as the tie-break so the traversal is independent
@@ -539,25 +550,121 @@ fn percentiles(
         return (out, top);
     }
 
-    let mut i = 0;
-    while i < n {
-        // One run of equal scores shares the mean percentile of the run.
-        let mut j = i;
-        while j + 1 < n && ranked[j + 1].1.to_bits() == ranked[i].1.to_bits() {
-            j += 1;
+    // Ablation (not a shipped mode): `DIFFCTX_PIT_TRANSFORM=maxnorm` fuses the
+    // components on their own score shape, rescaled to a common [0, 1], instead
+    // of on distributional position. It is the control that isolates the
+    // transform, because a linear rescale leaves every downstream
+    // magnitude-reading rule invariant: `r_cap = median + sigma*std` scales with
+    // the data, so `rel / r_cap` is unchanged. The percentile does not have that
+    // property, which is the whole point of comparing them.
+    if std::env::var("DIFFCTX_PIT_TRANSFORM").as_deref() == Ok("maxnorm") {
+        let denom = ranked
+            .iter()
+            .map(|(_, s)| *s)
+            .fold(0.0f64, f64::max)
+            .max(f64::MIN_POSITIVE);
+        for (fid, score) in &ranked {
+            if admitted.contains(*fid) {
+                out.insert((*fid).clone(), *score / denom);
+            }
         }
-        // Position 0 is the strongest, so invert: the best fragment gets ~1.0.
-        let mean_pos = (i + j) as f64 / 2.0;
-        let percentile = 1.0 - mean_pos / n as f64;
-        for (fid, _) in &ranked[i..=j] {
-            out.insert((*fid).clone(), percentile);
+    } else {
+        let mut i = 0;
+        while i < n {
+            // One run of equal scores shares the mean percentile of the run.
+            let mut j = i;
+            while j + 1 < n && ranked[j + 1].1.to_bits() == ranked[i].1.to_bits() {
+                j += 1;
+            }
+            // Position 0 is the strongest, so invert: the best fragment gets ~1.0.
+            let mean_pos = (i + j) as f64 / 2.0;
+            let percentile = 1.0 - mean_pos / n as f64;
+            for (fid, _) in &ranked[i..=j] {
+                if admitted.contains(*fid) {
+                    out.insert((*fid).clone(), percentile);
+                }
+            }
+            i = j + 1;
         }
-        i = j + 1;
     }
-    for (fid, _) in ranked.iter().take(top_k) {
+
+    // Top-k is drawn from the admitted fragments: the agreement bonus asks
+    // "do both components rank this highly", and a fragment a component
+    // rejected is not ranked highly by it.
+    for (fid, _) in ranked
+        .iter()
+        .filter(|(fid, _)| admitted.contains(*fid))
+        .take(top_k)
+    {
         top.insert((*fid).clone());
     }
     (out, top)
+}
+
+/// Map a fused ranking back onto the reference component's own score
+/// distribution, preserving order.
+///
+/// Selection does not read `rel` as an ordering alone. `compute_r_cap` takes
+/// `median + sigma*std` of the score cloud and the utility uses
+/// `(rel / r_cap).min(1.0)`, so the *shape* of the distribution decides how many
+/// candidates saturate. EGO's raw scores are strongly right-skewed (hop decay
+/// puts most mass near zero), which makes `r_cap` small and the saturation
+/// meaningful. A percentile is uniform on [0, 1] by construction: its median is
+/// ~0.5 and `median + 2*std` lands above the maximum, so nothing saturates and
+/// the selector runs in a regime nothing was calibrated for.
+///
+/// That is a unit mismatch, not a tuning problem, so the fix is to restore the
+/// units rather than to re-tune `r_cap_sigma` and `tau` per transform. Fusion
+/// then decides the order — which is what fusion is for — and the selector sees
+/// the score cloud it was built against.
+///
+/// A consequence worth stating because it doubles as the correctness gate: at
+/// `blend = 1.0` with no agreement bonus the fused order is EGO's order over
+/// EGO's own admitted set, so this maps every fragment back to its exact EGO
+/// score and the mode must reproduce EGO bit-for-bit.
+fn quantile_map_to(
+    reference: &[f64],
+    fused: &FxHashMap<FragmentId, f64>,
+) -> FxHashMap<FragmentId, f64> {
+    // A fused score of zero means no component endorsed the fragment.
+    // Mapping it anyway would hand it a positive reference value and resurrect
+    // a candidate `filter_positive_relevance` is required to drop — at
+    // blend=1.0 that alone broke the EGO-equivalence gate (390 vs 371).
+    let mut order: Vec<(&FragmentId, f64)> = fused
+        .iter()
+        .filter(|(_, s)| **s > 0.0)
+        .map(|(f, s)| (f, *s))
+        .collect();
+    if reference.is_empty() || order.is_empty() {
+        return order.into_iter().map(|(f, s)| (f.clone(), s)).collect();
+    }
+    order.sort_by(|(ida, sa), (idb, sb)| sb.total_cmp(sa).then_with(|| ida.cmp(idb)));
+
+    let m = order.len();
+    let n = reference.len();
+    let mut out = FxHashMap::default();
+    let mut i = 0;
+    while i < m {
+        // A run of equal fused scores is a tie the fusion never resolved, so
+        // the run shares one mapped value — its midpoint slot — rather than
+        // being fanned across adjacent reference values by id order.
+        let mut j = i;
+        while j + 1 < m && order[j + 1].1.to_bits() == order[i].1.to_bits() {
+            j += 1;
+        }
+        let mid_rank = (i + j) as f64 / 2.0;
+        let idx = if m == 1 {
+            n - 1
+        } else {
+            let pos = ((m - 1) as f64 - mid_rank) / (m - 1) as f64;
+            ((pos * (n - 1) as f64).round() as usize).min(n - 1)
+        };
+        for (fid, _) in &order[i..=j] {
+            out.insert((*fid).clone(), reference[idx]);
+        }
+        i = j + 1;
+    }
+    out
 }
 
 impl ScoringStrategy for PitFusionScoring {
@@ -630,17 +737,39 @@ impl ScoringStrategy for PitFusionScoring {
             rel_scores.insert(fid.clone(), score);
         }
 
-        let max_fused = rel_scores.values().copied().fold(0.0f64, f64::max);
-        if max_fused > 0.0 {
-            for v in rel_scores.values_mut() {
-                *v /= max_fused;
+        // `DIFFCTX_PIT_SHAPE=flat` keeps the fused percentiles as the scores the
+        // selector sees. That is the pre-`quantile_map_to` behaviour, retained
+        // so the transform's cost stays measurable rather than only argued.
+        if std::env::var("DIFFCTX_PIT_SHAPE").as_deref() == Ok("flat") {
+            let max_fused = rel_scores.values().copied().fold(0.0f64, f64::max);
+            if max_fused > 0.0 {
+                for v in rel_scores.values_mut() {
+                    *v /= max_fused;
+                }
             }
-        }
-        // Cores anchor the top of the scale, as in every other strategy; the
-        // downstream r_cap and the absolute gates read these values, so the
-        // range has to stay [0, 1].
-        for fid in core_ids {
-            rel_scores.insert(fid.clone(), 1.0);
+            for fid in core_ids {
+                rel_scores.insert(fid.clone(), 1.0);
+            }
+        } else {
+            let mut reference: Vec<f64> = ego
+                .rel_scores
+                .iter()
+                .filter(|(fid, s)| {
+                    **s > 0.0 && !core_ids.contains(*fid) && ego_admitted.contains(*fid)
+                })
+                .map(|(_, s)| *s)
+                .collect();
+            reference.sort_by(f64::total_cmp);
+            rel_scores = quantile_map_to(&reference, &rel_scores);
+
+            // Cores keep EGO's own values rather than a pinned 1.0. `r_cap`
+            // excludes cores, but the utility does not, and a synthetic 1.0 on
+            // EGO's raw scale is a different number from the one EGO assigns.
+            for fid in core_ids {
+                if let Some(s) = ego.rel_scores.get(fid) {
+                    rel_scores.insert(fid.clone(), *s);
+                }
+            }
         }
 
         let union_ids: FxHashSet<FragmentId> =
@@ -879,6 +1008,103 @@ mod tests {
             fused.contains_key(&good),
             "the admitted fragment lost its vote"
         );
+    }
+
+    #[test]
+    fn a_percentile_is_a_position_in_the_full_population_not_the_admitted_subset() {
+        let cores: FxHashSet<FragmentId> = FxHashSet::default();
+        // Nine strong fragments the component scored but did not admit, plus
+        // one weak admitted straggler. Its percentile must say "bottom of the
+        // component's world", not "top of the admitted set of one".
+        let mut entries: Vec<(FragmentId, f64)> = (0..9)
+            .map(|i| (fid("strong.rs", i + 1), 1.0 - i as f64 * 0.05))
+            .collect();
+        let weak = fid("weak.rs", 100);
+        entries.push((weak.clone(), 0.01));
+        let rel = scores(&entries);
+        let admitted: FxHashSet<FragmentId> = std::iter::once(weak.clone()).collect();
+
+        let (pct, _) = percentiles(&rel, &admitted, &cores, 5);
+
+        assert_eq!(pct.len(), 1, "only admitted fragments may receive a value");
+        let p = pct[&weak];
+        assert!(
+            p <= 0.2,
+            "the weakest of ten scored {p}, reading as strong because the CDF \
+             was estimated over the admitted subset"
+        );
+    }
+
+    #[test]
+    fn a_rejected_fragment_gets_no_percentile_at_all() {
+        let cores: FxHashSet<FragmentId> = FxHashSet::default();
+        let good = fid("good.rs", 1);
+        let rejected = fid("garbage.rs", 1);
+        let rel = scores(&[(rejected.clone(), 0.9), (good.clone(), 0.1)]);
+        let admitted: FxHashSet<FragmentId> = std::iter::once(good.clone()).collect();
+
+        let (pct, top) = percentiles(&rel, &admitted, &cores, 5);
+
+        assert!(
+            !pct.contains_key(&rejected),
+            "the component's veto was lost"
+        );
+        assert!(
+            !top.contains(&rejected),
+            "a rejected fragment cannot sit in the component's top-k"
+        );
+        assert!(pct.contains_key(&good));
+    }
+
+    #[test]
+    fn quantile_map_restores_the_reference_distribution_in_fused_order() {
+        // Reference: a skewed cloud like EGO's (mass near zero).
+        let reference = vec![0.01, 0.02, 0.05, 0.4, 1.9];
+        let a = fid("a.rs", 1);
+        let b = fid("b.rs", 1);
+        let c = fid("c.rs", 1);
+        // Fused scores are uniform-ish percentiles; only their order may
+        // survive the mapping.
+        let fused = scores(&[(a.clone(), 0.9), (b.clone(), 0.5), (c.clone(), 0.1)]);
+
+        let mapped = quantile_map_to(&reference, &fused);
+
+        assert_eq!(mapped[&a], 1.9, "the fused top must take the reference max");
+        assert_eq!(
+            mapped[&c], 0.01,
+            "the fused bottom must take the reference min"
+        );
+        assert!(
+            mapped[&a] > mapped[&b] && mapped[&b] > mapped[&c],
+            "the fused order was not preserved"
+        );
+    }
+
+    #[test]
+    fn quantile_map_over_the_same_population_is_the_identity_on_values() {
+        // blend=1.0, bonus=0: the fused order IS ego's order over ego's own
+        // admitted set, so mapping back onto ego's sorted scores must return
+        // exactly those scores — the property the corpus gate checks end to end.
+        let ids: Vec<FragmentId> = (0..5).map(|i| fid("f.rs", i + 1)).collect();
+        let ego_scores = [0.02, 0.07, 0.11, 0.55, 0.9];
+        let mut reference: Vec<f64> = ego_scores.to_vec();
+        reference.sort_by(f64::total_cmp);
+        // Fused percentiles in the same order as the ego scores.
+        let fused = scores(
+            &ids.iter()
+                .zip([0.2, 0.4, 0.6, 0.8, 1.0])
+                .map(|(id, p)| (id.clone(), p))
+                .collect::<Vec<_>>(),
+        );
+
+        let mapped = quantile_map_to(&reference, &fused);
+
+        for (id, expected) in ids.iter().zip(ego_scores) {
+            assert_eq!(
+                mapped[id], expected,
+                "same-population quantile map must reproduce the component's own values"
+            );
+        }
     }
 
     #[test]

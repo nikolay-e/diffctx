@@ -78,3 +78,44 @@ def test_run_executes_tree_mode(temp_project):
     assert output_file.exists()
     tree_data = yaml.safe_load(output_file.read_text(encoding="utf-8"))
     assert tree_data["type"] == "directory"
+
+
+class TestScoringChoicesTrackTheEngine:
+    """The two CLIs each enumerated the accepted `--scoring` values in their own
+    literal, and both went stale the moment a mode was added: `pit` parsed in the
+    engine, in the MCP server and in the eval harness, while
+    `diffctx --scoring pit` rejected it as an invalid value. Both now read the
+    engine's list, and this pins that they do."""
+
+    def test_every_engine_mode_is_offered_by_the_cli(self):
+        from diffctx._diffctx import SCORING_MODES
+        from diffctx.cli import _build_main_parser
+
+        parser = _build_main_parser()
+        action = next(a for a in parser._actions if "--scoring" in (a.option_strings or []))
+        assert set(action.choices) == set(SCORING_MODES)
+
+    def test_the_engine_actually_accepts_each_offered_mode(self, tmp_path):
+        """A name in the list that the engine rejects is the same defect pointing
+        the other way — the CLI would accept an argument that then fails."""
+        import subprocess
+        import sys
+
+        from diffctx._diffctx import SCORING_MODES
+        from tests.framework.pygit2_backend import Pygit2Repo
+
+        repo = Pygit2Repo(tmp_path / "scoring_repo")
+        repo.add_file("a.py", "def f():\n    return 1\n")
+        base = repo.commit("initial")
+        repo.add_file("a.py", "def f():\n    return 2\n")
+        head = repo.commit("change")
+
+        for mode in SCORING_MODES:
+            proc = subprocess.run(
+                [sys.executable, "-m", "diffctx", ".", "--diff", f"{base}..{head}", "--scoring", mode, "-q"],
+                cwd=repo.path,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            assert proc.returncode == 0, f"--scoring {mode}: {proc.stderr[-400:]}"

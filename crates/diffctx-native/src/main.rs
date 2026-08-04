@@ -3,7 +3,7 @@ use mimalloc::MiMalloc;
 static GLOBAL: MiMalloc = MiMalloc;
 
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
@@ -53,8 +53,9 @@ struct Cli {
     #[arg(short = 'f', long, default_value = "yaml", value_parser = ["yaml", "json"])]
     format: String,
 
-    /// Git diff range (e.g. HEAD~1..HEAD, main..feature); bare --diff uses the
-    /// working tree vs HEAD
+    /// Git diff range (e.g. HEAD~1..HEAD, main..feature) or a duration window
+    /// ending now (24h, 8d, 90min, 1h30m); bare --diff uses the working tree
+    /// vs HEAD
     #[arg(long = "diff", num_args = 0..=1, default_missing_value = "HEAD")]
     diff_ref: Option<String>,
 
@@ -75,7 +76,7 @@ struct Cli {
     full: bool,
 
     /// Relevance scoring mode
-    #[arg(long, default_value = DEFAULT_SCORING, value_parser = ["ppr", "ego", "bm25", "rrf"])]
+    #[arg(long, default_value = DEFAULT_SCORING, value_parser = _diffctx::mode::SCORING_MODE_NAMES.to_vec())]
     scoring: String,
 
     /// Output mode: `pack` = context with source bodies; `locate` = ranked
@@ -149,7 +150,7 @@ fn diff_result_is_empty(output: &DiffContextOutput) -> bool {
         && output.fragment_count == 0
 }
 
-fn empty_diff_hint(budget: Option<i64>, diff_ref: &str) -> String {
+fn empty_diff_hint(root: &Path, budget: Option<i64>, diff_ref: &str) -> String {
     match budget {
         Some(0) => "--budget 0 selects only the changed code itself; omit --budget for auto sizing"
             .to_string(),
@@ -161,8 +162,17 @@ fn empty_diff_hint(budget: Option<i64>, diff_ref: &str) -> String {
         _ if diff_ref == "HEAD" => {
             "the working tree matches HEAD; try --diff HEAD~1 for the last commit".to_string()
         }
+        _ if is_duration_window(root, diff_ref) => {
+            format!("nothing changed in the last {diff_ref}; widen the window (e.g. --diff 7d)")
+        }
         _ => format!("check the range with: git diff --stat {diff_ref}"),
     }
+}
+
+fn is_duration_window(root: &Path, diff_ref: &str) -> bool {
+    _diffctx::git::resolve_duration_range(root, Some(diff_ref))
+        .map(|resolved| resolved.from_duration)
+        .unwrap_or(false)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -213,7 +223,11 @@ fn run_locate(
         eprintln!(
             "diffctx: diff produced no semantic context (clean working tree, binary-only, or \
              files over the size cap); {}",
-            empty_diff_hint(cli.budget, cli.diff_ref.as_deref().unwrap_or("HEAD"))
+            empty_diff_hint(
+                &cli.path,
+                cli.budget,
+                cli.diff_ref.as_deref().unwrap_or("HEAD")
+            )
         );
     }
     if !cli.quiet {
@@ -315,7 +329,11 @@ fn main() -> Result<()> {
         eprintln!(
             "diffctx: diff produced no semantic context (clean working tree, binary-only, or \
              files over the size cap); {}",
-            empty_diff_hint(cli.budget, cli.diff_ref.as_deref().unwrap_or("HEAD"))
+            empty_diff_hint(
+                &cli.path,
+                cli.budget,
+                cli.diff_ref.as_deref().unwrap_or("HEAD")
+            )
         );
     }
     if !cli.quiet {

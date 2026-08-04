@@ -265,7 +265,7 @@ class TestGetDiffContext:
     async def test_allowed_paths_enforcement(self, server, mcp_repo, monkeypatch):
         monkeypatch.setenv("DIFFCTX_ALLOWED_PATHS", "/some/other/path")
         args = {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD"}
-        with pytest.raises(ToolError, match="not in allowed paths"):
+        with pytest.raises(ToolError, match="outside the roots this server is allowed to read"):
             await server.call_tool("diffctx_context", args)
 
     @pytest.mark.asyncio
@@ -413,8 +413,19 @@ class TestSymlinkJail:
 
         monkeypatch.setenv("DIFFCTX_ALLOWED_PATHS", str(allowed))
         args = {"repo_path": str(link), "diff_ref": "HEAD"}
-        with pytest.raises(ToolError, match="not in allowed paths"):
+        with pytest.raises(ToolError, match="outside the roots this server is allowed to read") as exc:
             await server.call_tool("diffctx_context", args)
+        # A refusal must not name the link's TARGET: resolving the symlink is how
+        # the check works, and echoing the result would tell a caller that was
+        # just denied exactly what lies outside its jail (#147).
+        #
+        # Echoing the caller's own `repo_path` back is not disclosure — it is the
+        # argument they sent — and the distinction is pinned here so a later pass
+        # at "no absolute paths in errors" does not strip the one part of the
+        # message that says which input was refused.
+        message = str(exc.value)
+        assert str(outside.path) not in message
+        assert str(link) in message
 
     @pytest.mark.asyncio
     async def test_get_file_context_does_not_follow_symlink_out_of_repo(self, server, mcp_repo):
@@ -958,6 +969,37 @@ class TestProgressiveDisclosure:
         )
         assert "must-not-surface" not in text
         assert "API_TOKEN" not in text
+
+    @pytest.mark.asyncio
+    async def test_a_symlinked_directory_inside_the_repo_is_not_a_way_out(self, server, tmp_path):
+        """Found by the property fuzz, not by review (#147).
+
+        `escape/` lives inside the repository and points outside it, so the path
+        `escape/secret.txt` is lexically internal: the `..`-and-absolute check
+        that guards `fragment_ids` passed it, and the fetch read a file one
+        directory above the repo. Containment has to be decided after
+        resolution, and this pins that it is — the fuzz file is skipped wherever
+        hypothesis is absent.
+        """
+        root = tmp_path / "symlink_case"
+        (root / "outside").mkdir(parents=True)
+        (root / "outside" / "secret.txt").write_text("ESCAPED-must-not-surface\n")
+        repo = Pygit2Repo(root / "inside")
+        repo.add_file("src/app.py", "def run():\n    return 1\n")
+        repo.commit("initial")
+        (repo.path / "escape").symlink_to(root / "outside", target_is_directory=True)
+
+        text = _get_text(
+            await server.call_tool(
+                "diffctx_context",
+                {
+                    "repo_path": str(repo.path),
+                    "diff_ref": "HEAD",
+                    "fragment_ids": ["escape/secret.txt"],
+                },
+            )
+        )
+        assert "ESCAPED-must-not-surface" not in text
 
     @pytest.mark.asyncio
     async def test_an_id_escaping_the_repo_is_refused(self, server, mcp_repo, tmp_path):

@@ -103,7 +103,20 @@ def _empty_diff_hint(args: ParsedArgs) -> str:
         return f"--budget {args.budget} may be too small to fit any fragment; raise it or omit for auto sizing"
     if args.diff_range == "HEAD":
         return "the working tree matches HEAD; try --diff HEAD~1 for the last commit"
+    if _is_duration_range(args):
+        return f"nothing changed in the last {args.diff_range}; widen the window (e.g. --diff 7d)"
     return f"check the range with: git diff --stat {args.diff_range}"
+
+
+def _is_duration_range(args: ParsedArgs) -> bool:
+    from ._native.pipeline import resolve_diff_range
+
+    if not args.diff_range:
+        return False
+    try:
+        return resolve_diff_range(args.root_dir, args.diff_range) != args.diff_range
+    except Exception:
+        return False
 
 
 def _warn_empty_diff_result(result: dict[str, Any], prog: str, args: ParsedArgs) -> None:

@@ -120,6 +120,111 @@ fn validate_rev(rev: &str) -> Result<()> {
     Ok(())
 }
 
+static DURATION_PART_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r"(?i)^(\d{1,9})\s*(weeks?|w|days?|d|hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s)",
+    )
+    .unwrap()
+});
+
+/// `--diff 24h` / `8d` / `1h30m`: a Go-style duration, not a revision.
+///
+/// Only a whole spec of `<number><unit>` components counts; anything left over
+/// makes the whole string a revision again, so `8dd` still reaches git as a ref.
+fn parse_duration_seconds(spec: &str) -> Option<u64> {
+    let mut rest = spec.trim();
+    if rest.is_empty() {
+        return None;
+    }
+    let mut total: u64 = 0;
+    while !rest.is_empty() {
+        let caps = DURATION_PART_RE.captures(rest)?;
+        let count: u64 = caps[1].parse().ok()?;
+        let unit_seconds = match caps[2].to_ascii_lowercase().as_str() {
+            "w" | "week" | "weeks" => 7 * 24 * 3600,
+            "d" | "day" | "days" => 24 * 3600,
+            "h" | "hr" | "hrs" | "hour" | "hours" => 3600,
+            "m" | "min" | "mins" | "minute" | "minutes" => 60,
+            _ => 1,
+        };
+        total = total.checked_add(count.checked_mul(unit_seconds)?)?;
+        rest = rest[caps[0].len()..].trim_start();
+    }
+    Some(total)
+}
+
+pub struct ResolvedRange {
+    pub range: Option<String>,
+    /// A duration resolves against the live working tree, so untracked files
+    /// belong in the change set exactly as they do for a bare `--diff`.
+    pub from_duration: bool,
+}
+
+impl ResolvedRange {
+    fn verbatim(diff_range: Option<&str>) -> Self {
+        Self {
+            range: diff_range.map(str::to_string),
+            from_duration: false,
+        }
+    }
+}
+
+/// The oid of the empty tree, used as the base when the repository is younger
+/// than the requested window: every file is then genuinely new within it.
+/// Derived from the repo's hash algorithm rather than hardcoded to sha1.
+fn empty_tree_oid(repo_root: &Path) -> String {
+    const SHA1_EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"; // pragma: allowlist secret
+    const SHA256_EMPTY_TREE: &str =
+        "6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321"; // pragma: allowlist secret
+    match run_git(repo_root, &["rev-parse", "--show-object-format"]) {
+        Ok(format) if format.trim() == "sha256" => SHA256_EMPTY_TREE.to_string(),
+        _ => SHA1_EMPTY_TREE.to_string(),
+    }
+}
+
+fn rev_exists(repo_root: &Path, rev: &str) -> bool {
+    if validate_rev(rev).is_err() {
+        return false;
+    }
+    let spec = format!("{rev}^{{commit}}");
+    run_git(repo_root, &["rev-parse", "--verify", "--quiet", &spec]).is_ok()
+}
+
+/// Resolves a duration spec to the last commit before the window.
+///
+/// Every other range is left untouched. `git diff <that commit>` covers both
+/// the commits made inside the window and the uncommitted work on top.
+///
+/// A ref that happens to look like a duration (a branch `24h`, an abbreviated
+/// sha `24d`) keeps its git meaning: the revision is probed first, so no
+/// existing invocation changes behaviour.
+pub fn resolve_duration_range(repo_root: &Path, diff_range: Option<&str>) -> Result<ResolvedRange> {
+    let Some(spec) = diff_range else {
+        return Ok(ResolvedRange::verbatim(None));
+    };
+    let trimmed = spec.trim();
+    let Some(seconds) = parse_duration_seconds(trimmed) else {
+        return Ok(ResolvedRange::verbatim(diff_range));
+    };
+    if rev_exists(repo_root, trimmed) {
+        return Ok(ResolvedRange::verbatim(diff_range));
+    }
+    // git owns the calendar arithmetic (local timezone, DST) via approxidate.
+    let before = format!("--before={seconds} seconds ago");
+    let base = run_git(repo_root, &["rev-list", "-1", &before, "HEAD", "--"])
+        .map(|out| out.trim().to_string())
+        .unwrap_or_default();
+    let base = if base.is_empty() {
+        empty_tree_oid(repo_root)
+    } else {
+        base
+    };
+    Ok(ResolvedRange {
+        range: Some(base),
+        from_duration: true,
+    })
+}
+
 /// Always targets the repo via `-C`.
 ///
 /// Repo-locating variables inherited from a parent process (e.g. a git
@@ -1300,6 +1405,114 @@ mod tests {
                 "expected {legit:?} to be accepted"
             );
         }
+    }
+
+    // --- duration ranges: `--diff 24h` is a window, not a revision ---
+
+    #[test]
+    fn duration_specs_cover_the_standard_units_and_compose() {
+        for (spec, expected) in [
+            ("5s", 5),
+            ("90 sec", 90),
+            ("10min", 600),
+            ("45m", 2700),
+            ("24h", 86_400),
+            ("3hrs", 10_800),
+            ("8d", 691_200),
+            ("2 weeks", 1_209_600),
+            ("1h30m", 5400),
+            ("1D", 86_400),
+        ] {
+            assert_eq!(
+                parse_duration_seconds(spec),
+                Some(expected),
+                "spec {spec:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn anything_that_is_not_wholly_a_duration_stays_a_revision() {
+        for spec in [
+            "HEAD",
+            "HEAD~1..HEAD",
+            "main",
+            "8dd",
+            "24",
+            "h",
+            "v1.2",
+            "",
+            "1h-",
+            "deadbeef",
+        ] {
+            assert_eq!(parse_duration_seconds(spec), None, "spec {spec:?}");
+        }
+    }
+
+    #[test]
+    fn a_duration_resolves_to_the_last_commit_before_the_window() {
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path();
+        init_git_repo(root);
+        write_file(root, "old.txt", "old\n");
+        // `--before` filters on the committer date, so backdating the author
+        // date alone would leave this commit inside the window.
+        git(root, &["add", "-A"]);
+        let status = git_command(root)
+            .args(["commit", "-q", "-m", "old"])
+            .env("GIT_AUTHOR_DATE", "2020-01-01T00:00:00+00:00")
+            .env("GIT_COMMITTER_DATE", "2020-01-01T00:00:00+00:00")
+            .status()
+            .expect("commit");
+        assert!(status.success());
+        let old_head = run_git(root, &["rev-parse", "HEAD"])
+            .expect("rev-parse")
+            .trim()
+            .to_string();
+        write_file(root, "new.txt", "new\n");
+        commit_all(root, "new");
+
+        let resolved = resolve_duration_range(root, Some("24h")).expect("resolve");
+        assert!(resolved.from_duration);
+        assert_eq!(resolved.range.as_deref(), Some(old_head.as_str()));
+
+        let diff = get_diff_text(root, resolved.range.as_deref()).expect("diff");
+        assert!(diff.contains("new.txt"), "window must cover the new commit");
+        assert!(
+            !diff.contains("old.txt"),
+            "window must exclude the commit before it"
+        );
+    }
+
+    #[test]
+    fn a_window_older_than_the_repo_falls_back_to_the_empty_tree() {
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path();
+        init_git_repo(root);
+        write_file(root, "only.txt", "only\n");
+        commit_all(root, "only");
+
+        let resolved = resolve_duration_range(root, Some("1w")).expect("resolve");
+        assert!(resolved.from_duration);
+        let diff = get_diff_text(root, resolved.range.as_deref()).expect("diff");
+        assert!(
+            diff.contains("only.txt"),
+            "a repo younger than the window is entirely new within it"
+        );
+    }
+
+    #[test]
+    fn a_ref_that_looks_like_a_duration_keeps_its_git_meaning() {
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path();
+        init_git_repo(root);
+        write_file(root, "a.txt", "a\n");
+        commit_all(root, "a");
+        git(root, &["branch", "24h"]);
+
+        let resolved = resolve_duration_range(root, Some("24h")).expect("resolve");
+        assert!(!resolved.from_duration);
+        assert_eq!(resolved.range.as_deref(), Some("24h"));
     }
 
     // --- parse_verbose_ignore_records: NUL fields remove every delimiter guess ---

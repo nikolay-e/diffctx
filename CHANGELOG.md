@@ -9,6 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`--diff <duration>`** — a time window instead of a revision: `24h`, `8d`,
+  `90min`, `1h30m`, `2w` (units `s`, `m`/`min`, `h`, `d`, `w`, composable). The
+  window resolves to the last commit before it and diffs the working tree
+  against that, so one flag covers the commits made inside the window plus the
+  uncommitted and untracked work on top — the "what have I touched today"
+  question, which previously meant counting `HEAD~n` by hand. A window older
+  than the repository falls back to the empty tree, so nothing is silently
+  dropped. Both CLIs and the MCP `diff_ref` share the resolver; a ref that
+  happens to look like a duration (a branch `24h`, an abbreviated sha) is
+  probed first and keeps its git meaning, so no existing invocation changes.
+
+- **`locate` discloses its own blind spots** — a `coverage` block and an
+  `overflow` ranking, both omitted when there is nothing to report so a clean
+  run costs no tokens. Trust drives repeat calls: an agent told honestly where
+  the selection is thin can grep the gap itself, while one told nothing has to
+  distrust the whole answer.
+
+  `coverage.unparsed_files` names changed files whose language diffctx claims to
+  parse but which yielded no symbol-level structure — nothing else in the output
+  says the parser came back empty there. `zero_edge_files` names changed files
+  with no graph edge in either direction, where relevance had no path to travel.
+  `ppr_truncated` reports a diffusion cut short by its push cap.
+  `overflow` ranks the admitted candidates that did not fit, with a one-line
+  `why` and no bodies, capped at 50 entries against a full `overflow_count`.
+
+  `coverage.next_up` counts how many of those a 25% larger budget would admit,
+  and is zero when the budget was not what stopped selection — at `--budget -1`
+  nothing is crowded out by tokens, so there is nothing to report. It feeds a
+  documented `confidence` heuristic in [0, 1]
+  (`parsed_share * linked_share * fit_share`, less 0.1 when PPR truncated),
+  which says how much of the changed surface the run could see and fit and
+  deliberately does **not** claim the selection is correct. Pack output is
+  byte-unchanged — verified against the full 2902-case corpus (#136).
 - **`--scoring pit`** — percentile fusion, the successor to `rrf`. Both blend
   the structural (`ego`) and lexical (`bm25`) signals over the same candidate
   universe; the difference is what is blended. `rrf` reduces each component to a
@@ -23,6 +56,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `DIFFCTX_PIT_AGREEMENT_TOP_K=20`. Measured on the full corpus it recovers 40 of
   those 79 cases (`rrf` 450 below-threshold, `pit` 410) and still trails `ego`
   (371), so **`ego` remains the default** and fusion has yet to earn it (#125).
+
+  Ablations settled *why*, and the answer is not calibration. At `blend=1.0` the
+  lexical arm contributes nothing to the score, and fusion still scores 388
+  against ego's 371 — so no mixing weight can recover the gap. Substituting the
+  identity for the percentile at that blend reproduces ego **exactly** (371),
+  which rules out every other difference between the fusion path and ego: the
+  restricted score map, the max-normalisation with cores pinned to 1.0, and
+  `finish_scoring` over the pre-filtered union all cost zero. The entire
+  structural gap belongs to the transform.
+
+  `DIFFCTX_PIT_TRANSFORM=maxnorm` fuses the components on their rescaled scores
+  instead of their distributional position, and dominates the percentile at
+  every blend measured (371 / 371 / 380 / 396 at blend 1.00 / 0.95 / 0.85 / 0.65
+  against 388 and 412 for the percentile). It still does not beat ego: both
+  curves rise monotonically with lexical weight, so in both families the optimum
+  sits at zero lexical weight.
+
+  One number invites a wrong reading: `--scoring bm25` alone scores 124, far
+  ahead of ego's 371. It is not better — it emits a median of 6 fragments to
+  ego's 10, half of them the change itself, and 71% of its failures are lost
+  recall against ego's 19%. The corpus metric `recall * (1 - forbidden_rate)`
+  has no over-selection term and a saturating forbidden term, so it rewards
+  conservatism; the comparison is a metric artefact, not a ranking result.
 - **`--scoring rrf`** — reciprocal-rank fusion of the structural (`ego`) and
   lexical (`bm25`) signals: each ranks the same candidate universe, and a
   fragment scores `Σ 1/(k + rank_i)` with `k=60` (`DIFFCTX_RRF_K`). Fusion on
@@ -55,6 +111,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exercise git's real rename path instead of silently degrading to adds
   (#176).
 
+### Security
+
+- **A symlinked directory inside a repository was a way out of it.** The
+  `fragment_ids` reader checked containment lexically — rejecting `..` and
+  absolute paths — which admits `escape/secret.txt` where `escape/` is a symlink
+  pointing above the repository root. A property fuzz over hostile path shapes
+  found it reading a planted file outside the jail. Containment is now decided
+  after resolution, the fuzz runs in CI, and the case is pinned separately so it
+  holds where hypothesis is unavailable.
+- **Releases are verifiable.** Every artifact attached to a release — wheels,
+  sdist, standalone binaries and the SBOM itself — now carries signed SLSA build
+  provenance from the release workflow's OIDC identity
+  (`gh attestation verify <file> --repo nikolay-e/diffctx`), PyPI uploads state
+  `attestations: true` explicitly rather than relying on an action default that
+  has changed between versions, and a CycloneDX SBOM ships as a release asset.
+  The binaries are what this is for: unlike the wheels they had no package index
+  vouching for them. SECURITY.md documents the verification commands.
+- **Error payloads no longer disclose resolved paths.** A refusal used to name
+  the path the filesystem resolved to, which told a caller that had just been
+  denied exactly what lay outside its jail; and an `OSError` rendered with its
+  absolute filename into returned content. Messages now echo only the argument
+  the caller supplied, and carry no traceback (#147).
+
 ### Changed
 
 - **MCP: one tool instead of three.** `get_diff_context` becomes
@@ -76,6 +155,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   everywhere else (#127).
 
 ### Fixed
+
+- **`--scoring pit` was rejected by both CLIs.** The engine, the MCP server and
+  the eval harness all accepted the mode, while `diffctx --scoring pit` and the
+  standalone binary refused it: each CLI enumerated the accepted values in its
+  own literal, and neither was updated when the mode landed. Both now read
+  `SCORING_MODES` from the engine, and a test pins the list in both directions —
+  a mode the engine parses but does not advertise is as much a defect as the
+  reverse (#125).
 
 - **`.diffctx/ignore` no longer stops applying when `git check-ignore` fails or
   when a path contains a newline.** Two holes, both silent. The batched check

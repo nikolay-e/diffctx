@@ -71,6 +71,14 @@ builds a code graph (imports, co-changes, type refs), propagates relevance
 outward from the changed lines, and stops when relevance drops below `--tau` or
 the `--budget` token cap is hit.
 
+`--diff` takes a git range (`HEAD~1..HEAD`, `main..feature`) or a **duration
+window ending now** — `24h`, `8d`, `90min`, `1h30m`, `2w` (units `s`, `m`/`min`,
+`h`, `d`, `w`, composable). A window diffs the working tree against the last
+commit before it, so it covers the commits made inside the window *plus* the
+uncommitted and untracked work on top — `diffctx . --diff 24h` is "everything I
+touched today". A ref that happens to look like a duration (a branch `24h`)
+keeps its git meaning.
+
 | Flag        | Default | Description                                                              |
 |-------------|---------|--------------------------------------------------------------------------|
 | `--scoring` | `ego`   | `ego` = bounded expansion around changed nodes (fast, predictable radius); `ppr` = Personalized PageRank (global, smoother decay, slower); `bm25` = lexical retrieval against the diff hunks (baseline for sparse graphs); `rrf` = reciprocal-rank fusion of `ego` and `bm25` (widest recall, no scale calibration between the two signals) |
@@ -80,7 +88,7 @@ the `--budget` token cap is hit.
 | `--full`    | false   | Only the changed files, every fragment, no related-code context          |
 | `--timeout` | 300     | Wall-clock deadline in seconds; on expiry diffctx exits 124 instead of hanging |
 | `--with-raw-diff` | false | Also embed git's raw unified diff ahead of the selected fragments — additive (selection unchanged), not charged to `--budget`, lock/ignored/secret-like sections omitted. Python CLI only |
-| `--mode` | `pack` | `locate` emits the same ranked selection as compact `diffctx.locate.v1` JSON — path, lines, score, provenance reasons, a blast-radius `summary` and per-item impact `group` (`test`/`type`/`config`), NO source bodies. `diffctx . --diff --mode locate` = impact of your uncommitted change. The MCP tool takes it as `mode="locate"` |
+| `--mode` | `pack` | `locate` emits the same ranked selection as compact `diffctx.locate.v1` JSON — path, lines, score, provenance reasons, a blast-radius `summary` and per-item impact `group` (`test`/`type`/`config`), NO source bodies. Adds a `coverage` block naming what the run could not see (`unparsed_files`, `zero_edge_files`, `ppr_truncated`, `next_up`, a heuristic `confidence`) and an `overflow` ranking of what the budget left behind — omitted entirely when there is nothing to disclose. `diffctx . --diff --mode locate` = impact of your uncommitted change. The MCP tool takes it as `mode="locate"` |
 
 ### `graph` subcommand
 
@@ -109,6 +117,8 @@ diffctx . -i custom.ignore                # custom ignore patterns
 diffctx . --diff                          # uncommitted changes (working tree vs HEAD)
 diffctx . --diff HEAD~1                   # context for last commit
 diffctx . --diff main..feature            # context for feature branch
+diffctx . --diff 24h                      # everything changed in the last 24 hours
+diffctx . --diff 8d                       # same over 8 days (also 90s, 10min, 1h30m, 2w)
 diffctx . --diff HEAD~1 --budget 30000    # limit to ~30k tokens
 diffctx . --diff HEAD~1 -c                # diff context to clipboard
 diffctx . --diff HEAD~1 --with-raw-diff   # raw patch + selected context

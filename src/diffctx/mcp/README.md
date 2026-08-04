@@ -55,7 +55,19 @@ Two-call flow: rank first, then read only what you chose.
 
 1. `mode="locate"` (**default**) returns compact `diffctx.locate.v1` JSON — the
    ranked selection as a navigation list with line spans, scores and provenance
-   reasons, and no source bodies. A few hundred tokens.
+   reasons, and no source bodies. Cost scales with the number of ranked items,
+   not with their source: a few hundred tokens for a small change, ~1.9k for a
+   38-item ranking on a large one — against the thousands a pack of the same
+   selection costs.
+
+   The ranking also discloses its own gaps when it has any: a `coverage` block
+   (changed files the parser could not see inside, changed files with no graph
+   edge, a truncated diffusion, and a heuristic `confidence`) and an `overflow`
+   ranking of candidates the budget left behind, with reasons and no bodies.
+   Both are omitted when there is nothing to report, so a clean run pays
+   nothing for them. Treat `confidence` as what it is documented to be — how
+   much of the changed surface the run could see and fit, not a claim that the
+   selection is right.
 2. Pass ids built from that ranking's own fields — `"<path>:<lines>"`, e.g.
    `"src/calc.py:12-40"` — back as `fragment_ids` to get their source.
 
