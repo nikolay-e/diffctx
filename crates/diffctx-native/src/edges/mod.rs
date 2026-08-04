@@ -129,6 +129,10 @@ pub fn collect_capped_edges(
             (category, category_weights.multiplier(category))
         })
         .collect();
+    let fallback_flags: Vec<bool> = all_builders
+        .iter()
+        .map(|(_, builder)| builder.is_fallback())
+        .collect();
 
     let per_builder_log: Vec<Vec<LoggedEmission>> = all_builders
         .par_iter()
@@ -158,6 +162,35 @@ pub fn collect_capped_edges(
         })
         .collect();
     drop(all_builders);
+
+    // Fallback builders (tags) only count where the dedicated builders came
+    // back empty: an emission survives only if at least one endpoint file has
+    // no dedicated semantic edge. Dual coverage was measured as pure noise —
+    // a tags edge duplicating a real import/call edge adds mass, not reach —
+    // while a parser-degraded file genuinely has nothing else (#131).
+    let mut per_builder_log = per_builder_log;
+    if fallback_flags.iter().any(|&f| f) {
+        let mut dedicated_files: FxHashSet<&str> = FxHashSet::default();
+        for (builder_idx, log) in per_builder_log.iter().enumerate() {
+            if fallback_flags[builder_idx] || builder_meta[builder_idx].0 != EdgeCategory::Semantic
+            {
+                continue;
+            }
+            for e in log {
+                dedicated_files.insert(idx_to_node[e.src as usize].path.as_ref());
+                dedicated_files.insert(idx_to_node[e.dst as usize].path.as_ref());
+            }
+        }
+        for (builder_idx, log) in per_builder_log.iter_mut().enumerate() {
+            if !fallback_flags[builder_idx] {
+                continue;
+            }
+            log.retain(|e| {
+                !dedicated_files.contains(idx_to_node[e.src as usize].path.as_ref())
+                    || !dedicated_files.contains(idx_to_node[e.dst as usize].path.as_ref())
+            });
+        }
+    }
 
     let n_nodes = idx_to_node.len();
     let mut in_degree = vec![0u32; n_nodes];
@@ -291,4 +324,67 @@ pub fn discover_all_related_files(
     let mut result: Vec<PathBuf> = discovered.into_keys().collect();
     result.sort();
     result
+}
+
+#[cfg(test)]
+mod fallback_gate_tests {
+    use super::*;
+    use rustc_hash::FxHashSet as Set;
+    use std::sync::Arc;
+
+    fn frag(path: &str, content: &str, idents: &[&str]) -> Fragment {
+        Fragment {
+            id: crate::types::FragmentId::new(Arc::from(path), 1, 10),
+            kind: crate::types::FragmentKind::Function,
+            content: Arc::from(content),
+            identifiers: idents.iter().map(|s| s.to_string()).collect::<Set<_>>(),
+            token_count: 10,
+            symbol_name: None,
+        }
+    }
+
+    #[test]
+    fn tags_edges_survive_only_where_dedicated_builders_came_back_empty() {
+        // a.py <-> b.py carry a dedicated import edge; a.py and c.py share an
+        // identifier but nothing imports between them. Two .xyz files have no
+        // dedicated builder at all and share the same identifier.
+        let fragments = vec![
+            frag(
+                "proj/a.c",
+                "#include \"bdep.h\"\nint zzcommonzz;\n",
+                &["zzcommonzz"],
+            ),
+            frag("proj/bdep.h", "int bdecl(void);\n", &["bdecl"]),
+            frag(
+                "proj/c.c",
+                "#include \"ddep.h\"\nint zzcommonzz;\n",
+                &["zzcommonzz"],
+            ),
+            frag("proj/ddep.h", "int ddecl(void);\n", &["ddecl"]),
+            frag("proj/u1.xyz", "zzcommonzz here\n", &["zzcommonzz"]),
+            frag("proj/u2.xyz", "zzcommonzz there\n", &["zzcommonzz"]),
+        ];
+        let capped = collect_capped_edges(&fragments, None, false);
+        let node_path = |idx: u32| capped.idx_to_node[idx as usize].path.clone();
+        // Category matters: a.py and c.py legitimately share a structural
+        // sibling edge; the class under test is the SEMANTIC tags link.
+        let has = |a: &str, b: &str| {
+            capped.edges.iter().any(|e| {
+                if e.category != EdgeCategory::Semantic {
+                    return false;
+                }
+                let s = node_path(e.src);
+                let d = node_path(e.dst);
+                (s.ends_with(a) && d.ends_with(b)) || (s.ends_with(b) && d.ends_with(a))
+            })
+        };
+        assert!(
+            has("u1.xyz", "u2.xyz"),
+            "fallback must still connect files no dedicated builder covers"
+        );
+        assert!(
+            !has("a.c", "c.c"),
+            "a tags-only link between two dedicated-covered files is the measured noise class (#131)"
+        );
+    }
 }

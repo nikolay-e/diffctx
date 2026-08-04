@@ -29,6 +29,14 @@ pub trait EdgeBuilder: Send + Sync {
     fn is_expensive(&self) -> bool {
         false
     }
+
+    /// A coverage-of-last-resort builder: its edges only count where the
+    /// dedicated builders produced nothing. The dual-coverage attempt this
+    /// gate encodes was measured as a 100% noise regression (#131) — tags
+    /// edges duplicating real semantic edges add no reach, only mass.
+    fn is_fallback(&self) -> bool {
+        false
+    }
 }
 
 static INDEX_FILE_STEMS: Lazy<FxHashSet<&str>> =

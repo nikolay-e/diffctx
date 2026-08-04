@@ -198,6 +198,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   2-line edit in a 100-line function shipped 81 lines of the body it had just
   compressed. Context candidates that are slices of a core fragment's span
   are now dropped; signature stubs stay.
+- **Tags edges are now a fallback, not dual coverage** (#131). The
+  identifier-pair builder ran unconditionally, duplicating every dedicated
+  semantic edge with same-weight noise; its emissions now survive only where
+  at least one endpoint file has no dedicated semantic edge at all. Largest
+  single corpus improvement on record: 118 cases fixed, 29 broken (net −89;
+  baseline 371 → 281, one stale Swift `xfail` retired). On real commits the
+  weakest measured languages double their nontrivial recall (Swift 0.049 →
+  0.104, Elixir 0.059 → 0.137) with Tier-1 languages unchanged; the two
+  concentrated losses (C#, Scala one-hop reach that only tags provided) are
+  the named target of the dedicated-builder work in #179.
 - **A gitignore negation no longer excludes the file it un-ignores** (#193).
   `check-ignore -v` prints a record when the last matching pattern is a
   negation — the path is then explicitly NOT ignored — and the record parser
