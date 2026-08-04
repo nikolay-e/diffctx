@@ -133,6 +133,7 @@ it) to enable the sweep without rebuild.
 | `PIT.blend` (structural share of percentile fusion) | `DIFFCTX_PIT_BLEND`                                    | 0.65    |
 | `PIT.agreement_bonus` (both-signals-agree bonus) | `DIFFCTX_PIT_AGREEMENT_BONUS`                            | 0.10    |
 | `PIT.agreement_top_k` (agreement window)         | `DIFFCTX_PIT_AGREEMENT_TOP_K`                            | 20      |
+| `MODE.bm25_top_k_primary` (lexical discovery breadth) | `DIFFCTX_BM25_DISCOVERY_TOP_K`                      | 1       |
 | Graph traversal radius                           | `DIFFCTX_OP_GRAPH_DEPTH`                                 | 2       |
 | `UTILITY.eta` ($\eta$)                           | `DIFFCTX_OP_UTILITY_ETA`                                 | 0.20    |
 | `UTILITY.structural_bonus_weight`                | `DIFFCTX_OP_UTILITY_STRUCTURAL_BONUS_WEIGHT`             | 0.10    |

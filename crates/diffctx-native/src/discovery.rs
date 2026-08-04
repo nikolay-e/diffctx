@@ -311,11 +311,19 @@ impl EnsembleDiscovery {
     }
 
     pub fn default_ensemble() -> Self {
+        // The lexical channel's breadth into the candidate universe. The
+        // shipped 1 means BM25 contributes a single file to discovery; measured
+        // on dcbench, 79% of nontrivial gold never enters the universe at all,
+        // and most of it shares 3+ path tokens with the diff — exactly what a
+        // wider lexical channel would surface. Env-gated for the universe
+        // ablation (#130); unset, behaviour is byte-identical to before.
+        let bm25_k =
+            crate::config::env_overrides::read_env_usize("DIFFCTX_BM25_DISCOVERY_TOP_K", 1);
         Self {
             strategies: vec![
                 Box::new(DefaultDiscovery),
                 Box::new(TestFileDiscovery),
-                Box::new(BM25Discovery::new(1)),
+                Box::new(BM25Discovery::new(bm25_k)),
             ],
         }
     }
