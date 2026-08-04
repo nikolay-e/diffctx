@@ -186,7 +186,7 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
         let mut type_def_files: FxHashMap<String, FxHashSet<Arc<str>>> = FxHashMap::default();
         let mut frag_own_defs: FxHashMap<FragmentId, FxHashSet<String>> = FxHashMap::default();
 
-        let mut push_file_key =
+        let push_file_key =
             |map: &mut FxHashMap<String, Vec<Arc<str>>>, key: String, f: &Fragment| {
                 let bucket = map.entry(key).or_default();
                 if !bucket.contains(&f.id.path) {

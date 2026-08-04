@@ -32,7 +32,11 @@ pub fn check_compute_deadline(phase: &str) {
         return;
     }
     let now_ms = ANCHOR.elapsed().as_millis() as u64;
-    if now_ms > deadline {
+    check_expired(now_ms, deadline, phase);
+}
+
+fn check_expired(now_ms: u64, deadline_ms: u64, phase: &str) {
+    if now_ms > deadline_ms {
         panic!("diffctx compute deadline exceeded during {phase}");
     }
 }
@@ -41,15 +45,20 @@ pub fn check_compute_deadline(phase: &str) {
 mod tests {
     use super::*;
 
+    // The expiry check is tested against the pure comparison, not the
+    // process-global atomic: an expired global deadline is visible to every
+    // rayon worker in the test process, so mutating it here made any
+    // concurrently running graph test flakily panic mid-build.
     #[test]
     fn an_expired_deadline_panics_with_the_phase_name() {
-        set_compute_deadline(0);
-        std::thread::sleep(std::time::Duration::from_millis(5));
-        let err = std::panic::catch_unwind(|| check_compute_deadline("edge construction"))
+        let err = std::panic::catch_unwind(|| check_expired(6, 1, "edge construction"))
             .expect_err("deadline did not fire");
         let msg = err.downcast_ref::<String>().cloned().unwrap_or_default();
         assert!(msg.contains("edge construction"), "message was: {msg}");
-        // Reset so other tests in the process are unaffected.
-        DEADLINE_MS.store(0, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn an_unexpired_deadline_does_not_fire() {
+        check_expired(1, 6, "edge construction");
     }
 }

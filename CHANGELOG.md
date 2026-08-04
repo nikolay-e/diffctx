@@ -164,6 +164,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **C# and Scala regained real cross-file reach after the tags gate** (#131,
+  #179). The tags fallback had been these languages' only working linkage:
+  Scala's import regex captured a truncated prefix (`com.foo.` instead of
+  `com.foo.Bar`), so production Scala produced literally zero import edges;
+  chained `package` clauses and `package object` parsed wrong; C# `using`
+  resolution required the namespace declaration to sit in the same fragment
+  as the lookup key, which per-method fragmentation almost never satisfies.
+  Scala imports are now parsed structurally (brace selectors `{A, B => C}`,
+  wildcards `._`/`.*`/`given`, object-rooted prefixes like `Tables._`), the
+  C# `using` regex accepts aliases, and both builders gained a member-use
+  channel: a `receiver.member(...)` call site links to the fragments defining
+  that member, but only between file pairs already related through an import,
+  a named type, or inheritance — a name match alone stays tags-grade evidence
+  and is dropped. Type-name lookups now carry the same ≤8-file ambiguity bar
+  as the C-family builder instead of fanning out unbounded. Corpus: 19 cases
+  fixed / 1 broken (281 → 263 known-below-threshold), including 13 of the 14
+  C#/Scala one-hop cases the tags gate broke.
+
 - **Graph construction no longer hangs on large repositories** (#116, #121).
   Four independent fan-out defects each produced tens of millions of edges on
   envoy-class repos (6k C-family files, 520 sharing the stem `config`):
