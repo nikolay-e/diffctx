@@ -583,13 +583,22 @@ jobs:
               except json.JSONDecodeError:
                   sys.exit(f"non-JSON-RPC line on stdout: {ln!r}")
 
-          init_result = next(r["result"] for r in responses if r.get("id") == 1)
+          def result_for(rpc_id):
+              for r in responses:
+                  if r.get("id") == rpc_id and "result" in r:
+                      return r["result"]
+              sys.exit(
+                  f"no result for id={rpc_id} on stdout; responses: {responses!r}\n"
+                  f"stderr:\n{proc.stderr}"
+              )
+
+          init_result = result_for(1)
           reported = init_result["serverInfo"]["version"]
           expected = os.environ["VERSION"]
           if reported != expected:
               sys.exit(f"server reports {reported}, expected {expected}")
 
-          tools = next(r["result"]["tools"] for r in responses if r.get("id") == 2)
+          tools = result_for(2)["tools"]
           names = sorted(t["name"] for t in tools)
           # The MCP surface is a single tool since the locate-first flow (#127).
           for required in ("diffctx_context",):
