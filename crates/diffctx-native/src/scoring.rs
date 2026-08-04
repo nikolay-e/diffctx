@@ -45,6 +45,7 @@ fn finish_scoring(
 ) -> Vec<Fragment> {
     let filtered = filtering::filter_unrelated_fragments(fragments, core_ids, graph);
     let filtered = filtering::filter_positive_relevance(filtered, core_ids, rel_scores);
+    let filtered = filtering::filter_core_slice_context(filtered, core_ids);
     filtering::cap_context_fragments(filtered, core_ids, rel_scores)
 }
 

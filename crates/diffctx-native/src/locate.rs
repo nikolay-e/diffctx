@@ -23,6 +23,10 @@ pub struct LocateOutput {
     pub renamed_files: Vec<RenameEntry>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub lockfile_changes: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub ignored_changes: Vec<String>,
+    #[serde(skip_serializing_if = "crate::render::is_zero_pub", default)]
+    pub policy_excluded_count: usize,
     pub budget_tokens: u32,
     /// Blast-radius counts over the ranked items (#135): distinct files,
     /// changed vs context fragments, and how many ranked items (changed or
@@ -509,6 +513,8 @@ pub fn build_locate(state: &ScoredState, outcome: &SelectionOutcome) -> LocateOu
             })
             .collect(),
         lockfile_changes: state.lockfile_changes.clone(),
+        ignored_changes: state.ignored_changes.clone(),
+        policy_excluded_count: state.policy_excluded_count,
         budget_tokens: outcome.effective_budget,
         summary: Summary {
             files: items

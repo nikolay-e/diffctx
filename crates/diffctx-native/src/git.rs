@@ -906,8 +906,26 @@ fn collect_diffctx_ignore_patterns(repo_root: &Path) -> Vec<String> {
 /// still excludes it, so `.diffctx/ignore` and per-directory `.gitignore`
 /// rules (#85) keep working.
 pub fn find_ignored_paths(repo_root: &Path, rel_paths: &[String]) -> FxHashSet<String> {
+    find_ignored_paths_with_source(repo_root, rel_paths)
+        .into_keys()
+        .collect()
+}
+
+/// Which rule family excluded a path. `.diffctx/ignore` is a declared
+/// confidentiality policy, so its exclusions are surfaced only as a count;
+/// gitignore exclusions are mundane and can be listed by path (#188).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum IgnoreSource {
+    DiffctxPolicy,
+    Gitignore,
+}
+
+pub fn find_ignored_paths_with_source(
+    repo_root: &Path,
+    rel_paths: &[String],
+) -> rustc_hash::FxHashMap<String, IgnoreSource> {
     if rel_paths.is_empty() {
-        return FxHashSet::default();
+        return rustc_hash::FxHashMap::default();
     }
 
     let diffctx_patterns = collect_diffctx_ignore_patterns(repo_root);
@@ -963,7 +981,7 @@ pub fn find_ignored_paths(repo_root: &Path, rel_paths: &[String]) -> FxHashSet<S
     // which needs no second thread to stay correct.
     let query_file = write_private_temp_file(&format!("{}\0", queries.join("\0")));
 
-    let result = (|| -> Result<FxHashSet<String>> {
+    let result = (|| -> Result<rustc_hash::FxHashMap<String, IgnoreSource>> {
         let Some(ref query_path) = query_file else {
             return Err(GitError::CommandFailed(
                 "could not stage check-ignore query paths".into(),
@@ -992,19 +1010,22 @@ pub fn find_ignored_paths(repo_root: &Path, rel_paths: &[String]) -> FxHashSet<S
 
         Ok(rel_paths
             .iter()
-            .filter(|rel| match rules.get(*rel) {
-                None => false,
-                Some(rule) => {
-                    let from_diffctx = excludes_source
-                        .as_deref()
-                        .is_some_and(|src| rule.starts_with(&format!("{src}:")));
-                    from_diffctx
-                        || !ancestor_dirs(rel)
-                            .iter()
-                            .any(|dir| rules.get(dir) == Some(rule))
+            .filter_map(|rel| {
+                let rule = rules.get(rel)?;
+                let from_diffctx = excludes_source
+                    .as_deref()
+                    .is_some_and(|src| rule.starts_with(&format!("{src}:")));
+                if from_diffctx {
+                    Some((rel.clone(), IgnoreSource::DiffctxPolicy))
+                } else if !ancestor_dirs(rel)
+                    .iter()
+                    .any(|dir| rules.get(dir) == Some(rule))
+                {
+                    Some((rel.clone(), IgnoreSource::Gitignore))
+                } else {
+                    None
                 }
             })
-            .cloned()
             .collect())
     })();
 
@@ -1039,13 +1060,16 @@ pub fn find_ignored_paths(repo_root: &Path, rel_paths: &[String]) -> FxHashSet<S
                 diffctx_patterns.len(),
                 rel_paths.len()
             );
-            rel_paths.iter().cloned().collect()
+            rel_paths
+                .iter()
+                .map(|p| (p.clone(), IgnoreSource::DiffctxPolicy))
+                .collect()
         } else {
             tracing::warn!(
                 "git check-ignore failed ({e}); no .diffctx/ignore patterns are declared, so \
                  gitignore filtering is skipped for this run"
             );
-            FxHashSet::default()
+            rustc_hash::FxHashMap::default()
         }
     })
 }

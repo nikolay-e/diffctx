@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -169,10 +170,29 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
         let reverse_factor = EDGE_WEIGHTS["c_include"].reverse_factor;
         let base_weight = C_FAMILY_SEMANTIC.base_weight;
 
-        let mut header_to_frags: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
+        // An include names a file, so its edge lands on the file's
+        // representative fragment (base::file_representatives — the sibling
+        // builder's long-standing semantics); the containment star carries the
+        // mass to the rest of the file. Buckets therefore hold file paths, and
+        // ambiguity is measured in files: a basename repeated across the tree
+        // is what makes an include unresolvable.
+        let owned: Vec<Fragment> = c_frags.iter().map(|f| (*f).clone()).collect();
+        let reps = super::super::base::file_representatives(&owned);
+        drop(owned);
+        let mut header_to_files: FxHashMap<String, Vec<Arc<str>>> = FxHashMap::default();
         let mut func_defs_map: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
+        let mut func_def_files: FxHashMap<String, FxHashSet<Arc<str>>> = FxHashMap::default();
         let mut type_defs_map: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
+        let mut type_def_files: FxHashMap<String, FxHashSet<Arc<str>>> = FxHashMap::default();
         let mut frag_own_defs: FxHashMap<FragmentId, FxHashSet<String>> = FxHashMap::default();
+
+        let mut push_file_key =
+            |map: &mut FxHashMap<String, Vec<Arc<str>>>, key: String, f: &Fragment| {
+                let bucket = map.entry(key).or_default();
+                if !bucket.contains(&f.id.path) {
+                    bucket.push(f.id.path.clone());
+                }
+            };
 
         for f in &c_frags {
             let path = Path::new(f.path());
@@ -185,16 +205,10 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_default();
 
-            header_to_frags.entry(name).or_default().push(f.id.clone());
+            push_file_key(&mut header_to_files, name, f);
             if !stem.is_empty() {
-                header_to_frags
-                    .entry(format!("{}.h", stem))
-                    .or_default()
-                    .push(f.id.clone());
-                header_to_frags
-                    .entry(format!("{}.hpp", stem))
-                    .or_default()
-                    .push(f.id.clone());
+                push_file_key(&mut header_to_files, format!("{stem}.h"), f);
+                push_file_key(&mut header_to_files, format!("{stem}.hpp"), f);
             }
 
             let (functions, types) = extract_definitions(&f.content);
@@ -204,6 +218,10 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
                     .entry(func.clone())
                     .or_default()
                     .push(f.id.clone());
+                func_def_files
+                    .entry(func.clone())
+                    .or_default()
+                    .insert(f.id.path.clone());
                 own_defs.insert(func.clone());
             }
             for t in &types {
@@ -211,10 +229,19 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
                     .entry(t.clone())
                     .or_default()
                     .push(f.id.clone());
+                type_def_files
+                    .entry(t.clone())
+                    .or_default()
+                    .insert(f.id.path.clone());
                 own_defs.insert(t.clone());
             }
             frag_own_defs.insert(f.id.clone(), own_defs);
         }
+
+        let max_files = C_FAMILY_SEMANTIC.max_files_per_name;
+        let unambiguous = |files: Option<&FxHashSet<Arc<str>>>| {
+            files.map(|s| s.len() <= max_files).unwrap_or(true)
+        };
 
         let mut edges: EdgeDict = FxHashMap::default();
 
@@ -225,9 +252,33 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
                 } else {
                     inc.clone()
                 };
-                for target_id in header_to_frags.get(&inc_name).unwrap_or(&vec![]) {
-                    if target_id != &f.id {
-                        add_edge(&mut edges, &f.id, target_id, include_weight, reverse_factor);
+                let Some(candidates) = header_to_files.get(&inc_name) else {
+                    continue;
+                };
+                // `#include "common/buffer/buffer_impl.h"` names one file; a
+                // candidate qualifies only if its path actually ends with the
+                // include's components. A bare `#include "config.h"` cannot be
+                // disambiguated that way, so it falls back to the basename
+                // bucket — bounded below, since envoy carries 256 `config.h`
+                // and linking to all of them is noise at quadratic cost.
+                let suffix = format!("/{inc}");
+                let matched: Vec<&Arc<str>> = if inc.contains('/') {
+                    candidates
+                        .iter()
+                        .filter(|p| p.as_ref() == inc || p.ends_with(&suffix))
+                        .collect()
+                } else {
+                    candidates.iter().collect()
+                };
+                if matched.is_empty() || matched.len() > max_files {
+                    continue;
+                }
+                for path in matched {
+                    let Some(rep) = reps.get(path.as_ref()) else {
+                        continue;
+                    };
+                    if rep != &f.id {
+                        add_edge(&mut edges, &f.id, rep, include_weight, reverse_factor);
                     }
                 }
             }
@@ -236,6 +287,9 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
             let (calls, type_refs) = extract_references(&f.content, &own_defs);
 
             for call in &calls {
+                if !unambiguous(func_def_files.get(call)) {
+                    continue;
+                }
                 for def_id in func_defs_map.get(call).unwrap_or(&vec![]) {
                     if def_id != &f.id {
                         add_edge(&mut edges, &f.id, def_id, call_weight, reverse_factor);
@@ -244,6 +298,9 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
             }
 
             for t in &type_refs {
+                if !unambiguous(type_def_files.get(t)) {
+                    continue;
+                }
                 for def_id in type_defs_map.get(t).unwrap_or(&vec![]) {
                     if def_id != &f.id {
                         add_edge(&mut edges, &f.id, def_id, type_weight, reverse_factor);
@@ -253,6 +310,9 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
 
             for cap in INHERITANCE_RE.captures_iter(&f.content) {
                 let base = cap[2].to_string();
+                if !unambiguous(type_def_files.get(&base)) {
+                    continue;
+                }
                 for def_id in type_defs_map.get(&base).unwrap_or(&vec![]) {
                     if def_id != &f.id {
                         add_edge(
@@ -267,32 +327,49 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
             }
         }
 
-        let mut by_stem: FxHashMap<String, Vec<&Fragment>> = FxHashMap::default();
+        // Header/impl pairing is scoped to the directory, the same call made
+        // for bare-stem discovery in c6694261: co-location is the rule's
+        // justification, and applied tree-wide it degenerates on exactly the
+        // stems real projects repeat most (envoy: 520 files with stem
+        // `config`, whose fragment-level cross product alone was tens of
+        // millions of edges).
+        let mut by_stem: FxHashMap<(String, String), Vec<&str>> = FxHashMap::default();
         for f in &c_frags {
-            let stem = Path::new(f.path())
+            let path = Path::new(f.path());
+            let stem = path
                 .file_stem()
                 .map(|s| s.to_string_lossy().to_lowercase())
                 .unwrap_or_default();
-            by_stem.entry(stem).or_default().push(f);
+            let dir = path
+                .parent()
+                .map(|d| d.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let bucket = by_stem.entry((dir, stem)).or_default();
+            if !bucket.contains(&f.path()) {
+                bucket.push(f.path());
+            }
         }
 
-        for (_stem, group) in &by_stem {
-            if group.len() < 2 {
+        // A header/impl pair is a relation between two files; representatives
+        // carry it, the containment star spreads it. Pairing every fragment
+        // with every fragment restated the same fact quadratically.
+        for (_key, files) in &by_stem {
+            if files.len() < 2 {
                 continue;
             }
-            let headers: Vec<&&Fragment> = group
+            let headers: Vec<&&str> = files
                 .iter()
-                .filter(|f| {
-                    HEADER_EXTENSIONS.contains(base::file_ext(Path::new(f.path())).as_str())
-                })
+                .filter(|p| HEADER_EXTENSIONS.contains(base::file_ext(Path::new(**p)).as_str()))
                 .collect();
-            let impls: Vec<&&Fragment> = group
+            let impls: Vec<&&str> = files
                 .iter()
-                .filter(|f| IMPL_EXTENSIONS.contains(base::file_ext(Path::new(f.path())).as_str()))
+                .filter(|p| IMPL_EXTENSIONS.contains(base::file_ext(Path::new(**p)).as_str()))
                 .collect();
             for h in &headers {
                 for imp in &impls {
-                    add_edge(&mut edges, &h.id, &imp.id, base_weight, reverse_factor);
+                    if let (Some(hr), Some(ir)) = (reps.get(**h), reps.get(**imp)) {
+                        add_edge(&mut edges, hr, ir, base_weight, reverse_factor);
+                    }
                 }
             }
         }

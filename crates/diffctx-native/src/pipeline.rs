@@ -50,6 +50,16 @@ pub struct ScoredState {
     /// Lock files touched by the range, paths only: the dependency bump is
     /// signal, the checksum churn is not (#112).
     pub lockfile_changes: Vec<String>,
+    /// Changed files withheld by ignore rules (.diffctx/ignore, gitignore).
+    /// Listed so the omission is visible: a reader of the output cannot
+    /// otherwise tell a file the diff never touched from one the tool
+    /// filtered, and #188 documents a reviewer concluding "no tests" from
+    /// exactly that silence.
+    pub ignored_changes: Vec<String>,
+    /// Changed files withheld by `.diffctx/ignore`. Count only: the policy's
+    /// point is that these paths stay out of the artifact (#85), but a bare
+    /// number still tells the reader the output is deliberately incomplete.
+    pub policy_excluded_count: usize,
     /// Which discovery strategy first surfaced each discovered path.
     ///
     /// Read-only telemetry for the universe ceiling (#130): without it, a gold
@@ -205,6 +215,7 @@ pub fn compute_scored_state(
 ) -> Result<ScoredState> {
     let t_entry = Instant::now();
     git::set_git_timeout(timeout);
+    crate::deadline::set_compute_deadline(timeout);
     let root_dir = resolve_repo_root(root_dir)?;
     if alpha <= 0.0 || alpha >= 1.0 {
         anyhow::bail!("alpha must be in (0, 1), got {}", alpha);
@@ -249,6 +260,26 @@ pub fn compute_scored_state(
     }
 
     let ignored_rel_paths = resolve_ignored_paths(&root_dir, &hunks);
+    // gitignore-excluded changed files are listed by path; `.diffctx/ignore`
+    // is a declared confidentiality policy, so its exclusions surface as a
+    // count only — re-publishing the very paths the user asked to withhold
+    // would undo the policy (#85), while total silence misreads as "the diff
+    // did not touch this" (#188).
+    let mut ignored_display: Vec<String> = Vec::new();
+    let mut policy_excluded = 0usize;
+    for h in &hunks {
+        let p = Path::new(&*h.path);
+        let Some(rel) = rel_path_string(&root_dir, p) else {
+            continue;
+        };
+        match ignored_rel_paths.get(&rel) {
+            Some(git::IgnoreSource::Gitignore) => ignored_display.push(rel),
+            Some(git::IgnoreSource::DiffctxPolicy) => policy_excluded += 1,
+            None => {}
+        }
+    }
+    ignored_display.sort();
+    ignored_display.dedup();
     hunks.retain(|h| !is_ignored_path(&root_dir, Path::new(&*h.path), &ignored_rel_paths));
 
     let mut lockfile_display: Vec<String> = hunks
@@ -263,6 +294,8 @@ pub fn compute_scored_state(
     if hunks.is_empty() {
         let mut state = empty_scored_state_with_changes(root_dir, diff_range);
         state.lockfile_changes = lockfile_display;
+        state.ignored_changes = ignored_display;
+        state.policy_excluded_count = policy_excluded;
         return Ok(state);
     }
 
@@ -483,6 +516,8 @@ pub fn compute_scored_state(
         deleted_files: deleted_display,
         renamed_files: renamed_display,
         lockfile_changes: lockfile_display,
+        ignored_changes: ignored_display,
+        policy_excluded_count: policy_excluded,
         preferred_revs,
         commit_message,
         heavy_latency_ms,
@@ -648,6 +683,8 @@ pub fn select_with_params(
         deleted_files: state.deleted_files.clone(),
         renamed_files: state.renamed_files.clone(),
         lockfile_changes: state.lockfile_changes.clone(),
+        ignored_changes: state.ignored_changes.clone(),
+        policy_excluded_count: state.policy_excluded_count,
     };
     // An excerpt stands in for a core fragment, so it carries the change and
     // has to render as `role: "changed"` — otherwise the substitution keeps the
@@ -792,21 +829,24 @@ pub(crate) fn rel_path_string(root_dir: &Path, path: &Path) -> Option<String> {
 /// ever excluded a hardcoded set of secret-like filenames (`is_secret_path`)
 /// — a file a user explicitly excluded via `.diffctx/ignore` still had its
 /// changed content surfaced in full.
-fn resolve_ignored_paths(root_dir: &Path, hunks: &[crate::types::DiffHunk]) -> FxHashSet<String> {
+fn resolve_ignored_paths(
+    root_dir: &Path,
+    hunks: &[crate::types::DiffHunk],
+) -> rustc_hash::FxHashMap<String, git::IgnoreSource> {
     let rel_paths: Vec<String> = hunks
         .iter()
         .filter_map(|h| rel_path_string(root_dir, Path::new(&*h.path)))
         .collect();
-    git::find_ignored_paths(root_dir, &rel_paths)
+    git::find_ignored_paths_with_source(root_dir, &rel_paths)
 }
 
 pub(crate) fn is_ignored_path(
     root_dir: &Path,
     path: &Path,
-    ignored_rel_paths: &FxHashSet<String>,
+    ignored_rel_paths: &rustc_hash::FxHashMap<String, git::IgnoreSource>,
 ) -> bool {
     rel_path_string(root_dir, path)
-        .map(|rel| ignored_rel_paths.contains(&rel))
+        .map(|rel| ignored_rel_paths.contains_key(&rel))
         .unwrap_or(false)
 }
 
@@ -816,6 +856,7 @@ pub(crate) fn is_ignored_path(
 /// selection state, so selection is bit-identical with and without it.
 pub fn raw_diff_text(root_dir: &Path, diff_range: Option<&str>, timeout: u64) -> Result<String> {
     git::set_git_timeout(timeout);
+    crate::deadline::set_compute_deadline(timeout);
     let root_dir = resolve_repo_root(root_dir)?;
     let resolved = git::resolve_duration_range(&root_dir, diff_range)?;
     let diff_text = git::get_diff_text(&root_dir, resolved.range.as_deref())?;
@@ -839,7 +880,7 @@ fn keep_disclosable_sections(root_dir: &Path, diff_text: &str) -> String {
         .filter_map(|(path, _)| path.as_deref())
         .filter_map(|path| rel_path_string(root_dir, path))
         .collect();
-    let ignored_rel_paths = git::find_ignored_paths(root_dir, &rel_paths);
+    let ignored_rel_paths = git::find_ignored_paths_with_source(root_dir, &rel_paths);
 
     let mut kept: Vec<&str> = Vec::new();
     for (path, range) in sections {
@@ -939,6 +980,7 @@ fn build_diff_context_full(
     timeout: u64,
 ) -> Result<DiffContextOutput> {
     git::set_git_timeout(timeout);
+    crate::deadline::set_compute_deadline(timeout);
     let root_dir = resolve_repo_root(root_dir)?;
     let resolved = git::resolve_duration_range(&root_dir, diff_range)?;
     let diff_range = resolved.range.as_deref();
@@ -1030,6 +1072,8 @@ fn build_diff_context_full(
         // `--full` is the escape hatch that promises every fragment of the
         // changed files, so it keeps lockfile content instead of diverting it.
         lockfile_changes: Vec::new(),
+        ignored_changes: Vec::new(),
+        policy_excluded_count: 0,
     };
     Ok(render::build_diff_context_output(
         &root_dir,
@@ -1080,6 +1124,8 @@ fn empty_scored_state(root_dir: PathBuf) -> ScoredState {
         core_excerpts: FxHashMap::default(),
         discovery_source: FxHashMap::default(),
         lockfile_changes: Vec::new(),
+        ignored_changes: Vec::new(),
+        policy_excluded_count: 0,
         scoring_result: ScoringResult {
             rel_scores: FxHashMap::default(),
             filtered_fragments: Vec::new(),
@@ -1115,6 +1161,8 @@ fn empty_output(root_dir: &Path) -> DiffContextOutput {
         deleted_files: Vec::new(),
         renamed_files: Vec::new(),
         lockfile_changes: Vec::new(),
+        ignored_changes: Vec::new(),
+        policy_excluded_count: 0,
         fragment_count: 0,
         fragments: Vec::new(),
         latency: None,
@@ -1131,6 +1179,8 @@ pub(crate) fn empty_output_from_state(state: &ScoredState) -> DiffContextOutput 
     output.deleted_files = state.deleted_files.clone();
     output.renamed_files = state.renamed_files.clone();
     output.lockfile_changes = state.lockfile_changes.clone();
+    output.ignored_changes = state.ignored_changes.clone();
+    output.policy_excluded_count = state.policy_excluded_count;
     output
 }
 

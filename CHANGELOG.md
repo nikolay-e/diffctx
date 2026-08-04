@@ -156,6 +156,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Graph construction no longer hangs on large repositories** (#116, #121).
+  Four independent fan-out defects each produced tens of millions of edges on
+  envoy-class repos (6k C-family files, 520 sharing the stem `config`):
+  `TestEdgeBuilder` paired every test fragment with every fragment of every
+  same-stem file (180M edges alone); the C-family builder linked includes by
+  bare basename and cross-multiplied same-stem headers×impls at fragment
+  level; `link_by_path_match` substring-matched every reference against every
+  indexed path; and the config-to-code builder ran every key regex over every
+  code fragment (replaced by one Aho-Corasick pass with exact `\b` semantics —
+  byte-identical output, 42s → 1.2s measured). Together: an envoy commit that
+  never finished under 240s now completes in ~60s; on the 372-instance dcbench
+  corpus the produced count rose from 185 to 207 at an unchanged 60s cap.
+  Resolution rules that made it possible: a name carried by more than 8 files
+  cannot identify a target (ambiguity cap), test/header pairing is scoped to
+  the co-located directory first, and file-level relations (an include, a
+  path reference, a header/impl pair) now link one representative fragment
+  per file — the same representative the sibling builder always used — rather
+  than every-fragment-to-every-fragment.
+- **The compute deadline now covers the library path** (#121). `timeout` only
+  ever bounded git subprocesses; pyo3/MCP callers could sit through an
+  unbounded edge build (observed: 8+ minutes past a 420s deadline). The edge
+  phase now checks a wall-clock deadline between builders and surfaces expiry
+  as an error instead of a hang.
+- **Token cache eviction actually reaches its cap** (#122). Evicting one
+  random shard of 256 per run is the coupon collector's problem (~1570 runs
+  to touch every shard); the cache was measured at 6.3GB against its 512MB
+  cap. Each run now sweeps a 16-shard window, reaching full coverage in ~50
+  runs.
+- **A tiny edit no longer ships the enclosing body as context** (#184). The
+  excerpt downshift compresses a changed oversized function to its hunk
+  window, but the body's gap chunks re-entered the output as *context* — a
+  2-line edit in a 100-line function shipped 81 lines of the body it had just
+  compressed. Context candidates that are slices of a core fragment's span
+  are now dropped; signature stubs stay.
+- **Withheld changed files are visible as withheld** (#188). A changed file
+  excluded by ignore rules vanished silently — a reviewer reading the output
+  filed "no tests" against a change whose tests the tool had dropped.
+  gitignore exclusions are now listed by path under `ignored_changes`;
+  `.diffctx/ignore` exclusions surface as `policy_excluded_count` only, since
+  re-publishing the paths a declared confidentiality policy withholds would
+  undo the policy (#85).
+
 - **`--scoring pit` was rejected by both CLIs.** The engine, the MCP server and
   the eval harness all accepted the mode, while `diffctx --scoring pit` and the
   standalone binary refused it: each CLI enumerated the accepted values in its

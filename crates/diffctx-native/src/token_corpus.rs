@@ -226,14 +226,23 @@ impl TokenCacheStore {
         let Some(max_bytes) = cache_max_bytes() else {
             return;
         };
-        let shard = std::time::SystemTime::now()
+        // One shard per run is the coupon collector's problem: touching all
+        // 256 takes ~256·H(256) ≈ 1570 runs, and ordinary usage never gets
+        // there — measured at 6.3GB against the 512MB cap, 12x over (#122).
+        // A contiguous window sweeps the whole table every 256/WINDOW runs
+        // while still costing a bounded, small slice per invocation.
+        const EVICT_WINDOW: u64 = 16;
+        let start = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.subsec_nanos() as u64 % CACHE_SHARDS)
             .unwrap_or(0);
-        evict_shard(
-            &self.dir.join(format!("{shard:02x}")),
-            max_bytes / CACHE_SHARDS,
-        );
+        for off in 0..EVICT_WINDOW {
+            let shard = (start + off) % CACHE_SHARDS;
+            evict_shard(
+                &self.dir.join(format!("{shard:02x}")),
+                max_bytes / CACHE_SHARDS,
+            );
+        }
     }
 }
 

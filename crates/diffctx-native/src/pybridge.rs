@@ -248,6 +248,12 @@ fn diff_context_output_to_dict<'py>(
     if !output.lockfile_changes.is_empty() {
         dict.set_item("lockfile_changes", &output.lockfile_changes)?;
     }
+    if !output.ignored_changes.is_empty() {
+        dict.set_item("ignored_changes", &output.ignored_changes)?;
+    }
+    if output.policy_excluded_count > 0 {
+        dict.set_item("policy_excluded_count", output.policy_excluded_count)?;
+    }
     if !output.renamed_files.is_empty() {
         let renames = PyList::empty(py);
         for (from, to) in &output.renamed_files {

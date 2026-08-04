@@ -132,8 +132,17 @@ pub fn collect_capped_edges(
 
     let per_builder_log: Vec<Vec<LoggedEmission>> = all_builders
         .par_iter()
-        .map(|(_, builder)| {
+        .map(|(name, builder)| {
+            crate::deadline::check_compute_deadline("edge construction");
+            let t = std::time::Instant::now();
             let edges = builder.build(fragments, repo_root);
+            if std::env::var_os("DIFFCTX_TRACE_BUILDERS").is_some() {
+                eprintln!(
+                    "builder {name}: {:.1}s, {} edges",
+                    t.elapsed().as_secs_f64(),
+                    edges.len()
+                );
+            }
             let mut log = Vec::with_capacity(edges.len());
             for ((src, dst), weight) in edges {
                 let (Some(&s), Some(&d)) = (node_to_idx.get(&src), node_to_idx.get(&dst)) else {

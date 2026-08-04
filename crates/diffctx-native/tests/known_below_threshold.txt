@@ -26,7 +26,7 @@ algorithm/operations/operations_003_ignore_node_modules
 algorithm/operations/operations_005_ignore_venv
 algorithm/patterns/patterns_028_intra_constant_in_multiple_methods
 algorithm/patterns/patterns_043_report
-graph/relations/relations_002_class_changed_find_test_class
+algorithm/patterns/patterns_044_json
 infrastructure/cargo/cargo_001_workspace_member_pulls_root
 infrastructure/cicd/cicd_and_docs_040_readme_code_example
 infrastructure/cicd/cicd_and_docs_061_json_schema_ref
@@ -43,7 +43,6 @@ infrastructure/terraform/terraform_004_s3_bucket
 infrastructure/terraform/terraform_007_rds_instance
 infrastructure/terraform/terraform_009_iam_role
 infrastructure/terraform/terraform_011_ec2_instance
-infrastructure/terraform/terraform_014_ecs_task_definition
 infrastructure/terraform/terraform_015_cloudwatch_alarm
 infrastructure/terraform/terraform_018_eventbridge_rule
 infrastructure/terraform/terraform_022_nat_gateway
@@ -71,6 +70,7 @@ languages/go/go_024_build_tags
 languages/go/go_033_error_interface
 languages/go/go_035_http_handler
 languages/go/go_036_direct_import_1hop
+languages/java/java_003_extends_base_class
 languages/java/java_004_override_method
 languages/java/java_006_entity_relations
 languages/java/java_009_scheduled
@@ -79,6 +79,7 @@ languages/java/java_024_kotlin_suspend_fun
 languages/java/java_025_kotlin_data_class
 languages/java/java_026_kotlin_sealed_class
 languages/javascript/javascript_002_output_decorator
+languages/javascript/javascript_004_http_client
 languages/javascript/javascript_005_observable_pipe
 languages/javascript/javascript_016_type_import_resolves_definition
 languages/javascript/javascript_021_extends_base_class
@@ -118,6 +119,9 @@ languages/javascript/javascript_extended_013_zod_schema_change
 languages/javascript/javascript_extended_024_response_json
 languages/javascript/javascript_extended_040_union_type
 languages/javascript/javascript_extended_041_keyof_type
+languages/jvm/jvm_and_compiled_012_csharp_async_await
+languages/jvm/jvm_and_compiled_025_java_autowired_service
+languages/jvm/jvm_and_compiled_027_java_completable_future
 languages/jvm/jvm_and_compiled_028_java_custom_exception
 languages/jvm/jvm_and_compiled_030_java_extends_base_class
 languages/jvm/jvm_and_compiled_035_java_kafka_listener
@@ -245,15 +249,10 @@ synthetic/balanced/suite-2/one-hop/bal2_1hop_001_rb_activerecord_model_change
 synthetic/balanced/suite-2/test-context/bal2_testctx_008_go_middleware_chain
 synthetic/balanced/suite-2/test-context/bal2_testctx_031_csharp_email_validator
 synthetic/balanced/suite-2/test-context/bal2_testctx_033_csharp_order_repository
-synthetic/balanced/suite-2/test-context/bal2_testctx_034_csharp_json_serializer
-synthetic/balanced/suite-2/test-context/bal2_testctx_035_csharp_rate_limiter
-synthetic/balanced/suite-2/test-context/bal2_testctx_036_csharp_string_formatter
-synthetic/balanced/suite-2/test-context/bal2_testctx_037_csharp_token_service
-synthetic/balanced/suite-2/test-context/bal2_testctx_038_csharp_csv_parser
 synthetic/balanced/suite-2/test-context/bal2_testctx_039_csharp_retry_policy
 synthetic/balanced/suite-2/test-context/bal2_testctx_041_csharp_url_builder
 synthetic/balanced/suite-2/test-context/bal2_testctx_042_csharp_event_dispatcher
-synthetic/balanced/suite-2/test-context/bal2_testctx_044_csharp_queue_processor
+synthetic/balanced/suite-2/test-context/bal2_testctx_043_csharp_config_reader
 synthetic/balanced/suite-2/test-context/bal2_testctx_045_csharp_address_formatter
 synthetic/balanced/suite-3/bugfix/bal3_bugfix_001_go_off_by_one_slice
 synthetic/balanced/suite-3/bugfix/bal3_bugfix_002_go_nil_map_check
@@ -263,6 +262,7 @@ synthetic/balanced/suite-3/bugfix/bal3_bugfix_005_go_missing_error_check
 synthetic/balanced/suite-3/bugfix/bal3_bugfix_006_rust_off_by_one_iter
 synthetic/balanced/suite-3/bugfix/bal3_bugfix_007_rust_unwrap_to_option
 synthetic/balanced/suite-3/bugfix/bal3_bugfix_010_rust_missing_validation
+synthetic/balanced/suite-3/bugfix/bal3_bugfix_014_ruby_wrong_boolean
 synthetic/balanced/suite-3/bugfix/bal3_bugfix_019_scala_race_condition
 synthetic/balanced/suite-3/one-hop/bal3_1hop_014_go_queue_consumer
 synthetic/balanced/suite-3/one-hop/bal3_1hop_040_php_multi_file_orm
@@ -277,6 +277,7 @@ synthetic/balanced/suite-3/one-hop/bal3_1hop_056_scala_signature_query_builder
 synthetic/balanced/suite-3/one-hop/bal3_1hop_057_scala_new_function_logger
 synthetic/balanced/suite-3/one-hop/bal3_1hop_059_scala_single_file_trait
 synthetic/balanced/suite-3/one-hop/bal3_1hop_060_scala_multi_file_di_container
+synthetic/balanced/suite-3/one-hop/bal3_1hop_070_swift_new_function_extension
 synthetic/balanced/suite-3/one-hop/bal3_1hop_073_swift_closure_callback
 synthetic/balanced/suite-3/rare/bal3_rare_006_dart_repository_api
 synthetic/balanced/suite-3/rare/bal3_rare_013_julia_struct_dispatch
@@ -292,8 +293,8 @@ synthetic/balanced/suite-3/test-context/bal3_testctx_010_java_token_parser_test
 synthetic/balanced/suite-3/test-context/bal3_testctx_011_java_event_bus_test
 synthetic/balanced/suite-3/test-context/bal3_testctx_012_java_rate_limiter_test
 synthetic/balanced/suite-3/test-context/bal3_testctx_013_csharp_math_service_test
-synthetic/balanced/suite-3/test-context/bal3_testctx_014_csharp_string_utils_test
 synthetic/balanced/suite-3/test-context/bal3_testctx_016_csharp_auth_handler_test
+synthetic/balanced/suite-3/test-context/bal3_testctx_020_ruby_user_validator_spec
 synthetic/balanced/suite-3/test-context/bal3_testctx_026_rust_config_parser_test
 synthetic/balanced/suite-3/test-context/bal3_testctx_028_rust_cache_store_test
 synthetic/balanced/suite-3/three-hop/bal3_3hop_025_rust_migrator_planner_differ_schema
@@ -354,7 +355,6 @@ synthetic/gaps/suite-1/gap_180_typescript_state_machine_import_chain
 synthetic/gaps/suite-2/gap2_005_kotlin_python_payment_gateway_null_fix
 synthetic/gaps/suite-2/gap2_012_java_config_rate_limit_api_gateway
 synthetic/gaps/suite-2/gap2_013_java_test_file_order_validator
-synthetic/gaps/suite-2/gap2_014_java_test_file_temperature_sensor
 synthetic/gaps/suite-2/gap2_015_java_test_file_chess_move_validator
 synthetic/gaps/suite-2/gap2_016_java_test_file_currency_converter
 synthetic/gaps/suite-2/gap2_051_julia_multifile_same_file_graph_traversal
