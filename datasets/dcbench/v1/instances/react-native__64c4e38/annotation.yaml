@@ -49,6 +49,11 @@ gold:
   tier: essential
   role: unspecified
   in_diff: true
+- path: packages/react-native/src/private/webapis/performance/PerformanceObserver.js
+  tier: helpful
+  role: definition
+  in_diff: false
+  rationale: 'Observer consuming the new ''longtask'' entry type the commit adds to the performance entry plumbing.'
 forbidden:
 - path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/ReactInstanceManager.java
 - path: packages/react-native/ReactCommon/cxxreact/NativeToJsBridge.h
@@ -58,8 +63,7 @@ forbidden:
 - path: packages/rn-tester/js/components/RNTesterNavbar.js
 - path: packages/rn-tester/js/components/RNTesterTheme.js
 - path: packages/rn-tester/js/examples/WebSocket/WebSocketExample.js
-nontrivial_gold_count: 0
-no_nontrivial_context: true  # in_diff corrections removed the only out-of-diff gold (QA 2026-08-05)
+nontrivial_gold_count: 1
 annotator: legacy-review-2026-06
 candidates_from:
 - review

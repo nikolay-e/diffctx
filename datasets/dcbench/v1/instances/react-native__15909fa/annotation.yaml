@@ -21,9 +21,13 @@ gold:
   role: config
   in_diff: true
   rationale: 'Composite-build root of the moved plugin: declares include('':react-native-gradle-plugin'', '':settings-plugin'', '':shared''), representing the react-native-gradle-plugin -> gradle-plugin directory rename.'
+- path: packages/react-native/build.gradle.kts
+  tier: helpful
+  role: config
+  in_diff: false
+  rationale: 'buildscript classpath(''com.facebook.react:react-native-gradle-plugin'') — the Maven artifact id deliberately did NOT move with the packages/react-native-gradle-plugin -> packages/gradle-plugin rename.'
 forbidden: []
-nontrivial_gold_count: 0
-no_nontrivial_context: true  # in_diff corrections removed the only out-of-diff gold (QA 2026-08-05)
+nontrivial_gold_count: 1
 annotator: legacy-review-2026-06
 candidates_from:
 - review

@@ -29,6 +29,11 @@ gold:
   tier: essential
   role: unspecified
   in_diff: true
+- path: packages/react-native/ReactCommon/hermes/inspector/chrome/Registration.h
+  tier: helpful
+  role: definition
+  in_diff: false
+  rationale: 'Old-namespace registration entry point the inspector-modern fork duplicates — the symbol whose duplication the deprecation notes describe.'
 forbidden:
 - path: packages/react-native/ReactCommon/hermes/inspector-modern/Inspector.cpp
 - path: packages/react-native/ReactCommon/hermes/inspector-modern/InspectorState.cpp
@@ -36,8 +41,7 @@ forbidden:
 - path: packages/react-native/ReactCommon/hermes/inspector-modern/chrome/MessageConverters.cpp
 - path: packages/react-native/ReactCommon/hermes/inspector-modern/chrome/MessageTypes.cpp
 - path: packages/react-native/ReactCommon/hermes/inspector-modern/chrome/tests/ConnectionTests.cpp
-nontrivial_gold_count: 0
-no_nontrivial_context: true  # in_diff corrections removed the only out-of-diff gold (QA 2026-08-05)
+nontrivial_gold_count: 1
 annotator: legacy-review-2026-06
 candidates_from:
 - review

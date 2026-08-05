@@ -43,9 +43,13 @@ gold:
   tier: essential
   role: unspecified
   in_diff: true
+- path: dev/preview/previewctl/pkg/k8s/context/loader.go
+  tier: helpful
+  role: definition
+  in_diff: false
+  rationale: 'Defines the Loader interface the deleted gke/harvester loaders implemented; the surviving contract for the k3s loader kept by the commit.'
 forbidden: []
-nontrivial_gold_count: 0
-no_nontrivial_context: true  # in_diff corrections removed the only out-of-diff gold (QA 2026-08-05)
+nontrivial_gold_count: 1
 annotator: legacy-review-2026-06
 candidates_from:
 - review

@@ -15,9 +15,13 @@ gold:
   tier: essential
   role: unspecified
   in_diff: true
+- path: static/gsApp/components/organizationHeader.tsx
+  tier: helpful
+  role: caller
+  in_diff: false
+  rationale: 'Surviving consumer of the devtoolbar feature flag that gates showEmployeeFeedbackButton after the internal toolbar tree was deleted.'
 forbidden: []
-nontrivial_gold_count: 0
-no_nontrivial_context: true  # in_diff corrections removed the only out-of-diff gold (QA 2026-08-05)
+nontrivial_gold_count: 1
 annotator: legacy-review-2026-06
 candidates_from:
 - review

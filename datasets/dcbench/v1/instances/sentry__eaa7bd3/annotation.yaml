@@ -26,12 +26,16 @@ gold:
   tier: essential
   role: unspecified
   in_diff: true
+- path: src/sentry/utils/safe.py
+  tier: helpful
+  role: definition
+  in_diff: false
+  rationale: 'Defines set_path, the newly imported helper the fix uses to stash frame.data.client_in_app.'
 forbidden:
 - path: tests/sentry/grouping/snapshots/test_grouphash_metadata/test_metadata_from_variants/newstyle@2019_05_08/*.pysnap
 - path: tests/sentry/grouping/snapshots/test_grouphash_metadata/test_metadata_from_variants/newstyle@2023_01_11/*.pysnap
 - path: tests/sentry/grouping/snapshots/test_metadata_from_variants/legacy@2019_03_12/*.pysnap
-nontrivial_gold_count: 0
-no_nontrivial_context: true  # in_diff corrections removed the only out-of-diff gold (QA 2026-08-05)
+nontrivial_gold_count: 1
 annotator: legacy-review-2026-06
 candidates_from:
 - review

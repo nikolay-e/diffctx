@@ -17,9 +17,13 @@ gold:
   role: definition
   in_diff: true
   rationale: PodReconciler.Reconcile removes the registryFacade branch, its constants and the checkRegistryFacade readiness probe.
+- path: install/installer/pkg/common/constants.go
+  tier: helpful
+  role: definition
+  in_diff: false
+  rationale: 'Still defines RegistryFacadeComponent and RegistryFacadeServicePort at this commit — leftover wiring surviving the component deletion, still consumed by node-labeler''s installer deployment.'
 forbidden: []
-nontrivial_gold_count: 0
-no_nontrivial_context: true  # in_diff corrections removed the only out-of-diff gold (QA 2026-08-05)
+nontrivial_gold_count: 1
 annotator: legacy-review-2026-06
 candidates_from:
 - review

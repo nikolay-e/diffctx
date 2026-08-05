@@ -28,6 +28,11 @@ gold:
   tier: essential
   role: unspecified
   in_diff: true
+- path: packages/react-native-codegen/src/generators/modules/__tests__/GenerateModuleJavaSpec-test.js
+  tier: helpful
+  role: test
+  in_diff: false
+  rationale: 'Test driver whose 525-line snapshot is regenerated in the diff after the generator''s emitted import list changed.'
 forbidden:
 - path: packages/react-native-codegen/src/generators/RNCodegen.js
 - path: packages/react-native-codegen/src/generators/components/GenerateComponentDescriptorH.js
@@ -58,8 +63,7 @@ forbidden:
 - path: packages/react-native/ReactCommon/jsinspector-modern/tests/ReactInstanceIntegrationTest.cpp
 - path: packages/react-native/ReactCommon/react/nativemodule/core/platform/android/ReactCommon/JavaTurboModule.cpp
 - path: packages/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTInteropTurboModule.h
-nontrivial_gold_count: 0
-no_nontrivial_context: true  # in_diff corrections removed the only out-of-diff gold (QA 2026-08-05)
+nontrivial_gold_count: 1
 annotator: legacy-review-2026-06
 candidates_from:
 - review

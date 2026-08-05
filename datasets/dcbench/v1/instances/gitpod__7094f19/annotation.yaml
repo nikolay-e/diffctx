@@ -61,13 +61,17 @@ gold:
   tier: essential
   role: unspecified
   in_diff: true
+- path: components/public-api/typescript-common/src/public-api-converter.spec.ts
+  tier: helpful
+  role: test
+  in_diff: false
+  rationale: 'References OrganizationRole conversions extended with the collaborator role.'
 forbidden:
 - path: components/public-api/go/**/*.pb.go
 - path: components/public-api/go/**/*_grpc.pb.go
 - path: components/public-api/typescript/src/**/*_pb.ts
 - path: components/spicedb/typescript/src/**
-nontrivial_gold_count: 0
-no_nontrivial_context: true  # in_diff corrections removed the only out-of-diff gold (QA 2026-08-05)
+nontrivial_gold_count: 1
 annotator: legacy-review-2026-06
 candidates_from:
 - review
