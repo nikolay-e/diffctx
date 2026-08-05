@@ -1,5 +1,10 @@
 use std::path::{Path, PathBuf};
 
+/// Same ambiguity bar as `CFamilySemanticWeights::max_files_per_name`: a name
+/// defined in more files than this is vocabulary, not a dependency, and is
+/// skipped outright rather than truncated.
+const MAX_FILES_PER_NAME: usize = 8;
+
 use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -189,6 +194,7 @@ impl EdgeBuilder for JavaScriptEdgeBuilder {
         }
 
         let mut name_to_defs: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
+        let mut name_def_files: FxHashMap<String, FxHashSet<&str>> = FxHashMap::default();
         let mut frag_defines: FxHashMap<FragmentId, FxHashSet<String>> = FxHashMap::default();
 
         for f in &js_frags {
@@ -198,6 +204,10 @@ impl EdgeBuilder for JavaScriptEdgeBuilder {
                     .entry(name.clone())
                     .or_default()
                     .push(f.id.clone());
+                name_def_files
+                    .entry(name.clone())
+                    .or_default()
+                    .insert(f.path());
             }
             frag_defines.insert(f.id.clone(), defines);
         }
@@ -219,6 +229,15 @@ impl EdgeBuilder for JavaScriptEdgeBuilder {
             for (ref_set, base_weight) in [(&calls, w.call), (&type_refs, w.type_ref)] {
                 for name in ref_set {
                     if self_defs.contains(name) {
+                        continue;
+                    }
+                    // Same ambiguity bar as CFamilySemanticWeights::
+                    // max_files_per_name: a name defined in more files than
+                    // this is vocabulary, not a dependency (#116).
+                    if name_def_files
+                        .get(name)
+                        .is_some_and(|s| s.len() > MAX_FILES_PER_NAME)
+                    {
                         continue;
                     }
                     if let Some(dst_ids) = name_to_defs.get(name) {

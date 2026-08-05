@@ -136,13 +136,17 @@ pub fn collect_capped_edges(
 
     let per_builder_log: Vec<Vec<LoggedEmission>> = all_builders
         .par_iter()
-        .map(|(name, builder)| {
+        .enumerate()
+        .map(|(builder_idx, (name, builder))| {
             crate::deadline::check_compute_deadline("edge construction");
             let t = std::time::Instant::now();
             let edges = builder.build(fragments, repo_root);
             if std::env::var_os("DIFFCTX_TRACE_BUILDERS").is_some() {
+                // The index is the registration order within
+                // builder_categories(); category names alone cannot tell two
+                // semantic builders apart when one of them floods.
                 eprintln!(
-                    "builder {name}: {:.1}s, {} edges",
+                    "builder {name}[{builder_idx}]: {:.1}s, {} edges",
                     t.elapsed().as_secs_f64(),
                     edges.len()
                 );

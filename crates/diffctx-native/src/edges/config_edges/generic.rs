@@ -1,5 +1,9 @@
 use std::path::{Path, PathBuf};
 
+/// Same ambiguity bar as `CFamilySemanticWeights::max_files_per_name`,
+/// applied to config keys: document frequency above this is vocabulary.
+const MAX_FILES_PER_KEY: usize = 8;
+
 use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -253,22 +257,66 @@ impl EdgeBuilder for ConfigToCodeEdgeBuilder {
             .build(&keys)
             .ok();
 
-        let mut edges: EdgeDict = FxHashMap::default();
+        // Document-frequency gate, same ambiguity bar as
+        // `CFamilySemanticWeights::max_files_per_name`: a key matched in more
+        // distinct code files than this is vocabulary, not a config-to-code
+        // dependency. Without it a lockfile's package names ("react",
+        // "lodash") match nearly every source fragment and this builder alone
+        // ran past the pipeline deadline on a sentry-scale yarn->pnpm commit
+        // (#116) — the emission map, not the automaton, was the cost.
+        let mut key_files: Vec<FxHashSet<&str>> = vec![FxHashSet::default(); keys.len()];
+        let mut fallback_files: Vec<FxHashSet<&str>> =
+            vec![FxHashSet::default(); fallback_patterns.len()];
         for code_frag in &code_frags {
             let content = code_frag.content.as_ref();
-            let mut matched_cfgs: FxHashSet<usize> = FxHashSet::default();
             if let Some(ac) = &automaton {
                 for m in ac.find_overlapping_iter(content) {
                     let b = content.as_bytes();
                     let before_ok = m.start() == 0 || !is_word_byte(b[m.start() - 1]);
                     let after_ok = m.end() == b.len() || !is_word_byte(b[m.end()]);
                     if before_ok && after_ok {
-                        matched_cfgs.extend(key_to_cfgs[keys[m.pattern().as_usize()]].iter());
+                        let ki = m.pattern().as_usize();
+                        if key_files[ki].len() <= MAX_FILES_PER_KEY {
+                            key_files[ki].insert(code_frag.path());
+                        }
                     }
                 }
             }
-            for (re, ci) in &fallback_patterns {
-                if !matched_cfgs.contains(ci) && re.is_match(content) {
+            for (fi, (re, _)) in fallback_patterns.iter().enumerate() {
+                if fallback_files[fi].len() <= MAX_FILES_PER_KEY && re.is_match(content) {
+                    fallback_files[fi].insert(code_frag.path());
+                }
+            }
+        }
+        let key_alive: Vec<bool> = key_files
+            .iter()
+            .map(|s| s.len() <= MAX_FILES_PER_KEY)
+            .collect();
+        let fallback_alive: Vec<bool> = fallback_files
+            .iter()
+            .map(|s| s.len() <= MAX_FILES_PER_KEY)
+            .collect();
+
+        let mut edges: EdgeDict = FxHashMap::default();
+        for code_frag in &code_frags {
+            let content = code_frag.content.as_ref();
+            let mut matched_cfgs: FxHashSet<usize> = FxHashSet::default();
+            if let Some(ac) = &automaton {
+                for m in ac.find_overlapping_iter(content) {
+                    let ki = m.pattern().as_usize();
+                    if !key_alive[ki] {
+                        continue;
+                    }
+                    let b = content.as_bytes();
+                    let before_ok = m.start() == 0 || !is_word_byte(b[m.start() - 1]);
+                    let after_ok = m.end() == b.len() || !is_word_byte(b[m.end()]);
+                    if before_ok && after_ok {
+                        matched_cfgs.extend(key_to_cfgs[keys[ki]].iter());
+                    }
+                }
+            }
+            for (fi, (re, ci)) in fallback_patterns.iter().enumerate() {
+                if fallback_alive[fi] && !matched_cfgs.contains(ci) && re.is_match(content) {
                     matched_cfgs.insert(*ci);
                 }
             }
