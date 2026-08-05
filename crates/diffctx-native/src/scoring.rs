@@ -484,7 +484,11 @@ impl ScoringStrategy for RrfFusionScoring {
         let filtered = finish_scoring(&union, core_ids, &rel_scores, &ego.graph);
 
         ScoringResult {
-            admissible_files: None,
+            // The fusion inherits the ego component's naming-reachability set:
+            // admission is a graph property, and the fusion's structural half
+            // IS that graph. Leaving this None silently ran fusion arms
+            // without the gate.
+            admissible_files: ego.admissible_files.clone(),
             rel_scores,
             filtered_fragments: filtered,
             graph: ego.graph,
@@ -803,7 +807,11 @@ impl ScoringStrategy for PitFusionScoring {
         let filtered = finish_scoring(&union, core_ids, &rel_scores, &ego.graph);
 
         ScoringResult {
-            admissible_files: None,
+            // The fusion inherits the ego component's naming-reachability set:
+            // admission is a graph property, and the fusion's structural half
+            // IS that graph. Leaving this None silently ran fusion arms
+            // without the gate.
+            admissible_files: ego.admissible_files.clone(),
             rel_scores,
             filtered_fragments: filtered,
             graph: ego.graph,
