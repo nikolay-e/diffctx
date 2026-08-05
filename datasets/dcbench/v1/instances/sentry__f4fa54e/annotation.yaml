@@ -3,24 +3,28 @@ base_commit: adcc680599ef1a13a78d888257010819b3a6900d
 commit: f4fa54e861c3b6182121c1716799982217c555ed
 patch_stored: true
 gold:
-- path: src/sentry/eventtypes/error.py:ErrorEvent.extract_metadata
+- path: src/sentry/eventtypes/error.py
   tier: essential
-  role: unspecified
-  in_diff: false
-- path: src/sentry/grouping/strategies/newstyle.py:chained_exception,filter_exceptions_for_exception_groups
+  role: definition
+  in_diff: true
+  rationale: ErrorEvent.extract_metadata is rewritten to select the exception whose mechanism.exception_id matches main_exception_id instead of the last values entry.
+- path: src/sentry/grouping/strategies/newstyle.py
   tier: essential
-  role: unspecified
-  in_diff: false
-- path: src/sentry/interfaces/exception.py:Exception.get_stacktrace,Exception.iter_tags
+  role: definition
+  in_diff: true
+  rationale: Defines chained_exception and the new recursive filter_exceptions_for_exception_groups that collapses an exception-group tree for hashing.
+- path: src/sentry/interfaces/exception.py
   tier: essential
-  role: unspecified
-  in_diff: false
+  role: definition
+  in_diff: true
+  rationale: Exception.get_stacktrace and iter_tags switch from values[0] to values[-1], changing which exception in a group supplies the stacktrace and mechanism tags.
 - path: tests/sentry/event_manager/interfaces/test_exception.py
   tier: essential
   role: unspecified
   in_diff: true
 forbidden: []
-nontrivial_gold_count: 3
+nontrivial_gold_count: 0
+no_nontrivial_context: true  # in_diff corrections removed the only out-of-diff gold (QA 2026-08-05)
 annotator: legacy-review-2026-06
 candidates_from:
 - review

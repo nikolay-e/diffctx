@@ -3,10 +3,11 @@ base_commit: 9295b9caa8b175baebcf0eb3ee1e38cd2f7017df
 commit: b7191cde4e36d3d712affc8b714e7d6179642cbb
 patch_stored: true
 gold:
-- path: packages/react-native-codegen/src/generators/modules/GenerateModuleJavaSpec.js:buildGetConstantsMethod
+- path: packages/react-native-codegen/src/generators/modules/GenerateModuleJavaSpec.js
   tier: essential
-  role: unspecified
-  in_diff: false
+  role: definition
+  in_diff: true
+  rationale: Codegen source for Java TurboModule specs; its emitted import list flips to com.facebook.react.internal.turbomodule.core.interfaces.TurboModule, forcing regeneration of every spec.
 - path: packages/react-native/ReactAndroid/proguard-rules.pro
   tier: essential
   role: unspecified
@@ -57,7 +58,8 @@ forbidden:
 - path: packages/react-native/ReactCommon/jsinspector-modern/tests/ReactInstanceIntegrationTest.cpp
 - path: packages/react-native/ReactCommon/react/nativemodule/core/platform/android/ReactCommon/JavaTurboModule.cpp
 - path: packages/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTInteropTurboModule.h
-nontrivial_gold_count: 1
+nontrivial_gold_count: 0
+no_nontrivial_context: true  # in_diff corrections removed the only out-of-diff gold (QA 2026-08-05)
 annotator: legacy-review-2026-06
 candidates_from:
 - review

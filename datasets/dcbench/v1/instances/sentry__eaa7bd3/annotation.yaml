@@ -3,18 +3,21 @@ base_commit: 4ad7e547a41617476c226726006c8599e2190c17
 commit: eaa7bd3dfd2df4baf38e3b34286f1ac10fe9b2f7
 patch_stored: true
 gold:
-- path: src/sentry/grouping/enhancer/__init__.py:get_hint_for_frame
+- path: src/sentry/grouping/enhancer/__init__.py
   tier: essential
-  role: unspecified
-  in_diff: false
-- path: src/sentry/grouping/strategies/newstyle.py:_single_stacktrace_variant
+  role: definition
+  in_diff: true
+  rationale: get_hint_for_frame gains the client_in_app precedence rule reading frame.data.client_in_app.
+- path: src/sentry/grouping/strategies/newstyle.py
   tier: essential
-  role: unspecified
-  in_diff: false
-- path: src/sentry/stacktraces/processing.py:normalize_stacktraces_for_grouping
+  role: definition
+  in_diff: true
+  rationale: _single_stacktrace_variant stops hard-coding hint='non app frame' so the enhancer's client-in_app hint is not clobbered.
+- path: src/sentry/stacktraces/processing.py
   tier: essential
-  role: unspecified
-  in_diff: false
+  role: definition
+  in_diff: true
+  rationale: normalize_stacktraces_for_grouping stashes the pre-normalization in_app value as data.client_in_app, producing the signal the enhancer consumes.
 - path: tests/sentry/grouping/test_enhancer.py
   tier: essential
   role: unspecified
@@ -27,7 +30,8 @@ forbidden:
 - path: tests/sentry/grouping/snapshots/test_grouphash_metadata/test_metadata_from_variants/newstyle@2019_05_08/*.pysnap
 - path: tests/sentry/grouping/snapshots/test_grouphash_metadata/test_metadata_from_variants/newstyle@2023_01_11/*.pysnap
 - path: tests/sentry/grouping/snapshots/test_metadata_from_variants/legacy@2019_03_12/*.pysnap
-nontrivial_gold_count: 3
+nontrivial_gold_count: 0
+no_nontrivial_context: true  # in_diff corrections removed the only out-of-diff gold (QA 2026-08-05)
 annotator: legacy-review-2026-06
 candidates_from:
 - review

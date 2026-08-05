@@ -7,10 +7,11 @@ gold:
   tier: essential
   role: unspecified
   in_diff: true
-- path: components/dashboard/src/organizations/update-org-settings-mutation.ts
+- path: components/dashboard/src/data/organizations/update-org-settings-mutation.ts
   tier: essential
-  role: unspecified
-  in_diff: false
+  role: definition
+  in_diff: true
+  rationale: Org settings mutation hook; the annotated path missed the data/ segment and the file is part of the diff.
 - path: components/dashboard/src/teams/TeamOnboarding.tsx
   tier: essential
   role: unspecified
@@ -55,7 +56,8 @@ forbidden:
 - path: components/public-api-java/publicapi/src/main/java/io/gitpod/publicapi/v1/OrganizationOuterClass.java
 - path: components/public-api/go/v1/organization.pb.go
 - path: yarn.lock
-nontrivial_gold_count: 1
+nontrivial_gold_count: 0
+no_nontrivial_context: true  # in_diff corrections removed the only out-of-diff gold (QA 2026-08-05)
 annotator: legacy-review-2026-06
 candidates_from:
 - review

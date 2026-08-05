@@ -27,14 +27,6 @@ gold:
   tier: essential
   role: unspecified
   in_diff: true
-- path: dev/preview/previewctl/pkg/k8s/context/gke/dev.go
-  tier: essential
-  role: unspecified
-  in_diff: true
-- path: dev/preview/previewctl/pkg/k8s/context/harvester/harvester.go
-  tier: essential
-  role: unspecified
-  in_diff: true
 - path: dev/preview/workflow/preview/deploy-gitpod.sh
   tier: essential
   role: unspecified
@@ -53,6 +45,7 @@ gold:
   in_diff: true
 forbidden: []
 nontrivial_gold_count: 0
+no_nontrivial_context: true  # in_diff corrections removed the only out-of-diff gold (QA 2026-08-05)
 annotator: legacy-review-2026-06
 candidates_from:
 - review

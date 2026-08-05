@@ -11,14 +11,11 @@ gold:
   tier: essential
   role: unspecified
   in_diff: true
-- path: components/dashboard/src/data/organizations/members-query.ts:roleScore
+- path: components/dashboard/src/data/organizations/members-query.ts
   tier: essential
-  role: unspecified
-  in_diff: false
-- path: components/dashboard/src/data/organizations/members-query.ts:useHasRolePermission
-  tier: essential
-  role: unspecified
-  in_diff: false
+  role: definition
+  in_diff: true
+  rationale: Adds the roleScore ranking UNSPECIFIED<COLLABORATOR<MEMBER<OWNER and the useHasRolePermission hook gating UI on the new collaborator role.
 - path: components/dashboard/src/menu/Menu.tsx
   tier: essential
   role: unspecified
@@ -55,10 +52,11 @@ gold:
   tier: essential
   role: unspecified
   in_diff: true
-- path: packages/gitpod-protocol/src/teams-projects-protocol.ts
+- path: components/gitpod-protocol/src/teams-projects-protocol.ts
   tier: essential
-  role: unspecified
-  in_diff: false
+  role: definition
+  in_diff: true
+  rationale: TeamMemberRole/OrgMemberInfo protocol types extended with the collaborator role; the old packages/ prefix never existed at this commit.
 - path: test/tests/smoke-test/collaborator_test.go
   tier: essential
   role: unspecified
@@ -68,7 +66,8 @@ forbidden:
 - path: components/public-api/go/**/*_grpc.pb.go
 - path: components/public-api/typescript/src/**/*_pb.ts
 - path: components/spicedb/typescript/src/**
-nontrivial_gold_count: 3
+nontrivial_gold_count: 0
+no_nontrivial_context: true  # in_diff corrections removed the only out-of-diff gold (QA 2026-08-05)
 annotator: legacy-review-2026-06
 candidates_from:
 - review
