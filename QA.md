@@ -61,6 +61,21 @@ Project-specific facts for `/qa`. Generic methodology lives in
   orders `use` items differently from repo rustfmt; `git commit` then
   fails cargo-fmt. Run `cargo fmt` before every commit that touches
   Rust.
+- **`DIFFCTX_PROBE_TAU`** mirrors `DIFFCTX_PROBE_MODE` in the yaml
+  harness: measurement-only tau override, meaningful only with
+  `DIFFCTX_YAML_IGNORE_BASELINE=1`; default run still measures the
+  shipped constant.
+- **Python API fragments carry** `content/kind/lines/path/role/symbol`
+  only — no `token_count`. Integration tests measuring budget use must
+  proxy via `len(content)` (~4 chars/token).
+- **Version-bearing files**: the CD bump patches 8 files incl.
+  `docs/product/github-action.md` (pins gated by
+  `test_version_consistency`). Adding a new file that embeds the version
+  requires BOTH the cd.yml bump block and that test.
+- **eval calibrate at 8 workers can reboot the machine** (OS memory
+  pressure when heavy-tail instances co-schedule; same class as the
+  11-13-worker sweep kills). Use 5 workers; checkpoints resume cleanly
+  per cell.
 
 ## Diff-context review
 
@@ -104,6 +119,16 @@ Project-specific facts for `/qa`. Generic methodology lives in
   `read_env_*("DIFFCTX_*")` must appear in the `parameter-strategy.md`
   Tier-3 table (or the `TIER1_EXTRAS_READ_BUT_NOT_TABLED` allowlist)
   and vice versa.
+
+## Bug channels (enumerated 2026-08-05)
+
+1. GitHub issues (`gh issue list`) — canonical tracker, takes `Fixes #N`.
+2. Forgejo issues (API, token `forgejo-token` in Keychain) — external
+   reporters; cross-link to GitHub work items. Forgejo #4 is Renovate's
+   standing Dependency Dashboard — infrastructure, not a bug; never
+   triage it as one.
+3. No in-app bug queue, no client telemetry, no bot reports (CLI/library
+   product). PyPI/npm/crates user reports arrive via the two trackers.
 
 ## Issue triage invariants
 
