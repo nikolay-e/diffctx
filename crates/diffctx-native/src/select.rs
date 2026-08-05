@@ -466,6 +466,7 @@ fn init_selection_state(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_greedy_loop_heap(
     heap: &mut BinaryHeap<HeapEntry>,
     id_to_frag: &FxHashMap<FragmentId, Fragment>,
@@ -474,10 +475,18 @@ fn run_greedy_loop_heap(
     needs: &[InformationNeed],
     tau: f64,
     _initial_budget: u32,
+    admissible_files: Option<&FxHashSet<Arc<str>>>,
 ) -> (usize, f64, usize) {
     let mut current_version = 0u32;
     let mut peak_density: f64 = 0.0;
     let mut loop_iters: usize = 0;
+    // Per-file admission (#65): opening a NEW file requires it to be
+    // naming-reachable from the changed set; fragments of files already
+    // opened (including the cores selected before this loop) compete on
+    // density as always. Inadmissible candidates are discarded, not
+    // deferred — admissibility is static within a run.
+    let mut open_files: FxHashSet<Arc<str>> =
+        state.selected.iter().map(|f| f.id.path.clone()).collect();
 
     while !heap.is_empty() && state.remaining_budget > 0 {
         loop_iters += 1;
@@ -501,12 +510,20 @@ fn run_greedy_loop_heap(
             break;
         }
 
+        if let Some(admissible) = admissible_files {
+            if !open_files.contains(&best_frag.id.path) && !admissible.contains(&best_frag.id.path)
+            {
+                continue;
+            }
+        }
+
         if best_density > peak_density {
             peak_density = best_density;
         } else if peak_density > 0.0 && best_density < tau * peak_density {
             break;
         }
 
+        open_files.insert(best_frag.id.path.clone());
         state.selected.push(best_frag.clone());
         state.selected_ids.add_id(&best_frag.id);
         state.remaining_budget = state.remaining_budget.saturating_sub(best_frag.token_count);
@@ -605,6 +622,7 @@ pub fn lazy_greedy_select(
     tau: f64,
     file_importance: Option<&FxHashMap<Arc<str>, f64>>,
     core_excerpts: Option<&FxHashMap<FragmentId, Fragment>>,
+    admissible_files: Option<&FxHashSet<Arc<str>>>,
 ) -> SelectionResult {
     if fragments.is_empty() {
         return SelectionResult {
@@ -668,6 +686,7 @@ pub fn lazy_greedy_select(
         needs,
         tau,
         budget_tokens,
+        admissible_files,
     );
 
     let greedy_utility = utility_value(&state.utility_state);
@@ -825,8 +844,17 @@ mod tests {
         let rel = rel_map(&frags, 0.7);
 
         for budget in [1u32, 7, 30, 31, 60, 200, 1_000] {
-            let result =
-                lazy_greedy_select(frags.clone(), &core, &rel, &[], budget, 0.12, None, None);
+            let result = lazy_greedy_select(
+                frags.clone(),
+                &core,
+                &rel,
+                &[],
+                budget,
+                0.12,
+                None,
+                None,
+                None,
+            );
             assert!(
                 cost_of(&result.selected) <= budget,
                 "budget {budget} overrun: cost {} via {:?}",
@@ -874,8 +902,17 @@ mod tests {
             let core: FxHashSet<FragmentId> = std::iter::once(frags[0].id.clone()).collect();
             let rel = rel_map(&frags, 0.8);
             for budget in [50u32, 120, 460, 1_000, 5_000] {
-                let result =
-                    lazy_greedy_select(frags.clone(), &core, &rel, &[], budget, 0.12, None, None);
+                let result = lazy_greedy_select(
+                    frags.clone(),
+                    &core,
+                    &rel,
+                    &[],
+                    budget,
+                    0.12,
+                    None,
+                    None,
+                    None,
+                );
                 assert_eq!(
                     result.used_tokens,
                     cost_of(&result.selected),
@@ -909,6 +946,7 @@ mod tests {
             0.12,
             None,
             Some(&excerpts),
+            None,
         );
 
         let ids: Vec<String> = result
@@ -933,7 +971,7 @@ mod tests {
             .collect();
         let core: FxHashSet<FragmentId> = std::iter::once(frags[0].id.clone()).collect();
         let rel = rel_map(&frags, 0.9);
-        let result = lazy_greedy_select(frags, &core, &rel, &[], 400, 0.12, None, None);
+        let result = lazy_greedy_select(frags, &core, &rel, &[], 400, 0.12, None, None, None);
 
         let ids: FxHashSet<FragmentId> = result.selected.iter().map(|f| f.id.clone()).collect();
         assert_eq!(
@@ -961,7 +999,7 @@ mod tests {
         rel.insert(heavy.id.clone(), 1.0);
         rel.insert(frags[2].id.clone(), 0.1);
 
-        let result = lazy_greedy_select(frags, &core, &rel, &[], 2_000, 0.12, None, None);
+        let result = lazy_greedy_select(frags, &core, &rel, &[], 2_000, 0.12, None, None, None);
         assert!(
             result.selected.iter().any(|f| core.contains(&f.id)),
             "no core fragment survived; reason was {:?}",
@@ -979,6 +1017,7 @@ mod tests {
             &[],
             1_000,
             0.12,
+            None,
             None,
             None,
         );
@@ -1060,8 +1099,9 @@ mod tests {
             crate::config::limits::DEFAULT_STOPPING_THRESHOLD,
             None,
             None,
+            None,
         );
-        let no_tau = lazy_greedy_select(frags, &core, &rel, &[], budget, 0.0, None, None);
+        let no_tau = lazy_greedy_select(frags, &core, &rel, &[], budget, 0.0, None, None, None);
 
         assert_eq!(
             default_tau.reason,

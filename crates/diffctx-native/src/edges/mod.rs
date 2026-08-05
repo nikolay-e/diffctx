@@ -27,6 +27,11 @@ use crate::types::Fragment;
 
 use self::base::EdgeBuilder;
 
+/// Raw-weight floor above which a Semantic edge counts as a naming channel
+/// (imports/using, calls, type and member refs all sit at >=0.35; tags
+/// fallback at 0.30 and same-package/namespace markers at 0.05 stay diffuse).
+pub const NAMING_WEIGHT_FLOOR: f64 = 0.30;
+
 const EXPENSIVE_CATEGORIES: &[&str] = &["similarity", "history"];
 
 struct BuilderCategory {
@@ -256,12 +261,22 @@ pub fn collect_capped_edges(
                     .map(|k| category_entries[k].2)
                     .unwrap_or(builder_category);
                 let damped = factors.damp(e.weight * multiplier, category, e.src, e.dst);
+                // Naming classification uses the RAW builder weight: the
+                // channel constants are quantized (0.05 markers, 0.30 tags,
+                // >=0.35 symbol/file-naming channels), so the floor selects a
+                // fixed channel set rather than trading a scalar band; raw
+                // rather than damped so a hub-suppressed import keeps its
+                // naming status.
+                let naming = (category == EdgeCategory::Semantic
+                    || category == EdgeCategory::Config)
+                    && e.weight > NAMING_WEIGHT_FLOOR;
                 push_bounded_top_k(
                     per_source.entry(e.src).or_default(),
                     RankedCandidate {
                         weight: damped,
                         dst: e.dst,
                         category,
+                        naming,
                     },
                     max_per_node,
                 );
@@ -275,6 +290,7 @@ pub fn collect_capped_edges(
                         dst: c.dst,
                         weight: c.weight,
                         category: c.category,
+                        naming: c.naming,
                     });
                 }
             }
@@ -328,6 +344,59 @@ pub fn discover_all_related_files(
     let mut result: Vec<PathBuf> = discovered.into_keys().collect();
     result.sort();
     result
+}
+
+/// Files reachable from the core set through naming-class edges only, within
+/// `max_depth` hops (#65 per-file admission). Diffuse channels (markers,
+/// tags, similarity, structural stars) do not open a file; a file whose only
+/// connection is proximity never enters the admissible set.
+pub fn naming_reachable_files(
+    capped: &CappedEdges,
+    core_ids: &rustc_hash::FxHashSet<crate::types::FragmentId>,
+    max_depth: usize,
+) -> rustc_hash::FxHashSet<std::sync::Arc<str>> {
+    let n = capped.idx_to_node.len();
+    // Undirected on purpose: a naming edge relates the PAIR of files. The
+    // reverse emission carries weight*reverse_factor and lands below the
+    // naming floor, so a directed walk would reach only the changed set's
+    // dependencies and never its consumers — measured as 24 broken
+    // consumer-pull corpus cases (php one-hop, terraform dependents, DI).
+    let mut adj: Vec<Vec<u32>> = vec![Vec::new(); n];
+    for e in &capped.edges {
+        if e.naming {
+            adj[e.src as usize].push(e.dst);
+            adj[e.dst as usize].push(e.src);
+        }
+    }
+    let mut seen = vec![false; n];
+    let mut frontier: Vec<u32> = Vec::new();
+    for (i, id) in capped.idx_to_node.iter().enumerate() {
+        if core_ids.contains(id) {
+            seen[i] = true;
+            frontier.push(i as u32);
+        }
+    }
+    let mut files: rustc_hash::FxHashSet<std::sync::Arc<str>> = frontier
+        .iter()
+        .map(|&i| capped.idx_to_node[i as usize].path.clone())
+        .collect();
+    for _ in 0..max_depth {
+        let mut next = Vec::new();
+        for &u in &frontier {
+            for &v in &adj[u as usize] {
+                if !seen[v as usize] {
+                    seen[v as usize] = true;
+                    files.insert(capped.idx_to_node[v as usize].path.clone());
+                    next.push(v);
+                }
+            }
+        }
+        if next.is_empty() {
+            break;
+        }
+        frontier = next;
+    }
+    files
 }
 
 #[cfg(test)]

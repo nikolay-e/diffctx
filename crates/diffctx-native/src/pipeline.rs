@@ -587,6 +587,7 @@ pub fn run_selection(
                 tau,
                 Some(&file_importance),
                 Some(&state.core_excerpts),
+                state.scoring_result.admissible_files.as_ref(),
             )
         }
     };
@@ -1132,6 +1133,7 @@ fn empty_scored_state(root_dir: PathBuf) -> ScoredState {
         ignored_changes: Vec::new(),
         policy_excluded_count: 0,
         scoring_result: ScoringResult {
+            admissible_files: None,
             rel_scores: FxHashMap::default(),
             filtered_fragments: Vec::new(),
             graph: crate::graph::Graph::new(),

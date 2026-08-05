@@ -5,6 +5,7 @@ use std::time::Instant;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::bm25::BM25;
+use crate::config::edge_weights::SEMANTIC_DISCOVERY;
 use crate::config::limits::{LIMITS, PPR};
 use crate::config::scoring::{EGO, pit, rrf};
 use crate::config::tokenization::TOKENIZATION;
@@ -15,9 +16,17 @@ use crate::mode::{PipelineConfig, ScoringKind};
 use crate::ppr::personalized_pagerank;
 use crate::types::{DiffHunk, Fragment, FragmentId, extract_identifier_list};
 
+pub(crate) fn file_admission_enabled() -> bool {
+    std::env::var_os("DIFFCTX_FILE_ADMISSION").is_some_and(|v| v != "0")
+}
+
 pub struct ScoringResult {
     pub rel_scores: FxHashMap<FragmentId, f64>,
     pub filtered_fragments: Vec<Fragment>,
+    /// Files openable by the greedy under per-file admission (#65): reachable
+    /// from the core set via naming-class edges. None = admission off (flag
+    /// unset or a strategy without a typed graph), every file admissible.
+    pub admissible_files: Option<FxHashSet<std::sync::Arc<str>>>,
     pub graph: Graph,
     /// Wall time spent constructing the typed dependency graph (edge
     /// builders + dedup + hub suppression + per-source cap). Reported
@@ -54,6 +63,7 @@ impl Default for ScoringResult {
         Self {
             rel_scores: FxHashMap::default(),
             filtered_fragments: Vec::new(),
+            admissible_files: None,
             graph: Graph::new(),
             graph_build_ms: 0.0,
             ppr_truncated: false,
@@ -108,6 +118,9 @@ impl ScoringStrategy for PPRScoring {
         let skip_expensive = all_fragments.len() > LIMITS.skip_expensive_threshold;
         let t_graph = Instant::now();
         let capped = edges::collect_capped_edges(all_fragments, repo_root, skip_expensive);
+        let admissible_files = file_admission_enabled().then(|| {
+            edges::naming_reachable_files(&capped, core_ids, SEMANTIC_DISCOVERY.max_depth)
+        });
         let mut g = graph::build_graph_capped(all_fragments, capped);
         let graph_build_ms = t_graph.elapsed().as_secs_f64() * 1000.0;
         let ppr = personalized_pagerank(
@@ -132,6 +145,7 @@ impl ScoringStrategy for PPRScoring {
         let filtered = finish_scoring(all_fragments, core_ids, &rel_scores, &g);
 
         ScoringResult {
+            admissible_files,
             rel_scores,
             filtered_fragments: filtered,
             graph: g,
@@ -166,6 +180,9 @@ impl ScoringStrategy for EgoGraphScoring {
         let skip_expensive = all_fragments.len() > LIMITS.skip_expensive_threshold;
         let t_graph = Instant::now();
         let capped = edges::collect_capped_edges(all_fragments, repo_root, skip_expensive);
+        let admissible_files = file_admission_enabled().then(|| {
+            edges::naming_reachable_files(&capped, core_ids, SEMANTIC_DISCOVERY.max_depth)
+        });
         let g = graph::build_graph_capped(all_fragments, capped);
         let graph_build_ms = t_graph.elapsed().as_secs_f64() * 1000.0;
         let mut rel_scores = g.ego_graph(core_ids, self.max_depth);
@@ -194,6 +211,7 @@ impl ScoringStrategy for EgoGraphScoring {
         let filtered = finish_scoring(all_fragments, core_ids, &rel_scores, &g);
 
         ScoringResult {
+            admissible_files,
             rel_scores,
             filtered_fragments: filtered,
             graph: g,
@@ -298,6 +316,7 @@ impl ScoringStrategy for BM25Scoring {
         let filtered = filtering::cap_context_fragments(filtered, core_ids, &rel_scores);
 
         ScoringResult {
+            admissible_files: None,
             rel_scores,
             filtered_fragments: filtered,
             ..Default::default()
@@ -465,6 +484,7 @@ impl ScoringStrategy for RrfFusionScoring {
         let filtered = finish_scoring(&union, core_ids, &rel_scores, &ego.graph);
 
         ScoringResult {
+            admissible_files: None,
             rel_scores,
             filtered_fragments: filtered,
             graph: ego.graph,
@@ -783,6 +803,7 @@ impl ScoringStrategy for PitFusionScoring {
         let filtered = finish_scoring(&union, core_ids, &rel_scores, &ego.graph);
 
         ScoringResult {
+            admissible_files: None,
             rel_scores,
             filtered_fragments: filtered,
             graph: ego.graph,

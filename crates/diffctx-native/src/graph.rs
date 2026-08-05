@@ -102,6 +102,12 @@ pub struct CompactEdge {
     pub dst: u32,
     pub weight: f64,
     pub category: EdgeCategory,
+    /// The RAW builder weight placed this edge in the naming class (a
+    /// semantic channel that spells out a symbol or file: import, call,
+    /// type/member ref), as opposed to a diffuse endorsement (0.05 markers,
+    /// tags fallback, similarity). Classified before hub suppression so a
+    /// damped import into a registry hub keeps its naming status.
+    pub naming: bool,
 }
 
 /// Node-interned edge list: the memory-bounded intermediate between
@@ -143,6 +149,7 @@ pub fn dedup_compact_edges(edges: &mut Vec<CompactEdge>) {
             if edges[j].weight > merged.weight {
                 merged.weight = edges[j].weight;
             }
+            merged.naming |= edges[j].naming;
             j += 1;
         }
         edges[out] = merged;
@@ -709,6 +716,7 @@ pub struct RankedCandidate {
     pub weight: f64,
     pub dst: u32,
     pub category: EdgeCategory,
+    pub naming: bool,
 }
 
 impl RankedCandidate {
@@ -950,6 +958,7 @@ pub fn build_graph(
             dst: d,
             weight: *w,
             category,
+            naming: false,
         });
     }
     dedup_compact_edges(&mut compact_edges);
@@ -1127,18 +1136,21 @@ mod tests {
                 dst: 1,
                 weight: 0.5,
                 category: EdgeCategory::Semantic,
+                naming: false,
             },
             CompactEdge {
                 src: 0,
                 dst: 1,
                 weight: 0.8,
                 category: EdgeCategory::Similarity,
+                naming: false,
             },
             CompactEdge {
                 src: 2,
                 dst: 1,
                 weight: 0.3,
                 category: EdgeCategory::Sibling,
+                naming: false,
             },
         ];
         dedup_compact_edges(&mut edges);
@@ -1156,30 +1168,35 @@ mod tests {
                 dst: 100,
                 weight: 10.0,
                 category: EdgeCategory::Semantic,
+                naming: false,
             },
             CompactEdge {
                 src: 0,
                 dst: 50,
                 weight: 8.0,
                 category: EdgeCategory::Semantic,
+                naming: false,
             },
             CompactEdge {
                 src: 0,
                 dst: 30,
                 weight: 8.0,
                 category: EdgeCategory::Semantic,
+                naming: false,
             },
             CompactEdge {
                 src: 0,
                 dst: 70,
                 weight: 8.0,
                 category: EdgeCategory::Semantic,
+                naming: false,
             },
             CompactEdge {
                 src: 0,
                 dst: 5,
                 weight: 1.0,
                 category: EdgeCategory::Semantic,
+                naming: false,
             },
         ];
 
@@ -1212,16 +1229,19 @@ mod tests {
                 weight: 5.0,
                 dst: 30,
                 category: EdgeCategory::Generic,
+                naming: false,
             },
             RankedCandidate {
                 weight: 5.0,
                 dst: 10,
                 category: EdgeCategory::Generic,
+                naming: false,
             },
             RankedCandidate {
                 weight: 5.0,
                 dst: 20,
                 category: EdgeCategory::Generic,
+                naming: false,
             },
         ];
 
@@ -1243,6 +1263,7 @@ mod tests {
                 dst: c.dst,
                 weight: c.weight,
                 category: c.category,
+                naming: false,
             })
             .collect();
         cap_out_edges_per_source(&mut edges, 1);
@@ -1315,6 +1336,7 @@ mod tests {
                         weight,
                         dst,
                         category,
+                        naming: false,
                     },
                     k,
                 );
@@ -1326,6 +1348,7 @@ mod tests {
                         dst: c.dst,
                         weight: c.weight,
                         category: c.category,
+                        naming: false,
                     });
                 }
             }
@@ -1341,6 +1364,7 @@ mod tests {
                 dst,
                 weight,
                 category: canonicalize(src, dst, cat),
+                naming: false,
             })
             .collect();
         dedup_compact_edges(&mut materialized_edges);
