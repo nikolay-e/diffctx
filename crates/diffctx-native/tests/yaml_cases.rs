@@ -444,12 +444,21 @@ fn run_case_with_scoring(
     let budget = calculate_budget(&case);
     let diff_range = format!("{base_sha}..HEAD");
 
+    // `DIFFCTX_PROBE_TAU` is the tau counterpart of `DIFFCTX_PROBE_MODE`: a
+    // measurement knob for comparing a candidate stopping threshold on the
+    // same corpus, deliberately NOT wired into the baseline file, and only
+    // meaningful with `DIFFCTX_YAML_IGNORE_BASELINE=1`. The default run keeps
+    // measuring the shipped constant (#175).
+    let tau = std::env::var("DIFFCTX_PROBE_TAU")
+        .ok()
+        .and_then(|s| s.parse::<f64>().ok())
+        .unwrap_or(_diffctx::config::limits::DEFAULT_STOPPING_THRESHOLD);
     let output = build_diff_context(
         repo,
         Some(&diff_range),
         Some(budget),
         _diffctx::config::limits::DEFAULT_PPR_ALPHA,
-        _diffctx::config::limits::DEFAULT_STOPPING_THRESHOLD,
+        tau,
         false,
         false,
         scoring,
