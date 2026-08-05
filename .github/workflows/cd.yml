@@ -126,6 +126,15 @@ jobs:
               pkg["version"] = ver
           srv.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
 
+          # The action doc pins `nikolay-e/diffctx@v<semver>` in its examples;
+          # test_version_consistency gates them against __version__, so a
+          # release that skips this file fails the next full pytest run.
+          doc_md = pathlib.Path("docs/product/github-action.md")
+          s = doc_md.read_text(encoding="utf-8")
+          s, n = re.subn(r"(nikolay-e/diffctx@v)\d+\.\d+\.\d+", r"\g<1>" + ver, s)
+          assert n >= 2, "github-action.md: expected at least 2 version pins"
+          doc_md.write_text(s, encoding="utf-8")
+
           lock = pathlib.Path("Cargo.lock")
           s = lock.read_text(encoding="utf-8")
           s, n = re.subn(
@@ -152,7 +161,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/diffctx/version.py pyproject.toml crates/diffctx-native/Cargo.toml Cargo.lock \
-            server.json action.yml .claude-plugin/plugin.json
+            server.json action.yml .claude-plugin/plugin.json docs/product/github-action.md
           if ! git diff --staged --quiet; then
             git commit -m "Release version ${VERSION}"
           else

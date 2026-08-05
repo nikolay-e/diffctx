@@ -4,6 +4,12 @@ use crate::config::env_overrides::{read_env_fraction, read_env_u32};
 pub struct SelectionConfig {
     pub core_budget_fraction: f64,
     pub r_cap_min: f64,
+    /// Share of the run budget one file may consume while other files still
+    /// have unplaced candidates (#194: a single +9k-line data blob monopolized
+    /// 364 of 370 output sections). The ceiling binds only in the first
+    /// placement phase — leftovers no other file claims flow back to whoever
+    /// wants them, so a single-file change is unaffected.
+    pub per_file_budget_fraction: f64,
 }
 
 impl Default for SelectionConfig {
@@ -17,6 +23,7 @@ impl Default for SelectionConfig {
             // than tuned to a sharp optimum.
             core_budget_fraction: 0.5,
             r_cap_min: 0.01,
+            per_file_budget_fraction: 0.25,
         }
     }
 }
@@ -59,6 +66,10 @@ pub fn selection() -> SelectionConfig {
     SelectionConfig {
         core_budget_fraction: read_env_fraction("DIFFCTX_OP_SELECTION_CORE_BUDGET_FRACTION", 0.5),
         r_cap_min: read_env_fraction("DIFFCTX_OP_SELECTION_R_CAP_MIN", 0.01),
+        per_file_budget_fraction: read_env_fraction(
+            "DIFFCTX_OP_SELECTION_PER_FILE_BUDGET_FRACTION",
+            0.25,
+        ),
     }
 }
 
