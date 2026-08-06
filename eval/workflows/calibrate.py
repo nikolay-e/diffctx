@@ -119,6 +119,9 @@ def main() -> int:
 
     _os.environ["DIFFCTX_BENCH_TIMEOUT_SEC"] = str(args.timeout_per_instance)
 
+    from eval.harness.common import prune_dead_worker_worktrees
+
+    prune_dead_worker_worktrees(Path.home() / ".cache" / "contextbench_repos")
     eval_all_cells_fn = make_diffctx_eval_all_cells_fn(repo_root)
     args.out.mkdir(parents=True, exist_ok=True)
     checkpoint_dir = args.out / "checkpoints"

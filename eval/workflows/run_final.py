@@ -501,6 +501,9 @@ def main() -> int:
     budgets_list = _parse_budgets_list(args)
     depths_list = _parse_depths_list(args, params)
 
+    from eval.harness.common import prune_dead_worker_worktrees
+
+    prune_dead_worker_worktrees(Path.home() / ".cache" / "contextbench_repos")
     eval_fn = _make_eval_fn(args.baseline, repo_root, request_timeout=args.aider_request_timeout)
     eval_all_cells_fn = (
         make_diffctx_eval_all_cells_fn(repo_root) if args.baseline == "diffctx" and len(budgets_list) > 1 else None
