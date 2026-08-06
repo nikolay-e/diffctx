@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **New default operating point: per-file admission ON, `tau` 0.12 -> 0.05,
+  `core_budget_fraction` 0.5 -> 0.4** — the v5 evaluation cycle's validated
+  winner. A file whose only connection to the change is proximity (sibling
+  directory, shared rare token, lexical similarity) is no longer selectable as
+  context; it must be naming-reachable (an import/call/type-ref path from the
+  changed set, up to two hops, either direction). The weak stop then spends
+  the freed budget inside that admissible set. Evidence chain: 12-cell
+  screening grid (corpus known-failures 227 -> 196 with three xfails retiring;
+  the strict-tau admission variant was killed by a significant real-commit
+  recall loss), tau x cbf calibration + held-out validation (0.6815 vs 0.6684
+  for the old point), and a six-arm confirmation sweep on the three 500-case
+  test splits: file_recall parity with the old default, contextbench
+  file_precision +0.041 (bootstrap CI excludes zero), dcbench-372 paired
+  nontrivial recall within noise at -4% tokens. Opt out with
+  `DIFFCTX_FILE_ADMISSION=0` and `--tau 0.12` to reproduce the old behaviour
+  (#65).
+
+- **Selection enforces a per-file budget ceiling** (#194): while other files
+  still have unplaced candidates, one file may not consume more than
+  `SELECTION.per_file_budget_fraction` (default 0.25) of the budget — the
+  reporter's +9k-line generated JSON no longer crowds 34 source files out of
+  the output. Blocked candidates are deferred, not dropped: once every other
+  file has had its chance the ceiling lifts, so a single-file change still
+  fills the whole budget.
+
 ## [1.13.0] - 2026-08-04
 
 ### Added

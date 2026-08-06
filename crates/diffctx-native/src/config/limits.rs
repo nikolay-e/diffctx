@@ -49,11 +49,15 @@ pub const MAX_BLOB_READ_BYTES: usize = 16_000_000;
 pub const DEFAULT_SCORING: &str = "ego";
 
 pub const DEFAULT_PPR_ALPHA: f64 = 0.60;
-/// Confirmed by the v4 re-calibration on the EGO pipeline (5x3 grid,
-/// v1 calibration manifest): validated winner (tau, cbf) = (0.12, 0.5)
-/// at min(per_benchmark file_recall) = 0.6532, validation 0.6604.
-/// Surface flat and monotone (top-3 within 0.004) — choice is robust.
-pub const DEFAULT_STOPPING_THRESHOLD: f64 = 0.12;
+/// v5 re-calibration under per-file admission (4x3 grid, v1 calibration
+/// manifest, held-out validated): winner (tau, cbf) = (0.05, 0.4) at
+/// min(per_benchmark file_recall) = 0.6815 vs 0.6684 for the old point.
+/// Confirmed on the test splits (500x3): file_recall parity with the old
+/// default, contextbench file_precision +0.041 (CI excludes zero), and on
+/// dcbench-372 paired nontrivial recall within noise at -4% tokens. The
+/// weak stop only ships together with the admission gate (#65): without it,
+/// tau=0.05 re-admits the diffuse tail the gate exists to block.
+pub const DEFAULT_STOPPING_THRESHOLD: f64 = 0.05;
 pub const DEFAULT_PIPELINE_TIMEOUT_SECONDS: u64 = 300;
 
 pub struct PPRConfig {

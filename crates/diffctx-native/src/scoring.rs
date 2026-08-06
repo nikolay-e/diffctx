@@ -16,8 +16,12 @@ use crate::mode::{PipelineConfig, ScoringKind};
 use crate::ppr::personalized_pagerank;
 use crate::types::{DiffHunk, Fragment, FragmentId, extract_identifier_list};
 
+/// Per-file naming admission (#65) is the default since the v5 cycle:
+/// screening (12-cell grid), calibration + held-out validation, and the
+/// confirmation sweep all passed the pre-registered criteria. Opt out with
+/// DIFFCTX_FILE_ADMISSION=0.
 pub(crate) fn file_admission_enabled() -> bool {
-    std::env::var_os("DIFFCTX_FILE_ADMISSION").is_some_and(|v| v != "0")
+    std::env::var_os("DIFFCTX_FILE_ADMISSION").is_none_or(|v| v != "0")
 }
 
 pub struct ScoringResult {

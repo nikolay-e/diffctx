@@ -1134,8 +1134,11 @@ mod tests {
             .collect();
         let core: FxHashSet<FragmentId> = std::iter::once(frags[0].id.clone()).collect();
         let mut rel = FxHashMap::default();
+        // Geometric decay: with escalating cost the density ratio between
+        // consecutive candidates falls below 5% by the tail, so the rule
+        // fires at the shipped tau (0.05) and not only at looser settings.
         for (i, f) in frags.iter().enumerate() {
-            rel.insert(f.id.clone(), 1.0 / (1.0 + 3.0 * i as f64));
+            rel.insert(f.id.clone(), 0.25f64.powi(i as i32).max(1e-6));
         }
 
         let budget = 10_000;
