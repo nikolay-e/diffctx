@@ -125,7 +125,16 @@ impl EdgeBuilder for TestEdgeBuilder {
         // (test file, source file), not per fragment pair.
         let mut linked_file_pairs: FxHashSet<(&str, &str)> = FxHashSet::default();
 
+        // One pass per test FILE, not per test fragment: everything below is
+        // file-level (stem, imports, representatives), and a home-assistant
+        // test suite holds thousands of fragments per stem — re-resolving the
+        // same candidate set per fragment burned 37s to emit 2.5k edges
+        // (#196).
+        let mut seen_test_files: FxHashSet<&str> = FxHashSet::default();
         for test_frag in &test_frags {
+            if !seen_test_files.insert(test_frag.path()) {
+                continue;
+            }
             let test_stem = Path::new(test_frag.path())
                 .file_stem()
                 .map(|s| s.to_string_lossy().to_string())

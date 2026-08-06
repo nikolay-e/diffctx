@@ -182,14 +182,24 @@ impl EdgeBuilder for GoEdgeBuilder {
 
         let mut edges: EdgeDict = FxHashMap::default();
 
+        let mut path_last_comp: FxHashMap<&str, Vec<&String>> = FxHashMap::default();
+        for path_str in path_to_frags.keys() {
+            if let Some(last) = path_str.rsplit('/').next() {
+                path_last_comp.entry(last).or_default().push(path_str);
+            }
+        }
+
         for gf in &go_frags {
             let imports = extract_imports(&gf.content);
             let (func_calls, type_refs, pkg_calls) = extract_references(&gf.content);
 
             for imp in &imports {
                 let imp_pkg = imp.split('/').next_back().unwrap_or(imp).to_lowercase();
-                for (pkg, frag_ids) in &pkg_to_frags {
-                    if *pkg == imp_pkg && !pkg_capped(pkg) {
+                // Direct lookup: the previous full-map scan was
+                // O(imports x packages) and cost ~40s alone on a
+                // kubernetes-scale commit (#196).
+                if !pkg_capped(&imp_pkg) {
+                    if let Some(frag_ids) = pkg_to_frags.get(&imp_pkg) {
                         add_edges_from_ids(
                             &mut edges,
                             &gf.id,
@@ -199,18 +209,31 @@ impl EdgeBuilder for GoEdgeBuilder {
                         );
                     }
                 }
-                for (path_str, frag_ids) in &path_to_frags {
-                    if *imp == *path_str
-                        || imp.ends_with(&format!("/{}", path_str))
-                        || imp.contains(&format!("/{}/", path_str))
-                    {
-                        add_edges_from_ids(
-                            &mut edges,
-                            &gf.id,
-                            frag_ids,
-                            import_weight,
-                            reverse_factor,
-                        );
+                // Last-component index instead of a full scan: the old form
+                // was O(imports x dirs) with two String allocations per probe
+                // and stood at ~39s alone on a kubernetes commit (#196). A
+                // dir can only match if its last component appears as a
+                // component of the import, so only that posting list is
+                // verified against the full predicate.
+                for part in imp.split('/') {
+                    let Some(dirs) = path_last_comp.get(part) else {
+                        continue;
+                    };
+                    for path_str in dirs {
+                        if *imp == **path_str
+                            || imp.ends_with(&format!("/{}", path_str))
+                            || imp.contains(&format!("/{}/", path_str))
+                        {
+                            if let Some(frag_ids) = path_to_frags.get(*path_str) {
+                                add_edges_from_ids(
+                                    &mut edges,
+                                    &gf.id,
+                                    frag_ids,
+                                    import_weight,
+                                    reverse_factor,
+                                );
+                            }
+                        }
                     }
                 }
             }
