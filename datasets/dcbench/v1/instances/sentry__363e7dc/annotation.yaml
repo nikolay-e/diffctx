@@ -56,8 +56,10 @@ gold:
   role: unspecified
   in_diff: true
 forbidden:
-- path: migrations_lockfile.txt (1-line mechanical pointer update)
-- path: static/app/data/controlsiloUrlPatterns.ts (3-line routing registration, trivial)
+- path: migrations_lockfile.txt
+  reason: '1-line mechanical pointer update'
+- path: static/app/data/controlsiloUrlPatterns.ts
+  reason: '3-line routing registration, trivial'
 nontrivial_gold_count: 0
 annotator: legacy-review-2026-06
 candidates_from:

@@ -549,7 +549,7 @@ def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> arg
         default=_UNSET,
         metavar="FLOAT",
         help=(
-            "Relevance threshold for full fragment content, >= 0 (default: 0.12). "
+            "Relevance threshold for full fragment content, >= 0 (default: 0.05). "
             "Fragments scoring below it are reduced to signature stubs or dropped; "
             "higher = leaner output, lower = more surrounding context"
         ),

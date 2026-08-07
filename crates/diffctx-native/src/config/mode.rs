@@ -40,6 +40,12 @@ impl Default for ModeConfig {
 pub fn mode() -> ModeConfig {
     ModeConfig {
         ego_depth_extended: read_env_usize("DIFFCTX_OP_GRAPH_DEPTH", 2),
+        // Breadth of the lexical discovery channel into the candidate
+        // universe. Shipped 1 = one BM25 file total; measured on dcbench, 79%
+        // of nontrivial gold never enters the universe while most of it shares
+        // 3+ path tokens with the diff. Env-gated for the universe ablation
+        // (#130); unset, behaviour is byte-identical.
+        bm25_top_k_primary: read_env_usize("DIFFCTX_BM25_DISCOVERY_TOP_K", 1),
         ..ModeConfig::default()
     }
 }

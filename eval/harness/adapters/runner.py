@@ -8,6 +8,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from diffctx._diffctx import DEFAULT_TAU as _ENGINE_DEFAULT_TAU
 from eval.harness.adapters.base import BenchmarkAdapter, BenchmarkInstance, EvalResult
 
 EvalFn = Callable[[BenchmarkInstance, "RunParams"], EvalResult]
@@ -23,11 +24,11 @@ class RunParams:
     near-zero effect). Anything else can be threaded through `extra_env`.
     """
 
-    # Calibrated v1 (2119 instances, 4 benchmarks, pebble-fixed pool):
-    # winner (tau, cbf) = (0.12, 0.5) at min(per_benchmark file_recall)
-    # = 0.1092. Surface is flat (top-3 within 0.001) — robust default.
-    tau: float = 0.12
-    core_budget_fraction: float = 0.5
+    # Resolved from the engine, not restated: a literal here drifted from the
+    # shipped tau once already (#175). The v5 operating point is (0.05, 0.4)
+    # under per-file admission; see config/limits.rs for the evidence chain.
+    tau: float = _ENGINE_DEFAULT_TAU
+    core_budget_fraction: float = 0.4
     budget: int = 8000
     scoring: str = "ego"
     extra_env: dict[str, str] = field(default_factory=dict)

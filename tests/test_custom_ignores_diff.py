@@ -75,7 +75,15 @@ def test_diff_context_excludes_nested_gitignore_pattern(tmp_path):
     repo.commit("change app and tmp file")
 
     for full in (False, True):
-        rendered = diffctx.to_yaml(diffctx.build_diff_context(root_dir=repo.path, diff_range="HEAD~1", full=full))
+        result = diffctx.build_diff_context(root_dir=repo.path, diff_range="HEAD~1", full=full)
+        rendered = diffctx.to_yaml(result)
+        # What #85 protects is the content: it must never surface.
         assert "LEAK_TMP_CHANGED" not in rendered, full
-        assert "drop.tmp" not in rendered, full
+        # The exclusion itself is no longer silent (#188): the path is declared
+        # under ignored_changes — and appears nowhere else.
+        fragment_paths = {f.get("path") for f in result.get("fragments", [])}
+        assert "sub/drop.tmp" not in fragment_paths, full
+        assert "sub/drop.tmp" not in (result.get("changed_files") or []), full
+        if not full:
+            assert result.get("ignored_changes") == ["sub/drop.tmp"], full
         assert "app.py" in rendered, full

@@ -147,6 +147,8 @@ fn diff_result_is_empty(output: &DiffContextOutput) -> bool {
     output.deleted_files.is_empty()
         && output.renamed_files.is_empty()
         && output.lockfile_changes.is_empty()
+        && output.ignored_changes.is_empty()
+        && output.policy_excluded_count == 0
         && output.fragment_count == 0
 }
 
@@ -218,7 +220,9 @@ fn run_locate(
     let is_empty = output.item_count == 0
         && output.deleted_files.is_empty()
         && output.renamed_files.is_empty()
-        && output.lockfile_changes.is_empty();
+        && output.lockfile_changes.is_empty()
+        && output.ignored_changes.is_empty()
+        && output.policy_excluded_count == 0;
     if is_empty {
         eprintln!(
             "diffctx: diff produced no semantic context (clean working tree, binary-only, or \

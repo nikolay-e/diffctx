@@ -11,6 +11,10 @@ use super::super::base::{self, EdgeBuilder};
 pub struct TagsEdgeBuilder;
 
 impl EdgeBuilder for TagsEdgeBuilder {
+    fn is_fallback(&self) -> bool {
+        true
+    }
+
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {
         let mut ident_index: FxHashMap<&str, Vec<(&FragmentId, &str)>> = FxHashMap::default();
 

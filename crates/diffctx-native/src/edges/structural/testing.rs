@@ -71,6 +71,10 @@ fn extract_target_name_from_test(test_name: &str) -> Option<String> {
 
 pub struct TestEdgeBuilder;
 
+/// Same ambiguity bar as the c-family and path-reference caps: a stem carried
+/// by more files than this cannot name a target.
+const MAX_GLOBAL_TARGET_FILES: usize = 8;
+
 impl EdgeBuilder for TestEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
         let weight_direct = EDGE_WEIGHTS["test_direct"].forward;
@@ -111,9 +115,26 @@ impl EdgeBuilder for TestEdgeBuilder {
                 .or_insert_with(|| extract_imports(&tf.content));
         }
 
+        let reps = base::file_representatives(fragments);
+
         let mut edges: EdgeDict = FxHashMap::default();
 
+        // The naming convention names a FILE, so the relation is carried by
+        // the two files' representatives (base::file_representatives) and the
+        // containment star spreads it within each file. One pair per
+        // (test file, source file), not per fragment pair.
+        let mut linked_file_pairs: FxHashSet<(&str, &str)> = FxHashSet::default();
+
+        // One pass per test FILE, not per test fragment: everything below is
+        // file-level (stem, imports, representatives), and a home-assistant
+        // test suite holds thousands of fragments per stem — re-resolving the
+        // same candidate set per fragment burned 37s to emit 2.5k edges
+        // (#196).
+        let mut seen_test_files: FxHashSet<&str> = FxHashSet::default();
         for test_frag in &test_frags {
+            if !seen_test_files.insert(test_frag.path()) {
+                continue;
+            }
             let test_stem = Path::new(test_frag.path())
                 .file_stem()
                 .map(|s| s.to_string_lossy().to_string())
@@ -128,7 +149,40 @@ impl EdgeBuilder for TestEdgeBuilder {
                 .cloned()
                 .unwrap_or_default();
 
-            for src_frag in by_base.get(&target_name).unwrap_or(&vec![]) {
+            // `config_test` names `config` — but which one? envoy holds 520
+            // files with that stem, and pairing every test fragment with every
+            // fragment of every one of them put 180M edges out of this builder
+            // alone (half of dcbench hung in the graph build). Co-location
+            // resolves it the way the naming convention means it: the test's
+            // own directory first, then a global fallback only while the stem
+            // stays rare enough to identify a file.
+            let candidates = by_base.get(&target_name).map(Vec::as_slice).unwrap_or(&[]);
+            let test_dir = Path::new(test_frag.path()).parent();
+            let same_dir: Vec<&&Fragment> = candidates
+                .iter()
+                .filter(|sf| Path::new(sf.path()).parent() == test_dir)
+                .collect();
+            let chosen: Vec<&&Fragment> = if !same_dir.is_empty() {
+                same_dir
+            } else {
+                let distinct_files: FxHashSet<&str> =
+                    candidates.iter().map(|sf| sf.path()).collect();
+                if distinct_files.len() > MAX_GLOBAL_TARGET_FILES {
+                    continue;
+                }
+                candidates.iter().collect()
+            };
+
+            let Some(test_rep) = reps.get(test_frag.path()) else {
+                continue;
+            };
+            for src_frag in chosen {
+                if !linked_file_pairs.insert((test_frag.path(), src_frag.path())) {
+                    continue;
+                }
+                let Some(src_rep) = reps.get(src_frag.path()) else {
+                    continue;
+                };
                 let src_module = module_cache
                     .get(src_frag.path())
                     .map(|s| s.as_str())
@@ -139,13 +193,8 @@ impl EdgeBuilder for TestEdgeBuilder {
                     weight_naming
                 };
 
-                add_edge_unidirectional(&mut edges, &test_frag.id, &src_frag.id, weight);
-                add_edge_unidirectional(
-                    &mut edges,
-                    &src_frag.id,
-                    &test_frag.id,
-                    test_reverse_weight,
-                );
+                add_edge_unidirectional(&mut edges, test_rep, src_rep, weight);
+                add_edge_unidirectional(&mut edges, src_rep, test_rep, test_reverse_weight);
             }
         }
 

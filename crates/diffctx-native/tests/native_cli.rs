@@ -13,8 +13,15 @@ use tempfile::TempDir;
 const BIN: &str = env!("CARGO_BIN_EXE_diffctx");
 
 fn git(repo: &Path, args: &[&str]) {
+    // Scrub the same vars git_command() scrubs: under `git commit -a` the
+    // pre-commit hook runs with GIT_INDEX_FILE pointing at the MAIN repo's
+    // in-progress index, and an unscrubbed child git in a temp repo locks
+    // that index instead ("index.lock.lock: File exists").
     let status = Command::new("git")
         .current_dir(repo)
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .env_remove("GIT_INDEX_FILE")
         .args(args)
         .status()
         .expect("run git");

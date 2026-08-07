@@ -126,6 +126,15 @@ jobs:
               pkg["version"] = ver
           srv.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
 
+          # The action doc pins `nikolay-e/diffctx@v<semver>` in its examples;
+          # test_version_consistency gates them against __version__, so a
+          # release that skips this file fails the next full pytest run.
+          doc_md = pathlib.Path("docs/product/github-action.md")
+          s = doc_md.read_text(encoding="utf-8")
+          s, n = re.subn(r"(nikolay-e/diffctx@v)\d+\.\d+\.\d+", r"\g<1>" + ver, s)
+          assert n >= 2, "github-action.md: expected at least 2 version pins"
+          doc_md.write_text(s, encoding="utf-8")
+
           lock = pathlib.Path("Cargo.lock")
           s = lock.read_text(encoding="utf-8")
           s, n = re.subn(
@@ -152,7 +161,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/diffctx/version.py pyproject.toml crates/diffctx-native/Cargo.toml Cargo.lock \
-            server.json action.yml .claude-plugin/plugin.json
+            server.json action.yml .claude-plugin/plugin.json docs/product/github-action.md
           if ! git diff --staged --quiet; then
             git commit -m "Release version ${VERSION}"
           else
@@ -452,7 +461,7 @@ jobs:
           twine check dist/*
 
       - name: Publish to PyPI (OIDC trusted publishing)
-        uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247  # release/v1
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33  # release/v1
         with:
           packages-dir: ./dist
           print-hash: true
@@ -583,15 +592,25 @@ jobs:
               except json.JSONDecodeError:
                   sys.exit(f"non-JSON-RPC line on stdout: {ln!r}")
 
-          init_result = next(r["result"] for r in responses if r.get("id") == 1)
+          def result_for(rpc_id):
+              for r in responses:
+                  if r.get("id") == rpc_id and "result" in r:
+                      return r["result"]
+              sys.exit(
+                  f"no result for id={rpc_id} on stdout; responses: {responses!r}\n"
+                  f"stderr:\n{proc.stderr}"
+              )
+
+          init_result = result_for(1)
           reported = init_result["serverInfo"]["version"]
           expected = os.environ["VERSION"]
           if reported != expected:
               sys.exit(f"server reports {reported}, expected {expected}")
 
-          tools = next(r["result"]["tools"] for r in responses if r.get("id") == 2)
+          tools = result_for(2)["tools"]
           names = sorted(t["name"] for t in tools)
-          for required in ("get_diff_context", "get_file_context", "get_tree_map"):
+          # The MCP surface is a single tool since the locate-first flow (#127).
+          for required in ("diffctx_context",):
               if required not in names:
                   sys.exit(f"tool {required} missing from {names}")
 
@@ -809,7 +828,7 @@ jobs:
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
 
       - name: Login to ghcr
-        uses: docker/login-action@06fb636fac595d6fb4b28a5dfcb21a6f5091859c  # v4.5.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -859,7 +878,7 @@ jobs:
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
 
       - name: Login to ghcr
-        uses: docker/login-action@06fb636fac595d6fb4b28a5dfcb21a6f5091859c  # v4.5.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}

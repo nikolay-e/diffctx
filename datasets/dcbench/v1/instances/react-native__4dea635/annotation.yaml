@@ -15,18 +15,25 @@ gold:
   tier: essential
   role: unspecified
   in_diff: true
-- path: packages/react-native/ReactCommon/hermes/inspector-modern/CMakeLists.txt (renamed from inspector/CMakeLists.txt)
+- path: packages/react-native/ReactCommon/hermes/inspector-modern/CMakeLists.txt
   tier: essential
-  role: unspecified
-  in_diff: false
-- path: packages/react-native/ReactCommon/hermes/inspector/README.md (note pointing to new location)
+  role: config
+  in_diff: true
+  rationale: New build entry point for the forked inspector; renamed from hermes/inspector/CMakeLists.txt (old path gone at this commit), target renamed to hermes_inspector_modern.
+- path: packages/react-native/ReactCommon/hermes/inspector/README.md
   tier: essential
-  role: unspecified
-  in_diff: false
+  role: doc
+  in_diff: true
+  rationale: The commit prepends a DEPRECATED banner pointing at inspector-modern, the only in-repo statement that the old tree is frozen.
 - path: packages/react-native/ReactCommon/react/runtime/hermes/HermesInstance.cpp
   tier: essential
   role: unspecified
   in_diff: true
+- path: packages/react-native/ReactCommon/hermes/inspector/chrome/Registration.h
+  tier: helpful
+  role: definition
+  in_diff: false
+  rationale: 'Old-namespace registration entry point the inspector-modern fork duplicates — the symbol whose duplication the deprecation notes describe.'
 forbidden:
 - path: packages/react-native/ReactCommon/hermes/inspector-modern/Inspector.cpp
 - path: packages/react-native/ReactCommon/hermes/inspector-modern/InspectorState.cpp
@@ -34,7 +41,7 @@ forbidden:
 - path: packages/react-native/ReactCommon/hermes/inspector-modern/chrome/MessageConverters.cpp
 - path: packages/react-native/ReactCommon/hermes/inspector-modern/chrome/MessageTypes.cpp
 - path: packages/react-native/ReactCommon/hermes/inspector-modern/chrome/tests/ConnectionTests.cpp
-nontrivial_gold_count: 2
+nontrivial_gold_count: 1
 annotator: legacy-review-2026-06
 candidates_from:
 - review

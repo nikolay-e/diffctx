@@ -3,10 +3,11 @@ base_commit: 3429dc1ccf32b6b23f4f0ad3cfdf0d5697af665f
 commit: 15909fab9532f7dc32c320ebc98fa3b67679b79e
 patch_stored: true
 gold:
-- path: ./circleci/configurations/jobs.yml
+- path: .circleci/configurations/jobs.yml
   tier: essential
-  role: unspecified
-  in_diff: false
+  role: config
+  in_diff: true
+  rationale: CI job paths updated from packages/react-native-gradle-plugin to packages/gradle-plugin.
 - path: .github/workflows/nightly.yml
   tier: essential
   role: unspecified
@@ -15,12 +16,18 @@ gold:
   tier: essential
   role: unspecified
   in_diff: true
-- path: packages/react-native-gradle-plugin -> packages/gradle-plugin (directory rename)
+- path: packages/gradle-plugin/settings.gradle.kts
   tier: essential
-  role: unspecified
+  role: config
+  in_diff: true
+  rationale: 'Composite-build root of the moved plugin: declares include('':react-native-gradle-plugin'', '':settings-plugin'', '':shared''), representing the react-native-gradle-plugin -> gradle-plugin directory rename.'
+- path: packages/react-native/build.gradle.kts
+  tier: helpful
+  role: config
   in_diff: false
+  rationale: 'buildscript classpath(''com.facebook.react:react-native-gradle-plugin'') — the Maven artifact id deliberately did NOT move with the packages/react-native-gradle-plugin -> packages/gradle-plugin rename.'
 forbidden: []
-nontrivial_gold_count: 2
+nontrivial_gold_count: 1
 annotator: legacy-review-2026-06
 candidates_from:
 - review

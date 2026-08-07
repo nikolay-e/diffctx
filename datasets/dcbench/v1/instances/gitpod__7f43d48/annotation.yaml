@@ -3,14 +3,16 @@ base_commit: 5bb738a53095fc6d52347bb7d332bd2996b782b1
 commit: 7f43d48115b891e21545a08480e2f1e4e86e449d
 patch_stored: true
 gold:
-- path: components/dashboard/src/data/organizations/orgs-query.ts:useCurrentOrg,getOrgSlugFromQuery
+- path: components/dashboard/src/data/organizations/orgs-query.ts
   tier: essential
-  role: unspecified
-  in_diff: false
-- path: components/dashboard/src/dedicated-setup/use-needs-setup.ts:useNeedsSetup,useOnboardingState
+  role: definition
+  in_diff: true
+  rationale: Introduces the multi-org resolution order (orgSlug query param, then org id, then first org) with the new getOrgSlugFromQuery helper.
+- path: components/dashboard/src/dedicated-setup/use-needs-setup.ts
   tier: essential
-  role: unspecified
-  in_diff: false
+  role: definition
+  in_diff: true
+  rationale: Replaces the enableDedicatedOnboardingFlow feature-flag gate with useInstallationConfiguration().isDedicatedInstallation and exports useOnboardingState.
 - path: components/dashboard/src/login/SSOLoginForm.tsx
   tier: essential
   role: unspecified
@@ -27,8 +29,13 @@ gold:
   tier: essential
   role: unspecified
   in_diff: true
+- path: components/dashboard/src/App.tsx
+  tier: helpful
+  role: caller
+  in_diff: false
+  rationale: 'Consumes useCurrentOrg, whose multi-org resolution order this commit redefines.'
 forbidden: []
-nontrivial_gold_count: 2
+nontrivial_gold_count: 1
 annotator: legacy-review-2026-06
 candidates_from:
 - review

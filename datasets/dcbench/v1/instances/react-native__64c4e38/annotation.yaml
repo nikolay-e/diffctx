@@ -3,14 +3,16 @@ base_commit: dffc156ea7a45b5e0efb3bfdee116c7d876598ce
 commit: 64c4e385cb0fbce264d77623b0da4ced65507c04
 patch_stored: true
 gold:
-- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt:enableLongTaskAPI
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt
   tier: essential
-  role: unspecified
-  in_diff: false
-- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt:enableLongTaskAPI
+  role: definition
+  in_diff: true
+  rationale: Generated Kotlin facade adds enableLongTaskAPI() delegating to the accessor, the Android entry point of the new flag.
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt
   tier: essential
-  role: unspecified
-  in_diff: false
+  role: definition
+  in_diff: true
+  rationale: Adds the cached enableLongTaskAPI() override bridging to C++ via ReactNativeFeatureFlagsCxxInterop.
 - path: packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp
   tier: essential
   role: unspecified
@@ -47,6 +49,11 @@ gold:
   tier: essential
   role: unspecified
   in_diff: true
+- path: packages/react-native/src/private/webapis/performance/PerformanceObserver.js
+  tier: helpful
+  role: definition
+  in_diff: false
+  rationale: 'Observer consuming the new ''longtask'' entry type the commit adds to the performance entry plumbing.'
 forbidden:
 - path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/ReactInstanceManager.java
 - path: packages/react-native/ReactCommon/cxxreact/NativeToJsBridge.h
@@ -56,7 +63,7 @@ forbidden:
 - path: packages/rn-tester/js/components/RNTesterNavbar.js
 - path: packages/rn-tester/js/components/RNTesterTheme.js
 - path: packages/rn-tester/js/examples/WebSocket/WebSocketExample.js
-nontrivial_gold_count: 2
+nontrivial_gold_count: 1
 annotator: legacy-review-2026-06
 candidates_from:
 - review

@@ -15,10 +15,11 @@ gold:
   tier: essential
   role: unspecified
   in_diff: true
-- path: static/app/components/devtoolbar/ (whole directory, deleted — ~30 files)
-  tier: essential
-  role: unspecified
+- path: static/gsApp/components/organizationHeader.tsx
+  tier: helpful
+  role: caller
   in_diff: false
+  rationale: 'Surviving consumer of the devtoolbar feature flag that gates showEmployeeFeedbackButton after the internal toolbar tree was deleted.'
 forbidden: []
 nontrivial_gold_count: 1
 annotator: legacy-review-2026-06

@@ -2,6 +2,7 @@ pub mod analytics;
 pub mod candidate_files;
 pub mod config;
 pub mod core;
+pub mod deadline;
 pub mod discovery;
 pub mod edges;
 pub mod excerpt;

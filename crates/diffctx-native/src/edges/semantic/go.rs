@@ -1,5 +1,8 @@
 use std::path::{Path, PathBuf};
 
+/// Same ambiguity bar as `CFamilySemanticWeights::max_files_per_name`.
+const MAX_FILES_PER_NAME: usize = 8;
+
 use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -35,11 +38,13 @@ fn extract_imports(content: &str) -> FxHashSet<String> {
         .collect()
 }
 
-fn get_package_name(content: &str) -> String {
-    PACKAGE_RE
-        .captures(content)
-        .map(|c| c[1].to_string())
-        .unwrap_or_else(|| "main".to_string())
+/// None when the fragment carries no `package` line — i.e. every
+/// function-body fragment. The old `"main"` fallback funneled all of them
+/// into one bucket, and the same-package loop cross-linked essentially the
+/// whole Go universe through it: 103.8M edges on a gitpod-scale monorepo
+/// (#116).
+fn get_package_name(content: &str) -> Option<String> {
+    PACKAGE_RE.captures(content).map(|c| c[1].to_string())
 }
 
 fn extract_definitions(content: &str) -> (FxHashSet<String>, FxHashSet<String>) {
@@ -83,24 +88,31 @@ fn has_init_func(content: &str) -> bool {
 pub struct GoEdgeBuilder;
 
 impl GoEdgeBuilder {
-    fn build_indices(
+    fn build_indices<'a>(
         &self,
-        go_frags: &[&Fragment],
+        go_frags: &'a [&'a Fragment],
         repo_root: Option<&Path>,
     ) -> (
         FxHashMap<String, Vec<FragmentId>>,
         FxHashMap<String, Vec<FragmentId>>,
         FxHashMap<String, Vec<FragmentId>>,
         FxHashMap<String, Vec<FragmentId>>,
+        FxHashMap<String, FxHashSet<&'a str>>,
+        FxHashMap<String, FxHashSet<&'a str>>,
     ) {
         let mut pkg_to_frags: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
         let mut path_to_frags: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
         let mut type_defs: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
         let mut func_defs: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
+        let mut def_files: FxHashMap<String, FxHashSet<&str>> = FxHashMap::default();
+        let mut pkg_files: FxHashMap<String, FxHashSet<&str>> = FxHashMap::default();
 
         for f in go_frags {
-            let pkg = get_package_name(&f.content).to_lowercase();
-            pkg_to_frags.entry(pkg).or_default().push(f.id.clone());
+            if let Some(pkg) = get_package_name(&f.content) {
+                let lower = pkg.to_lowercase();
+                pkg_files.entry(lower.clone()).or_default().insert(f.path());
+                pkg_to_frags.entry(lower).or_default().push(f.id.clone());
+            }
 
             if let Some(root) = repo_root {
                 if let Ok(rel) = Path::new(f.path()).strip_prefix(root) {
@@ -115,20 +127,25 @@ impl GoEdgeBuilder {
 
             let (funcs, types) = extract_definitions(&f.content);
             for t in types {
-                type_defs
-                    .entry(t.to_lowercase())
-                    .or_default()
-                    .push(f.id.clone());
+                let lower = t.to_lowercase();
+                def_files.entry(lower.clone()).or_default().insert(f.path());
+                type_defs.entry(lower).or_default().push(f.id.clone());
             }
             for func in funcs {
-                func_defs
-                    .entry(func.to_lowercase())
-                    .or_default()
-                    .push(f.id.clone());
+                let lower = func.to_lowercase();
+                def_files.entry(lower.clone()).or_default().insert(f.path());
+                func_defs.entry(lower).or_default().push(f.id.clone());
             }
         }
 
-        (pkg_to_frags, path_to_frags, type_defs, func_defs)
+        (
+            pkg_to_frags,
+            path_to_frags,
+            type_defs,
+            func_defs,
+            def_files,
+            pkg_files,
+        )
     }
 }
 
@@ -149,10 +166,28 @@ impl EdgeBuilder for GoEdgeBuilder {
         let reverse_factor = EDGE_WEIGHTS["go_import"].reverse_factor;
         let init_same_package_weight = GO_SEMANTIC.init_same_package_weight;
 
-        let (pkg_to_frags, path_to_frags, type_defs, func_defs) =
+        let (pkg_to_frags, path_to_frags, type_defs, func_defs, def_files, pkg_files) =
             self.build_indices(&go_frags, repo_root);
 
+        let name_capped = |name: &str| {
+            def_files
+                .get(name)
+                .is_some_and(|s| s.len() > MAX_FILES_PER_NAME)
+        };
+        let pkg_capped = |name: &str| {
+            pkg_files
+                .get(name)
+                .is_some_and(|s| s.len() > MAX_FILES_PER_NAME)
+        };
+
         let mut edges: EdgeDict = FxHashMap::default();
+
+        let mut path_last_comp: FxHashMap<&str, Vec<&String>> = FxHashMap::default();
+        for path_str in path_to_frags.keys() {
+            if let Some(last) = path_str.rsplit('/').next() {
+                path_last_comp.entry(last).or_default().push(path_str);
+            }
+        }
 
         for gf in &go_frags {
             let imports = extract_imports(&gf.content);
@@ -160,8 +195,11 @@ impl EdgeBuilder for GoEdgeBuilder {
 
             for imp in &imports {
                 let imp_pkg = imp.split('/').next_back().unwrap_or(imp).to_lowercase();
-                for (pkg, frag_ids) in &pkg_to_frags {
-                    if *pkg == imp_pkg {
+                // Direct lookup: the previous full-map scan was
+                // O(imports x packages) and cost ~40s alone on a
+                // kubernetes-scale commit (#196).
+                if !pkg_capped(&imp_pkg) {
+                    if let Some(frag_ids) = pkg_to_frags.get(&imp_pkg) {
                         add_edges_from_ids(
                             &mut edges,
                             &gf.id,
@@ -171,24 +209,41 @@ impl EdgeBuilder for GoEdgeBuilder {
                         );
                     }
                 }
-                for (path_str, frag_ids) in &path_to_frags {
-                    if *imp == *path_str
-                        || imp.ends_with(&format!("/{}", path_str))
-                        || imp.contains(&format!("/{}/", path_str))
-                    {
-                        add_edges_from_ids(
-                            &mut edges,
-                            &gf.id,
-                            frag_ids,
-                            import_weight,
-                            reverse_factor,
-                        );
+                // Last-component index instead of a full scan: the old form
+                // was O(imports x dirs) with two String allocations per probe
+                // and stood at ~39s alone on a kubernetes commit (#196). A
+                // dir can only match if its last component appears as a
+                // component of the import, so only that posting list is
+                // verified against the full predicate.
+                for part in imp.split('/') {
+                    let Some(dirs) = path_last_comp.get(part) else {
+                        continue;
+                    };
+                    for path_str in dirs {
+                        if *imp == **path_str
+                            || imp.ends_with(&format!("/{}", path_str))
+                            || imp.contains(&format!("/{}/", path_str))
+                        {
+                            if let Some(frag_ids) = path_to_frags.get(*path_str) {
+                                add_edges_from_ids(
+                                    &mut edges,
+                                    &gf.id,
+                                    frag_ids,
+                                    import_weight,
+                                    reverse_factor,
+                                );
+                            }
+                        }
                     }
                 }
             }
 
             for type_ref in &type_refs {
-                for fid in type_defs.get(&type_ref.to_lowercase()).unwrap_or(&vec![]) {
+                let lower = type_ref.to_lowercase();
+                if name_capped(&lower) {
+                    continue;
+                }
+                for fid in type_defs.get(&lower).unwrap_or(&vec![]) {
                     if fid != &gf.id {
                         add_edge(&mut edges, &gf.id, fid, type_weight, reverse_factor);
                     }
@@ -196,7 +251,11 @@ impl EdgeBuilder for GoEdgeBuilder {
             }
 
             for func_call in &func_calls {
-                for fid in func_defs.get(&func_call.to_lowercase()).unwrap_or(&vec![]) {
+                let lower = func_call.to_lowercase();
+                if name_capped(&lower) {
+                    continue;
+                }
+                for fid in func_defs.get(&lower).unwrap_or(&vec![]) {
                     if fid != &gf.id {
                         add_edge(&mut edges, &gf.id, fid, func_weight, reverse_factor);
                     }
@@ -204,10 +263,11 @@ impl EdgeBuilder for GoEdgeBuilder {
             }
 
             for (pkg_name, _symbol) in &pkg_calls {
-                for fid in pkg_to_frags
-                    .get(&pkg_name.to_lowercase())
-                    .unwrap_or(&vec![])
-                {
+                let lower = pkg_name.to_lowercase();
+                if pkg_capped(&lower) {
+                    continue;
+                }
+                for fid in pkg_to_frags.get(&lower).unwrap_or(&vec![]) {
                     if fid != &gf.id {
                         add_edge(&mut edges, &gf.id, fid, func_weight, reverse_factor);
                     }
@@ -220,10 +280,14 @@ impl EdgeBuilder for GoEdgeBuilder {
             } else {
                 same_package_weight
             };
-            let current_pkg = get_package_name(&gf.content).to_lowercase();
-            for fid in pkg_to_frags.get(&current_pkg).unwrap_or(&vec![]) {
-                if fid != &gf.id {
-                    add_edge(&mut edges, &gf.id, fid, sp_weight, reverse_factor);
+            if let Some(current_pkg) = get_package_name(&gf.content) {
+                for fid in pkg_to_frags
+                    .get(&current_pkg.to_lowercase())
+                    .unwrap_or(&vec![])
+                {
+                    if fid != &gf.id {
+                        add_edge(&mut edges, &gf.id, fid, sp_weight, reverse_factor);
+                    }
                 }
             }
         }
@@ -269,7 +333,9 @@ impl EdgeBuilder for GoEdgeBuilder {
         for c in &go_candidates {
             let content = base::read_file_cached(c, file_cache);
             if let Some(content) = content {
-                let pkg = get_package_name(&content).to_lowercase();
+                let Some(pkg) = get_package_name(&content).map(|p| p.to_lowercase()) else {
+                    continue;
+                };
                 let imports = extract_imports(&content);
                 candidate_index.insert(c.clone(), (pkg, imports));
             }
@@ -283,7 +349,9 @@ impl EdgeBuilder for GoEdgeBuilder {
                 let content = base::read_file_cached(f, file_cache);
                 if let Some(content) = content {
                     let f_imports = extract_imports(&content);
-                    let f_pkg = get_package_name(&content).to_lowercase();
+                    let Some(f_pkg) = get_package_name(&content).map(|p| p.to_lowercase()) else {
+                        continue;
+                    };
 
                     for c in &go_candidates {
                         if changed_set.contains(c) || discovered.contains(c) {

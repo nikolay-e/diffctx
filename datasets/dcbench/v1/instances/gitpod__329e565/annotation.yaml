@@ -7,20 +7,22 @@ gold:
   tier: essential
   role: unspecified
   in_diff: true
-- path: components/ws-manager/pkg/manager/manager.go:connectToWorkspaceDaemon,waitForTCPPortToBeReachable
+- path: components/ws-manager/pkg/manager/manager.go
   tier: essential
-  role: unspecified
-  in_diff: false
+  role: definition
+  in_diff: true
+  rationale: connectToWorkspaceDaemon switches the ws-daemon dial from hostIP to pod.Status.PodIP gated on the new waitForTCPPortToBeReachable(podIP, 8080, 5s) poll.
 - path: install/installer/pkg/components/registry-facade/objects.go
   tier: essential
   role: unspecified
   in_diff: true
-- path: install/installer/pkg/components/ws-daemon/networkpolicy.go (deleted)
-  tier: essential
-  role: unspecified
+- path: install/installer/pkg/components/ws-daemon/constants.go
+  tier: helpful
+  role: definition
   in_diff: false
+  rationale: 'Defines ws-daemon ServicePort = 8080 — the port the new waitForTCPPortToBeReachable(podIP, 8080) poll dials.'
 forbidden: []
-nontrivial_gold_count: 2
+nontrivial_gold_count: 1
 annotator: legacy-review-2026-06
 candidates_from:
 - review

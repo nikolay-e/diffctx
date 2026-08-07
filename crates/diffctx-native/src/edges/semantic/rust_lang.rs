@@ -1,5 +1,8 @@
 use std::path::{Path, PathBuf};
 
+/// Same ambiguity bar as `CFamilySemanticWeights::max_files_per_name`.
+const MAX_FILES_PER_NAME: usize = 8;
+
 use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -206,6 +209,9 @@ impl EdgeBuilder for RustEdgeBuilder {
         let mut mod_to_frags: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
         let mut type_defs: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
         let mut fn_defs: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
+        let mut def_files: FxHashMap<String, FxHashSet<&str>> = FxHashMap::default();
+        let mut name_files: FxHashMap<String, FxHashSet<&str>> = FxHashMap::default();
+        let mut mod_files: FxHashMap<String, FxHashSet<&str>> = FxHashMap::default();
         let mut trait_impls: FxHashMap<FragmentId, Vec<(String, String)>> = FxHashMap::default();
 
         for f in &rust_frags {
@@ -214,6 +220,7 @@ impl EdgeBuilder for RustEdgeBuilder {
                 .file_stem()
                 .map(|s| s.to_string_lossy().to_lowercase())
                 .unwrap_or_default();
+            name_files.entry(stem.clone()).or_default().insert(f.path());
             name_to_frags
                 .entry(stem.clone())
                 .or_default()
@@ -221,34 +228,31 @@ impl EdgeBuilder for RustEdgeBuilder {
 
             if stem == "mod" || stem == "lib" {
                 if let Some(parent_name) = path.parent().and_then(|p| p.file_name()) {
-                    mod_to_frags
-                        .entry(parent_name.to_string_lossy().to_lowercase())
-                        .or_default()
-                        .push(f.id.clone());
+                    let key = parent_name.to_string_lossy().to_lowercase();
+                    mod_files.entry(key.clone()).or_default().insert(f.path());
+                    mod_to_frags.entry(key).or_default().push(f.id.clone());
                 }
             } else {
+                mod_files.entry(stem.clone()).or_default().insert(f.path());
                 mod_to_frags.entry(stem).or_default().push(f.id.clone());
             }
 
             let (funcs, types) = extract_definitions(&f.content);
             for t in types {
-                type_defs
-                    .entry(t.to_lowercase())
-                    .or_default()
-                    .push(f.id.clone());
+                let lower = t.to_lowercase();
+                def_files.entry(lower.clone()).or_default().insert(f.path());
+                type_defs.entry(lower).or_default().push(f.id.clone());
             }
             for func in funcs {
-                fn_defs
-                    .entry(func.to_lowercase())
-                    .or_default()
-                    .push(f.id.clone());
+                let lower = func.to_lowercase();
+                def_files.entry(lower.clone()).or_default().insert(f.path());
+                fn_defs.entry(lower).or_default().push(f.id.clone());
             }
 
             for mod_name in extract_mods(&f.content) {
-                mod_to_frags
-                    .entry(mod_name.to_lowercase())
-                    .or_default()
-                    .push(f.id.clone());
+                let key = mod_name.to_lowercase();
+                mod_files.entry(key.clone()).or_default().insert(f.path());
+                mod_to_frags.entry(key).or_default().push(f.id.clone());
             }
 
             let impls = extract_trait_impls(&f.content);
@@ -276,6 +280,15 @@ impl EdgeBuilder for RustEdgeBuilder {
         }
 
         let mut edges: EdgeDict = FxHashMap::default();
+        // Same ambiguity bar as CFamilySemanticWeights::max_files_per_name: a
+        // name defined in more files than this is vocabulary, not a
+        // dependency. Uncapped, the type/fn channels alone emitted 35.4M
+        // edges on a polars-scale commit (#196).
+        let name_capped = |name: &str| {
+            def_files
+                .get(name)
+                .is_some_and(|s| s.len() > MAX_FILES_PER_NAME)
+        };
 
         for (impl_fid, pairs) in &trait_impls {
             for (trait_name, _type_name) in pairs {
@@ -309,20 +322,30 @@ impl EdgeBuilder for RustEdgeBuilder {
             for use_path in extract_uses(&rf.content) {
                 for part in use_path.split("::") {
                     let part_lower = part.to_lowercase();
-                    add_edges_from_ids(
-                        &mut edges,
-                        &rf.id,
-                        mod_to_frags.get(&part_lower).unwrap_or(&vec![]),
-                        use_weight,
-                        reverse_factor,
-                    );
-                    add_edges_from_ids(
-                        &mut edges,
-                        &rf.id,
-                        name_to_frags.get(&part_lower).unwrap_or(&vec![]),
-                        use_weight,
-                        reverse_factor,
-                    );
+                    if mod_files
+                        .get(&part_lower)
+                        .is_none_or(|fs| fs.len() <= MAX_FILES_PER_NAME)
+                    {
+                        add_edges_from_ids(
+                            &mut edges,
+                            &rf.id,
+                            mod_to_frags.get(&part_lower).unwrap_or(&vec![]),
+                            use_weight,
+                            reverse_factor,
+                        );
+                    }
+                    if name_files
+                        .get(&part_lower)
+                        .is_none_or(|fs| fs.len() <= MAX_FILES_PER_NAME)
+                    {
+                        add_edges_from_ids(
+                            &mut edges,
+                            &rf.id,
+                            name_to_frags.get(&part_lower).unwrap_or(&vec![]),
+                            use_weight,
+                            reverse_factor,
+                        );
+                    }
                 }
             }
 
@@ -338,7 +361,11 @@ impl EdgeBuilder for RustEdgeBuilder {
             }
 
             for type_ref in &type_refs {
-                for fid in type_defs.get(&type_ref.to_lowercase()).unwrap_or(&vec![]) {
+                let lower = type_ref.to_lowercase();
+                if name_capped(&lower) {
+                    continue;
+                }
+                for fid in type_defs.get(&lower).unwrap_or(&vec![]) {
                     if fid != &rf.id {
                         add_edge(&mut edges, &rf.id, fid, type_weight, reverse_factor);
                     }
@@ -346,7 +373,11 @@ impl EdgeBuilder for RustEdgeBuilder {
             }
 
             for fn_call in &fn_calls {
-                for fid in fn_defs.get(&fn_call.to_lowercase()).unwrap_or(&vec![]) {
+                let lower = fn_call.to_lowercase();
+                if name_capped(&lower) {
+                    continue;
+                }
+                for fid in fn_defs.get(&lower).unwrap_or(&vec![]) {
                     if fid != &rf.id {
                         add_edge(&mut edges, &rf.id, fid, fn_weight, reverse_factor);
                     }

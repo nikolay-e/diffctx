@@ -27,6 +27,11 @@ use crate::types::Fragment;
 
 use self::base::EdgeBuilder;
 
+/// Raw-weight floor above which a Semantic edge counts as a naming channel
+/// (imports/using, calls, type and member refs all sit at >=0.35; tags
+/// fallback at 0.30 and same-package/namespace markers at 0.05 stay diffuse).
+pub const NAMING_WEIGHT_FLOOR: f64 = 0.30;
+
 const EXPENSIVE_CATEGORIES: &[&str] = &["similarity", "history"];
 
 struct BuilderCategory {
@@ -129,11 +134,28 @@ pub fn collect_capped_edges(
             (category, category_weights.multiplier(category))
         })
         .collect();
+    let fallback_flags: Vec<bool> = all_builders
+        .iter()
+        .map(|(_, builder)| builder.is_fallback())
+        .collect();
 
     let per_builder_log: Vec<Vec<LoggedEmission>> = all_builders
         .par_iter()
-        .map(|(_, builder)| {
+        .enumerate()
+        .map(|(builder_idx, (name, builder))| {
+            crate::deadline::check_compute_deadline("edge construction");
+            let t = std::time::Instant::now();
             let edges = builder.build(fragments, repo_root);
+            if std::env::var_os("DIFFCTX_TRACE_BUILDERS").is_some() {
+                // The index is the registration order within
+                // builder_categories(); category names alone cannot tell two
+                // semantic builders apart when one of them floods.
+                eprintln!(
+                    "builder {name}[{builder_idx}]: {:.1}s, {} edges",
+                    t.elapsed().as_secs_f64(),
+                    edges.len()
+                );
+            }
             let mut log = Vec::with_capacity(edges.len());
             for ((src, dst), weight) in edges {
                 let (Some(&s), Some(&d)) = (node_to_idx.get(&src), node_to_idx.get(&dst)) else {
@@ -149,6 +171,35 @@ pub fn collect_capped_edges(
         })
         .collect();
     drop(all_builders);
+
+    // Fallback builders (tags) only count where the dedicated builders came
+    // back empty: an emission survives only if at least one endpoint file has
+    // no dedicated semantic edge. Dual coverage was measured as pure noise —
+    // a tags edge duplicating a real import/call edge adds mass, not reach —
+    // while a parser-degraded file genuinely has nothing else (#131).
+    let mut per_builder_log = per_builder_log;
+    if fallback_flags.iter().any(|&f| f) {
+        let mut dedicated_files: FxHashSet<&str> = FxHashSet::default();
+        for (builder_idx, log) in per_builder_log.iter().enumerate() {
+            if fallback_flags[builder_idx] || builder_meta[builder_idx].0 != EdgeCategory::Semantic
+            {
+                continue;
+            }
+            for e in log {
+                dedicated_files.insert(idx_to_node[e.src as usize].path.as_ref());
+                dedicated_files.insert(idx_to_node[e.dst as usize].path.as_ref());
+            }
+        }
+        for (builder_idx, log) in per_builder_log.iter_mut().enumerate() {
+            if !fallback_flags[builder_idx] {
+                continue;
+            }
+            log.retain(|e| {
+                !dedicated_files.contains(idx_to_node[e.src as usize].path.as_ref())
+                    || !dedicated_files.contains(idx_to_node[e.dst as usize].path.as_ref())
+            });
+        }
+    }
 
     let n_nodes = idx_to_node.len();
     let mut in_degree = vec![0u32; n_nodes];
@@ -210,12 +261,22 @@ pub fn collect_capped_edges(
                     .map(|k| category_entries[k].2)
                     .unwrap_or(builder_category);
                 let damped = factors.damp(e.weight * multiplier, category, e.src, e.dst);
+                // Naming classification uses the RAW builder weight: the
+                // channel constants are quantized (0.05 markers, 0.30 tags,
+                // >=0.35 symbol/file-naming channels), so the floor selects a
+                // fixed channel set rather than trading a scalar band; raw
+                // rather than damped so a hub-suppressed import keeps its
+                // naming status.
+                let naming = (category == EdgeCategory::Semantic
+                    || category == EdgeCategory::Config)
+                    && e.weight > NAMING_WEIGHT_FLOOR;
                 push_bounded_top_k(
                     per_source.entry(e.src).or_default(),
                     RankedCandidate {
                         weight: damped,
                         dst: e.dst,
                         category,
+                        naming,
                     },
                     max_per_node,
                 );
@@ -229,6 +290,7 @@ pub fn collect_capped_edges(
                         dst: c.dst,
                         weight: c.weight,
                         category: c.category,
+                        naming: c.naming,
                     });
                 }
             }
@@ -282,4 +344,120 @@ pub fn discover_all_related_files(
     let mut result: Vec<PathBuf> = discovered.into_keys().collect();
     result.sort();
     result
+}
+
+/// Files reachable from the core set through naming-class edges only, within
+/// `max_depth` hops (#65 per-file admission). Diffuse channels (markers,
+/// tags, similarity, structural stars) do not open a file; a file whose only
+/// connection is proximity never enters the admissible set.
+pub fn naming_reachable_files(
+    capped: &CappedEdges,
+    core_ids: &rustc_hash::FxHashSet<crate::types::FragmentId>,
+    max_depth: usize,
+) -> rustc_hash::FxHashSet<std::sync::Arc<str>> {
+    let n = capped.idx_to_node.len();
+    // Undirected on purpose: a naming edge relates the PAIR of files. The
+    // reverse emission carries weight*reverse_factor and lands below the
+    // naming floor, so a directed walk would reach only the changed set's
+    // dependencies and never its consumers — measured as 24 broken
+    // consumer-pull corpus cases (php one-hop, terraform dependents, DI).
+    let mut adj: Vec<Vec<u32>> = vec![Vec::new(); n];
+    for e in &capped.edges {
+        if e.naming {
+            adj[e.src as usize].push(e.dst);
+            adj[e.dst as usize].push(e.src);
+        }
+    }
+    let mut seen = vec![false; n];
+    let mut frontier: Vec<u32> = Vec::new();
+    for (i, id) in capped.idx_to_node.iter().enumerate() {
+        if core_ids.contains(id) {
+            seen[i] = true;
+            frontier.push(i as u32);
+        }
+    }
+    let mut files: rustc_hash::FxHashSet<std::sync::Arc<str>> = frontier
+        .iter()
+        .map(|&i| capped.idx_to_node[i as usize].path.clone())
+        .collect();
+    for _ in 0..max_depth {
+        let mut next = Vec::new();
+        for &u in &frontier {
+            for &v in &adj[u as usize] {
+                if !seen[v as usize] {
+                    seen[v as usize] = true;
+                    files.insert(capped.idx_to_node[v as usize].path.clone());
+                    next.push(v);
+                }
+            }
+        }
+        if next.is_empty() {
+            break;
+        }
+        frontier = next;
+    }
+    files
+}
+
+#[cfg(test)]
+mod fallback_gate_tests {
+    use super::*;
+    use rustc_hash::FxHashSet as Set;
+    use std::sync::Arc;
+
+    fn frag(path: &str, content: &str, idents: &[&str]) -> Fragment {
+        Fragment {
+            id: crate::types::FragmentId::new(Arc::from(path), 1, 10),
+            kind: crate::types::FragmentKind::Function,
+            content: Arc::from(content),
+            identifiers: idents.iter().map(|s| s.to_string()).collect::<Set<_>>(),
+            token_count: 10,
+            symbol_name: None,
+        }
+    }
+
+    #[test]
+    fn tags_edges_survive_only_where_dedicated_builders_came_back_empty() {
+        // a.py <-> b.py carry a dedicated import edge; a.py and c.py share an
+        // identifier but nothing imports between them. Two .xyz files have no
+        // dedicated builder at all and share the same identifier.
+        let fragments = vec![
+            frag(
+                "proj/a.c",
+                "#include \"bdep.h\"\nint zzcommonzz;\n",
+                &["zzcommonzz"],
+            ),
+            frag("proj/bdep.h", "int bdecl(void);\n", &["bdecl"]),
+            frag(
+                "proj/c.c",
+                "#include \"ddep.h\"\nint zzcommonzz;\n",
+                &["zzcommonzz"],
+            ),
+            frag("proj/ddep.h", "int ddecl(void);\n", &["ddecl"]),
+            frag("proj/u1.xyz", "zzcommonzz here\n", &["zzcommonzz"]),
+            frag("proj/u2.xyz", "zzcommonzz there\n", &["zzcommonzz"]),
+        ];
+        let capped = collect_capped_edges(&fragments, None, false);
+        let node_path = |idx: u32| capped.idx_to_node[idx as usize].path.clone();
+        // Category matters: a.py and c.py legitimately share a structural
+        // sibling edge; the class under test is the SEMANTIC tags link.
+        let has = |a: &str, b: &str| {
+            capped.edges.iter().any(|e| {
+                if e.category != EdgeCategory::Semantic {
+                    return false;
+                }
+                let s = node_path(e.src);
+                let d = node_path(e.dst);
+                (s.ends_with(a) && d.ends_with(b)) || (s.ends_with(b) && d.ends_with(a))
+            })
+        };
+        assert!(
+            has("u1.xyz", "u2.xyz"),
+            "fallback must still connect files no dedicated builder covers"
+        );
+        assert!(
+            !has("a.c", "c.c"),
+            "a tags-only link between two dedicated-covered files is the measured noise class (#131)"
+        );
+    }
 }

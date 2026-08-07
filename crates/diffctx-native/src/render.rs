@@ -19,6 +19,16 @@ pub struct ChangeSummary {
     pub deleted_files: Vec<String>,
     pub renamed_files: Vec<(String, String)>,
     pub lockfile_changes: Vec<String>,
+    pub ignored_changes: Vec<String>,
+    pub policy_excluded_count: usize,
+}
+
+fn is_zero(n: &usize) -> bool {
+    *n == 0
+}
+
+pub fn is_zero_pub(n: &usize) -> bool {
+    *n == 0
 }
 
 fn serialize_renames<S>(renames: &[(String, String)], serializer: S) -> Result<S::Ok, S::Error>
@@ -56,6 +66,15 @@ pub struct DiffContextOutput {
     /// thousands of tokens of checksum churn for one line of signal (#112).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub lockfile_changes: Vec<String>,
+    /// Changed files withheld by ignore rules. Silent exclusion misreads as
+    /// "the diff did not touch this" (#188: a reviewer filed "no tests"
+    /// against a change whose tests the tool had filtered).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub ignored_changes: Vec<String>,
+    /// Files excluded by `.diffctx/ignore` policy — count only, see
+    /// `ScoredState::policy_excluded_count`.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub policy_excluded_count: usize,
     pub fragment_count: usize,
     pub fragments: Vec<FragmentEntry>,
     #[serde(skip)]
@@ -422,6 +441,8 @@ pub fn build_diff_context_output(
         deleted_files: change.deleted_files,
         renamed_files: change.renamed_files,
         lockfile_changes: change.lockfile_changes,
+        ignored_changes: change.ignored_changes,
+        policy_excluded_count: change.policy_excluded_count,
         fragment_count: fragments_out.len(),
         fragments: fragments_out,
         latency: None,
@@ -441,6 +462,8 @@ mod tests {
             deleted_files: Vec::new(),
             renamed_files,
             lockfile_changes: Vec::new(),
+            ignored_changes: Vec::new(),
+            policy_excluded_count: 0,
             fragment_count: 0,
             fragments: Vec::new(),
             latency: None,

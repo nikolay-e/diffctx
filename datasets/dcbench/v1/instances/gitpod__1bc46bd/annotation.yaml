@@ -27,14 +27,6 @@ gold:
   tier: essential
   role: unspecified
   in_diff: true
-- path: dev/preview/previewctl/pkg/k8s/context/gke/dev.go
-  tier: essential
-  role: unspecified
-  in_diff: true
-- path: dev/preview/previewctl/pkg/k8s/context/harvester/harvester.go
-  tier: essential
-  role: unspecified
-  in_diff: true
 - path: dev/preview/workflow/preview/deploy-gitpod.sh
   tier: essential
   role: unspecified
@@ -51,8 +43,13 @@ gold:
   tier: essential
   role: unspecified
   in_diff: true
+- path: dev/preview/previewctl/pkg/k8s/context/loader.go
+  tier: helpful
+  role: definition
+  in_diff: false
+  rationale: 'Defines the Loader interface the deleted gke/harvester loaders implemented; the surviving contract for the k3s loader kept by the commit.'
 forbidden: []
-nontrivial_gold_count: 0
+nontrivial_gold_count: 1
 annotator: legacy-review-2026-06
 candidates_from:
 - review

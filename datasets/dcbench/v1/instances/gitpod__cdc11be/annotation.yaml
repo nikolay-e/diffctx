@@ -27,10 +27,6 @@ gold:
   tier: essential
   role: unspecified
   in_diff: true
-- path: install/gcp-terraform/environment/full/values.yaml
-  tier: essential
-  role: unspecified
-  in_diff: true
 - path: install/gcp-terraform/environment/full/variables.tf
   tier: essential
   role: unspecified
@@ -80,6 +76,7 @@ forbidden:
 - path: install/installer/pkg/cluster/checks.go
 - path: test/tests/components/content-service/main_test.go
 nontrivial_gold_count: 0
+no_nontrivial_context: true  # in_diff corrections removed the only out-of-diff gold (QA 2026-08-05)
 annotator: legacy-review-2026-06
 candidates_from:
 - review

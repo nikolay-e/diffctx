@@ -44,16 +44,23 @@ gold:
   role: unspecified
   in_diff: true
 forbidden:
-- path: .claude/agents/cl/*.md and .claude/commands/cl/*.md (generic AI-agent tooling config, unrelated
-    to the gRPC feature)
-- path: .cursor/rules/*.mdc
-- path: docs/research/2025-11-14-scm-grpc-comprehensive.md (661-line research doc)
-- path: docs/shared/plans/2025-11-20-scm-grpc-service.md (1740-line planning doc)
+- path: docs/research/2025-11-14-scm-grpc-comprehensive.md
+  reason: '661-line research doc'
+- path: docs/shared/plans/2025-11-20-scm-grpc-service.md
+  reason: '1740-line planning doc'
 - path: examples/grpc_client_example.py
 - path: index.html
 - path: release-deployment-erd.md
-- path: test_grpc_minimal.py, test_grpc_request.py, test_grpc_server.py, test_grpc_web_client.py, test_wsgi_direct.py
-    (root-level scratch/exploratory scripts duplicating the real tests under tests/sentry/integrations/grpc/)
+- path: test_grpc_minimal.py
+  reason: 'root-level scratch/exploratory scripts duplicating the real tests under tests/sentry/integrations/grpc/'
+- path: test_grpc_request.py
+  reason: 'root-level scratch/exploratory scripts duplicating the real tests under tests/sentry/integrations/grpc/'
+- path: test_grpc_server.py
+  reason: 'root-level scratch/exploratory scripts duplicating the real tests under tests/sentry/integrations/grpc/'
+- path: test_grpc_web_client.py
+  reason: 'root-level scratch/exploratory scripts duplicating the real tests under tests/sentry/integrations/grpc/'
+- path: test_wsgi_direct.py
+  reason: 'root-level scratch/exploratory scripts duplicating the real tests under tests/sentry/integrations/grpc/'
 nontrivial_gold_count: 0
 annotator: legacy-review-2026-06
 candidates_from:

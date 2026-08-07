@@ -39,19 +39,7 @@ impl SiblingEdgeBuilder {
         &self,
         fragments: &[Fragment],
     ) -> FxHashMap<String, FragmentId> {
-        let mut file_to_rep: FxHashMap<String, FragmentId> = FxHashMap::default();
-        let mut file_to_token_count: FxHashMap<String, u32> = FxHashMap::default();
-
-        for f in fragments {
-            let path = f.path().to_string();
-            let existing_count = file_to_token_count.get(&path).copied().unwrap_or(0);
-            if !file_to_rep.contains_key(&path) || f.token_count > existing_count {
-                file_to_rep.insert(path.clone(), f.id.clone());
-                file_to_token_count.insert(path, f.token_count);
-            }
-        }
-
-        file_to_rep
+        super::super::base::file_representatives(fragments)
     }
 }
 

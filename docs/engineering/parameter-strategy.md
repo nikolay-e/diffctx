@@ -133,12 +133,14 @@ it) to enable the sweep without rebuild.
 | `PIT.blend` (structural share of percentile fusion) | `DIFFCTX_PIT_BLEND`                                    | 0.65    |
 | `PIT.agreement_bonus` (both-signals-agree bonus) | `DIFFCTX_PIT_AGREEMENT_BONUS`                            | 0.10    |
 | `PIT.agreement_top_k` (agreement window)         | `DIFFCTX_PIT_AGREEMENT_TOP_K`                            | 20      |
+| `MODE.bm25_top_k_primary` (lexical discovery breadth) | `DIFFCTX_BM25_DISCOVERY_TOP_K`                      | 1       |
 | Graph traversal radius                           | `DIFFCTX_OP_GRAPH_DEPTH`                                 | 2       |
 | `UTILITY.eta` ($\eta$)                           | `DIFFCTX_OP_UTILITY_ETA`                                 | 0.20    |
 | `UTILITY.structural_bonus_weight`                | `DIFFCTX_OP_UTILITY_STRUCTURAL_BONUS_WEIGHT`             | 0.10    |
 | `UTILITY.r_cap_sigma`                            | `DIFFCTX_OP_UTILITY_R_CAP_SIGMA`                         | 2.0     |
 | `UTILITY.proximity_decay`                        | `DIFFCTX_OP_UTILITY_PROXIMITY_DECAY`                     | 0.30    |
 | `SELECTION.r_cap_min`                            | `DIFFCTX_OP_SELECTION_R_CAP_MIN`                         | 0.01    |
+| `SELECTION.per_file_budget_fraction`             | `DIFFCTX_OP_SELECTION_PER_FILE_BUDGET_FRACTION`          | 0.25    |
 | `RESCUE.budget_fraction`                         | `DIFFCTX_OP_RESCUE_BUDGET_FRACTION`                      | 0.05    |
 | `RESCUE.min_score_percentile`                    | `DIFFCTX_OP_RESCUE_MIN_SCORE_PERCENTILE`                 | 0.80    |
 | `FILTERING.proximity_half_decay`                 | `DIFFCTX_OP_FILTERING_PROXIMITY_HALF_DECAY`              | 50.0    |

@@ -3,28 +3,27 @@ base_commit: c874f479e7dd283a1fc351171ea154512000356e
 commit: 4a7a7ab699aa1bc37e41ac06f39823648e6230d6
 patch_stored: true
 gold:
-- path: components/blobserve/pkg/blobserve/refstore.go:resolveRef
+- path: components/blobserve/pkg/blobserve/refstore.go
   tier: essential
-  role: unspecified
-  in_diff: false
+  role: definition
+  in_diff: true
+  rationale: resolveRef's body is emptied and the registry-facade DownloadManifest import dropped after the component removal.
 - path: components/image-builder-bob/README.md
   tier: essential
   role: unspecified
   in_diff: true
-- path: components/node-labeler/cmd/run.go:Reconcile
+- path: components/node-labeler/cmd/run.go
   tier: essential
-  role: unspecified
+  role: definition
+  in_diff: true
+  rationale: PodReconciler.Reconcile removes the registryFacade branch, its constants and the checkRegistryFacade readiness probe.
+- path: install/installer/pkg/common/constants.go
+  tier: helpful
+  role: definition
   in_diff: false
-- path: components/registry-facade-api/ (whole dir, deleted)
-  tier: essential
-  role: unspecified
-  in_diff: false
-- path: components/registry-facade/ (whole dir, deleted)
-  tier: essential
-  role: unspecified
-  in_diff: false
+  rationale: 'Still defines RegistryFacadeComponent and RegistryFacadeServicePort at this commit — leftover wiring surviving the component deletion, still consumed by node-labeler''s installer deployment.'
 forbidden: []
-nontrivial_gold_count: 4
+nontrivial_gold_count: 1
 annotator: legacy-review-2026-06
 candidates_from:
 - review

@@ -15,10 +15,6 @@ gold:
   tier: essential
   role: unspecified
   in_diff: true
-- path: .volta.json (deleted)
-  tier: essential
-  role: unspecified
-  in_diff: false
 - path: config/tsconfig.base.json
   tier: essential
   role: unspecified
@@ -31,6 +27,11 @@ gold:
   tier: essential
   role: unspecified
   in_diff: true
+- path: .github/file-filters.yml
+  tier: helpful
+  role: config
+  in_diff: false
+  rationale: 'CI path filter still keys frontend jobs off .volta.json — a stale reference the Volta -> devenv node migration left behind.'
 forbidden: []
 nontrivial_gold_count: 1
 annotator: legacy-review-2026-06

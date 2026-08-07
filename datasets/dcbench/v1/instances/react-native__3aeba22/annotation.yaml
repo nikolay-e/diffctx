@@ -7,10 +7,11 @@ gold:
   tier: essential
   role: unspecified
   in_diff: true
-- path: packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp:enableIntersectionObserverEventLoopIntegration
+- path: packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp
   tier: essential
-  role: unspecified
-  in_diff: false
+  role: definition
+  in_diff: true
+  rationale: Adds the enableIntersectionObserverEventLoopIntegration accessor gating the new IntersectionObserver event-loop path.
 - path: packages/react-native/ReactCommon/react/nativemodule/intersectionobserver/NativeIntersectionObserver.cpp
   tier: essential
   role: unspecified
@@ -43,6 +44,11 @@ gold:
   tier: essential
   role: unspecified
   in_diff: true
+- path: packages/react-native/src/private/webapis/intersectionobserver/IntersectionObserver.js
+  tier: helpful
+  role: definition
+  in_diff: false
+  rationale: 'JS-side IntersectionObserver API whose callback delivery timing the enableIntersectionObserverEventLoopIntegration flag changes.'
 forbidden:
 - path: packages/react-native/Libraries/Network/RCTNetworking.mm
 - path: packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricMountingManager.cpp

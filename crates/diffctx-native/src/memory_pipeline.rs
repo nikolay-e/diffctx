@@ -140,6 +140,7 @@ pub fn build_diff_context_in_memory(
         tau,
         Some(&file_importance),
         Some(&core_excerpts),
+        None,
     );
 
     let mut selected = selection.selected;
@@ -179,6 +180,8 @@ pub fn build_diff_context_in_memory(
     changed_list.sort();
     let change = crate::render::ChangeSummary {
         lockfile_changes: Vec::new(),
+        ignored_changes: Vec::new(),
+        policy_excluded_count: 0,
         commit_message: None,
         changed_files: changed_list,
         deleted_files: Vec::new(),
@@ -348,6 +351,8 @@ fn merge_file_contents(
 fn empty_output(name: &str) -> DiffContextOutput {
     DiffContextOutput {
         lockfile_changes: Vec::new(),
+        ignored_changes: Vec::new(),
+        policy_excluded_count: 0,
         name: name.to_string(),
         output_type: "diff_context".to_string(),
         commit_message: None,

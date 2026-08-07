@@ -22,7 +22,9 @@ impl EdgeBuilder for ContainmentEdgeBuilder {
 
         let mut edges: EdgeDict = FxHashMap::default();
 
-        for (_path, frags) in &by_path {
+        let reps = super::super::base::file_representatives(fragments);
+
+        for (path, frags) in &by_path {
             if frags.len() < 2 {
                 continue;
             }
@@ -54,6 +56,22 @@ impl EdgeBuilder for ContainmentEdgeBuilder {
                 }
 
                 stack.push(f);
+            }
+
+            // The nesting pass only connects a fragment to what encloses it,
+            // so a file's top-level fragments were mutually unreachable. The
+            // star through the file representative gives every file an
+            // intra-file spine — linear in fragment count — which is what
+            // lets file-level relations (includes, path references, pairing)
+            // link representatives instead of full fragment cross products.
+            if std::env::var_os("DIFFCTX_FILE_STAR").is_some() {
+                if let Some(rep) = reps.get(*path) {
+                    for f in &sorted {
+                        if f.id != *rep {
+                            add_edge(&mut edges, &f.id, rep, weight, reverse_factor);
+                        }
+                    }
+                }
             }
         }
 

@@ -128,7 +128,10 @@ class DcbenchAdapter(BenchmarkAdapter):
             extra={
                 "repo_url": str(repo_dir.resolve()),
                 "annotated": annotated,
-                "nontrivial_gold_count": row.get("nontrivial_gold_count", 0),
+                # Recomputed from the gold list rather than read from the
+                # annotation field: a stale count would silently propagate
+                # into results (#195).
+                "nontrivial_gold_count": sum(1 for g in row.get("gold") or [] if not g.get("in_diff")),
                 "forbidden_files": sorted(f["path"] for f in row.get("forbidden") or []),
             },
         )

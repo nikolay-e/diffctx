@@ -247,6 +247,45 @@ pub fn filter_positive_relevance(
         .collect()
 }
 
+/// Drops context candidates that are slices of a core fragment's own span.
+///
+/// The excerpt downshift (#149) deliberately ships a changed oversized body as
+/// a hunk window instead of whole; the body's gap chunks then re-entered as
+/// *context* — a 2-line edit in a 100-line function shipped 81 lines of the
+/// enclosing body through four sibling chunks, each earning containment mass
+/// from the very core the excerpt had compressed (#184). A slice of a core
+/// restates what the excerpt already represents, so it cannot be independent
+/// context. Signature variants stay: a stub is the sanctioned cheap stand-in.
+pub fn filter_core_slice_context(
+    fragments: Vec<Fragment>,
+    core_ids: &FxHashSet<FragmentId>,
+) -> Vec<Fragment> {
+    let mut core_spans: FxHashMap<Arc<str>, Vec<(u32, u32)>> = FxHashMap::default();
+    for f in &fragments {
+        if core_ids.contains(&f.id) {
+            core_spans
+                .entry(f.id.path.clone())
+                .or_default()
+                .push((f.start_line(), f.end_line()));
+        }
+    }
+    if core_spans.is_empty() {
+        return fragments;
+    }
+    let inside_core = |f: &Fragment| {
+        core_spans.get(&f.id.path).is_some_and(|spans| {
+            spans.iter().any(|&(s, e)| {
+                // A slice, not the core itself: strictly contained.
+                (s < f.start_line() || f.end_line() < e) && s <= f.start_line() && f.end_line() <= e
+            })
+        })
+    };
+    fragments
+        .into_iter()
+        .filter(|f| core_ids.contains(&f.id) || f.kind.is_signature() || !inside_core(f))
+        .collect()
+}
+
 pub fn cap_context_fragments(
     fragments: Vec<Fragment>,
     core_ids: &FxHashSet<FragmentId>,

@@ -6,12 +6,17 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::extensions::DOTNET_EXTENSIONS;
 use crate::config::weights::EDGE_WEIGHTS;
-use crate::types::{Fragment, FragmentId};
+use crate::types::{Fragment, FragmentId, FragmentKind};
 
 use super::super::EdgeDict;
 use super::super::base::{
     self, EdgeBuilder, FragmentIndex, add_edge, discover_files_by_refs, link_by_name,
 };
+
+/// Same ambiguity bar as `CFamilySemanticWeights::max_files_per_name`: a name
+/// defined in more files than this is vocabulary, not a dependency, and is
+/// skipped outright rather than truncated.
+const MAX_FILES_PER_NAME: usize = 8;
 
 static EXTENDED_DOTNET_EXTENSIONS: Lazy<FxHashSet<&str>> = Lazy::new(|| {
     DOTNET_EXTENSIONS
@@ -35,8 +40,9 @@ fn is_fs_file(path: &Path) -> bool {
     ext == ".fs" || ext == ".fsi" || ext == ".fsx"
 }
 
-static CS_USING_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?m)^\s*(?:global\s+)?using\s+(?:static\s+)?([A-Z][\w.]+)").unwrap());
+static CS_USING_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^\s*(?:global\s+)?using\s+(?:static\s+)?(?:\w+\s*=\s*)?([A-Z][\w.]+)").unwrap()
+});
 static FS_OPEN_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^\s*open\s+([A-Z][\w.]+)").unwrap());
 static NAMESPACE_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?m)^\s*namespace\s+([A-Z][\w.]+)").unwrap());
@@ -54,6 +60,7 @@ static PARTIAL_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?m)^\s*(?:public|internal|private|protected)?\s*partial\s+(?:class|struct|interface|record)\s+(\w+)").unwrap()
 });
 static TYPE_REF_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b([A-Z]\w+)\b").unwrap());
+static MEMBER_USE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\.\s*([a-zA-Z_]\w{2,})").unwrap());
 
 static DOTNET_KEYWORDS: Lazy<FxHashSet<&str>> = Lazy::new(|| {
     [
@@ -197,6 +204,75 @@ fn extract_type_refs(content: &str) -> FxHashSet<String> {
         .collect()
 }
 
+fn extract_member_uses(content: &str) -> FxHashSet<String> {
+    MEMBER_USE_RE
+        .captures_iter(content)
+        .map(|c| c[1].to_lowercase())
+        .collect()
+}
+
+fn is_member_def(f: &Fragment) -> bool {
+    matches!(f.kind, FragmentKind::Function | FragmentKind::Property)
+}
+
+struct FileRelations<'a> {
+    file_ns: FxHashMap<&'a str, FxHashSet<String>>,
+    file_usings: FxHashMap<&'a str, FxHashSet<String>>,
+    named_files: FxHashMap<&'a str, FxHashSet<&'a str>>,
+    inh_pairs: FxHashSet<(&'a str, &'a str)>,
+}
+
+impl<'a> FileRelations<'a> {
+    /// A member-name match alone is tags-grade evidence; it only becomes an
+    /// edge when the using file already relates to the defining file through
+    /// something it wrote down: a `using` naming the definer's namespace
+    /// (extension methods never name their static class), a named type, or
+    /// inheritance. Same-namespace proximity is deliberately not enough.
+    fn confirmed(&self, user: &str, definer: &str) -> bool {
+        if self
+            .named_files
+            .get(user)
+            .is_some_and(|s| s.contains(definer))
+            || self.inh_pairs.contains(&(user, definer))
+        {
+            return true;
+        }
+        match (self.file_usings.get(user), self.file_ns.get(definer)) {
+            (Some(usings), Some(nss)) => nss.iter().any(|ns| usings.contains(ns)),
+            _ => false,
+        }
+    }
+}
+
+fn link_defs<'a>(
+    edges: &mut EdgeDict,
+    rel: &mut FileRelations<'a>,
+    src: &'a Fragment,
+    name: &str,
+    weight: f64,
+    reverse_factor: f64,
+    name_to_defs: &'a FxHashMap<String, Vec<FragmentId>>,
+    name_def_files: &FxHashMap<String, FxHashSet<&'a str>>,
+) {
+    if name_def_files
+        .get(name)
+        .is_some_and(|s| s.len() > MAX_FILES_PER_NAME)
+    {
+        return;
+    }
+    if let Some(dst_ids) = name_to_defs.get(name) {
+        for dst_id in dst_ids {
+            if dst_id != &src.id {
+                add_edge(edges, &src.id, dst_id, weight, reverse_factor);
+                rel.named_files
+                    .entry(src.path())
+                    .or_default()
+                    .insert(dst_id.path.as_ref());
+            }
+        }
+    }
+}
+
 pub struct DotNetEdgeBuilder;
 
 impl EdgeBuilder for DotNetEdgeBuilder {
@@ -212,6 +288,7 @@ impl EdgeBuilder for DotNetEdgeBuilder {
         let using_weight = EDGE_WEIGHTS["dotnet_using"].forward;
         let inheritance_weight = EDGE_WEIGHTS["dotnet_inheritance"].forward;
         let type_weight = EDGE_WEIGHTS["dotnet_type"].forward;
+        let member_weight = EDGE_WEIGHTS["dotnet_member"].forward;
         let same_ns_weight = EDGE_WEIGHTS["dotnet_same_namespace"].forward;
         let attribute_weight = EDGE_WEIGHTS["dotnet_attribute"].forward;
         let partial_weight = EDGE_WEIGHTS["dotnet_partial"].forward;
@@ -220,10 +297,15 @@ impl EdgeBuilder for DotNetEdgeBuilder {
         let idx = FragmentIndex::new(fragments, repo_root);
 
         let mut name_to_defs: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
+        let mut name_def_files: FxHashMap<String, FxHashSet<&str>> = FxHashMap::default();
         let mut frag_defines: FxHashMap<FragmentId, FxHashSet<String>> = FxHashMap::default();
         let mut ns_to_frags: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
         let mut frag_namespaces: FxHashMap<FragmentId, FxHashSet<String>> = FxHashMap::default();
         let mut partial_to_frags: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
+        let mut member_defs: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
+        let mut member_def_files: FxHashMap<String, FxHashSet<&str>> = FxHashMap::default();
+        let mut file_ns: FxHashMap<&str, FxHashSet<String>> = FxHashMap::default();
+        let mut file_usings: FxHashMap<&str, FxHashSet<String>> = FxHashMap::default();
 
         for f in &dn_frags {
             let defs = extract_defines(&f.content);
@@ -232,6 +314,10 @@ impl EdgeBuilder for DotNetEdgeBuilder {
                     .entry(name.clone())
                     .or_default()
                     .push(f.id.clone());
+                name_def_files
+                    .entry(name.clone())
+                    .or_default()
+                    .insert(f.path());
             }
             frag_defines.insert(f.id.clone(), defs);
 
@@ -241,8 +327,17 @@ impl EdgeBuilder for DotNetEdgeBuilder {
                     .entry(ns.clone())
                     .or_default()
                     .push(f.id.clone());
+                file_ns.entry(f.path()).or_default().insert(ns.clone());
             }
             frag_namespaces.insert(f.id.clone(), namespaces);
+
+            let usings = extract_usings(&f.content, Path::new(f.path()));
+            if !usings.is_empty() {
+                file_usings
+                    .entry(f.path())
+                    .or_default()
+                    .extend(usings.iter().cloned());
+            }
 
             let partials = extract_partials(&f.content);
             for p in &partials {
@@ -251,9 +346,31 @@ impl EdgeBuilder for DotNetEdgeBuilder {
                     .or_default()
                     .push(f.id.clone());
             }
+
+            if is_member_def(f) {
+                if let Some(name) = f.symbol_name.as_deref() {
+                    if name.len() >= 3 {
+                        let lower = name.to_lowercase();
+                        member_defs
+                            .entry(lower.clone())
+                            .or_default()
+                            .push(f.id.clone());
+                        member_def_files
+                            .entry(lower.clone())
+                            .or_default()
+                            .insert(f.path());
+                    }
+                }
+            }
         }
 
         let mut edges: EdgeDict = FxHashMap::default();
+        let mut rel = FileRelations {
+            file_ns,
+            file_usings,
+            named_files: FxHashMap::default(),
+            inh_pairs: FxHashSet::default(),
+        };
 
         for f in &dn_frags {
             let self_defs = frag_defines.get(&f.id).cloned().unwrap_or_default();
@@ -273,6 +390,12 @@ impl EdgeBuilder for DotNetEdgeBuilder {
 
             let base_types = extract_base_types(&f.content);
             for bt in &base_types {
+                if name_def_files
+                    .get(bt)
+                    .is_some_and(|s| s.len() > MAX_FILES_PER_NAME)
+                {
+                    continue;
+                }
                 if let Some(dst_ids) = name_to_defs.get(bt) {
                     for dst_id in dst_ids {
                         if dst_id != &f.id {
@@ -283,6 +406,12 @@ impl EdgeBuilder for DotNetEdgeBuilder {
                                 inheritance_weight,
                                 reverse_factor,
                             );
+                            let a = f.path();
+                            let b: &str = dst_id.path.as_ref();
+                            if a != b {
+                                rel.inh_pairs.insert((a, b));
+                                rel.inh_pairs.insert((b, a));
+                            }
                         }
                     }
                 }
@@ -293,24 +422,30 @@ impl EdgeBuilder for DotNetEdgeBuilder {
                 if self_defs.contains(name) {
                     continue;
                 }
-                if let Some(dst_ids) = name_to_defs.get(name) {
-                    for dst_id in dst_ids {
-                        if dst_id != &f.id {
-                            add_edge(&mut edges, &f.id, dst_id, type_weight, reverse_factor);
-                        }
-                    }
-                }
+                link_defs(
+                    &mut edges,
+                    &mut rel,
+                    f,
+                    name,
+                    type_weight,
+                    reverse_factor,
+                    &name_to_defs,
+                    &name_def_files,
+                );
             }
 
             let attrs = extract_attributes(&f.content);
             for attr in &attrs {
-                if let Some(dst_ids) = name_to_defs.get(attr) {
-                    for dst_id in dst_ids {
-                        if dst_id != &f.id {
-                            add_edge(&mut edges, &f.id, dst_id, attribute_weight, reverse_factor);
-                        }
-                    }
-                }
+                link_defs(
+                    &mut edges,
+                    &mut rel,
+                    f,
+                    attr,
+                    attribute_weight,
+                    reverse_factor,
+                    &name_to_defs,
+                    &name_def_files,
+                );
             }
 
             for ns in &self_ns {
@@ -319,6 +454,33 @@ impl EdgeBuilder for DotNetEdgeBuilder {
                         if tgt != &f.id {
                             add_edge(&mut edges, &f.id, tgt, same_ns_weight, reverse_factor);
                         }
+                    }
+                }
+            }
+        }
+
+        for f in &dn_frags {
+            let own = f.symbol_name.as_deref().map(|s| s.to_lowercase());
+            for m in extract_member_uses(&f.content) {
+                if own.as_deref() == Some(m.as_str()) {
+                    continue;
+                }
+                let Some(def_files) = member_def_files.get(&m) else {
+                    continue;
+                };
+                if def_files.len() > MAX_FILES_PER_NAME {
+                    continue;
+                }
+                let Some(defs) = member_defs.get(&m) else {
+                    continue;
+                };
+                for d in defs {
+                    let dst_path: &str = d.path.as_ref();
+                    if dst_path == f.path() || d == &f.id {
+                        continue;
+                    }
+                    if rel.confirmed(f.path(), dst_path) {
+                        add_edge(&mut edges, &f.id, d, member_weight, reverse_factor);
                     }
                 }
             }

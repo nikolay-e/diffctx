@@ -7,7 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **New default operating point: per-file admission ON, `tau` 0.12 -> 0.05,
+  `core_budget_fraction` 0.5 -> 0.4** — the v5 evaluation cycle's validated
+  winner. A file whose only connection to the change is proximity (sibling
+  directory, shared rare token, lexical similarity) is no longer selectable as
+  context; it must be naming-reachable (an import/call/type-ref path from the
+  changed set, up to two hops, either direction). The weak stop then spends
+  the freed budget inside that admissible set. Evidence chain: 12-cell
+  screening grid (corpus known-failures 227 -> 196 with three xfails retiring;
+  the strict-tau admission variant was killed by a significant real-commit
+  recall loss), tau x cbf calibration + held-out validation (0.6815 vs 0.6684
+  for the old point), and a six-arm confirmation sweep on the three 500-case
+  test splits: file_recall parity with the old default, contextbench
+  file_precision +0.041 (bootstrap CI excludes zero), dcbench-372 paired
+  nontrivial recall within noise at -4% tokens. Opt out with
+  `DIFFCTX_FILE_ADMISSION=0` and `--tau 0.12` to reproduce the old behaviour
+  (#65).
+
+- **Selection enforces a per-file budget ceiling** (#194): while other files
+  still have unplaced candidates, one file may not consume more than
+  `SELECTION.per_file_budget_fraction` (default 0.25) of the budget — the
+  reporter's +9k-line generated JSON no longer crowds 34 source files out of
+  the output. Blocked candidates are deferred, not dropped: once every other
+  file has had its chance the ceiling lifts, so a single-file change still
+  fills the whole budget.
+
+## [1.13.0] - 2026-08-04
+
 ### Added
+
+- **Inline `<script>` and `<style>` in HTML are parsed with their own
+  grammars** (#181). A changed function inside a single-file web app's script
+  now surfaces as a named definition fragment at its real file lines instead
+  of degrading to a raw line window with no symbol boundaries. JS and CSS
+  fragments overlay the `script_element`/`style_element` containers the way
+  methods overlay a class; `type=` attributes naming non-JS payloads (JSON,
+  templates) opt out.
 
 - **`--diff <duration>`** — a time window instead of a revision: `24h`, `8d`,
   `90min`, `1h30m`, `2w` (units `s`, `m`/`min`, `h`, `d`, `w`, composable). The
@@ -155,6 +192,88 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   everywhere else (#127).
 
 ### Fixed
+
+- **The `.diffctx/ignore` withheld-files count counts files, not hunks.** A
+  withheld file with several separated edits inflated the "N changed file(s)
+  withheld" notice — the one number a reviewer uses to judge how much of the
+  change the output actually shows.
+
+- **C# and Scala regained real cross-file reach after the tags gate** (#131,
+  #179). The tags fallback had been these languages' only working linkage:
+  Scala's import regex captured a truncated prefix (`com.foo.` instead of
+  `com.foo.Bar`), so production Scala produced literally zero import edges;
+  chained `package` clauses and `package object` parsed wrong; C# `using`
+  resolution required the namespace declaration to sit in the same fragment
+  as the lookup key, which per-method fragmentation almost never satisfies.
+  Scala imports are now parsed structurally (brace selectors `{A, B => C}`,
+  wildcards `._`/`.*`/`given`, object-rooted prefixes like `Tables._`), the
+  C# `using` regex accepts aliases, and both builders gained a member-use
+  channel: a `receiver.member(...)` call site links to the fragments defining
+  that member, but only between file pairs already related through an import,
+  a named type, or inheritance — a name match alone stays tags-grade evidence
+  and is dropped. Type-name lookups now carry the same ≤8-file ambiguity bar
+  as the C-family builder instead of fanning out unbounded. Corpus: 19 cases
+  fixed / 1 broken (281 → 263 known-below-threshold), including 13 of the 14
+  C#/Scala one-hop cases the tags gate broke.
+
+- **Graph construction no longer hangs on large repositories** (#116, #121).
+  Four independent fan-out defects each produced tens of millions of edges on
+  envoy-class repos (6k C-family files, 520 sharing the stem `config`):
+  `TestEdgeBuilder` paired every test fragment with every fragment of every
+  same-stem file (180M edges alone); the C-family builder linked includes by
+  bare basename and cross-multiplied same-stem headers×impls at fragment
+  level; `link_by_path_match` substring-matched every reference against every
+  indexed path; and the config-to-code builder ran every key regex over every
+  code fragment (replaced by one Aho-Corasick pass with exact `\b` semantics —
+  byte-identical output, 42s → 1.2s measured). Together: an envoy commit that
+  never finished under 240s now completes in ~60s; on the 372-instance dcbench
+  corpus the produced count rose from 185 to 207 at an unchanged 60s cap.
+  Resolution rules that made it possible: a name carried by more than 8 files
+  cannot identify a target (ambiguity cap), test/header pairing is scoped to
+  the co-located directory first, and file-level relations (an include, a
+  path reference, a header/impl pair) now link one representative fragment
+  per file — the same representative the sibling builder always used — rather
+  than every-fragment-to-every-fragment.
+- **The compute deadline now covers the library path** (#121). `timeout` only
+  ever bounded git subprocesses; pyo3/MCP callers could sit through an
+  unbounded edge build (observed: 8+ minutes past a 420s deadline). The edge
+  phase now checks a wall-clock deadline between builders and surfaces expiry
+  as an error instead of a hang.
+- **Token cache eviction actually reaches its cap** (#122). Evicting one
+  random shard of 256 per run is the coupon collector's problem (~1570 runs
+  to touch every shard); the cache was measured at 6.3GB against its 512MB
+  cap. Each run now sweeps a 16-shard window, reaching full coverage in ~50
+  runs.
+- **A tiny edit no longer ships the enclosing body as context** (#184). The
+  excerpt downshift compresses a changed oversized function to its hunk
+  window, but the body's gap chunks re-entered the output as *context* — a
+  2-line edit in a 100-line function shipped 81 lines of the body it had just
+  compressed. Context candidates that are slices of a core fragment's span
+  are now dropped; signature stubs stay.
+- **Tags edges are now a fallback, not dual coverage** (#131). The
+  identifier-pair builder ran unconditionally, duplicating every dedicated
+  semantic edge with same-weight noise; its emissions now survive only where
+  at least one endpoint file has no dedicated semantic edge at all. Largest
+  single corpus improvement on record: 118 cases fixed, 29 broken (net −89;
+  baseline 371 → 281, one stale Swift `xfail` retired). On real commits the
+  weakest measured languages double their nontrivial recall (Swift 0.049 →
+  0.104, Elixir 0.059 → 0.137) with Tier-1 languages unchanged; the two
+  concentrated losses (C#, Scala one-hop reach that only tags provided) are
+  the named target of the dedicated-builder work in #179.
+- **A gitignore negation no longer excludes the file it un-ignores** (#193).
+  `check-ignore -v` prints a record when the last matching pattern is a
+  negation — the path is then explicitly NOT ignored — and the record parser
+  treated any record as an exclusion, silently dropping files like an
+  un-ignored `SECURITY.md` from the diff context. Negation records are now
+  skipped for gitignore and `.diffctx/ignore` alike: a policy negation is the
+  user re-including a path in the policy's own terms.
+- **Withheld changed files are visible as withheld** (#188). A changed file
+  excluded by ignore rules vanished silently — a reviewer reading the output
+  filed "no tests" against a change whose tests the tool had dropped.
+  gitignore exclusions are now listed by path under `ignored_changes`;
+  `.diffctx/ignore` exclusions surface as `policy_excluded_count` only, since
+  re-publishing the paths a declared confidentiality policy withholds would
+  undo the policy (#85).
 
 - **`--scoring pit` was rejected by both CLIs.** The engine, the MCP server and
   the eval harness all accepted the mode, while `diffctx --scoring pit` and the
@@ -834,7 +953,8 @@ Earlier releases shipped as `treemapper`; see
 <https://github.com/nikolay-e/diffctx/releases> for the corresponding GitHub
 release notes (`1.0.0` through `1.6.1`).
 
-[Unreleased]: https://github.com/nikolay-e/diffctx/compare/v1.12.3...HEAD
+[Unreleased]: https://github.com/nikolay-e/diffctx/compare/v1.13.0...HEAD
+[1.13.0]: https://github.com/nikolay-e/diffctx/compare/v1.12.3...v1.13.0
 [1.12.3]: https://github.com/nikolay-e/diffctx/compare/v1.12.2...v1.12.3
 [1.12.2]: https://github.com/nikolay-e/diffctx/compare/v1.12.1...v1.12.2
 [1.7.0]: https://github.com/nikolay-e/diffctx/compare/v1.6.1...v1.7.0

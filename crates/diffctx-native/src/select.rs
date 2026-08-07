@@ -210,7 +210,13 @@ fn select_core_fragments(
     // the selection cannot answer this, and treating a substituted core as
     // "skipped" hands the full fragment straight back to the greedy.
     let mut satisfied: FxHashSet<FragmentId> = FxHashSet::default();
-    let core_budget = (budget_tokens as f64 * selection().core_budget_fraction) as u32;
+    let sel_cfg = selection();
+    let core_budget = (budget_tokens as f64 * sel_cfg.core_budget_fraction) as u32;
+    // #194: while other cores still wait, one file may not eat more than its
+    // share. The rescue sweep below runs ceiling-free — leftovers no other
+    // file claimed flow back — so a single-file change never strands budget.
+    let file_ceiling = (budget_tokens as f64 * sel_cfg.per_file_budget_fraction) as u32;
+    let mut file_spent: FxHashMap<Arc<str>, u32> = FxHashMap::default();
     // Counter for cores placed; the first pass keeps `core_used <= core_budget`,
     // but the rescue pass below intentionally allows it to exceed `core_budget`
     // up to `budget_tokens`. Don't assume the tighter bound past this scope.
@@ -223,14 +229,18 @@ fn select_core_fragments(
         rb.total_cmp(&ra)
     });
 
-    let place_fragment =
-        |frag: &Fragment, core_used: &mut u32, state: &mut SelectionState, rel_score: f64| {
-            state.selected.push(frag.clone());
-            state.selected_ids.add_id(&frag.id);
-            state.remaining_budget = state.remaining_budget.saturating_sub(frag.token_count);
-            *core_used += frag.token_count;
-            apply_fragment(frag, rel_score, needs, &mut state.utility_state);
-        };
+    let place_fragment = |frag: &Fragment,
+                          core_used: &mut u32,
+                          state: &mut SelectionState,
+                          rel_score: f64,
+                          file_spent: &mut FxHashMap<Arc<str>, u32>| {
+        state.selected.push(frag.clone());
+        state.selected_ids.add_id(&frag.id);
+        state.remaining_budget = state.remaining_budget.saturating_sub(frag.token_count);
+        *core_used += frag.token_count;
+        *file_spent.entry(frag.id.path.clone()).or_insert(0) += frag.token_count;
+        apply_fragment(frag, rel_score, needs, &mut state.utility_state);
+    };
 
     // (originating core id, the fragment actually offered for it — the core
     // itself or its downshifted excerpt).
@@ -250,13 +260,15 @@ fn select_core_fragments(
             satisfied.insert(core_id);
             continue;
         }
-        if core_used + frag.token_count > core_budget {
+        let spent = file_spent.get(&frag.id.path).copied().unwrap_or(0);
+        let over_file_ceiling = spent > 0 && spent + frag.token_count > file_ceiling;
+        if core_used + frag.token_count > core_budget || over_file_ceiling {
             if let Some(sig) = sig_lookup.get(&core_id) {
                 if !state.selected_ids.contains(&sig.id)
                     && core_used + sig.token_count <= core_budget
                 {
                     let rel_score = rel.get(&core_id).copied().unwrap_or(0.0);
-                    place_fragment(sig, &mut core_used, state, rel_score);
+                    place_fragment(sig, &mut core_used, state, rel_score, &mut file_spent);
                     satisfied.insert(core_id);
                     continue;
                 }
@@ -266,7 +278,7 @@ fn select_core_fragments(
         }
 
         let rel_score = rel.get(&core_id).copied().unwrap_or(0.0);
-        place_fragment(frag, &mut core_used, state, rel_score);
+        place_fragment(frag, &mut core_used, state, rel_score, &mut file_spent);
         satisfied.insert(core_id);
     }
 
@@ -287,13 +299,13 @@ fn select_core_fragments(
             }
             let rel_score = rel.get(&core_id).copied().unwrap_or(0.0);
             if frag.token_count <= state.remaining_budget {
-                place_fragment(frag, &mut core_used, state, rel_score);
+                place_fragment(frag, &mut core_used, state, rel_score, &mut file_spent);
                 satisfied.insert(core_id);
             } else if let Some(sig) = sig_lookup.get(&core_id) {
                 if !state.selected_ids.contains(&sig.id)
                     && sig.token_count <= state.remaining_budget
                 {
-                    place_fragment(sig, &mut core_used, state, rel_score);
+                    place_fragment(sig, &mut core_used, state, rel_score, &mut file_spent);
                     satisfied.insert(core_id);
                 }
             }
@@ -466,6 +478,7 @@ fn init_selection_state(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_greedy_loop_heap(
     heap: &mut BinaryHeap<HeapEntry>,
     id_to_frag: &FxHashMap<FragmentId, Fragment>,
@@ -474,44 +487,97 @@ fn run_greedy_loop_heap(
     needs: &[InformationNeed],
     tau: f64,
     _initial_budget: u32,
+    admissible_files: Option<&FxHashSet<Arc<str>>>,
 ) -> (usize, f64, usize) {
     let mut current_version = 0u32;
     let mut peak_density: f64 = 0.0;
     let mut loop_iters: usize = 0;
+    // Per-file admission (#65): opening a NEW file requires it to be
+    // naming-reachable from the changed set; fragments of files already
+    // opened (including the cores selected before this loop) compete on
+    // density as always. Inadmissible candidates are discarded, not
+    // deferred — admissibility is static within a run.
+    let mut open_files: FxHashSet<Arc<str>> =
+        state.selected.iter().map(|f| f.id.path.clone()).collect();
+    // #194 per-file ceiling: while the heap still holds other candidates, one
+    // file may not exceed its budget share. Blocked candidates are deferred,
+    // not dropped — once everyone else has had their chance the ceiling lifts
+    // (phase 2), so leftovers still flow to the highest density and a
+    // single-file run is unaffected.
+    let file_ceiling = (_initial_budget as f64 * selection().per_file_budget_fraction) as u32;
+    let mut file_spent: FxHashMap<Arc<str>, u32> = FxHashMap::default();
+    for f in &state.selected {
+        *file_spent.entry(f.id.path.clone()).or_insert(0) += f.token_count;
+    }
+    let mut deferred: Vec<HeapEntry> = Vec::new();
+    let mut ceiling_active = true;
 
-    while !heap.is_empty() && state.remaining_budget > 0 {
-        loop_iters += 1;
-        let (best_frag, best_density, new_version) = find_best_candidate_heap(
-            heap,
-            current_version,
-            id_to_frag,
-            &state.selected_ids,
-            state.remaining_budget,
-            rel,
-            needs,
-            &state.utility_state,
-        );
-        current_version = new_version;
+    loop {
+        while !heap.is_empty() && state.remaining_budget > 0 {
+            loop_iters += 1;
+            let (best_frag, best_density, new_version) = find_best_candidate_heap(
+                heap,
+                current_version,
+                id_to_frag,
+                &state.selected_ids,
+                state.remaining_budget,
+                rel,
+                needs,
+                &state.utility_state,
+            );
+            current_version = new_version;
 
-        let best_frag = match best_frag {
-            Some(f) => f,
-            None => break,
-        };
-        if best_density <= 0.0 {
-            break;
+            let best_frag = match best_frag {
+                Some(f) => f,
+                None => break,
+            };
+            if best_density <= 0.0 {
+                break;
+            }
+
+            if let Some(admissible) = admissible_files {
+                if !open_files.contains(&best_frag.id.path)
+                    && !admissible.contains(&best_frag.id.path)
+                {
+                    continue;
+                }
+            }
+
+            if ceiling_active {
+                let spent = file_spent.get(&best_frag.id.path).copied().unwrap_or(0);
+                if spent > 0 && spent + best_frag.token_count > file_ceiling {
+                    deferred.push(HeapEntry {
+                        neg_density: -best_density,
+                        frag_id: best_frag.id.clone(),
+                        version: current_version,
+                    });
+                    continue;
+                }
+            }
+
+            if best_density > peak_density {
+                peak_density = best_density;
+            } else if peak_density > 0.0 && best_density < tau * peak_density {
+                break;
+            }
+
+            open_files.insert(best_frag.id.path.clone());
+            *file_spent.entry(best_frag.id.path.clone()).or_insert(0) += best_frag.token_count;
+            state.selected.push(best_frag.clone());
+            state.selected_ids.add_id(&best_frag.id);
+            state.remaining_budget = state.remaining_budget.saturating_sub(best_frag.token_count);
+            let rel_score = rel.get(&best_frag.id).copied().unwrap_or(0.0);
+            apply_fragment(&best_frag, rel_score, needs, &mut state.utility_state);
         }
 
-        if best_density > peak_density {
-            peak_density = best_density;
-        } else if peak_density > 0.0 && best_density < tau * peak_density {
-            break;
+        if ceiling_active && !deferred.is_empty() && state.remaining_budget > 0 {
+            ceiling_active = false;
+            for e in deferred.drain(..) {
+                heap.push(e);
+            }
+            continue;
         }
-
-        state.selected.push(best_frag.clone());
-        state.selected_ids.add_id(&best_frag.id);
-        state.remaining_budget = state.remaining_budget.saturating_sub(best_frag.token_count);
-        let rel_score = rel.get(&best_frag.id).copied().unwrap_or(0.0);
-        apply_fragment(&best_frag, rel_score, needs, &mut state.utility_state);
+        break;
     }
 
     let threshold = tau * peak_density;
@@ -605,6 +671,7 @@ pub fn lazy_greedy_select(
     tau: f64,
     file_importance: Option<&FxHashMap<Arc<str>, f64>>,
     core_excerpts: Option<&FxHashMap<FragmentId, Fragment>>,
+    admissible_files: Option<&FxHashSet<Arc<str>>>,
 ) -> SelectionResult {
     if fragments.is_empty() {
         return SelectionResult {
@@ -668,6 +735,7 @@ pub fn lazy_greedy_select(
         needs,
         tau,
         budget_tokens,
+        admissible_files,
     );
 
     let greedy_utility = utility_value(&state.utility_state);
@@ -825,8 +893,17 @@ mod tests {
         let rel = rel_map(&frags, 0.7);
 
         for budget in [1u32, 7, 30, 31, 60, 200, 1_000] {
-            let result =
-                lazy_greedy_select(frags.clone(), &core, &rel, &[], budget, 0.12, None, None);
+            let result = lazy_greedy_select(
+                frags.clone(),
+                &core,
+                &rel,
+                &[],
+                budget,
+                0.12,
+                None,
+                None,
+                None,
+            );
             assert!(
                 cost_of(&result.selected) <= budget,
                 "budget {budget} overrun: cost {} via {:?}",
@@ -874,8 +951,17 @@ mod tests {
             let core: FxHashSet<FragmentId> = std::iter::once(frags[0].id.clone()).collect();
             let rel = rel_map(&frags, 0.8);
             for budget in [50u32, 120, 460, 1_000, 5_000] {
-                let result =
-                    lazy_greedy_select(frags.clone(), &core, &rel, &[], budget, 0.12, None, None);
+                let result = lazy_greedy_select(
+                    frags.clone(),
+                    &core,
+                    &rel,
+                    &[],
+                    budget,
+                    0.12,
+                    None,
+                    None,
+                    None,
+                );
                 assert_eq!(
                     result.used_tokens,
                     cost_of(&result.selected),
@@ -909,6 +995,7 @@ mod tests {
             0.12,
             None,
             Some(&excerpts),
+            None,
         );
 
         let ids: Vec<String> = result
@@ -933,7 +1020,7 @@ mod tests {
             .collect();
         let core: FxHashSet<FragmentId> = std::iter::once(frags[0].id.clone()).collect();
         let rel = rel_map(&frags, 0.9);
-        let result = lazy_greedy_select(frags, &core, &rel, &[], 400, 0.12, None, None);
+        let result = lazy_greedy_select(frags, &core, &rel, &[], 400, 0.12, None, None, None);
 
         let ids: FxHashSet<FragmentId> = result.selected.iter().map(|f| f.id.clone()).collect();
         assert_eq!(
@@ -961,7 +1048,7 @@ mod tests {
         rel.insert(heavy.id.clone(), 1.0);
         rel.insert(frags[2].id.clone(), 0.1);
 
-        let result = lazy_greedy_select(frags, &core, &rel, &[], 2_000, 0.12, None, None);
+        let result = lazy_greedy_select(frags, &core, &rel, &[], 2_000, 0.12, None, None, None);
         assert!(
             result.selected.iter().any(|f| core.contains(&f.id)),
             "no core fragment survived; reason was {:?}",
@@ -979,6 +1066,7 @@ mod tests {
             &[],
             1_000,
             0.12,
+            None,
             None,
             None,
         );
@@ -1046,8 +1134,11 @@ mod tests {
             .collect();
         let core: FxHashSet<FragmentId> = std::iter::once(frags[0].id.clone()).collect();
         let mut rel = FxHashMap::default();
+        // Geometric decay: with escalating cost the density ratio between
+        // consecutive candidates falls below 5% by the tail, so the rule
+        // fires at the shipped tau (0.05) and not only at looser settings.
         for (i, f) in frags.iter().enumerate() {
-            rel.insert(f.id.clone(), 1.0 / (1.0 + 3.0 * i as f64));
+            rel.insert(f.id.clone(), 0.25f64.powi(i as i32).max(1e-6));
         }
 
         let budget = 10_000;
@@ -1060,8 +1151,9 @@ mod tests {
             crate::config::limits::DEFAULT_STOPPING_THRESHOLD,
             None,
             None,
+            None,
         );
-        let no_tau = lazy_greedy_select(frags, &core, &rel, &[], budget, 0.0, None, None);
+        let no_tau = lazy_greedy_select(frags, &core, &rel, &[], budget, 0.0, None, None, None);
 
         assert_eq!(
             default_tau.reason,
@@ -1087,6 +1179,84 @@ mod tests {
         assert_eq!(
             no_tau.stopping_certificate, 0.0,
             "tau=0.0 cannot produce a stopping certificate"
+        );
+    }
+
+    /// #194: with competitors waiting, one file may not monopolize the budget
+    /// — but once every other file has had its chance, the ceiling lifts and
+    /// leftovers flow back, so a lone file still fills the budget.
+    #[test]
+    fn per_file_ceiling_blocks_monopoly_but_releases_leftovers() {
+        // One "blob" file with many equal fragments vs two small files.
+        let mut frags: Vec<Fragment> = (0..20)
+            .map(|i| {
+                frag(
+                    "blob.json",
+                    i * 10 + 1,
+                    i * 10 + 9,
+                    FragmentKind::Chunk,
+                    100,
+                )
+            })
+            .collect();
+        frags.push(frag("a.rs", 1, 9, FragmentKind::Function, 100));
+        frags.push(frag("b.rs", 1, 9, FragmentKind::Function, 100));
+        let core: FxHashSet<FragmentId> = FxHashSet::default();
+        let mut rel: FxHashMap<FragmentId, f64> = FxHashMap::default();
+        // Blob fragments outrank the small files.
+        for f in &frags {
+            let w = if f.id.path.as_ref() == "blob.json" {
+                1.0
+            } else {
+                0.5
+            };
+            rel.insert(f.id.clone(), w);
+        }
+        let budget = 1_000u32; // ceiling = 250 -> 2 blob frags in phase 1
+        let result = lazy_greedy_select(
+            frags.clone(),
+            &core,
+            &rel,
+            &[],
+            budget,
+            0.0,
+            None,
+            None,
+            None,
+        );
+        let by_file =
+            |sel: &Vec<Fragment>, p: &str| sel.iter().filter(|f| f.id.path.as_ref() == p).count();
+        assert!(
+            by_file(&result.selected, "a.rs") == 1 && by_file(&result.selected, "b.rs") == 1,
+            "small files must not be crowded out: {:?}",
+            result
+                .selected
+                .iter()
+                .map(|f| f.id.path.to_string())
+                .collect::<Vec<_>>()
+        );
+        assert!(
+            by_file(&result.selected, "blob.json") >= 5,
+            "leftover budget must flow back to the blob once competitors are served"
+        );
+
+        // Lone-file run: ceiling must not strand budget.
+        let lone: Vec<Fragment> = (0..20)
+            .map(|i| {
+                frag(
+                    "blob.json",
+                    i * 10 + 1,
+                    i * 10 + 9,
+                    FragmentKind::Chunk,
+                    100,
+                )
+            })
+            .collect();
+        let result = lazy_greedy_select(lone, &core, &rel, &[], budget, 0.0, None, None, None);
+        assert!(
+            result.selected.len() >= 9,
+            "single-file selection stranded budget: {} fragments",
+            result.selected.len()
         );
     }
 }

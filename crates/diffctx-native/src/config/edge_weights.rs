@@ -166,11 +166,22 @@ impl Default for AnsibleSemanticWeights {
 
 pub struct CFamilySemanticWeights {
     pub base_weight: f64,
+    /// A name (basename, function, type) defined in more than this many
+    /// distinct files carries no discriminative signal: linking every user to
+    /// every definition is where envoy's 520 same-stem `config` files turned
+    /// one builder pass into tens of millions of `add_edge` calls (50% of
+    /// dcbench hung on it). Ambiguous names are skipped outright rather than
+    /// truncated — a deterministic prefix of the wrong 8 definitions would
+    /// just be smaller noise.
+    pub max_files_per_name: usize,
 }
 
 impl Default for CFamilySemanticWeights {
     fn default() -> Self {
-        Self { base_weight: 0.70 }
+        Self {
+            base_weight: 0.70,
+            max_files_per_name: 8,
+        }
     }
 }
 

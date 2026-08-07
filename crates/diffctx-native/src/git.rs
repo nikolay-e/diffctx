@@ -906,8 +906,26 @@ fn collect_diffctx_ignore_patterns(repo_root: &Path) -> Vec<String> {
 /// still excludes it, so `.diffctx/ignore` and per-directory `.gitignore`
 /// rules (#85) keep working.
 pub fn find_ignored_paths(repo_root: &Path, rel_paths: &[String]) -> FxHashSet<String> {
+    find_ignored_paths_with_source(repo_root, rel_paths)
+        .into_keys()
+        .collect()
+}
+
+/// Which rule family excluded a path. `.diffctx/ignore` is a declared
+/// confidentiality policy, so its exclusions are surfaced only as a count;
+/// gitignore exclusions are mundane and can be listed by path (#188).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum IgnoreSource {
+    DiffctxPolicy,
+    Gitignore,
+}
+
+pub fn find_ignored_paths_with_source(
+    repo_root: &Path,
+    rel_paths: &[String],
+) -> rustc_hash::FxHashMap<String, IgnoreSource> {
     if rel_paths.is_empty() {
-        return FxHashSet::default();
+        return rustc_hash::FxHashMap::default();
     }
 
     let diffctx_patterns = collect_diffctx_ignore_patterns(repo_root);
@@ -963,7 +981,7 @@ pub fn find_ignored_paths(repo_root: &Path, rel_paths: &[String]) -> FxHashSet<S
     // which needs no second thread to stay correct.
     let query_file = write_private_temp_file(&format!("{}\0", queries.join("\0")));
 
-    let result = (|| -> Result<FxHashSet<String>> {
+    let result = (|| -> Result<rustc_hash::FxHashMap<String, IgnoreSource>> {
         let Some(ref query_path) = query_file else {
             return Err(GitError::CommandFailed(
                 "could not stage check-ignore query paths".into(),
@@ -992,19 +1010,22 @@ pub fn find_ignored_paths(repo_root: &Path, rel_paths: &[String]) -> FxHashSet<S
 
         Ok(rel_paths
             .iter()
-            .filter(|rel| match rules.get(*rel) {
-                None => false,
-                Some(rule) => {
-                    let from_diffctx = excludes_source
-                        .as_deref()
-                        .is_some_and(|src| rule.starts_with(&format!("{src}:")));
-                    from_diffctx
-                        || !ancestor_dirs(rel)
-                            .iter()
-                            .any(|dir| rules.get(dir) == Some(rule))
+            .filter_map(|rel| {
+                let rule = rules.get(rel)?;
+                let from_diffctx = excludes_source
+                    .as_deref()
+                    .is_some_and(|src| rule.starts_with(&format!("{src}:")));
+                if from_diffctx {
+                    Some((rel.clone(), IgnoreSource::DiffctxPolicy))
+                } else if !ancestor_dirs(rel)
+                    .iter()
+                    .any(|dir| rules.get(dir) == Some(rule))
+                {
+                    Some((rel.clone(), IgnoreSource::Gitignore))
+                } else {
+                    None
                 }
             })
-            .cloned()
             .collect())
     })();
 
@@ -1039,13 +1060,16 @@ pub fn find_ignored_paths(repo_root: &Path, rel_paths: &[String]) -> FxHashSet<S
                 diffctx_patterns.len(),
                 rel_paths.len()
             );
-            rel_paths.iter().cloned().collect()
+            rel_paths
+                .iter()
+                .map(|p| (p.clone(), IgnoreSource::DiffctxPolicy))
+                .collect()
         } else {
             tracing::warn!(
                 "git check-ignore failed ({e}); no .diffctx/ignore patterns are declared, so \
                  gitignore filtering is skipped for this run"
             );
-            FxHashSet::default()
+            rustc_hash::FxHashMap::default()
         }
     })
 }
@@ -1075,6 +1099,17 @@ fn parse_verbose_ignore_records(stdout: &str) -> rustc_hash::FxHashMap<String, S
         }
         let (source, line, pattern, path) = (record[0], record[1], record[2], record[3]);
         if path.is_empty() {
+            continue;
+        }
+        // `check-ignore -v` also prints a record when the LAST matching
+        // pattern is a negation — the path is then explicitly NOT ignored
+        // (plain `check-ignore` exits 1 for it). Treating any record as "this
+        // path is ignored" inverted the meaning: a repository that un-ignores
+        // a file (`!SECURITY.md`) had that file silently dropped from --diff
+        // output (#193). The same reading is right for `.diffctx/ignore`: a
+        // negation there is the user explicitly re-including a path in the
+        // policy's own terms.
+        if pattern.starts_with('!') {
             continue;
         }
         // The rule identity keeps the text format's shape: callers compare it
@@ -1989,5 +2024,25 @@ mod tests {
             assert!(!ignored_a.contains("app.py"));
             assert!(!ignored_b.contains("app.py"));
         }
+    }
+}
+
+#[cfg(test)]
+mod negation_record_tests {
+    use super::*;
+
+    #[test]
+    fn a_negation_record_does_not_mark_the_path_ignored() {
+        // check-ignore -v -z output: source \0 line \0 pattern \0 path \0 ...
+        let stdout = ".gitignore\x001\x00*.tmp\x00drop.tmp\x00.gitignore\x002\x00!NEWDOC.md\x00NEWDOC.md\x00";
+        let rules = parse_verbose_ignore_records(stdout);
+        assert!(
+            rules.contains_key("drop.tmp"),
+            "a positive match must stay an exclusion"
+        );
+        assert!(
+            !rules.contains_key("NEWDOC.md"),
+            "a negation match means the path is explicitly NOT ignored (#193)"
+        );
     }
 }

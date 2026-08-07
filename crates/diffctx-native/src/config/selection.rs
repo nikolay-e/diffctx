@@ -4,19 +4,24 @@ use crate::config::env_overrides::{read_env_fraction, read_env_u32};
 pub struct SelectionConfig {
     pub core_budget_fraction: f64,
     pub r_cap_min: f64,
+    /// Share of the run budget one file may consume while other files still
+    /// have unplaced candidates (#194: a single +9k-line data blob monopolized
+    /// 364 of 370 output sections). The ceiling binds only in the first
+    /// placement phase — leftovers no other file claims flow back to whoever
+    /// wants them, so a single-file change is unaffected.
+    pub per_file_budget_fraction: f64,
 }
 
 impl Default for SelectionConfig {
     fn default() -> Self {
         Self {
-            // Confirmed by the v4 re-calibration on the EGO pipeline
-            // (5x3 grid over the v1 calibration manifest): validated
-            // winner (tau, cbf) = (0.12, 0.5) at min(per_benchmark
-            // file_recall) = 0.6532. Surface is flat and monotone
-            // (top-3 within 0.004), so the choice is robust rather
-            // than tuned to a sharp optimum.
-            core_budget_fraction: 0.5,
+            // v5 re-calibration under per-file admission: validated winner
+            // (tau, cbf) = (0.05, 0.4); cbf margin over 0.5 is small but
+            // consistent in direction on both the calibration and held-out
+            // manifests. Surface flat and monotone, as in v4.
+            core_budget_fraction: 0.4,
             r_cap_min: 0.01,
+            per_file_budget_fraction: 0.25,
         }
     }
 }
@@ -57,8 +62,12 @@ impl Default for BoltzmannConfig {
 
 pub fn selection() -> SelectionConfig {
     SelectionConfig {
-        core_budget_fraction: read_env_fraction("DIFFCTX_OP_SELECTION_CORE_BUDGET_FRACTION", 0.5),
+        core_budget_fraction: read_env_fraction("DIFFCTX_OP_SELECTION_CORE_BUDGET_FRACTION", 0.4),
         r_cap_min: read_env_fraction("DIFFCTX_OP_SELECTION_R_CAP_MIN", 0.01),
+        per_file_budget_fraction: read_env_fraction(
+            "DIFFCTX_OP_SELECTION_PER_FILE_BUDGET_FRACTION",
+            0.25,
+        ),
     }
 }
 

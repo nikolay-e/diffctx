@@ -1,5 +1,9 @@
 use std::path::{Path, PathBuf};
 
+/// Same ambiguity bar as `CFamilySemanticWeights::max_files_per_name`,
+/// applied to config keys: document frequency above this is vocabulary.
+const MAX_FILES_PER_KEY: usize = 8;
+
 use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -165,6 +169,10 @@ fn extract_config_keys(suffix: &str, content: &str) -> FxHashSet<String> {
     keys
 }
 
+fn is_word_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_'
+}
+
 fn build_key_patterns(keys: &FxHashSet<String>) -> Vec<Regex> {
     let mut patterns = Vec::new();
     for key in keys {
@@ -213,22 +221,113 @@ impl EdgeBuilder for ConfigToCodeEdgeBuilder {
             return FxHashMap::default();
         }
 
-        let mut edges: EdgeDict = FxHashMap::default();
-
-        for cfg in &config_frags {
+        // One automaton over every distinct key instead of per-config regex
+        // sweeps of every code fragment: the per-pair form is
+        // O(configs x code x patterns) and stood at 42s of a 94s envoy run.
+        // Keys whose edge characters are not word characters (or not ASCII)
+        // keep the regex path — `\b` anchors relative to those differently
+        // than a manual boundary check, and exactness is what makes this a
+        // pure speedup.
+        let mut key_to_cfgs: FxHashMap<String, Vec<usize>> = FxHashMap::default();
+        let mut fallback_patterns: Vec<(Regex, usize)> = Vec::new();
+        for (ci, cfg) in config_frags.iter().enumerate() {
             let suffix = base::file_ext(Path::new(cfg.path()));
-            let keys = extract_config_keys(&suffix, &cfg.content);
-            if keys.is_empty() {
-                continue;
-            }
-            let patterns = build_key_patterns(&keys);
-            if patterns.is_empty() {
-                continue;
-            }
-            for code_frag in &code_frags {
-                if content_matches_any_pattern(&code_frag.content, &patterns) {
-                    add_edge(&mut edges, &cfg.id, &code_frag.id, weight, reverse_factor);
+            for key in extract_config_keys(&suffix, &cfg.content) {
+                if key.len() < 4 || STOPWORDS.contains(key.as_str()) {
+                    continue;
                 }
+                let bytes = key.as_bytes();
+                let word_edges = key.is_ascii()
+                    && is_word_byte(bytes[0])
+                    && is_word_byte(bytes[bytes.len() - 1]);
+                if word_edges {
+                    key_to_cfgs.entry(key.to_lowercase()).or_default().push(ci);
+                } else if let Ok(re) = Regex::new(&format!("(?i)\\b{}\\b", regex::escape(&key))) {
+                    fallback_patterns.push((re, ci));
+                }
+            }
+        }
+        if key_to_cfgs.is_empty() && fallback_patterns.is_empty() {
+            return FxHashMap::default();
+        }
+
+        let keys: Vec<&String> = key_to_cfgs.keys().collect();
+        let automaton = aho_corasick::AhoCorasick::builder()
+            .ascii_case_insensitive(true)
+            .build(&keys)
+            .ok();
+
+        // Document-frequency gate, same ambiguity bar as
+        // `CFamilySemanticWeights::max_files_per_name`: a key matched in more
+        // distinct code files than this is vocabulary, not a config-to-code
+        // dependency. Without it a lockfile's package names ("react",
+        // "lodash") match nearly every source fragment and this builder alone
+        // ran past the pipeline deadline on a sentry-scale yarn->pnpm commit
+        // (#116) — the emission map, not the automaton, was the cost.
+        let mut key_files: Vec<FxHashSet<&str>> = vec![FxHashSet::default(); keys.len()];
+        let mut fallback_files: Vec<FxHashSet<&str>> =
+            vec![FxHashSet::default(); fallback_patterns.len()];
+        for code_frag in &code_frags {
+            let content = code_frag.content.as_ref();
+            if let Some(ac) = &automaton {
+                for m in ac.find_overlapping_iter(content) {
+                    let b = content.as_bytes();
+                    let before_ok = m.start() == 0 || !is_word_byte(b[m.start() - 1]);
+                    let after_ok = m.end() == b.len() || !is_word_byte(b[m.end()]);
+                    if before_ok && after_ok {
+                        let ki = m.pattern().as_usize();
+                        if key_files[ki].len() <= MAX_FILES_PER_KEY {
+                            key_files[ki].insert(code_frag.path());
+                        }
+                    }
+                }
+            }
+            for (fi, (re, _)) in fallback_patterns.iter().enumerate() {
+                if fallback_files[fi].len() <= MAX_FILES_PER_KEY && re.is_match(content) {
+                    fallback_files[fi].insert(code_frag.path());
+                }
+            }
+        }
+        let key_alive: Vec<bool> = key_files
+            .iter()
+            .map(|s| s.len() <= MAX_FILES_PER_KEY)
+            .collect();
+        let fallback_alive: Vec<bool> = fallback_files
+            .iter()
+            .map(|s| s.len() <= MAX_FILES_PER_KEY)
+            .collect();
+
+        let mut edges: EdgeDict = FxHashMap::default();
+        for code_frag in &code_frags {
+            let content = code_frag.content.as_ref();
+            let mut matched_cfgs: FxHashSet<usize> = FxHashSet::default();
+            if let Some(ac) = &automaton {
+                for m in ac.find_overlapping_iter(content) {
+                    let ki = m.pattern().as_usize();
+                    if !key_alive[ki] {
+                        continue;
+                    }
+                    let b = content.as_bytes();
+                    let before_ok = m.start() == 0 || !is_word_byte(b[m.start() - 1]);
+                    let after_ok = m.end() == b.len() || !is_word_byte(b[m.end()]);
+                    if before_ok && after_ok {
+                        matched_cfgs.extend(key_to_cfgs[keys[ki]].iter());
+                    }
+                }
+            }
+            for (fi, (re, ci)) in fallback_patterns.iter().enumerate() {
+                if fallback_alive[fi] && !matched_cfgs.contains(ci) && re.is_match(content) {
+                    matched_cfgs.insert(*ci);
+                }
+            }
+            for ci in matched_cfgs {
+                add_edge(
+                    &mut edges,
+                    &config_frags[ci].id,
+                    &code_frag.id,
+                    weight,
+                    reverse_factor,
+                );
             }
         }
 

@@ -36,9 +36,6 @@ gold:
   role: unspecified
   in_diff: true
 forbidden:
-- path: the ~40 unrelated go.mod/go.sum bumps across services (blobserve, ide-metrics, service-waiter,
-    dev/gpctl, install/installer, test/go.sum, etc.) that only reflect transitive dependency-graph propagation
-    of the new common-go->scrubber dep, not the logical change
 nontrivial_gold_count: 0
 annotator: legacy-review-2026-06
 candidates_from:
