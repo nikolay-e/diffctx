@@ -7,7 +7,7 @@ Project-specific facts for `/qa`. Generic methodology lives in
 
 | Check | Applies | Notes |
 |---|---|---|
-| CI | yes | GitHub Actions on the mirror (ci.yml, action-smoke, CodeQL per push; cd.yml/publish-* manual dispatch; nightly-full-eval cron). "Rust diffctx tests" is ~6 min on a warm cargo cache; a Rust-touching commit invalidates it (+~10 min compile). Beyond ~30 min on "Build and test" = stuck runner — `gh run cancel` + `gh run rerun --failed` (an 85-min hang resolved to a 6-min green rerun with zero changes) |
+| CI | yes | GitHub Actions on the mirror (ci.yml, action-smoke, CodeQL per push; cd.yml/publish-* manual dispatch; nightly-full-eval cron). "Rust diffctx tests" is ~6 min on a warm cargo cache; a Rust-touching commit invalidates it (+~10 min compile). Beyond ~30 min on "Build and test" = stuck runner — `gh run cancel` + `gh run rerun --failed` (an 85-min hang resolved to a 6-min green rerun with zero changes). A re-run stuck in `queued` can be API-unrecoverable: cancel AND force-cancel 409 with "re-run that has not yet queued", and an all-jobs-cancelled CodeQL run later reports "cannot be retried" — don't fight it; the next push supersedes, verify the corpus gate on the new SHA |
 | CD / K8s / ArgoCD | no | CLI+library; ships to PyPI, npm, crates.io, Docker Hub via cd.yml/publish-extras.yml |
 | Browser QA | no | no web frontend |
 | Post-deploy autoqa | no | no deployed service; probes are the publish smokes inside cd.yml/publish-extras.yml |
@@ -115,6 +115,13 @@ Project-specific facts for `/qa`. Generic methodology lives in
   `apply_fragment` recording the *excerpt's* identifiers rather than the
   whole core's, so needs the trimmed body used to cover read as
   uncovered and the greedy goes looking for them elsewhere.
+- Post-admission-flip self-eat still emits ~4-5x the changed-file count
+  as context (measured 2026-08-07: 13 visible changed files -> 69 output
+  files): this repo's changed modules (`config/*`, `edges/base`) are
+  imported nearly everywhere, so the naming-reachable set is legitimately
+  wide. Designed behavior, not the #65 proximity class — don't re-file
+  Forgejo #2 from a self-eat read; the open question there is context
+  share, not admission.
 - `env_overrides.rs` carries name-consistency tests: any new
   `read_env_*("DIFFCTX_*")` must appear in the `parameter-strategy.md`
   Tier-3 table (or the `TIER1_EXTRAS_READ_BUT_NOT_TABLED` allowlist)
