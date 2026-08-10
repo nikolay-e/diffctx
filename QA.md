@@ -31,6 +31,15 @@ Project-specific facts for `/qa`. Generic methodology lives in
   without naming the service.
 - Push `main` to both remotes (mirror sync is periodic; direct push is
   immediate).
+- **Forgejo's merge API can return 405 with an empty message on a merge
+  that SUCCEEDED.** Never read the HTTP code as the outcome — re-fetch
+  the PR (`state`/`merged`) before retrying or escalating; a blind retry
+  loop would report failure on a completed merge.
+- **The v1.13.0 tag points at a commit containing unreleased work** — the
+  2026-08-08 history rewrite re-anchored tags onto epoch commits, so
+  `git describe`/tag position cannot tell you what a release contains.
+  Released state is read from the registry (PyPI upload date/version),
+  not from the tag.
 
 ## Tests
 
@@ -60,7 +69,9 @@ Project-specific facts for `/qa`. Generic methodology lives in
 - **Rust edits fight the auto-format hook**: the PostToolUse formatter
   orders `use` items differently from repo rustfmt; `git commit` then
   fails cargo-fmt. Run `cargo fmt` before every commit that touches
-  Rust.
+  Rust. **Python edits hit the same trap**: the hook applies isort's
+  aligned-parens import style, which repo black rewrites back — run
+  `pre-commit run black --files <touched>` after Python edits.
 - **`DIFFCTX_PROBE_TAU`** mirrors `DIFFCTX_PROBE_MODE` in the yaml
   harness: measurement-only tau override, meaningful only with
   `DIFFCTX_YAML_IGNORE_BASELINE=1`; default run still measures the

@@ -1,5 +1,11 @@
 use crate::config::env_overrides::{read_env_fraction, read_env_u32};
 
+// v5 re-calibration under per-file admission: validated winner
+// (tau, cbf) = (0.05, 0.4); the tau half lives in limits.rs. Named (and
+// exported through pybridge) so the Python layers read it instead of
+// restating it — the same drift class as #175's tau copies.
+pub const DEFAULT_CORE_BUDGET_FRACTION: f64 = 0.4;
+
 #[derive(Clone)]
 pub struct SelectionConfig {
     pub core_budget_fraction: f64,
@@ -15,11 +21,10 @@ pub struct SelectionConfig {
 impl Default for SelectionConfig {
     fn default() -> Self {
         Self {
-            // v5 re-calibration under per-file admission: validated winner
-            // (tau, cbf) = (0.05, 0.4); cbf margin over 0.5 is small but
-            // consistent in direction on both the calibration and held-out
-            // manifests. Surface flat and monotone, as in v4.
-            core_budget_fraction: 0.4,
+            // cbf margin over 0.5 is small but consistent in direction on
+            // both the calibration and held-out manifests. Surface flat and
+            // monotone, as in v4.
+            core_budget_fraction: DEFAULT_CORE_BUDGET_FRACTION,
             r_cap_min: 0.01,
             per_file_budget_fraction: 0.25,
         }
@@ -62,7 +67,10 @@ impl Default for BoltzmannConfig {
 
 pub fn selection() -> SelectionConfig {
     SelectionConfig {
-        core_budget_fraction: read_env_fraction("DIFFCTX_OP_SELECTION_CORE_BUDGET_FRACTION", 0.4),
+        core_budget_fraction: read_env_fraction(
+            "DIFFCTX_OP_SELECTION_CORE_BUDGET_FRACTION",
+            DEFAULT_CORE_BUDGET_FRACTION,
+        ),
         r_cap_min: read_env_fraction("DIFFCTX_OP_SELECTION_R_CAP_MIN", 0.01),
         per_file_budget_fraction: read_env_fraction(
             "DIFFCTX_OP_SELECTION_PER_FILE_BUDGET_FRACTION",

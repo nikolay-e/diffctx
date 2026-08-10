@@ -100,5 +100,6 @@ def graph_to_graphml_string(pg: PyProjectGraph) -> str: ...
 # harnesses read them instead of each restating the number (#175).
 DEFAULT_TAU: float
 DEFAULT_ALPHA: float
+DEFAULT_CORE_BUDGET_FRACTION: float
 DEFAULT_SCORING: str
 SCORING_MODES: list[str]

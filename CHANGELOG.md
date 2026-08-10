@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A commit touching only excluded paths now renders its disclosure** (#188
+  completion): the YAML/Markdown/text renderers and the CLI's empty-diff exit
+  treated `ignored_changes`/`policy_excluded_count` as "no output", so the one
+  case the disclosure exists for — every hunk withheld — printed a bare stub
+  and exited 4. All three renderers, `locate`, and the exit path now count the
+  disclosure as content.
+- **Scala import with `}` before `{` no longer panics** the edge build
+  (`import a}.{B` in any `.scala`/`.sbt` line aborted the whole run).
+- The corpus harness (`build_diff_context_in_memory`) now passes the per-file
+  admission gate to selection, matching the shipped pipeline; the full corpus
+  is bit-stable under the fix (2902 passed, baseline unchanged).
+- An absurd `timeout` value can no longer wrap the compute deadline into the
+  past (saturating arithmetic); the token-cache eviction sweep no longer
+  deletes another process's in-flight temp file.
+- Text renderer writes one path per line (a comma or newline inside a path
+  made the joined line unparseable).
+
 ### Changed
 
 - **New default operating point: per-file admission ON, `tau` 0.12 -> 0.05,

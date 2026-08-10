@@ -23,11 +23,7 @@ pub struct ChangeSummary {
     pub policy_excluded_count: usize,
 }
 
-fn is_zero(n: &usize) -> bool {
-    *n == 0
-}
-
-pub fn is_zero_pub(n: &usize) -> bool {
+pub fn is_zero(n: &usize) -> bool {
     *n == 0
 }
 

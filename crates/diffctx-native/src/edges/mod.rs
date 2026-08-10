@@ -356,11 +356,12 @@ pub fn naming_reachable_files(
     max_depth: usize,
 ) -> rustc_hash::FxHashSet<std::sync::Arc<str>> {
     let n = capped.idx_to_node.len();
-    // Undirected on purpose: a naming edge relates the PAIR of files. The
-    // reverse emission carries weight*reverse_factor and lands below the
-    // naming floor, so a directed walk would reach only the changed set's
-    // dependencies and never its consumers — measured as 24 broken
-    // consumer-pull corpus cases (php one-hop, terraform dependents, DI).
+    // Undirected on purpose: a naming edge relates the PAIR of files. For
+    // several channels the reverse emission (weight*reverse_factor) lands
+    // below the naming floor, so a directed walk would reach the changed
+    // set's dependencies but not all of its consumers — measured as 24
+    // broken consumer-pull corpus cases (php one-hop, terraform dependents,
+    // DI).
     let mut adj: Vec<Vec<u32>> = vec![Vec::new(); n];
     for e in &capped.edges {
         if e.naming {

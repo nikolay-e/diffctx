@@ -140,7 +140,7 @@ pub fn build_diff_context_in_memory(
         tau,
         Some(&file_importance),
         Some(&core_excerpts),
-        None,
+        scoring_result.admissible_files.as_ref(),
     );
 
     let mut selected = selection.selected;

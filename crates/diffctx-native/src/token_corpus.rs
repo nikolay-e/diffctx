@@ -90,7 +90,7 @@ impl TokenCorpus {
             .collect();
 
         if let Some(store) = store.as_ref() {
-            store.evict_one_shard();
+            store.evict_window_of_shards();
         }
 
         tracing::debug!(
@@ -220,9 +220,9 @@ impl TokenCacheStore {
     // Entries are written once and never rewritten, so nothing ages out on its
     // own and the cache grows with every repository ever analyzed. Walking all
     // 256 shards per run would cost more than the cache saves, so each run
-    // enforces the per-shard share of the size cap on ONE shard; every shard is
-    // reached within a few hundred runs.
-    fn evict_one_shard(&self) {
+    // enforces the per-shard share of the size cap on a bounded WINDOW of
+    // shards; the sweep covers the whole table every 256/WINDOW runs.
+    fn evict_window_of_shards(&self) {
         let Some(max_bytes) = cache_max_bytes() else {
             return;
         };
@@ -273,11 +273,19 @@ fn evict_shard(shard_dir: &Path, shard_max_bytes: u64) {
             if !meta.is_file() {
                 return None;
             }
-            Some((
-                meta.modified().unwrap_or(std::time::UNIX_EPOCH),
-                meta.len(),
-                e.path(),
-            ))
+            let modified = meta.modified().unwrap_or(std::time::UNIX_EPOCH);
+            // A fresh `.tmp` is another process's staged write sitting between
+            // fs::write and fs::rename — deleting it makes that rename fail and
+            // silently loses the entry. Old ones are crash leftovers: evictable.
+            if e.path().extension().is_some_and(|x| x == "tmp")
+                && modified
+                    .elapsed()
+                    .map(|age| age.as_secs() < 60)
+                    .unwrap_or(true)
+            {
+                return None;
+            }
+            Some((modified, meta.len(), e.path()))
         })
         .collect();
 

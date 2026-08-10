@@ -23,7 +23,12 @@ static DEADLINE_MS: AtomicU64 = AtomicU64::new(0);
 pub fn set_compute_deadline(timeout_secs: u64) {
     let now_ms = ANCHOR.elapsed().as_millis() as u64;
     // +1 keeps a zero timeout distinct from the 0 = "no deadline" sentinel.
-    DEADLINE_MS.store(now_ms + timeout_secs * 1000 + 1, Ordering::Relaxed);
+    // Saturating: an absurd caller-supplied timeout must clamp to "far future",
+    // not wrap behind `now_ms` and fire instantly.
+    let deadline = now_ms
+        .saturating_add(timeout_secs.saturating_mul(1000))
+        .saturating_add(1);
+    DEADLINE_MS.store(deadline, Ordering::Relaxed);
 }
 
 pub fn check_compute_deadline(phase: &str) {

@@ -52,8 +52,8 @@ leaves the CLI default in place.
 | `diff-range` | auto | `--diff` | `main..HEAD`, `<base>..<head>`, … |
 | `budget` | auto | `--budget` | Token cap; `-1` unlimited, `0` strict-zero floor |
 | `scoring` | `ego` | `--scoring` | `ego`, `ppr`, `bm25`, `rrf` |
-| `tau` | CLI default (0.12) | `--tau` | Relevance threshold for full fragment content |
-| `alpha` | CLI default (0.60) | `--alpha` | PPR damping; only affects `scoring: ppr` |
+| `tau` | CLI default | `--tau` | Relevance threshold for full fragment content |
+| `alpha` | CLI default | `--alpha` | PPR damping; only affects `scoring: ppr` |
 | `full` | `false` | `--full` | Changed files only, every fragment, no related code |
 | `format` | `md` | `--format` | `md`, `yaml`, `json`, `txt` |
 | `output-path` | `$RUNNER_TEMP/diffctx-context.<ext>` | `--output-file` | Where to write |

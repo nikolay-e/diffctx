@@ -52,6 +52,8 @@ def nontrivial_gold(instance_id: str) -> set[str]:
 def _hit_rate(gold: set[str], selected: set[str]) -> float:
     # Same suffix match the runner scores with: gold is repo-relative, the
     # renderer emits worktree-relative paths.
+    if not gold:
+        return 0.0
     hits = sum(1 for g in gold if any(s == g or s.endswith("/" + g) for s in selected))
     return hits / len(gold)
 
@@ -97,8 +99,8 @@ def _load_modes(root: Path, subset: str | None) -> dict[str, dict[str, dict]]:
 
 
 def _print_coverage(modes: dict[str, dict[str, dict]]) -> None:
-    print("## Coverage (all instances attempted)\n")
-    print("| mode | attempted | produced | hang | other |")
+    print("## Coverage (rows written per mode)\n")
+    print("| mode | rows | produced | hang | other |")
     print("|---|---:|---:|---:|---:|")
     for m, rows in modes.items():
         st = [r.get("status") for r in rows.values()]
@@ -106,27 +108,47 @@ def _print_coverage(modes: dict[str, dict[str, dict]]) -> None:
             f"| {m} | {len(st)} | {st.count('produced')} | {st.count('hang')} | "
             f"{len(st) - st.count('produced') - st.count('hang')} |"
         )
+    counts = {m: len(rows) for m, rows in modes.items()}
+    if len(set(counts.values())) > 1:
+        lo = min(counts, key=lambda m: counts[m])
+        hi = max(counts, key=lambda m: counts[m])
+        print(
+            f"\n**WARNING: unequal row counts ({lo}={counts[lo]} vs {hi}={counts[hi]}).** "
+            "A half-collected mode shrinks the paired set for every mode below; "
+            "treat all paired numbers as provisional until the counts agree."
+        )
 
 
 def _paired_sets(modes: dict[str, dict[str, dict]]) -> tuple[set[str], list[str]]:
     shared = set.intersection(*[{i for i, r in rows.items() if r.get("status") == "produced"} for rows in modes.values()])
     print(f"\nPaired set: **{len(shared)}** instances produced by every mode.\n")
 
-    # Retrieval is only measurable where there is something to retrieve.
-    with_nt = sorted(i for i in shared if (next(iter(modes.values()))[i].get("n_nontrivial") or 0) > 0)
+    # Retrieval is only measurable where there is something to retrieve. Read
+    # the count from every mode, not an arbitrary one: a mode whose rows
+    # predate the field would otherwise silently empty this set and with it
+    # the whole statistical section.
+    with_nt = sorted(i for i in shared if any((rows[i].get("n_nontrivial") or 0) > 0 for rows in modes.values()))
+    if shared and not with_nt:
+        print("**WARNING: no row in any mode carries n_nontrivial > 0** — bootstrap and ceiling sections are skipped.\n")
     print(f"Of those, **{len(with_nt)}** carry at least one nontrivial gold file.\n")
     return shared, with_nt
 
 
+def _paired_pool(modes: dict[str, dict[str, dict]], ids: list[str], metric: str) -> list[str]:
+    # A metric that is None in ONE mode (precision_labelled: nothing labelled
+    # was selected) must drop the instance for EVERY mode, or the whiffing
+    # mode is scored on an easier subset under a header that promises pairing.
+    return [i for i in ids if all(rows[i].get(metric) is not None for rows in modes.values())]
+
+
 def _print_paired_means(modes: dict[str, dict[str, dict]], shared: set[str], with_nt: list[str]) -> None:
     print("## Paired means\n")
+    pools = {k: _paired_pool(modes, with_nt if k == "recall_nontrivial" else sorted(shared), k) for k in METRICS}
+    print("per-metric paired n: " + ", ".join(f"{k}={len(pools[k])}" for k in METRICS) + "\n")
     print("| mode | " + " | ".join(METRICS) + " |")
     print("|---" * (len(METRICS) + 1) + "|")
     for m, rows in modes.items():
-        cells = []
-        for k in METRICS:
-            pool = with_nt if k == "recall_nontrivial" else sorted(shared)
-            cells.append(str(_mean([rows[i].get(k) for i in pool])))
+        cells = [str(_mean([rows[i].get(k) for i in pools[k]])) for k in METRICS]
         print(f"| {m} | " + " | ".join(cells) + " |")
 
 
@@ -134,11 +156,14 @@ def _print_bootstrap(modes: dict[str, dict[str, dict]], base: str, with_nt: list
     print(f"\n## Nontrivial recall vs {base} (paired bootstrap 95% CI)\n")
     print("| mode | delta | CI low | CI high | excludes zero |")
     print("|---|---:|---:|---:|---|")
-    b = [modes[base][i].get("recall_nontrivial") or 0.0 for i in with_nt]
+    pool = _paired_pool(modes, with_nt, "recall_nontrivial")
+    if len(pool) < len(with_nt):
+        print(f"(n={len(pool)}; {len(with_nt) - len(pool)} instances dropped — recall_nontrivial missing in some mode)\n")
+    b = [modes[base][i]["recall_nontrivial"] for i in pool]
     for m, rows in modes.items():
         if m == base:
             continue
-        a = [rows[i].get("recall_nontrivial") or 0.0 for i in with_nt]
+        a = [rows[i]["recall_nontrivial"] for i in pool]
         lo, hi = paired_bootstrap(a, b)
         d = round(statistics.mean(a) - statistics.mean(b), 4)
         print(f"| {m} | {d:+.4f} | {lo:+.4f} | {hi:+.4f} | {'yes' if lo > 0 or hi < 0 else 'no'} |")
@@ -178,16 +203,22 @@ def main() -> None:
             e_only.append(_hit_rate(gold, e))
             l_only.append(_hit_rate(gold, x))
             ceil.append(_hit_rate(gold, e | x))
-        print(f"- ego nontrivial recall:   {statistics.mean(e_only):.4f}")
-        print(f"- bm25 nontrivial recall:  {statistics.mean(l_only):.4f}")
-        print(f"- union ceiling:           {statistics.mean(ceil):.4f}")
-        print(f"- headroom over ego:       {statistics.mean(ceil) - statistics.mean(e_only):+.4f}")
-        print(
-            "\nThe ceiling is an oracle: it credits a gold file if either arm surfaced "
-            "it, with no mechanism able to choose. Fusion cannot exceed it. Headroom "
-            "at or near zero means fusion had nothing to win here and the remaining "
-            "loss is candidate supply (#130), not ranking (#125)."
-        )
+        if not ceil:
+            print(
+                "**Skipped: no annotation.yaml found for any paired instance** — "
+                f"the ceiling reads gold from {INSTANCES}, which must be checked out."
+            )
+        else:
+            print(f"- ego nontrivial recall:   {statistics.mean(e_only):.4f} (n={len(ceil)}, re-read from today's annotations)")
+            print(f"- bm25 nontrivial recall:  {statistics.mean(l_only):.4f}")
+            print(f"- union ceiling:           {statistics.mean(ceil):.4f}")
+            print(f"- headroom over ego:       {statistics.mean(ceil) - statistics.mean(e_only):+.4f}")
+            print(
+                "\nThe ceiling is an oracle: it credits a gold file if either arm surfaced "
+                "it, with no mechanism able to choose. Fusion cannot exceed it. Headroom "
+                "at or near zero means fusion had nothing to win here and the remaining "
+                "loss is candidate supply (#130), not ranking (#125)."
+            )
 
     print("\n## Per-repo nontrivial recall\n")
     repos = sorted({modes[base][i]["repo"] for i in with_nt}) if base in modes else []
