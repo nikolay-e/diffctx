@@ -81,6 +81,34 @@ def checkout(wt: Path, sha: str) -> bool:
     return True
 
 
+def _run_group_killable(
+    argv: list[str],
+    extra_env: dict[str, str] | None,
+    timeout_s: float,
+) -> tuple[int, str, str] | None:
+    # Own session so a timeout kills the whole process group — killing the
+    # direct child alone leaves forked grandchildren running past the cap.
+    env = dict(os.environ, **extra_env) if extra_env else None
+    with subprocess.Popen(
+        argv,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+        start_new_session=True,
+    ) as proc:
+        try:
+            stdout, stderr = proc.communicate(timeout=timeout_s)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            proc.wait()
+            return None
+    return proc.returncode, stdout, stderr
+
+
 def run_one(
     wt: Path,
     sha: str,
@@ -92,7 +120,6 @@ def run_one(
 ) -> dict:
     if not _COMMIT_RE.fullmatch(sha):
         return {"status": "bad_sha", "elapsed_s": 0.0}
-    env = dict(os.environ, **extra_env) if extra_env else None
     started = time.monotonic()
     argv = [
         str(NATIVE),
@@ -109,34 +136,19 @@ def run_one(
         "--timeout",
         str(timeout_s),
     ] + (["--tau", str(tau)] if tau is not None else [])
-    # Own session so a timeout kills the whole process group — the direct
-    # child alone leaves forked grandchildren running past the cap.
-    with subprocess.Popen(
-        argv,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        env=env,
-        start_new_session=True,
-    ) as proc:
-        try:
-            stdout, stderr = proc.communicate(timeout=timeout_s + 30)
-        except subprocess.TimeoutExpired:
-            try:
-                os.killpg(proc.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            proc.wait()
-            return {"status": "hang", "elapsed_s": round(time.monotonic() - started, 1)}
+    outcome = _run_group_killable(argv, extra_env, timeout_s + 30)
     elapsed = round(time.monotonic() - started, 1)
+    if outcome is None:
+        return {"status": "hang", "elapsed_s": elapsed}
+    rc, stdout, stderr = outcome
 
-    if proc.returncode != 0 or not stdout.strip():
+    if rc != 0 or not stdout.strip():
         if "unknown revision" in (stderr or ""):
             # `<sha>^..<sha>` has no parent side on a root commit; an explicit
             # status keeps it out of the no_output bucket.
-            return {"status": "root_commit", "elapsed_s": elapsed, "rc": proc.returncode}
-        kind = "hang" if proc.returncode in (124, 143) else "no_output"
-        return {"status": kind, "elapsed_s": elapsed, "rc": proc.returncode}
+            return {"status": "root_commit", "elapsed_s": elapsed, "rc": rc}
+        kind = "hang" if rc in (124, 143) else "no_output"
+        return {"status": kind, "elapsed_s": elapsed, "rc": rc}
 
     try:
         doc = json.loads(stdout)

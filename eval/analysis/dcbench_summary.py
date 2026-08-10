@@ -169,6 +169,39 @@ def _print_bootstrap(modes: dict[str, dict[str, dict]], base: str, with_nt: list
         print(f"| {m} | {d:+.4f} | {lo:+.4f} | {hi:+.4f} | {'yes' if lo > 0 or hi < 0 else 'no'} |")
 
 
+def _print_union_ceiling(modes: dict[str, dict[str, dict]], with_nt: list[str]) -> None:
+    print("\n## Union ceiling (ego+bm25 union, same instances)\n")
+    ego, lex = modes["ego"], modes["bm25"]
+    # Recomputed from selected_files rather than from the recall columns: the
+    # union of two recalls is not the recall of the union.
+    ceil, e_only, l_only = [], [], []
+    for i in with_nt:
+        gold = nontrivial_gold(i)
+        if not gold:
+            continue
+        e = set(ego[i].get("selected_files") or [])
+        x = set(lex[i].get("selected_files") or [])
+        e_only.append(_hit_rate(gold, e))
+        l_only.append(_hit_rate(gold, x))
+        ceil.append(_hit_rate(gold, e | x))
+    if not ceil:
+        print(
+            "**Skipped: no annotation.yaml found for any paired instance** — "
+            f"the ceiling reads gold from {INSTANCES}, which must be checked out."
+        )
+        return
+    print(f"- ego nontrivial recall:   {statistics.mean(e_only):.4f} (n={len(ceil)}, re-read from today's annotations)")
+    print(f"- bm25 nontrivial recall:  {statistics.mean(l_only):.4f}")
+    print(f"- union ceiling:           {statistics.mean(ceil):.4f}")
+    print(f"- headroom over ego:       {statistics.mean(ceil) - statistics.mean(e_only):+.4f}")
+    print(
+        "\nThe ceiling is an oracle: it credits a gold file if either arm surfaced "
+        "it, with no mechanism able to choose. Fusion cannot exceed it. Headroom "
+        "at or near zero means fusion had nothing to win here and the remaining "
+        "loss is candidate supply (#130), not ranking (#125)."
+    )
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--runs", required=True, help="directory holding one subdirectory per mode")
@@ -189,36 +222,7 @@ def main() -> None:
         _print_bootstrap(modes, base, with_nt)
 
     if "ego" in modes and "bm25" in modes and with_nt:
-        print("\n## Union ceiling (ego+bm25 union, same instances)\n")
-        ego, lex = modes["ego"], modes["bm25"]
-        # Recomputed from selected_files rather than from the recall columns: the
-        # union of two recalls is not the recall of the union.
-        ceil, e_only, l_only = [], [], []
-        for i in with_nt:
-            gold = nontrivial_gold(i)
-            if not gold:
-                continue
-            e = set(ego[i].get("selected_files") or [])
-            x = set(lex[i].get("selected_files") or [])
-            e_only.append(_hit_rate(gold, e))
-            l_only.append(_hit_rate(gold, x))
-            ceil.append(_hit_rate(gold, e | x))
-        if not ceil:
-            print(
-                "**Skipped: no annotation.yaml found for any paired instance** — "
-                f"the ceiling reads gold from {INSTANCES}, which must be checked out."
-            )
-        else:
-            print(f"- ego nontrivial recall:   {statistics.mean(e_only):.4f} (n={len(ceil)}, re-read from today's annotations)")
-            print(f"- bm25 nontrivial recall:  {statistics.mean(l_only):.4f}")
-            print(f"- union ceiling:           {statistics.mean(ceil):.4f}")
-            print(f"- headroom over ego:       {statistics.mean(ceil) - statistics.mean(e_only):+.4f}")
-            print(
-                "\nThe ceiling is an oracle: it credits a gold file if either arm surfaced "
-                "it, with no mechanism able to choose. Fusion cannot exceed it. Headroom "
-                "at or near zero means fusion had nothing to win here and the remaining "
-                "loss is candidate supply (#130), not ranking (#125)."
-            )
+        _print_union_ceiling(modes, with_nt)
 
     print("\n## Per-repo nontrivial recall\n")
     repos = sorted({modes[base][i]["repo"] for i in with_nt}) if base in modes else []
