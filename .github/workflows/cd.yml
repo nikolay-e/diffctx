@@ -359,7 +359,7 @@ jobs:
           git checkout "$TAG_NAME"
 
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c  # stable
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772  # stable
         with:
           toolchain: '1.92.0'
 
@@ -712,7 +712,7 @@ jobs:
       # binaries in particular have no package index vouching for them the way
       # the wheels have PyPI's attestations (#147).
       - name: Attest build provenance for release assets
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373  # v4.1.1
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8  # v4.2.2
         with:
           subject-path: ./release-assets/*
 
