@@ -4,21 +4,15 @@
 
 ## Ultimate Goal
 
-**CRITICAL: This is the guiding star of the entire project.
-Every feature, every design decision, every line of code must
-serve this goal. It is an asymptotic ideal — not a finish line
-to cross, but a direction to relentlessly pursue.**
-
 **Maximize the speed and depth of understanding textual
 information — for any reader, in any scenario.**
 
 Whether the consumer is an LLM processing a context window or a
 human reviewing a code change, diffctx's job is the same:
 extract the maximum signal from a codebase and present it in the
-clearest, most information-dense form possible. Every design
-decision optimizes for **comprehension-per-token** — the ratio
-of understanding gained to attention spent. This metric is the
-single lens through which all trade-offs are evaluated.
+clearest, most information-dense form possible. The single lens
+for every trade-off is **comprehension-per-token** — the ratio
+of understanding gained to attention spent.
 
 ---
 
@@ -39,19 +33,12 @@ theoretical foundation, see the research paper
 
 ## Development
 
-```bash
-pip install "maturin>=1.10,<1.11"
-pip install -e ".[dev,full,mcp]" --no-build-isolation
-pytest
-pre-commit run --all-files
-```
-
-Rust core: `cd crates/diffctx-native && cargo test --lib`. CI gates the
-full 2725-case YAML corpus per-case against
-`tests/known_below_threshold.txt` (bidirectional: a listed case that
-passes also fails); nightly tracks baseline size with
-`DIFFCTX_YAML_IGNORE_BASELINE=1`. Full setup:
-[CONTRIBUTING.md](CONTRIBUTING.md).
+Setup, test commands, and the per-case YAML-corpus CI gate
+(`crates/diffctx-native/tests/known_below_threshold.txt`, bidirectional:
+a listed case that starts passing also fails) live in
+[CONTRIBUTING.md](CONTRIBUTING.md). Nightly CI reruns the corpus with
+`DIFFCTX_YAML_IGNORE_BASELINE=1`, so baseline growth/shrinkage is
+tracked even when every per-commit verdict passes.
 
 ## Performance-change discipline (E/Q classes)
 
@@ -68,22 +55,12 @@ fragmentation or scoring changes are Q-class.
 
 ## Testing
 
-The Python suite is integration-only — real filesystem, real git
-repos, no mocking. The Rust crate additionally carries inline
-`#[test]` units run via `cargo test --lib`.
-
-The diff context tests use a **YAML-based declarative framework**:
-each test case defines initial files, changed files, and expected
-output assertions. A dedicated test runner creates a real git repo
-per test, commits the files, runs the full diffctx pipeline, and
-verifies results.
-
-**Negative testing via garbage injection**: every test case
-automatically includes ~10 unrelated "garbage" files with
-distinctive markers. Tests verify the algorithm excludes this
-noise, catching regressions in relevance filtering. Each garbage
-file uses unique prefixed identifiers (e.g. `GARBAGE_*`) so leaks
-are unambiguously detectable.
+Suite shape and commands: [CONTRIBUTING.md](CONTRIBUTING.md). Each YAML
+case runs the full pipeline against a real git repo built per test, and
+**every case automatically injects ~10 unrelated "garbage" files**
+(`tests/garbage_data.py`) with unique `GARBAGE_*` markers — asserting
+they stay excluded is what catches relevance-filter regressions, and
+the prefixes make any leak unambiguous.
 
 **Reading oracle results** — two traps that make raw numbers lie:
 
