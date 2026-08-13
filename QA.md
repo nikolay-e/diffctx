@@ -14,6 +14,9 @@ Project-specific facts for `/qa`. Generic methodology lives in
 | Backend smoke | no | — |
 | SonarCloud | yes | project key is `nikolay-e_TreeMapper` (legacy name, never renamed) |
 
+The `no` rows describe the current CLI/library shape — they flip the day
+a deployed/web surface ships; re-derive then, don't trust this table.
+
 ## Forge
 
 - `origin` = Forgejo (source of truth, push here); `github` = mirror,
@@ -79,7 +82,8 @@ Project-specific facts for `/qa`. Generic methodology lives in
 - **Python API fragments carry** `content/kind/lines/path/role/symbol`
   only — no `token_count`. Integration tests measuring budget use must
   proxy via `len(content)` (~4 chars/token).
-- **Version-bearing files**: the CD bump patches 8 files incl.
+- **Version-bearing files**: the CD bump patches every file listed in
+  the cd.yml bump block — that block is the enumeration, incl.
   `docs/product/github-action.md` (pins gated by
   `test_version_consistency`). Adding a new file that embeds the version
   requires BOTH the cd.yml bump block and that test.
@@ -158,10 +162,10 @@ Project-specific facts for `/qa`. Generic methodology lives in
 
 ## Known false positives
 
-- ~~import-linter pre-commit hook can fail locally (namespace package)
-  while green in CI.~~ **No longer true** — `lint-imports` reports
-  `6 kept, 0 broken` locally. Read a failure as a real violation: one
-  caught `from diffctx import _diffctx` in `mcp/server.py`, which
+- import-linter local failures are REAL — the old excuse ("fails locally
+  on the namespace package while green in CI") is dead; `lint-imports`
+  reports `6 kept, 0 broken` locally. One failure caught
+  `from diffctx import _diffctx` in `mcp/server.py`, which
   executes `diffctx/__init__` and so pulls `_app` -> `cli`, breaking
   "MCP server must not import CLI". Import the submodule directly
   (`from diffctx._diffctx import X`) so the edge points at the submodule
@@ -250,7 +254,7 @@ snapshots and the fixture worktree.
 
 ## Measuring against a running build
 
-Two ways to invalidate an overnight measurement, both hit this session:
+Two ways to invalidate an overnight measurement, both observed in practice:
 
 - **`maturin develop` swaps the extension under a running experiment.** The
   eval harnesses invoke `.venv/bin/diffctx`, which loads
