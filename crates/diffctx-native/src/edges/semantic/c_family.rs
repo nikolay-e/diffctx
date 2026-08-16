@@ -172,8 +172,8 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
 
         // An include names a file, so its edge lands on the file's
         // representative fragment (base::file_representatives — the sibling
-        // builder's long-standing semantics); the containment star carries the
-        // mass to the rest of the file. Buckets therefore hold file paths, and
+        // builder's long-standing semantics; see its doc on the accepted
+        // reachability trade, #208). Buckets therefore hold file paths, and
         // ambiguity is measured in files: a basename repeated across the tree
         // is what makes an include unresolvable.
         // Representatives keyed off the full slice: is_c_family is per-path, so
@@ -362,8 +362,9 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
         }
 
         // A header/impl pair is a relation between two files; representatives
-        // carry it, the containment star spreads it. Pairing every fragment
-        // with every fragment restated the same fact quadratically.
+        // carry it (see base::file_representatives on the accepted
+        // reachability trade, #208). Pairing every fragment with every
+        // fragment restated the same fact quadratically.
         for (i, (_key, (files, _))) in by_stem.iter().enumerate() {
             crate::deadline::check_current_every(i, 256, "edge construction (c_family pairing)");
             if files.len() < 2 {

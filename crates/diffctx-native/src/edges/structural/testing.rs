@@ -120,8 +120,8 @@ impl EdgeBuilder for TestEdgeBuilder {
         let mut edges: EdgeDict = FxHashMap::default();
 
         // The naming convention names a FILE, so the relation is carried by
-        // the two files' representatives (base::file_representatives) and the
-        // containment star spreads it within each file. One pair per
+        // the two files' representatives (base::file_representatives; see its
+        // doc on the accepted reachability trade, #208). One pair per
         // (test file, source file), not per fragment pair.
         let mut linked_file_pairs: FxHashSet<(&str, &str)> = FxHashSet::default();
 

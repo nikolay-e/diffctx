@@ -97,8 +97,8 @@ pub struct FragmentIndex {
     /// interior) requires each reference component to appear as a whole path
     /// component, so the last component is a complete candidate filter. Each
     /// entry carries the file's representative fragment: a path reference is a
-    /// file-level relation, and the containment star spreads its mass inside
-    /// the file.
+    /// file-level relation and endorses the file, not each sibling (see
+    /// `file_representatives` on the accepted reachability trade, #208).
     lower_paths: Vec<(String, FragmentId)>,
     component_to_paths: FxHashMap<String, Vec<u32>>,
 }
@@ -185,8 +185,11 @@ impl FragmentIndex {
 /// change endorsing a file diffusely must not outweigh a call edge naming one
 /// symbol — the fragment-pair encoding gave both the same weight, which is
 /// simultaneously the quadratic edge blow-up (envoy: 22M c-family edges) and
-/// the file-level noise mechanism of #65. Reachability of the file's other
-/// fragments is the containment star's job.
+/// the file-level noise mechanism of #65. The file's other fragments are
+/// reachable only through nesting and naming edges — the intra-file star is
+/// OFF by default and measured net-negative on the corpus (#208) — an
+/// accepted trade: a file-level relation endorses the file, not each of its
+/// siblings.
 pub fn file_representatives(fragments: &[Fragment]) -> FxHashMap<String, FragmentId> {
     let mut file_to_rep: FxHashMap<String, FragmentId> = FxHashMap::default();
     let mut file_to_token_count: FxHashMap<String, u32> = FxHashMap::default();
