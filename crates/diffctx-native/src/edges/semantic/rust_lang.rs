@@ -259,24 +259,33 @@ impl EdgeBuilder for RustEdgeBuilder {
             if !impls.is_empty() {
                 trait_impls.insert(f.id.clone(), impls);
             }
+        }
 
+        // Re-export registration runs over the COMPLETE definition maps:
+        // inline in the loop above it saw only files iterated before the
+        // re-exporting one, so which `pub use` leaves resolved depended on
+        // file iteration order (#199). Registrations are collected before
+        // insertion so re-exporters do not shadow each other either.
+        let mut pub_use_regs: Vec<(String, FragmentId)> = Vec::new();
+        for f in &rust_frags {
             for pub_use_path in extract_pub_uses(&f.content) {
                 let leaf_lower = pub_use_path.split("::").last().unwrap_or("").to_lowercase();
-                if !leaf_lower.is_empty() && !name_to_frags.contains_key(&leaf_lower) {
-                    let has_target = type_defs
+                if leaf_lower.is_empty() || name_to_frags.contains_key(&leaf_lower) {
+                    continue;
+                }
+                let has_target = type_defs
+                    .get(&leaf_lower)
+                    .map_or(false, |v| v.iter().any(|fid| fid != &f.id))
+                    || fn_defs
                         .get(&leaf_lower)
-                        .map_or(false, |v| v.iter().any(|fid| fid != &f.id))
-                        || fn_defs
-                            .get(&leaf_lower)
-                            .map_or(false, |v| v.iter().any(|fid| fid != &f.id));
-                    if has_target {
-                        name_to_frags
-                            .entry(leaf_lower)
-                            .or_default()
-                            .push(f.id.clone());
-                    }
+                        .map_or(false, |v| v.iter().any(|fid| fid != &f.id));
+                if has_target {
+                    pub_use_regs.push((leaf_lower, f.id.clone()));
                 }
             }
+        }
+        for (leaf_lower, fid) in pub_use_regs {
+            name_to_frags.entry(leaf_lower).or_default().push(fid);
         }
 
         let mut edges: EdgeDict = FxHashMap::default();
@@ -518,5 +527,43 @@ impl EdgeBuilder for RustEdgeBuilder {
         let mut result: Vec<PathBuf> = discovered.into_iter().collect();
         result.sort();
         result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::FragmentKind;
+
+    fn frag(path: &str, content: &str) -> Fragment {
+        Fragment {
+            id: FragmentId::new(std::sync::Arc::from(path), 1, 20),
+            kind: FragmentKind::Function,
+            content: std::sync::Arc::from(content),
+            identifiers: FxHashSet::default(),
+            token_count: 20,
+            symbol_name: None,
+        }
+    }
+
+    #[test]
+    fn pub_use_registration_does_not_depend_on_file_iteration_order() {
+        // The re-exporting file iterates FIRST, the defining file after it —
+        // exactly the order that dropped the registration before #199.
+        let facade = frag("src/facade.rs", "pub use detail::WidgetFactory;\n");
+        let detail = frag(
+            "src/z_detail.rs",
+            "pub struct WidgetFactory {\n    size: u32,\n}\n",
+        );
+        let consumer = frag(
+            "src/consumer.rs",
+            "use crate::api::WidgetFactory;\n\nfn run() {}\n",
+        );
+        let frags = vec![facade.clone(), detail, consumer.clone()];
+        let edges = RustEdgeBuilder.build(&frags, None);
+        assert!(
+            edges.contains_key(&(consumer.id.clone(), facade.id.clone())),
+            "a use of the re-exported leaf must resolve to the re-exporting file"
+        );
     }
 }

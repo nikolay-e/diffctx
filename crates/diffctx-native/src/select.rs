@@ -264,8 +264,14 @@ fn select_core_fragments(
         let over_file_ceiling = spent > 0 && spent + frag.token_count > file_ceiling;
         if core_used + frag.token_count > core_budget || over_file_ceiling {
             if let Some(sig) = sig_lookup.get(&core_id) {
+                // The substitute honors the same per-file ceiling (#212): a
+                // file at its share must not keep placing signature stubs —
+                // its remaining cores defer to the ceiling-free rescue sweep
+                // below, after other files had their turn.
+                let sig_over_ceiling = spent > 0 && spent + sig.token_count > file_ceiling;
                 if !state.selected_ids.contains(&sig.id)
                     && core_used + sig.token_count <= core_budget
+                    && !sig_over_ceiling
                 {
                     let rel_score = rel.get(&core_id).copied().unwrap_or(0.0);
                     place_fragment(sig, &mut core_used, state, rel_score, &mut file_spent);
@@ -1240,6 +1246,70 @@ mod tests {
             "leftover budget must flow back to the blob once competitors are served"
         );
 
+        run_lone_file_check(budget, &rel);
+    }
+
+    /// #212: once a file is at its ceiling, its remaining cores may not keep
+    /// placing signature stubs either — competitor cores get their phase-1
+    /// seat first, and the file's tail waits for the ceiling-free sweep.
+    #[test]
+    fn signature_stubs_honor_the_per_file_ceiling() {
+        let budget = 1_000u32;
+        let mut cores: Vec<Fragment> = vec![frag("blob.rs", 1, 90, FragmentKind::Function, 240)];
+        for i in 1..8 {
+            cores.push(frag(
+                "blob.rs",
+                1 + i * 100,
+                90 + i * 100,
+                FragmentKind::Function,
+                400,
+            ));
+        }
+        cores.push(frag("b.rs", 1, 50, FragmentKind::Function, 200));
+        let sig_lookup: FxHashMap<FragmentId, Fragment> = cores
+            .iter()
+            .filter(|c| c.id.path.as_ref() == "blob.rs")
+            .map(|c| {
+                let mut sig = frag(
+                    "blob.rs",
+                    c.start_line(),
+                    c.start_line(),
+                    FragmentKind::FunctionSignature,
+                    30,
+                );
+                sig.id = FragmentId::new(c.id.path.clone(), c.start_line(), c.start_line());
+                (c.id.clone(), sig)
+            })
+            .collect();
+        let mut rel: FxHashMap<FragmentId, f64> = FxHashMap::default();
+        for c in &cores {
+            let w = if c.id.path.as_ref() == "blob.rs" {
+                1.0
+            } else {
+                0.5
+            };
+            rel.insert(c.id.clone(), w);
+        }
+        let core_ids: FxHashSet<FragmentId> = cores.iter().map(|c| c.id.clone()).collect();
+        let mut state = init_selection_state(&core_ids, &rel, budget, None);
+        select_core_fragments(&cores, &rel, &[], &mut state, budget, &sig_lookup, None);
+
+        let first_b = state
+            .selected
+            .iter()
+            .position(|f| f.id.path.as_ref() == "b.rs")
+            .expect("the competitor core must be selected");
+        let stubs_before_b = state.selected[..first_b]
+            .iter()
+            .filter(|f| f.kind.is_signature())
+            .count();
+        assert_eq!(
+            stubs_before_b, 0,
+            "a file at its ceiling placed {stubs_before_b} signature stubs before the competitor got its seat"
+        );
+    }
+
+    fn run_lone_file_check(budget: u32, rel: &FxHashMap<FragmentId, f64>) {
         // Lone-file run: ceiling must not strand budget.
         let lone: Vec<Fragment> = (0..20)
             .map(|i| {
@@ -1252,7 +1322,8 @@ mod tests {
                 )
             })
             .collect();
-        let result = lazy_greedy_select(lone, &core, &rel, &[], budget, 0.0, None, None, None);
+        let core: FxHashSet<FragmentId> = FxHashSet::default();
+        let result = lazy_greedy_select(lone, &core, rel, &[], budget, 0.0, None, None, None);
         assert!(
             result.selected.len() >= 9,
             "single-file selection stranded budget: {} fragments",
