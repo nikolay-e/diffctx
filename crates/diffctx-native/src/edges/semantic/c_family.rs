@@ -176,23 +176,29 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
         // mass to the rest of the file. Buckets therefore hold file paths, and
         // ambiguity is measured in files: a basename repeated across the tree
         // is what makes an include unresolvable.
-        let owned: Vec<Fragment> = c_frags.iter().map(|f| (*f).clone()).collect();
-        let reps = super::super::base::file_representatives(&owned);
-        drop(owned);
-        let mut header_to_files: FxHashMap<String, Vec<Arc<str>>> = FxHashMap::default();
+        // Representatives keyed off the full slice: is_c_family is per-path, so
+        // the map restricted to C-family paths is identical, and only C-family
+        // paths are ever looked up.
+        let reps = super::super::base::file_representatives(fragments);
+        let mut header_to_files: FxHashMap<String, (Vec<Arc<str>>, FxHashSet<Arc<str>>)> =
+            FxHashMap::default();
         let mut func_defs_map: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
         let mut func_def_files: FxHashMap<String, FxHashSet<Arc<str>>> = FxHashMap::default();
         let mut type_defs_map: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
         let mut type_def_files: FxHashMap<String, FxHashSet<Arc<str>>> = FxHashMap::default();
         let mut frag_own_defs: FxHashMap<FragmentId, FxHashSet<String>> = FxHashMap::default();
 
-        let push_file_key =
-            |map: &mut FxHashMap<String, Vec<Arc<str>>>, key: String, f: &Fragment| {
-                let bucket = map.entry(key).or_default();
-                if !bucket.contains(&f.id.path) {
-                    bucket.push(f.id.path.clone());
-                }
-            };
+        // Order-preserving dedup: the Vec keeps insertion order (edge emission
+        // order depends on it), the set makes membership O(1) instead of a
+        // linear rescan per fragment of every file sharing the key.
+        let push_file_key = |map: &mut FxHashMap<String, (Vec<Arc<str>>, FxHashSet<Arc<str>>)>,
+                             key: String,
+                             f: &Fragment| {
+            let (order, seen) = map.entry(key).or_default();
+            if seen.insert(f.id.path.clone()) {
+                order.push(f.id.path.clone());
+            }
+        };
 
         for f in &c_frags {
             let path = Path::new(f.path());
@@ -245,14 +251,18 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
 
         let mut edges: EdgeDict = FxHashMap::default();
 
-        for f in &c_frags {
+        for (i, f) in c_frags.iter().enumerate() {
+            // The envoy shape (520 files sharing one stem) made a single
+            // c_family build outrun the whole timeout; the between-builders
+            // check cannot interrupt it, so poll inside the loop (#210).
+            crate::deadline::check_current_every(i, 256, "edge construction (c_family)");
             for inc in extract_includes(&f.content) {
                 let inc_name = if inc.contains('/') {
                     inc.split('/').next_back().unwrap().to_string()
                 } else {
                     inc.clone()
                 };
-                let Some(candidates) = header_to_files.get(&inc_name) else {
+                let Some((candidates, _)) = header_to_files.get(&inc_name) else {
                     continue;
                 };
                 // `#include "common/buffer/buffer_impl.h"` names one file; a
@@ -333,7 +343,8 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
         // stems real projects repeat most (envoy: 520 files with stem
         // `config`, whose fragment-level cross product alone was tens of
         // millions of edges).
-        let mut by_stem: FxHashMap<(String, String), Vec<&str>> = FxHashMap::default();
+        let mut by_stem: FxHashMap<(String, String), (Vec<&str>, FxHashSet<&str>)> =
+            FxHashMap::default();
         for f in &c_frags {
             let path = Path::new(f.path());
             let stem = path
@@ -344,16 +355,17 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
                 .parent()
                 .map(|d| d.to_string_lossy().to_string())
                 .unwrap_or_default();
-            let bucket = by_stem.entry((dir, stem)).or_default();
-            if !bucket.contains(&f.path()) {
-                bucket.push(f.path());
+            let (order, seen) = by_stem.entry((dir, stem)).or_default();
+            if seen.insert(f.path()) {
+                order.push(f.path());
             }
         }
 
         // A header/impl pair is a relation between two files; representatives
         // carry it, the containment star spreads it. Pairing every fragment
         // with every fragment restated the same fact quadratically.
-        for (_key, files) in &by_stem {
+        for (i, (_key, (files, _))) in by_stem.iter().enumerate() {
+            crate::deadline::check_current_every(i, 256, "edge construction (c_family pairing)");
             if files.len() < 2 {
                 continue;
             }

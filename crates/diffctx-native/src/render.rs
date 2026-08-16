@@ -67,8 +67,8 @@ pub struct DiffContextOutput {
     /// against a change whose tests the tool had filtered).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub ignored_changes: Vec<String>,
-    /// Files excluded by `.diffctx/ignore` policy — count only, see
-    /// `ScoredState::policy_excluded_count`.
+    /// Files excluded by `.diffctx/ignore` or secret-path policy — count
+    /// only, see `ScoredState::policy_excluded_count`.
     #[serde(skip_serializing_if = "is_zero")]
     pub policy_excluded_count: usize,
     pub fragment_count: usize,

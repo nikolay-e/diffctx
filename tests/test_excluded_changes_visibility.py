@@ -113,5 +113,5 @@ def test_markdown_render_carries_both_exclusion_notes(tmp_path):
     repo2 = _two_commit_repo(tmp_path / "p2", ".diffctx/ignore", "*.md\n")
     result2 = diffctx.build_diff_context(root_dir=repo2.path, diff_range="HEAD~1")
     md2 = diffctx.to_markdown(result2)
-    assert "withheld by `.diffctx/ignore`" in md2
+    assert "withheld by exclusion policy" in md2
     assert "notes.md" not in md2

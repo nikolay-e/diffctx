@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Changed secret-classified files (`id_rsa`, `*.key`, `*.pem`, …) are now
+  disclosed in `policy_excluded_count`** (#214): they were silently dropped
+  before the ignore-exclusion disclosure ran, so a change touching only
+  secret paths printed a bare stub and a mixed change under-counted its
+  withheld files. Count only — the paths themselves stay out of the output,
+  same stance as `.diffctx/ignore`. The renderers' note now reads "withheld
+  by exclusion policy" to cover both families.
+- **The compute deadline and the git subprocess timeout are per-run, not
+  process-global** (#210): concurrent MCP requests overwrote each other's
+  ceiling (a short-timeout request could abort a long-timeout one mid-flight,
+  and vice versa disable it), an expired ceiling was never cleared and leaked
+  into later in-process runs, and a single flooding edge builder could outrun
+  the whole timeout between checks. The deadline is now a value threaded
+  through the run, the git timeout is thread-scoped, and the known flooding
+  loops (config-key scan, C-family pairing, Python identifier emission) poll
+  the deadline inside the loop.
+- A failed Aho-Corasick automaton build in the config-edge builder now logs a
+  warning instead of silently disabling the entire keyed channel (#216).
+
 - **A commit touching only excluded paths now renders its disclosure** (#188
   completion): the YAML/Markdown/text renderers and the CLI's empty-diff exit
   treated `ignored_changes`/`policy_excluded_count` as "no output", so the one

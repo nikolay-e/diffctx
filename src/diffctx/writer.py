@@ -287,7 +287,7 @@ def _write_tree_text_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
     if tree.get("ignored_changes"):
         _write_text_path_list(file, "changed but excluded by ignore rules", tree["ignored_changes"])
     if tree.get("policy_excluded_count"):
-        file.write(f"  changed files withheld by .diffctx/ignore: {tree['policy_excluded_count']}\n")
+        file.write(f"  changed files withheld by exclusion policy: {tree['policy_excluded_count']}\n")
     if tree.get("raw_diff"):
         file.write("  raw diff:\n")
         for line in tree["raw_diff"].rstrip("\n").split("\n"):
@@ -459,7 +459,7 @@ def _write_markdown_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
     _write_md_path_list(file, tree, "ignored_changes", "Changed but excluded by ignore rules")
     if tree.get("policy_excluded_count"):
         n = tree["policy_excluded_count"]
-        file.write(f"*{n} changed file(s) withheld by `.diffctx/ignore`.*\n\n")
+        file.write(f"*{n} changed file(s) withheld by exclusion policy (`.diffctx/ignore` or secret paths).*\n\n")
     if tree.get("raw_diff"):
         file.write("## Raw diff\n\n")
         _write_md_code_block(file, tree["raw_diff"], "diff", "")

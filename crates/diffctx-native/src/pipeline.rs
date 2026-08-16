@@ -56,9 +56,10 @@ pub struct ScoredState {
     /// filtered, and #188 documents a reviewer concluding "no tests" from
     /// exactly that silence.
     pub ignored_changes: Vec<String>,
-    /// Changed files withheld by `.diffctx/ignore`. Count only: the policy's
-    /// point is that these paths stay out of the artifact (#85), but a bare
-    /// number still tells the reader the output is deliberately incomplete.
+    /// Changed files withheld by `.diffctx/ignore` or the secret-path
+    /// heuristics. Count only: both policies' point is that these paths stay
+    /// out of the artifact (#85, #214), but a bare number still tells the
+    /// reader the output is deliberately incomplete.
     pub policy_excluded_count: usize,
     /// Which discovery strategy first surfaced each discovered path.
     ///
@@ -215,7 +216,7 @@ pub fn compute_scored_state(
 ) -> Result<ScoredState> {
     let t_entry = Instant::now();
     git::set_git_timeout(timeout);
-    crate::deadline::set_compute_deadline(timeout);
+    let deadline = crate::deadline::Deadline::from_timeout_secs(timeout);
     let root_dir = resolve_repo_root(root_dir)?;
     if alpha <= 0.0 || alpha >= 1.0 {
         anyhow::bail!("alpha must be in (0, 1), got {}", alpha);
@@ -253,10 +254,27 @@ pub fn compute_scored_state(
         }
     }
 
-    hunks.retain(|h| !is_secret_path(Path::new(&*h.path)));
+    // Secret-classified changed paths are withheld like `.diffctx/ignore`
+    // ones, and with the same disclosure stance: count only, never the path
+    // (#85, #188, #214). Disjoint from the policy set below by construction —
+    // these hunks are gone before resolve_ignored_paths runs.
+    let mut secret_excluded_paths: FxHashSet<String> = FxHashSet::default();
+    hunks.retain(|h| {
+        let p = Path::new(&*h.path);
+        if is_secret_path(p) {
+            if let Some(rel) = rel_path_string(&root_dir, p) {
+                secret_excluded_paths.insert(rel);
+            }
+            false
+        } else {
+            true
+        }
+    });
 
     if hunks.is_empty() {
-        return Ok(empty_scored_state_with_changes(root_dir, diff_range));
+        let mut state = empty_scored_state_with_changes(root_dir, diff_range);
+        state.policy_excluded_count = secret_excluded_paths.len();
+        return Ok(state);
     }
 
     let ignored_rel_paths = resolve_ignored_paths(&root_dir, &hunks);
@@ -282,7 +300,7 @@ pub fn compute_scored_state(
             None => {}
         }
     }
-    let policy_excluded = policy_excluded_paths.len();
+    let policy_excluded = policy_excluded_paths.len() + secret_excluded_paths.len();
     ignored_display.sort();
     ignored_display.dedup();
     hunks.retain(|h| !is_ignored_path(&root_dir, Path::new(&*h.path), &ignored_rel_paths));
@@ -473,6 +491,7 @@ pub fn compute_scored_state(
         Some(root_dir.as_path()),
         Some(&seed_weights),
         Some(&discovered_path_set),
+        deadline,
     );
 
     let needs = crate::utility::needs::needs_from_diff(&all_fragments, &core_ids, &diff_text);
@@ -862,7 +881,6 @@ pub(crate) fn is_ignored_path(
 /// selection state, so selection is bit-identical with and without it.
 pub fn raw_diff_text(root_dir: &Path, diff_range: Option<&str>, timeout: u64) -> Result<String> {
     git::set_git_timeout(timeout);
-    crate::deadline::set_compute_deadline(timeout);
     let root_dir = resolve_repo_root(root_dir)?;
     let resolved = git::resolve_duration_range(&root_dir, diff_range)?;
     let diff_text = git::get_diff_text(&root_dir, resolved.range.as_deref())?;
@@ -985,8 +1003,9 @@ fn build_diff_context_full(
     no_content: bool,
     timeout: u64,
 ) -> Result<DiffContextOutput> {
+    // --full runs no scoring/edge phase, so the git subprocess timeout is the
+    // only ceiling it needs.
     git::set_git_timeout(timeout);
-    crate::deadline::set_compute_deadline(timeout);
     let root_dir = resolve_repo_root(root_dir)?;
     let resolved = git::resolve_duration_range(&root_dir, diff_range)?;
     let diff_range = resolved.range.as_deref();

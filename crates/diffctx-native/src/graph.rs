@@ -137,9 +137,13 @@ pub fn intern_fragment_nodes(
 /// Merge duplicate (src, dst) entries: weight = max across duplicates,
 /// category = first occurrence in input order (builder order), matching
 /// the historical `EdgeDict` max-merge + `or_insert` category semantics.
-/// Requires a stable sort so first-in-input stays first-in-group.
+/// Requires a stable sort so first-in-input stays first-in-group —
+/// `par_sort_by` is a stable parallel merge sort, so its output is
+/// bit-identical to `sort_by` while cutting the dominant serial phase of a
+/// tens-of-millions-edge build (#196).
 pub fn dedup_compact_edges(edges: &mut Vec<CompactEdge>) {
-    edges.sort_by(|a, b| (a.src, a.dst).cmp(&(b.src, b.dst)));
+    use rayon::prelude::*;
+    edges.par_sort_by(|a, b| (a.src, a.dst).cmp(&(b.src, b.dst)));
     let mut out = 0usize;
     let mut i = 0usize;
     while i < edges.len() {

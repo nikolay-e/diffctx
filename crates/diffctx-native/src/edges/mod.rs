@@ -113,6 +113,7 @@ pub fn collect_capped_edges(
     fragments: &[Fragment],
     repo_root: Option<&Path>,
     skip_expensive: bool,
+    deadline: crate::deadline::Deadline,
 ) -> CappedEdges {
     let mut all_builders: Vec<(&str, Box<dyn EdgeBuilder>)> = Vec::new();
     for cat in builder_categories() {
@@ -143,7 +144,8 @@ pub fn collect_capped_edges(
         .par_iter()
         .enumerate()
         .map(|(builder_idx, (name, builder))| {
-            crate::deadline::check_compute_deadline("edge construction");
+            deadline.check("edge construction");
+            let _in_builder = deadline.enter();
             let t = std::time::Instant::now();
             let edges = builder.build(fragments, repo_root);
             if std::env::var_os("DIFFCTX_TRACE_BUILDERS").is_some() {
@@ -438,7 +440,8 @@ mod fallback_gate_tests {
             frag("proj/u1.xyz", "zzcommonzz here\n", &["zzcommonzz"]),
             frag("proj/u2.xyz", "zzcommonzz there\n", &["zzcommonzz"]),
         ];
-        let capped = collect_capped_edges(&fragments, None, false);
+        let capped =
+            collect_capped_edges(&fragments, None, false, crate::deadline::Deadline::none());
         let node_path = |idx: u32| capped.idx_to_node[idx as usize].path.clone();
         // Category matters: a.py and c.py legitimately share a structural
         // sibling edge; the class under test is the SEMANTIC tags link.

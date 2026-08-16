@@ -104,6 +104,7 @@ pub fn build_project_graph_with_options(
         &all_fragments,
         Some(resolved_root.as_path()),
         skip_expensive,
+        crate::deadline::Deadline::none(),
     );
 
     let graph = graph::build_graph_capped(&all_fragments, capped);
