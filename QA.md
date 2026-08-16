@@ -46,8 +46,8 @@ a deployed/web surface ships; re-derive then, don't trust this table.
 
 ## Tests
 
-- `pytest` — integration-only, ~600 tests, ~2 min locally. Known valid
-  skip: `test_clipboard.py` (Windows only).
+- `pytest` — integration-only (the run prints the count; don't pin it
+  here, it rots). Known valid skip: `test_clipboard.py` (Windows only).
 - Local flake mode: `-n auto` on the M4 Pro means 14 xdist workers,
   each CLI subprocess spawning a full rayon pool — under load the
   global pytest-timeout (30 s since 27d6a3d6, was 10 s) fires on
@@ -262,6 +262,9 @@ Two ways to invalidate an overnight measurement, both observed in practice:
   result file. `cargo build` / `cargo test` are safe — they write `target/`.
   Editing Python under `src/diffctx/` is NOT safe for the CLI path (editable
   install), though `mcp/` is, since the CLI never imports it.
+- **A background `cargo test` compiles the live tree**: editing sources after
+  launching the corpus run means the binary's content is undefined — kill and
+  relaunch after the last edit (one mid-compile edit cost a full 150s rerun).
 - **Name the build, not the branch.** Commit time is not build time. Compare the
   `.so` mtime against `git log --date` and state which commit's *content* the
   run executed; "measured on main" is meaningless when six commits landed while
