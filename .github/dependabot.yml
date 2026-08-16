@@ -16,6 +16,12 @@ updates:
     commit-message:
       prefix: "chore(deps)"
       include: "scope"
+    ignore:
+      # mcp 2.x is a breaking SDK rewrite; the <2.0 pin in pyproject.toml is a
+      # deliberate compatibility decision (see the comment there). PR #219
+      # widened the bound mechanically and every test matrix failed at import.
+      - dependency-name: "mcp"
+        update-types: ["version-update:semver-major"]
     groups:
       all-dependencies:
         patterns:
