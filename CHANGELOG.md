@@ -38,6 +38,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The per-file budget ceiling now also gates signature substitution**
   (#212): a file at its ceiling can no longer keep placing signature stubs
   ahead of other files' cores.
+- **A signature stub substituted for a changed core renders as `changed`**
+  (#209): the stub shares the core's location, and both surfaces (pack render
+  and locate) now agree it carries the change, same as an excerpt. Ordinary
+  context signatures stay context.
 - **Config-key word boundaries treat non-ASCII bytes as word bytes** (#216):
   a config key ending exactly where a non-ASCII letter begins (e.g. inside
   `tokenización`) is no longer a match, restoring the Unicode-`\b` rejection
