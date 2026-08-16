@@ -84,7 +84,7 @@ keeps its git meaning.
 | `--scoring` | `ego`   | `ego` = bounded expansion around changed nodes (fast, predictable radius); `ppr` = Personalized PageRank (global, smoother decay, slower); `bm25` = lexical retrieval against the diff hunks (baseline for sparse graphs); `rrf` = reciprocal-rank fusion of `ego` and `bm25` (widest recall, no scale calibration between the two signals) |
 | `--budget`  | auto    | Hard cap in o200k_base tokens (see [Token counting](docs/product/token-budget.md)): `N` enforces a fixed cap, `-1` disables it, `0` is a strict-zero floor (empty selection; use `--full` for changed files only) |
 | `--alpha`   | 0.60    | PPR damping; higher = context clusters tighter around changes (`--scoring ppr` only) |
-| `--tau`     | 0.12    | Relevance threshold for full fragment content; lower-scoring fragments are stubbed or dropped (lower = more context) |
+| `--tau`     | 0.05    | Relevance threshold for full fragment content; lower-scoring fragments are stubbed or dropped (lower = more context) |
 | `--full`    | false   | Only the changed files, every fragment, no related-code context          |
 | `--timeout` | 300     | Wall-clock deadline in seconds; on expiry diffctx exits 124 instead of hanging |
 | `--with-raw-diff` | false | Also embed git's raw unified diff ahead of the selected fragments — additive (selection unchanged), not charged to `--budget`, lock/ignored/secret-like sections omitted. Python CLI only |
@@ -143,7 +143,7 @@ ctx = build_diff_context(
     "HEAD~1..HEAD",
     budget_tokens=None,       # None = auto; 0 = strict-zero floor (empty); -1 = uncapped; N = hard cap
     alpha=0.6,
-    tau=0.12,
+    tau=0.05,
     full=False,
     scoring_mode="ego",
     timeout=300,

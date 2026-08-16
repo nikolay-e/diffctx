@@ -26,9 +26,12 @@ for adm in 0 1; do
       dcargs=(--mode "$mode" --tau "$tau" --out "$OUT/$cell" --budget 8000 --timeout 60)
       [[ "$adm" == 1 ]] && dcargs+=(--env DIFFCTX_FILE_ADMISSION=1)
       [[ "$mode" == pit ]] && dcargs+=(--env DIFFCTX_PIT_BLEND=1.0)
-      python -m eval dcbench-score "${dcargs[@]}" >"$OUT/$cell.dcbench.log" 2>&1
-      touch "$OUT/$cell.done"
-      echo "=== $(date +%F' '%T) $cell done"
+      if python -m eval dcbench-score "${dcargs[@]}" >"$OUT/$cell.dcbench.log" 2>&1; then
+        touch "$OUT/$cell.done"
+        echo "=== $(date +%F' '%T) $cell done"
+      else
+        echo "=== $(date +%F' '%T) $cell FAILED (see $OUT/$cell.dcbench.log) — left undone for resume"
+      fi
     done
   done
 done

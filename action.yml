@@ -39,8 +39,8 @@ inputs:
 
   tau:
     description: >-
-      Relevance threshold for full fragment content (`--tau`, default 0.12);
-      lower keeps more surrounding context.
+      Relevance threshold for full fragment content (`--tau`; defaults to the
+      engine's calibrated value); lower keeps more surrounding context.
     required: false
     default: ''
 
@@ -88,7 +88,7 @@ inputs:
   diffctx-version:
     description: Exact diffctx release installed from PyPI.
     required: false
-    default: 1.13.0
+    default: 1.14.0
   python-version:
     description: Python interpreter used for the isolated diffctx install.
     required: false

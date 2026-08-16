@@ -252,10 +252,21 @@ impl EdgeBuilder for ConfigToCodeEdgeBuilder {
         }
 
         let keys: Vec<&String> = key_to_cfgs.keys().collect();
-        let automaton = aho_corasick::AhoCorasick::builder()
+        let automaton = match aho_corasick::AhoCorasick::builder()
             .ascii_case_insensitive(true)
             .build(&keys)
-            .ok();
+        {
+            Ok(ac) => Some(ac),
+            Err(e) => {
+                // A failed build silences the entire keyed channel (only the
+                // fallback regexes still run) — that must never be silent.
+                tracing::warn!(
+                    "config-edge AhoCorasick build failed over {} keys — keyed channel disabled: {e}",
+                    keys.len()
+                );
+                None
+            }
+        };
 
         // Document-frequency gate, same ambiguity bar as
         // `CFamilySemanticWeights::max_files_per_name`: a key matched in more
@@ -267,7 +278,11 @@ impl EdgeBuilder for ConfigToCodeEdgeBuilder {
         let mut key_files: Vec<FxHashSet<&str>> = vec![FxHashSet::default(); keys.len()];
         let mut fallback_files: Vec<FxHashSet<&str>> =
             vec![FxHashSet::default(); fallback_patterns.len()];
-        for code_frag in &code_frags {
+        for (i, code_frag) in code_frags.iter().enumerate() {
+            // This scan alone outran the whole pipeline timeout on a
+            // sentry-scale commit (#116); the between-builders deadline check
+            // cannot interrupt a single builder, so poll inside the loop.
+            crate::deadline::check_current_every(i, 64, "edge construction (config key scan)");
             let content = code_frag.content.as_ref();
             if let Some(ac) = &automaton {
                 for m in ac.find_overlapping_iter(content) {
@@ -298,7 +313,8 @@ impl EdgeBuilder for ConfigToCodeEdgeBuilder {
             .collect();
 
         let mut edges: EdgeDict = FxHashMap::default();
-        for code_frag in &code_frags {
+        for (i, code_frag) in code_frags.iter().enumerate() {
+            crate::deadline::check_current_every(i, 64, "edge construction (config emission)");
             let content = code_frag.content.as_ref();
             let mut matched_cfgs: FxHashSet<usize> = FxHashSet::default();
             if let Some(ac) = &automaton {

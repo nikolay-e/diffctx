@@ -95,7 +95,7 @@ repos:
         language_version: python3
 
   - repo: https://github.com/asottile/pyupgrade
-    rev: v3.21.1
+    rev: v3.21.2
     hooks:
       - id: pyupgrade
         name: pyupgrade (auto-upgrade Python syntax)
@@ -120,7 +120,7 @@ repos:
   # LINTING (Ruff for speed + correctness)
   # ============================================================================
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.0
+    rev: v0.14.14
     hooks:
       - id: ruff
         name: ruff (correctness-focused checks)

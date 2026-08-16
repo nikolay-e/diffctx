@@ -20,12 +20,7 @@ from typing import Any
 
 from eval.datasets.build_splits import default_calibration_pool_adapters, default_test_adapters
 from eval.harness.adapters.evaluator import UniversalEvaluator
-from eval.harness.adapters.final_eval import (
-    aggregate_by_language,
-    aggregate_test_set,
-    render_language_table,
-    render_paper_table,
-)
+from eval.harness.adapters.final_eval import aggregate_by_language, aggregate_test_set, render_language_table, render_paper_table
 from eval.harness.adapters.runner import (
     RunParams,
     filter_instances_by_manifest,
@@ -503,7 +498,7 @@ def main() -> int:
 
     from eval.harness.common import prune_dead_worker_worktrees
 
-    prune_dead_worker_worktrees(Path.home() / ".cache" / "contextbench_repos")
+    prune_dead_worker_worktrees(repo_root)
     eval_fn = _make_eval_fn(args.baseline, repo_root, request_timeout=args.aider_request_timeout)
     eval_all_cells_fn = (
         make_diffctx_eval_all_cells_fn(repo_root) if args.baseline == "diffctx" and len(budgets_list) > 1 else None

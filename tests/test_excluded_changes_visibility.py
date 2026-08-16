@@ -11,6 +11,7 @@ confidentiality policy (#85), so its exclusions surface as a count only.
 from __future__ import annotations
 
 import diffctx
+from tests.conftest import run_diffctx_subprocess
 from tests.framework.pygit2_backend import Pygit2Repo
 
 
@@ -74,6 +75,34 @@ def test_policy_excluded_count_is_files_not_hunks(tmp_path):
     assert result.get("policy_excluded_count") == 1
 
 
+def test_exclusion_only_change_still_renders_the_withheld_notice(tmp_path):
+    repo = Pygit2Repo(tmp_path / "repo")
+    repo.add_file("src/app.py", "def a():\n    pass\n")
+    repo.add_file("notes.md", "# QA notes\noriginal\n")
+    repo.commit("initial")
+
+    repo.add_file(".gitignore", "*.md\n")
+    repo.commit("ignore rule arrives")
+
+    repo.add_file("notes.md", "# QA notes\nonly the excluded file changed\n")
+    repo.commit("touch only the excluded file")
+
+    result = diffctx.build_diff_context(root_dir=repo.path, diff_range="HEAD~1")
+    assert result.get("ignored_changes") == ["notes.md"]
+    for rendered in (
+        diffctx.to_yaml(result),
+        diffctx.to_markdown(result),
+        diffctx.to_text(result),
+    ):
+        assert "notes.md" in rendered
+        assert "only the excluded file changed" not in rendered
+
+    proc = run_diffctx_subprocess([str(repo.path), "--diff", "HEAD~1"], cwd=str(repo.path))
+    assert proc.returncode == 0, proc.stderr
+    assert "notes.md" in proc.stdout
+    assert "no semantic context" not in proc.stderr
+
+
 def test_markdown_render_carries_both_exclusion_notes(tmp_path):
     repo = _two_commit_repo(tmp_path, ".gitignore", "*.md\n")
     result = diffctx.build_diff_context(root_dir=repo.path, diff_range="HEAD~1")
@@ -84,5 +113,5 @@ def test_markdown_render_carries_both_exclusion_notes(tmp_path):
     repo2 = _two_commit_repo(tmp_path / "p2", ".diffctx/ignore", "*.md\n")
     result2 = diffctx.build_diff_context(root_dir=repo2.path, diff_range="HEAD~1")
     md2 = diffctx.to_markdown(result2)
-    assert "withheld by `.diffctx/ignore`" in md2
+    assert "withheld by exclusion policy" in md2
     assert "notes.md" not in md2

@@ -13,15 +13,23 @@ use wait_timeout::ChildExt;
 use crate::config::git::{self, GIT};
 use crate::types::DiffHunk;
 
-static GIT_TIMEOUT_SECS: AtomicU64 = AtomicU64::new(git::DEFAULT_TIMEOUT_SECONDS);
+// Thread-local, not a process global: the MCP server runs overlapping
+// pipelines on worker threads, and a shared atomic let one request's short
+// timeout kill another request's in-flight git subprocess (#210). Every git
+// call runs on the thread that entered the pipeline, so the per-thread value
+// is the per-run value.
+thread_local! {
+    static GIT_TIMEOUT_SECS: std::cell::Cell<u64> =
+        const { std::cell::Cell::new(git::DEFAULT_TIMEOUT_SECONDS) };
+}
 
 pub fn set_git_timeout(secs: u64) {
-    GIT_TIMEOUT_SECS.store(secs, Ordering::Relaxed);
+    GIT_TIMEOUT_SECS.with(|c| c.set(secs));
 }
 
 // PID alone is not unique within a process: the MCP server runs each tool
 // body on its own worker thread, so two overlapping pipelines can both reach
-// `find_ignored_paths` under the same PID. A shared filename means whoever
+// `find_ignored_paths_with_source` under the same PID. A shared filename means whoever
 // finishes first deletes the other's still-in-use excludesFile; git tolerates
 // a missing `core.excludesFile` silently, so the loser's `.diffctx/ignore`
 // rules are dropped without error. The counter makes every call's temp path
@@ -29,7 +37,7 @@ pub fn set_git_timeout(secs: u64) {
 static TEMP_EXCLUDES_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 fn git_timeout() -> u64 {
-    GIT_TIMEOUT_SECS.load(Ordering::Relaxed)
+    GIT_TIMEOUT_SECS.with(|c| c.get())
 }
 // The prefix and color flags are not cosmetic: the diff parser keys off the
 // literal `--- a/` / `+++ b/` headers, so a user's `diff.noprefix`,
@@ -888,12 +896,22 @@ fn collect_diffctx_ignore_patterns(repo_root: &Path) -> Vec<String> {
     patterns
 }
 
+/// Which rule family excluded a path. `.diffctx/ignore` is a declared
+/// confidentiality policy, so its exclusions are surfaced only as a count;
+/// gitignore exclusions are mundane and can be listed by path (#188).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum IgnoreSource {
+    DiffctxPolicy,
+    Gitignore,
+}
+
 /// Returns the subset of `rel_paths` (repo-root-relative) excluded by either
 /// `.gitignore` (via git's own engine, so nesting/negation/`**` are handled
 /// correctly) or `.diffctx/ignore` (patterns anchored per-directory and fed
 /// to git as a temporary `core.excludesFile`, so the same engine evaluates
-/// both mechanisms uniformly). Best-effort: any failure returns an empty set
-/// rather than blocking the diff pipeline on an ignore-resolution problem.
+/// both mechanisms uniformly), mapped to the rule family that excluded each.
+/// Best-effort: any failure returns an empty map rather than blocking the
+/// diff pipeline on an ignore-resolution problem.
 ///
 /// A `.gitignore` exclusion inherited from an excluded ancestor directory does
 /// NOT count. `--no-index` is required for `.diffctx/ignore` to apply to
@@ -905,21 +923,6 @@ fn collect_diffctx_ignore_patterns(repo_root: &Path) -> Vec<String> {
 /// change to an empty selection (#153). A pattern matching the path itself
 /// still excludes it, so `.diffctx/ignore` and per-directory `.gitignore`
 /// rules (#85) keep working.
-pub fn find_ignored_paths(repo_root: &Path, rel_paths: &[String]) -> FxHashSet<String> {
-    find_ignored_paths_with_source(repo_root, rel_paths)
-        .into_keys()
-        .collect()
-}
-
-/// Which rule family excluded a path. `.diffctx/ignore` is a declared
-/// confidentiality policy, so its exclusions are surfaced only as a count;
-/// gitignore exclusions are mundane and can be listed by path (#188).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum IgnoreSource {
-    DiffctxPolicy,
-    Gitignore,
-}
-
 pub fn find_ignored_paths_with_source(
     repo_root: &Path,
     rel_paths: &[String],
@@ -1969,7 +1972,7 @@ mod tests {
     // --- PID-keyed temp excludesFile: two concurrent calls in one process ---
 
     #[test]
-    fn find_ignored_paths_concurrent_calls_both_see_their_own_ignore_rules() {
+    fn ignored_paths_concurrent_calls_both_see_their_own_ignore_rules() {
         let tmp = TempDir::new().expect("tempdir");
         let root_a = tmp.path().join("repo_a");
         let root_b = tmp.path().join("repo_b");
@@ -1994,7 +1997,7 @@ mod tests {
             let barrier_a = Arc::clone(&barrier);
             let handle_a = std::thread::spawn(move || {
                 barrier_a.wait();
-                find_ignored_paths(
+                find_ignored_paths_with_source(
                     &root_a_thread,
                     &["secret_a.py".to_string(), "app.py".to_string()],
                 )
@@ -2004,7 +2007,7 @@ mod tests {
             let barrier_b = Arc::clone(&barrier);
             let handle_b = std::thread::spawn(move || {
                 barrier_b.wait();
-                find_ignored_paths(
+                find_ignored_paths_with_source(
                     &root_b_thread,
                     &["secret_b.py".to_string(), "app.py".to_string()],
                 )
@@ -2013,16 +2016,18 @@ mod tests {
             let ignored_a = handle_a.join().expect("thread a panicked");
             let ignored_b = handle_b.join().expect("thread b panicked");
 
-            assert!(
-                ignored_a.contains("secret_a.py"),
+            assert_eq!(
+                ignored_a.get("secret_a.py"),
+                Some(&IgnoreSource::DiffctxPolicy),
                 "repo A lost its .diffctx/ignore rule to a concurrent call"
             );
-            assert!(
-                ignored_b.contains("secret_b.py"),
+            assert_eq!(
+                ignored_b.get("secret_b.py"),
+                Some(&IgnoreSource::DiffctxPolicy),
                 "repo B lost its .diffctx/ignore rule to a concurrent call"
             );
-            assert!(!ignored_a.contains("app.py"));
-            assert!(!ignored_b.contains("app.py"));
+            assert!(!ignored_a.contains_key("app.py"));
+            assert!(!ignored_b.contains_key("app.py"));
         }
     }
 }

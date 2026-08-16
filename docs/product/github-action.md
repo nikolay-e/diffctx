@@ -6,7 +6,7 @@ No secret, no agent loop, no model of its own: the review step downstream
 chooses the model.
 
 Marketplace name: **diffctx LLM Diff Context**
-(`nikolay-e/diffctx@v1.13.0`). Runs on `ubuntu-latest`. Releases are tagged
+(`nikolay-e/diffctx@v1.14.0`). Runs on `ubuntu-latest`. Releases are tagged
 `vMAJOR.MINOR.PATCH` only — there is no floating `@v1` tag, so pin an exact
 release.
 
@@ -24,7 +24,7 @@ jobs:
           fetch-depth: 0
 
       - id: context
-        uses: nikolay-e/diffctx@v1.13.0
+        uses: nikolay-e/diffctx@v1.14.0
         with:
           budget: '8000'
 
@@ -52,8 +52,8 @@ leaves the CLI default in place.
 | `diff-range` | auto | `--diff` | `main..HEAD`, `<base>..<head>`, … |
 | `budget` | auto | `--budget` | Token cap; `-1` unlimited, `0` strict-zero floor |
 | `scoring` | `ego` | `--scoring` | `ego`, `ppr`, `bm25`, `rrf` |
-| `tau` | CLI default (0.12) | `--tau` | Relevance threshold for full fragment content |
-| `alpha` | CLI default (0.60) | `--alpha` | PPR damping; only affects `scoring: ppr` |
+| `tau` | CLI default | `--tau` | Relevance threshold for full fragment content |
+| `alpha` | CLI default | `--alpha` | PPR damping; only affects `scoring: ppr` |
 | `full` | `false` | `--full` | Changed files only, every fragment, no related code |
 | `format` | `md` | `--format` | `md`, `yaml`, `json`, `txt` |
 | `output-path` | `$RUNNER_TEMP/diffctx-context.<ext>` | `--output-file` | Where to write |

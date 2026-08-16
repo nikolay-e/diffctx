@@ -24,7 +24,9 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import json
+import os
 import re
+import signal
 import subprocess
 import time
 from pathlib import Path
@@ -50,7 +52,7 @@ def load_instances() -> list[dict]:
 
 
 def ensure_worktree(repo: str, root: Path) -> Path:
-    if not _REPO_NAME_RE.fullmatch(repo):
+    if repo.strip(".") == "" or not _REPO_NAME_RE.fullmatch(repo):
         raise ValueError(f"dataset repo name is not a bare name: {repo!r}")
     wt = root / "wt" / repo
     if (wt / ".git").exists():
@@ -60,6 +62,7 @@ def ensure_worktree(repo: str, root: Path) -> Path:
         ["git", "-C", str(CLONES / repo), "worktree", "add", "--detach", "-f", str(wt), "HEAD"],
         check=True,
         capture_output=True,
+        timeout=900,
     )
     return wt
 
@@ -70,7 +73,40 @@ def checkout(wt: Path, sha: str) -> bool:
         capture_output=True,
         timeout=900,
     )
-    return r.returncode == 0
+    if r.returncode != 0:
+        return False
+    # Untracked leftovers from a dirty parent clone would enter the candidate
+    # universe for every instance of this repo (run-order-dependent drift).
+    subprocess.run(["git", "-C", str(wt), "clean", "-fdq"], capture_output=True, timeout=900)
+    return True
+
+
+def _run_group_killable(
+    argv: list[str],
+    extra_env: dict[str, str] | None,
+    timeout_s: float,
+) -> tuple[int, str, str] | None:
+    # Own session so a timeout kills the whole process group — killing the
+    # direct child alone leaves forked grandchildren running past the cap.
+    env = dict(os.environ, **extra_env) if extra_env else None
+    with subprocess.Popen(
+        argv,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+        start_new_session=True,
+    ) as proc:
+        try:
+            stdout, stderr = proc.communicate(timeout=timeout_s)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            proc.wait()
+            return None
+    return proc.returncode, stdout, stderr
 
 
 def run_one(
@@ -84,45 +120,38 @@ def run_one(
 ) -> dict:
     if not _COMMIT_RE.fullmatch(sha):
         return {"status": "bad_sha", "elapsed_s": 0.0}
-    env = None
-    if extra_env:
-        import os
-
-        env = dict(os.environ, **extra_env)
     started = time.monotonic()
-    try:
-        proc = subprocess.run(
-            [
-                str(NATIVE),
-                str(wt),
-                "--diff",
-                f"{sha}^..{sha}",
-                "-f",
-                "json",
-                "-q",
-                "--scoring",
-                mode,
-                "--budget",
-                str(budget),
-                "--timeout",
-                str(timeout_s),
-            ]
-            + (["--tau", str(tau)] if tau is not None else []),
-            capture_output=True,
-            text=True,
-            timeout=timeout_s + 30,
-            env=env,
-        )
-    except subprocess.TimeoutExpired:
-        return {"status": "hang", "elapsed_s": round(time.monotonic() - started, 1)}
+    argv = [
+        str(NATIVE),
+        str(wt),
+        "--diff",
+        f"{sha}^..{sha}",
+        "-f",
+        "json",
+        "-q",
+        "--scoring",
+        mode,
+        "--budget",
+        str(budget),
+        "--timeout",
+        str(timeout_s),
+    ] + (["--tau", str(tau)] if tau is not None else [])
+    outcome = _run_group_killable(argv, extra_env, timeout_s + 30)
     elapsed = round(time.monotonic() - started, 1)
+    if outcome is None:
+        return {"status": "hang", "elapsed_s": elapsed}
+    rc, stdout, stderr = outcome
 
-    if proc.returncode != 0 or not proc.stdout.strip():
-        kind = "hang" if proc.returncode in (124, 143) else "no_output"
-        return {"status": kind, "elapsed_s": elapsed, "rc": proc.returncode}
+    if rc != 0 or not stdout.strip():
+        if "unknown revision" in (stderr or ""):
+            # `<sha>^..<sha>` has no parent side on a root commit; an explicit
+            # status keeps it out of the no_output bucket.
+            return {"status": "root_commit", "elapsed_s": elapsed, "rc": rc}
+        kind = "hang" if rc in (124, 143) else "no_output"
+        return {"status": kind, "elapsed_s": elapsed, "rc": rc}
 
     try:
-        doc = json.loads(proc.stdout)
+        doc = json.loads(stdout)
     except json.JSONDecodeError:
         return {"status": "bad_json", "elapsed_s": elapsed}
 

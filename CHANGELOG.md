@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-08-16
+
+### Fixed
+
+- **Changed secret-classified files (`id_rsa`, `*.key`, `*.pem`, …) are now
+  disclosed in `policy_excluded_count`** (#214): they were silently dropped
+  before the ignore-exclusion disclosure ran, so a change touching only
+  secret paths printed a bare stub and a mixed change under-counted its
+  withheld files. Count only — the paths themselves stay out of the output,
+  same stance as `.diffctx/ignore`. The renderers' note now reads "withheld
+  by exclusion policy" to cover both families.
+- **The compute deadline and the git subprocess timeout are per-run, not
+  process-global** (#210): concurrent MCP requests overwrote each other's
+  ceiling (a short-timeout request could abort a long-timeout one mid-flight,
+  and vice versa disable it), an expired ceiling was never cleared and leaked
+  into later in-process runs, and a single flooding edge builder could outrun
+  the whole timeout between checks. The deadline is now a value threaded
+  through the run, the git timeout is thread-scoped, and the known flooding
+  loops (config-key scan, C-family pairing, Python identifier emission) poll
+  the deadline inside the loop.
+- A failed Aho-Corasick automaton build in the config-edge builder now logs a
+  warning instead of silently disabling the entire keyed channel (#216).
+
+- **A commit touching only excluded paths now renders its disclosure** (#188
+  completion): the YAML/Markdown/text renderers and the CLI's empty-diff exit
+  treated `ignored_changes`/`policy_excluded_count` as "no output", so the one
+  case the disclosure exists for — every hunk withheld — printed a bare stub
+  and exited 4. All three renderers, `locate`, and the exit path now count the
+  disclosure as content.
+- **Scala import with `}` before `{` no longer panics** the edge build
+  (`import a}.{B` in any `.scala`/`.sbt` line aborted the whole run).
+- The corpus harness (`build_diff_context_in_memory`) now passes the per-file
+  admission gate to selection, matching the shipped pipeline; the full corpus
+  is bit-stable under the fix (2902 passed, baseline unchanged).
+- An absurd `timeout` value can no longer wrap the compute deadline into the
+  past (saturating arithmetic); the token-cache eviction sweep no longer
+  deletes another process's in-flight temp file.
+- Text renderer writes one path per line (a comma or newline inside a path
+  made the joined line unparseable).
+
 ### Changed
 
 - **New default operating point: per-file admission ON, `tau` 0.12 -> 0.05,
@@ -953,7 +993,8 @@ Earlier releases shipped as `treemapper`; see
 <https://github.com/nikolay-e/diffctx/releases> for the corresponding GitHub
 release notes (`1.0.0` through `1.6.1`).
 
-[Unreleased]: https://github.com/nikolay-e/diffctx/compare/v1.13.0...HEAD
+[Unreleased]: https://github.com/nikolay-e/diffctx/compare/v1.14.0...HEAD
+[1.14.0]: https://github.com/nikolay-e/diffctx/compare/v1.13.0...v1.14.0
 [1.13.0]: https://github.com/nikolay-e/diffctx/compare/v1.12.3...v1.13.0
 [1.12.3]: https://github.com/nikolay-e/diffctx/compare/v1.12.2...v1.12.3
 [1.12.2]: https://github.com/nikolay-e/diffctx/compare/v1.12.1...v1.12.2

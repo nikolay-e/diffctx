@@ -650,6 +650,10 @@ pub fn _diffctx(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // apart across the harnesses in the first place.
     m.add("DEFAULT_TAU", DEFAULT_STOPPING_THRESHOLD)?;
     m.add("DEFAULT_ALPHA", DEFAULT_PPR_ALPHA)?;
+    m.add(
+        "DEFAULT_CORE_BUDGET_FRACTION",
+        crate::config::selection::DEFAULT_CORE_BUDGET_FRACTION,
+    )?;
     m.add("DEFAULT_SCORING", DEFAULT_SCORING)?;
     // Same reason as the constants above: the Python CLI enumerated the accepted
     // --scoring values in its own literal and fell out of step the moment a mode

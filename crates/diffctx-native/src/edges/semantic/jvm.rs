@@ -178,7 +178,11 @@ fn parse_scala_import_clause(clause: &str) -> Option<ScalaImport> {
     }
     if let Some(bpos) = clause.find('{') {
         let prefix = clause[..bpos].trim().trim_end_matches('.').to_string();
-        let inner_end = clause.rfind('}').unwrap_or(clause.len());
+        let inner_end = match clause.rfind('}') {
+            Some(p) if p > bpos => p,
+            Some(_) => return None,
+            None => clause.len(),
+        };
         let inner = &clause[bpos + 1..inner_end];
         let mut selectors = Vec::new();
         let mut wildcard = false;
@@ -826,6 +830,15 @@ mod tests {
         let mut imports = parse_scala_imports(&format!("import {s}\n"));
         assert_eq!(imports.len(), 1, "expected one import from {s:?}");
         imports.remove(0)
+    }
+
+    #[test]
+    fn scala_import_with_brace_before_open_brace_is_rejected_not_a_panic() {
+        assert!(parse_scala_import_clause("a}.{B").is_none());
+        assert!(parse_scala_import_clause("}x{").is_none());
+        let open_only = parse_scala_import_clause("http.{Request").expect("still parses");
+        assert_eq!(open_only.prefix, "http");
+        assert_eq!(open_only.selectors, vec!["Request".to_string()]);
     }
 
     #[test]

@@ -83,6 +83,10 @@ def _ensure_git_repo(root_dir: Path, prog: str) -> None:
 def _diff_result_is_empty(result: dict[str, Any]) -> bool:
     if result.get("deleted_files") or result.get("renamed_files") or result.get("lockfile_changes"):
         return False
+    # A run whose every hunk was withheld still produced the disclosure (#188);
+    # exiting 4 would replace that disclosure with a misleading "no context" hint.
+    if result.get("ignored_changes") or result.get("policy_excluded_count"):
+        return False
     # A bundled patch is actionable output on its own; exiting 4 next to a
     # complete diff fails any `set -e` CI step for a run that produced content.
     if result.get("raw_diff"):
@@ -489,6 +493,8 @@ def _run_locate_mode(args: ParsedArgs, prog: str) -> None:
         and not doc.get("deleted_files")
         and not doc.get("renamed_files")
         and not doc.get("lockfile_changes")
+        and not doc.get("ignored_changes")
+        and not doc.get("policy_excluded_count")
     )
     if is_empty:
         print(

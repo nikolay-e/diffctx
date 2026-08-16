@@ -8,6 +8,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from diffctx._diffctx import DEFAULT_CORE_BUDGET_FRACTION as _ENGINE_DEFAULT_CBF
 from diffctx._diffctx import DEFAULT_TAU as _ENGINE_DEFAULT_TAU
 from eval.harness.adapters.base import BenchmarkAdapter, BenchmarkInstance, EvalResult
 
@@ -28,7 +29,7 @@ class RunParams:
     # shipped tau once already (#175). The v5 operating point is (0.05, 0.4)
     # under per-file admission; see config/limits.rs for the evidence chain.
     tau: float = _ENGINE_DEFAULT_TAU
-    core_budget_fraction: float = 0.4
+    core_budget_fraction: float = _ENGINE_DEFAULT_CBF
     budget: int = 8000
     scoring: str = "ego"
     extra_env: dict[str, str] = field(default_factory=dict)

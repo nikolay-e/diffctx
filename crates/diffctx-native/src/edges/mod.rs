@@ -113,6 +113,7 @@ pub fn collect_capped_edges(
     fragments: &[Fragment],
     repo_root: Option<&Path>,
     skip_expensive: bool,
+    deadline: crate::deadline::Deadline,
 ) -> CappedEdges {
     let mut all_builders: Vec<(&str, Box<dyn EdgeBuilder>)> = Vec::new();
     for cat in builder_categories() {
@@ -143,7 +144,8 @@ pub fn collect_capped_edges(
         .par_iter()
         .enumerate()
         .map(|(builder_idx, (name, builder))| {
-            crate::deadline::check_compute_deadline("edge construction");
+            deadline.check("edge construction");
+            let _in_builder = deadline.enter();
             let t = std::time::Instant::now();
             let edges = builder.build(fragments, repo_root);
             if std::env::var_os("DIFFCTX_TRACE_BUILDERS").is_some() {
@@ -356,11 +358,12 @@ pub fn naming_reachable_files(
     max_depth: usize,
 ) -> rustc_hash::FxHashSet<std::sync::Arc<str>> {
     let n = capped.idx_to_node.len();
-    // Undirected on purpose: a naming edge relates the PAIR of files. The
-    // reverse emission carries weight*reverse_factor and lands below the
-    // naming floor, so a directed walk would reach only the changed set's
-    // dependencies and never its consumers — measured as 24 broken
-    // consumer-pull corpus cases (php one-hop, terraform dependents, DI).
+    // Undirected on purpose: a naming edge relates the PAIR of files. For
+    // several channels the reverse emission (weight*reverse_factor) lands
+    // below the naming floor, so a directed walk would reach the changed
+    // set's dependencies but not all of its consumers — measured as 24
+    // broken consumer-pull corpus cases (php one-hop, terraform dependents,
+    // DI).
     let mut adj: Vec<Vec<u32>> = vec![Vec::new(); n];
     for e in &capped.edges {
         if e.naming {
@@ -437,7 +440,8 @@ mod fallback_gate_tests {
             frag("proj/u1.xyz", "zzcommonzz here\n", &["zzcommonzz"]),
             frag("proj/u2.xyz", "zzcommonzz there\n", &["zzcommonzz"]),
         ];
-        let capped = collect_capped_edges(&fragments, None, false);
+        let capped =
+            collect_capped_edges(&fragments, None, false, crate::deadline::Deadline::none());
         let node_path = |idx: u32| capped.idx_to_node[idx as usize].path.clone();
         // Category matters: a.py and c.py legitimately share a structural
         // sibling edge; the class under test is the SEMANTIC tags link.

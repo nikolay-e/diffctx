@@ -88,6 +88,7 @@ pub fn create_scoring_strategy(config: &PipelineConfig) -> Box<dyn ScoringStrate
 }
 
 pub trait ScoringStrategy: Send + Sync {
+    #[allow(clippy::too_many_arguments)]
     fn score_and_filter(
         &self,
         all_fragments: &[Fragment],
@@ -96,6 +97,7 @@ pub trait ScoringStrategy: Send + Sync {
         repo_root: Option<&Path>,
         seed_weights: Option<&FxHashMap<FragmentId, f64>>,
         discovered_paths: Option<&FxHashSet<Arc<str>>>,
+        deadline: crate::deadline::Deadline,
     ) -> ScoringResult;
 }
 
@@ -118,10 +120,12 @@ impl ScoringStrategy for PPRScoring {
         repo_root: Option<&Path>,
         seed_weights: Option<&FxHashMap<FragmentId, f64>>,
         _discovered_paths: Option<&FxHashSet<Arc<str>>>,
+        deadline: crate::deadline::Deadline,
     ) -> ScoringResult {
         let skip_expensive = all_fragments.len() > LIMITS.skip_expensive_threshold;
         let t_graph = Instant::now();
-        let capped = edges::collect_capped_edges(all_fragments, repo_root, skip_expensive);
+        let capped =
+            edges::collect_capped_edges(all_fragments, repo_root, skip_expensive, deadline);
         let admissible_files = file_admission_enabled().then(|| {
             edges::naming_reachable_files(&capped, core_ids, SEMANTIC_DISCOVERY.max_depth)
         });
@@ -180,10 +184,12 @@ impl ScoringStrategy for EgoGraphScoring {
         repo_root: Option<&Path>,
         _seed_weights: Option<&FxHashMap<FragmentId, f64>>,
         _discovered_paths: Option<&FxHashSet<Arc<str>>>,
+        deadline: crate::deadline::Deadline,
     ) -> ScoringResult {
         let skip_expensive = all_fragments.len() > LIMITS.skip_expensive_threshold;
         let t_graph = Instant::now();
-        let capped = edges::collect_capped_edges(all_fragments, repo_root, skip_expensive);
+        let capped =
+            edges::collect_capped_edges(all_fragments, repo_root, skip_expensive, deadline);
         let admissible_files = file_admission_enabled().then(|| {
             edges::naming_reachable_files(&capped, core_ids, SEMANTIC_DISCOVERY.max_depth)
         });
@@ -236,6 +242,7 @@ impl ScoringStrategy for BM25Scoring {
         _repo_root: Option<&Path>,
         _seed_weights: Option<&FxHashMap<FragmentId, f64>>,
         _discovered_paths: Option<&FxHashSet<Arc<str>>>,
+        _deadline: crate::deadline::Deadline,
     ) -> ScoringResult {
         let query_tokens: Vec<String> = all_fragments
             .iter()
@@ -421,6 +428,7 @@ impl ScoringStrategy for RrfFusionScoring {
         repo_root: Option<&Path>,
         seed_weights: Option<&FxHashMap<FragmentId, f64>>,
         discovered_paths: Option<&FxHashSet<Arc<str>>>,
+        deadline: crate::deadline::Deadline,
     ) -> ScoringResult {
         let ego = EgoGraphScoring::new(self.ego_depth).score_and_filter(
             all_fragments,
@@ -429,6 +437,7 @@ impl ScoringStrategy for RrfFusionScoring {
             repo_root,
             seed_weights,
             discovered_paths,
+            deadline,
         );
         let lexical = BM25Scoring.score_and_filter(
             all_fragments,
@@ -437,6 +446,7 @@ impl ScoringStrategy for RrfFusionScoring {
             repo_root,
             seed_weights,
             discovered_paths,
+            deadline,
         );
 
         let ego_admitted: FxHashSet<FragmentId> = ego
@@ -705,6 +715,7 @@ impl ScoringStrategy for PitFusionScoring {
         repo_root: Option<&Path>,
         seed_weights: Option<&FxHashMap<FragmentId, f64>>,
         discovered_paths: Option<&FxHashSet<Arc<str>>>,
+        deadline: crate::deadline::Deadline,
     ) -> ScoringResult {
         let ego = EgoGraphScoring::new(self.ego_depth).score_and_filter(
             all_fragments,
@@ -713,6 +724,7 @@ impl ScoringStrategy for PitFusionScoring {
             repo_root,
             seed_weights,
             discovered_paths,
+            deadline,
         );
         let lexical = BM25Scoring.score_and_filter(
             all_fragments,
@@ -721,6 +733,7 @@ impl ScoringStrategy for PitFusionScoring {
             repo_root,
             seed_weights,
             discovered_paths,
+            deadline,
         );
 
         let ego_admitted: FxHashSet<FragmentId> = ego
@@ -1153,8 +1166,15 @@ mod tests {
             let config = PipelineConfig::from_mode(mode);
             let strategy = create_scoring_strategy(&config);
             let empty: Vec<Fragment> = Vec::new();
-            let result =
-                strategy.score_and_filter(&empty, &FxHashSet::default(), &[], None, None, None);
+            let result = strategy.score_and_filter(
+                &empty,
+                &FxHashSet::default(),
+                &[],
+                None,
+                None,
+                None,
+                crate::deadline::Deadline::none(),
+            );
             assert!(
                 result.filtered_fragments.is_empty(),
                 "{mode:?} invented fragments from an empty universe"

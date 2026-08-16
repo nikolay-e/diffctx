@@ -540,7 +540,7 @@ def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> arg
         metavar="FLOAT",
         help=(
             "PPR damping: how tightly context clusters around changes, 0-1 exclusive "
-            "(default: 0.60, higher = more focused). Only affects --scoring ppr"
+            f"(default: {_DEFAULT_ALPHA:.2f}, higher = more focused). Only affects --scoring ppr"
         ),
     )
     diff_group.add_argument(
@@ -549,7 +549,7 @@ def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> arg
         default=_UNSET,
         metavar="FLOAT",
         help=(
-            "Relevance threshold for full fragment content, >= 0 (default: 0.05). "
+            f"Relevance threshold for full fragment content, >= 0 (default: {_DEFAULT_TAU:g}). "
             "Fragments scoring below it are reduced to signature stubs or dropped; "
             "higher = leaner output, lower = more surrounding context"
         ),

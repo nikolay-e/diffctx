@@ -35,12 +35,16 @@ are the stopping threshold $\tau$ and the core budget fraction
 $\beta_{core}$ (paper: §"Edge-Type Weight Priors and Operational
 Calibration" and §"Calibration Protocol"). Calibration is a 5×3 grid
 search over $(\tau, \beta_{core})$ on the frozen calibration manifests,
-validated on a held-out manifest; the validated winner is
-$\tau = 0.12$, $\beta_{core} = 0.5$, which the deployed defaults carry:
+validated on a held-out manifest. The v2-cycle winner was
+$\tau = 0.12$, $\beta_{core} = 0.5$; the v5 cycle re-validated the
+operating point together with the per-file admission gate (#65), and
+the deployed defaults now carry $\tau = 0.05$, $\beta_{core} = 0.4$:
 
-- $\tau$ — `DEFAULT_STOPPING_THRESHOLD = 0.12` in `config/limits.rs`,
-  user-overridable via the `--tau` CLI flag only (no env var).
-- $\beta_{core}$ — `core_budget_fraction = 0.5` in
+- $\tau$ — `DEFAULT_STOPPING_THRESHOLD = 0.05` in `config/limits.rs`,
+  user-overridable via the `--tau` CLI flag only (no env var). The weak
+  stop ships only together with the admission gate — without it,
+  $\tau = 0.05$ re-admits the diffuse tail the gate exists to block.
+- $\beta_{core}$ — `core_budget_fraction = 0.4` in
   `config/selection.rs`, env-overridable via
   `DIFFCTX_OP_SELECTION_CORE_BUDGET_FRACTION` for sweeps.
 
@@ -116,7 +120,10 @@ it) to enable the sweep without rebuild.
 
 > **Not a stable interface.** The `DIFFCTX_OP_*` overrides — along with the
 > other internal toggles (`DIFFCTX_OBJECTIVE`, `DIFFCTX_EGO_*`,
-> `DIFFCTX_NO_COMMIT_SIGNAL`, `DIFFCTX_MAX_FRAGMENTS`, and the
+> `DIFFCTX_NO_COMMIT_SIGNAL`, `DIFFCTX_MAX_FRAGMENTS`,
+> `DIFFCTX_FILE_ADMISSION`, `DIFFCTX_FILE_STAR`, `DIFFCTX_PIT_SHAPE`,
+> `DIFFCTX_PIT_TRANSFORM`, `DIFFCTX_MAX_EDGES_PER_NODE`,
+> `DIFFCTX_TRACE_BUILDERS`, and the
 > `DIFFCTX_PROVENANCE_DUMP=<path>` per-candidate telemetry sink) — are experimental
 > calibration knobs for research and sensitivity analysis, not a supported
 > public API. They are undocumented in `--help` on purpose and may change or

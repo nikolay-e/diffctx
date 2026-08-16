@@ -14,6 +14,9 @@ Project-specific facts for `/qa`. Generic methodology lives in
 | Backend smoke | no | — |
 | SonarCloud | yes | project key is `nikolay-e_TreeMapper` (legacy name, never renamed) |
 
+The `no` rows describe the current CLI/library shape — they flip the day
+a deployed/web surface ships; re-derive then, don't trust this table.
+
 ## Forge
 
 - `origin` = Forgejo (source of truth, push here); `github` = mirror,
@@ -31,11 +34,20 @@ Project-specific facts for `/qa`. Generic methodology lives in
   without naming the service.
 - Push `main` to both remotes (mirror sync is periodic; direct push is
   immediate).
+- **Forgejo's merge API can return 405 with an empty message on a merge
+  that SUCCEEDED.** Never read the HTTP code as the outcome — re-fetch
+  the PR (`state`/`merged`) before retrying or escalating; a blind retry
+  loop would report failure on a completed merge.
+- **The v1.13.0 tag points at a commit containing unreleased work** — the
+  2026-08-08 history rewrite re-anchored tags onto epoch commits, so
+  `git describe`/tag position cannot tell you what a release contains.
+  Released state is read from the registry (PyPI upload date/version),
+  not from the tag.
 
 ## Tests
 
-- `pytest` — integration-only, ~600 tests, ~2 min locally. Known valid
-  skip: `test_clipboard.py` (Windows only).
+- `pytest` — integration-only (the run prints the count; don't pin it
+  here, it rots). Known valid skip: `test_clipboard.py` (Windows only).
 - Local flake mode: `-n auto` on the M4 Pro means 14 xdist workers,
   each CLI subprocess spawning a full rayon pool — under load the
   global pytest-timeout (30 s since 27d6a3d6, was 10 s) fires on
@@ -60,7 +72,9 @@ Project-specific facts for `/qa`. Generic methodology lives in
 - **Rust edits fight the auto-format hook**: the PostToolUse formatter
   orders `use` items differently from repo rustfmt; `git commit` then
   fails cargo-fmt. Run `cargo fmt` before every commit that touches
-  Rust.
+  Rust. **Python edits hit the same trap**: the hook applies isort's
+  aligned-parens import style, which repo black rewrites back — run
+  `pre-commit run black --files <touched>` after Python edits.
 - **`DIFFCTX_PROBE_TAU`** mirrors `DIFFCTX_PROBE_MODE` in the yaml
   harness: measurement-only tau override, meaningful only with
   `DIFFCTX_YAML_IGNORE_BASELINE=1`; default run still measures the
@@ -68,7 +82,8 @@ Project-specific facts for `/qa`. Generic methodology lives in
 - **Python API fragments carry** `content/kind/lines/path/role/symbol`
   only — no `token_count`. Integration tests measuring budget use must
   proxy via `len(content)` (~4 chars/token).
-- **Version-bearing files**: the CD bump patches 8 files incl.
+- **Version-bearing files**: the CD bump patches every file listed in
+  the cd.yml bump block — that block is the enumeration, incl.
   `docs/product/github-action.md` (pins gated by
   `test_version_consistency`). Adding a new file that embeds the version
   requires BOTH the cd.yml bump block and that test.
@@ -147,10 +162,10 @@ Project-specific facts for `/qa`. Generic methodology lives in
 
 ## Known false positives
 
-- ~~import-linter pre-commit hook can fail locally (namespace package)
-  while green in CI.~~ **No longer true** — `lint-imports` reports
-  `6 kept, 0 broken` locally. Read a failure as a real violation: one
-  caught `from diffctx import _diffctx` in `mcp/server.py`, which
+- import-linter local failures are REAL — the old excuse ("fails locally
+  on the namespace package while green in CI") is dead; `lint-imports`
+  reports `6 kept, 0 broken` locally. One failure caught
+  `from diffctx import _diffctx` in `mcp/server.py`, which
   executes `diffctx/__init__` and so pulls `_app` -> `cli`, breaking
   "MCP server must not import CLI". Import the submodule directly
   (`from diffctx._diffctx import X`) so the edge points at the submodule
@@ -239,7 +254,7 @@ snapshots and the fixture worktree.
 
 ## Measuring against a running build
 
-Two ways to invalidate an overnight measurement, both hit this session:
+Two ways to invalidate an overnight measurement, both observed in practice:
 
 - **`maturin develop` swaps the extension under a running experiment.** The
   eval harnesses invoke `.venv/bin/diffctx`, which loads
@@ -247,6 +262,9 @@ Two ways to invalidate an overnight measurement, both hit this session:
   result file. `cargo build` / `cargo test` are safe — they write `target/`.
   Editing Python under `src/diffctx/` is NOT safe for the CLI path (editable
   install), though `mcp/` is, since the CLI never imports it.
+- **A background `cargo test` compiles the live tree**: editing sources after
+  launching the corpus run means the binary's content is undefined — kill and
+  relaunch after the last edit (one mid-compile edit cost a full 150s rerun).
 - **Name the build, not the branch.** Commit time is not build time. Compare the
   `.so` mtime against `git log --date` and state which commit's *content* the
   run executed; "measured on main" is meaningless when six commits landed while

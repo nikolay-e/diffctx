@@ -148,6 +148,8 @@ def _has_diff_metadata(tree: dict[str, Any]) -> bool:
         or tree.get("changed_files")
         or tree.get("commit_message")
         or tree.get("lockfile_changes")
+        or tree.get("ignored_changes")
+        or tree.get("policy_excluded_count")
         or tree.get("raw_diff")
     )
 
@@ -262,21 +264,30 @@ def _write_text_fragment(file: TextIO, frag: dict[str, Any], indent: str = "") -
             file.write(f"{content_indent}{line}\n")
 
 
+def _write_text_path_list(file: TextIO, label: str, paths: list[Any]) -> None:
+    # One path per line: a comma or newline inside a path (git emits both
+    # unquoted under core.quotePath=false) would make a joined line unparseable.
+    file.write(f"  {label}:\n")
+    for path in paths:
+        p = str(path).replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r")
+        file.write(f"    {p}\n")
+
+
 def _write_tree_text_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
     if tree.get("commit_message"):
         file.write(f"  change: {tree['commit_message']}\n")
     if tree.get("changed_files"):
-        file.write(f"  changed files: {', '.join(str(p) for p in tree['changed_files'])}\n")
+        _write_text_path_list(file, "changed files", tree["changed_files"])
     if tree.get("deleted_files"):
-        file.write(f"  deleted files: {', '.join(str(p) for p in tree['deleted_files'])}\n")
+        _write_text_path_list(file, "deleted files", tree["deleted_files"])
     for pair in tree.get("renamed_files", []):
         file.write(f"  renamed: {pair.get('from', '')} -> {pair.get('to', '')}\n")
     if tree.get("lockfile_changes"):
-        file.write(f"  lock files changed: {', '.join(str(p) for p in tree['lockfile_changes'])}\n")
+        _write_text_path_list(file, "lock files changed", tree["lockfile_changes"])
     if tree.get("ignored_changes"):
-        file.write(f"  changed but excluded by ignore rules: {', '.join(str(p) for p in tree['ignored_changes'])}\n")
+        _write_text_path_list(file, "changed but excluded by ignore rules", tree["ignored_changes"])
     if tree.get("policy_excluded_count"):
-        file.write(f"  changed files withheld by .diffctx/ignore: {tree['policy_excluded_count']}\n")
+        file.write(f"  changed files withheld by exclusion policy: {tree['policy_excluded_count']}\n")
     if tree.get("raw_diff"):
         file.write("  raw diff:\n")
         for line in tree["raw_diff"].rstrip("\n").split("\n"):
@@ -448,7 +459,7 @@ def _write_markdown_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
     _write_md_path_list(file, tree, "ignored_changes", "Changed but excluded by ignore rules")
     if tree.get("policy_excluded_count"):
         n = tree["policy_excluded_count"]
-        file.write(f"*{n} changed file(s) withheld by `.diffctx/ignore`.*\n\n")
+        file.write(f"*{n} changed file(s) withheld by exclusion policy (`.diffctx/ignore` or secret paths).*\n\n")
     if tree.get("raw_diff"):
         file.write("## Raw diff\n\n")
         _write_md_code_block(file, tree["raw_diff"], "diff", "")

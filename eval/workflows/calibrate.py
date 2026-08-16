@@ -19,12 +19,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from eval.datasets.build_splits import default_calibration_pool_adapters, default_test_adapters
-from eval.harness.adapters.calibrate import (
-    GridSpec,
-    evaluate_grid_cached,
-    render_grid_report,
-    top_k_trials,
-)
+from eval.harness.adapters.calibrate import GridSpec, evaluate_grid_cached, render_grid_report, top_k_trials
 from eval.harness.adapters.runner import filter_instances_by_manifest, read_manifest
 from eval.harness.adapters.runtime_probe import probe_resources, report_and_maybe_exit
 from eval.harness.common import repos_dir as default_repos_dir
@@ -121,7 +116,7 @@ def main() -> int:
 
     from eval.harness.common import prune_dead_worker_worktrees
 
-    prune_dead_worker_worktrees(Path.home() / ".cache" / "contextbench_repos")
+    prune_dead_worker_worktrees(repo_root)
     eval_all_cells_fn = make_diffctx_eval_all_cells_fn(repo_root)
     args.out.mkdir(parents=True, exist_ok=True)
     checkpoint_dir = args.out / "checkpoints"

@@ -25,7 +25,7 @@ pub struct LocateOutput {
     pub lockfile_changes: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub ignored_changes: Vec<String>,
-    #[serde(skip_serializing_if = "crate::render::is_zero_pub", default)]
+    #[serde(skip_serializing_if = "crate::render::is_zero", default)]
     pub policy_excluded_count: usize,
     pub budget_tokens: u32,
     /// Blast-radius counts over the ranked items (#135): distinct files,
@@ -45,16 +45,12 @@ pub struct LocateOutput {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub overflow: Vec<OverflowItem>,
     /// True total behind `overflow`, which is capped at `MAX_OVERFLOW_ITEMS`.
-    #[serde(skip_serializing_if = "is_zero")]
+    #[serde(skip_serializing_if = "crate::render::is_zero")]
     pub overflow_count: usize,
 }
 
 // The reference is serde's contract for `skip_serializing_if`, not a choice.
 #[allow(clippy::trivially_copy_pass_by_ref)]
-fn is_zero(n: &usize) -> bool {
-    *n == 0
-}
-
 /// The overflow list is a pointer to what was skipped, not a second selection.
 /// Past this many entries it stops being a hint and starts being the cost the
 /// budget existed to avoid.
@@ -85,7 +81,7 @@ pub struct Coverage {
     /// candidates the budget correctly ignored; "scores at least as high as the
     /// weakest selected item" was worse than useless, because raising the budget
     /// lowers that bar and so *increased* the reported gap.
-    #[serde(skip_serializing_if = "is_zero")]
+    #[serde(skip_serializing_if = "crate::render::is_zero")]
     pub next_up: usize,
     /// Documented heuristic in [0, 1], NOT a probability and not a promise:
     /// `parsed_share * linked_share * fit_share`, less 0.1 when PPR truncated.

@@ -427,35 +427,46 @@ def prune_dead_worker_worktrees(repos_dir: Path) -> int:
     Worker dirs are keyed `worktrees/w<pid>` (or `w<runner>_<pid>`); nothing
     removed them when a worker exited, so every cell of a sweep left its full
     checkouts behind — 606 stale trees / ~200 GB filled the disk mid-sweep.
-    A dir is deleted only when its embedded pid is not alive, so this is safe
-    to run while another sweep is in flight (pid reuse merely defers a dir to
-    the next sweep). Returns the number of dirs removed.
+    A dir is deleted only when its embedded pid is not alive AND the dir was
+    minted in this process's own pid namespace: four containerized runners
+    share the cache mount, and a peer's live pid looks dead from here, so
+    only dirs carrying our own runner slug (or bare `w<pid>` dirs when no
+    slug is set) are candidates. Pid reuse merely defers a dir to the next
+    sweep. Returns the number of dirs removed.
     """
     root = repos_dir / "worktrees"
     if not root.exists():
         return 0
+    runner = os.environ.get("RUNNER_NAME", "").replace("-", "_").replace(" ", "_")
     removed = 0
     for d in root.iterdir():
-        name = d.name
-        if not name.startswith("w"):
-            continue
-        pid_part = name.rsplit("_", 1)[-1].lstrip("w")
-        try:
-            pid = int(pid_part)
-        except ValueError:
-            continue
-        try:
-            os.kill(pid, 0)
-            continue  # alive
-        except ProcessLookupError:
-            pass
-        except PermissionError:
-            continue  # alive, other user
-        shutil.rmtree(d, ignore_errors=True)
-        removed += 1
+        if _is_prunable_worker_dir(d.name, runner):
+            shutil.rmtree(d, ignore_errors=True)
+            removed += 1
     if removed:
         print(f"pruned {removed} dead worker worktree dirs under {root}", flush=True)
     return removed
+
+
+def _is_prunable_worker_dir(name: str, runner: str) -> bool:
+    if not name.startswith("w"):
+        return False
+    if runner:
+        if not name.startswith(f"w{runner}_"):
+            return False
+    elif "_" in name:
+        return False
+    try:
+        pid = int(name.rsplit("_", 1)[-1].lstrip("w"))
+    except ValueError:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return True  # dead in our namespace
+    except PermissionError:
+        return False  # alive, other user
+    return False  # alive
 
 
 STRICT_APPLY = "strict"

@@ -309,24 +309,6 @@ impl EnsembleDiscovery {
     pub fn new(strategies: Vec<Box<dyn DiscoveryStrategy>>) -> Self {
         Self { strategies }
     }
-
-    pub fn default_ensemble() -> Self {
-        // The lexical channel's breadth into the candidate universe. The
-        // shipped 1 means BM25 contributes a single file to discovery; measured
-        // on dcbench, 79% of nontrivial gold never enters the universe at all,
-        // and most of it shares 3+ path tokens with the diff — exactly what a
-        // wider lexical channel would surface. Env-gated for the universe
-        // ablation (#130); unset, behaviour is byte-identical to before.
-        let bm25_k =
-            crate::config::env_overrides::read_env_usize("DIFFCTX_BM25_DISCOVERY_TOP_K", 1);
-        Self {
-            strategies: vec![
-                Box::new(DefaultDiscovery),
-                Box::new(TestFileDiscovery),
-                Box::new(BM25Discovery::new(bm25_k)),
-            ],
-        }
-    }
 }
 
 impl DiscoveryStrategy for EnsembleDiscovery {
@@ -749,12 +731,5 @@ mod tests {
         let (paths, attribution) = Fixed.discover_attributed(&ctx);
         assert_eq!(paths.len(), 1);
         assert_eq!(attribution[0].1, "solo");
-    }
-
-    #[test]
-    fn default_ensemble_wires_three_channels() {
-        // A channel silently disappearing from the default wiring is exactly
-        // the regression the ensemble's own output cannot reveal.
-        assert_eq!(EnsembleDiscovery::default_ensemble().strategies.len(), 3);
     }
 }
