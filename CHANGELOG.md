@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-08-16
+
 ### Fixed
 
 - **Changed secret-classified files (`id_rsa`, `*.key`, `*.pem`, …) are now
@@ -991,7 +993,8 @@ Earlier releases shipped as `treemapper`; see
 <https://github.com/nikolay-e/diffctx/releases> for the corresponding GitHub
 release notes (`1.0.0` through `1.6.1`).
 
-[Unreleased]: https://github.com/nikolay-e/diffctx/compare/v1.13.0...HEAD
+[Unreleased]: https://github.com/nikolay-e/diffctx/compare/v1.14.0...HEAD
+[1.14.0]: https://github.com/nikolay-e/diffctx/compare/v1.13.0...v1.14.0
 [1.13.0]: https://github.com/nikolay-e/diffctx/compare/v1.12.3...v1.13.0
 [1.12.3]: https://github.com/nikolay-e/diffctx/compare/v1.12.2...v1.12.3
 [1.12.2]: https://github.com/nikolay-e/diffctx/compare/v1.12.1...v1.12.2
