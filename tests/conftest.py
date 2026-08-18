@@ -43,7 +43,7 @@ def temp_project(tmp_path):
     config_dir = temp_dir / ".diffctx"
     config_dir.mkdir()
     (config_dir / "ignore").write_text("output/\n.git/\n", encoding="utf-8")
-    yield temp_dir
+    return temp_dir
 
 
 @pytest.fixture
