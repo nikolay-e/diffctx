@@ -11,8 +11,7 @@ use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge, discover_files_by_refs};
 
 fn is_r_file(path: &Path) -> bool {
-    let ext = base::file_ext(path);
-    matches!(ext.as_str(), ".r" | ".rmd")
+    base::has_ext(path, &[".r", ".rmd"])
 }
 
 static SOURCE_RE: Lazy<Regex> =

@@ -12,8 +12,7 @@ use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, FragmentIndex, discover_files_by_refs, link_by_name};
 
 fn is_shell_file(path: &Path) -> bool {
-    let ext = base::file_ext(path);
-    SHELL_EXTENSIONS.contains(ext.as_str())
+    SHELL_EXTENSIONS.contains(base::file_ext(path).as_str())
 }
 
 static SOURCE_RE: Lazy<Regex> =

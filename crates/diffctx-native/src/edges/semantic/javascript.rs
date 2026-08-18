@@ -18,13 +18,11 @@ use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder};
 
 fn is_js_file(path: &Path) -> bool {
-    let ext = base::file_ext(path);
-    JS_TS_EXTENSIONS.contains(ext.as_str())
+    JS_TS_EXTENSIONS.contains(base::file_ext(path).as_str())
 }
 
 fn is_ts_file(path: &Path) -> bool {
-    let ext = base::file_ext(path);
-    TYPESCRIPT_EXTENSIONS.contains(ext.as_str())
+    TYPESCRIPT_EXTENSIONS.contains(base::file_ext(path).as_str())
 }
 
 static IMPORT_SOURCE_RE: Lazy<Regex> = Lazy::new(|| {

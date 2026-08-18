@@ -36,8 +36,7 @@ static VARS_FILES_LIST_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"(?m)^\s*-\s+["']([^"']{1,300}\.ya?ml)["']"#).unwrap());
 
 fn is_ansible_file(path: &Path) -> bool {
-    let ext = base::file_ext(path);
-    ANSIBLE_EXTS.contains(ext.as_str())
+    ANSIBLE_EXTS.contains(base::file_ext(path).as_str())
 }
 
 fn get_role_name(path: &Path) -> Option<String> {

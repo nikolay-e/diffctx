@@ -12,11 +12,8 @@ use super::super::base::{
     self, EdgeBuilder, FragmentIndex, add_edge, discover_files_by_refs, link_by_name,
 };
 
-static DART_EXTENSIONS: Lazy<FxHashSet<&str>> = Lazy::new(|| [".dart"].iter().copied().collect());
-
 fn is_dart_file(path: &Path) -> bool {
-    let ext = base::file_ext(path);
-    DART_EXTENSIONS.contains(ext.as_str())
+    base::has_ext(path, &[".dart"])
 }
 
 static IMPORT_RE: Lazy<Regex> =

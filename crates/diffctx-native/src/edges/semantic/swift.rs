@@ -11,7 +11,7 @@ use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids, discover_files_by_refs};
 
 fn is_swift_file(path: &Path) -> bool {
-    base::file_ext(path) == ".swift"
+    base::has_ext(path, &[".swift"])
 }
 
 static IMPORT_RE: Lazy<Regex> = Lazy::new(|| {

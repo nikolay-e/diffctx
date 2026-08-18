@@ -20,8 +20,7 @@ use super::super::base::{self, EdgeBuilder, add_edge};
 const MAX_FILES_PER_NAME: usize = 8;
 
 fn is_jvm_file(path: &Path) -> bool {
-    let ext = base::file_ext(path);
-    JVM_EXTENSIONS.contains(ext.as_str())
+    JVM_EXTENSIONS.contains(base::file_ext(path).as_str())
 }
 
 fn is_java(path: &Path) -> bool {

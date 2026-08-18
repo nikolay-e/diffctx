@@ -11,7 +11,7 @@ use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, discover_files_by_refs};
 
 fn is_nix_file(path: &Path) -> bool {
-    base::file_ext(path) == ".nix"
+    base::has_ext(path, &[".nix"])
 }
 
 static IMPORT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"import\s+([\./][\w./-]+)").unwrap());

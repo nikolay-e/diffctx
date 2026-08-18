@@ -11,7 +11,7 @@ use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge, discover_files_by_refs};
 
 fn is_prisma_file(path: &Path) -> bool {
-    base::file_ext(path) == ".prisma"
+    base::has_ext(path, &[".prisma"])
 }
 
 fn is_prisma_consumer(path: &Path) -> bool {

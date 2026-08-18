@@ -10,12 +10,8 @@ use crate::types::{Fragment, FragmentId};
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids};
 
-static TF_EXTENSIONS: Lazy<FxHashSet<&str>> =
-    Lazy::new(|| [".tf", ".tfvars", ".hcl"].iter().copied().collect());
-
 fn is_terraform_file(path: &Path) -> bool {
-    let ext = base::file_ext(path);
-    TF_EXTENSIONS.contains(ext.as_str())
+    base::has_ext(path, &[".tf", ".tfvars", ".hcl"])
 }
 
 static VARIABLE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"(?m)^variable\s+"([^"]+)""#).unwrap());

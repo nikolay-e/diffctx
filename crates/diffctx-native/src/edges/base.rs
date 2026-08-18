@@ -438,6 +438,11 @@ pub fn file_ext(path: &Path) -> String {
         .unwrap_or_default()
 }
 
+pub fn has_ext(path: &Path, exts: &[&str]) -> bool {
+    let ext = file_ext(path);
+    exts.iter().any(|e| *e == ext)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

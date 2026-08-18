@@ -27,17 +27,15 @@ static EXTENDED_DOTNET_EXTENSIONS: Lazy<FxHashSet<&str>> = Lazy::new(|| {
 });
 
 fn is_dotnet_file(path: &Path) -> bool {
-    let ext = base::file_ext(path);
-    EXTENDED_DOTNET_EXTENSIONS.contains(ext.as_str())
+    EXTENDED_DOTNET_EXTENSIONS.contains(base::file_ext(path).as_str())
 }
 
 fn is_cs_file(path: &Path) -> bool {
-    base::file_ext(path) == ".cs"
+    base::has_ext(path, &[".cs"])
 }
 
 fn is_fs_file(path: &Path) -> bool {
-    let ext = base::file_ext(path);
-    ext == ".fs" || ext == ".fsi" || ext == ".fsx"
+    base::has_ext(path, &[".fs", ".fsi", ".fsx"])
 }
 
 static CS_USING_RE: Lazy<Regex> = Lazy::new(|| {

@@ -11,8 +11,7 @@ use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids, discover_files_by_refs};
 
 fn is_graphql_file(path: &Path) -> bool {
-    let ext = base::file_ext(path);
-    ext == ".graphql" || ext == ".gql"
+    base::has_ext(path, &[".graphql", ".gql"])
 }
 
 static TYPE_DEF_RE: Lazy<Regex> = Lazy::new(|| {

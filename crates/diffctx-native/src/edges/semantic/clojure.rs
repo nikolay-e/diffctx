@@ -11,8 +11,7 @@ use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids, discover_files_by_refs};
 
 fn is_clojure_file(path: &Path) -> bool {
-    let ext = base::file_ext(path);
-    matches!(ext.as_str(), ".clj" | ".cljs" | ".cljc" | ".edn")
+    base::has_ext(path, &[".clj", ".cljs", ".cljc", ".edn"])
 }
 
 static NS_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\(ns\s+([\w.\-]+)").unwrap());
