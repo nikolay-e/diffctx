@@ -1,3 +1,7 @@
+//! Implementation crate for the `diffctx` CLI and Python extension. Every
+//! module is public for those two consumers and the in-repo eval harness —
+//! none of it is a stable library API, and internals may change or disappear
+//! between releases without a semver signal.
 pub mod analytics;
 pub mod candidate_files;
 pub mod config;

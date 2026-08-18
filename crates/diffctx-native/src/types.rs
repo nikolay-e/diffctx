@@ -1,7 +1,6 @@
 use std::cmp::Ordering;
 use std::fmt;
 use std::hash::{Hash, Hasher};
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use once_cell::sync::Lazy;
@@ -226,10 +225,6 @@ impl FragmentId {
             end_line,
             cached_hash,
         }
-    }
-
-    pub fn path_buf(&self) -> PathBuf {
-        PathBuf::from(self.path.as_ref())
     }
 }
 

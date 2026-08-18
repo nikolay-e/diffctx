@@ -483,6 +483,7 @@ mod paper_claim_tests {
             None,
             None,
             None,
+            None,
         );
 
         for (i, fi) in result.selected.iter().enumerate() {
@@ -559,6 +560,7 @@ mod paper_claim_tests {
             &needs,
             budget,
             0.08,
+            None,
             None,
             None,
             None,

@@ -88,10 +88,7 @@ fn map_pipeline_err(e: anyhow::Error) -> PyErr {
     alpha = DEFAULT_PPR_ALPHA,
     tau = DEFAULT_STOPPING_THRESHOLD,
     no_content = false,
-    ignore_file = None,
-    no_default_ignores = false,
     full = false,
-    whitelist_file = None,
     scoring_mode = DEFAULT_SCORING,
     timeout = DEFAULT_PIPELINE_TIMEOUT_SECONDS,
 ))]
@@ -103,31 +100,10 @@ fn build_diff_context<'py>(
     alpha: f64,
     tau: f64,
     no_content: bool,
-    ignore_file: Option<&str>,
-    no_default_ignores: bool,
     full: bool,
-    whitelist_file: Option<&str>,
     scoring_mode: &str,
     timeout: u64,
 ) -> PyResult<Bound<'py, PyDict>> {
-    // None of these three are implemented in the Rust backend yet. Silently
-    // dropping them here would be invisible: `tracing_subscriber` is only
-    // ever installed in the native binary (main.rs), never in this extension
-    // module, so `tracing::warn!` has no sink and no one ever sees it. The
-    // real guard lives one layer up, in `diffctx._native.pipeline.build_diff_context`,
-    // which raises `NotImplementedError` for a non-default value of any of
-    // the three before this function is ever called - keep that in sync if a
-    // flag ever gets implemented here.
-    if ignore_file.is_some() {
-        tracing::warn!("ignore_file is not yet implemented in Rust backend, ignored");
-    }
-    if no_default_ignores {
-        tracing::warn!("no_default_ignores is not yet implemented in Rust backend, ignored");
-    }
-    if whitelist_file.is_some() {
-        tracing::warn!("whitelist_file is not yet implemented in Rust backend, ignored");
-    }
-
     let mode =
         ScoringMode::from_str(scoring_mode).map_err(pyo3::exceptions::PyValueError::new_err)?;
     let path = Path::new(root_dir);
@@ -386,6 +362,16 @@ pub struct PyProjectGraph {
     fragment_map: RsFxHashMap<crate::types::FragmentId, crate::types::Fragment>,
 }
 
+impl PyProjectGraph {
+    fn view(&self) -> graph_export::ProjectGraphView<'_> {
+        graph_export::ProjectGraphView {
+            graph: &self.inner.graph,
+            fragments: &self.fragment_map,
+            root_dir: Some(self.inner.root_dir.as_path()),
+        }
+    }
+}
+
 #[pymethods]
 impl PyProjectGraph {
     #[getter]
@@ -566,22 +552,14 @@ fn to_mermaid(qg: &PyQuotientGraph, top_n: usize) -> String {
 
 #[pyfunction]
 fn graph_to_json_string(pg: &PyProjectGraph) -> PyResult<String> {
-    let view = graph_export::ProjectGraphView {
-        graph: &pg.inner.graph,
-        fragments: &pg.fragment_map,
-        root_dir: Some(pg.inner.root_dir.as_path()),
-    };
+    let view = pg.view();
     graph_export::graph_to_json_string(&view)
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
 }
 
 #[pyfunction]
 fn graph_to_graphml_string(pg: &PyProjectGraph) -> String {
-    let view = graph_export::ProjectGraphView {
-        graph: &pg.inner.graph,
-        fragments: &pg.fragment_map,
-        root_dir: Some(pg.inner.root_dir.as_path()),
-    };
+    let view = pg.view();
     graph_export::graph_to_graphml_string(&view)
 }
 
@@ -592,11 +570,7 @@ fn graph_summary<'py>(
     pg: &PyProjectGraph,
     top_n: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let view = graph_export::ProjectGraphView {
-        graph: &pg.inner.graph,
-        fragments: &pg.fragment_map,
-        root_dir: Some(pg.inner.root_dir.as_path()),
-    };
+    let view = pg.view();
     let summary = graph_export::graph_summary(&view, top_n);
     let dict = PyDict::new(py);
     dict.set_item("node_count", summary.node_count)?;
@@ -662,7 +636,3 @@ pub fn _diffctx(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("GitError", m.py().get_type::<GitError>())?;
     Ok(())
 }
-
-// silence "unused" warnings for fields used only via Python pyclass getters
-#[allow(dead_code)]
-fn _used(_: PathBuf) {}

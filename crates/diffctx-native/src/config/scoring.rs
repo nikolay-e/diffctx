@@ -35,9 +35,7 @@ impl Default for RrfConfig {
     }
 }
 
-pub fn rrf() -> RrfConfig {
-    RrfConfig::default()
-}
+pub static RRF: Lazy<RrfConfig> = Lazy::new(RrfConfig::default);
 
 pub struct PitConfig {
     /// Weight on the structural component. `1 - blend` goes to the lexical one.
@@ -64,6 +62,4 @@ impl Default for PitConfig {
     }
 }
 
-pub fn pit() -> PitConfig {
-    PitConfig::default()
-}
+pub static PIT: Lazy<PitConfig> = Lazy::new(PitConfig::default);

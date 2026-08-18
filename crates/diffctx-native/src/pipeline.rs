@@ -18,7 +18,7 @@ use crate::discovery::{
 };
 use crate::fragmentation::process_files_for_fragments;
 use crate::git::{self, CatFileBatch};
-use crate::mode::{DiscoveryKind, PipelineConfig, ScoringMode};
+use crate::mode::{PipelineConfig, ScoringMode};
 use crate::postpass;
 use crate::render::{self, DiffContextOutput};
 use crate::scoring::{ScoringResult, create_scoring_strategy};
@@ -399,6 +399,7 @@ pub fn compute_scored_state(
     let file_cache = build_file_cache(&all_candidate_files);
     let mode = scoring_mode;
     let mut config = PipelineConfig::from_mode(mode);
+    config.ppr_alpha = alpha;
     if let Ok(s) = std::env::var("DIFFCTX_OBJECTIVE") {
         config.objective = crate::mode::ObjectiveMode::from_str(&s);
     }
@@ -607,6 +608,7 @@ pub fn run_selection(
                 Some(&file_importance),
                 Some(&state.core_excerpts),
                 state.scoring_result.admissible_files.as_ref(),
+                state.scoring_result.declared_admissible_files.as_ref(),
             )
         }
     };
@@ -620,6 +622,7 @@ pub fn run_selection(
         &state.scoring_result.filtered_fragments,
         &state.scoring_result.graph,
         effective_budget,
+        state.scoring_result.admissible_files.as_ref(),
     );
 
     postpass::rescue_nontrivial_context(
@@ -628,6 +631,7 @@ pub fn run_selection(
         &state.scoring_result.rel_scores,
         &state.core_ids,
         effective_budget,
+        state.scoring_result.admissible_files.as_ref(),
     );
 
     let used: u32 = selected.iter().map(|f| f.token_count).sum();
@@ -1153,6 +1157,7 @@ fn empty_scored_state(root_dir: PathBuf) -> ScoredState {
         policy_excluded_count: 0,
         scoring_result: ScoringResult {
             admissible_files: None,
+            declared_admissible_files: None,
             rel_scores: FxHashMap::default(),
             filtered_fragments: Vec::new(),
             graph: crate::graph::Graph::new(),
@@ -1224,14 +1229,11 @@ fn build_preferred_revs(base_rev: Option<&str>, head_rev: Option<&str>) -> Vec<S
 }
 
 fn create_discovery(config: &PipelineConfig) -> Box<dyn DiscoveryStrategy> {
-    match config.discovery {
-        DiscoveryKind::Ensemble => Box::new(EnsembleDiscovery::new(vec![
-            Box::new(DefaultDiscovery),
-            Box::new(TestFileDiscovery),
-            Box::new(BM25Discovery::new(config.bm25_top_k)),
-        ])),
-        DiscoveryKind::Default => Box::new(DefaultDiscovery),
-    }
+    Box::new(EnsembleDiscovery::new(vec![
+        Box::new(DefaultDiscovery),
+        Box::new(TestFileDiscovery),
+        Box::new(BM25Discovery::new(config.bm25_top_k)),
+    ]))
 }
 
 fn build_file_cache(candidate_files: &[PathBuf]) -> FxHashMap<PathBuf, String> {

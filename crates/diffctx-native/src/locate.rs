@@ -147,21 +147,6 @@ pub struct LocateItem {
     pub reasons: Vec<Reason>,
 }
 
-/// #182 unified the `TestEdge` builder and the needs matcher onto
-/// `crate::testfiles`, but missed this one — locate carried a third, weaker
-/// answer, and `summary.tests` in the shipped blast-radius view undercounted
-/// because of it. It lowercased the path first, so every CamelCase convention
-/// was invisible: `FooTest.java` outside a test directory, `AuthSpec.scala`,
-/// `widget-test.js` (hyphen form) and `src/tests.rs` all read as ordinary code.
-///
-/// One rule moves the other way: a `testing/` directory no longer counts. The
-/// shared implementation excludes it deliberately — `testing` is Go's stdlib
-/// package name and such directories hold helpers, not tests — and its unit
-/// tests pin `src/testing.rs` as non-test.
-fn is_test_path(path: &str) -> bool {
-    crate::testfiles::is_test_path(Path::new(path))
-}
-
 const CONFIG_EXTENSIONS: &[&str] = &[
     "yaml",
     "yml",
@@ -176,7 +161,7 @@ const CONFIG_EXTENSIONS: &[&str] = &[
 
 fn group_of(path: &str, kind: crate::types::FragmentKind) -> Option<&'static str> {
     use crate::types::FragmentKind as K;
-    if is_test_path(path) {
+    if crate::testfiles::is_test_path(Path::new(path)) {
         return Some("test");
     }
     if matches!(

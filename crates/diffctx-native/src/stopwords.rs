@@ -904,15 +904,6 @@ pub fn get_stopwords(profile: &str) -> &FxHashSet<String> {
     }
 }
 
-pub fn get_min_len(profile: &str) -> usize {
-    match profile {
-        PROFILE_CODE | PROFILE_DOCS | PROFILE_GENERIC => 3,
-        PROFILE_LEGAL => 4,
-        PROFILE_DATA => 2,
-        _ => 3,
-    }
-}
-
 pub fn profile_from_path(path: &str) -> &'static str {
     let p = std::path::Path::new(path);
     let suffix = p

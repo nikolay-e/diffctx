@@ -27,9 +27,12 @@ use crate::types::Fragment;
 
 use self::base::EdgeBuilder;
 
-/// Raw-weight floor above which a Semantic edge counts as a naming channel
-/// (imports/using, calls, type and member refs all sit at >=0.35; tags
-/// fallback at 0.30 and same-package/namespace markers at 0.05 stay diffuse).
+/// Raw-weight floor above which a Semantic, Config or TestEdge edge counts as
+/// a naming channel (imports/using, calls, type and member refs at >=0.35 and
+/// test_direct/test_naming at 0.60/0.50 clear it; tags fallback at 0.30,
+/// test_reverse at 0.30 and same-package/namespace markers at 0.05 stay
+/// diffuse — `naming_reachable_files` walks undirected, so the reverse arc
+/// adds nothing the forward one lacks).
 pub const NAMING_WEIGHT_FLOOR: f64 = 0.30;
 
 const EXPENSIVE_CATEGORIES: &[&str] = &["similarity", "history"];
@@ -179,6 +182,10 @@ pub fn collect_capped_edges(
     // no dedicated semantic edge. Dual coverage was measured as pure noise —
     // a tags edge duplicating a real import/call edge adds mass, not reach —
     // while a parser-degraded file genuinely has nothing else (#131).
+    // A per-pair cross-language escape was tried and measured net-negative
+    // (#217, 2026-08-19: −4/+0 corpus — `.ts`/`.tsx` count as different
+    // languages, so same-project pairs slipped back in); a retry needs
+    // language-FAMILY granularity first.
     let mut per_builder_log = per_builder_log;
     if fallback_flags.iter().any(|&f| f) {
         let mut dedicated_files: FxHashSet<&str> = FxHashSet::default();
@@ -269,8 +276,13 @@ pub fn collect_capped_edges(
                 // fixed channel set rather than trading a scalar band; raw
                 // rather than damped so a hub-suppressed import keeps its
                 // naming status.
+                // TestEdge included (#217): a `widget_test.go` in the same
+                // package, or a `widget.test.ts` with no import, is related to
+                // its source purely by naming convention — the exact relation
+                // the admission gate reads — and no Semantic channel carries it.
                 let naming = (category == EdgeCategory::Semantic
-                    || category == EdgeCategory::Config)
+                    || category == EdgeCategory::Config
+                    || category == EdgeCategory::TestEdge)
                     && e.weight > NAMING_WEIGHT_FLOOR;
                 push_bounded_top_k(
                     per_source.entry(e.src).or_default(),
@@ -357,6 +369,48 @@ pub fn naming_reachable_files(
     core_ids: &rustc_hash::FxHashSet<crate::types::FragmentId>,
     max_depth: usize,
 ) -> rustc_hash::FxHashSet<std::sync::Arc<str>> {
+    reachable_files(capped, core_ids, max_depth, |e| e.naming)
+}
+
+/// Files reachable through DECLARED-relation edges — any Semantic, Config,
+/// ConfigGeneric, Document or TestEdge channel — within `max_depth` hops.
+/// Wider than `naming_reachable_files`: it admits the low-weight declared
+/// channels (config keys, tags at 0.30, latex/terraform references) while
+/// still refusing proximity, lexical similarity and co-change. This is the
+/// admission bar for the singleton comparators (#211): they recover
+/// weak-but-declared relations, which the strict naming floor was measured
+/// to starve (8 recall regressions: config→code, terraform data sources,
+/// latex packages).
+///
+/// The `> 0.05` floor is on the DAMPED weight (what CompactEdge carries):
+/// same-package/namespace markers emit at exactly 0.05 raw and damping only
+/// lowers, so they can never clear it — without the floor they made every
+/// same-package sibling "declared" and the gate admitted the same junk it
+/// exists to block (measured: 143 of 146 corpus improvements lost).
+pub fn declared_reachable_files(
+    capped: &CappedEdges,
+    core_ids: &rustc_hash::FxHashSet<crate::types::FragmentId>,
+    max_depth: usize,
+) -> rustc_hash::FxHashSet<std::sync::Arc<str>> {
+    reachable_files(capped, core_ids, max_depth, |e| {
+        e.weight > 0.05
+            && matches!(
+                e.category,
+                EdgeCategory::Semantic
+                    | EdgeCategory::Config
+                    | EdgeCategory::ConfigGeneric
+                    | EdgeCategory::Document
+                    | EdgeCategory::TestEdge
+            )
+    })
+}
+
+fn reachable_files(
+    capped: &CappedEdges,
+    core_ids: &rustc_hash::FxHashSet<crate::types::FragmentId>,
+    max_depth: usize,
+    keep: impl Fn(&CompactEdge) -> bool,
+) -> rustc_hash::FxHashSet<std::sync::Arc<str>> {
     let n = capped.idx_to_node.len();
     // Undirected on purpose: a naming edge relates the PAIR of files. For
     // several channels the reverse emission (weight*reverse_factor) lands
@@ -366,7 +420,7 @@ pub fn naming_reachable_files(
     // DI).
     let mut adj: Vec<Vec<u32>> = vec![Vec::new(); n];
     for e in &capped.edges {
-        if e.naming {
+        if keep(e) {
             adj[e.src as usize].push(e.dst);
             adj[e.dst as usize].push(e.src);
         }

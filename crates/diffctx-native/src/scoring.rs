@@ -7,12 +7,12 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::config::bm25::BM25;
 use crate::config::edge_weights::SEMANTIC_DISCOVERY;
 use crate::config::limits::{LIMITS, PPR};
-use crate::config::scoring::{EGO, pit, rrf};
+use crate::config::scoring::{EGO, PIT, RRF};
 use crate::config::tokenization::TOKENIZATION;
 use crate::edges;
 use crate::filtering;
 use crate::graph::{self, Graph};
-use crate::mode::{PipelineConfig, ScoringKind};
+use crate::mode::{PipelineConfig, ScoringMode};
 use crate::ppr::personalized_pagerank;
 use crate::types::{DiffHunk, Fragment, FragmentId, extract_identifier_list};
 
@@ -31,6 +31,11 @@ pub struct ScoringResult {
     /// from the core set via naming-class edges. None = admission off (flag
     /// unset or a strategy without a typed graph), every file admissible.
     pub admissible_files: Option<FxHashSet<std::sync::Arc<str>>>,
+    /// Wider admission set for the singleton comparators (#211):
+    /// declared-relation reachability (any semantic/config/document/test
+    /// channel above the marker floor). Superset of `admissible_files`;
+    /// still refuses proximity, lexical similarity and co-change.
+    pub declared_admissible_files: Option<FxHashSet<std::sync::Arc<str>>>,
     pub graph: Graph,
     /// Wall time spent constructing the typed dependency graph (edge
     /// builders + dedup + hub suppression + per-source cap). Reported
@@ -68,6 +73,7 @@ impl Default for ScoringResult {
             rel_scores: FxHashMap::default(),
             filtered_fragments: Vec::new(),
             admissible_files: None,
+            declared_admissible_files: None,
             graph: Graph::new(),
             graph_build_ms: 0.0,
             ppr_truncated: false,
@@ -79,11 +85,11 @@ impl Default for ScoringResult {
 
 pub fn create_scoring_strategy(config: &PipelineConfig) -> Box<dyn ScoringStrategy> {
     match config.scoring {
-        ScoringKind::Ego => Box::new(EgoGraphScoring::new(config.ego_depth)),
-        ScoringKind::Ppr => Box::new(PPRScoring::new(config.ppr_alpha)),
-        ScoringKind::Bm25 => Box::new(BM25Scoring),
-        ScoringKind::Rrf => Box::new(RrfFusionScoring::new(config.ego_depth)),
-        ScoringKind::Pit => Box::new(PitFusionScoring::new(config.ego_depth)),
+        ScoringMode::Ego => Box::new(EgoGraphScoring::new(config.ego_depth)),
+        ScoringMode::Ppr => Box::new(PPRScoring::new(config.ppr_alpha)),
+        ScoringMode::Bm25 => Box::new(BM25Scoring),
+        ScoringMode::Rrf => Box::new(RrfFusionScoring::new(config.ego_depth)),
+        ScoringMode::Pit => Box::new(PitFusionScoring::new(config.ego_depth)),
     }
 }
 
@@ -129,6 +135,9 @@ impl ScoringStrategy for PPRScoring {
         let admissible_files = file_admission_enabled().then(|| {
             edges::naming_reachable_files(&capped, core_ids, SEMANTIC_DISCOVERY.max_depth)
         });
+        let declared_admissible_files = file_admission_enabled().then(|| {
+            edges::declared_reachable_files(&capped, core_ids, SEMANTIC_DISCOVERY.max_depth)
+        });
         let mut g = graph::build_graph_capped(all_fragments, capped);
         let graph_build_ms = t_graph.elapsed().as_secs_f64() * 1000.0;
         let ppr = personalized_pagerank(
@@ -154,6 +163,7 @@ impl ScoringStrategy for PPRScoring {
 
         ScoringResult {
             admissible_files,
+            declared_admissible_files,
             rel_scores,
             filtered_fragments: filtered,
             graph: g,
@@ -193,6 +203,9 @@ impl ScoringStrategy for EgoGraphScoring {
         let admissible_files = file_admission_enabled().then(|| {
             edges::naming_reachable_files(&capped, core_ids, SEMANTIC_DISCOVERY.max_depth)
         });
+        let declared_admissible_files = file_admission_enabled().then(|| {
+            edges::declared_reachable_files(&capped, core_ids, SEMANTIC_DISCOVERY.max_depth)
+        });
         let g = graph::build_graph_capped(all_fragments, capped);
         let graph_build_ms = t_graph.elapsed().as_secs_f64() * 1000.0;
         let mut rel_scores = g.ego_graph(core_ids, self.max_depth);
@@ -222,6 +235,7 @@ impl ScoringStrategy for EgoGraphScoring {
 
         ScoringResult {
             admissible_files,
+            declared_admissible_files,
             rel_scores,
             filtered_fragments: filtered,
             graph: g,
@@ -352,7 +366,7 @@ impl RrfFusionScoring {
     pub fn new(ego_depth: usize) -> Self {
         Self {
             ego_depth,
-            k: rrf().k,
+            k: RRF.k,
         }
     }
 }
@@ -419,6 +433,104 @@ fn fuse_reciprocal_ranks(
     fused
 }
 
+struct FusionComponents {
+    ego: ScoringResult,
+    lexical: ScoringResult,
+    ego_admitted: FxHashSet<FragmentId>,
+    lexical_admitted: FxHashSet<FragmentId>,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_fusion_components(
+    ego_depth: usize,
+    all_fragments: &[Fragment],
+    core_ids: &FxHashSet<FragmentId>,
+    hunks: &[DiffHunk],
+    repo_root: Option<&Path>,
+    seed_weights: Option<&FxHashMap<FragmentId, f64>>,
+    discovered_paths: Option<&FxHashSet<Arc<str>>>,
+    deadline: crate::deadline::Deadline,
+) -> FusionComponents {
+    let ego = EgoGraphScoring::new(ego_depth).score_and_filter(
+        all_fragments,
+        core_ids,
+        hunks,
+        repo_root,
+        seed_weights,
+        discovered_paths,
+        deadline,
+    );
+    let lexical = BM25Scoring.score_and_filter(
+        all_fragments,
+        core_ids,
+        hunks,
+        repo_root,
+        seed_weights,
+        discovered_paths,
+        deadline,
+    );
+    let ego_admitted: FxHashSet<FragmentId> = ego
+        .filtered_fragments
+        .iter()
+        .map(|f| f.id.clone())
+        .collect();
+    let lexical_admitted: FxHashSet<FragmentId> = lexical
+        .filtered_fragments
+        .iter()
+        .map(|f| f.id.clone())
+        .collect();
+    FusionComponents {
+        ego,
+        lexical,
+        ego_admitted,
+        lexical_admitted,
+    }
+}
+
+/// The union re-admits paths that EGO's structural guards dropped (hub noise,
+/// generic-config-only code), because BM25 has no graph to judge them by. The
+/// guards are re-applied and the per-file cap recomputed against the fused
+/// scores via `finish_scoring`, since each component capped against its own.
+///
+/// Measured caveat, not a claim of soundness: re-applying them does NOT make
+/// the union a net win. On the oracle corpus RRF loses 97 cases to EGO and
+/// gains 18, all on precision, and restricting candidates to EGO's admitted
+/// set recovers only 28 of the 82 (#125). A second, unmeasured degree of
+/// freedom: each component already applied `cap_context_fragments` (30/file)
+/// against its own scores before voting, so a fragment the fused ranking
+/// would have kept can have been capped away before it reached the ballot.
+fn assemble_fusion_result(
+    components: FusionComponents,
+    rel_scores: FxHashMap<FragmentId, f64>,
+    all_fragments: &[Fragment],
+    core_ids: &FxHashSet<FragmentId>,
+) -> ScoringResult {
+    let union_ids: FxHashSet<FragmentId> = components
+        .ego_admitted
+        .union(&components.lexical_admitted)
+        .cloned()
+        .collect();
+    let union: Vec<Fragment> = all_fragments
+        .iter()
+        .filter(|f| union_ids.contains(&f.id))
+        .cloned()
+        .collect();
+    let filtered = finish_scoring(&union, core_ids, &rel_scores, &components.ego.graph);
+    ScoringResult {
+        // The fusion inherits the ego component's naming-reachability set:
+        // admission is a graph property, and the fusion's structural half
+        // IS that graph. Leaving this None silently ran fusion arms
+        // without the gate.
+        admissible_files: components.ego.admissible_files.clone(),
+        declared_admissible_files: components.ego.declared_admissible_files.clone(),
+        rel_scores,
+        filtered_fragments: filtered,
+        graph: components.ego.graph,
+        graph_build_ms: components.ego.graph_build_ms,
+        ..Default::default()
+    }
+}
+
 impl ScoringStrategy for RrfFusionScoring {
     fn score_and_filter(
         &self,
@@ -430,7 +542,8 @@ impl ScoringStrategy for RrfFusionScoring {
         discovered_paths: Option<&FxHashSet<Arc<str>>>,
         deadline: crate::deadline::Deadline,
     ) -> ScoringResult {
-        let ego = EgoGraphScoring::new(self.ego_depth).score_and_filter(
+        let c = run_fusion_components(
+            self.ego_depth,
             all_fragments,
             core_ids,
             hunks,
@@ -439,76 +552,15 @@ impl ScoringStrategy for RrfFusionScoring {
             discovered_paths,
             deadline,
         );
-        let lexical = BM25Scoring.score_and_filter(
-            all_fragments,
-            core_ids,
-            hunks,
-            repo_root,
-            seed_weights,
-            discovered_paths,
-            deadline,
-        );
-
-        let ego_admitted: FxHashSet<FragmentId> = ego
-            .filtered_fragments
-            .iter()
-            .map(|f| f.id.clone())
-            .collect();
-        let lexical_admitted: FxHashSet<FragmentId> = lexical
-            .filtered_fragments
-            .iter()
-            .map(|f| f.id.clone())
-            .collect();
-
         let rel_scores = fuse_reciprocal_ranks(
             &[
-                (&ego.rel_scores, &ego_admitted),
-                (&lexical.rel_scores, &lexical_admitted),
+                (&c.ego.rel_scores, &c.ego_admitted),
+                (&c.lexical.rel_scores, &c.lexical_admitted),
             ],
             core_ids,
             self.k,
         );
-
-        let union_ids: FxHashSet<FragmentId> =
-            ego_admitted.union(&lexical_admitted).cloned().collect();
-
-        let union: Vec<Fragment> = all_fragments
-            .iter()
-            .filter(|f| union_ids.contains(&f.id))
-            .cloned()
-            .collect();
-
-        // The union re-admits paths that EGO's structural guards dropped
-        // (hub noise, generic-config-only code), because BM25 has no graph
-        // to judge them by. The guards are re-applied and the per-file cap
-        // recomputed against the fused scores, since each component capped
-        // against its own.
-        //
-        // Measured caveat, not a claim of soundness: re-applying them does NOT
-        // make the union a net win. On the oracle corpus RRF loses 97 cases to
-        // EGO and gains 18, all on precision, and restricting candidates to
-        // EGO's admitted set recovers only 28 of the 82 (#125).
-        //
-        // A second, unmeasured degree of freedom lives here: each component
-        // already applied `cap_context_fragments` (30/file) against its own
-        // scores before voting, so a fragment the fused ranking would have kept
-        // can have been capped away before it ever reached the ballot. The cap
-        // is per file and the losses are cross-file, so this is unlikely to be
-        // the 97 — but it has not been isolated.
-        let filtered = finish_scoring(&union, core_ids, &rel_scores, &ego.graph);
-
-        ScoringResult {
-            // The fusion inherits the ego component's naming-reachability set:
-            // admission is a graph property, and the fusion's structural half
-            // IS that graph. Leaving this None silently ran fusion arms
-            // without the gate.
-            admissible_files: ego.admissible_files.clone(),
-            rel_scores,
-            filtered_fragments: filtered,
-            graph: ego.graph,
-            graph_build_ms: ego.graph_build_ms,
-            ..Default::default()
-        }
+        assemble_fusion_result(c, rel_scores, all_fragments, core_ids)
     }
 }
 
@@ -540,7 +592,7 @@ pub struct PitFusionScoring {
 
 impl PitFusionScoring {
     pub fn new(ego_depth: usize) -> Self {
-        let cfg = pit();
+        let cfg = &*PIT;
         Self {
             ego_depth,
             blend: cfg.blend,
@@ -717,7 +769,8 @@ impl ScoringStrategy for PitFusionScoring {
         discovered_paths: Option<&FxHashSet<Arc<str>>>,
         deadline: crate::deadline::Deadline,
     ) -> ScoringResult {
-        let ego = EgoGraphScoring::new(self.ego_depth).score_and_filter(
+        let c = run_fusion_components(
+            self.ego_depth,
             all_fragments,
             core_ids,
             hunks,
@@ -726,36 +779,15 @@ impl ScoringStrategy for PitFusionScoring {
             discovered_paths,
             deadline,
         );
-        let lexical = BM25Scoring.score_and_filter(
-            all_fragments,
-            core_ids,
-            hunks,
-            repo_root,
-            seed_weights,
-            discovered_paths,
-            deadline,
-        );
-
-        let ego_admitted: FxHashSet<FragmentId> = ego
-            .filtered_fragments
-            .iter()
-            .map(|f| f.id.clone())
-            .collect();
-        let lexical_admitted: FxHashSet<FragmentId> = lexical
-            .filtered_fragments
-            .iter()
-            .map(|f| f.id.clone())
-            .collect();
-
         let (ego_pct, ego_top) = percentiles(
-            &ego.rel_scores,
-            &ego_admitted,
+            &c.ego.rel_scores,
+            &c.ego_admitted,
             core_ids,
             self.agreement_top_k,
         );
         let (lex_pct, lex_top) = percentiles(
-            &lexical.rel_scores,
-            &lexical_admitted,
+            &c.lexical.rel_scores,
+            &c.lexical_admitted,
             core_ids,
             self.agreement_top_k,
         );
@@ -793,11 +825,12 @@ impl ScoringStrategy for PitFusionScoring {
                 rel_scores.insert(fid.clone(), 1.0);
             }
         } else {
-            let mut reference: Vec<f64> = ego
+            let mut reference: Vec<f64> = c
+                .ego
                 .rel_scores
                 .iter()
                 .filter(|(fid, s)| {
-                    **s > 0.0 && !core_ids.contains(*fid) && ego_admitted.contains(*fid)
+                    **s > 0.0 && !core_ids.contains(*fid) && c.ego_admitted.contains(*fid)
                 })
                 .map(|(_, s)| *s)
                 .collect();
@@ -808,33 +841,13 @@ impl ScoringStrategy for PitFusionScoring {
             // excludes cores, but the utility does not, and a synthetic 1.0 on
             // EGO's raw scale is a different number from the one EGO assigns.
             for fid in core_ids {
-                if let Some(s) = ego.rel_scores.get(fid) {
+                if let Some(s) = c.ego.rel_scores.get(fid) {
                     rel_scores.insert(fid.clone(), *s);
                 }
             }
         }
 
-        let union_ids: FxHashSet<FragmentId> =
-            ego_admitted.union(&lexical_admitted).cloned().collect();
-        let union: Vec<Fragment> = all_fragments
-            .iter()
-            .filter(|f| union_ids.contains(&f.id))
-            .cloned()
-            .collect();
-        let filtered = finish_scoring(&union, core_ids, &rel_scores, &ego.graph);
-
-        ScoringResult {
-            // The fusion inherits the ego component's naming-reachability set:
-            // admission is a graph property, and the fusion's structural half
-            // IS that graph. Leaving this None silently ran fusion arms
-            // without the gate.
-            admissible_files: ego.admissible_files.clone(),
-            rel_scores,
-            filtered_fragments: filtered,
-            graph: ego.graph,
-            graph_build_ms: ego.graph_build_ms,
-            ..Default::default()
-        }
+        assemble_fusion_result(c, rel_scores, all_fragments, core_ids)
     }
 }
 

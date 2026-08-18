@@ -98,8 +98,13 @@ pub fn coherence_post_pass(
     all_fragments: &[Fragment],
     graph: &Graph,
     budget: u32,
+    admissible_files: Option<&FxHashSet<Arc<str>>>,
 ) {
     let selected_ids: FxHashSet<FragmentId> = selected.iter().map(|f| f.id.clone()).collect();
+    // #65/#211: the name lookup below can land on an arbitrary same-named
+    // symbol in any file, so a pick opening a NEW file must be naming-
+    // reachable like every other context.
+    let open_paths: FxHashSet<Arc<str>> = selected.iter().map(|f| f.id.path.clone()).collect();
     let mut interval_idx = IntervalIndex::new();
     for f in selected.iter() {
         interval_idx.add(f);
@@ -134,6 +139,8 @@ pub fn coherence_post_pass(
         if pick.token_count <= remaining
             && !added_ids.contains(&pick.id)
             && !interval_idx.overlaps(pick)
+            && admissible_files
+                .is_none_or(|a| open_paths.contains(&pick.id.path) || a.contains(&pick.id.path))
         {
             selected.push(pick.clone());
             added_ids.insert(pick.id.clone());
@@ -168,6 +175,7 @@ pub fn rescue_nontrivial_context(
     rel_scores: &FxHashMap<FragmentId, f64>,
     core_ids: &FxHashSet<FragmentId>,
     budget: u32,
+    admissible_files: Option<&FxHashSet<Arc<str>>>,
 ) {
     let used: u32 = selected.iter().map(|f| f.token_count).sum();
     let remaining = budget.saturating_sub(used);
@@ -188,6 +196,14 @@ pub fn rescue_nontrivial_context(
     let mut represented_paths: FxHashSet<Arc<str>> =
         selected.iter().map(|f| f.id.path.clone()).collect();
     let changed_paths: FxHashSet<Arc<str>> = core_ids.iter().map(|fid| fid.path.clone()).collect();
+    // The admission gate protects an already-useful selection from being
+    // padded with reachable-but-wrong files. When the selection holds NO
+    // context at all (changed files only), there is nothing to dilute and a
+    // weak-channel or similarity-only candidate is strictly better than an
+    // empty answer — measured: every gate-caused corpus regression was a
+    // zero-context selection, while every gate win had context already.
+    let has_context = selected.iter().any(|f| !changed_paths.contains(&f.id.path));
+    let admissible_files = if has_context { admissible_files } else { None };
 
     let mut candidates: Vec<&Fragment> = all_fragments
         .iter()
@@ -198,6 +214,9 @@ pub fn rescue_nontrivial_context(
                 && !represented_paths.contains(&f.id.path)
                 && rel_scores.get(&f.id).copied().unwrap_or(0.0) >= min_score
                 && f.token_count <= rescue_budget
+                // #65/#211: every pick here opens a new file by construction,
+                // so the admission gate applies with no open-file exemption.
+                && admissible_files.is_none_or(|a| a.contains(&f.id.path))
         })
         .collect();
     candidates.sort_by(|a, b| {
@@ -442,7 +461,7 @@ mod tests {
                 Vec::new()
             };
 
-            rescue_nontrivial_context(&mut selected, &all, &rel, &core_ids, budget);
+            rescue_nontrivial_context(&mut selected, &all, &rel, &core_ids, budget, None);
             assert!(
                 cost(&selected) <= budget,
                 "rescue overran budget {budget}: cost {}",
@@ -522,7 +541,7 @@ mod tests {
 
         let mut selected = vec![core];
         // 5% of 2000 = 100 tokens of rescue: room for two 40-token picks.
-        rescue_nontrivial_context(&mut selected, &all, &rel, &core_ids, 2_000);
+        rescue_nontrivial_context(&mut selected, &all, &rel, &core_ids, 2_000, None);
 
         let rescued: Vec<&str> = selected
             .iter()

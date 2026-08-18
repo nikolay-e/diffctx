@@ -28,7 +28,7 @@ pub struct MemoryRepo {
 pub fn build_diff_context_in_memory(
     repo: &MemoryRepo,
     budget_tokens: Option<u32>,
-    _alpha: f64,
+    alpha: f64,
     tau: f64,
     no_content: bool,
     scoring_mode: ScoringMode,
@@ -108,7 +108,8 @@ pub fn build_diff_context_in_memory(
     all_fragments.extend(sig_frags);
 
     let effective_budget = budget_tokens.unwrap_or(BUDGET.unlimited);
-    let config = PipelineConfig::from_mode(scoring_mode);
+    let mut config = PipelineConfig::from_mode(scoring_mode);
+    config.ppr_alpha = alpha;
     let seed_weights = compute_seed_weights(&hunks, &core_ids, &all_fragments);
 
     let discovered_arc: FxHashSet<Arc<str>> = discovered_paths
@@ -144,6 +145,7 @@ pub fn build_diff_context_in_memory(
         Some(&file_importance),
         Some(&core_excerpts),
         scoring_result.admissible_files.as_ref(),
+        scoring_result.declared_admissible_files.as_ref(),
     );
 
     let mut selected = selection.selected;
@@ -153,6 +155,7 @@ pub fn build_diff_context_in_memory(
         &scoring_result.filtered_fragments,
         &scoring_result.graph,
         effective_budget,
+        scoring_result.admissible_files.as_ref(),
     );
 
     crate::postpass::rescue_nontrivial_context(
@@ -161,6 +164,7 @@ pub fn build_diff_context_in_memory(
         &scoring_result.rel_scores,
         &core_ids,
         effective_budget,
+        scoring_result.admissible_files.as_ref(),
     );
 
     let used: u32 = selected.iter().map(|f| f.token_count).sum();
