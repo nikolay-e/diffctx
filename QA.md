@@ -206,10 +206,12 @@ a deployed/web surface ships; re-derive then, don't trust this table.
   lines), `render` agrees with `locate` that an `Excerpt` is `changed`, and
   long uncovered runs are split into bounded chunks so a flat file has
   sub-file granularity at all. #105/#107/#114 closed on their own repros.
-  **Still open for the `context` role** (#123): there is no hunk to window
-  around, and the two obvious fixes both fail — see that issue for the
-  measurement (43 corpus failures, including cases that keep full recall but
-  get worse on forbidden files).
+  **The `context` role was fixed by a different lever** (#123, closed
+  2026-08-04): not windowing (both windowing attempts measured 43 corpus
+  failures each) but the file-level relation encoding (9b41040d) — import-class
+  edges land on the file's representative fragment instead of fanning to every
+  fragment at full weight, so an indivisible 400-line parent stops being
+  selected as context at all.
 - **`coherence_post_pass` is inert by accident and load-bearing for
   precision.** It resolves a dangling semantic neighbour by lowercased
   `symbol_name` instead of by the id the graph edge already gives it. That

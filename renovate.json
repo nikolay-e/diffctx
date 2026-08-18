@@ -40,6 +40,11 @@
       "schedule": ["at any time"]
     },
     {
+      "description": "Python pin must stay inside the CI-tested matrix (ci.yml tops at 3.13)",
+      "matchDepNames": ["python"],
+      "allowedVersions": "<3.14"
+    },
+    {
       "description": "Major updates require manual review",
       "matchUpdateTypes": ["major"],
       "automerge": false,
