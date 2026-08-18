@@ -34,6 +34,11 @@ a deployed/web surface ships; re-derive then, don't trust this table.
   without naming the service.
 - Push `main` to both remotes (mirror sync is periodic; direct push is
   immediate).
+- **Renovate auto-merges its Forgejo PRs** (renovate.json: patch/minor
+  automerge, squash) — possibly hours after opening them, so an "open" PR
+  list is a snapshot, not a queue to hand-merge. A pin that must NOT land
+  needs a `packageRules` constraint (the python `allowedVersions: <3.14`
+  CI-matrix gate is the precedent), not a closed PR.
 - **Forgejo's merge API can return 405 with an empty message on a merge
   that SUCCEEDED.** Never read the HTTP code as the outcome — re-fetch
   the PR (`state`/`merged`) before retrying or escalating; a blind retry

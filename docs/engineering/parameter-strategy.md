@@ -121,7 +121,7 @@ it) to enable the sweep without rebuild.
 > **Not a stable interface.** The `DIFFCTX_OP_*` overrides — along with the
 > other internal toggles (`DIFFCTX_OBJECTIVE`, `DIFFCTX_EGO_*`,
 > `DIFFCTX_NO_COMMIT_SIGNAL`, `DIFFCTX_MAX_FRAGMENTS`,
-> `DIFFCTX_FILE_ADMISSION`, `DIFFCTX_FILE_STAR`, `DIFFCTX_PIT_SHAPE`,
+> `DIFFCTX_FILE_ADMISSION`, `DIFFCTX_PIT_SHAPE`,
 > `DIFFCTX_PIT_TRANSFORM`, `DIFFCTX_MAX_EDGES_PER_NODE`,
 > `DIFFCTX_TRACE_BUILDERS`, and the
 > `DIFFCTX_PROVENANCE_DUMP=<path>` per-candidate telemetry sink) — are experimental

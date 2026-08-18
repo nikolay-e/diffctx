@@ -7,6 +7,7 @@ from typing import Any
 # drift from the engine it wraps. Python always passes `scoring_mode` and `tau`
 # explicitly, so a literal here would quietly override a changed engine default
 # for every Python and MCP caller.
+from diffctx._diffctx import DEFAULT_ALPHA as _DEFAULT_ALPHA
 from diffctx._diffctx import DEFAULT_SCORING as _DEFAULT_SCORING
 from diffctx._diffctx import DEFAULT_TAU as _DEFAULT_TAU
 
@@ -27,7 +28,7 @@ def _normalize_budget(budget_tokens: int | None) -> int | None:
 def compute_scored_state(
     root_dir: Path,
     diff_range: str,
-    alpha: float = 0.60,
+    alpha: float = _DEFAULT_ALPHA,
     scoring_mode: str = _DEFAULT_SCORING,
     timeout: int = _PIPELINE_TIMEOUT,
 ) -> Any:
@@ -69,7 +70,7 @@ def build_locate(
     root_dir: Path,
     diff_range: str,
     budget_tokens: int | None = None,
-    alpha: float = 0.60,
+    alpha: float = _DEFAULT_ALPHA,
     tau: float = _DEFAULT_TAU,
     scoring_mode: str = _DEFAULT_SCORING,
     timeout: int = _PIPELINE_TIMEOUT,
@@ -105,7 +106,7 @@ def build_diff_context(
     root_dir: Path,
     diff_range: str,
     budget_tokens: int | None = None,
-    alpha: float = 0.60,
+    alpha: float = _DEFAULT_ALPHA,
     tau: float = _DEFAULT_TAU,
     no_content: bool = False,
     ignore_file: Path | None = None,
@@ -161,12 +162,7 @@ def build_diff_context(
         alpha=alpha,
         tau=tau,
         no_content=no_content,
-        # All three are guaranteed to be their inert default here: the guards
-        # above raise on any other value until the Rust backend implements them.
-        ignore_file=None,
-        no_default_ignores=False,
         full=full,
-        whitelist_file=None,
         scoring_mode=scoring_mode,
         timeout=timeout,
     )
