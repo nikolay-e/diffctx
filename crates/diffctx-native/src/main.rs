@@ -252,10 +252,8 @@ fn main() -> Result<()> {
 
     let cli = Cli::parse();
 
-    let scoring_mode = ScoringMode::from_str(&cli.scoring).unwrap_or_else(|e| {
-        eprintln!("error: {e}");
-        std::process::exit(2);
-    });
+    let scoring_mode =
+        ScoringMode::from_str(&cli.scoring).expect("clap value_parser already validated --scoring");
 
     // The per-phase git timeout does not bound in-process phases (parse, graph
     // build, scoring), so a pathological repo can hang far past `--timeout`

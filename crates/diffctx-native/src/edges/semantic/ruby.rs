@@ -12,8 +12,7 @@ use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids, discover_files_by_refs};
 
 fn is_ruby_file(path: &Path) -> bool {
-    let ext = base::file_ext(path);
-    RUBY_EXTENSIONS.contains(ext.as_str())
+    RUBY_EXTENSIONS.contains(base::file_ext(path).as_str())
 }
 
 static REQUIRE_RE: Lazy<Regex> =

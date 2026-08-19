@@ -11,7 +11,7 @@ use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge, discover_files_by_refs};
 
 fn is_zig_file(path: &Path) -> bool {
-    base::file_ext(path) == ".zig"
+    base::has_ext(path, &[".zig"])
 }
 
 static IMPORT_RE: Lazy<Regex> =

@@ -11,8 +11,7 @@ use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids, discover_files_by_refs};
 
 fn is_ocaml_file(path: &Path) -> bool {
-    let ext = base::file_ext(path);
-    ext == ".ml" || ext == ".mli"
+    base::has_ext(path, &[".ml", ".mli"])
 }
 
 static OPEN_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^\s*open\s+([A-Z]\w*)").unwrap());

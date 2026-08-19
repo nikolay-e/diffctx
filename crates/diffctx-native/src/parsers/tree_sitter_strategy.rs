@@ -1112,20 +1112,6 @@ fn parse_with_cached_parser(
     })
 }
 
-// Additive observability probe: the fragmentation pipeline itself never
-// inspects `Node::has_error`, so a mostly-ERROR tree (unbalanced brace,
-// stray merge-conflict marker, truncated mid-refactor file) is currently
-// indistinguishable from a clean parse to every caller -- both just
-// produce a Vec<Fragment>. This exposes that signal without changing any
-// existing return path; nothing in `fragment()` calls it yet.
-#[allow(dead_code)]
-pub(crate) fn parse_has_error(path: &str, content: &str) -> Option<bool> {
-    let config = find_lang_config(path)?;
-    let language = get_tree_sitter_language(config.ts_name)?;
-    let tree = parse_with_cached_parser(config.ts_name, &language, content)?;
-    Some(tree.root_node().has_error())
-}
-
 fn node_start_line(node: &Node) -> u32 {
     node.start_position().row as u32 + 1
 }
@@ -2271,15 +2257,6 @@ mod grammar_tests {
             !make_frags.is_empty(),
             "Makefile should route through the make grammar via find_lang_config_by_filename"
         );
-    }
-
-    #[test]
-    fn parse_error_is_observable_via_has_error_probe() {
-        let clean = "def foo():\n    pass\n";
-        let broken = "def foo(\n    pass\n";
-        assert_eq!(parse_has_error("clean.py", clean), Some(false));
-        assert_eq!(parse_has_error("broken.py", broken), Some(true));
-        assert_eq!(parse_has_error("no_grammar.unknownext", clean), None);
     }
 
     // Regression for tree_sitter_strategy.rs:1055 (PARSE_TIMEOUT / minified

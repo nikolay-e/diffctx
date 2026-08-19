@@ -12,12 +12,8 @@ use super::super::base::{
     self, EdgeBuilder, FragmentIndex, add_edge, discover_files_by_refs, link_by_name,
 };
 
-static HASKELL_EXTENSIONS: Lazy<FxHashSet<&str>> =
-    Lazy::new(|| [".hs", ".lhs"].iter().copied().collect());
-
 fn is_haskell_file(path: &Path) -> bool {
-    let ext = base::file_ext(path);
-    HASKELL_EXTENSIONS.contains(ext.as_str())
+    base::has_ext(path, &[".hs", ".lhs"])
 }
 
 static IMPORT_RE: Lazy<Regex> =

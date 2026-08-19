@@ -11,7 +11,7 @@ use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge, discover_files_by_refs};
 
 fn is_lua_file(path: &Path) -> bool {
-    base::file_ext(path) == ".lua"
+    base::has_ext(path, &[".lua"])
 }
 
 static REQUIRE_RE: Lazy<Regex> =

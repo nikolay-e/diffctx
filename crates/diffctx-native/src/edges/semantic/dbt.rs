@@ -15,7 +15,7 @@ fn is_dbt_file(content: &str) -> bool {
 }
 
 fn is_sql_file(path: &Path) -> bool {
-    base::file_ext(path) == ".sql"
+    base::has_ext(path, &[".sql"])
 }
 
 static REF_RE: Lazy<Regex> =

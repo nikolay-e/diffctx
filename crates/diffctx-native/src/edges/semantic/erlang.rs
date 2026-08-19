@@ -11,8 +11,7 @@ use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids, discover_files_by_refs};
 
 fn is_erlang_file(path: &Path) -> bool {
-    let ext = base::file_ext(path);
-    ext == ".erl" || ext == ".hrl"
+    base::has_ext(path, &[".erl", ".hrl"])
 }
 
 static MODULE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^-module\((\w+)\)").unwrap());

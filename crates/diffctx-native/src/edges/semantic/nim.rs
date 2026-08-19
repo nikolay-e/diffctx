@@ -11,8 +11,7 @@ use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge, discover_files_by_refs};
 
 fn is_nim_file(path: &Path) -> bool {
-    let ext = base::file_ext(path);
-    ext == ".nim" || ext == ".nims"
+    base::has_ext(path, &[".nim", ".nims"])
 }
 
 static IMPORT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^\s*import\s+([\w/,\s]+)").unwrap());

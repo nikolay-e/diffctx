@@ -34,6 +34,11 @@ a deployed/web surface ships; re-derive then, don't trust this table.
   without naming the service.
 - Push `main` to both remotes (mirror sync is periodic; direct push is
   immediate).
+- **Renovate auto-merges its Forgejo PRs** (renovate.json: patch/minor
+  automerge, squash) — possibly hours after opening them, so an "open" PR
+  list is a snapshot, not a queue to hand-merge. A pin that must NOT land
+  needs a `packageRules` constraint (the python `allowedVersions: <3.14`
+  CI-matrix gate is the precedent), not a closed PR.
 - **Forgejo's merge API can return 405 with an empty message on a merge
   that SUCCEEDED.** Never read the HTTP code as the outcome — re-fetch
   the PR (`state`/`merged`) before retrying or escalating; a blind retry
@@ -130,13 +135,12 @@ a deployed/web surface ships; re-derive then, don't trust this table.
   `apply_fragment` recording the *excerpt's* identifiers rather than the
   whole core's, so needs the trimmed body used to cover read as
   uncovered and the greedy goes looking for them elsewhere.
-- Post-admission-flip self-eat still emits ~4-5x the changed-file count
-  as context (measured 2026-08-07: 13 visible changed files -> 69 output
-  files): this repo's changed modules (`config/*`, `edges/base`) are
-  imported nearly everywhere, so the naming-reachable set is legitimately
-  wide. Designed behavior, not the #65 proximity class — don't re-file
-  Forgejo #2 from a self-eat read; the open question there is context
-  share, not admission.
+- Self-eat context breadth collapsed after the #211 post-pass/singleton
+  gates (measured 2026-08-19: 61 visible changed files -> 85 output files,
+  i.e. ~0.4 context files per changed file; the 2026-08-07 pre-gate figure
+  was ~4-5x). A wide-context self-eat read is no longer designed behavior —
+  treat a return to multi-x breadth as a regression of the #211 gates, not
+  as the old known shape.
 - `env_overrides.rs` carries name-consistency tests: any new
   `read_env_*("DIFFCTX_*")` must appear in the `parameter-strategy.md`
   Tier-3 table (or the `TIER1_EXTRAS_READ_BUT_NOT_TABLED` allowlist)

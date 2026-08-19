@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The per-file admission gate (#65) now covers every selection path**
+  (#211): both post-selection passes and both singleton comparators used to
+  admit files the greedy was forbidden to open. The rescue pass keeps a
+  measured escape — when the selection holds no context at all, an admissible
+  answer beats an empty one. Singletons admit via a wider declared-relation
+  reachability (config keys, latex/terraform references) so weak-but-declared
+  channels are not starved. Net on the 2725-case oracle corpus: 133 cases
+  fixed, 6 explained regressions (`known_below_threshold.txt` 195 → 68).
+- **`--alpha` now actually reaches PPR scoring** (it was validated and then
+  silently discarded; every run used the default damping regardless).
+- **A fragment deferred by the per-file ceiling still sets the stopping
+  peak** (#197): the tau bar was being calibrated on whatever foreign-file
+  fragment came after the deferred argmax.
+- **Test-file imports are read from every fragment of the file** (#217):
+  module-level imports land in a fragment appended after the definitions, so
+  the old first-fragment read never saw them and the `test_direct` weight
+  never fired for tree-sitter languages. Test-naming edges also join the
+  naming class, so a `widget_test.go` with no import is admissible context.
+
 ## [1.15.0] - 2026-08-19
 
 ### Added

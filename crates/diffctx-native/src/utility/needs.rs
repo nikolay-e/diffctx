@@ -293,12 +293,8 @@ fn defines_strength(scope_match: bool, has_scope: bool) -> f64 {
     }
 }
 
-fn is_test_file(path: &str) -> bool {
-    crate::testfiles::is_test_path(std::path::Path::new(path))
-}
-
 fn is_test_fragment(frag: &Fragment) -> bool {
-    if is_test_file(frag.path()) {
+    if crate::testfiles::is_test_path(std::path::Path::new(frag.path())) {
         return true;
     }
     if let Some(ref sym) = frag.symbol_name {

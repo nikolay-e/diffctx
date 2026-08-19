@@ -400,6 +400,8 @@ fn find_best_singleton(
     rel: &FxHashMap<FragmentId, f64>,
     needs: &[InformationNeed],
     base_state: &UtilityState,
+    open_paths: &FxHashSet<Arc<str>>,
+    admissible_files: Option<&FxHashSet<Arc<str>>>,
 ) -> (Option<Fragment>, f64) {
     let mut best_singleton = None;
     let mut best_gain = 0.0;
@@ -408,6 +410,9 @@ fn find_best_singleton(
             continue;
         }
         if base_selected_ids.overlaps(f) {
+            continue;
+        }
+        if !file_admitted(&f.id.path, open_paths, admissible_files) {
             continue;
         }
         let gain = marginal_gain(f, rel.get(&f.id).copied().unwrap_or(0.0), needs, base_state);
@@ -436,11 +441,16 @@ fn find_best_singleton_full_set(
     rel: &FxHashMap<FragmentId, f64>,
     needs: &[InformationNeed],
     empty_state: &UtilityState,
+    open_paths: &FxHashSet<Arc<str>>,
+    admissible_files: Option<&FxHashSet<Arc<str>>>,
 ) -> (Option<Fragment>, f64) {
     let mut best = None;
     let mut best_gain = 0.0;
     for f in fragments {
         if f.token_count == 0 || f.token_count > budget_tokens {
+            continue;
+        }
+        if !file_admitted(&f.id.path, open_paths, admissible_files) {
             continue;
         }
         let gain = marginal_gain(
@@ -541,12 +551,16 @@ fn run_greedy_loop_heap(
                 break;
             }
 
-            if let Some(admissible) = admissible_files {
-                if !open_files.contains(&best_frag.id.path)
-                    && !admissible.contains(&best_frag.id.path)
-                {
-                    continue;
-                }
+            if !file_admitted(&best_frag.id.path, &open_files, admissible_files) {
+                continue;
+            }
+
+            // A deferred candidate still sets the peak (#197): it was the
+            // legitimate argmax, and excluding it calibrated `tau * peak` on
+            // whatever foreign-file fragment came next — the ceiling is a
+            // budget constraint and must not silently act as a scoring one.
+            if best_density > peak_density {
+                peak_density = best_density;
             }
 
             if ceiling_active {
@@ -561,9 +575,7 @@ fn run_greedy_loop_heap(
                 }
             }
 
-            if best_density > peak_density {
-                peak_density = best_density;
-            } else if peak_density > 0.0 && best_density < tau * peak_density {
+            if peak_density > 0.0 && best_density < tau * peak_density {
                 break;
             }
 
@@ -588,6 +600,18 @@ fn run_greedy_loop_heap(
 
     let threshold = tau * peak_density;
     (state.selected.len(), threshold, loop_iters)
+}
+
+/// #65 admission for every selection path, not only the greedy loop (#211):
+/// a fragment may open a NEW file only if that file is naming-reachable from
+/// the changed set. Files already open keep competing, and `None` means the
+/// gate is disabled (BM25 mode, or `DIFFCTX_FILE_ADMISSION=0`).
+fn file_admitted(
+    path: &Arc<str>,
+    open_paths: &FxHashSet<Arc<str>>,
+    admissible: Option<&FxHashSet<Arc<str>>>,
+) -> bool {
+    admissible.is_none_or(|a| open_paths.contains(path) || a.contains(path))
 }
 
 fn setup_and_select_core(
@@ -678,6 +702,7 @@ pub fn lazy_greedy_select(
     file_importance: Option<&FxHashMap<Arc<str>, f64>>,
     core_excerpts: Option<&FxHashMap<FragmentId, Fragment>>,
     admissible_files: Option<&FxHashSet<Arc<str>>>,
+    declared_admissible_files: Option<&FxHashSet<Arc<str>>>,
 ) -> SelectionResult {
     if fragments.is_empty() {
         return SelectionResult {
@@ -751,6 +776,8 @@ pub fn lazy_greedy_select(
         base_selected_ids.add_id(&f.id);
     }
 
+    let base_open_paths: FxHashSet<Arc<str>> =
+        base_selected.iter().map(|f| f.id.path.clone()).collect();
     let (best_singleton, best_gain) = find_best_singleton(
         &non_core_fragments,
         &base_selected_ids,
@@ -758,6 +785,8 @@ pub fn lazy_greedy_select(
         rel,
         needs,
         &base_state,
+        &base_open_paths,
+        declared_admissible_files,
     );
 
     let empty_state = init_selection_state(core_ids, rel, budget_tokens, file_importance);
@@ -767,6 +796,8 @@ pub fn lazy_greedy_select(
         rel,
         needs,
         &empty_state.utility_state,
+        &base_open_paths,
+        declared_admissible_files,
     );
 
     let mut best_alt_utility = greedy_utility;
@@ -909,6 +940,7 @@ mod tests {
                 None,
                 None,
                 None,
+                None,
             );
             assert!(
                 cost_of(&result.selected) <= budget,
@@ -967,6 +999,7 @@ mod tests {
                     None,
                     None,
                     None,
+                    None,
                 );
                 assert_eq!(
                     result.used_tokens,
@@ -1002,6 +1035,7 @@ mod tests {
             None,
             Some(&excerpts),
             None,
+            None,
         );
 
         let ids: Vec<String> = result
@@ -1026,7 +1060,7 @@ mod tests {
             .collect();
         let core: FxHashSet<FragmentId> = std::iter::once(frags[0].id.clone()).collect();
         let rel = rel_map(&frags, 0.9);
-        let result = lazy_greedy_select(frags, &core, &rel, &[], 400, 0.12, None, None, None);
+        let result = lazy_greedy_select(frags, &core, &rel, &[], 400, 0.12, None, None, None, None);
 
         let ids: FxHashSet<FragmentId> = result.selected.iter().map(|f| f.id.clone()).collect();
         assert_eq!(
@@ -1054,7 +1088,8 @@ mod tests {
         rel.insert(heavy.id.clone(), 1.0);
         rel.insert(frags[2].id.clone(), 0.1);
 
-        let result = lazy_greedy_select(frags, &core, &rel, &[], 2_000, 0.12, None, None, None);
+        let result =
+            lazy_greedy_select(frags, &core, &rel, &[], 2_000, 0.12, None, None, None, None);
         assert!(
             result.selected.iter().any(|f| core.contains(&f.id)),
             "no core fragment survived; reason was {:?}",
@@ -1072,6 +1107,7 @@ mod tests {
             &[],
             1_000,
             0.12,
+            None,
             None,
             None,
             None,
@@ -1158,8 +1194,10 @@ mod tests {
             None,
             None,
             None,
+            None,
         );
-        let no_tau = lazy_greedy_select(frags, &core, &rel, &[], budget, 0.0, None, None, None);
+        let no_tau =
+            lazy_greedy_select(frags, &core, &rel, &[], budget, 0.0, None, None, None, None);
 
         assert_eq!(
             default_tau.reason,
@@ -1226,6 +1264,7 @@ mod tests {
             &[],
             budget,
             0.0,
+            None,
             None,
             None,
             None,
@@ -1323,7 +1362,7 @@ mod tests {
             })
             .collect();
         let core: FxHashSet<FragmentId> = FxHashSet::default();
-        let result = lazy_greedy_select(lone, &core, rel, &[], budget, 0.0, None, None, None);
+        let result = lazy_greedy_select(lone, &core, rel, &[], budget, 0.0, None, None, None, None);
         assert!(
             result.selected.len() >= 9,
             "single-file selection stranded budget: {} fragments",

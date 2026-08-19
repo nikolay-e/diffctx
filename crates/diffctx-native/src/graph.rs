@@ -933,10 +933,12 @@ fn assemble_graph(
     graph
 }
 
-/// Map-based adapter kept for tests and small callers; converts to the
-/// compact representation and delegates. Edges whose endpoints are not
-/// in `fragments` are dropped (the hashmap path silently dropped them
-/// at CSR construction).
+/// Map-based adapter for tests only; converts to the compact representation
+/// and delegates. Edges whose endpoints are not in `fragments` are dropped
+/// (the hashmap path silently dropped them at CSR construction). Note it
+/// builds every edge with `naming: false`, so graphs made this way never
+/// exercise the per-file naming-admission gate (#65).
+#[cfg(test)]
 pub fn build_graph(
     fragments: &[Fragment],
     edges: FxHashMap<(FragmentId, FragmentId), f64>,

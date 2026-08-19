@@ -11,8 +11,7 @@ use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, discover_files_by_refs};
 
 fn is_latex_file(path: &Path) -> bool {
-    let ext = base::file_ext(path);
-    matches!(ext.as_str(), ".tex" | ".sty" | ".cls" | ".bib")
+    base::has_ext(path, &[".tex", ".sty", ".cls", ".bib"])
 }
 
 static INPUT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\\(?:input|include)\{([^}]+)\}").unwrap());

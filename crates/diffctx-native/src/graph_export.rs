@@ -5,22 +5,12 @@ use rustc_hash::FxHashMap;
 use serde::Serialize;
 
 use crate::graph::{EdgeCategory, Graph};
-use crate::project_graph::ProjectGraph;
 use crate::types::{Fragment, FragmentId};
 
 pub struct ProjectGraphView<'a> {
     pub graph: &'a Graph,
     pub fragments: &'a FxHashMap<FragmentId, Fragment>,
     pub root_dir: Option<&'a Path>,
-}
-
-pub fn view_from_project_graph(pg: &ProjectGraph) -> (FxHashMap<FragmentId, Fragment>, &Path) {
-    let map: FxHashMap<FragmentId, Fragment> = pg
-        .fragments
-        .iter()
-        .map(|f| (f.id.clone(), f.clone()))
-        .collect();
-    (map, pg.root_dir.as_path())
 }
 
 #[derive(Debug, Clone, Serialize)]

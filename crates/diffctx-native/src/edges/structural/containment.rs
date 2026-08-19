@@ -22,17 +22,7 @@ impl EdgeBuilder for ContainmentEdgeBuilder {
 
         let mut edges: EdgeDict = FxHashMap::default();
 
-        // Computed only for the experimental star below — OFF by default, and
-        // measured net-negative when ON (#208): 21 corpus regressions vs 14
-        // improvements, 2026-08-16 A/B at shipped defaults.
-        let star_on = std::env::var_os("DIFFCTX_FILE_STAR").is_some();
-        let reps = if star_on {
-            super::super::base::file_representatives(fragments)
-        } else {
-            FxHashMap::default()
-        };
-
-        for (path, frags) in &by_path {
+        for frags in by_path.values() {
             if frags.len() < 2 {
                 continue;
             }
@@ -64,22 +54,6 @@ impl EdgeBuilder for ContainmentEdgeBuilder {
                 }
 
                 stack.push(f);
-            }
-
-            // Experimental intra-file spine: connects every fragment to the
-            // file representative so top-level siblings become mutually
-            // reachable. Ships OFF — the 2026-08-16 corpus A/B measured it
-            // net-negative (#208) — so by default a flat file's siblings are
-            // reachable only through nesting and naming edges, and the
-            // representative-only builders accept that.
-            if star_on {
-                if let Some(rep) = reps.get(*path) {
-                    for f in &sorted {
-                        if f.id != *rep {
-                            add_edge(&mut edges, &f.id, rep, weight, reverse_factor);
-                        }
-                    }
-                }
             }
         }
 

@@ -11,7 +11,7 @@ use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge, discover_files_by_refs};
 
 fn is_julia_file(path: &Path) -> bool {
-    base::file_ext(path) == ".jl"
+    base::has_ext(path, &[".jl"])
 }
 
 static USING_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^\s*using\s+([\w.,\s]+)").unwrap());

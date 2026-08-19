@@ -18,7 +18,7 @@ use crate::discovery::{
 };
 use crate::fragmentation::process_files_for_fragments;
 use crate::git::{self, CatFileBatch};
-use crate::mode::{DiscoveryKind, PipelineConfig, ScoringMode};
+use crate::mode::{PipelineConfig, ScoringMode};
 use crate::postpass;
 use crate::render::{self, DiffContextOutput};
 use crate::scoring::{ScoringResult, create_scoring_strategy};
@@ -207,35 +207,49 @@ fn count_text_lines(path: &Path) -> Option<u32> {
 /// Heavy phase: clone/parse/fragment/discover/tokenize/score. Independent
 /// of `tau`/`core_budget_fraction`. Designed to be computed ONCE per
 /// instance and reused across an arbitrary number of selection cells.
-pub fn compute_scored_state(
+/// Everything `compute_scored_state` decides BEFORE any parsing: the hunk
+/// set after the disclosure policy ran, the changed-file list after every
+/// exclusion, and the display/count lists those policies owe the output.
+/// Extracted so the four policy stances (#85, #188, #214: gitignore = list
+/// paths, `.diffctx/ignore` = count only, secrets = count only, lockfiles =
+/// paths sans churn) are readable as one unit.
+struct ChangeSetData {
+    hunks: Vec<crate::types::DiffHunk>,
+    diff_text: String,
+    changed_files: Vec<PathBuf>,
+    deleted_display: Vec<String>,
+    renamed_display: Vec<(String, String)>,
+    lockfile_display: Vec<String>,
+    ignored_display: Vec<String>,
+    policy_excluded: usize,
+    preferred_revs: Vec<String>,
+    commit_message: Option<String>,
+    head_rev: Option<String>,
+    pre_phase_ms: f64,
+}
+
+enum ChangeSet {
+    /// Nothing analyzable remains; carries exactly what the empty output
+    /// still owes the reader (each early-exit discloses what IT withheld).
+    Empty {
+        lockfile_changes: Vec<String>,
+        ignored_changes: Vec<String>,
+        policy_excluded_count: usize,
+    },
+    Ready(Box<ChangeSetData>),
+}
+
+fn resolve_change_set(
     root_dir: &Path,
     diff_range: Option<&str>,
-    alpha: f64,
-    scoring_mode: ScoringMode,
-    timeout: u64,
-) -> Result<ScoredState> {
-    let t_entry = Instant::now();
-    git::set_git_timeout(timeout);
-    let deadline = crate::deadline::Deadline::from_timeout_secs(timeout);
-    let root_dir = resolve_repo_root(root_dir)?;
-    if alpha <= 0.0 || alpha >= 1.0 {
-        anyhow::bail!("alpha must be in (0, 1), got {}", alpha);
-    }
+    is_working_tree_diff: bool,
+    t_entry: Instant,
+) -> Result<ChangeSet> {
+    let mut hunks = git::parse_diff(root_dir, diff_range)?;
 
-    let resolved = git::resolve_duration_range(&root_dir, diff_range)?;
-    let diff_range = resolved.range.as_deref();
-
-    let mut hunks = git::parse_diff(&root_dir, diff_range)?;
-
-    // Untracked files only matter when the diff includes the live working
-    // tree. `None` and the literal "HEAD" both mean that (the CLI resolves
-    // bare `--diff` to the string "HEAD" before reaching here) - a historical
-    // range like `HEAD~5..HEAD~3` does not include working-tree state. A
-    // duration window ends at "now", so it includes it too.
-    let is_working_tree_diff = resolved.from_duration || matches!(diff_range, None | Some("HEAD"));
     let mut untracked_files: Vec<PathBuf> = Vec::new();
     if is_working_tree_diff {
-        if let Ok(files) = git::get_untracked_files(&root_dir) {
+        if let Ok(files) = git::get_untracked_files(root_dir) {
             for f in &files {
                 if let Some(line_count) = count_text_lines(f) {
                     if line_count > 0 {
@@ -262,7 +276,7 @@ pub fn compute_scored_state(
     hunks.retain(|h| {
         let p = Path::new(&*h.path);
         if is_secret_path(p) {
-            if let Some(rel) = rel_path_string(&root_dir, p) {
+            if let Some(rel) = rel_path_string(root_dir, p) {
                 secret_excluded_paths.insert(rel);
             }
             false
@@ -272,12 +286,14 @@ pub fn compute_scored_state(
     });
 
     if hunks.is_empty() {
-        let mut state = empty_scored_state_with_changes(root_dir, diff_range);
-        state.policy_excluded_count = secret_excluded_paths.len();
-        return Ok(state);
+        return Ok(ChangeSet::Empty {
+            lockfile_changes: Vec::new(),
+            ignored_changes: Vec::new(),
+            policy_excluded_count: secret_excluded_paths.len(),
+        });
     }
 
-    let ignored_rel_paths = resolve_ignored_paths(&root_dir, &hunks);
+    let ignored_rel_paths = resolve_ignored_paths(root_dir, &hunks);
     // gitignore-excluded changed files are listed by path; `.diffctx/ignore`
     // is a declared confidentiality policy, so its exclusions surface as a
     // count only — re-publishing the very paths the user asked to withhold
@@ -289,7 +305,7 @@ pub fn compute_scored_state(
     let mut policy_excluded_paths: FxHashSet<String> = FxHashSet::default();
     for h in &hunks {
         let p = Path::new(&*h.path);
-        let Some(rel) = rel_path_string(&root_dir, p) else {
+        let Some(rel) = rel_path_string(root_dir, p) else {
             continue;
         };
         match ignored_rel_paths.get(&rel) {
@@ -303,52 +319,56 @@ pub fn compute_scored_state(
     let policy_excluded = policy_excluded_paths.len() + secret_excluded_paths.len();
     ignored_display.sort();
     ignored_display.dedup();
-    hunks.retain(|h| !is_ignored_path(&root_dir, Path::new(&*h.path), &ignored_rel_paths));
+    hunks.retain(|h| !is_ignored_path(root_dir, Path::new(&*h.path), &ignored_rel_paths));
 
     let mut lockfile_display: Vec<String> = hunks
         .iter()
         .filter(|h| is_lockfile_path(Path::new(&*h.path)))
-        .filter_map(|h| rel_path_string(&root_dir, Path::new(&*h.path)))
+        .filter_map(|h| rel_path_string(root_dir, Path::new(&*h.path)))
         .collect();
     lockfile_display.sort();
     lockfile_display.dedup();
     hunks.retain(|h| !is_lockfile_path(Path::new(&*h.path)));
 
     if hunks.is_empty() {
-        let mut state = empty_scored_state_with_changes(root_dir, diff_range);
-        state.lockfile_changes = lockfile_display;
-        state.ignored_changes = ignored_display;
-        state.policy_excluded_count = policy_excluded;
-        return Ok(state);
+        return Ok(ChangeSet::Empty {
+            lockfile_changes: lockfile_display,
+            ignored_changes: ignored_display,
+            policy_excluded_count: policy_excluded,
+        });
     }
 
-    let diff_text = git::get_diff_text(&root_dir, diff_range)?;
+    let diff_text = git::get_diff_text(root_dir, diff_range)?;
 
-    let mut changed_files = git::get_changed_files(&root_dir, diff_range)?;
+    let mut changed_files = git::get_changed_files(root_dir, diff_range)?;
     changed_files.extend(untracked_files);
     if changed_files.is_empty() {
-        return Ok(empty_scored_state_with_changes(root_dir, diff_range));
+        return Ok(ChangeSet::Empty {
+            lockfile_changes: Vec::new(),
+            ignored_changes: Vec::new(),
+            policy_excluded_count: 0,
+        });
     }
 
-    let deleted_files = git::get_deleted_files(&root_dir, diff_range)?;
+    let deleted_files = git::get_deleted_files(root_dir, diff_range)?;
     // Rename source paths are gone from disk and cannot be fragmented; the
     // destinations exist on HEAD and stay candidates via the changed set below,
     // so seeds and discovery still find them.
-    let renamed_old = git::get_renamed_paths(&root_dir, diff_range)?;
+    let renamed_old = git::get_renamed_paths(root_dir, diff_range)?;
     // Display lists for the output header: deletions and renames produce no
     // fragments, but silently omitting them misrepresents the diff (a
     // deletion-only commit used to render as a bare two-line skeleton).
     let mut deleted_display: Vec<String> = deleted_files
         .iter()
         .map(|p| {
-            p.strip_prefix(&root_dir)
+            p.strip_prefix(root_dir)
                 .unwrap_or(p)
                 .to_string_lossy()
                 .replace('\\', "/")
         })
         .collect();
     deleted_display.sort();
-    let renamed_display = git::get_rename_pairs(&root_dir, diff_range).unwrap_or_default();
+    let renamed_display = git::get_rename_pairs(root_dir, diff_range).unwrap_or_default();
     let excluded: FxHashSet<PathBuf> = deleted_files.into_iter().chain(renamed_old).collect();
     let changed_files: Vec<PathBuf> = changed_files
         .into_iter()
@@ -357,7 +377,7 @@ pub fn compute_scored_state(
             !excluded.contains(&resolved)
                 && !is_secret_path(f)
                 && !is_lockfile_path(f)
-                && !is_ignored_path(&root_dir, f, &ignored_rel_paths)
+                && !is_ignored_path(root_dir, f, &ignored_rel_paths)
         })
         .collect();
 
@@ -367,7 +387,7 @@ pub fn compute_scored_state(
     let preferred_revs = build_preferred_revs(base_rev.as_deref(), head_rev.as_deref());
     let commit_message = head_rev
         .as_deref()
-        .and_then(|h| git::get_commit_message(&root_dir, h).ok())
+        .and_then(|h| git::get_commit_message(root_dir, h).ok())
         .and_then(|m| {
             m.lines()
                 .map(str::trim)
@@ -375,8 +395,77 @@ pub fn compute_scored_state(
                 .map(str::to_string)
         });
 
+    let pre_phase_ms = t_entry.elapsed().as_secs_f64() * 1000.0;
+    Ok(ChangeSet::Ready(Box::new(ChangeSetData {
+        hunks,
+        diff_text,
+        changed_files,
+        deleted_display,
+        renamed_display,
+        lockfile_display,
+        ignored_display,
+        policy_excluded,
+        preferred_revs,
+        commit_message,
+        head_rev,
+        pre_phase_ms,
+    })))
+}
+
+pub fn compute_scored_state(
+    root_dir: &Path,
+    diff_range: Option<&str>,
+    alpha: f64,
+    scoring_mode: ScoringMode,
+    timeout: u64,
+) -> Result<ScoredState> {
+    let t_entry = Instant::now();
+    git::set_git_timeout(timeout);
+    let deadline = crate::deadline::Deadline::from_timeout_secs(timeout);
+    let root_dir = resolve_repo_root(root_dir)?;
+    if alpha <= 0.0 || alpha >= 1.0 {
+        anyhow::bail!("alpha must be in (0, 1), got {}", alpha);
+    }
+
+    let resolved = git::resolve_duration_range(&root_dir, diff_range)?;
+    let diff_range = resolved.range.as_deref();
+    // Untracked files only matter when the diff includes the live working
+    // tree. `None` and the literal "HEAD" both mean that (the CLI resolves
+    // bare `--diff` to the string "HEAD" before reaching here) - a historical
+    // range like `HEAD~5..HEAD~3` does not include working-tree state. A
+    // duration window ends at "now", so it includes it too.
+    let is_working_tree_diff = resolved.from_duration || matches!(diff_range, None | Some("HEAD"));
+
+    let data = match resolve_change_set(&root_dir, diff_range, is_working_tree_diff, t_entry)? {
+        ChangeSet::Empty {
+            lockfile_changes,
+            ignored_changes,
+            policy_excluded_count,
+        } => {
+            let mut state = empty_scored_state_with_changes(root_dir, diff_range);
+            state.lockfile_changes = lockfile_changes;
+            state.ignored_changes = ignored_changes;
+            state.policy_excluded_count = policy_excluded_count;
+            return Ok(state);
+        }
+        ChangeSet::Ready(data) => data,
+    };
+    let ChangeSetData {
+        hunks,
+        diff_text,
+        changed_files,
+        deleted_display,
+        renamed_display,
+        lockfile_display,
+        ignored_display,
+        policy_excluded,
+        preferred_revs,
+        commit_message,
+        head_rev,
+        pre_phase_ms,
+    } = *data;
+
     let t0 = Instant::now();
-    let pre_phase_ms = t0.duration_since(t_entry).as_secs_f64() * 1000.0;
 
     let mut seen_frag_ids: FxHashSet<FragmentId> = FxHashSet::default();
     let mut batch_reader = CatFileBatch::new(&root_dir)?;
@@ -399,6 +488,7 @@ pub fn compute_scored_state(
     let file_cache = build_file_cache(&all_candidate_files);
     let mode = scoring_mode;
     let mut config = PipelineConfig::from_mode(mode);
+    config.ppr_alpha = alpha;
     if let Ok(s) = std::env::var("DIFFCTX_OBJECTIVE") {
         config.objective = crate::mode::ObjectiveMode::from_str(&s);
     }
@@ -556,6 +646,82 @@ pub struct SelectionOutcome {
     pub select_ms: f64,
 }
 
+/// Selection + the two admission-gated post-passes — the git-free part of
+/// the chain, shared by the product pipeline (`run_selection`) and the
+/// in-memory corpus harness so the harness scores the shipped system by
+/// construction. It used to be re-spelled by hand in `memory_pipeline.rs`,
+/// which is how the harness once measured a system nobody runs (#149).
+#[allow(clippy::too_many_arguments)]
+pub fn select_and_postpass(
+    scoring_result: &ScoringResult,
+    all_fragments: &[Fragment],
+    core_ids: &FxHashSet<FragmentId>,
+    needs: &[InformationNeed],
+    core_excerpts: &FxHashMap<FragmentId, Fragment>,
+    objective: crate::mode::ObjectiveMode,
+    effective_budget: u32,
+    tau: f64,
+) -> (Vec<Fragment>, usize, f64) {
+    let selection_result = match objective {
+        crate::mode::ObjectiveMode::BoltzmannModular => {
+            let beta = crate::utility::calibrate_beta(
+                &scoring_result.filtered_fragments,
+                core_ids,
+                &scoring_result.rel_scores,
+                effective_budget,
+                crate::config::selection::boltzmann().calibration_tolerance,
+            );
+            tracing::debug!("diffctx: boltzmann beta calibrated to {:.6e}", beta);
+            crate::utility::boltzmann_select(
+                &scoring_result.filtered_fragments,
+                core_ids,
+                &scoring_result.rel_scores,
+                effective_budget,
+                beta,
+            )
+        }
+        crate::mode::ObjectiveMode::Submodular => {
+            let file_importance =
+                crate::utility::compute_file_importance(&scoring_result.filtered_fragments);
+            crate::select::lazy_greedy_select(
+                scoring_result.filtered_fragments.clone(),
+                core_ids,
+                &scoring_result.rel_scores,
+                needs,
+                effective_budget,
+                tau,
+                Some(&file_importance),
+                Some(core_excerpts),
+                scoring_result.admissible_files.as_ref(),
+                scoring_result.declared_admissible_files.as_ref(),
+            )
+        }
+    };
+
+    let selection_iters = selection_result.greedy_iters;
+    let stopping_certificate = selection_result.stopping_certificate;
+    let mut selected = selection_result.selected;
+
+    postpass::coherence_post_pass(
+        &mut selected,
+        &scoring_result.filtered_fragments,
+        &scoring_result.graph,
+        effective_budget,
+        scoring_result.admissible_files.as_ref(),
+    );
+
+    postpass::rescue_nontrivial_context(
+        &mut selected,
+        all_fragments,
+        &scoring_result.rel_scores,
+        core_ids,
+        effective_budget,
+        scoring_result.admissible_files.as_ref(),
+    );
+
+    (selected, selection_iters, stopping_certificate)
+}
+
 /// Selection + the 3 post-passes, shared verbatim by the pack renderer
 /// (`select_with_params`) and the locate renderer — extracting it is pure
 /// code motion so both modes select identically by construction.
@@ -576,58 +742,15 @@ pub fn run_selection(
         auto.clamp(BUDGET.auto_min, BUDGET.auto_max)
     });
 
-    let selection_result = match state.config.objective {
-        crate::mode::ObjectiveMode::BoltzmannModular => {
-            let beta = crate::utility::calibrate_beta(
-                &state.scoring_result.filtered_fragments,
-                &state.core_ids,
-                &state.scoring_result.rel_scores,
-                effective_budget,
-                crate::config::selection::boltzmann().calibration_tolerance,
-            );
-            tracing::debug!("diffctx: boltzmann beta calibrated to {:.6e}", beta);
-            crate::utility::boltzmann_select(
-                &state.scoring_result.filtered_fragments,
-                &state.core_ids,
-                &state.scoring_result.rel_scores,
-                effective_budget,
-                beta,
-            )
-        }
-        crate::mode::ObjectiveMode::Submodular => {
-            let file_importance =
-                crate::utility::compute_file_importance(&state.scoring_result.filtered_fragments);
-            crate::select::lazy_greedy_select(
-                state.scoring_result.filtered_fragments.clone(),
-                &state.core_ids,
-                &state.scoring_result.rel_scores,
-                &state.needs,
-                effective_budget,
-                tau,
-                Some(&file_importance),
-                Some(&state.core_excerpts),
-                state.scoring_result.admissible_files.as_ref(),
-            )
-        }
-    };
-
-    let selection_iters = selection_result.greedy_iters;
-    let stopping_certificate = selection_result.stopping_certificate;
-    let mut selected = selection_result.selected;
-
-    postpass::coherence_post_pass(
-        &mut selected,
-        &state.scoring_result.filtered_fragments,
-        &state.scoring_result.graph,
-        effective_budget,
-    );
-
-    postpass::rescue_nontrivial_context(
-        &mut selected,
+    let (mut selected, selection_iters, stopping_certificate) = select_and_postpass(
+        &state.scoring_result,
         &state.all_fragments,
-        &state.scoring_result.rel_scores,
         &state.core_ids,
+        &state.needs,
+        &state.core_excerpts,
+        state.config.objective,
         effective_budget,
+        tau,
     );
 
     let used: u32 = selected.iter().map(|f| f.token_count).sum();
@@ -1153,6 +1276,7 @@ fn empty_scored_state(root_dir: PathBuf) -> ScoredState {
         policy_excluded_count: 0,
         scoring_result: ScoringResult {
             admissible_files: None,
+            declared_admissible_files: None,
             rel_scores: FxHashMap::default(),
             filtered_fragments: Vec::new(),
             graph: crate::graph::Graph::new(),
@@ -1224,14 +1348,11 @@ fn build_preferred_revs(base_rev: Option<&str>, head_rev: Option<&str>) -> Vec<S
 }
 
 fn create_discovery(config: &PipelineConfig) -> Box<dyn DiscoveryStrategy> {
-    match config.discovery {
-        DiscoveryKind::Ensemble => Box::new(EnsembleDiscovery::new(vec![
-            Box::new(DefaultDiscovery),
-            Box::new(TestFileDiscovery),
-            Box::new(BM25Discovery::new(config.bm25_top_k)),
-        ])),
-        DiscoveryKind::Default => Box::new(DefaultDiscovery),
-    }
+    Box::new(EnsembleDiscovery::new(vec![
+        Box::new(DefaultDiscovery),
+        Box::new(TestFileDiscovery),
+        Box::new(BM25Discovery::new(config.bm25_top_k)),
+    ]))
 }
 
 fn build_file_cache(candidate_files: &[PathBuf]) -> FxHashMap<PathBuf, String> {

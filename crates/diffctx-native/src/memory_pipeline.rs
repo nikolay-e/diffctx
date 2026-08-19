@@ -28,7 +28,7 @@ pub struct MemoryRepo {
 pub fn build_diff_context_in_memory(
     repo: &MemoryRepo,
     budget_tokens: Option<u32>,
-    _alpha: f64,
+    alpha: f64,
     tau: f64,
     no_content: bool,
     scoring_mode: ScoringMode,
@@ -108,7 +108,8 @@ pub fn build_diff_context_in_memory(
     all_fragments.extend(sig_frags);
 
     let effective_budget = budget_tokens.unwrap_or(BUDGET.unlimited);
-    let config = PipelineConfig::from_mode(scoring_mode);
+    let mut config = PipelineConfig::from_mode(scoring_mode);
+    config.ppr_alpha = alpha;
     let seed_weights = compute_seed_weights(&hunks, &core_ids, &all_fragments);
 
     let discovered_arc: FxHashSet<Arc<str>> = discovered_paths
@@ -132,35 +133,15 @@ pub fn build_diff_context_in_memory(
 
     let needs = crate::utility::needs::needs_from_diff(&all_fragments, &core_ids, &diff_text);
 
-    let file_importance =
-        crate::utility::compute_file_importance(&scoring_result.filtered_fragments);
-    let selection = crate::select::lazy_greedy_select(
-        scoring_result.filtered_fragments.clone(),
+    let (mut selected, _, _) = crate::pipeline::select_and_postpass(
+        &scoring_result,
+        &all_fragments,
         &core_ids,
-        &scoring_result.rel_scores,
         &needs,
+        &core_excerpts,
+        config.objective,
         effective_budget,
         tau,
-        Some(&file_importance),
-        Some(&core_excerpts),
-        scoring_result.admissible_files.as_ref(),
-    );
-
-    let mut selected = selection.selected;
-
-    crate::postpass::coherence_post_pass(
-        &mut selected,
-        &scoring_result.filtered_fragments,
-        &scoring_result.graph,
-        effective_budget,
-    );
-
-    crate::postpass::rescue_nontrivial_context(
-        &mut selected,
-        &all_fragments,
-        &scoring_result.rel_scores,
-        &core_ids,
-        effective_budget,
     );
 
     let used: u32 = selected.iter().map(|f| f.token_count).sum();

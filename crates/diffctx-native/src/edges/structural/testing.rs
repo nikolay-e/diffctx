@@ -82,12 +82,14 @@ impl EdgeBuilder for TestEdgeBuilder {
         let test_reverse_weight = EDGE_WEIGHTS["test_reverse"].forward;
 
         let mut test_frags: Vec<&Fragment> = Vec::new();
+        let mut test_frags_by_path: FxHashMap<&str, Vec<&Fragment>> = FxHashMap::default();
         let mut by_base: FxHashMap<String, Vec<&Fragment>> = FxHashMap::default();
 
         for f in fragments {
             let path = Path::new(f.path());
             if is_test_file(path) {
                 test_frags.push(f);
+                test_frags_by_path.entry(f.path()).or_default().push(f);
             } else {
                 let stem = path
                     .file_stem()
@@ -105,14 +107,6 @@ impl EdgeBuilder for TestEdgeBuilder {
                     .entry(path_str)
                     .or_insert_with_key(|_| path_to_module(Path::new(sf.path()), repo_root));
             }
-        }
-
-        let mut import_cache: FxHashMap<String, FxHashSet<String>> = FxHashMap::default();
-        for tf in &test_frags {
-            let path_str = tf.path().to_string();
-            import_cache
-                .entry(path_str)
-                .or_insert_with(|| extract_imports(&tf.content));
         }
 
         let reps = base::file_representatives(fragments);
@@ -144,11 +138,6 @@ impl EdgeBuilder for TestEdgeBuilder {
                 None => continue,
             };
 
-            let test_imports = import_cache
-                .get(test_frag.path())
-                .cloned()
-                .unwrap_or_default();
-
             // `config_test` names `config` — but which one? envoy holds 520
             // files with that stem, and pairing every test fragment with every
             // fragment of every one of them put 180M edges out of this builder
@@ -176,6 +165,20 @@ impl EdgeBuilder for TestEdgeBuilder {
             let Some(test_rep) = reps.get(test_frag.path()) else {
                 continue;
             };
+            // Imports come from EVERY fragment of the test file: module-level
+            // import statements land in a gap fragment appended AFTER the
+            // definitions, so reading only the first fragment (the old
+            // import_cache) never saw them and `test_direct` never fired for
+            // tree-sitter languages. Computed here, past the continues, so
+            // only test files that actually produce edges pay the regex.
+            let test_imports: FxHashSet<String> = test_frags_by_path
+                .get(test_frag.path())
+                .map(|frs| {
+                    frs.iter()
+                        .flat_map(|f| extract_imports(&f.content))
+                        .collect()
+                })
+                .unwrap_or_default();
             for src_frag in chosen {
                 if !linked_file_pairs.insert((test_frag.path(), src_frag.path())) {
                     continue;

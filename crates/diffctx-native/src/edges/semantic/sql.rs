@@ -11,7 +11,7 @@ use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge, discover_files_by_refs};
 
 fn is_sql_file(path: &Path) -> bool {
-    base::file_ext(path) == ".sql"
+    base::has_ext(path, &[".sql"])
 }
 
 static CREATE_RE: Lazy<Regex> = Lazy::new(|| {

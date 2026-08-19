@@ -11,8 +11,7 @@ use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, discover_files_by_refs};
 
 fn is_css_file(path: &Path) -> bool {
-    let ext = base::file_ext(path);
-    matches!(ext.as_str(), ".css" | ".scss" | ".less" | ".sass")
+    base::has_ext(path, &[".css", ".scss", ".less", ".sass"])
 }
 
 static IMPORT_RE: Lazy<Regex> =

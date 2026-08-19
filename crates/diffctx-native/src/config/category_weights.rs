@@ -4,12 +4,11 @@
 //! Each fine-grained edge type (130+ in `weights.rs`) carries a default
 //! domain-prior weight. On top, every edge is scaled by a per-category
 //! multiplier `w_τ ∈ R_{≥0}`, one per `EdgeCategory` variant (10 total).
-//! These ten scalars are the parameters intended for offline calibration
-//! (Bayesian opt / grid search) against a labeled corpus, as described in
-//! paper Section 4.3 (Edge-Type Weight Calibration).
 //!
-//! Default for every variant is 1.0 (no scaling — the fine-grained
-//! prior weights from `weights.rs` apply unchanged).
+//! Every multiplier is fixed at 1.0: no calibration has ever run on them and
+//! there is no runtime override plumbing (see parameter-strategy.md, Tier 1).
+//! The mechanism exists as the declared calibration surface of paper Section
+//! 4.3 — do not read it as a live, tuned feature.
 
 use once_cell::sync::Lazy;
 
