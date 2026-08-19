@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.15.0] - 2026-08-19
+
+### Added
+
+- **Changed files that produced no fragments are disclosed in the md/text
+  output** ("Changed files not represented in the output"): a range whose
+  selection dropped some changed files no longer hides the gap — the footer
+  names exactly the changed files absent from the fragment list. Derived
+  from the already policy-clean `changed_files`, so withheld paths can never
+  appear in it.
+
+### Fixed
+
+- **Path-reference ambiguity cap counted duplicate index keys** (#207): every
+  file was indexed under its absolute AND repo-relative path, so
+  `MAX_FILES_PER_PATH_REF` (8) effectively halved, and host directory
+  components (`/home/runner/work/...`) matched references they had nothing
+  to do with. The index now carries one repo-relative posix entry per file.
+- **`<script>` type detection** (#213): `data-type="json"` no longer opts a
+  real JavaScript block out of parsing, and a legal MIME parameter
+  (`type="text/javascript; charset=utf-8"`) no longer degrades the block to
+  raw line windows.
+- **Scala import/package extraction gaps** (#215): Scala 3 renames
+  (`import a.b.C as D`, `a.{B as C}`) keep the original name, multi-line
+  brace imports keep their selectors, and nested package blocks no longer
+  concatenate sibling scopes into a nonexistent package.
+- **Rust `pub use` re-export registration no longer depends on file
+  iteration order** (#199): registration now runs after the definition maps
+  are complete, so a re-export defined in a later-iterated file still
+  resolves (`rust_027_arc_mutex` left the corpus baseline on this fix).
+- **The per-file budget ceiling now also gates signature substitution**
+  (#212): a file at its ceiling can no longer keep placing signature stubs
+  ahead of other files' cores.
+- **A signature stub substituted for a changed core renders as `changed`**
+  (#209): the stub shares the core's location, and both surfaces (pack render
+  and locate) now agree it carries the change, same as an excerpt. Ordinary
+  context signatures stay context.
+- **Config-key word boundaries treat non-ASCII bytes as word bytes** (#216):
+  a config key ending exactly where a non-ASCII letter begins (e.g. inside
+  `tokenización`) is no longer a match, restoring the Unicode-`\b` rejection
+  the Aho-Corasick rewrite lost.
+
 ## [1.14.0] - 2026-08-16
 
 ### Fixed
@@ -993,7 +1035,8 @@ Earlier releases shipped as `treemapper`; see
 <https://github.com/nikolay-e/diffctx/releases> for the corresponding GitHub
 release notes (`1.0.0` through `1.6.1`).
 
-[Unreleased]: https://github.com/nikolay-e/diffctx/compare/v1.14.0...HEAD
+[Unreleased]: https://github.com/nikolay-e/diffctx/compare/v1.15.0...HEAD
+[1.15.0]: https://github.com/nikolay-e/diffctx/compare/v1.14.0...v1.15.0
 [1.14.0]: https://github.com/nikolay-e/diffctx/compare/v1.13.0...v1.14.0
 [1.13.0]: https://github.com/nikolay-e/diffctx/compare/v1.12.3...v1.13.0
 [1.12.3]: https://github.com/nikolay-e/diffctx/compare/v1.12.2...v1.12.3

@@ -170,7 +170,13 @@ fn extract_config_keys(suffix: &str, content: &str) -> FxHashSet<String> {
 }
 
 fn is_word_byte(b: u8) -> bool {
-    b.is_ascii_alphanumeric() || b == b'_'
+    // Non-ASCII bytes count as word bytes: the regex `\b` this check replaced
+    // treats a Unicode letter as a word character, so `token` inside
+    // `tokenización` was NOT a match (#216). Treating every non-ASCII byte as
+    // a word byte is the conservative direction — it can only reject matches
+    // adjacent to non-ASCII punctuation that `\b` would have accepted, never
+    // admit ones it rejected.
+    b.is_ascii_alphanumeric() || b == b'_' || !b.is_ascii()
 }
 
 fn build_key_patterns(keys: &FxHashSet<String>) -> Vec<Regex> {
@@ -401,5 +407,43 @@ impl EdgeBuilder for ConfigToCodeEdgeBuilder {
         }
 
         discovered
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{FragmentId, FragmentKind};
+    use std::sync::Arc;
+
+    fn frag(path: &str, content: &str) -> Fragment {
+        Fragment {
+            id: FragmentId::new(Arc::from(path), 1, 5),
+            kind: FragmentKind::Chunk,
+            content: Arc::from(content),
+            identifiers: FxHashSet::default(),
+            token_count: 10,
+            symbol_name: None,
+        }
+    }
+
+    /// #216: the manual boundary check replaced the regex crate's Unicode
+    /// `\b`, which treats a non-ASCII letter as a word character. A key ending
+    /// exactly where a non-ASCII letter begins is NOT a whole-word match.
+    #[test]
+    fn a_key_inside_a_non_ascii_word_is_not_a_match() {
+        let cfg = frag("app.yaml", "sesion_timeout: 30\n");
+        let hit = frag("b.py", "sesion = abrir()\n");
+        let miss = frag("a.py", "valor = sesion\u{00e9}s\n");
+        let frags = vec![cfg.clone(), hit.clone(), miss.clone()];
+        let edges = ConfigToCodeEdgeBuilder.build(&frags, None);
+        assert!(
+            edges.contains_key(&(cfg.id.clone(), hit.id.clone())),
+            "a standalone key occurrence must still link"
+        );
+        assert!(
+            !edges.contains_key(&(cfg.id.clone(), miss.id.clone())),
+            "`sesion` inside `sesion\u{00e9}s` is not a word match"
+        );
     }
 }

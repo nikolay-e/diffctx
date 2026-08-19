@@ -294,6 +294,9 @@ def _write_tree_text_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
             file.write(f"    {line}\n" if line else "\n")
     for frag in tree.get("fragments", []):
         _write_text_fragment(file, frag, "  ")
+    omitted = _omitted_changed_files(tree)
+    if omitted:
+        _write_text_path_list(file, "changed files not represented in the output", omitted)
 
 
 def _write_tree_text_children(file: TextIO, children: list[dict[str, Any]]) -> None:
@@ -434,6 +437,17 @@ def _write_markdown_fragment(file: TextIO, frag: dict[str, Any]) -> None:
         _write_md_code_block(file, frag["content"], lang, "")
 
 
+def _omitted_changed_files(tree: dict[str, Any]) -> list[str]:
+    # Changed files the selection produced nothing for. Derived strictly from
+    # changed_files (already policy-clean: secret/ignored/deleted paths never
+    # enter it), so the footer can never name a withheld path.
+    changed = tree.get("changed_files") or []
+    if not changed:
+        return []
+    represented = {str(frag.get("path", "")) for frag in tree.get("fragments") or []}
+    return [str(p) for p in changed if str(p) not in represented]
+
+
 def _write_md_path_list(file: TextIO, tree: dict[str, Any], key: str, title: str) -> None:
     if not tree.get(key):
         return
@@ -465,6 +479,12 @@ def _write_markdown_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
         _write_md_code_block(file, tree["raw_diff"], "diff", "")
     for frag in tree.get("fragments", []):
         _write_markdown_fragment(file, frag)
+    omitted = _omitted_changed_files(tree)
+    if omitted:
+        file.write("**Changed files not represented in the output (budget/selection):**\n\n")
+        for path in omitted:
+            file.write(f"- {_escape_md_inline_code(path)}\n")
+        file.write("\n")
 
 
 def write_tree_markdown(file: TextIO, tree: dict[str, Any]) -> None:

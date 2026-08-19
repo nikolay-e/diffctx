@@ -97,8 +97,8 @@ pub struct FragmentIndex {
     /// interior) requires each reference component to appear as a whole path
     /// component, so the last component is a complete candidate filter. Each
     /// entry carries the file's representative fragment: a path reference is a
-    /// file-level relation, and the containment star spreads its mass inside
-    /// the file.
+    /// file-level relation and endorses the file, not each sibling (see
+    /// `file_representatives` on the accepted reachability trade, #208).
     lower_paths: Vec<(String, FragmentId)>,
     component_to_paths: FxHashMap<String, Vec<u32>>,
 }
@@ -136,18 +136,29 @@ impl FragmentIndex {
             }
         }
 
+        // One entry per FILE, keyed on the repo-relative posix path (the form
+        // path references are written in). Indexing every `by_path` variant put
+        // the same file under 2-3 keys, so `MAX_FILES_PER_PATH_REF` counted
+        // duplicate keys and silently halved (#207) — and the absolute keys'
+        // host directory components (`/home/runner/work/...`) matched
+        // references they had nothing to do with.
         let reps = file_representatives(fragments);
-        let mut lower_paths: Vec<(String, FragmentId)> = Vec::with_capacity(by_path.len());
+        let mut lower_paths: Vec<(String, FragmentId)> = Vec::with_capacity(reps.len());
         let mut component_to_paths: FxHashMap<String, Vec<u32>> = FxHashMap::default();
-        for (path_str, ids) in &by_path {
-            // Every id under one path key belongs to one file; its
-            // representative is looked up by the id's own (canonical) path,
-            // which also covers the relative-variant keys.
-            let Some(rep) = ids.first().and_then(|id| reps.get(id.path.as_ref())) else {
+        let mut indexed_files: FxHashSet<&str> = FxHashSet::default();
+        for f in fragments {
+            if !indexed_files.insert(f.path()) {
+                continue;
+            }
+            let Some(rep) = reps.get(f.path()) else {
                 continue;
             };
+            let matchable = repo_root
+                .and_then(|root| Path::new(f.path()).strip_prefix(root).ok())
+                .map(|rel| rel.to_string_lossy().replace('\\', "/"))
+                .unwrap_or_else(|| f.path().replace('\\', "/"));
             let idx = lower_paths.len() as u32;
-            let lower = path_str.to_lowercase();
+            let lower = matchable.to_lowercase();
             for comp in lower.split('/').filter(|c| !c.is_empty()) {
                 let posting = component_to_paths.entry(comp.to_string()).or_default();
                 if posting.last() != Some(&idx) {
@@ -174,8 +185,11 @@ impl FragmentIndex {
 /// change endorsing a file diffusely must not outweigh a call edge naming one
 /// symbol — the fragment-pair encoding gave both the same weight, which is
 /// simultaneously the quadratic edge blow-up (envoy: 22M c-family edges) and
-/// the file-level noise mechanism of #65. Reachability of the file's other
-/// fragments is the containment star's job.
+/// the file-level noise mechanism of #65. The file's other fragments are
+/// reachable only through nesting and naming edges — the intra-file star is
+/// OFF by default and measured net-negative on the corpus (#208) — an
+/// accepted trade: a file-level relation endorses the file, not each of its
+/// siblings.
 pub fn file_representatives(fragments: &[Fragment]) -> FxHashMap<String, FragmentId> {
     let mut file_to_rep: FxHashMap<String, FragmentId> = FxHashMap::default();
     let mut file_to_token_count: FxHashMap<String, u32> = FxHashMap::default();
@@ -497,5 +511,44 @@ mod tests {
         let paths = ["pkg/api/server.go", "pkg/api2/other.go"];
         let hit = linked_paths("pkg/api", &paths);
         assert_eq!(hit, vec!["pkg/api/server.go".to_string()]);
+    }
+
+    fn linked_paths_rooted(reference: &str, root: &str, paths: &[&str]) -> Vec<String> {
+        let frags: Vec<Fragment> = paths.iter().map(|p| frag(p)).collect();
+        let idx = FragmentIndex::new(&frags, Some(Path::new(root)));
+        let src = frag("/ci/work/repo/src/origin.yml");
+        let mut edges: EdgeDict = FxHashMap::default();
+        link_by_path_match(&src.id, reference, &idx, &mut edges, 0.5, 0.5);
+        let mut out: Vec<String> = edges
+            .keys()
+            .map(|(_, dst)| dst.path.to_string())
+            .filter(|p| p != src.id.path.as_ref())
+            .collect();
+        out.sort();
+        out.dedup();
+        out
+    }
+
+    #[test]
+    fn the_ambiguity_cap_counts_distinct_files_not_index_keys() {
+        // 5 distinct files under a rooted index: the pre-#207 code indexed
+        // each under its absolute AND relative key, so matched.len() was 10
+        // and the cap (8) dropped a reference naming only 5 files.
+        let paths: Vec<String> = (0..5)
+            .map(|i| format!("/ci/work/repo/lib/util/mod_{i}.py"))
+            .collect();
+        let refs: Vec<&str> = paths.iter().map(String::as_str).collect();
+        let hit = linked_paths_rooted("lib/util", "/ci/work/repo", &refs);
+        assert_eq!(hit.len(), 5, "cap must count files, not duplicate keys");
+    }
+
+    #[test]
+    fn host_directory_components_are_not_matchable() {
+        let paths = ["/ci/work/repo/src/app.rs", "/ci/work/repo/src/db.rs"];
+        let hit = linked_paths_rooted("work", "/ci/work/repo", &paths);
+        assert!(
+            hit.is_empty(),
+            "components outside the repo root must not resolve a reference"
+        );
     }
 }

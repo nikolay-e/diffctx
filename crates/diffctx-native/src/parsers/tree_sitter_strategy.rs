@@ -1749,19 +1749,38 @@ fn script_is_javascript(node: &Node, source: &[u8]) -> bool {
     let Ok(tag) = start_tag.utf8_text(source) else {
         return true;
     };
-    let lower = tag.to_lowercase();
-    let Some(pos) = lower.find("type=") else {
+    start_tag_type_is_javascript(&tag.to_lowercase())
+}
+
+fn start_tag_type_is_javascript(lower_tag: &str) -> bool {
+    let Some(value) = script_type_attribute(lower_tag) else {
         return true;
     };
-    let value: String = lower[pos + 5..]
-        .trim_start_matches(['"', '\''])
-        .chars()
-        .take_while(|c| !"\"' >".contains(*c))
-        .collect();
     matches!(
         value.as_str(),
         "" | "module" | "text/javascript" | "application/javascript" | "text/ecmascript"
     )
+}
+
+/// The `type` attribute's MIME value, if the start tag carries one. A bare
+/// substring `find("type=")` matched `data-type=` (#213), so the attribute
+/// name must sit on a token boundary; MIME parameters after `;`
+/// (`text/javascript; charset=utf-8`) are not part of the type.
+fn script_type_attribute(lower_tag: &str) -> Option<String> {
+    let mut search = 0;
+    while let Some(rel) = lower_tag[search..].find("type=") {
+        let pos = search + rel;
+        if pos > 0 && lower_tag.as_bytes()[pos - 1].is_ascii_whitespace() {
+            let raw: String = lower_tag[pos + 5..]
+                .trim_start_matches(['"', '\''])
+                .chars()
+                .take_while(|c| !"\"' >".contains(*c))
+                .collect();
+            return Some(raw.split(';').next().unwrap_or("").trim().to_string());
+        }
+        search = pos + 5;
+    }
+    None
 }
 
 fn fragment_embedded_source(
@@ -2361,6 +2380,31 @@ mod injection_tests {
         assert!(
             frags.iter().all(|f| f.symbol_name.is_none()),
             "a JSON payload must not produce JS symbols"
+        );
+    }
+
+    #[test]
+    fn a_data_type_attribute_does_not_opt_the_script_out() {
+        let content =
+            "<script data-type=\"json\">\nfunction realJs(x) {\n  return x + 1;\n}\n</script>\n";
+        let frags = TreeSitterStrategy::new().fragment(Arc::from("app.html"), content);
+        assert!(
+            frags
+                .iter()
+                .any(|f| f.symbol_name.as_deref() == Some("realJs")),
+            "data-type is not the type attribute; the script is JavaScript"
+        );
+    }
+
+    #[test]
+    fn a_mime_parameter_does_not_defeat_the_javascript_type() {
+        let content = "<script type=\"text/javascript; charset=utf-8\">\nfunction legacyJs(x) {\n  return x - 1;\n}\n</script>\n";
+        let frags = TreeSitterStrategy::new().fragment(Arc::from("app.html"), content);
+        assert!(
+            frags
+                .iter()
+                .any(|f| f.symbol_name.as_deref() == Some("legacyJs")),
+            "charset parameter after ';' must not degrade the script to raw lines"
         );
     }
 }

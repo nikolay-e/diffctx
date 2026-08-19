@@ -187,8 +187,13 @@ fn parse_scala_import_clause(clause: &str) -> Option<ScalaImport> {
         let mut selectors = Vec::new();
         let mut wildcard = false;
         for sel in inner.split(',') {
+            // A rename keeps the ORIGINAL name — that is what the target file
+            // defines. Scala 2 spells it `C => D`, Scala 3 `C as D`.
             let name = sel
                 .split("=>")
+                .next()
+                .unwrap_or("")
+                .split(" as ")
                 .next()
                 .unwrap_or("")
                 .trim()
@@ -211,6 +216,8 @@ fn parse_scala_import_clause(clause: &str) -> Option<ScalaImport> {
             wildcard,
         });
     }
+    // Scala 3 top-level rename: `import a.b.c as d` imports `a.b.c`.
+    let clause = clause.split(" as ").next().unwrap_or(clause).trim();
     if let Some(p) = clause
         .strip_suffix("._")
         .or_else(|| clause.strip_suffix(".*"))
@@ -248,9 +255,30 @@ fn parse_scala_import_clause(clause: &str) -> Option<ScalaImport> {
 
 fn parse_scala_imports(content: &str) -> Vec<ScalaImport> {
     let mut out = Vec::new();
-    for cap in SCALA_IMPORT_LINE_RE.captures_iter(content) {
-        let rest = cap[1].split("//").next().unwrap_or("").trim();
-        for clause in split_top_level_commas(rest) {
+    let mut lines = content.lines();
+    while let Some(line) = lines.next() {
+        let Some(cap) = SCALA_IMPORT_LINE_RE.captures(line) else {
+            continue;
+        };
+        let mut clause_text = cap[1].split("//").next().unwrap_or("").trim().to_string();
+        // A brace group may span lines; join until the braces balance so
+        // `import scala.collection.{\n mutable,\n immutable\n}` keeps its
+        // selectors instead of yielding an empty list.
+        let mut open = clause_text.matches('{').count();
+        let mut close = clause_text.matches('}').count();
+        let mut joined = 0;
+        // The join is bounded so an unbalanced brace (a file mid-edit) cannot
+        // swallow the rest of the file into one clause.
+        while open > close && joined < 32 {
+            joined += 1;
+            let Some(next) = lines.next() else { break };
+            let next = next.split("//").next().unwrap_or("").trim();
+            open += next.matches('{').count();
+            close += next.matches('}').count();
+            clause_text.push(' ');
+            clause_text.push_str(next);
+        }
+        for clause in split_top_level_commas(&clause_text) {
             if let Some(imp) = parse_scala_import_clause(clause) {
                 out.push(imp);
             }
@@ -315,7 +343,10 @@ fn extract_package(content: &str, path: &Path) -> Option<String> {
     if is_scala(path) {
         // Scala chains package clauses (`package com.acme` then `package svc`
         // means com.acme.svc); `package object x` is a member of the enclosing
-        // package, not a chain segment.
+        // package, not a chain segment. A block-form clause (`package util {`)
+        // opens a scope whose SIBLINGS are not chain segments — concatenating
+        // past it produced nonexistent packages (`com.example.util.data`), so
+        // the chain stops at the first block.
         let mut parts: Vec<String> = Vec::new();
         for cap in SCALA_PACKAGE_RE.captures_iter(content) {
             let seg = &cap[1];
@@ -323,6 +354,10 @@ fn extract_package(content: &str, path: &Path) -> Option<String> {
                 continue;
             }
             parts.push(seg.to_string());
+            let after = content[cap.get(0).map_or(0, |m| m.end())..].trim_start();
+            if after.starts_with('{') {
+                break;
+            }
         }
         if parts.is_empty() {
             None
@@ -873,6 +908,40 @@ mod tests {
         let object_rooted = parse_one("Tables._");
         assert_eq!(object_rooted.prefix, "Tables");
         assert!(object_rooted.wildcard);
+    }
+
+    #[test]
+    fn scala3_renames_keep_the_original_name() {
+        let top = parse_one("a.b.Conf as Config");
+        assert_eq!(top.prefix, "a.b");
+        assert_eq!(top.selectors, vec!["Conf".to_string()]);
+
+        let braced = parse_one("a.{B as C, D}");
+        assert_eq!(braced.prefix, "a");
+        assert_eq!(braced.selectors, vec!["B".to_string(), "D".to_string()]);
+    }
+
+    #[test]
+    fn scala_multiline_brace_import_keeps_its_selectors() {
+        let content = "import scala.collection.{\n  mutable,\n  immutable\n}\nimport a.B\n";
+        let imports = parse_scala_imports(content);
+        assert_eq!(imports.len(), 2);
+        assert_eq!(imports[0].prefix, "scala.collection");
+        assert_eq!(
+            imports[0].selectors,
+            vec!["mutable".to_string(), "immutable".to_string()]
+        );
+        assert_eq!(imports[1].selectors, vec!["B".to_string()]);
+    }
+
+    #[test]
+    fn scala_nested_package_blocks_do_not_concatenate_siblings() {
+        let content =
+            "package com.example\npackage util {\n  class A\n}\npackage data {\n  class B\n}\n";
+        assert_eq!(
+            extract_package(content, Path::new("a.scala")),
+            Some("com.example.util".to_string())
+        );
     }
 
     #[test]

@@ -115,3 +115,41 @@ def test_markdown_render_carries_both_exclusion_notes(tmp_path):
     md2 = diffctx.to_markdown(result2)
     assert "withheld by exclusion policy" in md2
     assert "notes.md" not in md2
+
+
+def test_omitted_changed_files_are_disclosed_in_md_and_text(tmp_path):
+    repo = Pygit2Repo(tmp_path / "repo")
+    for i in range(6):
+        repo.add_file(f"src/mod_{i}.py", f"def fn_{i}(x):\n    return x + {i}\n")
+    repo.commit("initial")
+    for i in range(6):
+        repo.add_file(f"src/mod_{i}.py", f"def fn_{i}(x):\n    return x + {i} + 1\n")
+    repo.commit("bump all")
+
+    result = diffctx.build_diff_context(root_dir=repo.path, diff_range="HEAD~1", budget_tokens=25)
+    represented = {f["path"] for f in result.get("fragments") or []}
+    omitted = [p for p in result.get("changed_files") or [] if p not in represented]
+    assert omitted, "budget 25 over 6 changed files must force omission"
+
+    md = diffctx.to_markdown(result)
+    assert "Changed files not represented in the output" in md
+    footer = md.split("Changed files not represented in the output", 1)[1]
+    for path in omitted:
+        assert path in footer
+    for path in represented:
+        assert path not in footer
+
+    txt = diffctx.to_text(result)
+    assert "changed files not represented in the output" in txt
+
+
+def test_fully_represented_output_has_no_omission_footer(tmp_path):
+    repo = Pygit2Repo(tmp_path / "repo")
+    repo.add_file("src/app.py", "def a():\n    pass\n")
+    repo.commit("initial")
+    repo.add_file("src/app.py", "def a():\n    return 1\n")
+    repo.commit("change")
+
+    result = diffctx.build_diff_context(root_dir=repo.path, diff_range="HEAD~1")
+    md = diffctx.to_markdown(result)
+    assert "not represented in the output" not in md

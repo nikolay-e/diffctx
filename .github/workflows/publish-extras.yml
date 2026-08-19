@@ -116,9 +116,19 @@ jobs:
             console.log('checksums.json: ' + n + ' assets, all version-tagged');
           "
 
+      # Idempotent like the PyPI step's skip-existing: a rerun after a
+      # smoke-only failure must not die on "cannot publish over previously
+      # published versions" (observed on 1.15.0).
       - name: Publish
         working-directory: ./packaging/npm
-        run: npm publish --access public --provenance
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          if npm view "diffctx@$VERSION" version >/dev/null 2>&1; then
+            echo "diffctx@$VERSION already on the registry; skipping publish"
+          else
+            npm publish --access public --provenance
+          fi
 
       # install.js is the script every `npx diffctx` runs, and nothing executed
       # it before this step existed. --ignore-scripts keeps npm from running
@@ -131,14 +141,21 @@ jobs:
           WORK=$(mktemp -d)
           cd "$WORK"
           npm init -y >/dev/null
-          for attempt in 1 2 3 4 5; do
+          installed=0
+          # Registry propagation took >100s on 1.15.0; without the installed
+          # guard the loop used to fall through to a MODULE_NOT_FOUND that
+          # hid the real failure.
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
             # Sonar S8543 (unlocked dependency versions) is marked false
             # positive in SonarCloud: VERSION is the exact just-published
             # version and the package has zero dependencies.
-            if npm install --ignore-scripts "diffctx@$VERSION"; then break; fi
+            if npm install --ignore-scripts "diffctx@$VERSION"; then installed=1; break; fi
             echo "npm registry not settled yet (attempt $attempt); retrying"
-            sleep 20
+            sleep 30
           done
+          if [ "$installed" != 1 ]; then
+            echo "diffctx@$VERSION never became installable"; exit 1
+          fi
           node node_modules/diffctx/install.js
           ./node_modules/.bin/diffctx --version
 
