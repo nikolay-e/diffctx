@@ -5,6 +5,7 @@
 ```bash
 git clone https://github.com/nikolay-e/diffctx.git
 cd diffctx
+rustup component add rustfmt clippy
 python -m venv .venv && source .venv/bin/activate
 pip install "maturin>=1.10,<1.15"
 pip install -e ".[dev,full,mcp]" --no-build-isolation
@@ -12,7 +13,11 @@ pre-commit install && pre-commit install --hook-type commit-msg
 ```
 
 The package builds the Rust extension via maturin, so `maturin` must be
-installed first and `--no-build-isolation` is required.
+installed first and `--no-build-isolation` is required. `rust-toolchain.toml`
+pins the compiler but deliberately not `rustfmt`/`clippy` — pinning components
+makes rustup install them before anything can *build* the crate, which breaks
+`pip install` from an sdist on a machine that already has them. The
+`rustup component add` above is what the pre-commit hooks need.
 
 ## Development Workflow
 
