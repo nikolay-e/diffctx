@@ -409,6 +409,36 @@ pub fn discover_files_by_refs(
     discovered
 }
 
+// The discovery shape 16 language builders share: take the changed files this
+// builder recognises, union the references their contents name, and hand those
+// to `discover_files_by_refs`. Written out per language, it was 13 lines each
+// that differed only in the two function names.
+pub fn discover_by_extracted_refs<P, E, I>(
+    changed: &[PathBuf],
+    candidates: &[PathBuf],
+    repo_root: Option<&Path>,
+    file_cache: Option<&FxHashMap<PathBuf, String>>,
+    recognises: P,
+    extract: E,
+) -> Vec<PathBuf>
+where
+    P: Fn(&Path) -> bool,
+    E: Fn(&str) -> I,
+    I: IntoIterator<Item = String>,
+{
+    let mine: Vec<&PathBuf> = changed.iter().filter(|f| recognises(f)).collect();
+    if mine.is_empty() {
+        return vec![];
+    }
+    let mut refs = FxHashSet::default();
+    for f in &mine {
+        if let Some(content) = read_file_cached(f, file_cache) {
+            refs.extend(extract(&content));
+        }
+    }
+    discover_files_by_refs(&refs, changed, candidates, repo_root)
+}
+
 // The first capture group of every match, owned. Written out 97 times across
 // `edges/`, and rustfmt spreads the chain over three lines each time.
 pub fn captures1<'a>(re: &'a Regex, content: &'a str) -> impl Iterator<Item = String> + 'a {

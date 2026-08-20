@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_files_by_refs};
+use super::super::base::{self, EdgeBuilder, add_edges_from_ids};
 
 fn is_elixir_file(path: &Path) -> bool {
     base::has_ext(path, &[".ex", ".exs"])
@@ -135,16 +135,13 @@ impl EdgeBuilder for ElixirEdgeBuilder {
         repo_root: Option<&Path>,
         file_cache: Option<&FxHashMap<PathBuf, String>>,
     ) -> Vec<PathBuf> {
-        let ex_changed: Vec<&PathBuf> = changed.iter().filter(|f| is_elixir_file(f)).collect();
-        if ex_changed.is_empty() {
-            return vec![];
-        }
-        let mut refs = FxHashSet::default();
-        for f in &ex_changed {
-            if let Some(content) = base::read_file_cached(f, file_cache) {
-                refs.extend(extract_refs(&content));
-            }
-        }
-        discover_files_by_refs(&refs, changed, candidates, repo_root)
+        base::discover_by_extracted_refs(
+            changed,
+            candidates,
+            repo_root,
+            file_cache,
+            is_elixir_file,
+            extract_refs,
+        )
     }
 }

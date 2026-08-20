@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_files_by_refs};
+use super::super::base::{self, EdgeBuilder, add_edges_from_ids};
 
 fn is_sql_file(path: &Path) -> bool {
     base::has_ext(path, &[".sql"])
@@ -109,16 +109,13 @@ impl EdgeBuilder for SqlEdgeBuilder {
         repo_root: Option<&Path>,
         file_cache: Option<&FxHashMap<PathBuf, String>>,
     ) -> Vec<PathBuf> {
-        let sql_changed: Vec<&PathBuf> = changed.iter().filter(|f| is_sql_file(f)).collect();
-        if sql_changed.is_empty() {
-            return vec![];
-        }
-        let mut refs = FxHashSet::default();
-        for f in &sql_changed {
-            if let Some(content) = base::read_file_cached(f, file_cache) {
-                refs.extend(extract_table_refs(&content));
-            }
-        }
-        discover_files_by_refs(&refs, changed, candidates, repo_root)
+        base::discover_by_extracted_refs(
+            changed,
+            candidates,
+            repo_root,
+            file_cache,
+            is_sql_file,
+            extract_table_refs,
+        )
     }
 }

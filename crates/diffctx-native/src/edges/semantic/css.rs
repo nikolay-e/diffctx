@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, discover_files_by_refs};
+use super::super::base::{self, EdgeBuilder};
 
 fn is_css_file(path: &Path) -> bool {
     base::has_ext(path, &[".css", ".scss", ".less", ".sass"])
@@ -54,16 +54,13 @@ impl EdgeBuilder for CssEdgeBuilder {
         repo_root: Option<&Path>,
         file_cache: Option<&FxHashMap<PathBuf, String>>,
     ) -> Vec<PathBuf> {
-        let css_changed: Vec<&PathBuf> = changed.iter().filter(|f| is_css_file(f)).collect();
-        if css_changed.is_empty() {
-            return vec![];
-        }
-        let mut refs = FxHashSet::default();
-        for f in &css_changed {
-            if let Some(content) = base::read_file_cached(f, file_cache) {
-                refs.extend(extract_imports(&content));
-            }
-        }
-        discover_files_by_refs(&refs, changed, candidates, repo_root)
+        base::discover_by_extracted_refs(
+            changed,
+            candidates,
+            repo_root,
+            file_cache,
+            is_css_file,
+            extract_imports,
+        )
     }
 }
