@@ -1358,7 +1358,10 @@ fn build_file_cache(candidate_files: &[PathBuf]) -> FxHashMap<PathBuf, String> {
     cache
 }
 
-fn assign_token_counts(fragments: &mut [Fragment]) {
+// The token-count formula, in one place. The in-memory harness spelled it out
+// three more times; #149 is what happens when the harness and the shipped
+// pipeline disagree about it — the corpus then measures a system nobody runs.
+pub(crate) fn assign_token_counts(fragments: &mut [Fragment]) {
     fragments.par_iter_mut().for_each(|frag| {
         if frag.token_count == 0 {
             frag.token_count = count_tokens(&frag.content) + LIMITS.overhead_per_fragment;
@@ -1366,7 +1369,7 @@ fn assign_token_counts(fragments: &mut [Fragment]) {
     });
 }
 
-fn assign_excerpt_token_counts(excerpts: &mut FxHashMap<FragmentId, Fragment>) {
+pub(crate) fn assign_excerpt_token_counts(excerpts: &mut FxHashMap<FragmentId, Fragment>) {
     for frag in excerpts.values_mut() {
         if frag.token_count == 0 {
             frag.token_count = count_tokens(&frag.content) + LIMITS.overhead_per_fragment;
