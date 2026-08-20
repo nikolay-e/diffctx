@@ -10,9 +10,7 @@ from typing import Any
 from diffctx._diffctx import DEFAULT_ALPHA as _DEFAULT_ALPHA
 from diffctx._diffctx import DEFAULT_SCORING as _DEFAULT_SCORING
 from diffctx._diffctx import DEFAULT_TAU as _DEFAULT_TAU
-
-_PIPELINE_TIMEOUT = 300
-
+from diffctx._diffctx import DEFAULT_TIMEOUT as _PIPELINE_TIMEOUT
 
 _UNLIMITED_BUDGET = 10_000_000
 

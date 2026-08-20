@@ -296,8 +296,4 @@ impl EdgeBuilder for LexicalEdgeBuilder {
 
         edges
     }
-
-    fn is_expensive(&self) -> bool {
-        true
-    }
 }

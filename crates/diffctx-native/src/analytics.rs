@@ -44,15 +44,13 @@ pub struct QuotientEdge {
 pub struct QuotientGraph {
     pub nodes: FxHashMap<Arc<str>, QuotientNode>,
     pub edges: FxHashMap<(Arc<str>, Arc<str>), QuotientEdge>,
-    pub level: QuotientLevel,
 }
 
 impl QuotientGraph {
-    pub fn new(level: QuotientLevel) -> Self {
+    pub fn new() -> Self {
         Self {
             nodes: FxHashMap::default(),
             edges: FxHashMap::default(),
-            level,
         }
     }
 }
@@ -161,7 +159,7 @@ pub fn quotient_graph(
     level: QuotientLevel,
     root: Option<&str>,
 ) -> QuotientGraph {
-    let mut qg = QuotientGraph::new(level);
+    let mut qg = QuotientGraph::new();
 
     let mut fid_to_group: FxHashMap<FragmentId, Arc<str>> = FxHashMap::default();
     for frag in fragments {
@@ -794,7 +792,7 @@ mod tests {
 
     #[test]
     fn mermaid_empty_graph() {
-        let qg = QuotientGraph::new(QuotientLevel::Directory);
+        let qg = QuotientGraph::new();
         assert_eq!(to_mermaid(&qg, 20), "graph LR\n");
     }
 

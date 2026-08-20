@@ -63,6 +63,11 @@ def test_bucket_scoop_manifest_version():
     assert data["version"] == __version__
 
 
+def test_citation_cff_version():
+    data = yaml.safe_load(_load_text("CITATION.cff"))
+    assert str(data["version"]) == __version__
+
+
 def test_github_action_doc_pins_match_version():
     pins = re.findall(r"nikolay-e/diffctx@v(\d+\.\d+\.\d+)", _load_text("docs/product/github-action.md"))
     assert len(pins) >= 2, f"expected at least 2 '@v<semver>' pins in the doc, found {pins}"

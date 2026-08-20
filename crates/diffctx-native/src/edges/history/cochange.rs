@@ -122,8 +122,4 @@ impl EdgeBuilder for CochangeEdgeBuilder {
 
         edges
     }
-
-    fn is_expensive(&self) -> bool {
-        true
-    }
 }

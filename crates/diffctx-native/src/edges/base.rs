@@ -26,10 +26,6 @@ pub trait EdgeBuilder: Send + Sync {
         None
     }
 
-    fn is_expensive(&self) -> bool {
-        false
-    }
-
     /// A coverage-of-last-resort builder: its edges only count where the
     /// dedicated builders produced nothing. The dual-coverage attempt this
     /// gate encodes was measured as a 100% noise regression (#131) — tags
@@ -90,7 +86,6 @@ pub fn path_to_module(path: &Path, repo_root: Option<&Path>) -> String {
 
 pub struct FragmentIndex {
     pub by_name: FxHashMap<String, Vec<FragmentId>>,
-    pub by_path: FxHashMap<String, Vec<FragmentId>>,
     /// Lowercased path table plus a component→paths posting list, so a path
     /// reference resolves by looking up its last component instead of scanning
     /// every indexed path. Every accepted alignment (equal, suffix, prefix,
@@ -106,7 +101,6 @@ pub struct FragmentIndex {
 impl FragmentIndex {
     pub fn new(fragments: &[Fragment], repo_root: Option<&Path>) -> Self {
         let mut by_name: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
-        let mut by_path: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
 
         for f in fragments {
             let path = Path::new(f.path());
@@ -116,28 +110,10 @@ impl FragmentIndex {
                     .or_default()
                     .push(f.id.clone());
             }
-            by_path
-                .entry(f.path().to_string())
-                .or_default()
-                .push(f.id.clone());
-
-            if let Some(root) = repo_root {
-                if let Ok(rel) = Path::new(f.path()).strip_prefix(root) {
-                    let rel_str = rel.to_string_lossy().to_string();
-                    by_path
-                        .entry(rel_str.clone())
-                        .or_default()
-                        .push(f.id.clone());
-                    let posix = rel_str.replace('\\', "/");
-                    if posix != rel_str {
-                        by_path.entry(posix).or_default().push(f.id.clone());
-                    }
-                }
-            }
         }
 
         // One entry per FILE, keyed on the repo-relative posix path (the form
-        // path references are written in). Indexing every `by_path` variant put
+        // path references are written in). Indexing every path variant put
         // the same file under 2-3 keys, so `MAX_FILES_PER_PATH_REF` counted
         // duplicate keys and silently halved (#207) — and the absolute keys'
         // host directory components (`/home/runner/work/...`) matched
@@ -170,7 +146,6 @@ impl FragmentIndex {
 
         Self {
             by_name,
-            by_path,
             lower_paths,
             component_to_paths,
         }

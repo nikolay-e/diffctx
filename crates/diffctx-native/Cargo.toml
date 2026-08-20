@@ -172,6 +172,10 @@ should_implement_trait = "allow"
 multiple_crate_versions = "allow"
 single_match_else = "allow"
 new_without_default = "allow"
+# `mul_add` is FMA: one rounding instead of two. Every site clippy flags is on
+# a scoring path, so taking the suggestion changes selection output and
+# invalidates the calibration — a Q-class edit disguised as a lint fix.
+suboptimal_flops = "allow"
 
 [lints.rust]
 unsafe_code = "deny"

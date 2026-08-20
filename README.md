@@ -193,9 +193,35 @@ reviewing PRs, explaining changes, or investigating broken tests. It ranks the
 code that explains a diff, then reads only the fragments the assistant picked —
 two calls that pay for the selection instead of a whole pack. The wider
 `get_tree_map` and `get_file_context` tools are opt-in via
-`DIFFCTX_MCP_LEGACY_TOOLS=1`. Tool reference and JSON configs for Claude
-Desktop, Cursor, Continue, Windsurf, and Zed:
-[`src/diffctx/mcp/README.md`](src/diffctx/mcp/README.md).
+`DIFFCTX_MCP_LEGACY_TOOLS=1`. Filesystem confinement via
+`DIFFCTX_ALLOWED_PATHS`: see [SECURITY.md](SECURITY.md).
+
+Every stdio client takes the same server shape; only the config file differs:
+
+| Client | Config file | Key |
+|---|---|---|
+| Claude Code (project) | `.mcp.json` | `mcpServers` |
+| Claude Desktop | `claude_desktop_config.json` | `mcpServers` |
+| Cursor | `~/.cursor/mcp.json` | `mcpServers` |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` | `mcpServers` |
+| Continue | `~/.continue/config.json` | `experimental.modelContextProtocolServers` (transport object) |
+| Zed | `~/.config/zed/settings.json` | `context_servers` (`command.path`) |
+
+```json
+{
+  "mcpServers": {
+    "diffctx": {
+      "command": "uvx",
+      "args": ["--from", "diffctx[mcp]", "diffctx-mcp"]
+    }
+  }
+}
+```
+
+With `pip install 'diffctx[mcp]'` already done, `"command": "diffctx-mcp"` with
+no args works everywhere instead. Use the `diffctx-mcp` entry point, not the
+`diffctx mcp` subcommand: the latter only exists from 1.12.3 onward and would
+map a directory named `mcp` on older releases.
 
 ## Ignore patterns
 

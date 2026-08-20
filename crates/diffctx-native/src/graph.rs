@@ -68,8 +68,8 @@ pub struct CsrGraph {
     pub idx_to_node: Vec<FragmentId>,
 }
 
-/// Statistics from the per-source out-edge cap that runs in
-/// `build_graph` after `apply_hub_suppression`. Surfaced to Python
+/// Statistics from the per-source out-edge cap that runs after hub
+/// suppression in `edges::collect_capped_edges`. Surfaced to Python
 /// via `LatencyBreakdown` so calibration runs can quantify how often
 /// the cap fires and how many edges it discards.
 #[derive(Default, Clone)]
@@ -114,6 +114,7 @@ pub struct CompactEdge {
 /// edge collection and graph construction. `idx_to_node` is the sorted,
 /// deduplicated fragment-id universe, so CSR node indexing built from it
 /// is identical to the ordering `Graph::freeze` produces.
+#[cfg(test)]
 pub struct CompactEdges {
     pub node_to_idx: FxHashMap<FragmentId, u32>,
     pub idx_to_node: Vec<FragmentId>,
@@ -588,6 +589,7 @@ impl SuppressionFactors {
         }
     }
 
+    #[cfg(test)]
     fn from_edges(edges: &[CompactEdge], idx_to_node: &[FragmentId]) -> Self {
         let n_nodes = idx_to_node.len();
         let mut in_degree = vec![0u32; n_nodes];
@@ -628,6 +630,7 @@ impl SuppressionFactors {
     }
 }
 
+#[cfg(test)]
 fn apply_hub_suppression(edges: &mut [CompactEdge], idx_to_node: &[FragmentId]) {
     if edges.is_empty() {
         return;
@@ -850,9 +853,12 @@ pub fn build_graph_capped(fragments: &[Fragment], capped: CappedEdges) -> Graph 
     assemble_graph(fragments, node_to_idx, idx_to_node, edges, cap_stats)
 }
 
-/// Materialized-edge construction path kept for the map-based adapter
-/// and small callers: hub suppression, per-source cap, and CSR assembly
-/// all run on the interned edge array.
+/// Materialized-edge construction path behind the map-based `build_graph`
+/// adapter: hub suppression, per-source cap, and CSR assembly all run on
+/// the interned edge array. Production never reaches here — it damps
+/// inside `edges::collect_capped_edges` via `SuppressionFactors::from_counters`
+/// and enters at `build_graph_capped`.
+#[cfg(test)]
 pub fn build_graph_compact(fragments: &[Fragment], compact: CompactEdges) -> Graph {
     let CompactEdges {
         node_to_idx,

@@ -9,7 +9,7 @@ use crate::config::selection::selection;
 use crate::interval::IntervalIndex;
 use crate::types::{Fragment, FragmentId};
 use crate::utility::needs::InformationNeed;
-use crate::utility::scoring::{
+use crate::utility::objective::{
     UtilityState, apply_fragment, compute_density, marginal_gain, utility_value,
 };
 
@@ -30,19 +30,6 @@ pub enum SelectionReason {
     NoUtility,
     StoppedByTau,
     BestSingleton,
-}
-
-impl SelectionReason {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::TopK => "topk",
-            Self::NoCandidates => "no_candidates",
-            Self::BudgetExhausted => "budget_exhausted",
-            Self::NoUtility => "no_utility",
-            Self::StoppedByTau => "stopped_by_tau",
-            Self::BestSingleton => "best_singleton",
-        }
-    }
 }
 
 pub struct SelectionResult {

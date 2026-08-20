@@ -349,7 +349,6 @@ fn count_tokens(text: &str) -> PyResult<u32> {
 // -- Project graph + analytics + export (Python-facing wrappers) -------------
 
 use rustc_hash::{FxHashMap as RsFxHashMap, FxHashSet as RsFxHashSet};
-use std::path::PathBuf;
 
 use crate::analytics;
 use crate::graph::EdgeCategory;
@@ -387,6 +386,11 @@ impl PyProjectGraph {
     #[getter]
     fn edge_count(&self) -> usize {
         self.inner.graph.edge_count()
+    }
+
+    #[getter]
+    fn root_dir(&self) -> String {
+        self.inner.root_dir.to_string_lossy().into_owned()
     }
 
     fn __repr__(&self) -> String {
@@ -629,6 +633,7 @@ pub fn _diffctx(m: &Bound<'_, PyModule>) -> PyResult<()> {
         crate::config::selection::DEFAULT_CORE_BUDGET_FRACTION,
     )?;
     m.add("DEFAULT_SCORING", DEFAULT_SCORING)?;
+    m.add("DEFAULT_TIMEOUT", DEFAULT_PIPELINE_TIMEOUT_SECONDS)?;
     // Same reason as the constants above: the Python CLI enumerated the accepted
     // --scoring values in its own literal and fell out of step the moment a mode
     // was added, so `pit` parsed everywhere except the two CLIs.

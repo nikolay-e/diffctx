@@ -135,8 +135,12 @@ repos:
       - id: detect-secrets
         args: ["--baseline", ".secrets.baseline"]
         # packaging/ and bucket/ hold generated release manifests whose SHA-256
-        # digests of public artifacts read as high-entropy strings.
-        exclude: ^(packaging|bucket)/
+        # digests of public artifacts read as high-entropy strings; datasets/
+        # is a read-only benchmark corpus of third-party diffs whose commit
+        # hashes did the same — 1354 of the baseline's 1360 entries came from
+        # there, so approving a real secret-scan change meant scrolling past
+        # 10k lines of noise.
+        exclude: ^(packaging|bucket|datasets)/
 
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.29.1

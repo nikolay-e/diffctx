@@ -9,7 +9,6 @@ use crate::candidate_files::collect_candidate_files;
 use crate::config::limits::LIMITS;
 use crate::edges;
 use crate::fragmentation::process_files_for_fragments;
-use crate::git::CatFileBatch;
 use crate::graph::{self, Graph};
 use crate::tokenizer::count_tokens;
 use crate::types::{Fragment, FragmentId};
@@ -20,38 +19,7 @@ pub struct ProjectGraph {
     pub root_dir: PathBuf,
 }
 
-impl ProjectGraph {
-    pub fn node_count(&self) -> usize {
-        self.graph.node_count()
-    }
-
-    pub fn edge_count(&self) -> usize {
-        self.graph.edge_count()
-    }
-}
-
-pub struct ProjectGraphOptions {
-    pub use_git_batch_reader: bool,
-    pub skip_expensive_edges: Option<bool>,
-}
-
-impl Default for ProjectGraphOptions {
-    fn default() -> Self {
-        Self {
-            use_git_batch_reader: false,
-            skip_expensive_edges: None,
-        }
-    }
-}
-
 pub fn build_project_graph(root_dir: &Path) -> Result<ProjectGraph> {
-    build_project_graph_with_options(root_dir, &ProjectGraphOptions::default())
-}
-
-pub fn build_project_graph_with_options(
-    root_dir: &Path,
-    options: &ProjectGraphOptions,
-) -> Result<ProjectGraph> {
     let resolved_root = root_dir
         .canonicalize()
         .with_context(|| format!("failed to canonicalize root_dir '{}'", root_dir.display()))?;
@@ -65,28 +33,14 @@ pub fn build_project_graph_with_options(
     );
 
     let mut seen_frag_ids: FxHashSet<FragmentId> = FxHashSet::default();
-    let mut all_fragments = if options.use_git_batch_reader {
-        let mut batch_reader = CatFileBatch::new(&resolved_root)?;
-        let frags = process_files_for_fragments(
-            &candidate_files,
-            &resolved_root,
-            &[],
-            &mut seen_frag_ids,
-            Some(&mut batch_reader),
-            false,
-        );
-        batch_reader.close();
-        frags
-    } else {
-        process_files_for_fragments(
-            &candidate_files,
-            &resolved_root,
-            &[],
-            &mut seen_frag_ids,
-            None,
-            false,
-        )
-    };
+    let mut all_fragments = process_files_for_fragments(
+        &candidate_files,
+        &resolved_root,
+        &[],
+        &mut seen_frag_ids,
+        None,
+        false,
+    );
 
     assign_token_counts(&mut all_fragments);
 
@@ -96,9 +50,7 @@ pub fn build_project_graph_with_options(
         candidate_files.len()
     );
 
-    let skip_expensive = options
-        .skip_expensive_edges
-        .unwrap_or_else(|| all_fragments.len() > LIMITS.skip_expensive_threshold);
+    let skip_expensive = all_fragments.len() > LIMITS.skip_expensive_threshold;
 
     let capped = edges::collect_capped_edges(
         &all_fragments,
@@ -177,11 +129,11 @@ mod tests {
 
         let pg = build_project_graph(root).expect("build_project_graph");
         assert!(
-            pg.node_count() >= 3,
+            pg.graph.node_count() >= 3,
             "expected fragments, got {}",
-            pg.node_count()
+            pg.graph.node_count()
         );
-        assert_eq!(pg.fragments.len(), pg.node_count());
+        assert_eq!(pg.fragments.len(), pg.graph.node_count());
         assert!(pg.root_dir.is_absolute());
     }
 
@@ -195,8 +147,8 @@ mod tests {
 
         let pg = build_project_graph(root).expect("build_project_graph");
         assert_eq!(pg.fragments.len(), 0);
-        assert_eq!(pg.node_count(), 0);
-        assert_eq!(pg.edge_count(), 0);
+        assert_eq!(pg.graph.node_count(), 0);
+        assert_eq!(pg.graph.edge_count(), 0);
     }
 
     #[test]

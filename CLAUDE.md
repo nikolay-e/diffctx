@@ -43,15 +43,27 @@ tracked even when every per-commit verdict passes.
 ## Performance-change discipline (E/Q classes)
 
 Every change is either **E-class** (bit-equivalent: identical selection
-output on identical input) or **Q-class** (output-changing). E-class
-changes may land any time but must pass
-`python -m eval equivalence --a <old-run> --b <new-run>` on the
-stratified 40-instance sample (`results/sweep_v2_local/equiv/manifests`),
-plus a double-run determinism check. Q-class changes are frozen during an
-evaluation cycle (calibration -> validation -> sweep) — they invalidate
-the calibration and force a full rerun. The shared token corpus, the
-per-blob token cache, and the two-pass edge cap are all E-class precedents;
-fragmentation or scoring changes are Q-class.
+output on identical input) or **Q-class** (output-changing). Q-class
+changes are frozen during an evaluation cycle (calibration -> validation
+-> sweep) — they invalidate the calibration and force a full rerun. The
+shared token corpus, the per-blob token cache, and the two-pass edge cap
+are all E-class precedents; fragmentation or scoring changes are Q-class.
+
+**Proving E-class, per commit: `scripts/bitcheck.sh record` on the
+pre-change build, then `check` after.** 24 cells against a worktree pinned
+at a fixed SHA, so editing the code cannot edit the input. It drives the
+**native binary**, so it says nothing about `writer.py`, `_native/` or
+`mcp/` — a Python-side E-class claim needs its own byte-diff through the
+installed wheel. Its complement is the full corpus
+(`cargo test --profile release-unwind --test yaml_cases`), which is the
+only net over the per-language edge and parser tables bitcheck never
+reaches.
+
+**At a release cycle:** `python -m eval equivalence --a <old-run> --b
+<new-run>` on the stratified 40-instance sample
+(`results/sweep_v2_local/equiv/manifests`) plus a double-run determinism
+check. This one needs two full eval output directories and a local
+`results/` tree, so it is not a per-commit gate and no CI job runs it.
 
 ## Testing
 
