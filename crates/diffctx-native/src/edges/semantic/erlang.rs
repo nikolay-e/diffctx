@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids, discover_files_by_refs};
+use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_files_by_refs};
 
 fn is_erlang_file(path: &Path) -> bool {
     base::has_ext(path, &[".erl", ".hrl"])
@@ -24,13 +24,13 @@ static REMOTE_CALL_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b([a-z]\w*):(\w+
 
 fn extract_refs(content: &str) -> FxHashSet<String> {
     let mut refs = FxHashSet::default();
-    refs.extend(INCLUDE_RE.captures_iter(content).map(|c| c[1].to_string()));
+    refs.extend(base::captures1(&INCLUDE_RE, content));
     refs.extend(
         BEHAVIOUR_RE
             .captures_iter(content)
             .map(|c| c[1].to_string()),
     );
-    refs.extend(IMPORT_RE.captures_iter(content).map(|c| c[1].to_string()));
+    refs.extend(base::captures1(&IMPORT_RE, content));
     refs.extend(
         REMOTE_CALL_RE
             .captures_iter(content)
@@ -40,17 +40,11 @@ fn extract_refs(content: &str) -> FxHashSet<String> {
 }
 
 fn extract_modules(content: &str) -> FxHashSet<String> {
-    MODULE_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&MODULE_RE, content).collect()
 }
 
 fn extract_func_defs(content: &str) -> FxHashSet<String> {
-    FUNC_DEF_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&FUNC_DEF_RE, content).collect()
 }
 
 pub struct ErlangEdgeBuilder;
@@ -108,11 +102,7 @@ impl EdgeBuilder for ErlangEdgeBuilder {
             for cap in REMOTE_CALL_RE.captures_iter(&f.content) {
                 let module = &cap[1];
                 if let Some(targets) = mod_to_frags.get(&module.to_lowercase()) {
-                    for t in targets {
-                        if t != &f.id {
-                            add_edge(&mut edges, &f.id, t, call_w, reverse_factor);
-                        }
-                    }
+                    add_edges_from_ids(&mut edges, &f.id, &targets, call_w, reverse_factor);
                 }
             }
             for id in &f.identifiers {
@@ -120,11 +110,7 @@ impl EdgeBuilder for ErlangEdgeBuilder {
                     continue;
                 }
                 if let Some(targets) = fn_to_frags.get(&id.to_lowercase()) {
-                    for t in targets {
-                        if t != &f.id {
-                            add_edge(&mut edges, &f.id, t, call_w, reverse_factor);
-                        }
-                    }
+                    add_edges_from_ids(&mut edges, &f.id, &targets, call_w, reverse_factor);
                 }
             }
         }

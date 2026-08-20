@@ -9,7 +9,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids, discover_files_by_refs};
+use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_files_by_refs};
 
 fn is_php_file(path: &Path) -> bool {
     PHP_EXTENSIONS.contains(base::file_ext(path).as_str())
@@ -43,10 +43,7 @@ fn extract_uses(content: &str) -> FxHashSet<String> {
 }
 
 fn extract_requires(content: &str) -> FxHashSet<String> {
-    REQUIRE_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&REQUIRE_RE, content).collect()
 }
 
 fn extract_namespace(content: &str) -> Option<String> {
@@ -54,11 +51,8 @@ fn extract_namespace(content: &str) -> Option<String> {
 }
 
 fn extract_defs(content: &str) -> FxHashSet<String> {
-    let mut defs: FxHashSet<String> = DEF_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect();
-    defs.extend(FUNC_DEF_RE.captures_iter(content).map(|c| c[1].to_string()));
+    let mut defs: FxHashSet<String> = base::captures1(&DEF_RE, content).collect();
+    defs.extend(base::captures1(&FUNC_DEF_RE, content));
     defs
 }
 
@@ -131,11 +125,7 @@ impl EdgeBuilder for PhpEdgeBuilder {
                     continue;
                 }
                 if let Some(targets) = name_to_defs.get(&name.to_lowercase()) {
-                    for t in targets {
-                        if t != &f.id {
-                            add_edge(&mut edges, &f.id, t, type_w, reverse_factor);
-                        }
-                    }
+                    add_edges_from_ids(&mut edges, &f.id, &targets, type_w, reverse_factor);
                 }
             }
         }

@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edge, discover_files_by_refs};
+use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_files_by_refs};
 
 fn is_sql_file(path: &Path) -> bool {
     base::has_ext(path, &[".sql"])
@@ -24,17 +24,12 @@ static TABLE_REF_RE: Lazy<Regex> = Lazy::new(|| {
 });
 
 static SQL_KEYWORDS: Lazy<FxHashSet<&str>> = Lazy::new(|| {
-    [
-        "select", "from", "where", "and", "or", "not", "in", "exists", "null", "true", "false",
-        "set", "values", "as", "on", "using", "left", "right", "inner", "outer", "cross", "group",
-        "order", "by", "having", "limit", "offset", "union", "all", "distinct", "case", "when",
-        "then", "else", "end", "if", "begin", "declare", "returns", "return",
-    ]
-    .iter()
-    .copied()
-    .collect()
+    base::kw(concat!(
+        "select from where and or not in exists null true false set values as on using left right ",
+        "inner outer cross group order by having limit offset union all distinct case when then ",
+        "else end if begin declare returns return ",
+    ))
 });
-
 fn extract_creates(content: &str) -> FxHashSet<String> {
     CREATE_RE
         .captures_iter(content)
@@ -100,11 +95,7 @@ impl EdgeBuilder for SqlEdgeBuilder {
                     table_ref_w
                 };
                 if let Some(targets) = table_to_frags.get(&tref) {
-                    for t in targets {
-                        if t != &f.id {
-                            add_edge(&mut edges, &f.id, t, w, reverse_factor);
-                        }
-                    }
+                    add_edges_from_ids(&mut edges, &f.id, &targets, w, reverse_factor);
                 }
             }
         }

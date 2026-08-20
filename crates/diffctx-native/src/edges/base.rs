@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use once_cell::sync::Lazy;
+use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::edge_weights::SEMANTIC_DISCOVERY;
@@ -298,6 +299,7 @@ pub fn link_by_path_match(
     if matched.len() > MAX_FILES_PER_PATH_REF {
         return;
     }
+    // Not `add_edges_from_ids`: `matched` holds borrowed ids, not owned ones.
     for rep in matched {
         if rep != src_id {
             add_edge(edges, src_id, rep, weight, reverse_factor);
@@ -405,6 +407,21 @@ pub fn discover_files_by_refs(
         }
     }
     discovered
+}
+
+// The first capture group of every match, owned. Written out 97 times across
+// `edges/`, and rustfmt spreads the chain over three lines each time.
+pub fn captures1<'a>(re: &'a Regex, content: &'a str) -> impl Iterator<Item = String> + 'a {
+    re.captures_iter(content).map(|c| c[1].to_string())
+}
+
+// Keyword tables are written as one whitespace-separated string, not an array
+// literal: rustfmt packs a short array and gives up on a long one, so 840
+// keywords across 28 tables occupied 880 lines. Every one of those tables is
+// only ever probed with `contains`, never iterated, so nothing observes the
+// literal layout.
+pub fn kw(list: &str) -> FxHashSet<&str> {
+    list.split_ascii_whitespace().collect()
 }
 
 pub fn file_ext(path: &Path) -> String {

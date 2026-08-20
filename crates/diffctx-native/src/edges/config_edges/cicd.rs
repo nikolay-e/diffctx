@@ -47,17 +47,12 @@ static FILE_REF_RE: Lazy<Regex> = Lazy::new(|| {
 });
 
 static PKG_MANAGER_SUBCOMMANDS: Lazy<FxHashSet<&str>> = Lazy::new(|| {
-    [
-        "run", "test", "start", "build", "install", "ci", "init", "publish", "pack", "link",
-        "unlink", "exec", "add", "remove", "upgrade", "info", "list", "outdated", "audit", "fix",
-        "cache", "config", "help", "version", "create", "set", "get", "why", "dedupe", "prune",
-        "dlx", "store",
-    ]
-    .iter()
-    .copied()
-    .collect()
+    base::kw(concat!(
+        "run test start build install ci init publish pack link unlink exec add remove upgrade info ",
+        "list outdated audit fix cache config help version create set get why dedupe prune dlx ",
+        "store ",
+    ))
 });
-
 fn is_github_actions(path: &Path) -> bool {
     let path_str = path.to_string_lossy();
     let lower = path_str.to_lowercase();

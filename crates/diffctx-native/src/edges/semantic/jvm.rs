@@ -12,7 +12,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::{Fragment, FragmentId, FragmentKind};
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edge};
+use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids};
 
 /// Same ambiguity bar as `CFamilySemanticWeights::max_files_per_name`: a name
 /// resolving to more files than this names a vocabulary word, not a
@@ -73,78 +73,16 @@ static SCALA_EXTENDS_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?m)\b(?:extends|with)\s+([A-Z]\w*)").unwrap());
 
 static JVM_STDLIB_TYPES: Lazy<FxHashSet<&str>> = Lazy::new(|| {
-    [
-        "String",
-        "Integer",
-        "Long",
-        "Double",
-        "Float",
-        "Boolean",
-        "Byte",
-        "Short",
-        "Character",
-        "Object",
-        "Class",
-        "System",
-        "Math",
-        "Collections",
-        "Arrays",
-        "Optional",
-        "HashMap",
-        "ArrayList",
-        "LinkedList",
-        "Iterator",
-        "Iterable",
-        "Comparable",
-        "Runnable",
-        "Thread",
-        "Exception",
-        "RuntimeException",
-        "IllegalArgumentException",
-        "IllegalStateException",
-        "NullPointerException",
-        "IndexOutOfBoundsException",
-        "IOException",
-        "InputStream",
-        "OutputStream",
-        "StringBuilder",
-        "StringBuffer",
-        "Number",
-        "Enum",
-        "Void",
-        "Override",
-        "Unit",
-        "Any",
-        "AnyVal",
-        "AnyRef",
-        "Nothing",
-        "Option",
-        "Some",
-        "Either",
-        "Left",
-        "Right",
-        "Try",
-        "Success",
-        "Failure",
-        "Future",
-        "Promise",
-        "Seq",
-        "Vector",
-        "Map",
-        "Set",
-        "Tuple",
-        "Function",
-        "Product",
-        "Serializable",
-        "Pair",
-        "Triple",
-        "Sequence",
-    ]
-    .iter()
-    .copied()
-    .collect()
+    base::kw(concat!(
+        "String Integer Long Double Float Boolean Byte Short Character Object Class System Math ",
+        "Collections Arrays Optional HashMap ArrayList LinkedList Iterator Iterable Comparable ",
+        "Runnable Thread Exception RuntimeException IllegalArgumentException IllegalStateException ",
+        "NullPointerException IndexOutOfBoundsException IOException InputStream OutputStream ",
+        "StringBuilder StringBuffer Number Enum Void Override Unit Any AnyVal AnyRef Nothing Option ",
+        "Some Either Left Right Try Success Failure Future Promise Seq Vector Map Set Tuple ",
+        "Function Product Serializable Pair Triple Sequence ",
+    ))
 });
-
 struct ScalaImport {
     prefix: String,
     selectors: Vec<String>,
@@ -288,15 +226,9 @@ fn parse_scala_imports(content: &str) -> Vec<ScalaImport> {
 
 fn extract_imports(content: &str, path: &Path) -> FxHashSet<String> {
     if is_java(path) {
-        JAVA_IMPORT_RE
-            .captures_iter(content)
-            .map(|c| c[1].to_string())
-            .collect()
+        base::captures1(&JAVA_IMPORT_RE, content).collect()
     } else if is_kotlin(path) {
-        KOTLIN_IMPORT_RE
-            .captures_iter(content)
-            .map(|c| c[1].to_string())
-            .collect()
+        base::captures1(&KOTLIN_IMPORT_RE, content).collect()
     } else if is_scala(path) {
         let mut refs = FxHashSet::default();
         for imp in parse_scala_imports(content) {
@@ -319,20 +251,11 @@ fn extract_imports(content: &str, path: &Path) -> FxHashSet<String> {
 
 fn extract_classes(content: &str, path: &Path) -> FxHashSet<String> {
     if is_java(path) {
-        JAVA_CLASS_RE
-            .captures_iter(content)
-            .map(|c| c[1].to_string())
-            .collect()
+        base::captures1(&JAVA_CLASS_RE, content).collect()
     } else if is_kotlin(path) {
-        KOTLIN_CLASS_RE
-            .captures_iter(content)
-            .map(|c| c[1].to_string())
-            .collect()
+        base::captures1(&KOTLIN_CLASS_RE, content).collect()
     } else if is_scala(path) {
-        SCALA_CLASS_RE
-            .captures_iter(content)
-            .map(|c| c[1].to_string())
-            .collect()
+        base::captures1(&SCALA_CLASS_RE, content).collect()
     } else {
         FxHashSet::default()
     }
@@ -391,17 +314,11 @@ fn extract_inheritance(content: &str, path: &Path) -> FxHashSet<String> {
 }
 
 fn extract_type_refs(content: &str) -> FxHashSet<String> {
-    TYPE_REF_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&TYPE_REF_RE, content).collect()
 }
 
 fn extract_annotations(content: &str) -> FxHashSet<String> {
-    ANNOTATION_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&ANNOTATION_RE, content).collect()
 }
 
 fn extract_member_uses(content: &str) -> FxHashSet<String> {
@@ -610,11 +527,13 @@ impl EdgeBuilder for JVMEdgeBuilder {
                             .entry(jf.path())
                             .or_default()
                             .insert(imp.prefix.clone());
-                        for fid in package_to_frags.get(imp.prefix.as_str()).unwrap_or(&vec![]) {
-                            if fid != &jf.id {
-                                add_edge(&mut edges, &jf.id, fid, import_weight, reverse_factor);
-                            }
-                        }
+                        add_edges_from_ids(
+                            &mut edges,
+                            &jf.id,
+                            package_to_frags.get(imp.prefix.as_str()).unwrap_or(&vec![]),
+                            import_weight,
+                            reverse_factor,
+                        );
                         // `import Tables._` / `import pkg.Obj._` endorses an
                         // object's members, not a package: the prefix leaf is
                         // the object name.
@@ -643,11 +562,13 @@ impl EdgeBuilder for JVMEdgeBuilder {
                             .entry(jf.path())
                             .or_default()
                             .insert(pkg_prefix.to_string());
-                        for fid in package_to_frags.get(pkg_prefix).unwrap_or(&vec![]) {
-                            if fid != &jf.id {
-                                add_edge(&mut edges, &jf.id, fid, import_weight, reverse_factor);
-                            }
-                        }
+                        add_edges_from_ids(
+                            &mut edges,
+                            &jf.id,
+                            package_to_frags.get(pkg_prefix).unwrap_or(&vec![]),
+                            import_weight,
+                            reverse_factor,
+                        );
                     } else {
                         let mut hit_fqn = false;
                         if let Some(fids) = fqn_to_frags.get(&imp.to_lowercase()) {
@@ -741,11 +662,13 @@ impl EdgeBuilder for JVMEdgeBuilder {
             }
 
             if let Some(current_pkg) = extract_package(&jf.content, path) {
-                for fid in package_to_frags.get(&current_pkg).unwrap_or(&vec![]) {
-                    if fid != &jf.id {
-                        add_edge(&mut edges, &jf.id, fid, same_package_weight, reverse_factor);
-                    }
-                }
+                add_edges_from_ids(
+                    &mut edges,
+                    &jf.id,
+                    package_to_frags.get(&current_pkg).unwrap_or(&vec![]),
+                    same_package_weight,
+                    reverse_factor,
+                );
             }
         }
 

@@ -10,7 +10,8 @@ use crate::types::{Fragment, FragmentId, FragmentKind};
 
 use super::super::EdgeDict;
 use super::super::base::{
-    self, EdgeBuilder, FragmentIndex, add_edge, discover_files_by_refs, link_by_name,
+    self, EdgeBuilder, FragmentIndex, add_edge, add_edges_from_ids, discover_files_by_refs,
+    link_by_name,
 };
 
 /// Same ambiguity bar as `CFamilySemanticWeights::max_files_per_name`: a name
@@ -61,81 +62,15 @@ static TYPE_REF_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b([A-Z]\w+)\b").unw
 static MEMBER_USE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\.\s*([a-zA-Z_]\w{2,})").unwrap());
 
 static DOTNET_KEYWORDS: Lazy<FxHashSet<&str>> = Lazy::new(|| {
-    [
-        "String",
-        "Int32",
-        "Boolean",
-        "Object",
-        "Void",
-        "Task",
-        "Action",
-        "Func",
-        "List",
-        "Dictionary",
-        "IEnumerable",
-        "IList",
-        "ICollection",
-        "Exception",
-        "Console",
-        "Math",
-        "Convert",
-        "Type",
-        "Attribute",
-        "Nullable",
-        "if",
-        "else",
-        "for",
-        "while",
-        "do",
-        "switch",
-        "case",
-        "break",
-        "continue",
-        "return",
-        "new",
-        "this",
-        "base",
-        "null",
-        "true",
-        "false",
-        "var",
-        "dynamic",
-        "async",
-        "await",
-        "try",
-        "catch",
-        "finally",
-        "throw",
-        "using",
-        "namespace",
-        "class",
-        "struct",
-        "interface",
-        "enum",
-        "record",
-        "delegate",
-        "event",
-        "public",
-        "private",
-        "protected",
-        "internal",
-        "static",
-        "abstract",
-        "sealed",
-        "virtual",
-        "override",
-        "partial",
-        "readonly",
-        "const",
-        "ref",
-        "out",
-        "in",
-    ]
-    .iter()
-    .copied()
-    .collect()
+    base::kw(concat!(
+        "String Int32 Boolean Object Void Task Action Func List Dictionary IEnumerable IList ",
+        "ICollection Exception Console Math Convert Type Attribute Nullable if else for while do ",
+        "switch case break continue return new this base null true false var dynamic async await ",
+        "try catch finally throw using namespace class struct interface enum record delegate event ",
+        "public private protected internal static abstract sealed virtual override partial readonly ",
+        "const ref out in ",
+    ))
 });
-
 fn extract_usings(content: &str, path: &Path) -> FxHashSet<String> {
     let mut refs = FxHashSet::default();
     if is_cs_file(path) {
@@ -152,10 +87,7 @@ fn extract_usings(content: &str, path: &Path) -> FxHashSet<String> {
 }
 
 fn extract_namespaces(content: &str) -> FxHashSet<String> {
-    NAMESPACE_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&NAMESPACE_RE, content).collect()
 }
 
 fn extract_defines(content: &str) -> FxHashSet<String> {
@@ -167,10 +99,7 @@ fn extract_defines(content: &str) -> FxHashSet<String> {
 }
 
 fn extract_partials(content: &str) -> FxHashSet<String> {
-    PARTIAL_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&PARTIAL_RE, content).collect()
 }
 
 fn extract_base_types(content: &str) -> FxHashSet<String> {
@@ -187,17 +116,13 @@ fn extract_base_types(content: &str) -> FxHashSet<String> {
 }
 
 fn extract_attributes(content: &str) -> FxHashSet<String> {
-    ATTRIBUTE_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
+    base::captures1(&ATTRIBUTE_RE, content)
         .filter(|n| !DOTNET_KEYWORDS.contains(n.as_str()))
         .collect()
 }
 
 fn extract_type_refs(content: &str) -> FxHashSet<String> {
-    TYPE_REF_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
+    base::captures1(&TYPE_REF_RE, content)
         .filter(|n| !DOTNET_KEYWORDS.contains(n.as_str()))
         .collect()
 }
@@ -377,11 +302,7 @@ impl EdgeBuilder for DotNetEdgeBuilder {
             let usings = extract_usings(&f.content, Path::new(f.path()));
             for u in &usings {
                 if let Some(targets) = ns_to_frags.get(u) {
-                    for tgt in targets {
-                        if tgt != &f.id {
-                            add_edge(&mut edges, &f.id, tgt, using_weight, reverse_factor);
-                        }
-                    }
+                    add_edges_from_ids(&mut edges, &f.id, &targets, using_weight, reverse_factor);
                 }
                 link_by_name(&f.id, u, &idx, &mut edges, using_weight, reverse_factor);
             }
@@ -448,11 +369,7 @@ impl EdgeBuilder for DotNetEdgeBuilder {
 
             for ns in &self_ns {
                 if let Some(targets) = ns_to_frags.get(ns) {
-                    for tgt in targets {
-                        if tgt != &f.id {
-                            add_edge(&mut edges, &f.id, tgt, same_ns_weight, reverse_factor);
-                        }
-                    }
+                    add_edges_from_ids(&mut edges, &f.id, &targets, same_ns_weight, reverse_factor);
                 }
             }
         }

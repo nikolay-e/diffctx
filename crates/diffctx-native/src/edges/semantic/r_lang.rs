@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edge, discover_files_by_refs};
+use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_files_by_refs};
 
 fn is_r_file(path: &Path) -> bool {
     base::has_ext(path, &[".r", ".rmd"])
@@ -25,59 +25,19 @@ static S4_METHOD_RE: Lazy<Regex> =
 static CALL_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b([a-zA-Z_.]\w*)\s*\(").unwrap());
 
 static R_KEYWORDS: Lazy<FxHashSet<&str>> = Lazy::new(|| {
-    [
-        "if",
-        "else",
-        "for",
-        "while",
-        "repeat",
-        "function",
-        "return",
-        "next",
-        "break",
-        "in",
-        "TRUE",
-        "FALSE",
-        "NULL",
-        "NA",
-        "Inf",
-        "NaN",
-        "library",
-        "require",
-        "source",
-        "print",
-        "cat",
-        "paste",
-        "c",
-        "list",
-        "data.frame",
-        "matrix",
-        "length",
-        "nrow",
-        "ncol",
-        "which",
-        "apply",
-        "sapply",
-        "lapply",
-    ]
-    .iter()
-    .copied()
-    .collect()
+    base::kw(concat!(
+        "if else for while repeat function return next break in TRUE FALSE NULL NA Inf NaN library ",
+        "require source print cat paste c list data.frame matrix length nrow ncol which apply ",
+        "sapply lapply ",
+    ))
 });
-
 fn extract_sources(content: &str) -> FxHashSet<String> {
-    SOURCE_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&SOURCE_RE, content).collect()
 }
 
 fn extract_defs(content: &str) -> FxHashSet<String> {
-    let mut defs: FxHashSet<String> = FUNC_DEF_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect();
-    defs.extend(S4_CLASS_RE.captures_iter(content).map(|c| c[1].to_string()));
+    let mut defs: FxHashSet<String> = base::captures1(&FUNC_DEF_RE, content).collect();
+    defs.extend(base::captures1(&S4_CLASS_RE, content));
     defs.extend(
         S4_METHOD_RE
             .captures_iter(content)
@@ -87,9 +47,7 @@ fn extract_defs(content: &str) -> FxHashSet<String> {
 }
 
 fn extract_calls(content: &str) -> FxHashSet<String> {
-    CALL_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
+    base::captures1(&CALL_RE, content)
         .filter(|n| !R_KEYWORDS.contains(n.as_str()))
         .collect()
 }
@@ -139,11 +97,7 @@ impl EdgeBuilder for RLangEdgeBuilder {
                     fn_w
                 };
                 if let Some(targets) = name_to_defs.get(&call.to_lowercase()) {
-                    for t in targets {
-                        if t != &f.id {
-                            add_edge(&mut edges, &f.id, t, w, reverse_factor);
-                        }
-                    }
+                    add_edges_from_ids(&mut edges, &f.id, &targets, w, reverse_factor);
                 }
             }
         }

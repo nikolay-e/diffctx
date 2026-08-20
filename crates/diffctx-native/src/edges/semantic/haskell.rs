@@ -9,7 +9,8 @@ use crate::types::{Fragment, FragmentId};
 
 use super::super::EdgeDict;
 use super::super::base::{
-    self, EdgeBuilder, FragmentIndex, add_edge, discover_files_by_refs, link_by_name,
+    self, EdgeBuilder, FragmentIndex, add_edge, add_edges_from_ids, discover_files_by_refs,
+    link_by_name,
 };
 
 fn is_haskell_file(path: &Path) -> bool {
@@ -31,86 +32,20 @@ static FUNC_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^([a-z_]\w*)\s*::").
 static CALL_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b([a-z_]\w+)\b").unwrap());
 
 static HASKELL_KEYWORDS: Lazy<FxHashSet<&str>> = Lazy::new(|| {
-    [
-        "module",
-        "where",
-        "import",
-        "qualified",
-        "as",
-        "hiding",
-        "data",
-        "newtype",
-        "type",
-        "class",
-        "instance",
-        "deriving",
-        "if",
-        "then",
-        "else",
-        "case",
-        "of",
-        "let",
-        "in",
-        "do",
-        "return",
-        "where",
-        "forall",
-        "foreign",
-        "default",
-        "infixl",
-        "infixr",
-        "infix",
-        "otherwise",
-        "undefined",
-        "error",
-        "show",
-        "read",
-        "map",
-        "filter",
-        "foldl",
-        "foldr",
-        "head",
-        "tail",
-        "null",
-        "length",
-        "print",
-        "putStrLn",
-        "getLine",
-        "main",
-        "IO",
-        "Maybe",
-        "Just",
-        "Nothing",
-        "Either",
-        "Left",
-        "Right",
-        "True",
-        "False",
-        "Bool",
-        "Int",
-        "Integer",
-        "Float",
-        "Double",
-        "Char",
-        "String",
-    ]
-    .iter()
-    .copied()
-    .collect()
+    base::kw(concat!(
+        "module where import qualified as hiding data newtype type class instance deriving if then ",
+        "else case of let in do return where forall foreign default infixl infixr infix otherwise ",
+        "undefined error show read map filter foldl foldr head tail null length print putStrLn ",
+        "getLine main IO Maybe Just Nothing Either Left Right True False Bool Int Integer Float ",
+        "Double Char String ",
+    ))
 });
-
 fn extract_imports(content: &str) -> FxHashSet<String> {
-    IMPORT_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&IMPORT_RE, content).collect()
 }
 
 fn extract_modules(content: &str) -> FxHashSet<String> {
-    MODULE_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&MODULE_RE, content).collect()
 }
 
 fn extract_defines(content: &str) -> FxHashSet<String> {
@@ -135,17 +70,13 @@ fn extract_instance_refs(content: &str) -> Vec<(String, String)> {
 }
 
 fn extract_type_refs(content: &str) -> FxHashSet<String> {
-    TYPE_REF_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
+    base::captures1(&TYPE_REF_RE, content)
         .filter(|n| !HASKELL_KEYWORDS.contains(n.as_str()))
         .collect()
 }
 
 fn extract_calls(content: &str) -> FxHashSet<String> {
-    CALL_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
+    base::captures1(&CALL_RE, content)
         .filter(|n| !HASKELL_KEYWORDS.contains(n.as_str()))
         .collect()
 }
@@ -201,11 +132,7 @@ impl EdgeBuilder for HaskellEdgeBuilder {
             let imports = extract_imports(&f.content);
             for imp in &imports {
                 if let Some(targets) = module_to_frags.get(imp) {
-                    for tgt in targets {
-                        if tgt != &f.id {
-                            add_edge(&mut edges, &f.id, tgt, import_weight, reverse_factor);
-                        }
-                    }
+                    add_edges_from_ids(&mut edges, &f.id, &targets, import_weight, reverse_factor);
                 }
                 link_by_name(&f.id, imp, &idx, &mut edges, import_weight, reverse_factor);
             }
@@ -235,11 +162,7 @@ impl EdgeBuilder for HaskellEdgeBuilder {
                     continue;
                 }
                 if let Some(dst_ids) = name_to_defs.get(name) {
-                    for dst_id in dst_ids {
-                        if dst_id != &f.id {
-                            add_edge(&mut edges, &f.id, dst_id, type_weight, reverse_factor);
-                        }
-                    }
+                    add_edges_from_ids(&mut edges, &f.id, &dst_ids, type_weight, reverse_factor);
                 }
             }
 
@@ -249,11 +172,7 @@ impl EdgeBuilder for HaskellEdgeBuilder {
                     continue;
                 }
                 if let Some(dst_ids) = name_to_defs.get(name) {
-                    for dst_id in dst_ids {
-                        if dst_id != &f.id {
-                            add_edge(&mut edges, &f.id, dst_id, fn_weight, reverse_factor);
-                        }
-                    }
+                    add_edges_from_ids(&mut edges, &f.id, &dst_ids, fn_weight, reverse_factor);
                 }
             }
         }

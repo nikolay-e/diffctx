@@ -25,7 +25,7 @@ static SUBFILE_RE: Lazy<Regex> =
 fn extract_refs(content: &str) -> FxHashSet<String> {
     let mut refs = FxHashSet::default();
     for re in [&*INPUT_RE, &*SUBFILE_RE] {
-        refs.extend(re.captures_iter(content).map(|c| c[1].to_string()));
+        refs.extend(base::captures1(&re, content));
     }
     for cap in USEPACKAGE_RE.captures_iter(content) {
         for pkg in cap[1].split(',') {

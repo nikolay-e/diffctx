@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids, discover_files_by_refs};
+use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_files_by_refs};
 
 fn is_elixir_file(path: &Path) -> bool {
     base::has_ext(path, &[".ex", ".exs"])
@@ -38,23 +38,17 @@ fn extract_refs(content: &str) -> FxHashSet<String> {
         &*REQUIRE_RE,
         &*BEHAVIOUR_RE,
     ] {
-        refs.extend(re.captures_iter(content).map(|c| c[1].to_string()));
+        refs.extend(base::captures1(&re, content));
     }
     refs
 }
 
 fn extract_module_defs(content: &str) -> FxHashSet<String> {
-    DEFMODULE_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&DEFMODULE_RE, content).collect()
 }
 
 fn extract_func_defs(content: &str) -> FxHashSet<String> {
-    DEF_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&DEF_RE, content).collect()
 }
 
 pub struct ElixirEdgeBuilder;
@@ -119,11 +113,7 @@ impl EdgeBuilder for ElixirEdgeBuilder {
                 let name = &mref[1];
                 let leaf = name.split('.').last().unwrap_or(name).to_lowercase();
                 if let Some(targets) = module_to_frags.get(&leaf) {
-                    for t in targets {
-                        if t != &f.id {
-                            add_edge(&mut edges, &f.id, t, fn_w, reverse_factor);
-                        }
-                    }
+                    add_edges_from_ids(&mut edges, &f.id, &targets, fn_w, reverse_factor);
                 }
             }
             for id in &f.identifiers {
@@ -131,11 +121,7 @@ impl EdgeBuilder for ElixirEdgeBuilder {
                     continue;
                 }
                 if let Some(targets) = fn_to_frags.get(&id.to_lowercase()) {
-                    for t in targets {
-                        if t != &f.id {
-                            add_edge(&mut edges, &f.id, t, fn_w, reverse_factor);
-                        }
-                    }
+                    add_edges_from_ids(&mut edges, &f.id, &targets, fn_w, reverse_factor);
                 }
             }
         }

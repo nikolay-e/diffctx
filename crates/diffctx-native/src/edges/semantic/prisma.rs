@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edge, discover_files_by_refs};
+use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids, discover_files_by_refs};
 
 fn is_prisma_file(path: &Path) -> bool {
     base::has_ext(path, &[".prisma"])
@@ -25,26 +25,17 @@ static TYPE_REF_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b([A-Z]\w+)\b").unw
 static CLIENT_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?:prisma\.\w+|@prisma/client)").unwrap());
 
-static PRISMA_BUILTINS: Lazy<FxHashSet<&str>> = Lazy::new(|| {
-    [
-        "String", "Int", "Float", "Boolean", "DateTime", "Json", "Bytes", "BigInt", "Decimal",
-    ]
-    .iter()
-    .copied()
-    .collect()
-});
-
+static PRISMA_BUILTINS: Lazy<FxHashSet<&str>> =
+    Lazy::new(|| base::kw("String Int Float Boolean DateTime Json Bytes BigInt Decimal"));
 fn extract_defs(content: &str) -> FxHashSet<String> {
     let mut defs = FxHashSet::default();
-    defs.extend(MODEL_RE.captures_iter(content).map(|c| c[1].to_string()));
-    defs.extend(ENUM_RE.captures_iter(content).map(|c| c[1].to_string()));
+    defs.extend(base::captures1(&MODEL_RE, content));
+    defs.extend(base::captures1(&ENUM_RE, content));
     defs
 }
 
 fn extract_type_refs(content: &str) -> FxHashSet<String> {
-    TYPE_REF_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
+    base::captures1(&TYPE_REF_RE, content)
         .filter(|t| !PRISMA_BUILTINS.contains(t.as_str()))
         .collect()
 }
@@ -85,11 +76,7 @@ impl EdgeBuilder for PrismaEdgeBuilder {
                     continue;
                 }
                 if let Some(targets) = name_to_defs.get(&tref.to_lowercase()) {
-                    for t in targets {
-                        if t != &f.id {
-                            add_edge(&mut edges, &f.id, t, schema_w, schema_rev);
-                        }
-                    }
+                    add_edges_from_ids(&mut edges, &f.id, &targets, schema_w, schema_rev);
                 }
             }
         }

@@ -18,10 +18,7 @@ static IMPORT_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"(?m)^\s*@(?:import|use|forward)\s+['"]([^'"]+)['"]"#).unwrap());
 
 fn extract_imports(content: &str) -> FxHashSet<String> {
-    IMPORT_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&IMPORT_RE, content).collect()
 }
 
 pub struct CssEdgeBuilder;

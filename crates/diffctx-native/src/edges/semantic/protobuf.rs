@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edge, discover_files_by_refs};
+use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_files_by_refs};
 
 fn is_proto_file(path: &Path) -> bool {
     base::has_ext(path, &[".proto"])
@@ -26,25 +26,16 @@ static RPC_TYPE_RE: Lazy<Regex> = Lazy::new(|| {
 });
 
 fn extract_imports(content: &str) -> FxHashSet<String> {
-    IMPORT_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&IMPORT_RE, content).collect()
 }
 
 fn extract_defs(content: &str) -> FxHashSet<String> {
-    MSG_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&MSG_RE, content).collect()
 }
 
 fn extract_type_refs(content: &str) -> FxHashSet<String> {
-    let mut refs: FxHashSet<String> = FIELD_TYPE_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect();
-    refs.extend(RPC_TYPE_RE.captures_iter(content).map(|c| c[1].to_string()));
+    let mut refs: FxHashSet<String> = base::captures1(&FIELD_TYPE_RE, content).collect();
+    refs.extend(base::captures1(&RPC_TYPE_RE, content));
     refs
 }
 
@@ -93,11 +84,7 @@ impl EdgeBuilder for ProtobufEdgeBuilder {
                     msg_w
                 };
                 if let Some(targets) = name_to_defs.get(&tref.to_lowercase()) {
-                    for t in targets {
-                        if t != &f.id {
-                            add_edge(&mut edges, &f.id, t, w, reverse_factor);
-                        }
-                    }
+                    add_edges_from_ids(&mut edges, &f.id, &targets, w, reverse_factor);
                 }
             }
         }

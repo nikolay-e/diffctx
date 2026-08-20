@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edge, discover_files_by_refs};
+use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_files_by_refs};
 
 fn is_nim_file(path: &Path) -> bool {
     base::has_ext(path, &[".nim", ".nims"])
@@ -27,61 +27,12 @@ static TYPE_SINGLE_RE: Lazy<Regex> = Lazy::new(|| {
 static CALL_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b(\w+)\s*[\(\[]").unwrap());
 
 static NIM_KEYWORDS: Lazy<FxHashSet<&str>> = Lazy::new(|| {
-    [
-        "if",
-        "elif",
-        "else",
-        "when",
-        "case",
-        "of",
-        "for",
-        "while",
-        "block",
-        "break",
-        "continue",
-        "return",
-        "result",
-        "proc",
-        "func",
-        "method",
-        "var",
-        "let",
-        "const",
-        "type",
-        "import",
-        "from",
-        "include",
-        "export",
-        "template",
-        "macro",
-        "iterator",
-        "converter",
-        "object",
-        "ref",
-        "ptr",
-        "nil",
-        "true",
-        "false",
-        "and",
-        "or",
-        "not",
-        "xor",
-        "div",
-        "mod",
-        "echo",
-        "assert",
-        "doAssert",
-        "len",
-        "add",
-        "del",
-        "new",
-        "newSeq",
-    ]
-    .iter()
-    .copied()
-    .collect()
+    base::kw(concat!(
+        "if elif else when case of for while block break continue return result proc func method ",
+        "var let const type import from include export template macro iterator converter object ref ",
+        "ptr nil true false and or not xor div mod echo assert doAssert len add del new newSeq ",
+    ))
 });
-
 fn extract_imports(content: &str) -> FxHashSet<String> {
     let mut refs = FxHashSet::default();
     for cap in IMPORT_RE.captures_iter(content) {
@@ -104,10 +55,7 @@ fn extract_imports(content: &str) -> FxHashSet<String> {
 }
 
 fn extract_defs(content: &str) -> FxHashSet<String> {
-    let mut defs: FxHashSet<String> = PROC_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect();
+    let mut defs: FxHashSet<String> = base::captures1(&PROC_RE, content).collect();
     defs.extend(
         TYPE_SINGLE_RE
             .captures_iter(content)
@@ -162,11 +110,7 @@ impl EdgeBuilder for NimEdgeBuilder {
                     fn_w
                 };
                 if let Some(targets) = name_to_defs.get(&name.to_lowercase()) {
-                    for t in targets {
-                        if t != &f.id {
-                            add_edge(&mut edges, &f.id, t, w, reverse_factor);
-                        }
-                    }
+                    add_edges_from_ids(&mut edges, &f.id, &targets, w, reverse_factor);
                 }
             }
         }

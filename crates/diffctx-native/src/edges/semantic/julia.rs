@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edge, discover_files_by_refs};
+use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_files_by_refs};
 
 fn is_julia_file(path: &Path) -> bool {
     base::has_ext(path, &[".jl"])
@@ -45,17 +45,14 @@ fn extract_imports(content: &str) -> FxHashSet<String> {
             }
         }
     }
-    refs.extend(INCLUDE_RE.captures_iter(content).map(|c| c[1].to_string()));
+    refs.extend(base::captures1(&INCLUDE_RE, content));
     refs
 }
 
 fn extract_defs(content: &str) -> FxHashSet<String> {
-    let mut defs: FxHashSet<String> = STRUCT_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect();
-    defs.extend(ABSTRACT_RE.captures_iter(content).map(|c| c[1].to_string()));
-    defs.extend(FUNC_RE.captures_iter(content).map(|c| c[1].to_string()));
+    let mut defs: FxHashSet<String> = base::captures1(&STRUCT_RE, content).collect();
+    defs.extend(base::captures1(&ABSTRACT_RE, content));
+    defs.extend(base::captures1(&FUNC_RE, content));
     defs.extend(
         SHORT_FUNC_RE
             .captures_iter(content)
@@ -111,11 +108,7 @@ impl EdgeBuilder for JuliaEdgeBuilder {
                     continue;
                 }
                 if let Some(targets) = name_to_defs.get(&name.to_lowercase()) {
-                    for t in targets {
-                        if t != &f.id {
-                            add_edge(&mut edges, &f.id, t, type_w, reverse_factor);
-                        }
-                    }
+                    add_edges_from_ids(&mut edges, &f.id, &targets, type_w, reverse_factor);
                 }
             }
             for id in &f.identifiers {
@@ -123,11 +116,7 @@ impl EdgeBuilder for JuliaEdgeBuilder {
                     continue;
                 }
                 if let Some(targets) = name_to_defs.get(&id.to_lowercase()) {
-                    for t in targets {
-                        if t != &f.id {
-                            add_edge(&mut edges, &f.id, t, fn_w, reverse_factor);
-                        }
-                    }
+                    add_edges_from_ids(&mut edges, &f.id, &targets, fn_w, reverse_factor);
                 }
             }
         }

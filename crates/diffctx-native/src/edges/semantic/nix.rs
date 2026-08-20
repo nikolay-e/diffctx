@@ -21,7 +21,7 @@ static FILE_REF_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\./[\w./-]+"#).unwr
 
 fn extract_refs(content: &str) -> FxHashSet<String> {
     let mut refs = FxHashSet::default();
-    refs.extend(IMPORT_RE.captures_iter(content).map(|c| c[1].to_string()));
+    refs.extend(base::captures1(&IMPORT_RE, content));
     refs.extend(
         CALL_PACKAGE_RE
             .captures_iter(content)

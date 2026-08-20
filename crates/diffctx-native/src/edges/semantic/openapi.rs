@@ -9,7 +9,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edge, discover_files_by_refs};
+use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_files_by_refs};
 
 fn is_openapi_candidate(path: &Path) -> bool {
     let ext = base::file_ext(path);
@@ -110,11 +110,7 @@ impl EdgeBuilder for OpenapiEdgeBuilder {
         for f in &frags {
             for iref in extract_internal_refs(&f.content) {
                 if let Some(targets) = schema_to_frags.get(&iref.to_lowercase()) {
-                    for t in targets {
-                        if t != &f.id {
-                            add_edge(&mut edges, &f.id, t, internal_w, reverse_factor);
-                        }
-                    }
+                    add_edges_from_ids(&mut edges, &f.id, &targets, internal_w, reverse_factor);
                 }
             }
             for eref in extract_external_refs(&f.content) {

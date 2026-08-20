@@ -9,7 +9,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids, discover_files_by_refs};
+use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_files_by_refs};
 
 fn is_ruby_file(path: &Path) -> bool {
     RUBY_EXTENSIONS.contains(base::file_ext(path).as_str())
@@ -27,10 +27,7 @@ static CONST_REF_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"\b([A-Z][A-Za-z_]*(?:::[A-Z][A-Za-z_]*)*)\b").unwrap());
 
 fn extract_requires(content: &str) -> FxHashSet<String> {
-    REQUIRE_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&REQUIRE_RE, content).collect()
 }
 
 fn extract_defines(content: &str) -> FxHashSet<String> {
@@ -54,10 +51,7 @@ fn extract_mixins(content: &str) -> FxHashSet<String> {
 }
 
 fn extract_const_refs(content: &str) -> FxHashSet<String> {
-    CONST_REF_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&CONST_REF_RE, content).collect()
 }
 
 pub struct RubyEdgeBuilder;
@@ -106,11 +100,7 @@ impl EdgeBuilder for RubyEdgeBuilder {
                     continue;
                 }
                 if let Some(targets) = name_to_defs.get(&leaf.to_lowercase()) {
-                    for t in targets {
-                        if t != &f.id {
-                            add_edge(&mut edges, &f.id, t, const_w, reverse_factor);
-                        }
-                    }
+                    add_edges_from_ids(&mut edges, &f.id, &targets, const_w, reverse_factor);
                 }
             }
         }

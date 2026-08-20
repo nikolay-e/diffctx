@@ -38,97 +38,24 @@ static IMPL_RE: Lazy<Regex> =
 static PUB_USE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^\s*pub\s+use\s+([\w:]+)").unwrap());
 
 static RUST_KEYWORDS: Lazy<FxHashSet<&str>> = Lazy::new(|| {
-    [
-        "if",
-        "else",
-        "for",
-        "while",
-        "loop",
-        "match",
-        "return",
-        "break",
-        "continue",
-        "let",
-        "mut",
-        "ref",
-        "fn",
-        "pub",
-        "mod",
-        "use",
-        "struct",
-        "enum",
-        "trait",
-        "impl",
-        "type",
-        "where",
-        "as",
-        "in",
-        "self",
-        "super",
-        "crate",
-        "extern",
-        "async",
-        "await",
-        "move",
-        "unsafe",
-        "const",
-        "static",
-        "dyn",
-        "box",
-        "true",
-        "false",
-        "Some",
-        "None",
-        "Ok",
-        "Err",
-        "vec",
-        "println",
-        "eprintln",
-        "format",
-        "write",
-        "writeln",
-        "panic",
-        "assert",
-        "assert_eq",
-        "assert_ne",
-        "debug_assert",
-        "todo",
-        "unimplemented",
-        "unreachable",
-        "cfg",
-        "derive",
-        "allow",
-        "deny",
-        "warn",
-    ]
-    .iter()
-    .copied()
-    .collect()
+    base::kw(concat!(
+        "if else for while loop match return break continue let mut ref fn pub mod use struct enum ",
+        "trait impl type where as in self super crate extern async await move unsafe const static ",
+        "dyn box true false Some None Ok Err vec println eprintln format write writeln panic assert ",
+        "assert_eq assert_ne debug_assert todo unimplemented unreachable cfg derive allow deny warn ",
+    ))
 });
-
 fn extract_uses(content: &str) -> FxHashSet<String> {
-    USE_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&USE_RE, content).collect()
 }
 
 fn extract_mods(content: &str) -> FxHashSet<String> {
-    MOD_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&MOD_RE, content).collect()
 }
 
 fn extract_definitions(content: &str) -> (FxHashSet<String>, FxHashSet<String>) {
-    let funcs: FxHashSet<String> = FN_DEF_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect();
-    let types: FxHashSet<String> = TYPE_DEF_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect();
+    let funcs: FxHashSet<String> = base::captures1(&FN_DEF_RE, content).collect();
+    let types: FxHashSet<String> = base::captures1(&TYPE_DEF_RE, content).collect();
     (funcs, types)
 }
 
@@ -140,10 +67,7 @@ fn extract_trait_impls(content: &str) -> Vec<(String, String)> {
 }
 
 fn extract_pub_uses(content: &str) -> Vec<String> {
-    PUB_USE_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&PUB_USE_RE, content).collect()
 }
 
 fn extract_references(
@@ -153,14 +77,10 @@ fn extract_references(
     FxHashSet<String>,
     FxHashSet<(String, String)>,
 ) {
-    let type_refs: FxHashSet<String> = TYPE_REF_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
+    let type_refs: FxHashSet<String> = base::captures1(&TYPE_REF_RE, content)
         .filter(|n| !RUST_KEYWORDS.contains(n.as_str()))
         .collect();
-    let fn_calls: FxHashSet<String> = FN_CALL_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
+    let fn_calls: FxHashSet<String> = base::captures1(&FN_CALL_RE, content)
         .filter(|n| !RUST_KEYWORDS.contains(n.as_str()))
         .collect();
     let path_calls: FxHashSet<(String, String)> = PATH_CALL_RE
@@ -300,11 +220,13 @@ impl EdgeBuilder for RustEdgeBuilder {
 
         for (impl_fid, pairs) in &trait_impls {
             for (trait_name, _type_name) in pairs {
-                for trait_fid in type_defs.get(&trait_name.to_lowercase()).unwrap_or(&vec![]) {
-                    if trait_fid != impl_fid {
-                        add_edge(&mut edges, impl_fid, trait_fid, type_weight, reverse_factor);
-                    }
-                }
+                add_edges_from_ids(
+                    &mut edges,
+                    impl_fid,
+                    type_defs.get(&trait_name.to_lowercase()).unwrap_or(&vec![]),
+                    type_weight,
+                    reverse_factor,
+                );
             }
         }
 
@@ -315,11 +237,7 @@ impl EdgeBuilder for RustEdgeBuilder {
                     .iter()
                     .flatten()
                 {
-                    for target_fid in *target_list {
-                        if target_fid != &f.id {
-                            add_edge(&mut edges, &f.id, target_fid, use_weight, reverse_factor);
-                        }
-                    }
+                    add_edges_from_ids(&mut edges, &f.id, *target_list, use_weight, reverse_factor);
                 }
             }
         }
@@ -373,11 +291,13 @@ impl EdgeBuilder for RustEdgeBuilder {
                 if name_capped(&lower) {
                     continue;
                 }
-                for fid in type_defs.get(&lower).unwrap_or(&vec![]) {
-                    if fid != &rf.id {
-                        add_edge(&mut edges, &rf.id, fid, type_weight, reverse_factor);
-                    }
-                }
+                add_edges_from_ids(
+                    &mut edges,
+                    &rf.id,
+                    type_defs.get(&lower).unwrap_or(&vec![]),
+                    type_weight,
+                    reverse_factor,
+                );
             }
 
             for fn_call in &fn_calls {
@@ -385,11 +305,13 @@ impl EdgeBuilder for RustEdgeBuilder {
                 if name_capped(&lower) {
                     continue;
                 }
-                for fid in fn_defs.get(&lower).unwrap_or(&vec![]) {
-                    if fid != &rf.id {
-                        add_edge(&mut edges, &rf.id, fid, fn_weight, reverse_factor);
-                    }
-                }
+                add_edges_from_ids(
+                    &mut edges,
+                    &rf.id,
+                    fn_defs.get(&lower).unwrap_or(&vec![]),
+                    fn_weight,
+                    reverse_factor,
+                );
             }
 
             for (mod_name, _symbol) in &path_calls {

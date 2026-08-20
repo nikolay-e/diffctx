@@ -55,90 +55,27 @@ fn extract_imports(content: &str, path: &Path, repo_root: Option<&Path>) -> FxHa
 }
 
 fn extract_defines(content: &str) -> FxHashSet<String> {
-    DEF_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&DEF_RE, content).collect()
 }
 
 fn extract_calls(content: &str) -> FxHashSet<String> {
-    CALL_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
+    base::captures1(&CALL_RE, content)
         .filter(|n| !PY_KEYWORDS.contains(n.as_str()))
         .collect()
 }
 
 fn extract_type_refs(content: &str) -> FxHashSet<String> {
-    TYPE_REF_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&TYPE_REF_RE, content).collect()
 }
 
 static PY_KEYWORDS: Lazy<FxHashSet<&str>> = Lazy::new(|| {
-    [
-        "if",
-        "for",
-        "while",
-        "return",
-        "def",
-        "class",
-        "import",
-        "from",
-        "as",
-        "with",
-        "try",
-        "except",
-        "finally",
-        "raise",
-        "pass",
-        "break",
-        "continue",
-        "yield",
-        "lambda",
-        "assert",
-        "del",
-        "elif",
-        "else",
-        "global",
-        "nonlocal",
-        "and",
-        "or",
-        "not",
-        "is",
-        "in",
-        "async",
-        "await",
-        "True",
-        "False",
-        "None",
-        "print",
-        "len",
-        "range",
-        "type",
-        "list",
-        "dict",
-        "set",
-        "tuple",
-        "str",
-        "int",
-        "float",
-        "bool",
-        "super",
-        "isinstance",
-        "hasattr",
-        "getattr",
-        "setattr",
-        "property",
-        "staticmethod",
-        "classmethod",
-    ]
-    .iter()
-    .copied()
-    .collect()
+    base::kw(concat!(
+        "if for while return def class import from as with try except finally raise pass break ",
+        "continue yield lambda assert del elif else global nonlocal and or not is in async await ",
+        "True False None print len range type list dict set tuple str int float bool super ",
+        "isinstance hasattr getattr setattr property staticmethod classmethod ",
+    ))
 });
-
 pub struct PythonEdgeBuilder;
 
 impl EdgeBuilder for PythonEdgeBuilder {

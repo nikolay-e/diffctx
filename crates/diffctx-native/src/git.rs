@@ -111,6 +111,22 @@ fn validate_diff_range(diff_range: &str) -> Result<()> {
     Ok(())
 }
 
+// The argv for every `git diff` this crate runs. Both controls it carries are
+// security-relevant — SAFE_DIFF_FLAGS pins the parser against hostile repo-local
+// config, `validate_diff_range` is the argv-injection gate whose own comment
+// records a bypass that already shipped — and until now they were enforced by
+// five copies of this sequence agreeing with each other.
+fn diff_args<'a>(extra: &[&'a str], diff_range: Option<&'a str>) -> Result<Vec<&'a str>> {
+    let mut args: Vec<&str> = vec!["diff"];
+    args.extend_from_slice(SAFE_DIFF_FLAGS);
+    args.extend_from_slice(extra);
+    if let Some(range) = diff_range {
+        validate_diff_range(range)?;
+        args.push(range);
+    }
+    Ok(args)
+}
+
 /// Second gate for the single revisions derived from a range (`base`, `head`),
 /// covering the call sites that pass a rev straight into argv or into the
 /// `cat-file --batch` request stream. A leading dash turns the rev into a git
@@ -349,12 +365,7 @@ pub fn find_toplevel(path: &Path) -> Option<PathBuf> {
 }
 
 pub fn get_diff_text(repo_root: &Path, diff_range: Option<&str>) -> Result<String> {
-    let mut args: Vec<&str> = vec!["diff"];
-    args.extend_from_slice(SAFE_DIFF_FLAGS);
-    if let Some(range) = diff_range {
-        validate_diff_range(range)?;
-        args.push(range);
-    }
+    let args = diff_args(&[], diff_range)?;
     run_git(repo_root, &args)
 }
 
@@ -546,14 +557,7 @@ fn parse_hunk_header(caps: &regex::Captures, path: &Path) -> Option<DiffHunk> {
 }
 
 pub fn parse_diff(repo_root: &Path, diff_range: Option<&str>) -> Result<Vec<DiffHunk>> {
-    let mut args: Vec<&str> = vec!["diff"];
-    args.extend_from_slice(SAFE_DIFF_FLAGS);
-    args.push("--unified=0");
-    args.push("-M");
-    if let Some(range) = diff_range {
-        validate_diff_range(range)?;
-        args.push(range);
-    }
+    let args = diff_args(&["--unified=0", "-M"], diff_range)?;
 
     let output = run_git(repo_root, &args)?;
     Ok(parse_hunks_from_diff_output(&output, repo_root))
@@ -613,13 +617,7 @@ pub fn run_git_z(repo_root: &Path, args: &[&str]) -> Result<Vec<String>> {
 }
 
 pub fn get_changed_files(repo_root: &Path, diff_range: Option<&str>) -> Result<Vec<PathBuf>> {
-    let mut args: Vec<&str> = vec!["diff"];
-    args.extend_from_slice(SAFE_DIFF_FLAGS);
-    args.extend_from_slice(&["--name-only", "-M", "-z"]);
-    if let Some(range) = diff_range {
-        validate_diff_range(range)?;
-        args.push(range);
-    }
+    let args = diff_args(&["--name-only", "-M", "-z"], diff_range)?;
     let parts = run_git_z(repo_root, &args)?;
     Ok(parts
         .iter()
@@ -633,13 +631,7 @@ pub fn get_changed_files(repo_root: &Path, diff_range: Option<&str>) -> Result<V
 }
 
 pub fn get_deleted_files(repo_root: &Path, diff_range: Option<&str>) -> Result<FxHashSet<PathBuf>> {
-    let mut args: Vec<&str> = vec!["diff"];
-    args.extend_from_slice(SAFE_DIFF_FLAGS);
-    args.extend_from_slice(&["--diff-filter=D", "--name-only", "-M", "-z"]);
-    if let Some(range) = diff_range {
-        validate_diff_range(range)?;
-        args.push(range);
-    }
+    let args = diff_args(&["--diff-filter=D", "--name-only", "-M", "-z"], diff_range)?;
     let parts = run_git_z(repo_root, &args)?;
     Ok(parts
         .iter()
@@ -660,13 +652,10 @@ pub fn get_deleted_files(repo_root: &Path, diff_range: Option<&str>) -> Result<F
 /// whose destination was missing. A rename without a destination is not a
 /// rename, so the stricter reading is the one kept here.
 fn rename_records(repo_root: &Path, diff_range: Option<&str>) -> Result<Vec<(String, String)>> {
-    let mut args: Vec<&str> = vec!["diff"];
-    args.extend_from_slice(SAFE_DIFF_FLAGS);
-    args.extend_from_slice(&["--diff-filter=R", "--name-status", "-M", "-z"]);
-    if let Some(range) = diff_range {
-        validate_diff_range(range)?;
-        args.push(range);
-    }
+    let args = diff_args(
+        &["--diff-filter=R", "--name-status", "-M", "-z"],
+        diff_range,
+    )?;
     let output = run_git(repo_root, &args)?;
     let parts: Vec<&str> = output.split('\0').collect();
 
