@@ -49,6 +49,21 @@ pub struct SelectionResult {
     pub stopping_certificate: f64,
 }
 
+impl SelectionResult {
+    /// Nothing selected: no candidates reached the selector at all. Spelled out
+    /// identically in the greedy and the Boltzmann path before this.
+    pub fn none() -> Self {
+        Self {
+            selected: Vec::new(),
+            reason: SelectionReason::NoCandidates,
+            used_tokens: 0,
+            utility: 0.0,
+            greedy_iters: 0,
+            stopping_certificate: 0.0,
+        }
+    }
+}
+
 struct HeapEntry {
     neg_density: f64,
     frag_id: FragmentId,
@@ -692,14 +707,7 @@ pub fn lazy_greedy_select(
     declared_admissible_files: Option<&FxHashSet<Arc<str>>>,
 ) -> SelectionResult {
     if fragments.is_empty() {
-        return SelectionResult {
-            selected: Vec::new(),
-            reason: SelectionReason::NoCandidates,
-            used_tokens: 0,
-            utility: 0.0,
-            greedy_iters: 0,
-            stopping_certificate: 0.0,
-        };
+        return SelectionResult::none();
     }
 
     let (mut state, non_core_fragments, _selected_core, should_return_early) =

@@ -185,6 +185,17 @@ pub struct InformationNeed {
     pub priority: f64,
 }
 
+impl InformationNeed {
+    fn new(need_type: &str, symbol: String, scope: Option<Arc<str>>, priority: f64) -> Self {
+        Self {
+            need_type: need_type.to_string(),
+            symbol,
+            scope,
+            priority,
+        }
+    }
+}
+
 fn parse_import_names(names_str: &str) -> FxHashSet<String> {
     let mut result = FxHashSet::default();
     for name in names_str.split(',') {
@@ -228,11 +239,8 @@ fn add_needs_for_syms(
     for sym in syms {
         if sym.len() >= NEEDS.min_symbol_length && !CODE_STOPWORDS.contains(sym) {
             let key = ("definition".to_string(), sym.clone());
-            needs.entry(key).or_insert_with(|| InformationNeed {
-                need_type: "definition".to_string(),
-                symbol: sym.clone(),
-                scope: None,
-                priority: NEEDS.definition_priority,
+            needs.entry(key).or_insert_with(|| {
+                InformationNeed::new("definition", sym.clone(), None, NEEDS.definition_priority)
             });
         }
     }
@@ -398,11 +406,13 @@ fn collect_core_needs(
         }
         core_symbol_names.insert(sym.clone());
         let key = ("impact".to_string(), sym.clone());
-        needs.entry(key).or_insert_with(|| InformationNeed {
-            need_type: "impact".to_string(),
-            symbol: sym,
-            scope: Some(frag.id.path.clone()),
-            priority: NEEDS.impact_priority,
+        needs.entry(key).or_insert_with(|| {
+            InformationNeed::new(
+                "impact",
+                sym,
+                Some(frag.id.path.clone()),
+                NEEDS.impact_priority,
+            )
         });
     }
     core_symbol_names
@@ -426,11 +436,8 @@ fn process_line_for_needs(
             continue;
         }
         let key = ("definition".to_string(), low.clone());
-        needs.entry(key).or_insert_with(|| InformationNeed {
-            need_type: "definition".to_string(),
-            symbol: low,
-            scope: None,
-            priority: NEEDS.call_definition_priority,
+        needs.entry(key).or_insert_with(|| {
+            InformationNeed::new("definition", low, None, NEEDS.call_definition_priority)
         });
     }
     // `external_syms` names what the diff imports from outside the repository,
@@ -459,12 +466,9 @@ fn add_signature_need(
         return;
     }
     let key = ("signature".to_string(), sym.clone());
-    needs.entry(key).or_insert_with(|| InformationNeed {
-        need_type: "signature".to_string(),
-        symbol: sym,
-        scope: None,
-        priority: NEEDS.signature_priority,
-    });
+    needs
+        .entry(key)
+        .or_insert_with(|| InformationNeed::new("signature", sym, None, NEEDS.signature_priority));
 }
 
 fn collect_diff_line_needs(
@@ -498,11 +502,8 @@ fn collect_test_needs(
                 || needs.contains_key(&("definition".to_string(), tested.clone()))
             {
                 let key = ("test".to_string(), tested.clone());
-                needs.entry(key).or_insert_with(|| InformationNeed {
-                    need_type: "test".to_string(),
-                    symbol: tested.clone(),
-                    scope: None,
-                    priority: NEEDS.test_priority,
+                needs.entry(key).or_insert_with(|| {
+                    InformationNeed::new("test", tested.clone(), None, NEEDS.test_priority)
                 });
             }
         }
@@ -518,11 +519,8 @@ fn collect_invariant_needs(
             let sym = m[1].to_lowercase();
             if sym.len() >= NEEDS.min_symbol_length && !CODE_STOPWORDS.contains(&sym) {
                 let key = ("invariant".to_string(), sym.clone());
-                needs.entry(key).or_insert_with(|| InformationNeed {
-                    need_type: "invariant".to_string(),
-                    symbol: sym,
-                    scope: None,
-                    priority: NEEDS.invariant_priority,
+                needs.entry(key).or_insert_with(|| {
+                    InformationNeed::new("invariant", sym, None, NEEDS.invariant_priority)
                 });
             }
         }
@@ -559,11 +557,13 @@ fn collect_config_context_needs(
         for ident in &frag.identifiers {
             if ident.len() >= NEEDS.background_min_ident_length && !covered.contains(ident) {
                 let key = ("background".to_string(), ident.clone());
-                needs.entry(key).or_insert_with(|| InformationNeed {
-                    need_type: "background".to_string(),
-                    symbol: ident.clone(),
-                    scope: None,
-                    priority: NEEDS.background_priority,
+                needs.entry(key).or_insert_with(|| {
+                    InformationNeed::new(
+                        "background",
+                        ident.clone(),
+                        None,
+                        NEEDS.background_priority,
+                    )
                 });
             }
         }
@@ -579,11 +579,8 @@ fn collect_terraform_needs(
             let sym = m[1].to_lowercase();
             if sym.len() >= NEEDS.min_symbol_length && !CODE_STOPWORDS.contains(&sym) {
                 let key = ("definition".to_string(), sym.clone());
-                needs.entry(key).or_insert_with(|| InformationNeed {
-                    need_type: "definition".to_string(),
-                    symbol: sym,
-                    scope: None,
-                    priority: NEEDS.call_definition_priority,
+                needs.entry(key).or_insert_with(|| {
+                    InformationNeed::new("definition", sym, None, NEEDS.call_definition_priority)
                 });
             }
         }
@@ -595,11 +592,8 @@ fn collect_terraform_needs(
             }
             let full_ref = format!("{}.{}", ref_type, ref_name);
             let key = ("definition".to_string(), full_ref.clone());
-            needs.entry(key).or_insert_with(|| InformationNeed {
-                need_type: "definition".to_string(),
-                symbol: full_ref,
-                scope: None,
-                priority: NEEDS.definition_priority,
+            needs.entry(key).or_insert_with(|| {
+                InformationNeed::new("definition", full_ref, None, NEEDS.definition_priority)
             });
         }
     }
@@ -658,12 +652,7 @@ pub fn needs_from_diff(
         let fallback = concepts_from_diff_text(diff_text, Some(&changed_lines));
         return fallback
             .into_iter()
-            .map(|c| InformationNeed {
-                need_type: "definition".to_string(),
-                symbol: c,
-                scope: None,
-                priority: NEEDS.fallback_priority,
-            })
+            .map(|c| InformationNeed::new("definition", c, None, NEEDS.fallback_priority))
             .collect();
     }
 
@@ -671,11 +660,8 @@ pub fn needs_from_diff(
     for c in concepts_from_diff_text(diff_text, Some(&changed_lines)) {
         if !covered_symbols.contains(&c) {
             let key = ("background".to_string(), c.clone());
-            needs.entry(key).or_insert_with(|| InformationNeed {
-                need_type: "background".to_string(),
-                symbol: c,
-                scope: None,
-                priority: NEEDS.concept_background_priority,
+            needs.entry(key).or_insert_with(|| {
+                InformationNeed::new("background", c, None, NEEDS.concept_background_priority)
             });
         }
     }
