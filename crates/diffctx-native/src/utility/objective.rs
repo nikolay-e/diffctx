@@ -8,6 +8,7 @@ use crate::config::needs::NEEDS;
 use crate::types::Fragment;
 use crate::utility::needs::{InformationNeed, match_strength_typed};
 
+#[derive(Clone)]
 pub struct UtilityState {
     pub max_rel: FxHashMap<(String, String), f64>,
     pub priorities: FxHashMap<(String, String), f64>,
@@ -32,22 +33,6 @@ impl Default for UtilityState {
             changed_dirs: FxHashSet::default(),
             proximity_decay: UTILITY.proximity_decay,
             file_importance: FxHashMap::default(),
-        }
-    }
-}
-
-impl UtilityState {
-    pub fn copy(&self) -> Self {
-        Self {
-            max_rel: self.max_rel.clone(),
-            priorities: self.priorities.clone(),
-            structural_sum: self.structural_sum,
-            eta: self.eta,
-            structural_bonus_weight: self.structural_bonus_weight,
-            r_cap: self.r_cap,
-            changed_dirs: self.changed_dirs.clone(),
-            proximity_decay: self.proximity_decay,
-            file_importance: self.file_importance.clone(),
         }
     }
 }

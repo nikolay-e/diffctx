@@ -536,7 +536,7 @@ pub fn to_mermaid(qg: &QuotientGraph, top_n: usize) -> String {
             .categories
             .iter()
             .max_by_key(|&(_, count)| *count)
-            .map_or("?", |(c, _)| category_name(*c));
+            .map_or("?", |(c, _)| c.as_str());
         let weight_str = format_weight(edge.weight);
         lines.push(format!(
             "    {src_id} -->|\"{top_cat}: {weight_str}\"| {dst_id}"
@@ -546,21 +546,6 @@ pub fn to_mermaid(qg: &QuotientGraph, top_n: usize) -> String {
     let mut out = lines.join("\n");
     out.push('\n');
     out
-}
-
-fn category_name(c: EdgeCategory) -> &'static str {
-    match c {
-        EdgeCategory::Semantic => "semantic",
-        EdgeCategory::Structural => "structural",
-        EdgeCategory::Sibling => "sibling",
-        EdgeCategory::Config => "config",
-        EdgeCategory::ConfigGeneric => "config_generic",
-        EdgeCategory::Document => "document",
-        EdgeCategory::Similarity => "similarity",
-        EdgeCategory::History => "history",
-        EdgeCategory::TestEdge => "test_edge",
-        EdgeCategory::Generic => "generic",
-    }
 }
 
 fn format_weight(w: f64) -> String {

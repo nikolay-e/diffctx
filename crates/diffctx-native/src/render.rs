@@ -289,8 +289,8 @@ fn create_fragment_entry(frag: &Fragment, path_str: &str) -> FragmentEntry {
 /// `core_ids` — it is a synthetic span cut out of the core — so without this the
 /// downshift would silently strip the change marker from the output, which is
 /// worse than the over-dump it replaces. `locate.rs` already treats `Excerpt`
-/// this way; both surfaces must agree.
-fn carries_changed_role(
+/// this way, and calls this function so the two cannot drift apart.
+pub(crate) fn carries_changed_role(
     frag: &Fragment,
     core_ids: &FxHashSet<FragmentId>,
     core_locs: &FxHashSet<(Arc<str>, u32)>,

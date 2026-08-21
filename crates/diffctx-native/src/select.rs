@@ -725,7 +725,7 @@ pub fn lazy_greedy_select(
         };
     }
 
-    let base_state = state.utility_state.copy();
+    let base_state = state.utility_state.clone();
     let base_selected = state.selected.clone();
     let base_budget = state.remaining_budget;
 
