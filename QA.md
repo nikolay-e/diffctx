@@ -102,7 +102,9 @@ dismissing as bot noise.
   varying tests. Timeout-only failures with a changing set across runs
   = oversubscription, not a regression; never run `cargo test`
   concurrently with pytest, it makes this worse.
-- `cargo test --lib` in `crates/diffctx-native` — inline units, ~171.
+- `cargo test --lib` in `crates/diffctx-native` — inline units (the run
+  prints the count; it was written here as "~171" while the real number was
+  250, so it is not written here any more).
 - YAML corpus: CI gates the FULL 2725-case corpus on every push
   (`cargo test --profile release-unwind --test yaml_cases`), per-case
   against `known_below_threshold.txt`, enforced bidirectionally;
