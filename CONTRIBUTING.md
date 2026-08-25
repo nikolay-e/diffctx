@@ -6,18 +6,23 @@
 git clone https://github.com/nikolay-e/diffctx.git
 cd diffctx
 rustup component add rustfmt clippy
-python -m venv .venv && source .venv/bin/activate
-pip install "maturin>=1.10,<1.15"
-pip install -e ".[dev,full,mcp]" --no-build-isolation
+uv sync --locked --extra dev --extra full --extra mcp
+source .venv/bin/activate
 pre-commit install && pre-commit install --hook-type commit-msg
 ```
 
-The package builds the Rust extension via maturin, so `maturin` must be
-installed first and `--no-build-isolation` is required. `rust-toolchain.toml`
-pins the compiler but deliberately not `rustfmt`/`clippy` — pinning components
-makes rustup install them before anything can *build* the crate, which breaks
-`pip install` from an sdist on a machine that already has them. The
-`rustup component add` above is what the pre-commit hooks need.
+`uv.lock` is the resolved dependency set every CI job installs, via the same
+`uv sync --locked` — `--locked` fails instead of re-resolving, so a pyproject
+edit that was not locked cannot reach a green build. Regenerate with
+`uv lock` and commit the result in the same change.
+
+The package builds the Rust extension via maturin; uv provisions the build
+backend in its own isolated environment, so nothing has to be installed before
+the sync. `rust-toolchain.toml` pins the compiler but deliberately not
+`rustfmt`/`clippy` — pinning components makes rustup install them before
+anything can *build* the crate, which breaks installing from an sdist on a
+machine that already has them. The `rustup component add` above is what the
+pre-commit hooks need.
 
 ## Development Workflow
 
