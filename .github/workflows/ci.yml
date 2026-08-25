@@ -49,7 +49,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv sync --locked --extra dev
+          uv sync --locked --no-build --extra dev
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Run pre-commit
@@ -186,7 +186,7 @@ jobs:
 
       - name: Install Linters and Type Checker
         run: |
-          uv sync --locked --extra dev
+          uv sync --locked --no-build --extra dev
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Run Linters and Formatters Check
@@ -299,7 +299,7 @@ jobs:
           # Editable install of the project plus every extra the suite needs.
           # uv provisions maturin in its own build environment, so the build
           # backend is not a separate step and cannot drift from pyproject.
-          uv sync --locked --extra dev --extra full --extra mcp
+          uv sync --locked --no-build --extra dev --extra full --extra mcp
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Run Tests with Coverage
@@ -359,7 +359,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv sync --locked --extra dev
+          uv sync --locked --no-build --extra dev
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Check cyclomatic complexity
@@ -404,7 +404,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv sync --locked --extra dev
+          uv sync --locked --no-build --extra dev
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Check import contracts

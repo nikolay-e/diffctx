@@ -6,15 +6,18 @@
 git clone https://github.com/nikolay-e/diffctx.git
 cd diffctx
 rustup component add rustfmt clippy
-uv sync --locked --extra dev --extra full --extra mcp
+uv sync --locked --no-build --extra dev --extra full --extra mcp
 source .venv/bin/activate
 pre-commit install && pre-commit install --hook-type commit-msg
 ```
 
-`uv.lock` is the resolved dependency set every CI job installs, via the same
-`uv sync --locked` — `--locked` fails instead of re-resolving, so a pyproject
-edit that was not locked cannot reach a green build. Regenerate with
-`uv lock` and commit the result in the same change.
+`uv.lock` is the resolved dependency set every CI job installs, via this exact
+command — `--locked` fails instead of re-resolving, so a pyproject edit that was
+not locked cannot reach a green build. Regenerate with `uv lock` and commit the
+result in the same change. `--no-build` takes every dependency from a wheel, so
+no third-party `setup.py` executes during install; the root project is exempt
+and still compiles through maturin, which is the one build this repo means to
+run.
 
 The package builds the Rust extension via maturin; uv provisions the build
 backend in its own isolated environment, so nothing has to be installed before

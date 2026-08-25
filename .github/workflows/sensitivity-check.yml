@@ -39,7 +39,7 @@ jobs:
 
       - name: Install diffctx with dev extras
         run: |
-          uv sync --locked --extra dev --extra tree-sitter
+          uv sync --locked --no-build --extra dev --extra tree-sitter
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Run sensitivity check
