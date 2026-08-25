@@ -27,6 +27,16 @@ updates:
 
   - package-ecosystem: "pip"
     directory: "/"
+    # Raise a floor only when the declared range genuinely cannot admit the new
+    # version. The default (`increase`) rewrites the floor to the newest
+    # resolvable version on every run, and when that version already IS the
+    # floor the rewrite is a no-op that dependabot-core raises
+    # `Expected content to change!` on — numpy and scipy in
+    # requirements-eval.txt hit exactly that (their newest release supporting
+    # this project's `requires-python = ">=3.10"` floor is the version already
+    # written there), failing every weekly pip run since 2026-08-15. Security
+    # updates still get through: a fix that the range excludes IS necessary.
+    versioning-strategy: "increase-if-necessary"
     schedule:
       interval: "weekly"
       day: "saturday"
