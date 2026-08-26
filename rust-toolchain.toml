@@ -1,4 +1,12 @@
+# No `components` here on purpose. Anything that merely *builds* the crate —
+# `pip install` from an sdist, maturin inside a pip build env, a CI job that
+# only wants the extension compiled — would otherwise make rustup fetch
+# rustfmt and clippy first, and on a machine that already has them (every
+# GitHub runner image) that install aborts with
+# `detected conflict: 'bin/cargo-fmt'`, failing the build for a component the
+# build never uses. fmt and clippy are requested where they are run: the
+# pre-commit CI job asks the toolchain action for them, and locally
+# `rustup component add rustfmt clippy` once.
 [toolchain]
 channel = "1.92.0"
-components = ["rustfmt", "clippy"]
 profile = "minimal"

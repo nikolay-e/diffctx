@@ -22,14 +22,14 @@ const BODY_NODE_TYPES: &[&str] = &[
 ];
 
 struct LangConfig {
-    extension: &'static str,
+    extensions: &'static [&'static str],
     ts_name: &'static str,
     definition_types: &'static [&'static str],
 }
 
 const LANG_CONFIGS: &[LangConfig] = &[
     LangConfig {
-        extension: ".py",
+        extensions: &[".py", ".pyw", ".pyi"],
         ts_name: "python",
         definition_types: &[
             "function_definition",
@@ -38,25 +38,7 @@ const LANG_CONFIGS: &[LangConfig] = &[
         ],
     },
     LangConfig {
-        extension: ".pyw",
-        ts_name: "python",
-        definition_types: &[
-            "function_definition",
-            "class_definition",
-            "decorated_definition",
-        ],
-    },
-    LangConfig {
-        extension: ".pyi",
-        ts_name: "python",
-        definition_types: &[
-            "function_definition",
-            "class_definition",
-            "decorated_definition",
-        ],
-    },
-    LangConfig {
-        extension: ".js",
+        extensions: &[".js", ".mjs", ".cjs"],
         ts_name: "javascript",
         definition_types: &[
             "function_declaration",
@@ -67,29 +49,7 @@ const LANG_CONFIGS: &[LangConfig] = &[
         ],
     },
     LangConfig {
-        extension: ".mjs",
-        ts_name: "javascript",
-        definition_types: &[
-            "function_declaration",
-            "class_declaration",
-            "method_definition",
-            "arrow_function",
-            "variable_declarator",
-        ],
-    },
-    LangConfig {
-        extension: ".cjs",
-        ts_name: "javascript",
-        definition_types: &[
-            "function_declaration",
-            "class_declaration",
-            "method_definition",
-            "arrow_function",
-            "variable_declarator",
-        ],
-    },
-    LangConfig {
-        extension: ".jsx",
+        extensions: &[".jsx"],
         ts_name: "jsx",
         definition_types: &[
             "function_declaration",
@@ -100,7 +60,7 @@ const LANG_CONFIGS: &[LangConfig] = &[
         ],
     },
     LangConfig {
-        extension: ".ts",
+        extensions: &[".ts", ".mts", ".cts"],
         ts_name: "typescript",
         definition_types: &[
             "function_declaration",
@@ -114,35 +74,7 @@ const LANG_CONFIGS: &[LangConfig] = &[
         ],
     },
     LangConfig {
-        extension: ".mts",
-        ts_name: "typescript",
-        definition_types: &[
-            "function_declaration",
-            "class_declaration",
-            "method_definition",
-            "arrow_function",
-            "interface_declaration",
-            "type_alias_declaration",
-            "enum_declaration",
-            "variable_declarator",
-        ],
-    },
-    LangConfig {
-        extension: ".cts",
-        ts_name: "typescript",
-        definition_types: &[
-            "function_declaration",
-            "class_declaration",
-            "method_definition",
-            "arrow_function",
-            "interface_declaration",
-            "type_alias_declaration",
-            "enum_declaration",
-            "variable_declarator",
-        ],
-    },
-    LangConfig {
-        extension: ".tsx",
+        extensions: &[".tsx"],
         ts_name: "tsx",
         definition_types: &[
             "function_declaration",
@@ -156,7 +88,7 @@ const LANG_CONFIGS: &[LangConfig] = &[
         ],
     },
     LangConfig {
-        extension: ".go",
+        extensions: &[".go"],
         ts_name: "go",
         definition_types: &[
             "function_declaration",
@@ -167,7 +99,7 @@ const LANG_CONFIGS: &[LangConfig] = &[
         ],
     },
     LangConfig {
-        extension: ".rs",
+        extensions: &[".rs"],
         ts_name: "rust",
         definition_types: &[
             "function_item",
@@ -183,7 +115,7 @@ const LANG_CONFIGS: &[LangConfig] = &[
         ],
     },
     LangConfig {
-        extension: ".java",
+        extensions: &[".java"],
         ts_name: "java",
         definition_types: &[
             "method_declaration",
@@ -194,7 +126,7 @@ const LANG_CONFIGS: &[LangConfig] = &[
         ],
     },
     LangConfig {
-        extension: ".c",
+        extensions: &[".c", ".h"],
         ts_name: "c",
         definition_types: &[
             "function_definition",
@@ -205,18 +137,9 @@ const LANG_CONFIGS: &[LangConfig] = &[
         ],
     },
     LangConfig {
-        extension: ".h",
-        ts_name: "c",
-        definition_types: &[
-            "function_definition",
-            "struct_specifier",
-            "enum_specifier",
-            "declaration",
-            "type_definition",
+        extensions: &[
+            ".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".c++", ".h++", ".ipp", ".tpp",
         ],
-    },
-    LangConfig {
-        extension: ".cpp",
         ts_name: "cpp",
         definition_types: &[
             "function_definition",
@@ -230,87 +153,12 @@ const LANG_CONFIGS: &[LangConfig] = &[
         ],
     },
     LangConfig {
-        extension: ".cc",
-        ts_name: "cpp",
-        definition_types: &[
-            "function_definition",
-            "class_specifier",
-            "struct_specifier",
-            "enum_specifier",
-            "declaration",
-            "type_definition",
-            "using_declaration",
-            "alias_declaration",
-        ],
-    },
-    LangConfig {
-        extension: ".cxx",
-        ts_name: "cpp",
-        definition_types: &[
-            "function_definition",
-            "class_specifier",
-            "struct_specifier",
-            "enum_specifier",
-            "declaration",
-            "type_definition",
-            "using_declaration",
-            "alias_declaration",
-        ],
-    },
-    LangConfig {
-        extension: ".hpp",
-        ts_name: "cpp",
-        definition_types: &[
-            "function_definition",
-            "class_specifier",
-            "struct_specifier",
-            "enum_specifier",
-            "declaration",
-            "type_definition",
-            "using_declaration",
-            "alias_declaration",
-        ],
-    },
-    LangConfig {
-        extension: ".hh",
-        ts_name: "cpp",
-        definition_types: &[
-            "function_definition",
-            "class_specifier",
-            "struct_specifier",
-            "enum_specifier",
-            "declaration",
-            "type_definition",
-            "using_declaration",
-            "alias_declaration",
-        ],
-    },
-    LangConfig {
-        extension: ".hxx",
-        ts_name: "cpp",
-        definition_types: &[
-            "function_definition",
-            "class_specifier",
-            "struct_specifier",
-            "enum_specifier",
-            "declaration",
-            "type_definition",
-            "using_declaration",
-            "alias_declaration",
-        ],
-    },
-    LangConfig {
-        extension: ".rb",
+        extensions: &[".rb", ".rake", ".gemspec"],
         ts_name: "ruby",
         definition_types: &["method", "class", "module", "singleton_method"],
     },
     LangConfig {
-        extension: ".rake",
-        ts_name: "ruby",
-        definition_types: &["method", "class", "module", "singleton_method"],
-    },
-    LangConfig {
-        extension: ".cs",
+        extensions: &[".cs"],
         ts_name: "c_sharp",
         definition_types: &[
             "method_declaration",
@@ -324,7 +172,7 @@ const LANG_CONFIGS: &[LangConfig] = &[
         ],
     },
     LangConfig {
-        extension: ".php",
+        extensions: &[".php", ".phtml"],
         ts_name: "php",
         definition_types: &[
             "function_definition",
@@ -336,7 +184,7 @@ const LANG_CONFIGS: &[LangConfig] = &[
         ],
     },
     LangConfig {
-        extension: ".scala",
+        extensions: &[".scala", ".sc"],
         ts_name: "scala",
         definition_types: &[
             "class_definition",
@@ -347,18 +195,7 @@ const LANG_CONFIGS: &[LangConfig] = &[
         ],
     },
     LangConfig {
-        extension: ".sc",
-        ts_name: "scala",
-        definition_types: &[
-            "class_definition",
-            "object_definition",
-            "trait_definition",
-            "function_definition",
-            "function_declaration",
-        ],
-    },
-    LangConfig {
-        extension: ".swift",
+        extensions: &[".swift"],
         ts_name: "swift",
         definition_types: &[
             "class_declaration",
@@ -367,36 +204,13 @@ const LANG_CONFIGS: &[LangConfig] = &[
             "protocol_function_declaration",
         ],
     },
-    // --- Ruby extra extensions ---
     LangConfig {
-        extension: ".gemspec",
-        ts_name: "ruby",
-        definition_types: &["method", "class", "module", "singleton_method"],
-    },
-    // --- Bash/Shell ---
-    LangConfig {
-        extension: ".sh",
+        extensions: &[".sh", ".bash", ".zsh", ".ksh"],
         ts_name: "bash",
         definition_types: &["function_definition"],
     },
     LangConfig {
-        extension: ".bash",
-        ts_name: "bash",
-        definition_types: &["function_definition"],
-    },
-    LangConfig {
-        extension: ".zsh",
-        ts_name: "bash",
-        definition_types: &["function_definition"],
-    },
-    LangConfig {
-        extension: ".ksh",
-        ts_name: "bash",
-        definition_types: &["function_definition"],
-    },
-    // --- CSS ---
-    LangConfig {
-        extension: ".css",
+        extensions: &[".css", ".scss", ".less"],
         ts_name: "css",
         definition_types: &[
             "rule_set",
@@ -406,28 +220,7 @@ const LANG_CONFIGS: &[LangConfig] = &[
         ],
     },
     LangConfig {
-        extension: ".scss",
-        ts_name: "css",
-        definition_types: &[
-            "rule_set",
-            "media_statement",
-            "keyframes_statement",
-            "import_statement",
-        ],
-    },
-    LangConfig {
-        extension: ".less",
-        ts_name: "css",
-        definition_types: &[
-            "rule_set",
-            "media_statement",
-            "keyframes_statement",
-            "import_statement",
-        ],
-    },
-    // --- Haskell ---
-    LangConfig {
-        extension: ".hs",
+        extensions: &[".hs", ".lhs"],
         ts_name: "haskell",
         definition_types: &[
             "function",
@@ -440,44 +233,22 @@ const LANG_CONFIGS: &[LangConfig] = &[
         ],
     },
     LangConfig {
-        extension: ".lhs",
-        ts_name: "haskell",
-        definition_types: &[
-            "function",
-            "type_synomym",
-            "newtype",
-            "data_type",
-            "class",
-            "instance",
-            "signature",
-        ],
-    },
-    // --- Elixir ---
-    LangConfig {
-        extension: ".ex",
+        extensions: &[".ex", ".exs"],
         ts_name: "elixir",
         definition_types: &["call"],
     },
     LangConfig {
-        extension: ".exs",
-        ts_name: "elixir",
-        definition_types: &["call"],
-    },
-    // --- Lua ---
-    LangConfig {
-        extension: ".lua",
+        extensions: &[".lua"],
         ts_name: "lua",
         definition_types: &["function_declaration", "function_definition"],
     },
-    // --- R ---
     LangConfig {
-        extension: ".r",
+        extensions: &[".r"],
         ts_name: "r",
         definition_types: &["function_definition"],
     },
-    // --- OCaml ---
     LangConfig {
-        extension: ".ml",
+        extensions: &[".ml", ".mli"],
         ts_name: "ocaml",
         definition_types: &[
             "let_binding",
@@ -488,30 +259,12 @@ const LANG_CONFIGS: &[LangConfig] = &[
         ],
     },
     LangConfig {
-        extension: ".mli",
-        ts_name: "ocaml",
-        definition_types: &[
-            "let_binding",
-            "type_definition",
-            "module_definition",
-            "module_type_definition",
-            "value_definition",
-        ],
-    },
-    // --- Erlang ---
-    LangConfig {
-        extension: ".erl",
+        extensions: &[".erl", ".hrl"],
         ts_name: "erlang",
         definition_types: &["function_clause", "type_spec", "attribute"],
     },
     LangConfig {
-        extension: ".hrl",
-        ts_name: "erlang",
-        definition_types: &["function_clause", "type_spec", "attribute"],
-    },
-    // --- Julia ---
-    LangConfig {
-        extension: ".jl",
+        extensions: &[".jl"],
         ts_name: "julia",
         definition_types: &[
             "function_definition",
@@ -522,9 +275,8 @@ const LANG_CONFIGS: &[LangConfig] = &[
             "module_definition",
         ],
     },
-    // --- Zig ---
     LangConfig {
-        extension: ".zig",
+        extensions: &[".zig"],
         ts_name: "zig",
         definition_types: &[
             "function_declaration",
@@ -535,42 +287,23 @@ const LANG_CONFIGS: &[LangConfig] = &[
             "union_declaration",
         ],
     },
-    // --- Clojure ---
     LangConfig {
-        extension: ".clj",
+        extensions: &[".clj", ".cljs", ".cljc"],
         ts_name: "clojure",
         definition_types: &["list_lit"],
     },
     LangConfig {
-        extension: ".cljs",
-        ts_name: "clojure",
-        definition_types: &["list_lit"],
-    },
-    LangConfig {
-        extension: ".cljc",
-        ts_name: "clojure",
-        definition_types: &["list_lit"],
-    },
-    // --- Nix ---
-    LangConfig {
-        extension: ".nix",
+        extensions: &[".nix"],
         ts_name: "nix",
         definition_types: &["binding", "inherit"],
     },
-    // --- Groovy ---
     LangConfig {
-        extension: ".groovy",
+        extensions: &[".groovy", ".gradle"],
         ts_name: "groovy",
         definition_types: &["method_declaration", "class_declaration", "closure"],
     },
     LangConfig {
-        extension: ".gradle",
-        ts_name: "groovy",
-        definition_types: &["method_declaration", "class_declaration", "closure"],
-    },
-    // --- Objective-C ---
-    LangConfig {
-        extension: ".m",
+        extensions: &[".m", ".mm"],
         ts_name: "objc",
         definition_types: &[
             "class_interface",
@@ -582,20 +315,7 @@ const LANG_CONFIGS: &[LangConfig] = &[
         ],
     },
     LangConfig {
-        extension: ".mm",
-        ts_name: "objc",
-        definition_types: &[
-            "class_interface",
-            "class_implementation",
-            "method_declaration",
-            "protocol_declaration",
-            "category_interface",
-            "category_implementation",
-        ],
-    },
-    // --- Dart ---
-    LangConfig {
-        extension: ".dart",
+        extensions: &[".dart"],
         ts_name: "dart",
         definition_types: &[
             "class_declaration",
@@ -606,9 +326,8 @@ const LANG_CONFIGS: &[LangConfig] = &[
             "mixin_declaration",
         ],
     },
-    // --- GraphQL ---
     LangConfig {
-        extension: ".graphql",
+        extensions: &[".graphql", ".gql"],
         ts_name: "graphql",
         definition_types: &[
             "object_type_definition",
@@ -620,25 +339,7 @@ const LANG_CONFIGS: &[LangConfig] = &[
         ],
     },
     LangConfig {
-        extension: ".gql",
-        ts_name: "graphql",
-        definition_types: &[
-            "object_type_definition",
-            "interface_type_definition",
-            "enum_type_definition",
-            "input_object_type_definition",
-            "union_type_definition",
-            "scalar_type_definition",
-        ],
-    },
-    // LaTeX: tree-sitter-latex crate is broken, using generic parser instead
-    // LangConfig { extension: ".tex", ts_name: "latex", ... },
-    // LangConfig { extension: ".latex", ts_name: "latex", ... },
-    // LangConfig { extension: ".sty", ts_name: "latex", ... },
-    // LangConfig { extension: ".cls", ts_name: "latex", ... }
-    // --- Prisma ---
-    LangConfig {
-        extension: ".prisma",
+        extensions: &[".prisma"],
         ts_name: "prisma",
         definition_types: &[
             "model_declaration",
@@ -648,130 +349,38 @@ const LANG_CONFIGS: &[LangConfig] = &[
             "datasource_declaration",
         ],
     },
-    // --- Svelte ---
     LangConfig {
-        extension: ".svelte",
+        extensions: &[".svelte"],
         ts_name: "svelte",
         definition_types: &["script_element", "style_element", "element"],
     },
-    // --- HCL / Terraform ---
     LangConfig {
-        extension: ".tf",
+        extensions: &[".tf", ".hcl"],
         ts_name: "hcl",
         definition_types: &["block"],
     },
     LangConfig {
-        extension: ".hcl",
-        ts_name: "hcl",
-        definition_types: &["block"],
-    },
-    // --- HTML ---
-    LangConfig {
-        extension: ".html",
+        extensions: &[".html", ".htm"],
         ts_name: "html",
         definition_types: &["element", "script_element", "style_element"],
     },
     LangConfig {
-        extension: ".htm",
-        ts_name: "html",
-        definition_types: &["element", "script_element", "style_element"],
-    },
-    // --- JSON ---
-    LangConfig {
-        extension: ".json",
+        extensions: &[".json"],
         ts_name: "json",
         definition_types: &["pair"],
     },
-    // --- YAML ---
     LangConfig {
-        extension: ".yaml",
+        extensions: &[".yaml", ".yml"],
         ts_name: "yaml",
         definition_types: &["block_mapping_pair"],
     },
     LangConfig {
-        extension: ".yml",
-        ts_name: "yaml",
-        definition_types: &["block_mapping_pair"],
-    },
-    // --- CMake ---
-    LangConfig {
-        extension: ".cmake",
+        extensions: &[".cmake"],
         ts_name: "cmake",
         definition_types: &["function_def", "macro_def", "if_condition", "foreach_loop"],
     },
-    // --- PHP extra extensions ---
     LangConfig {
-        extension: ".phtml",
-        ts_name: "php",
-        definition_types: &[
-            "function_definition",
-            "method_declaration",
-            "class_declaration",
-            "interface_declaration",
-            "trait_declaration",
-            "enum_declaration",
-        ],
-    },
-    // --- C++ extra extensions ---
-    LangConfig {
-        extension: ".c++",
-        ts_name: "cpp",
-        definition_types: &[
-            "function_definition",
-            "class_specifier",
-            "struct_specifier",
-            "enum_specifier",
-            "declaration",
-            "type_definition",
-            "using_declaration",
-            "alias_declaration",
-        ],
-    },
-    LangConfig {
-        extension: ".h++",
-        ts_name: "cpp",
-        definition_types: &[
-            "function_definition",
-            "class_specifier",
-            "struct_specifier",
-            "enum_specifier",
-            "declaration",
-            "type_definition",
-            "using_declaration",
-            "alias_declaration",
-        ],
-    },
-    LangConfig {
-        extension: ".ipp",
-        ts_name: "cpp",
-        definition_types: &[
-            "function_definition",
-            "class_specifier",
-            "struct_specifier",
-            "enum_specifier",
-            "declaration",
-            "type_definition",
-            "using_declaration",
-            "alias_declaration",
-        ],
-    },
-    LangConfig {
-        extension: ".tpp",
-        ts_name: "cpp",
-        definition_types: &[
-            "function_definition",
-            "class_specifier",
-            "struct_specifier",
-            "enum_specifier",
-            "declaration",
-            "type_definition",
-            "using_declaration",
-            "alias_declaration",
-        ],
-    },
-    // --- Makefile ---
-    LangConfig {
-        extension: ".mk",
+        extensions: &[".mk"],
         ts_name: "make",
         definition_types: &["rule"],
     },
@@ -911,7 +520,10 @@ fn file_extension(path: &str) -> &str {
 
 fn find_lang_config(path: &str) -> Option<&'static LangConfig> {
     let ext = file_extension(path).to_ascii_lowercase();
-    if let Some(config) = LANG_CONFIGS.iter().find(|c| c.extension == ext) {
+    if let Some(config) = LANG_CONFIGS
+        .iter()
+        .find(|c| c.extensions.contains(&ext.as_str()))
+    {
         return Some(config);
     }
     find_lang_config_by_filename(path)
@@ -1790,7 +1402,7 @@ fn fragment_embedded_source(
     } else {
         ".css"
     };
-    let Some(config) = LANG_CONFIGS.iter().find(|c| c.extension == ext) else {
+    let Some(config) = LANG_CONFIGS.iter().find(|c| c.extensions.contains(&ext)) else {
         return;
     };
     let Some(tree) = parse_with_cached_parser(ts_name, &language, snippet) else {
@@ -2233,14 +1845,16 @@ mod grammar_tests {
     #[test]
     fn every_lang_config_extension_is_discoverable_via_extension_to_language() {
         for config in LANG_CONFIGS {
-            assert!(
-                crate::languages::EXTENSION_TO_LANGUAGE.contains_key(config.extension),
-                "LANG_CONFIGS extension {:?} (ts_name {:?}) has no EXTENSION_TO_LANGUAGE \
-                 entry, so candidate_files.rs silently excludes it from discovery even \
-                 though a grammar exists for it",
-                config.extension,
-                config.ts_name
-            );
+            for ext in config.extensions {
+                assert!(
+                    crate::languages::EXTENSION_TO_LANGUAGE.contains_key(*ext),
+                    "LANG_CONFIGS extension {:?} (ts_name {:?}) has no EXTENSION_TO_LANGUAGE \
+                     entry, so candidate_files.rs silently excludes it from discovery even \
+                     though a grammar exists for it",
+                    ext,
+                    config.ts_name
+                );
+            }
         }
     }
 

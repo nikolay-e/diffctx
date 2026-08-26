@@ -171,6 +171,24 @@ pub struct LangWeights {
     pub lexical_max: f64,
 }
 
+impl LangWeights {
+    pub const fn new(
+        call: f64,
+        symbol_ref: f64,
+        type_ref: f64,
+        lexical_min: f64,
+        lexical_max: f64,
+    ) -> Self {
+        Self {
+            call,
+            symbol_ref,
+            type_ref,
+            lexical_min,
+            lexical_max,
+        }
+    }
+}
+
 pub static DEFAULT_LANG_WEIGHTS: LangWeights = LangWeights {
     call: 0.55,
     symbol_ref: 0.60,
@@ -181,186 +199,24 @@ pub static DEFAULT_LANG_WEIGHTS: LangWeights = LangWeights {
 
 pub static LANG_WEIGHTS: Lazy<FxHashMap<&'static str, LangWeights>> = Lazy::new(|| {
     let entries: &[(&str, LangWeights)] = &[
-        (
-            "python",
-            LangWeights {
-                call: 0.65,
-                symbol_ref: 0.70,
-                type_ref: 0.50,
-                lexical_min: 0.10,
-                lexical_max: 0.20,
-            },
-        ),
-        (
-            "javascript",
-            LangWeights {
-                call: 0.50,
-                symbol_ref: 0.55,
-                type_ref: 0.45,
-                lexical_min: 0.10,
-                lexical_max: 0.20,
-            },
-        ),
-        (
-            "jsx",
-            LangWeights {
-                call: 0.50,
-                symbol_ref: 0.55,
-                type_ref: 0.45,
-                lexical_min: 0.10,
-                lexical_max: 0.20,
-            },
-        ),
-        (
-            "typescript",
-            LangWeights {
-                call: 0.70,
-                symbol_ref: 0.75,
-                type_ref: 0.65,
-                lexical_min: 0.10,
-                lexical_max: 0.18,
-            },
-        ),
-        (
-            "tsx",
-            LangWeights {
-                call: 0.70,
-                symbol_ref: 0.75,
-                type_ref: 0.65,
-                lexical_min: 0.10,
-                lexical_max: 0.18,
-            },
-        ),
-        (
-            "rust",
-            LangWeights {
-                call: 0.90,
-                symbol_ref: 0.95,
-                type_ref: 0.85,
-                lexical_min: 0.05,
-                lexical_max: 0.10,
-            },
-        ),
-        (
-            "java",
-            LangWeights {
-                call: 0.85,
-                symbol_ref: 0.90,
-                type_ref: 0.80,
-                lexical_min: 0.05,
-                lexical_max: 0.10,
-            },
-        ),
-        (
-            "kotlin",
-            LangWeights {
-                call: 0.80,
-                symbol_ref: 0.85,
-                type_ref: 0.75,
-                lexical_min: 0.05,
-                lexical_max: 0.12,
-            },
-        ),
-        (
-            "scala",
-            LangWeights {
-                call: 0.80,
-                symbol_ref: 0.85,
-                type_ref: 0.75,
-                lexical_min: 0.05,
-                lexical_max: 0.12,
-            },
-        ),
-        (
-            "go",
-            LangWeights {
-                call: 0.80,
-                symbol_ref: 0.85,
-                type_ref: 0.75,
-                lexical_min: 0.05,
-                lexical_max: 0.12,
-            },
-        ),
-        (
-            "c",
-            LangWeights {
-                call: 0.60,
-                symbol_ref: 0.65,
-                type_ref: 0.55,
-                lexical_min: 0.08,
-                lexical_max: 0.15,
-            },
-        ),
-        (
-            "cpp",
-            LangWeights {
-                call: 0.65,
-                symbol_ref: 0.70,
-                type_ref: 0.60,
-                lexical_min: 0.08,
-                lexical_max: 0.15,
-            },
-        ),
-        (
-            "csharp",
-            LangWeights {
-                call: 0.75,
-                symbol_ref: 0.80,
-                type_ref: 0.70,
-                lexical_min: 0.05,
-                lexical_max: 0.12,
-            },
-        ),
-        (
-            "fsharp",
-            LangWeights {
-                call: 0.70,
-                symbol_ref: 0.75,
-                type_ref: 0.65,
-                lexical_min: 0.05,
-                lexical_max: 0.12,
-            },
-        ),
-        (
-            "ruby",
-            LangWeights {
-                call: 0.60,
-                symbol_ref: 0.65,
-                type_ref: 0.55,
-                lexical_min: 0.08,
-                lexical_max: 0.15,
-            },
-        ),
-        (
-            "php",
-            LangWeights {
-                call: 0.60,
-                symbol_ref: 0.65,
-                type_ref: 0.55,
-                lexical_min: 0.08,
-                lexical_max: 0.15,
-            },
-        ),
-        (
-            "shell",
-            LangWeights {
-                call: 0.40,
-                symbol_ref: 0.45,
-                type_ref: 0.35,
-                lexical_min: 0.10,
-                lexical_max: 0.18,
-            },
-        ),
-        (
-            "swift",
-            LangWeights {
-                call: 0.75,
-                symbol_ref: 0.80,
-                type_ref: 0.70,
-                lexical_min: 0.05,
-                lexical_max: 0.12,
-            },
-        ),
+        ("python", LangWeights::new(0.65, 0.70, 0.50, 0.10, 0.20)),
+        ("javascript", LangWeights::new(0.50, 0.55, 0.45, 0.10, 0.20)),
+        ("jsx", LangWeights::new(0.50, 0.55, 0.45, 0.10, 0.20)),
+        ("typescript", LangWeights::new(0.70, 0.75, 0.65, 0.10, 0.18)),
+        ("tsx", LangWeights::new(0.70, 0.75, 0.65, 0.10, 0.18)),
+        ("rust", LangWeights::new(0.90, 0.95, 0.85, 0.05, 0.10)),
+        ("java", LangWeights::new(0.85, 0.90, 0.80, 0.05, 0.10)),
+        ("kotlin", LangWeights::new(0.80, 0.85, 0.75, 0.05, 0.12)),
+        ("scala", LangWeights::new(0.80, 0.85, 0.75, 0.05, 0.12)),
+        ("go", LangWeights::new(0.80, 0.85, 0.75, 0.05, 0.12)),
+        ("c", LangWeights::new(0.60, 0.65, 0.55, 0.08, 0.15)),
+        ("cpp", LangWeights::new(0.65, 0.70, 0.60, 0.08, 0.15)),
+        ("csharp", LangWeights::new(0.75, 0.80, 0.70, 0.05, 0.12)),
+        ("fsharp", LangWeights::new(0.70, 0.75, 0.65, 0.05, 0.12)),
+        ("ruby", LangWeights::new(0.60, 0.65, 0.55, 0.08, 0.15)),
+        ("php", LangWeights::new(0.60, 0.65, 0.55, 0.08, 0.15)),
+        ("shell", LangWeights::new(0.40, 0.45, 0.35, 0.10, 0.18)),
+        ("swift", LangWeights::new(0.75, 0.80, 0.70, 0.05, 0.12)),
     ];
     entries.iter().copied().collect()
 });

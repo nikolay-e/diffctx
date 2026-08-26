@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids, discover_files_by_refs};
+use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_files_by_refs};
 
 fn is_ocaml_file(path: &Path) -> bool {
     base::has_ext(path, &[".ml", ".mli"])
@@ -25,8 +25,8 @@ static MODULE_REF_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b([A-Z]\w*)\.\w+"
 
 fn extract_opens(content: &str) -> FxHashSet<String> {
     let mut refs = FxHashSet::default();
-    refs.extend(OPEN_RE.captures_iter(content).map(|c| c[1].to_string()));
-    refs.extend(INCLUDE_RE.captures_iter(content).map(|c| c[1].to_string()));
+    refs.extend(base::captures1(&OPEN_RE, content));
+    refs.extend(base::captures1(&INCLUDE_RE, content));
     refs
 }
 
@@ -37,17 +37,14 @@ fn extract_defs(content: &str) -> FxHashSet<String> {
             .captures_iter(content)
             .map(|c| c[1].to_string()),
     );
-    defs.extend(LET_RE.captures_iter(content).map(|c| c[1].to_string()));
-    defs.extend(VAL_RE.captures_iter(content).map(|c| c[1].to_string()));
-    defs.extend(TYPE_DEF_RE.captures_iter(content).map(|c| c[1].to_string()));
+    defs.extend(base::captures1(&LET_RE, content));
+    defs.extend(base::captures1(&VAL_RE, content));
+    defs.extend(base::captures1(&TYPE_DEF_RE, content));
     defs
 }
 
 fn extract_module_refs(content: &str) -> FxHashSet<String> {
-    MODULE_REF_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&MODULE_REF_RE, content).collect()
 }
 
 pub struct OCamlEdgeBuilder;
@@ -94,11 +91,7 @@ impl EdgeBuilder for OCamlEdgeBuilder {
                     continue;
                 }
                 if let Some(targets) = name_to_defs.get(&mref.to_lowercase()) {
-                    for t in targets {
-                        if t != &f.id {
-                            add_edge(&mut edges, &f.id, t, mod_w, reverse_factor);
-                        }
-                    }
+                    add_edges_from_ids(&mut edges, &f.id, &targets, mod_w, reverse_factor);
                 }
             }
             for id in &f.identifiers {
@@ -106,11 +99,7 @@ impl EdgeBuilder for OCamlEdgeBuilder {
                     continue;
                 }
                 if let Some(targets) = name_to_defs.get(&id.to_lowercase()) {
-                    for t in targets {
-                        if t != &f.id {
-                            add_edge(&mut edges, &f.id, t, fn_w, reverse_factor);
-                        }
-                    }
+                    add_edges_from_ids(&mut edges, &f.id, &targets, fn_w, reverse_factor);
                 }
             }
         }

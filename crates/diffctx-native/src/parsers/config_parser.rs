@@ -35,76 +35,12 @@ impl FragmentationStrategy for ConfigStrategy {
     fn fragment(&self, path: Arc<str>, content: &str) -> Vec<Fragment> {
         let ext = file_extension_lower(&path);
         match ext.as_str() {
-            ".yaml" | ".yml" => fragment_yaml(path, content),
-            ".toml" => fragment_toml(path, content),
-            ".json" => fragment_json(path, content),
+            ".yaml" | ".yml" => split_at_top_level_pattern(path, content, &YAML_TOP_LEVEL_KEY),
+            ".toml" => split_at_top_level_pattern(path, content, &TOML_SECTION_HEADER),
+            ".json" => split_at_top_level_pattern(path, content, &JSON_TOP_LEVEL_KEY),
             _ => Vec::new(),
         }
     }
-}
-
-fn fragment_yaml(path: Arc<str>, content: &str) -> Vec<Fragment> {
-    split_at_top_level_pattern(path, content, &YAML_TOP_LEVEL_KEY)
-}
-
-fn fragment_toml(path: Arc<str>, content: &str) -> Vec<Fragment> {
-    split_at_top_level_pattern(path, content, &TOML_SECTION_HEADER)
-}
-
-fn fragment_json(path: Arc<str>, content: &str) -> Vec<Fragment> {
-    let lines: Vec<&str> = content.split('\n').collect();
-    if lines.is_empty() {
-        return Vec::new();
-    }
-
-    let mut boundaries: Vec<usize> = Vec::new();
-
-    for (i, line) in lines.iter().enumerate() {
-        if JSON_TOP_LEVEL_KEY.is_match(line) {
-            boundaries.push(i);
-        }
-    }
-
-    if boundaries.len() < 2 {
-        return make_single_fragment(path, &lines);
-    }
-
-    let mut fragments: Vec<Fragment> = Vec::new();
-    for (idx, &start_idx) in boundaries.iter().enumerate() {
-        let end_idx = if idx + 1 < boundaries.len() {
-            boundaries[idx + 1] - 1
-        } else {
-            lines.len() - 1
-        };
-
-        let end_idx = trim_trailing_blanks(&lines, start_idx, end_idx);
-        let start_line = start_idx as u32 + 1;
-        let end_line = end_idx as u32 + 1;
-
-        let mut snippet = lines[start_idx..=end_idx].join("\n");
-        if snippet.trim().is_empty() {
-            continue;
-        }
-        if !snippet.ends_with('\n') {
-            snippet.push('\n');
-        }
-
-        let identifiers =
-            extract_identifiers(&snippet, TOKENIZATION.fragment_min_identifier_length);
-        fragments.push(Fragment {
-            id: FragmentId::new(Arc::clone(&path), start_line, end_line),
-            kind: FragmentKind::Chunk,
-            content: Arc::from(snippet),
-            identifiers,
-            token_count: 0,
-            symbol_name: None,
-        });
-    }
-
-    if fragments.is_empty() {
-        return make_single_fragment(path, &lines);
-    }
-    fragments
 }
 
 fn split_at_top_level_pattern(path: Arc<str>, content: &str, pattern: &Regex) -> Vec<Fragment> {

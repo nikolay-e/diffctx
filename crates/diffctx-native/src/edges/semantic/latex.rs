@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, discover_files_by_refs};
+use super::super::base::{self, EdgeBuilder};
 
 fn is_latex_file(path: &Path) -> bool {
     base::has_ext(path, &[".tex", ".sty", ".cls", ".bib"])
@@ -25,7 +25,7 @@ static SUBFILE_RE: Lazy<Regex> =
 fn extract_refs(content: &str) -> FxHashSet<String> {
     let mut refs = FxHashSet::default();
     for re in [&*INPUT_RE, &*SUBFILE_RE] {
-        refs.extend(re.captures_iter(content).map(|c| c[1].to_string()));
+        refs.extend(base::captures1(&re, content));
     }
     for cap in USEPACKAGE_RE.captures_iter(content) {
         for pkg in cap[1].split(',') {
@@ -100,16 +100,13 @@ impl EdgeBuilder for LatexEdgeBuilder {
         repo_root: Option<&Path>,
         file_cache: Option<&FxHashMap<PathBuf, String>>,
     ) -> Vec<PathBuf> {
-        let tex_changed: Vec<&PathBuf> = changed.iter().filter(|f| is_latex_file(f)).collect();
-        if tex_changed.is_empty() {
-            return vec![];
-        }
-        let mut refs = FxHashSet::default();
-        for f in &tex_changed {
-            if let Some(content) = base::read_file_cached(f, file_cache) {
-                refs.extend(extract_refs(&content));
-            }
-        }
-        discover_files_by_refs(&refs, changed, candidates, repo_root)
+        base::discover_by_extracted_refs(
+            changed,
+            candidates,
+            repo_root,
+            file_cache,
+            is_latex_file,
+            extract_refs,
+        )
     }
 }

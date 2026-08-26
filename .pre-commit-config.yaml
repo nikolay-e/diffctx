@@ -53,7 +53,7 @@ repos:
       - id: detect-private-key
 
   - repo: https://github.com/abravalheri/validate-pyproject
-    rev: "v0.25"
+    rev: "0.26"
     hooks:
       - id: validate-pyproject
         name: validate-pyproject (PEP 621 schema)
@@ -120,7 +120,7 @@ repos:
   # LINTING (Ruff for speed + correctness)
   # ============================================================================
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.14
+    rev: v0.16.4
     hooks:
       - id: ruff
         name: ruff (correctness-focused checks)
@@ -135,8 +135,12 @@ repos:
       - id: detect-secrets
         args: ["--baseline", ".secrets.baseline"]
         # packaging/ and bucket/ hold generated release manifests whose SHA-256
-        # digests of public artifacts read as high-entropy strings.
-        exclude: ^(packaging|bucket)/
+        # digests of public artifacts read as high-entropy strings; datasets/
+        # is a read-only benchmark corpus of third-party diffs whose commit
+        # hashes did the same — 1354 of the baseline's 1360 entries came from
+        # there, so approving a real secret-scan change meant scrolling past
+        # 10k lines of noise.
+        exclude: ^(packaging|bucket|datasets)/
 
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.29.1
@@ -222,7 +226,7 @@ repos:
   # YAML LINTING
   # ============================================================================
   - repo: https://github.com/adrienverge/yamllint
-    rev: v1.37.1
+    rev: v1.38.0
     hooks:
       - id: yamllint
         args:
@@ -333,4 +337,18 @@ repos:
     rev: v4.9.1
     hooks:
       - id: commitizen
+        stages: [commit-msg]
+
+  # commitizen validates the conventional-commit FORM, not the length. Counted
+  # in CHARACTERS, not bytes: subjects here routinely carry an em-dash (3 bytes)
+  # or Cyrillic, so `awk length` and `wc -c` both overstate — a subject measured
+  # by eye as 74 was 72. Subject line only; a body may carry a long URL.
+  - repo: local
+    hooks:
+      - id: commit-subject-length
+        name: commit subject fits 72 chars
+        entry: >-
+          bash -c 'n=$(head -1 "$1" | wc -m); n=$((n-1));
+          [ "$n" -le 72 ] || { echo "subject is $n chars, limit 72"; exit 1; }' --
+        language: system
         stages: [commit-msg]

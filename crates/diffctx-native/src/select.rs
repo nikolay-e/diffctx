@@ -9,7 +9,7 @@ use crate::config::selection::selection;
 use crate::interval::IntervalIndex;
 use crate::types::{Fragment, FragmentId};
 use crate::utility::needs::InformationNeed;
-use crate::utility::scoring::{
+use crate::utility::objective::{
     UtilityState, apply_fragment, compute_density, marginal_gain, utility_value,
 };
 
@@ -32,19 +32,6 @@ pub enum SelectionReason {
     BestSingleton,
 }
 
-impl SelectionReason {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::TopK => "topk",
-            Self::NoCandidates => "no_candidates",
-            Self::BudgetExhausted => "budget_exhausted",
-            Self::NoUtility => "no_utility",
-            Self::StoppedByTau => "stopped_by_tau",
-            Self::BestSingleton => "best_singleton",
-        }
-    }
-}
-
 pub struct SelectionResult {
     pub selected: Vec<Fragment>,
     pub reason: SelectionReason,
@@ -60,6 +47,21 @@ pub struct SelectionResult {
     /// continuing the same greedy to the feasibility frontier could
     /// still have added. 0 when the loop ended for any other reason.
     pub stopping_certificate: f64,
+}
+
+impl SelectionResult {
+    /// Nothing selected: no candidates reached the selector at all. Spelled out
+    /// identically in the greedy and the Boltzmann path before this.
+    pub fn none() -> Self {
+        Self {
+            selected: Vec::new(),
+            reason: SelectionReason::NoCandidates,
+            used_tokens: 0,
+            utility: 0.0,
+            greedy_iters: 0,
+            stopping_certificate: 0.0,
+        }
+    }
 }
 
 struct HeapEntry {
@@ -705,14 +707,7 @@ pub fn lazy_greedy_select(
     declared_admissible_files: Option<&FxHashSet<Arc<str>>>,
 ) -> SelectionResult {
     if fragments.is_empty() {
-        return SelectionResult {
-            selected: Vec::new(),
-            reason: SelectionReason::NoCandidates,
-            used_tokens: 0,
-            utility: 0.0,
-            greedy_iters: 0,
-            stopping_certificate: 0.0,
-        };
+        return SelectionResult::none();
     }
 
     let (mut state, non_core_fragments, _selected_core, should_return_early) =
@@ -738,7 +733,7 @@ pub fn lazy_greedy_select(
         };
     }
 
-    let base_state = state.utility_state.copy();
+    let base_state = state.utility_state.clone();
     let base_selected = state.selected.clone();
     let base_budget = state.remaining_budget;
 

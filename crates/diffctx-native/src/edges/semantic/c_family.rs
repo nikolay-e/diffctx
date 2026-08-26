@@ -11,7 +11,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::{Fragment, FragmentId};
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edge};
+use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids};
 
 fn is_c_family(path: &Path) -> bool {
     let ext = base::file_ext(path);
@@ -45,59 +45,18 @@ static INHERITANCE_RE: Lazy<Regex> = Lazy::new(|| {
 });
 
 static C_KEYWORDS: Lazy<FxHashSet<&str>> = Lazy::new(|| {
-    [
-        "if",
-        "for",
-        "while",
-        "switch",
-        "case",
-        "return",
-        "sizeof",
-        "typeof",
-        "alignof",
-        "static_assert",
-        "do",
-        "else",
-        "goto",
-        "break",
-        "continue",
-        "default",
-        "register",
-        "volatile",
-        "extern",
-        "typedef",
-        "auto",
-        "inline",
-        "restrict",
-        "noexcept",
-        "decltype",
-        "nullptr",
-        "throw",
-        "try",
-        "catch",
-        "delete",
-        "new",
-        "template",
-        "namespace",
-        "using",
-        "operator",
-    ]
-    .iter()
-    .copied()
-    .collect()
+    base::kw(concat!(
+        "if for while switch case return sizeof typeof alignof static_assert do else goto break ",
+        "continue default register volatile extern typedef auto inline restrict noexcept decltype ",
+        "nullptr throw try catch delete new template namespace using operator ",
+    ))
 });
-
 static C_COMMON_MACROS: Lazy<FxHashSet<&str>> = Lazy::new(|| {
-    [
-        "NULL", "TRUE", "FALSE", "BOOL", "DWORD", "HANDLE", "VOID", "HRESULT", "LPCTSTR", "LPCSTR",
-        "LPWSTR", "INT", "UINT", "LONG", "ULONG", "WORD", "BYTE", "CHAR", "SHORT", "EOF",
-        "SIZE_MAX", "INT_MAX", "INT_MIN",
-    ]
-    .iter()
-    .copied()
-    .collect()
+    base::kw(concat!(
+        "NULL TRUE FALSE BOOL DWORD HANDLE VOID HRESULT LPCTSTR LPCSTR LPWSTR INT UINT LONG ULONG ",
+        "WORD BYTE CHAR SHORT EOF SIZE_MAX INT_MAX INT_MIN ",
+    ))
 });
-
 fn extract_includes(content: &str) -> FxHashSet<String> {
     let mut includes = FxHashSet::default();
     for cap in INCLUDE_RE.captures_iter(content) {
@@ -111,17 +70,12 @@ fn extract_includes(content: &str) -> FxHashSet<String> {
 }
 
 fn extract_definitions(content: &str) -> (FxHashSet<String>, FxHashSet<String>) {
-    let functions: FxHashSet<String> = FUNC_DEF_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
+    let functions: FxHashSet<String> = base::captures1(&FUNC_DEF_RE, content)
         .filter(|n| {
             !C_KEYWORDS.contains(n.as_str()) && n.len() > SEMANTIC_DISCOVERY.min_identifier_length
         })
         .collect();
-    let types: FxHashSet<String> = TYPE_DEF_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect();
+    let types: FxHashSet<String> = base::captures1(&TYPE_DEF_RE, content).collect();
     (functions, types)
 }
 
@@ -129,9 +83,7 @@ fn extract_references(
     content: &str,
     own_defs: &FxHashSet<String>,
 ) -> (FxHashSet<String>, FxHashSet<String>) {
-    let calls: FxHashSet<String> = FUNC_CALL_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
+    let calls: FxHashSet<String> = base::captures1(&FUNC_CALL_RE, content)
         .filter(|n| {
             !C_KEYWORDS.contains(n.as_str())
                 && !own_defs.contains(n)
@@ -139,9 +91,7 @@ fn extract_references(
                 && n.len() > SEMANTIC_DISCOVERY.min_identifier_length
         })
         .collect();
-    let type_refs: FxHashSet<String> = TYPE_REF_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
+    let type_refs: FxHashSet<String> = base::captures1(&TYPE_REF_RE, content)
         .filter(|n| {
             !C_COMMON_MACROS.contains(n.as_str())
                 && !own_defs.contains(n)
@@ -300,22 +250,26 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
                 if !unambiguous(func_def_files.get(call)) {
                     continue;
                 }
-                for def_id in func_defs_map.get(call).unwrap_or(&vec![]) {
-                    if def_id != &f.id {
-                        add_edge(&mut edges, &f.id, def_id, call_weight, reverse_factor);
-                    }
-                }
+                add_edges_from_ids(
+                    &mut edges,
+                    &f.id,
+                    func_defs_map.get(call).unwrap_or(&vec![]),
+                    call_weight,
+                    reverse_factor,
+                );
             }
 
             for t in &type_refs {
                 if !unambiguous(type_def_files.get(t)) {
                     continue;
                 }
-                for def_id in type_defs_map.get(t).unwrap_or(&vec![]) {
-                    if def_id != &f.id {
-                        add_edge(&mut edges, &f.id, def_id, type_weight, reverse_factor);
-                    }
-                }
+                add_edges_from_ids(
+                    &mut edges,
+                    &f.id,
+                    type_defs_map.get(t).unwrap_or(&vec![]),
+                    type_weight,
+                    reverse_factor,
+                );
             }
 
             for cap in INHERITANCE_RE.captures_iter(&f.content) {

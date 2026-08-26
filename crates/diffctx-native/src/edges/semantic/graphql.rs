@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids, discover_files_by_refs};
+use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_files_by_refs};
 
 fn is_graphql_file(path: &Path) -> bool {
     base::has_ext(path, &[".graphql", ".gql"])
@@ -33,16 +33,11 @@ static GQL_BUILTINS: Lazy<FxHashSet<&str>> = Lazy::new(|| {
 });
 
 fn extract_defs(content: &str) -> FxHashSet<String> {
-    TYPE_DEF_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&TYPE_DEF_RE, content).collect()
 }
 
 fn extract_type_refs(content: &str) -> FxHashSet<String> {
-    let mut refs: FxHashSet<String> = FIELD_TYPE_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
+    let mut refs: FxHashSet<String> = base::captures1(&FIELD_TYPE_RE, content)
         .filter(|n| !GQL_BUILTINS.contains(n.as_str()))
         .collect();
     for cap in IMPLEMENTS_RE.captures_iter(content) {
@@ -65,10 +60,7 @@ fn extract_type_refs(content: &str) -> FxHashSet<String> {
 }
 
 fn extract_extends(content: &str) -> FxHashSet<String> {
-    EXTEND_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&EXTEND_RE, content).collect()
 }
 
 pub struct GraphqlEdgeBuilder;
@@ -111,11 +103,7 @@ impl EdgeBuilder for GraphqlEdgeBuilder {
                     continue;
                 }
                 if let Some(targets) = name_to_defs.get(&tref.to_lowercase()) {
-                    for t in targets {
-                        if t != &f.id {
-                            add_edge(&mut edges, &f.id, t, type_w, reverse_factor);
-                        }
-                    }
+                    add_edges_from_ids(&mut edges, &f.id, &targets, type_w, reverse_factor);
                 }
             }
         }

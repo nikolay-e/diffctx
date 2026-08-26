@@ -143,6 +143,57 @@ fn print_token_summary(rendered: &str) {
 // Mirrors `_diff_result_is_empty` in src/diffctx/_app.py: deletions and renames
 // are real signal even with zero fragments, so only a result carrying neither
 // counts as empty.
+fn run_with_deadline<T, F>(timeout: u64, work: F) -> Result<T>
+where
+    F: FnOnce() -> Result<T> + Send + 'static,
+    T: Send + 'static,
+{
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || {
+        let _ = tx.send(work());
+    });
+    match rx.recv_timeout(Duration::from_secs(timeout)) {
+        Ok(result) => result,
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            eprintln!(
+                "diffctx: pipeline exceeded {timeout}s wall-clock deadline; aborting before \
+                 OOM/SIGKILL. Narrow the review with an explicit '--diff <from>..<to>' range or \
+                 run on a smaller subtree, or raise '--timeout'."
+            );
+            std::process::exit(124);
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            anyhow::bail!("diffctx: pipeline worker terminated unexpectedly");
+        }
+    }
+}
+
+// Both entry points end the same way, and the exit code is part of the CLI
+// contract: an empty diff must still print, still summarize, and still exit
+// EXIT_EMPTY_DIFF rather than 0.
+fn emit(cli: &Cli, rendered: &str, is_empty: bool) -> Result<()> {
+    if is_empty {
+        eprintln!(
+            "diffctx: diff produced no semantic context (clean working tree, binary-only, or \
+             files over the size cap); {}",
+            empty_diff_hint(
+                &cli.path,
+                cli.budget,
+                cli.diff_ref.as_deref().unwrap_or("HEAD")
+            )
+        );
+    }
+    if !cli.quiet {
+        print_token_summary(rendered);
+    }
+    print!("{rendered}");
+    io::stdout().flush()?;
+    if is_empty {
+        std::process::exit(EXIT_EMPTY_DIFF);
+    }
+    Ok(())
+}
+
 fn diff_result_is_empty(output: &DiffContextOutput) -> bool {
     output.deleted_files.is_empty()
         && output.renamed_files.is_empty()
@@ -188,9 +239,8 @@ fn run_locate(
     scoring_mode: ScoringMode,
     timeout: u64,
 ) -> Result<()> {
-    let (tx, rx) = mpsc::channel();
-    thread::spawn(move || {
-        let result = _diffctx::pipeline::build_diff_context_locate(
+    let output = run_with_deadline(timeout, move || {
+        _diffctx::pipeline::build_diff_context_locate(
             &path,
             diff_ref.as_deref(),
             budget,
@@ -198,23 +248,8 @@ fn run_locate(
             tau,
             scoring_mode,
             timeout,
-        );
-        let _ = tx.send(result);
-    });
-    let output = match rx.recv_timeout(Duration::from_secs(timeout)) {
-        Ok(result) => result?,
-        Err(mpsc::RecvTimeoutError::Timeout) => {
-            eprintln!(
-                "diffctx: pipeline exceeded {timeout}s wall-clock deadline; aborting before \
-                 OOM/SIGKILL. Narrow the review with an explicit '--diff <from>..<to>' range or \
-                 run on a smaller subtree, or raise '--timeout'."
-            );
-            std::process::exit(124);
-        }
-        Err(mpsc::RecvTimeoutError::Disconnected) => {
-            anyhow::bail!("diffctx: pipeline worker terminated unexpectedly");
-        }
-    };
+        )
+    })?;
 
     let rendered = format!("{}\n", serde_json::to_string(&output)?);
     let is_empty = output.item_count == 0
@@ -223,26 +258,7 @@ fn run_locate(
         && output.lockfile_changes.is_empty()
         && output.ignored_changes.is_empty()
         && output.policy_excluded_count == 0;
-    if is_empty {
-        eprintln!(
-            "diffctx: diff produced no semantic context (clean working tree, binary-only, or \
-             files over the size cap); {}",
-            empty_diff_hint(
-                &cli.path,
-                cli.budget,
-                cli.diff_ref.as_deref().unwrap_or("HEAD")
-            )
-        );
-    }
-    if !cli.quiet {
-        print_token_summary(&rendered);
-    }
-    print!("{rendered}");
-    io::stdout().flush()?;
-    if is_empty {
-        std::process::exit(EXIT_EMPTY_DIFF);
-    }
-    Ok(())
+    emit(cli, &rendered, is_empty)
 }
 
 fn main() -> Result<()> {
@@ -288,9 +304,8 @@ fn main() -> Result<()> {
         );
     }
 
-    let (tx, rx) = mpsc::channel();
-    thread::spawn(move || {
-        let result = build_diff_context(
+    let output = run_with_deadline(timeout, move || {
+        build_diff_context(
             &path,
             diff_ref.as_deref(),
             budget,
@@ -300,24 +315,8 @@ fn main() -> Result<()> {
             full,
             scoring_mode,
             timeout,
-        );
-        let _ = tx.send(result);
-    });
-
-    let output = match rx.recv_timeout(Duration::from_secs(timeout)) {
-        Ok(result) => result?,
-        Err(mpsc::RecvTimeoutError::Timeout) => {
-            eprintln!(
-                "diffctx: pipeline exceeded {timeout}s wall-clock deadline; aborting before \
-                 OOM/SIGKILL. Narrow the review with an explicit '--diff <from>..<to>' range or \
-                 run on a smaller subtree, or raise '--timeout'."
-            );
-            std::process::exit(124);
-        }
-        Err(mpsc::RecvTimeoutError::Disconnected) => {
-            anyhow::bail!("diffctx: pipeline worker terminated unexpectedly");
-        }
-    };
+        )
+    })?;
 
     let rendered = match cli.format.as_str() {
         "json" => format!("{}\n", serde_json::to_string_pretty(&output)?),
@@ -327,26 +326,5 @@ fn main() -> Result<()> {
         }
     };
 
-    if diff_result_is_empty(&output) {
-        eprintln!(
-            "diffctx: diff produced no semantic context (clean working tree, binary-only, or \
-             files over the size cap); {}",
-            empty_diff_hint(
-                &cli.path,
-                cli.budget,
-                cli.diff_ref.as_deref().unwrap_or("HEAD")
-            )
-        );
-    }
-    if !cli.quiet {
-        print_token_summary(&rendered);
-    }
-    print!("{rendered}");
-    io::stdout().flush()?;
-
-    if diff_result_is_empty(&output) {
-        std::process::exit(EXIT_EMPTY_DIFF);
-    }
-
-    Ok(())
+    emit(&cli, &rendered, diff_result_is_empty(&output))
 }

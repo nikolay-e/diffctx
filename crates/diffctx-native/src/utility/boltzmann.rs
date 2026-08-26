@@ -25,14 +25,7 @@ pub fn boltzmann_select(
     beta: f64,
 ) -> SelectionResult {
     if fragments.is_empty() {
-        return SelectionResult {
-            selected: Vec::new(),
-            reason: SelectionReason::NoCandidates,
-            used_tokens: 0,
-            utility: 0.0,
-            greedy_iters: 0,
-            stopping_certificate: 0.0,
-        };
+        return SelectionResult::none();
     }
 
     let mut core: Vec<Fragment> = fragments

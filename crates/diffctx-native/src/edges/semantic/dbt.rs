@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edge, discover_files_by_refs};
+use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_files_by_refs};
 
 fn is_dbt_file(content: &str) -> bool {
     content.contains("{{ ref(") || content.contains("{{ source(") || content.contains("{{ config(")
@@ -27,20 +27,13 @@ static MACRO_CALL_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\{\{\s*(\w+)\s*\("
 static MACRO_DEF_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\{%-?\s*macro\s+(\w+)").unwrap());
 
 static DBT_BUILTINS: Lazy<FxHashSet<&str>> = Lazy::new(|| {
-    [
-        "ref", "source", "config", "set", "if", "for", "endif", "endfor", "else", "elif", "block",
-        "endblock", "macro", "endmacro", "do", "call", "filter",
-    ]
-    .iter()
-    .copied()
-    .collect()
+    base::kw(concat!(
+        "ref source config set if for endif endfor else elif block endblock macro endmacro do call ",
+        "filter ",
+    ))
 });
-
 fn extract_refs(content: &str) -> FxHashSet<String> {
-    REF_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&REF_RE, content).collect()
 }
 
 fn extract_sources(content: &str) -> FxHashSet<String> {
@@ -51,18 +44,13 @@ fn extract_sources(content: &str) -> FxHashSet<String> {
 }
 
 fn extract_macro_calls(content: &str) -> FxHashSet<String> {
-    MACRO_CALL_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
+    base::captures1(&MACRO_CALL_RE, content)
         .filter(|n| !DBT_BUILTINS.contains(n.as_str()))
         .collect()
 }
 
 fn extract_macro_defs(content: &str) -> FxHashSet<String> {
-    MACRO_DEF_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&MACRO_DEF_RE, content).collect()
 }
 
 pub struct DbtEdgeBuilder;
@@ -106,11 +94,7 @@ impl EdgeBuilder for DbtEdgeBuilder {
             }
             for mc in extract_macro_calls(&f.content) {
                 if let Some(targets) = macro_to_frags.get(&mc.to_lowercase()) {
-                    for t in targets {
-                        if t != &f.id {
-                            add_edge(&mut edges, &f.id, t, macro_w, macro_rev);
-                        }
-                    }
+                    add_edges_from_ids(&mut edges, &f.id, &targets, macro_w, macro_rev);
                 }
             }
         }

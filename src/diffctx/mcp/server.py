@@ -14,10 +14,11 @@ from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
 from diffctx._diffctx import DEFAULT_TAU as _ENGINE_DEFAULT_TAU
+from diffctx._diffctx import DEFAULT_TIMEOUT as _ENGINE_DEFAULT_TIMEOUT
 from diffctx._native import GitError, build_diff_context
 from diffctx.version import __version__
+from diffctx.writer import tree_to_string
 
-from .formatting import format_diff_context_as_markdown
 from .security import validate_repo_path
 
 logger = logging.getLogger(__name__)
@@ -41,12 +42,11 @@ _DEFAULT_MAX_FILE_BYTES = 256 * 1024
 # hundreds of thousands of tokens in one response.
 _DEFAULT_MAX_TOKENS = 25_000
 
-# Mirror diffctx.cli._DEFAULT_TIMEOUT (300s). Same layering constraint as
-# above. The engine caps each git subprocess at this value, but the CPU-bound
-# phases (parse, fragment, score) have no cap of their own — without a
-# wall-clock deadline here a single tool call can wedge the server for as long
-# as a pathological repository takes.
-_DEFAULT_TIMEOUT_SECONDS = 300
+# The engine caps each git subprocess at this value, but the CPU-bound phases
+# (parse, fragment, score) have no cap of their own — without a wall-clock
+# deadline here a single tool call can wedge the server for as long as a
+# pathological repository takes.
+_DEFAULT_TIMEOUT_SECONDS: int = _ENGINE_DEFAULT_TIMEOUT
 
 
 def _deadline_message(tool: str) -> str:
@@ -242,7 +242,7 @@ async def diffctx_context(
     except GitError as e:
         raise _git_failure(diff_ref, e) from e
 
-    content = format_diff_context_as_markdown(result)
+    content = tree_to_string(result, "md")
 
     if clipboard:
         degraded_notice = await _copy_or_degrade(content)

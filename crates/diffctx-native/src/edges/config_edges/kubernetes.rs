@@ -70,49 +70,14 @@ static VOLUME_PVC_RE: Lazy<Regex> = Lazy::new(|| {
 });
 
 static K8S_KINDS: Lazy<FxHashSet<&str>> = Lazy::new(|| {
-    [
-        "Deployment",
-        "Service",
-        "ConfigMap",
-        "Secret",
-        "Ingress",
-        "Pod",
-        "ReplicaSet",
-        "StatefulSet",
-        "DaemonSet",
-        "Job",
-        "CronJob",
-        "PersistentVolume",
-        "PersistentVolumeClaim",
-        "ServiceAccount",
-        "Role",
-        "RoleBinding",
-        "ClusterRole",
-        "ClusterRoleBinding",
-        "NetworkPolicy",
-        "HorizontalPodAutoscaler",
-        "Namespace",
-    ]
-    .iter()
-    .copied()
-    .collect()
+    base::kw(concat!(
+        "Deployment Service ConfigMap Secret Ingress Pod ReplicaSet StatefulSet DaemonSet Job ",
+        "CronJob PersistentVolume PersistentVolumeClaim ServiceAccount Role RoleBinding ClusterRole ",
+        "ClusterRoleBinding NetworkPolicy HorizontalPodAutoscaler Namespace ",
+    ))
 });
-
-static WORKLOAD_KINDS: Lazy<FxHashSet<&str>> = Lazy::new(|| {
-    [
-        "Pod",
-        "Deployment",
-        "StatefulSet",
-        "DaemonSet",
-        "ReplicaSet",
-        "Job",
-        "CronJob",
-    ]
-    .iter()
-    .copied()
-    .collect()
-});
-
+static WORKLOAD_KINDS: Lazy<FxHashSet<&str>> =
+    Lazy::new(|| base::kw("Pod Deployment StatefulSet DaemonSet ReplicaSet Job CronJob"));
 fn is_yaml_file(path: &Path) -> bool {
     let ext = base::file_ext(path);
     YAML_EXTS.contains(ext.as_str())

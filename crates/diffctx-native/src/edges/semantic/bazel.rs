@@ -40,17 +40,11 @@ fn is_bazel_file(path: &Path) -> bool {
 }
 
 fn extract_labels(content: &str) -> FxHashSet<String> {
-    DEPS_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&DEPS_RE, content).collect()
 }
 
 fn extract_loads(content: &str) -> FxHashSet<String> {
-    LOAD_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&LOAD_RE, content).collect()
 }
 
 fn extract_srcs(content: &str) -> FxHashSet<String> {

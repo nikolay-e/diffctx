@@ -109,7 +109,7 @@ tree-sitter-cmake = { version = "0.7", optional = true }
 tree-sitter-make = { version = "1.1", optional = true }
 tree-sitter-hcl = { version = "1.1", optional = true }
 tree-sitter-clojure = { version = "0.1", optional = true }
-tree-sitter-graphql = { version = "0.1", optional = true }
+tree-sitter-graphql = { version = "0.2", optional = true }
 tree-sitter-dart = { version = "0.2", optional = true }
 tree-sitter-prisma-io = { version = "1.6", optional = true }
 tree-sitter-svelte-ng = { version = "1.0", optional = true }
@@ -172,6 +172,10 @@ should_implement_trait = "allow"
 multiple_crate_versions = "allow"
 single_match_else = "allow"
 new_without_default = "allow"
+# `mul_add` is FMA: one rounding instead of two. Every site clippy flags is on
+# a scoring path, so taking the suggestion changes selection output and
+# invalidates the calibration — a Q-class edit disguised as a lint fix.
+suboptimal_flops = "allow"
 
 [lints.rust]
 unsafe_code = "deny"

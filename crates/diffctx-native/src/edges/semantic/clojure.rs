@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids, discover_files_by_refs};
+use super::super::base::{self, EdgeBuilder, add_edges_from_ids};
 
 fn is_clojure_file(path: &Path) -> bool {
     base::has_ext(path, &[".clj", ".cljs", ".cljc", ".edn"])
@@ -26,18 +26,12 @@ static DEFN_RE: Lazy<Regex> = Lazy::new(|| {
 static CALL_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\(([\w.\-]+/[\w\-!?*+<>=]+)").unwrap());
 
 static CLJ_KEYWORDS: Lazy<FxHashSet<&str>> = Lazy::new(|| {
-    [
-        "if", "do", "let", "fn", "def", "defn", "defmacro", "when", "cond", "case", "loop",
-        "recur", "throw", "try", "catch", "finally", "quote", "var", "ns", "require", "use",
-        "import", "in-ns", "refer", "nil", "true", "false", "println", "pr", "prn", "str", "first",
-        "rest", "cons", "conj", "assoc", "dissoc", "get", "count", "map", "filter", "reduce",
-        "apply", "partial", "comp", "identity", "not",
-    ]
-    .iter()
-    .copied()
-    .collect()
+    base::kw(concat!(
+        "if do let fn def defn defmacro when cond case loop recur throw try catch finally quote var ",
+        "ns require use import in-ns refer nil true false println pr prn str first rest cons conj ",
+        "assoc dissoc get count map filter reduce apply partial comp identity not ",
+    ))
 });
-
 fn extract_requires(content: &str) -> FxHashSet<String> {
     let mut refs = FxHashSet::default();
     for cap in REQUIRE_RE.captures_iter(content) {
@@ -72,10 +66,7 @@ fn extract_ns(content: &str) -> Option<String> {
 }
 
 fn extract_defs(content: &str) -> FxHashSet<String> {
-    DEFN_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&DEFN_RE, content).collect()
 }
 
 pub struct ClojureEdgeBuilder;
@@ -134,11 +125,7 @@ impl EdgeBuilder for ClojureEdgeBuilder {
                         continue;
                     }
                     if let Some(targets) = name_to_defs.get(&func.to_lowercase()) {
-                        for t in targets {
-                            if t != &f.id {
-                                add_edge(&mut edges, &f.id, t, fn_w, reverse_factor);
-                            }
-                        }
+                        add_edges_from_ids(&mut edges, &f.id, &targets, fn_w, reverse_factor);
                     }
                 }
             }
@@ -147,11 +134,7 @@ impl EdgeBuilder for ClojureEdgeBuilder {
                     continue;
                 }
                 if let Some(targets) = name_to_defs.get(&id.to_lowercase()) {
-                    for t in targets {
-                        if t != &f.id {
-                            add_edge(&mut edges, &f.id, t, fn_w, reverse_factor);
-                        }
-                    }
+                    add_edges_from_ids(&mut edges, &f.id, &targets, fn_w, reverse_factor);
                 }
             }
         }
@@ -165,16 +148,13 @@ impl EdgeBuilder for ClojureEdgeBuilder {
         repo_root: Option<&Path>,
         file_cache: Option<&FxHashMap<PathBuf, String>>,
     ) -> Vec<PathBuf> {
-        let clj_changed: Vec<&PathBuf> = changed.iter().filter(|f| is_clojure_file(f)).collect();
-        if clj_changed.is_empty() {
-            return vec![];
-        }
-        let mut refs = FxHashSet::default();
-        for f in &clj_changed {
-            if let Some(content) = base::read_file_cached(f, file_cache) {
-                refs.extend(extract_requires(&content));
-            }
-        }
-        discover_files_by_refs(&refs, changed, candidates, repo_root)
+        base::discover_by_extracted_refs(
+            changed,
+            candidates,
+            repo_root,
+            file_cache,
+            is_clojure_file,
+            extract_requires,
+        )
     }
 }

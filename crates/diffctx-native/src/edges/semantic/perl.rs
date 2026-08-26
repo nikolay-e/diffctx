@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids, discover_files_by_refs};
+use super::super::base::{self, EdgeBuilder, add_edges_from_ids};
 
 fn is_perl_file(path: &Path) -> bool {
     base::has_ext(path, &[".pl", ".pm"])
@@ -47,24 +47,10 @@ fn extract_uses(content: &str) -> FxHashSet<String> {
 }
 
 static PERL_PRAGMAS: Lazy<FxHashSet<&str>> = Lazy::new(|| {
-    [
-        "strict",
-        "warnings",
-        "utf8",
-        "lib",
-        "constant",
-        "vars",
-        "feature",
-        "Exporter",
-        "Carp",
-        "Data::Dumper",
-        "File::Basename",
-    ]
-    .iter()
-    .copied()
-    .collect()
+    base::kw(
+        "strict warnings utf8 lib constant vars feature Exporter Carp Data::Dumper File::Basename",
+    )
 });
-
 fn extract_packages(content: &str) -> FxHashSet<String> {
     PACKAGE_RE
         .captures_iter(content)
@@ -76,10 +62,7 @@ fn extract_packages(content: &str) -> FxHashSet<String> {
 }
 
 fn extract_subs(content: &str) -> FxHashSet<String> {
-    SUB_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&SUB_RE, content).collect()
 }
 
 fn extract_parents(content: &str) -> FxHashSet<String> {
@@ -161,11 +144,7 @@ impl EdgeBuilder for PerlEdgeBuilder {
                     continue;
                 }
                 if let Some(targets) = name_to_defs.get(&method.to_lowercase()) {
-                    for t in targets {
-                        if t != &f.id {
-                            add_edge(&mut edges, &f.id, t, method_w, reverse_factor);
-                        }
-                    }
+                    add_edges_from_ids(&mut edges, &f.id, &targets, method_w, reverse_factor);
                 }
             }
             for id in &f.identifiers {
@@ -173,11 +152,7 @@ impl EdgeBuilder for PerlEdgeBuilder {
                     continue;
                 }
                 if let Some(targets) = name_to_defs.get(&id.to_lowercase()) {
-                    for t in targets {
-                        if t != &f.id {
-                            add_edge(&mut edges, &f.id, t, fn_w, reverse_factor);
-                        }
-                    }
+                    add_edges_from_ids(&mut edges, &f.id, &targets, fn_w, reverse_factor);
                 }
             }
         }
@@ -191,16 +166,13 @@ impl EdgeBuilder for PerlEdgeBuilder {
         repo_root: Option<&Path>,
         file_cache: Option<&FxHashMap<PathBuf, String>>,
     ) -> Vec<PathBuf> {
-        let pl_changed: Vec<&PathBuf> = changed.iter().filter(|f| is_perl_file(f)).collect();
-        if pl_changed.is_empty() {
-            return vec![];
-        }
-        let mut refs = FxHashSet::default();
-        for f in &pl_changed {
-            if let Some(content) = base::read_file_cached(f, file_cache) {
-                refs.extend(extract_uses(&content));
-            }
-        }
-        discover_files_by_refs(&refs, changed, candidates, repo_root)
+        base::discover_by_extracted_refs(
+            changed,
+            candidates,
+            repo_root,
+            file_cache,
+            is_perl_file,
+            extract_uses,
+        )
     }
 }

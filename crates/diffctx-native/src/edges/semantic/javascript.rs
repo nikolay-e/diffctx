@@ -43,70 +43,14 @@ static DEF_RE: Lazy<Regex> = Lazy::new(|| {
 });
 
 static JS_KEYWORDS: Lazy<FxHashSet<&str>> = Lazy::new(|| {
-    [
-        "if",
-        "for",
-        "while",
-        "return",
-        "function",
-        "class",
-        "const",
-        "let",
-        "var",
-        "new",
-        "delete",
-        "typeof",
-        "instanceof",
-        "void",
-        "switch",
-        "case",
-        "break",
-        "continue",
-        "throw",
-        "try",
-        "catch",
-        "finally",
-        "yield",
-        "async",
-        "await",
-        "import",
-        "export",
-        "default",
-        "from",
-        "require",
-        "super",
-        "this",
-        "true",
-        "false",
-        "null",
-        "undefined",
-        "console",
-        "Math",
-        "Object",
-        "Array",
-        "String",
-        "Number",
-        "Boolean",
-        "Error",
-        "Promise",
-        "Map",
-        "Set",
-        "Date",
-        "JSON",
-        "RegExp",
-        "Symbol",
-        "parseInt",
-        "parseFloat",
-        "setTimeout",
-        "setInterval",
-        "clearTimeout",
-        "clearInterval",
-    ]
-    .iter()
-    .copied()
-    .collect()
+    base::kw(concat!(
+        "if for while return function class const let var new delete typeof instanceof void switch ",
+        "case break continue throw try catch finally yield async await import export default from ",
+        "require super this true false null undefined console Math Object Array String Number ",
+        "Boolean Error Promise Map Set Date JSON RegExp Symbol parseInt parseFloat setTimeout ",
+        "setInterval clearTimeout clearInterval ",
+    ))
 });
-
 fn extract_import_sources(content: &str) -> FxHashSet<String> {
     let mut sources = FxHashSet::default();
     for cap in IMPORT_SOURCE_RE.captures_iter(content) {
@@ -121,25 +65,17 @@ fn extract_import_sources(content: &str) -> FxHashSet<String> {
 }
 
 fn extract_defines(content: &str) -> FxHashSet<String> {
-    DEF_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&DEF_RE, content).collect()
 }
 
 fn extract_calls(content: &str) -> FxHashSet<String> {
-    CALL_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
+    base::captures1(&CALL_RE, content)
         .filter(|n| !JS_KEYWORDS.contains(n.as_str()))
         .collect()
 }
 
 fn extract_type_refs(content: &str) -> FxHashSet<String> {
-    TYPE_REF_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&TYPE_REF_RE, content).collect()
 }
 
 fn extract_exports(content: &str) -> FxHashSet<String> {

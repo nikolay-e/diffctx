@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edge, discover_files_by_refs};
+use super::super::base::{self, EdgeBuilder, add_edges_from_ids};
 
 fn is_lua_file(path: &Path) -> bool {
     base::has_ext(path, &[".lua"])
@@ -25,11 +25,8 @@ static LOCAL_FUNC_RE: Lazy<Regex> =
 static METHOD_CALL_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b(\w+)[:.]\w+\s*\(").unwrap());
 
 fn extract_requires(content: &str) -> FxHashSet<String> {
-    let mut refs: FxHashSet<String> = REQUIRE_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect();
-    refs.extend(DOFILE_RE.captures_iter(content).map(|c| c[1].to_string()));
+    let mut refs: FxHashSet<String> = base::captures1(&REQUIRE_RE, content).collect();
+    refs.extend(base::captures1(&DOFILE_RE, content));
     refs
 }
 
@@ -49,10 +46,7 @@ fn extract_defs(content: &str) -> FxHashSet<String> {
 }
 
 fn extract_method_targets(content: &str) -> FxHashSet<String> {
-    METHOD_CALL_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&METHOD_CALL_RE, content).collect()
 }
 
 pub struct LuaEdgeBuilder;
@@ -95,11 +89,7 @@ impl EdgeBuilder for LuaEdgeBuilder {
                     continue;
                 }
                 if let Some(targets) = name_to_defs.get(&target.to_lowercase()) {
-                    for t in targets {
-                        if t != &f.id {
-                            add_edge(&mut edges, &f.id, t, method_w, reverse_factor);
-                        }
-                    }
+                    add_edges_from_ids(&mut edges, &f.id, &targets, method_w, reverse_factor);
                 }
             }
             for id in &f.identifiers {
@@ -107,11 +97,7 @@ impl EdgeBuilder for LuaEdgeBuilder {
                     continue;
                 }
                 if let Some(targets) = name_to_defs.get(&id.to_lowercase()) {
-                    for t in targets {
-                        if t != &f.id {
-                            add_edge(&mut edges, &f.id, t, fn_w, reverse_factor);
-                        }
-                    }
+                    add_edges_from_ids(&mut edges, &f.id, &targets, fn_w, reverse_factor);
                 }
             }
         }
@@ -125,16 +111,13 @@ impl EdgeBuilder for LuaEdgeBuilder {
         repo_root: Option<&Path>,
         file_cache: Option<&FxHashMap<PathBuf, String>>,
     ) -> Vec<PathBuf> {
-        let lua_changed: Vec<&PathBuf> = changed.iter().filter(|f| is_lua_file(f)).collect();
-        if lua_changed.is_empty() {
-            return vec![];
-        }
-        let mut refs = FxHashSet::default();
-        for f in &lua_changed {
-            if let Some(content) = base::read_file_cached(f, file_cache) {
-                refs.extend(extract_requires(&content));
-            }
-        }
-        discover_files_by_refs(&refs, changed, candidates, repo_root)
+        base::discover_by_extracted_refs(
+            changed,
+            candidates,
+            repo_root,
+            file_cache,
+            is_lua_file,
+            extract_requires,
+        )
     }
 }

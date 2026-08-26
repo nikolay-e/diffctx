@@ -6,7 +6,11 @@ class PyProjectGraph:
     @property
     def fragment_count(self) -> int: ...
     @property
+    def node_count(self) -> int: ...
+    @property
     def edge_count(self) -> int: ...
+    @property
+    def root_dir(self) -> str: ...
 
 class PyScoredState: ...
 
@@ -37,10 +41,7 @@ def build_diff_context(
     alpha: float = ...,
     tau: float = ...,
     no_content: bool = ...,
-    ignore_file: str | None = ...,
-    no_default_ignores: bool = ...,
     full: bool = ...,
-    whitelist_file: str | None = ...,
     scoring_mode: str = ...,
     timeout: int = ...,
 ) -> dict[str, Any]: ...
@@ -86,11 +87,7 @@ def coupling_metrics(
     level: str = ...,
     edge_types: list[str] | None = ...,
 ) -> list[PyModuleMetrics]: ...
-def quotient_graph(
-    pg: PyProjectGraph,
-    level: str = ...,
-    edge_types: list[str] | None = ...,
-) -> PyQuotientGraph: ...
+def quotient_graph(pg: PyProjectGraph, level: str = ...) -> PyQuotientGraph: ...
 def to_mermaid(qg: PyQuotientGraph, top_n: int) -> str: ...
 def graph_summary(pg: PyProjectGraph, top_n: int) -> dict[str, Any]: ...
 def graph_to_json_string(pg: PyProjectGraph) -> str: ...
@@ -102,4 +99,5 @@ DEFAULT_TAU: float
 DEFAULT_ALPHA: float
 DEFAULT_CORE_BUDGET_FRACTION: float
 DEFAULT_SCORING: str
+DEFAULT_TIMEOUT: int
 SCORING_MODES: list[str]

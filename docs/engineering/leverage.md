@@ -41,9 +41,12 @@ items are removed rather than logged — history lives in git.
 
 ## Intentional — do not "fix"
 
-- `_DEFAULT_TAU` / `DEFAULT_MAX_FILE_BYTES` duplicated across `cli.py`,
-  `mcp/server.py`, `pipeline.py`: the import-linter layering contract
-  forbids mcp importing cli — documented at the definition sites.
+- `DEFAULT_MAX_FILE_BYTES` duplicated across `cli.py` and `mcp/server.py`:
+  the import-linter layering contract forbids mcp importing cli, and the
+  engine does not own a file-byte cap to read it from. (`_DEFAULT_TAU`,
+  `_DEFAULT_ALPHA`, the scoring-mode list and the pipeline timeout were on
+  this list and are no longer duplicated — all four are read from the
+  extension, which both layers already sit on.)
 - `compute_scored_state` / `select_with_params` /
   `clipboard_available`: product-dead but load-bearing for the eval
   harness and test skip-guards.

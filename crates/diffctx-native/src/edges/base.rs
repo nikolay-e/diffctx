@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use once_cell::sync::Lazy;
+use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::edge_weights::SEMANTIC_DISCOVERY;
@@ -24,10 +25,6 @@ pub trait EdgeBuilder: Send + Sync {
 
     fn category_label(&self) -> Option<&str> {
         None
-    }
-
-    fn is_expensive(&self) -> bool {
-        false
     }
 
     /// A coverage-of-last-resort builder: its edges only count where the
@@ -90,7 +87,6 @@ pub fn path_to_module(path: &Path, repo_root: Option<&Path>) -> String {
 
 pub struct FragmentIndex {
     pub by_name: FxHashMap<String, Vec<FragmentId>>,
-    pub by_path: FxHashMap<String, Vec<FragmentId>>,
     /// Lowercased path table plus a component→paths posting list, so a path
     /// reference resolves by looking up its last component instead of scanning
     /// every indexed path. Every accepted alignment (equal, suffix, prefix,
@@ -106,7 +102,6 @@ pub struct FragmentIndex {
 impl FragmentIndex {
     pub fn new(fragments: &[Fragment], repo_root: Option<&Path>) -> Self {
         let mut by_name: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
-        let mut by_path: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
 
         for f in fragments {
             let path = Path::new(f.path());
@@ -116,28 +111,10 @@ impl FragmentIndex {
                     .or_default()
                     .push(f.id.clone());
             }
-            by_path
-                .entry(f.path().to_string())
-                .or_default()
-                .push(f.id.clone());
-
-            if let Some(root) = repo_root {
-                if let Ok(rel) = Path::new(f.path()).strip_prefix(root) {
-                    let rel_str = rel.to_string_lossy().to_string();
-                    by_path
-                        .entry(rel_str.clone())
-                        .or_default()
-                        .push(f.id.clone());
-                    let posix = rel_str.replace('\\', "/");
-                    if posix != rel_str {
-                        by_path.entry(posix).or_default().push(f.id.clone());
-                    }
-                }
-            }
         }
 
         // One entry per FILE, keyed on the repo-relative posix path (the form
-        // path references are written in). Indexing every `by_path` variant put
+        // path references are written in). Indexing every path variant put
         // the same file under 2-3 keys, so `MAX_FILES_PER_PATH_REF` counted
         // duplicate keys and silently halved (#207) — and the absolute keys'
         // host directory components (`/home/runner/work/...`) matched
@@ -170,7 +147,6 @@ impl FragmentIndex {
 
         Self {
             by_name,
-            by_path,
             lower_paths,
             component_to_paths,
         }
@@ -323,6 +299,7 @@ pub fn link_by_path_match(
     if matched.len() > MAX_FILES_PER_PATH_REF {
         return;
     }
+    // Not `add_edges_from_ids`: `matched` holds borrowed ids, not owned ones.
     for rep in matched {
         if rep != src_id {
             add_edge(edges, src_id, rep, weight, reverse_factor);
@@ -430,6 +407,51 @@ pub fn discover_files_by_refs(
         }
     }
     discovered
+}
+
+// The discovery shape 16 language builders share: take the changed files this
+// builder recognises, union the references their contents name, and hand those
+// to `discover_files_by_refs`. Written out per language, it was 13 lines each
+// that differed only in the two function names.
+pub fn discover_by_extracted_refs<P, E, I>(
+    changed: &[PathBuf],
+    candidates: &[PathBuf],
+    repo_root: Option<&Path>,
+    file_cache: Option<&FxHashMap<PathBuf, String>>,
+    recognises: P,
+    extract: E,
+) -> Vec<PathBuf>
+where
+    P: Fn(&Path) -> bool,
+    E: Fn(&str) -> I,
+    I: IntoIterator<Item = String>,
+{
+    let mine: Vec<&PathBuf> = changed.iter().filter(|f| recognises(f)).collect();
+    if mine.is_empty() {
+        return vec![];
+    }
+    let mut refs = FxHashSet::default();
+    for f in &mine {
+        if let Some(content) = read_file_cached(f, file_cache) {
+            refs.extend(extract(&content));
+        }
+    }
+    discover_files_by_refs(&refs, changed, candidates, repo_root)
+}
+
+// The first capture group of every match, owned. Written out 97 times across
+// `edges/`, and rustfmt spreads the chain over three lines each time.
+pub fn captures1<'a>(re: &'a Regex, content: &'a str) -> impl Iterator<Item = String> + 'a {
+    re.captures_iter(content).map(|c| c[1].to_string())
+}
+
+// Keyword tables are written as one whitespace-separated string, not an array
+// literal: rustfmt packs a short array and gives up on a long one, so 840
+// keywords across 28 tables occupied 880 lines. Every one of those tables is
+// only ever probed with `contains`, never iterated, so nothing observes the
+// literal layout.
+pub fn kw(list: &str) -> FxHashSet<&str> {
+    list.split_ascii_whitespace().collect()
 }
 
 pub fn file_ext(path: &Path) -> String {

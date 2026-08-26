@@ -5,14 +5,27 @@
 ```bash
 git clone https://github.com/nikolay-e/diffctx.git
 cd diffctx
-python -m venv .venv && source .venv/bin/activate
-pip install "maturin>=1.10,<1.15"
-pip install -e ".[dev,full,mcp]" --no-build-isolation
+rustup component add rustfmt clippy
+uv sync --locked --no-build --extra dev --extra full --extra mcp
+source .venv/bin/activate
 pre-commit install && pre-commit install --hook-type commit-msg
 ```
 
-The package builds the Rust extension via maturin, so `maturin` must be
-installed first and `--no-build-isolation` is required.
+`uv.lock` is the resolved dependency set every CI job installs, via this exact
+command — `--locked` fails instead of re-resolving, so a pyproject edit that was
+not locked cannot reach a green build. Regenerate with `uv lock` and commit the
+result in the same change. `--no-build` takes every dependency from a wheel, so
+no third-party `setup.py` executes during install; the root project is exempt
+and still compiles through maturin, which is the one build this repo means to
+run.
+
+The package builds the Rust extension via maturin; uv provisions the build
+backend in its own isolated environment, so nothing has to be installed before
+the sync. `rust-toolchain.toml` pins the compiler but deliberately not
+`rustfmt`/`clippy` — pinning components makes rustup install them before
+anything can *build* the crate, which breaks installing from an sdist on a
+machine that already has them. The `rustup component add` above is what the
+pre-commit hooks need.
 
 ## Development Workflow
 
@@ -38,7 +51,7 @@ cargo test --lib                                             # Rust inline units
 DIFFCTX_YAML_CASES_LIMIT=20 cargo test --test yaml_cases     # sampled YAML corpus
 ```
 
-CI gates the full 2725-case YAML corpus per-case against
+CI gates the full YAML corpus per-case against
 `crates/diffctx-native/tests/known_below_threshold.txt` (bidirectional: a
 listed case that starts passing also fails — claim improvements by removing
 the entry in the same commit).

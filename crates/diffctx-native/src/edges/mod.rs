@@ -21,7 +21,6 @@ use crate::graph::{
 use crate::types::FragmentId;
 
 pub type EdgeDict = FxHashMap<(FragmentId, FragmentId), f64>;
-pub type EdgeCategories = FxHashMap<(FragmentId, FragmentId), EdgeCategory>;
 
 use crate::types::Fragment;
 

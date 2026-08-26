@@ -31,10 +31,7 @@ static PKG_CALL_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b([a-z]\w+)\.([A-Z]
 static INIT_FUNC_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^\s*func\s+init\s*\(").unwrap());
 
 fn extract_imports(content: &str) -> FxHashSet<String> {
-    IMPORT_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&IMPORT_RE, content).collect()
 }
 
 /// None when the fragment carries no `package` line — i.e. every
@@ -47,14 +44,8 @@ fn get_package_name(content: &str) -> Option<String> {
 }
 
 fn extract_definitions(content: &str) -> (FxHashSet<String>, FxHashSet<String>) {
-    let funcs: FxHashSet<String> = FUNC_DEF_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect();
-    let types: FxHashSet<String> = TYPE_DEF_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect();
+    let funcs: FxHashSet<String> = base::captures1(&FUNC_DEF_RE, content).collect();
+    let types: FxHashSet<String> = base::captures1(&TYPE_DEF_RE, content).collect();
     (funcs, types)
 }
 
@@ -65,14 +56,8 @@ fn extract_references(
     FxHashSet<String>,
     FxHashSet<(String, String)>,
 ) {
-    let func_calls: FxHashSet<String> = FUNC_CALL_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect();
-    let type_refs: FxHashSet<String> = TYPE_REF_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect();
+    let func_calls: FxHashSet<String> = base::captures1(&FUNC_CALL_RE, content).collect();
+    let type_refs: FxHashSet<String> = base::captures1(&TYPE_REF_RE, content).collect();
     let pkg_calls: FxHashSet<(String, String)> = PKG_CALL_RE
         .captures_iter(content)
         .map(|c| (c[1].to_string(), c[2].to_string()))
@@ -242,11 +227,13 @@ impl EdgeBuilder for GoEdgeBuilder {
                 if name_capped(&lower) {
                     continue;
                 }
-                for fid in type_defs.get(&lower).unwrap_or(&vec![]) {
-                    if fid != &gf.id {
-                        add_edge(&mut edges, &gf.id, fid, type_weight, reverse_factor);
-                    }
-                }
+                add_edges_from_ids(
+                    &mut edges,
+                    &gf.id,
+                    type_defs.get(&lower).unwrap_or(&vec![]),
+                    type_weight,
+                    reverse_factor,
+                );
             }
 
             for func_call in &func_calls {
@@ -254,11 +241,13 @@ impl EdgeBuilder for GoEdgeBuilder {
                 if name_capped(&lower) {
                     continue;
                 }
-                for fid in func_defs.get(&lower).unwrap_or(&vec![]) {
-                    if fid != &gf.id {
-                        add_edge(&mut edges, &gf.id, fid, func_weight, reverse_factor);
-                    }
-                }
+                add_edges_from_ids(
+                    &mut edges,
+                    &gf.id,
+                    func_defs.get(&lower).unwrap_or(&vec![]),
+                    func_weight,
+                    reverse_factor,
+                );
             }
 
             for (pkg_name, _symbol) in &pkg_calls {
@@ -266,11 +255,13 @@ impl EdgeBuilder for GoEdgeBuilder {
                 if pkg_capped(&lower) {
                     continue;
                 }
-                for fid in pkg_to_frags.get(&lower).unwrap_or(&vec![]) {
-                    if fid != &gf.id {
-                        add_edge(&mut edges, &gf.id, fid, func_weight, reverse_factor);
-                    }
-                }
+                add_edges_from_ids(
+                    &mut edges,
+                    &gf.id,
+                    pkg_to_frags.get(&lower).unwrap_or(&vec![]),
+                    func_weight,
+                    reverse_factor,
+                );
             }
 
             let has_init = has_init_func(&gf.content);

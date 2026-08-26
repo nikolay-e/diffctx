@@ -8,7 +8,9 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::{Fragment, FragmentId};
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, FragmentIndex, add_edge, link_by_name};
+use super::super::base::{
+    self, EdgeBuilder, FragmentIndex, add_edge, add_edges_from_ids, link_by_name,
+};
 
 static WORKSPACE_MEMBERS_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?s)\[workspace\][^\[]*?members\s*=\s*\[(.*?)\]").unwrap());
@@ -70,10 +72,7 @@ fn extract_feature_deps(content: &str) -> FxHashSet<String> {
 }
 
 fn extract_entry_points(content: &str) -> Vec<String> {
-    let mut entries: Vec<String> = BIN_SECTION_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect();
+    let mut entries: Vec<String> = base::captures1(&BIN_SECTION_RE, content).collect();
     if let Some(c) = LIB_SECTION_RE.captures(content) {
         entries.push(c[1].to_string());
     }
@@ -136,22 +135,14 @@ impl EdgeBuilder for CargoEdgeBuilder {
             for (_, rel_path) in extract_path_deps(&cf.content) {
                 let dep_dir = parent.join(&rel_path).to_string_lossy().to_string();
                 if let Some(fids) = cargo_by_dir.get(&dep_dir) {
-                    for fid in fids {
-                        if fid != &cf.id {
-                            add_edge(&mut edges, &cf.id, fid, dep_w, rev);
-                        }
-                    }
+                    add_edges_from_ids(&mut edges, &cf.id, &fids, dep_w, rev);
                 }
             }
 
             for member in extract_workspace_members(&cf.content) {
                 let member_dir = parent.join(&member).to_string_lossy().to_string();
                 if let Some(fids) = cargo_by_dir.get(&member_dir) {
-                    for fid in fids {
-                        if fid != &cf.id {
-                            add_edge(&mut edges, &cf.id, fid, ws_w, rev);
-                        }
-                    }
+                    add_edges_from_ids(&mut edges, &cf.id, &fids, ws_w, rev);
                 }
                 link_by_name(
                     &cf.id,
@@ -172,11 +163,7 @@ impl EdgeBuilder for CargoEdgeBuilder {
                     }
                     let dep_dir = parent.join(rel_path).to_string_lossy().to_string();
                     if let Some(fids) = cargo_by_dir.get(&dep_dir) {
-                        for fid in fids {
-                            if fid != &cf.id {
-                                add_edge(&mut edges, &cf.id, fid, dep_w, rev);
-                            }
-                        }
+                        add_edges_from_ids(&mut edges, &cf.id, &fids, dep_w, rev);
                     }
                 }
             }

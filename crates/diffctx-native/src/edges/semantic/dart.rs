@@ -9,7 +9,8 @@ use crate::types::{Fragment, FragmentId};
 
 use super::super::EdgeDict;
 use super::super::base::{
-    self, EdgeBuilder, FragmentIndex, add_edge, discover_files_by_refs, link_by_name,
+    self, EdgeBuilder, FragmentIndex, add_edge, add_edges_from_ids, discover_files_by_refs,
+    link_by_name,
 };
 
 fn is_dart_file(path: &Path) -> bool {
@@ -33,75 +34,14 @@ static TYPE_REF_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b([A-Z]\w+)\b").unw
 static CALL_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b([a-z_]\w+)\s*\(").unwrap());
 
 static DART_KEYWORDS: Lazy<FxHashSet<&str>> = Lazy::new(|| {
-    [
-        "if",
-        "else",
-        "for",
-        "while",
-        "do",
-        "switch",
-        "case",
-        "break",
-        "continue",
-        "return",
-        "var",
-        "final",
-        "const",
-        "void",
-        "null",
-        "true",
-        "false",
-        "new",
-        "this",
-        "super",
-        "class",
-        "extends",
-        "implements",
-        "with",
-        "abstract",
-        "import",
-        "export",
-        "library",
-        "part",
-        "typedef",
-        "enum",
-        "mixin",
-        "extension",
-        "async",
-        "await",
-        "yield",
-        "try",
-        "catch",
-        "finally",
-        "throw",
-        "rethrow",
-        "assert",
-        "in",
-        "is",
-        "as",
-        "dynamic",
-        "Function",
-        "String",
-        "int",
-        "double",
-        "bool",
-        "List",
-        "Map",
-        "Set",
-        "Future",
-        "Stream",
-        "Iterable",
-        "Object",
-        "Null",
-        "Never",
-        "Type",
-        "print",
-    ]
-    .iter()
-    .copied()
-    .collect()
+    base::kw(concat!(
+        "if else for while do switch case break continue return var final const void null true ",
+        "false new this super class extends implements with abstract import export library part ",
+        "typedef enum mixin extension async await yield try catch finally throw rethrow assert in ",
+        "is as dynamic Function String int double bool List Map Set Future Stream Iterable Object ",
+        "Null Never Type print ",
+    ))
 });
-
 fn extract_refs(content: &str) -> FxHashSet<String> {
     let mut refs = FxHashSet::default();
     for cap in IMPORT_RE.captures_iter(content) {
@@ -140,17 +80,13 @@ fn extract_defines(content: &str) -> FxHashSet<String> {
 }
 
 fn extract_type_refs(content: &str) -> FxHashSet<String> {
-    TYPE_REF_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
+    base::captures1(&TYPE_REF_RE, content)
         .filter(|n| !DART_KEYWORDS.contains(n.as_str()))
         .collect()
 }
 
 fn extract_calls(content: &str) -> FxHashSet<String> {
-    CALL_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
+    base::captures1(&CALL_RE, content)
         .filter(|n| !DART_KEYWORDS.contains(n.as_str()))
         .collect()
 }
@@ -205,11 +141,7 @@ impl EdgeBuilder for DartEdgeBuilder {
                     continue;
                 }
                 if let Some(dst_ids) = name_to_defs.get(name) {
-                    for dst_id in dst_ids {
-                        if dst_id != &f.id {
-                            add_edge(&mut edges, &f.id, dst_id, type_weight, reverse_factor);
-                        }
-                    }
+                    add_edges_from_ids(&mut edges, &f.id, &dst_ids, type_weight, reverse_factor);
                 }
             }
 
@@ -219,11 +151,7 @@ impl EdgeBuilder for DartEdgeBuilder {
                     continue;
                 }
                 if let Some(dst_ids) = name_to_defs.get(name) {
-                    for dst_id in dst_ids {
-                        if dst_id != &f.id {
-                            add_edge(&mut edges, &f.id, dst_id, fn_weight, reverse_factor);
-                        }
-                    }
+                    add_edges_from_ids(&mut edges, &f.id, &dst_ids, fn_weight, reverse_factor);
                 }
             }
 

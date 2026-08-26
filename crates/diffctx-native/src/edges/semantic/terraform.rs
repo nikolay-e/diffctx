@@ -33,49 +33,13 @@ static SOURCE_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"(?m)^\s*source\s*=\s*"([^"]+)""#).unwrap());
 
 static GENERIC_NAMES: Lazy<FxHashSet<&str>> = Lazy::new(|| {
-    [
-        "name",
-        "region",
-        "tags",
-        "environment",
-        "env",
-        "description",
-        "enabled",
-        "type",
-        "value",
-        "default",
-        "count",
-        "id",
-        "arn",
-        "vpc_id",
-        "subnet_id",
-        "key",
-        "project",
-        "owner",
-        "stage",
-    ]
-    .iter()
-    .copied()
-    .collect()
+    base::kw(concat!(
+        "name region tags environment env description enabled type value default count id arn ",
+        "vpc_id subnet_id key project owner stage ",
+    ))
 });
-
-static RESOURCE_SKIP_TYPES: Lazy<FxHashSet<&str>> = Lazy::new(|| {
-    [
-        "var",
-        "local",
-        "data",
-        "module",
-        "path",
-        "terraform",
-        "each",
-        "self",
-        "count",
-    ]
-    .iter()
-    .copied()
-    .collect()
-});
-
+static RESOURCE_SKIP_TYPES: Lazy<FxHashSet<&str>> =
+    Lazy::new(|| base::kw("var local data module path terraform each self count"));
 fn extract_locals(content: &str) -> FxHashSet<String> {
     let mut locals_keys = FxHashSet::default();
     let mut in_locals = false;

@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids, discover_files_by_refs};
+use super::super::base::{self, EdgeBuilder, add_edges_from_ids};
 
 fn is_swift_file(path: &Path) -> bool {
     base::has_ext(path, &[".swift"])
@@ -30,18 +30,12 @@ static EXTENSION_RE: Lazy<Regex> =
 static TYPE_REF_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b([A-Z]\w*)\b").unwrap());
 
 fn extract_imports(content: &str) -> FxHashSet<String> {
-    IMPORT_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&IMPORT_RE, content).collect()
 }
 
 fn extract_type_defs(content: &str) -> FxHashSet<String> {
-    let mut defs: FxHashSet<String> = TYPE_DEF_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect();
-    defs.extend(FUNC_DEF_RE.captures_iter(content).map(|c| c[1].to_string()));
+    let mut defs: FxHashSet<String> = base::captures1(&TYPE_DEF_RE, content).collect();
+    defs.extend(base::captures1(&FUNC_DEF_RE, content));
     defs
 }
 
@@ -59,10 +53,7 @@ fn extract_conformances(content: &str) -> FxHashSet<String> {
 }
 
 fn extract_extensions(content: &str) -> FxHashSet<String> {
-    EXTENSION_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
+    base::captures1(&EXTENSION_RE, content).collect()
 }
 
 pub struct SwiftEdgeBuilder;
@@ -117,11 +108,7 @@ impl EdgeBuilder for SwiftEdgeBuilder {
                     continue;
                 }
                 if let Some(targets) = name_to_defs.get(&name.to_lowercase()) {
-                    for t in targets {
-                        if t != &f.id {
-                            add_edge(&mut edges, &f.id, t, type_w, reverse_factor);
-                        }
-                    }
+                    add_edges_from_ids(&mut edges, &f.id, &targets, type_w, reverse_factor);
                 }
             }
         }
@@ -135,16 +122,13 @@ impl EdgeBuilder for SwiftEdgeBuilder {
         repo_root: Option<&Path>,
         file_cache: Option<&FxHashMap<PathBuf, String>>,
     ) -> Vec<PathBuf> {
-        let sw_changed: Vec<&PathBuf> = changed.iter().filter(|f| is_swift_file(f)).collect();
-        if sw_changed.is_empty() {
-            return vec![];
-        }
-        let mut refs = FxHashSet::default();
-        for f in &sw_changed {
-            if let Some(content) = base::read_file_cached(f, file_cache) {
-                refs.extend(extract_imports(&content));
-            }
-        }
-        discover_files_by_refs(&refs, changed, candidates, repo_root)
+        base::discover_by_extracted_refs(
+            changed,
+            candidates,
+            repo_root,
+            file_cache,
+            is_swift_file,
+            extract_imports,
+        )
     }
 }

@@ -8,14 +8,27 @@ Project-specific facts for `/qa`. Generic methodology lives in
 | Check | Applies | Notes |
 |---|---|---|
 | CI | yes | GitHub Actions on the mirror (ci.yml, action-smoke, CodeQL per push; cd.yml/publish-* manual dispatch; nightly-full-eval cron). "Rust diffctx tests" is ~6 min on a warm cargo cache; a Rust-touching commit invalidates it (+~10 min compile). Beyond ~30 min on "Build and test" = stuck runner — `gh run cancel` + `gh run rerun --failed` (an 85-min hang resolved to a 6-min green rerun with zero changes). A re-run stuck in `queued` can be API-unrecoverable: cancel AND force-cancel 409 with "re-run that has not yet queued", and an all-jobs-cancelled CodeQL run later reports "cannot be retried" — don't fight it; the next push supersedes, verify the corpus gate on the new SHA |
-| CD / K8s / ArgoCD | no | CLI+library; ships to PyPI, npm, crates.io, Docker Hub via cd.yml/publish-extras.yml |
-| Browser QA | no | no web frontend |
-| Post-deploy autoqa | no | no deployed service; probes are the publish smokes inside cd.yml/publish-extras.yml |
+| Browser QA / stumble | yes | **there IS a deployed surface**: the GitHub Pages landing page (`nikolay-e.github.io/diffctx/`, built by the `pages build and deployment` run on every push). This row read "no web frontend" until 2026-08-26 and it was simply wrong — the page is where a stranger decides whether to adopt the tool, which is exactly what the stumble probe measures. It is ONE page: only `demo/` and `llms.txt` are additionally published; the `docs/` subdirectories (product, engineering, architecture, benchmarks) are repo-read `.md`, 404 on Pages by design and linked from nowhere on the site, so that 404 is not a finding |
+| Post-deploy autoqa | no sensor | nothing runs the crawler against the Pages site, so the link sweep is done in-pass (fetch the page, follow same-origin links, HEAD every external). The `fonts.googleapis.com` / `fonts.gstatic.com` bare hosts are `rel=preconnect` hints and 404 on a bare GET — always false positives, never file them |
+| CD / K8s / ArgoCD | no | ships to PyPI, npm, crates.io, Docker Hub via cd.yml/publish-extras.yml; those workflows' publish smokes are the probes |
 | Backend smoke | no | — |
 | SonarCloud | yes | project key is `nikolay-e_TreeMapper` (legacy name, never renamed) |
 
-The `no` rows describe the current CLI/library shape — they flip the day
-a deployed/web surface ships; re-derive then, don't trust this table.
+## Stumble probe tasks
+
+Fixed wording — the number is only a trend if the task never moves. Alternate
+across passes; `STUMBLE_GOAL` is the Ultimate Goal sentence from `CLAUDE.md`,
+verbatim. `STUMBLE_URL` is the Pages landing page.
+
+1. *(entry)* "You have a git repository and a pull request that touches about
+   40 files. Using only this site, work out the exact command that would give
+   you a review-ready context of that pull request, including how to point it
+   at the right commit range and how to control how much output you get. Then
+   decide, from evidence on this site, whether you would trust that output
+   instead of reading the raw diff."
+2. *(uncomfortable)* "Decide whether this tool would beat simply pasting
+   `git diff` into your model, and find the number on this site that settles
+   it. Say what that number was measured on."
 
 ## Forge
 
@@ -49,6 +62,36 @@ a deployed/web surface ships; re-derive then, don't trust this table.
   Released state is read from the registry (PyPI upload date/version),
   not from the tag.
 
+## Dependency channels (who owns which file)
+
+Three lock/manifest pairs, and mixing them up is how a channel breaks
+silently:
+
+- **`pyproject.toml` + `uv.lock`** — every CI job installs with
+  `uv sync --locked --no-build`. `--locked` refuses to re-resolve, so a
+  pyproject edit landed without `uv lock` turns CI red instead of drifting;
+  that IS the drift gate, there is no separate check. `--no-build` keeps every
+  dependency on a wheel (no third-party `setup.py` runs); the root project is
+  exempt and still compiles through maturin. Dependabot's `uv` entry is
+  `lockfile-only` on purpose — the `pip` entry owns pyproject's ranges, and
+  without the split both ecosystems open the same PR twice.
+- **`requirements-eval.txt` + `requirements-eval.lock`** — the research
+  harness, hash-pinned via `uv pip compile`, installed only by
+  `Dockerfile.eval`. Not part of `uv.lock`, deliberately: the paper's
+  reproducibility claim names that lock. `tests/eval/test_image_inputs.py`
+  checks the two agree by package NAME only, so a version bump in one does not
+  fail anything.
+- **`Cargo.toml` + `Cargo.lock`** — Dependabot's `cargo` entry.
+
+The pip entry runs `versioning-strategy: increase-if-necessary`. The default
+(`increase`) rewrites a floor to the newest resolvable version every run, and
+when that version already IS the floor the rewrite is a no-op that
+dependabot-core aborts on (`Expected content to change!`) — numpy and scipy hit
+that for weeks because their newest release supporting `requires-python =
+">=3.10"` is the version already written. A whole ecosystem's weekly run dies on
+one such dependency, so a red "Dependabot Updates" run is worth reading, not
+dismissing as bot noise.
+
 ## Tests
 
 - `pytest` — integration-only (the run prints the count; don't pin it
@@ -59,8 +102,12 @@ a deployed/web surface ships; re-derive then, don't trust this table.
   varying tests. Timeout-only failures with a changing set across runs
   = oversubscription, not a regression; never run `cargo test`
   concurrently with pytest, it makes this worse.
-- `cargo test --lib` in `crates/diffctx-native` — inline units, ~171.
-- YAML corpus: CI gates the FULL 2725-case corpus on every push
+- `cargo test --lib` in `crates/diffctx-native` — inline units (the run
+  prints the count; it was written here as "~171" while the real number was
+  250, so it is not written here any more).
+- YAML corpus: CI gates the FULL corpus on every push (the run prints the
+  case count; pinning it here rotted — it read 2725 while the corpus had grown
+  to 2902)
   (`cargo test --profile release-unwind --test yaml_cases`), per-case
   against `known_below_threshold.txt`, enforced bidirectionally;
   nightly re-runs with `DIFFCTX_YAML_IGNORE_BASELINE=1` to track
@@ -116,7 +163,7 @@ a deployed/web surface ships; re-derive then, don't trust this table.
   every cell hits the 300s deadline. A wide range at the default budget is
   the reviewable artifact.
 - This repo's own `.diffctx/ignore` excludes `*.yaml`/`*.yml` (the
-  2725-case corpus would drown every self-eat) **and `tests`** — so the
+  corpus would drown every self-eat) **and `tests`** — so the
   entire `tests/` tree, `crates/diffctx-native/tests/`, every oracle
   case and all CI/workflow YAML are invisible to self-eat, hidden even
   from `changed_files` by the security contract. A range that touches

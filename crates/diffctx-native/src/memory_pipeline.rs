@@ -2,12 +2,10 @@ use std::fmt::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 use similar::{ChangeTag, TextDiff};
 
 use crate::config::budget::BUDGET;
-use crate::config::limits::LIMITS;
 use crate::config::tokenization::TOKENIZATION;
 use crate::core::{compute_seed_weights, identify_core_fragments};
 use crate::edges;
@@ -16,7 +14,6 @@ use crate::parsers::fragment_file;
 use crate::render::{DiffContextOutput, build_diff_context_output};
 use crate::scoring::create_scoring_strategy;
 use crate::signatures::generate_signature_variants;
-use crate::tokenizer::count_tokens;
 use crate::types::{DiffHunk, Fragment, FragmentId};
 
 pub struct MemoryRepo {
@@ -83,9 +80,7 @@ pub fn build_diff_context_in_memory(
         }
     }
 
-    all_fragments.par_iter_mut().for_each(|f| {
-        f.token_count = count_tokens(&f.content) + LIMITS.overhead_per_fragment;
-    });
+    crate::pipeline::assign_token_counts(&mut all_fragments);
 
     let core_ids = identify_core_fragments(&hunks, &all_fragments);
 
@@ -97,14 +92,10 @@ pub fn build_diff_context_in_memory(
     // something nobody runs.
     let mut core_excerpts =
         crate::excerpt::generate_core_excerpts(&all_fragments, &core_ids, &hunks);
-    core_excerpts.par_iter_mut().for_each(|(_, f)| {
-        f.token_count = count_tokens(&f.content) + LIMITS.overhead_per_fragment;
-    });
+    crate::pipeline::assign_excerpt_token_counts(&mut core_excerpts);
 
     let mut sig_frags = generate_signature_variants(&all_fragments);
-    sig_frags.par_iter_mut().for_each(|f| {
-        f.token_count = count_tokens(&f.content) + LIMITS.overhead_per_fragment;
-    });
+    crate::pipeline::assign_token_counts(&mut sig_frags);
     all_fragments.extend(sig_frags);
 
     let effective_budget = budget_tokens.unwrap_or(BUDGET.unlimited);

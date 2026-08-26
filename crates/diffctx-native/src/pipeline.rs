@@ -89,6 +89,20 @@ pub struct HeavyLatencyMs {
     pub scoring: f64,
 }
 
+// How this module writes a path into output, in one place instead of five.
+//
+// The `replace` is unconditional, which `paths.rs` documents as a bug: on POSIX
+// a backslash is a legal filename character, so rewriting it names a file that
+// does not exist. Routing this at `paths::display_rel` is the fix and it is
+// NOT bit-identical, so it belongs in its own labelled commit — this one only
+// stops the wrong behaviour from being spelled out five times.
+fn rel_display(p: &Path, root: &Path) -> String {
+    p.strip_prefix(root)
+        .unwrap_or(p)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
 pub fn build_diff_context(
     root_dir: &Path,
     diff_range: Option<&str>,
@@ -360,12 +374,7 @@ fn resolve_change_set(
     // deletion-only commit used to render as a bare two-line skeleton).
     let mut deleted_display: Vec<String> = deleted_files
         .iter()
-        .map(|p| {
-            p.strip_prefix(root_dir)
-                .unwrap_or(p)
-                .to_string_lossy()
-                .replace('\\', "/")
-        })
+        .map(|p| rel_display(p, root_dir))
         .collect();
     deleted_display.sort();
     let renamed_display = git::get_rename_pairs(root_dir, diff_range).unwrap_or_default();
@@ -821,12 +830,7 @@ pub fn select_with_params(
         changed_files: state
             .changed_files
             .iter()
-            .map(|p| {
-                p.strip_prefix(&state.root_dir)
-                    .unwrap_or(p)
-                    .to_string_lossy()
-                    .replace('\\', "/")
-            })
+            .map(|p| rel_display(p, &state.root_dir))
             .collect(),
         deleted_files: state.deleted_files.clone(),
         renamed_files: state.renamed_files.clone(),
@@ -1191,32 +1195,15 @@ fn build_diff_context_full(
                 .find(|l| !l.is_empty())
                 .map(str::to_string)
         });
-    let mut deleted_display: Vec<String> = git::get_deleted_files(&root_dir, diff_range)
-        .map(|set| {
-            set.iter()
-                .map(|p| {
-                    p.strip_prefix(&root_dir)
-                        .unwrap_or(p)
-                        .to_string_lossy()
-                        .replace('\\', "/")
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-    deleted_display.sort();
+    let (deleted_display, renamed_display) = deletion_rename_displays(&root_dir, diff_range);
     let change = render::ChangeSummary {
         commit_message,
         changed_files: changed_files
             .iter()
-            .map(|p| {
-                p.strip_prefix(&root_dir)
-                    .unwrap_or(p)
-                    .to_string_lossy()
-                    .replace('\\', "/")
-            })
+            .map(|p| rel_display(p, &root_dir))
             .collect(),
         deleted_files: deleted_display,
-        renamed_files: git::get_rename_pairs(&root_dir, diff_range).unwrap_or_default(),
+        renamed_files: renamed_display,
         // `--full` is the escape hatch that promises every fragment of the
         // changed files, so it keeps lockfile content instead of diverting it.
         lockfile_changes: Vec::new(),
@@ -1238,16 +1225,7 @@ fn deletion_rename_displays(
     diff_range: Option<&str>,
 ) -> (Vec<String>, Vec<(String, String)>) {
     let mut deleted: Vec<String> = git::get_deleted_files(root_dir, diff_range)
-        .map(|set| {
-            set.iter()
-                .map(|p| {
-                    p.strip_prefix(root_dir)
-                        .unwrap_or(p)
-                        .to_string_lossy()
-                        .replace('\\', "/")
-                })
-                .collect()
-        })
+        .map(|set| set.iter().map(|p| rel_display(p, root_dir)).collect())
         .unwrap_or_default();
     deleted.sort();
     let renamed = git::get_rename_pairs(root_dir, diff_range).unwrap_or_default();
@@ -1380,7 +1358,10 @@ fn build_file_cache(candidate_files: &[PathBuf]) -> FxHashMap<PathBuf, String> {
     cache
 }
 
-fn assign_token_counts(fragments: &mut [Fragment]) {
+// The token-count formula, in one place. The in-memory harness spelled it out
+// three more times; #149 is what happens when the harness and the shipped
+// pipeline disagree about it — the corpus then measures a system nobody runs.
+pub(crate) fn assign_token_counts(fragments: &mut [Fragment]) {
     fragments.par_iter_mut().for_each(|frag| {
         if frag.token_count == 0 {
             frag.token_count = count_tokens(&frag.content) + LIMITS.overhead_per_fragment;
@@ -1388,7 +1369,7 @@ fn assign_token_counts(fragments: &mut [Fragment]) {
     });
 }
 
-fn assign_excerpt_token_counts(excerpts: &mut FxHashMap<FragmentId, Fragment>) {
+pub(crate) fn assign_excerpt_token_counts(excerpts: &mut FxHashMap<FragmentId, Fragment>) {
     for frag in excerpts.values_mut() {
         if frag.token_count == 0 {
             frag.token_count = count_tokens(&frag.content) + LIMITS.overhead_per_fragment;

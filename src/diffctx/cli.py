@@ -10,6 +10,7 @@ from typing import NoReturn
 from diffctx._diffctx import DEFAULT_ALPHA as _ENGINE_DEFAULT_ALPHA
 from diffctx._diffctx import DEFAULT_SCORING as _ENGINE_DEFAULT_SCORING
 from diffctx._diffctx import DEFAULT_TAU as _ENGINE_DEFAULT_TAU
+from diffctx._diffctx import DEFAULT_TIMEOUT as _ENGINE_DEFAULT_TIMEOUT
 from diffctx._diffctx import SCORING_MODES as _ENGINE_SCORING_MODES
 
 from .version import __version__
@@ -27,8 +28,7 @@ _DEFAULT_TAU: float = _ENGINE_DEFAULT_TAU
 # and went stale the moment a mode was added to the engine.
 _SCORING_CHOICES: list[str] = list(_ENGINE_SCORING_MODES)
 _DEFAULT_SCORING: str = _ENGINE_DEFAULT_SCORING
-# Mirrors DEFAULT_PIPELINE_TIMEOUT_SECONDS in crates/diffctx-native/src/config/limits.rs.
-_DEFAULT_TIMEOUT = 300
+_DEFAULT_TIMEOUT: int = _ENGINE_DEFAULT_TIMEOUT
 
 
 class _Unset:
@@ -645,6 +645,16 @@ def _build_graph_parsed_args(args: argparse.Namespace) -> ParsedArgs:
     if not args.summary and args.level is not _UNSET and graph_format in ("json", "graphml"):
         _warn(f"--level {graph_level} applies to mermaid output and --summary; ignored for -f {graph_format}")
     _warn_quiet_log_level_conflict(args)
+    # graph mode walks the discovery universe directly and has no path-spec
+    # layer, so these three are accepted and discarded. Saying so beats a
+    # silent no-op that reads as a filter the user applied.
+    for flag, given in (
+        ("-i/--ignore", args.ignore is not None),
+        ("-w/--whitelist", args.whitelist is not None),
+        ("--no-default-ignores", args.no_default_ignores),
+    ):
+        if given:
+            _warn(f"{flag} ignored: graph mode has no path-spec layer")
     output_file_path, force_stdout = _resolve_output_file(args.output_file, False, graph_format)
     ignore_file = _resolve_ignore_file(args.ignore, root_dir)
     whitelist_file = _resolve_whitelist_file(args.whitelist, root_dir)

@@ -1112,11 +1112,11 @@
     <div class="ratio">
       <div class="wrap">
         <div class="cell">
-          <div class="num" data-count="48210">0</div>
+          <div class="num" data-count="48210">48,210</div>
           <div class="lbl">tokens — changed files pasted whole</div>
         </div>
         <div class="cell">
-          <div class="num"><b data-count="6930">0</b></div>
+          <div class="num"><b data-count="6930">6,930</b></div>
           <div class="lbl">tokens — diffctx selection, same review</div>
         </div>
         <div class="cell">
@@ -1439,6 +1439,20 @@
             <code
               ><span class="p">$</span> diffctx . --diff main..feature -c</code
             ><span class="why">branch context → clipboard → any LLM</span>
+          </div>
+          <div class="row">
+            <code
+              ><span class="p">$</span> diffctx . --diff main..feature --budget
+              8000</code
+            ><span class="why"
+              >the budget dial above, as a flag — hard token ceiling</span
+            >
+          </div>
+          <div class="row">
+            <code
+              ><span class="p">$</span> diffctx . --diff main..feature --tau
+              0.05</code
+            ><span class="why">the τ dial above — stop admitting weak context</span>
           </div>
           <div class="row">
             <code><span class="p">$</span> diffctx graph . --summary</code
@@ -1966,11 +1980,22 @@
         updateReadout(sel, budget);
       }
 
-      document
-        .querySelectorAll(".stage")
-        .forEach((b) =>
-          b.addEventListener("click", () => applyStage(+b.dataset.stage)),
-        );
+      // Autoplay owns the stage for ~7s after the lab scrolls in. Its queued
+      // timers used to keep firing over a click, so picking a stage mid-intro
+      // snapped straight back to stage 0 and read as a dead control. Any
+      // deliberate interaction ends the intro.
+      let autoplayTimers = [];
+      function stopAutoplay() {
+        autoplayTimers.forEach(clearTimeout);
+        autoplayTimers = [];
+      }
+
+      document.querySelectorAll(".stage").forEach((b) =>
+        b.addEventListener("click", () => {
+          stopAutoplay();
+          applyStage(+b.dataset.stage);
+        }),
+      );
 
       [
         ["alpha", "alpha-v", (v) => (v / 100).toFixed(2)],
@@ -1978,6 +2003,7 @@
         ["budget", "budget-v", (v) => (+v).toLocaleString("en-US")],
       ].forEach(([id, out, fmt]) => {
         document.getElementById(id).addEventListener("input", (e) => {
+          stopAutoplay();
           document.getElementById(out).textContent = fmt(e.target.value);
           if (currentStage >= 3) applyStage(currentStage);
         });
@@ -1990,7 +2016,7 @@
         (entries) => {
           if (entries[0].isIntersecting && !played) {
             played = true;
-            [0, 1, 2, 3, 4].forEach((s, i) =>
+            autoplayTimers = [0, 1, 2, 3, 4].map((s, i) =>
               setTimeout(() => applyStage(s), 400 + i * 1600),
             );
           }
@@ -2078,14 +2104,20 @@
       })();
 
       /* ============ counters + reveals ============ */
+      // The final value is what the markup ships, so a viewer whose observer
+      // never fires still reads the real number instead of a "0" that makes the
+      // page's whole claim look broken. The count-up only overwrites it once it
+      // is actually running, and restores the exact text at the end.
       function animateCount(el) {
         const target = +el.dataset.count,
+          final = el.textContent,
           dur = 1400,
           t0 = performance.now();
         const step = (t) => {
           const k = Math.min(1, (t - t0) / dur),
             e = 1 - Math.pow(1 - k, 3);
-          el.textContent = Math.round(target * e).toLocaleString("en-US");
+          el.textContent =
+            k < 1 ? Math.round(target * e).toLocaleString("en-US") : final;
           if (k < 1) requestAnimationFrame(step);
         };
         requestAnimationFrame(step);

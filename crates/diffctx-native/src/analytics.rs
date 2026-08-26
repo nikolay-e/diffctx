@@ -44,15 +44,13 @@ pub struct QuotientEdge {
 pub struct QuotientGraph {
     pub nodes: FxHashMap<Arc<str>, QuotientNode>,
     pub edges: FxHashMap<(Arc<str>, Arc<str>), QuotientEdge>,
-    pub level: QuotientLevel,
 }
 
 impl QuotientGraph {
-    pub fn new(level: QuotientLevel) -> Self {
+    pub fn new() -> Self {
         Self {
             nodes: FxHashMap::default(),
             edges: FxHashMap::default(),
-            level,
         }
     }
 }
@@ -161,7 +159,7 @@ pub fn quotient_graph(
     level: QuotientLevel,
     root: Option<&str>,
 ) -> QuotientGraph {
-    let mut qg = QuotientGraph::new(level);
+    let mut qg = QuotientGraph::new();
 
     let mut fid_to_group: FxHashMap<FragmentId, Arc<str>> = FxHashMap::default();
     for frag in fragments {
@@ -538,7 +536,7 @@ pub fn to_mermaid(qg: &QuotientGraph, top_n: usize) -> String {
             .categories
             .iter()
             .max_by_key(|&(_, count)| *count)
-            .map_or("?", |(c, _)| category_name(*c));
+            .map_or("?", |(c, _)| c.as_str());
         let weight_str = format_weight(edge.weight);
         lines.push(format!(
             "    {src_id} -->|\"{top_cat}: {weight_str}\"| {dst_id}"
@@ -548,21 +546,6 @@ pub fn to_mermaid(qg: &QuotientGraph, top_n: usize) -> String {
     let mut out = lines.join("\n");
     out.push('\n');
     out
-}
-
-fn category_name(c: EdgeCategory) -> &'static str {
-    match c {
-        EdgeCategory::Semantic => "semantic",
-        EdgeCategory::Structural => "structural",
-        EdgeCategory::Sibling => "sibling",
-        EdgeCategory::Config => "config",
-        EdgeCategory::ConfigGeneric => "config_generic",
-        EdgeCategory::Document => "document",
-        EdgeCategory::Similarity => "similarity",
-        EdgeCategory::History => "history",
-        EdgeCategory::TestEdge => "test_edge",
-        EdgeCategory::Generic => "generic",
-    }
 }
 
 fn format_weight(w: f64) -> String {
@@ -794,7 +777,7 @@ mod tests {
 
     #[test]
     fn mermaid_empty_graph() {
-        let qg = QuotientGraph::new(QuotientLevel::Directory);
+        let qg = QuotientGraph::new();
         assert_eq!(to_mermaid(&qg, 20), "graph LR\n");
     }
 
