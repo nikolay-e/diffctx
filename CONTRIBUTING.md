@@ -51,7 +51,7 @@ cargo test --lib                                             # Rust inline units
 DIFFCTX_YAML_CASES_LIMIT=20 cargo test --test yaml_cases     # sampled YAML corpus
 ```
 
-CI gates the full 2725-case YAML corpus per-case against
+CI gates the full YAML corpus per-case against
 `crates/diffctx-native/tests/known_below_threshold.txt` (bidirectional: a
 listed case that starts passing also fails — claim improvements by removing
 the entry in the same commit).

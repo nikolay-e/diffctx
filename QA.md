@@ -105,7 +105,9 @@ dismissing as bot noise.
 - `cargo test --lib` in `crates/diffctx-native` — inline units (the run
   prints the count; it was written here as "~171" while the real number was
   250, so it is not written here any more).
-- YAML corpus: CI gates the FULL 2725-case corpus on every push
+- YAML corpus: CI gates the FULL corpus on every push (the run prints the
+  case count; pinning it here rotted — it read 2725 while the corpus had grown
+  to 2902)
   (`cargo test --profile release-unwind --test yaml_cases`), per-case
   against `known_below_threshold.txt`, enforced bidirectionally;
   nightly re-runs with `DIFFCTX_YAML_IGNORE_BASELINE=1` to track
@@ -161,7 +163,7 @@ dismissing as bot noise.
   every cell hits the 300s deadline. A wide range at the default budget is
   the reviewable artifact.
 - This repo's own `.diffctx/ignore` excludes `*.yaml`/`*.yml` (the
-  2725-case corpus would drown every self-eat) **and `tests`** — so the
+  corpus would drown every self-eat) **and `tests`** — so the
   entire `tests/` tree, `crates/diffctx-native/tests/`, every oracle
   case and all CI/workflow YAML are invisible to self-eat, hidden even
   from `changed_files` by the security contract. A range that touches
@@ -208,25 +210,6 @@ dismissing as bot noise.
   staleness, don't force per-pass decisions.
 - `gated` label = blocked on a pre-registered experiment or eval-cycle
   boundary.
-
-## SonarCloud: reading the gate honestly
-
-- **The gate is not checked at push time — it is checked after the analysis of
-  the pushed commit.** A fix verified locally proves nothing about
-  `new_security_rating`; the number only moves once CI's Sonar step has run on
-  that SHA. Re-fetch `api/qualitygates/project_status` afterwards, every time.
-- **A fix for one rule can raise another, and the gate will not distinguish
-  them.** Restoring `uv.lock` cleared `text:S8565` (FIXED) and the gate stayed
-  ERROR — the six `uv sync` lines the same commit added each raised
-  `githubactions:S8541` ("omitting `--no-build` can execute setup scripts").
-  Same rating, entirely different cause. Never read "still C" as "the fix did
-  not land".
-- **Fetch without a status filter.** `issueStatuses=OPEN,CONFIRMED` returned one
-  issue while the project held six open ones a minute later; the unfiltered
-  search plus a status histogram is the only view that shows what is genuinely
-  open versus what a past pass ACCEPTED or marked FALSE_POSITIVE. Those
-  resolutions live in SonarCloud and are not mirrored here — this file records
-  only the ones with reasoning a reader could not reconstruct.
 
 ## Known false positives
 
