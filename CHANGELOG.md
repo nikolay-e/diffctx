@@ -9,6 +9,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A git subprocess whose output could not be read no longer reports an
+  empty diff.** The pipe reader's failure collapsed into an empty buffer
+  returned as success, so an unreadable `git diff` was indistinguishable from
+  a range with no changes. It is an error now. `is_git_repo` likewise stops
+  answering "not a git repository" when git did not run at all (missing from
+  PATH, permission denied): only git's own "no" is a "no".
+- **The weak stopping threshold never ships without the admission gate.**
+  `tau = 0.05` was calibrated with the per-file naming gate on (#65);
+  `--scoring bm25` has no graph to build a gate from and rode the weak stop
+  anyway, re-admitting exactly the diffuse tail the gate blocks. A scorer that
+  produces no gate — BM25, or `DIFFCTX_FILE_ADMISSION=0` — now uses the
+  pre-gate threshold (0.12) unless `--tau` is given explicitly.
+- **A range whose changed-file list is empty still discloses what it
+  withheld**: the third early exit in `resolve_change_set` returned zeroed
+  lock-file, ignored and policy counts it had already computed.
+- **Rust lifetimes no longer break signature extraction.** `'` was a string
+  opener in every language; `fn f<'a>(x: &'a T)` has no closing quote, the
+  scanner swallowed the rest of the line and lost the parameter list, and the
+  stub fell back to two lines cut mid-signature.
+- **`.env` and `.editorconfig` are recognized.** They were registered as
+  extensions, and a dotfile has none, so neither ever entered the candidate
+  universe. A bare lowercase `build` or `workspace` is no longer classified as
+  Bazel — only the capitalized names Bazel actually uses.
+- **Scala imports inside an unbalanced brace group are kept.** The
+  multi-line join consumed up to 32 lines and never re-scanned them, so an
+  `import` in that window vanished; it now stops at the next `import` line.
+  Scala 3 `as` renames split on any whitespace, not the literal single space.
+- **The C-family pairing loop polls the deadline per pair, not per stem
+  bucket** (#210): envoy's 520 files sharing one stem are a single bucket, so
+  the bucket-level poll never fired inside the case it was added for.
+- `scripts/bitcheck.sh` builds the binary it measures. It read whatever
+  `target/release/diffctx` the last `cargo test --release` had left, so a
+  `record`/`check` pair around an unbuilt edit compared one stale binary with
+  itself.
+- The MCP server warns at startup when `DIFFCTX_ALLOWED_PATHS` is unset, so
+  running unconfined is a choice the log records rather than a default nobody
+  sees.
+- CI: `sensitivity-check` installs the pinned Rust toolchain before syncing
+  (the sync compiles the extension); a release run that skipped PyPI attaches
+  its wheels and sdist to the GitHub release instead of shipping none.
 - **An expired compute deadline no longer kills the process.** The release
   profile set `panic = "abort"`, so the deadline — which fires as a panic on
   purpose, because the phases it guards return no `Result` — reached a

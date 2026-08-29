@@ -359,9 +359,9 @@ fn resolve_change_set(
     changed_files.extend(untracked_files);
     if changed_files.is_empty() {
         return Ok(ChangeSet::Empty {
-            lockfile_changes: Vec::new(),
-            ignored_changes: Vec::new(),
-            policy_excluded_count: 0,
+            lockfile_changes: lockfile_display,
+            ignored_changes: ignored_display,
+            policy_excluded_count: policy_excluded,
         });
     }
 
@@ -675,6 +675,13 @@ pub fn select_and_postpass(
     effective_budget: u32,
     tau: f64,
 ) -> (Vec<Fragment>, usize, f64, FxHashSet<FragmentId>) {
+    let tau = if scoring_result.admissible_files.is_none()
+        && tau == crate::config::limits::DEFAULT_STOPPING_THRESHOLD
+    {
+        crate::config::limits::UNGATED_STOPPING_THRESHOLD
+    } else {
+        tau
+    };
     let selection_result = match objective {
         crate::mode::ObjectiveMode::BoltzmannModular => {
             let beta = crate::utility::calibrate_beta(

@@ -280,6 +280,12 @@ def run_server() -> None:
         level=logging.WARNING,
         format="%(name)s: %(message)s",
     )
+    if not os.environ.get("DIFFCTX_ALLOWED_PATHS"):
+        # Confinement is opt-in; an operator who forgot the variable should
+        # not find out from a tool call that reached the wrong repository.
+        logging.getLogger(__name__).warning(
+            "DIFFCTX_ALLOWED_PATHS is not set: every repository this process can read is reachable through the tools"
+        )
     mcp.run(transport="stdio")
 
 

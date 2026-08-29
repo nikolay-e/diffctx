@@ -356,8 +356,9 @@ mod fragment_id_tests {
 }
 
 /// A fragment carries the change when it IS a changed core, an excerpt
-/// standing in for one, or the stand-in the selection recorded for a core
-/// (`SelectionResult::stand_in_ids`). Both output surfaces — the pack render
+/// standing in for one, or a selected fragment the selection paired to a
+/// core as its substitute (`SelectionResult::stand_in_ids` — every pairing,
+/// which for a SELECTED fragment means it was placed in the core's stead). Both output surfaces — the pack render
 /// and `locate` — call THIS function: they used to spell the rule out
 /// separately and drifted, one labelling a substituted signature stub
 /// `context` while the other called it `changed` (#209). Membership is a

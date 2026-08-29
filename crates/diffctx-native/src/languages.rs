@@ -107,7 +107,6 @@ pub static EXTENSION_TO_LANGUAGE: Lazy<FxHashMap<&'static str, &'static str>> = 
         (".cfg", "ini"),
         (".conf", "ini"),
         (".properties", "properties"),
-        (".env", "dotenv"),
         (".ada", "ada"),
         (".pas", "pascal"),
         (".f90", "fortran"),
@@ -126,7 +125,6 @@ pub static EXTENSION_TO_LANGUAGE: Lazy<FxHashMap<&'static str, &'static str>> = 
         (".php7", "php"),
         (".phps", "php"),
         (".adoc", "asciidoc"),
-        (".editorconfig", "editorconfig"),
         (".tex", "latex"),
         (".latex", "latex"),
         (".rst", "rst"),
@@ -184,6 +182,10 @@ pub static FILENAME_TO_LANGUAGE: Lazy<FxHashMap<&'static str, &'static str>> = L
         (".gitignore", "gitignore"),
         (".dockerignore", "gitignore"),
         (".diffctxignore", "gitignore"),
+        // Dotfiles have no extension: `Path::new(".env").extension()` is
+        // `None`, so these only ever match as whole names.
+        (".env", "dotenv"),
+        (".editorconfig", "editorconfig"),
         (".npmrc", "ini"),
         (".yarnrc", "yaml"),
         (".prettierrc", "json"),
@@ -199,9 +201,7 @@ pub static FILENAME_TO_LANGUAGE: Lazy<FxHashMap<&'static str, &'static str>> = L
         ("pipfile", "toml"),
         ("procfile", "text"),
         ("jenkinsfile", "groovy"),
-        ("build", "bazel"),
         ("build.bazel", "bazel"),
-        ("workspace", "bazel"),
         ("workspace.bazel", "bazel"),
         ("flake.lock", "json"),
     ];
@@ -217,7 +217,14 @@ pub fn get_language_for_file(path: &str) -> Option<&'static str> {
     let p = Path::new(path);
 
     if let Some(name) = p.file_name() {
-        let name_lower = name.to_string_lossy().to_lowercase();
+        let name = name.to_string_lossy();
+        // Bazel spells these in capitals; a lowercase `build` or `workspace`
+        // with no extension is a script or a directory marker, not Bazel, so
+        // this is the one lookup that keeps its case.
+        if name == "BUILD" || name == "WORKSPACE" {
+            return Some("bazel");
+        }
+        let name_lower = name.to_lowercase();
         if let Some(&lang) = FILENAME_TO_LANGUAGE.get(name_lower.as_str()) {
             return Some(lang);
         }
@@ -247,6 +254,16 @@ mod tests {
     fn known_extension_resolves_to_its_language() {
         assert_eq!(get_language_for_file("foo.py"), Some("python"));
         assert_eq!(get_language_for_file("src/lib.rs"), Some("rust"));
+    }
+
+    #[test]
+    fn dotfiles_resolve_by_name_and_bazel_keeps_its_case() {
+        assert_eq!(get_language_for_file("app/.env"), Some("dotenv"));
+        assert_eq!(get_language_for_file(".editorconfig"), Some("editorconfig"));
+        assert_eq!(get_language_for_file("pkg/BUILD"), Some("bazel"));
+        assert_eq!(get_language_for_file("WORKSPACE"), Some("bazel"));
+        assert_eq!(get_language_for_file("scripts/build"), None);
+        assert_eq!(get_language_for_file("workspace"), None);
     }
 
     #[test]
@@ -289,7 +306,7 @@ mod tests {
     fn extension_table_row_count_is_pinned() {
         assert_eq!(
             EXTENSION_TO_LANGUAGE.len(),
-            145,
+            143,
             "a row was added or removed from EXTENSION_TO_LANGUAGE; update this count \
              deliberately and re-check get_language_for_file coverage"
         );

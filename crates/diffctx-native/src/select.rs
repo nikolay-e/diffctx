@@ -47,11 +47,13 @@ pub struct SelectionResult {
     /// continuing the same greedy to the feasibility frontier could
     /// still have added. 0 when the loop ended for any other reason.
     pub stopping_certificate: f64,
-    /// Fragments placed to STAND IN for a changed core: the signature stub or
-    /// downshifted excerpt `build_signature_lookup` paired with it. Recorded
-    /// where the pairing is made, so a renderer can ask instead of inferring
-    /// the substitution from a shared start line (#209) — two surfaces
-    /// re-deriving one fact is how they came to disagree in the first place.
+    /// Every fragment paired to a changed core as its substitute — the
+    /// signature stub or downshifted excerpt `build_signature_lookup` chose
+    /// for it — whether or not this run placed it. A renderer asks only about
+    /// selected fragments, and a selected stub cannot coexist with its
+    /// selected core, so membership plus selection IS "placed as a stand-in";
+    /// the set is recorded at the pairing so no surface re-derives it from a
+    /// shared start line (#209).
     pub stand_in_ids: FxHashSet<FragmentId>,
 }
 
@@ -663,6 +665,15 @@ fn setup_and_select_core(
 
     let sig_lookup = build_signature_lookup(fragments, &core_fragments, core_excerpts);
     let mut state = init_selection_state(core_ids, rel, budget_tokens, file_importance);
+    // Every fragment paired to a core as its substitute — not only the ones
+    // the core pass places. A core's stub can also arrive through the greedy
+    // or a post-pass (core skipped, stub picked later), and it stands in for
+    // the change just the same. Recording only the core pass's placements
+    // rendered such a stub as context (measured: `select_with_params`'s stub
+    // lost its role on the bitcheck fixture). The set is safe to hold as
+    // candidates: only SELECTED fragments are ever asked, and a selected stub
+    // cannot coexist with its selected core (interval superset), so selected
+    // AND paired is exactly "placed as a stand-in".
     state.stand_in_ids = sig_lookup.values().map(|f| f.id.clone()).collect();
     let satisfied_core_ids = select_core_fragments(
         &core_fragments,
@@ -1299,6 +1310,60 @@ mod tests {
     /// #212: once a file is at its ceiling, its remaining cores may not keep
     /// placing signature stubs either — competitor cores get their phase-1
     /// seat first, and the file's tail waits for the ceiling-free sweep.
+    /// A core's stub is a stand-in however it got selected — the core pass,
+    /// the greedy, a post-pass — so the recorded set is every pairing, and
+    /// a core placed in full never shares the selection with its stub.
+    #[test]
+    fn a_selected_stub_is_a_stand_in_and_never_coexists_with_its_core() {
+        let core = frag("a.rs", 1, 40, FragmentKind::Function, 500);
+        let sig = frag("a.rs", 1, 1, FragmentKind::FunctionSignature, 10);
+        let rel: FxHashMap<FragmentId, f64> = [(core.id.clone(), 1.0), (sig.id.clone(), 0.5)]
+            .into_iter()
+            .collect();
+        let core_ids: FxHashSet<FragmentId> = std::iter::once(core.id.clone()).collect();
+
+        // Budget below the core: the stub stands in.
+        let tight = lazy_greedy_select(
+            vec![core.clone(), sig.clone()],
+            &core_ids,
+            &rel,
+            &[],
+            100,
+            0.0,
+            None,
+            None,
+            None,
+            None,
+        );
+        assert!(
+            tight.selected.iter().any(|f| f.id == sig.id),
+            "stub must be placed"
+        );
+        assert!(
+            tight.stand_in_ids.contains(&sig.id),
+            "the placed stub is a stand-in"
+        );
+
+        // Budget above the core: the core is placed and the stub never is.
+        let roomy = lazy_greedy_select(
+            vec![core.clone(), sig.clone()],
+            &core_ids,
+            &rel,
+            &[],
+            10_000,
+            0.0,
+            None,
+            None,
+            None,
+            None,
+        );
+        assert!(roomy.selected.iter().any(|f| f.id == core.id));
+        assert!(
+            !roomy.selected.iter().any(|f| f.id == sig.id),
+            "a stub cannot share the selection with its core"
+        );
+    }
+
     #[test]
     fn signature_stubs_honor_the_per_file_ceiling() {
         let budget = 1_000u32;

@@ -55,6 +55,15 @@ static JAVA_CLASS_RE: Lazy<Regex> = Lazy::new(|| {
 });
 static SCALA_IMPORT_LINE_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?m)^\s*import\s+(.+)$").unwrap());
+/// Scala 3 rename: `C as D`. Any whitespace, not the literal single space —
+/// `C  as  D` and a tab-separated form are legal and used to keep the whole
+/// text as the "original name".
+static SCALA_AS_RENAME_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\s+as\s+").unwrap());
+
+fn strip_scala_rename(sel: &str) -> &str {
+    let original = sel.split("=>").next().unwrap_or("");
+    SCALA_AS_RENAME_RE.splitn(original, 2).next().unwrap_or("")
+}
 static SCALA_PACKAGE_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?m)^\s*package\s+([A-Za-z_][\w.]*)").unwrap());
 static SCALA_CLASS_RE: Lazy<Regex> = Lazy::new(|| {
@@ -126,15 +135,7 @@ fn parse_scala_import_clause(clause: &str) -> Option<ScalaImport> {
         for sel in inner.split(',') {
             // A rename keeps the ORIGINAL name — that is what the target file
             // defines. Scala 2 spells it `C => D`, Scala 3 `C as D`.
-            let name = sel
-                .split("=>")
-                .next()
-                .unwrap_or("")
-                .split(" as ")
-                .next()
-                .unwrap_or("")
-                .trim()
-                .trim_matches('`');
+            let name = strip_scala_rename(sel).trim().trim_matches('`');
             match name {
                 "_" | "*" | "given" => wildcard = true,
                 "" => {}
@@ -154,7 +155,7 @@ fn parse_scala_import_clause(clause: &str) -> Option<ScalaImport> {
         });
     }
     // Scala 3 top-level rename: `import a.b.c as d` imports `a.b.c`.
-    let clause = clause.split(" as ").next().unwrap_or(clause).trim();
+    let clause = strip_scala_rename(clause).trim();
     if let Some(p) = clause
         .strip_suffix("._")
         .or_else(|| clause.strip_suffix(".*"))
@@ -192,8 +193,11 @@ fn parse_scala_import_clause(clause: &str) -> Option<ScalaImport> {
 
 fn parse_scala_imports(content: &str) -> Vec<ScalaImport> {
     let mut out = Vec::new();
-    let mut lines = content.lines();
-    while let Some(line) = lines.next() {
+    let lines: Vec<&str> = content.lines().collect();
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i];
+        i += 1;
         let Some(cap) = SCALA_IMPORT_LINE_RE.captures(line) else {
             continue;
         };
@@ -204,12 +208,17 @@ fn parse_scala_imports(content: &str) -> Vec<ScalaImport> {
         let mut open = clause_text.matches('{').count();
         let mut close = clause_text.matches('}').count();
         let mut joined = 0;
-        // The join is bounded so an unbalanced brace (a file mid-edit) cannot
-        // swallow the rest of the file into one clause.
-        while open > close && joined < 32 {
+        // Bounded, and it stops at the next `import` line without consuming
+        // it: an unbalanced brace (a file mid-edit) used to pull up to 32
+        // lines out of the iterator, and every import inside that window was
+        // silently lost.
+        while open > close && joined < 32 && i < lines.len() {
+            if SCALA_IMPORT_LINE_RE.is_match(lines[i]) {
+                break;
+            }
+            let next = lines[i].split("//").next().unwrap_or("").trim();
+            i += 1;
             joined += 1;
-            let Some(next) = lines.next() else { break };
-            let next = next.split("//").next().unwrap_or("").trim();
             open += next.matches('{').count();
             close += next.matches('}').count();
             clause_text.push(' ');
@@ -840,6 +849,27 @@ mod tests {
 
         let braced = parse_one("a.{B as C, D}");
         assert_eq!(braced.prefix, "a");
+        assert_eq!(braced.selectors, vec!["B".to_string(), "D".to_string()]);
+    }
+
+    #[test]
+    fn an_unbalanced_brace_does_not_eat_the_next_import() {
+        let content = "import a.{\nimport b.C\nimport d.E\n";
+        let imports = parse_scala_imports(content);
+        let prefixes: Vec<&str> = imports.iter().map(|i| i.prefix.as_str()).collect();
+        assert!(
+            prefixes.contains(&"b"),
+            "import inside the join window was lost: {prefixes:?}"
+        );
+        assert!(prefixes.contains(&"d"), "{prefixes:?}");
+    }
+
+    #[test]
+    fn scala3_rename_splits_on_any_whitespace() {
+        let top = parse_one("a.b.Conf  as  Config");
+        assert_eq!(top.prefix, "a.b");
+        assert_eq!(top.selectors, vec!["Conf".to_string()]);
+        let braced = parse_one("a.{B\tas\tC, D}");
         assert_eq!(braced.selectors, vec!["B".to_string(), "D".to_string()]);
     }
 

@@ -299,6 +299,23 @@ pub fn run_git(repo_root: &Path, args: &[&str]) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
+fn collect_pipe(
+    handle: Option<std::thread::JoinHandle<std::io::Result<Vec<u8>>>>,
+    name: &str,
+) -> Result<Vec<u8>> {
+    match handle {
+        None => Ok(Vec::new()),
+        Some(h) => h
+            .join()
+            .map_err(|_| {
+                GitError::Io(std::io::Error::other(format!(
+                    "git {name} reader thread panicked"
+                )))
+            })?
+            .map_err(GitError::Io),
+    }
+}
+
 fn wait_with_timeout(
     child: Child,
     timeout: Duration,
@@ -329,14 +346,11 @@ fn wait_with_timeout(
         }
     };
 
-    let stdout = stdout_handle
-        .and_then(|h| h.join().ok())
-        .and_then(|r| r.ok())
-        .unwrap_or_default();
-    let stderr = stderr_handle
-        .and_then(|h| h.join().ok())
-        .and_then(|r| r.ok())
-        .unwrap_or_default();
+    // A reader that failed or panicked used to collapse into an empty
+    // buffer returned as success — an unreadable `git diff` then looked
+    // exactly like a diff with nothing in it.
+    let stdout = collect_pipe(stdout_handle, "stdout")?;
+    let stderr = collect_pipe(stderr_handle, "stderr")?;
 
     Ok(std::process::Output {
         status,
@@ -352,8 +366,11 @@ fn wait_with_timeout(
 pub fn is_git_repo(path: &Path) -> std::result::Result<bool, GitError> {
     match run_git(path, &["rev-parse", "--git-dir"]) {
         Ok(_) => Ok(true),
-        Err(e @ GitError::Timeout(_)) => Err(e),
-        Err(_) => Ok(false),
+        // git ran and said no: that is the one honest "false".
+        Err(GitError::CommandFailed(_)) => Ok(false),
+        // git did not run at all (not on PATH, permission denied) or did not
+        // answer in time — neither says anything about the directory.
+        Err(e) => Err(e),
     }
 }
 

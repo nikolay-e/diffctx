@@ -33,6 +33,15 @@ SNAP_DIR="${BITCHECK_DIR:-${TMPDIR:-/tmp}}/diffctx-bitcheck"
 FIXTURE_SHA="5e2025ab"
 FIXTURE="$SNAP_DIR/fixture"
 
+# The binary under test is built HERE, every time. This script used to read
+# whatever `target/release/diffctx` the last `cargo test --release` had left
+# behind, so `record` and `check` around an edit that nobody rebuilt compared
+# one stale binary with itself and reported 24 identical cells for a change
+# it had never executed.
+if [[ "${1:-}" != "clean" ]]; then
+  cargo build --release --quiet --manifest-path "$REPO_ROOT/Cargo.toml"
+fi
+
 ensure_fixture() {
   # The fixture lives under TMPDIR, which the OS clears without telling git.
   # Without this prune the stale registration survives and `worktree add`
