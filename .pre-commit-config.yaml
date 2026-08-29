@@ -85,6 +85,25 @@ repos:
       - id: actionlint
         name: Lint GitHub Actions
 
+  # renovate.json holds python below the next minor because ci.yml's matrix
+  # tops out one below it. That coupling used to live in a comment and nothing
+  # else: raise the matrix and the pin keeps silently blocking every python
+  # update, with the two files still looking individually correct.
+  - repo: local
+    hooks:
+      - id: python-pin-matches-ci-matrix
+        name: renovate python pin matches the CI matrix
+        entry: >-
+          bash -c 'top=$(grep -o "3\.[0-9][0-9]*" .github/workflows/ci.yml | sort -V | tail -1);
+          want="<3.$(( ${top#3.} + 1 ))";
+          have=$(sed -n "/\"matchDepNames\": \[\"python\"\]/,/}/s/.*\"allowedVersions\":
+          \"\([^\"]*\)\".*/\1/p" renovate.json);
+          [ "$have" = "$want" ] ||
+          { echo "renovate allows \"$have\", ci.yml matrix tops at $top (expected \"$want\")"; exit 1; }'
+        language: system
+        pass_filenames: false
+        files: ^(\.github/workflows/ci\.yml|renovate\.json)$
+
   # ============================================================================
   # CODE FORMATTING
   # ============================================================================

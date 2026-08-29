@@ -82,6 +82,8 @@ pub fn boltzmann_select(
         utility: total_utility,
         greedy_iters: final_count,
         stopping_certificate: 0.0,
+        // No core substitution in this objective: it places whole fragments.
+        stand_in_ids: FxHashSet::default(),
     }
 }
 

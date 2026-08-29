@@ -284,34 +284,6 @@ fn create_fragment_entry(frag: &Fragment, path_str: &str) -> FragmentEntry {
     }
 }
 
-/// A fragment carries the `changed` role when it IS a core, or when it is the
-/// hunk-window excerpt that was substituted for one. The excerpt's id is not in
-/// `core_ids` — it is a synthetic span cut out of the core — so without this the
-/// downshift would silently strip the change marker from the output, which is
-/// worse than the over-dump it replaces. `locate.rs` already treats `Excerpt`
-/// this way, and calls this function so the two cannot drift apart.
-pub(crate) fn carries_changed_role(
-    frag: &Fragment,
-    core_ids: &FxHashSet<FragmentId>,
-    core_locs: &FxHashSet<(Arc<str>, u32)>,
-) -> bool {
-    core_ids.contains(&frag.id)
-        || frag.kind == FragmentKind::Excerpt
-        || (frag.kind.is_signature()
-            && core_locs.contains(&(frag.id.path.clone(), frag.id.start_line)))
-}
-
-/// (path, start_line) of every core. A signature stub substituted for a
-/// changed core shares its location — that is how `sig_lookup` keyed the
-/// substitution — so a selected signature at a core's location carries the
-/// change, same as an `Excerpt` (#209). Signatures elsewhere stay context.
-pub(crate) fn core_substitute_locs(core_ids: &FxHashSet<FragmentId>) -> FxHashSet<(Arc<str>, u32)> {
-    core_ids
-        .iter()
-        .map(|id| (id.path.clone(), id.start_line))
-        .collect()
-}
-
 /// Collapse a file's fragments (sorted by start line, ties by descending end
 /// line) into the rendered entries. Two behaviors:
 /// - a same-role fragment fully contained in the running range (`next.end <=
@@ -327,20 +299,20 @@ fn merge_file_fragments(
     rel_path: &str,
     frags: &[&Fragment],
     core_ids: &FxHashSet<FragmentId>,
-    core_locs: &FxHashSet<(Arc<str>, u32)>,
+    stand_in_ids: &FxHashSet<FragmentId>,
 ) -> Vec<(bool, u32, FragmentEntry)> {
     let mut out: Vec<(bool, u32, FragmentEntry)> = Vec::new();
     let mut i = 0;
     while i < frags.len() {
         let first = frags[i];
-        let role_changed = carries_changed_role(first, core_ids, core_locs);
+        let role_changed = crate::types::carries_change(first, core_ids, stand_in_ids);
         let mut end = first.end_line();
         let mut parts: Vec<&str> = vec![first.content.trim_end_matches('\n')];
         let mut uniform_kind = true;
         let mut j = i + 1;
         while j < frags.len() {
             let next = frags[j];
-            if carries_changed_role(next, core_ids, core_locs) != role_changed {
+            if crate::types::carries_change(next, core_ids, stand_in_ids) != role_changed {
                 break;
             }
             if next.end_line() <= end {
@@ -389,10 +361,10 @@ pub fn build_diff_context_output(
     selected: &[Fragment],
     no_content: bool,
     core_ids: &FxHashSet<FragmentId>,
+    stand_in_ids: &FxHashSet<FragmentId>,
     rel_scores: &FxHashMap<FragmentId, f64>,
     change: ChangeSummary,
 ) -> DiffContextOutput {
-    let core_locs = core_substitute_locs(core_ids);
     let mut by_path: FxHashMap<String, Vec<&Fragment>> = FxHashMap::default();
     for frag in selected {
         by_path
@@ -418,7 +390,7 @@ pub fn build_diff_context_output(
             .map(|f| rel_scores.get(&f.id).copied().unwrap_or(0.0))
             .fold(0.0_f64, f64::max);
         for (role_changed, start, mut entry) in
-            merge_file_fragments(rel_path, &sorted, core_ids, &core_locs)
+            merge_file_fragments(rel_path, &sorted, core_ids, stand_in_ids)
         {
             if no_content {
                 entry.content = None;
@@ -597,23 +569,24 @@ mod merge_kind_tests {
         assert_eq!(out[0].2.lines, "1-3");
     }
 
-    /// #209: a signature stub substituted for a changed core shares the core's
-    /// (path, start_line); it carries the change and must render as `changed`.
-    /// A signature anywhere else stays context.
+    /// #209: the stand-in the selection recorded for a changed core renders as
+    /// `changed`; a signature the selection merely chose as context does not,
+    /// even when it starts on the very line the core starts on — that
+    /// coincidence used to BE the rule, and it was what made the role fragile.
     #[test]
-    fn a_signature_substituted_at_a_core_location_renders_changed() {
+    fn a_recorded_stand_in_renders_changed_and_a_context_signature_does_not() {
         let core_id = FragmentId::new(Arc::from("a.py"), 10, 120);
         let core_ids: FxHashSet<FragmentId> = std::iter::once(core_id).collect();
-        let core_locs = core_substitute_locs(&core_ids);
 
         let substituted = frag(10, 11, FragmentKind::FunctionSignature, "def big(a):");
+        let stand_in_ids: FxHashSet<FragmentId> = std::iter::once(substituted.id.clone()).collect();
         let refs: Vec<&Fragment> = vec![&substituted];
-        let out = merge_file_fragments("a.py", &refs, &core_ids, &core_locs);
-        assert!(out[0].0, "the substituted stub must carry role=changed");
+        let out = merge_file_fragments("a.py", &refs, &core_ids, &stand_in_ids);
+        assert!(out[0].0, "the recorded stand-in must carry role=changed");
 
         let elsewhere = frag(300, 301, FragmentKind::FunctionSignature, "def other(b):");
         let refs: Vec<&Fragment> = vec![&elsewhere];
-        let out = merge_file_fragments("a.py", &refs, &core_ids, &core_locs);
+        let out = merge_file_fragments("a.py", &refs, &core_ids, &stand_in_ids);
         assert!(!out[0].0, "an ordinary context signature must stay context");
     }
 

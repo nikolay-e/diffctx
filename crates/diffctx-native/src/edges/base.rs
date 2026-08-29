@@ -540,6 +540,38 @@ mod tests {
         assert_eq!(hit, vec!["pkg/api/server.go".to_string()]);
     }
 
+    /// The invariant #207 broke, asserted directly on the structure: ONE entry
+    /// per file, and nothing above the repo root is matchable. The duplicate
+    /// keys were caught back then by a corpus case that happened to trip the
+    /// ambiguity cap — luck, not coverage; this fails at the edit instead.
+    #[test]
+    fn the_path_index_holds_one_entry_per_file_and_no_host_components() {
+        let paths = [
+            "/ci/work/repo/src/app.rs",
+            "/ci/work/repo/src/db.rs",
+            "/ci/work/repo/lib/util/mod.py",
+        ];
+        let frags: Vec<Fragment> = paths.iter().map(|p| frag(p)).collect();
+        let idx = FragmentIndex::new(&frags, Some(Path::new("/ci/work/repo")));
+
+        assert_eq!(idx.lower_paths.len(), paths.len(), "one entry per file");
+        let distinct: FxHashSet<&str> = idx.lower_paths.iter().map(|(p, _)| p.as_str()).collect();
+        assert_eq!(distinct.len(), paths.len(), "entries must be distinct");
+
+        for host in ["ci", "work", "repo"] {
+            assert!(
+                !idx.component_to_paths.contains_key(host),
+                "`{host}` is outside the repo root and must not be matchable"
+            );
+        }
+        for inside in ["src", "app.rs", "util"] {
+            assert!(
+                idx.component_to_paths.contains_key(inside),
+                "`{inside}` is inside the repo and must stay matchable"
+            );
+        }
+    }
+
     fn linked_paths_rooted(reference: &str, root: &str, paths: &[&str]) -> Vec<String> {
         let frags: Vec<Fragment> = paths.iter().map(|p| frag(p)).collect();
         let idx = FragmentIndex::new(&frags, Some(Path::new(root)));

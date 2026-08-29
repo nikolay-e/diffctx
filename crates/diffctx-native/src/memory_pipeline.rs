@@ -124,7 +124,7 @@ pub fn build_diff_context_in_memory(
 
     let needs = crate::utility::needs::needs_from_diff(&all_fragments, &core_ids, &diff_text);
 
-    let (mut selected, _, _) = crate::pipeline::select_and_postpass(
+    let (mut selected, _, _, stand_in_ids) = crate::pipeline::select_and_postpass(
         &scoring_result,
         &all_fragments,
         &core_ids,
@@ -148,6 +148,7 @@ pub fn build_diff_context_in_memory(
         None,
         &core_ids,
         &FxHashMap::default(),
+        &stand_in_ids,
     );
 
     let dummy_root = Path::new(".");
@@ -167,6 +168,7 @@ pub fn build_diff_context_in_memory(
         &selected,
         no_content,
         &core_ids,
+        &stand_in_ids,
         &scoring_result.rel_scores,
         change,
     )

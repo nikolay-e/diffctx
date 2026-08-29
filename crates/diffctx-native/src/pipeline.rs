@@ -144,6 +144,7 @@ pub fn build_diff_context_locate(
             selection_iters: 0,
             stopping_certificate: 0.0,
             select_ms: 0.0,
+            stand_in_ids: FxHashSet::default(),
         }
     } else {
         run_selection(&state, budget_tokens, tau)
@@ -653,6 +654,9 @@ pub struct SelectionOutcome {
     pub selection_iters: usize,
     pub stopping_certificate: f64,
     pub select_ms: f64,
+    /// See `SelectionResult::stand_in_ids` — carried to the renderers so both
+    /// surfaces read one recorded fact instead of re-deriving it (#209).
+    pub stand_in_ids: FxHashSet<FragmentId>,
 }
 
 /// Selection + the two admission-gated post-passes — the git-free part of
@@ -670,7 +674,7 @@ pub fn select_and_postpass(
     objective: crate::mode::ObjectiveMode,
     effective_budget: u32,
     tau: f64,
-) -> (Vec<Fragment>, usize, f64) {
+) -> (Vec<Fragment>, usize, f64, FxHashSet<FragmentId>) {
     let selection_result = match objective {
         crate::mode::ObjectiveMode::BoltzmannModular => {
             let beta = crate::utility::calibrate_beta(
@@ -709,6 +713,7 @@ pub fn select_and_postpass(
 
     let selection_iters = selection_result.greedy_iters;
     let stopping_certificate = selection_result.stopping_certificate;
+    let stand_in_ids = selection_result.stand_in_ids;
     let mut selected = selection_result.selected;
 
     postpass::coherence_post_pass(
@@ -728,7 +733,12 @@ pub fn select_and_postpass(
         scoring_result.admissible_files.as_ref(),
     );
 
-    (selected, selection_iters, stopping_certificate)
+    (
+        selected,
+        selection_iters,
+        stopping_certificate,
+        stand_in_ids,
+    )
 }
 
 /// Selection + the 3 post-passes, shared verbatim by the pack renderer
@@ -751,7 +761,7 @@ pub fn run_selection(
         auto.clamp(BUDGET.auto_min, BUDGET.auto_max)
     });
 
-    let (mut selected, selection_iters, stopping_certificate) = select_and_postpass(
+    let (mut selected, selection_iters, stopping_certificate, stand_in_ids) = select_and_postpass(
         &state.scoring_result,
         &state.all_fragments,
         &state.core_ids,
@@ -778,6 +788,7 @@ pub fn run_selection(
         batch_reader.as_mut(),
         &state.core_ids,
         &state.core_excerpts,
+        &stand_in_ids,
     );
     if let Some(mut r) = batch_reader {
         r.close();
@@ -792,6 +803,7 @@ pub fn run_selection(
         selection_iters,
         stopping_certificate,
         select_ms,
+        stand_in_ids,
     }
 }
 
@@ -809,6 +821,7 @@ pub fn select_with_params(
     no_content: bool,
 ) -> DiffContextOutput {
     let outcome = run_selection(state, budget_tokens, tau);
+    let stand_in_ids = outcome.stand_in_ids;
     let selected = outcome.selected;
     let selection_iters = outcome.selection_iters;
     let stopping_certificate = outcome.stopping_certificate;
@@ -838,22 +851,12 @@ pub fn select_with_params(
         ignored_changes: state.ignored_changes.clone(),
         policy_excluded_count: state.policy_excluded_count,
     };
-    // An excerpt stands in for a core fragment, so it carries the change and
-    // has to render as `role: "changed"` — otherwise the substitution keeps the
-    // content but still loses the signal it exists to preserve.
-    let mut render_core_ids = state.core_ids.clone();
-    render_core_ids.extend(
-        selected
-            .iter()
-            .filter(|f| f.kind == crate::types::FragmentKind::Excerpt)
-            .map(|f| f.id.clone()),
-    );
-
     let mut output = render::build_diff_context_output(
         &state.root_dir,
         &selected,
         no_content,
-        &render_core_ids,
+        &state.core_ids,
+        &stand_in_ids,
         &state.scoring_result.rel_scores,
         change,
     );
@@ -1215,6 +1218,8 @@ fn build_diff_context_full(
         &selected,
         no_content,
         &core_ids,
+        // `--full` emits whole files: nothing is substituted for a core.
+        &FxHashSet::default(),
         &FxHashMap::default(),
         change,
     ))

@@ -211,25 +211,14 @@ fn rel_path(state: &ScoredState, path: &str) -> String {
         .unwrap_or_else(|| crate::paths::to_posix_display(std::borrow::Cow::Borrowed(path)))
 }
 
-/// Same predicate on both surfaces, and now literally the same function: the
-/// fragment is a core, an excerpt stand-in, or a signature stub substituted at
-/// a core's location (#209).
-fn carries_change(
-    state: &ScoredState,
-    frag: &Fragment,
-    core_locs: &rustc_hash::FxHashSet<(std::sync::Arc<str>, u32)>,
-) -> bool {
-    crate::render::carries_changed_role(frag, &state.core_ids, core_locs)
-}
-
 fn reasons_for(
     state: &ScoredState,
     frag: &Fragment,
-    core_locs: &rustc_hash::FxHashSet<(std::sync::Arc<str>, u32)>,
+    stand_in_ids: &rustc_hash::FxHashSet<FragmentId>,
     hops: Option<u32>,
     attribution: Option<&Vec<(String, String, f64)>>,
 ) -> Vec<Reason> {
-    if carries_change(state, frag, core_locs) {
+    if crate::types::carries_change(frag, &state.core_ids, stand_in_ids) {
         return vec![Reason::Changed];
     }
     let mut reasons: Vec<Reason> = Vec::new();
@@ -453,12 +442,12 @@ pub fn build_locate(state: &ScoredState, outcome: &SelectionOutcome) -> LocateOu
     let attribution = incoming_attribution(state);
     let (overflow, overflow_count, next_up) = build_overflow(state, outcome, &hops, &attribution);
 
-    let core_locs = crate::render::core_substitute_locs(&state.core_ids);
     let items: Vec<LocateItem> = outcome
         .selected
         .iter()
         .map(|frag| {
-            let is_changed = carries_change(state, frag, &core_locs);
+            let is_changed =
+                crate::types::carries_change(frag, &state.core_ids, &outcome.stand_in_ids);
             let path = rel_path(state, frag.id.path.as_ref());
             let group = group_of(&path, frag.kind);
             LocateItem {
@@ -476,7 +465,7 @@ pub fn build_locate(state: &ScoredState, outcome: &SelectionOutcome) -> LocateOu
                 reasons: reasons_for(
                     state,
                     frag,
-                    &core_locs,
+                    &outcome.stand_in_ids,
                     hops.get(&frag.id).copied(),
                     attribution.get(&frag.id),
                 ),

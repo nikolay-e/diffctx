@@ -354,3 +354,22 @@ mod fragment_id_tests {
         assert_eq!(direct.end_line, 12);
     }
 }
+
+/// A fragment carries the change when it IS a changed core, an excerpt
+/// standing in for one, or the stand-in the selection recorded for a core
+/// (`SelectionResult::stand_in_ids`). Both output surfaces — the pack render
+/// and `locate` — call THIS function: they used to spell the rule out
+/// separately and drifted, one labelling a substituted signature stub
+/// `context` while the other called it `changed` (#209). Membership is a
+/// recorded fact from the moment of substitution, not a guess from a shared
+/// start line, so a stand-in that one day gets its own location keeps its
+/// role.
+pub fn carries_change(
+    frag: &Fragment,
+    core_ids: &rustc_hash::FxHashSet<FragmentId>,
+    stand_in_ids: &rustc_hash::FxHashSet<FragmentId>,
+) -> bool {
+    core_ids.contains(&frag.id)
+        || frag.kind == FragmentKind::Excerpt
+        || stand_in_ids.contains(&frag.id)
+}

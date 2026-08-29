@@ -1338,20 +1338,16 @@ fn inject_embedded_languages(
 
 /// A `type=` attribute that names something other than JavaScript (JSON
 /// payloads, text templates) opts the element out; absent or JS-ish types are
-/// scripts. The check reads the raw start tag rather than walking attribute
-/// nodes: the accepted set is a handful of literals and the tag is one line.
+/// scripts. The attribute is read off the AST the grammar already built. The
+/// hand-rolled tag scan this replaces had to re-answer, badly, what the parse
+/// tree answers for free: `data-type=` is not the `type` attribute (#213),
+/// the value may be single- or double-quoted, and `type = "..."` is legal
+/// HTML that a `find("type=")` never sees.
 fn script_is_javascript(node: &Node, source: &[u8]) -> bool {
     let Some(start_tag) = node.child(0) else {
         return true;
     };
-    let Ok(tag) = start_tag.utf8_text(source) else {
-        return true;
-    };
-    start_tag_type_is_javascript(&tag.to_lowercase())
-}
-
-fn start_tag_type_is_javascript(lower_tag: &str) -> bool {
-    let Some(value) = script_type_attribute(lower_tag) else {
+    let Some(value) = script_type_attribute(&start_tag, source) else {
         return true;
     };
     matches!(
@@ -1360,23 +1356,39 @@ fn start_tag_type_is_javascript(lower_tag: &str) -> bool {
     )
 }
 
-/// The `type` attribute's MIME value, if the start tag carries one. A bare
-/// substring `find("type=")` matched `data-type=` (#213), so the attribute
-/// name must sit on a token boundary; MIME parameters after `;`
-/// (`text/javascript; charset=utf-8`) are not part of the type.
-fn script_type_attribute(lower_tag: &str) -> Option<String> {
-    let mut search = 0;
-    while let Some(rel) = lower_tag[search..].find("type=") {
-        let pos = search + rel;
-        if pos > 0 && lower_tag.as_bytes()[pos - 1].is_ascii_whitespace() {
-            let raw: String = lower_tag[pos + 5..]
-                .trim_start_matches(['"', '\''])
-                .chars()
-                .take_while(|c| !"\"' >".contains(*c))
-                .collect();
-            return Some(raw.split(';').next().unwrap_or("").trim().to_string());
+/// The `type` attribute's MIME type, lowercased, with any parameter after `;`
+/// dropped — `text/javascript; charset=utf-8` is still JavaScript.
+fn script_type_attribute(start_tag: &Node, source: &[u8]) -> Option<String> {
+    let mut cursor = start_tag.walk();
+    for attr in start_tag
+        .children(&mut cursor)
+        .filter(|n| n.kind() == "attribute")
+    {
+        let mut inner = attr.walk();
+        let parts: Vec<Node> = attr.children(&mut inner).collect();
+        let is_type = parts
+            .iter()
+            .find(|n| n.kind() == "attribute_name")
+            .and_then(|n| n.utf8_text(source).ok())
+            .is_some_and(|name| name.eq_ignore_ascii_case("type"));
+        if !is_type {
+            continue;
         }
-        search = pos + 5;
+        let raw = parts
+            .iter()
+            .rev()
+            .find(|n| matches!(n.kind(), "attribute_value" | "quoted_attribute_value"))
+            .and_then(|n| n.utf8_text(source).ok())
+            .unwrap_or("");
+        let value = raw.trim().trim_matches(['"', '\'']);
+        return Some(
+            value
+                .split(';')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_ascii_lowercase(),
+        );
     }
     None
 }
@@ -1984,6 +1996,25 @@ mod injection_tests {
                 .iter()
                 .any(|f| f.symbol_name.as_deref() == Some("realJs")),
             "data-type is not the type attribute; the script is JavaScript"
+        );
+    }
+
+    /// Legal HTML the pre-AST scan could not see: whitespace around the `=`,
+    /// and a single-quoted non-JS type.
+    #[test]
+    fn spaced_and_single_quoted_type_attributes_are_read() {
+        let spaced = "<script type = \"application/json\">\n{\"a\": 1}\n</script>\n";
+        let frags = TreeSitterStrategy::new().fragment(Arc::from("app.html"), spaced);
+        assert!(
+            !frags.iter().any(|f| f.symbol_name.is_some()),
+            "`type = \"application/json\"` opts the block out, spaces and all"
+        );
+
+        let single = "<script type='application/json'>\n{\"a\": 1}\n</script>\n";
+        let frags = TreeSitterStrategy::new().fragment(Arc::from("app.html"), single);
+        assert!(
+            !frags.iter().any(|f| f.symbol_name.is_some()),
+            "a single-quoted JSON type opts the block out too"
         );
     }
 

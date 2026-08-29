@@ -47,6 +47,12 @@ pub struct SelectionResult {
     /// continuing the same greedy to the feasibility frontier could
     /// still have added. 0 when the loop ended for any other reason.
     pub stopping_certificate: f64,
+    /// Fragments placed to STAND IN for a changed core: the signature stub or
+    /// downshifted excerpt `build_signature_lookup` paired with it. Recorded
+    /// where the pairing is made, so a renderer can ask instead of inferring
+    /// the substitution from a shared start line (#209) — two surfaces
+    /// re-deriving one fact is how they came to disagree in the first place.
+    pub stand_in_ids: FxHashSet<FragmentId>,
 }
 
 impl SelectionResult {
@@ -60,6 +66,7 @@ impl SelectionResult {
             utility: 0.0,
             greedy_iters: 0,
             stopping_certificate: 0.0,
+            stand_in_ids: FxHashSet::default(),
         }
     }
 }
@@ -98,6 +105,7 @@ struct SelectionState {
     selected_ids: IntervalIndex,
     remaining_budget: u32,
     utility_state: UtilityState,
+    stand_in_ids: FxHashSet<FragmentId>,
 }
 
 fn drop_redundant_signatures(candidates: &[Fragment], budget: u32) -> Vec<Fragment> {
@@ -493,6 +501,7 @@ fn init_selection_state(
         selected_ids: IntervalIndex::new(),
         remaining_budget: budget_tokens,
         utility_state,
+        stand_in_ids: FxHashSet::default(),
     }
 }
 
@@ -654,6 +663,7 @@ fn setup_and_select_core(
 
     let sig_lookup = build_signature_lookup(fragments, &core_fragments, core_excerpts);
     let mut state = init_selection_state(core_ids, rel, budget_tokens, file_importance);
+    state.stand_in_ids = sig_lookup.values().map(|f| f.id.clone()).collect();
     let satisfied_core_ids = select_core_fragments(
         &core_fragments,
         rel,
@@ -730,6 +740,7 @@ pub fn lazy_greedy_select(
             utility: utility_value(&state.utility_state),
             greedy_iters: 0,
             stopping_certificate: 0.0,
+            stand_in_ids: state.stand_in_ids,
         };
     }
 
@@ -846,6 +857,7 @@ pub fn lazy_greedy_select(
             utility: best_alt_utility,
             greedy_iters,
             stopping_certificate: 0.0,
+            stand_in_ids: state.stand_in_ids,
         };
     }
 
@@ -875,6 +887,7 @@ pub fn lazy_greedy_select(
         utility: greedy_utility,
         greedy_iters,
         stopping_certificate,
+        stand_in_ids: state.stand_in_ids,
     }
 }
 
