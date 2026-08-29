@@ -5,9 +5,12 @@ import sys
 import textwrap
 import threading
 import time
+from pathlib import Path
 
 import diffctx
 from tests.framework.pygit2_backend import Pygit2Repo
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _repo(tmp_path, name, files):
@@ -17,20 +20,6 @@ def _repo(tmp_path, name, files):
     repo.add_file("main.py", "\n".join(f"from mod_{i} import fn_{i}" for i in range(files)) + "\n")
     repo.commit("initial")
     repo.add_file("main.py", "\n".join(f"from mod_{i} import fn_{i}" for i in range(files)) + "\nEXTRA = 1\n")
-    repo.commit("change")
-    return repo
-
-
-def _dense_repo(tmp_path, name, files):
-    repo = Pygit2Repo(tmp_path / name)
-    for i in range(files):
-        body = "\n".join(f"def fn_{i}_{k}(x):\n    return helper_{(i + k) % files}(x) + {k}\n" for k in range(12))
-        header = f"from mod_{(i + 1) % files} import fn_{(i + 1) % files}_0 as helper_{(i + 1) % files}\n"
-        repo.add_file(f"mod_{i}.py", header + body)
-    imports = "\n".join(f"from mod_{i} import fn_{i}_0" for i in range(files))
-    repo.add_file("main.py", imports + "\n")
-    repo.commit("initial")
-    repo.add_file("main.py", imports + "\nEXTRA = 1\n")
     repo.commit("change")
     return repo
 
@@ -88,18 +77,22 @@ def test_a_compute_deadline_never_takes_the_process_down(tmp_path):
     profile's old `panic = "abort"` this exact expiry killed the interpreter
     with SIGABRT — measured on a published wheel, and fatal for the MCP server,
     which abandons a timed-out worker and keeps serving. Whether the ceiling
-    actually fires is not left to timing either: 2500 files x 12
-    cross-importing functions take several seconds on an M4 Pro, so a 1 s
-    ceiling fires every time — accepting "completed" would accept the path
-    this test exists to pin.
+    actually fires is not left to timing either. A synthetic repo was tried
+    and completed inside the ceiling on CI's release wheel (the "several
+    seconds" had been measured on a debug build); this repository's own last
+    twenty commits take the release binary well over two minutes, so a 3 s
+    ceiling fires with more than an order of magnitude to spare. Three, not
+    one: the same value bounds every git subprocess, and under load a plain
+    `git diff` over the range has been seen to miss one second — that
+    failure is a `GitError`, not the deadline this test is about. CI checks
+    out full history for this job so the range exists.
     """
-    repo = _dense_repo(tmp_path, "slow", files=2500)
     child = textwrap.dedent(f"""
         import diffctx
 
         try:
             diffctx.build_diff_context(
-                root_dir={str(repo.path)!r}, diff_range="HEAD~1", timeout=1
+                root_dir={str(PROJECT_ROOT)!r}, diff_range="HEAD~20", timeout=3
             )
             print("COMPLETED")
         except TimeoutError:

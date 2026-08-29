@@ -29,8 +29,6 @@ env:
   IMAGE_REF: ghcr.io/${{ github.repository_owner }}/diffctx-eval:latest
   MANIFESTS_SUBDIR: v1
   TIMEOUT_PER_INSTANCE: '600'
-  TAU: '0.12'
-  CORE_BUDGET_FRACTION: '0.5'
   RESULTS_BRANCH: eval-results/sweep
   SERVER_TAG: eval-${{ github.run_id }}-${{ github.run_attempt }}
 
@@ -254,8 +252,6 @@ jobs:
       CELL_TAG: ${{ matrix.method }}_b${{ matrix.budget }}_${{ matrix.test_set }}
       CELL_DIR: results/sweep/${{ matrix.method }}_b${{ matrix.budget }}_${{ matrix.test_set }}
       MANIFESTS_DIR: datasets/eval-splits/v1
-      INPUT_TAU: '0.12'
-      INPUT_CBF: '0.5'
       INPUT_TIMEOUT: '120'
       INPUT_MANIFESTS_SUBDIR: v1
     steps:
@@ -272,8 +268,7 @@ jobs:
               "method": "${{ matrix.method }}",
               "budget": ${{ matrix.budget }},
               "test_set": "${{ matrix.test_set }}",
-              "tau": ${INPUT_TAU},
-              "core_budget_fraction": ${INPUT_CBF}
+              "operating_point": "winner.json"
             },
             "git": {
               "sha": "${{ github.sha }}",
@@ -341,6 +336,18 @@ jobs:
               ;;
           esac
 
+      # The operating point is whatever the engine ships, read from the
+      # engine — never a literal here. This file carried tau=0.12/cbf=0.5 for
+      # weeks after the v5 calibration moved the default to 0.05/0.4, so a
+      # full sweep measured a configuration nobody was running (#175 again).
+      - name: Resolve the shipped operating point
+        run: |
+          python - >> "$GITHUB_ENV" <<'PY'
+          from diffctx._diffctx import DEFAULT_CORE_BUDGET_FRACTION, DEFAULT_TAU
+          print(f"INPUT_TAU={DEFAULT_TAU}")
+          print(f"INPUT_CBF={DEFAULT_CORE_BUDGET_FRACTION}")
+          PY
+
       - name: Build winner.json
         run: |
           cat > /tmp/winner.json <<JSON
@@ -354,6 +361,7 @@ jobs:
             }
           }
           JSON
+          cp /tmp/winner.json "${CELL_DIR}/winner.json"
         env:
           SCORING: ${{ steps.cfg.outputs.scoring }}
 
@@ -495,8 +503,6 @@ jobs:
       CELL_DIR: >-
         results/sweep/${{ matrix.method }}_b${{ matrix.budget || 'ALL' }}_L${{ matrix.depth }}_${{ matrix.test_set }}
       MANIFESTS_DIR: datasets/eval-splits/v1
-      INPUT_TAU: '0.12'
-      INPUT_CBF: '0.5'
       INPUT_TIMEOUT: '600'
       INPUT_MANIFESTS_SUBDIR: v1
     steps:
@@ -514,8 +520,7 @@ jobs:
               "budget": "${{ matrix.budget || 'ALL' }}",
               "depth": ${{ matrix.depth }},
               "test_set": "${{ matrix.test_set }}",
-              "tau": ${INPUT_TAU},
-              "core_budget_fraction": ${INPUT_CBF}
+              "operating_point": "winner.json"
             },
             "git": {
               "sha": "${{ github.sha }}",
@@ -705,6 +710,18 @@ jobs:
               ;;
           esac
 
+      # The operating point is whatever the engine ships, read from the
+      # engine — never a literal here. This file carried tau=0.12/cbf=0.5 for
+      # weeks after the v5 calibration moved the default to 0.05/0.4, so a
+      # full sweep measured a configuration nobody was running (#175 again).
+      - name: Resolve the shipped operating point
+        run: |
+          python - >> "$GITHUB_ENV" <<'PY'
+          from diffctx._diffctx import DEFAULT_CORE_BUDGET_FRACTION, DEFAULT_TAU
+          print(f"INPUT_TAU={DEFAULT_TAU}")
+          print(f"INPUT_CBF={DEFAULT_CORE_BUDGET_FRACTION}")
+          PY
+
       - name: Build winner.json
         run: |
           # Multi-budget cells still need a syntactically valid headline
@@ -721,6 +738,7 @@ jobs:
             }
           }
           JSON
+          cp /tmp/winner.json "${CELL_DIR}/winner.json"
         env:
           SCORING: ${{ steps.cfg.outputs.scoring }}
 
@@ -976,8 +994,6 @@ jobs:
           REPO: ${{ github.repository }}
           SWEEP_ID: ${{ needs.prep.outputs.sweep_id }}
           TS: ${{ needs.prep.outputs.ts }}
-          INPUT_TAU: '0.12'
-          INPUT_CBF: '0.5'
           INPUT_TIMEOUT: '600'
           INPUT_MANIFESTS_SUBDIR: v1
         run: |
@@ -1002,7 +1018,7 @@ jobs:
           - Triggered: ${TS}
           - Source SHA: ${GITHUB_SHA}
           - Manifests: ${INPUT_MANIFESTS_SUBDIR}
-          - tau=${INPUT_TAU}, core_budget_fraction=${INPUT_CBF}
+          - Operating point: each cell's \`winner.json\` (resolved from the engine at run time)
           - Per-instance timeout: ${INPUT_TIMEOUT}s
 
           See \`aggregated/SWEEP_TABLE.md\` and \`cells/\` for raw per-instance JSONL checkpoints.
