@@ -558,16 +558,21 @@ def _handle_unexpected_exception(exc: BaseException, prog: str = "diffctx") -> i
     return _EXIT_RUNTIME
 
 
-def _git_error_types() -> tuple[type[BaseException], ...]:
+# Never raised: the type an `except` clause gets when the extension is missing.
+class _NativeUnavailableError(Exception):
+    pass
+
+
+def _git_error_type() -> type[BaseException]:
     # Evaluated while an exception is already propagating: if the native
     # module is what failed, importing it here would raise INSIDE the except
-    # clause and bury the original error under an ImportError. An empty tuple
-    # matches nothing and lets the real error reach the handlers below.
+    # clause and bury the original error under an ImportError. A type nothing
+    # raises matches nothing and lets the real error reach the handlers below.
     try:
         from ._native import GitError
     except ImportError:
-        return ()
-    return (GitError,)
+        return _NativeUnavailableError
+    return GitError
 
 
 def run(argv: list[str] | None = None, *, prog: str | None = None, version: str | None = None) -> None:
@@ -584,7 +589,7 @@ def run(argv: list[str] | None = None, *, prog: str | None = None, version: str 
         sys.exit(_EXIT_INTERRUPTED)
     except BrokenPipeError:
         sys.exit(_EXIT_BROKEN_PIPE)
-    except _git_error_types() as exc:
+    except _git_error_type() as exc:
         print(f"{prog}: {_format_git_error(exc)}", file=sys.stderr)
         sys.exit(_EXIT_ENVIRONMENT)
     except argparse.ArgumentError as exc:

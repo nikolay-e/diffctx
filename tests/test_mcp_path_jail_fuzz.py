@@ -147,21 +147,18 @@ def test_a_refusal_never_names_a_resolved_path(server, jailed, path):
     # `outside`, which is not a repository, so EVERY example is a refusal and
     # the assertion below runs for each — the caller's argument names
     # `escape`, the resolved form names `outside`.
-    try:
+    # Any exception other than ToolError propagates and fails the test on
+    # its own: that is the "unhandled error escaped the tool" finding.
+    with pytest.raises(ToolError) as refusal:
         asyncio.run(
             server.call_tool(
                 "diffctx_context",
                 {"repo_path": f"{jailed.path}/escape/{path}", "diff_ref": "HEAD"},
             )
         )
-    except ToolError as e:
-        message = str(e)
-        assert "Traceback" not in message
-        assert "outside" not in message, message
-    except Exception as e:
-        pytest.fail(f"unhandled {type(e).__name__} escaped the tool: {e}")
-    else:
-        pytest.fail("a path under the escape symlink must be refused")
+    message = str(refusal.value)
+    assert "Traceback" not in message
+    assert "outside" not in message, message
 
 
 @pytest.fixture(scope="module")
