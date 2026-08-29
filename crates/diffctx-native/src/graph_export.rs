@@ -67,7 +67,7 @@ fn relative_path(path: &str, root: Option<&Path>) -> String {
     };
     let p = PathBuf::from(path);
     match p.strip_prefix(root) {
-        Ok(rel) => rel.to_string_lossy().replace('\\', "/"),
+        Ok(rel) => crate::paths::to_posix_display(rel.to_string_lossy()),
         Err(_) => path.to_string(),
     }
 }

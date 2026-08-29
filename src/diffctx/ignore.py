@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pathspec
 
+from diffctx._diffctx import is_secret_path
+
 logger = logging.getLogger(__name__)
 
 DIFFCTX_CONFIG_DIR = ".diffctx"
@@ -299,20 +301,9 @@ DEFAULT_IGNORE_PATTERNS = [
     # OS files
     "**/.DS_Store",
     "**/Thumbs.db",
-    # Private keys and keystores (never legitimate LLM context). Public keys
-    # (*.pub) stay visible. .env files are intentionally NOT excluded: a changed
-    # .env is treated as legitimate change context, and a content-based redaction
-    # pass (not a blunt filename ignore) is the right tool for secret *values*.
-    "**/*.pem",
-    "**/*.key",
-    "**/*.pfx",
-    "**/*.p12",
-    "**/*.keystore",
-    "**/*.jks",
-    "**/id_rsa",
-    "**/id_dsa",
-    "**/id_ecdsa",
-    "**/id_ed25519",
+    # Secret-like files are NOT listed here: the engine's `is_secret_path` is
+    # the one policy (#227), applied in `should_ignore` unconditionally, so
+    # tree mode can never print what diff mode withholds.
     # diffctx config and output files
     "**/.diffctx/",
     "**/tree.yaml",
@@ -352,7 +343,9 @@ def get_ignore_specs(
 
 
 def should_ignore(relative_path_str: str, combined_spec: pathspec.PathSpec) -> bool:
-    is_ignored = combined_spec.match_file(relative_path_str)
+    # Secrets first and unconditionally — no flag opts out of that half, the
+    # same as diff mode.
+    is_ignored = is_secret_path(relative_path_str) or combined_spec.match_file(relative_path_str)
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug("Checking ignore for '%s': %s", relative_path_str, is_ignored)
     return is_ignored

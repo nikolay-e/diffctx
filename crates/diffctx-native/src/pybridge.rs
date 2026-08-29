@@ -382,6 +382,21 @@ fn get_language_for_file(path: &str) -> Option<String> {
     crate::languages::get_language_for_file(path).map(|s| s.to_string())
 }
 
+/// The engine's secret-path policy, for tree mode and the MCP tools (#227).
+#[pyfunction]
+fn is_secret_path(path: &str) -> bool {
+    crate::pipeline::is_secret_path(Path::new(path))
+}
+
+/// Which of `rel_paths` the engine withholds — secret by name or ignored as
+/// git resolves it — so the MCP fetch refuses exactly what selection refuses
+/// (#228). Off the GIL: it spawns `git check-ignore`.
+#[pyfunction]
+fn withheld_paths(py: Python<'_>, root_dir: &str, rel_paths: Vec<String>) -> Vec<String> {
+    let root = Path::new(root_dir).to_path_buf();
+    py.detach(move || crate::pipeline::withheld_paths(&root, &rel_paths))
+}
+
 #[pyfunction]
 fn count_tokens(text: &str) -> PyResult<u32> {
     crate::tokenizer::try_count_tokens(text)
@@ -650,6 +665,8 @@ pub fn _diffctx(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(resolve_diff_range, m)?)?;
     m.add_function(wrap_pyfunction!(get_language_for_file, m)?)?;
     m.add_function(wrap_pyfunction!(count_tokens, m)?)?;
+    m.add_function(wrap_pyfunction!(is_secret_path, m)?)?;
+    m.add_function(wrap_pyfunction!(withheld_paths, m)?)?;
     m.add_function(wrap_pyfunction!(build_project_graph, m)?)?;
     m.add_function(wrap_pyfunction!(detect_cycles, m)?)?;
     m.add_function(wrap_pyfunction!(hotspots, m)?)?;

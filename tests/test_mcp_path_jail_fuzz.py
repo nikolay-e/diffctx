@@ -149,13 +149,12 @@ def test_a_refusal_never_names_a_resolved_path(server, jailed, path):
     # `escape`, the resolved form names `outside`.
     # Any exception other than ToolError propagates and fails the test on
     # its own: that is the "unhandled error escaped the tool" finding.
+    call = server.call_tool(
+        "diffctx_context",
+        {"repo_path": f"{jailed.path}/escape/{path}", "diff_ref": "HEAD"},
+    )
     with pytest.raises(ToolError) as refusal:
-        asyncio.run(
-            server.call_tool(
-                "diffctx_context",
-                {"repo_path": f"{jailed.path}/escape/{path}", "diff_ref": "HEAD"},
-            )
-        )
+        asyncio.run(call)
     message = str(refusal.value)
     assert "Traceback" not in message
     assert "outside" not in message, message

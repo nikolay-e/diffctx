@@ -89,20 +89,6 @@ pub struct HeavyLatencyMs {
     pub scoring: f64,
 }
 
-// How this module writes a path into output, in one place instead of five.
-//
-// The `replace` is unconditional, which `paths.rs` documents as a bug: on POSIX
-// a backslash is a legal filename character, so rewriting it names a file that
-// does not exist. Routing this at `paths::display_rel` is the fix and it is
-// NOT bit-identical, so it belongs in its own labelled commit — this one only
-// stops the wrong behaviour from being spelled out five times.
-fn rel_display(p: &Path, root: &Path) -> String {
-    p.strip_prefix(root)
-        .unwrap_or(p)
-        .to_string_lossy()
-        .replace('\\', "/")
-}
-
 pub fn build_diff_context(
     root_dir: &Path,
     diff_range: Option<&str>,
@@ -375,7 +361,7 @@ fn resolve_change_set(
     // deletion-only commit used to render as a bare two-line skeleton).
     let mut deleted_display: Vec<String> = deleted_files
         .iter()
-        .map(|p| rel_display(p, root_dir))
+        .map(|p| crate::paths::display_rel_or_abs(root_dir, p))
         .collect();
     deleted_display.sort();
     let renamed_display = git::get_rename_pairs(root_dir, diff_range).unwrap_or_default();
@@ -385,9 +371,8 @@ fn resolve_change_set(
         .filter(|f| {
             let resolved = f.canonicalize().unwrap_or_else(|_| f.clone());
             !excluded.contains(&resolved)
-                && !is_secret_path(f)
                 && !is_lockfile_path(f)
-                && !is_ignored_path(root_dir, f, &ignored_rel_paths)
+                && !is_withheld(root_dir, f, &ignored_rel_paths)
         })
         .collect();
 
@@ -850,7 +835,7 @@ pub fn select_with_params(
         changed_files: state
             .changed_files
             .iter()
-            .map(|p| rel_display(p, &state.root_dir))
+            .map(|p| crate::paths::display_rel_or_abs(&state.root_dir, p))
             .collect(),
         deleted_files: state.deleted_files.clone(),
         renamed_files: state.renamed_files.clone(),
@@ -907,15 +892,16 @@ pub fn select_with_params(
     output
 }
 
-/// Special path for `--full` mode: bypass scoring entirely, return all
-/// changed-file fragments. Doesn't share the `ScoredState` plumbing.
-/// Private-key and keystore files must never reach LLM-bound diff context, even
-/// when they appear in the diff hunks — such material is never legitimate change
-/// context. Mirrors the Python tree-mode default ignores (`ignore.py`
-/// DEFAULT_IGNORE_PATTERNS). Matches by file name only, so public keys (`*.pub`)
-/// stay visible. `.env` files are intentionally NOT excluded here: a changed
-/// `.env` is legitimate change context (see the `*_env_file_change` cases).
-pub(crate) fn is_secret_path(path: &Path) -> bool {
+/// THE secret-path policy, for every surface. Private-key, keystore and
+/// credential files never reach LLM-bound output — not as diff context, not
+/// in a tree map, not through an MCP fetch. Tree mode and the MCP tools used
+/// to keep a second, shorter list in `ignore.py` (#227/#228: `.netrc`,
+/// `credentials` and `*.asc` were withheld by diff mode and printed by tree
+/// mode); they now call this through `_diffctx.is_secret_path`. Matches by
+/// file name only, so public keys (`*.pub`) stay visible. `.env` is
+/// intentionally NOT here: a changed `.env` is legitimate change context (see
+/// the `*_env_file_change` cases).
+pub fn is_secret_path(path: &Path) -> bool {
     let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
         return false;
     };
@@ -1012,6 +998,29 @@ pub(crate) fn is_ignored_path(
         .unwrap_or(false)
 }
 
+/// The one admissibility predicate: secret by name, or excluded by
+/// `.gitignore` / `.diffctx/ignore` as git itself resolves them. Every place
+/// that decides whether a file may be shown composes these two the same way.
+pub(crate) fn is_withheld(
+    root_dir: &Path,
+    path: &Path,
+    ignored_rel_paths: &rustc_hash::FxHashMap<String, git::IgnoreSource>,
+) -> bool {
+    is_secret_path(path) || is_ignored_path(root_dir, path, ignored_rel_paths)
+}
+
+/// Which of `rel_paths` (repo-root-relative) the engine withholds — the
+/// question the MCP fetch used to answer with a different engine (#228). One
+/// batched `git check-ignore` for the whole list.
+pub fn withheld_paths(root_dir: &Path, rel_paths: &[String]) -> Vec<String> {
+    let ignored = git::find_ignored_paths_with_source(root_dir, rel_paths);
+    rel_paths
+        .iter()
+        .filter(|rel| is_withheld(root_dir, &root_dir.join(rel), &ignored))
+        .cloned()
+        .collect()
+}
+
 /// The unified diff of `diff_range` as git prints it, minus the file sections
 /// diff mode never discloses: secret-like paths, ignored paths, and lock files
 /// (#112). Additive output for `--with-raw-diff` (#150) — it feeds no
@@ -1051,10 +1060,7 @@ fn keep_disclosable_sections(root_dir: &Path, diff_text: &str) -> String {
         let Some(path) = path else {
             continue;
         };
-        if is_secret_path(&path)
-            || is_lockfile_path(&path)
-            || is_ignored_path(root_dir, &path, &ignored_rel_paths)
-        {
+        if is_lockfile_path(&path) || is_withheld(root_dir, &path, &ignored_rel_paths) {
             continue;
         }
         kept.extend_from_slice(&raw[range]);
@@ -1165,8 +1171,7 @@ fn build_diff_context_full(
         return Ok(output);
     }
     let mut changed_files = git::get_changed_files(&root_dir, diff_range)?;
-    changed_files
-        .retain(|f| !is_secret_path(f) && !is_ignored_path(&root_dir, f, &ignored_rel_paths));
+    changed_files.retain(|f| !is_withheld(&root_dir, f, &ignored_rel_paths));
     if changed_files.is_empty() {
         let (deleted, renamed) = deletion_rename_displays(&root_dir, diff_range);
         let mut output = empty_output(&root_dir);
@@ -1210,7 +1215,7 @@ fn build_diff_context_full(
         commit_message,
         changed_files: changed_files
             .iter()
-            .map(|p| rel_display(p, &root_dir))
+            .map(|p| crate::paths::display_rel_or_abs(&root_dir, p))
             .collect(),
         deleted_files: deleted_display,
         renamed_files: renamed_display,
@@ -1237,7 +1242,11 @@ fn deletion_rename_displays(
     diff_range: Option<&str>,
 ) -> (Vec<String>, Vec<(String, String)>) {
     let mut deleted: Vec<String> = git::get_deleted_files(root_dir, diff_range)
-        .map(|set| set.iter().map(|p| rel_display(p, root_dir)).collect())
+        .map(|set| {
+            set.iter()
+                .map(|p| crate::paths::display_rel_or_abs(root_dir, p))
+                .collect()
+        })
         .unwrap_or_default();
     deleted.sort();
     let renamed = git::get_rename_pairs(root_dir, diff_range).unwrap_or_default();

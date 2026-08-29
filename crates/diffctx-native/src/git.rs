@@ -752,7 +752,13 @@ pub fn split_diff_range(range: &str) -> (Option<String>, Option<String>) {
 
 pub fn show_file_at_revision(repo_root: &Path, rev: &str, rel_path: &Path) -> Result<String> {
     validate_rev(rev)?;
-    let spec = format!("{}:{}", rev, rel_path.to_string_lossy().replace('\\', "/"));
+    // The spec names a blob: a rewritten separator asks git for a different
+    // file, and on POSIX `src\utils.py` and `src/utils.py` can both exist.
+    let spec = format!(
+        "{}:{}",
+        rev,
+        crate::paths::to_posix_display(rel_path.to_string_lossy())
+    );
     run_git(repo_root, &["show", &spec])
 }
 
@@ -872,10 +878,44 @@ fn create_new_private_file(path: &Path) -> std::io::Result<std::fs::File> {
 /// Finds every `.diffctx/ignore` file tracked or present in `repo_root`
 /// (any depth) and returns its patterns rewritten to be repo-root-relative,
 /// ready to feed into a combined gitignore-syntax exclude file.
-fn collect_diffctx_ignore_patterns(repo_root: &Path) -> Vec<String> {
-    let Ok(files) = run_git_z(
-        repo_root,
-        &[
+/// `check-ignore` and `ls-files` refuse to run outside a work tree, but the
+/// MCP file reader accepts any directory. A scratch `--git-dir` with the
+/// directory as `--work-tree` lets git's own ignore engine answer for a plain
+/// folder too — the alternative was a second matcher in Python, which is how
+/// `.netrc` got served while selection withheld it (#228).
+fn scratch_git_dir(repo_root: &Path) -> Option<PathBuf> {
+    if is_git_repo(repo_root).unwrap_or(true) {
+        return None;
+    }
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir =
+        std::env::temp_dir().join(format!("diffctx-scratch-git-{}-{seq}", std::process::id()));
+    let ok = Command::new("git")
+        .args(["init", "-q"])
+        .arg(&dir)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    ok.then_some(dir)
+}
+
+fn scratch_git_args(scratch: Option<&Path>, repo_root: &Path) -> Vec<String> {
+    match scratch {
+        Some(dir) => vec![
+            format!("--git-dir={}", dir.join(".git").display()),
+            format!("--work-tree={}", repo_root.display()),
+        ],
+        None => Vec::new(),
+    }
+}
+
+fn collect_diffctx_ignore_patterns(repo_root: &Path, scratch: Option<&Path>) -> Vec<String> {
+    let mut args = scratch_git_args(scratch, repo_root);
+    args.extend(
+        [
             "ls-files",
             "-z",
             "--cached",
@@ -883,8 +923,11 @@ fn collect_diffctx_ignore_patterns(repo_root: &Path) -> Vec<String> {
             "--exclude-standard",
             "--",
             ":(glob)**/.diffctx/ignore",
-        ],
-    ) else {
+        ]
+        .map(String::from),
+    );
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let Ok(files) = run_git_z(repo_root, &arg_refs) else {
         return Vec::new();
     };
 
@@ -947,7 +990,8 @@ pub fn find_ignored_paths_with_source(
         return rustc_hash::FxHashMap::default();
     }
 
-    let diffctx_patterns = collect_diffctx_ignore_patterns(repo_root);
+    let scratch = scratch_git_dir(repo_root);
+    let diffctx_patterns = collect_diffctx_ignore_patterns(repo_root, scratch.as_deref());
     let temp_excludes = if diffctx_patterns.is_empty() {
         None
     } else {
@@ -980,13 +1024,14 @@ pub fn find_ignored_paths_with_source(
     // published. Verified against git directly — line mode reports the
     // truncated stem, NUL mode reports the whole path. The rest of this module
     // is already `-z` throughout.
-    let mut args: Vec<String> = vec![
+    let mut args: Vec<String> = scratch_git_args(scratch.as_deref(), repo_root);
+    args.extend([
         "check-ignore".into(),
         "--no-index".into(),
         "-v".into(),
         "-z".into(),
         "--stdin".into(),
-    ];
+    ]);
     if let Some(ref path) = temp_excludes {
         args.insert(0, format!("core.excludesFile={}", path.display()));
         args.insert(0, "-c".into());
@@ -1053,6 +1098,9 @@ pub fn find_ignored_paths_with_source(
     }
     if let Some(path) = query_file {
         let _ = std::fs::remove_file(path);
+    }
+    if let Some(dir) = scratch {
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     // Fail closed only where a policy was actually declared.
@@ -1196,7 +1244,7 @@ impl CatFileBatch {
         let spec = format!(
             "{}:{}\n",
             rev,
-            rel_path.to_string_lossy().replace('\\', "/")
+            crate::paths::to_posix_display(rel_path.to_string_lossy())
         );
 
         self.ensure_started()?;

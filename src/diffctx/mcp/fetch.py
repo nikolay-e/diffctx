@@ -27,6 +27,8 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from diffctx._diffctx import withheld_paths
+
 # A fetch is meant to be a targeted follow-up. Past this many ids the caller is
 # re-implementing the pack, one round trip at a time, and should ask for the
 # pack instead.
@@ -134,8 +136,8 @@ def _slice(text: str, ref: FragmentRef) -> tuple[str, str]:
     return "\n".join(lines[start - 1 : end]), f"{start}-{end}"
 
 
-def _is_admissible(repo: Path, rel_path: str) -> bool:
-    """Containment plus the repo's own ignore contract.
+def _is_contained(repo: Path, rel_path: str) -> bool:
+    """Containment only; whether the repo withholds the path is the engine's call.
 
     Containment is checked twice, because neither check alone is sufficient:
 
@@ -150,8 +152,6 @@ def _is_admissible(repo: Path, rel_path: str) -> bool:
     `resolve()` is non-strict, so it still follows the symlinked prefix of a path
     whose final component does not exist — which is exactly the escape shape.
     """
-    from diffctx.ignore import get_ignore_specs
-
     if not rel_path or rel_path.startswith("/") or Path(rel_path).is_absolute():
         return False
     if ".." in Path(rel_path).parts:
@@ -161,11 +161,9 @@ def _is_admissible(repo: Path, rel_path: str) -> bool:
         if not resolved.is_relative_to(repo.resolve()):
             return False
     except (OSError, ValueError, RuntimeError):
-        # Unresolvable (a symlink loop, a name the platform rejects): refuse
-        # rather than fall through to the ignore check, which would admit it.
+        # Unresolvable (a symlink loop, a name the platform rejects): refuse.
         return False
-    spec = get_ignore_specs(repo, None, False, None)
-    return not spec.match_file(rel_path)
+    return True
 
 
 def fetch_fragments(repo: Path, diff_ref: str, fragment_ids: list[str], max_file_bytes: int) -> str:
@@ -184,12 +182,17 @@ def fetch_fragments(repo: Path, diff_ref: str, fragment_ids: list[str], max_file
     rev = end_revision(repo, diff_ref)
     rev_label = rev or "working tree"
     parts = [f"# {len(fragment_ids)} fragments at {rev_label}\n"]
-    for raw in fragment_ids:
-        ref = parse_fragment_id(raw)
+    refs = [(raw, parse_fragment_id(raw)) for raw in fragment_ids]
+    # One engine, one answer (#228): the same predicate that kept a path out
+    # of the selection keeps it out of a fetch. Pathspec re-derivation here
+    # both served `.netrc` and refused files the engine had ranked.
+    contained = [ref.path for _, ref in refs if ref is not None and _is_contained(repo, ref.path)]
+    withheld = set(withheld_paths(str(repo), contained))
+    for raw, ref in refs:
         if ref is None:
             parts.append(f"## {raw}\n*Unparseable id — expected `path:start-end`, `path:line`, or `path`.*\n")
             continue
-        if not _is_admissible(repo, ref.path):
+        if not _is_contained(repo, ref.path) or ref.path in withheld:
             # Deliberately one message for "outside the repo" and "ignored":
             # distinguishing them tells the caller whether a path they cannot
             # read nonetheless exists.

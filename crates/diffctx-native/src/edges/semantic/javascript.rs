@@ -272,7 +272,9 @@ impl EdgeBuilder for JavaScriptEdgeBuilder {
                 }
                 if let Some(root) = repo_root {
                     if let Ok(rel) = f.strip_prefix(root) {
-                        let rel_str = rel.with_extension("").to_string_lossy().replace('\\', "/");
+                        let rel_str = crate::paths::to_posix_display(
+                            rel.with_extension("").to_string_lossy(),
+                        );
                         changed_names.insert(rel_str);
                     }
                 }

@@ -132,8 +132,8 @@ impl FragmentIndex {
             };
             let matchable = repo_root
                 .and_then(|root| Path::new(f.path()).strip_prefix(root).ok())
-                .map(|rel| rel.to_string_lossy().replace('\\', "/"))
-                .unwrap_or_else(|| f.path().replace('\\', "/"));
+                .map(|rel| crate::paths::to_posix_display(rel.to_string_lossy()))
+                .unwrap_or_else(|| crate::paths::to_posix_display(f.path().into()));
             let idx = lower_paths.len() as u32;
             let lower = matchable.to_lowercase();
             for comp in lower.split('/').filter(|c| !c.is_empty()) {

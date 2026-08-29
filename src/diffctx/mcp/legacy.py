@@ -6,8 +6,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pathspec
 from mcp.server.fastmcp import FastMCP
+
+from diffctx._diffctx import withheld_paths
 
 from .security import validate_dir_path, validate_repo_path
 from .server import (
@@ -111,8 +112,8 @@ def _is_contained(child: Path, root: Path) -> bool:
         return False
 
 
-def _admissible_match(match: str, root: Path, spec: pathspec.PathSpec[pathspec.Pattern]) -> Path | None:
-    """The resolved path if this glob hit may be shown, `None` otherwise.
+def _contained_match(match: str, root: Path) -> tuple[Path, str] | None:
+    """The resolved path and its root-relative form if this glob hit lies inside `root`.
 
     Resolved rather than as-globbed because containment is established on the
     resolved path and `root` is resolved too, so only that form is guaranteed to
@@ -129,18 +130,16 @@ def _admissible_match(match: str, root: Path, spec: pathspec.PathSpec[pathspec.P
         rel = resolved.relative_to(root.resolve()).as_posix()
     except ValueError:
         return None
-    return None if spec.match_file(rel) else resolved
+    return resolved, rel
 
 
 def _collect_matched_files(validated_path: Path, patterns: list[str], max_files: int) -> tuple[list[Path], int]:
-    """Files matching `patterns`, minus anything the repo declared off-limits.
+    """Files matching `patterns`, minus anything the engine withholds.
 
-    The ignore specs are applied for the same reason `get_tree_map` applies
-    them: `.diffctx/ignore` is a security contract, and this tool accepts
-    `**/*`. Without the specs the two MCP tools disagreed about the same repo —
-    a key or an env file that diff mode and the tree map both withhold was
-    readable through an explicit glob, which makes the contract advisory rather
-    than a contract.
+    The engine's predicate is applied for the same reason diff mode applies it:
+    `.diffctx/ignore` and the secret-path policy are a security contract, and
+    this tool accepts `**/*`. A second ignore engine here once admitted `.netrc`
+    while selection withheld it (#228).
 
     Excluded files are dropped silently and NOT counted: `total_matched` drives
     the truncation notice, and reporting "3 more files" for files the repo
@@ -148,23 +147,18 @@ def _collect_matched_files(validated_path: Path, patterns: list[str], max_files:
     """
     import glob as globmod
 
-    from diffctx.ignore import get_ignore_specs
-
-    spec = get_ignore_specs(validated_path, None, False, None)
-
-    matched: list[Path] = []
+    contained: list[tuple[Path, str]] = []
     seen: set[Path] = set()
-    total_matched = 0
     for pattern in patterns:
         for match in sorted(globmod.glob(str(validated_path / pattern), recursive=True)):
-            resolved = _admissible_match(match, validated_path, spec)
-            if resolved is None or resolved in seen:
+            hit = _contained_match(match, validated_path)
+            if hit is None or hit[0] in seen:
                 continue
-            seen.add(resolved)
-            total_matched += 1
-            if len(matched) < max_files:
-                matched.append(resolved)
-    return matched, total_matched
+            seen.add(hit[0])
+            contained.append(hit)
+    withheld = set(withheld_paths(str(validated_path), [rel for _, rel in contained]))
+    admitted = [resolved for resolved, rel in contained if rel not in withheld]
+    return admitted[:max_files], len(admitted)
 
 
 def _truncation_notice(shown: int, total_matched: int, max_files: int) -> str | None:

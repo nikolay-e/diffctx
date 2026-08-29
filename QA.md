@@ -198,6 +198,13 @@ dismissing as bot noise.
    triage it as one.
 3. No in-app bug queue, no client telemetry, no bot reports (CLI/library
    product). PyPI/npm/crates user reports arrive via the two trackers.
+4. GitHub alert feeds (`gh api repos/<r>/dependabot/alerts?state=open`,
+   `code-scanning/alerts?state=open`, `secret-scanning/alerts?state=open`)
+   — all three were empty on 2026-08-30; a pass reads them, it does not
+   assume them.
+5. SonarCloud project `nikolay-e_TreeMapper` (the key predates the rename):
+   quality gate + open issues + hotspots via the sonarqube MCP tools. Issues
+   raised on the day's own commits count as intake for that pass.
 
 ## Issue triage invariants
 

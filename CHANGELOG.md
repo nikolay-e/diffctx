@@ -7,8 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **One secret-path policy for every surface** (#227): tree mode kept its own,
+  shorter list, so `.netrc`, `credentials`, `_netrc`, `.npmrc`, `.pypirc`,
+  `id_*_sk`, `*.ppk`, `*.p8` and `*.asc` — all withheld by diff mode — were
+  printed in full by `diffctx .`. Tree mode now asks the engine
+  (`_diffctx.is_secret_path`), unconditionally: `--no-default-ignores` drops
+  the noise filters, never the secret policy, the same contract diff mode has.
+- **The MCP fetch refuses exactly what the engine withholds** (#228). It
+  re-derived admissibility with pathspec, so it served a `.netrc` the
+  selection had refused and refused a `build/gen.py` the selection had
+  ranked. `fragment_ids` and the legacy glob reader now ask the engine
+  (`_diffctx.withheld_paths`: secret by name, or ignored as `git check-ignore`
+  resolves `.gitignore` / `.diffctx/ignore`) in one batched call. Outside a
+  git work tree — the legacy reader accepts any directory — git runs with a
+  scratch `--git-dir`, so `.diffctx/ignore` binds there too.
+
 ### Fixed
 
+- **A POSIX filename containing a backslash keeps its name and its own
+  content** (#239). Every path written into output — and the `rev:path` spec
+  handed to `git show` — rewrote `\` to `/`, so with `src\utils.py`
+  (changed) and `src/utils.py` (untouched) both present, the changed file was
+  listed under the other's name and rendered with the other's body. All
+  eight sites now go through `paths.rs`, which rewrites only on Windows.
 - **The corpus harness anchors a pure deletion where git does.** The
   in-memory diff started a deletion-only hunk one line below git's
   `@@ -5 +4,0 @@`, so `core_selection_range` — and therefore every
