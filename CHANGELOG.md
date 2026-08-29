@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An expired compute deadline no longer kills the process.** The release
+  profile set `panic = "abort"`, so the deadline — which fires as a panic on
+  purpose, because the phases it guards return no `Result` — reached a
+  published wheel as SIGABRT instead of an error (measured: signal 6 from a
+  `pip install`ed 1.15.0 wheel). For the MCP server, which abandons a
+  timed-out worker thread and keeps serving, that took every concurrent
+  request down with it. The profile now unwinds, which is what lets PyO3
+  convert a panic into a Python exception at all, and the deadline arrives as
+  `TimeoutError` (`_diffctx.ComputeTimeoutError`) that a caller can catch. The
+  test profile is now the shipped profile: the old `release-unwind` clone is
+  exactly what let this mechanism pass its own test while aborting in
+  production.
+- **A timeout too small for git to answer no longer accuses the repository.**
+  `is_git_repo` collapsed every failure into "false", so `timeout=0` reported
+  a valid repo as "not a git repository" instead of saying it timed out.
+- **The `changed` role is recorded where the substitution happens** (#209),
+  not re-derived from a shared start line in three places (pack render,
+  `locate`, and the post-pass coverage rank, the last scanning every core id
+  per candidate). `SelectionResult::stand_in_ids` carries the fact and
+  `types::carries_change` is the single predicate.
+- **`<script type=>` is read from the AST** rather than scanned out of the
+  start tag's text (#213), so `type = "..."` with spaces around the `=` and
+  single-quoted values are handled by the grammar instead of by hand.
+
 - **The per-file admission gate (#65) now covers every selection path**
   (#211): both post-selection passes and both singleton comparators used to
   admit files the greedy was forbidden to open. The rescue pass keeps a

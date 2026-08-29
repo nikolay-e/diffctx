@@ -7,14 +7,19 @@ opt-level = 3
 lto = "fat"
 codegen-units = 1
 strip = true
-panic = "abort"
+# unwind, NOT abort. This crate ships as a pyo3 extension, and pyo3 turns a
+# Rust panic into a Python exception by unwinding across the boundary. Under
+# `panic = "abort"` the compute deadline (`deadline.rs`) — which is a panic on
+# purpose, because the phases it guards do not return `Result` — killed the
+# whole interpreter with SIGABRT instead: measured on a released wheel, and
+# fatal for the MCP server, which abandons a timed-out worker thread and
+# expects to keep serving every other request. An earlier release had already
+# removed every user-reachable `unwrap()` for this exact reason; #210 then
+# reintroduced the abort path as a feature.
+#
+# It also means the test profile IS the shipped profile. The old split (tests
+# on a `release-unwind` clone) is what let a mechanism pass its own test while
+# aborting in production.
+panic = "unwind"
 debug = "line-tables-only"
 split-debuginfo = "packed"
-
-# `cargo test --release` with panic = "abort" compiles the whole dependency
-# graph twice (abort for the cdylib lib artifact, unwind for the test
-# universe); the hashless cdylib output names then collide (cargo#6313).
-# Tests run through this profile instead: same optimizations, one universe.
-[profile.release-unwind]
-inherits = "release"
-panic = "unwind"

@@ -108,7 +108,7 @@ dismissing as bot noise.
 - YAML corpus: CI gates the FULL corpus on every push (the run prints the
   case count; pinning it here rotted — it read 2725 while the corpus had grown
   to 2902)
-  (`cargo test --profile release-unwind --test yaml_cases`), per-case
+  (`cargo test --release --test yaml_cases`), per-case
   against `known_below_threshold.txt`, enforced bidirectionally;
   nightly re-runs with `DIFFCTX_YAML_IGNORE_BASELINE=1` to track
   baseline size. `DIFFCTX_YAML_CASES_LIMIT=20` sampling survives only

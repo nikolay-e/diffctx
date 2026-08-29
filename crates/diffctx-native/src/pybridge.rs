@@ -21,6 +21,46 @@ pub struct PyScoredState {
 
 create_exception!(_diffctx, GitError, pyo3::exceptions::PyException);
 
+// Raised when the per-run compute deadline expires. It subclasses the builtin
+// `TimeoutError`, so `except TimeoutError` catches it without importing
+// anything from this module.
+create_exception!(
+    _diffctx,
+    ComputeTimeoutError,
+    pyo3::exceptions::PyTimeoutError
+);
+
+/// Runs a compute phase off the GIL and converts an expired deadline back into
+/// an ordinary Python error.
+///
+/// The deadline fires as a panic (see `deadline::Deadline`: the phases it
+/// guards run deep inside call chains that do not return `Result`), which
+/// pyo3 would otherwise surface as `pyo3_runtime.PanicException` — a
+/// `BaseException` no caller catches by accident, and under the old
+/// `panic = "abort"` release profile not an exception at all but SIGABRT for
+/// the whole interpreter. Any other panic is re-raised unchanged: this
+/// converts the one outcome that is routine, not every bug.
+fn detach_guarded<T: Send>(
+    py: Python<'_>,
+    work: impl FnOnce() -> anyhow::Result<T> + Send,
+) -> PyResult<T> {
+    let outcome =
+        py.detach(
+            move || match std::panic::catch_unwind(std::panic::AssertUnwindSafe(work)) {
+                Ok(result) => Ok(result),
+                Err(payload) => match crate::deadline::deadline_panic_message(payload.as_ref()) {
+                    Some(message) => Err(message),
+                    None => std::panic::resume_unwind(payload),
+                },
+            },
+        );
+    match outcome {
+        Ok(Ok(value)) => Ok(value),
+        Ok(Err(e)) => Err(map_pipeline_err(e)),
+        Err(message) => Err(ComputeTimeoutError::new_err(message)),
+    }
+}
+
 /// `--mode locate` (#126): same pipeline and selection as pack mode, rendered
 /// as the compact `diffctx.locate.v1` JSON string (ranked items + provenance
 /// reasons, no source bodies).
@@ -56,19 +96,17 @@ fn build_locate(
     } else {
         Some(diff_range.to_string())
     };
-    let output = py
-        .detach(move || {
-            crate::pipeline::build_diff_context_locate(
-                &path,
-                range.as_deref(),
-                budget_tokens,
-                alpha,
-                tau,
-                mode,
-                timeout,
-            )
-        })
-        .map_err(map_pipeline_err)?;
+    let output = detach_guarded(py, move || {
+        crate::pipeline::build_diff_context_locate(
+            &path,
+            range.as_deref(),
+            budget_tokens,
+            alpha,
+            tau,
+            mode,
+            timeout,
+        )
+    })?;
     serde_json::to_string(&output)
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
 }
@@ -114,21 +152,19 @@ fn build_diff_context<'py>(
     };
 
     let start = std::time::Instant::now();
-    let output = py
-        .detach(|| {
-            pipeline::build_diff_context(
-                path,
-                range,
-                budget_tokens,
-                alpha,
-                tau,
-                no_content,
-                full,
-                mode,
-                timeout,
-            )
-        })
-        .map_err(map_pipeline_err)?;
+    let output = detach_guarded(py, || {
+        pipeline::build_diff_context(
+            path,
+            range,
+            budget_tokens,
+            alpha,
+            tau,
+            no_content,
+            full,
+            mode,
+            timeout,
+        )
+    })?;
     let total_ms = start.elapsed().as_secs_f64() * 1000.0;
 
     diff_context_output_to_dict(py, &output, Some(total_ms))
@@ -158,9 +194,9 @@ fn compute_scored_state(
     } else {
         Some(diff_range)
     };
-    let state = py
-        .detach(|| pipeline::compute_scored_state(path, range, alpha, mode, timeout))
-        .map_err(map_pipeline_err)?;
+    let state = detach_guarded(py, || {
+        pipeline::compute_scored_state(path, range, alpha, mode, timeout)
+    })?;
     Ok(PyScoredState {
         inner: Arc::new(state),
     })
@@ -181,14 +217,19 @@ fn select_with_params<'py>(
     no_content: bool,
 ) -> PyResult<Bound<'py, PyDict>> {
     let inner = state.inner.clone();
-    let output = py.detach(move || {
+    let output = detach_guarded(py, move || {
         if inner.all_fragments.is_empty() {
             // Same deletion/rename honesty as the CLI path: a deletion-only
             // diff still reports its file lists instead of a bare skeleton.
-            return pipeline::empty_output_from_state(&inner);
+            return Ok(pipeline::empty_output_from_state(&inner));
         }
-        pipeline::select_with_params(&inner, budget_tokens, tau, no_content)
-    });
+        Ok(pipeline::select_with_params(
+            &inner,
+            budget_tokens,
+            tau,
+            no_content,
+        ))
+    })?;
     diff_context_output_to_dict(py, &output, None)
 }
 
@@ -315,8 +356,9 @@ fn get_raw_diff_text(
     } else {
         Some(diff_range)
     };
-    py.detach(|| pipeline::raw_diff_text(Path::new(root_dir), range, timeout))
-        .map_err(map_pipeline_err)
+    detach_guarded(py, || {
+        pipeline::raw_diff_text(Path::new(root_dir), range, timeout)
+    })
 }
 
 /// The commit a duration spec (`24h`, `8d`, `1h30m`) resolves to, or the range
@@ -639,5 +681,9 @@ pub fn _diffctx(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // was added, so `pit` parsed everywhere except the two CLIs.
     m.add("SCORING_MODES", crate::mode::SCORING_MODE_NAMES.to_vec())?;
     m.add("GitError", m.py().get_type::<GitError>())?;
+    m.add(
+        "ComputeTimeoutError",
+        m.py().get_type::<ComputeTimeoutError>(),
+    )?;
     Ok(())
 }

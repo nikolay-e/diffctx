@@ -345,8 +345,16 @@ fn wait_with_timeout(
     })
 }
 
-pub fn is_git_repo(path: &Path) -> bool {
-    run_git(path, &["rev-parse", "--git-dir"]).is_ok()
+/// `Err` when git could not answer at all — a timeout above all. Collapsing
+/// that into "not a repository" is how a `timeout` too small to let
+/// `rev-parse` finish reported a perfectly good repo as not one, sending the
+/// reader after the wrong problem entirely.
+pub fn is_git_repo(path: &Path) -> std::result::Result<bool, GitError> {
+    match run_git(path, &["rev-parse", "--git-dir"]) {
+        Ok(_) => Ok(true),
+        Err(e @ GitError::Timeout(_)) => Err(e),
+        Err(_) => Ok(false),
+    }
 }
 
 /// Resolves the actual working-tree root for `path`, which may be a

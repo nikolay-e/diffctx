@@ -8,7 +8,7 @@ use crate::fragmentation::create_whole_file_fragment;
 use crate::git::CatFileBatch;
 use crate::graph::Graph;
 use crate::interval::IntervalIndex;
-use crate::types::{Fragment, FragmentId, FragmentKind};
+use crate::types::{Fragment, FragmentId};
 
 fn find_dangling_semantic_names(
     selected: &[Fragment],

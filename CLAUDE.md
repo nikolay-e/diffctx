@@ -55,7 +55,7 @@ at a fixed SHA, so editing the code cannot edit the input. It drives the
 **native binary**, so it says nothing about `writer.py`, `_native/` or
 `mcp/` — a Python-side E-class claim needs its own byte-diff through the
 installed wheel. Its complement is the full corpus
-(`cargo test --profile release-unwind --test yaml_cases`), which is the
+(`cargo test --release --test yaml_cases`), which is the
 only net over the per-language edge and parser tables bitcheck never
 reaches.
 

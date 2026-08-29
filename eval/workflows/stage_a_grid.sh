@@ -18,7 +18,7 @@ for adm in 0 1; do
       envs=(DIFFCTX_YAML_IGNORE_BASELINE=1 "DIFFCTX_PROBE_TAU=$tau")
       [[ "$adm" == 1 ]] && envs+=(DIFFCTX_FILE_ADMISSION=1)
       [[ "$mode" == pit ]] && envs+=(DIFFCTX_PROBE_MODE=pit DIFFCTX_PIT_BLEND=1.0)
-      env "${envs[@]}" cargo test --profile release-unwind --test yaml_cases 2>&1 |
+      env "${envs[@]}" cargo test --release --test yaml_cases 2>&1 |
         tail -400 >"$OUT/$cell.corpus.txt"
       grep "test result" "$OUT/$cell.corpus.txt" || echo "corpus: no result line"
 

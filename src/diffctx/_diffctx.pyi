@@ -2,6 +2,10 @@ from typing import Any
 
 class GitError(Exception): ...
 
+# Subclasses TimeoutError so `except TimeoutError` catches an expired compute
+# deadline without importing anything from the extension.
+class ComputeTimeoutError(TimeoutError): ...
+
 class PyProjectGraph:
     @property
     def fragment_count(self) -> int: ...

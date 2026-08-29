@@ -36,7 +36,7 @@ choice, triage discipline) — nothing from there is duplicated here.
 - **YAML corpus gating:** CI runs the full corpus per-case against
   `crates/diffctx-native/tests/known_below_threshold.txt`,
   bidirectionally — a listed case that starts passing also fails.
-  Command: `cargo test --profile release-unwind --test yaml_cases`
+  Command: `cargo test --release --test yaml_cases`
   (the dedicated unwind profile avoids the cargo#6313 abort/unwind
   artifact collision that plain `--release` used to hit).
 - **Secret-fixture hooks:** private-key exclusion tests match by

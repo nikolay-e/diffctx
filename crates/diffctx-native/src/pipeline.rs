@@ -1121,7 +1121,7 @@ fn resolve_repo_root(root_dir: &Path) -> Result<PathBuf> {
         tracing::debug!("canonicalize failed for '{}': {}", root_dir.display(), e);
         root_dir.to_path_buf()
     });
-    if !git::is_git_repo(&root_dir) {
+    if !git::is_git_repo(&root_dir)? {
         anyhow::bail!("'{}' is not a git repository", root_dir.display());
     }
     Ok(git::find_toplevel(&root_dir).unwrap_or(root_dir))

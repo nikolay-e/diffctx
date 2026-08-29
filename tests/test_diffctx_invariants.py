@@ -185,11 +185,28 @@ def test_ppr_alpha_one_does_not_degenerate(tmp_path):
     )
 
 
-def test_release_profile_aborts_on_panic():
+def test_release_profile_unwinds_on_panic():
+    """The invariant this pins used to be its own opposite.
+
+    It required `panic = "abort"` "or panic propagation across the PyO3 FFI
+    boundary is UB". The UB it feared is what PyO3 already prevents: every
+    `#[pyfunction]` runs inside a trampoline that catches the unwind and raises
+    it as a Python exception. `panic = "abort"` does not make that safer, it
+    disables it — and the compute deadline, which fires as a panic on purpose,
+    then took the whole interpreter down with SIGABRT (measured on a published
+    wheel).
+    """
     cargo_toml = (PROJECT_ROOT / "Cargo.toml").read_text()
-    assert 'panic = "abort"' in cargo_toml, (
-        'Root Cargo.toml release profile must set panic = "abort". '
-        "Removing it reintroduces UB on panic propagation across the PyO3 FFI boundary."
+    # Settings only: the profile carries a comment explaining what abort cost.
+    settings = [line.strip() for line in cargo_toml.splitlines() if not line.strip().startswith("#")]
+    assert 'panic = "abort"' not in settings, (
+        'The release profile must NOT set panic = "abort": PyO3 converts a panic '
+        "into a Python exception by catching the unwind, and aborting kills the "
+        "process instead — including every concurrent MCP request."
+    )
+    assert 'panic = "unwind"' in settings, (
+        'Root Cargo.toml release profile must state panic = "unwind" explicitly, '
+        "so the shipped wheel and the test run share one panic strategy."
     )
 
 
