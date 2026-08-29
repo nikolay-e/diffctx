@@ -197,5 +197,5 @@ def make_bm25_eval_fn(repos_dir: Path):
     try:
         import rank_bm25 as _  # noqa: F401
     except ImportError as e:
-        raise RuntimeError("rank-bm25 not installed; expected from requirements-eval.txt. Run: pip install rank-bm25") from e
+        raise RuntimeError("rank-bm25 not installed; expected from the `eval` dependency group. Run: uv sync --group eval") from e
     return functools.partial(_pool_eval_bm25, str(repos_dir))

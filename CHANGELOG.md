@@ -9,6 +9,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The corpus harness anchors a pure deletion where git does.** The
+  in-memory diff started a deletion-only hunk one line below git's
+  `@@ -5 +4,0 @@`, so `core_selection_range` — and therefore every
+  deletion-carrying corpus case — scored a selection production never
+  produces. Pinned by a test that compares both sides on the same deletion.
+- **A truncated generated fragment costs what it weighs**: it carried
+  `token_count: 0`, free for the budget while still rendering in full.
+- **`cat-file --batch` stays in sync**: a swallowed record terminator used to
+  shift the stream one byte for every later read, and a child that could not
+  be queried counted as alive and was never restarted.
+- **Naming only files roots the tree at their common parent**, not the
+  current directory, so `.diffctx/ignore` and relative paths resolve where
+  the files live; the wrapper node is named after that root instead of ".".
+- **A failed native import no longer buries the error being handled**: the
+  CLI's git-error handler imported the extension inside the `except` clause.
+- **The quotient-graph registry holds the graphs it keys by `id()`**; a
+  collected graph's recycled id could label the next graph with the wrong
+  node keys.
+- Boltzmann objective: the selection reason is decided after the loop, cores
+  count toward the reported utility, and overlap goes through the shared
+  `IntervalIndex` instead of a fourth hand-written check.
+
+### Changed
+
+- **The eval harness's Python dependencies are a `uv` dependency group**
+  (`uv sync --group eval`), locked in `uv.lock` like everything else.
+  `requirements-eval.txt` + `.lock` — a second resolver with its own bot —
+  are gone; `Dockerfile.eval` exports the group with hashes.
+- `paper/v1` left the tree (it lives at tag `paper-v1-grid`); five
+  never-called statistics helpers and `reset_to_commit` left `eval/`.
+- Test hygiene: locate and pack are pinned to each other's `changed` set
+  (pack used to be compared with itself); the path-jail refusal property
+  runs on every example and registers the legacy tools once; the deadline
+  test requires the ceiling to fire; the panic-profile test reads the
+  release table only; the Rust and Python `.diffctx/ignore` anchorers share
+  one fixture table instead of a "mirrors" comment.
 - **A git subprocess whose output could not be read no longer reports an
   empty diff.** The pipe reader's failure collapsed into an empty buffer
   returned as success, so an unreadable `git diff` was indistinguishable from

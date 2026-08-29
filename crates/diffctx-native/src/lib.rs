@@ -49,6 +49,8 @@ pub mod memory_pipeline;
 pub mod mode;
 pub(crate) mod peak_rss;
 pub mod pipeline;
+#[cfg(test)]
+pub(crate) mod test_rng;
 pub(crate) mod types;
 
 // `diffctx graph`: a side feature reachable only through the Python bindings.

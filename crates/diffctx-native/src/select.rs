@@ -1382,14 +1382,13 @@ mod tests {
             .iter()
             .filter(|c| c.id.path.as_ref() == "blob.rs")
             .map(|c| {
-                let mut sig = frag(
+                let sig = frag(
                     "blob.rs",
                     c.start_line(),
                     c.start_line(),
                     FragmentKind::FunctionSignature,
                     30,
                 );
-                sig.id = FragmentId::new(c.id.path.clone(), c.start_line(), c.start_line());
                 (c.id.clone(), sig)
             })
             .collect();

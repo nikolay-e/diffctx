@@ -1,20 +1,12 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::selection::boltzmann;
+use crate::interval::IntervalIndex;
 use crate::select::{SelectionReason, SelectionResult};
 use crate::types::{Fragment, FragmentId};
 
 fn boltzmann_weight(rel_score: f64, token_count: u32, beta: f64) -> f64 {
     rel_score * (-beta * token_count as f64).exp()
-}
-
-fn nonoverlapping(selected: &[Fragment], frag: &Fragment) -> bool {
-    selected.iter().all(|s| {
-        if s.path() != frag.path() {
-            return true;
-        }
-        frag.end_line() < s.start_line() || frag.start_line() > s.end_line()
-    })
 }
 
 pub fn boltzmann_select(
@@ -36,15 +28,23 @@ pub fn boltzmann_select(
     core.sort_by_key(|f| f.token_count);
 
     let mut selected: Vec<Fragment> = Vec::new();
+    let mut placed = IntervalIndex::new();
     let mut used: u32 = 0;
+    let mut total_utility = 0.0;
     for f in core {
         if used + f.token_count > budget_tokens {
             continue;
         }
-        if !nonoverlapping(&selected, &f) {
+        if placed.overlaps(&f) {
             continue;
         }
         used += f.token_count;
+        // Cores are placed unconditionally but they are still utility: a
+        // result that counted only context could not be compared across
+        // budgets that admit different numbers of cores.
+        let r = rel.get(&f.id).copied().unwrap_or(1.0);
+        total_utility += boltzmann_weight(r, f.token_count, beta);
+        placed.add(&f);
         selected.push(f);
     }
 
@@ -59,20 +59,27 @@ pub fn boltzmann_select(
         .collect();
     ranked.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
 
-    let mut total_utility = 0.0;
-    let mut reason = SelectionReason::TopK;
+    let mut budget_bound = false;
     for (w, f) in ranked {
         if used + f.token_count > budget_tokens {
-            reason = SelectionReason::BudgetExhausted;
+            budget_bound = true;
             continue;
         }
-        if !nonoverlapping(&selected, &f) {
+        if placed.overlaps(&f) {
             continue;
         }
         used += f.token_count;
         total_utility += w;
+        placed.add(&f);
         selected.push(f);
     }
+    // Decided once the loop is over: the reason describes the whole
+    // selection, not the first candidate that happened not to fit.
+    let reason = if budget_bound {
+        SelectionReason::BudgetExhausted
+    } else {
+        SelectionReason::TopK
+    };
 
     let final_count = selected.len();
     SelectionResult {
@@ -162,18 +169,7 @@ mod paper_claim_tests {
             .sum()
     }
 
-    fn xorshift(state: &mut u64) -> u64 {
-        *state ^= *state << 13;
-        *state ^= *state >> 7;
-        *state ^= *state << 17;
-        *state
-    }
-
-    fn random_subset(n: usize, fraction: f64, rng: &mut u64) -> Vec<usize> {
-        (0..n)
-            .filter(|_| (xorshift(rng) % 1000) as f64 / 1000.0 < fraction)
-            .collect()
-    }
+    use crate::test_rng::random_subset;
 
     #[test]
     fn claim_3a_boltzmann_reweighted_utility_is_modular() {

@@ -75,12 +75,9 @@ silently:
   exempt and still compiles through maturin. Dependabot's `uv` entry is
   `lockfile-only` on purpose — the `pip` entry owns pyproject's ranges, and
   without the split both ecosystems open the same PR twice.
-- **`requirements-eval.txt` + `requirements-eval.lock`** — the research
-  harness, hash-pinned via `uv pip compile`, installed only by
-  `Dockerfile.eval`. Not part of `uv.lock`, deliberately: the paper's
-  reproducibility claim names that lock. `tests/eval/test_image_inputs.py`
-  checks the two agree by package NAME only, so a version bump in one does not
-  fail anything.
+- **`eval` dependency group in `pyproject.toml`, locked in `uv.lock`** — the
+  research harness's Python deps. One resolver for the whole repo; the
+  separate `requirements-eval.txt` + `.lock` pair (and its own bot) is gone.
 - **`Cargo.toml` + `Cargo.lock`** — Dependabot's `cargo` entry.
 
 The pip entry runs `versioning-strategy: increase-if-necessary`. The default
@@ -102,9 +99,8 @@ dismissing as bot noise.
   varying tests. Timeout-only failures with a changing set across runs
   = oversubscription, not a regression; never run `cargo test`
   concurrently with pytest, it makes this worse.
-- `cargo test --lib` in `crates/diffctx-native` — inline units (the run
-  prints the count; it was written here as "~171" while the real number was
-  250, so it is not written here any more).
+- `cargo test --lib` in `crates/diffctx-native` — inline units; the run
+  prints the count, and a count written here rotted once already.
 - YAML corpus: CI gates the FULL corpus on every push (the run prints the
   case count; pinning it here rotted — it read 2725 while the corpus had grown
   to 2902)

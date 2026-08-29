@@ -42,16 +42,22 @@ def test_dockerfile_eval_copy_sources_exist():
     assert not missing, f"Dockerfile.eval COPY sources missing from repo: {missing}"
 
 
-def test_requirements_eval_covers_evaluation_imports():
+def _eval_group_names() -> set[str]:
+    text = (REPO_ROOT / "pyproject.toml").read_text()
+    block = text.split("[dependency-groups]", 1)[1].split("\n[", 1)[0]
+    body = block.split("eval = [", 1)[1].split("]", 1)[0]
+    return {
+        re.split(r"[><=\[;]", item.strip().strip('",'))[0].lower().replace("-", "_")
+        for item in body.splitlines()
+        if item.strip().startswith('"')
+    }
+
+
+def test_eval_dependency_group_covers_evaluation_imports():
     import sys
 
-    reqs_path = REPO_ROOT / "requirements-eval.txt"
-    assert reqs_path.exists(), "requirements-eval.txt is the source for requirements-eval.lock"
-    declared = {
-        re.split(r"[><=\[;]", line.strip())[0].lower().replace("-", "_")
-        for line in reqs_path.read_text().splitlines()
-        if line.strip() and not line.startswith("#")
-    }
+    declared = _eval_group_names()
+    assert declared, "the `eval` dependency group is what Dockerfile.eval installs"
 
     import_re = re.compile(r"^\s*(?:import|from)\s+(\w+)", re.MULTILINE)
     stdlib = set(sys.stdlib_module_names)
@@ -64,24 +70,7 @@ def test_requirements_eval_covers_evaluation_imports():
             needed.add(IMPORT_TO_DIST.get(mod, mod).replace("-", "_"))
 
     missing = needed - declared
-    assert not missing, f"eval/ imports not covered by requirements-eval.txt: {sorted(missing)}"
-
-
-def test_requirements_eval_lock_covers_declared_requirements():
-    lock_path = REPO_ROOT / "requirements-eval.lock"
-    assert lock_path.exists(), "requirements-eval.lock installed by Dockerfile.eval"
-    locked = {
-        re.split(r"[><=\[;]", line.strip())[0].lower().replace("-", "_")
-        for line in lock_path.read_text().splitlines()
-        if line.strip() and not line.startswith(("#", "-", " "))
-    }
-    declared = {
-        re.split(r"[><=\[;]", line.strip())[0].lower().replace("-", "_")
-        for line in (REPO_ROOT / "requirements-eval.txt").read_text().splitlines()
-        if line.strip() and not line.startswith("#")
-    }
-    stale = declared - locked
-    assert not stale, f"requirements-eval.lock is stale — regenerate with uv pip compile: {sorted(stale)}"
+    assert not missing, f"eval/ imports not covered by the `eval` dependency group: {sorted(missing)}"
 
 
 def test_eval_sweep_workflow_references_existing_bake_script():

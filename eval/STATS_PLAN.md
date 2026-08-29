@@ -150,15 +150,15 @@ exploratory descriptive content (CIs only).
   - `wilcoxon_paired(before, after)`: scipy backend.
   - `holm_correct(p_values, alpha)`: step-down FWER for primary tests.
   - `bh_fdr(p_values, q)`: step-up FDR for exploratory tests.
-  - `friedman_nemenyi(scores)`: omnibus + post-hoc with CD at α = 0.05.
-  - `stouffer_combine(p_values, weights)`: pooling across test sets.
+  - `friedman_nemenyi` and `stouffer_combine` were planned here, implemented,
+    and never invoked by any versioned analysis; removed 2026-08-30.
 
 ## Reproducibility
 
 - Random seed 42 throughout.
 - Frozen manifests at `datasets/eval-splits/v1/`.
 - Pinned dataset revisions in `datasets/external-revisions.json`.
-- Pinned dependency versions in `requirements-eval.lock`.
+- Pinned dependency versions in `uv.lock` (the `eval` dependency group).
 - Compute environment: M4 Pro, 48 GB unified memory, macOS arm64,
   Python 3.12.12, Rust 1.92.0.
 
@@ -193,6 +193,8 @@ exploratory descriptive content (CIs only).
   `permutation_paired`, and `paired_cluster_bootstrap` beyond the
   functions listed under Implementation; the published Friedman/Nemenyi
   numbers were computed by an ad-hoc invocation not versioned as a
-  repo script.
+  repo script. None of the five had a caller in the repository, and all
+  five were removed 2026-08-30 — the paper's numbers rest on invocations
+  that were never checked in, which this record does not undo.
 - **BM25 workers=1 re-run** (P1 both-OK note) was not performed; the
   headline test ran on the both-OK subset as specified.

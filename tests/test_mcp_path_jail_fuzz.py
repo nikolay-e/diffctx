@@ -143,27 +143,42 @@ def test_no_fragment_id_reaches_outside_through_the_symlink(server, jailed, path
 def test_a_refusal_never_names_a_resolved_path(server, jailed, path):
     """Refusals go to a model that may relay them. They may echo the caller's own
     argument; they may not disclose what the filesystem resolved it to."""
+    # Through the symlink: whatever the path resolves to lives under
+    # `outside`, which is not a repository, so EVERY example is a refusal and
+    # the assertion below runs for each — the caller's argument names
+    # `escape`, the resolved form names `outside`.
     try:
         asyncio.run(
             server.call_tool(
                 "diffctx_context",
-                {"repo_path": f"{jailed.path}/{path}", "diff_ref": "HEAD"},
+                {"repo_path": f"{jailed.path}/escape/{path}", "diff_ref": "HEAD"},
             )
         )
     except ToolError as e:
         message = str(e)
         assert "Traceback" not in message
-        assert str(jailed.path.parent / "outside") not in message
+        assert "outside" not in message, message
     except Exception as e:
         pytest.fail(f"unhandled {type(e).__name__} escaped the tool: {e}")
+    else:
+        pytest.fail("a path under the escape symlink must be refused")
+
+
+@pytest.fixture(scope="module")
+def legacy_server():
+    # Registered ONCE: doing it inside a Hypothesis body re-registered the
+    # legacy tools per example on the module-level server singleton, and they
+    # stayed registered for every later test regardless of the env switch.
+    from diffctx.mcp.server import mcp, register_legacy_tools
+
+    register_legacy_tools(mcp)
+    return mcp
 
 
 @settings(max_examples=120, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(pattern=_path_like)
-def test_no_glob_pattern_reaches_outside_the_repository(server, jailed, pattern):
-    from diffctx.mcp.server import register_legacy_tools
-
-    register_legacy_tools(server)
+def test_no_glob_pattern_reaches_outside_the_repository(legacy_server, jailed, pattern):
+    server = legacy_server
     try:
         result = asyncio.run(server.call_tool("get_file_context", {"repo_path": str(jailed.path), "patterns": [pattern]}))
     except ToolError:

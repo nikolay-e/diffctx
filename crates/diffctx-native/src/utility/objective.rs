@@ -280,18 +280,7 @@ mod paper_claim_tests {
         }
     }
 
-    fn xorshift(state: &mut u64) -> u64 {
-        *state ^= *state << 13;
-        *state ^= *state >> 7;
-        *state ^= *state << 17;
-        *state
-    }
-
-    fn random_subset_indices(n: usize, fraction: f64, rng: &mut u64) -> Vec<usize> {
-        (0..n)
-            .filter(|_| (xorshift(rng) % 1000) as f64 / 1000.0 < fraction)
-            .collect()
-    }
+    use crate::test_rng::{random_subset as random_subset_indices, xorshift};
 
     fn build_state_from(
         fragments: &[Fragment],

@@ -416,6 +416,46 @@ mod tests {
         );
     }
 
+    /// The recorded stand-in fact is what ranks a core's stub ABOVE a smaller
+    /// unrelated fragment of the same file. With the fact absent the cheaper
+    /// fragment wins — so this is the test the two above could not be.
+    #[test]
+    fn a_recorded_stand_in_outranks_a_cheaper_unrelated_fragment() {
+        use crate::types::FragmentKind;
+        let core = frag("a.ts", 10, 20, FragmentKind::Function, 60);
+        let stub = frag("a.ts", 10, 10, FragmentKind::FunctionSignature, 12);
+        let unrelated = frag("a.ts", 40, 41, FragmentKind::Function, 8);
+        let core_ids: FxHashSet<FragmentId> = std::iter::once(core.id.clone()).collect();
+        let candidates = vec![core, stub.clone(), unrelated.clone()];
+
+        let with_fact: FxHashSet<FragmentId> = std::iter::once(stub.id.clone()).collect();
+        let picked = pick_smallest_fitting(
+            &candidates,
+            &FxHashSet::default(),
+            20,
+            &core_ids,
+            &with_fact,
+        );
+        assert_eq!(
+            picked.map(|f| f.id),
+            Some(stub.id.clone()),
+            "the stand-in covers the hunk"
+        );
+
+        let picked = pick_smallest_fitting(
+            &candidates,
+            &FxHashSet::default(),
+            20,
+            &core_ids,
+            &FxHashSet::default(),
+        );
+        assert_eq!(
+            picked.map(|f| f.id),
+            Some(unrelated.id),
+            "without the fact, size decides"
+        );
+    }
+
     /// When the core fragment does NOT fit the remaining budget, falling
     /// back to the smaller non-core stub is still the correct behavior
     /// (some representation beats none).

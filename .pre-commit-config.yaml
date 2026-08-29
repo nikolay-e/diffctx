@@ -94,7 +94,8 @@ repos:
       - id: python-pin-matches-ci-matrix
         name: renovate python pin matches the CI matrix
         entry: >-
-          bash -c 'top=$(grep -o "3\.[0-9][0-9]*" .github/workflows/ci.yml | sort -V | tail -1);
+          bash -c 'top=$(grep -E "python-version: \[" .github/workflows/ci.yml
+          | grep -o "3\.[0-9][0-9]*" | sort -V | tail -1);
           want="<3.$(( ${top#3.} + 1 ))";
           have=$(sed -n "/\"matchDepNames\": \[\"python\"\]/,/}/s/.*\"allowedVersions\":
           \"\([^\"]*\)\".*/\1/p" renovate.json);
@@ -360,14 +361,15 @@ repos:
 
   # commitizen validates the conventional-commit FORM, not the length. Counted
   # in CHARACTERS, not bytes: subjects here routinely carry an em-dash (3 bytes)
-  # or Cyrillic, so `awk length` and `wc -c` both overstate — a subject measured
-  # by eye as 74 was 72. Subject line only; a body may carry a long URL.
+  # or Cyrillic. `wc -m` only counts characters under a UTF-8 locale and the
+  # hook inherits whatever the caller has, so python does the counting.
+  # Subject line only; a body may carry a long URL.
   - repo: local
     hooks:
       - id: commit-subject-length
         name: commit subject fits 72 chars
         entry: >-
-          bash -c 'n=$(head -1 "$1" | wc -m); n=$((n-1));
+          bash -c 'n=$(head -1 "$1" | python3 -c "import sys; print(len(sys.stdin.read().rstrip(chr(10))))");
           [ "$n" -le 72 ] || { echo "subject is $n chars, limit 72"; exit 1; }' --
         language: system
         stages: [commit-msg]

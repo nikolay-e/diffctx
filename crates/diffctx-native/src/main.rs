@@ -140,9 +140,6 @@ fn print_token_summary(rendered: &str) {
     );
 }
 
-// Mirrors `_diff_result_is_empty` in src/diffctx/_app.py: deletions and renames
-// are real signal even with zero fragments, so only a result carrying neither
-// counts as empty.
 fn run_with_deadline<T, F>(timeout: u64, work: F) -> Result<T>
 where
     F: FnOnce() -> Result<T> + Send + 'static,
@@ -194,6 +191,9 @@ fn emit(cli: &Cli, rendered: &str, is_empty: bool) -> Result<()> {
     Ok(())
 }
 
+// Mirrors `_diff_result_is_empty` in src/diffctx/_app.py: deletions and renames
+// are real signal even with zero fragments, so only a result carrying neither
+// counts as empty.
 fn diff_result_is_empty(output: &DiffContextOutput) -> bool {
     output.deleted_files.is_empty()
         && output.renamed_files.is_empty()

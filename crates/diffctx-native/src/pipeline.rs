@@ -1293,20 +1293,7 @@ fn empty_output(root_dir: &Path) -> DiffContextOutput {
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| resolved.to_string_lossy().to_string());
-    DiffContextOutput {
-        name,
-        output_type: "diff_context".to_string(),
-        commit_message: None,
-        changed_files: Vec::new(),
-        deleted_files: Vec::new(),
-        renamed_files: Vec::new(),
-        lockfile_changes: Vec::new(),
-        ignored_changes: Vec::new(),
-        policy_excluded_count: 0,
-        fragment_count: 0,
-        fragments: Vec::new(),
-        latency: None,
-    }
+    DiffContextOutput::empty(&name)
 }
 
 /// A deletion/rename-only diff has no fragmentable content, but the file

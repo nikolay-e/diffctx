@@ -284,6 +284,28 @@ fn create_fragment_entry(frag: &Fragment, path_str: &str) -> FragmentEntry {
     }
 }
 
+impl DiffContextOutput {
+    /// The one empty output. Three hand-written literals used to exist
+    /// (pipeline, in-memory harness, the pybridge empty branch), and the
+    /// withheld-change disclosure went missing from exactly one of them.
+    pub fn empty(name: &str) -> Self {
+        DiffContextOutput {
+            name: name.to_string(),
+            output_type: "diff_context".to_string(),
+            commit_message: None,
+            changed_files: Vec::new(),
+            deleted_files: Vec::new(),
+            renamed_files: Vec::new(),
+            lockfile_changes: Vec::new(),
+            ignored_changes: Vec::new(),
+            policy_excluded_count: 0,
+            fragment_count: 0,
+            fragments: Vec::new(),
+            latency: None,
+        }
+    }
+}
+
 /// Collapse a file's fragments (sorted by start line, ties by descending end
 /// line) into the rendered entries. Two behaviors:
 /// - a same-role fragment fully contained in the running range (`next.end <=

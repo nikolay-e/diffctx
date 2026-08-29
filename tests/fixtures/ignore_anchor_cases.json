@@ -1,0 +1,52 @@
+[
+ {
+  "line": "*.log",
+  "rel": "",
+  "expected": "*.log"
+ },
+ {
+  "line": "*.log",
+  "rel": "sub",
+  "expected": "sub/**/*.log"
+ },
+ {
+  "line": "/build",
+  "rel": "",
+  "expected": "/build"
+ },
+ {
+  "line": "/build",
+  "rel": "sub",
+  "expected": "/sub/build"
+ },
+ {
+  "line": "docs/gen/",
+  "rel": "",
+  "expected": "/docs/gen/"
+ },
+ {
+  "line": "docs/gen/",
+  "rel": "pkg/a",
+  "expected": "/pkg/a/docs/gen/"
+ },
+ {
+  "line": "!keep.md",
+  "rel": "sub",
+  "expected": "!sub/**/keep.md"
+ },
+ {
+  "line": "!/keep.md",
+  "rel": "sub",
+  "expected": "!/sub/keep.md"
+ },
+ {
+  "line": "cache/",
+  "rel": "",
+  "expected": "cache/"
+ },
+ {
+  "line": "cache/",
+  "rel": "x",
+  "expected": "x/**/cache/"
+ }
+]

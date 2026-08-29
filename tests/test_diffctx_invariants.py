@@ -197,8 +197,10 @@ def test_release_profile_unwinds_on_panic():
     wheel).
     """
     cargo_toml = (PROJECT_ROOT / "Cargo.toml").read_text()
-    # Settings only: the profile carries a comment explaining what abort cost.
-    settings = [line.strip() for line in cargo_toml.splitlines() if not line.strip().startswith("#")]
+    # The [profile.release] table alone, comments stripped: `panic = "unwind"`
+    # under any other profile must not satisfy this.
+    section = cargo_toml.split("[profile.release]", 1)[1].split("\n[", 1)[0]
+    settings = [line.strip() for line in section.splitlines() if not line.strip().startswith("#")]
     assert 'panic = "abort"' not in settings, (
         'The release profile must NOT set panic = "abort": PyO3 converts a panic '
         "into a Python exception by catching the unwind, and aborting kills the "

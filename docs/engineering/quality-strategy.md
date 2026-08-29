@@ -8,7 +8,7 @@ choice, triage discipline) — nothing from there is duplicated here.
 
 - Python + Rust hybrid wheel built via maturin (PEP 660). Editable
   install: `pip install -e ".[dev,full,mcp]" --no-build-isolation` after
-  `pip install "maturin>=1.10,<1.15"`.
+  `pip install "maturin>=1.10,<1.16"`.
 - Cargo operates from the root workspace; the native crate lives in
   `crates/diffctx-native/`, Python sources in `src/diffctx/`. Extension
   module name: `diffctx._diffctx`.
@@ -36,9 +36,7 @@ choice, triage discipline) — nothing from there is duplicated here.
 - **YAML corpus gating:** CI runs the full corpus per-case against
   `crates/diffctx-native/tests/known_below_threshold.txt`,
   bidirectionally — a listed case that starts passing also fails.
-  Command: `cargo test --release --test yaml_cases`
-  (the dedicated unwind profile avoids the cargo#6313 abort/unwind
-  artifact collision that plain `--release` used to hit).
+  Command: `cargo test --release --test yaml_cases`.
 - **Secret-fixture hooks:** private-key exclusion tests match by
   FILENAME only, so fixtures must not embed a literal PEM banner —
   `detect-private-key` has no pragma support and a file committed past

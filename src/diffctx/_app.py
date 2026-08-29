@@ -300,7 +300,11 @@ def _build_standard_tree(args: ParsedArgs) -> dict[str, Any]:
     if len(children) == 1:
         return children[0]
 
-    return {"name": ".", "type": "directory", "children": children}
+    # Several directories have no single real parent, so "." names the
+    # synthetic root honestly. Files alone DO have one — the common parent the
+    # CLI rooted them at — and the tree says so.
+    name = "." if args.extra_dirs else _root_display_name(args.root_dir)
+    return {"name": name, "type": "directory", "children": children}
 
 
 def _handle_clipboard(output_content: str, args: ParsedArgs, prog: str) -> bool:
@@ -554,12 +558,16 @@ def _handle_unexpected_exception(exc: BaseException, prog: str = "diffctx") -> i
     return _EXIT_RUNTIME
 
 
-def _git_error_type() -> type[BaseException]:
-    from typing import cast
-
-    from ._native import GitError
-
-    return cast("type[BaseException]", GitError)
+def _git_error_types() -> tuple[type[BaseException], ...]:
+    # Evaluated while an exception is already propagating: if the native
+    # module is what failed, importing it here would raise INSIDE the except
+    # clause and bury the original error under an ImportError. An empty tuple
+    # matches nothing and lets the real error reach the handlers below.
+    try:
+        from ._native import GitError
+    except ImportError:
+        return ()
+    return (GitError,)
 
 
 def run(argv: list[str] | None = None, *, prog: str | None = None, version: str | None = None) -> None:
@@ -576,7 +584,7 @@ def run(argv: list[str] | None = None, *, prog: str | None = None, version: str 
         sys.exit(_EXIT_INTERRUPTED)
     except BrokenPipeError:
         sys.exit(_EXIT_BROKEN_PIPE)
-    except _git_error_type() as exc:
+    except _git_error_types() as exc:
         print(f"{prog}: {_format_git_error(exc)}", file=sys.stderr)
         sys.exit(_EXIT_ENVIRONMENT)
     except argparse.ArgumentError as exc:

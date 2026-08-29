@@ -608,10 +608,6 @@ def reset_to_parent(repo_dir: Path) -> None:
         print(f"  RESET FAIL {repo_dir.name}: HEAD not restored ({r.stderr.strip()})", flush=True)
 
 
-def reset_to_commit(repo_dir: Path, commit: str) -> None:
-    run_cmd(["git", "-C", str(repo_dir), "checkout", "--force", commit], check=False, timeout=30)
-
-
 def parse_lines_field(lines_str: str) -> tuple[int, int] | None:
     m = LINES_RE.match(lines_str.strip())
     if not m:

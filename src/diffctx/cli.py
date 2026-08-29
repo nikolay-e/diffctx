@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -140,6 +141,12 @@ def _classify_resolved(resolved: Path, dirs: list[Path], files: list[Path]) -> N
         dirs.append(resolved)
     elif resolved.is_file():
         files.append(resolved)
+
+
+def _common_parent(files: list[Path]) -> Path:
+    if not files:
+        return Path(".").resolve()
+    return Path(os.path.commonpath([str(f.parent) for f in files]))
 
 
 def _expand_paths(raw_paths: list[str]) -> tuple[list[Path], list[Path]]:
@@ -749,7 +756,10 @@ def _build_tree_parsed_args(args: argparse.Namespace) -> ParsedArgs:
     _warn_quiet_log_level_conflict(args)
 
     dirs, files = _expand_paths(args.paths)
-    root_dir = dirs[0] if dirs else Path(".").resolve()
+    # Only files named: the root is where THEY live. Defaulting to the cwd
+    # resolved ignore/whitelist files and relative paths against a directory
+    # the caller never mentioned.
+    root_dir = dirs[0] if dirs else _common_parent(files)
     extra_dirs = dirs or None
     extra_files = files or None
 

@@ -162,10 +162,10 @@ impl FragmentIndex {
 /// symbol — the fragment-pair encoding gave both the same weight, which is
 /// simultaneously the quadratic edge blow-up (envoy: 22M c-family edges) and
 /// the file-level noise mechanism of #65. The file's other fragments are
-/// reachable only through nesting and naming edges — the intra-file star is
-/// OFF by default and measured net-negative on the corpus (#208) — an
-/// accepted trade: a file-level relation endorses the file, not each of its
-/// siblings.
+/// reachable only through nesting and naming edges: an intra-file star that
+/// spread the relation to every sibling was measured net-negative on the
+/// corpus (#208) and removed — an accepted trade: a file-level relation
+/// endorses the file, not each of its siblings.
 pub fn file_representatives(fragments: &[Fragment]) -> FxHashMap<String, FragmentId> {
     let mut file_to_rep: FxHashMap<String, FragmentId> = FxHashMap::default();
     let mut file_to_token_count: FxHashMap<String, u32> = FxHashMap::default();

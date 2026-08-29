@@ -76,10 +76,13 @@ class TestLocateMode:
         assert changed
         assert all(r["type"] == "changed" for i in changed for r in i["reasons"])
 
-        pack_default = _run(repo.path, [".", "--diff", diff_range, "-q", "-f", "yaml"])
-        pack_again = _run(repo.path, [".", "--diff", diff_range, "-q", "-f", "yaml"])
-        assert pack_default.stdout == pack_again.stdout
-        assert "fragments:" in pack_default.stdout
+        # The two surfaces select identically by construction; the changed
+        # set is where they would first disagree, so pin it across both.
+        pack = _run(repo.path, [".", "--diff", diff_range, "-q", "-f", "json"])
+        pack_doc = json.loads(pack.stdout)
+        pack_changed = {(f["path"], f["lines"]) for f in pack_doc["fragments"] if f.get("role") == "changed"}
+        locate_changed = {(i["path"], i["lines"]) for i in changed}
+        assert pack_changed == locate_changed
 
     def test_locate_rejects_full_and_warns_on_format(self, locate_repo):
         repo, diff_range = locate_repo

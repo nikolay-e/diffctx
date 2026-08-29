@@ -6,6 +6,7 @@ use rayon::prelude::*;
 use regex::Regex;
 use rustc_hash::FxHashSet;
 
+use crate::candidate_files::normalize_path;
 use crate::config::fragmentation::FRAGMENTATION;
 use crate::config::limits::LIMITS;
 use crate::config::tokenization::TOKENIZATION;
@@ -171,12 +172,16 @@ fn truncate_generated_fragments(file_frags: Vec<Fragment>) -> Vec<Fragment> {
                 &truncated_content,
                 TOKENIZATION.fragment_min_identifier_length,
             );
+            // Priced like every other fragment: a zero here made a truncated
+            // generated file free for the budget while still costing the
+            // reader its full rendered length.
+            let token_count = count_tokens(&truncated_content) + LIMITS.overhead_per_fragment;
             Fragment {
                 id: FragmentId::new(frag.id.path.clone(), frag.start_line(), new_end),
                 kind: frag.kind,
                 content: Arc::from(truncated_content),
                 identifiers,
-                token_count: 0,
+                token_count,
                 symbol_name: frag.symbol_name,
             }
         })
@@ -192,15 +197,6 @@ fn dedup_fragments(raw_frags: Vec<Fragment>, seen: &mut FxHashSet<FragmentId>) -
         }
     }
     result
-}
-
-fn normalize_path(path: &Path, root_dir: &Path) -> PathBuf {
-    if path.is_absolute() {
-        path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
-    } else {
-        let joined = root_dir.join(path);
-        joined.canonicalize().unwrap_or_else(|_| joined)
-    }
 }
 
 fn read_file_content(

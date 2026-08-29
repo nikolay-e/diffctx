@@ -21,6 +21,20 @@ def _repo(tmp_path, name, files):
     return repo
 
 
+def _dense_repo(tmp_path, name, files):
+    repo = Pygit2Repo(tmp_path / name)
+    for i in range(files):
+        body = "\n".join(f"def fn_{i}_{k}(x):\n    return helper_{(i + k) % files}(x) + {k}\n" for k in range(12))
+        header = f"from mod_{(i + 1) % files} import fn_{(i + 1) % files}_0 as helper_{(i + 1) % files}\n"
+        repo.add_file(f"mod_{i}.py", header + body)
+    imports = "\n".join(f"from mod_{i} import fn_{i}_0" for i in range(files))
+    repo.add_file("main.py", imports + "\n")
+    repo.commit("initial")
+    repo.add_file("main.py", imports + "\nEXTRA = 1\n")
+    repo.commit("change")
+    return repo
+
+
 def test_expired_deadline_in_one_run_does_not_kill_a_concurrent_run(tmp_path):
     healthy_repo = _repo(tmp_path, "healthy", files=40)
     expired_repo = _repo(tmp_path, "expired", files=2)
@@ -74,9 +88,12 @@ def test_a_compute_deadline_never_takes_the_process_down(tmp_path):
     profile's old `panic = "abort"` this exact expiry killed the interpreter
     with SIGABRT — measured on a published wheel, and fatal for the MCP server,
     which abandons a timed-out worker and keeps serving. Whether the ceiling
-    actually fires here is timing; that the process survives either way is not.
+    actually fires is not left to timing either: 2500 files x 12
+    cross-importing functions take several seconds on an M4 Pro, so a 1 s
+    ceiling fires every time — accepting "completed" would accept the path
+    this test exists to pin.
     """
-    repo = _repo(tmp_path, "slow", files=200)
+    repo = _dense_repo(tmp_path, "slow", files=2500)
     child = textwrap.dedent(f"""
         import diffctx
 
@@ -90,6 +107,5 @@ def test_a_compute_deadline_never_takes_the_process_down(tmp_path):
         """)
     proc = subprocess.run([sys.executable, "-c", child], capture_output=True, text=True, timeout=600)
 
-    assert proc.returncode >= 0, f"the child died on signal {-proc.returncode}: {proc.stderr[-400:]}"
-    assert proc.returncode == 0, f"the deadline escaped as an uncatchable error: {proc.stderr[-400:]}"
-    assert proc.stdout.strip() in {"COMPLETED", "TIMEOUT"}, proc.stdout
+    assert proc.returncode == 0, f"the deadline escaped as an error the child could not catch: {proc.stderr[-400:]}"
+    assert proc.stdout.strip() == "TIMEOUT", f"the ceiling never fired; stdout={proc.stdout!r}"

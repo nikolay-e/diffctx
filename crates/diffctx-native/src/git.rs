@@ -784,9 +784,11 @@ pub fn get_untracked_files(repo_root: &Path) -> Result<Vec<PathBuf>> {
 
 /// Rewrites one `.diffctx/ignore` pattern line to be anchored to the
 /// directory that contains the `.diffctx/` folder (`rel`, repo-root-relative,
-/// "" for the repo root itself). Mirrors `_process_ignore_line` in the
-/// Python tree-mode ignore resolver (`src/diffctx/ignore.py`) so a pattern
-/// declared in `sub/.diffctx/ignore` only ever matches within `sub/`.
+/// "" for the repo root itself), so a pattern declared in `sub/.diffctx/ignore`
+/// only ever matches within `sub/`. The Python tree-mode resolver
+/// (`ignore.py::_process_ignore_line`) implements the same rule; both are
+/// held to `tests/fixtures/ignore_anchor_cases.json`, not to each other's
+/// comments.
 fn anchor_diffctx_ignore_line(line: &str, rel: &str) -> String {
     let (neg, pat) = match line.strip_prefix('!') {
         Some(rest) => (true, rest),
@@ -1167,7 +1169,9 @@ impl CatFileBatch {
     fn ensure_started(&mut self) -> Result<()> {
         let needs_restart = match &mut self.child {
             None => true,
-            Some(child) => child.try_wait().ok().flatten().is_some(),
+            // `Err` from try_wait is not "still running": a child that cannot
+            // be queried cannot be trusted with the next request either.
+            Some(child) => !matches!(child.try_wait(), Ok(None)),
         };
 
         if needs_restart {
@@ -1254,7 +1258,7 @@ impl CatFileBatch {
                 remaining -= want;
             }
             let mut trailing = [0u8; 1];
-            let _ = reader.read_exact(&mut trailing);
+            reader.read_exact(&mut trailing)?;
             return Err(GitError::CommandFailed(format!(
                 "cat-file: blob too large ({} bytes): {}",
                 size,
@@ -1265,8 +1269,10 @@ impl CatFileBatch {
         let mut content = vec![0u8; size];
         reader.read_exact(&mut content)?;
 
+        // The record terminator is part of the protocol: failing to consume it
+        // leaves the stream one byte off for every `get()` after this one.
         let mut trailing = [0u8; 1];
-        let _ = reader.read_exact(&mut trailing);
+        reader.read_exact(&mut trailing)?;
 
         Ok(String::from_utf8_lossy(&content).into_owned())
     }
@@ -1294,6 +1300,25 @@ impl Drop for CatFileBatch {
 
 #[cfg(test)]
 mod tests {
+    /// Shared with `tests/test_ignore_anchor_fixture.py`: one table, two
+    /// implementations, no "mirrors" comment to drift.
+    #[test]
+    fn diffctx_ignore_anchoring_matches_the_shared_fixture() {
+        let raw = include_str!("../../../tests/fixtures/ignore_anchor_cases.json");
+        let cases: Vec<serde_json::Value> = serde_json::from_str(raw).unwrap();
+        assert!(!cases.is_empty());
+        for case in cases {
+            let line = case["line"].as_str().unwrap();
+            let rel = case["rel"].as_str().unwrap();
+            let expected = case["expected"].as_str().unwrap();
+            assert_eq!(
+                super::anchor_diffctx_ignore_line(line, rel),
+                expected,
+                "line={line:?} rel={rel:?}"
+            );
+        }
+    }
+
     use super::*;
     use std::fs;
     use std::sync::Barrier;
