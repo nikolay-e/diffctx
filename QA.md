@@ -204,7 +204,15 @@ dismissing as bot noise.
    assume them.
 5. SonarCloud project `nikolay-e_TreeMapper` (the key predates the rename):
    quality gate + open issues + hotspots via the sonarqube MCP tools. Issues
-   raised on the day's own commits count as intake for that pass.
+   raised on the day's own commits count as intake for that pass. The gate
+   can read OK while five issues are open — it scores NEW code against
+   ratings, so complexity and composite-assertion findings sit under a green
+   gate; read the issue list, never the gate alone. Analysis runs inside
+   `diffctx CI`, so a fix's issues stay OPEN until that run finishes.
+6. The stumble ledger is a channel: `[stumble] <task>` issues carry the
+   per-batch median and the deduped gripes. A convergent gripe (the same slug
+   from independent runs) is the signal — on 2026-08-30 four of six slugs were
+   one defect, an unsourced headline number, and it was real.
 
 ## Issue triage invariants
 
