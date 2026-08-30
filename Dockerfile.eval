@@ -7,7 +7,7 @@
 #
 # Layers:
 #   1. python base + system deps             (rare changes)
-#   2. python deps (requirements-eval.txt)  (weekly changes)
+#   2. python deps (uv.lock, `eval` group)  (weekly changes)
 #   3. diffctx wheel (cross-compiled)        (per-commit changes)
 #   4. evaluation code and dataset manifests (changes most often)
 
@@ -105,9 +105,12 @@ WORKDIR /app
 # uv is required by the Aider baseline (`uv tool run --from aider-chat ...`);
 # without it, every aider cell crashes on first request with
 # "RuntimeError: `uv` not found on PATH".
-COPY requirements-eval.lock ./
-RUN pip install --no-cache-dir --only-binary :all: --require-hashes -r requirements-eval.lock && \
-    pip install --no-cache-dir --only-binary :all: "uv==0.11.30"
+# uv is also required by the Aider baseline (`uv tool run --from aider-chat`).
+COPY pyproject.toml uv.lock ./
+RUN pip install --no-cache-dir --only-binary :all: "uv==0.11.30" && \
+    uv export --frozen --no-dev --group eval --no-emit-project \
+      --format requirements-txt -o /tmp/requirements-eval.txt && \
+    pip install --no-cache-dir --only-binary :all: --require-hashes -r /tmp/requirements-eval.txt
 
 # Layer 3: diffctx wheel with the compiled _diffctx extension
 COPY --from=rust-builder /wheels/*.whl /tmp/wheels/

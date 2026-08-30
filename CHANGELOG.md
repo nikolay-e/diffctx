@@ -7,7 +7,205 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **An ignored directory's contents were readable through the MCP glob**
+  (regression introduced with #228, caught the same day). `withheld_paths`
+  reused the engine's *attribution* lookup, which deliberately drops
+  ancestor-inherited exclusions — a tracked file under a directory that
+  `--no-index` reports excluded is not really ignored (#153). For the diff,
+  whose paths are tracked by construction, that is right; for a reader walking
+  the working tree it is exactly wrong, because `.venv/x.py` is ignored *by*
+  the `.venv/` rule on its parent. `git check-ignore` called those paths
+  ignored while the engine called them servable, so `get_file_context` and
+  `diffctx_context` would return the contents of `.venv/`, `dist/`, `target/`
+  and any repository's `secrets/`. Fixed with a lookup that keeps
+  ancestor-inherited matches; `.git/` is withheld outright — it is not
+  gitignored at all, and `.git/config` carries the remote URL.
+- **The glob reader applies the tree-mode noise filter again**: unifying it
+  onto the engine alone (#228) also dropped `node_modules/`, `target/` and
+  lock files from `get_file_context`, contradicting the tool's own
+  description. Both filters now apply there — the noise spec `get_tree_map`
+  uses, and the engine as the security floor. `fetch_fragments` keeps the
+  engine alone, which is what makes a ranked `build/gen.py` fetchable.
+
+- **One secret-path policy for every surface** (#227): tree mode kept its own,
+  shorter list, so `.netrc`, `credentials`, `_netrc`, `.npmrc`, `.pypirc`,
+  `id_*_sk`, `*.ppk`, `*.p8` and `*.asc` — all withheld by diff mode — were
+  printed in full by `diffctx .`. Tree mode now asks the engine
+  (`_diffctx.is_secret_path`), unconditionally: `--no-default-ignores` drops
+  the noise filters, never the secret policy, the same contract diff mode has.
+- **The MCP fetch refuses exactly what the engine withholds** (#228). It
+  re-derived admissibility with pathspec, so it served a `.netrc` the
+  selection had refused and refused a `build/gen.py` the selection had
+  ranked. `fragment_ids` and the legacy glob reader now ask the engine
+  (`_diffctx.withheld_paths`: secret by name, or ignored as `git check-ignore`
+  resolves `.gitignore` / `.diffctx/ignore`) in one batched call. Outside a
+  git work tree — the legacy reader accepts any directory — git runs with a
+  scratch `--git-dir`, so `.diffctx/ignore` binds there too.
+
 ### Fixed
+
+- **`--budget` now covers the whole artifact** (#241). It bounded only the
+  fragments: the commit message and the changed/deleted/renamed/lockfile/
+  ignored path lists rendered for free, and the changed-file list was printed
+  twice — once in full, once again as a "not represented" footer. On an
+  83-file range `--budget 1000` produced 3 150 tokens and `--budget 0`
+  produced 2 464, with the selection dutifully under budget the whole time.
+  The summary is charged before selection starts and printed once, with
+  omitted entries marked in place. A budget too small to hold the summary now
+  yields the summary and no fragments — a changed path is never dropped to fit.
+- **One generated file can no longer take the budget from every other changed
+  file** (#238). Cores that miss the core-budget reservation are swept
+  cheapest-first, and that sweep applied no per-file ceiling — so a changed
+  `records.json`, whose record-sized cores are the cheapest candidates in the
+  run, refilled the whole budget while the files it was deferred behind got
+  nothing. The sweep now runs in two rounds: the ceiling holds in the first,
+  and only what it blocked is replayed in the second, so unclaimed budget
+  still flows back.
+- **The Kubernetes edge builder emitted nothing at all** (#226). Detection ran
+  per fragment and required `apiVersion:` and `kind:` in the same one, but the
+  YAML parser splits a manifest by top-level key — so no fragment of any
+  manifest ever qualified and all six channels (selector→workload, configmap,
+  secret, service, volume, image) were dead. Detection runs on the file, whose
+  text is rebuilt from its fragments by line number, and each edge is anchored
+  on the smallest fragment covering the construct it is about.
+- **The deadline test measured the repository's history, not the deadline.**
+  It asked for `HEAD~20`, which stopped exceeding the ceiling when the history
+  was squashed into epochs; it now runs the root commit to HEAD, the largest
+  diff the repo can produce.
+- **`python -m eval equivalence` could not fail** (#233): the CLI dispatcher
+  discarded each subcommand's return value, so the gate printed
+  "EQUIVALENCE FAILED" and exited 0. Any CI job wired to the documented
+  invocation was decorative.
+
+- **A POSIX filename containing a backslash keeps its name and its own
+  content** (#239). Every path written into output — and the `rev:path` spec
+  handed to `git show` — rewrote `\` to `/`, so with `src\utils.py`
+  (changed) and `src/utils.py` (untouched) both present, the changed file was
+  listed under the other's name and rendered with the other's body. All
+  eight sites now go through `paths.rs`, which rewrites only on Windows.
+- **The corpus harness anchors a pure deletion where git does.** The
+  in-memory diff started a deletion-only hunk one line below git's
+  `@@ -5 +4,0 @@`, so `core_selection_range` — and therefore every
+  deletion-carrying corpus case — scored a selection production never
+  produces. Pinned by a test that compares both sides on the same deletion.
+- **A truncated generated fragment costs what it weighs**: it carried
+  `token_count: 0`, free for the budget while still rendering in full.
+- **`cat-file --batch` stays in sync**: a swallowed record terminator used to
+  shift the stream one byte for every later read, and a child that could not
+  be queried counted as alive and was never restarted.
+- **Naming only files roots the tree at their common parent**, not the
+  current directory, so `.diffctx/ignore` and relative paths resolve where
+  the files live; the wrapper node is named after that root instead of ".".
+- **A failed native import no longer buries the error being handled**: the
+  CLI's git-error handler imported the extension inside the `except` clause.
+- **The quotient-graph registry holds the graphs it keys by `id()`**; a
+  collected graph's recycled id could label the next graph with the wrong
+  node keys.
+- Boltzmann objective: the selection reason is decided after the loop, cores
+  count toward the reported utility, and overlap goes through the shared
+  `IntervalIndex` instead of a fourth hand-written check.
+
+### Changed
+
+- **The landing page's headline comparison names its source.** It shipped
+  `48,210 → 6,930 tokens, 7×` with no provenance on the page and none in the
+  repository either; three independent first-visit probes each reached the
+  same verdict — the one number meant to justify adoption could not be checked.
+  It now reads 768,268 → 43,769 (17.6×), measured on
+  home-assistant/core@1d885bd0 (66 files changed) with the command printed
+  beside it, and says plainly that the ratio tracks how much of the changed
+  files is unrelated to the change. A test gates the provenance, not the value.
+
+- **The GIL is released for the last three heavy extension calls** (#245):
+  `build_project_graph` (a full repository walk plus a tree-sitter parse of
+  every file), `resolve_diff_range` (spawns `git`) and `count_tokens`. Held
+  under the GIL these blocked every other thread in the host interpreter for
+  their whole duration, which is precisely the wall-clock a latency column is
+  supposed to attribute to diffctx.
+- **The eval sweep no longer runs 45 duplicate cells** (#233): `depth` reaches
+  the runner only when it is non-negative, but `internal-bm25`, `rrf` and
+  `pit` had no depth excludes, so each ran five byte-identical copies of its
+  cell per test set — half the matrix, about a third of the machine hours. The
+  smoke cell also asserts its own result now instead of printing it, and is
+  handed `HF_TOKEN` so dataset reads are not rate-limited.
+
+- **The eval harness's Python dependencies are a `uv` dependency group**
+  (`uv sync --group eval`), locked in `uv.lock` like everything else.
+  `requirements-eval.txt` + `.lock` — a second resolver with its own bot —
+  are gone; `Dockerfile.eval` exports the group with hashes.
+- `paper/v1` left the tree (it lives at tag `paper-v1-grid`); five
+  never-called statistics helpers and `reset_to_commit` left `eval/`.
+- Test hygiene: locate and pack are pinned to each other's `changed` set
+  (pack used to be compared with itself); the path-jail refusal property
+  runs on every example and registers the legacy tools once; the deadline
+  test requires the ceiling to fire; the panic-profile test reads the
+  release table only; the Rust and Python `.diffctx/ignore` anchorers share
+  one fixture table instead of a "mirrors" comment.
+- **A git subprocess whose output could not be read no longer reports an
+  empty diff.** The pipe reader's failure collapsed into an empty buffer
+  returned as success, so an unreadable `git diff` was indistinguishable from
+  a range with no changes. It is an error now. `is_git_repo` likewise stops
+  answering "not a git repository" when git did not run at all (missing from
+  PATH, permission denied): only git's own "no" is a "no".
+- **The weak stopping threshold never ships without the admission gate.**
+  `tau = 0.05` was calibrated with the per-file naming gate on (#65);
+  `--scoring bm25` has no graph to build a gate from and rode the weak stop
+  anyway, re-admitting exactly the diffuse tail the gate blocks. A scorer that
+  produces no gate — BM25, or `DIFFCTX_FILE_ADMISSION=0` — now uses the
+  pre-gate threshold (0.12) unless `--tau` is given explicitly.
+- **A range whose changed-file list is empty still discloses what it
+  withheld**: the third early exit in `resolve_change_set` returned zeroed
+  lock-file, ignored and policy counts it had already computed.
+- **Rust lifetimes no longer break signature extraction.** `'` was a string
+  opener in every language; `fn f<'a>(x: &'a T)` has no closing quote, the
+  scanner swallowed the rest of the line and lost the parameter list, and the
+  stub fell back to two lines cut mid-signature.
+- **`.env` and `.editorconfig` are recognized.** They were registered as
+  extensions, and a dotfile has none, so neither ever entered the candidate
+  universe. A bare lowercase `build` or `workspace` is no longer classified as
+  Bazel — only the capitalized names Bazel actually uses.
+- **Scala imports inside an unbalanced brace group are kept.** The
+  multi-line join consumed up to 32 lines and never re-scanned them, so an
+  `import` in that window vanished; it now stops at the next `import` line.
+  Scala 3 `as` renames split on any whitespace, not the literal single space.
+- **The C-family pairing loop polls the deadline per pair, not per stem
+  bucket** (#210): envoy's 520 files sharing one stem are a single bucket, so
+  the bucket-level poll never fired inside the case it was added for.
+- `scripts/bitcheck.sh` builds the binary it measures. It read whatever
+  `target/release/diffctx` the last `cargo test --release` had left, so a
+  `record`/`check` pair around an unbuilt edit compared one stale binary with
+  itself.
+- The MCP server warns at startup when `DIFFCTX_ALLOWED_PATHS` is unset, so
+  running unconfined is a choice the log records rather than a default nobody
+  sees.
+- CI: `sensitivity-check` installs the pinned Rust toolchain before syncing
+  (the sync compiles the extension); a release run that skipped PyPI attaches
+  its wheels and sdist to the GitHub release instead of shipping none.
+- **An expired compute deadline no longer kills the process.** The release
+  profile set `panic = "abort"`, so the deadline — which fires as a panic on
+  purpose, because the phases it guards return no `Result` — reached a
+  published wheel as SIGABRT instead of an error (measured: signal 6 from a
+  `pip install`ed 1.15.0 wheel). For the MCP server, which abandons a
+  timed-out worker thread and keeps serving, that took every concurrent
+  request down with it. The profile now unwinds, which is what lets PyO3
+  convert a panic into a Python exception at all, and the deadline arrives as
+  `TimeoutError` (`_diffctx.ComputeTimeoutError`) that a caller can catch. The
+  test profile is now the shipped profile: the old `release-unwind` clone is
+  exactly what let this mechanism pass its own test while aborting in
+  production.
+- **A timeout too small for git to answer no longer accuses the repository.**
+  `is_git_repo` collapsed every failure into "false", so `timeout=0` reported
+  a valid repo as "not a git repository" instead of saying it timed out.
+- **The `changed` role is recorded where the substitution happens** (#209),
+  not re-derived from a shared start line in three places (pack render,
+  `locate`, and the post-pass coverage rank, the last scanning every core id
+  per candidate). `SelectionResult::stand_in_ids` carries the fact and
+  `types::carries_change` is the single predicate.
+- **`<script type=>` is read from the AST** rather than scanned out of the
+  start tag's text (#213), so `type = "..."` with spaces around the `=` and
+  single-quoted values are handled by the grammar instead of by hand.
 
 - **The per-file admission gate (#65) now covers every selection path**
   (#211): both post-selection passes and both singleton comparators used to

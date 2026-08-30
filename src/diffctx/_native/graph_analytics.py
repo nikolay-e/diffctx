@@ -22,7 +22,10 @@ _CHURN_WINDOW = "12 months"
 _MERMAID_NODE_LINE = re.compile(r'^\s*(n\d+)\["(.*)"\]\s*$')
 _MERMAID_EDGE_LINE = re.compile(r'^\s*(n\d+) -->\|"(.+): ([0-9.]+)"\| (n\d+)\s*$')
 
-_QUOTIENT_SOURCES: dict[int, tuple[Any, str]] = {}
+# Keyed by id(qg) and therefore MUST hold qg itself: an id is only unique
+# while its object is alive, and a registry that let the graph die handed a
+# recycled id to the next graph, relabelling it with another's node keys.
+_QUOTIENT_SOURCES: dict[int, tuple[Any, Any, str]] = {}
 _QUOTIENT_SOURCES_MAX = 16
 
 
@@ -86,7 +89,7 @@ def quotient_graph(pg: Any, level: str = "directory") -> QuotientGraph:
     qg = _rust_quotient_graph(pg, level)
     if len(_QUOTIENT_SOURCES) >= _QUOTIENT_SOURCES_MAX:
         _QUOTIENT_SOURCES.clear()
-    _QUOTIENT_SOURCES[id(qg)] = (pg, level)
+    _QUOTIENT_SOURCES[id(qg)] = (qg, pg, level)
     return qg
 
 
@@ -94,7 +97,7 @@ def to_mermaid(qg: Any, top_n: int = 50) -> str:
     text = _rust_to_mermaid(qg, top_n)
     source = _QUOTIENT_SOURCES.get(id(qg))
     if source is not None:
-        pg, level = source
+        _, pg, level = source
         labels, edges = _parse_mermaid(_full_mermaid(qg))
         keys = _quotient_node_keys(labels, edges, _rust_coupling_metrics(pg, level, None))
         text = _relabel_mermaid_nodes(text, keys)

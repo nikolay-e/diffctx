@@ -32,7 +32,7 @@ pub fn build_diff_context_in_memory(
 ) -> DiffContextOutput {
     let hunks = compute_memory_hunks(&repo.initial_files, &repo.changed_files);
     if hunks.is_empty() {
-        return empty_output(&repo.name);
+        return DiffContextOutput::empty(&repo.name);
     }
 
     let diff_text = compute_memory_diff_text(&repo.initial_files, &repo.changed_files);
@@ -124,19 +124,26 @@ pub fn build_diff_context_in_memory(
 
     let needs = crate::utility::needs::needs_from_diff(&all_fragments, &core_ids, &diff_text);
 
-    let (mut selected, _, _) = crate::pipeline::select_and_postpass(
+    // The same envelope charge the product pipeline applies (#241): a harness
+    // that spends the budget differently scores a system nobody runs (#149).
+    let mut listed: Vec<String> = changed_paths.iter().cloned().collect();
+    listed.sort();
+    let selection_budget =
+        effective_budget.saturating_sub(crate::pipeline::envelope_token_cost(None, &listed));
+
+    let (mut selected, _, _, stand_in_ids) = crate::pipeline::select_and_postpass(
         &scoring_result,
         &all_fragments,
         &core_ids,
         &needs,
         &core_excerpts,
         config.objective,
-        effective_budget,
+        selection_budget,
         tau,
     );
 
     let used: u32 = selected.iter().map(|f| f.token_count).sum();
-    let remaining = effective_budget.saturating_sub(used);
+    let remaining = selection_budget.saturating_sub(used);
     let changed_files: Vec<PathBuf> = changed_paths.iter().map(PathBuf::from).collect();
     crate::postpass::ensure_changed_files_represented(
         &mut selected,
@@ -148,6 +155,7 @@ pub fn build_diff_context_in_memory(
         None,
         &core_ids,
         &FxHashMap::default(),
+        &stand_in_ids,
     );
 
     let dummy_root = Path::new(".");
@@ -167,6 +175,7 @@ pub fn build_diff_context_in_memory(
         &selected,
         no_content,
         &core_ids,
+        &stand_in_ids,
         &scoring_result.rel_scores,
         change,
     )
@@ -219,13 +228,25 @@ fn diff_to_hunks(path: &Arc<str>, old: &str, new: &str) -> Vec<DiffHunk> {
     let mut hunk_old_start: u32 = 0;
     let mut hunk_old_len: u32 = 0;
 
+    // git's `--unified=0` reports a pure deletion's new-side start as the
+    // line BEFORE the gap (`@@ -5 +4,0 @@`), and `core_selection_range`
+    // anchors on that. Starting at `new_line + 1` here put the harness one
+    // line below production for every deletion-only hunk, so the corpus
+    // scored a selection nobody ships.
+    let finish = |start: u32, new_len: u32| {
+        if new_len == 0 {
+            start.saturating_sub(1)
+        } else {
+            start
+        }
+    };
     for change in diff.iter_all_changes() {
         match change.tag() {
             ChangeTag::Equal => {
                 if let Some(start) = hunk_new_start.take() {
                     hunks.push(DiffHunk {
                         path: Arc::clone(path),
-                        new_start: start,
+                        new_start: finish(start, hunk_new_len),
                         new_len: hunk_new_len,
                         old_start: hunk_old_start,
                         old_len: hunk_old_len,
@@ -258,7 +279,7 @@ fn diff_to_hunks(path: &Arc<str>, old: &str, new: &str) -> Vec<DiffHunk> {
     if let Some(start) = hunk_new_start {
         hunks.push(DiffHunk {
             path: Arc::clone(path),
-            new_start: start,
+            new_start: finish(start, hunk_new_len),
             new_len: hunk_new_len,
             old_start: hunk_old_start,
             old_len: hunk_old_len,
@@ -323,19 +344,111 @@ fn merge_file_contents(
     merged
 }
 
-fn empty_output(name: &str) -> DiffContextOutput {
-    DiffContextOutput {
-        lockfile_changes: Vec::new(),
-        ignored_changes: Vec::new(),
-        policy_excluded_count: 0,
-        name: name.to_string(),
-        output_type: "diff_context".to_string(),
-        commit_message: None,
-        changed_files: Vec::new(),
-        deleted_files: Vec::new(),
-        renamed_files: Vec::new(),
-        fragment_count: 0,
-        fragments: Vec::new(),
-        latency: None,
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The same deletion through both parsers: the harness's in-memory differ
+    /// and git's own `--unified=0` output through the production parser.
+    ///
+    /// The sibling test below compares against a hand-written `DiffHunk`, which
+    /// cannot notice `git.rs` drifting away from it — the harness would go on
+    /// scoring a system nobody ships and the literal would still be green
+    /// (#245). This one has no literal: git produces the bytes.
+    #[test]
+    fn both_pipelines_anchor_a_pure_deletion_identically() {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let old_file = tmp.path().join("old.py");
+        let new_file = tmp.path().join("new.py");
+        let old = "l1\nl2\nl3\nl4\nl5\nl6\nl7\n";
+        let new = "l1\nl2\nl3\nl4\nl6\nl7\n";
+        std::fs::write(&old_file, old).expect("write old");
+        std::fs::write(&new_file, new).expect("write new");
+
+        // `--no-index` needs no repository and emits exactly the header and
+        // hunk syntax `parse_diff` consumes in production.
+        let output = std::process::Command::new("git")
+            .args(["diff", "--no-index", "--unified=0", "-M"])
+            .arg(&old_file)
+            .arg(&new_file)
+            .output()
+            .expect("git diff --no-index");
+        let diff_text = String::from_utf8_lossy(&output.stdout);
+        let from_git = crate::git::parse_hunks_from_diff_output(&diff_text, tmp.path());
+        assert_eq!(from_git.len(), 1, "git reported {diff_text:?}");
+
+        let path: Arc<str> = Arc::from("f.py");
+        let from_harness = diff_to_hunks(&path, old, new);
+        assert_eq!(from_harness.len(), 1);
+
+        assert_eq!(
+            (
+                from_harness[0].new_start,
+                from_harness[0].new_len,
+                from_harness[0].old_start,
+                from_harness[0].old_len
+            ),
+            (
+                from_git[0].new_start,
+                from_git[0].new_len,
+                from_git[0].old_start,
+                from_git[0].old_len
+            ),
+            "the harness anchors a pure deletion where git does not"
+        );
+        assert_eq!(
+            from_harness[0].core_selection_range(),
+            from_git[0].core_selection_range(),
+            "same hunk, different core window"
+        );
+    }
+
+    /// The harness and production must anchor a pure deletion on the same
+    /// line. git's `--unified=0` reports the deletion of old line 5 as
+    /// `@@ -5 +4,0 @@` — new-side start is the line BEFORE the gap — and
+    /// `core_selection_range` anchors on that value; the in-memory path used
+    /// to start one line later, so the corpus scored a selection nobody ships.
+    #[test]
+    fn a_pure_deletion_anchors_where_git_anchors_it() {
+        let path: Arc<str> = Arc::from("f.py");
+        let old = "l1\nl2\nl3\nl4\nl5\nl6\nl7\n";
+        let new = "l1\nl2\nl3\nl4\nl6\nl7\n";
+        let hunks = diff_to_hunks(&path, old, new);
+        assert_eq!(hunks.len(), 1);
+        let from_git = DiffHunk {
+            path: path.clone(),
+            new_start: 4,
+            new_len: 0,
+            old_start: 5,
+            old_len: 1,
+        };
+        assert_eq!(
+            (
+                hunks[0].new_start,
+                hunks[0].new_len,
+                hunks[0].old_start,
+                hunks[0].old_len
+            ),
+            (
+                from_git.new_start,
+                from_git.new_len,
+                from_git.old_start,
+                from_git.old_len
+            )
+        );
+        assert_eq!(
+            hunks[0].core_selection_range(),
+            from_git.core_selection_range()
+        );
+
+        // A deletion at the very top: git says `@@ -1 +0,0 @@`, and both
+        // sides clamp the anchor to line 1.
+        let hunks = diff_to_hunks(&path, "a\nb\n", "b\n");
+        assert_eq!((hunks[0].new_start, hunks[0].new_len), (0, 0));
+        assert_eq!(hunks[0].core_selection_range(), (1, 1));
+
+        // A replacement keeps its start: no off-by-one the other way.
+        let hunks = diff_to_hunks(&path, "a\nb\nc\n", "a\nB\nc\n");
+        assert_eq!((hunks[0].new_start, hunks[0].new_len), (2, 1));
     }
 }

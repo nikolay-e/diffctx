@@ -82,7 +82,7 @@ keeps its git meaning.
 | Flag        | Default | Description                                                              |
 |-------------|---------|--------------------------------------------------------------------------|
 | `--scoring` | `ego`   | `ego` = bounded expansion around changed nodes (fast, predictable radius); `ppr` = Personalized PageRank (global, smoother decay, slower); `bm25` = lexical retrieval against the diff hunks (baseline for sparse graphs); `rrf` = reciprocal-rank fusion of `ego` and `bm25` (widest recall, no scale calibration between the two signals) |
-| `--budget`  | auto    | Hard cap in o200k_base tokens (see [Token counting](docs/product/token-budget.md)): `N` enforces a fixed cap, `-1` disables it, `0` is a strict-zero floor (empty selection; use `--full` for changed files only) |
+| `--budget`  | auto    | Cap in o200k_base tokens on the whole artifact (see [Token counting](docs/product/token-budget.md)): the change summary is charged first and the selection gets what is left, so a budget smaller than the summary yields the summary alone. `N` = fixed cap, `-1` disables it, `0` is a strict-zero floor (no fragments; use `--full` for changed files only) |
 | `--alpha`   | 0.60    | PPR damping; higher = context clusters tighter around changes (`--scoring ppr` only) |
 | `--tau`     | 0.05    | Relevance threshold for full fragment content; lower-scoring fragments are stubbed or dropped (lower = more context) |
 | `--full`    | false   | Only the changed files, every fragment, no related-code context          |
@@ -141,7 +141,7 @@ from diffctx import build_diff_context, map_directory, to_json, to_markdown, to_
 ctx = build_diff_context(
     Path("."),
     "HEAD~1..HEAD",
-    budget_tokens=None,       # None = auto; 0 = strict-zero floor (empty); -1 = uncapped; N = hard cap
+    budget_tokens=None,       # None = auto; 0 = no fragments; -1 = uncapped; N = cap on the whole artifact
     alpha=0.6,
     tau=0.05,
     full=False,

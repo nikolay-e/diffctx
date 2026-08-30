@@ -149,3 +149,32 @@ class TestNativeModuleStub:
             target.id for node in tree.body if isinstance(node, ast.AnnAssign) and isinstance(target := node.target, ast.Name)
         }
         assert stubbed == runtime, f"stub-only: {stubbed - runtime}; runtime-only: {runtime - stubbed}"
+
+
+class TestLandingPageClaims:
+    """The landing page is where a stranger decides whether to adopt the tool.
+
+    Its headline comparison shipped for months as `48,210 -> 6,930 tokens, 7x`
+    with no source anywhere — not on the page, not in the repository. Three
+    independent first-visit probes all reached the same verdict: the one number
+    meant to justify adoption could not be checked. A figure a reader cannot
+    reproduce is worth less than no figure, so the gate is provenance, not the
+    value: the stat block must name a public commit and the command that
+    produces it. The numbers themselves are deliberately NOT pinned here — they
+    move with the engine, and a test that froze them would only teach the next
+    author to edit the test.
+    """
+
+    @staticmethod
+    def _ratio_block() -> str:
+        html = (PROJECT_ROOT / "docs" / "index.html").read_text(encoding="utf-8")
+        start = html.index('<div class="ratio">')
+        return html[start : html.index("</div>", html.index('class="source"'))]
+
+    def test_the_headline_comparison_names_its_source(self):
+        block = self._ratio_block()
+        assert re.search(
+            r'href="https://github\.com/[^"]+/commit/[0-9a-f]{7,40}"', block
+        ), "the headline stat must link the commit it was measured on"
+        assert "diffctx . --diff" in block, "the headline stat must show the command that reproduces it"
+        assert "o200k" in block, "the headline stat must name the tokenizer it counted with"

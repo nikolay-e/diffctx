@@ -33,10 +33,20 @@ unparsed template touched by a single hunk cannot drag in the whole repo as
 "context". The result is clamped to `[8 000, 48 000]`.
 
 **On large real-world diffs it saturates at the 48 000 ceiling**, and output
-tracks whatever budget it is given almost exactly — measured on one
-react-native commit: `--budget 8000` produced 8 823 markdown tokens, `16000`
-produced 16 889, `48000` produced 48 117, and auto produced 48 396. So on a wide
-change the default spends 48k, and the way to spend less is to say so.
+stays within whatever budget it is given. It did not always: until #241 the
+budget bounded only the fragments, so the change summary — commit message plus
+the changed/deleted/renamed/lockfile/ignored path lists — rendered for free and
+was printed twice, once in full and once again as a "not represented" footer.
+On an 83-file range that put `--budget 1000` at 3 150 tokens and `--budget 0`
+at 2 464, with the selection dutifully under budget the whole time. The summary
+is now charged before selection starts and printed once, with omitted entries
+marked in place.
+
+One consequence is deliberate: when the summary alone exceeds the budget, the
+summary is what you get and no fragment is selected. A changed path is never
+dropped to fit — a reader who cannot see what changed is worse off than one who
+is over budget — so on a very wide change a very small `--budget` is a request
+the artifact cannot honour, and it says so by containing nothing else.
 
 Whether 48k is the right ceiling is open (#167). The measured trade on
 react-native, all 35 cases scored twice: dropping to `--budget 8000` costs

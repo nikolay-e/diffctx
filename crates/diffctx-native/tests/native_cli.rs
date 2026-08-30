@@ -250,3 +250,59 @@ fn locate_mode_rejects_full_and_survives_empty_diffs() {
     let doc: serde_json::Value = serde_json::from_slice(&empty.stdout).expect("valid JSON");
     assert_eq!(doc["item_count"], 0);
 }
+
+/// #239: on POSIX a backslash is an ordinary filename byte. Every path that
+/// reached output — and, worse, the `rev:path` spec handed to `git show` —
+/// rewrote it to `/`, so with both `src\utils.py` (changed) and `src/utils.py`
+/// (untouched) present, the changed file was listed under the other's name
+/// and rendered with the other's body.
+#[cfg(not(windows))]
+#[test]
+fn a_backslash_filename_keeps_its_name_and_its_own_content() {
+    let tmp = TempDir::new().unwrap();
+    let repo = tmp.path();
+    init_repo(repo);
+    std::fs::create_dir_all(repo.join("src")).unwrap();
+    std::fs::write(repo.join("src/utils.py"), "def b():\n    return 2\n").unwrap();
+    std::fs::write(repo.join("src\\utils.py"), "def a():\n    return 1\n").unwrap();
+    commit_all(repo, "both files");
+    std::fs::write(repo.join("src\\utils.py"), "def a():\n    return 11\n").unwrap();
+    commit_all(repo, "change only the backslash one");
+
+    let out = run(repo, &[".", "--diff", "HEAD~1..HEAD", "-f", "json"]);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let parsed: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+
+    let changed: Vec<&str> = parsed["changed_files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|v| v.as_str())
+        .collect();
+    assert_eq!(
+        changed,
+        vec!["src\\utils.py"],
+        "the changed file is named as it is spelled"
+    );
+
+    let changed_frag = parsed["fragments"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["role"] == "changed")
+        .expect("a changed fragment");
+    assert_eq!(changed_frag["path"], "src\\utils.py");
+    assert!(
+        changed_frag["content"]
+            .as_str()
+            .unwrap()
+            .contains("return 11"),
+        "the changed fragment must carry the backslash file's own body, got {}",
+        changed_frag["content"]
+    );
+}

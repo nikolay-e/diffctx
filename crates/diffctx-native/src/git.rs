@@ -299,6 +299,23 @@ pub fn run_git(repo_root: &Path, args: &[&str]) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
+fn collect_pipe(
+    handle: Option<std::thread::JoinHandle<std::io::Result<Vec<u8>>>>,
+    name: &str,
+) -> Result<Vec<u8>> {
+    match handle {
+        None => Ok(Vec::new()),
+        Some(h) => h
+            .join()
+            .map_err(|_| {
+                GitError::Io(std::io::Error::other(format!(
+                    "git {name} reader thread panicked"
+                )))
+            })?
+            .map_err(GitError::Io),
+    }
+}
+
 fn wait_with_timeout(
     child: Child,
     timeout: Duration,
@@ -329,14 +346,11 @@ fn wait_with_timeout(
         }
     };
 
-    let stdout = stdout_handle
-        .and_then(|h| h.join().ok())
-        .and_then(|r| r.ok())
-        .unwrap_or_default();
-    let stderr = stderr_handle
-        .and_then(|h| h.join().ok())
-        .and_then(|r| r.ok())
-        .unwrap_or_default();
+    // A reader that failed or panicked used to collapse into an empty
+    // buffer returned as success — an unreadable `git diff` then looked
+    // exactly like a diff with nothing in it.
+    let stdout = collect_pipe(stdout_handle, "stdout")?;
+    let stderr = collect_pipe(stderr_handle, "stderr")?;
 
     Ok(std::process::Output {
         status,
@@ -345,8 +359,19 @@ fn wait_with_timeout(
     })
 }
 
-pub fn is_git_repo(path: &Path) -> bool {
-    run_git(path, &["rev-parse", "--git-dir"]).is_ok()
+/// `Err` when git could not answer at all — a timeout above all. Collapsing
+/// that into "not a repository" is how a `timeout` too small to let
+/// `rev-parse` finish reported a perfectly good repo as not one, sending the
+/// reader after the wrong problem entirely.
+pub fn is_git_repo(path: &Path) -> std::result::Result<bool, GitError> {
+    match run_git(path, &["rev-parse", "--git-dir"]) {
+        Ok(_) => Ok(true),
+        // git ran and said no: that is the one honest "false".
+        Err(GitError::CommandFailed(_)) => Ok(false),
+        // git did not run at all (not on PATH, permission denied) or did not
+        // answer in time — neither says anything about the directory.
+        Err(e) => Err(e),
+    }
 }
 
 /// Resolves the actual working-tree root for `path`, which may be a
@@ -727,7 +752,13 @@ pub fn split_diff_range(range: &str) -> (Option<String>, Option<String>) {
 
 pub fn show_file_at_revision(repo_root: &Path, rev: &str, rel_path: &Path) -> Result<String> {
     validate_rev(rev)?;
-    let spec = format!("{}:{}", rev, rel_path.to_string_lossy().replace('\\', "/"));
+    // The spec names a blob: a rewritten separator asks git for a different
+    // file, and on POSIX `src\utils.py` and `src/utils.py` can both exist.
+    let spec = format!(
+        "{}:{}",
+        rev,
+        crate::paths::to_posix_display(rel_path.to_string_lossy())
+    );
     run_git(repo_root, &["show", &spec])
 }
 
@@ -759,9 +790,11 @@ pub fn get_untracked_files(repo_root: &Path) -> Result<Vec<PathBuf>> {
 
 /// Rewrites one `.diffctx/ignore` pattern line to be anchored to the
 /// directory that contains the `.diffctx/` folder (`rel`, repo-root-relative,
-/// "" for the repo root itself). Mirrors `_process_ignore_line` in the
-/// Python tree-mode ignore resolver (`src/diffctx/ignore.py`) so a pattern
-/// declared in `sub/.diffctx/ignore` only ever matches within `sub/`.
+/// "" for the repo root itself), so a pattern declared in `sub/.diffctx/ignore`
+/// only ever matches within `sub/`. The Python tree-mode resolver
+/// (`ignore.py::_process_ignore_line`) implements the same rule; both are
+/// held to `tests/fixtures/ignore_anchor_cases.json`, not to each other's
+/// comments.
 fn anchor_diffctx_ignore_line(line: &str, rel: &str) -> String {
     let (neg, pat) = match line.strip_prefix('!') {
         Some(rest) => (true, rest),
@@ -845,10 +878,44 @@ fn create_new_private_file(path: &Path) -> std::io::Result<std::fs::File> {
 /// Finds every `.diffctx/ignore` file tracked or present in `repo_root`
 /// (any depth) and returns its patterns rewritten to be repo-root-relative,
 /// ready to feed into a combined gitignore-syntax exclude file.
-fn collect_diffctx_ignore_patterns(repo_root: &Path) -> Vec<String> {
-    let Ok(files) = run_git_z(
-        repo_root,
-        &[
+/// `check-ignore` and `ls-files` refuse to run outside a work tree, but the
+/// MCP file reader accepts any directory. A scratch `--git-dir` with the
+/// directory as `--work-tree` lets git's own ignore engine answer for a plain
+/// folder too — the alternative was a second matcher in Python, which is how
+/// `.netrc` got served while selection withheld it (#228).
+fn scratch_git_dir(repo_root: &Path) -> Option<PathBuf> {
+    if is_git_repo(repo_root).unwrap_or(true) {
+        return None;
+    }
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir =
+        std::env::temp_dir().join(format!("diffctx-scratch-git-{}-{seq}", std::process::id()));
+    let ok = Command::new("git")
+        .args(["init", "-q"])
+        .arg(&dir)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    ok.then_some(dir)
+}
+
+fn scratch_git_args(scratch: Option<&Path>, repo_root: &Path) -> Vec<String> {
+    match scratch {
+        Some(dir) => vec![
+            format!("--git-dir={}", dir.join(".git").display()),
+            format!("--work-tree={}", repo_root.display()),
+        ],
+        None => Vec::new(),
+    }
+}
+
+fn collect_diffctx_ignore_patterns(repo_root: &Path, scratch: Option<&Path>) -> Vec<String> {
+    let mut args = scratch_git_args(scratch, repo_root);
+    args.extend(
+        [
             "ls-files",
             "-z",
             "--cached",
@@ -856,8 +923,11 @@ fn collect_diffctx_ignore_patterns(repo_root: &Path) -> Vec<String> {
             "--exclude-standard",
             "--",
             ":(glob)**/.diffctx/ignore",
-        ],
-    ) else {
+        ]
+        .map(String::from),
+    );
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let Ok(files) = run_git_z(repo_root, &arg_refs) else {
         return Vec::new();
     };
 
@@ -916,11 +986,35 @@ pub fn find_ignored_paths_with_source(
     repo_root: &Path,
     rel_paths: &[String],
 ) -> rustc_hash::FxHashMap<String, IgnoreSource> {
+    find_ignored_paths_inner(repo_root, rel_paths, true)
+}
+
+/// Every path git calls ignored, ancestor-inherited exclusions included.
+///
+/// The attribution variant above deliberately drops those (a tracked file
+/// under a directory the `--no-index` query reports excluded is not really
+/// ignored — #153). That rule is right for the diff, whose paths are tracked
+/// by construction, and wrong for anything that walks the working tree: there
+/// `.venv/`, `dist/` and `target/` are ignored precisely BY their directory
+/// rule, and answering "not ignored" for their contents is how a glob reader
+/// served files the repository excludes.
+pub fn find_ignored_paths_any(repo_root: &Path, rel_paths: &[String]) -> FxHashSet<String> {
+    find_ignored_paths_inner(repo_root, rel_paths, false)
+        .into_keys()
+        .collect()
+}
+
+fn find_ignored_paths_inner(
+    repo_root: &Path,
+    rel_paths: &[String],
+    drop_ancestor_inherited: bool,
+) -> rustc_hash::FxHashMap<String, IgnoreSource> {
     if rel_paths.is_empty() {
         return rustc_hash::FxHashMap::default();
     }
 
-    let diffctx_patterns = collect_diffctx_ignore_patterns(repo_root);
+    let scratch = scratch_git_dir(repo_root);
+    let diffctx_patterns = collect_diffctx_ignore_patterns(repo_root, scratch.as_deref());
     let temp_excludes = if diffctx_patterns.is_empty() {
         None
     } else {
@@ -953,13 +1047,14 @@ pub fn find_ignored_paths_with_source(
     // published. Verified against git directly — line mode reports the
     // truncated stem, NUL mode reports the whole path. The rest of this module
     // is already `-z` throughout.
-    let mut args: Vec<String> = vec![
+    let mut args: Vec<String> = scratch_git_args(scratch.as_deref(), repo_root);
+    args.extend([
         "check-ignore".into(),
         "--no-index".into(),
         "-v".into(),
         "-z".into(),
         "--stdin".into(),
-    ];
+    ]);
     if let Some(ref path) = temp_excludes {
         args.insert(0, format!("core.excludesFile={}", path.display()));
         args.insert(0, "-c".into());
@@ -1009,9 +1104,10 @@ pub fn find_ignored_paths_with_source(
                     .is_some_and(|src| rule.starts_with(&format!("{src}:")));
                 if from_diffctx {
                     Some((rel.clone(), IgnoreSource::DiffctxPolicy))
-                } else if !ancestor_dirs(rel)
-                    .iter()
-                    .any(|dir| rules.get(dir) == Some(rule))
+                } else if !drop_ancestor_inherited
+                    || !ancestor_dirs(rel)
+                        .iter()
+                        .any(|dir| rules.get(dir) == Some(rule))
                 {
                     Some((rel.clone(), IgnoreSource::Gitignore))
                 } else {
@@ -1026,6 +1122,9 @@ pub fn find_ignored_paths_with_source(
     }
     if let Some(path) = query_file {
         let _ = std::fs::remove_file(path);
+    }
+    if let Some(dir) = scratch {
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     // Fail closed only where a policy was actually declared.
@@ -1142,7 +1241,9 @@ impl CatFileBatch {
     fn ensure_started(&mut self) -> Result<()> {
         let needs_restart = match &mut self.child {
             None => true,
-            Some(child) => child.try_wait().ok().flatten().is_some(),
+            // `Err` from try_wait is not "still running": a child that cannot
+            // be queried cannot be trusted with the next request either.
+            Some(child) => !matches!(child.try_wait(), Ok(None)),
         };
 
         if needs_restart {
@@ -1167,7 +1268,7 @@ impl CatFileBatch {
         let spec = format!(
             "{}:{}\n",
             rev,
-            rel_path.to_string_lossy().replace('\\', "/")
+            crate::paths::to_posix_display(rel_path.to_string_lossy())
         );
 
         self.ensure_started()?;
@@ -1229,7 +1330,7 @@ impl CatFileBatch {
                 remaining -= want;
             }
             let mut trailing = [0u8; 1];
-            let _ = reader.read_exact(&mut trailing);
+            reader.read_exact(&mut trailing)?;
             return Err(GitError::CommandFailed(format!(
                 "cat-file: blob too large ({} bytes): {}",
                 size,
@@ -1240,8 +1341,10 @@ impl CatFileBatch {
         let mut content = vec![0u8; size];
         reader.read_exact(&mut content)?;
 
+        // The record terminator is part of the protocol: failing to consume it
+        // leaves the stream one byte off for every `get()` after this one.
         let mut trailing = [0u8; 1];
-        let _ = reader.read_exact(&mut trailing);
+        reader.read_exact(&mut trailing)?;
 
         Ok(String::from_utf8_lossy(&content).into_owned())
     }
@@ -1269,6 +1372,25 @@ impl Drop for CatFileBatch {
 
 #[cfg(test)]
 mod tests {
+    /// Shared with `tests/test_ignore_anchor_fixture.py`: one table, two
+    /// implementations, no "mirrors" comment to drift.
+    #[test]
+    fn diffctx_ignore_anchoring_matches_the_shared_fixture() {
+        let raw = include_str!("../../../tests/fixtures/ignore_anchor_cases.json");
+        let cases: Vec<serde_json::Value> = serde_json::from_str(raw).unwrap();
+        assert!(!cases.is_empty());
+        for case in cases {
+            let line = case["line"].as_str().unwrap();
+            let rel = case["rel"].as_str().unwrap();
+            let expected = case["expected"].as_str().unwrap();
+            assert_eq!(
+                super::anchor_diffctx_ignore_line(line, rel),
+                expected,
+                "line={line:?} rel={rel:?}"
+            );
+        }
+    }
+
     use super::*;
     use std::fs;
     use std::sync::Barrier;

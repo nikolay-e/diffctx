@@ -63,7 +63,11 @@ def main() -> None:
     import importlib
 
     mod = importlib.import_module(f"eval.{module_name}")
-    mod.main()
+    # A subcommand's exit code is the only thing a gate can be wired to, and
+    # this call used to discard it: `python -m eval equivalence` printed
+    # "EQUIVALENCE FAILED" and exited 0, so any CI job invoking the documented
+    # form was a gate that could never fail (#233).
+    raise SystemExit(mod.main())
 
 
 if __name__ == "__main__":

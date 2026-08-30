@@ -5,7 +5,7 @@ name: eval-sweep
 # Two modes (select at dispatch):
 #   smoke — GitHub-hosted ubuntu-latest, 1 cell (ppr×64000×swebench_verified),
 #            5 instances, no Hetzner provisioning. Quick sanity check.
-#   full  — Hetzner CCX63 (4 × self-hosted runners), complete 5×5×3 matrix,
+#   full  — Hetzner CCX63 (4 × self-hosted runners), complete 75-cell matrix,
 #            baked repo cache. Production sweep.
 #
 # Trigger via workflow_dispatch. Results are committed to eval-results/sweep.
@@ -29,8 +29,6 @@ env:
   IMAGE_REF: ghcr.io/${{ github.repository_owner }}/diffctx-eval:latest
   MANIFESTS_SUBDIR: v1
   TIMEOUT_PER_INSTANCE: '600'
-  TAU: '0.12'
-  CORE_BUDGET_FRACTION: '0.5'
   RESULTS_BRANCH: eval-results/sweep
   SERVER_TAG: eval-${{ github.run_id }}-${{ github.run_attempt }}
 
@@ -254,8 +252,6 @@ jobs:
       CELL_TAG: ${{ matrix.method }}_b${{ matrix.budget }}_${{ matrix.test_set }}
       CELL_DIR: results/sweep/${{ matrix.method }}_b${{ matrix.budget }}_${{ matrix.test_set }}
       MANIFESTS_DIR: datasets/eval-splits/v1
-      INPUT_TAU: '0.12'
-      INPUT_CBF: '0.5'
       INPUT_TIMEOUT: '120'
       INPUT_MANIFESTS_SUBDIR: v1
     steps:
@@ -272,8 +268,7 @@ jobs:
               "method": "${{ matrix.method }}",
               "budget": ${{ matrix.budget }},
               "test_set": "${{ matrix.test_set }}",
-              "tau": ${INPUT_TAU},
-              "core_budget_fraction": ${INPUT_CBF}
+              "operating_point": "winner.json"
             },
             "git": {
               "sha": "${{ github.sha }}",
@@ -341,6 +336,18 @@ jobs:
               ;;
           esac
 
+      # The operating point is whatever the engine ships, read from the
+      # engine — never a literal here. This file carried tau=0.12/cbf=0.5 for
+      # weeks after the v5 calibration moved the default to 0.05/0.4, so a
+      # full sweep measured a configuration nobody was running (#175 again).
+      - name: Resolve the shipped operating point
+        run: |
+          python - >> "$GITHUB_ENV" <<'PY'
+          from diffctx._diffctx import DEFAULT_CORE_BUDGET_FRACTION, DEFAULT_TAU
+          print(f"INPUT_TAU={DEFAULT_TAU}")
+          print(f"INPUT_CBF={DEFAULT_CORE_BUDGET_FRACTION}")
+          PY
+
       - name: Build winner.json
         run: |
           cat > /tmp/winner.json <<JSON
@@ -354,6 +361,7 @@ jobs:
             }
           }
           JSON
+          cp /tmp/winner.json "${CELL_DIR}/winner.json"
         env:
           SCORING: ${{ steps.cfg.outputs.scoring }}
 
@@ -377,6 +385,9 @@ jobs:
             --out "${CELL_DIR}" 2>&1 | tee "${CELL_DIR}/run.log"
         env:
           BASELINE: ${{ steps.cfg.outputs.baseline }}
+          # Unauthenticated Hub reads are rate-limited; the first thing that
+          # breaks on a 500-instance cell (#233).
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
       - name: Per-instance metric summary (always)
         if: always()
@@ -389,6 +400,23 @@ jobs:
             printf '{"error": "no checkpoint produced", "expected_path": "%s"}\n' "${ckpt}" \
               > "${CELL_DIR}/cell_summary.json"
           fi
+
+      # A smoke run that reports "no checkpoint produced" and still goes green
+      # is a check that cannot fail — it passed for months while nothing
+      # asserted anything (#233). Five instances that all apply and produce a
+      # selection is the floor this path exists to defend.
+      - name: Assert the smoke cell actually ran
+        run: |
+          python - "${CELL_DIR}/cell_summary.json" <<'PY'
+          import json, sys
+          summary = json.load(open(sys.argv[1]))
+          if "error" in summary:
+              sys.exit(f"smoke cell produced no checkpoint: {summary}")
+          ok = summary.get("ok") or summary.get("n_ok") or 0
+          if ok < 5:
+              sys.exit(f"smoke cell resolved {ok}/5 instances: {summary}")
+          print(f"smoke cell ok: {summary}")
+          PY
 
       - name: Append cell-end metadata
         if: always()
@@ -413,7 +441,7 @@ jobs:
           overwrite: true
 
   # ============================================================================
-  # 3b. Full sweep — Hetzner CCX63, complete 5×5×3 matrix, baked repo cache
+  # 3b. Full sweep — Hetzner CCX63, 75 cells (see the exclude block), baked repo cache
   # ============================================================================
   sweep-full:
     needs: [prep, provision]
@@ -453,6 +481,22 @@ jobs:
           - {method: bm25, depth: 3}
           - {method: bm25, depth: 4}
           - {method: ego, depth: -1}
+          # `internal-bm25` maps to ScoringMode::Bm25, whose depth comes from
+          # `ego_depth_default` — a hardcoded 1 that `DIFFCTX_OP_GRAPH_DEPTH`
+          # does not reach (config/mode.rs). Its five depth cells were
+          # byte-identical copies of the depth=-1 cell, 15 of the 90.
+          #
+          # `rrf` and `pit` are NOT in that class, though they look like it:
+          # both map to `ego_depth_extended`, which the env override DOES
+          # reach (mode.rs deliberately gives fusion EGO's universe and depth),
+          # so their depth cells are five distinct configurations and the
+          # depth axis is exactly what the #125 fusion question needs. They
+          # were excluded here for one commit on a wrong reading and put back.
+          - {method: internal-bm25, depth: 0}
+          - {method: internal-bm25, depth: 1}
+          - {method: internal-bm25, depth: 2}
+          - {method: internal-bm25, depth: 3}
+          - {method: internal-bm25, depth: 4}
         include:
           # Aider: one budget per cell (B=-1 unlimited and B=0 recall-floor
           # do not apply to a repo-map subprocess).
@@ -495,8 +539,6 @@ jobs:
       CELL_DIR: >-
         results/sweep/${{ matrix.method }}_b${{ matrix.budget || 'ALL' }}_L${{ matrix.depth }}_${{ matrix.test_set }}
       MANIFESTS_DIR: datasets/eval-splits/v1
-      INPUT_TAU: '0.12'
-      INPUT_CBF: '0.5'
       INPUT_TIMEOUT: '600'
       INPUT_MANIFESTS_SUBDIR: v1
     steps:
@@ -514,8 +556,7 @@ jobs:
               "budget": "${{ matrix.budget || 'ALL' }}",
               "depth": ${{ matrix.depth }},
               "test_set": "${{ matrix.test_set }}",
-              "tau": ${INPUT_TAU},
-              "core_budget_fraction": ${INPUT_CBF}
+              "operating_point": "winner.json"
             },
             "git": {
               "sha": "${{ github.sha }}",
@@ -705,6 +746,18 @@ jobs:
               ;;
           esac
 
+      # The operating point is whatever the engine ships, read from the
+      # engine — never a literal here. This file carried tau=0.12/cbf=0.5 for
+      # weeks after the v5 calibration moved the default to 0.05/0.4, so a
+      # full sweep measured a configuration nobody was running (#175 again).
+      - name: Resolve the shipped operating point
+        run: |
+          python - >> "$GITHUB_ENV" <<'PY'
+          from diffctx._diffctx import DEFAULT_CORE_BUDGET_FRACTION, DEFAULT_TAU
+          print(f"INPUT_TAU={DEFAULT_TAU}")
+          print(f"INPUT_CBF={DEFAULT_CORE_BUDGET_FRACTION}")
+          PY
+
       - name: Build winner.json
         run: |
           # Multi-budget cells still need a syntactically valid headline
@@ -721,6 +774,7 @@ jobs:
             }
           }
           JSON
+          cp /tmp/winner.json "${CELL_DIR}/winner.json"
         env:
           SCORING: ${{ steps.cfg.outputs.scoring }}
 
@@ -842,6 +896,9 @@ jobs:
           kill "${HEARTBEAT_PID}" 2>/dev/null || true
         env:
           BASELINE: ${{ steps.cfg.outputs.baseline }}
+          # Unauthenticated Hub reads are rate-limited; the first thing that
+          # breaks on a 500-instance cell (#233).
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
           BUDGETS: ${{ steps.cfg.outputs.budgets }}
           MATRIX_DEPTH: ${{ matrix.depth }}
 
@@ -976,8 +1033,6 @@ jobs:
           REPO: ${{ github.repository }}
           SWEEP_ID: ${{ needs.prep.outputs.sweep_id }}
           TS: ${{ needs.prep.outputs.ts }}
-          INPUT_TAU: '0.12'
-          INPUT_CBF: '0.5'
           INPUT_TIMEOUT: '600'
           INPUT_MANIFESTS_SUBDIR: v1
         run: |
@@ -1002,7 +1057,7 @@ jobs:
           - Triggered: ${TS}
           - Source SHA: ${GITHUB_SHA}
           - Manifests: ${INPUT_MANIFESTS_SUBDIR}
-          - tau=${INPUT_TAU}, core_budget_fraction=${INPUT_CBF}
+          - Operating point: each cell's \`winner.json\` (resolved from the engine at run time)
           - Per-instance timeout: ${INPUT_TIMEOUT}s
 
           See \`aggregated/SWEEP_TABLE.md\` and \`cells/\` for raw per-instance JSONL checkpoints.

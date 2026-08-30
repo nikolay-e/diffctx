@@ -82,10 +82,25 @@ pub fn check_current_every(i: usize, every: usize, phase: &str) {
     }
 }
 
+/// The panic payload's prefix. `pybridge` matches on it to turn the unwind
+/// back into an ordinary Python `TimeoutError` — the deadline is a routine
+/// outcome for a caller, not a crash, and it must not look like one.
+pub const PANIC_PREFIX: &str = "diffctx compute deadline exceeded";
+
 fn check_expired(now: Instant, expires_at: Instant, phase: &str) {
     if now > expires_at {
-        panic!("diffctx compute deadline exceeded during {phase}");
+        panic!("{PANIC_PREFIX} during {phase}");
     }
+}
+
+/// The message inside a caught panic payload, when it is one of ours.
+#[cfg(feature = "python")]
+pub fn deadline_panic_message(payload: &(dyn std::any::Any + Send)) -> Option<String> {
+    let msg = payload
+        .downcast_ref::<String>()
+        .map(String::as_str)
+        .or_else(|| payload.downcast_ref::<&'static str>().copied())?;
+    msg.starts_with(PANIC_PREFIX).then(|| msg.to_string())
 }
 
 #[cfg(test)]

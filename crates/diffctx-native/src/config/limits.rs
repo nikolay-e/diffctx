@@ -58,6 +58,11 @@ pub const DEFAULT_PPR_ALPHA: f64 = 0.60;
 /// weak stop only ships together with the admission gate (#65): without it,
 /// tau=0.05 re-admits the diffuse tail the gate exists to block.
 pub const DEFAULT_STOPPING_THRESHOLD: f64 = 0.05;
+/// The pre-admission calibration point. A scorer that ships no admission
+/// gate — BM25 has no graph to walk, and `DIFFCTX_FILE_ADMISSION=0` turns the
+/// gate off for the others — gets this instead of the weak stop above, so the
+/// two never ship apart. An explicit `--tau` still wins.
+pub const UNGATED_STOPPING_THRESHOLD: f64 = 0.12;
 pub const DEFAULT_PIPELINE_TIMEOUT_SECONDS: u64 = 300;
 
 pub struct PPRConfig {

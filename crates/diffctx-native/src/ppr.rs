@@ -514,12 +514,7 @@ mod tests {
             g.add_node(n.clone());
         }
         let mut rng = 0xC0FFEE_u64;
-        let xorshift = |state: &mut u64| -> u64 {
-            *state ^= *state << 13;
-            *state ^= *state >> 7;
-            *state ^= *state << 17;
-            *state
-        };
+        let xorshift = crate::test_rng::xorshift;
         for i in 0..nodes.len() {
             for _ in 0..3 {
                 let j = (xorshift(&mut rng) as usize) % nodes.len();

@@ -89,20 +89,6 @@ pub struct HeavyLatencyMs {
     pub scoring: f64,
 }
 
-// How this module writes a path into output, in one place instead of five.
-//
-// The `replace` is unconditional, which `paths.rs` documents as a bug: on POSIX
-// a backslash is a legal filename character, so rewriting it names a file that
-// does not exist. Routing this at `paths::display_rel` is the fix and it is
-// NOT bit-identical, so it belongs in its own labelled commit — this one only
-// stops the wrong behaviour from being spelled out five times.
-fn rel_display(p: &Path, root: &Path) -> String {
-    p.strip_prefix(root)
-        .unwrap_or(p)
-        .to_string_lossy()
-        .replace('\\', "/")
-}
-
 pub fn build_diff_context(
     root_dir: &Path,
     diff_range: Option<&str>,
@@ -141,9 +127,11 @@ pub fn build_diff_context_locate(
         SelectionOutcome {
             selected: Vec::new(),
             effective_budget: budget_tokens.unwrap_or(0),
+            selection_budget: budget_tokens.unwrap_or(0),
             selection_iters: 0,
             stopping_certificate: 0.0,
             select_ms: 0.0,
+            stand_in_ids: FxHashSet::default(),
         }
     } else {
         run_selection(&state, budget_tokens, tau)
@@ -358,9 +346,9 @@ fn resolve_change_set(
     changed_files.extend(untracked_files);
     if changed_files.is_empty() {
         return Ok(ChangeSet::Empty {
-            lockfile_changes: Vec::new(),
-            ignored_changes: Vec::new(),
-            policy_excluded_count: 0,
+            lockfile_changes: lockfile_display,
+            ignored_changes: ignored_display,
+            policy_excluded_count: policy_excluded,
         });
     }
 
@@ -374,7 +362,7 @@ fn resolve_change_set(
     // deletion-only commit used to render as a bare two-line skeleton).
     let mut deleted_display: Vec<String> = deleted_files
         .iter()
-        .map(|p| rel_display(p, root_dir))
+        .map(|p| crate::paths::display_rel_or_abs(root_dir, p))
         .collect();
     deleted_display.sort();
     let renamed_display = git::get_rename_pairs(root_dir, diff_range).unwrap_or_default();
@@ -384,9 +372,8 @@ fn resolve_change_set(
         .filter(|f| {
             let resolved = f.canonicalize().unwrap_or_else(|_| f.clone());
             !excluded.contains(&resolved)
-                && !is_secret_path(f)
                 && !is_lockfile_path(f)
-                && !is_ignored_path(root_dir, f, &ignored_rel_paths)
+                && !is_withheld(root_dir, f, &ignored_rel_paths)
         })
         .collect();
 
@@ -649,10 +636,20 @@ pub fn compute_scored_state(
 
 pub struct SelectionOutcome {
     pub selected: Vec<Fragment>,
+    /// The budget the caller asked for (or auto-sizing produced). Reported as
+    /// the contract; it is NOT what the selection had to spend.
     pub effective_budget: u32,
+    /// What was actually left for fragments after the change summary was
+    /// charged (#241). Anything reasoning about headroom — "did the budget
+    /// stop us, or did tau?" — has to use this one, or it reads the envelope
+    /// as free space and concludes the budget was never binding.
+    pub selection_budget: u32,
     pub selection_iters: usize,
     pub stopping_certificate: f64,
     pub select_ms: f64,
+    /// See `SelectionResult::stand_in_ids` — carried to the renderers so both
+    /// surfaces read one recorded fact instead of re-deriving it (#209).
+    pub stand_in_ids: FxHashSet<FragmentId>,
 }
 
 /// Selection + the two admission-gated post-passes — the git-free part of
@@ -670,7 +667,25 @@ pub fn select_and_postpass(
     objective: crate::mode::ObjectiveMode,
     effective_budget: u32,
     tau: f64,
-) -> (Vec<Fragment>, usize, f64) {
+) -> (Vec<Fragment>, usize, f64, FxHashSet<FragmentId>) {
+    // A scorer with no admission gate (BM25 builds no graph, so it has no
+    // declared-related set to gate on) is bounded by the threshold alone, so
+    // the default is raised to the ungated operating point. An explicitly
+    // requested tau is honoured as given — a sweep measuring an ungated tau
+    // must get the tau it asked for — which makes the effective value worth
+    // recording: an ablation cell that does not say whether it ran gated is
+    // not comparable with one that did (#245).
+    let ungated = scoring_result.admissible_files.is_none();
+    let tau = if ungated && tau == crate::config::limits::DEFAULT_STOPPING_THRESHOLD {
+        crate::config::limits::UNGATED_STOPPING_THRESHOLD
+    } else {
+        tau
+    };
+    tracing::info!(
+        "diffctx: selection gate={} tau={:.4}",
+        if ungated { "none" } else { "admission" },
+        tau
+    );
     let selection_result = match objective {
         crate::mode::ObjectiveMode::BoltzmannModular => {
             let beta = crate::utility::calibrate_beta(
@@ -709,6 +724,7 @@ pub fn select_and_postpass(
 
     let selection_iters = selection_result.greedy_iters;
     let stopping_certificate = selection_result.stopping_certificate;
+    let stand_in_ids = selection_result.stand_in_ids;
     let mut selected = selection_result.selected;
 
     postpass::coherence_post_pass(
@@ -728,7 +744,40 @@ pub fn select_and_postpass(
         scoring_result.admissible_files.as_ref(),
     );
 
-    (selected, selection_iters, stopping_certificate)
+    (
+        selected,
+        selection_iters,
+        stopping_certificate,
+        stand_in_ids,
+    )
+}
+
+/// What the change summary costs before a single fragment is selected.
+///
+/// `--budget` is documented as a cap on the output in three places, and until
+/// #241 it bounded only the fragments: the changed-file list, the
+/// deleted/renamed/lockfile/ignored lists and the commit message rendered for
+/// free. On an 83-file range that envelope was ~1.3k tokens and `--budget 0`
+/// still emitted 2.4k — the selection dutifully under budget while the artifact
+/// was three times over it. Charging the envelope first is what makes the
+/// number mean what the docs claim.
+///
+/// Shared by the product pipeline and the corpus harness on purpose: a budget
+/// the harness spends differently is a harness measuring a system nobody runs
+/// (#149).
+pub fn envelope_token_cost(commit_message: Option<&str>, listed_paths: &[String]) -> u32 {
+    let mut preview = String::new();
+    if let Some(msg) = commit_message {
+        preview.push_str(msg);
+        preview.push('\n');
+    }
+    for line in listed_paths {
+        preview.push_str(line);
+        preview.push('\n');
+    }
+    count_tokens(&preview)
+        + (listed_paths.len() as u32) * BUDGET.envelope_overhead_per_entry
+        + BUDGET.envelope_overhead
 }
 
 /// Selection + the 3 post-passes, shared verbatim by the pack renderer
@@ -751,19 +800,36 @@ pub fn run_selection(
         auto.clamp(BUDGET.auto_min, BUDGET.auto_max)
     });
 
-    let (mut selected, selection_iters, stopping_certificate) = select_and_postpass(
+    let mut listed: Vec<String> = state
+        .changed_files
+        .iter()
+        .map(|p| crate::paths::display_rel_or_abs(&state.root_dir, p))
+        .collect();
+    listed.extend(state.deleted_files.iter().cloned());
+    listed.extend(state.lockfile_changes.iter().cloned());
+    listed.extend(state.ignored_changes.iter().cloned());
+    listed.extend(
+        state
+            .renamed_files
+            .iter()
+            .map(|(from, to)| format!("{from} {to}")),
+    );
+    let envelope = envelope_token_cost(state.commit_message.as_deref(), &listed);
+    let selection_budget = effective_budget.saturating_sub(envelope);
+
+    let (mut selected, selection_iters, stopping_certificate, stand_in_ids) = select_and_postpass(
         &state.scoring_result,
         &state.all_fragments,
         &state.core_ids,
         &state.needs,
         &state.core_excerpts,
         state.config.objective,
-        effective_budget,
+        selection_budget,
         tau,
     );
 
     let used: u32 = selected.iter().map(|f| f.token_count).sum();
-    let remaining = effective_budget.saturating_sub(used);
+    let remaining = selection_budget.saturating_sub(used);
     let mut batch_reader = match CatFileBatch::new(&state.root_dir) {
         Ok(r) => Some(r),
         Err(_) => None,
@@ -778,6 +844,7 @@ pub fn run_selection(
         batch_reader.as_mut(),
         &state.core_ids,
         &state.core_excerpts,
+        &stand_in_ids,
     );
     if let Some(mut r) = batch_reader {
         r.close();
@@ -789,9 +856,11 @@ pub fn run_selection(
     SelectionOutcome {
         selected,
         effective_budget,
+        selection_budget,
         selection_iters,
         stopping_certificate,
         select_ms,
+        stand_in_ids,
     }
 }
 
@@ -809,6 +878,7 @@ pub fn select_with_params(
     no_content: bool,
 ) -> DiffContextOutput {
     let outcome = run_selection(state, budget_tokens, tau);
+    let stand_in_ids = outcome.stand_in_ids;
     let selected = outcome.selected;
     let selection_iters = outcome.selection_iters;
     let stopping_certificate = outcome.stopping_certificate;
@@ -830,7 +900,7 @@ pub fn select_with_params(
         changed_files: state
             .changed_files
             .iter()
-            .map(|p| rel_display(p, &state.root_dir))
+            .map(|p| crate::paths::display_rel_or_abs(&state.root_dir, p))
             .collect(),
         deleted_files: state.deleted_files.clone(),
         renamed_files: state.renamed_files.clone(),
@@ -838,22 +908,12 @@ pub fn select_with_params(
         ignored_changes: state.ignored_changes.clone(),
         policy_excluded_count: state.policy_excluded_count,
     };
-    // An excerpt stands in for a core fragment, so it carries the change and
-    // has to render as `role: "changed"` — otherwise the substitution keeps the
-    // content but still loses the signal it exists to preserve.
-    let mut render_core_ids = state.core_ids.clone();
-    render_core_ids.extend(
-        selected
-            .iter()
-            .filter(|f| f.kind == crate::types::FragmentKind::Excerpt)
-            .map(|f| f.id.clone()),
-    );
-
     let mut output = render::build_diff_context_output(
         &state.root_dir,
         &selected,
         no_content,
-        &render_core_ids,
+        &state.core_ids,
+        &stand_in_ids,
         &state.scoring_result.rel_scores,
         change,
     );
@@ -897,15 +957,16 @@ pub fn select_with_params(
     output
 }
 
-/// Special path for `--full` mode: bypass scoring entirely, return all
-/// changed-file fragments. Doesn't share the `ScoredState` plumbing.
-/// Private-key and keystore files must never reach LLM-bound diff context, even
-/// when they appear in the diff hunks — such material is never legitimate change
-/// context. Mirrors the Python tree-mode default ignores (`ignore.py`
-/// DEFAULT_IGNORE_PATTERNS). Matches by file name only, so public keys (`*.pub`)
-/// stay visible. `.env` files are intentionally NOT excluded here: a changed
-/// `.env` is legitimate change context (see the `*_env_file_change` cases).
-pub(crate) fn is_secret_path(path: &Path) -> bool {
+/// THE secret-path policy, for every surface. Private-key, keystore and
+/// credential files never reach LLM-bound output — not as diff context, not
+/// in a tree map, not through an MCP fetch. Tree mode and the MCP tools used
+/// to keep a second, shorter list in `ignore.py` (#227/#228: `.netrc`,
+/// `credentials` and `*.asc` were withheld by diff mode and printed by tree
+/// mode); they now call this through `_diffctx.is_secret_path`. Matches by
+/// file name only, so public keys (`*.pub`) stay visible. `.env` is
+/// intentionally NOT here: a changed `.env` is legitimate change context (see
+/// the `*_env_file_change` cases).
+pub fn is_secret_path(path: &Path) -> bool {
     let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
         return false;
     };
@@ -1002,6 +1063,45 @@ pub(crate) fn is_ignored_path(
         .unwrap_or(false)
 }
 
+/// The one admissibility predicate: secret by name, or excluded by
+/// `.gitignore` / `.diffctx/ignore` as git itself resolves them. Every place
+/// that decides whether a file may be shown composes these two the same way.
+pub(crate) fn is_withheld(
+    root_dir: &Path,
+    path: &Path,
+    ignored_rel_paths: &rustc_hash::FxHashMap<String, git::IgnoreSource>,
+) -> bool {
+    is_secret_path(path) || is_ignored_path(root_dir, path, ignored_rel_paths)
+}
+
+/// Which of `rel_paths` (repo-root-relative) the engine withholds — the
+/// question the MCP fetch used to answer with a different engine (#228). One
+/// batched `git check-ignore` for the whole list.
+pub fn withheld_paths(root_dir: &Path, rel_paths: &[String]) -> Vec<String> {
+    // `find_ignored_paths_any`, not the attribution variant the diff uses: a
+    // reader that walks the working tree asks about untracked paths, and
+    // `.venv/x.py` is ignored by the `.venv/` rule on its parent. Dropping
+    // ancestor-inherited matches here answered "not ignored" for the entire
+    // contents of every ignored directory.
+    let ignored = git::find_ignored_paths_any(root_dir, rel_paths);
+    rel_paths
+        .iter()
+        .filter(|rel| {
+            is_secret_path(&root_dir.join(rel)) || is_repo_internal(rel) || ignored.contains(*rel)
+        })
+        .cloned()
+        .collect()
+}
+
+/// git's own directory. It is not ignored (git never reports on paths inside
+/// it) and it is not secret by name, yet `.git/config` carries the remote URL,
+/// which routinely embeds an access token in its userinfo field, and
+/// `.git/logs/HEAD` the whole branch history. Nothing that reads repository
+/// *content* has business there.
+fn is_repo_internal(rel: &str) -> bool {
+    rel == ".git" || rel.split('/').any(|part| part == ".git")
+}
+
 /// The unified diff of `diff_range` as git prints it, minus the file sections
 /// diff mode never discloses: secret-like paths, ignored paths, and lock files
 /// (#112). Additive output for `--with-raw-diff` (#150) — it feeds no
@@ -1041,10 +1141,7 @@ fn keep_disclosable_sections(root_dir: &Path, diff_text: &str) -> String {
         let Some(path) = path else {
             continue;
         };
-        if is_secret_path(&path)
-            || is_lockfile_path(&path)
-            || is_ignored_path(root_dir, &path, &ignored_rel_paths)
-        {
+        if is_lockfile_path(&path) || is_withheld(root_dir, &path, &ignored_rel_paths) {
             continue;
         }
         kept.extend_from_slice(&raw[range]);
@@ -1118,7 +1215,7 @@ fn resolve_repo_root(root_dir: &Path) -> Result<PathBuf> {
         tracing::debug!("canonicalize failed for '{}': {}", root_dir.display(), e);
         root_dir.to_path_buf()
     });
-    if !git::is_git_repo(&root_dir) {
+    if !git::is_git_repo(&root_dir)? {
         anyhow::bail!("'{}' is not a git repository", root_dir.display());
     }
     Ok(git::find_toplevel(&root_dir).unwrap_or(root_dir))
@@ -1155,8 +1252,7 @@ fn build_diff_context_full(
         return Ok(output);
     }
     let mut changed_files = git::get_changed_files(&root_dir, diff_range)?;
-    changed_files
-        .retain(|f| !is_secret_path(f) && !is_ignored_path(&root_dir, f, &ignored_rel_paths));
+    changed_files.retain(|f| !is_withheld(&root_dir, f, &ignored_rel_paths));
     if changed_files.is_empty() {
         let (deleted, renamed) = deletion_rename_displays(&root_dir, diff_range);
         let mut output = empty_output(&root_dir);
@@ -1200,7 +1296,7 @@ fn build_diff_context_full(
         commit_message,
         changed_files: changed_files
             .iter()
-            .map(|p| rel_display(p, &root_dir))
+            .map(|p| crate::paths::display_rel_or_abs(&root_dir, p))
             .collect(),
         deleted_files: deleted_display,
         renamed_files: renamed_display,
@@ -1215,6 +1311,8 @@ fn build_diff_context_full(
         &selected,
         no_content,
         &core_ids,
+        // `--full` emits whole files: nothing is substituted for a core.
+        &FxHashSet::default(),
         &FxHashMap::default(),
         change,
     ))
@@ -1225,7 +1323,11 @@ fn deletion_rename_displays(
     diff_range: Option<&str>,
 ) -> (Vec<String>, Vec<(String, String)>) {
     let mut deleted: Vec<String> = git::get_deleted_files(root_dir, diff_range)
-        .map(|set| set.iter().map(|p| rel_display(p, root_dir)).collect())
+        .map(|set| {
+            set.iter()
+                .map(|p| crate::paths::display_rel_or_abs(root_dir, p))
+                .collect()
+        })
         .unwrap_or_default();
     deleted.sort();
     let renamed = git::get_rename_pairs(root_dir, diff_range).unwrap_or_default();
@@ -1281,20 +1383,7 @@ fn empty_output(root_dir: &Path) -> DiffContextOutput {
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| resolved.to_string_lossy().to_string());
-    DiffContextOutput {
-        name,
-        output_type: "diff_context".to_string(),
-        commit_message: None,
-        changed_files: Vec::new(),
-        deleted_files: Vec::new(),
-        renamed_files: Vec::new(),
-        lockfile_changes: Vec::new(),
-        ignored_changes: Vec::new(),
-        policy_excluded_count: 0,
-        fragment_count: 0,
-        fragments: Vec::new(),
-        latency: None,
-    }
+    DiffContextOutput::empty(&name)
 }
 
 /// A deletion/rename-only diff has no fragmentable content, but the file

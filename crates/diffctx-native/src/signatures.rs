@@ -31,7 +31,11 @@ fn signature_kind(kind: FragmentKind) -> FragmentKind {
     }
 }
 
-fn count_brackets_outside_strings(line: &str) -> (i32, i32, i32, i32) {
+/// `'` opens a string everywhere except Rust, where it is a lifetime
+/// (`fn f<'a>(x: &'a T)`) far more often than a char literal, and a lifetime
+/// has no closing quote: the old scanner swallowed the rest of the line as
+/// "string" and lost every bracket after it.
+fn count_brackets_outside_strings(line: &str, apostrophe_quotes: bool) -> (i32, i32, i32, i32) {
     let mut open_parens = 0i32;
     let mut close_parens = 0i32;
     let mut open_braces = 0i32;
@@ -51,6 +55,7 @@ fn count_brackets_outside_strings(line: &str) -> (i32, i32, i32, i32) {
             continue;
         }
         match ch {
+            '\'' if !apostrophe_quotes => {}
             '\'' | '"' | '`' => {
                 in_string = Some(ch);
                 escaped = false;
@@ -66,7 +71,7 @@ fn count_brackets_outside_strings(line: &str) -> (i32, i32, i32, i32) {
     (open_parens, close_parens, open_braces, close_braces)
 }
 
-fn decorator_prefix_len(lines: &[&str]) -> usize {
+fn decorator_prefix_len(lines: &[&str], apostrophe_quotes: bool) -> usize {
     let mut i = 0;
     let mut paren_depth = 0i32;
     while i < lines.len() {
@@ -75,19 +80,19 @@ fn decorator_prefix_len(lines: &[&str]) -> usize {
         if paren_depth <= 0 && !starts_decorator {
             break;
         }
-        let (op, cp, _, _) = count_brackets_outside_strings(lines[i]);
+        let (op, cp, _, _) = count_brackets_outside_strings(lines[i], apostrophe_quotes);
         paren_depth += op - cp;
         i += 1;
     }
     if i >= lines.len() { 0 } else { i }
 }
 
-fn find_signature_end(lines: &[&str]) -> usize {
+fn find_signature_end(lines: &[&str], apostrophe_quotes: bool) -> usize {
     let mut paren_depth = 0i32;
     let mut seen_open_paren = false;
 
     for (i, line) in lines.iter().enumerate() {
-        let (op, cp, ob, cb) = count_brackets_outside_strings(line);
+        let (op, cp, ob, cb) = count_brackets_outside_strings(line, apostrophe_quotes);
         paren_depth += op - cp;
         if op > 0 {
             seen_open_paren = true;
@@ -127,8 +132,10 @@ pub fn generate_signature_variants(fragments: &[Fragment]) -> Vec<Fragment> {
         if lines.is_empty() {
             continue;
         }
-        let decorators = decorator_prefix_len(&lines);
-        let sig_end = (decorators + find_signature_end(&lines[decorators..])).max(1);
+        let apostrophe_quotes = !frag.id.path.ends_with(".rs");
+        let decorators = decorator_prefix_len(&lines, apostrophe_quotes);
+        let sig_end =
+            (decorators + find_signature_end(&lines[decorators..], apostrophe_quotes)).max(1);
         let sig_content: String = lines[..sig_end.min(lines.len())].join("\n");
         let sig_end_line = frag.start_line() + sig_end as u32 - 1;
         let sig_id = FragmentId::new(frag.id.path.clone(), frag.start_line(), sig_end_line);
@@ -171,6 +178,26 @@ mod tests {
         let sigs = generate_signature_variants(std::slice::from_ref(f));
         assert_eq!(sigs.len(), 1, "expected exactly one signature variant");
         sigs[0].content.to_string()
+    }
+
+    #[test]
+    fn a_rust_lifetime_is_not_a_string_opener() {
+        // `'a` has no closing quote: the scanner used to swallow the rest of
+        // the line as a string, lose the `(`, and fall back to a two-line stub
+        // that ends mid-parameter-list.
+        let content = "fn f<'a>(x: &'a str,\n    y: u32,\n) -> &'a str {\n    let z = y;\n    x\n}";
+        let f = Fragment {
+            id: FragmentId::new(Arc::from("a.rs"), 1, 6),
+            kind: FragmentKind::Function,
+            content: Arc::from(content),
+            identifiers: FxHashSet::default(),
+            token_count: 100,
+            symbol_name: Some("f".into()),
+        };
+        assert_eq!(
+            stub_of(&f),
+            "fn f<'a>(x: &'a str,\n    y: u32,\n) -> &'a str {"
+        );
     }
 
     #[test]

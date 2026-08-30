@@ -319,8 +319,12 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
         // carry it (see base::file_representatives on the accepted
         // reachability trade, #208). Pairing every fragment with every
         // fragment restated the same fact quadratically.
-        for (i, (_key, (files, _))) in by_stem.iter().enumerate() {
-            crate::deadline::check_current_every(i, 256, "edge construction (c_family pairing)");
+        // The cost is the headers x impls product INSIDE one bucket — envoy's
+        // 520-file `config` stem is a single bucket — so the poll counts pairs,
+        // not buckets; a per-bucket poll never fired inside the case it was
+        // added for (#210).
+        let mut pairs = 0usize;
+        for (_key, (files, _)) in by_stem.iter() {
             if files.len() < 2 {
                 continue;
             }
@@ -334,6 +338,12 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
                 .collect();
             for h in &headers {
                 for imp in &impls {
+                    crate::deadline::check_current_every(
+                        pairs,
+                        4096,
+                        "edge construction (c_family pairing)",
+                    );
+                    pairs += 1;
                     if let (Some(hr), Some(ir)) = (reps.get(**h), reps.get(**imp)) {
                         add_edge(&mut edges, hr, ir, base_weight, reverse_factor);
                     }

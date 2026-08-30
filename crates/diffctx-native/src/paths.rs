@@ -31,6 +31,13 @@ pub(crate) fn display_rel(root: &Path, path: &Path) -> Option<String> {
         .map(|rel| to_posix_display(rel.to_string_lossy()))
 }
 
+/// `display_rel`, falling back to the path as given when it is not under
+/// `root`. The file lists in the diff output used a private copy of this that
+/// rewrote `\` unconditionally (#239).
+pub(crate) fn display_rel_or_abs(root: &Path, path: &Path) -> String {
+    display_rel(root, path).unwrap_or_else(|| to_posix_display(path.to_string_lossy()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

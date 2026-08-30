@@ -211,25 +211,14 @@ fn rel_path(state: &ScoredState, path: &str) -> String {
         .unwrap_or_else(|| crate::paths::to_posix_display(std::borrow::Cow::Borrowed(path)))
 }
 
-/// Same predicate on both surfaces, and now literally the same function: the
-/// fragment is a core, an excerpt stand-in, or a signature stub substituted at
-/// a core's location (#209).
-fn carries_change(
-    state: &ScoredState,
-    frag: &Fragment,
-    core_locs: &rustc_hash::FxHashSet<(std::sync::Arc<str>, u32)>,
-) -> bool {
-    crate::render::carries_changed_role(frag, &state.core_ids, core_locs)
-}
-
 fn reasons_for(
     state: &ScoredState,
     frag: &Fragment,
-    core_locs: &rustc_hash::FxHashSet<(std::sync::Arc<str>, u32)>,
+    stand_in_ids: &rustc_hash::FxHashSet<FragmentId>,
     hops: Option<u32>,
     attribution: Option<&Vec<(String, String, f64)>>,
 ) -> Vec<Reason> {
-    if carries_change(state, frag, core_locs) {
+    if crate::types::carries_change(frag, &state.core_ids, stand_in_ids) {
         return vec![Reason::Changed];
     }
     let mut reasons: Vec<Reason> = Vec::new();
@@ -328,8 +317,11 @@ fn build_coverage(
     let parsed_share = 1.0 - unparsed.len() as f64 / n_changed;
     let linked_share = 1.0 - zero_edge.len() as f64 / n_changed;
     // Context only: a changed fragment that did not fit is a budget floor
-    // problem the caller already sees in `budget_tokens`, and counting it here
-    // would make a tiny budget look like a discovery failure.
+    // problem, and counting it here would make a tiny budget look like a
+    // discovery failure. Note `budget_tokens` in the output is what the CALLER
+    // asked for; what selection actually had is that minus the change summary
+    // (#241), so headroom is only readable from this block, never from
+    // `budget_tokens - Σ tokens`.
     let selected_context = outcome
         .selected
         .iter()
@@ -388,14 +380,14 @@ fn build_overflow(
     // anything — an earlier version ignored that and reported 2711 near misses
     // at `--budget -1`, where by construction nothing was crowded out at all.
     let spent: u32 = outcome.selected.iter().map(|f| f.token_count).sum();
-    let headroom = outcome.effective_budget.saturating_sub(spent);
+    let headroom = outcome.selection_budget.saturating_sub(spent);
     let smallest_skipped = skipped.iter().map(|f| f.token_count).min().unwrap_or(0);
     let budget_bound = !skipped.is_empty() && headroom < smallest_skipped;
     let next_up = if budget_bound {
         // Walk the overflow ranking against a 25% budget increase. Bounded by
         // that increment, so — unlike a score threshold — it does not grow just
         // because a larger budget selected more and lowered the bar.
-        let extra = outcome.effective_budget / 4;
+        let extra = outcome.selection_budget / 4;
         let mut spare = headroom + extra;
         let mut n = 0;
         for f in &skipped {
@@ -453,12 +445,12 @@ pub fn build_locate(state: &ScoredState, outcome: &SelectionOutcome) -> LocateOu
     let attribution = incoming_attribution(state);
     let (overflow, overflow_count, next_up) = build_overflow(state, outcome, &hops, &attribution);
 
-    let core_locs = crate::render::core_substitute_locs(&state.core_ids);
     let items: Vec<LocateItem> = outcome
         .selected
         .iter()
         .map(|frag| {
-            let is_changed = carries_change(state, frag, &core_locs);
+            let is_changed =
+                crate::types::carries_change(frag, &state.core_ids, &outcome.stand_in_ids);
             let path = rel_path(state, frag.id.path.as_ref());
             let group = group_of(&path, frag.kind);
             LocateItem {
@@ -476,7 +468,7 @@ pub fn build_locate(state: &ScoredState, outcome: &SelectionOutcome) -> LocateOu
                 reasons: reasons_for(
                     state,
                     frag,
-                    &core_locs,
+                    &outcome.stand_in_ids,
                     hops.get(&frag.id).copied(),
                     attribution.get(&frag.id),
                 ),

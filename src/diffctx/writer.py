@@ -264,20 +264,39 @@ def _write_text_fragment(file: TextIO, frag: dict[str, Any], indent: str = "") -
             file.write(f"{content_indent}{line}\n")
 
 
+def _escape_text_path(path: Any) -> str:
+    return str(path).replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r")
+
+
 def _write_text_path_list(file: TextIO, label: str, paths: list[Any]) -> None:
     # One path per line: a comma or newline inside a path (git emits both
     # unquoted under core.quotePath=false) would make a joined line unparseable.
     file.write(f"  {label}:\n")
     for path in paths:
-        p = str(path).replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r")
-        file.write(f"    {p}\n")
+        file.write(f"    {_escape_text_path(path)}\n")
+
+
+def _write_text_raw_diff(file: TextIO, tree: dict[str, Any]) -> None:
+    if not tree.get("raw_diff"):
+        return
+    file.write("  raw diff:\n")
+    for line in tree["raw_diff"].rstrip("\n").split("\n"):
+        file.write(f"    {line}\n" if line else "\n")
+
+
+def _write_text_changed_files(file: TextIO, tree: dict[str, Any]) -> None:
+    omitted = set(_omitted_changed_files(tree))
+    file.write("  changed files:\n")
+    for path in tree["changed_files"]:
+        mark = " (omitted)" if str(path) in omitted else ""
+        file.write(f"    {_escape_text_path(path)}{mark}\n")
 
 
 def _write_tree_text_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
     if tree.get("commit_message"):
         file.write(f"  change: {tree['commit_message']}\n")
     if tree.get("changed_files"):
-        _write_text_path_list(file, "changed files", tree["changed_files"])
+        _write_text_changed_files(file, tree)
     if tree.get("deleted_files"):
         _write_text_path_list(file, "deleted files", tree["deleted_files"])
     for pair in tree.get("renamed_files", []):
@@ -288,15 +307,9 @@ def _write_tree_text_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
         _write_text_path_list(file, "changed but excluded by ignore rules", tree["ignored_changes"])
     if tree.get("policy_excluded_count"):
         file.write(f"  changed files withheld by exclusion policy: {tree['policy_excluded_count']}\n")
-    if tree.get("raw_diff"):
-        file.write("  raw diff:\n")
-        for line in tree["raw_diff"].rstrip("\n").split("\n"):
-            file.write(f"    {line}\n" if line else "\n")
+    _write_text_raw_diff(file, tree)
     for frag in tree.get("fragments", []):
         _write_text_fragment(file, frag, "  ")
-    omitted = _omitted_changed_files(tree)
-    if omitted:
-        _write_text_path_list(file, "changed files not represented in the output", omitted)
 
 
 def _write_tree_text_children(file: TextIO, children: list[dict[str, Any]]) -> None:
@@ -457,10 +470,33 @@ def _write_md_path_list(file: TextIO, tree: dict[str, Any], key: str, title: str
     file.write("\n")
 
 
+# The changed-file list used to be printed twice — once in full at the top, once
+# again at the bottom as "not represented" — and on an 83-file range that second
+# copy was ~1k tokens of paths the reader had already been given (#241). One
+# list, with the omitted entries marked, carries the same two facts for a marker
+# per entry instead of a whole line.
+_OMITTED_MARK = " — omitted"
+
+
+def _write_md_changed_files(file: TextIO, tree: dict[str, Any]) -> None:
+    changed = tree.get("changed_files") or []
+    if not changed:
+        return
+    omitted = set(_omitted_changed_files(tree))
+    file.write("**Changed files:**\n\n")
+    for path in changed:
+        text = str(path)
+        mark = _OMITTED_MARK if text in omitted else ""
+        file.write(f"- {_escape_md_inline_code(text)}{mark}\n")
+    if omitted:
+        file.write("\n*\u201comitted\u201d = no fragment of this file is in the output (budget/selection).*\n")
+    file.write("\n")
+
+
 def _write_markdown_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
     if tree.get("commit_message"):
         file.write(f"> {tree['commit_message']}\n\n")
-    _write_md_path_list(file, tree, "changed_files", "Changed files")
+    _write_md_changed_files(file, tree)
     _write_md_path_list(file, tree, "deleted_files", "Deleted files")
     if tree.get("renamed_files"):
         file.write("**Renamed files:**\n\n")
@@ -479,12 +515,6 @@ def _write_markdown_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
         _write_md_code_block(file, tree["raw_diff"], "diff", "")
     for frag in tree.get("fragments", []):
         _write_markdown_fragment(file, frag)
-    omitted = _omitted_changed_files(tree)
-    if omitted:
-        file.write("**Changed files not represented in the output (budget/selection):**\n\n")
-        for path in omitted:
-            file.write(f"- {_escape_md_inline_code(path)}\n")
-        file.write("\n")
 
 
 def write_tree_markdown(file: TextIO, tree: dict[str, Any]) -> None:

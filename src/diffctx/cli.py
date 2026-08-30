@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -140,6 +141,12 @@ def _classify_resolved(resolved: Path, dirs: list[Path], files: list[Path]) -> N
         dirs.append(resolved)
     elif resolved.is_file():
         files.append(resolved)
+
+
+def _common_parent(files: list[Path]) -> Path:
+    if not files:
+        return Path(".").resolve()
+    return Path(os.path.commonpath([str(f.parent) for f in files]))
 
 
 def _expand_paths(raw_paths: list[str]) -> tuple[list[Path], list[Path]]:
@@ -368,7 +375,12 @@ Token counting (--budget, and the summary line on stderr):
   printed here — usually by single-digit to low-double-digit percent, in either
   direction. Treat --budget as an upper bound in o200k tokens and leave
   headroom (e.g. --budget 28000 for a 32k target) when the consumer is not an
-  OpenAI model. There is no --tokenizer flag; o200k_base is pinned so results
+  OpenAI model. The budget covers the whole artifact, not only the fragments:
+  the change summary (commit message, changed/deleted/renamed/lockfile/ignored
+  lists) is charged against it first and the selection spends the remainder.
+  A budget smaller than that summary therefore yields the summary alone --
+  a changed path is never dropped to fit, because a reader who cannot see what
+  changed is worse off than one who is over budget. There is no --tokenizer flag; o200k_base is pinned so results
   stay reproducible against the published evaluation.
   --with-raw-diff output is NOT charged to --budget, but IS included in the
   stderr token summary, which always reports the real size of what was written.
@@ -529,7 +541,7 @@ def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> arg
         help=(
             "Token budget in o200k_base tokens (tiktoken, GPT-4o family — other model families "
             "tokenize differently, so leave headroom; see 'Token counting' below): "
-            "omit = auto (default), N = fixed cap, -1 = unlimited, "
+            "omit = auto (default), N = cap on the whole artifact (change summary charged first), -1 = unlimited, "
             "0 = strict-zero floor (empty selection; use --full for changed files only)"
         ),
     )
@@ -749,7 +761,10 @@ def _build_tree_parsed_args(args: argparse.Namespace) -> ParsedArgs:
     _warn_quiet_log_level_conflict(args)
 
     dirs, files = _expand_paths(args.paths)
-    root_dir = dirs[0] if dirs else Path(".").resolve()
+    # Only files named: the root is where THEY live. Defaulting to the cwd
+    # resolved ignore/whitelist files and relative paths against a directory
+    # the caller never mentioned.
+    root_dir = dirs[0] if dirs else _common_parent(files)
     extra_dirs = dirs or None
     extra_files = files or None
 

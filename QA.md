@@ -75,12 +75,9 @@ silently:
   exempt and still compiles through maturin. Dependabot's `uv` entry is
   `lockfile-only` on purpose — the `pip` entry owns pyproject's ranges, and
   without the split both ecosystems open the same PR twice.
-- **`requirements-eval.txt` + `requirements-eval.lock`** — the research
-  harness, hash-pinned via `uv pip compile`, installed only by
-  `Dockerfile.eval`. Not part of `uv.lock`, deliberately: the paper's
-  reproducibility claim names that lock. `tests/eval/test_image_inputs.py`
-  checks the two agree by package NAME only, so a version bump in one does not
-  fail anything.
+- **`eval` dependency group in `pyproject.toml`, locked in `uv.lock`** — the
+  research harness's Python deps. One resolver for the whole repo; the
+  separate `requirements-eval.txt` + `.lock` pair (and its own bot) is gone.
 - **`Cargo.toml` + `Cargo.lock`** — Dependabot's `cargo` entry.
 
 The pip entry runs `versioning-strategy: increase-if-necessary`. The default
@@ -102,13 +99,12 @@ dismissing as bot noise.
   varying tests. Timeout-only failures with a changing set across runs
   = oversubscription, not a regression; never run `cargo test`
   concurrently with pytest, it makes this worse.
-- `cargo test --lib` in `crates/diffctx-native` — inline units (the run
-  prints the count; it was written here as "~171" while the real number was
-  250, so it is not written here any more).
+- `cargo test --lib` in `crates/diffctx-native` — inline units; the run
+  prints the count, and a count written here rotted once already.
 - YAML corpus: CI gates the FULL corpus on every push (the run prints the
   case count; pinning it here rotted — it read 2725 while the corpus had grown
   to 2902)
-  (`cargo test --profile release-unwind --test yaml_cases`), per-case
+  (`cargo test --release --test yaml_cases`), per-case
   against `known_below_threshold.txt`, enforced bidirectionally;
   nightly re-runs with `DIFFCTX_YAML_IGNORE_BASELINE=1` to track
   baseline size. `DIFFCTX_YAML_CASES_LIMIT=20` sampling survives only
@@ -202,14 +198,60 @@ dismissing as bot noise.
    triage it as one.
 3. No in-app bug queue, no client telemetry, no bot reports (CLI/library
    product). PyPI/npm/crates user reports arrive via the two trackers.
+4. GitHub alert feeds (`gh api repos/<r>/dependabot/alerts?state=open`,
+   `code-scanning/alerts?state=open`, `secret-scanning/alerts?state=open`)
+   — all three were empty on 2026-08-30; a pass reads them, it does not
+   assume them.
+5. SonarCloud project `nikolay-e_TreeMapper` (the key predates the rename):
+   quality gate + open issues + hotspots via the sonarqube MCP tools. Issues
+   raised on the day's own commits count as intake for that pass. The gate
+   can read OK while five issues are open — it scores NEW code against
+   ratings, so complexity and composite-assertion findings sit under a green
+   gate; read the issue list, never the gate alone. Analysis runs inside
+   `diffctx CI`, so a fix's issues stay OPEN until that run finishes.
+6. The stumble ledger is a channel: `[stumble] <task>` issues carry the
+   per-batch median and the deduped gripes. A convergent gripe (the same slug
+   from independent runs) is the signal — on 2026-08-30 four of six slugs were
+   one defect, an unsourced headline number, and it was real.
 
 ## Issue triage invariants
 
-- `v3`-labeled issues are a curated roadmap backlog
-  (research/benchmark/paper/product), not rotting defects — check
-  staleness, don't force per-pass decisions.
+- `v3`-labeled issues are the current paper cycle (tracking issue #256:
+  order of work, E/Q freeze); `post-v3` is the deferred research/product
+  backlog. Neither is a rotting defect — check staleness, don't force
+  per-pass decisions.
 - `gated` label = blocked on a pre-registered experiment or eval-cycle
   boundary.
+
+## Traps this repo has already sprung
+
+- **Two ignore policies, not one.** The *withhold* policy (secret names,
+  `.diffctx/ignore`, gitignore, `.git/`) is the security floor everywhere.
+  The *noise* policy (`DEFAULT_IGNORE_PATTERNS`: `node_modules/`, `target/`,
+  lock files) belongs to tree-mode readers — `get_tree_map` and the legacy
+  `get_file_context` glob. Collapsing them in either direction has now broken
+  something twice: engine-only served `uv.lock` and every ignored directory,
+  noise-only served `.netrc`. `fetch_fragments` is the deliberate exception —
+  engine only, because refusing a fragment selection ranked is the other half
+  of #228.
+- **`find_ignored_paths_with_source` is the attribution lookup and drops
+  ancestor-inherited exclusions on purpose** (#153). Anything that walks the
+  *working tree* must use `find_ignored_paths_any` instead, or it answers
+  "not ignored" for the whole contents of every ignored directory.
+- **A `cargo fmt` run invalidates a source-text mutation.** Verifying a Rust
+  gate on a known-bad input by string-replacing the fix will silently no-op if
+  the formatter has since rewrapped the line — the "known-bad" run then tests
+  the good code and passes. Re-read the file after `cargo fmt` and assert the
+  mutation anchor before trusting a green.
+- **A rebuild is part of restoring a mutation.** `uv sync
+  --reinstall-package diffctx` installs whatever the source said at that
+  moment; restoring the file afterwards leaves the pre-fix extension in the
+  venv, and the next pytest measures the wrong build.
+- **`rrf` and `pit` read `DIFFCTX_OP_GRAPH_DEPTH`, `internal-bm25` does not.**
+  The fusion modes take `ego_depth_extended` (env-overridable); `bm25` takes
+  the hardcoded `ego_depth_default`. Excluding depth cells for all three at
+  once deletes 30 real configurations — it happened on 2026-08-30 and was
+  reverted the same pass.
 
 ## Known false positives
 

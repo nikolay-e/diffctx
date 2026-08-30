@@ -387,6 +387,21 @@
         text-transform: uppercase;
         margin-top: 6px;
       }
+      .ratio .source {
+        border-top: 1px solid var(--line-soft);
+        padding: 14px 26px 18px;
+        font-size: 12.5px;
+        line-height: 1.6;
+        color: var(--fg-faint);
+      }
+      .ratio .source code {
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--fg-dim);
+      }
+      .ratio .source a {
+        color: var(--fg-dim);
+      }
       @media (max-width: 760px) {
         .ratio .wrap {
           grid-template-columns: 1fr;
@@ -1112,23 +1127,36 @@
     <div class="ratio">
       <div class="wrap">
         <div class="cell">
-          <div class="num" data-count="48210">48,210</div>
-          <div class="lbl">tokens — changed files pasted whole</div>
+          <div class="num" data-count="768268">768,268</div>
+          <div class="lbl">tokens — the 66 changed files, pasted whole</div>
         </div>
         <div class="cell">
-          <div class="num"><b data-count="6930">6,930</b></div>
-          <div class="lbl">tokens — diffctx selection, same review</div>
+          <div class="num"><b data-count="43769">43,769</b></div>
+          <div class="lbl">tokens — what diffctx selects instead</div>
         </div>
         <div class="cell">
           <div class="num">
-            <b>7×</b>
-            <span style="font-size: 20px; color: var(--fg-dim)"
-              >denser signal</span
-            >
+            <b>17.6×</b>
+            <span style="font-size: 20px; color: var(--fg-dim)">smaller</span>
           </div>
-          <div class="lbl">imports · callers · types · config · docs</div>
+          <div class="lbl">at the default budget, one command</div>
         </div>
       </div>
+      <p class="source">
+        Measured on
+        <a
+          href="https://github.com/home-assistant/core/commit/1d885bd073d9c8037c9c363204b1636662121bb6"
+          >home-assistant/core@1d885bd0</a
+        >
+        — “Restrict device registry entries to a single config entry”, 66 files
+        changed — with <code>diffctx . --diff 1d885bd0^..1d885bd0</code> at the
+        default auto budget, counted with the o200k_base tokenizer. Clone the
+        repo and run the command to reproduce it. The ratio is not a constant:
+        it tracks how much of the changed files is unrelated to the change, so a
+        wide refactor across large files compresses far more than a three-file
+        fix, where diffctx often <em>adds</em> tokens because it pulls in the
+        callers and types the diff alone does not show.
+      </p>
     </div>
 
     <section id="lab">

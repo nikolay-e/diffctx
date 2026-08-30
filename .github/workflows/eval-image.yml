@@ -11,8 +11,7 @@ name: eval-image
     branches: [main]
     paths:
       - Dockerfile.eval
-      - requirements-eval.txt
-      - requirements-eval.lock
+      - uv.lock
       - pyproject.toml
       - src/**
       - crates/diffctx-native/src/**

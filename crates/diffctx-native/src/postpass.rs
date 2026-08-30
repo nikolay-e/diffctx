@@ -8,7 +8,7 @@ use crate::fragmentation::create_whole_file_fragment;
 use crate::git::CatFileBatch;
 use crate::graph::Graph;
 use crate::interval::IntervalIndex;
-use crate::types::{Fragment, FragmentId, FragmentKind};
+use crate::types::{Fragment, FragmentId};
 
 fn find_dangling_semantic_names(
     selected: &[Fragment],
@@ -52,18 +52,24 @@ fn pick_best_fragment<'a>(
     full.or(sig).map(|f| *f)
 }
 
-fn change_coverage_rank(f: &Fragment, core_ids: &FxHashSet<FragmentId>) -> u8 {
+fn change_coverage_rank(
+    f: &Fragment,
+    core_ids: &FxHashSet<FragmentId>,
+    stand_in_ids: &FxHashSet<FragmentId>,
+) -> u8 {
     if core_ids.contains(&f.id) {
         return 0;
     }
-    // An excerpt is cut from a core fragment around the diff hunk, so it always
-    // covers the change; a signature only does when it belongs to a core.
-    let is_core_stub = f.kind == FragmentKind::Excerpt
-        || (f.kind.is_signature()
-            && core_ids
-                .iter()
-                .any(|c| c.path == f.id.path && c.start_line == f.id.start_line));
-    if is_core_stub { 1 } else { 2 }
+    // Rank 1 is "covers the hunk without being the core itself": an excerpt cut
+    // around it, or the stand-in the selection recorded for it. This is the
+    // same fact the renderers state, so it is the same function — the third
+    // hand-rolled copy of the rule scanned every core id per candidate to
+    // rediscover it from a shared start line.
+    if crate::types::carries_change(f, core_ids, stand_in_ids) {
+        1
+    } else {
+        2
+    }
 }
 
 fn pick_smallest_fitting(
@@ -71,6 +77,7 @@ fn pick_smallest_fitting(
     selected_ids: &FxHashSet<FragmentId>,
     budget_left: u32,
     core_ids: &FxHashSet<FragmentId>,
+    stand_in_ids: &FxHashSet<FragmentId>,
 ) -> Option<Fragment> {
     let mut sorted: Vec<&Fragment> = candidates.iter().collect();
     // Prefer a fragment that actually covers the diff hunk (core_ids, i.e.
@@ -78,7 +85,12 @@ fn pick_smallest_fitting(
     // an unrelated same-file fragment. Sorting by token_count alone picks
     // whichever candidate is smallest regardless of relevance, which can
     // silently hide the real change behind a tiny unrelated stub (#83).
-    sorted.sort_by_key(|f| (change_coverage_rank(f, core_ids), f.token_count));
+    sorted.sort_by_key(|f| {
+        (
+            change_coverage_rank(f, core_ids, stand_in_ids),
+            f.token_count,
+        )
+    });
     for cand in &sorted {
         if cand.token_count == 0 || selected_ids.contains(&cand.id) {
             continue;
@@ -263,6 +275,7 @@ pub fn ensure_changed_files_represented(
     mut batch_reader: Option<&mut CatFileBatch>,
     core_ids: &FxHashSet<FragmentId>,
     core_excerpts: &FxHashMap<FragmentId, Fragment>,
+    stand_in_ids: &FxHashSet<FragmentId>,
 ) {
     let selected_paths: FxHashSet<String> = selected
         .iter()
@@ -322,9 +335,13 @@ pub fn ensure_changed_files_represented(
             candidates
         };
 
-        if let Some(picked) =
-            pick_smallest_fitting(&candidates, &selected_ids, budget_left, core_ids)
-        {
+        if let Some(picked) = pick_smallest_fitting(
+            &candidates,
+            &selected_ids,
+            budget_left,
+            core_ids,
+            stand_in_ids,
+        ) {
             if !interval_idx.overlaps(&picked) {
                 budget_left = budget_left.saturating_sub(picked.token_count);
                 selected_ids.insert(picked.id.clone());
@@ -373,6 +390,9 @@ mod tests {
         );
         let all_fragments = vec![core.clone(), stub.clone()];
         let core_ids: FxHashSet<FragmentId> = std::iter::once(core.id.clone()).collect();
+        // The stub is the stand-in the selection would have recorded for this
+        // core; the rank rule reads that fact, it no longer re-derives it.
+        let stand_in_ids: FxHashSet<FragmentId> = std::iter::once(stub.id.clone()).collect();
         let changed_files = vec![PathBuf::from("a.ts")];
         let mut selected: Vec<Fragment> = Vec::new();
 
@@ -386,12 +406,53 @@ mod tests {
             None,
             &core_ids,
             &FxHashMap::default(),
+            &stand_in_ids,
         );
 
         assert_eq!(selected.len(), 1, "expected exactly one fallback fragment");
         assert_eq!(
             selected[0].id, core.id,
             "fallback picked the signature stub instead of the fragment covering the actual diff hunk"
+        );
+    }
+
+    /// The recorded stand-in fact is what ranks a core's stub ABOVE a smaller
+    /// unrelated fragment of the same file. With the fact absent the cheaper
+    /// fragment wins — so this is the test the two above could not be.
+    #[test]
+    fn a_recorded_stand_in_outranks_a_cheaper_unrelated_fragment() {
+        use crate::types::FragmentKind;
+        let core = frag("a.ts", 10, 20, FragmentKind::Function, 60);
+        let stub = frag("a.ts", 10, 10, FragmentKind::FunctionSignature, 12);
+        let unrelated = frag("a.ts", 40, 41, FragmentKind::Function, 8);
+        let core_ids: FxHashSet<FragmentId> = std::iter::once(core.id.clone()).collect();
+        let candidates = vec![core, stub.clone(), unrelated.clone()];
+
+        let with_fact: FxHashSet<FragmentId> = std::iter::once(stub.id.clone()).collect();
+        let picked = pick_smallest_fitting(
+            &candidates,
+            &FxHashSet::default(),
+            20,
+            &core_ids,
+            &with_fact,
+        );
+        assert_eq!(
+            picked.map(|f| f.id),
+            Some(stub.id.clone()),
+            "the stand-in covers the hunk"
+        );
+
+        let picked = pick_smallest_fitting(
+            &candidates,
+            &FxHashSet::default(),
+            20,
+            &core_ids,
+            &FxHashSet::default(),
+        );
+        assert_eq!(
+            picked.map(|f| f.id),
+            Some(unrelated.id),
+            "without the fact, size decides"
         );
     }
 
@@ -410,6 +471,9 @@ mod tests {
         );
         let all_fragments = vec![core.clone(), stub.clone()];
         let core_ids: FxHashSet<FragmentId> = std::iter::once(core.id.clone()).collect();
+        // The stub is the stand-in the selection would have recorded for this
+        // core; the rank rule reads that fact, it no longer re-derives it.
+        let stand_in_ids: FxHashSet<FragmentId> = std::iter::once(stub.id.clone()).collect();
         let changed_files = vec![PathBuf::from("a.ts")];
         let mut selected: Vec<Fragment> = Vec::new();
 
@@ -423,6 +487,7 @@ mod tests {
             None,
             &core_ids,
             &FxHashMap::default(),
+            &stand_in_ids,
         );
 
         assert_eq!(selected.len(), 1);
@@ -479,6 +544,7 @@ mod tests {
                 None,
                 &core_ids,
                 &excerpts,
+                &FxHashSet::default(),
             );
             assert!(
                 cost(&selected) <= budget,
@@ -570,11 +636,25 @@ mod tests {
         ];
         let core_ids: FxHashSet<FragmentId> = FxHashSet::default();
         assert!(
-            pick_smallest_fitting(&candidates, &FxHashSet::default(), 399, &core_ids).is_none(),
+            pick_smallest_fitting(
+                &candidates,
+                &FxHashSet::default(),
+                399,
+                &core_ids,
+                &FxHashSet::default()
+            )
+            .is_none(),
             "returned a candidate that does not fit — the budget contract is broken"
         );
         assert!(
-            pick_smallest_fitting(&candidates, &FxHashSet::default(), 400, &core_ids).is_some(),
+            pick_smallest_fitting(
+                &candidates,
+                &FxHashSet::default(),
+                400,
+                &core_ids,
+                &FxHashSet::default()
+            )
+            .is_some(),
             "refused a candidate that fits exactly"
         );
     }
@@ -591,6 +671,7 @@ mod tests {
             &[taken, zero, free.clone()],
             &selected,
             1_000,
+            &FxHashSet::default(),
             &FxHashSet::default(),
         );
         assert_eq!(picked.map(|f| f.id), Some(free.id));

@@ -93,10 +93,7 @@ fn filter_ignored_and_secret(root_dir: &Path, files: Vec<PathBuf>) -> Vec<PathBu
     let ignored_rel_paths = git::find_ignored_paths_with_source(root_dir, &rel_paths);
     files
         .into_par_iter()
-        .filter(|f| {
-            !crate::pipeline::is_secret_path(f)
-                && !crate::pipeline::is_ignored_path(root_dir, f, &ignored_rel_paths)
-        })
+        .filter(|f| !crate::pipeline::is_withheld(root_dir, f, &ignored_rel_paths))
         .collect()
 }
 

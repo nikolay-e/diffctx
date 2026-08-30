@@ -326,9 +326,9 @@ manifests.
 |---|---|
 | Rust toolchain | `rust-toolchain.toml` (`channel = "1.92.0"`) |
 | Cargo deps | root `Cargo.lock` (committed workspace lockfile) |
-| Python deps | `requirements-eval.lock`, compiled from `requirements-eval.txt` via `uv pip compile --generate-hashes` (edit the .txt, recompile the lock); install with `pip install --require-hashes -r requirements-eval.lock` |
+| Python deps | the `eval` dependency group in `pyproject.toml`, locked in `uv.lock`; `Dockerfile.eval` exports it with `uv export --group eval` and installs with `--require-hashes`; locally `uv sync --group eval` |
 | HuggingFace datasets | `datasets/external-revisions.json` from `python -m eval pin-revisions` (committed) |
-| tiktoken BPE | Python `tiktoken` pinned via `requirements-eval.lock` (currently 0.13.0); Rust `tiktoken-rs = "=0.12.0"` in `Cargo.toml`; drift snapshot test `test_tiktoken_o200k_base_encoding_is_pinned` |
+| tiktoken BPE | Python `tiktoken` pinned via `uv.lock` (currently 0.13.0); Rust `tiktoken-rs = "=0.12.0"` in `Cargo.toml`; drift snapshot test `test_tiktoken_o200k_base_encoding_is_pinned` |
 | Build determinism | NOT bit-for-bit — Rust release builds carry HashMap ordering non-determinism per `cargo#16693`. Documented limitation; reviewers don't ask for byte-identical `.so`. |
 
 ## Multi-benchmark adapter layer

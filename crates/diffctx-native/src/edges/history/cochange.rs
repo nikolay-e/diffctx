@@ -74,9 +74,9 @@ impl CochangeEdgeBuilder {
             let rel = if path.is_absolute() {
                 path.strip_prefix(repo_root)
                     .ok()
-                    .map(|r| r.to_string_lossy().replace('\\', "/"))
+                    .map(|r| crate::paths::to_posix_display(r.to_string_lossy()))
             } else {
-                Some(path.to_string_lossy().replace('\\', "/"))
+                Some(crate::paths::to_posix_display(path.to_string_lossy()))
             };
             if let Some(rel) = rel {
                 path_to_frags.entry(rel).or_default().push(f.id.clone());
