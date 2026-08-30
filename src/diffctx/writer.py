@@ -264,24 +264,39 @@ def _write_text_fragment(file: TextIO, frag: dict[str, Any], indent: str = "") -
             file.write(f"{content_indent}{line}\n")
 
 
+def _escape_text_path(path: Any) -> str:
+    return str(path).replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r")
+
+
 def _write_text_path_list(file: TextIO, label: str, paths: list[Any]) -> None:
     # One path per line: a comma or newline inside a path (git emits both
     # unquoted under core.quotePath=false) would make a joined line unparseable.
     file.write(f"  {label}:\n")
     for path in paths:
-        p = str(path).replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r")
-        file.write(f"    {p}\n")
+        file.write(f"    {_escape_text_path(path)}\n")
+
+
+def _write_text_raw_diff(file: TextIO, tree: dict[str, Any]) -> None:
+    if not tree.get("raw_diff"):
+        return
+    file.write("  raw diff:\n")
+    for line in tree["raw_diff"].rstrip("\n").split("\n"):
+        file.write(f"    {line}\n" if line else "\n")
+
+
+def _write_text_changed_files(file: TextIO, tree: dict[str, Any]) -> None:
+    omitted = set(_omitted_changed_files(tree))
+    file.write("  changed files:\n")
+    for path in tree["changed_files"]:
+        mark = " (omitted)" if str(path) in omitted else ""
+        file.write(f"    {_escape_text_path(path)}{mark}\n")
 
 
 def _write_tree_text_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
     if tree.get("commit_message"):
         file.write(f"  change: {tree['commit_message']}\n")
     if tree.get("changed_files"):
-        omitted = set(_omitted_changed_files(tree))
-        file.write("  changed files:\n")
-        for path in tree["changed_files"]:
-            text = str(path).replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r")
-            file.write(f"    {text}{' (omitted)' if str(path) in omitted else ''}\n")
+        _write_text_changed_files(file, tree)
     if tree.get("deleted_files"):
         _write_text_path_list(file, "deleted files", tree["deleted_files"])
     for pair in tree.get("renamed_files", []):
@@ -292,10 +307,7 @@ def _write_tree_text_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
         _write_text_path_list(file, "changed but excluded by ignore rules", tree["ignored_changes"])
     if tree.get("policy_excluded_count"):
         file.write(f"  changed files withheld by exclusion policy: {tree['policy_excluded_count']}\n")
-    if tree.get("raw_diff"):
-        file.write("  raw diff:\n")
-        for line in tree["raw_diff"].rstrip("\n").split("\n"):
-            file.write(f"    {line}\n" if line else "\n")
+    _write_text_raw_diff(file, tree)
     for frag in tree.get("fragments", []):
         _write_text_fragment(file, frag, "  ")
 

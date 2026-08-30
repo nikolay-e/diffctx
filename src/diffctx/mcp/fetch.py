@@ -189,26 +189,35 @@ def fetch_fragments(repo: Path, diff_ref: str, fragment_ids: list[str], max_file
     contained = [ref.path for _, ref in refs if ref is not None and _is_contained(repo, ref.path)]
     withheld = set(withheld_paths(str(repo), contained))
     for raw, ref in refs:
-        if ref is None:
-            parts.append(f"## {raw}\n*Unparseable id — expected `path:start-end`, `path:line`, or `path`.*\n")
-            continue
-        if not _is_contained(repo, ref.path) or ref.path in withheld:
-            # Deliberately one message for "outside the repo" and "ignored":
-            # distinguishing them tells the caller whether a path they cannot
-            # read nonetheless exists.
-            parts.append(f"## {ref.path}\n*Not available: outside the repository or excluded by its ignore rules.*\n")
-            continue
-        text = _blob_at(repo, rev, ref.path) if rev else None
-        if text is None:
-            # Created after `rev`, or the range ends at the working tree.
-            text = _worktree_text(repo, ref.path)
-        if text is None:
-            parts.append(f"## {ref.path}\n*Not found at {rev_label}.*\n")
-            continue
-        if len(text.encode("utf-8", errors="replace")) > max_file_bytes:
-            parts.append(f"## {ref.path}\n*Skipped: file exceeds {max_file_bytes:,} bytes.*\n")
-            continue
-        body, span = _slice(text, ref)
-        suffix = Path(ref.path).suffix.lstrip(".")
-        parts.append(f"## {ref.path}:{span}\n```{suffix}\n{body}\n```\n")
+        parts.append(_fetch_one(repo, rev, rev_label, raw, ref, withheld, max_file_bytes))
     return "\n".join(parts)
+
+
+def _fetch_one(
+    repo: Path,
+    rev: str | None,
+    rev_label: str,
+    raw: str,
+    ref: FragmentRef | None,
+    withheld: set[str],
+    max_file_bytes: int,
+) -> str:
+    """One section: the fragment's body, or the reason there is none."""
+    if ref is None:
+        return f"## {raw}\n*Unparseable id — expected `path:start-end`, `path:line`, or `path`.*\n"
+    if not _is_contained(repo, ref.path) or ref.path in withheld:
+        # Deliberately one message for "outside the repo" and "ignored":
+        # distinguishing them tells the caller whether a path they cannot
+        # read nonetheless exists.
+        return f"## {ref.path}\n*Not available: outside the repository or excluded by its ignore rules.*\n"
+    text = _blob_at(repo, rev, ref.path) if rev else None
+    if text is None:
+        # Created after `rev`, or the range ends at the working tree.
+        text = _worktree_text(repo, ref.path)
+    if text is None:
+        return f"## {ref.path}\n*Not found at {rev_label}.*\n"
+    if len(text.encode("utf-8", errors="replace")) > max_file_bytes:
+        return f"## {ref.path}\n*Skipped: file exceeds {max_file_bytes:,} bytes.*\n"
+    body, span = _slice(text, ref)
+    suffix = Path(ref.path).suffix.lstrip(".")
+    return f"## {ref.path}:{span}\n```{suffix}\n{body}\n```\n"

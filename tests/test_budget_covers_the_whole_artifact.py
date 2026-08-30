@@ -44,7 +44,7 @@ def test_a_budget_smaller_than_the_summary_yields_the_summary_alone(tmp_path):
 
     # Deliberate: a changed path is never dropped to fit, so the summary can
     # exceed a budget that cannot hold it — but nothing else is spent.
-    assert not (result.get("fragments") or [])
+    assert not result.get("fragments")
     assert len(result["changed_files"]) == FILE_COUNT
     assert count_tokens(md) > 100
 

@@ -72,11 +72,13 @@ def test_server_and_legacy_tool_agree_with_the_engine(tmp_path):
         )
     )
     text = result[0][0].text
-    assert "LEAK_NETRC" not in text and "LEAK_HIDDEN" not in text
+    assert "LEAK_NETRC" not in text
+    assert "LEAK_HIDDEN" not in text
     assert "return 2" in text
 
     register_legacy_tools(mcp)
     result = asyncio.run(mcp.call_tool("get_file_context", {"repo_path": str(repo.path), "patterns": ["**/*", ".netrc"]}))
     text = result[0][0].text
-    assert "LEAK_NETRC" not in text and "LEAK_HIDDEN" not in text
+    assert "LEAK_NETRC" not in text
+    assert "LEAK_HIDDEN" not in text
     assert "GEN_OK" in text
