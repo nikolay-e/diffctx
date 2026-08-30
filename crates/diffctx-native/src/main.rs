@@ -44,8 +44,9 @@ struct Cli {
     #[arg(short = 'v', short_alias = 'V', long, action = clap::ArgAction::Version)]
     version: Option<bool>,
 
-    /// Token budget: omit = auto, N = fixed cap, -1 = unlimited, 0 = strict-zero
-    /// floor (empty selection; use --full for changed files only)
+    /// Token budget for the whole artifact — the change summary is charged
+    /// first and the selection spends the remainder: omit = auto, N = cap,
+    /// -1 = unlimited, 0 = no fragments (use --full for changed files only)
     #[arg(long, allow_negative_numbers = true)]
     budget: Option<i64>,
 

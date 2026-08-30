@@ -5,7 +5,7 @@ name: eval-sweep
 # Two modes (select at dispatch):
 #   smoke — GitHub-hosted ubuntu-latest, 1 cell (ppr×64000×swebench_verified),
 #            5 instances, no Hetzner provisioning. Quick sanity check.
-#   full  — Hetzner CCX63 (4 × self-hosted runners), complete 5×5×3 matrix,
+#   full  — Hetzner CCX63 (4 × self-hosted runners), complete 45-cell matrix,
 #            baked repo cache. Production sweep.
 #
 # Trigger via workflow_dispatch. Results are committed to eval-results/sweep.
@@ -385,6 +385,9 @@ jobs:
             --out "${CELL_DIR}" 2>&1 | tee "${CELL_DIR}/run.log"
         env:
           BASELINE: ${{ steps.cfg.outputs.baseline }}
+          # Unauthenticated Hub reads are rate-limited; the first thing that
+          # breaks on a 500-instance cell (#233).
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
       - name: Per-instance metric summary (always)
         if: always()
@@ -397,6 +400,23 @@ jobs:
             printf '{"error": "no checkpoint produced", "expected_path": "%s"}\n' "${ckpt}" \
               > "${CELL_DIR}/cell_summary.json"
           fi
+
+      # A smoke run that reports "no checkpoint produced" and still goes green
+      # is a check that cannot fail — it passed for months while nothing
+      # asserted anything (#233). Five instances that all apply and produce a
+      # selection is the floor this path exists to defend.
+      - name: Assert the smoke cell actually ran
+        run: |
+          python - "${CELL_DIR}/cell_summary.json" <<'PY'
+          import json, sys
+          summary = json.load(open(sys.argv[1]))
+          if "error" in summary:
+              sys.exit(f"smoke cell produced no checkpoint: {summary}")
+          ok = summary.get("ok") or summary.get("n_ok") or 0
+          if ok < 5:
+              sys.exit(f"smoke cell resolved {ok}/5 instances: {summary}")
+          print(f"smoke cell ok: {summary}")
+          PY
 
       - name: Append cell-end metadata
         if: always()
@@ -461,6 +481,24 @@ jobs:
           - {method: bm25, depth: 3}
           - {method: bm25, depth: 4}
           - {method: ego, depth: -1}
+          # `depth` reaches the runner only when >= 0, so these three methods
+          # ran five byte-identical copies of their depth=-1 cell per test set
+          # — 45 of the 90 cells, roughly a third of the CCX63 hours (#233).
+          - {method: internal-bm25, depth: 0}
+          - {method: internal-bm25, depth: 1}
+          - {method: internal-bm25, depth: 2}
+          - {method: internal-bm25, depth: 3}
+          - {method: internal-bm25, depth: 4}
+          - {method: rrf, depth: 0}
+          - {method: rrf, depth: 1}
+          - {method: rrf, depth: 2}
+          - {method: rrf, depth: 3}
+          - {method: rrf, depth: 4}
+          - {method: pit, depth: 0}
+          - {method: pit, depth: 1}
+          - {method: pit, depth: 2}
+          - {method: pit, depth: 3}
+          - {method: pit, depth: 4}
         include:
           # Aider: one budget per cell (B=-1 unlimited and B=0 recall-floor
           # do not apply to a repo-map subprocess).
@@ -860,6 +898,9 @@ jobs:
           kill "${HEARTBEAT_PID}" 2>/dev/null || true
         env:
           BASELINE: ${{ steps.cfg.outputs.baseline }}
+          # Unauthenticated Hub reads are rate-limited; the first thing that
+          # breaks on a 500-instance cell (#233).
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
           BUDGETS: ${{ steps.cfg.outputs.budgets }}
           MATRIX_DEPTH: ${{ matrix.depth }}
 

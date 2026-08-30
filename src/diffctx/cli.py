@@ -375,7 +375,12 @@ Token counting (--budget, and the summary line on stderr):
   printed here — usually by single-digit to low-double-digit percent, in either
   direction. Treat --budget as an upper bound in o200k tokens and leave
   headroom (e.g. --budget 28000 for a 32k target) when the consumer is not an
-  OpenAI model. There is no --tokenizer flag; o200k_base is pinned so results
+  OpenAI model. The budget covers the whole artifact, not only the fragments:
+  the change summary (commit message, changed/deleted/renamed/lockfile/ignored
+  lists) is charged against it first and the selection spends the remainder.
+  A budget smaller than that summary therefore yields the summary alone --
+  a changed path is never dropped to fit, because a reader who cannot see what
+  changed is worse off than one who is over budget. There is no --tokenizer flag; o200k_base is pinned so results
   stay reproducible against the published evaluation.
   --with-raw-diff output is NOT charged to --budget, but IS included in the
   stderr token summary, which always reports the real size of what was written.
@@ -536,7 +541,7 @@ def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> arg
         help=(
             "Token budget in o200k_base tokens (tiktoken, GPT-4o family — other model families "
             "tokenize differently, so leave headroom; see 'Token counting' below): "
-            "omit = auto (default), N = fixed cap, -1 = unlimited, "
+            "omit = auto (default), N = cap on the whole artifact (change summary charged first), -1 = unlimited, "
             "0 = strict-zero floor (empty selection; use --full for changed files only)"
         ),
     )

@@ -127,6 +127,7 @@ pub fn build_diff_context_locate(
         SelectionOutcome {
             selected: Vec::new(),
             effective_budget: budget_tokens.unwrap_or(0),
+            selection_budget: budget_tokens.unwrap_or(0),
             selection_iters: 0,
             stopping_certificate: 0.0,
             select_ms: 0.0,
@@ -635,7 +636,14 @@ pub fn compute_scored_state(
 
 pub struct SelectionOutcome {
     pub selected: Vec<Fragment>,
+    /// The budget the caller asked for (or auto-sizing produced). Reported as
+    /// the contract; it is NOT what the selection had to spend.
     pub effective_budget: u32,
+    /// What was actually left for fragments after the change summary was
+    /// charged (#241). Anything reasoning about headroom — "did the budget
+    /// stop us, or did tau?" — has to use this one, or it reads the envelope
+    /// as free space and concludes the budget was never binding.
+    pub selection_budget: u32,
     pub selection_iters: usize,
     pub stopping_certificate: f64,
     pub select_ms: f64,
@@ -660,13 +668,24 @@ pub fn select_and_postpass(
     effective_budget: u32,
     tau: f64,
 ) -> (Vec<Fragment>, usize, f64, FxHashSet<FragmentId>) {
-    let tau = if scoring_result.admissible_files.is_none()
-        && tau == crate::config::limits::DEFAULT_STOPPING_THRESHOLD
-    {
+    // A scorer with no admission gate (BM25 builds no graph, so it has no
+    // declared-related set to gate on) is bounded by the threshold alone, so
+    // the default is raised to the ungated operating point. An explicitly
+    // requested tau is honoured as given — a sweep measuring an ungated tau
+    // must get the tau it asked for — which makes the effective value worth
+    // recording: an ablation cell that does not say whether it ran gated is
+    // not comparable with one that did (#245).
+    let ungated = scoring_result.admissible_files.is_none();
+    let tau = if ungated && tau == crate::config::limits::DEFAULT_STOPPING_THRESHOLD {
         crate::config::limits::UNGATED_STOPPING_THRESHOLD
     } else {
         tau
     };
+    tracing::info!(
+        "diffctx: selection gate={} tau={:.4}",
+        if ungated { "none" } else { "admission" },
+        tau
+    );
     let selection_result = match objective {
         crate::mode::ObjectiveMode::BoltzmannModular => {
             let beta = crate::utility::calibrate_beta(
@@ -733,6 +752,34 @@ pub fn select_and_postpass(
     )
 }
 
+/// What the change summary costs before a single fragment is selected.
+///
+/// `--budget` is documented as a cap on the output in three places, and until
+/// #241 it bounded only the fragments: the changed-file list, the
+/// deleted/renamed/lockfile/ignored lists and the commit message rendered for
+/// free. On an 83-file range that envelope was ~1.3k tokens and `--budget 0`
+/// still emitted 2.4k — the selection dutifully under budget while the artifact
+/// was three times over it. Charging the envelope first is what makes the
+/// number mean what the docs claim.
+///
+/// Shared by the product pipeline and the corpus harness on purpose: a budget
+/// the harness spends differently is a harness measuring a system nobody runs
+/// (#149).
+pub fn envelope_token_cost(commit_message: Option<&str>, listed_paths: &[String]) -> u32 {
+    let mut preview = String::new();
+    if let Some(msg) = commit_message {
+        preview.push_str(msg);
+        preview.push('\n');
+    }
+    for line in listed_paths {
+        preview.push_str(line);
+        preview.push('\n');
+    }
+    count_tokens(&preview)
+        + (listed_paths.len() as u32) * BUDGET.envelope_overhead_per_entry
+        + BUDGET.envelope_overhead
+}
+
 /// Selection + the 3 post-passes, shared verbatim by the pack renderer
 /// (`select_with_params`) and the locate renderer — extracting it is pure
 /// code motion so both modes select identically by construction.
@@ -753,6 +800,23 @@ pub fn run_selection(
         auto.clamp(BUDGET.auto_min, BUDGET.auto_max)
     });
 
+    let mut listed: Vec<String> = state
+        .changed_files
+        .iter()
+        .map(|p| crate::paths::display_rel_or_abs(&state.root_dir, p))
+        .collect();
+    listed.extend(state.deleted_files.iter().cloned());
+    listed.extend(state.lockfile_changes.iter().cloned());
+    listed.extend(state.ignored_changes.iter().cloned());
+    listed.extend(
+        state
+            .renamed_files
+            .iter()
+            .map(|(from, to)| format!("{from} {to}")),
+    );
+    let envelope = envelope_token_cost(state.commit_message.as_deref(), &listed);
+    let selection_budget = effective_budget.saturating_sub(envelope);
+
     let (mut selected, selection_iters, stopping_certificate, stand_in_ids) = select_and_postpass(
         &state.scoring_result,
         &state.all_fragments,
@@ -760,12 +824,12 @@ pub fn run_selection(
         &state.needs,
         &state.core_excerpts,
         state.config.objective,
-        effective_budget,
+        selection_budget,
         tau,
     );
 
     let used: u32 = selected.iter().map(|f| f.token_count).sum();
-    let remaining = effective_budget.saturating_sub(used);
+    let remaining = selection_budget.saturating_sub(used);
     let mut batch_reader = match CatFileBatch::new(&state.root_dir) {
         Ok(r) => Some(r),
         Err(_) => None,
@@ -792,6 +856,7 @@ pub fn run_selection(
     SelectionOutcome {
         selected,
         effective_budget,
+        selection_budget,
         selection_iters,
         stopping_certificate,
         select_ms,

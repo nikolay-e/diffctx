@@ -124,6 +124,13 @@ pub fn build_diff_context_in_memory(
 
     let needs = crate::utility::needs::needs_from_diff(&all_fragments, &core_ids, &diff_text);
 
+    // The same envelope charge the product pipeline applies (#241): a harness
+    // that spends the budget differently scores a system nobody runs (#149).
+    let mut listed: Vec<String> = changed_paths.iter().cloned().collect();
+    listed.sort();
+    let selection_budget =
+        effective_budget.saturating_sub(crate::pipeline::envelope_token_cost(None, &listed));
+
     let (mut selected, _, _, stand_in_ids) = crate::pipeline::select_and_postpass(
         &scoring_result,
         &all_fragments,
@@ -131,12 +138,12 @@ pub fn build_diff_context_in_memory(
         &needs,
         &core_excerpts,
         config.objective,
-        effective_budget,
+        selection_budget,
         tau,
     );
 
     let used: u32 = selected.iter().map(|f| f.token_count).sum();
-    let remaining = effective_budget.saturating_sub(used);
+    let remaining = selection_budget.saturating_sub(used);
     let changed_files: Vec<PathBuf> = changed_paths.iter().map(PathBuf::from).collect();
     crate::postpass::ensure_changed_files_represented(
         &mut selected,
@@ -340,6 +347,61 @@ fn merge_file_contents(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The same deletion through both parsers: the harness's in-memory differ
+    /// and git's own `--unified=0` output through the production parser.
+    ///
+    /// The sibling test below compares against a hand-written `DiffHunk`, which
+    /// cannot notice `git.rs` drifting away from it — the harness would go on
+    /// scoring a system nobody ships and the literal would still be green
+    /// (#245). This one has no literal: git produces the bytes.
+    #[test]
+    fn both_pipelines_anchor_a_pure_deletion_identically() {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let old_file = tmp.path().join("old.py");
+        let new_file = tmp.path().join("new.py");
+        let old = "l1\nl2\nl3\nl4\nl5\nl6\nl7\n";
+        let new = "l1\nl2\nl3\nl4\nl6\nl7\n";
+        std::fs::write(&old_file, old).expect("write old");
+        std::fs::write(&new_file, new).expect("write new");
+
+        // `--no-index` needs no repository and emits exactly the header and
+        // hunk syntax `parse_diff` consumes in production.
+        let output = std::process::Command::new("git")
+            .args(["diff", "--no-index", "--unified=0", "-M"])
+            .arg(&old_file)
+            .arg(&new_file)
+            .output()
+            .expect("git diff --no-index");
+        let diff_text = String::from_utf8_lossy(&output.stdout);
+        let from_git = crate::git::parse_hunks_from_diff_output(&diff_text, tmp.path());
+        assert_eq!(from_git.len(), 1, "git reported {diff_text:?}");
+
+        let path: Arc<str> = Arc::from("f.py");
+        let from_harness = diff_to_hunks(&path, old, new);
+        assert_eq!(from_harness.len(), 1);
+
+        assert_eq!(
+            (
+                from_harness[0].new_start,
+                from_harness[0].new_len,
+                from_harness[0].old_start,
+                from_harness[0].old_len
+            ),
+            (
+                from_git[0].new_start,
+                from_git[0].new_len,
+                from_git[0].old_start,
+                from_git[0].old_len
+            ),
+            "the harness anchors a pure deletion where git does not"
+        );
+        assert_eq!(
+            from_harness[0].core_selection_range(),
+            from_git[0].core_selection_range(),
+            "same hunk, different core window"
+        );
+    }
 
     /// The harness and production must anchor a pure deletion on the same
     /// line. git's `--unified=0` reports the deletion of old line 5 as

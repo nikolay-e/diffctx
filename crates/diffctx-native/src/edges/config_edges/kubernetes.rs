@@ -99,7 +99,10 @@ fn is_kubernetes_manifest(path: &Path, content: &str) -> bool {
     }
 }
 
-fn extract_resource_info(content: &str) -> (Option<String>, Option<String>) {
+/// The resource kind and, with it, the byte offset at which the name was
+/// declared: an edge into a manifest should land on the fragment that actually
+/// carries the construct, and the offset is the only thing that can say which.
+fn extract_resource_info(content: &str) -> (Option<String>, Option<(String, usize)>) {
     let kind = K8S_KIND_RE
         .captures(content)
         .map(|c| c[1].trim().to_string());
@@ -107,42 +110,65 @@ fn extract_resource_info(content: &str) -> (Option<String>, Option<String>) {
     let name = K8S_METADATA_NAME_RE
         .captures(content)
         .or_else(|| K8S_NAME_RE.captures(content))
-        .map(|c| c[1].trim().to_string());
+        .and_then(|c| c.get(1))
+        .map(|m| (m.as_str().trim().to_string(), m.start()));
 
     (kind, name)
 }
 
-fn extract_label_pairs(label_block: &str) -> FxHashMap<String, String> {
-    let mut pairs = FxHashMap::default();
-    for cap in LABEL_PAIR_RE.captures_iter(label_block) {
-        pairs.insert(cap[1].trim().to_string(), cap[2].trim().to_string());
-    }
-    pairs
+/// A span of the manifest, as byte offsets into the reconstructed file text.
+type Span = (usize, usize);
+
+/// Label pairs carrying the span of the *block* they came from, not of the
+/// single pair: a `labels:` block is the construct an edge is about, and
+/// anchoring on it is what makes the edge land on a fragment worth reading
+/// rather than on the one line the regex happened to match.
+fn extract_label_pairs(label_block: &str, block: Span) -> Vec<(String, String, Span)> {
+    LABEL_PAIR_RE
+        .captures_iter(label_block)
+        .map(|cap| (cap[1].trim().to_string(), cap[2].trim().to_string(), block))
+        .collect()
 }
 
-fn extract_labels_by_pattern(content: &str, pattern: &Regex) -> FxHashMap<String, String> {
-    let mut labels = FxHashMap::default();
-    for m in pattern.captures_iter(content) {
-        labels.extend(extract_label_pairs(&m[1]));
+type LabelMap = FxHashMap<String, (String, Span)>;
+
+fn extract_labels_by_pattern(content: &str, pattern: &Regex) -> LabelMap {
+    let mut labels = LabelMap::default();
+    for cap in pattern.captures_iter(content) {
+        let Some(block) = cap.get(1) else { continue };
+        for (key, value, span) in extract_label_pairs(block.as_str(), (block.start(), block.end()))
+        {
+            labels.insert(key, (value, span));
+        }
     }
     labels
 }
 
-fn extract_labels(content: &str) -> FxHashMap<String, String> {
+fn extract_labels(content: &str) -> LabelMap {
     extract_labels_by_pattern(content, &LABELS_RE)
 }
 
-fn extract_selector_labels(content: &str) -> FxHashMap<String, String> {
+fn extract_selector_labels(content: &str) -> LabelMap {
     extract_labels_by_pattern(content, &SELECTOR_MATCH_LABELS_RE)
 }
 
-fn labels_match(selector: &FxHashMap<String, String>, labels: &FxHashMap<String, String>) -> bool {
+/// `Some(span)` when every selector pair is present with the same value; the
+/// span covers the label blocks that matched, which is where the edge is
+/// anchored. Matching semantics are unchanged — only the anchor is new.
+fn labels_match(selector: &FxHashMap<String, String>, labels: &LabelMap) -> Option<Span> {
     if selector.is_empty() {
-        return false;
+        return None;
     }
-    selector
-        .iter()
-        .all(|(k, v)| labels.get(k).map_or(false, |lv| lv == v))
+    let mut span = (usize::MAX, 0usize);
+    for (k, v) in selector {
+        match labels.get(k) {
+            Some((lv, (start, end))) if lv == v => {
+                span = (span.0.min(*start), span.1.max(*end));
+            }
+            _ => return None,
+        }
+    }
+    Some(span)
 }
 
 fn collect_k8s_dirs(k8s_files: &[&PathBuf]) -> FxHashSet<PathBuf> {
@@ -176,13 +202,124 @@ fn is_in_k8s_dir(candidate: &Path, k8s_dirs: &FxHashSet<PathBuf>) -> bool {
     false
 }
 
+/// One manifest as the engine has to read it: the file text rebuilt from its
+/// fragments, plus the map back to them.
+///
+/// Two things made this builder emit nothing at all (#226). Detection ran per
+/// fragment, and no fragment of a real manifest holds both `apiVersion:` and
+/// `kind:` — so `is_kubernetes_manifest` was false for every fragment of every
+/// manifest, and all six channels returned empty. And the multi-line patterns
+/// here (`selector:` then `matchLabels:` then the pairs) only match against
+/// whole-file text in the first place.
+///
+/// The text is reassembled by line number rather than by concatenation because
+/// tree-sitter emits nested fragments for YAML — `spec:` 5-21 *and* `app: web`
+/// 12-12 — and concatenating them would duplicate lines and put every offset
+/// past the first nesting off by the length of its parent.
+struct ManifestView {
+    content: String,
+    /// Byte offset where each line of `content` begins.
+    line_starts: Vec<usize>,
+    /// `(start_line, end_line, id)` per fragment, ascending.
+    fragments: Vec<(u32, u32, FragmentId)>,
+    /// The file's largest fragment: where a definition is worth reading (a
+    /// `ConfigMap`'s `data:`, not its `metadata:`), and the fallback anchor.
+    representative: FragmentId,
+}
+
+impl ManifestView {
+    fn line_of(&self, offset: usize) -> u32 {
+        self.line_starts
+            .partition_point(|start| *start <= offset)
+            .max(1) as u32
+    }
+
+    /// The smallest fragment that covers the whole matched construct, so an
+    /// edge about a three-line `labels:` block lands on the `spec:` fragment
+    /// that contains it and not on the one line the regex started at.
+    fn anchor(&self, span: Span) -> &FragmentId {
+        let (first, last) = (self.line_of(span.0), self.line_of(span.1));
+        self.fragments
+            .iter()
+            .filter(|(start, end, _)| *start <= first && *end >= last)
+            .min_by_key(|(start, end, id)| (end - start, *start, id.clone()))
+            .map_or(&self.representative, |(_, _, id)| id)
+    }
+}
+
+fn build_manifest_views(fragments: &[Fragment]) -> Vec<ManifestView> {
+    let mut by_path: FxHashMap<&str, Vec<&Fragment>> = FxHashMap::default();
+    for f in fragments {
+        by_path.entry(f.path()).or_default().push(f);
+    }
+
+    let mut paths: Vec<&str> = by_path.keys().copied().collect();
+    paths.sort_unstable();
+
+    let mut views = Vec::new();
+    for path in paths {
+        let mut frags = by_path.remove(path).unwrap_or_default();
+        frags.sort_by(|a, b| a.id.cmp(&b.id));
+
+        let mut lines: Vec<String> = Vec::new();
+        for f in &frags {
+            for (i, line) in f.content.lines().enumerate() {
+                let idx = (f.id.start_line as usize).saturating_sub(1) + i;
+                if lines.len() <= idx {
+                    lines.resize(idx + 1, String::new());
+                }
+                if lines[idx].is_empty() {
+                    lines[idx] = line.to_string();
+                }
+            }
+        }
+        if lines.is_empty() {
+            continue;
+        }
+
+        let mut content = String::new();
+        let mut line_starts = Vec::with_capacity(lines.len());
+        for line in &lines {
+            line_starts.push(content.len());
+            content.push_str(line);
+            content.push('\n');
+        }
+
+        if !is_kubernetes_manifest(Path::new(path), &content) {
+            continue;
+        }
+
+        let representative = frags
+            .iter()
+            .max_by_key(|f| (f.token_count, f.id.clone()))
+            .map(|f| f.id.clone());
+        let Some(representative) = representative else {
+            continue;
+        };
+
+        views.push(ManifestView {
+            content,
+            line_starts,
+            fragments: frags
+                .iter()
+                .map(|f| (f.id.start_line, f.id.end_line, f.id.clone()))
+                .collect(),
+            representative,
+        });
+    }
+    views
+}
+
+/// A place inside a manifest: which view, and which span of it.
+type Site = (usize, Span);
+
 struct K8sIndex {
     configmaps: FxHashMap<String, Vec<FragmentId>>,
     secrets: FxHashMap<String, Vec<FragmentId>>,
     services: FxHashMap<String, Vec<FragmentId>>,
     pvcs: FxHashMap<String, Vec<FragmentId>>,
-    pods_with_labels: Vec<(FragmentId, FxHashMap<String, String>)>,
-    images: FxHashMap<String, Vec<FragmentId>>,
+    pods_with_labels: Vec<(usize, LabelMap)>,
+    images: FxHashMap<String, Vec<Site>>,
 }
 
 impl K8sIndex {
@@ -199,208 +336,203 @@ impl K8sIndex {
 }
 
 fn index_by_kind(kind: Option<&str>, name: &str, frag_id: &FragmentId, idx: &mut K8sIndex) {
-    match kind {
-        Some("ConfigMap") => idx
-            .configmaps
-            .entry(name.to_string())
-            .or_default()
-            .push(frag_id.clone()),
-        Some("Secret") => idx
-            .secrets
-            .entry(name.to_string())
-            .or_default()
-            .push(frag_id.clone()),
-        Some("Service") => idx
-            .services
-            .entry(name.to_string())
-            .or_default()
-            .push(frag_id.clone()),
-        Some("PersistentVolumeClaim") => idx
-            .pvcs
-            .entry(name.to_string())
-            .or_default()
-            .push(frag_id.clone()),
-        _ => {}
-    }
+    let bucket = match kind {
+        Some("ConfigMap") => &mut idx.configmaps,
+        Some("Secret") => &mut idx.secrets,
+        Some("Service") => &mut idx.services,
+        Some("PersistentVolumeClaim") => &mut idx.pvcs,
+        _ => return,
+    };
+    bucket
+        .entry(name.to_string())
+        .or_default()
+        .push(frag_id.clone());
 }
 
-fn index_images(frag: &Fragment, idx: &mut K8sIndex) {
-    for cap in IMAGE_RE.captures_iter(&frag.content) {
-        let image = cap[1].trim();
+fn index_images(view_idx: usize, view: &ManifestView, idx: &mut K8sIndex) {
+    for cap in IMAGE_RE.captures_iter(&view.content) {
+        let Some(m) = cap.get(1) else { continue };
+        let image = m.as_str().trim();
         if !image.is_empty() && !image.starts_with('$') {
             idx.images
                 .entry(image.to_string())
                 .or_default()
-                .push(frag.id.clone());
+                .push((view_idx, (m.start(), m.end())));
         }
     }
 }
 
-fn index_fragment(frag: &Fragment, idx: &mut K8sIndex) {
-    let (kind, name) = extract_resource_info(&frag.content);
+fn index_view(view_idx: usize, view: &ManifestView, idx: &mut K8sIndex) {
+    let (kind, name) = extract_resource_info(&view.content);
 
-    if let Some(ref n) = name {
-        index_by_kind(kind.as_deref(), n, &frag.id, idx);
+    if let Some((n, _)) = name {
+        index_by_kind(kind.as_deref(), &n, &view.representative, idx);
     }
 
     if let Some(ref k) = kind {
         if WORKLOAD_KINDS.contains(k.as_str()) {
-            let labels = extract_labels(&frag.content);
+            let labels = extract_labels(&view.content);
             if !labels.is_empty() {
-                idx.pods_with_labels.push((frag.id.clone(), labels));
+                idx.pods_with_labels.push((view_idx, labels));
             }
         }
     }
 
-    index_images(frag, idx);
+    index_images(view_idx, view, idx);
 }
 
-fn build_resource_index(k8s_fragments: &[&Fragment]) -> K8sIndex {
+fn build_resource_index(views: &[ManifestView]) -> K8sIndex {
     let mut idx = K8sIndex::new();
-    for frag in k8s_fragments {
-        index_fragment(frag, &mut idx);
+    for (i, view) in views.iter().enumerate() {
+        index_view(i, view, &mut idx);
     }
     idx
 }
 
 fn link_by_patterns(
-    frag: &Fragment,
+    view: &ManifestView,
     patterns: &[&Regex],
     index: &FxHashMap<String, Vec<FragmentId>>,
     edges: &mut EdgeDict,
     weight: f64,
 ) {
     for pattern in patterns {
-        for cap in pattern.captures_iter(&frag.content) {
-            let name = cap[1].trim();
-            if let Some(target_ids) = index.get(name) {
-                for target_id in target_ids {
-                    if *target_id != frag.id {
-                        add_edge(
-                            edges,
-                            &frag.id,
-                            target_id,
-                            weight,
-                            KUBERNETES.reverse_factor,
-                        );
-                    }
+        for cap in pattern.captures_iter(&view.content) {
+            let Some(m) = cap.get(1) else { continue };
+            let name = m.as_str().trim();
+            let Some(target_ids) = index.get(name) else {
+                continue;
+            };
+            let src = view.anchor((m.start(), m.end()));
+            for target_id in target_ids {
+                if target_id != src {
+                    add_edge(edges, src, target_id, weight, KUBERNETES.reverse_factor);
                 }
             }
         }
     }
 }
 
-fn build_configmap_edges(
-    frag: &Fragment,
-    configmaps: &FxHashMap<String, Vec<FragmentId>>,
-    edges: &mut EdgeDict,
-) {
+fn build_configmap_edges(view: &ManifestView, idx: &K8sIndex, edges: &mut EdgeDict) {
     link_by_patterns(
-        frag,
+        view,
         &[&CONFIGMAP_REF_RE, &CONFIGMAP_NAME_RE, &VOLUME_CONFIGMAP_RE],
-        configmaps,
+        &idx.configmaps,
         edges,
         KUBERNETES.configmap_secret_weight,
     );
 }
 
-fn build_secret_edges(
-    frag: &Fragment,
-    secrets: &FxHashMap<String, Vec<FragmentId>>,
-    edges: &mut EdgeDict,
-) {
+fn build_secret_edges(view: &ManifestView, idx: &K8sIndex, edges: &mut EdgeDict) {
     link_by_patterns(
-        frag,
+        view,
         &[&SECRET_REF_RE, &SECRET_NAME_RE, &VOLUME_SECRET_RE],
-        secrets,
+        &idx.secrets,
         edges,
         KUBERNETES.configmap_secret_weight,
     );
 }
 
-fn build_service_edges(
-    frag: &Fragment,
-    services: &FxHashMap<String, Vec<FragmentId>>,
-    edges: &mut EdgeDict,
-) {
+fn build_service_edges(view: &ManifestView, idx: &K8sIndex, edges: &mut EdgeDict) {
     link_by_patterns(
-        frag,
+        view,
         &[&SERVICE_NAME_RE, &BACKEND_SERVICE_RE],
-        services,
+        &idx.services,
         edges,
         KUBERNETES.service_weight,
     );
 }
 
-fn build_volume_edges(
-    frag: &Fragment,
-    pvcs: &FxHashMap<String, Vec<FragmentId>>,
-    edges: &mut EdgeDict,
-) {
-    link_by_patterns(frag, &[&VOLUME_PVC_RE], pvcs, edges, KUBERNETES.weight);
+fn build_volume_edges(view: &ManifestView, idx: &K8sIndex, edges: &mut EdgeDict) {
+    link_by_patterns(view, &[&VOLUME_PVC_RE], &idx.pvcs, edges, KUBERNETES.weight);
 }
 
-fn get_service_selector(content: &str) -> FxHashMap<String, String> {
+/// The Service's selector labels and the span of the selector block.
+fn get_service_selector(content: &str) -> (FxHashMap<String, String>, Span) {
+    let flatten = |labels: LabelMap| {
+        let start = labels.values().map(|(_, (s, _))| *s).min().unwrap_or(0);
+        let end = labels.values().map(|(_, (_, e))| *e).max().unwrap_or(0);
+        let map = labels
+            .into_iter()
+            .map(|(k, (v, _))| (k, v))
+            .collect::<FxHashMap<_, _>>();
+        (map, (start, end))
+    };
+
     let selector = extract_selector_labels(content);
     if !selector.is_empty() {
-        return selector;
+        return flatten(selector);
     }
 
-    match SIMPLE_SELECTOR_RE.captures(content) {
-        Some(cap) => extract_label_pairs(&cap[1]),
-        None => FxHashMap::default(),
+    match SIMPLE_SELECTOR_RE.captures(content).and_then(|c| c.get(1)) {
+        Some(block) => {
+            let span = (block.start(), block.end());
+            let pairs = extract_label_pairs(block.as_str(), span);
+            (pairs.into_iter().map(|(k, v, _)| (k, v)).collect(), span)
+        }
+        None => (FxHashMap::default(), (0, 0)),
     }
 }
 
 fn build_selector_edges(
-    frag: &Fragment,
-    pods_with_labels: &[(FragmentId, FxHashMap<String, String>)],
+    views: &[ManifestView],
+    view: &ManifestView,
+    pods_with_labels: &[(usize, LabelMap)],
     edges: &mut EdgeDict,
 ) {
-    let (kind, _) = extract_resource_info(&frag.content);
+    let (kind, _) = extract_resource_info(&view.content);
     if kind.as_deref() != Some("Service") {
         return;
     }
 
-    let selector = get_service_selector(&frag.content);
+    let (selector, selector_span) = get_service_selector(&view.content);
     if selector.is_empty() {
         return;
     }
+    let src = view.anchor(selector_span);
 
-    for (pod_id, labels) in pods_with_labels {
-        if *pod_id != frag.id && labels_match(&selector, labels) {
-            add_edge(
-                edges,
-                &frag.id,
-                pod_id,
-                KUBERNETES.selector_weight,
-                KUBERNETES.reverse_factor,
-            );
+    for (pod_view, labels) in pods_with_labels {
+        if let Some(span) = labels_match(&selector, labels) {
+            let dst = views[*pod_view].anchor(span);
+            if dst != src {
+                add_edge(
+                    edges,
+                    src,
+                    dst,
+                    KUBERNETES.selector_weight,
+                    KUBERNETES.reverse_factor,
+                );
+            }
         }
     }
 }
 
 fn build_image_edges(
-    frag: &Fragment,
-    images: &FxHashMap<String, Vec<FragmentId>>,
+    views: &[ManifestView],
+    view: &ManifestView,
+    images: &FxHashMap<String, Vec<Site>>,
     edges: &mut EdgeDict,
 ) {
-    for cap in IMAGE_RE.captures_iter(&frag.content) {
-        let image = cap[1].trim();
+    for cap in IMAGE_RE.captures_iter(&view.content) {
+        let Some(m) = cap.get(1) else { continue };
+        let image = m.as_str().trim();
         if image.is_empty() || image.starts_with('$') {
             continue;
         }
-        if let Some(other_ids) = images.get(image) {
-            for other_id in other_ids {
-                if *other_id != frag.id {
-                    add_edge(
-                        edges,
-                        &frag.id,
-                        other_id,
-                        KUBERNETES.image_weight,
-                        KUBERNETES.reverse_factor,
-                    );
-                }
+        let Some(sites) = images.get(image) else {
+            continue;
+        };
+        let src = view.anchor((m.start(), m.end()));
+        for (other_view, span) in sites {
+            let dst = views[*other_view].anchor(*span);
+            if dst != src {
+                add_edge(
+                    edges,
+                    src,
+                    dst,
+                    KUBERNETES.image_weight,
+                    KUBERNETES.reverse_factor,
+                );
             }
         }
     }
@@ -410,25 +542,21 @@ pub struct KubernetesEdgeBuilder;
 
 impl EdgeBuilder for KubernetesEdgeBuilder {
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {
-        let k8s_fragments: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_kubernetes_manifest(Path::new(f.path()), &f.content))
-            .collect();
-
-        if k8s_fragments.is_empty() {
+        let views = build_manifest_views(fragments);
+        if views.is_empty() {
             return EdgeDict::default();
         }
 
         let mut edges = EdgeDict::default();
-        let idx = build_resource_index(&k8s_fragments);
+        let idx = build_resource_index(&views);
 
-        for frag in &k8s_fragments {
-            build_configmap_edges(frag, &idx.configmaps, &mut edges);
-            build_secret_edges(frag, &idx.secrets, &mut edges);
-            build_service_edges(frag, &idx.services, &mut edges);
-            build_volume_edges(frag, &idx.pvcs, &mut edges);
-            build_selector_edges(frag, &idx.pods_with_labels, &mut edges);
-            build_image_edges(frag, &idx.images, &mut edges);
+        for view in &views {
+            build_configmap_edges(view, &idx, &mut edges);
+            build_secret_edges(view, &idx, &mut edges);
+            build_service_edges(view, &idx, &mut edges);
+            build_volume_edges(view, &idx, &mut edges);
+            build_selector_edges(&views, view, &idx.pods_with_labels, &mut edges);
+            build_image_edges(&views, view, &idx.images, &mut edges);
         }
 
         edges
@@ -513,5 +641,57 @@ mod tests {
         ] {
             let _ = re.is_match("x");
         }
+    }
+
+    fn yaml_frag(path: &str, start: u32, body: &str) -> Fragment {
+        let end = start + body.lines().count().max(1) as u32 - 1;
+        Fragment {
+            id: crate::types::FragmentId::new(std::sync::Arc::from(path), start, end),
+            kind: crate::types::FragmentKind::Chunk,
+            content: std::sync::Arc::from(body),
+            identifiers: FxHashSet::default(),
+            token_count: body.len() as u32,
+            symbol_name: None,
+        }
+    }
+
+    /// #226: `parsers/config_parser.rs` splits a YAML file into one fragment
+    /// per top-level key, so no fragment of a real manifest holds both
+    /// `apiVersion:` and `kind:` — the per-fragment filter was false for all
+    /// of them and every channel in this builder emitted nothing. Detection
+    /// runs on the whole file now; the edge still lands on the fragment that
+    /// carries the matching label.
+    #[test]
+    fn a_manifest_split_across_fragments_still_links_service_to_workload() {
+        let fragments = vec![
+            yaml_frag("k8s/deployment.yaml", 1, "apiVersion: apps/v1\n"),
+            yaml_frag("k8s/deployment.yaml", 2, "kind: Deployment\n"),
+            yaml_frag("k8s/deployment.yaml", 3, "metadata:\n  name: web\n"),
+            yaml_frag(
+                "k8s/deployment.yaml",
+                5,
+                "spec:\n  template:\n    metadata:\n      labels:\n        app: web\n        tier: frontend\n",
+            ),
+            yaml_frag("k8s/service.yaml", 1, "apiVersion: v1\n"),
+            yaml_frag("k8s/service.yaml", 2, "kind: Service\n"),
+            yaml_frag("k8s/service.yaml", 3, "metadata:\n  name: web\n"),
+            yaml_frag("k8s/service.yaml", 5, "spec:\n  selector:\n    app: web\n"),
+        ];
+
+        let edges = KubernetesEdgeBuilder.build(&fragments, None);
+        assert!(!edges.is_empty(), "the selector channel emitted nothing");
+
+        let forward = edges
+            .keys()
+            .find(|(src, dst)| {
+                src.path.as_ref() == "k8s/service.yaml"
+                    && dst.path.as_ref() == "k8s/deployment.yaml"
+            })
+            .expect("no service -> deployment edge");
+        assert_eq!(
+            (forward.1.start_line, forward.1.end_line),
+            (5, 10),
+            "the edge must land on the fragment carrying the matched label"
+        );
     }
 }

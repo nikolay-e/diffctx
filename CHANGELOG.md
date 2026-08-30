@@ -26,6 +26,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`--budget` now covers the whole artifact** (#241). It bounded only the
+  fragments: the commit message and the changed/deleted/renamed/lockfile/
+  ignored path lists rendered for free, and the changed-file list was printed
+  twice — once in full, once again as a "not represented" footer. On an
+  83-file range `--budget 1000` produced 3 150 tokens and `--budget 0`
+  produced 2 464, with the selection dutifully under budget the whole time.
+  The summary is charged before selection starts and printed once, with
+  omitted entries marked in place. A budget too small to hold the summary now
+  yields the summary and no fragments — a changed path is never dropped to fit.
+- **One generated file can no longer take the budget from every other changed
+  file** (#238). Cores that miss the core-budget reservation are swept
+  cheapest-first, and that sweep applied no per-file ceiling — so a changed
+  `records.json`, whose record-sized cores are the cheapest candidates in the
+  run, refilled the whole budget while the files it was deferred behind got
+  nothing. The sweep now runs in two rounds: the ceiling holds in the first,
+  and only what it blocked is replayed in the second, so unclaimed budget
+  still flows back.
+- **The Kubernetes edge builder emitted nothing at all** (#226). Detection ran
+  per fragment and required `apiVersion:` and `kind:` in the same one, but the
+  YAML parser splits a manifest by top-level key — so no fragment of any
+  manifest ever qualified and all six channels (selector→workload, configmap,
+  secret, service, volume, image) were dead. Detection runs on the file, whose
+  text is rebuilt from its fragments by line number, and each edge is anchored
+  on the smallest fragment covering the construct it is about.
+- **The deadline test measured the repository's history, not the deadline.**
+  It asked for `HEAD~20`, which stopped exceeding the ceiling when the history
+  was squashed into epochs; it now runs the root commit to HEAD, the largest
+  diff the repo can produce.
+- **`python -m eval equivalence` could not fail** (#233): the CLI dispatcher
+  discarded each subcommand's return value, so the gate printed
+  "EQUIVALENCE FAILED" and exited 0. Any CI job wired to the documented
+  invocation was decorative.
+
 - **A POSIX filename containing a backslash keeps its name and its own
   content** (#239). Every path written into output — and the `rev:path` spec
   handed to `git show` — rewrote `\` to `/`, so with `src\utils.py`
@@ -55,6 +88,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `IntervalIndex` instead of a fourth hand-written check.
 
 ### Changed
+
+- **The GIL is released for the last three heavy extension calls** (#245):
+  `build_project_graph` (a full repository walk plus a tree-sitter parse of
+  every file), `resolve_diff_range` (spawns `git`) and `count_tokens`. Held
+  under the GIL these blocked every other thread in the host interpreter for
+  their whole duration, which is precisely the wall-clock a latency column is
+  supposed to attribute to diffctx.
+- **The eval sweep no longer runs 45 duplicate cells** (#233): `depth` reaches
+  the runner only when it is non-negative, but `internal-bm25`, `rrf` and
+  `pit` had no depth excludes, so each ran five byte-identical copies of its
+  cell per test set — half the matrix, about a third of the machine hours. The
+  smoke cell also asserts its own result now instead of printing it, and is
+  handed `HF_TOKEN` so dataset reads are not rate-limited.
 
 - **The eval harness's Python dependencies are a `uv` dependency group**
   (`uv sync --group eval`), locked in `uv.lock` like everything else.

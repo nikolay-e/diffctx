@@ -131,16 +131,17 @@ def test_omitted_changed_files_are_disclosed_in_md_and_text(tmp_path):
     omitted = [p for p in result.get("changed_files") or [] if p not in represented]
     assert omitted, "budget 25 over 6 changed files must force omission"
 
+    # One list, omitted entries marked (#241): the second full copy of the
+    # changed-file list cost ~1k tokens of paths the reader already had.
     md = diffctx.to_markdown(result)
-    assert "Changed files not represented in the output" in md
-    footer = md.split("Changed files not represented in the output", 1)[1]
-    for path in omitted:
-        assert path in footer
-    for path in represented:
-        assert path not in footer
+    marked = {line.split("`")[1] for line in md.splitlines() if line.startswith("- ") and "omitted" in line}
+    assert marked == set(omitted)
+    assert "\u201comitted\u201d = no fragment of this file" in md
+    assert md.count("**Changed files:**") == 1
 
     txt = diffctx.to_text(result)
-    assert "changed files not represented in the output" in txt
+    txt_marked = {line.strip().removesuffix(" (omitted)") for line in txt.splitlines() if line.endswith(" (omitted)")}
+    assert txt_marked == set(omitted)
 
 
 def test_fully_represented_output_has_no_omission_footer(tmp_path):
@@ -152,4 +153,4 @@ def test_fully_represented_output_has_no_omission_footer(tmp_path):
 
     result = diffctx.build_diff_context(root_dir=repo.path, diff_range="HEAD~1")
     md = diffctx.to_markdown(result)
-    assert "not represented in the output" not in md
+    assert "omitted" not in md

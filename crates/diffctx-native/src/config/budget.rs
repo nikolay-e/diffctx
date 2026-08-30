@@ -13,6 +13,10 @@ pub struct BudgetConfig {
     /// from "how much of the repo do I pull in". Does not affect whether the
     /// changed file is included (it always is) — only the context budget it earns.
     pub core_token_cap_per_fragment: u32,
+    /// Markdown scaffolding around one listed path (`- ` + backticks + newline).
+    pub envelope_overhead_per_entry: u32,
+    /// The summary's fixed part: title and section headers.
+    pub envelope_overhead: u32,
 }
 
 impl Default for BudgetConfig {
@@ -23,6 +27,8 @@ impl Default for BudgetConfig {
             auto_min: 8_000,
             auto_max: 48_000,
             core_token_cap_per_fragment: 1_500,
+            envelope_overhead_per_entry: 4,
+            envelope_overhead: 24,
         }
     }
 }

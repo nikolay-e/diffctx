@@ -366,13 +366,14 @@ fn get_raw_diff_text(
 /// its messages in terms of the same window the pipeline actually diffed,
 /// instead of restating the duration grammar on its own.
 #[pyfunction]
-fn resolve_diff_range(root_dir: &str, diff_range: &str) -> PyResult<String> {
-    let range = if diff_range.is_empty() {
-        None
-    } else {
-        Some(diff_range)
-    };
-    let resolved = crate::git::resolve_duration_range(Path::new(root_dir), range)
+fn resolve_diff_range(py: Python<'_>, root_dir: &str, diff_range: &str) -> PyResult<String> {
+    let root = Path::new(root_dir).to_path_buf();
+    let range = (!diff_range.is_empty()).then(|| diff_range.to_string());
+    // Spawns `git`: holding the GIL across a subprocess blocks every other
+    // thread in the interpreter for its whole duration, which is exactly the
+    // wall-clock the latency columns are supposed to attribute to diffctx.
+    let resolved = py
+        .detach(move || crate::git::resolve_duration_range(&root, range.as_deref()))
         .map_err(|e| GitError::new_err(e.to_string()))?;
     Ok(resolved.range.unwrap_or_default())
 }
@@ -398,8 +399,9 @@ fn withheld_paths(py: Python<'_>, root_dir: &str, rel_paths: Vec<String>) -> Vec
 }
 
 #[pyfunction]
-fn count_tokens(text: &str) -> PyResult<u32> {
-    crate::tokenizer::try_count_tokens(text)
+fn count_tokens(py: Python<'_>, text: &str) -> PyResult<u32> {
+    let owned = text.to_string();
+    py.detach(move || crate::tokenizer::try_count_tokens(&owned))
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
 }
 
@@ -505,8 +507,14 @@ fn parse_quotient_level(level: &str) -> analytics::QuotientLevel {
 
 #[pyfunction]
 #[pyo3(signature = (root_dir))]
-fn build_project_graph(root_dir: &str) -> PyResult<PyProjectGraph> {
-    let pg = project_graph::build_project_graph(std::path::Path::new(root_dir))
+fn build_project_graph(py: Python<'_>, root_dir: &str) -> PyResult<PyProjectGraph> {
+    let root = std::path::Path::new(root_dir).to_path_buf();
+    // Walks the repository and parses every file with tree-sitter. Held under
+    // the GIL this was the heaviest single-threaded stall the extension could
+    // impose on its host, and it made harness wall-clock unusable as a
+    // product number (#245).
+    let pg = py
+        .detach(move || project_graph::build_project_graph(&root))
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
     let fragment_map: RsFxHashMap<_, _> = pg
         .fragments

@@ -377,14 +377,14 @@ fn build_overflow(
     // anything — an earlier version ignored that and reported 2711 near misses
     // at `--budget -1`, where by construction nothing was crowded out at all.
     let spent: u32 = outcome.selected.iter().map(|f| f.token_count).sum();
-    let headroom = outcome.effective_budget.saturating_sub(spent);
+    let headroom = outcome.selection_budget.saturating_sub(spent);
     let smallest_skipped = skipped.iter().map(|f| f.token_count).min().unwrap_or(0);
     let budget_bound = !skipped.is_empty() && headroom < smallest_skipped;
     let next_up = if budget_bound {
         // Walk the overflow ranking against a 25% budget increase. Bounded by
         // that increment, so — unlike a score threshold — it does not grow just
         // because a larger budget selected more and lowered the bar.
-        let extra = outcome.effective_budget / 4;
+        let extra = outcome.selection_budget / 4;
         let mut spare = headroom + extra;
         let mut n = 0;
         for f in &skipped {

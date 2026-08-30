@@ -64,7 +64,6 @@ synthetic/balanced/suite-3/one-hop/bal3_1hop_073_swift_closure_callback
 synthetic/balanced/suite-3/one-hop/bal3_1hop_074_swift_bug_fix_race_condition
 synthetic/balanced/suite-3/rare/bal3_rare_006_dart_repository_api
 synthetic/balanced/suite-4/cross-module/bal4_crossmod_005_go_const_used_cross_pkg
-synthetic/gaps/suite-1/gap_110_scala_config_email_relay
 synthetic/gaps/suite-1/gap_111_scala_config_rate_throttle
 synthetic/gaps/suite-1/gap_112_scala_config_search_index
 synthetic/gaps/suite-1/gap_133_shell_terraform_vpc_provisioning
@@ -78,8 +77,16 @@ synthetic/gaps/suite-2/gap2_161_ts_signature_cross_module_mqtt_broker
 synthetic/gaps/suite-2/gap2_173_perl_multi_file_easy_cgi_form
 # 2026-08-19 admission-gate batch (#211): measured cost of gating the post-passes/singletons.
 # Mechanisms per arm A/B in the issue: yaml_003/yaml_012/terraform_070 = greedy admits naming-
-# reachable junk while gold is non-naming (ranking, not gate); kubernetes_001 = no selector->
-# workload edge channel exists; csharp 064/067 = gold reachable only via lexical similarity.
+# reachable junk while gold is non-naming (ranking, not gate); csharp 064/067 = gold reachable
+# only via lexical similarity.
+#
+# kubernetes_001's mechanism was re-measured 2026-08-30 and the note above was wrong: the
+# selector->workload channel exists in `config_edges/kubernetes.rs`, it was dead because
+# detection ran per fragment and no fragment of a split manifest holds both `apiVersion:` and
+# `kind:`. Fixed; the builder emits again and at the shipped auto budget the Deployment's
+# `spec:` fragment IS pulled. What still fails here is the stopping rule at this corpus's own
+# budget: `calculate_budget` sizes ~800 tokens for this case, and below ~2000 the greedy stops
+# before a 0.069-scoring fragment. That is a calibration question, frozen for the v3 cycle.
 config/yaml/yaml_003_logging_config
 config/yaml/yaml_012_queue_config
 infrastructure/kubernetes/kubernetes_001_selector_edge_pulls_workload

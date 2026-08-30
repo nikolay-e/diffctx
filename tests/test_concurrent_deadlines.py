@@ -76,23 +76,34 @@ def test_a_compute_deadline_never_takes_the_process_down(tmp_path):
     it crosses the FFI boundary is the whole question. Under the release
     profile's old `panic = "abort"` this exact expiry killed the interpreter
     with SIGABRT — measured on a published wheel, and fatal for the MCP server,
-    which abandons a timed-out worker and keeps serving. Whether the ceiling
-    actually fires is not left to timing either. A synthetic repo was tried
-    and completed inside the ceiling on CI's release wheel (the "several
-    seconds" had been measured on a debug build); this repository's own last
-    twenty commits take the release binary well over two minutes, so a 3 s
-    ceiling fires with more than an order of magnitude to spare. Three, not
-    one: the same value bounds every git subprocess, and under load a plain
-    `git diff` over the range has been seen to miss one second — that
-    failure is a `GitError`, not the deadline this test is about. CI checks
-    out full history for this job so the range exists.
+    which abandons a timed-out worker and keeps serving.
+
+    Whether the ceiling fires is not left to timing. The workload is this
+    repository's ENTIRE history — root commit to HEAD, the largest diff it can
+    produce — which crosses a 3 s ceiling with an order of magnitude to spare
+    (~40 s of work). An earlier version asked for `HEAD~20` and a synthetic
+    2500-file repo before that; both are statements about how much work twenty
+    particular commits happen to contain, and both stopped being true — the
+    synthetic one on CI's release wheel, `HEAD~20` the moment the history was
+    squashed into epochs. The root commit is the only anchor that cannot get
+    cheaper. Three seconds, not one: the same value bounds every git
+    subprocess, and under load a plain `git diff` has been seen to miss one
+    second — that failure is a `GitError`, not the deadline this test is about.
     """
+    root = subprocess.run(
+        ["git", "rev-list", "--max-parents=0", "HEAD"],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split()[-1]
+
     child = textwrap.dedent(f"""
         import diffctx
 
         try:
             diffctx.build_diff_context(
-                root_dir={str(PROJECT_ROOT)!r}, diff_range="HEAD~20", timeout=3
+                root_dir={str(PROJECT_ROOT)!r}, diff_range={root!r}, timeout=3
             )
             print("COMPLETED")
         except TimeoutError:

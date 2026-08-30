@@ -256,11 +256,20 @@ class TestDiffModeJourneys:
         assert full_doc["fragment_count"] >= smart_doc["fragment_count"]
 
     def test_budget_bounds_output_size(self, diff_repo):
-        small = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "--budget", "50"], cwd=diff_repo.path)
+        small = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "--budget", "400"], cwd=diff_repo.path)
         large = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "--budget", "8000"], cwd=diff_repo.path)
         assert small.returncode == EXIT_OK
         assert large.returncode == EXIT_OK
         assert len(small.stdout) <= len(large.stdout)
+
+    def test_a_budget_below_the_change_summary_is_refused_not_overrun(self, diff_repo):
+        """The budget covers the artifact, and the change summary is charged
+        first (#241). A budget that cannot hold the summary therefore leaves
+        nothing to select with — which the CLI says, instead of silently
+        emitting three times the number the user asked for."""
+        result = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "--budget", "20"], cwd=diff_repo.path)
+        assert result.returncode == EXIT_EMPTY_DIFF
+        assert "too small to fit any fragment" in result.stderr
 
     @pytest.mark.parametrize("scoring", ["ego", "ppr", "bm25", "rrf"])
     def test_scoring_modes_all_produce_context(self, diff_repo, scoring):

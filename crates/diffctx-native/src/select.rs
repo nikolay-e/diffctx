@@ -225,8 +225,9 @@ fn select_core_fragments(
     let sel_cfg = selection();
     let core_budget = (budget_tokens as f64 * sel_cfg.core_budget_fraction) as u32;
     // #194: while other cores still wait, one file may not eat more than its
-    // share. The rescue sweep below runs ceiling-free — leftovers no other
-    // file claimed flow back — so a single-file change never strands budget.
+    // share. The rescue sweep below replays what the ceiling blocked in a
+    // second round — leftovers no other file claimed flow back — so a
+    // single-file change never strands budget.
     let file_ceiling = (budget_tokens as f64 * sel_cfg.per_file_budget_fraction) as u32;
     let mut file_spent: FxHashMap<Arc<str>, u32> = FxHashMap::default();
     // Counter for cores placed; the first pass keeps `core_used <= core_budget`,
@@ -305,26 +306,56 @@ fn select_core_fragments(
     // Sweep skipped cores cheapest-first against the *full* remaining budget
     // (not just the core slice) so seeds aren't dropped purely because the
     // highest-relevance core happened to be heavy.
+    // The sweep runs in two rounds. Round 1 keeps the per-file ceiling the
+    // first pass applied; round 2 replays only what that ceiling blocked.
+    //
+    // Cheapest-first against the full remaining budget is exactly what one
+    // generated file wants: a changed `records.json` enters selection with
+    // thousands of record-sized cores (changed files skip the generated-file
+    // reduction), and those are the cheapest candidates in the whole run. A
+    // single ceiling-free pass therefore refilled the entire budget from that
+    // one file and 6 of 15 changed files never got a fragment (#238) — the
+    // ceiling in the first pass had deferred them here precisely so the other
+    // files could take their turn first.
     if !skipped.is_empty() {
         skipped.sort_by(|(_, a), (_, b)| a.token_count.cmp(&b.token_count));
-        for (core_id, frag) in skipped {
-            if state.remaining_budget == 0 {
-                break;
-            }
-            if state.selected_ids.is_superset_of(frag) {
-                satisfied.insert(core_id);
-                continue;
-            }
-            let rel_score = rel.get(&core_id).copied().unwrap_or(0.0);
-            if frag.token_count <= state.remaining_budget {
-                place_fragment(frag, &mut core_used, state, rel_score, &mut file_spent);
-                satisfied.insert(core_id);
-            } else if let Some(sig) = sig_lookup.get(&core_id) {
-                if !state.selected_ids.contains(&sig.id)
-                    && sig.token_count <= state.remaining_budget
-                {
-                    place_fragment(sig, &mut core_used, state, rel_score, &mut file_spent);
+        let mut blocked: Vec<(FragmentId, &Fragment)> = Vec::new();
+        for round in 0..2u8 {
+            let queue = if round == 0 {
+                std::mem::take(&mut skipped)
+            } else {
+                std::mem::take(&mut blocked)
+            };
+            for (core_id, frag) in queue {
+                if state.remaining_budget == 0 {
+                    break;
+                }
+                if state.selected_ids.is_superset_of(frag) {
                     satisfied.insert(core_id);
+                    continue;
+                }
+                let rel_score = rel.get(&core_id).copied().unwrap_or(0.0);
+                let spent = file_spent.get(&frag.id.path).copied().unwrap_or(0);
+                let over_ceiling =
+                    |tokens: u32| round == 0 && spent > 0 && spent + tokens > file_ceiling;
+                if frag.token_count <= state.remaining_budget {
+                    if over_ceiling(frag.token_count) {
+                        blocked.push((core_id, frag));
+                        continue;
+                    }
+                    place_fragment(frag, &mut core_used, state, rel_score, &mut file_spent);
+                    satisfied.insert(core_id);
+                } else if let Some(sig) = sig_lookup.get(&core_id) {
+                    if !state.selected_ids.contains(&sig.id)
+                        && sig.token_count <= state.remaining_budget
+                    {
+                        if over_ceiling(sig.token_count) {
+                            blocked.push((core_id, frag));
+                            continue;
+                        }
+                        place_fragment(sig, &mut core_used, state, rel_score, &mut file_spent);
+                        satisfied.insert(core_id);
+                    }
                 }
             }
         }
@@ -1305,6 +1336,75 @@ mod tests {
         );
 
         run_lone_file_check(budget, &rel);
+    }
+
+    /// #238: the same monopoly through the *core* path, which the test above
+    /// never reached. Cores that miss the core-budget reservation land in the
+    /// rescue sweep, and that sweep sorted cheapest-first against the full
+    /// remaining budget with no ceiling at all — so a changed generated file,
+    /// whose record-sized cores are the cheapest candidates in the run,
+    /// refilled the whole budget and the other changed files got nothing.
+    #[test]
+    fn the_core_rescue_sweep_serves_every_changed_file_before_seconds() {
+        // A generated file with many cheap cores plus four ordinary files
+        // whose cores are dearer. Everything is a core, so phase 1 hits the
+        // core-budget reservation and the rest falls through to the sweep.
+        let mut frags: Vec<Fragment> = (0..40)
+            .map(|i| {
+                frag(
+                    "data/records.json",
+                    i * 4 + 1,
+                    i * 4 + 3,
+                    FragmentKind::Chunk,
+                    20,
+                )
+            })
+            .collect();
+        for (i, path) in ["src/a.rs", "src/b.rs", "src/c.rs", "src/d.rs"]
+            .iter()
+            .enumerate()
+        {
+            frags.push(frag(path, 1, 20, FragmentKind::Function, 120 + i as u32));
+        }
+        let core: FxHashSet<FragmentId> = frags.iter().map(|f| f.id.clone()).collect();
+        let rel: FxHashMap<FragmentId, f64> = frags
+            .iter()
+            .map(|f| {
+                let w = if f.id.path.as_ref() == "data/records.json" {
+                    1.0
+                } else {
+                    0.4
+                };
+                (f.id.clone(), w)
+            })
+            .collect();
+
+        let budget = 1_000u32;
+        let result =
+            lazy_greedy_select(frags, &core, &rel, &[], budget, 0.0, None, None, None, None);
+
+        let files: FxHashSet<&str> = result.selected.iter().map(|f| f.id.path.as_ref()).collect();
+        for path in ["src/a.rs", "src/b.rs", "src/c.rs", "src/d.rs"] {
+            assert!(
+                files.contains(path),
+                "{path} was crowded out by the generated file: {:?}",
+                result
+                    .selected
+                    .iter()
+                    .map(|f| f.id.path.to_string())
+                    .collect::<Vec<_>>()
+            );
+        }
+        // The ceiling still lifts in round 2, so the blob keeps the leftovers.
+        assert!(
+            result
+                .selected
+                .iter()
+                .filter(|f| f.id.path.as_ref() == "data/records.json")
+                .count()
+                > 4,
+            "round 2 must still hand the unclaimed budget back to the blob"
+        );
     }
 
     /// #212: once a file is at its ceiling, its remaining cores may not keep
