@@ -208,9 +208,10 @@ dismissing as bot noise.
 
 ## Issue triage invariants
 
-- `v3`-labeled issues are a curated roadmap backlog
-  (research/benchmark/paper/product), not rotting defects — check
-  staleness, don't force per-pass decisions.
+- `v3`-labeled issues are the current paper cycle (tracking issue #256:
+  order of work, E/Q freeze); `post-v3` is the deferred research/product
+  backlog. Neither is a rotting defect — check staleness, don't force
+  per-pass decisions.
 - `gated` label = blocked on a pre-registered experiment or eval-cycle
   boundary.
 
