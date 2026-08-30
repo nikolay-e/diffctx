@@ -346,9 +346,13 @@ fn select_core_fragments(
                     place_fragment(frag, &mut core_used, state, rel_score, &mut file_spent);
                     satisfied.insert(core_id);
                 } else if let Some(sig) = sig_lookup.get(&core_id) {
-                    if !state.selected_ids.contains(&sig.id)
-                        && sig.token_count <= state.remaining_budget
-                    {
+                    if state.selected_ids.contains(&sig.id) {
+                        // The stub is already in: the core IS represented, and
+                        // saying otherwise hands it back to the greedy as an
+                        // ordinary candidate — which is the one thing
+                        // `satisfied` exists to prevent.
+                        satisfied.insert(core_id);
+                    } else if sig.token_count <= state.remaining_budget {
                         if over_ceiling(sig.token_count) {
                             blocked.push((core_id, frag));
                             continue;
