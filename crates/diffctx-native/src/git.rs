@@ -986,6 +986,29 @@ pub fn find_ignored_paths_with_source(
     repo_root: &Path,
     rel_paths: &[String],
 ) -> rustc_hash::FxHashMap<String, IgnoreSource> {
+    find_ignored_paths_inner(repo_root, rel_paths, true)
+}
+
+/// Every path git calls ignored, ancestor-inherited exclusions included.
+///
+/// The attribution variant above deliberately drops those (a tracked file
+/// under a directory the `--no-index` query reports excluded is not really
+/// ignored — #153). That rule is right for the diff, whose paths are tracked
+/// by construction, and wrong for anything that walks the working tree: there
+/// `.venv/`, `dist/` and `target/` are ignored precisely BY their directory
+/// rule, and answering "not ignored" for their contents is how a glob reader
+/// served files the repository excludes.
+pub fn find_ignored_paths_any(repo_root: &Path, rel_paths: &[String]) -> FxHashSet<String> {
+    find_ignored_paths_inner(repo_root, rel_paths, false)
+        .into_keys()
+        .collect()
+}
+
+fn find_ignored_paths_inner(
+    repo_root: &Path,
+    rel_paths: &[String],
+    drop_ancestor_inherited: bool,
+) -> rustc_hash::FxHashMap<String, IgnoreSource> {
     if rel_paths.is_empty() {
         return rustc_hash::FxHashMap::default();
     }
@@ -1081,9 +1104,10 @@ pub fn find_ignored_paths_with_source(
                     .is_some_and(|src| rule.starts_with(&format!("{src}:")));
                 if from_diffctx {
                     Some((rel.clone(), IgnoreSource::DiffctxPolicy))
-                } else if !ancestor_dirs(rel)
-                    .iter()
-                    .any(|dir| rules.get(dir) == Some(rule))
+                } else if !drop_ancestor_inherited
+                    || !ancestor_dirs(rel)
+                        .iter()
+                        .any(|dir| rules.get(dir) == Some(rule))
                 {
                     Some((rel.clone(), IgnoreSource::Gitignore))
                 } else {

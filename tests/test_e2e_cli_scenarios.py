@@ -267,7 +267,10 @@ class TestDiffModeJourneys:
         first (#241). A budget that cannot hold the summary therefore leaves
         nothing to select with — which the CLI says, instead of silently
         emitting three times the number the user asked for."""
-        result = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "--budget", "20"], cwd=diff_repo.path)
+        # Above `overhead_per_fragment` (40) on purpose: a budget under that
+        # selects nothing on any build, so it would pass before #241 too. This
+        # one is refused only because the change summary is charged first.
+        result = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "--budget", "60"], cwd=diff_repo.path)
         assert result.returncode == EXIT_EMPTY_DIFF
         assert "too small to fit any fragment" in result.stderr
 

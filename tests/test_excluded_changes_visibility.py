@@ -138,6 +138,7 @@ def test_omitted_changed_files_are_disclosed_in_md_and_text(tmp_path):
     assert marked == set(omitted)
     assert "\u201comitted\u201d = no fragment of this file" in md
     assert md.count("**Changed files:**") == 1
+    assert "not represented in the output" not in md, "the second, duplicate list came back"
 
     txt = diffctx.to_text(result)
     txt_marked = {line.strip().removesuffix(" (omitted)") for line in txt.splitlines() if line.endswith(" (omitted)")}

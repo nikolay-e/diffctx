@@ -8,8 +8,7 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
-from diffctx._diffctx import withheld_paths
-
+from .fetch import withheld_set
 from .security import validate_dir_path, validate_repo_path
 from .server import (
     _DEFAULT_MAX_FILE_BYTES,
@@ -134,12 +133,17 @@ def _contained_match(match: str, root: Path) -> tuple[Path, str] | None:
 
 
 def _collect_matched_files(validated_path: Path, patterns: list[str], max_files: int) -> tuple[list[Path], int]:
-    """Files matching `patterns`, minus anything the engine withholds.
+    """Files matching `patterns`, minus what this tool may not serve.
 
-    The engine's predicate is applied for the same reason diff mode applies it:
-    `.diffctx/ignore` and the secret-path policy are a security contract, and
-    this tool accepts `**/*`. A second ignore engine here once admitted `.netrc`
-    while selection withheld it (#228).
+    Two filters, and they answer different questions. The **noise** spec is the
+    one `get_tree_map` applies — `node_modules/`, `target/`, lock files: not
+    secrets, just not what anyone globbing a repository means. The **engine**
+    predicate is the security floor (`.diffctx/ignore`, gitignore, secret
+    paths), applied for the same reason diff mode applies it, because this tool
+    accepts `**/*`. Dropping the noise spec for the engine alone (#228) let
+    `uv.lock` and every file under an ignored directory through; keeping only
+    the noise spec, as before that, admitted `.netrc`. Both, in that order —
+    the cheap local one first, so the engine is asked about a bounded list.
 
     Excluded files are dropped silently and NOT counted: `total_matched` drives
     the truncation notice, and reporting "3 more files" for files the repo
@@ -147,16 +151,19 @@ def _collect_matched_files(validated_path: Path, patterns: list[str], max_files:
     """
     import glob as globmod
 
+    from diffctx.ignore import get_ignore_specs, should_ignore
+
+    noise = get_ignore_specs(validated_path, None, False, None)
     contained: list[tuple[Path, str]] = []
     seen: set[Path] = set()
     for pattern in patterns:
         for match in sorted(globmod.glob(str(validated_path / pattern), recursive=True)):
             hit = _contained_match(match, validated_path)
-            if hit is None or hit[0] in seen:
+            if hit is None or hit[0] in seen or should_ignore(hit[1], noise):
                 continue
             seen.add(hit[0])
             contained.append(hit)
-    withheld = set(withheld_paths(str(validated_path), [rel for _, rel in contained]))
+    withheld = withheld_set(validated_path, [rel for _, rel in contained])
     admitted = [resolved for resolved, rel in contained if rel not in withheld]
     return admitted[:max_files], len(admitted)
 

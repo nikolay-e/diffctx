@@ -1078,12 +1078,28 @@ pub(crate) fn is_withheld(
 /// question the MCP fetch used to answer with a different engine (#228). One
 /// batched `git check-ignore` for the whole list.
 pub fn withheld_paths(root_dir: &Path, rel_paths: &[String]) -> Vec<String> {
-    let ignored = git::find_ignored_paths_with_source(root_dir, rel_paths);
+    // `find_ignored_paths_any`, not the attribution variant the diff uses: a
+    // reader that walks the working tree asks about untracked paths, and
+    // `.venv/x.py` is ignored by the `.venv/` rule on its parent. Dropping
+    // ancestor-inherited matches here answered "not ignored" for the entire
+    // contents of every ignored directory.
+    let ignored = git::find_ignored_paths_any(root_dir, rel_paths);
     rel_paths
         .iter()
-        .filter(|rel| is_withheld(root_dir, &root_dir.join(rel), &ignored))
+        .filter(|rel| {
+            is_secret_path(&root_dir.join(rel)) || is_repo_internal(rel) || ignored.contains(*rel)
+        })
         .cloned()
         .collect()
+}
+
+/// git's own directory. It is not ignored (git never reports on paths inside
+/// it) and it is not secret by name, yet `.git/config` carries the remote URL,
+/// which routinely embeds an access token in its userinfo field, and
+/// `.git/logs/HEAD` the whole branch history. Nothing that reads repository
+/// *content* has business there.
+fn is_repo_internal(rel: &str) -> bool {
+    rel == ".git" || rel.split('/').any(|part| part == ".git")
 }
 
 /// The unified diff of `diff_range` as git prints it, minus the file sections

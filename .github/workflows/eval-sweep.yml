@@ -5,7 +5,7 @@ name: eval-sweep
 # Two modes (select at dispatch):
 #   smoke — GitHub-hosted ubuntu-latest, 1 cell (ppr×64000×swebench_verified),
 #            5 instances, no Hetzner provisioning. Quick sanity check.
-#   full  — Hetzner CCX63 (4 × self-hosted runners), complete 45-cell matrix,
+#   full  — Hetzner CCX63 (4 × self-hosted runners), complete 75-cell matrix,
 #            baked repo cache. Production sweep.
 #
 # Trigger via workflow_dispatch. Results are committed to eval-results/sweep.
@@ -441,7 +441,7 @@ jobs:
           overwrite: true
 
   # ============================================================================
-  # 3b. Full sweep — Hetzner CCX63, complete 5×5×3 matrix, baked repo cache
+  # 3b. Full sweep — Hetzner CCX63, 75 cells (see the exclude block), baked repo cache
   # ============================================================================
   sweep-full:
     needs: [prep, provision]
@@ -481,24 +481,22 @@ jobs:
           - {method: bm25, depth: 3}
           - {method: bm25, depth: 4}
           - {method: ego, depth: -1}
-          # `depth` reaches the runner only when >= 0, so these three methods
-          # ran five byte-identical copies of their depth=-1 cell per test set
-          # — 45 of the 90 cells, roughly a third of the CCX63 hours (#233).
+          # `internal-bm25` maps to ScoringMode::Bm25, whose depth comes from
+          # `ego_depth_default` — a hardcoded 1 that `DIFFCTX_OP_GRAPH_DEPTH`
+          # does not reach (config/mode.rs). Its five depth cells were
+          # byte-identical copies of the depth=-1 cell, 15 of the 90.
+          #
+          # `rrf` and `pit` are NOT in that class, though they look like it:
+          # both map to `ego_depth_extended`, which the env override DOES
+          # reach (mode.rs deliberately gives fusion EGO's universe and depth),
+          # so their depth cells are five distinct configurations and the
+          # depth axis is exactly what the #125 fusion question needs. They
+          # were excluded here for one commit on a wrong reading and put back.
           - {method: internal-bm25, depth: 0}
           - {method: internal-bm25, depth: 1}
           - {method: internal-bm25, depth: 2}
           - {method: internal-bm25, depth: 3}
           - {method: internal-bm25, depth: 4}
-          - {method: rrf, depth: 0}
-          - {method: rrf, depth: 1}
-          - {method: rrf, depth: 2}
-          - {method: rrf, depth: 3}
-          - {method: rrf, depth: 4}
-          - {method: pit, depth: 0}
-          - {method: pit, depth: 1}
-          - {method: pit, depth: 2}
-          - {method: pit, depth: 3}
-          - {method: pit, depth: 4}
         include:
           # Aider: one budget per cell (B=-1 unlimited and B=0 recall-floor
           # do not apply to a repo-map subprocess).

@@ -33,7 +33,10 @@ def _rendered(repo, budget):
 
 def test_the_rendered_artifact_stays_within_the_budget(tmp_path):
     repo = _wide_repo(tmp_path)
-    for budget in (4000, 8000, 16000):
+    # 2000 and 3000 are the cells that bind: the artifact renders ~4.3k when
+    # everything fits, so a budget above that cannot go red however the
+    # envelope is accounted. 8000 stays as the "does not over-trim" control.
+    for budget in (2000, 3000, 4000, 8000):
         md, _ = _rendered(repo, budget)
         assert count_tokens(md) <= budget, f"budget {budget} produced {count_tokens(md)} rendered tokens"
 
@@ -52,5 +55,10 @@ def test_a_budget_smaller_than_the_summary_yields_the_summary_alone(tmp_path):
 def test_the_changed_file_list_is_printed_once(tmp_path):
     repo = _wide_repo(tmp_path)
     md, result = _rendered(repo, 4000)
+    # Without an actual omission there is no second list to find, and the
+    # assertion below would hold on the pre-#241 build too.
+    represented = {f["path"] for f in result.get("fragments") or []}
+    assert set(result["changed_files"]) - represented, "the budget must force at least one omission"
+    assert "not represented in the output" not in md
     for path in result["changed_files"]:
         assert md.count(f"`{path}`") == 1, f"{path} appears more than once in the artifact"

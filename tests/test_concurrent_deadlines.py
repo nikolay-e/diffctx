@@ -7,6 +7,8 @@ import threading
 import time
 from pathlib import Path
 
+import pytest
+
 import diffctx
 from tests.framework.pygit2_backend import Pygit2Repo
 
@@ -90,13 +92,23 @@ def test_a_compute_deadline_never_takes_the_process_down(tmp_path):
     subprocess, and under load a plain `git diff` has been seen to miss one
     second — that failure is a `GitError`, not the deadline this test is about.
     """
-    root = subprocess.run(
+    roots = subprocess.run(
         ["git", "rev-list", "--max-parents=0", "HEAD"],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
         check=True,
-    ).stdout.split()[-1]
+    ).stdout.split()
+    # A shallow clone reports its boundary commit as parentless, so `root`
+    # would be HEAD itself, the range would be empty, and the child would print
+    # COMPLETED — a red that accuses the deadline instead of the checkout.
+    assert roots, "git rev-list returned no root commit"
+    shallow = subprocess.run(
+        ["git", "rev-parse", "--is-shallow-repository"], cwd=PROJECT_ROOT, capture_output=True, text=True
+    ).stdout.strip()
+    if shallow == "true":
+        pytest.skip("shallow clone: root..HEAD is not the full-history workload this measures")
+    root = roots[-1]
 
     child = textwrap.dedent(f"""
         import diffctx

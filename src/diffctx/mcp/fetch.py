@@ -166,6 +166,24 @@ def _is_contained(repo: Path, rel_path: str) -> bool:
     return True
 
 
+def withheld_set(root: Path, rel_paths: list[str]) -> set[str]:
+    """What the engine withholds, plus any name that cannot reach it.
+
+    A filename that is not valid UTF-8 arrives as a surrogate-escaped `str`
+    which the FFI boundary rejects; letting that raise would fail a whole call
+    over one file nobody asked for by name, so it is simply not served.
+    """
+    clean, unservable = [], set()
+    for rel in rel_paths:
+        try:
+            rel.encode("utf-8")
+        except UnicodeEncodeError:
+            unservable.add(rel)
+        else:
+            clean.append(rel)
+    return set(withheld_paths(str(root), clean)) | unservable
+
+
 def fetch_fragments(repo: Path, diff_ref: str, fragment_ids: list[str], max_file_bytes: int) -> str:
     """Markdown bodies for `fragment_ids`, one section per id.
 
@@ -187,7 +205,7 @@ def fetch_fragments(repo: Path, diff_ref: str, fragment_ids: list[str], max_file
     # of the selection keeps it out of a fetch. Pathspec re-derivation here
     # both served `.netrc` and refused files the engine had ranked.
     contained = [ref.path for _, ref in refs if ref is not None and _is_contained(repo, ref.path)]
-    withheld = set(withheld_paths(str(repo), contained))
+    withheld = withheld_set(repo, contained)
     for raw, ref in refs:
         parts.append(_fetch_one(repo, rev, rev_label, raw, ref, withheld, max_file_bytes))
     return "\n".join(parts)

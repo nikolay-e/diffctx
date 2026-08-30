@@ -16,10 +16,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 def _run_dir(tmp_path: Path, name: str, selected: list[str], tokens: int) -> Path:
     d = tmp_path / name
     d.mkdir()
+    # `status` and `selected_files` live under `extra` — that is where
+    # `load_run` reads them. Written at the top level they are invisible to the
+    # gate, and a fixture that differs only there proves nothing.
     row = {
         "instance_id": "repo__1",
-        "status": "ok",
-        "selected_files": selected,
+        "extra": {"status": "ok", "selected_files": selected},
         "used_tokens": tokens,
         "file_recall": 1.0,
         "file_precision": 1.0,
@@ -45,6 +47,17 @@ def test_the_gate_exits_nonzero_on_a_divergent_run(tmp_path):
 
     assert result.returncode != 0, f"the gate passed a divergent pair: {result.stdout}"
     assert "EQUIVALENCE FAILED" in result.stdout
+
+
+def test_a_selection_difference_alone_fails_the_gate(tmp_path):
+    """Token-identical, selection different — the case the gate exists for: a
+    refactor claiming E-class that quietly moved which fragments are chosen."""
+    a = _run_dir(tmp_path, "old", ["src/a.py"], 100)
+    b = _run_dir(tmp_path, "new", ["src/b.py"], 100)
+
+    result = _gate(a, b)
+
+    assert result.returncode != 0, f"the gate ignored a selection change: {result.stdout}"
 
 
 def test_the_gate_exits_zero_on_an_identical_run(tmp_path):

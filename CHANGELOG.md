@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **An ignored directory's contents were readable through the MCP glob**
+  (regression introduced with #228, caught the same day). `withheld_paths`
+  reused the engine's *attribution* lookup, which deliberately drops
+  ancestor-inherited exclusions — a tracked file under a directory that
+  `--no-index` reports excluded is not really ignored (#153). For the diff,
+  whose paths are tracked by construction, that is right; for a reader walking
+  the working tree it is exactly wrong, because `.venv/x.py` is ignored *by*
+  the `.venv/` rule on its parent. `git check-ignore` called those paths
+  ignored while the engine called them servable, so `get_file_context` and
+  `diffctx_context` would return the contents of `.venv/`, `dist/`, `target/`
+  and any repository's `secrets/`. Fixed with a lookup that keeps
+  ancestor-inherited matches; `.git/` is withheld outright — it is not
+  gitignored at all, and `.git/config` carries the remote URL.
+- **The glob reader applies the tree-mode noise filter again**: unifying it
+  onto the engine alone (#228) also dropped `node_modules/`, `target/` and
+  lock files from `get_file_context`, contradicting the tool's own
+  description. Both filters now apply there — the noise spec `get_tree_map`
+  uses, and the engine as the security floor. `fetch_fragments` keeps the
+  engine alone, which is what makes a ranked `build/gen.py` fetchable.
+
 - **One secret-path policy for every surface** (#227): tree mode kept its own,
   shorter list, so `.netrc`, `credentials`, `_netrc`, `.npmrc`, `.pypirc`,
   `id_*_sk`, `*.ppk`, `*.p8` and `*.asc` — all withheld by diff mode — were
@@ -88,6 +108,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `IntervalIndex` instead of a fourth hand-written check.
 
 ### Changed
+
+- **The landing page's headline comparison names its source.** It shipped
+  `48,210 → 6,930 tokens, 7×` with no provenance on the page and none in the
+  repository either; three independent first-visit probes each reached the
+  same verdict — the one number meant to justify adoption could not be checked.
+  It now reads 768,268 → 43,769 (17.6×), measured on
+  home-assistant/core@1d885bd0 (66 files changed) with the command printed
+  beside it, and says plainly that the ratio tracks how much of the changed
+  files is unrelated to the change. A test gates the provenance, not the value.
 
 - **The GIL is released for the last three heavy extension calls** (#245):
   `build_project_graph` (a full repository walk plus a tree-sitter parse of

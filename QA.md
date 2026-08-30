@@ -215,6 +215,36 @@ dismissing as bot noise.
 - `gated` label = blocked on a pre-registered experiment or eval-cycle
   boundary.
 
+## Traps this repo has already sprung
+
+- **Two ignore policies, not one.** The *withhold* policy (secret names,
+  `.diffctx/ignore`, gitignore, `.git/`) is the security floor everywhere.
+  The *noise* policy (`DEFAULT_IGNORE_PATTERNS`: `node_modules/`, `target/`,
+  lock files) belongs to tree-mode readers — `get_tree_map` and the legacy
+  `get_file_context` glob. Collapsing them in either direction has now broken
+  something twice: engine-only served `uv.lock` and every ignored directory,
+  noise-only served `.netrc`. `fetch_fragments` is the deliberate exception —
+  engine only, because refusing a fragment selection ranked is the other half
+  of #228.
+- **`find_ignored_paths_with_source` is the attribution lookup and drops
+  ancestor-inherited exclusions on purpose** (#153). Anything that walks the
+  *working tree* must use `find_ignored_paths_any` instead, or it answers
+  "not ignored" for the whole contents of every ignored directory.
+- **A `cargo fmt` run invalidates a source-text mutation.** Verifying a Rust
+  gate on a known-bad input by string-replacing the fix will silently no-op if
+  the formatter has since rewrapped the line — the "known-bad" run then tests
+  the good code and passes. Re-read the file after `cargo fmt` and assert the
+  mutation anchor before trusting a green.
+- **A rebuild is part of restoring a mutation.** `uv sync
+  --reinstall-package diffctx` installs whatever the source said at that
+  moment; restoring the file afterwards leaves the pre-fix extension in the
+  venv, and the next pytest measures the wrong build.
+- **`rrf` and `pit` read `DIFFCTX_OP_GRAPH_DEPTH`, `internal-bm25` does not.**
+  The fusion modes take `ego_depth_extended` (env-overridable); `bm25` takes
+  the hardcoded `ego_depth_default`. Excluding depth cells for all three at
+  once deletes 30 real configurations — it happened on 2026-08-30 and was
+  reverted the same pass.
+
 ## Known false positives
 
 - import-linter local failures are REAL — the old excuse ("fails locally

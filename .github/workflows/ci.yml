@@ -265,7 +265,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           # tests/test_concurrent_deadlines.py runs the engine over this
-          # repository's own history (HEAD~20) as a workload no build profile
+          # repository's own full history (root..HEAD) as a workload no build profile
           # finishes inside a one-second ceiling; a shallow clone has no such range.
           fetch-depth: 0
 

@@ -132,12 +132,24 @@ fn extract_label_pairs(label_block: &str, block: Span) -> Vec<(String, String, S
 
 type LabelMap = FxHashMap<String, (String, Span)>;
 
+/// The block's span, with the trailing newline the capture swallows trimmed
+/// off. `(?:...\n){1,50}` ends AT the start of the next line, so an untrimmed
+/// end resolves to a line past the block — and `anchor`, which requires a
+/// fragment covering the whole span, then found none and fell back to the
+/// representative. The fallback happened to be right in the one case a test
+/// covered, which is why the anchoring looked like it worked.
+fn block_span(block: &regex::Match<'_>) -> Span {
+    (
+        block.start(),
+        block.end().saturating_sub(1).max(block.start()),
+    )
+}
+
 fn extract_labels_by_pattern(content: &str, pattern: &Regex) -> LabelMap {
     let mut labels = LabelMap::default();
     for cap in pattern.captures_iter(content) {
         let Some(block) = cap.get(1) else { continue };
-        for (key, value, span) in extract_label_pairs(block.as_str(), (block.start(), block.end()))
-        {
+        for (key, value, span) in extract_label_pairs(block.as_str(), block_span(&block)) {
             labels.insert(key, (value, span));
         }
     }
@@ -242,7 +254,7 @@ impl ManifestView {
         self.fragments
             .iter()
             .filter(|(start, end, _)| *start <= first && *end >= last)
-            .min_by_key(|(start, end, id)| (end - start, *start, id.clone()))
+            .min_by(|a, b| (a.1 - a.0, a.0, &a.2).cmp(&(b.1 - b.0, b.0, &b.2)))
             .map_or(&self.representative, |(_, _, id)| id)
     }
 }
@@ -258,6 +270,13 @@ fn build_manifest_views(fragments: &[Fragment]) -> Vec<ManifestView> {
 
     let mut views = Vec::new();
     for path in paths {
+        // Before the reconstruction, not after: this builder sees every
+        // fragment of every language, and rebuilding a whole file's text only
+        // to discard it on the extension check cost one String per line of the
+        // repository, per run.
+        if !is_yaml_file(Path::new(path)) {
+            continue;
+        }
         let mut frags = by_path.remove(path).unwrap_or_default();
         frags.sort_by(|a, b| a.id.cmp(&b.id));
 
@@ -466,7 +485,7 @@ fn get_service_selector(content: &str) -> (FxHashMap<String, String>, Span) {
 
     match SIMPLE_SELECTOR_RE.captures(content).and_then(|c| c.get(1)) {
         Some(block) => {
-            let span = (block.start(), block.end());
+            let span = block_span(&block);
             let pairs = extract_label_pairs(block.as_str(), span);
             (pairs.into_iter().map(|(k, v, _)| (k, v)).collect(), span)
         }
@@ -672,6 +691,16 @@ mod tests {
                 5,
                 "spec:\n  template:\n    metadata:\n      labels:\n        app: web\n        tier: frontend\n",
             ),
+            // Bigger than the `spec:` fragment on purpose: it makes this file's
+            // `representative` a fragment that contains no labels, so an edge
+            // landing on `spec:` proves the anchor resolved the block rather
+            // than falling through to the fallback. Without it the assertion
+            // below holds either way, which is how the span off-by-one shipped.
+            yaml_frag(
+                "k8s/deployment.yaml",
+                11,
+                "status:\n  observedGeneration: 1\n  replicas: 3\n  readyReplicas: 3\n  updatedReplicas: 3\n  availableReplicas: 3\n  conditions: []\n",
+            ),
             yaml_frag("k8s/service.yaml", 1, "apiVersion: v1\n"),
             yaml_frag("k8s/service.yaml", 2, "kind: Service\n"),
             yaml_frag("k8s/service.yaml", 3, "metadata:\n  name: web\n"),
@@ -688,10 +717,20 @@ mod tests {
                     && dst.path.as_ref() == "k8s/deployment.yaml"
             })
             .expect("no service -> deployment edge");
+        let rep = build_manifest_views(&fragments)
+            .iter()
+            .find(|v| v.fragments[0].2.path.as_ref() == "k8s/deployment.yaml")
+            .map(|v| v.representative.clone())
+            .expect("the deployment must produce a view");
+        assert_eq!(
+            (rep.start_line, rep.end_line),
+            (11, 17),
+            "the fixture must make `status:` the representative, or the assertion below proves nothing"
+        );
         assert_eq!(
             (forward.1.start_line, forward.1.end_line),
             (5, 10),
-            "the edge must land on the fragment carrying the matched label"
+            "the edge must land on the fragment carrying the matched label, not on the fallback"
         );
     }
 }

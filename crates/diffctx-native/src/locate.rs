@@ -317,8 +317,11 @@ fn build_coverage(
     let parsed_share = 1.0 - unparsed.len() as f64 / n_changed;
     let linked_share = 1.0 - zero_edge.len() as f64 / n_changed;
     // Context only: a changed fragment that did not fit is a budget floor
-    // problem the caller already sees in `budget_tokens`, and counting it here
-    // would make a tiny budget look like a discovery failure.
+    // problem, and counting it here would make a tiny budget look like a
+    // discovery failure. Note `budget_tokens` in the output is what the CALLER
+    // asked for; what selection actually had is that minus the change summary
+    // (#241), so headroom is only readable from this block, never from
+    // `budget_tokens - Σ tokens`.
     let selected_context = outcome
         .selected
         .iter()
