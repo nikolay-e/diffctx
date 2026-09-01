@@ -19,14 +19,14 @@ def load_results(path: Path) -> dict[str, dict]:
     return {r["id"]: r for r in _load_raw(path) if r.get("status") == "ok"}
 
 
-def compare(after_path: Path, before_path: Path) -> None:
+def compare(after_path: Path, before_path: Path) -> int:
     after_by_id = load_results(after_path)
     before_by_id = load_results(before_path)
     common_ids = sorted(set(after_by_id) & set(before_by_id))
 
     if not common_ids:
         print("No common instances found.")
-        return
+        return 1
 
     print(f"Paired instances: {len(common_ids)}")
     print(f"After:  {after_path.name}")
@@ -56,13 +56,14 @@ def compare(after_path: Path, before_path: Path) -> None:
         pw_str = f"{wilc['p_value']:.4f}"
 
         print(f"{metric:30s}  {b_str:18s}  {a_str:18s}  {d_str:22s}  {pb_str:>7s}  {pw_str:>7s}")
+    return 0
 
 
-def main() -> None:
+def main() -> int:
     if len(sys.argv) != 3:
         print(f"Usage: {sys.argv[0]} <after.json> <before.json>")
-        sys.exit(1)
-    compare(Path(sys.argv[1]), Path(sys.argv[2]))
+        return 1
+    return compare(Path(sys.argv[1]), Path(sys.argv[2]))
 
 
 if __name__ == "__main__":

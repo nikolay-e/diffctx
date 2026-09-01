@@ -10,7 +10,7 @@ from eval.harness.common import load_results
 METRICS = ["file_recall", "file_precision", "nontrivial_file_recall", "line_recall", "line_recall_nontrivial"]
 
 
-def main() -> None:
+def main() -> int:
     paths = [Path(a) for a in sys.argv[1:] if Path(a).exists()]
     if not paths:
         print("Usage: aggregate_seeds.py results/cb_ego_n50_b16000_s*.json")
@@ -33,7 +33,8 @@ def main() -> None:
         print()
 
     if not any(seed_avgs.values()):
-        return
+        print("No ok rows in any input; nothing to aggregate.")
+        return 1
 
     print(f"\n{'='*60}")
     print(f"AGGREGATE ({len(paths)} seeds)")
@@ -45,6 +46,8 @@ def main() -> None:
         mean = statistics.mean(vals)
         std = statistics.stdev(vals) if len(vals) > 1 else 0.0
         print(f"  {m:30s}: {mean:.3f} \u00b1 {std:.3f}")
+
+    return 0
 
 
 if __name__ == "__main__":

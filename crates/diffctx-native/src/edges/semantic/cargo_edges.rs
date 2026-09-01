@@ -113,12 +113,13 @@ impl EdgeBuilder for CargoEdgeBuilder {
             cargo_by_dir.entry(dir).or_default().push(f.id.clone());
         }
 
-        let mut rs_by_path: FxHashMap<String, FragmentId> = FxHashMap::default();
-        for f in fragments {
-            if is_rust_source(Path::new(f.path())) {
-                rs_by_path.insert(f.path().to_string(), f.id.clone());
-            }
-        }
+        // The file's representative, not whichever fragment came last in
+        // iteration order (for tree-sitter output that is the trailing
+        // gap chunk).
+        let rs_by_path: FxHashMap<String, FragmentId> = base::file_representatives(fragments)
+            .into_iter()
+            .filter(|(path, _)| is_rust_source(Path::new(path)))
+            .collect();
 
         for cf in &cargo_frags {
             let parent = Path::new(cf.path()).parent().unwrap_or(Path::new(""));

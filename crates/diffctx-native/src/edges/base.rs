@@ -237,16 +237,45 @@ pub fn link_by_name(
     weight: f64,
     reverse_factor: f64,
 ) {
-    let target = name.split('/').next_back().unwrap_or(name).to_lowercase();
-    if let Some(frag_ids) = idx.by_name.get(&target) {
-        for fid in frag_ids {
-            if fid != src_id {
-                add_edge(edges, src_id, fid, weight, reverse_factor);
-                return;
-            }
+    // A path-shaped reference (`crate_a/Cargo.toml`) is a path reference and
+    // resolves component-aligned; a bare basename resolves to every file
+    // carrying it — its representative, one edge per file — and abstains
+    // above the ambiguity bar. The first fragment of the first same-named
+    // file was an arbitrary pick: `config.yaml`, `main.go`, `index.js` all
+    // have dozens.
+    if name.contains('/') {
+        link_by_path_match(src_id, name, idx, edges, weight, reverse_factor);
+        return;
+    }
+    let target = name.to_lowercase();
+    let matched: Vec<&FragmentId> = idx
+        .component_to_paths
+        .get(&target)
+        .map(|posting| {
+            posting
+                .iter()
+                .filter_map(|&pi| {
+                    let (path_lower, rep) = &idx.lower_paths[pi as usize];
+                    (path_lower == &target || path_lower.ends_with(&format!("/{target}")))
+                        .then_some(rep)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    if matched.is_empty() {
+        // No file carries the name: it may name a module directory
+        // (`import Database` -> Sources/Database/), which is a path reference.
+        link_by_path_match(src_id, name, idx, edges, weight, reverse_factor);
+        return;
+    }
+    if matched.len() > MAX_FILES_PER_PATH_REF {
+        return;
+    }
+    for rep in matched {
+        if rep != src_id {
+            add_edge(edges, src_id, rep, weight, reverse_factor);
         }
     }
-    link_by_path_match(src_id, name, idx, edges, weight, reverse_factor);
 }
 
 /// Links `src_id` to fragments of files the reference plausibly names.

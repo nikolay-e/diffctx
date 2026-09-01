@@ -20,6 +20,12 @@ static K8S_METADATA_NAME_RE: Lazy<Regex> = Lazy::new(|| {
 });
 static K8S_NAME_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r##"(?m)^\s{1,20}name:\s?['"]?([^'"#\n]{1,200})"##).unwrap());
+static ENVFROM_CONFIGMAP_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r##"(?m)configMapRef:\s?\n\s{1,20}name:\s?['"]?([^'"#\n]{1,200})"##).unwrap()
+});
+static ENVFROM_SECRET_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r##"(?m)secretRef:\s?\n\s{1,20}name:\s?['"]?([^'"#\n]{1,200})"##).unwrap()
+});
 static CONFIGMAP_REF_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r##"(?m)configMapKeyRef:\s?\n\s{1,20}name:\s?['"]?([^'"#\n]{1,200})"##).unwrap()
 });
@@ -132,28 +138,45 @@ fn extract_label_pairs(label_block: &str, block: Span) -> Vec<(String, String, S
 
 type LabelMap = FxHashMap<String, (String, Span)>;
 
-/// The block's span, with the trailing newline the capture swallows trimmed
-/// off. `(?:...\n){1,50}` ends AT the start of the next line, so an untrimmed
-/// end resolves to a line past the block — and `anchor`, which requires a
-/// fragment covering the whole span, then found none and fell back to the
-/// representative. The fallback happened to be right in the one case a test
-/// covered, which is why the anchoring looked like it worked.
-fn block_span(block: &regex::Match<'_>) -> Span {
-    (
-        block.start(),
-        block.end().saturating_sub(1).max(block.start()),
-    )
+/// The lines of a captured block that belong to it: `(?:\s{1,20}k: v\n){1,50}`
+/// keeps consuming any less-indented scalar line after the pairs — a Service's
+/// `sessionAffinity:` and `type:` after its `selector:` — and every such line
+/// became a REQUIRED selector key, so kubectl-ordered Services matched nothing.
+/// A block ends at the first line indented less than its first.
+fn own_block_end(block: &str) -> usize {
+    let mut lines = block.split_inclusive('\n');
+    let Some(first) = lines.next() else { return 0 };
+    let indent = first.len() - first.trim_start().len();
+    let mut end = first.len();
+    for line in lines {
+        if line.trim().is_empty() {
+            end += line.len();
+            continue;
+        }
+        if line.len() - line.trim_start().len() < indent {
+            break;
+        }
+        end += line.len();
+    }
+    end
 }
 
 fn extract_labels_by_pattern(content: &str, pattern: &Regex) -> LabelMap {
     let mut labels = LabelMap::default();
     for cap in pattern.captures_iter(content) {
         let Some(block) = cap.get(1) else { continue };
-        for (key, value, span) in extract_label_pairs(block.as_str(), block_span(&block)) {
+        let own = &block.as_str()[..own_block_end(block.as_str())];
+        let span = own_span(block.start(), own);
+        for (key, value, _) in extract_label_pairs(own, span) {
             labels.insert(key, (value, span));
         }
     }
     labels
+}
+
+/// The span of a trimmed block: its last byte, never the newline after it.
+fn own_span(start: usize, own: &str) -> Span {
+    (start, (start + own.len()).saturating_sub(1).max(start))
 }
 
 fn extract_labels(content: &str) -> LabelMap {
@@ -308,11 +331,11 @@ fn build_manifest_views(fragments: &[Fragment]) -> Vec<ManifestView> {
             continue;
         }
 
-        let representative = frags
-            .iter()
-            .max_by_key(|f| (f.token_count, f.id.clone()))
-            .map(|f| f.id.clone());
-        let Some(representative) = representative else {
+        // The crate's one definition of a file's representative (first
+        // largest fragment), not a local tie-break that disagreed with it
+        // whenever token counts were still zero.
+        let owned: Vec<Fragment> = frags.iter().map(|f| (*f).clone()).collect();
+        let Some(representative) = base::file_representatives(&owned).remove(path) else {
             continue;
         };
 
@@ -435,7 +458,12 @@ fn link_by_patterns(
 fn build_configmap_edges(view: &ManifestView, idx: &K8sIndex, edges: &mut EdgeDict) {
     link_by_patterns(
         view,
-        &[&CONFIGMAP_REF_RE, &CONFIGMAP_NAME_RE, &VOLUME_CONFIGMAP_RE],
+        &[
+            &CONFIGMAP_REF_RE,
+            &ENVFROM_CONFIGMAP_RE,
+            &CONFIGMAP_NAME_RE,
+            &VOLUME_CONFIGMAP_RE,
+        ],
         &idx.configmaps,
         edges,
         KUBERNETES.configmap_secret_weight,
@@ -445,7 +473,12 @@ fn build_configmap_edges(view: &ManifestView, idx: &K8sIndex, edges: &mut EdgeDi
 fn build_secret_edges(view: &ManifestView, idx: &K8sIndex, edges: &mut EdgeDict) {
     link_by_patterns(
         view,
-        &[&SECRET_REF_RE, &SECRET_NAME_RE, &VOLUME_SECRET_RE],
+        &[
+            &SECRET_REF_RE,
+            &ENVFROM_SECRET_RE,
+            &SECRET_NAME_RE,
+            &VOLUME_SECRET_RE,
+        ],
         &idx.secrets,
         edges,
         KUBERNETES.configmap_secret_weight,
@@ -485,8 +518,9 @@ fn get_service_selector(content: &str) -> (FxHashMap<String, String>, Span) {
 
     match SIMPLE_SELECTOR_RE.captures(content).and_then(|c| c.get(1)) {
         Some(block) => {
-            let span = block_span(&block);
-            let pairs = extract_label_pairs(block.as_str(), span);
+            let own = &block.as_str()[..own_block_end(block.as_str())];
+            let span = own_span(block.start(), own);
+            let pairs = extract_label_pairs(own, span);
             (pairs.into_iter().map(|(k, v, _)| (k, v)).collect(), span)
         }
         None => (FxHashMap::default(), (0, 0)),
@@ -541,8 +575,20 @@ fn build_image_edges(
         let Some(sites) = images.get(image) else {
             continue;
         };
+        // A shared base image is vocabulary, not a relation: past the same bar
+        // every other reference channel applies (MAX_FILES_PER_KEY), it would
+        // link every workload in the cluster pairwise at naming weight.
+        let mut distinct: Vec<usize> = sites.iter().map(|(v, _)| *v).collect();
+        distinct.sort_unstable();
+        distinct.dedup();
+        if distinct.len() > super::generic::MAX_FILES_PER_KEY {
+            continue;
+        }
         let src = view.anchor((m.start(), m.end()));
         for (other_view, span) in sites {
+            if std::ptr::eq(&views[*other_view], view) {
+                continue;
+            }
             let dst = views[*other_view].anchor(*span);
             if dst != src {
                 add_edge(

@@ -323,14 +323,13 @@ def test_parallel_eval_records_apply_fail_not_garbage_score(tmp_path: Path, monk
     import json as _json
     import subprocess
 
-    import eval.harness.common as bench_common
     from eval.harness.common import apply_as_commit, ensure_repo
 
-    # _SHARED_CACHE is resolved at import time; redirect it so the test's
+    # The bare-clone cache reads CB_REPOS_DIR per call; redirect it so the test's
     # bare clone lands under tmp_path instead of the user's real cache.
     cache_root = tmp_path / "cache"
     cache_root.mkdir()
-    monkeypatch.setattr(bench_common, "_SHARED_CACHE", cache_root)
+    monkeypatch.setenv("CB_REPOS_DIR", str(cache_root))
 
     origin = tmp_path / "origin"
     origin.mkdir()

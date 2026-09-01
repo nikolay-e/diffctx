@@ -6,12 +6,12 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::edge_weights::ANSIBLE_SEMANTIC;
 use crate::config::weights::EDGE_WEIGHTS;
-use crate::types::Fragment;
+use crate::types::{Fragment, FragmentId};
 
 use super::super::EdgeDict;
 use super::super::base::{
-    self, EdgeBuilder, FragmentIndex, add_edge, discover_files_by_refs, link_by_name,
-    link_by_path_match,
+    self, EdgeBuilder, FragmentIndex, add_edge, discover_files_by_refs, file_representatives,
+    link_by_name, link_by_path_match,
 };
 
 static ANSIBLE_EXTS: Lazy<FxHashSet<&str>> = Lazy::new(|| {
@@ -142,16 +142,27 @@ impl EdgeBuilder for AnsibleEdgeBuilder {
             }
         }
 
-        let mut role_frags: FxHashMap<String, Vec<&Fragment>> = FxHashMap::default();
-        for f in &frags {
-            if let Some(role) = get_role_name(Path::new(f.path())) {
-                role_frags.entry(role).or_default().push(f);
+        // A role is a file-level relation: one edge per file pair through the
+        // representatives, never fragment × fragment (two 150-fragment task
+        // files were 22k emissions), never two fragments of one file, and
+        // capped like the directory-sibling channel so a monster role does
+        // not become naming-reachable from itself.
+        let owned: Vec<Fragment> = frags.iter().map(|f| (*f).clone()).collect();
+        let reps = file_representatives(&owned);
+        let mut role_files: FxHashMap<String, Vec<&FragmentId>> = FxHashMap::default();
+        for (path, rep) in &reps {
+            if let Some(role) = get_role_name(Path::new(path)) {
+                role_files.entry(role).or_default().push(rep);
             }
         }
-        for group in role_frags.values() {
-            for (i, f1) in group.iter().enumerate() {
-                for f2 in &group[i + 1..] {
-                    add_edge(&mut edges, &f1.id, &f2.id, sibling_w, rev);
+        for group in role_files.values_mut() {
+            group.sort();
+            if group.len() > crate::config::limits::SIBLING.max_files_per_dir {
+                continue;
+            }
+            for (i, r1) in group.iter().enumerate() {
+                for r2 in &group[i + 1..] {
+                    add_edge(&mut edges, r1, r2, sibling_w, rev);
                 }
             }
         }

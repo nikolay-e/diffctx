@@ -211,7 +211,11 @@ def _maybe_checkpoint(path: Path | None, r: EvalResult, status: str, err: str) -
     # EXCEPTION: status=="timeout" is deterministic per-instance (the same input
     # would hit the same deadline again) and MUST be checkpointed to prevent an
     # infinite retry loop on a pathological repository.
-    if status != "timeout" and "BrokenProcessPool" in err:
+    # Rows a rerun should re-evaluate are not checkpointed: a clone that hit
+    # the network or a worker that crashed is not a verdict on the instance.
+    # (The old test was for `BrokenProcessPool`, an exception only
+    # concurrent.futures raises — the pool is pebble, so it never matched.)
+    if status in ("clone_fail", "error"):
         return
     append_checkpoint(path, r)
 

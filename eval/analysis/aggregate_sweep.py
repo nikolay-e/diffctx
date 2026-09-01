@@ -95,6 +95,24 @@ def _instance_metrics(rows: list[dict]) -> list[dict]:
     return out
 
 
+def cell_checkpoints(cell_root: Path) -> list[tuple[Path, int | None]]:
+    """Every checkpoint a cell holds, with the budget its filename carries.
+
+    Two layouts coexist: the flat `<test_set>.checkpoint.jsonl` and, since the
+    multi-budget sweep (#52), `<test_set>_budget_sweep/[L<depth>/]b<budget>.checkpoint.jsonl`.
+    Readers that globbed only the flat form silently scored every diffctx cell
+    of a full sweep as zero rows.
+    """
+    found: list[tuple[Path, int | None]] = []
+    for ckpt in sorted(cell_root.glob("*_budget_sweep/**/b*.checkpoint.jsonl")):
+        m = _BUDGET_CKPT_RE.match(ckpt.name)
+        if m:
+            found.append((ckpt, int(m.group("budget"))))
+    for ckpt in sorted(cell_root.glob("*.checkpoint.jsonl")):
+        found.append((ckpt, None))
+    return found
+
+
 def _budget_sweep_records(cell_root: Path, meta: dict, method, depth, test_set) -> list[dict]:
     """Expand a multi-budget cell (issue #52 layout) into one record per budget.
 

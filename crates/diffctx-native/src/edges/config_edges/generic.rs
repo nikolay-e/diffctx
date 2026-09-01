@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 /// Same ambiguity bar as `CFamilySemanticWeights::max_files_per_name`,
 /// applied to config keys: document frequency above this is vocabulary.
-const MAX_FILES_PER_KEY: usize = 8;
+pub(crate) const MAX_FILES_PER_KEY: usize = 8;
 
 use once_cell::sync::Lazy;
 use regex::Regex;

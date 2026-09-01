@@ -17,6 +17,7 @@ import json
 import sys
 from pathlib import Path
 
+from eval.analysis.aggregate_sweep import cell_checkpoints
 from eval.datasets.build_splits import default_calibration_pool_adapters, default_test_adapters
 from eval.harness.adapters.base import BenchmarkAdapter, BenchmarkInstance
 from eval.harness.common import patch_size_metrics
@@ -127,7 +128,7 @@ def main() -> int:
     total_rows = 0
     total_enriched = 0
     for cell in cell_dirs:
-        ckpts = sorted(cell.glob("*.checkpoint.jsonl"))
+        ckpts = [c for c, _ in cell_checkpoints(cell)]
         if not ckpts:
             continue
         for ckpt in ckpts:

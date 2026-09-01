@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -135,6 +136,20 @@ def _process_manifest(
     # Distinct checkpoint names per method: two baselines sharing one --out
     # must not cross-resume each other's rows.
     ckpt_name = name if args.baseline == "diffctx" else f"{args.baseline}__{name}"
+    # An ablation cell (--scoring / --tau / --extra-env) sharing an --out with
+    # the winner used to resume the winner's rows as its own: the name must
+    # carry what makes the run a different system.
+    if args.scoring is not None or args.tau is not None or args.extra_env:
+        tag = "_".join(
+            x
+            for x in (
+                f"s-{args.scoring}" if args.scoring is not None else "",
+                f"t-{args.tau}" if args.tau is not None else "",
+                "_".join(f"{e.replace('=', '-')}" for e in sorted(args.extra_env or [])),
+            )
+            if x
+        )
+        ckpt_name = f"{ckpt_name}__{tag}"
 
     if eval_all_cells_fn is not None:
         params_list = [
@@ -394,7 +409,7 @@ def _run_one_manifest_guarded(
         if depth is not None:
             r.extra.setdefault("ego_depth", depth)
     all_results.extend(results)
-    reports.append(aggregate_test_set(name, results))
+    reports.append(aggregate_test_set(f"{name}{depth_suffix}", results))
     (args.out / f"{name}{depth_suffix}.json").write_text(json.dumps([asdict(r) for r in results], indent=2, default=str))
 
 
@@ -469,6 +484,9 @@ def main() -> int:
     args = _build_argparser().parse_args()
 
     repo_root = args.repos_dir or default_repos_dir()
+    # The bare-clone cache reads CB_REPOS_DIR per call; without this the flag
+    # relocated only the worktrees and the clones went to the home directory.
+    os.environ["CB_REPOS_DIR"] = str(repo_root)
     report_and_maybe_exit(probe_resources(min_memory_gb=args.min_memory_gb, repos_dir=repo_root, min_disk_gb=args.min_disk_gb))
 
     cli_env = _parse_cli_extra_env(args.extra_env)

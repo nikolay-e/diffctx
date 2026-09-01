@@ -21,6 +21,12 @@ class TestSetReport:
 
 
 def aggregate_test_set(name: str, results: list[EvalResult]) -> TestSetReport:
+    # `apply_gold_patch` documents that clone/apply failures are flagged and
+    # excluded from metrics; averaging their zero recall into the headline
+    # made an infrastructure outage read as a retrieval regression, and fed
+    # the calibration objective the same lie. Timeouts stay: they are the
+    # system's own failure on that input.
+    results = [r for r in results if (r.extra or {}).get("status", "ok") not in ("clone_fail", "apply_fail", "error")]
     if not results:
         return TestSetReport(name, 0, 0.0, 0.0, None, None, None, 0.0)
     n = len(results)

@@ -8,7 +8,7 @@ use crate::config::edge_weights::CICD;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, FragmentIndex, add_edge, link_by_name};
+use super::super::base::{self, EdgeBuilder, FragmentIndex, link_by_name, link_by_path_match};
 
 static GHA_RUN_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?m)^\s{0,20}-?\s{0,5}run:\s{0,5}[|>]?\s{0,5}([^\n]{1,500})").unwrap()
@@ -267,21 +267,34 @@ impl EdgeBuilder for CICDEdgeBuilder {
                 || lower.contains("pnpm")
                 || lower.contains("npx")
             {
-                for f in fragments {
-                    let fname = Path::new(f.path())
-                        .file_name()
-                        .map(|n| n.to_string_lossy().to_lowercase())
-                        .unwrap_or_default();
-                    if fname == "package.json" && f.id != ci.id {
-                        add_edge(
-                            &mut edges,
-                            &ci.id,
-                            &f.id,
-                            CICD.weight * CICD.script_modifier,
-                            CICD.reverse_factor,
-                        );
+                // Every package.json in the repo used to qualify; in a
+                // workspaces monorepo that is a hundred edges from one
+                // workflow. The package a workflow drives is the nearest
+                // one above it, or the root's.
+                let mut dir = Path::new(ci.path()).parent();
+                let mut linked = false;
+                while let Some(d) = dir {
+                    let candidate = if d.as_os_str().is_empty() {
+                        "package.json".to_string()
+                    } else {
+                        format!("{}/package.json", d.to_string_lossy())
+                    };
+                    let before = edges.len();
+                    link_by_path_match(
+                        &ci.id,
+                        &candidate,
+                        &idx,
+                        &mut edges,
+                        CICD.weight * CICD.script_modifier,
+                        CICD.reverse_factor,
+                    );
+                    if edges.len() > before {
+                        linked = true;
+                        break;
                     }
+                    dir = d.parent();
                 }
+                let _ = linked;
             }
         }
 

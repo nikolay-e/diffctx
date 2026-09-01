@@ -8,7 +8,9 @@ use crate::config::edge_weights::DOCKER;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, FragmentIndex, add_edge, link_by_name};
+use super::super::base::{
+    self, EdgeBuilder, FragmentIndex, add_edge, link_by_name, link_by_path_match,
+};
 
 static DOCKERFILE_COPY_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?mi)^(?:COPY|ADD)\s+(?:--[^\s]+\s+)*(.+)").unwrap());
@@ -193,19 +195,32 @@ impl EdgeBuilder for DockerEdgeBuilder {
                 if let Some(m) = cap.get(1) {
                     let context = m.as_str().trim();
                     if !context.is_empty() && !context.starts_with('$') {
-                        let context_stripped = strip_dot_slash(context);
-                        for f in fragments {
-                            let fpath_lower = f.path().to_lowercase();
-                            if fpath_lower.contains(context_stripped) && f.id != cf.id {
-                                add_edge(
-                                    &mut edges,
-                                    &cf.id,
-                                    &f.id,
-                                    DOCKER.compose_weight * DOCKER.compose_context_modifier,
-                                    DOCKER.reverse_factor,
-                                );
-                            }
-                        }
+                        let context_stripped = strip_dot_slash(context).trim_matches('/');
+                        // `context: .` — the ubiquitous form — stripped to `.`
+                        // and `path.contains(".")` matched every file with an
+                        // extension: the compose file linked to the whole
+                        // universe at naming weight. `.` and `` mean the
+                        // compose file's own directory; a named context is a
+                        // path reference and takes the path channel's bar.
+                        let dir = Path::new(cf.path())
+                            .parent()
+                            .map(|d| d.to_string_lossy().to_string())
+                            .unwrap_or_default();
+                        let target = if context_stripped.is_empty() || context_stripped == "." {
+                            dir
+                        } else if dir.is_empty() {
+                            context_stripped.to_string()
+                        } else {
+                            format!("{dir}/{context_stripped}")
+                        };
+                        link_by_path_match(
+                            &cf.id,
+                            &target,
+                            &idx,
+                            &mut edges,
+                            DOCKER.compose_weight * DOCKER.compose_context_modifier,
+                            DOCKER.reverse_factor,
+                        );
                     }
                 }
             }

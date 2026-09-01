@@ -71,6 +71,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Edge builders that linked the wrong thing, or everything.** A compose
+  file's `context: .` stripped to `.` and `path.contains(".")` matched every
+  file with an extension — the compose file linked to the whole universe at
+  naming weight; `.` now means the compose file's own directory and a named
+  context takes the path channel's ambiguity bar. A Service's selector regex
+  kept consuming less-indented sibling keys (`type: ClusterIP`) and made each
+  a required label, so kubectl-ordered Services never matched their workload;
+  label blocks now end where their indentation does. `envFrom:
+  configMapRef/secretRef` — the standard way to inject a whole map — was not
+  a recognised reference. A shared base image linked every workload pairwise
+  at naming weight; the image channel takes the same eight-file bar as every
+  other reference channel and never links a manifest to itself. A CI file
+  mentioning `npm` linked to every `package.json` in the repository; it links
+  to the nearest one above it. A bare-name reference (`config.yaml`,
+  `main.go`) linked to the first fragment of the first same-named file; it
+  links each such file's representative, abstaining above the bar, and a
+  module directory (`import Database`) still resolves as a path. Cargo
+  entry-point edges landed on the last fragment of the target file instead
+  of its representative, and Ansible role siblings were emitted
+  fragment × fragment (22k emissions for two task files) — now one edge per
+  file pair through representatives, capped like directory siblings. All
+  Q-class; corpus 2902/2902, no baseline movement.
+- **The eval harness's multi-budget checkpoints were invisible to
+  `stratified-analysis` and `backfill-checkpoints`**: both globbed only the
+  flat `<set>.checkpoint.jsonl`, so every diffctx cell of a full sweep
+  contributed zero rows. One discovery helper serves all three readers.
+  `--repos-dir` now relocates the bare-clone cache too (it read an
+  import-time constant and sent clones to the home directory while the disk
+  probe measured the flag's volume); `run-final` names its checkpoint after
+  the ablation parameters so cells sharing an `--out` stop resuming each
+  other's rows; `clone_fail`/`error` rows are re-evaluated on resume instead
+  of being checkpointed as verdicts; infrastructure failures are excluded
+  from the headline recall as `apply_gold_patch` always documented; per-depth
+  reports no longer pool under one name; `compare` and `aggregate-seeds`
+  exit non-zero on an unusable input.
+
 - **A filename containing a newline desynchronised the cat-file batch**: the
   request stream is line-delimited, so one such path became two requests and
   every later file was served the previous request's leftover body. Paths with

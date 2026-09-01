@@ -32,6 +32,7 @@ import numpy as np
 
 # Bucket constants live in cell_metrics — single source of truth so the
 # per-cell aggregator and the cross-cell stratified analysis cannot drift.
+from eval.analysis.aggregate_sweep import cell_checkpoints
 from eval.analysis.cell_metrics import _GOLD_BUCKETS, _RATIO_BUCKETS
 from eval.harness.stats import bh_fdr, bootstrap_ci, holm_correct, paired_bootstrap_delta, wilcoxon_paired
 
@@ -103,15 +104,18 @@ def load_long(cells_dir: Path) -> list[dict]:
         info = _load_cell_info(cell)
         if info is None:
             continue
-        ckpts = list(cell.glob("*.checkpoint.jsonl"))
+        ckpts = cell_checkpoints(cell)
         if not ckpts:
             continue
-        with ckpts[0].open() as f:
-            for line in f:
-                row = _row_from_checkpoint_line(line, info)
-                if row is not None:
-                    rows.append(row)
-    return rows
+        for ckpt, budget in ckpts:
+            cell_info = info if budget is None else {**info, "budget": budget}
+            with ckpt.open() as f:
+                for line in f:
+                    row = _row_from_checkpoint_line(line, cell_info)
+                    if row is None:
+                        continue
+                        rows.append(row)
+        return rows
 
 
 def long_to_arrays(rows: list[dict]) -> dict[tuple[str, int, int, str], dict[str, np.ndarray]]:

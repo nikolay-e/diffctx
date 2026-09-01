@@ -155,8 +155,13 @@ def patch_files_at_head(patch: str) -> set[str]:
     return added | modified
 
 
-_SHARED_CACHE = Path(os.environ.get("CB_REPOS_DIR", str(Path.home() / ".cache" / "contextbench_repos")))
-_SHARED_CACHE.mkdir(parents=True, exist_ok=True)
+def _shared_cache() -> Path:
+    # Read per call, not at import: `--repos-dir` is applied after this module
+    # is imported, and an import-time constant sent every bare clone to the
+    # home directory while the disk probe measured the flag's volume.
+    cache = Path(os.environ.get("CB_REPOS_DIR", str(Path.home() / ".cache" / "contextbench_repos")))
+    cache.mkdir(parents=True, exist_ok=True)
+    return cache
 
 
 _PERF_CONFIG = (
@@ -176,7 +181,7 @@ def _apply_perf_config(repo_dir: Path) -> None:
 def _clone_one_repo(args: tuple[str, str]) -> None:
     repo, url = args
     safe_name = repo.replace("/", "__")
-    cache_dir = _SHARED_CACHE / safe_name
+    cache_dir = _shared_cache() / safe_name
     if cache_dir.exists():
         _apply_perf_config(cache_dir)
         run_cmd(["git", "-C", str(cache_dir), "worktree", "prune"], check=False, timeout=30)
@@ -191,7 +196,7 @@ def _clone_one_repo(args: tuple[str, str]) -> None:
 
 def _fetch_one_commit(args: tuple[str, str]) -> None:
     repo, commit = args
-    cache_dir = _SHARED_CACHE / repo.replace("/", "__")
+    cache_dir = _shared_cache() / repo.replace("/", "__")
     if not cache_dir.exists():
         return
     r = run_cmd(["git", "-C", str(cache_dir), "cat-file", "-t", commit], check=False, timeout=30)
@@ -264,7 +269,7 @@ def _is_bare_valid(cache_dir: Path) -> bool:
 
 def _ensure_bare_cache(repo_url: str, repo_name: str) -> Path | None:
     safe_name = repo_name.replace("/", "__")
-    cache_dir = _SHARED_CACHE / safe_name
+    cache_dir = _shared_cache() / safe_name
 
     if cache_dir.exists() and _is_bare_valid(cache_dir):
         return cache_dir
