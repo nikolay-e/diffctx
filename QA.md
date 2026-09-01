@@ -253,6 +253,19 @@ dismissing as bot noise.
   once deletes 30 real configurations — it happened on 2026-08-30 and was
   reverted the same pass.
 
+- **A Renovate/Dependabot merge on the mirror cancels the in-flight CI of
+  the commit before it.** `ci.yml` has `concurrency: cancel-in-progress` keyed
+  on `github.ref`, so any push to main — a bot's included — cancels whatever
+  main run is still going. A `cancelled` verdict on your own commit therefore
+  means "superseded", not "failed": `gh run rerun <id>` it, or read the next
+  commit's run, which covers the same tree plus the bump.
+- **The first version of a Q-class edge change is measured, never trusted.**
+  `link_by_name`'s rewrite passed lib tests and looked obviously right; the
+  full corpus moved `cargo_001` (suffix matched a sibling crate) and two Swift
+  cases (`import Database` resolves to a directory, which the old fallback
+  reached and the new code did not). Both were invisible below the full
+  2902-case run.
+
 ## Known false positives
 
 - import-linter local failures are REAL — the old excuse ("fails locally
