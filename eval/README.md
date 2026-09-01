@@ -46,7 +46,7 @@ Each instance has: `instance_id`, `repo`, `repo_url`, `base_commit`,
 `patch`, `gold_context` (list of `{path, lines}`), `language`.
 
 Repo cache is persisted at `~/.cache/contextbench_repos` (override via
-`CONTEXTBENCH_REPOS_DIR`).
+`CB_REPOS_DIR`; `contextbench` additionally honours `CONTEXTBENCH_REPOS_SUFFIX`).
 
 ### ContextBench-derived LOO
 
@@ -83,7 +83,7 @@ across instances, multi-seed.
 | `--scoring` | `ego` | `ppr` / `ego` / `bm25` |
 | `--baseline` | `diffctx` | `diffctx` / `patch_files` / `bm25` |
 | `--dataset` | `full` | `full` / `verified` |
-| `--tau` | 0.08 | Selection stopping threshold |
+| `--tau` | engine default | Selection stopping threshold (omit to measure the shipped value) |
 
 **Metrics**: `file_recall`, `file_precision`, `nontrivial_file_recall`,
 `line_recall`, `line_recall_nontrivial`, `elapsed_s`, `fragment_count`.
@@ -299,17 +299,16 @@ performs a pre-flight check before submitting any work:
   than `--min-disk-gb` (default 50 GB). SWE-bench `transformers` alone is
   ~4 GB; calibration touches 10-20 distinct repos.
 
-`runner.run_eval_set` exposes three resilience knobs threaded through every
-sweep CLI:
-
-| Flag | Behaviour |
-|---|---|
-| `--timeout-per-instance N` | Records `status="timeout"` for any future that does not return within N seconds. Hung worker threads are abandoned at pool shutdown (Python cannot kill threads safely). |
-| `--resume-from FILE.jsonl` | Skips instance_ids already present in the JSONL checkpoint — restart after a crash continues where it left off. |
-| `--checkpoint FILE.jsonl` | Appends each completed result to the JSONL as it arrives, so a crash mid-sweep loses at most one in-flight result. |
-
-`calibrate` uses one checkpoint per grid cell at `<out>/checkpoints/<label>.jsonl`;
-`run_final_eval` uses one per test set at `<out>/<benchmark>.checkpoint.jsonl`.
+Resilience: every runner records `status="timeout"` for an instance that does
+not return within `--timeout-per-instance`, and hung workers are killed at pool
+shutdown (the pool is pebble processes, not threads). Checkpoints are appended
+per completed instance and resumed automatically from the output directory —
+`run` alone exposes `--resume-from` / `--checkpoint`; `calibrate`,
+`select-final` and `run-final` derive the paths. Layouts: `calibrate` writes
+`<out>/checkpoints/<label>.jsonl`; `run-final` writes
+`<out>/<name>.checkpoint.jsonl` for a single budget and
+`<out>/<name>_budget_sweep[/L<depth>]/b<budget>.checkpoint.jsonl` with
+`--budgets`. `--help` on each subcommand is the flag reference.
 
 ## Canonical platform
 

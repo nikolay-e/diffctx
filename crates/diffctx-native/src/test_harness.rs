@@ -148,13 +148,18 @@ fn run_single_test(case: &TestCase) -> TestResult {
     );
 
     let oracle = evaluate_oracle(case, &output);
+    // The same verdict the CI gate uses (score against the case's threshold),
+    // not the stricter all-required-and-no-forbidden predicate this harness
+    // once carried on its own: two definitions of "pass" made the dev loop
+    // disagree with CI on partial-recall cases.
+    let passed = oracle.score >= case.min_score.unwrap_or(10.0);
     let xfail_active = case.xfail.as_ref().map(|x| x.is_active()).unwrap_or(false);
-    let is_xfail = xfail_active && !oracle.passed;
+    let is_xfail = xfail_active && !passed;
     let xfail_category = case.xfail.as_ref().and_then(|x| x.category.clone());
 
     TestResult {
         name: case.name.clone(),
-        passed: oracle.passed,
+        passed,
         xfail: is_xfail,
         xfail_category,
         score: oracle.score,

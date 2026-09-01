@@ -31,13 +31,9 @@ items are removed rather than logged — history lives in git.
   pre-field-stamping checkpoints; zero references. Gate: confirm the
   evaluator stamps every field `cell_metrics.py` reads (checkable any
   time — the paper-v2 sweep is frozen), then delete. Net: −142 LOC.
-- **`fn _used` no-op in `pybridge.rs`** — a no-op fn cannot suppress
-  field warnings. Gate: build stays warning-clean after removal.
 - **`serde_yaml 0.9` is archived** — used in 3 files. Gate: test-suite
   parity on a maintained fork (`serde_norway`/`serde_yml`), or
   consciously pin-and-accept.
-- **`mcp/formatting.py`** — 9-line single-function indirection with one
-  caller. Gate: `pytest tests/ -k mcp` green after inlining.
 
 ## Intentional — do not "fix"
 

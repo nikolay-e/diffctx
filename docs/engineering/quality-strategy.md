@@ -198,8 +198,7 @@ Parallel work belongs in `git worktree`s, one session per checkout.
   0 — pass `-f yaml` in recipes or count with `grep -cE '^## '`.
 - The standalone Rust binary renders YAML plainly (`role: changed`)
   while the Python CLI quotes (`role: "changed"`) — use
-  `grep -E 'role: "?changed"?'` in checks that may see either. The
-  binary's clap parser rejects `--budget -1` (`use '-- -1'`).
+  `grep -E 'role: "?changed"?'` in checks that may see either.
 - Scripts re-tokenizing diffctx output with tiktoken must pass
   `encode(text, disallowed_special=())` — real repos contain literal
   special-token text.

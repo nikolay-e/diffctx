@@ -149,7 +149,7 @@ def build_diff_context(
     #   None:                   pipeline default (None passes through to Rust as no cap)
     #   budget_tokens < 0:      "unlimited" (10M-token soft ceiling, used as the recall ceiling
     #                            sanity bound in evaluation matrices)
-    #   budget_tokens == 0:     "no context" (recall floor; only the diff itself, no expansion)
+    #   budget_tokens == 0:     no fragments at all (the change summary alone; recall floor)
     #   budget_tokens > 0:      explicit cap
     effective_budget: int | None = _normalize_budget(budget_tokens)
 

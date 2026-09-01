@@ -71,6 +71,10 @@ pub struct ScoredState {
     pub preferred_revs: Vec<String>,
     pub commit_message: Option<String>,
     pub heavy_latency_ms: HeavyLatencyMs,
+    /// The change summary's token cost (#241), computed once here: it depends
+    /// on nothing a sweep cell changes, and `select_with_params` re-runs
+    /// selection per (tau, cbf) cell against this one state.
+    pub envelope_tokens: u32,
 }
 
 #[derive(Default, Clone, Copy)]
@@ -613,7 +617,7 @@ pub fn compute_scored_state(
         heavy_latency_ms.scoring / 1000.0,
     );
 
-    Ok(ScoredState {
+    let mut state = ScoredState {
         root_dir,
         config,
         all_fragments,
@@ -631,7 +635,10 @@ pub fn compute_scored_state(
         preferred_revs,
         commit_message,
         heavy_latency_ms,
-    })
+        envelope_tokens: 0,
+    };
+    state.envelope_tokens = envelope_tokens_of(&state);
+    Ok(state)
 }
 
 pub struct SelectionOutcome {
@@ -670,11 +677,12 @@ pub fn select_and_postpass(
 ) -> (Vec<Fragment>, usize, f64, FxHashSet<FragmentId>) {
     // A scorer with no admission gate (BM25 builds no graph, so it has no
     // declared-related set to gate on) is bounded by the threshold alone, so
-    // the default is raised to the ungated operating point. An explicitly
-    // requested tau is honoured as given — a sweep measuring an ungated tau
-    // must get the tau it asked for — which makes the effective value worth
-    // recording: an ablation cell that does not say whether it ran gated is
-    // not comparable with one that did (#245).
+    // the default is raised to the ungated operating point. Any other tau is
+    // used as given — a sweep measuring an ungated tau gets the tau it asked
+    // for — but tau arrives as a bare f64, so an explicit request for exactly
+    // the default value is indistinguishable from omitting it and is raised
+    // too. The effective value is logged: an ablation cell that does not say
+    // whether it ran gated is not comparable with one that did (#245).
     let ungated = scoring_result.admissible_files.is_none();
     let tau = if ungated && tau == crate::config::limits::DEFAULT_STOPPING_THRESHOLD {
         crate::config::limits::UNGATED_STOPPING_THRESHOLD
@@ -765,6 +773,24 @@ pub fn select_and_postpass(
 /// Shared by the product pipeline and the corpus harness on purpose: a budget
 /// the harness spends differently is a harness measuring a system nobody runs
 /// (#149).
+pub fn envelope_tokens_of(state: &ScoredState) -> u32 {
+    let mut listed: Vec<String> = state
+        .changed_files
+        .iter()
+        .map(|p| crate::paths::display_rel_or_abs(&state.root_dir, p))
+        .collect();
+    listed.extend(state.deleted_files.iter().cloned());
+    listed.extend(state.lockfile_changes.iter().cloned());
+    listed.extend(state.ignored_changes.iter().cloned());
+    listed.extend(
+        state
+            .renamed_files
+            .iter()
+            .map(|(from, to)| format!("{from} {to}")),
+    );
+    envelope_token_cost(state.commit_message.as_deref(), &listed)
+}
+
 pub fn envelope_token_cost(commit_message: Option<&str>, listed_paths: &[String]) -> u32 {
     let mut preview = String::new();
     if let Some(msg) = commit_message {
@@ -800,22 +826,7 @@ pub fn run_selection(
         auto.clamp(BUDGET.auto_min, BUDGET.auto_max)
     });
 
-    let mut listed: Vec<String> = state
-        .changed_files
-        .iter()
-        .map(|p| crate::paths::display_rel_or_abs(&state.root_dir, p))
-        .collect();
-    listed.extend(state.deleted_files.iter().cloned());
-    listed.extend(state.lockfile_changes.iter().cloned());
-    listed.extend(state.ignored_changes.iter().cloned());
-    listed.extend(
-        state
-            .renamed_files
-            .iter()
-            .map(|(from, to)| format!("{from} {to}")),
-    );
-    let envelope = envelope_token_cost(state.commit_message.as_deref(), &listed);
-    let selection_budget = effective_budget.saturating_sub(envelope);
+    let selection_budget = effective_budget.saturating_sub(state.envelope_tokens);
 
     let (mut selected, selection_iters, stopping_certificate, stand_in_ids) = select_and_postpass(
         &state.scoring_result,
@@ -1339,6 +1350,7 @@ fn empty_scored_state_with_changes(root_dir: PathBuf, diff_range: Option<&str>) 
     let mut state = empty_scored_state(root_dir);
     state.deleted_files = deleted;
     state.renamed_files = renamed;
+    state.envelope_tokens = envelope_tokens_of(&state);
     state
 }
 
@@ -1372,6 +1384,7 @@ fn empty_scored_state(root_dir: PathBuf) -> ScoredState {
         preferred_revs: Vec::new(),
         commit_message: None,
         heavy_latency_ms: HeavyLatencyMs::default(),
+        envelope_tokens: 0,
     }
 }
 

@@ -81,9 +81,9 @@ keeps its git meaning.
 
 | Flag        | Default | Description                                                              |
 |-------------|---------|--------------------------------------------------------------------------|
-| `--scoring` | `ego`   | `ego` = bounded expansion around changed nodes (fast, predictable radius); `ppr` = Personalized PageRank (global, smoother decay, slower); `bm25` = lexical retrieval against the diff hunks (baseline for sparse graphs); `rrf` = reciprocal-rank fusion of `ego` and `bm25` (widest recall, no scale calibration between the two signals) |
+| `--scoring` | `ego`   | `ego` = bounded expansion around changed nodes (fast, predictable radius); `ppr` = Personalized PageRank (global, smoother decay, slower); `bm25` = lexical retrieval against the diff hunks (baseline for sparse graphs); `rrf` = reciprocal-rank fusion of `ego` and `bm25` (widest recall, no scale calibration between the two signals); `pit` = the same fusion on score percentiles |
 | `--budget`  | auto    | Cap in o200k_base tokens on the whole artifact (see [Token counting](docs/product/token-budget.md)): the change summary is charged first and the selection gets what is left, so a budget smaller than the summary yields the summary alone. `N` = fixed cap, `-1` disables it, `0` is a strict-zero floor (no fragments; use `--full` for changed files only) |
-| `--alpha`   | 0.60    | PPR damping; higher = context clusters tighter around changes (`--scoring ppr` only) |
+| `--alpha`   | 0.60    | PPR continuation probability: higher = relevance travels further from the change, lower = tighter around it (`--scoring ppr` only) |
 | `--tau`     | 0.05    | Relevance threshold for full fragment content; lower-scoring fragments are stubbed or dropped (lower = more context) |
 | `--full`    | false   | Only the changed files, every fragment, no related-code context          |
 | `--timeout` | 300     | Wall-clock deadline in seconds; on expiry diffctx exits 124 instead of hanging |
@@ -227,9 +227,11 @@ map a directory named `mcp` on older releases.
 
 Respects `.gitignore` and `.diffctx/ignore` automatically — hierarchically at
 every directory level, with full gitignore semantics (negation `!important.log`,
-anchored `/root_only.txt`). `.diffctx/whitelist` acts as an include-only filter,
-and the output file is always auto-ignored. `--no-default-ignores` disables the
-built-in patterns; `--no-ignores` disables all ignore rules (tree mode only).
+anchored `/root_only.txt`), and the output file is always auto-ignored. Three
+controls are tree mode only and are refused with `--diff`: `.diffctx/whitelist`
+(`-w`) as an include-only filter, `-i` for an extra ignore file, and
+`--no-default-ignores` / `--no-ignores` to drop the built-in patterns or every
+ignore rule.
 
 An excluded path never appears in the output in any role: in diff mode it is
 dropped both from `changed_files` and from the candidate universe, so it cannot

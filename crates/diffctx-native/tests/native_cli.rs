@@ -187,21 +187,43 @@ fn budget_minus_one_is_unlimited_and_below_minus_one_is_a_usage_error() {
 #[test]
 fn an_omitted_budget_is_not_capped_at_a_fixed_default() {
     // Regression for the shipped 4096-token clap default: the native binary
-    // must auto-size like the Python CLI, so omitting --budget cannot produce
-    // less context than an explicitly huge budget on the same diff.
-    let tmp = code_change_repo();
+    // must auto-size like the Python CLI. The two-file repo the first version
+    // used fit under 512 tokens whole, so auto and a 4096 cap were
+    // byte-identical and the assertion could not go red on the very
+    // regression it names; this repo's related context exceeds 4096 tokens,
+    // so a fixed 4096 cap is strictly smaller than the auto budget.
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    std::fs::write(repo.join("util.py"), "def add(a, b):\n    return a + b\n").expect("write");
+    for i in 0..40 {
+        let body: String = (0..30)
+            .map(|k| format!("def caller_{i}_{k}(x):\n    return add(x, {k}) + {i}\n\n"))
+            .collect();
+        std::fs::write(
+            repo.join(format!("mod_{i}.py")),
+            format!("from util import add\n\n{body}"),
+        )
+        .expect("write");
+    }
+    commit_all(repo, "initial");
+    std::fs::write(
+        repo.join("util.py"),
+        "def add(a, b):\n    return a + b + 0\n",
+    )
+    .expect("write");
+    commit_all(repo, "touch add");
 
-    let auto = run(tmp.path(), &[".", "--diff", "HEAD~1..HEAD"]);
-    let explicit = run(
-        tmp.path(),
-        &[".", "--diff", "HEAD~1..HEAD", "--budget", "4096"],
-    );
+    let auto = run(repo, &[".", "--diff", "HEAD~1..HEAD"]);
+    let explicit = run(repo, &[".", "--diff", "HEAD~1..HEAD", "--budget", "4096"]);
 
     assert_eq!(auto.status.code(), Some(0));
     assert_eq!(explicit.status.code(), Some(0));
     assert!(
-        auto.stdout.len() >= explicit.stdout.len(),
-        "auto budget produced less than a 4096-token cap"
+        auto.stdout.len() > explicit.stdout.len(),
+        "auto budget ({} bytes) did not exceed a 4096-token cap ({} bytes) on a repo whose context outgrows it",
+        auto.stdout.len(),
+        explicit.stdout.len()
     );
 }
 

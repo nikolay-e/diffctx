@@ -37,7 +37,10 @@ current package, CLI, and repository are all `diffctx`.
 Stdio transport, read-only, published in the official MCP registry as
 `io.github.nikolay-e/diffctx`. Zero-install registration in Claude Code:
 `claude mcp add diffctx -- uvx --from 'diffctx[mcp]' diffctx-mcp`.
-Tools: `get_diff_context`, `get_tree_map`, `get_file_context`.
+Tool: `diffctx_context` — one call returns the selected context for a diff
+(`mode=locate` ranks without bodies, `fragment_ids` fetches them). The pre-v3
+tools `get_tree_map` / `get_file_context` are opt-in via
+`DIFFCTX_MCP_LEGACY_TOOLS=1`.
 
 ## Method and measured results
 

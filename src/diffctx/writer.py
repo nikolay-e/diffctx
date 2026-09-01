@@ -264,8 +264,19 @@ def _write_text_fragment(file: TextIO, frag: dict[str, Any], indent: str = "") -
             file.write(f"{content_indent}{line}\n")
 
 
+_OMITTED_TEXT_MARK = " (omitted)"
+
+
 def _escape_text_path(path: Any) -> str:
-    return str(path).replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r")
+    # Backslash first, so an escaped marker below cannot be mistaken for a real
+    # backslash the path carried; then the two line breaks git can emit
+    # unquoted; then the one suffix the changed-files list itself appends — a
+    # file literally named `report (omitted)` must not read as an omitted
+    # `report`.
+    text = str(path).replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r")
+    if text.endswith(_OMITTED_TEXT_MARK):
+        text = text[: -len(_OMITTED_TEXT_MARK)] + " \\(omitted)"
+    return text
 
 
 def _write_text_path_list(file: TextIO, label: str, paths: list[Any]) -> None:
@@ -288,7 +299,7 @@ def _write_text_changed_files(file: TextIO, tree: dict[str, Any]) -> None:
     omitted = set(_omitted_changed_files(tree))
     file.write("  changed files:\n")
     for path in tree["changed_files"]:
-        mark = " (omitted)" if str(path) in omitted else ""
+        mark = _OMITTED_TEXT_MARK if str(path) in omitted else ""
         file.write(f"    {_escape_text_path(path)}{mark}\n")
 
 
@@ -590,6 +601,12 @@ def _write_to_file_path(output_file: Path, writer: Callable[[TextIO], None]) -> 
         logger.exception("Unable to write to file '%s'", output_file)
         raise
     try:
+        # mkstemp creates 0600; the artifact replacing the target must carry
+        # the mode the caller's umask would give a new file, or `-o out.md`
+        # silently turns a shared, world-readable output into owner-only.
+        umask = os.umask(0)
+        os.umask(umask)
+        os.fchmod(fd_int, 0o666 & ~umask)
         with open(fd_int, "w", encoding="utf-8") as f:
             writer(f)
             f.flush()
@@ -613,11 +630,12 @@ def write_string_to_file(content: str, output_file: Path | None, output_format: 
         f.write(content)
 
     if output_file is None:
-        ok = _write_to_stdout_with_wrapper(writer)
-        if ok:
-            logger.info("Output written to stdout in %s format", output_format)
-        else:
-            logger.debug("Stdout pipe broken, output truncated")
+        if not _write_to_stdout_with_wrapper(writer):
+            # The documented exit for `| head` is 141, and only the caller's
+            # handler can produce it; swallowing the break here made tree and
+            # pack mode exit 0 on a truncated artifact.
+            raise BrokenPipeError
+        logger.info("Output written to stdout in %s format", output_format)
     else:
         _write_to_file_path(output_file, writer)
         logger.info("Output saved to %s in %s format", output_file, output_format)

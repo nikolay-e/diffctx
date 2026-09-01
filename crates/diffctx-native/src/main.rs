@@ -9,7 +9,7 @@ use std::thread;
 use std::time::Duration;
 
 use anyhow::Result;
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use tracing_subscriber::EnvFilter;
 
 use _diffctx::config::limits::{
@@ -27,6 +27,12 @@ const UNLIMITED_BUDGET_TOKENS: u32 = 10_000_000;
 /// Mirrors `_EXIT_EMPTY_DIFF` in src/diffctx/_app.py: a diff that yields no
 /// semantic context is an actionable result, not a success.
 const EXIT_EMPTY_DIFF: i32 = 4;
+
+#[derive(Clone, Copy, ValueEnum)]
+enum OutputFormat {
+    Yaml,
+    Json,
+}
 
 #[derive(Parser)]
 #[command(
@@ -51,12 +57,12 @@ struct Cli {
     budget: Option<i64>,
 
     /// Output format
-    #[arg(short = 'f', long, default_value = "yaml", value_parser = ["yaml", "json"])]
-    format: String,
+    #[arg(short = 'f', long, default_value = "yaml", value_enum)]
+    format: OutputFormat,
 
     /// Git diff range (e.g. HEAD~1..HEAD, main..feature) or a duration window
-    /// ending now (24h, 8d, 90min, 1h30m); bare --diff uses the working tree
-    /// vs HEAD
+    /// ending now (24h, 8d, 90min, 1h30m); omitted or bare --diff uses the
+    /// working tree vs HEAD
     #[arg(long = "diff", num_args = 0..=1, default_missing_value = "HEAD")]
     diff_ref: Option<String>,
 
@@ -206,8 +212,11 @@ fn diff_result_is_empty(output: &DiffContextOutput) -> bool {
 
 fn empty_diff_hint(root: &Path, budget: Option<i64>, diff_ref: &str) -> String {
     match budget {
-        Some(0) => "--budget 0 selects only the changed code itself; omit --budget for auto sizing"
-            .to_string(),
+        Some(0) => {
+            "--budget 0 emits no fragments (changed files are listed as omitted); use --full \
+                    for the changed code, or omit --budget for auto sizing"
+                .to_string()
+        }
         Some(n) if n > 0 => {
             format!(
                 "--budget {n} may be too small to fit any fragment; raise it or omit for auto sizing"
@@ -262,7 +271,22 @@ fn run_locate(
     emit(cli, &rendered, is_empty)
 }
 
-fn main() -> Result<()> {
+fn main() {
+    if let Err(err) = real_main() {
+        // The Python CLI and README promise exit 3 for git/environment
+        // failures (not a repo, unknown revision, no commits); anyhow's
+        // default is 1, which made the two binaries disagree on the one code
+        // a wrapper script keys on.
+        if err.downcast_ref::<_diffctx::git::GitError>().is_some() {
+            eprintln!("diffctx: {err}");
+            std::process::exit(3);
+        }
+        eprintln!("Error: {err:?}");
+        std::process::exit(1);
+    }
+}
+
+fn real_main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .init();
@@ -279,7 +303,10 @@ fn main() -> Result<()> {
     // the actionable-error contract instead of hanging unbounded.
     let timeout = cli.timeout;
     let path = cli.path.clone();
-    let diff_ref = cli.diff_ref.clone();
+    // No `--diff` at all used to reach git as a bare `git diff` — index vs
+    // worktree, staged edits invisible — while the pipeline's untracked-file
+    // rule read the same `None` as "vs HEAD". One meaning: HEAD.
+    let diff_ref = Some(cli.diff_ref.clone().unwrap_or_else(|| "HEAD".to_string()));
     let budget = resolve_budget(cli.budget);
     let alpha = cli.alpha;
     let tau = cli.tau;
@@ -319,12 +346,9 @@ fn main() -> Result<()> {
         )
     })?;
 
-    let rendered = match cli.format.as_str() {
-        "json" => format!("{}\n", serde_json::to_string_pretty(&output)?),
-        "yaml" => serde_yaml::to_string(&output)?,
-        other => {
-            anyhow::bail!("diffctx: unsupported --format '{other}' (native binary: yaml, json)")
-        }
+    let rendered = match cli.format {
+        OutputFormat::Json => format!("{}\n", serde_json::to_string_pretty(&output)?),
+        OutputFormat::Yaml => serde_yaml::to_string(&output)?,
     };
 
     emit(&cli, &rendered, diff_result_is_empty(&output))

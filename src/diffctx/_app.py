@@ -102,7 +102,7 @@ def _diff_result_is_empty(result: dict[str, Any]) -> bool:
 
 def _empty_diff_hint(args: ParsedArgs) -> str:
     if args.budget == 0:
-        return "--budget 0 selects only the changed code itself; omit --budget for auto sizing"
+        return "--budget 0 emits no fragments (changed files are listed as omitted); use --full for the changed code, or omit --budget for auto sizing"
     if args.budget is not None and args.budget > 0:
         return f"--budget {args.budget} may be too small to fit any fragment; raise it or omit for auto sizing"
     if args.diff_range == "HEAD":

@@ -137,7 +137,7 @@ def _validate_budget_tokens(budget_tokens: int) -> None:
     if budget_tokens < -1:
         raise ValueError(
             f"budget_tokens must be >= -1 (-1 = unlimited, capped by max_tokens; "
-            f"0 = strict-zero floor, changed lines only), got {budget_tokens}"
+            f"0 = no fragments, changed files listed as omitted), got {budget_tokens}"
         )
 
 

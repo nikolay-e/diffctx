@@ -325,7 +325,7 @@ def run_eval_set_multi_budget(
     7x cheap, a 5-7x wall-clock reduction for the headline grid.
 
     Returns `{budget: list[EvalResult]}` keyed by `params.budget`. Per-
-    budget checkpoint files live at `<checkpoint_dir>/b<budget>.jsonl`,
+    budget checkpoint files live at `<checkpoint_dir>/b<budget>.checkpoint.jsonl`,
     matching the resume logic in the single-budget driver.
     """
     if not params_list:

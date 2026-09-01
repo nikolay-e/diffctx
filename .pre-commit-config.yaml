@@ -327,9 +327,13 @@ repos:
           cd crates/diffctx-native &&
           cargo test --lib &&
           cargo test --test native_cli &&
-          DIFFCTX_YAML_CASES_LIMIT=20 cargo test --release --test yaml_cases'
+          DIFFCTX_YAML_CASES_LIMIT=48 cargo test --release --test yaml_cases'
         pass_filenames: false
-        files: ^(Cargo\.(toml|lock)|crates/diffctx-native/)
+        # 48 >= the corpus's stratum count, so round 0 of the stratified sample
+        # reaches every directory; at 20 the same first case of the first
+        # twenty strata ran on every commit and the rest never did. Case edits
+        # under tests/cases must run it too, or a case lands with no run.
+        files: ^(Cargo\.(toml|lock)|crates/diffctx-native/|tests/cases/)
         types: [file]
 
       - id: cargo-audit

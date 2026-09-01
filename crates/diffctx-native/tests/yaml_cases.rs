@@ -484,6 +484,27 @@ fn run_case_with_scoring(
         return Ok(());
     }
 
+    // SCHEMA.md promises that with `auto_garbage: true` the runner verifies the
+    // injected files' markers stay out of the output; until now only the
+    // injection half existed.
+    if case.fixtures.auto_garbage {
+        let leaked: Vec<String> = output
+            .fragments
+            .iter()
+            .filter(|f| {
+                f.path.starts_with("unrelated_dir/")
+                    || f.content.as_deref().is_some_and(|c| c.contains("GARBAGE_"))
+            })
+            .map(|f| f.path.clone())
+            .collect();
+        if !leaked.is_empty() {
+            return Err(Failed::from(format!(
+                "auto_garbage leaked into the output: {}",
+                leaked.join(", ")
+            )));
+        }
+    }
+
     let oracle = evaluate_oracle(&case, &output);
 
     let min_score = case.min_score.unwrap_or_else(|| {

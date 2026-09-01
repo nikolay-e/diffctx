@@ -150,9 +150,12 @@ def _common_parent(files: list[Path]) -> Path:
 
 
 def _expand_paths(raw_paths: list[str]) -> tuple[list[Path], list[Path]]:
+    from diffctx._diffctx import is_secret_path
+
     dirs: list[Path] = []
     files: list[Path] = []
     seen: set[Path] = set()
+    withheld = 0
     for pattern in raw_paths:
         for m in _resolve_glob_pattern(pattern):
             try:
@@ -162,7 +165,16 @@ def _expand_paths(raw_paths: list[str]) -> tuple[list[Path], list[Path]]:
             if resolved in seen:
                 continue
             seen.add(resolved)
+            # An explicit file or a `**` glob bypassed the tree walk, and with
+            # it the secret-path floor the walk applies to every entry — so
+            # `diffctx id_rsa` printed what `diffctx .` refuses. Same policy,
+            # same unconditional application.
+            if resolved.is_file() and is_secret_path(str(resolved)):
+                withheld += 1
+                continue
             _classify_resolved(resolved, dirs, files)
+    if withheld:
+        print(f"{withheld} path(s) withheld by the secret-path policy", file=sys.stderr)
     return dirs, files
 
 
@@ -378,10 +390,11 @@ Token counting (--budget, and the summary line on stderr):
   OpenAI model. The budget covers the whole artifact, not only the fragments:
   the change summary (commit message, changed/deleted/renamed/lockfile/ignored
   lists) is charged against it first and the selection spends the remainder.
-  A budget smaller than that summary therefore yields the summary alone --
+  A budget smaller than that summary therefore yields the summary alone —
   a changed path is never dropped to fit, because a reader who cannot see what
-  changed is worse off than one who is over budget. There is no --tokenizer flag; o200k_base is pinned so results
-  stay reproducible against the published evaluation.
+  changed is worse off than one who is over budget. There is no --tokenizer
+  flag; o200k_base is pinned so results stay reproducible against the
+  published evaluation.
   --with-raw-diff output is NOT charged to --budget, but IS included in the
   stderr token summary, which always reports the real size of what was written.
 
@@ -417,7 +430,7 @@ def _build_shared_parser() -> argparse.ArgumentParser:
     shared.add_argument(
         "--no-default-ignores",
         action="store_true",
-        help="Disable built-in ignore patterns only; project .gitignore and .diffctx/ignore still apply (see --no-ignores)",
+        help="Tree mode only: disable built-in ignore patterns; project .gitignore and .diffctx/ignore still apply (see --no-ignores)",
     )
     shared.add_argument(
         "-c",
@@ -551,8 +564,9 @@ def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> arg
         default=_UNSET,
         metavar="FLOAT",
         help=(
-            "PPR damping: how tightly context clusters around changes, 0-1 exclusive "
-            f"(default: {_DEFAULT_ALPHA:.2f}, higher = more focused). Only affects --scoring ppr"
+            "PPR continuation probability, 0-1 exclusive "
+            f"(default: {_DEFAULT_ALPHA:.2f}; higher = mass travels further from the change, "
+            "lower = tighter around it). Only affects --scoring ppr"
         ),
     )
     diff_group.add_argument(

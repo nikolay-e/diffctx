@@ -105,7 +105,6 @@ WORKDIR /app
 # uv is required by the Aider baseline (`uv tool run --from aider-chat ...`);
 # without it, every aider cell crashes on first request with
 # "RuntimeError: `uv` not found on PATH".
-# uv is also required by the Aider baseline (`uv tool run --from aider-chat`).
 COPY pyproject.toml uv.lock ./
 RUN pip install --no-cache-dir --only-binary :all: "uv==0.11.30" && \
     uv export --frozen --no-dev --group eval --no-emit-project \

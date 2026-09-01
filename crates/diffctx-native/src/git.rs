@@ -258,6 +258,9 @@ pub fn git_command(repo_root: &Path) -> Command {
     let mut cmd = Command::new("git");
     cmd.arg("-C")
         .arg(repo_root)
+        // A partial clone lazily fetches blobs, and a fetch that wants a
+        // credential would block on the terminal for the whole `--timeout`.
+        .env("GIT_TERMINAL_PROMPT", "0")
         .env_remove("GIT_DIR")
         .env_remove("GIT_WORK_TREE")
         .env_remove("GIT_INDEX_FILE");
@@ -887,10 +890,24 @@ fn scratch_git_dir(repo_root: &Path) -> Option<PathBuf> {
     if is_git_repo(repo_root).unwrap_or(true) {
         return None;
     }
+    // Created exclusively, never adopted: a pre-planted directory of this name
+    // would hand `git init` an existing `.git` whose config (excludesFile,
+    // core.* hooks) then decided what this process calls ignored — the same
+    // threat `write_private_temp_file` refuses. `create_dir` fails on an
+    // existing path, so a collision moves on to the next name.
     static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let dir =
-        std::env::temp_dir().join(format!("diffctx-scratch-git-{}-{seq}", std::process::id()));
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
+    let dir = (0..16).find_map(|_| {
+        let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let candidate = std::env::temp_dir().join(format!(
+            "diffctx-scratch-git-{}-{nanos:x}-{seq}",
+            std::process::id()
+        ));
+        create_private_dir(&candidate).ok().map(|()| candidate)
+    })?;
     let ok = Command::new("git")
         .args(["init", "-q"])
         .arg(&dir)
@@ -899,7 +916,28 @@ fn scratch_git_dir(repo_root: &Path) -> Option<PathBuf> {
         .status()
         .map(|s| s.success())
         .unwrap_or(false);
-    ok.then_some(dir)
+    if !ok {
+        let _ = std::fs::remove_dir_all(&dir);
+        return None;
+    }
+    Some(dir)
+}
+
+#[cfg(unix)]
+fn create_private_dir(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::DirBuilderExt;
+    std::fs::DirBuilder::new().mode(0o700).create(path)
+}
+
+#[cfg(not(unix))]
+fn create_private_dir(path: &Path) -> std::io::Result<()> {
+    std::fs::create_dir(path)
+}
+
+fn is_bare_repository(repo_root: &Path) -> bool {
+    run_git(repo_root, &["rev-parse", "--is-bare-repository"])
+        .map(|out| out.trim() == "true")
+        .unwrap_or(false)
 }
 
 fn scratch_git_args(scratch: Option<&Path>, repo_root: &Path) -> Vec<String> {
@@ -912,7 +950,15 @@ fn scratch_git_args(scratch: Option<&Path>, repo_root: &Path) -> Vec<String> {
     }
 }
 
-fn collect_diffctx_ignore_patterns(repo_root: &Path, scratch: Option<&Path>) -> Vec<String> {
+/// `Err` when the declared policy could not be read in full — a failed
+/// `ls-files` or an unreadable pattern file. Returning an empty list there
+/// told the caller "no policy declared", which is the one answer that lands a
+/// failed `check-ignore` on the fail-OPEN branch for a repo that did declare
+/// one.
+fn collect_diffctx_ignore_patterns(
+    repo_root: &Path,
+    scratch: Option<&Path>,
+) -> Result<Vec<String>> {
     let mut args = scratch_git_args(scratch, repo_root);
     args.extend(
         [
@@ -927,8 +973,14 @@ fn collect_diffctx_ignore_patterns(repo_root: &Path, scratch: Option<&Path>) -> 
         .map(String::from),
     );
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    let Ok(files) = run_git_z(repo_root, &arg_refs) else {
-        return Vec::new();
+    let files = match run_git_z(repo_root, &arg_refs) {
+        Ok(files) => files,
+        // A bare repository has no working tree to list, so it cannot carry a
+        // `.diffctx/ignore` at all: "no policy" is the true answer there, not
+        // a discovery failure to fail closed on. Checked only on this path,
+        // so the happy path pays nothing.
+        Err(_) if is_bare_repository(repo_root) => Vec::new(),
+        Err(e) => return Err(e),
     };
 
     let mut patterns = Vec::new();
@@ -941,9 +993,8 @@ fn collect_diffctx_ignore_patterns(repo_root: &Path, scratch: Option<&Path>) -> 
             .strip_suffix(".diffctx/ignore")
             .unwrap_or("")
             .trim_end_matches('/');
-        let Ok(content) = std::fs::read_to_string(repo_root.join(&rel_path)) else {
-            continue;
-        };
+        let content = std::fs::read_to_string(repo_root.join(&rel_path))
+            .map_err(|e| GitError::CommandFailed(format!("cannot read {rel_path}: {e}")))?;
         for line in content.lines() {
             let line = line.trim_end();
             if line.is_empty() || line.starts_with('#') {
@@ -952,7 +1003,7 @@ fn collect_diffctx_ignore_patterns(repo_root: &Path, scratch: Option<&Path>) -> 
             patterns.push(anchor_diffctx_ignore_line(line, rel_dir));
         }
     }
-    patterns
+    Ok(patterns)
 }
 
 /// Which rule family excluded a path. `.diffctx/ignore` is a declared
@@ -1014,7 +1065,23 @@ fn find_ignored_paths_inner(
     }
 
     let scratch = scratch_git_dir(repo_root);
-    let diffctx_patterns = collect_diffctx_ignore_patterns(repo_root, scratch.as_deref());
+    let diffctx_patterns = match collect_diffctx_ignore_patterns(repo_root, scratch.as_deref()) {
+        Ok(patterns) => patterns,
+        Err(e) => {
+            tracing::error!(
+                "could not read the repository's .diffctx/ignore policy ({e}); all {} queried \
+                 paths are treated as ignored rather than risk publishing them",
+                rel_paths.len()
+            );
+            if let Some(dir) = scratch {
+                let _ = std::fs::remove_dir_all(dir);
+            }
+            return rel_paths
+                .iter()
+                .map(|p| (p.clone(), IgnoreSource::DiffctxPolicy))
+                .collect();
+        }
+    };
     let temp_excludes = if diffctx_patterns.is_empty() {
         None
     } else {
@@ -1265,11 +1332,16 @@ impl CatFileBatch {
 
     pub fn get(&mut self, rev: &str, rel_path: &Path) -> Result<String> {
         validate_rev(rev)?;
-        let spec = format!(
-            "{}:{}\n",
-            rev,
-            crate::paths::to_posix_display(rel_path.to_string_lossy())
-        );
+        let display = crate::paths::to_posix_display(rel_path.to_string_lossy());
+        // The batch protocol is line-delimited: a path carrying `\n` (git
+        // emits it unquoted under core.quotePath=false) became two requests,
+        // and every later `get` read the previous request's leftover answer
+        // — another file's body under this file's name. Such a path goes
+        // through argv, where it is one argument whatever it contains.
+        if display.chars().any(|c| c.is_control()) {
+            return show_file_at_revision(&self.repo_root, rev, rel_path);
+        }
+        let spec = format!("{rev}:{display}\n");
 
         self.ensure_started()?;
 

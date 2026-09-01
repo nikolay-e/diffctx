@@ -51,9 +51,9 @@ leaves the CLI default in place.
 | `path` | `.` | positional | Directory to analyze, relative to the workspace |
 | `diff-range` | auto | `--diff` | `main..HEAD`, `<base>..<head>`, … |
 | `budget` | auto | `--budget` | Token cap; `-1` unlimited, `0` strict-zero floor |
-| `scoring` | `ego` | `--scoring` | `ego`, `ppr`, `bm25`, `rrf` |
+| `scoring` | `ego` | `--scoring` | `ego`, `ppr`, `bm25`, `rrf`, `pit` |
 | `tau` | CLI default | `--tau` | Relevance threshold for full fragment content |
-| `alpha` | CLI default | `--alpha` | PPR damping; only affects `scoring: ppr` |
+| `alpha` | CLI default | `--alpha` | PPR continuation probability (higher = wider reach); only affects `scoring: ppr` |
 | `full` | `false` | `--full` | Changed files only, every fragment, no related code |
 | `format` | `md` | `--format` | `md`, `yaml`, `json`, `txt` |
 | `output-path` | `$RUNNER_TEMP/diffctx-context.<ext>` | `--output-file` | Where to write |

@@ -328,10 +328,8 @@ pub fn process_files_for_fragments(
 
     let mut fragments: Vec<Fragment> = Vec::new();
     for file_frags in parsed {
-        for frag in dedup_fragments(file_frags, seen_frag_ids) {
-            seen_frag_ids.insert(frag.id.clone());
-            fragments.push(frag);
-        }
+        // `dedup_fragments` already recorded every kept id in `seen_frag_ids`.
+        fragments.extend(dedup_fragments(file_frags, seen_frag_ids));
     }
 
     fragments

@@ -1148,10 +1148,12 @@
           href="https://github.com/home-assistant/core/commit/1d885bd073d9c8037c9c363204b1636662121bb6"
           >home-assistant/core@1d885bd0</a
         >
-        — “Restrict device registry entries to a single config entry”, 66 files
+        — “Restrict device registry entries to a single config entry and subentry”, 66 files
         changed — with <code>diffctx . --diff 1d885bd0^..1d885bd0</code> at the
         default auto budget, counted with the o200k_base tokenizer. Clone the
-        repo and run the command to reproduce it. The ratio is not a constant:
+        repo and run the command to reproduce it. One of the 66 files is a
+        158k-token generated test snapshot; without it the whole-file baseline
+        is 610k and the ratio 13.9×. The ratio is not a constant:
         it tracks how much of the changed files is unrelated to the change, so a
         wide refactor across large files compresses far more than a three-file
         fix, where diffctx often <em>adds</em> tokens because it pulls in the
@@ -1170,7 +1172,9 @@
           fragments, scored and selected in your browser with the same rules the
           engine uses: relevance decays with graph distance, selection is
           greedy, and the budget is a hard wall. Step through the stages, then
-          drag the dials.
+          drag the dials. The token counts here belong to this 18-fragment toy;
+          the 768,268 → 43,769 above was measured on the real home-assistant
+          commit it links.
         </p>
 
         <div class="lab-grid">
@@ -1220,9 +1224,10 @@
               >
               <span class="s-desc"
                 >Score flows outward from the seeds across weighted edges,
-                decaying by <code>α</code> per hop (bounded ego-network by
-                default; PPR and BM25 are alternatives). The billing module
-                three hops away barely registers — that's the point.</span
+                decaying with each hop — here by <code>α</code>, which is the
+                PPR dial; the shipped default, a bounded ego-network, decays by
+                graph radius, and BM25 is the lexical alternative. The billing
+                module three hops away barely registers — that's the point.</span
               >
             </button>
             <button class="stage" data-stage="4">
@@ -1233,7 +1238,8 @@
               <span class="s-desc"
                 >Lazy-greedy picks fragments by score until relevance drops
                 below <code>τ</code> or the token budget is spent — whichever
-                comes first. The output is the YAML below. Drag the dials and
+                comes first. The output is the context artifact below — shown
+                as YAML; Markdown is the default format. Drag the dials and
                 watch the cut move.</span
               >
             </button>
@@ -1269,9 +1275,9 @@
                       ><span style="text-transform: none">τ</span> ·
                       threshold</span
                     >
-                    <b id="tau-v">0.12</b></label
+                    <b id="tau-v">0.05</b></label
                   >
-                  <input type="range" id="tau" min="2" max="40" value="12" />
+                  <input type="range" id="tau" min="2" max="40" value="5" />
                 </div>
                 <div class="ctl">
                   <label for="budget"
@@ -1280,7 +1286,7 @@
                   <input
                     type="range"
                     id="budget"
-                    min="1000"
+                    min="2000"
                     max="16000"
                     step="250"
                     value="8000"
@@ -1302,7 +1308,7 @@
               <div class="scope-bar">
                 <span class="lights"><i></i><i></i><i></i></span>
                 <span>stdout</span>
-                <span class="stage-name">yaml · o200k_base</span>
+                <span class="stage-name">-f yaml · o200k_base</span>
               </div>
               <div class="yaml-body" id="yaml"></div>
             </div>
@@ -1336,11 +1342,13 @@
       <div class="wrap">
         <div class="sec-head reveal">
           <span class="sec-num">03</span>
-          <h2>Three scoring <em>modes.</em></h2>
+          <h2>Scoring <em>modes.</em></h2>
         </div>
         <p class="sec-sub reveal">
-          Pick one with <code style="color: var(--sig)">--scoring</code>. All
-          three feed the same greedy selector.
+          Pick one with <code style="color: var(--sig)">--scoring</code>. Three
+          signals below, plus two fusion modes — <code>rrf</code> and
+          <code>pit</code> — that combine ego and bm25. All of them feed the
+          same greedy selector.
         </p>
         <div class="modes reveal">
           <div class="mode default">
@@ -1479,8 +1487,8 @@
           <div class="row">
             <code
               ><span class="p">$</span> diffctx . --diff main..feature --tau
-              0.05</code
-            ><span class="why">the τ dial above — stop admitting weak context</span>
+              0.2</code
+            ><span class="why">the τ dial above, raised — drop weak context, leaner output</span>
           </div>
           <div class="row">
             <code><span class="p">$</span> diffctx graph . --summary</code
@@ -1491,7 +1499,8 @@
           Free, local, offline. Works with any LLM. Python API and standalone
           binaries included. Theory:
           <a href="https://doi.org/10.5281/zenodo.18824579"
-            >Context-Selection for Git Diff (Zenodo, 2026)</a
+            >Budgeted Typed-Graph Retrieval for Diff-Aware Code Context Selection
+            (Zenodo, 2026)</a
           >.
         </p>
       </div>
@@ -1654,6 +1663,7 @@
           x: 585,
           y: 120,
           tok: 820,
+          lines: "12-58",
         },
         {
           id: "N",
@@ -1663,6 +1673,7 @@
           x: 665,
           y: 190,
           tok: 640,
+          lines: "44-101",
         },
         {
           id: "O",
@@ -1672,6 +1683,7 @@
           x: 640,
           y: 330,
           tok: 480,
+          lines: "9-40",
         },
         {
           id: "P",
@@ -1681,6 +1693,7 @@
           x: 660,
           y: 435,
           tok: 300,
+          lines: "5-27",
         },
         {
           id: "Q",
@@ -1690,6 +1703,7 @@
           x: 585,
           y: 470,
           tok: 410,
+          lines: "1-33",
         },
         {
           id: "R",
@@ -1699,6 +1713,7 @@
           x: 60,
           y: 60,
           tok: 900,
+          lines: "120-215",
         },
       ];
 
@@ -1884,7 +1899,7 @@
         picked.forEach((n) => {
           const cls = n.seed ? "yseed" : "ys";
           out += `  - <span class="yk">path</span>: <span class="yv">${esc(n.file)}</span>\n`;
-          out += `    <span class="yk">lines</span>: <span class="yv">"${n.lines || "1-40"}"</span>\n`;
+          out += `    <span class="yk">lines</span>: <span class="yv">"${n.lines}"</span>\n`;
           out += `    <span class="yk">kind</span>: <span class="yv">${n.kind}</span>\n`;
           out += `    <span class="yk">symbol</span>: <span class="${cls}">${esc(n.label)}</span>${n.seed ? '  <span class="yc"># changed</span>' : ""}\n`;
         });
@@ -2175,11 +2190,18 @@
       /* copy button */
       document.querySelectorAll("[data-copy]").forEach((b) =>
         b.addEventListener("click", () => {
-          navigator.clipboard.writeText(b.dataset.copy).then(() => {
-            const hint = b.querySelector(".copy-hint");
-            hint.textContent = "copied ✓";
-            setTimeout(() => (hint.textContent = "copy"), 1600);
-          });
+          const hint = b.querySelector(".copy-hint");
+          navigator.clipboard
+            .writeText(b.dataset.copy)
+            .then(() => {
+              hint.textContent = "copied ✓";
+            })
+            .catch(() => {
+              // Clipboard is denied on http origins and in some embedded
+              // browsers; a silent rejection left the button looking inert.
+              hint.textContent = "select & copy";
+            })
+            .finally(() => setTimeout(() => (hint.textContent = "copy"), 1600));
         }),
       );
     </script>

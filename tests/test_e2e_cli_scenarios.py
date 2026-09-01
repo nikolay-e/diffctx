@@ -225,8 +225,10 @@ class TestDiffModeJourneys:
         assert doc["type"] == "diff_context"
         assert doc["fragment_count"] > 0
         assert "subtract" in result.stdout
-        assert "GARBAGE" not in result.stdout
-        assert "garbage_marker" not in result.stdout
+        # Seven of the ten injected files carry neither "GARBAGE" nor
+        # "garbage_marker"; the lowercase prefix is the one thing all of them
+        # share in both path and body.
+        assert "garbage" not in result.stdout.lower()
 
     def test_diff_json_format_is_valid(self, diff_repo):
         result = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "-f", "json"], cwd=diff_repo.path)

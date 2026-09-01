@@ -47,7 +47,7 @@ class TestCountTokens:
 
     def test_whitespace_only(self):
         result = count_tokens("   \n\t\r\n   ")
-        assert result.count >= 0
+        assert result.count > 0
 
     def test_special_characters(self):
         result = count_tokens("!@#$%^&*()_+-=[]{}|;':\",./<>?")

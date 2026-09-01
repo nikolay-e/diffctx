@@ -46,7 +46,7 @@ jobs:
 
       - name: Install diffctx with dev extras
         run: |
-          uv sync --locked --no-build --extra dev --extra tree-sitter
+          uv sync --locked --no-build --extra dev --extra full
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Run sensitivity check
@@ -54,6 +54,9 @@ jobs:
           DIFF_RANGE: ${{ inputs.diff_range }}
           BUDGET: ${{ inputs.budget }}
           PARAMS: ${{ inputs.params }}
+        # `shell: bash` adds pipefail; without it the step took tee's exit
+        # status and a crashed run uploaded a green report.
+        shell: bash
         run: |
           ARGS=(--diff "${DIFF_RANGE}" --budget "${BUDGET}")
           [[ -n "${PARAMS}" ]] && ARGS+=(--params "${PARAMS}")

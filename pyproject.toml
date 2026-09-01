@@ -6,7 +6,7 @@ requires = [ "maturin>=1.10,<1.16" ]
 [project]
 name = "diffctx"
 version = "1.15.0"
-description = "Smart git diff context for LLMs and AI agents: budgeted fragment selection, deterministic, MCP server included"
+description = "Selects the minimum code an LLM needs to review a git diff"
 readme = "README.md"
 keywords = [
   "ai",
@@ -60,7 +60,6 @@ optional-dependencies.dev = [
   "black>=23.0.0,<27.0",
   "charset-normalizer>=3.0,<4.0",
   "coverage>=7.0,<8.0",
-  "diffctx[tree-sitter]",
   "hypothesis>=6.0,<7.0",
   "import-linter>=2.0,<3.0",
   "mypy>=1.0,<3.0",
@@ -79,7 +78,6 @@ optional-dependencies.dev = [
 ]
 optional-dependencies.full = [
   "charset-normalizer>=3.0,<4.0",
-  "diffctx[tree-sitter]",
 ]
 optional-dependencies.mcp = [
   "anyio>=4.5,<5.0",
@@ -89,25 +87,6 @@ optional-dependencies.mcp = [
   # 1.x, which is a compatibility decision rather than a version bump — tracked
   # separately. Migration guide: https://py.sdk.modelcontextprotocol.io/migration/
   "mcp>=1.27,<2.0",
-]
-optional-dependencies.tree-sitter = [
-  "tree-sitter>=0.21,<1.0",
-  "tree-sitter-c>=0.21,<1.0",
-  "tree-sitter-c-sharp>=0.21,<1.0",
-  "tree-sitter-cpp>=0.22,<1.0",
-  "tree-sitter-elixir>=0.3,<1.0",
-  "tree-sitter-go>=0.21,<1.0",
-  "tree-sitter-html>=0.23,<1.0",
-  "tree-sitter-java>=0.21,<1.0",
-  "tree-sitter-javascript>=0.21,<1.0",
-  "tree-sitter-lua>=0.5,<1.0",
-  "tree-sitter-php>=0.24,<1.0",
-  "tree-sitter-python>=0.21,<1.0",
-  "tree-sitter-ruby>=0.21,<1.0",
-  "tree-sitter-rust>=0.21,<1.0",
-  "tree-sitter-scala>=0.24,<1.0",
-  "tree-sitter-swift>=0.0.1,<1.0",
-  "tree-sitter-typescript>=0.21,<1.0",
 ]
 urls.Author = "https://nikolay-eremeev.com"
 urls.Changelog = "https://github.com/nikolay-e/diffctx/blob/main/CHANGELOG.md"
@@ -140,12 +119,8 @@ python-source = "src"
 module-name = "diffctx._diffctx"
 manifest-path = "crates/diffctx-native/Cargo.toml"
 features = [ "pyo3/extension-module", "python" ]
-# Single-source the wheel version from crates/diffctx-native/Cargo.toml [package].version.
-# Maturin >= 1.8 reads the Cargo manifest version when `[project].dynamic`
-# contains "version" and the explicit `[project].version` line is removed
-# (PEP 621). On the next release, replace `version = "..."` in [project] with
-# `dynamic = ["version"]` to activate single-sourcing. Until then, the cd.yml
-# bump step patches version.py + pyproject.toml + Cargo.toml + Cargo.lock.
+# The version is patched in every surface by the cd.yml release bump; that
+# step is the single list of where it lives.
 include = [
   { path = "LICENSE", format = "sdist" },
   { path = "README.md", format = "sdist" },
@@ -216,35 +191,7 @@ files = [ "src" ]
 
 [[tool.mypy.overrides]]
 module = [
-  "tree_sitter",
-  "tree_sitter_python",
-  "tree_sitter_javascript",
-  "tree_sitter_typescript",
-  "tree_sitter_typescript.tsx",
-  "tree_sitter_go",
-  "tree_sitter_rust",
-  "tree_sitter_java",
-  "tree_sitter_c",
-  "tree_sitter_cpp",
-  "tree_sitter_ruby",
-  "tree_sitter_c_sharp",
-  "tree_sitter_elixir",
-  "tree_sitter_html",
-  "tree_sitter_lua",
-  "tree_sitter_php",
-  "tree_sitter_scala",
-  "tree_sitter_swift",
-  "mistune",
-  "pysbd",
-  "ruamel.yaml",
-  "lxml",
-  "lxml.html",
   "tiktoken",
-  "sentence_transformers",
-  "spacy",
-  "spacy.cli",
-  "spacy.cli.download",
-  "spacy.language",
   "mcp",
   "mcp.server",
   "mcp.server.fastmcp",

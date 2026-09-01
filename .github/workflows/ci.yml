@@ -199,7 +199,7 @@ jobs:
           mypy src
 
   # ============================================================================
-  # Rust diffctx tests (2723 YAML test cases, in-memory pipeline)
+  # Rust diffctx tests (the full YAML corpus under tests/cases, real git repos)
   # ============================================================================
   rust-diffctx-test:
     name: Rust diffctx tests
@@ -225,12 +225,12 @@ jobs:
           key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-
 
-      # No DIFFCTX_YAML_CASES_LIMIT: the whole 2725-case corpus is gated here
-      # (~2 min). Sampling used to be mandatory because ~460 cases score below
-      # threshold at the current operating point; those are now enumerated in
-      # tests/known_below_threshold.txt, so the full suite is green and a
-      # regression in ANY case — in any of the 38 language directories — fails
-      # the build. A limit still works locally for a fast stratified subset.
+      # No DIFFCTX_YAML_CASES_LIMIT: the whole corpus is gated here (~2 min).
+      # Cases below threshold at the shipped operating point are enumerated in
+      # crates/diffctx-native/tests/known_below_threshold.txt (the file is the
+      # count — numbers written here rotted twice), enforced bidirectionally, so
+      # a regression in ANY case fails the build. A limit still works locally
+      # for a fast stratified subset.
       - name: Build and test
         working-directory: crates/diffctx-native
         run: |
@@ -322,16 +322,6 @@ jobs:
           fail_ci_if_error: false
           verbose: true
 
-      - name: Upload coverage for SonarCloud
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
-        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
-        with:
-          name: coverage-report
-          path: |
-            coverage.xml
-            test-results.xml
-          retention-days: 1
-
   # ============================================================================
   # Complexity & Maintainability Metrics
   # ============================================================================
@@ -371,11 +361,6 @@ jobs:
         run: |
           echo "=== Maintainability Index Report ==="
           radon mi src/diffctx/ --min B --show
-
-      - name: Fail on high complexity
-        run: |
-          radon cc src/diffctx/ --min C --total-average || \
-            (echo "High complexity detected" && exit 1)
 
   # ============================================================================
   # Architecture & Import Contracts

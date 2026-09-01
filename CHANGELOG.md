@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **A `diff_ref` could turn the read-only MCP fetch into a file write.** With
+  `fragment_ids` set the engine never sees `diff_ref`, and `fetch_fragments`
+  passed whatever followed `..` straight to `git show <rev>:<path>` — so
+  `HEAD..--output=/tmp/x` wrote a file. A rev starting with `-` is refused and
+  `git show` runs with `--end-of-options`.
+- **An explicit file argument bypassed the secret-path floor.** The tree walk
+  applies `is_secret_path` to every entry, but `diffctx id_rsa` and
+  `diffctx '**/*'` fed the expanded paths straight to the reader; the same
+  policy now applies to them, with a one-line notice of how many were
+  withheld.
+- **The MCP allow-list is checked before the filesystem is.** `validate_repo_path`
+  probed `is_dir()` and walked up to `.git` before consulting
+  `DIFFCTX_ALLOWED_PATHS`, so a refused caller learned whether a path existed;
+  the order now matches what SECURITY.md promised.
+- **The scratch git dir for non-repository reads is created exclusively.** Its
+  name was `temp_dir/diffctx-scratch-git-<pid>-<n>`, guessable, and `git init`
+  adopts an existing `.git` — a pre-planted one with its own `excludesFile`
+  decided what the reader called ignored. Created with `create_dir` (0700), a
+  collision moves to the next name.
+- **A `.diffctx/ignore` policy that could not be read failed open.** When
+  `ls-files` or a pattern file read failed, the lookup reported "no patterns
+  declared" and a subsequent `check-ignore` failure landed on the fail-open
+  branch. Discovery failure now fails closed; a bare repository, which cannot
+  carry a policy, is the one exception.
+
 - **An ignored directory's contents were readable through the MCP glob**
   (regression introduced with #228, caught the same day). `withheld_paths`
   reused the engine's *attribution* lookup, which deliberately drops
@@ -45,6 +70,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scratch `--git-dir`, so `.diffctx/ignore` binds there too.
 
 ### Fixed
+
+- **A filename containing a newline desynchronised the cat-file batch**: the
+  request stream is line-delimited, so one such path became two requests and
+  every later file was served the previous request's leftover body. Paths with
+  control characters go through `git show` on argv instead.
+- **The native binary without `--diff` ran a bare `git diff`** (index vs
+  worktree, staged edits invisible) while the pipeline read the same absence
+  as "vs HEAD"; both now mean HEAD, and git/environment failures exit 3 as the
+  README and the Python CLI already promised (was 1).
+- **`diffctx . | head` exits 141 in tree and pack mode**, as documented; the
+  writer swallowed the broken pipe and the run exited 0.
+- **`-o FILE` no longer downgrades the output to mode 0600** — the temp file
+  takes the mode the umask gives a new file before it replaces the target.
+- **A fragment id past the end of its file is refused**, not silently clamped
+  to the last line.
+- **The discovery walk fallback used the attribution ignore lookup**, so an
+  ignored directory's contents entered the universe when `ls-files` failed.
+- **`--alpha` was documented backwards**: it is PPR's continuation
+  probability, so a higher value sends relevance further from the change.
+  README, CLI help and the Action docs said "tighter".
+- **`--budget 0` was described four incompatible ways**; every surface now
+  says what happens — no fragments, changed files listed as omitted.
+- **Three CI gates could not fail**: the sdist "contains Rust sources" check
+  returned `head`'s exit status, the results-branch push loop exited 0 after
+  three failed pushes, and the radon complexity step returned 0 whatever it
+  found (deleted; the pre-commit xenon hook is the gate). The sensitivity
+  workflow gets pipefail, the Hetzner cleanup no longer cancels itself, the
+  dead v1-artifact heartbeat is gone, and the release bump now patches
+  `CITATION.cff` (the test that asserts it equal to `__version__` would have
+  turned the next release red).
+- **`bitcheck.sh`'s pinned commits are anchored by `bitcheck/<sha>` tags** on
+  both remotes — the history rewrite had left them reachable from nothing.
+- **The corpus harness verifies `auto_garbage`** as SCHEMA.md promised; the
+  injection half existed alone. The pre-commit corpus sample covers every
+  stratum and runs on case edits.
 
 - **`--budget` now covers the whole artifact** (#241). It bounded only the
   fragments: the commit message and the changed/deleted/renamed/lockfile/
@@ -109,6 +169,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The `tree-sitter` extra is gone** (`full` = charset-normalizer alone):
+  it shipped seventeen grammar wheels nothing in the package imports — parsing
+  lives in the Rust crate. `uv.lock` shrinks by ~370 lines.
+- **The landing page's copy now matches the tool**: five scoring modes, the
+  τ dial at the shipped 0.05, YAML labelled as the shown (not default)
+  format, α attributed to PPR, the toy's numbers reconciled with the hero
+  measurement and its denominator's generated snapshot named, `llms.txt`
+  naming the one tool that exists.
+
 - **The landing page's headline comparison names its source.** It shipped
   `48,210 → 6,930 tokens, 7×` with no provenance on the page and none in the
   repository either; three independent first-visit probes each reached the
@@ -154,7 +223,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--scoring bm25` has no graph to build a gate from and rode the weak stop
   anyway, re-admitting exactly the diffuse tail the gate blocks. A scorer that
   produces no gate — BM25, or `DIFFCTX_FILE_ADMISSION=0` — now uses the
-  pre-gate threshold (0.12) unless `--tau` is given explicitly.
+  pre-gate threshold (0.12) whenever `--tau` is left at its default value
+  (an explicit `--tau 0.05` is indistinguishable from the default and gets the
+  same substitution; any other explicit value is used as given).
 - **A range whose changed-file list is empty still discloses what it
   withheld**: the third early exit in `resolve_change_set` returned zeroed
   lock-file, ignored and policy counts it had already computed.

@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use rayon::prelude::*;
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 use walkdir::WalkDir;
 
 use crate::config::graph_filtering::GRAPH_FILTERING;
@@ -73,7 +73,25 @@ pub fn collect_candidate_files(root_dir: &Path, included_set: &FxHashSet<PathBuf
             fallback.push(path);
         }
     }
-    filter_ignored_and_secret(root_dir, fallback)
+    // The walk sees untracked paths, so ancestor-inherited rules must count
+    // (`.venv/x.py` is ignored BY `.venv/`); the attribution variant drops them.
+    filter_ignored_and_secret_walked(root_dir, fallback)
+}
+
+fn filter_ignored_and_secret_walked(root_dir: &Path, files: Vec<PathBuf>) -> Vec<PathBuf> {
+    let rel_paths: Vec<String> = files
+        .iter()
+        .filter_map(|f| crate::pipeline::rel_path_string(root_dir, f))
+        .collect();
+    let ignored: FxHashMap<String, git::IgnoreSource> =
+        git::find_ignored_paths_any(root_dir, &rel_paths)
+            .into_iter()
+            .map(|p| (p, git::IgnoreSource::Gitignore))
+            .collect();
+    files
+        .into_par_iter()
+        .filter(|f| !crate::pipeline::is_withheld(root_dir, f, &ignored))
+        .collect()
 }
 
 /// Discovery's candidate universe otherwise skips straight from a language

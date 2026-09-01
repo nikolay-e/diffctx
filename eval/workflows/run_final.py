@@ -268,7 +268,7 @@ def _build_argparser() -> argparse.ArgumentParser:
         help="Comma-separated budgets (e.g. '-1,0,8000,16000,32000,64000,128000'). "
         "When set with --baseline=diffctx, runs the full grid in a single sweep "
         "with compute_scored_state reuse across budgets (~5-7x faster than running "
-        "each budget as a separate process). Output: <name>__b<budget>.checkpoint.jsonl. "
+        "each budget as a separate process). Output: <name>_budget_sweep[/L<depth>]/b<budget>.checkpoint.jsonl. "
         "Empty (default): use winner.budget as a single cell with the legacy path.",
     )
     p.add_argument(

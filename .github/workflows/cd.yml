@@ -87,6 +87,12 @@ jobs:
           import json, os, re, pathlib
           ver = os.environ["VERSION"]
 
+          p = pathlib.Path("CITATION.cff")
+          s = p.read_text(encoding="utf-8")
+          s, n = re.subn(r'^version:\s*.*$', f'version: {ver}', s, count=1, flags=re.M)
+          assert n == 1, "CITATION.cff has no version line"
+          p.write_text(s, encoding="utf-8")
+
           p = pathlib.Path("src/diffctx/version.py")
           s = p.read_text(encoding="utf-8")
           s, n = re.subn(r'__version__\s*=\s*["\'].*?["\']', f'__version__ = "{ver}"', s, count=1)
@@ -161,7 +167,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/diffctx/version.py pyproject.toml crates/diffctx-native/Cargo.toml Cargo.lock \
-            server.json action.yml .claude-plugin/plugin.json docs/product/github-action.md
+            server.json action.yml .claude-plugin/plugin.json docs/product/github-action.md CITATION.cff
           if ! git diff --staged --quiet; then
             git commit -m "Release version ${VERSION}"
           else
@@ -312,8 +318,14 @@ jobs:
           args: --out dist
 
       - name: Verify sdist contains Rust sources
+        # No `shell: bash` here means no pipefail, and `| head -5` returned 0
+        # whatever grep found — this gate printed OK on an sdist with zero
+        # Rust files. The listing is for the log; the verdict is grep's alone.
+        shell: bash
         run: |
-          tar tzf ./repo/dist/*.tar.gz | grep -E 'crates/diffctx-native/src/.*\.rs$' | head -5
+          listing=$(tar tzf ./repo/dist/*.tar.gz)
+          echo "${listing}" | grep -E 'crates/diffctx-native/src/.*\.rs$' | head -5
+          echo "${listing}" | grep -qE 'crates/diffctx-native/src/.*\.rs$'
           echo "OK: sdist contains Rust sources"
 
       - name: Upload sdist artifact
