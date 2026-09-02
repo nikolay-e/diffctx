@@ -26,9 +26,12 @@ def aggregate_test_set(name: str, results: list[EvalResult]) -> TestSetReport:
     # made an infrastructure outage read as a retrieval regression, and fed
     # the calibration objective the same lie. Timeouts stay: they are the
     # system's own failure on that input.
+    attempted = len(results)
     results = [r for r in results if (r.extra or {}).get("status", "ok") not in ("clone_fail", "apply_fail", "error")]
     if not results:
-        return TestSetReport(name, 0, 0.0, 0.0, None, None, None, 0.0)
+        # `n` stays the attempted count: a cell that failed on every instance
+        # must not read as "ran fine, recall 0" downstream.
+        return TestSetReport(name, attempted, 0.0, 0.0, None, None, None, 0.0)
     n = len(results)
     file_recall = sum(r.file_recall for r in results) / n
     file_precision = sum(r.file_precision for r in results) / n

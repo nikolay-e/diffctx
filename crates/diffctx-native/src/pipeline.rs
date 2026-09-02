@@ -446,6 +446,7 @@ pub fn compute_scored_state(
             state.lockfile_changes = lockfile_changes;
             state.ignored_changes = ignored_changes;
             state.policy_excluded_count = policy_excluded_count;
+            state.envelope_tokens = envelope_tokens_of(&state);
             return Ok(state);
         }
         ChangeSet::Ready(data) => data,

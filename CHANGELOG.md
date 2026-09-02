@@ -71,6 +71,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The compose `context:` and CI→`package.json` channels revived on
+  2026-09-02 were dead on arrival.** Both built their path reference from the
+  fragment's absolute path, while the fragment index is keyed repo-relative,
+  so nothing matched — and the CI walk, climbing to `/`, degraded to the bare
+  name and linked every `package.json` again. Both resolve in the index's own
+  key space now, the CI walk matches one exact path per level, and each
+  builder has a test with absolute paths and a repo root, the shape
+  production uses. Q-class: one overflow candidate moves on the bitcheck
+  fixture (its workflows run `npm`), nothing in the selection.
+- **A plain directory whose scratch `git init` failed withheld every file**:
+  "no git dir" was read as "policy unreadable" and failed closed. It has no
+  policy to read; gitignore filtering is skipped there, secret-by-name still
+  applies.
+- **A blank line after `selector:` let sibling keys back into the label
+  block**; the indentation bar is taken from the first line carrying a key.
+- **`envelope_tokens` was computed before the lockfile/ignored lists it
+  summarises were set** on the empty-selection path.
+- **`TestSetReport.n` reports instances attempted**, not survivors, so a cell
+  that failed on every instance no longer reads as "ran fine, recall 0".
+- **The dev-loop harness honours `DIFFCTX_YAML_MIN_SCORE`** like the CI gate,
+  and `compare` / `aggregate-seeds` keep their exit code when run as scripts.
+
 - **`stratified-analysis` returned no rows at all**: the 2026-09-01 fix that
   taught it the multi-budget checkpoint layout left the `rows.append` under a
   `continue` and the `return` inside the loop, so the first cell's rows were

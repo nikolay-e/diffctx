@@ -202,7 +202,12 @@ impl EdgeBuilder for DockerEdgeBuilder {
                         // universe at naming weight. `.` and `` mean the
                         // compose file's own directory; a named context is a
                         // path reference and takes the path channel's bar.
-                        let dir = Path::new(cf.path())
+                        // In the index's key space (repo-relative), not the
+                        // fragment's absolute path. A root compose file's
+                        // `context: .` names the whole repository — a region,
+                        // not a dependency — and an empty reference abstains.
+                        let rel = base::index_key_of(cf.path(), repo_root);
+                        let dir = Path::new(&rel)
                             .parent()
                             .map(|d| d.to_string_lossy().to_string())
                             .unwrap_or_default();
@@ -277,5 +282,56 @@ impl EdgeBuilder for DockerEdgeBuilder {
         }
 
         base::discover_files_by_refs(&refs, changed, candidates, repo_root)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{FragmentId, FragmentKind};
+    use std::sync::Arc;
+
+    fn frag(path: &str, content: &str) -> Fragment {
+        Fragment {
+            id: FragmentId::new(Arc::from(path), 1, content.lines().count().max(1) as u32),
+            kind: FragmentKind::Chunk,
+            content: Arc::from(content),
+            identifiers: rustc_hash::FxHashSet::default(),
+            token_count: content.len() as u32,
+            symbol_name: None,
+        }
+    }
+
+    /// `context: ./api` from a compose file under `deploy/` names
+    /// `deploy/api/`; with absolute fragment paths the reference has to be
+    /// built in the index's repo-relative key space or it matches nothing.
+    #[test]
+    fn a_named_compose_context_links_to_that_directory() {
+        let root = "/repo";
+        let fragments = vec![
+            frag(
+                "/repo/deploy/docker-compose.yml",
+                "services:\n  api:\n    build:\n      context: ./api\n",
+            ),
+            frag("/repo/deploy/api/Dockerfile", "FROM python:3.12\n"),
+            frag("/repo/deploy/api/app.py", "print(1)\n"),
+            frag("/repo/src/other.py", "print(2)\n"),
+        ];
+        let edges = DockerEdgeBuilder.build(&fragments, Some(Path::new(root)));
+        let mut targets: Vec<String> = edges
+            .keys()
+            .filter(|(src, _)| src.path.as_ref() == "/repo/deploy/docker-compose.yml")
+            .map(|(_, dst)| dst.path.to_string())
+            .collect();
+        targets.sort();
+        targets.dedup();
+        assert!(
+            targets.iter().any(|t| t.starts_with("/repo/deploy/api/")),
+            "context: ./api produced no edge into deploy/api: {targets:?}"
+        );
+        assert!(
+            !targets.iter().any(|t| t == "/repo/src/other.py"),
+            "linked outside the context: {targets:?}"
+        );
     }
 }

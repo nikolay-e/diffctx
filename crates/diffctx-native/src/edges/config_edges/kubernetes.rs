@@ -144,10 +144,23 @@ type LabelMap = FxHashMap<String, (String, Span)>;
 /// became a REQUIRED selector key, so kubectl-ordered Services matched nothing.
 /// A block ends at the first line indented less than its first.
 fn own_block_end(block: &str) -> usize {
-    let mut lines = block.split_inclusive('\n');
-    let Some(first) = lines.next() else { return 0 };
+    // `\s{1,20}` in the capture admits a leading blank line, whose "indent"
+    // would be 1 and let every sibling key through; the bar is the first
+    // line that carries a key.
+    let mut lines = block.split_inclusive('\n').peekable();
+    let mut end = 0;
+    while let Some(line) = lines.peek() {
+        if !line.trim().is_empty() {
+            break;
+        }
+        end += line.len();
+        lines.next();
+    }
+    let Some(first) = lines.next() else {
+        return end;
+    };
     let indent = first.len() - first.trim_start().len();
-    let mut end = first.len();
+    end += first.len();
     for line in lines {
         if line.trim().is_empty() {
             end += line.len();
@@ -174,7 +187,8 @@ fn extract_labels_by_pattern(content: &str, pattern: &Regex) -> LabelMap {
     labels
 }
 
-/// The span of a trimmed block: its last byte, never the newline after it.
+/// The span of a trimmed block (inclusive of its final newline, which is how
+/// `anchor` maps it back to a fragment).
 fn own_span(start: usize, own: &str) -> Span {
     (start, (start + own.len()).saturating_sub(1).max(start))
 }

@@ -229,6 +229,18 @@ pub fn add_edges_from_ids(
     }
 }
 
+/// A fragment's path as `FragmentIndex` keys it: repo-relative, posix. In
+/// production fragment paths are absolute (`fragmentation.rs` stores what it
+/// was handed) and the index strips `repo_root`; a caller that derives a
+/// reference from a fragment's own path has to do the same, or its reference
+/// is absolute and matches nothing.
+pub fn index_key_of(path: &str, repo_root: Option<&Path>) -> String {
+    repo_root
+        .and_then(|root| Path::new(path).strip_prefix(root).ok())
+        .map(|rel| crate::paths::to_posix_display(rel.to_string_lossy()))
+        .unwrap_or_else(|| crate::paths::to_posix_display(path.into()))
+}
+
 pub fn link_by_name(
     src_id: &FragmentId,
     name: &str,

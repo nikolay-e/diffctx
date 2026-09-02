@@ -152,7 +152,13 @@ fn run_single_test(case: &TestCase) -> TestResult {
     // not the stricter all-required-and-no-forbidden predicate this harness
     // once carried on its own: two definitions of "pass" made the dev loop
     // disagree with CI on partial-recall cases.
-    let passed = oracle.score >= case.min_score.unwrap_or(10.0);
+    let min_score = case.min_score.unwrap_or_else(|| {
+        std::env::var("DIFFCTX_YAML_MIN_SCORE")
+            .ok()
+            .and_then(|v| v.parse::<f64>().ok())
+            .unwrap_or(10.0)
+    });
+    let passed = oracle.score >= min_score;
     let xfail_active = case.xfail.as_ref().map(|x| x.is_active()).unwrap_or(false);
     let is_xfail = xfail_active && !passed;
     let xfail_category = case.xfail.as_ref().and_then(|x| x.category.clone());

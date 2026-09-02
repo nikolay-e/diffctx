@@ -65,6 +65,8 @@ def test_an_explicit_secret_file_is_withheld_like_the_walk_withholds_it(tmp_path
     assert "withheld by the secret-path policy" in explicit.stderr
 
     globbed = run_diffctx_subprocess(["*", "-f", "txt"], cwd=str(root))
+    assert globbed.returncode == 0, globbed.stderr
+    assert "APP_OK" in globbed.stdout
     assert "PRIVATE_KEY_LEAK" not in globbed.stdout
 
 
