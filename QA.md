@@ -270,6 +270,22 @@ dismissing as bot noise.
   reached and the new code did not). Both were invisible below the full
   2902-case run.
 
+- **Fragment paths are absolute; the `FragmentIndex` is keyed
+  repo-relative.** A builder that derives a path reference from a fragment's
+  own path (`Path::new(f.path()).parent()`) must pass it through
+  `base::index_key_of(path, repo_root)` first, or the reference matches
+  nothing — and a walk that climbs to `/` then degrades to the bare name and
+  matches everything. Two channels shipped dead this way on 2026-09-02 while
+  the corpus stayed green; the builder tests that caught it use absolute
+  paths plus a repo root, which is the only shape that exercises the seam.
+- **Sonar's unreachable-code rule is a real bug detector here, not lint.**
+  `rows.append` under a `continue` made `stratified-analysis` return nothing;
+  no test touched it. A red Sonar gate on your own commits is intake, and the
+  fix ships with a test that fails on the previous code.
+- **A new eval test needs `pytest.importorskip("numpy")`** (or whatever the
+  eval group provides): CI's test job installs no eval group, so an
+  unguarded import fails collection on every Python version.
+
 ## Known false positives
 
 - import-linter local failures are REAL — the old excuse ("fails locally
