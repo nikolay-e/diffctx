@@ -608,7 +608,7 @@ def _write_to_file_path(output_file: Path, writer: Callable[[TextIO], None]) -> 
         os.umask(umask)
         # 0o666 & ~umask is exactly what `open(..., "w")` would have created;
         # this never grants more than a plain write would.
-        os.fchmod(fd_int, 0o666 & ~umask)  # NOSONAR(python:S2612)
+        os.fchmod(fd_int, 0o666 & ~umask)
         with open(fd_int, "w", encoding="utf-8") as f:
             writer(f)
             f.flush()
