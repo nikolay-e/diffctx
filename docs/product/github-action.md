@@ -91,6 +91,17 @@ wheels are `abi3` manylinux builds with the Rust extension compiled in, so no
 toolchain and no build step are needed on the runner, and nothing touches the
 repository's own Python environment.
 
+## We use it on our own pull requests
+
+Every PR to this repository runs the action on its own `base..head`
+(`action-smoke.yml` → *Review context for this PR*) and pins the result to
+the PR as one sticky comment: range, token count, fragment and file counts,
+the changed-file list with omissions marked, and a link to the full context
+as a workflow artifact. Reviewers read that instead of the raw diff; a
+selection that reads wrong there is treated as a product defect. Copy the job
+if you want the same on yours — it needs `pull-requests: write` for the
+comment and nothing else.
+
 ## Notes
 
 - Requires no token and no secret. Grant only `contents: read` unless a
