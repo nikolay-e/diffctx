@@ -188,6 +188,12 @@ jobs:
                          f{seen=1; print}' "$CONTEXT_FILE")
           files=$(printf '%s\n' "$changed" | grep -c . || true)
           frags=$(grep -cE '^## `' "$CONTEXT_FILE" || true)
+          # The first thing dogfooding found: this repo's own .diffctx/ignore
+          # withholds *.yml, so a PR whose main change is a workflow shows up
+          # with that file absent and nothing saying so. Surface the policy
+          # line the artifact carries, so the reviewer knows to open the raw
+          # diff for exactly those.
+          withheld=$(grep -oE '^\*[0-9]+ changed file\(s\) withheld by exclusion policy[^*]*\*' "$CONTEXT_FILE" || true)
           {
             echo "$marker"
             echo "### diffctx review context"
@@ -197,6 +203,10 @@ jobs:
             echo
             echo "Review this instead of the raw diff: [download the context](${RUN_URL}#artifacts)" \
                  "(artifact \`diffctx-review-context\`, 14 days)."
+            if [ -n "$withheld" ]; then
+              echo
+              echo "${withheld} — read those in the raw diff."
+            fi
             echo
             echo "<details><summary>Changed files as diffctx lists them (omitted = no fragment fit)</summary>"
             echo
