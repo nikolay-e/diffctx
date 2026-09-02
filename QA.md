@@ -203,6 +203,17 @@ dismissing as bot noise.
   Tier-3 table (or the `TIER1_EXTRAS_READ_BUT_NOT_TABLED` allowlist)
   and vice versa.
 
+- **The release gap is a channel of its own.** `main` accumulating security
+  fixes while PyPI serves the previous wheel is a user-facing state no test
+  reports: on 2026-09-03 five `### Security` bullets and the `--budget`
+  contract fix had been unreleased since 1.15.0 (2026-08-19), and the
+  dogfood Action installs that released wheel, so our own PR review ran the
+  vulnerable version. Every pass reads
+  `curl -s https://pypi.org/pypi/diffctx/json | jq -r .info.version` against
+  the `[Unreleased]` changelog block and, when Security bullets sit there,
+  says so in the report. Dispatching the release is the owner's call
+  (memory `no-release-without-asking`); tracking it is not — #261.
+
 ## Bug channels (enumerated 2026-08-05)
 
 1. GitHub issues (`gh issue list`) — canonical tracker, takes `Fixes #N`.

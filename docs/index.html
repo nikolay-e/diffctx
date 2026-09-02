@@ -1153,7 +1153,10 @@
         default auto budget, counted with the o200k_base tokenizer. Clone the
         repo and run the command to reproduce it. One of the 66 files is a
         158k-token generated test snapshot; without it the whole-file baseline
-        is 610k and the ratio 13.9×. The ratio is not a constant:
+        is 610k and the ratio 13.9×. Against the other baseline — the raw
+        <code>git diff</code> of the same commit, 169,809 tokens — it is
+        <b>3.9×</b>, and the selection carries the callers, types and config
+        the patch alone does not show. The ratio is not a constant:
         it tracks how much of the changed files is unrelated to the change, so a
         wide refactor across large files compresses far more than a three-file
         fix, where diffctx often <em>adds</em> tokens because it pulls in the

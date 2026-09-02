@@ -239,6 +239,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The hero comparison names both baselines.** It measured whole changed
+  files pasted (17.6×) while the headline invites comparison with a raw
+  `git diff` — the question three first-visit probes actually asked. The raw
+  diff of the same commit is 169,809 tokens, so that ratio is 3.9×, and the
+  caption says so next to the number.
+
 - **The `tree-sitter` extra is gone** (`full` = charset-normalizer alone):
   it shipped seventeen grammar wheels nothing in the package imports — parsing
   lives in the Rust crate. `uv.lock` shrinks by ~370 lines.
