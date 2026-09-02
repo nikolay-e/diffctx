@@ -3,6 +3,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
+# CI's test job installs no eval group; the analysis module needs numpy.
+pytest.importorskip("numpy")
+
 from eval.analysis.stratified_analysis import load_long
 
 # `load_long` shipped with `rows.append(row)` under a `continue` and `return`
