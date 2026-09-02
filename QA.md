@@ -304,6 +304,11 @@ dismissing as bot noise.
   local research harnesses; argv exec with regex-validated sha
   (realworld_rerun) and operator-chosen output dir (run_final). Don't
   re-litigate unless the eval workflows become agent-facing.
+- Sonar `python:S2612` on `writer.py` `os.fchmod(fd, 0o666 & ~umask)` —
+  marked false positive via API 2026-09-03: the mode is what `open(..., "w")`
+  would have created; `mkstemp`'s 0600 is the anomaly being corrected. Python
+  NOSONAR takes no `(rule)` argument — `# NOSONAR(python:S2612)` is itself
+  flagged (S7632) and suppresses nothing.
 - SonarCloud `githubactions:S8543` on the publish-extras npm smoke:
   `$VERSION` is an exact just-published version, package has zero
   deps — marked false positive in SonarCloud via API (NOSONAR is NOT
