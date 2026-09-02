@@ -71,6 +71,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`stratified-analysis` returned no rows at all**: the 2026-09-01 fix that
+  taught it the multi-budget checkpoint layout left the `rows.append` under a
+  `continue` and the `return` inside the loop, so the first cell's rows were
+  never appended and every later cell was never visited. Sonar's
+  unreachable-code rule caught it; a test now feeds it two cells in both
+  layouts and expects every row back — it fails on the previous code.
+- **The demo names what it left out.** Its output panel showed the selection
+  and nothing else; the real artifact lists omitted changed files and locate
+  mode reports overflow. The toy now prints which fragments did not fit the
+  budget and how many fell below τ, and a direct click on stage 5 renders
+  the selection instead of "0 tokens".
+
 - **Edge builders that linked the wrong thing, or everything.** A compose
   file's `context: .` stripped to `.` and `path.contains(".")` matched every
   file with an extension — the compose file linked to the whole universe at

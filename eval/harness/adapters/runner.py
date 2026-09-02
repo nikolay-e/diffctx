@@ -202,19 +202,14 @@ def _log_non_ok_result(r: EvalResult, status: str, err: str) -> None:
     print(f"[WARN] {r.instance_id} status={status}{detail} error={err}", flush=True)
 
 
-def _maybe_checkpoint(path: Path | None, r: EvalResult, status: str, err: str) -> None:
+def _maybe_checkpoint(path: Path | None, r: EvalResult, status: str) -> None:
     if path is None:
         return
-    # Pool-level transient failures (BrokenProcessPool) must NOT be persisted:
-    # on retry the orchestrator rebuilds the pool and these instances should be
-    # re-evaluated, not skipped via the resume set.
-    # EXCEPTION: status=="timeout" is deterministic per-instance (the same input
-    # would hit the same deadline again) and MUST be checkpointed to prevent an
-    # infinite retry loop on a pathological repository.
     # Rows a rerun should re-evaluate are not checkpointed: a clone that hit
     # the network or a worker that crashed is not a verdict on the instance.
-    # (The old test was for `BrokenProcessPool`, an exception only
-    # concurrent.futures raises — the pool is pebble, so it never matched.)
+    # `timeout` IS checkpointed — the same input would hit the same deadline
+    # again, and skipping it is what prevents an infinite retry loop on a
+    # pathological repository.
     if status in ("clone_fail", "error"):
         return
     append_checkpoint(path, r)
@@ -257,7 +252,7 @@ def run_eval_set(
         err = str((r.extra or {}).get("error", ""))
         if status not in ("ok", "empty_query", "empty_corpus") and (status or err):
             _log_non_ok_result(r, status, err)
-        _maybe_checkpoint(checkpoint_path, r, status, err)
+        _maybe_checkpoint(checkpoint_path, r, status)
 
     if pending:
         if workers <= 1 or len(pending) <= 1:
@@ -307,7 +302,7 @@ def _record_multi_budget_cell(
         err = str((r.extra or {}).get("error", ""))
         if status not in ("ok", "empty_query", "empty_corpus") and (status or err):
             _log_non_ok_result(r, status, err)
-        _maybe_checkpoint(ckpts[params.budget], r, status, err)
+        _maybe_checkpoint(ckpts[params.budget], r, status)
 
 
 def run_eval_set_multi_budget(

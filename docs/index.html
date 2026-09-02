@@ -1866,6 +1866,7 @@
           (a, b) => score[b.id] - score[a.id] || a.tok - b.tok,
         );
         const picked = [];
+        const excluded = NODES.filter((n) => score[n.id] < tau).map((n) => ({ n, why: "tau" }));
         let spent = 0;
         for (const n of ranked) {
           if (n.seed) {
@@ -1876,19 +1877,21 @@
           if (spent + n.tok <= budget) {
             picked.push(n);
             spent += n.tok;
+          } else {
+            excluded.push({ n, why: "budget" });
           }
         }
-        return { picked, spent };
+        return { picked, spent, excluded };
       }
 
       /* ============ yaml renderer ============ */
       function esc(s) {
         return s.replaceAll("&", "&amp;").replaceAll("<", "&lt;");
       }
-      function renderYaml(picked, spent) {
+      function renderYaml(picked, spent, excluded) {
         const el = document.getElementById("yaml");
         if (!picked.length) {
-          el.innerHTML = `<span class="yc"># run stages 4–5 to produce context…</span>`;
+          el.innerHTML = `<span class="yc"># nothing selected at these dials — lower τ or raise the budget</span>`;
           return;
         }
         let out = "";
@@ -1904,6 +1907,16 @@
           out += `    <span class="yk">symbol</span>: <span class="${cls}">${esc(n.label)}</span>${n.seed ? '  <span class="yc"># changed</span>' : ""}\n`;
         });
         out += `<span class="yc"># ${spent.toLocaleString("en-US")} tokens (o200k_base)</span>`;
+        if (excluded && excluded.length) {
+          const byWhy = { tau: [], budget: [] };
+          excluded.forEach((x) => byWhy[x.why].push(x.n));
+          if (byWhy.budget.length) {
+            out += `\n<span class="yc"># did not fit the budget (ranked, no room): ${byWhy.budget.map((n) => esc(n.label)).join(", ")}</span>`;
+          }
+          if (byWhy.tau.length) {
+            out += `\n<span class="yc"># below τ (not worth a token): ${byWhy.tau.length} fragments</span>`;
+          }
+        }
         el.innerHTML = out;
       }
 
@@ -1987,7 +2000,7 @@
         if (sel) {
           fill.style.width = Math.min(100, (sel.spent / budget) * 100) + "%";
           readout.textContent = `${sel.spent.toLocaleString("en-US")} tokens · ${sel.picked.length} fragments`;
-          renderYaml(sel.picked, sel.spent);
+          renderYaml(sel.picked, sel.spent, sel.excluded);
         } else {
           fill.style.width = "0%";
           readout.textContent = "0 tokens · 0 fragments";
@@ -1996,6 +2009,8 @@
       }
 
       function applyStage(stage) {
+        // A visitor who clicks stage 5 first should see the selection, not an
+        // empty readout: the earlier stages are narration, not prerequisites.
         currentStage = stage;
         document
           .querySelectorAll(".stage")

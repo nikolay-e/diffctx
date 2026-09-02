@@ -120,6 +120,20 @@ def _resolve_manifest_instances(manifests: list[Path], adapters: Any, limit: int
     return out
 
 
+def _checkpoint_name(name: str, args: argparse.Namespace) -> str:
+    """Distinct per method AND per ablation: two runs sharing an --out must not
+    resume each other's rows, and --scoring / --tau / --extra-env make a run a
+    different system just as much as the baseline does."""
+    base = name if args.baseline == "diffctx" else f"{args.baseline}__{name}"
+    parts = [
+        f"s-{args.scoring}" if args.scoring is not None else "",
+        f"t-{args.tau}" if args.tau is not None else "",
+        "_".join(e.replace("=", "-") for e in sorted(args.extra_env or [])),
+    ]
+    tag = "_".join(x for x in parts if x)
+    return f"{base}__{tag}" if tag else base
+
+
 def _process_manifest(
     manifest_path: Path,
     instances: list[Any],
@@ -135,21 +149,7 @@ def _process_manifest(
     print(f"\n[{name}{depth_label}] {len(instances)} instances")
     # Distinct checkpoint names per method: two baselines sharing one --out
     # must not cross-resume each other's rows.
-    ckpt_name = name if args.baseline == "diffctx" else f"{args.baseline}__{name}"
-    # An ablation cell (--scoring / --tau / --extra-env) sharing an --out with
-    # the winner used to resume the winner's rows as its own: the name must
-    # carry what makes the run a different system.
-    if args.scoring is not None or args.tau is not None or args.extra_env:
-        tag = "_".join(
-            x
-            for x in (
-                f"s-{args.scoring}" if args.scoring is not None else "",
-                f"t-{args.tau}" if args.tau is not None else "",
-                "_".join(f"{e.replace('=', '-')}" for e in sorted(args.extra_env or [])),
-            )
-            if x
-        )
-        ckpt_name = f"{ckpt_name}__{tag}"
+    ckpt_name = _checkpoint_name(name, args)
 
     if eval_all_cells_fn is not None:
         params_list = [
