@@ -142,6 +142,20 @@ dismissing as bot noise.
 
 ## Diff-context review
 
+- **Every pull request in this repo carries its own diffctx review context**
+  (`action-smoke.yml` → `pr-review-context`: the published composite action
+  run on the PR's `base..head` at `--budget 8000`, uploaded as the
+  `diffctx-review-context` artifact and pinned to the PR as one sticky comment
+  marked `<!-- diffctx-review-context -->`). A `/qa` pass that reviews a PR
+  reads THAT artifact first and the raw diff only for what it withheld —
+  that is the dogfood. Two things to judge each time, because they are
+  product findings: whether the selection is what a reviewer of this change
+  would want (a missing caller, a pulled-in irrelevant sibling, an omitted
+  changed file at 8k), and whether the comment's numbers agree with a local
+  run of the same range. The action installs the **released** wheel
+  (`diffctx-version` default), so a PR that changes selection is reviewed by
+  the version before it — compare against a source install when the diff
+  touches the engine.
 - Use the uv-tool binary `~/.local/bin/diffctx` (pipx-equivalent),
   never `.venv/bin/diffctx`. Check its version FIRST (`uv tool list`,
   not `--version` alone): a stale tool silently re-introduces fixed
