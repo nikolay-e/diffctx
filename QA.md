@@ -214,6 +214,20 @@ dismissing as bot noise.
   says so in the report. Dispatching the release is the owner's call
   (memory `no-release-without-asking`); tracking it is not — #261.
 
+- **The fleet carries this repo's own Action; sweep it, don't assume it.**
+  Fifteen sibling repos run `.github/workflows/diffctx.yml` (the consumer
+  shape of `action-smoke.yml`'s `pr-review-context`). On 2026-09-04 the sweep
+  found it had **never produced a context anywhere**: six repos had runs and
+  every one was `skipped` by the bot gate — ~98% of pull requests in this
+  fleet are Dependabot — and nine had no runs at all. Every copy now carries
+  a `workflow_dispatch` trigger, so a pass can exercise it without opening a
+  PR: `gh workflow run diffctx.yml -R nikolay-e/<repo>` and check the run
+  produced a `diffctx-review-context` artifact. Two facts worth keeping: the
+  bot gate is right on cost but its comment used to claim diffctx returns
+  `empty` on a dependency bump, which is false (measured on certamen#134: 4
+  fragments of `package.json`); and the action pins a diffctx **release**
+  SHA, so every repo needs a bump when a release ships (#261).
+
 ## Bug channels (enumerated 2026-08-05)
 
 1. GitHub issues (`gh issue list`) — canonical tracker, takes `Fixes #N`.
