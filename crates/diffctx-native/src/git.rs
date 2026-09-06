@@ -647,28 +647,42 @@ pub fn run_git_z(repo_root: &Path, args: &[&str]) -> Result<Vec<String>> {
 pub fn get_changed_files(repo_root: &Path, diff_range: Option<&str>) -> Result<Vec<PathBuf>> {
     let args = diff_args(&["--name-only", "-M", "-z"], diff_range)?;
     let parts = run_git_z(repo_root, &args)?;
+    // Lexical `root.join(p)`, never the canonical target: `canonicalize()` on a
+    // symlink returns what it POINTS AT, so an untracked `evil -> /etc/shadow`
+    // entered the changed-file list under an absolute out-of-root path. That
+    // breaks three things at once — the path stops naming an object in the
+    // repository, the ignore and secret policies are then applied to the wrong
+    // name, and the working-tree line counter reads outside the checkout.
+    //
+    // Containment is checked lexically and NOT by canonicalising: these names
+    // need not exist on disk. A deleted file is gone by definition and a bare
+    // clone has no working tree, so an existence test empties both lists. The
+    // symlink itself is caught where the file is actually read.
     Ok(parts
         .iter()
-        .map(|p| {
-            repo_root
-                .join(p)
-                .canonicalize()
-                .unwrap_or_else(|_| repo_root.join(p))
-        })
+        .filter(|p| crate::paths::contains_lexically(std::path::Path::new(p)))
+        .map(|p| repo_root.join(p))
         .collect())
 }
 
 pub fn get_deleted_files(repo_root: &Path, diff_range: Option<&str>) -> Result<FxHashSet<PathBuf>> {
     let args = diff_args(&["--diff-filter=D", "--name-only", "-M", "-z"], diff_range)?;
     let parts = run_git_z(repo_root, &args)?;
+    // Lexical `root.join(p)`, never the canonical target: `canonicalize()` on a
+    // symlink returns what it POINTS AT, so an untracked `evil -> /etc/shadow`
+    // entered the changed-file list under an absolute out-of-root path. That
+    // breaks three things at once — the path stops naming an object in the
+    // repository, the ignore and secret policies are then applied to the wrong
+    // name, and the working-tree line counter reads outside the checkout.
+    //
+    // Containment is checked lexically and NOT by canonicalising: these names
+    // need not exist on disk. A deleted file is gone by definition and a bare
+    // clone has no working tree, so an existence test empties both lists. The
+    // symlink itself is caught where the file is actually read.
     Ok(parts
         .iter()
-        .map(|p| {
-            repo_root
-                .join(p)
-                .canonicalize()
-                .unwrap_or_else(|_| repo_root.join(p))
-        })
+        .filter(|p| crate::paths::contains_lexically(std::path::Path::new(p)))
+        .map(|p| repo_root.join(p))
         .collect())
 }
 
@@ -780,14 +794,21 @@ pub fn get_untracked_files(repo_root: &Path) -> Result<Vec<PathBuf>> {
         repo_root,
         &["ls-files", "--others", "--exclude-standard", "-z"],
     )?;
+    // Lexical `root.join(p)`, never the canonical target: `canonicalize()` on a
+    // symlink returns what it POINTS AT, so an untracked `evil -> /etc/shadow`
+    // entered the changed-file list under an absolute out-of-root path. That
+    // breaks three things at once — the path stops naming an object in the
+    // repository, the ignore and secret policies are then applied to the wrong
+    // name, and the working-tree line counter reads outside the checkout.
+    //
+    // Containment is checked lexically and NOT by canonicalising: these names
+    // need not exist on disk. A deleted file is gone by definition and a bare
+    // clone has no working tree, so an existence test empties both lists. The
+    // symlink itself is caught where the file is actually read.
     Ok(parts
         .iter()
-        .map(|p| {
-            repo_root
-                .join(p)
-                .canonicalize()
-                .unwrap_or_else(|_| repo_root.join(p))
-        })
+        .filter(|p| crate::paths::contains_lexically(std::path::Path::new(p)))
+        .map(|p| repo_root.join(p))
         .collect())
 }
 

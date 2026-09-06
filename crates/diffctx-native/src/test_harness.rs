@@ -11,7 +11,7 @@ use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use serde::Serialize;
 
-use _diffctx::config::limits::{DEFAULT_PPR_ALPHA, DEFAULT_STOPPING_THRESHOLD};
+use _diffctx::config::limits::DEFAULT_PPR_ALPHA;
 use _diffctx::memory_pipeline::{MemoryRepo, build_diff_context_in_memory};
 use _diffctx::mode::ScoringMode;
 
@@ -138,11 +138,13 @@ fn run_single_test(case: &TestCase) -> TestResult {
     // Shipped constants, not literals. This harness ran tau=0.05 while every
     // entry point ships 0.12, so it scored an operating point nobody uses —
     // the same defect #175 fixed in the yaml corpus, in a second harness.
+    // tau is `None`, the shipped configuration itself: unspecified, resolved
+    // per scorer by the engine.
     let output = build_diff_context_in_memory(
         &repo,
         Some(budget),
         DEFAULT_PPR_ALPHA,
-        DEFAULT_STOPPING_THRESHOLD,
+        None,
         false,
         ScoringMode::Ego,
     );

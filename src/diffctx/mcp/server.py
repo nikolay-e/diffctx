@@ -13,7 +13,6 @@ import anyio.to_thread
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
-from diffctx._diffctx import DEFAULT_TAU as _ENGINE_DEFAULT_TAU
 from diffctx._diffctx import DEFAULT_TIMEOUT as _ENGINE_DEFAULT_TIMEOUT
 from diffctx._native import GitError, build_diff_context
 from diffctx.version import __version__
@@ -30,7 +29,6 @@ _T = TypeVar("_T")
 # which is exactly how the shipped 0.12 came to disagree with two harnesses
 # (#175). Importing the extension crosses no layer: it is what both cli and mcp
 # already sit on top of.
-_DEFAULT_TAU: float = _ENGINE_DEFAULT_TAU
 
 # Mirror diffctx.cli.DEFAULT_MAX_FILE_BYTES (256 KB) so the per-file content
 # cap is identical across the CLI, MCP, and the documented default. Same
@@ -116,7 +114,6 @@ async def _locate_response(validated_path: Path, diff_range: str, budget_tokens:
                 root_dir=validated_path,
                 diff_range=diff_range,
                 budget_tokens=budget_tokens,
-                tau=_DEFAULT_TAU,
                 timeout=_DEFAULT_TIMEOUT_SECONDS,
             ),
         )
@@ -234,7 +231,6 @@ async def diffctx_context(
                 root_dir=validated_path,
                 diff_range=diff_ref,
                 budget_tokens=budget_tokens,
-                tau=_DEFAULT_TAU,
                 timeout=_DEFAULT_TIMEOUT_SECONDS,
                 with_raw_diff=include_raw_diff,
             ),

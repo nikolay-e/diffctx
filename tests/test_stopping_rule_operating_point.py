@@ -142,19 +142,34 @@ def test_the_stopping_certificate_only_exists_when_the_rule_fires(stopping_repo)
     assert disabled["stopping_certificate"] == 0.0
 
 
-def test_every_entry_point_ships_the_same_tau():
+def test_no_entry_point_carries_a_tau_of_its_own():
     """The corpus drifted to its own tau and stayed there unnoticed. Defaults
-    that disagree between entry points are how that happens again."""
+    that disagree between entry points are how that happens again — and a
+    wrapper COPYING the right default is still a second copy, one edit away
+    from disagreeing.
+
+    So no wrapper carries a value at all: an unspecified tau reaches the engine
+    as `None` and the engine resolves it, which it does differently for a
+    scorer that builds no graph and therefore has no admission gate. Copying
+    the default here also made that unnameable — a caller asking for exactly
+    0.05 was indistinguishable from a caller asking for nothing, and an ungated
+    sweep cell silently got the raised threshold instead of the one it named.
+    """
     import inspect
 
+    from diffctx import _diffctx
     from diffctx._native.pipeline import build_diff_context
 
     native_default = inspect.signature(build_diff_context).parameters["tau"].default
 
-    assert native_default == pytest.approx(_shipped_tau()), (
-        f"the CLI ships tau={_shipped_tau()} but the native pipeline defaults to "
-        f"{native_default} — two entry points disagree about the operating point"
+    assert native_default is None, (
+        f"the native wrapper carries its own tau ({native_default}); an "
+        "unspecified threshold must reach the engine as None so the engine "
+        "resolves it per scorer"
     )
+    # The engine's own constant is still the single source of the shipped
+    # value, and the CLI help and the corpus both quote it.
+    assert _shipped_tau() == pytest.approx(_diffctx.DEFAULT_TAU)
 
 
 def _tau_defaults_in(source_path):
@@ -232,10 +247,8 @@ def test_the_shipped_defaults_have_exactly_one_source():
     from diffctx import _diffctx
     from diffctx._native.pipeline import build_diff_context
     from diffctx.cli import _DEFAULT_ALPHA, _DEFAULT_SCORING, _DEFAULT_TAU
-    from diffctx.mcp.server import _DEFAULT_TAU as MCP_TAU
 
     assert _DEFAULT_TAU == pytest.approx(_diffctx.DEFAULT_TAU)
-    assert MCP_TAU == pytest.approx(_diffctx.DEFAULT_TAU)
     assert _DEFAULT_ALPHA == pytest.approx(_diffctx.DEFAULT_ALPHA)
     assert _DEFAULT_SCORING == _diffctx.DEFAULT_SCORING
 
@@ -243,5 +256,7 @@ def test_the_shipped_defaults_have_exactly_one_source():
 
     params = inspect.signature(build_diff_context).parameters
     assert params["scoring_mode"].default == _diffctx.DEFAULT_SCORING
-    assert params["tau"].default == pytest.approx(_diffctx.DEFAULT_TAU)
+    # tau is deliberately absent from this list: it defers rather than copies,
+    # which `test_no_entry_point_carries_a_tau_of_its_own` is what asserts.
+    assert params["tau"].default is None
     assert params["alpha"].default == pytest.approx(_diffctx.DEFAULT_ALPHA)

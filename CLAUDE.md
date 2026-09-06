@@ -95,10 +95,13 @@ coverage that exists.
   means "at least one wrong file", not "emitted all the garbage" — the
   real magnitude is a median of 1 extra file.
 
-The harness passes `DEFAULT_PPR_ALPHA` / `DEFAULT_STOPPING_THRESHOLD`
+The harness passes `DEFAULT_PPR_ALPHA` and an unspecified tau (`None`)
 so the gate measures the shipped configuration; it once passed
 `tau=0.0`, which hid 119 cases in both directions (#175). Never
-replace those with literals.
+replace those with literals — and never with the tau constant either:
+an unspecified tau resolves per scorer (the ungated ones ship at a
+raised threshold), so naming the constant pins them to the wrong
+operating point.
 
 ## Technology Choices
 

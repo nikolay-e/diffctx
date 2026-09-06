@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import math
 import os
 import sys
 from dataclasses import dataclass
@@ -96,9 +97,14 @@ def _validate_alpha(alpha: float) -> None:
         _exit_usage_error(f"--alpha must be between 0 and 1 (exclusive), got {alpha}")
 
 
-def _validate_tau(tau: float) -> None:
-    if tau < 0:
-        _exit_usage_error(f"--tau must be non-negative, got {tau}")
+def _validate_tau(tau: float | None) -> None:
+    # `None` means "unspecified", which the engine resolves per scorer — the
+    # one thing a caller could not previously express, since naming the
+    # default value looked identical to saying nothing.
+    if tau is None:
+        return
+    if not (tau >= 0 and math.isfinite(tau)):
+        _exit_usage_error(f"--tau must be a finite value >= 0, got {tau}")
 
 
 def _resolve_root_dir(directory: str) -> Path:
@@ -280,7 +286,7 @@ class ParsedArgs:
     diff_range: str | None = None
     budget: int | None = None
     alpha: float = _DEFAULT_ALPHA
-    tau: float = _DEFAULT_TAU
+    tau: float | None = None
     scoring: str = _DEFAULT_SCORING
     timeout: int = _DEFAULT_TIMEOUT
     full_diff: bool = False
@@ -731,10 +737,10 @@ def _resolve_max_file_bytes(args: argparse.Namespace) -> int | None:
     return _validate_max_file_bytes(value, args.no_file_size_limit)
 
 
-def _resolve_diff_params(args: argparse.Namespace) -> tuple[str | None, int | None, float, float, str, int, str]:
+def _resolve_diff_params(args: argparse.Namespace) -> tuple[str | None, int | None, float, float | None, str, int, str]:
     budget = None if args.budget is _UNSET else args.budget
     alpha = _DEFAULT_ALPHA if args.alpha is _UNSET else args.alpha
-    tau = _DEFAULT_TAU if args.tau is _UNSET else args.tau
+    tau = None if args.tau is _UNSET else args.tau
     scoring = _DEFAULT_SCORING if args.scoring is _UNSET else args.scoring
     timeout = _DEFAULT_TIMEOUT if args.timeout is _UNSET else args.timeout
     mode = "pack" if args.mode is _UNSET else args.mode

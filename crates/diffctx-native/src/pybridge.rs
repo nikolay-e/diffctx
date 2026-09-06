@@ -80,7 +80,7 @@ fn build_locate(
     diff_range: &str,
     budget_tokens: Option<u32>,
     alpha: f64,
-    tau: f64,
+    tau: Option<f64>,
     scoring_mode: &str,
     timeout: u64,
 ) -> PyResult<String> {
@@ -136,7 +136,7 @@ fn build_diff_context<'py>(
     diff_range: &str,
     budget_tokens: Option<u32>,
     alpha: f64,
-    tau: f64,
+    tau: Option<f64>,
     no_content: bool,
     full: bool,
     scoring_mode: &str,
@@ -213,7 +213,7 @@ fn select_with_params<'py>(
     py: Python<'py>,
     state: &PyScoredState,
     budget_tokens: Option<u32>,
-    tau: f64,
+    tau: Option<f64>,
     no_content: bool,
 ) -> PyResult<Bound<'py, PyDict>> {
     let inner = state.inner.clone();

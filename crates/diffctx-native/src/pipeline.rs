@@ -93,12 +93,25 @@ pub struct HeavyLatencyMs {
     pub scoring: f64,
 }
 
+/// NaN is the case a `< 0.0` check alone misses: every comparison against it
+/// is false, so it read as "not negative" and became a threshold nothing could
+/// ever exceed. Checked at the two `Result`-returning entry points; the
+/// Python bridge reaches both.
+fn validate_tau(tau: Option<f64>) -> Result<()> {
+    match tau {
+        Some(t) if !(t.is_finite() && t >= 0.0) => {
+            anyhow::bail!("tau must be a finite value >= 0, got {}", t)
+        }
+        _ => Ok(()),
+    }
+}
+
 pub fn build_diff_context(
     root_dir: &Path,
     diff_range: Option<&str>,
     budget_tokens: Option<u32>,
     alpha: f64,
-    tau: f64,
+    tau: Option<f64>,
     no_content: bool,
     full: bool,
     scoring_mode: ScoringMode,
@@ -107,6 +120,7 @@ pub fn build_diff_context(
     if full {
         return build_diff_context_full(root_dir, diff_range, no_content, timeout);
     }
+    validate_tau(tau)?;
     let state = compute_scored_state(root_dir, diff_range, alpha, scoring_mode, timeout)?;
     if state.all_fragments.is_empty() {
         return Ok(empty_output_from_state(&state));
@@ -122,10 +136,11 @@ pub fn build_diff_context_locate(
     diff_range: Option<&str>,
     budget_tokens: Option<u32>,
     alpha: f64,
-    tau: f64,
+    tau: Option<f64>,
     scoring_mode: ScoringMode,
     timeout: u64,
 ) -> Result<crate::locate::LocateOutput> {
+    validate_tau(tau)?;
     let state = compute_scored_state(root_dir, diff_range, alpha, scoring_mode, timeout)?;
     let outcome = if state.all_fragments.is_empty() {
         SelectionOutcome {
@@ -245,17 +260,28 @@ enum ChangeSet {
     Ready(Box<ChangeSetData>),
 }
 
-fn resolve_change_set(
+/// The diff plus, for a working-tree range, the untracked files — which are
+/// changes with no diff of their own, so git never reports them and they have
+/// to be synthesised as whole-file hunks.
+///
+/// Shared with `--full`. It used to call `parse_diff` alone, which made
+/// `diffctx . --full` blind to every new file in the tree while the default
+/// mode saw them: the escape hatch that promises MORE context returned less.
+fn collect_hunks_with_untracked(
     root_dir: &Path,
     diff_range: Option<&str>,
     is_working_tree_diff: bool,
-    t_entry: Instant,
-) -> Result<ChangeSet> {
+) -> Result<(Vec<crate::types::DiffHunk>, Vec<PathBuf>)> {
     let mut hunks = git::parse_diff(root_dir, diff_range)?;
-
     let mut untracked_files: Vec<PathBuf> = Vec::new();
     if is_working_tree_diff {
-        if let Ok(files) = git::get_untracked_files(root_dir) {
+        if let Ok(mut files) = git::get_untracked_files(root_dir) {
+            // The untracked scan is the one path that READS a working-tree
+            // name before anything else has vetted it, so containment is
+            // re-asked here in its canonicalising form: `evil -> /etc/shadow`
+            // is lexically inside the root and would otherwise be line-counted
+            // and then fragmented out of the file it points at.
+            files.retain(|f| crate::paths::resolve_within(root_dir, f).is_some());
             for f in &files {
                 if let Some(line_count) = count_text_lines(f) {
                     if line_count > 0 {
@@ -273,11 +299,17 @@ fn resolve_change_set(
             untracked_files = files;
         }
     }
+    Ok((hunks, untracked_files))
+}
 
-    // Secret-classified changed paths are withheld like `.diffctx/ignore`
-    // ones, and with the same disclosure stance: count only, never the path
-    // (#85, #188, #214). Disjoint from the policy set below by construction —
-    // these hunks are gone before resolve_ignored_paths runs.
+/// Secret-classified changed paths are withheld like `.diffctx/ignore` ones,
+/// and with the same disclosure stance: count only, never the path (#85, #188,
+/// #214). Disjoint from the policy set by construction — these hunks are gone
+/// before `resolve_ignored_paths` runs.
+fn withhold_secret_hunks(
+    root_dir: &Path,
+    hunks: &mut Vec<crate::types::DiffHunk>,
+) -> FxHashSet<String> {
     let mut secret_excluded_paths: FxHashSet<String> = FxHashSet::default();
     hunks.retain(|h| {
         let p = Path::new(&*h.path);
@@ -290,6 +322,49 @@ fn resolve_change_set(
             true
         }
     });
+    secret_excluded_paths
+}
+
+/// gitignore-excluded changed files are listed by path; `.diffctx/ignore` is a
+/// declared confidentiality policy, so its exclusions surface as a count only
+/// — re-publishing the very paths the user asked to withhold would undo the
+/// policy (#85), while total silence misreads as "the diff did not touch this"
+/// (#188). Counted in files, not hunks: the writer says "N changed file(s)
+/// withheld", and a multi-hunk withheld file must not inflate it.
+fn ignore_disclosure(
+    root_dir: &Path,
+    hunks: &[crate::types::DiffHunk],
+    ignored_rel_paths: &FxHashMap<String, git::IgnoreSource>,
+) -> (Vec<String>, FxHashSet<String>) {
+    let mut ignored_display: Vec<String> = Vec::new();
+    let mut policy_excluded_paths: FxHashSet<String> = FxHashSet::default();
+    for h in hunks {
+        let p = Path::new(&*h.path);
+        let Some(rel) = rel_path_string(root_dir, p) else {
+            continue;
+        };
+        match ignored_rel_paths.get(&rel) {
+            Some(git::IgnoreSource::Gitignore) => ignored_display.push(rel),
+            Some(git::IgnoreSource::DiffctxPolicy) => {
+                policy_excluded_paths.insert(rel);
+            }
+            None => {}
+        }
+    }
+    ignored_display.sort();
+    ignored_display.dedup();
+    (ignored_display, policy_excluded_paths)
+}
+
+fn resolve_change_set(
+    root_dir: &Path,
+    diff_range: Option<&str>,
+    is_working_tree_diff: bool,
+    t_entry: Instant,
+) -> Result<ChangeSet> {
+    let (mut hunks, untracked_files) =
+        collect_hunks_with_untracked(root_dir, diff_range, is_working_tree_diff)?;
+    let secret_excluded_paths = withhold_secret_hunks(root_dir, &mut hunks);
 
     if hunks.is_empty() {
         return Ok(ChangeSet::Empty {
@@ -305,26 +380,9 @@ fn resolve_change_set(
     // count only — re-publishing the very paths the user asked to withhold
     // would undo the policy (#85), while total silence misreads as "the diff
     // did not touch this" (#188).
-    let mut ignored_display: Vec<String> = Vec::new();
-    // Counted in files, not hunks: the writer says "N changed file(s)
-    // withheld", and a multi-hunk withheld file must not inflate it.
-    let mut policy_excluded_paths: FxHashSet<String> = FxHashSet::default();
-    for h in &hunks {
-        let p = Path::new(&*h.path);
-        let Some(rel) = rel_path_string(root_dir, p) else {
-            continue;
-        };
-        match ignored_rel_paths.get(&rel) {
-            Some(git::IgnoreSource::Gitignore) => ignored_display.push(rel),
-            Some(git::IgnoreSource::DiffctxPolicy) => {
-                policy_excluded_paths.insert(rel);
-            }
-            None => {}
-        }
-    }
+    let (ignored_display, policy_excluded_paths) =
+        ignore_disclosure(root_dir, &hunks, &ignored_rel_paths);
     let policy_excluded = policy_excluded_paths.len() + secret_excluded_paths.len();
-    ignored_display.sort();
-    ignored_display.dedup();
     hunks.retain(|h| !is_ignored_path(root_dir, Path::new(&*h.path), &ignored_rel_paths));
 
     let mut lockfile_display: Vec<String> = hunks
@@ -423,7 +481,12 @@ pub fn compute_scored_state(
     git::set_git_timeout(timeout);
     let deadline = crate::deadline::Deadline::from_timeout_secs(timeout);
     let root_dir = resolve_repo_root(root_dir)?;
-    if alpha <= 0.0 || alpha >= 1.0 {
+    // `!(a > 0 && a < 1)` rather than `a <= 0 || a >= 1`: every comparison
+    // against NaN is false, so the negated form is the one that rejects it.
+    // The old form let NaN through into the PPR damping factor, where it
+    // silently turned every score into NaN and the run returned an ordering
+    // that meant nothing.
+    if !(alpha > 0.0 && alpha < 1.0) {
         anyhow::bail!("alpha must be in (0, 1), got {}", alpha);
     }
 
@@ -674,21 +737,23 @@ pub fn select_and_postpass(
     core_excerpts: &FxHashMap<FragmentId, Fragment>,
     objective: crate::mode::ObjectiveMode,
     effective_budget: u32,
-    tau: f64,
+    tau: Option<f64>,
 ) -> (Vec<Fragment>, usize, f64, FxHashSet<FragmentId>) {
     // A scorer with no admission gate (BM25 builds no graph, so it has no
     // declared-related set to gate on) is bounded by the threshold alone, so
-    // the default is raised to the ungated operating point. Any other tau is
-    // used as given — a sweep measuring an ungated tau gets the tau it asked
-    // for — but tau arrives as a bare f64, so an explicit request for exactly
-    // the default value is indistinguishable from omitting it and is raised
-    // too. The effective value is logged: an ablation cell that does not say
-    // whether it ran gated is not comparable with one that did (#245).
+    // an unspecified tau resolves to the ungated operating point instead of
+    // the default. Which is why tau travels as an `Option` all the way from
+    // the CLI and the Python bridge: it used to arrive as a bare `f64` and the
+    // raise was triggered by COMPARING it to the default, so an ungated sweep
+    // cell asking for exactly 0.12 was silently given 0.30 and had no way to
+    // ask for the value it had named. The effective value is logged: an
+    // ablation cell that does not say whether it ran gated is not comparable
+    // with one that did (#245).
     let ungated = scoring_result.admissible_files.is_none();
-    let tau = if ungated && tau == crate::config::limits::DEFAULT_STOPPING_THRESHOLD {
-        crate::config::limits::UNGATED_STOPPING_THRESHOLD
-    } else {
-        tau
+    let tau = match tau {
+        Some(requested) => requested,
+        None if ungated => crate::config::limits::UNGATED_STOPPING_THRESHOLD,
+        None => crate::config::limits::DEFAULT_STOPPING_THRESHOLD,
     };
     tracing::info!(
         "diffctx: selection gate={} tau={:.4}",
@@ -813,7 +878,7 @@ pub fn envelope_token_cost(commit_message: Option<&str>, listed_paths: &[String]
 pub fn run_selection(
     state: &ScoredState,
     budget_tokens: Option<u32>,
-    tau: f64,
+    tau: Option<f64>,
 ) -> SelectionOutcome {
     let t_start = Instant::now();
     let effective_budget = budget_tokens.unwrap_or_else(|| {
@@ -886,7 +951,7 @@ pub fn run_selection(
 pub fn select_with_params(
     state: &ScoredState,
     budget_tokens: Option<u32>,
-    tau: f64,
+    tau: Option<f64>,
     no_content: bool,
 ) -> DiffContextOutput {
     let outcome = run_selection(state, budget_tokens, tau);
@@ -1233,6 +1298,27 @@ fn resolve_repo_root(root_dir: &Path) -> Result<PathBuf> {
     Ok(git::find_toplevel(&root_dir).unwrap_or(root_dir))
 }
 
+/// What `--full` removed from its own answer, carried to whichever of the four
+/// exits the run takes so no exit can forget to disclose it.
+struct FullWithheld {
+    policy_excluded_count: usize,
+    ignored_changes: Vec<String>,
+}
+
+fn full_empty_output(
+    root_dir: &Path,
+    diff_range: Option<&str>,
+    withheld: &FullWithheld,
+) -> DiffContextOutput {
+    let (deleted, renamed) = deletion_rename_displays(root_dir, diff_range);
+    let mut output = empty_output(root_dir);
+    output.deleted_files = deleted;
+    output.renamed_files = renamed;
+    output.ignored_changes = withheld.ignored_changes.clone();
+    output.policy_excluded_count = withheld.policy_excluded_count;
+    output
+}
+
 fn build_diff_context_full(
     root_dir: &Path,
     diff_range: Option<&str>,
@@ -1245,32 +1331,37 @@ fn build_diff_context_full(
     let root_dir = resolve_repo_root(root_dir)?;
     let resolved = git::resolve_duration_range(&root_dir, diff_range)?;
     let diff_range = resolved.range.as_deref();
-    let mut hunks = git::parse_diff(&root_dir, diff_range)?;
-    hunks.retain(|h| !is_secret_path(Path::new(&*h.path)));
+    let is_working_tree_diff = resolved.from_duration || matches!(diff_range, None | Some("HEAD"));
+    let (mut hunks, untracked_files) =
+        collect_hunks_with_untracked(&root_dir, diff_range, is_working_tree_diff)?;
+    let secret_excluded_paths = withhold_secret_hunks(&root_dir, &mut hunks);
+    // What `--full` withholds, it must still own up to. It used to drop secret
+    // and policy-excluded paths in silence, so a run that had removed files
+    // from its answer was indistinguishable from one with nothing to remove —
+    // the same misreading ("the diff did not touch this") that #188 fixed for
+    // the default mode.
+    let mut withheld = FullWithheld {
+        policy_excluded_count: secret_excluded_paths.len(),
+        ignored_changes: Vec::new(),
+    };
     if hunks.is_empty() {
-        let (deleted, renamed) = deletion_rename_displays(&root_dir, diff_range);
-        let mut output = empty_output(&root_dir);
-        output.deleted_files = deleted;
-        output.renamed_files = renamed;
-        return Ok(output);
+        return Ok(full_empty_output(&root_dir, diff_range, &withheld));
     }
     let ignored_rel_paths = resolve_ignored_paths(&root_dir, &hunks);
+    let (ignored_display, policy_excluded_paths) =
+        ignore_disclosure(&root_dir, &hunks, &ignored_rel_paths);
+    withheld.ignored_changes = ignored_display;
+    withheld.policy_excluded_count += policy_excluded_paths.len();
     hunks.retain(|h| !is_ignored_path(&root_dir, Path::new(&*h.path), &ignored_rel_paths));
     if hunks.is_empty() {
-        let (deleted, renamed) = deletion_rename_displays(&root_dir, diff_range);
-        let mut output = empty_output(&root_dir);
-        output.deleted_files = deleted;
-        output.renamed_files = renamed;
-        return Ok(output);
+        return Ok(full_empty_output(&root_dir, diff_range, &withheld));
     }
     let mut changed_files = git::get_changed_files(&root_dir, diff_range)?;
+    changed_files.extend(untracked_files);
     changed_files.retain(|f| !is_withheld(&root_dir, f, &ignored_rel_paths));
+    changed_files.dedup();
     if changed_files.is_empty() {
-        let (deleted, renamed) = deletion_rename_displays(&root_dir, diff_range);
-        let mut output = empty_output(&root_dir);
-        output.deleted_files = deleted;
-        output.renamed_files = renamed;
-        return Ok(output);
+        return Ok(full_empty_output(&root_dir, diff_range, &withheld));
     }
     let (base_rev, head_rev) = diff_range
         .map(git::split_diff_range)
@@ -1315,8 +1406,8 @@ fn build_diff_context_full(
         // `--full` is the escape hatch that promises every fragment of the
         // changed files, so it keeps lockfile content instead of diverting it.
         lockfile_changes: Vec::new(),
-        ignored_changes: Vec::new(),
-        policy_excluded_count: 0,
+        ignored_changes: withheld.ignored_changes,
+        policy_excluded_count: withheld.policy_excluded_count,
     };
     Ok(render::build_diff_context_output(
         &root_dir,

@@ -14,7 +14,6 @@ use tracing_subscriber::EnvFilter;
 
 use _diffctx::config::limits::{
     DEFAULT_PIPELINE_TIMEOUT_SECONDS, DEFAULT_PPR_ALPHA, DEFAULT_SCORING,
-    DEFAULT_STOPPING_THRESHOLD,
 };
 use _diffctx::mode::ScoringMode;
 use _diffctx::pipeline::build_diff_context;
@@ -70,9 +69,13 @@ struct Cli {
     #[arg(long, default_value_t = DEFAULT_PPR_ALPHA)]
     alpha: f64,
 
-    /// Relevance threshold for full fragment content; lower = more context
-    #[arg(long, default_value_t = DEFAULT_STOPPING_THRESHOLD)]
-    tau: f64,
+    /// Relevance threshold for full fragment content; lower = more context.
+    /// Omitted resolves per scorer: the default for a gated one, the ungated
+    /// operating point for a scorer that builds no graph — which is why this
+    /// carries no clap default, so naming the default value explicitly is a
+    /// request the pipeline can still tell apart from silence.
+    #[arg(long)]
+    tau: Option<f64>,
 
     /// Skip fragment contents (structure only)
     #[arg(long)]
@@ -153,22 +156,32 @@ where
     T: Send + 'static,
 {
     let (tx, rx) = mpsc::channel();
-    thread::spawn(move || {
+    let worker = thread::spawn(move || {
         let _ = tx.send(work());
     });
+    let exit_on_deadline = || -> ! {
+        eprintln!(
+            "diffctx: pipeline exceeded {timeout}s wall-clock deadline; aborting before \
+             OOM/SIGKILL. Narrow the review with an explicit '--diff <from>..<to>' range or \
+             run on a smaller subtree, or raise '--timeout'."
+        );
+        std::process::exit(124);
+    };
     match rx.recv_timeout(Duration::from_secs(timeout)) {
         Ok(result) => result,
-        Err(mpsc::RecvTimeoutError::Timeout) => {
-            eprintln!(
-                "diffctx: pipeline exceeded {timeout}s wall-clock deadline; aborting before \
-                 OOM/SIGKILL. Narrow the review with an explicit '--diff <from>..<to>' range or \
-                 run on a smaller subtree, or raise '--timeout'."
-            );
-            std::process::exit(124);
-        }
-        Err(mpsc::RecvTimeoutError::Disconnected) => {
-            anyhow::bail!("diffctx: pipeline worker terminated unexpectedly");
-        }
+        Err(mpsc::RecvTimeoutError::Timeout) => exit_on_deadline(),
+        // Two clocks watch the same deadline: this receive and the pipeline's
+        // own phase checks, which panic on the worker. When the worker's fires
+        // first the channel closes instead of timing out, and that used to
+        // surface as "terminated unexpectedly" with a generic exit code — the
+        // same overrun, reported two ways depending on which clock won by a
+        // millisecond. A deadline panic is the deadline, whichever side saw it.
+        Err(mpsc::RecvTimeoutError::Disconnected) => match worker.join() {
+            Err(payload) if _diffctx::deadline::deadline_panic_message(&*payload).is_some() => {
+                exit_on_deadline()
+            }
+            _ => anyhow::bail!("diffctx: pipeline worker terminated unexpectedly"),
+        },
     }
 }
 
@@ -245,7 +258,7 @@ fn run_locate(
     diff_ref: Option<String>,
     budget: Option<u32>,
     alpha: f64,
-    tau: f64,
+    tau: Option<f64>,
     scoring_mode: ScoringMode,
     timeout: u64,
 ) -> Result<()> {

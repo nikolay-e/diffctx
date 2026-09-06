@@ -328,3 +328,160 @@ fn a_backslash_filename_keeps_its_name_and_its_own_content() {
         changed_frag["content"]
     );
 }
+
+/// The repository is the trust boundary. Both paths into the candidate
+/// universe — `git ls-files` for tracked files, the untracked scan for the
+/// working tree — used to hand out names that were only LEXICALLY inside the
+/// root: `is_candidate_file` asked `is_file()`/`metadata()`, which follow a
+/// symlink, and `get_untracked_files` returned `canonicalize()`, which IS the
+/// link's target.
+///
+/// The untracked half is the one a CLI run can observe: the escaped file is
+/// opened (a line count is taken from it) and its absolute out-of-repository
+/// path is printed in the changed-file list. It takes a second, ordinary
+/// change in the tree — with the link alone the run ends empty and the leak
+/// stays invisible, which is why the first version of this test passed
+/// against the vulnerable build.
+#[test]
+#[cfg(unix)]
+fn a_symlink_out_of_the_repository_is_never_read_as_context() {
+    let tmp = TempDir::new().expect("tempdir");
+    let outside = tmp.path().join("outside");
+    std::fs::create_dir_all(&outside).expect("outside");
+    std::fs::write(
+        outside.join("secret.py"),
+        "def secret_work(value):\n    return value  # SYMLINK_ESCAPE_MARKER\n",
+    )
+    .expect("write secret");
+
+    let repo = tmp.path().join("repo");
+    std::fs::create_dir_all(&repo).expect("repo");
+    init_repo(&repo);
+    std::fs::write(
+        repo.join("app.py"),
+        "from helper import work\n\n\ndef main():\n    return work(1)\n",
+    )
+    .expect("write app");
+    std::fs::write(repo.join("helper.py"), "def work(x):\n    return x\n").expect("write helper");
+    // Tracked: committed as a link, so `ls-files` reports it and it enters the
+    // candidate universe.
+    std::os::unix::fs::symlink(outside.join("secret.py"), repo.join("tracked_link.py"))
+        .expect("tracked symlink");
+    commit_all(&repo, "initial");
+
+    // Untracked: the working tree carries the link plus one ordinary new file,
+    // so the change set is non-empty and the untracked scan actually runs.
+    std::os::unix::fs::symlink(outside.join("secret.py"), repo.join("untracked_link.py"))
+        .expect("untracked symlink");
+    // The escaped file is not merely present: the working-tree change calls the
+    // symbol it defines, so ranking WANTS it. Without that pull the run emits
+    // one fragment of an unrelated new file and the leak stays invisible —
+    // which is how the first version of this test passed against the bug.
+    std::fs::write(
+        repo.join("app.py"),
+        "from untracked_link import secret_work\n\n\ndef main():\n    return secret_work(1)\n",
+    )
+    .expect("rewrite app");
+
+    let outside_marker = outside.to_string_lossy().to_string();
+    for args in [
+        vec![".", "--diff", "HEAD"],
+        vec![".", "--diff", "HEAD", "--full"],
+        vec![".", "--diff", "HEAD~1..HEAD"],
+    ] {
+        let out = run(&repo, &args);
+        let text = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            !text.contains("SYMLINK_ESCAPE_MARKER"),
+            "{args:?} read a file outside the repository"
+        );
+        assert!(
+            !text.contains(outside_marker.as_str()),
+            "{args:?} emitted a path outside the repository:\n{text}"
+        );
+    }
+}
+
+/// `--full` is the escape hatch that promises MORE than the default mode, and
+/// it delivered less in two ways at once. It called `parse_diff` alone, so
+/// every untracked file — a change git reports no diff for — was invisible to
+/// it while the default mode listed them. And it dropped secret- and
+/// policy-excluded paths in silence, which is the misreading #188 fixed
+/// everywhere else: a run that removed files from its answer looked exactly
+/// like one with nothing to remove.
+#[test]
+fn full_mode_sees_untracked_files_and_owns_up_to_what_it_withholds() {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path().join("repo");
+    std::fs::create_dir_all(repo.join(".diffctx")).expect("policy dir");
+    init_repo(&repo);
+    std::fs::write(repo.join(".diffctx/ignore"), "private/\n").expect("write policy");
+    std::fs::create_dir_all(repo.join("private")).expect("private dir");
+    std::fs::write(repo.join("private/conf.py"), "TOKEN = \"before\"\n").expect("write conf");
+    std::fs::write(repo.join("helper.py"), "def work(x):\n    return x\n").expect("write helper");
+    commit_all(&repo, "initial");
+
+    std::fs::write(repo.join("helper.py"), "def work(x):\n    return x + 1\n").expect("edit");
+    std::fs::write(repo.join("private/conf.py"), "TOKEN = \"after\"\n").expect("edit conf");
+    std::fs::write(
+        repo.join("brand_new.py"),
+        "def brand_new():\n    return 7\n",
+    )
+    .expect("new");
+
+    let out = run(&repo, &[".", "--diff", "HEAD", "--full", "-f", "yaml"]);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        text.contains("brand_new"),
+        "--full did not see the untracked file:\n{text}"
+    );
+    assert!(
+        text.contains("policy_excluded_count: 1"),
+        "--full withheld a changed file without saying so:\n{text}"
+    );
+    assert!(
+        !text.contains("private/conf.py"),
+        "--full published a path the policy withholds:\n{text}"
+    );
+}
+
+/// `alpha <= 0.0 || alpha >= 1.0` is false for NaN — every comparison against
+/// it is — so NaN sailed through validation into the damping factor and every
+/// score came out NaN. Same for tau, where a NaN read as "not negative".
+#[test]
+fn nan_is_rejected_as_a_parameter() {
+    let tmp = code_change_repo();
+    for (flag, value) in [
+        ("--alpha", "nan"),
+        ("--alpha", "inf"),
+        ("--tau", "nan"),
+        ("--tau", "-inf"),
+    ] {
+        let out = run(tmp.path(), &[".", "--diff", "HEAD~1..HEAD", flag, value]);
+        assert!(
+            !out.status.success(),
+            "{flag} {value} was accepted:\n{}",
+            String::from_utf8_lossy(&out.stdout)
+        );
+    }
+}
+
+/// The exit code is the deadline's contract. Two clocks watch it — this
+/// receive and the pipeline's phase checks on the worker — and the worker's
+/// panic closing the channel first is mapped to the same 124 in `main.rs`;
+/// that branch is not reachable on demand from here (with equal timeouts the
+/// receive always fires first), so this pins the reachable half only.
+#[test]
+fn an_expired_deadline_exits_124() {
+    let tmp = code_change_repo();
+    let out = run(
+        tmp.path(),
+        &[".", "--diff", "HEAD~1..HEAD", "--timeout", "0"],
+    );
+    assert_eq!(
+        out.status.code(),
+        Some(124),
+        "stderr:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}

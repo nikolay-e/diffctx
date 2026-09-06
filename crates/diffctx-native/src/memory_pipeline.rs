@@ -26,7 +26,7 @@ pub fn build_diff_context_in_memory(
     repo: &MemoryRepo,
     budget_tokens: Option<u32>,
     alpha: f64,
-    tau: f64,
+    tau: Option<f64>,
     no_content: bool,
     scoring_mode: ScoringMode,
 ) -> DiffContextOutput {

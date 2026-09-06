@@ -43,7 +43,7 @@ def build_diff_context(
     diff_range: str,
     budget_tokens: int | None = ...,
     alpha: float = ...,
-    tau: float = ...,
+    tau: float | None = ...,
     no_content: bool = ...,
     full: bool = ...,
     scoring_mode: str = ...,
@@ -54,7 +54,7 @@ def build_locate(
     diff_range: str,
     budget_tokens: int | None = ...,
     alpha: float = ...,
-    tau: float = ...,
+    tau: float | None = ...,
     scoring_mode: str = ...,
     timeout: int = ...,
 ) -> str: ...
@@ -68,7 +68,7 @@ def compute_scored_state(
 def select_with_params(
     state: PyScoredState,
     budget_tokens: int | None = ...,
-    tau: float = ...,
+    tau: float | None = ...,
     no_content: bool = ...,
 ) -> dict[str, Any]: ...
 def get_raw_diff_text(root_dir: str, diff_range: str, timeout: int = ...) -> str: ...

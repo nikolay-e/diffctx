@@ -4,12 +4,15 @@ from pathlib import Path
 from typing import Any
 
 # Mirrors the pyo3 signature defaults by reading them, so this wrapper cannot
-# drift from the engine it wraps. Python always passes `scoring_mode` and `tau`
+# drift from the engine it wraps. Python always passes `scoring_mode`
 # explicitly, so a literal here would quietly override a changed engine default
 # for every Python and MCP caller.
+#
+# `tau` is the exception and travels as `None` when unspecified: the engine
+# resolves an unnamed threshold differently per scorer, and a wrapper that
+# substitutes the default here takes that choice away from it.
 from diffctx._diffctx import DEFAULT_ALPHA as _DEFAULT_ALPHA
 from diffctx._diffctx import DEFAULT_SCORING as _DEFAULT_SCORING
-from diffctx._diffctx import DEFAULT_TAU as _DEFAULT_TAU
 from diffctx._diffctx import DEFAULT_TIMEOUT as _PIPELINE_TIMEOUT
 
 _UNLIMITED_BUDGET = 10_000_000
@@ -47,7 +50,7 @@ def compute_scored_state(
 def select_with_params(
     state: Any,
     budget_tokens: int | None = None,
-    tau: float = _DEFAULT_TAU,
+    tau: float | None = None,
     no_content: bool = False,
 ) -> dict[str, Any]:
     """Light-phase select+postpass+render against a precomputed state."""
@@ -69,7 +72,7 @@ def build_locate(
     diff_range: str,
     budget_tokens: int | None = None,
     alpha: float = _DEFAULT_ALPHA,
-    tau: float = _DEFAULT_TAU,
+    tau: float | None = None,
     scoring_mode: str = _DEFAULT_SCORING,
     timeout: int = _PIPELINE_TIMEOUT,
 ) -> str:
@@ -105,7 +108,7 @@ def build_diff_context(
     diff_range: str,
     budget_tokens: int | None = None,
     alpha: float = _DEFAULT_ALPHA,
-    tau: float = _DEFAULT_TAU,
+    tau: float | None = None,
     no_content: bool = False,
     ignore_file: Path | None = None,
     no_default_ignores: bool = False,
