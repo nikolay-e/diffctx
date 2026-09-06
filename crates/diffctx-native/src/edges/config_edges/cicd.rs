@@ -5,7 +5,7 @@ use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::edge_weights::CICD;
-use crate::types::Fragment;
+use crate::types::{Fragment, FragmentId};
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, FragmentIndex, add_edge, link_by_name};
@@ -267,20 +267,46 @@ impl EdgeBuilder for CICDEdgeBuilder {
                 || lower.contains("pnpm")
                 || lower.contains("npx")
             {
-                for f in fragments {
-                    let fname = Path::new(f.path())
-                        .file_name()
-                        .map(|n| n.to_string_lossy().to_lowercase())
-                        .unwrap_or_default();
-                    if fname == "package.json" && f.id != ci.id {
+                // Every package.json in the repo used to qualify; in a
+                // workspaces monorepo that is a hundred edges from one
+                // workflow. The package a workflow drives is the nearest
+                // one above it, or the root's.
+                // Walked in the index's own key space (repo-relative): the
+                // first version built absolute candidates from the fragment's
+                // absolute path, matched nothing at every level, and at `/`
+                // degraded to the bare name — every package.json again.
+                // Exact path per level — `link_by_path_match`'s suffix rule
+                // would let the root-level `package.json` name every
+                // workspace's copy too.
+                let rel = base::index_key_of(ci.path(), repo_root);
+                let by_rel: FxHashMap<String, &FragmentId> = fragments
+                    .iter()
+                    .filter(|f| f.path().ends_with("package.json"))
+                    .map(|f| (base::index_key_of(f.path(), repo_root), &f.id))
+                    .collect();
+                let reps = base::file_representatives(fragments);
+                let mut dir = Path::new(&rel).parent();
+                while let Some(d) = dir {
+                    let candidate = if d.as_os_str().is_empty() {
+                        "package.json".to_string()
+                    } else {
+                        format!("{}/package.json", d.to_string_lossy())
+                    };
+                    if let Some(fid) = by_rel.get(&candidate) {
+                        let dst = reps.get(fid.path.as_ref()).unwrap_or(fid);
                         add_edge(
                             &mut edges,
                             &ci.id,
-                            &f.id,
+                            dst,
                             CICD.weight * CICD.script_modifier,
                             CICD.reverse_factor,
                         );
+                        break;
                     }
+                    if d.as_os_str().is_empty() {
+                        break;
+                    }
+                    dir = d.parent();
                 }
             }
         }
@@ -314,5 +340,52 @@ impl EdgeBuilder for CICDEdgeBuilder {
         }
 
         base::discover_files_by_refs(&refs, changed, candidates, repo_root)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{FragmentId, FragmentKind};
+    use std::sync::Arc;
+
+    fn frag(path: &str, content: &str) -> Fragment {
+        Fragment {
+            id: FragmentId::new(Arc::from(path), 1, content.lines().count().max(1) as u32),
+            kind: FragmentKind::Chunk,
+            content: Arc::from(content),
+            identifiers: rustc_hash::FxHashSet::default(),
+            token_count: content.len() as u32,
+            symbol_name: None,
+        }
+    }
+
+    /// Production fragment paths are absolute and the index strips the repo
+    /// root; the first version of this walk built absolute candidates,
+    /// matched nothing at every level and at `/` fell back to the bare name —
+    /// every package.json in the repo, which is what it set out to stop.
+    #[test]
+    fn a_workflow_links_to_the_nearest_package_json_only() {
+        let root = "/repo";
+        let fragments = vec![
+            frag(
+                "/repo/.github/workflows/ci.yml",
+                "steps:\n  - run: npm ci && npm test\n",
+            ),
+            frag("/repo/package.json", "{\"name\": \"root\"}\n"),
+            frag("/repo/packages/a/package.json", "{\"name\": \"a\"}\n"),
+            frag("/repo/packages/b/package.json", "{\"name\": \"b\"}\n"),
+        ];
+        let edges = CICDEdgeBuilder.build(&fragments, Some(Path::new(root)));
+        let targets: Vec<String> = edges
+            .keys()
+            .filter(|(src, _)| src.path.as_ref() == "/repo/.github/workflows/ci.yml")
+            .map(|(_, dst)| dst.path.to_string())
+            .collect();
+        assert_eq!(
+            targets,
+            vec!["/repo/package.json".to_string()],
+            "edges: {targets:?}"
+        );
     }
 }

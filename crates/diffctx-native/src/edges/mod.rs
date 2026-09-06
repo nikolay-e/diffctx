@@ -127,7 +127,18 @@ pub fn collect_capped_edges(
             all_builders.push((cat.name, builder));
         }
     }
+    collect_capped_edges_from(all_builders, fragments, repo_root, deadline)
+}
 
+/// The builder list is a parameter so the merge rules can be exercised with
+/// builders that emit exactly the pair under test; the shipped list goes
+/// through `collect_capped_edges`.
+fn collect_capped_edges_from(
+    all_builders: Vec<(&str, Box<dyn EdgeBuilder>)>,
+    fragments: &[Fragment],
+    repo_root: Option<&Path>,
+    deadline: crate::deadline::Deadline,
+) -> CappedEdges {
     let (node_to_idx, idx_to_node) = intern_fragment_nodes(fragments);
     let category_weights = *crate::config::category_weights::CATEGORY_WEIGHTS;
     let builder_meta: Vec<(EdgeCategory, f64)> = all_builders
@@ -279,9 +290,19 @@ pub fn collect_capped_edges(
                 // package, or a `widget.test.ts` with no import, is related to
                 // its source purely by naming convention — the exact relation
                 // the admission gate reads — and no Semantic channel carries it.
-                let naming = (category == EdgeCategory::Semantic
-                    || category == EdgeCategory::Config
-                    || category == EdgeCategory::TestEdge)
+                //
+                // Classified under THIS emission's builder, not the pair's
+                // canonical category: the weight is this builder's, so the
+                // category the floor is read against must be too. Reading it
+                // against the first builder's let a 0.05 semantic marker plus
+                // a 0.8 similarity emission on the same pair pass as a naming
+                // edge — the similarity weight cleared the floor wearing the
+                // semantic label — and the merge ORs naming across builders,
+                // so the admission gate then read a text-similarity link as a
+                // naming relation.
+                let naming = (builder_category == EdgeCategory::Semantic
+                    || builder_category == EdgeCategory::Config
+                    || builder_category == EdgeCategory::TestEdge)
                     && e.weight > NAMING_WEIGHT_FLOOR;
                 push_bounded_top_k(
                     per_source.entry(e.src).or_default(),
@@ -516,5 +537,95 @@ mod fallback_gate_tests {
             !has("a.c", "c.c"),
             "a tags-only link between two dedicated-covered files is the measured noise class (#131)"
         );
+    }
+}
+
+#[cfg(test)]
+mod naming_merge_tests {
+    use super::*;
+    use rustc_hash::FxHashSet as Set;
+    use std::sync::Arc;
+
+    struct FixedPair {
+        label: &'static str,
+        weight: f64,
+    }
+
+    impl EdgeBuilder for FixedPair {
+        fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {
+            let mut edges = EdgeDict::default();
+            edges.insert(
+                (fragments[0].id.clone(), fragments[1].id.clone()),
+                self.weight,
+            );
+            edges
+        }
+        fn category_label(&self) -> Option<&str> {
+            Some(self.label)
+        }
+    }
+
+    fn frag(path: &str) -> Fragment {
+        Fragment {
+            id: crate::types::FragmentId::new(Arc::from(path), 1, 10),
+            kind: crate::types::FragmentKind::Function,
+            content: Arc::from("x"),
+            identifiers: Set::default(),
+            token_count: 10,
+            symbol_name: None,
+        }
+    }
+
+    fn naming_of(builders: Vec<(&'static str, Box<dyn EdgeBuilder>)>) -> bool {
+        let fragments = vec![frag("proj/a.py"), frag("proj/b.py")];
+        let capped = collect_capped_edges_from(
+            builders,
+            &fragments,
+            None,
+            crate::deadline::Deadline::none(),
+        );
+        assert_eq!(capped.edges.len(), 1, "one merged pair expected");
+        capped.edges[0].naming
+    }
+
+    /// A weak semantic marker and a strong similarity emission on one pair.
+    /// The pair's canonical category is Semantic (first builder), and the
+    /// merge takes the max weight — 0.8 — so reading the floor against the
+    /// canonical category made this a naming edge. Neither emission is one on
+    /// its own terms, so the merge must not be either.
+    #[test]
+    fn a_strong_similarity_emission_does_not_inherit_naming_from_a_weak_semantic_one() {
+        let naming = naming_of(vec![
+            (
+                "semantic",
+                Box::new(FixedPair {
+                    label: "semantic",
+                    weight: 0.05,
+                }),
+            ),
+            (
+                "similarity",
+                Box::new(FixedPair {
+                    label: "similarity",
+                    weight: 0.8,
+                }),
+            ),
+        ]);
+        assert!(
+            !naming,
+            "similarity weight cleared the floor under the semantic label"
+        );
+    }
+
+    #[test]
+    fn a_semantic_emission_above_the_floor_is_a_naming_edge() {
+        let naming = naming_of(vec![(
+            "semantic",
+            Box::new(FixedPair {
+                label: "semantic",
+                weight: 0.5,
+            }),
+        )]);
+        assert!(naming);
     }
 }

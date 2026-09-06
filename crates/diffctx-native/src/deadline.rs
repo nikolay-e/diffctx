@@ -93,8 +93,9 @@ fn check_expired(now: Instant, expires_at: Instant, phase: &str) {
     }
 }
 
-/// The message inside a caught panic payload, when it is one of ours.
-#[cfg(feature = "python")]
+/// The message inside a caught panic payload, when it is one of ours. Both
+/// hosts need it: the Python bridge turns it into `TimeoutError`, the CLI into
+/// exit 124.
 pub fn deadline_panic_message(payload: &(dyn std::any::Any + Send)) -> Option<String> {
     let msg = payload
         .downcast_ref::<String>()

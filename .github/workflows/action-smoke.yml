@@ -133,6 +133,99 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  # Dogfood the *review*, not only the mechanism: the legs above prove the
+  # action runs; this job produces the artifact a reviewer of THIS pull
+  # request is meant to read instead of the raw diff, and pins it to the PR as
+  # one sticky comment. `/qa` reads it (QA.md § Diff-context review), and a
+  # selection that looks wrong on our own PRs is a product finding before any
+  # consumer sees it.
+  pr-review-context:
+    name: Review context for this PR
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Build review context
+        id: diffctx
+        uses: ./
+        with:
+          format: md
+          scoring: ego
+          budget: '8000'
+
+      - name: Upload review context
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: diffctx-review-context
+          path: ${{ steps.diffctx.outputs.context-file }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Summarise and pin to the PR
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CONTEXT_FILE: ${{ steps.diffctx.outputs.context-file }}
+          TOKEN_COUNT: ${{ steps.diffctx.outputs.token-count }}
+          DIFF_RANGE: ${{ steps.diffctx.outputs.diff-range }}
+          EMPTY: ${{ steps.diffctx.outputs.empty }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          marker='<!-- diffctx-review-context -->'
+          # The changed-files block: from its header to the first blank line
+          # after the list starts (the header is followed by one blank line).
+          changed=$(awk '/^\*\*Changed files:\*\*/{f=1;next}
+                         f&&/^$/{if(seen)exit; next}
+                         f{seen=1; print}' "$CONTEXT_FILE")
+          files=$(printf '%s\n' "$changed" | grep -c . || true)
+          frags=$(grep -cE '^## `' "$CONTEXT_FILE" || true)
+          # The first thing dogfooding found: this repo's own .diffctx/ignore
+          # withholds *.yml, so a PR whose main change is a workflow shows up
+          # with that file absent and nothing saying so. Surface the policy
+          # line the artifact carries, so the reviewer knows to open the raw
+          # diff for exactly those.
+          withheld=$(grep -oE '^\*[0-9]+ changed file\(s\) withheld by exclusion policy[^*]*\*' "$CONTEXT_FILE" || true)
+          {
+            echo "$marker"
+            echo "### diffctx review context"
+            echo
+            echo "Range \`${DIFF_RANGE}\` — **${TOKEN_COUNT} tokens** (o200k_base)," \
+                 "${frags} fragments across ${files} changed files. Empty: ${EMPTY}."
+            echo
+            echo "Review this instead of the raw diff: [download the context](${RUN_URL}#artifacts)" \
+                 "(artifact \`diffctx-review-context\`, 14 days)."
+            if [ -n "$withheld" ]; then
+              echo
+              echo "${withheld} — read those in the raw diff."
+            fi
+            echo
+            echo "<details><summary>Changed files as diffctx lists them (omitted = no fragment fit)</summary>"
+            echo
+            printf '%s\n' "$changed" | head -80
+            echo
+            echo "</details>"
+          } > /tmp/comment.md
+          cp /tmp/comment.md "$GITHUB_STEP_SUMMARY"
+
+          # One sticky comment per PR: find ours by marker and edit it, else create.
+          api="repos/${GITHUB_REPOSITORY}/issues"
+          existing=$(gh api "${api}/${PR_NUMBER}/comments" --paginate \
+            --jq "[.[] | select(.body | startswith(\"${marker}\"))] | first | .id // empty")
+          if [ -n "$existing" ]; then
+            gh api -X PATCH "${api}/comments/${existing}" -F body=@/tmp/comment.md >/dev/null
+          else
+            gh api -X POST "${api}/${PR_NUMBER}/comments" -F body=@/tmp/comment.md >/dev/null
+          fi
+
   # `fail-on-empty` gates whether a consumer's build breaks when a diff yields
   # no semantic context. It sits behind an `if [ "$empty" = "true" ] && ...`
   # branch in action.yml that no smoke leg ever entered, so the flag could stop

@@ -33,7 +33,8 @@ inputs:
     description: >-
       Scoring mode (`--scoring`): `ego` = bounded expansion around the changed
       nodes, `ppr` = Personalized PageRank, `bm25` = lexical retrieval,
-      `rrf` = reciprocal-rank fusion of `ego` and `bm25`.
+      `rrf` = reciprocal-rank fusion of `ego` and `bm25`, `pit` = the same
+      fusion on score percentiles.
     required: false
     default: ego
 

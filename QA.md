@@ -142,6 +142,20 @@ dismissing as bot noise.
 
 ## Diff-context review
 
+- **Every pull request in this repo carries its own diffctx review context**
+  (`action-smoke.yml` → `pr-review-context`: the published composite action
+  run on the PR's `base..head` at `--budget 8000`, uploaded as the
+  `diffctx-review-context` artifact and pinned to the PR as one sticky comment
+  marked `<!-- diffctx-review-context -->`). A `/qa` pass that reviews a PR
+  reads THAT artifact first and the raw diff only for what it withheld —
+  that is the dogfood. Two things to judge each time, because they are
+  product findings: whether the selection is what a reviewer of this change
+  would want (a missing caller, a pulled-in irrelevant sibling, an omitted
+  changed file at 8k), and whether the comment's numbers agree with a local
+  run of the same range. The action installs the **released** wheel
+  (`diffctx-version` default), so a PR that changes selection is reviewed by
+  the version before it — compare against a source install when the diff
+  touches the engine.
 - Use the uv-tool binary `~/.local/bin/diffctx` (pipx-equivalent),
   never `.venv/bin/diffctx`. Check its version FIRST (`uv tool list`,
   not `--version` alone): a stale tool silently re-introduces fixed
@@ -189,6 +203,31 @@ dismissing as bot noise.
   Tier-3 table (or the `TIER1_EXTRAS_READ_BUT_NOT_TABLED` allowlist)
   and vice versa.
 
+- **The release gap is a channel of its own.** `main` accumulating security
+  fixes while PyPI serves the previous wheel is a user-facing state no test
+  reports: on 2026-09-03 five `### Security` bullets and the `--budget`
+  contract fix had been unreleased since 1.15.0 (2026-08-19), and the
+  dogfood Action installs that released wheel, so our own PR review ran the
+  vulnerable version. Every pass reads
+  `curl -s https://pypi.org/pypi/diffctx/json | jq -r .info.version` against
+  the `[Unreleased]` changelog block and, when Security bullets sit there,
+  says so in the report. Dispatching the release is the owner's call
+  (memory `no-release-without-asking`); tracking it is not — #261.
+
+- **The fleet carries this repo's own Action; sweep it, don't assume it.**
+  Fifteen sibling repos run `.github/workflows/diffctx.yml` (the consumer
+  shape of `action-smoke.yml`'s `pr-review-context`). On 2026-09-04 the sweep
+  found it had **never produced a context anywhere**: six repos had runs and
+  every one was `skipped` by the bot gate — ~98% of pull requests in this
+  fleet are Dependabot — and nine had no runs at all. Every copy now carries
+  a `workflow_dispatch` trigger, so a pass can exercise it without opening a
+  PR: `gh workflow run diffctx.yml -R nikolay-e/<repo>` and check the run
+  produced a `diffctx-review-context` artifact. Two facts worth keeping: the
+  bot gate is right on cost but its comment used to claim diffctx returns
+  `empty` on a dependency bump, which is false (measured on certamen#134: 4
+  fragments of `package.json`); and the action pins a diffctx **release**
+  SHA, so every repo needs a bump when a release ships (#261).
+
 ## Bug channels (enumerated 2026-08-05)
 
 1. GitHub issues (`gh issue list`) — canonical tracker, takes `Fixes #N`.
@@ -203,7 +242,11 @@ dismissing as bot noise.
    — all three were empty on 2026-08-30; a pass reads them, it does not
    assume them.
 5. SonarCloud project `nikolay-e_TreeMapper` (the key predates the rename):
-   quality gate + open issues + hotspots via the sonarqube MCP tools. Issues
+   quality gate + open issues + hotspots via the sonarqube MCP tools, or —
+   the MCP server does not always connect — the REST API with the Keychain
+   `sonarcloud-token` as HTTP basic user: `api/qualitygates/project_status`,
+   `api/issues/search?projectKeys=…&statuses=OPEN,CONFIRMED`,
+   `api/hotspots/search?projectKey=…&status=TO_REVIEW`. Issues
    raised on the day's own commits count as intake for that pass. The gate
    can read OK while five issues are open — it scores NEW code against
    ratings, so complexity and composite-assertion findings sit under a green
@@ -253,6 +296,35 @@ dismissing as bot noise.
   once deletes 30 real configurations — it happened on 2026-08-30 and was
   reverted the same pass.
 
+- **A Renovate/Dependabot merge on the mirror cancels the in-flight CI of
+  the commit before it.** `ci.yml` has `concurrency: cancel-in-progress` keyed
+  on `github.ref`, so any push to main — a bot's included — cancels whatever
+  main run is still going. A `cancelled` verdict on your own commit therefore
+  means "superseded", not "failed": `gh run rerun <id>` it, or read the next
+  commit's run, which covers the same tree plus the bump.
+- **The first version of a Q-class edge change is measured, never trusted.**
+  `link_by_name`'s rewrite passed lib tests and looked obviously right; the
+  full corpus moved `cargo_001` (suffix matched a sibling crate) and two Swift
+  cases (`import Database` resolves to a directory, which the old fallback
+  reached and the new code did not). Both were invisible below the full
+  2902-case run.
+
+- **Fragment paths are absolute; the `FragmentIndex` is keyed
+  repo-relative.** A builder that derives a path reference from a fragment's
+  own path (`Path::new(f.path()).parent()`) must pass it through
+  `base::index_key_of(path, repo_root)` first, or the reference matches
+  nothing — and a walk that climbs to `/` then degrades to the bare name and
+  matches everything. Two channels shipped dead this way on 2026-09-02 while
+  the corpus stayed green; the builder tests that caught it use absolute
+  paths plus a repo root, which is the only shape that exercises the seam.
+- **Sonar's unreachable-code rule is a real bug detector here, not lint.**
+  `rows.append` under a `continue` made `stratified-analysis` return nothing;
+  no test touched it. A red Sonar gate on your own commits is intake, and the
+  fix ships with a test that fails on the previous code.
+- **A new eval test needs `pytest.importorskip("numpy")`** (or whatever the
+  eval group provides): CI's test job installs no eval group, so an
+  unguarded import fails collection on every Python version.
+
 ## Known false positives
 
 - import-linter local failures are REAL — the old excuse ("fails locally
@@ -271,6 +343,11 @@ dismissing as bot noise.
   local research harnesses; argv exec with regex-validated sha
   (realworld_rerun) and operator-chosen output dir (run_final). Don't
   re-litigate unless the eval workflows become agent-facing.
+- Sonar `python:S2612` on `writer.py` `os.fchmod(fd, 0o666 & ~umask)` —
+  marked false positive via API 2026-09-03: the mode is what `open(..., "w")`
+  would have created; `mkstemp`'s 0600 is the anomaly being corrected. Python
+  NOSONAR takes no `(rule)` argument — `# NOSONAR(python:S2612)` is itself
+  flagged (S7632) and suppresses nothing.
 - SonarCloud `githubactions:S8543` on the publish-extras npm smoke:
   `$VERSION` is an exact just-published version, package has zero
   deps — marked false positive in SonarCloud via API (NOSONAR is NOT

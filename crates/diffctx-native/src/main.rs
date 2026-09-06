@@ -9,12 +9,11 @@ use std::thread;
 use std::time::Duration;
 
 use anyhow::Result;
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use tracing_subscriber::EnvFilter;
 
 use _diffctx::config::limits::{
     DEFAULT_PIPELINE_TIMEOUT_SECONDS, DEFAULT_PPR_ALPHA, DEFAULT_SCORING,
-    DEFAULT_STOPPING_THRESHOLD,
 };
 use _diffctx::mode::ScoringMode;
 use _diffctx::pipeline::build_diff_context;
@@ -27,6 +26,12 @@ const UNLIMITED_BUDGET_TOKENS: u32 = 10_000_000;
 /// Mirrors `_EXIT_EMPTY_DIFF` in src/diffctx/_app.py: a diff that yields no
 /// semantic context is an actionable result, not a success.
 const EXIT_EMPTY_DIFF: i32 = 4;
+
+#[derive(Clone, Copy, ValueEnum)]
+enum OutputFormat {
+    Yaml,
+    Json,
+}
 
 #[derive(Parser)]
 #[command(
@@ -51,12 +56,12 @@ struct Cli {
     budget: Option<i64>,
 
     /// Output format
-    #[arg(short = 'f', long, default_value = "yaml", value_parser = ["yaml", "json"])]
-    format: String,
+    #[arg(short = 'f', long, default_value = "yaml", value_enum)]
+    format: OutputFormat,
 
     /// Git diff range (e.g. HEAD~1..HEAD, main..feature) or a duration window
-    /// ending now (24h, 8d, 90min, 1h30m); bare --diff uses the working tree
-    /// vs HEAD
+    /// ending now (24h, 8d, 90min, 1h30m); omitted or bare --diff uses the
+    /// working tree vs HEAD
     #[arg(long = "diff", num_args = 0..=1, default_missing_value = "HEAD")]
     diff_ref: Option<String>,
 
@@ -64,9 +69,13 @@ struct Cli {
     #[arg(long, default_value_t = DEFAULT_PPR_ALPHA)]
     alpha: f64,
 
-    /// Relevance threshold for full fragment content; lower = more context
-    #[arg(long, default_value_t = DEFAULT_STOPPING_THRESHOLD)]
-    tau: f64,
+    /// Relevance threshold for full fragment content; lower = more context.
+    /// Omitted resolves per scorer: the default for a gated one, the ungated
+    /// operating point for a scorer that builds no graph — which is why this
+    /// carries no clap default, so naming the default value explicitly is a
+    /// request the pipeline can still tell apart from silence.
+    #[arg(long)]
+    tau: Option<f64>,
 
     /// Skip fragment contents (structure only)
     #[arg(long)]
@@ -147,22 +156,32 @@ where
     T: Send + 'static,
 {
     let (tx, rx) = mpsc::channel();
-    thread::spawn(move || {
+    let worker = thread::spawn(move || {
         let _ = tx.send(work());
     });
+    let exit_on_deadline = || -> ! {
+        eprintln!(
+            "diffctx: pipeline exceeded {timeout}s wall-clock deadline; aborting before \
+             OOM/SIGKILL. Narrow the review with an explicit '--diff <from>..<to>' range or \
+             run on a smaller subtree, or raise '--timeout'."
+        );
+        std::process::exit(124);
+    };
     match rx.recv_timeout(Duration::from_secs(timeout)) {
         Ok(result) => result,
-        Err(mpsc::RecvTimeoutError::Timeout) => {
-            eprintln!(
-                "diffctx: pipeline exceeded {timeout}s wall-clock deadline; aborting before \
-                 OOM/SIGKILL. Narrow the review with an explicit '--diff <from>..<to>' range or \
-                 run on a smaller subtree, or raise '--timeout'."
-            );
-            std::process::exit(124);
-        }
-        Err(mpsc::RecvTimeoutError::Disconnected) => {
-            anyhow::bail!("diffctx: pipeline worker terminated unexpectedly");
-        }
+        Err(mpsc::RecvTimeoutError::Timeout) => exit_on_deadline(),
+        // Two clocks watch the same deadline: this receive and the pipeline's
+        // own phase checks, which panic on the worker. When the worker's fires
+        // first the channel closes instead of timing out, and that used to
+        // surface as "terminated unexpectedly" with a generic exit code — the
+        // same overrun, reported two ways depending on which clock won by a
+        // millisecond. A deadline panic is the deadline, whichever side saw it.
+        Err(mpsc::RecvTimeoutError::Disconnected) => match worker.join() {
+            Err(payload) if _diffctx::deadline::deadline_panic_message(&*payload).is_some() => {
+                exit_on_deadline()
+            }
+            _ => anyhow::bail!("diffctx: pipeline worker terminated unexpectedly"),
+        },
     }
 }
 
@@ -206,8 +225,11 @@ fn diff_result_is_empty(output: &DiffContextOutput) -> bool {
 
 fn empty_diff_hint(root: &Path, budget: Option<i64>, diff_ref: &str) -> String {
     match budget {
-        Some(0) => "--budget 0 selects only the changed code itself; omit --budget for auto sizing"
-            .to_string(),
+        Some(0) => {
+            "--budget 0 emits no fragments (changed files are listed as omitted); use --full \
+                    for the changed code, or omit --budget for auto sizing"
+                .to_string()
+        }
         Some(n) if n > 0 => {
             format!(
                 "--budget {n} may be too small to fit any fragment; raise it or omit for auto sizing"
@@ -236,7 +258,7 @@ fn run_locate(
     diff_ref: Option<String>,
     budget: Option<u32>,
     alpha: f64,
-    tau: f64,
+    tau: Option<f64>,
     scoring_mode: ScoringMode,
     timeout: u64,
 ) -> Result<()> {
@@ -262,7 +284,22 @@ fn run_locate(
     emit(cli, &rendered, is_empty)
 }
 
-fn main() -> Result<()> {
+fn main() {
+    if let Err(err) = real_main() {
+        // The Python CLI and README promise exit 3 for git/environment
+        // failures (not a repo, unknown revision, no commits); anyhow's
+        // default is 1, which made the two binaries disagree on the one code
+        // a wrapper script keys on.
+        if err.downcast_ref::<_diffctx::git::GitError>().is_some() {
+            eprintln!("diffctx: {err}");
+            std::process::exit(3);
+        }
+        eprintln!("Error: {err:?}");
+        std::process::exit(1);
+    }
+}
+
+fn real_main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .init();
@@ -279,7 +316,10 @@ fn main() -> Result<()> {
     // the actionable-error contract instead of hanging unbounded.
     let timeout = cli.timeout;
     let path = cli.path.clone();
-    let diff_ref = cli.diff_ref.clone();
+    // No `--diff` at all used to reach git as a bare `git diff` — index vs
+    // worktree, staged edits invisible — while the pipeline's untracked-file
+    // rule read the same `None` as "vs HEAD". One meaning: HEAD.
+    let diff_ref = Some(cli.diff_ref.clone().unwrap_or_else(|| "HEAD".to_string()));
     let budget = resolve_budget(cli.budget);
     let alpha = cli.alpha;
     let tau = cli.tau;
@@ -319,12 +359,9 @@ fn main() -> Result<()> {
         )
     })?;
 
-    let rendered = match cli.format.as_str() {
-        "json" => format!("{}\n", serde_json::to_string_pretty(&output)?),
-        "yaml" => serde_yaml::to_string(&output)?,
-        other => {
-            anyhow::bail!("diffctx: unsupported --format '{other}' (native binary: yaml, json)")
-        }
+    let rendered = match cli.format {
+        OutputFormat::Json => format!("{}\n", serde_json::to_string_pretty(&output)?),
+        OutputFormat::Yaml => serde_yaml::to_string(&output)?,
     };
 
     emit(&cli, &rendered, diff_result_is_empty(&output))

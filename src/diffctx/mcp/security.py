@@ -47,6 +47,12 @@ def _find_repo_root(path: Path) -> Path | None:
 
 def validate_repo_path(repo_path: str) -> Path:
     path = Path(repo_path).resolve()
+    # Allow-list first, filesystem second: SECURITY.md promises that a path
+    # outside the roots is rejected before any filesystem call, and the
+    # is_dir / .git probes below would otherwise tell a refused caller whether
+    # something exists there. The root found afterwards is checked again,
+    # because it can lie above the path that was admitted.
+    _check_allowed(path, repo_path)
     if not path.is_dir():
         raise ValueError(f"Not a directory: {repo_path}")
     repo_root = _find_repo_root(path)
@@ -58,7 +64,7 @@ def validate_repo_path(repo_path: str) -> Path:
 
 def validate_dir_path(dir_path: str) -> Path:
     path = Path(dir_path).resolve()
+    _check_allowed(path, dir_path)
     if not path.is_dir():
         raise ValueError(f"Not a directory: {dir_path}")
-    _check_allowed(path, dir_path)
     return path

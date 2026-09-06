@@ -32,6 +32,7 @@ import numpy as np
 
 # Bucket constants live in cell_metrics — single source of truth so the
 # per-cell aggregator and the cross-cell stratified analysis cannot drift.
+from eval.analysis.aggregate_sweep import cell_checkpoints
 from eval.analysis.cell_metrics import _GOLD_BUCKETS, _RATIO_BUCKETS
 from eval.harness.stats import bh_fdr, bootstrap_ci, holm_correct, paired_bootstrap_delta, wilcoxon_paired
 
@@ -94,23 +95,24 @@ def _row_from_checkpoint_line(line: str, info: dict) -> dict | None:
     return _checkpoint_row_dict(r, ex, info)
 
 
+def _cell_rows(cell: Path) -> list[dict]:
+    info = _load_cell_info(cell)
+    if info is None:
+        return []
+    rows: list[dict] = []
+    for ckpt, budget in cell_checkpoints(cell):
+        cell_info = info if budget is None else {**info, "budget": budget}
+        with ckpt.open() as f:
+            rows.extend(row for row in (_row_from_checkpoint_line(line, cell_info) for line in f) if row is not None)
+    return rows
+
+
 def load_long(cells_dir: Path) -> list[dict]:
     """Walk every cell-* checkpoint and emit one row per (instance, cell)."""
     rows: list[dict] = []
     for cell in sorted(cells_dir.iterdir()):
-        if not cell.is_dir() or not cell.name.startswith("cell-"):
-            continue
-        info = _load_cell_info(cell)
-        if info is None:
-            continue
-        ckpts = list(cell.glob("*.checkpoint.jsonl"))
-        if not ckpts:
-            continue
-        with ckpts[0].open() as f:
-            for line in f:
-                row = _row_from_checkpoint_line(line, info)
-                if row is not None:
-                    rows.append(row)
+        if cell.is_dir() and cell.name.startswith("cell-"):
+            rows.extend(_cell_rows(cell))
     return rows
 
 

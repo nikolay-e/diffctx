@@ -14,7 +14,7 @@ ci-lint:
 	mypy src
 
 ci-rust:
-	cd crates/diffctx-native && DIFFCTX_YAML_CASES_LIMIT="20" cargo test --lib
+	cd crates/diffctx-native && DIFFCTX_YAML_CASES_LIMIT="20" cargo test --lib --features python
 	cd crates/diffctx-native && cargo build --release --examples
 	cd crates/diffctx-native && DIFFCTX_YAML_CASES_LIMIT="20" cargo test --release --test yaml_cases
 	cd crates/diffctx-native && ../../target/release/examples/diffctx-test || true

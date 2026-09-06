@@ -46,7 +46,7 @@ Each instance has: `instance_id`, `repo`, `repo_url`, `base_commit`,
 `patch`, `gold_context` (list of `{path, lines}`), `language`.
 
 Repo cache is persisted at `~/.cache/contextbench_repos` (override via
-`CONTEXTBENCH_REPOS_DIR`).
+`CB_REPOS_DIR`; `contextbench` additionally honours `CONTEXTBENCH_REPOS_SUFFIX`).
 
 ### ContextBench-derived LOO
 
@@ -83,7 +83,7 @@ across instances, multi-seed.
 | `--scoring` | `ego` | `ppr` / `ego` / `bm25` |
 | `--baseline` | `diffctx` | `diffctx` / `patch_files` / `bm25` |
 | `--dataset` | `full` | `full` / `verified` |
-| `--tau` | 0.08 | Selection stopping threshold |
+| `--tau` | engine default | Selection stopping threshold (omit to measure the shipped value) |
 
 **Metrics**: `file_recall`, `file_precision`, `nontrivial_file_recall`,
 `line_recall`, `line_recall_nontrivial`, `elapsed_s`, `fragment_count`.
@@ -202,9 +202,10 @@ cell calls `python -m eval run-final` (multi-budget reuse via
 
 ### `scripts/sensitivity_check.py` — parameter sensitivity
 
-One-at-a-time perturbation of the 14 operational parameters
-(`OPERATIONAL_PARAMS` in the script), factors `[0.50, 0.75, 1.25, 1.50]` →
-57 runs (1 baseline + 14 × 4). Wrapped by `sensitivity_check.sh` and driven
+One-at-a-time perturbation of the operational parameters
+(`OPERATIONAL_PARAMS` in the script — 17 as of 2026-09-06; read the list,
+not this sentence), factors `[0.50, 0.75, 1.25, 1.50]` → 69 runs
+(1 baseline + 17 × 4). Wrapped by `sensitivity_check.sh` and driven
 in CI by `.github/workflows/sensitivity-check.yml`. Output: stdout table
 `param | factor | value | tokens | Δ% | Jaccard`. Runs on a single diff —
 smoke test, not calibration ground truth.
@@ -299,17 +300,16 @@ performs a pre-flight check before submitting any work:
   than `--min-disk-gb` (default 50 GB). SWE-bench `transformers` alone is
   ~4 GB; calibration touches 10-20 distinct repos.
 
-`runner.run_eval_set` exposes three resilience knobs threaded through every
-sweep CLI:
-
-| Flag | Behaviour |
-|---|---|
-| `--timeout-per-instance N` | Records `status="timeout"` for any future that does not return within N seconds. Hung worker threads are abandoned at pool shutdown (Python cannot kill threads safely). |
-| `--resume-from FILE.jsonl` | Skips instance_ids already present in the JSONL checkpoint — restart after a crash continues where it left off. |
-| `--checkpoint FILE.jsonl` | Appends each completed result to the JSONL as it arrives, so a crash mid-sweep loses at most one in-flight result. |
-
-`calibrate` uses one checkpoint per grid cell at `<out>/checkpoints/<label>.jsonl`;
-`run_final_eval` uses one per test set at `<out>/<benchmark>.checkpoint.jsonl`.
+Resilience: every runner records `status="timeout"` for an instance that does
+not return within `--timeout-per-instance`, and hung workers are killed at pool
+shutdown (the pool is pebble processes, not threads). Checkpoints are appended
+per completed instance and resumed automatically from the output directory —
+`run` alone exposes `--resume-from` / `--checkpoint`; `calibrate`,
+`select-final` and `run-final` derive the paths. Layouts: `calibrate` writes
+`<out>/checkpoints/<label>.jsonl`; `run-final` writes
+`<out>/<name>.checkpoint.jsonl` for a single budget and
+`<out>/<name>_budget_sweep[/L<depth>]/b<budget>.checkpoint.jsonl` with
+`--budgets`. `--help` on each subcommand is the flag reference.
 
 ## Canonical platform
 
@@ -342,8 +342,8 @@ Multi-SWE-bench instances without per-source branching in the runner.
 |---|---|
 | `adapters/base.py` | `GoldenFragment`, `BenchmarkInstance`, `EvalResult`, `BenchmarkAdapter` ABC |
 | `adapters/swebench.py` | `SWEBenchLiteAdapter`, `SWEBenchVerifiedAdapter` (princeton-nlp) |
-| `adapters/polybench.py` | `PolyBenchAdapter`, `PolyBench500Adapter`, `PolyBenchVerifiedAdapter` (amazon-science, CST node-level annotations) |
-| `adapters/multi_swebench.py` | `MultiSWEBenchAdapter`, `MultiSWEBenchMiniAdapter`, `MultiSWEBenchFlashAdapter` (ByteDance, Java/TS/JS/Go/Rust/C/C++; language inferred from file extension when missing) |
+| `adapters/polybench.py` | `PolyBenchAdapter`, `PolyBench500Adapter` (amazon-science, CST node-level annotations; `PolyBench500Adapter` targets the separate `SWE-PolyBench_500` repo, not a config of the first) |
+| `adapters/multi_swebench.py` | `MultiSWEBenchAdapter` (ByteDance, `default` config only — Java/TS/JS/Go/Rust/C/C++; language inferred from file extension when missing) |
 | `adapters/contextbench.py` | `ContextBenchAdapter(config="default" \| "contextbench_verified")` with fragment-level annotations |
 | `adapters/contamination.py` | `ContaminationDetector` — cross-benchmark dedup by `(repo, base_commit)` |
 | `adapters/evaluator.py` | `UniversalEvaluator`, `SelectionOutput` — file/fragment/line metrics, per-benchmark aggregation |

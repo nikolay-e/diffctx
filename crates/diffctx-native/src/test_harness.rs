@@ -11,7 +11,7 @@ use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use serde::Serialize;
 
-use _diffctx::config::limits::{DEFAULT_PPR_ALPHA, DEFAULT_STOPPING_THRESHOLD};
+use _diffctx::config::limits::DEFAULT_PPR_ALPHA;
 use _diffctx::memory_pipeline::{MemoryRepo, build_diff_context_in_memory};
 use _diffctx::mode::ScoringMode;
 
@@ -138,23 +138,36 @@ fn run_single_test(case: &TestCase) -> TestResult {
     // Shipped constants, not literals. This harness ran tau=0.05 while every
     // entry point ships 0.12, so it scored an operating point nobody uses —
     // the same defect #175 fixed in the yaml corpus, in a second harness.
+    // tau is `None`, the shipped configuration itself: unspecified, resolved
+    // per scorer by the engine.
     let output = build_diff_context_in_memory(
         &repo,
         Some(budget),
         DEFAULT_PPR_ALPHA,
-        DEFAULT_STOPPING_THRESHOLD,
+        None,
         false,
         ScoringMode::Ego,
     );
 
     let oracle = evaluate_oracle(case, &output);
+    // The same verdict the CI gate uses (score against the case's threshold),
+    // not the stricter all-required-and-no-forbidden predicate this harness
+    // once carried on its own: two definitions of "pass" made the dev loop
+    // disagree with CI on partial-recall cases.
+    let min_score = case.min_score.unwrap_or_else(|| {
+        std::env::var("DIFFCTX_YAML_MIN_SCORE")
+            .ok()
+            .and_then(|v| v.parse::<f64>().ok())
+            .unwrap_or(10.0)
+    });
+    let passed = oracle.score >= min_score;
     let xfail_active = case.xfail.as_ref().map(|x| x.is_active()).unwrap_or(false);
-    let is_xfail = xfail_active && !oracle.passed;
+    let is_xfail = xfail_active && !passed;
     let xfail_category = case.xfail.as_ref().and_then(|x| x.category.clone());
 
     TestResult {
         name: case.name.clone(),
-        passed: oracle.passed,
+        passed,
         xfail: is_xfail,
         xfail_category,
         score: oracle.score,

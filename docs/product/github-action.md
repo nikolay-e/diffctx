@@ -51,9 +51,9 @@ leaves the CLI default in place.
 | `path` | `.` | positional | Directory to analyze, relative to the workspace |
 | `diff-range` | auto | `--diff` | `main..HEAD`, `<base>..<head>`, … |
 | `budget` | auto | `--budget` | Token cap; `-1` unlimited, `0` strict-zero floor |
-| `scoring` | `ego` | `--scoring` | `ego`, `ppr`, `bm25`, `rrf` |
+| `scoring` | `ego` | `--scoring` | `ego`, `ppr`, `bm25`, `rrf`, `pit` |
 | `tau` | CLI default | `--tau` | Relevance threshold for full fragment content |
-| `alpha` | CLI default | `--alpha` | PPR damping; only affects `scoring: ppr` |
+| `alpha` | CLI default | `--alpha` | PPR continuation probability (higher = wider reach); only affects `scoring: ppr` |
 | `full` | `false` | `--full` | Changed files only, every fragment, no related code |
 | `format` | `md` | `--format` | `md`, `yaml`, `json`, `txt` |
 | `output-path` | `$RUNNER_TEMP/diffctx-context.<ext>` | `--output-file` | Where to write |
@@ -90,6 +90,17 @@ one pinned wheel, `diffctx==<diffctx-version>`, from PyPI. The published
 wheels are `abi3` manylinux builds with the Rust extension compiled in, so no
 toolchain and no build step are needed on the runner, and nothing touches the
 repository's own Python environment.
+
+## We use it on our own pull requests
+
+Every PR to this repository runs the action on its own `base..head`
+(`action-smoke.yml` → *Review context for this PR*) and pins the result to
+the PR as one sticky comment: range, token count, fragment and file counts,
+the changed-file list with omissions marked, and a link to the full context
+as a workflow artifact. Reviewers read that instead of the raw diff; a
+selection that reads wrong there is treated as a product defect. Copy the job
+if you want the same on yours — it needs `pull-requests: write` for the
+comment and nothing else.
 
 ## Notes
 

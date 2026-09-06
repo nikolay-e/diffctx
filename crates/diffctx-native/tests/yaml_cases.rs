@@ -447,12 +447,13 @@ fn run_case_with_scoring(
     // `DIFFCTX_PROBE_TAU` is the tau counterpart of `DIFFCTX_PROBE_MODE`: a
     // measurement knob for comparing a candidate stopping threshold on the
     // same corpus, deliberately NOT wired into the baseline file, and only
-    // meaningful with `DIFFCTX_YAML_IGNORE_BASELINE=1`. The default run keeps
-    // measuring the shipped constant (#175).
+    // meaningful with `DIFFCTX_YAML_IGNORE_BASELINE=1`. The default run passes
+    // `None` — the shipped configuration is "unspecified, resolved per
+    // scorer", and naming the constant here would pin the ungated scorers to
+    // the gated operating point instead of the one they ship with (#175).
     let tau = std::env::var("DIFFCTX_PROBE_TAU")
         .ok()
-        .and_then(|s| s.parse::<f64>().ok())
-        .unwrap_or(_diffctx::config::limits::DEFAULT_STOPPING_THRESHOLD);
+        .and_then(|s| s.parse::<f64>().ok());
     let output = build_diff_context(
         repo,
         Some(&diff_range),
@@ -482,6 +483,27 @@ fn run_case_with_scoring(
             )));
         }
         return Ok(());
+    }
+
+    // SCHEMA.md promises that with `auto_garbage: true` the runner verifies the
+    // injected files' markers stay out of the output; until now only the
+    // injection half existed.
+    if case.fixtures.auto_garbage {
+        let leaked: Vec<String> = output
+            .fragments
+            .iter()
+            .filter(|f| {
+                f.path.starts_with("unrelated_dir/")
+                    || f.content.as_deref().is_some_and(|c| c.contains("GARBAGE_"))
+            })
+            .map(|f| f.path.clone())
+            .collect();
+        if !leaked.is_empty() {
+            return Err(Failed::from(format!(
+                "auto_garbage leaked into the output: {}",
+                leaked.join(", ")
+            )));
+        }
     }
 
     let oracle = evaluate_oracle(&case, &output);

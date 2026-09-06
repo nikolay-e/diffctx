@@ -87,6 +87,12 @@ jobs:
           import json, os, re, pathlib
           ver = os.environ["VERSION"]
 
+          p = pathlib.Path("CITATION.cff")
+          s = p.read_text(encoding="utf-8")
+          s, n = re.subn(r'^version:\s*.*$', f'version: {ver}', s, count=1, flags=re.M)
+          assert n == 1, "CITATION.cff has no version line"
+          p.write_text(s, encoding="utf-8")
+
           p = pathlib.Path("src/diffctx/version.py")
           s = p.read_text(encoding="utf-8")
           s, n = re.subn(r'__version__\s*=\s*["\'].*?["\']', f'__version__ = "{ver}"', s, count=1)
@@ -161,7 +167,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/diffctx/version.py pyproject.toml crates/diffctx-native/Cargo.toml Cargo.lock \
-            server.json action.yml .claude-plugin/plugin.json docs/product/github-action.md
+            server.json action.yml .claude-plugin/plugin.json docs/product/github-action.md CITATION.cff
           if ! git diff --staged --quiet; then
             git commit -m "Release version ${VERSION}"
           else
@@ -312,8 +318,14 @@ jobs:
           args: --out dist
 
       - name: Verify sdist contains Rust sources
+        # No `shell: bash` here means no pipefail, and `| head -5` returned 0
+        # whatever grep found — this gate printed OK on an sdist with zero
+        # Rust files. The listing is for the log; the verdict is grep's alone.
+        shell: bash
         run: |
-          tar tzf ./repo/dist/*.tar.gz | grep -E 'crates/diffctx-native/src/.*\.rs$' | head -5
+          listing=$(tar tzf ./repo/dist/*.tar.gz)
+          echo "${listing}" | grep -E 'crates/diffctx-native/src/.*\.rs$' | head -5
+          echo "${listing}" | grep -qE 'crates/diffctx-native/src/.*\.rs$'
           echo "OK: sdist contains Rust sources"
 
       - name: Upload sdist artifact
@@ -711,7 +723,7 @@ jobs:
       # built this" but "what is inside it". Both are needed to respond to a
       # published CVE without guessing.
       - name: Generate SBOM
-        uses: anchore/sbom-action@aa80c8c5bd439a416a62804f2151ab38c671a638  # v0.24.1
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26  # v0.24.2
         with:
           path: ./repo
           format: cyclonedx-json
@@ -730,7 +742,7 @@ jobs:
           subject-path: ./release-assets/*
 
       - name: Create GitHub Release with the standalone binaries
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228  # v3.0.2
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64  # v3.0.3
         with:
           tag_name: ${{ needs.prepare-version.outputs.tag_name }}
           name: Release ${{ needs.prepare-version.outputs.version }}

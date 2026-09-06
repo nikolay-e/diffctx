@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from dataclasses import asdict
 from pathlib import Path
 
@@ -82,6 +83,9 @@ def main() -> int:
     args = p.parse_args()
 
     repo_root = args.repos_dir or default_repos_dir()
+    # The bare-clone cache reads CB_REPOS_DIR per call; without this the flag
+    # relocated only the worktrees and the clones went to the home directory.
+    os.environ["CB_REPOS_DIR"] = str(repo_root)
     report_and_maybe_exit(probe_resources(min_memory_gb=args.min_memory_gb, repos_dir=repo_root, min_disk_gb=args.min_disk_gb))
 
     spec = GridSpec(

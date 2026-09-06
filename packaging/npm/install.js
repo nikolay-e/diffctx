@@ -24,7 +24,9 @@ function selectTarget() {
   if (!selected) {
     throw new Error(
       `diffctx has no prebuilt binary for ${key}. ` +
-        'Install via pip ("pip install diffctx") or cargo ("cargo install diffctx") instead.'
+        'On an Intel Mac, pip has no wheel for it either: run under Rosetta with an arm64 Node, ' +
+        'or build from source with "pip install diffctx --no-binary diffctx" (needs Rust) ' +
+        'or "cargo install diffctx".'
     );
   }
   return selected;

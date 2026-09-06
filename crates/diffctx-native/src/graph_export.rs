@@ -167,11 +167,11 @@ fn collect_sorted_edges(graph: &Graph) -> Vec<(FragmentId, FragmentId, f64, Edge
         let weight = graph.forward_edge_weight(src, dst).unwrap_or(0.0);
         entries.push((src.clone(), dst.clone(), weight, cat));
     });
-    entries.sort_by(|a, b| {
-        let key_a = format!("({}, {})", a.0, a.1);
-        let key_b = format!("({}, {})", b.0, b.1);
-        key_a.cmp(&key_b)
-    });
+    // The order is the TEXT of the pair — line numbers compare as digits, so
+    // `10-` sorts before `9-` — and consumers diff these documents, so it is
+    // frozen. Cached: the comparator used to format both keys afresh on every
+    // comparison, two allocations per step of an n·log n sort.
+    entries.sort_by_cached_key(|e| format!("({}, {})", e.0, e.1));
     entries
 }
 

@@ -55,11 +55,13 @@ def test_fetch_refuses_exactly_what_the_engine_withholds(tmp_path):
     # tree-mode reader, filters it — see the second test.
     assert "GEN_OK" in bodies
 
-    # The invariant itself: refusal == the engine's own answer.
+    # The refused set, against an enumerated expectation rather than against
+    # withheld_paths itself (the fetch calls that function, so comparing the
+    # two could not go red on a policy bug).
     all_paths = sorted({i["path"] for i in loc["items"]} | set(probes))
-    withheld = set(withheld_paths(str(repo.path), all_paths))
     refused = {p for p in all_paths if "Not available" in _section(bodies, p)}
-    assert refused == withheld
+    assert refused == {".netrc", "hidden.py"}
+    assert set(withheld_paths(str(repo.path), all_paths)) == refused
 
 
 def test_server_and_legacy_tool_agree_with_the_engine(tmp_path):

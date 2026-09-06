@@ -104,7 +104,7 @@ below the ~50-per-scalar floor, overfit by construction.
   `LIMITS.peripheral_cap`, etc.): structural prior on file roles
   (entrypoints, tests, generated). **Fixed.**
 
-### Tier 3 — Operational, sensitivity-checked (18 scalars)
+### Tier 3 — Operational, sensitivity-checked
 
 These have meaningful influence on output but are not low-dimensional
 enough nor isolated enough to justify per-corpus calibration. They are

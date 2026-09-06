@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use rayon::prelude::*;
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 use walkdir::WalkDir;
 
 use crate::config::graph_filtering::GRAPH_FILTERING;
@@ -13,11 +13,16 @@ fn is_allowed_file(path: &Path) -> bool {
     get_language_for_file(&path.to_string_lossy()).is_some()
 }
 
-fn is_candidate_file(
-    file_path: &Path,
-    _root_dir: &Path,
-    included_set: &FxHashSet<PathBuf>,
-) -> bool {
+fn is_candidate_file(file_path: &Path, root_dir: &Path, included_set: &FxHashSet<PathBuf>) -> bool {
+    // `is_file()` and `metadata()` both follow symlinks, and every path here is
+    // only LEXICALLY under the root — `git ls-files` reports the link, not its
+    // target. Without this the universe admits `repo/evil -> /etc/shadow`,
+    // discovery reads it with a bare `read_to_string`, and the content is a
+    // context fragment. The boundary is checked once, here, so the readers
+    // downstream stay simple; a link pointing INSIDE the repo still resolves.
+    if crate::paths::resolve_within(root_dir, file_path).is_none() {
+        return false;
+    }
     if !file_path.is_file() {
         return false;
     }
@@ -65,15 +70,37 @@ pub fn collect_candidate_files(root_dir: &Path, included_set: &FxHashSet<PathBuf
         if !entry.file_type().is_file() {
             continue;
         }
-        if fallback.len() >= GRAPH_FILTERING.fallback_max_files {
-            break;
-        }
         let path = entry.into_path();
         if is_candidate_file(&path, root_dir, included_set) {
             fallback.push(path);
         }
+        // Counted AFTER admission: capping raw entries meant a repository
+        // whose first N walked files are ignored (a vendored tree, a build
+        // directory) produced a nearly empty universe while the useful files
+        // sat just past the cut.
+        if fallback.len() >= GRAPH_FILTERING.fallback_max_files {
+            break;
+        }
     }
-    filter_ignored_and_secret(root_dir, fallback)
+    // The walk sees untracked paths, so ancestor-inherited rules must count
+    // (`.venv/x.py` is ignored BY `.venv/`); the attribution variant drops them.
+    filter_ignored_and_secret_walked(root_dir, fallback)
+}
+
+fn filter_ignored_and_secret_walked(root_dir: &Path, files: Vec<PathBuf>) -> Vec<PathBuf> {
+    let rel_paths: Vec<String> = files
+        .iter()
+        .filter_map(|f| crate::pipeline::rel_path_string(root_dir, f))
+        .collect();
+    let ignored: FxHashMap<String, git::IgnoreSource> =
+        git::find_ignored_paths_any(root_dir, &rel_paths)
+            .into_iter()
+            .map(|p| (p, git::IgnoreSource::Gitignore))
+            .collect();
+    files
+        .into_par_iter()
+        .filter(|f| !crate::pipeline::is_withheld(root_dir, f, &ignored))
+        .collect()
 }
 
 /// Discovery's candidate universe otherwise skips straight from a language

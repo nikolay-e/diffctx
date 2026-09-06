@@ -18,7 +18,6 @@ SUBCOMMANDS = {
     "aggregate-sweep": ("analysis.aggregate_sweep", "Aggregate sweep cells"),
     "stratified-analysis": ("analysis.stratified_analysis", "Run stratified statistical analysis"),
     "render-comparison": ("analysis.render_comparison", "Render a method comparison report"),
-    "backfill-checkpoints": ("workflows.backfill_checkpoints", "Backfill legacy sweep checkpoints"),
     "verify-dcbench": ("datasets.dcbench.verify_instances", "Verify local dcbench instances"),
     "generate-dcbench-candidates": ("datasets.dcbench.gen_candidates", "Generate dcbench annotation candidates"),
     "extract-dcbench-commits": ("datasets.dcbench.extract_toanalyze_commits", "Create dcbench instances from commit lists"),

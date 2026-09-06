@@ -44,7 +44,7 @@ pub mod render;
 
 // Orchestration and shared configuration.
 pub mod config;
-pub(crate) mod deadline;
+pub mod deadline;
 pub mod memory_pipeline;
 pub mod mode;
 pub(crate) mod peak_rss;

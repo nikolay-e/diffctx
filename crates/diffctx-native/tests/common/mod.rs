@@ -168,7 +168,6 @@ pub fn matches_selector(fragment: &FragmentEntry, selector: &Selector, accept: &
 }
 
 pub struct OracleResult {
-    pub passed: bool,
     pub score: f64,
     pub recall: f64,
     pub forbidden_rate: f64,
@@ -215,10 +214,8 @@ pub fn evaluate_oracle(case: &TestCase, output: &DiffContextOutput) -> OracleRes
         hit_forbidden.len() as f64 / forbidden_total as f64
     };
     let score = 100.0 * recall * (1.0 - forbidden_rate);
-    let passed = missing_required.is_empty() && hit_forbidden.is_empty();
 
     OracleResult {
-        passed,
         score,
         recall,
         forbidden_rate,

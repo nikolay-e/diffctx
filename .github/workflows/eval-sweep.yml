@@ -250,6 +250,8 @@ jobs:
         --memory-swap 6g
     env:
       CELL_TAG: ${{ matrix.method }}_b${{ matrix.budget }}_${{ matrix.test_set }}
+      # One number for both the run and its assertion below.
+      SMOKE_LIMIT: 5
       CELL_DIR: results/sweep/${{ matrix.method }}_b${{ matrix.budget }}_${{ matrix.test_set }}
       MANIFESTS_DIR: datasets/eval-splits/v1
       INPUT_TIMEOUT: '120'
@@ -378,7 +380,7 @@ jobs:
             --winner /tmp/winner.json \
             --manifests-dir /tmp/manifest_one \
             --workers 1 \
-            --limit 5 \
+            --limit "${SMOKE_LIMIT}" \
             --timeout-per-instance "${INPUT_TIMEOUT}" \
             --min-memory-gb 2 \
             --min-disk-gb 5 \
@@ -407,14 +409,15 @@ jobs:
       # selection is the floor this path exists to defend.
       - name: Assert the smoke cell actually ran
         run: |
-          python - "${CELL_DIR}/cell_summary.json" <<'PY'
+          python - "${CELL_DIR}/cell_summary.json" "${SMOKE_LIMIT}" <<'PY'
           import json, sys
           summary = json.load(open(sys.argv[1]))
+          limit = int(sys.argv[2])
           if "error" in summary:
               sys.exit(f"smoke cell produced no checkpoint: {summary}")
-          ok = summary.get("ok") or summary.get("n_ok") or 0
-          if ok < 5:
-              sys.exit(f"smoke cell resolved {ok}/5 instances: {summary}")
+          ok = int(summary.get("ok") or 0)
+          if ok < limit:
+              sys.exit(f"smoke cell resolved {ok}/{limit} instances: {summary}")
           print(f"smoke cell ok: {summary}")
           PY
 
@@ -810,69 +813,11 @@ jobs:
             echo "No previous attempt artifact — fresh cell"
           fi
 
-      - name: Write checkpoint heartbeat script
-        run: |
-          cat > /tmp/heartbeat.py << 'PYEOF'
-          import os, sys, time, json, pathlib, urllib.request
-          # Single-budget cells write <test_set>.checkpoint.jsonl; multi-budget
-          # cells (#52) write <test_set>_budget_sweep/b<budget>.checkpoint.jsonl.
-          CELL = pathlib.Path("${{ env.CELL_DIR }}")
-          ARTIFACT_NAME = "heartbeat-${{ env.CELL_TAG }}"
-          def _newest_checkpoint():
-              ckpts = sorted(CELL.glob("**/*.checkpoint.jsonl"), key=lambda p: p.stat().st_mtime)
-              return ckpts[-1] if ckpts else None
-          def try_upload():
-              CKPT = _newest_checkpoint()
-              if CKPT is None:
-                  return
-              rt_url = os.environ.get("ACTIONS_RUNTIME_URL", "")
-              rt_tok = os.environ.get("ACTIONS_RUNTIME_TOKEN", "")
-              run_id = os.environ.get("GITHUB_RUN_ID", "")
-              if not (rt_url and rt_tok and run_id):
-                  return
-              payload = json.dumps({"type": "actions_storage", "name": ARTIFACT_NAME}).encode()
-              req = urllib.request.Request(
-                  f"{rt_url}_apis/pipelines/workflows/{run_id}/artifacts?api-version=6.0-preview",
-                  data=payload,
-                  headers={"Authorization": f"Bearer {rt_tok}", "Content-Type": "application/json"},
-                  method="POST",
-              )
-              try:
-                  with urllib.request.urlopen(req, timeout=30) as r:
-                      resp = json.loads(r.read())
-              except Exception as e:
-                  print(f"[heartbeat] create: {e}", file=sys.stderr, flush=True)
-                  return
-              container_url = resp.get("fileContainerResourceUrl", "")
-              if not container_url:
-                  return
-              blob = CKPT.read_bytes()
-              put_req = urllib.request.Request(
-                  f"{container_url}?itemPath={ARTIFACT_NAME}/checkpoint.jsonl",
-                  data=blob,
-                  headers={"Authorization": f"Bearer {rt_tok}", "Content-Type": "application/octet-stream"},
-                  method="PUT",
-              )
-              try:
-                  urllib.request.urlopen(put_req, timeout=120)
-                  print(f"[heartbeat] uploaded {len(blob)} bytes", flush=True)
-              except Exception as e:
-                  print(f"[heartbeat] put: {e}", file=sys.stderr, flush=True)
-          while True:
-              time.sleep(300)
-              try:
-                  try_upload()
-              except Exception as e:
-                  print(f"[heartbeat] loop: {e}", file=sys.stderr, flush=True)
-          PYEOF
-
       - name: Run cell (logged to run.log)
         timeout-minutes: 330
         shell: bash
         run: |
           set -o pipefail
-          python3 /tmp/heartbeat.py >> "${CELL_DIR}/heartbeat.log" 2>&1 &
-          HEARTBEAT_PID=$!
           # Apply EGO graph depth as an env override only when matrix.depth >= 0
           # (the sentinel -1 means "depth doesn't apply to this method"; in that
           # case we leave DIFFCTX_OP_GRAPH_DEPTH unset and the default kicks in).
@@ -893,7 +838,6 @@ jobs:
             --min-memory-gb 32 \
             --min-disk-gb 50 \
             --out "${CELL_DIR}" 2>&1 | tee "${CELL_DIR}/run.log"
-          kill "${HEARTBEAT_PID}" 2>/dev/null || true
         env:
           BASELINE: ${{ steps.cfg.outputs.baseline }}
           # Unauthenticated Hub reads are rate-limited; the first thing that
@@ -1064,15 +1008,19 @@ jobs:
           EOF
           git add -A
           git commit -m "sweep ${SWEEP_ID} (source ${GITHUB_SHA})" || echo "nothing to commit"
+          pushed=0
           for attempt in 1 2 3; do
             echo "Push attempt ${attempt}/3..."
             git pull --rebase origin "${BR}" 2>/dev/null || true
             if git push -u origin "${BR}"; then
+              pushed=1
               break
-            else
-              sleep 10
             fi
+            sleep 10
           done
+          # `sleep` was the loop's last command, so three failed pushes exited 0
+          # and the results branch silently missed the sweep.
+          [ "${pushed}" = 1 ] || { echo "::error::results branch push failed after 3 attempts"; exit 1; }
 
   # ============================================================================
   # 5. Deregister runners and destroy Hetzner server — full mode only

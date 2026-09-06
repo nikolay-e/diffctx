@@ -30,6 +30,11 @@ SNAP_DIR="${BITCHECK_DIR:-${TMPDIR:-/tmp}}/diffctx-bitcheck"
 # first version of this script ran against the live tree and reported 8 moved
 # cells for a change that could not affect them: stashing one file had rewritten
 # a context fragment. Pinning the worktree makes the binary the only variable.
+# Every SHA this script pins is anchored by a pushed tag `bitcheck/<sha>` on
+# both remotes: the 2026-08-29 history rewrite left them reachable from no
+# branch, so a fresh clone could not `worktree add` the fixture at all and a
+# local `git gc` would have collected the objects. `git fetch --tags` restores
+# them; do not delete the tags when pruning.
 FIXTURE_SHA="5e2025ab"
 FIXTURE="$SNAP_DIR/fixture"
 

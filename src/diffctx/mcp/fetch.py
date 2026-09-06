@@ -101,9 +101,15 @@ def _is_duration_window(repo: Path, ref: str) -> bool:
 
 
 def _blob_at(repo: Path, rev: str, rel_path: str) -> str | None:
+    # `rev` is whatever followed `..` in the caller's diff_ref, and when
+    # fragment_ids are given the engine never sees it — so nothing else has
+    # validated it. A rev of `--output=x` would turn a read-only tool into a
+    # file write; `--end-of-options` makes git read it as a revision only.
+    if rev.startswith("-"):
+        return None
     try:
         proc = subprocess.run(
-            ["git", "show", f"{rev}:{rel_path}"],
+            ["git", "show", "--end-of-options", f"{rev}:{rel_path}"],
             cwd=repo,
             capture_output=True,
             timeout=_GIT_TIMEOUT_SECONDS,
@@ -125,11 +131,16 @@ def _worktree_text(repo: Path, rel_path: str) -> str | None:
         return None
 
 
-def _slice(text: str, ref: FragmentRef) -> tuple[str, str]:
+def _slice(text: str, ref: FragmentRef) -> tuple[str, str] | None:
+    """The requested lines and the span served, or None when the id points past
+    the end of the file — a ranking whose line numbers do not fit the body is the
+    revision/ranking divergence this module refuses to paper over."""
     lines = text.splitlines()
     if ref.start_line is None or ref.end_line is None:
         return text, f"1-{len(lines)}"
-    start = min(ref.start_line, len(lines)) if lines else 1
+    if ref.start_line > len(lines):
+        return None
+    start = ref.start_line
     end = min(ref.end_line, len(lines))
     if end < start:
         return "", f"{ref.start_line}-{ref.end_line}"
@@ -204,10 +215,10 @@ def fetch_fragments(repo: Path, diff_ref: str, fragment_ids: list[str], max_file
     # One engine, one answer (#228): the same predicate that kept a path out
     # of the selection keeps it out of a fetch. Pathspec re-derivation here
     # both served `.netrc` and refused files the engine had ranked.
-    contained = [ref.path for _, ref in refs if ref is not None and _is_contained(repo, ref.path)]
-    withheld = withheld_set(repo, contained)
+    contained = {ref.path for _, ref in refs if ref is not None and _is_contained(repo, ref.path)}
+    withheld = withheld_set(repo, sorted(contained))
     for raw, ref in refs:
-        parts.append(_fetch_one(repo, rev, rev_label, raw, ref, withheld, max_file_bytes))
+        parts.append(_fetch_one(repo, rev, rev_label, raw, ref, contained, withheld, max_file_bytes))
     return "\n".join(parts)
 
 
@@ -217,13 +228,14 @@ def _fetch_one(
     rev_label: str,
     raw: str,
     ref: FragmentRef | None,
+    contained: set[str],
     withheld: set[str],
     max_file_bytes: int,
 ) -> str:
     """One section: the fragment's body, or the reason there is none."""
     if ref is None:
         return f"## {raw}\n*Unparseable id — expected `path:start-end`, `path:line`, or `path`.*\n"
-    if not _is_contained(repo, ref.path) or ref.path in withheld:
+    if ref.path not in contained or ref.path in withheld:
         # Deliberately one message for "outside the repo" and "ignored":
         # distinguishing them tells the caller whether a path they cannot
         # read nonetheless exists.
@@ -236,6 +248,9 @@ def _fetch_one(
         return f"## {ref.path}\n*Not found at {rev_label}.*\n"
     if len(text.encode("utf-8", errors="replace")) > max_file_bytes:
         return f"## {ref.path}\n*Skipped: file exceeds {max_file_bytes:,} bytes.*\n"
-    body, span = _slice(text, ref)
+    sliced = _slice(text, ref)
+    if sliced is None:
+        return f"## {ref.path}\n*Not found: {ref.path} has {len(text.splitlines())} lines at {rev_label}; the id starts past the end.*\n"
+    body, span = sliced
     suffix = Path(ref.path).suffix.lstrip(".")
     return f"## {ref.path}:{span}\n```{suffix}\n{body}\n```\n"

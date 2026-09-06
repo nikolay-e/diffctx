@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **A `diff_ref` could turn the read-only MCP fetch into a file write.** With
+  `fragment_ids` set the engine never sees `diff_ref`, and `fetch_fragments`
+  passed whatever followed `..` straight to `git show <rev>:<path>` — so
+  `HEAD..--output=/tmp/x` wrote a file. A rev starting with `-` is refused and
+  `git show` runs with `--end-of-options`.
+- **An explicit file argument bypassed the secret-path floor.** The tree walk
+  applies `is_secret_path` to every entry, but `diffctx id_rsa` and
+  `diffctx '**/*'` fed the expanded paths straight to the reader; the same
+  policy now applies to them, with a one-line notice of how many were
+  withheld.
+- **The MCP allow-list is checked before the filesystem is.** `validate_repo_path`
+  probed `is_dir()` and walked up to `.git` before consulting
+  `DIFFCTX_ALLOWED_PATHS`, so a refused caller learned whether a path existed;
+  the order now matches what SECURITY.md promised.
+- **The scratch git dir for non-repository reads is created exclusively.** Its
+  name was `temp_dir/diffctx-scratch-git-<pid>-<n>`, guessable, and `git init`
+  adopts an existing `.git` — a pre-planted one with its own `excludesFile`
+  decided what the reader called ignored. Created with `create_dir` (0700), a
+  collision moves to the next name.
+- **A `.diffctx/ignore` policy that could not be read failed open.** When
+  `ls-files` or a pattern file read failed, the lookup reported "no patterns
+  declared" and a subsequent `check-ignore` failure landed on the fail-open
+  branch. Discovery failure now fails closed; a bare repository, which cannot
+  carry a policy, is the one exception.
+
 - **An ignored directory's contents were readable through the MCP glob**
   (regression introduced with #228, caught the same day). `withheld_paths`
   reused the engine's *attribution* lookup, which deliberately drops
@@ -45,6 +70,111 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scratch `--git-dir`, so `.diffctx/ignore` binds there too.
 
 ### Fixed
+
+- **The compose `context:` and CI→`package.json` channels revived on
+  2026-09-02 were dead on arrival.** Both built their path reference from the
+  fragment's absolute path, while the fragment index is keyed repo-relative,
+  so nothing matched — and the CI walk, climbing to `/`, degraded to the bare
+  name and linked every `package.json` again. Both resolve in the index's own
+  key space now, the CI walk matches one exact path per level, and each
+  builder has a test with absolute paths and a repo root, the shape
+  production uses. Q-class: one overflow candidate moves on the bitcheck
+  fixture (its workflows run `npm`), nothing in the selection.
+- **A plain directory whose scratch `git init` failed withheld every file**:
+  "no git dir" was read as "policy unreadable" and failed closed. It has no
+  policy to read; gitignore filtering is skipped there, secret-by-name still
+  applies.
+- **A blank line after `selector:` let sibling keys back into the label
+  block**; the indentation bar is taken from the first line carrying a key.
+- **`envelope_tokens` was computed before the lockfile/ignored lists it
+  summarises were set** on the empty-selection path.
+- **`TestSetReport.n` reports instances attempted**, not survivors, so a cell
+  that failed on every instance no longer reads as "ran fine, recall 0".
+- **The dev-loop harness honours `DIFFCTX_YAML_MIN_SCORE`** like the CI gate,
+  and `compare` / `aggregate-seeds` keep their exit code when run as scripts.
+
+- **`stratified-analysis` returned no rows at all**: the 2026-09-01 fix that
+  taught it the multi-budget checkpoint layout left the `rows.append` under a
+  `continue` and the `return` inside the loop, so the first cell's rows were
+  never appended and every later cell was never visited. Sonar's
+  unreachable-code rule caught it; a test now feeds it two cells in both
+  layouts and expects every row back — it fails on the previous code.
+- **The demo names what it left out.** Its output panel showed the selection
+  and nothing else; the real artifact lists omitted changed files and locate
+  mode reports overflow. The toy now prints which fragments did not fit the
+  budget and how many fell below τ, and a direct click on stage 5 renders
+  the selection instead of "0 tokens".
+
+- **Edge builders that linked the wrong thing, or everything.** A compose
+  file's `context: .` stripped to `.` and `path.contains(".")` matched every
+  file with an extension — the compose file linked to the whole universe at
+  naming weight; `.` now means the compose file's own directory and a named
+  context takes the path channel's ambiguity bar. A Service's selector regex
+  kept consuming less-indented sibling keys (`type: ClusterIP`) and made each
+  a required label, so kubectl-ordered Services never matched their workload;
+  label blocks now end where their indentation does. `envFrom:
+  configMapRef/secretRef` — the standard way to inject a whole map — was not
+  a recognised reference. A shared base image linked every workload pairwise
+  at naming weight; the image channel takes the same eight-file bar as every
+  other reference channel and never links a manifest to itself. A CI file
+  mentioning `npm` linked to every `package.json` in the repository; it links
+  to the nearest one above it. A bare-name reference (`config.yaml`,
+  `main.go`) linked to the first fragment of the first same-named file; it
+  links each such file's representative, abstaining above the bar, and a
+  module directory (`import Database`) still resolves as a path. Cargo
+  entry-point edges landed on the last fragment of the target file instead
+  of its representative, and Ansible role siblings were emitted
+  fragment × fragment (22k emissions for two task files) — now one edge per
+  file pair through representatives, capped like directory siblings. All
+  Q-class; corpus 2902/2902, no baseline movement.
+- **The eval harness's multi-budget checkpoints were invisible to
+  `stratified-analysis` and `backfill-checkpoints`**: both globbed only the
+  flat `<set>.checkpoint.jsonl`, so every diffctx cell of a full sweep
+  contributed zero rows. One discovery helper serves all three readers.
+  `--repos-dir` now relocates the bare-clone cache too (it read an
+  import-time constant and sent clones to the home directory while the disk
+  probe measured the flag's volume); `run-final` names its checkpoint after
+  the ablation parameters so cells sharing an `--out` stop resuming each
+  other's rows; `clone_fail`/`error` rows are re-evaluated on resume instead
+  of being checkpointed as verdicts; infrastructure failures are excluded
+  from the headline recall as `apply_gold_patch` always documented; per-depth
+  reports no longer pool under one name; `compare` and `aggregate-seeds`
+  exit non-zero on an unusable input.
+
+- **A filename containing a newline desynchronised the cat-file batch**: the
+  request stream is line-delimited, so one such path became two requests and
+  every later file was served the previous request's leftover body. Paths with
+  control characters go through `git show` on argv instead.
+- **The native binary without `--diff` ran a bare `git diff`** (index vs
+  worktree, staged edits invisible) while the pipeline read the same absence
+  as "vs HEAD"; both now mean HEAD, and git/environment failures exit 3 as the
+  README and the Python CLI already promised (was 1).
+- **`diffctx . | head` exits 141 in tree and pack mode**, as documented; the
+  writer swallowed the broken pipe and the run exited 0.
+- **`-o FILE` no longer downgrades the output to mode 0600** — the temp file
+  takes the mode the umask gives a new file before it replaces the target.
+- **A fragment id past the end of its file is refused**, not silently clamped
+  to the last line.
+- **The discovery walk fallback used the attribution ignore lookup**, so an
+  ignored directory's contents entered the universe when `ls-files` failed.
+- **`--alpha` was documented backwards**: it is PPR's continuation
+  probability, so a higher value sends relevance further from the change.
+  README, CLI help and the Action docs said "tighter".
+- **`--budget 0` was described four incompatible ways**; every surface now
+  says what happens — no fragments, changed files listed as omitted.
+- **Three CI gates could not fail**: the sdist "contains Rust sources" check
+  returned `head`'s exit status, the results-branch push loop exited 0 after
+  three failed pushes, and the radon complexity step returned 0 whatever it
+  found (deleted; the pre-commit xenon hook is the gate). The sensitivity
+  workflow gets pipefail, the Hetzner cleanup no longer cancels itself, the
+  dead v1-artifact heartbeat is gone, and the release bump now patches
+  `CITATION.cff` (the test that asserts it equal to `__version__` would have
+  turned the next release red).
+- **`bitcheck.sh`'s pinned commits are anchored by `bitcheck/<sha>` tags** on
+  both remotes — the history rewrite had left them reachable from nothing.
+- **The corpus harness verifies `auto_garbage`** as SCHEMA.md promised; the
+  injection half existed alone. The pre-commit corpus sample covers every
+  stratum and runs on case edits.
 
 - **`--budget` now covers the whole artifact** (#241). It bounded only the
   fragments: the commit message and the changed/deleted/renamed/lockfile/
@@ -109,6 +239,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The hero comparison names both baselines.** It measured whole changed
+  files pasted (17.6×) while the headline invites comparison with a raw
+  `git diff` — the question three first-visit probes actually asked. The raw
+  diff of the same commit is 169,809 tokens, so that ratio is 3.9×, and the
+  caption says so next to the number.
+
+- **The `tree-sitter` extra is gone** (`full` = charset-normalizer alone):
+  it shipped seventeen grammar wheels nothing in the package imports — parsing
+  lives in the Rust crate. `uv.lock` shrinks by ~370 lines.
+- **The landing page's copy now matches the tool**: five scoring modes, the
+  τ dial at the shipped 0.05, YAML labelled as the shown (not default)
+  format, α attributed to PPR, the toy's numbers reconciled with the hero
+  measurement and its denominator's generated snapshot named, `llms.txt`
+  naming the one tool that exists.
+
 - **The landing page's headline comparison names its source.** It shipped
   `48,210 → 6,930 tokens, 7×` with no provenance on the page and none in the
   repository either; three independent first-visit probes each reached the
@@ -154,7 +299,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--scoring bm25` has no graph to build a gate from and rode the weak stop
   anyway, re-admitting exactly the diffuse tail the gate blocks. A scorer that
   produces no gate — BM25, or `DIFFCTX_FILE_ADMISSION=0` — now uses the
-  pre-gate threshold (0.12) unless `--tau` is given explicitly.
+  pre-gate threshold (0.12) whenever `--tau` is left at its default value
+  (an explicit `--tau 0.05` is indistinguishable from the default and gets the
+  same substitution; any other explicit value is used as given).
 - **A range whose changed-file list is empty still discloses what it
   withheld**: the third early exit in `resolve_change_set` returned zeroed
   lock-file, ignored and policy counts it had already computed.

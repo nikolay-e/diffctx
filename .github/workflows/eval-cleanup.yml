@@ -10,9 +10,13 @@ on:
 permissions:
   actions: read
 
+# One group per triggering sweep run, never cancelling: a workflow_run job
+# always sees the default branch as `github.ref`, so a shared group with
+# cancel-in-progress let sweep B's (instant, failed) cleanup cancel sweep A's
+# cleanup mid-delete — and a CCX63 kept billing with nothing reporting it.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
 
 jobs:
   cleanup:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import math
 import os
 import sys
 from dataclasses import dataclass
@@ -96,9 +97,14 @@ def _validate_alpha(alpha: float) -> None:
         _exit_usage_error(f"--alpha must be between 0 and 1 (exclusive), got {alpha}")
 
 
-def _validate_tau(tau: float) -> None:
-    if tau < 0:
-        _exit_usage_error(f"--tau must be non-negative, got {tau}")
+def _validate_tau(tau: float | None) -> None:
+    # `None` means "unspecified", which the engine resolves per scorer — the
+    # one thing a caller could not previously express, since naming the
+    # default value looked identical to saying nothing.
+    if tau is None:
+        return
+    if not (tau >= 0 and math.isfinite(tau)):
+        _exit_usage_error(f"--tau must be a finite value >= 0, got {tau}")
 
 
 def _resolve_root_dir(directory: str) -> Path:
@@ -150,9 +156,12 @@ def _common_parent(files: list[Path]) -> Path:
 
 
 def _expand_paths(raw_paths: list[str]) -> tuple[list[Path], list[Path]]:
+    from diffctx._diffctx import is_secret_path
+
     dirs: list[Path] = []
     files: list[Path] = []
     seen: set[Path] = set()
+    withheld = 0
     for pattern in raw_paths:
         for m in _resolve_glob_pattern(pattern):
             try:
@@ -162,7 +171,16 @@ def _expand_paths(raw_paths: list[str]) -> tuple[list[Path], list[Path]]:
             if resolved in seen:
                 continue
             seen.add(resolved)
+            # An explicit file or a `**` glob bypassed the tree walk, and with
+            # it the secret-path floor the walk applies to every entry — so
+            # `diffctx id_rsa` printed what `diffctx .` refuses. Same policy,
+            # same unconditional application.
+            if resolved.is_file() and is_secret_path(str(resolved)):
+                withheld += 1
+                continue
             _classify_resolved(resolved, dirs, files)
+    if withheld:
+        print(f"{withheld} path(s) withheld by the secret-path policy", file=sys.stderr)
     return dirs, files
 
 
@@ -268,7 +286,7 @@ class ParsedArgs:
     diff_range: str | None = None
     budget: int | None = None
     alpha: float = _DEFAULT_ALPHA
-    tau: float = _DEFAULT_TAU
+    tau: float | None = None
     scoring: str = _DEFAULT_SCORING
     timeout: int = _DEFAULT_TIMEOUT
     full_diff: bool = False
@@ -378,10 +396,11 @@ Token counting (--budget, and the summary line on stderr):
   OpenAI model. The budget covers the whole artifact, not only the fragments:
   the change summary (commit message, changed/deleted/renamed/lockfile/ignored
   lists) is charged against it first and the selection spends the remainder.
-  A budget smaller than that summary therefore yields the summary alone --
+  A budget smaller than that summary therefore yields the summary alone —
   a changed path is never dropped to fit, because a reader who cannot see what
-  changed is worse off than one who is over budget. There is no --tokenizer flag; o200k_base is pinned so results
-  stay reproducible against the published evaluation.
+  changed is worse off than one who is over budget. There is no --tokenizer
+  flag; o200k_base is pinned so results stay reproducible against the
+  published evaluation.
   --with-raw-diff output is NOT charged to --budget, but IS included in the
   stderr token summary, which always reports the real size of what was written.
 
@@ -417,7 +436,7 @@ def _build_shared_parser() -> argparse.ArgumentParser:
     shared.add_argument(
         "--no-default-ignores",
         action="store_true",
-        help="Disable built-in ignore patterns only; project .gitignore and .diffctx/ignore still apply (see --no-ignores)",
+        help="Tree mode only: disable built-in ignore patterns; project .gitignore and .diffctx/ignore still apply (see --no-ignores)",
     )
     shared.add_argument(
         "-c",
@@ -551,8 +570,9 @@ def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> arg
         default=_UNSET,
         metavar="FLOAT",
         help=(
-            "PPR damping: how tightly context clusters around changes, 0-1 exclusive "
-            f"(default: {_DEFAULT_ALPHA:.2f}, higher = more focused). Only affects --scoring ppr"
+            "PPR continuation probability, 0-1 exclusive "
+            f"(default: {_DEFAULT_ALPHA:.2f}; higher = mass travels further from the change, "
+            "lower = tighter around it). Only affects --scoring ppr"
         ),
     )
     diff_group.add_argument(
@@ -717,10 +737,10 @@ def _resolve_max_file_bytes(args: argparse.Namespace) -> int | None:
     return _validate_max_file_bytes(value, args.no_file_size_limit)
 
 
-def _resolve_diff_params(args: argparse.Namespace) -> tuple[str | None, int | None, float, float, str, int, str]:
+def _resolve_diff_params(args: argparse.Namespace) -> tuple[str | None, int | None, float, float | None, str, int, str]:
     budget = None if args.budget is _UNSET else args.budget
     alpha = _DEFAULT_ALPHA if args.alpha is _UNSET else args.alpha
-    tau = _DEFAULT_TAU if args.tau is _UNSET else args.tau
+    tau = None if args.tau is _UNSET else args.tau
     scoring = _DEFAULT_SCORING if args.scoring is _UNSET else args.scoring
     timeout = _DEFAULT_TIMEOUT if args.timeout is _UNSET else args.timeout
     mode = "pack" if args.mode is _UNSET else args.mode
