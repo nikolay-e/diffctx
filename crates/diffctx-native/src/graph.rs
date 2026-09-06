@@ -23,6 +23,19 @@ pub enum EdgeCategory {
 }
 
 impl EdgeCategory {
+    // `from_str` deliberately falls back to Generic: `edges/mod.rs` feeds it
+    // builder-supplied category labels where an unknown one is a builder
+    // without a declared category, not a caller error. A user-supplied string
+    // is the opposite case, so the Python boundary uses `try_from_str` and
+    // reports the typo instead of silently answering a different question.
+    pub fn try_from_str(s: &str) -> Option<Self> {
+        let parsed = Self::from_str(s);
+        if matches!(parsed, Self::Generic) && s != "generic" {
+            return None;
+        }
+        Some(parsed)
+    }
+
     pub fn from_str(s: &str) -> Self {
         match s {
             "semantic" => Self::Semantic,

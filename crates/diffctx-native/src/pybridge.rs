@@ -497,12 +497,24 @@ pub struct PyModuleMetrics {
     pub fan_out: u32,
 }
 
-fn parse_edge_categories(types: Option<Vec<String>>) -> Option<RsFxHashSet<EdgeCategory>> {
-    types.map(|v| v.iter().map(|s| EdgeCategory::from_str(s)).collect())
+fn parse_edge_categories(
+    types: Option<Vec<String>>,
+) -> PyResult<Option<RsFxHashSet<EdgeCategory>>> {
+    let Some(v) = types else { return Ok(None) };
+    let mut out = RsFxHashSet::default();
+    for s in &v {
+        let cat = EdgeCategory::try_from_str(s).ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err(format!("unknown edge category: {s:?}"))
+        })?;
+        out.insert(cat);
+    }
+    Ok(Some(out))
 }
 
-fn parse_quotient_level(level: &str) -> analytics::QuotientLevel {
-    analytics::QuotientLevel::from_str(level)
+fn parse_quotient_level(level: &str) -> PyResult<analytics::QuotientLevel> {
+    analytics::QuotientLevel::try_from_str(level).ok_or_else(|| {
+        pyo3::exceptions::PyValueError::new_err(format!("unknown quotient level: {level:?}"))
+    })
 }
 
 #[pyfunction]
@@ -535,7 +547,7 @@ fn hotspots<'py>(
     top: usize,
     edge_types: Option<Vec<String>>,
 ) -> PyResult<Vec<(String, f64, Bound<'py, PyDict>)>> {
-    let cats = parse_edge_categories(edge_types);
+    let cats = parse_edge_categories(edge_types)?;
     let root = pg.inner.root_dir.to_str();
     let entries = analytics::hotspots(
         &pg.inner.graph,
@@ -559,11 +571,11 @@ fn coupling_metrics(
     pg: &PyProjectGraph,
     level: &str,
     edge_types: Option<Vec<String>>,
-) -> Vec<PyModuleMetrics> {
-    let level = parse_quotient_level(level);
-    let cats = parse_edge_categories(edge_types);
+) -> PyResult<Vec<PyModuleMetrics>> {
+    let level = parse_quotient_level(level)?;
+    let cats = parse_edge_categories(edge_types)?;
     let root = pg.inner.root_dir.to_str();
-    analytics::coupling_metrics(
+    let out = analytics::coupling_metrics(
         &pg.inner.graph,
         &pg.inner.fragments,
         level,
@@ -579,16 +591,17 @@ fn coupling_metrics(
         fan_in: m.fan_in,
         fan_out: m.fan_out,
     })
-    .collect()
+    .collect();
+    Ok(out)
 }
 
 #[pyfunction]
 #[pyo3(signature = (pg, level="directory"))]
-fn quotient_graph(pg: &PyProjectGraph, level: &str) -> PyQuotientGraph {
-    let level = parse_quotient_level(level);
+fn quotient_graph(pg: &PyProjectGraph, level: &str) -> PyResult<PyQuotientGraph> {
+    let level = parse_quotient_level(level)?;
     let root = pg.inner.root_dir.to_str();
-    let qg = analytics::quotient_graph(&pg.inner.graph, &pg.inner.fragments, level, root);
-    PyQuotientGraph { inner: qg }
+    let qg = analytics::quotient_graph(&pg.inner.graph, &pg.inner.fragments, level, root, None);
+    Ok(PyQuotientGraph { inner: qg })
 }
 
 #[pyfunction]

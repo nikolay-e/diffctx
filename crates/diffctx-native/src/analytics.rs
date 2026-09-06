@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::sync::Arc;
 
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -14,11 +15,15 @@ pub enum QuotientLevel {
 }
 
 impl QuotientLevel {
-    pub fn from_str(s: &str) -> Self {
+    // The only caller is the Python bridge, and its argument comes from a
+    // user. A `_ => Directory` fallback turned `level="modules"` into a valid
+    // query for something else and returned it without a word.
+    pub fn try_from_str(s: &str) -> Option<Self> {
         match s {
-            "fragment" => Self::Fragment,
-            "file" => Self::File,
-            _ => Self::Directory,
+            "fragment" => Some(Self::Fragment),
+            "file" => Some(Self::File),
+            "directory" => Some(Self::Directory),
+            _ => None,
         }
     }
 }
@@ -72,27 +77,38 @@ pub struct HotspotEntry {
     pub out_degree: u32,
 }
 
-fn relative_path<'a>(path: &'a str, root: Option<&str>) -> &'a str {
-    let root = match root {
-        Some(r) if !r.is_empty() => r,
-        _ => return path,
+// Fragment ids are built from `file_path.to_string_lossy()`, so on Windows
+// they carry `\` separators. These three used to be hand-rolled string
+// operations over `/` alone: `strip_prefix(root)` then left a leading `\`,
+// `parent` found no separator and returned "", and every file collapsed into
+// the single "." directory group. Path-aware splitting plus one
+// `to_posix_display` at the boundary keeps the emitted keys POSIX-shaped on
+// every platform, which is what `graph_export.rs` already did — the two
+// spellings of `relative_path` disagreeing is what made this reachable.
+fn relative_path(path: &str, root: Option<&str>) -> String {
+    let Some(root) = root.filter(|r| !r.is_empty()) else {
+        return crate::paths::to_posix_display(std::borrow::Cow::Borrowed(path));
     };
-    if let Some(stripped) = path.strip_prefix(root) {
-        stripped.strip_prefix('/').unwrap_or(stripped)
-    } else {
-        path
+    let p = Path::new(path);
+    match p.strip_prefix(Path::new(root)) {
+        Ok(rel) => crate::paths::to_posix_display(rel.to_string_lossy()),
+        Err(_) => crate::paths::to_posix_display(std::borrow::Cow::Borrowed(path)),
     }
 }
 
 fn basename(s: &str) -> &str {
-    s.rsplit('/').next().unwrap_or(s)
+    Path::new(s)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(s)
 }
 
 fn parent(s: &str) -> &str {
-    match s.rfind('/') {
-        Some(i) => &s[..i],
-        None => "",
-    }
+    Path::new(s)
+        .parent()
+        .and_then(|p| p.to_str())
+        .filter(|p| !p.is_empty())
+        .unwrap_or("")
 }
 
 fn group_key(fid: &FragmentId, level: QuotientLevel, root: Option<&str>) -> Arc<str> {
@@ -103,7 +119,7 @@ fn group_key(fid: &FragmentId, level: QuotientLevel, root: Option<&str>) -> Arc<
         }
         QuotientLevel::File => Arc::from(rel),
         QuotientLevel::Directory => {
-            let p = parent(rel);
+            let p = parent(&rel);
             if p.is_empty() {
                 Arc::from(".")
             } else {
@@ -153,11 +169,19 @@ fn iter_forward_edges<F: FnMut(&FragmentId, &FragmentId, f64)>(graph: &Graph, mu
     }
 }
 
+// `edge_types` filters the FRAGMENT edges, before they are aggregated into
+// quotient edges. Filtering afterwards was wrong in two ways that no caller
+// could see: `QuotientEdge::weight` is one sum over every category, so
+// admitting an edge because one of its categories matched contributed the
+// whole sum (semantic=1 + history=9 reported coupling 10 under
+// `edge_types=["semantic"]`), and `self_weight` was never filtered at all,
+// so cohesion always mixed every category regardless of the argument.
 pub fn quotient_graph(
     graph: &Graph,
     fragments: &[Fragment],
     level: QuotientLevel,
     root: Option<&str>,
+    edge_types: Option<&FxHashSet<EdgeCategory>>,
 ) -> QuotientGraph {
     let mut qg = QuotientGraph::new();
 
@@ -190,6 +214,12 @@ pub fn quotient_graph(
             .edge_category(src, dst)
             .unwrap_or(EdgeCategory::Generic);
 
+        if let Some(filter) = edge_types
+            && !filter.contains(&cat)
+        {
+            return;
+        }
+
         if src_key == dst_key {
             if let Some(node) = qg.nodes.get_mut(&src_key) {
                 node.self_weight += weight;
@@ -210,13 +240,6 @@ pub fn quotient_graph(
     qg
 }
 
-fn edge_matches_filter(edge: &QuotientEdge, filter: Option<&FxHashSet<EdgeCategory>>) -> bool {
-    match filter {
-        None => true,
-        Some(f) => edge.categories.keys().any(|c| f.contains(c)),
-    }
-}
-
 pub fn coupling_metrics(
     graph: &Graph,
     fragments: &[Fragment],
@@ -224,7 +247,7 @@ pub fn coupling_metrics(
     root: Option<&str>,
     edge_types: Option<&FxHashSet<EdgeCategory>>,
 ) -> Vec<ModuleMetrics> {
-    let qg = quotient_graph(graph, fragments, level, root);
+    let qg = quotient_graph(graph, fragments, level, root, edge_types);
 
     let mut out_weight: FxHashMap<Arc<str>, f64> = FxHashMap::default();
     let mut in_weight: FxHashMap<Arc<str>, f64> = FxHashMap::default();
@@ -232,9 +255,6 @@ pub fn coupling_metrics(
     let mut fan_out_set: FxHashMap<Arc<str>, FxHashSet<Arc<str>>> = FxHashMap::default();
 
     for ((src, dst), edge) in &qg.edges {
-        if !edge_matches_filter(edge, edge_types) {
-            continue;
-        }
         *out_weight.entry(src.clone()).or_insert(0.0) += edge.weight;
         *in_weight.entry(dst.clone()).or_insert(0.0) += edge.weight;
         fan_out_set
@@ -294,18 +314,36 @@ pub fn hotspots(
         *file_frag_count.entry(rel).or_insert(0) += 1;
     }
 
-    let mut out_deg: FxHashMap<Arc<str>, u32> = FxHashMap::default();
-    graph.for_each_categorized_edge(|src, _dst, cat| {
+    // Fan-out is counted over distinct DESTINATION FILES, not over fragment
+    // edges. Counting edges made a finely fragmented file look hotter than a
+    // coarse one with the same real fan-out — the score then ranked the
+    // fragmenter's output rather than the code's coupling.
+    let mut out_targets: FxHashMap<Arc<str>, FxHashSet<Arc<str>>> = FxHashMap::default();
+    graph.for_each_categorized_edge(|src, dst, cat| {
         if let Some(filter) = edge_types
             && !filter.contains(&cat)
         {
             return;
         }
-        let rel: Arc<str> = Arc::from(relative_path(src.path.as_ref(), root));
-        *out_deg.entry(rel).or_insert(0) += 1;
+        let src_rel: Arc<str> = Arc::from(relative_path(src.path.as_ref(), root));
+        let dst_rel: Arc<str> = Arc::from(relative_path(dst.path.as_ref(), root));
+        if src_rel == dst_rel {
+            return;
+        }
+        out_targets.entry(src_rel).or_default().insert(dst_rel);
     });
 
-    let max_deg = out_deg.values().copied().max().unwrap_or(0).max(1);
+    let out_deg: FxHashMap<Arc<str>, u32> = out_targets
+        .into_iter()
+        .map(|(k, v)| (k, v.len() as u32))
+        .collect();
+
+    // With no edges every file scores 0, the tie breaks alphabetically, and
+    // the first `top` files came back indistinguishable from a real ranking.
+    // No signal is an empty answer, not an arbitrary one.
+    let Some(max_deg) = out_deg.values().copied().max().filter(|m| *m > 0) else {
+        return Vec::new();
+    };
 
     let mut scored: Vec<HotspotEntry> = file_frag_count
         .into_keys()
@@ -446,8 +484,15 @@ fn round3(v: f64) -> f64 {
     (v * 1000.0).round() / 1000.0
 }
 
+// The `is_finite` guard is not decoration: without it a NaN score became
+// NaN * 10000 rounded, and this module and `graph_export.rs` returned
+// different values for the same input.
 fn round4(v: f64) -> f64 {
-    (v * 10000.0).round() / 10000.0
+    if v.is_finite() {
+        (v * 10000.0).round() / 10000.0
+    } else {
+        v
+    }
 }
 
 #[cfg(test)]
@@ -558,7 +603,7 @@ mod tests {
             ),
         ];
         let g = build(&edges, &frags);
-        let qg = quotient_graph(&g, &frags, QuotientLevel::Directory, None);
+        let qg = quotient_graph(&g, &frags, QuotientLevel::Directory, None, None);
         assert_eq!(qg.nodes.len(), 2);
         let dir_a: Arc<str> = Arc::from("dirA");
         let dir_b: Arc<str> = Arc::from("dirB");
@@ -582,7 +627,7 @@ mod tests {
             EdgeCategory::Structural,
         )];
         let g = build(&edges, &frags);
-        let qg = quotient_graph(&g, &frags, QuotientLevel::Directory, None);
+        let qg = quotient_graph(&g, &frags, QuotientLevel::Directory, None, None);
         let mermaid = to_mermaid(&qg, 20);
         assert!(mermaid.starts_with("graph LR"));
         assert!(mermaid.contains("dirA"));
@@ -600,7 +645,7 @@ mod tests {
 
         let frags = vec![frag("src/say\"hi\"[x].rs", 1, 10, 7)];
         let g = build(&[], &frags);
-        let qg = quotient_graph(&g, &frags, QuotientLevel::File, None);
+        let qg = quotient_graph(&g, &frags, QuotientLevel::File, None, None);
         let mermaid = to_mermaid(&qg, 20);
 
         let node_line = mermaid
@@ -621,5 +666,146 @@ mod tests {
     fn mermaid_empty_graph() {
         let qg = QuotientGraph::new();
         assert_eq!(to_mermaid(&qg, 20), "graph LR\n");
+    }
+
+    #[test]
+    fn coupling_filter_excludes_the_weight_of_filtered_categories() {
+        let frags = vec![frag("a/x.rs", 1, 5, 10), frag("b/y.rs", 1, 5, 10)];
+        let edges = vec![
+            (
+                frags[0].id.clone(),
+                frags[1].id.clone(),
+                1.0,
+                EdgeCategory::Semantic,
+            ),
+            (
+                frags[1].id.clone(),
+                frags[0].id.clone(),
+                9.0,
+                EdgeCategory::History,
+            ),
+        ];
+        let g = build(&edges, &frags);
+
+        let mut only_semantic = FxHashSet::default();
+        only_semantic.insert(EdgeCategory::Semantic);
+        let filtered = coupling_metrics(
+            &g,
+            &frags,
+            QuotientLevel::Directory,
+            None,
+            Some(&only_semantic),
+        );
+        let unfiltered = coupling_metrics(&g, &frags, QuotientLevel::Directory, None, None);
+
+        // The history edge carries 9 of the 10 units of weight between these
+        // two modules. Filtering to `semantic` must not report it.
+        let fan_out_filtered: u32 = filtered.iter().map(|m| m.fan_out).sum();
+        let fan_out_unfiltered: u32 = unfiltered.iter().map(|m| m.fan_out).sum();
+        assert_eq!(fan_out_unfiltered, 2);
+        assert_eq!(fan_out_filtered, 1);
+    }
+
+    #[test]
+    fn cohesion_ignores_intra_module_edges_of_filtered_categories() {
+        let frags = vec![frag("a/x.rs", 1, 5, 10), frag("a/y.rs", 1, 5, 10)];
+        let edges = vec![(
+            frags[0].id.clone(),
+            frags[1].id.clone(),
+            5.0,
+            EdgeCategory::History,
+        )];
+        let g = build(&edges, &frags);
+
+        let mut only_semantic = FxHashSet::default();
+        only_semantic.insert(EdgeCategory::Semantic);
+        let filtered = coupling_metrics(
+            &g,
+            &frags,
+            QuotientLevel::Directory,
+            None,
+            Some(&only_semantic),
+        );
+        // self_weight used to accumulate regardless of the filter, so a module
+        // whose only edge was excluded still reported perfect cohesion.
+        assert!(filtered.iter().all(|m| m.cohesion == 0.0));
+    }
+
+    #[test]
+    fn hotspots_on_a_graph_with_no_edges_is_empty_not_alphabetical() {
+        let frags = vec![
+            frag("a.rs", 1, 5, 10),
+            frag("b.rs", 1, 5, 10),
+            frag("c.rs", 1, 5, 10),
+        ];
+        let g = build(&[], &frags);
+        assert!(hotspots(&g, &frags, 10, None, None).is_empty());
+    }
+
+    #[test]
+    fn hotspot_fan_out_counts_files_not_fragment_edges() {
+        // `many.rs` is split into two fragments that both point at the same
+        // file; `one.rs` points at two distinct files. Counting fragment edges
+        // tied them; counting destination files ranks `one.rs` higher.
+        let frags = vec![
+            frag("many.rs", 1, 5, 10),
+            frag("many.rs", 6, 10, 10),
+            frag("one.rs", 1, 5, 10),
+            frag("t1.rs", 1, 5, 10),
+            frag("t2.rs", 1, 5, 10),
+        ];
+        let edges = vec![
+            (
+                frags[0].id.clone(),
+                frags[3].id.clone(),
+                1.0,
+                EdgeCategory::Semantic,
+            ),
+            (
+                frags[1].id.clone(),
+                frags[3].id.clone(),
+                1.0,
+                EdgeCategory::Semantic,
+            ),
+            (
+                frags[2].id.clone(),
+                frags[3].id.clone(),
+                1.0,
+                EdgeCategory::Semantic,
+            ),
+            (
+                frags[2].id.clone(),
+                frags[4].id.clone(),
+                1.0,
+                EdgeCategory::Semantic,
+            ),
+        ];
+        let g = build(&edges, &frags);
+        let out = hotspots(&g, &frags, 10, None, None);
+        let by_path: FxHashMap<&str, u32> = out
+            .iter()
+            .map(|e| (e.path.as_ref(), e.out_degree))
+            .collect();
+        assert_eq!(by_path["many.rs"], 1);
+        assert_eq!(by_path["one.rs"], 2);
+        assert_eq!(out[0].path.as_ref(), "one.rs");
+    }
+
+    #[test]
+    fn unknown_level_and_category_strings_are_rejected() {
+        assert!(QuotientLevel::try_from_str("modules").is_none());
+        assert_eq!(
+            QuotientLevel::try_from_str("directory"),
+            Some(QuotientLevel::Directory)
+        );
+        assert!(EdgeCategory::try_from_str("semantics").is_none());
+        assert_eq!(
+            EdgeCategory::try_from_str("semantic"),
+            Some(EdgeCategory::Semantic)
+        );
+        assert_eq!(
+            EdgeCategory::try_from_str("generic"),
+            Some(EdgeCategory::Generic)
+        );
     }
 }

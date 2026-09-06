@@ -325,7 +325,7 @@ repos:
         entry: |
           bash -c '
           cd crates/diffctx-native &&
-          cargo test --lib &&
+          cargo test --lib --features python &&
           cargo test --test native_cli &&
           DIFFCTX_YAML_CASES_LIMIT=48 cargo test --release --test yaml_cases'
         pass_filenames: false

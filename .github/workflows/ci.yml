@@ -234,7 +234,12 @@ jobs:
       - name: Build and test
         working-directory: crates/diffctx-native
         run: |
-          cargo test --lib
+          # --features python or analytics/, graph_export/ and project_graph/
+          # are not compiled at all: they are cfg-gated on that feature, ship
+          # inside the wheel, and their 19 inline tests ran in no job until
+          # 2026-09-06 — `cargo test --lib` reported a confident green over a
+          # library that did not contain them.
+          cargo test --lib --features python
           cargo test --test native_cli
           cargo build --release --examples
           # --release, the profile the wheel ships: it unwinds, so the corpus
