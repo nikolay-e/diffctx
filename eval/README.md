@@ -202,9 +202,10 @@ cell calls `python -m eval run-final` (multi-budget reuse via
 
 ### `scripts/sensitivity_check.py` — parameter sensitivity
 
-One-at-a-time perturbation of the 14 operational parameters
-(`OPERATIONAL_PARAMS` in the script), factors `[0.50, 0.75, 1.25, 1.50]` →
-57 runs (1 baseline + 14 × 4). Wrapped by `sensitivity_check.sh` and driven
+One-at-a-time perturbation of the operational parameters
+(`OPERATIONAL_PARAMS` in the script — 17 as of 2026-09-06; read the list,
+not this sentence), factors `[0.50, 0.75, 1.25, 1.50]` → 69 runs
+(1 baseline + 17 × 4). Wrapped by `sensitivity_check.sh` and driven
 in CI by `.github/workflows/sensitivity-check.yml`. Output: stdout table
 `param | factor | value | tokens | Δ% | Jaccard`. Runs on a single diff —
 smoke test, not calibration ground truth.
@@ -341,8 +342,8 @@ Multi-SWE-bench instances without per-source branching in the runner.
 |---|---|
 | `adapters/base.py` | `GoldenFragment`, `BenchmarkInstance`, `EvalResult`, `BenchmarkAdapter` ABC |
 | `adapters/swebench.py` | `SWEBenchLiteAdapter`, `SWEBenchVerifiedAdapter` (princeton-nlp) |
-| `adapters/polybench.py` | `PolyBenchAdapter`, `PolyBench500Adapter`, `PolyBenchVerifiedAdapter` (amazon-science, CST node-level annotations) |
-| `adapters/multi_swebench.py` | `MultiSWEBenchAdapter`, `MultiSWEBenchMiniAdapter`, `MultiSWEBenchFlashAdapter` (ByteDance, Java/TS/JS/Go/Rust/C/C++; language inferred from file extension when missing) |
+| `adapters/polybench.py` | `PolyBenchAdapter`, `PolyBench500Adapter` (amazon-science, CST node-level annotations; `PolyBench500Adapter` targets the separate `SWE-PolyBench_500` repo, not a config of the first) |
+| `adapters/multi_swebench.py` | `MultiSWEBenchAdapter` (ByteDance, `default` config only — Java/TS/JS/Go/Rust/C/C++; language inferred from file extension when missing) |
 | `adapters/contextbench.py` | `ContextBenchAdapter(config="default" \| "contextbench_verified")` with fragment-level annotations |
 | `adapters/contamination.py` | `ContaminationDetector` — cross-benchmark dedup by `(repo, base_commit)` |
 | `adapters/evaluator.py` | `UniversalEvaluator`, `SelectionOutput` — file/fragment/line metrics, per-benchmark aggregation |

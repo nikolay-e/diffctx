@@ -10,11 +10,6 @@ items are removed rather than logged — history lives in git.
   edition 2024 / `rust-version 1.85`, `LazyLock` is stable since 1.80,
   all uses are `sync::Lazy`. Gate: clean `cargo build --all-features`
   plus an E-class equivalence double-run. Net: −1 dependency.
-- **Vestigial `tree-sitter` Python extra (17 wheels)** — parsing is
-  fully in the Rust crates; `rg 'import tree_sitter' src tests eval
-  scripts` → 0. Gate: confirm no downstream consumer installs
-  `diffctx[tree-sitter]`/`[full]` for a Python code path, then drop the
-  group and its `full`/`dev` self-references.
 - **`black` → `ruff format`** — both pinned to line-length 130; ruff
   already owns import sorting. Pure consolidation. Gate:
   `ruff format --check` diff-clean against current black output.
@@ -27,10 +22,6 @@ items are removed rather than logged — history lives in git.
   `test_coverage_gaps.py`) — ~20 copy-paste methods → one
   `@pytest.mark.parametrize`. Gate: the three files stay green.
   Net: ~−290 LOC, zero coverage loss.
-- **`eval/workflows/backfill_checkpoints.py`** — one-off migration for
-  pre-field-stamping checkpoints; zero references. Gate: confirm the
-  evaluator stamps every field `cell_metrics.py` reads (checkable any
-  time — the paper-v2 sweep is frozen), then delete. Net: −142 LOC.
 - **`serde_yaml 0.9` is archived** — used in 3 files. Gate: test-suite
   parity on a maintained fork (`serde_norway`/`serde_yml`), or
   consciously pin-and-accept.

@@ -2,21 +2,16 @@
 useDefault = true
 
 [allowlist]
+# Paths, not fingerprints, and a directory rather than a file list. Both
+# earlier forms rotted: a corpus reorganisation moved every case under
+# algorithm/ infrastructure/ languages/, which left 13 of 16 path regexes and
+# all 18 .gitleaksignore fingerprints matching nothing — the hook kept passing
+# only because pre-commit scans changed files, so touching one fixture would
+# have gone red with no working suppression. tests/cases/diff holds generated
+# corpus cases whose "secrets" are synthetic by construction; detect-secrets
+# scans the same tree with no exclusion and carries the real net.
 paths = [
     '''datasets/dcbench/v1/instances/''',
     '''\.secrets\.baseline''',
-    '''tests/cases/diff/algorithm/algorithm_004_fragment_markdown_section\.yaml''',
-    '''tests/cases/diff/docker/docker_039_compose_secrets\.yaml''',
-    '''tests/cases/diff/fragments/fragments_018_config_yaml_top_level_keys\.yaml''',
-    '''tests/cases/diff/kubernetes/kubernetes_006_secret_reference\.yaml''',
-    '''tests/cases/diff/kubernetes/kubernetes_018_image_pull_secret\.yaml''',
-    '''tests/cases/diff/kubernetes/kubernetes_029_network_policy_ingress\.yaml''',
-    '''tests/cases/diff/python/python_018_dunder_add_operator\.yaml''',
-    '''tests/cases/diff/terraform/terraform_079_kms_key\.yaml''',
-    '''tests/cases/diff/fragments/fragments_019_config_toml_sections\.yaml''',
-    '''tests/cases/diff/fragments/fragments_020_config_json_top_level_keys\.yaml''',
-    '''tests/cases/diff/helm/helm_025_template_secret\.yaml''',
-    '''tests/cases/diff/kubernetes/kubernetes_002_replicas_change\.yaml''',
-    '''tests/cases/diff/kubernetes/kubernetes_026_ingress_rules\.yaml''',
-    '''tests/cases/diff/kubernetes/kubernetes_027_ingress_tls\.yaml''',
+    '''tests/cases/diff/''',
 ]

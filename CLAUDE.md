@@ -68,11 +68,19 @@ check. This one needs two full eval output directories and a local
 ## Testing
 
 Suite shape and commands: [CONTRIBUTING.md](CONTRIBUTING.md). Each YAML
-case runs the full pipeline against a real git repo built per test, and
-**every case automatically injects ~10 unrelated "garbage" files**
-(`tests/garbage_data.py`) with unique `GARBAGE_*` markers — asserting
-they stay excluded is what catches relevance-filter regressions, and
-the prefixes make any leak unambiguous.
+case runs the full pipeline against a real git repo built per test.
+
+**Garbage injection is opt-in, and almost nothing opts in.** This
+paragraph claimed for months that *every* case injects ~10 unrelated
+files and asserts they stay excluded; measured on 2026-09-06, exactly
+**1 of 2725 cases** sets `fixtures.auto_garbage`, and the leak assertion
+in `yaml_cases.rs` runs only under that flag. The `GARBAGE_*` prefix is
+what the assertion matches on. The Python corpus in
+`tests/garbage_data.py` is separately injected by `test_mcp.py` and
+`test_e2e_cli_scenarios.py` — that, not the YAML corpus, is where
+garbage currently guards the relevance filter. Turning the flag on
+broadly is a real lever nobody has pulled; do not read the old claim as
+coverage that exists.
 
 **Reading oracle results** — two traps that make raw numbers lie:
 

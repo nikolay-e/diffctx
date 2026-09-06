@@ -1,7 +1,6 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use rayon::prelude::*;
 use rustc_hash::FxHashSet;
 use tracing::info;
 
@@ -10,7 +9,6 @@ use crate::config::limits::LIMITS;
 use crate::edges;
 use crate::fragmentation::process_files_for_fragments;
 use crate::graph::{self, Graph};
-use crate::tokenizer::count_tokens;
 use crate::types::{Fragment, FragmentId};
 
 pub struct ProjectGraph {
@@ -42,7 +40,7 @@ pub fn build_project_graph(root_dir: &Path) -> Result<ProjectGraph> {
         false,
     );
 
-    assign_token_counts(&mut all_fragments);
+    crate::pipeline::assign_token_counts(&mut all_fragments);
 
     info!(
         "project_graph: {} fragments from {} files",
@@ -66,14 +64,6 @@ pub fn build_project_graph(root_dir: &Path) -> Result<ProjectGraph> {
         graph,
         root_dir: resolved_root,
     })
-}
-
-fn assign_token_counts(fragments: &mut [Fragment]) {
-    fragments.par_iter_mut().for_each(|frag| {
-        if frag.token_count == 0 {
-            frag.token_count = count_tokens(&frag.content) + LIMITS.overhead_per_fragment;
-        }
-    });
 }
 
 #[cfg(test)]

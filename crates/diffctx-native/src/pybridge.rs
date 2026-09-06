@@ -528,28 +528,6 @@ fn build_project_graph(py: Python<'_>, root_dir: &str) -> PyResult<PyProjectGrap
 }
 
 #[pyfunction]
-#[pyo3(signature = (pg, level="directory", edge_types=None))]
-fn detect_cycles(
-    pg: &PyProjectGraph,
-    level: &str,
-    edge_types: Option<Vec<String>>,
-) -> Vec<Vec<String>> {
-    let level = parse_quotient_level(level);
-    let cats = parse_edge_categories(edge_types);
-    let root = pg.inner.root_dir.to_str();
-    analytics::detect_cycles(
-        &pg.inner.graph,
-        &pg.inner.fragments,
-        level,
-        root,
-        cats.as_ref(),
-    )
-    .into_iter()
-    .map(|cycle| cycle.into_iter().map(|s| s.to_string()).collect())
-    .collect()
-}
-
-#[pyfunction]
 #[pyo3(signature = (pg, top=10, edge_types=None))]
 fn hotspots<'py>(
     py: Python<'py>,
@@ -676,7 +654,6 @@ pub fn _diffctx(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(is_secret_path, m)?)?;
     m.add_function(wrap_pyfunction!(withheld_paths, m)?)?;
     m.add_function(wrap_pyfunction!(build_project_graph, m)?)?;
-    m.add_function(wrap_pyfunction!(detect_cycles, m)?)?;
     m.add_function(wrap_pyfunction!(hotspots, m)?)?;
     m.add_function(wrap_pyfunction!(coupling_metrics, m)?)?;
     m.add_function(wrap_pyfunction!(quotient_graph, m)?)?;

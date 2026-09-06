@@ -603,11 +603,3 @@ def run(argv: list[str] | None = None, *, prog: str | None = None, version: str 
         sys.exit(_EXIT_RUNTIME)
     except Exception as exc:
         sys.exit(_handle_unexpected_exception(exc, prog=prog))
-
-
-def main() -> None:
-    run()
-
-
-if __name__ == "__main__":
-    main()

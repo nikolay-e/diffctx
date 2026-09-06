@@ -1,23 +1,12 @@
 # Repository ownership boundaries
 
-The repository contains a shipped product and a reproducible research track.
-Their source, data, and generated outputs have different lifecycles:
-
-| Path | Owner and lifecycle |
-|---|---|
-| `crates/diffctx-native/` | Authoritative Rust algorithmic core and native CLI |
-| `Cargo.toml`, `Cargo.lock` | Rust workspace definition and committed release lock |
-| `src/diffctx/` | Python package, CLI, MCP server, and thin Rust adapters |
-| `tests/` | Product tests, `tests/eval/`, and stable declarative golden cases |
-| `eval/` | Evaluation CLI, orchestration modules (`eval/workflows/`, Python — not CI YAML), dataset tooling, harness, baselines, and analysis |
-| `datasets/` | Versioned immutable corpora, split manifests, and revision pins |
-| `paper/` | Paper source, selected reproducibility artifacts, and releases |
-| `docs/` | Engineering, product, and architecture documentation |
-| `scripts/` | Repository automation (image builds, cache baking, sensitivity checks) |
-| `packaging/` | CD-generated npm manifest with pinned checksums (see the release-channel policy in `docs/engineering/quality-strategy.md`) |
-| `bucket/` | The Scoop bucket itself — `scoop bucket add` clones this repository and reads manifests from here; CD regenerates `diffctx.json` on each release |
-| `results/` | Local or CI-generated evaluation output; not source-controlled |
-| `.github/` | CI/CD workflows and issue templates; owned by repo automation |
+The repository contains a shipped product and a reproducible research track,
+and their source, data and generated outputs have different lifecycles. The
+per-directory inventory that used to sit here was deleted on 2026-09-06: `ls`
+and the diff-context map already answer "what is in this tree", and the table
+had started to disagree with them (it described `docs/` as documentation
+without mentioning it is the published GitHub Pages site). What follows is
+only what a reader cannot recover by looking.
 
 ## Executable surfaces
 

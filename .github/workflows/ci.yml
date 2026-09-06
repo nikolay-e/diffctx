@@ -299,7 +299,16 @@ jobs:
           # Editable install of the project plus every extra the suite needs.
           # uv provisions maturin in its own build environment, so the build
           # backend is not a separate step and cannot drift from pyproject.
-          uv sync --locked --no-build --extra dev --extra full --extra mcp
+          # The eval group carries pebble/numpy/scipy/datasets. Without it
+          # tests/conftest.py drops tests/eval/* at COLLECTION time, so those
+          # tests reported as neither run nor skipped and executed in no job at
+          # all. Installed on one interpreter: the cost is one matrix cell, the
+          # alternative was a suite nobody ran.
+          SYNC=(uv sync --locked --no-build --extra dev --extra full --extra mcp)
+          if [[ "${{ matrix.python-version }}" == "3.12" ]]; then
+            SYNC+=(--group eval)
+          fi
+          "${SYNC[@]}"
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Run Tests with Coverage
