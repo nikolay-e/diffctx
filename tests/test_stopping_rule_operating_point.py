@@ -15,6 +15,7 @@ rule), and the defaults must not drift apart between entry points.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -218,13 +219,19 @@ def test_the_measurement_harnesses_score_the_shipped_tau():
             )
 
     # The Rust harnesses have the same failure mode and no Python surface to
-    # inspect, so they are pinned by the constant's absence: a bare literal
-    # passed to the in-memory runner is what made it score tau=0.05.
-    harness = (repo_root / "crates/diffctx-native/src/test_harness.rs").read_text(encoding="utf-8")
-    assert "DEFAULT_STOPPING_THRESHOLD" in harness, (
-        "the in-memory harness stopped using the shipped constant; it once ran "
-        "tau=0.05 and reported numbers for a selector nobody ships"
-    )
+    # inspect, so they are pinned at the source: the shipped configuration is
+    # an UNSPECIFIED tau (`None`, resolved per scorer by the engine), and a
+    # bare literal passed to the in-memory runner is what made it score
+    # tau=0.05. Naming the constant is the same drift one step removed — it
+    # pins the ungated scorers to the gated operating point.
+    for rel in ("crates/diffctx-native/src/test_harness.rs", "crates/diffctx-native/tests/yaml_cases.rs"):
+        harness = (repo_root / rel).read_text(encoding="utf-8")
+        assert (
+            "DEFAULT_STOPPING_THRESHOLD" not in harness
+        ), f"{rel} names the tau constant; pass None so the engine resolves the shipped point"
+        assert (
+            re.search(r"^\s+None,\s*$", harness, re.M) or "tau = std::env::var" in harness
+        ), f"{rel} no longer passes an unspecified tau"
 
 
 def test_the_shipped_tau_keeps_the_changed_file(stopping_repo):
