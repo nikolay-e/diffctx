@@ -151,21 +151,13 @@ impl EdgeBuilder for BuildSystemEdgeBuilder {
         repo_root: Option<&Path>,
         file_cache: Option<&FxHashMap<PathBuf, String>>,
     ) -> Vec<PathBuf> {
-        let build_files: Vec<&PathBuf> = changed.iter().filter(|p| is_build_file(p)).collect();
-        if build_files.is_empty() {
-            return vec![];
-        }
-
-        let mut refs = FxHashSet::default();
-
-        for bf in &build_files {
-            let content = match base::read_file_cached(bf, file_cache) {
-                Some(c) => c,
-                None => continue,
-            };
-            refs.extend(extract_refs(bf, &content));
-        }
-
-        base::discover_files_by_refs(&refs, changed, candidates, repo_root)
+        base::discover_by_extracted_path_refs(
+            changed,
+            candidates,
+            repo_root,
+            file_cache,
+            |p| is_build_file(p),
+            |p, c| extract_refs(p, c),
+        )
     }
 }

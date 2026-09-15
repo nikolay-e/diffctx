@@ -288,7 +288,9 @@ impl EdgeBuilder for ConfigToCodeEdgeBuilder {
             // This scan alone outran the whole pipeline timeout on a
             // sentry-scale commit (#116); the between-builders deadline check
             // cannot interrupt a single builder, so poll inside the loop.
-            crate::deadline::check_current_every(i, 64, "edge construction (config key scan)");
+            if !crate::resource::poll_current_every(i, 64) {
+                break;
+            }
             let content = code_frag.content.as_ref();
             if let Some(ac) = &automaton {
                 for m in ac.find_overlapping_iter(content) {
@@ -319,8 +321,11 @@ impl EdgeBuilder for ConfigToCodeEdgeBuilder {
             .collect();
 
         let mut edges: EdgeDict = FxHashMap::default();
+        let mut reported = 0u64;
         for (i, code_frag) in code_frags.iter().enumerate() {
-            crate::deadline::check_current_every(i, 64, "edge construction (config emission)");
+            if !crate::resource::poll_emissions(i, 64, edges.len() as u64, &mut reported) {
+                break;
+            }
             let content = code_frag.content.as_ref();
             let mut matched_cfgs: FxHashSet<usize> = FxHashSet::default();
             if let Some(ac) = &automaton {

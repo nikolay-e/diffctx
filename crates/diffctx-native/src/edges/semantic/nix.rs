@@ -37,13 +37,9 @@ pub struct NixEdgeBuilder;
 
 impl EdgeBuilder for NixEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
-        let frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_nix_file(Path::new(f.path())))
-            .collect();
-        if frags.is_empty() {
+        let Some(frags) = base::frags_where(fragments, |f| is_nix_file(Path::new(f.path()))) else {
             return FxHashMap::default();
-        }
+        };
 
         let import_w = EDGE_WEIGHTS["nix_import"].forward;
         let reverse_factor = EDGE_WEIGHTS["nix_import"].reverse_factor;

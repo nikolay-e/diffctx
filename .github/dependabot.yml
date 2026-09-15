@@ -1,4 +1,6 @@
 version: 2
+# github-actions and cargo are Renovate's (Forgejo, automerge); listing them
+# here too opened every bump twice, once per forge.
 updates:
   # uv.lock only. `versioning-strategy: lockfile-only` keeps this entry off
   # pyproject.toml's ranges, which the pip entry below owns — without the split
@@ -65,41 +67,3 @@ updates:
       all-dependencies:
         patterns:
           - "*"
-
-  - package-ecosystem: "github-actions"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "sunday"
-      time: "10:00"
-      timezone: "Europe/Berlin"
-    cooldown:
-      default-days: 3
-    labels:
-      - "dependencies"
-    assignees:
-      - "nikolay-e"
-    commit-message:
-      prefix: "chore(deps)"
-      include: "scope"
-    groups:
-      all-dependencies:
-        patterns:
-          - "*"
-
-  - package-ecosystem: "cargo"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "sunday"
-      time: "10:00"
-      timezone: "Europe/Berlin"
-    cooldown:
-      default-days: 3
-    labels:
-      - "dependencies"
-    assignees:
-      - "nikolay-e"
-    commit-message:
-      prefix: "chore(deps)"
-      include: "scope"

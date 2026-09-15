@@ -123,6 +123,15 @@ def _is_duration_range(args: ParsedArgs) -> bool:
         return False
 
 
+def _report_redactions(result: dict[str, Any], prog: str) -> None:
+    from .tree import redaction_total
+
+    block = result.get("redactions")
+    count = block["count"] if isinstance(block, dict) else redaction_total(result)
+    if count:
+        print(f"{prog}: {count} credential-shaped string(s) redacted", file=sys.stderr)
+
+
 def _warn_empty_diff_result(result: dict[str, Any], prog: str, args: ParsedArgs) -> None:
     if _diff_result_is_empty(result):
         print(
@@ -213,7 +222,6 @@ def _build_diff_tree(args: ParsedArgs, prog: str) -> dict[str, Any]:
         args.timeout,
         prog,
     )
-    _warn_empty_diff_result(result, prog, args)
     return result
 
 
@@ -246,7 +254,7 @@ def _warn_if_output_oversized(output_content: str, args: ParsedArgs) -> None:
 
 
 def _build_file_node(file_path: Path, base_dir: Path, no_content: bool, max_file_bytes: int | None) -> dict[str, Any]:
-    from .tree import _read_file_content
+    from .tree import set_file_content
 
     try:
         rel = file_path.relative_to(base_dir).as_posix()
@@ -258,7 +266,7 @@ def _build_file_node(file_path: Path, base_dir: Path, no_content: bool, max_file
     node: dict[str, Any] = {"name": rel, "type": "file"}
     if no_content:
         return node
-    node["content"] = _read_file_content(file_path, max_file_bytes)
+    set_file_content(node, file_path, max_file_bytes)
     return node
 
 
@@ -449,12 +457,21 @@ def _run(argv: list[str] | None = None, *, prog: str = "diffctx", version: str =
         _run_locate_mode(args, prog)
         return
 
-    directory_tree = _build_diff_tree(args, prog) if args.diff_range else _build_standard_tree(args)
-    is_empty_diff_result = bool(args.diff_range) and _diff_result_is_empty(directory_tree)
+    if args.diff_range:
+        from .writer import fit_to_budget
 
-    output_content = tree_to_string(directory_tree, args.output_format)
+        # The rendered document is what `--budget` bounds; the fit may drop
+        # fragments the engine's estimate admitted, and emptiness is judged
+        # on what is actually emitted.
+        directory_tree, output_content = fit_to_budget(_build_diff_tree(args, prog), args.output_format)
+        _warn_empty_diff_result(directory_tree, prog, args)
+    else:
+        directory_tree = _build_standard_tree(args)
+        output_content = tree_to_string(directory_tree, args.output_format)
+    is_empty_diff_result = bool(args.diff_range) and _diff_result_is_empty(directory_tree)
     if not args.quiet:
         print_token_summary(output_content)
+        _report_redactions(directory_tree, prog)
         if args.diff_range:
             _report_raw_diff_share(directory_tree, prog, args)
         _warn_if_output_oversized(output_content, args)

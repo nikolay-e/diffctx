@@ -466,13 +466,11 @@ fn nan_is_rejected_as_a_parameter() {
     }
 }
 
-/// The exit code is the deadline's contract. Two clocks watch it — this
-/// receive and the pipeline's phase checks on the worker — and the worker's
-/// panic closing the channel first is mapped to the same 124 in `main.rs`;
-/// that branch is not reachable on demand from here (with equal timeouts the
-/// receive always fires first), so this pins the reachable half only.
+/// A ceiling too small for git to answer is a git failure (exit 3), not the
+/// compute deadline: the compute phases stop cooperatively and render a
+/// partial artifact, so 124 is left to the watchdog behind them.
 #[test]
-fn an_expired_deadline_exits_124() {
+fn a_zero_ceiling_is_a_git_failure_not_an_abort() {
     let tmp = code_change_repo();
     let out = run(
         tmp.path(),
@@ -480,8 +478,46 @@ fn an_expired_deadline_exits_124() {
     );
     assert_eq!(
         out.status.code(),
-        Some(124),
+        Some(3),
         "stderr:\n{}",
         String::from_utf8_lossy(&out.stderr)
     );
+}
+
+/// The known-bad probe for the resource contract: a contribution cap the
+/// smallest graph exceeds must yield a valid artifact that names the limit,
+/// not an error and not a silent full result.
+#[test]
+fn a_bound_resource_yields_a_partial_artifact_that_says_so() {
+    let tmp = code_change_repo();
+    let out = Command::new(BIN)
+        .current_dir(tmp.path())
+        .env("DIFFCTX_MAX_EDGE_CONTRIBUTIONS", "1")
+        .args([".", "--diff", "HEAD~1..HEAD", "--format", "json", "--quiet"])
+        .output()
+        .expect("run diffctx");
+    assert!(
+        out.status.success(),
+        "stderr:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let doc: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json output");
+    assert_eq!(doc["coverage"]["status"], "partial");
+    let reasons = doc["coverage"]["limit_reasons"]
+        .as_array()
+        .expect("limit_reasons")
+        .iter()
+        .map(|r| r.as_str().unwrap_or_default().to_string())
+        .collect::<Vec<_>>();
+    assert!(
+        reasons.contains(&"edge_contribution_limit".to_string()),
+        "reasons: {reasons:?}"
+    );
+    assert_eq!(
+        doc["provenance"]["effective_config_hash"]
+            .as_str()
+            .map(str::len),
+        Some(16)
+    );
+    assert!(!doc["changed_files"].as_array().unwrap().is_empty());
 }

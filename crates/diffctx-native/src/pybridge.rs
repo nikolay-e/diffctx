@@ -30,35 +30,18 @@ create_exception!(
     pyo3::exceptions::PyTimeoutError
 );
 
-/// Runs a compute phase off the GIL and converts an expired deadline back into
-/// an ordinary Python error.
+/// Runs a compute phase off the GIL.
 ///
-/// The deadline fires as a panic (see `deadline::Deadline`: the phases it
-/// guards run deep inside call chains that do not return `Result`), which
-/// pyo3 would otherwise surface as `pyo3_runtime.PanicException` — a
-/// `BaseException` no caller catches by accident, and under the old
-/// `panic = "abort"` release profile not an exception at all but SIGABRT for
-/// the whole interpreter. Any other panic is re-raised unchanged: this
-/// converts the one outcome that is routine, not every bug.
+/// The compute deadline is cooperative (`resource::RunContext`): an expired
+/// run returns a partial artifact whose `coverage` block names the limit,
+/// so nothing here maps a panic to an error any more. `ComputeTimeoutError`
+/// stays exported for callers that still name it; the engine no longer
+/// raises it — a git subprocess that overruns is a `GitError`.
 fn detach_guarded<T: Send>(
     py: Python<'_>,
     work: impl FnOnce() -> anyhow::Result<T> + Send,
 ) -> PyResult<T> {
-    let outcome =
-        py.detach(
-            move || match std::panic::catch_unwind(std::panic::AssertUnwindSafe(work)) {
-                Ok(result) => Ok(result),
-                Err(payload) => match crate::deadline::deadline_panic_message(payload.as_ref()) {
-                    Some(message) => Err(message),
-                    None => std::panic::resume_unwind(payload),
-                },
-            },
-        );
-    match outcome {
-        Ok(Ok(value)) => Ok(value),
-        Ok(Err(e)) => Err(map_pipeline_err(e)),
-        Err(message) => Err(ComputeTimeoutError::new_err(message)),
-    }
+    py.detach(work).map_err(map_pipeline_err)
 }
 
 /// `--mode locate` (#126): same pipeline and selection as pack mode, rendered
@@ -233,114 +216,69 @@ fn select_with_params<'py>(
     diff_context_output_to_dict(py, &output, None)
 }
 
-/// The ONE place a `DiffContextOutput` becomes a Python dict.
+/// The ONE place a `DiffContextOutput` becomes a Python dict: the artifact
+/// serializes through serde, exactly as it does for the CLI's JSON and YAML,
+/// and crosses as the value it denotes. The bridge used to repeat every field
+/// by hand (#183, #229) — a field added to the struct had to be repeated
+/// here, and nothing made the copies agree.
 ///
-/// `build_diff_context` used to inline a second, character-for-character copy
-/// of this. That is how `pre_phase_ms` came to be missing from both call sites
-/// at once (#183): a field added to the struct has to be repeated by hand, and
-/// nothing makes the two copies agree. The only behavioural difference between
-/// them was the fallback below, so it became a parameter rather than a reason
-/// to keep the fork.
-///
-/// `fallback_total_ms` is used only when the pipeline reported no latency block
-/// at all — the caller's own wall-clock reading, so the dict still carries a
-/// `total_ms` rather than an empty `latency`.
+/// `latency` is telemetry outside the artifact; it rides beside it, with
+/// `fallback_total_ms` (the caller's own wall-clock reading) when the
+/// pipeline reported no block at all.
 fn diff_context_output_to_dict<'py>(
     py: Python<'py>,
     output: &DiffContextOutput,
     fallback_total_ms: Option<f64>,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let dict = PyDict::new(py);
-    dict.set_item("name", &output.name)?;
-    dict.set_item("type", "diff_context")?;
-    if let Some(ref msg) = output.commit_message {
-        dict.set_item("commit_message", msg)?;
+    let runtime = |e: serde_json::Error| pyo3::exceptions::PyRuntimeError::new_err(e.to_string());
+    let mut value = serde_json::to_value(output).map_err(runtime)?;
+    let latency = match (&output.latency, fallback_total_ms) {
+        (Some(lb), _) => serde_json::to_value(lb).map_err(runtime)?,
+        (None, Some(total)) => serde_json::json!({ "total_ms": (total * 10.0).round() / 10.0 }),
+        (None, None) => serde_json::json!({}),
+    };
+    if let serde_json::Value::Object(ref mut map) = value {
+        map.insert("latency".to_string(), latency);
     }
-    if !output.changed_files.is_empty() {
-        dict.set_item("changed_files", &output.changed_files)?;
-    }
-    if !output.deleted_files.is_empty() {
-        dict.set_item("deleted_files", &output.deleted_files)?;
-    }
-    if !output.lockfile_changes.is_empty() {
-        dict.set_item("lockfile_changes", &output.lockfile_changes)?;
-    }
-    if !output.ignored_changes.is_empty() {
-        dict.set_item("ignored_changes", &output.ignored_changes)?;
-    }
-    if output.policy_excluded_count > 0 {
-        dict.set_item("policy_excluded_count", output.policy_excluded_count)?;
-    }
-    if !output.renamed_files.is_empty() {
-        let renames = PyList::empty(py);
-        for (from, to) in &output.renamed_files {
-            let pair = PyDict::new(py);
-            pair.set_item("from", from)?;
-            pair.set_item("to", to)?;
-            renames.append(pair)?;
-        }
-        dict.set_item("renamed_files", renames)?;
-    }
-    dict.set_item("fragment_count", output.fragment_count)?;
+    json_to_py(py, &value)?
+        .cast_into::<PyDict>()
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+}
 
-    let frag_list = PyList::empty(py);
-    for entry in &output.fragments {
-        let frag_dict = PyDict::new(py);
-        frag_dict.set_item("path", &entry.path)?;
-        frag_dict.set_item("lines", &entry.lines)?;
-        if let Some(ref role) = entry.role {
-            frag_dict.set_item("role", role)?;
+/// A serde value as the Python object it denotes. The bridge used to spell
+/// every field of every struct by hand (`set_item` per key), which is how a
+/// field added on one side went missing on the other (#183, #229); anything
+/// that is already `Serialize` crosses through this instead.
+fn json_to_py<'py>(py: Python<'py>, value: &serde_json::Value) -> PyResult<Bound<'py, PyAny>> {
+    use pyo3::IntoPyObjectExt;
+    Ok(match value {
+        serde_json::Value::Null => py.None().into_bound(py),
+        serde_json::Value::Bool(b) => b.into_bound_py_any(py)?,
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                i.into_bound_py_any(py)?
+            } else if let Some(u) = n.as_u64() {
+                u.into_bound_py_any(py)?
+            } else {
+                n.as_f64().unwrap_or(f64::NAN).into_bound_py_any(py)?
+            }
         }
-        frag_dict.set_item("kind", &entry.kind)?;
-        if let Some(ref s) = entry.symbol {
-            frag_dict.set_item("symbol", s)?;
+        serde_json::Value::String(s) => s.into_bound_py_any(py)?,
+        serde_json::Value::Array(items) => {
+            let list = PyList::empty(py);
+            for item in items {
+                list.append(json_to_py(py, item)?)?;
+            }
+            list.into_any()
         }
-        if let Some(ref c) = entry.content {
-            frag_dict.set_item("content", c.as_ref())?;
+        serde_json::Value::Object(map) => {
+            let dict = PyDict::new(py);
+            for (k, v) in map {
+                dict.set_item(k, json_to_py(py, v)?)?;
+            }
+            dict.into_any()
         }
-        frag_list.append(frag_dict)?;
-    }
-    dict.set_item("fragments", frag_list)?;
-
-    let latency = PyDict::new(py);
-    if let Some(ref lb) = output.latency {
-        let r = |v: f64| (v * 10.0).round() / 10.0;
-        latency.set_item("pre_phase_ms", r(lb.pre_phase_ms))?;
-        latency.set_item("parse_changed_ms", r(lb.parse_changed_ms))?;
-        latency.set_item("universe_walk_ms", r(lb.universe_walk_ms))?;
-        latency.set_item("discovery_ms", r(lb.discovery_ms))?;
-        latency.set_item("parse_discovered_ms", r(lb.parse_discovered_ms))?;
-        latency.set_item("tokenization_ms", r(lb.tokenization_ms))?;
-        latency.set_item("graph_build_ms", r(lb.graph_build_ms))?;
-        latency.set_item("scoring_selection_ms", r(lb.scoring_selection_ms))?;
-        latency.set_item("total_ms", r(lb.total_ms))?;
-        latency.set_item("scoring_ms", r(lb.scoring_ms))?;
-        latency.set_item("selection_ms", r(lb.selection_ms))?;
-        latency.set_item("candidate_count", lb.candidate_count)?;
-        latency.set_item("edge_count", lb.edge_count)?;
-        latency.set_item("greedy_iters", lb.greedy_iters)?;
-        latency.set_item("edges_before_cap", lb.edges_before_cap)?;
-        latency.set_item("edges_dropped_by_cap", lb.edges_dropped_by_cap)?;
-        latency.set_item("nodes_capped", lb.nodes_capped)?;
-        latency.set_item("max_out_edges_per_node", lb.max_out_edges_per_node)?;
-        latency.set_item("ppr_truncated", lb.ppr_truncated)?;
-        latency.set_item("ppr_forward_pushes", lb.ppr_forward_pushes)?;
-        latency.set_item("ppr_backward_pushes", lb.ppr_backward_pushes)?;
-        latency.set_item("stopping_certificate", lb.stopping_certificate)?;
-        latency.set_item("peak_rss_bytes", lb.peak_rss_bytes)?;
-        let emissions = PyDict::new(py);
-        for &(category, raw, deduped) in &lb.edge_emissions_by_category {
-            let counts = PyDict::new(py);
-            counts.set_item("raw", raw)?;
-            counts.set_item("deduped", deduped)?;
-            emissions.set_item(category, counts)?;
-        }
-        latency.set_item("edge_emissions_by_category", emissions)?;
-    } else if let Some(total) = fallback_total_ms {
-        latency.set_item("total_ms", (total * 10.0).round() / 10.0)?;
-    }
-    dict.set_item("latency", latency)?;
-    Ok(dict)
+    })
 }
 
 #[pyfunction]
@@ -396,6 +334,15 @@ fn is_secret_path(path: &str) -> bool {
 fn withheld_paths(py: Python<'_>, root_dir: &str, rel_paths: Vec<String>) -> Vec<String> {
     let root = Path::new(root_dir).to_path_buf();
     py.detach(move || crate::pipeline::withheld_paths(&root, &rel_paths))
+}
+
+/// The artifact sanitizer for the surfaces Python reads itself (tree mode,
+/// the MCP fetch and glob tools): the clean text, how many credential
+/// shapes were replaced, and which.
+#[pyfunction]
+fn sanitize_text(text: &str) -> (String, usize, Vec<&'static str>) {
+    let (clean, r) = crate::sanitize::sanitize(text);
+    (clean, r.count, r.categories)
 }
 
 #[pyfunction]
@@ -665,6 +612,7 @@ pub fn _diffctx(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_language_for_file, m)?)?;
     m.add_function(wrap_pyfunction!(count_tokens, m)?)?;
     m.add_function(wrap_pyfunction!(is_secret_path, m)?)?;
+    m.add_function(wrap_pyfunction!(sanitize_text, m)?)?;
     m.add_function(wrap_pyfunction!(withheld_paths, m)?)?;
     m.add_function(wrap_pyfunction!(build_project_graph, m)?)?;
     m.add_function(wrap_pyfunction!(hotspots, m)?)?;

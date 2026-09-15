@@ -124,7 +124,7 @@ fn ppr_push_csr(
     let mut truncated = false;
 
     while let Some(u) = queue.pop_front() {
-        if pushes >= max_pushes {
+        if pushes >= max_pushes || !crate::resource::poll_current_every(pushes, 4096) {
             truncated = true;
             break;
         }

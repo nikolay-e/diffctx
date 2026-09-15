@@ -150,6 +150,8 @@ fn print_token_summary(rendered: &str) {
     );
 }
 
+const WATCHDOG_GRACE_SECS: u64 = 30;
+
 fn run_with_deadline<T, F>(timeout: u64, work: F) -> Result<T>
 where
     F: FnOnce() -> Result<T> + Send + 'static,
@@ -159,29 +161,27 @@ where
     let worker = thread::spawn(move || {
         let _ = tx.send(work());
     });
-    let exit_on_deadline = || -> ! {
-        eprintln!(
-            "diffctx: pipeline exceeded {timeout}s wall-clock deadline; aborting before \
-             OOM/SIGKILL. Narrow the review with an explicit '--diff <from>..<to>' range or \
-             run on a smaller subtree, or raise '--timeout'."
-        );
-        std::process::exit(124);
-    };
-    match rx.recv_timeout(Duration::from_secs(timeout)) {
+    // The pipeline's own deadline is cooperative: at `timeout` it stops the
+    // phase it is in and renders a partial artifact (`coverage.status`). This
+    // watchdog is the last resort behind it — a phase that cannot poll (a
+    // git subprocess that ignores its own timeout) — so it fires a grace
+    // period later, after the cooperative path had its chance to return.
+    let grace = Duration::from_secs(timeout.saturating_add(WATCHDOG_GRACE_SECS));
+    match rx.recv_timeout(grace) {
         Ok(result) => result,
-        Err(mpsc::RecvTimeoutError::Timeout) => exit_on_deadline(),
-        // Two clocks watch the same deadline: this receive and the pipeline's
-        // own phase checks, which panic on the worker. When the worker's fires
-        // first the channel closes instead of timing out, and that used to
-        // surface as "terminated unexpectedly" with a generic exit code — the
-        // same overrun, reported two ways depending on which clock won by a
-        // millisecond. A deadline panic is the deadline, whichever side saw it.
-        Err(mpsc::RecvTimeoutError::Disconnected) => match worker.join() {
-            Err(payload) if _diffctx::deadline::deadline_panic_message(&*payload).is_some() => {
-                exit_on_deadline()
-            }
-            _ => anyhow::bail!("diffctx: pipeline worker terminated unexpectedly"),
-        },
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            eprintln!(
+                "diffctx: pipeline exceeded {timeout}s wall-clock deadline and did not stop \
+                 cooperatively within {WATCHDOG_GRACE_SECS}s more; aborting before OOM/SIGKILL. \
+                 Narrow the review with an explicit '--diff <from>..<to>' range or run on a \
+                 smaller subtree, or raise '--timeout'."
+            );
+            std::process::exit(124);
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            let _ = worker.join();
+            anyhow::bail!("diffctx: pipeline worker terminated unexpectedly")
+        }
     }
 }
 

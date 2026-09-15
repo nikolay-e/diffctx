@@ -9,7 +9,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, FragmentIndex, discover_files_by_refs, link_by_name};
+use super::super::base::{self, EdgeBuilder, FragmentIndex, link_by_name};
 
 fn is_shell_file(path: &Path) -> bool {
     SHELL_EXTENSIONS.contains(base::file_ext(path).as_str())
@@ -39,13 +39,10 @@ pub struct ShellEdgeBuilder;
 
 impl EdgeBuilder for ShellEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
-        let sh_frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_shell_file(Path::new(f.path())))
-            .collect();
-        if sh_frags.is_empty() {
+        let Some(sh_frags) = base::frags_where(fragments, |f| is_shell_file(Path::new(f.path())))
+        else {
             return FxHashMap::default();
-        }
+        };
 
         let source_weight = EDGE_WEIGHTS["shell_source"].forward;
         let script_weight = EDGE_WEIGHTS["shell_script"].forward;
@@ -106,19 +103,13 @@ impl EdgeBuilder for ShellEdgeBuilder {
         repo_root: Option<&Path>,
         file_cache: Option<&FxHashMap<PathBuf, String>>,
     ) -> Vec<PathBuf> {
-        let sh_changed: Vec<&PathBuf> = changed.iter().filter(|f| is_shell_file(f)).collect();
-        if sh_changed.is_empty() {
-            return vec![];
-        }
-
-        let mut all_refs = FxHashSet::default();
-        for f in &sh_changed {
-            let content = base::read_file_cached(f, file_cache);
-            if let Some(c) = content {
-                all_refs.extend(extract_refs(&c));
-            }
-        }
-
-        discover_files_by_refs(&all_refs, changed, candidates, repo_root)
+        base::discover_by_extracted_refs(
+            changed,
+            candidates,
+            repo_root,
+            file_cache,
+            |p| is_shell_file(p),
+            extract_refs,
+        )
     }
 }

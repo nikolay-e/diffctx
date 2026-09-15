@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import textwrap
@@ -73,22 +74,17 @@ def test_a_zero_ceiling_says_it_timed_out_rather_than_denying_the_repo(tmp_path)
     assert "not a git repository" not in message
 
 
-def test_a_compute_deadline_never_takes_the_process_down(tmp_path):
-    """The deadline is a panic (the phases it guards return no `Result`), so how
-    it crosses the FFI boundary is the whole question. Under the release
-    profile's old `panic = "abort"` this exact expiry killed the interpreter
-    with SIGABRT — measured on a published wheel, and fatal for the MCP server,
-    which abandons a timed-out worker and keeps serving.
+def test_a_compute_deadline_yields_a_partial_artifact_not_an_exception(tmp_path):
+    """The deadline used to be a panic that crossed the FFI boundary as an
+    exception (and, under the old `panic = "abort"` release profile, as
+    SIGABRT for the interpreter). It is cooperative now: the phase it
+    interrupts stops at its next bounded unit and the run renders what it has,
+    with `coverage.status == "partial"` and `deadline` among the reasons.
 
     Whether the ceiling fires is not left to timing. The workload is this
     repository's ENTIRE history — root commit to HEAD, the largest diff it can
     produce — which crosses a 3 s ceiling with an order of magnitude to spare
-    (~40 s of work). An earlier version asked for `HEAD~20` and a synthetic
-    2500-file repo before that; both are statements about how much work twenty
-    particular commits happen to contain, and both stopped being true — the
-    synthetic one on CI's release wheel, `HEAD~20` the moment the history was
-    squashed into epochs. The root commit is the only anchor that cannot get
-    cheaper. Three seconds, not one: the same value bounds every git
+    (~40 s of work). Three seconds, not one: the same value bounds every git
     subprocess, and under load a plain `git diff` has been seen to miss one
     second — that failure is a `GitError`, not the deadline this test is about.
     """
@@ -99,9 +95,6 @@ def test_a_compute_deadline_never_takes_the_process_down(tmp_path):
         text=True,
         check=True,
     ).stdout.split()
-    # A shallow clone reports its boundary commit as parentless, so `root`
-    # would be HEAD itself, the range would be empty, and the child would print
-    # COMPLETED — a red that accuses the deadline instead of the checkout.
     assert roots, "git rev-list returned no root commit"
     shallow = subprocess.run(
         ["git", "rev-parse", "--is-shallow-repository"], cwd=PROJECT_ROOT, capture_output=True, text=True
@@ -111,17 +104,16 @@ def test_a_compute_deadline_never_takes_the_process_down(tmp_path):
     root = roots[-1]
 
     child = textwrap.dedent(f"""
-        import diffctx
+        import json, diffctx
 
-        try:
-            diffctx.build_diff_context(
-                root_dir={str(PROJECT_ROOT)!r}, diff_range={root!r}, timeout=3
-            )
-            print("COMPLETED")
-        except TimeoutError:
-            print("TIMEOUT")
+        r = diffctx.build_diff_context(root_dir={str(PROJECT_ROOT)!r}, diff_range={root!r}, timeout=3)
+        print(json.dumps({{"coverage": r.get("coverage"), "changed": len(r.get("changed_files") or [])}}))
         """)
     proc = subprocess.run([sys.executable, "-c", child], capture_output=True, text=True, timeout=600)
 
-    assert proc.returncode == 0, f"the deadline escaped as an error the child could not catch: {proc.stderr[-400:]}"
-    assert proc.stdout.strip() == "TIMEOUT", f"the ceiling never fired; stdout={proc.stdout!r}"
+    assert proc.returncode == 0, f"the deadline escaped as an error: {proc.stderr[-400:]}"
+    report = json.loads(proc.stdout.strip().splitlines()[-1])
+    assert report["coverage"], "the ceiling never fired; the artifact claims to be complete"
+    assert report["coverage"]["status"] in ("partial", "degraded")
+    assert "deadline" in report["coverage"]["limit_reasons"]
+    assert report["changed"] > 0, "a partial artifact still lists every changed file"

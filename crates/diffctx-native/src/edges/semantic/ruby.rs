@@ -58,13 +58,10 @@ pub struct RubyEdgeBuilder;
 
 impl EdgeBuilder for RubyEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
-        let frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_ruby_file(Path::new(f.path())))
-            .collect();
-        if frags.is_empty() {
+        let Some(frags) = base::frags_where(fragments, |f| is_ruby_file(Path::new(f.path())))
+        else {
             return FxHashMap::default();
-        }
+        };
 
         let require_w = EDGE_WEIGHTS["ruby_require"].forward;
         let include_w = EDGE_WEIGHTS["ruby_include"].forward;
@@ -74,12 +71,7 @@ impl EdgeBuilder for RubyEdgeBuilder {
         let idx = base::FragmentIndex::new(fragments, repo_root);
         let mut name_to_defs: FxHashMap<String, Vec<_>> = FxHashMap::default();
         for f in &frags {
-            for name in extract_defines(&f.content) {
-                name_to_defs
-                    .entry(name.to_lowercase())
-                    .or_default()
-                    .push(f.id.clone());
-            }
+            base::index_lower(&mut name_to_defs, extract_defines(&f.content), &f.id);
         }
 
         let mut edges: EdgeDict = FxHashMap::default();

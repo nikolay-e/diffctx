@@ -7,8 +7,105 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.16.0] - 2026-09-16
+
+### Added
+
+- **A FAQ and a benchmarks page** (#151): `docs/product/faq.md` answers the
+  recurring critiques (heuristic or oracle, the `tree-sitter` extra that no
+  longer exists, whose tokens `--budget` counts, MCP versus a prompt builder,
+  monorepo limits, the raw diff, secrets) and `BENCHMARKS.md` carries every
+  published number with what it was measured on and how to reproduce it.
+- **A command-line reference page** (#240): `docs/product/cli.md` lists every
+  flag with its default and meaning, rendered from the parsers by
+  `scripts/update_cli_reference.py` and pinned by a test so it cannot drift
+  from `diffctx --help`. Linked from the site's nav, `llms.txt` and the
+  README.
+- **Every changed file gets a witness before any file gets a second one**
+  (#263). Selection now opens with an evidence floor: one representation per
+  changed file — the same fragment the relevance pass would place, its
+  stand-in when that does not fit, a clipped head of the change when nothing
+  does — ordered by change class (hand-written content before mechanical
+  version/tag bumps) and then by path. Relevance and density compete only
+  for what is left. A range of nine one-line image-tag bumps plus four
+  rewritten manifests at `--budget 4000` now keeps all thirteen; before, the
+  four manifests were dropped in favour of the bumps. A file that still gets
+  nothing marks the artifact `coverage.status: degraded` with
+  `evidence_budget_exceeded`.
+- **The rendered document is what `--budget` bounds** (#259). Every
+  renderer — JSON, YAML, Markdown, text, the CLI and the Python `to_*`
+  functions — counts its own output and drops context fragments from the
+  tail (a changed fragment only when no context is left) until it fits,
+  noting `selection_budget_exceeded` in coverage. The engine's envelope
+  estimate still shapes what selection admits, but it no longer decides
+  whether the artifact honours the cap.
+- **The artifact inventories every changed file and says which ones it
+  left out** (#263). `changes` carries one row per changed file — its
+  `class` (`content`, `unknown`, `mechanical`: one-line version/tag/digest
+  edits of the kind an image updater writes, `generated`), the `reason`, and
+  `represented`, false when no fragment of the file is in the output. JSON,
+  YAML, the Python dict, Markdown and text all say it; `locate`'s coverage
+  lists `unrepresented_changed_files`. An incomplete context is no longer
+  indistinguishable from a complete one on any surface.
+- **The artifact carries the commit messages of the range, whole.**
+  `commit_messages` lists every message — subject and body, up to 20
+  commits, 2 000 characters each — newest first; Markdown and text render
+  them instead of the subject of whichever commit happened to be last, and
+  every message feeds the query expansion, not only the head's subject.
+  `commit_message` stays the head's subject for existing readers. The list is
+  bounded by the budget — every subject, bodies newest-first while they fit a
+  tenth of it — and, like the inventory rows, charged before selection.
+- **One artifact, `diffctx.context.v1`, on every surface.** JSON and YAML
+  output open with `schema: diffctx.context.v1`; the document is generated
+  from the engine's type and pinned as `schemas/diffctx.context.v1.json`
+  (JSON Schema 2020-12, a test regenerates and compares it). The Python dict
+  is that same serialization — the hand-written `set_item` copy of the
+  shape, the one that never ran on the CLI path, is gone (#229).
+- **Every run records what produced it.** JSON and YAML output (and the
+  Python dict) carry a `provenance` block — `diffctx.provenance.v1`: engine
+  version, the input revisions as object ids, the resolved effective
+  configuration (`diffctx.effective_config.v1`: every parameter and every
+  `DIFFCTX_*` override that shaped the selection) and its 64-bit hash, the
+  selection parameters actually used (budget, tau, gate). The full record —
+  every parameter, the tokenizer, the resource caps, ~500 tokens — is
+  opt-in with `DIFFCTX_PROVENANCE=full`. Two runs that differ can now say
+  what differed between them.
+- **`DIFFCTX_EVAL_STRICT=1`** refuses to start when the environment carries a
+  `DIFFCTX_*` name the effective configuration does not know — an evaluation
+  row shaped by an undeclared knob is a number nobody can reproduce.
+- **`DIFFCTX_TOKEN_SAFETY_FACTOR`** (≥ 1.0, default 1.0) scales every token
+  count for consumers whose model tokenizes denser than `o200k_base`;
+  `--budget N` stays "N o200k_base accounting tokens" and the factor is in
+  provenance. No model-specific default is shipped.
+- **A run that hits a limit says so instead of failing.** `--timeout` is
+  cooperative now: the phase it interrupts stops at its next bounded unit (a
+  file, an edge builder, a diffusion batch) and the run renders what it has,
+  with a `coverage` block — `status: partial`, `limit_reasons`, and the
+  resources consumed — on JSON, YAML, Markdown, text, the Python dict and
+  `locate`'s coverage. The same vocabulary covers the new memory caps:
+  `DIFFCTX_MAX_EDGE_CONTRIBUTIONS` (20M, counted before deduplication — the
+  number that owned 11 GB on a 10k-module monorepo, #196),
+  `DIFFCTX_MAX_SOURCE_BYTES` (256 MB of parsed source, never the changed
+  files themselves), `DIFFCTX_MAX_CANDIDATE_FILES` (200k) and
+  `DIFFCTX_MAX_NEEDS` (4k: every candidate is scored against every
+  information need mined from the diff, and a repository-sized diff produced
+  a need set that made selection take 413 s on this repository's own
+  history — 6 s under the cap). The caps are part of the effective
+  configuration and its hash.
+
 ### Security
 
+- **Credential-shaped strings are redacted on every read surface** (#147).
+  A last pass over the diff artifact (fragments, commit messages), the
+  `--with-raw-diff` bundle, the MCP fetch and glob readers and tree mode
+  replaces strings matching a small set of high-confidence shapes — AWS
+  access key ids, GitHub, Slack, Stripe, Google and OpenAI keys, JWTs, PEM
+  private-key blocks — with `[REDACTED:<category>]`; the artifact carries a
+  `redactions` block (count, categories) and `sanitization_redaction` among
+  its coverage limit reasons. Defence in depth, not a guarantee: only shapes
+  that cannot be anything else are matched, and SECURITY.md says what is not
+  caught. The withhold policy (secret-by-name files, ignore rules) is
+  unchanged and remains the mechanism to rely on.
 - **A `diff_ref` could turn the read-only MCP fetch into a file write.** With
   `fragment_ids` set the engine never sees `diff_ref`, and `fetch_fragments`
   passed whatever followed `..` straight to `git show <rev>:<path>` — so
@@ -71,6 +168,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `---` bundle is every resource it holds, not its first** (#258). The
+  Kubernetes edge builder now reads one view per YAML document, so a
+  Service in the third document is indexed as a Service, its selector meets
+  the Deployment in the second, and two Deployments' labels no longer
+  collapse into one last-wins map. A generated manifest keeps its
+  `apiVersion:`/`kind:`/`metadata:` pairs through the generated-file cut,
+  which used to drop them as the shortest fragments and with them the
+  detection that made the file a manifest at all.
+- **Scala imports, packages and inheritance come off the parse tree**
+  (#243). `tree-sitter-scala` already parsed every Scala file for
+  fragmentation; the edge layer re-read the text with a regex on its fifth
+  patch. `facts::scala` now walks `import_declaration` (braces, `=>` and
+  `as` renames, `_`/`*`/`given` wildcards, multi-line groups),
+  `package_clause` chains and `extends_clause` types; the regex reader
+  stays as the fallback for text that does not parse cleanly, and the two
+  are held to agree on every shape the tests name. An import inside a
+  block comment is no longer an import.
 - **The compose `context:` and CI→`package.json` channels revived on
   2026-09-02 were dead on arrival.** Both built their path reference from the
   fragment's absolute path, while the fragment index is keyed repo-relative,
@@ -238,6 +352,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `IntervalIndex` instead of a fourth hand-written check.
 
 ### Changed
+
+- **File-level relations land on one fragment per file, and a change
+  lifts to its file** (#196). An import, a directory sibling, a shared
+  package or crate root, a covering test are relations between files: the
+  Python, Rust and Go builders link the file's representative fragment (the
+  same one every builder names, ties now broken by position rather than by
+  the order a builder happened to hold the fragments in), and `from m import
+  x` / `pkg.Sym` / `Mod::sym` link the fragment that defines the named
+  symbol. In return the ego walk seeds each changed fragment's file
+  representative at the containment discount, so a function added to an
+  existing module still meets the module's importers and its tests. A name
+  used in more than 64 files without importing its definer (`hass`,
+  `config`, `entry`) is vocabulary and no longer fans out to its
+  definitions; qualified calls (`Type::new(`, `pkg.New(`), method calls
+  and definition lines no longer feed the unqualified call channel, which
+  linked every `::new(` to every `fn new` in reach; Go imports come from
+  the import block, not from any quoted line; Python relative imports
+  resolve to the sibling module they name. Same machine, same instances as
+  the issue's table: home-assistant 38.1M → 2.8M python edges, 100 s → 24 s,
+  10.9 → 2.5 GB; polars 35.4M → 0.8M rust edges, 54 s → 4 s, 5.4 → 0.8 GB;
+  kubernetes 14.3M → 4.9M go edges (the rest of that run is parsing).
+  Q-class: 16 corpus cases lift above the threshold, one `gap` case is
+  baselined (`gap_132`: the file lift admits a consumer of a sibling type).
+  Edge-weight profile `v2-2026-09-16`.
+- **One heavy phase for the product and the corpus harness.** From the
+  fragments onward — token counts, cores and their stand-ins, signature
+  variants, seed weights, scoring, information needs — both paths call
+  `pipeline::score_from_fragments`; the harness's own spelling of those
+  steps is gone, and the `DIFFCTX_OBJECTIVE` override, which only the
+  product used to see, is resolved with the mode for every caller (#232).
+- **The compute deadline is no longer a panic, and never an exception.**
+  `ComputeTimeoutError` stays importable but the engine does not raise it;
+  a git subprocess that overruns its share of the timeout is still a
+  `GitError`. The native CLI exits 0 with a partial artifact at the deadline;
+  124 is reserved for the watchdog that fires 30 s later when a phase could
+  not stop. `--timeout 0` is therefore a git failure (exit 3), not an abort.
 
 - **The hero comparison names both baselines.** It measured whole changed
   files pasted (17.6×) while the headline invites comparison with a raw
@@ -535,8 +685,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   precision, because BM25 gives any generic-token match a small positive score
   and `1/(k + rank)` promotes it to real fused mass. `pit` keeps the position
   instead, via each component's empirical CDF: a fragment in the 5th percentile
-  of a signal contributes 0.05 from it, so two weak opinions cannot manufacture a
-  strong candidate. `score = blend·PIT(ego) + (1-blend)·PIT(bm25) + bonus·[both
+  of a signal contributes 0.05 from it, so two weak opinions cannot manufacture
+  a strong candidate. `score = blend·PIT(ego) + (1-blend)·PIT(bm25) + bonus·[both
   in top-k]`, with `DIFFCTX_PIT_BLEND=0.65`, `DIFFCTX_PIT_AGREEMENT_BONUS=0.10`,
   `DIFFCTX_PIT_AGREEMENT_TOP_K=20`. Measured on the full corpus it recovers 40 of
   those 79 cases (`rrf` 450 below-threshold, `pit` 410) and still trails `ego`
@@ -1249,9 +1399,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mapping and `--diff` context, since such material is never legitimate LLM
   context: `*.pem`, `*.key`, `*.pfx`, `*.p12`, `*.keystore`, `*.jks`, and SSH
   private keys `id_rsa`/`id_dsa`/`id_ecdsa`/`id_ed25519` (public `.pub` keys stay
-  visible). The `--diff` path previously applied no ignore filtering at all, so a
-  changed key file would have leaked into context. Use `--no-default-ignores` to
-  opt out of tree-mode default ignores. (`.env` files are intentionally still
+  visible). The `--diff` path previously applied no ignore filtering at all, so
+  a changed key file would have leaked into context. Use `--no-default-ignores`
+  to opt out of tree-mode default ignores. (`.env` files are intentionally still
   included — a changed `.env` is legitimate change context; redacting secret
   *values* is a separate planned content-scan feature.)
 
@@ -1401,7 +1551,8 @@ Earlier releases shipped as `treemapper`; see
 <https://github.com/nikolay-e/diffctx/releases> for the corresponding GitHub
 release notes (`1.0.0` through `1.6.1`).
 
-[Unreleased]: https://github.com/nikolay-e/diffctx/compare/v1.15.0...HEAD
+[Unreleased]: https://github.com/nikolay-e/diffctx/compare/v1.16.0...HEAD
+[1.16.0]: https://github.com/nikolay-e/diffctx/compare/v1.15.0...v1.16.0
 [1.15.0]: https://github.com/nikolay-e/diffctx/compare/v1.14.0...v1.15.0
 [1.14.0]: https://github.com/nikolay-e/diffctx/compare/v1.13.0...v1.14.0
 [1.13.0]: https://github.com/nikolay-e/diffctx/compare/v1.12.3...v1.13.0

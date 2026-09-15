@@ -16,24 +16,16 @@ static TOML_SECTION_HEADER: Lazy<Regex> = Lazy::new(|| Regex::new(r"^\[").unwrap
 static JSON_TOP_LEVEL_KEY: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"^\s{0,4}"[^"]+"\s*:"#).unwrap());
 
-fn file_extension_lower(path: &str) -> String {
-    if let Some(dot_pos) = path.rfind('.') {
-        path[dot_pos..].to_ascii_lowercase()
-    } else {
-        String::new()
-    }
-}
-
 pub struct ConfigStrategy;
 
 impl FragmentationStrategy for ConfigStrategy {
     fn can_handle(&self, path: &str, _content: &str) -> bool {
-        let ext = file_extension_lower(path);
+        let ext = super::file_extension_lower(path);
         CONFIG_EXTENSIONS.iter().any(|&e| e == ext)
     }
 
     fn fragment(&self, path: Arc<str>, content: &str) -> Vec<Fragment> {
-        let ext = file_extension_lower(&path);
+        let ext = super::file_extension_lower(&path);
         match ext.as_str() {
             ".yaml" | ".yml" => split_at_top_level_pattern(path, content, &YAML_TOP_LEVEL_KEY),
             ".toml" => split_at_top_level_pattern(path, content, &TOML_SECTION_HEADER),

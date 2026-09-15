@@ -11,7 +11,7 @@ from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 from typing import Any, TextIO
 
-from diffctx._diffctx import get_language_for_file
+from diffctx._diffctx import count_tokens, get_language_for_file
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +114,9 @@ def _write_yaml_node(file: TextIO, node: dict[str, Any], indent: str = "") -> No
     if node.get("truncated"):
         file.write(f"{indent}  truncated: true\n")
 
+    if node.get("redactions"):
+        file.write(f"{indent}  redactions: {node['redactions']}\n")
+
     if "content" in node:
         _write_yaml_content(file, node["content"], indent + "  ")
 
@@ -160,11 +163,57 @@ def _write_yaml_path_list(file: TextIO, key: str, paths: list[Any]) -> None:
         file.write(f'  - "{_escape_yaml_string(str(path))}"\n')
 
 
-def _write_yaml_diff_metadata(file: TextIO, tree: dict[str, Any]) -> None:
+def _write_yaml_list_item(file: TextIO, item: Any, indent: str) -> None:
+    if not isinstance(item, dict):
+        file.write(f'{indent}  - "{_escape_yaml_string(str(item))}"\n')
+        return
+    first = True
+    for sub_key, sub_value in item.items():
+        prefix = f"{indent}  - " if first else f"{indent}    "
+        first = False
+        buf = io.StringIO()
+        _write_yaml_value(buf, str(sub_key), sub_value, "")
+        file.write(prefix + buf.getvalue().replace("\n", f"\n{indent}    ").rstrip(" ").rstrip("\n") + "\n")
+
+
+def _yaml_scalar(value: Any) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    if value is None:
+        return "null"
+    return f'"{_escape_yaml_string(str(value))}"'
+
+
+def _write_yaml_value(file: TextIO, key: str, value: Any, indent: str) -> None:
+    if isinstance(value, dict):
+        if not value:
+            file.write(f"{indent}{key}: {{}}\n")
+            return
+        file.write(f"{indent}{key}:\n")
+        for sub_key, sub_value in value.items():
+            _write_yaml_value(file, str(sub_key), sub_value, indent + "  ")
+    elif isinstance(value, list):
+        if not value:
+            file.write(f"{indent}{key}: []\n")
+            return
+        file.write(f"{indent}{key}:\n")
+        for item in value:
+            _write_yaml_list_item(file, item, indent)
+    else:
+        file.write(f"{indent}{key}: {_yaml_scalar(value)}\n")
+
+
+def _write_yaml_change_lists(file: TextIO, tree: dict[str, Any]) -> None:
     if tree.get("commit_message"):
         file.write(f'commit_message: "{_escape_yaml_string(str(tree["commit_message"]))}"\n')
+    if tree.get("commit_messages"):
+        _write_yaml_value(file, "commit_messages", tree["commit_messages"], "")
     if tree.get("changed_files"):
         _write_yaml_path_list(file, "changed_files", tree["changed_files"])
+    if tree.get("changes"):
+        _write_yaml_value(file, "changes", tree["changes"], "")
     if tree.get("deleted_files"):
         _write_yaml_path_list(file, "deleted_files", tree["deleted_files"])
     if tree.get("renamed_files"):
@@ -178,6 +227,10 @@ def _write_yaml_diff_metadata(file: TextIO, tree: dict[str, Any]) -> None:
         _write_yaml_path_list(file, "ignored_changes", tree["ignored_changes"])
     if tree.get("policy_excluded_count"):
         file.write(f"policy_excluded_count: {tree['policy_excluded_count']}\n")
+
+
+def _write_yaml_diff_metadata(file: TextIO, tree: dict[str, Any]) -> None:
+    _write_yaml_change_lists(file, tree)
     if tree.get("raw_diff"):
         _write_yaml_block(file, "raw_diff", tree["raw_diff"], "")
     if tree.get("fragments"):
@@ -185,9 +238,15 @@ def _write_yaml_diff_metadata(file: TextIO, tree: dict[str, Any]) -> None:
         file.write("fragments:\n")
         for frag in tree["fragments"]:
             _write_yaml_fragment(file, frag, "  ")
+    if tree.get("coverage"):
+        _write_yaml_value(file, "coverage", tree["coverage"], "")
+    if tree.get("provenance"):
+        _write_yaml_value(file, "provenance", tree["provenance"], "")
 
 
 def write_tree_yaml(file: TextIO, tree: dict[str, Any]) -> None:
+    if tree.get("schema"):
+        file.write(f"schema: {tree['schema']}\n")
     name = _escape_yaml_string(str(tree["name"]))
     file.write(f'name: "{name}"\n')
     file.write(f"type: {tree['type']}\n")
@@ -303,9 +362,18 @@ def _write_text_changed_files(file: TextIO, tree: dict[str, Any]) -> None:
         file.write(f"    {_escape_text_path(path)}{mark}\n")
 
 
-def _write_tree_text_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
-    if tree.get("commit_message"):
+def _write_text_commit_messages(file: TextIO, tree: dict[str, Any]) -> None:
+    if tree.get("commit_messages"):
+        file.write(f"  commits: {len(tree['commit_messages'])}\n")
+        for message in tree["commit_messages"]:
+            for i, line in enumerate(str(message).splitlines()):
+                file.write(f"    {'- ' if i == 0 else '  '}{line}\n")
+    elif tree.get("commit_message"):
         file.write(f"  change: {tree['commit_message']}\n")
+
+
+def _write_tree_text_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
+    _write_text_commit_messages(file, tree)
     if tree.get("changed_files"):
         _write_text_changed_files(file, tree)
     if tree.get("deleted_files"):
@@ -462,9 +530,10 @@ def _write_markdown_fragment(file: TextIO, frag: dict[str, Any]) -> None:
 
 
 def _omitted_changed_files(tree: dict[str, Any]) -> list[str]:
-    # Changed files the selection produced nothing for. Derived strictly from
-    # changed_files (already policy-clean: secret/ignored/deleted paths never
-    # enter it), so the footer can never name a withheld path.
+    # The engine's inventory row says whether anything of a changed file made
+    # it out; the fallback re-derives it for a dict without one.
+    if tree.get("changes"):
+        return [str(c["path"]) for c in tree["changes"] if not c.get("represented", True)]
     changed = tree.get("changed_files") or []
     if not changed:
         return []
@@ -489,6 +558,14 @@ def _write_md_path_list(file: TextIO, tree: dict[str, Any], key: str, title: str
 _OMITTED_MARK = " — omitted"
 
 
+def _coverage_note(tree: dict[str, Any]) -> str | None:
+    coverage = tree.get("coverage")
+    if not coverage:
+        return None
+    reasons = ", ".join(str(r) for r in coverage.get("limit_reasons") or [])
+    return f"Coverage: {coverage.get('status', 'partial')} — the run stopped at a limit ({reasons}); context may be missing."
+
+
 def _write_md_changed_files(file: TextIO, tree: dict[str, Any]) -> None:
     changed = tree.get("changed_files") or []
     if not changed:
@@ -504,18 +581,45 @@ def _write_md_changed_files(file: TextIO, tree: dict[str, Any]) -> None:
     file.write("\n")
 
 
+def _write_md_commit_messages(file: TextIO, tree: dict[str, Any]) -> None:
+    # A range is titled by all of its commits, subject and body, newest
+    # first — not by the subject of the one that happens to be last (#263).
+    messages = tree.get("commit_messages")
+    if not messages:
+        if tree.get("commit_message"):
+            file.write(f"> {tree['commit_message']}\n\n")
+        return
+    if len(messages) == 1:
+        for line in str(messages[0]).splitlines():
+            file.write(f"> {line}\n" if line else ">\n")
+    else:
+        file.write(f"> {len(messages)} commits:\n")
+        for message in messages:
+            subject, _, body = str(message).partition("\n")
+            file.write(f"> - **{subject}**\n")
+            for line in body.strip("\n").splitlines():
+                file.write(f">   {line}\n" if line else ">\n")
+    file.write("\n")
+
+
+def _write_md_renamed_files(file: TextIO, tree: dict[str, Any]) -> None:
+    if not tree.get("renamed_files"):
+        return
+    file.write("**Renamed files:**\n\n")
+    for pair in tree["renamed_files"]:
+        old_p = _escape_md_inline_code(str(pair.get("from", "")))
+        new_p = _escape_md_inline_code(str(pair.get("to", "")))
+        file.write(f"- {old_p} \u2192 {new_p}\n")
+    file.write("\n")
+
+
 def _write_markdown_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
-    if tree.get("commit_message"):
-        file.write(f"> {tree['commit_message']}\n\n")
+    _write_md_commit_messages(file, tree)
+    if note := _coverage_note(tree):
+        file.write(f"*{note}*\n\n")
     _write_md_changed_files(file, tree)
     _write_md_path_list(file, tree, "deleted_files", "Deleted files")
-    if tree.get("renamed_files"):
-        file.write("**Renamed files:**\n\n")
-        for pair in tree["renamed_files"]:
-            old_p = _escape_md_inline_code(str(pair.get("from", "")))
-            new_p = _escape_md_inline_code(str(pair.get("to", "")))
-            file.write(f"- {old_p} \u2192 {new_p}\n")
-        file.write("\n")
+    _write_md_renamed_files(file, tree)
     _write_md_path_list(file, tree, "lockfile_changes", "Lock files changed")
     _write_md_path_list(file, tree, "ignored_changes", "Changed but excluded by ignore rules")
     if tree.get("policy_excluded_count"):
@@ -547,17 +651,88 @@ def write_tree_markdown(file: TextIO, tree: dict[str, Any]) -> None:
         _write_md_content(file, tree, name, "")
 
 
-def tree_to_string(tree: dict[str, Any], output_format: str = "yaml") -> str:
+_WRITERS: dict[str, Callable[[TextIO, dict[str, Any]], None]] = {
+    "json": write_tree_json,
+    "txt": write_tree_text,
+    "md": write_tree_markdown,
+    "yaml": write_tree_yaml,
+}
+
+
+def _render(tree: dict[str, Any], output_format: str) -> str:
     buf = io.StringIO()
-    if output_format == "json":
-        write_tree_json(buf, tree)
-    elif output_format == "txt":
-        write_tree_text(buf, tree)
-    elif output_format == "md":
-        write_tree_markdown(buf, tree)
-    else:
-        write_tree_yaml(buf, tree)
+    _WRITERS.get(output_format, write_tree_yaml)(buf, tree)
     return buf.getvalue()
+
+
+_CLASS_DROP_ORDER = {"generated": 0, "mechanical": 1, "unknown": 2, "content": 3}
+
+
+def _drop_index(fragments: list[dict[str, Any]], classes: dict[str, str]) -> int:
+    # The same order the selection policy admits in, reversed: context from
+    # the tail first; then a changed file's second fragment before any file
+    # loses its only one; then witnesses by class, mechanical bumps before
+    # hand-written content, so a tight budget keeps what a reviewer needs.
+    context = [i for i, f in enumerate(fragments) if f.get("role") != "changed"]
+    if context:
+        return context[-1]
+    per_file: dict[str, int] = {}
+    for f in fragments:
+        per_file[str(f.get("path"))] = per_file.get(str(f.get("path")), 0) + 1
+    seconds = [i for i, f in enumerate(fragments) if per_file[str(f.get("path"))] > 1]
+    if seconds:
+        return seconds[-1]
+    return max(
+        range(len(fragments)),
+        key=lambda i: (-_CLASS_DROP_ORDER.get(classes.get(str(fragments[i].get("path")), "content"), 3), i),
+    )
+
+
+def _drop_one_fragment(tree: dict[str, Any]) -> dict[str, Any]:
+    fragments = list(tree["fragments"])
+    classes = {str(c["path"]): str(c.get("class", "content")) for c in tree.get("changes") or []}
+    fragments.pop(_drop_index(fragments, classes))
+    represented = {str(f.get("path")) for f in fragments}
+    trimmed = {**tree, "fragments": fragments, "fragment_count": len(fragments)}
+    if tree.get("changes"):
+        trimmed["changes"] = [{**c, "represented": str(c["path"]) in represented} for c in tree["changes"]]
+    coverage = dict(tree.get("coverage") or {"status": "partial", "limit_reasons": [], "resources": {}})
+    reasons = list(coverage.get("limit_reasons") or [])
+    if "selection_budget_exceeded" not in reasons:
+        reasons.append("selection_budget_exceeded")
+    coverage["limit_reasons"] = reasons
+    if any(not c["represented"] for c in trimmed.get("changes") or []):
+        coverage["status"] = "degraded"
+    trimmed["coverage"] = coverage
+    return trimmed
+
+
+def fit_to_budget(tree: dict[str, Any], output_format: str) -> tuple[dict[str, Any], str]:
+    """The rendered document is what the budget bounds, so the rendering is
+    where the cap is enforced: the engine's envelope charge is an estimate
+    (#259), and anything it under-charges — a coverage note, a format's own
+    scaffolding — would otherwise push the artifact past `--budget`. Context
+    is dropped from the tail first; a changed fragment only when no context
+    is left; the inventory, coverage and provenance never. A tree with no
+    budget in its provenance renders as is."""
+    selection = (tree.get("provenance") or {}).get("selection") or {}
+    budget = selection.get("budget_tokens")
+    if not isinstance(budget, int) or budget <= 0 or budget >= 10_000_000 or not tree.get("fragments"):
+        return tree, _render(tree, output_format)
+
+    # `latency` is telemetry beside the artifact, not part of it: it does not
+    # count against the budget, so the count is taken on the document without
+    # it (a no-op for Markdown and text, which never render it).
+    def accounted(t: dict[str, Any]) -> int:
+        return count_tokens(_render({k: v for k, v in t.items() if k != "latency"}, output_format))
+
+    while accounted(tree) > budget and tree.get("fragments"):
+        tree = _drop_one_fragment(tree)
+    return tree, _render(tree, output_format)
+
+
+def tree_to_string(tree: dict[str, Any], output_format: str = "yaml") -> str:
+    return fit_to_budget(tree, output_format)[1]
 
 
 def _write_to_stdout_with_wrapper(writer: Callable[[TextIO], None]) -> bool:

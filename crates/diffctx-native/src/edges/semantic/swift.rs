@@ -60,13 +60,10 @@ pub struct SwiftEdgeBuilder;
 
 impl EdgeBuilder for SwiftEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
-        let frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_swift_file(Path::new(f.path())))
-            .collect();
-        if frags.is_empty() {
+        let Some(frags) = base::frags_where(fragments, |f| is_swift_file(Path::new(f.path())))
+        else {
             return FxHashMap::default();
-        }
+        };
 
         let import_w = EDGE_WEIGHTS["swift_import"].forward;
         let conform_w = EDGE_WEIGHTS["swift_conformance"].forward;
@@ -77,12 +74,7 @@ impl EdgeBuilder for SwiftEdgeBuilder {
         let idx = base::FragmentIndex::new(fragments, repo_root);
         let mut name_to_defs: FxHashMap<String, Vec<_>> = FxHashMap::default();
         for f in &frags {
-            for name in extract_type_defs(&f.content) {
-                name_to_defs
-                    .entry(name.to_lowercase())
-                    .or_default()
-                    .push(f.id.clone());
-            }
+            base::index_lower(&mut name_to_defs, extract_type_defs(&f.content), &f.id);
         }
 
         let mut edges: EdgeDict = FxHashMap::default();

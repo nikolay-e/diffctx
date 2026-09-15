@@ -38,6 +38,7 @@ pub fn build_project_graph(root_dir: &Path) -> Result<ProjectGraph> {
         &mut seen_frag_ids,
         None,
         false,
+        &crate::resource::RunContext::unbounded(),
     );
 
     crate::pipeline::assign_token_counts(&mut all_fragments);
@@ -54,7 +55,7 @@ pub fn build_project_graph(root_dir: &Path) -> Result<ProjectGraph> {
         &all_fragments,
         Some(resolved_root.as_path()),
         skip_expensive,
-        crate::deadline::Deadline::none(),
+        &crate::resource::RunContext::unbounded(),
     );
 
     let graph = graph::build_graph_capped(&all_fragments, capped);

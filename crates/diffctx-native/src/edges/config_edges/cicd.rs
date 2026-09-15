@@ -226,11 +226,10 @@ fn extract_refs_for_content(path: &Path, content: &str) -> FxHashSet<String> {
     }
 }
 
-fn add_package_json_ref(content: &str, refs: &mut FxHashSet<String>) {
+fn package_json_ref(content: &str) -> Option<String> {
     let lower = content.to_lowercase();
-    if lower.contains("npm") || lower.contains("yarn") || lower.contains("pnpm") {
-        refs.insert("package.json".to_string());
-    }
+    (lower.contains("npm") || lower.contains("yarn") || lower.contains("pnpm"))
+        .then(|| "package.json".to_string())
 }
 
 pub struct CICDEdgeBuilder;
@@ -321,25 +320,18 @@ impl EdgeBuilder for CICDEdgeBuilder {
         repo_root: Option<&Path>,
         file_cache: Option<&FxHashMap<PathBuf, String>>,
     ) -> Vec<PathBuf> {
-        let ci_files: Vec<&PathBuf> = changed.iter().filter(|p| is_ci_file(p)).collect();
-        if ci_files.is_empty() {
-            return vec![];
-        }
-
-        let mut refs = FxHashSet::default();
-
-        for ci in &ci_files {
-            let content = match base::read_file_cached(ci, file_cache) {
-                Some(c) => c,
-                None => continue,
-            };
-
-            let local_refs = extract_refs_for_content(ci, &content);
-            refs.extend(local_refs);
-            add_package_json_ref(&content, &mut refs);
-        }
-
-        base::discover_files_by_refs(&refs, changed, candidates, repo_root)
+        base::discover_by_extracted_path_refs(
+            changed,
+            candidates,
+            repo_root,
+            file_cache,
+            |p| is_ci_file(p),
+            |p, c| {
+                extract_refs_for_content(p, c)
+                    .into_iter()
+                    .chain(package_json_ref(c))
+            },
+        )
     }
 }
 

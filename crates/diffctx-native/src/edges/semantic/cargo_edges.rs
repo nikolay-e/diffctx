@@ -88,13 +88,11 @@ pub struct CargoEdgeBuilder;
 
 impl EdgeBuilder for CargoEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
-        let cargo_frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_cargo_toml(Path::new(f.path())))
-            .collect();
-        if cargo_frags.is_empty() {
+        let Some(cargo_frags) =
+            base::frags_where(fragments, |f| is_cargo_toml(Path::new(f.path())))
+        else {
             return FxHashMap::default();
-        }
+        };
 
         let ws_w = EDGE_WEIGHTS["cargo_workspace"].forward;
         let dep_w = EDGE_WEIGHTS["cargo_path_dep"].forward;

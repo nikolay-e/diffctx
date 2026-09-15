@@ -105,13 +105,10 @@ pub struct CFamilyEdgeBuilder;
 
 impl EdgeBuilder for CFamilyEdgeBuilder {
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {
-        let c_frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_c_family(Path::new(f.path())))
-            .collect();
-        if c_frags.is_empty() {
+        let Some(c_frags) = base::frags_where(fragments, |f| is_c_family(Path::new(f.path())))
+        else {
             return FxHashMap::default();
-        }
+        };
 
         let include_weight = EDGE_WEIGHTS["c_include"].forward;
         let call_weight = EDGE_WEIGHTS["c_call"].forward;
@@ -156,10 +153,7 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
-            let stem = path
-                .file_stem()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_default();
+            let stem = base::file_stem_string(path);
 
             push_file_key(&mut header_to_files, name, f);
             if !stem.is_empty() {
@@ -201,11 +195,14 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
 
         let mut edges: EdgeDict = FxHashMap::default();
 
+        let mut reported = 0u64;
         for (i, f) in c_frags.iter().enumerate() {
             // The envoy shape (520 files sharing one stem) made a single
             // c_family build outrun the whole timeout; the between-builders
             // check cannot interrupt it, so poll inside the loop (#210).
-            crate::deadline::check_current_every(i, 256, "edge construction (c_family)");
+            if !crate::resource::poll_emissions(i, 256, edges.len() as u64, &mut reported) {
+                break;
+            }
             for inc in extract_includes(&f.content) {
                 let inc_name = if inc.contains('/') {
                     inc.split('/').next_back().unwrap().to_string()
@@ -301,10 +298,7 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
             FxHashMap::default();
         for f in &c_frags {
             let path = Path::new(f.path());
-            let stem = path
-                .file_stem()
-                .map(|s| s.to_string_lossy().to_lowercase())
-                .unwrap_or_default();
+            let stem = base::file_stem_lower(path);
             let dir = path
                 .parent()
                 .map(|d| d.to_string_lossy().to_string())
@@ -324,7 +318,7 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
         // not buckets; a per-bucket poll never fired inside the case it was
         // added for (#210).
         let mut pairs = 0usize;
-        for (_key, (files, _)) in by_stem.iter() {
+        'buckets: for (_key, (files, _)) in by_stem.iter() {
             if files.len() < 2 {
                 continue;
             }
@@ -338,11 +332,14 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
                 .collect();
             for h in &headers {
                 for imp in &impls {
-                    crate::deadline::check_current_every(
+                    if !crate::resource::poll_emissions(
                         pairs,
                         4096,
-                        "edge construction (c_family pairing)",
-                    );
+                        edges.len() as u64,
+                        &mut reported,
+                    ) {
+                        break 'buckets;
+                    }
                     pairs += 1;
                     if let (Some(hr), Some(ir)) = (reps.get(**h), reps.get(**imp)) {
                         add_edge(&mut edges, hr, ir, base_weight, reverse_factor);

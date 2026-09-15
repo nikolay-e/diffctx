@@ -269,6 +269,10 @@ struct ManifestView {
     content: String,
     /// Byte offset where each line of `content` begins.
     line_starts: Vec<usize>,
+    /// The file line the view's first line is: a `---` bundle yields one
+    /// view per document, and every span still has to land on the file's
+    /// own fragments.
+    first_line: u32,
     /// `(start_line, end_line, id)` per fragment, ascending.
     fragments: Vec<(u32, u32, FragmentId)>,
     /// The file's largest fragment: where a definition is worth reading (a
@@ -278,9 +282,11 @@ struct ManifestView {
 
 impl ManifestView {
     fn line_of(&self, offset: usize) -> u32 {
-        self.line_starts
+        let local = self
+            .line_starts
             .partition_point(|start| *start <= offset)
-            .max(1) as u32
+            .max(1) as u32;
+        local + self.first_line - 1
     }
 
     /// The smallest fragment that covers the whole matched construct, so an
@@ -333,37 +339,72 @@ fn build_manifest_views(fragments: &[Fragment]) -> Vec<ManifestView> {
             continue;
         }
 
-        let mut content = String::new();
-        let mut line_starts = Vec::with_capacity(lines.len());
-        for line in &lines {
-            line_starts.push(content.len());
-            content.push_str(line);
-            content.push('\n');
-        }
-
-        if !is_kubernetes_manifest(Path::new(path), &content) {
-            continue;
-        }
-
-        // The crate's one definition of a file's representative (first
-        // largest fragment), not a local tie-break that disagreed with it
-        // whenever token counts were still zero.
-        let owned: Vec<Fragment> = frags.iter().map(|f| (*f).clone()).collect();
-        let Some(representative) = base::file_representatives(&owned).remove(path) else {
-            continue;
-        };
-
-        views.push(ManifestView {
-            content,
-            line_starts,
-            fragments: frags
+        // A `---` bundle is several resources in one file (#258): one view
+        // per document, so a Service in the third document is indexed as a
+        // Service and its selector meets the Deployment in the second, not
+        // the ConfigMap the file happens to open with.
+        for (first_line, doc_lines) in split_documents(&lines) {
+            let last_line = first_line + doc_lines.len() as u32 - 1;
+            let mut content = String::new();
+            let mut line_starts = Vec::with_capacity(doc_lines.len());
+            for line in doc_lines {
+                line_starts.push(content.len());
+                content.push_str(line);
+                content.push('\n');
+            }
+            if !is_kubernetes_manifest(Path::new(path), &content) {
+                continue;
+            }
+            let in_doc: Vec<&Fragment> = frags
                 .iter()
-                .map(|f| (f.id.start_line, f.id.end_line, f.id.clone()))
-                .collect(),
-            representative,
-        });
+                .copied()
+                .filter(|f| f.id.start_line <= last_line && f.id.end_line >= first_line)
+                .collect();
+            // The document's representative: its first largest fragment, the
+            // same rule `base::file_representatives` applies to a whole file.
+            let Some(representative) = in_doc
+                .iter()
+                .max_by(|a, b| {
+                    a.token_count
+                        .cmp(&b.token_count)
+                        .then_with(|| b.id.cmp(&a.id))
+                })
+                .map(|f| f.id.clone())
+            else {
+                continue;
+            };
+            views.push(ManifestView {
+                content,
+                line_starts,
+                first_line,
+                fragments: in_doc
+                    .iter()
+                    .map(|f| (f.id.start_line, f.id.end_line, f.id.clone()))
+                    .collect(),
+                representative,
+            });
+        }
     }
     views
+}
+
+/// `(first file line, lines)` per YAML document: the bundle splits at a
+/// bare `---`, which belongs to no document.
+fn split_documents(lines: &[String]) -> Vec<(u32, &[String])> {
+    let mut docs = Vec::new();
+    let mut start = 0usize;
+    for (i, line) in lines.iter().enumerate() {
+        if line.trim_end() == "---" {
+            if i > start {
+                docs.push((start as u32 + 1, &lines[start..i]));
+            }
+            start = i + 1;
+        }
+    }
+    if start < lines.len() {
+        docs.push((start as u32 + 1, &lines[start..]));
+    }
+    docs
 }
 
 /// A place inside a manifest: which view, and which span of it.
@@ -791,6 +832,120 @@ mod tests {
             (forward.1.start_line, forward.1.end_line),
             (5, 10),
             "the edge must land on the fragment carrying the matched label, not on the fallback"
+        );
+    }
+    /// #258: a `---` bundle is several resources. The Service in the third
+    /// document selects `app: web`; the Deployment carrying that label is the
+    /// second document, and the one carrying `app: api` must not be linked.
+    #[test]
+    fn a_bundle_links_the_service_to_the_document_its_selector_names() {
+        let fragments = vec![
+            yaml_frag("k8s/bundle.yaml", 1, "apiVersion: v1\n"),
+            yaml_frag("k8s/bundle.yaml", 2, "kind: ConfigMap\n"),
+            yaml_frag("k8s/bundle.yaml", 3, "metadata:\n  name: web-config\n"),
+            yaml_frag("k8s/bundle.yaml", 5, "data:\n  LOG_LEVEL: info\n"),
+            yaml_frag("k8s/bundle.yaml", 7, "---\n"),
+            yaml_frag("k8s/bundle.yaml", 8, "apiVersion: apps/v1\n"),
+            yaml_frag("k8s/bundle.yaml", 9, "kind: Deployment\n"),
+            yaml_frag("k8s/bundle.yaml", 10, "metadata:\n  name: web\n"),
+            yaml_frag(
+                "k8s/bundle.yaml",
+                12,
+                "spec:\n  template:\n    metadata:\n      labels:\n        app: web\n        tier: frontend\n",
+            ),
+            yaml_frag("k8s/bundle.yaml", 18, "---\n"),
+            yaml_frag("k8s/bundle.yaml", 19, "apiVersion: apps/v1\n"),
+            yaml_frag("k8s/bundle.yaml", 20, "kind: Deployment\n"),
+            yaml_frag("k8s/bundle.yaml", 21, "metadata:\n  name: api\n"),
+            yaml_frag(
+                "k8s/bundle.yaml",
+                23,
+                "spec:\n  template:\n    metadata:\n      labels:\n        app: api\n        tier: backend\n",
+            ),
+            yaml_frag("k8s/service.yaml", 1, "apiVersion: v1\n"),
+            yaml_frag("k8s/service.yaml", 2, "kind: Service\n"),
+            yaml_frag("k8s/service.yaml", 3, "metadata:\n  name: web\n"),
+            yaml_frag("k8s/service.yaml", 5, "spec:\n  selector:\n    app: web\n"),
+        ];
+
+        let views = build_manifest_views(&fragments);
+        assert_eq!(
+            views.len(),
+            4,
+            "one view per document (3 in the bundle + the service), got {}",
+            views.len()
+        );
+
+        let edges = KubernetesEdgeBuilder.build(&fragments, None);
+        let targets: Vec<(u32, u32)> = edges
+            .keys()
+            .filter(|(src, dst)| {
+                src.path.as_ref() == "k8s/service.yaml" && dst.path.as_ref() == "k8s/bundle.yaml"
+            })
+            .map(|(_, dst)| (dst.start_line, dst.end_line))
+            .collect();
+        assert!(
+            targets.contains(&(12, 17)),
+            "the selector must land on the web Deployment's spec (lines 12-17), got {targets:?}"
+        );
+        assert!(
+            !targets.contains(&(23, 28)),
+            "the api Deployment carries `app: api` and must not be linked, got {targets:?}"
+        );
+    }
+
+    /// The same bundle through the real fragmenter: whatever tree-sitter
+    /// makes of `---`, the view builder must see three documents.
+    #[test]
+    fn a_fragmented_bundle_yields_one_view_per_document() {
+        let bundle = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: web-config\ndata:\n  LOG_LEVEL: info\n---\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  selector:\n    matchLabels:\n      app: web\n  template:\n    metadata:\n      labels:\n        app: web\n        tier: frontend\n    spec:\n      containers:\n      - name: web\n        image: nginx:1.25\n---\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: api\nspec:\n  selector:\n    matchLabels:\n      app: api\n  template:\n    metadata:\n      labels:\n        app: api\n        tier: backend\n    spec:\n      containers:\n      - name: api\n        image: api:1.0\n";
+        let fragments =
+            crate::parsers::fragment_file(std::sync::Arc::from("k8s/bundle.yaml"), bundle);
+        let covered: Vec<(u32, u32)> = fragments
+            .iter()
+            .map(|f| (f.id.start_line, f.id.end_line))
+            .collect();
+        let views = build_manifest_views(&fragments);
+        assert_eq!(
+            views.len(),
+            3,
+            "expected three documents, got {} views from fragments {covered:?}",
+            views.len()
+        );
+        let kinds: Vec<Option<String>> = views
+            .iter()
+            .map(|v| extract_resource_info(&v.content).0)
+            .collect();
+        assert_eq!(
+            kinds,
+            vec![
+                Some("ConfigMap".into()),
+                Some("Deployment".into()),
+                Some("Deployment".into())
+            ]
+        );
+
+        let service = "apiVersion: v1\nkind: Service\nmetadata:\n  name: web\nspec:\n  selector:\n    app: web\n  ports:\n  - port: 8080\n    targetPort: 8080\n";
+        let mut all = fragments;
+        all.extend(crate::parsers::fragment_file(
+            std::sync::Arc::from("k8s/service.yaml"),
+            service,
+        ));
+        let edges = KubernetesEdgeBuilder.build(&all, None);
+        let targets: Vec<(u32, u32)> = edges
+            .keys()
+            .filter(|(src, dst)| {
+                src.path.as_ref() == "k8s/service.yaml" && dst.path.as_ref() == "k8s/bundle.yaml"
+            })
+            .map(|(_, dst)| (dst.start_line, dst.end_line))
+            .collect();
+        assert!(
+            targets.iter().any(|(s, e)| *s <= 19 && *e >= 19),
+            "the selector must land on the web Deployment (line 19 carries `app: web`), got {targets:?}"
+        );
+        assert!(
+            !targets.iter().any(|(s, _)| *s >= 26),
+            "the api Deployment must not be linked, got {targets:?}"
         );
     }
 }

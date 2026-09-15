@@ -27,7 +27,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from diffctx._diffctx import withheld_paths
+from diffctx._diffctx import sanitize_text, withheld_paths
 
 # A fetch is meant to be a targeted follow-up. Past this many ids the caller is
 # re-implementing the pack, one round trip at a time, and should ask for the
@@ -252,5 +252,7 @@ def _fetch_one(
     if sliced is None:
         return f"## {ref.path}\n*Not found: {ref.path} has {len(text.splitlines())} lines at {rev_label}; the id starts past the end.*\n"
     body, span = sliced
+    body, redacted, categories = sanitize_text(body)
     suffix = Path(ref.path).suffix.lstrip(".")
-    return f"## {ref.path}:{span}\n```{suffix}\n{body}\n```\n"
+    note = f"*{redacted} credential-shaped string(s) redacted: {', '.join(categories)}*\n" if redacted else ""
+    return f"## {ref.path}:{span}\n{note}```{suffix}\n{body}\n```\n"

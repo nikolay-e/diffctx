@@ -115,7 +115,7 @@ pub fn collect_capped_edges(
     fragments: &[Fragment],
     repo_root: Option<&Path>,
     skip_expensive: bool,
-    deadline: crate::deadline::Deadline,
+    ctx: &crate::resource::RunContext,
 ) -> CappedEdges {
     let mut all_builders: Vec<(&str, Box<dyn EdgeBuilder>)> = Vec::new();
     for cat in builder_categories() {
@@ -127,7 +127,7 @@ pub fn collect_capped_edges(
             all_builders.push((cat.name, builder));
         }
     }
-    collect_capped_edges_from(all_builders, fragments, repo_root, deadline)
+    collect_capped_edges_from(all_builders, fragments, repo_root, ctx)
 }
 
 /// The builder list is a parameter so the merge rules can be exercised with
@@ -137,7 +137,7 @@ fn collect_capped_edges_from(
     all_builders: Vec<(&str, Box<dyn EdgeBuilder>)>,
     fragments: &[Fragment],
     repo_root: Option<&Path>,
-    deadline: crate::deadline::Deadline,
+    ctx: &crate::resource::RunContext,
 ) -> CappedEdges {
     let (node_to_idx, idx_to_node) = intern_fragment_nodes(fragments);
     let category_weights = *crate::config::category_weights::CATEGORY_WEIGHTS;
@@ -157,10 +157,16 @@ fn collect_capped_edges_from(
         .par_iter()
         .enumerate()
         .map(|(builder_idx, (name, builder))| {
-            deadline.check("edge construction");
-            let _in_builder = deadline.enter();
+            // A builder that starts after the deadline or the contribution
+            // cap has fired contributes nothing: the graph is partial and
+            // the coverage block says so.
+            if !ctx.check() || ctx.over_contributions() {
+                return Vec::new();
+            }
+            let _in_builder = ctx.enter();
             let t = std::time::Instant::now();
             let edges = builder.build(fragments, repo_root);
+            ctx.charge_remaining(edges.len() as u64);
             if std::env::var_os("DIFFCTX_TRACE_BUILDERS").is_some() {
                 // The index is the registration order within
                 // builder_categories(); category names alone cannot tell two
@@ -339,6 +345,7 @@ fn collect_capped_edges_from(
     }
     dedup_compact_edges(&mut edges);
     cap_out_edges_per_source(&mut edges, max_per_node);
+    ctx.record_usage(|u| u.final_edges = edges.len() as u64);
 
     let nodes_capped = out_degree
         .iter()
@@ -514,8 +521,12 @@ mod fallback_gate_tests {
             frag("proj/u1.xyz", "zzcommonzz here\n", &["zzcommonzz"]),
             frag("proj/u2.xyz", "zzcommonzz there\n", &["zzcommonzz"]),
         ];
-        let capped =
-            collect_capped_edges(&fragments, None, false, crate::deadline::Deadline::none());
+        let capped = collect_capped_edges(
+            &fragments,
+            None,
+            false,
+            &crate::resource::RunContext::unbounded(),
+        );
         let node_path = |idx: u32| capped.idx_to_node[idx as usize].path.clone();
         // Category matters: a.py and c.py legitimately share a structural
         // sibling edge; the class under test is the SEMANTIC tags link.
@@ -582,7 +593,7 @@ mod naming_merge_tests {
             builders,
             &fragments,
             None,
-            crate::deadline::Deadline::none(),
+            &crate::resource::RunContext::unbounded(),
         );
         assert_eq!(capped.edges.len(), 1, "one merged pair expected");
         capped.edges[0].naming

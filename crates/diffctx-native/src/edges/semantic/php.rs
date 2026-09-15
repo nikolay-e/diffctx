@@ -9,7 +9,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_files_by_refs};
+use super::super::base::{self, EdgeBuilder, add_edges_from_ids};
 
 fn is_php_file(path: &Path) -> bool {
     PHP_EXTENSIONS.contains(base::file_ext(path).as_str())
@@ -73,13 +73,9 @@ pub struct PhpEdgeBuilder;
 
 impl EdgeBuilder for PhpEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
-        let frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_php_file(Path::new(f.path())))
-            .collect();
-        if frags.is_empty() {
+        let Some(frags) = base::frags_where(fragments, |f| is_php_file(Path::new(f.path()))) else {
             return FxHashMap::default();
-        }
+        };
 
         let use_w = EDGE_WEIGHTS["php_use"].forward;
         let require_w = EDGE_WEIGHTS["php_require"].forward;
@@ -91,12 +87,7 @@ impl EdgeBuilder for PhpEdgeBuilder {
         let mut name_to_defs: FxHashMap<String, Vec<_>> = FxHashMap::default();
         let mut ns_to_frags: FxHashMap<String, Vec<_>> = FxHashMap::default();
         for f in &frags {
-            for name in extract_defs(&f.content) {
-                name_to_defs
-                    .entry(name.to_lowercase())
-                    .or_default()
-                    .push(f.id.clone());
-            }
+            base::index_lower(&mut name_to_defs, extract_defs(&f.content), &f.id);
             if let Some(ns) = extract_namespace(&f.content) {
                 ns_to_frags.entry(ns).or_default().push(f.id.clone());
             }
@@ -139,17 +130,13 @@ impl EdgeBuilder for PhpEdgeBuilder {
         repo_root: Option<&Path>,
         file_cache: Option<&FxHashMap<PathBuf, String>>,
     ) -> Vec<PathBuf> {
-        let php_changed: Vec<&PathBuf> = changed.iter().filter(|f| is_php_file(f)).collect();
-        if php_changed.is_empty() {
-            return vec![];
-        }
-        let mut refs = FxHashSet::default();
-        for f in &php_changed {
-            if let Some(content) = base::read_file_cached(f, file_cache) {
-                refs.extend(extract_requires(&content));
-                refs.extend(extract_uses(&content));
-            }
-        }
-        discover_files_by_refs(&refs, changed, candidates, repo_root)
+        base::discover_by_extracted_refs(
+            changed,
+            candidates,
+            repo_root,
+            file_cache,
+            |p| is_php_file(p),
+            |c| extract_requires(c).into_iter().chain(extract_uses(c)),
+        )
     }
 }

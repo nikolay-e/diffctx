@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids, discover_files_by_refs};
+use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids};
 
 fn is_prisma_file(path: &Path) -> bool {
     base::has_ext(path, &[".prisma"])
@@ -44,13 +44,11 @@ pub struct PrismaEdgeBuilder;
 
 impl EdgeBuilder for PrismaEdgeBuilder {
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {
-        let schema_frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_prisma_file(Path::new(f.path())))
-            .collect();
-        if schema_frags.is_empty() {
+        let Some(schema_frags) =
+            base::frags_where(fragments, |f| is_prisma_file(Path::new(f.path())))
+        else {
             return FxHashMap::default();
-        }
+        };
 
         let schema_w = EDGE_WEIGHTS["prisma_schema"].forward;
         let client_w = EDGE_WEIGHTS["prisma_client"].forward;
@@ -59,12 +57,7 @@ impl EdgeBuilder for PrismaEdgeBuilder {
 
         let mut name_to_defs: FxHashMap<String, Vec<_>> = FxHashMap::default();
         for f in &schema_frags {
-            for name in extract_defs(&f.content) {
-                name_to_defs
-                    .entry(name.to_lowercase())
-                    .or_default()
-                    .push(f.id.clone());
-            }
+            base::index_lower(&mut name_to_defs, extract_defs(&f.content), &f.id);
         }
 
         let mut edges: EdgeDict = FxHashMap::default();
@@ -103,17 +96,17 @@ impl EdgeBuilder for PrismaEdgeBuilder {
         repo_root: Option<&Path>,
         file_cache: Option<&FxHashMap<PathBuf, String>>,
     ) -> Vec<PathBuf> {
-        let prisma_changed: Vec<&PathBuf> = changed.iter().filter(|f| is_prisma_file(f)).collect();
-        if prisma_changed.is_empty() {
-            return vec![];
-        }
-        let mut refs = FxHashSet::default();
-        for f in &prisma_changed {
-            if let Some(content) = base::read_file_cached(f, file_cache) {
-                refs.extend(extract_type_refs(&content));
-            }
-        }
-        refs.insert("prisma".to_string());
-        discover_files_by_refs(&refs, changed, candidates, repo_root)
+        base::discover_by_extracted_refs(
+            changed,
+            candidates,
+            repo_root,
+            file_cache,
+            |p| is_prisma_file(p),
+            |c| {
+                extract_type_refs(c)
+                    .into_iter()
+                    .chain(["prisma".to_string()])
+            },
+        )
     }
 }

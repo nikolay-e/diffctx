@@ -25,6 +25,8 @@ static STRATEGIES: Lazy<Vec<Box<dyn FragmentationStrategy>>> = Lazy::new(|| {
     ]
 });
 
+pub(crate) use tree_sitter_strategy::parse_tree;
+
 pub fn fragment_file(path: Arc<str>, content: &str) -> Vec<Fragment> {
     for strategy in STRATEGIES.iter() {
         if strategy.can_handle(&path, content) {
@@ -36,6 +38,12 @@ pub fn fragment_file(path: Arc<str>, content: &str) -> Vec<Fragment> {
     }
 
     Vec::new()
+}
+
+pub(crate) fn file_extension_lower(path: &str) -> String {
+    path.rfind('.')
+        .map(|dot| path[dot..].to_ascii_lowercase())
+        .unwrap_or_default()
 }
 
 fn create_snippet(lines: &[&str], start_line: u32, end_line: u32) -> Option<String> {

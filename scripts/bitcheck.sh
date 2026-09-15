@@ -115,8 +115,10 @@ run_cell() {
   python3 -c '
 import json, sys
 doc = json.load(open(sys.argv[1]))
-# Wall-clock fields are not part of the contract being checked.
+# Wall-clock fields are not part of the contract being checked, and the run
+# record says what produced the selection, not what was selected.
 doc.pop("latency", None)
+doc.pop("provenance", None)
 json.dump(doc, open(sys.argv[2], "w"), indent=1, sort_keys=True)
 ' "$out.raw" "$out"
   rm -f "$out.raw"

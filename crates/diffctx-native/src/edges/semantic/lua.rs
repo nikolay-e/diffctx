@@ -53,13 +53,9 @@ pub struct LuaEdgeBuilder;
 
 impl EdgeBuilder for LuaEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
-        let frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_lua_file(Path::new(f.path())))
-            .collect();
-        if frags.is_empty() {
+        let Some(frags) = base::frags_where(fragments, |f| is_lua_file(Path::new(f.path()))) else {
             return FxHashMap::default();
-        }
+        };
 
         let require_w = EDGE_WEIGHTS["lua_require"].forward;
         let fn_w = EDGE_WEIGHTS["lua_fn"].forward;
@@ -69,12 +65,7 @@ impl EdgeBuilder for LuaEdgeBuilder {
         let idx = base::FragmentIndex::new(fragments, repo_root);
         let mut name_to_defs: FxHashMap<String, Vec<_>> = FxHashMap::default();
         for f in &frags {
-            for name in extract_defs(&f.content) {
-                name_to_defs
-                    .entry(name.to_lowercase())
-                    .or_default()
-                    .push(f.id.clone());
-            }
+            base::index_lower(&mut name_to_defs, extract_defs(&f.content), &f.id);
         }
 
         let mut edges: EdgeDict = FxHashMap::default();

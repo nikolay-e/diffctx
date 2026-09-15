@@ -55,13 +55,10 @@ pub struct ElixirEdgeBuilder;
 
 impl EdgeBuilder for ElixirEdgeBuilder {
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {
-        let frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_elixir_file(Path::new(f.path())))
-            .collect();
-        if frags.is_empty() {
+        let Some(frags) = base::frags_where(fragments, |f| is_elixir_file(Path::new(f.path())))
+        else {
             return FxHashMap::default();
-        }
+        };
 
         let use_w = EDGE_WEIGHTS["elixir_use"].forward;
         let alias_w = EDGE_WEIGHTS["elixir_alias"].forward;
@@ -80,12 +77,7 @@ impl EdgeBuilder for ElixirEdgeBuilder {
                     .or_default()
                     .push(f.id.clone());
             }
-            for name in extract_func_defs(&f.content) {
-                fn_to_frags
-                    .entry(name.to_lowercase())
-                    .or_default()
-                    .push(f.id.clone());
-            }
+            base::index_lower(&mut fn_to_frags, extract_func_defs(&f.content), &f.id);
         }
 
         let mut edges: EdgeDict = FxHashMap::default();

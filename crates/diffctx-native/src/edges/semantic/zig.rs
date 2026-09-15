@@ -45,13 +45,9 @@ pub struct ZigEdgeBuilder;
 
 impl EdgeBuilder for ZigEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
-        let frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_zig_file(Path::new(f.path())))
-            .collect();
-        if frags.is_empty() {
+        let Some(frags) = base::frags_where(fragments, |f| is_zig_file(Path::new(f.path()))) else {
             return FxHashMap::default();
-        }
+        };
 
         let import_w = EDGE_WEIGHTS["zig_import"].forward;
         let type_w = EDGE_WEIGHTS["zig_type"].forward;
@@ -61,12 +57,7 @@ impl EdgeBuilder for ZigEdgeBuilder {
         let idx = base::FragmentIndex::new(fragments, repo_root);
         let mut name_to_defs: FxHashMap<String, Vec<_>> = FxHashMap::default();
         for f in &frags {
-            for name in extract_defs(&f.content) {
-                name_to_defs
-                    .entry(name.to_lowercase())
-                    .or_default()
-                    .push(f.id.clone());
-            }
+            base::index_lower(&mut name_to_defs, extract_defs(&f.content), &f.id);
         }
 
         let mut edges: EdgeDict = FxHashMap::default();

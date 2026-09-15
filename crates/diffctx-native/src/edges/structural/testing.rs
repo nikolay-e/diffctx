@@ -91,10 +91,7 @@ impl EdgeBuilder for TestEdgeBuilder {
                 test_frags.push(f);
                 test_frags_by_path.entry(f.path()).or_default().push(f);
             } else {
-                let stem = path
-                    .file_stem()
-                    .map(|s| s.to_string_lossy().to_lowercase())
-                    .unwrap_or_default();
+                let stem = base::file_stem_lower(path);
                 by_base.entry(stem).or_default().push(f);
             }
         }
@@ -129,10 +126,7 @@ impl EdgeBuilder for TestEdgeBuilder {
             if !seen_test_files.insert(test_frag.path()) {
                 continue;
             }
-            let test_stem = Path::new(test_frag.path())
-                .file_stem()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_default();
+            let test_stem = base::file_stem_string(Path::new(test_frag.path()));
             let target_name = match extract_target_name_from_test(&test_stem) {
                 Some(name) => name,
                 None => continue,
@@ -215,10 +209,7 @@ impl EdgeBuilder for TestEdgeBuilder {
         let mut candidate_by_stem: FxHashMap<String, Vec<PathBuf>> = FxHashMap::default();
         for c in candidates {
             if !changed_set.contains(c) {
-                let stem = c
-                    .file_stem()
-                    .map(|s| s.to_string_lossy().to_lowercase())
-                    .unwrap_or_default();
+                let stem = base::file_stem_lower(c);
                 candidate_by_stem.entry(stem).or_default().push(c.clone());
             }
         }
@@ -227,10 +218,7 @@ impl EdgeBuilder for TestEdgeBuilder {
 
         for changed_file in changed {
             let ext = base::file_ext(changed_file);
-            let stem = changed_file
-                .file_stem()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_default();
+            let stem = base::file_stem_string(changed_file);
 
             if is_test_file(changed_file) {
                 if let Some(target) = extract_target_name_from_test(&stem) {

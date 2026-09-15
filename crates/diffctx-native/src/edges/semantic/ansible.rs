@@ -110,13 +110,10 @@ pub struct AnsibleEdgeBuilder;
 
 impl EdgeBuilder for AnsibleEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
-        let frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_ansible_file(Path::new(f.path())))
-            .collect();
-        if frags.is_empty() {
+        let Some(frags) = base::frags_where(fragments, |f| is_ansible_file(Path::new(f.path())))
+        else {
             return FxHashMap::default();
-        }
+        };
 
         let include_w = EDGE_WEIGHTS["ansible_include"].forward;
         let role_w = EDGE_WEIGHTS["ansible_role"].forward;
@@ -147,8 +144,7 @@ impl EdgeBuilder for AnsibleEdgeBuilder {
         // files were 22k emissions), never two fragments of one file, and
         // capped like the directory-sibling channel so a monster role does
         // not become naming-reachable from itself.
-        let owned: Vec<Fragment> = frags.iter().map(|f| (*f).clone()).collect();
-        let reps = file_representatives(&owned);
+        let reps = file_representatives(frags.iter().copied());
         let mut role_files: FxHashMap<String, Vec<&FragmentId>> = FxHashMap::default();
         for (path, rep) in &reps {
             if let Some(role) = get_role_name(Path::new(path)) {

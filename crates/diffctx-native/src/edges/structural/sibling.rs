@@ -4,7 +4,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::limits::SIBLING;
 use crate::config::weights::EDGE_WEIGHTS;
-use crate::types::{Fragment, FragmentId};
+use crate::types::Fragment;
 
 use super::super::EdgeDict;
 use super::super::base::{EdgeBuilder, add_edge};
@@ -34,13 +34,6 @@ impl SiblingEdgeBuilder {
         }
         by_dir
     }
-
-    fn build_file_representative_map(
-        &self,
-        fragments: &[Fragment],
-    ) -> FxHashMap<String, FragmentId> {
-        super::super::base::file_representatives(fragments)
-    }
 }
 
 impl EdgeBuilder for SiblingEdgeBuilder {
@@ -49,7 +42,7 @@ impl EdgeBuilder for SiblingEdgeBuilder {
         let reverse_factor = EDGE_WEIGHTS["sibling"].reverse_factor;
 
         let by_dir = self.group_files_by_dir(fragments);
-        let file_to_rep = self.build_file_representative_map(fragments);
+        let file_to_rep = super::super::base::file_representatives(fragments);
 
         let mut edges: EdgeDict = FxHashMap::default();
 

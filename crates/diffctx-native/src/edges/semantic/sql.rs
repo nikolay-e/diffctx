@@ -57,13 +57,9 @@ pub struct SqlEdgeBuilder;
 
 impl EdgeBuilder for SqlEdgeBuilder {
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {
-        let frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_sql_file(Path::new(f.path())))
-            .collect();
-        if frags.is_empty() {
+        let Some(frags) = base::frags_where(fragments, |f| is_sql_file(Path::new(f.path()))) else {
             return FxHashMap::default();
-        }
+        };
 
         let fk_w = EDGE_WEIGHTS["sql_fk"].forward;
         let table_ref_w = EDGE_WEIGHTS["sql_table_ref"].forward;

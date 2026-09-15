@@ -1,0 +1,141 @@
+name: kubernetes_046_multidoc_bundle_selector
+tags:
+- lang:yaml
+- domain:kubernetes
+- change:single_file
+- context:cross_file
+- distance:1hop
+- difficulty:medium
+- regression:issue_258_multidoc
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    k8s/bundle.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: web-config
+      data:
+        LOG_LEVEL: info
+      ---
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web
+      spec:
+        selector:
+          matchLabels:
+            app: web
+        template:
+          metadata:
+            labels:
+              app: web
+              tier: frontend
+          spec:
+            containers:
+            - name: web
+              image: nginx:1.25
+      ---
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: api
+      spec:
+        selector:
+          matchLabels:
+            app: api
+        template:
+          metadata:
+            labels:
+              app: api
+              tier: backend
+          spec:
+            containers:
+            - name: api
+              image: api:1.0
+    k8s/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: web
+      spec:
+        selector:
+          app: web
+        ports:
+        - port: 80
+          targetPort: 8080
+  changed_files:
+    k8s/bundle.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: web-config
+      data:
+        LOG_LEVEL: info
+      ---
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web
+      spec:
+        selector:
+          matchLabels:
+            app: web
+        template:
+          metadata:
+            labels:
+              app: web
+              tier: frontend
+          spec:
+            containers:
+            - name: web
+              image: nginx:1.25
+      ---
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: api
+      spec:
+        selector:
+          matchLabels:
+            app: api
+        template:
+          metadata:
+            labels:
+              app: api
+              tier: backend
+          spec:
+            containers:
+            - name: api
+              image: api:1.0
+    k8s/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: web
+      spec:
+        selector:
+          app: web
+        ports:
+        - port: 8080
+          targetPort: 8080
+  commit_message: change web service port
+fragments:
+- id: web_deployment_via_selector
+  selector:
+    path: k8s/bundle.yaml
+    anchor: 'tier: frontend'
+- id: api_deployment_unrelated
+  selector:
+    path: k8s/bundle.yaml
+    anchor: 'tier: backend'
+- id: service_seed
+  selector:
+    path: k8s/service.yaml
+oracle:
+  required:
+  - web_deployment_via_selector
+  allowed: []
+  forbidden:
+  - api_deployment_unrelated

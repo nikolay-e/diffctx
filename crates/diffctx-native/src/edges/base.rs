@@ -154,7 +154,11 @@ impl FragmentIndex {
 }
 
 /// One representative fragment per file — the largest by token count, ties
-/// resolved by first-seen order. This is the semantics `SiblingEdgeBuilder`
+/// resolved by position (the earliest, then the shortest), so every caller
+/// names the same fragment whatever order it holds the fragments in: the
+/// edge builders see a language's subset, the scorer sees them all, and a
+/// seed lifted to "its file" must land where the import edges landed.
+/// This is the semantics `SiblingEdgeBuilder`
 /// always used for its file-level edges; file-level *relations* (an include,
 /// a header/impl pair, a path reference) link representatives rather than
 /// every-fragment-to-every-fragment, because the relation names the file. A
@@ -166,20 +170,54 @@ impl FragmentIndex {
 /// spread the relation to every sibling was measured net-negative on the
 /// corpus (#208) and removed — an accepted trade: a file-level relation
 /// endorses the file, not each of its siblings.
-pub fn file_representatives(fragments: &[Fragment]) -> FxHashMap<String, FragmentId> {
-    let mut file_to_rep: FxHashMap<String, FragmentId> = FxHashMap::default();
-    let mut file_to_token_count: FxHashMap<String, u32> = FxHashMap::default();
+pub fn file_representatives<'a>(
+    fragments: impl IntoIterator<Item = &'a Fragment>,
+) -> FxHashMap<String, FragmentId> {
+    let mut file_to_rep: FxHashMap<String, (u32, FragmentId)> = FxHashMap::default();
 
     for f in fragments {
-        let path = f.path().to_string();
-        let existing_count = file_to_token_count.get(&path).copied().unwrap_or(0);
-        if !file_to_rep.contains_key(&path) || f.token_count > existing_count {
-            file_to_rep.insert(path.clone(), f.id.clone());
-            file_to_token_count.insert(path, f.token_count);
+        let better = |cur: &(u32, FragmentId)| {
+            f.token_count > cur.0
+                || (f.token_count == cur.0
+                    && (f.id.start_line, f.id.end_line) < (cur.1.start_line, cur.1.end_line))
+        };
+        match file_to_rep.get(f.path()) {
+            Some(cur) if !better(cur) => {}
+            _ => {
+                file_to_rep.insert(f.path().to_string(), (f.token_count, f.id.clone()));
+            }
         }
     }
 
     file_to_rep
+        .into_iter()
+        .map(|(path, (_, id))| (path, id))
+        .collect()
+}
+
+/// The fragments a builder recognises, or `None` when there are none —
+/// the prelude 37 builders open the same way with.
+pub fn frags_where<'a>(
+    fragments: &'a [Fragment],
+    keep: impl Fn(&&'a Fragment) -> bool,
+) -> Option<Vec<&'a Fragment>> {
+    let mine: Vec<&Fragment> = fragments.iter().filter(keep).collect();
+    (!mine.is_empty()).then_some(mine)
+}
+
+/// Register `id` under the lowercase of every name — the definition index
+/// twenty builders build the same way.
+pub fn index_lower(
+    index: &mut FxHashMap<String, Vec<FragmentId>>,
+    names: impl IntoIterator<Item = String>,
+    id: &FragmentId,
+) {
+    for name in names {
+        index
+            .entry(name.to_lowercase())
+            .or_default()
+            .push(id.clone());
+    }
 }
 
 pub fn add_edge(
@@ -467,6 +505,32 @@ where
     E: Fn(&str) -> I,
     I: IntoIterator<Item = String>,
 {
+    discover_by_extracted_path_refs(
+        changed,
+        candidates,
+        repo_root,
+        file_cache,
+        recognises,
+        |_, c| extract(c),
+    )
+}
+
+/// The same shape when the extractor needs the file's path as well as its
+/// text (a CI file's flavour, a Dockerfile against a compose file, a C#
+/// file's own namespace).
+pub fn discover_by_extracted_path_refs<P, E, I>(
+    changed: &[PathBuf],
+    candidates: &[PathBuf],
+    repo_root: Option<&Path>,
+    file_cache: Option<&FxHashMap<PathBuf, String>>,
+    recognises: P,
+    extract: E,
+) -> Vec<PathBuf>
+where
+    P: Fn(&Path) -> bool,
+    E: Fn(&Path, &str) -> I,
+    I: IntoIterator<Item = String>,
+{
     let mine: Vec<&PathBuf> = changed.iter().filter(|f| recognises(f)).collect();
     if mine.is_empty() {
         return vec![];
@@ -474,7 +538,7 @@ where
     let mut refs = FxHashSet::default();
     for f in &mine {
         if let Some(content) = read_file_cached(f, file_cache) {
-            refs.extend(extract(&content));
+            refs.extend(extract(f, &content));
         }
     }
     discover_files_by_refs(&refs, changed, candidates, repo_root)
@@ -493,6 +557,16 @@ pub fn captures1<'a>(re: &'a Regex, content: &'a str) -> impl Iterator<Item = St
 // literal layout.
 pub fn kw(list: &str) -> FxHashSet<&str> {
     list.split_ascii_whitespace().collect()
+}
+
+pub fn file_stem_string(path: &Path) -> String {
+    path.file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default()
+}
+
+pub fn file_stem_lower(path: &Path) -> String {
+    file_stem_string(path).to_lowercase()
 }
 
 pub fn file_ext(path: &Path) -> String {

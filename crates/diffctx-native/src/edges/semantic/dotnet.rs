@@ -10,8 +10,7 @@ use crate::types::{Fragment, FragmentId, FragmentKind};
 
 use super::super::EdgeDict;
 use super::super::base::{
-    self, EdgeBuilder, FragmentIndex, add_edge, add_edges_from_ids, discover_files_by_refs,
-    link_by_name,
+    self, EdgeBuilder, FragmentIndex, add_edge, add_edges_from_ids, link_by_name,
 };
 
 /// Same ambiguity bar as `CFamilySemanticWeights::max_files_per_name`: a name
@@ -200,13 +199,10 @@ pub struct DotNetEdgeBuilder;
 
 impl EdgeBuilder for DotNetEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
-        let dn_frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_dotnet_file(Path::new(f.path())))
-            .collect();
-        if dn_frags.is_empty() {
+        let Some(dn_frags) = base::frags_where(fragments, |f| is_dotnet_file(Path::new(f.path())))
+        else {
             return FxHashMap::default();
-        }
+        };
 
         let using_weight = EDGE_WEIGHTS["dotnet_using"].forward;
         let inheritance_weight = EDGE_WEIGHTS["dotnet_inheritance"].forward;
@@ -435,23 +431,18 @@ impl EdgeBuilder for DotNetEdgeBuilder {
         repo_root: Option<&Path>,
         file_cache: Option<&FxHashMap<PathBuf, String>>,
     ) -> Vec<PathBuf> {
-        let dn_changed: Vec<&PathBuf> = changed.iter().filter(|f| is_dotnet_file(f)).collect();
-        if dn_changed.is_empty() {
-            return vec![];
-        }
-
-        let mut all_refs = FxHashSet::default();
-        for f in &dn_changed {
-            let content = base::read_file_cached(f, file_cache);
-            if let Some(c) = content {
-                all_refs.extend(extract_usings(&c, f));
-                all_refs.extend(extract_namespaces(&c));
-                for bt in extract_base_types(&c) {
-                    all_refs.insert(bt);
-                }
-            }
-        }
-
-        discover_files_by_refs(&all_refs, changed, candidates, repo_root)
+        base::discover_by_extracted_path_refs(
+            changed,
+            candidates,
+            repo_root,
+            file_cache,
+            |p| is_dotnet_file(p),
+            |p, c| {
+                extract_usings(c, p)
+                    .into_iter()
+                    .chain(extract_namespaces(c))
+                    .chain(extract_base_types(c))
+            },
+        )
     }
 }

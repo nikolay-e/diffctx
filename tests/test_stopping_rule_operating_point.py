@@ -224,7 +224,7 @@ def test_the_measurement_harnesses_score_the_shipped_tau():
     # bare literal passed to the in-memory runner is what made it score
     # tau=0.05. Naming the constant is the same drift one step removed — it
     # pins the ungated scorers to the gated operating point.
-    for rel in ("crates/diffctx-native/src/test_harness.rs", "crates/diffctx-native/tests/yaml_cases.rs"):
+    for rel in ("crates/diffctx-native/examples/diffctx-test.rs", "crates/diffctx-native/tests/yaml_cases.rs"):
         harness = (repo_root / rel).read_text(encoding="utf-8")
         assert (
             "DEFAULT_STOPPING_THRESHOLD" not in harness

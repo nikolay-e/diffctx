@@ -9,8 +9,7 @@ use crate::types::{Fragment, FragmentId};
 
 use super::super::EdgeDict;
 use super::super::base::{
-    self, EdgeBuilder, FragmentIndex, add_edge, add_edges_from_ids, discover_files_by_refs,
-    link_by_name,
+    self, EdgeBuilder, FragmentIndex, add_edge, add_edges_from_ids, link_by_name,
 };
 
 fn is_haskell_file(path: &Path) -> bool {
@@ -85,13 +84,10 @@ pub struct HaskellEdgeBuilder;
 
 impl EdgeBuilder for HaskellEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
-        let hs_frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_haskell_file(Path::new(f.path())))
-            .collect();
-        if hs_frags.is_empty() {
+        let Some(hs_frags) = base::frags_where(fragments, |f| is_haskell_file(Path::new(f.path())))
+        else {
             return FxHashMap::default();
-        }
+        };
 
         let import_weight = EDGE_WEIGHTS["haskell_import"].forward;
         let type_weight = EDGE_WEIGHTS["haskell_type"].forward;
@@ -187,20 +183,13 @@ impl EdgeBuilder for HaskellEdgeBuilder {
         repo_root: Option<&Path>,
         file_cache: Option<&FxHashMap<PathBuf, String>>,
     ) -> Vec<PathBuf> {
-        let hs_changed: Vec<&PathBuf> = changed.iter().filter(|f| is_haskell_file(f)).collect();
-        if hs_changed.is_empty() {
-            return vec![];
-        }
-
-        let mut all_refs = FxHashSet::default();
-        for f in &hs_changed {
-            let content = base::read_file_cached(f, file_cache);
-            if let Some(c) = content {
-                all_refs.extend(extract_imports(&c));
-                all_refs.extend(extract_modules(&c));
-            }
-        }
-
-        discover_files_by_refs(&all_refs, changed, candidates, repo_root)
+        base::discover_by_extracted_refs(
+            changed,
+            candidates,
+            repo_root,
+            file_cache,
+            |p| is_haskell_file(p),
+            |c| extract_imports(c).into_iter().chain(extract_modules(c)),
+        )
     }
 }

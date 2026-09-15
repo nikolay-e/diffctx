@@ -7,7 +7,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::config::limits::UTILITY;
 use crate::config::selection::selection;
 use crate::interval::IntervalIndex;
-use crate::types::{Fragment, FragmentId};
+use crate::types::{Fragment, FragmentId, FragmentKind};
 use crate::utility::needs::InformationNeed;
 use crate::utility::objective::{
     UtilityState, apply_fragment, compute_density, marginal_gain, utility_value,
@@ -208,6 +208,137 @@ fn build_signature_lookup(
     sig_lookup
 }
 
+/// What the first pass would place for a core — its downshifted excerpt
+/// when one is worthwhile, else the core itself — and the stand-in to fall
+/// back on when that does not fit.
+fn witness_options<'a>(
+    core: &'a Fragment,
+    sig_lookup: &'a FxHashMap<FragmentId, Fragment>,
+    core_excerpts: Option<&'a FxHashMap<FragmentId, Fragment>>,
+) -> (&'a Fragment, Option<&'a Fragment>) {
+    let preferred: &Fragment = core_excerpts
+        .and_then(|e| e.get(&core.id))
+        .filter(|excerpt| crate::excerpt::is_downshift_worthwhile(core, excerpt))
+        .unwrap_or(core);
+    let fallback = sig_lookup
+        .get(&core.id)
+        .filter(|sub| sub.token_count < preferred.token_count);
+    (preferred, fallback)
+}
+
+/// The head of a core, cut to `max_tokens`, for a changed file whose every
+/// representation is larger than what is left: a bounded witness of the
+/// change beats an artifact that lists the file and shows nothing of it.
+fn clipped_witness(core: &Fragment, max_tokens: u32) -> Option<Fragment> {
+    let mut kept: Vec<&str> = Vec::new();
+    let mut total = 0u32;
+    for line in core.content.lines() {
+        let cost = crate::tokenizer::count_tokens(line) + 1;
+        if !kept.is_empty() && total + cost > max_tokens {
+            break;
+        }
+        total += cost;
+        kept.push(line);
+    }
+    if kept.is_empty() {
+        return None;
+    }
+    let all = core.content.lines().count();
+    let mut content = kept.join("\n");
+    if kept.len() < all {
+        content.push_str(&format!(
+            "\n… [{} more lines of this change]",
+            all - kept.len()
+        ));
+    }
+    let end = core.start_line() + kept.len() as u32 - 1;
+    Some(Fragment {
+        id: FragmentId::new(core.id.path.clone(), core.start_line(), end),
+        kind: FragmentKind::Excerpt,
+        identifiers: crate::types::extract_identifiers(&content, 3),
+        token_count: crate::tokenizer::count_tokens(&content),
+        content: Arc::from(content),
+        symbol_name: core.symbol_name.clone(),
+    })
+}
+
+/// The evidence floor (#263): before any file places a second core, every
+/// changed file places one witness, cheapest representation first, files
+/// ordered by change class (hand-written content before mechanical bumps)
+/// and then by path. Relevance and density only compete for what is left.
+/// A file whose witness does not fit gets a clipped one; a file that gets
+/// nothing at all is reported by the caller as unrepresented.
+#[allow(clippy::too_many_arguments)]
+fn place_evidence_floor(
+    core_fragments: &[Fragment],
+    rel: &FxHashMap<FragmentId, f64>,
+    needs: &[InformationNeed],
+    state: &mut SelectionState,
+    budget_tokens: u32,
+    sig_lookup: &FxHashMap<FragmentId, Fragment>,
+    core_excerpts: Option<&FxHashMap<FragmentId, Fragment>>,
+    evidence_priority: Option<&FxHashMap<Arc<str>, u8>>,
+    core_used: &mut u32,
+    file_spent: &mut FxHashMap<Arc<str>, u32>,
+) -> FxHashSet<FragmentId> {
+    let mut by_file: std::collections::BTreeMap<(u8, Arc<str>), Vec<&Fragment>> =
+        std::collections::BTreeMap::new();
+    for core in core_fragments {
+        let priority = evidence_priority
+            .and_then(|p| p.get(&core.id.path).copied())
+            .unwrap_or(0);
+        by_file
+            .entry((priority, core.id.path.clone()))
+            .or_default()
+            .push(core);
+    }
+    let witness_cap = (budget_tokens / 12).max(120);
+    let mut satisfied: FxHashSet<FragmentId> = FxHashSet::default();
+    for (_, cores) in by_file {
+        // The file's cheapest preferred representation; ties by position.
+        let mut choice: Option<(&Fragment, &Fragment, Option<&Fragment>)> = None;
+        for core in &cores {
+            let (preferred, fallback) = witness_options(core, sig_lookup, core_excerpts);
+            let better = match choice {
+                None => true,
+                Some((_, current, _)) => {
+                    (preferred.token_count, preferred.start_line())
+                        < (current.token_count, current.start_line())
+                }
+            };
+            if better {
+                choice = Some((core, preferred, fallback));
+            }
+        }
+        let Some((core, preferred, fallback)) = choice else {
+            continue;
+        };
+        let rel_score = rel.get(&core.id).copied().unwrap_or(0.0);
+        let placed: Option<Fragment> = if preferred.token_count <= state.remaining_budget {
+            Some(preferred.clone())
+        } else if let Some(sub) = fallback.filter(|s| s.token_count <= state.remaining_budget) {
+            Some(sub.clone())
+        } else {
+            clipped_witness(core, witness_cap.min(state.remaining_budget))
+                .filter(|w| w.token_count <= state.remaining_budget)
+        };
+        if let Some(fragment) = placed {
+            state.selected.push(fragment.clone());
+            state.selected_ids.add_id(&fragment.id);
+            state.remaining_budget = state.remaining_budget.saturating_sub(fragment.token_count);
+            *core_used += fragment.token_count;
+            *file_spent.entry(fragment.id.path.clone()).or_insert(0) += fragment.token_count;
+            apply_fragment(&fragment, rel_score, needs, &mut state.utility_state);
+            if fragment.id != core.id {
+                state.stand_in_ids.insert(fragment.id.clone());
+            }
+            satisfied.insert(core.id.clone());
+        }
+    }
+    satisfied
+}
+
+#[allow(clippy::too_many_arguments)]
 fn select_core_fragments(
     core_fragments: &[Fragment],
     rel: &FxHashMap<FragmentId, f64>,
@@ -216,12 +347,12 @@ fn select_core_fragments(
     budget_tokens: u32,
     sig_lookup: &FxHashMap<FragmentId, Fragment>,
     core_excerpts: Option<&FxHashMap<FragmentId, Fragment>>,
+    evidence_priority: Option<&FxHashMap<Arc<str>, u8>>,
 ) -> FxHashSet<FragmentId> {
     // Which cores came out represented — by themselves, by a signature stub, or
     // by a downshifted excerpt. A substitute has its own id, so membership in
     // the selection cannot answer this, and treating a substituted core as
     // "skipped" hands the full fragment straight back to the greedy.
-    let mut satisfied: FxHashSet<FragmentId> = FxHashSet::default();
     let sel_cfg = selection();
     let core_budget = (budget_tokens as f64 * sel_cfg.core_budget_fraction) as u32;
     // #194: while other cores still wait, one file may not eat more than its
@@ -234,6 +365,19 @@ fn select_core_fragments(
     // but the rescue pass below intentionally allows it to exceed `core_budget`
     // up to `budget_tokens`. Don't assume the tighter bound past this scope.
     let mut core_used = 0u32;
+
+    let mut satisfied = place_evidence_floor(
+        core_fragments,
+        rel,
+        needs,
+        state,
+        budget_tokens,
+        sig_lookup,
+        core_excerpts,
+        evidence_priority,
+        &mut core_used,
+        &mut file_spent,
+    );
 
     let mut sorted_core: Vec<&Fragment> = core_fragments.iter().collect();
     sorted_core.sort_by(|a, b| {
@@ -265,6 +409,9 @@ fn select_core_fragments(
         // #105/#107/#149 — behaviour that otherwise flips purely on how much
         // budget happens to be left.
         let core_id = frag.id.clone();
+        if satisfied.contains(&core_id) {
+            continue;
+        }
         let frag: &Fragment = core_excerpts
             .and_then(|e| e.get(&frag.id))
             .filter(|excerpt| crate::excerpt::is_downshift_worthwhile(frag, excerpt))
@@ -376,7 +523,12 @@ fn build_initial_heap(
     id_to_frag: &mut FxHashMap<FragmentId, Fragment>,
 ) -> BinaryHeap<HeapEntry> {
     let mut heap = BinaryHeap::new();
-    for frag in candidates {
+    for (i, frag) in candidates.iter().enumerate() {
+        // Past the deadline the candidates not yet scored stay out: the
+        // cores are already placed, and a partial context beats no artifact.
+        if !crate::resource::poll_current_every(i, 64) {
+            break;
+        }
         if frag.token_count > 0 {
             let density = compute_density(
                 frag,
@@ -579,6 +731,9 @@ fn run_greedy_loop_heap(
     loop {
         while !heap.is_empty() && state.remaining_budget > 0 {
             loop_iters += 1;
+            if !crate::resource::poll_current_every(loop_iters, 16) {
+                break;
+            }
             let (best_frag, best_density, new_version) = find_best_candidate_heap(
                 heap,
                 current_version,
@@ -670,6 +825,7 @@ fn setup_and_select_core(
     budget_tokens: u32,
     file_importance: Option<&FxHashMap<Arc<str>, f64>>,
     core_excerpts: Option<&FxHashMap<FragmentId, Fragment>>,
+    evidence_priority: Option<&FxHashMap<Arc<str>, u8>>,
 ) -> (SelectionState, Vec<Fragment>, Vec<Fragment>, bool) {
     let mut core_fragments: Vec<Fragment> = fragments
         .iter()
@@ -718,6 +874,7 @@ fn setup_and_select_core(
         budget_tokens,
         &sig_lookup,
         core_excerpts,
+        evidence_priority,
     );
 
     // A core represented by a substitute (signature stub or downshifted
@@ -761,6 +918,7 @@ pub fn lazy_greedy_select(
     core_excerpts: Option<&FxHashMap<FragmentId, Fragment>>,
     admissible_files: Option<&FxHashSet<Arc<str>>>,
     declared_admissible_files: Option<&FxHashSet<Arc<str>>>,
+    evidence_priority: Option<&FxHashMap<Arc<str>, u8>>,
 ) -> SelectionResult {
     if fragments.is_empty() {
         return SelectionResult::none();
@@ -775,6 +933,7 @@ pub fn lazy_greedy_select(
             budget_tokens,
             file_importance,
             core_excerpts,
+            evidence_priority,
         );
 
     if should_return_early {
@@ -995,6 +1154,7 @@ mod tests {
                 None,
                 None,
                 None,
+                None,
             );
             assert!(
                 cost_of(&result.selected) <= budget,
@@ -1054,6 +1214,7 @@ mod tests {
                     None,
                     None,
                     None,
+                    None,
                 );
                 assert_eq!(
                     result.used_tokens,
@@ -1090,6 +1251,7 @@ mod tests {
             Some(&excerpts),
             None,
             None,
+            None,
         );
 
         let ids: Vec<String> = result
@@ -1114,7 +1276,19 @@ mod tests {
             .collect();
         let core: FxHashSet<FragmentId> = std::iter::once(frags[0].id.clone()).collect();
         let rel = rel_map(&frags, 0.9);
-        let result = lazy_greedy_select(frags, &core, &rel, &[], 400, 0.12, None, None, None, None);
+        let result = lazy_greedy_select(
+            frags,
+            &core,
+            &rel,
+            &[],
+            400,
+            0.12,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
 
         let ids: FxHashSet<FragmentId> = result.selected.iter().map(|f| f.id.clone()).collect();
         assert_eq!(
@@ -1142,8 +1316,19 @@ mod tests {
         rel.insert(heavy.id.clone(), 1.0);
         rel.insert(frags[2].id.clone(), 0.1);
 
-        let result =
-            lazy_greedy_select(frags, &core, &rel, &[], 2_000, 0.12, None, None, None, None);
+        let result = lazy_greedy_select(
+            frags,
+            &core,
+            &rel,
+            &[],
+            2_000,
+            0.12,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
         assert!(
             result.selected.iter().any(|f| core.contains(&f.id)),
             "no core fragment survived; reason was {:?}",
@@ -1161,6 +1346,7 @@ mod tests {
             &[],
             1_000,
             0.12,
+            None,
             None,
             None,
             None,
@@ -1249,9 +1435,21 @@ mod tests {
             None,
             None,
             None,
+            None,
         );
-        let no_tau =
-            lazy_greedy_select(frags, &core, &rel, &[], budget, 0.0, None, None, None, None);
+        let no_tau = lazy_greedy_select(
+            frags,
+            &core,
+            &rel,
+            &[],
+            budget,
+            0.0,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
 
         assert_eq!(
             default_tau.reason,
@@ -1322,6 +1520,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         );
         let by_file =
             |sel: &Vec<Fragment>, p: &str| sel.iter().filter(|f| f.id.path.as_ref() == p).count();
@@ -1384,8 +1583,19 @@ mod tests {
             .collect();
 
         let budget = 1_000u32;
-        let result =
-            lazy_greedy_select(frags, &core, &rel, &[], budget, 0.0, None, None, None, None);
+        let result = lazy_greedy_select(
+            frags,
+            &core,
+            &rel,
+            &[],
+            budget,
+            0.0,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
 
         let files: FxHashSet<&str> = result.selected.iter().map(|f| f.id.path.as_ref()).collect();
         for path in ["src/a.rs", "src/b.rs", "src/c.rs", "src/d.rs"] {
@@ -1438,6 +1648,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         );
         assert!(
             tight.selected.iter().any(|f| f.id == sig.id),
@@ -1456,6 +1667,7 @@ mod tests {
             &[],
             10_000,
             0.0,
+            None,
             None,
             None,
             None,
@@ -1507,7 +1719,16 @@ mod tests {
         }
         let core_ids: FxHashSet<FragmentId> = cores.iter().map(|c| c.id.clone()).collect();
         let mut state = init_selection_state(&core_ids, &rel, budget, None);
-        select_core_fragments(&cores, &rel, &[], &mut state, budget, &sig_lookup, None);
+        select_core_fragments(
+            &cores,
+            &rel,
+            &[],
+            &mut state,
+            budget,
+            &sig_lookup,
+            None,
+            None,
+        );
 
         let first_b = state
             .selected
@@ -1538,7 +1759,19 @@ mod tests {
             })
             .collect();
         let core: FxHashSet<FragmentId> = FxHashSet::default();
-        let result = lazy_greedy_select(lone, &core, rel, &[], budget, 0.0, None, None, None, None);
+        let result = lazy_greedy_select(
+            lone,
+            &core,
+            rel,
+            &[],
+            budget,
+            0.0,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
         assert!(
             result.selected.len() >= 9,
             "single-file selection stranded budget: {} fragments",

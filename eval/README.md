@@ -13,7 +13,7 @@ paper and `CLAUDE.md`.
 | Ablation cells | `run_final_eval` flags: `--scoring ego\|ppr\|bm25` (internal-BM25 cell), `--tau 0` (stopping off), `--extra-env DIFFCTX_EGO_LEXICAL_EPS=0` / `DIFFCTX_OBJECTIVE=boltzmann` / `DIFFCTX_RELATEDNESS_BONUS=0` (repeatable; applied around the heavy phase in the multi-budget reuse path) |
 | Floor baselines | `--baseline patch_files` (changed-files-only) and `--baseline random` (seeded-random packing on the BM25 protocol, `DIFFCTX_RANDOM_BASELINE_SEED`) |
 | Aider baselines | `--baseline aider_fair\|aider_oracle --aider-request-timeout 600` (separate from the diffctx kill-switch `--timeout-per-instance`) |
-| Bit-equivalence gate (mandatory for perf refactors) | `python -m eval equivalence --a <run_old> --b <run_new>` — identical selected sets / used_tokens / metrics; baseline sample in `results/sweep_v2_local/equiv/` |
+| Bit-equivalence gate (mandatory for perf refactors) | `python -m eval equivalence --a <run_old> --b <run_new>` — identical selected sets / used_tokens / metrics. The 40-instance sample is `eval/manifests/equiv/` (5 / 15 / 20 ids, every k-th of each sorted v1 test split, so it is reconstructable from git): run `run-final` twice with `--manifests-dir eval/manifests/equiv`, once per build, and compare |
 | Full sweep (CI) | `.github/workflows/eval-sweep.yml` (`workflow_dispatch`, mode=smoke\|full) |
 | Per-cell metrics / sweep aggregation | `python -m eval cell-metrics ...` / `python -m eval aggregate-sweep ...` |
 | Probe one-at-a-time parameter sensitivity | `bash scripts/sensitivity_check.sh` |
@@ -32,6 +32,13 @@ carry `repo`/`language` for cluster diagnostics; ok rows additionally carry
 `graph_build_ms`, and `peak_rss_bytes`.
 
 ## Datasets
+
+`datasets/dcbench` (41 MB, the majority of the repository's tracked bytes)
+is the hand-annotated diff-context corpus the paper's dcbench section was
+measured on. No CI job reads it; a checksum test asserts it is unchanged,
+and every eval image copies it so an operator can rerun that section
+offline. It stays in the tree because it is a citable dataset, not a
+build input.
 
 ### ContextBench (primary)
 

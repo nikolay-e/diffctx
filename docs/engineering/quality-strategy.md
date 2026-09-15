@@ -155,10 +155,12 @@ probe forcing every regex in the module
 (`kubernetes::tests::all_kubernetes_regexes_compile`). Unbound the
 value class instead of bounding it — the regex crate is linear-time.
 
-## SonarCloud — diffctx specifics
+## SonarQube — diffctx specifics
 
-Fix loop: push → wait for the `diffctx CI` run → re-fetch → mark FPs →
-gate. Project key and FP-remark gotcha live in root `QA.md`.
+Fix loop: push to Forgejo `main` → wait for `sonar-diffctx-*` in
+`argo-workflows` → re-fetch → mark FPs → gate. Project key and FP-remark
+gotcha live in root `QA.md`; analysis scope (tests, fixture and dataset
+exclusions) in `sonar-project.properties`.
 
 - `eval/**` scripts are analyzed like any source — a new script there
   can flip the gate alone.

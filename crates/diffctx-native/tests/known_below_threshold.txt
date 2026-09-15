@@ -20,7 +20,6 @@ infrastructure/terraform/terraform_010_iam_policy
 infrastructure/terraform/terraform_035_count
 infrastructure/terraform/terraform_037_provisioner
 languages/go/go_004_embed_directive
-languages/go/go_016_error_wrapping
 languages/go/go_033_error_interface
 languages/java/java_006_entity_relations
 languages/java/java_025_kotlin_data_class
@@ -33,14 +32,7 @@ languages/javascript/javascript_076_pick_type
 languages/jvm/jvm_and_compiled_028_java_custom_exception
 languages/jvm/jvm_and_compiled_043_java_streams_api
 languages/jvm/jvm_and_compiled_055_scala_pattern_matching
-languages/rust/rust_003_basic_struct
-languages/rust/rust_004_struct_with_methods
-languages/rust/rust_005_impl_block
-languages/rust/rust_013_result_error_handling
-languages/rust/rust_016_use_crate_module
-languages/rust/rust_026_box_dyn_trait
 languages/rust/rust_028_build_rs
-languages/rust/rust_032_move_semantics
 languages/scala/scala_022_sealed_trait_adt
 languages/scala/scala_025_build_sbt
 languages/scripting/scripting_001_class_instantiation
@@ -63,7 +55,10 @@ synthetic/balanced/suite-3/one-hop/bal3_1hop_070_swift_new_function_extension
 synthetic/balanced/suite-3/one-hop/bal3_1hop_073_swift_closure_callback
 synthetic/balanced/suite-3/one-hop/bal3_1hop_074_swift_bug_fix_race_condition
 synthetic/balanced/suite-3/rare/bal3_rare_006_dart_repository_api
-synthetic/balanced/suite-4/cross-module/bal4_crossmod_005_go_const_used_cross_pkg
+# gap_132: the change's file representative now seeds the walk at the containment discount
+# (#196), which admits ReportGenerator — a consumer of a sibling type in the changed file,
+# not of the changed function — at 0.085 against tau 0.05. Accepted for 14 lifts elsewhere.
+synthetic/gaps/suite-1/gap_132_swift_cross_module_search_index
 synthetic/gaps/suite-1/gap_133_shell_terraform_vpc_provisioning
 synthetic/gaps/suite-1/gap_154_shell_terraform_db_migration_import_chain
 synthetic/gaps/suite-1/gap_155_shell_terraform_cert_renewal_import_chain
@@ -87,6 +82,3 @@ synthetic/gaps/suite-2/gap2_173_perl_multi_file_easy_cgi_form
 # before a 0.069-scoring fragment. That is a calibration question, frozen for the v3 cycle.
 config/yaml/yaml_003_logging_config
 config/yaml/yaml_012_queue_config
-infrastructure/kubernetes/kubernetes_001_selector_edge_pulls_workload
-synthetic/balanced/suite-2/one-hop/bal2_1hop_064_csharp_dto_mapping_bugfix
-synthetic/balanced/suite-2/one-hop/bal2_1hop_067_csharp_entity_config_change

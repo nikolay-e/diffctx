@@ -9,7 +9,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_files_by_refs};
+use super::super::base::{self, EdgeBuilder, add_edges_from_ids};
 
 fn is_openapi_candidate(path: &Path) -> bool {
     let ext = base::file_ext(path);
@@ -82,13 +82,11 @@ pub struct OpenapiEdgeBuilder;
 
 impl EdgeBuilder for OpenapiEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
-        let frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_openapi_candidate(Path::new(f.path())) && is_openapi_file(&f.content))
-            .collect();
-        if frags.is_empty() {
+        let Some(frags) = base::frags_where(fragments, |f| {
+            is_openapi_candidate(Path::new(f.path())) && is_openapi_file(&f.content)
+        }) else {
             return FxHashMap::default();
-        }
+        };
 
         let internal_w = EDGE_WEIGHTS["openapi_internal_ref"].forward;
         let external_w = EDGE_WEIGHTS["openapi_external_ref"].forward;
@@ -97,12 +95,7 @@ impl EdgeBuilder for OpenapiEdgeBuilder {
         let idx = base::FragmentIndex::new(fragments, repo_root);
         let mut schema_to_frags: FxHashMap<String, Vec<_>> = FxHashMap::default();
         for f in &frags {
-            for name in extract_schema_defs(&f.content) {
-                schema_to_frags
-                    .entry(name.to_lowercase())
-                    .or_default()
-                    .push(f.id.clone());
-            }
+            base::index_lower(&mut schema_to_frags, extract_schema_defs(&f.content), &f.id);
         }
 
         let mut edges: EdgeDict = FxHashMap::default();
@@ -127,21 +120,18 @@ impl EdgeBuilder for OpenapiEdgeBuilder {
         repo_root: Option<&Path>,
         file_cache: Option<&FxHashMap<PathBuf, String>>,
     ) -> Vec<PathBuf> {
-        let mut refs = FxHashSet::default();
-        for f in changed {
-            if !is_openapi_candidate(f) {
-                continue;
-            }
-            if let Some(content) = base::read_file_cached(f, file_cache) {
-                if !is_openapi_file(&content) {
-                    continue;
-                }
-                refs.extend(extract_external_refs(&content));
-            }
-        }
-        if refs.is_empty() {
-            return vec![];
-        }
-        discover_files_by_refs(&refs, changed, candidates, repo_root)
+        base::discover_by_extracted_refs(
+            changed,
+            candidates,
+            repo_root,
+            file_cache,
+            |p| is_openapi_candidate(p),
+            |c| {
+                is_openapi_file(c)
+                    .then(|| extract_external_refs(c))
+                    .into_iter()
+                    .flatten()
+            },
+        )
     }
 }

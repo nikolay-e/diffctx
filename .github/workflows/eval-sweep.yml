@@ -826,7 +826,7 @@ jobs:
           fi
           BUDGETS_ARGS=()
           if [ -n "${BUDGETS}" ]; then
-            BUDGETS_ARGS=(--budgets "${BUDGETS}")
+            BUDGETS_ARGS=(--budgets="${BUDGETS}")
           fi
           python -m eval run-final \
             --baseline "${BASELINE}" \

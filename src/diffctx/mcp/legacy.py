@@ -8,6 +8,8 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
+from diffctx._diffctx import sanitize_text
+
 from .fetch import withheld_set
 from .security import validate_dir_path, validate_repo_path
 from .server import (
@@ -204,10 +206,12 @@ def _build_file_content_report(
                 parts.append(f"## {rel}\n*Skipped: {size:,} bytes exceeds limit*\n")
                 continue
             content = p.read_text(encoding="utf-8", errors="replace")
+            content, redacted, categories = sanitize_text(content)
             total_lines += content.count("\n") + 1
             included_count += 1
             suffix = p.suffix.lstrip(".")
-            parts.append(f"## {rel}\n```{suffix}\n{content}\n```\n")
+            note = f"*{redacted} credential-shaped string(s) redacted: {', '.join(categories)}*\n" if redacted else ""
+            parts.append(f"## {rel}\n{note}```{suffix}\n{content}\n```\n")
         except OSError as e:
             # `{e}` on an OSError carries the absolute filename; the path is
             # already stated as `rel` above it, so only the reason is added.

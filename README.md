@@ -82,13 +82,20 @@ keeps its git meaning.
 | Flag        | Default | Description                                                              |
 |-------------|---------|--------------------------------------------------------------------------|
 | `--scoring` | `ego`   | `ego` = bounded expansion around changed nodes (fast, predictable radius); `ppr` = Personalized PageRank (global, smoother decay, slower); `bm25` = lexical retrieval against the diff hunks (baseline for sparse graphs); `rrf` = reciprocal-rank fusion of `ego` and `bm25` (widest recall, no scale calibration between the two signals); `pit` = the same fusion on score percentiles |
-| `--budget`  | auto    | Cap in o200k_base tokens on the whole artifact (see [Token counting](docs/product/token-budget.md)): the change summary is charged first and the selection gets what is left, so a budget smaller than the summary yields the summary alone. `N` = fixed cap, `-1` disables it, `0` is a strict-zero floor (no fragments; use `--full` for changed files only) |
+| `--budget`  | auto    | Cap in o200k_base tokens on the whole rendered artifact (see [Token counting](docs/product/token-budget.md)): every changed file gets one witness first, relevance fills the rest, and the renderer drops context from the tail until the document fits. A budget smaller than the summary yields the summary alone. `N` = fixed cap, `-1` disables it, `0` is a strict-zero floor (no fragments; use `--full` for changed files only) |
 | `--alpha`   | 0.60    | PPR continuation probability: higher = relevance travels further from the change, lower = tighter around it (`--scoring ppr` only) |
 | `--tau`     | 0.05    | Relevance threshold for full fragment content; lower-scoring fragments are stubbed or dropped (lower = more context) |
 | `--full`    | false   | Only the changed files, every fragment, no related-code context          |
-| `--timeout` | 300     | Wall-clock deadline in seconds; on expiry diffctx exits 124 instead of hanging |
+| `--timeout` | 300     | Wall-clock deadline in seconds; on expiry the run stops cooperatively and emits a partial artifact whose `coverage` block names the limit (exit 0). 124 is the watchdog behind it, 30 s later, for a phase that could not stop |
 | `--with-raw-diff` | false | Also embed git's raw unified diff ahead of the selected fragments — additive (selection unchanged), not charged to `--budget`, lock/ignored/secret-like sections omitted. Python CLI only |
 | `--mode` | `pack` | `locate` emits the same ranked selection as compact `diffctx.locate.v1` JSON — path, lines, score, provenance reasons, a blast-radius `summary` and per-item impact `group` (`test`/`type`/`config`), NO source bodies. Adds a `coverage` block naming what the run could not see (`unparsed_files`, `zero_edge_files`, `ppr_truncated`, `next_up`, a heuristic `confidence`) and an `overflow` ranking of what the budget left behind — omitted entirely when there is nothing to disclose. `diffctx . --diff --mode locate` = impact of your uncommitted change. The MCP tool takes it as `mode="locate"` |
+
+Every JSON/YAML artifact opens with `schema: diffctx.context.v1` and validates
+against [`schemas/diffctx.context.v1.json`](schemas/diffctx.context.v1.json),
+generated from the engine's own type; it closes with a `provenance` block
+(engine version, input object ids, the effective configuration and its hash,
+the selection parameters, the tokenizer) and, when a limit stopped the run
+short, a `coverage` block naming it.
 
 ### `graph` subcommand
 
@@ -255,7 +262,7 @@ its size (default 512 MB, `0` disables eviction).
 | `2`  | Usage error (invalid flags/arguments) |
 | `3`  | Environment error (`--diff` outside a git repo, git not installed, no commits yet) |
 | `4`  | `--diff` produced no semantic context (clean tree, binary-only, everything filtered); output is still emitted. Deletion/rename/lockfile-only diffs list `deleted_files`/`renamed_files`/`lockfile_changes` and exit `0` |
-| `124`| `--diff` exceeded the `--timeout` wall-clock deadline |
+| `124`| `--diff` ran 30 s past the `--timeout` deadline without stopping cooperatively (the deadline itself yields a partial artifact and exit 0) |
 | `130`| Interrupted (Ctrl-C) |
 | `141`| Broken pipe (e.g. piping into `head`) |
 
@@ -271,12 +278,18 @@ Apache 2.0
 
 - [Documentation site](https://nikolay-e.github.io/diffctx/) — the pipeline
   end to end: diff → fragments → graph → relevance → selection
+- [Command-line reference](docs/product/cli.md) — every flag with its default
+  and meaning, rendered from `diffctx --help`
 - [GitHub Action](docs/product/github-action.md) — diff context as a CI step
   for LLM review
 - [Token counting](docs/product/token-budget.md) — which encoder, and what
   `--budget` means for non-GPT models
 - [Comparison](COMPARISON.md) — measured results, and when a whole-repo packer
   or a persistent code-graph server fits better
+- [Benchmarks](BENCHMARKS.md) — every published number with what it was
+  measured on, and how to reproduce it
+- [FAQ](docs/product/faq.md) — heuristic or oracle, whose tokens, monorepos,
+  the raw diff, secrets
 - [Paper](https://doi.org/10.5281/zenodo.18824579) — budgeted typed-graph
   retrieval for diff-aware context selection (Zenodo, 2026)
 - [Changelog](CHANGELOG.md)

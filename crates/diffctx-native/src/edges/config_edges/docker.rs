@@ -257,31 +257,23 @@ impl EdgeBuilder for DockerEdgeBuilder {
         repo_root: Option<&Path>,
         file_cache: Option<&FxHashMap<PathBuf, String>>,
     ) -> Vec<PathBuf> {
-        let docker_files: Vec<&PathBuf> = changed
-            .iter()
-            .filter(|p| is_dockerfile(p) || is_compose_file(p))
-            .collect();
-        if docker_files.is_empty() {
-            return vec![];
-        }
-
-        let mut refs = FxHashSet::default();
-
-        for df in &docker_files {
-            let content = match base::read_file_cached(df, file_cache) {
-                Some(c) => c,
-                None => continue,
-            };
-
-            if is_dockerfile(df) {
-                refs.extend(collect_dockerfile_refs(&content));
-            }
-            if is_compose_file(df) {
-                refs.extend(collect_compose_refs(&content));
-            }
-        }
-
-        base::discover_files_by_refs(&refs, changed, candidates, repo_root)
+        base::discover_by_extracted_path_refs(
+            changed,
+            candidates,
+            repo_root,
+            file_cache,
+            |p| is_dockerfile(p) || is_compose_file(p),
+            |p, c| {
+                let mut refs = FxHashSet::default();
+                if is_dockerfile(p) {
+                    refs.extend(collect_dockerfile_refs(c));
+                }
+                if is_compose_file(p) {
+                    refs.extend(collect_compose_refs(c));
+                }
+                refs
+            },
+        )
     }
 }
 

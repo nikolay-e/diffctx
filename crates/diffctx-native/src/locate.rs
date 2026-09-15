@@ -15,6 +15,8 @@ pub struct LocateOutput {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub commit_message: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub commit_messages: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub changed_files: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -41,6 +43,8 @@ pub struct LocateOutput {
     /// when there is something to report, so a clean run costs no tokens.
     #[serde(skip_serializing_if = "Coverage::is_clean")]
     pub coverage: Coverage,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<crate::run_provenance::ProvenanceV1>,
     /// Ranked candidates that did not fit `budget_tokens`, without bodies.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub overflow: Vec<OverflowItem>,
@@ -83,6 +87,15 @@ pub struct Coverage {
     /// lowers that bar and so *increased* the reported gap.
     #[serde(skip_serializing_if = "crate::render::is_zero")]
     pub next_up: usize,
+    /// What stopped the run short of a complete pass, in the one vocabulary
+    /// every surface uses (`diffctx.resource.LimitReason`). Empty on a
+    /// complete run.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub limit_reasons: Vec<crate::resource::LimitReason>,
+    /// Changed files with no ranked item at all: the inventory says they
+    /// changed, the budget or the selection left nothing of them.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub unrepresented_changed_files: Vec<String>,
     /// Documented heuristic in [0, 1], NOT a probability and not a promise:
     /// `parsed_share * linked_share * fit_share`, less 0.1 when PPR truncated.
     /// It says how much of the changed surface the run could see and fit — it
@@ -99,6 +112,8 @@ impl Coverage {
             && self.zero_edge_files.is_empty()
             && !self.ppr_truncated
             && self.next_up == 0
+            && self.limit_reasons.is_empty()
+            && self.unrepresented_changed_files.is_empty()
     }
 }
 
@@ -344,6 +359,19 @@ fn build_coverage(
         zero_edge_files: zero_edge,
         ppr_truncated: truncated,
         next_up,
+        limit_reasons: state.run.reasons(),
+        unrepresented_changed_files: {
+            let represented: FxHashSet<String> = outcome
+                .selected
+                .iter()
+                .map(|f| rel_path(state, f.id.path.as_ref()))
+                .collect();
+            changed
+                .iter()
+                .filter(|p| !represented.contains(*p))
+                .cloned()
+                .collect()
+        },
         confidence: (raw.clamp(0.0, 1.0) * 1e2).round() / 1e2,
     }
 }
@@ -484,6 +512,7 @@ pub fn build_locate(state: &ScoredState, outcome: &SelectionOutcome) -> LocateOu
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| state.root_dir.to_string_lossy().to_string()),
         commit_message: state.commit_message.clone(),
+        commit_messages: outcome.commit_messages.clone(),
         changed_files: state
             .changed_files
             .iter()
@@ -517,6 +546,11 @@ pub fn build_locate(state: &ScoredState, outcome: &SelectionOutcome) -> LocateOu
         coverage: build_coverage(state, outcome, next_up, &attribution),
         overflow,
         overflow_count,
+        provenance: Some(
+            state
+                .provenance
+                .finish(Some(outcome.selection_provenance())),
+        ),
     }
 }
 

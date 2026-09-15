@@ -73,9 +73,28 @@ Mitigations: output is structurally delimited (fenced blocks / YAML scalars
 with explicit file paths); MCP tool descriptions state, in the text the model
 actually reads, that returned content is untrusted data; private-key-shaped
 paths (`*.pem`, `*.key`, `id_rsa`, …) are excluded from selection. diffctx
-does **not** detect or neutralize injection attempts, and does **not** redact
-arbitrary secrets committed in plaintext — delimiting is a convention, not a
-security boundary.
+does **not** detect or neutralize injection attempts — delimiting is a
+convention, not a security boundary.
+
+### Credential-shaped strings in emitted text
+
+Every read surface — the diff artifact's fragments and commit messages, the
+`--with-raw-diff` bundle, the MCP fetch and glob readers, tree mode — runs a
+last pass that replaces strings matching a small set of high-confidence
+credential shapes (AWS access key ids, GitHub and Slack tokens, Stripe and
+Google API keys, OpenAI keys, JWTs, PEM private-key blocks) with
+`[REDACTED:<category>]`. The artifact reports what it did: a `redactions`
+block with the count and the categories, and `sanitization_redaction` among
+the coverage limit reasons, so a consumer can tell a clean input from a
+scrubbed one.
+
+This is defence in depth, not a guarantee. Only shapes that cannot plausibly
+be anything else are matched; a password in a config literal, a home-grown
+token format, or a secret split across lines passes through. A clean pass
+proves nothing about the repository. The withhold policy (secret-by-name
+files, `.gitignore`, `.diffctx/ignore`) remains the mechanism to rely on, and
+a repository that holds committed secrets should treat every diffctx output
+as it treats the repository itself.
 
 Treat diffctx output exactly as you would treat the repository itself: as
 untrusted input. Do not wire it into an agent that holds credentials, can

@@ -682,6 +682,14 @@ fn get_tree_sitter_language(ts_name: &str) -> Option<Language> {
     LANGUAGE_CACHE.get(ts_name).cloned()
 }
 
+/// A parse of `content` under the named grammar, from the same thread-local
+/// parser cache and under the same wall-clock bound the fragmenter uses.
+/// `None` when the grammar is not compiled in or the parse timed out.
+pub(crate) fn parse_tree(ts_name: &'static str, content: &str) -> Option<Tree> {
+    let language = get_tree_sitter_language(ts_name)?;
+    parse_with_cached_parser(ts_name, &language, content)
+}
+
 thread_local! {
     static PARSER_CACHE: RefCell<FxHashMap<&'static str, Parser>> = RefCell::new(FxHashMap::default());
 }
@@ -750,18 +758,26 @@ fn node_type_to_kind(node_type: &str, node: Option<&Node>) -> &'static str {
     "definition"
 }
 
+fn children<'a>(node: &Node<'a>) -> impl Iterator<Item = Node<'a>> + 'a {
+    let node = *node;
+    (0..node.child_count()).filter_map(move |i| node.child(i))
+}
+
+/// The class or function a `decorated_definition` wraps.
+fn decorated_inner<'a>(node: &Node<'a>) -> Option<Node<'a>> {
+    children(node).find(|c| {
+        matches!(
+            c.kind(),
+            "function_definition" | "class_definition" | "async_function_definition"
+        )
+    })
+}
+
 fn decorated_definition_kind(node: &Node) -> &'static str {
-    let child_count = node.child_count();
-    for i in 0..child_count {
-        if let Some(child) = node.child(i) {
-            match child.kind() {
-                "function_definition" | "async_function_definition" => return "function",
-                "class_definition" => return "class",
-                _ => {}
-            }
-        }
+    match decorated_inner(node).map(|n| n.kind()) {
+        Some("class_definition") => "class",
+        _ => "function",
     }
-    "function"
 }
 
 fn is_container_kind(kind: &str) -> bool {
@@ -792,18 +808,7 @@ fn unwrap_decorated<'a>(node: Node<'a>) -> Node<'a> {
     if node.kind() != "decorated_definition" {
         return node;
     }
-    let child_count = node.child_count();
-    for i in 0..child_count {
-        if let Some(child) = node.child(i) {
-            match child.kind() {
-                "function_definition" | "class_definition" | "async_function_definition" => {
-                    return child;
-                }
-                _ => {}
-            }
-        }
-    }
-    node
+    decorated_inner(&node).unwrap_or(node)
 }
 
 fn unwrap_declarator<'a>(mut name_node: Node<'a>) -> Node<'a> {
@@ -855,385 +860,199 @@ fn extract_symbol_name(node: &Node, source: &[u8]) -> Option<String> {
 }
 
 fn find_body_node<'a>(node: &Node<'a>) -> Option<Node<'a>> {
-    for &field in BODY_FIELD_NAMES {
-        if let Some(child) = node.child_by_field_name(field) {
-            return Some(child);
-        }
-    }
-    let child_count = node.child_count();
-    for i in 0..child_count {
-        if let Some(child) = node.child(i) {
-            if BODY_NODE_TYPES.iter().any(|&t| t == child.kind()) {
-                return Some(child);
-            }
-        }
-    }
-    None
+    BODY_FIELD_NAMES
+        .iter()
+        .find_map(|field| node.child_by_field_name(field))
+        .or_else(|| children(node).find(|c| BODY_NODE_TYPES.contains(&c.kind())))
 }
 
 fn has_function_child(node: &Node) -> bool {
-    let child_count = node.child_count();
-    for i in 0..child_count {
-        if let Some(child) = node.child(i) {
-            if FUNCTION_CHILD_TYPES.iter().any(|&t| t == child.kind()) {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-fn create_and_append_fragment(
-    path: &Arc<str>,
-    lines: &[&str],
-    start: u32,
-    end: u32,
-    kind: &str,
-    sym_name: Option<&str>,
-    fragments: &mut Vec<Fragment>,
-    covered: &mut Vec<(u32, u32)>,
-) -> bool {
-    let snippet = match create_snippet(lines, start, end) {
-        Some(s) => s,
-        None => return false,
-    };
-    let identifiers = extract_identifiers(&snippet, TOKENIZATION.fragment_min_identifier_length);
-    fragments.push(Fragment {
-        id: FragmentId::new(Arc::clone(path), start, end),
-        kind: FragmentKind::from_str(kind),
-        content: Arc::from(snippet),
-        identifiers,
-        token_count: 0,
-        symbol_name: sym_name.map(|s| s.to_string()),
-    });
-    covered.push((start, end));
-    true
-}
-
-fn emit_chunk(
-    path: &Arc<str>,
-    lines: &[&str],
-    start: u32,
-    end: u32,
-    parent_symbol: Option<&str>,
-    fragments: &mut Vec<Fragment>,
-    covered: &mut Vec<(u32, u32)>,
-) {
-    if end < start || end - start + 1 < PARSERS.min_fragment_lines {
-        return;
-    }
-    let sym_name = parent_symbol.map(|ps| format!("{ps}[{start}]"));
-    create_and_append_fragment(
-        path,
-        lines,
-        start,
-        end,
-        "chunk",
-        sym_name.as_deref(),
-        fragments,
-        covered,
-    );
-}
-
-fn create_sub_fragments(
-    node: &Node,
-    path: &Arc<str>,
-    lines: &[&str],
-    parent_symbol: Option<&str>,
-    fragments: &mut Vec<Fragment>,
-    covered: &mut Vec<(u32, u32)>,
-    depth: u32,
-) {
-    if depth > PARSERS.max_sub_depth {
-        return;
-    }
-    let body = match find_body_node(node) {
-        Some(b) => b,
-        None => return,
-    };
-
-    let named_count = body.named_child_count();
-    let children: Vec<Node> = (0..named_count)
-        .filter_map(|i| body.named_child(i))
-        .filter(|c| c.end_position().row >= c.start_position().row)
-        .collect();
-
-    if children.len() < 2 {
-        return;
-    }
-
-    let mut chunk_start_line = node_start_line(&children[0]);
-    let mut chunk_end_line = node_end_line(&children[0]);
-
-    for child in &children[1..] {
-        let child_start = node_start_line(child);
-        let child_end = node_end_line(child);
-        if child_end - chunk_start_line + 1 > PARSERS.sub_fragment_target_lines {
-            emit_chunk(
-                path,
-                lines,
-                chunk_start_line,
-                chunk_end_line,
-                parent_symbol,
-                fragments,
-                covered,
-            );
-            chunk_start_line = child_start;
-            chunk_end_line = child_end;
-        } else {
-            chunk_end_line = child_end;
-        }
-    }
-
-    emit_chunk(
-        path,
-        lines,
-        chunk_start_line,
-        chunk_end_line,
-        parent_symbol,
-        fragments,
-        covered,
-    );
+    children(node).any(|c| FUNCTION_CHILD_TYPES.contains(&c.kind()))
 }
 
 fn first_child_def_line(node: &Node, definition_types: &[&str], depth: u32) -> Option<u32> {
     if depth > PARSERS.container_search_max_depth {
         return None;
     }
-    let child_count = node.child_count();
-    for i in 0..child_count {
-        if let Some(child) = node.child(i) {
-            if is_definition_type(child.kind(), definition_types) {
-                return Some(node_start_line(&child));
-            }
-            if let Some(result) = first_child_def_line(&child, definition_types, depth + 1) {
-                return Some(result);
-            }
+    children(node).find_map(|child| {
+        if is_definition_type(child.kind(), definition_types) {
+            Some(node_start_line(&child))
+        } else {
+            first_child_def_line(&child, definition_types, depth + 1)
         }
-    }
-    None
+    })
 }
 
-fn try_container_split(
-    node: &Node,
-    source: &[u8],
-    path: &Arc<str>,
-    lines: &[&str],
-    definition_types: &[&str],
-    fragments: &mut Vec<Fragment>,
-    covered: &mut Vec<(u32, u32)>,
-    added_ends: &mut FxHashSet<(String, u32)>,
-    depth: u32,
-    start: u32,
-    end: u32,
-    kind: &str,
-    sym_name: Option<&str>,
-) -> bool {
-    // For a `decorated_definition` the inner class/def node is itself a
-    // definition type, so searching from the wrapper would report the header
-    // line as the "first child" and truncate the container header to the
-    // decorator alone. Search from the unwrapped definition instead.
-    let search_root = unwrap_decorated(*node);
-    let first_child_start = match first_child_def_line(&search_root, definition_types, 0) {
-        Some(l) => l,
-        None => return false,
-    };
-    if first_child_start <= start {
-        return false;
+/// One walk over one parse tree: the file being fragmented and what the
+/// walk has emitted so far. Every step used to thread these seven values
+/// through four mutually recursive functions.
+struct Walk<'a> {
+    source: &'a [u8],
+    path: &'a Arc<str>,
+    lines: &'a [&'a str],
+    definition_types: &'a [&'a str],
+    fragments: Vec<Fragment>,
+    covered: Vec<(u32, u32)>,
+    added_ends: FxHashSet<(String, u32)>,
+}
+
+impl<'a> Walk<'a> {
+    fn new(
+        source: &'a [u8],
+        path: &'a Arc<str>,
+        lines: &'a [&'a str],
+        definition_types: &'a [&'a str],
+    ) -> Self {
+        Self {
+            source,
+            path,
+            lines,
+            definition_types,
+            fragments: Vec::new(),
+            covered: Vec::new(),
+            added_ends: FxHashSet::default(),
+        }
     }
-    let header_end = first_child_start - 1;
-    if let Some(snippet) = create_snippet(lines, start, header_end) {
+
+    fn push(&mut self, start: u32, end: u32, kind: &str, sym_name: Option<&str>) -> bool {
+        let Some(snippet) = create_snippet(self.lines, start, end) else {
+            return false;
+        };
         let identifiers =
             extract_identifiers(&snippet, TOKENIZATION.fragment_min_identifier_length);
-        fragments.push(Fragment {
-            id: FragmentId::new(Arc::clone(path), start, header_end),
+        self.fragments.push(Fragment {
+            id: FragmentId::new(Arc::clone(self.path), start, end),
             kind: FragmentKind::from_str(kind),
             content: Arc::from(snippet),
             identifiers,
             token_count: 0,
             symbol_name: sym_name.map(|s| s.to_string()),
         });
-        covered.push((start, header_end));
-    }
-    added_ends.insert((kind.to_string(), end));
-    recurse_children(
-        node,
-        source,
-        path,
-        lines,
-        definition_types,
-        fragments,
-        covered,
-        added_ends,
-        depth,
-    );
-    true
-}
-
-fn handle_definition_node(
-    node: &Node,
-    source: &[u8],
-    path: &Arc<str>,
-    lines: &[&str],
-    definition_types: &[&str],
-    fragments: &mut Vec<Fragment>,
-    covered: &mut Vec<(u32, u32)>,
-    added_ends: &mut FxHashSet<(String, u32)>,
-    depth: u32,
-) {
-    let start = node_start_line(node);
-    let end = node_end_line(node);
-    let kind = node_type_to_kind(node.kind(), Some(node));
-
-    if added_ends.contains(&(kind.to_string(), end)) {
-        recurse_children(
-            node,
-            source,
-            path,
-            lines,
-            definition_types,
-            fragments,
-            covered,
-            added_ends,
-            depth,
-        );
-        return;
+        self.covered.push((start, end));
+        true
     }
 
-    let sym_name = extract_symbol_name(node, source);
-    let start = adjust_start_for_ancestor(node, start);
-
-    if is_container_kind(kind)
-        && try_container_split(
-            node,
-            source,
-            path,
-            lines,
-            definition_types,
-            fragments,
-            covered,
-            added_ends,
-            depth,
-            start,
-            end,
-            kind,
-            sym_name.as_deref(),
-        )
-    {
-        return;
+    fn emit_chunk(&mut self, start: u32, end: u32, parent_symbol: Option<&str>) {
+        if end < start || end - start + 1 < PARSERS.min_fragment_lines {
+            return;
+        }
+        let sym_name = parent_symbol.map(|ps| format!("{ps}[{start}]"));
+        self.push(start, end, "chunk", sym_name.as_deref());
     }
 
-    if end - start + 1 >= PARSERS.min_fragment_lines {
-        if create_and_append_fragment(
-            path,
-            lines,
-            start,
-            end,
-            kind,
-            sym_name.as_deref(),
-            fragments,
-            covered,
-        ) {
-            added_ends.insert((kind.to_string(), end));
+    fn create_sub_fragments(&mut self, node: &Node, parent_symbol: Option<&str>, depth: u32) {
+        if depth > PARSERS.max_sub_depth {
+            return;
+        }
+        let Some(body) = find_body_node(node) else {
+            return;
+        };
+
+        let named_count = body.named_child_count();
+        let children: Vec<Node> = (0..named_count)
+            .filter_map(|i| body.named_child(i))
+            .filter(|c| c.end_position().row >= c.start_position().row)
+            .collect();
+
+        if children.len() < 2 {
+            return;
+        }
+
+        let mut chunk_start_line = node_start_line(&children[0]);
+        let mut chunk_end_line = node_end_line(&children[0]);
+
+        for child in &children[1..] {
+            let child_start = node_start_line(child);
+            let child_end = node_end_line(child);
+            if child_end - chunk_start_line + 1 > PARSERS.sub_fragment_target_lines {
+                self.emit_chunk(chunk_start_line, chunk_end_line, parent_symbol);
+                chunk_start_line = child_start;
+                chunk_end_line = child_end;
+            } else {
+                chunk_end_line = child_end;
+            }
+        }
+
+        self.emit_chunk(chunk_start_line, chunk_end_line, parent_symbol);
+    }
+
+    fn try_container_split(
+        &mut self,
+        node: &Node,
+        depth: u32,
+        start: u32,
+        end: u32,
+        kind: &str,
+        sym_name: Option<&str>,
+    ) -> bool {
+        // For a `decorated_definition` the inner class/def node is itself a
+        // definition type, so searching from the wrapper would report the header
+        // line as the "first child" and truncate the container header to the
+        // decorator alone. Search from the unwrapped definition instead.
+        let search_root = unwrap_decorated(*node);
+        let Some(first_child_start) = first_child_def_line(&search_root, self.definition_types, 0)
+        else {
+            return false;
+        };
+        if first_child_start <= start {
+            return false;
+        }
+        self.push(start, first_child_start - 1, kind, sym_name);
+        self.added_ends.insert((kind.to_string(), end));
+        self.recurse_children(node, depth);
+        true
+    }
+
+    fn handle_definition_node(&mut self, node: &Node, depth: u32) {
+        let start = node_start_line(node);
+        let end = node_end_line(node);
+        let kind = node_type_to_kind(node.kind(), Some(node));
+
+        if self.added_ends.contains(&(kind.to_string(), end)) {
+            self.recurse_children(node, depth);
+            return;
+        }
+
+        let sym_name = extract_symbol_name(node, self.source);
+        let start = adjust_start_for_ancestor(node, start);
+
+        if is_container_kind(kind)
+            && self.try_container_split(node, depth, start, end, kind, sym_name.as_deref())
+        {
+            return;
+        }
+
+        if end - start + 1 >= PARSERS.min_fragment_lines
+            && self.push(start, end, kind, sym_name.as_deref())
+        {
+            self.added_ends.insert((kind.to_string(), end));
+        }
+
+        if end - start + 1 > PARSERS.sub_fragment_threshold_lines {
+            self.create_sub_fragments(node, sym_name.as_deref(), 0);
+        }
+
+        if node.kind() == "variable_declarator" && has_function_child(node) {
+            return;
+        }
+
+        self.recurse_children(node, depth);
+    }
+
+    fn extract_definitions(&mut self, node: &Node, depth: u32) {
+        if depth > PARSERS.max_recursion_depth {
+            return;
+        }
+        if is_definition_type(node.kind(), self.definition_types) {
+            self.handle_definition_node(node, depth);
+        } else {
+            self.recurse_children(node, depth);
         }
     }
 
-    if end - start + 1 > PARSERS.sub_fragment_threshold_lines {
-        create_sub_fragments(
-            node,
-            path,
-            lines,
-            sym_name.as_deref(),
-            fragments,
-            covered,
-            0,
-        );
-    }
-
-    if node.kind() == "variable_declarator" && has_function_child(node) {
-        return;
-    }
-
-    recurse_children(
-        node,
-        source,
-        path,
-        lines,
-        definition_types,
-        fragments,
-        covered,
-        added_ends,
-        depth,
-    );
-}
-
-fn extract_definitions(
-    node: &Node,
-    source: &[u8],
-    path: &Arc<str>,
-    lines: &[&str],
-    definition_types: &[&str],
-    fragments: &mut Vec<Fragment>,
-    covered: &mut Vec<(u32, u32)>,
-    added_ends: &mut FxHashSet<(String, u32)>,
-    depth: u32,
-) {
-    if depth > PARSERS.max_recursion_depth {
-        return;
-    }
-
-    if is_definition_type(node.kind(), definition_types) {
-        handle_definition_node(
-            node,
-            source,
-            path,
-            lines,
-            definition_types,
-            fragments,
-            covered,
-            added_ends,
-            depth,
-        );
-    } else {
-        recurse_children(
-            node,
-            source,
-            path,
-            lines,
-            definition_types,
-            fragments,
-            covered,
-            added_ends,
-            depth,
-        );
-    }
-}
-
-fn recurse_children(
-    node: &Node,
-    source: &[u8],
-    path: &Arc<str>,
-    lines: &[&str],
-    definition_types: &[&str],
-    fragments: &mut Vec<Fragment>,
-    covered: &mut Vec<(u32, u32)>,
-    added_ends: &mut FxHashSet<(String, u32)>,
-    depth: u32,
-) {
-    let child_count = node.child_count();
-    for i in 0..child_count {
-        if let Some(child) = node.child(i) {
-            extract_definitions(
-                &child,
-                source,
-                path,
-                lines,
-                definition_types,
-                fragments,
-                covered,
-                added_ends,
-                depth + 1,
-            );
+    fn recurse_children(&mut self, node: &Node, depth: u32) {
+        for child in children(node) {
+            self.extract_definitions(&child, depth + 1);
         }
     }
 }
@@ -1272,21 +1091,13 @@ impl FragmentationStrategy for TreeSitterStrategy {
         let source = content.as_bytes();
         let lines: Vec<&str> = content.split('\n').collect();
 
-        let mut fragments: Vec<Fragment> = Vec::new();
-        let mut covered: Vec<(u32, u32)> = Vec::new();
-        let mut added_ends: FxHashSet<(String, u32)> = FxHashSet::default();
-
-        extract_definitions(
-            &tree.root_node(),
-            source,
-            &path,
-            &lines,
-            config.definition_types,
-            &mut fragments,
-            &mut covered,
-            &mut added_ends,
-            0,
-        );
+        let mut walk = Walk::new(source, &path, &lines, config.definition_types);
+        walk.extract_definitions(&tree.root_node(), 0);
+        let Walk {
+            mut fragments,
+            covered,
+            ..
+        } = walk;
 
         let gap_frags = create_code_gap_fragments(Arc::clone(&path), &lines, &covered);
         fragments.extend(gap_frags);
@@ -1422,20 +1233,14 @@ fn fragment_embedded_source(
     };
 
     let snippet_lines: Vec<&str> = snippet.split('\n').collect();
-    let mut embedded: Vec<Fragment> = Vec::new();
-    let mut covered: Vec<(u32, u32)> = Vec::new();
-    let mut added_ends: FxHashSet<(String, u32)> = FxHashSet::default();
-    extract_definitions(
-        &tree.root_node(),
+    let mut walk = Walk::new(
         snippet.as_bytes(),
         path,
         &snippet_lines,
         config.definition_types,
-        &mut embedded,
-        &mut covered,
-        &mut added_ends,
-        0,
     );
+    walk.extract_definitions(&tree.root_node(), 0);
+    let embedded = walk.fragments;
 
     // Fragment lines are 1-based within the snippet; the snippet's line 1 is
     // the raw_text node's start line in the file.

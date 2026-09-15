@@ -130,7 +130,7 @@ fn has_generated_content_marker(content: &str) -> bool {
     false
 }
 
-fn is_generated_file(path: &Path, content: &str) -> bool {
+pub(crate) fn is_generated_file(path: &Path, content: &str) -> bool {
     let name = path
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
@@ -138,6 +138,15 @@ fn is_generated_file(path: &Path, content: &str) -> bool {
     has_generated_filename(&name)
         || has_generated_path_segment(path)
         || has_generated_content_marker(content)
+}
+
+/// A one- or two-line YAML pair that identifies a Kubernetes resource.
+fn is_resource_header(content: &str) -> bool {
+    let first = content.lines().next().unwrap_or("").trim_start();
+    content.lines().count() <= 2
+        && (first.starts_with("apiVersion:")
+            || first.starts_with("kind:")
+            || first.starts_with("metadata:"))
 }
 
 fn truncate_generated_fragments(file_frags: Vec<Fragment>) -> Vec<Fragment> {
@@ -266,9 +275,11 @@ pub fn process_files_for_fragments(
     seen_frag_ids: &mut FxHashSet<FragmentId>,
     mut batch_reader: Option<&mut CatFileBatch>,
     is_changed: bool,
+    ctx: &crate::resource::RunContext,
 ) -> Vec<Fragment> {
     let max_frags = LIMITS.max_fragments;
     let max_generated = LIMITS.max_generated_fragments;
+    let max_source_bytes = ctx.budget().max_source_bytes;
 
     // Process files in chunks: sequential read (CatFileBatch is &mut, !Send) then
     // parallel parse within each chunk. Peak raw-content memory = chunk_size × max_file_size
@@ -276,6 +287,20 @@ pub fn process_files_for_fragments(
     let chunk_size = rayon::current_num_threads().max(1);
     let mut parsed: Vec<Vec<Fragment>> = Vec::with_capacity(files.len());
     for chunk in files.chunks(chunk_size) {
+        // A chunk is the unit of cancellation: past the deadline or the
+        // byte cap the remaining discovered files stay unparsed and the
+        // coverage block says which limit stopped the read. Neither limit
+        // touches the changed files: a changed file the reader cannot see is
+        // not a partial artifact but a wrong one.
+        if !is_changed {
+            if !ctx.check() {
+                break;
+            }
+            if ctx.usage().source_bytes > max_source_bytes {
+                ctx.note(crate::resource::LimitReason::TotalByteLimit);
+                break;
+            }
+        }
         let chunk_contents: Vec<(PathBuf, String)> = chunk
             .iter()
             .filter_map(|file_path| {
@@ -289,6 +314,11 @@ pub fn process_files_for_fragments(
                 Some((file_path.clone(), content))
             })
             .collect();
+        let chunk_bytes: u64 = chunk_contents.iter().map(|(_, c)| c.len() as u64).sum();
+        ctx.record_usage(|u| {
+            u.source_bytes += chunk_bytes;
+            u.parsed_files += chunk_contents.len() as u64;
+        });
         parsed.extend(
             chunk_contents
                 .par_iter()
@@ -313,8 +343,20 @@ pub fn process_files_for_fragments(
                         max_frags
                     };
                     if raw_frags.len() > cap {
-                        raw_frags.sort_by(|a, b| b.line_count().cmp(&a.line_count()));
-                        raw_frags.truncate(cap);
+                        // Longest first — but a manifest's one-line
+                        // `apiVersion:`/`kind:` pairs are what says it is a
+                        // manifest at all, and dropping them as the shortest
+                        // made a generated Deployment invisible to the
+                        // selector channel (#258). Resource headers survive
+                        // the cut; the cap applies to everything else.
+                        let (headers, mut rest): (Vec<Fragment>, Vec<Fragment>) = raw_frags
+                            .into_iter()
+                            .partition(|f| generated && is_resource_header(&f.content));
+                        rest.sort_by(|a, b| b.line_count().cmp(&a.line_count()));
+                        rest.truncate(cap);
+                        rest.extend(headers);
+                        rest.sort_by(|a, b| a.id.cmp(&b.id));
+                        raw_frags = rest;
                     }
                     if generated {
                         raw_frags = truncate_generated_fragments(raw_frags);
@@ -429,5 +471,18 @@ mod tests {
         assert!(out[0].content.contains("more lines]"));
         assert_eq!(out[0].end_line(), max_lines as u32);
         assert!(!out[0].content.contains(&format!("line {}", max_lines + 1)));
+    }
+    /// #258: the generated-file cut keeps the longest fragments, and a
+    /// manifest's `apiVersion:`/`kind:` pairs are the shortest — without them
+    /// the file is no longer detected as a manifest at all.
+    #[test]
+    fn resource_headers_are_told_apart_from_body_fragments() {
+        assert!(is_resource_header("apiVersion: apps/v1\n"));
+        assert!(is_resource_header("kind: Deployment"));
+        assert!(is_resource_header("metadata:\n  name: web\n"));
+        assert!(!is_resource_header("spec:\n  replicas: 2\n"));
+        assert!(!is_resource_header(
+            "metadata:\n  name: web\n  labels:\n    app: web\n"
+        ));
     }
 }

@@ -72,9 +72,17 @@ impl PipelineConfig {
             }
             ScoringMode::Bm25 => (m.bm25_top_k_off, m.ego_depth_default),
         };
+        // The objective override is part of the mode resolution so every
+        // caller of the heavy phase — the product and the corpus harness —
+        // runs the same objective; it used to be applied in the product
+        // pipeline alone, one more way for the harness to measure a system
+        // nobody runs (#149, #232).
+        let objective = std::env::var("DIFFCTX_OBJECTIVE")
+            .map(|s| ObjectiveMode::from_str(&s))
+            .unwrap_or(ObjectiveMode::Submodular);
         Self {
             scoring: mode,
-            objective: ObjectiveMode::Submodular,
+            objective,
             bm25_top_k,
             ego_depth,
             ppr_alpha: PPR.alpha,

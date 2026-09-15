@@ -6,7 +6,7 @@ No secret, no agent loop, no model of its own: the review step downstream
 chooses the model.
 
 Marketplace name: **diffctx LLM Diff Context**
-(`nikolay-e/diffctx@v1.15.0`). Runs on `ubuntu-latest`. Releases are tagged
+(`nikolay-e/diffctx@v1.16.0`). Runs on `ubuntu-latest`. Releases are tagged
 `vMAJOR.MINOR.PATCH` only — there is no floating `@v1` tag, so pin an exact
 release.
 
@@ -24,7 +24,7 @@ jobs:
           fetch-depth: 0
 
       - id: context
-        uses: nikolay-e/diffctx@v1.15.0
+        uses: nikolay-e/diffctx@v1.16.0
         with:
           budget: '8000'
 
@@ -107,4 +107,5 @@ comment and nothing else.
 - Requires no token and no secret. Grant only `contents: read` unless a
   downstream step needs more.
 - Exit codes other than `0` and `4` are propagated verbatim, so a missing
-  revision (`3`) or a timeout (`124`) fails the step loudly.
+  revision (`3`) or a hung run (`124`) fails the step loudly; a run that
+  merely reaches `--timeout` emits a partial context and says so in it.

@@ -431,6 +431,18 @@ impl Graph {
         seeds: &FxHashSet<FragmentId>,
         radius: usize,
     ) -> FxHashMap<FragmentId, f64> {
+        let weighted: FxHashMap<FragmentId, f64> = seeds.iter().map(|s| (s.clone(), 1.0)).collect();
+        self.ego_graph_weighted(&weighted, radius)
+    }
+
+    /// `ego_graph` with a starting weight per seed: a seed at `w` is a
+    /// seed whose every path is scaled by `w`, which is how a change is
+    /// lifted to the file that contains it at the containment discount.
+    pub fn ego_graph_weighted(
+        &self,
+        seeds: &FxHashMap<FragmentId, f64>,
+        radius: usize,
+    ) -> FxHashMap<FragmentId, f64> {
         let (fwd, rev) = match &self.csr_cache {
             Some(c) => c,
             None => return FxHashMap::default(),
@@ -439,15 +451,15 @@ impl Graph {
             return FxHashMap::default();
         }
 
-        let mut valid_seed_idxs: Vec<u32> = seeds
+        let mut valid_seeds: Vec<(u32, f64)> = seeds
             .iter()
-            .filter_map(|s| fwd.node_to_idx.get(s).copied())
+            .filter_map(|(s, w)| fwd.node_to_idx.get(s).map(|i| (*i, *w)))
             .collect();
-        valid_seed_idxs.sort_unstable();
+        valid_seeds.sort_unstable_by(|a, b| a.0.cmp(&b.0));
 
-        let per_seed: Vec<Vec<(u32, u32, f64)>> = valid_seed_idxs
+        let per_seed: Vec<Vec<(u32, u32, f64)>> = valid_seeds
             .par_iter()
-            .map(|&seed_idx| bfs_from_seed_with_path_weight(fwd, rev, seed_idx, radius))
+            .map(|&(seed_idx, w)| bfs_from_seed_with_path_weight(fwd, rev, seed_idx, w, radius))
             .collect();
 
         let gamma = EGO.per_hop_decay;
@@ -478,13 +490,14 @@ fn bfs_from_seed_with_path_weight(
     fwd: &CsrGraph,
     rev: &CsrGraph,
     seed_idx: u32,
+    seed_weight: f64,
     radius: usize,
 ) -> Vec<(u32, u32, f64)> {
     let n = fwd.n;
     let mut dist = vec![u32::MAX; n];
     let mut max_w = vec![0.0_f64; n];
     dist[seed_idx as usize] = 0;
-    max_w[seed_idx as usize] = 1.0;
+    max_w[seed_idx as usize] = seed_weight;
     let mut frontier: Vec<u32> = vec![seed_idx];
 
     for step in 0..radius {

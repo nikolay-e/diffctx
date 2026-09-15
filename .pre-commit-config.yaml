@@ -140,7 +140,7 @@ repos:
   # LINTING (Ruff for speed + correctness)
   # ============================================================================
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.4
+    rev: v0.16.7
     hooks:
       - id: ruff
         name: ruff (correctness-focused checks)
@@ -163,7 +163,7 @@ repos:
         exclude: ^(packaging|bucket|datasets)/
 
   - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.29.1
+    rev: v8.30.1
     hooks:
       - id: gitleaks
         name: Scan for secrets (gitleaks)
@@ -203,7 +203,7 @@ repos:
   # DEAD CODE DETECTION
   # ============================================================================
   - repo: https://github.com/jendrikseipp/vulture
-    rev: v2.14
+    rev: v2.16
     hooks:
       - id: vulture
         name: vulture (dead code)
@@ -278,15 +278,16 @@ repos:
   # MARKDOWN LINTING
   # ============================================================================
   - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: v0.45.0
+    rev: v0.49.1
     hooks:
       - id: markdownlint
         name: Lint Markdown files
         args: ['--fix']
         files: \.(md|markdown)$
         # commands/ holds Claude Code plugin slash-command prompts: frontmatter
-        # + instruction body, no document heading.
-        exclude: ^commands/
+        # + instruction body, no document heading. CLAUDE.md is the one-line
+        # `@AGENTS.md` import adapter.
+        exclude: ^(commands/|CLAUDE\.md$)
 
   # ============================================================================
   # RUST QUALITY (fmt, clippy, test, audit)
@@ -358,7 +359,7 @@ repos:
   # COMMIT MESSAGE QUALITY
   # ============================================================================
   - repo: https://github.com/commitizen-tools/commitizen
-    rev: v4.9.1
+    rev: v4.18.0
     hooks:
       - id: commitizen
         stages: [commit-msg]

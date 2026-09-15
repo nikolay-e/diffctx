@@ -8,11 +8,11 @@ Project-specific facts for `/qa`. Generic methodology lives in
 | Check | Applies | Notes |
 |---|---|---|
 | CI | yes | GitHub Actions on the mirror (ci.yml, action-smoke, CodeQL per push; cd.yml/publish-* manual dispatch; nightly-full-eval cron). "Rust diffctx tests" is ~6 min on a warm cargo cache; a Rust-touching commit invalidates it (+~10 min compile). Beyond ~30 min on "Build and test" = stuck runner — `gh run cancel` + `gh run rerun --failed` (an 85-min hang resolved to a 6-min green rerun with zero changes). A re-run stuck in `queued` can be API-unrecoverable: cancel AND force-cancel 409 with "re-run that has not yet queued", and an all-jobs-cancelled CodeQL run later reports "cannot be retried" — don't fight it; the next push supersedes, verify the corpus gate on the new SHA |
-| Browser QA / stumble | yes | **there IS a deployed surface**: the GitHub Pages landing page (`nikolay-e.github.io/diffctx/`, built by the `pages build and deployment` run on every push). This row read "no web frontend" until 2026-08-26 and it was simply wrong — the page is where a stranger decides whether to adopt the tool, which is exactly what the stumble probe measures. It is ONE page: only `demo/` and `llms.txt` are additionally published; the `docs/` subdirectories (product, engineering, architecture, benchmarks) are repo-read `.md`, 404 on Pages by design and linked from nowhere on the site, so that 404 is not a finding |
+| Browser QA / stumble | yes | **there IS a deployed surface**: the GitHub Pages landing page (`nikolay-e.github.io/diffctx/`, built by the `pages build and deployment` run on every push). This row read "no web frontend" until 2026-08-26 and it was simply wrong — the page is where a stranger decides whether to adopt the tool, which is exactly what the stumble probe measures. It is ONE page: only `demo/` and `llms.txt` are additionally published; the `docs/` subdirectories are Markdown that Jekyll renders on Pages too (`product/token-budget.html`, `product/cli.html`, `product/faq.html` answer 200 — verified 2026-09-16; this row claimed they 404 until then), and since #240 the nav links `product/cli.html` |
 | Post-deploy autoqa | no sensor | nothing runs the crawler against the Pages site, so the link sweep is done in-pass (fetch the page, follow same-origin links, HEAD every external). The `fonts.googleapis.com` / `fonts.gstatic.com` bare hosts are `rel=preconnect` hints and 404 on a bare GET — always false positives, never file them |
 | CD / K8s / ArgoCD | no | ships to PyPI, npm, crates.io, Docker Hub via cd.yml/publish-extras.yml; those workflows' publish smokes are the probes |
 | Backend smoke | no | — |
-| SonarCloud | yes | project key is `nikolay-e_TreeMapper` (legacy name, never renamed) |
+| SonarQube | yes | self-hosted `sonar.nikolay-eremeev.com` (WARP-only), project key `diffctx`; `main` only, scanned by the gitops `sonar-scan` workflow on every Forgejo push |
 
 ## Stumble probe tasks
 
@@ -78,7 +78,17 @@ silently:
 - **`eval` dependency group in `pyproject.toml`, locked in `uv.lock`** — the
   research harness's Python deps. One resolver for the whole repo; the
   separate `requirements-eval.txt` + `.lock` pair (and its own bot) is gone.
-- **`Cargo.toml` + `Cargo.lock`** — Dependabot's `cargo` entry.
+- **`Cargo.toml` + `Cargo.lock`**, GitHub Actions pins, pre-commit revs, Docker
+  digests — Renovate on Forgejo (`renovate.json`, automerge). Dependabot on the
+  mirror keeps only `uv` + `pip`; its `github-actions` and `cargo` entries were
+  removed 2026-09-15 after they opened the same bump twice (#266 vs Forgejo #32).
+  Renovate does NOT detect pep621/uv, so the Python pair stays with Dependabot.
+- **A Renovate automerge never waits for the GitHub CI.** Forgejo carries no
+  pre-commit/pytest run, so a bumped linter can land red on `main`: markdownlint
+  0.49.1 (`3d33c528`, 2026-09-15) tightened MD013 and failed the next two `main`
+  runs on two CHANGELOG lines. A red "Pre-commit hooks" job right after a
+  `chore(deps): update pre-commit hook` merge is that class — fix the files, not
+  the pin.
 
 The pip entry runs `versioning-strategy: increase-if-necessary`. The default
 (`increase`) rewrites a floor to the newest resolvable version every run, and
@@ -241,17 +251,24 @@ dismissing as bot noise.
    `code-scanning/alerts?state=open`, `secret-scanning/alerts?state=open`)
    — all three were empty on 2026-08-30; a pass reads them, it does not
    assume them.
-5. SonarCloud project `nikolay-e_TreeMapper` (the key predates the rename):
-   quality gate + open issues + hotspots via the sonarqube MCP tools, or —
-   the MCP server does not always connect — the REST API with the Keychain
-   `sonarcloud-token` as HTTP basic user: `api/qualitygates/project_status`,
-   `api/issues/search?projectKeys=…&statuses=OPEN,CONFIRMED`,
-   `api/hotspots/search?projectKey=…&status=TO_REVIEW`. Issues
-   raised on the day's own commits count as intake for that pass. The gate
-   can read OK while five issues are open — it scores NEW code against
-   ratings, so complexity and composite-assertion findings sit under a green
-   gate; read the issue list, never the gate alone. Analysis runs inside
-   `diffctx CI`, so a fix's issues stay OPEN until that run finishes.
+5. SonarQube project `diffctx` on `sonar.nikolay-eremeev.com` (WARP-only;
+   without a hosts entry use `curl --resolve
+   sonar.nikolay-eremeev.com:443:10.43.76.7`), Bearer token from Keychain
+   `sonarqube-token`: `api/qualitygates/project_status`,
+   `api/issues/search?componentKeys=…&resolved=false`,
+   `api/hotspots/search?projectKey=…&status=TO_REVIEW`. Issues raised on the
+   day's own commits count as intake for that pass. The gate scores NEW code
+   only, so older findings sit under a green gate; read the issue list, never
+   the gate alone. Analysis is not part of `diffctx CI` on the GitHub mirror:
+   a push to Forgejo `main` runs `sonar-diffctx-*` in `argo-workflows`, whose
+   verdict is the Forgejo commit status `argo-ci/sonar`. A fix's issues stay
+   open until that run finishes. The sensor (gitops `e3b914da`) went live on
+   2026-09-15 07:44Z, after that day's last diffctx push, so the project did
+   not exist until the first push of the same evening (`ed4cd2f5`) created it:
+   gate OK, 92 issues — 83 `rust:S3776` cognitive complexity (tracked, see the
+   issue filed that pass), 7 `python:S2245` + 1 `python:S2612` re-marked false
+   positive (the marks did not migrate from SonarCloud), `docker:S6471` on
+   `Dockerfile.eval` accepted (operator-run research image).
 6. The stumble ledger is a channel: `[stumble] <task>` issues carry the
    per-batch median and the deduped gripes. A convergent gripe (the same slug
    from independent runs) is the signal — on 2026-08-30 four of six slugs were
@@ -336,26 +353,28 @@ dismissing as bot noise.
   (`from diffctx._diffctx import X`) so the edge points at the submodule
   rather than the package root.
 - Sonar `python:S2245` on `paired_bootstrap` (seeded `random.Random` for
-  CI resampling) — false positive, marked via API 2026-08-04: determinism
-  is the requirement, not a security context.
+  CI resampling) — false positive: determinism is the requirement, not a
+  security context.
 - Sonar `pythonsecurity:S8705/S8707` on `eval/workflows/` harnesses
-  ("LLM sandbox escape") — accepted via API 2026-08-04: operator-run
-  local research harnesses; argv exec with regex-validated sha
-  (realworld_rerun) and operator-chosen output dir (run_final). Don't
-  re-litigate unless the eval workflows become agent-facing.
+  ("LLM sandbox escape") — accepted risk: operator-run local research
+  harnesses; argv exec with regex-validated sha (realworld_rerun) and
+  operator-chosen output dir (run_final). Don't re-litigate unless the eval
+  workflows become agent-facing.
 - Sonar `python:S2612` on `writer.py` `os.fchmod(fd, 0o666 & ~umask)` —
-  marked false positive via API 2026-09-03: the mode is what `open(..., "w")`
-  would have created; `mkstemp`'s 0600 is the anomaly being corrected. Python
-  NOSONAR takes no `(rule)` argument — `# NOSONAR(python:S2612)` is itself
-  flagged (S7632) and suppresses nothing.
-- SonarCloud `githubactions:S8543` on the publish-extras npm smoke:
-  `$VERSION` is an exact just-published version, package has zero
-  deps — marked false positive in SonarCloud via API (NOSONAR is NOT
-  supported by the githubactions analyzer; don't re-add it).
-  Gotcha: editing the flagged line (or its neighbours) shifts the issue
-  hash and Sonar re-raises the finding under a NEW issue key with the
-  FP mark lost — re-fetch after every analysis touching that file and
+  false positive: the mode is what `open(..., "w")` would have created;
+  `mkstemp`'s 0600 is the anomaly being corrected. Python NOSONAR takes no
+  `(rule)` argument — `# NOSONAR(python:S2612)` is itself flagged (S7632)
+  and suppresses nothing.
+- Sonar `githubactions:S8543` on the publish-extras npm smoke: `$VERSION`
+  is an exact just-published version, package has zero deps — false
+  positive (NOSONAR is NOT supported by the githubactions analyzer; don't
+  re-add it). Gotcha: editing the flagged line (or its neighbours) shifts
+  the issue hash and Sonar re-raises the finding under a NEW issue key with
+  the FP mark lost — re-fetch after every analysis touching that file and
   re-mark via `api/issues/do_transition` (`falsepositive`).
+- None of the resolutions above exist on the self-hosted server: they were
+  made on the retired hosted instance and did not migrate, so every one
+  re-raises until it is resolved again.
 
 ## Recurring bug patterns (diagnose once, recognise thereafter)
 

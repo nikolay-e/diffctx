@@ -4,6 +4,7 @@ use std::sync::Arc;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
+use schemars::JsonSchema;
 use serde::Serialize;
 
 use crate::config::render::RENDER;
@@ -15,6 +16,12 @@ use crate::types::{Fragment, FragmentId, FragmentKind};
 #[derive(Default)]
 pub struct ChangeSummary {
     pub commit_message: Option<String>,
+    /// Every commit message of the range (subject and body), newest first;
+    /// empty for a working-tree diff with no committed range.
+    pub commit_messages: Vec<String>,
+    /// `(display path, class, reason)` for every changed file, the class the
+    /// selection policy ranked evidence by.
+    pub changes: Vec<(String, crate::change_class::ChangeClass, &'static str)>,
     pub changed_files: Vec<String>,
     pub deleted_files: Vec<String>,
     pub renamed_files: Vec<(String, String)>,
@@ -42,66 +49,157 @@ where
     seq.end()
 }
 
-#[derive(Serialize)]
+/// The public artifact: the one document every surface derives from.
+pub const CONTEXT_SCHEMA: &str = "diffctx.context.v1";
+
+/// One rename as the labelled pair the artifact renders.
+#[derive(Serialize, JsonSchema)]
+pub struct RenameEntry {
+    pub from: String,
+    pub to: String,
+}
+
+/// One changed file's inventory row: what kind of change it carries and
+/// whether anything of it made it into the output. The row exists for every
+/// changed file whatever the budget — an omission is stated, never implied.
+#[derive(Serialize, JsonSchema, Clone)]
+pub struct ChangeEntry {
+    pub path: String,
+    pub class: crate::change_class::ChangeClass,
+    pub represented: bool,
+}
+
+#[derive(Serialize, JsonSchema)]
 pub struct DiffContextOutput {
+    /// `diffctx.context.v1`: the schema a consumer validates against; the
+    /// document below is generated from this type and pinned by test.
+    pub schema: &'static str,
     pub name: String,
     #[serde(rename = "type")]
     pub output_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub commit_message: Option<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub commit_messages: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub changed_files: Vec<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub changes: Vec<ChangeEntry>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub deleted_files: Vec<String>,
     #[serde(
+        default,
         skip_serializing_if = "Vec::is_empty",
         serialize_with = "serialize_renames"
     )]
+    #[schemars(with = "Vec<RenameEntry>")]
     pub renamed_files: Vec<(String, String)>,
     /// Lock files touched by the range. Paths only — the raw hunks are
     /// thousands of tokens of checksum churn for one line of signal (#112).
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lockfile_changes: Vec<String>,
     /// Changed files withheld by ignore rules. Silent exclusion misreads as
     /// "the diff did not touch this" (#188: a reviewer filed "no tests"
     /// against a change whose tests the tool had filtered).
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub ignored_changes: Vec<String>,
     /// Files excluded by `.diffctx/ignore` or secret-path policy — count
     /// only, see `ScoredState::policy_excluded_count`.
-    #[serde(skip_serializing_if = "is_zero")]
+    #[serde(default, skip_serializing_if = "is_zero")]
     pub policy_excluded_count: usize,
     pub fragment_count: usize,
     pub fragments: Vec<FragmentEntry>,
+    /// Telemetry, not artifact: two runs of one input must compare equal
+    /// without it, so it never enters the serialized document. The Python
+    /// bridge attaches it beside the artifact.
     #[serde(skip)]
+    #[schemars(skip)]
     pub latency: Option<LatencyBreakdown>,
+    /// Absent only for outputs no pipeline run produced (the in-memory
+    /// harness, an empty tree).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<crate::run_provenance::ProvenanceV1>,
+    /// Present only when a limit stopped the run short: what stopped it and
+    /// what was consumed. A complete run's output carries no block.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub coverage: Option<crate::resource::CoverageReport>,
+    /// Present only when the sanitizer replaced a credential-shaped string
+    /// somewhere in this artifact — fragment text, a commit message.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub redactions: Option<crate::sanitize::Redactions>,
 }
 
+/// JSON Schema 2020-12 for `diffctx.context.v1`, generated from the type —
+/// the hand-written copies (a Rust `set_item` bridge, a Python key list)
+/// are gone, so this is the only place the shape is stated.
+pub fn context_schema() -> serde_json::Value {
+    let mut generator = schemars::generate::SchemaSettings::draft2020_12().into_generator();
+    let schema = generator.root_schema_for::<DiffContextOutput>();
+    serde_json::to_value(schema).expect("schema serializes")
+}
+
+fn serialize_emissions<S>(
+    emissions: &[(&'static str, u64, u64)],
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    use serde::ser::SerializeMap;
+    let mut map = serializer.serialize_map(Some(emissions.len()))?;
+    for (category, raw, deduped) in emissions {
+        let mut counts = std::collections::BTreeMap::new();
+        counts.insert("raw", *raw);
+        counts.insert("deduped", *deduped);
+        map.serialize_entry(category, &counts)?;
+    }
+    map.end()
+}
+
+fn round_ms<S>(ms: &f64, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_f64((ms * 10.0).round() / 10.0)
+}
+
+#[derive(Serialize)]
 pub struct LatencyBreakdown {
     /// Pre-heavy-phase work: hunk parse, untracked scan, ignore resolution and
     /// the `git diff` calls. Outside every timer until #183, which is why the
     /// reported phases could not be reconciled with the wall clock.
+    #[serde(serialize_with = "round_ms")]
     pub pre_phase_ms: f64,
+    #[serde(serialize_with = "round_ms")]
     pub parse_changed_ms: f64,
+    #[serde(serialize_with = "round_ms")]
     pub universe_walk_ms: f64,
+    #[serde(serialize_with = "round_ms")]
     pub discovery_ms: f64,
+    #[serde(serialize_with = "round_ms")]
     pub parse_discovered_ms: f64,
+    #[serde(serialize_with = "round_ms")]
     pub tokenization_ms: f64,
     /// Typed dependency graph construction: edge builders + dedup + hub
     /// suppression + per-source cap. Carved out of `scoring_ms` (which
     /// used to absorb it) so the cost distribution is truthful. Zero for
     /// BM25 mode (no graph built).
+    #[serde(serialize_with = "round_ms")]
     pub graph_build_ms: f64,
     /// Combined graph build + scoring + selection time. Kept for
     /// backward compatibility with the existing checkpoint schema; the
     /// split values below are the new diagnostic signal.
+    #[serde(serialize_with = "round_ms")]
     pub scoring_selection_ms: f64,
+    #[serde(serialize_with = "round_ms")]
     pub total_ms: f64,
     /// Heavy-phase rank computation only (PPR/EGO/BM25 + relevance
     /// filtering). Graph construction is reported in `graph_build_ms`;
     /// the selection stage is excluded.
+    #[serde(serialize_with = "round_ms")]
     pub scoring_ms: f64,
     /// Selection stage only (lazy greedy / Boltzmann + post-passes).
+    #[serde(serialize_with = "round_ms")]
     pub selection_ms: f64,
     /// Size of the candidate fragment universe handed to the scoring
     /// strategy (after fragment generation + signature variants but
@@ -144,10 +242,11 @@ pub struct LatencyBreakdown {
     /// pass 1 of the two-pass edge build, sorted by category name. Names
     /// the builder category behind near-dense emission blowups (#116).
     /// Empty for BM25 mode (no graph built).
+    #[serde(serialize_with = "serialize_emissions")]
     pub edge_emissions_by_category: Vec<(&'static str, u64, u64)>,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, JsonSchema, Clone)]
 pub struct FragmentEntry {
     pub path: String,
     pub lines: String,
@@ -251,19 +350,12 @@ fn extract_symbol(frag: &Fragment) -> Option<String> {
     None
 }
 
-use crate::paths::to_posix_display as normalize_path_separators;
-
+/// The one spelling of a fragment's path in output — the same function the
+/// changed-file list uses, so "is this changed file represented?" compares
+/// like with like. A private variant here stripped an un-canonicalised root
+/// and could disagree with the list on a symlinked checkout (#263).
 pub(crate) fn get_relative_path(frag: &Fragment, repo_root: &Path) -> String {
-    let frag_path = Path::new(frag.path());
-    if !frag_path.is_absolute() {
-        return normalize_path_separators(frag_path.to_string_lossy());
-    }
-    normalize_path_separators(
-        frag_path
-            .strip_prefix(repo_root)
-            .unwrap_or(frag_path)
-            .to_string_lossy(),
-    )
+    crate::paths::display_rel_or_abs(repo_root, Path::new(frag.path()))
 }
 
 fn create_fragment_entry(frag: &Fragment, path_str: &str) -> FragmentEntry {
@@ -290,10 +382,13 @@ impl DiffContextOutput {
     /// withheld-change disclosure went missing from exactly one of them.
     pub fn empty(name: &str) -> Self {
         DiffContextOutput {
+            schema: CONTEXT_SCHEMA,
             name: name.to_string(),
             output_type: "diff_context".to_string(),
             commit_message: None,
+            commit_messages: Vec::new(),
             changed_files: Vec::new(),
+            changes: Vec::new(),
             deleted_files: Vec::new(),
             renamed_files: Vec::new(),
             lockfile_changes: Vec::new(),
@@ -302,6 +397,9 @@ impl DiffContextOutput {
             fragment_count: 0,
             fragments: Vec::new(),
             latency: None,
+            provenance: None,
+            coverage: None,
+            redactions: None,
         }
     }
 }
@@ -437,6 +535,24 @@ pub fn build_diff_context_output(
     fragments_out.extend(changed.into_iter().map(|(_, _, e)| e));
     fragments_out.extend(context.into_iter().map(|(_, _, _, e)| e));
 
+    let mut redactions = crate::sanitize::Redactions::default();
+    for entry in &mut fragments_out {
+        if let Some(content) = entry.content.as_deref() {
+            let (clean, found) = crate::sanitize::sanitize(content);
+            if !found.is_empty() {
+                entry.content = Some(Arc::from(clean));
+                redactions.merge(found);
+            }
+        }
+    }
+    let mut change = change;
+    if let Some(m) = change.commit_message.as_mut() {
+        redactions.merge(crate::sanitize::sanitize_in_place(m));
+    }
+    for m in &mut change.commit_messages {
+        redactions.merge(crate::sanitize::sanitize_in_place(m));
+    }
+
     let resolved = repo_root
         .canonicalize()
         .unwrap_or_else(|_| repo_root.to_path_buf());
@@ -445,11 +561,24 @@ pub fn build_diff_context_output(
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| resolved.to_string_lossy().to_string());
 
+    let changes: Vec<ChangeEntry> = change
+        .changes
+        .into_iter()
+        .map(|(path, class, _reason)| ChangeEntry {
+            represented: by_path.contains_key(&path),
+            path,
+            class,
+        })
+        .collect();
+
     DiffContextOutput {
+        schema: CONTEXT_SCHEMA,
         name,
         output_type: "diff_context".to_string(),
         commit_message: change.commit_message,
+        commit_messages: change.commit_messages,
         changed_files: change.changed_files,
+        changes,
         deleted_files: change.deleted_files,
         renamed_files: change.renamed_files,
         lockfile_changes: change.lockfile_changes,
@@ -458,6 +587,9 @@ pub fn build_diff_context_output(
         fragment_count: fragments_out.len(),
         fragments: fragments_out,
         latency: None,
+        provenance: None,
+        coverage: None,
+        redactions: (!redactions.is_empty()).then_some(redactions),
     }
 }
 
@@ -467,10 +599,13 @@ mod tests {
 
     fn empty_output(renamed_files: Vec<(String, String)>) -> DiffContextOutput {
         DiffContextOutput {
+            schema: CONTEXT_SCHEMA,
             name: "repo".to_string(),
             output_type: "diff_context".to_string(),
             commit_message: None,
+            commit_messages: Vec::new(),
             changed_files: Vec::new(),
+            changes: Vec::new(),
             deleted_files: Vec::new(),
             renamed_files,
             lockfile_changes: Vec::new(),
@@ -479,6 +614,9 @@ mod tests {
             fragment_count: 0,
             fragments: Vec::new(),
             latency: None,
+            provenance: None,
+            coverage: None,
+            redactions: None,
         }
     }
 

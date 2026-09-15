@@ -7,6 +7,7 @@ from typing import Any
 
 import pathspec
 
+from ._diffctx import sanitize_text
 from .ignore import is_whitelisted, should_ignore
 
 logger = logging.getLogger(__name__)
@@ -198,7 +199,7 @@ def _create_node(entry: Path, ctx: TreeBuildContext, current_depth: int, is_dir:
             elif ctx.whitelist_spec is not None:
                 return None
         elif not ctx.no_content:
-            node["content"] = _read_file_content(entry, ctx.max_file_bytes)
+            set_file_content(node, entry, ctx.max_file_bytes)
 
         return node
     except OSError:
@@ -260,6 +261,17 @@ def _decode_file_content(raw_bytes: bytes, file_path: Path, file_size: int) -> s
     if not content:
         return ""
     return content if content.endswith("\n") else content + "\n"
+
+
+def set_file_content(node: dict[str, Any], file_path: Path, max_file_bytes: int | None) -> None:
+    content, redacted, _categories = sanitize_text(_read_file_content(file_path, max_file_bytes))
+    node["content"] = content
+    if redacted:
+        node["redactions"] = redacted
+
+
+def redaction_total(tree: dict[str, Any]) -> int:
+    return int(tree.get("redactions", 0)) + sum(redaction_total(c) for c in tree.get("children", []))
 
 
 def _read_file_content(file_path: Path, max_file_bytes: int | None) -> str:

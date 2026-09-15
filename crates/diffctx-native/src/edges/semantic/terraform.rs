@@ -444,13 +444,11 @@ pub struct TerraformEdgeBuilder;
 
 impl EdgeBuilder for TerraformEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
-        let tf_frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_terraform_file(Path::new(f.path())))
-            .collect();
-        if tf_frags.is_empty() {
+        let Some(tf_frags) =
+            base::frags_where(fragments, |f| is_terraform_file(Path::new(f.path())))
+        else {
             return FxHashMap::default();
-        }
+        };
 
         let mut edges: EdgeDict = FxHashMap::default();
         let idx = build_index(&tf_frags);

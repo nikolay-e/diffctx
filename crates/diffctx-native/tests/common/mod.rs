@@ -239,7 +239,14 @@ pub fn calculate_budget(case: &TestCase) -> u32 {
         .map(|c| _diffctx::tokenizer::count_tokens(c))
         .sum();
     let n_frags = all_files.len().max(2) as u32;
-    ((content_tokens + n_frags * overhead) * 5 / 2).max(500)
+    // The product charges the change summary before selecting (#241); a
+    // corpus budget that ignored it measured a selection 15-25% poorer than
+    // production at the same nominal size (#259).
+    let mut listed: Vec<String> = case.repo.changed_files.keys().cloned().collect();
+    listed.sort();
+    let message = Some(case.repo.commit_message.as_str()).filter(|m| !m.is_empty());
+    let envelope = _diffctx::pipeline::envelope_token_cost(message, &listed);
+    ((content_tokens + n_frags * overhead) * 5 / 2).max(500) + envelope
 }
 
 static GARBAGE_CACHE: OnceLock<BTreeMap<String, String>> = OnceLock::new();

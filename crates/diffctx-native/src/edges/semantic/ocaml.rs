@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_files_by_refs};
+use super::super::base::{self, EdgeBuilder, add_edges_from_ids};
 
 fn is_ocaml_file(path: &Path) -> bool {
     base::has_ext(path, &[".ml", ".mli"])
@@ -51,13 +51,10 @@ pub struct OCamlEdgeBuilder;
 
 impl EdgeBuilder for OCamlEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
-        let frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_ocaml_file(Path::new(f.path())))
-            .collect();
-        if frags.is_empty() {
+        let Some(frags) = base::frags_where(fragments, |f| is_ocaml_file(Path::new(f.path())))
+        else {
             return FxHashMap::default();
-        }
+        };
 
         let open_w = EDGE_WEIGHTS["ocaml_open"].forward;
         let _type_w = EDGE_WEIGHTS["ocaml_type"].forward;
@@ -68,12 +65,7 @@ impl EdgeBuilder for OCamlEdgeBuilder {
         let idx = base::FragmentIndex::new(fragments, repo_root);
         let mut name_to_defs: FxHashMap<String, Vec<_>> = FxHashMap::default();
         for f in &frags {
-            for name in extract_defs(&f.content) {
-                name_to_defs
-                    .entry(name.to_lowercase())
-                    .or_default()
-                    .push(f.id.clone());
-            }
+            base::index_lower(&mut name_to_defs, extract_defs(&f.content), &f.id);
         }
 
         let mut edges: EdgeDict = FxHashMap::default();
@@ -113,17 +105,13 @@ impl EdgeBuilder for OCamlEdgeBuilder {
         repo_root: Option<&Path>,
         file_cache: Option<&FxHashMap<PathBuf, String>>,
     ) -> Vec<PathBuf> {
-        let ml_changed: Vec<&PathBuf> = changed.iter().filter(|f| is_ocaml_file(f)).collect();
-        if ml_changed.is_empty() {
-            return vec![];
-        }
-        let mut refs = FxHashSet::default();
-        for f in &ml_changed {
-            if let Some(content) = base::read_file_cached(f, file_cache) {
-                refs.extend(extract_opens(&content));
-                refs.extend(extract_module_refs(&content));
-            }
-        }
-        discover_files_by_refs(&refs, changed, candidates, repo_root)
+        base::discover_by_extracted_refs(
+            changed,
+            candidates,
+            repo_root,
+            file_cache,
+            |p| is_ocaml_file(p),
+            |c| extract_opens(c).into_iter().chain(extract_module_refs(c)),
+        )
     }
 }

@@ -11,10 +11,21 @@ names it. Counts are exact only for OpenAI models on that encoder — Claude,
 Gemini, Llama and friends tokenize differently, typically within
 single-to-low-double-digit percent either way.
 
-Practical implication: for a non-OpenAI consumer treat `--budget N` as *an
-upper bound of N o200k tokens* and leave headroom — e.g. `--budget 28000` when
-aiming at a 32k window. If a hard guarantee matters, measure the produced file
-with your own model's tokenizer.
+`--budget N` therefore means exactly *N o200k_base accounting tokens*, and
+every artifact says so: the `provenance` block of the JSON/YAML output carries
+the effective configuration hash, and `DIFFCTX_PROVENANCE=full` adds the whole
+record — tokenizer id, every parameter, the resource caps — so a consumer
+converting to another model's count knows what it is converting from. The
+full record costs ~500 tokens, which is why it is opt-in.
+
+For a non-OpenAI consumer leave headroom — e.g. `--budget 28000` when aiming
+at a 32k window — or set `DIFFCTX_TOKEN_SAFETY_FACTOR` (a multiplier ≥ 1.0,
+default 1.0): every count is scaled by it, so the budget is enforced against
+the inflated numbers and the factor is recorded in provenance. diffctx ships
+no model-specific default for it on purpose — the right margin is the
+consumer's own measurement, and `eval/tools/token_count_validate.py` is the
+script that takes it against a model's real token-count endpoint. If a hard
+guarantee matters, measure the produced file with your own model's tokenizer.
 
 There is no `--tokenizer` flag: `o200k_base` is pinned (locked by
 `test_tiktoken_o200k_base_encoding_is_pinned`) because every number in the

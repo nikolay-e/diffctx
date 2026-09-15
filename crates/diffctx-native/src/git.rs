@@ -206,6 +206,19 @@ fn empty_tree_oid(repo_root: &Path) -> String {
     }
 }
 
+/// The commit object id a revision names, for provenance: the ref may move,
+/// the id does not. `None` for anything git cannot resolve to a commit.
+pub fn rev_oid(repo_root: &Path, rev: &str) -> Option<String> {
+    if validate_rev(rev).is_err() {
+        return None;
+    }
+    let spec = format!("{rev}^{{commit}}");
+    run_git(repo_root, &["rev-parse", "--verify", "--quiet", &spec])
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
 fn rev_exists(repo_root: &Path, rev: &str) -> bool {
     if validate_rev(rev).is_err() {
         return false;
@@ -777,6 +790,41 @@ pub fn show_file_at_revision(repo_root: &Path, rev: &str, rel_path: &Path) -> Re
         crate::paths::to_posix_display(rel_path.to_string_lossy())
     );
     run_git(repo_root, &["show", &spec])
+}
+
+/// Every commit message in `base..head` — subject and body — newest first,
+/// at most `limit` commits, each body cut at `max_chars`. A range used to be
+/// titled by the last commit's subject alone; the body is where a person
+/// says why, and on a GitOps branch the last commit is the image updater's.
+pub fn commit_messages(
+    repo_root: &Path,
+    base: &str,
+    head: &str,
+    limit: usize,
+    max_chars: usize,
+) -> Vec<String> {
+    if validate_rev(base).is_err() || validate_rev(head).is_err() {
+        return Vec::new();
+    }
+    let range = format!("{base}..{head}");
+    let max = format!("--max-count={limit}");
+    // `%B` is the raw message; `%x1e` (record separator) cannot occur in one.
+    match run_git(repo_root, &["log", "--format=%B%x1e", &max, &range, "--"]) {
+        Ok(out) => out
+            .split('\x1e')
+            .map(str::trim)
+            .filter(|m| !m.is_empty())
+            .map(|m| {
+                if m.chars().count() <= max_chars {
+                    m.to_string()
+                } else {
+                    let cut: String = m.chars().take(max_chars).collect();
+                    format!("{}…", cut.trim_end())
+                }
+            })
+            .collect(),
+        Err(_) => Vec::new(),
+    }
 }
 
 pub fn get_commit_message(repo_root: &Path, rev: &str) -> Result<String> {

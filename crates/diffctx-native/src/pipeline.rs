@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use rayon::prelude::*;
@@ -70,7 +70,18 @@ pub struct ScoredState {
     pub discovery_source: FxHashMap<Arc<str>, &'static str>,
     pub preferred_revs: Vec<String>,
     pub commit_message: Option<String>,
+    /// Every subject of a multi-commit range, newest first (empty otherwise).
+    pub commit_messages: Vec<String>,
+    /// `(display path, class, reason)` per changed file — the priority the
+    /// evidence floor ranks by and the inventory row the artifact prints.
+    pub change_classes: Vec<(String, crate::change_class::ChangeClass, &'static str)>,
     pub heavy_latency_ms: HeavyLatencyMs,
+    /// Everything a reader needs to reproduce this state: the resolved
+    /// configuration and its hash, the input revisions, the limits in force.
+    pub provenance: crate::run_provenance::RunProvenance,
+    /// The deadline, the resource caps and the log of what limited the run —
+    /// read by every renderer for the coverage block.
+    pub run: crate::resource::RunContext,
     /// The change summary's token cost (#241), computed once here: it depends
     /// on nothing a sweep cell changes, and `select_with_params` re-runs
     /// selection per (tau, cbf) cell against this one state.
@@ -151,6 +162,11 @@ pub fn build_diff_context_locate(
             stopping_certificate: 0.0,
             select_ms: 0.0,
             stand_in_ids: FxHashSet::default(),
+            budget_requested: budget_tokens,
+            tau: tau.unwrap_or(crate::config::limits::DEFAULT_STOPPING_THRESHOLD),
+            gated: false,
+            limit_reasons: Vec::new(),
+            commit_messages: state.commit_messages.clone(),
         }
     } else {
         run_selection(&state, budget_tokens, tau)
@@ -245,6 +261,7 @@ struct ChangeSetData {
     policy_excluded: usize,
     preferred_revs: Vec<String>,
     commit_message: Option<String>,
+    commit_messages: Vec<String>,
     head_rev: Option<String>,
     pre_phase_ms: f64,
 }
@@ -453,6 +470,26 @@ fn resolve_change_set(
                 .map(str::to_string)
         });
 
+    // `A..B` names both ends; a bare `X` diffs X against the working tree,
+    // whose commits are `X..HEAD`. Every commit of the range travels whole
+    // (subject and body); `commit_message` stays the head's subject.
+    let subject_range = match (base_rev.as_deref(), head_rev.as_deref()) {
+        (Some(base), Some(head)) => Some((base.to_string(), head.to_string())),
+        (None, None) => diff_range.map(|rev| (rev.to_string(), "HEAD".to_string())),
+        _ => None,
+    };
+    let commit_messages = subject_range
+        .map(|(base, head)| {
+            git::commit_messages(
+                root_dir,
+                &base,
+                &head,
+                MAX_COMMIT_MESSAGES,
+                MAX_COMMIT_MESSAGE_CHARS,
+            )
+        })
+        .unwrap_or_default();
+
     let pre_phase_ms = t_entry.elapsed().as_secs_f64() * 1000.0;
     Ok(ChangeSet::Ready(Box::new(ChangeSetData {
         hunks,
@@ -465,6 +502,7 @@ fn resolve_change_set(
         policy_excluded,
         preferred_revs,
         commit_message,
+        commit_messages,
         head_rev,
         pre_phase_ms,
     })))
@@ -478,8 +516,10 @@ pub fn compute_scored_state(
     timeout: u64,
 ) -> Result<ScoredState> {
     let t_entry = Instant::now();
+    crate::effective_config::enforce_strict_env()?;
     git::set_git_timeout(timeout);
-    let deadline = crate::deadline::Deadline::from_timeout_secs(timeout);
+    let run = crate::resource::RunContext::new(crate::resource::ResourceBudget::resolve(timeout));
+    let _in_run = run.enter();
     let root_dir = resolve_repo_root(root_dir)?;
     // `!(a > 0 && a < 1)` rather than `a <= 0 || a >= 1`: every comparison
     // against NaN is false, so the negated form is the one that rejects it.
@@ -505,7 +545,7 @@ pub fn compute_scored_state(
             ignored_changes,
             policy_excluded_count,
         } => {
-            let mut state = empty_scored_state_with_changes(root_dir, diff_range);
+            let mut state = empty_scored_state_with_changes(root_dir, diff_range, timeout);
             state.lockfile_changes = lockfile_changes;
             state.ignored_changes = ignored_changes;
             state.policy_excluded_count = policy_excluded_count;
@@ -525,6 +565,7 @@ pub fn compute_scored_state(
         policy_excluded,
         preferred_revs,
         commit_message,
+        commit_messages,
         head_rev,
         pre_phase_ms,
     } = *data;
@@ -540,12 +581,34 @@ pub fn compute_scored_state(
         &mut seen_frag_ids,
         Some(&mut batch_reader),
         true,
+        &run,
+    );
+
+    let change_classes = classify_changes(
+        &root_dir,
+        &changed_files,
+        &hunks,
+        &diff_text,
+        &all_fragments,
     );
 
     let t_parse_changed = Instant::now();
 
     let included_set: FxHashSet<PathBuf> = changed_files.iter().cloned().collect();
-    let all_candidate_files = candidate_files::collect_candidate_files(&root_dir, &included_set);
+    // Past the deadline the changed files are the whole universe: no walk,
+    // no discovery, a graph over the change alone — a valid, partial artifact
+    // instead of an abort.
+    let mut all_candidate_files = if run.check() {
+        candidate_files::collect_candidate_files(&root_dir, &included_set)
+    } else {
+        run.note(crate::resource::LimitReason::DiscoveryTruncated);
+        Vec::new()
+    };
+    if all_candidate_files.len() > run.budget().max_candidate_files {
+        all_candidate_files.truncate(run.budget().max_candidate_files);
+        run.note(crate::resource::LimitReason::CandidateLimit);
+    }
+    run.record_usage(|u| u.candidate_files = all_candidate_files.len() as u64);
 
     let t_universe = Instant::now();
 
@@ -553,24 +616,33 @@ pub fn compute_scored_state(
     let mode = scoring_mode;
     let mut config = PipelineConfig::from_mode(mode);
     config.ppr_alpha = alpha;
-    if let Ok(s) = std::env::var("DIFFCTX_OBJECTIVE") {
-        config.objective = crate::mode::ObjectiveMode::from_str(&s);
-    }
+    let provenance = crate::run_provenance::RunProvenance::new(
+        &root_dir,
+        diff_range,
+        crate::effective_config::EffectiveConfigV1::resolve(&config, timeout),
+    );
 
     let mut expansion_concepts: FxHashSet<String> =
         crate::types::extract_identifiers(&diff_text, TOKENIZATION.query_min_identifier_length)
             .into_iter()
             .collect();
 
-    if let Some(ref h) = head_rev {
-        if std::env::var("DIFFCTX_NO_COMMIT_SIGNAL").as_deref() != Ok("1") {
-            if let Ok(commit_msg) = git::get_commit_message(&root_dir, h) {
-                for ident in crate::types::extract_identifiers(
-                    &commit_msg,
-                    TOKENIZATION.query_min_identifier_length,
-                ) {
-                    expansion_concepts.insert(ident);
+    if std::env::var("DIFFCTX_NO_COMMIT_SIGNAL").as_deref() != Ok("1") {
+        // Every message in the range, not the last one alone: a bot commit
+        // on top of a person's work must not be the only query signal (#263).
+        let mut signal: Vec<String> = commit_messages.clone();
+        if signal.is_empty() {
+            if let Some(ref h) = head_rev {
+                if let Ok(commit_msg) = git::get_commit_message(&root_dir, h) {
+                    signal.push(commit_msg);
                 }
+            }
+        }
+        for text in &signal {
+            for ident in
+                crate::types::extract_identifiers(text, TOKENIZATION.query_min_identifier_length)
+            {
+                expansion_concepts.insert(ident);
             }
         }
     }
@@ -610,45 +682,32 @@ pub fn compute_scored_state(
         &mut seen_frag_ids,
         Some(&mut batch_reader),
         false,
+        &run,
     ));
 
     let t_parse_discovered = Instant::now();
-
-    assign_token_counts(&mut all_fragments);
-
-    let core_ids = identify_core_fragments(&hunks, &all_fragments);
-
-    let mut core_excerpts =
-        crate::excerpt::generate_core_excerpts(&all_fragments, &core_ids, &hunks);
-    assign_excerpt_token_counts(&mut core_excerpts);
-
-    let signature_frags = generate_signature_variants(&all_fragments);
-    let mut sig_frags = signature_frags;
-    assign_token_counts(&mut sig_frags);
-    all_fragments.extend(sig_frags);
-
-    let t_tokenization = Instant::now();
-
-    let seed_weights = compute_seed_weights(&hunks, &core_ids, &all_fragments);
 
     let discovered_path_set: FxHashSet<Arc<str>> = discovered_files
         .iter()
         .map(|p| Arc::from(p.to_string_lossy().as_ref()))
         .collect();
-
-    let strategy = create_scoring_strategy(&config);
-
-    let scoring_result = strategy.score_and_filter(
-        &all_fragments,
-        &core_ids,
+    let ScoredFragments {
+        all_fragments,
+        core_ids,
+        core_excerpts,
+        scoring_result,
+        needs,
+        tokenization_ms,
+    } = score_from_fragments(
+        all_fragments,
         &hunks,
+        &diff_text,
+        &config,
         Some(root_dir.as_path()),
-        Some(&seed_weights),
-        Some(&discovered_path_set),
-        deadline,
+        &discovered_path_set,
+        &run,
     );
-
-    let needs = crate::utility::needs::needs_from_diff(&all_fragments, &core_ids, &diff_text);
+    let t_tokenization = t_parse_discovered + Duration::from_secs_f64(tokenization_ms / 1000.0);
 
     let t_done = Instant::now();
     batch_reader.close();
@@ -698,11 +757,134 @@ pub fn compute_scored_state(
         policy_excluded_count: policy_excluded,
         preferred_revs,
         commit_message,
+        commit_messages,
+        change_classes,
         heavy_latency_ms,
+        provenance,
+        run,
         envelope_tokens: 0,
     };
     state.envelope_tokens = envelope_tokens_of(&state);
     Ok(state)
+}
+
+const MAX_COMMIT_MESSAGES: usize = 20;
+const MAX_COMMIT_MESSAGE_CHARS: usize = 2_000;
+
+/// The class of every changed file, keyed by its display path. Generated
+/// files are told by their header, which the first fragment of the file
+/// carries; the rest by the shape of their hunks and changed lines.
+pub(crate) fn classify_changes(
+    root_dir: &Path,
+    changed_files: &[PathBuf],
+    hunks: &[crate::types::DiffHunk],
+    diff_text: &str,
+    fragments: &[Fragment],
+) -> Vec<(String, crate::change_class::ChangeClass, &'static str)> {
+    let lines_by_file = crate::change_class::changed_lines_by_file(diff_text);
+    let mut head_by_path: FxHashMap<&str, &Fragment> = FxHashMap::default();
+    for f in fragments {
+        let entry = head_by_path.entry(f.path()).or_insert(f);
+        if f.start_line() < entry.start_line() {
+            *entry = f;
+        }
+    }
+    changed_files
+        .iter()
+        .map(|path| {
+            let display = crate::paths::display_rel_or_abs(root_dir, path);
+            let key = path.to_string_lossy();
+            let file_hunks: Vec<&crate::types::DiffHunk> = hunks
+                .iter()
+                .filter(|h| h.path.as_ref() == key.as_ref())
+                .collect();
+            let generated = head_by_path
+                .get(key.as_ref())
+                .is_some_and(|f| crate::fragmentation::is_generated_file(path, &f.content));
+            let empty = Vec::new();
+            let lines = lines_by_file.get(&display).unwrap_or(&empty);
+            let (class, reason) = crate::change_class::classify(&file_hunks, lines, generated);
+            (display, class, reason)
+        })
+        .collect()
+}
+
+/// The heavy phase from fragments onward: token counts, cores and their
+/// stand-ins, signature variants, seed weights, scoring, information needs.
+pub struct ScoredFragments {
+    pub all_fragments: Vec<Fragment>,
+    pub core_ids: FxHashSet<FragmentId>,
+    pub core_excerpts: FxHashMap<FragmentId, Fragment>,
+    pub scoring_result: ScoringResult,
+    pub needs: Vec<InformationNeed>,
+    pub tokenization_ms: f64,
+}
+
+/// One heavy phase for every caller. The product pipeline arrives here from
+/// git and discovery; the corpus harness from an in-memory repository. Both
+/// used to spell these steps out separately, which is how the harness once
+/// measured a system nobody runs (#149) and why the fork survived a first
+/// consolidation of the selection half (#232). `repo_root` is `None` for the
+/// harness — the strategies that need a filesystem do without one there.
+pub fn score_from_fragments(
+    mut all_fragments: Vec<Fragment>,
+    hunks: &[crate::types::DiffHunk],
+    diff_text: &str,
+    config: &PipelineConfig,
+    repo_root: Option<&Path>,
+    discovered_paths: &FxHashSet<Arc<str>>,
+    run: &crate::resource::RunContext,
+) -> ScoredFragments {
+    let t0 = Instant::now();
+    assign_token_counts(&mut all_fragments);
+
+    let core_ids = identify_core_fragments(hunks, &all_fragments);
+
+    let mut core_excerpts =
+        crate::excerpt::generate_core_excerpts(&all_fragments, &core_ids, hunks);
+    assign_excerpt_token_counts(&mut core_excerpts);
+
+    let mut sig_frags = generate_signature_variants(&all_fragments);
+    assign_token_counts(&mut sig_frags);
+    all_fragments.extend(sig_frags);
+
+    let tokenization_ms = t0.elapsed().as_secs_f64() * 1000.0;
+
+    let seed_weights = compute_seed_weights(hunks, &core_ids, &all_fragments);
+
+    let strategy = create_scoring_strategy(config);
+    let scoring_result = strategy.score_and_filter(
+        &all_fragments,
+        &core_ids,
+        hunks,
+        repo_root,
+        Some(&seed_weights),
+        Some(discovered_paths),
+        run,
+    );
+
+    let mut needs = crate::utility::needs::needs_from_diff(&all_fragments, &core_ids, diff_text);
+    if needs.len() > run.budget().max_needs {
+        // Highest priority first, then a total order, so the cap keeps the
+        // same needs on every machine.
+        needs.sort_by(|a, b| {
+            b.priority
+                .total_cmp(&a.priority)
+                .then_with(|| a.need_type.cmp(&b.need_type))
+                .then_with(|| a.symbol.cmp(&b.symbol))
+        });
+        needs.truncate(run.budget().max_needs);
+        run.note(crate::resource::LimitReason::NeedLimit);
+    }
+
+    ScoredFragments {
+        all_fragments,
+        core_ids,
+        core_excerpts,
+        scoring_result,
+        needs,
+        tokenization_ms,
+    }
 }
 
 pub struct SelectionOutcome {
@@ -721,6 +903,79 @@ pub struct SelectionOutcome {
     /// See `SelectionResult::stand_in_ids` — carried to the renderers so both
     /// surfaces read one recorded fact instead of re-deriving it (#209).
     pub stand_in_ids: FxHashSet<FragmentId>,
+    /// What was actually asked for, so provenance says the requested cap and
+    /// the auto-sized one apart.
+    pub budget_requested: Option<u32>,
+    pub tau: f64,
+    pub gated: bool,
+    /// What this selection could not honour — per outcome, not per state,
+    /// because one state serves many budgets in a sweep.
+    pub limit_reasons: Vec<crate::resource::LimitReason>,
+    /// The range's commit messages as this budget affords them.
+    pub commit_messages: Vec<String>,
+}
+
+/// Tokens one inventory row (`changes[]`) costs beyond its path.
+const INVENTORY_ENTRY_TOKENS: u32 = 8;
+
+/// Every subject stays; bodies are kept, newest first, while the whole list
+/// fits `cap_tokens`. A range's commit bodies are the reader's "why", but
+/// twenty GitOps commits of prose must not crowd the change out of a small
+/// budget.
+pub(crate) fn trim_commit_messages(messages: &[String], cap_tokens: u32) -> Vec<String> {
+    let subjects: Vec<String> = messages
+        .iter()
+        .map(|m| m.lines().next().unwrap_or("").trim().to_string())
+        .collect();
+    let mut trimmed = subjects.clone();
+    let mut used: u32 = subjects.iter().map(|s| count_tokens(s) + 1).sum();
+    for (i, message) in messages.iter().enumerate() {
+        if message.trim() == subjects[i] {
+            continue;
+        }
+        let extra = count_tokens(message).saturating_sub(count_tokens(&subjects[i]));
+        if used + extra > cap_tokens {
+            break;
+        }
+        used += extra;
+        trimmed[i] = message.trim().to_string();
+    }
+    trimmed
+}
+
+/// The evidence floor's ordering: the class of every changed file keyed by
+/// the path its fragments carry.
+pub(crate) fn evidence_priority_of(
+    changed_files: &[PathBuf],
+    change_classes: &[(String, crate::change_class::ChangeClass, &'static str)],
+) -> FxHashMap<Arc<str>, u8> {
+    changed_files
+        .iter()
+        .zip(change_classes)
+        .map(|(path, (_, class, _))| (Arc::from(path.to_string_lossy().as_ref()), class.priority()))
+        .collect()
+}
+
+impl SelectionOutcome {
+    pub fn selection_provenance(&self) -> crate::run_provenance::Selection {
+        crate::run_provenance::Selection {
+            budget_tokens: self.effective_budget,
+            budget_requested: self.budget_requested,
+            tau: self.tau,
+            gate: if self.gated { "admission" } else { "none" },
+        }
+    }
+}
+
+/// What `select_and_postpass` hands back: the selection plus the facts about
+/// how it was made that the renderers and provenance report.
+pub struct PostpassOutcome {
+    pub selected: Vec<Fragment>,
+    pub selection_iters: usize,
+    pub stopping_certificate: f64,
+    pub stand_in_ids: FxHashSet<FragmentId>,
+    pub tau: f64,
+    pub gated: bool,
 }
 
 /// Selection + the two admission-gated post-passes — the git-free part of
@@ -738,7 +993,8 @@ pub fn select_and_postpass(
     objective: crate::mode::ObjectiveMode,
     effective_budget: u32,
     tau: Option<f64>,
-) -> (Vec<Fragment>, usize, f64, FxHashSet<FragmentId>) {
+    evidence_priority: &FxHashMap<Arc<str>, u8>,
+) -> PostpassOutcome {
     // A scorer with no admission gate (BM25 builds no graph, so it has no
     // declared-related set to gate on) is bounded by the threshold alone, so
     // an unspecified tau resolves to the ungated operating point instead of
@@ -760,6 +1016,8 @@ pub fn select_and_postpass(
         if ungated { "none" } else { "admission" },
         tau
     );
+    let trace = std::env::var_os("DIFFCTX_TRACE_BUILDERS").is_some();
+    let t_stage = Instant::now();
     let selection_result = match objective {
         crate::mode::ObjectiveMode::BoltzmannModular => {
             let beta = crate::utility::calibrate_beta(
@@ -792,10 +1050,15 @@ pub fn select_and_postpass(
                 Some(core_excerpts),
                 scoring_result.admissible_files.as_ref(),
                 scoring_result.declared_admissible_files.as_ref(),
+                Some(evidence_priority),
             )
         }
     };
 
+    if trace {
+        eprintln!("selection greedy: {:.1}s", t_stage.elapsed().as_secs_f64());
+    }
+    let t_stage = Instant::now();
     let selection_iters = selection_result.greedy_iters;
     let stopping_certificate = selection_result.stopping_certificate;
     let stand_in_ids = selection_result.stand_in_ids;
@@ -809,6 +1072,13 @@ pub fn select_and_postpass(
         scoring_result.admissible_files.as_ref(),
     );
 
+    if trace {
+        eprintln!(
+            "selection coherence: {:.1}s",
+            t_stage.elapsed().as_secs_f64()
+        );
+    }
+    let t_stage = Instant::now();
     postpass::rescue_nontrivial_context(
         &mut selected,
         all_fragments,
@@ -817,13 +1087,18 @@ pub fn select_and_postpass(
         effective_budget,
         scoring_result.admissible_files.as_ref(),
     );
+    if trace {
+        eprintln!("selection rescue: {:.1}s", t_stage.elapsed().as_secs_f64());
+    }
 
-    (
+    PostpassOutcome {
         selected,
         selection_iters,
         stopping_certificate,
         stand_in_ids,
-    )
+        tau,
+        gated: !ungated,
+    }
 }
 
 /// What the change summary costs before a single fragment is selected.
@@ -881,6 +1156,10 @@ pub fn run_selection(
     tau: Option<f64>,
 ) -> SelectionOutcome {
     let t_start = Instant::now();
+    // Selection runs after the heavy phase returned, often on another thread
+    // (the Python bridge re-runs it per cell): publish the run context again
+    // so the greedy can poll the same deadline.
+    let _in_run = state.run.enter();
     let effective_budget = budget_tokens.unwrap_or_else(|| {
         let core_tokens: u32 = state
             .all_fragments
@@ -892,9 +1171,31 @@ pub fn run_selection(
         auto.clamp(BUDGET.auto_min, BUDGET.auto_max)
     });
 
-    let selection_budget = effective_budget.saturating_sub(state.envelope_tokens);
+    // Beyond the path lists the artifact carries an inventory row per
+    // changed file and the range's commit messages, the latter bounded to a
+    // tenth of the budget (subjects always, bodies while they fit). Both are
+    // charged here, per outcome, since the bound follows the budget.
+    let commit_messages = trim_commit_messages(&state.commit_messages, effective_budget / 10);
+    let messages_extra = count_tokens(&commit_messages.join("\n")).saturating_sub(
+        state
+            .commit_message
+            .as_deref()
+            .map(count_tokens)
+            .unwrap_or(0),
+    );
+    let inventory = state.changed_files.len() as u32 * INVENTORY_ENTRY_TOKENS;
+    let selection_budget =
+        effective_budget.saturating_sub(state.envelope_tokens + messages_extra + inventory);
 
-    let (mut selected, selection_iters, stopping_certificate, stand_in_ids) = select_and_postpass(
+    let evidence_priority = evidence_priority_of(&state.changed_files, &state.change_classes);
+    let PostpassOutcome {
+        mut selected,
+        selection_iters,
+        stopping_certificate,
+        mut stand_in_ids,
+        tau: tau_effective,
+        gated,
+    } = select_and_postpass(
         &state.scoring_result,
         &state.all_fragments,
         &state.core_ids,
@@ -903,6 +1204,7 @@ pub fn run_selection(
         state.config.objective,
         selection_budget,
         tau,
+        &evidence_priority,
     );
 
     let used: u32 = selected.iter().map(|f| f.token_count).sum();
@@ -911,6 +1213,7 @@ pub fn run_selection(
         Ok(r) => Some(r),
         Err(_) => None,
     };
+    let t_ensure = Instant::now();
     postpass::ensure_changed_files_represented(
         &mut selected,
         &state.all_fragments,
@@ -926,11 +1229,37 @@ pub fn run_selection(
     if let Some(mut r) = batch_reader {
         r.close();
     }
+    if std::env::var_os("DIFFCTX_TRACE_BUILDERS").is_some() {
+        eprintln!(
+            "selection ensure_changed: {:.1}s",
+            t_ensure.elapsed().as_secs_f64()
+        );
+    }
 
     crate::provenance::maybe_dump(state, &selected);
 
+    // A clipped witness is a stand-in the floor made on the spot; the
+    // renderer learns it carries the change from this set.
+    stand_in_ids.extend(
+        selected
+            .iter()
+            .filter(|f| f.kind == crate::types::FragmentKind::Excerpt)
+            .map(|f| f.id.clone()),
+    );
+    let represented: FxHashSet<&str> = selected.iter().map(|f| f.id.path.as_ref()).collect();
+    let mut limit_reasons = Vec::new();
+    if state
+        .changed_files
+        .iter()
+        .any(|p| !represented.contains(p.to_string_lossy().as_ref()))
+    {
+        limit_reasons.push(crate::resource::LimitReason::EvidenceBudgetExceeded);
+    }
+
     let select_ms = t_start.elapsed().as_secs_f64() * 1000.0;
     SelectionOutcome {
+        limit_reasons,
+        commit_messages,
         selected,
         effective_budget,
         selection_budget,
@@ -938,6 +1267,9 @@ pub fn run_selection(
         stopping_certificate,
         select_ms,
         stand_in_ids,
+        budget_requested: budget_tokens,
+        tau: tau_effective,
+        gated,
     }
 }
 
@@ -955,6 +1287,9 @@ pub fn select_with_params(
     no_content: bool,
 ) -> DiffContextOutput {
     let outcome = run_selection(state, budget_tokens, tau);
+    let selection_provenance = outcome.selection_provenance();
+    let selection_limits = outcome.limit_reasons.clone();
+    let commit_messages = outcome.commit_messages.clone();
     let stand_in_ids = outcome.stand_in_ids;
     let selected = outcome.selected;
     let selection_iters = outcome.selection_iters;
@@ -974,6 +1309,8 @@ pub fn select_with_params(
     let cap_stats = state.scoring_result.graph.cap_stats.clone();
     let change = render::ChangeSummary {
         commit_message: state.commit_message.clone(),
+        commit_messages,
+        changes: state.change_classes.clone(),
         changed_files: state
             .changed_files
             .iter()
@@ -1031,6 +1368,12 @@ pub fn select_with_params(
             .map(|&(category, raw, deduped)| (category.as_str(), raw, deduped))
             .collect(),
     });
+    output.provenance = Some(state.provenance.finish(Some(selection_provenance)));
+    let mut limits = selection_limits;
+    if output.redactions.is_some() {
+        limits.push(crate::resource::LimitReason::SanitizationRedaction);
+    }
+    output.coverage = crate::resource::CoverageReport::from_context(&state.run, &limits);
     output
 }
 
@@ -1188,7 +1531,9 @@ pub fn raw_diff_text(root_dir: &Path, diff_range: Option<&str>, timeout: u64) ->
     let root_dir = resolve_repo_root(root_dir)?;
     let resolved = git::resolve_duration_range(&root_dir, diff_range)?;
     let diff_text = git::get_diff_text(&root_dir, resolved.range.as_deref())?;
-    Ok(keep_disclosable_sections(&root_dir, &diff_text))
+    let mut disclosable = keep_disclosable_sections(&root_dir, &diff_text);
+    crate::sanitize::sanitize_in_place(&mut disclosable);
+    Ok(disclosable)
 }
 
 fn keep_disclosable_sections(root_dir: &Path, diff_text: &str) -> String {
@@ -1376,6 +1721,7 @@ fn build_diff_context_full(
         &mut seen_frag_ids,
         Some(&mut batch_reader),
         true,
+        &crate::resource::RunContext::unbounded(),
     );
     assign_token_counts(&mut all_fragments);
     let mut sig_frags = generate_signature_variants(&all_fragments);
@@ -1397,6 +1743,8 @@ fn build_diff_context_full(
     let (deleted_display, renamed_display) = deletion_rename_displays(&root_dir, diff_range);
     let change = render::ChangeSummary {
         commit_message,
+        commit_messages: Vec::new(),
+        changes: classify_changes(&root_dir, &changed_files, &hunks, "", &all_fragments),
         changed_files: changed_files
             .iter()
             .map(|p| crate::paths::display_rel_or_abs(&root_dir, p))
@@ -1437,20 +1785,31 @@ fn deletion_rename_displays(
     (deleted, renamed)
 }
 
-fn empty_scored_state_with_changes(root_dir: PathBuf, diff_range: Option<&str>) -> ScoredState {
+fn empty_scored_state_with_changes(
+    root_dir: PathBuf,
+    diff_range: Option<&str>,
+    timeout: u64,
+) -> ScoredState {
     let (deleted, renamed) = deletion_rename_displays(&root_dir, diff_range);
-    let mut state = empty_scored_state(root_dir);
+    let mut state = empty_scored_state(root_dir, diff_range, timeout);
     state.deleted_files = deleted;
     state.renamed_files = renamed;
     state.envelope_tokens = envelope_tokens_of(&state);
     state
 }
 
-fn empty_scored_state(root_dir: PathBuf) -> ScoredState {
+fn empty_scored_state(root_dir: PathBuf, diff_range: Option<&str>, timeout: u64) -> ScoredState {
     let config = PipelineConfig::from_mode(ScoringMode::Ego);
+    let provenance = crate::run_provenance::RunProvenance::new(
+        &root_dir,
+        diff_range,
+        crate::effective_config::EffectiveConfigV1::resolve(&config, timeout),
+    );
     ScoredState {
         root_dir,
         config,
+        provenance,
+        run: crate::resource::RunContext::unbounded(),
         all_fragments: Vec::new(),
         core_ids: FxHashSet::default(),
         core_excerpts: FxHashMap::default(),
@@ -1475,6 +1834,8 @@ fn empty_scored_state(root_dir: PathBuf) -> ScoredState {
         renamed_files: Vec::new(),
         preferred_revs: Vec::new(),
         commit_message: None,
+        commit_messages: Vec::new(),
+        change_classes: Vec::new(),
         heavy_latency_ms: HeavyLatencyMs::default(),
         envelope_tokens: 0,
     }
@@ -1498,11 +1859,19 @@ fn empty_output(root_dir: &Path) -> DiffContextOutput {
 pub(crate) fn empty_output_from_state(state: &ScoredState) -> DiffContextOutput {
     let mut output = empty_output(&state.root_dir);
     output.commit_message = state.commit_message.clone();
+    output.commit_messages = state.commit_messages.clone();
     output.deleted_files = state.deleted_files.clone();
     output.renamed_files = state.renamed_files.clone();
     output.lockfile_changes = state.lockfile_changes.clone();
     output.ignored_changes = state.ignored_changes.clone();
     output.policy_excluded_count = state.policy_excluded_count;
+    output.provenance = Some(state.provenance.finish(None));
+    let limits: &[crate::resource::LimitReason] = if output.redactions.is_some() {
+        &[crate::resource::LimitReason::SanitizationRedaction]
+    } else {
+        &[]
+    };
+    output.coverage = crate::resource::CoverageReport::from_context(&state.run, limits);
     output
 }
 
@@ -1519,7 +1888,7 @@ fn build_preferred_revs(base_rev: Option<&str>, head_rev: Option<&str>) -> Vec<S
     revs
 }
 
-fn create_discovery(config: &PipelineConfig) -> Box<dyn DiscoveryStrategy> {
+pub(crate) fn create_discovery(config: &PipelineConfig) -> Box<dyn DiscoveryStrategy> {
     Box::new(EnsembleDiscovery::new(vec![
         Box::new(DefaultDiscovery),
         Box::new(TestFileDiscovery),

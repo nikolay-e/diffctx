@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 import logging
 from pathlib import Path
 from typing import Any
@@ -10,7 +9,7 @@ from ._native import build_diff_context
 from .ignore import get_ignore_specs, get_whitelist_spec
 from .tree import TreeBuildContext, build_tree
 from .version import __version__
-from .writer import write_tree_json, write_tree_markdown, write_tree_text, write_tree_yaml
+from .writer import tree_to_string
 
 logging.getLogger("diffctx").addHandler(logging.NullHandler())
 
@@ -77,24 +76,16 @@ def map_directory(
 
 
 def to_yaml(tree: dict[str, Any]) -> str:
-    buf = io.StringIO()
-    write_tree_yaml(buf, tree)
-    return buf.getvalue()
+    return tree_to_string(tree, "yaml")
 
 
 def to_json(tree: dict[str, Any]) -> str:
-    buf = io.StringIO()
-    write_tree_json(buf, tree)
-    return buf.getvalue()
+    return tree_to_string(tree, "json")
 
 
 def to_text(tree: dict[str, Any]) -> str:
-    buf = io.StringIO()
-    write_tree_text(buf, tree)
-    return buf.getvalue()
+    return tree_to_string(tree, "txt")
 
 
 def to_markdown(tree: dict[str, Any]) -> str:
-    buf = io.StringIO()
-    write_tree_markdown(buf, tree)
-    return buf.getvalue()
+    return tree_to_string(tree, "md")

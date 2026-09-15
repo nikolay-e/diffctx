@@ -191,7 +191,50 @@ fn parse_scala_import_clause(clause: &str) -> Option<ScalaImport> {
     })
 }
 
+/// The tree's view of a Scala fragment, computed once per distinct text: the
+/// three readers below (imports, package, inheritance) run in separate
+/// passes over the same fragments, and a parse per pass would triple the
+/// cost of the one seam that now parses inside an edge builder.
+fn scala_facts(content: &str) -> Option<crate::facts::LanguageFacts> {
+    thread_local! {
+        static MEMO: std::cell::RefCell<FxHashMap<u64, Option<crate::facts::LanguageFacts>>> =
+            std::cell::RefCell::new(FxHashMap::default());
+    }
+    let key = {
+        use std::hash::{Hash, Hasher};
+        let mut h = rustc_hash::FxHasher::default();
+        content.hash(&mut h);
+        h.finish()
+    };
+    MEMO.with(|memo| {
+        let mut memo = memo.borrow_mut();
+        if memo.len() > 4096 {
+            memo.clear();
+        }
+        memo.entry(key)
+            .or_insert_with(|| crate::facts::scala::facts(content))
+            .clone()
+    })
+}
+
+/// Imports off the parse tree when the text parses cleanly; the regex reader
+/// for what does not — a fragment cut mid-scope, a file mid-edit (#243).
 fn parse_scala_imports(content: &str) -> Vec<ScalaImport> {
+    if let Some(facts) = scala_facts(content) {
+        return facts
+            .imports
+            .into_iter()
+            .map(|i| ScalaImport {
+                prefix: i.prefix,
+                selectors: i.selectors,
+                wildcard: i.wildcard,
+            })
+            .collect();
+    }
+    parse_scala_imports_regex(content)
+}
+
+fn parse_scala_imports_regex(content: &str) -> Vec<ScalaImport> {
     let mut out = Vec::new();
     let lines: Vec<&str> = content.lines().collect();
     let mut i = 0;
@@ -272,6 +315,9 @@ fn extract_classes(content: &str, path: &Path) -> FxHashSet<String> {
 
 fn extract_package(content: &str, path: &Path) -> Option<String> {
     if is_scala(path) {
+        if let Some(facts) = scala_facts(content) {
+            return facts.package;
+        }
         // Scala chains package clauses (`package com.acme` then `package svc`
         // means com.acme.svc); `package object x` is a member of the enclosing
         // package, not a chain segment. A block-form clause (`package util {`)
@@ -315,8 +361,13 @@ fn extract_inheritance(content: &str, path: &Path) -> FxHashSet<String> {
             }
         }
     } else if is_scala(path) {
-        for cap in SCALA_EXTENDS_RE.captures_iter(content) {
-            refs.insert(cap[1].to_string());
+        match scala_facts(content) {
+            Some(facts) => refs.extend(facts.inherits),
+            None => {
+                for cap in SCALA_EXTENDS_RE.captures_iter(content) {
+                    refs.insert(cap[1].to_string());
+                }
+            }
         }
     }
     refs
@@ -413,13 +464,10 @@ pub struct JVMEdgeBuilder;
 
 impl EdgeBuilder for JVMEdgeBuilder {
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {
-        let jvm_frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_jvm_file(Path::new(f.path())))
-            .collect();
-        if jvm_frags.is_empty() {
+        let Some(jvm_frags) = base::frags_where(fragments, |f| is_jvm_file(Path::new(f.path())))
+        else {
             return FxHashMap::default();
-        }
+        };
 
         let import_weight = EDGE_WEIGHTS["jvm_import"].forward;
         let inheritance_weight = EDGE_WEIGHTS["jvm_inheritance"].forward;
@@ -792,10 +840,41 @@ impl EdgeBuilder for JVMEdgeBuilder {
 mod tests {
     use super::*;
 
+    /// Both readers must agree on every shape below: the tree is the primary
+    /// path, the regex the fallback for text that does not parse.
     fn parse_one(s: &str) -> ScalaImport {
-        let mut imports = parse_scala_imports(&format!("import {s}\n"));
-        assert_eq!(imports.len(), 1, "expected one import from {s:?}");
-        imports.remove(0)
+        let src = format!("import {s}\n");
+        let mut tree = parse_scala_imports(&src);
+        let mut regex = parse_scala_imports_regex(&src);
+        assert_eq!(tree.len(), 1, "expected one import from {s:?} (tree)");
+        assert_eq!(regex.len(), 1, "expected one import from {s:?} (regex)");
+        let (t, r) = (tree.remove(0), regex.remove(0));
+        assert_eq!(
+            (&t.prefix, &t.selectors, t.wildcard),
+            (&r.prefix, &r.selectors, r.wildcard),
+            "tree and regex readers disagree on {s:?}"
+        );
+        t
+    }
+
+    /// What only the tree gets right: an import inside a block comment is
+    /// not an import, and the regex reader cannot know that.
+    #[test]
+    fn a_commented_out_import_is_not_an_import_on_the_tree_path() {
+        let src = "/*\nimport ghost.Gone\n*/\nimport real.Thing\n";
+        let tree: Vec<String> = parse_scala_imports(src)
+            .into_iter()
+            .map(|i| i.prefix)
+            .collect();
+        assert_eq!(tree, vec!["real".to_string()]);
+        let regex: Vec<String> = parse_scala_imports_regex(src)
+            .into_iter()
+            .map(|i| i.prefix)
+            .collect();
+        assert!(
+            regex.contains(&"ghost".to_string()),
+            "the fallback still sees it: {regex:?}"
+        );
     }
 
     #[test]

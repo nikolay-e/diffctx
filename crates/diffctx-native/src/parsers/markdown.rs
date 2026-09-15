@@ -12,19 +12,11 @@ const MARKDOWN_EXTENSIONS: &[&str] = &[".md", ".markdown", ".mdx"];
 
 static HEADING_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^(#{1,6})(?:\s(.+))?$").unwrap());
 
-fn file_extension_lower(path: &str) -> String {
-    if let Some(dot_pos) = path.rfind('.') {
-        path[dot_pos..].to_ascii_lowercase()
-    } else {
-        String::new()
-    }
-}
-
 pub struct MarkdownStrategy;
 
 impl FragmentationStrategy for MarkdownStrategy {
     fn can_handle(&self, path: &str, _content: &str) -> bool {
-        let ext = file_extension_lower(path);
+        let ext = super::file_extension_lower(path);
         MARKDOWN_EXTENSIONS.iter().any(|&e| e == ext)
     }
 

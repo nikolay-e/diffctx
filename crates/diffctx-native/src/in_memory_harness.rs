@@ -7,13 +7,9 @@ use similar::{ChangeTag, TextDiff};
 
 use crate::config::budget::BUDGET;
 use crate::config::tokenization::TOKENIZATION;
-use crate::core::{compute_seed_weights, identify_core_fragments};
-use crate::edges;
 use crate::mode::{PipelineConfig, ScoringMode};
 use crate::parsers::fragment_file;
 use crate::render::{DiffContextOutput, build_diff_context_output};
-use crate::scoring::create_scoring_strategy;
-use crate::signatures::generate_signature_variants;
 use crate::types::{DiffHunk, Fragment, FragmentId};
 
 pub struct MemoryRepo {
@@ -48,12 +44,29 @@ pub fn build_diff_context_in_memory(
         .map(|(k, v)| (PathBuf::from(k), v.clone()))
         .collect();
 
-    let discovered = edges::discover_all_related_files(
-        &changed_file_paths,
-        &all_file_paths,
-        None,
-        Some(&file_cache),
-    );
+    let mut config = PipelineConfig::from_mode(scoring_mode);
+    config.ppr_alpha = alpha;
+
+    // The product's discovery ensemble — structural, test-file, BM25 top-k —
+    // over the in-memory files. The harness used to run the structural
+    // strategy alone, so the corpus measured a narrower universe than the
+    // one shipped (#232): a test file or a lexical neighbour the product
+    // would have offered the selector never reached the oracle here.
+    let expansion_concepts: FxHashSet<String> =
+        crate::types::extract_identifiers(&diff_text, TOKENIZATION.query_min_identifier_length)
+            .into_iter()
+            .collect();
+    let discovery_ctx = crate::discovery::DiscoveryContext {
+        root_dir: PathBuf::from("."),
+        changed_files: changed_file_paths.clone(),
+        all_candidates: all_file_paths.clone(),
+        diff_text: diff_text.clone(),
+        expansion_concepts,
+        file_cache: file_cache.clone(),
+        token_corpus: std::sync::OnceLock::new(),
+    };
+    let (discovered, _attribution) =
+        crate::pipeline::create_discovery(&config).discover_attributed(&discovery_ctx);
     let discovered_paths: FxHashSet<String> = discovered
         .iter()
         .map(|p| p.to_string_lossy().to_string())
@@ -80,49 +93,32 @@ pub fn build_diff_context_in_memory(
         }
     }
 
-    crate::pipeline::assign_token_counts(&mut all_fragments);
-
-    let core_ids = identify_core_fragments(&hunks, &all_fragments);
-
-    // The same two inputs the shipped pipeline gives the selector. Passing
-    // `None` for both made this harness score a different system: no
-    // excerpt-downshift (#149), so an oversized core was skipped rather than
-    // narrowed, and no I(f) prior, so per-file importance did not shape
-    // admission. Iterating on either of those against this harness measured
-    // something nobody runs.
-    let mut core_excerpts =
-        crate::excerpt::generate_core_excerpts(&all_fragments, &core_ids, &hunks);
-    crate::pipeline::assign_excerpt_token_counts(&mut core_excerpts);
-
-    let mut sig_frags = generate_signature_variants(&all_fragments);
-    crate::pipeline::assign_token_counts(&mut sig_frags);
-    all_fragments.extend(sig_frags);
-
     let effective_budget = budget_tokens.unwrap_or(BUDGET.unlimited);
-    let mut config = PipelineConfig::from_mode(scoring_mode);
-    config.ppr_alpha = alpha;
-    let seed_weights = compute_seed_weights(&hunks, &core_ids, &all_fragments);
 
     let discovered_arc: FxHashSet<Arc<str>> = discovered_paths
         .iter()
         .map(|s| Arc::from(s.as_str()))
         .collect();
 
-    let strategy = create_scoring_strategy(&config);
-
-    let scoring_result = strategy.score_and_filter(
-        &all_fragments,
-        &core_ids,
+    // The corpus harness has no timeout contract; before #210 it inherited
+    // whatever ceiling the last in-process run left behind.
+    let run = crate::resource::RunContext::unbounded();
+    let crate::pipeline::ScoredFragments {
+        all_fragments,
+        core_ids,
+        core_excerpts,
+        scoring_result,
+        needs,
+        ..
+    } = crate::pipeline::score_from_fragments(
+        all_fragments,
         &hunks,
+        &diff_text,
+        &config,
         None,
-        Some(&seed_weights),
-        Some(&discovered_arc),
-        // The corpus harness has no timeout contract; before #210 it
-        // inherited whatever ceiling the last in-process run left behind.
-        crate::deadline::Deadline::none(),
+        &discovered_arc,
+        &run,
     );
-
-    let needs = crate::utility::needs::needs_from_diff(&all_fragments, &core_ids, &diff_text);
 
     // The same envelope charge the product pipeline applies (#241): a harness
     // that spends the budget differently scores a system nobody runs (#149).
@@ -131,7 +127,22 @@ pub fn build_diff_context_in_memory(
     let selection_budget =
         effective_budget.saturating_sub(crate::pipeline::envelope_token_cost(None, &listed));
 
-    let (mut selected, _, _, stand_in_ids) = crate::pipeline::select_and_postpass(
+    let dummy_root = Path::new(".");
+    let mut changed_files: Vec<PathBuf> = changed_paths.iter().map(PathBuf::from).collect();
+    changed_files.sort();
+    let change_classes = crate::pipeline::classify_changes(
+        dummy_root,
+        &changed_files,
+        &hunks,
+        &diff_text,
+        &all_fragments,
+    );
+
+    let crate::pipeline::PostpassOutcome {
+        mut selected,
+        stand_in_ids,
+        ..
+    } = crate::pipeline::select_and_postpass(
         &scoring_result,
         &all_fragments,
         &core_ids,
@@ -140,11 +151,11 @@ pub fn build_diff_context_in_memory(
         config.objective,
         selection_budget,
         tau,
+        &crate::pipeline::evidence_priority_of(&changed_files, &change_classes),
     );
 
     let used: u32 = selected.iter().map(|f| f.token_count).sum();
     let remaining = selection_budget.saturating_sub(used);
-    let changed_files: Vec<PathBuf> = changed_paths.iter().map(PathBuf::from).collect();
     crate::postpass::ensure_changed_files_represented(
         &mut selected,
         &all_fragments,
@@ -158,7 +169,6 @@ pub fn build_diff_context_in_memory(
         &stand_in_ids,
     );
 
-    let dummy_root = Path::new(".");
     let mut changed_list: Vec<String> = changed_paths.iter().cloned().collect();
     changed_list.sort();
     let change = crate::render::ChangeSummary {
@@ -166,6 +176,8 @@ pub fn build_diff_context_in_memory(
         ignored_changes: Vec::new(),
         policy_excluded_count: 0,
         commit_message: None,
+        commit_messages: Vec::new(),
+        changes: change_classes,
         changed_files: changed_list,
         deleted_files: Vec::new(),
         renamed_files: Vec::new(),

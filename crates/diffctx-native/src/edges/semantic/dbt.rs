@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_files_by_refs};
+use super::super::base::{self, EdgeBuilder, add_edges_from_ids};
 
 fn is_dbt_file(content: &str) -> bool {
     content.contains("{{ ref(") || content.contains("{{ source(") || content.contains("{{ config(")
@@ -57,13 +57,11 @@ pub struct DbtEdgeBuilder;
 
 impl EdgeBuilder for DbtEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
-        let frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_sql_file(Path::new(f.path())) && is_dbt_file(&f.content))
-            .collect();
-        if frags.is_empty() {
+        let Some(frags) = base::frags_where(fragments, |f| {
+            is_sql_file(Path::new(f.path())) && is_dbt_file(&f.content)
+        }) else {
             return FxHashMap::default();
-        }
+        };
 
         let ref_w = EDGE_WEIGHTS["dbt_ref"].forward;
         let source_w = EDGE_WEIGHTS["dbt_source"].forward;
@@ -75,12 +73,7 @@ impl EdgeBuilder for DbtEdgeBuilder {
         let idx = base::FragmentIndex::new(fragments, repo_root);
         let mut macro_to_frags: FxHashMap<String, Vec<_>> = FxHashMap::default();
         for f in &frags {
-            for name in extract_macro_defs(&f.content) {
-                macro_to_frags
-                    .entry(name.to_lowercase())
-                    .or_default()
-                    .push(f.id.clone());
-            }
+            base::index_lower(&mut macro_to_frags, extract_macro_defs(&f.content), &f.id);
         }
 
         let mut edges: EdgeDict = FxHashMap::default();
@@ -108,23 +101,23 @@ impl EdgeBuilder for DbtEdgeBuilder {
         repo_root: Option<&Path>,
         file_cache: Option<&FxHashMap<PathBuf, String>>,
     ) -> Vec<PathBuf> {
-        let mut refs = FxHashSet::default();
-        for f in changed {
-            if !is_sql_file(f) {
-                continue;
-            }
-            if let Some(content) = base::read_file_cached(f, file_cache) {
-                if !is_dbt_file(&content) {
-                    continue;
-                }
-                refs.extend(extract_refs(&content));
-                refs.extend(extract_sources(&content));
-                refs.extend(extract_macro_calls(&content));
-            }
-        }
-        if refs.is_empty() {
-            return vec![];
-        }
-        discover_files_by_refs(&refs, changed, candidates, repo_root)
+        base::discover_by_extracted_refs(
+            changed,
+            candidates,
+            repo_root,
+            file_cache,
+            |p| is_sql_file(p),
+            |c| {
+                is_dbt_file(c)
+                    .then(|| {
+                        extract_refs(c)
+                            .into_iter()
+                            .chain(extract_sources(c))
+                            .chain(extract_macro_calls(c))
+                    })
+                    .into_iter()
+                    .flatten()
+            },
+        )
     }
 }
