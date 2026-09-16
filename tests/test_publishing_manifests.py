@@ -78,6 +78,7 @@ class TestClaudePlugin:
         referenced = set(re.findall(r"`(diffctx_[a-z_]+|get_[a-z_]+)`", text))
         assert referenced
 
+        pytest.importorskip("mcp")
         from diffctx.mcp import server as mcp_server
 
         # The default surface, deliberately: a plugin command that only works
