@@ -45,7 +45,7 @@ scoop bucket add diffctx https://github.com/nikolay-e/diffctx
 scoop install diffctx/diffctx
 ```
 
-Prebuilt binaries for linux (x86_64/aarch64), macOS (arm64) and Windows (x64)
+Prebuilt binaries for Linux (x86_64/aarch64), macOS (arm64/x86_64) and Windows (x64/arm64)
 are attached to every [release](https://github.com/nikolay-e/diffctx/releases/latest).
 The native binary and Docker image cover diff mode with YAML/JSON output and
 write to stdout (redirect to capture); tree mode, Markdown output, the `graph`

@@ -233,16 +233,23 @@ jobs:
             target: aarch64-unknown-linux-gnu
             maturin_target: aarch64
             manylinux: '2_28'
-          # NOTE: macos-13 (Intel) runner pool has multi-hour queue times on
-          # public projects. Apple Silicon (macos-14) wheel covers all modern
-          # Macs; Intel-Mac users can fall back to the sdist or Rosetta.
           - runner: macos-14
             target: aarch64-apple-darwin
             maturin_target: aarch64
             manylinux: 'off'
+          # Cross-compiled on Apple Silicon: the Intel runner pool queues for
+          # hours on public projects, and Xcode's SDK targets both arches.
+          - runner: macos-14
+            target: x86_64-apple-darwin
+            maturin_target: x86_64
+            manylinux: 'off'
           - runner: windows-latest
             target: x86_64-pc-windows-msvc
             maturin_target: x64
+            manylinux: 'off'
+          - runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            maturin_target: aarch64
             manylinux: 'off'
     runs-on: ${{ matrix.runner }}
     steps:
@@ -351,8 +358,14 @@ jobs:
           - runner: macos-14
             target: aarch64-apple-darwin
             archive: tar.gz
+          - runner: macos-14
+            target: x86_64-apple-darwin
+            archive: tar.gz
           - runner: windows-latest
             target: x86_64-pc-windows-msvc
+            archive: zip
+          - runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
             archive: zip
     runs-on: ${{ matrix.runner }}
     steps:
@@ -374,10 +387,11 @@ jobs:
         uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87  # stable
         with:
           toolchain: '1.92.0'
+          targets: ${{ matrix.target }}
 
       - name: Build release binary
         working-directory: ./repo/crates/diffctx-native
-        run: cargo build --release --locked --bin diffctx
+        run: cargo build --release --locked --bin diffctx --target ${{ matrix.target }}
 
       - name: Package binary (tar.gz)
         if: matrix.archive == 'tar.gz'
@@ -387,7 +401,7 @@ jobs:
           TARGET: ${{ matrix.target }}
         run: |
           mkdir -p out
-          cp ./repo/target/release/diffctx out/
+          cp "./repo/target/${TARGET}/release/diffctx" out/
           cp ./repo/LICENSE ./repo/README.md out/
           tar -czf "diffctx-${VERSION}-${TARGET}.tar.gz" -C out .
           ls -la ./*.tar.gz
@@ -400,7 +414,7 @@ jobs:
           TARGET: ${{ matrix.target }}
         run: |
           mkdir -p out
-          cp ./repo/target/release/diffctx.exe out/
+          cp "./repo/target/${TARGET}/release/diffctx.exe" out/
           cp ./repo/LICENSE ./repo/README.md out/
           7z a "diffctx-${VERSION}-${TARGET}.zip" ./out/*
           ls -la ./*.zip
@@ -408,8 +422,12 @@ jobs:
       - name: Smoke - binary runs
         shell: bash
         working-directory: ./repo
+        env:
+          TARGET: ${{ matrix.target }}
+        # The x86_64 macOS binary runs here under Rosetta, which the arm64
+        # runner image ships.
         run: |
-          BIN=./target/release/diffctx
+          BIN="./target/${TARGET}/release/diffctx"
           if [ "${RUNNER_OS}" = "Windows" ]; then BIN="${BIN}.exe"; fi
           "$BIN" --version
           # Exit 4 is the empty-diff contract, a valid outcome for a release
@@ -496,6 +514,12 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: ['3.10', '3.13']
+        # Windows on ARM has native CPython only from 3.11.
+        include:
+          - os: windows-11-arm
+            python-version: '3.13'
+          - os: ubuntu-22.04-arm
+            python-version: '3.13'
     runs-on: ${{ matrix.os }}
     steps:
       - name: Set up Python

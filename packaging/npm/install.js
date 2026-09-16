@@ -15,7 +15,9 @@ const TARGETS = {
   'linux-x64': { target: 'x86_64-unknown-linux-gnu', archive: 'tar.gz' },
   'linux-arm64': { target: 'aarch64-unknown-linux-gnu', archive: 'tar.gz' },
   'darwin-arm64': { target: 'aarch64-apple-darwin', archive: 'tar.gz' },
+  'darwin-x64': { target: 'x86_64-apple-darwin', archive: 'tar.gz' },
   'win32-x64': { target: 'x86_64-pc-windows-msvc', archive: 'zip' },
+  'win32-arm64': { target: 'aarch64-pc-windows-msvc', archive: 'zip' },
 };
 
 function selectTarget() {
@@ -24,8 +26,7 @@ function selectTarget() {
   if (!selected) {
     throw new Error(
       `diffctx has no prebuilt binary for ${key}. ` +
-        'On an Intel Mac, pip has no wheel for it either: run under Rosetta with an arm64 Node, ' +
-        'or build from source with "pip install diffctx --no-binary diffctx" (needs Rust) ' +
+        'Build from source with "pip install diffctx --no-binary diffctx" (needs Rust) ' +
         'or "cargo install diffctx".'
     );
   }
