@@ -93,7 +93,9 @@ inputs:
   python-version:
     description: Python interpreter used for the isolated diffctx install.
     required: false
-    default: '3.12'
+    # 3.13: diffctx 1.16.0's `--output-file` needs os.fchmod, which Windows
+    # Python only gained in 3.13.
+    default: '3.13'
 
 outputs:
   context-file:
@@ -136,17 +138,19 @@ runs:
       run: |
         set -euo pipefail
         venv="${RUNNER_TEMP}/diffctx-venv"
-        python3 -m venv "$venv"
-        "$venv/bin/python" -m pip install --quiet --disable-pip-version-check \
+        python -m venv "$venv"
+        bin="$venv/bin"
+        if [ -d "$venv/Scripts" ]; then bin="$venv/Scripts"; fi
+        "$bin/python" -m pip install --quiet --disable-pip-version-check \
           "diffctx==${DIFFCTX_VERSION}"
-        "$venv/bin/diffctx" --version
-        echo "venv=$venv" >> "$GITHUB_OUTPUT"
+        "$bin/diffctx" --version
+        echo "bin=$bin" >> "$GITHUB_OUTPUT"
 
     - name: Build diff context
       id: context
       shell: bash
       env:
-        VENV: ${{ steps.install.outputs.venv }}
+        BIN: ${{ steps.install.outputs.bin }}
         IN_PATH: ${{ inputs.path }}
         IN_RANGE: ${{ inputs.diff-range }}
         IN_BUDGET: ${{ inputs.budget }}
@@ -199,7 +203,7 @@ runs:
         if [ -n "$IN_TIMEOUT" ]; then args+=(--timeout "$IN_TIMEOUT"); fi
 
         status=0
-        "$VENV/bin/diffctx" "${args[@]}" || status=$?
+        "$BIN/diffctx" "${args[@]}" || status=$?
 
         empty=false
         if [ "$status" -eq 4 ]; then
@@ -208,12 +212,12 @@ runs:
           exit "$status"
         fi
 
-        abs_out="$(cd "$(dirname "$out")" && pwd)/$(basename "$out")"
+        # Python names the file: on Windows bash's `pwd` yields /d/a/..., a
+        # path the JavaScript actions consuming `context-file` cannot open.
         counter='import sys, pathlib, diffctx.tokens as t;'
-        counter=$counter'text = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8");'
-        counter=$counter'print(t.count_tokens(text).count)'
-        tokens="$("$VENV/bin/python" -c "$counter" "$abs_out")"
-        size="$(wc -c <"$abs_out" | tr -d '[:space:]')"
+        counter=$counter'p = pathlib.Path(sys.argv[1]).resolve(); data = p.read_bytes();'
+        counter=$counter'print(p, t.count_tokens(data.decode("utf-8")).count, len(data), sep="\n")'
+        { read -r abs_out; read -r tokens; read -r size; } < <("$BIN/python" -c "$counter" "$out" | tr -d '\r')
 
         {
           echo "context-file=$abs_out"

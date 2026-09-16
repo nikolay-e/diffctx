@@ -13,6 +13,7 @@ DATASET_VERSIONS = (
 )
 
 
+@pytest.mark.timeout(300)
 @pytest.mark.parametrize("version_dir", DATASET_VERSIONS, ids=lambda path: str(path.relative_to(REPO_ROOT)))
 def test_dataset_inventory_matches_checksums(version_dir: Path) -> None:
     inventory = version_dir / "checksums.sha256"
@@ -22,7 +23,9 @@ def test_dataset_inventory_matches_checksums(version_dir: Path) -> None:
     entries = [line.split("  ", 1) for line in inventory.read_text().splitlines() if line]
     expected_paths = {relative.removeprefix("./") for _, relative in entries}
     actual_paths = {
-        str(path.relative_to(version_dir)) for path in version_dir.rglob("*") if path.is_file() and path.name != inventory.name
+        path.relative_to(version_dir).as_posix()
+        for path in version_dir.rglob("*")
+        if path.is_file() and path.name != inventory.name
     }
     assert actual_paths == expected_paths
 

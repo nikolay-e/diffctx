@@ -92,6 +92,13 @@ def jailed(tmp_path_factory):
     return repo
 
 
+def _resolves_inside(path: str, repo: Path) -> bool:
+    try:
+        return Path(path).resolve().is_relative_to(repo.resolve())
+    except (OSError, ValueError):
+        return False
+
+
 def _call(server, args: dict) -> str:
     """The tool's response text, or "" when it refused.
 
@@ -160,7 +167,7 @@ def test_a_refusal_never_names_a_resolved_path(server, jailed, path):
         # Windows collapses `escape/..` lexically before following the link,
         # so such a path is the repository itself: an admission, which the
         # contract allows, not the refusal this property is about.
-        assume("\x00" in path or not Path(repo_path).resolve().is_relative_to(jailed.path.resolve()))
+        assume(not _resolves_inside(repo_path, jailed.path))
     call = server.call_tool("diffctx_context", {"repo_path": repo_path, "diff_ref": "HEAD"})
     with pytest.raises(ToolError) as refusal:
         asyncio.run(call)

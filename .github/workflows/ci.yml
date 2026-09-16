@@ -246,6 +246,44 @@ jobs:
           # exercises the same panic strategy production runs under.
           cargo test --release --test yaml_cases
 
+  # The Linux job above keeps its name because branch protection requires it;
+  # this one gates the same suites where paths, line endings and process
+  # spawning differ.
+  rust-diffctx-test-cross:
+    name: Rust diffctx tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: "1.92.0"
+
+      - name: Cache Cargo
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Build and test
+        working-directory: crates/diffctx-native
+        shell: bash
+        run: |
+          cargo test --lib --features python
+          cargo test --test native_cli
+          cargo test --release --test yaml_cases
+
   # ============================================================================
   # Cross-platform Python Testing (diffctx core)
   # ============================================================================
@@ -318,18 +356,6 @@ jobs:
             echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
           fi
 
-      - name: Windows crash diagnostics (temporary)
-        if: runner.os == 'Windows'
-        continue-on-error: true
-        shell: bash
-        run: |
-          python -X faulthandler -m pytest -n 0 -p no:cacheprovider -o timeout=0 \
-            -o faulthandler_timeout=45 --durations=0 -v \
-            "tests/eval/test_dataset_integrity.py" \
-            "tests/test_concurrent_deadlines.py" \
-            "tests/test_artifact_properties.py::test_same_input_same_artifact_within_budget_and_fully_inventoried"
-          echo "pytest exit=$?"
-
       - name: Run Tests with Coverage
         shell: bash
         run: |
@@ -341,7 +367,9 @@ jobs:
           coverage report --fail-under=40
 
       - name: Upload coverage reports to Codecov
-        if: runner.os == 'Linux' && matrix.python-version == '3.12'
+        # Every OS uploads: platform-only branches (Windows paths, POSIX modes)
+        # are covered nowhere else, and Codecov merges the reports.
+        if: matrix.python-version == '3.12'
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f  # v7.0.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
