@@ -61,8 +61,8 @@ pub(crate) fn display_rel_or_abs(root: &Path, path: &Path) -> String {
 /// the secret policy), and substituting the link target renames the object
 /// mid-pipeline.
 pub(crate) fn resolve_within(root: &Path, path: &Path) -> Option<std::path::PathBuf> {
-    let root_canon = root.canonicalize().ok()?;
-    let canon = path.canonicalize().ok()?;
+    let root_canon = dunce::canonicalize(root).ok()?;
+    let canon = dunce::canonicalize(path).ok()?;
     canon.starts_with(&root_canon).then(|| path.to_path_buf())
 }
 

@@ -519,11 +519,10 @@ pub(crate) fn resolve_in_repo(repo_root: &Path, rel_path: &str) -> Option<PathBu
     // `..` already excluded, `joined` always starts with `repo_root`, so an
     // in-repo symlink pointing outside the tree would resolve outside and still
     // be accepted.
-    match joined.canonicalize() {
+    match dunce::canonicalize(&joined) {
         Ok(resolved) => {
-            let resolved_root = repo_root
-                .canonicalize()
-                .unwrap_or_else(|_| repo_root.to_path_buf());
+            let resolved_root =
+                dunce::canonicalize(repo_root).unwrap_or_else(|_| repo_root.to_path_buf());
             if !resolved.starts_with(&resolved_root) {
                 return None;
             }
@@ -737,10 +736,7 @@ pub fn get_renamed_paths(repo_root: &Path, diff_range: Option<&str>) -> Result<F
     Ok(rename_records(repo_root, diff_range)?
         .into_iter()
         .map(|(old, _)| {
-            repo_root
-                .join(&old)
-                .canonicalize()
-                .unwrap_or_else(|_| repo_root.join(&old))
+            dunce::canonicalize(repo_root.join(&old)).unwrap_or_else(|_| repo_root.join(&old))
         })
         .collect())
 }
@@ -1971,7 +1967,7 @@ mod tests {
         // `canonicalize` would spell it, the lexical fallback prefix matches and
         // the hole reproduces here exactly as it did on Linux CI; spelled via a
         // symlinked temp dir (`/var` on macOS) the mismatch hid it.
-        let base = tmp.path().canonicalize().expect("canonical tempdir");
+        let base = dunce::canonicalize(tmp.path()).expect("canonical tempdir");
         let root = base.join("repo");
         std::fs::create_dir_all(&root).expect("mkdir repo");
         std::fs::write(base.join("outside.py"), "secret = 1\n").expect("write outside");
@@ -2005,7 +2001,7 @@ mod tests {
     #[test]
     fn an_in_repo_symlink_pointing_outside_the_root_is_refused() {
         let tmp = TempDir::new().expect("tempdir");
-        let base = tmp.path().canonicalize().expect("canonical tempdir");
+        let base = dunce::canonicalize(tmp.path()).expect("canonical tempdir");
         let root = base.join("repo");
         std::fs::create_dir_all(&root).expect("mkdir repo");
 

@@ -18,8 +18,7 @@ pub struct ProjectGraph {
 }
 
 pub fn build_project_graph(root_dir: &Path) -> Result<ProjectGraph> {
-    let resolved_root = root_dir
-        .canonicalize()
+    let resolved_root = dunce::canonicalize(root_dir)
         .with_context(|| format!("failed to canonicalize root_dir '{}'", root_dir.display()))?;
 
     let included_set: FxHashSet<PathBuf> = FxHashSet::default();

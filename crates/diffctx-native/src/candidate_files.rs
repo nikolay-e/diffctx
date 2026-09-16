@@ -126,9 +126,9 @@ fn filter_ignored_and_secret(root_dir: &Path, files: Vec<PathBuf>) -> Vec<PathBu
 
 pub fn normalize_path(path: &Path, root_dir: &Path) -> PathBuf {
     if path.is_absolute() {
-        path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+        dunce::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
     } else {
         let joined = root_dir.join(path);
-        joined.canonicalize().unwrap_or(joined)
+        dunce::canonicalize(&joined).unwrap_or(joined)
     }
 }

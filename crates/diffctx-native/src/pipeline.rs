@@ -449,7 +449,7 @@ fn resolve_change_set(
     let changed_files: Vec<PathBuf> = changed_files
         .into_iter()
         .filter(|f| {
-            let resolved = f.canonicalize().unwrap_or_else(|_| f.clone());
+            let resolved = dunce::canonicalize(f).unwrap_or_else(|_| f.clone());
             !excluded.contains(&resolved)
                 && !is_lockfile_path(f)
                 && !is_withheld(root_dir, f, &ignored_rel_paths)
@@ -1633,7 +1633,7 @@ fn pathless_section(root_dir: &Path, section: &[&str]) -> Option<PathBuf> {
 }
 
 fn resolve_repo_root(root_dir: &Path) -> Result<PathBuf> {
-    let root_dir = root_dir.canonicalize().unwrap_or_else(|e| {
+    let root_dir = dunce::canonicalize(root_dir).unwrap_or_else(|e| {
         tracing::debug!("canonicalize failed for '{}': {}", root_dir.display(), e);
         root_dir.to_path_buf()
     });
@@ -1842,9 +1842,7 @@ fn empty_scored_state(root_dir: PathBuf, diff_range: Option<&str>, timeout: u64)
 }
 
 fn empty_output(root_dir: &Path) -> DiffContextOutput {
-    let resolved = root_dir
-        .canonicalize()
-        .unwrap_or_else(|_| root_dir.to_path_buf());
+    let resolved = dunce::canonicalize(root_dir).unwrap_or_else(|_| root_dir.to_path_buf());
     let name = resolved
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
@@ -1971,7 +1969,7 @@ mod tests {
     #[test]
     fn a_raw_diff_section_escaping_the_root_resolves_to_nothing() {
         let tmp = tempfile::TempDir::new().expect("tempdir");
-        let base = tmp.path().canonicalize().expect("canonical tempdir");
+        let base = dunce::canonicalize(tmp.path()).expect("canonical tempdir");
         let root = base.join("repo");
         std::fs::create_dir_all(&root).expect("mkdir repo");
         std::fs::write(base.join("outside.py"), "secret = 1\n").expect("write outside");

@@ -224,9 +224,7 @@ fn read_file_content(
     }
 
     let abs_path = normalize_path(file_path, root_dir);
-    let resolved_root = root_dir
-        .canonicalize()
-        .unwrap_or_else(|_| root_dir.to_path_buf());
+    let resolved_root = dunce::canonicalize(root_dir).unwrap_or_else(|_| root_dir.to_path_buf());
     let rel = abs_path.strip_prefix(&resolved_root).ok()?;
 
     let max_size = if is_changed {
