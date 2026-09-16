@@ -365,6 +365,12 @@ jobs:
           # all. Installed on one interpreter: the cost is one matrix cell, the
           # alternative was a suite nobody ran.
           SYNC=(uv sync --locked --no-build --extra dev --extra full --extra mcp)
+          # Windows on ARM: cryptography (pulled in by mcp) publishes no wheel
+          # and needs OpenSSL to build, so the MCP suites skip there; tiktoken,
+          # the test oracle, has no wheel either and builds with the Rust above.
+          if [[ "$RUNNER_OS" == "Windows" && "$RUNNER_ARCH" == "ARM64" ]]; then
+            SYNC=(uv sync --locked --extra dev --extra full)
+          fi
           if [[ "${{ matrix.python-version }}" == "3.12" ]]; then
             SYNC+=(--group eval)
           fi

@@ -47,6 +47,8 @@ scoop install diffctx/diffctx
 
 Prebuilt binaries for Linux (x86_64/aarch64), macOS (arm64/x86_64) and Windows (x64/arm64)
 are attached to every [release](https://github.com/nikolay-e/diffctx/releases/latest).
+On Windows on ARM, `diffctx[mcp]` builds `cryptography` from source, which needs
+OpenSSL: that project publishes no wheel for the platform.
 The native binary and Docker image cover diff mode with YAML/JSON output and
 write to stdout (redirect to capture); tree mode, Markdown output, the `graph`
 subcommand and the MCP server live in the Python package.
