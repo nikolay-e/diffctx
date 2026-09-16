@@ -21,13 +21,15 @@ from __future__ import annotations
 
 import asyncio
 import string
+import sys
+from pathlib import Path
 
 import pytest
 
 pytest.importorskip("mcp")
 pytest.importorskip("hypothesis")
 
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 from mcp.server.fastmcp.exceptions import ToolError
 
@@ -138,7 +140,11 @@ def test_no_fragment_id_reaches_outside_through_the_symlink(server, jailed, path
     assert CANARY not in text
 
 
-@settings(max_examples=120, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(
+    max_examples=120,
+    deadline=None,
+    suppress_health_check=[HealthCheck.function_scoped_fixture, HealthCheck.filter_too_much],
+)
 @given(path=_path_like)
 def test_a_refusal_never_names_a_resolved_path(server, jailed, path):
     """Refusals go to a model that may relay them. They may echo the caller's own
@@ -149,10 +155,13 @@ def test_a_refusal_never_names_a_resolved_path(server, jailed, path):
     # `escape`, the resolved form names `outside`.
     # Any exception other than ToolError propagates and fails the test on
     # its own: that is the "unhandled error escaped the tool" finding.
-    call = server.call_tool(
-        "diffctx_context",
-        {"repo_path": f"{jailed.path}/escape/{path}", "diff_ref": "HEAD"},
-    )
+    repo_path = f"{jailed.path}/escape/{path}"
+    if sys.platform == "win32":
+        # Windows collapses `escape/..` lexically before following the link,
+        # so such a path is the repository itself: an admission, which the
+        # contract allows, not the refusal this property is about.
+        assume("\x00" in path or not Path(repo_path).resolve().is_relative_to(jailed.path.resolve()))
+    call = server.call_tool("diffctx_context", {"repo_path": repo_path, "diff_ref": "HEAD"})
     with pytest.raises(ToolError) as refusal:
         asyncio.run(call)
     message = str(refusal.value)

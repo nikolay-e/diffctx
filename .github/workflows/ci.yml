@@ -318,6 +318,18 @@ jobs:
             echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
           fi
 
+      - name: Windows crash diagnostics (temporary)
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: bash
+        run: |
+          python -X faulthandler -m pytest -n 0 -p no:cacheprovider -o timeout=0 \
+            -o faulthandler_timeout=45 --durations=0 -v \
+            "tests/eval/test_dataset_integrity.py" \
+            "tests/test_concurrent_deadlines.py" \
+            "tests/test_artifact_properties.py::test_same_input_same_artifact_within_budget_and_fully_inventoried"
+          echo "pytest exit=$?"
+
       - name: Run Tests with Coverage
         shell: bash
         run: |

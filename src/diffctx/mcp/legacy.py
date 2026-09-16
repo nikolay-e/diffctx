@@ -134,7 +134,7 @@ def _contained_match(match: str, root: Path) -> tuple[Path, str] | None:
     return resolved, rel
 
 
-def _collect_matched_files(validated_path: Path, patterns: list[str], max_files: int) -> tuple[list[Path], int]:
+def _collect_matched_files(validated_path: Path, patterns: list[str], max_files: int) -> tuple[list[tuple[Path, str]], int]:
     """Files matching `patterns`, minus what this tool may not serve.
 
     Two filters, and they answer different questions. The **noise** spec is the
@@ -166,7 +166,7 @@ def _collect_matched_files(validated_path: Path, patterns: list[str], max_files:
             seen.add(hit[0])
             contained.append(hit)
     withheld = withheld_set(validated_path, [rel for _, rel in contained])
-    admitted = [resolved for resolved, rel in contained if rel not in withheld]
+    admitted = [hit for hit in contained if hit[1] not in withheld]
     return admitted[:max_files], len(admitted)
 
 
@@ -176,20 +176,19 @@ def _truncation_notice(shown: int, total_matched: int, max_files: int) -> str | 
     return f"TRUNCATED: showing {shown} of {total_matched} matched files (max_files={max_files}). Narrow patterns or raise max_files to see the rest."
 
 
-def _build_dry_run_report(matched: list[Path], total_matched: int, validated_path: Path, max_files: int) -> str:
-    total_bytes = sum(p.stat().st_size for p in matched if p.exists())
+def _build_dry_run_report(matched: list[tuple[Path, str]], total_matched: int, max_files: int) -> str:
+    total_bytes = sum(p.stat().st_size for p, _ in matched if p.exists())
     lines = [f"Would match {total_matched} files (~{total_bytes:,} bytes for the {len(matched)} shown below):"]
     notice = _truncation_notice(len(matched), total_matched, max_files)
     if notice:
         lines.append(notice)
-    for p in matched:
-        rel = p.relative_to(validated_path)
+    for p, rel in matched:
         lines.append(f"  {rel} ({p.stat().st_size:,}b)")
     return "\n".join(lines)
 
 
 def _build_file_content_report(
-    matched: list[Path], total_matched: int, validated_path: Path, max_file_bytes: int, max_files: int
+    matched: list[tuple[Path, str]], total_matched: int, max_file_bytes: int, max_files: int
 ) -> tuple[str, int, int]:
     header = f"# {len(matched)} files matched"
     notice = _truncation_notice(len(matched), total_matched, max_files)
@@ -198,8 +197,7 @@ def _build_file_content_report(
     parts = [header + "\n"]
     total_lines = 0
     included_count = 0
-    for p in matched:
-        rel = p.relative_to(validated_path)
+    for p, rel in matched:
         try:
             size = p.stat().st_size
             if size > max_file_bytes:
@@ -235,8 +233,8 @@ async def get_file_context(
         if not matched:
             return f"No files matched patterns: {patterns}", 0, 0
         if dry_run:
-            return _build_dry_run_report(matched, total_matched, validated_path, max_files), 0, 0
-        return _build_file_content_report(matched, total_matched, validated_path, max_file_bytes, max_files)
+            return _build_dry_run_report(matched, total_matched, max_files), 0, 0
+        return _build_file_content_report(matched, total_matched, max_file_bytes, max_files)
 
     raw_result: tuple[str, int, int] = await _run_with_deadline("get_file_context", _read)
     content, n_files, n_lines = raw_result

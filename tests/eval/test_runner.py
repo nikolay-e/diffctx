@@ -408,9 +408,9 @@ def _lf_gold_patch(tmp_path: Path, before: str, after: str) -> str:
 
     lf_repo = tmp_path / "lf_origin"
     _init_repo(lf_repo)
-    (lf_repo / "app.py").write_text(before)
+    (lf_repo / "app.py").write_text(before, newline="")
     _commit_all(lf_repo, "base")
-    (lf_repo / "app.py").write_text(after)
+    (lf_repo / "app.py").write_text(after, newline="")
     return subprocess.run(["git", "diff"], cwd=lf_repo, capture_output=True, text=True, check=True).stdout
 
 
@@ -423,7 +423,7 @@ def test_apply_gold_patch_reports_strict_mode_on_matching_line_endings(tmp_path:
 
     repo = tmp_path / "lf_repo"
     _init_repo(repo)
-    (repo / "app.py").write_text(before)
+    (repo / "app.py").write_text(before, newline="")
     _commit_all(repo, "base")
 
     outcome = apply_gold_patch(repo, patch, "gold")
@@ -449,7 +449,7 @@ def test_apply_gold_patch_falls_back_to_whitespace_tolerant_on_crlf_repo(tmp_pat
         ["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=True
     ).stdout.strip()
 
-    strict = subprocess.run(["git", "apply", "--index", "-"], cwd=repo, input=patch, capture_output=True, text=True)
+    strict = subprocess.run(["git", "apply", "--index", "-"], cwd=repo, input=patch.encode(), capture_output=True)
     assert strict.returncode != 0, "fixture no longer reproduces the CRLF-vs-LF strict apply failure"
 
     outcome = apply_gold_patch(repo, patch, "gold")

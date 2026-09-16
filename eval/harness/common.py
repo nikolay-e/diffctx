@@ -543,7 +543,7 @@ def apply_gold_patch(repo_dir: Path, patch_text: str, message: str = "bench") ->
     (HEAD didn't advance). Caller should flag these as
     ``status="apply_fail"`` and exclude from metrics.
     """
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".patch", delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".patch", delete=False, newline="") as f:
         f.write(patch_text)
         patch_path = f.name
     try:
