@@ -34,8 +34,16 @@ pub enum SelectionReason {
 
 pub struct SelectionResult {
     pub selected: Vec<Fragment>,
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "stop-condition diagnostics read by tests only")
+    )]
     pub reason: SelectionReason,
     pub used_tokens: u32,
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "stop-condition diagnostics read by tests only")
+    )]
     pub utility: f64,
     /// Greedy iterations actually executed (number of `apply_fragment`
     /// calls in `run_greedy_loop_heap`). Diagnoses lazy-heap blowup:

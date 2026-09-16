@@ -8,9 +8,12 @@ use _diffctx::render::{DiffContextOutput, FragmentEntry};
 
 #[derive(Debug, Deserialize, Clone, Default)]
 pub struct TestCase {
+    // Shared with examples/diffctx-test.rs, which filters and labels by these.
     #[serde(default)]
+    #[allow(dead_code, reason = "read by the diffctx-test example only")]
     pub name: String,
     #[serde(default)]
+    #[allow(dead_code, reason = "read by the diffctx-test example only")]
     pub tags: Vec<String>,
     #[serde(default)]
     pub repo: Repo,
@@ -71,8 +74,6 @@ pub struct Oracle {
     #[serde(default)]
     pub required: Vec<String>,
     #[serde(default)]
-    pub allowed: Vec<String>,
-    #[serde(default)]
     pub forbidden: Vec<String>,
 }
 
@@ -82,8 +83,6 @@ pub struct Accept {
     pub symbol_match: String,
     #[serde(default)]
     pub kind_must_match: bool,
-    #[serde(default = "default_span_relation")]
-    pub span_relation: String,
 }
 
 impl Default for Accept {
@@ -91,7 +90,6 @@ impl Default for Accept {
         Self {
             symbol_match: default_symbol_match(),
             kind_must_match: false,
-            span_relation: default_span_relation(),
         }
     }
 }
@@ -102,8 +100,6 @@ pub struct XFail {
     pub category: Option<String>,
     #[serde(default)]
     pub reason: Option<String>,
-    #[serde(default)]
-    pub issue: Option<String>,
 }
 
 impl XFail {
@@ -114,9 +110,6 @@ impl XFail {
 
 fn default_symbol_match() -> String {
     "exact".into()
-}
-fn default_span_relation() -> String {
-    "exact_or_enclosing".into()
 }
 fn default_commit_message() -> String {
     "Update files".into()
