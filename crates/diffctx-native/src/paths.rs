@@ -23,6 +23,23 @@ pub(crate) fn to_posix_display(s: Cow<'_, str>) -> String {
     s.into_owned()
 }
 
+/// `base.join(rel)` for a `rel` read from a manifest, spelled the way the
+/// platform spells fragment paths: `join` keeps the manifest's `/`, which on
+/// Windows makes `crate\src/lib.rs` a different key from `crate\src\lib.rs`.
+pub(crate) fn join_native(base: &Path, rel: &str) -> String {
+    native_separators(base.join(rel).to_string_lossy())
+}
+
+#[cfg(windows)]
+fn native_separators(s: Cow<'_, str>) -> String {
+    s.replace('/', "\\")
+}
+
+#[cfg(not(windows))]
+fn native_separators(s: Cow<'_, str>) -> String {
+    s.into_owned()
+}
+
 /// `path` written relative to `root`, ready for output. `None` when `path` is
 /// not inside `root` — callers that must still show something decide what.
 pub(crate) fn display_rel(root: &Path, path: &Path) -> Option<String> {
