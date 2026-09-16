@@ -1,0 +1,241 @@
+[INFO] memory probe OK: 184.3 GiB visible
+[INFO] disk probe OK: 836 GB free at /cache/contextbench_repos
+Method: aider_fair | budget=64000 τ=0.05 cbf=0.4 scoring=ego extra_env={}
+Skipping adapters not referenced by any manifest: contextbench, dcbench, multi_swebench, polybench, polybench500, swebench_lite, swebench_verified
+Generating train split: 0 examples [00:00, ? examples/s]Generating train split: 500 examples [00:00, 3825.59 examples/s]Generating train split: 500 examples [00:00, 3789.23 examples/s]
+  Fetching 035fba395593 for fasterxml/jackson...
+  Fetching 7c9e7c1e2acd for fasterxml/jackson...
+  Fetching 3ed7f4572534 for fasterxml/jackson...
+  Fetching ac00d648e9b4 for fasterxml/jackson...
+  Fetching dd733c4c5c48 for fasterxml/jackson...
+  Fetching 9684204f3073 for fasterxml/jackson...
+  Cache warm: 58 repos
+
+[contextbench_verified] 500 instances
+  RESET worktree NodeBB/NodeBB (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+  RESET worktree NodeBB/NodeBB (error: unable to create file public/language/hu/users.json: File exists
+warning: unable to unlink 'public/language/id': Is a directory
+fatal: cannot create directory at 'public/language/id': Is a directory)
+  RESET worktree NodeBB/NodeBB (error: unable to create file public/src/modules/iconSelect.js: File exists
+error: unable to create file public/src/modules/navigator.js: File exists
+error: unable to create file public/src/modules/search.js: File exists
+error: unable to create file public/src/modules/settings.js: File exists
+Warning: you are leaving 1 commit behind, not connected to
+any of your branches:
+
+  078f51fe81 aider-baseline-gold
+
+If you want to keep it by creating a new branch, this may be a good time
+to do so with:
+
+ git branch <new-branch-name> 078f51fe81
+
+HEAD is now at 7800016f2f chore(deps): update redis docker tag to v7.4.3 (#13358))
+  APPLY FAIL: error: '--index' outside a repository
+
+[WARN] contextbench_verified::SWE-Bench-Pro__javascript__maintenance__bugfix__09eb0d6d__7800016f2f1b status=apply_fail lang=javascript error=gold patch did not apply as commit
+  RESET worktree ansible/ansible (stale HEAD or dirty tree after checkout)
+[progress] 4/500 (1%) elapsed=36s eta~5560s apply_fail=1 ok=3 mean_file_recall=0.933
+  RESET worktree ansible/ansible (fatal: unable to write new index file)
+  RESET FAIL ansible__ansible: HEAD not restored (fatal: Unable to create '/cache/contextbench_repos/ansible__ansible/worktrees/ansible__ansible6/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.)
+  RESET worktree ansible/ansible (fatal: unable to write new index file)
+  RESET worktree ansible/ansible (fatal: unable to write new index file)
+  RESET worktree ansible/ansible (stale HEAD or dirty tree after checkout)
+[progress] 22/500 (4%) elapsed=71s eta~1572s apply_fail=1 ok=21 mean_file_recall=0.676
+[progress] 34/500 (7%) elapsed=102s eta~1408s apply_fail=1 ok=33 mean_file_recall=0.661
+[progress] 75/500 (15%) elapsed=133s eta~441s apply_fail=1 ok=74 mean_file_recall=0.756
+  RESET worktree django/django (fatal: unable to write new index file)
+  RESET worktree django/django (stale HEAD or dirty tree after checkout)
+  COMMIT FAIL: fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+
+[WARN] contextbench_verified::SWE-Bench-Verified__python__maintenance__bugfix__01527b89__06fd4df41afb status=apply_fail lang=python error=gold patch did not apply as commit
+  RESET worktree django/django (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+  APPLY FAIL: fatal: /cache/contextbench_repos/django__django/worktrees/django__django3/index: index file smaller than expected
+
+[WARN] contextbench_verified::SWE-Bench-Verified__python__maintenance__bugfix__cecff61c__0b0998dc151f status=apply_fail lang=python error=gold patch did not apply as commit
+  RESET worktree django/django (fatal: /cache/contextbench_repos/django__django/worktrees/django__django3/index: index file smaller than expected)
+[progress] 92/500 (18%) elapsed=166s eta~439s apply_fail=3 ok=89 mean_file_recall=0.773
+  RESET worktree django/django (stale HEAD or dirty tree after checkout)
+  RESET worktree django/django (stale HEAD or dirty tree after checkout)
+  RESET worktree django/django (fatal: unable to write new index file)
+[progress] 102/500 (20%) elapsed=198s eta~633s apply_fail=3 ok=99 mean_file_recall=0.786
+  RESET worktree django/django (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+  RESET worktree django/django (stale HEAD or dirty tree after checkout)
+  RESET worktree django/django (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+  RESET FAIL django__django: HEAD not restored (fatal: Unable to create '/cache/contextbench_repos/django__django/worktrees/django__django4/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.)
+  RESET FAIL django__django: HEAD not restored (fatal: cannot change to '/cache/contextbench_repos/worktrees/w1331/django__django': No such file or directory)
+  RESET worktree django/django (stale HEAD or dirty tree after checkout)
+  APPLY FAIL: error: '--index' outside a repository
+
+[WARN] contextbench_verified::SWE-Bench-Verified__python__maintenance__bugfix__227490c2__5a8e8f80bb82 status=apply_fail lang=python error=gold patch did not apply as commit
+  RESET worktree django/django (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+[progress] 112/500 (22%) elapsed=231s eta~824s apply_fail=4 ok=108 mean_file_recall=0.792
+  RESET worktree django/django (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+  APPLY FAIL: error: '--index' outside a repository
+
+[WARN] contextbench_verified::SWE-Bench-Verified__python__maintenance__bugfix__46dc77a5__69331bb851c3 status=apply_fail lang=python error=gold patch did not apply as commit
+  RESET worktree django/django (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+  RESET worktree django/django (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+  RESET worktree django/django (fatal: unable to write new index file)
+  RESET worktree django/django (error: unable to create file django/contrib/admindocs/locale/et/LC_MESSAGES/django.mo: File exists
+warning: unable to unlink 'django/contrib/admindocs/locale/eu': Is a directory
+fatal: cannot create directory at 'django/contrib/admindocs/locale/eu': Is a directory)
+  RESET FAIL django__django: HEAD not restored (fatal: cannot change to '/cache/contextbench_repos/worktrees/w1327/django__django': No such file or directory)
+[progress] 123/500 (25%) elapsed=263s eta~1007s apply_fail=5 ok=118 mean_file_recall=0.799
+  RESET worktree django/django (stale HEAD or dirty tree after checkout)
+  COMMIT FAIL: fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+
+[WARN] contextbench_verified::SWE-Bench-Verified__python__maintenance__bugfix__681ea2b6__884b4c27f506 status=apply_fail lang=python error=gold patch did not apply as commit
+  RESET worktree django/django (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+  RESET worktree django/django (fatal: Unable to create '/cache/contextbench_repos/django__django/worktrees/django__django11/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.)
+[progress] 137/500 (27%) elapsed=295s eta~1155s apply_fail=6 ok=131 mean_file_recall=0.819
+  RESET worktree django/django (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+[progress] 149/500 (30%) elapsed=326s eta~954s apply_fail=6 ok=143 mean_file_recall=0.811
+[progress] 160/500 (32%) elapsed=357s eta~925s apply_fail=6 ok=154 mean_file_recall=0.813
+[progress] 172/500 (34%) elapsed=389s eta~845s apply_fail=6 ok=166 mean_file_recall=0.816
+  WORKTREE/CHECKOUT FAIL 035fba395593: unreachable_commit (not in cache and fetch failed)
+[WARN] contextbench_verified::Multi-SWE-Bench__java__maintenance__bugfix__be0b5fff__035fba395593 status=clone_fail lang=java error=
+  WORKTREE/CHECKOUT FAIL 3ed7f4572534: unreachable_commit (not in cache and fetch failed)
+[WARN] contextbench_verified::Multi-SWE-Bench__java__maintenance__bugfix__36a08326__3ed7f4572534 status=clone_fail lang=java error=
+  WORKTREE/CHECKOUT FAIL 7c9e7c1e2acd: unreachable_commit (not in cache and fetch failed)
+[WARN] contextbench_verified::Multi-SWE-Bench__java__maintenance__bugfix__07d7817b__7c9e7c1e2acd status=clone_fail lang=java error=
+  WORKTREE/CHECKOUT FAIL 9684204f3073: unreachable_commit (not in cache and fetch failed)
+[WARN] contextbench_verified::Multi-SWE-Bench__java__maintenance__bugfix__9a3d9d3f__9684204f3073 status=clone_fail lang=java error=
+  WORKTREE/CHECKOUT FAIL ac00d648e9b4: unreachable_commit (not in cache and fetch failed)
+[WARN] contextbench_verified::Multi-SWE-Bench__java__maintenance__bugfix__ec4f6157__ac00d648e9b4 status=clone_fail lang=java error=
+  WORKTREE/CHECKOUT FAIL dd733c4c5c48: unreachable_commit (not in cache and fetch failed)
+[WARN] contextbench_verified::Multi-SWE-Bench__java__maintenance__bugfix__2bd87230__dd733c4c5c48 status=clone_fail lang=java error=
+[progress] 203/500 (41%) elapsed=426s eta~503s apply_fail=6 clone_fail=6 ok=191 mean_file_recall=0.802
+[progress] 210/500 (42%) elapsed=457s eta~567s apply_fail=6 clone_fail=6 ok=198 mean_file_recall=0.804
+[progress] 221/500 (44%) elapsed=493s eta~592s apply_fail=6 clone_fail=6 ok=209 mean_file_recall=0.788
+[progress] 236/500 (47%) elapsed=524s eta~676s apply_fail=6 clone_fail=6 ok=224 mean_file_recall=0.793
+[progress] 260/500 (52%) elapsed=555s eta~462s apply_fail=6 clone_fail=6 ok=248 mean_file_recall=0.784
+[progress] 276/500 (55%) elapsed=586s eta~334s apply_fail=6 clone_fail=6 ok=264 mean_file_recall=0.789
+[WARN] contextbench_verified::SWE-PolyBench__typescript__maintenance__bugfix__22615f27__1a599e2d1792 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/euaHXoLEVkVuX_TK/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/euaHXoLEVkVuX_TK/lib/pyth
+[WARN] contextbench_verified::SWE-PolyBench__typescript__maintenance__bugfix__2487b02a__384b03f26310 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/QMFBY1TSOwqVCvS-/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/QMFBY1TSOwqVCvS-/lib/pyth
+[WARN] contextbench_verified::SWE-PolyBench__typescript__maintenance__bugfix__48468065__440e61ffab2b status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/euaHXoLEVkVuX_TK/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/euaHXoLEVkVuX_TK/lib/pyth
+[WARN] contextbench_verified::SWE-PolyBench__typescript__maintenance__bugfix__16d1ff7a__88ffbc7a7a81 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/QMFBY1TSOwqVCvS-/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/QMFBY1TSOwqVCvS-/lib/pyth
+[WARN] contextbench_verified::SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be__a993ada9300a status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/vDtGoI89vmliJKsM/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/vDtGoI89vmliJKsM/lib/pyth
+[progress] 293/500 (59%) elapsed=655s eta~502s aider_error=5 apply_fail=6 clone_fail=6 ok=276 mean_file_recall=0.792
+[progress] 295/500 (59%) elapsed=769s eta~961s aider_error=5 apply_fail=6 clone_fail=6 ok=278 mean_file_recall=0.792
+[progress] 296/500 (59%) elapsed=873s eta~1386s aider_error=5 apply_fail=6 clone_fail=6 ok=279 mean_file_recall=0.790
+  RESET worktree mui/material (stale HEAD or dirty tree after checkout)
+  RESET worktree mui/material (fatal: unable to write new index file)
+  APPLY FAIL: error: '--index' outside a repository
+
+[WARN] contextbench_verified::Multi-SWE-Bench__typescript__maintenance__bugfix__8d36ca39__b00bdc767032 status=apply_fail lang=typescript error=gold patch did not apply as commit
+  RESET worktree mui/material (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+[progress] 299/500 (60%) elapsed=976s eta~1781s aider_error=5 apply_fail=7 clone_fail=6 ok=281 mean_file_recall=0.785
+[progress] 300/500 (60%) elapsed=1036s eta~2007s aider_error=5 apply_fail=7 clone_fail=6 ok=282 mean_file_recall=0.784
+[progress] 304/500 (61%) elapsed=1071s eta~2083s aider_error=5 apply_fail=7 clone_fail=6 ok=286 mean_file_recall=0.785
+[progress] 306/500 (61%) elapsed=1133s eta~2302s aider_error=5 apply_fail=7 clone_fail=6 ok=288 mean_file_recall=0.785
+[progress] 307/500 (61%) elapsed=1230s eta~2672s aider_error=5 apply_fail=7 clone_fail=6 ok=289 mean_file_recall=0.784
+[progress] 308/500 (62%) elapsed=1292s eta~2897s aider_error=5 apply_fail=7 clone_fail=6 ok=290 mean_file_recall=0.781
+[progress] 309/500 (62%) elapsed=1330s eta~3021s aider_error=5 apply_fail=7 clone_fail=6 ok=291 mean_file_recall=0.782
+[progress] 310/500 (62%) elapsed=1365s eta~3133s aider_error=5 apply_fail=7 clone_fail=6 ok=292 mean_file_recall=0.781
+[progress] 311/500 (62%) elapsed=1424s eta~3339s aider_error=5 apply_fail=7 clone_fail=6 ok=293 mean_file_recall=0.780
+  RESET FAIL mui__material-ui: HEAD not restored (fatal: Unable to create '/cache/contextbench_repos/mui__material-ui/worktrees/mui__material-ui5/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.)
+  RESET worktree mui/material-ui (fatal: unable to write new index file)
+[progress] 315/500 (63%) elapsed=1456s eta~3381s aider_error=5 apply_fail=7 clone_fail=6 ok=297 mean_file_recall=0.771
+[progress] 317/500 (63%) elapsed=1491s eta~3470s aider_error=5 apply_fail=7 clone_fail=6 ok=299 mean_file_recall=0.773
+  RESET FAIL mui__material-ui: HEAD not restored (fatal: Unable to create '/cache/contextbench_repos/mui__material-ui/worktrees/mui__material-ui/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.)
+  RESET worktree mui/material-ui (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+[progress] 322/500 (64%) elapsed=1538s eta~3467s aider_error=5 apply_fail=7 clone_fail=6 ok=304 mean_file_recall=0.770
+[progress] 326/500 (65%) elapsed=1604s eta~3609s aider_error=5 apply_fail=7 clone_fail=6 ok=308 mean_file_recall=0.768
+[progress] 328/500 (66%) elapsed=1636s eta~3644s aider_error=5 apply_fail=7 clone_fail=6 ok=310 mean_file_recall=0.768
+[progress] 331/500 (66%) elapsed=1668s eta~3659s aider_error=5 apply_fail=7 clone_fail=6 ok=313 mean_file_recall=0.764
+[progress] 336/500 (67%) elapsed=1716s eta~3699s aider_error=5 apply_fail=7 clone_fail=6 ok=318 mean_file_recall=0.760
+[progress] 343/500 (69%) elapsed=1746s eta~3471s aider_error=5 apply_fail=7 clone_fail=6 ok=325 mean_file_recall=0.759
+[progress] 350/500 (70%) elapsed=1783s eta~2282s aider_error=5 apply_fail=7 clone_fail=6 ok=332 mean_file_recall=0.756
+[progress] 358/500 (72%) elapsed=1815s eta~1405s aider_error=5 apply_fail=7 clone_fail=6 ok=340 mean_file_recall=0.749
+[progress] 362/500 (72%) elapsed=1845s eta~1171s aider_error=5 apply_fail=7 clone_fail=6 ok=344 mean_file_recall=0.746
+[progress] 377/500 (75%) elapsed=1875s eta~599s aider_error=5 apply_fail=7 clone_fail=6 ok=359 mean_file_recall=0.737
+[progress] 397/500 (79%) elapsed=1905s eta~286s aider_error=5 apply_fail=7 clone_fail=6 ok=379 mean_file_recall=0.742
+[progress] 420/500 (84%) elapsed=1935s eta~113s aider_error=5 apply_fail=7 clone_fail=6 ok=402 mean_file_recall=0.751
+[progress] 433/500 (87%) elapsed=1967s eta~114s aider_error=5 apply_fail=7 clone_fail=6 ok=415 mean_file_recall=0.752
+[progress] 442/500 (88%) elapsed=2000s eta~121s aider_error=5 apply_fail=7 clone_fail=6 ok=424 mean_file_recall=0.746
+[progress] 451/500 (90%) elapsed=2031s eta~119s aider_error=5 apply_fail=7 clone_fail=6 ok=433 mean_file_recall=0.742
+[progress] 464/500 (93%) elapsed=2064s eta~99s aider_error=5 apply_fail=7 clone_fail=6 ok=446 mean_file_recall=0.741
+[progress] 479/500 (96%) elapsed=2095s eta~59s aider_error=5 apply_fail=7 clone_fail=6 ok=461 mean_file_recall=0.744
+[progress] 500/500 (100%) elapsed=2122s eta=0s aider_error=5 apply_fail=7 clone_fail=6 ok=482 mean_file_recall=0.743
+
+Wrote per-benchmark JSON + PAPER_TABLE.md to results/sweep/aider_b64000_L-1_contextbench_verified

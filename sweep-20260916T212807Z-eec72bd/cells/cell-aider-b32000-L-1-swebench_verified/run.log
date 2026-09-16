@@ -1,0 +1,62 @@
+[INFO] memory probe OK: 184.3 GiB visible
+[INFO] disk probe OK: 754 GB free at /cache/contextbench_repos
+Method: aider_fair | budget=32000 τ=0.05 cbf=0.4 scoring=ego extra_env={}
+Skipping adapters not referenced by any manifest: contextbench, contextbench_verified, dcbench, multi_swebench, polybench, polybench500, swebench_lite
+  Cache warm: 12 repos
+
+[swebench_verified] 500 instances
+[progress] 6/500 (1%) elapsed=30s eta~1009s ok=6 mean_file_recall=0.708
+[progress] 19/500 (4%) elapsed=60s eta~1085s ok=19 mean_file_recall=0.855
+[progress] 31/500 (6%) elapsed=91s eta~1105s ok=31 mean_file_recall=0.831
+[progress] 42/500 (8%) elapsed=122s eta~1141s ok=42 mean_file_recall=0.851
+[progress] 55/500 (11%) elapsed=157s eta~1155s ok=55 mean_file_recall=0.862
+[progress] 71/500 (14%) elapsed=189s eta~1040s ok=71 mean_file_recall=0.893
+[progress] 82/500 (16%) elapsed=220s eta~1013s ok=82 mean_file_recall=0.895
+[progress] 94/500 (19%) elapsed=253s eta~1008s ok=94 mean_file_recall=0.887
+[progress] 110/500 (22%) elapsed=284s eta~942s ok=110 mean_file_recall=0.886
+[progress] 124/500 (25%) elapsed=319s eta~878s ok=124 mean_file_recall=0.897
+[progress] 138/500 (28%) elapsed=350s eta~821s ok=138 mean_file_recall=0.900
+[progress] 152/500 (30%) elapsed=381s eta~802s ok=152 mean_file_recall=0.896
+[progress] 165/500 (33%) elapsed=417s eta~803s ok=165 mean_file_recall=0.892
+  RESET worktree django/django (error: unable to unlink old 'tests/template_tests/syntax_tests/test_autoescape.py': No such file or directory
+fatal: unable to write new index file)
+  RESET FAIL django__django: HEAD not restored (fatal: Unable to create '/cache/contextbench_repos/django__django/worktrees/django__django35/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.)
+  RESET worktree django/django (fatal: unable to write new index file)
+  APPLY FAIL: error: '--index' outside a repository
+
+[WARN] swebench_verified::django__django-14373 status=apply_fail lang=python error=gold patch did not apply as commit
+  RESET worktree django/django (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+  RESET worktree django/django (stale HEAD or dirty tree after checkout)
+  RESET worktree django/django (stale HEAD or dirty tree after checkout)
+  APPLY FAIL: fatal: /cache/contextbench_repos/django__django/worktrees/django__django32/index: index file smaller than expected
+
+[WARN] swebench_verified::django__django-14122 status=apply_fail lang=python error=gold patch did not apply as commit
+[progress] 181/500 (36%) elapsed=449s eta~770s apply_fail=2 ok=179 mean_file_recall=0.875
+  RESET worktree django/django (fatal: /cache/contextbench_repos/django__django/worktrees/django__django32/index: index file smaller than expected)
+[progress] 193/500 (39%) elapsed=480s eta~753s apply_fail=2 ok=191 mean_file_recall=0.875
+[progress] 206/500 (41%) elapsed=513s eta~719s apply_fail=2 ok=204 mean_file_recall=0.872
+[progress] 219/500 (44%) elapsed=546s eta~690s apply_fail=2 ok=217 mean_file_recall=0.866
+[progress] 231/500 (46%) elapsed=579s eta~684s apply_fail=2 ok=229 mean_file_recall=0.861
+[progress] 243/500 (49%) elapsed=609s eta~674s apply_fail=2 ok=241 mean_file_recall=0.860
+[progress] 257/500 (51%) elapsed=642s eta~612s apply_fail=2 ok=255 mean_file_recall=0.860
+[progress] 270/500 (54%) elapsed=674s eta~560s apply_fail=2 ok=268 mean_file_recall=0.863
+[progress] 295/500 (59%) elapsed=704s eta~382s apply_fail=2 ok=293 mean_file_recall=0.868
+[progress] 343/500 (69%) elapsed=736s eta~104s apply_fail=2 ok=341 mean_file_recall=0.874
+[progress] 370/500 (74%) elapsed=773s eta~136s apply_fail=2 ok=368 mean_file_recall=0.877
+[progress] 400/500 (80%) elapsed=804s eta~116s apply_fail=2 ok=398 mean_file_recall=0.883
+[progress] 426/500 (85%) elapsed=841s eta~94s apply_fail=2 ok=424 mean_file_recall=0.887
+[progress] 439/500 (88%) elapsed=872s eta~99s apply_fail=2 ok=437 mean_file_recall=0.890
+[progress] 455/500 (91%) elapsed=902s eta~85s apply_fail=2 ok=453 mean_file_recall=0.887
+[progress] 470/500 (94%) elapsed=933s eta~67s apply_fail=2 ok=468 mean_file_recall=0.891
+[progress] 483/500 (97%) elapsed=964s eta~38s apply_fail=2 ok=481 mean_file_recall=0.892
+[progress] 498/500 (100%) elapsed=999s eta=≤630s (tail of 2) apply_fail=2 ok=496 mean_file_recall=0.889
+[progress] 500/500 (100%) elapsed=1000s eta=0s apply_fail=2 ok=498 mean_file_recall=0.889
+
+Wrote per-benchmark JSON + PAPER_TABLE.md to results/sweep/aider_b32000_L-1_swebench_verified

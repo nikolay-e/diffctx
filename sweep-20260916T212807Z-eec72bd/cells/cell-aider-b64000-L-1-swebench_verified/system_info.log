@@ -1,0 +1,94 @@
+=== uname -a ===
+Linux f178b39d33e9 6.8.0-138-generic #138-Ubuntu SMP PREEMPT_DYNAMIC Fri Jul 31 22:41:49 UTC 2026 x86_64 GNU/Linux
+
+=== /proc/cpuinfo (1 core) ===
+processor	: 0
+vendor_id	: AuthenticAMD
+cpu family	: 25
+model		: 1
+model name	: AMD EPYC-Milan Processor
+stepping	: 1
+microcode	: 0x1000065
+cpu MHz		: 2199.998
+cache size	: 512 KB
+physical id	: 0
+siblings	: 48
+core id		: 0
+cpu cores	: 24
+apicid		: 0
+initial apicid	: 0
+fpu		: yes
+fpu_exception	: yes
+cpuid level	: 13
+wp		: yes
+flags		: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm rep_good nopl cpuid extd_apicid tsc_known_freq pni pclmulqdq ssse3 fma cx16 pcid sse4_1 sse4_2 x2apic movbe popcnt aes xsave avx f16c rdrand hypervisor lahf_lm cmp_legacy cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw topoext perfctr_core ssbd ibrs ibpb stibp vmmcall fsgsbase bmi1 avx2 smep bmi2 erms invpcid rdseed adx smap clflushopt clwb sha_ni xsaveopt xsavec xgetbv1 xsaves clzero xsaveerptr wbnoinvd arat umip pku ospke rdpid fsrm
+bugs		: sysret_ss_attrs null_seg spectre_v1 spectre_v2 spec_store_bypass srso ibpb_no_ret tsa
+bogomips	: 4399.99
+TLB size	: 1024 4K pages
+clflush size	: 64
+cache_alignment	: 64
+address sizes	: 40 bits physical, 48 bits virtual
+power management:
+
+
+=== /proc/meminfo (head) ===
+MemTotal:       193203412 kB
+MemFree:        30510164 kB
+MemAvailable:   166534140 kB
+Buffers:         7854228 kB
+Cached:         113191028 kB
+
+=== df -h ===
+Filesystem      Size  Used Avail Use% Mounted on
+overlay         901G  114G  751G  14% /
+tmpfs            64M     0   64M   0% /dev
+shm             8.0G     0  8.0G   0% /dev/shm
+/dev/sda1       901G  114G  751G  14% /__w
+tmpfs            19G  1.5M   19G   1% /run/docker.sock
+tmpfs            93G     0   93G   0% /proc/acpi
+tmpfs            93G     0   93G   0% /proc/scsi
+tmpfs            93G     0   93G   0% /sys/firmware
+
+=== python ===
+Python 3.12.14
+
+=== pip freeze (head 30) ===
+aiohappyeyeballs==2.7.1
+aiohttp==3.14.3
+aiosignal==1.4.0
+anyio==4.15.1
+attrs==26.1.0
+certifi==2026.7.22
+charset-normalizer==3.5.1
+click==8.4.2
+datasets==5.0.1
+diffctx @ file:///tmp/wheels/diffctx-1.16.0-cp310-abi3-manylinux_2_34_x86_64.whl#sha256=9a3f9dc7bda49185caca78fc6daf57bc7f665ec79c03be2c2d6efc1ce2fb312c
+dill==0.4.1
+filelock==3.32.4
+frozenlist==1.8.0
+fsspec==2026.6.0
+h11==0.16.0
+hf-xet==1.6.0
+httpcore==1.0.9
+httpx==0.28.1
+huggingface_hub==1.31.0
+idna==3.19
+multidict==6.7.1
+multiprocess==0.70.19
+numpy==2.5.2
+packaging==26.3
+pandas==3.0.5
+pathspec==1.1.1
+Pebble==5.2.2
+propcache==0.5.2
+pyarrow==25.0.1
+python-dateutil==2.9.0.post0
+
+=== rustc ===
+no rustc
+
+=== cargo ===
+no cargo
+
+=== git ===
+git version 2.39.5

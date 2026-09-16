@@ -1,0 +1,39 @@
+[INFO] memory probe OK: 184.3 GiB visible
+[INFO] disk probe OK: 745 GB free at /cache/contextbench_repos
+Method: aider_fair | budget=128000 τ=0.05 cbf=0.4 scoring=ego extra_env={}
+Skipping adapters not referenced by any manifest: contextbench, contextbench_verified, dcbench, multi_swebench, polybench, polybench500, swebench_lite
+Generating test split:   0%|          | 0/500 [00:00<?, ? examples/s]Generating test split: 100%|██████████| 500/500 [00:00<00:00, 24185.81 examples/s]
+  Cache warm: 12 repos
+
+[swebench_verified] 500 instances
+[progress] 6/500 (1%) elapsed=30s eta~309s ok=6 mean_file_recall=0.917
+[progress] 21/500 (4%) elapsed=72s eta~1084s ok=21 mean_file_recall=0.952
+[progress] 33/500 (7%) elapsed=104s eta~1122s ok=33 mean_file_recall=0.970
+[progress] 46/500 (9%) elapsed=135s eta~1086s ok=46 mean_file_recall=0.957
+[progress] 60/500 (12%) elapsed=167s eta~1054s ok=60 mean_file_recall=0.967
+[progress] 71/500 (14%) elapsed=199s eta~1096s ok=71 mean_file_recall=0.972
+[progress] 83/500 (17%) elapsed=229s eta~1040s ok=83 mean_file_recall=0.976
+[progress] 98/500 (20%) elapsed=259s eta~999s ok=98 mean_file_recall=0.974
+[progress] 112/500 (22%) elapsed=290s eta~862s ok=112 mean_file_recall=0.978
+[progress] 124/500 (25%) elapsed=323s eta~855s ok=124 mean_file_recall=0.978
+[progress] 142/500 (28%) elapsed=357s eta~774s ok=142 mean_file_recall=0.981
+[progress] 157/500 (31%) elapsed=387s eta~744s ok=157 mean_file_recall=0.982
+[progress] 172/500 (34%) elapsed=421s eta~707s ok=172 mean_file_recall=0.984
+[progress] 189/500 (38%) elapsed=451s eta~645s ok=189 mean_file_recall=0.985
+[progress] 202/500 (40%) elapsed=481s eta~623s ok=202 mean_file_recall=0.986
+[progress] 219/500 (44%) elapsed=513s eta~582s ok=219 mean_file_recall=0.983
+[progress] 233/500 (47%) elapsed=544s eta~546s ok=233 mean_file_recall=0.980
+[progress] 248/500 (50%) elapsed=574s eta~522s ok=248 mean_file_recall=0.973
+[progress] 263/500 (53%) elapsed=604s eta~483s ok=263 mean_file_recall=0.967
+[progress] 285/500 (57%) elapsed=634s eta~365s ok=285 mean_file_recall=0.962
+[progress] 342/500 (68%) elapsed=664s eta~84s ok=342 mean_file_recall=0.959
+[progress] 373/500 (75%) elapsed=695s eta~99s ok=373 mean_file_recall=0.962
+[progress] 409/500 (82%) elapsed=725s eta~77s ok=409 mean_file_recall=0.965
+[progress] 431/500 (86%) elapsed=756s eta~73s ok=431 mean_file_recall=0.967
+[progress] 446/500 (89%) elapsed=788s eta~82s ok=446 mean_file_recall=0.968
+[progress] 461/500 (92%) elapsed=819s eta~74s ok=461 mean_file_recall=0.969
+[progress] 476/500 (95%) elapsed=852s eta~49s ok=476 mean_file_recall=0.970
+[progress] 494/500 (99%) elapsed=887s eta=≤630s (tail of 6) ok=494 mean_file_recall=0.969
+[progress] 500/500 (100%) elapsed=896s eta=0s ok=500 mean_file_recall=0.969
+
+Wrote per-benchmark JSON + PAPER_TABLE.md to results/sweep/aider_b128000_L-1_swebench_verified

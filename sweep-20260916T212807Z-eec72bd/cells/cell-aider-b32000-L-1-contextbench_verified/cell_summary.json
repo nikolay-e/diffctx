@@ -1,0 +1,301 @@
+{
+  "n": 494,
+  "ok": 472,
+  "ok_pct": 95.54655870445345,
+  "statuses": {
+    "ok": 472,
+    "apply_fail": 17,
+    "aider_error": 5
+  },
+  "errors": {
+    "gold patch did not apply as commit": 17,
+    "QueryError: Invalid node type at row 2, column 2: module\nTraceback (most recent call last):\n  File \"/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py\", line 128, in _handle_request\n    rm.get_repo_map(\n  File \"/github/home/.cache/uv/archive-v0/56NIk06qvLx41FRk/lib/python3.12/site-packages/aider/repomap.py\", line 135, in get_repo_map\n    files_listing = self.get_ranked_tags_map(\n                    ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/github/home/.cache/uv/archive-v0/56NIk06qvLx41FRk/lib/pyth": 2,
+    "QueryError: Invalid node type at row 2, column 2: module\nTraceback (most recent call last):\n  File \"/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py\", line 128, in _handle_request\n    rm.get_repo_map(\n  File \"/github/home/.cache/uv/archive-v0/P5GsSt57EH4uRKbp/lib/python3.12/site-packages/aider/repomap.py\", line 135, in get_repo_map\n    files_listing = self.get_ranked_tags_map(\n                    ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/github/home/.cache/uv/archive-v0/P5GsSt57EH4uRKbp/lib/pyth": 1,
+    "QueryError: Invalid node type at row 2, column 2: module\nTraceback (most recent call last):\n  File \"/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py\", line 128, in _handle_request\n    rm.get_repo_map(\n  File \"/github/home/.cache/uv/archive-v0/kgvsu-0-kNjXDIxE/lib/python3.12/site-packages/aider/repomap.py\", line 135, in get_repo_map\n    files_listing = self.get_ranked_tags_map(\n                    ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/github/home/.cache/uv/archive-v0/kgvsu-0-kNjXDIxE/lib/pyth": 1,
+    "QueryError: Invalid node type at row 2, column 2: module\nTraceback (most recent call last):\n  File \"/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py\", line 128, in _handle_request\n    rm.get_repo_map(\n  File \"/github/home/.cache/uv/archive-v0/OxSY30T755MsiixH/lib/python3.12/site-packages/aider/repomap.py\", line 135, in get_repo_map\n    files_listing = self.get_ranked_tags_map(\n                    ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/github/home/.cache/uv/archive-v0/OxSY30T755MsiixH/lib/pyth": 1
+  },
+  "file_recall_ok_only": 0.6623357446486603,
+  "file_recall": {
+    "mean": 0.632839011081311,
+    "median": 0.7207792207792207,
+    "p25": 0.28928571428571426,
+    "p75": 1.0,
+    "p95": 1.0,
+    "p99": 1.0,
+    "max": 1.0,
+    "std": 0.3942495414427082,
+    "hist": {
+      "perfect_pct": 45.34412955465587,
+      "zero_pct": 17.611336032388664,
+      "partial_pct": 37.044534412955464
+    }
+  },
+  "file_precision": {
+    "mean": 0.013456215346485959,
+    "median": 0.007518796992481203,
+    "p25": 0.004098360655737705,
+    "p75": 0.01603208556149733,
+    "p95": 0.04713541666666664,
+    "p99": 0.09116707616707614,
+    "max": 0.13513513513513514,
+    "std": 0.01716249981880264
+  },
+  "file_fbeta": {
+    "f0.5": {
+      "mean": 0.01652561884653367,
+      "median": 0.009380863039399624
+    },
+    "f1": {
+      "mean": 0.025320697275344223,
+      "median": 0.014925373134328356
+    },
+    "f2": {
+      "mean": 0.055779995411262585,
+      "median": 0.03571428571428572
+    }
+  },
+  "fragment_recall": null,
+  "fragment_precision": null,
+  "fragment_fbeta": null,
+  "line_f1": null,
+  "line_precision": null,
+  "line_recall": null,
+  "elapsed_seconds": {
+    "mean": 37.928985749048586,
+    "median": 17.019153861999996,
+    "p25": 5.827909735750026,
+    "p75": 25.422231674999978,
+    "p95": 165.06835257824923,
+    "p99": 429.44858986616015,
+    "max": 475.5720222309999,
+    "std": 84.93629238475684
+  },
+  "used_tokens": {
+    "mean": 29622.186234817815,
+    "median": 31611.0,
+    "p25": 29044.5,
+    "p75": 34039.75,
+    "p95": 36229.1,
+    "p99": 37695.82,
+    "max": 44422.0,
+    "std": 8498.462225134454
+  },
+  "by_language": {
+    "python": {
+      "n": 266.0,
+      "file_recall": 0.6900701428896917,
+      "file_precision": 0.010149826563985963,
+      "f1": 0.019718077422703272,
+      "f2": 0.04564873968701744
+    },
+    "rust": {
+      "n": 20.0,
+      "file_recall": 0.7018462823725982,
+      "file_precision": 0.034814707540410404,
+      "f1": 0.05854508865322368,
+      "f2": 0.11464404738076699
+    },
+    "javascript": {
+      "n": 60.0,
+      "file_recall": 0.4635250166500166,
+      "file_precision": 0.013418629262986996,
+      "f1": 0.02567699032112283,
+      "f2": 0.05709975095315545
+    },
+    "java": {
+      "n": 9.0,
+      "file_recall": 0.7932263814616756,
+      "file_precision": 0.01570723925710637,
+      "f1": 0.030443868921106565,
+      "f2": 0.06985743529565815
+    },
+    "cpp": {
+      "n": 10.0,
+      "file_recall": 0.5454761904761904,
+      "file_precision": 0.03095400637171779,
+      "f1": 0.05818038479715791,
+      "f2": 0.12350622306878825
+    },
+    "go": {
+      "n": 40.0,
+      "file_recall": 0.7621507668382669,
+      "file_precision": 0.021240397061802765,
+      "f1": 0.039007789116196054,
+      "f2": 0.08108472947229828
+    },
+    "typescript": {
+      "n": 66.0,
+      "file_recall": 0.46827647120044785,
+      "file_precision": 0.008854705460920464,
+      "f1": 0.016484482771409775,
+      "f2": 0.03582987261456626
+    },
+    "c": {
+      "n": 23.0,
+      "file_recall": 0.5751873786251946,
+      "file_precision": 0.02439882385358142,
+      "f1": 0.045556894409856816,
+      "f2": 0.09660639355696976
+    }
+  },
+  "apply_modes": {
+    "strict": 472
+  },
+  "n_selected": {
+    "mean": 191.32415254237287,
+    "median": 163.5,
+    "p25": 123.0,
+    "p75": 223.0,
+    "p95": 346.0499999999999,
+    "p99": 930.7200000000096,
+    "max": 1798.0,
+    "std": 170.08326353671242
+  },
+  "n_gold": {
+    "mean": 4.220338983050848,
+    "median": 2.0,
+    "p25": 1.0,
+    "p75": 5.0,
+    "p95": 14.0,
+    "p99": 25.640000000000327,
+    "max": 162.0,
+    "std": 8.77364658858343
+  },
+  "selected_to_gold_ratio": {
+    "mean": 104.23177624842552,
+    "median": 70.375,
+    "p25": 29.767857142857142,
+    "p75": 143.25,
+    "p95": 265.0,
+    "p99": 445.9700000000019,
+    "max": 1652.0,
+    "std": 128.29489761465499
+  },
+  "gold_to_changed_ratio": {
+    "mean": 1.7329395983651288,
+    "median": 1.0,
+    "p25": 1.0,
+    "p75": 2.0,
+    "p95": 4.449999999999989,
+    "p99": 6.2900000000000205,
+    "max": 14.0,
+    "std": 1.3572517432074498
+  },
+  "patch_size": {
+    "n_changed_files": {
+      "mean": 3.1228813559322033,
+      "median": 1.0,
+      "p25": 1.0,
+      "p75": 3.0,
+      "p95": 9.0,
+      "p99": 27.610000000000184,
+      "max": 184.0,
+      "std": 9.410244246699113
+    },
+    "n_hunks": {
+      "mean": 6.536016949152542,
+      "median": 2.0,
+      "p25": 1.0,
+      "p75": 6.0,
+      "p95": 24.0,
+      "p99": 54.25000000000051,
+      "max": 292.0,
+      "std": 17.572211047118074
+    },
+    "diff_size_lines": {
+      "mean": 61.50847457627118,
+      "median": 12.0,
+      "p25": 4.0,
+      "p75": 50.25,
+      "p95": 261.1999999999998,
+      "p99": 741.0200000000008,
+      "max": 1347.0,
+      "std": 141.5524844726681
+    },
+    "n_gold_lines": {
+      "mean": 251.0656779661017,
+      "median": 141.0,
+      "p25": 60.75,
+      "p75": 322.75,
+      "p95": 834.6999999999999,
+      "p99": 1526.9600000000066,
+      "max": 2501.0,
+      "std": 310.91283372985777
+    }
+  },
+  "gold_characterization": {
+    "single_file_pct": 35.62753036437247,
+    "multi_file_pct": 59.91902834008097,
+    "whole_file_pct": 0.0,
+    "zero_gold_pct": 4.4534412955465585
+  },
+  "recall_by_gold_size": {
+    "1": {
+      "n": 176.0,
+      "file_recall": 0.8522727272727273,
+      "file_precision": 0.00613879120232842,
+      "f1": 0.012156213840037601,
+      "f2": 0.029530787540519507
+    },
+    "2-3": {
+      "n": 125.0,
+      "file_recall": 0.636,
+      "file_precision": 0.01279094829345756,
+      "f1": 0.0247464627978018,
+      "f2": 0.05670762464886657
+    },
+    "4-7": {
+      "n": 115.0,
+      "file_recall": 0.5398757763975156,
+      "file_precision": 0.01884540663445844,
+      "f1": 0.03607234533753539,
+      "f2": 0.0802248018913111
+    },
+    "8-15": {
+      "n": 42.0,
+      "file_recall": 0.3949832574832575,
+      "file_precision": 0.028564049313106327,
+      "f1": 0.052172308613571396,
+      "f2": 0.10522348162787268
+    },
+    "16+": {
+      "n": 14.0,
+      "file_recall": 0.3176757410111829,
+      "file_precision": 0.04294019705420572,
+      "f1": 0.06686187806154537,
+      "f2": 0.11601482850375246
+    }
+  },
+  "recall_by_difficulty_ratio": {
+    "\u22641.0": {
+      "n": 271.0,
+      "file_recall": 0.7374226678274389,
+      "file_precision": 0.010020890876791321,
+      "f1": 0.0191528955468852
+    },
+    "1.0-1.5": {
+      "n": 39.0,
+      "file_recall": 0.5278965594449071,
+      "file_precision": 0.03090103101346154,
+      "f1": 0.05404702078889317
+    },
+    "1.5-2.0": {
+      "n": 75.0,
+      "file_recall": 0.6192413697413698,
+      "file_precision": 0.016624905659016743,
+      "f1": 0.03168669293731586
+    },
+    "2.0-3.0": {
+      "n": 40.0,
+      "file_recall": 0.5073774509803921,
+      "file_precision": 0.014709730401753888,
+      "f1": 0.028093116432341036
+    },
+    "3.0+": {
+      "n": 47.0,
+      "file_recall": 0.5415906788247214,
+      "file_precision": 0.01896407667089796,
+      "f1": 0.03638147494585091
+    }
+  }
+}

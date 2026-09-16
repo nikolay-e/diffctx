@@ -1,0 +1,117 @@
+[INFO] memory probe OK: 184.3 GiB visible
+[INFO] disk probe OK: 799 GB free at /cache/contextbench_repos
+Method: aider_fair | budget=128000 τ=0.05 cbf=0.4 scoring=ego extra_env={}
+Skipping adapters not referenced by any manifest: contextbench, dcbench, multi_swebench, polybench, polybench500, swebench_lite, swebench_verified
+  Fetching 7c9e7c1e2acd for fasterxml/jackson...
+  Fetching 035fba395593 for fasterxml/jackson...
+  Fetching 3ed7f4572534 for fasterxml/jackson...
+  Fetching 9684204f3073 for fasterxml/jackson...
+  Fetching ac00d648e9b4 for fasterxml/jackson...
+  Fetching dd733c4c5c48 for fasterxml/jackson...
+  Cache warm: 58 repos
+
+[contextbench_verified] 500 instances
+[progress] 11/500 (2%) elapsed=36s eta~1654s ok=11 mean_file_recall=0.745
+[progress] 29/500 (6%) elapsed=72s eta~1179s ok=29 mean_file_recall=0.737
+[progress] 48/500 (10%) elapsed=102s eta~963s ok=48 mean_file_recall=0.744
+[progress] 88/500 (18%) elapsed=135s eta~333s ok=88 mean_file_recall=0.826
+[progress] 96/500 (19%) elapsed=181s eta~655s ok=96 mean_file_recall=0.834
+[progress] 107/500 (21%) elapsed=216s eta~844s ok=107 mean_file_recall=0.848
+[progress] 121/500 (24%) elapsed=250s eta~1003s ok=121 mean_file_recall=0.857
+[progress] 132/500 (26%) elapsed=282s eta~1163s ok=132 mean_file_recall=0.867
+[progress] 144/500 (29%) elapsed=312s eta~1086s ok=144 mean_file_recall=0.875
+[progress] 156/500 (31%) elapsed=343s eta~895s ok=156 mean_file_recall=0.874
+[progress] 167/500 (33%) elapsed=375s eta~890s ok=167 mean_file_recall=0.877
+  WORKTREE/CHECKOUT FAIL 035fba395593: unreachable_commit (not in cache and fetch failed)
+[WARN] contextbench_verified::Multi-SWE-Bench__java__maintenance__bugfix__be0b5fff__035fba395593 status=clone_fail lang=java error=
+  WORKTREE/CHECKOUT FAIL 3ed7f4572534: unreachable_commit (not in cache and fetch failed)
+[WARN] contextbench_verified::Multi-SWE-Bench__java__maintenance__bugfix__36a08326__3ed7f4572534 status=clone_fail lang=java error=
+  WORKTREE/CHECKOUT FAIL 7c9e7c1e2acd: unreachable_commit (not in cache and fetch failed)
+[WARN] contextbench_verified::Multi-SWE-Bench__java__maintenance__bugfix__07d7817b__7c9e7c1e2acd status=clone_fail lang=java error=
+  WORKTREE/CHECKOUT FAIL 9684204f3073: unreachable_commit (not in cache and fetch failed)
+[WARN] contextbench_verified::Multi-SWE-Bench__java__maintenance__bugfix__9a3d9d3f__9684204f3073 status=clone_fail lang=java error=
+  WORKTREE/CHECKOUT FAIL ac00d648e9b4: unreachable_commit (not in cache and fetch failed)
+[WARN] contextbench_verified::Multi-SWE-Bench__java__maintenance__bugfix__ec4f6157__ac00d648e9b4 status=clone_fail lang=java error=
+  WORKTREE/CHECKOUT FAIL dd733c4c5c48: unreachable_commit (not in cache and fetch failed)
+[WARN] contextbench_verified::Multi-SWE-Bench__java__maintenance__bugfix__2bd87230__dd733c4c5c48 status=clone_fail lang=java error=
+[progress] 199/500 (40%) elapsed=407s eta~487s clone_fail=6 ok=193 mean_file_recall=0.864
+[progress] 205/500 (41%) elapsed=439s eta~574s clone_fail=6 ok=199 mean_file_recall=0.861
+[progress] 214/500 (43%) elapsed=471s eta~591s clone_fail=6 ok=208 mean_file_recall=0.854
+[progress] 224/500 (45%) elapsed=507s eta~642s clone_fail=6 ok=218 mean_file_recall=0.849
+[progress] 240/500 (48%) elapsed=537s eta~724s clone_fail=6 ok=234 mean_file_recall=0.851
+[progress] 264/500 (53%) elapsed=567s eta~454s clone_fail=6 ok=258 mean_file_recall=0.847
+[progress] 278/500 (56%) elapsed=597s eta~353s clone_fail=6 ok=272 mean_file_recall=0.846
+[WARN] contextbench_verified::SWE-PolyBench__typescript__maintenance__bugfix__22615f27__1a599e2d1792 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/TNPMZ4fSCvKHlAxQ/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/TNPMZ4fSCvKHlAxQ/lib/pyth
+[WARN] contextbench_verified::SWE-PolyBench__typescript__maintenance__bugfix__2487b02a__384b03f26310 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/TNPMZ4fSCvKHlAxQ/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/TNPMZ4fSCvKHlAxQ/lib/pyth
+[WARN] contextbench_verified::SWE-PolyBench__typescript__maintenance__bugfix__48468065__440e61ffab2b status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/TNPMZ4fSCvKHlAxQ/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/TNPMZ4fSCvKHlAxQ/lib/pyth
+[WARN] contextbench_verified::SWE-PolyBench__typescript__maintenance__bugfix__16d1ff7a__88ffbc7a7a81 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/TNPMZ4fSCvKHlAxQ/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/TNPMZ4fSCvKHlAxQ/lib/pyth
+[WARN] contextbench_verified::SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be__a993ada9300a status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/TNPMZ4fSCvKHlAxQ/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/TNPMZ4fSCvKHlAxQ/lib/pyth
+[progress] 293/500 (59%) elapsed=669s eta~539s aider_error=5 clone_fail=6 ok=282 mean_file_recall=0.847
+[progress] 295/500 (59%) elapsed=792s eta~1033s aider_error=5 clone_fail=6 ok=284 mean_file_recall=0.848
+[progress] 296/500 (59%) elapsed=1001s eta~1897s aider_error=5 clone_fail=6 ok=285 mean_file_recall=0.845
+[progress] 297/500 (59%) elapsed=1038s eta~2038s aider_error=5 clone_fail=6 ok=286 mean_file_recall=0.846
+[progress] 301/500 (60%) elapsed=1070s eta~2095s aider_error=5 clone_fail=6 ok=290 mean_file_recall=0.848
+[progress] 304/500 (61%) elapsed=1138s eta~2325s aider_error=5 clone_fail=6 ok=293 mean_file_recall=0.848
+[progress] 305/500 (61%) elapsed=1171s eta~2445s aider_error=5 clone_fail=6 ok=294 mean_file_recall=0.846
+[progress] 306/500 (61%) elapsed=1229s eta~2658s aider_error=5 clone_fail=6 ok=295 mean_file_recall=0.845
+[progress] 307/500 (61%) elapsed=1433s eta~3439s aider_error=5 clone_fail=6 ok=296 mean_file_recall=0.846
+[progress] 309/500 (62%) elapsed=1480s eta~3582s aider_error=5 clone_fail=6 ok=298 mean_file_recall=0.844
+[progress] 314/500 (63%) elapsed=1518s eta~3608s aider_error=5 clone_fail=6 ok=303 mean_file_recall=0.842
+[progress] 316/500 (63%) elapsed=1579s eta~3792s aider_error=5 clone_fail=6 ok=305 mean_file_recall=0.843
+[progress] 319/500 (64%) elapsed=1613s eta~3778s aider_error=5 clone_fail=6 ok=308 mean_file_recall=0.842
+[progress] 322/500 (64%) elapsed=1649s eta~3839s aider_error=5 clone_fail=6 ok=311 mean_file_recall=0.840
+[progress] 324/500 (65%) elapsed=1712s eta~4012s aider_error=5 clone_fail=6 ok=313 mean_file_recall=0.841
+[progress] 326/500 (65%) elapsed=1769s eta~4165s aider_error=5 clone_fail=6 ok=315 mean_file_recall=0.842
+[progress] 329/500 (66%) elapsed=1806s eta~4175s aider_error=5 clone_fail=6 ok=318 mean_file_recall=0.839
+[progress] 330/500 (66%) elapsed=1853s eta~4305s aider_error=5 clone_fail=6 ok=319 mean_file_recall=0.840
+[progress] 335/500 (67%) elapsed=1884s eta~4261s aider_error=5 clone_fail=6 ok=324 mean_file_recall=0.838
+[progress] 342/500 (68%) elapsed=1919s eta~4030s aider_error=5 clone_fail=6 ok=331 mean_file_recall=0.835
+[progress] 352/500 (70%) elapsed=1950s eta~2580s aider_error=5 clone_fail=6 ok=341 mean_file_recall=0.833
+[progress] 359/500 (72%) elapsed=1989s eta~1451s aider_error=5 clone_fail=6 ok=348 mean_file_recall=0.827
+[progress] 372/500 (74%) elapsed=2021s eta~911s aider_error=5 clone_fail=6 ok=361 mean_file_recall=0.821
+[progress] 395/500 (79%) elapsed=2052s eta~262s aider_error=5 clone_fail=6 ok=384 mean_file_recall=0.815
+[progress] 415/500 (83%) elapsed=2087s eta~134s aider_error=5 clone_fail=6 ok=404 mean_file_recall=0.820
+[progress] 428/500 (86%) elapsed=2122s eta~140s aider_error=5 clone_fail=6 ok=417 mean_file_recall=0.822
+[progress] 436/500 (87%) elapsed=2160s eta~161s aider_error=5 clone_fail=6 ok=425 mean_file_recall=0.820
+[progress] 445/500 (89%) elapsed=2196s eta~161s aider_error=5 clone_fail=6 ok=434 mean_file_recall=0.816
+[progress] 456/500 (91%) elapsed=2227s eta~140s aider_error=5 clone_fail=6 ok=445 mean_file_recall=0.813
+[progress] 470/500 (94%) elapsed=2262s eta~103s aider_error=5 clone_fail=6 ok=459 mean_file_recall=0.816
+[progress] 494/500 (99%) elapsed=2292s eta=≤630s (tail of 6) aider_error=5 clone_fail=6 ok=483 mean_file_recall=0.813
+[progress] 500/500 (100%) elapsed=2300s eta=0s aider_error=5 clone_fail=6 ok=489 mean_file_recall=0.812
+
+Wrote per-benchmark JSON + PAPER_TABLE.md to results/sweep/aider_b128000_L-1_contextbench_verified

@@ -1,0 +1,460 @@
+[INFO] memory probe OK: 184.3 GiB visible
+[INFO] disk probe OK: 770 GB free at /cache/contextbench_repos
+Method: aider_fair | budget=128000 τ=0.05 cbf=0.4 scoring=ego extra_env={}
+Skipping adapters not referenced by any manifest: contextbench, contextbench_verified, dcbench, multi_swebench, polybench, swebench_lite, swebench_verified
+  Cache warm: 21 repos
+
+[polybench500] 500 instances
+  APPLY TOLERANT (--ignore-whitespace): strict apply said error: patch failed: dubbo-common/src/main/java/org/apache/dubbo/common/utils/StringUtils.java:55
+error: dubbo-common/src/main/java/org/apache/dubbo/common/utils/StringUtils.java: patch does not apply
+  APPLY TOLERANT (--ignore-whitespace): strict apply said error: patch failed: dubbo-common/src/main/java/org/apache/dubbo/common/URL.java:1297
+error: dubbo-common/src/main/java/org/apache/dubbo/common/URL.java: patch does not apply
+error: patch failed: dubb
+[progress] 9/500 (2%) elapsed=31s eta~1733s ok=9 mean_file_recall=0.699
+  APPLY TOLERANT (--ignore-whitespace): strict apply said error: patch failed: dubbo-rpc/dubbo-rpc-api/src/main/java/com/alibaba/dubbo/rpc/support/MockInvoker.java:147
+error: dubbo-rpc/dubbo-rpc-api/src/main/java/com/alibaba/dubbo/rpc/support/MockInvoker.jav
+[progress] 20/500 (4%) elapsed=62s eta~1500s ok=20 mean_file_recall=0.628
+[progress] 32/500 (6%) elapsed=93s eta~1362s ok=32 mean_file_recall=0.609
+[progress] 50/500 (10%) elapsed=126s eta~1135s ok=50 mean_file_recall=0.637
+  APPLY TOLERANT (--ignore-whitespace): strict apply said error: patch failed: Troubleshooting.md:17
+error: Troubleshooting.md: patch does not apply
+
+  APPLY TOLERANT (--ignore-whitespace): strict apply said error: patch failed: Troubleshooting.md:313
+error: Troubleshooting.md: patch does not apply
+
+[progress] 99/500 (20%) elapsed=165s eta~320s ok=99 mean_file_recall=0.697
+[progress] 102/500 (20%) elapsed=204s eta~572s ok=102 mean_file_recall=0.701
+[progress] 113/500 (23%) elapsed=237s eta~747s ok=113 mean_file_recall=0.700
+[progress] 124/500 (25%) elapsed=269s eta~944s ok=124 mean_file_recall=0.708
+[progress] 132/500 (26%) elapsed=304s eta~1154s ok=132 mean_file_recall=0.704
+[progress] 138/500 (28%) elapsed=334s eta~1339s ok=138 mean_file_recall=0.705
+[progress] 144/500 (29%) elapsed=366s eta~1540s ok=144 mean_file_recall=0.701
+[progress] 153/500 (31%) elapsed=406s eta~1408s ok=153 mean_file_recall=0.697
+[progress] 158/500 (32%) elapsed=438s eta~1542s ok=158 mean_file_recall=0.698
+[progress] 170/500 (34%) elapsed=468s eta~1450s ok=170 mean_file_recall=0.710
+[progress] 198/500 (40%) elapsed=499s eta~689s ok=198 mean_file_recall=0.736
+[WARN] polybench500::microsoft__vscode-179884 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[WARN] polybench500::microsoft__vscode-175682 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[WARN] polybench500::microsoft__vscode-191602 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[WARN] polybench500::microsoft__vscode-159554 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[progress] 217/500 (43%) elapsed=529s eta~376s aider_error=4 ok=213 mean_file_recall=0.750
+[WARN] polybench500::microsoft__vscode-168788 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[WARN] polybench500::microsoft__vscode-171718 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[WARN] polybench500::microsoft__vscode-155261 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[WARN] polybench500::microsoft__vscode-123112 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[WARN] polybench500::microsoft__vscode-152802 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[WARN] polybench500::microsoft__vscode-174679 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[WARN] polybench500::microsoft__vscode-190351 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[WARN] polybench500::microsoft__vscode-164226 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[WARN] polybench500::microsoft__vscode-128931 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[WARN] polybench500::microsoft__vscode-181517 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[WARN] polybench500::microsoft__vscode-127257 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[WARN] polybench500::microsoft__vscode-169916 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[WARN] polybench500::microsoft__vscode-149380 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[WARN] polybench500::microsoft__vscode-178513 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[WARN] polybench500::microsoft__vscode-178291 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[WARN] polybench500::microsoft__vscode-148563 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[WARN] polybench500::microsoft__vscode-124621 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[WARN] polybench500::microsoft__vscode-150052 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[WARN] polybench500::microsoft__vscode-158371 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[WARN] polybench500::microsoft__vscode-132041 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[progress] 240/500 (48%) elapsed=560s eta~359s aider_error=24 ok=216 mean_file_recall=0.754
+[WARN] polybench500::microsoft__vscode-161597 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[WARN] polybench500::microsoft__vscode-148751 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[WARN] polybench500::microsoft__vscode-159031 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[WARN] polybench500::microsoft__vscode-122796 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[WARN] polybench500::microsoft__vscode-146962 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[WARN] polybench500::microsoft__vscode-159670 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[WARN] polybench500::microsoft__vscode-165197 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[WARN] polybench500::microsoft__vscode-156733 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[WARN] polybench500::microsoft__vscode-178694 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[WARN] polybench500::microsoft__vscode-118226 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[WARN] polybench500::microsoft__vscode-130088 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[WARN] polybench500::microsoft__vscode-166853 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[WARN] polybench500::microsoft__vscode-182669 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/xXvpWwnTVysne-YW/lib/pyth
+[progress] 254/500 (51%) elapsed=604s eta~481s aider_error=37 ok=217 mean_file_recall=0.750
+  RESET worktree mui/material-ui (stale HEAD or dirty tree after checkout)
+[progress] 264/500 (53%) elapsed=643s eta~558s aider_error=37 ok=227 mean_file_recall=0.746
+  RESET worktree mui/material-ui (fatal: unable to write new index file)
+[progress] 273/500 (55%) elapsed=730s eta~876s aider_error=37 ok=236 mean_file_recall=0.729
+  RESET FAIL mui__material-ui: HEAD not restored (fatal: Unable to create '/cache/contextbench_repos/mui__material-ui/worktrees/mui__material-ui34/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.)
+  RESET worktree mui/material-ui (fatal: unable to write new index file)
+[progress] 276/500 (55%) elapsed=764s eta~1006s aider_error=37 ok=239 mean_file_recall=0.724
+  RESET worktree mui/material-ui (stale HEAD or dirty tree after checkout)
+[progress] 281/500 (56%) elapsed=822s eta~1217s aider_error=37 ok=244 mean_file_recall=0.722
+  RESET worktree mui/material-ui (fatal: /cache/contextbench_repos/mui__material-ui/worktrees/mui__material-ui38/index: index file smaller than expected)
+[progress] 283/500 (57%) elapsed=866s eta~1387s aider_error=37 ok=246 mean_file_recall=0.720
+  RESET FAIL mui__material-ui: HEAD not restored (fatal: Unable to create '/cache/contextbench_repos/mui__material-ui/worktrees/mui__material-ui36/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.)
+  RESET worktree mui/material-ui (stale HEAD or dirty tree after checkout)
+  RESET FAIL mui__material-ui: HEAD not restored (fatal: Unable to create '/cache/contextbench_repos/mui__material-ui/worktrees/mui__material-ui34/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.)
+  RESET worktree mui/material-ui (fatal: not a git repository: /cache/contextbench_repos/mui__material-ui/worktrees/mui__material-ui34)
+  COMMIT FAIL: fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+
+[WARN] polybench500::mui__material-ui-19612 status=apply_fail lang=typescript error=gold patch did not apply as commit
+  RESET worktree mui/material-ui (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+  RESET worktree mui/material-ui (fatal: unable to write new index file)
+  APPLY FAIL: error: '--index' outside a repository
+
+[WARN] polybench500::mui__material-ui-37118 status=apply_fail lang=typescript error=gold patch did not apply as commit
+  RESET worktree mui/material-ui (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+[progress] 290/500 (58%) elapsed=938s eta~1611s aider_error=37 apply_fail=2 ok=251 mean_file_recall=0.711
+[progress] 292/500 (58%) elapsed=983s eta~1772s aider_error=37 apply_fail=2 ok=253 mean_file_recall=0.710
+  RESET FAIL mui__material-ui: HEAD not restored (fatal: Unable to create '/cache/contextbench_repos/mui__material-ui/worktrees/mui__material-ui31/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.)
+  RESET worktree mui/material-ui (fatal: unable to write new index file)
+  APPLY FAIL: error: '--index' outside a repository
+
+[WARN] polybench500::mui__material-ui-37908 status=apply_fail lang=typescript error=gold patch did not apply as commit
+  RESET worktree mui/material-ui (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+[progress] 297/500 (59%) elapsed=1038s eta~1932s aider_error=37 apply_fail=3 ok=257 mean_file_recall=0.711
+  RESET FAIL mui__material-ui: HEAD not restored (fatal: Unable to create '/cache/contextbench_repos/mui__material-ui/worktrees/mui__material-ui32/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.)
+[progress] 299/500 (60%) elapsed=1073s eta~2039s aider_error=37 apply_fail=3 ok=259 mean_file_recall=0.712
+  RESET worktree mui/material-ui (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+  APPLY FAIL: fatal: Unable to create '/cache/contextbench_repos/mui__material-ui/worktrees/mui__material-ui29/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fai
+[WARN] polybench500::mui__material-ui-13582 status=apply_fail lang=typescript error=gold patch did not apply as commit
+  RESET worktree mui/material-ui (fatal: unable to write new index file)
+  RESET FAIL mui__material-ui: HEAD not restored (fatal: Unable to create '/cache/contextbench_repos/mui__material-ui/worktrees/mui__material-ui34/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.)
+[progress] 302/500 (60%) elapsed=1105s eta~2112s aider_error=37 apply_fail=4 ok=261 mean_file_recall=0.713
+  RESET worktree mui/material-ui (fatal: unable to write new index file)
+  RESET FAIL mui__material-ui: HEAD not restored (fatal: Unable to create '/cache/contextbench_repos/mui__material-ui/worktrees/mui__material-ui35/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.)
+  RESET worktree mui/material-ui (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+[progress] 306/500 (61%) elapsed=1207s eta~2348s aider_error=37 apply_fail=4 ok=265 mean_file_recall=0.710
+[progress] 309/500 (62%) elapsed=1250s eta~2469s aider_error=37 apply_fail=4 ok=268 mean_file_recall=0.707
+[progress] 311/500 (62%) elapsed=1305s eta~2648s aider_error=37 apply_fail=4 ok=270 mean_file_recall=0.702
+[progress] 312/500 (62%) elapsed=1345s eta~2759s aider_error=37 apply_fail=4 ok=271 mean_file_recall=0.701
+[progress] 313/500 (63%) elapsed=1392s eta~2859s aider_error=37 apply_fail=4 ok=272 mean_file_recall=0.700
+[progress] 317/500 (63%) elapsed=1424s eta~2877s aider_error=37 apply_fail=4 ok=276 mean_file_recall=0.697
+[progress] 318/500 (64%) elapsed=1519s eta~3207s aider_error=37 apply_fail=4 ok=277 mean_file_recall=0.696
+[progress] 320/500 (64%) elapsed=1551s eta~3268s aider_error=37 apply_fail=4 ok=279 mean_file_recall=0.698
+[progress] 322/500 (64%) elapsed=1618s eta~3227s aider_error=37 apply_fail=4 ok=281 mean_file_recall=0.697
+[progress] 325/500 (65%) elapsed=1659s eta~3197s aider_error=37 apply_fail=4 ok=284 mean_file_recall=0.698
+[progress] 330/500 (66%) elapsed=1690s eta~3011s aider_error=37 apply_fail=4 ok=289 mean_file_recall=0.691
+[progress] 336/500 (67%) elapsed=1723s eta~2827s aider_error=37 apply_fail=4 ok=295 mean_file_recall=0.681
+[progress] 340/500 (68%) elapsed=1753s eta~2581s aider_error=37 apply_fail=4 ok=299 mean_file_recall=0.672
+[progress] 345/500 (69%) elapsed=1789s eta~2483s aider_error=37 apply_fail=4 ok=304 mean_file_recall=0.661
+[progress] 349/500 (70%) elapsed=1825s eta~2297s aider_error=37 apply_fail=4 ok=308 mean_file_recall=0.652
+[progress] 356/500 (71%) elapsed=1859s eta~1866s aider_error=37 apply_fail=4 ok=315 mean_file_recall=0.646
+[progress] 384/500 (77%) elapsed=1892s eta~421s aider_error=37 apply_fail=4 ok=343 mean_file_recall=0.640
+[progress] 406/500 (81%) elapsed=1922s eta~121s aider_error=37 apply_fail=4 ok=365 mean_file_recall=0.652
+[progress] 425/500 (85%) elapsed=1953s eta~108s aider_error=37 apply_fail=4 ok=384 mean_file_recall=0.661
+[progress] 458/500 (92%) elapsed=1990s eta~54s aider_error=37 apply_fail=4 ok=417 mean_file_recall=0.654
+[progress] 460/500 (92%) elapsed=2032s eta~82s aider_error=37 apply_fail=4 ok=419 mean_file_recall=0.655
+[progress] 469/500 (94%) elapsed=2071s eta~79s aider_error=37 apply_fail=4 ok=428 mean_file_recall=0.653
+[progress] 470/500 (94%) elapsed=2103s eta~94s aider_error=37 apply_fail=4 ok=429 mean_file_recall=0.654
+[progress] 479/500 (96%) elapsed=2140s eta~77s aider_error=37 apply_fail=4 ok=438 mean_file_recall=0.652
+[progress] 481/500 (96%) elapsed=2175s eta~81s aider_error=37 apply_fail=4 ok=440 mean_file_recall=0.651
+[progress] 492/500 (98%) elapsed=2206s eta=≤630s (tail of 8) aider_error=37 apply_fail=4 ok=451 mean_file_recall=0.646
+[progress] 496/500 (99%) elapsed=2237s eta=≤630s (tail of 4) aider_error=37 apply_fail=4 ok=455 mean_file_recall=0.645
+[progress] 500/500 (100%) elapsed=2249s eta=0s aider_error=37 apply_fail=4 ok=459 mean_file_recall=0.643
+
+Wrote per-benchmark JSON + PAPER_TABLE.md to results/sweep/aider_b128000_L-1_polybench500

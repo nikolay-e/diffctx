@@ -1,0 +1,431 @@
+[INFO] memory probe OK: 184.3 GiB visible
+[INFO] disk probe OK: 836 GB free at /cache/contextbench_repos
+Method: aider_fair | budget=8000 τ=0.05 cbf=0.4 scoring=ego extra_env={}
+Skipping adapters not referenced by any manifest: contextbench, dcbench, multi_swebench, polybench, polybench500, swebench_lite, swebench_verified
+Generating train split: 0 examples [00:00, ? examples/s]Generating train split: 500 examples [00:00, 4044.29 examples/s]Generating train split: 500 examples [00:00, 4004.21 examples/s]
+  Fetching 035fba395593 for fasterxml/jackson...
+  Fetching 3ed7f4572534 for fasterxml/jackson...
+  Fetching 7c9e7c1e2acd for fasterxml/jackson...
+  Fetching ac00d648e9b4 for fasterxml/jackson...
+  Fetching dd733c4c5c48 for fasterxml/jackson...
+  Fetching 9684204f3073 for fasterxml/jackson...
+  Cache warm: 58 repos
+
+[contextbench_verified] 500 instances
+  RESET worktree NodeBB/NodeBB (fatal: Unable to create '/cache/contextbench_repos/NodeBB__NodeBB/worktrees/NodeBB__NodeBB2/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.)
+  COMMIT FAIL: fatal: unable to write new_index file
+
+[WARN] contextbench_verified::Multi-SWE-Bench__rust__maintenance__bugfix__c363219b__4858267f3b97 status=apply_fail lang=rust error=gold patch did not apply as commit
+  RESET worktree NodeBB/NodeBB (stale HEAD or dirty tree after checkout)
+  RESET worktree NodeBB/NodeBB (error: unable to unlink old 'public/src/modules/logout.js': No such file or directory
+error: unable to unlink old 'public/src/modules/messages.js': No such file or directory
+error: unable to create file public/src/modules/pictureCropper.js: File exists
+error: unable to unlink old 'public/src/modules/quickreply.js': No such file or directory
+fatal: unable to write new index file)
+  APPLY FAIL: error: '--index' outside a repository
+
+[WARN] contextbench_verified::SWE-Bench-Pro__javascript__maintenance__bugfix__7b6185af__a2ebf53b6098 status=apply_fail lang=javascript error=gold patch did not apply as commit
+  APPLY FAIL: error: '--index' outside a repository
+
+[WARN] contextbench_verified::SWE-Bench-Pro__javascript__maintenance__bugfix__e31ec45c__f0d989e4ba5b status=apply_fail lang=javascript error=gold patch did not apply as commit
+  RESET worktree ansible/ansible (stale HEAD or dirty tree after checkout)
+  RESET worktree ansible/ansible (fatal: unable to write new index file)
+  COMMIT FAIL: fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+
+[WARN] contextbench_verified::SWE-Bench-Pro__python__maintenance__bugfix__739b23db__252685092cac status=apply_fail lang=python error=gold patch did not apply as commit
+  RESET worktree ansible/ansible (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+  APPLY FAIL: fatal: /cache/contextbench_repos/ansible__ansible/worktrees/ansible__ansible8/index: index file smaller than expected
+
+[WARN] contextbench_verified::SWE-Bench-Pro__python__maintenance__bugfix__450d75e0__35809806d3ab status=apply_fail lang=python error=gold patch did not apply as commit
+  RESET worktree ansible/ansible (fatal: /cache/contextbench_repos/ansible__ansible/worktrees/ansible__ansible8/index: index file smaller than expected)
+[progress] 7/500 (1%) elapsed=32s eta~2580s apply_fail=5 ok=2 mean_file_recall=0.625
+  RESET worktree ansible/ansible (stale HEAD or dirty tree after checkout)
+  RESET FAIL ansible__ansible: HEAD not restored (fatal: Unable to create '/cache/contextbench_repos/ansible__ansible/worktrees/ansible__ansible6/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.)
+  RESET worktree ansible/ansible (fatal: unable to write new index file)
+  RESET FAIL ansible__ansible: HEAD not restored (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+  RESET worktree ansible/ansible (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+  RESET worktree ansible/ansible (stale HEAD or dirty tree after checkout)
+  RESET worktree ansible/ansible (error: unable to create file .github/BOTMETA.yml: File exists
+Warning: you are leaving 1 commit behind, not connected to
+any of your branches:
+
+  e5f579b7ca aider-baseline-gold
+
+If you want to keep it by creating a new branch, this may be a good time
+to do so with:
+
+ git branch <new-branch-name> e5f579b7ca
+
+HEAD is now at 96c1972439 find will give more specific reasons on skip (#68823))
+  RESET worktree ansible/ansible (fatal: unable to write new index file)
+  RESET FAIL ansible__ansible: HEAD not restored (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+  RESET worktree ansible/ansible (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+  RESET FAIL ansible__ansible: HEAD not restored (fatal: Unable to create '/cache/contextbench_repos/ansible__ansible/worktrees/ansible__ansible6/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.)
+[progress] 25/500 (5%) elapsed=63s eta~1246s apply_fail=5 ok=20 mean_file_recall=0.284
+  RESET worktree ansible/ansible (fatal: unable to write new index file)
+  RESET FAIL ansible__ansible: HEAD not restored (fatal: Unable to create '/cache/contextbench_repos/ansible__ansible/worktrees/ansible__ansible1/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.)
+[progress] 46/500 (9%) elapsed=94s eta~947s apply_fail=5 ok=41 mean_file_recall=0.314
+[progress] 90/500 (18%) elapsed=129s eta~317s apply_fail=5 ok=85 mean_file_recall=0.351
+  RESET FAIL django__django: HEAD not restored (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+  RESET worktree django/django (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+  RESET FAIL django__django: HEAD not restored (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+  RESET worktree django/django (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+[progress] 106/500 (21%) elapsed=165s eta~535s apply_fail=5 ok=101 mean_file_recall=0.391
+  APPLY FAIL: fatal: Unable to create '/cache/contextbench_repos/django__django/worktrees/django__django3/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a
+[WARN] contextbench_verified::SWE-Bench-Verified__python__maintenance__bugfix__2ab7d0fc__5eb6a2b33d70 status=apply_fail lang=python error=gold patch did not apply as commit
+  RESET worktree django/django (fatal: unable to write new index file)
+  RESET FAIL django__django: HEAD not restored (fatal: Unable to create '/cache/contextbench_repos/django__django/worktrees/django__django2/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.)
+  RESET FAIL django__django: HEAD not restored (fatal: Unable to create '/cache/contextbench_repos/django__django/worktrees/django__django3/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.)
+  RESET worktree django/django (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+  RESET worktree django/django (fatal: unable to write new index file)
+  RESET worktree django/django (stale HEAD or dirty tree after checkout)
+  APPLY FAIL: error: '--index' outside a repository
+
+[WARN] contextbench_verified::SWE-Bench-Verified__python__maintenance__bugfix__5c1509d5__647480166bfe status=apply_fail lang=python error=gold patch did not apply as commit
+  RESET worktree django/django (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+  RESET worktree django/django (stale HEAD or dirty tree after checkout)
+[progress] 120/500 (24%) elapsed=196s eta~710s apply_fail=7 ok=113 mean_file_recall=0.420
+  RESET worktree django/django (stale HEAD or dirty tree after checkout)
+  RESET FAIL django__django: HEAD not restored (fatal: cannot change to '/cache/contextbench_repos/worktrees/w1330/django__django': No such file or directory)
+  RESET FAIL django__django: HEAD not restored (fatal: cannot change to '/cache/contextbench_repos/worktrees/w1328/django__django': No such file or directory)
+  APPLY FAIL: error: '--index' outside a repository
+
+[WARN] contextbench_verified::SWE-Bench-Verified__python__maintenance__bugfix__bdde6d9c__89d41cba392b status=apply_fail lang=python error=gold patch did not apply as commit
+  RESET worktree django/django (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+  RESET FAIL django__django: HEAD not restored (fatal: cannot change to '/cache/contextbench_repos/worktrees/w1326/django__django': No such file or directory)
+  RESET worktree django/django (stale HEAD or dirty tree after checkout)
+  RESET FAIL django__django: HEAD not restored (fatal: Unable to create '/cache/contextbench_repos/django__django/worktrees/django__django5/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.)
+  RESET worktree django/django (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+[progress] 136/500 (27%) elapsed=227s eta~870s apply_fail=8 ok=128 mean_file_recall=0.441
+  RESET FAIL django__django: HEAD not restored (fatal: Could not write new index file.)
+  RESET worktree django/django (fatal: Unable to create '/cache/contextbench_repos/django__django/worktrees/django__django8/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.)
+  RESET FAIL django__django: HEAD not restored (fatal: Unable to create '/cache/contextbench_repos/django__django/worktrees/django__django8/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.)
+  RESET worktree django/django (stale HEAD or dirty tree after checkout)
+  RESET worktree django/django (error: unable to create file django/conf/locale/et/LC_MESSAGES/django.po: File exists
+fatal: unable to write new index file)
+  APPLY FAIL: fatal: /cache/contextbench_repos/django__django/worktrees/django__django/index: index file smaller than expected
+
+[WARN] contextbench_verified::SWE-Bench-Verified__python__maintenance__bugfix__96afaad2__d01709aae21d status=apply_fail lang=python error=gold patch did not apply as commit
+  RESET worktree django/django (fatal: /cache/contextbench_repos/django__django/worktrees/django__django/index: index file smaller than expected)
+  RESET FAIL django__django: HEAD not restored (fatal: cannot change to '/cache/contextbench_repos/worktrees/w1331/django__django': No such file or directory)
+  RESET worktree django/django (stale HEAD or dirty tree after checkout)
+  APPLY FAIL: error: '--index' outside a repository
+
+[WARN] contextbench_verified::SWE-Bench-Verified__python__maintenance__bugfix__f667fa43__d90e34c61b27 status=apply_fail lang=python error=gold patch did not apply as commit
+  RESET worktree django/django (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+[progress] 154/500 (31%) elapsed=257s eta~715s apply_fail=10 ok=144 mean_file_recall=0.436
+  RESET FAIL django__django: HEAD not restored (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+  RESET worktree django/django (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+  RESET FAIL django__django: HEAD not restored (fatal: cannot change to '/cache/contextbench_repos/worktrees/w1332/django__django': No such file or directory)
+  COMMIT FAIL: fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+
+[WARN] contextbench_verified::SWE-Bench-Verified__python__maintenance__bugfix__5555e84c__f83b44075daf status=apply_fail lang=python error=gold patch did not apply as commit
+  RESET worktree django/django (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+  APPLY FAIL: error: '--index' outside a repository
+
+[WARN] contextbench_verified::SWE-Bench-Verified__python__maintenance__bugfix__61a7a81e__fa5e7e46d875 status=apply_fail lang=python error=gold patch did not apply as commit
+[progress] 171/500 (34%) elapsed=288s eta~610s apply_fail=12 ok=159 mean_file_recall=0.434
+  WORKTREE/CHECKOUT FAIL 035fba395593: unreachable_commit (not in cache and fetch failed)
+[WARN] contextbench_verified::Multi-SWE-Bench__java__maintenance__bugfix__be0b5fff__035fba395593 status=clone_fail lang=java error=
+  WORKTREE/CHECKOUT FAIL 3ed7f4572534: unreachable_commit (not in cache and fetch failed)
+[WARN] contextbench_verified::Multi-SWE-Bench__java__maintenance__bugfix__36a08326__3ed7f4572534 status=clone_fail lang=java error=
+  WORKTREE/CHECKOUT FAIL 7c9e7c1e2acd: unreachable_commit (not in cache and fetch failed)
+[WARN] contextbench_verified::Multi-SWE-Bench__java__maintenance__bugfix__07d7817b__7c9e7c1e2acd status=clone_fail lang=java error=
+  WORKTREE/CHECKOUT FAIL 9684204f3073: unreachable_commit (not in cache and fetch failed)
+[WARN] contextbench_verified::Multi-SWE-Bench__java__maintenance__bugfix__9a3d9d3f__9684204f3073 status=clone_fail lang=java error=
+  WORKTREE/CHECKOUT FAIL ac00d648e9b4: unreachable_commit (not in cache and fetch failed)
+[WARN] contextbench_verified::Multi-SWE-Bench__java__maintenance__bugfix__ec4f6157__ac00d648e9b4 status=clone_fail lang=java error=
+  WORKTREE/CHECKOUT FAIL dd733c4c5c48: unreachable_commit (not in cache and fetch failed)
+[WARN] contextbench_verified::Multi-SWE-Bench__java__maintenance__bugfix__2bd87230__dd733c4c5c48 status=clone_fail lang=java error=
+[progress] 206/500 (41%) elapsed=318s eta~315s apply_fail=12 clone_fail=6 ok=188 mean_file_recall=0.427
+  RESET FAIL huggingface__transformers: HEAD not restored (fatal: cannot change to '/cache/contextbench_repos/worktrees/w1323/huggingface__transformers': No such file or directory)
+  RESET FAIL huggingface__transformers: HEAD not restored (fatal: Unable to create '/cache/contextbench_repos/huggingface__transformers/worktrees/huggingface__transformers8/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.)
+  RESET worktree huggingface/transformers (fatal: unable to write new index file)
+  APPLY FAIL: error: '--index' outside a repository
+
+[WARN] contextbench_verified::SWE-PolyBench__python__maintenance__bugfix__70acfaad__b27aa206ddf3 status=apply_fail lang=python error=gold patch did not apply as commit
+  RESET worktree huggingface/transformers (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+[progress] 222/500 (44%) elapsed=349s eta~314s apply_fail=13 clone_fail=6 ok=203 mean_file_recall=0.429
+  RESET FAIL huggingface__transformers: HEAD not restored (fatal: Unable to create '/cache/contextbench_repos/huggingface__transformers/worktrees/huggingface__transformers9/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.)
+  RESET worktree huggingface/transformers (fatal: unable to write new index file)
+  RESET worktree internetarchive/openlibrary (stale HEAD or dirty tree after checkout)
+  RESET FAIL internetarchive__openlibrary: HEAD not restored (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+  RESET worktree internetarchive/openlibrary (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+  RESET worktree internetarchive/openlibrary (fatal: unable to write new index file)
+  RESET FAIL keras-team__keras: HEAD not restored (fatal: cannot change to '/cache/contextbench_repos/worktrees/w1328/keras-team__keras': No such file or directory)
+[progress] 253/500 (51%) elapsed=379s eta~320s apply_fail=13 clone_fail=6 ok=234 mean_file_recall=0.426
+  RESET FAIL langchain-ai__langchain: HEAD not restored (fatal: Unable to create '/cache/contextbench_repos/langchain-ai__langchain/worktrees/langchain-ai__langchain1/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.)
+  RESET worktree langchain-ai/langchain (fatal: cannot create directory at '.devcontainer': No such file or directory)
+  RESET worktree matplotlib/matplotlib (fatal: unable to write new index file)
+  RESET worktree matplotlib/matplotlib (stale HEAD or dirty tree after checkout)
+  APPLY FAIL: fatal: /cache/contextbench_repos/matplotlib__matplotlib/worktrees/matplotlib__matplotlib7/index: index file smaller than expected
+
+[WARN] contextbench_verified::SWE-Bench-Verified__python__maintenance__bugfix__a8414dbd__430fb1db8884 status=apply_fail lang=python error=gold patch did not apply as commit
+  RESET worktree matplotlib/matplotlib (fatal: /cache/contextbench_repos/matplotlib__matplotlib/worktrees/matplotlib__matplotlib7/index: index file smaller than expected)
+  RESET FAIL matplotlib__matplotlib: HEAD not restored (fatal: Unable to create '/cache/contextbench_repos/matplotlib__matplotlib/worktrees/matplotlib__matplotlib5/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.)
+  RESET worktree matplotlib/matplotlib (fatal: unable to write new index file)
+[progress] 273/500 (55%) elapsed=411s eta~272s apply_fail=14 clone_fail=6 ok=253 mean_file_recall=0.432
+  RESET worktree microsoft/vscode (fatal: unable to write new index file)
+  APPLY FAIL: error: '--index' outside a repository
+
+[WARN] contextbench_verified::SWE-PolyBench__typescript__maintenance__bugfix__2487b02a__384b03f26310 status=apply_fail lang=typescript error=gold patch did not apply as commit
+  RESET worktree microsoft/vscode (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+[WARN] contextbench_verified::SWE-PolyBench__typescript__maintenance__bugfix__22615f27__1a599e2d1792 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/cN0VxDoe8bFKbm-F/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/cN0VxDoe8bFKbm-F/lib/pyth
+[WARN] contextbench_verified::SWE-PolyBench__typescript__maintenance__bugfix__48468065__440e61ffab2b status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/6Uxlif3BOt3o53-I/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/6Uxlif3BOt3o53-I/lib/pyth
+[WARN] contextbench_verified::SWE-PolyBench__typescript__maintenance__bugfix__16d1ff7a__88ffbc7a7a81 status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/02PDQIR8xWA3L-6p/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/02PDQIR8xWA3L-6p/lib/pyth
+[WARN] contextbench_verified::SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be__a993ada9300a status=aider_error lang=typescript error=QueryError: Invalid node type at row 2, column 2: module
+Traceback (most recent call last):
+  File "/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py", line 128, in _handle_request
+    rm.get_repo_map(
+  File "/github/home/.cache/uv/archive-v0/6Uxlif3BOt3o53-I/lib/python3.12/site-packages/aider/repomap.py", line 135, in get_repo_map
+    files_listing = self.get_ranked_tags_map(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/github/home/.cache/uv/archive-v0/6Uxlif3BOt3o53-I/lib/pyth
+  RESET worktree mui/material (stale HEAD or dirty tree after checkout)
+  APPLY FAIL: fatal: /cache/contextbench_repos/mui__material/worktrees/mui__material7/index: index file smaller than expected
+
+[WARN] contextbench_verified::Multi-SWE-Bench__typescript__maintenance__bugfix__1ff281e5__5b53f5efe691 status=apply_fail lang=typescript error=gold patch did not apply as commit
+[progress] 293/500 (59%) elapsed=444s eta~287s aider_error=4 apply_fail=16 clone_fail=6 ok=267 mean_file_recall=0.445
+  RESET worktree mui/material (fatal: /cache/contextbench_repos/mui__material/worktrees/mui__material7/index: index file smaller than expected)
+  RESET worktree mui/material (stale HEAD or dirty tree after checkout)
+  RESET FAIL mui__material: HEAD not restored (Updating files:  81% (10894/13340)
+Updating files:  82% (10939/13340)
+Updating files:  83% (11073/13340)
+Updating files:  84% (11206/13340)
+Updating files:  85% (11339/13340)
+Updating files:  86% (11473/13340)
+Updating files:  87% (11606/13340)
+Updating files:  88% (11740/13340)
+Updating files:  89% (11873/13340)
+Updating files:  90% (12006/13340)
+Updating files:  91% (12140/13340)
+Updating files:  92% (12273/13340)
+Updating files:  93% (12407/13340)
+Updating files:  94% (12540/13340)
+Updating files:  95% (12673/13340)
+Updating files:  96% (12807/13340)
+Updating files:  97% (12940/13340)
+Updating files:  98% (13074/13340)
+Updating files:  99% (13207/13340)
+Updating files: 100% (13340/13340)
+Updating files: 100% (13340/13340), done.
+fatal: Could not write new index file.)
+[progress] 297/500 (59%) elapsed=488s eta~462s aider_error=4 apply_fail=16 clone_fail=6 ok=271 mean_file_recall=0.438
+  RESET worktree mui/material (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+  RESET worktree mui/material (stale HEAD or dirty tree after checkout)
+  APPLY FAIL: error: '--index' outside a repository
+
+[WARN] contextbench_verified::Multi-SWE-Bench__typescript__maintenance__bugfix__7958c8a7__b144a55f0ff8 status=apply_fail lang=typescript error=gold patch did not apply as commit
+  RESET worktree mui/material (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+[progress] 300/500 (60%) elapsed=802s eta~1730s aider_error=4 apply_fail=17 clone_fail=6 ok=273 mean_file_recall=0.435
+[progress] 302/500 (60%) elapsed=839s eta~1857s aider_error=4 apply_fail=17 clone_fail=6 ok=275 mean_file_recall=0.436
+  RESET FAIL mui__material: HEAD not restored (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+[progress] 304/500 (61%) elapsed=874s eta~1976s aider_error=4 apply_fail=17 clone_fail=6 ok=277 mean_file_recall=0.436
+  RESET worktree mui/material (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+  RESET FAIL mui__material: HEAD not restored (fatal: Unable to create '/cache/contextbench_repos/mui__material/worktrees/mui__material5/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.)
+  RESET worktree mui/material (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+[progress] 308/500 (62%) elapsed=907s eta~2044s aider_error=4 apply_fail=17 clone_fail=6 ok=281 mean_file_recall=0.431
+[progress] 310/500 (62%) elapsed=938s eta~2139s aider_error=4 apply_fail=17 clone_fail=6 ok=283 mean_file_recall=0.428
+[progress] 313/500 (63%) elapsed=970s eta~2223s aider_error=4 apply_fail=17 clone_fail=6 ok=286 mean_file_recall=0.425
+[progress] 316/500 (63%) elapsed=1033s eta~2420s aider_error=4 apply_fail=17 clone_fail=6 ok=289 mean_file_recall=0.424
+[progress] 317/500 (63%) elapsed=1065s eta~2515s aider_error=4 apply_fail=17 clone_fail=6 ok=290 mean_file_recall=0.422
+[progress] 320/500 (64%) elapsed=1138s eta~2709s aider_error=4 apply_fail=17 clone_fail=6 ok=293 mean_file_recall=0.420
+[progress] 323/500 (65%) elapsed=1186s eta~2798s aider_error=4 apply_fail=17 clone_fail=6 ok=296 mean_file_recall=0.423
+[progress] 324/500 (65%) elapsed=1224s eta~2910s aider_error=4 apply_fail=17 clone_fail=6 ok=297 mean_file_recall=0.423
+  RESET FAIL mui__material-ui: HEAD not restored (fatal: Unable to create '/cache/contextbench_repos/mui__material-ui/worktrees/mui__material-ui6/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.)
+  RESET worktree mui/material-ui (stale HEAD or dirty tree after checkout)
+  RESET worktree mui/material-ui (error: unable to create file .browserslistrc: No such file or directory
+fatal: cannot create directory at '.circleci': No such file or directory)
+[progress] 328/500 (66%) elapsed=1256s eta~2945s aider_error=4 apply_fail=17 clone_fail=6 ok=301 mean_file_recall=0.421
+  RESET worktree navidrome/navidrome (stale HEAD or dirty tree after checkout)
+[progress] 332/500 (66%) elapsed=1291s eta~2966s aider_error=4 apply_fail=17 clone_fail=6 ok=305 mean_file_recall=0.420
+[progress] 337/500 (67%) elapsed=1327s eta~2977s aider_error=4 apply_fail=17 clone_fail=6 ok=310 mean_file_recall=0.416
+  RESET FAIL mui__material-ui: HEAD not restored (fatal: Unable to create '/cache/contextbench_repos/mui__material-ui/worktrees/mui__material-ui5/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.)
+[progress] 347/500 (69%) elapsed=1358s eta~2703s aider_error=4 apply_fail=17 clone_fail=6 ok=320 mean_file_recall=0.409
+[progress] 360/500 (72%) elapsed=1399s eta~1295s aider_error=4 apply_fail=17 clone_fail=6 ok=333 mean_file_recall=0.396
+[progress] 381/500 (76%) elapsed=1430s eta~336s aider_error=4 apply_fail=17 clone_fail=6 ok=354 mean_file_recall=0.413
+[progress] 407/500 (81%) elapsed=1461s eta~154s aider_error=4 apply_fail=17 clone_fail=6 ok=380 mean_file_recall=0.423
+  RESET FAIL sveltejs__svelte: HEAD not restored (fatal: Unable to create '/cache/contextbench_repos/sveltejs__svelte/worktrees/sveltejs__svelte6/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.)
+  RESET worktree sveltejs/svelte (stale HEAD or dirty tree after checkout)
+  RESET FAIL sveltejs__svelte: HEAD not restored (fatal: Unable to create '/cache/contextbench_repos/sveltejs__svelte/worktrees/sveltejs__svelte3/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.)
+  RESET worktree sveltejs/svelte (stale HEAD or dirty tree after checkout)
+  RESET worktree sveltejs/svelte (fatal: unable to write new index file)
+  RESET FAIL sveltejs__svelte: HEAD not restored (fatal: Unable to create '/cache/contextbench_repos/sveltejs__svelte/worktrees/sveltejs__svelte/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.)
+  RESET worktree sveltejs/svelte (stale HEAD or dirty tree after checkout)
+[progress] 431/500 (86%) elapsed=1492s eta~85s aider_error=4 apply_fail=17 clone_fail=6 ok=404 mean_file_recall=0.441
+  RESET worktree sveltejs/svelte (fatal: not a git repository (or any parent up to mount point /cache)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).)
+[progress] 439/500 (88%) elapsed=1532s eta~111s aider_error=4 apply_fail=17 clone_fail=6 ok=412 mean_file_recall=0.440
+[progress] 449/500 (90%) elapsed=1563s eta~114s aider_error=4 apply_fail=17 clone_fail=6 ok=422 mean_file_recall=0.440
+[progress] 463/500 (93%) elapsed=1595s eta~97s aider_error=4 apply_fail=17 clone_fail=6 ok=436 mean_file_recall=0.443
+[progress] 491/500 (98%) elapsed=1626s eta=≤630s (tail of 9) aider_error=4 apply_fail=17 clone_fail=6 ok=464 mean_file_recall=0.447
+[progress] 500/500 (100%) elapsed=1631s eta=0s aider_error=4 apply_fail=17 clone_fail=6 ok=473 mean_file_recall=0.447
+
+Wrote per-benchmark JSON + PAPER_TABLE.md to results/sweep/aider_b8000_L-1_contextbench_verified

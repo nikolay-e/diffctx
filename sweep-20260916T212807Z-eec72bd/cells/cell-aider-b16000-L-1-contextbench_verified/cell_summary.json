@@ -1,0 +1,300 @@
+{
+  "n": 494,
+  "ok": 462,
+  "ok_pct": 93.52226720647774,
+  "statuses": {
+    "apply_fail": 29,
+    "ok": 462,
+    "aider_error": 3
+  },
+  "errors": {
+    "gold patch did not apply as commit": 29,
+    "QueryError: Invalid node type at row 2, column 2: module\nTraceback (most recent call last):\n  File \"/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py\", line 128, in _handle_request\n    rm.get_repo_map(\n  File \"/github/home/.cache/uv/archive-v0/yVQXONEHz8UDPwvB/lib/python3.12/site-packages/aider/repomap.py\", line 135, in get_repo_map\n    files_listing = self.get_ranked_tags_map(\n                    ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/github/home/.cache/uv/archive-v0/yVQXONEHz8UDPwvB/lib/pyth": 1,
+    "QueryError: Invalid node type at row 2, column 2: module\nTraceback (most recent call last):\n  File \"/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py\", line 128, in _handle_request\n    rm.get_repo_map(\n  File \"/github/home/.cache/uv/archive-v0/KhwP3A2-u3MetqFD/lib/python3.12/site-packages/aider/repomap.py\", line 135, in get_repo_map\n    files_listing = self.get_ranked_tags_map(\n                    ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/github/home/.cache/uv/archive-v0/KhwP3A2-u3MetqFD/lib/pyth": 1,
+    "QueryError: Invalid node type at row 2, column 2: module\nTraceback (most recent call last):\n  File \"/__w/diffctx/diffctx/eval/baselines/aider_subprocess.py\", line 128, in _handle_request\n    rm.get_repo_map(\n  File \"/github/home/.cache/uv/archive-v0/Szz7L0sse-eXeOaK/lib/python3.12/site-packages/aider/repomap.py\", line 135, in get_repo_map\n    files_listing = self.get_ranked_tags_map(\n                    ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/github/home/.cache/uv/archive-v0/Szz7L0sse-eXeOaK/lib/pyth": 1
+  },
+  "file_recall_ok_only": 0.5568643039113249,
+  "file_recall": {
+    "mean": 0.5207921222814416,
+    "median": 0.5,
+    "p25": 0.0,
+    "p75": 1.0,
+    "p95": 1.0,
+    "p99": 1.0,
+    "max": 1.0,
+    "std": 0.4116532308954371,
+    "hist": {
+      "perfect_pct": 34.61538461538461,
+      "zero_pct": 26.31578947368421,
+      "partial_pct": 39.068825910931174
+    }
+  },
+  "file_precision": {
+    "mean": 0.0169155394306528,
+    "median": 0.010869886279722345,
+    "p25": 0.0,
+    "p75": 0.022535270761172593,
+    "p95": 0.05667881646655231,
+    "p99": 0.0957509157509157,
+    "max": 0.15384615384615385,
+    "std": 0.021223831281325392
+  },
+  "file_fbeta": {
+    "f0.5": {
+      "mean": 0.02066857825654861,
+      "median": 0.01349530123115029
+    },
+    "f1": {
+      "mean": 0.03126678820278735,
+      "median": 0.021276595744680854
+    },
+    "f2": {
+      "mean": 0.06633689736637394,
+      "median": 0.05025252525252524
+    }
+  },
+  "fragment_recall": null,
+  "fragment_precision": null,
+  "fragment_fbeta": null,
+  "line_f1": null,
+  "line_precision": null,
+  "line_recall": null,
+  "elapsed_seconds": {
+    "mean": 31.080103053591092,
+    "median": 14.697668494500022,
+    "p25": 4.549362465250027,
+    "p75": 22.81103808475011,
+    "p95": 102.96815781320001,
+    "p99": 432.5335371971898,
+    "max": 467.665000031,
+    "std": 75.67586942836556
+  },
+  "used_tokens": {
+    "mean": 14771.342105263158,
+    "median": 15639.5,
+    "p25": 14560.25,
+    "p75": 16899.0,
+    "p95": 18109.1,
+    "p99": 18696.38,
+    "max": 45441.0,
+    "std": 4567.927429633399
+  },
+  "by_language": {
+    "javascript": {
+      "n": 60.0,
+      "file_recall": 0.4309304353054353,
+      "file_precision": 0.018641965023489866,
+      "f1": 0.03438797514531423,
+      "f2": 0.07122589841807753
+    },
+    "java": {
+      "n": 9.0,
+      "file_recall": 0.530154486036839,
+      "file_precision": 0.022449483170785878,
+      "f1": 0.04201543830971584,
+      "f2": 0.08913970679098658
+    },
+    "python": {
+      "n": 266.0,
+      "file_recall": 0.595331266477883,
+      "file_precision": 0.013961131585624911,
+      "f1": 0.026754681694841093,
+      "f2": 0.059905413888869566
+    },
+    "rust": {
+      "n": 20.0,
+      "file_recall": 0.5918828320802005,
+      "file_precision": 0.03934735365131704,
+      "f1": 0.06409938115168633,
+      "f2": 0.1213199649317637
+    },
+    "cpp": {
+      "n": 10.0,
+      "file_recall": 0.5454761904761904,
+      "file_precision": 0.04237040148023001,
+      "f1": 0.07772182658549527,
+      "f2": 0.1563931359498911
+    },
+    "go": {
+      "n": 40.0,
+      "file_recall": 0.4651861886236886,
+      "file_precision": 0.01883401127443779,
+      "f1": 0.033140030827041034,
+      "f2": 0.06447919767685191
+    },
+    "typescript": {
+      "n": 66.0,
+      "file_recall": 0.33455607636894186,
+      "file_precision": 0.010496486871301813,
+      "f1": 0.019637765401577533,
+      "f2": 0.041891552980585424
+    },
+    "c": {
+      "n": 23.0,
+      "file_recall": 0.44806121302582375,
+      "file_precision": 0.02892489368294435,
+      "f1": 0.052466563016021255,
+      "f2": 0.10545369027908637
+    }
+  },
+  "apply_modes": {
+    "strict": 462
+  },
+  "n_selected": {
+    "mean": 132.0151515151515,
+    "median": 102.0,
+    "p25": 71.0,
+    "p75": 136.0,
+    "p95": 282.7999999999997,
+    "p99": 948.7299999999958,
+    "max": 1381.0,
+    "std": 156.4570733068582
+  },
+  "n_gold": {
+    "mean": 4.1558441558441555,
+    "median": 2.0,
+    "p25": 1.0,
+    "p75": 4.75,
+    "p95": 13.949999999999989,
+    "p99": 27.23999999999978,
+    "max": 162.0,
+    "std": 8.813701850228252
+  },
+  "selected_to_gold_ratio": {
+    "mean": 73.4314334741245,
+    "median": 45.0,
+    "p25": 18.875,
+    "p75": 91.375,
+    "p95": 174.84999999999997,
+    "p99": 690.1899999999997,
+    "max": 1381.0,
+    "std": 128.0527684386725
+  },
+  "gold_to_changed_ratio": {
+    "mean": 1.7367859512466663,
+    "median": 1.0,
+    "p25": 1.0,
+    "p75": 2.0,
+    "p95": 4.949999999999989,
+    "p99": 6.389999999999986,
+    "max": 14.0,
+    "std": 1.3649291928045908
+  },
+  "patch_size": {
+    "n_changed_files": {
+      "mean": 3.088744588744589,
+      "median": 1.0,
+      "p25": 1.0,
+      "p75": 2.0,
+      "p95": 9.0,
+      "p99": 28.509999999999877,
+      "max": 184.0,
+      "std": 9.490181924989486
+    },
+    "n_hunks": {
+      "mean": 6.428571428571429,
+      "median": 2.0,
+      "p25": 1.0,
+      "p75": 6.0,
+      "p95": 24.0,
+      "p99": 56.74999999999966,
+      "max": 292.0,
+      "std": 17.680371809151328
+    },
+    "diff_size_lines": {
+      "mean": 56.504329004329,
+      "median": 11.5,
+      "p25": 4.0,
+      "p75": 42.75,
+      "p95": 240.44999999999987,
+      "p99": 744.8199999999995,
+      "max": 1347.0,
+      "std": 135.09446343401268
+    },
+    "n_gold_lines": {
+      "mean": 245.76190476190476,
+      "median": 144.5,
+      "p25": 63.0,
+      "p75": 318.0,
+      "p95": 814.5499999999998,
+      "p99": 1559.3599999999956,
+      "max": 2501.0,
+      "std": 303.969281775377
+    }
+  },
+  "gold_characterization": {
+    "single_file_pct": 35.020242914979754,
+    "multi_file_pct": 58.502024291497975,
+    "whole_file_pct": 0.0,
+    "zero_gold_pct": 6.477732793522267
+  },
+  "recall_by_gold_size": {
+    "1": {
+      "n": 173.0,
+      "file_recall": 0.7225433526011561,
+      "file_precision": 0.008842852777673528,
+      "f1": 0.017399033077504518,
+      "f2": 0.041530715595368244
+    },
+    "2-3": {
+      "n": 121.0,
+      "file_recall": 0.5179063360881543,
+      "file_precision": 0.015549070515448394,
+      "f1": 0.029713560897478786,
+      "f2": 0.06603945255875197
+    },
+    "4-7": {
+      "n": 118.0,
+      "file_recall": 0.45639628732849075,
+      "file_precision": 0.023927017066964994,
+      "f1": 0.045010898669790085,
+      "f2": 0.09596261041288207
+    },
+    "8-15": {
+      "n": 36.0,
+      "file_recall": 0.35409983534983536,
+      "file_precision": 0.039487774639070335,
+      "f1": 0.06940299652952912,
+      "f2": 0.12928736774412378
+    },
+    "16+": {
+      "n": 14.0,
+      "file_recall": 0.2144489830721055,
+      "file_precision": 0.050005536780521866,
+      "f1": 0.07361613307681848,
+      "f2": 0.11549331956232056
+    }
+  },
+  "recall_by_difficulty_ratio": {
+    "\u22641.0": {
+      "n": 265.0,
+      "file_recall": 0.6085338388632,
+      "file_precision": 0.01298777209784559,
+      "f1": 0.024510065208289005
+    },
+    "1.0-1.5": {
+      "n": 37.0,
+      "file_recall": 0.4628216083081444,
+      "file_precision": 0.039357916725119006,
+      "f1": 0.06663951031368831
+    },
+    "1.5-2.0": {
+      "n": 77.0,
+      "file_recall": 0.5186927250238939,
+      "file_precision": 0.019788409672429123,
+      "f1": 0.037164133673015416
+    },
+    "2.0-3.0": {
+      "n": 36.0,
+      "file_recall": 0.4627995642701525,
+      "file_precision": 0.0208219582010343,
+      "f1": 0.03899545510061054
+    },
+    "3.0+": {
+      "n": 47.0,
+      "file_recall": 0.47415569064505236,
+      "file_precision": 0.025212253488717484,
+      "f1": 0.04722318157297303
+    }
+  }
+}
