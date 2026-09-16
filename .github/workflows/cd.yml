@@ -21,6 +21,11 @@ concurrency:
         options:
           - 'true'
           - 'false'
+      build_only:
+        description: 'Build and smoke every release artifact from this ref; publish nothing'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   prepare-version:
@@ -44,7 +49,17 @@ jobs:
       - name: Check that we're on main branch
         env:
           CURRENT_BRANCH: ${{ github.ref_name }}
+          BUILD_ONLY: ${{ inputs.build_only }}
+          PUBLISH: ${{ github.event.inputs.publish_to_pypi }}
         run: |
+          if [ "$BUILD_ONLY" = "true" ]; then
+            if [ "$PUBLISH" = "true" ]; then
+              echo "Error: build_only cannot publish; set publish_to_pypi to false."
+              exit 1
+            fi
+            echo "Build-only run on $CURRENT_BRANCH: nothing will be pushed or published."
+            exit 0
+          fi
           if [ "$CURRENT_BRANCH" != "main" ]; then
             echo "Error: Releases can only be created from the main branch. Current branch: $CURRENT_BRANCH"
             exit 1
@@ -286,6 +301,27 @@ jobs:
       - name: List built wheel
         shell: bash
         run: ls -la ./repo/dist/
+
+      # The Intel-Mac wheel is cross-built here and this interpreter is arm64,
+      # so it cannot import it; its Rust side is proven under Rosetta in CI.
+      - name: Smoke - wheel installs and runs on its platform
+        if: matrix.target != 'x86_64-apple-darwin'
+        shell: bash
+        working-directory: ./repo
+        run: |
+          python -m venv "${RUNNER_TEMP}/wheel-smoke"
+          bin="${RUNNER_TEMP}/wheel-smoke/bin"
+          if [ -d "${RUNNER_TEMP}/wheel-smoke/Scripts" ]; then bin="${RUNNER_TEMP}/wheel-smoke/Scripts"; fi
+          "$bin/python" -m pip install --quiet --disable-pip-version-check dist/*.whl
+          "$bin/diffctx" --version
+          set +e
+          "$bin/diffctx" . --diff HEAD~1..HEAD -f md -o "${RUNNER_TEMP}/smoke.md"
+          rc=$?
+          set -e
+          [ "$rc" -eq 0 ] || [ "$rc" -eq 4 ]
+          "$bin/diffctx" src -f yaml > "${RUNNER_TEMP}/tree.yaml"
+          grep -q 'version.py' "${RUNNER_TEMP}/tree.yaml"
+          echo "OK: wheel works"
 
       - name: Upload wheel artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
@@ -660,6 +696,7 @@ jobs:
     needs: [prepare-version, build-wheels, build-sdist, build-binaries, publish-to-pypi, smoke-pypi]
     if: |
       always() &&
+      !inputs.build_only &&
       needs.prepare-version.result == 'success' &&
       needs.build-wheels.result == 'success' &&
       needs.build-sdist.result == 'success' &&
