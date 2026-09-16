@@ -1,0 +1,33 @@
+[INFO] memory probe OK: 15.6 GiB visible
+[INFO] disk probe OK: 85 GB free at /cache/contextbench_repos
+Method: diffctx | budget=64000 τ=0.05 cbf=0.4 scoring=bm25 extra_env={}
+Skipping adapters not referenced by any manifest: contextbench, contextbench_verified, dcbench, multi_swebench, polybench, polybench500, swebench_lite
+Generating test split:   0%|          | 0/500 [00:00<?, ? examples/s]Generating test split: 100%|██████████| 500/500 [00:00<00:00, 31717.36 examples/s]
+  Cloning astropy/astropy...
+  Cache warm: 1 repos
+
+[swebench_verified] 5 instances
+[pid=197] swebench_verified::astropy__astropy-13579 stage=clone repo=astropy/astropy
+[pid=197] swebench_verified::astropy__astropy-13579 stage=apply t_clone=0.55s
+[pid=197] swebench_verified::astropy__astropy-13579 stage=diffctx t_apply=0.1s
+[pid=197] WARN: serial mode — per-instance hard timeout disabled (kill switch would exit the orchestrator); use workers>1 for enforced timeouts
+[pid=197] swebench_verified::astropy__astropy-13579 stage=done t_diffctx=3.25s
+[pid=197] swebench_verified::astropy__astropy-13453 stage=clone repo=astropy/astropy
+[pid=197] swebench_verified::astropy__astropy-13453 stage=apply t_clone=0.13s
+[pid=197] swebench_verified::astropy__astropy-13453 stage=diffctx t_apply=0.11s
+[pid=197] swebench_verified::astropy__astropy-13453 stage=done t_diffctx=3.02s
+[pid=197] swebench_verified::astropy__astropy-14096 stage=clone repo=astropy/astropy
+[pid=197] swebench_verified::astropy__astropy-14096 stage=apply t_clone=0.3s
+[pid=197] swebench_verified::astropy__astropy-14096 stage=diffctx t_apply=0.13s
+[pid=197] swebench_verified::astropy__astropy-14096 stage=done t_diffctx=3.24s
+[pid=197] swebench_verified::astropy__astropy-7166 stage=clone repo=astropy/astropy
+[pid=197] swebench_verified::astropy__astropy-7166 stage=apply t_clone=0.35s
+[pid=197] swebench_verified::astropy__astropy-7166 stage=diffctx t_apply=0.15s
+[pid=197] swebench_verified::astropy__astropy-7166 stage=done t_diffctx=2.21s
+[pid=197] swebench_verified::astropy__astropy-13033 stage=clone repo=astropy/astropy
+[pid=197] swebench_verified::astropy__astropy-13033 stage=apply t_clone=0.45s
+[pid=197] swebench_verified::astropy__astropy-13033 stage=diffctx t_apply=0.14s
+[pid=197] swebench_verified::astropy__astropy-13033 stage=done t_diffctx=2.95s
+[progress] 5/5 (100%) elapsed=18s eta=0s ok=5 mean_file_recall=1.000
+
+Wrote per-benchmark JSON + PAPER_TABLE.md to results/sweep/internal-bm25_b64000_swebench_verified

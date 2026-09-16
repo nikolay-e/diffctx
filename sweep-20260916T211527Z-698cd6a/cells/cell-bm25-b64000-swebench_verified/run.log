@@ -1,0 +1,12 @@
+[INFO] memory probe OK: 15.6 GiB visible
+[INFO] disk probe OK: 85 GB free at /cache/contextbench_repos
+Method: bm25 | budget=64000 τ=0.05 cbf=0.4 scoring=ego extra_env={}
+Skipping adapters not referenced by any manifest: contextbench, contextbench_verified, dcbench, multi_swebench, polybench, polybench500, swebench_lite
+Generating test split:   0%|          | 0/500 [00:00<?, ? examples/s]Generating test split: 100%|██████████| 500/500 [00:00<00:00, 26412.83 examples/s]
+  Cloning astropy/astropy...
+  Cache warm: 1 repos
+
+[swebench_verified] 5 instances
+[progress] 5/5 (100%) elapsed=31s eta=0s ok=5 mean_file_recall=1.000
+
+Wrote per-benchmark JSON + PAPER_TABLE.md to results/sweep/bm25_b64000_swebench_verified

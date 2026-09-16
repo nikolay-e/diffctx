@@ -1,0 +1,591 @@
+[
+  {
+    "instance_id": "swebench_verified::astropy__astropy-13579",
+    "source_benchmark": "swebench_verified",
+    "file_recall": 1.0,
+    "file_precision": 0.2,
+    "fragment_recall": null,
+    "fragment_precision": null,
+    "line_f1": null,
+    "line_precision": null,
+    "line_recall": null,
+    "used_tokens": 10584,
+    "budget": 64000,
+    "elapsed_seconds": 4.7920573159999975,
+    "extra": {
+      "n_selected": 5,
+      "n_gold": 1,
+      "selected_to_gold_ratio": 5.0,
+      "n_changed_files": 1,
+      "n_added_files": 0,
+      "n_deleted_files": 0,
+      "n_modified_files": 1,
+      "n_hunks": 2,
+      "diff_added_lines": 3,
+      "diff_removed_lines": 1,
+      "diff_size_lines": 4,
+      "gold_to_changed_ratio": 1.0,
+      "is_single_file_gold": true,
+      "is_multi_file_gold": false,
+      "repo": "astropy/astropy",
+      "selected_files": [
+        "astropy/wcs/wcsapi/fitswcs.py",
+        "astropy/wcs/wcsapi/utils.py",
+        "astropy/wcs/wcsapi/wrappers/base.py",
+        "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+        "astropy/wcs/wcsapi/wrappers/tests/test_sliced_wcs.py"
+      ],
+      "n_nontrivial_gold": 0,
+      "changed_file_retention": 1.0,
+      "status": "ok",
+      "language": "python",
+      "fragment_count": 45,
+      "t_clone_s": 0.24,
+      "t_apply_s": 0.26,
+      "apply_mode": "strict",
+      "latency_total_ms": 4736.6,
+      "latency_breakdown": {
+        "pre_phase_ms": 24.9,
+        "parse_changed_ms": 4.2,
+        "universe_walk_ms": 34.3,
+        "discovery_ms": 440.6,
+        "parse_discovered_ms": 1855.4,
+        "tokenization_ms": 778.0,
+        "graph_build_ms": 1421.0,
+        "scoring_selection_ms": 1599.2,
+        "scoring_ms": 167.4,
+        "selection_ms": 10.8,
+        "candidate_count": 476,
+        "edge_count": 513568,
+        "greedy_iters": 48,
+        "edges_before_cap": 656930,
+        "edges_dropped_by_cap": 143362,
+        "nodes_capped": 1592,
+        "max_out_edges_per_node": 64,
+        "ppr_truncated": false,
+        "ppr_forward_pushes": 1065,
+        "ppr_backward_pushes": 1024,
+        "stopping_certificate": 7.774273239942152,
+        "peak_rss_bytes": 685481984,
+        "edge_emissions_by_category": {
+          "config": {
+            "deduped": 0,
+            "raw": 0
+          },
+          "config_generic": {
+            "deduped": 0,
+            "raw": 0
+          },
+          "document": {
+            "deduped": 11334,
+            "raw": 11564
+          },
+          "semantic": {
+            "deduped": 604720,
+            "raw": 604720
+          },
+          "sibling": {
+            "deduped": 8036,
+            "raw": 8564
+          },
+          "structural": {
+            "deduped": 32380,
+            "raw": 34252
+          },
+          "test_edge": {
+            "deduped": 460,
+            "raw": 560
+          }
+        }
+      },
+      "benchmark_manifest": "swebench_verified"
+    }
+  },
+  {
+    "instance_id": "swebench_verified::astropy__astropy-13453",
+    "source_benchmark": "swebench_verified",
+    "file_recall": 1.0,
+    "file_precision": 0.04,
+    "fragment_recall": null,
+    "fragment_precision": null,
+    "line_f1": null,
+    "line_precision": null,
+    "line_recall": null,
+    "used_tokens": 25839,
+    "budget": 64000,
+    "elapsed_seconds": 4.377935487000002,
+    "extra": {
+      "n_selected": 25,
+      "n_gold": 1,
+      "selected_to_gold_ratio": 25.0,
+      "n_changed_files": 1,
+      "n_added_files": 0,
+      "n_deleted_files": 0,
+      "n_modified_files": 1,
+      "n_hunks": 1,
+      "diff_added_lines": 2,
+      "diff_removed_lines": 0,
+      "diff_size_lines": 2,
+      "gold_to_changed_ratio": 1.0,
+      "is_single_file_gold": true,
+      "is_multi_file_gold": false,
+      "repo": "astropy/astropy",
+      "selected_files": [
+        "astropy/io/ascii/__init__.py",
+        "astropy/io/ascii/basic.py",
+        "astropy/io/ascii/cds.py",
+        "astropy/io/ascii/connect.py",
+        "astropy/io/ascii/core.py",
+        "astropy/io/ascii/daophot.py",
+        "astropy/io/ascii/ecsv.py",
+        "astropy/io/ascii/fastbasic.py",
+        "astropy/io/ascii/fixedwidth.py",
+        "astropy/io/ascii/html.py",
+        "astropy/io/ascii/ipac.py",
+        "astropy/io/ascii/latex.py",
+        "astropy/io/ascii/mrt.py",
+        "astropy/io/ascii/qdp.py",
+        "astropy/io/ascii/rst.py",
+        "astropy/io/ascii/sextractor.py",
+        "astropy/io/ascii/tests/test_ecsv.py",
+        "astropy/io/ascii/tests/test_fixedwidth.py",
+        "astropy/io/ascii/tests/test_html.py",
+        "astropy/io/ascii/tests/test_ipac_definitions.py",
+        "astropy/io/ascii/tests/test_qdp.py",
+        "astropy/io/ascii/tests/test_rst.py",
+        "astropy/io/ascii/tests/test_types.py",
+        "astropy/io/ascii/ui.py",
+        "astropy/io/votable/validator/html.py"
+      ],
+      "n_nontrivial_gold": 0,
+      "changed_file_retention": 1.0,
+      "status": "ok",
+      "language": "python",
+      "fragment_count": 87,
+      "t_clone_s": 0.16,
+      "t_apply_s": 0.01,
+      "apply_mode": "strict",
+      "latency_total_ms": 4320.0,
+      "latency_breakdown": {
+        "pre_phase_ms": 22.7,
+        "parse_changed_ms": 4.9,
+        "universe_walk_ms": 39.9,
+        "discovery_ms": 142.8,
+        "parse_discovered_ms": 1730.1,
+        "tokenization_ms": 768.4,
+        "graph_build_ms": 1433.1,
+        "scoring_selection_ms": 1611.3,
+        "scoring_ms": 156.3,
+        "selection_ms": 21.9,
+        "candidate_count": 882,
+        "edge_count": 512671,
+        "greedy_iters": 30,
+        "edges_before_cap": 655428,
+        "edges_dropped_by_cap": 142757,
+        "nodes_capped": 1589,
+        "max_out_edges_per_node": 64,
+        "ppr_truncated": false,
+        "ppr_forward_pushes": 1210,
+        "ppr_backward_pushes": 1111,
+        "stopping_certificate": 18.068022005173024,
+        "peak_rss_bytes": 829759488,
+        "edge_emissions_by_category": {
+          "config": {
+            "deduped": 0,
+            "raw": 0
+          },
+          "config_generic": {
+            "deduped": 0,
+            "raw": 0
+          },
+          "document": {
+            "deduped": 11308,
+            "raw": 11536
+          },
+          "semantic": {
+            "deduped": 603300,
+            "raw": 603300
+          },
+          "sibling": {
+            "deduped": 8036,
+            "raw": 8564
+          },
+          "structural": {
+            "deduped": 32324,
+            "raw": 34190
+          },
+          "test_edge": {
+            "deduped": 460,
+            "raw": 560
+          }
+        }
+      },
+      "benchmark_manifest": "swebench_verified"
+    }
+  },
+  {
+    "instance_id": "swebench_verified::astropy__astropy-14096",
+    "source_benchmark": "swebench_verified",
+    "file_recall": 1.0,
+    "file_precision": 0.034482758620689655,
+    "fragment_recall": null,
+    "fragment_precision": null,
+    "line_f1": null,
+    "line_precision": null,
+    "line_recall": null,
+    "used_tokens": 25380,
+    "budget": 64000,
+    "elapsed_seconds": 4.6989402290000015,
+    "extra": {
+      "n_selected": 29,
+      "n_gold": 1,
+      "selected_to_gold_ratio": 29.0,
+      "n_changed_files": 1,
+      "n_added_files": 0,
+      "n_deleted_files": 0,
+      "n_modified_files": 1,
+      "n_hunks": 1,
+      "diff_added_lines": 2,
+      "diff_removed_lines": 4,
+      "diff_size_lines": 6,
+      "gold_to_changed_ratio": 1.0,
+      "is_single_file_gold": true,
+      "is_multi_file_gold": false,
+      "repo": "astropy/astropy",
+      "selected_files": [
+        "astropy/__init__.py",
+        "astropy/constants/constant.py",
+        "astropy/coordinates/angle_utilities.py",
+        "astropy/coordinates/angles.py",
+        "astropy/coordinates/attributes.py",
+        "astropy/coordinates/baseframe.py",
+        "astropy/coordinates/builtin_frames/__init__.py",
+        "astropy/coordinates/builtin_frames/hadec.py",
+        "astropy/coordinates/builtin_frames/icrs.py",
+        "astropy/coordinates/builtin_frames/skyoffset.py",
+        "astropy/coordinates/distances.py",
+        "astropy/coordinates/errors.py",
+        "astropy/coordinates/sky_coordinate.py",
+        "astropy/coordinates/sky_coordinate_parsers.py",
+        "astropy/coordinates/spectral_coordinate.py",
+        "astropy/coordinates/tests/test_api_ape5.py",
+        "astropy/coordinates/tests/test_regression.py",
+        "astropy/coordinates/tests/test_sky_coord.py",
+        "astropy/coordinates/tests/test_transformations.py",
+        "astropy/coordinates/transformations.py",
+        "astropy/io/fits/card.py",
+        "astropy/io/fits/fitsrec.py",
+        "astropy/nddata/ccddata.py",
+        "astropy/table/meta.py",
+        "astropy/units/core.py",
+        "astropy/units/physical.py",
+        "astropy/units/tests/test_quantity.py",
+        "astropy/utils/decorators.py",
+        "astropy/wcs/utils.py"
+      ],
+      "n_nontrivial_gold": 0,
+      "changed_file_retention": 1.0,
+      "status": "ok",
+      "language": "python",
+      "fragment_count": 106,
+      "t_clone_s": 0.39,
+      "t_apply_s": 0.2,
+      "apply_mode": "strict",
+      "latency_total_ms": 4639.2,
+      "latency_breakdown": {
+        "pre_phase_ms": 25.0,
+        "parse_changed_ms": 12.2,
+        "universe_walk_ms": 45.2,
+        "discovery_ms": 349.6,
+        "parse_discovered_ms": 1786.1,
+        "tokenization_ms": 821.5,
+        "graph_build_ms": 1437.2,
+        "scoring_selection_ms": 1599.7,
+        "scoring_ms": 146.8,
+        "selection_ms": 15.6,
+        "candidate_count": 567,
+        "edge_count": 529540,
+        "greedy_iters": 63,
+        "edges_before_cap": 679716,
+        "edges_dropped_by_cap": 150176,
+        "nodes_capped": 1629,
+        "max_out_edges_per_node": 64,
+        "ppr_truncated": false,
+        "ppr_forward_pushes": 916,
+        "ppr_backward_pushes": 618,
+        "stopping_certificate": 10.215002587299086,
+        "peak_rss_bytes": 834617344,
+        "edge_emissions_by_category": {
+          "config": {
+            "deduped": 0,
+            "raw": 0
+          },
+          "config_generic": {
+            "deduped": 0,
+            "raw": 0
+          },
+          "document": {
+            "deduped": 12974,
+            "raw": 13218
+          },
+          "semantic": {
+            "deduped": 624144,
+            "raw": 624144
+          },
+          "sibling": {
+            "deduped": 8146,
+            "raw": 8630
+          },
+          "structural": {
+            "deduped": 33980,
+            "raw": 35898
+          },
+          "test_edge": {
+            "deduped": 472,
+            "raw": 574
+          }
+        }
+      },
+      "benchmark_manifest": "swebench_verified"
+    }
+  },
+  {
+    "instance_id": "swebench_verified::astropy__astropy-7166",
+    "source_benchmark": "swebench_verified",
+    "file_recall": 1.0,
+    "file_precision": 0.02857142857142857,
+    "fragment_recall": null,
+    "fragment_precision": null,
+    "line_f1": null,
+    "line_precision": null,
+    "line_recall": null,
+    "used_tokens": 25850,
+    "budget": 64000,
+    "elapsed_seconds": 3.3055983409999925,
+    "extra": {
+      "n_selected": 35,
+      "n_gold": 1,
+      "selected_to_gold_ratio": 35.0,
+      "n_changed_files": 1,
+      "n_added_files": 0,
+      "n_deleted_files": 0,
+      "n_modified_files": 1,
+      "n_hunks": 3,
+      "diff_added_lines": 3,
+      "diff_removed_lines": 7,
+      "diff_size_lines": 10,
+      "gold_to_changed_ratio": 1.0,
+      "is_single_file_gold": true,
+      "is_multi_file_gold": false,
+      "repo": "astropy/astropy",
+      "selected_files": [
+        "astropy/__init__.py",
+        "astropy/config/configuration.py",
+        "astropy/constants/constant.py",
+        "astropy/convolution/convolve.py",
+        "astropy/convolution/core.py",
+        "astropy/coordinates/sky_coordinate.py",
+        "astropy/io/ascii/html.py",
+        "astropy/io/ascii/misc.py",
+        "astropy/io/fits/column.py",
+        "astropy/io/fits/diff.py",
+        "astropy/io/fits/hdu/hdulist.py",
+        "astropy/io/fits/header.py",
+        "astropy/io/fits/util.py",
+        "astropy/io/fits/verify.py",
+        "astropy/io/registry.py",
+        "astropy/io/votable/converters.py",
+        "astropy/modeling/parameters.py",
+        "astropy/modeling/polynomial.py",
+        "astropy/nddata/mixins/ndarithmetic.py",
+        "astropy/table/column.py",
+        "astropy/table/tests/test_table.py",
+        "astropy/tests/tests/test_imports.py",
+        "astropy/time/core.py",
+        "astropy/units/core.py",
+        "astropy/units/decorators.py",
+        "astropy/units/format/base.py",
+        "astropy/units/quantity.py",
+        "astropy/utils/metadata.py",
+        "astropy/utils/misc.py",
+        "astropy/utils/tests/test_decorators.py",
+        "astropy/utils/tests/test_misc.py",
+        "astropy/utils/tests/test_xml.py",
+        "astropy/utils/xml/validate.py",
+        "astropy/utils/xml/writer.py",
+        "astropy/wcs/tests/test_wcs.py"
+      ],
+      "n_nontrivial_gold": 0,
+      "changed_file_retention": 1.0,
+      "status": "ok",
+      "language": "python",
+      "fragment_count": 99,
+      "t_clone_s": 0.35,
+      "t_apply_s": 0.06,
+      "apply_mode": "strict",
+      "latency_total_ms": 3265.5,
+      "latency_breakdown": {
+        "pre_phase_ms": 22.3,
+        "parse_changed_ms": 6.7,
+        "universe_walk_ms": 27.4,
+        "discovery_ms": 385.9,
+        "parse_discovered_ms": 1238.8,
+        "tokenization_ms": 526.1,
+        "graph_build_ms": 941.6,
+        "scoring_selection_ms": 1058.3,
+        "scoring_ms": 100.3,
+        "selection_ms": 16.4,
+        "candidate_count": 731,
+        "edge_count": 374470,
+        "greedy_iters": 48,
+        "edges_before_cap": 488670,
+        "edges_dropped_by_cap": 114200,
+        "nodes_capped": 1104,
+        "max_out_edges_per_node": 64,
+        "ppr_truncated": false,
+        "ppr_forward_pushes": 1106,
+        "ppr_backward_pushes": 517,
+        "stopping_certificate": 21.536799517187156,
+        "peak_rss_bytes": 834617344,
+        "edge_emissions_by_category": {
+          "config": {
+            "deduped": 0,
+            "raw": 0
+          },
+          "config_generic": {
+            "deduped": 0,
+            "raw": 0
+          },
+          "document": {
+            "deduped": 8222,
+            "raw": 8406
+          },
+          "semantic": {
+            "deduped": 451970,
+            "raw": 451970
+          },
+          "sibling": {
+            "deduped": 6172,
+            "raw": 6596
+          },
+          "structural": {
+            "deduped": 22014,
+            "raw": 23366
+          },
+          "test_edge": {
+            "deduped": 292,
+            "raw": 366
+          }
+        }
+      },
+      "benchmark_manifest": "swebench_verified"
+    }
+  },
+  {
+    "instance_id": "swebench_verified::astropy__astropy-13033",
+    "source_benchmark": "swebench_verified",
+    "file_recall": 1.0,
+    "file_precision": 0.1,
+    "fragment_recall": null,
+    "fragment_precision": null,
+    "line_f1": null,
+    "line_precision": null,
+    "line_recall": null,
+    "used_tokens": 6890,
+    "budget": 64000,
+    "elapsed_seconds": 4.424955023999999,
+    "extra": {
+      "n_selected": 10,
+      "n_gold": 1,
+      "selected_to_gold_ratio": 10.0,
+      "n_changed_files": 1,
+      "n_added_files": 0,
+      "n_deleted_files": 0,
+      "n_modified_files": 1,
+      "n_hunks": 2,
+      "diff_added_lines": 11,
+      "diff_removed_lines": 3,
+      "diff_size_lines": 14,
+      "gold_to_changed_ratio": 1.0,
+      "is_single_file_gold": true,
+      "is_multi_file_gold": false,
+      "repo": "astropy/astropy",
+      "selected_files": [
+        "astropy/__init__.py",
+        "astropy/table/__init__.py",
+        "astropy/timeseries/__init__.py",
+        "astropy/timeseries/binned.py",
+        "astropy/timeseries/core.py",
+        "astropy/timeseries/downsample.py",
+        "astropy/timeseries/periodograms/__init__.py",
+        "astropy/timeseries/sampled.py",
+        "astropy/timeseries/tests/test_common.py",
+        "astropy/utils/decorators.py"
+      ],
+      "n_nontrivial_gold": 0,
+      "changed_file_retention": 1.0,
+      "status": "ok",
+      "language": "python",
+      "fragment_count": 17,
+      "t_clone_s": 0.55,
+      "t_apply_s": 0.01,
+      "apply_mode": "strict",
+      "latency_total_ms": 4362.3,
+      "latency_breakdown": {
+        "pre_phase_ms": 22.0,
+        "parse_changed_ms": 2.0,
+        "universe_walk_ms": 34.2,
+        "discovery_ms": 288.1,
+        "parse_discovered_ms": 1724.7,
+        "tokenization_ms": 767.6,
+        "graph_build_ms": 1363.9,
+        "scoring_selection_ms": 1523.7,
+        "scoring_ms": 148.6,
+        "selection_ms": 11.2,
+        "candidate_count": 395,
+        "edge_count": 504863,
+        "greedy_iters": 8,
+        "edges_before_cap": 644838,
+        "edges_dropped_by_cap": 139975,
+        "nodes_capped": 1566,
+        "max_out_edges_per_node": 64,
+        "ppr_truncated": false,
+        "ppr_forward_pushes": 757,
+        "ppr_backward_pushes": 531,
+        "stopping_certificate": 3.94225,
+        "peak_rss_bytes": 856526848,
+        "edge_emissions_by_category": {
+          "config": {
+            "deduped": 0,
+            "raw": 0
+          },
+          "config_generic": {
+            "deduped": 0,
+            "raw": 0
+          },
+          "document": {
+            "deduped": 11202,
+            "raw": 11432
+          },
+          "semantic": {
+            "deduped": 593162,
+            "raw": 593162
+          },
+          "sibling": {
+            "deduped": 8016,
+            "raw": 8558
+          },
+          "structural": {
+            "deduped": 31994,
+            "raw": 33824
+          },
+          "test_edge": {
+            "deduped": 464,
+            "raw": 562
+          }
+        }
+      },
+      "benchmark_manifest": "swebench_verified"
+    }
+  }
+]
