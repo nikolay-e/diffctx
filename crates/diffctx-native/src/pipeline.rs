@@ -609,10 +609,6 @@ pub fn compute_scored_state(
         run.note(crate::resource::LimitReason::CandidateLimit);
     }
     run.record_usage(|u| u.candidate_files = all_candidate_files.len() as u64);
-    eprintln!(
-        "WINDBG root={:?} changed={:?} candidates={:?}",
-        root_dir, changed_files, all_candidate_files
-    );
 
     let t_universe = Instant::now();
 
@@ -676,10 +672,6 @@ pub fn compute_scored_state(
         .collect();
 
     drop(discovery_ctx);
-    eprintln!(
-        "WINDBG discovered={:?} source={:?}",
-        discovered_files, discovery_source
-    );
 
     let t_discovery = Instant::now();
 
@@ -694,13 +686,6 @@ pub fn compute_scored_state(
     ));
 
     let t_parse_discovered = Instant::now();
-    eprintln!(
-        "WINDBG fragments={:?}",
-        all_fragments
-            .iter()
-            .map(|f| (f.path().to_string(), f.start_line(), f.end_line()))
-            .collect::<Vec<_>>()
-    );
 
     let discovered_path_set: FxHashSet<Arc<str>> = discovered_files
         .iter()

@@ -405,13 +405,7 @@ pub fn find_toplevel(path: &Path) -> Option<PathBuf> {
     // Git on Windows answers `D:/a/repo`, while every path canonicalised
     // later reads `D:\a\repo\x`. Paths are compared as strings downstream,
     // so a root in git's spelling silently split one file into two keys.
-    match dunce::canonicalize(trimmed) {
-        Ok(p) => Some(p),
-        Err(e) => {
-            eprintln!("WINDBG toplevel canonicalize {trimmed:?}: {e}");
-            Some(Path::new(trimmed).components().collect())
-        }
-    }
+    Some(dunce::canonicalize(trimmed).unwrap_or_else(|_| Path::new(trimmed).components().collect()))
 }
 
 pub fn get_diff_text(repo_root: &Path, diff_range: Option<&str>) -> Result<String> {
