@@ -353,7 +353,12 @@ fn wait_with_timeout(
         })
     });
 
-    let status = match child.wait_timeout(timeout)? {
+    // A zero ceiling is spent before the call, so the verdict cannot be left
+    // to whether the child happens to exit first: on a fast machine
+    // `wait_timeout(0)` reaps an already-finished git and reports success,
+    // which turned `timeout=0` into "no deadline at all" (seen on an ARM
+    // runner, 2026-09-17).
+    let status = match child.wait_timeout(timeout)?.filter(|_| !timeout.is_zero()) {
         Some(status) => status,
         None => {
             let _ = child.kill();
