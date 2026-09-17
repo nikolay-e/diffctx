@@ -9,7 +9,7 @@
 //! live in the two copies that never received the fix.
 
 use std::borrow::Cow;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Rewrites `\` to `/` on Windows, where it is the component separator, and
 /// leaves the string alone everywhere else, where it is an ordinary character.
@@ -23,11 +23,16 @@ pub(crate) fn to_posix_display(s: Cow<'_, str>) -> String {
     s.into_owned()
 }
 
-/// `base.join(rel)` for a `rel` read from a manifest, spelled the way the
-/// platform spells fragment paths: `join` keeps the manifest's `/`, which on
-/// Windows makes `crate\src/lib.rs` a different key from `crate\src\lib.rs`.
+/// `base.join(rel)` for a `/`-separated `rel` from git or a manifest, spelled
+/// the way the platform spells every other path: `join` keeps the `/`, and on
+/// Windows `root\src/lib.rs` is then a different string key from the
+/// `root\src\lib.rs` canonicalisation produces for the same file.
+pub(crate) fn repo_join(base: &Path, rel: &str) -> PathBuf {
+    base.join(native_separators(Cow::Borrowed(rel)))
+}
+
 pub(crate) fn join_native(base: &Path, rel: &str) -> String {
-    native_separators(base.join(rel).to_string_lossy())
+    repo_join(base, rel).to_string_lossy().into_owned()
 }
 
 #[cfg(windows)]

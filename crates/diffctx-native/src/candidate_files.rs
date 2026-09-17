@@ -42,7 +42,10 @@ fn is_candidate_file(file_path: &Path, root_dir: &Path, included_set: &FxHashSet
 
 pub fn collect_candidate_files(root_dir: &Path, included_set: &FxHashSet<PathBuf>) -> Vec<PathBuf> {
     if let Ok(parts) = git::run_git_z(root_dir, &["ls-files", "-z"]) {
-        let all_paths: Vec<PathBuf> = parts.into_iter().map(|f| root_dir.join(f)).collect();
+        let all_paths: Vec<PathBuf> = parts
+            .into_iter()
+            .map(|f| crate::paths::repo_join(root_dir, &f))
+            .collect();
         let files: Vec<PathBuf> = all_paths
             .into_par_iter()
             .filter(|f| is_candidate_file(f, root_dir, included_set))
@@ -128,7 +131,7 @@ pub fn normalize_path(path: &Path, root_dir: &Path) -> PathBuf {
     if path.is_absolute() {
         dunce::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
     } else {
-        let joined = root_dir.join(path);
+        let joined = crate::paths::repo_join(root_dir, &path.to_string_lossy());
         dunce::canonicalize(&joined).unwrap_or(joined)
     }
 }

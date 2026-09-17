@@ -521,7 +521,7 @@ pub(crate) fn resolve_in_repo(repo_root: &Path, rel_path: &str) -> Option<PathBu
         return None;
     }
 
-    let joined = repo_root.join(rel);
+    let joined = crate::paths::repo_join(repo_root, rel_path);
     // Compare like for like. Falling back to the lexical spelling as an
     // *alternative* to the canonical check (rather than only when
     // canonicalization is impossible) would make the canonical check dead: with
@@ -682,7 +682,7 @@ pub fn get_changed_files(repo_root: &Path, diff_range: Option<&str>) -> Result<V
     Ok(parts
         .iter()
         .filter(|p| crate::paths::contains_lexically(std::path::Path::new(p)))
-        .map(|p| repo_root.join(p))
+        .map(|p| crate::paths::repo_join(repo_root, p))
         .collect())
 }
 
@@ -703,7 +703,7 @@ pub fn get_deleted_files(repo_root: &Path, diff_range: Option<&str>) -> Result<F
     Ok(parts
         .iter()
         .filter(|p| crate::paths::contains_lexically(std::path::Path::new(p)))
-        .map(|p| repo_root.join(p))
+        .map(|p| crate::paths::repo_join(repo_root, p))
         .collect())
 }
 
@@ -745,7 +745,8 @@ pub fn get_renamed_paths(repo_root: &Path, diff_range: Option<&str>) -> Result<F
     Ok(rename_records(repo_root, diff_range)?
         .into_iter()
         .map(|(old, _)| {
-            dunce::canonicalize(repo_root.join(&old)).unwrap_or_else(|_| repo_root.join(&old))
+            dunce::canonicalize(crate::paths::repo_join(repo_root, &old))
+                .unwrap_or_else(|_| crate::paths::repo_join(repo_root, &old))
         })
         .collect())
 }
@@ -861,7 +862,7 @@ pub fn get_untracked_files(repo_root: &Path) -> Result<Vec<PathBuf>> {
     Ok(parts
         .iter()
         .filter(|p| crate::paths::contains_lexically(std::path::Path::new(p)))
-        .map(|p| repo_root.join(p))
+        .map(|p| crate::paths::repo_join(repo_root, p))
         .collect())
 }
 
