@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
         with:
           python-version: '3.12'
           enable-cache: true
@@ -172,7 +172,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
         with:
           python-version: '3.10'
           enable-cache: true
@@ -246,20 +246,75 @@ jobs:
           # exercises the same panic strategy production runs under.
           cargo test --release --test yaml_cases
 
+  # The Linux job above keeps its name because branch protection requires it;
+  # this one gates the same suites where paths, line endings and process
+  # spawning differ.
+  rust-diffctx-test-cross:
+    name: Rust diffctx tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: "1.92.0"
+
+      - name: Cache Cargo
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Build and test
+        working-directory: crates/diffctx-native
+        shell: bash
+        run: |
+          cargo test --lib --features python
+          cargo test --test native_cli
+          cargo test --release --test yaml_cases
+
+      # Release ships an Intel-Mac binary cross-built on this arm64 image; the
+      # first build of it must not be the release itself.
+      - name: Cross-build the Intel-Mac binary and run it under Rosetta
+        if: runner.os == 'macOS'
+        working-directory: crates/diffctx-native
+        run: |
+          rustup target add x86_64-apple-darwin
+          cargo build --release --locked --bin diffctx --target x86_64-apple-darwin
+          bin=../../target/x86_64-apple-darwin/release/diffctx
+          file "$bin" | grep -q x86_64
+          arch -x86_64 "$bin" --version
+
   # ============================================================================
   # Cross-platform Python Testing (diffctx core)
   # ============================================================================
   test:
     needs: [lint-type-check]
-    # CI is Linux-only across all Python versions (minimal, cheap: 1x minutes).
-    # macOS (10x) / Windows (2x) cross-platform coverage runs at RELEASE time in
-    # cd.yml — build-wheels compiles the Rust ext per-OS and smoke-pypi installs
-    # and exercises diffctx on ubuntu/macos/windows. No per-push macOS/Windows.
+    # The repository is public, so hosted macOS/Windows minutes cost nothing;
+    # release-time smoke in cd.yml alone let platform bugs land on main first.
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: ['3.10', '3.11', '3.12', '3.13']
+        # The ARM legs of the release matrix. Windows on ARM has native
+        # CPython only from 3.11, so one current interpreter each.
+        include:
+          - os: ubuntu-22.04-arm
+            python-version: '3.13'
+          - os: windows-11-arm
+            python-version: '3.13'
 
     runs-on: ${{ matrix.os }}
     permissions:
@@ -275,7 +330,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up uv with Python ${{ matrix.python-version }}
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
         with:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
@@ -310,11 +365,21 @@ jobs:
           # all. Installed on one interpreter: the cost is one matrix cell, the
           # alternative was a suite nobody ran.
           SYNC=(uv sync --locked --no-build --extra dev --extra full --extra mcp)
+          # Windows on ARM: cryptography (pulled in by mcp) publishes no wheel
+          # and needs OpenSSL to build, so the MCP suites skip there; tiktoken,
+          # the test oracle, has no wheel either and builds with the Rust above.
+          if [[ "$RUNNER_OS" == "Windows" && "$RUNNER_ARCH" == "ARM64" ]]; then
+            SYNC=(uv sync --locked --extra dev --extra full)
+          fi
           if [[ "${{ matrix.python-version }}" == "3.12" ]]; then
             SYNC+=(--group eval)
           fi
           "${SYNC[@]}"
-          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            cygpath -w "$PWD/.venv/Scripts" >> "$GITHUB_PATH"
+          else
+            echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+          fi
 
       - name: Run Tests with Coverage
         shell: bash
@@ -327,8 +392,10 @@ jobs:
           coverage report --fail-under=40
 
       - name: Upload coverage reports to Codecov
-        if: runner.os == 'Linux' && matrix.python-version == '3.12'
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f  # v7.0.0
+        # Every OS uploads: platform-only branches (Windows paths, POSIX modes)
+        # are covered nowhere else, and Codecov merges the reports.
+        if: matrix.python-version == '3.12'
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5  # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage.xml
@@ -349,7 +416,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
         with:
           python-version: '3.12'
           enable-cache: true
@@ -389,7 +456,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
         with:
           python-version: '3.12'
           enable-cache: true

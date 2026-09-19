@@ -178,6 +178,13 @@ dismissing as bot noise.
   (`ls -la ~/.local/share/uv/tools/diffctx/lib/python*/site-packages/diffctx/_diffctx.abi3.so`).
   To review a range that includes unreleased work, install from source:
   `uv tool install . --force --reinstall`.
+- **A source install sticks.** The tool's receipt
+  (`~/.local/share/uv/tools/diffctx/uv-receipt.toml`) remembers the local
+  checkout, and a later `uv tool upgrade diffctx` rebuilds from it — the
+  "released" reviewer silently becomes a dev build (observed 2026-09-17:
+  `+ diffctx==1.16.0 (from file://…)`). Go back to the published wheel with
+  `uv tool install --force --reinstall --no-sources 'diffctx[mcp]==X.Y.Z'`
+  and confirm the receipt shows `no-sources = true`.
 - **Do not review with `--budget -1`.** Selection plus the post-passes are
   ~97% of wall clock on a wide range (#121); unlimited removes the stop and
   every cell hits the 300s deadline. A wide range at the default budget is
@@ -285,6 +292,42 @@ dismissing as bot noise.
 
 ## Traps this repo has already sprung
 
+- **A `-1` at the head of `--budgets` is an option to argparse.** The first
+  full-mode `eval-sweep` run (2026-09-16) died in every cell in seconds with
+  `--budgets: expected one argument`; the cell's `run.log` is in its uploaded
+  artifact (`gh run download <run> -n cell-…`), and the job log needs
+  `gh api --allow-escape-sequences …/jobs/<id>/logs`. The workflow passes
+  `--budgets="${BUDGETS}"` now; anything else that hands a list whose first
+  element can be negative to argparse needs the `=` form.
+- **`grep | head -5` under `shell: bash` (pipefail) fails once the sixth
+  line exists.** The CD sdist gate printed five Rust paths for the log and
+  died on the write error; the 1.16.0 release stopped at "Build sdist" with
+  nothing published. `grep -m5` prints the same lines without a pipe.
+- **The release tag lives on GitHub only until the next Forgejo push prunes
+  it.** `cd.yml` tags on GitHub; Forgejo is the source of truth and its push
+  mirror removes any tag Forgejo does not have, and a removed tag turns the
+  published release into a draft (assets stop downloading, `npm install`
+  breaks — it fetches the binary from the release). 1.16.0 lost its tag
+  within minutes of the finalize job because a routine `git push origin
+  main` ran first. After every release, before any other push:
+  `git fetch github --tags && git push origin vX.Y.Z`; if the tag is already
+  gone, recreate it on the "Release version X.Y.Z" commit, push to Forgejo
+  first, then GitHub, then `gh release edit vX.Y.Z --draft=false`.
+- **A dependency PR merged right after a release fails `uv sync --locked`.**
+  Its `uv.lock` still names the pre-release project version; the bump
+  changed `pyproject.toml` underneath it. `uv lock` (one-line diff) and
+  commit; merge dependency PRs before dispatching a release, not after.
+- **Cancelling a running release publishes nothing** — the bump commits reach
+  `github/main` only in the finalize job, so a cancelled `cd.yml` leaves
+  `version.py` on the old version and the same version can be dispatched
+  again.
+- **The landing page scrolled sideways on a phone for months.** At 390 px the
+  nav links and the single-column lab grid (`1fr` resolves to min-content)
+  pushed the document to ~595 px wide; nothing checked it. Browser QA of the
+  page includes one mobile-width probe:
+  `document.documentElement.scrollWidth <= innerWidth` at 390 px, plus a list
+  of elements whose right edge passes the viewport outside an
+  `overflow: auto` box.
 - **Two ignore policies, not one.** The *withhold* policy (secret names,
   `.diffctx/ignore`, gitignore, `.git/`) is the security floor everywhere.
   The *noise* policy (`DEFAULT_IGNORE_PATTERNS`: `node_modules/`, `target/`,

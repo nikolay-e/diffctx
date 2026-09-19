@@ -188,6 +188,10 @@ pub struct PprResult {
     /// Lets the caller tell "nothing to seed from" apart from "seeded and
     /// converged to a genuinely empty `scores` map" -- both produce the
     /// same empty map and `forward_pushes == 0` otherwise.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "read by this module's tests only")
+    )]
     pub seeded: bool,
 }
 

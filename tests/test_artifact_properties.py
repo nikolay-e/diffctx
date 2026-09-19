@@ -69,6 +69,7 @@ def _strip_latency(tree: dict) -> dict:
     return {k: v for k, v in tree.items() if k != "latency"}
 
 
+@pytest.mark.timeout(300)
 @settings(max_examples=12, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 @given(spec=repos)
 def test_same_input_same_artifact_within_budget_and_fully_inventoried(spec):
@@ -81,7 +82,7 @@ def test_same_input_same_artifact_within_budget_and_fully_inventoried(spec):
     second = _strip_latency(diffctx.build_diff_context(**kwargs))
     assert first == second, "two runs of one input differ"
 
-    repo_files = {str(p.relative_to(repo.path)) for p in repo.path.rglob("*.py")}
+    repo_files = {p.relative_to(repo.path).as_posix() for p in repo.path.rglob("*.py")}
     inventoried = {c["path"] for c in first["changes"]}
     assert set(changed) <= inventoried, "a changed file is missing from the inventory"
     assert inventoried <= repo_files

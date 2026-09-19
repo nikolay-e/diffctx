@@ -32,6 +32,8 @@ import json
 from collections import defaultdict
 from pathlib import Path
 
+from eval.analysis.cell_metrics import compute_cell_summary
+
 
 def _load_jsonl(path: Path) -> list[dict]:
     if not path.exists():
@@ -46,6 +48,18 @@ def _load_jsonl(path: Path) -> list[dict]:
         except ValueError:
             continue
     return out
+
+
+def _summary_for(stored: dict | None, rows: list[dict]) -> dict:
+    """The cell's stored summary when it describes these rows, else one
+    computed from them. The stored file is written by the sweep workflow,
+    which looked only for un-prefixed checkpoint names; the baselines write
+    `bm25__<set>_budget_sweep/` and `aider_fair__<set>.checkpoint.jsonl`, so
+    every baseline cell of the first full sweep reached the tables as n=0
+    with 500 rows sitting next to its error summary."""
+    if stored and "error" not in stored and stored.get("n"):
+        return stored
+    return compute_cell_summary(rows) if rows else (stored or {})
 
 
 def _safe_load(path: Path) -> dict | None:
@@ -126,7 +140,7 @@ def _budget_sweep_records(cell_root: Path, meta: dict, method, depth, test_set) 
             continue
         budget = int(m.group("budget"))
         rows = _load_jsonl(ckpt)
-        summary = _safe_load(cell_root / f"cell_summary_b{budget}.json") or {}
+        summary = _summary_for(_safe_load(cell_root / f"cell_summary_b{budget}.json"), rows)
         records.append(
             {
                 "artifact_dir": cell_root.name,
@@ -172,10 +186,9 @@ def collect_cells(cells_dir: Path) -> list[dict]:
 
 
 def _single_budget_record(cell_root: Path, meta: dict, cell_info: dict, parsed, method, depth, test_set) -> dict:
-    summary = _safe_load(cell_root / "cell_summary.json") or {}
-    # Find the per-instance checkpoint
     ckpts = sorted(cell_root.glob("*.checkpoint.jsonl"))
     rows = _load_jsonl(ckpts[0]) if ckpts else []
+    summary = _summary_for(_safe_load(cell_root / "cell_summary.json"), rows)
     meta_budget = cell_info.get("budget")
     budget = meta_budget if isinstance(meta_budget, int) else parsed[1]
     return {

@@ -380,9 +380,15 @@ mod tests {
         // `--no-index` needs no repository and emits exactly the header and
         // hunk syntax `parse_diff` consumes in production.
         let output = std::process::Command::new("git")
-            .args(["diff", "--no-index", "--unified=0", "-M"])
-            .arg(&old_file)
-            .arg(&new_file)
+            .args([
+                "diff",
+                "--no-index",
+                "--unified=0",
+                "-M",
+                "old.py",
+                "new.py",
+            ])
+            .current_dir(tmp.path())
             .output()
             .expect("git diff --no-index");
         let diff_text = String::from_utf8_lossy(&output.stdout);

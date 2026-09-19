@@ -189,6 +189,15 @@
       nav .links a:hover {
         color: var(--sig);
       }
+      @media (max-width: 700px) {
+        nav .links {
+          min-width: 0;
+          gap: 16px;
+          overflow-x: auto;
+          white-space: nowrap;
+          scrollbar-width: none;
+        }
+      }
 
       /* ---------- hero ---------- */
       header {
@@ -518,7 +527,7 @@
       }
       @media (max-width: 980px) {
         .lab-grid {
-          grid-template-columns: 1fr;
+          grid-template-columns: minmax(0, 1fr);
         }
       }
       .stages {
@@ -1267,7 +1276,8 @@
                 <div class="ctl">
                   <label for="alpha"
                     ><span
-                      ><span style="text-transform: none">α</span> · decay</span
+                      ><span style="text-transform: none">α</span> · decay ·
+                      <span style="text-transform: none; white-space: nowrap">--alpha</span></span
                     >
                     <b id="alpha-v">0.60</b></label
                   >
@@ -1277,7 +1287,8 @@
                   <label for="tau"
                     ><span
                       ><span style="text-transform: none">τ</span> ·
-                      threshold</span
+                      threshold ·
+                      <span style="text-transform: none; white-space: nowrap">--tau</span></span
                     >
                     <b id="tau-v">0.05</b></label
                   >
@@ -1285,7 +1296,9 @@
                 </div>
                 <div class="ctl">
                   <label for="budget"
-                    >budget · tokens <b id="budget-v">8,000</b></label
+                    ><span>tokens ·
+                      <span style="text-transform: none; white-space: nowrap">--budget</span></span>
+                    <b id="budget-v">8,000</b></label
                   >
                   <input
                     type="range"

@@ -781,13 +781,17 @@ def _write_to_file_path(output_file: Path, writer: Callable[[TextIO], None]) -> 
         # silently turns a shared, world-readable output into owner-only.
         umask = os.umask(0)
         os.umask(umask)
-        # 0o666 & ~umask is exactly what `open(..., "w")` would have created;
-        # this never grants more than a plain write would.
-        os.fchmod(fd_int, 0o666 & ~umask)
-        with open(fd_int, "w", encoding="utf-8") as f:
+        # newline="" keeps the file byte-identical to the stdout artifact; a
+        # Windows text write would otherwise turn every LF into CRLF.
+        with open(fd_int, "w", encoding="utf-8", newline="") as f:
             writer(f)
             f.flush()
             os.fsync(f.fileno())
+        # 0o666 & ~umask is exactly what `open(..., "w")` would have created;
+        # this never grants more than a plain write would. By path, after the
+        # close: os.fchmod is POSIX-only before Python 3.13, and Windows
+        # cannot unlink the temp file while its handle is still open.
+        os.chmod(tmp_path, 0o666 & ~umask)
         os.replace(tmp_path, output_file)
     except PermissionError:
         Path(tmp_path).unlink(missing_ok=True)

@@ -40,3 +40,46 @@ def test_a_method_the_matrix_runs_has_a_column_position():
         assert method in _METHOD_ORDER, f"{method} would sort to the tail unnoticed"
     assert _method_sort_key("internal-bm25") == _METHOD_ORDER.index("internal-bm25")
     assert _method_sort_key("not-a-method") == 99
+
+
+def _row(recall: float, status: str = "ok") -> dict:
+    return {
+        "instance_id": f"x::{recall}-{status}",
+        "file_recall": recall,
+        "file_precision": 0.5,
+        "used_tokens": 100,
+        "extra": {"status": status, "language": "python"},
+    }
+
+
+def _write(path, rows):
+    import json
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+
+
+def test_baseline_cells_with_prefixed_checkpoints_reach_the_table(tmp_path):
+    """The first full sweep rendered every bm25 and aider cell as n=0: the
+    workflow's summary step looked for un-prefixed names and wrote an error
+    summary next to 500 real rows. The table is computed from the rows."""
+    import json
+
+    from eval.analysis.aggregate_sweep import collect_cells, render_sweep_table
+
+    bm25 = tmp_path / "cell-bm25-bALL-L-1-polybench500"
+    _write(bm25 / "bm25__polybench500_budget_sweep" / "b8000.checkpoint.jsonl", [_row(1.0), _row(0.5)])
+    (bm25 / "cell_summary.json").write_text(json.dumps({"error": "no checkpoint produced"}))
+
+    aider = tmp_path / "cell-aider-b8000-L-1-polybench500"
+    _write(aider / "aider_fair__polybench500.checkpoint.jsonl", [_row(1.0), _row(0.0, "aider_error")])
+    (aider / "cell_summary.json").write_text(json.dumps({"error": "no checkpoint produced"}))
+
+    cells = {c["method"]: c for c in collect_cells(tmp_path)}
+    assert cells["bm25"]["summary"]["n"] == 2
+    assert cells["aider"]["summary"]["n"] == 2
+    assert cells["aider"]["summary"]["ok"] == 1
+
+    table = render_sweep_table(list(cells.values()))
+    assert "n=0" not in table
+    assert "| **bm25** | 0.750" in table

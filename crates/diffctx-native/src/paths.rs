@@ -9,7 +9,7 @@
 //! live in the two copies that never received the fix.
 
 use std::borrow::Cow;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Rewrites `\` to `/` on Windows, where it is the component separator, and
 /// leaves the string alone everywhere else, where it is an ordinary character.
@@ -20,6 +20,28 @@ pub(crate) fn to_posix_display(s: Cow<'_, str>) -> String {
 
 #[cfg(not(windows))]
 pub(crate) fn to_posix_display(s: Cow<'_, str>) -> String {
+    s.into_owned()
+}
+
+/// `base.join(rel)` for a `/`-separated `rel` from git or a manifest, spelled
+/// the way the platform spells every other path: `join` keeps the `/`, and on
+/// Windows `root\src/lib.rs` is then a different string key from the
+/// `root\src\lib.rs` canonicalisation produces for the same file.
+pub(crate) fn repo_join(base: &Path, rel: &str) -> PathBuf {
+    base.join(native_separators(Cow::Borrowed(rel)))
+}
+
+pub(crate) fn join_native(base: &Path, rel: &str) -> String {
+    repo_join(base, rel).to_string_lossy().into_owned()
+}
+
+#[cfg(windows)]
+fn native_separators(s: Cow<'_, str>) -> String {
+    s.replace('/', "\\")
+}
+
+#[cfg(not(windows))]
+fn native_separators(s: Cow<'_, str>) -> String {
     s.into_owned()
 }
 
@@ -61,8 +83,8 @@ pub(crate) fn display_rel_or_abs(root: &Path, path: &Path) -> String {
 /// the secret policy), and substituting the link target renames the object
 /// mid-pipeline.
 pub(crate) fn resolve_within(root: &Path, path: &Path) -> Option<std::path::PathBuf> {
-    let root_canon = root.canonicalize().ok()?;
-    let canon = path.canonicalize().ok()?;
+    let root_canon = dunce::canonicalize(root).ok()?;
+    let canon = dunce::canonicalize(path).ok()?;
     canon.starts_with(&root_canon).then(|| path.to_path_buf())
 }
 

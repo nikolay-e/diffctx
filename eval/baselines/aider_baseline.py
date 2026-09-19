@@ -22,6 +22,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+import tiktoken
+
 from eval.baselines._idents import extract_idents_from_patch, is_skippable_path
 from eval.harness.adapters.base import BenchmarkInstance, EvalResult
 from eval.harness.adapters.evaluator import SelectionOutput, UniversalEvaluator
@@ -168,6 +170,16 @@ def _aider_failure(
     return r
 
 
+_TOKEN_ENC = tiktoken.get_encoding("o200k_base")
+
+
+def _map_tokens(map_text: str) -> int:
+    """What the repo map costs the reader, in the tokenizer diffctx is scored
+    in. Every aider row of the first full sweep carried 0 here, which made
+    the baseline's cost unmeasurable."""
+    return len(_TOKEN_ENC.encode(map_text, disallowed_special=())) if map_text else 0
+
+
 def _build_aider_payload(instance: BenchmarkInstance, params: RunParams, repo_dir: Path, aider_mode: str) -> dict[str, Any]:
     if aider_mode == "oracle":
         mentioned_fnames = sorted(instance.gold_files)
@@ -226,18 +238,21 @@ def _aider_eval(
             else:
                 selected.append(f)
 
+        map_text = resp.get("map_text", "")
+        used = _map_tokens(map_text)
         selection = SelectionOutput(
             selected_files=frozenset(selected),
             selected_fragments=None,
-            used_tokens=0,
+            used_tokens=used,
             elapsed_seconds=elapsed,
         )
         result = evaluator.evaluate(instance, selection, budget=params.budget)
+        result.used_tokens = used
         result.elapsed_seconds = elapsed
         result.extra["status"] = "ok"
         result.extra["language"] = instance.language
         result.extra["baseline"] = "aider"
-        result.extra["map_chars"] = len(resp.get("map_text", ""))
+        result.extra["map_chars"] = len(map_text)
         result.extra["apply_mode"] = apply_outcome.mode
         return result
     finally:

@@ -21,6 +21,11 @@ concurrency:
         options:
           - 'true'
           - 'false'
+      build_only:
+        description: 'Build and smoke every release artifact from this ref; publish nothing'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   prepare-version:
@@ -44,7 +49,17 @@ jobs:
       - name: Check that we're on main branch
         env:
           CURRENT_BRANCH: ${{ github.ref_name }}
+          BUILD_ONLY: ${{ inputs.build_only }}
+          PUBLISH: ${{ github.event.inputs.publish_to_pypi }}
         run: |
+          if [ "$BUILD_ONLY" = "true" ]; then
+            if [ "$PUBLISH" = "true" ]; then
+              echo "Error: build_only cannot publish; set publish_to_pypi to false."
+              exit 1
+            fi
+            echo "Build-only run on $CURRENT_BRANCH: nothing will be pushed or published."
+            exit 0
+          fi
           if [ "$CURRENT_BRANCH" != "main" ]; then
             echo "Error: Releases can only be created from the main branch. Current branch: $CURRENT_BRANCH"
             exit 1
@@ -233,16 +248,23 @@ jobs:
             target: aarch64-unknown-linux-gnu
             maturin_target: aarch64
             manylinux: '2_28'
-          # NOTE: macos-13 (Intel) runner pool has multi-hour queue times on
-          # public projects. Apple Silicon (macos-14) wheel covers all modern
-          # Macs; Intel-Mac users can fall back to the sdist or Rosetta.
           - runner: macos-14
             target: aarch64-apple-darwin
             maturin_target: aarch64
             manylinux: 'off'
+          # Cross-compiled on Apple Silicon: the Intel runner pool queues for
+          # hours on public projects, and Xcode's SDK targets both arches.
+          - runner: macos-14
+            target: x86_64-apple-darwin
+            maturin_target: x86_64
+            manylinux: 'off'
           - runner: windows-latest
             target: x86_64-pc-windows-msvc
             maturin_target: x64
+            manylinux: 'off'
+          - runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            maturin_target: aarch64
             manylinux: 'off'
     runs-on: ${{ matrix.runner }}
     steps:
@@ -279,6 +301,27 @@ jobs:
       - name: List built wheel
         shell: bash
         run: ls -la ./repo/dist/
+
+      # The Intel-Mac wheel is cross-built here and this interpreter is arm64,
+      # so it cannot import it; its Rust side is proven under Rosetta in CI.
+      - name: Smoke - wheel installs and runs on its platform
+        if: matrix.target != 'x86_64-apple-darwin'
+        shell: bash
+        working-directory: ./repo
+        run: |
+          python -m venv "${RUNNER_TEMP}/wheel-smoke"
+          bin="${RUNNER_TEMP}/wheel-smoke/bin"
+          if [ -d "${RUNNER_TEMP}/wheel-smoke/Scripts" ]; then bin="${RUNNER_TEMP}/wheel-smoke/Scripts"; fi
+          "$bin/python" -m pip install --quiet --disable-pip-version-check dist/*.whl
+          "$bin/diffctx" --version
+          set +e
+          "$bin/diffctx" . --diff HEAD~1..HEAD -f md -o "${RUNNER_TEMP}/smoke.md"
+          rc=$?
+          set -e
+          [ "$rc" -eq 0 ] || [ "$rc" -eq 4 ]
+          "$bin/diffctx" src -f yaml > "${RUNNER_TEMP}/tree.yaml"
+          grep -q 'version.py' "${RUNNER_TEMP}/tree.yaml"
+          echo "OK: wheel works"
 
       - name: Upload wheel artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
@@ -351,8 +394,14 @@ jobs:
           - runner: macos-14
             target: aarch64-apple-darwin
             archive: tar.gz
+          - runner: macos-14
+            target: x86_64-apple-darwin
+            archive: tar.gz
           - runner: windows-latest
             target: x86_64-pc-windows-msvc
+            archive: zip
+          - runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
             archive: zip
     runs-on: ${{ matrix.runner }}
     steps:
@@ -374,10 +423,11 @@ jobs:
         uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87  # stable
         with:
           toolchain: '1.92.0'
+          targets: ${{ matrix.target }}
 
       - name: Build release binary
         working-directory: ./repo/crates/diffctx-native
-        run: cargo build --release --locked --bin diffctx
+        run: cargo build --release --locked --bin diffctx --target ${{ matrix.target }}
 
       - name: Package binary (tar.gz)
         if: matrix.archive == 'tar.gz'
@@ -387,7 +437,7 @@ jobs:
           TARGET: ${{ matrix.target }}
         run: |
           mkdir -p out
-          cp ./repo/target/release/diffctx out/
+          cp "./repo/target/${TARGET}/release/diffctx" out/
           cp ./repo/LICENSE ./repo/README.md out/
           tar -czf "diffctx-${VERSION}-${TARGET}.tar.gz" -C out .
           ls -la ./*.tar.gz
@@ -400,7 +450,7 @@ jobs:
           TARGET: ${{ matrix.target }}
         run: |
           mkdir -p out
-          cp ./repo/target/release/diffctx.exe out/
+          cp "./repo/target/${TARGET}/release/diffctx.exe" out/
           cp ./repo/LICENSE ./repo/README.md out/
           7z a "diffctx-${VERSION}-${TARGET}.zip" ./out/*
           ls -la ./*.zip
@@ -408,8 +458,12 @@ jobs:
       - name: Smoke - binary runs
         shell: bash
         working-directory: ./repo
+        env:
+          TARGET: ${{ matrix.target }}
+        # The x86_64 macOS binary runs here under Rosetta, which the arm64
+        # runner image ships.
         run: |
-          BIN=./target/release/diffctx
+          BIN="./target/${TARGET}/release/diffctx"
           if [ "${RUNNER_OS}" = "Windows" ]; then BIN="${BIN}.exe"; fi
           "$BIN" --version
           # Exit 4 is the empty-diff contract, a valid outcome for a release
@@ -468,8 +522,8 @@ jobs:
 
       - name: Validate distributions
         run: |
-          python -m pip install --upgrade pip
-          pip install twine
+          python -m pip install --only-binary :all: --upgrade pip
+          python -m pip install --only-binary :all: twine
           twine check dist/*
 
       - name: Publish to PyPI (OIDC trusted publishing)
@@ -496,6 +550,12 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: ['3.10', '3.13']
+        # Windows on ARM has native CPython only from 3.11.
+        include:
+          - os: windows-11-arm
+            python-version: '3.13'
+          - os: ubuntu-22.04-arm
+            python-version: '3.13'
     runs-on: ${{ matrix.os }}
     steps:
       - name: Set up Python
@@ -508,10 +568,12 @@ jobs:
         env:
           VERSION: ${{ needs.prepare-version.outputs.version }}
         run: |
-          python -m pip install --upgrade pip
+          python -m pip install --only-binary :all: --upgrade pip
           # Poll PyPI until the new version is installable. Up to 5 minutes.
+          # Wheels only: the smoke tests the published wheel, and an sdist
+          # fallback would build from source and run its setup scripts.
           for attempt in 1 2 3 4 5 6 7 8 9 10; do
-            if python -m pip install "diffctx==${VERSION}"; then
+            if python -m pip install --only-binary :all: "diffctx==${VERSION}"; then
               echo "Installed diffctx ${VERSION} on attempt $attempt"
               break
             fi
@@ -568,7 +630,7 @@ jobs:
         env:
           VERSION: ${{ needs.prepare-version.outputs.version }}
         run: |
-          python -m pip install "diffctx[mcp]==${VERSION}"
+          python -m pip install --only-binary :all: "diffctx[mcp]==${VERSION}"
           command -v diffctx-mcp
           python - <<'PY'
           import json, os, subprocess, sys
@@ -634,6 +696,7 @@ jobs:
     needs: [prepare-version, build-wheels, build-sdist, build-binaries, publish-to-pypi, smoke-pypi]
     if: |
       always() &&
+      !inputs.build_only &&
       needs.prepare-version.result == 'success' &&
       needs.build-wheels.result == 'success' &&
       needs.build-sdist.result == 'success' &&
@@ -850,7 +913,7 @@ jobs:
           ref: ${{ needs.prepare-version.outputs.tag_name }}
 
       - name: Set up Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e  # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
 
       - name: Login to ghcr
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
@@ -861,7 +924,7 @@ jobs:
 
       - name: Build and push by digest
         id: build
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
         with:
           context: .
           platforms: ${{ matrix.platform }}
@@ -900,7 +963,7 @@ jobs:
           merge-multiple: true
 
       - name: Set up Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e  # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
 
       - name: Login to ghcr
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0

@@ -198,7 +198,7 @@ impl GoEdgeBuilder {
                     if let Some(parent) = rel.parent() {
                         if is_rep {
                             path_to_frags
-                                .entry(parent.to_string_lossy().to_string())
+                                .entry(crate::paths::to_posix_display(parent.to_string_lossy()))
                                 .or_default()
                                 .push(f.id.clone());
                         }

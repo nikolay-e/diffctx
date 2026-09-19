@@ -74,6 +74,7 @@ def test_a_zero_ceiling_says_it_timed_out_rather_than_denying_the_repo(tmp_path)
     assert "not a git repository" not in message
 
 
+@pytest.mark.timeout(300)
 def test_a_compute_deadline_yields_a_partial_artifact_not_an_exception(tmp_path):
     """The deadline used to be a panic that crossed the FFI boundary as an
     exception (and, under the old `panic = "abort"` release profile, as
@@ -110,6 +111,8 @@ def test_a_compute_deadline_yields_a_partial_artifact_not_an_exception(tmp_path)
         print(json.dumps({{"coverage": r.get("coverage"), "changed": len(r.get("changed_files") or [])}}))
         """)
     proc = subprocess.run([sys.executable, "-c", child], capture_output=True, text=True, timeout=600)
+    if "GitError: timeout" in proc.stderr:
+        pytest.skip("git itself missed the 3 s ceiling on this machine, so the compute deadline was never reached")
 
     assert proc.returncode == 0, f"the deadline escaped as an error: {proc.stderr[-400:]}"
     report = json.loads(proc.stdout.strip().splitlines()[-1])

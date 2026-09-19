@@ -425,7 +425,7 @@ pub fn read_file_cached<'a>(
 fn candidate_rel_path(candidate: &Path, repo_root: Option<&Path>) -> String {
     if let Some(root) = repo_root {
         if let Ok(rel) = candidate.strip_prefix(root) {
-            return rel.to_string_lossy().to_lowercase();
+            return crate::paths::to_posix_display(rel.to_string_lossy()).to_lowercase();
         }
     }
     candidate

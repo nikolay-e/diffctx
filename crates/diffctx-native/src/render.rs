@@ -553,9 +553,7 @@ pub fn build_diff_context_output(
         redactions.merge(crate::sanitize::sanitize_in_place(m));
     }
 
-    let resolved = repo_root
-        .canonicalize()
-        .unwrap_or_else(|_| repo_root.to_path_buf());
+    let resolved = dunce::canonicalize(repo_root).unwrap_or_else(|_| repo_root.to_path_buf());
     let name = resolved
         .file_name()
         .map(|n| n.to_string_lossy().to_string())

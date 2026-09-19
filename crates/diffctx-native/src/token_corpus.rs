@@ -116,7 +116,10 @@ fn resolve_cacheable_oids(root_dir: &Path) -> FxHashMap<PathBuf, String> {
     let Ok(dirty_parts) = git::run_git_z(root_dir, &["diff-files", "--name-only", "-z"]) else {
         return FxHashMap::default();
     };
-    let dirty: FxHashSet<PathBuf> = dirty_parts.into_iter().map(|p| root_dir.join(p)).collect();
+    let dirty: FxHashSet<PathBuf> = dirty_parts
+        .into_iter()
+        .map(|p| crate::paths::repo_join(root_dir, &p))
+        .collect();
 
     let mut oids: FxHashMap<PathBuf, String> = FxHashMap::default();
     for entry in entries {
@@ -131,7 +134,7 @@ fn resolve_cacheable_oids(root_dir: &Path) -> FxHashMap<PathBuf, String> {
         if stage != "0" || !(mode == "100644" || mode == "100755") {
             continue;
         }
-        let path = root_dir.join(rel);
+        let path = crate::paths::repo_join(root_dir, rel);
         if dirty.contains(&path) {
             continue;
         }

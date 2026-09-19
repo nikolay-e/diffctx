@@ -135,8 +135,8 @@ mod tests {
             .map(|(shape, secret)| shape.replace("{}", secret) + "\n")
             .collect();
         let (clean, r) = sanitize(&planted);
-        for (_, secret) in PARTS {
-            assert!(!clean.contains(secret), "{secret} survived: {clean}");
+        for (i, (_, secret)) in PARTS.iter().enumerate() {
+            assert!(!clean.contains(secret), "planted shape {i} survived");
         }
         assert!(!clean.contains("MIIB"));
         assert_eq!(r.count, 8);

@@ -9,11 +9,12 @@ REPO_URL = "https://github.com/nikolay-e/diffctx"
 DESCRIPTION = "Selects the minimum code an LLM needs to review a git diff"
 
 WINDOWS_TARGET = "x86_64-pc-windows-msvc"
+WINDOWS_ARM_TARGET = "aarch64-pc-windows-msvc"
 LINUX_TARGETS = {"x86_64": "x86_64-unknown-linux-gnu", "aarch64": "aarch64-unknown-linux-gnu"}
 
 
 def asset_name(version: str, target: str) -> str:
-    suffix = "zip" if target == WINDOWS_TARGET else "tar.gz"
+    suffix = "zip" if target in (WINDOWS_TARGET, WINDOWS_ARM_TARGET) else "tar.gz"
     return f"diffctx-{version}-{target}.{suffix}"
 
 
@@ -27,7 +28,7 @@ def sha256_of(path: Path) -> str:
 
 def collect_checksums(assets_dir: Path, version: str) -> dict[str, str]:
     checksums: dict[str, str] = {}
-    for target in [WINDOWS_TARGET, *LINUX_TARGETS.values(), "aarch64-apple-darwin"]:
+    for target in [WINDOWS_TARGET, WINDOWS_ARM_TARGET, *LINUX_TARGETS.values(), "aarch64-apple-darwin", "x86_64-apple-darwin"]:
         path = assets_dir / asset_name(version, target)
         if not path.is_file():
             raise SystemExit(f"missing release asset: {path}")
@@ -35,23 +36,29 @@ def collect_checksums(assets_dir: Path, version: str) -> dict[str, str]:
     return checksums
 
 
+SCOOP_ARCHITECTURES = {"64bit": WINDOWS_TARGET, "arm64": WINDOWS_ARM_TARGET}
+
+
 def render_scoop(version: str, checksums: dict[str, str]) -> str:
-    archive = asset_name(version, WINDOWS_TARGET)
     manifest = {
         "version": version,
         "description": DESCRIPTION,
         "homepage": REPO_URL,
         "license": "Apache-2.0",
         "architecture": {
-            "64bit": {
-                "url": f"{REPO_URL}/releases/download/v{version}/{archive}",
-                "hash": checksums[archive],
+            arch: {
+                "url": f"{REPO_URL}/releases/download/v{version}/{asset_name(version, target)}",
+                "hash": checksums[asset_name(version, target)],
             }
+            for arch, target in SCOOP_ARCHITECTURES.items()
         },
         "bin": "diffctx.exe",
         "checkver": {"github": REPO_URL},
         "autoupdate": {
-            "architecture": {"64bit": {"url": f"{REPO_URL}/releases/download/v$version/diffctx-$version-{WINDOWS_TARGET}.zip"}}
+            "architecture": {
+                arch: {"url": f"{REPO_URL}/releases/download/v$version/diffctx-$version-{target}.zip"}
+                for arch, target in SCOOP_ARCHITECTURES.items()
+            }
         },
     }
     return json.dumps(manifest, indent=4) + "\n"

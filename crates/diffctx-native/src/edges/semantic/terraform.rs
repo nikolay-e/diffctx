@@ -174,13 +174,13 @@ fn resolve_module_paths(
 ) -> Vec<PathBuf> {
     let mut paths = Vec::new();
     for tf_dir in tf_dirs {
-        if let Ok(resolved) = tf_dir.join(src).canonicalize() {
+        if let Ok(resolved) = dunce::canonicalize(tf_dir.join(src)) {
             paths.push(resolved);
         }
     }
     if let Some(root) = repo_root {
         let stripped = src.trim_start_matches("./");
-        if let Ok(resolved) = root.join(stripped).canonicalize() {
+        if let Ok(resolved) = dunce::canonicalize(root.join(stripped)) {
             paths.push(resolved);
         }
     }
@@ -410,13 +410,13 @@ fn build_module_source_edges(
             let source = &cap[1];
             if source.starts_with("./") || source.starts_with("../") {
                 let module_dir = base_dir.join(source);
-                let resolved = module_dir.canonicalize().unwrap_or(module_dir);
+                let resolved = dunce::canonicalize(&module_dir).unwrap_or(module_dir);
 
                 for (p, frag_ids) in &path_to_frags {
                     let candidate = if p.is_absolute() {
                         p.clone()
                     } else if let Some(root) = repo_root {
-                        root.join(p).canonicalize().unwrap_or_else(|_| root.join(p))
+                        dunce::canonicalize(root.join(p)).unwrap_or_else(|_| root.join(p))
                     } else {
                         p.clone()
                     };

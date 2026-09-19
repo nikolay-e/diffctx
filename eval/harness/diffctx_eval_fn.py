@@ -40,6 +40,18 @@ def _compute_used_tokens(output: dict) -> int:
     return total
 
 
+def _record_provenance(result: EvalResult, output: dict) -> None:
+    """The engine version and the effective-configuration hash on every row.
+    A cell's metadata names the git commit, which does not see `DIFFCTX_*`
+    overrides; the hash does, so two rows compare only when it matches."""
+    prov = output.get("provenance") or {}
+    result.extra["engine_version"] = (prov.get("engine") or {}).get("version")
+    result.extra["effective_config_hash"] = prov.get("effective_config_hash")
+    selection = prov.get("selection") or {}
+    result.extra["tau"] = selection.get("tau")
+    result.extra["budget_tokens"] = selection.get("budget_tokens")
+
+
 def _output_fragments(output: dict) -> tuple[GoldenFragment, ...]:
     from eval.harness.common import parse_lines_field
 
@@ -227,6 +239,7 @@ def _pool_eval(repos_dir_str: str, instance: BenchmarkInstance, params: RunParam
         result.extra["status"] = "ok"
         result.extra["language"] = instance.language
         result.extra["fragment_count"] = len(fragments)
+        _record_provenance(result, output)
         result.extra["t_clone_s"] = t_clone_s
         result.extra["t_apply_s"] = t_apply_s
         result.extra["apply_mode"] = apply_outcome.mode
@@ -285,6 +298,7 @@ def _build_eval_result_from_output(
     result.extra["status"] = "ok"
     result.extra["language"] = instance.language
     result.extra["fragment_count"] = len(fragments)
+    _record_provenance(result, output)
     result.extra["apply_mode"] = apply_mode
     latency = output.get("latency") or {}
     if latency:

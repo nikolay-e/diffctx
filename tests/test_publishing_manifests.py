@@ -78,6 +78,7 @@ class TestClaudePlugin:
         referenced = set(re.findall(r"`(diffctx_[a-z_]+|get_[a-z_]+)`", text))
         assert referenced
 
+        pytest.importorskip("mcp")
         from diffctx.mcp import server as mcp_server
 
         # The default surface, deliberately: a plugin command that only works
@@ -178,3 +179,15 @@ class TestLandingPageClaims:
         ), "the headline stat must link the commit it was measured on"
         assert "diffctx . --diff" in block, "the headline stat must show the command that reproduces it"
         assert "o200k" in block, "the headline stat must name the tokenizer it counted with"
+
+    def test_every_demo_dial_names_the_flag_it_stands_for(self):
+        html = (PROJECT_ROOT / "docs" / "index.html").read_text(encoding="utf-8")
+        from diffctx.cli import _build_main_parser
+
+        flags = {o for a in _build_main_parser(prog="diffctx", version="x")._actions for o in a.option_strings}
+        for dial in ("alpha", "tau", "budget"):
+            start = html.index(f'<label for="{dial}"')
+            label = html[start : html.index("</label", start)]
+            named = re.findall(r"--[a-z][a-z-]*", label)
+            assert named, f"the {dial} dial does not say which flag it is"
+            assert set(named) <= flags, f"the {dial} dial names a flag the CLI does not have: {named}"

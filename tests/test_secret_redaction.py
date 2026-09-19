@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 import diffctx
 from tests.conftest import run_diffctx_subprocess
 from tests.framework.pygit2_backend import Pygit2Repo
@@ -77,6 +79,7 @@ def test_tree_mode_redacts_and_warns(tmp_path):
 
 
 async def test_mcp_fetch_and_glob_surfaces_redact(tmp_path):
+    pytest.importorskip("mcp")
     from diffctx.mcp.server import mcp, register_legacy_tools
     from tests.test_mcp import _get_text
 

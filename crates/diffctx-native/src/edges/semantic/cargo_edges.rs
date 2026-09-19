@@ -123,7 +123,7 @@ impl EdgeBuilder for CargoEdgeBuilder {
             let parent = Path::new(cf.path()).parent().unwrap_or(Path::new(""));
 
             for entry in extract_entry_points(&cf.content) {
-                let entry_path = parent.join(&entry).to_string_lossy().to_string();
+                let entry_path = crate::paths::join_native(parent, &entry);
                 if let Some(fid) = rs_by_path.get(&entry_path) {
                     if fid != &cf.id {
                         add_edge(&mut edges, &cf.id, fid, entry_w, rev);
@@ -132,14 +132,14 @@ impl EdgeBuilder for CargoEdgeBuilder {
             }
 
             for (_, rel_path) in extract_path_deps(&cf.content) {
-                let dep_dir = parent.join(&rel_path).to_string_lossy().to_string();
+                let dep_dir = crate::paths::join_native(parent, &rel_path);
                 if let Some(fids) = cargo_by_dir.get(&dep_dir) {
                     add_edges_from_ids(&mut edges, &cf.id, &fids, dep_w, rev);
                 }
             }
 
             for member in extract_workspace_members(&cf.content) {
-                let member_dir = parent.join(&member).to_string_lossy().to_string();
+                let member_dir = crate::paths::join_native(parent, &member);
                 if let Some(fids) = cargo_by_dir.get(&member_dir) {
                     add_edges_from_ids(&mut edges, &cf.id, &fids, ws_w, rev);
                 }

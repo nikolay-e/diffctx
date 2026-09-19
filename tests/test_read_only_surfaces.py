@@ -89,6 +89,7 @@ def test_the_allow_list_is_checked_before_the_filesystem_is(tmp_path, monkeypatc
         assert "outside the roots" in str(refused_dir.value), bad
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="exit 141 is SIGPIPE; Windows has no such signal")
 def test_a_broken_pipe_exits_141_in_tree_mode(tmp_path):
     root = tmp_path / "proj"
     root.mkdir()
@@ -101,6 +102,7 @@ def test_a_broken_pipe_exits_141_in_tree_mode(tmp_path):
     assert "exit=141" in proc.stdout, proc.stdout + proc.stderr
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows has no POSIX permission bits or umask")
 def test_an_output_file_takes_the_mode_the_umask_gives_a_new_file(tmp_path):
     root = tmp_path / "proj"
     root.mkdir()

@@ -4,7 +4,7 @@ cannot drift from `diffctx --help` (the README table did, twice)."""
 
 from __future__ import annotations
 
-import os
+import argparse
 import sys
 from pathlib import Path
 
@@ -19,8 +19,8 @@ INTRO = """# Command-line reference
 
 Every flag `diffctx` accepts, with its default and one line of meaning. This
 page is rendered from the parsers themselves by `scripts/update_cli_reference.py`
-(`tests/test_cli_reference.py` fails when it differs from `diffctx --help`), so
-what you read here is what the installed version answers. Worked examples
+(`tests/test_cli_reference.py` fails when it differs from what the parsers
+declare), so what you read here is what the installed version answers. Worked examples
 live in the [README](../../README.md#usage); what `--budget` counts is in
 [Token counting](token-budget.md).
 
@@ -30,17 +30,56 @@ there lists exactly which.
 """
 
 
-def _help(parser) -> str:
-    return parser.format_help().rstrip("\n") + "\n"
+def _default(action: argparse.Action) -> str:
+    if action.default in (None, argparse.SUPPRESS) or isinstance(action, (argparse._HelpAction, argparse._VersionAction)):
+        return "—"
+    if isinstance(action.default, bool):
+        return "off" if not action.default else "on"
+    if not isinstance(action.default, (str, int, float)) or str(action.default).startswith("<"):
+        return "—"
+    return f"`{action.default}`"
+
+
+def _flag(action: argparse.Action) -> str:
+    if not action.option_strings:
+        return f"`{action.metavar or action.dest}`"
+    metavar = action.metavar or (action.dest.upper() if action.nargs != 0 else "")
+    if action.choices and not action.metavar:
+        metavar = "{" + ",".join(str(c) for c in action.choices) + "}"
+    names = ", ".join(f"`{o}`" for o in action.option_strings)
+    return f"{names} {metavar}".rstrip() if metavar else names
+
+
+def _cell(text: str) -> str:
+    return " ".join(text.split()).replace("|", "\\|")
+
+
+def _table(parser: argparse.ArgumentParser) -> str:
+    out = []
+    for group in parser._action_groups:
+        actions = [a for a in group._group_actions if a.help is not argparse.SUPPRESS]
+        if not actions:
+            continue
+        out.append(f"### {group.title}\n")
+        out.append("| Flag | Default | Meaning |\n|---|---|---|")
+        for a in actions:
+            out.append(f"| {_flag(a)} | {_default(a)} | {_cell(a.help or '')} |")
+        out.append("")
+    return "\n".join(out)
+
+
+def _section(title: str, parser: argparse.ArgumentParser) -> str:
+    body = f"## `{title}`\n\n```text\n{(parser.description or '').strip()}\n```\n\n{_table(parser)}"
+    if parser.epilog:
+        body += "\n```text\n" + parser.epilog.strip("\n") + "\n```\n"
+    return body
 
 
 def render() -> str:
-    os.environ["COLUMNS"] = "80"
     main = _build_main_parser(prog="diffctx", version="<version>")
     graph = _build_graph_parser(prog="diffctx graph")
     return (
-        f"{INTRO}\n## `diffctx`\n\n```text\n{_help(main)}```\n\n"
-        f"## `diffctx graph`\n\n```text\n{_help(graph)}```\n\n"
+        f"{INTRO}\n{_section('diffctx', main)}\n{_section('diffctx graph', graph)}\n"
         "## `diffctx mcp`\n\n"
         "Runs the MCP server over stdio — the same entry point as `diffctx-mcp` —\n"
         "and takes no flags. It needs the `mcp` extra (`pip install 'diffctx[mcp]'`);\n"

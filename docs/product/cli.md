@@ -2,8 +2,8 @@
 
 Every flag `diffctx` accepts, with its default and one line of meaning. This
 page is rendered from the parsers themselves by `scripts/update_cli_reference.py`
-(`tests/test_cli_reference.py` fails when it differs from `diffctx --help`), so
-what you read here is what the installed version answers. Worked examples
+(`tests/test_cli_reference.py` fails when it differs from what the parsers
+declare), so what you read here is what the installed version answers. Worked examples
 live in the [README](../../README.md#usage); what `--budget` counts is in
 [Token counting](token-budget.md).
 
@@ -14,107 +14,55 @@ there lists exactly which.
 ## `diffctx`
 
 ```text
-usage: diffctx [-h] [-o FILE] [-i FILE] [-w FILE] [--no-default-ignores] [-c]
-               [-q] [--log-level {error,warning,info,debug}] [-v]
-               [-f {yaml,json,txt,md}] [--save] [--no-ignores] [--max-depth N]
-               [--no-content] [--max-file-bytes N] [--no-file-size-limit]
-               [--diff [RANGE]] [--budget TOKENS] [--alpha FLOAT]
-               [--tau FLOAT] [--scoring {ppr,ego,bm25,rrf,pit}]
-               [--mode {pack,locate}] [--timeout SECONDS] [--full]
-               [--with-raw-diff]
-               [paths ...]
-
 Generate a structured representation of a directory tree (Markdown, YAML, JSON, or text). Supports diff context mode (--diff) for intelligent code change analysis.
 
 Subcommands:
   graph    Build and analyze the project dependency graph
   mcp      Run the MCP server over stdio (same as diffctx-mcp; needs the [mcp] extra)
+```
 
-positional arguments:
-  paths                 Directories, files, or glob patterns to analyze
+### positional arguments
 
-options:
-  -h, --help            show this help message and exit
-  -o FILE, --output-file FILE
-                        Write output to FILE instead of stdout ('-' forces
-                        stdout)
-  -i FILE, --ignore FILE
-                        Custom ignore file (bare names also resolve inside
-                        .diffctx/; not yet supported with --diff)
-  -w FILE, --whitelist FILE
-                        Whitelist file, only matching files are included (bare
-                        names also resolve inside .diffctx/; not yet supported
-                        with --diff)
-  --no-default-ignores  Tree mode only: disable built-in ignore patterns;
-                        project .gitignore and .diffctx/ignore still apply
-                        (see --no-ignores)
-  -c, --copy            Copy to clipboard instead of printing to stdout
-                        (combine with -o to also write a file)
-  -q, --quiet           Suppress status messages (token summary, save/copy
-                        confirmations); overrides --log-level
-  --log-level {error,warning,info,debug}
-                        Log level (default: error)
-  -v, --version         show program's version number and exit
-  -f {yaml,json,txt,md}, --format {yaml,json,txt,md}
-                        Output format (default: md; inferred from the -o FILE
-                        extension when omitted)
-  --save                Save output to tree.{ext} in the current directory
-                        (tree.md by default; extension follows -f)
-  --no-ignores          Disable all ignore rules: built-in patterns, project
-                        .gitignore, and .diffctx/ignore (a custom -i file
-                        still applies)
-  --max-depth N         Maximum traversal depth (default: unlimited)
-  --no-content          Skip file contents (structure only)
-  --max-file-bytes N    Omit content of files larger than N bytes (default:
-                        256 KB). Use --no-file-size-limit to include all.
-  --no-file-size-limit  Include all files regardless of size
+| Flag | Default | Meaning |
+|---|---|---|
+| `paths` | — | Directories, files, or glob patterns to analyze |
 
-diff context mode:
-  --diff [RANGE]        Git diff range (e.g., HEAD~1..HEAD, main..feature) or
-                        a duration window ending now (24h, 8d, 90min, 1h30m,
-                        2w — units s/m/h/d/w), which covers the commits inside
-                        the window plus the uncommitted work on top. Bare
-                        --diff shows uncommitted changes (working tree vs
-                        HEAD).
-  --budget TOKENS       Token budget in o200k_base tokens (tiktoken, GPT-4o
-                        family — other model families tokenize differently, so
-                        leave headroom; see 'Token counting' below): omit =
-                        auto (default), N = cap on the whole artifact (change
-                        summary charged first), -1 = unlimited, 0 = strict-
-                        zero floor (empty selection; use --full for changed
-                        files only)
-  --alpha FLOAT         PPR continuation probability, 0-1 exclusive (default:
-                        0.60; higher = mass travels further from the change,
-                        lower = tighter around it). Only affects --scoring ppr
-  --tau FLOAT           Relevance threshold for full fragment content, >= 0
-                        (default: 0.05). Fragments scoring below it are
-                        reduced to signature stubs or dropped; higher = leaner
-                        output, lower = more surrounding context
-  --scoring {ppr,ego,bm25,rrf,pit}
-                        Scoring mode: ego = structural neighbors of the change
-                        (default); ppr = graph-wide relevance (Personalized
-                        PageRank), for far-reaching changes; bm25 = lexical
-                        similarity, for sparse cross-file structure; rrf =
-                        rank fusion of ego and bm25 on ranks; pit = the same
-                        fusion on score percentiles rather than ranks
-  --mode {pack,locate}  Output mode: pack = context with source bodies
-                        (default); locate = ranked navigation list with
-                        provenance reasons, JSON only (diffctx.locate.v1; -f
-                        is ignored)
-  --timeout SECONDS     Wall-clock deadline for --diff analysis (default:
-                        300); on expiry diffctx aborts with exit code 124
-                        instead of hanging
-  --full                Include every fragment of the changed files and
-                        nothing else — no related-code context (ignores
-                        --budget/--tau/--alpha/--scoring)
-  --with-raw-diff       Also embed the raw unified diff (git's own +/- text)
-                        ahead of the selected fragments. Additive only:
-                        selection is unchanged, and the diff does NOT count
-                        against --budget (the stderr token summary counts it,
-                        reporting the real output size). Lock-file, ignored,
-                        and secret-like sections stay omitted. Python CLI only
-                        — the native binary has no such flag
+### options
 
+| Flag | Default | Meaning |
+|---|---|---|
+| `-h`, `--help` | — | show this help message and exit |
+| `-o`, `--output-file` FILE | — | Write output to FILE instead of stdout ('-' forces stdout) |
+| `-i`, `--ignore` FILE | — | Custom ignore file (bare names also resolve inside .diffctx/; not yet supported with --diff) |
+| `-w`, `--whitelist` FILE | — | Whitelist file, only matching files are included (bare names also resolve inside .diffctx/; not yet supported with --diff) |
+| `--no-default-ignores` | off | Tree mode only: disable built-in ignore patterns; project .gitignore and .diffctx/ignore still apply (see --no-ignores) |
+| `-c`, `--copy` | off | Copy to clipboard instead of printing to stdout (combine with -o to also write a file) |
+| `-q`, `--quiet` | off | Suppress status messages (token summary, save/copy confirmations); overrides --log-level |
+| `--log-level` {error,warning,info,debug} | `error` | Log level (default: error) |
+| `-v`, `--version` | — | show program's version number and exit |
+| `-f`, `--format` {yaml,json,txt,md} | — | Output format (default: md; inferred from the -o FILE extension when omitted) |
+| `--save` | off | Save output to tree.{ext} in the current directory (tree.md by default; extension follows -f) |
+| `--no-ignores` | off | Disable all ignore rules: built-in patterns, project .gitignore, and .diffctx/ignore (a custom -i file still applies) |
+| `--max-depth` N | — | Maximum traversal depth (default: unlimited) |
+| `--no-content` | off | Skip file contents (structure only) |
+| `--max-file-bytes` N | — | Omit content of files larger than N bytes (default: 256 KB). Use --no-file-size-limit to include all. |
+| `--no-file-size-limit` | off | Include all files regardless of size |
+
+### diff context mode
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--diff` RANGE | — | Git diff range (e.g., HEAD~1..HEAD, main..feature) or a duration window ending now (24h, 8d, 90min, 1h30m, 2w — units s/m/h/d/w), which covers the commits inside the window plus the uncommitted work on top. Bare --diff shows uncommitted changes (working tree vs HEAD). |
+| `--budget` TOKENS | — | Token budget in o200k_base tokens (tiktoken, GPT-4o family — other model families tokenize differently, so leave headroom; see 'Token counting' below): omit = auto (default), N = cap on the whole artifact (change summary charged first), -1 = unlimited, 0 = strict-zero floor (empty selection; use --full for changed files only) |
+| `--alpha` FLOAT | — | PPR continuation probability, 0-1 exclusive (default: 0.60; higher = mass travels further from the change, lower = tighter around it). Only affects --scoring ppr |
+| `--tau` FLOAT | — | Relevance threshold for full fragment content, >= 0 (default: 0.05). Fragments scoring below it are reduced to signature stubs or dropped; higher = leaner output, lower = more surrounding context |
+| `--scoring` {ppr,ego,bm25,rrf,pit} | — | Scoring mode: ego = structural neighbors of the change (default); ppr = graph-wide relevance (Personalized PageRank), for far-reaching changes; bm25 = lexical similarity, for sparse cross-file structure; rrf = rank fusion of ego and bm25 on ranks; pit = the same fusion on score percentiles rather than ranks |
+| `--mode` {pack,locate} | — | Output mode: pack = context with source bodies (default); locate = ranked navigation list with provenance reasons, JSON only (diffctx.locate.v1; -f is ignored) |
+| `--timeout` SECONDS | — | Wall-clock deadline for --diff analysis (default: 300); on expiry diffctx aborts with exit code 124 instead of hanging |
+| `--full` | off | Include every fragment of the changed files and nothing else — no related-code context (ignores --budget/--tau/--alpha/--scoring) |
+| `--with-raw-diff` | off | Also embed the raw unified diff (git's own +/- text) ahead of the selected fragments. Additive only: selection is unchanged, and the diff does NOT count against --budget (the stderr token summary counts it, reporting the real output size). Lock-file, ignored, and secret-like sections stay omitted. Python CLI only — the native binary has no such flag |
+
+```text
 Built-in ignored patterns (disable with --no-default-ignores; project .gitignore
 and .diffctx/ignore always apply unless --no-ignores is given):
   .git/, .svn/, .hg/    Version control directories
@@ -191,47 +139,30 @@ Exit codes:
 ## `diffctx graph`
 
 ```text
-usage: diffctx graph [-h] [-o FILE] [-i FILE] [-w FILE] [--no-default-ignores]
-                     [-c] [-q] [--log-level {error,warning,info,debug}]
-                     [-f {mermaid,json,graphml}] [--summary]
-                     [--level {fragment,file,directory}]
-                     [directory]
-
 Build and analyze the project dependency graph
-
-positional arguments:
-  directory             The directory to analyze
-
-options:
-  -h, --help            show this help message and exit
-  -o FILE, --output-file FILE
-                        Write output to FILE instead of stdout ('-' forces
-                        stdout)
-  -i FILE, --ignore FILE
-                        Custom ignore file (bare names also resolve inside
-                        .diffctx/; not yet supported with --diff)
-  -w FILE, --whitelist FILE
-                        Whitelist file, only matching files are included (bare
-                        names also resolve inside .diffctx/; not yet supported
-                        with --diff)
-  --no-default-ignores  Tree mode only: disable built-in ignore patterns;
-                        project .gitignore and .diffctx/ignore still apply
-                        (see --no-ignores)
-  -c, --copy            Copy to clipboard instead of printing to stdout
-                        (combine with -o to also write a file)
-  -q, --quiet           Suppress status messages (token summary, save/copy
-                        confirmations); overrides --log-level
-  --log-level {error,warning,info,debug}
-                        Log level (default: error)
-  -f {mermaid,json,graphml}, --format {mermaid,json,graphml}
-                        Graph output format (default: mermaid)
-  --summary             Print graph statistics instead of the graph (cycles,
-                        hotspots, coupling); -f is ignored
-  --level {fragment,file,directory}
-                        Node granularity: directory, file, or fragment =
-                        function/class-level block (default: directory);
-                        applies to mermaid output and --summary
 ```
+
+### positional arguments
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `directory` | `.` | The directory to analyze |
+
+### options
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `-h`, `--help` | — | show this help message and exit |
+| `-o`, `--output-file` FILE | — | Write output to FILE instead of stdout ('-' forces stdout) |
+| `-i`, `--ignore` FILE | — | Custom ignore file (bare names also resolve inside .diffctx/; not yet supported with --diff) |
+| `-w`, `--whitelist` FILE | — | Whitelist file, only matching files are included (bare names also resolve inside .diffctx/; not yet supported with --diff) |
+| `--no-default-ignores` | off | Tree mode only: disable built-in ignore patterns; project .gitignore and .diffctx/ignore still apply (see --no-ignores) |
+| `-c`, `--copy` | off | Copy to clipboard instead of printing to stdout (combine with -o to also write a file) |
+| `-q`, `--quiet` | off | Suppress status messages (token summary, save/copy confirmations); overrides --log-level |
+| `--log-level` {error,warning,info,debug} | `error` | Log level (default: error) |
+| `-f`, `--format` {mermaid,json,graphml} | — | Graph output format (default: mermaid) |
+| `--summary` | off | Print graph statistics instead of the graph (cycles, hotspots, coupling); -f is ignored |
+| `--level` {fragment,file,directory} | — | Node granularity: directory, file, or fragment = function/class-level block (default: directory); applies to mermaid output and --summary |
 
 ## `diffctx mcp`
 
