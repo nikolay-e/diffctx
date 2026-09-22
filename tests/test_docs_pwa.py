@@ -20,7 +20,7 @@ from playwright.sync_api import Error as PlaywrightError  # noqa: E402
 from playwright.sync_api import sync_playwright  # noqa: E402
 
 DOCS = Path(__file__).parent.parent / "docs"
-PREFIX = "/diffctx"
+PREFIX = ""
 
 
 class PagesStandIn(http.server.SimpleHTTPRequestHandler):

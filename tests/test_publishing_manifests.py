@@ -210,7 +210,7 @@ class TestLandingPagePwa:
         manifest = json.loads((self.DOCS / "manifest.webmanifest").read_text(encoding="utf-8"))
         purposes = set()
         for icon in manifest["icons"]:
-            path = self.DOCS / icon["src"].removeprefix("/diffctx/")
+            path = self.DOCS / icon["src"].removeprefix("/")
             width, height = self._png_size(path)
             assert icon["sizes"] == f"{width}x{height}", path
             purposes.add(icon["purpose"])
@@ -220,10 +220,10 @@ class TestLandingPagePwa:
 
     def test_page_links_the_manifest_and_registers_the_worker(self):
         page = (self.DOCS / "index.html").read_text(encoding="utf-8")
-        assert 'rel="manifest" href="/diffctx/manifest.webmanifest"' in page
-        assert 'rel="apple-touch-icon" href="/diffctx/icons/apple-touch-icon.png"' in page
+        assert 'rel="manifest" href="/manifest.webmanifest"' in page
+        assert 'rel="apple-touch-icon" href="/icons/apple-touch-icon.png"' in page
         assert (self.DOCS / "icons/apple-touch-icon.png").is_file()
-        assert 'serviceWorker.register("/diffctx/sw.js")' in page
+        assert 'serviceWorker.register("/sw.js")' in page
 
     @staticmethod
     def _precached() -> list[str]:
@@ -243,4 +243,34 @@ class TestLandingPagePwa:
         manifest = json.loads((self.DOCS / "manifest.webmanifest").read_text(encoding="utf-8"))
         precached = {entry.removeprefix("./") for entry in self._precached()}
         for shortcut in manifest["shortcuts"]:
-            assert shortcut["url"].removeprefix("/diffctx/") in precached, shortcut
+            assert shortcut["url"].removeprefix("/") in precached, shortcut
+
+
+class TestLandingPageDiscoverability:
+    """Search engines index the host docs/CNAME names: every absolute URL the
+    site publishes lives on it, and the sitemap lists only pages that exist."""
+
+    DOCS = PROJECT_ROOT / "docs"
+
+    def _origin(self) -> str:
+        return "https://" + (self.DOCS / "CNAME").read_text(encoding="utf-8").strip()
+
+    def test_canonical_urls_name_the_custom_domain(self):
+        page = (self.DOCS / "index.html").read_text(encoding="utf-8")
+        origin = self._origin()
+        assert f'<link rel="canonical" href="{origin}/" />' in page
+        assert f'property="og:url" content="{origin}/"' in page
+        assert "github.io" not in page
+
+    def test_robots_points_at_the_sitemap(self):
+        robots = (self.DOCS / "robots.txt").read_text(encoding="utf-8")
+        assert f"Sitemap: {self._origin()}/sitemap.xml" in robots.splitlines()
+
+    def test_sitemap_lists_only_published_pages(self):
+        origin = self._origin()
+        locs = re.findall(r"<loc>([^<]+)</loc>", (self.DOCS / "sitemap.xml").read_text(encoding="utf-8"))
+        assert f"{origin}/" in locs
+        for loc in locs:
+            assert loc.startswith(origin + "/"), loc
+            target = self.DOCS / (loc.removeprefix(origin + "/") or "index.html")
+            assert target.is_file() or target.with_suffix(".md").is_file(), loc

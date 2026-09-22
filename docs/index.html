@@ -8,12 +8,12 @@
       name="description"
       content="diffctx selects the minimum code an LLM needs to review a git diff. Watch the pipeline work: diff → fragments → code graph → relevance → greedy selection."
     />
-    <link rel="canonical" href="https://nikolay-e.github.io/diffctx/" />
-    <link rel="manifest" href="/diffctx/manifest.webmanifest" />
+    <link rel="canonical" href="https://diffctx.com/" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="theme-color" content="#0b0f0d" />
-    <link rel="apple-touch-icon" href="/diffctx/icons/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://nikolay-e.github.io/diffctx/" />
+    <meta property="og:url" content="https://diffctx.com/" />
     <meta
       property="og:title"
       content="diffctx — smart diff context for LLM code review"
@@ -36,7 +36,7 @@
         "applicationCategory": "DeveloperApplication",
         "operatingSystem": "Linux, macOS, Windows",
         "description": "Selects the minimum set of code fragments an LLM needs to understand a git diff, under a hard token budget. Deterministic, local, no model calls. Ships a Model Context Protocol server for AI coding agents.",
-        "url": "https://nikolay-e.github.io/diffctx/",
+        "url": "https://diffctx.com/",
         "codeRepository": "https://github.com/nikolay-e/diffctx",
         "programmingLanguage": ["Rust", "Python"],
         "license": "https://www.apache.org/licenses/LICENSE-2.0",
@@ -2230,9 +2230,9 @@
       // fallback for every path in scope, so a relative "sw.js" would resolve
       // under product/ and fail to register.
       if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.register("/diffctx/sw.js");
+        navigator.serviceWorker.register("/sw.js");
       }
-      if (!navigator.onLine && location.pathname !== "/diffctx/") {
+      if (!navigator.onLine && location.pathname !== "/") {
         const note = document.createElement("p");
         note.className = "sec-sub";
         note.setAttribute("role", "status");
