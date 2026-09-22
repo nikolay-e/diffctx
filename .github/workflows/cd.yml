@@ -776,7 +776,7 @@ jobs:
           python -m pip install --only-binary :all: "diffctx[mcp]==${VERSION}"
           command -v diffctx-mcp
           python - <<'PY'
-          import json, os, subprocess, sys
+          import json, os, subprocess, sys, tempfile, threading
 
           def frame(obj):
               return json.dumps(obj) + "\n"
@@ -792,22 +792,56 @@ jobs:
           initialized = frame({"jsonrpc": "2.0", "method": "notifications/initialized"})
           list_tools = frame({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
 
-          proc = subprocess.run(
+          # The server may exit on stdin EOF before answering a request still
+          # in flight, so stdin stays open until every awaited id has a reply.
+          stderr_file = tempfile.TemporaryFile(mode="w+", encoding="utf-8")
+          proc = subprocess.Popen(
               ["diffctx-mcp"],
-              input=init + initialized + list_tools,
-              capture_output=True, text=True, timeout=120,
+              stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=stderr_file,
+              text=True, encoding="utf-8",
           )
-
-          lines = [ln for ln in proc.stdout.splitlines() if ln.strip()]
-          if not lines:
-              sys.exit(f"no JSON-RPC on stdout; stderr:\n{proc.stderr}")
-
+          watchdog = threading.Timer(120, proc.kill)
+          watchdog.daemon = True
+          watchdog.start()
           responses = []
-          for ln in lines:
+
+          def await_id(rpc_id):
+              while not any(r.get("id") == rpc_id for r in responses):
+                  ln = proc.stdout.readline()
+                  if not ln:
+                      return
+                  if not ln.strip():
+                      continue
+                  try:
+                      responses.append(json.loads(ln))
+                  except json.JSONDecodeError:
+                      sys.exit(f"non-JSON-RPC line on stdout: {ln!r}")
+
+          def send(payload):
               try:
-                  responses.append(json.loads(ln))
-              except json.JSONDecodeError:
-                  sys.exit(f"non-JSON-RPC line on stdout: {ln!r}")
+                  proc.stdin.write(payload)
+                  proc.stdin.flush()
+              except BrokenPipeError:
+                  pass
+
+          send(init)
+          await_id(1)
+          send(initialized + list_tools)
+          await_id(2)
+          try:
+              proc.stdin.close()
+          except BrokenPipeError:
+              pass
+          for ln in proc.stdout:
+              if ln.strip():
+                  try:
+                      responses.append(json.loads(ln))
+                  except json.JSONDecodeError:
+                      sys.exit(f"non-JSON-RPC line on stdout: {ln!r}")
+          proc.wait()
+          watchdog.cancel()
+          stderr_file.seek(0)
+          stderr = stderr_file.read()
 
           def result_for(rpc_id):
               for r in responses:
@@ -815,7 +849,7 @@ jobs:
                       return r["result"]
               sys.exit(
                   f"no result for id={rpc_id} on stdout; responses: {responses!r}\n"
-                  f"stderr:\n{proc.stderr}"
+                  f"stderr:\n{stderr}"
               )
 
           init_result = result_for(1)
