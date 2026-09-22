@@ -261,6 +261,11 @@ class TestLandingPageDiscoverability:
         assert f'<link rel="canonical" href="{origin}/" />' in page
         assert f'property="og:url" content="{origin}/"' in page
         assert "github.io" not in page
+        card = re.search(r'property="og:image" content="([^"]+)"', page)
+        assert card is not None
+        assert card.group(1).startswith(origin + "/"), card.group(1)
+        image = self.DOCS / card.group(1).removeprefix(origin + "/")
+        assert TestLandingPagePwa._png_size(image) == (1200, 630)
 
     def test_robots_points_at_the_sitemap(self):
         robots = (self.DOCS / "robots.txt").read_text(encoding="utf-8")
