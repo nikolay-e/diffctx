@@ -166,6 +166,19 @@ jobs:
           )
           assert n == 1, "Cargo.lock: diffctx package entry not found"
           lock.write_text(s, encoding="utf-8")
+
+          # CI installs with `uv sync --locked`, which refuses a lockfile whose
+          # editable diffctx entry lags pyproject — every job after 1.17.0 did.
+          uv_lock = pathlib.Path("uv.lock")
+          s = uv_lock.read_text(encoding="utf-8")
+          s, n = re.subn(
+              r'(\[\[package\]\]\nname = "diffctx"\nversion = ")[^"]+(?="\nsource = \{ editable = "\." \})',
+              lambda m: m.group(1) + ver,
+              s,
+              count=1,
+          )
+          assert n == 1, "uv.lock: editable diffctx entry not found"
+          uv_lock.write_text(s, encoding="utf-8")
           PY
           echo "version.py:"
           cat src/diffctx/version.py
@@ -214,7 +227,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/diffctx/version.py pyproject.toml crates/diffctx-native/Cargo.toml Cargo.lock \
+          git add src/diffctx/version.py pyproject.toml crates/diffctx-native/Cargo.toml Cargo.lock uv.lock \
             server.json action.yml .claude-plugin/plugin.json docs/product/github-action.md CITATION.cff \
             CHANGELOG.md
           if ! git diff --staged --quiet; then
