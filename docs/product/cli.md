@@ -33,9 +33,9 @@ Subcommands:
 |---|---|---|
 | `-h`, `--help` | — | show this help message and exit |
 | `-o`, `--output-file` FILE | — | Write output to FILE instead of stdout ('-' forces stdout) |
-| `-i`, `--ignore` FILE | — | Custom ignore file (bare names also resolve inside .diffctx/; not yet supported with --diff) |
-| `-w`, `--whitelist` FILE | — | Whitelist file, only matching files are included (bare names also resolve inside .diffctx/; not yet supported with --diff) |
-| `--no-default-ignores` | off | Tree mode only: disable built-in ignore patterns; project .gitignore and .diffctx/ignore still apply (see --no-ignores) |
+| `-i`, `--ignore` FILE | — | Tree mode only: custom ignore file (bare names also resolve inside .diffctx/); refused with --diff and graph |
+| `-w`, `--whitelist` FILE | — | Tree mode only: whitelist file, only matching files are included (bare names also resolve inside .diffctx/); refused with --diff and graph |
+| `--no-default-ignores` | off | Tree mode only: disable built-in ignore patterns; project .gitignore and .diffctx/ignore still apply (see --no-ignores); refused with --diff and graph |
 | `-c`, `--copy` | off | Copy to clipboard instead of printing to stdout (combine with -o to also write a file) |
 | `-q`, `--quiet` | off | Suppress status messages (token summary, save/copy confirmations); overrides --log-level |
 | `--log-level` {error,warning,info,debug} | `error` | Log level (default: error) |
@@ -53,7 +53,7 @@ Subcommands:
 | Flag | Default | Meaning |
 |---|---|---|
 | `--diff` RANGE | — | Git diff range (e.g., HEAD~1..HEAD, main..feature) or a duration window ending now (24h, 8d, 90min, 1h30m, 2w — units s/m/h/d/w), which covers the commits inside the window plus the uncommitted work on top. Bare --diff shows uncommitted changes (working tree vs HEAD). |
-| `--budget` TOKENS | — | Token budget in o200k_base tokens (tiktoken, GPT-4o family — other model families tokenize differently, so leave headroom; see 'Token counting' below): omit = auto (default), N = cap on the whole artifact (change summary charged first), -1 = unlimited, 0 = strict-zero floor (empty selection; use --full for changed files only) |
+| `--budget` TOKENS | — | Token budget in o200k_base tokens (tiktoken, GPT-4o family — other model families tokenize differently, so leave headroom; see 'Token counting' below): omit = auto (default: 3x the change's core, clamped to 8000-48000, so a wide diff sits at the ceiling), N = cap on the whole artifact (change summary charged first), -1 = unlimited, 0 = strict-zero floor (empty selection; use --full for changed files only) |
 | `--alpha` FLOAT | — | PPR continuation probability, 0-1 exclusive (default: 0.60; higher = mass travels further from the change, lower = tighter around it). Only affects --scoring ppr |
 | `--tau` FLOAT | — | Relevance threshold for full fragment content, >= 0 (default: 0.05). Fragments scoring below it are reduced to signature stubs or dropped; higher = leaner output, lower = more surrounding context |
 | `--scoring` {ppr,ego,bm25,rrf,pit} | — | Scoring mode: ego = structural neighbors of the change (default); ppr = graph-wide relevance (Personalized PageRank), for far-reaching changes; bm25 = lexical similarity, for sparse cross-file structure; rrf = rank fusion of ego and bm25 on ranks; pit = the same fusion on score percentiles rather than ranks |
@@ -77,7 +77,8 @@ and .diffctx/ignore always apply unless --no-ignores is given):
   .*_cache/             All cache dirs (.pytest_cache, .mypy_cache, etc.)
   .idea/, .vscode/      IDE configurations
   .DS_Store, Thumbs.db  OS-specific files
-  tree.{yaml,json,md,txt}  Default output files (auto-ignored)
+  tree.{yaml,json,md,txt}  Default output files (auto-ignored in tree mode only;
+                        --diff reports a saved tree.md like any other change)
 
 Ignore files (hierarchical, like git):
   .gitignore            Standard git ignore patterns
@@ -130,7 +131,7 @@ Token counting (--budget, and the summary line on stderr):
 Exit codes:
   0  success
   1  runtime error (unreadable path, write failure)
-  2  usage error (unknown flag or invalid value)
+  2  usage error (unknown flag, invalid value, or a flag the mode does not take)
   3  environment error (git missing, not a repository, unknown revision)
   4  --diff produced no context (clean tree or empty range)
   124  --diff exceeded the --timeout wall-clock deadline
@@ -154,9 +155,9 @@ Build and analyze the project dependency graph
 |---|---|---|
 | `-h`, `--help` | — | show this help message and exit |
 | `-o`, `--output-file` FILE | — | Write output to FILE instead of stdout ('-' forces stdout) |
-| `-i`, `--ignore` FILE | — | Custom ignore file (bare names also resolve inside .diffctx/; not yet supported with --diff) |
-| `-w`, `--whitelist` FILE | — | Whitelist file, only matching files are included (bare names also resolve inside .diffctx/; not yet supported with --diff) |
-| `--no-default-ignores` | off | Tree mode only: disable built-in ignore patterns; project .gitignore and .diffctx/ignore still apply (see --no-ignores) |
+| `-i`, `--ignore` FILE | — | Tree mode only: custom ignore file (bare names also resolve inside .diffctx/); refused with --diff and graph |
+| `-w`, `--whitelist` FILE | — | Tree mode only: whitelist file, only matching files are included (bare names also resolve inside .diffctx/); refused with --diff and graph |
+| `--no-default-ignores` | off | Tree mode only: disable built-in ignore patterns; project .gitignore and .diffctx/ignore still apply (see --no-ignores); refused with --diff and graph |
 | `-c`, `--copy` | off | Copy to clipboard instead of printing to stdout (combine with -o to also write a file) |
 | `-q`, `--quiet` | off | Suppress status messages (token summary, save/copy confirmations); overrides --log-level |
 | `--log-level` {error,warning,info,debug} | `error` | Log level (default: error) |

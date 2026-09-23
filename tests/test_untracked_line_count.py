@@ -14,6 +14,9 @@ must keep rejecting the file outright rather than reporting a partial count.
 
 from __future__ import annotations
 
+import subprocess
+from pathlib import Path
+
 import pytest
 
 from tests.framework.pygit2_backend import Pygit2Repo
@@ -49,9 +52,32 @@ def _changed_files(repo_path):
     return set(result.get("changed_files") or [])
 
 
-def test_an_untracked_source_file_is_reported(repo_with_untracked):
-    repo = repo_with_untracked({"helper.py": "def helper():\n    return 2\n"})
-    assert "helper.py" in _changed_files(repo.path)
+def _history_with_untracked(path: Path, commits: int) -> Pygit2Repo:
+    repo = Pygit2Repo(path)
+    for i in range(commits):
+        repo.add_file("src/app.py", f"def run():\n    return {i}\n")
+        repo.commit(f"commit {i}")
+    subprocess.run(["git", "-C", str(repo.path), "checkout", "-q", "-B", "main"], check=True, capture_output=True)
+    (repo.path / "helper.py").write_text("def helper():\n    return 2\n")
+    return repo
+
+
+@pytest.mark.parametrize("revision", ["HEAD", "HEAD~1", "main"])
+def test_an_untracked_source_file_is_reported(tmp_path: Path, revision: str) -> None:
+    from diffctx._native.pipeline import build_diff_context
+
+    repo = _history_with_untracked(tmp_path / "repo", 2)
+    result = build_diff_context(repo.path, revision, budget_tokens=8000)
+    assert "helper.py" in set(result.get("changed_files") or [])
+    assert result["provenance"]["input"]["working_tree"] is True
+
+
+def test_a_committed_range_never_reports_untracked_files(tmp_path: Path) -> None:
+    from diffctx._native.pipeline import build_diff_context
+
+    repo = _history_with_untracked(tmp_path / "repo", 6)
+    result = build_diff_context(repo.path, "HEAD~5..HEAD~3", budget_tokens=8000)
+    assert set(result.get("changed_files") or []) == {"src/app.py"}
 
 
 @pytest.mark.parametrize(

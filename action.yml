@@ -176,6 +176,21 @@ runs:
           fi
         fi
 
+        # actions/checkout's default is depth 1: neither the pull request's
+        # base nor HEAD~1 is present, and diffctx exits 3 on the missing
+        # revision. Fetch what the auto-resolved range needs instead of making
+        # every consumer discover fetch-depth. A caller-supplied range is left
+        # alone: nothing here can know which commits it names.
+        shallow=$(git -C "$IN_PATH" rev-parse --is-shallow-repository 2>/dev/null || echo false)
+        if [ "$shallow" = "true" ] && [ -z "$IN_RANGE" ]; then
+          if [ -n "$PR_BASE_SHA" ] && [ -n "$PR_HEAD_SHA" ]; then
+            git -C "$IN_PATH" fetch --quiet --no-tags --depth=1 origin "$PR_BASE_SHA" "$PR_HEAD_SHA"
+          else
+            git -C "$IN_PATH" fetch --quiet --no-tags --deepen=1 origin
+          fi
+          echo "::notice::shallow checkout: fetched the endpoints of $range"
+        fi
+
         case "$IN_FORMAT" in
           md | yaml | json | txt) ext="$IN_FORMAT" ;;
           *)

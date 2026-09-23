@@ -1,6 +1,9 @@
 # tests/test_default_ignores.py
 import sys
 
+import yaml
+
+from .conftest import run_diffctx_subprocess
 from .utils import get_all_files_in_tree, load_yaml
 
 
@@ -9,7 +12,7 @@ def _get_pycache_filename(module_name: str) -> str:
     return f"{module_name}.{py_version}.pyc"
 
 
-def test_default_python_ignores(temp_project, run_mapper):
+def test_default_python_ignores(temp_project, run_mapper_yaml):
     cache_dir = temp_project / "__pycache__"
     cache_dir.mkdir(exist_ok=True)
     pycache_file = _get_pycache_filename("module")
@@ -34,7 +37,7 @@ def test_default_python_ignores(temp_project, run_mapper):
     (temp_project / "actual_module.py").touch()
 
     # Run diffctx and check results
-    assert run_mapper([".", "-o", "directory_tree.yaml"])
+    assert run_mapper_yaml([".", "-o", "directory_tree.yaml"])
     result = load_yaml(temp_project / "directory_tree.yaml")
     all_files = get_all_files_in_tree(result)
 
@@ -56,7 +59,7 @@ def test_default_python_ignores(temp_project, run_mapper):
     assert "actual_module.py" in all_files
 
 
-def test_git_directory_ignored(temp_project, run_mapper):
+def test_git_directory_ignored(temp_project, run_mapper_yaml):
     # Create .git directory structure
     git_dir = temp_project / ".git"
     git_dir.mkdir(exist_ok=True)
@@ -72,7 +75,7 @@ def test_git_directory_ignored(temp_project, run_mapper):
     (temp_project / "README.md").touch()
 
     # Run diffctx and check results
-    assert run_mapper([".", "-o", "directory_tree.yaml"])
+    assert run_mapper_yaml([".", "-o", "directory_tree.yaml"])
     result = load_yaml(temp_project / "directory_tree.yaml")
     all_files = get_all_files_in_tree(result)
 
@@ -87,7 +90,7 @@ def test_git_directory_ignored(temp_project, run_mapper):
     assert "README.md" in all_files
 
 
-def test_default_private_key_ignores(temp_project, run_mapper):
+def test_default_private_key_ignores(temp_project, run_mapper_yaml):
     secrets = ["server.pem", "tls.key", "keystore.p12", "app.pfx", "app.jks", "id_rsa", "id_ed25519"]
     for secret in secrets:
         (temp_project / secret).write_text("private-key-material do-not-leak\n", encoding="utf-8")
@@ -96,7 +99,7 @@ def test_default_private_key_ignores(temp_project, run_mapper):
     for f in kept:
         (temp_project / f).write_text("ok\n", encoding="utf-8")
 
-    assert run_mapper([".", "-o", "directory_tree.yaml"])
+    assert run_mapper_yaml([".", "-o", "directory_tree.yaml"])
     result = load_yaml(temp_project / "directory_tree.yaml")
     all_files = get_all_files_in_tree(result)
 
@@ -107,7 +110,7 @@ def test_default_private_key_ignores(temp_project, run_mapper):
         assert f in all_files, f
 
 
-def test_default_lockfile_ignores(temp_project, run_mapper):
+def test_default_lockfile_ignores(temp_project, run_mapper_yaml):
     lockfiles = [
         "package-lock.json",
         "yarn.lock",
@@ -131,7 +134,7 @@ def test_default_lockfile_ignores(temp_project, run_mapper):
     for f in kept:
         (temp_project / f).write_text("real manifest\n", encoding="utf-8")
 
-    assert run_mapper([".", "-o", "directory_tree.yaml"])
+    assert run_mapper_yaml([".", "-o", "directory_tree.yaml"])
     result = load_yaml(temp_project / "directory_tree.yaml")
     all_files = get_all_files_in_tree(result)
 
@@ -142,7 +145,7 @@ def test_default_lockfile_ignores(temp_project, run_mapper):
         assert f in all_files, f
 
 
-def test_default_directory_ignores(temp_project, run_mapper):
+def test_default_directory_ignores(temp_project, run_mapper_yaml):
     for dir_name in ["node_modules", "venv", ".venv"]:
         d = temp_project / dir_name
         d.mkdir(exist_ok=True)
@@ -155,7 +158,7 @@ def test_default_directory_ignores(temp_project, run_mapper):
 
     (temp_project / "real_code.py").touch()
 
-    assert run_mapper([".", "-o", "directory_tree.yaml"])
+    assert run_mapper_yaml([".", "-o", "directory_tree.yaml"])
     result = load_yaml(temp_project / "directory_tree.yaml")
     all_files = get_all_files_in_tree(result)
 
@@ -163,3 +166,36 @@ def test_default_directory_ignores(temp_project, run_mapper):
         assert ignored not in all_files
 
     assert "real_code.py" in all_files
+
+
+def _project_with_every_ignore_layer(temp_project):
+    (temp_project / ".gitignore").write_text("*.log\n", encoding="utf-8")
+    (temp_project / ".diffctx" / "ignore").write_text("docs/\n", encoding="utf-8")
+    (temp_project / "app.log").write_text("log line\n", encoding="utf-8")
+    (temp_project / "node_modules").mkdir()
+    (temp_project / "node_modules" / "dep.js").write_text("module.exports = 1\n", encoding="utf-8")
+    (temp_project / "extra.ignore").write_text("src/\n", encoding="utf-8")
+
+
+def _names(stdout):
+    return get_all_files_in_tree(yaml.safe_load(stdout))
+
+
+def test_no_ignores_shows_every_layer_the_defaults_hide(temp_project):
+    _project_with_every_ignore_layer(temp_project)
+    kept = run_diffctx_subprocess([".", "-f", "yaml", "-o", "-"], cwd=temp_project)
+    shown = run_diffctx_subprocess([".", "-f", "yaml", "-o", "-", "--no-ignores"], cwd=temp_project)
+    assert shown.returncode == 0, shown.stderr
+    for name in ("app.log", "docs", "readme.md", "node_modules", "dep.js", ".git", "config"):
+        assert name not in _names(kept.stdout), name
+        assert name in _names(shown.stdout), name
+
+
+def test_no_ignores_still_applies_a_custom_ignore_file(temp_project):
+    _project_with_every_ignore_layer(temp_project)
+    result = run_diffctx_subprocess([".", "-f", "yaml", "-o", "-", "--no-ignores", "-i", "extra.ignore"], cwd=temp_project)
+    assert result.returncode == 0, result.stderr
+    names = _names(result.stdout)
+    assert "src" not in names
+    assert "main.py" not in names
+    assert "app.log" in names

@@ -44,10 +44,11 @@ def _configure_windows_utf8() -> None:
 def _ensure_git_repo(root_dir: Path, prog: str) -> None:
     try:
         result = subprocess.run(
-            ["git", "rev-parse", "--git-dir"],
+            ["git", "rev-parse", "--is-bare-repository"],
+            stdin=subprocess.DEVNULL,
             cwd=str(root_dir),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
             check=False,
         )
     except OSError as exc:
@@ -57,15 +58,27 @@ def _ensure_git_repo(root_dir: Path, prog: str) -> None:
         )
         sys.exit(_EXIT_ENVIRONMENT)
     if result.returncode != 0:
+        fatal = next((line for line in result.stderr.splitlines() if line.startswith("fatal:")), "")
+        if fatal and "not a git repository" not in fatal:
+            print(f"{prog}: --diff cannot run git in {root_dir}: {fatal}", file=sys.stderr)
+            sys.exit(_EXIT_ENVIRONMENT)
         print(
             f"{prog}: --diff requires a git repository (cwd: {root_dir}); "
             "run inside a working tree or pass --diff <range> with a valid git context.",
             file=sys.stderr,
         )
         sys.exit(_EXIT_ENVIRONMENT)
+    if result.stdout.strip() == "true":
+        print(
+            f"{prog}: --diff requires a working tree (bare repository: {root_dir}); "
+            "clone it with a working tree or run without --diff.",
+            file=sys.stderr,
+        )
+        sys.exit(_EXIT_ENVIRONMENT)
 
     head_result = subprocess.run(
         ["git", "rev-parse", "--verify", "-q", "HEAD"],
+        stdin=subprocess.DEVNULL,
         cwd=str(root_dir),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -106,10 +119,24 @@ def _empty_diff_hint(args: ParsedArgs) -> str:
     if args.budget is not None and args.budget > 0:
         return f"--budget {args.budget} may be too small to fit any fragment; raise it or omit for auto sizing"
     if args.diff_range == "HEAD":
+        if _working_tree_is_dirty(args.root_dir):
+            return "the changes carry no text hunks (mode-only, submodule or binary); see changed_files, or use --full"
         return "the working tree matches HEAD; try --diff HEAD~1 for the last commit"
     if _is_duration_range(args):
         return f"nothing changed in the last {args.diff_range}; widen the window (e.g. --diff 7d)"
     return f"check the range with: git diff --stat {args.diff_range}"
+
+
+def _working_tree_is_dirty(root_dir: Path) -> bool:
+    status = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=no"],
+        stdin=subprocess.DEVNULL,
+        cwd=str(root_dir),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return status.returncode == 0 and bool(status.stdout.strip())
 
 
 def _is_duration_range(args: ParsedArgs) -> bool:
@@ -139,6 +166,14 @@ def _warn_empty_diff_result(result: dict[str, Any], prog: str, args: ParsedArgs)
             f"(clean working tree, binary-only, or files over the size cap); {_empty_diff_hint(args)}",
             file=sys.stderr,
         )
+
+
+def _log_latency(result: dict[str, Any]) -> None:
+    # Telemetry rides beside the artifact, never inside it: the native binary
+    # never renders it and `--budget` bounds the document alone.
+    latency = result.get("latency")
+    if isinstance(latency, dict) and latency:
+        logger.info("latency (ms): %s", ", ".join(f"{key}={value}" for key, value in latency.items()))
 
 
 def _report_raw_diff_share(result: dict[str, Any], prog: str, args: ParsedArgs) -> None:
@@ -197,6 +232,10 @@ def _call_with_wall_clock_deadline(build: Callable[[], _T], timeout_seconds: int
     return value  # type: ignore[no-any-return]
 
 
+def _diff_scope(args: ParsedArgs) -> list[str]:
+    return [str(p.resolve()) for p in [*(args.extra_dirs or []), *(args.extra_files or [])]]
+
+
 def _build_diff_tree(args: ParsedArgs, prog: str) -> dict[str, Any]:
     from ._native import build_diff_context
 
@@ -211,13 +250,11 @@ def _build_diff_tree(args: ParsedArgs, prog: str) -> dict[str, Any]:
             alpha=args.alpha,
             tau=args.tau,
             no_content=args.no_content,
-            ignore_file=args.ignore_file,
-            no_default_ignores=args.no_default_ignores,
             full=args.full_diff,
-            whitelist_file=args.whitelist_file,
             scoring_mode=args.scoring,
             timeout=args.timeout,
             with_raw_diff=args.with_raw_diff,
+            paths=_diff_scope(args),
         ),
         args.timeout,
         prog,
@@ -226,8 +263,10 @@ def _build_diff_tree(args: ParsedArgs, prog: str) -> dict[str, Any]:
 
 
 def _root_display_name(root_dir: Any) -> str:
+    from .tree import printable
+
     name = root_dir.name
-    return name if name else str(root_dir)
+    return printable(name if name else str(root_dir))
 
 
 _LARGE_OUTPUT_WARN_BYTES = 10 * 1024 * 1024
@@ -254,7 +293,7 @@ def _warn_if_output_oversized(output_content: str, args: ParsedArgs) -> None:
 
 
 def _build_file_node(file_path: Path, base_dir: Path, no_content: bool, max_file_bytes: int | None) -> dict[str, Any]:
-    from .tree import set_file_content
+    from .tree import printable, set_file_content
 
     try:
         rel = file_path.relative_to(base_dir).as_posix()
@@ -263,7 +302,7 @@ def _build_file_node(file_path: Path, base_dir: Path, no_content: bool, max_file
             rel = file_path.relative_to(Path.cwd()).as_posix()
         except ValueError:
             rel = file_path.name
-    node: dict[str, Any] = {"name": rel, "type": "file"}
+    node: dict[str, Any] = {"name": printable(rel), "type": "file"}
     if no_content:
         return node
     set_file_content(node, file_path, max_file_bytes)
@@ -465,6 +504,7 @@ def _run(argv: list[str] | None = None, *, prog: str = "diffctx", version: str =
         # on what is actually emitted.
         directory_tree, output_content = fit_to_budget(_build_diff_tree(args, prog), args.output_format)
         _warn_empty_diff_result(directory_tree, prog, args)
+        _log_latency(directory_tree)
     else:
         directory_tree = _build_standard_tree(args)
         output_content = tree_to_string(directory_tree, args.output_format)
@@ -503,6 +543,7 @@ def _run_locate_mode(args: ParsedArgs, prog: str) -> None:
             tau=args.tau,
             scoring_mode=args.scoring,
             timeout=args.timeout,
+            paths=_diff_scope(args),
         ),
         args.timeout,
         prog,
@@ -559,11 +600,15 @@ def _format_runtime_error(exc: BaseException) -> str:
 
 def _format_git_error(exc: BaseException) -> str:
     msg = _format_runtime_error(exc)
-    if "unknown revision" in msg:
+    if "unknown revision" in msg and "shallow clone" not in msg:
         match = re.search(r"ambiguous argument '([^']+)'", msg)
         if match:
             return f"unknown git revision '{match.group(1)}'; check refs with: git log --oneline"
     return f"git error: {msg}" if not msg.startswith("git ") else msg
+
+
+def _is_usage_git_error(exc: BaseException) -> bool:
+    return _format_runtime_error(exc).startswith(("invalid duration", "invalid path"))
 
 
 def _handle_unexpected_exception(exc: BaseException, prog: str = "diffctx") -> int:
@@ -608,7 +653,7 @@ def run(argv: list[str] | None = None, *, prog: str | None = None, version: str 
         sys.exit(_EXIT_BROKEN_PIPE)
     except _git_error_type() as exc:
         print(f"{prog}: {_format_git_error(exc)}", file=sys.stderr)
-        sys.exit(_EXIT_ENVIRONMENT)
+        sys.exit(_EXIT_USAGE if _is_usage_git_error(exc) else _EXIT_ENVIRONMENT)
     except argparse.ArgumentError as exc:
         print(f"{prog}: usage error: {_format_runtime_error(exc)}", file=sys.stderr)
         sys.exit(_EXIT_USAGE)

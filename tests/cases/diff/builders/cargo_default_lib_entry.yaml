@@ -1,0 +1,146 @@
+name: cargo_default_lib_entry
+tags:
+- lang:toml
+- change:single_file
+- context:cross_module
+- builder:cargo
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "widget"
+      version = "0.3.0"
+      edition = "2021"
+
+      [dependencies]
+      serde = "1"
+    src/lib.rs: |
+      pub fn clamp01(x: f64) -> f64 {
+          x.max(0.0).min(1.0)
+      }
+    src/archive.rs: |
+      use std::fs::File;
+      use std::io::{self, Read, Write};
+      use std::path::Path;
+
+      pub struct Bundle {
+          pub entries: Vec<(String, Vec<u8>)>,
+      }
+
+      impl Bundle {
+          pub fn empty() -> Self {
+              Bundle { entries: Vec::new() }
+          }
+
+          pub fn add_file(&mut self, path: &Path) -> io::Result<()> {
+              let mut buf = Vec::new();
+              File::open(path)?.read_to_end(&mut buf)?;
+              self.entries.push((path.display().to_string(), buf));
+              Ok(())
+          }
+
+          pub fn total_bytes(&self) -> usize {
+              self.entries.iter().map(|(_, b)| b.len()).sum()
+          }
+
+          pub fn write_index(&self, out: &mut impl Write) -> io::Result<()> {
+              for (label, bytes) in &self.entries {
+                  writeln!(out, "{}\t{}", label, bytes.len())?;
+              }
+              Ok(())
+          }
+      }
+    src/network.rs: |
+      use std::net::{TcpStream, ToSocketAddrs};
+      use std::time::Duration;
+
+      pub fn wait_for_port(host: &str, port: u16, attempts: u32) -> bool {
+          for _ in 0..attempts {
+              let addr = format!("{}:{}", host, port);
+              if let Ok(mut addrs) = addr.to_socket_addrs() {
+                  if let Some(sock) = addrs.next() {
+                      if TcpStream::connect_timeout(&sock, Duration::from_millis(250)).is_ok() {
+                          return true;
+                      }
+                  }
+              }
+              std::thread::sleep(Duration::from_millis(100));
+          }
+          false
+      }
+
+      pub fn is_loopback(host: &str) -> bool {
+          host == "localhost" || host.starts_with("127.") || host == "::1"
+      }
+
+      pub fn split_host_port(target: &str) -> Option<(&str, u16)> {
+          let (h, p) = target.rsplit_once(':')?;
+          p.parse().ok().map(|port| (h, port))
+      }
+    src/journal.rs: |
+      use std::fs::OpenOptions;
+      use std::io::Write;
+
+      pub enum Level {
+          Info,
+          Warn,
+          Fail,
+      }
+
+      pub struct Journal {
+          target: String,
+      }
+
+      impl Journal {
+          pub fn open(target: &str) -> Self {
+              Journal { target: target.to_string() }
+          }
+
+          pub fn write(&self, level: Level, message: &str) {
+              let tag = match level {
+                  Level::Info => "INFO",
+                  Level::Warn => "WARN",
+                  Level::Fail => "FAIL",
+              };
+              if let Ok(mut handle) = OpenOptions::new().append(true).create(true).open(&self.target) {
+                  let _ = writeln!(handle, "[{}] {}", tag, message);
+              }
+          }
+
+          pub fn info(&self, message: &str) {
+              self.write(Level::Info, message);
+          }
+      }
+  changed_files:
+    Cargo.toml: |
+      [package]
+      name = "widget"
+      version = "0.4.0"
+      edition = "2021"
+
+      [dependencies]
+      serde = "1"
+  commit_message: Bump widget to 0.4.0
+fixtures:
+  auto_garbage: true
+fragments:
+- id: lib_entry
+  selector:
+    path: src/lib.rs
+    anchor: clamp01
+- id: no_archive
+  selector:
+    path: src/archive.rs
+- id: no_network
+  selector:
+    path: src/network.rs
+- id: no_journal
+  selector:
+    path: src/journal.rs
+oracle:
+  required:
+  - lib_entry
+  forbidden:
+  - no_archive
+  - no_network
+  - no_journal

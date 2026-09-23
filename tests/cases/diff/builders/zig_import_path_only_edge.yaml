@@ -1,0 +1,137 @@
+name: zig_import_path_only_edge
+tags:
+- lang:zig
+- change:single_file
+- context:cross_module
+- builder:zig
+repo:
+  initial_files:
+    main.zig: |
+      const tints = @import("vendor/palette.zig");
+
+      const width = 800;
+      const height = 600;
+    vendor/palette.zig: |
+      pub var crimson: u32 = 0xdc143c;
+      pub var teal: u32 = 0x008080;
+      pub var amber: u32 = 0xffbf00;
+    vendor/archive.zig: |
+      pub fn compress(folder: []u8, out: []u8) usize {
+          var total: usize = 0;
+          for (folder) |byte, i| {
+              out[i] = byte ^ 0x5a;
+              total += 1;
+          }
+          return total;
+      }
+      pub fn extract(bundle: []u8, target: []u8) usize {
+          var total: usize = 0;
+          for (bundle) |byte, i| {
+              target[i] = byte ^ 0x5a;
+              total += 1;
+          }
+          return total;
+      }
+      pub fn checksum(bundle: []u8) u64 {
+          var sum: u64 = 14695981039346656037;
+          for (bundle) |byte| {
+              sum ^= byte;
+              sum *%= 1099511628211;
+          }
+          return sum;
+      }
+      pub fn verify(bundle: []u8, expected: u64) bool {
+          return checksum(bundle) == expected;
+      }
+      pub fn prune(ages: []u32, days: u32) usize {
+          var kept: usize = 0;
+          for (ages) |age| {
+              if (age <= days) kept += 1;
+          }
+          return kept;
+      }
+    vendor/network.zig: |
+      pub fn waitForPort(port: u16, attempts: u8) bool {
+          var attempt: u8 = 0;
+          while (attempt < attempts) : (attempt += 1) {
+              if (port != 0) return true;
+          }
+          return false;
+      }
+      pub fn fetchWithRetry(url: []u8, retries: u8) u8 {
+          var tries: u8 = 0;
+          while (tries < retries) : (tries += 1) {
+              if (url.len > 0) return tries;
+          }
+          return retries;
+      }
+      pub fn resolveAddress(host: []u8) u32 {
+          var acc: u32 = 0;
+          for (host) |ch| {
+              acc = acc *% 31 +% ch;
+          }
+          return acc;
+      }
+      pub fn isReachable(host: []u8) bool {
+          return resolveAddress(host) != 0;
+      }
+      pub fn backoff(step: u8) u32 {
+          return @as(u32, 1) << @intCast(u5, step);
+      }
+    vendor/journal.zig: |
+      pub var threshold: u8 = 2;
+      pub fn write(level: u8, message: []u8, sink: []u8) usize {
+          if (level < threshold) return 0;
+          var n: usize = 0;
+          for (message) |ch, i| {
+              sink[i] = ch;
+              n += 1;
+          }
+          return n;
+      }
+      pub fn info(message: []u8, sink: []u8) usize {
+          return write(2, message, sink);
+      }
+      pub fn warn(message: []u8, sink: []u8) usize {
+          return write(3, message, sink);
+      }
+      pub fn fail(message: []u8, sink: []u8) usize {
+          return write(4, message, sink);
+      }
+      pub fn rotate(sizes: []u64, keep: usize) usize {
+          var dropped: usize = 0;
+          for (sizes) |size, i| {
+              if (i >= keep and size > 0) dropped += 1;
+          }
+          return dropped;
+      }
+  changed_files:
+    main.zig: |
+      const tints = @import("vendor/palette.zig");
+
+      const width = 1024;
+      const height = 768;
+  commit_message: Larger default window
+fixtures:
+  auto_garbage: true
+fragments:
+- id: palette
+  selector:
+    path: vendor/palette.zig
+    anchor: crimson
+- id: no_archive
+  selector:
+    path: vendor/archive.zig
+- id: no_network
+  selector:
+    path: vendor/network.zig
+- id: no_journal
+  selector:
+    path: vendor/journal.zig
+oracle:
+  required:
+  - palette
+  forbidden:
+  - no_archive
+  - no_network
+  - no_journal

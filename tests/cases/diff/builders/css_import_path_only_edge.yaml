@@ -1,0 +1,70 @@
+name: css_import_path_only_edge
+tags:
+- lang:css
+- change:single_file
+- context:cross_module
+- builder:css
+repo:
+  initial_files:
+    site/main.css: |
+      @import "vendor/palette.css";
+
+      body {
+        font-size: 14px;
+      }
+    vendor/palette.css: |
+      .crimson { color: #dc143c; }
+      .teal { color: #008080; }
+      .amber { color: #ffbf00; }
+    vendor/archive.css: |
+      .zip-row { display: flex; gap: 4px; align-items: center; }
+      .zip-row > .label { font-weight: 600; min-width: 120px; }
+      .zip-row > .size { font-variant-numeric: tabular-nums; opacity: 0.7; }
+      .zip-row:hover { background: #f4f4f4; }
+      .zip-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid #ddd; }
+      .zip-list li + li { border-top: 1px solid #eee; }
+    vendor/network.css: |
+      .net-dot { width: 10px; height: 10px; border-radius: 50%; }
+      .net-dot.up { background: #2e7d32; }
+      .net-dot.down { background: #c62828; }
+      .net-dot.slow { background: #f9a825; animation: blink 1s infinite; }
+      @keyframes blink { 50% { opacity: 0.3; } }
+      .net-panel { border: 1px solid #ccc; border-radius: 6px; padding: 12px; }
+    vendor/journal.css: |
+      .log-line { font-family: monospace; white-space: pre-wrap; }
+      .log-line.info { color: #555; }
+      .log-line.warn { color: #b26a00; }
+      .log-line.fail { color: #b00020; font-weight: bold; }
+      .log-view { max-height: 400px; overflow-y: auto; background: #fafafa; }
+      .log-view .stamp { color: #999; margin-right: 6px; }
+  changed_files:
+    site/main.css: |
+      @import "vendor/palette.css" screen;
+
+      body {
+        font-size: 14px;
+      }
+  commit_message: Limit palette to screen media
+fixtures:
+  auto_garbage: true
+fragments:
+- id: palette
+  selector:
+    path: vendor/palette.css
+    anchor: .crimson
+- id: no_archive
+  selector:
+    path: vendor/archive.css
+- id: no_network
+  selector:
+    path: vendor/network.css
+- id: no_journal
+  selector:
+    path: vendor/journal.css
+oracle:
+  required:
+  - palette
+  forbidden:
+  - no_archive
+  - no_network
+  - no_journal

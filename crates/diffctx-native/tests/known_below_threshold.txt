@@ -15,6 +15,11 @@
 # constants: a gate that does not run the shipped configuration measures
 # nothing.
 algorithm/fragments/fragments_015_markdown_long_heading_truncation
+# Documented gap, not a regression: a deletion-only diff yields zero
+# fragments because pipeline.rs drops deleted paths before fragmenting, so
+# the unchanged caller of the deleted module never surfaces. Fixing it is a
+# selection change (Q-class) and is frozen with the evaluation cycle.
+algorithm/deletion/deletion_001_caller_of_deleted_module
 config/yaml/yaml_016_pagination_config
 infrastructure/terraform/terraform_010_iam_policy
 infrastructure/terraform/terraform_035_count
@@ -82,3 +87,21 @@ synthetic/gaps/suite-2/gap2_173_perl_multi_file_easy_cgi_form
 # before a 0.069-scoring fragment. That is a calibration question, frozen for the v3 cycle.
 config/yaml/yaml_003_logging_config
 config/yaml/yaml_012_queue_config
+# Builder load-bearing cases whose gold is reachable only through the
+# builder's edge. The edge exists (locate names it); the selection drops it —
+# Q-class, frozen during the v3 evaluation cycle. Each line is the measured cause.
+# Path-only import target is not naming-reachable, so it can enter only via the
+# rescue post-pass, capped at 5% of the budget; at the corpus budget the
+# fragment is larger than that share (passes with DIFFCTX_OP_RESCUE_BUDGET_FRACTION=0.5).
+builders/latex_input_path
+builders/protobuf_import_path_only_edge
+# Ranked and edge-linked, but held in overflow by the file-admission gate
+# (not naming-reachable from the changed set).
+builders/clojure_require_ns
+builders/openapi_external_ref
+# The builder links the changed file to a same-directory distractor instead of
+# the imported module, which then reaches overflow only through sibling.
+builders/nim_import_path
+builders/ocaml_open_module
+# Discovery never admits the imported .nix file into the universe.
+builders/nix_import_path

@@ -212,23 +212,53 @@ def test_release_profile_unwinds_on_panic():
     )
 
 
-def test_tiktoken_o200k_base_encoding_is_pinned():
+TOKENIZER_PARITY_STRINGS = [
+    "def add(a, b):\n    return a + b\n\ndef sub(a, b):\n    return a - b\n",
+    "Привет, мир! Кириллица в комментарии и в строке.",
+    "日本語のテキストと中文文本、그리고 한국어",
+    "emoji 🎉🚀 and a family 👨‍👩‍👧‍👦 joined with ZWJ",
+    "مرحبا بالعالم — RTL text next to 123 and abc",
+    "combining: é ä ñ and precomposed é ä ñ",
+    "x" * 5000,
+    "1234567890" * 300,
+    "line one\r\nline two\r\n\r\nline four\r\n",
+    "<|endoftext|> literal control tokens <|im_start|>user<|im_end|> stay text",
+    "",
+]
+
+
+def test_the_engine_tokenizer_matches_tiktoken_o200k_base():
+    """Every budget decision is made by the Rust tokenizer; the paper's
+    numbers were produced by Python tiktoken. A pin on either alone cannot
+    see the two drift apart."""
     import tiktoken
 
+    from diffctx._diffctx import count_tokens
+
     enc = tiktoken.get_encoding("o200k_base")
-    fixture = "def add(a, b):\n    return a + b\n\ndef sub(a, b):\n    return a - b\n"
-    tokens = enc.encode(fixture)
-    assert len(tokens) == 24, (
-        f"tiktoken o200k_base BPE drift: fixture now produces {len(tokens)} tokens, expected 24. "
-        f"This breaks paper reproducibility — investigate before bumping tiktoken."
-    )
-    assert tokens[:5] == [
-        1314,
-        1147,
-        6271,
-        11,
-        287,
-    ], f"tiktoken o200k_base BPE drift: first 5 tokens changed to {tokens[:5]}, expected [1314, 1147, 6271, 11, 287]."
+    divergent = {s[:40]: (count_tokens(s), len(enc.encode_ordinary(s))) for s in TOKENIZER_PARITY_STRINGS}
+    divergent = {k: v for k, v in divergent.items() if v[0] != v[1]}
+    assert not divergent, f"Rust o200k_base disagrees with tiktoken: {divergent}"
+
+
+def test_locate_token_counts_are_tiktoken_of_the_fragment_body_plus_the_overhead(tmp_path):
+    import tiktoken
+
+    import diffctx
+    from diffctx._native.pipeline import build_locate
+
+    # The 40-token envelope every fragment is charged, from
+    # crates/diffctx-native/src/config/limits.rs (`overhead_per_fragment`).
+    overhead_per_fragment = 40
+    enc = tiktoken.get_encoding("o200k_base")
+    repo, diff_range = _make_diff_repo(tmp_path)
+    pack = diffctx.build_diff_context(root_dir=repo.path, diff_range=diff_range, budget_tokens=-1)
+    bodies = {(f["path"], f["lines"]): f["content"] for f in pack["fragments"]}
+    items = json.loads(build_locate(repo.path, diff_range, budget_tokens=-1))["items"]
+    assert items
+    for item in items:
+        body = bodies[(item["path"], item["lines"])]
+        assert item["tokens"] == len(enc.encode_ordinary(body)) + overhead_per_fragment, item
 
 
 def test_diff_context_output_has_orientation_header_and_roles(tmp_path):

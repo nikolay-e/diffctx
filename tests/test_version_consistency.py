@@ -72,3 +72,18 @@ def test_github_action_doc_pins_match_version():
     pins = re.findall(r"nikolay-e/diffctx@v(\d+\.\d+\.\d+)", _load_text("docs/product/github-action.md"))
     assert len(pins) >= 2, f"expected at least 2 '@v<semver>' pins in the doc, found {pins}"
     assert all(pin == __version__ for pin in pins), pins
+
+
+def test_action_reference_page_states_the_python_version_default():
+    data = yaml.safe_load(_load_text("action.yml"))
+    default = str(data["inputs"]["python-version"]["default"])
+    row = re.search(r"^\| `python-version` \| `([^`]+)` \|", _load_text("docs/product/github-action.md"), re.MULTILINE)
+    assert row is not None
+    assert row.group(1) == default
+
+
+def test_changelog_has_a_dated_section_for_this_version():
+    heading = re.search(
+        rf"^## \[{re.escape(__version__)}\] - (\d{{4}}-\d{{2}}-\d{{2}})$", _load_text("CHANGELOG.md"), re.MULTILINE
+    )
+    assert heading is not None, f"CHANGELOG.md has no '## [{__version__}] - YYYY-MM-DD' section"

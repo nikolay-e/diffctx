@@ -20,6 +20,7 @@ from .server import (
     _over_token_budget_notice,
     _read_only,
     _run_with_deadline,
+    _validate_max_tokens,
 )
 
 _TREE_MAP_DESCRIPTION = (
@@ -51,6 +52,7 @@ async def get_tree_map(
     from diffctx.writer import tree_to_string
 
     validated_path = validate_repo_path(repo_path)
+    _validate_max_tokens(max_tokens)
     target = validated_path / subdirectory if subdirectory else validated_path
     if subdirectory and not _is_contained(target, validated_path):
         raise ValueError(f"subdirectory escapes repo_path: {subdirectory}")
@@ -227,6 +229,9 @@ async def get_file_context(
     max_tokens: int = _DEFAULT_MAX_TOKENS,
 ) -> str:
     validated_path = validate_dir_path(repo_path)
+    _validate_max_tokens(max_tokens)
+    if max_files < 1:
+        raise ValueError(f"max_files must be >= 1, got {max_files}")
 
     def _read() -> tuple[str, int, int]:
         matched, total_matched = _collect_matched_files(validated_path, patterns, max_files)

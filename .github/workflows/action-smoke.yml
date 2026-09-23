@@ -13,11 +13,62 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Dogfood: run the published composite action against this repository's own
-  # diff so a broken flag mapping, a missing output, or a yanked pinned release
-  # fails here instead of in a consumer repo.
+  # The composite installs `diffctx==<default>` from PyPI, so `uses: ./` alone
+  # exercised this branch's action.yml around the RELEASED wheel: a PR renaming
+  # --tau or moving diffctx.tokens.count_tokens passed every leg and broke on
+  # every Marketplace consumer once cd.yml bumped the default. This job builds
+  # the branch's own wheel; the legs below point pip at it with PIP_NO_INDEX so
+  # the install cannot silently come from PyPI. pathspec rides along because
+  # no-index has nowhere else to take the one runtime dependency from.
+  # Known-bad: rename --tau on a branch — the tuned-inputs legs must go red.
+  build-pr-wheel:
+    name: Build this branch's wheel (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: '3.13'
+
+      - name: Build wheel via maturin
+        uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b  # v1.51.0
+        with:
+          manylinux: ${{ runner.os == 'Linux' && '2_28' || 'off' }}
+          args: --release --out dist
+          rust-toolchain: '1.92.0'
+
+      - name: Add the runtime dependency for a no-index install
+        shell: bash
+        run: |
+          python -m pip download --quiet --disable-pip-version-check \
+            --only-binary :all: --dest dist pathspec
+          ls -la dist
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: pr-wheel-${{ matrix.os }}
+          path: dist/*.whl
+          if-no-files-found: error
+          retention-days: 1
+
+  # Dogfood: run the composite action against this repository's own diff so a
+  # broken flag mapping, a missing output, or a yanked pinned release fails
+  # here instead of in a consumer repo.
   action-smoke:
-    name: Composite action (${{ matrix.label }}, ${{ matrix.os }})
+    name: >-
+      Composite action (${{ matrix.label }}, ${{ matrix.os }}${{
+      matrix.source == 'pypi' && ', published wheel' || '' }})
+    needs: build-pr-wheel
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -55,6 +106,11 @@ jobs:
             alpha: '0.9'
             timeout: '300'
             output-path: tuned-context.md
+          # One leg stays on PyPI: a yanked or broken published wheel is what a
+          # consumer pinning the default gets, and only this cell sees it.
+          - os: ubuntu-latest
+            label: md-ego
+            source: pypi
     steps:
       - name: Checkout Code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -62,9 +118,19 @@ jobs:
           # Both endpoints of the analyzed range must exist locally.
           fetch-depth: 0
 
+      - name: Download this branch's wheel
+        if: matrix.source != 'pypi'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: pr-wheel-${{ matrix.os }}
+          path: dist
+
       - name: Build diff context
         id: diffctx
         uses: ./
+        env:
+          PIP_FIND_LINKS: ${{ matrix.source != 'pypi' && format('{0}/dist', github.workspace) || '' }}
+          PIP_NO_INDEX: ${{ matrix.source != 'pypi' && '1' || '' }}
         with:
           format: ${{ matrix.format }}
           scoring: ${{ matrix.scoring }}
@@ -130,10 +196,53 @@ jobs:
       - name: Upload context artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
-          name: diffctx-context-${{ matrix.label }}-${{ matrix.os }}
+          name: diffctx-context-${{ matrix.label }}-${{ matrix.os }}${{ matrix.source == 'pypi' && '-pypi' || '' }}
           path: ${{ steps.diffctx.outputs.context-file }}
           if-no-files-found: error
           retention-days: 7
+
+  # The action's one documented failure mode was a shallow checkout, and every
+  # leg above sidesteps it with fetch-depth: 0. This leg takes the checkout
+  # default (depth 1) and expects the action to fetch the range's endpoints
+  # itself — the fix that replaced the "add fetch-depth: 0" advice.
+  action-shallow-checkout:
+    name: Composite action (shallow checkout)
+    needs: build-pr-wheel
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Code (depth 1)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Assert the checkout really is shallow
+        run: test "$(git rev-parse --is-shallow-repository)" = "true"
+
+      - name: Download this branch's wheel
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: pr-wheel-ubuntu-latest
+          path: dist
+
+      - name: Build diff context on the shallow clone
+        id: diffctx
+        uses: ./
+        env:
+          PIP_FIND_LINKS: ${{ github.workspace }}/dist
+          PIP_NO_INDEX: '1'
+        with:
+          format: md
+          budget: '4000'
+
+      - name: Assert the range resolved and produced context
+        env:
+          DIFF_RANGE: ${{ steps.diffctx.outputs.diff-range }}
+          CONTEXT_FILE: ${{ steps.diffctx.outputs.context-file }}
+        run: |
+          set -euo pipefail
+          test -n "$DIFF_RANGE"
+          test -s "$CONTEXT_FILE"
+          echo "OK: shallow checkout analyzed $DIFF_RANGE"
 
   # Dogfood the *review*, not only the mechanism: the legs above prove the
   # action runs; this job produces the artifact a reviewer of THIS pull
@@ -144,6 +253,7 @@ jobs:
   pr-review-context:
     name: Review context for this PR
     if: github.event_name == 'pull_request'
+    needs: build-pr-wheel
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -154,9 +264,18 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Download this branch's wheel
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: pr-wheel-ubuntu-latest
+          path: dist
+
       - name: Build review context
         id: diffctx
         uses: ./
+        env:
+          PIP_FIND_LINKS: ${{ github.workspace }}/dist
+          PIP_NO_INDEX: '1'
         with:
           format: md
           scoring: ego
@@ -170,71 +289,41 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Summarise and pin to the PR
-        shell: bash
+      - name: Summarise into the step summary
         env:
-          GH_TOKEN: ${{ github.token }}
           CONTEXT_FILE: ${{ steps.diffctx.outputs.context-file }}
           TOKEN_COUNT: ${{ steps.diffctx.outputs.token-count }}
           DIFF_RANGE: ${{ steps.diffctx.outputs.diff-range }}
           EMPTY: ${{ steps.diffctx.outputs.empty }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          OUT: ${{ runner.temp }}/comment.md
+        run: bash .github/scripts/pr-review-summary.sh
+
+      # A fork's GITHUB_TOKEN is read-only, so the POST 403s and took the whole
+      # job red with it; the step summary above is what a fork PR gets.
+      - name: Pin to the PR as one sticky comment
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          COMMENT: ${{ runner.temp }}/comment.md
         run: |
           set -euo pipefail
-          marker='<!-- diffctx-review-context -->'
-          # The changed-files block: from its header to the first blank line
-          # after the list starts (the header is followed by one blank line).
-          changed=$(awk '/^\*\*Changed files:\*\*/{f=1;next}
-                         f&&/^$/{if(seen)exit; next}
-                         f{seen=1; print}' "$CONTEXT_FILE")
-          files=$(printf '%s\n' "$changed" | grep -c . || true)
-          frags=$(grep -cE '^## `' "$CONTEXT_FILE" || true)
-          # The first thing dogfooding found: this repo's own .diffctx/ignore
-          # withholds *.yml, so a PR whose main change is a workflow shows up
-          # with that file absent and nothing saying so. Surface the policy
-          # line the artifact carries, so the reviewer knows to open the raw
-          # diff for exactly those.
-          withheld=$(grep -oE '^\*[0-9]+ changed file\(s\) withheld by exclusion policy[^*]*\*' "$CONTEXT_FILE" || true)
-          {
-            echo "$marker"
-            echo "### diffctx review context"
-            echo
-            echo "Range \`${DIFF_RANGE}\` — **${TOKEN_COUNT} tokens** (o200k_base)," \
-                 "${frags} fragments across ${files} changed files. Empty: ${EMPTY}."
-            echo
-            echo "Review this instead of the raw diff: [download the context](${RUN_URL}#artifacts)" \
-                 "(artifact \`diffctx-review-context\`, 14 days)."
-            if [ -n "$withheld" ]; then
-              echo
-              echo "${withheld} — read those in the raw diff."
-            fi
-            echo
-            echo "<details><summary>Changed files as diffctx lists them (omitted = no fragment fit)</summary>"
-            echo
-            printf '%s\n' "$changed" | head -80
-            echo
-            echo "</details>"
-          } > /tmp/comment.md
-          cp /tmp/comment.md "$GITHUB_STEP_SUMMARY"
-
-          # One sticky comment per PR: find ours by marker and edit it, else create.
+          marker=$(head -n 1 "$COMMENT")
           api="repos/${GITHUB_REPOSITORY}/issues"
           existing=$(gh api "${api}/${PR_NUMBER}/comments" --paginate \
             --jq "[.[] | select(.body | startswith(\"${marker}\"))] | first | .id // empty")
           if [ -n "$existing" ]; then
-            gh api -X PATCH "${api}/comments/${existing}" -F body=@/tmp/comment.md >/dev/null
+            gh api -X PATCH "${api}/comments/${existing}" -F body=@"$COMMENT" >/dev/null
           else
-            gh api -X POST "${api}/${PR_NUMBER}/comments" -F body=@/tmp/comment.md >/dev/null
+            gh api -X POST "${api}/${PR_NUMBER}/comments" -F body=@"$COMMENT" >/dev/null
           fi
 
-  # `fail-on-empty` gates whether a consumer's build breaks when a diff yields
-  # no semantic context. It sits behind an `if [ "$empty" = "true" ] && ...`
-  # branch in action.yml that no smoke leg ever entered, so the flag could stop
-  # working with every job still green. An empty range (HEAD..HEAD) forces the
-  # branch; the job passes only when the action actually fails.
-  action-fail-on-empty:
-    name: Composite action (fail-on-empty)
+  # The fork-PR path of the job above, run on every event: the summary script
+  # with no token in the environment must still exit 0 and write the comment.
+  pr-review-summary-offline:
+    name: Review summary without a token
+    needs: build-pr-wheel
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -244,10 +333,66 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Download this branch's wheel
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: pr-wheel-ubuntu-latest
+          path: dist
+
+      - name: Build review context
+        id: diffctx
+        uses: ./
+        env:
+          PIP_FIND_LINKS: ${{ github.workspace }}/dist
+          PIP_NO_INDEX: '1'
+        with:
+          diff-range: HEAD~1..HEAD
+          budget: '4000'
+
+      - name: Summarise with GH_TOKEN unset
+        env:
+          CONTEXT_FILE: ${{ steps.diffctx.outputs.context-file }}
+          TOKEN_COUNT: ${{ steps.diffctx.outputs.token-count }}
+          DIFF_RANGE: ${{ steps.diffctx.outputs.diff-range }}
+          EMPTY: ${{ steps.diffctx.outputs.empty }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          OUT: ${{ runner.temp }}/comment.md
+        run: |
+          set -euo pipefail
+          env -u GH_TOKEN -u GITHUB_TOKEN bash .github/scripts/pr-review-summary.sh
+          head -n 1 "$OUT" | grep -qx '<!-- diffctx-review-context -->'
+          echo "OK: summary renders without a token"
+
+  # `fail-on-empty` gates whether a consumer's build breaks when a diff yields
+  # no semantic context. It sits behind an `if [ "$empty" = "true" ] && ...`
+  # branch in action.yml that no smoke leg ever entered, so the flag could stop
+  # working with every job still green. An empty range (HEAD..HEAD) forces the
+  # branch; the job passes only when the action actually fails.
+  action-fail-on-empty:
+    name: Composite action (fail-on-empty)
+    needs: build-pr-wheel
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Download this branch's wheel
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: pr-wheel-ubuntu-latest
+          path: dist
+
       - name: Build diff context over an empty range
         id: diffctx
         continue-on-error: true
         uses: ./
+        env:
+          PIP_FIND_LINKS: ${{ github.workspace }}/dist
+          PIP_NO_INDEX: '1'
         with:
           diff-range: HEAD..HEAD
           fail-on-empty: 'true'

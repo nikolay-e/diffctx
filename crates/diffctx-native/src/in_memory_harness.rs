@@ -18,6 +18,34 @@ pub struct MemoryRepo {
     pub changed_files: FxHashMap<String, String>,
 }
 
+pub struct FragmentRow {
+    pub kind: &'static str,
+    pub symbol: Option<String>,
+    pub start_line: u32,
+    pub end_line: u32,
+}
+
+pub fn fragment_rows(path: &str, content: &str) -> Vec<FragmentRow> {
+    let mut rows: Vec<FragmentRow> = fragment_file(Arc::from(path), content)
+        .into_iter()
+        .map(|f| FragmentRow {
+            kind: f.kind.as_str(),
+            symbol: f.symbol_name,
+            start_line: f.id.start_line,
+            end_line: f.id.end_line,
+        })
+        .collect();
+    rows.sort_by(|a, b| {
+        (a.start_line, a.end_line, a.kind, &a.symbol).cmp(&(
+            b.start_line,
+            b.end_line,
+            b.kind,
+            &b.symbol,
+        ))
+    });
+    rows
+}
+
 pub fn build_diff_context_in_memory(
     repo: &MemoryRepo,
     budget_tokens: Option<u32>,
@@ -177,6 +205,7 @@ pub fn build_diff_context_in_memory(
         policy_excluded_count: 0,
         commit_message: None,
         commit_messages: Vec::new(),
+        commit_count: 0,
         changes: change_classes,
         changed_files: changed_list,
         deleted_files: Vec::new(),

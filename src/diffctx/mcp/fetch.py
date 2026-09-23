@@ -70,7 +70,7 @@ def parse_fragment_id(raw: str) -> FragmentRef | None:
     return FragmentRef(path, start, end)
 
 
-def end_revision(repo: Path, diff_ref: str) -> str | None:
+def end_revision(diff_ref: str) -> str | None:
     """The revision a locate ranking's line numbers refer to.
 
     `None` means the working tree: that is what `git diff` with no range
@@ -78,26 +78,16 @@ def end_revision(repo: Path, diff_ref: str) -> str | None:
     the caller cannot see in their editor.
     """
     ref = diff_ref.strip()
-    if not ref:
-        return None
     for sep in ("...", ".."):
         if sep in ref:
             _, _, right = ref.partition(sep)
             right = right.strip()
-            # `A..` means "A to the working tree" in git's own reading.
-            return right or None
-    # A duration window (`24h`) is a base, not an end: it too runs to the
-    # working tree, so its bodies must be read from disk.
-    return None if _is_duration_window(repo, ref) else ref
-
-
-def _is_duration_window(repo: Path, ref: str) -> bool:
-    from diffctx._native.pipeline import resolve_diff_range
-
-    try:
-        return resolve_diff_range(repo, ref) != ref
-    except Exception:
-        return False
+            # git reads an empty right side as HEAD (`A..` is `A..HEAD`), and so does the engine.
+            return right or "HEAD"
+    # Anything without `..` — empty, `HEAD~3`, a duration window — is a base
+    # that `git diff` compares against the working tree, so the ranking's line
+    # numbers belong to the files on disk and the bodies must come from there.
+    return None
 
 
 def _blob_at(repo: Path, rev: str, rel_path: str) -> str | None:
@@ -107,9 +97,13 @@ def _blob_at(repo: Path, rev: str, rel_path: str) -> str | None:
     # file write; `--end-of-options` makes git read it as a revision only.
     if rev.startswith("-"):
         return None
+    # `cat-file blob` rather than `show`: asked for a directory, `show` prints
+    # the tree listing as if it were file content, and that listing names
+    # entries the ignore rules may withhold. Only a blob can be a fragment body.
     try:
         proc = subprocess.run(
-            ["git", "show", "--end-of-options", f"{rev}:{rel_path}"],
+            ["git", "cat-file", "blob", "--end-of-options", f"{rev}:{rel_path}"],
+            stdin=subprocess.DEVNULL,
             cwd=repo,
             capture_output=True,
             timeout=_GIT_TIMEOUT_SECONDS,
@@ -195,20 +189,27 @@ def withheld_set(root: Path, rel_paths: list[str]) -> set[str]:
     return set(withheld_paths(str(root), clean)) | unservable
 
 
-def fetch_fragments(repo: Path, diff_ref: str, fragment_ids: list[str], max_file_bytes: int) -> str:
-    """Markdown bodies for `fragment_ids`, one section per id.
+@dataclass(frozen=True)
+class FetchResult:
+    markdown: str
+    resolved: int
 
-    Every id is accounted for in the output — resolved, or named with the
-    reason it was not. A silently dropped id would read as "this fragment is
-    empty", which is a different claim than "this fragment was refused".
-    """
+
+def fetch_fragments(repo: Path, diff_ref: str, fragment_ids: list[str], max_file_bytes: int) -> str:
+    return fetch_result(repo, diff_ref, fragment_ids, max_file_bytes).markdown
+
+
+def fetch_result(repo: Path, diff_ref: str, fragment_ids: list[str], max_file_bytes: int) -> FetchResult:
+    # Every id is accounted for in the output — resolved, or named with the reason it was not. A
+    # silently dropped id would read as "this fragment is empty", which is a different claim than
+    # "this fragment was refused".
     if len(fragment_ids) > MAX_FETCH_IDS:
         raise ValueError(
             f"fragment_ids: {len(fragment_ids)} ids exceeds the {MAX_FETCH_IDS} per-call limit. "
             f'Fetch the ones you need, or ask for mode="pack" if you need most of the selection.'
         )
 
-    rev = end_revision(repo, diff_ref)
+    rev = end_revision(diff_ref)
     rev_label = rev or "working tree"
     parts = [f"# {len(fragment_ids)} fragments at {rev_label}\n"]
     refs = [(raw, parse_fragment_id(raw)) for raw in fragment_ids]
@@ -217,9 +218,12 @@ def fetch_fragments(repo: Path, diff_ref: str, fragment_ids: list[str], max_file
     # both served `.netrc` and refused files the engine had ranked.
     contained = {ref.path for _, ref in refs if ref is not None and _is_contained(repo, ref.path)}
     withheld = withheld_set(repo, sorted(contained))
+    resolved = 0
     for raw, ref in refs:
-        parts.append(_fetch_one(repo, rev, rev_label, raw, ref, contained, withheld, max_file_bytes))
-    return "\n".join(parts)
+        section, body = _fetch_one(repo, rev, rev_label, raw, ref, contained, withheld, max_file_bytes)
+        parts.append(section)
+        resolved += body
+    return FetchResult("\n".join(parts), resolved)
 
 
 def _fetch_one(
@@ -231,28 +235,36 @@ def _fetch_one(
     contained: set[str],
     withheld: set[str],
     max_file_bytes: int,
-) -> str:
-    """One section: the fragment's body, or the reason there is none."""
+) -> tuple[str, bool]:
     if ref is None:
-        return f"## {raw}\n*Unparseable id — expected `path:start-end`, `path:line`, or `path`.*\n"
+        return f"## {raw}\n*Unparseable id — expected `path:start-end`, `path:line`, or `path`.*\n", False
     if ref.path not in contained or ref.path in withheld:
         # Deliberately one message for "outside the repo" and "ignored":
         # distinguishing them tells the caller whether a path they cannot
         # read nonetheless exists.
-        return f"## {ref.path}\n*Not available: outside the repository or excluded by its ignore rules.*\n"
-    text = _blob_at(repo, rev, ref.path) if rev else None
+        return f"## {ref.path}\n*Not available: outside the repository or excluded by its ignore rules.*\n", False
+    # Never the working tree under a revision's label: a file the revision
+    # does not have (or a revision git cannot resolve) is reported, not
+    # substituted with whatever is on disk.
+    text = _blob_at(repo, rev, ref.path) if rev else _worktree_text(repo, ref.path)
     if text is None:
-        # Created after `rev`, or the range ends at the working tree.
-        text = _worktree_text(repo, ref.path)
-    if text is None:
-        return f"## {ref.path}\n*Not found at {rev_label}.*\n"
-    if len(text.encode("utf-8", errors="replace")) > max_file_bytes:
-        return f"## {ref.path}\n*Skipped: file exceeds {max_file_bytes:,} bytes.*\n"
+        return f"## {ref.path}\n*Not found at {rev_label}.*\n", False
     sliced = _slice(text, ref)
     if sliced is None:
-        return f"## {ref.path}\n*Not found: {ref.path} has {len(text.splitlines())} lines at {rev_label}; the id starts past the end.*\n"
+        return (
+            f"## {ref.path}\n*Not found: {ref.path} has {len(text.splitlines())} lines at {rev_label}; the id starts past the end.*\n",
+            False,
+        )
     body, span = sliced
+    # The cap applies to what is served, not to the file it came from: the
+    # engine ranks fragments of files up to its own (larger) limit, and every
+    # id a ranking hands out must be fetchable.
+    if len(body.encode("utf-8", errors="replace")) > max_file_bytes:
+        return (
+            f"## {ref.path}:{span}\n*Skipped: fragment exceeds {max_file_bytes:,} bytes; ask for a narrower line range.*\n",
+            False,
+        )
     body, redacted, categories = sanitize_text(body)
     suffix = Path(ref.path).suffix.lstrip(".")
     note = f"*{redacted} credential-shaped string(s) redacted: {', '.join(categories)}*\n" if redacted else ""
-    return f"## {ref.path}:{span}\n{note}```{suffix}\n{body}\n```\n"
+    return f"## {ref.path}:{span}\n{note}```{suffix}\n{body}\n```\n", True

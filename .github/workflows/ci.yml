@@ -117,6 +117,40 @@ jobs:
         run: cargo check --no-default-features
 
   # ============================================================================
+  # `cargo publish --locked` in publish-crate.yml was the first packaging step
+  # the crate ever went through, after PyPI and the GitHub Release had already
+  # shipped. The manifest excludes tests/** yet declares a yaml_cases test
+  # target; a stray include!() of an excluded file, or a readme path that does
+  # not survive packaging, fails only at publish time without this.
+  # ============================================================================
+  cargo-publish-dry-run:
+    name: Crate packages for crates.io
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: "1.92.0"
+
+      - name: Cache Cargo
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-publish-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-publish-${{ runner.os }}-
+
+      - name: Package and verify
+        working-directory: crates/diffctx-native
+        run: cargo publish --dry-run --locked
+
+  # ============================================================================
   # Docker image build. Gated here rather than only at release time: cd.yml's
   # build-image needs finalize-release, so the first build of this Dockerfile
   # happened after PyPI and the GitHub Release had already shipped — a broken
@@ -131,7 +165,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Build image
-        run: docker build -f Dockerfile -t diffctx:ci .
+        run: docker build -f Dockerfile --build-arg "DIFFCTX_BUILD_SHA=${GITHUB_SHA}" -t diffctx:ci .
 
       # A synthetic two-commit repo, not this repo's own HEAD~1..HEAD: whether
       # the latest commit's diff fits a fixed budget depends on what that
@@ -139,7 +173,7 @@ jobs:
       # test-only push. The fixture mirrors cd.yml's publish-image smoke.
       - name: Smoke the image on a real two-commit diff
         run: |
-          docker run --rm -v "$PWD:/repo" diffctx:ci --version
+          docker run --rm diffctx:ci --version | grep -qx "diffctx $(cut -d'"' -f2 src/diffctx/version.py)"
           SMOKE=$(mktemp -d)
           cd "$SMOKE"
           git init -q
@@ -153,11 +187,14 @@ jobs:
           # mktemp -d creates the dir 0700 for the runner user, while the image
           # runs as the unprivileged uid 10001 — without this the container
           # sees "'/repo' is not a git repository".
-          chmod -R a+rwX "$SMOKE"
+          chmod -R a+rX "$SMOKE"
           docker run --rm -v "$SMOKE:/repo" diffctx:ci . \
             --diff HEAD~1..HEAD --budget 2000 > /tmp/out.md
           test -s /tmp/out.md
           grep -q "def sub" /tmp/out.md
+          docker run --rm -v "$SMOKE:/repo" diffctx:ci . \
+            --diff HEAD~1..HEAD -f json --no-content > /tmp/out.json
+          jq -e --arg sha "$GITHUB_SHA" '.provenance.engine.build == $sha' /tmp/out.json
 
   # ============================================================================
   # Linting and Type Checking
@@ -241,6 +278,7 @@ jobs:
           # library that did not contain them.
           cargo test --lib --features python
           cargo test --test native_cli
+          cargo test --test fragment_snapshot
           cargo build --release --examples
           # --release, the profile the wheel ships: it unwinds, so the corpus
           # exercises the same panic strategy production runs under.
@@ -282,6 +320,7 @@ jobs:
         run: |
           cargo test --lib --features python
           cargo test --test native_cli
+          cargo test --test fragment_snapshot
           cargo test --release --test yaml_cases
 
       # Release ships an Intel-Mac binary cross-built on this arm64 image; the
@@ -307,7 +346,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ['3.10', '3.11', '3.12', '3.13']
+        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
         # The ARM legs of the release matrix. Windows on ARM has native
         # CPython only from 3.11, so one current interpreter each.
         include:
@@ -348,8 +387,8 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: cargo-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: cargo-${{ runner.os }}-py${{ matrix.python-version }}-
+          key: cargo-${{ runner.os }}-${{ runner.arch }}-py${{ matrix.python-version }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-${{ runner.arch }}-py${{ matrix.python-version }}-
 
       - name: Build and install diffctx (with Rust _diffctx) and dev deps
         shell: bash
@@ -402,6 +441,43 @@ jobs:
           flags: integration
           fail_ci_if_error: false
           verbose: true
+
+  # ============================================================================
+  # The landing page is a PWA; tests/test_publishing_manifests.py checks the
+  # manifest and precache list statically, this job opens the site in a real
+  # browser, cuts the network and expects the installed shortcuts to open.
+  # Playwright is not a project dependency (only this job drives a browser),
+  # so it is pinned here rather than in uv.lock.
+  # ============================================================================
+  docs-pwa:
+    name: Landing page installs and opens offline
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
+        with:
+          python-version: '3.12'
+          enable-cache: true
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: "1.92.0"
+
+      - name: Install dependencies and a browser
+        run: |
+          uv sync --locked --no-build --extra dev
+          uv pip install --no-build "playwright==1.63.0"
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+          .venv/bin/playwright install --with-deps chromium
+
+      - name: Open the site offline
+        run: pytest tests/test_docs_pwa.py -v -p no:cacheprovider
 
   # ============================================================================
   # Complexity & Maintainability Metrics

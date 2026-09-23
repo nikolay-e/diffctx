@@ -12,8 +12,10 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 import yaml
@@ -99,6 +101,22 @@ class TestTreeModeJourneys:
         assert saved.exists()
         assert saved.read_text(encoding="utf-8").strip()
 
+    def test_bare_save_writes_markdown(self, temp_project):
+        result = run_diffctx_subprocess([".", "--save"], cwd=temp_project)
+        assert result.returncode == EXIT_OK
+        assert (temp_project / "tree.md").read_text(encoding="utf-8").startswith(f"# {temp_project.name}/")
+        assert not (temp_project / "tree.yaml").exists()
+
+    @pytest.mark.parametrize("paths", [[".", "src"], ["src", "src/deep"]])
+    def test_a_directory_inside_another_requested_directory_renders_once(self, temp_project, paths):
+        (temp_project / "src" / "deep").mkdir()
+        (temp_project / "src" / "deep" / "leaf.py").write_text("x = 1\n", encoding="utf-8")
+        result = run_diffctx_subprocess([*paths, "-f", "txt"], cwd=temp_project)
+        assert result.returncode == EXIT_OK
+        assert f"1 path(s) already inside another requested directory, skipped: {temp_project / paths[1]}" in result.stderr
+        for name in ("main.py", "leaf.py", "deep/"):
+            assert result.stdout.count(name) == 1, (name, result.stdout)
+
     def test_output_file_writes_and_reports_path(self, temp_project):
         out = temp_project / "export.yaml"
         result = run_diffctx_subprocess([str(temp_project), "-o", str(out)])
@@ -159,6 +177,17 @@ class TestOutputFeedbackJourneys:
         assert out.exists()
         assert "Saved to" not in result.stderr
 
+    def test_quiet_overrides_and_reports_the_log_level(self, temp_project):
+        result = run_diffctx_subprocess([".", "-q", "--log-level", "debug"], cwd=temp_project)
+        assert result.returncode == EXIT_OK
+        assert "--log-level debug ignored with -q" in result.stderr
+        assert "DEBUG" not in result.stderr
+
+    def test_help_does_not_promise_tree_files_are_ignored_in_diff_mode(self, temp_project):
+        result = run_diffctx_subprocess(["--help"], cwd=temp_project)
+        assert "auto-ignored in tree mode only" in result.stdout
+        assert "(auto-ignored)" not in result.stdout
+
     @staticmethod
     def _make_many_small_files(directory, count=200, size=10_000):
         for i in range(count):
@@ -192,22 +221,16 @@ class TestUsageErrorJourneys:
             (["-f", "xml"], EXIT_USAGE, "invalid choice"),
             (["--log-level", "trace"], EXIT_USAGE, "invalid choice"),
             (["nonexistent_dir_xyz"], EXIT_RUNTIME, "No matches"),
+            ([".", "--diff", ""], EXIT_USAGE, "--diff requires a non-empty range"),
+            ([".", "-o", "docs"], EXIT_USAGE, "is a directory"),
+            ([".", "--save", "-o", "x.yaml"], EXIT_USAGE, "mutually exclusive"),
         ],
     )
     def test_invalid_invocation(self, temp_project, args, expected_exit, needle):
         result = run_diffctx_subprocess(args, cwd=temp_project)
         assert result.returncode == expected_exit, f"stderr: {result.stderr}"
         assert needle.lower() in result.stderr.lower()
-
-    def test_save_and_output_file_are_mutually_exclusive(self, temp_project):
-        result = run_diffctx_subprocess([str(temp_project), "--save", "-o", "x.yaml"], cwd=temp_project)
-        assert result.returncode == EXIT_USAGE
-        assert "mutually exclusive" in result.stderr
-
-    def test_output_file_pointing_at_directory(self, temp_project):
-        result = run_diffctx_subprocess([str(temp_project), "-o", str(temp_project / "docs")])
-        assert result.returncode == EXIT_USAGE
-        assert "is a directory" in result.stderr
+        assert result.stdout == "", "a refused invocation must not print a tree"
 
     def test_diff_flags_without_diff_emit_warning(self, temp_project):
         result = run_diffctx_subprocess([str(temp_project), "--budget", "5000", "--alpha", "0.5"])
@@ -286,6 +309,29 @@ class TestDiffModeJourneys:
         result = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD"], cwd=temp_project)
         assert result.returncode == EXIT_ENVIRONMENT
         assert "requires a git repository" in result.stderr
+
+    def test_diff_in_a_bare_repository_is_a_branded_environment_error(self, diff_repo, tmp_path):
+        bare = tmp_path / "bare.git"
+        subprocess.run(["git", "clone", "--quiet", "--bare", str(diff_repo.path), str(bare)], check=True)
+        result = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD"], cwd=bare)
+        assert result.returncode == EXIT_ENVIRONMENT
+        assert f"--diff requires a working tree (bare repository: {bare}" in result.stderr
+        assert "must be run in a work tree" not in result.stderr
+
+    def test_tree_mode_flags_are_reported_as_ignored_with_diff(self, diff_repo):
+        result = run_diffctx_subprocess(
+            [".", "--diff", "HEAD~1..HEAD", "--max-depth", "1", "--max-file-bytes", "10", "--no-file-size-limit", "-q"],
+            cwd=diff_repo.path,
+        )
+        assert result.returncode == EXIT_OK
+        assert "tree-mode flags ignored with --diff: --max-depth, --max-file-bytes, --no-file-size-limit" in result.stderr
+
+    def test_latency_is_logged_at_info_and_absent_from_the_json_artifact(self, diff_repo):
+        result = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "-f", "json", "--log-level", "info"], cwd=diff_repo.path)
+        assert result.returncode == EXIT_OK
+        assert "latency" not in json.loads(result.stdout)
+        assert "INFO: latency (ms): " in result.stderr
+        assert "total_ms=" in result.stderr
 
     def test_diff_in_repo_with_no_commits_is_clean_environment_error(self, tmp_path):
         """Regression (#86): a `git init`-only repo (no commits yet) used to
@@ -430,6 +476,32 @@ class TestGraphModeJourneys:
         assert edge_labels
         assert all(label.endswith("%") for label in edge_labels)
 
+    @pytest.mark.parametrize("flags", [["-i", "extra.ignore"], ["-w", "only.whitelist"], ["--no-default-ignores"]])
+    def test_path_spec_flags_are_refused_once_as_a_usage_error(self, graph_repo, flags):
+        (graph_repo.path / "extra.ignore").write_text("*.py\n", encoding="utf-8")
+        (graph_repo.path / "only.whitelist").write_text("src/**\n", encoding="utf-8")
+        result = run_diffctx_subprocess(["graph", ".", *flags], cwd=graph_repo.path)
+        assert result.returncode == EXIT_USAGE
+        assert result.stdout == ""
+        assert result.stderr.count("\n") == 1, f"exactly one line expected, got: {result.stderr!r}"
+        assert flags[0] in result.stderr
+        assert "is not supported with graph" in result.stderr
+        assert "ignored" not in result.stderr
+
+    def test_output_extension_selects_the_graph_format(self, graph_repo):
+        out = graph_repo.path / "g.json"
+        result = run_diffctx_subprocess(["graph", ".", "-o", str(out)], cwd=graph_repo.path)
+        assert result.returncode == EXIT_OK
+        assert "does not match" not in result.stderr
+        assert "node_count" in json.loads(out.read_text(encoding="utf-8"))
+
+    def test_explicit_format_wins_over_the_extension_with_a_warning(self, graph_repo):
+        out = graph_repo.path / "g.json"
+        result = run_diffctx_subprocess(["graph", ".", "-f", "mermaid", "-o", str(out)], cwd=graph_repo.path)
+        assert result.returncode == EXIT_OK
+        assert f"-f mermaid does not match the '{out}' extension; writing mermaid" in result.stderr
+        assert out.read_text(encoding="utf-8").lstrip().startswith("graph LR")
+
 
 class TestIdentityJourneys:
     def test_version_matches_package(self, temp_project):
@@ -438,6 +510,28 @@ class TestIdentityJourneys:
         result = run_diffctx_subprocess(["--version"], cwd=temp_project)
         assert result.returncode == EXIT_OK
         assert result.stdout.strip() == f"diffctx {diffctx.__version__}"
+
+    @staticmethod
+    def _console_script():
+        script = shutil.which("diffctx", path=str(Path(sys.executable).parent)) or shutil.which("diffctx")
+        if script is None:
+            pytest.skip("the diffctx console script is not installed next to this interpreter")
+        return script
+
+    def test_console_script_reports_the_same_version(self, temp_project):
+        script = self._console_script()
+        via_module = run_diffctx_subprocess(["-v"], cwd=temp_project)
+        via_script = subprocess.run([script, "-v"], cwd=temp_project, capture_output=True, text=True, check=False)
+        assert via_script.returncode == via_module.returncode == EXIT_OK
+        assert via_script.stdout == via_module.stdout
+
+    def test_console_script_runs_diff_mode_like_the_module(self, diff_repo):
+        script = self._console_script()
+        args = [".", "--diff", "HEAD~1..HEAD", "-q"]
+        via_module = run_diffctx_subprocess(args, cwd=diff_repo.path)
+        via_script = subprocess.run([script, *args], cwd=diff_repo.path, capture_output=True, encoding="utf-8", check=False)
+        assert via_script.returncode == via_module.returncode == EXIT_OK
+        assert via_script.stdout == via_module.stdout
 
     def test_help_lists_diff_and_graph(self, temp_project):
         result = run_diffctx_subprocess(["--help"], cwd=temp_project)

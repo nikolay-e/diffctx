@@ -1,0 +1,44 @@
+name: docker_046_env_file_context
+tags:
+- lang:python
+- lang:dotenv
+- change:single_file
+- context:config
+repo:
+  initial_files:
+    config/cache.env: |
+      CACHE_TTL_SECONDS=300
+      CACHE_MAX_ENTRIES=5000
+    app/cache.py: |
+      import os
+
+
+      def cache_settings():
+          return {"ttl": int(os.environ.get("CACHE_TTL_SECONDS", "60"))}
+    app/report.py: |
+      def monthly_report(rows):
+          return sum(r.amount for r in rows)
+  changed_files:
+    app/cache.py: |
+      import os
+
+
+      def cache_settings():
+          return {
+              "ttl": int(os.environ.get("CACHE_TTL_SECONDS", "60")),
+              "max_entries": int(os.environ.get("CACHE_MAX_ENTRIES", "1000")),
+          }
+  commit_message: Bound the cache size
+fragments:
+- id: cache_env
+  selector:
+    path: config/cache.env
+    anchor: CACHE_MAX_ENTRIES=5000
+- id: no_report
+  selector:
+    path: app/report.py
+oracle:
+  required:
+  - cache_env
+  forbidden:
+  - no_report

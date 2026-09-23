@@ -70,10 +70,31 @@ fn builder_categories() -> Vec<BuilderCategory> {
     ]
 }
 
+/// `DIFFCTX_DISABLE_BUILDERS=python,tags` drops those builders from every
+/// run. A measurement knife, not a tuning knob: the nightly builder-knife job
+/// disables one builder at a time and asserts the corpus notices, which is
+/// the only evidence a builder carries any case at all.
+pub fn disabled_builders() -> FxHashSet<String> {
+    std::env::var("DIFFCTX_DISABLE_BUILDERS")
+        .unwrap_or_default()
+        .split(',')
+        .map(|n| n.trim().to_ascii_lowercase())
+        .filter(|n| !n.is_empty())
+        .collect()
+}
+
+fn enabled_builders(cat: &BuilderCategory) -> Vec<Box<dyn EdgeBuilder>> {
+    let disabled = disabled_builders();
+    (cat.builders)()
+        .into_iter()
+        .filter(|b| !disabled.contains(&b.knife_name()))
+        .collect()
+}
+
 pub fn get_all_builders() -> Vec<Box<dyn EdgeBuilder>> {
     let mut all = Vec::new();
     for cat in builder_categories() {
-        all.extend((cat.builders)());
+        all.extend(enabled_builders(&cat));
     }
     all
 }
@@ -123,7 +144,7 @@ pub fn collect_capped_edges(
             debug!("skipping {} edge builders (skip_expensive=true)", cat.name);
             continue;
         }
-        for builder in (cat.builders)() {
+        for builder in enabled_builders(&cat) {
             all_builders.push((cat.name, builder));
         }
     }
@@ -548,6 +569,28 @@ mod fallback_gate_tests {
             !has("a.c", "c.c"),
             "a tags-only link between two dedicated-covered files is the measured noise class (#131)"
         );
+    }
+}
+
+#[cfg(test)]
+mod knife_tests {
+    use super::*;
+
+    #[test]
+    fn every_builder_has_a_distinct_knife_name() {
+        let names: Vec<String> = get_all_builders().iter().map(|b| b.knife_name()).collect();
+        let distinct: FxHashSet<&String> = names.iter().collect();
+        assert_eq!(
+            distinct.len(),
+            names.len(),
+            "duplicate knife names: {names:?}"
+        );
+        for expected in ["python", "shell", "tags", "perl", "terraform"] {
+            assert!(
+                names.iter().any(|n| n == expected),
+                "{expected} missing from {names:?}"
+            );
+        }
     }
 }
 

@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use rustc_hash::{FxHashMap, FxHashSet};
+use schemars::JsonSchema;
 use serde::Serialize;
 
 use crate::pipeline::{ScoredState, SelectionOutcome};
@@ -9,7 +10,7 @@ use crate::types::{Fragment, FragmentId};
 
 pub const LOCATE_SCHEMA: &str = "diffctx.locate.v1";
 
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 pub struct LocateOutput {
     pub schema: &'static str,
     pub name: String,
@@ -17,6 +18,9 @@ pub struct LocateOutput {
     pub commit_message: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub commit_messages: Vec<String>,
+    /// Commits in the range when that is more than `commit_messages` lists.
+    #[serde(skip_serializing_if = "crate::render::is_zero")]
+    pub commit_count: usize,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub changed_files: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -51,6 +55,10 @@ pub struct LocateOutput {
     /// True total behind `overflow`, which is capped at `MAX_OVERFLOW_ITEMS`.
     #[serde(skip_serializing_if = "crate::render::is_zero")]
     pub overflow_count: usize,
+    /// Present only when the sanitizer replaced a credential-shaped string in
+    /// a commit message, the one free text locate prints.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub redactions: Option<crate::sanitize::Redactions>,
 }
 
 // The reference is serde's contract for `skip_serializing_if`, not a choice.
@@ -60,7 +68,7 @@ pub struct LocateOutput {
 /// budget existed to avoid.
 pub const MAX_OVERFLOW_ITEMS: usize = 50;
 
-#[derive(Serialize, Default)]
+#[derive(Serialize, JsonSchema, Default)]
 pub struct Coverage {
     /// Changed files with no symbol-level structure: every fragment is a
     /// chunk/section fallback, so the parser could not see inside them and
@@ -117,7 +125,7 @@ impl Coverage {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 pub struct OverflowItem {
     pub path: String,
     pub lines: String,
@@ -128,7 +136,7 @@ pub struct OverflowItem {
     pub why: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 pub struct Summary {
     pub files: usize,
     pub changed: usize,
@@ -136,7 +144,7 @@ pub struct Summary {
     pub tests: usize,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 pub struct RenameEntry {
     pub from: String,
     pub to: String,
@@ -144,7 +152,7 @@ pub struct RenameEntry {
 
 /// Rank is the array position (items are emitted in selection order);
 /// `role` is serialized only for `"changed"` — absence means context.
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 pub struct LocateItem {
     pub path: String,
     pub lines: String,
@@ -198,7 +206,7 @@ fn group_of(path: &str, kind: crate::types::FragmentKind) -> Option<&'static str
     None
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Reason {
     /// The fragment overlaps the diff hunks — it IS the change.
@@ -504,15 +512,33 @@ pub fn build_locate(state: &ScoredState, outcome: &SelectionOutcome) -> LocateOu
         })
         .collect();
 
+    let mut redactions = crate::sanitize::Redactions::default();
+    let mut sanitized = |message: &String| {
+        let (clean, r) = crate::sanitize::sanitize(message);
+        redactions.merge(r);
+        clean
+    };
+    let commit_message = state.commit_message.as_ref().map(&mut sanitized);
+    let commit_messages: Vec<String> = outcome.commit_messages.iter().map(&mut sanitized).collect();
+    let mut coverage = build_coverage(state, outcome, next_up, &attribution);
+    if !redactions.is_empty() {
+        coverage
+            .limit_reasons
+            .push(crate::resource::LimitReason::SanitizationRedaction);
+        coverage.limit_reasons.sort();
+        coverage.limit_reasons.dedup();
+    }
+
     LocateOutput {
+        commit_count: crate::render::listed_commit_total(state.commit_count, commit_messages.len()),
         schema: LOCATE_SCHEMA,
         name: state
             .root_dir
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| state.root_dir.to_string_lossy().to_string()),
-        commit_message: state.commit_message.clone(),
-        commit_messages: outcome.commit_messages.clone(),
+        commit_message,
+        commit_messages,
         changed_files: state
             .changed_files
             .iter()
@@ -543,15 +569,24 @@ pub fn build_locate(state: &ScoredState, outcome: &SelectionOutcome) -> LocateOu
         },
         item_count: items.len(),
         items,
-        coverage: build_coverage(state, outcome, next_up, &attribution),
+        coverage,
         overflow,
         overflow_count,
+        redactions: (!redactions.is_empty()).then_some(redactions),
         provenance: Some(
             state
                 .provenance
                 .finish(Some(outcome.selection_provenance())),
         ),
     }
+}
+
+/// JSON Schema 2020-12 for `diffctx.locate.v1`, generated from the type and
+/// pinned by `tests/context_schema.rs`.
+pub fn locate_schema() -> serde_json::Value {
+    let mut generator = schemars::generate::SchemaSettings::draft2020_12().into_generator();
+    let schema = generator.root_schema_for::<LocateOutput>();
+    serde_json::to_value(schema).expect("schema serializes")
 }
 
 #[cfg(test)]

@@ -174,6 +174,39 @@ jobs:
           echo "Cargo.toml (version line):"
           grep -E '^version\s*=' crates/diffctx-native/Cargo.toml
 
+      # tests/test_version_consistency.py requires a `## [<version>] - <date>`
+      # section; 1.16.0 needed a hand commit for it. Rolling [Unreleased] here
+      # is what keeps that gate from ever blocking the release it guards.
+      - name: Roll the CHANGELOG [Unreleased] section into the release
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          python - <<'PY'
+          import datetime, os, pathlib, re
+          ver = os.environ["VERSION"]
+          p = pathlib.Path("CHANGELOG.md")
+          s = p.read_text(encoding="utf-8")
+          if re.search(rf"(?m)^## \[{re.escape(ver)}\] - \d{{4}}-\d{{2}}-\d{{2}}$", s):
+              print(f"CHANGELOG.md already has a {ver} section")
+              raise SystemExit(0)
+          today = datetime.date.today().isoformat()
+          s, n = re.subn(r"(?m)^## \[Unreleased\]\n", f"## [Unreleased]\n\n## [{ver}] - {today}\n", s, count=1)
+          assert n == 1, "CHANGELOG.md: no ## [Unreleased] heading"
+          s, n = re.subn(
+              r"(?m)^\[Unreleased\]: (\S+)/compare/v([^.\s]+(?:\.[^.\s]+)*)\.\.\.HEAD$",
+              lambda m: (
+                  f"[Unreleased]: {m.group(1)}/compare/v{ver}...HEAD\n"
+                  f"[{ver}]: {m.group(1)}/compare/v{m.group(2)}...v{ver}"
+              ),
+              s,
+              count=1,
+          )
+          assert n == 1, "CHANGELOG.md: no [Unreleased] compare link"
+          p.write_text(s, encoding="utf-8")
+          print(f"CHANGELOG.md: [Unreleased] rolled into [{ver}] - {today}")
+          PY
+          grep -n -m3 -E '^## \[' CHANGELOG.md
+
       - name: Commit version bump (locally only, no push yet)
         id: commit_version
         env:
@@ -182,7 +215,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/diffctx/version.py pyproject.toml crates/diffctx-native/Cargo.toml Cargo.lock \
-            server.json action.yml .claude-plugin/plugin.json docs/product/github-action.md CITATION.cff
+            server.json action.yml .claude-plugin/plugin.json docs/product/github-action.md CITATION.cff \
+            CHANGELOG.md
           if ! git diff --staged --quiet; then
             git commit -m "Release version ${VERSION}"
           else
@@ -254,10 +288,15 @@ jobs:
             manylinux: 'off'
           # Cross-compiled on Apple Silicon: the Intel runner pool queues for
           # hours on public projects, and Xcode's SDK targets both arches.
+          # The x64 interpreter runs under Rosetta, so the wheel is imported
+          # by the same kind of process an Intel-Mac user has — the arm64
+          # interpreter cannot import it, and until this leg the Intel wheel
+          # shipped without ever being imported anywhere.
           - runner: macos-14
             target: x86_64-apple-darwin
             maturin_target: x86_64
             manylinux: 'off'
+            python_arch: x64
           - runner: windows-latest
             target: x86_64-pc-windows-msvc
             maturin_target: x64
@@ -284,44 +323,75 @@ jobs:
           cat src/diffctx/version.py
           grep -E '^version\s*=' pyproject.toml
 
+      # 3.14t: the abi3 wheel is refused by the free-threaded ABI, so without a
+      # cp314t wheel pip and uvx compiled the sdist there (and timed the MCP
+      # client out). PyO3 0.29 builds it and the module keeps the GIL off.
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
-          python-version: '3.12'
+          python-version: |
+            3.14t
+            3.12
+          architecture: ${{ matrix.python_arch }}
 
+      # DIFFCTX_BUILD_SHA is read by option_env! at compile time and lands in
+      # `provenance.engine.build`; the manylinux build runs in a container, so
+      # the variable is forwarded explicitly there.
       - name: Build wheel via maturin
         uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b  # v1.51.0
+        env:
+          DIFFCTX_BUILD_SHA: ${{ needs.prepare-version.outputs.commit_sha }}
         with:
           working-directory: ./repo
           target: ${{ matrix.maturin_target }}
           manylinux: ${{ matrix.manylinux }}
-          args: --release --out dist
+          # Inside the manylinux container every interpreter is python3.X;
+          # on a host setup-python's default (3.12, listed last) is `python`.
+          args: >-
+            --release --out dist -i python3.14t
+            -i ${{ matrix.manylinux != 'off' && 'python3.12' || 'python' }}
           rust-toolchain: '1.92.0'
+          docker-options: -e DIFFCTX_BUILD_SHA
 
       - name: List built wheel
         shell: bash
         run: ls -la ./repo/dist/
 
-      # The Intel-Mac wheel is cross-built here and this interpreter is arm64,
-      # so it cannot import it; its Rust side is proven under Rosetta in CI.
-      - name: Smoke - wheel installs and runs on its platform
-        if: matrix.target != 'x86_64-apple-darwin'
+      - name: Smoke - both wheels install and run on their platform
         shell: bash
         working-directory: ./repo
+        env:
+          TARGET: ${{ matrix.target }}
+          BUILD_SHA: ${{ needs.prepare-version.outputs.commit_sha }}
         run: |
-          python -m venv "${RUNNER_TEMP}/wheel-smoke"
-          bin="${RUNNER_TEMP}/wheel-smoke/bin"
-          if [ -d "${RUNNER_TEMP}/wheel-smoke/Scripts" ]; then bin="${RUNNER_TEMP}/wheel-smoke/Scripts"; fi
-          "$bin/python" -m pip install --quiet --disable-pip-version-check dist/*.whl
-          "$bin/diffctx" --version
-          set +e
-          "$bin/diffctx" . --diff HEAD~1..HEAD -f md -o "${RUNNER_TEMP}/smoke.md"
-          rc=$?
-          set -e
-          [ "$rc" -eq 0 ] || [ "$rc" -eq 4 ]
-          "$bin/diffctx" src -f yaml > "${RUNNER_TEMP}/tree.yaml"
-          grep -q 'version.py' "${RUNNER_TEMP}/tree.yaml"
-          echo "OK: wheel works"
+          run=()
+          if [ "$TARGET" = "x86_64-apple-darwin" ]; then run=(arch -x86_64); fi
+          version=$(cut -d'"' -f2 src/diffctx/version.py)
+          for pair in "python:abi3" "python3.14t:cp314t"; do
+            python="${pair%%:*}" tag="${pair##*:}"
+            wheel=$(ls dist/*-"${tag}"-*.whl)
+            venv="${RUNNER_TEMP}/smoke-${tag}"
+            "${run[@]}" "$python" -m venv "$venv"
+            bin="$venv/bin"
+            if [ -d "$venv/Scripts" ]; then bin="$venv/Scripts"; fi
+            if [ "$TARGET" = "x86_64-apple-darwin" ]; then
+              "${run[@]}" "$bin/python" -c 'import platform; print(platform.machine())' | grep -qx x86_64
+            fi
+            "${run[@]}" "$bin/python" -m pip install --quiet --disable-pip-version-check "$wheel"
+            "${run[@]}" "$bin/diffctx" --version | grep -qx "diffctx ${version}"
+            if [ "$tag" = cp314t ]; then
+              "${run[@]}" "$bin/python" -c 'import sys, diffctx._diffctx; assert not sys._is_gil_enabled()'
+            fi
+            set +e
+            "${run[@]}" "$bin/diffctx" . --diff HEAD~1..HEAD -f json -o "${RUNNER_TEMP}/smoke-${tag}.json"
+            rc=$?
+            set -e
+            [ "$rc" -eq 0 ] || [ "$rc" -eq 4 ]
+            jq -e --arg sha "$BUILD_SHA" '.provenance.engine.build == $sha' "${RUNNER_TEMP}/smoke-${tag}.json"
+            "${run[@]}" "$bin/diffctx" src -f yaml > "${RUNNER_TEMP}/tree-${tag}.yaml"
+            grep -q 'version.py' "${RUNNER_TEMP}/tree-${tag}.yaml"
+            echo "OK: $wheel works"
+          done
 
       - name: Upload wheel artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
@@ -353,6 +423,11 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87  # stable
+        with:
+          toolchain: '1.92.0'
+
       - name: Build sdist via maturin
         uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b  # v1.51.0
         with:
@@ -370,6 +445,30 @@ jobs:
           listing=$(tar tzf ./repo/dist/*.tar.gz)
           echo "${listing}" | grep -m5 -E 'crates/diffctx-native/src/.*\.rs$'
           echo "OK: sdist contains Rust sources"
+
+      # The sdist is what every platform without a wheel falls back to, and
+      # listing its members proves nothing about whether it builds: a missing
+      # rust-toolchain.toml or Cargo.lock passes the grep above and fails only
+      # on a user's machine.
+      - name: Smoke - the sdist builds and runs from a fresh venv
+        shell: bash
+        run: |
+          python -m venv "${RUNNER_TEMP}/sdist-smoke"
+          bin="${RUNNER_TEMP}/sdist-smoke/bin"
+          "$bin/python" -m pip install --quiet --disable-pip-version-check ./repo/dist/*.tar.gz
+          "$bin/diffctx" --version | grep -qx "diffctx $(cut -d'"' -f2 ./repo/src/diffctx/version.py)"
+          SMOKE=$(mktemp -d)
+          cd "$SMOKE"
+          git init -q
+          git config user.email "smoke@test.local"
+          git config user.name "Smoke"
+          printf 'def add(a, b):\n    return a + b\n' > util.py
+          git add -A && git commit -q -m "initial"
+          printf 'def add(a, b):\n    return a + b\n\ndef sub(a, b):\n    return a - b\n' > util.py
+          git add -A && git commit -q -m "add sub"
+          "$bin/diffctx" . --diff HEAD~1..HEAD -f md -o "${RUNNER_TEMP}/sdist-smoke.md"
+          grep -q "def sub" "${RUNNER_TEMP}/sdist-smoke.md"
+          echo "OK: sdist installs and runs"
 
       - name: Upload sdist artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
@@ -427,6 +526,8 @@ jobs:
 
       - name: Build release binary
         working-directory: ./repo/crates/diffctx-native
+        env:
+          DIFFCTX_BUILD_SHA: ${{ needs.prepare-version.outputs.commit_sha }}
         run: cargo build --release --locked --bin diffctx --target ${{ matrix.target }}
 
       - name: Package binary (tar.gz)
@@ -460,12 +561,14 @@ jobs:
         working-directory: ./repo
         env:
           TARGET: ${{ matrix.target }}
+          VERSION: ${{ needs.prepare-version.outputs.version }}
+          BUILD_SHA: ${{ needs.prepare-version.outputs.commit_sha }}
         # The x86_64 macOS binary runs here under Rosetta, which the arm64
         # runner image ships.
         run: |
           BIN="./target/${TARGET}/release/diffctx"
           if [ "${RUNNER_OS}" = "Windows" ]; then BIN="${BIN}.exe"; fi
-          "$BIN" --version
+          "$BIN" --version | grep -qx "diffctx ${VERSION}"
           # Exit 4 is the empty-diff contract, a valid outcome for a release
           # commit that carries no semantic context; only the output shape is
           # asserted here.
@@ -480,7 +583,25 @@ jobs:
           grep -q '^type: diff_context' "${RUNNER_TEMP}/smoke.yaml"
           smoke -f json > "${RUNNER_TEMP}/smoke.json"
           head -c 1 "${RUNNER_TEMP}/smoke.json" | grep -q '{'
+          jq -e --arg sha "$BUILD_SHA" '.provenance.engine.build == $sha' "${RUNNER_TEMP}/smoke.json"
           echo "OK: standalone binary works"
+
+      # The shape smoke above proves the binary starts; this runs the whole
+      # native_cli suite (exit codes, pipes, logging, budget, locate, secrets)
+      # against the artifact itself, on the platform it ships for — the cross
+      # builds (Intel Mac under Rosetta, Windows and Linux on ARM) are tested
+      # nowhere else.
+      - name: E2E - the shipped binary passes native_cli
+        shell: bash
+        working-directory: ./repo/crates/diffctx-native
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          BIN="$(cd ../.. && pwd)/target/${TARGET}/release/diffctx"
+          if [ "${RUNNER_OS}" = "Windows" ]; then BIN="${BIN}.exe"; fi
+          git config --global user.email "e2e@test.local"
+          git config --global user.name "e2e"
+          DIFFCTX_NATIVE_BIN="$BIN" cargo test --release --locked --test native_cli
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
@@ -549,12 +670,15 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ['3.10', '3.13']
-        # Windows on ARM has native CPython only from 3.11.
+        python-version: ['3.10', '3.14']
+        # Windows on ARM has native CPython only from 3.11. macos-15-intel is
+        # the only Intel-Mac pool GitHub still hosts (macos-13 retired).
         include:
           - os: windows-11-arm
             python-version: '3.13'
           - os: ubuntu-22.04-arm
+            python-version: '3.13'
+          - os: macos-15-intel
             python-version: '3.13'
     runs-on: ${{ matrix.os }}
     steps:
@@ -562,6 +686,9 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
 
       - name: Wait for PyPI propagation and install
         shell: bash
@@ -583,7 +710,10 @@ jobs:
           python -m pip show diffctx | grep -E '^(Name|Version)'
 
       - name: Smoke - diffctx --version
-        run: diffctx --version
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare-version.outputs.version }}
+        run: diffctx --version | grep -qx "diffctx ${VERSION}"
 
       - name: Smoke - tree mapping mode
         shell: bash
@@ -617,6 +747,19 @@ jobs:
           git add -A && git commit -q -m "add sub"
           diffctx . --diff HEAD~1..HEAD --no-content
           echo "OK: diff mode works (Rust extension present)"
+
+      # README's first install line. `uvx` resolves its own interpreter, so a
+      # published wheel set that pip could install may still leave this
+      # command building the sdist.
+      - name: Smoke - uvx diffctx (README's zero-install line)
+        shell: bash
+        working-directory: smoke-diff
+        env:
+          VERSION: ${{ needs.prepare-version.outputs.version }}
+        run: |
+          uvx --python 3.13 --no-build "diffctx==${VERSION}" . --diff HEAD~1..HEAD -f md -o "${RUNNER_TEMP}/uvx.md"
+          grep -q "def sub" "${RUNNER_TEMP}/uvx.md"
+          echo "OK: uvx runs the published wheel"
 
       # server.json, .mcp.json and the Claude plugin all resolve to
       # `uvx --from diffctx[mcp] diffctx-mcp`, but nothing here installed the
@@ -691,9 +834,67 @@ jobs:
           print(f"OK: diffctx-mcp {reported} served {names} over clean stdout")
           PY
 
+  # uvx on free-threaded 3.14t used to find no wheel (abi3 is refused by that
+  # ABI), compile the sdist and time the MCP client out. build-wheels now
+  # ships cp314t; --no-build turns any regression back to the sdist into a
+  # fast, loud failure here instead of a slow one on a user's machine.
+  smoke-pypi-free-threaded:
+    name: Post-publish smoke test (free-threaded 3.14t wheel)
+    needs: [prepare-version, publish-to-pypi]
+    if: github.event.inputs.publish_to_pypi == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Set up uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
+
+      - name: Install from the cp314t wheel, never the sdist
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare-version.outputs.version }}
+        run: |
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            if out=$(uvx --refresh --python 3.14t --no-build "diffctx==${VERSION}" --version 2>&1); then break; fi
+            echo "$out"
+            echo "not installable yet (attempt $attempt); sleeping 30s"
+            sleep 30
+          done
+          echo "$out"
+          printf '%s\n' "$out" | tail -n 1 | tr -d '\r' | grep -qx "diffctx ${VERSION}"
+
+      - name: Smoke - diff mode with the GIL off
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare-version.outputs.version }}
+        run: |
+          SMOKE=$(mktemp -d)
+          cd "$SMOKE"
+          git init -q
+          git config user.email "smoke@test.local"
+          git config user.name "Smoke"
+          printf 'def add(a, b):\n    return a + b\n' > util.py
+          git add -A && git commit -q -m "initial"
+          printf 'def add(a, b):\n    return a + b\n\ndef sub(a, b):\n    return a - b\n' > util.py
+          git add -A && git commit -q -m "add sub"
+          uvx --python 3.14t --no-build --from "diffctx==${VERSION}" python -c \
+            'import sys, diffctx._diffctx; assert not sys._is_gil_enabled(), "GIL re-enabled"'
+          uvx --python 3.14t --no-build "diffctx==${VERSION}" . --diff HEAD~1..HEAD -f md -o out.md
+          grep -q "def sub" out.md
+          echo "OK: cp314t wheel runs diff mode"
+
   finalize-release:
     name: Push Release and Create GitHub Release
-    needs: [prepare-version, build-wheels, build-sdist, build-binaries, publish-to-pypi, smoke-pypi]
+    needs:
+      - prepare-version
+      - build-wheels
+      - build-sdist
+      - build-binaries
+      - publish-to-pypi
+      - smoke-pypi
+      - smoke-pypi-free-threaded
     if: |
       always() &&
       !inputs.build_only &&
@@ -704,7 +905,9 @@ jobs:
       (needs.publish-to-pypi.result == 'success' ||
        needs.publish-to-pypi.result == 'skipped') &&
       (needs.smoke-pypi.result == 'success' ||
-       needs.smoke-pypi.result == 'skipped')
+       needs.smoke-pypi.result == 'skipped') &&
+      (needs.smoke-pypi-free-threaded.result == 'success' ||
+       needs.smoke-pypi-free-threaded.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -930,6 +1133,7 @@ jobs:
           platforms: ${{ matrix.platform }}
           build-args: |
             VERSION=${{ needs.prepare-version.outputs.version }}
+            DIFFCTX_BUILD_SHA=${{ needs.prepare-version.outputs.commit_sha }}
           outputs: >-
             type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
 
@@ -988,8 +1192,9 @@ jobs:
         env:
           IMAGE: ghcr.io/${{ github.repository_owner }}/diffctx
           VERSION: ${{ needs.prepare-version.outputs.version }}
+          BUILD_SHA: ${{ needs.prepare-version.outputs.commit_sha }}
         run: |
-          docker run --rm "${IMAGE}:${VERSION}" --version
+          docker run --rm "${IMAGE}:${VERSION}" --version | grep -qx "diffctx ${VERSION}"
           mkdir -p smoke && cd smoke
           git init -q
           git config user.email "smoke@test.local"
@@ -998,7 +1203,10 @@ jobs:
           git add -A && git commit -q -m "initial"
           printf 'def add(a, b):\n    return a + b\n\ndef sub(a, b):\n    return a - b\n' > util.py
           git add -A && git commit -q -m "add sub"
-          docker run --rm -v "$PWD:/repo" "${IMAGE}:${VERSION}" . --diff HEAD~1..HEAD --no-content
+          chmod -R a+rX .
+          docker run --rm -v "$PWD:/repo" "${IMAGE}:${VERSION}" . --diff HEAD~1..HEAD -f json > out.json
+          grep -q "def sub" out.json
+          jq -e --arg sha "$BUILD_SHA" '.provenance.engine.build == $sha' out.json
 
   update-packaging-manifests:
     name: Publish Scoop bucket manifest
@@ -1054,32 +1262,35 @@ jobs:
           if manifest["version"] != version:
               sys.exit(f"manifest version {manifest['version']} != {version}")
 
-          arch = manifest["architecture"]["64bit"]
-          url = arch["url"]
-          if version not in url:
-              sys.exit(f"asset URL does not carry the version: {url}")
-
-          asset_name = url.rsplit("/", 1)[-1]
-          asset = pathlib.Path("release-binaries") / asset_name
-          if not asset.is_file():
-              have = sorted(p.name for p in pathlib.Path("release-binaries").iterdir())
-              sys.exit(f"{asset_name} not among the built artifacts: {have}")
-
-          actual = hashlib.sha256(asset.read_bytes()).hexdigest()
-          if actual.lower() != arch["hash"].lower():
-              sys.exit(f"hash mismatch for {asset_name}: manifest {arch['hash']}, actual {actual}")
+          if set(manifest["architecture"]) != {"64bit", "arm64"}:
+              sys.exit(f"manifest architectures {sorted(manifest['architecture'])} != ['64bit', 'arm64']")
 
           declared_bin = manifest["bin"]
           bins = declared_bin if isinstance(declared_bin, list) else [declared_bin]
           import zipfile
-          with zipfile.ZipFile(asset) as zf:
-              members = zf.namelist()
-          for entry in bins:
-              target = entry[0] if isinstance(entry, list) else entry
-              if target not in members:
-                  sys.exit(f"manifest bin {target!r} is not in the archive: {members}")
+          for name, arch in manifest["architecture"].items():
+              url = arch["url"]
+              if version not in url:
+                  sys.exit(f"{name}: asset URL does not carry the version: {url}")
 
-          print(f"OK: {asset_name} hash matches and bin {bins} resolves inside the archive")
+              asset_name = url.rsplit("/", 1)[-1]
+              asset = pathlib.Path("release-binaries") / asset_name
+              if not asset.is_file():
+                  have = sorted(p.name for p in pathlib.Path("release-binaries").iterdir())
+                  sys.exit(f"{asset_name} not among the built artifacts: {have}")
+
+              actual = hashlib.sha256(asset.read_bytes()).hexdigest()
+              if actual.lower() != arch["hash"].lower():
+                  sys.exit(f"hash mismatch for {asset_name}: manifest {arch['hash']}, actual {actual}")
+
+              with zipfile.ZipFile(asset) as zf:
+                  members = zf.namelist()
+              for entry in bins:
+                  target = entry[0] if isinstance(entry, list) else entry
+                  if target not in members:
+                      sys.exit(f"manifest bin {target!r} is not in the {name} archive: {members}")
+
+              print(f"OK: {asset_name} hash matches and bin {bins} resolves inside the archive")
           PY
 
       - name: Commit and push
@@ -1096,6 +1307,39 @@ jobs:
           git commit -m "chore: packaging manifests for ${VERSION}"
           git pull --rebase origin main
           git push origin HEAD:main
+
+  # README advertises `scoop install diffctx/diffctx`; the job above verified
+  # the manifest by hash and pushed it, and no Windows machine ever ran the
+  # install. This one does, from the just-pushed bucket, against the public
+  # release URL — a drafted release or a wrong `bin` fails here.
+  smoke-scoop:
+    name: Smoke - scoop install from the pushed bucket
+    needs: [prepare-version, update-packaging-manifests]
+    if: github.event.inputs.publish_to_pypi == 'true'
+    runs-on: windows-latest
+    steps:
+      - name: Install Scoop
+        shell: pwsh
+        run: |
+          Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+          Invoke-Expression "& {$(Invoke-RestMethod get.scoop.sh)} -RunAsAdmin"
+          "$env:USERPROFILE\scoop\shims" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: Install diffctx from the bucket
+        shell: pwsh
+        env:
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          scoop bucket add diffctx $env:REPO_URL
+          scoop install diffctx/diffctx
+
+      - name: Assert the installed version
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare-version.outputs.version }}
+        run: |
+          diffctx --version | grep -qx "diffctx ${VERSION}"
+          echo "OK: scoop installed diffctx ${VERSION}"
 
   publish-extras:
     name: Publish npm wrapper and mirror to Docker Hub

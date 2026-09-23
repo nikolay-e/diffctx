@@ -8,6 +8,8 @@ should fail loudly rather than surface as a wrong number in a results table.
 
 from __future__ import annotations
 
+import sys
+
 import pytest
 
 from tests.framework.pygit2_backend import Pygit2Repo
@@ -87,3 +89,9 @@ def test_selection_covers_the_post_passes(latency_repo):
     latency = _latency(latency_repo.path)
     assert latency["selection_ms"] > 0
     assert latency["selection_ms"] <= latency["total_ms"]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="peak RSS is read with getrusage, which Windows does not have")
+def test_peak_rss_is_a_plausible_byte_count(latency_repo):
+    peak = _latency(latency_repo.path)["peak_rss_bytes"]
+    assert 1 << 20 < peak < 64 << 30, peak

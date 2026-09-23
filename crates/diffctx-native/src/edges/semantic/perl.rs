@@ -11,7 +11,7 @@ use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edges_from_ids};
 
 fn is_perl_file(path: &Path) -> bool {
-    base::has_ext(path, &[".pl", ".pm"])
+    base::has_ext(path, &[".pl", ".pm", ".t"])
 }
 
 static USE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^\s*use\s+([\w:]+)").unwrap());

@@ -21,9 +21,9 @@ from .utils import load_yaml
         ("md", ".md"),
     ],
 )
-def test_format_output_to_file(run_mapper, temp_project, fmt, ext):
+def test_format_output_to_file(run_mapper_yaml, temp_project, fmt, ext):
     output_file = temp_project / f"output{ext}"
-    assert run_mapper([str(temp_project), "-o", str(output_file), "--format", fmt])
+    assert run_mapper_yaml([str(temp_project), "-o", str(output_file), "--format", fmt])
     assert output_file.exists()
 
     content = output_file.read_text(encoding="utf-8")
@@ -74,26 +74,26 @@ def test_python_api_serializers(temp_project):
     assert f"{temp_project.name}/" in text_str
 
 
-def test_format_with_file_content(run_mapper, temp_project):
+def test_format_with_file_content(run_mapper_yaml, temp_project):
     test_file = temp_project / "test.txt"
     test_content = "Hello, format test!"
     test_file.write_text(test_content, encoding="utf-8")
 
     for fmt in ["yaml", "json", "txt"]:
         output_file = temp_project / f"output.{fmt}"
-        assert run_mapper([str(temp_project), "-o", str(output_file), "--format", fmt])
+        assert run_mapper_yaml([str(temp_project), "-o", str(output_file), "--format", fmt])
 
         content = output_file.read_text(encoding="utf-8")
         assert test_content in content
 
 
-def test_multiline_content_preservation(run_mapper, temp_project):
+def test_multiline_content_preservation(run_mapper_yaml, temp_project):
     test_file = temp_project / "multiline.txt"
     test_content = "Line 1\nLine 2\nLine 3\n"
     test_file.write_text(test_content, encoding="utf-8")
 
     output_file = temp_project / "output.yaml"
-    assert run_mapper([str(temp_project), "-o", str(output_file), "--format", "yaml"])
+    assert run_mapper_yaml([str(temp_project), "-o", str(output_file), "--format", "yaml"])
 
     tree = load_yaml(output_file)
     for child in tree.get("children", []):
@@ -126,10 +126,65 @@ def test_format_option_invalid(temp_project):
 
 
 def test_default_format_is_md(temp_project):
-    # Bypass run_mapper (which pins yaml) to exercise the real CLI default.
+    # Bypass run_mapper_yaml (which pins yaml) to exercise the real CLI default.
     result = run_diffctx_subprocess([".", "-o", "-"], cwd=temp_project)
     assert result.returncode == 0
     assert result.stdout.startswith(f"# {temp_project.name}/")
+
+
+def _parses_as(fmt):
+    return {
+        "yaml": lambda text, name: yaml.safe_load(text)["name"] == name,
+        "json": lambda text, name: json.loads(text)["name"] == name,
+        "md": lambda text, name: text.startswith(f"# {name}/"),
+        "txt": lambda text, name: text.startswith(f"{name}/\n"),
+    }[fmt]
+
+
+@pytest.mark.parametrize(
+    "ext,fmt",
+    [(".json", "json"), (".md", "md"), (".markdown", "md"), (".txt", "txt"), (".yml", "yaml"), (".data", "md")],
+)
+def test_output_extension_selects_the_format(temp_project, ext, fmt):
+    out = temp_project / f"out{ext}"
+    result = run_diffctx_subprocess([".", "-o", str(out)], cwd=temp_project)
+    assert result.returncode == 0, result.stderr
+    assert "does not match" not in result.stderr
+    assert _parses_as(fmt)(out.read_text(encoding="utf-8"), temp_project.name), (ext, fmt)
+
+
+def test_explicit_format_wins_over_the_extension_with_a_warning(temp_project):
+    out = temp_project / "out.yaml"
+    result = run_diffctx_subprocess([".", "-f", "json", "-o", str(out)], cwd=temp_project)
+    assert result.returncode == 0, result.stderr
+    assert f"-f json does not match the '{out}' extension; writing json" in result.stderr
+    assert json.loads(out.read_text(encoding="utf-8"))["name"] == temp_project.name
+
+
+@pytest.mark.parametrize("fmt", ["yaml", "json", "txt", "md"])
+def test_max_depth_marks_the_pruned_directory_but_not_an_empty_one(temp_project, fmt):
+    (temp_project / "deep" / "inner").mkdir(parents=True)
+    (temp_project / "deep" / "inner" / "leaf.txt").write_text("leaf\n", encoding="utf-8")
+    (temp_project / "hollow").mkdir()
+    result = run_diffctx_subprocess([".", "--max-depth", "1", "-f", fmt], cwd=temp_project)
+    assert result.returncode == 0, result.stderr
+    assert "inner" not in result.stdout
+    if fmt == "yaml":
+        nodes = {c["name"]: c for c in yaml.safe_load(result.stdout)["children"]}
+        assert nodes["deep"].get("truncated") is True
+        assert "truncated" not in nodes["hollow"]
+    elif fmt == "json":
+        nodes = {c["name"]: c for c in json.loads(result.stdout)["children"]}
+        assert nodes["deep"].get("truncated") is True
+        assert "truncated" not in nodes["hollow"]
+    elif fmt == "md":
+        sections = {s.split("\n", 1)[0]: s for s in result.stdout.split("\n## ")}
+        assert "_(children omitted: --max-depth reached)_" in sections["deep/"]
+        assert "_(empty directory)_" in sections["hollow/"]
+        assert "children omitted" not in sections["hollow/"]
+    else:
+        assert "├── deep/\n    (children omitted: depth limit)\n" in result.stdout
+        assert "├── hollow/\n└── src/\n" in result.stdout
 
 
 # --- Direct writer function tests ---

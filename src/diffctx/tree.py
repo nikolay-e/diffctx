@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -132,28 +133,51 @@ class TreeBuildContext:
             return False
 
 
+def printable(name: str) -> str:
+    # A filename the filesystem could not decode reaches Python as surrogate
+    # escapes, which neither the PyO3 boundary nor a UTF-8 writer accepts;
+    # the raw bytes are shown as \xNN so the run survives and the name is
+    # still recognisable.
+    try:
+        name.encode("utf-8")
+        return name
+    except UnicodeEncodeError:
+        pass
+    try:
+        raw = os.fsencode(name)
+    except UnicodeEncodeError:
+        return name.encode("utf-8", "backslashreplace").decode("utf-8")
+    return raw.decode("utf-8", "backslashreplace")
+
+
 def build_tree(dir_path: Path, ctx: TreeBuildContext, current_depth: int = 0) -> list[dict[str, Any]]:
+    children, error = _read_directory(dir_path, ctx, current_depth)
+    if error:
+        raise PermissionError(f"cannot read directory '{dir_path}': {error}")
+    return children
+
+
+def _read_directory(dir_path: Path, ctx: TreeBuildContext, current_depth: int) -> tuple[list[dict[str, Any]], str | None]:
     if ctx.max_depth is not None and current_depth >= ctx.max_depth:
-        return []
+        return [], None
+    try:
+        entries = sorted(dir_path.iterdir())
+    except PermissionError:
+        return [], "permission denied"
+    except OSError as e:
+        return [], (e.strerror or str(e)).lower()
 
     tree: list[dict[str, Any]] = []
-
-    try:
-        for entry in sorted(dir_path.iterdir()):
-            node = _process_entry(entry, ctx, current_depth)
-            if node:
-                tree.append(node)
-    except PermissionError:
-        logger.warning("Permission denied accessing directory %s", dir_path)
-    except OSError as e:
-        logger.warning("Error accessing directory %s: %s", dir_path, e)
-
-    return tree
+    for entry in entries:
+        node = _process_entry(entry, ctx, current_depth)
+        if node:
+            tree.append(node)
+    return tree, None
 
 
 def _process_entry(entry: Path, ctx: TreeBuildContext, current_depth: int) -> dict[str, Any] | None:
     try:
-        relative_path = entry.relative_to(ctx.base_dir).as_posix()
+        relative_path = printable(entry.relative_to(ctx.base_dir).as_posix())
         is_dir = entry.is_dir()
     except (OSError, ValueError) as e:
         logger.warning("Could not process path for entry %s: %s", entry, e)
@@ -188,11 +212,14 @@ def _is_depth_pruned(entry: Path, ctx: TreeBuildContext, child_depth: int) -> bo
 
 def _create_node(entry: Path, ctx: TreeBuildContext, current_depth: int, is_dir: bool) -> dict[str, Any] | None:
     try:
-        node: dict[str, Any] = {"name": entry.name, "type": "directory" if is_dir else "file"}
+        node: dict[str, Any] = {"name": printable(entry.name), "type": "directory" if is_dir else "file"}
 
         if is_dir:
-            children = build_tree(entry, ctx, current_depth + 1)
-            if children:
+            children, error = _read_directory(entry, ctx, current_depth + 1)
+            if error:
+                logger.error("Could not read directory %s: %s", entry, error)
+                node["unreadable"] = error
+            elif children:
                 node["children"] = children
             elif _is_depth_pruned(entry, ctx, current_depth + 1):
                 node["truncated"] = True

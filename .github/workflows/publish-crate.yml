@@ -58,3 +58,38 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
         run: cargo publish --locked
+
+      # README's `cargo install diffctx` was never run against the registry:
+      # a crate that publishes but does not build from its packaged form (a
+      # missing Cargo.lock, a readme path that did not survive packaging)
+      # stays unnoticed until a user reports it.
+      - name: Smoke - cargo install from crates.io
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          installed=0
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            if cargo install diffctx --version "$VERSION" --locked --root "$RUNNER_TEMP/crate"; then
+              installed=1
+              break
+            fi
+            echo "crates.io index not settled yet (attempt $attempt); retrying"
+            sleep 30
+          done
+          if [ "$installed" != 1 ]; then
+            echo "diffctx $VERSION never became installable"; exit 1
+          fi
+          BIN="$RUNNER_TEMP/crate/bin/diffctx"
+          "$BIN" --version | grep -qx "diffctx ${VERSION}"
+          SMOKE=$(mktemp -d)
+          cd "$SMOKE"
+          git init -q
+          git config user.email "smoke@test.local"
+          git config user.name "Smoke"
+          printf 'def add(a, b):\n    return a + b\n' > util.py
+          git add -A && git commit -q -m "initial"
+          printf 'def add(a, b):\n    return a + b\n\ndef sub(a, b):\n    return a - b\n' > util.py
+          git add -A && git commit -q -m "add sub"
+          "$BIN" . --diff HEAD~1..HEAD > out.yaml
+          grep -q "def sub" out.yaml
+          echo "OK: cargo install diffctx ${VERSION} runs a real diff"

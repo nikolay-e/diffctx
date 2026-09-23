@@ -42,7 +42,7 @@ pub(crate) mod select;
 pub(crate) mod utility;
 
 // Output.
-pub(crate) mod locate;
+pub mod locate;
 pub mod render;
 
 // Orchestration and shared configuration.

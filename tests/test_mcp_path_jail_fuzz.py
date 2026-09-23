@@ -88,8 +88,16 @@ def jailed(tmp_path_factory):
     repo.add_file("src/app.py", "def run():\n    return 1\n")
     repo.add_file("sub/nested.py", "def nested():\n    return 2\n")
     repo.commit("initial")
+    # A second commit so that `HEAD~1..HEAD` resolves: a committed end
+    # revision routes the fetch through `git cat-file` instead of the
+    # working tree, which is a different door into the jail (T3.3).
+    repo.add_file("src/app.py", "def run():\n    return 2\n")
+    repo.commit("change")
     (repo.path / "escape").symlink_to(root / "outside", target_is_directory=True)
     return repo
+
+
+_DIFF_REFS = ["HEAD", "HEAD~1..HEAD"]
 
 
 def _resolves_inside(path: str, repo: Path) -> bool:
@@ -122,19 +130,24 @@ def server():
     return mcp
 
 
+@pytest.mark.parametrize("diff_ref", _DIFF_REFS)
 @settings(max_examples=250, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(path=_path_like, span=_line_span)
-def test_no_fragment_id_reaches_outside_the_repository(server, jailed, path, span):
+def test_no_fragment_id_reaches_outside_the_repository(server, jailed, diff_ref, path, span):
     text = _call(
         server,
-        {"repo_path": str(jailed.path), "diff_ref": "HEAD", "fragment_ids": [f"{path}{span}"]},
+        {"repo_path": str(jailed.path), "diff_ref": diff_ref, "fragment_ids": [f"{path}{span}"]},
     )
     assert CANARY not in text
+    # A directory id under a committed revision used to answer with the tree
+    # listing, which names entries the ignore rules may withhold.
+    assert "tree HEAD" not in text
 
 
+@pytest.mark.parametrize("diff_ref", _DIFF_REFS)
 @settings(max_examples=120, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(path=_path_like)
-def test_no_fragment_id_reaches_outside_through_the_symlink(server, jailed, path):
+def test_no_fragment_id_reaches_outside_through_the_symlink(server, jailed, diff_ref, path):
     """`escape/` is a real directory inside the repo that points out of it.
 
     Containment cannot be decided lexically here — the path looks internal — so
@@ -142,7 +155,7 @@ def test_no_fragment_id_reaches_outside_through_the_symlink(server, jailed, path
     """
     text = _call(
         server,
-        {"repo_path": str(jailed.path), "diff_ref": "HEAD", "fragment_ids": [f"escape/{path}"]},
+        {"repo_path": str(jailed.path), "diff_ref": diff_ref, "fragment_ids": [f"escape/{path}"]},
     )
     assert CANARY not in text
 

@@ -22,7 +22,12 @@ pub fn build_project_graph(root_dir: &Path) -> Result<ProjectGraph> {
         .with_context(|| format!("failed to canonicalize root_dir '{}'", root_dir.display()))?;
 
     let included_set: FxHashSet<PathBuf> = FxHashSet::default();
-    let candidate_files = collect_candidate_files(&resolved_root, &included_set);
+    let candidate_files = collect_candidate_files(
+        &resolved_root,
+        &included_set,
+        &[],
+        &crate::resource::RunContext::unbounded(),
+    );
 
     info!(
         "project_graph: found {} candidate files",

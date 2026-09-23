@@ -1,0 +1,67 @@
+name: rlang_source_path
+tags:
+- lang:r
+- change:single_file
+- context:cross_module
+- builder:rlang
+repo:
+  initial_files:
+    analysis/run.R: |
+      source("lib/qzk.R")
+
+      width <- 800
+      height <- 600
+      print(width * height)
+    lib/qzk.R: |
+      crimson <- c(0.86, 0.08, 0.24)
+      teal <- c(0.0, 0.5, 0.5)
+      amber <- c(1.0, 0.75, 0.0)
+    lib/archive.R: |
+      compress <- function(folder) {
+        system(paste0("tar -czf ", folder, ".tgz ", folder))
+      }
+      extract <- function(bundle, target) {
+        system(paste0("tar -xzf ", bundle, " -C ", target))
+      }
+    lib/network.R: |
+      wait_for_port <- function(host, port) {
+        for (attempt in 1:10) {
+          if (system(paste("nc -z", host, port)) == 0) return(TRUE)
+        }
+        FALSE
+      }
+    lib/journal.R: |
+      journal_write <- function(level, message) {
+        message(format(Sys.time()), " [", level, "] ", message)
+      }
+  changed_files:
+    analysis/run.R: |
+      source("lib/qzk.R")
+
+      width <- 1024
+      height <- 768
+      print(width * height)
+  commit_message: Larger default window
+fixtures:
+  auto_garbage: true
+fragments:
+- id: palette
+  selector:
+    path: lib/qzk.R
+    anchor: crimson
+- id: no_archive
+  selector:
+    path: lib/archive.R
+- id: no_network
+  selector:
+    path: lib/network.R
+- id: no_journal
+  selector:
+    path: lib/journal.R
+oracle:
+  required:
+  - palette
+  forbidden:
+  - no_archive
+  - no_network
+  - no_journal

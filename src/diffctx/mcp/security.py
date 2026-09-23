@@ -34,11 +34,16 @@ def _is_bare_repo_dir(path: Path) -> bool:
     return (path / "HEAD").is_file() and (path / "objects").is_dir() and (path / "refs").is_dir()
 
 
-def _find_repo_root(path: Path) -> Path | None:
+def _find_repo_root(path: Path, as_given: str) -> Path | None:
     current = path
     while True:
-        if (current / ".git").exists() or _is_bare_repo_dir(current):
+        if (current / ".git").exists():
             return current
+        if _is_bare_repo_dir(current):
+            # `.gitignore` and `.diffctx/ignore` live in the checkout; a bare
+            # repository has none, so every policy the other surfaces enforce
+            # would silently switch off for it.
+            raise ValueError(f"Not a working tree: {as_given} is a bare repository; clone or check it out first")
         parent = current.parent
         if parent == current:
             return None
@@ -55,7 +60,7 @@ def validate_repo_path(repo_path: str) -> Path:
     _check_allowed(path, repo_path)
     if not path.is_dir():
         raise ValueError(f"Not a directory: {repo_path}")
-    repo_root = _find_repo_root(path)
+    repo_root = _find_repo_root(path, repo_path)
     if repo_root is None:
         raise ValueError(f"Not a git repository: {repo_path} (no .git in it or any parent directory)")
     _check_allowed(repo_root, repo_path)

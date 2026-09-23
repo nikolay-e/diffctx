@@ -1,0 +1,69 @@
+name: perl_005_dot_t_test_surfaces
+tags:
+- lang:perl
+- change:single_file
+- context:test
+- parser:perl_t_extension
+repo:
+  initial_files:
+    lib/Invoice/Total.pm: |
+      package Invoice::Total;
+      use strict;
+      use warnings;
+
+      sub compute {
+          my ($lines) = @_;
+          my $sum = 0;
+          $sum += $_->{amount} for @$lines;
+          return $sum;
+      }
+
+      1;
+    t/invoice_total.t: |
+      use strict;
+      use warnings;
+      use Test::More;
+      use Invoice::Total;
+
+      is(Invoice::Total::compute([{ amount => 2 }, { amount => 3 }]), 5, 'sums line amounts');
+
+      done_testing;
+    lib/Shipping/Zone.pm: |
+      package Shipping::Zone;
+      use strict;
+      use warnings;
+
+      sub for_postcode {
+          my ($postcode) = @_;
+          return substr($postcode, 0, 2);
+      }
+
+      1;
+  changed_files:
+    lib/Invoice/Total.pm: |
+      package Invoice::Total;
+      use strict;
+      use warnings;
+
+      sub compute {
+          my ($lines) = @_;
+          my $sum = 0;
+          $sum += $_->{amount} * ($_->{quantity} // 1) for @$lines;
+          return $sum;
+      }
+
+      1;
+  commit_message: Multiply by quantity
+fragments:
+- id: total_test
+  selector:
+    path: t/invoice_total.t
+    anchor: sums line amounts
+- id: no_zone
+  selector:
+    path: lib/Shipping/Zone.pm
+oracle:
+  required:
+  - total_test
+  forbidden:
+  - no_zone

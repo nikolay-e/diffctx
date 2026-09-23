@@ -8,30 +8,21 @@ use crate::types::{Fragment, FragmentId, FragmentKind, extract_identifiers};
 
 use super::FragmentationStrategy;
 
-const CONFIG_EXTENSIONS: &[&str] = &[".yaml", ".yml", ".toml", ".json"];
-
-static YAML_TOP_LEVEL_KEY: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^[A-Za-z_][A-Za-z0-9_.-]*\s*:").unwrap());
+// YAML and JSON are not here: both grammars sit in `lang-core`, so every
+// build that fragments at all hands them to tree-sitter first, and the regex
+// split below was measured unreachable across the whole corpus (0 of 2902
+// cases; every hit was `.toml`, which has no grammar).
 static TOML_SECTION_HEADER: Lazy<Regex> = Lazy::new(|| Regex::new(r"^\[").unwrap());
-static JSON_TOP_LEVEL_KEY: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#"^\s{0,4}"[^"]+"\s*:"#).unwrap());
 
 pub struct ConfigStrategy;
 
 impl FragmentationStrategy for ConfigStrategy {
     fn can_handle(&self, path: &str, _content: &str) -> bool {
-        let ext = super::file_extension_lower(path);
-        CONFIG_EXTENSIONS.iter().any(|&e| e == ext)
+        super::file_extension_lower(path) == ".toml"
     }
 
     fn fragment(&self, path: Arc<str>, content: &str) -> Vec<Fragment> {
-        let ext = super::file_extension_lower(&path);
-        match ext.as_str() {
-            ".yaml" | ".yml" => split_at_top_level_pattern(path, content, &YAML_TOP_LEVEL_KEY),
-            ".toml" => split_at_top_level_pattern(path, content, &TOML_SECTION_HEADER),
-            ".json" => split_at_top_level_pattern(path, content, &JSON_TOP_LEVEL_KEY),
-            _ => Vec::new(),
-        }
+        split_at_top_level_pattern(path, content, &TOML_SECTION_HEADER)
     }
 }
 

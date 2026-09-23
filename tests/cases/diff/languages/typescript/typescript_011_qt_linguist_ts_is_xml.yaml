@@ -1,0 +1,53 @@
+name: typescript_011_qt_linguist_ts_is_xml
+tags:
+- lang:typescript
+- lang:xml
+- change:single_file
+- parser:ts_sniff
+repo:
+  initial_files:
+    src/currency.ts: |
+      export function formatAmount(cents: number, currency: string): string {
+        return `${(cents / 100).toFixed(2)} ${currency}`;
+      }
+    src/invoice.ts: |
+      import { formatAmount } from "./currency";
+
+      export function invoiceLine(label: string, cents: number): string {
+        return `${label}: ${formatAmount(cents, "EUR")}`;
+      }
+    translations/app_de.ts: |
+      <?xml version="1.0" encoding="utf-8"?>
+      <!DOCTYPE TS>
+      <TS version="2.1" language="de_DE">
+      <context>
+          <name>InvoiceView</name>
+          <message>
+              <source>formatAmount</source>
+              <translation>Betrag formatieren</translation>
+          </message>
+          <message>
+              <source>currency</source>
+              <translation>Waehrung</translation>
+          </message>
+      </context>
+      </TS>
+  changed_files:
+    src/currency.ts: |
+      export function formatAmount(cents: number, currency: string): string {
+        return `${(cents / 100).toFixed(2)} ${currency}`;
+      }
+  commit_message: Non-breaking space before the currency
+fragments:
+- id: invoice_caller
+  selector:
+    path: src/invoice.ts
+    anchor: formatAmount(cents, "EUR")
+- id: no_qt_catalog
+  selector:
+    path: translations/app_de.ts
+oracle:
+  required:
+  - invoice_caller
+  forbidden:
+  - no_qt_catalog

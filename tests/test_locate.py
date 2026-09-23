@@ -95,6 +95,14 @@ class TestLocateMode:
         assert "ignored with --mode locate" in warned.stderr
         json.loads(warned.stdout)
 
+    def test_locate_warns_when_the_output_extension_is_not_json(self, locate_repo):
+        repo, diff_range = locate_repo
+        out = repo.path / "where.md"
+        result = _run(repo.path, [".", "--diff", diff_range, "--mode", "locate", "-o", str(out), "-q"])
+        assert result.returncode == 0, result.stderr
+        assert f"the '{out}' extension says md, but --mode locate writes diffctx.locate.v1 JSON" in result.stderr
+        assert json.loads(out.read_text(encoding="utf-8"))["schema"] == "diffctx.locate.v1"
+
     def test_native_build_locate_treats_an_empty_range_as_the_working_tree(self, locate_repo):
         """`build_diff_context` maps an empty diff_range to the working tree;
         `build_locate` forwarded `Some("")` into range validation instead, so the

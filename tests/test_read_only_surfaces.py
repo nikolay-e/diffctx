@@ -89,6 +89,34 @@ def test_the_allow_list_is_checked_before_the_filesystem_is(tmp_path, monkeypatc
         assert "outside the roots" in str(refused_dir.value), bad
 
 
+def test_an_allow_list_below_the_repo_root_refuses_the_repo(tmp_path, monkeypatch):
+    # The root found by walking up can lie above the admitted path; serving it
+    # would read files the operator never allowed. The refusal names only the
+    # string the caller passed, never the root it resolved to.
+    repo = _repo(tmp_path)
+    sub = Path(repo.path) / "src"
+    monkeypatch.setenv("DIFFCTX_ALLOWED_PATHS", str(sub))
+
+    with pytest.raises(ValueError, match="outside the roots") as refused:
+        validate_repo_path(str(sub))
+    assert str(refused.value) == f"Path is outside the roots this server is allowed to read: {sub}"
+
+
+def test_every_root_of_a_pathsep_separated_allow_list_is_admitted(tmp_path, monkeypatch):
+    first = Pygit2Repo(tmp_path / "one")
+    first.add_file("a.py", "A = 1\n")
+    first.commit("a")
+    second = Pygit2Repo(tmp_path / "two")
+    second.add_file("b.py", "B = 1\n")
+    second.commit("b")
+    monkeypatch.setenv("DIFFCTX_ALLOWED_PATHS", os.pathsep.join([str(first.path), str(second.path)]))
+
+    assert validate_repo_path(str(first.path)) == Path(first.path).resolve()
+    assert validate_repo_path(str(second.path)) == Path(second.path).resolve()
+    with pytest.raises(ValueError, match="outside the roots"):
+        validate_repo_path(str(tmp_path))
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="exit 141 is SIGPIPE; Windows has no such signal")
 def test_a_broken_pipe_exits_141_in_tree_mode(tmp_path):
     root = tmp_path / "proj"

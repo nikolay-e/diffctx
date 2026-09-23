@@ -1,0 +1,57 @@
+name: ocaml_open_module
+tags:
+- lang:ocaml
+- change:single_file
+- context:cross_module
+- builder:ocaml
+repo:
+  initial_files:
+    bin/boot.ml: |
+      open Palette
+
+      let width = 800
+      let height = 600
+      let () = Printf.printf "starting %d x %d\n" width height
+    lib/palette.ml: |
+      let crimson = 0xdc143c
+      let teal = 0x008080
+      let amber = 0xffbf00
+    lib/archive.ml: |
+      let compress_folder folder =
+        Sys.command ("tar -czf " ^ folder ^ ".tgz " ^ folder)
+
+      let extract_bundle bundle target =
+        Sys.command ("tar -xzf " ^ bundle ^ " -C " ^ target)
+    lib/network.ml: |
+      let wait_for_port host port =
+        let rec go n = n > 0 && (Sys.command (Printf.sprintf "nc -z %s %d" host port) = 0 || go (n - 1)) in
+        go 10
+
+      let is_reachable host = Sys.command ("ping -c 1 " ^ host) = 0
+  changed_files:
+    bin/boot.ml: |
+      open Palette
+
+      let width = 1024
+      let height = 768
+      let () = Printf.printf "starting %d x %d\n" width height
+  commit_message: Larger default window
+fixtures:
+  auto_garbage: true
+fragments:
+- id: gold
+  selector:
+    path: lib/palette.ml
+    anchor: crimson =
+- id: no_archive
+  selector:
+    path: lib/archive.ml
+- id: no_network
+  selector:
+    path: lib/network.ml
+oracle:
+  required:
+  - gold
+  forbidden:
+  - no_archive
+  - no_network

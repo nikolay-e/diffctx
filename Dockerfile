@@ -7,6 +7,10 @@ COPY crates/diffctx-native/Cargo.toml ./crates/diffctx-native/
 COPY crates/diffctx-native/src ./crates/diffctx-native/src
 COPY crates/diffctx-native/tests ./crates/diffctx-native/tests
 
+# Read by option_env! at compile time, so `provenance.engine.build` names the
+# commit. A build arg reaches RUN as an env var only when it was passed; an ENV
+# would set it to "" on a plain local build.
+ARG DIFFCTX_BUILD_SHA
 WORKDIR /build/crates/diffctx-native
 RUN cargo build --release --locked --bin diffctx
 

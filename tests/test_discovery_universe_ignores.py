@@ -106,13 +106,10 @@ def test_diff_context_excludes_changed_diffctx_ignored_file_in_all_roles(tmp_pat
     assert "keep.py" in rendered
 
 
-def test_no_default_ignores_fails_loudly_with_diff():
-    """Regression: pybridge.rs silently dropped no_default_ignores with only a
-    tracing::warn! that never surfaces (tracing_subscriber is only installed in
-    the native binary, never in the extension module) - exit 0, default ignore
-    set still applied, no signal to the caller. ignore_file/whitelist_file already
-    raised NotImplementedError from the Python wrapper; no_default_ignores now
-    does the same instead of being silently discarded."""
-    root = Path(".")
-    with pytest.raises(NotImplementedError, match="no-default-ignores"):
-        diffctx.build_diff_context(root_dir=root, diff_range="HEAD", no_default_ignores=True)
+@pytest.mark.parametrize("refused", ["ignore_file", "whitelist_file", "no_default_ignores"])
+def test_diff_mode_takes_no_custom_path_spec_layer(refused):
+    # The engine applies .gitignore and .diffctx/ignore only; an argument that
+    # promised a custom layer and silently dropped it would expose what the
+    # caller meant to exclude, so the API has no such argument at all.
+    with pytest.raises(TypeError, match=refused):
+        diffctx.build_diff_context(root_dir=Path("."), diff_range="HEAD", **{refused: True})

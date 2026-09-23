@@ -128,6 +128,7 @@ def _recent_commit_counts(root: Any) -> dict[str, int]:
                 "--name-only",
                 "--pretty=format:",
             ],
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             encoding="utf-8",

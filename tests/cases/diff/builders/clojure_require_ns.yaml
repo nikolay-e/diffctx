@@ -1,0 +1,65 @@
+name: clojure_require_ns
+tags:
+- lang:clojure
+- change:single_file
+- context:cross_module
+- builder:clojure
+repo:
+  initial_files:
+    src/app/boot.clj: |
+      (ns app.boot
+        (:require [lib.tints :as t]))
+
+      (def width 800)
+      (def height 600)
+    lib/tints.clj: |
+      (ns lib.tints)
+
+      (def crimson [220 20 60])
+      (def teal [0 128 128])
+      (def amber [255 191 0])
+    lib/archive.clj: |
+      (ns lib.archive
+        (:require [clojure.java.shell :refer [sh]]))
+
+      (defn compress-folder [folder]
+        (sh "tar" "-czf" (str folder ".tgz") folder))
+
+      (defn extract-bundle [bundle target]
+        (sh "tar" "-xzf" bundle "-C" target))
+    lib/network.clj: |
+      (ns lib.network
+        (:require [clojure.java.shell :refer [sh]]))
+
+      (defn wait-for-port [host port]
+        (some #(zero? (:exit %)) (repeatedly 10 #(sh "nc" "-z" host (str port)))))
+
+      (defn reachable? [host]
+        (zero? (:exit (sh "ping" "-c" "1" host))))
+  changed_files:
+    src/app/boot.clj: |
+      (ns app.boot
+        (:require [lib.tints :as t]))
+
+      (def width 1024)
+      (def height 768)
+  commit_message: Larger default window
+fixtures:
+  auto_garbage: true
+fragments:
+- id: gold
+  selector:
+    path: lib/tints.clj
+    anchor: crimson
+- id: no_archive
+  selector:
+    path: lib/archive.clj
+- id: no_network
+  selector:
+    path: lib/network.clj
+oracle:
+  required:
+  - gold
+  forbidden:
+  - no_archive
+  - no_network

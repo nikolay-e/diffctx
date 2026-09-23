@@ -1,0 +1,66 @@
+name: dbt_ref_model
+tags:
+- lang:sql
+- change:single_file
+- context:cross_module
+- builder:dbt
+repo:
+  initial_files:
+    models/marts/revenue.sql: |
+      select
+          day,
+          sum(amount) as total
+      from {{ ref('stg_qzk') }}
+      group by day
+    models/staging/stg_qzk.sql: |
+      select
+          cast(created_at as date) as day,
+          cents / 100.0 as amount
+      from raw.payments
+    models/staging/stg_ledger.sql: |
+      select
+          opened_on,
+          balance_cents / 100.0 as balance
+      from raw.ledgers
+    models/staging/stg_courier.sql: |
+      select
+          courier_id,
+          lower(vehicle) as vehicle
+      from raw.couriers
+    models/staging/stg_voyage.sql: |
+      select
+          harbor,
+          knots
+      from raw.voyages
+  changed_files:
+    models/marts/revenue.sql: |
+      select
+          day,
+          sum(amount) as total,
+          count(*) as n
+      from {{ ref('stg_qzk') }}
+      group by day
+  commit_message: Count rows per day
+fixtures:
+  auto_garbage: true
+fragments:
+- id: stg
+  selector:
+    path: models/staging/stg_qzk.sql
+    anchor: raw.payments
+- id: no_ledger
+  selector:
+    path: models/staging/stg_ledger.sql
+- id: no_courier
+  selector:
+    path: models/staging/stg_courier.sql
+- id: no_voyage
+  selector:
+    path: models/staging/stg_voyage.sql
+oracle:
+  required:
+  - stg
+  forbidden:
+  - no_ledger
+  - no_courier
+  - no_voyage

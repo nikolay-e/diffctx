@@ -1,0 +1,64 @@
+name: nim_import_path
+tags:
+- lang:nim
+- change:single_file
+- context:cross_module
+- builder:nim
+repo:
+  initial_files:
+    src/boot.nim: |
+      import vendor/palette
+
+      const width = 800
+      const height = 600
+      echo "starting ", width, "x", height
+    vendor/palette.nim: |
+      const crimson* = 0xdc143c
+      const teal* = 0x008080
+      const amber* = 0xffbf00
+    vendor/archive.nim: |
+      import osproc
+
+      proc compressFolder*(folder: string): int =
+        execCmd("tar -czf " & folder & ".tgz " & folder)
+
+      proc extractBundle*(bundle, target: string): int =
+        execCmd("tar -xzf " & bundle & " -C " & target)
+    vendor/network.nim: |
+      import osproc
+
+      proc waitForPort*(host: string, port: int): bool =
+        for attempt in 1..10:
+          if execCmd("nc -z " & host & " " & $port) == 0:
+            return true
+        false
+
+      proc isReachable*(host: string): bool =
+        execCmd("ping -c 1 " & host) == 0
+  changed_files:
+    src/boot.nim: |
+      import vendor/palette
+
+      const width = 1024
+      const height = 768
+      echo "starting ", width, "x", height
+  commit_message: Larger default window
+fixtures:
+  auto_garbage: true
+fragments:
+- id: gold
+  selector:
+    path: vendor/palette.nim
+    anchor: crimson*
+- id: no_archive
+  selector:
+    path: vendor/archive.nim
+- id: no_network
+  selector:
+    path: vendor/network.nim
+oracle:
+  required:
+  - gold
+  forbidden:
+  - no_archive
+  - no_network

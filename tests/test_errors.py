@@ -1,4 +1,5 @@
 # tests/test_errors.py
+import json
 import logging
 import stat
 import sys
@@ -12,9 +13,9 @@ from .utils import find_node_by_path, load_yaml
 # --- Tests for invalid input ---
 
 
-def test_invalid_directory_path(run_mapper, capsys):
+def test_invalid_directory_path(run_mapper_yaml, capsys):
     dir_name = "non_existent_directory"
-    assert not run_mapper([dir_name])
+    assert not run_mapper_yaml([dir_name])
     captured = capsys.readouterr()
 
     assert "diffctx: error:" in captured.err
@@ -22,10 +23,10 @@ def test_invalid_directory_path(run_mapper, capsys):
     assert "No matches" in captured.err or "does not exist" in captured.err
 
 
-def test_input_path_is_file(run_mapper, temp_project, capsys):
+def test_input_path_is_file(run_mapper_yaml, temp_project, capsys):
     file_path = temp_project / "some_file.txt"
     file_path.write_text("hello")
-    assert run_mapper([str(file_path)])
+    assert run_mapper_yaml([str(file_path)])
     captured = capsys.readouterr()
     assert "some_file.txt" in captured.out
 
@@ -34,13 +35,13 @@ def test_input_path_is_file(run_mapper, temp_project, capsys):
     sys.platform == "win32" or IS_WSL,
     reason="os.chmod limited on Windows/WSL",
 )
-def test_unreadable_file(temp_project, run_mapper, set_perms, caplog):
+def test_unreadable_file(temp_project, run_mapper_yaml, set_perms, caplog):
     unreadable_file = temp_project / "unreadable.txt"
     unreadable_file.write_text("secret")
     set_perms(unreadable_file, 0o000)
     output_path = temp_project / "output_unreadable.yaml"
     with caplog.at_level(logging.ERROR, logger="diffctx"):
-        assert run_mapper([".", "-o", str(output_path)])
+        assert run_mapper_yaml([".", "-o", str(output_path)])
     assert output_path.exists(), f"Output file {output_path} was not created"
     result = load_yaml(output_path)
     file_node = find_node_by_path(result, ["unreadable.txt"])
@@ -58,14 +59,14 @@ def test_unreadable_file(temp_project, run_mapper, set_perms, caplog):
     sys.platform == "win32" or IS_WSL,
     reason="os.chmod limited on Windows/WSL",
 )
-def test_unwritable_output_dir(temp_project, run_mapper, set_perms, caplog):
+def test_unwritable_output_dir(temp_project, run_mapper_yaml, set_perms, caplog):
     unwritable_dir = temp_project / "locked_dir"
     unwritable_dir.mkdir()
     read_execute_perms = stat.S_IRUSR | stat.S_IXUSR | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH
     set_perms(unwritable_dir, read_execute_perms)
     output_path = unwritable_dir / "output.yaml"
     with caplog.at_level(logging.ERROR, logger="diffctx"):
-        run_mapper([".", "-o", str(output_path)])
+        run_mapper_yaml([".", "-o", str(output_path)])
     assert any(
         "Unable to write to file" in record.message and str(output_path) in record.message
         for record in caplog.records
@@ -74,11 +75,11 @@ def test_unwritable_output_dir(temp_project, run_mapper, set_perms, caplog):
     assert not output_path.exists()
 
 
-def test_output_path_is_directory(temp_project, run_mapper, capsys):
+def test_output_path_is_directory(temp_project, run_mapper_yaml, capsys):
     output_should_be_file = temp_project / "i_am_a_directory"
     output_should_be_file.mkdir()
 
-    assert not run_mapper([".", "-o", str(output_should_be_file)])
+    assert not run_mapper_yaml([".", "-o", str(output_should_be_file)])
     captured = capsys.readouterr()
 
     assert "diffctx: error:" in captured.err
@@ -207,30 +208,58 @@ def test_logger_no_handlers():
     sys.platform == "win32" or IS_WSL,
     reason="os.chmod limited on Windows/WSL",
 )
-def test_unreadable_directory(temp_project, set_perms):
-    unreadable_dir = temp_project / "locked"
-    unreadable_dir.mkdir()
-    (unreadable_dir / "secret.txt").write_text("hidden", encoding="utf-8")
-    set_perms(unreadable_dir, 0o000)
+@pytest.mark.parametrize("fmt", ["yaml", "json", "txt", "md"])
+def test_unreadable_directory_is_marked_and_reported_at_the_default_log_level(temp_project, set_perms, fmt):
+    """The reader used to be told `_(empty directory)_` with an empty stderr:
+    a false statement about the tree, on the one log level everybody runs."""
+    locked = temp_project / "locked"
+    locked.mkdir()
+    (locked / "secret.txt").write_text("hidden", encoding="utf-8")
+    set_perms(locked, 0o000)
 
-    output_path = temp_project / "output.yaml"
-    result = run_diffctx_subprocess([".", "-f", "yaml", "-o", str(output_path), "--log-level", "warning"], cwd=temp_project)
+    output_path = temp_project / f"output.{fmt}"
+    result = run_diffctx_subprocess([".", "-f", fmt, "-o", str(output_path)], cwd=temp_project)
+    assert result.returncode == 0, result.stderr
+    assert "ERROR: Could not read directory" in result.stderr
+    assert "locked: permission denied" in result.stderr
 
-    assert result.returncode == 0
-    assert "Permission denied" in result.stderr
+    rendered = output_path.read_text(encoding="utf-8")
+    assert "empty directory" not in rendered
+    if fmt == "yaml":
+        node = next(c for c in load_yaml(output_path)["children"] if c["name"] == "locked")
+        assert node["unreadable"] == "permission denied"
+    elif fmt == "json":
+        node = next(c for c in json.loads(rendered)["children"] if c["name"] == "locked")
+        assert node["unreadable"] == "permission denied"
+    elif fmt == "md":
+        assert "_(unreadable directory: permission denied)_" in rendered
+    else:
+        assert "(unreadable directory: permission denied)" in rendered
 
-    tree = load_yaml(output_path)
-    dir_names = [c["name"] for c in tree.get("children", [])]
-    assert "locked" in dir_names
+
+@pytest.mark.skipif(
+    sys.platform == "win32" or IS_WSL,
+    reason="os.chmod limited on Windows/WSL",
+)
+def test_unreadable_root_names_the_root(temp_project, set_perms):
+    locked = temp_project / "locked"
+    locked.mkdir()
+    set_perms(locked, 0o000)
+
+    result = run_diffctx_subprocess(["locked"], cwd=temp_project)
+    assert result.returncode == 1
+    assert f"cannot read directory '{locked}': permission denied" in result.stderr
+    assert "whitelist" not in result.stderr
+    assert result.stdout == ""
 
 
-def test_file_with_null_bytes_detected_as_binary(temp_project, run_mapper, caplog):
+def test_file_with_null_bytes_detected_as_binary(temp_project, run_mapper_yaml, caplog):
     file_with_nulls = temp_project / "with_nulls.txt"
     file_with_nulls.write_bytes(b"hello\x00world\x00test")
 
     output_path = temp_project / "output.yaml"
     with caplog.at_level(logging.WARNING, logger="diffctx"):
-        assert run_mapper([".", "-o", str(output_path)])
+        assert run_mapper_yaml([".", "-o", str(output_path)])
 
     result = load_yaml(output_path)
     file_node = find_node_by_path(result, ["with_nulls.txt"])
@@ -239,13 +268,13 @@ def test_file_with_null_bytes_detected_as_binary(temp_project, run_mapper, caplo
     assert "<binary file" in file_node.get("content", "")
 
 
-def test_file_with_null_bytes_after_sample_size(run_mapper, temp_project):
+def test_file_with_null_bytes_after_sample_size(run_mapper_yaml, temp_project):
     file_with_late_null = temp_project / "late_null.txt"
     content = b"x" * 8200 + b"\x00" + b"y" * 100
     file_with_late_null.write_bytes(content)
 
     output_path = temp_project / "output.yaml"
-    assert run_mapper([".", "-o", str(output_path)])
+    assert run_mapper_yaml([".", "-o", str(output_path)])
 
     tree = load_yaml(output_path)
     file_node = find_node_by_path(tree, ["late_null.txt"])
@@ -254,7 +283,7 @@ def test_file_with_null_bytes_after_sample_size(run_mapper, temp_project):
     assert "<binary file:" in file_node.get("content", "")
 
 
-def test_oserror_during_read(temp_project, run_mapper, monkeypatch, caplog):
+def test_oserror_during_read(temp_project, run_mapper_yaml, monkeypatch, caplog):
     test_file = temp_project / "test.txt"
     test_file.write_text("test content", encoding="utf-8")
 
@@ -269,7 +298,7 @@ def test_oserror_during_read(temp_project, run_mapper, monkeypatch, caplog):
 
     output_path = temp_project / "output.yaml"
     with caplog.at_level(logging.ERROR, logger="diffctx"):
-        assert run_mapper([".", "-o", str(output_path)])
+        assert run_mapper_yaml([".", "-o", str(output_path)])
 
     result = load_yaml(output_path)
     file_node = find_node_by_path(result, ["test.txt"])

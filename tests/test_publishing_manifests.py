@@ -191,3 +191,56 @@ class TestLandingPageClaims:
             named = re.findall(r"--[a-z][a-z-]*", label)
             assert named, f"the {dial} dial does not say which flag it is"
             assert set(named) <= flags, f"the {dial} dial names a flag the CLI does not have: {named}"
+
+
+class TestLandingPagePwa:
+    """The Pages site installs and opens offline: a manifest whose icons are
+    real PNGs of the declared size, and a service worker the page registers
+    whose precache names only files that exist."""
+
+    DOCS = PROJECT_ROOT / "docs"
+
+    @staticmethod
+    def _png_size(path: Path) -> tuple[int, int]:
+        header = path.read_bytes()[:24]
+        assert header[:8] == b"\x89PNG\r\n\x1a\n", path
+        return int.from_bytes(header[16:20], "big"), int.from_bytes(header[20:24], "big")
+
+    def test_manifest_icons_exist_at_their_declared_sizes(self):
+        manifest = json.loads((self.DOCS / "manifest.webmanifest").read_text(encoding="utf-8"))
+        purposes = set()
+        for icon in manifest["icons"]:
+            path = self.DOCS / icon["src"].removeprefix("/diffctx/")
+            width, height = self._png_size(path)
+            assert icon["sizes"] == f"{width}x{height}", path
+            purposes.add(icon["purpose"])
+        assert purposes == {"any", "maskable"}
+        assert manifest["display"] == "standalone"
+        assert manifest["theme_color"] == manifest["background_color"]
+
+    def test_page_links_the_manifest_and_registers_the_worker(self):
+        page = (self.DOCS / "index.html").read_text(encoding="utf-8")
+        assert 'rel="manifest" href="/diffctx/manifest.webmanifest"' in page
+        assert 'rel="apple-touch-icon" href="/diffctx/icons/apple-touch-icon.png"' in page
+        assert (self.DOCS / "icons/apple-touch-icon.png").is_file()
+        assert 'serviceWorker.register("/diffctx/sw.js")' in page
+
+    @staticmethod
+    def _precached() -> list[str]:
+        worker = (PROJECT_ROOT / "docs" / "sw.js").read_text(encoding="utf-8")
+        shell = re.search(r"SHELL_FILES = \[([^\]]+)\]", worker)
+        assert shell is not None
+        return re.findall(r'"([^"]+)"', shell.group(1))
+
+    def test_worker_precache_names_only_files_that_exist(self):
+        for entry in self._precached():
+            target = self.DOCS / (entry.removeprefix("./") or "index.html")
+            # Pages renders product/*.md to *.html; the source is what the
+            # repository holds.
+            assert target.is_file() or target.with_suffix(".md").is_file(), entry
+
+    def test_every_manifest_shortcut_is_precached(self):
+        manifest = json.loads((self.DOCS / "manifest.webmanifest").read_text(encoding="utf-8"))
+        precached = {entry.removeprefix("./") for entry in self._precached()}
+        for shortcut in manifest["shortcuts"]:
+            assert shortcut["url"].removeprefix("/diffctx/") in precached, shortcut

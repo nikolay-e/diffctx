@@ -114,6 +114,9 @@ def _write_yaml_node(file: TextIO, node: dict[str, Any], indent: str = "") -> No
     if node.get("truncated"):
         file.write(f"{indent}  truncated: true\n")
 
+    if node.get("unreadable"):
+        file.write(f'{indent}  unreadable: "{_escape_yaml_string(str(node["unreadable"]))}"\n')
+
     if node.get("redactions"):
         file.write(f"{indent}  redactions: {node['redactions']}\n")
 
@@ -262,7 +265,7 @@ def write_tree_yaml(file: TextIO, tree: dict[str, Any]) -> None:
 
 
 def write_tree_json(file: TextIO, tree: dict[str, Any]) -> None:
-    json.dump(tree, file, ensure_ascii=False, indent=2)
+    json.dump({key: value for key, value in tree.items() if key != "latency"}, file, ensure_ascii=False, indent=2)
     file.write("\n")
 
 
@@ -294,6 +297,9 @@ def _write_tree_text_node(file: TextIO, node: dict[str, Any], prefix: str, conne
     if node.get("truncated"):
         content_prefix = child_prefix.replace(_TREE_PIPE, _TREE_SPACE)
         file.write(f"{content_prefix}(children omitted: depth limit)\n")
+    if node.get("unreadable"):
+        content_prefix = child_prefix.replace(_TREE_PIPE, _TREE_SPACE)
+        file.write(f"{content_prefix}(unreadable directory: {node['unreadable']})\n")
 
     children = node.get("children", [])
     for i, child in enumerate(children):
@@ -362,9 +368,19 @@ def _write_text_changed_files(file: TextIO, tree: dict[str, Any]) -> None:
         file.write(f"    {_escape_text_path(path)}{mark}\n")
 
 
+def _commit_heading(tree: dict[str, Any], listed: int) -> str:
+    total = tree.get("commit_count")
+    if isinstance(total, int) and total > listed:
+        return f"newest {listed} of {total} commits"
+    return f"{listed} commits"
+
+
 def _write_text_commit_messages(file: TextIO, tree: dict[str, Any]) -> None:
     if tree.get("commit_messages"):
-        file.write(f"  commits: {len(tree['commit_messages'])}\n")
+        listed = len(tree["commit_messages"])
+        total = tree.get("commit_count")
+        shown = f"newest {listed} of {total}" if isinstance(total, int) and total > listed else str(listed)
+        file.write(f"  commits: {shown}\n")
         for message in tree["commit_messages"]:
             for i, line in enumerate(str(message).splitlines()):
                 file.write(f"    {'- ' if i == 0 else '  '}{line}\n")
@@ -493,6 +509,8 @@ def _write_markdown_node(file: TextIO, node: dict[str, Any], depth: int) -> None
     elif is_dir and not node.get("children"):
         if node.get("truncated"):
             file.write(f"{content_indent}_(children omitted: --max-depth reached)_\n\n")
+        elif node.get("unreadable"):
+            file.write(f"{content_indent}_(unreadable directory: {node['unreadable']})_\n\n")
         else:
             file.write(f"{content_indent}_(empty directory)_\n\n")
 
@@ -590,16 +608,19 @@ def _write_md_commit_messages(file: TextIO, tree: dict[str, Any]) -> None:
             file.write(f"> {tree['commit_message']}\n\n")
         return
     if len(messages) == 1:
-        for line in str(messages[0]).splitlines():
-            file.write(f"> {line}\n" if line else ">\n")
+        _write_md_quoted(file, str(messages[0]), "> ")
     else:
-        file.write(f"> {len(messages)} commits:\n")
+        file.write(f"> {_commit_heading(tree, len(messages))}:\n")
         for message in messages:
             subject, _, body = str(message).partition("\n")
             file.write(f"> - **{subject}**\n")
-            for line in body.strip("\n").splitlines():
-                file.write(f">   {line}\n" if line else ">\n")
+            _write_md_quoted(file, body.strip("\n"), ">   ")
     file.write("\n")
+
+
+def _write_md_quoted(file: TextIO, text: str, prefix: str) -> None:
+    for line in text.splitlines():
+        file.write(f"{prefix}{line}\n" if line else ">\n")
 
 
 def _write_md_renamed_files(file: TextIO, tree: dict[str, Any]) -> None:
@@ -688,10 +709,44 @@ def _drop_index(fragments: list[dict[str, Any]], classes: dict[str, str]) -> int
     )
 
 
+_CLIPPED_MARKER = re.compile(r"^… \[(\d+) more lines of this change\]$")
+
+
+def _halve_witness(fragment: dict[str, Any]) -> dict[str, Any] | None:
+    content = fragment.get("content")
+    if not isinstance(content, str):
+        return None
+    lines = content.splitlines()
+    hidden = 0
+    marker = _CLIPPED_MARKER.match(lines[-1]) if lines else None
+    if marker:
+        hidden = int(marker.group(1))
+        lines.pop()
+    if len(lines) < 2:
+        return None
+    keep = min(max(len(lines) * 3 // 4, 1), len(lines) - 1)
+    hidden += len(lines) - keep
+    start = int(str(fragment.get("lines", "1")).split("-")[0])
+    clipped = "\n".join(lines[:keep]) + f"\n… [{hidden} more lines of this change]\n"
+    halved = {**fragment, "content": clipped, "lines": f"{start}-{start + keep - 1}"}
+    if "token_count" in fragment:
+        halved["token_count"] = count_tokens(clipped)
+    return halved
+
+
 def _drop_one_fragment(tree: dict[str, Any]) -> dict[str, Any]:
     fragments = list(tree["fragments"])
     classes = {str(c["path"]): str(c.get("class", "content")) for c in tree.get("changes") or []}
-    fragments.pop(_drop_index(fragments, classes))
+    index = _drop_index(fragments, classes)
+    target = fragments[index]
+    last_witness = target.get("role") == "changed" and sum(1 for f in fragments if f.get("path") == target.get("path")) == 1
+    # A changed file's last witness is shortened, not dropped: a larger budget must never show less of the
+    # change. Context has no such floor and drops whole.
+    halved = _halve_witness(target) if last_witness else None
+    if halved is None:
+        fragments.pop(index)
+    else:
+        fragments[index] = halved
     represented = {str(f.get("path")) for f in fragments}
     trimmed = {**tree, "fragments": fragments, "fragment_count": len(fragments)}
     if tree.get("changes"):
@@ -720,15 +775,11 @@ def fit_to_budget(tree: dict[str, Any], output_format: str) -> tuple[dict[str, A
     if not isinstance(budget, int) or budget <= 0 or budget >= 10_000_000 or not tree.get("fragments"):
         return tree, _render(tree, output_format)
 
-    # `latency` is telemetry beside the artifact, not part of it: it does not
-    # count against the budget, so the count is taken on the document without
-    # it (a no-op for Markdown and text, which never render it).
-    def accounted(t: dict[str, Any]) -> int:
-        return count_tokens(_render({k: v for k, v in t.items() if k != "latency"}, output_format))
-
-    while accounted(tree) > budget and tree.get("fragments"):
+    rendered = _render(tree, output_format)
+    while count_tokens(rendered) > budget and tree.get("fragments"):
         tree = _drop_one_fragment(tree)
-    return tree, _render(tree, output_format)
+        rendered = _render(tree, output_format)
+    return tree, rendered
 
 
 def tree_to_string(tree: dict[str, Any], output_format: str = "yaml") -> str:
@@ -745,7 +796,7 @@ def _write_to_stdout_with_wrapper(writer: Callable[[TextIO], None]) -> bool:
         if buf:
             original_encoding = sys.stdout.encoding or sys.getdefaultencoding()
             original_errors = getattr(sys.stdout, "errors", "strict")
-            utf8_stdout = io.TextIOWrapper(buf, encoding="utf-8", newline="")
+            utf8_stdout = io.TextIOWrapper(buf, encoding="utf-8", errors="backslashreplace", newline="")
             try:
                 writer(utf8_stdout)
                 utf8_stdout.flush()
@@ -783,15 +834,17 @@ def _write_to_file_path(output_file: Path, writer: Callable[[TextIO], None]) -> 
         os.umask(umask)
         # newline="" keeps the file byte-identical to the stdout artifact; a
         # Windows text write would otherwise turn every LF into CRLF.
-        with open(fd_int, "w", encoding="utf-8", newline="") as f:
+        with open(fd_int, "w", encoding="utf-8", errors="backslashreplace", newline="") as f:
             writer(f)
             f.flush()
             os.fsync(f.fileno())
-        # 0o666 & ~umask is exactly what `open(..., "w")` would have created;
-        # this never grants more than a plain write would. By path, after the
-        # close: os.fchmod is POSIX-only before Python 3.13, and Windows
-        # cannot unlink the temp file while its handle is still open.
-        os.chmod(tmp_path, 0o666 & ~umask)
+            # 0o666 & ~umask is exactly what `open(..., "w")` would have
+            # created; this never grants more than a plain write would. On the
+            # descriptor, not the path: a chmod by name follows a symlink swapped
+            # in under the temp name. Windows has no fchmod before 3.13 and no
+            # mode bits to set, so it skips the call.
+            if hasattr(os, "fchmod"):
+                os.fchmod(f.fileno(), 0o666 & ~umask)
         os.replace(tmp_path, output_file)
     except PermissionError:
         Path(tmp_path).unlink(missing_ok=True)

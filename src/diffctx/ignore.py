@@ -15,9 +15,18 @@ DIFFCTX_DIR_IGNORE = "ignore"
 DIFFCTX_DIR_WHITELIST = "whitelist"
 
 
+def _is_file(path: Path) -> bool:
+    # Path.is_file re-raises EACCES on Python < 3.13, so a probe under an
+    # unreadable root blamed a `.diffctx/whitelist` that was never there.
+    try:
+        return path.is_file()
+    except OSError:
+        return False
+
+
 def read_ignore_file(file_path: Path) -> list[str]:
     ignore_patterns: list[str] = []
-    if not file_path.is_file():
+    if not _is_file(file_path):
         return ignore_patterns
 
     try:
@@ -137,9 +146,8 @@ def _collect_from_walk(root: Path, filenames_set: set[str], out: list[str]) -> N
                 out.append(_process_ignore_line(line, rel))
 
         config_ignore = ignore_dir / DIFFCTX_CONFIG_DIR / DIFFCTX_DIR_IGNORE
-        if config_ignore.is_file():
-            for line in read_ignore_file(config_ignore):
-                out.append(_process_ignore_line(line, rel))
+        for line in read_ignore_file(config_ignore):
+            out.append(_process_ignore_line(line, rel))
 
 
 def _aggregate_all_ignore_patterns(root: Path, ignore_filenames: list[str]) -> list[str]:
@@ -164,6 +172,7 @@ def _find_ignore_files_via_git(root: Path, ignore_filenames: list[str]) -> list[
     try:
         result = subprocess.run(
             ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", *pathspecs],
+            stdin=subprocess.DEVNULL,
             cwd=root,
             capture_output=True,
             text=False,
@@ -211,7 +220,7 @@ def _transform_parent_pattern(line: str, rel_to_root: str) -> str | None:
 
 
 def _process_parent_ignore_file(ignore_file: Path, resolved_root: Path, parent_dir: Path, out: list[str]) -> None:
-    if not ignore_file.is_file():
+    if not _is_file(ignore_file):
         return
     try:
         rel_to_root = resolved_root.relative_to(parent_dir).as_posix()
@@ -355,7 +364,7 @@ def get_whitelist_spec(whitelist_file: Path | None, root_dir: Path | None = None
     effective_file = whitelist_file
     if not effective_file and root_dir:
         config_whitelist = root_dir / DIFFCTX_CONFIG_DIR / DIFFCTX_DIR_WHITELIST
-        if config_whitelist.is_file():
+        if _is_file(config_whitelist):
             effective_file = config_whitelist
     if not effective_file:
         return None

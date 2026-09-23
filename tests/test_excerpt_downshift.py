@@ -10,6 +10,7 @@ renderer combined.
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 
@@ -233,3 +234,23 @@ class TestFlatFilesGetSubFileGranularity:
         main_spans = [_span(f) for f in fragments if f["path"] == "main.sh"]
         assert main_spans, "the changed file is absent"
         assert max(main_spans) < 60, f"a flat file still ships as one whole-file fragment: {main_spans}"
+
+
+def test_a_changed_section_larger_than_the_budget_leaves_a_clipped_witness(tmp_path):
+    repo = Pygit2Repo(tmp_path / "clipped")
+
+    def document(marker: str) -> str:
+        return "# Title\n\n" + "".join(f"Line {i} {marker} of a paragraph with padding text.\n" for i in range(300))
+
+    repo.add_file("doc.md", document("a"))
+    repo.commit("initial")
+    repo.add_file("doc.md", document("b"))
+    repo.commit("every line changed")
+
+    changed = _changed(_fragments(repo.path, "--budget", "600"))
+    assert len(changed) == 1, changed
+    witness = changed[0]
+    match = re.search(r"\n… \[(\d+) more lines of this change\]$", witness["content"])
+    assert match, witness["content"][-200:]
+    assert _span(witness) + int(match.group(1)) == 302
+    assert witness["content"].startswith("# Title")

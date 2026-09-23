@@ -1,0 +1,37 @@
+name: deletion_001_caller_of_deleted_module
+tags:
+- lang:python
+- change:deletion
+repo:
+  initial_files:
+    pkg/legacy.py: |
+      def normalize_invoice_total(amount_cents, currency_code):
+          if currency_code == "JPY":
+              return amount_cents
+          return round(amount_cents / 100, 2)
+    pkg/caller.py: |
+      from pkg.legacy import normalize_invoice_total
+
+
+      def render_invoice_line(line_item):
+          total = normalize_invoice_total(line_item.amount_cents, line_item.currency_code)
+          return f"{line_item.label}: {total}"
+    pkg/unrelated.py: |
+      def parse_shipping_zone(postcode):
+          return postcode[:2]
+  deleted_files:
+  - pkg/legacy.py
+  commit_message: Remove legacy invoice normalization
+fragments:
+- id: caller
+  selector:
+    path: pkg/caller.py
+    anchor: normalize_invoice_total(line_item.amount_cents
+- id: no_unrelated
+  selector:
+    path: pkg/unrelated.py
+oracle:
+  required:
+  - caller
+  forbidden:
+  - no_unrelated

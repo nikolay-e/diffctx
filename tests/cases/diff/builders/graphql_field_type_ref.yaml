@@ -1,0 +1,68 @@
+name: graphql_field_type_ref
+tags:
+- lang:graphql
+- change:single_file
+- context:cross_module
+- builder:graphql
+repo:
+  initial_files:
+    api/root.graphql: |
+      type Query {
+        hue: Tint
+        zoom: Int
+      }
+    shared/tint.graphql: |
+      type Tint {
+        red: Float
+        green: Float
+        blue: Float
+      }
+    shared/ledger.graphql: |
+      type Ledger {
+        opened: Boolean
+        balance: Float
+        owner: String
+        memo: String
+      }
+    shared/courier.graphql: |
+      enum Courier {
+        POST
+        DRONE
+        BIKE
+      }
+    shared/voyage.graphql: |
+      type Voyage {
+        harbor: String
+        knots: Float
+        crew: Boolean
+      }
+  changed_files:
+    api/root.graphql: |
+      type Query {
+        hue: Tint
+        zoom: Float
+      }
+  commit_message: Fractional zoom
+fixtures:
+  auto_garbage: true
+fragments:
+- id: tint
+  selector:
+    path: shared/tint.graphql
+    anchor: type Tint
+- id: no_ledger
+  selector:
+    path: shared/ledger.graphql
+- id: no_courier
+  selector:
+    path: shared/courier.graphql
+- id: no_voyage
+  selector:
+    path: shared/voyage.graphql
+oracle:
+  required:
+  - tint
+  forbidden:
+  - no_ledger
+  - no_courier
+  - no_voyage

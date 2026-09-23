@@ -18,6 +18,7 @@ use _diffctx::config::limits::{
 use _diffctx::mode::ScoringMode;
 use _diffctx::pipeline::build_diff_context;
 use _diffctx::render::DiffContextOutput;
+use _diffctx::tokenizer::count_tokens;
 
 /// Mirrors `_UNLIMITED_BUDGET` in src/diffctx/_native/pipeline.py so `--budget -1`
 /// means the same thing in both CLIs.
@@ -26,6 +27,12 @@ const UNLIMITED_BUDGET_TOKENS: u32 = 10_000_000;
 /// Mirrors `_EXIT_EMPTY_DIFF` in src/diffctx/_app.py: a diff that yields no
 /// semantic context is an actionable result, not a success.
 const EXIT_EMPTY_DIFF: i32 = 4;
+
+/// Mirrors the Python CLI: a closed stdout pipe ends the run as SIGPIPE would.
+const EXIT_BROKEN_PIPE: i32 = 141;
+
+/// Same contract as the Python CLI: a malformed invocation is exit 2.
+const EXIT_USAGE: i32 = 2;
 
 #[derive(Clone, Copy, ValueEnum)]
 enum OutputFormat {
@@ -52,7 +59,7 @@ struct Cli {
     /// Token budget for the whole artifact — the change summary is charged
     /// first and the selection spends the remainder: omit = auto, N = cap,
     /// -1 = unlimited, 0 = no fragments (use --full for changed files only)
-    #[arg(long, allow_negative_numbers = true)]
+    #[arg(long, allow_negative_numbers = true, value_parser = parse_budget)]
     budget: Option<i64>,
 
     /// Output format
@@ -66,7 +73,7 @@ struct Cli {
     diff_ref: Option<String>,
 
     /// PPR damping: how tightly context clusters around changes, 0-1 exclusive
-    #[arg(long, default_value_t = DEFAULT_PPR_ALPHA)]
+    #[arg(long, default_value_t = DEFAULT_PPR_ALPHA, value_parser = parse_alpha)]
     alpha: f64,
 
     /// Relevance threshold for full fragment content; lower = more context.
@@ -74,7 +81,7 @@ struct Cli {
     /// operating point for a scorer that builds no graph — which is why this
     /// carries no clap default, so naming the default value explicitly is a
     /// request the pipeline can still tell apart from silence.
-    #[arg(long)]
+    #[arg(long, value_parser = parse_tau)]
     tau: Option<f64>,
 
     /// Skip fragment contents (structure only)
@@ -95,7 +102,7 @@ struct Cli {
     mode: String,
 
     /// Wall-clock deadline in seconds; on expiry diffctx exits 124
-    #[arg(long, default_value_t = DEFAULT_PIPELINE_TIMEOUT_SECONDS)]
+    #[arg(long, default_value_t = DEFAULT_PIPELINE_TIMEOUT_SECONDS, value_parser = clap::value_parser!(u64).range(1..))]
     timeout: u64,
 
     /// Suppress the token summary on stderr
@@ -103,16 +110,41 @@ struct Cli {
     quiet: bool,
 }
 
+// Both bounds are checked by clap, before any git call, so a typo exits 2
+// as a usage error instead of 1 after the whole git phase has run.
+fn parse_alpha(raw: &str) -> Result<f64, String> {
+    let alpha: f64 = raw.parse().map_err(|e| format!("{e}"))?;
+    if alpha > 0.0 && alpha < 1.0 {
+        Ok(alpha)
+    } else {
+        Err(format!("must be in (0, 1), got {raw}"))
+    }
+}
+
+fn parse_tau(raw: &str) -> Result<f64, String> {
+    let tau: f64 = raw.parse().map_err(|e| format!("{e}"))?;
+    if tau.is_finite() && tau >= 0.0 {
+        Ok(tau)
+    } else {
+        Err(format!("must be a finite value >= 0, got {raw}"))
+    }
+}
+
+fn parse_budget(raw: &str) -> Result<i64, String> {
+    let budget: i64 = raw.parse().map_err(|e| format!("{e}"))?;
+    if budget >= -1 {
+        Ok(budget)
+    } else {
+        Err(format!(
+            "--budget must be >= -1 (-1 = unlimited, 0 = strict-zero floor; use --full for \
+             changed files only), got {raw}"
+        ))
+    }
+}
+
 fn resolve_budget(budget: Option<i64>) -> Option<u32> {
     match budget {
         None => None,
-        Some(n) if n < -1 => {
-            eprintln!(
-                "error: --budget must be >= -1 (-1 = unlimited, 0 = strict-zero floor; use --full \
-                 for changed files only), got {n}"
-            );
-            std::process::exit(2);
-        }
         Some(n) if n < 0 => Some(UNLIMITED_BUDGET_TOKENS),
         Some(n) => Some(u32::try_from(n).unwrap_or(UNLIMITED_BUDGET_TOKENS)),
     }
@@ -152,6 +184,15 @@ fn print_token_summary(rendered: &str) {
 
 const WATCHDOG_GRACE_SECS: u64 = 30;
 
+/// Test hook: the whole watchdog wait, deadline included, so its exit 124 is
+/// reachable on a small repository (`0` fires before the worker can answer).
+/// Non-semantic: it decides only when to abort, never what is selected.
+fn test_watchdog_secs() -> Option<u64> {
+    std::env::var("DIFFCTX_TEST_WATCHDOG_GRACE_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+}
+
 fn run_with_deadline<T, F>(timeout: u64, work: F) -> Result<T>
 where
     F: FnOnce() -> Result<T> + Send + 'static,
@@ -166,13 +207,20 @@ where
     // watchdog is the last resort behind it — a phase that cannot poll (a
     // git subprocess that ignores its own timeout) — so it fires a grace
     // period later, after the cooperative path had its chance to return.
-    let grace = Duration::from_secs(timeout.saturating_add(WATCHDOG_GRACE_SECS));
+    let (grace_secs, wait) = match test_watchdog_secs() {
+        Some(secs) => (secs, secs),
+        None => (
+            WATCHDOG_GRACE_SECS,
+            timeout.saturating_add(WATCHDOG_GRACE_SECS),
+        ),
+    };
+    let grace = Duration::from_secs(wait);
     match rx.recv_timeout(grace) {
         Ok(result) => result,
         Err(mpsc::RecvTimeoutError::Timeout) => {
             eprintln!(
                 "diffctx: pipeline exceeded {timeout}s wall-clock deadline and did not stop \
-                 cooperatively within {WATCHDOG_GRACE_SECS}s more; aborting before OOM/SIGKILL. \
+                 cooperatively within {grace_secs}s more; aborting before OOM/SIGKILL. \
                  Narrow the review with an explicit '--diff <from>..<to>' range or run on a \
                  smaller subtree, or raise '--timeout'."
             );
@@ -188,7 +236,7 @@ where
 // Both entry points end the same way, and the exit code is part of the CLI
 // contract: an empty diff must still print, still summarize, and still exit
 // EXIT_EMPTY_DIFF rather than 0.
-fn emit(cli: &Cli, rendered: &str, is_empty: bool) -> Result<()> {
+fn emit(cli: &Cli, rendered: &str, is_empty: bool, changed_files: &[String]) -> Result<()> {
     if is_empty {
         eprintln!(
             "diffctx: diff produced no semantic context (clean working tree, binary-only, or \
@@ -196,19 +244,32 @@ fn emit(cli: &Cli, rendered: &str, is_empty: bool) -> Result<()> {
             empty_diff_hint(
                 &cli.path,
                 cli.budget,
-                cli.diff_ref.as_deref().unwrap_or("HEAD")
+                cli.diff_ref.as_deref().unwrap_or("HEAD"),
+                changed_files
             )
         );
     }
     if !cli.quiet {
         print_token_summary(rendered);
     }
-    print!("{rendered}");
-    io::stdout().flush()?;
+    write_stdout(rendered)?;
     if is_empty {
         std::process::exit(EXIT_EMPTY_DIFF);
     }
     Ok(())
+}
+
+/// A reader that stopped reading (`| head`) is not an error: exit the way a
+/// shell pipeline expects (128 + SIGPIPE) instead of panicking in `print!`.
+fn write_stdout(rendered: &str) -> Result<()> {
+    let mut stdout = io::stdout().lock();
+    match stdout
+        .write_all(rendered.as_bytes())
+        .and_then(|()| stdout.flush())
+    {
+        Err(e) if e.kind() == io::ErrorKind::BrokenPipe => std::process::exit(EXIT_BROKEN_PIPE),
+        other => Ok(other?),
+    }
 }
 
 // Mirrors `_diff_result_is_empty` in src/diffctx/_app.py: deletions and renames
@@ -223,7 +284,12 @@ fn diff_result_is_empty(output: &DiffContextOutput) -> bool {
         && output.fragment_count == 0
 }
 
-fn empty_diff_hint(root: &Path, budget: Option<i64>, diff_ref: &str) -> String {
+fn empty_diff_hint(
+    root: &Path,
+    budget: Option<i64>,
+    diff_ref: &str,
+    changed_files: &[String],
+) -> String {
     match budget {
         Some(0) => {
             "--budget 0 emits no fragments (changed files are listed as omitted); use --full \
@@ -235,7 +301,12 @@ fn empty_diff_hint(root: &Path, budget: Option<i64>, diff_ref: &str) -> String {
                 "--budget {n} may be too small to fit any fragment; raise it or omit for auto sizing"
             )
         }
-        _ if diff_ref == "HEAD" => {
+        _ if !changed_files.is_empty() => format!(
+            "{} changed file(s) carry no text hunk (a mode change, a submodule pointer, a binary \
+             or a '-diff' attribute); they are listed in changed_files",
+            changed_files.len()
+        ),
+        _ if diff_ref == "HEAD" && working_tree_is_clean(root) => {
             "the working tree matches HEAD; try --diff HEAD~1 for the last commit".to_string()
         }
         _ if is_duration_window(root, diff_ref) => {
@@ -243,6 +314,10 @@ fn empty_diff_hint(root: &Path, budget: Option<i64>, diff_ref: &str) -> String {
         }
         _ => format!("check the range with: git diff --stat {diff_ref}"),
     }
+}
+
+fn working_tree_is_clean(root: &Path) -> bool {
+    _diffctx::git::run_git(root, &["status", "--porcelain"]).is_ok_and(|out| out.trim().is_empty())
 }
 
 fn is_duration_window(root: &Path, diff_ref: &str) -> bool {
@@ -266,6 +341,7 @@ fn run_locate(
         _diffctx::pipeline::build_diff_context_locate(
             &path,
             diff_ref.as_deref(),
+            &[],
             budget,
             alpha,
             tau,
@@ -281,7 +357,7 @@ fn run_locate(
         && output.lockfile_changes.is_empty()
         && output.ignored_changes.is_empty()
         && output.policy_excluded_count == 0;
-    emit(cli, &rendered, is_empty)
+    emit(cli, &rendered, is_empty, &[])
 }
 
 fn main() {
@@ -290,9 +366,9 @@ fn main() {
         // failures (not a repo, unknown revision, no commits); anyhow's
         // default is 1, which made the two binaries disagree on the one code
         // a wrapper script keys on.
-        if err.downcast_ref::<_diffctx::git::GitError>().is_some() {
+        if let Some(git_err) = err.downcast_ref::<_diffctx::git::GitError>() {
             eprintln!("diffctx: {err}");
-            std::process::exit(3);
+            std::process::exit(if git_err.is_usage() { EXIT_USAGE } else { 3 });
         }
         eprintln!("Error: {err:?}");
         std::process::exit(1);
@@ -300,11 +376,20 @@ fn main() {
 }
 
 fn real_main() -> Result<()> {
+    // stdout is the artifact; a log line there corrupts the JSON/YAML a
+    // pipeline parses.
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
+        .with_writer(io::stderr)
         .init();
 
     let cli = Cli::parse();
+    if cli.diff_ref.as_deref().is_some_and(|r| r.trim().is_empty()) {
+        // An unset `$RANGE` in CI expands to this; guessing a meaning for it
+        // would publish some other diff as the PR's context.
+        eprintln!("error: --diff requires a non-empty range");
+        std::process::exit(EXIT_USAGE);
+    }
 
     let scoring_mode =
         ScoringMode::from_str(&cli.scoring).expect("clap value_parser already validated --scoring");
@@ -359,10 +444,33 @@ fn real_main() -> Result<()> {
         )
     })?;
 
-    let rendered = match cli.format {
-        OutputFormat::Json => format!("{}\n", serde_json::to_string_pretty(&output)?),
-        OutputFormat::Yaml => serde_yaml::to_string(&output)?,
-    };
+    let mut output = output;
+    let mut rendered = render(cli.format, &output)?;
+    // `--budget` bounds the document, and the resolved budget (auto included)
+    // is what provenance recorded; an unlimited or zero budget renders as is.
+    let bound = output
+        .provenance
+        .as_ref()
+        .and_then(|p| p.selection.as_ref())
+        .map(|s| s.budget_tokens)
+        .filter(|&b| b > 0 && b < UNLIMITED_BUDGET_TOKENS);
+    if let Some(bound) = bound {
+        while count_tokens(&rendered) > bound && output.drop_one_fragment() {
+            rendered = render(cli.format, &output)?;
+        }
+    }
 
-    emit(&cli, &rendered, diff_result_is_empty(&output))
+    emit(
+        &cli,
+        &rendered,
+        diff_result_is_empty(&output),
+        &output.changed_files,
+    )
+}
+
+fn render(format: OutputFormat, output: &DiffContextOutput) -> Result<String> {
+    Ok(match format {
+        OutputFormat::Json => format!("{}\n", serde_json::to_string_pretty(output)?),
+        OutputFormat::Yaml => serde_yaml::to_string(output)?,
+    })
 }

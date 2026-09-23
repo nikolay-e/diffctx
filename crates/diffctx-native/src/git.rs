@@ -43,12 +43,16 @@ fn git_timeout() -> u64 {
 // literal `--- a/` / `+++ b/` headers, so a user's `diff.noprefix`,
 // `diff.mnemonicPrefix`, `diff.srcPrefix`/`dstPrefix` or `color.ui=always`
 // silently reduced every run to zero fragments and an empty `changed_files`.
+// `diff.interHunkContext` merges hunks across untouched lines, so functions
+// between two edits were emitted as changed; pinned to zero for the same
+// reason `--unified=0` is passed explicitly.
 const SAFE_DIFF_FLAGS: &[&str] = &[
     "--no-textconv",
     "--no-ext-diff",
     "--no-color",
     "--src-prefix=a/",
     "--dst-prefix=b/",
+    "--inter-hunk-context=0",
 ];
 
 static HUNK_RE: Lazy<Regex> =
@@ -61,9 +65,12 @@ static RANGE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^\s*(\S+?)(\.\.\.?)(\S*
 // `--ext-diff` or `--textconv` would re-enable the very filters SAFE_DIFF_FLAGS
 // disables and run repo-configured commands. Refs that begin with a dash are
 // unaddressable on a git command line anyway, so nothing legitimate is lost.
+// `#`, `+`, `%`, `,` and `=` are legal in a ref name (`v1.2.3+build.7`,
+// `release,2026`); the gate is the leading dash and the separators, not the
+// alphabet.
 static SAFE_RANGE_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
-        r"^[a-zA-Z0-9_.^~/@{}][a-zA-Z0-9_.^~/@{}\-]*(\.\.\.?([a-zA-Z0-9_.^~/@{}][a-zA-Z0-9_.^~/@{}\-]*)?)?$",
+        r"^[a-zA-Z0-9_.^~/@{}#+%,=][a-zA-Z0-9_.^~/@{}#+%,=\-]*(\.\.\.?([a-zA-Z0-9_.^~/@{}#+%,=][a-zA-Z0-9_.^~/@{}#+%,=\-]*)?)?$",
     )
     .unwrap()
 });
@@ -76,13 +83,48 @@ pub enum GitError {
     NotARepo(PathBuf),
     #[error("invalid diff range: {0}")]
     InvalidRange(String),
+    #[error(
+        "invalid duration '{0}': a window is whole <number><unit> components such as 24h, 8d, 90min or 1h30m"
+    )]
+    InvalidDuration(String),
+    #[error(
+        "invalid path '{0}': paths must stay inside the repository and carry no pathspec magic"
+    )]
+    InvalidPath(String),
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
     #[error("timeout after {0}s")]
     Timeout(u64),
 }
 
+impl GitError {
+    /// The caller misspoke — a usage error, not a git or environment failure.
+    pub fn is_usage(&self) -> bool {
+        matches!(
+            self,
+            Self::InvalidRange(_) | Self::InvalidDuration(_) | Self::InvalidPath(_)
+        )
+    }
+}
+
 pub type Result<T> = std::result::Result<T, GitError>;
+
+/// Repo-relative pathspecs that narrow every git query of a run. Validated
+/// once: a leading `-` would be an option, a leading `:` pathspec magic, and
+/// anything escaping the root is not a path in this repository.
+pub fn validate_pathspec(paths: &[String]) -> Result<()> {
+    for p in paths {
+        if p.is_empty()
+            || p.starts_with('-')
+            || p.starts_with(':')
+            || p.chars().any(|c| c.is_control())
+            || !crate::paths::contains_lexically(Path::new(p))
+        {
+            return Err(GitError::InvalidPath(p.clone()));
+        }
+    }
+    Ok(())
+}
 
 fn validate_diff_range(diff_range: &str) -> Result<()> {
     let trimmed = diff_range.trim();
@@ -116,13 +158,22 @@ fn validate_diff_range(diff_range: &str) -> Result<()> {
 // config, `validate_diff_range` is the argv-injection gate whose own comment
 // records a bypass that already shipped — and until now they were enforced by
 // five copies of this sequence agreeing with each other.
-fn diff_args<'a>(extra: &[&'a str], diff_range: Option<&'a str>) -> Result<Vec<&'a str>> {
+fn diff_args<'a>(
+    extra: &[&'a str],
+    diff_range: Option<&'a str>,
+    pathspec: &'a [String],
+) -> Result<Vec<&'a str>> {
     let mut args: Vec<&str> = vec!["diff"];
     args.extend_from_slice(SAFE_DIFF_FLAGS);
     args.extend_from_slice(extra);
     if let Some(range) = diff_range {
         validate_diff_range(range)?;
         args.push(range);
+    }
+    if !pathspec.is_empty() {
+        validate_pathspec(pathspec)?;
+        args.push("--");
+        args.extend(pathspec.iter().map(String::as_str));
     }
     Ok(args)
 }
@@ -175,6 +226,23 @@ fn parse_duration_seconds(spec: &str) -> Option<u64> {
         rest = rest[caps[0].len()..].trim_start();
     }
     Some(total)
+}
+
+/// Every whitespace-separated component is `<number>[.fraction]<known unit>`.
+/// A spec of this shape that `parse_duration_seconds` still rejects — a
+/// fraction, a count too large, whitespace inside a component — is a typo of
+/// the duration grammar, and telling the user "unknown git revision '1.5h'"
+/// sends them to `git log` for a problem `git log` cannot show. `8dd` keeps
+/// its revision reading: `dd` is not a unit.
+static DURATION_SHAPE_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r"(?i)^\d+(\.\d+)?\s*(weeks?|w|days?|d|hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s)(\s*\d+(\.\d+)?\s*(weeks?|w|days?|d|hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s))*$",
+    )
+    .unwrap()
+});
+
+fn looks_like_duration(spec: &str) -> bool {
+    DURATION_SHAPE_RE.is_match(spec)
 }
 
 pub struct ResolvedRange {
@@ -240,12 +308,16 @@ pub fn resolve_duration_range(repo_root: &Path, diff_range: Option<&str>) -> Res
         return Ok(ResolvedRange::verbatim(None));
     };
     let trimmed = spec.trim();
-    let Some(seconds) = parse_duration_seconds(trimmed) else {
-        return Ok(ResolvedRange::verbatim(diff_range));
-    };
-    if rev_exists(repo_root, trimmed) {
-        return Ok(ResolvedRange::verbatim(diff_range));
+    let parsed = parse_duration_seconds(trimmed);
+    if parsed.is_none() && !looks_like_duration(trimmed) {
+        return Ok(ResolvedRange::verbatim(Some(trimmed)));
     }
+    if rev_exists(repo_root, trimmed) {
+        return Ok(ResolvedRange::verbatim(Some(trimmed)));
+    }
+    let Some(seconds) = parsed else {
+        return Err(GitError::InvalidDuration(trimmed.to_string()));
+    };
     // git owns the calendar arithmetic (local timezone, DST) via approxidate.
     let before = format!("--before={seconds} seconds ago");
     let base = run_git(repo_root, &["rev-list", "-1", &before, "HEAD", "--"])
@@ -271,13 +343,51 @@ pub fn git_command(repo_root: &Path) -> Command {
     let mut cmd = Command::new("git");
     cmd.arg("-C")
         .arg(repo_root)
+        // A spawned child inherits stdin, and under the MCP server stdin is the
+        // JSON-RPC pipe the client holds open: on Windows a git holding it
+        // never exited and every tool call that reached git hung. Callers that
+        // feed git (`check-ignore`, `cat-file --batch`) set their own.
+        .stdin(Stdio::null())
         // A partial clone lazily fetches blobs, and a fetch that wants a
         // credential would block on the terminal for the whole `--timeout`.
         .env("GIT_TERMINAL_PROMPT", "0")
         .env_remove("GIT_DIR")
         .env_remove("GIT_WORK_TREE")
-        .env_remove("GIT_INDEX_FILE");
+        .env_remove("GIT_INDEX_FILE")
+        // git documents `GIT_DIFF_OPTS` as overriding `--unified`; a `-u3`
+        // in a user's shell widened every hunk and changed which fragment
+        // counted as the core (#263).
+        .env_remove("GIT_DIFF_OPTS");
     cmd
+}
+
+/// `true` when the repository is a shallow clone: the one situation in which
+/// "unknown revision 'HEAD~1'" is not a typo but a missing history.
+fn is_shallow(repo_root: &Path) -> bool {
+    run_git(repo_root, &["rev-parse", "--is-shallow-repository"])
+        .map(|out| out.trim() == "true")
+        .unwrap_or(false)
+}
+
+fn command_failure(repo_root: &Path, args: &[&str], stderr: &str) -> GitError {
+    let subcommand = args
+        .iter()
+        .find(|a| !a.starts_with('-'))
+        .copied()
+        .unwrap_or("command");
+    let reason = stderr
+        .lines()
+        .map(str::trim)
+        .find(|l| l.starts_with("fatal:") || l.starts_with("error:"))
+        .or_else(|| stderr.lines().map(str::trim).find(|l| !l.is_empty()))
+        .unwrap_or("unknown error");
+    if reason.contains("unknown revision") && is_shallow(repo_root) {
+        return GitError::CommandFailed(format!(
+            "git {subcommand} failed: {reason} (this is a shallow clone, so the revision may \
+             simply be missing: run 'git fetch --deepen=1' or check out with fetch-depth: 0)"
+        ));
+    }
+    GitError::CommandFailed(format!("git {subcommand} failed: {reason}"))
 }
 
 pub fn run_git(repo_root: &Path, args: &[&str]) -> Result<String> {
@@ -296,20 +406,7 @@ pub fn run_git(repo_root: &Path, args: &[&str]) -> Result<String> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        let subcommand = args
-            .iter()
-            .find(|a| !a.starts_with('-'))
-            .copied()
-            .unwrap_or("command");
-        let reason = stderr
-            .lines()
-            .map(str::trim)
-            .find(|l| l.starts_with("fatal:") || l.starts_with("error:"))
-            .or_else(|| stderr.lines().map(str::trim).find(|l| !l.is_empty()))
-            .unwrap_or("unknown error");
-        return Err(GitError::CommandFailed(format!(
-            "git {subcommand} failed: {reason}"
-        )));
+        return Err(command_failure(repo_root, args, &stderr));
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
@@ -387,8 +484,14 @@ fn wait_with_timeout(
 pub fn is_git_repo(path: &Path) -> std::result::Result<bool, GitError> {
     match run_git(path, &["rev-parse", "--git-dir"]) {
         Ok(_) => Ok(true),
-        // git ran and said no: that is the one honest "false".
-        Err(GitError::CommandFailed(_)) => Ok(false),
+        // git ran and said no: that is the one honest "false". Any other
+        // failure — a `[core` line in `.git/config`, dubious ownership in a
+        // container, a path that does not exist — is git refusing to start,
+        // and its own `fatal:` line is the diagnosis; "not a repository"
+        // would send the reader after the wrong problem.
+        Err(GitError::CommandFailed(reason)) if reason.contains("not a git repository") => {
+            Ok(false)
+        }
         // git did not run at all (not on PATH, permission denied) or did not
         // answer in time — neither says anything about the directory.
         Err(e) => Err(e),
@@ -413,8 +516,12 @@ pub fn find_toplevel(path: &Path) -> Option<PathBuf> {
     Some(dunce::canonicalize(trimmed).unwrap_or_else(|_| Path::new(trimmed).components().collect()))
 }
 
-pub fn get_diff_text(repo_root: &Path, diff_range: Option<&str>) -> Result<String> {
-    let args = diff_args(&[], diff_range)?;
+pub fn get_diff_text(
+    repo_root: &Path,
+    diff_range: Option<&str>,
+    pathspec: &[String],
+) -> Result<String> {
+    let args = diff_args(&[], diff_range, pathspec)?;
     run_git(repo_root, &args)
 }
 
@@ -508,11 +615,13 @@ pub(crate) fn unquote_c_style(quoted: &str) -> String {
 /// A `..` component is therefore rejected outright, before any of this:
 /// git does not emit one for a tracked path, so nothing legitimate needs it,
 /// and downstream `strip_prefix` guards are lexical for exactly the same
-/// reason. Absolute paths are refused for the same reason — `Path::join`
-/// with an absolute argument discards the root entirely.
+/// reason. Absolute and rooted paths are refused for the same reason —
+/// `Path::join` with such an argument discards the root entirely.
 pub(crate) fn resolve_in_repo(repo_root: &Path, rel_path: &str) -> Option<PathBuf> {
     let rel = Path::new(rel_path);
-    if rel.is_absolute()
+    // `has_root` too: on Windows `\etc\x` is rooted but not absolute, and
+    // `Path::join` still replaces everything after the drive with it.
+    if rel.has_root()
         || rel
             .components()
             .any(|c| matches!(c, std::path::Component::ParentDir))
@@ -604,8 +713,12 @@ fn parse_hunk_header(caps: &regex::Captures, path: &Path) -> Option<DiffHunk> {
     })
 }
 
-pub fn parse_diff(repo_root: &Path, diff_range: Option<&str>) -> Result<Vec<DiffHunk>> {
-    let args = diff_args(&["--unified=0", "-M"], diff_range)?;
+pub fn parse_diff(
+    repo_root: &Path,
+    diff_range: Option<&str>,
+    pathspec: &[String],
+) -> Result<Vec<DiffHunk>> {
+    let args = diff_args(&["--unified=0", "-M"], diff_range, pathspec)?;
 
     let output = run_git(repo_root, &args)?;
     Ok(parse_hunks_from_diff_output(&output, repo_root))
@@ -664,8 +777,12 @@ pub fn run_git_z(repo_root: &Path, args: &[&str]) -> Result<Vec<String>> {
         .collect())
 }
 
-pub fn get_changed_files(repo_root: &Path, diff_range: Option<&str>) -> Result<Vec<PathBuf>> {
-    let args = diff_args(&["--name-only", "-M", "-z"], diff_range)?;
+pub fn get_changed_files(
+    repo_root: &Path,
+    diff_range: Option<&str>,
+    pathspec: &[String],
+) -> Result<Vec<PathBuf>> {
+    let args = diff_args(&["--name-only", "-M", "-z"], diff_range, pathspec)?;
     let parts = run_git_z(repo_root, &args)?;
     // Lexical `root.join(p)`, never the canonical target: `canonicalize()` on a
     // symlink returns what it POINTS AT, so an untracked `evil -> /etc/shadow`
@@ -685,8 +802,16 @@ pub fn get_changed_files(repo_root: &Path, diff_range: Option<&str>) -> Result<V
         .collect())
 }
 
-pub fn get_deleted_files(repo_root: &Path, diff_range: Option<&str>) -> Result<FxHashSet<PathBuf>> {
-    let args = diff_args(&["--diff-filter=D", "--name-only", "-M", "-z"], diff_range)?;
+pub fn get_deleted_files(
+    repo_root: &Path,
+    diff_range: Option<&str>,
+    pathspec: &[String],
+) -> Result<FxHashSet<PathBuf>> {
+    let args = diff_args(
+        &["--diff-filter=D", "--name-only", "-M", "-z"],
+        diff_range,
+        pathspec,
+    )?;
     let parts = run_git_z(repo_root, &args)?;
     // Lexical `root.join(p)`, never the canonical target: `canonicalize()` on a
     // symlink returns what it POINTS AT, so an untracked `evil -> /etc/shadow`
@@ -713,10 +838,15 @@ pub fn get_deleted_files(repo_root: &Path, diff_range: Option<&str>) -> Result<F
 /// own copy of that walk; they disagreed on validation, one accepting a record
 /// whose destination was missing. A rename without a destination is not a
 /// rename, so the stricter reading is the one kept here.
-fn rename_records(repo_root: &Path, diff_range: Option<&str>) -> Result<Vec<(String, String)>> {
+fn rename_records(
+    repo_root: &Path,
+    diff_range: Option<&str>,
+    pathspec: &[String],
+) -> Result<Vec<(String, String)>> {
     let args = diff_args(
         &["--diff-filter=R", "--name-status", "-M", "-z"],
         diff_range,
+        pathspec,
     )?;
     let output = run_git(repo_root, &args)?;
     let parts: Vec<&str> = output.split('\0').collect();
@@ -740,12 +870,16 @@ fn rename_records(repo_root: &Path, diff_range: Option<&str>) -> Result<Vec<(Str
 /// cannot be fragmented, so the pipeline excludes them from the changed set.
 /// The rename destinations need no special handling: they exist on HEAD and
 /// reach the universe through the ordinary changed-file path.
-pub fn get_renamed_paths(repo_root: &Path, diff_range: Option<&str>) -> Result<FxHashSet<PathBuf>> {
-    Ok(rename_records(repo_root, diff_range)?
+pub fn get_renamed_paths(
+    repo_root: &Path,
+    diff_range: Option<&str>,
+    pathspec: &[String],
+) -> Result<FxHashSet<PathBuf>> {
+    Ok(rename_records(repo_root, diff_range, pathspec)?
         .into_iter()
         .map(|(old, _)| {
-            dunce::canonicalize(crate::paths::repo_join(repo_root, &old))
-                .unwrap_or_else(|_| crate::paths::repo_join(repo_root, &old))
+            let joined = crate::paths::repo_join(repo_root, &old);
+            dunce::canonicalize(&joined).unwrap_or(joined)
         })
         .collect())
 }
@@ -756,8 +890,9 @@ pub fn get_renamed_paths(repo_root: &Path, diff_range: Option<&str>) -> Result<F
 pub fn get_rename_pairs(
     repo_root: &Path,
     diff_range: Option<&str>,
+    pathspec: &[String],
 ) -> Result<Vec<(String, String)>> {
-    Ok(rename_records(repo_root, diff_range)?
+    Ok(rename_records(repo_root, diff_range, pathspec)?
         .into_iter()
         .map(|(old, new)| {
             (
@@ -768,6 +903,11 @@ pub fn get_rename_pairs(
         .collect())
 }
 
+/// `(base, head)` of a two-sided range; `(None, None)` for a single revision,
+/// which git compares with the working tree. An open right side (`A..`,
+/// `A...`) is `A..HEAD` in git's own reading — both sides committed — so the
+/// head is HEAD, not the working tree: bodies then come from the commit the
+/// hunks describe, not from the base the range starts at.
 pub fn split_diff_range(range: &str) -> (Option<String>, Option<String>) {
     match RANGE_RE.captures(range) {
         None => (None, None),
@@ -779,13 +919,23 @@ pub fn split_diff_range(range: &str) -> (Option<String>, Option<String>) {
             let head = caps
                 .get(3)
                 .map(|m| m.as_str().trim().to_string())
-                .filter(|s| !s.is_empty());
+                .filter(|s| !s.is_empty())
+                .or_else(|| Some("HEAD".to_string()));
             (base, head)
         }
     }
 }
 
 pub fn show_file_at_revision(repo_root: &Path, rev: &str, rel_path: &Path) -> Result<String> {
+    show_file_bytes_at_revision(repo_root, rev, rel_path)
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+}
+
+pub fn show_file_bytes_at_revision(
+    repo_root: &Path,
+    rev: &str,
+    rel_path: &Path,
+) -> Result<Vec<u8>> {
     validate_rev(rev)?;
     // The spec names a blob: a rewritten separator asks git for a different
     // file, and on POSIX `src\utils.py` and `src/utils.py` can both exist.
@@ -794,7 +944,17 @@ pub fn show_file_at_revision(repo_root: &Path, rev: &str, rel_path: &Path) -> Re
         rev,
         crate::paths::to_posix_display(rel_path.to_string_lossy())
     );
-    run_git(repo_root, &["show", &spec])
+    let mut cmd = git_command(repo_root);
+    cmd.args(["show", &spec])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let child = cmd.spawn()?;
+    let output = wait_with_timeout(child, Duration::from_secs(git_timeout()), &["show"])?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(command_failure(repo_root, &["show"], &stderr));
+    }
+    Ok(output.stdout)
 }
 
 /// Every commit message in `base..head` — subject and body — newest first,
@@ -832,6 +992,19 @@ pub fn commit_messages(
     }
 }
 
+/// Commits in `base..head`: the list above stops at `limit`, and a reader
+/// told "20 commits" must learn when the range held more.
+pub fn commit_count(repo_root: &Path, base: &str, head: &str) -> usize {
+    if validate_rev(base).is_err() || validate_rev(head).is_err() {
+        return 0;
+    }
+    let range = format!("{base}..{head}");
+    run_git(repo_root, &["rev-list", "--count", &range, "--"])
+        .ok()
+        .and_then(|out| out.trim().parse().ok())
+        .unwrap_or(0)
+}
+
 pub fn get_commit_message(repo_root: &Path, rev: &str) -> Result<String> {
     if validate_rev(rev).is_err() {
         return Ok(String::new());
@@ -842,11 +1015,14 @@ pub fn get_commit_message(repo_root: &Path, rev: &str) -> Result<String> {
     }
 }
 
-pub fn get_untracked_files(repo_root: &Path) -> Result<Vec<PathBuf>> {
-    let parts = run_git_z(
-        repo_root,
-        &["ls-files", "--others", "--exclude-standard", "-z"],
-    )?;
+pub fn get_untracked_files(repo_root: &Path, pathspec: &[String]) -> Result<Vec<PathBuf>> {
+    let mut args: Vec<&str> = vec!["ls-files", "--others", "--exclude-standard", "-z"];
+    if !pathspec.is_empty() {
+        validate_pathspec(pathspec)?;
+        args.push("--");
+        args.extend(pathspec.iter().map(String::as_str));
+    }
+    let parts = run_git_z(repo_root, &args)?;
     // Lexical `root.join(p)`, never the canonical target: `canonicalize()` on a
     // symlink returns what it POINTS AT, so an untracked `evil -> /etc/shadow`
     // entered the changed-file list under an absolute out-of-root path. That
@@ -858,8 +1034,13 @@ pub fn get_untracked_files(repo_root: &Path) -> Result<Vec<PathBuf>> {
     // need not exist on disk. A deleted file is gone by definition and a bare
     // clone has no working tree, so an existence test empties both lists. The
     // symlink itself is caught where the file is actually read.
+    //
+    // An untracked nested repository is reported as one directory entry
+    // (`vendor/nested/`, trailing slash): it is not a file of this
+    // repository and has no content to fragment, so it is not a change.
     Ok(parts
         .iter()
+        .filter(|p| !p.ends_with('/'))
         .filter(|p| crate::paths::contains_lexically(std::path::Path::new(p)))
         .map(|p| crate::paths::repo_join(repo_root, p))
         .collect())
@@ -985,6 +1166,7 @@ fn scratch_git_dir(repo_root: &Path) -> Option<PathBuf> {
     let ok = Command::new("git")
         .args(["init", "-q"])
         .arg(&dir)
+        .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
@@ -1417,6 +1599,13 @@ impl CatFileBatch {
     }
 
     pub fn get(&mut self, rev: &str, rel_path: &Path) -> Result<String> {
+        self.get_bytes(rev, rel_path)
+            .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+    }
+
+    /// The blob as stored, undecoded: whether it is UTF-8 is the reader's
+    /// finding to disclose, not this layer's to hide.
+    pub fn get_bytes(&mut self, rev: &str, rel_path: &Path) -> Result<Vec<u8>> {
         validate_rev(rev)?;
         let display = crate::paths::to_posix_display(rel_path.to_string_lossy());
         // The batch protocol is line-delimited: a path carrying `\n` (git
@@ -1425,7 +1614,7 @@ impl CatFileBatch {
         // — another file's body under this file's name. Such a path goes
         // through argv, where it is one argument whatever it contains.
         if display.chars().any(|c| c.is_control()) {
-            return show_file_at_revision(&self.repo_root, rev, rel_path);
+            return show_file_bytes_at_revision(&self.repo_root, rev, rel_path);
         }
         let spec = format!("{rev}:{display}\n");
 
@@ -1504,7 +1693,7 @@ impl CatFileBatch {
         let mut trailing = [0u8; 1];
         reader.read_exact(&mut trailing)?;
 
-        Ok(String::from_utf8_lossy(&content).into_owned())
+        Ok(content)
     }
 
     pub fn close(&mut self) {
@@ -1619,20 +1808,26 @@ mod tests {
         fs::create_dir_all(&clean_root).expect("mkdir clean");
         fs::create_dir_all(&hostile_root).expect("mkdir hostile");
 
+        let body = |a: u32, c: u32| {
+            format!(
+                "def f():\n    return {a}\n\n\ndef g():\n    return 0\n\n\ndef h():\n    return {c}\n"
+            )
+        };
         for root in [&clean_root, &hostile_root] {
             init_git_repo(root);
-            write_file(root, "app.py", "def f():\n    return 1\n");
+            write_file(root, "app.py", &body(1, 1));
             commit_all(root, "initial");
-            write_file(root, "app.py", "def f():\n    return 2\n");
+            write_file(root, "app.py", &body(2, 2));
             commit_all(root, "change");
         }
         for args in hostile_config {
             git(&hostile_root, args);
         }
 
-        let clean_hunks = parse_diff(&clean_root, Some("HEAD~1..HEAD")).expect("clean parse_diff");
+        let clean_hunks =
+            parse_diff(&clean_root, Some("HEAD~1..HEAD"), &[]).expect("clean parse_diff");
         let hostile_hunks =
-            parse_diff(&hostile_root, Some("HEAD~1..HEAD")).expect("hostile parse_diff");
+            parse_diff(&hostile_root, Some("HEAD~1..HEAD"), &[]).expect("hostile parse_diff");
         assert!(
             !hostile_hunks.is_empty(),
             "hostile git config reduced the diff to zero hunks"
@@ -1650,9 +1845,9 @@ mod tests {
         );
 
         let clean_files =
-            get_changed_files(&clean_root, Some("HEAD~1..HEAD")).expect("clean changed files");
-        let hostile_files =
-            get_changed_files(&hostile_root, Some("HEAD~1..HEAD")).expect("hostile changed files");
+            get_changed_files(&clean_root, Some("HEAD~1..HEAD"), &[]).expect("clean changed files");
+        let hostile_files = get_changed_files(&hostile_root, Some("HEAD~1..HEAD"), &[])
+            .expect("hostile changed files");
         assert!(
             !hostile_files.is_empty(),
             "hostile git config reduced changed_files to empty"
@@ -1687,6 +1882,26 @@ mod tests {
         assert_diff_survives_hostile_config(&[&["config", "color.ui", "always"]]);
     }
 
+    /// Merged across the untouched `g`, the two edits became one hunk and
+    /// `g` was emitted as changed.
+    #[test]
+    fn diff_survives_inter_hunk_context() {
+        assert_diff_survives_hostile_config(&[&["config", "diff.interHunkContext", "20"]]);
+    }
+
+    /// `GIT_DIFF_OPTS` overrides `--unified` inside git, so it must never
+    /// reach a child; the end-to-end run with the variable set lives in
+    /// `tests/test_git_config_resilience.py`.
+    #[test]
+    fn git_diff_opts_is_scrubbed_from_every_child() {
+        let cmd = git_command(Path::new("."));
+        assert!(
+            cmd.get_envs()
+                .any(|(k, v)| k == "GIT_DIFF_OPTS" && v.is_none()),
+            "GIT_DIFF_OPTS is not removed from the child environment"
+        );
+    }
+
     // --- validate_diff_range: reject argv-injection ranges, keep legit ones ---
 
     #[test]
@@ -1706,6 +1921,9 @@ mod tests {
             "@{-1}..HEAD",
             "HEAD~2...origin/main",
             "main..feature/x",
+            "v1.2.3+build.7",
+            "release,2026..rc=1",
+            "issue#42...fix%20",
         ] {
             assert!(
                 validate_diff_range(legit).is_ok(),
@@ -1783,7 +2001,7 @@ mod tests {
         assert!(resolved.from_duration);
         assert_eq!(resolved.range.as_deref(), Some(old_head.as_str()));
 
-        let diff = get_diff_text(root, resolved.range.as_deref()).expect("diff");
+        let diff = get_diff_text(root, resolved.range.as_deref(), &[]).expect("diff");
         assert!(diff.contains("new.txt"), "window must cover the new commit");
         assert!(
             !diff.contains("old.txt"),
@@ -1801,7 +2019,7 @@ mod tests {
 
         let resolved = resolve_duration_range(root, Some("1w")).expect("resolve");
         assert!(resolved.from_duration);
-        let diff = get_diff_text(root, resolved.range.as_deref()).expect("diff");
+        let diff = get_diff_text(root, resolved.range.as_deref(), &[]).expect("diff");
         assert!(
             diff.contains("only.txt"),
             "a repo younger than the window is entirely new within it"
@@ -2170,7 +2388,7 @@ mod tests {
         write_file(root, "café.py", "value = 2\n");
         commit_all(root, "change");
 
-        let hunks = parse_diff(root, Some("HEAD~1..HEAD")).expect("parse_diff");
+        let hunks = parse_diff(root, Some("HEAD~1..HEAD"), &[]).expect("parse_diff");
         assert!(
             !hunks.is_empty(),
             "quoted unicode diff header was not parsed into any hunk"
@@ -2225,6 +2443,21 @@ mod tests {
             std::thread::sleep(Duration::from_millis(50));
         }
         assert!(!still_alive, "child pid {pid} was not reaped after timeout");
+    }
+
+    #[test]
+    fn a_zero_ceiling_times_out_even_when_the_child_has_already_exited() {
+        let child = Command::new("true")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn true");
+        std::thread::sleep(Duration::from_millis(100));
+        let result = wait_with_timeout(child, Duration::ZERO, &["true"]);
+        assert!(
+            matches!(result, Err(GitError::Timeout(_))),
+            "a zero ceiling must not depend on who finishes first, got {result:?}"
+        );
     }
 
     #[test]

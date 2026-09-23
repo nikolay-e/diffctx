@@ -69,6 +69,7 @@ pub static EXTENSION_TO_LANGUAGE: Lazy<FxHashMap<&'static str, &'static str>> = 
         (".lua", "lua"),
         (".pl", "perl"),
         (".pm", "perl"),
+        (".t", "perl"),
         (".ex", "elixir"),
         (".exs", "elixir"),
         (".erl", "erlang"),
@@ -228,6 +229,9 @@ pub fn get_language_for_file(path: &str) -> Option<&'static str> {
         if let Some(&lang) = FILENAME_TO_LANGUAGE.get(name_lower.as_str()) {
             return Some(lang);
         }
+        if name_lower.starts_with(".env.") || name_lower.ends_with(".env") {
+            return Some("dotenv");
+        }
     }
 
     if let Some(ext) = p.extension() {
@@ -246,6 +250,72 @@ pub fn get_language_for_file(path: &str) -> Option<&'static str> {
 
     None
 }
+/// The language a file's content says it is, where that differs from what its
+/// name says: `.h` is C or C++, `.ts` is TypeScript or Qt Linguist XML, `.m`
+/// is Objective-C or MATLAB, and an extension-less script names its
+/// interpreter on line one. `None` means the name-based answer stands.
+pub fn sniff_language(path: &str, content: &str) -> Option<&'static str> {
+    let ext = Path::new(path)
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase());
+    match ext.as_deref() {
+        Some("h") => CPP_MARKER.is_match(head(content, 4096)).then_some("cpp"),
+        Some("ts") => looks_like_xml(content).then_some("xml"),
+        Some("m") => (!OBJC_MARKER.is_match(head(content, 4096))
+            && MATLAB_MARKER.is_match(head(content, 4096)))
+        .then_some("matlab"),
+        None if get_language_for_file(path).is_none() => shebang_language(content),
+        _ => None,
+    }
+}
+
+fn head(content: &str, max: usize) -> &str {
+    let mut end = content.len().min(max);
+    while !content.is_char_boundary(end) {
+        end -= 1;
+    }
+    &content[..end]
+}
+
+static CPP_MARKER: Lazy<regex::Regex> = Lazy::new(|| {
+    regex::Regex::new(
+        r"(?m)^\s*(?:class\s+\w+\s*[:{]|namespace\s+\w+|template\s*<|using\s+namespace\b|(?:public|private|protected)\s*:)",
+    )
+    .unwrap()
+});
+static OBJC_MARKER: Lazy<regex::Regex> = Lazy::new(|| {
+    regex::Regex::new(
+        r"(?m)^\s*(?:#import\b|#include\b|@interface\b|@implementation\b|@protocol\b)",
+    )
+    .unwrap()
+});
+static MATLAB_MARKER: Lazy<regex::Regex> =
+    Lazy::new(|| regex::Regex::new(r"(?m)^\s*(?:function\b|%|classdef\b)").unwrap());
+
+fn looks_like_xml(content: &str) -> bool {
+    let start = content.trim_start_matches('\u{feff}').trim_start();
+    start.starts_with("<?xml") || start.starts_with("<!DOCTYPE TS") || start.starts_with("<TS")
+}
+
+fn shebang_language(content: &str) -> Option<&'static str> {
+    let line = head(content, 128).lines().next()?.strip_prefix("#!")?;
+    let mut words = line.split_whitespace();
+    let mut program = words.next()?.rsplit('/').next()?;
+    if program == "env" {
+        program = words.find(|w| !w.starts_with('-'))?;
+    }
+    let program = program.trim_end_matches(|c: char| c.is_ascii_digit() || c == '.');
+    match program {
+        "sh" | "bash" | "dash" | "ksh" => Some("bash"),
+        "zsh" => Some("bash"),
+        "python" => Some("python"),
+        "ruby" => Some("ruby"),
+        "perl" => Some("perl"),
+        "node" => Some("javascript"),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -303,10 +373,55 @@ mod tests {
     }
 
     #[test]
+    fn content_overrides_an_ambiguous_name() {
+        assert_eq!(
+            sniff_language(
+                "geo.h",
+                "namespace geo {\nclass Circle : public Shape {};\n}\n"
+            ),
+            Some("cpp")
+        );
+        assert_eq!(sniff_language("geo.h", "int area(int r);\n"), None);
+        assert_eq!(
+            sniff_language(
+                "app_de.ts",
+                "<?xml version=\"1.0\"?>\n<!DOCTYPE TS>\n<TS/>\n"
+            ),
+            Some("xml")
+        );
+        assert_eq!(sniff_language("app.ts", "export const x = 1;\n"), None);
+        assert_eq!(
+            sniff_language("solve.m", "function y = solve(x)\n% comment\ny = x;\nend\n"),
+            Some("matlab")
+        );
+        assert_eq!(
+            sniff_language("View.m", "#import \"View.h\"\n@implementation View\n@end\n"),
+            None
+        );
+        assert_eq!(
+            sniff_language("bin/deploy", "#!/usr/bin/env bash\nset -e\n"),
+            Some("bash")
+        );
+        assert_eq!(
+            sniff_language("bin/tool", "#!/usr/bin/python3.12\nprint(1)\n"),
+            Some("python")
+        );
+        assert_eq!(sniff_language("bin/notes", "plain text\n"), None);
+        assert_eq!(sniff_language("Makefile", "#!/bin/sh\n"), None);
+    }
+
+    #[test]
+    fn env_variants_and_perl_tests_resolve_by_name() {
+        assert_eq!(get_language_for_file("config/cache.env"), Some("dotenv"));
+        assert_eq!(get_language_for_file(".env.production"), Some("dotenv"));
+        assert_eq!(get_language_for_file("t/basic.t"), Some("perl"));
+    }
+
+    #[test]
     fn extension_table_row_count_is_pinned() {
         assert_eq!(
             EXTENSION_TO_LANGUAGE.len(),
-            143,
+            144,
             "a row was added or removed from EXTENSION_TO_LANGUAGE; update this count \
              deliberately and re-check get_language_for_file coverage"
         );

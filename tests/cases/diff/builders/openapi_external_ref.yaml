@@ -1,0 +1,91 @@
+name: openapi_external_ref
+tags:
+- lang:yaml
+- change:single_file
+- context:cross_module
+- builder:openapi
+repo:
+  initial_files:
+    api/openapi.yaml: |
+      openapi: 3.0.3
+      info:
+        title: Shop
+        version: 1.0.0
+      paths:
+        /items:
+          get:
+            responses:
+              '200':
+                description: ok
+                content:
+                  application/json:
+                    schema:
+                      $ref: 'defs/qzk.yaml#/Qzk'
+    defs/qzk.yaml: |
+      Qzk:
+        type: object
+        properties:
+          label:
+            type: string
+          weight:
+            type: number
+    defs/ledger.yaml: |
+      Ledger:
+        type: object
+        properties:
+          opened:
+            type: boolean
+          balance:
+            type: number
+    defs/courier.yaml: |
+      Courier:
+        type: string
+        enum: [post, drone, bike]
+    defs/voyage.yaml: |
+      Voyage:
+        type: object
+        properties:
+          harbor:
+            type: string
+          knots:
+            type: number
+  changed_files:
+    api/openapi.yaml: |
+      openapi: 3.0.3
+      info:
+        title: Shop
+        version: 1.0.0
+      paths:
+        /items:
+          get:
+            responses:
+              '200':
+                description: every item
+                content:
+                  application/json:
+                    schema:
+                      $ref: 'defs/qzk.yaml#/Qzk'
+  commit_message: Describe the items response
+fixtures:
+  auto_garbage: true
+fragments:
+- id: qzk
+  selector:
+    path: defs/qzk.yaml
+    anchor: 'Qzk:'
+- id: no_ledger
+  selector:
+    path: defs/ledger.yaml
+- id: no_courier
+  selector:
+    path: defs/courier.yaml
+- id: no_voyage
+  selector:
+    path: defs/voyage.yaml
+oracle:
+  required:
+  - qzk
+  forbidden:
+  - no_ledger
+  - no_courier
+  - no_voyage

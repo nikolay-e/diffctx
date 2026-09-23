@@ -1,0 +1,188 @@
+name: bazel_srcs_subdirectory
+tags:
+- lang:starlark
+- change:single_file
+- context:cross_module
+- builder:bazel
+repo:
+  initial_files:
+    app/BUILD: |
+      cc_binary(
+          name = "server",
+          srcs = ["impl/fast.c"],
+          copts = ["-O2"],
+      )
+    app/impl/fast.c: |
+      int mix(int a, int b) {
+        return a * 31 + b;
+      }
+    app/archive.c: |
+      #include <stdio.h>
+      #include <stdlib.h>
+      #include <string.h>
+
+      struct bundle {
+        char **labels;
+        size_t count;
+        size_t capacity;
+      };
+
+      struct bundle *bundle_create(size_t capacity) {
+        struct bundle *b = malloc(sizeof *b);
+        b->labels = calloc(capacity, sizeof(char *));
+        b->count = 0;
+        b->capacity = capacity;
+        return b;
+      }
+
+      void bundle_push(struct bundle *b, const char *label) {
+        if (b->count == b->capacity) {
+          b->capacity *= 2;
+          b->labels = realloc(b->labels, b->capacity * sizeof(char *));
+        }
+        b->labels[b->count++] = strdup(label);
+      }
+
+      void bundle_dump(const struct bundle *b, FILE *out) {
+        for (size_t i = 0; i < b->count; i++) {
+          fprintf(out, "%zu\t%s\n", i, b->labels[i]);
+        }
+      }
+    app/network.c: |
+      #include <netdb.h>
+      #include <string.h>
+      #include <sys/socket.h>
+      #include <unistd.h>
+
+      int wait_for_port(const char *host, const char *port, int attempts) {
+        struct addrinfo hints, *res;
+        memset(&hints, 0, sizeof hints);
+        hints.ai_socktype = SOCK_STREAM;
+        for (int i = 0; i < attempts; i++) {
+          if (getaddrinfo(host, port, &hints, &res) != 0) {
+            sleep(1);
+            continue;
+          }
+          int fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+          int ok = fd >= 0 && connect(fd, res->ai_addr, res->ai_addrlen) == 0;
+          if (fd >= 0) close(fd);
+          freeaddrinfo(res);
+          if (ok) return 1;
+          sleep(1);
+        }
+        return 0;
+      }
+
+      int is_loopback(const char *host) {
+        return strcmp(host, "localhost") == 0 || strncmp(host, "127.", 4) == 0;
+      }
+    app/journal.c: |
+      #include <stdio.h>
+      #include <stdlib.h>
+      #include <time.h>
+
+      static FILE *journal_sink = NULL;
+
+      void journal_open(const char *target) {
+        journal_sink = fopen(target, "a");
+        if (!journal_sink) journal_sink = stderr;
+      }
+
+      static void journal_write(const char *level, const char *message) {
+        char stamp[32];
+        time_t now = time(NULL);
+        strftime(stamp, sizeof stamp, "%Y-%m-%dT%H:%M:%SZ", gmtime(&now));
+        fprintf(journal_sink, "%s [%s] %s\n", stamp, level, message);
+        fflush(journal_sink);
+      }
+
+      void journal_info(const char *message) {
+        journal_write("INFO", message);
+      }
+
+      void journal_warn(const char *message) {
+        journal_write("WARN", message);
+      }
+
+      void journal_fail(const char *message) {
+        journal_write("FAIL", message);
+        exit(1);
+      }
+    app/ringbuf.c: |
+      #include <stdlib.h>
+      #include <string.h>
+
+      struct ringbuf {
+        unsigned char *data;
+        size_t head;
+        size_t tail;
+        size_t size;
+      };
+
+      struct ringbuf *ringbuf_new(size_t size) {
+        struct ringbuf *r = malloc(sizeof *r);
+        r->data = malloc(size);
+        r->head = 0;
+        r->tail = 0;
+        r->size = size;
+        return r;
+      }
+
+      size_t ringbuf_used(const struct ringbuf *r) {
+        return (r->head + r->size - r->tail) % r->size;
+      }
+
+      int ringbuf_put(struct ringbuf *r, unsigned char byte) {
+        size_t next = (r->head + 1) % r->size;
+        if (next == r->tail) return -1;
+        r->data[r->head] = byte;
+        r->head = next;
+        return 0;
+      }
+
+      int ringbuf_get(struct ringbuf *r, unsigned char *byte) {
+        if (r->head == r->tail) return -1;
+        *byte = r->data[r->tail];
+        r->tail = (r->tail + 1) % r->size;
+        return 0;
+      }
+
+      void ringbuf_free(struct ringbuf *r) {
+        free(r->data);
+        free(r);
+      }
+  changed_files:
+    app/BUILD: |
+      cc_binary(
+          name = "server",
+          srcs = ["impl/fast.c"],
+          copts = ["-O3"],
+      )
+  commit_message: Build the server with -O3
+fixtures:
+  auto_garbage: true
+fragments:
+- id: fast
+  selector:
+    path: app/impl/fast.c
+    anchor: int mix(
+- id: no_archive
+  selector:
+    path: app/archive.c
+- id: no_network
+  selector:
+    path: app/network.c
+- id: no_journal
+  selector:
+    path: app/journal.c
+- id: no_ringbuf
+  selector:
+    path: app/ringbuf.c
+oracle:
+  required:
+  - fast
+  forbidden:
+  - no_archive
+  - no_network
+  - no_journal
+  - no_ringbuf

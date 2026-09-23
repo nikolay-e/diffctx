@@ -1,0 +1,108 @@
+---
+name: Nightly builder knife
+
+# The corpus gate cannot tell a load-bearing edge builder from dead weight:
+# tags, testing, sibling and cochange pull most gold on their own, and an
+# ablation measured 19-21 of 37 semantic builders holding no case at all.
+# Each leg disables exactly one builder (DIFFCTX_DISABLE_BUILDERS) and fails
+# unless at least one case that passes at baseline starts failing. A red leg
+# names a builder whose Q-class edits the corpus cannot measure; the fix is an
+# edge-only-reachable case for it, never removing the leg.
+
+on:
+  schedule:
+    - cron: "41 4 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  knife:
+    name: Knife ${{ matrix.builder }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        builder:
+          - python
+          - javascript
+          - go
+          - rust
+          - jvm
+          - cfamily
+          - dart
+          - dotnet
+          - haskell
+          - shell
+          - ruby
+          - php
+          - swift
+          - elixir
+          - sql
+          - lua
+          - css
+          - protobuf
+          - graphql
+          - latex
+          - prisma
+          - openapi
+          - dbt
+          - rlang
+          - perl
+          - julia
+          - zig
+          - nix
+          - ocaml
+          - nim
+          - erlang
+          - clojure
+          - cargo
+          - bazel
+          - ansible
+          - terraform
+          - tags
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: "1.92.0"
+
+      - name: Cache Cargo
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Run the corpus with one builder disabled
+        working-directory: crates/diffctx-native
+        env:
+          DIFFCTX_YAML_IGNORE_BASELINE: "1"
+          DIFFCTX_DISABLE_BUILDERS: ${{ matrix.builder }}
+        run: |
+          cargo test --release --test yaml_cases 2>&1 | tee knife.log || true
+          grep -q '^test result:' knife.log
+          awk '/^failures:$/{n++} n==2 && /^    /{print $1}' knife.log | sort > failing.txt
+          grep -vE '^\s*(#|$)' tests/known_below_threshold.txt | sort > baseline.txt
+          comm -23 failing.txt baseline.txt > newly_failing.txt
+          COUNT=$(wc -l < newly_failing.txt)
+          echo "Newly failing without ${DIFFCTX_DISABLE_BUILDERS}: ${COUNT}"
+          sed 's/^/  /' newly_failing.txt
+          if grep -qE "^${DIFFCTX_DISABLE_BUILDERS} " tests/builders_without_load.txt; then
+            if [ "${COUNT}" -ne 0 ]; then
+              echo "::error::${DIFFCTX_DISABLE_BUILDERS} now carries ${COUNT} case(s)" \
+                   "— remove it from tests/builders_without_load.txt"
+              exit 1
+            fi
+          elif [ "${COUNT}" -eq 0 ]; then
+            echo "::error::no corpus case depends on the ${DIFFCTX_DISABLE_BUILDERS} builder" \
+                 "— add one whose gold is reachable only through its edge"
+            exit 1
+          fi

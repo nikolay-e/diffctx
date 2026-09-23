@@ -23,7 +23,6 @@ impl EdgeWeightConfig {
 pub static EDGE_WEIGHTS: Lazy<FxHashMap<&'static str, EdgeWeightConfig>> = Lazy::new(|| {
     let entries: &[(&str, EdgeWeightConfig)] = &[
         ("containment", EdgeWeightConfig::new(0.50, 0.70)),
-        ("import", EdgeWeightConfig::new(0.50, 0.70)),
         ("test_direct", EdgeWeightConfig::new(0.60, 0.50)),
         ("test_naming", EdgeWeightConfig::new(0.50, 0.50)),
         ("test_reverse", EdgeWeightConfig::new(0.30, 1.0)),
@@ -33,12 +32,6 @@ pub static EDGE_WEIGHTS: Lazy<FxHashMap<&'static str, EdgeWeightConfig>> = Lazy:
         ("doc_structure", EdgeWeightConfig::new(0.30, 0.83)),
         ("anchor_link", EdgeWeightConfig::new(0.55, 0.64)),
         ("citation", EdgeWeightConfig::new(0.25, 1.0)),
-        ("python_call", EdgeWeightConfig::new(0.65, 0.70)),
-        ("python_symbol", EdgeWeightConfig::new(0.70, 0.70)),
-        ("python_type", EdgeWeightConfig::new(0.50, 0.70)),
-        ("javascript_call", EdgeWeightConfig::new(0.70, 0.50)),
-        ("javascript_symbol", EdgeWeightConfig::new(0.75, 0.50)),
-        ("javascript_type", EdgeWeightConfig::new(0.65, 0.50)),
         ("go_import", EdgeWeightConfig::new(0.70, 0.40)),
         ("go_type", EdgeWeightConfig::new(0.65, 0.40)),
         ("go_func", EdgeWeightConfig::new(0.60, 0.40)),
@@ -68,20 +61,16 @@ pub static EDGE_WEIGHTS: Lazy<FxHashMap<&'static str, EdgeWeightConfig>> = Lazy:
         ("ruby_require", EdgeWeightConfig::new(0.65, 0.40)),
         ("ruby_include", EdgeWeightConfig::new(0.60, 0.40)),
         ("ruby_const", EdgeWeightConfig::new(0.55, 0.40)),
-        ("ruby_same_dir", EdgeWeightConfig::new(0.05, 0.40)),
         ("php_use", EdgeWeightConfig::new(0.65, 0.40)),
         ("php_require", EdgeWeightConfig::new(0.60, 0.40)),
         ("php_inheritance", EdgeWeightConfig::new(0.75, 0.40)),
         ("php_type", EdgeWeightConfig::new(0.55, 0.40)),
-        ("php_same_namespace", EdgeWeightConfig::new(0.05, 0.40)),
         ("shell_source", EdgeWeightConfig::new(0.60, 0.35)),
         ("shell_script", EdgeWeightConfig::new(0.50, 0.35)),
         ("swift_import", EdgeWeightConfig::new(0.65, 0.40)),
         ("swift_conformance", EdgeWeightConfig::new(0.70, 0.40)),
         ("swift_extension", EdgeWeightConfig::new(0.65, 0.40)),
         ("swift_type", EdgeWeightConfig::new(0.60, 0.40)),
-        ("swift_func", EdgeWeightConfig::new(0.55, 0.40)),
-        ("swift_same_module", EdgeWeightConfig::new(0.05, 0.40)),
         ("zig_import", EdgeWeightConfig::new(0.65, 0.40)),
         ("zig_type", EdgeWeightConfig::new(0.60, 0.40)),
         ("zig_fn", EdgeWeightConfig::new(0.55, 0.40)),
@@ -95,20 +84,16 @@ pub static EDGE_WEIGHTS: Lazy<FxHashMap<&'static str, EdgeWeightConfig>> = Lazy:
         ("proto_import", EdgeWeightConfig::new(0.65, 0.40)),
         ("proto_message_ref", EdgeWeightConfig::new(0.60, 0.40)),
         ("proto_service_rpc", EdgeWeightConfig::new(0.55, 0.40)),
-        ("graphql_import", EdgeWeightConfig::new(0.60, 0.40)),
         ("graphql_type_ref", EdgeWeightConfig::new(0.65, 0.40)),
         ("graphql_extend", EdgeWeightConfig::new(0.55, 0.40)),
         ("sql_fk", EdgeWeightConfig::new(0.70, 0.40)),
         ("sql_table_ref", EdgeWeightConfig::new(0.60, 0.40)),
-        ("sql_view_source", EdgeWeightConfig::new(0.65, 0.40)),
-        ("sql_migration", EdgeWeightConfig::new(0.55, 0.40)),
         ("css_import", EdgeWeightConfig::new(0.55, 0.40)),
         ("lua_require", EdgeWeightConfig::new(0.65, 0.40)),
         ("lua_fn", EdgeWeightConfig::new(0.55, 0.40)),
         ("lua_method", EdgeWeightConfig::new(0.50, 0.40)),
         ("openapi_internal_ref", EdgeWeightConfig::new(0.65, 0.40)),
         ("openapi_external_ref", EdgeWeightConfig::new(0.60, 0.40)),
-        ("openapi_schema_ref", EdgeWeightConfig::new(0.55, 0.40)),
         ("erlang_include", EdgeWeightConfig::new(0.65, 0.40)),
         ("erlang_behaviour", EdgeWeightConfig::new(0.60, 0.40)),
         ("erlang_call", EdgeWeightConfig::new(0.55, 0.40)),
@@ -117,7 +102,6 @@ pub static EDGE_WEIGHTS: Lazy<FxHashMap<&'static str, EdgeWeightConfig>> = Lazy:
         ("elixir_behaviour", EdgeWeightConfig::new(0.55, 0.40)),
         ("elixir_fn", EdgeWeightConfig::new(0.50, 0.40)),
         ("dart_import", EdgeWeightConfig::new(0.65, 0.40)),
-        ("dart_export", EdgeWeightConfig::new(0.60, 0.40)),
         ("dart_type", EdgeWeightConfig::new(0.60, 0.40)),
         ("dart_fn", EdgeWeightConfig::new(0.55, 0.40)),
         ("dart_inheritance", EdgeWeightConfig::new(0.70, 0.40)),
@@ -129,11 +113,9 @@ pub static EDGE_WEIGHTS: Lazy<FxHashMap<&'static str, EdgeWeightConfig>> = Lazy:
         ("ocaml_fn", EdgeWeightConfig::new(0.55, 0.40)),
         ("ocaml_module_ref", EdgeWeightConfig::new(0.60, 0.40)),
         ("r_source", EdgeWeightConfig::new(0.60, 0.40)),
-        ("r_library", EdgeWeightConfig::new(0.55, 0.40)),
         ("r_fn", EdgeWeightConfig::new(0.50, 0.40)),
         ("r_s4", EdgeWeightConfig::new(0.55, 0.40)),
         ("perl_use", EdgeWeightConfig::new(0.65, 0.40)),
-        ("perl_require", EdgeWeightConfig::new(0.60, 0.40)),
         ("perl_fn", EdgeWeightConfig::new(0.55, 0.40)),
         ("perl_method", EdgeWeightConfig::new(0.50, 0.40)),
         ("perl_inheritance", EdgeWeightConfig::new(0.65, 0.40)),
@@ -220,3 +202,61 @@ pub static LANG_WEIGHTS: Lazy<FxHashMap<&'static str, LangWeights>> = Lazy::new(
     ];
     entries.iter().copied().collect()
 });
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeSet;
+    use std::path::{Path, PathBuf};
+
+    fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
+        for entry in std::fs::read_dir(dir).unwrap().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_rs_files(&path, out);
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                out.push(path);
+            }
+        }
+    }
+
+    /// A weight nobody reads is a model parameter that does not exist: cases
+    /// named after such a channel pass without it, and tuning it changes
+    /// nothing. Eighteen keys sat in this table unread until 2026-09-22.
+    #[test]
+    fn every_edge_weight_key_is_read_somewhere_outside_this_table() {
+        let re = regex::Regex::new(r#"EDGE_WEIGHTS\["([a-z0-9_]+)"\]"#).unwrap();
+        let mut files = Vec::new();
+        collect_rs_files(
+            &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src"),
+            &mut files,
+        );
+        let mut read: BTreeSet<String> = BTreeSet::new();
+        for file in files {
+            if file.ends_with("weights.rs") {
+                continue;
+            }
+            let text = std::fs::read_to_string(&file).unwrap();
+            read.extend(re.captures_iter(&text).map(|c| c[1].to_string()));
+        }
+        let unread: Vec<&str> = EDGE_WEIGHTS
+            .keys()
+            .copied()
+            .filter(|k| !read.contains(*k))
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        assert!(
+            unread.is_empty(),
+            "EDGE_WEIGHTS keys no builder reads: {unread:?}"
+        );
+        let unknown: Vec<&String> = read
+            .iter()
+            .filter(|k| !EDGE_WEIGHTS.contains_key(k.as_str()))
+            .collect();
+        assert!(
+            unknown.is_empty(),
+            "EDGE_WEIGHTS[...] lookups with no entry (would panic at runtime): {unknown:?}"
+        );
+    }
+}

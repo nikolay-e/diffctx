@@ -1,19 +1,17 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import textwrap
 import threading
 import time
-from pathlib import Path
 
 import pytest
 
 import diffctx
 from tests.framework.pygit2_backend import Pygit2Repo
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _repo(tmp_path, name, files):
@@ -74,49 +72,34 @@ def test_a_zero_ceiling_says_it_timed_out_rather_than_denying_the_repo(tmp_path)
     assert "not a git repository" not in message
 
 
-@pytest.mark.timeout(300)
-def test_a_compute_deadline_yields_a_partial_artifact_not_an_exception(tmp_path):
-    """The deadline used to be a panic that crossed the FFI boundary as an
-    exception (and, under the old `panic = "abort"` release profile, as
-    SIGABRT for the interpreter). It is cooperative now: the phase it
-    interrupts stops at its next bounded unit and the run renders what it has,
-    with `coverage.status == "partial"` and `deadline` among the reasons.
-
-    Whether the ceiling fires is not left to timing. The workload is this
-    repository's ENTIRE history — root commit to HEAD, the largest diff it can
-    produce — which crosses a 3 s ceiling with an order of magnitude to spare
-    (~40 s of work). Three seconds, not one: the same value bounds every git
-    subprocess, and under load a plain `git diff` has been seen to miss one
-    second — that failure is a `GitError`, not the deadline this test is about.
-    """
-    roots = subprocess.run(
-        ["git", "rev-list", "--max-parents=0", "HEAD"],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.split()
-    assert roots, "git rev-list returned no root commit"
-    shallow = subprocess.run(
-        ["git", "rev-parse", "--is-shallow-repository"], cwd=PROJECT_ROOT, capture_output=True, text=True
-    ).stdout.strip()
-    if shallow == "true":
-        pytest.skip("shallow clone: root..HEAD is not the full-history workload this measures")
-    root = roots[-1]
-
+@pytest.mark.parametrize("surface", ["pack", "locate"])
+def test_a_compute_deadline_yields_a_partial_artifact_not_an_exception(tmp_path, surface):
+    repo = _repo(tmp_path, "deadline", files=30)
+    call = (
+        "diffctx.build_diff_context(root_dir=root, diff_range='HEAD~1')"
+        if surface == "pack"
+        else "json.loads(build_locate(root, 'HEAD~1'))"
+    )
     child = textwrap.dedent(f"""
         import json, diffctx
+        from pathlib import Path
+        from diffctx._native.pipeline import build_locate
 
-        r = diffctx.build_diff_context(root_dir={str(PROJECT_ROOT)!r}, diff_range={root!r}, timeout=3)
-        print(json.dumps({{"coverage": r.get("coverage"), "changed": len(r.get("changed_files") or [])}}))
+        root = Path({str(repo.path)!r})
+        r = {call}
+        print(json.dumps({{"coverage": r.get("coverage"), "changed": r.get("changed_files") or []}}))
         """)
-    proc = subprocess.run([sys.executable, "-c", child], capture_output=True, text=True, timeout=600)
-    if "GitError: timeout" in proc.stderr:
-        pytest.skip("git itself missed the 3 s ceiling on this machine, so the compute deadline was never reached")
-
+    proc = subprocess.run(
+        [sys.executable, "-c", child],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        env={**os.environ, "DIFFCTX_TEST_DEADLINE_EXPIRED": "1"},
+    )
     assert proc.returncode == 0, f"the deadline escaped as an error: {proc.stderr[-400:]}"
     report = json.loads(proc.stdout.strip().splitlines()[-1])
     assert report["coverage"], "the ceiling never fired; the artifact claims to be complete"
-    assert report["coverage"]["status"] in ("partial", "degraded")
+    if surface == "pack":
+        assert report["coverage"]["status"] == "partial"
     assert "deadline" in report["coverage"]["limit_reasons"]
-    assert report["changed"] > 0, "a partial artifact still lists every changed file"
+    assert report["changed"] == ["main.py"], "a partial artifact still lists every changed file"

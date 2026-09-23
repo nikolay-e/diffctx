@@ -75,6 +75,7 @@ def build_locate(
     tau: float | None = None,
     scoring_mode: str = _DEFAULT_SCORING,
     timeout: int = _PIPELINE_TIMEOUT,
+    paths: list[str] | None = None,
 ) -> str:
     from diffctx._diffctx import build_locate as _rust_locate
 
@@ -87,6 +88,7 @@ def build_locate(
             tau=tau,
             scoring_mode=scoring_mode,
             timeout=timeout,
+            paths=paths or [],
         )
     )
 
@@ -98,9 +100,16 @@ def resolve_diff_range(root_dir: Path, diff_range: str) -> str:
 
 
 def get_raw_diff_text(root_dir: Path, diff_range: str, timeout: int = _PIPELINE_TIMEOUT) -> str:
+    return _raw_diff_with_redactions(root_dir, diff_range, timeout, None)[0]
+
+
+def _raw_diff_with_redactions(
+    root_dir: Path, diff_range: str, timeout: int, paths: list[str] | None
+) -> tuple[str, int, list[str]]:
     from diffctx._diffctx import get_raw_diff_text as _rust_raw_diff
 
-    return str(_rust_raw_diff(str(root_dir), diff_range, timeout=timeout))
+    text, count, categories = _rust_raw_diff(str(root_dir), diff_range, timeout=timeout, paths=paths or [])
+    return str(text), int(count), list(categories)
 
 
 def build_diff_context(
@@ -110,43 +119,13 @@ def build_diff_context(
     alpha: float = _DEFAULT_ALPHA,
     tau: float | None = None,
     no_content: bool = False,
-    ignore_file: Path | None = None,
-    no_default_ignores: bool = False,
     full: bool = False,
-    whitelist_file: Path | None = None,
     scoring_mode: str = _DEFAULT_SCORING,
     timeout: int = _PIPELINE_TIMEOUT,
     with_raw_diff: bool = False,
+    paths: list[str] | None = None,
 ) -> dict[str, Any]:
     from diffctx._diffctx import build_diff_context as _rust_build
-
-    # The Rust diff-context backend does not yet apply a custom --ignore/
-    # --whitelist file (default .gitignore/.diffctx/ignore rules ARE applied).
-    # Silently accepting and dropping these was a security-adjacent footgun -
-    # a caller excluding a secrets file via -i would get no warning that the
-    # exclusion never took effect. Fail loudly instead until implemented.
-    if ignore_file is not None:
-        raise NotImplementedError(
-            "--ignore is not yet supported with --diff (default .gitignore/"
-            ".diffctx/ignore rules still apply); rerun without --ignore, or "
-            "without --diff to use it in tree-mapping mode"
-        )
-    if whitelist_file is not None:
-        raise NotImplementedError(
-            "--whitelist is not yet supported with --diff; rerun without "
-            "--whitelist, or without --diff to use it in tree-mapping mode"
-        )
-    # Same footgun as above: the Rust backend used to accept this flag and
-    # silently drop it (a bare `tracing::warn!` that never surfaces - the
-    # extension module never installs a tracing subscriber), so a caller
-    # asking for the full default-ignore-free universe got exit 0 and the
-    # default ignore set applied anyway. Fail loudly instead of guessing.
-    if no_default_ignores:
-        raise NotImplementedError(
-            "--no-default-ignores is not yet supported with --diff (default "
-            "ignore rules still apply); rerun without --no-default-ignores, "
-            "or without --diff to use it in tree-mapping mode"
-        )
 
     # Budget semantics:
     #   None:                   pipeline default (None passes through to Rust as no cap)
@@ -166,16 +145,35 @@ def build_diff_context(
         full=full,
         scoring_mode=scoring_mode,
         timeout=timeout,
+        paths=paths or [],
     )
 
     # Attached after selection has already run, never before: the raw patch is
     # additive output and must not perturb the selected fragments.
     if with_raw_diff:
-        raw_diff = get_raw_diff_text(root_dir, diff_range, timeout=timeout)
+        raw_diff, redacted, categories = _raw_diff_with_redactions(root_dir, diff_range, timeout, paths)
+        if redacted:
+            _count_raw_diff_redactions(result, redacted, categories)
         if raw_diff:
             return _with_raw_diff_ahead_of_fragments(result, raw_diff)
 
     return result
+
+
+# A secret on a removed line exists only in the patch; the document's
+# redaction count and coverage block must say so like any other redaction.
+def _count_raw_diff_redactions(result: dict[str, Any], count: int, categories: list[str]) -> None:
+    block = dict(result.get("redactions") or {"count": 0, "categories": []})
+    block["count"] = int(block.get("count", 0)) + count
+    block["categories"] = [*block.get("categories", []), *(c for c in categories if c not in block.get("categories", []))]
+    result["redactions"] = block
+    empty_usage = dict.fromkeys(("source_bytes", "parsed_files", "candidate_files", "edge_contributions", "final_edges"), 0)
+    coverage = dict(result.get("coverage") or {"status": "partial", "limit_reasons": [], "resources": empty_usage})
+    reasons = list(coverage.get("limit_reasons") or [])
+    if "sanitization_redaction" not in reasons:
+        reasons.append("sanitization_redaction")
+    coverage["limit_reasons"] = reasons
+    result["coverage"] = coverage
 
 
 # Readers consume the serialized output top-down, so the patch belongs above

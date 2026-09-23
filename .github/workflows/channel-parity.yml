@@ -1,0 +1,116 @@
+# .github/workflows/channel-parity.yml
+#
+# Every channel a user can install from is asked which version it serves, and
+# every release asset is fetched the way install.js and Scoop fetch it: an
+# unauthenticated GET. Twice a published release turned into a draft (a tag
+# deleted by hand, a tag pruned by the Forgejo push mirror); `gh release
+# download` kept succeeding on the draft while `npm install diffctx` 404'd for
+# ten days, and both were found by hand. This job finds them on a schedule.
+#
+# Known-bad probe: `gh workflow run channel-parity.yml -f expect_version=9.9.9`
+# must go red on every line — pass `file_issue=false` to keep the probe from
+# opening the issue.
+name: Release channel parity
+
+permissions: {}
+
+'on':
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      expect_version:
+        description: 'Version every channel must serve (default: src/diffctx/version.py)'
+        required: false
+        default: ''
+      file_issue:
+        description: 'Open or refresh the parity issue on a mismatch'
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  parity:
+    name: Every channel serves the released version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Resolve the expected version
+        id: expect
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.expect_version }}
+        run: |
+          version="$INPUT_VERSION"
+          if [ -z "$version" ]; then
+            version=$(cut -d'"' -f2 src/diffctx/version.py)
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "expecting $version everywhere"
+
+      - name: Probe every channel
+        id: probe
+        env:
+          VERSION: ${{ steps.expect.outputs.version }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          REPORT: ${{ runner.temp }}/parity.md
+        run: bash .github/scripts/channel-parity.sh
+
+      - name: Open or refresh the parity issue
+        if: steps.probe.outputs.failures != '0' && github.event.inputs.file_issue != 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ steps.expect.outputs.version }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REPORT: ${{ runner.temp }}/parity.md
+        run: |
+          set -euo pipefail
+          title="Release channel parity check failed"
+          body="${RUNNER_TEMP}/issue.md"
+          {
+            echo "Expected \`${VERSION}\` on every channel; [this run](${RUN_URL}) found:"
+            echo
+            cat "$REPORT"
+            echo
+            echo "Refreshed by \`channel-parity.yml\` on each failing run;" \
+              "closed automatically once every channel agrees."
+          } > "$body"
+          existing=$(gh issue list --repo "$REPO" --state open --search "\"${title}\" in:title" \
+            --json number,title --jq "[.[] | select(.title == \"${title}\")] | first | .number // empty")
+          if [ -n "$existing" ]; then
+            gh issue edit "$existing" --repo "$REPO" --body-file "$body"
+            echo "refreshed #$existing"
+          else
+            gh issue create --repo "$REPO" --title "$title" --label bug --body-file "$body"
+          fi
+
+      - name: Close the parity issue when every channel agrees
+        if: steps.probe.outputs.failures == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ steps.expect.outputs.version }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          title="Release channel parity check failed"
+          existing=$(gh issue list --repo "$REPO" --state open --search "\"${title}\" in:title" \
+            --json number,title --jq "[.[] | select(.title == \"${title}\")] | first | .number // empty")
+          if [ -n "$existing" ]; then
+            gh issue close "$existing" --repo "$REPO" \
+              --comment "Every channel serves \`${VERSION}\` ([run](${RUN_URL}))."
+          fi
+
+      - name: Fail on any disagreement
+        if: steps.probe.outputs.failures != '0'
+        env:
+          FAILURES: ${{ steps.probe.outputs.failures }}
+          VERSION: ${{ steps.expect.outputs.version }}
+        run: |
+          echo "${FAILURES} channel(s) disagree with ${VERSION}"
+          exit 1

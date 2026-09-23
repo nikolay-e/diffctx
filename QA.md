@@ -9,6 +9,7 @@ Project-specific facts for `/qa`. Generic methodology lives in
 |---|---|---|
 | CI | yes | GitHub Actions on the mirror (ci.yml, action-smoke, CodeQL per push; cd.yml/publish-* manual dispatch; nightly-full-eval cron). "Rust diffctx tests" is ~6 min on a warm cargo cache; a Rust-touching commit invalidates it (+~10 min compile). Beyond ~30 min on "Build and test" = stuck runner — `gh run cancel` + `gh run rerun --failed` (an 85-min hang resolved to a 6-min green rerun with zero changes). A re-run stuck in `queued` can be API-unrecoverable: cancel AND force-cancel 409 with "re-run that has not yet queued", and an all-jobs-cancelled CodeQL run later reports "cannot be retried" — don't fight it; the next push supersedes, verify the corpus gate on the new SHA |
 | Browser QA / stumble | yes | **there IS a deployed surface**: the GitHub Pages landing page (`nikolay-e.github.io/diffctx/`, built by the `pages build and deployment` run on every push). This row read "no web frontend" until 2026-08-26 and it was simply wrong — the page is where a stranger decides whether to adopt the tool, which is exactly what the stumble probe measures. It is ONE page: only `demo/` and `llms.txt` are additionally published; the `docs/` subdirectories are Markdown that Jekyll renders on Pages too (`product/token-budget.html`, `product/cli.html`, `product/faq.html` answer 200 — verified 2026-09-16; this row claimed they 404 until then), and since #240 the nav links `product/cli.html` |
+| PWA | yes | the landing page carries `manifest.webmanifest`, `icons/` and `sw.js` (network-first, precached shell as the offline fallback; Pages has no build step, so nothing stamps a version and the worker never serves a live visit from cache). `tests/test_publishing_manifests.py::TestLandingPagePwa` pins the set. The Jekyll-rendered `product/*.html` pages get the worker's scope but not its registration |
 | Post-deploy autoqa | no sensor | nothing runs the crawler against the Pages site, so the link sweep is done in-pass (fetch the page, follow same-origin links, HEAD every external). The `fonts.googleapis.com` / `fonts.gstatic.com` bare hosts are `rel=preconnect` hints and 404 on a bare GET — always false positives, never file them |
 | CD / K8s / ArgoCD | no | ships to PyPI, npm, crates.io, Docker Hub via cd.yml/publish-extras.yml; those workflows' publish smokes are the probes |
 | Backend smoke | no | — |
@@ -49,7 +50,16 @@ verbatim. `STUMBLE_URL` is the Pages landing page.
   immediate).
 - **Renovate auto-merges its Forgejo PRs** (renovate.json: patch/minor
   automerge, squash) — possibly hours after opening them, so an "open" PR
-  list is a snapshot, not a queue to hand-merge. A pin that must NOT land
+  list is a snapshot, not a queue to hand-merge. When the whole fleet's bot
+  PRs sit open past the next nightly run (2026-09-22: 82 across 16 repos),
+  the stall is in gitops' shared Renovate preset, not here (2026-09-22 cause:
+  with no status checks on the branch Renovate rates it yellow and never merges
+  itself; the merges everyone saw were Forgejo's event-driven automerge firing
+  on Monday rebases — `ignoreTests: true` in the preset is the fix) — hand it
+  to the gitops session, then merge this repo's own by hand after checking each
+  bump (`ruff check` at the new rev, `cargo check` on the bumped crate, the
+  action SHA against `git ls-remote --tags` of the peeled tag). A pin that
+  must NOT land
   needs a `packageRules` constraint (the python `allowedVersions: <3.14`
   CI-matrix gate is the precedent), not a closed PR.
 - **Forgejo's merge API can return 405 with an empty message on a merge
@@ -276,7 +286,16 @@ dismissing as bot noise.
    issue filed that pass), 7 `python:S2245` + 1 `python:S2612` re-marked false
    positive (the marks did not migrate from SonarCloud), `docker:S6471` on
    `Dockerfile.eval` accepted (operator-run research image).
-6. The stumble ledger is a channel: `[stumble] <task>` issues carry the
+6. **SonarCloud still analyses every GitHub push** under the legacy key
+   `nikolay-e_TreeMapper` (organization `nikolay-e`; a search for "diffctx"
+   finds nothing) and keeps its own "Sonar way" gate — security, reliability
+   and maintainability ratings on new code, which the self-hosted "Fleet" gate
+   does not have. Both gates are intake. Public API, no token:
+   `https://sonarcloud.io/api/qualitygates/project_status?projectKey=nikolay-e_TreeMapper`
+   and `…/api/issues/search?componentKeys=nikolay-e_TreeMapper&resolved=false&inNewCodePeriod=true`.
+   On 2026-09-23 it held a C security rating (an http-capable `curl -L`) while
+   the self-hosted gate read OK.
+7. The stumble ledger is a channel: `[stumble] <task>` issues carry the
    per-batch median and the deduped gripes. A convergent gripe (the same slug
    from independent runs) is the signal — on 2026-08-30 four of six slugs were
    one defect, an unsourced headline number, and it was real.
@@ -289,6 +308,18 @@ dismissing as bot noise.
   per-pass decisions.
 - `gated` label = blocked on a pre-registered experiment or eval-cycle
   boundary.
+- Defect classes (2026-09-22): `bug` = shipped behaviour is wrong;
+  `eval-integrity` = the measurement instrument is wrong (harness, dataset,
+  aggregator, provenance) — these are #269's splits and never sit under
+  `research`; `regression` = v1/v2 had it and the rewrite lost it;
+  `validation-gap` = a shipped default nobody measured; `known-limitation` =
+  a measured ceiling of the mechanism. An issue whose body documents a broken
+  instrument but carries only `benchmark`/`paper` is misfiled — that is how a
+  tracker with zero `bug`s read as "no defects left".
+- **A closure comment does not tick the body.** #245's items 2/5/6 stayed
+  `[ ]` for three weeks after the comment that closed them, and an outside
+  audit read the issue as closed-with-open-work. When a comment closes a
+  checklist item, edit the body in the same pass; `gh issue edit --body-file`.
 
 ## Traps this repo has already sprung
 
@@ -321,6 +352,21 @@ dismissing as bot noise.
   `github/main` only in the finalize job, so a cancelled `cd.yml` leaves
   `version.py` on the old version and the same version can be dispatched
   again.
+- **`uvx --from 'diffctx[mcp]' diffctx-mcp` builds from source when uv's
+  default interpreter is free-threaded.** The wheels are `cp310-abi3`, which
+  a `3.14t` build cannot use, so uvx resolves the sdist, compiles the Rust
+  extension (~75 s, needs cargo) and the MCP client gives up at its 30 s
+  connect timeout — this session's own `diffctx` server "failed to connect"
+  that way. The failure is the user's uv setup (`uv python list`: a managed
+  `+freethreaded` install and no other managed one), not the package; the
+  README shape is still right. Diagnose with the initialize handshake piped
+  into the command under `time`.
+- **Docs subpages load `anchor-js` from cdnjs through the default Jekyll
+  theme** (`docs/` has no `_config.yml`, so Pages renders `product/*.md` with
+  `jekyll-theme-primer`, whose layout inlines `anchors.add()`). With the CDN
+  blocked the console shows `ReferenceError: anchors is not defined`; the page
+  reads fine. A stumble run gripes about it; overriding the theme layout to
+  drop one script buys nothing — do not file it.
 - **The landing page scrolled sideways on a phone for months.** At 390 px the
   nav links and the single-column lab grid (`1fr` resolves to min-content)
   pushed the document to ~595 px wide; nothing checked it. Browser QA of the
@@ -384,6 +430,18 @@ dismissing as bot noise.
 - **A new eval test needs `pytest.importorskip("numpy")`** (or whatever the
   eval group provides): CI's test job installs no eval group, so an
   unguarded import fails collection on every Python version.
+
+- **Every child process gets a null stdin.** Under an MCP client the server's
+  stdin is the JSON-RPC pipe the client holds open; a git that inherited it
+  never exited on Windows and every tool call reaching git hung (fixed
+  2026-09-23, `git_command` + every `subprocess.run`). A new spawn site that
+  forgets `.stdin(Stdio::null())` / `stdin=subprocess.DEVNULL` re-opens it, and
+  only the Windows legs of `tests/test_mcp_stdio.py` will say so.
+- **On Windows `text=True` decodes as cp1252, and `write_text` writes CRLF.**
+  Four "Windows-only" failures on 2026-09-23 were the tests': UTF-8 output read
+  as cp1252 (`—` became `�`), and a 99 KB fixture that crossed the 100 KB cap
+  once every `\n` became `\r\n`. Tests read subprocess output with
+  `encoding="utf-8"` and write fixtures with `newline=""`.
 
 ## Known false positives
 

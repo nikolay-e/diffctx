@@ -1,0 +1,69 @@
+name: perl_require_path
+tags:
+- lang:perl
+- change:single_file
+- context:cross_module
+- builder:perl
+repo:
+  initial_files:
+    bin/boot.pl: |
+      require "vendor/palette.pl";
+
+      my $width = 800;
+      my $height = 600;
+      print "starting $width x $height\n";
+    vendor/palette.pl: |
+      our %crimson = (r => 220, g => 20, b => 60);
+      our %teal = (r => 0, g => 128, b => 128);
+      our %amber = (r => 255, g => 191, b => 0);
+      1;
+    vendor/archive.pl: |
+      sub compress_folder {
+          my ($folder) = @_;
+          return system("tar", "-czf", "$folder.tgz", $folder) == 0;
+      }
+      sub extract_bundle {
+          my ($bundle, $target) = @_;
+          return system("tar", "-xzf", $bundle, "-C", $target) == 0;
+      }
+      1;
+    vendor/network.pl: |
+      sub wait_for_port {
+          my ($host, $port) = @_;
+          for my $attempt (1 .. 10) {
+              return 1 if system("nc", "-z", $host, $port) == 0;
+          }
+          return 0;
+      }
+      sub is_reachable {
+          my ($host) = @_;
+          return system("ping", "-c", "1", $host) == 0;
+      }
+      1;
+  changed_files:
+    bin/boot.pl: |
+      require "vendor/palette.pl";
+
+      my $width = 1024;
+      my $height = 768;
+      print "starting $width x $height\n";
+  commit_message: Larger default window
+fixtures:
+  auto_garbage: true
+fragments:
+- id: gold
+  selector:
+    path: vendor/palette.pl
+    anchor: '%crimson'
+- id: no_archive
+  selector:
+    path: vendor/archive.pl
+- id: no_network
+  selector:
+    path: vendor/network.pl
+oracle:
+  required:
+  - gold
+  forbidden:
+  - no_archive
+  - no_network

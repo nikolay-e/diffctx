@@ -1,0 +1,65 @@
+name: nix_import_path
+tags:
+- lang:nix
+- change:single_file
+- context:cross_module
+- builder:nix
+repo:
+  initial_files:
+    hosts/web.nix: |
+      let
+        tints = import ../vendor/palette.nix;
+      in
+      {
+        width = 800;
+        height = 600;
+      }
+    vendor/palette.nix: |
+      {
+        crimson = "#dc143c";
+        teal = "#008080";
+        amber = "#ffbf00";
+      }
+    vendor/archive.nix: |
+      { stdenv, gnutar }:
+      stdenv.mkDerivation {
+        pname = "bundle-tool";
+        version = "1.0";
+        buildInputs = [ gnutar ];
+      }
+    vendor/network.nix: |
+      { lib }:
+      {
+        retries = 10;
+        backoffSeconds = lib.range 1 5;
+        probeCommand = "nc -z";
+      }
+  changed_files:
+    hosts/web.nix: |
+      let
+        tints = import ../vendor/palette.nix;
+      in
+      {
+        width = 1024;
+        height = 768;
+      }
+  commit_message: Larger default window
+fixtures:
+  auto_garbage: true
+fragments:
+- id: gold
+  selector:
+    path: vendor/palette.nix
+    anchor: crimson =
+- id: no_archive
+  selector:
+    path: vendor/archive.nix
+- id: no_network
+  selector:
+    path: vendor/network.nix
+oracle:
+  required:
+  - gold
+  forbidden:
+  - no_archive
+  - no_network

@@ -12,6 +12,7 @@ import yaml
 from .conftest import run_diffctx_subprocess
 
 EXIT_OK = 0
+EXIT_USAGE = 2
 EXIT_ENVIRONMENT = 3
 EXIT_EMPTY_DIFF = 4
 
@@ -111,6 +112,25 @@ class TestDurationWindows:
         result = run_diffctx_subprocess([".", "--diff", "8dd"], cwd=straddling_repo)
         assert result.returncode == EXIT_ENVIRONMENT
         assert "unknown git revision '8dd'" in result.stderr
+
+    @pytest.mark.parametrize("typo", ["1.5h", "99999999999w"])
+    def test_a_malformed_duration_names_the_duration_syntax(self, straddling_repo, typo):
+        result = run_diffctx_subprocess([".", "--diff", typo], cwd=straddling_repo)
+        assert result.returncode == EXIT_USAGE
+        assert "invalid duration" in result.stderr
+        assert "unknown revision" not in result.stderr
+        assert "unknown git revision" not in result.stderr
+
+    def test_a_padded_duration_is_the_same_window(self, straddling_repo):
+        padded = run_diffctx_subprocess([".", "--diff", " 24h ", "-f", "yaml"], cwd=straddling_repo)
+        plain = run_diffctx_subprocess([".", "--diff", "24h", "-f", "yaml"], cwd=straddling_repo)
+        assert padded.returncode == plain.returncode == EXIT_OK
+        assert padded.stdout == plain.stdout
+
+    def test_a_zero_window_on_a_clean_tree_is_empty(self, straddling_repo):
+        result = run_diffctx_subprocess([".", "--diff", "0s", "-f", "yaml"], cwd=straddling_repo)
+        assert result.returncode == EXIT_EMPTY_DIFF
+        assert _changed_files(result) == []
 
     def test_mcp_fetch_reads_window_bodies_from_the_working_tree(self, straddling_repo):
         """A window ends at the working tree, so `git show 24h:file` is not the

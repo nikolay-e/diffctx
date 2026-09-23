@@ -1,0 +1,63 @@
+name: latex_input_path
+tags:
+- lang:latex
+- change:single_file
+- context:cross_module
+- builder:latex
+repo:
+  initial_files:
+    paper/main.tex: |
+      \documentclass{article}
+      \begin{document}
+      \title{Draft}
+      \maketitle
+      \input{parts/qz.tex}
+      Early results look promising.
+      \end{document}
+    parts/qz.tex: |
+      \section{Method}
+      We sample widgets uniformly and weigh every sample twice.
+    parts/archive.tex: |
+      \section{Archive}
+      Compression of folders proceeds in batches of eight bundles.
+      Each bundle carries a checksum verified after extraction.
+    parts/network.tex: |
+      \section{Network}
+      Ports are polled ten times before a host is declared unreachable.
+      Fetches retry three times with exponential backoff.
+    parts/journal.tex: |
+      \section{Journal}
+      Log lines are rotated weekly and the newest seven files are kept.
+  changed_files:
+    paper/main.tex: |
+      \documentclass{article}
+      \begin{document}
+      \title{Draft}
+      \maketitle
+      \input{parts/qz.tex}
+      Final results confirm the trend.
+      \end{document}
+  commit_message: Update conclusion
+fixtures:
+  auto_garbage: true
+fragments:
+- id: method
+  selector:
+    path: parts/qz.tex
+    anchor: section{Method}
+- id: no_archive
+  selector:
+    path: parts/archive.tex
+- id: no_network
+  selector:
+    path: parts/network.tex
+- id: no_journal
+  selector:
+    path: parts/journal.tex
+oracle:
+  required:
+  - method
+  forbidden:
+  - no_archive
+  - no_network
+  - no_journal

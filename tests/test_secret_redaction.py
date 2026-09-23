@@ -95,3 +95,38 @@ async def test_mcp_fetch_and_glob_surfaces_redact(tmp_path):
     register_legacy_tools(mcp)
     globbed = await mcp.call_tool("get_file_context", {"repo_path": str(repo.path), "patterns": ["src/*.py"]})
     _assert_clean(_get_text(globbed), "mcp glob")
+
+
+def _locate_doc_is_redacted(doc: dict, where: str) -> None:
+    _assert_clean(json.dumps(doc), where)
+    assert "[REDACTED:aws_access_key]" in doc["commit_message"], where
+    assert doc["redactions"]["count"] >= 1, where
+    assert "sanitization_redaction" in doc["coverage"]["limit_reasons"], where
+
+
+def test_locate_mode_redacts_the_commit_message(tmp_path):
+    from diffctx._native.pipeline import build_locate
+
+    repo = _repo_with_planted_secrets(tmp_path)
+    result = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "--mode", "locate", "-q"], cwd=repo.path)
+    assert result.returncode == 0, result.stderr
+    _assert_clean(result.stdout, "locate stdout")
+    _locate_doc_is_redacted(json.loads(result.stdout), "locate cli")
+    _locate_doc_is_redacted(json.loads(build_locate(repo.path, "HEAD~1..HEAD")), "locate native")
+
+
+def test_a_secret_only_on_removed_lines_is_counted(tmp_path):
+    repo = Pygit2Repo(tmp_path / "repo")
+    repo.add_file("src/keys.py", f"KEY = '{AWS}'\n\n\ndef key():\n    return KEY\n")
+    repo.commit("initial")
+    repo.add_file("src/keys.py", "KEY = None\n\n\ndef key():\n    return KEY\n")
+    repo.commit("drop the key")
+    result = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "--with-raw-diff", "-f", "json"], cwd=repo.path)
+    assert result.returncode == 0, result.stderr
+    _assert_clean(result.stdout, "raw diff json")
+    doc = json.loads(result.stdout)
+    assert "[REDACTED:aws_access_key]" in doc["raw_diff"]
+    assert doc["redactions"]["count"] >= 1
+    assert "aws_access_key" in doc["redactions"]["categories"]
+    assert "sanitization_redaction" in doc["coverage"]["limit_reasons"]
+    assert "credential-shaped string(s) redacted" in result.stderr

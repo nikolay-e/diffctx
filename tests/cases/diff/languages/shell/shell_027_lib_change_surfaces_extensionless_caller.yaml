@@ -1,0 +1,121 @@
+name: shell_027_lib_change_surfaces_extensionless_caller
+tags:
+- lang:shell
+- change:single_file
+- context:cross_module
+- parser:shebang_sniff
+repo:
+  initial_files:
+    bin/release: |
+      #!/bin/sh
+      . lib/palette.sh
+
+      printf "%s\n" "tagging release"
+      git tag "v$1"
+    lib/palette.sh: |
+      TERM_RED='\033[0;31m'
+      TERM_RESET='\033[0m'
+    lib/archive.sh: |
+      compress_folder() {
+          tar -czf "$1.tar.gz" "$1"
+      }
+
+      extract_bundle() {
+          mkdir -p "$2"
+          tar -xzf "$1" -C "$2"
+      }
+
+      checksum_bundle() {
+          sha256sum "$1" | cut -d' ' -f1 > "$1.sha256"
+      }
+
+      verify_bundle() {
+          expected=$(cat "$1.sha256")
+          actual=$(sha256sum "$1" | cut -d' ' -f1)
+          [ "$expected" = "$actual" ]
+      }
+
+      prune_bundles() {
+          find "$1" -name '*.tar.gz' -mtime +30 -delete
+      }
+    lib/network.sh: |
+      wait_for_port() {
+          host=$1
+          port=$2
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+              nc -z "$host" "$port" && return 0
+              sleep "$attempt"
+          done
+          return 1
+      }
+
+      fetch_with_retry() {
+          url=$1
+          target=$2
+          for attempt in 1 2 3; do
+              curl -fsSL "$url" -o "$target" && return 0
+              sleep 2
+          done
+          return 1
+      }
+
+      resolve_address() {
+          getent hosts "$1" | awk '{print $1}' | head -n1
+      }
+    lib/logging.sh: |
+      log_line() {
+          level=$1
+          shift
+          printf '%s [%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$level" "$*" >&2
+      }
+
+      log_info() {
+          log_line INFO "$@"
+      }
+
+      log_warn() {
+          log_line WARN "$@"
+      }
+
+      log_fail() {
+          log_line FAIL "$@"
+          exit 1
+      }
+
+      rotate_logs() {
+          directory=$1
+          keep=$2
+          ls -1t "$directory"/*.log 2>/dev/null | tail -n +"$((keep + 1))" | xargs -r rm -f
+      }
+
+      tail_since() {
+          file=$1
+          marker=$2
+          awk -v m="$marker" 'found {print} index($0, m) {found = 1}' "$file"
+      }
+  changed_files:
+    lib/palette.sh: |
+      TERM_RED='\033[1;31m'
+      TERM_RESET='\033[0m'
+  commit_message: Bold red
+fragments:
+- id: release_script
+  selector:
+    path: bin/release
+    anchor: . lib/palette.sh
+- id: no_archive
+  selector:
+    path: lib/archive.sh
+- id: no_network
+  selector:
+    path: lib/network.sh
+- id: no_logging
+  selector:
+    path: lib/logging.sh
+oracle:
+  required:
+  - release_script
+  forbidden:
+  - no_archive
+  - no_network
+  - no_logging

@@ -25,6 +25,12 @@
         "type": "string"
       }
     },
+    "commit_count": {
+      "description": "Commits in the range when that is more than `commit_messages` lists.",
+      "type": "integer",
+      "format": "uint",
+      "minimum": 0
+    },
     "changed_files": {
       "type": "array",
       "items": {
@@ -767,6 +773,13 @@
         },
         "resources": {
           "$ref": "#/$defs/ResourceUsage"
+        },
+        "lossy_files": {
+          "description": "Files that were not UTF-8 and were decoded with replacement\ncharacters (`NonUtf8Content`): their symbols and identifiers may be\ntruncated at the first non-ASCII byte.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       },
       "required": [
@@ -777,23 +790,34 @@
     },
     "LimitReason": {
       "description": "Why a run did not do everything it could have. One vocabulary for every\nphase; consumers read `coverage.limit_reasons` and never a per-subsystem\nboolean.",
-      "type": "string",
-      "enum": [
-        "unsupported_language",
-        "parse_error",
-        "file_too_large",
-        "total_byte_limit",
-        "candidate_limit",
-        "posting_limit",
-        "edge_contribution_limit",
-        "edge_limit",
-        "need_limit",
-        "discovery_truncated",
-        "diffusion_truncated",
-        "deadline",
-        "evidence_budget_exceeded",
-        "selection_budget_exceeded",
-        "sanitization_redaction"
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "file_too_large",
+            "total_byte_limit",
+            "candidate_limit",
+            "edge_contribution_limit",
+            "edge_limit",
+            "need_limit",
+            "discovery_truncated",
+            "diffusion_truncated",
+            "deadline",
+            "evidence_budget_exceeded",
+            "selection_budget_exceeded",
+            "sanitization_redaction"
+          ]
+        },
+        {
+          "description": "A file cut to `max_fragments_per_file`: what the diff touched survives\nthe cut, the rest is the longest fragments only.",
+          "type": "string",
+          "const": "fragment_limit"
+        },
+        {
+          "description": "A changed or context file that was not UTF-8 and was decoded lossily;\n`coverage.lossy_files` names them.",
+          "type": "string",
+          "const": "non_utf8_content"
+        }
       ]
     },
     "ResourceUsage": {

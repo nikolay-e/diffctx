@@ -1,0 +1,62 @@
+name: julia_include_path
+tags:
+- lang:julia
+- change:single_file
+- context:cross_module
+- builder:julia
+repo:
+  initial_files:
+    bin/boot.jl: |
+      include("vendor/palette.jl")
+
+      const width = 800
+      const height = 600
+      println("starting ", width, "x", height)
+    vendor/palette.jl: |
+      const crimson = (0.86, 0.08, 0.24)
+      const teal = (0.0, 0.5, 0.5)
+      const amber = (1.0, 0.75, 0.0)
+    vendor/archive.jl: |
+      function compress_folder(folder)
+          run(`tar -czf $(folder).tgz $(folder)`)
+      end
+      function extract_bundle(bundle, target)
+          run(`tar -xzf $(bundle) -C $(target)`)
+      end
+    vendor/network.jl: |
+      function wait_for_port(host, port)
+          for attempt in 1:10
+              success(`nc -z $(host) $(port)`) && return true
+          end
+          return false
+      end
+      function is_reachable(host)
+          return success(`ping -c 1 $(host)`)
+      end
+  changed_files:
+    bin/boot.jl: |
+      include("vendor/palette.jl")
+
+      const width = 1024
+      const height = 768
+      println("starting ", width, "x", height)
+  commit_message: Larger default window
+fixtures:
+  auto_garbage: false
+fragments:
+- id: gold
+  selector:
+    path: vendor/palette.jl
+    anchor: crimson =
+- id: no_archive
+  selector:
+    path: vendor/archive.jl
+- id: no_network
+  selector:
+    path: vendor/network.jl
+oracle:
+  required:
+  - gold
+  forbidden:
+  - no_archive
+  - no_network

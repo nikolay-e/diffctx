@@ -1,0 +1,18 @@
+# Semantic builders with no corpus case that fails when the builder alone is
+# disabled. builder-knife.yml treats this list bidirectionally: a listed
+# builder must stay at zero newly-failing cases, and one that starts carrying
+# a case fails until its line is removed. Format: <builder> <reason>.
+ruby no edge-only case yet
+elixir no edge-only case yet
+sql no edge-only case yet
+dbt builders/dbt_ref_model passes with the builder disabled: another channel reaches the model
+graphql builders/graphql_field_type_ref passes with the builder disabled: another channel reaches the type
+prisma builders/prisma_model_type_ref passes with the builder disabled: another channel reaches the model
+latex edge-only case listed in known_below_threshold.txt (5% rescue cap)
+protobuf edge-only case listed in known_below_threshold.txt (5% rescue cap)
+clojure edge-only case listed in known_below_threshold.txt (admission gate)
+openapi edge-only case listed in known_below_threshold.txt (admission gate)
+nim edge-only case listed in known_below_threshold.txt (links a distractor)
+ocaml edge-only case listed in known_below_threshold.txt (links a distractor)
+nix edge-only case listed in known_below_threshold.txt (target never discovered)
+julia builders/julia_include_path passes with the builder disabled: tags matches the include path's words; with auto_garbage a JS module sharing the keyword const displaced the gold

@@ -3,12 +3,13 @@ import logging
 import sys
 
 import pytest
+import yaml
 
-from .conftest import IS_WSL
+from .conftest import IS_WSL, run_diffctx_subprocess
 from .utils import get_all_files_in_tree, load_yaml
 
 
-def test_custom_ignore(temp_project, run_mapper):
+def test_custom_ignore(temp_project, run_mapper_yaml):
     ignore_file = temp_project / "custom.ignore"
     ignore_file.write_text("""
 # Ignore all Python files
@@ -18,7 +19,7 @@ docs/
 # Ignore specific file
 .gitignore
 """)
-    assert run_mapper([".", "-i", str(ignore_file), "-o", "directory_tree.yaml"])
+    assert run_mapper_yaml([".", "-i", str(ignore_file), "-o", "directory_tree.yaml"])
     result = load_yaml(temp_project / "directory_tree.yaml")
     all_files = get_all_files_in_tree(result)
     assert not any(isinstance(f, str) and f.endswith(".py") for f in all_files)
@@ -26,7 +27,7 @@ docs/
     assert ".gitignore" not in all_files
 
 
-def test_gitignore_patterns(temp_project, run_mapper):
+def test_gitignore_patterns(temp_project, run_mapper_yaml):
     (temp_project / ".gitignore").write_text("*.pyc\n__pycache__/\n")
     (temp_project / "src" / ".gitignore").write_text("local_only.py\n")
     (temp_project / "test.pyc").touch()
@@ -34,7 +35,7 @@ def test_gitignore_patterns(temp_project, run_mapper):
     (temp_project / "__pycache__" / "cachefile").touch()
     (temp_project / "src" / "local_only.py").touch()
     (temp_project / "src" / "allowed.py").touch()
-    assert run_mapper([".", "-o", "directory_tree.yaml"])
+    assert run_mapper_yaml([".", "-o", "directory_tree.yaml"])
     result = load_yaml(temp_project / "directory_tree.yaml")
     all_files = get_all_files_in_tree(result)
     assert "test.pyc" not in all_files
@@ -44,7 +45,7 @@ def test_gitignore_patterns(temp_project, run_mapper):
     assert "allowed.py" in all_files
 
 
-def test_symlinks_and_special_files(temp_project, run_mapper):
+def test_symlinks_and_special_files(temp_project, run_mapper_yaml):
     hidden_dir = temp_project / ".hidden_dir"
     hidden_file = temp_project / ".hidden_file"
     target_file = temp_project / "target.txt"
@@ -74,7 +75,7 @@ def test_symlinks_and_special_files(temp_project, run_mapper):
     config_dir = temp_project / ".diffctx"
     config_dir.mkdir(exist_ok=True)
     (config_dir / "ignore").write_text(".*\n!.gitignore\n")
-    assert run_mapper([".", "-o", "directory_tree.yaml"])
+    assert run_mapper_yaml([".", "-o", "directory_tree.yaml"])
     result = load_yaml(temp_project / "directory_tree.yaml")
     all_files = get_all_files_in_tree(result)
     assert ".hidden_dir" not in all_files
@@ -85,15 +86,15 @@ def test_symlinks_and_special_files(temp_project, run_mapper):
         assert symlink_file.name not in all_files
 
 
-def test_empty_and_invalid_ignores(temp_project, run_mapper):
+def test_empty_and_invalid_ignores(temp_project, run_mapper_yaml):
     (temp_project / ".gitignore").write_text("")
     config_dir = temp_project / ".diffctx"
     config_dir.mkdir(exist_ok=True)
     (config_dir / "ignore").write_text("\n\n# Just comments\n\n")
     (temp_project / "empty.ignore").write_text("")
     (temp_project / "invalid.ignore").write_text("[\ninvalid\npattern\n")
-    assert run_mapper([".", "-o", "out_empty.yaml"])
-    assert run_mapper(
+    assert run_mapper_yaml([".", "-o", "out_empty.yaml"])
+    assert run_mapper_yaml(
         [
             ".",
             "-i",
@@ -102,7 +103,7 @@ def test_empty_and_invalid_ignores(temp_project, run_mapper):
             "out_custom_empty.yaml",
         ]
     )
-    assert run_mapper(
+    assert run_mapper_yaml(
         [
             ".",
             "-i",
@@ -111,17 +112,17 @@ def test_empty_and_invalid_ignores(temp_project, run_mapper):
             "out_invalid.yaml",
         ]
     )
-    assert not run_mapper([".", "-i", "nonexistent.ignore", "-o", "out_nonexistent.yaml"])
+    assert not run_mapper_yaml([".", "-i", "nonexistent.ignore", "-o", "out_nonexistent.yaml"])
     assert load_yaml(temp_project / "out_empty.yaml") is not None
 
 
-def test_ignore_negation(temp_project, run_mapper):
+def test_ignore_negation(temp_project, run_mapper_yaml):
     (temp_project / ".gitignore").write_text("*.log\n!important.log\n")
     (temp_project / "app.log").touch()
     (temp_project / "important.log").touch()
     (temp_project / "another.log").touch()
     output_path = temp_project / "negation_output.yaml"
-    assert run_mapper([".", "-o", str(output_path)])
+    assert run_mapper_yaml([".", "-o", str(output_path)])
     result = load_yaml(output_path)
     all_files = get_all_files_in_tree(result)
     assert "app.log" not in all_files
@@ -129,7 +130,7 @@ def test_ignore_negation(temp_project, run_mapper):
     assert "important.log" in all_files, "Negated file 'important.log' was incorrectly ignored"
 
 
-def test_ignore_double_star(temp_project, run_mapper, caplog):
+def test_ignore_double_star(temp_project, run_mapper_yaml, caplog):
     caplog.set_level(logging.DEBUG)
     (temp_project / ".gitignore").write_text("**/temp_files/\n")
     (temp_project / "a" / "temp_files").mkdir(parents=True)
@@ -139,7 +140,7 @@ def test_ignore_double_star(temp_project, run_mapper, caplog):
     (temp_project / "a" / "other_dir").mkdir()
     (temp_project / "a" / "other_dir" / "file3.txt").touch()
     output_path = temp_project / "doublestar_output.yaml"
-    assert run_mapper([".", "-o", str(output_path)])
+    assert run_mapper_yaml([".", "-o", str(output_path)])
     result = load_yaml(output_path)
     all_names = get_all_files_in_tree(result)
 
@@ -150,15 +151,15 @@ def test_ignore_double_star(temp_project, run_mapper, caplog):
     assert "file3.txt" in all_names, "'file3.txt' should NOT be ignored"
 
 
-def test_ignore_output_file_itself(temp_project, run_mapper):
+def test_ignore_output_file_itself(temp_project, run_mapper_yaml):
     output_path1 = temp_project / "output1.yaml"
-    assert run_mapper([".", "-o", str(output_path1)])
+    assert run_mapper_yaml([".", "-o", str(output_path1)])
     result1 = load_yaml(output_path1)
     all_files1 = get_all_files_in_tree(result1)
     assert output_path1.name not in all_files1, f"Output file {output_path1.name} was not ignored in root"
 
     output_path2 = temp_project / "src" / "output2.yaml"
-    assert run_mapper([".", "-o", str(output_path2)])
+    assert run_mapper_yaml([".", "-o", str(output_path2)])
     result2 = load_yaml(output_path2)
     all_files2 = get_all_files_in_tree(result2)
     assert output_path2.name not in all_files2, f"Output file {output_path2.name} was not ignored in existing subdir"
@@ -167,7 +168,7 @@ def test_ignore_output_file_itself(temp_project, run_mapper):
     output_path3 = output_dir3 / "output3.yaml"
 
     output_dir3.mkdir(parents=True, exist_ok=True)
-    assert run_mapper([".", "-o", str(output_path3)])
+    assert run_mapper_yaml([".", "-o", str(output_path3)])
     assert output_path3.exists()
     result3 = load_yaml(output_path3)
     all_files3 = get_all_files_in_tree(result3)
@@ -175,7 +176,7 @@ def test_ignore_output_file_itself(temp_project, run_mapper):
     assert output_path3.name not in all_files3, f"Output file {output_path3.name} was not ignored when in a new subdir"
 
 
-def test_no_default_ignores_flag(temp_project, run_mapper):
+def test_no_default_ignores_flag(temp_project, run_mapper_yaml):
     git_dir = temp_project / ".git"
     git_dir.mkdir(parents=True, exist_ok=True)
     (git_dir / "config").write_text("test")
@@ -190,7 +191,7 @@ def test_no_default_ignores_flag(temp_project, run_mapper):
 
     custom_ignore = temp_project / "custom_empty.ignore"
     custom_ignore.touch()
-    assert run_mapper(
+    assert run_mapper_yaml(
         [
             ".",
             "--no-default-ignores",
@@ -219,14 +220,14 @@ def test_no_default_ignores_flag(temp_project, run_mapper):
     sys.platform == "win32" or IS_WSL,
     reason="os.chmod limited on Windows/WSL",
 )
-def test_unreadable_ignore_file(temp_project, run_mapper, set_perms, caplog):
+def test_unreadable_ignore_file(temp_project, run_mapper_yaml, set_perms, caplog):
     config_dir = temp_project / ".diffctx"
     ignore_file = config_dir / "ignore"
     ignore_file.write_text(".git/\n")
     set_perms(ignore_file, 0o000)
 
     with caplog.at_level(logging.WARNING, logger="diffctx"):
-        assert run_mapper([".", "-o", "directory_tree.yaml", "--log-level", "warning"])
+        assert run_mapper_yaml([".", "-o", "directory_tree.yaml", "--log-level", "warning"])
 
     assert any(
         "Could not read ignore file" in rec.message and ignore_file.name in rec.message
@@ -235,7 +236,7 @@ def test_unreadable_ignore_file(temp_project, run_mapper, set_perms, caplog):
     ), "Expected WARNING log about unreadable ignore file not found"
 
 
-def test_bad_encoding_ignore_file(temp_project, run_mapper, caplog):
+def test_bad_encoding_ignore_file(temp_project, run_mapper_yaml, caplog):
     config_dir = temp_project / ".diffctx"
     ignore_file = config_dir / "ignore"
     try:
@@ -245,7 +246,7 @@ def test_bad_encoding_ignore_file(temp_project, run_mapper, caplog):
         pytest.skip("CP1251 codec not found")
 
     with caplog.at_level(logging.WARNING, logger="diffctx"):
-        assert run_mapper([".", "-o", "directory_tree.yaml", "--log-level", "warning"])
+        assert run_mapper_yaml([".", "-o", "directory_tree.yaml", "--log-level", "warning"])
 
     assert any(
         "Could not decode ignore file" in rec.message and ignore_file.name in rec.message and "UTF-8" in rec.message
@@ -257,7 +258,7 @@ def test_bad_encoding_ignore_file(temp_project, run_mapper, caplog):
 
     (temp_project / "папка_игнор").mkdir()
 
-    assert run_mapper([".", "-o", "directory_tree.yaml"])
+    assert run_mapper_yaml([".", "-o", "directory_tree.yaml"])
     result = load_yaml(temp_project / "directory_tree.yaml")
     all_files = get_all_files_in_tree(result)
     assert "папка_игнор" in all_files
@@ -266,7 +267,7 @@ def test_bad_encoding_ignore_file(temp_project, run_mapper, caplog):
 # --- Advanced ignore pattern tests (merged from test_ignore_advanced.py) ---
 
 
-def test_ignore_precedence_subdir_over_root(temp_project, run_mapper):
+def test_ignore_precedence_subdir_over_root(temp_project, run_mapper_yaml):
     (temp_project / ".gitignore").write_text("*.txt\n")
     (temp_project / "subdir").mkdir()
     (temp_project / "subdir" / ".gitignore").write_text("!allow.txt\n")
@@ -274,7 +275,7 @@ def test_ignore_precedence_subdir_over_root(temp_project, run_mapper):
     (temp_project / "subdir" / "ignore.txt").touch()
     (temp_project / "subdir" / "allow.txt").touch()
 
-    assert run_mapper([".", "-o", "directory_tree.yaml"])
+    assert run_mapper_yaml([".", "-o", "directory_tree.yaml"])
     result = load_yaml(temp_project / "directory_tree.yaml")
     all_files = get_all_files_in_tree(result)
 
@@ -283,7 +284,7 @@ def test_ignore_precedence_subdir_over_root(temp_project, run_mapper):
     assert "allow.txt" in all_files
 
 
-def test_ignore_precedence_diffctx_over_git(temp_project, run_mapper):
+def test_ignore_precedence_diffctx_over_git(temp_project, run_mapper_yaml):
     (temp_project / ".gitignore").write_text("*.pyc\n")
     config_dir = temp_project / ".diffctx"
     config_dir.mkdir(exist_ok=True)
@@ -292,7 +293,7 @@ def test_ignore_precedence_diffctx_over_git(temp_project, run_mapper):
     (temp_project / "file.log").touch()
     (temp_project / "file.txt").touch()
 
-    assert run_mapper([".", "-o", "directory_tree.yaml"])
+    assert run_mapper_yaml([".", "-o", "directory_tree.yaml"])
     result = load_yaml(temp_project / "directory_tree.yaml")
     all_files = get_all_files_in_tree(result)
 
@@ -301,7 +302,7 @@ def test_ignore_precedence_diffctx_over_git(temp_project, run_mapper):
     assert "file.txt" in all_files
 
 
-def test_ignore_precedence_custom_over_defaults(temp_project, run_mapper):
+def test_ignore_precedence_custom_over_defaults(temp_project, run_mapper_yaml):
     (temp_project / ".gitignore").write_text("*.pyc\n")
     config_dir = temp_project / ".diffctx"
     config_dir.mkdir(exist_ok=True)
@@ -314,7 +315,7 @@ def test_ignore_precedence_custom_over_defaults(temp_project, run_mapper):
     (temp_project / "file.tmp").touch()
     (temp_project / "file.txt").touch()
 
-    assert run_mapper([".", "-i", str(custom_ignore), "-o", "directory_tree.yaml"])
+    assert run_mapper_yaml([".", "-i", str(custom_ignore), "-o", "directory_tree.yaml"])
     result = load_yaml(temp_project / "directory_tree.yaml")
     all_files = get_all_files_in_tree(result)
 
@@ -324,18 +325,18 @@ def test_ignore_precedence_custom_over_defaults(temp_project, run_mapper):
     assert "file.txt" in all_files
 
 
-def test_ignore_interaction_combined_vs_git(temp_project, run_mapper):
+def test_ignore_interaction_combined_vs_git(temp_project, run_mapper_yaml):
     output_path = temp_project / "output.yaml"
     (temp_project / ".gitignore").write_text("!output.yaml\n")
 
-    assert run_mapper([".", "-o", str(output_path)])
+    assert run_mapper_yaml([".", "-o", str(output_path)])
     result = load_yaml(output_path)
     all_files = get_all_files_in_tree(result)
 
     assert output_path.name not in all_files
 
 
-def test_ignore_patterns_anchored(temp_project, run_mapper, caplog):
+def test_ignore_patterns_anchored(temp_project, run_mapper_yaml, caplog):
     from .utils import find_node_by_path
 
     caplog.set_level(logging.DEBUG)
@@ -346,7 +347,7 @@ def test_ignore_patterns_anchored(temp_project, run_mapper, caplog):
     (temp_project / "subdir" / "subdir_ignore.txt").touch()
     (temp_project / "subdir_ignore.txt").touch()
 
-    assert run_mapper([".", "-o", "anchored_output.yaml"])
+    assert run_mapper_yaml([".", "-o", "anchored_output.yaml"])
     result = load_yaml(temp_project / "anchored_output.yaml")
 
     assert find_node_by_path(result, ["root_ignore.txt"]) is None
@@ -358,7 +359,7 @@ def test_ignore_patterns_anchored(temp_project, run_mapper, caplog):
 # --- Anchored pattern tests (merged from test_anchored_patterns.py) ---
 
 
-def test_anchored_pattern_fix(temp_project, run_mapper):
+def test_anchored_pattern_fix(temp_project, run_mapper_yaml):
     from .utils import find_node_by_path
 
     test_dir = temp_project / "anchored_test_dir"
@@ -371,7 +372,7 @@ def test_anchored_pattern_fix(temp_project, run_mapper):
     (test_dir / ".gitignore").write_text("/root_file.txt\n")
 
     output_path = temp_project / "anchored_output.yaml"
-    assert run_mapper([str(test_dir), "-o", str(output_path)])
+    assert run_mapper_yaml([str(test_dir), "-o", str(output_path)])
     result = load_yaml(output_path)
 
     assert result["name"] == test_dir.name
@@ -379,7 +380,7 @@ def test_anchored_pattern_fix(temp_project, run_mapper):
     assert find_node_by_path(result, ["subdir", "root_file.txt"]) is not None
 
 
-def test_non_anchored_pattern(temp_project, run_mapper):
+def test_non_anchored_pattern(temp_project, run_mapper_yaml):
     from .utils import find_node_by_path
 
     test_dir = temp_project / "non_anchored_test_dir"
@@ -393,7 +394,7 @@ def test_non_anchored_pattern(temp_project, run_mapper):
     (test_dir / ".gitignore").write_text("*.log\n")
 
     output_path = temp_project / "non_anchored_output.yaml"
-    assert run_mapper([str(test_dir), "-o", str(output_path)])
+    assert run_mapper_yaml([str(test_dir), "-o", str(output_path)])
     result = load_yaml(output_path)
 
     assert result["name"] == test_dir.name
@@ -403,7 +404,7 @@ def test_non_anchored_pattern(temp_project, run_mapper):
     assert find_node_by_path(result, ["subdir", "data.txt"]) is not None
 
 
-def test_combined_patterns(temp_project, run_mapper):
+def test_combined_patterns(temp_project, run_mapper_yaml):
     from .utils import find_node_by_path
 
     test_dir = temp_project / "combined_test_dir"
@@ -419,7 +420,7 @@ def test_combined_patterns(temp_project, run_mapper):
     (test_dir / ".gitignore").write_text("/root_only.txt\n*.log\n")
 
     output_path = temp_project / "combined_output.yaml"
-    assert run_mapper([str(test_dir), "-o", str(output_path)])
+    assert run_mapper_yaml([str(test_dir), "-o", str(output_path)])
     result = load_yaml(output_path)
 
     assert result["name"] == test_dir.name
@@ -431,7 +432,7 @@ def test_combined_patterns(temp_project, run_mapper):
     assert find_node_by_path(result, ["subdir", "regular.txt"]) is not None
 
 
-def test_hierarchical_dir_ignore(temp_project, run_mapper):
+def test_hierarchical_dir_ignore(temp_project, run_mapper_yaml):
     from .utils import find_node_by_path
 
     config_dir = temp_project / ".diffctx"
@@ -449,7 +450,7 @@ def test_hierarchical_dir_ignore(temp_project, run_mapper):
     (temp_project / "subdir" / "keep.txt").touch()
 
     output_path = temp_project / "hierarchical_output.yaml"
-    assert run_mapper([".", "-o", str(output_path)])
+    assert run_mapper_yaml([".", "-o", str(output_path)])
     result = load_yaml(output_path)
 
     assert find_node_by_path(result, ["root.tmp"]) is None
@@ -460,7 +461,7 @@ def test_hierarchical_dir_ignore(temp_project, run_mapper):
     assert find_node_by_path(result, ["subdir", "keep.txt"]) is not None
 
 
-def test_hierarchical_ignore_applies_recursively(temp_project, run_mapper):
+def test_hierarchical_ignore_applies_recursively(temp_project, run_mapper_yaml):
     from .utils import find_node_by_path
 
     (temp_project / "subdir").mkdir()
@@ -478,7 +479,7 @@ def test_hierarchical_ignore_applies_recursively(temp_project, run_mapper):
     (temp_project / "root.bak").touch()
 
     output_path = temp_project / "recursive_output.yaml"
-    assert run_mapper([".", "-o", str(output_path)])
+    assert run_mapper_yaml([".", "-o", str(output_path)])
     result = load_yaml(output_path)
 
     assert find_node_by_path(result, ["root.bak"]) is not None
@@ -490,7 +491,7 @@ def test_hierarchical_ignore_applies_recursively(temp_project, run_mapper):
     assert find_node_by_path(result, ["subdir", "deep", "deeper", "level3.txt"]) is not None
 
 
-def test_parent_ignore_integration(tmp_path, run_mapper):
+def test_parent_ignore_integration(tmp_path, run_mapper_yaml):
     from .utils import find_node_by_path
 
     parent = tmp_path / "parent_project"
@@ -511,7 +512,7 @@ def test_parent_ignore_integration(tmp_path, run_mapper):
     (subdir / "README.md").write_text("# App")
 
     output_path = tmp_path / "output.yaml"
-    assert run_mapper([str(subdir), "-o", str(output_path)])
+    assert run_mapper_yaml([str(subdir), "-o", str(output_path)])
     result = load_yaml(output_path)
 
     assert find_node_by_path(result, ["ignored_dir"]) is None
@@ -521,7 +522,7 @@ def test_parent_ignore_integration(tmp_path, run_mapper):
     assert find_node_by_path(result, ["README.md"]) is not None
 
 
-def test_parent_ignore_stops_at_git_root(tmp_path, run_mapper):
+def test_parent_ignore_stops_at_git_root(tmp_path, run_mapper_yaml):
     from .utils import find_node_by_path
 
     grandparent = tmp_path / "grandparent"
@@ -546,7 +547,7 @@ def test_parent_ignore_stops_at_git_root(tmp_path, run_mapper):
     (child / "keep.txt").write_text("keep")
 
     output_path = tmp_path / "output.yaml"
-    assert run_mapper([str(child), "-o", str(output_path)])
+    assert run_mapper_yaml([str(child), "-o", str(output_path)])
     result = load_yaml(output_path)
 
     assert find_node_by_path(result, ["from_parent"]) is None
@@ -558,7 +559,7 @@ def test_parent_ignore_stops_at_git_root(tmp_path, run_mapper):
 # --- .diffctx/ config directory tests ---
 
 
-def test_diffctx_dir_ignore(temp_project, run_mapper):
+def test_diffctx_dir_ignore(temp_project, run_mapper_yaml):
     from .utils import find_node_by_path
 
     config_dir = temp_project / ".diffctx"
@@ -568,7 +569,7 @@ def test_diffctx_dir_ignore(temp_project, run_mapper):
     (temp_project / "keep.txt").touch()
 
     output_path = temp_project / "dir_ignore_output.yaml"
-    assert run_mapper([".", "-o", str(output_path)])
+    assert run_mapper_yaml([".", "-o", str(output_path)])
     result = load_yaml(output_path)
 
     assert find_node_by_path(result, ["app.log"]) is None
@@ -576,7 +577,7 @@ def test_diffctx_dir_ignore(temp_project, run_mapper):
     assert find_node_by_path(result, ["keep.txt"]) is not None
 
 
-def test_diffctx_dir_ignore_hierarchical(temp_project, run_mapper):
+def test_diffctx_dir_ignore_hierarchical(temp_project, run_mapper_yaml):
     from .utils import find_node_by_path
 
     subdir = temp_project / "subdir"
@@ -590,7 +591,7 @@ def test_diffctx_dir_ignore_hierarchical(temp_project, run_mapper):
     (subdir / "keep.txt").touch()
 
     output_path = temp_project / "hier_dir_output.yaml"
-    assert run_mapper([".", "-o", str(output_path)])
+    assert run_mapper_yaml([".", "-o", str(output_path)])
     result = load_yaml(output_path)
 
     assert find_node_by_path(result, ["root.secret"]) is not None
@@ -612,7 +613,7 @@ def _git_init(project_dir):
     subprocess.run(["git", "config", "user.name", "T"], cwd=project_dir, check=True)
 
 
-def test_diffctx_dir_ignore_inside_git_repo(temp_project, run_mapper):
+def test_diffctx_dir_ignore_inside_git_repo(temp_project, run_mapper_yaml):
     """Regression: .diffctx/ignore was silently dropped whenever the scanned
     directory was a git repository (#84) — _find_ignore_files_via_git never
     searched for it at all."""
@@ -626,14 +627,14 @@ def test_diffctx_dir_ignore_inside_git_repo(temp_project, run_mapper):
     (temp_project / "keep.txt").touch()
 
     output_path = temp_project / "git_dir_ignore_output.yaml"
-    assert run_mapper([".", "-o", str(output_path)])
+    assert run_mapper_yaml([".", "-o", str(output_path)])
     result = load_yaml(output_path)
 
     assert find_node_by_path(result, ["passwords.secret"]) is None
     assert find_node_by_path(result, ["keep.txt"]) is not None
 
 
-def test_nested_gitignore_inside_git_repo(temp_project, run_mapper):
+def test_nested_gitignore_inside_git_repo(temp_project, run_mapper_yaml):
     """Regression: nested (non-root) .gitignore files were silently dropped
     inside a git repo (#84) — the git-based lookup used a literal pathspec
     that only matches the exact root-level path, not recursively."""
@@ -647,14 +648,14 @@ def test_nested_gitignore_inside_git_repo(temp_project, run_mapper):
     (subdir / "keep.txt").touch()
 
     output_path = temp_project / "nested_gitignore_output.yaml"
-    assert run_mapper([".", "-o", str(output_path)])
+    assert run_mapper_yaml([".", "-o", str(output_path)])
     result = load_yaml(output_path)
 
     assert find_node_by_path(result, ["sub", "drop.tmp"]) is None
     assert find_node_by_path(result, ["sub", "keep.txt"]) is not None
 
 
-def test_diffctx_dir_ignore_parent(tmp_path, run_mapper):
+def test_diffctx_dir_ignore_parent(tmp_path, run_mapper_yaml):
     from .utils import find_node_by_path
 
     parent = tmp_path / "parent_project"
@@ -672,20 +673,20 @@ def test_diffctx_dir_ignore_parent(tmp_path, run_mapper):
     (child / "src" / "main.py").write_text("print('hello')")
 
     output_path = tmp_path / "parent_dir_output.yaml"
-    assert run_mapper([str(child), "-o", str(output_path)])
+    assert run_mapper_yaml([str(child), "-o", str(output_path)])
     result = load_yaml(output_path)
 
     assert find_node_by_path(result, ["secret_dir"]) is None
     assert find_node_by_path(result, ["src", "main.py"]) is not None
 
 
-def test_diffctx_dir_whitelist(temp_project, run_mapper):
+def test_diffctx_dir_whitelist(temp_project, run_mapper_yaml):
     config_dir = temp_project / ".diffctx"
     config_dir.mkdir(exist_ok=True)
     (config_dir / "whitelist").write_text("src/**/*.py\n")
 
     output_path = temp_project / "dir_wl_output.yaml"
-    assert run_mapper([".", "-o", str(output_path)])
+    assert run_mapper_yaml([".", "-o", str(output_path)])
     result = load_yaml(output_path)
     all_files = get_all_files_in_tree(result)
 
@@ -694,7 +695,39 @@ def test_diffctx_dir_whitelist(temp_project, run_mapper):
     assert "readme.md" not in all_files
 
 
-def test_diffctx_dir_hidden_from_output(temp_project, run_mapper):
+def _tree_names(result):
+    assert result.returncode == 0, result.stderr
+    return get_all_files_in_tree(yaml.safe_load(result.stdout))
+
+
+def test_bare_whitelist_name_resolves_inside_the_config_dir(temp_project):
+    (temp_project / ".diffctx" / "only-src.whitelist").write_text("src/**/*.py\n", encoding="utf-8")
+    names = _tree_names(run_diffctx_subprocess([".", "-w", "only-src", "-f", "yaml"], cwd=temp_project))
+    assert {"src", "main.py", "test.py"} <= names
+    assert "docs" not in names, "a directory with no whitelisted file is pruned"
+    assert "readme.md" not in names
+
+
+def test_bare_ignore_name_resolves_inside_the_config_dir(temp_project):
+    (temp_project / ".diffctx" / "extra.ignore").write_text("docs/\n*.py\n", encoding="utf-8")
+    names = _tree_names(run_diffctx_subprocess([".", "-i", "extra", "-f", "yaml"], cwd=temp_project))
+    assert "docs" not in names
+    assert "main.py" not in names
+    assert ".gitignore" in names
+
+
+def test_absolute_whitelist_path_keeps_the_nested_match_and_prunes_the_rest(temp_project, tmp_path):
+    (temp_project / "src" / "deep").mkdir()
+    (temp_project / "src" / "deep" / "keep.md").write_text("# keep\n", encoding="utf-8")
+    whitelist = tmp_path / "elsewhere.whitelist"
+    whitelist.write_text("**/keep.md\n", encoding="utf-8")
+    names = _tree_names(run_diffctx_subprocess([".", "-w", str(whitelist), "-f", "yaml"], cwd=temp_project))
+    assert {"src", "deep", "keep.md"} <= names
+    assert "main.py" not in names
+    assert "docs" not in names
+
+
+def test_diffctx_dir_hidden_from_output(temp_project, run_mapper_yaml):
     config_dir = temp_project / ".diffctx"
     config_dir.mkdir(exist_ok=True)
     (config_dir / "ignore").write_text("*.log\n")
@@ -702,7 +735,7 @@ def test_diffctx_dir_hidden_from_output(temp_project, run_mapper):
     (temp_project / "keep.txt").touch()
 
     output_path = temp_project / "hidden_dir_output.yaml"
-    assert run_mapper([".", "-o", str(output_path)])
+    assert run_mapper_yaml([".", "-o", str(output_path)])
     result = load_yaml(output_path)
     all_files = get_all_files_in_tree(result)
 

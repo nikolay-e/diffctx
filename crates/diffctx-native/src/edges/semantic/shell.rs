@@ -15,6 +15,10 @@ fn is_shell_file(path: &Path) -> bool {
     SHELL_EXTENSIONS.contains(base::file_ext(path).as_str())
 }
 
+fn is_shebang_shell(path: &Path, content: &str) -> bool {
+    crate::languages::sniff_language(&path.to_string_lossy(), content) == Some("bash")
+}
+
 static SOURCE_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"(?m)^\s*(?:source|\.)\s+["']?([^"'\s;]+)"#).unwrap());
 static SCRIPT_CALL_RE: Lazy<Regex> =
@@ -39,8 +43,14 @@ pub struct ShellEdgeBuilder;
 
 impl EdgeBuilder for ShellEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
-        let Some(sh_frags) = base::frags_where(fragments, |f| is_shell_file(Path::new(f.path())))
-        else {
+        let shebang_paths: FxHashSet<&str> = fragments
+            .iter()
+            .filter(|f| f.id.start_line == 1 && is_shebang_shell(Path::new(f.path()), &f.content))
+            .map(Fragment::path)
+            .collect();
+        let Some(sh_frags) = base::frags_where(fragments, |f| {
+            is_shell_file(Path::new(f.path())) || shebang_paths.contains(f.path())
+        }) else {
             return FxHashMap::default();
         };
 
@@ -108,7 +118,11 @@ impl EdgeBuilder for ShellEdgeBuilder {
             candidates,
             repo_root,
             file_cache,
-            |p| is_shell_file(p),
+            |p| {
+                is_shell_file(p)
+                    || base::read_file_cached(p, file_cache)
+                        .is_some_and(|c| is_shebang_shell(p, &c))
+            },
             extract_refs,
         )
     }

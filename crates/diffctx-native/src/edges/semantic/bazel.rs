@@ -156,15 +156,22 @@ impl EdgeBuilder for BazelEdgeBuilder {
 
             let build_parent = Path::new(bf.path()).parent().unwrap_or(Path::new(""));
             for src in extract_srcs(&bf.content) {
-                let src_lower = src.to_lowercase();
+                let src_name = Path::new(&src)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_lowercase())
+                    .unwrap_or_default();
+                // `bf.path()` may be absolute while fragment paths are repo-relative,
+                // so the declared file is matched by trailing components, which also
+                // covers a src in a subdirectory of the package (`impl/fast.c`).
+                let declared = build_parent.join(&src);
                 let mut found = false;
-                if let Some(frag_ids) = idx.by_name.get(&src_lower) {
+                if let Some(frag_ids) = idx.by_name.get(&src_name) {
                     for fid in frag_ids {
                         if fid == &bf.id {
                             continue;
                         }
-                        let frag_parent = Path::new(fid.path.as_ref()).parent();
-                        if frag_parent == Some(build_parent) {
+                        let frag_path = Path::new(fid.path.as_ref());
+                        if declared.ends_with(frag_path) || frag_path.ends_with(&declared) {
                             add_edge(&mut edges, &bf.id, fid, srcs_w, rev);
                             found = true;
                             break;

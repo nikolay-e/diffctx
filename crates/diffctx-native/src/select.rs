@@ -1130,6 +1130,37 @@ mod tests {
         selected.iter().map(|f| f.token_count).sum()
     }
 
+    /// A core bigger than what is left becomes its head plus a marker naming
+    /// how many lines were cut; one that fits whole carries no marker.
+    #[test]
+    fn a_clipped_witness_keeps_the_head_and_counts_the_rest() {
+        let body: String = (0..200)
+            .map(|i| format!("    total += value_{i}\n"))
+            .collect();
+        let mut core = frag("big.py", 10, 210, FragmentKind::Function, 0);
+        core.content = Arc::from(format!("def big():\n{body}"));
+        core.token_count = crate::tokenizer::count_tokens(&core.content);
+
+        let witness = clipped_witness(&core, 60).expect("a witness");
+        assert!(witness.token_count <= 60 + 20, "{}", witness.token_count);
+        assert!(witness.content.starts_with("def big():"));
+        let kept = witness.content.lines().count() - 1;
+        assert!(
+            witness
+                .content
+                .ends_with(&format!("… [{} more lines of this change]", 201 - kept)),
+            "{}",
+            witness.content
+        );
+        assert_eq!(witness.id.start_line, 10);
+        assert_eq!(witness.id.end_line, 10 + kept as u32 - 1);
+        assert_eq!(witness.kind, FragmentKind::Excerpt);
+
+        let whole = clipped_witness(&core, core.token_count + 500).expect("a witness");
+        assert!(!whole.content.contains("more lines of this change"));
+        assert_eq!(whole.content.lines().count(), 201);
+    }
+
     /// The budget is a hard contract (`cost(C) <= B`); four separate call sites
     /// gate on it and none of them was asserted. A `pick_smallest_fitting` that
     /// returns a non-fitting candidate is one `if` away, and the oracle corpus

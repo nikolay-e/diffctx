@@ -45,10 +45,15 @@ scoop bucket add diffctx https://github.com/nikolay-e/diffctx
 scoop install diffctx/diffctx
 ```
 
-Prebuilt binaries for Linux (x86_64/aarch64), macOS (arm64/x86_64) and Windows (x64/arm64)
-are attached to every [release](https://github.com/nikolay-e/diffctx/releases/latest).
-On Windows on ARM, `diffctx[mcp]` builds `cryptography` from source, which needs
-OpenSSL: that project publishes no wheel for the platform.
+Every [release](https://github.com/nikolay-e/diffctx/releases/latest) carries
+prebuilt binaries; the current target set is Linux (x86_64/aarch64), macOS
+(arm64/x86_64) and Windows (x64/arm64), and a release older than a target's
+first build lacks it (v1.16.0 predates the macOS x86_64 and Windows arm64
+archives). On Windows on ARM, `diffctx[mcp]` builds `cryptography` from source,
+which needs OpenSSL: that project publishes no wheel for the platform.
+Free-threaded CPython (`3.14t`) cannot load the `abi3` wheel, so each release
+after 1.16.0 also ships a `cp314t` wheel per platform (the extension runs with
+the GIL off); on 1.16.0 itself `pip` and `uv` fall back to compiling the sdist.
 The native binary and Docker image cover diff mode with YAML/JSON output and
 write to stdout (redirect to capture); tree mode, Markdown output, the `graph`
 subcommand and the MCP server live in the Python package.
@@ -236,8 +241,9 @@ map a directory named `mcp` on older releases.
 
 Respects `.gitignore` and `.diffctx/ignore` automatically — hierarchically at
 every directory level, with full gitignore semantics (negation `!important.log`,
-anchored `/root_only.txt`), and the output file is always auto-ignored. Three
-controls are tree mode only and are refused with `--diff`: `.diffctx/whitelist`
+anchored `/root_only.txt`), and in tree mode the output file is always
+auto-ignored (`--diff` reports a saved `tree.md` like any other change). Three
+controls are tree mode only and are refused with `--diff` and `graph`: `.diffctx/whitelist`
 (`-w`) as an include-only filter, `-i` for an extra ignore file, and
 `--no-default-ignores` / `--no-ignores` to drop the built-in patterns or every
 ignore rule.
@@ -261,8 +267,8 @@ its size (default 512 MB, `0` disables eviction).
 |------|---------|
 | `0`  | Success — output contains content |
 | `1`  | Runtime error (bad path, permission denied, etc.) |
-| `2`  | Usage error (invalid flags/arguments) |
-| `3`  | Environment error (`--diff` outside a git repo, git not installed, no commits yet) |
+| `2`  | Usage error (invalid flags/arguments, an empty `--diff ""`, a malformed duration such as `1.5h`, an out-of-range `--alpha`/`--tau`/`--budget`/`--timeout`, or a tree-mode flag — `-i`/`-w`/`--no-default-ignores`/`--no-ignores` — given with `--diff` or `graph`) |
+| `3`  | Environment error (`--diff` outside a git repo, in a bare one, or on a missing path, git not installed or refusing to start — its `fatal:` line is printed, no commits yet, a revision missing from a shallow clone) |
 | `4`  | `--diff` produced no semantic context (clean tree, binary-only, everything filtered); output is still emitted. Deletion/rename/lockfile-only diffs list `deleted_files`/`renamed_files`/`lockfile_changes` and exit `0` |
 | `124`| `--diff` ran 30 s past the `--timeout` deadline without stopping cooperatively (the deadline itself yields a partial artifact and exit 0) |
 | `130`| Interrupted (Ctrl-C) |

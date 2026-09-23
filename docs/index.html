@@ -9,6 +9,9 @@
       content="diffctx selects the minimum code an LLM needs to review a git diff. Watch the pipeline work: diff → fragments → code graph → relevance → greedy selection."
     />
     <link rel="canonical" href="https://nikolay-e.github.io/diffctx/" />
+    <link rel="manifest" href="/diffctx/manifest.webmanifest" />
+    <meta name="theme-color" content="#0b0f0d" />
+    <link rel="apple-touch-icon" href="/diffctx/icons/apple-touch-icon.png" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://nikolay-e.github.io/diffctx/" />
     <meta
@@ -1137,19 +1140,19 @@
     <div class="ratio">
       <div class="wrap">
         <div class="cell">
-          <div class="num" data-count="768268">768,268</div>
-          <div class="lbl">tokens — the 66 changed files, pasted whole</div>
+          <div class="num">169,809</div>
+          <div class="lbl">tokens — the raw <code>git diff</code> of the commit</div>
         </div>
         <div class="cell">
-          <div class="num"><b data-count="43769">43,769</b></div>
-          <div class="lbl">tokens — what diffctx selects instead</div>
+          <div class="num"><b>43,769</b></div>
+          <div class="lbl">tokens — what diffctx selects, callers and types included</div>
         </div>
         <div class="cell">
           <div class="num">
-            <b>17.6×</b>
+            <b>3.9×</b>
             <span style="font-size: 20px; color: var(--fg-dim)">smaller</span>
           </div>
-          <div class="lbl">at the default budget, one command</div>
+          <div class="lbl">than pasting the diff, at the default budget</div>
         </div>
       </div>
       <p class="source">
@@ -1161,12 +1164,11 @@
         — “Restrict device registry entries to a single config entry and subentry”, 66 files
         changed — with <code>diffctx . --diff 1d885bd0^..1d885bd0</code> at the
         default auto budget, counted with the o200k_base tokenizer. Clone the
-        repo and run the command to reproduce it. One of the 66 files is a
-        158k-token generated test snapshot; without it the whole-file baseline
-        is 610k and the ratio 13.9×. Against the other baseline — the raw
-        <code>git diff</code> of the same commit, 169,809 tokens — it is
-        <b>3.9×</b>, and the selection carries the callers, types and config
-        the patch alone does not show. The ratio is not a constant:
+        repo and run the command to reproduce it. The selection is smaller than
+        the patch and still carries the callers, types and config the patch
+        alone does not show. Against pasting the 66 changed files whole — 768,268
+        tokens — it is 17.6× (13.9× without the one 158k-token generated test
+        snapshot among them). The ratio is not a constant:
         it tracks how much of the changed files is unrelated to the change, so a
         wide refactor across large files compresses far more than a three-file
         fix, where diffctx often <em>adds</em> tokens because it pulls in the
@@ -1186,7 +1188,7 @@
           engine uses: relevance decays with graph distance, selection is
           greedy, and the budget is a hard wall. Step through the stages, then
           drag the dials. The token counts here belong to this 18-fragment toy;
-          the 768,268 → 43,769 above was measured on the real home-assistant
+          the 169,809 → 43,769 above was measured on the real home-assistant
           commit it links.
         </p>
 
@@ -1366,6 +1368,17 @@
           signals below, plus two fusion modes — <code>rrf</code> and
           <code>pit</code> — that combine ego and bm25. All of them feed the
           same greedy selector.
+        </p>
+        <p class="sec-sub reveal">
+          <b>ego-network</b>: the changed nodes plus their neighbours out to a
+          bounded depth. <b>PPR</b>: Personalized PageRank, a random walk that
+          restarts at the change with probability 1&nbsp;&minus;&nbsp;α.
+          <b>bm25</b>: lexical similarity of a fragment's identifiers to the
+          change. <b>rrf</b>: reciprocal rank fusion, ranks summed by position.
+          <b>pit</b>: per-item top, each fragment keeps its best rank across
+          modes. <b>τ</b>: the stop threshold — selection halts once the next
+          fragment's marginal value falls below it. <b>o200k_base</b>: the
+          GPT-4o tokenizer every count on this page is measured in.
         </p>
         <div class="modes reveal">
           <div class="mode default">
@@ -2178,35 +2191,10 @@
         g.innerHTML = html;
       })();
 
-      /* ============ counters + reveals ============ */
-      // The final value is what the markup ships, so a viewer whose observer
-      // never fires still reads the real number instead of a "0" that makes the
-      // page's whole claim look broken. The count-up only overwrites it once it
-      // is actually running, and restores the exact text at the end.
-      function animateCount(el) {
-        const target = +el.dataset.count,
-          final = el.textContent,
-          dur = 1400,
-          t0 = performance.now();
-        const step = (t) => {
-          const k = Math.min(1, (t - t0) / dur),
-            e = 1 - Math.pow(1 - k, 3);
-          el.textContent =
-            k < 1 ? Math.round(target * e).toLocaleString("en-US") : final;
-          if (k < 1) requestAnimationFrame(step);
-        };
-        requestAnimationFrame(step);
-      }
-      new IntersectionObserver(
-        (es, obs) =>
-          es.forEach((e) => {
-            if (!e.isIntersecting) return;
-            e.target.querySelectorAll("[data-count]").forEach(animateCount);
-            obs.unobserve(e.target);
-          }),
-        { threshold: 0.4 },
-      ).observe(document.querySelector(".ratio"));
-
+      /* ============ reveals ============ */
+      // The ratio block renders its final numbers and never animates them: a
+      // count-up showed an agent reading the DOM mid-flight numbers that
+      // disagreed with the caption beneath them.
       const revObs = new IntersectionObserver(
         (es) =>
           es.forEach((e) => {
@@ -2237,5 +2225,21 @@
         }),
       );
     </script>
-  </body>
+      <script>
+      // Absolute under the site root: offline, this page is the worker's
+      // fallback for every path in scope, so a relative "sw.js" would resolve
+      // under product/ and fail to register.
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.register("/diffctx/sw.js");
+      }
+      if (!navigator.onLine && location.pathname !== "/diffctx/") {
+        const note = document.createElement("p");
+        note.className = "sec-sub";
+        note.setAttribute("role", "status");
+        note.textContent =
+          "You are offline and " + location.pathname + " is not cached yet; this is the start page.";
+        document.body.prepend(note);
+      }
+    </script>
+</body>
 </html>

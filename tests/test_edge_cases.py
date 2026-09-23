@@ -1,18 +1,22 @@
 # tests/test_edge_cases.py
+import json
+import os
 import sys
 
 import pytest
+import yaml
 
+from .conftest import run_diffctx_subprocess
 from .utils import get_all_files_in_tree, load_yaml
 
 
-def test_empty_directory(temp_project, run_mapper):
+def test_empty_directory(temp_project, run_mapper_yaml):
     """Test: empty directory as input."""
     empty_dir = temp_project / "empty_test_dir"
     empty_dir.mkdir()
 
     output_path = temp_project / "empty_dir_output.yaml"
-    assert run_mapper([str(empty_dir), "-o", str(output_path)])
+    assert run_mapper_yaml([str(empty_dir), "-o", str(output_path)])
     result = load_yaml(output_path)
 
     assert result["name"] == empty_dir.name
@@ -20,7 +24,7 @@ def test_empty_directory(temp_project, run_mapper):
     assert "children" not in result or not result["children"]
 
 
-def test_directory_with_only_ignored(temp_project, run_mapper):
+def test_directory_with_only_ignored(temp_project, run_mapper_yaml):
     """Test: directory contains only ignored files/folders."""
     ignored_dir = temp_project / "ignored_only_dir"
     ignored_dir.mkdir()
@@ -30,7 +34,7 @@ def test_directory_with_only_ignored(temp_project, run_mapper):
     (ignored_dir / ".gitignore").write_text(".DS_Store\ntemp/\n")
 
     output_path = temp_project / "ignored_only_output.yaml"
-    assert run_mapper([str(ignored_dir), "-o", str(output_path)])
+    assert run_mapper_yaml([str(ignored_dir), "-o", str(output_path)])
     result = load_yaml(output_path)
 
     assert result["name"] == ignored_dir.name
@@ -40,7 +44,7 @@ def test_directory_with_only_ignored(temp_project, run_mapper):
     assert result["children"][0]["name"] == ".gitignore"
 
 
-def test_filenames_with_special_yaml_chars(temp_project, run_mapper):
+def test_filenames_with_special_yaml_chars(temp_project, run_mapper_yaml):
     """Test: file names with YAML special characters (manual writer check)."""
 
     # Basic special characters
@@ -73,7 +77,7 @@ def test_filenames_with_special_yaml_chars(temp_project, run_mapper):
     (temp_project / "0.5").touch()
 
     output_path = temp_project / "special_chars_output.yaml"
-    assert run_mapper([".", "-o", str(output_path)])
+    assert run_mapper_yaml([".", "-o", str(output_path)])
 
     result = load_yaml(output_path)
     all_files = get_all_files_in_tree(result)
@@ -112,14 +116,14 @@ def test_filenames_with_special_yaml_chars(temp_project, run_mapper):
     assert "0.5" in all_files
 
 
-def test_filenames_with_spaces(temp_project, run_mapper):
+def test_filenames_with_spaces(temp_project, run_mapper_yaml):
     (temp_project / "file with spaces.txt").write_text("spaced content")
     subdir = temp_project / "dir with spaces"
     subdir.mkdir()
     (subdir / "nested file.txt").write_text("nested spaced")
 
     output_path = temp_project / "spaces_output.yaml"
-    assert run_mapper([".", "-o", str(output_path)])
+    assert run_mapper_yaml([".", "-o", str(output_path)])
 
     result = load_yaml(output_path)
     all_files = get_all_files_in_tree(result)
@@ -132,26 +136,26 @@ def test_filenames_with_spaces(temp_project, run_mapper):
     sys.platform == "win32",
     reason="Symlinks require elevated privileges on Windows",
 )
-def test_broken_symlink_does_not_crash(temp_project, run_mapper):
+def test_broken_symlink_does_not_crash(temp_project, run_mapper_yaml):
     link = temp_project / "broken_link.txt"
     link.symlink_to(temp_project / "nonexistent_target.txt")
 
     output_path = temp_project / "broken_symlink_output.yaml"
-    assert run_mapper([".", "-o", str(output_path)])
+    assert run_mapper_yaml([".", "-o", str(output_path)])
     result = load_yaml(output_path)
     assert result["type"] == "directory"
 
 
-def test_output_file_excluded_from_tree(temp_project, run_mapper):
+def test_output_file_excluded_from_tree(temp_project, run_mapper_yaml):
     output_path = temp_project / "tree_output.yaml"
-    assert run_mapper([".", "-o", str(output_path)])
+    assert run_mapper_yaml([".", "-o", str(output_path)])
 
     result = load_yaml(output_path)
     all_files = get_all_files_in_tree(result)
     assert "tree_output.yaml" not in all_files
 
 
-def test_deeply_nested_single_file(temp_project, run_mapper):
+def test_deeply_nested_single_file(temp_project, run_mapper_yaml):
     current = temp_project
     depth = 30
     for i in range(depth):
@@ -160,20 +164,49 @@ def test_deeply_nested_single_file(temp_project, run_mapper):
     (current / "leaf.txt").write_text("deep content")
 
     output_path = temp_project / "deep_output.yaml"
-    assert run_mapper([".", "-o", str(output_path)])
+    assert run_mapper_yaml([".", "-o", str(output_path)])
 
     result = load_yaml(output_path)
     all_files = get_all_files_in_tree(result)
     assert "leaf.txt" in all_files
 
 
-def test_file_with_no_extension(temp_project, run_mapper):
+def test_crlf_content_is_normalised_through_the_walker(temp_project):
+    (temp_project / "windows.txt").write_bytes(b"a\r\nb\r\n")
+    for fmt in ("yaml", "md"):
+        out = temp_project / f"out.{fmt}"
+        result = run_diffctx_subprocess([".", "-f", fmt, "-o", str(out)], cwd=temp_project)
+        assert result.returncode == 0, result.stderr
+        assert b"\r" not in out.read_bytes(), fmt
+    tree = yaml.safe_load((temp_project / "out.yaml").read_text(encoding="utf-8"))
+    node = next(c for c in tree["children"] if c["name"] == "windows.txt")
+    assert node["content"] == "a\nb\n"
+    assert "```text\na\nb\n```" in (temp_project / "out.md").read_text(encoding="utf-8")
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="only ext4-style filesystems accept an undecodable filename")
+def test_an_undecodable_filename_does_not_kill_the_run(temp_project):
+    fd = os.open(os.fsencode(str(temp_project)) + b"/caf\xe9.txt", os.O_CREAT | os.O_WRONLY)
+    os.write(fd, b"latin-1 name, ascii body\n")
+    os.close(fd)
+    for fmt in ("md", "json"):
+        result = run_diffctx_subprocess([".", "-f", fmt], cwd=temp_project)
+        assert result.returncode == 0, result.stderr
+        assert "internal error" not in result.stderr
+        assert "main.py" in result.stdout
+        assert "readme.md" in result.stdout
+        assert "latin-1 name, ascii body" in result.stdout
+    names = get_all_files_in_tree(json.loads(result.stdout))
+    assert "caf\\xe9.txt" in names, names
+
+
+def test_file_with_no_extension(temp_project, run_mapper_yaml):
     (temp_project / "Makefile").write_text("all:\n\techo hello\n")
     (temp_project / "Dockerfile").write_text("FROM alpine\n")
     (temp_project / "LICENSE").write_text("MIT License")
 
     output_path = temp_project / "noext_output.yaml"
-    assert run_mapper([".", "-o", str(output_path)])
+    assert run_mapper_yaml([".", "-o", str(output_path)])
 
     result = load_yaml(output_path)
     all_files = get_all_files_in_tree(result)

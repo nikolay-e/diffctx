@@ -20,8 +20,6 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
 
       - id: context
         uses: nikolay-e/diffctx@v1.16.0
@@ -37,9 +35,13 @@ jobs:
           # pipe "$CONTEXT_FILE" into any model you already pay for
 ```
 
-`fetch-depth: 0` is required: diffctx resolves the range with git, so both
-endpoints must exist in the local object store. The default shallow checkout
-has neither the base commit nor `HEAD~1`.
+diffctx resolves the range with git, so both endpoints must exist in the local
+object store. The default shallow checkout has neither the base commit nor
+`HEAD~1`; when `diff-range` is left empty the action fetches them itself (the
+pull request's base and head by SHA, or one more commit for `HEAD~1..HEAD`), so
+no `fetch-depth` is needed. On that shallow history the commit-message list in
+the context covers only the fetched commits. A custom `diff-range` names commits
+the action cannot guess, so it needs `fetch-depth: 0` on the checkout.
 
 ## Inputs
 
@@ -60,7 +62,7 @@ leaves the CLI default in place.
 | `timeout` | `300` | `--timeout` | Wall-clock deadline, in seconds |
 | `fail-on-empty` | `false` | — | Fail the step on CLI exit code 4 |
 | `diffctx-version` | current release | — | Exact PyPI version to install |
-| `python-version` | `3.12` | — | Interpreter for the isolated install |
+| `python-version` | `3.13` | — | Interpreter for the isolated install |
 
 `diff-range` left empty resolves to the pull request's `base..head` on
 `pull_request` events, and to `HEAD~1..HEAD` on everything else.

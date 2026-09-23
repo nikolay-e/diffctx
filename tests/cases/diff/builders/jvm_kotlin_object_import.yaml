@@ -1,0 +1,145 @@
+name: jvm_kotlin_object_import
+tags:
+- lang:kotlin
+- change:single_file
+- context:cross_module
+- builder:jvm
+repo:
+  initial_files:
+    app/Layout.kt: |
+      import io.xy.UI
+
+      fun gutter(columns: Int) = UI.DP * columns
+
+      fun rowHeight(lines: Int) = UI.DP * 3 * lines
+    lib/io/xy/UI.kt: |
+      package io.xy
+
+      object UI {
+          const val DP = 8
+      }
+    lib/io/xy/Archive.java: |
+      package io.xy;
+
+      public final class Archive {
+          private final java.util.List<String> labels = new java.util.ArrayList<>();
+          private long totalBytes;
+
+          public void add(String label, long bytes) {
+              labels.add(label);
+              totalBytes += bytes;
+          }
+
+          public long totalBytes() {
+              return totalBytes;
+          }
+
+          public boolean isEmpty() {
+              return labels.isEmpty();
+          }
+
+          public String index() {
+              StringBuilder out = new StringBuilder();
+              for (String label : labels) {
+                  out.append(label).append('\n');
+              }
+              return out.toString();
+          }
+
+          public void clear() {
+              labels.clear();
+              totalBytes = 0L;
+          }
+      }
+    lib/io/xy/Network.java: |
+      package io.xy;
+
+      public final class Network {
+          private Network() {}
+
+          public static boolean waitForPort(String host, long port, long attempts) {
+              for (long attempt = 0; attempt < attempts; attempt++) {
+                  try (java.net.Socket socket = new java.net.Socket()) {
+                      socket.connect(new java.net.InetSocketAddress(host, (char) port), 250);
+                      return true;
+                  } catch (java.io.IOException e) {
+                      sleepQuietly(100L);
+                  }
+              }
+              return false;
+          }
+
+          public static boolean isLoopback(String host) {
+              return host.equals("localhost") || host.startsWith("127.") || host.equals("::1");
+          }
+
+          private static void sleepQuietly(long millis) {
+              try {
+                  Thread.sleep(millis);
+              } catch (InterruptedException e) {
+                  Thread.currentThread().interrupt();
+              }
+          }
+      }
+    lib/io/xy/Journal.java: |
+      package io.xy;
+
+      public final class Journal {
+          private final java.io.PrintStream sink;
+
+          public Journal(java.io.PrintStream sink) {
+              this.sink = sink;
+          }
+
+          public void write(String level, String message) {
+              sink.println(java.time.Instant.now() + " [" + level + "] " + message);
+          }
+
+          public void info(String message) {
+              write("INFO", message);
+          }
+
+          public void warn(String message) {
+              write("WARN", message);
+          }
+
+          public void fail(String message) {
+              write("FAIL", message);
+              throw new IllegalStateException(message);
+          }
+
+          public void flush() {
+              sink.flush();
+          }
+      }
+  changed_files:
+    app/Layout.kt: |
+      import io.xy.UI
+
+      fun gutter(columns: Int) = UI.DP * columns
+
+      fun rowHeight(lines: Int) = UI.DP * 4 * lines
+  commit_message: Taller rows
+fixtures:
+  auto_garbage: true
+fragments:
+- id: ui
+  selector:
+    path: lib/io/xy/UI.kt
+    anchor: const val DP
+- id: no_archive
+  selector:
+    path: lib/io/xy/Archive.java
+- id: no_network
+  selector:
+    path: lib/io/xy/Network.java
+- id: no_journal
+  selector:
+    path: lib/io/xy/Journal.java
+oracle:
+  required:
+  - ui
+  forbidden:
+  - no_archive
+  - no_network
+  - no_journal

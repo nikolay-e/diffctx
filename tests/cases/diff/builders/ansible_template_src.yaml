@@ -1,0 +1,145 @@
+name: ansible_template_src
+tags:
+- lang:yaml
+- change:single_file
+- context:cross_module
+- builder:ansible
+repo:
+  initial_files:
+    playbooks/banner.yml: |
+      - name: Install banner
+        template:
+          src: ../templates/motd.j2
+          dest: /etc/motd
+          mode: "0644"
+    templates/motd.j2: |
+      Welcome to {{ inventory_hostname }}
+    templates/nginx.conf.j2: |
+      worker_processes {{ ansible_processor_vcpus }};
+      events {
+        worker_connections 1024;
+      }
+      http {
+        sendfile on;
+        keepalive_timeout 65;
+        server_tokens off;
+        upstream backend {
+      {% for peer in groups['app'] %}
+          server {{ hostvars[peer]['ansible_host'] }}:8080;
+      {% endfor %}
+        }
+        server {
+          listen 80;
+          server_name {{ domain }};
+          location /static/ {
+            root /srv/www;
+            expires 30d;
+          }
+          location / {
+            proxy_pass http://backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_read_timeout 60s;
+          }
+        }
+      }
+    templates/logrotate.j2: |
+      {% for path in rotated_logs %}
+      {{ path }} {
+        daily
+        rotate {{ keep_days | default(14) }}
+        compress
+        delaycompress
+        missingok
+        notifempty
+        copytruncate
+        create 0640 root adm
+        sharedscripts
+        postrotate
+          systemctl reload rsyslog >/dev/null 2>&1 || true
+        endscript
+      }
+      {% endfor %}
+      /var/log/syslog {
+        weekly
+        rotate 4
+        compress
+        missingok
+        notifempty
+        postrotate
+          /usr/lib/rsyslog/rsyslog-rotate
+        endscript
+      }
+      /var/log/auth.log {
+        weekly
+        rotate 12
+        compress
+        missingok
+      }
+    templates/sshd_config.j2: |
+      Port {{ ssh_port | default(22) }}
+      AddressFamily inet
+      ListenAddress 0.0.0.0
+      PermitRootLogin no
+      PasswordAuthentication no
+      PubkeyAuthentication yes
+      ChallengeResponseAuthentication no
+      UsePAM yes
+      X11Forwarding no
+      AcceptEnv LANG LC_*
+      Subsystem sftp /usr/lib/openssh/sftp-server
+      ClientAliveInterval 300
+      ClientAliveCountMax 2
+      MaxAuthTries 3
+      MaxSessions 4
+      {% for user in ssh_allowed_users %}
+      AllowUsers {{ user }}
+      {% endfor %}
+      LogLevel VERBOSE
+      KexAlgorithms curve25519-sha256
+      Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com
+      MACs hmac-sha2-512-etm@openssh.com
+      AuthorizedKeysFile .ssh/authorized_keys
+      HostKey /usr/local/ssh/ssh_host_ed25519_key
+      LoginGraceTime 30
+      StrictModes yes
+      IgnoreRhosts yes
+      HostbasedAuthentication no
+      PermitEmptyPasswords no
+      AllowTcpForwarding no
+      AllowAgentForwarding no
+      GatewayPorts no
+      PermitTunnel no
+      TCPKeepAlive no
+      Compression no
+  changed_files:
+    playbooks/banner.yml: |
+      - name: Install banner
+        template:
+          src: ../templates/motd.j2
+          dest: /etc/motd
+          mode: "0640"
+  commit_message: Tighten banner permissions
+fixtures:
+  auto_garbage: true
+fragments:
+- id: motd
+  selector:
+    path: templates/motd.j2
+    anchor: inventory_hostname
+- id: no_nginx
+  selector:
+    path: templates/nginx.conf.j2
+- id: no_logrotate
+  selector:
+    path: templates/logrotate.j2
+- id: no_sshd
+  selector:
+    path: templates/sshd_config.j2
+oracle:
+  required:
+  - motd
+  forbidden:
+  - no_nginx
+  - no_logrotate
+  - no_sshd

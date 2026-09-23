@@ -58,9 +58,39 @@ def run_cmd(
         return subprocess.CompletedProcess(cmd, returncode=124, stdout=partial, stderr=f"run_cmd timeout after {timeout}s: {e}")
 
 
+_C_ESCAPES = {"t": "\t", "n": "\n", "r": "\r", "b": "\b", "f": "\f", "v": "\v", "a": "\a", "\\": "\\", '"': '"'}
+
+
+def _unquote_git_path(raw: str) -> str:
+    # git's `core.quotepath` default wraps a path with bytes outside ASCII in
+    # double quotes and writes those bytes as octal escapes; a literal reading
+    # yields a path no repository has.
+    if not (len(raw) >= 2 and raw.startswith('"') and raw.endswith('"')):
+        return raw
+    body = raw[1:-1]
+    out = bytearray()
+    i = 0
+    while i < len(body):
+        ch = body[i]
+        if ch != "\\" or i + 1 >= len(body):
+            out += ch.encode("utf-8")
+            i += 1
+        elif body[i + 1] in "01234567":
+            digits = body[i + 1 : i + 4]
+            span = len(digits) - len(digits.lstrip("01234567")) or len(digits)
+            octal = "".join(c for c in digits[:span] if c in "01234567")
+            out.append(int(octal, 8) & 0xFF)
+            i += 1 + len(octal)
+        else:
+            out += _C_ESCAPES.get(body[i + 1], body[i + 1]).encode("utf-8")
+            i += 2
+    return out.decode("utf-8", errors="surrogateescape")
+
+
 def _parse_diff_path(raw: str, prefix: str) -> str | None:
     if raw == "/dev/null":
         return None
+    raw = _unquote_git_path(raw)
     return raw[len(prefix) :] if raw.startswith(prefix) else raw
 
 
@@ -89,18 +119,18 @@ def patch_files_detailed(patch: str) -> tuple[set[str], set[str], set[str]]:
             cur_a = cur_b = None
             rename_from = None
         elif line.startswith("rename from "):
-            rename_from = line[len("rename from ") :]
+            rename_from = _unquote_git_path(line[len("rename from ") :])
         elif line.startswith("rename to "):
             # 100%-similarity renames carry no ---/+++ body; without this the
             # new path never enters the gold set and pure-rename instances
             # silently drop out of the sweep.
-            target = line[len("rename to ") :]
+            target = _unquote_git_path(line[len("rename to ") :])
             if rename_from is not None:
                 deleted.add(rename_from)
             modified.add(target)
             rename_from = None
         elif line.startswith("copy to "):
-            added.add(line[len("copy to ") :])
+            added.add(_unquote_git_path(line[len("copy to ") :]))
         elif line.startswith("--- "):
             cur_a = _parse_diff_path(line[4:], "a/")
         elif line.startswith("+++ "):
@@ -543,7 +573,7 @@ def apply_gold_patch(repo_dir: Path, patch_text: str, message: str = "bench") ->
     (HEAD didn't advance). Caller should flag these as
     ``status="apply_fail"`` and exclude from metrics.
     """
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".patch", delete=False, newline="") as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".patch", delete=False, newline="", encoding="utf-8") as f:
         f.write(patch_text)
         patch_path = f.name
     try:

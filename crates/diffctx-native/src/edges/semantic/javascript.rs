@@ -17,8 +17,13 @@ use crate::types::{Fragment, FragmentId};
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder};
 
+// Single-file components carry their imports in a `<script>` block, so their
+// dependencies are JavaScript dependencies too.
+const SFC_EXTENSIONS: [&str; 2] = [".vue", ".svelte"];
+
 fn is_js_file(path: &Path) -> bool {
-    JS_TS_EXTENSIONS.contains(base::file_ext(path).as_str())
+    let ext = base::file_ext(path);
+    JS_TS_EXTENSIONS.contains(ext.as_str()) || SFC_EXTENSIONS.contains(&ext.as_str())
 }
 
 fn is_ts_file(path: &Path) -> bool {
@@ -97,6 +102,9 @@ fn resolve_relative_import(
     let base = src_path.parent()?;
     let candidate_base = base.join(import_source);
     let candidate_base = candidate_base.as_path();
+    if known_paths.contains(candidate_base) {
+        return Some(candidate_base.to_path_buf());
+    }
 
     for ext in JS_TS_EXTENSIONS.iter() {
         let with_ext = candidate_base.with_extension(&ext[1..]);

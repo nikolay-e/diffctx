@@ -30,7 +30,7 @@ def test_the_artifact_carries_its_provenance_on_every_structured_surface(tmp_pat
     prov = result["provenance"]
     assert prov["schema"] == "diffctx.provenance.v1"
     assert prov["engine"]["name"] == "diffctx"
-    assert prov["engine"]["version"]
+    assert prov["engine"]["version"] == diffctx.__version__
     assert len(prov["effective_config_hash"]) == 16
     assert "effective_config" not in prov, "the ~500-token record is opt-in; the hash travels always"
     assert prov["selection"]["budget_tokens"] == 4000

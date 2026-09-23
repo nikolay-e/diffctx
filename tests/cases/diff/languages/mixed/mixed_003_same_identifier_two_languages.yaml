@@ -1,0 +1,46 @@
+name: mixed_003_same_identifier_two_languages
+tags:
+- lang:python
+- lang:go
+- change:single_file
+- context:cross_language_leak
+repo:
+  initial_files:
+    app/slugs.py: |
+      def build_slug(title):
+          return "-".join(title.lower().split())
+    app/articles.py: |
+      from app.slugs import build_slug
+
+
+      def article_url(article):
+          return f"/articles/{build_slug(article.title)}"
+    tools/linkcheck/slug.go: |
+      package linkcheck
+
+      import "strings"
+
+      func build_slug(title string) string {
+          return strings.ToLower(strings.ReplaceAll(title, " ", "_"))
+      }
+  changed_files:
+    app/slugs.py: |
+      import re
+
+
+      def build_slug(title):
+          return re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
+  commit_message: Strip punctuation from slugs
+fragments:
+- id: python_caller
+  selector:
+    path: app/articles.py
+    anchor: build_slug(article.title)
+- id: no_go_namesake
+  selector:
+    path: tools/linkcheck/slug.go
+oracle:
+  required:
+  - python_caller
+  forbidden:
+  - no_go_namesake

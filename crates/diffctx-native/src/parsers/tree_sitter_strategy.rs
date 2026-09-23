@@ -360,7 +360,7 @@ const LANG_CONFIGS: &[LangConfig] = &[
         definition_types: &["block"],
     },
     LangConfig {
-        extensions: &[".html", ".htm"],
+        extensions: &[".html", ".htm", ".vue"],
         ts_name: "html",
         definition_types: &["element", "script_element", "style_element"],
     },
@@ -536,6 +536,13 @@ fn find_lang_config(path: &str) -> Option<&'static LangConfig> {
 // second filename list here; "makefile" is normalized to the "make" ts_name
 // because languages::FILENAME_TO_LANGUAGE keeps the friendlier external
 // string ("makefile") for the markdown-code-fence / discoverability surface.
+fn find_lang_config_for(path: &str, content: &str) -> Option<&'static LangConfig> {
+    match crate::languages::sniff_language(path, content) {
+        Some(language) => LANG_CONFIGS.iter().find(|c| c.ts_name == language),
+        None => find_lang_config(path),
+    }
+}
+
 fn find_lang_config_by_filename(path: &str) -> Option<&'static LangConfig> {
     let name_lower = Path::new(path)
         .file_name()?
@@ -704,6 +711,15 @@ fn parse_with_cached_parser(
     language: &Language,
     content: &str,
 ) -> Option<Tree> {
+    parse_with_deadline(ts_name, language, content, PARSE_TIMEOUT)
+}
+
+fn parse_with_deadline(
+    ts_name: &'static str,
+    language: &Language,
+    content: &str,
+    timeout: Duration,
+) -> Option<Tree> {
     PARSER_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         let parser = match cache.get_mut(ts_name) {
@@ -719,16 +735,24 @@ fn parse_with_cached_parser(
         };
         // tree-sitter convention: progress_callback returns `true` to abort.
         // We abort once the wall-clock deadline has passed.
-        let deadline = Instant::now() + PARSE_TIMEOUT;
+        let deadline = Instant::now() + timeout;
         let mut progress =
             move |_state: &tree_sitter::ParseState| -> bool { Instant::now() >= deadline };
         let bytes = content.as_bytes();
         let len = bytes.len();
-        parser.parse_with_options(
+        let tree = parser.parse_with_options(
             &mut |i, _| (i < len).then(|| &bytes[i..]).unwrap_or_default(),
             None,
             Some(ParseOptions::new().progress_callback(&mut progress)),
-        )
+        );
+        // An aborted parse leaves the parser mid-document: the next `parse`
+        // on this thread resumes it against whatever file comes next, so a
+        // 5 MB bundle that trips the deadline silently strips the definitions
+        // of the ordinary file the same rayon worker takes afterwards.
+        if tree.is_none() {
+            parser.reset();
+        }
+        tree
     })
 }
 
@@ -1068,12 +1092,12 @@ impl TreeSitterStrategy {
 }
 
 impl FragmentationStrategy for TreeSitterStrategy {
-    fn can_handle(&self, path: &str, _content: &str) -> bool {
-        find_lang_config(path).is_some()
+    fn can_handle(&self, path: &str, content: &str) -> bool {
+        find_lang_config_for(path, content).is_some()
     }
 
     fn fragment(&self, path: Arc<str>, content: &str) -> Vec<Fragment> {
-        let config = match find_lang_config(&path) {
+        let config = match find_lang_config_for(&path, content) {
             Some(c) => c,
             None => return Vec::new(),
         };
@@ -1102,7 +1126,7 @@ impl FragmentationStrategy for TreeSitterStrategy {
         let gap_frags = create_code_gap_fragments(Arc::clone(&path), &lines, &covered);
         fragments.extend(gap_frags);
 
-        if config.ts_name == "html" {
+        if matches!(config.ts_name, "html" | "svelte") {
             inject_embedded_languages(&tree.root_node(), source, &path, &mut fragments, 0);
         }
 
@@ -1127,7 +1151,9 @@ fn inject_embedded_languages(
         return;
     }
     let embedded = match node.kind() {
-        "script_element" if script_is_javascript(node, source) => Some("javascript"),
+        "script_element" if script_is_javascript(node, source) => {
+            Some(script_grammar(node, source))
+        }
         "style_element" => Some("css"),
         _ => None,
     };
@@ -1167,9 +1193,25 @@ fn script_is_javascript(node: &Node, source: &[u8]) -> bool {
     )
 }
 
+/// Vue and Svelte components declare TypeScript with `lang="ts"`.
+fn script_grammar(node: &Node, source: &[u8]) -> &'static str {
+    let lang = node
+        .child(0)
+        .and_then(|start_tag| script_attribute(&start_tag, source, "lang"));
+    match lang.as_deref() {
+        Some("ts" | "typescript") => "typescript",
+        Some("tsx") => "tsx",
+        _ => "javascript",
+    }
+}
+
 /// The `type` attribute's MIME type, lowercased, with any parameter after `;`
 /// dropped — `text/javascript; charset=utf-8` is still JavaScript.
 fn script_type_attribute(start_tag: &Node, source: &[u8]) -> Option<String> {
+    script_attribute(start_tag, source, "type")
+}
+
+fn script_attribute(start_tag: &Node, source: &[u8], wanted: &str) -> Option<String> {
     let mut cursor = start_tag.walk();
     for attr in start_tag
         .children(&mut cursor)
@@ -1181,7 +1223,7 @@ fn script_type_attribute(start_tag: &Node, source: &[u8]) -> Option<String> {
             .iter()
             .find(|n| n.kind() == "attribute_name")
             .and_then(|n| n.utf8_text(source).ok())
-            .is_some_and(|name| name.eq_ignore_ascii_case("type"));
+            .is_some_and(|name| name.eq_ignore_ascii_case(wanted));
         if !is_type {
             continue;
         }
@@ -1220,10 +1262,11 @@ fn fragment_embedded_source(
     let Some(language) = get_tree_sitter_language(ts_name) else {
         return;
     };
-    let ext = if ts_name == "javascript" {
-        ".js"
-    } else {
-        ".css"
+    let ext = match ts_name {
+        "javascript" => ".js",
+        "typescript" => ".ts",
+        "tsx" => ".tsx",
+        _ => ".css",
     };
     let Some(config) = LANG_CONFIGS.iter().find(|c| c.extensions.contains(&ext)) else {
         return;
@@ -1727,6 +1770,24 @@ mod grammar_tests {
                 "no fragment may exceed the source file size"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod deadline_tests {
+    use super::*;
+
+    #[test]
+    fn an_aborted_parse_does_not_poison_the_next_parse_on_this_thread() {
+        let language = get_tree_sitter_language("python").expect("python grammar");
+        let bundle = "x = 1\n".repeat(50_000);
+        let aborted = parse_with_deadline("python", &language, &bundle, Duration::ZERO);
+        assert!(aborted.is_none(), "a zero deadline must abort the parse");
+
+        let frags =
+            TreeSitterStrategy::new().fragment(Arc::from("after.py"), "def foo():\n    return 1\n");
+        let symbols: Vec<Option<&str>> = frags.iter().map(|f| f.symbol_name.as_deref()).collect();
+        assert_eq!(symbols, vec![Some("foo")]);
     }
 }
 

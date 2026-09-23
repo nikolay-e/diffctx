@@ -104,16 +104,21 @@ jobs:
           echo "package.json version: $ACTUAL (expected $VERSION)"
           test "$ACTUAL" = "$VERSION"
           test -f checksums.json
+          # 1.16.0 shipped four checksums against install.js's six targets, so
+          # `npx diffctx` died on darwin-x64 and win32-arm64 with "no published
+          # checksum". The keys must be exactly the platform map's assets.
           node -e "
             const c = require('./checksums.json');
-            const n = Object.keys(c).length;
-            if (n === 0) { throw new Error('checksums.json is empty'); }
-            for (const k of Object.keys(c)) {
-              if (!k.includes(process.env.VERSION)) {
-                throw new Error('checksum key does not carry the version: ' + k);
-              }
+            const src = require('fs').readFileSync('install.js', 'utf8');
+            const want = [...src.matchAll(/target: '([^']+)', archive: '([^']+)'/g)]
+              .map(([, t, a]) => 'diffctx-' + process.env.VERSION + '-' + t + '.' + a).sort();
+            const have = Object.keys(c).sort();
+            if (want.length === 0) { throw new Error('no TARGETS parsed from install.js'); }
+            if (JSON.stringify(want) !== JSON.stringify(have)) {
+              throw new Error('checksums.json keys ' + JSON.stringify(have)
+                + ' != install.js targets ' + JSON.stringify(want));
             }
-            console.log('checksums.json: ' + n + ' assets, all version-tagged');
+            console.log('checksums.json: ' + have.length + ' assets, one per install.js target');
           "
 
       # Idempotent like the PyPI step's skip-existing: a rerun after a
@@ -130,14 +135,48 @@ jobs:
             npm publish --access public --provenance
           fi
 
-      # install.js is the script every `npx diffctx` runs, and nothing executed
-      # it before this step existed. --ignore-scripts keeps npm from running
-      # lifecycle scripts implicitly; the smoke then invokes install.js
-      # explicitly — same script, executed as the deliberate object under test.
-      - name: Smoke the published package
+  # install.js is the script every `npx diffctx` runs, and until 1.16.0 it ran
+  # in one workflow on linux-x64 only: the PowerShell zip branch, the chmod
+  # carry-over and four of the six platform-map entries executed nowhere, and
+  # the published checksums.json carried four keys against a six-entry map.
+  # One cell per entry of install.js's TARGETS; darwin-x64 is an x64 Node
+  # under Rosetta, which is exactly what an Intel-Mac user runs.
+  # --ignore-scripts keeps npm from running lifecycle scripts implicitly; the
+  # smoke then invokes install.js explicitly — same script, executed as the
+  # deliberate object under test.
+  npm-smoke:
+    name: Smoke npx diffctx (${{ matrix.os }}${{ matrix.node_arch && format(', node {0}', matrix.node_arch) || '' }})
+    needs: npm
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+          - os: ubuntu-24.04-arm
+          - os: macos-latest
+          - os: macos-latest
+            node_arch: x64
+          - os: windows-latest
+          - os: windows-11-arm
+    steps:
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: '24'
+          architecture: ${{ matrix.node_arch }}
+
+      - name: Install the published package and run install.js
+        shell: bash
         env:
           VERSION: ${{ github.event.inputs.version }}
+          NODE_ARCH: ${{ matrix.node_arch }}
         run: |
+          if [ -n "$NODE_ARCH" ]; then
+            node -p 'process.arch' | grep -qx "$NODE_ARCH"
+          fi
           WORK=$(mktemp -d)
           cd "$WORK"
           npm init -y >/dev/null
@@ -157,7 +196,25 @@ jobs:
             echo "diffctx@$VERSION never became installable"; exit 1
           fi
           node node_modules/diffctx/install.js
-          ./node_modules/.bin/diffctx --version
+          ./node_modules/.bin/diffctx --version | grep -qx "diffctx ${VERSION}"
+          echo "$WORK" > "${RUNNER_TEMP}/npm-work"
+
+      - name: Smoke - diff mode on a two-commit fixture
+        shell: bash
+        run: |
+          WORK=$(cat "${RUNNER_TEMP}/npm-work")
+          SMOKE=$(mktemp -d)
+          cd "$SMOKE"
+          git init -q
+          git config user.email "smoke@test.local"
+          git config user.name "Smoke"
+          printf 'def add(a, b):\n    return a + b\n' > util.py
+          git add -A && git commit -q -m "initial"
+          printf 'def add(a, b):\n    return a + b\n\ndef sub(a, b):\n    return a - b\n' > util.py
+          git add -A && git commit -q -m "add sub"
+          "$WORK/node_modules/.bin/diffctx" . --diff HEAD~1..HEAD > out.yaml
+          grep -q "def sub" out.yaml
+          echo "OK: npx diffctx runs a real diff"
 
   dockerhub:
     name: Mirror image to Docker Hub
@@ -194,3 +251,24 @@ jobs:
             -t "${TARGET}:latest" \
             "${SOURCE}:${VERSION}"
           docker buildx imagetools inspect "${TARGET}:${VERSION}"
+
+      # Inspecting the manifest proves the copy landed; only a pull and a run
+      # prove that what Docker Hub serves under this tag is the release.
+      - name: Smoke - the mirrored image runs
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+          TARGET: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/diffctx
+        run: |
+          docker pull --quiet "${TARGET}:${VERSION}"
+          docker run --rm "${TARGET}:${VERSION}" --version | grep -qx "diffctx ${VERSION}"
+          mkdir -p smoke && cd smoke
+          git init -q
+          git config user.email "smoke@test.local"
+          git config user.name "Smoke"
+          printf 'def add(a, b):\n    return a + b\n' > util.py
+          git add -A && git commit -q -m "initial"
+          printf 'def add(a, b):\n    return a + b\n\ndef sub(a, b):\n    return a - b\n' > util.py
+          git add -A && git commit -q -m "add sub"
+          chmod -R a+rX .
+          docker run --rm -v "$PWD:/repo" "${TARGET}:${VERSION}" . --diff HEAD~1..HEAD > out.yaml
+          grep -q "def sub" out.yaml

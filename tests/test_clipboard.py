@@ -1,3 +1,5 @@
+import shutil
+import subprocess
 import sys
 
 import pytest
@@ -12,6 +14,8 @@ def temp_project(tmp_path):
     project = tmp_path / "test_project"
     project.mkdir()
     (project / "file.txt").write_text("hello", encoding="utf-8")
+    (project / "src").mkdir()
+    (project / "src" / "main.py").write_text("def main():\n    print('hello')\n", encoding="utf-8")
     return project
 
 
@@ -107,6 +111,46 @@ class TestCliCopyFlags:
         assert result.returncode == 0
         assert result.stdout == ""
         assert (temp_project / "out.yaml").exists()
+
+
+def _read_clipboard():
+    if sys.platform == "darwin":
+        return subprocess.run(["pbpaste"], capture_output=True, text=True, check=True).stdout
+    if sys.platform == "win32":
+        script = "[Console]::OutputEncoding = [Text.Encoding]::UTF8; Get-Clipboard -Raw"
+        try:
+            return subprocess.run(
+                ["powershell", "-NoProfile", "-Command", script],
+                capture_output=True,
+                encoding="utf-8",
+                check=True,
+                timeout=20,
+            ).stdout
+        except subprocess.TimeoutExpired:
+            # Observed on the windows-11-arm runner: Get-Clipboard never answers
+            # there although clip.exe accepted the copy.
+            pytest.skip("PowerShell Get-Clipboard did not answer on this machine")
+    for reader in (["wl-paste", "--no-newline"], ["xclip", "-selection", "clipboard", "-o"]):
+        if shutil.which(reader[0]):
+            return subprocess.run(reader, capture_output=True, text=True, check=True).stdout
+    pytest.skip("no clipboard reader on this machine")
+
+
+class TestCopyRoundTrip:
+    @pytest.mark.skipif(not clipboard_available(), reason="Clipboard not available (no display or clipboard tool)")
+    def test_copied_text_equals_the_stdout_artifact(self, temp_project):
+        expected = run_diffctx_subprocess(["src", "-f", "txt", "-o", "-"], cwd=temp_project).stdout
+        for _attempt in range(3):
+            copied = run_diffctx_subprocess(["src", "-c", "-f", "txt"], cwd=temp_project)
+            assert copied.returncode == 0, copied.stderr
+            assert copied.stdout == ""
+            assert "Copied to clipboard" in copied.stderr
+            pasted = _read_clipboard()
+            if pasted.replace("\r\n", "\n").rstrip("\n") == expected.rstrip("\n"):
+                return
+        # Other workers of this suite write the clipboard too; three
+        # consecutive mismatches are the tool, not a race.
+        assert pasted.replace("\r\n", "\n").rstrip("\n") == expected.rstrip("\n")
 
 
 class TestClipboardWarnings:

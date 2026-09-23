@@ -155,8 +155,19 @@ def _common_parent(files: list[Path]) -> Path:
     return Path(os.path.commonpath([str(f.parent) for f in files]))
 
 
+def _drop_nested_dirs(dirs: list[Path]) -> list[Path]:
+    # `diffctx . src` rendered every file under src twice, once per root;
+    # a directory inside another requested directory is already covered.
+    nested = [d for d in dirs if any(other != d and d.is_relative_to(other) for other in dirs)]
+    if nested:
+        _warn(f"{len(nested)} path(s) already inside another requested directory, skipped: {', '.join(str(d) for d in nested)}")
+    return [d for d in dirs if d not in nested]
+
+
 def _expand_paths(raw_paths: list[str]) -> tuple[list[Path], list[Path]]:
     from diffctx._diffctx import is_secret_path
+
+    from .tree import printable
 
     dirs: list[Path] = []
     files: list[Path] = []
@@ -175,13 +186,13 @@ def _expand_paths(raw_paths: list[str]) -> tuple[list[Path], list[Path]]:
             # it the secret-path floor the walk applies to every entry — so
             # `diffctx id_rsa` printed what `diffctx .` refuses. Same policy,
             # same unconditional application.
-            if resolved.is_file() and is_secret_path(str(resolved)):
+            if resolved.is_file() and is_secret_path(printable(str(resolved))):
                 withheld += 1
                 continue
             _classify_resolved(resolved, dirs, files)
     if withheld:
         print(f"{withheld} path(s) withheld by the secret-path policy", file=sys.stderr)
-    return dirs, files
+    return _drop_nested_dirs(dirs), files
 
 
 _FORMAT_BY_EXTENSION = {
@@ -193,20 +204,32 @@ _FORMAT_BY_EXTENSION = {
     ".txt": "txt",
 }
 
+_GRAPH_FORMAT_BY_EXTENSION = {
+    ".json": "json",
+    ".graphml": "graphml",
+    ".mmd": "mermaid",
+    ".mermaid": "mermaid",
+}
 
-def _infer_format_from_output_file(output_file_arg: str | None) -> str | None:
+
+def _infer_format_from_output_file(output_file_arg: str | None, table: dict[str, str] = _FORMAT_BY_EXTENSION) -> str | None:
     if not output_file_arg or output_file_arg == "-":
         return None
-    return _FORMAT_BY_EXTENSION.get(Path(output_file_arg).suffix.lower())
+    return table.get(Path(output_file_arg).suffix.lower())
 
 
-def _resolve_format(format_arg: str | _Unset, output_file_arg: str | None) -> str:
-    inferred = _infer_format_from_output_file(output_file_arg)
+def _resolve_format(
+    format_arg: str | _Unset,
+    output_file_arg: str | None,
+    table: dict[str, str] = _FORMAT_BY_EXTENSION,
+    default: str = "md",
+) -> str:
+    inferred = _infer_format_from_output_file(output_file_arg, table)
     if isinstance(format_arg, str):
         if inferred and inferred != format_arg:
             _warn(f"-f {format_arg} does not match the '{output_file_arg}' extension; writing {format_arg}")
         return format_arg
-    return inferred or "md"
+    return inferred or default
 
 
 def _resolve_output_file(output_file_arg: str | None, save: bool, output_format: str) -> tuple[Path | None, bool]:
@@ -235,8 +258,11 @@ def _find_in_diffctx_dir(arg: str, root_dir: Path, extra_exts: tuple[str, ...]) 
     base = root_dir / ".diffctx"
     for name in (arg, *(f"{stem}{ext}" for ext in extra_exts if f"{stem}{ext}" != arg)):
         candidate = base / name
-        if candidate.is_file():
-            return candidate
+        try:
+            if candidate.is_file():
+                return candidate
+        except OSError:
+            return None
     return None
 
 
@@ -354,7 +380,8 @@ and .diffctx/ignore always apply unless --no-ignores is given):
   .*_cache/             All cache dirs (.pytest_cache, .mypy_cache, etc.)
   .idea/, .vscode/      IDE configurations
   .DS_Store, Thumbs.db  OS-specific files
-  tree.{yaml,json,md,txt}  Default output files (auto-ignored)
+  tree.{yaml,json,md,txt}  Default output files (auto-ignored in tree mode only;
+                        --diff reports a saved tree.md like any other change)
 
 Ignore files (hierarchical, like git):
   .gitignore            Standard git ignore patterns
@@ -407,7 +434,7 @@ Token counting (--budget, and the summary line on stderr):
 Exit codes:
   0  success
   1  runtime error (unreadable path, write failure)
-  2  usage error (unknown flag or invalid value)
+  2  usage error (unknown flag, invalid value, or a flag the mode does not take)
   3  environment error (git missing, not a repository, unknown revision)
   4  --diff produced no context (clean tree or empty range)
   124  --diff exceeded the --timeout wall-clock deadline
@@ -424,19 +451,19 @@ def _build_shared_parser() -> argparse.ArgumentParser:
         "--ignore",
         default=None,
         metavar="FILE",
-        help="Custom ignore file (bare names also resolve inside .diffctx/; not yet supported with --diff)",
+        help="Tree mode only: custom ignore file (bare names also resolve inside .diffctx/); refused with --diff and graph",
     )
     shared.add_argument(
         "-w",
         "--whitelist",
         default=None,
         metavar="FILE",
-        help="Whitelist file, only matching files are included (bare names also resolve inside .diffctx/; not yet supported with --diff)",
+        help="Tree mode only: whitelist file, only matching files are included (bare names also resolve inside .diffctx/); refused with --diff and graph",
     )
     shared.add_argument(
         "--no-default-ignores",
         action="store_true",
-        help="Tree mode only: disable built-in ignore patterns; project .gitignore and .diffctx/ignore still apply (see --no-ignores)",
+        help="Tree mode only: disable built-in ignore patterns; project .gitignore and .diffctx/ignore still apply (see --no-ignores); refused with --diff and graph",
     )
     shared.add_argument(
         "-c",
@@ -560,7 +587,8 @@ def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> arg
         help=(
             "Token budget in o200k_base tokens (tiktoken, GPT-4o family — other model families "
             "tokenize differently, so leave headroom; see 'Token counting' below): "
-            "omit = auto (default), N = cap on the whole artifact (change summary charged first), -1 = unlimited, "
+            "omit = auto (default: 3x the change's core, clamped to 8000-48000, so a wide diff sits at the "
+            "ceiling), N = cap on the whole artifact (change summary charged first), -1 = unlimited, "
             "0 = strict-zero floor (empty selection; use --full for changed files only)"
         ),
     )
@@ -663,6 +691,34 @@ def _warn_diff_only_flags(args: argparse.Namespace) -> None:
         _warn(f"diff-mode flags ignored without --diff: {flags}")
 
 
+def _warn_tree_only_flags(args: argparse.Namespace) -> None:
+    used = []
+    if args.max_depth is not None:
+        used.append("--max-depth")
+    if args.max_file_bytes is not _UNSET:
+        used.append("--max-file-bytes")
+    if args.no_file_size_limit:
+        used.append("--no-file-size-limit")
+    if used:
+        _warn(f"tree-mode flags ignored with --diff: {', '.join(used)}")
+
+
+def _refuse_path_spec_flags(args: argparse.Namespace, mode: str) -> None:
+    # Neither --diff nor graph applies a custom path-spec layer; accepting the
+    # flag would let `-i secrets.ignore` pass while the exclusion never took
+    # effect (project .gitignore and .diffctx/ignore rules do still apply).
+    for flag, given in (
+        ("-i/--ignore", args.ignore is not None),
+        ("-w/--whitelist", args.whitelist is not None),
+        ("--no-default-ignores", args.no_default_ignores),
+    ):
+        if given:
+            _exit_usage_error(
+                f"{flag} is not supported with {mode} (project .gitignore and .diffctx/ignore still apply); "
+                "rerun without it, or without --diff to use it in tree-mapping mode"
+            )
+
+
 def _warn_quiet_log_level_conflict(args: argparse.Namespace) -> None:
     if args.quiet and args.log_level != "error":
         _warn(f"--log-level {args.log_level} ignored with -q")
@@ -670,32 +726,21 @@ def _warn_quiet_log_level_conflict(args: argparse.Namespace) -> None:
 
 def _build_graph_parsed_args(args: argparse.Namespace) -> ParsedArgs:
     root_dir = _resolve_root_dir(args.directory)
-    graph_format = "mermaid" if args.format is _UNSET else args.format
+    _refuse_path_spec_flags(args, "graph")
+    graph_format = _resolve_format(args.format, args.output_file, _GRAPH_FORMAT_BY_EXTENSION, "mermaid")
     graph_level = "directory" if args.level is _UNSET else args.level
     if args.summary and args.format is not _UNSET:
         _warn(f"-f {graph_format} ignored with --summary")
     if not args.summary and args.level is not _UNSET and graph_format in ("json", "graphml"):
         _warn(f"--level {graph_level} applies to mermaid output and --summary; ignored for -f {graph_format}")
     _warn_quiet_log_level_conflict(args)
-    # graph mode walks the discovery universe directly and has no path-spec
-    # layer, so these three are accepted and discarded. Saying so beats a
-    # silent no-op that reads as a filter the user applied.
-    for flag, given in (
-        ("-i/--ignore", args.ignore is not None),
-        ("-w/--whitelist", args.whitelist is not None),
-        ("--no-default-ignores", args.no_default_ignores),
-    ):
-        if given:
-            _warn(f"{flag} ignored: graph mode has no path-spec layer")
     output_file_path, force_stdout = _resolve_output_file(args.output_file, False, graph_format)
-    ignore_file = _resolve_ignore_file(args.ignore, root_dir)
-    whitelist_file = _resolve_whitelist_file(args.whitelist, root_dir)
     verbosity = "error" if args.quiet else args.log_level
 
     return ParsedArgs(
         root_dir=root_dir,
-        ignore_file=ignore_file,
-        whitelist_file=whitelist_file,
+        ignore_file=None,
+        whitelist_file=None,
         output_file=output_file_path,
         no_default_ignores=args.no_default_ignores,
         verbosity=verbosity,
@@ -745,20 +790,25 @@ def _resolve_diff_params(args: argparse.Namespace) -> tuple[str | None, int | No
     timeout = _DEFAULT_TIMEOUT if args.timeout is _UNSET else args.timeout
     mode = "pack" if args.mode is _UNSET else args.mode
 
+    diff_range = args.diff_range
+    if diff_range == _DIFF_SENTINEL:
+        diff_range = "HEAD"
+    if diff_range is not None and not diff_range.strip():
+        _exit_usage_error("--diff requires a non-empty range")
     _validate_budget(budget)
     _validate_alpha(alpha)
     _validate_tau(tau)
     _validate_timeout(timeout)
     _warn_diff_only_flags(args)
     _warn_full_selection_conflict(args)
-    if args.diff_range and not args.full and args.alpha is not _UNSET and scoring != "ppr":
+    if diff_range and not args.full and args.alpha is not _UNSET and scoring != "ppr":
         _warn(f"--alpha only affects --scoring ppr (current scoring: {scoring}); value ignored")
 
-    diff_range = args.diff_range
-    if diff_range == _DIFF_SENTINEL:
-        diff_range = "HEAD"
-    if diff_range and args.no_ignores:
-        _exit_usage_error("--no-ignores is not supported with --diff (git's own ignore rules always apply in diff mode)")
+    if diff_range:
+        if args.no_ignores:
+            _exit_usage_error("--no-ignores is not supported with --diff (git's own ignore rules always apply in diff mode)")
+        _refuse_path_spec_flags(args, "--diff")
+        _warn_tree_only_flags(args)
     _validate_locate_mode(args, mode)
     return diff_range, budget, alpha, tau, scoring, timeout, mode
 
@@ -772,6 +822,9 @@ def _validate_locate_mode(args: argparse.Namespace, mode: str) -> None:
         _exit_usage_error("--mode locate emits no source; --with-raw-diff applies to pack mode only")
     if args.format is not _UNSET:
         _warn(f"-f {args.format} ignored with --mode locate (locate emits diffctx.locate.v1 JSON)")
+    inferred = _infer_format_from_output_file(args.output_file)
+    if inferred and inferred != "json":
+        _warn(f"the '{args.output_file}' extension says {inferred}, but --mode locate writes diffctx.locate.v1 JSON")
 
 
 def _build_tree_parsed_args(args: argparse.Namespace) -> ParsedArgs:

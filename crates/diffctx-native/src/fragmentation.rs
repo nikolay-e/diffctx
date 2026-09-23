@@ -3,7 +3,6 @@ use std::sync::Arc;
 
 use once_cell::sync::Lazy;
 use rayon::prelude::*;
-use regex::Regex;
 use rustc_hash::FxHashSet;
 
 use crate::candidate_files::normalize_path;
@@ -19,8 +18,6 @@ use crate::types::{Fragment, FragmentId, FragmentKind, extract_identifiers};
 // binary signal is an embedded NUL (matching git's own heuristic). The old
 // range flagged ESC/BS/etc., wrongly dropping changed text fixtures that embed
 // ANSI escape codes (snapshot/terminal-recording files).
-static BINARY_CTRL_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\x00").unwrap());
-
 static GENERATED_FILENAME_PATTERNS: Lazy<FxHashSet<&'static str>> = Lazy::new(|| {
     [
         ".pb.go",
@@ -79,14 +76,12 @@ static KNOWN_BINARY_EXTENSIONS: Lazy<FxHashSet<&'static str>> = Lazy::new(|| {
     .collect()
 });
 
-fn looks_binary(content: &str) -> bool {
-    let mut check_len = content
-        .len()
-        .min(FRAGMENTATION.binary_detection_buffer_size);
-    while check_len > 0 && !content.is_char_boundary(check_len) {
-        check_len -= 1;
-    }
-    BINARY_CTRL_RE.is_match(&content[..check_len])
+/// A NUL in the leading window is the binary test every reader shares — the
+/// untracked line counter, the blob reader and the working-tree reader — so
+/// the same file is text or binary whichever store it is read from.
+pub(crate) fn looks_binary(bytes: &[u8]) -> bool {
+    let window = bytes.len().min(FRAGMENTATION.binary_detection_buffer_size);
+    bytes[..window].contains(&0)
 }
 
 fn has_generated_filename(name: &str) -> bool {
@@ -208,62 +203,98 @@ fn dedup_fragments(raw_frags: Vec<Fragment>, seen: &mut FxHashSet<FragmentId>) -
     result
 }
 
+/// What a read of one file came to: its text, and the two findings the
+/// coverage block owes the reader — the file was decoded lossily (not
+/// UTF-8), or it was over the size cap and not read at all.
+enum FileRead {
+    Text { content: String, lossy: bool },
+    TooLarge,
+    Unreadable,
+}
+
+/// The one decoder for file bytes, whichever store they came from. A
+/// Latin-1 source is text — `def café()` must fragment the same before and
+/// after `git add` — so invalid sequences become U+FFFD and the caller is
+/// told; a UTF-8 BOM is dropped so the parser sees `import` on line 1, not a
+/// zero-width character glued to it. CRLF becomes LF: git counts lines the
+/// same either way, and a `\r` on every line of a Windows-authored file is
+/// tokens the reader pays for and noise inside every fence.
+fn decode_text(bytes: &[u8]) -> (String, bool) {
+    let stripped = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes);
+    let (text, lossy) = match std::str::from_utf8(stripped) {
+        Ok(text) => (text.to_string(), false),
+        Err(_) => (String::from_utf8_lossy(stripped).into_owned(), true),
+    };
+    if text.contains("\r\n") {
+        (text.replace("\r\n", "\n"), lossy)
+    } else {
+        (text, lossy)
+    }
+}
+
 fn read_file_content(
     file_path: &Path,
     root_dir: &Path,
     preferred_revs: &[String],
     mut batch_reader: Option<&mut CatFileBatch>,
     is_changed: bool,
-) -> Option<String> {
+) -> FileRead {
     let ext = file_path
         .extension()
         .map(|e| format!(".{}", e.to_string_lossy().to_lowercase()))
         .unwrap_or_default();
     if KNOWN_BINARY_EXTENSIONS.contains(ext.as_str()) {
-        return None;
+        return FileRead::Unreadable;
     }
 
     let abs_path = normalize_path(file_path, root_dir);
     let resolved_root = dunce::canonicalize(root_dir).unwrap_or_else(|_| root_dir.to_path_buf());
-    let rel = abs_path.strip_prefix(&resolved_root).ok()?;
+    let Some(rel) = abs_path.strip_prefix(&resolved_root).ok() else {
+        return FileRead::Unreadable;
+    };
 
     let max_size = if is_changed {
         LIMITS.max_changed_file_size
     } else {
         LIMITS.max_file_size
     };
+    let mut oversized = false;
     for rev in preferred_revs {
-        if let Some(reader) = batch_reader.as_deref_mut() {
-            match reader.get(rev, rel) {
-                Ok(content) if content.len() <= max_size && !looks_binary(&content) => {
-                    return Some(content);
-                }
-                _ => continue,
-            }
-        } else {
-            match git::show_file_at_revision(root_dir, rev, rel) {
-                Ok(content) if content.len() <= max_size && !looks_binary(&content) => {
-                    return Some(content);
-                }
-                _ => continue,
-            }
+        let bytes = match batch_reader.as_deref_mut() {
+            Some(reader) => reader.get_bytes(rev, rel),
+            None => git::show_file_bytes_at_revision(root_dir, rev, rel),
+        };
+        let Ok(bytes) = bytes else { continue };
+        if bytes.len() > max_size {
+            oversized = true;
+            continue;
         }
+        if looks_binary(&bytes) {
+            continue;
+        }
+        let (content, lossy) = decode_text(&bytes);
+        return FileRead::Text { content, lossy };
     }
 
-    if abs_path.exists() && abs_path.is_file() {
+    if abs_path.is_file() {
         if let Ok(meta) = std::fs::metadata(&abs_path) {
             if meta.len() as usize > max_size {
-                return None;
+                return FileRead::TooLarge;
             }
         }
-        if let Ok(content) = std::fs::read_to_string(&abs_path) {
-            if !looks_binary(&content) {
-                return Some(content);
+        if let Ok(bytes) = std::fs::read(&abs_path) {
+            if !looks_binary(&bytes) {
+                let (content, lossy) = decode_text(&bytes);
+                return FileRead::Text { content, lossy };
             }
         }
     }
 
-    None
+    if oversized {
+        FileRead::TooLarge
+    } else {
+        FileRead::Unreadable
+    }
 }
 
 pub fn process_files_for_fragments(
@@ -271,12 +302,37 @@ pub fn process_files_for_fragments(
     root_dir: &Path,
     preferred_revs: &[String],
     seen_frag_ids: &mut FxHashSet<FragmentId>,
-    mut batch_reader: Option<&mut CatFileBatch>,
+    batch_reader: Option<&mut CatFileBatch>,
     is_changed: bool,
     ctx: &crate::resource::RunContext,
 ) -> Vec<Fragment> {
-    let max_frags = LIMITS.max_fragments;
-    let max_generated = LIMITS.max_generated_fragments;
+    fragment_files(
+        files,
+        root_dir,
+        preferred_revs,
+        seen_frag_ids,
+        batch_reader,
+        is_changed,
+        ctx,
+        &[],
+    )
+}
+
+/// `hunks` are the edited lines of the changed files: a fragment overlapping
+/// one survives the per-file cap whatever its size, so the edited function
+/// of a 4000-function file is the changed fragment and not whichever of its
+/// neighbours the cap happened to keep (core identification would otherwise
+/// label the nearest survivor as the change).
+pub fn fragment_files(
+    files: &[PathBuf],
+    root_dir: &Path,
+    preferred_revs: &[String],
+    seen_frag_ids: &mut FxHashSet<FragmentId>,
+    mut batch_reader: Option<&mut CatFileBatch>,
+    is_changed: bool,
+    ctx: &crate::resource::RunContext,
+    hunks: &[crate::types::DiffHunk],
+) -> Vec<Fragment> {
     let max_source_bytes = ctx.budget().max_source_bytes;
 
     // Process files in chunks: sequential read (CatFileBatch is &mut, !Send) then
@@ -299,67 +355,19 @@ pub fn process_files_for_fragments(
                 break;
             }
         }
-        let chunk_contents: Vec<(PathBuf, String)> = chunk
-            .iter()
-            .filter_map(|file_path| {
-                let content = read_file_content(
-                    file_path,
-                    root_dir,
-                    preferred_revs,
-                    batch_reader.as_deref_mut(),
-                    is_changed,
-                )?;
-                Some((file_path.clone(), content))
-            })
-            .collect();
-        let chunk_bytes: u64 = chunk_contents.iter().map(|(_, c)| c.len() as u64).sum();
-        ctx.record_usage(|u| {
-            u.source_bytes += chunk_bytes;
-            u.parsed_files += chunk_contents.len() as u64;
-        });
+        let chunk_contents = read_chunk(
+            chunk,
+            root_dir,
+            preferred_revs,
+            batch_reader.as_deref_mut(),
+            is_changed,
+            ctx,
+        );
         parsed.extend(
             chunk_contents
                 .par_iter()
                 .map(|(file_path, content)| {
-                    let path_arc: Arc<str> = Arc::from(file_path.to_string_lossy().as_ref());
-                    let mut raw_frags = fragment_file(path_arc, content);
-                    // Changed files are the subject of the diff: never apply the
-                    // aggressive generated-file reduction (cap=5 + 30-line content
-                    // truncation), which can drop the small fragment covering the
-                    // edited hunk before core identification runs.
-                    let generated = !is_changed && is_generated_file(file_path, content);
-                    // Changed files also get 10x cap headroom: the biggest-N
-                    // truncation below keeps the LONGEST fragments, and the
-                    // edited hunk is typically a small leaf that would be
-                    // dropped first (hunks are only known later, in core
-                    // identification). max_changed_file_size still bounds cost.
-                    let cap = if generated {
-                        max_generated
-                    } else if is_changed {
-                        max_frags.saturating_mul(10)
-                    } else {
-                        max_frags
-                    };
-                    if raw_frags.len() > cap {
-                        // Longest first — but a manifest's one-line
-                        // `apiVersion:`/`kind:` pairs are what says it is a
-                        // manifest at all, and dropping them as the shortest
-                        // made a generated Deployment invisible to the
-                        // selector channel (#258). Resource headers survive
-                        // the cut; the cap applies to everything else.
-                        let (headers, mut rest): (Vec<Fragment>, Vec<Fragment>) = raw_frags
-                            .into_iter()
-                            .partition(|f| generated && is_resource_header(&f.content));
-                        rest.sort_by(|a, b| b.line_count().cmp(&a.line_count()));
-                        rest.truncate(cap);
-                        rest.extend(headers);
-                        rest.sort_by(|a, b| a.id.cmp(&b.id));
-                        raw_frags = rest;
-                    }
-                    if generated {
-                        raw_frags = truncate_generated_fragments(raw_frags);
-                    }
-                    raw_frags
+                    fragment_one(file_path, content, is_changed, hunks, ctx)
                 })
                 .collect::<Vec<_>>(),
         );
@@ -375,13 +383,127 @@ pub fn process_files_for_fragments(
     fragments
 }
 
+/// One chunk of files read in order (the batch reader is not `Send`), with
+/// every lossy decode and size exclusion recorded on `ctx`.
+fn read_chunk(
+    chunk: &[PathBuf],
+    root_dir: &Path,
+    preferred_revs: &[String],
+    mut batch_reader: Option<&mut CatFileBatch>,
+    is_changed: bool,
+    ctx: &crate::resource::RunContext,
+) -> Vec<(PathBuf, String)> {
+    let contents: Vec<(PathBuf, String)> = chunk
+        .iter()
+        .filter_map(|file_path| {
+            match read_file_content(
+                file_path,
+                root_dir,
+                preferred_revs,
+                batch_reader.as_deref_mut(),
+                is_changed,
+            ) {
+                FileRead::Text { content, lossy } => {
+                    if lossy {
+                        ctx.note_lossy(crate::paths::display_rel_or_abs(root_dir, file_path));
+                    }
+                    Some((file_path.clone(), content))
+                }
+                FileRead::TooLarge => {
+                    ctx.note(crate::resource::LimitReason::FileTooLarge);
+                    None
+                }
+                FileRead::Unreadable => None,
+            }
+        })
+        .collect();
+    let bytes: u64 = contents.iter().map(|(_, c)| c.len() as u64).sum();
+    ctx.record_usage(|u| {
+        u.source_bytes += bytes;
+        u.parsed_files += contents.len() as u64;
+    });
+    contents
+}
+
+/// A file's fragments under the per-file cap. Changed files are the subject of
+/// the diff: never apply the aggressive generated-file reduction (cap=5 +
+/// 30-line content truncation), which can drop the small fragment covering the
+/// edited hunk before core identification runs.
+fn fragment_one(
+    file_path: &Path,
+    content: &str,
+    is_changed: bool,
+    hunks: &[crate::types::DiffHunk],
+    ctx: &crate::resource::RunContext,
+) -> Vec<Fragment> {
+    let path_arc: Arc<str> = Arc::from(file_path.to_string_lossy().as_ref());
+    let mut raw_frags = fragment_file(path_arc, content);
+    let generated = !is_changed && is_generated_file(file_path, content);
+    // Changed files also get 10x cap headroom: the biggest-N truncation below
+    // keeps the LONGEST fragments, and the edited hunk is typically a small
+    // leaf that would be dropped first (hunks are only known later, in core
+    // identification). max_changed_file_size still bounds cost.
+    let cap = if generated {
+        LIMITS.max_generated_fragments
+    } else if is_changed {
+        LIMITS.max_fragments.saturating_mul(10)
+    } else {
+        LIMITS.max_fragments
+    };
+    if raw_frags.len() > cap {
+        raw_frags = cap_fragments(raw_frags, cap, file_path, generated, hunks);
+        if !generated {
+            ctx.note(crate::resource::LimitReason::FragmentLimit);
+        }
+    }
+    if generated {
+        raw_frags = truncate_generated_fragments(raw_frags);
+    }
+    raw_frags
+}
+
+/// Longest first — but a manifest's one-line `apiVersion:`/`kind:` pairs are
+/// what says it is a manifest at all, and dropping them as the shortest made a
+/// generated Deployment invisible to the selector channel (#258). Resource
+/// headers survive the cut, and so does anything the diff touched; the cap
+/// applies to everything else.
+fn cap_fragments(
+    raw_frags: Vec<Fragment>,
+    cap: usize,
+    file_path: &Path,
+    generated: bool,
+    hunks: &[crate::types::DiffHunk],
+) -> Vec<Fragment> {
+    let key = file_path.to_string_lossy();
+    let (kept, mut rest): (Vec<Fragment>, Vec<Fragment>) = raw_frags.into_iter().partition(|f| {
+        (generated && is_resource_header(&f.content))
+            || hunks
+                .iter()
+                .any(|h| h.path.as_ref() == key.as_ref() && overlaps_hunk(f, h))
+    });
+    rest.sort_by(|a, b| b.line_count().cmp(&a.line_count()));
+    rest.truncate(cap);
+    rest.extend(kept);
+    rest.sort_by(|a, b| a.id.cmp(&b.id));
+    rest
+}
+
+fn overlaps_hunk(fragment: &Fragment, hunk: &crate::types::DiffHunk) -> bool {
+    let (start, end) = hunk.core_selection_range();
+    fragment.start_line() <= end && fragment.end_line() >= start
+}
+
 pub fn create_whole_file_fragment(
     path: &Path,
     root_dir: &Path,
     preferred_revs: &[String],
     batch_reader: Option<&mut CatFileBatch>,
 ) -> Option<Fragment> {
-    let content = read_file_content(path, root_dir, preferred_revs, batch_reader, true)?;
+    let FileRead::Text { content, .. } =
+        read_file_content(path, root_dir, preferred_revs, batch_reader, true)
+    else {
+        return None;
+    };
     let trimmed = content.trim();
     if trimmed.is_empty() {
         return None;

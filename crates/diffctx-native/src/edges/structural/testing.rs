@@ -14,7 +14,7 @@ static IMPORT_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?m)^\s*(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))").unwrap());
 
 fn is_test_file(path: &Path) -> bool {
-    crate::testfiles::is_test_path(path)
+    crate::testfiles::is_test_path(path) || base::file_ext(path) == ".t"
 }
 
 fn extract_imports(content: &str) -> FxHashSet<String> {

@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import os
 import subprocess
+import sys
+from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -39,6 +43,63 @@ def test_user_diff_config_cannot_empty_the_selection(tmp_path, key, value):
 
     assert ctx["changed_files"] == ["calc.py"], (key, value)
     assert ctx["fragment_count"] > 0, (key, value)
+
+
+def _repo_with_two_distant_edits(path: Path) -> Pygit2Repo:
+    repo = Pygit2Repo(path)
+    body = "".join(f"def f{i}(x):\n    return x + {i}\n" for i in range(1, 6))
+    repo.add_file("funcs.py", body)
+    repo.commit("initial")
+    repo.add_file("funcs.py", body.replace("x + 1\n", "x - 1\n").replace("x + 4\n", "x - 4\n"))
+    repo.commit("edit f1 and f4")
+    return repo
+
+
+def _hunk_shape(ctx: dict[str, Any]) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    changed = sorted((f["path"], f["lines"]) for f in ctx["fragments"] if f.get("role") == "changed")
+    classes = sorted((c["path"], c["class"]) for c in ctx.get("changes") or [])
+    return changed, classes
+
+
+@pytest.mark.parametrize(
+    ("config", "env"),
+    [
+        pytest.param(("diff.interHunkContext", "5"), {}, id="interHunkContext"),
+        pytest.param(None, {"GIT_DIFF_OPTS": "-u3"}, id="GIT_DIFF_OPTS"),
+    ],
+)
+def test_user_diff_config_cannot_reshape_the_hunks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, config: tuple[str, str] | None, env: dict[str, str]
+) -> None:
+    clean = _repo_with_two_distant_edits(tmp_path / "clean")
+    hostile = _repo_with_two_distant_edits(tmp_path / "hostile")
+    if config is not None:
+        subprocess.run(["git", "-C", str(hostile.path), "config", *config], check=True)
+    expected = _hunk_shape(diffctx.build_diff_context(root_dir=clean.path, diff_range="HEAD~1..HEAD"))
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    actual = _hunk_shape(diffctx.build_diff_context(root_dir=hostile.path, diff_range="HEAD~1..HEAD"))
+
+    assert actual == expected
+    assert len(expected[0]) == 2, expected
+
+
+def test_a_git_config_git_refuses_is_reported_in_gits_words(tmp_path: Path) -> None:
+    repo = _repo_with_change(tmp_path)
+    config = repo.path / ".git" / "config"
+    config.write_text(config.read_text() + "[core\n")
+
+    result = subprocess.run(
+        [sys.executable, "-m", "diffctx", ".", "--diff", "HEAD"],
+        cwd=repo.path,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "PYTHONPATH": str(Path(diffctx.__file__).parents[1])},
+    )
+
+    assert result.returncode == 3, result.stderr
+    assert "fatal:" in result.stderr
+    assert "not a git repository" not in result.stderr
 
 
 @pytest.mark.parametrize("crafted", ["a..--ext-diff", "main...--textconv", "HEAD..-p"])

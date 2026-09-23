@@ -1,0 +1,114 @@
+name: protobuf_import_path_only_edge
+tags:
+- lang:protobuf
+- change:single_file
+- context:cross_module
+- builder:protobuf
+repo:
+  initial_files:
+    api/window.proto: |
+      syntax = "proto3";
+
+      import "vendor/palette.proto";
+
+      package ui;
+
+      message Window {
+        int32 width = 1;
+        int32 height = 2;
+      }
+    vendor/palette.proto: |
+      syntax = "proto3";
+
+      package pl;
+
+      enum Hue {
+        CRIMSON = 0;
+        TEAL = 1;
+        AMBER = 2;
+      }
+    vendor/archive.proto: |
+      syntax = "proto3";
+
+      package store;
+
+      message Bundle {
+        string folder = 1;
+        bytes blob = 2;
+        uint64 checksum = 3;
+        int64 created_unix = 4;
+      }
+
+      message PruneRequest {
+        string folder = 1;
+        uint32 days = 2;
+      }
+    vendor/network.proto: |
+      syntax = "proto3";
+
+      package net;
+
+      message Probe {
+        string host = 1;
+        uint32 port = 2;
+        uint32 attempts = 3;
+        bool reachable = 4;
+      }
+
+      message Fetch {
+        string url = 1;
+        uint32 retries = 2;
+        string target = 3;
+      }
+    vendor/journal.proto: |
+      syntax = "proto3";
+
+      package logs;
+
+      enum Level {
+        INFO = 0;
+        WARN = 1;
+        FAIL = 2;
+      }
+
+      message Entry {
+        Level level = 1;
+        string message = 2;
+        int64 stamp_unix = 3;
+      }
+  changed_files:
+    api/window.proto: |
+      syntax = "proto3";
+
+      import public "vendor/palette.proto";
+
+      package ui;
+
+      message Window {
+        int32 width = 1;
+        int32 height = 2;
+      }
+  commit_message: Re-export palette to dependents
+fixtures:
+  auto_garbage: true
+fragments:
+- id: palette
+  selector:
+    path: vendor/palette.proto
+    anchor: CRIMSON
+- id: no_archive
+  selector:
+    path: vendor/archive.proto
+- id: no_network
+  selector:
+    path: vendor/network.proto
+- id: no_journal
+  selector:
+    path: vendor/journal.proto
+oracle:
+  required:
+  - palette
+  forbidden:
+  - no_archive
+  - no_network
+  - no_journal

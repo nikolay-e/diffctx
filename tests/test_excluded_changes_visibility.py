@@ -10,6 +10,14 @@ confidentiality policy (#85), so its exclusions surface as a count only.
 
 from __future__ import annotations
 
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
 import diffctx
 from tests.conftest import run_diffctx_subprocess
 from tests.framework.pygit2_backend import Pygit2Repo
@@ -155,3 +163,68 @@ def test_fully_represented_output_has_no_omission_footer(tmp_path):
     result = diffctx.build_diff_context(root_dir=repo.path, diff_range="HEAD~1")
     md = diffctx.to_markdown(result)
     assert "omitted" not in md
+
+
+def _git(repo: Path, *args: str) -> None:
+    env = {k: v for k, v in os.environ.items() if k not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE")}
+    subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, env=env)
+
+
+def _plain_repo(path: Path) -> Path:
+    path.mkdir(parents=True)
+    _git(path, "init", "-q", "-b", "main")
+    _git(path, "config", "user.email", "test@test.com")
+    _git(path, "config", "user.name", "Test")
+    _git(path, "config", "commit.gpgsign", "false")
+    return path
+
+
+def _commit_all(repo: Path, message: str) -> None:
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", message)
+
+
+def _assert_listed_unrepresented(repo: Path, diff_args: list[str], path: str) -> str:
+    result = run_diffctx_subprocess([".", *diff_args, "-f", "json", "-q"], cwd=repo)
+    doc = json.loads(result.stdout)
+    assert doc["changed_files"] == [path], result.stderr
+    assert doc["changes"] == [{"path": path, "class": doc["changes"][0]["class"], "represented": False}]
+    return str(result.stderr)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="NTFS has no executable bit for git to record")
+def test_a_mode_only_change_is_listed_unrepresented(tmp_path: Path) -> None:
+    repo = _plain_repo(tmp_path / "repo")
+    (repo / "tool.py").write_text("def run():\n    return 1\n", encoding="utf-8")
+    _commit_all(repo, "base")
+    (repo / "tool.py").chmod(0o755)
+
+    _assert_listed_unrepresented(repo, ["--diff"], "tool.py")
+
+
+def test_a_submodule_pointer_bump_is_listed_unrepresented(tmp_path: Path) -> None:
+    sub = _plain_repo(tmp_path / "sub")
+    (sub / "lib.py").write_text("X = 1\n", encoding="utf-8")
+    _commit_all(sub, "sub base")
+    repo = _plain_repo(tmp_path / "repo")
+    (repo / "app.py").write_text("def a():\n    return 1\n", encoding="utf-8")
+    _commit_all(repo, "base")
+    _git(repo, "-c", "protocol.file.allow=always", "submodule", "add", "-q", sub.resolve().as_uri(), "vendor/sub")
+    _commit_all(repo, "add submodule")
+    (sub / "lib.py").write_text("X = 2\n", encoding="utf-8")
+    _commit_all(sub, "sub bump")
+    _git(repo / "vendor" / "sub", "-c", "protocol.file.allow=always", "pull", "-q", "origin", "main")
+    _commit_all(repo, "bump submodule")
+
+    assert "matches HEAD" not in _assert_listed_unrepresented(repo, ["--diff", "HEAD~1..HEAD"], "vendor/sub")
+
+
+def test_a_diff_attribute_hides_the_hunks_but_not_the_change(tmp_path: Path) -> None:
+    repo = _plain_repo(tmp_path / "repo")
+    (repo / ".gitattributes").write_text("*.py -diff\n", encoding="utf-8")
+    (repo / "app.py").write_text("def a():\n    return 1\n", encoding="utf-8")
+    _commit_all(repo, "base")
+    (repo / "app.py").write_text("def a():\n    return 2\n", encoding="utf-8")
+    _commit_all(repo, "edit")
+
+    assert "matches HEAD" not in _assert_listed_unrepresented(repo, ["--diff", "HEAD~1..HEAD"], "app.py")

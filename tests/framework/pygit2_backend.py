@@ -240,7 +240,9 @@ class Pygit2Repo:
     def add_file(self, rel_path: str, content: str) -> Path:
         file_path = self.path / rel_path
         file_path.parent.mkdir(parents=True, exist_ok=True)
-        file_path.write_text(content, encoding="utf-8")
+        # newline="": the bytes a test declares are the bytes on disk; a Windows
+        # text write turned every LF into CRLF and moved every size boundary.
+        file_path.write_text(content, encoding="utf-8", newline="")
         return file_path
 
     def add_file_binary(self, rel_path: str, data: bytes) -> Path:

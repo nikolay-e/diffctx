@@ -675,3 +675,46 @@ def test_aggregate_sweep_expands_multi_budget_cells(tmp_path: Path):
     assert {(c["method"], c["budget"], c["depth"]) for c in cells} == {("ego", 0, 2), ("ego", 8000, 2), ("aider", 8000, -1)}
     assert all(c["n_instances"] == 1 for c in cells)
     assert all(c["summary"] for c in cells)
+
+
+def test_patch_files_detailed_unquotes_the_paths_git_quotes(tmp_path: Path):
+    """git's default `core.quotepath` writes a non-ASCII path as
+    `"b/caf\\303\\251.py"`; read literally, the gold set names a file no
+    repository has and every such instance scores as a miss."""
+    import subprocess
+
+    from eval.harness.common import patch_files_detailed
+
+    repo = tmp_path / "quoted"
+    repo.mkdir()
+    git = ["git", "-C", str(repo), "-c", "user.email=t@t", "-c", "user.name=t"]
+    subprocess.run([*git, "init", "-q"], check=True)
+    (repo / "café.py").write_text("x = 1\n", encoding="utf-8")
+    subprocess.run([*git, "add", "-A"], check=True)
+    subprocess.run([*git, "commit", "-qm", "init"], check=True)
+    (repo / "café.py").write_text("x = 2\n", encoding="utf-8")
+    (repo / "naïve.py").write_text("y = 1\n", encoding="utf-8")
+    subprocess.run([*git, "add", "-N", "naïve.py"], check=True)
+    patch = subprocess.run([*git, "-c", "core.quotepath=true", "diff"], check=True, capture_output=True).stdout.decode("utf-8")
+    assert '"b/caf\\303\\251.py"' in patch, patch
+
+    added, deleted, modified = patch_files_detailed(patch)
+    assert modified == {"café.py"}
+    assert added == {"naïve.py"}
+    assert deleted == set()
+
+
+def test_checkpoint_resume_survives_a_truncated_last_line(tmp_path: Path):
+    """A kill mid-write leaves a row without its newline. The next append must
+    start a fresh line, or the glued pair is unreadable and both instances are
+    re-run (or, worse, silently missing from the aggregate)."""
+    from eval.harness.adapters.runner import append_checkpoint, read_checkpoint
+
+    ckpt = tmp_path / "ckpt.jsonl"
+    whole = run_eval_set([_inst("a", 0)], _stub_eval_fn, RunParams(), workers=1, checkpoint_path=ckpt)
+    assert len(whole) == 1
+    text = ckpt.read_text()
+    ckpt.write_text(text + text[: len(text) // 2])
+
+    append_checkpoint(ckpt, _stub_eval_fn(_inst("a", 1), RunParams()))
+    assert read_checkpoint(ckpt) == {"a::0", "a::1"}

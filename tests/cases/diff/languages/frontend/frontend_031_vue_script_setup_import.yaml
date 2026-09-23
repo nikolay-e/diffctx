@@ -1,0 +1,85 @@
+name: frontend_031_vue_script_setup_import
+tags:
+- lang:vue
+- change:single_file
+- parser:sfc_script
+repo:
+  initial_files:
+    src/components/Cart.vue: |
+      <template>
+        <div class="cart">
+          <span class="cart-total">{{ total }}</span>
+        </div>
+      </template>
+
+      <script setup lang="ts">
+      import { computed } from 'vue'
+      import { formatPrice } from '../utils/money'
+
+      const props = defineProps<{ items: number[] }>()
+
+      function computeTotal(items: number[]): number {
+        return items.reduce((sum, item) => sum + item, 0)
+      }
+
+      const total = computed(() => formatPrice(computeTotal(props.items)))
+      </script>
+
+      <style scoped>
+      .cart-total {
+        font-weight: bold;
+      }
+      </style>
+    src/utils/money.ts: |
+      export function formatPrice(cents: number): string {
+        const whole = Math.floor(cents / 100)
+        const rest = String(cents % 100).padStart(2, '0')
+        return `$${whole}.${rest}`
+      }
+  changed_files:
+    src/components/Cart.vue: |
+      <template>
+        <div class="cart">
+          <span class="cart-total">{{ total }}</span>
+        </div>
+      </template>
+
+      <script setup lang="ts">
+      import { computed } from 'vue'
+      import { formatPrice } from '../utils/money'
+
+      const props = defineProps<{ items: number[] }>()
+
+      function computeTotal(items: number[]): number {
+        const positive = items.filter((item) => item > 0)
+        return positive.reduce((sum, item) => sum + item, 0)
+      }
+
+      const total = computed(() => formatPrice(computeTotal(props.items)))
+      </script>
+
+      <style scoped>
+      .cart-total {
+        font-weight: bold;
+      }
+      </style>
+  commit_message: Ignore negative line items in the cart total
+fixtures:
+  auto_garbage: true
+fragments:
+- id: compute_total
+  selector:
+    path: src/components/Cart.vue
+    symbol: computeTotal
+    kind: function
+- id: format_price
+  selector:
+    path: src/utils/money.ts
+    symbol: formatPrice
+    kind: function
+oracle:
+  required:
+  - compute_total
+  - format_price
+accept:
+  kind_must_match: true

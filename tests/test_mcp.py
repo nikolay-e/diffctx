@@ -471,6 +471,25 @@ class TestBudgetTokensValidation:
         )
         assert isinstance(_get_text(result), str)
 
+    @pytest.mark.parametrize("tool", ["diffctx_context", "get_tree_map", "get_file_context"])
+    @pytest.mark.parametrize("max_tokens", [0, -5])
+    @pytest.mark.asyncio
+    async def test_a_max_tokens_below_one_is_refused(self, server, mcp_repo, legacy_tools, tool, max_tokens):
+        args = {"repo_path": str(mcp_repo.path), "patterns": ["src/*.py"], "max_tokens": max_tokens}
+        with pytest.raises(ToolError, match="max_tokens must be >= 1"):
+            await server.call_tool(tool, args)
+
+    @pytest.mark.asyncio
+    async def test_a_response_exactly_at_max_tokens_is_returned_uncapped(self, server, mcp_repo):
+        from diffctx.tokens import count_tokens
+
+        args = {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD"}
+        full = _get_text(await server.call_tool("diffctx_context", args))
+        exact = _get_text(await server.call_tool("diffctx_context", {**args, "max_tokens": count_tokens(full).count}))
+        assert exact == full
+        one_short = _get_text(await server.call_tool("diffctx_context", {**args, "max_tokens": count_tokens(full).count - 1}))
+        assert "exceeding max_tokens" in one_short
+
     @pytest.mark.asyncio
     async def test_unlimited_budget_is_still_capped_by_max_tokens(self, server, mcp_repo):
         result = await server.call_tool(
@@ -626,6 +645,23 @@ class TestFileContextTruncationAndDedup:
         )
         assert "TRUNCATED" not in _get_text(result)
 
+    @pytest.mark.parametrize("max_files", [0, -1])
+    @pytest.mark.asyncio
+    async def test_a_max_files_below_one_is_refused_not_reported_as_no_match(self, server, mcp_repo, max_files):
+        args = {"repo_path": str(mcp_repo.path), "patterns": ["src/*.py"], "max_files": max_files}
+        with pytest.raises(ToolError, match="max_files must be >= 1"):
+            await server.call_tool("get_file_context", args)
+
+    @pytest.mark.asyncio
+    async def test_max_files_equal_to_the_match_count_is_not_a_truncation(self, server, mcp_repo):
+        result = await server.call_tool(
+            "get_file_context",
+            {"repo_path": str(mcp_repo.path), "patterns": ["src/*.py"], "max_files": 2},
+        )
+        text = _get_text(result)
+        assert "2 files matched" in text
+        assert "TRUNCATED" not in text
+
     @pytest.mark.asyncio
     async def test_absolute_pattern_reaching_the_repo_through_a_symlink_is_reported(self, server, mcp_repo, tmp_path):
         """Containment is checked on the resolved path while the report keyed off
@@ -697,6 +733,71 @@ class TestClipboardDegradation:
         assert "def add" in text
 
 
+class TestClipboardCopies:
+    # The success path, through a real clipboard command: a tiny script that writes its stdin to a
+    # file stands in for pbcopy/clip/xclip, which is the external-tool boundary and the one seam
+    # these tests monkeypatch. Every "Copied ..." reply is checked against what actually reached the
+    # sink; the fetch reply used to count ids requested, not fragments resolved (T5.3).
+
+    @pytest.fixture
+    def sink(self, tmp_path, monkeypatch):
+        import sys
+
+        script = tmp_path / "sink.py"
+        script.write_text("import sys\nopen(sys.argv[1], 'wb').write(sys.stdin.buffer.read())\n", encoding="utf-8")
+        out = tmp_path / "clipboard.txt"
+        monkeypatch.setattr("diffctx.clipboard.detect_clipboard_command", lambda: [sys.executable, str(script), str(out)])
+        return out
+
+    @staticmethod
+    def _pasted(out) -> str:
+        import sys
+
+        return out.read_bytes().decode("utf-16le" if sys.platform == "win32" else "utf-8")
+
+    @pytest.mark.asyncio
+    async def test_the_fetch_reply_counts_fragments_resolved_not_ids_requested(self, server, mcp_repo, sink):
+        args = {
+            "repo_path": str(mcp_repo.path),
+            "diff_ref": "HEAD~1..HEAD",
+            "fragment_ids": ["src/calc.py:1-2", "no/such/file.py:1-2", ":bad"],
+        }
+        inline = _get_text(await server.call_tool("diffctx_context", args))
+        assert "def add(a, b):" in inline
+        assert "Not found" in inline
+        assert "Unparseable" in inline
+
+        reply = _get_text(await server.call_tool("diffctx_context", {**args, "clipboard": True}))
+
+        assert reply == "Copied 1 of 3 fragments to clipboard"
+        assert self._pasted(sink) == inline
+
+    @pytest.mark.asyncio
+    async def test_the_locate_reply_counts_the_items_it_copied(self, server, mcp_repo, sink):
+        import json
+
+        args = {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD", "mode": "locate"}
+        reply = _get_text(await server.call_tool("diffctx_context", {**args, "clipboard": True}))
+
+        pasted = json.loads(self._pasted(sink))
+        assert pasted["schema"] == "diffctx.locate.v1"
+        assert pasted["item_count"] == len(pasted["items"]) > 0
+        assert reply == f"Copied locate JSON ({pasted['item_count']} items) to clipboard"
+
+    @pytest.mark.asyncio
+    async def test_the_pack_reply_counts_the_fragments_it_copied(self, server, mcp_repo, sink):
+        from diffctx._native import build_diff_context
+
+        args = {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD", "mode": "pack"}
+        inline = _get_text(await server.call_tool("diffctx_context", args))
+        reply = _get_text(await server.call_tool("diffctx_context", {**args, "clipboard": True}))
+
+        assert self._pasted(sink) == inline
+        engine = build_diff_context(root_dir=mcp_repo.path, diff_range="HEAD~1..HEAD", budget_tokens=8000, timeout=60)
+        assert engine["fragment_count"] > 0
+        assert reply == f"Copied diff context ({engine['fragment_count']} fragments) to clipboard"
+
+
 class TestRepoPathWalksUpToRoot:
     """diffctx_context(repo_path='/repo/src') used to fail with 'Not a git
     repository' even though it plainly is inside one. repo_path only locates
@@ -728,14 +829,16 @@ class TestRepoPathWalksUpToRoot:
         assert "calc.py" in _get_text(result)
 
     @pytest.mark.asyncio
-    async def test_a_bare_clone_is_accepted(self, server, mcp_repo, tmp_path):
+    async def test_a_bare_clone_is_rejected_because_policy_files_need_a_working_tree(self, server, mcp_repo, tmp_path):
+        # `.gitignore` and `.diffctx/ignore` live in the checkout. A bare repository was admitted
+        # and served what a worktree clone of the same history withholds, because there was no disk
+        # for the rules to be read from (T3.2).
         bare_path = tmp_path / "bare.git"
         self._run_git("clone", "--bare", str(mcp_repo.path), str(bare_path), cwd=tmp_path)
-        result = await server.call_tool(
-            "diffctx_context",
-            {"repo_path": str(bare_path), "diff_ref": "HEAD~1..HEAD"},
-        )
-        assert "calc.py" in _get_text(result)
+        for target in (bare_path, bare_path / "refs"):
+            with pytest.raises(ToolError, match="bare repository") as refused:
+                await server.call_tool("diffctx_context", {"repo_path": str(target), "diff_ref": "HEAD~1..HEAD"})
+            assert str(target) in str(refused.value)
 
     @pytest.mark.asyncio
     async def test_a_directory_with_no_git_repo_anywhere_above_it_is_still_rejected(self, server, tmp_path):
@@ -796,13 +899,13 @@ class TestGitRefInjection:
         with pytest.raises(ToolError, match="invalid diff range:"):
             await server.call_tool("diffctx_context", args)
 
+    @pytest.mark.parametrize("mode", ["locate", "pack"])
     @pytest.mark.asyncio
-    async def test_dashes_inside_a_ref_name_still_reach_git(self, server, mcp_repo):
-        """The syntax gate rejects a leading dash only. A branch named
-        `no-such-branch` must still be resolved by git, not refused as
-        malformed."""
-        args = {"repo_path": str(mcp_repo.path), "diff_ref": "no-such-branch..HEAD"}
-        with pytest.raises(ToolError, match="git log --oneline"):
+    async def test_dashes_inside_a_ref_name_still_reach_git(self, server, mcp_repo, mode):
+        # The syntax gate rejects a leading dash only; git must still resolve
+        # `no-such-branch`, and both modes must answer with the same hint.
+        args = {"repo_path": str(mcp_repo.path), "diff_ref": "no-such-branch..HEAD", "mode": mode}
+        with pytest.raises(ToolError, match=r"Invalid diff range 'no-such-branch\.\.HEAD'.*git log --oneline"):
             await server.call_tool("diffctx_context", args)
 
     @pytest.mark.asyncio
@@ -969,6 +1072,30 @@ class TestProgressiveDisclosure:
         )
         assert "must-not-surface" not in text
         assert "API_TOKEN" not in text
+
+    @pytest.mark.asyncio
+    async def test_a_directory_id_under_a_committed_revision_names_none_of_its_entries(self, server, tmp_path):
+        # `git show HEAD:<dir>` prints a tree listing, and the fetch served it as if it were a file
+        # body — naming a `*.key` the ignore rules withhold. The working-tree path never had this
+        # hole (`is_file()` filters directories), so only a committed revision reaches it (T3.3).
+        repo = Pygit2Repo(tmp_path / "tree_listing")
+        repo.add_file(".diffctx/ignore", "*.key\n")
+        repo.add_file("keys/deploy.key", "PRIVATE-KEY-must-not-surface\n")
+        repo.add_file("app.py", "def run():\n    return 1\n")
+        repo.commit("initial")
+        repo.add_file("app.py", "def run():\n    return 2\n")
+        repo.commit("change")
+
+        text = _get_text(
+            await server.call_tool(
+                "diffctx_context",
+                {"repo_path": str(repo.path), "diff_ref": "HEAD~1..HEAD", "fragment_ids": ["keys", "keys:1-3", "app.py:1-2"]},
+            )
+        )
+        assert "deploy.key" not in text
+        assert "tree HEAD" not in text
+        assert text.count("Not found at HEAD") == 2
+        assert "return 2" in text
 
     @pytest.mark.asyncio
     async def test_a_symlinked_directory_inside_the_repo_is_not_a_way_out(self, server, tmp_path):

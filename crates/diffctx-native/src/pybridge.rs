@@ -53,10 +53,12 @@ fn detach_guarded<T: Send>(
     diff_range,
     budget_tokens = None,
     alpha = DEFAULT_PPR_ALPHA,
-    tau = DEFAULT_STOPPING_THRESHOLD,
+    tau = None,
     scoring_mode = DEFAULT_SCORING,
     timeout = DEFAULT_PIPELINE_TIMEOUT_SECONDS,
+    paths = Vec::new(),
 ))]
+#[allow(clippy::too_many_arguments)]
 fn build_locate(
     py: Python<'_>,
     root_dir: &str,
@@ -66,6 +68,7 @@ fn build_locate(
     tau: Option<f64>,
     scoring_mode: &str,
     timeout: u64,
+    paths: Vec<String>,
 ) -> PyResult<String> {
     let mode =
         ScoringMode::from_str(scoring_mode).map_err(pyo3::exceptions::PyValueError::new_err)?;
@@ -83,6 +86,7 @@ fn build_locate(
         crate::pipeline::build_diff_context_locate(
             &path,
             range.as_deref(),
+            &paths,
             budget_tokens,
             alpha,
             tau,
@@ -107,11 +111,12 @@ fn map_pipeline_err(e: anyhow::Error) -> PyErr {
     diff_range,
     budget_tokens = None,
     alpha = DEFAULT_PPR_ALPHA,
-    tau = DEFAULT_STOPPING_THRESHOLD,
+    tau = None,
     no_content = false,
     full = false,
     scoring_mode = DEFAULT_SCORING,
     timeout = DEFAULT_PIPELINE_TIMEOUT_SECONDS,
+    paths = Vec::new(),
 ))]
 fn build_diff_context<'py>(
     py: Python<'py>,
@@ -124,6 +129,7 @@ fn build_diff_context<'py>(
     full: bool,
     scoring_mode: &str,
     timeout: u64,
+    paths: Vec<String>,
 ) -> PyResult<Bound<'py, PyDict>> {
     let mode =
         ScoringMode::from_str(scoring_mode).map_err(pyo3::exceptions::PyValueError::new_err)?;
@@ -136,9 +142,10 @@ fn build_diff_context<'py>(
 
     let start = std::time::Instant::now();
     let output = detach_guarded(py, || {
-        pipeline::build_diff_context(
+        pipeline::build_diff_context_in(
             path,
             range,
+            &paths,
             budget_tokens,
             alpha,
             tau,
@@ -178,7 +185,7 @@ fn compute_scored_state(
         Some(diff_range)
     };
     let state = detach_guarded(py, || {
-        pipeline::compute_scored_state(path, range, alpha, mode, timeout)
+        pipeline::compute_scored_state(path, range, &[], alpha, mode, timeout)
     })?;
     Ok(PyScoredState {
         inner: Arc::new(state),
@@ -189,7 +196,7 @@ fn compute_scored_state(
 #[pyo3(signature = (
     state,
     budget_tokens = None,
-    tau = DEFAULT_STOPPING_THRESHOLD,
+    tau = None,
     no_content = false,
 ))]
 fn select_with_params<'py>(
@@ -281,22 +288,27 @@ fn json_to_py<'py>(py: Python<'py>, value: &serde_json::Value) -> PyResult<Bound
     })
 }
 
+/// The disclosable patch, and what the sanitizer replaced in it: a secret on
+/// a removed line exists nowhere else in the artifact, so the caller merges
+/// this count into the document's own `redactions`.
 #[pyfunction]
-#[pyo3(signature = (root_dir, diff_range, timeout = DEFAULT_PIPELINE_TIMEOUT_SECONDS))]
+#[pyo3(signature = (root_dir, diff_range, timeout = DEFAULT_PIPELINE_TIMEOUT_SECONDS, paths = Vec::new()))]
 fn get_raw_diff_text(
     py: Python<'_>,
     root_dir: &str,
     diff_range: &str,
     timeout: u64,
-) -> PyResult<String> {
+    paths: Vec<String>,
+) -> PyResult<(String, usize, Vec<&'static str>)> {
     let range = if diff_range.is_empty() {
         None
     } else {
         Some(diff_range)
     };
-    detach_guarded(py, || {
-        pipeline::raw_diff_text(Path::new(root_dir), range, timeout)
-    })
+    let (text, r) = detach_guarded(py, || {
+        pipeline::raw_diff_text(Path::new(root_dir), range, &paths, timeout)
+    })?;
+    Ok((text, r.count, r.categories))
 }
 
 /// The commit a duration spec (`24h`, `8d`, `1h30m`) resolves to, or the range

@@ -27,12 +27,15 @@ use serde::Serialize;
 #[derive(Serialize, JsonSchema, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 pub enum LimitReason {
-    UnsupportedLanguage,
-    ParseError,
     FileTooLarge,
+    /// A file cut to `max_fragments_per_file`: what the diff touched survives
+    /// the cut, the rest is the longest fragments only.
+    FragmentLimit,
+    /// A changed or context file that was not UTF-8 and was decoded lossily;
+    /// `coverage.lossy_files` names them.
+    NonUtf8Content,
     TotalByteLimit,
     CandidateLimit,
-    PostingLimit,
     EdgeContributionLimit,
     EdgeLimit,
     NeedLimit,
@@ -70,11 +73,23 @@ pub const DEFAULT_MAX_SOURCE_BYTES: u64 = 256 * 1024 * 1024;
 pub const DEFAULT_MAX_CANDIDATE_FILES: usize = 200_000;
 pub const DEFAULT_MAX_EDGE_CONTRIBUTIONS: u64 = 20_000_000;
 
+/// Test hook: the compute deadline is spent before the first poll, so every
+/// phase takes its cooperative exit on a deterministic, tiny input. The git
+/// ceiling is untouched (`set_git_timeout` reads the CLI value), so the run
+/// still reaches the phases instead of failing in `rev-parse`. Semantic — it
+/// changes the artifact — and hashed through `resources.max_wall_secs`.
+pub const TEST_DEADLINE_EXPIRED_ENV: &str = "DIFFCTX_TEST_DEADLINE_EXPIRED";
+
 impl ResourceBudget {
     pub fn resolve(timeout_secs: u64) -> Self {
         let limits = &*crate::config::limits::LIMITS;
+        let max_wall_secs = if std::env::var(TEST_DEADLINE_EXPIRED_ENV).as_deref() == Ok("1") {
+            0
+        } else {
+            timeout_secs
+        };
         Self {
-            max_wall_secs: timeout_secs,
+            max_wall_secs,
             max_source_bytes: env_u64("DIFFCTX_MAX_SOURCE_BYTES", DEFAULT_MAX_SOURCE_BYTES),
             max_file_bytes: limits.max_file_size,
             max_changed_file_bytes: limits.max_changed_file_size,
@@ -135,6 +150,11 @@ pub struct CoverageReport {
     pub status: &'static str,
     pub limit_reasons: Vec<LimitReason>,
     pub resources: ResourceUsage,
+    /// Files that were not UTF-8 and were decoded with replacement
+    /// characters (`NonUtf8Content`): their symbols and identifiers may be
+    /// truncated at the first non-ASCII byte.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lossy_files: Vec<String>,
 }
 
 impl CoverageReport {
@@ -152,6 +172,7 @@ impl CoverageReport {
             status: if degraded { "degraded" } else { "partial" },
             limit_reasons: reasons.into_iter().collect(),
             resources: ctx.usage(),
+            lossy_files: ctx.lossy_files(),
         })
     }
 }
@@ -163,6 +184,7 @@ struct Inner {
     contributions: AtomicU64,
     reasons: Mutex<BTreeSet<LimitReason>>,
     usage: Mutex<ResourceUsage>,
+    lossy_files: Mutex<BTreeSet<String>>,
 }
 
 #[derive(Clone)]
@@ -187,6 +209,7 @@ impl RunContext {
                 contributions: AtomicU64::new(0),
                 reasons: Mutex::new(BTreeSet::new()),
                 usage: Mutex::new(ResourceUsage::default()),
+                lossy_files: Mutex::new(BTreeSet::new()),
             }),
         }
     }
@@ -199,6 +222,23 @@ impl RunContext {
         &self.inner.budget
     }
 
+    /// A file decoded lossily: `NonUtf8Content` plus the path, so the reader
+    /// knows which symbols to distrust.
+    pub fn note_lossy(&self, display_path: String) {
+        self.note(LimitReason::NonUtf8Content);
+        self.inner.lossy_files.lock().unwrap().insert(display_path);
+    }
+
+    pub fn lossy_files(&self) -> Vec<String> {
+        self.inner
+            .lossy_files
+            .lock()
+            .unwrap()
+            .iter()
+            .cloned()
+            .collect()
+    }
+
     /// `true` while the phase may go on. The first expiry records `Deadline`;
     /// every later poll is a cheap atomic load.
     pub fn check(&self) -> bool {
@@ -206,7 +246,7 @@ impl RunContext {
             return false;
         }
         match self.inner.expires_at {
-            Some(expires_at) if Instant::now() > expires_at => {
+            Some(expires_at) if Instant::now() >= expires_at => {
                 self.note(LimitReason::Deadline);
                 self.inner.tripped.store(true, Ordering::Relaxed);
                 false

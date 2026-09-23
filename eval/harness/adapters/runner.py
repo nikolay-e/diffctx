@@ -107,6 +107,15 @@ def append_checkpoint(path: Path, result: EvalResult) -> None:
 
     path.parent.mkdir(parents=True, exist_ok=True)
     line = json.dumps(asdict(result), default=str) + "\n"
+    # A kill mid-write leaves a line without its newline; appending straight
+    # after it glues two rows into one unreadable line and loses both on
+    # resume.
+    with path.open("ab+") as raw:
+        raw.seek(0, 2)
+        if raw.tell() > 0:
+            raw.seek(-1, 2)
+            if raw.read(1) != b"\n":
+                raw.write(b"\n")
     with path.open("a") as f:
         f.write(line)
         f.flush()

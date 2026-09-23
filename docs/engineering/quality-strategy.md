@@ -240,14 +240,18 @@ repository** — pushing the regenerated manifest to `main` IS the
 publication, so `update-packaging-manifests` is a real publishing job
 and must not carry `continue-on-error`.
 
-A release QA pass verifies every live channel by INSTALLING it:
+`channel-parity.yml` (weekly, or `gh workflow run channel-parity.yml`)
+compares every channel against `src/diffctx/version.py`, fetches each release
+asset unauthenticated (a drafted release 404s there while `gh release download`
+still succeeds) and opens or refreshes one issue on drift. A release QA pass
+still verifies every live channel by INSTALLING it:
 
 | Channel | Verify with |
 |---|---|
 | PyPI | fresh venv, `pip install diffctx==<v>`, real `--diff` run |
 | crates.io | `cargo install diffctx --version <v> --locked` |
 | npm | `npm install diffctx@<v>` in a scratch dir |
-| GitHub Release | assets = 4 wheels + sdist + 4 binary archives |
+| GitHub Release | not a draft; one archive per `build-binaries` matrix target in `cd.yml`, plus the SBOM — no wheels, PyPI vouches for those |
 | ghcr / Docker Hub | `docker run --rm <img>:<v> --version` + `--diff` |
 | MCP registry | registry API reports the version, `status: active` |
 | Scoop | `bucket/diffctx.json` carries the release `.zip` SHA-256 |

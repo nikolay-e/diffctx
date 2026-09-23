@@ -1,0 +1,62 @@
+name: cpp_037_header_class_is_cpp
+tags:
+- lang:cpp
+- change:single_file
+- parser:header_sniff
+repo:
+  initial_files:
+    geo/shapes.h: |
+      #pragma once
+
+      namespace geo {
+
+      class Shape {
+      public:
+          virtual ~Shape() = default;
+          virtual double area() const = 0;
+      };
+
+      class Circle : public Shape {
+      public:
+          explicit Circle(double r) : radius_(r) {}
+          double area() const override { return 3.14 * radius_ * radius_; }
+
+      private:
+          double radius_;
+      };
+
+      }  // namespace geo
+  changed_files:
+    geo/shapes.h: |
+      #pragma once
+
+      namespace geo {
+
+      class Shape {
+      public:
+          virtual ~Shape() = default;
+          virtual double area() const = 0;
+      };
+
+      class Circle : public Shape {
+      public:
+          explicit Circle(double r) : radius_(r) {}
+          double area() const override { return 3.141592653589793 * radius_ * radius_; }
+
+      private:
+          double radius_;
+      };
+
+      }  // namespace geo
+  commit_message: Use a precise pi for circle area
+fragments:
+- id: circle_area
+  selector:
+    path: geo/shapes.h
+    symbol: area
+    kind: function
+oracle:
+  required:
+  - circle_area
+accept:
+  kind_must_match: true

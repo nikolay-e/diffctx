@@ -1,0 +1,994 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LocateOutput",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "commit_message": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "commit_messages": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "commit_count": {
+      "description": "Commits in the range when that is more than `commit_messages` lists.",
+      "type": "integer",
+      "format": "uint",
+      "minimum": 0
+    },
+    "changed_files": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "deleted_files": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "renamed_files": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/RenameEntry"
+      }
+    },
+    "lockfile_changes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "ignored_changes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "policy_excluded_count": {
+      "type": "integer",
+      "format": "uint",
+      "minimum": 0
+    },
+    "budget_tokens": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "summary": {
+      "description": "Blast-radius counts over the ranked items (#135): distinct files,\nchanged vs context fragments, and how many ranked items (changed or\ncontext) are tests.",
+      "$ref": "#/$defs/Summary"
+    },
+    "item_count": {
+      "type": "integer",
+      "format": "uint",
+      "minimum": 0
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/LocateItem"
+      }
+    },
+    "coverage": {
+      "description": "What the run could NOT see or could not fit (#136).\n\nAn agent told honestly where the selection is thin can grep the gap\nitself; one told nothing has to distrust the whole answer. Emitted only\nwhen there is something to report, so a clean run costs no tokens.",
+      "$ref": "#/$defs/Coverage"
+    },
+    "provenance": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ProvenanceV1"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "overflow": {
+      "description": "Ranked candidates that did not fit `budget_tokens`, without bodies.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/OverflowItem"
+      }
+    },
+    "overflow_count": {
+      "description": "True total behind `overflow`, which is capped at `MAX_OVERFLOW_ITEMS`.",
+      "type": "integer",
+      "format": "uint",
+      "minimum": 0
+    },
+    "redactions": {
+      "description": "Present only when the sanitizer replaced a credential-shaped string in\na commit message, the one free text locate prints.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Redactions"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "schema",
+    "name",
+    "commit_count",
+    "changed_files",
+    "deleted_files",
+    "renamed_files",
+    "lockfile_changes",
+    "budget_tokens",
+    "summary",
+    "item_count",
+    "items",
+    "coverage",
+    "overflow",
+    "overflow_count"
+  ],
+  "$defs": {
+    "RenameEntry": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "to"
+      ]
+    },
+    "Summary": {
+      "type": "object",
+      "properties": {
+        "files": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "changed": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "context": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "tests": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "files",
+        "changed",
+        "context",
+        "tests"
+      ]
+    },
+    "LocateItem": {
+      "description": "Rank is the array position (items are emitted in selection order);\n`role` is serialized only for `\"changed\"` — absence means context.",
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "lines": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "symbol": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "role": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "group": {
+          "description": "Coarse impact group: `test`, `type`, or `config`; absent = general\ncode (callers and friends). Path- and kind-derived, presentation only.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "score": {
+          "type": "number",
+          "format": "double"
+        },
+        "tokens": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Reason"
+          }
+        }
+      },
+      "required": [
+        "path",
+        "lines",
+        "kind",
+        "score",
+        "tokens",
+        "reasons"
+      ]
+    },
+    "Reason": {
+      "oneOf": [
+        {
+          "description": "The fragment overlaps the diff hunks — it IS the change.",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "changed"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "description": "Relevance arrived over a typed edge; `from` is the strongest source.",
+          "type": "object",
+          "properties": {
+            "category": {
+              "type": "string"
+            },
+            "from": {
+              "type": "string"
+            },
+            "mass": {
+              "type": "number",
+              "format": "double"
+            },
+            "type": {
+              "type": "string",
+              "const": "edge"
+            }
+          },
+          "required": [
+            "type",
+            "category",
+            "from",
+            "mass"
+          ]
+        },
+        {
+          "description": "Graph distance from the nearest changed fragment.",
+          "type": "object",
+          "properties": {
+            "seed_hops": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "type": {
+              "type": "string",
+              "const": "proximity"
+            }
+          },
+          "required": [
+            "type",
+            "seed_hops"
+          ]
+        },
+        {
+          "description": "Added by a selection post-pass (changed-file representation /\nnontrivial-context rescue) rather than by scored relevance.",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "post_pass"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        }
+      ]
+    },
+    "Coverage": {
+      "type": "object",
+      "properties": {
+        "unparsed_files": {
+          "description": "Changed files with no symbol-level structure: every fragment is a\nchunk/section fallback, so the parser could not see inside them and\nnothing was pulled in by symbol.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "zero_edge_files": {
+          "description": "Changed files whose fragments have no graph edge in either direction —\nno caller, import, type or co-change link was found, so relevance had no\npath to travel and context for them could only arrive by proximity.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ppr_truncated": {
+          "description": "PPR push-iteration hit its cap before converging: the ranking is a\npartial diffusion, so low-scoring items are less trustworthy than usual.\nNever set outside `--scoring ppr`.",
+          "type": "boolean"
+        },
+        "next_up": {
+          "description": "How many of the top-ranked overflow items a 25% larger budget would\nadmit. Zero when the budget was not what stopped selection.\n\nThis answers \"would paying more change the answer\", which neither the raw\noverflow total nor a score comparison does. The total is thousands of\ncandidates the budget correctly ignored; \"scores at least as high as the\nweakest selected item\" was worse than useless, because raising the budget\nlowers that bar and so *increased* the reported gap.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "limit_reasons": {
+          "description": "What stopped the run short of a complete pass, in the one vocabulary\nevery surface uses (`diffctx.resource.LimitReason`). Empty on a\ncomplete run.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LimitReason"
+          }
+        },
+        "unrepresented_changed_files": {
+          "description": "Changed files with no ranked item at all: the inventory says they\nchanged, the budget or the selection left nothing of them.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "confidence": {
+          "description": "Documented heuristic in [0, 1], NOT a probability and not a promise:\n`parsed_share * linked_share * fit_share`, less 0.1 when PPR truncated.\nIt says how much of the changed surface the run could see and fit — it\ncannot say whether what it selected is the right thing.",
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "unparsed_files",
+        "zero_edge_files",
+        "ppr_truncated",
+        "next_up",
+        "limit_reasons",
+        "unrepresented_changed_files",
+        "confidence"
+      ]
+    },
+    "LimitReason": {
+      "description": "Why a run did not do everything it could have. One vocabulary for every\nphase; consumers read `coverage.limit_reasons` and never a per-subsystem\nboolean.",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "file_too_large",
+            "total_byte_limit",
+            "candidate_limit",
+            "edge_contribution_limit",
+            "edge_limit",
+            "need_limit",
+            "discovery_truncated",
+            "diffusion_truncated",
+            "deadline",
+            "evidence_budget_exceeded",
+            "selection_budget_exceeded",
+            "sanitization_redaction"
+          ]
+        },
+        {
+          "description": "A file cut to `max_fragments_per_file`: what the diff touched survives\nthe cut, the rest is the longest fragments only.",
+          "type": "string",
+          "const": "fragment_limit"
+        },
+        {
+          "description": "A changed or context file that was not UTF-8 and was decoded lossily;\n`coverage.lossy_files` names them.",
+          "type": "string",
+          "const": "non_utf8_content"
+        }
+      ]
+    },
+    "ProvenanceV1": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string"
+        },
+        "engine": {
+          "$ref": "#/$defs/Engine"
+        },
+        "input": {
+          "$ref": "#/$defs/Input"
+        },
+        "effective_config_hash": {
+          "type": "string"
+        },
+        "effective_config": {
+          "description": "The full record, ~500 tokens, only under `DIFFCTX_PROVENANCE=full`:\nthe hash identifies the configuration on every run, and the record\nis reproducible from the same build and environment.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EffectiveConfigV1"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "selection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Selection"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "resource_limits": {
+          "description": "The caps in force; with the full record only, the hash covers them.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResourceBudget"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "schema",
+        "engine",
+        "input",
+        "effective_config_hash"
+      ]
+    },
+    "Engine": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "build": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ]
+    },
+    "Input": {
+      "type": "object",
+      "properties": {
+        "diff_range": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "base": {
+          "description": "Resolved object ids, so the record still names the input after the\nref moves. `head` is absent when the right side of the diff is the\nworking tree — a bare `--diff`, `--diff HEAD~2`, a duration window.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "head": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "working_tree": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "working_tree"
+      ]
+    },
+    "EffectiveConfigV1": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string"
+        },
+        "scoring": {
+          "type": "string"
+        },
+        "objective": {
+          "type": "string"
+        },
+        "alpha": {
+          "description": "The damping the run used: the CLI/API argument, which outranks\n`DIFFCTX_OP_PPR_ALPHA` (recorded under `ppr.alpha`).",
+          "type": "number",
+          "format": "double"
+        },
+        "graph_depth": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "bm25_discovery_top_k": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "file_admission": {
+          "type": "boolean"
+        },
+        "commit_signal": {
+          "type": "boolean"
+        },
+        "resources": {
+          "description": "Every cap the run is held to. A cap that binds changes the artifact,\nso the caps are part of the configuration and of its hash.",
+          "$ref": "#/$defs/ResourceBudget"
+        },
+        "selection": {
+          "$ref": "#/$defs/SelectionParams"
+        },
+        "rescue": {
+          "$ref": "#/$defs/RescueParams"
+        },
+        "boltzmann": {
+          "$ref": "#/$defs/BoltzmannParams"
+        },
+        "ego": {
+          "$ref": "#/$defs/EgoParams"
+        },
+        "rrf_k": {
+          "type": "number",
+          "format": "double"
+        },
+        "pit": {
+          "$ref": "#/$defs/PitParams"
+        },
+        "ppr": {
+          "$ref": "#/$defs/PprParams"
+        },
+        "utility": {
+          "$ref": "#/$defs/UtilityParams"
+        },
+        "filtering": {
+          "$ref": "#/$defs/FilteringParams"
+        },
+        "needs": {
+          "$ref": "#/$defs/NeedsParams"
+        },
+        "tokenizer": {
+          "$ref": "#/$defs/TokenizerParams"
+        },
+        "profiles": {
+          "$ref": "#/$defs/Profiles"
+        },
+        "overrides": {
+          "description": "The `DIFFCTX_*` names set in the environment that this config read,\nwith their raw values. Excluded from the hash: two spellings of one\nvalue (\"0.4\" and \"0.40\") are one configuration.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "schema",
+        "scoring",
+        "objective",
+        "alpha",
+        "graph_depth",
+        "bm25_discovery_top_k",
+        "file_admission",
+        "commit_signal",
+        "resources",
+        "selection",
+        "rescue",
+        "boltzmann",
+        "ego",
+        "rrf_k",
+        "pit",
+        "ppr",
+        "utility",
+        "filtering",
+        "needs",
+        "tokenizer",
+        "profiles",
+        "overrides"
+      ]
+    },
+    "ResourceBudget": {
+      "description": "Every cap a run is held to. `max_wall_secs` is the `--timeout`; the rest\nbound memory, which the wall clock alone never did — 38M edge\ncontributions took 11 GB before a single one was deduplicated (#196).",
+      "type": "object",
+      "properties": {
+        "max_wall_secs": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "max_source_bytes": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "max_file_bytes": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "max_changed_file_bytes": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "max_candidate_files": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "max_fragments_per_file": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "max_edge_contributions": {
+          "description": "Edge emissions counted BEFORE deduplication: the number that owns the\nmemory, and the one a builder cannot see past its own output.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "max_out_edges_per_node": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "max_needs": {
+          "description": "Information needs mined from the diff. Every candidate is scored\nagainst every need, so an unbounded need set from a repository-sized\ndiff made selection quadratic (413 s on this repo's own history).",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "max_wall_secs",
+        "max_source_bytes",
+        "max_file_bytes",
+        "max_changed_file_bytes",
+        "max_candidate_files",
+        "max_fragments_per_file",
+        "max_edge_contributions",
+        "max_out_edges_per_node",
+        "max_needs"
+      ]
+    },
+    "SelectionParams": {
+      "type": "object",
+      "properties": {
+        "core_budget_fraction": {
+          "type": "number",
+          "format": "double"
+        },
+        "r_cap_min": {
+          "type": "number",
+          "format": "double"
+        },
+        "per_file_budget_fraction": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "core_budget_fraction",
+        "r_cap_min",
+        "per_file_budget_fraction"
+      ]
+    },
+    "RescueParams": {
+      "type": "object",
+      "properties": {
+        "budget_fraction": {
+          "type": "number",
+          "format": "double"
+        },
+        "min_score_percentile": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "budget_fraction",
+        "min_score_percentile"
+      ]
+    },
+    "BoltzmannParams": {
+      "type": "object",
+      "properties": {
+        "calibration_tolerance": {
+          "type": "number",
+          "format": "double"
+        },
+        "bisect_iters": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "calibration_tolerance",
+        "bisect_iters"
+      ]
+    },
+    "EgoParams": {
+      "type": "object",
+      "properties": {
+        "identifier_overlap_epsilon": {
+          "type": "number",
+          "format": "double"
+        },
+        "per_hop_decay": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "identifier_overlap_epsilon",
+        "per_hop_decay"
+      ]
+    },
+    "PitParams": {
+      "type": "object",
+      "properties": {
+        "blend": {
+          "type": "number",
+          "format": "double"
+        },
+        "agreement_bonus": {
+          "type": "number",
+          "format": "double"
+        },
+        "agreement_top_k": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "shape": {
+          "type": "string"
+        },
+        "transform": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "blend",
+        "agreement_bonus",
+        "agreement_top_k",
+        "shape",
+        "transform"
+      ]
+    },
+    "PprParams": {
+      "type": "object",
+      "properties": {
+        "alpha": {
+          "type": "number",
+          "format": "double"
+        },
+        "forward_blend": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "alpha",
+        "forward_blend"
+      ]
+    },
+    "UtilityParams": {
+      "type": "object",
+      "properties": {
+        "eta": {
+          "type": "number",
+          "format": "double"
+        },
+        "structural_bonus_weight": {
+          "type": "number",
+          "format": "double"
+        },
+        "r_cap_sigma": {
+          "type": "number",
+          "format": "double"
+        },
+        "proximity_decay": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "eta",
+        "structural_bonus_weight",
+        "r_cap_sigma",
+        "proximity_decay"
+      ]
+    },
+    "FilteringParams": {
+      "type": "object",
+      "properties": {
+        "proximity_half_decay": {
+          "type": "number",
+          "format": "double"
+        },
+        "definition_proximity_half_decay": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "proximity_half_decay",
+        "definition_proximity_half_decay"
+      ]
+    },
+    "NeedsParams": {
+      "type": "object",
+      "properties": {
+        "min_rel_for_bonus": {
+          "type": "number",
+          "format": "double"
+        },
+        "relatedness_bonus": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "min_rel_for_bonus",
+        "relatedness_bonus"
+      ]
+    },
+    "TokenizerParams": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/TokenizerId"
+        },
+        "safety_factor": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "id",
+        "safety_factor"
+      ]
+    },
+    "TokenizerId": {
+      "description": "The accounting unit every budget, envelope charge and `token_count` is\nexpressed in. A budget of `N` means `N` tokens under THIS tokenizer; no\nmodel-specific tokenizer is emulated, and the id travels in provenance so\na consumer counting against a different model knows what it is converting.",
+      "type": "string",
+      "enum": [
+        "o200k_base"
+      ]
+    },
+    "Profiles": {
+      "type": "object",
+      "properties": {
+        "scoring": {
+          "type": "string"
+        },
+        "edge_weights": {
+          "type": "string"
+        },
+        "parser": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "scoring",
+        "edge_weights",
+        "parser"
+      ]
+    },
+    "Selection": {
+      "type": "object",
+      "properties": {
+        "budget_tokens": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "budget_requested": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "tau": {
+          "type": "number",
+          "format": "double"
+        },
+        "gate": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "budget_tokens",
+        "tau",
+        "gate"
+      ]
+    },
+    "OverflowItem": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "lines": {
+          "type": "string"
+        },
+        "score": {
+          "type": "number",
+          "format": "double"
+        },
+        "tokens": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "why": {
+          "description": "Single strongest reason, compact: the overflow list exists to be cheap,\nand the full `reasons` array on a selected item costs several times this.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "lines",
+        "score",
+        "tokens",
+        "why"
+      ]
+    },
+    "Redactions": {
+      "description": "What the sanitizer removed from one artifact.",
+      "type": "object",
+      "properties": {
+        "count": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "categories": {
+          "description": "Distinct shapes matched, in the order first seen.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "count",
+        "categories"
+      ]
+    }
+  }
+}

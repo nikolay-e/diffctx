@@ -1,0 +1,79 @@
+name: frontend_032_svelte_script_import
+tags:
+- lang:svelte
+- change:single_file
+- parser:sfc_script
+repo:
+  initial_files:
+    src/components/Cart.svelte: |
+      <script lang="ts">
+        import { formatPrice } from '../utils/money';
+
+        export let items: number[] = [];
+
+        function computeTotal(values: number[]): number {
+          return values.reduce((sum, value) => sum + value, 0);
+        }
+
+        $: total = formatPrice(computeTotal(items));
+      </script>
+
+      <div class="cart">
+        <span class="cart-total">{total}</span>
+      </div>
+
+      <style>
+        .cart-total {
+          font-weight: bold;
+        }
+      </style>
+    src/utils/money.ts: |
+      export function formatPrice(cents: number): string {
+        const whole = Math.floor(cents / 100)
+        const rest = String(cents % 100).padStart(2, '0')
+        return `$${whole}.${rest}`
+      }
+  changed_files:
+    src/components/Cart.svelte: |
+      <script lang="ts">
+        import { formatPrice } from '../utils/money';
+
+        export let items: number[] = [];
+
+        function computeTotal(values: number[]): number {
+          const positive = values.filter((value) => value > 0);
+          return positive.reduce((sum, value) => sum + value, 0);
+        }
+
+        $: total = formatPrice(computeTotal(items));
+      </script>
+
+      <div class="cart">
+        <span class="cart-total">{total}</span>
+      </div>
+
+      <style>
+        .cart-total {
+          font-weight: bold;
+        }
+      </style>
+  commit_message: Ignore negative line items in the cart total
+fixtures:
+  auto_garbage: true
+fragments:
+- id: compute_total
+  selector:
+    path: src/components/Cart.svelte
+    symbol: computeTotal
+    kind: function
+- id: format_price
+  selector:
+    path: src/utils/money.ts
+    symbol: formatPrice
+    kind: function
+oracle:
+  required:
+  - compute_total
+  - format_price
+accept:
+  kind_must_match: true

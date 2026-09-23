@@ -138,6 +138,11 @@ def _validate_budget_tokens(budget_tokens: int) -> None:
         )
 
 
+def _validate_max_tokens(max_tokens: int) -> None:
+    if max_tokens < 1:
+        raise ValueError(f"max_tokens must be >= 1, got {max_tokens}")
+
+
 async def _copy_or_degrade(content: str) -> str | None:
     # Mirrors the CLI's degrade-to-stdout behaviour (diffctx._app._handle_clipboard):
     # a headless MCP server has no DISPLAY/WAYLAND_DISPLAY/pbcopy by default, and the
@@ -197,22 +202,24 @@ async def diffctx_context(
     include_raw_diff: bool = False,
 ) -> str:
     validated_path = validate_repo_path(repo_path)
+    _validate_max_tokens(max_tokens)
 
     # fragment_ids is the second half of the locate flow, so it decides the
     # operation on its own. Requiring a third mode name for it would make the
     # two-call shape something the caller has to remember rather than something
     # the arguments express.
     if fragment_ids:
-        from .fetch import fetch_fragments
+        from .fetch import fetch_result
 
-        content = await _run_with_deadline(
+        fetched = await _run_with_deadline(
             "diffctx_context",
-            partial(fetch_fragments, validated_path, diff_ref, fragment_ids, _DEFAULT_MAX_FILE_BYTES),
+            partial(fetch_result, validated_path, diff_ref, fragment_ids, _DEFAULT_MAX_FILE_BYTES),
         )
+        content = fetched.markdown
         if clipboard:
             degraded_notice = await _copy_or_degrade(content)
             if degraded_notice is None:
-                return f"Copied {len(fragment_ids)} fragments to clipboard"
+                return f"Copied {fetched.resolved} of {len(fragment_ids)} fragments to clipboard"
             content = degraded_notice + content
         return _capped_by_max_tokens(content, max_tokens, "fetch fewer fragment_ids")
 

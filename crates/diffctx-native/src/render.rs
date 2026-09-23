@@ -19,6 +19,7 @@ pub struct ChangeSummary {
     /// Every commit message of the range (subject and body), newest first;
     /// empty for a working-tree diff with no committed range.
     pub commit_messages: Vec<String>,
+    pub commit_count: usize,
     /// `(display path, class, reason)` for every changed file, the class the
     /// selection policy ranked evidence by.
     pub changes: Vec<(String, crate::change_class::ChangeClass, &'static str)>,
@@ -28,6 +29,11 @@ pub struct ChangeSummary {
     pub lockfile_changes: Vec<String>,
     pub ignored_changes: Vec<String>,
     pub policy_excluded_count: usize,
+}
+
+/// The range's commit total, reported only when the list stops short of it.
+pub fn listed_commit_total(total: usize, listed: usize) -> usize {
+    if total > listed { total } else { 0 }
 }
 
 pub fn is_zero(n: &usize) -> bool {
@@ -81,6 +87,9 @@ pub struct DiffContextOutput {
     pub commit_message: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub commit_messages: Vec<String>,
+    /// Commits in the range when that is more than `commit_messages` lists.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub commit_count: usize,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub changed_files: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -127,6 +136,131 @@ pub struct DiffContextOutput {
     /// somewhere in this artifact — fragment text, a commit message.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub redactions: Option<crate::sanitize::Redactions>,
+}
+
+impl DiffContextOutput {
+    /// The rendered document is what `--budget` bounds and the engine's
+    /// envelope charge is an estimate, so the renderer drops fragments until
+    /// the document fits (the same loop as `writer.fit_to_budget` on the
+    /// Python side, so both CLIs deliver the same set). Context from the tail
+    /// first; then a changed file's second fragment; then witnesses,
+    /// generated and mechanical bumps before hand-written content. The
+    /// inventory, coverage and provenance are never dropped. Returns `false`
+    /// once nothing is left to drop.
+    pub fn drop_one_fragment(&mut self) -> bool {
+        let Some(index) = drop_index(&self.fragments, &self.changes) else {
+            return false;
+        };
+        let target = &self.fragments[index];
+        let last_witness = target.role.as_deref() == Some("changed")
+            && self
+                .fragments
+                .iter()
+                .filter(|f| f.path == target.path)
+                .count()
+                == 1;
+        // A changed file's last witness is shortened, not dropped: the evidence
+        // floor placed it so the artifact never lists a change and shows none
+        // of it, and a larger budget must never show less of it. Context has
+        // no such floor and drops whole.
+        if !(last_witness && halve_witness(&mut self.fragments[index])) {
+            self.fragments.remove(index);
+        }
+        self.fragment_count = self.fragments.len();
+        let represented: FxHashSet<&str> = self.fragments.iter().map(|f| f.path.as_str()).collect();
+        let mut unrepresented = false;
+        for change in &mut self.changes {
+            change.represented = represented.contains(change.path.as_str());
+            unrepresented |= !change.represented;
+        }
+        let coverage = self
+            .coverage
+            .get_or_insert_with(|| crate::resource::CoverageReport {
+                status: "partial",
+                limit_reasons: Vec::new(),
+                resources: crate::resource::ResourceUsage::default(),
+                lossy_files: Vec::new(),
+            });
+        if !coverage
+            .limit_reasons
+            .contains(&crate::resource::LimitReason::SelectionBudgetExceeded)
+        {
+            coverage
+                .limit_reasons
+                .push(crate::resource::LimitReason::SelectionBudgetExceeded);
+        }
+        if unrepresented {
+            coverage.status = "degraded";
+        }
+        true
+    }
+}
+
+const CLIPPED_MARKER_PREFIX: &str = "… [";
+const CLIPPED_MARKER_SUFFIX: &str = " more lines of this change]";
+
+fn halve_witness(fragment: &mut FragmentEntry) -> bool {
+    let Some(content) = fragment.content.as_deref() else {
+        return false;
+    };
+    let mut lines: Vec<&str> = content.lines().collect();
+    let mut hidden = 0usize;
+    if let Some(n) = lines
+        .last()
+        .and_then(|l| l.strip_prefix(CLIPPED_MARKER_PREFIX))
+        .and_then(|l| l.strip_suffix(CLIPPED_MARKER_SUFFIX))
+        .and_then(|n| n.parse::<usize>().ok())
+    {
+        hidden = n;
+        lines.pop();
+    }
+    if lines.len() < 2 {
+        return false;
+    }
+    let keep = (lines.len() * 3 / 4).clamp(1, lines.len() - 1);
+    hidden += lines.len() - keep;
+    let clipped = format!(
+        "{}\n{CLIPPED_MARKER_PREFIX}{hidden}{CLIPPED_MARKER_SUFFIX}\n",
+        lines[..keep].join("\n")
+    );
+    let start: usize = fragment
+        .lines
+        .split('-')
+        .next()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(1);
+    fragment.lines = format!("{start}-{}", start + keep - 1);
+    fragment.content = Some(Arc::from(clipped));
+    true
+}
+
+fn drop_index(fragments: &[FragmentEntry], changes: &[ChangeEntry]) -> Option<usize> {
+    if let Some(i) = fragments
+        .iter()
+        .rposition(|f| f.role.as_deref() != Some("changed"))
+    {
+        return Some(i);
+    }
+    let mut per_file: FxHashMap<&str, usize> = FxHashMap::default();
+    for f in fragments {
+        *per_file.entry(f.path.as_str()).or_default() += 1;
+    }
+    if let Some(i) = fragments
+        .iter()
+        .rposition(|f| per_file[f.path.as_str()] > 1)
+    {
+        return Some(i);
+    }
+    let class_of: FxHashMap<&str, crate::change_class::ChangeClass> =
+        changes.iter().map(|c| (c.path.as_str(), c.class)).collect();
+    (0..fragments.len()).max_by_key(|&i| {
+        (
+            class_of
+                .get(fragments[i].path.as_str())
+                .map_or(0, |c| c.priority()),
+            i,
+        )
+    })
 }
 
 /// JSON Schema 2020-12 for `diffctx.context.v1`, generated from the type —
@@ -387,6 +521,7 @@ impl DiffContextOutput {
             output_type: "diff_context".to_string(),
             commit_message: None,
             commit_messages: Vec::new(),
+            commit_count: 0,
             changed_files: Vec::new(),
             changes: Vec::new(),
             deleted_files: Vec::new(),
@@ -573,6 +708,7 @@ pub fn build_diff_context_output(
         schema: CONTEXT_SCHEMA,
         name,
         output_type: "diff_context".to_string(),
+        commit_count: listed_commit_total(change.commit_count, change.commit_messages.len()),
         commit_message: change.commit_message,
         commit_messages: change.commit_messages,
         changed_files: change.changed_files,
@@ -602,6 +738,7 @@ mod tests {
             output_type: "diff_context".to_string(),
             commit_message: None,
             commit_messages: Vec::new(),
+            commit_count: 0,
             changed_files: Vec::new(),
             changes: Vec::new(),
             deleted_files: Vec::new(),
@@ -616,6 +753,43 @@ mod tests {
             coverage: None,
             redactions: None,
         }
+    }
+
+    fn entry(path: &str, role: Option<&str>, lines: usize) -> FragmentEntry {
+        let body: String = (0..lines).map(|i| format!("line_{i}\n")).collect();
+        FragmentEntry {
+            path: path.to_string(),
+            lines: format!("1-{lines}"),
+            role: role.map(str::to_string),
+            kind: "function".to_string(),
+            symbol: None,
+            content: Some(Arc::from(body)),
+        }
+    }
+
+    #[test]
+    fn budget_fitting_drops_context_whole_and_shortens_only_the_change() {
+        let mut out = empty_output(Vec::new());
+        out.fragments = vec![
+            entry("app.py", Some("changed"), 40),
+            entry("lib/helpers.py", None, 40),
+        ];
+        out.fragment_count = 2;
+
+        assert!(out.drop_one_fragment());
+        assert_eq!(out.fragments.len(), 1, "context must drop, not shrink");
+        assert_eq!(out.fragments[0].path, "app.py");
+
+        assert!(out.drop_one_fragment());
+        let witness = &out.fragments[0];
+        assert_eq!(witness.lines, "1-30");
+        assert!(
+            witness
+                .content
+                .as_deref()
+                .unwrap()
+                .ends_with("… [10 more lines of this change]\n")
+        );
     }
 
     #[test]

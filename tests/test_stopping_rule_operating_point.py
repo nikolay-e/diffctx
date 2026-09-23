@@ -267,3 +267,42 @@ def test_the_shipped_defaults_have_exactly_one_source():
     # which `test_no_entry_point_carries_a_tau_of_its_own` is what asserts.
     assert params["tau"].default is None
     assert params["alpha"].default == pytest.approx(_diffctx.DEFAULT_ALPHA)
+
+
+@pytest.mark.parametrize(
+    ("scoring", "admission", "tau", "expected_tau", "expected_gate"),
+    [
+        pytest.param("ego", None, None, 0.05, "admission", id="ego-unspecified"),
+        pytest.param("bm25", None, None, 0.12, "none", id="bm25-unspecified"),
+        pytest.param("ego", "0", None, 0.12, "none", id="ego-admission-off"),
+        pytest.param("ego", None, 0.12, 0.12, "admission", id="ego-explicit"),
+    ],
+)
+def test_an_unspecified_tau_resolves_per_scorer(
+    stopping_repo: Pygit2Repo,
+    monkeypatch: pytest.MonkeyPatch,
+    scoring: str,
+    admission: str | None,
+    tau: float | None,
+    expected_tau: float,
+    expected_gate: str,
+) -> None:
+    from diffctx._diffctx import build_diff_context
+
+    if admission is not None:
+        monkeypatch.setenv("DIFFCTX_FILE_ADMISSION", admission)
+    kwargs: dict[str, object] = {"scoring_mode": scoring}
+    if tau is not None:
+        kwargs["tau"] = tau
+    result = build_diff_context(str(stopping_repo.path), "HEAD~1..HEAD", **kwargs)
+    selection = result["provenance"]["selection"]
+    assert selection["tau"] == pytest.approx(expected_tau)
+    assert selection["gate"] == expected_gate
+
+
+def test_the_ungated_default_is_the_explicit_ungated_tau(stopping_repo: Pygit2Repo) -> None:
+    from diffctx._diffctx import build_diff_context
+
+    unspecified = build_diff_context(str(stopping_repo.path), "HEAD~1..HEAD", scoring_mode="bm25")
+    explicit = build_diff_context(str(stopping_repo.path), "HEAD~1..HEAD", scoring_mode="bm25", tau=0.12)
+    assert unspecified["fragments"] == explicit["fragments"]

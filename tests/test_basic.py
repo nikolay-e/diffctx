@@ -10,9 +10,9 @@ from diffctx import map_directory, to_json, to_text, to_yaml
 from .utils import find_node_by_path, get_all_files_in_tree, load_yaml, make_hashable
 
 
-def test_basic_mapping(temp_project, run_mapper):
+def test_basic_mapping(temp_project, run_mapper_yaml):
     """Test basic directory mapping with default settings."""
-    assert run_mapper([".", "-o", "directory_tree.yaml"])
+    assert run_mapper_yaml([".", "-o", "directory_tree.yaml"])
     output_file = temp_project / "directory_tree.yaml"
     assert output_file.exists()
     result = load_yaml(output_file)
@@ -37,9 +37,9 @@ def test_basic_mapping(temp_project, run_mapper):
     assert ".git" not in api_files
 
 
-def test_directory_content(temp_project, run_mapper):
+def test_directory_content(temp_project, run_mapper_yaml):
     """Test directory structure and content preservation."""
-    assert run_mapper([".", "-o", "directory_tree.yaml"])
+    assert run_mapper_yaml([".", "-o", "directory_tree.yaml"])
     result = load_yaml(temp_project / "directory_tree.yaml")
     src_dir = find_node_by_path(result, ["src"])
     assert src_dir is not None
@@ -68,16 +68,16 @@ def test_directory_content(temp_project, run_mapper):
     assert "main.py" in text_str
 
 
-def test_custom_output(temp_project, run_mapper):
+def test_custom_output(temp_project, run_mapper_yaml):
     """Test custom output file locations and names."""
     output_path1 = temp_project / "custom.yaml"
-    assert run_mapper([".", "-o", str(output_path1)])
+    assert run_mapper_yaml([".", "-o", str(output_path1)])
     assert output_path1.exists()
 
     subdir = temp_project / "subdir"
     subdir.mkdir()
     output_path2 = subdir / "output.yaml"
-    assert run_mapper([".", "-o", str(output_path2)])
+    assert run_mapper_yaml([".", "-o", str(output_path2)])
     assert output_path2.exists()
 
     result1 = load_yaml(output_path1)
@@ -92,7 +92,7 @@ def test_custom_output(temp_project, run_mapper):
     assert find_node_by_path(result2, ["subdir", "output.yaml"]) is None
 
 
-def test_file_content_encoding(temp_project, run_mapper):
+def test_file_content_encoding(temp_project, run_mapper_yaml):
     """Test handling of different file encodings and content."""
     ascii_content_orig = "Hello World"
     multiline_content_orig = "line1\nline2\nline3"
@@ -102,7 +102,7 @@ def test_file_content_encoding(temp_project, run_mapper):
     (temp_project / "multiline.txt").write_text(multiline_content_orig)
     (temp_project / "empty.txt").write_text(empty_content_orig)
 
-    assert run_mapper([".", "-o", "directory_tree.yaml"])
+    assert run_mapper_yaml([".", "-o", "directory_tree.yaml"])
     result = load_yaml(temp_project / "directory_tree.yaml")
 
     ascii_node = find_node_by_path(result, ["ascii.txt"])
@@ -117,7 +117,7 @@ def test_file_content_encoding(temp_project, run_mapper):
     assert empty_node.get("content") == empty_content_orig
 
 
-def test_nested_structures(temp_project, run_mapper):
+def test_nested_structures(temp_project, run_mapper_yaml):
     """Test handling of deeply nested directory structures."""
     current = temp_project
     contents = {}
@@ -128,7 +128,7 @@ def test_nested_structures(temp_project, run_mapper):
         contents[i] = content_str
         (current / f"file{i}.txt").write_text(content_str)
 
-    assert run_mapper([".", "-o", "directory_tree.yaml"])
+    assert run_mapper_yaml([".", "-o", "directory_tree.yaml"])
     result = load_yaml(temp_project / "directory_tree.yaml")
 
     current_node = result
@@ -146,17 +146,17 @@ def test_nested_structures(temp_project, run_mapper):
         current_node = level_dir_node
 
 
-def test_absolute_relative_paths(temp_project, run_mapper):
+def test_absolute_relative_paths(temp_project, run_mapper_yaml):
     """Test handling of absolute and relative paths."""
     output_path_abs = temp_project / "abs_output.yaml"
     output_path_rel_src = temp_project / "src.yaml"
     output_path_rel_root = temp_project / "root.yaml"
 
-    assert run_mapper([str(temp_project.absolute()), "-o", str(output_path_abs)])
+    assert run_mapper_yaml([str(temp_project.absolute()), "-o", str(output_path_abs)])
     assert output_path_abs.exists()
-    assert run_mapper(["./src", "-o", str(output_path_rel_src)])
+    assert run_mapper_yaml(["./src", "-o", str(output_path_rel_src)])
     assert output_path_rel_src.exists()
-    assert run_mapper([".", "-o", str(output_path_rel_root)])
+    assert run_mapper_yaml([".", "-o", str(output_path_rel_root)])
     assert output_path_rel_root.exists()
 
     abs_result = load_yaml(output_path_abs)
@@ -187,11 +187,11 @@ def test_absolute_relative_paths(temp_project, run_mapper):
     assert abs_children_set == root_children_set, f"Set difference: {abs_children_set.symmetric_difference(root_children_set)}"
 
 
-def test_output_handling(temp_project, run_mapper):
+def test_output_handling(temp_project, run_mapper_yaml):
     """Test various output file scenarios."""
     output_file_overwrite = temp_project / "output_overwrite.yaml"
     output_file_overwrite.write_text("original content")
-    assert run_mapper([".", "-o", str(output_file_overwrite)])
+    assert run_mapper_yaml([".", "-o", str(output_file_overwrite)])
     assert "original content" not in output_file_overwrite.read_text()
     assert load_yaml(output_file_overwrite) is not None
 
@@ -199,7 +199,7 @@ def test_output_handling(temp_project, run_mapper):
     output_path_new_dir = new_dir / "tree.yaml"
     if new_dir.exists():
         shutil.rmtree(new_dir)
-    assert run_mapper([".", "-o", str(output_path_new_dir)])
+    assert run_mapper_yaml([".", "-o", str(output_path_new_dir)])
     assert output_path_new_dir.exists()
     assert new_dir.is_dir()
     assert load_yaml(output_path_new_dir) is not None
@@ -209,7 +209,7 @@ WIN_SKIP_MSG = "Skipping unicode filename test on Windows (potential FS issues)"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason=WIN_SKIP_MSG)
-def test_unicode_filenames(temp_project, run_mapper):
+def test_unicode_filenames(temp_project, run_mapper_yaml):
     """Test: files and directories with Unicode names."""
     (temp_project / "привет_мир").mkdir()
     (temp_project / "привет_мир" / "файл.txt").write_text("содержимое", encoding="utf-8")
@@ -217,7 +217,7 @@ def test_unicode_filenames(temp_project, run_mapper):
     (temp_project / "📄").touch()
 
     output_path = temp_project / "unicode_names_output.yaml"
-    assert run_mapper([".", "-o", str(output_path)])
+    assert run_mapper_yaml([".", "-o", str(output_path)])
     result = load_yaml(output_path)
     all_names = get_all_files_in_tree(result)
 
@@ -237,7 +237,7 @@ def test_unicode_filenames(temp_project, run_mapper):
     assert privet_file_node.get("content") == "содержимое\n"
 
 
-def test_unicode_content_and_encoding_errors(temp_project, run_mapper, caplog):
+def test_unicode_content_and_encoding_errors(temp_project, run_mapper_yaml, caplog):
     """Test: content in UTF-8, non-UTF8 (CP1251), binary."""
     utf8_content = "привет мир"
     try:
@@ -252,7 +252,7 @@ def test_unicode_content_and_encoding_errors(temp_project, run_mapper, caplog):
 
     output_path = temp_project / "encodings_output.yaml"
     with caplog.at_level(logging.WARNING, logger="diffctx"):
-        assert run_mapper([".", "-o", str(output_path), "--log-level", "warning"])
+        assert run_mapper_yaml([".", "-o", str(output_path), "--log-level", "warning"])
     result = load_yaml(output_path)
 
     utf8_node = find_node_by_path(result, ["utf8.txt"])
@@ -305,55 +305,55 @@ def test_svg_files_not_classified_as_binary(tmp_path):
 
 
 class TestMultiPathInput:
-    def test_single_file(self, temp_project, run_mapper):
+    def test_single_file(self, temp_project, run_mapper_yaml):
         file_path = temp_project / "src" / "main.py"
         output = temp_project / "single.yaml"
-        assert run_mapper([str(file_path), "-o", str(output)])
+        assert run_mapper_yaml([str(file_path), "-o", str(output)])
         result = load_yaml(output)
         assert result["type"] == "file" or any(c.get("name", "").endswith("main.py") for c in result.get("children", []))
 
-    def test_multiple_files(self, temp_project, run_mapper):
+    def test_multiple_files(self, temp_project, run_mapper_yaml):
         f1 = temp_project / "src" / "main.py"
         f2 = temp_project / "src" / "test.py"
         output = temp_project / "multi.yaml"
-        assert run_mapper([str(f1), str(f2), "-o", str(output)])
+        assert run_mapper_yaml([str(f1), str(f2), "-o", str(output)])
         result = load_yaml(output)
         children = result.get("children", [])
         names = {c["name"] for c in children}
         assert len(names) == 2
 
-    def test_glob_pattern(self, temp_project, run_mapper):
+    def test_glob_pattern(self, temp_project, run_mapper_yaml):
         output = temp_project / "glob.yaml"
-        assert run_mapper([str(temp_project / "src" / "*.py"), "-o", str(output)])
+        assert run_mapper_yaml([str(temp_project / "src" / "*.py"), "-o", str(output)])
         result = load_yaml(output)
         children = result.get("children", [])
         assert len(children) >= 2
         assert all(c["name"].endswith(".py") for c in children)
 
-    def test_directory_plus_file(self, temp_project, run_mapper):
+    def test_directory_plus_file(self, temp_project, run_mapper_yaml):
         src_dir = temp_project / "src"
         readme = temp_project / "README.md"
         readme.write_text("# Test")
         output = temp_project / "mixed.yaml"
-        assert run_mapper([str(src_dir), str(readme), "-o", str(output)])
+        assert run_mapper_yaml([str(src_dir), str(readme), "-o", str(output)])
         result = load_yaml(output)
         children = result.get("children", [])
         types = {c["type"] for c in children}
         assert "directory" in types
         assert "file" in types
 
-    def test_multiple_directories(self, temp_project, run_mapper):
+    def test_multiple_directories(self, temp_project, run_mapper_yaml):
         dir1 = temp_project / "src"
         dir2 = temp_project / "docs"
         output = temp_project / "multi_dir.yaml"
-        assert run_mapper([str(dir1), str(dir2), "-o", str(output)])
+        assert run_mapper_yaml([str(dir1), str(dir2), "-o", str(output)])
         result = load_yaml(output)
         children = result.get("children", [])
         names = {c["name"] for c in children}
         assert "src" in names
         assert "docs" in names
 
-    def test_nonexistent_pattern_fails(self, run_mapper, capsys):
-        assert not run_mapper(["nonexistent_*.xyz"])
+    def test_nonexistent_pattern_fails(self, run_mapper_yaml, capsys):
+        assert not run_mapper_yaml(["nonexistent_*.xyz"])
         captured = capsys.readouterr()
         assert "No matches" in captured.err or "Cannot access" in captured.err

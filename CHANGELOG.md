@@ -7,6 +7,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Windows and Intel-Mac are release targets.** Every test matrix runs on
+  Linux, macOS and Windows on x64 and ARM; wheels and binaries ship for
+  `x86_64-apple-darwin` and `aarch64-pc-windows-msvc` as well, and `npm
+  install diffctx` and the Scoop bucket select them. What that exposed is
+  fixed: `--output-file` on Windows, backslashes in MCP output and in the
+  Rust path matching (discovery, C#/Go/Cargo edges), datasets checked out
+  byte-exact under a CRLF `autocrlf`, and a `--timeout 0` that now always
+  reports the timeout instead of racing the subprocess.
+- **The landing page installs and opens offline** — a web manifest, icons
+  and a service worker that keeps every visit network-first.
+- **Free-threaded CPython gets a wheel.** Each platform ships a `cp314t`
+  wheel beside the `abi3` one; `uvx` on 3.14t no longer compiles the sdist
+  (which timed MCP clients out), and the extension keeps the GIL off.
+- **The GitHub Action works on a default shallow checkout**: with no
+  `diff-range` it fetches the pull request's base and head (or `HEAD~1`)
+  itself, so `fetch-depth: 0` is no longer required.
+- **`provenance.engine.build` names the release commit** in wheels, binaries
+  and the image.
+- **A glossary line under the scoring modes** on the landing page: three
+  independent first-visit probes stalled on `ego-network`, `PPR`, `rrf`,
+  `pit`, `τ` and `o200k_base` with nothing on the page defining them.
+
+### Removed
+
+- **`build_diff_context(ignore_file=…, whitelist_file=…, no_default_ignores=…)`.**
+  The engine never applied a custom path-spec layer in diff mode and the three
+  arguments existed only to raise `NotImplementedError`; passing one is now a
+  `TypeError`. `.gitignore` and `.diffctx/ignore` still apply.
+
+### Fixed
+
+- **The MCP server no longer hangs on Windows.** Every git child inherited the
+  server's stdin, which under an MCP client is the JSON-RPC pipe the client
+  holds open, and on Windows such a git never exited: any tool call that reached
+  git hung. Child processes now get a null stdin in both the engine and the
+  Python layer.
+- **A long range says how many commits it held.** The commit list stops at
+  the newest twenty; the artifact read "20 commits" over a 42-commit range. It
+  now carries `commit_count` and reads "newest 20 of 42 commits" when the list
+  is cut, in both CLIs, pack and locate.
+- **`--budget` fitting never passes context off as the change.** The witness
+  clip shortened any file's last fragment, so a context file shrank line by line
+  under a "more lines of this change" marker before it dropped; only a changed
+  fragment is shortened now.
+- **MCP `fragment_ids` on a bare `diff_ref` read the code the change
+  replaced.** `HEAD` (or `HEAD~3`, or a duration window) is git's
+  base-versus-working-tree, so the locate ranking describes the files on
+  disk; the fetch read the base blob instead and returned the old body under
+  the ranking's own id. Bodies for a `..`-less ref now come from the working
+  tree, and a file the named revision lacks (or a revision git cannot
+  resolve) is reported as not found instead of being substituted with the
+  working-tree file under a historical label.
+- **The native binary fits the written artifact to `--budget`** (#277).
+  npm, Scoop, Docker and the release archives ship the Rust binary, which
+  documented `--budget` as a cap on the whole artifact and enforced nothing on
+  the document it wrote: 9,121 tokens at `--budget 8000` on a real range. It
+  now runs the same render-count-drop loop as the Python CLI (context from the
+  tail first, a changed file's second fragment next, mechanical witnesses
+  before hand-written ones), records `selection_budget_exceeded` in
+  `coverage`, and exits 4 when nothing fits — the two CLIs deliver one set.
+- **Eval harness: gold paths git had quoted** (`"b/caf\303\251.py"`) were
+  taken literally, so every non-ASCII gold file scored as a miss; the patch
+  header parser unquotes them. A checkpoint whose last line a kill left
+  unterminated no longer swallows the next appended row on resume.
+
+### Changed
+
+- The GitHub Action's `python-version` defaults to `3.13` (`--output-file`
+  needs `os.fchmod`, which Windows Python gained in 3.13); the action
+  reference page says so. `--budget --help` names what `auto` resolves to.
+
 ## [1.16.0] - 2026-09-16
 
 ### Added

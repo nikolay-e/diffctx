@@ -27,6 +27,14 @@ pub trait EdgeBuilder: Send + Sync {
         None
     }
 
+    /// `PythonEdgeBuilder` -> `python`: the name `DIFFCTX_DISABLE_BUILDERS`
+    /// matches against.
+    fn knife_name(&self) -> String {
+        let type_name = std::any::type_name::<Self>();
+        let short = type_name.rsplit("::").next().unwrap_or(type_name);
+        short.trim_end_matches("EdgeBuilder").to_ascii_lowercase()
+    }
+
     /// A coverage-of-last-resort builder: its edges only count where the
     /// dedicated builders produced nothing. The dual-coverage attempt this
     /// gate encodes was measured as a 100% noise regression (#131) — tags
