@@ -284,7 +284,7 @@ Apache 2.0
 
 ---
 
-- [Documentation site](https://nikolay-e.github.io/diffctx/) — the pipeline
+- [Documentation site](https://diffctx.com/) — the pipeline
   end to end: diff → fragments → graph → relevance → selection
 - [Command-line reference](docs/product/cli.md) — every flag with its default
   and meaning, rendered from `diffctx --help`

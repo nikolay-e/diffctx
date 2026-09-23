@@ -7,8 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.17.0] - 2026-09-23
+
 ### Added
 
+- **The site lives at <https://diffctx.com>.** It was a 301 to
+  `nikolay-e.github.io/diffctx/`, so search engines indexed the github.io
+  URL and the product domain had no presence of its own. It is now the
+  GitHub Pages custom domain (github.io redirects to it), with a
+  `robots.txt` and `sitemap.xml`; package metadata points at it.
 - **Windows and Intel-Mac are release targets.** Every test matrix runs on
   Linux, macOS and Windows on x64 and ARM; wheels and binaries ship for
   `x86_64-apple-darwin` and `aarch64-pc-windows-msvc` as well, and `npm
@@ -1624,7 +1631,8 @@ Earlier releases shipped as `treemapper`; see
 <https://github.com/nikolay-e/diffctx/releases> for the corresponding GitHub
 release notes (`1.0.0` through `1.6.1`).
 
-[Unreleased]: https://github.com/nikolay-e/diffctx/compare/v1.16.0...HEAD
+[Unreleased]: https://github.com/nikolay-e/diffctx/compare/v1.17.0...HEAD
+[1.17.0]: https://github.com/nikolay-e/diffctx/compare/v1.16.0...v1.17.0
 [1.16.0]: https://github.com/nikolay-e/diffctx/compare/v1.15.0...v1.16.0
 [1.15.0]: https://github.com/nikolay-e/diffctx/compare/v1.14.0...v1.15.0
 [1.14.0]: https://github.com/nikolay-e/diffctx/compare/v1.13.0...v1.14.0

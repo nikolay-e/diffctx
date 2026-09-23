@@ -6,7 +6,7 @@ No secret, no agent loop, no model of its own: the review step downstream
 chooses the model.
 
 Marketplace name: **diffctx LLM Diff Context**
-(`nikolay-e/diffctx@v1.16.0`). Runs on `ubuntu-latest`. Releases are tagged
+(`nikolay-e/diffctx@v1.17.0`). Runs on `ubuntu-latest`. Releases are tagged
 `vMAJOR.MINOR.PATCH` only — there is no floating `@v1` tag, so pin an exact
 release.
 
@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - id: context
-        uses: nikolay-e/diffctx@v1.16.0
+        uses: nikolay-e/diffctx@v1.17.0
         with:
           budget: '8000'
 

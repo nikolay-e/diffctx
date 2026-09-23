@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 REPO_URL = "https://github.com/nikolay-e/diffctx"
+SITE_URL = "https://diffctx.com/"
 DESCRIPTION = "Selects the minimum code an LLM needs to review a git diff"
 
 WINDOWS_TARGET = "x86_64-pc-windows-msvc"
@@ -43,7 +44,7 @@ def render_scoop(version: str, checksums: dict[str, str]) -> str:
     manifest = {
         "version": version,
         "description": DESCRIPTION,
-        "homepage": REPO_URL,
+        "homepage": SITE_URL,
         "license": "Apache-2.0",
         "architecture": {
             arch: {
