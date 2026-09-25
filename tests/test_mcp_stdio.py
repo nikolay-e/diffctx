@@ -180,7 +180,10 @@ async def test_a_running_server_survives_its_package_being_replaced_on_disk(work
     with open(workspace["stderr"], "w", encoding="utf-8") as errlog:
         async with stdio_client(params, errlog=errlog) as (read, write), ClientSession(read, write) as session:
             await _step("initialize", session.initialize())
-            shutil.rmtree(site / "diffctx")
+            # The Python modules are what a lazy import would reach for; the
+            # loaded native extension stays, as Windows cannot unlink it.
+            for module in (site / "diffctx").rglob("*.py"):
+                module.unlink()
             repo = str(workspace["repo"])
             located = await _step("locate", session.call_tool("diffctx_context", {"repo_path": repo, "diff_ref": "HEAD~1..HEAD"}))
             assert not located.isError, located.content[0].text
