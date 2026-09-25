@@ -5,6 +5,8 @@
 htmlcov
 *.yaml
 *.yml
+# CI is code: a workflow change must reach its own review (#289).
+!.github/workflows/*.yml
 tests
 # Build and cache
 build

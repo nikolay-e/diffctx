@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
+import subprocess
 import sys
 from collections.abc import Callable
 from functools import partial
@@ -119,15 +121,44 @@ async def _locate_response(validated_path: Path, diff_range: str, budget_tokens:
         )
     except GitError as e:
         raise _git_failure(diff_range, e) from e
+    payload = _without_overflow_list(payload)
     if clipboard:
         degraded_notice = await _copy_or_degrade(payload)
         if degraded_notice is None:
-            import json
-
             item_count = json.loads(payload).get("item_count", 0)
             return f"Copied locate JSON ({item_count} items) to clipboard"
         payload = degraded_notice + payload
     return _capped_by_max_tokens(payload, max_tokens, "lower budget_tokens or narrow diff_range")
+
+
+# The overflow list is up to 50 paths an agent never feeds back: the locate
+# protocol continues through `items`, and on a large diff the list alone cost
+# thousands of tokens (#289). `overflow_count` and `coverage.next_up` keep the
+# two facts it carried.
+def _without_overflow_list(payload: str) -> str:
+    doc = json.loads(payload)
+    if not doc.pop("overflow", None):
+        return payload
+    return json.dumps(doc, ensure_ascii=False, separators=(",", ":"))
+
+
+# An agent's question is almost always about the work in front of it, not the
+# last commit (#289): uncommitted edits and new untracked files win the default.
+def _default_diff_ref(repo: Path) -> str:
+    # The repository is untrusted: its config must not get to run an fsmonitor
+    # hook, and a parent's GIT_DIR must not redirect the check elsewhere.
+    env = {k: v for k, v in os.environ.items() if k not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE")}
+    status = subprocess.run(
+        ["git", "-C", str(repo), "-c", "core.fsmonitor=false", "status", "--porcelain", "--untracked-files=normal"],
+        stdin=subprocess.DEVNULL,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=_DEFAULT_TIMEOUT_SECONDS,
+    )
+    dirty = status.returncode == 0 and bool(status.stdout.strip())
+    return "HEAD" if dirty else "HEAD~1..HEAD"
 
 
 def _validate_budget_tokens(budget_tokens: int) -> None:
@@ -184,16 +215,16 @@ _UNTRUSTED_NOTICE = (
 # that mostly restated what the parameters already say. This is the whole
 # description: what it does, the two-call shape, and the safety boundary.
 _CONTEXT_DESCRIPTION = (
-    'Understand a git diff (diff_ref: range or 24h window). mode="locate" '
-    "(default) ranks the code explaining it; pass the ids back as fragment_ids "
-    'for source. mode="pack" returns all. 30+ languages.' + _UNTRUSTED_NOTICE
+    "Use before reviewing or committing: the callers, callees and tests a change "
+    "touches, which git diff omits. diff_ref: range, HEAD (default when dirty) or "
+    "24h. locate ranks ids for fragment_ids; pack returns code." + _UNTRUSTED_NOTICE
 )
 
 
 @mcp.tool(name="diffctx_context", description=_CONTEXT_DESCRIPTION, annotations=_read_only("diffctx context"))
 async def diffctx_context(
     repo_path: str,
-    diff_ref: str = "HEAD~1..HEAD",
+    diff_ref: str | None = None,
     mode: str = "locate",
     budget_tokens: int = 8000,
     fragment_ids: list[str] | None = None,
@@ -203,6 +234,7 @@ async def diffctx_context(
 ) -> str:
     validated_path = validate_repo_path(repo_path)
     _validate_max_tokens(max_tokens)
+    diff_ref = diff_ref or _default_diff_ref(validated_path)
 
     # fragment_ids is the second half of the locate flow, so it decides the
     # operation on its own. Requiring a third mode name for it would make the

@@ -210,6 +210,32 @@ class TestGetDiffContext:
         assert all(i["reasons"] for i in doc["items"])
 
     @pytest.mark.asyncio
+    async def test_default_diff_ref_follows_the_work_in_front_of_the_agent(self, server, mcp_repo):
+        import json
+
+        args = {"repo_path": str(mcp_repo.path), "mode": "locate"}
+        clean = json.loads(_get_text(await server.call_tool("diffctx_context", args)))
+        assert clean["commit_message"] == "add subtract function"
+
+        (mcp_repo.path / "src" / "extra.py").write_text("from calc import add\n\nX = add(2, 2)\n", encoding="utf-8")
+        dirty = json.loads(_get_text(await server.call_tool("diffctx_context", args)))
+        assert dirty["changed_files"] == ["src/extra.py"]
+
+    @pytest.mark.asyncio
+    async def test_locate_keeps_the_overflow_count_but_not_the_list(self, server, mcp_repo):
+        import json
+
+        from diffctx._native import build_locate
+
+        engine = json.loads(build_locate(root_dir=mcp_repo.path, diff_range="HEAD~1..HEAD", budget_tokens=40, timeout=60))
+        assert engine["overflow"], "the fixture must overflow for this test to mean anything"
+
+        args = {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD", "mode": "locate", "budget_tokens": 40}
+        doc = json.loads(_get_text(await server.call_tool("diffctx_context", args)))
+        assert "overflow" not in doc
+        assert doc["overflow_count"] == engine["overflow_count"]
+
+    @pytest.mark.asyncio
     async def test_locate_rejects_include_raw_diff(self, server, mcp_repo):
         args = {
             "repo_path": str(mcp_repo.path),
