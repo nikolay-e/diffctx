@@ -73,11 +73,11 @@ class TestClaudePlugin:
         assert server["args"] == UVX_ARGS
 
     @pytest.mark.parametrize("command", ["diffctx", "impact"])
-    def test_slash_command_has_frontmatter_and_a_real_tool(self, command):
+    def test_skill_has_frontmatter_and_a_real_tool(self, command):
         """Plugin commands instruct the model to call an MCP tool by name;
         a tool rename that skips these files ships a plugin whose commands
         reference nothing."""
-        text = (PROJECT_ROOT / "plugin" / "commands" / f"{command}.md").read_text(encoding="utf-8")
+        text = (PROJECT_ROOT / "plugin" / "skills" / command / "SKILL.md").read_text(encoding="utf-8")
         front = re.match(r"\A---\n(.*?)\n---\n", text, re.DOTALL)
         assert front
         assert "description:" in front.group(1)

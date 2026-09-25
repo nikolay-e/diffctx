@@ -284,10 +284,10 @@ repos:
         name: Lint Markdown files
         args: ['--fix']
         files: \.(md|markdown)$
-        # plugin/commands/ holds Claude Code plugin slash-command prompts: frontmatter
+        # plugin/skills/ holds Claude Code plugin skill prompts: frontmatter
         # + instruction body, no document heading. CLAUDE.md is the one-line
         # `@AGENTS.md` import adapter.
-        exclude: ^(plugin/commands/|CLAUDE\.md$)
+        exclude: ^(plugin/skills/|CLAUDE\.md$)
 
   # ============================================================================
   # RUST QUALITY (fmt, clippy, test, audit)
