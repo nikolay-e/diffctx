@@ -142,7 +142,9 @@ jobs:
 
           mcp = pathlib.Path("plugin/.mcp.json")
           doc = json.loads(mcp.read_text(encoding="utf-8"))
-          doc["mcpServers"]["diffctx"]["args"][1] = f"diffctx[mcp]=={ver}"
+          args = doc["mcpServers"]["diffctx"]["args"]
+          [i] = [i for i, a in enumerate(args) if a.startswith("diffctx[mcp]==")]
+          args[i] = f"diffctx[mcp]=={ver}"
           mcp.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
 
           srv = pathlib.Path("server.json")
@@ -225,6 +227,18 @@ jobs:
           PY
           grep -n -m3 -E '^## \[' CHANGELOG.md
 
+      - name: Set up uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
+
+      # The plugin's uvx launcher pins diffctx; this pins what diffctx pulls
+      # in, to the set CI installed from uv.lock, so an installed plugin runs
+      # the dependency versions this release was tested with.
+      - name: Pin the plugin's dependency set from uv.lock
+        run: |
+          uv export --frozen --no-dev --extra mcp --no-emit-project --no-hashes \
+            --no-header --no-annotate -q > plugin/constraints.txt
+          wc -l plugin/constraints.txt
+
       - name: Commit version bump (locally only, no push yet)
         id: commit_version
         env:
@@ -233,7 +247,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/diffctx/version.py pyproject.toml crates/diffctx-native/Cargo.toml Cargo.lock uv.lock \
-            server.json action.yml plugin/.claude-plugin/plugin.json plugin/.mcp.json \
+            server.json action.yml plugin/.claude-plugin/plugin.json plugin/.mcp.json plugin/constraints.txt \
             docs/product/github-action.md CITATION.cff \
             CHANGELOG.md
           if ! git diff --staged --quiet; then

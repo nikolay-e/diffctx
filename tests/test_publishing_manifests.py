@@ -65,7 +65,27 @@ class TestClaudePlugin:
         installed plugin must start the version it was reviewed at."""
         server = _load("plugin/.mcp.json")["mcpServers"]["diffctx"]
         assert server["command"] == "uvx"
-        assert server["args"] == ["--from", f"diffctx[mcp]=={__version__}", "diffctx-mcp"]
+        assert server["args"] == [
+            "-c",
+            "${CLAUDE_PLUGIN_ROOT}/constraints.txt",
+            "--from",
+            f"diffctx[mcp]=={__version__}",
+            "diffctx-mcp",
+        ]
+
+    def test_plugin_constraints_pin_every_dependency_exactly(self):
+        """The launcher pin fixes diffctx alone; its dependencies would resolve
+        fresh on every install. The constraints file pins all of them to the
+        uv.lock set the release was tested with."""
+        lines = (PROJECT_ROOT / "plugin" / "constraints.txt").read_text(encoding="utf-8").splitlines()
+        pins = {}
+        for line in lines:
+            spec = line.split(";")[0].strip()
+            name, sep, version = spec.partition("==")
+            assert sep and version and not re.search(r"[<>~!*,]", version), line
+            pins.setdefault(name.lower(), set()).add(version)
+        assert {"mcp", "pathspec", "pydantic", "anyio"} <= pins.keys()
+        assert "diffctx" not in pins
 
     def test_mcp_json_is_self_bootstrapping(self):
         server = _load(".mcp.json")["mcpServers"]["diffctx"]

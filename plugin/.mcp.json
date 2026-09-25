@@ -3,6 +3,8 @@
     "diffctx": {
       "command": "uvx",
       "args": [
+        "-c",
+        "${CLAUDE_PLUGIN_ROOT}/constraints.txt",
         "--from",
         "diffctx[mcp]==1.17.0",
         "diffctx-mcp"
