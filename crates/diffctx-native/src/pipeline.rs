@@ -886,6 +886,21 @@ const MAX_COMMIT_MESSAGE_CHARS: usize = 2_000;
 /// The class of every changed file, keyed by its display path. Generated
 /// files are told by their header, which the first fragment of the file
 /// carries; the rest by the shape of their hunks and changed lines.
+/// Changed files the fragmenter gave nothing to: no budget can represent
+/// them, so they must not be reported as dropped by one.
+pub(crate) fn fragmentless_changed_files(
+    root_dir: &Path,
+    changed_files: &[PathBuf],
+    fragments: &[Fragment],
+) -> FxHashSet<String> {
+    let fragmented: FxHashSet<&str> = fragments.iter().map(|f| f.path()).collect();
+    changed_files
+        .iter()
+        .filter(|p| !fragmented.contains(p.to_string_lossy().as_ref()))
+        .map(|p| crate::paths::display_rel_or_abs(root_dir, p))
+        .collect()
+}
+
 pub(crate) fn classify_changes(
     root_dir: &Path,
     changed_files: &[PathBuf],
@@ -1359,12 +1374,12 @@ pub fn run_selection(
             .map(|f| f.id.clone()),
     );
     let represented: FxHashSet<&str> = selected.iter().map(|f| f.id.path.as_ref()).collect();
+    let fragmented: FxHashSet<&str> = state.all_fragments.iter().map(|f| f.path()).collect();
     let mut limit_reasons = Vec::new();
-    if state
-        .changed_files
-        .iter()
-        .any(|p| !represented.contains(p.to_string_lossy().as_ref()))
-    {
+    if state.changed_files.iter().any(|p| {
+        let key = p.to_string_lossy();
+        fragmented.contains(key.as_ref()) && !represented.contains(key.as_ref())
+    }) {
         limit_reasons.push(crate::resource::LimitReason::EvidenceBudgetExceeded);
     }
 
@@ -1424,6 +1439,11 @@ pub fn select_with_params(
         commit_message: state.commit_message.clone(),
         commit_messages,
         changes: state.change_classes.clone(),
+        fragmentless: fragmentless_changed_files(
+            &state.root_dir,
+            &state.changed_files,
+            &state.all_fragments,
+        ),
         changed_files: state
             .changed_files
             .iter()
@@ -1792,6 +1812,7 @@ fn full_empty_output(
     list_unrepresented_changes(
         &mut output,
         &classify_changes(root_dir, changed_files, &[], "", &[]),
+        &fragmentless_changed_files(root_dir, changed_files, &[]),
     );
     output
 }
@@ -1801,6 +1822,7 @@ fn full_empty_output(
 fn list_unrepresented_changes(
     output: &mut DiffContextOutput,
     change_classes: &[(String, crate::change_class::ChangeClass, &'static str)],
+    fragmentless: &FxHashSet<String>,
 ) {
     output.changed_files = change_classes.iter().map(|(p, _, _)| p.clone()).collect();
     output.changes = change_classes
@@ -1809,6 +1831,7 @@ fn list_unrepresented_changes(
             path: path.clone(),
             class: *class,
             represented: false,
+            no_fragments: fragmentless.contains(path),
         })
         .collect();
 }
@@ -1910,6 +1933,7 @@ fn build_diff_context_full(
         commit_message,
         commit_messages: Vec::new(),
         changes: classify_changes(&root_dir, &changed_files, &hunks, "", &all_fragments),
+        fragmentless: fragmentless_changed_files(&root_dir, &changed_files, &all_fragments),
         changed_files: changed_files
             .iter()
             .map(|p| crate::paths::display_rel_or_abs(&root_dir, p))
@@ -2033,7 +2057,11 @@ pub(crate) fn empty_output_from_state(state: &ScoredState) -> DiffContextOutput 
     output.lockfile_changes = state.lockfile_changes.clone();
     output.ignored_changes = state.ignored_changes.clone();
     output.policy_excluded_count = state.policy_excluded_count;
-    list_unrepresented_changes(&mut output, &state.change_classes);
+    list_unrepresented_changes(
+        &mut output,
+        &state.change_classes,
+        &fragmentless_changed_files(&state.root_dir, &state.changed_files, &state.all_fragments),
+    );
     output.provenance = Some(state.provenance.finish(None));
     let limits: &[crate::resource::LimitReason] = if output.redactions.is_some() {
         &[crate::resource::LimitReason::SanitizationRedaction]
