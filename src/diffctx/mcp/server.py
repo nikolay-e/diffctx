@@ -188,7 +188,17 @@ async def _copy_or_degrade(content: str) -> str | None:
         return f"Note: clipboard unavailable ({e}); returning content instead.\n\n"
 
 
-mcp = FastMCP("diffctx")
+# With tool search on (Claude Code's default) the tool definition is deferred:
+# an agent sees only these instructions until it searches, so they, not the
+# description, decide whether the tool is ever reached for (#289).
+mcp = FastMCP(
+    "diffctx",
+    instructions=(
+        "Before reviewing, committing or explaining a code change, or when asked what a change "
+        "affects, call diffctx_context first: it returns the callers, callees and tests the diff "
+        "touches, which git diff does not show. With no diff_ref it reads uncommitted work."
+    ),
+)
 # FastMCP takes no version argument, so the SDK reports its own version as the
 # server version during initialize. Clients then see the mcp package version
 # instead of ours, drifting on every SDK bump.

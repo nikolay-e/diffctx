@@ -1265,6 +1265,16 @@ class TestToolDefinitionBudget:
         # 1063 * 0.4 = 425: the acceptance criterion was a >=60% cut.
         assert total <= 425, f"tool definition grew to {total} tokens, above the #127 budget"
 
+    def test_server_instructions_name_the_tool_within_a_budget(self, server):
+        """Under tool search the definition is deferred and these instructions are
+        all an agent sees; without them a fresh session reviewing a change never
+        called the tool (#289). They are paid for every session, so they are capped."""
+        import tiktoken
+
+        instructions = server._mcp_server.instructions or ""
+        assert "diffctx_context" in instructions
+        assert len(tiktoken.get_encoding("o200k_base").encode(instructions)) <= 60
+
     @pytest.mark.asyncio
     async def test_the_description_stays_under_the_budget(self, server):
         import tiktoken
