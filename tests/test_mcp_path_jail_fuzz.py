@@ -119,8 +119,7 @@ def _call(server, args: dict) -> str:
         return ""
     except Exception as e:
         pytest.fail(f"unhandled {type(e).__name__} escaped the tool: {e}")
-    blocks = result[0]
-    return blocks[0].text if blocks else ""
+    return result[0].text if result else ""
 
 
 @pytest.fixture
@@ -210,5 +209,4 @@ def test_no_glob_pattern_reaches_outside_the_repository(legacy_server, jailed, p
         return
     except Exception as e:
         pytest.fail(f"unhandled {type(e).__name__} escaped the tool: {e}")
-    blocks = result[0]
-    assert CANARY not in (blocks[0].text if blocks else "")
+    assert CANARY not in (result[0].text if result else "")

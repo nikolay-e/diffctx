@@ -51,9 +51,8 @@ def legacy_tools(server):
     register_legacy_tools(server)
 
 
-def _get_text(call_result: tuple) -> str:
-    content_blocks = call_result[0]
-    return content_blocks[0].text
+def _get_text(call_result) -> str:
+    return call_result[0].text
 
 
 def _run_with_argv(main, argv):

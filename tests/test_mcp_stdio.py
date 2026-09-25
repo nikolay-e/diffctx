@@ -138,6 +138,9 @@ async def test_the_default_surface_over_real_stdio(argv, workspace):
             ),
         )
         assert not located.isError, located.content[0].text
+        # The document travels once, as text: a structured copy wrapped it in
+        # {"result": "<escaped JSON>"} and clients rendered that instead.
+        assert located.structuredContent is None
         doc = json.loads(located.content[0].text)
         assert doc["schema"] == "diffctx.locate.v1"
         assert any(item["path"] == "src/calc.py" for item in doc["items"])
@@ -158,3 +161,33 @@ async def test_legacy_tools_appear_only_behind_the_env_gate(argv, workspace):
         tree = await _step("get_tree_map", session.call_tool("get_tree_map", {"repo_path": str(workspace["repo"])}))
         assert not tree.isError, tree.content[0].text
         assert "calc.py" in tree.content[0].text
+
+
+@pytest.mark.timeout(120)
+@pytest.mark.asyncio
+async def test_a_running_server_survives_its_package_being_replaced_on_disk(workspace, tmp_path):
+    """#291: `uv tool install --force` swaps the package under a live server.
+    Every module a call needs must already be loaded, or the first call after
+    the upgrade dies with ModuleNotFoundError."""
+    import diffctx
+
+    site = tmp_path / "site"
+    shutil.copytree(Path(diffctx.__file__).parent, site / "diffctx", ignore=shutil.ignore_patterns("__pycache__"))
+    env = {k: v for k, v in os.environ.items() if k not in ("DIFFCTX_MCP_LEGACY_TOOLS", "DIFFCTX_ALLOWED_PATHS")}
+    env["DIFFCTX_ALLOWED_PATHS"] = str(workspace["allowed"])
+    env["PYTHONPATH"] = str(site)
+    params = StdioServerParameters(command=sys.executable, args=["-m", "diffctx.mcp"], env=env, cwd=str(tmp_path))
+    with open(workspace["stderr"], "w", encoding="utf-8") as errlog:
+        async with stdio_client(params, errlog=errlog) as (read, write), ClientSession(read, write) as session:
+            await _step("initialize", session.initialize())
+            shutil.rmtree(site / "diffctx")
+            repo = str(workspace["repo"])
+            located = await _step("locate", session.call_tool("diffctx_context", {"repo_path": repo, "diff_ref": "HEAD~1..HEAD"}))
+            assert not located.isError, located.content[0].text
+            ids = [f"{i['path']}:{i['lines']}" for i in json.loads(located.content[0].text)["items"]]
+            fetched = await _step(
+                "fetch",
+                session.call_tool("diffctx_context", {"repo_path": repo, "diff_ref": "HEAD~1..HEAD", "fragment_ids": ids}),
+            )
+            assert not fetched.isError, fetched.content[0].text
+            assert "def sub" in fetched.content[0].text

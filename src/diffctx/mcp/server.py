@@ -16,10 +16,17 @@ from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
 from diffctx._diffctx import DEFAULT_TIMEOUT as _ENGINE_DEFAULT_TIMEOUT
-from diffctx._native import GitError, build_diff_context
+
+# Every module a tool call needs is imported here, at startup, never inside the
+# call: a running server whose package is replaced on disk (`uv tool install
+# --force`) otherwise dies on its first lazy import (#291).
+from diffctx._native import GitError, build_diff_context, build_locate
+from diffctx.clipboard import ClipboardError, copy_to_clipboard
+from diffctx.tokens import count_tokens
 from diffctx.version import __version__
 from diffctx.writer import tree_to_string
 
+from .fetch import fetch_result
 from .security import validate_repo_path
 
 logger = logging.getLogger(__name__)
@@ -78,8 +85,6 @@ def _over_token_budget_notice(tool: str, token_count: int, max_tokens: int, hint
 
 
 def _capped_by_max_tokens(content: str, max_tokens: int, hint: str) -> str:
-    from diffctx.tokens import count_tokens
-
     token_count = count_tokens(content).count
     if token_count > max_tokens:
         return _over_token_budget_notice("diffctx_context", token_count, max_tokens, hint)
@@ -106,8 +111,6 @@ def _git_failure(diff_ref: str, e: GitError) -> ValueError:
 
 
 async def _locate_response(validated_path: Path, diff_range: str, budget_tokens: int, clipboard: bool, max_tokens: int) -> str:
-    from diffctx._native import build_locate
-
     try:
         payload = await _run_with_deadline(
             "diffctx_context",
@@ -179,8 +182,6 @@ async def _copy_or_degrade(content: str) -> str | None:
     # a headless MCP server has no DISPLAY/WAYLAND_DISPLAY/pbcopy by default, and the
     # already-computed content must not be thrown away just because the clipboard is
     # unavailable.
-    from diffctx.clipboard import ClipboardError, copy_to_clipboard
-
     try:
         await anyio.to_thread.run_sync(lambda: copy_to_clipboard(content))
         return None
@@ -231,7 +232,15 @@ _CONTEXT_DESCRIPTION = (
 )
 
 
-@mcp.tool(name="diffctx_context", description=_CONTEXT_DESCRIPTION, annotations=_read_only("diffctx context"))
+# The result is already a document (JSON or Markdown). Structured output would
+# ship it a second time as {"result": "<escaped string>"}, which clients render
+# instead of the text: every quote escaped, the tokens paid twice.
+@mcp.tool(
+    name="diffctx_context",
+    description=_CONTEXT_DESCRIPTION,
+    annotations=_read_only("diffctx context"),
+    structured_output=False,
+)
 async def diffctx_context(
     repo_path: str,
     diff_ref: str | None = None,
@@ -251,8 +260,6 @@ async def diffctx_context(
     # two-call shape something the caller has to remember rather than something
     # the arguments express.
     if fragment_ids:
-        from .fetch import fetch_result
-
         fetched = await _run_with_deadline(
             "diffctx_context",
             partial(fetch_result, validated_path, diff_ref, fragment_ids, _DEFAULT_MAX_FILE_BYTES),

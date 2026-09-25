@@ -9,6 +9,10 @@ from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 
 from diffctx._diffctx import sanitize_text
+from diffctx.ignore import get_ignore_specs, get_whitelist_spec, should_ignore
+from diffctx.tokens import count_tokens
+from diffctx.tree import TreeBuildContext, build_tree
+from diffctx.writer import tree_to_string
 
 from .fetch import withheld_set
 from .security import validate_dir_path, validate_repo_path
@@ -46,10 +50,6 @@ async def get_tree_map(
     clipboard: bool = False,
     max_tokens: int = _DEFAULT_MAX_TOKENS,
 ) -> str:
-    from diffctx.ignore import get_ignore_specs, get_whitelist_spec
-    from diffctx.tokens import count_tokens
-    from diffctx.tree import TreeBuildContext, build_tree
-    from diffctx.writer import tree_to_string
 
     validated_path = validate_repo_path(repo_path)
     _validate_max_tokens(max_tokens)
@@ -155,8 +155,6 @@ def _collect_matched_files(validated_path: Path, patterns: list[str], max_files:
     """
     import glob as globmod
 
-    from diffctx.ignore import get_ignore_specs, should_ignore
-
     noise = get_ignore_specs(validated_path, None, False, None)
     contained: list[tuple[Path, str]] = []
     seen: set[Path] = set()
@@ -253,8 +251,6 @@ async def get_file_context(
             return f"Copied {n_files} files ({n_lines:,} lines) to clipboard"
         content = degraded_notice + content
 
-    from diffctx.tokens import count_tokens
-
     token_count = count_tokens(content).count
     if token_count > max_tokens:
         return _over_token_budget_notice(
@@ -268,5 +264,7 @@ async def get_file_context(
 
 
 def register(server: FastMCP) -> None:
-    server.tool(description=_TREE_MAP_DESCRIPTION, annotations=_read_only("Get tree map"))(get_tree_map)
-    server.tool(description=_FILE_CONTEXT_DESCRIPTION, annotations=_read_only("Get file context"))(get_file_context)
+    server.tool(description=_TREE_MAP_DESCRIPTION, annotations=_read_only("Get tree map"), structured_output=False)(get_tree_map)
+    server.tool(description=_FILE_CONTEXT_DESCRIPTION, annotations=_read_only("Get file context"), structured_output=False)(
+        get_file_context
+    )
