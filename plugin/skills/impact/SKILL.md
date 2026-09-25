@@ -1,5 +1,5 @@
 ---
-description: Blast radius of a change — impacted callers, tests, and contracts
+description: Use when asked what a change could break or affect — the blast radius of a diff: impacted callers, tests, and contracts
 argument-hint: "[diff-range] defaults to HEAD (uncommitted changes)"
 ---
 
@@ -10,6 +10,11 @@ ranking carries the blast-radius `summary` and per-item `group` (`test` /
 `type` / `config`) this command reports on, at a fraction of the tokens a pack
 costs. When a specific fragment's body is needed to judge risk, fetch just that
 one by passing its `"<path>:<lines>"` back as `fragment_ids`.
+
+The first session after install downloads the server (about 20 seconds),
+so the tool can be missing at first. Then run the same analysis through the
+CLI instead of reading files by hand: `uvx diffctx . --diff <range> --mode locate`,
+with the same range.
 
 From the ranking, report the impact of the change, ranked by risk:
 
