@@ -135,10 +135,15 @@ jobs:
           assert n == 1, "action.yml: diffctx-version default not found"
           act.write_text(s, encoding="utf-8")
 
-          plug = pathlib.Path(".claude-plugin/plugin.json")
+          plug = pathlib.Path("plugin/.claude-plugin/plugin.json")
           doc = json.loads(plug.read_text(encoding="utf-8"))
           doc["version"] = ver
           plug.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+
+          mcp = pathlib.Path("plugin/.mcp.json")
+          doc = json.loads(mcp.read_text(encoding="utf-8"))
+          doc["mcpServers"]["diffctx"]["args"][1] = f"diffctx[mcp]=={ver}"
+          mcp.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
 
           srv = pathlib.Path("server.json")
           doc = json.loads(srv.read_text(encoding="utf-8"))
@@ -228,7 +233,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/diffctx/version.py pyproject.toml crates/diffctx-native/Cargo.toml Cargo.lock uv.lock \
-            server.json action.yml .claude-plugin/plugin.json docs/product/github-action.md CITATION.cff \
+            server.json action.yml plugin/.claude-plugin/plugin.json plugin/.mcp.json \
+            docs/product/github-action.md CITATION.cff \
             CHANGELOG.md
           if ! git diff --staged --quiet; then
             git commit -m "Release version ${VERSION}"

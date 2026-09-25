@@ -189,7 +189,10 @@ as `io.github.nikolay-e/diffctx`. One-line setup (zero-install via
 [uv](https://docs.astral.sh/uv/)):
 
 ```bash
-# Claude Code
+# Claude Code plugin: the server plus /diffctx:diffctx and /diffctx:impact
+claude plugin marketplace add nikolay-e/diffctx
+claude plugin install diffctx@diffctx
+# Claude Code, server only
 claude mcp add diffctx -- uvx --from 'diffctx[mcp]' diffctx-mcp
 # Codex CLI
 codex mcp add diffctx -- uvx --from 'diffctx[mcp]' diffctx-mcp

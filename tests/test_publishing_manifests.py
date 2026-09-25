@@ -53,7 +53,19 @@ class TestRegistryManifest:
 
 class TestClaudePlugin:
     def test_manifest_version_matches_package(self):
-        assert _load(".claude-plugin/plugin.json")["version"] == __version__
+        assert _load("plugin/.claude-plugin/plugin.json")["version"] == __version__
+
+    def test_marketplace_lists_the_plugin_folder(self):
+        [entry] = _load(".claude-plugin/marketplace.json")["plugins"]
+        assert entry["name"] == _load("plugin/.claude-plugin/plugin.json")["name"]
+        assert (PROJECT_ROOT / entry["source"] / ".claude-plugin" / "plugin.json").is_file()
+
+    def test_plugin_mcp_json_pins_the_released_package(self):
+        """Anthropic's plugin directory blocks an unpinned uvx launcher, and an
+        installed plugin must start the version it was reviewed at."""
+        server = _load("plugin/.mcp.json")["mcpServers"]["diffctx"]
+        assert server["command"] == "uvx"
+        assert server["args"] == ["--from", f"diffctx[mcp]=={__version__}", "diffctx-mcp"]
 
     def test_mcp_json_is_self_bootstrapping(self):
         server = _load(".mcp.json")["mcpServers"]["diffctx"]
@@ -65,7 +77,7 @@ class TestClaudePlugin:
         """Plugin commands instruct the model to call an MCP tool by name;
         a tool rename that skips these files ships a plugin whose commands
         reference nothing."""
-        text = (PROJECT_ROOT / "commands" / f"{command}.md").read_text(encoding="utf-8")
+        text = (PROJECT_ROOT / "plugin" / "commands" / f"{command}.md").read_text(encoding="utf-8")
         front = re.match(r"\A---\n(.*?)\n---\n", text, re.DOTALL)
         assert front
         assert "description:" in front.group(1)
